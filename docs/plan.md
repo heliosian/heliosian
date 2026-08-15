@@ -19,7 +19,7 @@
 - One command starts the local server.
 - Templates, static assets, and content reload on change without restarting the server.
 - A local data mode serves generated, non-production sample data so contributors never need real community data to develop or test.
-- A documented screenshot mechanism captures pages from the local dev server, so agents (and humans) can verify visual changes. See `docs/screenshots.md` once it exists.
+- A documented screenshot mechanism captures pages from the local dev server, so agents (and humans) can verify visual changes. See `docs/screenshots.md`.
 
 ## Directory app
 

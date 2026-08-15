@@ -1,5 +1,7 @@
 # Local development
 
+Toolchain prerequisites: see [setup.md](setup.md).
+
 ## Run
 
     go run .
@@ -16,3 +18,4 @@ The server reads local data from `sampledata/`, mirroring the production Sheets 
 - `internal/data` — data source interface and the CSV sample-data implementation
 - `internal/directory` — directory app handlers
 - `web/directory` — directory app page templates and static assets
+- `tools/screenshot` — dev-site page capture, see [screenshots.md](screenshots.md)
