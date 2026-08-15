@@ -50,6 +50,7 @@ Actions (at most one step's worth per invocation):
 - `-scroll <px>` — scroll vertically, negative for up
 - `-wait <selector>` — block until this selector is visible before capturing
 - `-dump` — print the page HTML (for finding selectors) instead of writing a PNG
+- `-mobile` — emulate a phone viewport (390×844, touch) instead of the desktop 1280×800; click coordinates still map 1:1 onto the screenshot
 
 The capture is the visible viewport, not the full page, so click coordinates read off a screenshot are directly usable. After an action that triggers cross-page navigation, always pass `-wait` with a selector expected on the destination page — the built-in settle delay is short, and without `-wait` the capture can race the navigation and show the previous page. The reported URL/title always reflect the final state; when a capture looks stale, re-run with no action to capture the current state.
 

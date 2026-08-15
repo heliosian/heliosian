@@ -108,6 +108,7 @@ func main() {
 	typeText := flag.String("type", "", "insert text into the focused element")
 	key := flag.String("key", "", "press a key: enter, tab, escape, backspace, or a literal character")
 	wait := flag.String("wait", "", "css selector that must be visible before capturing")
+	mobile := flag.Bool("mobile", false, "emulate a phone viewport (390x844, touch) instead of desktop 1280x800")
 	dump := flag.Bool("dump", false, "print page html instead of writing a screenshot")
 	eval := flag.String("eval", "", "evaluate javascript in the page and print the json result instead of writing a screenshot")
 	out := flag.String("out", "screenshots/browse.png", "output png path")
@@ -123,7 +124,11 @@ func main() {
 	ctx, cancelTimeout := context.WithTimeout(ctx, 15*time.Second)
 	defer cancelTimeout()
 
-	actions := []chromedp.Action{chromedp.EmulateViewport(1280, 800)}
+	viewport := chromedp.EmulateViewport(1280, 800)
+	if *mobile {
+		viewport = chromedp.EmulateViewport(390, 844, chromedp.EmulateMobile)
+	}
+	actions := []chromedp.Action{viewport}
 	if *nav != "" {
 		actions = append(actions, chromedp.Navigate(*nav))
 	}

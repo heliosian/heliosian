@@ -66,3 +66,10 @@ Original tile art (1254×1254 JPEGs for all nine classrooms and all nine grade t
 - List rows with right chevrons; hairline dividers; generous whitespace.
 - Detail pages break the white page with a full-width deep-teal band for family content.
 - Inline separators: "▶" chains grade to team to subteam; "·" dots separate contact fragments.
+
+## Responsive chrome
+
+- Phones are the primary target; the desktop layout is the adaptation, not the other way around.
+- Narrow screens replace the sidebar with a brand-teal top bar (hamburger, page title, or back arrow + record name) and a bottom tab bar of icon-and-label items for the everyday sections.
+- Content keeps one structure across widths: grids go from multi-column to two columns, detail blocks stack full-width, and the teal family band spans edge to edge.
+- The status-bar area is part of the brand chrome (`viewport-fit=cover`, translucent status bar over teal — see `docs/pwa.md`).

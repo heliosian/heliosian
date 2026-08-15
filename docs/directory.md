@@ -14,7 +14,9 @@ The directory ("Helios Who?") is the community's who's-who: students, parents, a
 
 ## Navigation
 
-A persistent sidebar carries the app identity, the section list, and the signed-in user. Sections:
+On wide screens a persistent sidebar carries the app identity, the section list, and the signed-in user. On phones — the primary way the community uses the app — the sidebar gives way to a dark-teal top bar and a bottom tab bar holding the six everyday sections (People, Classrooms, My Family, Staff, Map, Email List), with the rest behind a hamburger menu. The top bar shows the page title while browsing and becomes a back arrow plus the record's name on detail pages. Tab strips collapse to the first tabs plus "More ▾", people grids drop to two columns and gain a per-card overflow menu, detail pages stack their blocks full-width, and family-band member rows pick up photo thumbnails. Same structure throughout — only the chrome changes.
+
+Sections:
 
 ### People (home)
 
