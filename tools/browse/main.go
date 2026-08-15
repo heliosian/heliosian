@@ -109,6 +109,7 @@ func main() {
 	key := flag.String("key", "", "press a key: enter, tab, escape, backspace, or a literal character")
 	wait := flag.String("wait", "", "css selector that must be visible before capturing")
 	dump := flag.Bool("dump", false, "print page html instead of writing a screenshot")
+	eval := flag.String("eval", "", "evaluate javascript in the page and print the json result instead of writing a screenshot")
 	out := flag.String("out", "screenshots/browse.png", "output png path")
 	flag.Parse()
 
@@ -154,9 +155,13 @@ func main() {
 	actions = append(actions, chromedp.Sleep(700*time.Millisecond))
 	var html string
 	var png []byte
-	if *dump {
+	var evalResult any
+	switch {
+	case *dump:
 		actions = append(actions, chromedp.OuterHTML("html", &html, chromedp.ByQuery))
-	} else {
+	case *eval != "":
+		actions = append(actions, chromedp.Evaluate(*eval, &evalResult))
+	default:
 		actions = append(actions, chromedp.CaptureScreenshot(&png))
 	}
 	var location, title string
@@ -166,6 +171,12 @@ func main() {
 	}
 	if *dump {
 		fmt.Println(html)
+	} else if *eval != "" {
+		encoded, err := json.MarshalIndent(evalResult, "", "  ")
+		if err != nil {
+			log.Fatalf("[ERROR] encode eval result: %v", err)
+		}
+		fmt.Println(string(encoded))
 	} else {
 		if err := os.MkdirAll(filepath.Dir(*out), 0o755); err != nil {
 			log.Fatalf("[ERROR] create output dir: %v", err)

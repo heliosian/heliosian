@@ -1,0 +1,70 @@
+# Directory app
+
+The directory ("Helios Who?") is the community's who's-who: students, parents, and staff, browsable by person, family, classroom, and grade. It exists to help people connect — put a face to a name after a conversation at pickup, find a classmate's parents to plan a party, get someone's name pronunciation right. Photos and facts are collected from families each year and are updatable at any time.
+
+## Entities
+
+- **Person** — first and last name; role (student, parent, staff); optional pronouns; optional nickname and pronunciation; photo (some people use an illustrated avatar instead); email; role-specific fields:
+  - *Students*: grade, classroom and team assignment (displayed as a chain, e.g. grade ▶ team ▶ subteam), optional free-text "about me" written by or about the kid.
+  - *Parents*: their kids (shown as context wherever the parent appears), optional room-parent assignments.
+  - *Staff*: job title, displayed prominently; staff may have no family record.
+- **Family** — the join between adults and kids: combined surname(s), family photo with a caption identifying everyone in it, member list split into adults and kids, address, phone. Lists show the city; the full address powers map actions.
+- **Classroom** — name and mascot artwork, the grade band it serves, and its students, staff, and parents. Classrooms nest teams/subteams that student rows reference.
+- **Grade** — K through 8, grouped into bands (K, 1st/2nd, 3rd/4th, ...) for browsing.
+
+## Navigation
+
+A persistent sidebar carries the app identity, the section list, and the signed-in user. Sections:
+
+### People (home)
+
+Four tabs, each with search and filter:
+
+- **Everyone** — grid of circular photos. Each card: role label with pronouns (e.g. "PARENT (SHE/HER)"), name, and a context line — kids' names for parents, grade/team chain for students, job title for staff.
+- **Students** — larger cards, first name prominent over last name, grade/team chain, pronouns badge.
+- **Families** — family-photo cards with grade badges, surname combination, and kids' first names.
+- **Staff** — grouped into sections (admin and office staff, teaching staff, ...), title over name.
+
+### Person detail
+
+Breadcrumb back to the list, favorite (heart) toggle, photo, role label with pronouns, name with nickname/pronunciation line, grade/team chain for students, email and address rows with quick actions (message, mail, map). Students add the "about me" paragraph. Below, a contrasting family band: the person's family name, a narrative caption of who's who, kid rows (grade/team, email), adult rows, and a link to the family page.
+
+### Family detail
+
+Family photo with click-to-expand and its identifying caption, grade badges, family name, member first-names, city with message/map actions, and a members section split into adults and kids, each row linking to the person.
+
+### Classrooms
+
+Three tabs: browse classrooms by grade band (mascot art, student count, link to detail), the same grouped by classroom, and room parents (parent rows annotated with each of their kids' classroom and grade). Classroom detail shows the mascot, name, and tabbed member lists — students (grouped by team, with parents' names above each student and the about-me blurb inline), staff, and parents — with per-tab counts.
+
+### My Family
+
+A shortcut card to the signed-in user's own family page.
+
+### Staff
+
+The staff list as a top-level section — same content as the People staff tab.
+
+### Map
+
+A map of family locations, plus an "update my address" self-service action.
+
+### Email List
+
+A copyable/exportable contact table for party planning and outreach: full name, email, role, grade, classroom. Tabs narrow to parents, students, both, or the user's bookmarked people. Filters select grades or classrooms. Includes a note that young students (K-2) have assigned email addresses but no access to them yet.
+
+### Data View
+
+A raw tabular view over the underlying records, for power users.
+
+### Share & About
+
+Share the app by SMS or link, an explanation of why photos and facts are collected, a bug-report pointer, and an opt-out form for removing a person's information.
+
+## Behaviors
+
+- Everything is cross-linked: parents ↔ kids ↔ families ↔ classrooms; any person reference navigates to that person.
+- Search is per-list and immediate; filters cover grade and classroom.
+- Favorites/bookmarks mark people and feed the email list's bookmark tab.
+- Photos lazy-load; full-size view on click where the photo is the subject (family pages).
+- All data is community-only, behind sign-in; opt-out removes a person on request.
