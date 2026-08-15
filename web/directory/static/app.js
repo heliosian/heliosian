@@ -1,4 +1,4 @@
-const state = {people: []};
+const state = {model: null};
 
 function hue(text) {
   let h = 0;
@@ -19,20 +19,51 @@ function el(tag, className, text) {
   return node;
 }
 
-function card(p) {
-  const root = el('div', 'card');
-  const avatar = el('div', 'avatar', (p.firstName[0] || '') + (p.lastName[0] || ''));
-  avatar.style.background = `hsl(${hue(p.firstName + p.lastName)} 60% 45%)`;
-  root.append(avatar);
-  const info = el('div');
-  info.append(el('div', 'name', `${p.firstName} ${p.lastName}`));
-  if (p.pronunciation) {
-    info.append(el('div', 'pronunciation', p.pronunciation));
+function initials(name) {
+  const words = name.trim().split(/\s+/);
+  if (words.length === 0 || !words[0]) {
+    return '?';
   }
-  const who = p.role === 'student' ? `Student, grade ${p.grade}` : 'Parent';
-  info.append(el('div', 'detail', `${who} · ${p.familyName}`));
-  info.append(el('div', 'detail', p.address));
-  const contact = [p.phone || p.familyPhone, p.email].filter(Boolean).join(' · ');
+  const first = words[0][0];
+  return words.length > 1 ? first + words[words.length - 1][0] : first;
+}
+
+function roles(p) {
+  return [p.isStudent && 'Student', p.isParent && 'Parent', p.isStaff && 'Staff'].filter(Boolean);
+}
+
+function card(p, family) {
+  const root = el('div', 'card');
+  if (p.photoUrl) {
+    const img = el('img', 'avatar');
+    img.src = p.photoUrl;
+    img.loading = 'lazy';
+    root.append(img);
+  } else {
+    const avatar = el('div', 'avatar', initials(p.fullName));
+    avatar.style.background = `hsl(${hue(p.fullName)} 60% 45%)`;
+    root.append(avatar);
+  }
+  const info = el('div');
+  info.append(el('div', 'name', p.fullName));
+  if (p.pronouns) {
+    info.append(el('div', 'pronouns', p.pronouns));
+  }
+  const who = [roles(p).join(' / ')];
+  if (p.grade) {
+    who.push([p.grade, p.classroom, p.section].filter(Boolean).join(' ▶ '));
+  }
+  if (p.jobTitle) {
+    who.push(p.jobTitle);
+  }
+  info.append(el('div', 'detail', who.join(' · ')));
+  if (family && family.name) {
+    info.append(el('div', 'detail', family.name));
+  }
+  if (family && family.address) {
+    info.append(el('div', 'detail', family.address));
+  }
+  const contact = [p.phone, p.email].filter(Boolean).join(' · ');
   if (contact) {
     info.append(el('div', 'detail', contact));
   }
@@ -44,23 +75,28 @@ function render() {
   const q = document.querySelector('#search').value.trim().toLowerCase();
   const list = document.querySelector('#people');
   list.replaceChildren();
-  const matches = state.people.filter(p =>
-    `${p.firstName} ${p.lastName} ${p.familyName}`.toLowerCase().includes(q));
+  if (!state.model) {
+    return;
+  }
+  const matches = state.model.people.filter(p => {
+    const family = state.model.families[p.familyKey];
+    return `${p.fullName} ${family ? family.name : ''}`.toLowerCase().includes(q);
+  });
   if (matches.length === 0) {
     list.append(el('div', 'empty', 'No matches.'));
     return;
   }
   for (const p of matches) {
-    list.append(card(p));
+    list.append(card(p, state.model.families[p.familyKey]));
   }
 }
 
 async function load() {
-  const res = await fetch('/directory/api/people');
+  const res = await fetch('/directory/api/model');
   if (!res.ok) {
-    throw new Error(`loading people failed: ${res.status}`);
+    throw new Error(`loading model failed: ${res.status}`);
   }
-  state.people = await res.json();
+  state.model = await res.json();
   render();
 }
 

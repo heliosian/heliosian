@@ -26,6 +26,7 @@ func main() {
 	tab := flag.String("tab", "", "print rows of this tab instead of the overview")
 	rows := flag.Int("rows", 0, "with -tab, print only n rows")
 	from := flag.Int("from", 1, "with -tab and -rows, first row to print")
+	cells := flag.Bool("cells", false, "with -tab, print each non-empty cell with its column index")
 	flag.Parse()
 	if *sheet == "" {
 		log.Fatal("[ERROR] -sheet <spreadsheet id> is required")
@@ -46,6 +47,15 @@ func main() {
 			log.Fatalf("[ERROR] read tab %s: %v", *tab, err)
 		}
 		for _, row := range resp.Values {
+			if *cells {
+				for i, cell := range row {
+					if s := fmt.Sprint(cell); s != "" {
+						fmt.Printf("  %d: %q\n", i, s)
+					}
+				}
+				fmt.Println("---")
+				continue
+			}
 			fmt.Println(row)
 		}
 		return

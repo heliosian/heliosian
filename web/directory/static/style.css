@@ -70,6 +70,7 @@ header h1 {
   justify-content: center;
   font-weight: 600;
   flex-shrink: 0;
+  object-fit: cover;
 }
 
 .name {

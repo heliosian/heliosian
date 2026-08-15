@@ -12,6 +12,12 @@ The server listens on http://localhost:8080 (override with `PORT`). Templates, s
 
 The server reads local data from `sampledata/`, mirroring the production Sheets layout: one directory per app, one CSV file per table, first row is the schema. It goes through the same data-source interface production backends implement, so app code never knows which backend it is talking to.
 
+## Real data
+
+    DIRECTORY_SHEET=<spreadsheet id> go run .
+
+switches the directory app to the Google Sheets source. At startup the directory tables are read from the spreadsheet and normalized into the in-memory data model (see `docs/data.md`); the server refuses to start if that load fails, and the model reloads every five minutes. Requires a service account key in `creds/` (any `*.json`; the directory is gitignored) with the Sheets API enabled and the spreadsheet shared read-only with the service account. Real data never leaves the process: nothing is written to disk.
+
 ## Layout
 
 - `main.go` — server entry point and app routing
