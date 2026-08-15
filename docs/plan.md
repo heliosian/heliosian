@@ -26,7 +26,7 @@
 - Clone the existing app's functionality and layout, working from screenshots of the current app as the reference.
 - Views: browsable/searchable directory of families and individuals; detail pages with contact info, photos, and name pronunciation.
 - Photo handling: individual and family photos uploaded to Drive, resized/cached for serving.
-- Pronunciation: stored per person; representation (text respelling vs. audio) decided during the clone.
+- Pronunciation: audio recordings (MP3), one per person and one per family, stored with the other blobs.
 
 ## Data
 
