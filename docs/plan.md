@@ -1,14 +1,12 @@
 # Plan
 
-What remains to build. Current behavior is documented in `docs/dev.md`, `docs/data.md`, `docs/directory.md`, `docs/design.md`, and `docs/pwa.md`.
+What remains to build. Current behavior is documented in `docs/dev.md`, `docs/data.md`, `docs/directory.md`, `docs/design.md`, `docs/pwa.md`, and `docs/deploy.md`.
 
 ## Directory app
 
-- Mobile chrome: brand-teal top bar and bottom tab navigation on narrow screens (see `docs/directory.md`); today only the desktop chrome is faithful.
 - Installable-app plumbing: manifest, icons, and meta tags per `docs/pwa.md`.
 - Self-service flows: photo and pronunciation upload, address update, opt-out.
 
 ## Hosting and deployment
 
-- Cloud Run service in the school's project, minimum one instance (media is held in memory; startup is too slow for scale-to-zero).
-- Docker build producing the static binary in a minimal base image containing only tzinfo and CA certificates.
+- Move from `gen-lang-client-0758114984` to the school's project: recreate the OAuth client there (Internal consent screen, only available inside the school's Workspace org, removes unverified-app friction), plus the service account, secrets, and service; re-share the spreadsheet and media drive with the new service account.
