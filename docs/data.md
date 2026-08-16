@@ -53,7 +53,7 @@ The explosion turns each import row into one student record plus up to four adul
 Canonical model columns, keyed by lowercased email, one row per person. Three kinds of content share the tab, distinguished only by authorship and one flag:
 
 - **Corrections** (hand): fix anything the import gets wrong — swapped name fields, bad phone numbers — and carry person flags with no import source, like room-parent assignments and the new-to-Helios marker.
-- **Self-service text** (app): facts, pronouns, address preferences. The app writes these cells directly; moderating a contribution is the same act as any other correction. Photo and pronunciation uploads go straight to the media drive and never touch the sheet.
+- **Self-service text** (app): facts, pronouns, address preferences, and the Opted Out flag. The app writes these cells directly; moderating a contribution is the same act as any other correction. Photo and pronunciation uploads go straight to the media drive and never touch the sheet.
 - **Additions** (hand, flagged): people with no import row at all. The flag inverts the source expectation.
 
 Cell semantics are sparse: an empty cell contributes nothing, `-` clears the underlying value. An addition is just an override applied to an empty base record, so the merge logic is uniform; the flag selects the validation instead:
@@ -66,6 +66,8 @@ Cell semantics are sparse: an empty cell contributes nothing, `-` clears the und
 Flagged rows must supply every field the model requires; unflagged rows can be a single cell. `-` on a flagged row is meaningless (nothing beneath to clear) and reported as useless.
 
 Family-level fields (address, family photo caption, family phone) ride on a parent's row and apply to that parent's household, so a two-household student's families are addressed independently through their respective adults.
+
+**Opted Out** removes the person entirely at load: their record, their membership in families and parent-contact lists, and any room-parent assignment all vanish from the model. Because viewing the directory requires being in it, opting out also locks the person out — they get a permissions error until the school clears the flag. People set it themselves from their own profile page (with a confirmation spelling out both consequences), or an admin sets the cell by hand.
 
 Every change to Overrides appends a Change Log row: timestamp, actor, the row's email, then the previous value of each column that changed — `-` marking a previously empty cell, untouched columns left blank. Media uploads are not logged here; the drive archive is their history.
 

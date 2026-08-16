@@ -47,7 +47,7 @@ var overrideColumns = []string{
 	"Email", "Added", "Full Name", "Legal Name", "Preferred Name",
 	"Is Student", "Is Parent", "Is Staff", "New to Helios", "Pronouns", "Facts",
 	"Grade", "Classroom", "Crew", "Phone", "Job Title", "Department", "Grade Band", "Room Parent",
-	"Address", "Family Phone", "Family Photo Caption",
+	"Address", "Family Phone", "Family Photo Caption", "Opted Out",
 }
 
 type BlobChecker interface {
@@ -282,6 +282,7 @@ func LoadModel(source data.Source, blobs BlobChecker) (*Model, error) {
 		bandSet[band] = true
 	}
 	roomParents := map[string][]string{}
+	optedOut := map[string]bool{}
 
 	seenOverride := map[string]bool{}
 	for _, row := range overrideRows {
@@ -383,6 +384,14 @@ func LoadModel(source data.Source, blobs BlobChecker) (*Model, error) {
 			familyOverrides[email] = cells
 		}
 
+		switch row["Opted Out"] {
+		case "", "-", "FALSE":
+		case "TRUE":
+			optedOut[email] = true
+		default:
+			return nil, fmt.Errorf("overrides row %s has invalid Opted Out %q", email, row["Opted Out"])
+		}
+
 		if added {
 			if p.FullName == "" {
 				return nil, fmt.Errorf("added row %s has no full name", email)
@@ -401,15 +410,13 @@ func LoadModel(source data.Source, blobs BlobChecker) (*Model, error) {
 		members := append(append([]string{}, hh.adults...), hh.kids...)
 		key := familyHash(members)
 		familyKeys[setKey] = key
-		family := Family{
+		model.Families[key] = Family{
 			Key:         key,
 			Address:     hh.address,
 			Phone:       hh.phone,
 			AdultEmails: hh.adults,
 			KidEmails:   hh.kids,
 		}
-		family.Name = familyNameFor(family, people)
-		model.Families[key] = family
 	}
 	for email, sets := range personHouseholds {
 		if p := people[email]; p.FamilyKey == "" {
@@ -437,6 +444,33 @@ func LoadModel(source data.Source, blobs BlobChecker) (*Model, error) {
 			family.PhotoCaption = cells.caption
 		}
 		model.Families[key] = family
+	}
+
+	for email := range optedOut {
+		delete(people, email)
+	}
+	kept := []string{}
+	for _, email := range order {
+		if !optedOut[email] {
+			kept = append(kept, email)
+		}
+	}
+	order = kept
+	for key, family := range model.Families {
+		family.AdultEmails = without(family.AdultEmails, optedOut)
+		family.KidEmails = without(family.KidEmails, optedOut)
+		if len(family.AdultEmails)+len(family.KidEmails) == 0 {
+			delete(model.Families, key)
+			continue
+		}
+		family.Name = familyNameFor(family, people)
+		model.Families[key] = family
+	}
+	for _, p := range people {
+		p.ParentContactEmails = without(p.ParentContactEmails, optedOut)
+	}
+	for band, emails := range roomParents {
+		roomParents[band] = without(emails, optedOut)
 	}
 
 	if blobs != nil {
@@ -601,6 +635,16 @@ func bandLabel(band string) string {
 		}
 	}
 	return strings.Join(labels, " / ")
+}
+
+func without(list []string, drop map[string]bool) []string {
+	kept := []string{}
+	for _, item := range list {
+		if !drop[item] {
+			kept = append(kept, item)
+		}
+	}
+	return kept
 }
 
 func surname(fullName string) string {

@@ -885,6 +885,29 @@ function renderPersonDetail(email) {
     }
     content.append(text, status);
   }
+
+  if (p.email === document.body.dataset.userEmail) {
+    const header = el('h2', 'about-header', 'Privacy');
+    const button = el('button', 'media-button', 'Remove me from the directory');
+    const status = el('div', 'media-status');
+    button.addEventListener('click', async () => {
+      const message = 'This removes all of your data from the directory. ' +
+        'Users not in the directory cannot access it, for security. Continue?';
+      if (!confirm(message)) {
+        return;
+      }
+      status.classList.remove('error');
+      status.textContent = 'Removing…';
+      const res = await fetch('/api/directory/optout', {method: 'POST'});
+      if (!res.ok) {
+        status.classList.add('error');
+        status.textContent = await res.text();
+        return;
+      }
+      location.reload();
+    });
+    content.append(header, button, status);
+  }
   main.append(content);
 
   if (family) {

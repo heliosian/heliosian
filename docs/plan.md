@@ -4,7 +4,7 @@ What remains to build. Current behavior is documented in `docs/dev.md`, `docs/da
 
 ## Directory app
 
-- Self-service flows: address update, opt-out.
+- Self-service flows: address update.
 
 ## Hosting and deployment
 

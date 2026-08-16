@@ -24,7 +24,7 @@ var tabs = []struct {
 		"New to Helios", "Pronouns", "Facts",
 		"Grade", "Classroom", "Crew",
 		"Phone", "Job Title", "Department", "Grade Band", "Room Parent",
-		"Address", "Family Phone", "Family Photo Caption",
+		"Address", "Family Phone", "Family Photo Caption", "Opted Out",
 	}},
 	{"Change Log", []string{
 		"Timestamp", "Actor",
@@ -34,7 +34,7 @@ var tabs = []struct {
 		"New to Helios", "Pronouns", "Facts",
 		"Grade", "Classroom", "Crew",
 		"Phone", "Job Title", "Department", "Grade Band", "Room Parent",
-		"Address", "Family Phone", "Family Photo Caption",
+		"Address", "Family Phone", "Family Photo Caption", "Opted Out",
 	}},
 }
 

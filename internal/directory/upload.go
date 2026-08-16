@@ -62,6 +62,26 @@ func RegisterUpload(mux *http.ServeMux, cache *Cache, sheet *data.Sheet, store *
 	u := uploader{cache: cache, sheet: sheet, store: store}
 	mux.HandleFunc("POST /api/directory/upload", u.upload)
 	mux.HandleFunc("POST /api/directory/facts", u.facts)
+	mux.HandleFunc("POST /api/directory/optout", u.optOut)
+}
+
+func (u uploader) optOut(w http.ResponseWriter, r *http.Request) {
+	me := strings.ToLower(auth.Email(r))
+	if err := u.sheet.Upsert(appName, "Overrides", "Email", me, "Opted Out", "TRUE"); err != nil {
+		serverError(w, fmt.Errorf("opt out %s: %w", me, err))
+		return
+	}
+	logRow := changeLogRow(me, me, map[string]string{"Opted Out": ""})
+	if err := u.sheet.Append(appName, changeLogTable, changeLogHeader, logRow); err != nil {
+		serverError(w, fmt.Errorf("append change log after opt out of %s: %w", me, err))
+		return
+	}
+	if err := u.cache.Refresh(); err != nil {
+		serverError(w, fmt.Errorf("refresh model after opt out: %w", err))
+		return
+	}
+	log.Printf("optout: %s removed themselves from the directory", me)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (u uploader) facts(w http.ResponseWriter, r *http.Request) {
