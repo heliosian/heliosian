@@ -6,12 +6,13 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"heliosian/internal/auth"
 )
 
-var sections = []string{"people", "classrooms", "my-family", "staff", "map", "email-list"}
+var sections = []string{"people", "classrooms", "staff", "map", "email-list"}
 
 var legacy = map[string]string{
 	"people":   "/people",
@@ -32,6 +33,7 @@ func Register(mux *http.ServeMux, cache *Cache, mapsKey string) {
 	for _, section := range sections {
 		mux.HandleFunc("GET /"+section, a.page)
 	}
+	mux.HandleFunc("GET /my-family", a.myFamily)
 	mux.HandleFunc("GET /profile", a.page)
 	mux.HandleFunc("GET /people/{email}", a.page)
 	mux.HandleFunc("GET /families/{key}", a.page)
@@ -39,6 +41,20 @@ func Register(mux *http.ServeMux, cache *Cache, mapsKey string) {
 	mux.HandleFunc("GET /grades/{name}", a.page)
 	mux.HandleFunc("GET /dl/", a.legacyRedirect)
 	mux.HandleFunc("GET /api/directory/model", a.model)
+}
+
+func (a app) myFamily(w http.ResponseWriter, r *http.Request) {
+	model := a.cache.Model()
+	email := auth.Email(r)
+	for _, p := range model.People {
+		if p.Email == email && p.FamilyKey != "" {
+			if _, ok := model.Families[p.FamilyKey]; ok {
+				http.Redirect(w, r, "/families/"+url.PathEscape(p.FamilyKey), http.StatusFound)
+				return
+			}
+		}
+	}
+	http.Error(w, "no family record for "+email, http.StatusNotFound)
 }
 
 func (a app) legacyRedirect(w http.ResponseWriter, r *http.Request) {

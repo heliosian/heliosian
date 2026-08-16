@@ -4,7 +4,6 @@ What remains to build. Current behavior is documented in `docs/dev.md`, `docs/da
 
 ## Directory app
 
-- Remaining sections: My Family.
 - Mobile chrome: brand-teal top bar and bottom tab navigation on narrow screens (see `docs/directory.md`); today only the desktop chrome is faithful.
 - Installable-app plumbing: manifest, icons, and meta tags per `docs/pwa.md`.
 - Self-service flows: photo and pronunciation upload, address update, opt-out.

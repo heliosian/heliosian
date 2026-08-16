@@ -41,7 +41,7 @@ Three tabs: browse classrooms by grade band (mascot art, student count, link to 
 
 ### My Family
 
-A shortcut card to the signed-in user's own family page.
+Goes straight to the signed-in user's own family page.
 
 ### Staff
 
