@@ -28,6 +28,8 @@ type Family struct {
 	Key              string   `json:"key"`
 	Name             string   `json:"name,omitempty"`
 	Address          string   `json:"address,omitempty"`
+	Lat              float64  `json:"lat,omitempty"`
+	Lng              float64  `json:"lng,omitempty"`
 	PhotoURL         string   `json:"photoUrl,omitempty"`
 	PhotoCaption     string   `json:"photoCaption,omitempty"`
 	PronunciationURL string   `json:"pronunciationUrl,omitempty"`

@@ -14,6 +14,13 @@ Everything — pages, static assets, and the API — sits behind Google sign-in 
 
 To capture authenticated pages with the screenshot tooling, launch the capture browser (`go run ./tools/capturebrowser`), sign in to the local server there once, and use `tools/browse` or `tools/screenshot -remote` — the session cookie lives in the capture profile. Plain `tools/screenshot` runs a fresh headless browser with no session and captures the login page.
 
+## Maps
+
+The map section geocodes family addresses server-side via the Google Geocoding API (results cached in memory per address) and renders in the browser with the Maps JavaScript API. Two API keys from a project with those APIs enabled, both required at startup:
+
+- Server key — Geocoding API; restrict by server IP (or leave unrestricted for dev). Never rendered into pages. Read from `creds/geocoding.key`, or `GOOGLE_MAPS_SERVER_KEY` when set.
+- Browser key — Maps JavaScript API; rendered into the page, so restrict by HTTP referer (localhost and the serving domain). Read from `creds/maps.key`, or `GOOGLE_MAPS_BROWSER_KEY` when set.
+
 ## Local data
 
 The server reads local data from `sampledata/`, mirroring the production Sheets layout: one directory per app, one CSV file per table, first row is the schema. It goes through the same data-source interface production backends implement, so app code never knows which backend it is talking to.

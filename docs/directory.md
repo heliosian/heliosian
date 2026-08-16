@@ -49,7 +49,7 @@ The staff list as a top-level section — same content as the People staff tab.
 
 ### Map
 
-A map of family locations, plus an "update my address" self-service action.
+A Google map of family locations: one brand-teal pin per geocoded family address, a popup card (family photo, name, address, family-page link) on pin click, and search and filters narrowing the pins. Below the map, an "update my address" self-service action.
 
 ### Email List
 

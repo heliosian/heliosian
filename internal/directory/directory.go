@@ -23,11 +23,12 @@ var legacy = map[string]string{
 }
 
 type app struct {
-	cache *Cache
+	cache   *Cache
+	mapsKey string
 }
 
-func Register(mux *http.ServeMux, cache *Cache) {
-	a := app{cache: cache}
+func Register(mux *http.ServeMux, cache *Cache, mapsKey string) {
+	a := app{cache: cache, mapsKey: mapsKey}
 	for _, section := range sections {
 		mux.HandleFunc("GET /"+section, a.page)
 	}
@@ -60,6 +61,7 @@ func (a app) page(w http.ResponseWriter, r *http.Request) {
 		"UserName":    name,
 		"UserInitial": strings.ToUpper(name[:1]),
 		"UserEmail":   auth.Email(r),
+		"MapsKey":     a.mapsKey,
 	}
 	if err := t.Execute(w, data); err != nil {
 		log.Printf("[ERROR] render directory page: %v", err)

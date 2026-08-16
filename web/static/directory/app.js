@@ -32,6 +32,7 @@ const icons = {
   copy: '<svg viewBox="0 0 24 24"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>',
   message: '<svg viewBox="0 0 24 24"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>',
   phone: '<svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>',
+  zap: '<svg viewBox="0 0 24 24"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg>',
 };
 
 const navSections = [
@@ -1371,6 +1372,137 @@ function renderEmailListPage() {
   input.focus();
 }
 
+let mapsPromise = null;
+
+function loadMaps() {
+  if (!mapsPromise) {
+    mapsPromise = new Promise(resolve => {
+      window._mapsReady = resolve;
+      const script = el('script');
+      script.src = 'https://maps.googleapis.com/maps/api/js?key=' +
+        encodeURIComponent(document.body.dataset.mapsKey) + '&callback=_mapsReady';
+      script.async = true;
+      document.head.append(script);
+    });
+  }
+  return mapsPromise;
+}
+
+const pinIcon = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="34" height="34">' +
+  '<path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0" fill="#173c41" stroke="#fff" stroke-width="1"/>' +
+  '<circle cx="12" cy="10" r="3" fill="#fff"/></svg>');
+
+function renderMapPage() {
+  const main = document.querySelector('#main');
+  main.replaceChildren();
+
+  const content = el('div', 'content container');
+  const header = el('div', 'content-header');
+  header.append(el('h1', '', 'Map'));
+  const controls = el('div', 'controls');
+  const search = el('div', 'search');
+  search.append(svg('search'));
+  const input = el('input');
+  input.placeholder = 'Search';
+  input.value = state.q;
+  input.addEventListener('input', () => {
+    state.q = input.value.trim().toLowerCase();
+    renderPins();
+  });
+  search.append(input);
+  controls.append(search, filterControl(() => renderPins()));
+  header.append(controls);
+  content.append(header);
+
+  const canvas = el('div', 'map-canvas');
+  content.append(canvas);
+
+  const update = el('div', 'map-update');
+  const action = el('a', 'map-update-link');
+  action.append(svg('zap'), el('span', '', 'Update My Address'));
+  update.append(action);
+  content.append(update);
+  main.append(content);
+
+  let map = null;
+  let info = null;
+  let markers = [];
+
+  function familySearchText(family) {
+    const members = [...(family.kidEmails || []), ...(family.adultEmails || [])]
+      .map(e => byEmail[e]).filter(Boolean).map(p => p.fullName);
+    return `${family.name || ''} ${members.join(' ')}`.toLowerCase();
+  }
+
+  function popupContent(family) {
+    const box = el('div', 'map-popup');
+    if (family.photoUrl) {
+      const img = el('img', 'map-popup-photo');
+      img.src = thumbUrl(family.photoUrl);
+      img.alt = '';
+      box.append(img);
+    }
+    box.append(el('div', 'map-popup-name', family.name));
+    if (family.address) {
+      box.append(el('div', 'map-popup-sub', family.address));
+    }
+    const link = el('a', 'map-popup-link', 'See family');
+    link.href = '/families/' + encodeURIComponent(family.key);
+    box.append(link);
+    return box;
+  }
+
+  function renderPins() {
+    if (!map) {
+      return;
+    }
+    for (const m of markers) {
+      m.setMap(null);
+    }
+    markers = [];
+    for (const family of Object.values(state.model.families)) {
+      if (!family.lat && !family.lng) {
+        continue;
+      }
+      if (!familyMatchesFilters(family.key) || !familySearchText(family).includes(state.q)) {
+        continue;
+      }
+      const marker = new google.maps.Marker({
+        map,
+        position: {lat: family.lat, lng: family.lng},
+        icon: {url: pinIcon, anchor: new google.maps.Point(17, 33)},
+        title: family.name,
+      });
+      marker.addListener('click', () => {
+        info.setContent(popupContent(family));
+        info.open(map, marker);
+      });
+      markers.push(marker);
+    }
+  }
+
+  loadMaps().then(() => {
+    if (!canvas.isConnected) {
+      return;
+    }
+    map = new google.maps.Map(canvas, {
+      mapTypeControl: false,
+      streetViewControl: false,
+      fullscreenControl: false,
+    });
+    info = new google.maps.InfoWindow();
+    const bounds = new google.maps.LatLngBounds();
+    for (const family of Object.values(state.model.families)) {
+      if (family.lat || family.lng) {
+        bounds.extend({lat: family.lat, lng: family.lng});
+      }
+    }
+    map.fitBounds(bounds);
+    renderPins();
+  });
+}
+
 function renderProfile() {
   const main = document.querySelector('#main');
   main.replaceChildren();
@@ -1425,6 +1557,9 @@ function render() {
     state.emailTab = tabParam('parents');
     state.q = '';
     renderEmailListPage();
+  } else if (seg[0] === 'map') {
+    state.q = '';
+    renderMapPage();
   } else if (seg[0] === 'profile') {
     renderProfile();
   }

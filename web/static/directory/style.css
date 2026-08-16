@@ -388,6 +388,71 @@ main {
   color: #fff;
 }
 
+.map-canvas {
+  height: 600px;
+  border-radius: 12px;
+  background: #eef1f3;
+}
+
+.map-update {
+  display: flex;
+  justify-content: center;
+  margin-top: 26px;
+}
+
+.map-update-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.map-update-link svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.map-popup {
+  max-width: 220px;
+  font-family: Inter, system-ui, sans-serif;
+}
+
+.map-popup-photo {
+  width: 100%;
+  border-radius: 8px;
+  display: block;
+  margin-bottom: 8px;
+}
+
+.map-popup-name {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.map-popup-sub {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 3px;
+}
+
+.map-popup-link {
+  display: inline-block;
+  margin-top: 8px;
+  color: var(--brand);
+  font-weight: 600;
+  font-size: 13px;
+  text-decoration: none;
+}
+
 .email-hint {
   color: var(--muted);
   font-size: 14px;

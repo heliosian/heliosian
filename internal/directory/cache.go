@@ -6,18 +6,20 @@ import (
 	"time"
 
 	"heliosian/internal/data"
+	"heliosian/internal/geocode"
 )
 
 const refreshInterval = 5 * time.Minute
 
 type Cache struct {
-	source data.Source
-	mu     sync.RWMutex
-	model  *Model
+	source   data.Source
+	geocoder *geocode.Client
+	mu       sync.RWMutex
+	model    *Model
 }
 
-func NewCache(source data.Source) (*Cache, error) {
-	c := &Cache{source: source}
+func NewCache(source data.Source, geocoder *geocode.Client) (*Cache, error) {
+	c := &Cache{source: source, geocoder: geocoder}
 	if err := c.refresh(); err != nil {
 		return nil, err
 	}
@@ -45,6 +47,7 @@ func (c *Cache) refresh() error {
 	if err != nil {
 		return err
 	}
+	c.geocodeFamilies(model)
 	c.mu.Lock()
 	c.model = model
 	c.mu.Unlock()
@@ -52,4 +55,46 @@ func (c *Cache) refresh() error {
 		len(model.People), len(model.Families), len(model.Classrooms), len(model.Sections),
 		time.Since(start).Round(time.Millisecond))
 	return nil
+}
+
+func (c *Cache) geocodeFamilies(model *Model) {
+	start := time.Now()
+	type job struct {
+		key     string
+		address string
+	}
+	jobs := make(chan job)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	located := 0
+	for range 8 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := range jobs {
+				point, err := c.geocoder.Lookup(j.address)
+				if err != nil {
+					log.Printf("[ERROR] %v", err)
+					continue
+				}
+				mu.Lock()
+				family := model.Families[j.key]
+				family.Lat = point.Lat
+				family.Lng = point.Lng
+				model.Families[j.key] = family
+				located++
+				mu.Unlock()
+			}
+		}()
+	}
+	total := 0
+	for key, family := range model.Families {
+		if family.Address != "" {
+			total++
+			jobs <- job{key: key, address: family.Address}
+		}
+	}
+	close(jobs)
+	wg.Wait()
+	log.Printf("geocoded %d of %d family addresses in %s", located, total, time.Since(start).Round(time.Millisecond))
 }

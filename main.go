@@ -7,11 +7,13 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 
 	"heliosian/internal/auth"
 	"heliosian/internal/blob"
 	"heliosian/internal/data"
 	"heliosian/internal/directory"
+	"heliosian/internal/geocode"
 )
 
 func directorySource() data.Source {
@@ -64,15 +66,32 @@ func noCache(next http.Handler) http.Handler {
 	})
 }
 
+func mapsKey(envName, file string) string {
+	if key := os.Getenv(envName); key != "" {
+		return key
+	}
+	raw, err := os.ReadFile(file)
+	if err != nil {
+		log.Fatalf("[ERROR] read %s (or set %s): %v", file, envName, err)
+	}
+	key := strings.TrimSpace(string(raw))
+	if key == "" {
+		log.Fatalf("[ERROR] %s is empty", file)
+	}
+	return key
+}
+
 func main() {
 	authn := auth.New(clientID(), sessionKey())
-	cache, err := directory.NewCache(directorySource())
+	serverKey := mapsKey("GOOGLE_MAPS_SERVER_KEY", "creds/geocoding.key")
+	browserKey := mapsKey("GOOGLE_MAPS_BROWSER_KEY", "creds/maps.key")
+	cache, err := directory.NewCache(directorySource(), geocode.New(serverKey))
 	if err != nil {
 		log.Fatalf("[ERROR] load directory data: %v", err)
 	}
 	mux := http.NewServeMux()
 	authn.Register(mux)
-	directory.Register(mux, cache)
+	directory.Register(mux, cache, browserKey)
 	if os.Getenv("DIRECTORY_SHEET") != "" {
 		store, err := blob.New()
 		if err != nil {
