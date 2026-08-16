@@ -242,7 +242,7 @@ function renderFamilies(grid) {
   return matches.length;
 }
 
-function renderStaff(grid) {
+function renderStaff(grid, autoFit) {
   grid.className = '';
   const staff = state.model.people.filter(p =>
     p.isStaff && `${p.fullName} ${p.jobTitle || ''}`.toLowerCase().includes(state.q));
@@ -263,7 +263,7 @@ function renderStaff(grid) {
   let count = 0;
   for (const dept of ordered) {
     grid.append(el('h2', 'staff-section', dept));
-    const deptGrid = el('div', 'people-grid');
+    const deptGrid = el('div', 'people-grid' + (autoFit ? ' autofit' : ''));
     for (const p of groups.get(dept)) {
       const card = el('a', 'person-card');
       card.href = personLink(p);
@@ -362,6 +362,9 @@ function referrerCrumbs() {
   }
   if (seg[0] === 'classrooms') {
     return [['Classrooms', '/classrooms']];
+  }
+  if (seg[0] === 'staff') {
+    return [['Staff', '/staff']];
   }
   return null;
 }
@@ -869,6 +872,43 @@ function renderClassroomsPage() {
   renderList();
 }
 
+function renderStaffPage() {
+  const main = document.querySelector('#main');
+  main.replaceChildren();
+
+  const content = el('div', 'content container');
+  const header = el('div', 'content-header');
+  header.append(el('h1', '', 'Staff'));
+  const controls = el('div', 'controls');
+  const search = el('div', 'search');
+  search.append(svg('search'));
+  const input = el('input');
+  input.placeholder = 'Search';
+  input.value = state.q;
+  input.addEventListener('input', () => {
+    state.q = input.value.trim().toLowerCase();
+    renderList();
+  });
+  search.append(input);
+  const filter = el('button', 'filter-button');
+  filter.append(svg('filter'), el('span', '', 'Filter'), svg('chevron'));
+  controls.append(search, filter);
+  header.append(controls);
+  content.append(header);
+
+  const list = el('div');
+  content.append(list);
+  main.append(content);
+
+  function renderList() {
+    list.replaceChildren();
+    if (renderStaff(list, true) === 0) {
+      list.append(el('div', 'empty', 'No matches.'));
+    }
+  }
+  renderList();
+}
+
 function parentsOf(students) {
   const seen = new Set();
   const parents = [];
@@ -1036,6 +1076,9 @@ function render() {
   } else if (seg[0] === 'classrooms') {
     state.classTab = tabParam('by-classroom');
     renderClassroomsPage();
+  } else if (seg[0] === 'staff') {
+    state.q = '';
+    renderStaffPage();
   }
 }
 

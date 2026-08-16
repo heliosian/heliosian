@@ -264,6 +264,15 @@ main {
   gap: 32px 16px;
 }
 
+.people-grid.autofit {
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+}
+
+.people-grid.autofit .person-photo {
+  width: 146px;
+  max-width: 100%;
+}
+
 .person-card {
   text-align: center;
 }
