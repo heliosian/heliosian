@@ -421,16 +421,28 @@ main {
   stroke-linejoin: round;
 }
 
+.gm-style .gm-style-iw-c {
+  padding: 0 !important;
+  border-radius: 14px;
+}
+
+.gm-style .gm-style-iw-d {
+  overflow: hidden !important;
+  padding: 0;
+}
+
 .map-popup {
-  max-width: 220px;
+  max-width: 260px;
   font-family: Inter, system-ui, sans-serif;
 }
 
 .map-popup-photo {
   width: 100%;
-  border-radius: 8px;
   display: block;
-  margin-bottom: 8px;
+}
+
+.map-popup-body {
+  padding: 12px 14px 14px;
 }
 
 .map-popup-name {

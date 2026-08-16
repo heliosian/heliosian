@@ -1734,13 +1734,15 @@ function renderMapPage() {
       img.alt = '';
       box.append(img);
     }
-    box.append(el('div', 'map-popup-name', family.name));
+    const body = el('div', 'map-popup-body');
+    body.append(el('div', 'map-popup-name', family.name));
     if (family.address) {
-      box.append(el('div', 'map-popup-sub', family.address));
+      body.append(el('div', 'map-popup-sub', family.address));
     }
     const link = el('a', 'map-popup-link', 'See family');
     link.href = familyLink(family.key);
-    box.append(link);
+    body.append(link);
+    box.append(body);
     return box;
   }
 
@@ -1782,7 +1784,8 @@ function renderMapPage() {
       streetViewControl: false,
       fullscreenControl: false,
     });
-    info = new google.maps.InfoWindow();
+    info = new google.maps.InfoWindow({headerDisabled: true});
+    map.addListener('click', () => info.close());
     const bounds = new google.maps.LatLngBounds();
     for (const family of Object.values(state.model.families)) {
       if (family.lat || family.lng) {
