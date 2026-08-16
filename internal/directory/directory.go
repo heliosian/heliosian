@@ -36,6 +36,8 @@ func Register(mux *http.ServeMux, cache *Cache) {
 	}
 	mux.HandleFunc("GET /people/{email}", a.page)
 	mux.HandleFunc("GET /families/{key}", a.page)
+	mux.HandleFunc("GET /classrooms/{name}", a.page)
+	mux.HandleFunc("GET /grades/{name}", a.page)
 	mux.HandleFunc("GET /dl/", a.legacyRedirect)
 	mux.HandleFunc("GET /api/directory/model", a.model)
 }

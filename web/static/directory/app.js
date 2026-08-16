@@ -1,4 +1,4 @@
-const state = {model: null, tab: 'everyone', q: ''};
+const state = {model: null, tab: 'everyone', classTab: 'by-classroom', rosterTab: 'students', q: ''};
 let byEmail = {};
 
 const icons = {
@@ -297,6 +297,7 @@ function renderPeople() {
     node.addEventListener('click', () => {
       state.tab = tab.key;
       state.q = '';
+      history.replaceState(null, '', '/people?tab=' + tab.key);
       renderPeople();
     });
     tabsRow.append(node);
@@ -338,11 +339,39 @@ function renderPeople() {
   input.focus();
 }
 
+function referrerCrumbs() {
+  if (!document.referrer) {
+    return null;
+  }
+  const ref = new URL(document.referrer);
+  if (ref.origin !== location.origin) {
+    return null;
+  }
+  const seg = ref.pathname.split('/').filter(Boolean).map(decodeURIComponent);
+  if (seg[0] === 'grades' && seg[1]) {
+    const grade = state.model.grades.find(g => slugify(g.name) === seg[1]);
+    if (grade) {
+      return [['Classrooms', '/classrooms'], [grade.name, ref.pathname + ref.search]];
+    }
+  }
+  if (seg[0] === 'classrooms' && seg[1]) {
+    const classroom = state.model.classrooms.find(c => slugify(c.name) === seg[1]);
+    if (classroom) {
+      return [['Classrooms', '/classrooms'], [classroom.name, ref.pathname + ref.search]];
+    }
+  }
+  if (seg[0] === 'classrooms') {
+    return [['Classrooms', '/classrooms']];
+  }
+  return null;
+}
+
 function breadcrumbs(parts) {
   const top = el('div', 'detail-top container');
   const crumbs = el('div', 'crumbs');
   const back = el('a', 'crumb-back');
-  back.href = '/people';
+  const parent = [...parts].reverse().find(([, href]) => href);
+  back.href = parent ? parent[1] : '/people';
   back.append(svg('chevron-left'));
   crumbs.append(back);
   parts.forEach(([label, href], i) => {
@@ -479,7 +508,8 @@ function renderPersonDetail(email) {
     main.append(el('div', 'empty', 'Not found.'));
     return;
   }
-  main.append(breadcrumbs([['People', '/people'], [p.fullName, null]]));
+  const origin = referrerCrumbs() || [['People', '/people']];
+  main.append(breadcrumbs([...origin, [p.fullName, null]]));
 
   const content = el('div', 'container detail-content');
   const grid = el('div', 'detail-grid');
@@ -632,6 +662,361 @@ function renderFamilyDetail(key) {
   main.append(band);
 }
 
+function slugify(name) {
+  return name.toLowerCase().replaceAll(' ', '-');
+}
+
+function ordinal(gradeName) {
+  const n = Number(gradeName.split(' ')[1]);
+  return n + ({1: 'st', 2: 'nd', 3: 'rd'}[n] || 'th');
+}
+
+function bandGroups() {
+  const groups = [];
+  for (const g of state.model.grades) {
+    if (!g.band || g.band === 'Eggs' || g.band === 'Alum' || g.name === 'PreK' || g.name === 'Grade 9') {
+      continue;
+    }
+    let group = groups.find(x => x.band === g.band);
+    if (!group) {
+      group = {band: g.band, grades: []};
+      groups.push(group);
+    }
+    group.grades.push(g.name);
+  }
+  for (const group of groups) {
+    group.label = group.band === 'Hummingbirds' ? 'K' : group.grades.map(ordinal).join(' / ');
+  }
+  return groups;
+}
+
+function gradeImage(gradeName) {
+  const suffix = gradeName === 'Kindergarten' ? 'k' : gradeName.split(' ')[1];
+  return '/static/brand/classrooms/grade-' + suffix + '.jpg';
+}
+
+function studentsOf(filter) {
+  return state.model.people.filter(p => p.isStudent && filter(p));
+}
+
+function classroomBand(name) {
+  const student = state.model.people.find(p => p.isStudent && p.classroom === name);
+  if (!student) {
+    return '';
+  }
+  const grade = state.model.grades.find(g => g.name === student.grade);
+  return grade ? grade.band : '';
+}
+
+function listRow(image, label, title, sub, href) {
+  const row = el('a', 'list-row');
+  row.href = href;
+  if (image) {
+    const img = el('img', 'list-tile');
+    img.src = image;
+    img.loading = 'lazy';
+    img.alt = '';
+    row.append(img);
+  } else {
+    row.append(el('div', 'list-tile'));
+  }
+  const info = el('div', 'list-info');
+  if (label) {
+    info.append(el('div', 'role-label', label));
+  }
+  info.append(el('div', 'list-title', title));
+  if (sub) {
+    info.append(el('div', 'list-sub', sub));
+  }
+  row.append(info);
+  const chev = el('div', 'list-chevron');
+  chev.append(svg('chevron-right'));
+  row.append(chev);
+  return row;
+}
+
+const classroomsTabs = [
+  {key: 'by-classroom', label: 'Explore by Classroom', heading: 'Explore by Classroom'},
+  {key: 'by-grade', label: 'Explore by Grade', heading: 'Explore By Grade'},
+  {key: 'room-parents', label: 'Room Parents', heading: ''},
+];
+
+function renderClassroomsList(list) {
+  const q = state.q;
+  let count = 0;
+  for (const group of bandGroups()) {
+    const rows = state.model.classrooms
+      .filter(c => classroomBand(c.name) === group.band)
+      .filter(c => c.name.toLowerCase().includes(q));
+    if (!rows.length) {
+      continue;
+    }
+    list.append(el('h2', 'group-header', group.label));
+    for (const c of rows) {
+      const students = studentsOf(p => p.classroom === c.name).length;
+      list.append(listRow(c.imageUrl, `${students} students`, c.name, '', '/classrooms/' + slugify(c.name)));
+      count++;
+    }
+  }
+  return count;
+}
+
+function renderGradesList(list) {
+  const q = state.q;
+  let count = 0;
+  for (const group of bandGroups()) {
+    const rows = group.grades.filter(name => name.toLowerCase().includes(q));
+    if (!rows.length) {
+      continue;
+    }
+    list.append(el('h2', 'group-header', group.label));
+    for (const name of rows) {
+      const students = studentsOf(p => p.grade === name).length;
+      list.append(listRow(gradeImage(name), `${students} students`, name, '', '/grades/' + slugify(name)));
+      count++;
+    }
+  }
+  return count;
+}
+
+function kidsSummary(parent) {
+  const family = state.model.families[parent.familyKey];
+  if (!family) {
+    return '';
+  }
+  return (family.kidEmails || [])
+    .map(e => byEmail[e])
+    .filter(Boolean)
+    .map(k => `${firstName(k.fullName)} (${[k.classroom, k.grade].filter(Boolean).join(' - ')})`)
+    .join(' • ');
+}
+
+function renderRoomParents(list) {
+  const q = state.q;
+  let count = 0;
+  for (const group of bandGroups()) {
+    const parents = (state.model.roomParents[group.label] || [])
+      .map(e => byEmail[e])
+      .filter(Boolean)
+      .filter(p => p.fullName.toLowerCase().includes(q));
+    if (!parents.length) {
+      continue;
+    }
+    list.append(el('h2', 'group-header', group.label));
+    for (const p of parents) {
+      list.append(listRow(thumbUrl(p.photoUrl), '', p.fullName, kidsSummary(p), personLink(p)));
+      count++;
+    }
+  }
+  return count;
+}
+
+const classroomsTabRenderers = {
+  'by-classroom': renderClassroomsList,
+  'by-grade': renderGradesList,
+  'room-parents': renderRoomParents,
+};
+
+function renderClassroomsPage() {
+  const main = document.querySelector('#main');
+  main.replaceChildren();
+
+  const tabs = el('div', 'tabs');
+  const tabsRow = el('div', 'container tabs-row');
+  for (const tab of classroomsTabs) {
+    const node = el('div', 'tab' + (tab.key === state.classTab ? ' active' : ''));
+    node.append(el('span', '', tab.label));
+    node.addEventListener('click', () => {
+      state.classTab = tab.key;
+      state.q = '';
+      history.replaceState(null, '', '/classrooms?tab=' + tab.key);
+      renderClassroomsPage();
+    });
+    tabsRow.append(node);
+  }
+  tabs.append(tabsRow);
+  main.append(tabs);
+
+  const content = el('div', 'content container');
+  const header = el('div', 'content-header');
+  const heading = classroomsTabs.find(t => t.key === state.classTab).heading;
+  header.append(el('h1', '', heading));
+  const controls = el('div', 'controls');
+  const search = el('div', 'search');
+  search.append(svg('search'));
+  const input = el('input');
+  input.placeholder = 'Search';
+  input.value = state.q;
+  input.addEventListener('input', () => {
+    state.q = input.value.trim().toLowerCase();
+    renderList();
+  });
+  search.append(input);
+  controls.append(search);
+  header.append(controls);
+  content.append(header);
+
+  const list = el('div');
+  content.append(list);
+  main.append(content);
+
+  function renderList() {
+    list.replaceChildren();
+    if (classroomsTabRenderers[state.classTab](list) === 0) {
+      list.append(el('div', 'empty', 'No matches.'));
+    }
+  }
+  renderList();
+}
+
+function parentsOf(students) {
+  const seen = new Set();
+  const parents = [];
+  for (const s of students) {
+    const family = state.model.families[s.familyKey];
+    for (const email of (family && family.adultEmails) || []) {
+      if (!seen.has(email) && byEmail[email]) {
+        seen.add(email);
+        parents.push(byEmail[email]);
+      }
+    }
+  }
+  return parents;
+}
+
+function teachersOf(classroomNames) {
+  const seen = new Set();
+  const teachers = [];
+  for (const section of state.model.sections) {
+    if (!classroomNames.includes(section.classroom)) {
+      continue;
+    }
+    for (const name of section.teachers || []) {
+      if (!seen.has(name)) {
+        seen.add(name);
+        teachers.push(name);
+      }
+    }
+  }
+  return teachers;
+}
+
+function otherFamilyMembers(student) {
+  const family = state.model.families[student.familyKey];
+  if (!family) {
+    return '';
+  }
+  return [...(family.kidEmails || []), ...(family.adultEmails || [])]
+    .filter(e => e !== student.email)
+    .map(e => byEmail[e])
+    .filter(Boolean)
+    .map(m => m.fullName)
+    .join(', ');
+}
+
+function renderRoster(title, image, groups, backLabel) {
+  const main = document.querySelector('#main');
+  main.replaceChildren();
+  main.append(breadcrumbs([['Classrooms', '/classrooms'], [title, null]]));
+
+  const content = el('div', 'container detail-content');
+  const head = el('div', 'class-head');
+  if (image) {
+    const img = el('img', 'class-tile');
+    img.src = image;
+    img.alt = '';
+    head.append(img);
+  }
+  head.append(el('h1', 'class-title', title));
+  content.append(head);
+
+  const allStudents = groups.flatMap(g => g.students);
+  const teachers = teachersOf([...new Set(allStudents.map(s => s.classroom).filter(Boolean))]);
+  const parents = parentsOf(allStudents);
+  const memberTabs = [
+    {key: 'students', label: 'Students', icon: 'students', count: allStudents.length},
+    {key: 'staff', label: 'Staff', icon: 'staff-tab', count: teachers.length},
+    {key: 'parents', label: 'Parents', icon: 'families', count: parents.length},
+  ];
+
+  const tabs = el('div', 'tabs roster-tabs');
+  const tabsRow = el('div', 'tabs-row');
+  for (const tab of memberTabs) {
+    const node = el('div', 'tab' + (tab.key === state.rosterTab ? ' active' : ''));
+    node.append(svg(tab.icon), el('span', '', tab.label), el('span', 'tab-count', String(tab.count)));
+    node.addEventListener('click', () => {
+      state.rosterTab = tab.key;
+      history.replaceState(null, '', location.pathname + '?tab=' + tab.key);
+      renderRoster(title, image, groups, backLabel);
+    });
+    tabsRow.append(node);
+  }
+  tabs.append(tabsRow);
+  content.append(tabs);
+
+  const list = el('div');
+  if (state.rosterTab === 'students') {
+    const heading = el('h2', 'roster-heading', `${allStudents.length} Students`);
+    list.append(heading);
+    for (const group of groups) {
+      if (group.header) {
+        list.append(el('h2', 'group-header', group.header));
+      }
+      for (const s of group.students) {
+        const row = listRow(thumbUrl(s.photoUrl), otherFamilyMembers(s).toUpperCase(), s.fullName, s.facts || '', personLink(s));
+        list.append(row);
+      }
+    }
+  } else if (state.rosterTab === 'staff') {
+    for (const email of teachers) {
+      const person = byEmail[email.toLowerCase()];
+      if (person) {
+        list.append(listRow(thumbUrl(person.photoUrl), (person.jobTitle || '').toUpperCase(), person.fullName, person.facts || '', personLink(person)));
+      } else {
+        list.append(el('div', 'list-row plain', email));
+      }
+    }
+  } else {
+    for (const p of parents) {
+      list.append(listRow(thumbUrl(p.photoUrl), '', p.fullName, kidsSummary(p), personLink(p)));
+    }
+  }
+  content.append(list);
+  main.append(content);
+}
+
+function renderGradeDetail(slug) {
+  const grade = state.model.grades.find(g => slugify(g.name) === slug);
+  if (!grade) {
+    document.querySelector('#main').replaceChildren(el('div', 'empty', 'Not found.'));
+    return;
+  }
+  const students = studentsOf(p => p.grade === grade.name);
+  const classrooms = [...new Set(students.map(s => s.classroom).filter(Boolean))].sort();
+  const groups = classrooms.length
+    ? classrooms.map(name => ({header: name, students: students.filter(s => s.classroom === name)}))
+    : [{header: '', students}];
+  renderRoster(grade.name, gradeImage(grade.name), groups);
+}
+
+function renderClassroomDetail(slug) {
+  const classroom = state.model.classrooms.find(c => slugify(c.name) === slug);
+  if (!classroom) {
+    document.querySelector('#main').replaceChildren(el('div', 'empty', 'Not found.'));
+    return;
+  }
+  const students = studentsOf(p => p.classroom === classroom.name);
+  const sections = [...new Set(students.map(s => s.section).filter(Boolean))].sort();
+  const groups = sections.length
+    ? sections.map(name => ({header: name, students: students.filter(s => s.section === name)}))
+    : [{header: classroom.name, students}];
+  renderRoster(classroom.name, classroom.imageUrl, groups);
+}
+
+function tabParam(fallback) {
+  return new URLSearchParams(location.search).get('tab') || fallback;
+}
+
 function render() {
   renderNav();
   const seg = segments();
@@ -640,7 +1025,17 @@ function render() {
   } else if (seg[0] === 'families' && seg[1]) {
     renderFamilyDetail(seg[1]);
   } else if (seg[0] === 'people') {
+    state.tab = tabParam('everyone');
     renderPeople();
+  } else if (seg[0] === 'classrooms' && seg[1]) {
+    state.rosterTab = tabParam('students');
+    renderClassroomDetail(seg[1]);
+  } else if (seg[0] === 'grades' && seg[1]) {
+    state.rosterTab = tabParam('students');
+    renderGradeDetail(seg[1]);
+  } else if (seg[0] === 'classrooms') {
+    state.classTab = tabParam('by-classroom');
+    renderClassroomsPage();
   }
 }
 

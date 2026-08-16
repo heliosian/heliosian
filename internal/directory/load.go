@@ -125,9 +125,13 @@ func LoadModel(source data.Source) (*Model, error) {
 		if row["Class"] == "" {
 			continue
 		}
+		imageURL := ""
+		if row["Classroom Image"] != "" {
+			imageURL = "/static/brand/classrooms/classroom-" + strings.ToLower(row["Class"]) + ".jpg"
+		}
 		model.Classrooms = append(model.Classrooms, Classroom{
 			Name:        row["Class"],
-			ImageURL:    row["Classroom Image"],
+			ImageURL:    imageURL,
 			HasSections: row["Has Sections"] == "TRUE",
 		})
 	}
