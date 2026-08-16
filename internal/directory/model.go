@@ -8,6 +8,7 @@ type Person struct {
 	IsStaff             bool     `json:"isStaff"`
 	IsParent            bool     `json:"isParent"`
 	IsStudent           bool     `json:"isStudent"`
+	IsNew               bool     `json:"isNew,omitempty"`
 	Pronouns            string   `json:"pronouns,omitempty"`
 	Facts               string   `json:"facts,omitempty"`
 	PronunciationURL    string   `json:"pronunciationUrl,omitempty"`

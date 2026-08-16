@@ -31,3 +31,4 @@ switches the directory app to the Google Sheets source. At startup the directory
 - `internal/directory` — directory app handlers
 - `web/directory` — directory app page templates and static assets
 - `tools/screenshot` — dev-site page capture, see [screenshots.md](screenshots.md)
+- `tools/columns` — print the column names of each directory table in the configured source

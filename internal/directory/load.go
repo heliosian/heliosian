@@ -50,6 +50,7 @@ func LoadModel(source data.Source) (*Model, error) {
 			IsStaff:          row["Is Staff?"] == "TRUE",
 			IsParent:         row["Is Parent?"] == "TRUE",
 			IsStudent:        row["Is Student?"] == "TRUE",
+			IsNew:            row["Is Totally New"] == "TRUE",
 			Pronouns:         row["Pronouns"],
 			Facts:            row["Facts"],
 			PronunciationURL: blobURL("people", email, "pronunciation", row["Pronunciation"]),

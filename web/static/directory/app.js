@@ -1,4 +1,4 @@
-const state = {model: null, tab: 'everyone', classTab: 'by-classroom', rosterTab: 'students', q: ''};
+const state = {model: null, tab: 'everyone', classTab: 'by-classroom', rosterTab: 'students', q: '', filterGrades: new Set(), filterClassrooms: new Set(), filterRoles: new Set(), filterCities: new Set(), filterPronouns: new Set(), filterNew: false};
 let byEmail = {};
 const favorites = new Set(JSON.parse(localStorage.getItem('favorites') || '[]'));
 
@@ -169,7 +169,7 @@ function renderEveryone(grid) {
   const q = state.q;
   const matches = state.model.people.filter(p => {
     const family = state.model.families[p.familyKey];
-    return `${p.fullName} ${family ? family.name : ''}`.toLowerCase().includes(q);
+    return `${p.fullName} ${family ? family.name : ''}`.toLowerCase().includes(q) && matchesFilters(p);
   });
   for (const p of matches) {
     grid.append(personCard(p));
@@ -179,17 +179,21 @@ function renderEveryone(grid) {
 
 function renderStudents(grid) {
   grid.className = 'student-grid';
-  const matches = state.model.people.filter(p => p.isStudent && p.fullName.toLowerCase().includes(state.q));
+  const matches = state.model.people.filter(p => p.isStudent && p.fullName.toLowerCase().includes(state.q) && matchesFilters(p));
   for (const p of matches) {
     const card = el('a', 'student-card');
     card.href = personLink(p);
-    if (p.photoUrl) {
-      const img = el('img', 'student-photo');
-      img.src = thumbUrl(p.photoUrl);
-      img.loading = 'lazy';
-      img.alt = '';
-      card.append(img);
+    const head = el('div', 'student-head');
+    const family = state.model.families[p.familyKey];
+    if (family && family.photoUrl) {
+      const bg = el('img', 'student-family-photo');
+      bg.src = thumbUrl(family.photoUrl);
+      bg.loading = 'lazy';
+      bg.alt = '';
+      head.append(bg);
     }
+    head.append(photoOrInitials(p.photoUrl, p.fullName, 'student-photo'));
+    card.append(head);
     card.append(el('div', 'student-first', firstName(p.fullName)));
     card.append(el('div', 'student-last', p.fullName.replace(firstName(p.fullName), '').trim()));
     card.append(el('div', 'student-line', gradeChain(p)));
@@ -222,6 +226,7 @@ function familyEntries() {
         members: [firstName(p.fullName)],
         photoUrl: p.photoUrl,
         href: personLink(p),
+        email: p.email,
       });
     }
   }
@@ -232,7 +237,8 @@ function familyEntries() {
 function renderFamilies(grid) {
   grid.className = 'family-grid';
   const matches = familyEntries().filter(f =>
-    `${f.name} ${f.members.join(' ')}`.toLowerCase().includes(state.q));
+    `${f.name} ${f.members.join(' ')}`.toLowerCase().includes(state.q) &&
+    (f.key ? familyMatchesFilters(f.key) : matchesFilters(byEmail[f.email])));
   for (const f of matches) {
     const card = el('a', 'family-card');
     card.href = f.href;
@@ -248,7 +254,7 @@ function renderFamilies(grid) {
 function renderStaff(grid, autoFit) {
   grid.className = '';
   const staff = state.model.people.filter(p =>
-    p.isStaff && `${p.fullName} ${p.jobTitle || ''}`.toLowerCase().includes(state.q));
+    p.isStaff && `${p.fullName} ${p.jobTitle || ''}`.toLowerCase().includes(state.q) && matchesFilters(p));
   const departments = state.model.departments || [];
   const groups = new Map();
   for (const p of staff) {
@@ -322,9 +328,7 @@ function renderPeople() {
     renderGrid();
   });
   search.append(input);
-  const filter = el('button', 'filter-button');
-  filter.append(svg('filter'), el('span', '', 'Filter'), svg('chevron'));
-  controls.append(search, filter);
+  controls.append(search, filterControl(renderGrid));
   header.append(controls);
   content.append(header);
 
@@ -340,6 +344,150 @@ function renderPeople() {
   }
   renderGrid();
   input.focus();
+}
+
+function personFacets(p, field) {
+  if (p.isStudent) {
+    return p[field] ? [p[field]] : [];
+  }
+  if (p.isParent) {
+    const family = state.model.families[p.familyKey];
+    return ((family && family.kidEmails) || []).map(e => byEmail[e]).filter(Boolean).map(k => k[field]).filter(Boolean);
+  }
+  return [];
+}
+
+function cityOf(p) {
+  const family = state.model.families[p.familyKey];
+  if (!family || !family.address) {
+    return '';
+  }
+  const parts = family.address.split(',').map(s => s.trim());
+  return parts.length >= 2 ? parts[parts.length - 2] : parts[0];
+}
+
+function anyFiltersActive() {
+  return Boolean(state.filterGrades.size || state.filterClassrooms.size || state.filterRoles.size ||
+    state.filterCities.size || state.filterPronouns.size || state.filterNew);
+}
+
+function matchesFilters(p) {
+  const gradeOK = !state.filterGrades.size || personFacets(p, 'grade').some(g => state.filterGrades.has(g));
+  const classOK = !state.filterClassrooms.size || personFacets(p, 'classroom').some(c => state.filterClassrooms.has(c));
+  const roleOK = !state.filterRoles.size ||
+    (state.filterRoles.has('Student') && p.isStudent) ||
+    (state.filterRoles.has('Parent') && p.isParent) ||
+    (state.filterRoles.has('Staff') && p.isStaff);
+  const cityOK = !state.filterCities.size || state.filterCities.has(cityOf(p));
+  const pronounsOK = !state.filterPronouns.size || state.filterPronouns.has(p.pronouns);
+  const newOK = !state.filterNew || p.isNew;
+  return gradeOK && classOK && roleOK && cityOK && pronounsOK && newOK;
+}
+
+function familyMatchesFilters(key) {
+  const family = state.model.families[key];
+  if (!family) {
+    return !anyFiltersActive();
+  }
+  const members = [...(family.kidEmails || []), ...(family.adultEmails || [])].map(e => byEmail[e]).filter(Boolean);
+  return !anyFiltersActive() || members.some(matchesFilters);
+}
+
+function gradeOptions() {
+  const present = new Set(state.model.people.filter(p => p.isStudent).map(p => p.grade).filter(Boolean));
+  return state.model.grades.map(g => g.name).filter(n => present.has(n));
+}
+
+function cityOptions() {
+  return [...new Set(state.model.people.map(cityOf).filter(Boolean))].sort();
+}
+
+function pronounOptions() {
+  return [...new Set(state.model.people.map(p => p.pronouns).filter(Boolean))].sort();
+}
+
+function filterControl(rerender) {
+  const wrap = el('div', 'filter-wrap');
+  const button = el('button', 'filter-button');
+  button.append(svg('filter'), el('span', '', 'Filter'), svg('chevron'));
+  const panel = el('div', 'filter-panel');
+  panel.hidden = true;
+  button.addEventListener('click', () => {
+    panel.hidden = !panel.hidden;
+    button.classList.toggle('open', !panel.hidden);
+  });
+
+  const sections = [
+    {label: 'Role', values: ['Student', 'Parent', 'Staff'], set: state.filterRoles},
+    {label: 'Class', values: state.model.classrooms.map(c => c.name), set: state.filterClassrooms},
+    {label: 'Grade', values: gradeOptions(), set: state.filterGrades},
+    {label: 'City', values: cityOptions(), set: state.filterCities},
+    {label: 'Pronouns', values: pronounOptions(), set: state.filterPronouns},
+  ];
+  for (const s of sections) {
+    const head = el('div', 'filter-section');
+    head.append(el('span', '', s.label), svg('chevron'));
+    const body = el('div', 'filter-options');
+    body.hidden = true;
+    head.addEventListener('click', () => {
+      body.hidden = !body.hidden;
+      head.classList.toggle('open', !body.hidden);
+    });
+    for (const v of s.values) {
+      const row = el('label', 'filter-option');
+      const box = el('input');
+      box.type = 'checkbox';
+      box.checked = s.set.has(v);
+      box.addEventListener('change', () => {
+        if (box.checked) {
+          s.set.add(v);
+        } else {
+          s.set.delete(v);
+        }
+        rerender();
+      });
+      row.append(el('span', '', v), box);
+      body.append(row);
+    }
+    panel.append(head, body);
+  }
+
+  const toggleRow = el('label', 'filter-toggle-row');
+  toggleRow.append(el('span', '', 'New to Helios'));
+  const toggle = el('input', 'filter-switch');
+  toggle.type = 'checkbox';
+  toggle.checked = state.filterNew;
+  toggle.addEventListener('change', () => {
+    state.filterNew = toggle.checked;
+    rerender();
+  });
+  toggleRow.append(toggle);
+  panel.append(toggleRow);
+
+  const footer = el('div', 'filter-footer');
+  const clear = el('button', 'filter-clear', 'Clear all');
+  clear.addEventListener('click', () => {
+    state.filterGrades.clear();
+    state.filterClassrooms.clear();
+    state.filterRoles.clear();
+    state.filterCities.clear();
+    state.filterPronouns.clear();
+    state.filterNew = false;
+    for (const box of panel.querySelectorAll('input')) {
+      box.checked = false;
+    }
+    rerender();
+  });
+  const done = el('button', 'filter-done', 'Done');
+  done.addEventListener('click', () => {
+    panel.hidden = true;
+    button.classList.remove('open');
+  });
+  footer.append(clear, done);
+  panel.append(footer);
+
+  wrap.append(button, panel);
+  return wrap;
 }
 
 function referrerCrumbs() {
@@ -915,9 +1063,7 @@ function renderStaffPage() {
     renderList();
   });
   search.append(input);
-  const filter = el('button', 'filter-button');
-  filter.append(svg('filter'), el('span', '', 'Filter'), svg('chevron'));
-  controls.append(search, filter);
+  controls.append(search, filterControl(renderList));
   header.append(controls);
   content.append(header);
 
@@ -1166,9 +1312,7 @@ function renderEmailListPage() {
     renderTable();
   });
   search.append(input);
-  const filter = el('button', 'filter-button');
-  filter.append(svg('filter'), el('span', '', 'Filter'), svg('chevron'));
-  controls.append(search, filter);
+  controls.append(search, filterControl(renderTable));
   header.append(controls);
   content.append(header);
 
@@ -1179,7 +1323,7 @@ function renderEmailListPage() {
   function renderTable() {
     holder.replaceChildren();
     const rows = emailEntries(state.emailTab)
-      .filter(r => r.p.fullName.toLowerCase().includes(state.q) || r.p.email.toLowerCase().includes(state.q));
+      .filter(r => (r.p.fullName.toLowerCase().includes(state.q) || r.p.email.toLowerCase().includes(state.q)) && matchesFilters(r.p));
     if (!rows.length) {
       holder.append(el('div', 'empty', state.emailTab === 'bookmarks' ? 'No bookmarks yet.' : 'No matches.'));
       return;
@@ -1291,12 +1435,26 @@ document.querySelector('#user').addEventListener('click', e => {
   e.stopPropagation();
   userMenu.hidden = !userMenu.hidden;
 });
-document.addEventListener('click', () => {
+function closeFilterPanels() {
+  for (const panel of document.querySelectorAll('.filter-panel')) {
+    panel.hidden = true;
+    panel.parentElement.querySelector('.filter-button').classList.remove('open');
+  }
+}
+
+document.addEventListener('click', e => {
   userMenu.hidden = true;
+  for (const panel of document.querySelectorAll('.filter-panel')) {
+    if (!panel.hidden && !panel.parentElement.contains(e.target)) {
+      panel.hidden = true;
+      panel.parentElement.querySelector('.filter-button').classList.remove('open');
+    }
+  }
 });
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     userMenu.hidden = true;
+    closeFilterPanels();
   }
 });
 

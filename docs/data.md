@@ -9,6 +9,7 @@ One record per person, all roles in one shape:
 - **Key**: school email, lowercased. Everyone has one, including the youngest students (their addresses exist but they don't have access yet).
 - **Names**: full name, legal name, preferred name.
 - **Roles**: student, parent, and staff booleans — combinations are valid (staff members are often also parents). Display strings derive from the flags.
+- **New to Helios**: flag marking people who just joined the community; drives the matching filter toggle.
 - **Pronouns**: optional; a curated list plus a freeform escape hatch.
 - **Pronunciation**: optional audio recording of the person's name.
 - **Photo**: official portrait or personal upload; people may opt for an illustrated avatar instead.

@@ -66,7 +66,7 @@ Share the app by SMS or link, an explanation of why photos and facts are collect
 ## Behaviors
 
 - Everything is cross-linked: parents ↔ kids ↔ families ↔ classrooms; any person reference navigates to that person.
-- Search is per-list and immediate; filters cover grade and classroom.
+- Search is per-list and immediate; filters cover role, class, grade, city, pronouns, and new-to-Helios.
 - Favorites/bookmarks mark people and feed the email list's bookmark tab.
 - Photos lazy-load; full-size view on click where the photo is the subject (family pages).
 - All data is community-only, behind sign-in; opt-out removes a person on request.
