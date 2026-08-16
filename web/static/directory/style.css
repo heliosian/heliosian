@@ -17,7 +17,7 @@ body {
   margin: 0;
   font-family: Inter, system-ui, sans-serif;
   display: flex;
-  height: 100vh;
+  height: 100dvh;
   overflow: hidden;
   color: var(--ink);
   background: #fff;
@@ -1608,9 +1608,9 @@ a.list-row:hover {
     display: none;
   }
   main {
-    height: 100vh;
+    height: 100dvh;
     padding-top: 48px;
-    padding-bottom: 62px;
+    padding-bottom: calc(62px + env(safe-area-inset-bottom));
   }
   .container {
     padding-left: 16px;
@@ -1680,7 +1680,8 @@ a.list-row:hover {
     bottom: 0;
     left: 0;
     right: 0;
-    height: 62px;
+    height: calc(62px + env(safe-area-inset-bottom));
+    padding-bottom: env(safe-area-inset-bottom);
     background: #fff;
     border-top: 1px solid var(--line);
     z-index: 30;
