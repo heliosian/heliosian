@@ -53,7 +53,7 @@ A map of family locations, plus an "update my address" self-service action.
 
 ### Email List
 
-A copyable/exportable contact table for party planning and outreach: full name, email, role, grade, classroom. Tabs narrow to parents, students, both, or the user's bookmarked people. Filters select grades or classrooms. Includes a note that young students (K-2) have assigned email addresses but no access to them yet.
+A copyable contact table for party planning and outreach: full name, email, role, grade, classroom. Tabs narrow to parents, students, both, or the user's bookmarked people. Filters select grades or classrooms.
 
 ### Data View
 

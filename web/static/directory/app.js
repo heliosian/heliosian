@@ -1,5 +1,15 @@
 const state = {model: null, tab: 'everyone', classTab: 'by-classroom', rosterTab: 'students', q: ''};
 let byEmail = {};
+const favorites = new Set(JSON.parse(localStorage.getItem('favorites') || '[]'));
+
+function toggleFavorite(email) {
+  if (favorites.has(email)) {
+    favorites.delete(email);
+  } else {
+    favorites.add(email);
+  }
+  localStorage.setItem('favorites', JSON.stringify([...favorites]));
+}
 
 const icons = {
   people: '<svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
@@ -361,6 +371,9 @@ function referrerCrumbs() {
   }
   if (seg[0] === 'profile') {
     return [['Profile', '/profile']];
+  }
+  if (seg[0] === 'email-list') {
+    return [['Email List', ref.pathname + ref.search]];
   }
   return null;
 }
@@ -1059,6 +1072,155 @@ function renderClassroomDetail(slug) {
   renderRoster(classroom.name, classroom.imageUrl, groups);
 }
 
+const emailTabs = [
+  {key: 'parents', label: 'Parents'},
+  {key: 'students', label: 'Students'},
+  {key: 'both', label: 'Students & Parents'},
+  {key: 'bookmarks', label: 'My Bookmarks'},
+];
+
+function kidsField(parent, field) {
+  const family = state.model.families[parent.familyKey];
+  const values = ((family && family.kidEmails) || [])
+    .map(e => byEmail[e])
+    .filter(Boolean)
+    .map(k => k[field])
+    .filter(Boolean);
+  return [...new Set(values)].join(', ');
+}
+
+function emailEntries(tab) {
+  if (tab === 'bookmarks') {
+    return emailEntries('both').filter(r => favorites.has(r.p.email));
+  }
+  const students = state.model.people
+    .filter(p => p.isStudent)
+    .sort((a, b) => a.fullName.localeCompare(b.fullName));
+  const rows = [];
+  const seen = new Set();
+  const add = (p, role, grade, classroom) => {
+    if (!seen.has(p.email)) {
+      seen.add(p.email);
+      rows.push({p, role, grade, classroom});
+    }
+  };
+  for (const s of students) {
+    if (tab !== 'parents') {
+      add(s, 'Student', s.grade || '', s.classroom || '');
+    }
+    if (tab !== 'students') {
+      const family = state.model.families[s.familyKey];
+      for (const email of (family && family.adultEmails) || []) {
+        const parent = byEmail[email];
+        if (parent) {
+          add(parent, 'Parent', kidsField(parent, 'grade'), kidsField(parent, 'classroom'));
+        }
+      }
+    }
+  }
+  return rows;
+}
+
+function renderEmailListPage() {
+  const main = document.querySelector('#main');
+  main.replaceChildren();
+
+  main.append(el('div', 'container email-hint', 'Use the filters to select for specific grades or classrooms.'));
+
+  const tabs = el('div', 'tabs');
+  const tabsRow = el('div', 'container tabs-row');
+  for (const tab of emailTabs) {
+    const node = el('div', 'tab' + (tab.key === state.emailTab ? ' active' : ''));
+    if (tab.key === 'bookmarks') {
+      node.append(svg('heart'));
+    }
+    node.append(el('span', '', tab.label));
+    node.addEventListener('click', () => {
+      state.emailTab = tab.key;
+      state.q = '';
+      history.replaceState(null, '', '/email-list?tab=' + tab.key);
+      renderEmailListPage();
+    });
+    tabsRow.append(node);
+  }
+  tabs.append(tabsRow);
+  main.append(tabs);
+
+  const content = el('div', 'content container');
+  const header = el('div', 'content-header');
+  header.append(el('h1', '', emailTabs.find(t => t.key === state.emailTab).label));
+  const controls = el('div', 'controls');
+  const search = el('div', 'search');
+  search.append(svg('search'));
+  const input = el('input');
+  input.placeholder = 'Search';
+  input.value = state.q;
+  input.addEventListener('input', () => {
+    state.q = input.value.trim().toLowerCase();
+    renderTable();
+  });
+  search.append(input);
+  const filter = el('button', 'filter-button');
+  filter.append(svg('filter'), el('span', '', 'Filter'), svg('chevron'));
+  controls.append(search, filter);
+  header.append(controls);
+  content.append(header);
+
+  const holder = el('div');
+  content.append(holder);
+  main.append(content);
+
+  function renderTable() {
+    holder.replaceChildren();
+    const rows = emailEntries(state.emailTab)
+      .filter(r => r.p.fullName.toLowerCase().includes(state.q) || r.p.email.toLowerCase().includes(state.q));
+    if (!rows.length) {
+      holder.append(el('div', 'empty', state.emailTab === 'bookmarks' ? 'No bookmarks yet.' : 'No matches.'));
+      return;
+    }
+    const table = el('table', 'email-table');
+    const thead = el('thead');
+    const headRow = el('tr');
+    for (const label of ['', 'Full Name', 'Email', 'Role', 'Grade', 'Classroom', '']) {
+      headRow.append(el('th', '', label));
+    }
+    thead.append(headRow);
+    table.append(thead);
+    const tbody = el('tbody');
+    rows.forEach((r, i) => {
+      const tr = el('tr');
+      tr.append(el('td', 'email-num', String(i + 1)));
+      const nameCell = el('td', 'email-name');
+      const nameLink = el('a', '', r.p.fullName);
+      nameLink.href = personLink(r.p);
+      nameCell.append(nameLink);
+      tr.append(nameCell);
+      tr.append(el('td', '', r.p.email));
+      tr.append(el('td', '', r.role));
+      tr.append(el('td', '', r.grade));
+      tr.append(el('td', '', r.classroom));
+      const heartCell = el('td', 'email-heart');
+      const heart = el('button', 'row-heart' + (favorites.has(r.p.email) ? ' active' : ''));
+      heart.append(svg('heart'));
+      heart.addEventListener('click', () => {
+        toggleFavorite(r.p.email);
+        if (state.emailTab === 'bookmarks') {
+          renderTable();
+        } else {
+          heart.classList.toggle('active');
+        }
+      });
+      heartCell.append(heart);
+      tr.append(heartCell);
+      tbody.append(tr);
+    });
+    table.append(tbody);
+    holder.append(table);
+  }
+  renderTable();
+  input.focus();
+}
+
 function renderProfile() {
   const main = document.querySelector('#main');
   main.replaceChildren();
@@ -1109,6 +1271,10 @@ function render() {
   } else if (seg[0] === 'staff') {
     state.q = '';
     renderStaffPage();
+  } else if (seg[0] === 'email-list') {
+    state.emailTab = tabParam('parents');
+    state.q = '';
+    renderEmailListPage();
   } else if (seg[0] === 'profile') {
     renderProfile();
   }
