@@ -20,7 +20,7 @@ Cloud Build produces the image into Artifact Registry. Builds ship git HEAD, nev
     gcloud run deploy heliosian \
       --image us-west1-docker.pkg.dev/gen-lang-client-0758114984/heliosian/heliosian:latest \
       --region us-west1 --allow-unauthenticated \
-      --min-instances 1 --memory 2Gi --no-cpu-throttling \
+      --min-instances 1 --max-instances 1 --memory 2Gi --no-cpu-throttling \
       --set-env-vars DIRECTORY_SHEET=<spreadsheet id>,GOOGLE_CLIENT_ID=<oauth client id> \
       --set-secrets "/app/creds/service-account.json=heliosian-sa-key:latest,SESSION_KEY=heliosian-session-key:latest,GOOGLE_MAPS_SERVER_KEY=heliosian-geocoding-key:latest,GOOGLE_MAPS_BROWSER_KEY=heliosian-maps-browser-key:latest" \
       --quiet
@@ -28,6 +28,7 @@ Cloud Build produces the image into Artifact Registry. Builds ship git HEAD, nev
 Each flag is load-bearing:
 
 - `--min-instances 1` — startup preloads every media file from Drive before listening (about 90 seconds); far too slow for scale-to-zero.
+- `--max-instances 1` — the directory model and blob store live in per-instance memory with no cross-instance coherency; a self-service edit refreshes only the instance that handled it, so a second instance would serve stale data.
 - `--memory 2Gi` — the blob store holds all media and thumbnails in RAM. The startup log line `blob store: … MB in memory` reports the footprint; resize when it approaches the limit.
 - `--no-cpu-throttling` — the directory model and blob store refresh on five-minute tickers between requests; default throttling would starve them.
 - `--allow-unauthenticated` — the app enforces its own Google sign-in; Cloud Run must let everyone reach the login page.
