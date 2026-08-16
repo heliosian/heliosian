@@ -29,7 +29,7 @@ The server reads local data from `sampledata/`, mirroring the production Sheets 
 
     DIRECTORY_SHEET=<spreadsheet id> go run .
 
-switches the directory app to the Google Sheets source. At startup the directory tables are read from the spreadsheet and normalized into the in-memory data model (see `docs/data.md`); the server refuses to start if that load fails, and the model reloads every five minutes. Requires the service account key at `creds/service-account.json` (the directory is gitignored) with the Sheets API enabled and the spreadsheet shared read-only with the service account. Real data never leaves the process: nothing is written to disk.
+switches the directory app to the Google Sheets source. At startup the directory tables are read from the spreadsheet and normalized into the in-memory data model (see `docs/data.md`); the server refuses to start if that load fails, and the model reloads every five minutes. Requires the service account key at `creds/service-account.json` (the directory is gitignored) with the Sheets API enabled, the spreadsheet shared with the service account as an editor (self-service uploads write media cells and append to the Change Log tab), and the media shared drive shared as content manager (uploads create files and archive old versions). Real data never leaves the process: nothing is written to disk.
 
 ## Layout
 

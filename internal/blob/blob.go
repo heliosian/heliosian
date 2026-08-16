@@ -21,9 +21,9 @@ import (
 	"golang.org/x/image/draw"
 	_ "golang.org/x/image/webp"
 
-	"heliosian/internal/data"
 	"google.golang.org/api/drive/v3"
 	"google.golang.org/api/option"
+	"heliosian/internal/data"
 )
 
 const (
@@ -54,7 +54,7 @@ type Store struct {
 func New() (*Store, error) {
 	service, err := drive.NewService(context.Background(),
 		option.WithCredentialsFile(data.KeyFile),
-		option.WithScopes(drive.DriveReadonlyScope))
+		option.WithScopes(drive.DriveScope))
 	if err != nil {
 		return nil, err
 	}
@@ -107,6 +107,9 @@ func (s *Store) refresh() error {
 				return fmt.Errorf("list %s: %w", folderName, err)
 			}
 			for _, f := range list.Files {
+				if f.MimeType == folderMime {
+					continue
+				}
 				base := strings.TrimSuffix(f.Name, path.Ext(f.Name))
 				if strings.HasSuffix(base, "-thumb") {
 					continue
@@ -196,17 +199,76 @@ func (s *Store) refresh() error {
 }
 
 func (s *Store) subfolder(name string) (string, error) {
+	return s.subfolderIn(s.root, name, false)
+}
+
+func (s *Store) subfolderIn(parent, name string, create bool) (string, error) {
 	list, err := s.service.Files.List().
-		Q(fmt.Sprintf("name = '%s' and '%s' in parents and mimeType = '%s' and trashed = false", name, s.root, folderMime)).
+		Q(fmt.Sprintf("name = '%s' and '%s' in parents and mimeType = '%s' and trashed = false", name, parent, folderMime)).
 		SupportsAllDrives(true).IncludeItemsFromAllDrives(true).Corpora("allDrives").
 		Fields("files(id)").Do()
 	if err != nil {
 		return "", fmt.Errorf("find folder %s: %w", name, err)
 	}
+	if len(list.Files) == 0 && create {
+		folder, err := s.service.Files.Create(&drive.File{
+			Name:     name,
+			MimeType: folderMime,
+			Parents:  []string{parent},
+		}).SupportsAllDrives(true).Fields("id").Do()
+		if err != nil {
+			return "", fmt.Errorf("create folder %s: %w", name, err)
+		}
+		return folder.Id, nil
+	}
 	if len(list.Files) != 1 {
 		return "", fmt.Errorf("expected one %s folder, found %d", name, len(list.Files))
 	}
 	return list.Files[0].Id, nil
+}
+
+func (s *Store) Refresh() error {
+	return s.refresh()
+}
+
+func (s *Store) Upload(folder, base, ext, mimeType string, content []byte) (string, error) {
+	folderID, err := s.subfolder(folder)
+	if err != nil {
+		return "", err
+	}
+	archived := ""
+	s.mu.RLock()
+	existing, exists := s.entries[folder+"/"+base]
+	s.mu.RUnlock()
+	if exists {
+		current, err := s.service.Files.Get(existing.id).SupportsAllDrives(true).Fields("name").Do()
+		if err != nil {
+			return "", fmt.Errorf("look up current %s/%s: %w", folder, base, err)
+		}
+		archiveID, err := s.subfolderIn(folderID, "archive", true)
+		if err != nil {
+			return "", err
+		}
+		archived = strings.TrimSuffix(current.Name, path.Ext(current.Name)) +
+			"-" + time.Now().UTC().Format("20060102-150405") + path.Ext(current.Name)
+		_, err = s.service.Files.Update(existing.id, &drive.File{Name: archived}).
+			AddParents(archiveID).RemoveParents(folderID).SupportsAllDrives(true).Do()
+		if err != nil {
+			return "", fmt.Errorf("archive %s/%s: %w", folder, base, err)
+		}
+	}
+	_, err = s.service.Files.Create(&drive.File{
+		Name:     base + "." + ext,
+		MimeType: mimeType,
+		Parents:  []string{folderID},
+	}).SupportsAllDrives(true).Media(bytes.NewReader(content)).Do()
+	if err != nil {
+		return "", fmt.Errorf("upload %s/%s: %w", folder, base, err)
+	}
+	if err := s.refresh(); err != nil {
+		return "", fmt.Errorf("refresh after upload: %w", err)
+	}
+	return archived, nil
 }
 
 func (s *Store) download(id string) ([]byte, error) {

@@ -52,7 +52,7 @@ Secret Manager secrets, delivered per `--set-secrets` above:
 
 `heliosian-test@gen-lang-client-0758114984.iam.gserviceaccount.com` serves two unrelated purposes:
 
-- Data access: the spreadsheet and the media shared drive are shared with it in Drive/Sheets directly — never through project IAM.
+- Data access: the spreadsheet (as editor — uploads write media cells and the Change Log tab) and the media shared drive (as content manager — uploads create and archive files) are shared with it in Drive/Sheets directly — never through project IAM.
 - Deploy identity: project roles Editor, Service Account User, Cloud Run Admin, and Secret Manager Admin. The extra roles exist because Editor cannot set IAM policy on services or secrets.
 
 The runtime identity is the default compute service account (`326077318680-compute@developer.gserviceaccount.com`) holding Secret Manager Secret Accessor on each secret individually. The basic Editor role deliberately cannot read secret payloads, so these explicit grants are the only thing standing between the service and a startup failure — the console's inherited-role rows on a secret's Permissions tab do not imply payload access.

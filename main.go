@@ -89,7 +89,8 @@ func main() {
 	authn := auth.New(clientID(), sessionKey())
 	serverKey := mapsKey("GOOGLE_MAPS_SERVER_KEY", "creds/geocoding.key")
 	browserKey := mapsKey("GOOGLE_MAPS_BROWSER_KEY", "creds/maps.key")
-	cache, err := directory.NewCache(directorySource(), geocode.New(serverKey))
+	source := directorySource()
+	cache, err := directory.NewCache(source, geocode.New(serverKey))
 	if err != nil {
 		log.Fatalf("[ERROR] load directory data: %v", err)
 	}
@@ -102,6 +103,7 @@ func main() {
 			log.Fatalf("[ERROR] blob store: %v", err)
 		}
 		blob.Register(mux, store)
+		directory.RegisterUpload(mux, cache, source.(*data.Sheet), store)
 	}
 	mux.Handle("GET /{$}", http.RedirectHandler("/people", http.StatusFound))
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.Dir("web/static"))))

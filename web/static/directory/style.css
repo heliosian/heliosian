@@ -1093,6 +1093,114 @@ a.list-row:hover {
   margin: 18px 0 4px;
 }
 
+.photo-wrap {
+  position: relative;
+}
+
+.detail-photo-empty {
+  aspect-ratio: 1;
+  background: #eef1f3;
+}
+
+.photo-wrap > .edit-icon {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+}
+
+.edit-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border: 0;
+  color: var(--ink);
+  padding: 0;
+}
+
+.edit-icon svg {
+  width: 19px;
+  height: 19px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.edit-icon:hover {
+  color: var(--brand);
+}
+
+.edit-icon.recording {
+  background: #c62828;
+  color: #fff;
+}
+
+.edit-icon.recording:hover {
+  color: #fff;
+}
+
+.pronounce-edit {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.pronounce-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.record-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+.record-preview audio {
+  width: 100%;
+}
+
+.media-button {
+  padding: 7px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.media-button.primary {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: #fff;
+}
+
+.media-status {
+  color: var(--muted);
+  font-size: 12.5px;
+  margin-top: 8px;
+  text-align: center;
+}
+
+.media-status.error {
+  color: #b3261e;
+}
+
 .pronounce-label {
   text-align: center;
   color: var(--muted);

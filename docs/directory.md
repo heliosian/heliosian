@@ -70,3 +70,4 @@ Share the app by SMS or link, an explanation of why photos and facts are collect
 - Favorites/bookmarks mark people and feed the email list's bookmark tab.
 - Photos lazy-load; full-size view on click where the photo is the subject (family pages).
 - All data is community-only, behind sign-in; opt-out removes a person on request.
+- Self-service media: viewing your own record, your kids', or your family page shows inline edit icons — a camera on the photo for uploads, and microphone/file icons under the pronunciation player to record in the browser or upload audio. Replaced files move to an `archive` folder in the media drive with a timestamp, the sheet's media cell is updated, and every change appends to the sheet's `Change Log` tab (timestamp, actor, target, kind, file, archived file).

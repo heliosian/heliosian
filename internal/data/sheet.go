@@ -19,7 +19,7 @@ type Sheet struct {
 func NewSheet(spreadsheets map[string]string) (*Sheet, error) {
 	service, err := sheets.NewService(context.Background(),
 		option.WithCredentialsFile(KeyFile),
-		option.WithScopes(sheets.SpreadsheetsReadonlyScope))
+		option.WithScopes(sheets.SpreadsheetsScope))
 	if err != nil {
 		return nil, err
 	}
@@ -36,6 +36,104 @@ func (s *Sheet) Table(app, name string) ([]map[string]string, error) {
 		return nil, err
 	}
 	return toRecords(resp.Values), nil
+}
+
+func (s *Sheet) SetColumn(app, table, keyColumn, keyValue, column, value string) error {
+	id, ok := s.spreadsheets[app]
+	if !ok {
+		return fmt.Errorf("no spreadsheet configured for app %q", app)
+	}
+	quoted := "'" + strings.ReplaceAll(table, "'", "''") + "'"
+	resp, err := s.service.Spreadsheets.Values.Get(id, quoted).Do()
+	if err != nil {
+		return err
+	}
+	if len(resp.Values) == 0 {
+		return fmt.Errorf("table %s is empty", table)
+	}
+	keyIdx, colIdx := -1, -1
+	for i, cell := range resp.Values[0] {
+		switch strings.TrimSpace(fmt.Sprint(cell)) {
+		case keyColumn:
+			keyIdx = i
+		case column:
+			colIdx = i
+		}
+	}
+	if keyIdx < 0 || colIdx < 0 {
+		return fmt.Errorf("table %s is missing column %q or %q", table, keyColumn, column)
+	}
+	ranges := []*sheets.ValueRange{}
+	for i, row := range resp.Values[1:] {
+		if keyIdx >= len(row) || !strings.EqualFold(strings.TrimSpace(fmt.Sprint(row[keyIdx])), keyValue) {
+			continue
+		}
+		ranges = append(ranges, &sheets.ValueRange{
+			Range:  fmt.Sprintf("%s!%s%d", quoted, columnName(colIdx), i+2),
+			Values: [][]interface{}{{value}},
+		})
+	}
+	if len(ranges) == 0 {
+		return fmt.Errorf("no row in %s has %s = %q", table, keyColumn, keyValue)
+	}
+	_, err = s.service.Spreadsheets.Values.BatchUpdate(id, &sheets.BatchUpdateValuesRequest{
+		ValueInputOption: "RAW",
+		Data:             ranges,
+	}).Do()
+	return err
+}
+
+func (s *Sheet) Append(app, table string, header, row []string) error {
+	id, ok := s.spreadsheets[app]
+	if !ok {
+		return fmt.Errorf("no spreadsheet configured for app %q", app)
+	}
+	meta, err := s.service.Spreadsheets.Get(id).Fields("sheets(properties(title))").Do()
+	if err != nil {
+		return err
+	}
+	exists := false
+	for _, sh := range meta.Sheets {
+		if sh.Properties.Title == table {
+			exists = true
+			break
+		}
+	}
+	quoted := "'" + strings.ReplaceAll(table, "'", "''") + "'"
+	if !exists {
+		_, err := s.service.Spreadsheets.BatchUpdate(id, &sheets.BatchUpdateSpreadsheetRequest{
+			Requests: []*sheets.Request{{AddSheet: &sheets.AddSheetRequest{
+				Properties: &sheets.SheetProperties{Title: table},
+			}}},
+		}).Do()
+		if err != nil {
+			return fmt.Errorf("create table %s: %w", table, err)
+		}
+		if err := s.appendRow(id, quoted, header); err != nil {
+			return err
+		}
+	}
+	return s.appendRow(id, quoted, row)
+}
+
+func (s *Sheet) appendRow(id, quotedTable string, row []string) error {
+	values := make([]interface{}, len(row))
+	for i, cell := range row {
+		values[i] = cell
+	}
+	_, err := s.service.Spreadsheets.Values.Append(id, quotedTable, &sheets.ValueRange{
+		Values: [][]interface{}{values},
+	}).ValueInputOption("RAW").InsertDataOption("INSERT_ROWS").Do()
+	return err
+}
+
+func columnName(idx int) string {
+	name := ""
+	for idx >= 0 {
+		name = string(rune('A'+idx%26)) + name
+		idx = idx/26 - 1
+	}
+	return name
 }
 
 func toRecords(values [][]interface{}) []map[string]string {

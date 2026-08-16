@@ -34,6 +34,9 @@ const icons = {
   phone: '<svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>',
   zap: '<svg viewBox="0 0 24 24"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg>',
   more: '<svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/></svg>',
+  camera: '<svg viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>',
+  mic: '<svg viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>',
+  upload: '<svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>',
   dots: '<svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>',
 };
 
@@ -767,11 +770,23 @@ function renderPersonDetail(email) {
   const content = el('div', 'container detail-content');
   const grid = el('div', 'detail-grid');
   const left = el('div');
-  if (p.photoUrl) {
-    const img = el('img', 'detail-photo');
-    img.src = p.photoUrl;
-    img.alt = '';
-    left.append(img);
+  const editable = canEditPerson(p.email);
+  if (p.photoUrl || editable) {
+    const wrap = el('div', 'photo-wrap');
+    if (p.photoUrl) {
+      const img = el('img', 'detail-photo');
+      img.src = p.photoUrl;
+      img.alt = '';
+      wrap.append(img);
+    } else {
+      wrap.append(el('div', 'detail-photo detail-photo-empty'));
+    }
+    left.append(wrap);
+    if (editable) {
+      const status = el('div', 'media-status');
+      wrap.append(uploadIcon('camera', 'Upload photo', 'image/*', 'person', p.email, 'photo', status));
+      left.append(status);
+    }
   }
   grid.append(left);
 
@@ -809,13 +824,18 @@ function renderPersonDetail(email) {
       iconButton('map', 'Map', 'https://maps.google.com/?q=' + encodeURIComponent(family.address)),
     ]));
   }
-  if (p.pronunciationUrl) {
+  if (p.pronunciationUrl || editable) {
     right.append(el('div', 'pronounce-label', 'How do I pronounce this?'));
-    const audio = el('audio', 'pronounce-player');
-    audio.controls = true;
-    audio.preload = 'metadata';
-    audio.src = p.pronunciationUrl;
-    right.append(audio);
+    if (p.pronunciationUrl) {
+      const audio = el('audio', 'pronounce-player');
+      audio.controls = true;
+      audio.preload = 'metadata';
+      audio.src = p.pronunciationUrl;
+      right.append(audio);
+    }
+    if (editable) {
+      right.append(pronounceEditor('person', p.email));
+    }
   }
   grid.append(right);
   content.append(grid);
@@ -865,15 +885,27 @@ function renderFamilyDetail(key) {
   const content = el('div', 'container detail-content');
   const grid = el('div', 'detail-grid');
   const left = el('div');
-  if (family.photoUrl) {
-    const link = el('a');
-    link.href = family.photoUrl;
-    link.target = '_blank';
-    const img = el('img', 'detail-photo');
-    img.src = family.photoUrl;
-    img.alt = '';
-    link.append(img);
-    left.append(link);
+  const editable = key === myFamilyKey();
+  if (family.photoUrl || editable) {
+    const wrap = el('div', 'photo-wrap');
+    if (family.photoUrl) {
+      const link = el('a');
+      link.href = family.photoUrl;
+      link.target = '_blank';
+      const img = el('img', 'detail-photo');
+      img.src = family.photoUrl;
+      img.alt = '';
+      link.append(img);
+      wrap.append(link);
+    } else {
+      wrap.append(el('div', 'detail-photo detail-photo-empty'));
+    }
+    left.append(wrap);
+    if (editable) {
+      const status = el('div', 'media-status');
+      wrap.append(uploadIcon('camera', 'Upload family photo', 'image/*', 'family', key, 'photo', status));
+      left.append(status);
+    }
   }
   if (family.photoCaption) {
     left.append(el('div', 'family-caption', family.photoCaption));
@@ -899,13 +931,18 @@ function renderFamilyDetail(key) {
       iconButton('map', 'Map', 'https://maps.google.com/?q=' + encodeURIComponent(family.address)),
     ]));
   }
-  if (family.pronunciationUrl) {
+  if (family.pronunciationUrl || editable) {
     right.append(el('div', 'pronounce-label', 'How do I pronounce this?'));
-    const audio = el('audio', 'pronounce-player');
-    audio.controls = true;
-    audio.preload = 'metadata';
-    audio.src = family.pronunciationUrl;
-    right.append(audio);
+    if (family.pronunciationUrl) {
+      const audio = el('audio', 'pronounce-player');
+      audio.controls = true;
+      audio.preload = 'metadata';
+      audio.src = family.pronunciationUrl;
+      right.append(audio);
+    }
+    if (editable) {
+      right.append(pronounceEditor('family', key));
+    }
   }
   grid.append(right);
   content.append(grid);
@@ -1573,6 +1610,108 @@ function renderMapPage() {
     map.fitBounds(bounds);
     renderPins();
   });
+}
+
+async function submitMedia(target, key, kind, file, name, status) {
+  status.classList.remove('error');
+  status.textContent = 'Uploading…';
+  const form = new FormData();
+  form.append('target', target);
+  form.append('key', key);
+  form.append('kind', kind);
+  form.append('file', file, name);
+  const res = await fetch('/api/directory/upload', {method: 'POST', body: form});
+  if (!res.ok) {
+    status.classList.add('error');
+    status.textContent = await res.text();
+    return;
+  }
+  await load();
+}
+
+function canEditPerson(email) {
+  const meEmail = document.body.dataset.userEmail;
+  if (email === meEmail) {
+    return true;
+  }
+  const me = byEmail[meEmail];
+  const family = me && state.model.families[me.familyKey];
+  return Boolean(family && (family.kidEmails || []).includes(email));
+}
+
+function uploadIcon(iconName, title, accept, target, key, kind, status) {
+  const wrap = el('label', 'edit-icon');
+  wrap.title = title;
+  wrap.append(svg(iconName));
+  const input = el('input');
+  input.type = 'file';
+  input.accept = accept;
+  input.hidden = true;
+  input.addEventListener('change', () => {
+    if (input.files.length) {
+      submitMedia(target, key, kind, input.files[0], input.files[0].name, status);
+    }
+  });
+  wrap.append(input);
+  return wrap;
+}
+
+function recordIcon(target, key, status, preview) {
+  const button = el('button', 'edit-icon');
+  button.title = 'Record pronunciation';
+  button.append(svg('mic'));
+  let recorder = null;
+  button.addEventListener('click', async () => {
+    if (recorder) {
+      recorder.stop();
+      return;
+    }
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({audio: true});
+    } catch (err) {
+      status.classList.add('error');
+      status.textContent = 'microphone unavailable: ' + err.message;
+      return;
+    }
+    status.classList.remove('error');
+    status.textContent = 'Recording… tap the microphone again to stop';
+    const chunks = [];
+    recorder = new MediaRecorder(stream);
+    recorder.addEventListener('dataavailable', e => chunks.push(e.data));
+    recorder.addEventListener('stop', () => {
+      for (const track of stream.getTracks()) {
+        track.stop();
+      }
+      const blob = new Blob(chunks, {type: recorder.mimeType || 'audio/webm'});
+      recorder = null;
+      button.classList.remove('recording');
+      status.textContent = '';
+      preview.replaceChildren();
+      const audio = el('audio');
+      audio.controls = true;
+      audio.src = URL.createObjectURL(blob);
+      const save = el('button', 'media-button primary', 'Save');
+      save.addEventListener('click', () => submitMedia(target, key, 'pronunciation', blob, 'recording', status));
+      const discard = el('button', 'media-button', 'Discard');
+      discard.addEventListener('click', () => preview.replaceChildren());
+      preview.append(audio, save, discard);
+    });
+    recorder.start();
+    button.classList.add('recording');
+  });
+  return button;
+}
+
+function pronounceEditor(target, key) {
+  const box = el('div', 'pronounce-edit');
+  const actions = el('div', 'pronounce-actions');
+  const status = el('div', 'media-status');
+  const preview = el('div', 'record-preview');
+  actions.append(recordIcon(target, key, status, preview));
+  actions.append(uploadIcon('upload', 'Upload an audio file', 'audio/*', target, key, 'pronunciation', status));
+  box.append(actions, status, preview);
+  return box;
 }
 
 function renderProfile() {

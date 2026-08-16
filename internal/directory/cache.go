@@ -27,6 +27,10 @@ func NewCache(source data.Source, geocoder *geocode.Client) (*Cache, error) {
 	return c, nil
 }
 
+func (c *Cache) Refresh() error {
+	return c.refresh()
+}
+
 func (c *Cache) Model() *Model {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
