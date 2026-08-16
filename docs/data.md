@@ -9,7 +9,7 @@ The entities the directory serves, and how they are assembled. Structured data l
 | Veracross Import | import tool | The raw Veracross student export, rewritten wholesale by the import tool on each refresh. Read-only to the serving app; no local edit survives here. |
 | Name to Email | hand | Maps a student's name to their school email for import rows where the email cell is empty or wrong, so every person can be keyed by email downstream. |
 | Overrides | hand + app | The entire local layer: admin corrections, app-written self-service text, and added people, in canonical model columns keyed by email. |
-| Change Log | app | Append-only audit trail of self-service changes. |
+| Change Log | app | Append-only audit trail mirroring the Overrides columns: one row per change, holding the previous values. |
 
 School structure lives nowhere in the sheet: membership and the classroom and crew names themselves derive from person records, and the remaining fixed structure — band identities, grade progression, department order — is code constants (see Classrooms and grades).
 
@@ -66,6 +66,8 @@ Cell semantics are sparse: an empty cell contributes nothing, `-` clears the und
 Flagged rows must supply every field the model requires; unflagged rows can be a single cell. `-` on a flagged row is meaningless (nothing beneath to clear) and reported as useless.
 
 Family-level fields (address, family photo caption, family phone) ride on a parent's row and apply to that parent's household, so a two-household student's families are addressed independently through their respective adults.
+
+Every change to Overrides appends a Change Log row: timestamp, actor, the row's email, then the previous value of each column that changed — `-` marking a previously empty cell, untouched columns left blank. Media uploads are not logged here; the drive archive is their history.
 
 ## Media blobs
 
