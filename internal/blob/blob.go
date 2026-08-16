@@ -18,6 +18,7 @@ import (
 	_ "image/gif"
 	_ "image/png"
 
+	"github.com/rwcarlsen/goexif/exif"
 	"golang.org/x/image/draw"
 	_ "golang.org/x/image/webp"
 
@@ -320,16 +321,77 @@ func thumbnail(src []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	o := orientation(src)
 	bounds := img.Bounds()
-	if bounds.Dx() > thumbWidth {
-		height := bounds.Dy() * thumbWidth / bounds.Dx()
-		scaled := image.NewRGBA(image.Rect(0, 0, thumbWidth, height))
+	displayWidth := bounds.Dx()
+	if o >= 5 {
+		displayWidth = bounds.Dy()
+	}
+	if displayWidth > thumbWidth {
+		w := bounds.Dx() * thumbWidth / displayWidth
+		h := bounds.Dy() * thumbWidth / displayWidth
+		scaled := image.NewRGBA(image.Rect(0, 0, w, h))
 		draw.CatmullRom.Scale(scaled, scaled.Bounds(), img, bounds, draw.Over, nil)
 		img = scaled
 	}
+	img = reorient(img, o)
 	var buf bytes.Buffer
 	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: 80}); err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+func orientation(src []byte) (o int) {
+	o = 1
+	defer func() { recover() }()
+	parsed, err := exif.Decode(bytes.NewReader(src))
+	if err != nil {
+		return
+	}
+	tag, err := parsed.Get(exif.Orientation)
+	if err != nil {
+		return
+	}
+	value, err := tag.Int(0)
+	if err != nil || value < 1 || value > 8 {
+		return
+	}
+	return value
+}
+
+func reorient(img image.Image, o int) image.Image {
+	if o == 1 {
+		return img
+	}
+	b := img.Bounds()
+	w, h := b.Dx(), b.Dy()
+	dw, dh := w, h
+	if o >= 5 {
+		dw, dh = h, w
+	}
+	out := image.NewRGBA(image.Rect(0, 0, dw, dh))
+	for y := range h {
+		for x := range w {
+			var dx, dy int
+			switch o {
+			case 2:
+				dx, dy = w-1-x, y
+			case 3:
+				dx, dy = w-1-x, h-1-y
+			case 4:
+				dx, dy = x, h-1-y
+			case 5:
+				dx, dy = y, x
+			case 6:
+				dx, dy = h-1-y, x
+			case 7:
+				dx, dy = h-1-y, w-1-x
+			case 8:
+				dx, dy = y, w-1-x
+			}
+			out.Set(dx, dy, img.At(b.Min.X+x, b.Min.Y+y))
+		}
+	}
+	return out
 }
