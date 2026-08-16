@@ -143,7 +143,13 @@ func (s *Store) refresh() error {
 			defer wg.Done()
 			for key := range work {
 				l := listing[key]
+				fetchStart := time.Now()
 				body, err := s.download(l.id)
+				if err == nil {
+					log.Printf("blob fetch: %s %d bytes in %s", key, len(body), time.Since(fetchStart).Round(time.Millisecond))
+				} else {
+					log.Printf("[ERROR] blob fetch: %s: %v", key, err)
+				}
 				if err == nil && strings.HasPrefix(l.mimeType, "image/") {
 					var thumb []byte
 					thumb, err = thumbnail(body)
