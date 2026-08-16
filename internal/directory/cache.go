@@ -19,12 +19,13 @@ type Cache struct {
 	source   data.Source
 	geocoder Geocoder
 	blobs    BlobChecker
+	static   BlobChecker
 	mu       sync.RWMutex
 	model    *Model
 }
 
-func NewCache(source data.Source, geocoder Geocoder, blobs BlobChecker) (*Cache, error) {
-	c := &Cache{source: source, geocoder: geocoder, blobs: blobs}
+func NewCache(source data.Source, geocoder Geocoder, blobs, static BlobChecker) (*Cache, error) {
+	c := &Cache{source: source, geocoder: geocoder, blobs: blobs, static: static}
 	if err := c.refresh(); err != nil {
 		return nil, err
 	}
@@ -52,7 +53,7 @@ func (c *Cache) refreshLoop() {
 
 func (c *Cache) refresh() error {
 	start := time.Now()
-	model, err := LoadModel(c.source, c.blobs)
+	model, err := LoadModel(c.source, c.blobs, c.static)
 	if err != nil {
 		return err
 	}
@@ -60,8 +61,8 @@ func (c *Cache) refresh() error {
 	c.mu.Lock()
 	c.model = model
 	c.mu.Unlock()
-	log.Printf("loaded directory model: %d people, %d families, %d classrooms, %d sections in %s",
-		len(model.People), len(model.Families), len(model.Classrooms), len(model.Sections),
+	log.Printf("loaded directory model: %d people, %d families, %d classrooms, %d crews in %s",
+		len(model.People), len(model.Families), len(model.Classrooms), len(model.Crews),
 		time.Since(start).Round(time.Millisecond))
 	return nil
 }

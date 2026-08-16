@@ -8,6 +8,7 @@ import (
 	"mime"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"heliosian/internal/auth"
@@ -48,6 +49,13 @@ func clientID() string {
 		log.Fatal("[ERROR] creds/oauth-client.json is not an oauth web client file")
 	}
 	return parsed.Web.ClientID
+}
+
+type staticFiles struct{}
+
+func (staticFiles) Has(key string) bool {
+	_, err := os.Stat(filepath.Join("web/static", filepath.FromSlash(key)))
+	return err == nil
 }
 
 func noCache(next http.Handler) http.Handler {
@@ -99,7 +107,7 @@ func main() {
 		}
 		blobs = store
 	}
-	cache, err := directory.NewCache(source, geocoder, blobs)
+	cache, err := directory.NewCache(source, geocoder, blobs, staticFiles{})
 	if err != nil {
 		log.Fatalf("[ERROR] load directory data: %v", err)
 	}

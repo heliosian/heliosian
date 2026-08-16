@@ -5,3 +5,7 @@ What remains to build. Current behavior is documented in `docs/dev.md`, `docs/da
 ## Hosting and deployment
 
 - Move from `gen-lang-client-0758114984` to the school's project: recreate the OAuth client there (Internal consent screen, only available inside the school's Workspace org, removes unverified-app friction), plus the service account, secrets, and service; re-share the spreadsheet and media drive with the new service account.
+
+## Import tool
+
+- One command that ingests a Veracross CSV export, rewrites the Veracross Import tab, re-runs the full pipeline, and reports the local layer's health beyond the fatal checks: useless overrides, `-` on flagged rows, name mappings or additions Veracross has made redundant, and media files matching no current person or family (including family blobs orphaned by a membership change). Replaces the manual writetab + loadcheck procedure in `docs/data.md`.

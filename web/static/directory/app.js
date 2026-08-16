@@ -189,7 +189,7 @@ function roleLabel(p) {
 }
 
 function gradeChain(p) {
-  return [p.grade, p.classroom, p.section].filter(Boolean).join(' ▶ ');
+  return [p.grade, p.classroom, p.crew].filter(Boolean).join(' ▶ ');
 }
 
 function personContext(p) {
@@ -1397,11 +1397,11 @@ function parentsOf(students) {
 function teachersOf(classroomNames) {
   const seen = new Set();
   const teachers = [];
-  for (const section of state.model.sections) {
-    if (!classroomNames.includes(section.classroom)) {
+  for (const crew of state.model.crews) {
+    if (!classroomNames.includes(crew.classroom)) {
       continue;
     }
-    for (const name of section.teachers || []) {
+    for (const name of crew.teachers || []) {
       if (!seen.has(name)) {
         seen.add(name);
         teachers.push(name);
@@ -1512,9 +1512,9 @@ function renderClassroomDetail(slug) {
     return;
   }
   const students = studentsOf(p => p.classroom === classroom.name);
-  const sections = [...new Set(students.map(s => s.section).filter(Boolean))].sort();
-  const groups = sections.length
-    ? sections.map(name => ({header: name, students: students.filter(s => s.section === name)}))
+  const crews = [...new Set(students.map(s => s.crew).filter(Boolean))].sort();
+  const groups = crews.length
+    ? crews.map(name => ({header: name, students: students.filter(s => s.crew === name)}))
     : [{header: classroom.name, students}];
   renderRoster(classroom.name, classroom.imageUrl, groups);
 }

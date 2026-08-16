@@ -2,9 +2,6 @@
 package main
 
 import (
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/base64"
 	"flag"
 	"fmt"
 	"log"
@@ -12,6 +9,8 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"heliosian/internal/auth"
 )
 
 func main() {
@@ -56,11 +55,7 @@ func main() {
 		time.Sleep(time.Second)
 	}
 
-	payload := fmt.Sprintf("%s|%d", *email, time.Now().Add(24*time.Hour).Unix())
-	mac := hmac.New(sha256.New, []byte(key))
-	mac.Write([]byte(payload))
-	cookie := base64.RawURLEncoding.EncodeToString([]byte(payload)) + "." +
-		base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	cookie := auth.Token([]byte(key), *email, time.Now().Add(24*time.Hour))
 
 	content, _ := os.ReadFile("/tmp/heliosian-server.log")
 	for _, line := range strings.Split(strings.TrimSpace(string(content)), "\n") {

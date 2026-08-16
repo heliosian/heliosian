@@ -133,7 +133,7 @@ The loader hard-fails — no fallbacks, server refuses to start — on:
 - conflicting values for the same adult across import rows
 - an invalid canonical value from any layer
 
-The import tool ingests a Veracross CSV export, rewrites the Veracross Import tab, re-runs the full pipeline, and reports the local layer's health beyond the fatal checks: useless overrides (value identical to what the record has anyway), `-` on flagged rows, name mappings or additions that Veracross has since made redundant, and media files whose name matches no current person or family — including family blobs orphaned by a membership change. Running it is the whole import procedure. `tools/findsheet` lists the spreadsheets visible to the service account; `tools/sheets` dumps a sheet's tabs, headers, and rows.
+The import procedure is manual today: `tools/writetab` writes the Veracross CSV export into the Veracross Import tab (header-checked), and `tools/loadcheck` re-runs the full pipeline against the sheet and prints a model summary. A single import tool that also reports the local layer's health beyond the fatal checks — useless overrides (value identical to what the record has anyway), `-` on flagged rows, name mappings or additions that Veracross has since made redundant, and media files whose name matches no current person or family, including family blobs orphaned by a membership change — is planned (`docs/plan.md`). `tools/findsheet` lists the spreadsheets visible to the service account; `tools/sheets` dumps a sheet's tabs, headers, and rows.
 
 ## Sourcing
 

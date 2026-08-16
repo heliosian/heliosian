@@ -15,7 +15,7 @@ type Person struct {
 	PhotoURL            string   `json:"photoUrl,omitempty"`
 	Grade               string   `json:"grade,omitempty"`
 	Classroom           string   `json:"classroom,omitempty"`
-	Section             string   `json:"section,omitempty"`
+	Crew                string   `json:"crew,omitempty"`
 	Phone               string   `json:"phone,omitempty"`
 	FamilyKey           string   `json:"familyKey,omitempty"`
 	ParentContactEmails []string `json:"parentContactEmails,omitempty"`
@@ -39,12 +39,12 @@ type Family struct {
 }
 
 type Classroom struct {
-	Name        string `json:"name"`
-	ImageURL    string `json:"imageUrl,omitempty"`
-	HasSections bool   `json:"hasSections"`
+	Name     string `json:"name"`
+	ImageURL string `json:"imageUrl,omitempty"`
+	HasCrews bool   `json:"hasCrews"`
 }
 
-type Section struct {
+type Crew struct {
 	Classroom string   `json:"classroom"`
 	Name      string   `json:"name,omitempty"`
 	Teachers  []string `json:"teachers,omitempty"`
@@ -58,30 +58,32 @@ type Grade struct {
 	NextBand string `json:"nextBand,omitempty"`
 }
 
-func (m *Model) Member(email string) bool {
-	for _, p := range m.People {
-		if p.Email == email {
-			return true
-		}
-	}
-	return false
-}
-
-func (m *Model) DisplayName(email string) string {
-	for _, p := range m.People {
-		if p.Email == email {
-			return p.FullName
-		}
-	}
-	return email
-}
-
 type Model struct {
 	People      []Person            `json:"people"`
 	Families    map[string]Family   `json:"families"`
 	Classrooms  []Classroom         `json:"classrooms"`
-	Sections    []Section           `json:"sections"`
+	Crews       []Crew              `json:"crews"`
 	Grades      []Grade             `json:"grades"`
 	RoomParents map[string][]string `json:"roomParents"`
 	Departments []string            `json:"departments"`
+	byEmail     map[string]int
+}
+
+func (m *Model) Person(email string) *Person {
+	i, ok := m.byEmail[email]
+	if !ok {
+		return nil
+	}
+	return &m.People[i]
+}
+
+func (m *Model) Member(email string) bool {
+	return m.Person(email) != nil
+}
+
+func (m *Model) DisplayName(email string) string {
+	if p := m.Person(email); p != nil {
+		return p.FullName
+	}
+	return email
 }

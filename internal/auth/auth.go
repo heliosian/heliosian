@@ -45,6 +45,21 @@ func Fixed(email string, next http.Handler) http.Handler {
 	})
 }
 
+func Public(path string) bool {
+	return path == "/auth/login" || strings.HasPrefix(path, "/static/")
+}
+
+func Token(key []byte, email string, expiry time.Time) string {
+	payload := fmt.Sprintf("%s|%d", email, expiry.Unix())
+	return base64.RawURLEncoding.EncodeToString([]byte(payload)) + "." + sign(key, payload)
+}
+
+func sign(key []byte, payload string) string {
+	mac := hmac.New(sha256.New, key)
+	mac.Write([]byte(payload))
+	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+}
+
 func (a *Auth) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /auth/login", a.login)
 	mux.HandleFunc("POST /auth/logout", a.logout)
@@ -52,7 +67,7 @@ func (a *Auth) Register(mux *http.ServeMux) {
 
 func (a *Auth) Wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/auth/login" || strings.HasPrefix(r.URL.Path, "/static/") {
+		if Public(r.URL.Path) {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -108,10 +123,9 @@ func (a *Auth) login(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "account is not in the school domain", http.StatusForbidden)
 		return
 	}
-	expiry := time.Now().Add(sessionLength).Unix()
 	http.SetCookie(w, &http.Cookie{
 		Name:     cookieName,
-		Value:    a.token(email, expiry),
+		Value:    Token(a.key, email, time.Now().Add(sessionLength)),
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https",
@@ -124,17 +138,6 @@ func (a *Auth) login(w http.ResponseWriter, r *http.Request) {
 func (a *Auth) logout(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{Name: cookieName, Value: "", Path: "/", HttpOnly: true, MaxAge: -1})
 	http.Redirect(w, r, "/", http.StatusSeeOther)
-}
-
-func (a *Auth) token(email string, expiry int64) string {
-	payload := fmt.Sprintf("%s|%d", email, expiry)
-	return base64.RawURLEncoding.EncodeToString([]byte(payload)) + "." + a.sign(payload)
-}
-
-func (a *Auth) sign(payload string) string {
-	mac := hmac.New(sha256.New, a.key)
-	mac.Write([]byte(payload))
-	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 }
 
 func (a *Auth) sessionEmail(r *http.Request) string {
@@ -151,7 +154,7 @@ func (a *Auth) sessionEmail(r *http.Request) string {
 		return ""
 	}
 	payload := string(decoded)
-	if !hmac.Equal([]byte(a.sign(payload)), []byte(parts[1])) {
+	if !hmac.Equal([]byte(sign(a.key, payload)), []byte(parts[1])) {
 		return ""
 	}
 	fields := strings.Split(payload, "|")

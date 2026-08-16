@@ -30,7 +30,7 @@ type app struct {
 
 func MemberGate(cache *Cache, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/auth/login" || r.URL.Path == "/auth/logout" || strings.HasPrefix(r.URL.Path, "/static/") {
+		if auth.Public(r.URL.Path) || r.URL.Path == "/auth/logout" {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -60,12 +60,10 @@ func Register(mux *http.ServeMux, cache *Cache, mapsKey string) {
 func (a app) myFamily(w http.ResponseWriter, r *http.Request) {
 	model := a.cache.Model()
 	email := auth.Email(r)
-	for _, p := range model.People {
-		if p.Email == email && p.FamilyKey != "" {
-			if _, ok := model.Families[p.FamilyKey]; ok {
-				http.Redirect(w, r, "/families/"+url.PathEscape(p.FamilyKey), http.StatusFound)
-				return
-			}
+	if p := model.Person(email); p != nil && p.FamilyKey != "" {
+		if _, ok := model.Families[p.FamilyKey]; ok {
+			http.Redirect(w, r, "/families/"+url.PathEscape(p.FamilyKey), http.StatusFound)
+			return
 		}
 	}
 	http.Error(w, "no family record for "+email, http.StatusNotFound)

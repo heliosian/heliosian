@@ -73,6 +73,25 @@ func clearable(value string) string {
 	return value
 }
 
+func (u uploader) applyOverride(w http.ResponseWriter, actor, email, action string, cells, previous map[string]string) bool {
+	for column, cell := range cells {
+		if err := u.sheet.Upsert(appName, "Overrides", "Email", email, column, cell); err != nil {
+			serverError(w, fmt.Errorf("set %s for %s: %w", column, email, err))
+			return false
+		}
+	}
+	logRow := changeLogRow(actor, email, previous)
+	if err := u.sheet.Append(appName, changeLogTable, changeLogHeader, logRow); err != nil {
+		serverError(w, fmt.Errorf("append change log after %s for %s: %w", action, email, err))
+		return false
+	}
+	if err := u.cache.Refresh(); err != nil {
+		serverError(w, fmt.Errorf("refresh model after %s: %w", action, err))
+		return false
+	}
+	return true
+}
+
 func (u uploader) edit(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 	key := strings.ToLower(strings.TrimSpace(r.FormValue("key")))
@@ -80,13 +99,7 @@ func (u uploader) edit(w http.ResponseWriter, r *http.Request) {
 	value := strings.TrimSpace(r.FormValue("value"))
 	me := auth.Email(r)
 	model := u.cache.Model()
-	var person *Person
-	for i := range model.People {
-		if model.People[i].Email == key {
-			person = &model.People[i]
-			break
-		}
-	}
+	person := model.Person(key)
 	if person == nil {
 		http.Error(w, "no such person", http.StatusBadRequest)
 		return
@@ -144,19 +157,7 @@ func (u uploader) edit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	for column, cell := range cells {
-		if err := u.sheet.Upsert(appName, "Overrides", "Email", key, column, cell); err != nil {
-			serverError(w, fmt.Errorf("set %s for %s: %w", column, key, err))
-			return
-		}
-	}
-	logRow := changeLogRow(me, key, previous)
-	if err := u.sheet.Append(appName, changeLogTable, changeLogHeader, logRow); err != nil {
-		serverError(w, fmt.Errorf("append change log after %s edit for %s: %w", field, key, err))
-		return
-	}
-	if err := u.cache.Refresh(); err != nil {
-		serverError(w, fmt.Errorf("refresh model after %s edit: %w", field, err))
+	if !u.applyOverride(w, me, key, field+" edit", cells, previous) {
 		return
 	}
 	log.Printf("edit: %s set %s on %s", me, field, key)
@@ -175,17 +176,7 @@ func (u uploader) optOut(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "not allowed to edit this record", http.StatusForbidden)
 		return
 	}
-	if err := u.sheet.Upsert(appName, "Overrides", "Email", key, "Opted Out", "TRUE"); err != nil {
-		serverError(w, fmt.Errorf("opt out %s: %w", key, err))
-		return
-	}
-	logRow := changeLogRow(me, key, map[string]string{"Opted Out": ""})
-	if err := u.sheet.Append(appName, changeLogTable, changeLogHeader, logRow); err != nil {
-		serverError(w, fmt.Errorf("append change log after opt out of %s: %w", key, err))
-		return
-	}
-	if err := u.cache.Refresh(); err != nil {
-		serverError(w, fmt.Errorf("refresh model after opt out: %w", err))
+	if !u.applyOverride(w, me, key, "opt out", map[string]string{"Opted Out": "TRUE"}, map[string]string{"Opted Out": ""}) {
 		return
 	}
 	log.Printf("optout: %s removed %s from the directory", me, key)
@@ -207,23 +198,10 @@ func (u uploader) facts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	old := ""
-	for _, p := range model.People {
-		if p.Email == key {
-			old = p.Facts
-			break
-		}
+	if p := model.Person(key); p != nil {
+		old = p.Facts
 	}
-	if err := u.sheet.Upsert(appName, "Overrides", "Email", key, "Facts", facts); err != nil {
-		serverError(w, fmt.Errorf("update facts for %s: %w", key, err))
-		return
-	}
-	logRow := changeLogRow(me, key, map[string]string{"Facts": old})
-	if err := u.sheet.Append(appName, changeLogTable, changeLogHeader, logRow); err != nil {
-		serverError(w, fmt.Errorf("append change log after facts update for %s: %w", key, err))
-		return
-	}
-	if err := u.cache.Refresh(); err != nil {
-		serverError(w, fmt.Errorf("refresh model after facts update: %w", err))
+	if !u.applyOverride(w, me, key, "facts update", map[string]string{"Facts": facts}, map[string]string{"Facts": old}) {
 		return
 	}
 	log.Printf("facts: %s set %s (%d chars)", me, key, len(facts))
@@ -291,13 +269,7 @@ func (u uploader) upload(w http.ResponseWriter, r *http.Request) {
 }
 
 func mayEdit(model *Model, me, target, key string) bool {
-	var mine *Person
-	for i := range model.People {
-		if model.People[i].Email == me {
-			mine = &model.People[i]
-			break
-		}
-	}
+	mine := model.Person(me)
 	if mine == nil {
 		return false
 	}

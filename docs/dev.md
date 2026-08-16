@@ -35,3 +35,20 @@ Development happens on macOS. Two Homebrew installs cover everything here and in
 - **Google Chrome** — launched headless by the screenshot tool from its standard install location; never opened by hand.
 
 No Node, no Docker, and no cloud credentials are needed for local development. Repository layout is in the README.
+
+## Tools
+
+Each runs as `go run ./tools/<name>`. The sheet and drive tools authenticate with `creds/service-account.json`.
+
+- `screenshot`, `capturebrowser`, `browse` — page capture and browser driving; see `docs/screenshots.md`
+- `startserver` — launch the app detached, wait for it to listen, print the pid, log path, and a minted session cookie (needs `SESSION_KEY` and `DIRECTORY_SHEET`)
+- `cookie` — print a signed session cookie for local API testing
+- `loadcheck` — run the full load pipeline against a sheet and print a model summary
+- `columns` — print each directory table's column names from the configured source
+- `findsheet` — list spreadsheets visible to the service account
+- `sheets` — dump a sheet's tabs, sizes, and header rows
+- `dumptab` / `writetab` — copy one tab to a local CSV / write a local CSV into a tab, header-checked
+- `createtabs` — create the directory sheet's local-layer tabs with their header rows
+- `setcell` — set one cell in a tab by key column, appending the row if missing
+- `probeblob` — time the download of a few drive media files
+- `splash` — regenerate the iOS splash battery from the captured original page; see `docs/pwa.md`

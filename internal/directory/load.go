@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"os"
 	"regexp"
 	"sort"
 	"strings"
@@ -88,6 +87,11 @@ type household struct {
 	phone   string
 }
 
+type familyCells struct {
+	address, phone, caption          string
+	hasAddress, hasPhone, hasCaption bool
+}
+
 func requireColumns(table string, header, wanted []string) error {
 	present := map[string]bool{}
 	for _, h := range header {
@@ -108,110 +112,162 @@ func familyHash(members []string) string {
 	return hex.EncodeToString(sum[:])[:16]
 }
 
-func LoadModel(source data.Source, blobs BlobChecker) (*Model, error) {
+type loader struct {
+	blobs  BlobChecker
+	static BlobChecker
+
+	importRows   []map[string]string
+	overrideRows []map[string]string
+	nameToEmail  map[string]string
+
+	people           map[string]*Person
+	order            []string
+	households       map[string]*household
+	householdOrder   []string
+	personHouseholds map[string][]string
+	familyKeys       map[string]string
+	familyOverrides  map[string]familyCells
+	roomParents      map[string][]string
+	optedOut         map[string]bool
+
+	model *Model
+}
+
+func LoadModel(source data.Source, blobs, static BlobChecker) (*Model, error) {
+	l := &loader{
+		blobs:            blobs,
+		static:           static,
+		people:           map[string]*Person{},
+		households:       map[string]*household{},
+		personHouseholds: map[string][]string{},
+		familyKeys:       map[string]string{},
+		familyOverrides:  map[string]familyCells{},
+		roomParents:      map[string][]string{},
+		optedOut:         map[string]bool{},
+		model:            &Model{Families: map[string]Family{}, RoomParents: map[string][]string{}},
+	}
+	steps := []func() error{
+		func() error { return l.readTables(source) },
+		l.transformImport,
+		l.applyOverrides,
+		l.buildFamilies,
+		l.removeOptedOut,
+		l.attachBlobs,
+		l.sortPeople,
+		l.deriveClassrooms,
+		l.deriveStructure,
+	}
+	for _, step := range steps {
+		if err := step(); err != nil {
+			return nil, err
+		}
+	}
+	return l.model, nil
+}
+
+func (l *loader) readTables(source data.Source) error {
 	importHeader, importRows, err := source.Table(appName, "Veracross Import")
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if err := requireColumns("Veracross Import", importHeader, importColumns); err != nil {
-		return nil, err
+		return err
 	}
+	l.importRows = importRows
 	mapHeader, mapRows, err := source.Table(appName, "Name to Email")
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if err := requireColumns("Name to Email", mapHeader, []string{"Name", "Email"}); err != nil {
-		return nil, err
+		return err
 	}
 	overrideHeader, overrideRows, err := source.Table(appName, "Overrides")
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if err := requireColumns("Overrides", overrideHeader, overrideColumns); err != nil {
-		return nil, err
+		return err
 	}
+	l.overrideRows = overrideRows
 
-	nameToEmail := map[string]string{}
+	l.nameToEmail = map[string]string{}
 	for _, row := range mapRows {
 		name, email := normName(row["Name"]), strings.ToLower(row["Email"])
 		if name == "" || email == "" {
-			return nil, fmt.Errorf("name to email row %v is incomplete", row)
+			return fmt.Errorf("name to email row %v is incomplete", row)
 		}
-		if _, ok := nameToEmail[name]; ok {
-			return nil, fmt.Errorf("name to email has duplicate name %q", row["Name"])
+		if _, ok := l.nameToEmail[name]; ok {
+			return fmt.Errorf("name to email has duplicate name %q", row["Name"])
 		}
-		nameToEmail[name] = email
+		l.nameToEmail[name] = email
 	}
-	mappingUses := map[string]int{}
+	return nil
+}
 
-	people := map[string]*Person{}
-	order := []string{}
-	households := map[string]*household{}
-	householdOrder := []string{}
-	personHouseholds := map[string][]string{}
-
-	addAdult := func(rawName, email, phone string) error {
-		n := parseName(rawName)
-		if p, ok := people[email]; ok {
-			if p.FullName != n.display || p.LegalName != n.legal || p.PreferredName != n.preferred {
-				return fmt.Errorf("adult %s has conflicting names %q and %q", email, p.FullName, rawName)
-			}
-			if p.Phone != "" && phone != "" && p.Phone != phone {
-				return fmt.Errorf("adult %s has conflicting phones %q and %q", email, p.Phone, phone)
-			}
-			if p.Phone == "" {
-				p.Phone = phone
-			}
-			p.IsParent = true
-			return nil
+func (l *loader) addAdult(rawName, email, phone string) error {
+	n := parseName(rawName)
+	if p, ok := l.people[email]; ok {
+		if p.FullName != n.display || p.LegalName != n.legal || p.PreferredName != n.preferred {
+			return fmt.Errorf("adult %s has conflicting names %q and %q", email, p.FullName, rawName)
 		}
-		people[email] = &Person{
-			Email: email, FullName: n.display, LegalName: n.legal, PreferredName: n.preferred,
-			Phone: phone, IsParent: true,
+		if p.Phone != "" && phone != "" && p.Phone != phone {
+			return fmt.Errorf("adult %s has conflicting phones %q and %q", email, p.Phone, phone)
 		}
-		order = append(order, email)
+		if p.Phone == "" {
+			p.Phone = phone
+		}
+		p.IsParent = true
 		return nil
 	}
+	l.people[email] = &Person{
+		Email: email, FullName: n.display, LegalName: n.legal, PreferredName: n.preferred,
+		Phone: phone, IsParent: true,
+	}
+	l.order = append(l.order, email)
+	return nil
+}
 
-	for _, row := range importRows {
+func (l *loader) transformImport() error {
+	mappingUses := map[string]int{}
+	for _, row := range l.importRows {
 		rawName := row["student_full_name"]
 		if rawName == "" {
-			return nil, fmt.Errorf("import row %v has no student name", row)
+			return fmt.Errorf("import row %v has no student name", row)
 		}
 		var classifications struct {
 			GradeLevel string `json:"grade_level"`
 			Homeroom   string `json:"homeroom"`
 		}
 		if err := json.Unmarshal([]byte(row["student_classifications"]), &classifications); err != nil {
-			return nil, fmt.Errorf("student %s classifications: %w", rawName, err)
+			return fmt.Errorf("student %s classifications: %w", rawName, err)
 		}
 		if gradeBands[classifications.GradeLevel] == "" {
-			return nil, fmt.Errorf("student %s has unknown grade %q", rawName, classifications.GradeLevel)
+			return fmt.Errorf("student %s has unknown grade %q", rawName, classifications.GradeLevel)
 		}
 		if classifications.Homeroom == "" {
-			return nil, fmt.Errorf("student %s has no homeroom", rawName)
+			return fmt.Errorf("student %s has no homeroom", rawName)
 		}
 		classroom, crew := splitHomeroom(classifications.Homeroom)
 
 		email := strings.ToLower(row["student_email"])
-		if mapped, ok := nameToEmail[normName(rawName)]; ok {
+		if mapped, ok := l.nameToEmail[normName(rawName)]; ok {
 			email = mapped
 			mappingUses[normName(rawName)]++
 		}
 		if email == "" {
-			return nil, fmt.Errorf("student %s has no email and no name to email entry", rawName)
+			return fmt.Errorf("student %s has no email and no name to email entry", rawName)
 		}
-		if _, ok := people[email]; ok {
-			return nil, fmt.Errorf("student email %s appears twice", email)
+		if _, ok := l.people[email]; ok {
+			return fmt.Errorf("student email %s appears twice", email)
 		}
 		n := parseName(rawName)
 		student := &Person{
 			Email: email, FullName: n.display, LegalName: n.legal, PreferredName: n.preferred,
-			IsStudent: true, Grade: classifications.GradeLevel, Classroom: classroom, Section: crew,
+			IsStudent: true, Grade: classifications.GradeLevel, Classroom: classroom, Crew: crew,
 			Phone: row["student_phone_mobile"],
 		}
-		people[email] = student
-		order = append(order, email)
+		l.people[email] = student
+		l.order = append(l.order, email)
 
 		for _, hn := range []string{"1", "2"} {
 			adults := []string{}
@@ -222,14 +278,14 @@ func LoadModel(source data.Source, blobs BlobChecker) (*Model, error) {
 				}
 				adultEmail := strings.ToLower(row[prefix+"email"])
 				if adultEmail == "" {
-					return nil, fmt.Errorf("adult %q of student %s has no email", row[prefix+"full_name"], rawName)
+					return fmt.Errorf("adult %q of student %s has no email", row[prefix+"full_name"], rawName)
 				}
 				phone := row[prefix+"phone_mobile"]
 				if phone == "" {
 					phone = row[prefix+"phone_business"]
 				}
-				if err := addAdult(row[prefix+"full_name"], adultEmail, phone); err != nil {
-					return nil, err
+				if err := l.addAdult(row[prefix+"full_name"], adultEmail, phone); err != nil {
+					return err
 				}
 				adults = append(adults, adultEmail)
 			}
@@ -242,70 +298,65 @@ func LoadModel(source data.Source, blobs BlobChecker) (*Model, error) {
 				sort.Strings(s)
 				return s
 			}(), "\n")
-			hh, ok := households[setKey]
+			hh, ok := l.households[setKey]
 			if !ok {
 				hh = &household{adults: adults, address: address, phone: phone}
-				households[setKey] = hh
-				householdOrder = append(householdOrder, setKey)
+				l.households[setKey] = hh
+				l.householdOrder = append(l.householdOrder, setKey)
 				for _, a := range adults {
-					if len(personHouseholds[a]) > 0 {
-						return nil, fmt.Errorf("adult %s belongs to more than one household", a)
+					if len(l.personHouseholds[a]) > 0 {
+						return fmt.Errorf("adult %s belongs to more than one household", a)
 					}
-					personHouseholds[a] = append(personHouseholds[a], setKey)
+					l.personHouseholds[a] = append(l.personHouseholds[a], setKey)
 				}
 			} else if hh.address != address || hh.phone != phone {
-				return nil, fmt.Errorf("household of %v has conflicting address or phone across rows", adults)
+				return fmt.Errorf("household of %v has conflicting address or phone across rows", adults)
 			}
 			hh.kids = append(hh.kids, email)
-			personHouseholds[email] = append(personHouseholds[email], setKey)
+			l.personHouseholds[email] = append(l.personHouseholds[email], setKey)
 			student.ParentContactEmails = append(student.ParentContactEmails, adults...)
 		}
 	}
 
-	for name := range nameToEmail {
+	for name := range l.nameToEmail {
 		switch mappingUses[name] {
 		case 0:
-			return nil, fmt.Errorf("name to email entry %q matches no import row", name)
+			return fmt.Errorf("name to email entry %q matches no import row", name)
 		case 1:
 		default:
-			return nil, fmt.Errorf("name to email entry %q matches %d import rows", name, mappingUses[name])
+			return fmt.Errorf("name to email entry %q matches %d import rows", name, mappingUses[name])
 		}
 	}
+	return nil
+}
 
-	type familyCells struct {
-		address, phone, caption string
-		hasAddress, hasPhone, hasCaption bool
-	}
-	familyOverrides := map[string]familyCells{}
+func (l *loader) applyOverrides() error {
 	bandSet := map[string]bool{}
 	for _, band := range gradeBands {
 		bandSet[band] = true
 	}
-	roomParents := map[string][]string{}
-	optedOut := map[string]bool{}
-
-	seenOverride := map[string]bool{}
-	for _, row := range overrideRows {
+	seen := map[string]bool{}
+	for _, row := range l.overrideRows {
 		email := strings.ToLower(row["Email"])
 		if email == "" {
-			return nil, fmt.Errorf("overrides row %v has no email", row)
+			return fmt.Errorf("overrides row %v has no email", row)
 		}
-		if seenOverride[email] {
-			return nil, fmt.Errorf("overrides has duplicate email %s", email)
+		if seen[email] {
+			return fmt.Errorf("overrides has duplicate email %s", email)
 		}
-		seenOverride[email] = true
+		seen[email] = true
 		added := row["Added"] == "TRUE"
-		p, exists := people[email]
+		p, exists := l.people[email]
 		if added && exists {
-			return nil, fmt.Errorf("overrides row %s is flagged added but the import covers this person", email)
+			return fmt.Errorf("overrides row %s is flagged added but the import covers this person", email)
 		}
 		if !added && !exists {
-			return nil, fmt.Errorf("overrides row %s matches no imported person", email)
+			return fmt.Errorf("overrides row %s matches no imported person", email)
 		}
 		if added {
 			p = &Person{Email: email}
-			people[email] = p
-			order = append(order, email)
+			l.people[email] = p
+			l.order = append(l.order, email)
 		}
 
 		apply := func(cell string, field *string) {
@@ -336,29 +387,29 @@ func LoadModel(source data.Source, blobs BlobChecker) (*Model, error) {
 			"Is Student": &p.IsStudent, "Is Parent": &p.IsParent, "Is Staff": &p.IsStaff, "New to Helios": &p.IsNew,
 		} {
 			if err := applyBool(column, field); err != nil {
-				return nil, err
+				return err
 			}
 		}
 		apply(row["Pronouns"], &p.Pronouns)
 		apply(row["Facts"], &p.Facts)
 		if cell := row["Grade"]; cell != "" && cell != "-" && !added && gradeBands[cell] == "" {
-			return nil, fmt.Errorf("overrides row %s has unknown grade %q", email, cell)
+			return fmt.Errorf("overrides row %s has unknown grade %q", email, cell)
 		}
 		apply(row["Grade"], &p.Grade)
 		apply(row["Classroom"], &p.Classroom)
-		apply(row["Crew"], &p.Section)
+		apply(row["Crew"], &p.Crew)
 		apply(row["Phone"], &p.Phone)
 		apply(row["Job Title"], &p.JobTitle)
 		apply(row["Department"], &p.Department)
 		if cell := row["Grade Band"]; cell != "" && cell != "-" && !bandSet[cell] {
-			return nil, fmt.Errorf("overrides row %s has unknown grade band %q", email, cell)
+			return fmt.Errorf("overrides row %s has unknown grade band %q", email, cell)
 		}
 		apply(row["Grade Band"], &p.GradeBand)
 		if cell := row["Room Parent"]; cell != "" && cell != "-" {
 			if !bandSet[cell] {
-				return nil, fmt.Errorf("overrides row %s has unknown room parent band %q", email, cell)
+				return fmt.Errorf("overrides row %s has unknown room parent band %q", email, cell)
 			}
-			roomParents[cell] = append(roomParents[cell], email)
+			l.roomParents[cell] = append(l.roomParents[cell], email)
 		}
 
 		cells := familyCells{}
@@ -381,36 +432,36 @@ func LoadModel(source data.Source, blobs BlobChecker) (*Model, error) {
 			}
 		}
 		if cells.hasAddress || cells.hasPhone || cells.hasCaption {
-			familyOverrides[email] = cells
+			l.familyOverrides[email] = cells
 		}
 
 		switch row["Opted Out"] {
 		case "", "-", "FALSE":
 		case "TRUE":
-			optedOut[email] = true
+			l.optedOut[email] = true
 		default:
-			return nil, fmt.Errorf("overrides row %s has invalid Opted Out %q", email, row["Opted Out"])
+			return fmt.Errorf("overrides row %s has invalid Opted Out %q", email, row["Opted Out"])
 		}
 
 		if added {
 			if p.FullName == "" {
-				return nil, fmt.Errorf("added row %s has no full name", email)
+				return fmt.Errorf("added row %s has no full name", email)
 			}
 			if !p.IsStudent && !p.IsParent && !p.IsStaff {
-				return nil, fmt.Errorf("added row %s has no role", email)
+				return fmt.Errorf("added row %s has no role", email)
 			}
 		}
 	}
+	return nil
+}
 
-	model := &Model{Families: map[string]Family{}, RoomParents: map[string][]string{}}
-
-	familyKeys := map[string]string{}
-	for _, setKey := range householdOrder {
-		hh := households[setKey]
+func (l *loader) buildFamilies() error {
+	for _, setKey := range l.householdOrder {
+		hh := l.households[setKey]
 		members := append(append([]string{}, hh.adults...), hh.kids...)
 		key := familyHash(members)
-		familyKeys[setKey] = key
-		model.Families[key] = Family{
+		l.familyKeys[setKey] = key
+		l.model.Families[key] = Family{
 			Key:         key,
 			Address:     hh.address,
 			Phone:       hh.phone,
@@ -418,22 +469,22 @@ func LoadModel(source data.Source, blobs BlobChecker) (*Model, error) {
 			KidEmails:   hh.kids,
 		}
 	}
-	for email, sets := range personHouseholds {
-		if p := people[email]; p.FamilyKey == "" {
-			p.FamilyKey = familyKeys[sets[0]]
+	for email, sets := range l.personHouseholds {
+		if p := l.people[email]; p.FamilyKey == "" {
+			p.FamilyKey = l.familyKeys[sets[0]]
 		}
 	}
-	for email, cells := range familyOverrides {
-		p := people[email]
+	for email, cells := range l.familyOverrides {
+		p := l.people[email]
 		if !p.IsParent {
-			return nil, fmt.Errorf("overrides row %s has family cells but %s is not a parent", email, email)
+			return fmt.Errorf("overrides row %s has family cells but %s is not a parent", email, email)
 		}
-		sets := personHouseholds[email]
+		sets := l.personHouseholds[email]
 		if len(sets) != 1 {
-			return nil, fmt.Errorf("overrides row %s has family cells but %s has no household", email, email)
+			return fmt.Errorf("overrides row %s has family cells but %s has no household", email, email)
 		}
-		key := familyKeys[sets[0]]
-		family := model.Families[key]
+		key := l.familyKeys[sets[0]]
+		family := l.model.Families[key]
 		if cells.hasAddress {
 			family.Address = cells.address
 		}
@@ -443,73 +494,92 @@ func LoadModel(source data.Source, blobs BlobChecker) (*Model, error) {
 		if cells.hasCaption {
 			family.PhotoCaption = cells.caption
 		}
-		model.Families[key] = family
+		l.model.Families[key] = family
 	}
+	return nil
+}
 
-	for email := range optedOut {
-		delete(people, email)
+func (l *loader) removeOptedOut() error {
+	for email := range l.optedOut {
+		delete(l.people, email)
 	}
 	kept := []string{}
-	for _, email := range order {
-		if !optedOut[email] {
+	for _, email := range l.order {
+		if !l.optedOut[email] {
 			kept = append(kept, email)
 		}
 	}
-	order = kept
-	for key, family := range model.Families {
-		family.AdultEmails = without(family.AdultEmails, optedOut)
-		family.KidEmails = without(family.KidEmails, optedOut)
+	l.order = kept
+	for key, family := range l.model.Families {
+		family.AdultEmails = without(family.AdultEmails, l.optedOut)
+		family.KidEmails = without(family.KidEmails, l.optedOut)
 		if len(family.AdultEmails)+len(family.KidEmails) == 0 {
-			delete(model.Families, key)
+			delete(l.model.Families, key)
 			continue
 		}
-		family.Name = familyNameFor(family, people)
-		model.Families[key] = family
+		family.Name = familyNameFor(family, l.people)
+		l.model.Families[key] = family
 	}
-	for _, p := range people {
-		p.ParentContactEmails = without(p.ParentContactEmails, optedOut)
+	for _, p := range l.people {
+		p.ParentContactEmails = without(p.ParentContactEmails, l.optedOut)
 	}
-	for band, emails := range roomParents {
-		roomParents[band] = without(emails, optedOut)
+	for band, emails := range l.roomParents {
+		l.roomParents[band] = without(emails, l.optedOut)
 	}
+	return nil
+}
 
-	if blobs != nil {
-		for _, p := range people {
-			local, _, _ := strings.Cut(p.Email, "@")
-			if blobs.Has("people/" + local + "-photo") {
-				p.PhotoURL = "/blob/people/" + local + "-photo"
-			}
-			if blobs.Has("people/" + local + "-pronunciation") {
-				p.PronunciationURL = "/blob/people/" + local + "-pronunciation"
-			}
+func (l *loader) attachBlobs() error {
+	if l.blobs == nil {
+		return nil
+	}
+	for _, p := range l.people {
+		local, _, _ := strings.Cut(p.Email, "@")
+		if l.blobs.Has("people/" + local + "-photo") {
+			p.PhotoURL = "/blob/people/" + local + "-photo"
 		}
-		for key, family := range model.Families {
-			if blobs.Has("families/" + key + "-photo") {
-				family.PhotoURL = "/blob/families/" + key + "-photo"
-			}
-			if blobs.Has("families/" + key + "-pronunciation") {
-				family.PronunciationURL = "/blob/families/" + key + "-pronunciation"
-			}
-			model.Families[key] = family
+		if l.blobs.Has("people/" + local + "-pronunciation") {
+			p.PronunciationURL = "/blob/people/" + local + "-pronunciation"
 		}
 	}
-
-	for _, email := range order {
-		model.People = append(model.People, *people[email])
+	for key, family := range l.model.Families {
+		if l.blobs.Has("families/" + key + "-photo") {
+			family.PhotoURL = "/blob/families/" + key + "-photo"
+		}
+		if l.blobs.Has("families/" + key + "-pronunciation") {
+			family.PronunciationURL = "/blob/families/" + key + "-pronunciation"
+		}
+		l.model.Families[key] = family
 	}
-	sort.Slice(model.People, func(i, j int) bool {
-		si, sj := surname(model.People[i].FullName), surname(model.People[j].FullName)
+	return nil
+}
+
+func (l *loader) sortPeople() error {
+	for _, email := range l.order {
+		l.model.People = append(l.model.People, *l.people[email])
+	}
+	sort.Slice(l.model.People, func(i, j int) bool {
+		si, sj := surname(l.model.People[i].FullName), surname(l.model.People[j].FullName)
 		if si != sj {
 			return si < sj
 		}
-		return model.People[i].FullName < model.People[j].FullName
+		return l.model.People[i].FullName < l.model.People[j].FullName
 	})
-
-	type classroomInfo struct {
-		crews    map[string]bool
-		minGrade int
-		bands    map[string]bool
+	l.model.byEmail = map[string]int{}
+	for i, p := range l.model.People {
+		l.model.byEmail[p.Email] = i
 	}
+	return nil
+}
+
+type classroomInfo struct {
+	crews    map[string]bool
+	minGrade int
+	bands    map[string]bool
+}
+
+func (l *loader) deriveClassrooms() error {
+	model := l.model
 	classrooms := map[string]*classroomInfo{}
 	for _, p := range model.People {
 		if p.Classroom == "" || !p.IsStudent || gradeBands[p.Grade] == "" {
@@ -520,8 +590,8 @@ func LoadModel(source data.Source, blobs BlobChecker) (*Model, error) {
 			info = &classroomInfo{crews: map[string]bool{}, minGrade: len(gradeOrder), bands: map[string]bool{}}
 			classrooms[p.Classroom] = info
 		}
-		if p.Section != "" {
-			info.crews[p.Section] = true
+		if p.Crew != "" {
+			info.crews[p.Crew] = true
 		}
 		for i, g := range gradeOrder {
 			if g == p.Grade && i < info.minGrade {
@@ -544,17 +614,17 @@ func LoadModel(source data.Source, blobs BlobChecker) (*Model, error) {
 	for _, name := range classroomNames {
 		info := classrooms[name]
 		if len(info.bands) != 1 {
-			return nil, fmt.Errorf("classroom %s spans multiple grade bands", name)
+			return fmt.Errorf("classroom %s spans multiple grade bands", name)
 		}
 		imageURL := ""
-		imagePath := "web/static/brand/classrooms/classroom-" + strings.ToLower(name) + ".jpg"
-		if _, err := os.Stat(imagePath); err == nil {
-			imageURL = "/static/brand/classrooms/classroom-" + strings.ToLower(name) + ".jpg"
+		imageKey := "brand/classrooms/classroom-" + strings.ToLower(name) + ".jpg"
+		if l.static.Has(imageKey) {
+			imageURL = "/static/" + imageKey
 		}
 		model.Classrooms = append(model.Classrooms, Classroom{
-			Name:        name,
-			ImageURL:    imageURL,
-			HasSections: len(info.crews) > 0,
+			Name:     name,
+			ImageURL: imageURL,
+			HasCrews: len(info.crews) > 0,
 		})
 	}
 
@@ -564,10 +634,10 @@ func LoadModel(source data.Source, blobs BlobChecker) (*Model, error) {
 		}
 		info, ok := classrooms[p.Classroom]
 		if !ok {
-			return nil, fmt.Errorf("staff %s is assigned to unknown classroom %q", p.Email, p.Classroom)
+			return fmt.Errorf("staff %s is assigned to unknown classroom %q", p.Email, p.Classroom)
 		}
-		if p.Section != "" && !info.crews[p.Section] {
-			return nil, fmt.Errorf("staff %s is assigned to unknown crew %q of %s", p.Email, p.Section, p.Classroom)
+		if p.Crew != "" && !info.crews[p.Crew] {
+			return fmt.Errorf("staff %s is assigned to unknown crew %q of %s", p.Email, p.Crew, p.Classroom)
 		}
 	}
 	for _, name := range classroomNames {
@@ -584,33 +654,33 @@ func LoadModel(source data.Source, blobs BlobChecker) (*Model, error) {
 		if len(crews) == 0 {
 			crews = []string{""}
 		}
-		for _, crew := range crews {
-			section := Section{Classroom: name, Name: crew, GradeBand: band}
+		for _, crewName := range crews {
+			crew := Crew{Classroom: name, Name: crewName, GradeBand: band}
 			for _, p := range model.People {
-				if p.IsStaff && p.Classroom == name && p.Section == crew {
-					section.Teachers = append(section.Teachers, p.Email)
+				if p.IsStaff && p.Classroom == name && p.Crew == crewName {
+					crew.Teachers = append(crew.Teachers, p.Email)
 				}
 			}
-			model.Sections = append(model.Sections, section)
+			model.Crews = append(model.Crews, crew)
 		}
 	}
+	return nil
+}
 
+func (l *loader) deriveStructure() error {
 	for i, grade := range gradeOrder {
 		g := Grade{Name: grade, Band: gradeBands[grade]}
 		if i+1 < len(gradeOrder) {
 			g.NextName = gradeOrder[i+1]
 			g.NextBand = gradeBands[g.NextName]
 		}
-		model.Grades = append(model.Grades, g)
+		l.model.Grades = append(l.model.Grades, g)
 	}
-
-	for band, emails := range roomParents {
-		model.RoomParents[bandLabel(band)] = emails
+	for band, emails := range l.roomParents {
+		l.model.RoomParents[bandLabel(band)] = emails
 	}
-
-	model.Departments = append(model.Departments, departmentOrder...)
-
-	return model, nil
+	l.model.Departments = append(l.model.Departments, departmentOrder...)
+	return nil
 }
 
 func bandLabel(band string) string {

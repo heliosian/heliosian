@@ -5,11 +5,20 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"sort"
 
 	"heliosian/internal/data"
 	"heliosian/internal/directory"
 )
+
+type staticFiles struct{}
+
+func (staticFiles) Has(key string) bool {
+	_, err := os.Stat(filepath.Join("web/static", filepath.FromSlash(key)))
+	return err == nil
+}
 
 func main() {
 	sheet := flag.String("sheet", "", "spreadsheet id")
@@ -21,7 +30,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("[ERROR] sheet source: %v", err)
 	}
-	model, err := directory.LoadModel(source, nil)
+	model, err := directory.LoadModel(source, nil, staticFiles{})
 	if err != nil {
 		log.Fatalf("[ERROR] load model: %v", err)
 	}
@@ -56,11 +65,11 @@ func main() {
 	}
 	fmt.Println("classrooms:")
 	for _, c := range model.Classrooms {
-		fmt.Printf("  %s (image %v, crews %v)\n", c.Name, c.ImageURL != "", c.HasSections)
+		fmt.Printf("  %s (image %v, crews %v)\n", c.Name, c.ImageURL != "", c.HasCrews)
 	}
 	fmt.Println("crews:")
-	for _, s := range model.Sections {
-		fmt.Printf("  %s | %s | %s | teachers %v\n", s.Classroom, s.Name, s.GradeBand, s.Teachers)
+	for _, c := range model.Crews {
+		fmt.Printf("  %s | %s | %s | teachers %v\n", c.Classroom, c.Name, c.GradeBand, c.Teachers)
 	}
 	bands := []string{}
 	for band := range model.RoomParents {
@@ -75,14 +84,5 @@ func main() {
 	fmt.Println("grades:")
 	for _, g := range model.Grades {
 		fmt.Printf("  %s -> %s (%s -> %s)\n", g.Name, g.NextName, g.Band, g.NextBand)
-	}
-	for _, email := range []string{"lexi.augenbergs@heliosschool.org", "daren.liang@heliosschool.org", "yeada.li@heliosschool.org", "dog@heliosschool.org", "mike.orlando@heliosschool.org", "evie.weiss@heliosschool.org"} {
-		for _, p := range model.People {
-			if p.Email == email {
-				fmt.Printf("spot %s: full=%q legal=%q pref=%q roles=S%v/P%v/T%v grade=%q class=%q crew=%q band=%q dept=%q title=%q family=%s\n",
-					email, p.FullName, p.LegalName, p.PreferredName, p.IsStudent, p.IsParent, p.IsStaff,
-					p.Grade, p.Classroom, p.Section, p.GradeBand, p.Department, p.JobTitle, p.FamilyKey)
-			}
-		}
 	}
 }
