@@ -26,24 +26,24 @@ func NewSheet(spreadsheets map[string]string) (*Sheet, error) {
 	return &Sheet{service: service, spreadsheets: spreadsheets}, nil
 }
 
-func (s *Sheet) Table(app, name string) ([]map[string]string, error) {
+func (s *Sheet) Table(app, name string) ([]string, []map[string]string, error) {
 	id, ok := s.spreadsheets[app]
 	if !ok {
-		return nil, fmt.Errorf("no spreadsheet configured for app %q", app)
+		return nil, nil, fmt.Errorf("no spreadsheet configured for app %q", app)
 	}
-	resp, err := s.service.Spreadsheets.Values.Get(id, "'"+strings.ReplaceAll(name, "'", "''")+"'").Do()
+	resp, err := s.service.Spreadsheets.Values.Get(id, quoteTab(name)).Do()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return toRecords(resp.Values), nil
+	return parseTable(name, resp.Values)
 }
 
-func (s *Sheet) SetColumn(app, table, keyColumn, keyValue, column, value string) error {
+func (s *Sheet) Upsert(app, table, keyColumn, keyValue, column, value string) error {
 	id, ok := s.spreadsheets[app]
 	if !ok {
 		return fmt.Errorf("no spreadsheet configured for app %q", app)
 	}
-	quoted := "'" + strings.ReplaceAll(table, "'", "''") + "'"
+	quoted := quoteTab(table)
 	resp, err := s.service.Spreadsheets.Values.Get(id, quoted).Do()
 	if err != nil {
 		return err
@@ -74,7 +74,17 @@ func (s *Sheet) SetColumn(app, table, keyColumn, keyValue, column, value string)
 		})
 	}
 	if len(ranges) == 0 {
-		return fmt.Errorf("no row in %s has %s = %q", table, keyColumn, keyValue)
+		width := max(keyIdx, colIdx) + 1
+		row := make([]interface{}, width)
+		for i := range row {
+			row[i] = ""
+		}
+		row[keyIdx] = keyValue
+		row[colIdx] = value
+		_, err := s.service.Spreadsheets.Values.Append(id, quoted, &sheets.ValueRange{
+			Values: [][]interface{}{row},
+		}).ValueInputOption("RAW").InsertDataOption("INSERT_ROWS").Do()
+		return err
 	}
 	_, err = s.service.Spreadsheets.Values.BatchUpdate(id, &sheets.BatchUpdateValuesRequest{
 		ValueInputOption: "RAW",
@@ -99,7 +109,7 @@ func (s *Sheet) Append(app, table string, header, row []string) error {
 			break
 		}
 	}
-	quoted := "'" + strings.ReplaceAll(table, "'", "''") + "'"
+	quoted := quoteTab(table)
 	if !exists {
 		_, err := s.service.Spreadsheets.BatchUpdate(id, &sheets.BatchUpdateSpreadsheetRequest{
 			Requests: []*sheets.Request{{AddSheet: &sheets.AddSheetRequest{
@@ -127,6 +137,10 @@ func (s *Sheet) appendRow(id, quotedTable string, row []string) error {
 	return err
 }
 
+func quoteTab(title string) string {
+	return "'" + strings.ReplaceAll(title, "'", "''") + "'"
+}
+
 func columnName(idx int) string {
 	name := ""
 	for idx >= 0 {
@@ -136,13 +150,19 @@ func columnName(idx int) string {
 	return name
 }
 
-func toRecords(values [][]interface{}) []map[string]string {
+func parseTable(name string, values [][]interface{}) ([]string, []map[string]string, error) {
 	if len(values) == 0 {
-		return nil
+		return nil, nil, fmt.Errorf("table %s has no header row", name)
 	}
 	header := make([]string, len(values[0]))
+	seen := map[string]bool{}
 	for i, cell := range values[0] {
-		header[i] = strings.TrimSpace(fmt.Sprint(cell))
+		h := strings.TrimSpace(fmt.Sprint(cell))
+		if h != "" && seen[h] {
+			return nil, nil, fmt.Errorf("table %s has duplicate header %q", name, h)
+		}
+		seen[h] = true
+		header[i] = h
 	}
 	records := []map[string]string{}
 	for _, row := range values[1:] {
@@ -161,5 +181,5 @@ func toRecords(values [][]interface{}) []map[string]string {
 			records = append(records, record)
 		}
 	}
-	return records
+	return header, records, nil
 }

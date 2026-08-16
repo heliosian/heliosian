@@ -14,12 +14,13 @@ const refreshInterval = 5 * time.Minute
 type Cache struct {
 	source   data.Source
 	geocoder *geocode.Client
+	blobs    BlobChecker
 	mu       sync.RWMutex
 	model    *Model
 }
 
-func NewCache(source data.Source, geocoder *geocode.Client) (*Cache, error) {
-	c := &Cache{source: source, geocoder: geocoder}
+func NewCache(source data.Source, geocoder *geocode.Client, blobs BlobChecker) (*Cache, error) {
+	c := &Cache{source: source, geocoder: geocoder, blobs: blobs}
 	if err := c.refresh(); err != nil {
 		return nil, err
 	}
@@ -47,7 +48,7 @@ func (c *Cache) refreshLoop() {
 
 func (c *Cache) refresh() error {
 	start := time.Now()
-	model, err := LoadModel(c.source)
+	model, err := LoadModel(c.source, c.blobs)
 	if err != nil {
 		return err
 	}

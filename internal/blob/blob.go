@@ -231,6 +231,13 @@ func (s *Store) Refresh() error {
 	return s.refresh()
 }
 
+func (s *Store) Has(key string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	_, ok := s.entries[key]
+	return ok
+}
+
 func (s *Store) Upload(folder, base, ext, mimeType string, content []byte) (string, error) {
 	folderID, err := s.subfolder(folder)
 	if err != nil {

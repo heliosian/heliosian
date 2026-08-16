@@ -15,7 +15,24 @@ import (
 
 const changeLogTable = "Change Log"
 
-var changeLogHeader = []string{"Timestamp", "Actor", "Target", "Kind", "File", "Archived"}
+var changeLogHeader = append([]string{"Timestamp", "Actor"}, overrideColumns...)
+
+func changeLogRow(actor, email string, previous map[string]string) []string {
+	row := make([]string, len(changeLogHeader))
+	row[0] = time.Now().UTC().Format(time.RFC3339)
+	row[1] = actor
+	for i, column := range changeLogHeader {
+		if column == "Email" {
+			row[i] = email
+		} else if value, ok := previous[column]; ok {
+			if value == "" {
+				value = "-"
+			}
+			row[i] = value
+		}
+	}
+	return row
+}
 
 var photoExtensions = map[string]string{
 	"image/jpeg": "jpg",
@@ -68,11 +85,11 @@ func (u uploader) facts(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 	}
-	if err := u.sheet.SetColumn(appName, "Basic Directory", "Email Lower", key, "Facts", facts); err != nil {
+	if err := u.sheet.Upsert(appName, "Overrides", "Email", key, "Facts", facts); err != nil {
 		serverError(w, fmt.Errorf("update facts for %s: %w", key, err))
 		return
 	}
-	logRow := []string{time.Now().UTC().Format(time.RFC3339), me, key, "person facts", facts, old}
+	logRow := changeLogRow(me, key, map[string]string{"Facts": old})
 	if err := u.sheet.Append(appName, changeLogTable, changeLogHeader, logRow); err != nil {
 		serverError(w, fmt.Errorf("append change log after facts update for %s: %w", key, err))
 		return
@@ -125,12 +142,8 @@ func (u uploader) upload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	folder := "people"
-	keyColumn := "Email Lower"
-	column := map[string]string{"photo": "Primary Photo", "pronunciation": "Pronunciation"}[kind]
 	if target == "family" {
 		folder = "families"
-		keyColumn = "Family Key"
-		column = map[string]string{"photo": "Family Photo", "pronunciation": "Family Pronunciation"}[kind]
 	}
 	local, _, _ := strings.Cut(key, "@")
 	base := local + "-" + kind
@@ -139,15 +152,6 @@ func (u uploader) upload(w http.ResponseWriter, r *http.Request) {
 	archived, err := u.store.Upload(folder, base, ext, mimeType, content)
 	if err != nil {
 		serverError(w, err)
-		return
-	}
-	if err := u.sheet.SetColumn(appName, "Basic Directory", keyColumn, key, column, name); err != nil {
-		serverError(w, fmt.Errorf("update sheet after upload of %s/%s: %w", folder, name, err))
-		return
-	}
-	logRow := []string{time.Now().UTC().Format(time.RFC3339), me, key, target + " " + kind, name, archived}
-	if err := u.sheet.Append(appName, changeLogTable, changeLogHeader, logRow); err != nil {
-		serverError(w, fmt.Errorf("append change log after upload of %s/%s: %w", folder, name, err))
 		return
 	}
 	if err := u.cache.Refresh(); err != nil {

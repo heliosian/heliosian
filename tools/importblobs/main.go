@@ -198,7 +198,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("[ERROR] sheet source: %v", err)
 	}
-	model, err := directory.LoadModel(source)
+	model, err := directory.LoadModel(source, nil)
 	if err != nil {
 		log.Fatalf("[ERROR] load model: %v", err)
 	}
