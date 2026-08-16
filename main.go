@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"log"
+	"mime"
 	"net/http"
 	"os"
 	"strings"
@@ -82,6 +83,9 @@ func mapsKey(envName, file string) string {
 }
 
 func main() {
+	if err := mime.AddExtensionType(".webmanifest", "application/manifest+json"); err != nil {
+		log.Fatalf("[ERROR] register manifest mime type: %v", err)
+	}
 	authn := auth.New(clientID(), sessionKey())
 	serverKey := mapsKey("GOOGLE_MAPS_SERVER_KEY", "creds/geocoding.key")
 	browserKey := mapsKey("GOOGLE_MAPS_BROWSER_KEY", "creds/maps.key")

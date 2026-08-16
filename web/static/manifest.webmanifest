@@ -1,0 +1,16 @@
+{
+  "name": "Helios Who?",
+  "short_name": "Helios Who?",
+  "description": "Please log in with your @heliosschool.org email address",
+  "display": "standalone",
+  "id": "/",
+  "scope": "/",
+  "start_url": "/",
+  "theme_color": "#014E54",
+  "background_color": "#014E54",
+  "icons": [
+    {"src": "/static/brand/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "/static/brand/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+    {"src": "/static/brand/maskable-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ]
+}
