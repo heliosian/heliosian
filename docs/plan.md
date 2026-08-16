@@ -14,18 +14,4 @@ What remains to build. Current behavior is documented in `docs/dev.md`, `docs/da
 ## Hosting and deployment
 
 - Cloud Run service in the school's project, minimum one instance (media is held in memory; startup is too slow for scale-to-zero).
-- GitHub as source of truth with automatic build and deploy to Cloud Run on pushes to main.
 - Docker build producing the static binary in a minimal base image containing only tzinfo and CA certificates.
-- Serving domain and Cloud project layout are undecided.
-
-## Data
-
-- Sample data mode: generated, non-production data so contributors can develop and test with no credentials and no real community data.
-- Clean sheet layout: one spreadsheet per app, one tab per entity type, first row as schema — replacing the inherited spreadsheet the loader currently reads.
-- Year rollover: flipping the directory to the next school year using the next-grade mapping.
-- Veracross integration as a second data-source implementation replacing Sheets when an API becomes available.
-
-## Later
-
-- Subsequent apps hosted in the same binary.
-- TypeScript adoption if client code grows.
