@@ -9,11 +9,15 @@
 <link rel="stylesheet" href="/static/fonts/fonts.css">
 <link rel="stylesheet" href="/static/directory/style.css">
 </head>
-<body>
+<body data-user-email="{{.UserEmail}}">
 <aside class="sidebar">
 <div class="brand"><img src="/static/brand/icon-192.png" alt=""><span>Helios Who?</span></div>
 <nav id="nav"></nav>
-<div class="user"><span class="user-avatar">{{.UserInitial}}</span><span>{{.UserName}}</span></div>
+<div class="user-menu" id="user-menu" hidden>
+<a href="/profile">View Profile</a>
+<form method="post" action="/auth/logout"><button>Sign Out</button></form>
+</div>
+<div class="user" id="user"><span class="user-avatar">{{.UserInitial}}</span><span>{{.UserName}}</span></div>
 </aside>
 <main id="main"></main>
 <script src="/static/directory/app.js"></script>

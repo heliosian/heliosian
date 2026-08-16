@@ -56,11 +56,7 @@ The capture is the visible viewport, not the full page, so click coordinates rea
 
 Invocations must not linger: every run exits by itself within its 15-second internal timeout, leaving the browser and tab untouched.
 
-At the end of a capture session, quit the browser:
-
-    pkill -f capture-profile
-
-The login session persists in the profile, so the next `tools/capturebrowser` launch is still signed in.
+Leave the browser running between capture sessions — never kill it. In practice logins do not reliably survive a browser restart, and killing it forces a human to sign in again.
 
 ## Agent recipe
 

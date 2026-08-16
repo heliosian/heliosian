@@ -359,6 +359,9 @@ function referrerCrumbs() {
   if (seg[0] === 'staff') {
     return [['Staff', '/staff']];
   }
+  if (seg[0] === 'profile') {
+    return [['Profile', '/profile']];
+  }
   return null;
 }
 
@@ -583,7 +586,17 @@ function renderFamilyDetail(key) {
     return;
   }
   const shortName = (family.name || '').replace(/ Family$/, '');
-  main.append(breadcrumbs([['People', '/people'], [shortName, null], ['Family', null]]));
+  let crumbs = [['People', '/people'], [shortName, null], ['Family', null]];
+  if (document.referrer && new URL(document.referrer).origin === location.origin) {
+    const ref = new URL(document.referrer);
+    const rseg = ref.pathname.split('/').filter(Boolean).map(decodeURIComponent);
+    if (rseg[0] === 'people' && rseg[1] && byEmail[rseg[1]]) {
+      crumbs = [['People', '/people'], [byEmail[rseg[1]].fullName, ref.pathname], ['Family', null]];
+    } else if (rseg[0] === 'profile') {
+      crumbs = [['Profile', '/profile'], ['Family', null]];
+    }
+  }
+  main.append(breadcrumbs(crumbs));
 
   const content = el('div', 'container detail-content');
   const grid = el('div', 'detail-grid');
@@ -1046,6 +1059,30 @@ function renderClassroomDetail(slug) {
   renderRoster(classroom.name, classroom.imageUrl, groups);
 }
 
+function renderProfile() {
+  const main = document.querySelector('#main');
+  main.replaceChildren();
+  const me = byEmail[document.body.dataset.userEmail];
+  if (!me) {
+    main.append(el('div', 'empty', 'Not found.'));
+    return;
+  }
+  const content = el('div', 'container content');
+  const family = state.model.families[me.familyKey];
+  if (family) {
+    content.append(el('h1', 'profile-heading', 'Family Photo'));
+    content.append(listRow(thumbUrl(family.photoUrl), '', 'Family Photo', family.photoCaption || '', '/families/' + encodeURIComponent(me.familyKey)));
+    const kids = (family.kidEmails || []).map(e => byEmail[e]).filter(Boolean);
+    if (kids.length) {
+      content.append(el('h1', 'profile-heading', 'Students'));
+      for (const k of kids) {
+        content.append(listRow(thumbUrl(k.photoUrl), (k.pronouns || '').toUpperCase(), firstName(k.fullName), '', personLink(k)));
+      }
+    }
+  }
+  main.append(content);
+}
+
 function tabParam(fallback) {
   return new URLSearchParams(location.search).get('tab') || fallback;
 }
@@ -1072,8 +1109,24 @@ function render() {
   } else if (seg[0] === 'staff') {
     state.q = '';
     renderStaffPage();
+  } else if (seg[0] === 'profile') {
+    renderProfile();
   }
 }
+
+const userMenu = document.querySelector('#user-menu');
+document.querySelector('#user').addEventListener('click', e => {
+  e.stopPropagation();
+  userMenu.hidden = !userMenu.hidden;
+});
+document.addEventListener('click', () => {
+  userMenu.hidden = true;
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    userMenu.hidden = true;
+  }
+});
 
 async function load() {
   const res = await fetch('/api/directory/model');
