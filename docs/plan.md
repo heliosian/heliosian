@@ -1,50 +1,31 @@
 # Plan
 
-## Architecture
-
-- Single Go server binary hosting multiple apps under one process, with per-app routing. The directory app is the first; the structure anticipates more.
-- Client is frameworkless JavaScript served by the binary. No build step unless/until TypeScript is adopted, and then a minimal one.
-- Structured data is read from Google Sheets through a data-source abstraction, so a Veracross-backed implementation can replace the Sheets one without touching app code.
-- Photos and other blobs are stored in Google Drive and served through the binary (with caching), never linked directly.
-
-## Hosting and deployment
-
-- Runs on Google Cloud Run.
-- Sign-in is Google authentication restricted to the school's Google Workspace domain. Community-only data is never served to unauthenticated requests.
-- GitHub is the source of truth. Pushes to the main branch trigger an automatic build and deploy to Cloud Run.
-- The Docker build produces a static binary in a minimal base image containing only tzinfo and CA certificates.
-
-## Local development
-
-- One command starts the local server.
-- Templates, static assets, and content reload on change without restarting the server.
-- A local data mode serves generated, non-production sample data so contributors never need real community data to develop or test.
-- A documented screenshot mechanism captures pages from the local dev server, so agents (and humans) can verify visual changes. See `docs/screenshots.md`.
+What remains to build. Current behavior is documented in `docs/dev.md`, `docs/data.md`, `docs/directory.md`, `docs/design.md`, and `docs/pwa.md`.
 
 ## Directory app
 
-- Clone the existing app's functionality and layout, working from screenshots of the current app as the reference.
-- Views: browsable/searchable directory of families and individuals; detail pages with contact info, photos, and name pronunciation.
-- Photo handling: individual and family photos uploaded to Drive, resized/cached for serving.
-- Pronunciation: audio recordings (MP3), one per person and one per family, stored with the other blobs.
+- Remaining sections: My Family, Map, Email List.
+- Mobile chrome: brand-teal top bar and bottom tab navigation on narrow screens (see `docs/directory.md`); today only the desktop chrome is faithful.
+- Filter button behavior — currently visual only; the original filters by grade and classroom.
+- Favorites: the heart toggle and bookmarks, feeding the email list's bookmarks tab.
+- Installable-app plumbing: manifest, icons, and meta tags per `docs/pwa.md`.
+- Self-service flows: photo and pronunciation upload, address update, opt-out.
+
+## Hosting and deployment
+
+- Cloud Run service in the school's project, minimum one instance (media is held in memory; startup is too slow for scale-to-zero).
+- GitHub as source of truth with automatic build and deploy to Cloud Run on pushes to main.
+- Docker build producing the static binary in a minimal base image containing only tzinfo and CA certificates.
+- Serving domain and Cloud project layout are undecided.
 
 ## Data
 
-- Sheets layout: one spreadsheet per app, one tab per entity type, first row is the schema. The server reads via the Sheets API with a service account.
-- Import tooling brings existing data from the current platforms into Sheets and Drive.
-- When a Veracross API is available, a second data-source implementation replaces Sheets as the backend for directory data.
+- Sample data mode: generated, non-production data so contributors can develop and test with no credentials and no real community data.
+- Clean sheet layout: one spreadsheet per app, one tab per entity type, first row as schema — replacing the inherited spreadsheet the loader currently reads.
+- Year rollover: flipping the directory to the next school year using the next-grade mapping.
+- Veracross integration as a second data-source implementation replacing Sheets when an API becomes available.
 
-## Milestones
+## Later
 
-1. Repo scaffold: server skeleton, app routing, local dev loop with reload, sample data mode, screenshot tooling, contributor/agent docs.
-2. Directory app read-only clone against sample data.
-3. Google Sheets and Drive integration; real data imported.
-4. Cloud Run service, GitHub auto-deploy pipeline, minimal image build.
-5. Google domain sign-in gating community-only data.
-6. Photo/pronunciation upload flows.
-7. Subsequent apps.
-
-## Open questions
-
-- TypeScript adoption: start with plain JavaScript; revisit if client code grows.
-- Serving domain and Cloud project layout.
+- Subsequent apps hosted in the same binary.
+- TypeScript adoption if client code grows.
