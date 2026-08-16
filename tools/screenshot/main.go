@@ -7,8 +7,10 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
+	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
 )
 
@@ -17,6 +19,8 @@ func main() {
 	out := flag.String("out", "screenshots/capture.png", "output png path")
 	wait := flag.String("wait", "body", "css selector that must be visible before capturing")
 	remote := flag.Bool("remote", false, "attach to the capture browser on localhost:9222 instead of launching headless chrome")
+	cookie := flag.String("cookie", "", "name=value cookie to set for localhost before navigating")
+	click := flag.String("click", "", "css selector to click after the wait selector appears")
 	flag.Parse()
 	ctx := context.Background()
 	if *remote {
@@ -28,14 +32,29 @@ func main() {
 	defer cancelBrowser()
 	ctx, cancelTimeout := context.WithTimeout(ctx, 30*time.Second)
 	defer cancelTimeout()
+	actions := []chromedp.Action{chromedp.EmulateViewport(1280, 800)}
+	if *cookie != "" {
+		name, value, ok := strings.Cut(*cookie, "=")
+		if !ok {
+			log.Fatal("[ERROR] -cookie must be name=value")
+		}
+		actions = append(actions, chromedp.ActionFunc(func(ctx context.Context) error {
+			return network.SetCookie(name, value).WithDomain("localhost").WithPath("/").Do(ctx)
+		}))
+	}
 	var png []byte
-	err := chromedp.Run(ctx,
-		chromedp.EmulateViewport(1280, 800),
+	actions = append(actions,
 		chromedp.Navigate(*url),
 		chromedp.WaitVisible(*wait, chromedp.ByQuery),
-		chromedp.FullScreenshot(&png, 90),
 	)
-	if err != nil {
+	if *click != "" {
+		actions = append(actions,
+			chromedp.Click(*click, chromedp.ByQuery),
+			chromedp.Sleep(500*time.Millisecond),
+		)
+	}
+	actions = append(actions, chromedp.FullScreenshot(&png, 90))
+	if err := chromedp.Run(ctx, actions...); err != nil {
 		log.Fatalf("[ERROR] capture %s: %v", *url, err)
 	}
 	if err := os.MkdirAll(filepath.Dir(*out), 0o755); err != nil {

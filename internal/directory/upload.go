@@ -63,24 +63,132 @@ func RegisterUpload(mux *http.ServeMux, cache *Cache, sheet *data.Sheet, store *
 	mux.HandleFunc("POST /api/directory/upload", u.upload)
 	mux.HandleFunc("POST /api/directory/facts", u.facts)
 	mux.HandleFunc("POST /api/directory/optout", u.optOut)
+	mux.HandleFunc("POST /api/directory/edit", u.edit)
+}
+
+func clearable(value string) string {
+	if value == "" {
+		return "-"
+	}
+	return value
+}
+
+func (u uploader) edit(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
+	key := strings.ToLower(strings.TrimSpace(r.FormValue("key")))
+	field := r.FormValue("field")
+	value := strings.TrimSpace(r.FormValue("value"))
+	me := auth.Email(r)
+	model := u.cache.Model()
+	var person *Person
+	for i := range model.People {
+		if model.People[i].Email == key {
+			person = &model.People[i]
+			break
+		}
+	}
+	if person == nil {
+		http.Error(w, "no such person", http.StatusBadRequest)
+		return
+	}
+
+	cells := map[string]string{}
+	previous := map[string]string{}
+	switch field {
+	case "preferred-name":
+		if !mayEdit(model, me, "person", key) {
+			http.Error(w, "not allowed to edit this record", http.StatusForbidden)
+			return
+		}
+		if value == "" || len(value) > 80 {
+			http.Error(w, "bad preferred name", http.StatusBadRequest)
+			return
+		}
+		base := person.LegalName
+		if base == "" {
+			base = person.FullName
+		}
+		cells["Preferred Name"] = value
+		cells["Full Name"] = value + " " + surname(base)
+		previous["Preferred Name"] = person.PreferredName
+		previous["Full Name"] = person.FullName
+	case "phone":
+		if !mayEdit(model, me, "person", key) {
+			http.Error(w, "not allowed to edit this record", http.StatusForbidden)
+			return
+		}
+		if len(value) > 40 {
+			http.Error(w, "bad phone number", http.StatusBadRequest)
+			return
+		}
+		cells["Phone"] = clearable(value)
+		previous["Phone"] = person.Phone
+	case "address":
+		if key != strings.ToLower(me) || !person.IsParent {
+			http.Error(w, "not allowed to edit this record", http.StatusForbidden)
+			return
+		}
+		family, ok := model.Families[person.FamilyKey]
+		if !ok {
+			http.Error(w, "no family record", http.StatusBadRequest)
+			return
+		}
+		if len(value) > 200 {
+			http.Error(w, "bad address", http.StatusBadRequest)
+			return
+		}
+		cells["Address"] = clearable(value)
+		previous["Address"] = family.Address
+	default:
+		http.Error(w, "bad field", http.StatusBadRequest)
+		return
+	}
+
+	for column, cell := range cells {
+		if err := u.sheet.Upsert(appName, "Overrides", "Email", key, column, cell); err != nil {
+			serverError(w, fmt.Errorf("set %s for %s: %w", column, key, err))
+			return
+		}
+	}
+	logRow := changeLogRow(me, key, previous)
+	if err := u.sheet.Append(appName, changeLogTable, changeLogHeader, logRow); err != nil {
+		serverError(w, fmt.Errorf("append change log after %s edit for %s: %w", field, key, err))
+		return
+	}
+	if err := u.cache.Refresh(); err != nil {
+		serverError(w, fmt.Errorf("refresh model after %s edit: %w", field, err))
+		return
+	}
+	log.Printf("edit: %s set %s on %s", me, field, key)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (u uploader) optOut(w http.ResponseWriter, r *http.Request) {
-	me := strings.ToLower(auth.Email(r))
-	if err := u.sheet.Upsert(appName, "Overrides", "Email", me, "Opted Out", "TRUE"); err != nil {
-		serverError(w, fmt.Errorf("opt out %s: %w", me, err))
+	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
+	me := auth.Email(r)
+	key := strings.ToLower(strings.TrimSpace(r.FormValue("key")))
+	if key == "" {
+		http.Error(w, "bad opt out request", http.StatusBadRequest)
 		return
 	}
-	logRow := changeLogRow(me, me, map[string]string{"Opted Out": ""})
+	if !mayEdit(u.cache.Model(), me, "person", key) {
+		http.Error(w, "not allowed to edit this record", http.StatusForbidden)
+		return
+	}
+	if err := u.sheet.Upsert(appName, "Overrides", "Email", key, "Opted Out", "TRUE"); err != nil {
+		serverError(w, fmt.Errorf("opt out %s: %w", key, err))
+		return
+	}
+	logRow := changeLogRow(me, key, map[string]string{"Opted Out": ""})
 	if err := u.sheet.Append(appName, changeLogTable, changeLogHeader, logRow); err != nil {
-		serverError(w, fmt.Errorf("append change log after opt out of %s: %w", me, err))
+		serverError(w, fmt.Errorf("append change log after opt out of %s: %w", key, err))
 		return
 	}
 	if err := u.cache.Refresh(); err != nil {
 		serverError(w, fmt.Errorf("refresh model after opt out: %w", err))
 		return
 	}
-	log.Printf("optout: %s removed themselves from the directory", me)
+	log.Printf("optout: %s removed %s from the directory", me, key)
 	w.WriteHeader(http.StatusNoContent)
 }
 

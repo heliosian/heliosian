@@ -1251,6 +1251,45 @@ a.list-row:hover {
   margin-top: 10px;
 }
 
+.detail-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.detail-name {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.editable-value {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.field-editor {
+  margin: 8px 0;
+}
+
+.field-editor input {
+  width: 100%;
+  max-width: 360px;
+  font: inherit;
+  font-size: 14px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.field-note {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 6px;
+}
+
 .about-status {
   text-align: left;
 }

@@ -666,6 +666,59 @@ function copyButton(text) {
   return iconButton('copy', 'Copy', () => navigator.clipboard.writeText(text));
 }
 
+async function submitField(key, field, value, status) {
+  status.classList.remove('error');
+  status.textContent = 'Saving…';
+  const form = new FormData();
+  form.append('key', key);
+  form.append('field', field);
+  form.append('value', value);
+  const res = await fetch('/api/directory/edit', {method: 'POST', body: form});
+  if (!res.ok) {
+    status.classList.add('error');
+    status.textContent = await res.text();
+    return false;
+  }
+  await load();
+  return true;
+}
+
+function editPencil(title) {
+  const pencil = el('button', 'edit-icon inline');
+  pencil.title = title;
+  pencil.append(svg('pencil'));
+  return pencil;
+}
+
+function fieldEditor(anchor, pencil, opts) {
+  const box = el('div', 'field-editor');
+  const input = el('input');
+  input.type = 'text';
+  input.value = opts.current || '';
+  const note = el('div', 'field-note', "This doesn't affect the values shown in Veracross.");
+  const buttons = el('div', 'about-buttons');
+  const status = el('div', 'media-status about-status');
+  const save = el('button', 'media-button primary', 'Save');
+  const cancel = el('button', 'media-button', 'Cancel');
+  buttons.append(save, cancel);
+  if (opts.allowHide && opts.current) {
+    const hide = el('button', 'media-button', 'Hide');
+    buttons.append(hide);
+    hide.addEventListener('click', () => opts.submit('', status));
+  }
+  box.append(input, note, buttons, status);
+  cancel.addEventListener('click', () => {
+    box.remove();
+    anchor.hidden = false;
+    pencil.hidden = false;
+  });
+  save.addEventListener('click', () => opts.submit(input.value.trim(), status));
+  anchor.hidden = true;
+  pencil.hidden = true;
+  anchor.after(box);
+  input.focus();
+}
+
 function contactRow(value, buttons) {
   const row = el('div', 'contact-row');
   row.append(value);
@@ -757,6 +810,8 @@ function familyBand(p, family) {
   return band;
 }
 
+let personEdit = null;
+
 function renderPersonDetail(email) {
   const main = document.querySelector('#main');
   main.replaceChildren();
@@ -772,7 +827,8 @@ function renderPersonDetail(email) {
   const grid = el('div', 'detail-grid');
   const left = el('div');
   const editable = canEditPerson(p.email);
-  if (p.photoUrl || editable) {
+  const editing = editable && personEdit === p.email;
+  if (p.photoUrl || editing) {
     const wrap = el('div', 'photo-wrap');
     if (p.photoUrl) {
       const img = el('img', 'detail-photo');
@@ -783,7 +839,7 @@ function renderPersonDetail(email) {
       wrap.append(el('div', 'detail-photo detail-photo-empty'));
     }
     left.append(wrap);
-    if (editable) {
+    if (editing) {
       const status = el('div', 'media-status');
       wrap.append(uploadIcon('camera', 'Upload photo', 'image/*', 'person', p.email, 'photo', status));
       left.append(status);
@@ -792,8 +848,28 @@ function renderPersonDetail(email) {
   grid.append(left);
 
   const right = el('div');
-  right.append(el('div', 'role-label', roleLabel(p)));
-  right.append(el('h1', 'detail-name', p.fullName));
+  const topRow = el('div', 'detail-top');
+  topRow.append(el('div', 'role-label', roleLabel(p)));
+  if (editable) {
+    const toggle = el('button', 'media-button edit-toggle', editing ? 'Done' : 'Edit info');
+    toggle.addEventListener('click', () => {
+      personEdit = editing ? null : p.email;
+      renderPersonDetail(email);
+    });
+    topRow.append(toggle);
+  }
+  right.append(topRow);
+  const nameHeader = el('h1', 'detail-name');
+  nameHeader.append(el('span', '', p.fullName));
+  right.append(nameHeader);
+  if (editing) {
+    const pencil = editPencil('Edit preferred name');
+    nameHeader.append(pencil);
+    pencil.addEventListener('click', () => fieldEditor(nameHeader, pencil, {
+      current: p.preferredName || '',
+      submit: (value, status) => submitField(p.email, 'preferred-name', value, status),
+    }));
+  }
   const nickname = displayNameLine(p);
   if (nickname) {
     right.append(el('div', 'detail-sub', nickname));
@@ -804,28 +880,56 @@ function renderPersonDetail(email) {
       right.append(el('div', 'detail-sub', chain));
     }
   }
-  if (p.phone) {
-    right.append(contactRow(el('div', 'contact-value', p.phone), [
+  if (p.phone || editing) {
+    const actions = p.phone ? [
       copyButton(p.phone),
       iconButton('message', 'Text', 'sms:' + p.phone),
       iconButton('phone', 'Call', 'tel:' + p.phone),
-    ]));
+    ] : [];
+    const phoneValue = el('div', 'contact-value editable-value');
+    phoneValue.append(el('span', '', p.phone || 'No phone number'));
+    const phoneRow = contactRow(phoneValue, actions);
+    right.append(phoneRow);
+    if (editing) {
+      const pencil = editPencil('Edit phone number');
+      phoneValue.append(pencil);
+      pencil.addEventListener('click', () => fieldEditor(phoneRow, pencil, {
+        current: p.phone || '',
+        allowHide: true,
+        submit: (value, status) => submitField(p.email, 'phone', value, status),
+      }));
+    }
   }
   right.append(contactRow(el('div', 'contact-value', p.email), [
     copyButton(p.email),
     iconButton('mail', 'Email', 'mailto:' + p.email),
   ]));
   const family = state.model.families[p.familyKey];
-  if (family && family.address) {
+  const addressEditable = editing && family && p.email === document.body.dataset.userEmail &&
+    (family.adultEmails || []).includes(p.email);
+  if (family && (family.address || addressEditable)) {
     const block = el('div');
     block.append(el('div', 'field-label', 'Address'));
-    block.append(el('div', 'contact-value', family.address));
-    right.append(contactRow(block, [
+    const addressValue = el('div', 'contact-value editable-value');
+    addressValue.append(el('span', '', family.address || 'No address'));
+    block.append(addressValue);
+    const actions = family.address ? [
       copyButton(family.address),
       iconButton('map', 'Map', 'https://maps.google.com/?q=' + encodeURIComponent(family.address)),
-    ]));
+    ] : [];
+    const addressRow = contactRow(block, actions);
+    right.append(addressRow);
+    if (addressEditable) {
+      const pencil = editPencil('Edit address');
+      addressValue.append(pencil);
+      pencil.addEventListener('click', () => fieldEditor(addressRow, pencil, {
+        current: family.address || '',
+        allowHide: true,
+        submit: (value, status) => submitField(p.email, 'address', value, status),
+      }));
+    }
   }
-  if (p.pronunciationUrl || editable) {
+  if (p.pronunciationUrl || editing) {
     right.append(el('div', 'pronounce-label', 'How do I pronounce this?'));
     if (p.pronunciationUrl) {
       const audio = el('audio', 'pronounce-player');
@@ -834,19 +938,19 @@ function renderPersonDetail(email) {
       audio.src = p.pronunciationUrl;
       right.append(audio);
     }
-    if (editable) {
+    if (editing) {
       right.append(pronounceEditor('person', p.email));
     }
   }
   grid.append(right);
   content.append(grid);
 
-  if (p.facts || editable) {
+  if (p.facts || editing) {
     const header = el('h2', 'about-header', 'About Me');
     content.append(header);
     const text = el('div', 'about-text', p.facts || '');
     const status = el('div', 'media-status about-status');
-    if (editable) {
+    if (editing) {
       const pencil = el('button', 'edit-icon inline');
       pencil.title = 'Edit';
       pencil.append(svg('pencil'));
@@ -886,19 +990,25 @@ function renderPersonDetail(email) {
     content.append(text, status);
   }
 
-  if (p.email === document.body.dataset.userEmail) {
+  if (editing) {
+    const self = p.email === document.body.dataset.userEmail;
     const header = el('h2', 'about-header', 'Privacy');
-    const button = el('button', 'media-button', 'Remove me from the directory');
+    const button = el('button', 'media-button',
+      'Remove ' + (self ? 'me' : firstName(p.fullName)) + ' from this directory');
     const status = el('div', 'media-status');
     button.addEventListener('click', async () => {
-      const message = 'This removes all of your data from the directory. ' +
-        'For security, users not in the directory cannot access it. Continue?';
+      const message = 'This removes all data about ' + (self ? 'you' : firstName(p.fullName)) +
+        ' from this directory. ' +
+        'For security, users not in the directory cannot access it. ' +
+        "This doesn't affect the values shown in Veracross. Continue?";
       if (!confirm(message)) {
         return;
       }
       status.classList.remove('error');
       status.textContent = 'Removing…';
-      const res = await fetch('/api/directory/optout', {method: 'POST'});
+      const form = new FormData();
+      form.append('key', p.email);
+      const res = await fetch('/api/directory/optout', {method: 'POST', body: form});
       if (!res.ok) {
         status.classList.add('error');
         status.textContent = await res.text();
