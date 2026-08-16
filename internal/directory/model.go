@@ -58,6 +58,15 @@ type Grade struct {
 	NextBand string `json:"nextBand,omitempty"`
 }
 
+func (m *Model) Member(email string) bool {
+	for _, p := range m.People {
+		if p.Email == email {
+			return true
+		}
+	}
+	return false
+}
+
 func (m *Model) DisplayName(email string) string {
 	for _, p := range m.People {
 		if p.Email == email {

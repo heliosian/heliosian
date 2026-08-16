@@ -15,7 +15,7 @@ import (
 )
 
 func main() {
-	email := flag.String("email", "dev@heliosschool.org", "session email for the minted cookie")
+	email := flag.String("email", "ian.gulliver@heliosschool.org", "session email for the minted cookie")
 	flag.Parse()
 	key := os.Getenv("SESSION_KEY")
 	if key == "" {

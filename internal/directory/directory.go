@@ -28,6 +28,20 @@ type app struct {
 	mapsKey string
 }
 
+func MemberGate(cache *Cache, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/auth/login" || r.URL.Path == "/auth/logout" || strings.HasPrefix(r.URL.Path, "/static/") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if !cache.Model().Member(strings.ToLower(auth.Email(r))) {
+			http.Error(w, "account is not in the directory", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func Register(mux *http.ServeMux, cache *Cache, mapsKey string) {
 	a := app{cache: cache, mapsKey: mapsKey}
 	for _, section := range sections {

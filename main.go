@@ -118,5 +118,5 @@ func main() {
 		port = "8080"
 	}
 	log.Printf("listening on http://localhost:%s", port)
-	log.Fatal(http.ListenAndServe(":"+port, noCache(authn.Wrap(mux))))
+	log.Fatal(http.ListenAndServe(":"+port, noCache(authn.Wrap(directory.MemberGate(cache, mux)))))
 }
