@@ -1,0 +1,7 @@
+.git
+creds/
+docs/
+sampledata/
+screenshots/
+Dockerfile
+LICENSE.md
