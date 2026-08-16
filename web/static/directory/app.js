@@ -33,7 +33,13 @@ const icons = {
   message: '<svg viewBox="0 0 24 24"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>',
   phone: '<svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>',
   zap: '<svg viewBox="0 0 24 24"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg>',
+  more: '<svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/></svg>',
+  dots: '<svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>',
 };
+
+function isMobile() {
+  return matchMedia('(max-width: 900px)').matches;
+}
 
 const navSections = [
   {path: 'people', label: 'People'},
@@ -90,13 +96,32 @@ function myFamilyKey() {
   return (me && me.familyKey) || '';
 }
 
+function activeSection() {
+  const seg = segments();
+  if (seg[0] === 'families') {
+    return seg[1] === myFamilyKey() ? 'my-family' : 'people';
+  }
+  if (seg[0] === 'grades') {
+    return 'classrooms';
+  }
+  return seg[0];
+}
+
+function setChrome(title, backHref) {
+  document.querySelector('#mobile-title').textContent = title;
+  const back = document.querySelector('#mobile-back');
+  const menuBtn = document.querySelector('#mobile-menu-btn');
+  back.hidden = !backHref;
+  menuBtn.hidden = Boolean(backHref);
+  if (backHref) {
+    back.href = backHref;
+  }
+}
+
 function renderNav() {
+  const seg = activeSection();
   const nav = document.querySelector('#nav');
   nav.replaceChildren();
-  let seg = segments()[0];
-  if (seg === 'families') {
-    seg = segments()[1] === myFamilyKey() ? 'my-family' : 'people';
-  }
   for (const item of navSections) {
     if (item.divider) {
       nav.append(el('div', 'nav-divider'));
@@ -109,6 +134,14 @@ function renderNav() {
     }
     a.append(svg(item.path), el('span', '', item.label));
     nav.append(a);
+  }
+  const tabs = document.querySelector('#mobile-tabs');
+  tabs.replaceChildren();
+  for (const item of navSections) {
+    const a = el('a', item.path === seg ? 'active' : '');
+    a.href = '/' + item.path;
+    a.append(svg(item.path), el('span', '', item.label));
+    tabs.append(a);
   }
 }
 
@@ -169,8 +202,35 @@ function personContext(p) {
   return '';
 }
 
+function cardMore(email) {
+  const wrap = el('div', 'card-more-wrap');
+  const button = el('button', 'card-more');
+  button.append(svg('dots'));
+  const menu = el('div', 'card-menu');
+  menu.hidden = true;
+  const item = el('button', 'card-menu-item');
+  const label = el('span', '', favorites.has(email) ? 'Remove Bookmark' : 'Add Bookmark');
+  item.append(svg('heart'), label);
+  item.addEventListener('click', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    toggleFavorite(email);
+    label.textContent = favorites.has(email) ? 'Remove Bookmark' : 'Add Bookmark';
+    menu.hidden = true;
+  });
+  menu.append(item);
+  button.addEventListener('click', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    menu.hidden = !menu.hidden;
+  });
+  wrap.append(button, menu);
+  return wrap;
+}
+
 function personCard(p) {
   const card = el('a', 'person-card');
+  card.append(cardMore(p.email));
   card.href = personLink(p);
   card.append(photoOrInitials(p.photoUrl, p.fullName, 'person-photo'));
   card.append(el('div', 'role-label', roleLabel(p)));
@@ -201,6 +261,7 @@ function renderStudents(grid) {
   for (const p of matches) {
     const card = el('a', 'student-card');
     card.href = personLink(p);
+    card.append(cardMore(p.email));
     const head = el('div', 'student-head');
     const family = state.model.families[p.familyKey];
     if (family && family.photoUrl) {
@@ -294,6 +355,7 @@ function renderStaff(grid, autoFit) {
     for (const p of groups.get(dept)) {
       const card = el('a', 'person-card');
       card.href = personLink(p);
+      card.append(cardMore(p.email));
       card.append(photoOrInitials(p.photoUrl, p.fullName, 'person-photo'));
       card.append(el('div', 'role-label', p.jobTitle || 'Staff'));
       card.append(el('div', 'person-name', p.fullName));
@@ -316,21 +378,13 @@ function renderPeople() {
   const main = document.querySelector('#main');
   main.replaceChildren();
 
-  const tabs = el('div', 'tabs');
-  const tabsRow = el('div', 'container tabs-row');
-  for (const tab of peopleTabs) {
-    const node = el('div', 'tab' + (tab.key === state.tab ? ' active' : ''));
-    node.append(svg(tab.key === 'staff' ? 'staff-tab' : tab.key), el('span', '', tab.label));
-    node.addEventListener('click', () => {
-      state.tab = tab.key;
-      state.q = '';
-      history.replaceState(null, '', tabHref(tab.key));
-      renderPeople();
-    });
-    tabsRow.append(node);
-  }
-  tabs.append(tabsRow);
-  main.append(tabs);
+  const items = peopleTabs.map(t => ({...t, icon: t.key === 'staff' ? 'staff-tab' : t.key}));
+  main.append(tabStrip(items, state.tab, 2, key => {
+    state.tab = key;
+    state.q = '';
+    history.replaceState(null, '', tabHref(key));
+    renderPeople();
+  }));
 
   const content = el('div', 'content container');
   const header = el('div', 'content-header');
@@ -559,10 +613,11 @@ function fromCrumbs() {
 }
 
 function breadcrumbs(parts, favoriteEmail) {
+  const parent = [...parts].reverse().find(([, href]) => href);
+  setChrome(parts[parts.length - 1][0], parent ? parent[1] : '/people');
   const top = el('div', 'detail-top container');
   const crumbs = el('div', 'crumbs');
   const back = el('a', 'crumb-back');
-  const parent = [...parts].reverse().find(([, href]) => href);
   back.href = parent ? parent[1] : '/people';
   back.append(svg('chevron-left'));
   crumbs.append(back);
@@ -1039,21 +1094,12 @@ function renderClassroomsPage() {
   const main = document.querySelector('#main');
   main.replaceChildren();
 
-  const tabs = el('div', 'tabs');
-  const tabsRow = el('div', 'container tabs-row');
-  for (const tab of classroomsTabs) {
-    const node = el('div', 'tab' + (tab.key === state.classTab ? ' active' : ''));
-    node.append(el('span', '', tab.label));
-    node.addEventListener('click', () => {
-      state.classTab = tab.key;
-      state.q = '';
-      history.replaceState(null, '', tabHref(tab.key));
-      renderClassroomsPage();
-    });
-    tabsRow.append(node);
-  }
-  tabs.append(tabsRow);
-  main.append(tabs);
+  main.append(tabStrip(classroomsTabs, state.classTab, 1, key => {
+    state.classTab = key;
+    state.q = '';
+    history.replaceState(null, '', tabHref(key));
+    renderClassroomsPage();
+  }));
 
   const content = el('div', 'content container');
   const header = el('div', 'content-header');
@@ -1194,20 +1240,14 @@ function renderRoster(title, image, groups, backLabel) {
     {key: 'parents', label: 'Parents', icon: 'families', count: parents.length},
   ];
 
-  const tabs = el('div', 'tabs roster-tabs');
-  const tabsRow = el('div', 'tabs-row');
-  for (const tab of memberTabs) {
-    const node = el('div', 'tab' + (tab.key === state.rosterTab ? ' active' : ''));
-    node.append(svg(tab.icon), el('span', '', tab.label), el('span', 'tab-count', String(tab.count)));
-    node.addEventListener('click', () => {
-      state.rosterTab = tab.key;
-      history.replaceState(null, '', tabHref(tab.key));
-      renderRoster(title, image, groups, backLabel);
-    });
-    tabsRow.append(node);
-  }
-  tabs.append(tabsRow);
-  content.append(tabs);
+  const strip = tabStrip(memberTabs, state.rosterTab, 2, key => {
+    state.rosterTab = key;
+    history.replaceState(null, '', tabHref(key));
+    renderRoster(title, image, groups, backLabel);
+  });
+  strip.classList.add('roster-tabs');
+  strip.querySelector('.tabs-row').classList.remove('container');
+  content.append(strip);
 
   const list = el('div');
   if (state.rosterTab === 'students') {
@@ -1323,24 +1363,13 @@ function renderEmailListPage() {
 
   main.append(el('div', 'container email-hint', 'Use the filters to select for specific grades or classrooms.'));
 
-  const tabs = el('div', 'tabs');
-  const tabsRow = el('div', 'container tabs-row');
-  for (const tab of emailTabs) {
-    const node = el('div', 'tab' + (tab.key === state.emailTab ? ' active' : ''));
-    if (tab.key === 'bookmarks') {
-      node.append(svg('heart'));
-    }
-    node.append(el('span', '', tab.label));
-    node.addEventListener('click', () => {
-      state.emailTab = tab.key;
-      state.q = '';
-      history.replaceState(null, '', tabHref(tab.key));
-      renderEmailListPage();
-    });
-    tabsRow.append(node);
-  }
-  tabs.append(tabsRow);
-  main.append(tabs);
+  const items = emailTabs.map(t => (t.key === 'bookmarks' ? {...t, icon: 'heart'} : t));
+  main.append(tabStrip(items, state.emailTab, 2, key => {
+    state.emailTab = key;
+    state.q = '';
+    history.replaceState(null, '', tabHref(key));
+    renderEmailListPage();
+  }));
 
   const content = el('div', 'content container');
   const header = el('div', 'content-header');
@@ -1360,7 +1389,7 @@ function renderEmailListPage() {
   header.append(controls);
   content.append(header);
 
-  const holder = el('div');
+  const holder = el('div', 'email-holder');
   content.append(holder);
   main.append(content);
 
@@ -1574,14 +1603,75 @@ function tabParam(fallback) {
   return new URLSearchParams(location.search).get('tab') || fallback;
 }
 
+function tabNode(item, active, onSelect) {
+  const node = el('div', 'tab' + (active ? ' active' : ''));
+  if (item.icon) {
+    node.append(svg(item.icon));
+  }
+  node.append(el('span', '', item.label));
+  if (item.count !== undefined) {
+    node.append(el('span', 'tab-count', String(item.count)));
+  }
+  node.addEventListener('click', () => onSelect(item.key));
+  return node;
+}
+
+function tabStrip(items, activeKey, mobileVisible, onSelect) {
+  const tabs = el('div', 'tabs');
+  const row = el('div', 'container tabs-row');
+  const visible = isMobile() ? items.slice(0, mobileVisible) : items;
+  const hidden = isMobile() ? items.slice(mobileVisible) : [];
+  for (const item of visible) {
+    row.append(tabNode(item, item.key === activeKey, onSelect));
+  }
+  if (hidden.length) {
+    const wrap = el('div', 'more-wrap');
+    const more = el('div', 'tab' + (hidden.some(t => t.key === activeKey) ? ' active' : ''));
+    more.append(svg('more'), el('span', '', 'More'), svg('chevron'));
+    const menu = el('div', 'more-menu');
+    menu.hidden = true;
+    for (const item of hidden) {
+      const entry = el('div', 'more-item' + (item.key === activeKey ? ' active' : ''));
+      if (item.icon) {
+        entry.append(svg(item.icon));
+      }
+      entry.append(el('span', '', item.label));
+      if (item.count !== undefined) {
+        entry.append(el('span', 'tab-count', String(item.count)));
+      }
+      entry.addEventListener('click', () => onSelect(item.key));
+      menu.append(entry);
+    }
+    more.addEventListener('click', e => {
+      e.stopPropagation();
+      menu.hidden = !menu.hidden;
+    });
+    wrap.append(more, menu);
+    row.append(wrap);
+  }
+  tabs.append(row);
+  return tabs;
+}
+
 function tabHref(key) {
   const params = new URLSearchParams(location.search);
   params.set('tab', key);
   return location.pathname + '?' + params;
 }
 
+const sectionTitles = {
+  people: 'People',
+  classrooms: 'Classrooms',
+  'my-family': 'My Family',
+  staff: 'Staff',
+  map: 'Map',
+  'email-list': 'Email List',
+  profile: 'Profile',
+};
+
 function render() {
   renderNav();
+  setChrome(sectionTitles[segments()[0]] || 'Helios Who?', null);
   const seg = segments();
   if (seg[0] === 'people' && seg[1]) {
     renderPersonDetail(seg[1]);
@@ -1619,6 +1709,26 @@ document.querySelector('#user').addEventListener('click', e => {
   e.stopPropagation();
   userMenu.hidden = !userMenu.hidden;
 });
+
+const drawer = document.querySelector('#drawer');
+const drawerOverlay = document.querySelector('#drawer-overlay');
+const drawerUserMenu = document.querySelector('#drawer-user-menu');
+
+function setDrawer(open) {
+  drawer.hidden = !open;
+  drawerOverlay.hidden = !open;
+  if (!open) {
+    drawerUserMenu.hidden = true;
+  }
+}
+
+document.querySelector('#mobile-menu-btn').addEventListener('click', () => setDrawer(true));
+document.querySelector('#drawer-close').addEventListener('click', () => setDrawer(false));
+drawerOverlay.addEventListener('click', () => setDrawer(false));
+document.querySelector('#drawer-user-more').addEventListener('click', e => {
+  e.stopPropagation();
+  drawerUserMenu.hidden = !drawerUserMenu.hidden;
+});
 function closeFilterPanels() {
   for (const panel of document.querySelectorAll('.filter-panel')) {
     panel.hidden = true;
@@ -1628,6 +1738,12 @@ function closeFilterPanels() {
 
 document.addEventListener('click', e => {
   userMenu.hidden = true;
+  drawerUserMenu.hidden = true;
+  for (const menu of document.querySelectorAll('.more-menu, .card-menu')) {
+    if (!menu.hidden && !menu.parentElement.contains(e.target)) {
+      menu.hidden = true;
+    }
+  }
   for (const panel of document.querySelectorAll('.filter-panel')) {
     if (!panel.hidden && !panel.parentElement.contains(e.target)) {
       panel.hidden = true;
@@ -1638,7 +1754,11 @@ document.addEventListener('click', e => {
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     userMenu.hidden = true;
+    setDrawer(false);
     closeFilterPanels();
+    for (const menu of document.querySelectorAll('.more-menu, .card-menu')) {
+      menu.hidden = true;
+    }
   }
 });
 

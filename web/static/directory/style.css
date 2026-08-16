@@ -49,14 +49,14 @@ body {
   border-radius: 8px;
 }
 
-nav {
+#nav {
   display: flex;
   flex-direction: column;
   gap: 1px;
   flex: 1;
 }
 
-nav a {
+#nav a {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -69,7 +69,7 @@ nav a {
   border-radius: 8px;
 }
 
-nav a svg {
+#nav a svg {
   width: 20px;
   height: 20px;
   stroke: currentColor;
@@ -80,11 +80,11 @@ nav a svg {
   flex-shrink: 0;
 }
 
-nav a:hover {
+#nav a:hover {
   background: rgba(255, 255, 255, 0.06);
 }
 
-nav a.active {
+#nav a.active {
   background: var(--sidebar-active);
   color: #fff;
 }
@@ -458,6 +458,10 @@ main {
   font-size: 14px;
   padding-top: 16px;
   padding-bottom: 2px;
+}
+
+.email-holder {
+  overflow-x: auto;
 }
 
 .email-table {
@@ -1251,7 +1255,121 @@ a.list-row:hover {
   }
 }
 
+.mobile-top,
+.mobile-tabs,
+.drawer,
+.drawer-overlay,
+.card-more-wrap {
+  display: none;
+}
+
+.more-wrap {
+  position: relative;
+}
+
+.more-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  min-width: 180px;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.18);
+  padding: 6px 0;
+  z-index: 25;
+}
+
+.more-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.more-item:hover {
+  background: #f6f6f7;
+}
+
+.more-item.active {
+  color: var(--brand);
+}
+
+.more-item svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex-shrink: 0;
+}
+
+.card-more {
+  border: 0;
+  background: none;
+  padding: 4px;
+  color: #9aa4ab;
+  cursor: pointer;
+  display: flex;
+}
+
+.card-more svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+}
+
+.card-menu {
+  position: absolute;
+  top: 26px;
+  right: 0;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.2);
+  z-index: 20;
+}
+
+.card-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  background: none;
+  padding: 12px 16px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.card-menu-item svg {
+  width: 17px;
+  height: 17px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 @media (max-width: 900px) {
+  body {
+    display: block;
+  }
+  .sidebar {
+    display: none;
+  }
+  main {
+    height: 100vh;
+    padding-top: 48px;
+    padding-bottom: 62px;
+  }
   .container {
     padding-left: 16px;
     padding-right: 16px;
@@ -1263,7 +1381,248 @@ a.list-row:hover {
   .student-grid {
     grid-template-columns: 1fr;
   }
-  .search {
+  .mobile-top {
+    display: flex;
+    align-items: center;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 48px;
+    background: var(--sidebar);
+    z-index: 30;
+    padding: 0 6px;
+  }
+  .mobile-title {
+    position: absolute;
+    left: 48px;
+    right: 48px;
+    text-align: center;
+    color: #fff;
+    font-weight: 600;
+    font-size: 16px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .mobile-menu-btn[hidden],
+  .mobile-back[hidden] {
+    display: none;
+  }
+  .mobile-menu-btn,
+  .mobile-back {
+    background: none;
+    border: 0;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    position: relative;
+    z-index: 31;
+  }
+  .mobile-menu-btn svg,
+  .mobile-back svg {
+    width: 22px;
+    height: 22px;
+    stroke: rgba(255, 255, 255, 0.85);
+    fill: none;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .mobile-tabs {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 62px;
+    background: #fff;
+    border-top: 1px solid var(--line);
+    z-index: 30;
+  }
+  .mobile-tabs a {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    color: #8a939b;
+    text-decoration: none;
+    font-size: 10.5px;
+  }
+  .mobile-tabs a svg {
+    width: 22px;
+    height: 22px;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 1.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .mobile-tabs a.active {
+    color: var(--sidebar);
+  }
+  .drawer {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 285px;
+    background: #fff;
+    z-index: 50;
+    box-shadow: 0 0 40px rgba(0, 0, 0, 0.25);
+  }
+  .drawer[hidden],
+  .drawer-overlay[hidden] {
+    display: none;
+  }
+  .drawer-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.35);
+    z-index: 40;
+  }
+  .drawer-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 16px;
+    font-weight: 700;
+    font-size: 16px;
+  }
+  .drawer-head img {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+  }
+  .drawer-close {
+    margin-left: auto;
+    background: none;
+    border: 0;
+    cursor: pointer;
+    color: #5b6572;
+    display: flex;
+  }
+  .drawer-close svg {
+    width: 20px;
+    height: 20px;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 2;
+    stroke-linecap: round;
+  }
+  .drawer-user {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    align-items: center;
+    padding: 18px 16px;
+  }
+  .drawer-user-name {
+    font-weight: 700;
+    font-size: 15px;
+  }
+  .drawer-user-email {
+    color: var(--muted);
+    font-size: 12.5px;
+    margin-top: 2px;
+  }
+  .drawer-user-more {
+    margin-left: auto;
+    background: none;
+    border: 0;
+    cursor: pointer;
+    color: #5b6572;
+    display: flex;
+  }
+  .drawer-user-more svg {
+    width: 20px;
+    height: 20px;
+    fill: currentColor;
+  }
+  .drawer-user-menu-anchor {
+    position: absolute;
+    right: 14px;
+    bottom: 64px;
+    width: 190px;
+    height: 0;
+  }
+  .drawer .user-menu {
+    left: auto;
+    right: 0;
+    bottom: 0;
+  }
+  .crumbs {
+    display: none;
+  }
+  .detail-top {
+    justify-content: flex-end;
+    min-height: 44px;
+  }
+  .detail-photo {
     width: 160px;
+    margin: 0 auto;
+    display: block;
+  }
+  .detail-name {
+    font-size: 26px;
+    overflow-wrap: anywhere;
+  }
+  .contact-row {
+    gap: 10px;
+  }
+  .contact-row > :first-child {
+    min-width: 0;
+  }
+  .contact-value {
+    overflow-wrap: anywhere;
+    font-size: 14px;
+  }
+  .contact-actions {
+    flex-shrink: 0;
+  }
+  .band-photo {
+    max-width: 200px;
+    margin: 0 auto;
+  }
+  .content-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  .controls {
+    width: 100%;
+  }
+  .search {
+    flex: 1;
+    width: auto;
+  }
+  .search input {
+    width: 100%;
+  }
+  .filter-button span,
+  .filter-button > svg:last-child {
+    display: none;
+  }
+  .card-more-wrap {
+    display: block;
+    position: absolute;
+    top: 6px;
+    right: 6px;
+  }
+  a.person-card,
+  a.student-card {
+    position: relative;
+  }
+  .map-canvas {
+    height: 62vh;
   }
 }
