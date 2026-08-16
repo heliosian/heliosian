@@ -39,6 +39,12 @@ func Email(r *http.Request) string {
 	return email
 }
 
+func Fixed(email string, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), contextKey{}, email)))
+	})
+}
+
 func (a *Auth) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /auth/login", a.login)
 	mux.HandleFunc("POST /auth/logout", a.logout)

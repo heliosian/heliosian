@@ -11,15 +11,19 @@ import (
 
 const refreshInterval = 5 * time.Minute
 
+type Geocoder interface {
+	Lookup(address string) (geocode.Point, error)
+}
+
 type Cache struct {
 	source   data.Source
-	geocoder *geocode.Client
+	geocoder Geocoder
 	blobs    BlobChecker
 	mu       sync.RWMutex
 	model    *Model
 }
 
-func NewCache(source data.Source, geocoder *geocode.Client, blobs BlobChecker) (*Cache, error) {
+func NewCache(source data.Source, geocoder Geocoder, blobs BlobChecker) (*Cache, error) {
 	c := &Cache{source: source, geocoder: geocoder, blobs: blobs}
 	if err := c.refresh(); err != nil {
 		return nil, err

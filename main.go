@@ -17,17 +17,7 @@ import (
 	"heliosian/internal/geocode"
 )
 
-func directorySource() data.Source {
-	sheetID := os.Getenv("DIRECTORY_SHEET")
-	if sheetID == "" {
-		return data.Dir{Root: "sampledata"}
-	}
-	source, err := data.NewSheet(map[string]string{"directory": sheetID})
-	if err != nil {
-		log.Fatalf("[ERROR] load directory sheet: %v", err)
-	}
-	return source
-}
+const sampleUser = "jordan.whitfield@heliosschool.org"
 
 func sessionKey() []byte {
 	if key := os.Getenv("SESSION_KEY"); key != "" {
@@ -86,26 +76,34 @@ func main() {
 	if err := mime.AddExtensionType(".webmanifest", "application/manifest+json"); err != nil {
 		log.Fatalf("[ERROR] register manifest mime type: %v", err)
 	}
-	authn := auth.New(clientID(), sessionKey())
-	serverKey := mapsKey("GOOGLE_MAPS_SERVER_KEY", "creds/geocoding.key")
-	browserKey := mapsKey("GOOGLE_MAPS_BROWSER_KEY", "creds/maps.key")
-	source := directorySource()
+	sheetID := os.Getenv("DIRECTORY_SHEET")
+	var source data.Source
+	var geocoder directory.Geocoder = geocode.Fake{}
+	browserKey := os.Getenv("GOOGLE_MAPS_BROWSER_KEY")
 	var store *blob.Store
 	var blobs directory.BlobChecker
-	if os.Getenv("DIRECTORY_SHEET") != "" {
-		var err error
+	if sheetID == "" {
+		source = data.Dir{Root: "sampledata"}
+		log.Printf("DIRECTORY_SHEET not set, serving sample data as %s", sampleUser)
+	} else {
+		sheet, err := data.NewSheet(map[string]string{"directory": sheetID})
+		if err != nil {
+			log.Fatalf("[ERROR] load directory sheet: %v", err)
+		}
+		source = sheet
+		geocoder = geocode.New(mapsKey("GOOGLE_MAPS_SERVER_KEY", "creds/geocoding.key"))
+		browserKey = mapsKey("GOOGLE_MAPS_BROWSER_KEY", "creds/maps.key")
 		store, err = blob.New()
 		if err != nil {
 			log.Fatalf("[ERROR] blob store: %v", err)
 		}
 		blobs = store
 	}
-	cache, err := directory.NewCache(source, geocode.New(serverKey), blobs)
+	cache, err := directory.NewCache(source, geocoder, blobs)
 	if err != nil {
 		log.Fatalf("[ERROR] load directory data: %v", err)
 	}
 	mux := http.NewServeMux()
-	authn.Register(mux)
 	directory.Register(mux, cache, browserKey)
 	if store != nil {
 		blob.Register(mux, store)
@@ -113,10 +111,19 @@ func main() {
 	}
 	mux.Handle("GET /{$}", http.RedirectHandler("/people", http.StatusFound))
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.Dir("web/static"))))
+	var handler http.Handler = directory.MemberGate(cache, mux)
+	if sheetID == "" {
+		mux.Handle("POST /auth/logout", http.RedirectHandler("/", http.StatusSeeOther))
+		handler = auth.Fixed(sampleUser, handler)
+	} else {
+		authn := auth.New(clientID(), sessionKey())
+		authn.Register(mux)
+		handler = authn.Wrap(handler)
+	}
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
 	log.Printf("listening on http://localhost:%s", port)
-	log.Fatal(http.ListenAndServe(":"+port, noCache(authn.Wrap(directory.MemberGate(cache, mux)))))
+	log.Fatal(http.ListenAndServe(":"+port, noCache(handler)))
 }
