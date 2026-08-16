@@ -13,7 +13,7 @@ import (
 )
 
 func main() {
-	url := flag.String("url", "http://localhost:8080/directory/", "page to capture")
+	url := flag.String("url", "http://localhost:8080/people", "page to capture")
 	out := flag.String("out", "screenshots/capture.png", "output png path")
 	wait := flag.String("wait", "body", "css selector that must be visible before capturing")
 	remote := flag.Bool("remote", false, "attach to the capture browser on localhost:9222 instead of launching headless chrome")

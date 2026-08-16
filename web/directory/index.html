@@ -2,16 +2,21 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Helios Directory</title>
-<link rel="stylesheet" href="/directory/static/style.css">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#F6F6F6">
+<title>Helios Who?</title>
+<link rel="icon" href="/static/brand/icon-192.png">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="/static/directory/style.css">
 </head>
 <body>
-<header>
-<h1>Helios Directory</h1>
-<input id="search" type="search" placeholder="Search people and families" autofocus>
-</header>
-<main id="people"></main>
-<script src="/directory/static/app.js"></script>
+<aside class="sidebar">
+<div class="brand"><img src="/static/brand/icon-192.png" alt=""><span>Helios Who?</span></div>
+<nav id="nav"></nav>
+<div class="user"><span class="user-avatar">{{.UserInitial}}</span><span>{{.UserName}}</span></div>
+</aside>
+<main id="main"></main>
+<script src="/static/directory/app.js"></script>
 </body>
 </html>

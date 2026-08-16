@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/chromedp/cdproto/input"
+	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/cdproto/target"
 	"github.com/chromedp/chromedp"
 )
@@ -108,7 +109,9 @@ func main() {
 	typeText := flag.String("type", "", "insert text into the focused element")
 	key := flag.String("key", "", "press a key: enter, tab, escape, backspace, or a literal character")
 	wait := flag.String("wait", "", "css selector that must be visible before capturing")
+	cookie := flag.String("cookie", "", "set a name=value cookie on localhost before acting")
 	mobile := flag.Bool("mobile", false, "emulate a phone viewport (390x844, touch) instead of desktop 1280x800")
+	size := flag.String("size", "", "viewport size as WxH, overriding the desktop default")
 	dump := flag.Bool("dump", false, "print page html instead of writing a screenshot")
 	eval := flag.String("eval", "", "evaluate javascript in the page and print the json result instead of writing a screenshot")
 	out := flag.String("out", "screenshots/browse.png", "output png path")
@@ -128,7 +131,23 @@ func main() {
 	if *mobile {
 		viewport = chromedp.EmulateViewport(390, 844, chromedp.EmulateMobile)
 	}
+	if *size != "" {
+		w, h, ok := strings.Cut(*size, "x")
+		width, werr := strconv.ParseInt(w, 10, 64)
+		height, herr := strconv.ParseInt(h, 10, 64)
+		if !ok || werr != nil || herr != nil {
+			log.Fatalf("[ERROR] size must be WxH, got %q", *size)
+		}
+		viewport = chromedp.EmulateViewport(width, height)
+	}
 	actions := []chromedp.Action{viewport}
+	if *cookie != "" {
+		name, value, ok := strings.Cut(*cookie, "=")
+		if !ok {
+			log.Fatalf("[ERROR] cookie must be name=value, got %q", *cookie)
+		}
+		actions = append(actions, network.SetCookie(name, value).WithDomain("localhost").WithPath("/"))
+	}
 	if *nav != "" {
 		actions = append(actions, chromedp.Navigate(*nav))
 	}

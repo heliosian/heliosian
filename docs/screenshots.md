@@ -6,11 +6,11 @@
 
 With the server running:
 
-    go run ./tools/screenshot -url http://localhost:8080/directory/ -out screenshots/directory.png -wait header
+    go run ./tools/screenshot -url http://localhost:8080/people -out screenshots/directory.png -wait .sidebar
 
 Flags:
 
-- `-url` — page to capture (default `http://localhost:8080/directory/`)
+- `-url` — page to capture (default `http://localhost:8080/people`)
 - `-out` — output PNG path (default `screenshots/capture.png`); `screenshots/` is gitignored
 - `-wait` — CSS selector that must be visible before capture (default `body`); pass a selector the page's JavaScript renders (for example `.card`) to capture after data loads
 
@@ -67,7 +67,7 @@ The login session persists in the profile, so the next `tools/capturebrowser` la
 One self-contained command that starts the server, captures, and shuts down:
 
     go run . &
-    go run ./tools/screenshot -out screenshots/directory.png -wait header
+    go run ./tools/screenshot -out screenshots/directory.png -wait .sidebar
     kill $(lsof -ti :8080)
 
 Then read `screenshots/directory.png` to inspect the result.

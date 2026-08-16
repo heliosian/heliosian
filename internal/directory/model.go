@@ -54,6 +54,15 @@ type Grade struct {
 	NextBand string `json:"nextBand,omitempty"`
 }
 
+func (m *Model) DisplayName(email string) string {
+	for _, p := range m.People {
+		if p.Email == email {
+			return p.FullName
+		}
+	}
+	return email
+}
+
 type Model struct {
 	People      []Person            `json:"people"`
 	Families    map[string]Family   `json:"families"`
