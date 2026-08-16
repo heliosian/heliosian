@@ -52,7 +52,7 @@ func (a *Auth) Wrap(next http.Handler) http.Handler {
 		}
 		email := a.sessionEmail(r)
 		if email == "" {
-			if strings.Contains(r.URL.Path, "/api/") {
+			if strings.Contains(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, "/blob/") {
 				http.Error(w, "unauthenticated", http.StatusUnauthorized)
 				return
 			}

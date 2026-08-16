@@ -52,8 +52,8 @@ func LoadModel(source data.Source) (*Model, error) {
 			IsStudent:        row["Is Student?"] == "TRUE",
 			Pronouns:         row["Pronouns"],
 			Facts:            row["Facts"],
-			PronunciationURL: row["Pronunciation"],
-			PhotoURL:         row["Primary Photo"],
+			PronunciationURL: blobURL("people", email, "pronunciation", row["Pronunciation"]),
+			PhotoURL:         blobURL("people", email, "photo", row["Primary Photo"]),
 			Grade:            row["Grade"],
 			Classroom:        row["Class"],
 			Section:          row["Section"],
@@ -88,13 +88,13 @@ func LoadModel(source data.Source) (*Model, error) {
 			}
 		}
 		if acc.family.PhotoURL == "" {
-			acc.family.PhotoURL = row["Family Photo"]
+			acc.family.PhotoURL = blobURL("families", p.FamilyKey, "photo", row["Family Photo"])
 		}
 		if acc.family.PhotoCaption == "" {
 			acc.family.PhotoCaption = row["Family Photo Description"]
 		}
 		if acc.family.PronunciationURL == "" {
-			acc.family.PronunciationURL = row["Family Pronunciation"]
+			acc.family.PronunciationURL = blobURL("families", p.FamilyKey, "pronunciation", row["Family Pronunciation"])
 		}
 		if p.IsParent {
 			acc.hasParent = true
@@ -186,6 +186,14 @@ func LoadModel(source data.Source) (*Model, error) {
 	}
 
 	return model, nil
+}
+
+func blobURL(folder, email, kind, source string) string {
+	if source == "" {
+		return ""
+	}
+	local, _, _ := strings.Cut(email, "@")
+	return "/blob/" + folder + "/" + local + "-" + kind
 }
 
 func surname(fullName string) string {

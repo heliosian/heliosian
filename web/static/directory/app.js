@@ -101,10 +101,14 @@ function firstName(fullName) {
   return fullName.trim().split(/\s+/)[0];
 }
 
+function thumbUrl(url) {
+  return url ? url + '?thumb=1' : url;
+}
+
 function photoOrInitials(url, name, className) {
   if (url) {
     const img = el('img', className);
-    img.src = url;
+    img.src = thumbUrl(url);
     img.loading = 'lazy';
     img.alt = '';
     return img;
@@ -176,7 +180,7 @@ function renderStudents(grid) {
     card.href = personLink(p);
     if (p.photoUrl) {
       const img = el('img', 'student-photo');
-      img.src = p.photoUrl;
+      img.src = thumbUrl(p.photoUrl);
       img.loading = 'lazy';
       img.alt = '';
       card.append(img);
@@ -391,7 +395,7 @@ function memberRow(p, label, sub) {
   row.href = personLink(p);
   if (p.photoUrl) {
     const img = el('img', 'member-thumb');
-    img.src = p.photoUrl;
+    img.src = thumbUrl(p.photoUrl);
     img.loading = 'lazy';
     img.alt = '';
     row.append(img);

@@ -45,7 +45,21 @@ func localPart(email string) string {
 	return name
 }
 
-func findSharedFolder(svc *drive.Service) string {
+func findRoot(svc *drive.Service) string {
+	drives, err := svc.Drives.List().Do()
+	if err != nil {
+		log.Fatalf("[ERROR] list shared drives: %v", err)
+	}
+	if len(drives.Drives) == 1 {
+		log.Printf("using shared drive %q (%s)", drives.Drives[0].Name, drives.Drives[0].Id)
+		return drives.Drives[0].Id
+	}
+	if len(drives.Drives) > 1 {
+		for _, d := range drives.Drives {
+			log.Printf("candidate shared drive: %s (%s)", d.Name, d.Id)
+		}
+		log.Fatalf("[ERROR] service account can see %d shared drives; pass -folder", len(drives.Drives))
+	}
 	list, err := svc.Files.List().
 		Q("mimeType = '" + folderMime + "' and sharedWithMe = true and trashed = false").
 		Fields("files(id, name)").Do()
@@ -56,15 +70,16 @@ func findSharedFolder(svc *drive.Service) string {
 		for _, f := range list.Files {
 			log.Printf("candidate folder: %s (%s)", f.Name, f.Id)
 		}
-		log.Fatalf("[ERROR] expected exactly one folder shared with the service account, found %d; pass -folder", len(list.Files))
+		log.Fatalf("[ERROR] expected one shared drive or one shared folder, found %d folders; pass -folder", len(list.Files))
 	}
-	log.Printf("using folder %q (%s)", list.Files[0].Name, list.Files[0].Id)
+	log.Printf("using folder %q (%s); note: uploads into personal drives fail on service account quota", list.Files[0].Name, list.Files[0].Id)
 	return list.Files[0].Id
 }
 
 func ensureFolder(svc *drive.Service, parent, name string) string {
 	list, err := svc.Files.List().
 		Q(fmt.Sprintf("name = '%s' and '%s' in parents and mimeType = '%s' and trashed = false", name, parent, folderMime)).
+		SupportsAllDrives(true).IncludeItemsFromAllDrives(true).Corpora("allDrives").
 		Fields("files(id)").Do()
 	if err != nil {
 		log.Fatalf("[ERROR] find folder %s: %v", name, err)
@@ -72,7 +87,8 @@ func ensureFolder(svc *drive.Service, parent, name string) string {
 	if len(list.Files) > 0 {
 		return list.Files[0].Id
 	}
-	created, err := svc.Files.Create(&drive.File{Name: name, MimeType: folderMime, Parents: []string{parent}}).Fields("id").Do()
+	created, err := svc.Files.Create(&drive.File{Name: name, MimeType: folderMime, Parents: []string{parent}}).
+		SupportsAllDrives(true).Fields("id").Do()
 	if err != nil {
 		log.Fatalf("[ERROR] create folder %s: %v", name, err)
 	}
@@ -81,11 +97,13 @@ func ensureFolder(svc *drive.Service, parent, name string) string {
 
 func listBases(svc *drive.Service, folderID string) map[string]bool {
 	bases := map[string]bool{}
+	deleted := 0
 	token := ""
 	for {
 		call := svc.Files.List().
 			Q(fmt.Sprintf("'%s' in parents and trashed = false", folderID)).
-			Fields("nextPageToken, files(name)").PageSize(1000)
+			SupportsAllDrives(true).IncludeItemsFromAllDrives(true).Corpora("allDrives").
+			Fields("nextPageToken, files(id, name)").PageSize(1000)
 		if token != "" {
 			call = call.PageToken(token)
 		}
@@ -94,10 +112,48 @@ func listBases(svc *drive.Service, folderID string) map[string]bool {
 			log.Fatalf("[ERROR] list folder contents: %v", err)
 		}
 		for _, f := range list.Files {
-			bases[strings.TrimSuffix(f.Name, path.Ext(f.Name))] = true
+			base := strings.TrimSuffix(f.Name, path.Ext(f.Name))
+			if strings.HasSuffix(base, "-thumb") {
+				_, err := svc.Files.Update(f.Id, &drive.File{Trashed: true}).SupportsAllDrives(true).Do()
+				if err != nil {
+					log.Fatalf("[ERROR] trash stale thumb %s: %v", f.Name, err)
+				}
+				deleted++
+				continue
+			}
+			bases[base] = true
 		}
 		if list.NextPageToken == "" {
+			if deleted > 0 {
+				log.Printf("deleted %d stale thumbs", deleted)
+			}
 			return bases
+		}
+		token = list.NextPageToken
+	}
+}
+
+func folderStats(svc *drive.Service, folderID string) (int64, int64) {
+	var files, bytes int64
+	token := ""
+	for {
+		call := svc.Files.List().
+			Q(fmt.Sprintf("'%s' in parents and trashed = false", folderID)).
+			SupportsAllDrives(true).IncludeItemsFromAllDrives(true).Corpora("allDrives").
+			Fields("nextPageToken, files(size)").PageSize(1000)
+		if token != "" {
+			call = call.PageToken(token)
+		}
+		list, err := call.Do()
+		if err != nil {
+			log.Fatalf("[ERROR] list folder for stats: %v", err)
+		}
+		for _, f := range list.Files {
+			files++
+			bytes += f.Size
+		}
+		if list.NextPageToken == "" {
+			return files, bytes
 		}
 		token = list.NextPageToken
 	}
@@ -156,7 +212,7 @@ func main() {
 
 	root := *folderID
 	if root == "" {
-		root = findSharedFolder(svc)
+		root = findRoot(svc)
 	}
 	folders := map[string]string{
 		"people":   ensureFolder(svc, root, "people"),
@@ -200,7 +256,7 @@ func main() {
 
 	client := &http.Client{Timeout: 60 * time.Second}
 	var mu sync.Mutex
-	uploaded, failed := 0, 0
+	uploaded := 0
 	work := make(chan task)
 	var wg sync.WaitGroup
 	for range 6 {
@@ -210,24 +266,19 @@ func main() {
 			for t := range work {
 				body, contentType, err := fetch(client, t.url)
 				if err != nil {
-					mu.Lock()
-					failed++
-					log.Printf("[ERROR] fetch %s/%s: %v", t.folderName, t.base, err)
-					mu.Unlock()
-					continue
+					log.Fatalf("[ERROR] fetch %s/%s: %v", t.folderName, t.base, err)
 				}
 				name := t.base + extension(contentType, t.url)
 				_, err = svc.Files.Create(&drive.File{Name: name, Parents: []string{folders[t.folderName]}}).
-					Media(bytes.NewReader(body), googleapi.ContentType(contentType)).Fields("id").Do()
-				mu.Lock()
+					Media(bytes.NewReader(body), googleapi.ContentType(contentType)).
+					SupportsAllDrives(true).Fields("id").Do()
 				if err != nil {
-					failed++
-					log.Printf("[ERROR] upload %s/%s: %v", t.folderName, name, err)
-				} else {
-					uploaded++
-					if uploaded%50 == 0 {
-						log.Printf("uploaded %d/%d", uploaded, len(pending))
-					}
+					log.Fatalf("[ERROR] upload %s/%s: %v", t.folderName, name, err)
+				}
+				mu.Lock()
+				uploaded++
+				if uploaded%50 == 0 {
+					log.Printf("uploaded %d/%d", uploaded, len(pending))
 				}
 				mu.Unlock()
 			}
@@ -238,5 +289,14 @@ func main() {
 	}
 	close(work)
 	wg.Wait()
-	log.Printf("done: %d uploaded, %d failed, %d skipped", uploaded, failed, skipped)
+	log.Printf("done: %d uploaded, %d skipped", uploaded, skipped)
+
+	var totalFiles, totalBytes int64
+	for _, folderName := range []string{"people", "families"} {
+		files, bytes := folderStats(svc, folders[folderName])
+		totalFiles += files
+		totalBytes += bytes
+		log.Printf("%s: %d files, %.1f MB", folderName, files, float64(bytes)/1e6)
+	}
+	log.Printf("total: %d files, %d bytes (%.1f MB)", totalFiles, totalBytes, float64(totalBytes)/1e6)
 }
