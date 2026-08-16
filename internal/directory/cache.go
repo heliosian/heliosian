@@ -63,6 +63,12 @@ func (c *Cache) geocodeFamilies(model *Model) {
 		key     string
 		address string
 	}
+	pending := []job{}
+	for key, family := range model.Families {
+		if family.Address != "" {
+			pending = append(pending, job{key: key, address: family.Address})
+		}
+	}
 	jobs := make(chan job)
 	var wg sync.WaitGroup
 	var mu sync.Mutex
@@ -87,14 +93,10 @@ func (c *Cache) geocodeFamilies(model *Model) {
 			}
 		}()
 	}
-	total := 0
-	for key, family := range model.Families {
-		if family.Address != "" {
-			total++
-			jobs <- job{key: key, address: family.Address}
-		}
+	for _, j := range pending {
+		jobs <- j
 	}
 	close(jobs)
 	wg.Wait()
-	log.Printf("geocoded %d of %d family addresses in %s", located, total, time.Since(start).Round(time.Millisecond))
+	log.Printf("geocoded %d of %d family addresses in %s", located, len(pending), time.Since(start).Round(time.Millisecond))
 }
