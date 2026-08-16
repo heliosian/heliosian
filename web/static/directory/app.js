@@ -22,7 +22,9 @@ const icons = {
   'chevron-right': '<svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>',
   heart: '<svg viewBox="0 0 24 24"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>',
   mail: '<svg viewBox="0 0 24 24"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>',
+  copy: '<svg viewBox="0 0 24 24"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>',
   message: '<svg viewBox="0 0 24 24"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>',
+  phone: '<svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>',
 };
 
 const navSections = [
@@ -362,14 +364,20 @@ function breadcrumbs(parts) {
   return top;
 }
 
-function iconButton(name, href) {
-  const node = el(href ? 'a' : 'button', 'icon-button');
-  if (href) {
-    node.href = href;
+function iconButton(name, label, action) {
+  const node = el(typeof action === 'string' ? 'a' : 'button', 'icon-button');
+  if (typeof action === 'string') {
+    node.href = action;
     node.target = '_blank';
+  } else if (action) {
+    node.addEventListener('click', action);
   }
-  node.append(svg(name));
+  node.append(svg(name), el('span', '', label));
   return node;
+}
+
+function copyButton(text) {
+  return iconButton('copy', 'Copy', () => navigator.clipboard.writeText(text));
 }
 
 function contactRow(value, buttons) {
@@ -420,6 +428,12 @@ function familyBand(p, family) {
   const grid = el('div', 'band-grid container');
   const left = el('div', 'band-left');
   left.append(el('h2', '', `${p.fullName}'s Family`));
+  if (family.photoUrl && !p.isStudent) {
+    const img = el('img', 'band-photo');
+    img.src = thumbUrl(family.photoUrl);
+    img.alt = '';
+    left.append(img);
+  }
   if (family.photoCaption) {
     left.append(el('div', 'band-caption', family.photoCaption));
   }
@@ -433,14 +447,16 @@ function familyBand(p, family) {
       if (p.isStudent && kid.email === p.email) {
         continue;
       }
-      right.append(memberRow(kid, gradeChain(kid).toUpperCase(), kid.email));
+      const label = kid.pronouns ? `${gradeChain(kid)} (${kid.pronouns})` : gradeChain(kid);
+      right.append(memberRow(kid, label.toUpperCase(), kid.email));
     }
   }
   const adults = (family.adultEmails || []).map(e => byEmail[e]).filter(Boolean).filter(a => a.email !== p.email);
   if (adults.length) {
     right.append(el('div', 'member-header', 'Adults'));
     for (const adult of adults) {
-      right.append(memberRow(adult, adult.pronouns ? `(${adult.pronouns.toUpperCase()})` : '', adult.email));
+      const label = [adult.phone, adult.pronouns ? `(${adult.pronouns.toUpperCase()})` : ''].filter(Boolean).join(' ');
+      right.append(memberRow(adult, label, adult.email));
     }
   }
   const see = el('a', 'see-family');
@@ -489,9 +505,16 @@ function renderPersonDetail(email) {
       right.append(el('div', 'detail-sub', chain));
     }
   }
+  if (p.phone) {
+    right.append(contactRow(el('div', 'contact-value', p.phone), [
+      copyButton(p.phone),
+      iconButton('message', 'Text', 'sms:' + p.phone),
+      iconButton('phone', 'Call', 'tel:' + p.phone),
+    ]));
+  }
   right.append(contactRow(el('div', 'contact-value', p.email), [
-    iconButton('message'),
-    iconButton('mail', 'mailto:' + p.email),
+    copyButton(p.email),
+    iconButton('mail', 'Email', 'mailto:' + p.email),
   ]));
   const family = state.model.families[p.familyKey];
   if (family && family.address) {
@@ -499,9 +522,17 @@ function renderPersonDetail(email) {
     block.append(el('div', 'field-label', 'Address'));
     block.append(el('div', 'contact-value', family.address));
     right.append(contactRow(block, [
-      iconButton('message'),
-      iconButton('map', 'https://maps.google.com/?q=' + encodeURIComponent(family.address)),
+      copyButton(family.address),
+      iconButton('map', 'Map', 'https://maps.google.com/?q=' + encodeURIComponent(family.address)),
     ]));
+  }
+  if (p.pronunciationUrl) {
+    right.append(el('div', 'pronounce-label', 'How do I pronounce this?'));
+    const audio = el('audio', 'pronounce-player');
+    audio.controls = true;
+    audio.preload = 'metadata';
+    audio.src = p.pronunciationUrl;
+    right.append(audio);
   }
   grid.append(right);
   content.append(grid);
@@ -561,9 +592,17 @@ function renderFamilyDetail(key) {
   }
   if (family.address) {
     right.append(contactRow(el('div', 'contact-value', family.address), [
-      iconButton('message'),
-      iconButton('map', 'https://maps.google.com/?q=' + encodeURIComponent(family.address)),
+      copyButton(family.address),
+      iconButton('map', 'Map', 'https://maps.google.com/?q=' + encodeURIComponent(family.address)),
     ]));
+  }
+  if (family.pronunciationUrl) {
+    right.append(el('div', 'pronounce-label', 'How do I pronounce this?'));
+    const audio = el('audio', 'pronounce-player');
+    audio.controls = true;
+    audio.preload = 'metadata';
+    audio.src = family.pronunciationUrl;
+    right.append(audio);
   }
   grid.append(right);
   content.append(grid);

@@ -477,7 +477,7 @@ a.family-card {
 
 .detail-grid {
   display: grid;
-  grid-template-columns: 302px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 31fr) minmax(0, 69fr);
   gap: 28px;
 }
 
@@ -523,15 +523,19 @@ a.family-card {
 }
 
 .icon-button {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  border: 0;
-  background: #f1f3f4;
-  color: #3c4650;
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 9px;
+  height: 44px;
+  padding: 0 20px;
+  border-radius: 22px;
+  border: 0;
+  background: #f1f3f4;
+  color: #1f2933;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
   cursor: pointer;
 }
 
@@ -543,6 +547,32 @@ a.family-card {
   stroke-width: 1.5;
   stroke-linecap: round;
   stroke-linejoin: round;
+  flex-shrink: 0;
+}
+
+@media (max-width: 1399px) {
+  .icon-button {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    justify-content: center;
+    border-radius: 50%;
+  }
+  .icon-button span {
+    display: none;
+  }
+}
+
+.pronounce-label {
+  text-align: center;
+  color: var(--muted);
+  font-size: 14px;
+  margin: 34px 0 12px;
+}
+
+.pronounce-player {
+  width: 100%;
+  display: block;
 }
 
 .about-header {
@@ -564,8 +594,8 @@ a.family-card {
 
 .band-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 44px;
+  grid-template-columns: minmax(0, 31fr) minmax(0, 69fr);
+  gap: 28px;
   padding-top: 36px;
   padding-bottom: 40px;
 }
@@ -577,13 +607,18 @@ a.family-card {
   text-align: center;
 }
 
+.band-photo {
+  width: 100%;
+  border-radius: 8px;
+  display: block;
+}
+
 .band-caption {
   color: rgba(255, 255, 255, 0.72);
   font-size: 13px;
   line-height: 1.5;
   text-align: center;
-  max-width: 320px;
-  margin: 0 auto;
+  margin-top: 20px;
 }
 
 .band-title {
@@ -610,9 +645,9 @@ a.family-card {
 }
 
 .member-thumb {
-  width: 40px;
-  height: 40px;
-  border-radius: 6px;
+  width: 50px;
+  height: 50px;
+  border-radius: 8px;
   object-fit: cover;
   flex-shrink: 0;
 }

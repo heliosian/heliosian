@@ -233,11 +233,11 @@ func (s *Store) serve(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("Content-Type", "image/jpeg")
-		w.Write(e.thumb)
+		http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(e.thumb))
 		return
 	}
 	w.Header().Set("Content-Type", e.mimeType)
-	w.Write(e.data)
+	http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(e.data))
 }
 
 func thumbnail(src []byte) ([]byte, error) {
