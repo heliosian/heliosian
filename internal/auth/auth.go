@@ -46,7 +46,7 @@ func (a *Auth) Register(mux *http.ServeMux) {
 
 func (a *Auth) Wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/auth/login" {
+		if r.URL.Path == "/auth/login" || strings.HasPrefix(r.URL.Path, "/static/") {
 			next.ServeHTTP(w, r)
 			return
 		}

@@ -66,6 +66,7 @@ func main() {
 	authn.Register(mux)
 	directory.Register(mux, cache)
 	mux.Handle("GET /{$}", http.RedirectHandler("/directory/", http.StatusFound))
+	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.Dir("web/static"))))
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
