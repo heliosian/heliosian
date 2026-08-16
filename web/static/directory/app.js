@@ -18,6 +18,11 @@ const icons = {
   search: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>',
   filter: '<svg viewBox="0 0 24 24"><path d="M5 7h14M8 12h8M10.5 17h3"/></svg>',
   chevron: '<svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>',
+  'chevron-left': '<svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>',
+  'chevron-right': '<svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>',
+  heart: '<svg viewBox="0 0 24 24"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>',
+  mail: '<svg viewBox="0 0 24 24"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>',
+  message: '<svg viewBox="0 0 24 24"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>',
 };
 
 const navSections = [
@@ -57,13 +62,18 @@ function svg(name) {
   return holder.content.firstChild;
 }
 
-function section() {
-  return location.pathname.replaceAll('/', '');
+function segments() {
+  return location.pathname.split('/').filter(Boolean).map(decodeURIComponent);
+}
+
+function personLink(p) {
+  return '/people/' + encodeURIComponent(p.email);
 }
 
 function renderNav() {
   const nav = document.querySelector('#nav');
   nav.replaceChildren();
+  const seg = segments()[0] === 'families' ? 'people' : segments()[0];
   for (const item of navSections) {
     if (item.divider) {
       nav.append(el('div', 'nav-divider'));
@@ -71,7 +81,7 @@ function renderNav() {
     }
     const a = el('a');
     a.href = '/' + item.path;
-    if (item.path === section()) {
+    if (item.path === seg) {
       a.className = 'active';
     }
     a.append(svg(item.path), el('span', '', item.label));
@@ -114,9 +124,13 @@ function roleLabel(p) {
   return (p.pronouns ? `${role} (${p.pronouns})` : role).toUpperCase();
 }
 
+function gradeChain(p) {
+  return [p.grade, p.classroom, p.section].filter(Boolean).join(' ▶ ');
+}
+
 function personContext(p) {
   if (p.isStudent) {
-    return [p.grade, p.classroom, p.section].filter(Boolean).join(' ▶ ');
+    return gradeChain(p);
   }
   if (p.isStaff && p.jobTitle) {
     return p.jobTitle;
@@ -129,7 +143,8 @@ function personContext(p) {
 }
 
 function personCard(p) {
-  const card = el('div', 'person-card');
+  const card = el('a', 'person-card');
+  card.href = personLink(p);
   card.append(photoOrInitials(p.photoUrl, p.fullName, 'person-photo'));
   card.append(el('div', 'role-label', roleLabel(p)));
   card.append(el('div', 'person-name', p.fullName));
@@ -157,7 +172,8 @@ function renderStudents(grid) {
   grid.className = 'student-grid';
   const matches = state.model.people.filter(p => p.isStudent && p.fullName.toLowerCase().includes(state.q));
   for (const p of matches) {
-    const card = el('div', 'student-card');
+    const card = el('a', 'student-card');
+    card.href = personLink(p);
     if (p.photoUrl) {
       const img = el('img', 'student-photo');
       img.src = p.photoUrl;
@@ -167,7 +183,7 @@ function renderStudents(grid) {
     }
     card.append(el('div', 'student-first', firstName(p.fullName)));
     card.append(el('div', 'student-last', p.fullName.replace(firstName(p.fullName), '').trim()));
-    card.append(el('div', 'student-line', [p.grade, p.classroom, p.section].filter(Boolean).join(' ▶ ')));
+    card.append(el('div', 'student-line', gradeChain(p)));
     if (p.pronouns) {
       card.append(el('div', 'student-pronouns', p.pronouns));
     }
@@ -181,10 +197,12 @@ function familyEntries() {
     const members = [...(f.kidEmails || []), ...(f.adultEmails || [])];
     const kidGrades = [...new Set((f.kidEmails || []).map(e => byEmail[e]?.grade).filter(Boolean))];
     return {
+      key: f.key,
       name: (f.name || '').replace(/ Family$/, ''),
       label: kidGrades.length ? kidGrades.join(', ') : 'Staff',
       members: members.map(e => byEmail[e] ? firstName(byEmail[e].fullName) : '').filter(Boolean),
       photoUrl: f.photoUrl,
+      href: '/families/' + encodeURIComponent(f.key),
     };
   });
   for (const p of state.model.people) {
@@ -194,6 +212,7 @@ function familyEntries() {
         label: 'Staff',
         members: [firstName(p.fullName)],
         photoUrl: p.photoUrl,
+        href: personLink(p),
       });
     }
   }
@@ -206,7 +225,8 @@ function renderFamilies(grid) {
   const matches = familyEntries().filter(f =>
     `${f.name} ${f.members.join(' ')}`.toLowerCase().includes(state.q));
   for (const f of matches) {
-    const card = el('div', 'family-card');
+    const card = el('a', 'family-card');
+    card.href = f.href;
     card.append(photoOrInitials(f.photoUrl, f.name, 'family-photo'));
     card.append(el('div', 'family-label', f.label));
     card.append(el('div', 'family-name', f.name));
@@ -239,7 +259,8 @@ function renderStaff(grid) {
     grid.append(el('h2', 'staff-section', dept));
     const deptGrid = el('div', 'people-grid');
     for (const p of groups.get(dept)) {
-      const card = el('div', 'person-card');
+      const card = el('a', 'person-card');
+      card.href = personLink(p);
       card.append(photoOrInitials(p.photoUrl, p.fullName, 'person-photo'));
       card.append(el('div', 'role-label', p.jobTitle || 'Staff'));
       card.append(el('div', 'person-name', p.fullName));
@@ -311,9 +332,271 @@ function renderPeople() {
   input.focus();
 }
 
+function breadcrumbs(parts) {
+  const top = el('div', 'detail-top container');
+  const crumbs = el('div', 'crumbs');
+  const back = el('a', 'crumb-back');
+  back.href = '/people';
+  back.append(svg('chevron-left'));
+  crumbs.append(back);
+  parts.forEach(([label, href], i) => {
+    if (i > 0) {
+      crumbs.append(el('span', 'crumb-sep', '/'));
+    }
+    if (href) {
+      const a = el('a', 'crumb', label);
+      a.href = href;
+      crumbs.append(a);
+    } else {
+      crumbs.append(el('span', 'crumb current', label));
+    }
+  });
+  top.append(crumbs);
+  const heart = el('button', 'heart-button');
+  heart.append(svg('heart'));
+  top.append(heart);
+  return top;
+}
+
+function iconButton(name, href) {
+  const node = el(href ? 'a' : 'button', 'icon-button');
+  if (href) {
+    node.href = href;
+    node.target = '_blank';
+  }
+  node.append(svg(name));
+  return node;
+}
+
+function contactRow(value, buttons) {
+  const row = el('div', 'contact-row');
+  row.append(value);
+  const actions = el('div', 'contact-actions');
+  for (const b of buttons) {
+    actions.append(b);
+  }
+  row.append(actions);
+  return row;
+}
+
+function displayNameLine(p) {
+  if (!p.legalName || p.legalName === p.fullName) {
+    return null;
+  }
+  return p.legalName;
+}
+
+function memberRow(p, label, sub) {
+  const row = el('a', 'member-row');
+  row.href = personLink(p);
+  if (p.photoUrl) {
+    const img = el('img', 'member-thumb');
+    img.src = p.photoUrl;
+    img.loading = 'lazy';
+    img.alt = '';
+    row.append(img);
+  }
+  const info = el('div', 'member-info');
+  if (label) {
+    info.append(el('div', 'member-label', label));
+  }
+  info.append(el('div', 'member-name', p.fullName));
+  if (sub) {
+    info.append(el('div', 'member-email', sub));
+  }
+  row.append(info);
+  const chev = el('div', 'member-chevron');
+  chev.append(svg('chevron-right'));
+  row.append(chev);
+  return row;
+}
+
+function familyBand(p, family) {
+  const band = el('div', 'band');
+  const grid = el('div', 'band-grid container');
+  const left = el('div', 'band-left');
+  left.append(el('h2', '', `${p.fullName}'s Family`));
+  if (family.photoCaption) {
+    left.append(el('div', 'band-caption', family.photoCaption));
+  }
+  grid.append(left);
+
+  const right = el('div', 'band-right');
+  const kidsList = (family.kidEmails || []).map(e => byEmail[e]).filter(Boolean);
+  if (kidsList.length && !(p.isStudent && kidsList.length === 1 && kidsList[0].email === p.email)) {
+    right.append(el('div', 'member-header', 'Kids'));
+    for (const kid of kidsList) {
+      if (p.isStudent && kid.email === p.email) {
+        continue;
+      }
+      right.append(memberRow(kid, gradeChain(kid).toUpperCase(), kid.email));
+    }
+  }
+  const adults = (family.adultEmails || []).map(e => byEmail[e]).filter(Boolean).filter(a => a.email !== p.email);
+  if (adults.length) {
+    right.append(el('div', 'member-header', 'Adults'));
+    for (const adult of adults) {
+      right.append(memberRow(adult, adult.pronouns ? `(${adult.pronouns.toUpperCase()})` : '', adult.email));
+    }
+  }
+  const see = el('a', 'see-family');
+  see.href = '/families/' + encodeURIComponent(family.key);
+  see.append(el('span', '', `See ${family.name}`));
+  const chev = el('div', 'member-chevron');
+  chev.append(svg('chevron-right'));
+  see.append(chev);
+  right.append(see);
+  grid.append(right);
+  band.append(grid);
+  return band;
+}
+
+function renderPersonDetail(email) {
+  const main = document.querySelector('#main');
+  main.replaceChildren();
+  const p = byEmail[email];
+  if (!p) {
+    main.append(el('div', 'empty', 'Not found.'));
+    return;
+  }
+  main.append(breadcrumbs([['People', '/people'], [p.fullName, null]]));
+
+  const content = el('div', 'container detail-content');
+  const grid = el('div', 'detail-grid');
+  const left = el('div');
+  if (p.photoUrl) {
+    const img = el('img', 'detail-photo');
+    img.src = p.photoUrl;
+    img.alt = '';
+    left.append(img);
+  }
+  grid.append(left);
+
+  const right = el('div');
+  right.append(el('div', 'role-label', roleLabel(p)));
+  right.append(el('h1', 'detail-name', p.fullName));
+  const nickname = displayNameLine(p);
+  if (nickname) {
+    right.append(el('div', 'detail-sub', nickname));
+  }
+  if (p.isStudent) {
+    const chain = gradeChain(p);
+    if (chain) {
+      right.append(el('div', 'detail-sub', chain));
+    }
+  }
+  right.append(contactRow(el('div', 'contact-value', p.email), [
+    iconButton('message'),
+    iconButton('mail', 'mailto:' + p.email),
+  ]));
+  const family = state.model.families[p.familyKey];
+  if (family && family.address) {
+    const block = el('div');
+    block.append(el('div', 'field-label', 'Address'));
+    block.append(el('div', 'contact-value', family.address));
+    right.append(contactRow(block, [
+      iconButton('message'),
+      iconButton('map', 'https://maps.google.com/?q=' + encodeURIComponent(family.address)),
+    ]));
+  }
+  grid.append(right);
+  content.append(grid);
+
+  if (p.facts) {
+    content.append(el('h2', 'about-header', 'About Me'));
+    content.append(el('div', 'about-text', p.facts));
+  }
+  main.append(content);
+
+  if (family) {
+    main.append(familyBand(p, family));
+  }
+}
+
+function renderFamilyDetail(key) {
+  const main = document.querySelector('#main');
+  main.replaceChildren();
+  const family = state.model.families[key];
+  if (!family) {
+    main.append(el('div', 'empty', 'Not found.'));
+    return;
+  }
+  const shortName = (family.name || '').replace(/ Family$/, '');
+  main.append(breadcrumbs([['People', '/people'], [shortName, null], ['Family', null]]));
+
+  const content = el('div', 'container detail-content');
+  const grid = el('div', 'detail-grid');
+  const left = el('div');
+  if (family.photoUrl) {
+    const link = el('a');
+    link.href = family.photoUrl;
+    link.target = '_blank';
+    const img = el('img', 'detail-photo');
+    img.src = family.photoUrl;
+    img.alt = '';
+    link.append(img);
+    left.append(link);
+  }
+  if (family.photoCaption) {
+    left.append(el('div', 'family-caption', family.photoCaption));
+  }
+  if (family.photoUrl) {
+    left.append(el('div', 'photo-hint', 'click photo to open full size'));
+  }
+  grid.append(left);
+
+  const right = el('div');
+  const kids = (family.kidEmails || []).map(e => byEmail[e]).filter(Boolean);
+  const adults = (family.adultEmails || []).map(e => byEmail[e]).filter(Boolean);
+  const grades = [...new Set(kids.map(k => k.grade).filter(Boolean))];
+  right.append(el('div', 'role-label', grades.length ? grades.join(', ') : 'Staff'));
+  right.append(el('h1', 'detail-name', family.name));
+  const firsts = [...kids, ...adults].map(m => firstName(m.fullName));
+  if (firsts.length) {
+    right.append(el('div', 'detail-sub', firsts.join(', ')));
+  }
+  if (family.address) {
+    right.append(contactRow(el('div', 'contact-value', family.address), [
+      iconButton('message'),
+      iconButton('map', 'https://maps.google.com/?q=' + encodeURIComponent(family.address)),
+    ]));
+  }
+  grid.append(right);
+  content.append(grid);
+  main.append(content);
+
+  const band = el('div', 'band');
+  const inner = el('div', 'container');
+  inner.append(el('h2', 'band-title', 'Family Members'));
+  const cols = el('div', 'band-grid');
+  const adultsCol = el('div');
+  if (adults.length) {
+    adultsCol.append(el('div', 'member-header', 'Adults'));
+    for (const a of adults) {
+      adultsCol.append(memberRow(a, a.pronouns ? a.pronouns.toUpperCase() : ''));
+    }
+  }
+  const kidsCol = el('div');
+  if (kids.length) {
+    kidsCol.append(el('div', 'member-header', 'Kids'));
+    for (const k of kids) {
+      kidsCol.append(memberRow(k, k.pronouns ? k.pronouns.toUpperCase() : '', k.grade));
+    }
+  }
+  cols.append(adultsCol, kidsCol);
+  inner.append(cols);
+  band.append(inner);
+  main.append(band);
+}
+
 function render() {
   renderNav();
-  if (section() === 'people') {
+  const seg = segments();
+  if (seg[0] === 'people' && seg[1]) {
+    renderPersonDetail(seg[1]);
+  } else if (seg[0] === 'families' && seg[1]) {
+    renderFamilyDetail(seg[1]);
+  } else if (seg[0] === 'people') {
     renderPeople();
   }
 }

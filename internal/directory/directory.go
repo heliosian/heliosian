@@ -34,6 +34,8 @@ func Register(mux *http.ServeMux, cache *Cache) {
 	for _, section := range sections {
 		mux.HandleFunc("GET /"+section, a.page)
 	}
+	mux.HandleFunc("GET /people/{email}", a.page)
+	mux.HandleFunc("GET /families/{key}", a.page)
 	mux.HandleFunc("GET /dl/", a.legacyRedirect)
 	mux.HandleFunc("GET /api/directory/model", a.model)
 }

@@ -56,6 +56,13 @@ func clientID() string {
 	return parsed.Web.ClientID
 }
 
+func noCache(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-cache")
+		next.ServeHTTP(w, r)
+	})
+}
+
 func main() {
 	authn := auth.New(clientID(), sessionKey())
 	cache, err := directory.NewCache(directorySource())
@@ -72,5 +79,5 @@ func main() {
 		port = "8080"
 	}
 	log.Printf("listening on http://localhost:%s", port)
-	log.Fatal(http.ListenAndServe(":"+port, authn.Wrap(mux)))
+	log.Fatal(http.ListenAndServe(":"+port, noCache(authn.Wrap(mux))))
 }
