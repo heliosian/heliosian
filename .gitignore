@@ -1,4 +1,5 @@
 creds/
+imports/
 screenshots/
 *.png
 !web/**/*.png
