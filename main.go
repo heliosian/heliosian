@@ -58,9 +58,13 @@ func (staticFiles) Has(key string) bool {
 	return err == nil
 }
 
-func noCache(next http.Handler) http.Handler {
+func cacheControl(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "no-cache")
+		if strings.HasPrefix(r.URL.Path, "/static/fonts/") || strings.HasPrefix(r.URL.Path, "/static/brand/") {
+			w.Header().Set("Cache-Control", "public, max-age=86400")
+		} else {
+			w.Header().Set("Cache-Control", "no-cache")
+		}
 		next.ServeHTTP(w, r)
 	})
 }
@@ -133,5 +137,5 @@ func main() {
 		port = "8080"
 	}
 	log.Printf("listening on http://localhost:%s", port)
-	log.Fatal(http.ListenAndServe(":"+port, noCache(handler)))
+	log.Fatal(http.ListenAndServe(":"+port, cacheControl(handler)))
 }
