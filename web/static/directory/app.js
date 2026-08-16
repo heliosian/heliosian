@@ -892,7 +892,7 @@ function renderPersonDetail(email) {
     const status = el('div', 'media-status');
     button.addEventListener('click', async () => {
       const message = 'This removes all of your data from the directory. ' +
-        'Users not in the directory cannot access it, for security. Continue?';
+        'For security, users not in the directory cannot access it. Continue?';
       if (!confirm(message)) {
         return;
       }
