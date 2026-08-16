@@ -6,20 +6,13 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"path/filepath"
 	"strings"
 
+	"heliosian/internal/data"
 	"google.golang.org/api/option"
 	"google.golang.org/api/sheets/v4"
 )
 
-func keyFile() string {
-	matches, err := filepath.Glob("creds/*.json")
-	if err != nil || len(matches) == 0 {
-		log.Fatal("[ERROR] no service account key found in creds/")
-	}
-	return matches[0]
-}
 
 func main() {
 	sheet := flag.String("sheet", "", "spreadsheet id")
@@ -32,7 +25,7 @@ func main() {
 		log.Fatal("[ERROR] -sheet <spreadsheet id> is required")
 	}
 	svc, err := sheets.NewService(context.Background(),
-		option.WithCredentialsFile(keyFile()),
+		option.WithCredentialsFile(data.KeyFile),
 		option.WithScopes(sheets.SpreadsheetsReadonlyScope))
 	if err != nil {
 		log.Fatalf("[ERROR] create sheets client: %v", err)

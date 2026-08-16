@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#014E54">
+<title>Helios</title>
+<style>
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #014E54;
+  font-family: Inter, system-ui, sans-serif;
+}
+.panel {
+  background: rgba(255, 255, 255, 0.07);
+  border-radius: 1rem;
+  padding: 3rem 3.5rem;
+  text-align: center;
+  color: white;
+}
+.panel h1 {
+  margin: 0 0 0.5rem;
+  font-size: 2rem;
+}
+.panel p {
+  color: #cfe0e2;
+  margin: 0 0 2rem;
+}
+.button-holder {
+  display: flex;
+  justify-content: center;
+}
+</style>
+</head>
+<body>
+<div class="panel">
+<h1>Helios</h1>
+<p>Sign in with your school Google account.</p>
+<div id="g_id_onload" data-client_id="{{.ClientID}}" data-login_uri="{{.LoginURI}}" data-auto_prompt="false"></div>
+<div class="button-holder">
+<div class="g_id_signin" data-type="standard" data-theme="filled_black" data-size="large" data-text="continue_with"></div>
+</div>
+</div>
+<script src="https://accounts.google.com/gsi/client" async></script>
+</body>
+</html>

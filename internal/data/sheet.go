@@ -3,32 +3,22 @@ package data
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"strings"
 
 	"google.golang.org/api/option"
 	"google.golang.org/api/sheets/v4"
 )
 
+const KeyFile = "creds/service-account.json"
+
 type Sheet struct {
 	service      *sheets.Service
 	spreadsheets map[string]string
 }
 
-func KeyFile() (string, error) {
-	matches, err := filepath.Glob("creds/*.json")
-	if err != nil {
-		return "", err
-	}
-	if len(matches) == 0 {
-		return "", fmt.Errorf("no service account key found in creds/")
-	}
-	return matches[0], nil
-}
-
-func NewSheet(keyFile string, spreadsheets map[string]string) (*Sheet, error) {
+func NewSheet(spreadsheets map[string]string) (*Sheet, error) {
 	service, err := sheets.NewService(context.Background(),
-		option.WithCredentialsFile(keyFile),
+		option.WithCredentialsFile(KeyFile),
 		option.WithScopes(sheets.SpreadsheetsReadonlyScope))
 	if err != nil {
 		return nil, err
