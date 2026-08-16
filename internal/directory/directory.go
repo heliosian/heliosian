@@ -11,7 +11,7 @@ import (
 	"heliosian/internal/auth"
 )
 
-var sections = []string{"people", "classrooms", "my-family", "staff", "map", "email-list", "data-view", "bug-report", "about"}
+var sections = []string{"people", "classrooms", "my-family", "staff", "map", "email-list"}
 
 var legacy = map[string]string{
 	"people":   "/people",
@@ -20,9 +20,6 @@ var legacy = map[string]string{
 	"staff":    "/staff",
 	"map":      "/map",
 	"emails":   "/email-list",
-	"33234e":   "/data-view",
-	"ee614d":   "/bug-report",
-	"255ce0":   "/about",
 }
 
 type app struct {
