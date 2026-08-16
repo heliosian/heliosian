@@ -820,6 +820,13 @@ function renderPersonDetail(email) {
     main.append(el('div', 'empty', 'Not found.'));
     return;
   }
+  const params = new URLSearchParams(location.search);
+  if (params.get('edit') === '1') {
+    params.delete('edit');
+    const query = params.toString();
+    history.replaceState(null, '', location.pathname + (query ? '?' + query : ''));
+    personEdit = email;
+  }
   const origin = fromCrumbs() || [['People', '/people']];
   main.append(breadcrumbs([...origin, [p.fullName, null]], p.email));
 
@@ -1703,6 +1710,7 @@ function renderMapPage() {
 
   const update = el('div', 'map-update');
   const action = el('a', 'map-update-link');
+  action.href = withFrom('/people/' + encodeURIComponent(document.body.dataset.userEmail) + '?edit=1');
   action.append(svg('zap'), el('span', '', 'Update My Address'));
   update.append(action);
   content.append(update);
