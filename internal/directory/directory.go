@@ -48,7 +48,6 @@ func Register(mux *http.ServeMux, cache *Cache, mapsKey string) {
 		mux.HandleFunc("GET /"+section, a.page)
 	}
 	mux.HandleFunc("GET /my-family", a.myFamily)
-	mux.HandleFunc("GET /profile", a.page)
 	mux.HandleFunc("GET /people/{email}", a.page)
 	mux.HandleFunc("GET /families/{key}", a.page)
 	mux.HandleFunc("GET /classrooms/{name}", a.page)

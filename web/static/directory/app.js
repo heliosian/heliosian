@@ -609,9 +609,6 @@ function fromCrumbs() {
   if (seg[0] === 'staff') {
     return [['Staff', back]];
   }
-  if (seg[0] === 'profile') {
-    return [['Profile', back]];
-  }
   if (seg[0] === 'email-list') {
     return [['Email List', back]];
   }
@@ -1075,8 +1072,6 @@ function renderFamilyDetail(key) {
       crumbs = [['People', back], [shortName, null], ['Family', null]];
     } else if (rseg[0] === 'map') {
       crumbs = [['Map', back], [shortName, null], ['Family', null]];
-    } else if (rseg[0] === 'profile') {
-      crumbs = [['Profile', back], ['Family', null]];
     }
   }
   main.append(breadcrumbs(crumbs));
@@ -1946,30 +1941,6 @@ function pronounceEditor(target, key) {
   return box;
 }
 
-function renderProfile() {
-  const main = document.querySelector('#main');
-  main.replaceChildren();
-  const me = byEmail[document.body.dataset.userEmail];
-  if (!me) {
-    main.append(el('div', 'empty', 'Not found.'));
-    return;
-  }
-  const content = el('div', 'container content');
-  const family = state.model.families[me.familyKey];
-  if (family) {
-    content.append(el('h1', 'profile-heading', 'Family Photo'));
-    content.append(listRow(thumbUrl(family.photoUrl), '', 'Family Photo', family.photoCaption || '', familyLink(me.familyKey)));
-    const kids = (family.kidEmails || []).map(e => byEmail[e]).filter(Boolean);
-    if (kids.length) {
-      content.append(el('h1', 'profile-heading', 'Students'));
-      for (const k of kids) {
-        content.append(listRow(thumbUrl(k.photoUrl), (k.pronouns || '').toUpperCase(), firstName(k.fullName), '', personLink(k)));
-      }
-    }
-  }
-  main.append(content);
-}
-
 function tabParam(fallback) {
   return new URLSearchParams(location.search).get('tab') || fallback;
 }
@@ -2037,7 +2008,6 @@ const sectionTitles = {
   staff: 'Staff',
   map: 'Map',
   'email-list': 'Email List',
-  profile: 'Profile',
 };
 
 function render() {
@@ -2070,8 +2040,6 @@ function render() {
   } else if (seg[0] === 'map') {
     state.q = '';
     renderMapPage();
-  } else if (seg[0] === 'profile') {
-    renderProfile();
   }
 }
 
@@ -2079,6 +2047,10 @@ const userMenu = document.querySelector('#user-menu');
 document.querySelector('#user').addEventListener('click', e => {
   e.stopPropagation();
   userMenu.hidden = !userMenu.hidden;
+});
+document.querySelector('#user .user-avatar').addEventListener('click', e => {
+  e.stopPropagation();
+  location.href = withFrom('/people/' + encodeURIComponent(document.body.dataset.userEmail));
 });
 
 const drawer = document.querySelector('#drawer');
