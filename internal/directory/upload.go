@@ -44,6 +44,45 @@ type uploader struct {
 func RegisterUpload(mux *http.ServeMux, cache *Cache, sheet *data.Sheet, store *blob.Store) {
 	u := uploader{cache: cache, sheet: sheet, store: store}
 	mux.HandleFunc("POST /api/directory/upload", u.upload)
+	mux.HandleFunc("POST /api/directory/facts", u.facts)
+}
+
+func (u uploader) facts(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
+	key := strings.ToLower(strings.TrimSpace(r.FormValue("key")))
+	facts := strings.TrimSpace(r.FormValue("facts"))
+	if key == "" || len(facts) > 4000 {
+		http.Error(w, "bad facts request", http.StatusBadRequest)
+		return
+	}
+	me := auth.Email(r)
+	model := u.cache.Model()
+	if !mayEdit(model, me, "person", key) {
+		http.Error(w, "not allowed to edit this record", http.StatusForbidden)
+		return
+	}
+	old := ""
+	for _, p := range model.People {
+		if p.Email == key {
+			old = p.Facts
+			break
+		}
+	}
+	if err := u.sheet.SetColumn(appName, "Basic Directory", "Email Lower", key, "Facts", facts); err != nil {
+		serverError(w, fmt.Errorf("update facts for %s: %w", key, err))
+		return
+	}
+	logRow := []string{time.Now().UTC().Format(time.RFC3339), me, key, "person facts", facts, old}
+	if err := u.sheet.Append(appName, changeLogTable, changeLogHeader, logRow); err != nil {
+		serverError(w, fmt.Errorf("append change log after facts update for %s: %w", key, err))
+		return
+	}
+	if err := u.cache.Refresh(); err != nil {
+		serverError(w, fmt.Errorf("refresh model after facts update: %w", err))
+		return
+	}
+	log.Printf("facts: %s set %s (%d chars)", me, key, len(facts))
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (u uploader) upload(w http.ResponseWriter, r *http.Request) {

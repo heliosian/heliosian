@@ -37,6 +37,7 @@ const icons = {
   camera: '<svg viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>',
   mic: '<svg viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>',
   upload: '<svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>',
+  pencil: '<svg viewBox="0 0 24 24"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/></svg>',
   dots: '<svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>',
 };
 
@@ -840,9 +841,49 @@ function renderPersonDetail(email) {
   grid.append(right);
   content.append(grid);
 
-  if (p.facts) {
-    content.append(el('h2', 'about-header', 'About Me'));
-    content.append(el('div', 'about-text', p.facts));
+  if (p.facts || editable) {
+    const header = el('h2', 'about-header', 'About Me');
+    content.append(header);
+    const text = el('div', 'about-text', p.facts || '');
+    const status = el('div', 'media-status about-status');
+    if (editable) {
+      const pencil = el('button', 'edit-icon inline');
+      pencil.title = 'Edit';
+      pencil.append(svg('pencil'));
+      header.append(pencil);
+      pencil.addEventListener('click', () => {
+        const editor = el('textarea', 'about-editor');
+        editor.value = p.facts || '';
+        const buttons = el('div', 'about-buttons');
+        const save = el('button', 'media-button primary', 'Save');
+        const cancel = el('button', 'media-button', 'Cancel');
+        buttons.append(save, cancel);
+        text.replaceWith(editor);
+        editor.after(buttons);
+        pencil.hidden = true;
+        editor.focus();
+        cancel.addEventListener('click', () => {
+          buttons.remove();
+          editor.replaceWith(text);
+          pencil.hidden = false;
+        });
+        save.addEventListener('click', async () => {
+          status.classList.remove('error');
+          status.textContent = 'Saving…';
+          const form = new FormData();
+          form.append('key', p.email);
+          form.append('facts', editor.value);
+          const res = await fetch('/api/directory/facts', {method: 'POST', body: form});
+          if (!res.ok) {
+            status.classList.add('error');
+            status.textContent = await res.text();
+            return;
+          }
+          await load();
+        });
+      });
+    }
+    content.append(text, status);
   }
   main.append(content);
 

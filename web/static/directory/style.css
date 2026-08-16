@@ -1217,6 +1217,42 @@ a.list-row:hover {
   font-size: 16px;
   font-weight: 700;
   margin: 40px 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.edit-icon.inline {
+  width: 30px;
+  height: 30px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+
+.edit-icon.inline svg {
+  width: 15px;
+  height: 15px;
+}
+
+.about-editor {
+  width: 100%;
+  min-height: 130px;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.55;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  resize: vertical;
+}
+
+.about-buttons {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.about-status {
+  text-align: left;
 }
 
 .about-text {
