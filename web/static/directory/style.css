@@ -494,6 +494,7 @@ main {
 .email-table td {
   border: 1px solid var(--line);
   padding: 9px 12px;
+  position: relative;
 }
 
 .email-table tbody tr:nth-child(even) {
@@ -522,6 +523,62 @@ main {
 .email-heart {
   width: 40px;
   text-align: center;
+}
+
+.copy-glyph {
+  border: 0;
+  background: #fff;
+  padding: 2px;
+  cursor: pointer;
+  color: #98a0a6;
+  display: inline-flex;
+  border-radius: 4px;
+  opacity: 0;
+}
+
+.copy-glyph svg {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+}
+
+.copy-glyph:hover,
+.copy-glyph.copied {
+  color: var(--brand);
+}
+
+.email-table td > .copy-glyph {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.email-table th .copy-glyph {
+  background: none;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.email-table td:hover > .copy-glyph,
+.email-table th:hover > .copy-glyph,
+.copy-glyph.copied {
+  opacity: 1;
+}
+
+.email-table tbody tr:hover .email-num > span {
+  visibility: hidden;
+}
+
+.email-table tbody tr:hover .email-num > .copy-glyph {
+  opacity: 1;
+}
+
+.email-download {
+  text-decoration: none;
+  cursor: pointer;
 }
 
 .row-heart {

@@ -30,6 +30,8 @@ const icons = {
   heart: '<svg viewBox="0 0 24 24"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>',
   mail: '<svg viewBox="0 0 24 24"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>',
   copy: '<svg viewBox="0 0 24 24"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>',
+  check: '<svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>',
+  download: '<svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>',
   message: '<svg viewBox="0 0 24 24"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>',
   phone: '<svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>',
   zap: '<svg viewBox="0 0 24 24"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg>',
@@ -664,6 +666,22 @@ function iconButton(name, label, action) {
 
 function copyButton(text) {
   return iconButton('copy', 'Copy', () => navigator.clipboard.writeText(text));
+}
+
+function copyGlyph(text) {
+  const btn = el('button', 'copy-glyph');
+  btn.title = 'Copy';
+  btn.append(svg('copy'));
+  btn.addEventListener('click', () => {
+    navigator.clipboard.writeText(text);
+    btn.classList.add('copied');
+    btn.replaceChildren(svg('check'));
+    setTimeout(() => {
+      btn.classList.remove('copied');
+      btn.replaceChildren(svg('copy'));
+    }, 1200);
+  });
+  return btn;
 }
 
 async function submitField(key, field, value, status) {
@@ -1533,6 +1551,18 @@ const emailTabs = [
   {key: 'bookmarks', label: 'My Bookmarks'},
 ];
 
+const emailColumns = [
+  {label: 'Full Name', get: r => r.p.fullName},
+  {label: 'Email', get: r => r.p.email},
+  {label: 'Role', get: r => r.role},
+  {label: 'Grade', get: r => r.grade},
+  {label: 'Classroom', get: r => r.classroom},
+];
+
+function csvField(value) {
+  return /[",\n]/.test(value) ? '"' + value.replaceAll('"', '""') + '"' : value;
+}
+
 function kidsField(parent, field) {
   const family = state.model.families[parent.familyKey];
   const values = ((family && family.kidEmails) || [])
@@ -1603,7 +1633,10 @@ function renderEmailListPage() {
     renderTable();
   });
   search.append(input);
-  controls.append(search, filterControl(renderTable));
+  const download = el('a', 'filter-button email-download');
+  download.title = 'Download what the table currently shows';
+  download.append(svg('download'), el('span', '', 'CSV'));
+  controls.append(search, filterControl(renderTable), download);
   header.append(controls);
   content.append(header);
 
@@ -1615,6 +1648,11 @@ function renderEmailListPage() {
     holder.replaceChildren();
     const rows = emailEntries(state.emailTab)
       .filter(r => (r.p.fullName.toLowerCase().includes(state.q) || r.p.email.toLowerCase().includes(state.q)) && matchesFilters(r.p));
+    const csv = [emailColumns.map(c => c.label).join(',')]
+      .concat(rows.map(r => emailColumns.map(c => csvField(c.get(r))).join(',')))
+      .join('\n');
+    download.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+    download.download = state.emailTab + '.csv';
     if (!rows.length) {
       holder.append(el('div', 'empty', state.emailTab === 'bookmarks' ? 'No bookmarks yet.' : 'No matches.'));
       return;
@@ -1622,24 +1660,33 @@ function renderEmailListPage() {
     const table = el('table', 'email-table');
     const thead = el('thead');
     const headRow = el('tr');
-    for (const label of ['', 'Full Name', 'Email', 'Role', 'Grade', 'Classroom', '']) {
-      headRow.append(el('th', '', label));
+    headRow.append(el('th'));
+    for (const c of emailColumns) {
+      const th = el('th', '', c.label);
+      th.append(copyGlyph(rows.map(c.get).filter(Boolean).join('\n')));
+      headRow.append(th);
     }
+    headRow.append(el('th'));
     thead.append(headRow);
     table.append(thead);
     const tbody = el('tbody');
     rows.forEach((r, i) => {
       const tr = el('tr');
-      tr.append(el('td', 'email-num', String(i + 1)));
+      const num = el('td', 'email-num');
+      num.append(el('span', '', String(i + 1)), copyGlyph(emailColumns.map(c => c.get(r)).join('\t')));
+      tr.append(num);
       const nameCell = el('td', 'email-name');
       const nameLink = el('a', '', r.p.fullName);
       nameLink.href = personLink(r.p);
-      nameCell.append(nameLink);
+      nameCell.append(nameLink, copyGlyph(r.p.fullName));
       tr.append(nameCell);
-      tr.append(el('td', '', r.p.email));
-      tr.append(el('td', '', r.role));
-      tr.append(el('td', '', r.grade));
-      tr.append(el('td', '', r.classroom));
+      for (const c of emailColumns.slice(1)) {
+        const td = el('td', '', c.get(r));
+        if (c.get(r)) {
+          td.append(copyGlyph(c.get(r)));
+        }
+        tr.append(td);
+      }
       const heartCell = el('td', 'email-heart');
       const heart = el('button', 'row-heart' + (favorites.has(r.p.email) ? ' active' : ''));
       heart.append(svg('heart'));
