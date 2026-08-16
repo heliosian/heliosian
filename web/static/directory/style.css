@@ -636,6 +636,18 @@ a.student-card:hover {
   padding: 4px;
 }
 
+.heart-button:hover {
+  color: var(--brand);
+}
+
+.heart-button.active {
+  color: var(--brand);
+}
+
+.heart-button.active svg {
+  fill: currentColor;
+}
+
 .detail-content {
   padding-bottom: 44px;
 }

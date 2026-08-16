@@ -7,7 +7,7 @@ What remains to build. Current behavior is documented in `docs/dev.md`, `docs/da
 - Remaining sections: My Family, Map.
 - Mobile chrome: brand-teal top bar and bottom tab navigation on narrow screens (see `docs/directory.md`); today only the desktop chrome is faithful.
 - Filter button behavior — currently visual only; the original filters by grade and classroom.
-- Favorites: heart toggles on detail pages; email-list rows already heart into the bookmarks tab, saved per-device in the browser.
+- Favorites: per-account storage; hearts on person pages and email-list rows feed the bookmarks tab, saved per-device in the browser.
 - Installable-app plumbing: manifest, icons, and meta tags per `docs/pwa.md`.
 - Self-service flows: photo and pronunciation upload, address update, opt-out.
 

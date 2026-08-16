@@ -378,7 +378,7 @@ function referrerCrumbs() {
   return null;
 }
 
-function breadcrumbs(parts) {
+function breadcrumbs(parts, favoriteEmail) {
   const top = el('div', 'detail-top container');
   const crumbs = el('div', 'crumbs');
   const back = el('a', 'crumb-back');
@@ -399,9 +399,15 @@ function breadcrumbs(parts) {
     }
   });
   top.append(crumbs);
-  const heart = el('button', 'heart-button');
-  heart.append(svg('heart'));
-  top.append(heart);
+  if (favoriteEmail) {
+    const heart = el('button', 'heart-button' + (favorites.has(favoriteEmail) ? ' active' : ''));
+    heart.append(svg('heart'));
+    heart.addEventListener('click', () => {
+      toggleFavorite(favoriteEmail);
+      heart.classList.toggle('active');
+    });
+    top.append(heart);
+  }
   return top;
 }
 
@@ -521,7 +527,7 @@ function renderPersonDetail(email) {
     return;
   }
   const origin = referrerCrumbs() || [['People', '/people']];
-  main.append(breadcrumbs([...origin, [p.fullName, null]]));
+  main.append(breadcrumbs([...origin, [p.fullName, null]], p.email));
 
   const content = el('div', 'container detail-content');
   const grid = el('div', 'detail-grid');
