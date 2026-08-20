@@ -7,7 +7,6 @@ import (
 	"log"
 	"strings"
 
-	"heliosian/internal/data"
 	"google.golang.org/api/option"
 	"google.golang.org/api/sheets/v4"
 )
@@ -45,7 +44,6 @@ func main() {
 		log.Fatal("[ERROR] -sheet <spreadsheet id> is required")
 	}
 	svc, err := sheets.NewService(context.Background(),
-		option.WithCredentialsFile(data.KeyFile),
 		option.WithScopes(sheets.SpreadsheetsScope))
 	if err != nil {
 		log.Fatalf("[ERROR] create sheets client: %v", err)

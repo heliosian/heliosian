@@ -9,8 +9,6 @@ import (
 	"google.golang.org/api/sheets/v4"
 )
 
-const KeyFile = "creds/service-account.json"
-
 type Sheet struct {
 	service      *sheets.Service
 	spreadsheets map[string]string
@@ -18,7 +16,6 @@ type Sheet struct {
 
 func NewSheet(spreadsheets map[string]string) (*Sheet, error) {
 	service, err := sheets.NewService(context.Background(),
-		option.WithCredentialsFile(KeyFile),
 		option.WithScopes(sheets.SpreadsheetsScope))
 	if err != nil {
 		return nil, err

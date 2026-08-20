@@ -10,7 +10,6 @@ import (
 	"os"
 	"strings"
 
-	"heliosian/internal/data"
 	"google.golang.org/api/option"
 	"google.golang.org/api/sheets/v4"
 )
@@ -39,7 +38,6 @@ func main() {
 		log.Fatalf("[ERROR] %s has no data rows", *in)
 	}
 	svc, err := sheets.NewService(context.Background(),
-		option.WithCredentialsFile(data.KeyFile),
 		option.WithScopes(sheets.SpreadsheetsScope))
 	if err != nil {
 		log.Fatalf("[ERROR] create sheets client: %v", err)

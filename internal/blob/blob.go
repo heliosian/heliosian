@@ -24,7 +24,6 @@ import (
 
 	"google.golang.org/api/drive/v3"
 	"google.golang.org/api/option"
-	"heliosian/internal/data"
 )
 
 const (
@@ -54,7 +53,6 @@ type Store struct {
 
 func New() (*Store, error) {
 	service, err := drive.NewService(context.Background(),
-		option.WithCredentialsFile(data.KeyFile),
 		option.WithScopes(drive.DriveScope))
 	if err != nil {
 		return nil, err

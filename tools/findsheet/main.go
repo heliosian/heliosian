@@ -6,14 +6,12 @@ import (
 	"fmt"
 	"log"
 
-	"heliosian/internal/data"
 	"google.golang.org/api/drive/v3"
 	"google.golang.org/api/option"
 )
 
 func main() {
 	svc, err := drive.NewService(context.Background(),
-		option.WithCredentialsFile(data.KeyFile),
 		option.WithScopes(drive.DriveReadonlyScope))
 	if err != nil {
 		log.Fatalf("[ERROR] create drive client: %v", err)
