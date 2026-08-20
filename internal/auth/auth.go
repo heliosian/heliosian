@@ -2,6 +2,7 @@
 package auth
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
@@ -95,13 +96,18 @@ func (a *Auth) loginPage(w http.ResponseWriter, r *http.Request) {
 	if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
 		scheme = "https"
 	}
-	err = t.Execute(w, map[string]string{
+	var page bytes.Buffer
+	err = t.Execute(&page, map[string]string{
 		"ClientID": a.clientID,
 		"LoginURI": scheme + "://" + r.Host + "/auth/login",
 	})
 	if err != nil {
 		log.Printf("[ERROR] render login page: %v", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
 	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(page.Bytes()))
 }
 
 func (a *Auth) login(w http.ResponseWriter, r *http.Request) {
