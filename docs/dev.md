@@ -55,6 +55,4 @@ Each runs as `go run ./tools/<name>`. The sheet, drive, and bucket tools authent
 - `dumptab` / `writetab` — copy one tab to a local CSV / write a local CSV into a tab, header-checked
 - `createtabs` — create the directory sheet's local-layer tabs with their header rows
 - `setcell` — set one cell in a tab by key column, appending the row if missing
-- `probeblob` — time the download of a few drive media files
-- `migratemedia` — copy the drive media folders into the media bucket, generating thumbnails; retired once the bucket is the only store
 - `splash` — regenerate the iOS splash battery from the captured original page; see `docs/pwa.md`
