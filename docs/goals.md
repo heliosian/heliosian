@@ -23,5 +23,5 @@ More apps follow over time, all served by the same binary.
 ## Data
 
 - Structured data comes from Google Sheets. The system of record is Veracross, and a direct integration replaces Sheets when an API becomes available.
-- Blobs (photos and other uploads) live in Google Drive.
+- Blobs (photos and other uploads) live in Cloud Storage.
 - Existing data is imported from the current platforms.

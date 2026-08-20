@@ -255,7 +255,7 @@ func (u uploader) upload(w http.ResponseWriter, r *http.Request) {
 	base := local + "-" + kind
 	name := base + "." + ext
 
-	archived, err := u.store.Upload(folder, base, ext, mimeType, content)
+	superseded, err := u.store.Upload(folder, base, ext, mimeType, content)
 	if err != nil {
 		serverError(w, err)
 		return
@@ -264,7 +264,7 @@ func (u uploader) upload(w http.ResponseWriter, r *http.Request) {
 		serverError(w, fmt.Errorf("refresh model after upload: %w", err))
 		return
 	}
-	log.Printf("upload: %s set %s %s %s (archived %q)", me, target, key, name, archived)
+	log.Printf("upload: %s set %s %s %s (superseded generation %q)", me, target, key, name, superseded)
 	w.WriteHeader(http.StatusNoContent)
 }
 

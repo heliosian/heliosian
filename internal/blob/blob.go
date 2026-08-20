@@ -1,9 +1,10 @@
-// Package blob serves directory media from drive, held fully in memory with startup-generated thumbnails.
+// Package blob serves directory media from cloud storage, held fully in memory with stored thumbnails.
 package blob
 
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"image"
 	"image/jpeg"
@@ -22,49 +23,48 @@ import (
 	"golang.org/x/image/draw"
 	_ "golang.org/x/image/webp"
 
-	"google.golang.org/api/drive/v3"
-	"google.golang.org/api/option"
+	"cloud.google.com/go/storage"
+	"google.golang.org/api/iterator"
 )
 
 const (
-	folderMime      = "application/vnd.google-apps.folder"
+	Bucket          = "heliosian-media"
 	refreshInterval = 5 * time.Minute
 	thumbWidth      = 480
+	thumbSuffix     = "-thumb"
+	thumbExt        = ".jpg"
+	thumbMime       = "image/jpeg"
+	fetchWorkers    = 32
 )
 
+var folders = []string{"people", "families"}
+
 type entry struct {
-	id       string
-	mimeType string
-	data     []byte
-	thumb    []byte
+	name       string
+	generation int64
+	mimeType   string
+	data       []byte
+	thumb      []byte
 }
 
-type listed struct {
-	id       string
-	mimeType string
+type object struct {
+	name       string
+	generation int64
+	mimeType   string
 }
 
 type Store struct {
-	service *drive.Service
-	root    string
+	bucket  *storage.BucketHandle
 	mu      sync.RWMutex
 	entries map[string]*entry
 }
 
 func New() (*Store, error) {
-	service, err := drive.NewService(context.Background(),
-		option.WithScopes(drive.DriveScope))
+	client, err := storage.NewClient(context.Background())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("storage client: %w", err)
 	}
-	drives, err := service.Drives.List().Do()
-	if err != nil {
-		return nil, fmt.Errorf("list shared drives: %w", err)
-	}
-	if len(drives.Drives) != 1 {
-		return nil, fmt.Errorf("expected one shared drive visible to the service account, found %d", len(drives.Drives))
-	}
-	s := &Store{service: service, root: drives.Drives[0].Id, entries: map[string]*entry{}}
+	s := &Store{bucket: client.Bucket(Bucket), entries: map[string]*entry{}}
 	if err := s.refresh(); err != nil {
 		return nil, err
 	}
@@ -86,110 +86,77 @@ func (s *Store) refreshLoop() {
 
 func (s *Store) refresh() error {
 	start := time.Now()
-	listing := map[string]listed{}
-	for _, folderName := range []string{"people", "families"} {
-		folderID, err := s.subfolder(folderName)
-		if err != nil {
-			return err
-		}
-		token := ""
+	ctx := context.Background()
+	primaries := map[string]object{}
+	thumbs := map[string]object{}
+	for _, folder := range folders {
+		it := s.bucket.Objects(ctx, &storage.Query{Prefix: folder + "/"})
 		for {
-			call := s.service.Files.List().
-				Q(fmt.Sprintf("'%s' in parents and trashed = false", folderID)).
-				SupportsAllDrives(true).IncludeItemsFromAllDrives(true).Corpora("allDrives").
-				Fields("nextPageToken, files(id, name, mimeType)").PageSize(1000)
-			if token != "" {
-				call = call.PageToken(token)
-			}
-			list, err := call.Do()
-			if err != nil {
-				return fmt.Errorf("list %s: %w", folderName, err)
-			}
-			for _, f := range list.Files {
-				if f.MimeType == folderMime {
-					continue
-				}
-				base := strings.TrimSuffix(f.Name, path.Ext(f.Name))
-				if strings.HasSuffix(base, "-thumb") {
-					continue
-				}
-				listing[folderName+"/"+base] = listed{id: f.Id, mimeType: f.MimeType}
-			}
-			if list.NextPageToken == "" {
+			attrs, err := it.Next()
+			if errors.Is(err, iterator.Done) {
 				break
 			}
-			token = list.NextPageToken
+			if err != nil {
+				return fmt.Errorf("list %s: %w", folder, err)
+			}
+			base := strings.TrimSuffix(path.Base(attrs.Name), path.Ext(attrs.Name))
+			o := object{name: attrs.Name, generation: attrs.Generation, mimeType: attrs.ContentType}
+			if strings.HasSuffix(base, thumbSuffix) {
+				thumbs[folder+"/"+strings.TrimSuffix(base, thumbSuffix)] = o
+				continue
+			}
+			key := folder + "/" + base
+			if existing, ok := primaries[key]; ok {
+				return fmt.Errorf("duplicate media for %s: %s and %s", key, existing.name, attrs.Name)
+			}
+			primaries[key] = o
 		}
 	}
 
 	s.mu.RLock()
 	missing := []string{}
-	for key, l := range listing {
-		if cached, ok := s.entries[key]; !ok || cached.id != l.id {
+	for key, o := range primaries {
+		if cached, ok := s.entries[key]; !ok || cached.generation != o.generation {
 			missing = append(missing, key)
 		}
 	}
 	s.mu.RUnlock()
 
 	fetched := map[string]*entry{}
-	var fetchedMu sync.Mutex
-	work := make(chan string)
-	errs := make(chan error, 1)
+	var mu sync.Mutex
+	var firstErr error
 	var wg sync.WaitGroup
-	for range 12 {
+	slots := make(chan struct{}, fetchWorkers)
+	for _, key := range missing {
 		wg.Add(1)
+		slots <- struct{}{}
 		go func() {
 			defer wg.Done()
-			for key := range work {
-				l := listing[key]
-				fetchStart := time.Now()
-				body, err := s.download(l.id)
-				if err == nil {
-					log.Printf("blob fetch: %s %d bytes in %s", key, len(body), time.Since(fetchStart).Round(time.Millisecond))
-				} else {
-					log.Printf("[ERROR] blob fetch: %s: %v", key, err)
-				}
-				if err == nil && strings.HasPrefix(l.mimeType, "image/") {
-					var thumb []byte
-					thumb, err = thumbnail(body)
-					if err == nil {
-						fetchedMu.Lock()
-						fetched[key] = &entry{id: l.id, mimeType: l.mimeType, data: body, thumb: thumb}
-						fetchedMu.Unlock()
-						continue
-					}
-				} else if err == nil {
-					fetchedMu.Lock()
-					fetched[key] = &entry{id: l.id, mimeType: l.mimeType, data: body}
-					fetchedMu.Unlock()
-					continue
-				}
-				select {
-				case errs <- fmt.Errorf("load %s: %w", key, err):
-				default:
+			defer func() { <-slots }()
+			e, err := s.load(ctx, primaries[key], thumbs[key])
+			mu.Lock()
+			defer mu.Unlock()
+			if err != nil {
+				if firstErr == nil {
+					firstErr = err
 				}
 				return
 			}
+			fetched[key] = e
 		}()
 	}
-	for _, key := range missing {
-		work <- key
-	}
-	close(work)
 	wg.Wait()
-	select {
-	case err := <-errs:
-		return err
-	default:
+	if firstErr != nil {
+		return firstErr
 	}
 
-	next := make(map[string]*entry, len(listing))
+	next := make(map[string]*entry, len(primaries))
 	var totalBytes int64
 	s.mu.Lock()
-	for key, l := range listing {
+	for key, o := range primaries {
 		if e, ok := fetched[key]; ok {
 			next[key] = e
-		} else if cached, ok := s.entries[key]; ok && cached.id == l.id {
+		} else if cached, ok := s.entries[key]; ok && cached.generation == o.generation {
 			next[key] = cached
 		}
 	}
@@ -203,33 +170,49 @@ func (s *Store) refresh() error {
 	return nil
 }
 
-func (s *Store) subfolder(name string) (string, error) {
-	return s.subfolderIn(s.root, name, false)
+func (s *Store) load(ctx context.Context, primary, thumb object) (*entry, error) {
+	data, err := s.read(ctx, primary.name)
+	if err != nil {
+		return nil, err
+	}
+	e := &entry{name: primary.name, generation: primary.generation, mimeType: primary.mimeType, data: data}
+	if !strings.HasPrefix(primary.mimeType, "image/") {
+		return e, nil
+	}
+	if thumb.name == "" {
+		return nil, fmt.Errorf("no thumbnail stored for %s", primary.name)
+	}
+	e.thumb, err = s.read(ctx, thumb.name)
+	if err != nil {
+		return nil, err
+	}
+	return e, nil
 }
 
-func (s *Store) subfolderIn(parent, name string, create bool) (string, error) {
-	list, err := s.service.Files.List().
-		Q(fmt.Sprintf("name = '%s' and '%s' in parents and mimeType = '%s' and trashed = false", name, parent, folderMime)).
-		SupportsAllDrives(true).IncludeItemsFromAllDrives(true).Corpora("allDrives").
-		Fields("files(id)").Do()
+func (s *Store) read(ctx context.Context, name string) ([]byte, error) {
+	r, err := s.bucket.Object(name).NewReader(ctx)
 	if err != nil {
-		return "", fmt.Errorf("find folder %s: %w", name, err)
+		return nil, fmt.Errorf("read %s: %w", name, err)
 	}
-	if len(list.Files) == 0 && create {
-		folder, err := s.service.Files.Create(&drive.File{
-			Name:     name,
-			MimeType: folderMime,
-			Parents:  []string{parent},
-		}).SupportsAllDrives(true).Fields("id").Do()
-		if err != nil {
-			return "", fmt.Errorf("create folder %s: %w", name, err)
-		}
-		return folder.Id, nil
+	defer r.Close()
+	content, err := io.ReadAll(r)
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", name, err)
 	}
-	if len(list.Files) != 1 {
-		return "", fmt.Errorf("expected one %s folder, found %d", name, len(list.Files))
+	return content, nil
+}
+
+func (s *Store) write(ctx context.Context, name, mimeType string, content []byte) error {
+	w := s.bucket.Object(name).NewWriter(ctx)
+	w.ContentType = mimeType
+	if _, err := w.Write(content); err != nil {
+		w.Close()
+		return fmt.Errorf("write %s: %w", name, err)
 	}
-	return list.Files[0].Id, nil
+	if err := w.Close(); err != nil {
+		return fmt.Errorf("write %s: %w", name, err)
+	}
+	return nil
 }
 
 func (s *Store) Refresh() error {
@@ -244,52 +227,37 @@ func (s *Store) Has(key string) bool {
 }
 
 func (s *Store) Upload(folder, base, ext, mimeType string, content []byte) (string, error) {
-	folderID, err := s.subfolder(folder)
-	if err != nil {
+	ctx := context.Background()
+	key := folder + "/" + base
+	name := key + "." + ext
+	s.mu.RLock()
+	existing, exists := s.entries[key]
+	s.mu.RUnlock()
+	if err := s.write(ctx, name, mimeType, content); err != nil {
 		return "", err
 	}
-	archived := ""
-	s.mu.RLock()
-	existing, exists := s.entries[folder+"/"+base]
-	s.mu.RUnlock()
-	if exists {
-		current, err := s.service.Files.Get(existing.id).SupportsAllDrives(true).Fields("name").Do()
+	if strings.HasPrefix(mimeType, "image/") {
+		thumb, err := Thumbnail(content)
 		if err != nil {
-			return "", fmt.Errorf("look up current %s/%s: %w", folder, base, err)
+			return "", fmt.Errorf("thumbnail %s: %w", name, err)
 		}
-		archiveID, err := s.subfolderIn(folderID, "archive", true)
-		if err != nil {
+		if err := s.write(ctx, key+thumbSuffix+thumbExt, thumbMime, thumb); err != nil {
 			return "", err
 		}
-		archived = strings.TrimSuffix(current.Name, path.Ext(current.Name)) +
-			"-" + time.Now().UTC().Format("20060102-150405") + path.Ext(current.Name)
-		_, err = s.service.Files.Update(existing.id, &drive.File{Name: archived}).
-			AddParents(archiveID).RemoveParents(folderID).SupportsAllDrives(true).Do()
-		if err != nil {
-			return "", fmt.Errorf("archive %s/%s: %w", folder, base, err)
-		}
 	}
-	_, err = s.service.Files.Create(&drive.File{
-		Name:     base + "." + ext,
-		MimeType: mimeType,
-		Parents:  []string{folderID},
-	}).SupportsAllDrives(true).Media(bytes.NewReader(content)).Do()
-	if err != nil {
-		return "", fmt.Errorf("upload %s/%s: %w", folder, base, err)
+	superseded := ""
+	if exists {
+		superseded = fmt.Sprint(existing.generation)
+		if existing.name != name {
+			if err := s.bucket.Object(existing.name).Delete(ctx); err != nil {
+				return "", fmt.Errorf("delete superseded %s: %w", existing.name, err)
+			}
+		}
 	}
 	if err := s.refresh(); err != nil {
 		return "", fmt.Errorf("refresh after upload: %w", err)
 	}
-	return archived, nil
-}
-
-func (s *Store) download(id string) ([]byte, error) {
-	resp, err := s.service.Files.Get(id).SupportsAllDrives(true).Download()
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	return io.ReadAll(resp.Body)
+	return superseded, nil
 }
 
 func (s *Store) serve(w http.ResponseWriter, r *http.Request) {
@@ -306,7 +274,7 @@ func (s *Store) serve(w http.ResponseWriter, r *http.Request) {
 			http.NotFound(w, r)
 			return
 		}
-		w.Header().Set("Content-Type", "image/jpeg")
+		w.Header().Set("Content-Type", thumbMime)
 		http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(e.thumb))
 		return
 	}
@@ -314,7 +282,7 @@ func (s *Store) serve(w http.ResponseWriter, r *http.Request) {
 	http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(e.data))
 }
 
-func thumbnail(src []byte) ([]byte, error) {
+func Thumbnail(src []byte) ([]byte, error) {
 	img, _, err := image.Decode(bytes.NewReader(src))
 	if err != nil {
 		return nil, err

@@ -1,6 +1,6 @@
 # Data model
 
-The entities the directory serves, and how they are assembled. Structured data lives in one Google Sheet; blobs (photos, audio) are files beside it in the community shared drive, discovered by naming convention. Access rides on drive membership: the service account is a content manager of the drive, never granted through project IAM. The organized model is held in memory — nothing computed is ever written back to the sheet.
+The entities the directory serves, and how they are assembled. Structured data lives in one Google Sheet in the community shared drive, reached through drive membership rather than project IAM; blobs (photos, audio) are objects in the media bucket, reached through project IAM. Each has exactly one home. The organized model is held in memory — nothing computed is ever written back to the sheet.
 
 ## Spreadsheet layout
 
@@ -18,7 +18,7 @@ School structure lives nowhere in the sheet: membership and the classroom and cr
 1. Read the raw import.
 2. Transform each import row into canonical person and household records (explosion, below). The Name to Email mapping applies during this step, since it fixes the key everything else uses.
 3. Apply the Overrides tab onto the canonical records by email: unflagged rows patch existing records, flagged rows create new ones.
-4. List the media drive and attach photo and pronunciation blobs to records by filename convention.
+4. List the media bucket and attach photo and pronunciation blobs to records by object-name convention.
 5. Hold the organized result in memory; the server refuses to start if the load fails, and the model reloads periodically.
 
 Because Overrides rows are authored post-transform, their values skip import normalization — so canonical-value validation runs on every layer, not just the import.
@@ -53,7 +53,7 @@ The explosion turns each import row into one student record plus up to four adul
 Canonical model columns, keyed by lowercased email, one row per person. Three kinds of content share the tab, distinguished only by authorship and one flag:
 
 - **Corrections** (hand): fix anything the import gets wrong — swapped name fields, bad phone numbers — and carry person flags with no import source, like room-parent assignments and the new-to-Helios marker.
-- **Self-service text** (app): facts, pronouns, preferred name, phone, address — the latter two hideable via the `-` clear — and the Opted Out flag. Every self-service edit warns that it doesn't affect the values shown in Veracross. The app writes these cells directly; moderating a contribution is the same act as any other correction. Photo and pronunciation uploads go straight to the media drive and never touch the sheet.
+- **Self-service text** (app): facts, pronouns, preferred name, phone, address — the latter two hideable via the `-` clear — and the Opted Out flag. Every self-service edit warns that it doesn't affect the values shown in Veracross. The app writes these cells directly; moderating a contribution is the same act as any other correction. Photo and pronunciation uploads go straight to the media bucket and never touch the sheet.
 - **Additions** (hand, flagged): people with no import row at all. The flag inverts the source expectation.
 
 Cell semantics are sparse: an empty cell contributes nothing, `-` clears the underlying value. An addition is just an override applied to an empty base record, so the merge logic is uniform; the flag selects the validation instead:
@@ -69,11 +69,13 @@ Family-level fields (address, family photo caption, family phone) ride on a pare
 
 **Opted Out** removes the person entirely at load: their record, their membership in families and parent-contact lists, and any room-parent assignment all vanish from the model. Because viewing the directory requires being in it, opting out also locks the person out — they get a permissions error until the school clears the flag. People set it from their own page, parents set it for their kids (each with a confirmation spelling out the consequences), or an admin sets the cell by hand.
 
-Every change to Overrides appends a Change Log row: timestamp, actor, the row's email, then the previous value of each column that changed — `-` marking a previously empty cell, untouched columns left blank. Media uploads are not logged here; the drive archive is their history.
+Every change to Overrides appends a Change Log row: timestamp, actor, the row's email, then the previous value of each column that changed — `-` marking a previously empty cell, untouched columns left blank. Media uploads are not logged here; bucket object versions are their history.
 
 ## Media blobs
 
-Photos and pronunciation recordings are files in the media shared drive, named by convention: `<email local part>-photo` and `<email local part>-pronunciation` for people, `<family key hash>-photo` and `<family key hash>-pronunciation` for families. Presence means existence — no sheet cell records a filename — and freshness comes from the file's modified time. Uploads replace the file and archive the previous version; superseded versions stay in an archive folder.
+Photos and pronunciation recordings are objects in the media bucket `gs://heliosian-media`, under a `people/` or `families/` prefix and named by convention: `<email local part>-photo` and `<email local part>-pronunciation` for people, `<family key hash>-photo` and `<family key hash>-pronunciation` for families, each keeping its source extension. Presence means existence — no sheet cell records a filename — and freshness comes from the object generation.
+
+Every image is stored with a `-thumb.jpg` sibling written at the same time, so startup loads thumbnails instead of computing them; an image object with no stored thumbnail is fatal. Uploads overwrite the object and its thumbnail, and bucket versioning retains the superseded generations. An upload arriving in a different format also deletes the previous extension's object, so a key never resolves to two files.
 
 ## Person
 
@@ -84,8 +86,8 @@ One record per person, all roles in one shape:
 - **Roles**: student, parent, and staff booleans, derived from sourcing; combinations are valid. Display strings derive from the flags.
 - **New to Helios**: override-carried flag marking people who just joined the community; drives the matching filter toggle.
 - **Pronouns**: optional; a curated list plus a freeform escape hatch.
-- **Pronunciation**: optional audio recording of the person's name, from the media drive.
-- **Photo**: official portrait or personal upload, from the media drive; people may opt for an illustrated avatar instead.
+- **Pronunciation**: optional audio recording of the person's name, from the media bucket.
+- **Photo**: official portrait or personal upload, from the media bucket; people may opt for an illustrated avatar instead.
 - **Facts**: optional about-me text — first-person blurbs for students, professional bios for staff.
 - **Student fields**: grade, classroom, and crew from the homeroom split; parent contact emails derive from the student's household adults.
 - **Staff fields**: job title, department, grade band, and classroom/crew assignment for teaching staff.
@@ -98,8 +100,8 @@ A household groups adults and kids; a student belongs to one household normally,
 
 - **Key**: a hash of the sorted emails of every member — students and adults alike — so identity is order-insensitive and derives from nothing but membership. Any membership change (new student, student leaves, parent change) produces a new key, deliberately: the family's URL and photo association reset along with its composition.
 - **Members**: the adults in the household and the students whose rows name it.
-- **Photo and caption**: the family photo from the media drive plus a who's-who description naming everyone in it.
-- **Pronunciation**: optional audio recording of the family name, from the media drive.
+- **Photo and caption**: the family photo from the media bucket plus a who's-who description naming everyone in it.
+- **Pronunciation**: optional audio recording of the family name, from the media bucket.
 - **Address**: as much as the family chooses to share — full postal address or just city and state, seeded from the import and updatable via self-service.
 - **Phone**: optional household phone.
 

@@ -32,7 +32,7 @@ The service was created once with:
 Each flag is load-bearing:
 
 - `--service-account` — the runtime identity. Application-default credentials inside the container resolve to `directory@` through the metadata server; there is no key file anywhere in the system.
-- `--min-instances 1` — startup preloads every media file from Drive before listening (about two and a half minutes all told); far too slow for scale-to-zero, and close enough to Cloud Run's four-minute startup probe window to watch as the media set grows.
+- `--min-instances 1` — startup preloads every media object before listening (well under a minute); still far too slow for scale-to-zero.
 - `--max-instances 1` — the directory model and blob store live in per-instance memory with no cross-instance coherency; a self-service edit refreshes only the instance that handled it, so a second instance would serve stale data.
 - `--memory 4Gi` — the blob store holds all media and thumbnails in RAM, and the preload peaks well above the steady-state footprint (a roughly 600 MB blob store OOMed a 2 GiB instance during preload). The startup log line `blob store: … MB in memory` reports the steady state; resize when boots start failing or the footprint approaches half the limit.
 - `--no-cpu-throttling` — the directory model and blob store refresh on five-minute tickers between requests; default throttling would starve them.
@@ -53,11 +53,18 @@ Secret Manager secrets, delivered as environment variables per `--set-secrets` a
 - `heliosian-geocoding-key` — the Geocoding API server key, mirrored locally as `creds/geocoding.key`
 - `heliosian-maps-browser-key` — the Maps JavaScript browser key, mirrored locally as `creds/maps.key`
 
+## Media storage
+
+Photos and pronunciation recordings live in `gs://heliosian-media` (us-west1, uniform access, public access prevented, object versioning on), the single source of truth for media — see `docs/data.md` for the naming convention and stored thumbnails. It sits in the same region as the service, so the whole set preloads into memory in about half a minute with no per-request throttle to work around, and versioning carries the upload history that used to need an archive folder.
+
+Because the bucket is private and every read goes through the app's own sign-in gate, no object is ever publicly readable; the service reads and writes it as `directory@`.
+
 ## IAM
 
 `directory@heliosian.iam.gserviceaccount.com` is both the data identity and the runtime identity:
 
-- Data access: content manager on the community shared drive — which covers editing the `Directory` sheet inside it (self-service edits write cells and append to the Change Log tab) and managing media (uploads create files and archive old versions). Shared in Drive directly, never through project IAM.
+- Data access: content manager on the community shared drive, which covers editing the `Directory` sheet inside it (self-service edits write cells and append to the Change Log tab). Shared in Drive directly, never through project IAM.
+- Media: `roles/storage.objectAdmin` on `gs://heliosian-media`, granted on the bucket.
 - Runtime: the Cloud Run service runs as it, and it holds Secret Manager Secret Accessor on each secret individually.
 - Humans: `roles/iam.serviceAccountTokenCreator` on this account enables the local impersonation that real-data development uses (`docs/dev.md`).
 

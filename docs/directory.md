@@ -62,4 +62,4 @@ A copyable contact table for party planning and outreach: full name, email, role
 - Favorites/bookmarks mark people and feed the email list's bookmark tab.
 - Photos lazy-load; full-size view on click where the photo is the subject (family pages).
 - All data is community-only, behind sign-in; opt-out removes a person on request.
-- Self-service: viewing your own record, your kids', or your family page shows inline edit affordances — photo upload, pronunciation recording or upload, About Me text, preferred name, phone, address — plus opt-out for yourself or your kids. Media uploads replace the Drive file and archive the previous version; sheet-backed edits write the Overrides tab and append a Change Log row (see `docs/data.md`).
+- Self-service: viewing your own record, your kids', or your family page shows inline edit affordances — photo upload, pronunciation recording or upload, About Me text, preferred name, phone, address — plus opt-out for yourself or your kids. Media uploads overwrite the bucket object, which retains the previous version; sheet-backed edits write the Overrides tab and append a Change Log row (see `docs/data.md`).

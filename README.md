@@ -19,7 +19,7 @@ To run against real community data instead, see [docs/dev.md](docs/dev.md).
 - `internal/auth` — Google sign-in and session cookies
 - `internal/data` — tabular data sources: sample CSVs and Google Sheets
 - `internal/directory` — the directory app: model load, handlers, self-service edits
-- `internal/blob` — media from Google Drive, held in memory with thumbnails
+- `internal/blob` — media from Cloud Storage, held in memory with stored thumbnails
 - `internal/geocode` — address → coordinates for the map
 - `web/` — page templates and static assets (frameworkless JavaScript)
 - `sampledata/` — the fictional community served by default
