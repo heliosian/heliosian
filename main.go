@@ -136,6 +136,10 @@ func main() {
 	if port == "" {
 		port = "8080"
 	}
+	protocols := new(http.Protocols)
+	protocols.SetHTTP1(true)
+	protocols.SetUnencryptedHTTP2(true)
+	server := &http.Server{Addr: ":" + port, Handler: cacheControl(handler), Protocols: protocols}
 	log.Printf("listening on http://localhost:%s", port)
-	log.Fatal(http.ListenAndServe(":"+port, cacheControl(handler)))
+	log.Fatal(server.ListenAndServe())
 }
