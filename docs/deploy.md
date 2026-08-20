@@ -8,7 +8,7 @@ Every push to `main` on `github.com/heliosian/heliosian` deploys production. The
 
 1. `docker build` of the repo's Dockerfile, tagged with the commit SHA and `latest`
 2. push the SHA tag to Artifact Registry (`us-west1-docker.pkg.dev/heliosian/heliosian/heliosian`)
-3. `gcloud run deploy heliosian --image …:<sha>` — image only; every other service setting persists from the configuration below
+3. `gcloud run deploy heliosian --image …:<sha>` — image only; every other service setting persists from the last full deploy
 
 The trigger names its build service account (the project's default compute service account) explicitly; trigger creation in this project refuses to infer one. Builds ship the pushed commit, never a working tree. To rebuild and redeploy current `main` without a push:
 
@@ -16,38 +16,35 @@ The trigger names its build service account (the project's default compute servi
 
 The Dockerfile builds in two stages: a `golang` stage compiles the static binary (`CGO_ENABLED=0`), and `gcr.io/distroless/static-debian12` — CA certificates and tzdata, nothing else — carries the binary plus `web/`, whose templates and static assets are read from disk at runtime. `sampledata/` is deliberately excluded: production always sets `DIRECTORY_SHEET`, and a misconfigured server fails at startup rather than silently serving sample data. `creds/` never enters the image (`.dockerignore`, `.gcloudignore`), and the image holds no credentials of any kind — the runtime identity below is the only Google identity in play.
 
-## Service
+## Service configuration
 
-The service was created once with:
+`tools/deploy` holds the full service configuration and is the only place it is written down:
 
-    gcloud run deploy heliosian \
-      --image us-west1-docker.pkg.dev/heliosian/heliosian/heliosian:latest \
-      --region us-west1 --allow-unauthenticated \
-      --service-account directory@heliosian.iam.gserviceaccount.com \
-      --min-instances 1 --max-instances 1 --memory 4Gi --no-cpu-throttling \
-      --set-env-vars DIRECTORY_SHEET=<spreadsheet id>,GOOGLE_CLIENT_ID=<oauth client id> \
-      --set-secrets "SESSION_KEY=heliosian-session-key:latest,GOOGLE_MAPS_SERVER_KEY=heliosian-geocoding-key:latest,GOOGLE_MAPS_BROWSER_KEY=heliosian-maps-browser-key:latest" \
-      --quiet
+    DIRECTORY_SHEET=<spreadsheet id> go run ./tools/deploy
 
-Each flag is load-bearing:
+It deploys the `latest` image with every setting the pipeline does not touch, so it both creates the service from nothing and repairs drift on an existing one. The spreadsheet id comes from the environment and the OAuth client id from `creds/oauth-client.json` — the same resolution the server itself uses — so neither is written into the repository.
 
-- `--service-account` — the runtime identity. Application-default credentials inside the container resolve to `directory@` through the metadata server; there is no key file anywhere in the system.
-- `--min-instances 1` — startup preloads every media object before listening (well under a minute); still far too slow for scale-to-zero.
-- `--max-instances 1` — the directory model and blob store live in per-instance memory with no cross-instance coherency; a self-service edit refreshes only the instance that handled it, so a second instance would serve stale data.
-- `--memory 4Gi` — the blob store holds all media and thumbnails in RAM, and the preload peaks well above the steady-state footprint (a roughly 600 MB blob store OOMed a 2 GiB instance during preload). The startup log line `blob store: … MB in memory` reports the steady state; resize when boots start failing or the footprint approaches half the limit.
-- `--no-cpu-throttling` — the directory model and blob store refresh on five-minute tickers between requests; default throttling would starve them.
-- `--allow-unauthenticated` — the app enforces its own Google sign-in; Cloud Run must let everyone reach the login page.
+Why each setting is what it is:
+
+- **service account** — the runtime identity, `directory@`. Application-default credentials inside the container resolve to it through the metadata server; there is no key file anywhere in the system.
+- **min instances 1** — startup preloads every media object before listening (about ten seconds); still worth avoiding on a cold request.
+- **max instances 1** — the directory model and blob store live in per-instance memory with no cross-instance coherency; a self-service edit refreshes only the instance that handled it, so a second instance would serve stale data.
+- **memory 2Gi** — the blob store holds all media and thumbnails in RAM. Because thumbnails are stored rather than generated, startup decodes no images and the preload peak sits close to the steady state: a roughly 600 MB blob store runs the container at about 44% of this limit. The startup log line `blob store: … MB in memory` reports the footprint; resize when it approaches half the limit.
+- **concurrency 250** — with a single instance, every simultaneous request shares it, and a photo-heavy page fans out many image requests at once. The work is served from memory, so the ceiling exists to bound queueing, not CPU.
+- **no CPU throttling** — the directory model and blob store refresh on five-minute tickers between requests; default throttling would starve them.
+- **HTTP/2** — Cloud Run speaks cleartext HTTP/2 to the container, which the server accepts. Browsers already get HTTP/2 from the frontend either way.
+- **allow unauthenticated** — the app enforces its own Google sign-in; Cloud Run must let everyone reach the login page.
 
 Cloud Run injects `PORT`; the server honors it.
 
-## Configuration
+## Configuration values
 
 Plain environment variables:
 
 - `DIRECTORY_SHEET` — the production spreadsheet id: the `Directory` sheet living in the community shared drive.
 - `GOOGLE_CLIENT_ID` — the OAuth web client id; not a secret (it is embedded in the login page).
 
-Secret Manager secrets, delivered as environment variables per `--set-secrets` above. Values are used raw, so payloads must not carry trailing newlines:
+Secret Manager secrets, delivered as environment variables. Values are used raw, so payloads must not carry trailing newlines:
 
 - `heliosian-session-key` — session-cookie HMAC key (any long random string); losing or rotating it signs everyone out
 - `heliosian-geocoding-key` — the Geocoding API server key, mirrored locally as `creds/geocoding.key`
@@ -55,7 +52,7 @@ Secret Manager secrets, delivered as environment variables per `--set-secrets` a
 
 ## Media storage
 
-Photos and pronunciation recordings live in `gs://heliosian-media` (us-west1, uniform access, public access prevented, object versioning on), the single source of truth for media — see `docs/data.md` for the naming convention and stored thumbnails. It sits in the same region as the service, so the whole set preloads into memory in about half a minute with no per-request throttle to work around, and versioning carries the upload history that used to need an archive folder.
+Photos and pronunciation recordings live in `gs://heliosian-media` (us-west1, uniform access, public access prevented, object versioning on), the single source of truth for media — see `docs/data.md` for the naming convention and stored thumbnails. It sits in the same region as the service, so the whole set preloads into memory in about eight seconds with no per-request throttle to work around, and versioning carries the upload history that used to need an archive folder.
 
 Because the bucket is private and every read goes through the app's own sign-in gate, no object is ever publicly readable; the service reads and writes it as `directory@`.
 
@@ -73,7 +70,7 @@ The build service account (the default compute service account) holds `cloudbuil
 The `heliosian.com` organization ships Google's secure-by-default org policies, two of which matter here:
 
 - `iam.managed.disableServiceAccountKeyCreation` stays enforced. The keyless design depends on it staying enforced: no key for `directory@` can exist.
-- `iam.allowedPolicyMemberDomains` is overridden to allow-all at the project scope only, because `--allow-unauthenticated` requires granting `run.invoker` to `allUsers`.
+- `iam.allowedPolicyMemberDomains` is overridden to allow-all at the project scope only, because unauthenticated access requires granting `run.invoker` to `allUsers`.
 
 ## OAuth
 
@@ -87,4 +84,4 @@ The web client's authorized JavaScript origins are `http://localhost:8080`, the 
 
 ## Verifying a deploy
 
-The startup log (Cloud Run → Logs, or `gcloud logging read`) shows the full boot sequence: the blob store footprint line, geocoding count, directory model load, then `listening` — about two and a half minutes after the instance starts. After any deploy, an existing session should still work — if everyone got signed out, `SESSION_KEY` stopped reaching the server.
+The startup log (Cloud Run → Logs, or `gcloud logging read`) shows the full boot sequence: the blob store footprint line, geocoding count, directory model load, then `listening` — about ten seconds after the instance starts. After any deploy, an existing session should still work — if everyone got signed out, `SESSION_KEY` stopped reaching the server.
