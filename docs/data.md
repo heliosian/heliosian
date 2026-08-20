@@ -1,6 +1,6 @@
 # Data model
 
-The entities the directory serves, and how they are assembled. Structured data lives in one Google Sheet shared with the service account; blobs (photos, audio) are files in the media shared drive, discovered by naming convention. The organized model is held in memory — nothing computed is ever written back to the sheet.
+The entities the directory serves, and how they are assembled. Structured data lives in one Google Sheet; blobs (photos, audio) are files beside it in the community shared drive, discovered by naming convention. Access rides on drive membership: the service account is a content manager of the drive, never granted through project IAM. The organized model is held in memory — nothing computed is ever written back to the sheet.
 
 ## Spreadsheet layout
 

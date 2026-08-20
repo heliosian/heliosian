@@ -19,7 +19,11 @@ In sample mode `tools/screenshot` captures pages directly, no session needed (se
 serves from the production spreadsheet and media drive (see `docs/data.md`) and turns on the full stack. The model loads at startup — the server refuses to start if the load fails — and reloads every five minutes. Real data never leaves the process: nothing is written to disk. Requirements:
 
 - **Sign-in** — everything sits behind Google sign-in restricted to the school's Workspace domain (API paths get a 401 instead of the login page). The OAuth web client is read from `creds/oauth-client.json` or `GOOGLE_CLIENT_ID`; its authorized JavaScript origins must include `http://localhost:8080`. The server issues its own HMAC-signed session cookie; set `SESSION_KEY` to keep sessions valid across restarts.
-- **Service account** — key at `creds/service-account.json` (the directory is gitignored), Sheets API enabled, the spreadsheet shared with it as editor (self-service edits write cells and append to the Change Log tab), the media shared drive shared as content manager (uploads create files and archive old versions).
+- **Data access** — Google credentials come from application-default credentials impersonating the data service account, set up once per machine:
+
+      gcloud auth application-default login --impersonate-service-account=directory@heliosian.iam.gserviceaccount.com
+
+  This requires `roles/iam.serviceAccountTokenCreator` on that account. The community shared drive — which holds the `Directory` sheet and all media — is shared with `directory@` as content manager; local processes then act as exactly the identity production runs as, with no key file anywhere (the org forbids creating one).
 - **Maps** — a server key for the Geocoding API (`creds/geocoding.key` or `GOOGLE_MAPS_SERVER_KEY`; never rendered into pages, restrict by server IP or leave unrestricted for dev) and a browser key for the Maps JavaScript API (`creds/maps.key` or `GOOGLE_MAPS_BROWSER_KEY`; rendered into pages, restrict by HTTP referer). Geocoding results are cached in memory per address.
 
 To capture authenticated real-data pages, launch the capture browser (`go run ./tools/capturebrowser`), sign in to the local server there once, and use `tools/browse` or `tools/screenshot -remote` — the session cookie lives in the capture profile.
@@ -38,7 +42,7 @@ No Node, no Docker, and no cloud credentials are needed for local development. R
 
 ## Tools
 
-Each runs as `go run ./tools/<name>`. The sheet and drive tools authenticate with `creds/service-account.json`.
+Each runs as `go run ./tools/<name>`. The sheet and drive tools authenticate with the same impersonated application-default credentials as the server (see Real data).
 
 - `screenshot`, `capturebrowser`, `browse` — page capture and browser driving; see `docs/screenshots.md`
 - `startserver` — launch the app detached, wait for it to listen, print the pid, log path, and a minted session cookie (needs `SESSION_KEY` and `DIRECTORY_SHEET`)
