@@ -9,7 +9,7 @@ Web apps for the Helios school community (K-8), served as one static Go binary o
 
 Open http://localhost:8080. That's the whole setup: with no configuration the server loads the fictional community in `sampledata/`, signs every request in as a sample parent, and fakes geocoding — no credentials, no cloud project. Templates, static assets, and sample data are read from disk on every request, so edit a file and refresh; nothing needs restarting.
 
-`brew install --cask google-chrome` additionally enables the screenshot tooling used to verify visual changes ([docs/screenshots.md](docs/screenshots.md)). No Node, no Docker. Go 1.26 or later.
+`brew install --cask google-chrome` additionally enables the screenshot tooling used to verify visual changes ([docs/screenshots.md](docs/screenshots.md)). No Node, no Docker. Go 1.27 or later.
 
 To run against real community data instead, see [docs/dev.md](docs/dev.md).
 

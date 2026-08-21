@@ -35,7 +35,7 @@ Development happens on macOS. Two Homebrew installs cover everything here and in
     brew install go
     brew install --cask google-chrome
 
-- **Go** 1.26 or later — builds and runs the server and all tooling (`go run`, `go vet`).
+- **Go** 1.27 or later — builds and runs the server and all tooling (`go run`, `go vet`).
 - **Google Chrome** — launched headless by the screenshot tool from its standard install location; never opened by hand.
 
 No Node, no Docker, and no cloud credentials are needed for local development. Repository layout is in the README.
