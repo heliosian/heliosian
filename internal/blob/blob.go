@@ -4,7 +4,6 @@ package blob
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"image"
 	"image/jpeg"
@@ -23,8 +22,9 @@ import (
 	"golang.org/x/image/draw"
 	_ "golang.org/x/image/webp"
 
-	"cloud.google.com/go/storage"
-	"google.golang.org/api/iterator"
+	"google.golang.org/api/googleapi"
+	"google.golang.org/api/option"
+	storage "google.golang.org/api/storage/v1"
 )
 
 const (
@@ -54,17 +54,18 @@ type object struct {
 }
 
 type Store struct {
-	bucket  *storage.BucketHandle
+	service *storage.Service
 	mu      sync.RWMutex
 	entries map[string]*entry
 }
 
 func New() (*Store, error) {
-	client, err := storage.NewClient(context.Background())
+	service, err := storage.NewService(context.Background(),
+		option.WithScopes(storage.DevstorageReadWriteScope))
 	if err != nil {
 		return nil, fmt.Errorf("storage client: %w", err)
 	}
-	s := &Store{bucket: client.Bucket(Bucket), entries: map[string]*entry{}}
+	s := &Store{service: service, entries: map[string]*entry{}}
 	if err := s.refresh(); err != nil {
 		return nil, err
 	}
@@ -90,26 +91,34 @@ func (s *Store) refresh() error {
 	primaries := map[string]object{}
 	thumbs := map[string]object{}
 	for _, folder := range folders {
-		it := s.bucket.Objects(ctx, &storage.Query{Prefix: folder + "/"})
+		token := ""
 		for {
-			attrs, err := it.Next()
-			if errors.Is(err, iterator.Done) {
-				break
+			call := s.service.Objects.List(Bucket).Prefix(folder+"/").
+				Fields("nextPageToken", "items(name,generation,contentType)").MaxResults(1000)
+			if token != "" {
+				call = call.PageToken(token)
 			}
+			list, err := call.Context(ctx).Do()
 			if err != nil {
 				return fmt.Errorf("list %s: %w", folder, err)
 			}
-			base := strings.TrimSuffix(path.Base(attrs.Name), path.Ext(attrs.Name))
-			o := object{name: attrs.Name, generation: attrs.Generation, mimeType: attrs.ContentType}
-			if strings.HasSuffix(base, thumbSuffix) {
-				thumbs[folder+"/"+strings.TrimSuffix(base, thumbSuffix)] = o
-				continue
+			for _, item := range list.Items {
+				base := strings.TrimSuffix(path.Base(item.Name), path.Ext(item.Name))
+				o := object{name: item.Name, generation: item.Generation, mimeType: item.ContentType}
+				if strings.HasSuffix(base, thumbSuffix) {
+					thumbs[folder+"/"+strings.TrimSuffix(base, thumbSuffix)] = o
+					continue
+				}
+				key := folder + "/" + base
+				if existing, ok := primaries[key]; ok {
+					return fmt.Errorf("duplicate media for %s: %s and %s", key, existing.name, item.Name)
+				}
+				primaries[key] = o
 			}
-			key := folder + "/" + base
-			if existing, ok := primaries[key]; ok {
-				return fmt.Errorf("duplicate media for %s: %s and %s", key, existing.name, attrs.Name)
+			if list.NextPageToken == "" {
+				break
 			}
-			primaries[key] = o
+			token = list.NextPageToken
 		}
 	}
 
@@ -190,12 +199,12 @@ func (s *Store) load(ctx context.Context, primary, thumb object) (*entry, error)
 }
 
 func (s *Store) read(ctx context.Context, name string) ([]byte, error) {
-	r, err := s.bucket.Object(name).NewReader(ctx)
+	resp, err := s.service.Objects.Get(Bucket, name).Context(ctx).Download()
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", name, err)
 	}
-	defer r.Close()
-	content, err := io.ReadAll(r)
+	defer resp.Body.Close()
+	content, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", name, err)
 	}
@@ -203,13 +212,10 @@ func (s *Store) read(ctx context.Context, name string) ([]byte, error) {
 }
 
 func (s *Store) write(ctx context.Context, name, mimeType string, content []byte) error {
-	w := s.bucket.Object(name).NewWriter(ctx)
-	w.ContentType = mimeType
-	if _, err := w.Write(content); err != nil {
-		w.Close()
-		return fmt.Errorf("write %s: %w", name, err)
-	}
-	if err := w.Close(); err != nil {
+	_, err := s.service.Objects.Insert(Bucket, &storage.Object{Name: name, ContentType: mimeType}).
+		Media(bytes.NewReader(content), googleapi.ContentType(mimeType)).
+		Context(ctx).Do()
+	if err != nil {
 		return fmt.Errorf("write %s: %w", name, err)
 	}
 	return nil
@@ -249,7 +255,7 @@ func (s *Store) Upload(folder, base, ext, mimeType string, content []byte) (stri
 	if exists {
 		superseded = fmt.Sprint(existing.generation)
 		if existing.name != name {
-			if err := s.bucket.Object(existing.name).Delete(ctx); err != nil {
+			if err := s.service.Objects.Delete(Bucket, existing.name).Context(ctx).Do(); err != nil {
 				return "", fmt.Errorf("delete superseded %s: %w", existing.name, err)
 			}
 		}
