@@ -20,9 +20,9 @@ The Dockerfile builds in two stages: a `golang` stage compiles the static binary
 
 `tools/deploy` holds the full service configuration and is the only place it is written down:
 
-    DIRECTORY_SHEET=<spreadsheet id> go run ./tools/deploy
+    DIRECTORY_SHEET=<spreadsheet id> PREFERENCES_SHEET=<spreadsheet id> go run ./tools/deploy
 
-It deploys the `latest` image with every setting the pipeline does not touch, so it both creates the service from nothing and repairs drift on an existing one. The spreadsheet id comes from the environment and the OAuth client id from `creds/oauth-client.json` — the same resolution the server itself uses — so neither is written into the repository.
+It deploys the `latest` image with every setting the pipeline does not touch, so it both creates the service from nothing and repairs drift on an existing one. The spreadsheet ids come from the environment and the OAuth client id from `creds/oauth-client.json` — the same resolution the server itself uses — so none of them is written into the repository.
 
 Why each setting is what it is:
 
@@ -42,6 +42,7 @@ Cloud Run injects `PORT`; the server honors it.
 Plain environment variables:
 
 - `DIRECTORY_SHEET` — the production spreadsheet id: the `Directory` sheet living in the community shared drive.
+- `PREFERENCES_SHEET` — the `Preferences` sheet in the same shared drive: the sharing-consent form's response spreadsheet.
 - `GOOGLE_CLIENT_ID` — the OAuth web client id; not a secret (it is embedded in the login page).
 
 Secret Manager secrets, delivered as environment variables. Values are used raw, so payloads must not carry trailing newlines:

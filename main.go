@@ -98,7 +98,11 @@ func main() {
 		source = data.Dir{Root: "sampledata"}
 		log.Printf("DIRECTORY_SHEET not set, serving sample data as %s", sampleUser)
 	} else {
-		sheet, err := data.NewSheet(map[string]string{"directory": sheetID})
+		preferencesID := os.Getenv("PREFERENCES_SHEET")
+		if preferencesID == "" {
+			log.Fatal("[ERROR] PREFERENCES_SHEET is required alongside DIRECTORY_SHEET")
+		}
+		sheet, err := data.NewSheet(map[string]string{"directory": sheetID, "preferences": preferencesID})
 		if err != nil {
 			log.Fatalf("[ERROR] load directory sheet: %v", err)
 		}

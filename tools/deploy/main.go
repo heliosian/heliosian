@@ -42,6 +42,10 @@ func main() {
 	if sheet == "" {
 		log.Fatal("[ERROR] DIRECTORY_SHEET is required")
 	}
+	preferences := os.Getenv("PREFERENCES_SHEET")
+	if preferences == "" {
+		log.Fatal("[ERROR] PREFERENCES_SHEET is required")
+	}
 	cmd := exec.Command("gcloud",
 		"run", "deploy", service,
 		"--image", image,
@@ -54,7 +58,7 @@ func main() {
 		"--concurrency", "250",
 		"--no-cpu-throttling",
 		"--use-http2",
-		"--set-env-vars", "DIRECTORY_SHEET="+sheet+",GOOGLE_CLIENT_ID="+clientID(),
+		"--set-env-vars", "DIRECTORY_SHEET="+sheet+",PREFERENCES_SHEET="+preferences+",GOOGLE_CLIENT_ID="+clientID(),
 		"--set-secrets", secrets,
 		"--quiet")
 	cmd.Stdout = os.Stdout

@@ -1,5 +1,13 @@
 package directory
 
+type OptStatus string
+
+const (
+	OptDefault OptStatus = "default"
+	OptIn      OptStatus = "in"
+	OptOut     OptStatus = "out"
+)
+
 type Person struct {
 	Email               string   `json:"email"`
 	FullName            string   `json:"fullName"`
@@ -22,6 +30,10 @@ type Person struct {
 	JobTitle            string   `json:"jobTitle,omitempty"`
 	Department          string   `json:"department,omitempty"`
 	GradeBand           string   `json:"gradeBand,omitempty"`
+
+	OptStatus     OptStatus `json:"optStatus"`
+	AddressMasked bool      `json:"addressMasked,omitempty"`
+	PhoneMasked   bool      `json:"phoneMasked,omitempty"`
 }
 
 type Family struct {
@@ -36,6 +48,8 @@ type Family struct {
 	PronunciationURL string   `json:"pronunciationUrl,omitempty"`
 	AdultEmails      []string `json:"adultEmails,omitempty"`
 	KidEmails        []string `json:"kidEmails,omitempty"`
+	AddressMasked    bool     `json:"addressMasked,omitempty"`
+	PhoneMasked      bool     `json:"phoneMasked,omitempty"`
 }
 
 type Classroom struct {

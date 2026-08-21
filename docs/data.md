@@ -1,6 +1,8 @@
 # Data model
 
-The entities the directory serves, and how they are assembled. Structured data lives in one Google Sheet in the community shared drive, reached through drive membership rather than project IAM; blobs (photos, audio) are objects in the media bucket, reached through project IAM. Each has exactly one home. The organized model is held in memory — nothing computed is ever written back to the sheet.
+The entities the directory serves, and how they are assembled. Structured data lives in two Google Sheets in the community shared drive, reached through drive membership rather than project IAM; blobs (photos, audio) are objects in the media bucket, reached through project IAM. Each has exactly one home. The organized model is held in memory — nothing computed is ever written back to either sheet.
+
+The `Directory` sheet holds the records. The `Preferences` sheet is a Google Form's response sheet, owned by the form and never written by the app, carrying each family's sharing consent.
 
 ## Spreadsheet layout
 
@@ -11,6 +13,10 @@ The entities the directory serves, and how they are assembled. Structured data l
 | Overrides | hand + app | The entire local layer: admin corrections, app-written self-service text, and added people, in canonical model columns keyed by email. |
 | Change Log | app | Append-only audit trail mirroring the Overrides columns: one row per change, holding the previous values. |
 
+The `Preferences` spreadsheet has a single form-owned tab, `Sheet1`: `Timestamp`, `Email Address`, `Communication Opt-In Status`, and `You have my permission to share the folllowing:` — the misspelling is the form's, and the loader matches it verbatim.
+
+Because the form is edited outside this repository and its wording *is* the data, every value in it is matched exactly and anything unrecognized is fatal — a reworded consent sentence, a renamed permission option, a newly added option, or a column the loader has never heard of all stop the load rather than being partially understood. A form edit therefore surfaces as a refused startup, never as a family's preference read the wrong way. Only two things are deliberately tolerant: an empty permission cell, which legitimately means "share neither", and a response whose email matches nobody, which is skipped.
+
 School structure lives nowhere in the sheet: membership and the classroom and crew names themselves derive from person records, and the remaining fixed structure — band identities, grade progression, department order — is code constants (see Classrooms and grades).
 
 ## Load pipeline
@@ -18,8 +24,9 @@ School structure lives nowhere in the sheet: membership and the classroom and cr
 1. Read the raw import.
 2. Transform each import row into canonical person and household records (explosion, below). The Name to Email mapping applies during this step, since it fixes the key everything else uses.
 3. Apply the Overrides tab onto the canonical records by email: unflagged rows patch existing records, flagged rows create new ones.
-4. List the media bucket and attach photo and pronunciation blobs to records by object-name convention.
-5. Hold the organized result in memory; the server refuses to start if the load fails, and the model reloads periodically.
+4. Apply the Preferences sheet, masking the contact data families chose not to share.
+5. List the media bucket and attach photo and pronunciation blobs to records by object-name convention.
+6. Hold the organized result in memory; the server refuses to start if the load fails, and the model reloads periodically.
 
 Because Overrides rows are authored post-transform, their values skip import normalization — so canonical-value validation runs on every layer, not just the import.
 
@@ -71,6 +78,26 @@ Family-level fields (address, family photo caption, family phone) ride on a pare
 
 Every change to Overrides appends a Change Log row: timestamp, actor, the row's email, then the previous value of each column that changed — `-` marking a previously empty cell, untouched columns left blank. Media uploads are not logged here; bucket object versions are their history.
 
+## Preferences
+
+One form response per submission, keyed by the submitter's email. Families resubmit freely — duplicates are ordinary, and a household's two adults may answer differently — so the sheet is a log, not a table of current state.
+
+Resolution:
+
+- **A person's answer governs their whole family.** The submitter is matched by lowercased email, their household located, and the answer applied to every adult and kid in it. A submitter with no household (staff) governs only themselves. A submission matching no person in the model is skipped: the form is open to the whole Workspace domain, and a stray response must not be able to stop the server.
+- **Last submission wins per family**, by timestamp rather than sheet order. The 33 seconds in which one family opted out and back in are the whole reason this is a timestamp comparison.
+- **A student in two households** is governed by both. Where the two disagree the stricter answer holds — masked beats shared, opted out beats opted in — so the outcome never depends on map ordering.
+
+`Communication Opt-In Status` is one of two fixed sentences, recorded as explicit opt-in or explicit opt-out. `You have my permission to share the folllowing:` is a multi-select of `Home Address` and `Adult Phone Number`; an item's *absence* is the instruction. Missing address permission clears the family address, which also drops it from the map, since geocoding skips empty addresses. Missing phone permission clears the household phone and every adult's phone in that family. An opt-out row carries no permissions and therefore masks both.
+
+A family with no submission at all is **default**, which today means opt-in with nothing masked. Only the three-state flag distinguishes them from an explicit opt-in, and that flag exists so the default can be inverted without touching the resolution logic.
+
+Explicit opt-out is recorded and not yet enforced; removal from the model remains the Overrides `Opted Out` flag, set by hand.
+
+## Student phone numbers
+
+Student phone numbers are never shown, whatever any sheet says. The Veracross import does not read `student_phone_mobile`, and the loader clears the phone of anyone flagged as a student after the Overrides layer, so neither an admin correction nor a self-service edit can surface one. No preference governs this and no flag records it — it is not a family's choice to make.
+
 ## Media blobs
 
 Photos and pronunciation recordings are objects in the media bucket `gs://heliosian-media`, under a `people/` or `families/` prefix and named by convention: `<email local part>-photo` and `<email local part>-pronunciation` for people, `<family key hash>-photo` and `<family key hash>-pronunciation` for families, each keeping its source extension. Presence means existence — no sheet cell records a filename — and freshness comes from the object generation.
@@ -91,7 +118,8 @@ One record per person, all roles in one shape:
 - **Facts**: optional about-me text — first-person blurbs for students, professional bios for staff.
 - **Student fields**: grade, classroom, and crew from the homeroom split; parent contact emails derive from the student's household adults.
 - **Staff fields**: job title, department, grade band, and classroom/crew assignment for teaching staff.
-- **Contact**: email always; phone optional.
+- **Contact**: email always; phone optional, and absent for every student.
+- **Sharing**: the family's consent state — explicit opt-in, explicit opt-out, or default — plus flags recording whether the address and phone were masked by preference. The phone flag is never set on a student, whose phone is withheld by the blanket rule rather than by any choice.
 - **Year rollover**: next-year grade and band derive from the grade progression constant, so the directory can flip to the new school year.
 
 ## Family
@@ -102,8 +130,8 @@ A household groups adults and kids; a student belongs to one household normally,
 - **Members**: the adults in the household and the students whose rows name it.
 - **Photo and caption**: the family photo from the media bucket plus a who's-who description naming everyone in it.
 - **Pronunciation**: optional audio recording of the family name, from the media bucket.
-- **Address**: as much as the family chooses to share — full postal address or just city and state, seeded from the import and updatable via self-service.
-- **Phone**: optional household phone.
+- **Address**: as much as the family chooses to share — full postal address or just city and state, seeded from the import and updatable via self-service. Cleared, with a flag recording it, when the family withheld address permission.
+- **Phone**: optional household phone, cleared and flagged alongside the adults' phones when the family withheld phone permission.
 
 ## Classrooms and grades
 
@@ -134,8 +162,9 @@ The loader hard-fails — no fallbacks, server refuses to start — on:
 - a flagged Overrides row colliding with an imported person
 - conflicting values for the same adult across import rows
 - an invalid canonical value from any layer
+- a Preferences column the loader does not know, or a Preferences row with a malformed email, an unparseable timestamp, an unrecognized opt-in sentence, or an unrecognized permission item
 
-The import procedure is manual today: `tools/writetab` writes the Veracross CSV export into the Veracross Import tab (header-checked), and `tools/loadcheck` re-runs the full pipeline against the sheet and prints a model summary. A single import tool that also reports the local layer's health beyond the fatal checks — useless overrides (value identical to what the record has anyway), `-` on flagged rows, name mappings or additions that Veracross has since made redundant, and media files whose name matches no current person or family, including family blobs orphaned by a membership change — is planned (`docs/plan.md`). `tools/findsheet` lists the spreadsheets visible to the service account; `tools/sheets` dumps a sheet's tabs, headers, and rows.
+The import procedure is manual today: `tools/writetab` writes the Veracross CSV export into the Veracross Import tab (header-checked), and `tools/loadcheck` re-runs the full pipeline against both sheets and prints a model summary, including the opt-in/opt-out/default split and the masked counts. A single import tool that also reports the local layer's health beyond the fatal checks — useless overrides (value identical to what the record has anyway), `-` on flagged rows, name mappings or additions that Veracross has since made redundant, and media files whose name matches no current person or family, including family blobs orphaned by a membership change — is planned (`docs/plan.md`). `tools/findsheet` lists the spreadsheets visible to the service account; `tools/sheets` dumps a sheet's tabs, headers, and rows.
 
 ## Sourcing
 

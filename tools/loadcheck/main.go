@@ -22,11 +22,12 @@ func (staticFiles) Has(key string) bool {
 
 func main() {
 	sheet := flag.String("sheet", "", "spreadsheet id")
+	preferences := flag.String("preferences", "", "preferences spreadsheet id")
 	flag.Parse()
-	if *sheet == "" {
-		log.Fatal("[ERROR] -sheet <spreadsheet id> is required")
+	if *sheet == "" || *preferences == "" {
+		log.Fatal("[ERROR] -sheet <spreadsheet id> and -preferences <spreadsheet id> are required")
 	}
-	source, err := data.NewSheet(map[string]string{"directory": *sheet})
+	source, err := data.NewSheet(map[string]string{"directory": *sheet, "preferences": *preferences})
 	if err != nil {
 		log.Fatalf("[ERROR] sheet source: %v", err)
 	}
@@ -51,7 +52,31 @@ func main() {
 	}
 	fmt.Printf("people: %d (students %d, parents %d, staff %d, new %d)\n",
 		len(model.People), students, parents, staff, isNew)
-	fmt.Printf("families: %d\n", len(model.Families))
+	byStatus := map[directory.OptStatus]int{}
+	addressMasked, phoneMasked := 0, 0
+	for _, p := range model.People {
+		byStatus[p.OptStatus]++
+		if p.AddressMasked {
+			addressMasked++
+		}
+		if p.PhoneMasked {
+			phoneMasked++
+		}
+	}
+	fmt.Printf("preferences: opt in %d, opt out %d, default %d (address masked %d, phone masked %d)\n",
+		byStatus[directory.OptIn], byStatus[directory.OptOut], byStatus[directory.OptDefault],
+		addressMasked, phoneMasked)
+	familyAddressMasked, familyPhoneMasked := 0, 0
+	for _, f := range model.Families {
+		if f.AddressMasked {
+			familyAddressMasked++
+		}
+		if f.PhoneMasked {
+			familyPhoneMasked++
+		}
+	}
+	fmt.Printf("families: %d (address masked %d, phone masked %d)\n",
+		len(model.Families), familyAddressMasked, familyPhoneMasked)
 	twoHousehold := map[string]int{}
 	for _, f := range model.Families {
 		for _, kid := range f.KidEmails {

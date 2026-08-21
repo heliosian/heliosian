@@ -8,11 +8,17 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"heliosian/internal/data"
 )
 
 const appName = "directory"
+
+const (
+	preferencesApp = "preferences"
+	preferencesTab = "Sheet1"
+)
 
 var gradeOrder = []string{
 	"Kindergarten", "Grade 1", "Grade 2", "Grade 3", "Grade 4",
@@ -39,8 +45,27 @@ var departmentOrder = []string{
 }
 
 var importColumns = []string{
-	"entry_sort_name", "student_full_name", "student_classifications", "student_email", "student_phone_mobile",
+	"entry_sort_name", "student_full_name", "student_classifications", "student_email",
 }
+
+// The permission column's header is misspelled in the form itself; it must match verbatim.
+const (
+	preferenceTimestamp  = "Timestamp"
+	preferenceEmail      = "Email Address"
+	preferenceStatus     = "Communication Opt-In Status"
+	preferencePermission = "You have my permission to share the folllowing:"
+)
+
+const (
+	optInAnswer  = "I agree to have family names and emails in the Helios Community Apps"
+	optOutAnswer = "Please remove all family names and emails from the Helios Community Apps. " +
+		"I understand that we will be unable to access the Helios Who directory, " +
+		"the volunteer portal and Spring Celebration fun(d)raiser events."
+	sharePhone   = "Adult Phone Number (if provided on Veracross)"
+	shareAddress = "Home Address (if provided on Veracross)"
+)
+
+const preferenceTimeFormat = "1/2/2006 15:04:05"
 
 var overrideColumns = []string{
 	"Email", "Added", "Full Name", "Legal Name", "Preferred Name",
@@ -58,6 +83,8 @@ type parsedName struct {
 }
 
 var nameForm = regexp.MustCompile(`^(.+?) \((.+?)\) (.+)$`)
+
+var emailForm = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
 
 func parseName(raw string) parsedName {
 	raw = strings.Join(strings.Fields(raw), " ")
@@ -92,6 +119,22 @@ type familyCells struct {
 	hasAddress, hasPhone, hasCaption bool
 }
 
+func exactColumns(table string, header, wanted []string) error {
+	if err := requireColumns(table, header, wanted); err != nil {
+		return err
+	}
+	known := map[string]bool{}
+	for _, w := range wanted {
+		known[w] = true
+	}
+	for _, h := range header {
+		if !known[h] {
+			return fmt.Errorf("table %s has unexpected column %q", table, h)
+		}
+	}
+	return nil
+}
+
 func requireColumns(table string, header, wanted []string) error {
 	present := map[string]bool{}
 	for _, h := range header {
@@ -116,9 +159,10 @@ type loader struct {
 	blobs  BlobChecker
 	static BlobChecker
 
-	importRows   []map[string]string
-	overrideRows []map[string]string
-	nameToEmail  map[string]string
+	importRows     []map[string]string
+	overrideRows   []map[string]string
+	preferenceRows []map[string]string
+	nameToEmail    map[string]string
 
 	people           map[string]*Person
 	order            []string
@@ -150,7 +194,9 @@ func LoadModel(source data.Source, blobs, static BlobChecker) (*Model, error) {
 		func() error { return l.readTables(source) },
 		l.transformImport,
 		l.applyOverrides,
+		l.hideStudentPhones,
 		l.buildFamilies,
+		l.applyPreferences,
 		l.removeOptedOut,
 		l.attachBlobs,
 		l.sortPeople,
@@ -189,6 +235,16 @@ func (l *loader) readTables(source data.Source) error {
 		return err
 	}
 	l.overrideRows = overrideRows
+	preferenceHeader, preferenceRows, err := source.Table(preferencesApp, preferencesTab)
+	if err != nil {
+		return err
+	}
+	if err := exactColumns(preferencesTab, preferenceHeader, []string{
+		preferenceTimestamp, preferenceEmail, preferenceStatus, preferencePermission,
+	}); err != nil {
+		return err
+	}
+	l.preferenceRows = preferenceRows
 
 	l.nameToEmail = map[string]string{}
 	for _, row := range mapRows {
@@ -264,7 +320,6 @@ func (l *loader) transformImport() error {
 		student := &Person{
 			Email: email, FullName: n.display, LegalName: n.legal, PreferredName: n.preferred,
 			IsStudent: true, Grade: classifications.GradeLevel, Classroom: classroom, Crew: crew,
-			Phone: row["student_phone_mobile"],
 		}
 		l.people[email] = student
 		l.order = append(l.order, email)
@@ -455,6 +510,15 @@ func (l *loader) applyOverrides() error {
 	return nil
 }
 
+func (l *loader) hideStudentPhones() error {
+	for _, p := range l.people {
+		if p.IsStudent {
+			p.Phone = ""
+		}
+	}
+	return nil
+}
+
 func (l *loader) buildFamilies() error {
 	for _, setKey := range l.householdOrder {
 		hh := l.households[setKey]
@@ -495,6 +559,113 @@ func (l *loader) buildFamilies() error {
 			family.PhotoCaption = cells.caption
 		}
 		l.model.Families[key] = family
+	}
+	return nil
+}
+
+type preference struct {
+	when    time.Time
+	status  OptStatus
+	address bool
+	phone   bool
+}
+
+func parsePreference(row map[string]string) (string, preference, error) {
+	email := strings.ToLower(row[preferenceEmail])
+	if !emailForm.MatchString(email) {
+		return "", preference{}, fmt.Errorf("preferences row %v has invalid email %q", row, row[preferenceEmail])
+	}
+	when, err := time.Parse(preferenceTimeFormat, row[preferenceTimestamp])
+	if err != nil {
+		return "", preference{}, fmt.Errorf("preferences row %s has invalid timestamp %q", email, row[preferenceTimestamp])
+	}
+	pref := preference{when: when}
+	switch row[preferenceStatus] {
+	case optInAnswer:
+		pref.status = OptIn
+	case optOutAnswer:
+		pref.status = OptOut
+	default:
+		return "", preference{}, fmt.Errorf("preferences row %s has unknown opt-in status %q", email, row[preferenceStatus])
+	}
+	if cell := row[preferencePermission]; cell != "" {
+		for _, item := range strings.Split(cell, ", ") {
+			switch {
+			case item == shareAddress && !pref.address:
+				pref.address = true
+			case item == sharePhone && !pref.phone:
+				pref.phone = true
+			default:
+				return "", preference{}, fmt.Errorf("preferences row %s grants invalid permission %q", email, item)
+			}
+		}
+	}
+	return email, pref, nil
+}
+
+func (l *loader) applyPreferences() error {
+	byFamily := map[string]preference{}
+	byPerson := map[string]preference{}
+	for _, row := range l.preferenceRows {
+		email, pref, err := parsePreference(row)
+		if err != nil {
+			return err
+		}
+		if _, ok := l.people[email]; !ok {
+			continue
+		}
+		sets := l.personHouseholds[email]
+		if len(sets) == 0 {
+			if current, ok := byPerson[email]; !ok || pref.when.After(current.when) {
+				byPerson[email] = pref
+			}
+			continue
+		}
+		for _, set := range sets {
+			key := l.familyKeys[set]
+			if current, ok := byFamily[key]; !ok || pref.when.After(current.when) {
+				byFamily[key] = pref
+			}
+		}
+	}
+
+	for key, pref := range byFamily {
+		family := l.model.Families[key]
+		if !pref.address {
+			family.Address = ""
+			family.AddressMasked = true
+		}
+		if !pref.phone {
+			family.Phone = ""
+			family.PhoneMasked = true
+		}
+		l.model.Families[key] = family
+	}
+
+	for _, email := range l.order {
+		p := l.people[email]
+		p.OptStatus = OptDefault
+		governing := []preference{}
+		for _, set := range l.personHouseholds[email] {
+			if pref, ok := byFamily[l.familyKeys[set]]; ok {
+				governing = append(governing, pref)
+			}
+		}
+		if pref, ok := byPerson[email]; ok {
+			governing = append(governing, pref)
+		}
+		for _, pref := range governing {
+			if pref.status == OptOut || p.OptStatus == OptDefault {
+				p.OptStatus = pref.status
+			}
+			if !pref.address {
+				p.AddressMasked = true
+			}
+			if !pref.phone && !p.IsStudent {
+				p.PhoneMasked = true
+				p.Phone = ""
+			}
+		}
 	}
 	return nil
 }

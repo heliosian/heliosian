@@ -23,6 +23,9 @@ func main() {
 	if os.Getenv("DIRECTORY_SHEET") == "" {
 		log.Fatal("[ERROR] DIRECTORY_SHEET is required")
 	}
+	if os.Getenv("PREFERENCES_SHEET") == "" {
+		log.Fatal("[ERROR] PREFERENCES_SHEET is required")
+	}
 
 	logFile, err := os.Create("/tmp/heliosian-server.log")
 	if err != nil {
