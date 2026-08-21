@@ -124,6 +124,33 @@ function setChrome(title, backHref) {
   }
 }
 
+const optInForm = 'https://docs.google.com/forms/d/e/1FAIpQLSehrwYXWLJ6LK5_0f5ccdIA1gF0q7jAeDMxV5FWb_Myr4uRog/viewform';
+
+function optInBanner() {
+  const banner = el('div', 'optin');
+  const inner = el('div', 'optin-inner container');
+  inner.append(el('h2', '', 'Help! Opt-In Required'));
+  inner.append(el('p', '', 'You have not yet opted into the Helios Community Apps and will lose access on Sept 1. Please opt-in. Thank you!'));
+  const action = el('a', 'optin-button', 'Opt-In');
+  action.href = optInForm;
+  action.target = '_blank';
+  action.rel = 'noopener';
+  inner.append(action);
+  banner.append(inner);
+  return banner;
+}
+
+function resetMain(...children) {
+  const main = document.querySelector('#main');
+  main.replaceChildren();
+  const me = byEmail[document.body.dataset.userEmail];
+  if (me && me.optStatus === 'default') {
+    main.append(optInBanner());
+  }
+  main.append(...children);
+  return main;
+}
+
 function renderNav() {
   const seg = activeSection();
   const nav = document.querySelector('#nav');
@@ -381,8 +408,7 @@ const tabRenderers = {
 };
 
 function renderPeople() {
-  const main = document.querySelector('#main');
-  main.replaceChildren();
+  const main = resetMain();
 
   const items = peopleTabs.map(t => ({...t, icon: t.key === 'staff' ? 'staff-tab' : t.key}));
   main.append(tabStrip(items, state.tab, 2, key => {
@@ -828,8 +854,7 @@ function familyBand(p, family) {
 let personEdit = null;
 
 function renderPersonDetail(email) {
-  const main = document.querySelector('#main');
-  main.replaceChildren();
+  const main = resetMain();
   const p = byEmail[email];
   if (!p) {
     main.append(el('div', 'empty', 'Not found.'));
@@ -1048,8 +1073,7 @@ function renderPersonDetail(email) {
 }
 
 function renderFamilyDetail(key) {
-  const main = document.querySelector('#main');
-  main.replaceChildren();
+  const main = resetMain();
   const family = state.model.families[key];
   if (!family) {
     main.append(el('div', 'empty', 'Not found.'));
@@ -1322,8 +1346,7 @@ const classroomsTabRenderers = {
 };
 
 function renderClassroomsPage() {
-  const main = document.querySelector('#main');
-  main.replaceChildren();
+  const main = resetMain();
 
   main.append(tabStrip(classroomsTabs, state.classTab, 1, key => {
     state.classTab = key;
@@ -1365,8 +1388,7 @@ function renderClassroomsPage() {
 }
 
 function renderStaffPage() {
-  const main = document.querySelector('#main');
-  main.replaceChildren();
+  const main = resetMain();
 
   const content = el('div', 'content container');
   const header = el('div', 'content-header');
@@ -1445,8 +1467,7 @@ function otherFamilyMembers(student) {
 }
 
 function renderRoster(title, image, groups, backLabel) {
-  const main = document.querySelector('#main');
-  main.replaceChildren();
+  const main = resetMain();
   const from = fromURL();
   const back = from && from.pathname === '/classrooms' ? from.pathname + from.search : '/classrooms';
   main.append(breadcrumbs([['Classrooms', back], [title, null]]));
@@ -1514,7 +1535,7 @@ function renderRoster(title, image, groups, backLabel) {
 function renderGradeDetail(slug) {
   const grade = state.model.grades.find(g => slugify(g.name) === slug);
   if (!grade) {
-    document.querySelector('#main').replaceChildren(el('div', 'empty', 'Not found.'));
+    resetMain(el('div', 'empty', 'Not found.'));
     return;
   }
   const students = studentsOf(p => p.grade === grade.name);
@@ -1528,7 +1549,7 @@ function renderGradeDetail(slug) {
 function renderClassroomDetail(slug) {
   const classroom = state.model.classrooms.find(c => slugify(c.name) === slug);
   if (!classroom) {
-    document.querySelector('#main').replaceChildren(el('div', 'empty', 'Not found.'));
+    resetMain(el('div', 'empty', 'Not found.'));
     return;
   }
   const students = studentsOf(p => p.classroom === classroom.name);
@@ -1601,8 +1622,7 @@ function emailEntries(tab) {
 }
 
 function renderEmailListPage() {
-  const main = document.querySelector('#main');
-  main.replaceChildren();
+  const main = resetMain();
 
   main.append(el('div', 'container email-hint', 'Use the filters to select for specific grades or classrooms.'));
 
@@ -1726,8 +1746,7 @@ const pinIcon = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(
   '<circle cx="12" cy="10" r="3" fill="#fff"/></svg>');
 
 function renderMapPage() {
-  const main = document.querySelector('#main');
-  main.replaceChildren();
+  const main = resetMain();
 
   const content = el('div', 'content container');
   const header = el('div', 'content-header');
