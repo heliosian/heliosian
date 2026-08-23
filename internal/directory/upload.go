@@ -66,6 +66,10 @@ func RegisterUpload(mux *http.ServeMux, cache *Cache, sheet *data.Sheet, store *
 	mux.HandleFunc("POST /api/directory/edit", u.edit)
 }
 
+func today() string {
+	return time.Now().UTC().Format(updatedFormat)
+}
+
 func clearable(value string) string {
 	if value == "" {
 		return "-"
@@ -197,11 +201,13 @@ func (u uploader) facts(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "not allowed to edit this record", http.StatusForbidden)
 		return
 	}
-	old := ""
+	old, oldUpdated := "", ""
 	if p := model.Person(key); p != nil {
-		old = p.Facts
+		old, oldUpdated = p.Facts, p.FactsUpdated
 	}
-	if !u.applyOverride(w, me, key, "facts update", map[string]string{"Facts": facts}, map[string]string{"Facts": old}) {
+	cells := map[string]string{"Facts": facts, "Facts Updated": today()}
+	previous := map[string]string{"Facts": old, "Facts Updated": oldUpdated}
+	if !u.applyOverride(w, me, key, "facts update", cells, previous) {
 		return
 	}
 	log.Printf("facts: %s set %s (%d chars)", me, key, len(facts))
@@ -260,7 +266,16 @@ func (u uploader) upload(w http.ResponseWriter, r *http.Request) {
 		serverError(w, err)
 		return
 	}
-	if err := u.cache.Refresh(); err != nil {
+	if kind == "photo" {
+		row, column, previous := key, "Photo Updated", model.Person(key).PhotoUpdated
+		if target == "family" {
+			row, column, previous = strings.ToLower(me), "Family Photo Updated", model.Families[key].PhotoUpdated
+		}
+		if !u.applyOverride(w, me, row, "photo upload",
+			map[string]string{column: today()}, map[string]string{column: previous}) {
+			return
+		}
+	} else if err := u.cache.Refresh(); err != nil {
 		serverError(w, fmt.Errorf("refresh model after upload: %w", err))
 		return
 	}

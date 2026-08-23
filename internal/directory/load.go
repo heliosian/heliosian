@@ -72,6 +72,19 @@ var overrideColumns = []string{
 	"Is Student", "Is Parent", "Is Staff", "New to Helios", "Pronouns", "Facts",
 	"Grade", "Classroom", "Crew", "Phone", "Job Title", "Department", "Grade Band", "Room Parent",
 	"Address", "Family Phone", "Family Photo Caption", "Opted Out",
+	"Photo Updated", "Facts Updated", "Family Photo Updated",
+}
+
+const updatedFormat = "2006-01-02"
+
+func checkUpdated(email, column, cell string) error {
+	if cell == "" || cell == "-" {
+		return nil
+	}
+	if _, err := time.Parse(updatedFormat, cell); err != nil {
+		return fmt.Errorf("overrides row %s has invalid %s %q", email, column, cell)
+	}
+	return nil
 }
 
 type BlobChecker interface {
@@ -115,8 +128,8 @@ type household struct {
 }
 
 type familyCells struct {
-	address, phone, caption          string
-	hasAddress, hasPhone, hasCaption bool
+	address, phone, caption, photoUpdated             string
+	hasAddress, hasPhone, hasCaption, hasPhotoUpdated bool
 }
 
 func exactColumns(table string, header, wanted []string) error {
@@ -447,6 +460,14 @@ func (l *loader) applyOverrides() error {
 		}
 		apply(row["Pronouns"], &p.Pronouns)
 		apply(row["Facts"], &p.Facts)
+		if err := checkUpdated(email, "Facts Updated", row["Facts Updated"]); err != nil {
+			return err
+		}
+		apply(row["Facts Updated"], &p.FactsUpdated)
+		if err := checkUpdated(email, "Photo Updated", row["Photo Updated"]); err != nil {
+			return err
+		}
+		apply(row["Photo Updated"], &p.PhotoUpdated)
 		if cell := row["Grade"]; cell != "" && cell != "-" && !added && gradeBands[cell] == "" {
 			return fmt.Errorf("overrides row %s has unknown grade %q", email, cell)
 		}
@@ -486,7 +507,16 @@ func (l *loader) applyOverrides() error {
 				cells.caption = cell
 			}
 		}
-		if cells.hasAddress || cells.hasPhone || cells.hasCaption {
+		if cell := row["Family Photo Updated"]; cell != "" {
+			if err := checkUpdated(email, "Family Photo Updated", cell); err != nil {
+				return err
+			}
+			cells.hasPhotoUpdated = true
+			if cell != "-" {
+				cells.photoUpdated = cell
+			}
+		}
+		if cells.hasAddress || cells.hasPhone || cells.hasCaption || cells.hasPhotoUpdated {
 			l.familyOverrides[email] = cells
 		}
 
@@ -557,6 +587,9 @@ func (l *loader) buildFamilies() error {
 		}
 		if cells.hasCaption {
 			family.PhotoCaption = cells.caption
+		}
+		if cells.hasPhotoUpdated {
+			family.PhotoUpdated = cells.photoUpdated
 		}
 		l.model.Families[key] = family
 	}

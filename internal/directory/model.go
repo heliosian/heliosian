@@ -19,8 +19,10 @@ type Person struct {
 	IsNew               bool     `json:"isNew,omitempty"`
 	Pronouns            string   `json:"pronouns,omitempty"`
 	Facts               string   `json:"facts,omitempty"`
+	FactsUpdated        string   `json:"factsUpdated,omitempty"`
 	PronunciationURL    string   `json:"pronunciationUrl,omitempty"`
 	PhotoURL            string   `json:"photoUrl,omitempty"`
+	PhotoUpdated        string   `json:"photoUpdated,omitempty"`
 	Grade               string   `json:"grade,omitempty"`
 	Classroom           string   `json:"classroom,omitempty"`
 	Crew                string   `json:"crew,omitempty"`
@@ -45,6 +47,7 @@ type Family struct {
 	Lng              float64  `json:"lng,omitempty"`
 	PhotoURL         string   `json:"photoUrl,omitempty"`
 	PhotoCaption     string   `json:"photoCaption,omitempty"`
+	PhotoUpdated     string   `json:"photoUpdated,omitempty"`
 	PronunciationURL string   `json:"pronunciationUrl,omitempty"`
 	AdultEmails      []string `json:"adultEmails,omitempty"`
 	KidEmails        []string `json:"kidEmails,omitempty"`

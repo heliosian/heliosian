@@ -54,5 +54,6 @@ Each runs as `go run ./tools/<name>`. The sheet, drive, and bucket tools authent
 - `sheets` — dump a sheet's tabs, sizes, and header rows
 - `dumptab` / `writetab` — copy one tab to a local CSV / write a local CSV into a tab, header-checked
 - `createtabs` — create the directory sheet's local-layer tabs with their header rows
+- `importdates` — seed the Overrides refresh-date columns from the legacy Glide spreadsheet, adding the columns if absent
 - `setcell` — set one cell in a tab by key column, appending the row if missing
 - `splash` — regenerate the iOS splash battery from the captured original page; see `docs/pwa.md`

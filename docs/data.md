@@ -60,7 +60,7 @@ The explosion turns each import row into one student record plus up to four adul
 Canonical model columns, keyed by lowercased email, one row per person. Three kinds of content share the tab, distinguished only by authorship and one flag:
 
 - **Corrections** (hand): fix anything the import gets wrong — swapped name fields, bad phone numbers — and carry person flags with no import source, like room-parent assignments and the new-to-Helios marker.
-- **Self-service text** (app): facts, pronouns, preferred name, phone, address — the latter two hideable via the `-` clear — and the Opted Out flag. Every self-service edit warns that it doesn't affect the values shown in Veracross. The app writes these cells directly; moderating a contribution is the same act as any other correction. Photo and pronunciation uploads go straight to the media bucket and never touch the sheet.
+- **Self-service text** (app): facts, pronouns, preferred name, phone, address — the latter two hideable via the `-` clear — and the Opted Out flag. Every self-service edit warns that it doesn't affect the values shown in Veracross. The app writes these cells directly; moderating a contribution is the same act as any other correction. A photo upload writes the object to the media bucket and stamps the matching updated date below; a pronunciation upload touches the bucket alone.
 - **Additions** (hand, flagged): people with no import row at all. The flag inverts the source expectation.
 
 Cell semantics are sparse: an empty cell contributes nothing, `-` clears the underlying value. An addition is just an override applied to an empty base record, so the merge logic is uniform; the flag selects the validation instead:
@@ -73,6 +73,8 @@ Cell semantics are sparse: an empty cell contributes nothing, `-` clears the und
 Flagged rows must supply every field the model requires; unflagged rows can be a single cell. `-` on a flagged row is meaningless (nothing beneath to clear) and reported as useless.
 
 Family-level fields (address, family photo caption, family phone) ride on a parent's row and apply to that parent's household, so a two-household student's families are addressed independently through their respective adults.
+
+Three columns carry refresh dates in ISO form, and any other value is fatal: `Photo Updated` and `Facts Updated` on the person's row, `Family Photo Updated` riding on a parent's row like the caption. The app stamps them on every facts edit and photo upload, and the directory reads them to prompt families whose content has aged (see `docs/directory.md`). They are seeded from the legacy Glide spreadsheet, which recorded the same dates for the years this app's history does not cover; `tools/importdates` performs that seeding, skipping people the directory no longer holds and collapsing a family's several parent rows to one date per household.
 
 **Opted Out** removes the person entirely at load: their record, their membership in families and parent-contact lists, and any room-parent assignment all vanish from the model. Because viewing the directory requires being in it, opting out also locks the person out — they get a permissions error until the school clears the flag. People set it from their own page, parents set it for their kids (each with a confirmation spelling out the consequences), or an admin sets the cell by hand.
 
@@ -100,7 +102,7 @@ Student phone numbers are never shown, whatever any sheet says. The Veracross im
 
 ## Media blobs
 
-Photos and pronunciation recordings are objects in the media bucket `gs://heliosian-media`, under a `people/` or `families/` prefix and named by convention: `<email local part>-photo` and `<email local part>-pronunciation` for people, `<family key hash>-photo` and `<family key hash>-pronunciation` for families, each keeping its source extension. Presence means existence — no sheet cell records a filename — and freshness comes from the object generation.
+Photos and pronunciation recordings are objects in the media bucket `gs://heliosian-media`, under a `people/` or `families/` prefix and named by convention: `<email local part>-photo` and `<email local part>-pronunciation` for people, `<family key hash>-photo` and `<family key hash>-pronunciation` for families, each keeping its source extension. Presence means existence — no sheet cell records a filename. Freshness cannot come from the object generation, which the move into the bucket reset for every object at once; it comes from the updated-date columns in Overrides.
 
 Every image is stored with a `-thumb.jpg` sibling written at the same time, so startup loads thumbnails instead of computing them; an image object with no stored thumbnail is fatal. Uploads overwrite the object and its thumbnail, and bucket versioning retains the superseded generations. An upload arriving in a different format also deletes the previous extension's object, so a key never resolves to two files.
 
@@ -161,11 +163,11 @@ The loader hard-fails — no fallbacks, server refuses to start — on:
 - an unflagged Overrides row matching no person (orphaned override)
 - a flagged Overrides row colliding with an imported person
 - conflicting values for the same adult across import rows
-- an invalid canonical value from any layer
+- an invalid canonical value from any layer, including an Overrides refresh date that is not an ISO date
 - a Preferences column the loader does not know, or a Preferences row with a malformed email, an unparseable timestamp, an unrecognized opt-in sentence, or an unrecognized permission item
 
 The import procedure is manual today: `tools/writetab` writes the Veracross CSV export into the Veracross Import tab (header-checked), and `tools/loadcheck` re-runs the full pipeline against both sheets and prints a model summary, including the opt-in/opt-out/default split and the masked counts. A single import tool that also reports the local layer's health beyond the fatal checks — useless overrides (value identical to what the record has anyway), `-` on flagged rows, name mappings or additions that Veracross has since made redundant, and media files whose name matches no current person or family, including family blobs orphaned by a membership change — is planned (`docs/plan.md`). `tools/findsheet` lists the spreadsheets visible to the service account; `tools/sheets` dumps a sheet's tabs, headers, and rows.
 
 ## Sourcing
 
-Records are imported from the school's systems and enriched by families themselves (photos, facts, pronunciation recordings, address preferences), with freshness read from media file timestamps and the change log so refresh cadence can be enforced.
+Records are imported from the school's systems and enriched by families themselves (photos, facts, pronunciation recordings, address preferences), with freshness read from the recorded refresh dates so refresh cadence can be enforced.

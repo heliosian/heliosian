@@ -140,12 +140,70 @@ function optInBanner() {
   return banner;
 }
 
+const staleYears = {photo: 1.25, facts: 1.25, familyPhoto: 2};
+
+function agedPast(present, updated, years) {
+  if (!present) {
+    return false;
+  }
+  const when = Date.parse(updated);
+  return Number.isNaN(when) || Date.now() - when > years * 365.25 * 24 * 60 * 60 * 1000;
+}
+
+function staleItems() {
+  const me = byEmail[document.body.dataset.userEmail];
+  if (!me) {
+    return [];
+  }
+  const family = state.model.families[me.familyKey];
+  const kids = ((family && family.kidEmails) || []).map(e => byEmail[e]).filter(Boolean);
+  const items = [];
+  for (const p of [me, ...kids.filter(k => k.email !== me.email)]) {
+    const whose = p.email === me.email ? 'your' : `${p.fullName}'s`;
+    const href = personLink(p) + '&edit=1';
+    if (agedPast(p.photoUrl, p.photoUpdated, staleYears.photo)) {
+      items.push({text: `Update ${whose} photo for new year`, href});
+    }
+    if (agedPast(p.facts, p.factsUpdated, staleYears.facts)) {
+      items.push({text: `Update ${whose} facts for new year`, href});
+    }
+  }
+  if (family && agedPast(family.photoUrl, family.photoUpdated, staleYears.familyPhoto)) {
+    items.push({text: 'Update your family photo for new year', href: familyLink(family.key)});
+  }
+  return items;
+}
+
+function staleBanner(items) {
+  const banner = el('div', 'stale');
+  const inner = el('div', 'stale-inner container');
+  for (const item of items) {
+    const row = el('a', 'stale-row');
+    row.href = item.href;
+    row.append(el('div', 'stale-mark'));
+    row.append(el('div', 'stale-text', item.text));
+    const chev = el('div', 'member-chevron');
+    chev.append(svg('chevron-right'));
+    row.append(chev);
+    inner.append(row);
+  }
+  const action = el('a', 'stale-button', 'Update Family Info');
+  action.href = '/my-family';
+  inner.append(action);
+  banner.append(inner);
+  return banner;
+}
+
 function resetMain(...children) {
   const main = document.querySelector('#main');
   main.replaceChildren();
   const me = byEmail[document.body.dataset.userEmail];
   if (me && me.optStatus === 'default') {
     main.append(optInBanner());
+  }
+  const stale = staleItems();
+  if (stale.length) {
+    main.append(staleBanner(stale));
   }
   main.append(...children);
   return main;
