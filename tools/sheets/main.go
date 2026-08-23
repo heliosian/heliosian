@@ -12,7 +12,6 @@ import (
 	"google.golang.org/api/sheets/v4"
 )
 
-
 func main() {
 	sheet := flag.String("sheet", "", "spreadsheet id")
 	tab := flag.String("tab", "", "print rows of this tab instead of the overview")
