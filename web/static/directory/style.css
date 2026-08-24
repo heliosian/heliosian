@@ -1999,3 +1999,31 @@ a.list-row:hover {
     max-width: none;
   }
 }
+
+.photo-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+
+.photo-source,
+.photo-source-use {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 0.8rem;
+  padding: 0.15rem 0.6rem;
+  cursor: pointer;
+}
+
+.photo-source.selected {
+  border-color: currentColor;
+  font-weight: 600;
+}
+
+.photo-source-use[hidden] {
+  display: none;
+}

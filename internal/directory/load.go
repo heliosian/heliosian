@@ -93,7 +93,7 @@ var overrideColumns = []string{
 	"Is Student", "Is Parent", "Is Staff", "New to Helios", "Pronouns", "Facts",
 	"Grade", "Classroom", "Crew", "Phone", "Job Title", "Department", "Grade Band", "Room Parent",
 	"Address", "Family Phone", "Family Photo Caption", "Opted Out",
-	"Photo Updated", "Facts Updated", "Family Photo Updated",
+	"Photo Updated", "Facts Updated", "Family Photo Updated", "Primary Photo",
 }
 
 const updatedFormat = "2006-01-02"
@@ -683,6 +683,10 @@ func (l *loader) applyOverrides() error {
 			return err
 		}
 		apply("Photo Updated", &p.PhotoUpdated)
+		if cell := row["Primary Photo"]; cell != "" && cell != "-" && cell != PhotoUpload && cell != PhotoVeracross {
+			return fmt.Errorf("overrides row %s has invalid Primary Photo %q", email, cell)
+		}
+		apply("Primary Photo", &p.PrimaryPhoto)
 		if cell := row["Grade"]; cell != "" && cell != "-" && !added && gradeBands[cell] == "" {
 			return fmt.Errorf("overrides row %s has unknown grade %q", email, cell)
 		}
@@ -952,15 +956,38 @@ func (l *loader) removeOptedOut() error {
 	return nil
 }
 
+// primaryPhoto resolves which of a person's photos the directory shows. Absent a
+// choice the upload wins, since going to the trouble of uploading one says enough;
+// choosing the portrait is the case worth recording.
+func primaryPhoto(photos []Photo, chosen string) string {
+	for _, photo := range photos {
+		if photo.Source == chosen {
+			return photo.URL
+		}
+	}
+	if len(photos) == 0 {
+		return ""
+	}
+	return photos[0].URL
+}
+
 func (l *loader) attachBlobs() error {
 	if l.blobs == nil {
 		return nil
 	}
 	for _, p := range l.people {
 		local, _, _ := strings.Cut(p.Email, "@")
-		if l.blobs.Has("people/" + local + "-photo") {
-			p.PhotoURL = "/blob/people/" + local + "-photo"
+		// The school portrait and a person's own upload live side by side, so a
+		// viewer can fall back to the portrait when an upload is old or unclear.
+		for _, photo := range []Photo{
+			{Source: PhotoUpload, URL: "/blob/people/" + local + "-photo"},
+			{Source: PhotoVeracross, URL: "/blob/people/" + local + "-photo-" + PhotoVeracross},
+		} {
+			if l.blobs.Has(strings.TrimPrefix(photo.URL, "/blob/")) {
+				p.Photos = append(p.Photos, photo)
+			}
 		}
+		p.PhotoURL = primaryPhoto(p.Photos, p.PrimaryPhoto)
 		if l.blobs.Has("people/" + local + "-pronunciation") {
 			p.PronunciationURL = "/blob/people/" + local + "-pronunciation"
 		}

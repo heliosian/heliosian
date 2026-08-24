@@ -104,3 +104,27 @@ func model(t *testing.T, email string) *Person {
 	}
 	return p
 }
+
+func TestPrimaryPhoto(t *testing.T) {
+	upload := Photo{Source: PhotoUpload, URL: "/blob/people/a-photo"}
+	portrait := Photo{Source: PhotoVeracross, URL: "/blob/people/a-photo-veracross"}
+	cases := []struct {
+		name   string
+		photos []Photo
+		chosen string
+		want   string
+	}{
+		{"no photos at all", nil, "", ""},
+		{"upload wins by default", []Photo{upload, portrait}, "", upload.URL},
+		{"the portrait can be chosen", []Photo{upload, portrait}, PhotoVeracross, portrait.URL},
+		{"choosing the upload is honoured", []Photo{upload, portrait}, PhotoUpload, upload.URL},
+		{"only a portrait", []Photo{portrait}, "", portrait.URL},
+		// Someone who chose the portrait and later had it removed still gets a photo.
+		{"chosen source is gone", []Photo{upload}, PhotoVeracross, upload.URL},
+	}
+	for _, c := range cases {
+		if got := primaryPhoto(c.photos, c.chosen); got != c.want {
+			t.Errorf("%s: got %q, want %q", c.name, got, c.want)
+		}
+	}
+}

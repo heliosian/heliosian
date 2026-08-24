@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -131,6 +132,21 @@ func (u uploader) edit(w http.ResponseWriter, r *http.Request) {
 		cells["Full Name"] = value + " " + surname(base)
 		previous["Preferred Name"] = person.PreferredName
 		previous["Full Name"] = person.FullName
+	case "primary-photo":
+		if !mayEdit(model, me, "person", key) {
+			http.Error(w, "not allowed to edit this record", http.StatusForbidden)
+			return
+		}
+		if value != PhotoUpload && value != PhotoVeracross {
+			http.Error(w, "bad photo source", http.StatusBadRequest)
+			return
+		}
+		if !slices.ContainsFunc(person.Photos, func(p Photo) bool { return p.Source == value }) {
+			http.Error(w, "no photo from that source", http.StatusBadRequest)
+			return
+		}
+		cells["Primary Photo"] = value
+		previous["Primary Photo"] = person.PrimaryPhoto
 	case "phone":
 		if !mayEdit(model, me, "person", key) {
 			http.Error(w, "not allowed to edit this record", http.StatusForbidden)

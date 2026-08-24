@@ -8,6 +8,18 @@ const (
 	OptOut     OptStatus = "out"
 )
 
+// Photo sources. The school portrait and a person's own upload are separate objects
+// in the bucket, so uploading no longer destroys the portrait.
+const (
+	PhotoUpload    = "upload"
+	PhotoVeracross = "veracross"
+)
+
+type Photo struct {
+	Source string `json:"source"`
+	URL    string `json:"url"`
+}
+
 type Person struct {
 	Email               string   `json:"email"`
 	FullName            string   `json:"fullName"`
@@ -22,6 +34,8 @@ type Person struct {
 	FactsUpdated        string   `json:"factsUpdated,omitempty"`
 	PronunciationURL    string   `json:"pronunciationUrl,omitempty"`
 	PhotoURL            string   `json:"photoUrl,omitempty"`
+	Photos              []Photo  `json:"photos,omitempty"`
+	PrimaryPhoto        string   `json:"primaryPhoto,omitempty"`
 	PhotoUpdated        string   `json:"photoUpdated,omitempty"`
 	Grade               string   `json:"grade,omitempty"`
 	Classroom           string   `json:"classroom,omitempty"`
