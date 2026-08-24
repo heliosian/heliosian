@@ -20,41 +20,36 @@ type Cache struct {
 	geocoder Geocoder
 	blobs    BlobChecker
 	static   BlobChecker
-	build    sync.Mutex
+	queue    *Queue
 	mu       sync.RWMutex
 	model    *Model
 	tables   *Tables
 }
 
-func NewCache(source data.Source, geocoder Geocoder, blobs, static BlobChecker) (*Cache, error) {
-	c := &Cache{source: source, geocoder: geocoder, blobs: blobs, static: static}
-	if err := c.refresh(); err != nil {
+func NewCache(source data.Source, geocoder Geocoder, blobs, static BlobChecker, queue *Queue) (*Cache, error) {
+	c := &Cache{source: source, geocoder: geocoder, blobs: blobs, static: static, queue: queue}
+	start := time.Now()
+	tables, err := ReadTables(source)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.rebuild(tables, start); err != nil {
 		return nil, err
 	}
 	go c.refreshLoop()
 	return c, nil
 }
 
-func (c *Cache) Refresh() error {
-	return c.refresh()
+// rebuildCurrent reruns the model over the tables already in memory, for changes
+// that alter no sheet cell.
+func (c *Cache) rebuildCurrent() error {
+	return c.rebuild(c.currentTables(), time.Now())
 }
 
-// Rebuild reruns the model over the tables already in memory, for changes that
-// alter no sheet cell.
-func (c *Cache) Rebuild() error {
-	start := time.Now()
-	c.build.Lock()
-	defer c.build.Unlock()
-	return c.rebuild(c.currentTables(), start)
-}
-
-// ApplyOverride folds a just-written Overrides change into the cached tables and
-// reruns the model, so a write costs no sheet read.
-func (c *Cache) ApplyOverride(email string, cells map[string]string) error {
-	start := time.Now()
-	c.build.Lock()
-	defer c.build.Unlock()
-	return c.rebuild(c.currentTables().withOverride(email, cells), start)
+// applyOverride folds an Overrides change into the cached tables and reruns the
+// model, so a write costs no sheet read.
+func (c *Cache) applyOverride(email string, cells map[string]string) error {
+	return c.rebuild(c.currentTables().withOverride(email, cells), time.Now())
 }
 
 func (c *Cache) Model() *Model {
@@ -71,16 +66,16 @@ func (c *Cache) currentTables() *Tables {
 
 func (c *Cache) refreshLoop() {
 	for range time.Tick(refreshInterval) {
-		if err := c.refresh(); err != nil {
-			log.Printf("[ERROR] directory model refresh: %v", err)
-		}
+		c.queue.Add(func() {
+			if err := c.refresh(); err != nil {
+				log.Printf("[ERROR] directory model refresh: %v", err)
+			}
+		})
 	}
 }
 
 func (c *Cache) refresh() error {
 	start := time.Now()
-	c.build.Lock()
-	defer c.build.Unlock()
 	tables, err := ReadTables(c.source)
 	if err != nil {
 		return err

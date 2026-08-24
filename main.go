@@ -2,14 +2,17 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/json"
 	"log"
 	"mime"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"heliosian/internal/auth"
 	"heliosian/internal/blob"
@@ -115,7 +118,8 @@ func main() {
 		}
 		blobs = store
 	}
-	cache, err := directory.NewCache(source, geocoder, blobs, staticFiles{})
+	queue := directory.NewQueue()
+	cache, err := directory.NewCache(source, geocoder, blobs, staticFiles{}, queue)
 	if err != nil {
 		log.Fatalf("[ERROR] load directory data: %v", err)
 	}
@@ -123,7 +127,7 @@ func main() {
 	directory.Register(mux, cache, browserKey)
 	if store != nil {
 		blob.Register(mux, store)
-		directory.RegisterUpload(mux, cache, source.(*data.Sheet), store)
+		directory.RegisterUpload(mux, cache, source.(*data.Sheet), store, queue)
 	}
 	mux.Handle("GET /{$}", http.RedirectHandler("/people", http.StatusFound))
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.Dir("web/static"))))
@@ -144,6 +148,19 @@ func main() {
 	protocols.SetHTTP1(true)
 	protocols.SetUnencryptedHTTP2(true)
 	server := &http.Server{Addr: ":" + port, Handler: cacheControl(handler), Protocols: protocols}
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGTERM, os.Interrupt)
+	go func() {
+		<-stop
+		log.Printf("shutting down")
+		if err := server.Shutdown(context.Background()); err != nil {
+			log.Printf("[ERROR] shutdown: %v", err)
+		}
+	}()
 	log.Printf("listening on http://localhost:%s", port)
-	log.Fatal(server.ListenAndServe())
+	if err := server.ListenAndServe(); err != http.ErrServerClosed {
+		log.Fatal(err)
+	}
+	<-queue.Drain()
+	log.Printf("queue drained")
 }

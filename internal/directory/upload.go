@@ -6,7 +6,6 @@ import (
 	"log"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	"heliosian/internal/auth"
@@ -57,10 +56,11 @@ type uploader struct {
 	cache *Cache
 	sheet *data.Sheet
 	store *blob.Store
+	queue *Queue
 }
 
-func RegisterUpload(mux *http.ServeMux, cache *Cache, sheet *data.Sheet, store *blob.Store) {
-	u := uploader{cache: cache, sheet: sheet, store: store}
+func RegisterUpload(mux *http.ServeMux, cache *Cache, sheet *data.Sheet, store *blob.Store, queue *Queue) {
+	u := uploader{cache: cache, sheet: sheet, store: store, queue: queue}
 	mux.HandleFunc("POST /api/directory/upload", u.upload)
 	mux.HandleFunc("POST /api/directory/facts", u.facts)
 	mux.HandleFunc("POST /api/directory/optout", u.optOut)
@@ -79,24 +79,19 @@ func clearable(value string) string {
 }
 
 func (u uploader) applyOverride(w http.ResponseWriter, actor, email, action string, cells, previous map[string]string) bool {
-	var cellErr, logErr error
-	var wg sync.WaitGroup
-	wg.Go(func() {
-		cellErr = u.sheet.Upsert(appName, "Overrides", "Email", email, cells)
+	logRow := changeLogRow(actor, email, previous)
+	applied := make(chan error, 1)
+	u.queue.Add(func() {
+		applied <- u.cache.applyOverride(email, cells)
+		if err := u.sheet.Upsert(appName, "Overrides", "Email", email, cells); err != nil {
+			log.Printf("[ERROR] set overrides for %s: %v", email, err)
+			return
+		}
+		if err := u.sheet.Append(appName, changeLogTable, logRow); err != nil {
+			log.Printf("[ERROR] append change log after %s for %s: %v", action, email, err)
+		}
 	})
-	wg.Go(func() {
-		logErr = u.sheet.Append(appName, changeLogTable, changeLogRow(actor, email, previous))
-	})
-	wg.Wait()
-	if cellErr != nil {
-		serverError(w, fmt.Errorf("set overrides for %s: %w", email, cellErr))
-		return false
-	}
-	if logErr != nil {
-		serverError(w, fmt.Errorf("append change log after %s for %s: %w", action, email, logErr))
-		return false
-	}
-	if err := u.cache.ApplyOverride(email, cells); err != nil {
+	if err := <-applied; err != nil {
 		serverError(w, fmt.Errorf("rebuild model after %s: %w", action, err))
 		return false
 	}
@@ -282,9 +277,15 @@ func (u uploader) upload(w http.ResponseWriter, r *http.Request) {
 			map[string]string{column: today()}, map[string]string{column: previous}) {
 			return
 		}
-	} else if err := u.cache.Rebuild(); err != nil {
-		serverError(w, fmt.Errorf("rebuild model after upload: %w", err))
-		return
+	} else {
+		rebuilt := make(chan error, 1)
+		u.queue.Add(func() {
+			rebuilt <- u.cache.rebuildCurrent()
+		})
+		if err := <-rebuilt; err != nil {
+			serverError(w, fmt.Errorf("rebuild model after upload: %w", err))
+			return
+		}
 	}
 	log.Printf("upload: %s set %s %s %s (superseded generation %q)", me, target, key, name, superseded)
 	w.WriteHeader(http.StatusNoContent)
