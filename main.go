@@ -98,7 +98,7 @@ func main() {
 	var store *blob.Store
 	var blobs directory.BlobChecker
 	if sheetID == "" {
-		source = data.Dir{Root: "sampledata"}
+		source = &data.Dir{Root: "sampledata"}
 		log.Printf("DIRECTORY_SHEET not set, serving sample data as %s", sampleUser)
 	} else {
 		preferencesID := os.Getenv("PREFERENCES_SHEET")

@@ -13,7 +13,7 @@ func main() {
 	sheetID := os.Getenv("DIRECTORY_SHEET")
 	var source data.Source
 	if sheetID == "" {
-		source = data.Dir{Root: "sampledata"}
+		source = &data.Dir{Root: "sampledata"}
 	} else {
 		s, err := data.NewSheet(map[string]string{"directory": sheetID})
 		if err != nil {

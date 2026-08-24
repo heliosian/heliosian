@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 
 	"google.golang.org/api/option"
 	"google.golang.org/api/sheets/v4"
@@ -12,6 +13,8 @@ import (
 type Sheet struct {
 	service      *sheets.Service
 	spreadsheets map[string]string
+	mu           sync.Mutex
+	ids          map[string]int64
 }
 
 func NewSheet(spreadsheets map[string]string) (*Sheet, error) {
@@ -110,6 +113,89 @@ func (s *Sheet) Append(app, table string, row []string) error {
 		return fmt.Errorf("no spreadsheet configured for app %q", app)
 	}
 	return s.appendRow(id, quoteTab(table), row)
+}
+
+func (s *Sheet) Delete(app, table string, match map[string]string) error {
+	id, ok := s.spreadsheets[app]
+	if !ok {
+		return fmt.Errorf("no spreadsheet configured for app %q", app)
+	}
+	resp, err := s.service.Spreadsheets.Values.Get(id, quoteTab(table)).Do()
+	if err != nil {
+		return err
+	}
+	if len(resp.Values) == 0 {
+		return fmt.Errorf("table %s is empty", table)
+	}
+	index := map[string]int{}
+	for i, cell := range resp.Values[0] {
+		index[strings.TrimSpace(fmt.Sprint(cell))] = i
+	}
+	for column := range match {
+		if _, ok := index[column]; !ok {
+			return fmt.Errorf("table %s is missing column %q", table, column)
+		}
+	}
+	tab, err := s.tabID(id, table)
+	if err != nil {
+		return err
+	}
+	requests := []*sheets.Request{}
+	// Descending, so deleting a row never shifts one still queued behind it.
+	for i := len(resp.Values) - 1; i >= 1; i-- {
+		if !valuesMatch(resp.Values[i], index, match) {
+			continue
+		}
+		requests = append(requests, &sheets.Request{DeleteDimension: &sheets.DeleteDimensionRequest{
+			Range: &sheets.DimensionRange{
+				SheetId:    tab,
+				Dimension:  "ROWS",
+				StartIndex: int64(i),
+				EndIndex:   int64(i + 1),
+			},
+		}})
+	}
+	if len(requests) == 0 {
+		return nil
+	}
+	_, err = s.service.Spreadsheets.BatchUpdate(id, &sheets.BatchUpdateSpreadsheetRequest{
+		Requests: requests,
+	}).Do()
+	return err
+}
+
+func valuesMatch(row []interface{}, index map[string]int, match map[string]string) bool {
+	for column, value := range match {
+		i := index[column]
+		if i >= len(row) || !strings.EqualFold(strings.TrimSpace(fmt.Sprint(row[i])), value) {
+			return false
+		}
+	}
+	return true
+}
+
+func (s *Sheet) tabID(id, title string) (int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := id + "!" + title
+	if tab, ok := s.ids[key]; ok {
+		return tab, nil
+	}
+	meta, err := s.service.Spreadsheets.Get(id).Fields("sheets(properties(sheetId,title))").Do()
+	if err != nil {
+		return 0, err
+	}
+	if s.ids == nil {
+		s.ids = map[string]int64{}
+	}
+	for _, sh := range meta.Sheets {
+		s.ids[id+"!"+sh.Properties.Title] = sh.Properties.SheetId
+	}
+	tab, ok := s.ids[key]
+	if !ok {
+		return 0, fmt.Errorf("spreadsheet has no tab %q", title)
+	}
+	return tab, nil
 }
 
 func (s *Sheet) appendRow(id, quotedTable string, row []string) error {
