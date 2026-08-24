@@ -15,6 +15,11 @@ var tabs = []struct {
 	title  string
 	header []string
 }{
+	{"Veracross Staff Import", []string{
+		"entry_sort_name", "person_full_name", "person_job_title", "person_room",
+		"person_classifications", "person_biography",
+		"person_email", "person_email_2", "person_phone_business",
+	}},
 	{"Name to Email", []string{"Name", "Email"}},
 	{"Overrides", []string{
 		"Email", "Added",
