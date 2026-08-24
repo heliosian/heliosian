@@ -35,7 +35,7 @@ func (s *Sheet) Table(app, name string) ([]string, []map[string]string, error) {
 	return parseTable(name, resp.Values)
 }
 
-func (s *Sheet) Upsert(app, table, keyColumn, keyValue, column, value string) error {
+func (s *Sheet) Upsert(app, table, keyColumn, keyValue string, cells map[string]string) error {
 	id, ok := s.spreadsheets[app]
 	if !ok {
 		return fmt.Errorf("no spreadsheet configured for app %q", app)
@@ -48,36 +48,50 @@ func (s *Sheet) Upsert(app, table, keyColumn, keyValue, column, value string) er
 	if len(resp.Values) == 0 {
 		return fmt.Errorf("table %s is empty", table)
 	}
-	keyIdx, colIdx := -1, -1
+	keyIdx := -1
+	colIdx := map[string]int{}
 	for i, cell := range resp.Values[0] {
-		switch strings.TrimSpace(fmt.Sprint(cell)) {
-		case keyColumn:
+		name := strings.TrimSpace(fmt.Sprint(cell))
+		if name == keyColumn {
 			keyIdx = i
-		case column:
-			colIdx = i
+		}
+		if _, ok := cells[name]; ok {
+			colIdx[name] = i
 		}
 	}
-	if keyIdx < 0 || colIdx < 0 {
-		return fmt.Errorf("table %s is missing column %q or %q", table, keyColumn, column)
+	if keyIdx < 0 {
+		return fmt.Errorf("table %s is missing column %q", table, keyColumn)
+	}
+	for column := range cells {
+		if _, ok := colIdx[column]; !ok {
+			return fmt.Errorf("table %s is missing column %q", table, column)
+		}
 	}
 	ranges := []*sheets.ValueRange{}
 	for i, row := range resp.Values[1:] {
 		if keyIdx >= len(row) || !strings.EqualFold(strings.TrimSpace(fmt.Sprint(row[keyIdx])), keyValue) {
 			continue
 		}
-		ranges = append(ranges, &sheets.ValueRange{
-			Range:  fmt.Sprintf("%s!%s%d", quoted, columnName(colIdx), i+2),
-			Values: [][]interface{}{{value}},
-		})
+		for column, value := range cells {
+			ranges = append(ranges, &sheets.ValueRange{
+				Range:  fmt.Sprintf("%s!%s%d", quoted, columnName(colIdx[column]), i+2),
+				Values: [][]interface{}{{value}},
+			})
+		}
 	}
 	if len(ranges) == 0 {
-		width := max(keyIdx, colIdx) + 1
+		width := keyIdx + 1
+		for _, idx := range colIdx {
+			width = max(width, idx+1)
+		}
 		row := make([]interface{}, width)
 		for i := range row {
 			row[i] = ""
 		}
 		row[keyIdx] = keyValue
-		row[colIdx] = value
+		for column, value := range cells {
+			row[colIdx[column]] = value
+		}
 		_, err := s.service.Spreadsheets.Values.Append(id, quoted, &sheets.ValueRange{
 			Values: [][]interface{}{row},
 		}).ValueInputOption("RAW").InsertDataOption("INSERT_ROWS").Do()
@@ -90,37 +104,12 @@ func (s *Sheet) Upsert(app, table, keyColumn, keyValue, column, value string) er
 	return err
 }
 
-func (s *Sheet) Append(app, table string, header, row []string) error {
+func (s *Sheet) Append(app, table string, row []string) error {
 	id, ok := s.spreadsheets[app]
 	if !ok {
 		return fmt.Errorf("no spreadsheet configured for app %q", app)
 	}
-	meta, err := s.service.Spreadsheets.Get(id).Fields("sheets(properties(title))").Do()
-	if err != nil {
-		return err
-	}
-	exists := false
-	for _, sh := range meta.Sheets {
-		if sh.Properties.Title == table {
-			exists = true
-			break
-		}
-	}
-	quoted := quoteTab(table)
-	if !exists {
-		_, err := s.service.Spreadsheets.BatchUpdate(id, &sheets.BatchUpdateSpreadsheetRequest{
-			Requests: []*sheets.Request{{AddSheet: &sheets.AddSheetRequest{
-				Properties: &sheets.SheetProperties{Title: table},
-			}}},
-		}).Do()
-		if err != nil {
-			return fmt.Errorf("create table %s: %w", table, err)
-		}
-		if err := s.appendRow(id, quoted, header); err != nil {
-			return err
-		}
-	}
-	return s.appendRow(id, quoted, row)
+	return s.appendRow(id, quoteTab(table), row)
 }
 
 func (s *Sheet) appendRow(id, quotedTable string, row []string) error {

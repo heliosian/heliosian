@@ -23,7 +23,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("[ERROR] sheet source: %v", err)
 	}
-	if err := source.Upsert("directory", *tab, *keyCol, *key, *col, *value); err != nil {
+	if err := source.Upsert("directory", *tab, *keyCol, *key, map[string]string{*col: *value}); err != nil {
 		log.Fatalf("[ERROR] set %s[%s=%s].%s: %v", *tab, *keyCol, *key, *col, err)
 	}
 	log.Printf("set %s[%s=%s].%s = %q", *tab, *keyCol, *key, *col, *value)

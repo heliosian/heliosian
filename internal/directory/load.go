@@ -5,9 +5,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"heliosian/internal/data"
@@ -173,6 +175,7 @@ type loader struct {
 	static BlobChecker
 
 	importRows     []map[string]string
+	nameRows       []map[string]string
 	overrideRows   []map[string]string
 	preferenceRows []map[string]string
 	nameToEmail    map[string]string
@@ -190,10 +193,66 @@ type loader struct {
 	model *Model
 }
 
+// Tables are the parsed source tables a model is built from.
+type Tables struct {
+	Imports     []map[string]string
+	Names       []map[string]string
+	Overrides   []map[string]string
+	Preferences []map[string]string
+}
+
+// withOverride mirrors what data.Sheet.Upsert just wrote, copying the rows it
+// touches so the tables the current model was built from stay intact.
+func (t *Tables) withOverride(email string, cells map[string]string) *Tables {
+	rows := make([]map[string]string, len(t.Overrides))
+	copy(rows, t.Overrides)
+	found := false
+	for i, row := range rows {
+		if !strings.EqualFold(row["Email"], email) {
+			continue
+		}
+		next := maps.Clone(row)
+		applyCells(next, cells)
+		rows[i] = next
+		found = true
+	}
+	if !found {
+		row := map[string]string{"Email": email}
+		applyCells(row, cells)
+		rows = append(rows, row)
+	}
+	out := *t
+	out.Overrides = rows
+	return &out
+}
+
+func applyCells(row, cells map[string]string) {
+	for column, value := range cells {
+		// parseTable drops blank cells, so a cleared column vanishes rather than holding "".
+		if value == "" {
+			delete(row, column)
+			continue
+		}
+		row[column] = value
+	}
+}
+
 func LoadModel(source data.Source, blobs, static BlobChecker) (*Model, error) {
+	tables, err := ReadTables(source)
+	if err != nil {
+		return nil, err
+	}
+	return BuildModel(tables, blobs, static)
+}
+
+func BuildModel(tables *Tables, blobs, static BlobChecker) (*Model, error) {
 	l := &loader{
 		blobs:            blobs,
 		static:           static,
+		importRows:       tables.Imports,
+		nameRows:         tables.Names,
+		overrideRows:     tables.Overrides,
+		preferenceRows:   tables.Preferences,
 		people:           map[string]*Person{},
 		households:       map[string]*household{},
 		personHouseholds: map[string][]string{},
@@ -204,7 +263,7 @@ func LoadModel(source data.Source, blobs, static BlobChecker) (*Model, error) {
 		model:            &Model{Families: map[string]Family{}, RoomParents: map[string][]string{}},
 	}
 	steps := []func() error{
-		func() error { return l.readTables(source) },
+		l.buildNameToEmail,
 		l.transformImport,
 		l.applyOverrides,
 		l.hideStudentPhones,
@@ -224,43 +283,56 @@ func LoadModel(source data.Source, blobs, static BlobChecker) (*Model, error) {
 	return l.model, nil
 }
 
-func (l *loader) readTables(source data.Source) error {
-	importHeader, importRows, err := source.Table(appName, "Veracross Import")
-	if err != nil {
-		return err
+func ReadTables(source data.Source) (*Tables, error) {
+	type table struct {
+		app    string
+		name   string
+		header []string
+		rows   []map[string]string
+		err    error
 	}
-	if err := requireColumns("Veracross Import", importHeader, importColumns); err != nil {
-		return err
+	imports := &table{app: appName, name: "Veracross Import"}
+	names := &table{app: appName, name: "Name to Email"}
+	overrides := &table{app: appName, name: "Overrides"}
+	preferences := &table{app: preferencesApp, name: preferencesTab}
+	ordered := []*table{imports, names, overrides, preferences}
+	var wg sync.WaitGroup
+	for _, t := range ordered {
+		wg.Go(func() {
+			t.header, t.rows, t.err = source.Table(t.app, t.name)
+		})
 	}
-	l.importRows = importRows
-	mapHeader, mapRows, err := source.Table(appName, "Name to Email")
-	if err != nil {
-		return err
+	wg.Wait()
+	for _, t := range ordered {
+		if t.err != nil {
+			return nil, t.err
+		}
 	}
-	if err := requireColumns("Name to Email", mapHeader, []string{"Name", "Email"}); err != nil {
-		return err
+	if err := requireColumns(imports.name, imports.header, importColumns); err != nil {
+		return nil, err
 	}
-	overrideHeader, overrideRows, err := source.Table(appName, "Overrides")
-	if err != nil {
-		return err
+	if err := requireColumns(names.name, names.header, []string{"Name", "Email"}); err != nil {
+		return nil, err
 	}
-	if err := requireColumns("Overrides", overrideHeader, overrideColumns); err != nil {
-		return err
+	if err := requireColumns(overrides.name, overrides.header, overrideColumns); err != nil {
+		return nil, err
 	}
-	l.overrideRows = overrideRows
-	preferenceHeader, preferenceRows, err := source.Table(preferencesApp, preferencesTab)
-	if err != nil {
-		return err
-	}
-	if err := exactColumns(preferencesTab, preferenceHeader, []string{
+	if err := exactColumns(preferences.name, preferences.header, []string{
 		preferenceTimestamp, preferenceEmail, preferenceStatus, preferencePermission,
 	}); err != nil {
-		return err
+		return nil, err
 	}
-	l.preferenceRows = preferenceRows
+	return &Tables{
+		Imports:     imports.rows,
+		Names:       names.rows,
+		Overrides:   overrides.rows,
+		Preferences: preferences.rows,
+	}, nil
+}
 
+func (l *loader) buildNameToEmail() error {
 	l.nameToEmail = map[string]string{}
-	for _, row := range mapRows {
+	for _, row := range l.nameRows {
 		name, email := normName(row["Name"]), strings.ToLower(row["Email"])
 		if name == "" || email == "" {
 			return fmt.Errorf("name to email row %v is incomplete", row)

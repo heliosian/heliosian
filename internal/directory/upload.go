@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"heliosian/internal/auth"
@@ -78,19 +79,25 @@ func clearable(value string) string {
 }
 
 func (u uploader) applyOverride(w http.ResponseWriter, actor, email, action string, cells, previous map[string]string) bool {
-	for column, cell := range cells {
-		if err := u.sheet.Upsert(appName, "Overrides", "Email", email, column, cell); err != nil {
-			serverError(w, fmt.Errorf("set %s for %s: %w", column, email, err))
-			return false
-		}
-	}
-	logRow := changeLogRow(actor, email, previous)
-	if err := u.sheet.Append(appName, changeLogTable, changeLogHeader, logRow); err != nil {
-		serverError(w, fmt.Errorf("append change log after %s for %s: %w", action, email, err))
+	var cellErr, logErr error
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		cellErr = u.sheet.Upsert(appName, "Overrides", "Email", email, cells)
+	})
+	wg.Go(func() {
+		logErr = u.sheet.Append(appName, changeLogTable, changeLogRow(actor, email, previous))
+	})
+	wg.Wait()
+	if cellErr != nil {
+		serverError(w, fmt.Errorf("set overrides for %s: %w", email, cellErr))
 		return false
 	}
-	if err := u.cache.Refresh(); err != nil {
-		serverError(w, fmt.Errorf("refresh model after %s: %w", action, err))
+	if logErr != nil {
+		serverError(w, fmt.Errorf("append change log after %s for %s: %w", action, email, logErr))
+		return false
+	}
+	if err := u.cache.ApplyOverride(email, cells); err != nil {
+		serverError(w, fmt.Errorf("rebuild model after %s: %w", action, err))
 		return false
 	}
 	return true
@@ -275,8 +282,8 @@ func (u uploader) upload(w http.ResponseWriter, r *http.Request) {
 			map[string]string{column: today()}, map[string]string{column: previous}) {
 			return
 		}
-	} else if err := u.cache.Refresh(); err != nil {
-		serverError(w, fmt.Errorf("refresh model after upload: %w", err))
+	} else if err := u.cache.Rebuild(); err != nil {
+		serverError(w, fmt.Errorf("rebuild model after upload: %w", err))
 		return
 	}
 	log.Printf("upload: %s set %s %s %s (superseded generation %q)", me, target, key, name, superseded)
