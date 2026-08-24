@@ -59,10 +59,9 @@ func main() {
 	}
 	for _, t := range tabs {
 		if existing[t.title] {
-			log.Fatalf("[ERROR] tab %q already exists", t.title)
+			log.Printf("tab %q already exists", t.title)
+			continue
 		}
-	}
-	for _, t := range tabs {
 		_, err := svc.Spreadsheets.BatchUpdate(*sheet, &sheets.BatchUpdateSpreadsheetRequest{
 			Requests: []*sheets.Request{{AddSheet: &sheets.AddSheetRequest{
 				Properties: &sheets.SheetProperties{Title: t.title},
