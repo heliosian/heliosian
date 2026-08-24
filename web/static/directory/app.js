@@ -158,7 +158,7 @@ function staleItems() {
   const family = state.model.families[me.familyKey];
   const kids = ((family && family.kidEmails) || []).map(e => byEmail[e]).filter(Boolean);
   const items = [];
-  for (const p of [me, ...kids.filter(k => k.email !== me.email)]) {
+  for (const p of [me, ...kids.filter(k => k.email !== me.email)].filter(p => p.isStudent)) {
     const whose = p.email === me.email ? 'your' : `${p.fullName}'s`;
     const href = personLink(p) + '&edit=1';
     if (agedPast(p.photoUrl, p.photoUpdated, staleYears.photo)) {
