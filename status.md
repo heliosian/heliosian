@@ -9,15 +9,15 @@ data is shaped as it is; this file is where things stand and what to do next.
 scrapes the Veracross parent portal and writes CSVs plus photos; `tools/import` runs it
 and applies the result to the sheet.
 
-## Uncommitted work, both repositories
+## Committed locally, not pushed
 
-**Nothing below is committed.** That is the fragile part of this handoff — verify with
-`git status` in both before doing anything else, and commit early.
+The multi-photo change is `heliosian` `97cde89` and `vcexport` `b3d035b`. Both repositories
+are one commit ahead of their remote, so this work exists only on this machine until
+somebody pushes. Both vet clean and their tests pass.
 
-`heliosian` has the whole multi-photo change: `internal/directory/{load,model,upload}.go`,
-`internal/blob/blob.go`, `tools/createtabs/main.go`, `sampledata/directory/*`, and a new
-`sampledata/directory/Photos.csv`. `vcexport` has content-addressed photo output in
-`main.go`. Both vet clean and their tests pass.
+**Do not deploy `97cde89` yet.** See the migration below: the read path looks in `photos/`
+and `pronunciation/` while every existing object is still under `people/` and `families/`,
+so a deploy now serves a directory with no photos in it at all.
 
 ## The design
 
