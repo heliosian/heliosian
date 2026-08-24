@@ -62,7 +62,7 @@ Original tile art (1254×1254 JPEGs for all nine classrooms and all nine grade t
 ## Shape language
 
 - Circular avatars for people; rounded-rectangle (~12px radius) cards, photos, and mascot tiles.
-- Pill-shaped search inputs and filter buttons; circular icon buttons for quick actions (message, mail, map, favorite).
+- Pill-shaped search inputs and filter buttons; circular icon buttons for quick actions (message, mail, map, tag).
 - List rows with right chevrons; hairline dividers; generous whitespace.
 - Detail pages break the white page with a full-width deep-teal band for family content.
 - Inline separators: "▶" chains grade to classroom to crew; "·" dots separate contact fragments.

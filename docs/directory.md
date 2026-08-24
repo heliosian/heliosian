@@ -29,7 +29,7 @@ Four tabs, each with search and filter:
 
 ### Person detail
 
-Breadcrumb back to the list, favorite (heart) toggle, photo, role label with pronouns, name with nickname/pronunciation line, grade/classroom chain for students, email and address rows with quick actions (message, mail, map). Students add the "about me" paragraph. Below, a contrasting family band: the person's family name, a narrative caption of who's who, kid rows (grade/team, email), adult rows, and a link to the family page.
+Breadcrumb back to the list, tag control, photo, role label with pronouns, name with nickname/pronunciation line, grade/classroom chain for students, email and address rows with quick actions (message, mail, map). Students add the "about me" paragraph. Below, a contrasting family band: the person's family name, a narrative caption of who's who, kid rows (grade/team, email), adult rows, and a link to the family page.
 
 ### Family detail
 
@@ -53,13 +53,13 @@ A Google map of family locations: one brand-teal pin per geocoded family address
 
 ### Email List
 
-A copyable contact table for party planning and outreach: full name, email, role, grade, classroom. Tabs narrow to parents, students, both, or the user's bookmarked people. Filters select grades or classrooms.
+A copyable contact table for party planning and outreach: full name, email, role, grade, classroom. Tabs narrow to parents, students, both, or everyone the user has tagged. Filters select grades, classrooms, or one of the user's own tags.
 
 ## Behaviors
 
 - Everything is cross-linked: parents ↔ kids ↔ families ↔ classrooms; any person reference navigates to that person.
 - Search is per-list and immediate; filters cover role, class, grade, city, pronouns, and new-to-Helios.
-- Favorites/bookmarks mark people and feed the email list's bookmark tab.
+- Tags file people under named groups — a person can be in several at once (soccer team, class party, carpool) — and feed the email list's My Tags tab and tag filter. A member's tags are private to them.
 - Photos lazy-load; full-size view on click where the photo is the subject (family pages).
 - All data is community-only, behind sign-in; opt-out removes a person on request.
 - Self-service: viewing your own record, your kids', or your family page shows inline edit affordances — photo upload, pronunciation recording or upload, About Me text, preferred name, phone, address — plus opt-out for yourself or your kids. Media uploads overwrite the bucket object, which retains the previous version; sheet-backed edits write the Overrides tab and append a Change Log row (see `docs/data.md`). A facts edit or photo upload also stamps that item's updated date.

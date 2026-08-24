@@ -2,6 +2,8 @@ package directory
 
 import (
 	"log"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -56,6 +58,57 @@ func (c *Cache) Model() *Model {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.model
+}
+
+// Tags returns one owner's tags. A tag naming somebody no longer in the directory
+// is skipped rather than fatal, since people leave and their rows go with them.
+func (c *Cache) Tags(owner string) map[string][]string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	tags := map[string][]string{}
+	for _, row := range c.tables.Tags {
+		if !strings.EqualFold(row[tagOwner], owner) {
+			continue
+		}
+		person := strings.ToLower(row[tagPerson])
+		if c.model.Person(person) == nil {
+			continue
+		}
+		tags[row[tagName]] = append(tags[row[tagName]], person)
+	}
+	for _, people := range tags {
+		sort.Strings(people)
+	}
+	return tags
+}
+
+func (c *Cache) tagged(owner, tag, person string) bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	for _, row := range c.tables.Tags {
+		if strings.EqualFold(row[tagOwner], owner) && row[tagName] == tag && strings.EqualFold(row[tagPerson], person) {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *Cache) applyTag(owner, tag, person string, on bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	rows := []map[string]string{}
+	for _, row := range c.tables.Tags {
+		if strings.EqualFold(row[tagOwner], owner) && row[tagName] == tag && strings.EqualFold(row[tagPerson], person) {
+			continue
+		}
+		rows = append(rows, row)
+	}
+	if on {
+		rows = append(rows, map[string]string{tagOwner: owner, tagName: tag, tagPerson: person})
+	}
+	next := *c.tables
+	next.Tags = rows
+	c.tables = &next
 }
 
 func (c *Cache) currentTables() *Tables {

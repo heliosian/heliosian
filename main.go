@@ -93,12 +93,14 @@ func main() {
 	}
 	sheetID := os.Getenv("DIRECTORY_SHEET")
 	var source data.Source
+	var writer data.Writer
 	var geocoder directory.Geocoder = geocode.Fake{}
 	browserKey := os.Getenv("GOOGLE_MAPS_BROWSER_KEY")
 	var store *blob.Store
 	var blobs directory.BlobChecker
 	if sheetID == "" {
-		source = &data.Dir{Root: "sampledata"}
+		dir := &data.Dir{Root: "sampledata"}
+		source, writer = dir, dir
 		log.Printf("DIRECTORY_SHEET not set, serving sample data as %s", sampleUser)
 	} else {
 		preferencesID := os.Getenv("PREFERENCES_SHEET")
@@ -109,7 +111,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("[ERROR] load directory sheet: %v", err)
 		}
-		source = sheet
+		source, writer = sheet, sheet
 		geocoder = geocode.New(mapsKey("GOOGLE_MAPS_SERVER_KEY", "creds/geocoding.key"))
 		browserKey = mapsKey("GOOGLE_MAPS_BROWSER_KEY", "creds/maps.key")
 		store, err = blob.New()
@@ -125,6 +127,7 @@ func main() {
 	}
 	mux := http.NewServeMux()
 	directory.Register(mux, cache, browserKey)
+	directory.RegisterTags(mux, cache, writer, queue)
 	if store != nil {
 		blob.Register(mux, store)
 		directory.RegisterUpload(mux, cache, source.(*data.Sheet), store, queue)

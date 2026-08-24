@@ -97,7 +97,14 @@ func (a app) page(w http.ResponseWriter, r *http.Request) {
 
 func (a app) model(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(a.cache.Model()); err != nil {
+	view := struct {
+		*Model
+		Tags map[string][]string `json:"tags"`
+	}{
+		Model: a.cache.Model(),
+		Tags:  a.cache.Tags(strings.ToLower(auth.Email(r))),
+	}
+	if err := json.NewEncoder(w).Encode(view); err != nil {
 		log.Printf("[ERROR] encode model: %v", err)
 	}
 }

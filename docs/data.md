@@ -12,6 +12,7 @@ The `Directory` sheet holds the records. The `Preferences` sheet is a Google For
 | Name to Email | hand | Maps a student's name to their school email for import rows where the email cell is empty or wrong, so every person can be keyed by email downstream. |
 | Overrides | hand + app | The entire local layer: admin corrections, app-written self-service text, and added people, in canonical model columns keyed by email. |
 | Change Log | app | Append-only audit trail mirroring the Overrides columns: one row per change, holding the previous values. |
+| Tags | app | One row per owner/tag/person: the private groupings members file each other under. |
 
 The `Preferences` spreadsheet has a single form-owned tab, `Sheet1`: `Timestamp`, `Email Address`, `Communication Opt-In Status`, and `You have my permission to share the folllowing:` — the misspelling is the form's, and the loader matches it verbatim.
 
@@ -79,6 +80,14 @@ Three columns carry refresh dates in ISO form, and any other value is fatal: `Ph
 **Opted Out** removes the person entirely at load: their record, their membership in families and parent-contact lists, and any room-parent assignment all vanish from the model. Because viewing the directory requires being in it, opting out also locks the person out — they get a permissions error until the school clears the flag. People set it from their own page, parents set it for their kids (each with a confirmation spelling out the consequences), or an admin sets the cell by hand.
 
 Every change to Overrides appends a Change Log row: timestamp, actor, the row's email, then the previous value of each column that changed — `-` marking a previously empty cell, untouched columns left blank. Media uploads are not logged here; bucket object versions are their history.
+
+## Tags
+
+Named groups a member files other people under — soccer team, class party, carpool — with one person free to sit in several at once. One row per `Owner Email`, `Tag`, `Person Email` triple, so tagging appends a row and untagging deletes one; there is no per-tag record beyond its rows, and a tag whose last row goes stops existing.
+
+Tags are the one table that never reaches the model. `/api/directory/model` serves the shared model to every member, so a tag table folded into it would hand everyone else's private groupings to every reader. Instead the rows are held on the cache and the endpoint answers with the global model plus only the calling member's tags, assembled per request from their signed-in identity — the model type has no tag field to leak.
+
+A tag naming somebody no longer in the directory is skipped at read rather than being fatal, because people leave and their rows leave with them; the row stays in the sheet until the tag is next touched. Nothing else validates against the tab, and no tag is ever visible to anyone but its owner — including the school.
 
 ## Preferences
 

@@ -22,6 +22,16 @@ const (
 	preferencesTab = "Sheet1"
 )
 
+const tagsTable = "Tags"
+
+const (
+	tagOwner  = "Owner Email"
+	tagName   = "Tag"
+	tagPerson = "Person Email"
+)
+
+var tagColumns = []string{tagOwner, tagName, tagPerson}
+
 var gradeOrder = []string{
 	"Kindergarten", "Grade 1", "Grade 2", "Grade 3", "Grade 4",
 	"Grade 5", "Grade 6", "Grade 7", "Grade 8",
@@ -193,12 +203,14 @@ type loader struct {
 	model *Model
 }
 
-// Tables are the parsed source tables a model is built from.
+// Tables are the parsed source tables a model is built from. Tags are per-user
+// and deliberately never reach Model, which is served to every member.
 type Tables struct {
 	Imports     []map[string]string
 	Names       []map[string]string
 	Overrides   []map[string]string
 	Preferences []map[string]string
+	Tags        []map[string]string
 }
 
 // withOverride mirrors what data.Sheet.Upsert just wrote, copying the rows it
@@ -295,7 +307,8 @@ func ReadTables(source data.Source) (*Tables, error) {
 	names := &table{app: appName, name: "Name to Email"}
 	overrides := &table{app: appName, name: "Overrides"}
 	preferences := &table{app: preferencesApp, name: preferencesTab}
-	ordered := []*table{imports, names, overrides, preferences}
+	tags := &table{app: appName, name: tagsTable}
+	ordered := []*table{imports, names, overrides, preferences, tags}
 	var wg sync.WaitGroup
 	for _, t := range ordered {
 		wg.Go(func() {
@@ -322,11 +335,15 @@ func ReadTables(source data.Source) (*Tables, error) {
 	}); err != nil {
 		return nil, err
 	}
+	if err := requireColumns(tags.name, tags.header, tagColumns); err != nil {
+		return nil, err
+	}
 	return &Tables{
 		Imports:     imports.rows,
 		Names:       names.rows,
 		Overrides:   overrides.rows,
 		Preferences: preferences.rows,
+		Tags:        tags.rows,
 	}, nil
 }
 

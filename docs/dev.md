@@ -4,9 +4,9 @@
 
     go run .
 
-http://localhost:8080 (override with `PORT`). With `DIRECTORY_SHEET` unset the server serves the fictional community in `sampledata/`, signs every request in as a sample parent, and geocodes with a deterministic fake — no credentials or configuration. Templates, static assets, and sample data are read from disk on every request; edit a file and refresh.
+http://localhost:8080 (override with `PORT`). With `DIRECTORY_SHEET` unset the server serves the fictional community in `sampledata/`, signs every request in as a sample parent, and geocodes with a deterministic fake — no credentials or configuration. Templates and static assets are read from disk on every request; edit a file and refresh. The sample CSVs back a fake spreadsheet that loads each tab on first read and keeps every write in memory, so `sampledata/` never changes on disk — restart to get the fixtures back.
 
-Sample-mode limits: the map section needs a real Maps JavaScript key (`GOOGLE_MAPS_BROWSER_KEY`) to render tiles, and self-service edits and media uploads need real-data mode — there is no writable backend or blob store behind the sample CSVs.
+Sample-mode limits: the map section needs a real Maps JavaScript key (`GOOGLE_MAPS_BROWSER_KEY`) to render tiles, and self-service edits and media uploads need real-data mode — those handlers register alongside the blob store, which the sample CSVs have no counterpart for. Tags do work, since they need only the writable data source.
 
 `sampledata/` mirrors the production Sheets layout: one directory per app, one CSV per table, first row is the schema, served through the same data-source interface the Sheets backend implements. It stays fictional — real community data never goes here. `sampledata/preferences/` is the consent form's response sheet, exercising every combination the loader has to resolve: both permissions, each alone, an opt-out, a superseded submission, and a two-household student whose parents answered differently.
 

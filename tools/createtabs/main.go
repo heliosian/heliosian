@@ -35,6 +35,7 @@ var tabs = []struct {
 		"Phone", "Job Title", "Department", "Grade Band", "Room Parent",
 		"Address", "Family Phone", "Family Photo Caption", "Opted Out",
 	}},
+	{"Tags", []string{"Owner Email", "Tag", "Person Email"}},
 }
 
 func main() {

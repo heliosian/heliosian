@@ -1,14 +1,37 @@
-const state = {model: null, tab: 'everyone', classTab: 'by-classroom', rosterTab: 'students', q: '', filterGrades: new Set(), filterClassrooms: new Set(), filterRoles: new Set(), filterCities: new Set(), filterPronouns: new Set(), filterNew: false};
+const state = {model: null, tab: 'everyone', classTab: 'by-classroom', rosterTab: 'students', q: '', filterGrades: new Set(), filterClassrooms: new Set(), filterRoles: new Set(), filterCities: new Set(), filterPronouns: new Set(), filterTags: new Set(), filterNew: false};
 let byEmail = {};
-const favorites = new Set(JSON.parse(localStorage.getItem('favorites') || '[]'));
+let tags = {};
 
-function toggleFavorite(email) {
-  if (favorites.has(email)) {
-    favorites.delete(email);
+function tagNames() {
+  return Object.keys(tags).sort((a, b) => a.localeCompare(b));
+}
+
+function tagsOf(email) {
+  return tagNames().filter(name => tags[name].includes(email));
+}
+
+function isTagged(email) {
+  return tagNames().some(name => tags[name].includes(email));
+}
+
+async function setTag(email, tag, on) {
+  const people = tags[tag] || [];
+  if (on) {
+    tags[tag] = people.includes(email) ? people : [...people, email];
   } else {
-    favorites.add(email);
+    tags[tag] = people.filter(e => e !== email);
+    if (!tags[tag].length) {
+      delete tags[tag];
+    }
   }
-  localStorage.setItem('favorites', JSON.stringify([...favorites]));
+  const form = new FormData();
+  form.append('person', email);
+  form.append('tag', tag);
+  form.append('on', on ? '1' : '0');
+  const res = await fetch('/api/directory/tag', {method: 'POST', body: form});
+  if (!res.ok) {
+    alert(await res.text());
+  }
 }
 
 const icons = {
@@ -27,7 +50,7 @@ const icons = {
   chevron: '<svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>',
   'chevron-left': '<svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>',
   'chevron-right': '<svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>',
-  heart: '<svg viewBox="0 0 24 24"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>',
+  tag: '<svg viewBox="0 0 24 24"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5"/></svg>',
   mail: '<svg viewBox="0 0 24 24"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>',
   copy: '<svg viewBox="0 0 24 24"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>',
   check: '<svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>',
@@ -40,7 +63,6 @@ const icons = {
   mic: '<svg viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>',
   upload: '<svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>',
   pencil: '<svg viewBox="0 0 24 24"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/></svg>',
-  dots: '<svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>',
 };
 
 function isMobile() {
@@ -293,23 +315,56 @@ function personContext(p) {
   return '';
 }
 
-function cardMore(email) {
-  const wrap = el('div', 'card-more-wrap');
-  const button = el('button', 'card-more');
-  button.append(svg('dots'));
-  const menu = el('div', 'card-menu');
+function tagMenu(email, onChange) {
+  const menu = el('div', 'card-menu tag-menu');
   menu.hidden = true;
-  const item = el('button', 'card-menu-item');
-  const label = el('span', '', favorites.has(email) ? 'Remove Bookmark' : 'Add Bookmark');
-  item.append(svg('heart'), label);
-  item.addEventListener('click', e => {
-    e.preventDefault();
-    e.stopPropagation();
-    toggleFavorite(email);
-    label.textContent = favorites.has(email) ? 'Remove Bookmark' : 'Add Bookmark';
-    menu.hidden = true;
+  const render = () => {
+    menu.replaceChildren();
+    for (const name of tagNames()) {
+      const row = el('label', 'tag-option');
+      const box = el('input');
+      box.type = 'checkbox';
+      box.checked = tags[name].includes(email);
+      box.addEventListener('change', async () => {
+        await setTag(email, name, box.checked);
+        render();
+        onChange();
+      });
+      row.append(el('span', '', name), box);
+      menu.append(row);
+    }
+    const form = el('form', 'tag-new');
+    const input = el('input');
+    input.placeholder = 'New tag';
+    input.maxLength = 40;
+    form.append(input);
+    form.addEventListener('submit', async e => {
+      e.preventDefault();
+      const name = input.value.trim();
+      if (!name) {
+        return;
+      }
+      input.value = '';
+      await setTag(email, name, true);
+      render();
+      onChange();
+    });
+    menu.append(form);
+  };
+  render();
+  menu.addEventListener('click', e => e.stopPropagation());
+  return menu;
+}
+
+function tagControl(email, wrapClass, buttonClass, onChange) {
+  const wrap = el('div', wrapClass);
+  const button = el('button', buttonClass + (isTagged(email) ? ' active' : ''));
+  button.title = 'Tags';
+  button.append(svg('tag'));
+  const menu = tagMenu(email, () => {
+    button.classList.toggle('active', isTagged(email));
+    onChange();
   });
-  menu.append(item);
   button.addEventListener('click', e => {
     e.preventDefault();
     e.stopPropagation();
@@ -317,6 +372,10 @@ function cardMore(email) {
   });
   wrap.append(button, menu);
   return wrap;
+}
+
+function cardMore(email) {
+  return tagControl(email, 'card-more-wrap', 'card-more', () => {});
 }
 
 function personCard(p) {
@@ -530,7 +589,7 @@ function cityOf(p) {
 
 function anyFiltersActive() {
   return Boolean(state.filterGrades.size || state.filterClassrooms.size || state.filterRoles.size ||
-    state.filterCities.size || state.filterPronouns.size || state.filterNew);
+    state.filterCities.size || state.filterPronouns.size || state.filterTags.size || state.filterNew);
 }
 
 function matchesFilters(p) {
@@ -543,7 +602,8 @@ function matchesFilters(p) {
   const cityOK = !state.filterCities.size || state.filterCities.has(cityOf(p));
   const pronounsOK = !state.filterPronouns.size || state.filterPronouns.has(p.pronouns);
   const newOK = !state.filterNew || p.isNew;
-  return gradeOK && classOK && roleOK && cityOK && pronounsOK && newOK;
+  const tagOK = !state.filterTags.size || tagsOf(p.email).some(t => state.filterTags.has(t));
+  return gradeOK && classOK && roleOK && cityOK && pronounsOK && newOK && tagOK;
 }
 
 function familyMatchesFilters(key) {
@@ -585,6 +645,7 @@ function filterControl(rerender) {
     {label: 'Grade', values: gradeOptions(), set: state.filterGrades},
     {label: 'City', values: cityOptions(), set: state.filterCities},
     {label: 'Pronouns', values: pronounOptions(), set: state.filterPronouns},
+    {label: 'Tags', values: tagNames(), set: state.filterTags},
   ];
   for (const s of sections) {
     const head = el('div', 'filter-section');
@@ -634,6 +695,7 @@ function filterControl(rerender) {
     state.filterRoles.clear();
     state.filterCities.clear();
     state.filterPronouns.clear();
+    state.filterTags.clear();
     state.filterNew = false;
     for (const box of panel.querySelectorAll('input')) {
       box.checked = false;
@@ -699,7 +761,7 @@ function fromCrumbs() {
   return null;
 }
 
-function breadcrumbs(parts, favoriteEmail) {
+function breadcrumbs(parts, tagEmail) {
   const parent = [...parts].reverse().find(([, href]) => href);
   setChrome(parts[parts.length - 1][0], parent ? parent[1] : '/people');
   const top = el('div', 'detail-top container');
@@ -721,14 +783,8 @@ function breadcrumbs(parts, favoriteEmail) {
     }
   });
   top.append(crumbs);
-  if (favoriteEmail) {
-    const heart = el('button', 'heart-button' + (favorites.has(favoriteEmail) ? ' active' : ''));
-    heart.append(svg('heart'));
-    heart.addEventListener('click', () => {
-      toggleFavorite(favoriteEmail);
-      heart.classList.toggle('active');
-    });
-    top.append(heart);
+  if (tagEmail) {
+    top.append(tagControl(tagEmail, 'tag-wrap', 'tag-button', () => {}));
   }
   return top;
 }
@@ -1622,7 +1678,7 @@ const emailTabs = [
   {key: 'parents', label: 'Parents'},
   {key: 'students', label: 'Students'},
   {key: 'both', label: 'Students & Parents'},
-  {key: 'bookmarks', label: 'My Bookmarks'},
+  {key: 'tagged', label: 'My Tags'},
 ];
 
 const emailColumns = [
@@ -1648,8 +1704,8 @@ function kidsField(parent, field) {
 }
 
 function emailEntries(tab) {
-  if (tab === 'bookmarks') {
-    return emailEntries('both').filter(r => favorites.has(r.p.email));
+  if (tab === 'tagged') {
+    return emailEntries('both').filter(r => isTagged(r.p.email));
   }
   const students = state.model.people
     .filter(p => p.isStudent)
@@ -1684,7 +1740,7 @@ function renderEmailListPage() {
 
   main.append(el('div', 'container email-hint', 'Use the filters to select for specific grades or classrooms.'));
 
-  const items = emailTabs.map(t => (t.key === 'bookmarks' ? {...t, icon: 'heart'} : t));
+  const items = emailTabs.map(t => (t.key === 'tagged' ? {...t, icon: 'tag'} : t));
   main.append(tabStrip(items, state.emailTab, 2, key => {
     state.emailTab = key;
     state.q = '';
@@ -1727,7 +1783,7 @@ function renderEmailListPage() {
     download.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
     download.download = state.emailTab + '.csv';
     if (!rows.length) {
-      holder.append(el('div', 'empty', state.emailTab === 'bookmarks' ? 'No bookmarks yet.' : 'No matches.'));
+      holder.append(el('div', 'empty', state.emailTab === 'tagged' ? 'No tagged people yet.' : 'No matches.'));
       return;
     }
     const table = el('table', 'email-table');
@@ -1760,19 +1816,13 @@ function renderEmailListPage() {
         }
         tr.append(td);
       }
-      const heartCell = el('td', 'email-heart');
-      const heart = el('button', 'row-heart' + (favorites.has(r.p.email) ? ' active' : ''));
-      heart.append(svg('heart'));
-      heart.addEventListener('click', () => {
-        toggleFavorite(r.p.email);
-        if (state.emailTab === 'bookmarks') {
+      const tagCell = el('td', 'email-tag');
+      tagCell.append(tagControl(r.p.email, 'tag-wrap', 'row-tag', () => {
+        if (state.emailTab === 'tagged' || state.filterTags.size) {
           renderTable();
-        } else {
-          heart.classList.toggle('active');
         }
-      });
-      heartCell.append(heart);
-      tr.append(heartCell);
+      }));
+      tr.append(tagCell);
       tbody.append(tr);
     });
     table.append(tbody);
@@ -2188,6 +2238,7 @@ async function load() {
     throw new Error(`loading model failed: ${res.status}`);
   }
   state.model = await res.json();
+  tags = state.model.tags || {};
   byEmail = {};
   for (const p of state.model.people) {
     byEmail[p.email] = p;
