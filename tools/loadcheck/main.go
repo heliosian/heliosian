@@ -23,20 +23,13 @@ func (staticFiles) Has(key string) bool {
 func main() {
 	sheet := flag.String("sheet", "", "spreadsheet id")
 	preferences := flag.String("preferences", "", "preferences spreadsheet id")
-	dir := flag.String("dir", "", "load from a directory of dumped tabs instead of the live sheets")
 	flag.Parse()
-	var source data.Source
-	switch {
-	case *dir != "":
-		source = &data.Dir{Root: *dir}
-	case *sheet != "" && *preferences != "":
-		live, err := data.NewSheet(map[string]string{"directory": *sheet, "preferences": *preferences})
-		if err != nil {
-			log.Fatalf("[ERROR] sheet source: %v", err)
-		}
-		source = live
-	default:
-		log.Fatal("[ERROR] -dir, or both -sheet and -preferences, are required")
+	if *sheet == "" || *preferences == "" {
+		log.Fatal("[ERROR] -sheet <spreadsheet id> and -preferences <spreadsheet id> are required")
+	}
+	source, err := data.NewSheet(map[string]string{"directory": *sheet, "preferences": *preferences})
+	if err != nil {
+		log.Fatalf("[ERROR] sheet source: %v", err)
 	}
 	model, err := directory.LoadModel(source, nil, staticFiles{})
 	if err != nil {

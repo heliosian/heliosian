@@ -821,41 +821,6 @@ function copyGlyph(text) {
   return btn;
 }
 
-const photoSourceLabels = {upload: 'Uploaded photo', veracross: 'School photo'};
-
-// The switcher only changes what this viewer is looking at. Making a choice stick for
-// everyone else is a separate, deliberate action, and only the person themselves can
-// take it.
-function photoSources(p, img, editable, status) {
-  const row = el('div', 'photo-sources');
-  const primary = (p.photos.find((s) => s.url === p.photoUrl) || p.photos[0]).source;
-  let showing = primary;
-  const buttons = new Map();
-  const use = el('button', 'photo-source-use');
-  use.textContent = 'Show this one to everyone';
-  const refresh = () => {
-    for (const [source, btn] of buttons) {
-      btn.classList.toggle('selected', source === showing);
-    }
-    use.hidden = !editable || showing === primary;
-  };
-  for (const photo of p.photos) {
-    const btn = el('button', 'photo-source');
-    btn.textContent = photoSourceLabels[photo.source] || photo.source;
-    btn.addEventListener('click', () => {
-      showing = photo.source;
-      img.src = photo.url;
-      refresh();
-    });
-    buttons.set(photo.source, btn);
-    row.append(btn);
-  }
-  use.addEventListener('click', () => submitField(p.email, 'primary-photo', showing, status));
-  row.append(use);
-  refresh();
-  return row;
-}
-
 async function submitField(key, field, value, status) {
   status.classList.remove('error');
   status.textContent = 'Saving…';
@@ -1026,9 +991,8 @@ function renderPersonDetail(email) {
   const editing = editable && personEdit === p.email;
   if (p.photoUrl || editing) {
     const wrap = el('div', 'photo-wrap');
-    let img = null;
     if (p.photoUrl) {
-      img = el('img', 'detail-photo');
+      const img = el('img', 'detail-photo');
       img.src = p.photoUrl;
       img.alt = '';
       wrap.append(img);
@@ -1036,16 +1000,9 @@ function renderPersonDetail(email) {
       wrap.append(el('div', 'detail-photo detail-photo-empty'));
     }
     left.append(wrap);
-    const status = el('div', 'media-status');
     if (editing) {
+      const status = el('div', 'media-status');
       wrap.append(uploadIcon('camera', 'Upload photo', 'image/*', 'person', p.email, 'photo', status));
-    }
-    // Anyone may look through the photos a person has; only they choose which one
-    // the rest of the directory sees.
-    if (img && (p.photos || []).length > 1) {
-      left.append(photoSources(p, img, editable, status));
-    }
-    if (editing || status.textContent) {
       left.append(status);
     }
   }

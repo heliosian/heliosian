@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"maps"
 	"regexp"
-	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -61,14 +60,6 @@ var importColumns = []string{
 	"entry_sort_name", "student_full_name", "student_classifications", "student_email",
 }
 
-var staffImportColumns = []string{
-	"person_full_name", "person_job_title", "person_classifications", "person_email",
-	"person_phone_business",
-}
-
-// Veracross faculty types belonging to people who are not school staff.
-var excludedFacultyTypes = map[string]bool{"Vendors": true}
-
 // The permission column's header is misspelled in the form itself; it must match verbatim.
 const (
 	preferenceTimestamp  = "Timestamp"
@@ -93,7 +84,7 @@ var overrideColumns = []string{
 	"Is Student", "Is Parent", "Is Staff", "New to Helios", "Pronouns", "Facts",
 	"Grade", "Classroom", "Crew", "Phone", "Job Title", "Department", "Grade Band", "Room Parent",
 	"Address", "Family Phone", "Family Photo Caption", "Opted Out",
-	"Photo Updated", "Facts Updated", "Family Photo Updated", "Primary Photo",
+	"Photo Updated", "Facts Updated", "Family Photo Updated",
 }
 
 const updatedFormat = "2006-01-02"
@@ -194,7 +185,6 @@ type loader struct {
 	static BlobChecker
 
 	importRows     []map[string]string
-	staffRows      []map[string]string
 	nameRows       []map[string]string
 	overrideRows   []map[string]string
 	preferenceRows []map[string]string
@@ -209,8 +199,6 @@ type loader struct {
 	familyOverrides  map[string]familyCells
 	roomParents      map[string][]string
 	optedOut         map[string]bool
-	excluded         map[string]bool
-	useless          []string
 
 	model *Model
 }
@@ -219,7 +207,6 @@ type loader struct {
 // and deliberately never reach Model, which is served to every member.
 type Tables struct {
 	Imports     []map[string]string
-	Staff       []map[string]string
 	Names       []map[string]string
 	Overrides   []map[string]string
 	Preferences []map[string]string
@@ -275,7 +262,6 @@ func BuildModel(tables *Tables, blobs, static BlobChecker) (*Model, error) {
 		blobs:            blobs,
 		static:           static,
 		importRows:       tables.Imports,
-		staffRows:        tables.Staff,
 		nameRows:         tables.Names,
 		overrideRows:     tables.Overrides,
 		preferenceRows:   tables.Preferences,
@@ -286,14 +272,11 @@ func BuildModel(tables *Tables, blobs, static BlobChecker) (*Model, error) {
 		familyOverrides:  map[string]familyCells{},
 		roomParents:      map[string][]string{},
 		optedOut:         map[string]bool{},
-		excluded:         map[string]bool{},
 		model:            &Model{Families: map[string]Family{}, RoomParents: map[string][]string{}},
 	}
 	steps := []func() error{
 		l.buildNameToEmail,
-		l.applyNameToEmail,
 		l.transformImport,
-		l.transformStaffImport,
 		l.applyOverrides,
 		l.hideStudentPhones,
 		l.buildFamilies,
@@ -320,13 +303,12 @@ func ReadTables(source data.Source) (*Tables, error) {
 		rows   []map[string]string
 		err    error
 	}
-	imports := &table{app: appName, name: "Veracross Student Import"}
-	staff := &table{app: appName, name: "Veracross Staff Import"}
+	imports := &table{app: appName, name: "Veracross Import"}
 	names := &table{app: appName, name: "Name to Email"}
 	overrides := &table{app: appName, name: "Overrides"}
 	preferences := &table{app: preferencesApp, name: preferencesTab}
 	tags := &table{app: appName, name: tagsTable}
-	ordered := []*table{imports, staff, names, overrides, preferences, tags}
+	ordered := []*table{imports, names, overrides, preferences, tags}
 	var wg sync.WaitGroup
 	for _, t := range ordered {
 		wg.Go(func() {
@@ -340,9 +322,6 @@ func ReadTables(source data.Source) (*Tables, error) {
 		}
 	}
 	if err := requireColumns(imports.name, imports.header, importColumns); err != nil {
-		return nil, err
-	}
-	if err := requireColumns(staff.name, staff.header, staffImportColumns); err != nil {
 		return nil, err
 	}
 	if err := requireColumns(names.name, names.header, []string{"Name", "Email"}); err != nil {
@@ -361,7 +340,6 @@ func ReadTables(source data.Source) (*Tables, error) {
 	}
 	return &Tables{
 		Imports:     imports.rows,
-		Staff:       staff.rows,
 		Names:       names.rows,
 		Overrides:   overrides.rows,
 		Preferences: preferences.rows,
@@ -372,72 +350,14 @@ func ReadTables(source data.Source) (*Tables, error) {
 func (l *loader) buildNameToEmail() error {
 	l.nameToEmail = map[string]string{}
 	for _, row := range l.nameRows {
-		// A name with no address is an affirmative decision to leave that person out,
-		// which is why the tab needs a row for them at all: Veracross carries people
-		// the community directory does not, and silence would be indistinguishable
-		// from nobody having looked.
 		name, email := normName(row["Name"]), strings.ToLower(row["Email"])
-		if name == "" {
-			return fmt.Errorf("name to email row %v has no name", row)
+		if name == "" || email == "" {
+			return fmt.Errorf("name to email row %v is incomplete", row)
 		}
 		if _, ok := l.nameToEmail[name]; ok {
 			return fmt.Errorf("name to email has duplicate name %q", row["Name"])
 		}
 		l.nameToEmail[name] = email
-	}
-	return nil
-}
-
-// transformStaffImport adds the people Veracross carries as faculty and staff. It
-// supplies only what the export knows: name, job title, email and business phone.
-// Department, grade band, classroom and crew stay in Overrides, because Veracross's
-// own department field disagrees with the school's filing often enough that importing
-// it would silently refile people.
-//
-// A staff member with no email is skipped rather than fatal. Veracross genuinely has
-// none for several of them, and every record here is keyed by address.
-func (l *loader) transformStaffImport() error {
-	for _, row := range l.staffRows {
-		rawName := row["person_full_name"]
-		if rawName == "" {
-			return fmt.Errorf("staff import row %v has no name", row)
-		}
-		var classifications struct {
-			FacultyType string `json:"faculty_type"`
-			Department  string `json:"department"`
-		}
-		if raw := row["person_classifications"]; raw != "" {
-			if err := json.Unmarshal([]byte(raw), &classifications); err != nil {
-				return fmt.Errorf("staff %s classifications: %w", rawName, err)
-			}
-		}
-		if excludedFacultyTypes[classifications.FacultyType] || l.excluded[normName(rawName)] {
-			continue
-		}
-		email := strings.ToLower(row["person_email"])
-		if email == "" {
-			return fmt.Errorf("staff %s has no email and no name to email entry", rawName)
-		}
-		n := parseName(rawName)
-		if p, ok := l.people[email]; ok {
-			// Staff who are also parents arrive twice. The household copy of a name
-			// often carries a redundant parenthetical the staff export omits, so only
-			// the resolved names have to agree.
-			if p.FullName != n.display || p.LegalName != n.legal {
-				return fmt.Errorf("staff %s has conflicting names %q and %q", email, p.FullName, rawName)
-			}
-			p.IsStaff = true
-			p.JobTitle = row["person_job_title"]
-			if p.Phone == "" {
-				p.Phone = row["person_phone_business"]
-			}
-			continue
-		}
-		l.people[email] = &Person{
-			Email: email, FullName: n.display, LegalName: n.legal, PreferredName: n.preferred,
-			IsStaff: true, JobTitle: row["person_job_title"], Phone: row["person_phone_business"],
-		}
-		l.order = append(l.order, email)
 	}
 	return nil
 }
@@ -465,48 +385,12 @@ func (l *loader) addAdult(rawName, email, phone string) error {
 	return nil
 }
 
-// applyNameToEmail fills in the addresses Veracross omits, for students and staff
-// alike, so everything downstream can just read the email column. Matching each entry
-// against the rows, rather than the other way round, is what makes an entry that fits
-// nothing — or fits two people — fall out here instead of needing to be counted later.
-// Rows are copied rather than patched, leaving the cached tables as they were read.
-func (l *loader) applyNameToEmail() error {
-	l.importRows = slices.Clone(l.importRows)
-	l.staffRows = slices.Clone(l.staffRows)
-	fill := func(rows []map[string]string, nameColumn, emailColumn, name, email string) int {
-		matches := 0
-		for i, row := range rows {
-			if normName(row[nameColumn]) != name {
-				continue
-			}
-			next := maps.Clone(row)
-			next[emailColumn] = email
-			rows[i] = next
-			matches++
-		}
-		return matches
-	}
-	for name, email := range l.nameToEmail {
-		matches := fill(l.importRows, "student_full_name", "student_email", name, email)
-		matches += fill(l.staffRows, "person_full_name", "person_email", name, email)
-		if matches != 1 {
-			return fmt.Errorf("name to email entry %q matches %d import rows", name, matches)
-		}
-		if email == "" {
-			l.excluded[name] = true
-		}
-	}
-	return nil
-}
-
 func (l *loader) transformImport() error {
+	mappingUses := map[string]int{}
 	for _, row := range l.importRows {
 		rawName := row["student_full_name"]
 		if rawName == "" {
 			return fmt.Errorf("import row %v has no student name", row)
-		}
-		if l.excluded[normName(rawName)] {
-			continue
 		}
 		var classifications struct {
 			GradeLevel string `json:"grade_level"`
@@ -524,6 +408,10 @@ func (l *loader) transformImport() error {
 		classroom, crew := splitHomeroom(classifications.Homeroom)
 
 		email := strings.ToLower(row["student_email"])
+		if mapped, ok := l.nameToEmail[normName(rawName)]; ok {
+			email = mapped
+			mappingUses[normName(rawName)]++
+		}
 		if email == "" {
 			return fmt.Errorf("student %s has no email and no name to email entry", rawName)
 		}
@@ -587,6 +475,15 @@ func (l *loader) transformImport() error {
 		}
 	}
 
+	for name := range l.nameToEmail {
+		switch mappingUses[name] {
+		case 0:
+			return fmt.Errorf("name to email entry %q matches no import row", name)
+		case 1:
+		default:
+			return fmt.Errorf("name to email entry %q matches %d import rows", name, mappingUses[name])
+		}
+	}
 	return nil
 }
 
@@ -619,27 +516,12 @@ func (l *loader) applyOverrides() error {
 			l.order = append(l.order, email)
 		}
 
-		// An override that restates what the import already says is dead weight: it
-		// survives long after the import starts supplying the value, and hides the
-		// corrections that matter. Every one is collected and reported together, since
-		// finding them one failed load at a time would be miserable.
-		useless := func(column, why string) {
-			l.useless = append(l.useless, fmt.Sprintf("%s: %s %s", email, column, why))
-		}
-		apply := func(column string, field *string) {
-			switch cell := row[column]; cell {
+		apply := func(cell string, field *string) {
+			switch cell {
 			case "":
 			case "-":
-				if *field == "" {
-					useless(column, "clears a value that is already empty")
-					return
-				}
 				*field = ""
 			default:
-				if *field == cell {
-					useless(column, fmt.Sprintf("repeats the value the record already has, %q", cell))
-					return
-				}
 				*field = cell
 			}
 		}
@@ -647,25 +529,17 @@ func (l *loader) applyOverrides() error {
 			switch row[column] {
 			case "":
 			case "-", "FALSE":
-				if !*field {
-					useless(column, "is already false")
-					return nil
-				}
 				*field = false
 			case "TRUE":
-				if *field {
-					useless(column, "is already true")
-					return nil
-				}
 				*field = true
 			default:
 				return fmt.Errorf("overrides row %s has invalid %s %q", email, column, row[column])
 			}
 			return nil
 		}
-		apply("Full Name", &p.FullName)
-		apply("Legal Name", &p.LegalName)
-		apply("Preferred Name", &p.PreferredName)
+		apply(row["Full Name"], &p.FullName)
+		apply(row["Legal Name"], &p.LegalName)
+		apply(row["Preferred Name"], &p.PreferredName)
 		for column, field := range map[string]*bool{
 			"Is Student": &p.IsStudent, "Is Parent": &p.IsParent, "Is Staff": &p.IsStaff, "New to Helios": &p.IsNew,
 		} {
@@ -673,33 +547,29 @@ func (l *loader) applyOverrides() error {
 				return err
 			}
 		}
-		apply("Pronouns", &p.Pronouns)
-		apply("Facts", &p.Facts)
+		apply(row["Pronouns"], &p.Pronouns)
+		apply(row["Facts"], &p.Facts)
 		if err := checkUpdated(email, "Facts Updated", row["Facts Updated"]); err != nil {
 			return err
 		}
-		apply("Facts Updated", &p.FactsUpdated)
+		apply(row["Facts Updated"], &p.FactsUpdated)
 		if err := checkUpdated(email, "Photo Updated", row["Photo Updated"]); err != nil {
 			return err
 		}
-		apply("Photo Updated", &p.PhotoUpdated)
-		if cell := row["Primary Photo"]; cell != "" && cell != "-" && cell != PhotoUpload && cell != PhotoVeracross {
-			return fmt.Errorf("overrides row %s has invalid Primary Photo %q", email, cell)
-		}
-		apply("Primary Photo", &p.PrimaryPhoto)
+		apply(row["Photo Updated"], &p.PhotoUpdated)
 		if cell := row["Grade"]; cell != "" && cell != "-" && !added && gradeBands[cell] == "" {
 			return fmt.Errorf("overrides row %s has unknown grade %q", email, cell)
 		}
-		apply("Grade", &p.Grade)
-		apply("Classroom", &p.Classroom)
-		apply("Crew", &p.Crew)
-		apply("Phone", &p.Phone)
-		apply("Job Title", &p.JobTitle)
-		apply("Department", &p.Department)
+		apply(row["Grade"], &p.Grade)
+		apply(row["Classroom"], &p.Classroom)
+		apply(row["Crew"], &p.Crew)
+		apply(row["Phone"], &p.Phone)
+		apply(row["Job Title"], &p.JobTitle)
+		apply(row["Department"], &p.Department)
 		if cell := row["Grade Band"]; cell != "" && cell != "-" && !bandSet[cell] {
 			return fmt.Errorf("overrides row %s has unknown grade band %q", email, cell)
 		}
-		apply("Grade Band", &p.GradeBand)
+		apply(row["Grade Band"], &p.GradeBand)
 		if cell := row["Room Parent"]; cell != "" && cell != "-" {
 			if !bandSet[cell] {
 				return fmt.Errorf("overrides row %s has unknown room parent band %q", email, cell)
@@ -755,10 +625,6 @@ func (l *loader) applyOverrides() error {
 				return fmt.Errorf("added row %s has no role", email)
 			}
 		}
-	}
-	if len(l.useless) > 0 {
-		return fmt.Errorf("%d useless override cells, delete them from the Overrides tab:\n  %s",
-			len(l.useless), strings.Join(l.useless, "\n  "))
 	}
 	return nil
 }
@@ -956,38 +822,15 @@ func (l *loader) removeOptedOut() error {
 	return nil
 }
 
-// primaryPhoto resolves which of a person's photos the directory shows. Absent a
-// choice the upload wins, since going to the trouble of uploading one says enough;
-// choosing the portrait is the case worth recording.
-func primaryPhoto(photos []Photo, chosen string) string {
-	for _, photo := range photos {
-		if photo.Source == chosen {
-			return photo.URL
-		}
-	}
-	if len(photos) == 0 {
-		return ""
-	}
-	return photos[0].URL
-}
-
 func (l *loader) attachBlobs() error {
 	if l.blobs == nil {
 		return nil
 	}
 	for _, p := range l.people {
 		local, _, _ := strings.Cut(p.Email, "@")
-		// The school portrait and a person's own upload live side by side, so a
-		// viewer can fall back to the portrait when an upload is old or unclear.
-		for _, photo := range []Photo{
-			{Source: PhotoUpload, URL: "/blob/people/" + local + "-photo"},
-			{Source: PhotoVeracross, URL: "/blob/people/" + local + "-photo-" + PhotoVeracross},
-		} {
-			if l.blobs.Has(strings.TrimPrefix(photo.URL, "/blob/")) {
-				p.Photos = append(p.Photos, photo)
-			}
+		if l.blobs.Has("people/" + local + "-photo") {
+			p.PhotoURL = "/blob/people/" + local + "-photo"
 		}
-		p.PhotoURL = primaryPhoto(p.Photos, p.PrimaryPhoto)
 		if l.blobs.Has("people/" + local + "-pronunciation") {
 			p.PronunciationURL = "/blob/people/" + local + "-pronunciation"
 		}
