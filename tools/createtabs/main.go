@@ -39,6 +39,7 @@ var tabs = []struct {
 		"Grade", "Classroom", "Crew",
 		"Phone", "Job Title", "Department", "Grade Band", "Room Parent",
 		"Address", "Family Phone", "Family Photo Caption", "Opted Out",
+		"Photo Updated", "Facts Updated", "Family Photo Updated",
 	}},
 	{"Tags", []string{"Owner Email", "Tag", "Person Email"}},
 }

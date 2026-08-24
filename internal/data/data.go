@@ -13,6 +13,7 @@ import (
 
 type Source interface {
 	Table(app, name string) ([]string, []map[string]string, error)
+	Header(app, name string) ([]string, error)
 }
 
 type Writer interface {
@@ -66,6 +67,18 @@ func (d *Dir) load(app, name string) (*table, error) {
 	}
 	d.tables[key] = t
 	return t, nil
+}
+
+// Header reads the whole CSV, since a local file costs nothing to parse and the
+// cached table serves every later read.
+func (d *Dir) Header(app, name string) ([]string, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	t, err := d.load(app, name)
+	if err != nil {
+		return nil, err
+	}
+	return slices.Clone(t.header), nil
 }
 
 func (d *Dir) Table(app, name string) ([]string, []map[string]string, error) {

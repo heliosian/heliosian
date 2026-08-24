@@ -38,6 +38,21 @@ func (s *Sheet) Table(app, name string) ([]string, []map[string]string, error) {
 	return parseTable(name, resp.Values)
 }
 
+// Header reads only the first row. The change log grows without bound and is never
+// read into the model, so validating its columns must not drag every audit row over
+// the wire on each reload.
+func (s *Sheet) Header(app, name string) ([]string, error) {
+	id, ok := s.spreadsheets[app]
+	if !ok {
+		return nil, fmt.Errorf("no spreadsheet configured for app %q", app)
+	}
+	resp, err := s.service.Spreadsheets.Values.Get(id, quoteTab(name)+"!1:1").Do()
+	if err != nil {
+		return nil, err
+	}
+	return parseHeader(name, resp.Values)
+}
+
 func (s *Sheet) Upsert(app, table, keyColumn, keyValue string, cells map[string]string) error {
 	id, ok := s.spreadsheets[app]
 	if !ok {
@@ -222,19 +237,27 @@ func columnName(idx int) string {
 	return name
 }
 
-func parseTable(name string, values [][]interface{}) ([]string, []map[string]string, error) {
+func parseHeader(name string, values [][]interface{}) ([]string, error) {
 	if len(values) == 0 {
-		return nil, nil, fmt.Errorf("table %s has no header row", name)
+		return nil, fmt.Errorf("table %s has no header row", name)
 	}
 	header := make([]string, len(values[0]))
 	seen := map[string]bool{}
 	for i, cell := range values[0] {
 		h := strings.TrimSpace(fmt.Sprint(cell))
 		if h != "" && seen[h] {
-			return nil, nil, fmt.Errorf("table %s has duplicate header %q", name, h)
+			return nil, fmt.Errorf("table %s has duplicate header %q", name, h)
 		}
 		seen[h] = true
 		header[i] = h
+	}
+	return header, nil
+}
+
+func parseTable(name string, values [][]interface{}) ([]string, []map[string]string, error) {
+	header, err := parseHeader(name, values)
+	if err != nil {
+		return nil, nil, err
 	}
 	records := []map[string]string{}
 	for _, row := range values[1:] {

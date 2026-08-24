@@ -88,7 +88,7 @@ func (u uploader) applyOverride(w http.ResponseWriter, actor, email, action stri
 			return
 		}
 		if err := u.sheet.Append(appName, changeLogTable, logRow); err != nil {
-			log.Printf("[ERROR] append change log after %s for %s: %v", action, email, err)
+			log.Fatalf("[ERROR] append change log after %s for %s: %v", action, email, err)
 		}
 	})
 	if err := <-applied; err != nil {

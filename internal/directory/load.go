@@ -326,6 +326,10 @@ func ReadTables(source data.Source) (*Tables, error) {
 	overrides := &table{app: appName, name: "Overrides"}
 	preferences := &table{app: preferencesApp, name: preferencesTab}
 	tags := &table{app: appName, name: tagsTable}
+	// Header only: the change log is never read into the model, and it gains a row per
+	// member edit forever. Nothing else compares its columns against what the app
+	// writes, and a column missing here truncates every audit row that reaches it.
+	changeLog := &table{app: appName, name: changeLogTable}
 	ordered := []*table{imports, staff, names, overrides, preferences, tags}
 	var wg sync.WaitGroup
 	for _, t := range ordered {
@@ -333,8 +337,11 @@ func ReadTables(source data.Source) (*Tables, error) {
 			t.header, t.rows, t.err = source.Table(t.app, t.name)
 		})
 	}
+	wg.Go(func() {
+		changeLog.header, changeLog.err = source.Header(changeLog.app, changeLog.name)
+	})
 	wg.Wait()
-	for _, t := range ordered {
+	for _, t := range append(ordered, changeLog) {
 		if t.err != nil {
 			return nil, t.err
 		}
@@ -357,6 +364,9 @@ func ReadTables(source data.Source) (*Tables, error) {
 		return nil, err
 	}
 	if err := requireColumns(tags.name, tags.header, tagColumns); err != nil {
+		return nil, err
+	}
+	if err := exactColumns(changeLog.name, changeLog.header, changeLogHeader); err != nil {
 		return nil, err
 	}
 	return &Tables{
