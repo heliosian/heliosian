@@ -1,182 +1,51 @@
 # Data model
 
-The entities the directory serves, and how they are assembled. Structured data lives in two Google Sheets in the community shared drive, reached through drive membership rather than project IAM; blobs (photos, audio) are objects in the media bucket, reached through project IAM. Each has exactly one home. The organized model is held in memory — nothing computed is ever written back to either sheet.
+Why the data is shaped the way it is. The tabs, columns, pipeline steps and validation rules are in `internal/directory`; this file carries only what reading that code cannot tell you.
 
-The `Directory` sheet holds the records. The `Preferences` sheet is a Google Form's response sheet, owned by the form and never written by the app, carrying each family's sharing consent.
+Structured data lives in two Google Sheets in the community shared drive, reached through drive membership rather than project IAM; blobs are objects in the media bucket, reached through project IAM. Each has exactly one home, and the organized model is held in memory — nothing computed is ever written back.
 
-## Spreadsheet layout
+## Veracross is a moving target
 
-| Tab | Written by | Purpose |
-|---|---|---|
-| Veracross Import | import tool | The raw Veracross student export, rewritten wholesale by the import tool on each refresh. Read-only to the serving app; no local edit survives here. |
-| Name to Email | hand | Maps a student's name to their school email for import rows where the email cell is empty or wrong, so every person can be keyed by email downstream. |
-| Overrides | hand + app | The entire local layer: admin corrections, app-written self-service text, and added people, in canonical model columns keyed by email. |
-| Change Log | app | Append-only audit trail mirroring the Overrides columns: one row per change, holding the previous values. |
-| Tags | app | One row per owner/tag/person: the private groupings members file each other under. |
+Two import tabs mirror what Veracross exports, and the shape of that export is not ours to control.
 
-The `Preferences` spreadsheet has a single form-owned tab, `Sheet1`: `Timestamp`, `Email Address`, `Communication Opt-In Status`, and `You have my permission to share the folllowing:` — the misspelling is the form's, and the loader matches it verbatim.
+**Homeroom is no longer exported.** It appears in no student export and on no rendered page, surviving in the portal only as the identity of the by-homeroom directories. The export tool reconstructs it by crawling those directories, which recovers the classroom but not the crew — the portal has no directory at crew granularity. So a field that once arrived as a compound `Crew Classroom` string now arrives as the classroom alone, and every crewed student's crew has to be carried in Overrides by hand. Getting Veracross to restore the field would delete both the crawl and that hand-maintenance.
 
-Because the form is edited outside this repository and its wording *is* the data, every value in it is matched exactly and anything unrecognized is fatal — a reworded consent sentence, a renamed permission option, a newly added option, or a column the loader has never heard of all stop the load rather than being partially understood. A form edit therefore surfaces as a refused startup, never as a family's preference read the wrong way. Only two things are deliberately tolerant: an empty permission cell, which legitimately means "share neither", and a response whose email matches nobody, which is skipped.
+**Student emails are blank for roughly a fifth of students**, across all grades, so the school's own address is not a reliable key on its own. Name to Email closes that, and a row there with a blank address is an affirmative record that the person is deliberately left out — the tab needs an entry for them precisely because silence is indistinguishable from nobody having looked.
 
-School structure lives nowhere in the sheet: membership and the classroom and crew names themselves derive from person records, and the remaining fixed structure — band identities, grade progression, department order — is code constants (see Classrooms and grades).
+**The homeroom split is positional, and the school's naming convention is what makes it safe**: crew + classroom compounds are real species names and classrooms are the one-word family, so the last word is always the classroom and anything before it is the crew.
 
-## Load pipeline
+**Adult emails arrive mixed-case**, and household addresses arrive at whatever granularity each family chose to give the school — street-level, city-only, or nothing.
 
-1. Read the raw import.
-2. Transform each import row into canonical person and household records (explosion, below). The Name to Email mapping applies during this step, since it fixes the key everything else uses.
-3. Apply the Overrides tab onto the canonical records by email: unflagged rows patch existing records, flagged rows create new ones.
-4. Apply the Preferences sheet, masking the contact data families chose not to share.
-5. List the media bucket and attach photo and pronunciation blobs to records by object-name convention.
-6. Hold the organized result in memory; the server refuses to start if the load fails, and the model reloads periodically.
+## What the staff import deliberately does not supply
 
-Because Overrides rows are authored post-transform, their values skip import normalization — so canonical-value validation runs on every layer, not just the import.
+Veracross carries a department for every staff member, and it disagrees with the school's own filing often enough, and unsystematically enough, that importing it would silently refile people. Department, grade band, classroom and crew therefore stay in Overrides. The import supplies only what the export knows for certain: name, job title, email, business phone.
 
-## Veracross Import format
+People whose faculty type is `Vendors` are dropped — contractors running a club appear in Veracross but are not community staff.
 
-One row per student, 29 columns, with the student's households denormalized into the row: up to two households (separated parents), up to two adults each.
+Staff who are also parents arrive from both imports, and the household copy of such a name often carries a redundant parenthetical the faculty export omits. The two merge on resolved names rather than raw strings for that reason alone.
 
-| Columns | Content |
-|---|---|
-| `entry_sort_name`, `student_full_name` | Sort key; student name in `Preferred (Legal) Last` form when a preferred name is set, plain `First Last` otherwise |
-| `student_classifications` | JSON with exactly `grade_level` (`Kindergarten`, `Grade 1` … `Grade 8`) and `homeroom` (compound `Crew Classroom` string) |
-| `student_email`, `student_phone_mobile` | Empty email for a substantial minority of students (roughly a fifth, across grades) — these rows require a Name to Email entry |
-| `household_N_phone`, `household_N_address` | N ∈ {1, 2}; address arrives at whatever granularity the family shares with the school: street-level, city-only, or empty |
-| `household_N_person_M_full_name`, `_email`, `_email_2`, `_phone_mobile`, `_phone_business` | M ∈ {1, 2}; adult emails are always `@heliosschool.org` but arrive mixed-case; `email_2` is unused in practice |
+## The consent form is authored outside this repository
 
-Staff do not appear in this export. They enter either through a dedicated staff import run through the same pipeline, or as flagged rows in Overrides — this choice is open.
+The `Preferences` sheet belongs to a Google Form, and its wording *is* the data. Every value is matched verbatim and anything unrecognized is fatal — a reworded consent sentence, a renamed option, a new option, an unknown column. A form edit surfaces as a refused startup rather than as a family's preference read the wrong way. Two tolerances are deliberate: an empty permission cell legitimately means "share neither", and a response matching nobody is skipped, because the form is open to the whole Workspace domain and a stray answer must not be able to stop the server.
 
-## Transform
+Last submission wins per family **by timestamp, not sheet order**. The 33 seconds in which one family opted out and back in are the whole reason that comparison exists.
 
-The explosion turns each import row into one student record plus up to four adult records and one or two household records:
+Where a two-household student's parents disagree, the stricter answer holds, so the outcome never depends on map ordering.
 
-- **Person identity**: email, lowercased, is the key everywhere. Rows with a blank or wrong `student_email` get theirs from Name to Email; a mapping that matches zero or multiple import rows is fatal.
-- **Names**: `Preferred (Legal) Last` parses into preferred name, legal name, and display name; plain names pass through. Source rows with swapped or malformed name fields are repaired in Overrides, not by transform heuristics.
-- **Roles**: derived from where a person appears — a row's student is a student, a household adult is a parent, staff sourcing marks staff. Combinations are valid (staff who are also parents).
-- **Adults deduplicate** across sibling rows by email; conflicting values across a parent's appearances are fatal rather than silently last-one-wins.
-- **Homeroom** splits positionally: classrooms are single-word bird family names, so the last word is the classroom and everything before it is the crew (`Great Blue Herons` → crew `Great Blue`, classroom `Herons`; a single-word homeroom like `Hummingbirds` is a crewless classroom). The school's own naming convention backs this — crew + classroom compounds are real species names, classrooms the one-word family.
-- **Households** group by the set of adult emails in them, order-insensitively — `person_1`/`person_2` ordering is Veracross's choice and must not affect identity.
+A family that never submitted is a distinct third state rather than an assumed opt-in. The flag exists so that default can be inverted later without touching resolution.
 
-## Overrides
+## Privacy decisions
 
-Canonical model columns, keyed by lowercased email, one row per person. Three kinds of content share the tab, distinguished only by authorship and one flag:
+**Student phone numbers are never shown, whatever any sheet says.** Not a preference, not a flag — not a family's choice to make.
 
-- **Corrections** (hand): fix anything the import gets wrong — swapped name fields, bad phone numbers — and carry person flags with no import source, like room-parent assignments and the new-to-Helios marker.
-- **Self-service text** (app): facts, pronouns, preferred name, phone, address — the latter two hideable via the `-` clear — and the Opted Out flag. Every self-service edit warns that it doesn't affect the values shown in Veracross. The app writes these cells directly; moderating a contribution is the same act as any other correction. A photo upload writes the object to the media bucket and stamps the matching updated date below; a pronunciation upload touches the bucket alone.
-- **Additions** (hand, flagged): people with no import row at all. The flag inverts the source expectation.
+**Tags never reach the model.** `/api/directory/model` serves one shared model to every member, so a tag table folded into it would hand everyone's private groupings to every reader. They are assembled per request from the caller's identity instead, and the model type has no tag field to leak. No tag is visible to anyone but its owner, including the school.
 
-Cell semantics are sparse: an empty cell contributes nothing, `-` clears the underlying value. An addition is just an override applied to an empty base record, so the merge logic is uniform; the flag selects the validation instead:
+**Opting out also locks the person out**, because viewing the directory requires being in it. They get a permissions error until the school clears the flag, which is a consequence worth stating aloud before anyone sets it.
 
-| Flag | Loader expects | Violation |
-|---|---|---|
-| unset | a matching import person | fatal: orphaned override |
-| set | no matching import person | fatal: Veracross now covers this person — unflag the row and delete cells the import supplies |
+**Overrides values skip import normalization**, since they are authored after the transform — which is why canonical-value validation has to run on every layer rather than only on the import.
 
-Flagged rows must supply every field the model requires; unflagged rows can be a single cell. `-` on a flagged row is meaningless (nothing beneath to clear) and reported as useless.
+## History that constrains the present
 
-Family-level fields (address, family photo caption, family phone) ride on a parent's row and apply to that parent's household, so a two-household student's families are addressed independently through their respective adults.
+Freshness cannot be read from bucket object generations: moving the media into the bucket reset every generation at once. The refresh dates in Overrides exist because of that, and were seeded from the legacy Glide spreadsheet, which holds the years this app's history does not cover.
 
-Three columns carry refresh dates in ISO form, and any other value is fatal: `Photo Updated` and `Facts Updated` on the person's row, `Family Photo Updated` riding on a parent's row like the caption. The app stamps them on every facts edit and photo upload, and the directory reads them to prompt families whose content has aged (see `docs/directory.md`). They are seeded from the legacy Glide spreadsheet, which recorded the same dates for the years this app's history does not cover; `tools/importdates` performs that seeding, skipping people the directory no longer holds and collapsing a family's several parent rows to one date per household.
-
-**Opted Out** removes the person entirely at load: their record, their membership in families and parent-contact lists, and any room-parent assignment all vanish from the model. Because viewing the directory requires being in it, opting out also locks the person out — they get a permissions error until the school clears the flag. People set it from their own page, parents set it for their kids (each with a confirmation spelling out the consequences), or an admin sets the cell by hand.
-
-Every change to Overrides appends a Change Log row: timestamp, actor, the row's email, then the previous value of each column that changed — `-` marking a previously empty cell, untouched columns left blank. Media uploads are not logged here; bucket object versions are their history.
-
-## Tags
-
-Named groups a member files other people under — soccer team, class party, carpool — with one person free to sit in several at once. One row per `Owner Email`, `Tag`, `Person Email` triple, so tagging appends a row and untagging deletes one; there is no per-tag record beyond its rows, and a tag whose last row goes stops existing.
-
-Tags are the one table that never reaches the model. `/api/directory/model` serves the shared model to every member, so a tag table folded into it would hand everyone else's private groupings to every reader. Instead the rows are held on the cache and the endpoint answers with the global model plus only the calling member's tags, assembled per request from their signed-in identity — the model type has no tag field to leak.
-
-A tag naming somebody no longer in the directory is skipped at read rather than being fatal, because people leave and their rows leave with them; the row stays in the sheet until the tag is next touched. Nothing else validates against the tab, and no tag is ever visible to anyone but its owner — including the school.
-
-## Preferences
-
-One form response per submission, keyed by the submitter's email. Families resubmit freely — duplicates are ordinary, and a household's two adults may answer differently — so the sheet is a log, not a table of current state.
-
-Resolution:
-
-- **A person's answer governs their whole family.** The submitter is matched by lowercased email, their household located, and the answer applied to every adult and kid in it. A submitter with no household (staff) governs only themselves. A submission matching no person in the model is skipped: the form is open to the whole Workspace domain, and a stray response must not be able to stop the server.
-- **Last submission wins per family**, by timestamp rather than sheet order. The 33 seconds in which one family opted out and back in are the whole reason this is a timestamp comparison.
-- **A student in two households** is governed by both. Where the two disagree the stricter answer holds — masked beats shared, opted out beats opted in — so the outcome never depends on map ordering.
-
-`Communication Opt-In Status` is one of two fixed sentences, recorded as explicit opt-in or explicit opt-out. `You have my permission to share the folllowing:` is a multi-select of `Home Address` and `Adult Phone Number`; an item's *absence* is the instruction. Missing address permission clears the family address, which also drops it from the map, since geocoding skips empty addresses. Missing phone permission clears the household phone and every adult's phone in that family. An opt-out row carries no permissions and therefore masks both.
-
-A family with no submission at all is **default**, which today means opt-in with nothing masked. Only the three-state flag distinguishes them from an explicit opt-in, and that flag exists so the default can be inverted without touching the resolution logic.
-
-Explicit opt-out is recorded and not yet enforced; removal from the model remains the Overrides `Opted Out` flag, set by hand.
-
-## Student phone numbers
-
-Student phone numbers are never shown, whatever any sheet says. The Veracross import does not read `student_phone_mobile`, and the loader clears the phone of anyone flagged as a student after the Overrides layer, so neither an admin correction nor a self-service edit can surface one. No preference governs this and no flag records it — it is not a family's choice to make.
-
-## Media blobs
-
-Photos and pronunciation recordings are objects in the media bucket `gs://heliosian-media`, under a `people/` or `families/` prefix and named by convention: `<email local part>-photo` and `<email local part>-pronunciation` for people, `<family key hash>-photo` and `<family key hash>-pronunciation` for families, each keeping its source extension. Presence means existence — no sheet cell records a filename. Freshness cannot come from the object generation, which the move into the bucket reset for every object at once; it comes from the updated-date columns in Overrides.
-
-Every image is stored with a `-thumb.jpg` sibling written at the same time, so startup loads thumbnails instead of computing them; an image object with no stored thumbnail is fatal. Uploads overwrite the object and its thumbnail, and bucket versioning retains the superseded generations. An upload arriving in a different format also deletes the previous extension's object, so a key never resolves to two files.
-
-## Person
-
-One record per person, all roles in one shape:
-
-- **Key**: school email, lowercased. Everyone has one — including students whose import row omits it (supplied via Name to Email) — though the youngest students don't yet have access to theirs.
-- **Names**: display name, legal name, preferred name, parsed from the import or overridden.
-- **Roles**: student, parent, and staff booleans, derived from sourcing; combinations are valid. Display strings derive from the flags.
-- **New to Helios**: override-carried flag marking people who just joined the community; drives the matching filter toggle.
-- **Pronouns**: optional; a curated list plus a freeform escape hatch.
-- **Pronunciation**: optional audio recording of the person's name, from the media bucket.
-- **Photo**: official portrait or personal upload, from the media bucket; people may opt for an illustrated avatar instead.
-- **Facts**: optional about-me text — first-person blurbs for students, professional bios for staff.
-- **Student fields**: grade, classroom, and crew from the homeroom split; parent contact emails derive from the student's household adults.
-- **Staff fields**: job title, department, grade band, and classroom/crew assignment for teaching staff.
-- **Contact**: email always; phone optional, and absent for every student.
-- **Sharing**: the family's consent state — explicit opt-in, explicit opt-out, or default — plus flags recording whether the address and phone were masked by preference. The phone flag is never set on a student, whose phone is withheld by the blanket rule rather than by any choice.
-- **Year rollover**: next-year grade and band derive from the grade progression constant, so the directory can flip to the new school year.
-
-## Family
-
-A household groups adults and kids; a student belongs to one household normally, two when parents keep separate households:
-
-- **Key**: a hash of the sorted emails of every member — students and adults alike — so identity is order-insensitive and derives from nothing but membership. Any membership change (new student, student leaves, parent change) produces a new key, deliberately: the family's URL and photo association reset along with its composition.
-- **Members**: the adults in the household and the students whose rows name it.
-- **Photo and caption**: the family photo from the media bucket plus a who's-who description naming everyone in it.
-- **Pronunciation**: optional audio recording of the family name, from the media bucket.
-- **Address**: as much as the family chooses to share — full postal address or just city and state, seeded from the import and updatable via self-service. Cleared, with a flag recording it, when the family withheld address permission.
-- **Phone**: optional household phone, cleared and flagged alongside the adults' phones when the family withheld phone permission.
-
-## Classrooms and grades
-
-Membership and the classroom and crew names derive entirely from person records via the homeroom split; the remaining fixed structure — band identities, grade progression, department order — is code constants. The current shape:
-
-| Band | Grades | Classrooms | Crews |
-|---|---|---|---|
-| Hummingbirds | K | Hummingbirds | — |
-| Halcons | 1–2 | Falcons, Hawks | — |
-| Jayvens | 3–4 | Jays, Ravens | — |
-| Cospreys | 5–6 | Condors, Ospreys | Pinnacles/Big Sur, River/Sea |
-| Hegrets | 7–8 | Egrets, Herons | Snowy/Great, Great Blue/Green |
-
-- **Classroom**: mascot artwork lives on disk under the classroom's name; a classroom has crews exactly when its homerooms carry crew prefixes.
-- **Crew**: classroom subdivision with its own logo; its teachers derive from staff records carrying a classroom/crew assignment.
-- **Grade band**: pairs of grades share a band with a combined identity, used for browsing, room-parent organization, and band-colored styling (see `docs/design.md`). Grade → next-grade is positional in the ordered grade list, and next band follows from next grade.
-- **Room parents**: parent assignments per grade band, carried as an Overrides column on the parent.
-- **Departments**: membership derives from staff records; the display order organizing the staff view is a code constant.
-
-## Validation
-
-The loader hard-fails — no fallbacks, server refuses to start — on:
-
-- a missing or duplicated expected header in any tab
-- a duplicate key within a tab
-- a Name to Email entry matching zero or multiple import rows
-- an unflagged Overrides row matching no person (orphaned override)
-- a flagged Overrides row colliding with an imported person
-- conflicting values for the same adult across import rows
-- an invalid canonical value from any layer, including an Overrides refresh date that is not an ISO date
-- a Preferences column the loader does not know, or a Preferences row with a malformed email, an unparseable timestamp, an unrecognized opt-in sentence, or an unrecognized permission item
-
-The import procedure is manual today: `tools/writetab` writes the Veracross CSV export into the Veracross Import tab (header-checked), and `tools/loadcheck` re-runs the full pipeline against both sheets and prints a model summary, including the opt-in/opt-out/default split and the masked counts. A single import tool that also reports the local layer's health beyond the fatal checks — useless overrides (value identical to what the record has anyway), `-` on flagged rows, name mappings or additions that Veracross has since made redundant, and media files whose name matches no current person or family, including family blobs orphaned by a membership change — is planned (`docs/plan.md`). `tools/findsheet` lists the spreadsheets visible to the service account; `tools/sheets` dumps a sheet's tabs, headers, and rows.
-
-## Sourcing
-
-Records are imported from the school's systems and enriched by families themselves (photos, facts, pronunciation recordings, address preferences), with freshness read from the recorded refresh dates so refresh cadence can be enforced.
+A family's key is a hash of its members' addresses, so any membership change produces a new key and resets the family's URL and photo association along with it. That is deliberate — a family that gains or loses a member is a different family.
