@@ -140,7 +140,7 @@ function optInBanner() {
   return banner;
 }
 
-const staleYears = {photo: 1.25, facts: 1.25, familyPhoto: 2};
+const staleYears = {photo: 0.75, facts: 0.6, familyPhoto: 1.5};
 
 function agedPast(present, updated, years) {
   if (!present) {
