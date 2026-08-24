@@ -4,6 +4,10 @@ Why the data is shaped the way it is. The tabs, columns, pipeline steps and vali
 
 Structured data lives in two Google Sheets in the community shared drive, reached through drive membership rather than project IAM; blobs are objects in the media bucket, reached through project IAM. Each has exactly one home, and the organized model is held in memory — nothing computed is ever written back.
 
+The service account can also see the Glide spreadsheets this app replaced. **They are read-only, permanently.** Nothing here writes to them; they are kept as history.
+
+`imports/` is scratch. It is gitignored, its contents are whatever someone last dumped or generated, and it goes stale the moment the sheet changes. Never reason from a file there without regenerating it first — dump the tab you actually care about.
+
 ## Veracross is a moving target
 
 Two import tabs mirror what Veracross exports, and the shape of that export is not ours to control.

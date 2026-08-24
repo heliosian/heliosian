@@ -37,7 +37,7 @@ const (
 	fetchWorkers    = 32
 )
 
-var folders = []string{"people", "families"}
+var folders = []string{"photos", "pronunciation"}
 
 type entry struct {
 	name       string
@@ -74,7 +74,10 @@ func New() (*Store, error) {
 }
 
 func Register(mux *http.ServeMux, s *Store) {
-	mux.HandleFunc("GET /blob/{folder}/{name}", s.serve)
+	// One route per kind, and the object name is a content hash, so nothing about
+	// where a blob is stored or who it belongs to reaches the client.
+	mux.HandleFunc("GET /photos/{name}", s.serve)
+	mux.HandleFunc("GET /pronunciation/{name}", s.serve)
 }
 
 func (s *Store) refreshLoop() {
@@ -232,42 +235,37 @@ func (s *Store) Has(key string) bool {
 	return ok
 }
 
-func (s *Store) Upload(folder, base, ext, mimeType string, content []byte) (string, error) {
-	ctx := context.Background()
-	key := folder + "/" + base
-	name := key + "." + ext
+// Put writes a content-addressed object and its thumbnail. A name already present is
+// byte-identical by construction, so the write is skipped rather than repeated.
+func (s *Store) Put(folder, name, mimeType string, content []byte) error {
+	key := folder + "/" + strings.TrimSuffix(name, path.Ext(name))
 	s.mu.RLock()
-	existing, exists := s.entries[key]
+	_, exists := s.entries[key]
 	s.mu.RUnlock()
-	if err := s.write(ctx, name, mimeType, content); err != nil {
-		return "", err
+	if exists {
+		return nil
+	}
+	ctx := context.Background()
+	if err := s.write(ctx, folder+"/"+name, mimeType, content); err != nil {
+		return err
 	}
 	if strings.HasPrefix(mimeType, "image/") {
 		thumb, err := Thumbnail(content)
 		if err != nil {
-			return "", fmt.Errorf("thumbnail %s: %w", name, err)
+			return fmt.Errorf("thumbnail %s: %w", name, err)
 		}
 		if err := s.write(ctx, key+thumbSuffix+thumbExt, thumbMime, thumb); err != nil {
-			return "", err
-		}
-	}
-	superseded := ""
-	if exists {
-		superseded = fmt.Sprint(existing.generation)
-		if existing.name != name {
-			if err := s.service.Objects.Delete(Bucket, existing.name).Context(ctx).Do(); err != nil {
-				return "", fmt.Errorf("delete superseded %s: %w", existing.name, err)
-			}
+			return err
 		}
 	}
 	if err := s.refresh(); err != nil {
-		return "", fmt.Errorf("refresh after upload: %w", err)
+		return fmt.Errorf("refresh after upload: %w", err)
 	}
-	return superseded, nil
+	return nil
 }
 
 func (s *Store) serve(w http.ResponseWriter, r *http.Request) {
-	key := r.PathValue("folder") + "/" + r.PathValue("name")
+	key := strings.TrimPrefix(r.URL.Path, "/")
 	s.mu.RLock()
 	e, ok := s.entries[key]
 	s.mu.RUnlock()

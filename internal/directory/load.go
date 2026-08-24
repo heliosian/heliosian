@@ -94,6 +94,8 @@ var overrideColumns = []string{
 	"Grade", "Classroom", "Crew", "Phone", "Job Title", "Department", "Grade Band", "Room Parent",
 	"Address", "Family Phone", "Family Photo Caption", "Opted Out",
 	"Photo Updated", "Facts Updated", "Family Photo Updated",
+	"Veracross Photo", "Primary Photo", "Pronunciation",
+	"Family Photo", "Family Pronunciation",
 }
 
 const updatedFormat = "2006-01-02"
@@ -151,6 +153,7 @@ type household struct {
 type familyCells struct {
 	address, phone, caption, photoUpdated             string
 	hasAddress, hasPhone, hasCaption, hasPhotoUpdated bool
+	photo, pronunciation                              string
 }
 
 func exactColumns(table string, header, wanted []string) error {
@@ -197,6 +200,7 @@ type loader struct {
 	staffRows      []map[string]string
 	nameRows       []map[string]string
 	overrideRows   []map[string]string
+	photoRows      []map[string]string
 	preferenceRows []map[string]string
 	nameToEmail    map[string]string
 
@@ -224,6 +228,7 @@ type Tables struct {
 	Overrides   []map[string]string
 	Preferences []map[string]string
 	Tags        []map[string]string
+	Photos      []map[string]string
 }
 
 // withOverride mirrors what data.Sheet.Upsert just wrote, copying the rows it
@@ -278,6 +283,7 @@ func BuildModel(tables *Tables, blobs, static BlobChecker) (*Model, error) {
 		staffRows:        tables.Staff,
 		nameRows:         tables.Names,
 		overrideRows:     tables.Overrides,
+		photoRows:        tables.Photos,
 		preferenceRows:   tables.Preferences,
 		people:           map[string]*Person{},
 		households:       map[string]*household{},
@@ -326,11 +332,12 @@ func ReadTables(source data.Source) (*Tables, error) {
 	overrides := &table{app: appName, name: "Overrides"}
 	preferences := &table{app: preferencesApp, name: preferencesTab}
 	tags := &table{app: appName, name: tagsTable}
+	photos := &table{app: appName, name: "Photos"}
 	// Header only: the change log is never read into the model, and it gains a row per
 	// member edit forever. Nothing else compares its columns against what the app
 	// writes, and a column missing here truncates every audit row that reaches it.
 	changeLog := &table{app: appName, name: changeLogTable}
-	ordered := []*table{imports, staff, names, overrides, preferences, tags}
+	ordered := []*table{imports, staff, names, overrides, preferences, tags, photos}
 	var wg sync.WaitGroup
 	for _, t := range ordered {
 		wg.Go(func() {
@@ -364,6 +371,9 @@ func ReadTables(source data.Source) (*Tables, error) {
 		return nil, err
 	}
 	if err := requireColumns(tags.name, tags.header, tagColumns); err != nil {
+		return nil, err
+	}
+	if err := requireColumns(photos.name, photos.header, []string{"Email", "Photo Name"}); err != nil {
 		return nil, err
 	}
 	if err := exactColumns(changeLog.name, changeLog.header, changeLogHeader); err != nil {
@@ -693,6 +703,9 @@ func (l *loader) applyOverrides() error {
 			return err
 		}
 		apply("Photo Updated", &p.PhotoUpdated)
+		apply("Veracross Photo", &p.veracrossPhoto)
+		apply("Primary Photo", &p.PrimaryPhoto)
+		apply("Pronunciation", &p.pronunciation)
 		if cell := row["Grade"]; cell != "" && cell != "-" && !added && gradeBands[cell] == "" {
 			return fmt.Errorf("overrides row %s has unknown grade %q", email, cell)
 		}
@@ -741,7 +754,10 @@ func (l *loader) applyOverrides() error {
 				cells.photoUpdated = cell
 			}
 		}
-		if cells.hasAddress || cells.hasPhone || cells.hasCaption || cells.hasPhotoUpdated {
+		cells.photo = row["Family Photo"]
+		cells.pronunciation = row["Family Pronunciation"]
+		if cells.hasAddress || cells.hasPhone || cells.hasCaption || cells.hasPhotoUpdated ||
+			cells.photo != "" || cells.pronunciation != "" {
 			l.familyOverrides[email] = cells
 		}
 
@@ -819,6 +835,12 @@ func (l *loader) buildFamilies() error {
 		}
 		if cells.hasPhotoUpdated {
 			family.PhotoUpdated = cells.photoUpdated
+		}
+		if cells.photo != "" {
+			family.photo = cells.photo
+		}
+		if cells.pronunciation != "" {
+			family.pronunciation = cells.pronunciation
 		}
 		l.model.Families[key] = family
 	}
@@ -962,29 +984,109 @@ func (l *loader) removeOptedOut() error {
 	return nil
 }
 
+func named(names []string, source string) []Photo {
+	photos := make([]Photo, len(names))
+	for i, name := range names {
+		photos[i] = Photo{Name: name, Source: source}
+	}
+	return photos
+}
+
+// setPrimaryPhoto resolves which photo the directory shows. An explicit choice wins,
+// otherwise the school portrait does — a person who uploads without choosing has the
+// upload made primary at upload time, so falling back to the portrait here only
+// affects people who never chose at all.
+func (l *loader) setPrimaryPhoto(p *Person) error {
+	if p.PrimaryPhoto != "" {
+		for _, photo := range p.Photos {
+			if photo.Name == p.PrimaryPhoto {
+				p.PhotoURL = photo.URL
+				return nil
+			}
+		}
+		return fmt.Errorf("%s has primary photo %q, which is not one of their photos", p.Email, p.PrimaryPhoto)
+	}
+	for _, photo := range p.Photos {
+		if photo.Source == "veracross" {
+			p.PhotoURL = photo.URL
+			p.PrimaryPhoto = photo.Name
+			return nil
+		}
+	}
+	return nil
+}
+
 func (l *loader) attachBlobs() error {
 	if l.blobs == nil {
 		return nil
 	}
+	uploaded := map[string][]string{}
+	for _, row := range l.photoRows {
+		email := strings.ToLower(row["Email"])
+		name := row["Photo Name"]
+		if email == "" || name == "" {
+			return fmt.Errorf("photos row %v is incomplete", row)
+		}
+		// A row for somebody no longer in the directory is skipped rather than fatal:
+		// people leave, and their photos outlive them in the sheet until touched.
+		if l.people[email] == nil {
+			continue
+		}
+		uploaded[email] = append(uploaded[email], name)
+	}
+
 	for _, p := range l.people {
-		local, _, _ := strings.Cut(p.Email, "@")
-		if l.blobs.Has("people/" + local + "-photo") {
-			p.PhotoURL = "/blob/people/" + local + "-photo"
+		// The school portrait first, then a person's own uploads in sheet order, so a
+		// viewer flipping through them starts where the directory does.
+		for _, photo := range append(
+			[]Photo{{Name: p.veracrossPhoto, Source: "veracross"}},
+			named(uploaded[p.Email], "upload")...,
+		) {
+			if photo.Name == "" {
+				continue
+			}
+			url, err := l.blobURL("photos", photo.Name, p.Email)
+			if err != nil {
+				return err
+			}
+			photo.URL = url
+			p.Photos = append(p.Photos, photo)
 		}
-		if l.blobs.Has("people/" + local + "-pronunciation") {
-			p.PronunciationURL = "/blob/people/" + local + "-pronunciation"
+		if err := l.setPrimaryPhoto(p); err != nil {
+			return err
 		}
+		url, err := l.blobURL("pronunciation", p.pronunciation, p.Email)
+		if err != nil {
+			return err
+		}
+		p.PronunciationURL = url
 	}
 	for key, family := range l.model.Families {
-		if l.blobs.Has("families/" + key + "-photo") {
-			family.PhotoURL = "/blob/families/" + key + "-photo"
+		photo, err := l.blobURL("photos", family.photo, key)
+		if err != nil {
+			return err
 		}
-		if l.blobs.Has("families/" + key + "-pronunciation") {
-			family.PronunciationURL = "/blob/families/" + key + "-pronunciation"
+		pronunciation, err := l.blobURL("pronunciation", family.pronunciation, key)
+		if err != nil {
+			return err
 		}
+		family.PhotoURL, family.PronunciationURL = photo, pronunciation
 		l.model.Families[key] = family
 	}
 	return nil
+}
+
+// blobURL turns a recorded object name into the path clients fetch. A name with no
+// object behind it is fatal: the sheet is the index, so a miss means the two have
+// drifted rather than that the blob is merely absent.
+func (l *loader) blobURL(kind, name, owner string) (string, error) {
+	if name == "" {
+		return "", nil
+	}
+	if !l.blobs.Has(kind + "/" + name) {
+		return "", fmt.Errorf("%s names %s %q, which is not in the bucket", owner, kind, name)
+	}
+	return "/" + kind + "/" + name, nil
 }
 
 func (l *loader) sortPeople() error {

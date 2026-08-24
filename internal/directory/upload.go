@@ -1,6 +1,7 @@
 package directory
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"io"
 	"log"
@@ -255,40 +256,65 @@ func (u uploader) upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	folder := "people"
-	if target == "family" {
-		folder = "families"
+	// Content-addressed: the same image uploaded twice is one object, and an object is
+	// never overwritten, so nobody's photo can be destroyed by somebody else's upload.
+	folder := "photos"
+	if kind != "photo" {
+		folder = "pronunciation"
 	}
-	local, _, _ := strings.Cut(key, "@")
-	base := local + "-" + kind
-	name := base + "." + ext
-
-	superseded, err := u.store.Upload(folder, base, ext, mimeType, content)
-	if err != nil {
+	name := fmt.Sprintf("%x.%s", sha256.Sum256(content), ext)
+	if err := u.store.Put(folder, name, mimeType, content); err != nil {
 		serverError(w, err)
 		return
 	}
-	if kind == "photo" {
-		row, column, previous := key, "Photo Updated", model.Person(key).PhotoUpdated
-		if target == "family" {
-			row, column, previous = strings.ToLower(me), "Family Photo Updated", model.Families[key].PhotoUpdated
-		}
-		if !u.applyOverride(w, me, row, "photo upload",
-			map[string]string{column: today()}, map[string]string{column: previous}) {
+
+	// A person's photos are a list, so a new one is a row plus a pointer at it. Every
+	// other kind is a single slot, named on the owner's Overrides row.
+	if kind == "photo" && target == "person" {
+		if !u.addPhoto(w, me, key, name, model.Person(key).PhotoUpdated) {
 			return
 		}
-	} else {
-		rebuilt := make(chan error, 1)
-		u.queue.Add(func() {
-			rebuilt <- u.cache.rebuildCurrent()
-		})
-		if err := <-rebuilt; err != nil {
-			serverError(w, fmt.Errorf("rebuild model after upload: %w", err))
-			return
-		}
+		log.Printf("upload: %s added photo %s for %s", me, name, key)
+		w.WriteHeader(http.StatusNoContent)
+		return
 	}
-	log.Printf("upload: %s set %s %s %s (superseded generation %q)", me, target, key, name, superseded)
+
+	row, cells, previous := key, map[string]string{}, map[string]string{}
+	switch {
+	case kind == "photo":
+		row = strings.ToLower(me)
+		cells["Family Photo"], cells["Family Photo Updated"] = name, today()
+		previous["Family Photo"] = model.Families[key].photo
+		previous["Family Photo Updated"] = model.Families[key].PhotoUpdated
+	case target == "family":
+		row = strings.ToLower(me)
+		cells["Family Pronunciation"] = name
+		previous["Family Pronunciation"] = model.Families[key].pronunciation
+	default:
+		cells["Pronunciation"] = name
+		previous["Pronunciation"] = model.Person(key).pronunciation
+	}
+	if !u.applyOverride(w, me, row, kind+" upload", cells, previous) {
+		return
+	}
+	log.Printf("upload: %s set %s %s %s to %s", me, target, key, kind, name)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// addPhoto appends the Photos row and makes the new photo primary, since uploading
+// one is a statement that it should be the one people see.
+func (u uploader) addPhoto(w http.ResponseWriter, me, key, name, previousUpdated string) bool {
+	appended := make(chan error, 1)
+	u.queue.Add(func() {
+		appended <- u.sheet.Append(appName, "Photos", []string{key, name})
+	})
+	if err := <-appended; err != nil {
+		serverError(w, fmt.Errorf("record photo %s for %s: %w", name, key, err))
+		return false
+	}
+	return u.applyOverride(w, me, key, "photo upload",
+		map[string]string{"Primary Photo": name, "Photo Updated": today()},
+		map[string]string{"Primary Photo": "", "Photo Updated": previousUpdated})
 }
 
 func mayEdit(model *Model, me, target, key string) bool {

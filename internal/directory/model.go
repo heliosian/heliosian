@@ -8,20 +8,33 @@ const (
 	OptOut     OptStatus = "out"
 )
 
+// Every photo is one content-addressed object; which of a person's photos came from
+// Veracross is recorded in the sheet, not in the object name. Source is "veracross"
+// or "upload".
+type Photo struct {
+	Name   string `json:"name"`
+	Source string `json:"source"`
+	URL    string `json:"url"`
+}
+
 type Person struct {
-	Email               string   `json:"email"`
-	FullName            string   `json:"fullName"`
-	LegalName           string   `json:"legalName,omitempty"`
-	PreferredName       string   `json:"preferredName,omitempty"`
-	IsStaff             bool     `json:"isStaff"`
-	IsParent            bool     `json:"isParent"`
-	IsStudent           bool     `json:"isStudent"`
-	IsNew               bool     `json:"isNew,omitempty"`
-	Pronouns            string   `json:"pronouns,omitempty"`
-	Facts               string   `json:"facts,omitempty"`
-	FactsUpdated        string   `json:"factsUpdated,omitempty"`
-	PronunciationURL    string   `json:"pronunciationUrl,omitempty"`
-	PhotoURL            string   `json:"photoUrl,omitempty"`
+	Email               string  `json:"email"`
+	FullName            string  `json:"fullName"`
+	LegalName           string  `json:"legalName,omitempty"`
+	PreferredName       string  `json:"preferredName,omitempty"`
+	IsStaff             bool    `json:"isStaff"`
+	IsParent            bool    `json:"isParent"`
+	IsStudent           bool    `json:"isStudent"`
+	IsNew               bool    `json:"isNew,omitempty"`
+	Pronouns            string  `json:"pronouns,omitempty"`
+	Facts               string  `json:"facts,omitempty"`
+	FactsUpdated        string  `json:"factsUpdated,omitempty"`
+	PronunciationURL    string  `json:"pronunciationUrl,omitempty"`
+	PhotoURL            string  `json:"photoUrl,omitempty"`
+	Photos              []Photo `json:"photos,omitempty"`
+	PrimaryPhoto        string  `json:"primaryPhoto,omitempty"`
+	veracrossPhoto      string
+	pronunciation       string
 	PhotoUpdated        string   `json:"photoUpdated,omitempty"`
 	Grade               string   `json:"grade,omitempty"`
 	Classroom           string   `json:"classroom,omitempty"`
@@ -53,6 +66,8 @@ type Family struct {
 	KidEmails        []string `json:"kidEmails,omitempty"`
 	AddressMasked    bool     `json:"addressMasked,omitempty"`
 	PhoneMasked      bool     `json:"phoneMasked,omitempty"`
+
+	photo, pronunciation string
 }
 
 type Classroom struct {
