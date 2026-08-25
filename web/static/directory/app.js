@@ -1005,6 +1005,9 @@ function renderPersonDetail(email) {
       wrap.append(uploadIcon('camera', 'Upload photo', 'image/*', 'person', p.email, 'photo', status));
       left.append(status);
     }
+    if ((p.photos || []).length > 1) {
+      left.append(photoSwitcher(p, wrap.querySelector('.detail-photo'), editable));
+    }
   }
   grid.append(left);
 
@@ -1991,6 +1994,45 @@ function canEditPerson(email) {
   const me = byEmail[meEmail];
   const family = me && state.model.families[me.familyKey];
   return Boolean(family && (family.kidEmails || []).includes(email));
+}
+
+// photoSwitcher shows every photo a person has and swaps the big one on click. Which
+// one the directory shows everywhere else is a separate question, and only somebody who
+// may edit the record gets to answer it.
+function photoSwitcher(p, img, editable) {
+  const box = el('div', 'photo-switcher');
+  const strip = el('div', 'photo-strip');
+  const status = el('div', 'media-status');
+  const choose = el('button', 'media-button', 'Show this one everywhere');
+  let showing = p.primaryPhoto;
+  const paint = () => {
+    for (const thumb of strip.children) {
+      thumb.classList.toggle('current', thumb.dataset.name === showing);
+    }
+    choose.hidden = showing === p.primaryPhoto;
+  };
+  for (const photo of p.photos) {
+    const thumb = el('button', 'photo-thumb');
+    thumb.dataset.name = photo.name;
+    thumb.title = photo.source === 'veracross' ? 'School portrait' : 'Uploaded photo';
+    const face = el('img');
+    face.src = thumbUrl(photo.url);
+    face.alt = '';
+    thumb.append(face);
+    thumb.addEventListener('click', () => {
+      img.src = photo.url;
+      showing = photo.name;
+      paint();
+    });
+    strip.append(thumb);
+  }
+  box.append(strip);
+  if (editable) {
+    box.append(choose, status);
+    choose.addEventListener('click', () => submitField(p.email, 'primary-photo', showing, status));
+  }
+  paint();
+  return box;
 }
 
 function uploadIcon(iconName, title, accept, target, key, kind, status) {

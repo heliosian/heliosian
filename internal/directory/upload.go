@@ -132,6 +132,25 @@ func (u uploader) edit(w http.ResponseWriter, r *http.Request) {
 		cells["Full Name"] = value + " " + surname(base)
 		previous["Preferred Name"] = person.PreferredName
 		previous["Full Name"] = person.FullName
+	case "primary-photo":
+		if !mayEdit(model, me, "person", key) {
+			http.Error(w, "not allowed to edit this record", http.StatusForbidden)
+			return
+		}
+		// Only a photo they already have: the column decides which one the directory
+		// shows, and a name from anywhere else would fail the next model load.
+		chosen := false
+		for _, photo := range person.Photos {
+			if photo.Name == value {
+				chosen = true
+			}
+		}
+		if !chosen {
+			http.Error(w, "not one of this person's photos", http.StatusBadRequest)
+			return
+		}
+		cells["Primary Photo"] = value
+		previous["Primary Photo"] = person.PrimaryPhoto
 	case "phone":
 		if !mayEdit(model, me, "person", key) {
 			http.Error(w, "not allowed to edit this record", http.StatusForbidden)

@@ -1289,6 +1289,50 @@ a.list-row:hover {
   color: #fff;
 }
 
+.photo-switcher {
+  margin-top: 10px;
+}
+
+.photo-strip {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.photo-thumb {
+  width: 52px;
+  height: 52px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background: none;
+  cursor: pointer;
+  overflow: hidden;
+  line-height: 0;
+  opacity: 0.65;
+}
+
+.photo-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 6px;
+}
+
+.photo-thumb:hover,
+.photo-thumb.current {
+  opacity: 1;
+}
+
+.photo-thumb.current {
+  border-color: var(--brand);
+}
+
+.photo-switcher .media-button {
+  margin-top: 10px;
+  width: 100%;
+}
+
 .pronounce-edit {
   display: flex;
   flex-direction: column;
