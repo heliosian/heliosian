@@ -2005,6 +2005,14 @@ function photoSwitcher(p, img, editable) {
   const status = el('div', 'media-status');
   const choose = el('button', 'media-button', 'Show this one everywhere');
   let showing = p.primaryPhoto;
+  // Hold the frame at the tallest of their photos, measured from the thumbnails the
+  // strip loads anyway. Without it a switch changes the frame's height and everything
+  // below it jumps.
+  const shapes = [];
+  const holdFrame = () => {
+    img.parentElement.classList.add('photo-fixed');
+    img.parentElement.style.aspectRatio = String(Math.min(...shapes));
+  };
   const paint = () => {
     for (const thumb of strip.children) {
       thumb.classList.toggle('current', thumb.dataset.name === showing);
@@ -2018,6 +2026,12 @@ function photoSwitcher(p, img, editable) {
     const face = el('img');
     face.src = thumbUrl(photo.url);
     face.alt = '';
+    face.addEventListener('load', () => {
+      if (face.naturalHeight) {
+        shapes.push(face.naturalWidth / face.naturalHeight);
+        holdFrame();
+      }
+    });
     thumb.append(face);
     thumb.addEventListener('click', () => {
       img.src = photo.url;

@@ -1289,6 +1289,12 @@ a.list-row:hover {
   color: #fff;
 }
 
+.photo-wrap.photo-fixed .detail-photo {
+  height: 100%;
+  object-fit: contain;
+  background: #eef1f3;
+}
+
 .photo-switcher {
   margin-top: 10px;
 }
