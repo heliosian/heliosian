@@ -19,7 +19,28 @@ var tabs = []struct {
 	{"Veracross Staff Import", []string{
 		"entry_sort_name", "person_full_name", "person_job_title", "person_room",
 		"person_classifications", "person_biography",
-		"person_email", "person_email_2", "person_phone_business",
+		"person_email", "person_email_2", "person_phone_business", "person_photo",
+	}},
+	// student_photo is spliced in by vcexport rather than exported by Veracross, so the
+	// tab needs the column before an import can mirror it.
+	{"Veracross Student Import", []string{
+		"entry_sort_name", "student_full_name", "student_classifications", "student_email",
+		"student_phone_mobile",
+		"household_1_phone", "household_1_address",
+		"household_1_person_1_full_name", "household_1_person_1_email",
+		"household_1_person_1_email_2", "household_1_person_1_phone_mobile",
+		"household_1_person_1_phone_business",
+		"household_1_person_2_full_name", "household_1_person_2_email",
+		"household_1_person_2_email_2", "household_1_person_2_phone_mobile",
+		"household_1_person_2_phone_business",
+		"household_2_phone", "household_2_address",
+		"household_2_person_1_full_name", "household_2_person_1_email",
+		"household_2_person_1_email_2", "household_2_person_1_phone_mobile",
+		"household_2_person_1_phone_business",
+		"household_2_person_2_full_name", "household_2_person_2_email",
+		"household_2_person_2_email_2", "household_2_person_2_phone_mobile",
+		"household_2_person_2_phone_business",
+		"student_photo",
 	}},
 	{"Name to Email", []string{"Name", "Email"}},
 	{"Overrides", []string{

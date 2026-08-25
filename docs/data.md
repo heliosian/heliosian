@@ -48,8 +48,16 @@ A family that never submitted is a distinct third state rather than an assumed o
 
 **Overrides values skip import normalization**, since they are authored after the transform — which is why canonical-value validation has to run on every layer rather than only on the import.
 
+## Media is named by content, and the sheet is the index
+
+Every object in the bucket is named for the hash of its own bytes, under `photos/` or `pronunciation/`. The bucket therefore says nothing about who owns what — the `Photos` tab and the Overrides photo columns do, and a name recorded there with no object behind it is fatal rather than treated as an absence, because the two disagreeing is a bug and not a missing file.
+
+The reason is that a name derived from a person could be written twice. Under the layout this replaced, a photo was stored at a name built from its owner's email, so an upload overwrote whatever was there. Content addressing makes an upload additive: two people who upload an identical image share one object, and neither can destroy the other's, because nothing is ever written to a name that already exists.
+
+That a person's photos are a list rather than a slot follows from the same thing. The list is theirs in the order it was added, with the Veracross portrait first, and one of them is marked primary — uploading makes the new one primary, since uploading a photo is a statement about which one people should see.
+
 ## History that constrains the present
 
-Freshness cannot be read from bucket object generations: moving the media into the bucket reset every generation at once. The refresh dates in Overrides exist because of that, and were seeded from the legacy Glide spreadsheet, which holds the years this app's history does not cover.
+Freshness cannot be read from bucket object generations: moving the media into the bucket reset every generation at once, and now that an object is named for its bytes there is never a second generation to read. The refresh dates in Overrides exist because of that, and were seeded from the legacy Glide spreadsheet, which holds the years this app's history does not cover.
 
 A family's key is a hash of its members' addresses, so any membership change produces a new key and resets the family's URL and photo association along with it. That is deliberate — a family that gains or loses a member is a different family.

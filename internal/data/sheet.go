@@ -123,11 +123,31 @@ func (s *Sheet) Upsert(app, table, keyColumn, keyValue string, cells map[string]
 }
 
 func (s *Sheet) Append(app, table string, row []string) error {
+	return s.AppendAll(app, table, [][]string{row})
+}
+
+// AppendAll adds many rows in one call, which is the difference between a bulk load
+// finishing and it spending minutes being throttled a row at a time.
+func (s *Sheet) AppendAll(app, table string, rows [][]string) error {
 	id, ok := s.spreadsheets[app]
 	if !ok {
 		return fmt.Errorf("no spreadsheet configured for app %q", app)
 	}
-	return s.appendRow(id, quoteTab(table), row)
+	if len(rows) == 0 {
+		return nil
+	}
+	values := make([][]interface{}, len(rows))
+	for i, row := range rows {
+		cells := make([]interface{}, len(row))
+		for j, cell := range row {
+			cells[j] = cell
+		}
+		values[i] = cells
+	}
+	_, err := s.service.Spreadsheets.Values.Append(id, quoteTab(table), &sheets.ValueRange{
+		Values: values,
+	}).ValueInputOption("RAW").InsertDataOption("INSERT_ROWS").Do()
+	return err
 }
 
 func (s *Sheet) Delete(app, table string, match map[string]string) error {
@@ -211,17 +231,6 @@ func (s *Sheet) tabID(id, title string) (int64, error) {
 		return 0, fmt.Errorf("spreadsheet has no tab %q", title)
 	}
 	return tab, nil
-}
-
-func (s *Sheet) appendRow(id, quotedTable string, row []string) error {
-	values := make([]interface{}, len(row))
-	for i, cell := range row {
-		values[i] = cell
-	}
-	_, err := s.service.Spreadsheets.Values.Append(id, quotedTable, &sheets.ValueRange{
-		Values: [][]interface{}{values},
-	}).ValueInputOption("RAW").InsertDataOption("INSERT_ROWS").Do()
-	return err
 }
 
 func quoteTab(title string) string {

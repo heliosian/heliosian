@@ -1,4 +1,5 @@
-// Command startserver launches the app, waits for it to listen, prints the pid and an auth header, and leaves it running.
+// Command startserver launches the app in the background with its output in a log file,
+// and prints an auth header and the process group to stop it with.
 package main
 
 import (
@@ -7,11 +8,13 @@ import (
 	"log"
 	"os"
 	"os/exec"
-	"strings"
+	"syscall"
 	"time"
 
 	"heliosian/internal/auth"
 )
+
+const logPath = "/tmp/heliosian-server.log"
 
 func main() {
 	email := flag.String("email", "ian.gulliver@heliosschool.org", "session email for the minted cookie")
@@ -27,49 +30,22 @@ func main() {
 		log.Fatal("[ERROR] PREFERENCES_SHEET is required")
 	}
 
-	logFile, err := os.Create("/tmp/heliosian-server.log")
+	logFile, err := os.Create(logPath)
 	if err != nil {
 		log.Fatalf("[ERROR] create server log: %v", err)
 	}
 	cmd := exec.Command("go", "run", ".")
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
+	// Its own group, because go run execs the server as a child and stopping the wrapper
+	// leaves that child holding the port.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
 		log.Fatalf("[ERROR] start server: %v", err)
 	}
 
-	deadline := time.Now().Add(10 * time.Minute)
-	for {
-		if time.Now().After(deadline) {
-			cmd.Process.Kill()
-			log.Fatalf("[ERROR] server did not start within 10 minutes; log: /tmp/heliosian-server.log")
-		}
-		content, err := os.ReadFile("/tmp/heliosian-server.log")
-		if err != nil {
-			log.Fatalf("[ERROR] read server log: %v", err)
-		}
-		if strings.Contains(string(content), "listening on ") {
-			break
-		}
-		if cmd.ProcessState != nil || !processAlive(cmd.Process.Pid) {
-			fmt.Print(string(content))
-			log.Fatal("[ERROR] server exited before listening")
-		}
-		time.Sleep(time.Second)
-	}
-
 	cookie := auth.Token([]byte(key), *email, time.Now().Add(24*time.Hour))
-
-	content, _ := os.ReadFile("/tmp/heliosian-server.log")
-	for _, line := range strings.Split(strings.TrimSpace(string(content)), "\n") {
-		fmt.Println(line)
-	}
-	fmt.Printf("pid: %d\n", cmd.Process.Pid)
-	fmt.Println("log: /tmp/heliosian-server.log")
+	fmt.Printf("log: %s\n", logPath)
+	fmt.Printf("stop with: kill -- -%d\n", cmd.Process.Pid)
 	fmt.Printf("header: Cookie: session=%s\n", cookie)
-	cmd.Process.Release()
-}
-
-func processAlive(pid int) bool {
-	return exec.Command("kill", "-0", fmt.Sprint(pid)).Run() == nil
 }

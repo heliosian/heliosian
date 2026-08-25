@@ -2,8 +2,8 @@
 package main
 
 import (
-	"bufio"
 	"context"
+	"crypto/sha256"
 	"encoding/csv"
 	"fmt"
 	"log"
@@ -16,6 +16,7 @@ import (
 	"google.golang.org/api/option"
 	"google.golang.org/api/sheets/v4"
 
+	"heliosian/internal/blob"
 	"heliosian/internal/data"
 	"heliosian/internal/directory"
 	"heliosian/internal/sheetsync"
@@ -67,6 +68,40 @@ func readCSV(path string) ([]string, []map[string]string, error) {
 	return records[0], rows, nil
 }
 
+// uploadPhotos puts the export's portraits in the bucket before any tab names one,
+// so the sheet never indexes an object that is not there yet. The filename is the
+// hash of the bytes, and checking that here is what keeps the two repositories from
+// drifting into a directory full of broken photos.
+func uploadPhotos(dir string) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	uploader, err := blob.NewUploader()
+	if err != nil {
+		return err
+	}
+	uploaded := 0
+	for _, entry := range entries {
+		content, err := os.ReadFile(filepath.Join(dir, entry.Name()))
+		if err != nil {
+			return err
+		}
+		if want := fmt.Sprintf("%x%s", sha256.Sum256(content), filepath.Ext(entry.Name())); want != entry.Name() {
+			return fmt.Errorf("photo %s is not named for its content, want %s", entry.Name(), want)
+		}
+		written, err := uploader.Put("photos", entry.Name(), http.DetectContentType(content), content)
+		if err != nil {
+			return err
+		}
+		if written {
+			uploaded++
+		}
+	}
+	log.Printf("photos: %d uploaded, %d already in the bucket", uploaded, len(entries)-uploaded)
+	return nil
+}
+
 func browserRunning() bool {
 	client := http.Client{Timeout: 2 * time.Second}
 	resp, err := client.Get(devtools)
@@ -106,12 +141,13 @@ func main() {
 			log.Fatalf("[ERROR] start capture browser: %v", err)
 		}
 	}
-	log.Printf("sign into Veracross in the browser window if you are not already, then press enter")
-	bufio.NewReader(os.Stdin).ReadString('\n')
-
 	log.Printf("exporting from Veracross into %s", out)
 	if err := run(exporter, "go", "run", ".", "-out", out); err != nil {
 		log.Fatalf("[ERROR] export: %v", err)
+	}
+
+	if err := uploadPhotos(filepath.Join(out, "photos")); err != nil {
+		log.Fatalf("[ERROR] upload photos: %v", err)
 	}
 
 	svc, err := sheets.NewService(context.Background(), option.WithScopes(sheets.SpreadsheetsScope))
@@ -140,7 +176,6 @@ func main() {
 		}
 	}
 
-	log.Printf("photos are in %s, upload them separately", filepath.Join(out, "photos"))
 	log.Printf("rebuilding the model to check the result")
 	source, err := data.NewSheet(map[string]string{"directory": sheet, "preferences": preferences})
 	if err != nil {

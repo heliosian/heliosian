@@ -29,7 +29,7 @@ Why each setting is what it is:
 - **service account** — the runtime identity, `directory@`. Application-default credentials inside the container resolve to it through the metadata server; there is no key file anywhere in the system.
 - **min instances 1** — startup preloads every media object before listening (about ten seconds); still worth avoiding on a cold request.
 - **max instances 1** — the directory model and blob store live in per-instance memory with no cross-instance coherency; a self-service edit refreshes only the instance that handled it, so a second instance would serve stale data.
-- **memory 2Gi** — the blob store holds all media and thumbnails in RAM. Because thumbnails are stored rather than generated, startup decodes no images and the preload peak sits close to the steady state: a roughly 600 MB blob store runs the container at about 44% of this limit. The startup log line `blob store: … MB in memory` reports the footprint; resize when it approaches half the limit.
+- **memory 2Gi** — the blob store holds all media and thumbnails in RAM. Because thumbnails are stored rather than generated, startup decodes no images and the preload peak sits close to the steady state: a roughly 360 MB blob store runs the container at about a quarter of this limit. The startup log line `blob store: … MB in memory` reports the footprint; resize when it approaches half the limit.
 - **concurrency 250** — with a single instance, every simultaneous request shares it, and a photo-heavy page fans out many image requests at once. The work is served from memory, so the ceiling exists to bound queueing, not CPU.
 - **no CPU throttling** — the directory model and blob store refresh on five-minute tickers between requests; default throttling would starve them.
 - **HTTP/2** — Cloud Run speaks cleartext HTTP/2 to the container, which the server accepts. Browsers already get HTTP/2 from the frontend either way.
@@ -53,7 +53,7 @@ Secret Manager secrets, delivered as environment variables. Values are used raw,
 
 ## Media storage
 
-Photos and pronunciation recordings live in `gs://heliosian-media` (us-west1, uniform access, public access prevented, object versioning on), the single source of truth for media — see `docs/data.md` for the naming convention and stored thumbnails. It sits in the same region as the service, so the whole set preloads into memory in about eight seconds with no per-request throttle to work around, and versioning carries the upload history that used to need an archive folder.
+Photos and pronunciation recordings live in `gs://heliosian-media` (us-west1, uniform access, public access prevented, object versioning on), the single source of truth for media — see `docs/data.md` for the naming convention and stored thumbnails. It sits in the same region as the service, so the whole set preloads into memory in about eight seconds with no per-request throttle to work around. Object versioning no longer carries the upload history: an object is named for its own bytes and is never rewritten, so every version that once accumulated under one name is now a separate object that the sheet either still names or does not.
 
 Because the bucket is private and every read goes through the app's own sign-in gate, no object is ever publicly readable; the service reads and writes it as `directory@`.
 

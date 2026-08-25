@@ -46,14 +46,15 @@ Each runs as `go run ./tools/<name>`. The sheet, drive, and bucket tools authent
 
 - `screenshot`, `capturebrowser`, `browse` — page capture and browser driving; see `docs/screenshots.md`
 - `deploy` — apply the full production service configuration (needs `DIRECTORY_SHEET`); see `docs/deploy.md`
-- `startserver` — launch the app detached, wait for it to listen, print the pid, log path, and a minted session cookie (needs `SESSION_KEY` and `DIRECTORY_SHEET`)
+- `startserver` — launch the app detached with its output in a log file, and print that path, the command to stop it, and a minted session cookie (needs `SESSION_KEY` and `DIRECTORY_SHEET`)
 - `cookie` — print a signed session cookie for local API testing
 - `loadcheck` — run the full load pipeline against the directory and preferences sheets and print a model summary
-- `columns` — print each directory table's column names from the configured source
 - `findsheet` — list spreadsheets visible to the service account
 - `sheets` — dump a sheet's tabs, sizes, and header rows
 - `dumptab` / `writetab` — copy one tab to a local CSV / write a local CSV into a tab, header-checked
 - `createtabs` — create the directory sheet's local-layer tabs with their header rows
 - `importdates` — seed the Overrides refresh-date columns from the legacy Glide spreadsheet, adding the columns if absent
 - `setcell` — set one cell in a tab by key column, appending the row if missing
+- `import` — run a fresh Veracross export, upload its portraits, and sync the import tabs (needs `DIRECTORY_SHEET` and `PREFERENCES_SHEET`, and a `vcexport` checkout)
+- `migrateblobs` — write any thumbnail the bucket is missing, and move media still under a retired layout into the content-addressed one
 - `splash` — regenerate the iOS splash battery from the captured original page; see `docs/pwa.md`

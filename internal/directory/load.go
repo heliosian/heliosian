@@ -59,11 +59,12 @@ var departmentOrder = []string{
 
 var importColumns = []string{
 	"entry_sort_name", "student_full_name", "student_classifications", "student_email",
+	"student_photo",
 }
 
 var staffImportColumns = []string{
 	"person_full_name", "person_job_title", "person_classifications", "person_email",
-	"person_phone_business",
+	"person_phone_business", "person_photo",
 }
 
 // Veracross faculty types belonging to people who are not school staff.
@@ -386,6 +387,7 @@ func ReadTables(source data.Source) (*Tables, error) {
 		Overrides:   overrides.rows,
 		Preferences: preferences.rows,
 		Tags:        tags.rows,
+		Photos:      photos.rows,
 	}, nil
 }
 
@@ -448,6 +450,7 @@ func (l *loader) transformStaffImport() error {
 			}
 			p.IsStaff = true
 			p.JobTitle = row["person_job_title"]
+			p.veracrossPhoto = row["person_photo"]
 			if p.Phone == "" {
 				p.Phone = row["person_phone_business"]
 			}
@@ -456,6 +459,7 @@ func (l *loader) transformStaffImport() error {
 		l.people[email] = &Person{
 			Email: email, FullName: n.display, LegalName: n.legal, PreferredName: n.preferred,
 			IsStaff: true, JobTitle: row["person_job_title"], Phone: row["person_phone_business"],
+			veracrossPhoto: row["person_photo"],
 		}
 		l.order = append(l.order, email)
 	}
@@ -554,6 +558,7 @@ func (l *loader) transformImport() error {
 		student := &Person{
 			Email: email, FullName: n.display, LegalName: n.legal, PreferredName: n.preferred,
 			IsStudent: true, Grade: classifications.GradeLevel, Classroom: classroom, Crew: crew,
+			veracrossPhoto: row["student_photo"],
 		}
 		l.people[email] = student
 		l.order = append(l.order, email)
