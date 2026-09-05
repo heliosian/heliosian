@@ -1776,10 +1776,36 @@ function renderEmailListPage() {
   content.append(holder);
   main.append(content);
 
+  // Which columns the corner copy button copies. Persists across search/filter
+  // re-renders for this page visit, resets when the tab changes.
+  const selectedColumns = new Set(emailColumns.map((c, i) => i));
+  let currentRows = [];
+
+  const copyColumns = el('button', 'email-copy-columns');
+  copyColumns.title = 'Copy the checked columns to the clipboard';
+  copyColumns.append(svg('copy'));
+  copyColumns.addEventListener('click', () => {
+    const cols = emailColumns.filter((c, i) => selectedColumns.has(i));
+    if (!cols.length || !currentRows.length) {
+      return;
+    }
+    const text = [cols.map(c => c.label).join('\t')]
+      .concat(currentRows.map(r => cols.map(c => c.get(r)).join('\t')))
+      .join('\n');
+    navigator.clipboard.writeText(text);
+    copyColumns.classList.add('copied');
+    copyColumns.replaceChildren(svg('check'));
+    setTimeout(() => {
+      copyColumns.classList.remove('copied');
+      copyColumns.replaceChildren(svg('copy'));
+    }, 1200);
+  });
+
   function renderTable() {
     holder.replaceChildren();
     const rows = emailEntries(state.emailTab)
       .filter(r => (r.p.fullName.toLowerCase().includes(state.q) || r.p.email.toLowerCase().includes(state.q)) && matchesFilters(r.p));
+    currentRows = rows;
     const csv = [emailColumns.map(c => c.label).join(',')]
       .concat(rows.map(r => emailColumns.map(c => csvField(c.get(r))).join(',')))
       .join('\n');
@@ -1792,12 +1818,26 @@ function renderEmailListPage() {
     const table = el('table', 'email-table');
     const thead = el('thead');
     const headRow = el('tr');
-    headRow.append(el('th'));
-    for (const c of emailColumns) {
-      const th = el('th', '', c.label);
-      th.append(copyGlyph(rows.map(c.get).filter(Boolean).join('\n')));
+    const leadTh = el('th', 'email-copy-cell');
+    leadTh.append(copyColumns);
+    headRow.append(leadTh);
+    emailColumns.forEach((c, i) => {
+      const th = el('th');
+      const pick = el('label', 'column-pick');
+      const checkbox = el('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = selectedColumns.has(i);
+      checkbox.addEventListener('change', () => {
+        if (checkbox.checked) {
+          selectedColumns.add(i);
+        } else {
+          selectedColumns.delete(i);
+        }
+      });
+      pick.append(el('span', '', c.label), checkbox);
+      th.append(pick, copyGlyph(rows.map(c.get).filter(Boolean).join('\n')));
       headRow.append(th);
-    }
+    });
     headRow.append(el('th'));
     thead.append(headRow);
     table.append(thead);
