@@ -54,9 +54,9 @@ Original tile art (1254×1254 JPEGs for all nine classrooms and all nine grade t
 
 ## Typography
 
-- The UI font is **Inter**, loaded from Google Fonts in weights 400, 500, 600, 700, 800 (`fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800`), with the fallback stack `-apple-system, system-ui, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif`. Body text is weight 400; the weights observed in use are 400/500/600.
-- The existing app also loads Roboto (400/500/700/900) and Roboto Mono for its raw data grid; the clone does not need them.
-- Hierarchy: bold page headings; semibold names; letterspaced ALL-CAPS micro-labels in brand teal for roles, titles, and section badges; regular body; muted gray secondary text; italics for pronunciation lines.
+- The UI font is **Roboto**, matching the font the existing (Glide) app renders with, self-hosted as static woff2 files in `web/static/fonts/` (weights 400, 500, 700, 900; no Google Fonts network dependency) with the fallback stack `-apple-system, BlinkMacSystemFont, system-ui, sans-serif`. Body text is weight 400; the weights in use are 400/500/700/900 — Roboto has no native 600 or 800, so anything that would have called for those collapses to the nearest real weight (600 → 500, 800 → 900) rather than letting the browser synthesize a fake bold, which renders visibly blurry.
+- Roboto Mono (used by the existing app's raw data grid) is not needed here.
+- Hierarchy: black (900) for the rare oversized splash heading; bold page headings and names; medium-weight secondary emphasis; letterspaced ALL-CAPS micro-labels in brand teal for roles, titles, and section badges; regular body; muted gray secondary text; italics for pronunciation lines.
 - The brush script appears only in brand and mascot artwork, never as UI text.
 
 ## Shape language

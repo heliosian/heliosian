@@ -23,7 +23,7 @@
 .optin h2 {
   margin: 0;
   font-size: 44px;
-  font-weight: 800;
+  font-weight: 900;
   letter-spacing: -0.02em;
 }
 
@@ -99,7 +99,9 @@
 
 body {
   margin: 0;
-  font-family: Inter, system-ui, sans-serif;
+  font-family: Roboto, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   display: flex;
   height: 100dvh;
   overflow: hidden;
@@ -241,7 +243,7 @@ body {
   align-items: center;
   justify-content: center;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   flex-shrink: 0;
 }
 
@@ -356,7 +358,7 @@ main {
   justify-content: space-between;
   padding: 15px 18px;
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 500;
   border-bottom: 1px solid var(--line);
   cursor: pointer;
 }
@@ -407,7 +409,7 @@ main {
   justify-content: space-between;
   padding: 15px 18px;
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 500;
   border-bottom: 1px solid var(--line);
   cursor: pointer;
 }
@@ -456,7 +458,7 @@ main {
   border-radius: 10px;
   font: inherit;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 500;
   cursor: pointer;
 }
 
@@ -490,7 +492,7 @@ main {
   gap: 8px;
   color: var(--ink);
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 500;
   text-decoration: none;
   cursor: pointer;
 }
@@ -517,7 +519,7 @@ main {
 
 .map-popup {
   max-width: 260px;
-  font-family: Inter, system-ui, sans-serif;
+  font-family: Roboto, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
 }
 
 .map-popup-photo {
@@ -544,7 +546,7 @@ main {
   display: inline-block;
   margin-top: 8px;
   color: var(--brand);
-  font-weight: 600;
+  font-weight: 500;
   font-size: 13px;
   text-decoration: none;
 }
@@ -599,7 +601,7 @@ main {
 }
 
 .email-name {
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .email-name a {
@@ -858,7 +860,7 @@ div.person-photo {
   align-items: center;
   justify-content: center;
   font-size: 2.5rem;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .role-label {
@@ -872,7 +874,7 @@ div.person-photo {
 
 .person-name {
   font-weight: 700;
-  font-size: 15px;
+  font-size: 14px;
 }
 
 .person-sub {
@@ -901,7 +903,7 @@ div.person-photo {
 .student-head {
   position: relative;
   height: 150px;
-  margin-bottom: 50px;
+  margin-bottom: 74px;
 }
 
 .student-family-photo {
@@ -930,23 +932,23 @@ div.student-photo {
   align-items: center;
   justify-content: center;
   font-size: 1.8rem;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .student-first {
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 700;
-  margin-top: 16px;
+  margin-top: 34px;
 }
 
 .student-last {
   color: var(--muted);
-  font-size: 15px;
+  font-size: 14px;
   margin-top: 2px;
 }
 
 .student-line {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--muted);
   margin-top: 14px;
 }
@@ -997,7 +999,7 @@ div.student-photo {
 
 .staff-section {
   margin: 10px 0 20px;
-  font-weight: 600;
+  font-weight: 500;
   font-size: 16px;
 }
 
@@ -1074,7 +1076,7 @@ a.student-card:hover {
 
 .crumb.current {
   color: var(--ink);
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .crumb-sep {
@@ -1164,7 +1166,7 @@ a.student-card:hover {
   color: #1f2933;
   font: inherit;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 500;
   text-decoration: none;
   cursor: pointer;
 }
@@ -1195,7 +1197,7 @@ a.student-card:hover {
 
 .group-header {
   font-size: 16px;
-  font-weight: 600;
+  font-weight: 500;
   margin: 26px 0 6px;
 }
 
@@ -1211,7 +1213,7 @@ a.student-card:hover {
 
 .list-row.plain {
   display: block;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 a.list-row {
@@ -1239,7 +1241,7 @@ a.list-row:hover {
 }
 
 .list-title {
-  font-weight: 600;
+  font-weight: 500;
   font-size: 16px;
 }
 
@@ -1443,7 +1445,7 @@ a.list-row:hover {
   background: #fff;
   font: inherit;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--ink);
   cursor: pointer;
 }
@@ -1606,7 +1608,7 @@ a.list-row:hover {
 }
 
 .member-header {
-  font-weight: 600;
+  font-weight: 500;
   font-size: 15px;
   margin: 14px 0 4px;
 }
@@ -1638,7 +1640,7 @@ a.list-row:hover {
 }
 
 .member-name {
-  font-weight: 600;
+  font-weight: 500;
   font-size: 15px;
 }
 
@@ -1672,7 +1674,7 @@ a.list-row:hover {
   border-radius: 8px;
   color: #fff;
   text-decoration: none;
-  font-weight: 600;
+  font-weight: 500;
   font-size: 15px;
 }
 
@@ -1879,7 +1881,7 @@ a.list-row:hover {
     right: 48px;
     text-align: center;
     color: #fff;
-    font-weight: 600;
+    font-weight: 500;
     font-size: 16px;
     white-space: nowrap;
     overflow: hidden;
