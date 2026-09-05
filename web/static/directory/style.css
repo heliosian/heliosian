@@ -589,6 +589,13 @@ main {
   color: #b6bcc2;
   font-size: 12px;
   width: 34px;
+  text-align: center;
+}
+
+.email-table td.email-num > .copy-glyph {
+  left: 50%;
+  right: auto;
+  transform: translate(-50%, -50%);
 }
 
 .email-name {
@@ -633,17 +640,16 @@ main {
   color: var(--brand);
 }
 
-.email-table td > .copy-glyph {
+.email-table td > .copy-glyph,
+.email-table th > .copy-glyph {
   position: absolute;
   right: 6px;
   top: 50%;
   transform: translateY(-50%);
 }
 
-.email-table th .copy-glyph {
+.email-table th > .copy-glyph {
   background: none;
-  margin-left: 6px;
-  vertical-align: middle;
 }
 
 .email-table td:hover > .copy-glyph,
@@ -663,6 +669,71 @@ main {
 .email-download {
   text-decoration: none;
   cursor: pointer;
+}
+
+.email-copy-cell {
+  width: 28px;
+}
+
+.email-copy-columns {
+  border: 0;
+  background: #fff;
+  padding: 2px;
+  cursor: pointer;
+  color: #98a0a6;
+  display: inline-flex;
+  border-radius: 4px;
+}
+
+.email-copy-columns svg {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+}
+
+.email-copy-columns:hover,
+.email-copy-columns.copied {
+  color: var(--brand);
+}
+
+.column-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.column-pick input {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  border: 1.5px solid #b6bcc2;
+  border-radius: 3px;
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.column-pick input:checked {
+  background: #b6bcc2;
+  border-color: #b6bcc2;
+}
+
+.column-pick input:checked::after {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: -1px;
+  width: 3px;
+  height: 7px;
+  border: solid #fff;
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
 }
 
 .row-tag {
