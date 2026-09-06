@@ -67,6 +67,14 @@ type Family struct {
 	AddressMasked    bool     `json:"addressMasked,omitempty"`
 	PhoneMasked      bool     `json:"phoneMasked,omitempty"`
 
+	// VeracrossAddress and VeracrossPhone record what Veracross itself shows for this
+	// family - "full"/"partial"/"hidden" and "visible"/"mixed"/"hidden" respectively -
+	// captured before AddressMasked/PhoneMasked (the Helios Who opt-in override) can
+	// blank the fields above. My Privacy uses them to warn a family whose Helios Who
+	// override hides something Veracross still shows to the wider community.
+	VeracrossAddress string `json:"veracrossAddress"`
+	VeracrossPhone   string `json:"veracrossPhone"`
+
 	photo, pronunciation string
 }
 
@@ -100,16 +108,26 @@ type StaleYears struct {
 	FamilyPhoto float64 `json:"familyPhoto"`
 }
 
+// PrivacyLinks are the two external URLs My Privacy sends someone to fix a mismatch
+// between Veracross and their Helios Who opt-in. Admin-editable, since both belong to
+// other systems (Veracross's own portal, the consent Google Form) this app doesn't
+// control and can't guarantee will stay put.
+type PrivacyLinks struct {
+	VeracrossPreferences string `json:"veracrossPreferences"`
+	HeliosWhoOptIn       string `json:"heliosWhoOptIn"`
+}
+
 type Model struct {
-	People      []Person            `json:"people"`
-	Families    map[string]Family   `json:"families"`
-	Classrooms  []Classroom         `json:"classrooms"`
-	Crews       []Crew              `json:"crews"`
-	Grades      []Grade             `json:"grades"`
-	RoomParents map[string][]string `json:"roomParents"`
-	Departments []string            `json:"departments"`
-	StaleYears  StaleYears          `json:"staleYears"`
-	byEmail     map[string]int
+	People       []Person            `json:"people"`
+	Families     map[string]Family   `json:"families"`
+	Classrooms   []Classroom         `json:"classrooms"`
+	Crews        []Crew              `json:"crews"`
+	Grades       []Grade             `json:"grades"`
+	RoomParents  map[string][]string `json:"roomParents"`
+	Departments  []string            `json:"departments"`
+	StaleYears   StaleYears          `json:"staleYears"`
+	PrivacyLinks PrivacyLinks        `json:"privacyLinks"`
+	byEmail      map[string]int
 }
 
 func (m *Model) Person(email string) *Person {

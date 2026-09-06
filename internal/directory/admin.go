@@ -24,6 +24,7 @@ func RegisterAdmin(mux *http.ServeMux, cache *Cache) {
 	mux.HandleFunc("GET /api/admin/state", a.state)
 	mux.HandleFunc("POST /api/admin/admins", a.setAdmins)
 	mux.HandleFunc("POST /api/admin/stale-years", a.setStaleYears)
+	mux.HandleFunc("POST /api/admin/privacy-links", a.setPrivacyLinks)
 	mux.HandleFunc("POST /api/admin/images", a.setImage)
 	mux.HandleFunc("POST /api/admin/super-edit", a.setSuperEdit)
 	mux.HandleFunc("POST /api/admin/super-admins", a.setSuperAdmins)
@@ -115,6 +116,7 @@ func (a admin) state(w http.ResponseWriter, r *http.Request) {
 		HasStore     bool           `json:"hasStore"`
 		Admins       []string       `json:"admins"`
 		StaleYears   StaleYears     `json:"staleYears"`
+		PrivacyLinks PrivacyLinks   `json:"privacyLinks"`
 		SuperEdit    bool           `json:"superEdit"`
 		Classrooms   []imageInfo    `json:"classrooms"`
 		Grades       []imageInfo    `json:"grades"`
@@ -124,8 +126,9 @@ func (a admin) state(w http.ResponseWriter, r *http.Request) {
 		SpoofingAs   string         `json:"spoofingAs,omitempty"`
 	}{
 		Email: email, HasStore: a.cache.HasStore(), Admins: mergedAdmins(settings), StaleYears: settings.StaleYears,
-		SuperEdit:  a.cache.SuperEditEnabled(email),
-		Classrooms: classrooms, Grades: grades, People: people,
+		PrivacyLinks: settings.PrivacyLinks,
+		SuperEdit:    a.cache.SuperEditEnabled(email),
+		Classrooms:   classrooms, Grades: grades, People: people,
 	}
 	// A regular admin's response stops here — nothing below this line is reachable
 	// unless the effective identity is a super admin, so a regular admin's client
@@ -196,6 +199,32 @@ func (a admin) setStaleYears(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log.Printf("admin: %s set stale-years thresholds to %+v", email, years)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a admin) setPrivacyLinks(w http.ResponseWriter, r *http.Request) {
+	email, ok := a.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	var links PrivacyLinks
+	if err := json.NewDecoder(io.LimitReader(r.Body, 4<<10)).Decode(&links); err != nil {
+		http.Error(w, "bad request body", http.StatusBadRequest)
+		return
+	}
+	links.VeracrossPreferences = strings.TrimSpace(links.VeracrossPreferences)
+	links.HeliosWhoOptIn = strings.TrimSpace(links.HeliosWhoOptIn)
+	if !strings.HasPrefix(links.VeracrossPreferences, "https://") || !strings.HasPrefix(links.HeliosWhoOptIn, "https://") {
+		http.Error(w, "both links must be full https:// URLs", http.StatusBadRequest)
+		return
+	}
+	settings := a.cache.Settings()
+	settings.PrivacyLinks = links
+	if err := a.cache.UpdateSettings(settings); err != nil {
+		serverError(w, err)
+		return
+	}
+	log.Printf("admin: %s set privacy links to %+v", email, links)
 	w.WriteHeader(http.StatusNoContent)
 }
 

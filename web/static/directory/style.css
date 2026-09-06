@@ -9,6 +9,9 @@
   --input: #efefef;
   --alert: #f55e03;
   --banner-h: 0px;
+  --privacy-green: #1a8754;
+  --privacy-yellow: #c9860a;
+  --privacy-red: #dc2626;
 }
 
 .infobanner-wrap {
@@ -402,6 +405,22 @@ body {
 
 .user:hover {
   background: rgba(255, 255, 255, 0.06);
+}
+
+.user-row-alert {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: #f5a524;
+  margin-left: auto;
+}
+
+.user-row-alert svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2.2;
 }
 
 .user-menu {
@@ -932,6 +951,152 @@ main {
 .email-copy-columns:hover,
 .email-copy-columns.copied {
   color: var(--brand);
+}
+
+.privacy-page h1 {
+  font-size: 24px;
+  font-weight: 700;
+  margin: 4px 0 18px;
+}
+
+.privacy-intro {
+  max-width: 720px;
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.6;
+  margin-bottom: 24px;
+}
+
+.privacy-intro ul {
+  margin: 8px 0;
+  padding-left: 20px;
+}
+
+.privacy-intro a {
+  color: var(--brand);
+}
+
+.privacy-table {
+  margin-top: 4px;
+}
+
+.privacy-row-label {
+  font-weight: 700;
+}
+
+.privacy-cell-inner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.privacy-shown {
+  color: var(--muted);
+}
+
+.privacy-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.privacy-dot-green {
+  background: var(--privacy-green);
+}
+
+.privacy-dot-yellow {
+  background: var(--privacy-yellow);
+}
+
+.privacy-dot-red {
+  background: var(--privacy-red);
+}
+
+.privacy-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.privacy-icon svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.privacy-icon-sync {
+  color: var(--privacy-green);
+}
+
+.privacy-icon-lock {
+  color: var(--privacy-yellow);
+}
+
+.privacy-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 24px;
+  flex-wrap: wrap;
+}
+
+.privacy-action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 20px;
+}
+
+.privacy-action svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+}
+
+.user-menu-privacy {
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.user-menu-alert {
+  display: flex;
+  align-items: center;
+  color: #f5a524;
+}
+
+.user-menu-alert svg {
+  width: 15px;
+  height: 15px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2.2;
+}
+
+.infobanner-close {
+  flex-shrink: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  opacity: 0.6;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.infobanner-close:hover {
+  opacity: 1;
 }
 
 .column-pick {

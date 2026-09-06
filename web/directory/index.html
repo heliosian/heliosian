@@ -58,10 +58,11 @@
 <nav id="nav"></nav>
 <div class="user-menu" id="user-menu" hidden>
 <a href="/people/{{.UserEmailSlug}}">View Profile</a>
+<a href="/my-privacy" class="user-menu-privacy">My Privacy<span class="user-menu-alert" hidden></span></a>
 {{if .IsAdmin}}<a href="/admin">Admin Tools</a>{{end}}
 <form method="post" action="/auth/logout"><button>Sign Out</button></form>
 </div>
-<div class="user" id="user"><span class="user-avatar">{{.UserInitial}}</span><span>{{.UserName}}</span></div>
+<div class="user" id="user"><span class="user-avatar">{{.UserInitial}}</span><span>{{.UserName}}</span><span class="user-row-alert" id="user-row-alert" hidden></span></div>
 </aside>
 <main id="main"></main>
 <nav class="mobile-tabs" id="mobile-tabs"></nav>
@@ -75,6 +76,7 @@
 <div class="drawer-user-menu-anchor">
 <div class="user-menu" id="drawer-user-menu" hidden>
 <a href="/people/{{.UserEmailSlug}}">View Profile</a>
+<a href="/my-privacy" class="user-menu-privacy">My Privacy<span class="user-menu-alert" hidden></span></a>
 {{if .IsAdmin}}<a href="/admin">Admin Tools</a>{{end}}
 <form method="post" action="/auth/logout"><button>Sign Out</button></form>
 </div>
@@ -83,6 +85,7 @@
 <div class="drawer-user-name">{{.UserName}}</div>
 <div class="drawer-user-email">{{.UserEmail}}</div>
 </div>
+<span class="user-row-alert" id="drawer-user-row-alert" hidden></span>
 <button class="drawer-user-more" id="drawer-user-more" aria-label="Account"><svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg></button>
 </div>
 </aside>

@@ -21,9 +21,10 @@ const settingsName = "settings.json"
 // field to trim or hide — a regular admin's client simply never receives anything
 // about super admins to begin with.
 type Settings struct {
-	SuperAdmins []string   `json:"superAdmins"`
-	Admins      []string   `json:"admins"`
-	StaleYears  StaleYears `json:"staleYears"`
+	SuperAdmins  []string     `json:"superAdmins"`
+	Admins       []string     `json:"admins"`
+	StaleYears   StaleYears   `json:"staleYears"`
+	PrivacyLinks PrivacyLinks `json:"privacyLinks"`
 }
 
 // defaultSettings seeds a fresh deploy (or sample mode, which never persists) with a
@@ -33,6 +34,10 @@ func defaultSettings() Settings {
 		SuperAdmins: []string{"gayle.mcdowell@heliosschool.org", "ian.gulliver@heliosschool.org"},
 		Admins:      []string{},
 		StaleYears:  StaleYears{Photo: 0.75, Facts: 0.6, FamilyPhoto: 1.5},
+		PrivacyLinks: PrivacyLinks{
+			VeracrossPreferences: "https://portals.veracross.com/heliosschool/parent/directory-preferences",
+			HeliosWhoOptIn:       "https://hca.run/optin",
+		},
 	}
 }
 

@@ -12,7 +12,7 @@ import (
 	"heliosian/internal/auth"
 )
 
-var sections = []string{"people", "classrooms", "staff", "map", "email-list"}
+var sections = []string{"people", "classrooms", "staff", "map", "email-list", "my-privacy"}
 
 var legacy = map[string]string{
 	"people":   "/people",

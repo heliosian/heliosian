@@ -214,6 +214,14 @@
     border-radius: 8px;
     font-size: 14px;
   }
+  .field-row input[type=url] {
+    width: 420px;
+    max-width: 60vw;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    font-size: 14px;
+  }
   textarea {
     width: 100%;
     min-height: 140px;
@@ -295,6 +303,7 @@
   <div class="tabs">
     <div class="tab active" data-panel="images">Images</div>
     <div class="tab" data-panel="thresholds">Update Thresholds</div>
+    <div class="tab" data-panel="privacy-links">Privacy Links</div>
     <div class="tab" data-panel="admins">Admins</div>
   </div>
 
@@ -330,6 +339,23 @@
       </div>
       <button class="save-button" id="save-years">Save</button>
       <span class="save-status" id="years-status"></span>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-privacy-links" hidden>
+    <div class="card">
+      <h2>Privacy links</h2>
+      <div class="hint">Where My Privacy sends people to fix a Veracross/Helios Who mismatch. Update these if either URL ever changes.</div>
+      <div class="field-row">
+        <label for="privacy-veracross-url">Veracross directory preferences</label>
+        <input type="url" id="privacy-veracross-url">
+      </div>
+      <div class="field-row">
+        <label for="privacy-optin-url">Helios Who opt-in form</label>
+        <input type="url" id="privacy-optin-url">
+      </div>
+      <button class="save-button" id="save-privacy-links">Save</button>
+      <span class="save-status" id="privacy-links-status"></span>
     </div>
   </div>
 
@@ -488,6 +514,9 @@ function render() {
   document.querySelector('#years-photo').value = state.staleYears.photo;
   document.querySelector('#years-facts').value = state.staleYears.facts;
   document.querySelector('#years-family-photo').value = state.staleYears.familyPhoto;
+
+  document.querySelector('#privacy-veracross-url').value = state.privacyLinks.veracrossPreferences;
+  document.querySelector('#privacy-optin-url').value = state.privacyLinks.heliosWhoOptIn;
 
   buildAdminListEditor(
     '#admins-rows', '#add-admin-select', '#admins-status', '/api/admin/admins', 'admins', state.admins);
@@ -749,6 +778,32 @@ document.querySelector('#save-years').addEventListener('click', async () => {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(years),
+  });
+  button.disabled = false;
+  if (!res.ok) {
+    status.classList.add('error');
+    status.textContent = await res.text();
+    return;
+  }
+  status.classList.add('ok');
+  status.textContent = 'Saved.';
+  await load();
+});
+
+document.querySelector('#save-privacy-links').addEventListener('click', async () => {
+  const status = document.querySelector('#privacy-links-status');
+  const button = document.querySelector('#save-privacy-links');
+  const links = {
+    veracrossPreferences: document.querySelector('#privacy-veracross-url').value.trim(),
+    heliosWhoOptIn: document.querySelector('#privacy-optin-url').value.trim(),
+  };
+  button.disabled = true;
+  status.classList.remove('error', 'ok');
+  status.textContent = 'Saving…';
+  const res = await fetch('/api/admin/privacy-links', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(links),
   });
   button.disabled = false;
   if (!res.ok) {

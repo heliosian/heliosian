@@ -278,6 +278,7 @@ func (c *Cache) rebuild(tables *Tables, start time.Time) error {
 	c.geocodeFamilies(model)
 	c.mu.Lock()
 	model.StaleYears = c.settings.StaleYears
+	model.PrivacyLinks = c.settings.PrivacyLinks
 	c.model = model
 	c.tables = tables
 	c.mu.Unlock()

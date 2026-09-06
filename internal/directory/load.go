@@ -123,6 +123,21 @@ var nameForm = regexp.MustCompile(`^(.+?) \((.+?)\) (.+)$`)
 
 var emailForm = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
 
+// leadingDigit distinguishes a street-level address ("123 Main St...") from a
+// city-only one ("Dayton, OH") among the granularities Veracross hands us - see
+// "household addresses arrive at whatever granularity each family chose" in
+// docs/data.md. It's a heuristic, not a Veracross field: nothing in the export says
+// which granularity a family picked, only the resulting string.
+var leadingDigit = regexp.MustCompile(`^\s*\d`)
+
+const (
+	veracrossFull    = "full"
+	veracrossPartial = "partial"
+	veracrossVisible = "visible"
+	veracrossMixed   = "mixed"
+	veracrossHidden  = "hidden"
+)
+
 func parseName(raw string) parsedName {
 	raw = strings.Join(strings.Fields(raw), " ")
 	m := nameForm.FindStringSubmatch(raw)
@@ -324,6 +339,7 @@ func BuildModel(tables *Tables, blobs, static BlobChecker) (*Model, error) {
 		l.applyOverrides,
 		l.hideStudentPhones,
 		l.buildFamilies,
+		l.classifyVeracrossVisibility,
 		l.applyPreferences,
 		l.removeOptedOut,
 		l.attachBlobs,
@@ -987,6 +1003,53 @@ func (l *loader) applyPreferences() error {
 		}
 	}
 	return nil
+}
+
+// classifyVeracrossVisibility records what Veracross itself shows for each family,
+// before applyPreferences can blank Address/Phone under a Helios Who opt-out. It must
+// run after buildFamilies (so manual Overrides corrections are folded in) and before
+// applyPreferences (so the Helios Who override hasn't erased anything yet).
+func (l *loader) classifyVeracrossVisibility() error {
+	for key, family := range l.model.Families {
+		family.VeracrossAddress = classifyAddress(family.Address)
+		family.VeracrossPhone = classifyPhone(family, l.people)
+		l.model.Families[key] = family
+	}
+	return nil
+}
+
+func classifyAddress(address string) string {
+	switch {
+	case address == "":
+		return veracrossHidden
+	case leadingDigit.MatchString(address):
+		return veracrossFull
+	default:
+		return veracrossPartial
+	}
+}
+
+// classifyPhone treats each adult's individual phone cell as that adult's own
+// Veracross visibility choice - present means they share it, blank means they don't -
+// the same way an empty address cell is read as "nothing" rather than "unknown" in
+// docs/data.md. A family is "mixed" when its adults disagree.
+func classifyPhone(family Family, people map[string]*Person) string {
+	visible, hidden := 0, 0
+	for _, email := range family.AdultEmails {
+		if p := people[email]; p != nil && p.Phone != "" {
+			visible++
+		} else {
+			hidden++
+		}
+	}
+	switch {
+	case visible > 0 && hidden > 0:
+		return veracrossMixed
+	case visible > 0:
+		return veracrossVisible
+	default:
+		return veracrossHidden
+	}
 }
 
 func (l *loader) removeOptedOut() error {

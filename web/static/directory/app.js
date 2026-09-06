@@ -84,6 +84,8 @@ const icons = {
   upload: '<svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>',
   pencil: '<svg viewBox="0 0 24 24"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/></svg>',
   alert: '<svg viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>',
+  sync: '<svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>',
+  lock: '<svg viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
 };
 
 function isMobile() {
@@ -193,9 +195,17 @@ function setChrome(title, backHref) {
   }
 }
 
-const optInForm = 'https://docs.google.com/forms/d/e/1FAIpQLSehrwYXWLJ6LK5_0f5ccdIA1gF0q7jAeDMxV5FWb_Myr4uRog/viewform';
+// Defaults for sample mode / a stale cached page; the model's own privacyLinks
+// (admin-editable, since both URLs belong to other systems this app doesn't control)
+// overwrite these once it loads - see `load()`.
+let privacyLinks = {
+  veracrossPreferences: 'https://portals.veracross.com/heliosschool/parent/directory-preferences',
+  heliosWhoOptIn: 'https://hca.run/optin',
+};
 
-function infoBanner(kind, iconName, title, desc, buttonLabel, buttonHref, external) {
+// onDismiss, if given, adds a small close button that removes the banner and fires the
+// callback - the caller decides what "dismissed" means (e.g. persisting it), not this.
+function infoBanner(kind, iconName, title, desc, buttonLabel, buttonHref, external, onDismiss) {
   const wrap = el('div', 'container infobanner-wrap');
   const card = el('div', `infobanner infobanner-${kind}`);
 
@@ -218,15 +228,19 @@ function infoBanner(kind, iconName, title, desc, buttonLabel, buttonHref, extern
   action.append(el('span', '', buttonLabel), svg('chevron-right'));
   card.append(action);
 
+  if (onDismiss) {
+    const close = el('button', 'infobanner-close', '×');
+    close.type = 'button';
+    close.setAttribute('aria-label', 'Dismiss');
+    close.addEventListener('click', () => {
+      wrap.remove();
+      onDismiss();
+    });
+    card.append(close);
+  }
+
   wrap.append(card);
   return wrap;
-}
-
-function optInBanner() {
-  return infoBanner(
-    'alert', 'alert', 'Opt-in required',
-    'You have not yet opted into the Helios Community Apps and will lose access on Sept 1.',
-    'Opt In Now', optInForm, true);
 }
 
 let staleYears = {photo: 0.75, facts: 0.6, familyPhoto: 1.5};
@@ -335,16 +349,20 @@ function todoChecklist(items) {
 function resetMain(...children) {
   const main = document.querySelector('#main');
   main.replaceChildren();
-  const me = byEmail[document.body.dataset.userEmail];
-  if (me && me.optStatus === 'default') {
-    main.append(optInBanner());
-  }
   const seg = segments();
+  // My Privacy already shows its own, more detailed version of this per field, so the
+  // summary card here would just repeat what's right below it on that page.
+  if (seg[0] !== 'my-privacy' && !privacyMismatchCardDismissed()) {
+    const warnings = myPrivacyWarnings();
+    if (warnings.length) {
+      main.append(privacyMismatchCard(warnings));
+    }
+  }
   const onOwnFamilyPage = seg[0] === 'families' && seg[1] === myFamilyKey();
   const familyEmails = new Set(familyNavPeople().map(fp => fp.email));
   const segPerson = seg[0] === 'people' && seg[1] ? personByKey(seg[1]) : undefined;
   const onOwnFamilyMemberPage = !!segPerson && familyEmails.has(segPerson.email);
-  if (!onOwnFamilyPage && !onOwnFamilyMemberPage) {
+  if (!onOwnFamilyPage && !onOwnFamilyMemberPage && seg[0] !== 'my-privacy') {
     const stale = staleItems();
     if (stale.length) {
       main.append(familyInfoBanner(stale));
@@ -2172,6 +2190,125 @@ function renderEmailListPage() {
   input.focus();
 }
 
+const veracrossAddressLabels = {full: 'Full Address', partial: 'Partial (City Only)', hidden: 'Hidden'};
+const veracrossPhoneLabels = {visible: 'Visible', mixed: 'Mixed', hidden: 'Hidden'};
+
+// full/visible are Veracross's most-open state (green), hidden is fully closed (red),
+// and everything in between - partial or mixed - is the amber middle ground.
+function privacyDotColor(state) {
+  if (state === 'hidden') {
+    return 'red';
+  }
+  return state === 'full' || state === 'visible' ? 'green' : 'yellow';
+}
+
+function privacyVeracrossCell(state, labels) {
+  const cell = el('td', 'privacy-cell');
+  const inner = el('span', 'privacy-cell-inner');
+  inner.append(el('span', `privacy-dot privacy-dot-${privacyDotColor(state)}`), el('span', '', labels[state] || state));
+  cell.append(inner);
+  return cell;
+}
+
+function privacyHeliosCell(masked) {
+  const cell = el('td', 'privacy-cell');
+  const badge = el('span', `privacy-icon ${masked ? 'privacy-icon-lock' : 'privacy-icon-sync'}`);
+  badge.append(svg(masked ? 'lock' : 'sync'));
+  const inner = el('span', 'privacy-cell-inner');
+  inner.append(badge, el('span', '', masked ? 'Hidden (Override Veracross)' : 'Matches Veracross'));
+  cell.append(inner);
+  return cell;
+}
+
+function privacyRow(label, veracrossState, veracrossLabels, masked, shownValue) {
+  const tr = el('tr');
+  tr.append(el('td', 'privacy-row-label', label));
+  tr.append(privacyVeracrossCell(veracrossState, veracrossLabels));
+  tr.append(privacyHeliosCell(masked));
+  tr.append(el('td', 'privacy-cell privacy-shown', shownValue || '(Hidden)'));
+  return tr;
+}
+
+function privacyWarningBanner(label) {
+  return infoBanner(
+    'alert', 'alert',
+    `Your ${label} is visible on Veracross but hidden here`,
+    "Hiding it in the Helios Who app does not hide it on Veracross - anyone with Veracross access can still see it there. " +
+      "To match what Veracross already shows, sync your Helios Who opt-in.",
+    'Sync Now', privacyLinks.heliosWhoOptIn, true);
+}
+
+function privacyActionButton(iconName, label, href) {
+  const a = el('a', 'media-button primary privacy-action');
+  a.href = href;
+  a.target = '_blank';
+  a.rel = 'noopener';
+  a.append(svg(iconName), el('span', '', label));
+  return a;
+}
+
+function renderPrivacyPage() {
+  const main = resetMain();
+  const me = byEmail[document.body.dataset.userEmail];
+  const family = me && state.model.families[me.familyKey];
+  if (!family) {
+    main.append(el('div', 'container', 'No family record found for your account.'));
+    return;
+  }
+
+  for (const label of privacyWarnings(family)) {
+    main.append(privacyWarningBanner(label));
+  }
+
+  const content = el('div', 'content container privacy-page');
+  content.append(el('h1', '', 'Your Privacy'));
+
+  const intro = el('div', 'privacy-intro');
+  intro.append(el('p', '',
+    "Helios Who's data comes from Veracross, but you can further restrict what's shown here. This means:"));
+  const list = el('ul', '');
+  list.append(el('li', '', 'Hiding your phone or address here does not hide it on Veracross.'));
+  list.append(el('li', '',
+    "Matching your Helios Who visibility to Veracross will never show more here than Veracross already shows."));
+  intro.append(list);
+  const syncNote = el('p', '');
+  syncNote.append(
+    'To keep these in sync, update the Helios Who opt-in at ',
+    (() => {
+      const a = el('a', '', privacyLinks.heliosWhoOptIn);
+      a.href = privacyLinks.heliosWhoOptIn;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      return a;
+    })(),
+    ' (check both the address and phone boxes on the second page).');
+  intro.append(syncNote);
+  content.append(intro);
+
+  const holder = el('div', 'email-holder');
+  const table = el('table', 'email-table privacy-table');
+  const thead = el('thead');
+  const headRow = el('tr');
+  for (const label of ['', 'Veracross', 'Helios Who', 'Shown Here']) {
+    headRow.append(el('th', '', label));
+  }
+  thead.append(headRow);
+  const tbody = el('tbody');
+  tbody.append(privacyRow('Phone', family.veracrossPhone, veracrossPhoneLabels, family.phoneMasked, family.phone));
+  tbody.append(privacyRow('Address', family.veracrossAddress, veracrossAddressLabels, family.addressMasked, family.address));
+  table.append(thead, tbody);
+  holder.append(table);
+  content.append(holder);
+
+  const actions = el('div', 'privacy-actions');
+  actions.append(
+    privacyActionButton('pencil', 'Update Veracross', privacyLinks.veracrossPreferences),
+    privacyActionButton('sync', 'Update Helios Who Visibility', privacyLinks.heliosWhoOptIn));
+  content.append(actions);
+
+  main.append(content);
+}
+
 let mapsPromise = null;
 
 function loadMaps() {
@@ -2528,6 +2665,7 @@ const sectionTitles = {
   staff: 'Staff',
   map: 'Map',
   'email-list': 'Email List',
+  'my-privacy': 'My Privacy',
 };
 
 function render() {
@@ -2560,6 +2698,8 @@ function render() {
   } else if (seg[0] === 'map') {
     state.q = '';
     renderMapPage();
+  } else if (seg[0] === 'my-privacy') {
+    renderPrivacyPage();
   }
 }
 
@@ -2710,6 +2850,61 @@ function renderSpoofBanner() {
   updateBannerOffset();
 }
 
+// The one signal this whole page exists to catch: Veracross is still showing
+// something to the wider parent community that the family thinks they've hidden by
+// hiding it in Helios Who. Hiding it here only ever removes it from this app - never
+// from Veracross. Shared by the My Privacy page, the account-menu badge and the
+// dismissible summary card so the three agree on what counts as a mismatch.
+function privacyWarnings(family) {
+  const warnings = [];
+  if (family.addressMasked && family.veracrossAddress !== 'hidden') {
+    warnings.push('address');
+  }
+  if (family.phoneMasked && family.veracrossPhone !== 'hidden') {
+    warnings.push('phone number');
+  }
+  return warnings;
+}
+
+function myPrivacyWarnings() {
+  const me = byEmail[document.body.dataset.userEmail];
+  const family = me && state.model.families[me.familyKey];
+  return family ? privacyWarnings(family) : [];
+}
+
+function renderPrivacyMenuAlert() {
+  const hasMismatch = myPrivacyWarnings().length > 0;
+  for (const badge of document.querySelectorAll('.user-menu-alert, .user-row-alert')) {
+    badge.hidden = !hasMismatch;
+    if (hasMismatch && !badge.firstChild) {
+      badge.append(svg('alert'));
+    }
+  }
+}
+
+function privacyMismatchCardDismissed() {
+  try {
+    return localStorage.getItem('privacyMismatchCardDismissed') === '1';
+  } catch (e) {
+    return false;
+  }
+}
+
+function privacyMismatchCard(warnings) {
+  const desc = `Your ${warnings.join(' and ')} ${warnings.length === 1 ? 'is' : 'are'} visible on ` +
+    'Veracross but hidden in Helios Who. Hiding it here does not hide it on Veracross.';
+  return infoBanner(
+    'alert', 'alert', 'Privacy Settings Mismatch', desc,
+    'See Details', '/my-privacy', false,
+    () => {
+      try {
+        localStorage.setItem('privacyMismatchCardDismissed', '1');
+      } catch (e) {
+        // ignore - the card just won't stay dismissed across reloads
+      }
+    });
+}
+
 async function load() {
   const res = await fetch('/api/directory/model');
   if (!res.ok) {
@@ -2717,6 +2912,7 @@ async function load() {
   }
   state.model = await res.json();
   staleYears = state.model.staleYears || staleYears;
+  privacyLinks = state.model.privacyLinks || privacyLinks;
   tags = state.model.tags || {};
   byEmail = {};
   for (const p of state.model.people) {
@@ -2724,6 +2920,7 @@ async function load() {
   }
   renderSuperEditBanner();
   renderSpoofBanner();
+  renderPrivacyMenuAlert();
   render();
 }
 
