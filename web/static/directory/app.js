@@ -1117,6 +1117,23 @@ function roleChips(rerender) {
   return bar;
 }
 
+// .filter-panel is CSS-anchored to its wrap's right edge (right:0), which only
+// fits on screen when the trigger button sits near the right side of the
+// viewport - true for the old lone "Filter" button, not for Grade/Classroom/
+// Tags now sitting further left, especially once the controls row wraps on
+// mobile. Clamping with an explicit left (converted back to wrap-relative,
+// since the panel is absolutely positioned inside its position:relative wrap)
+// keeps the panel fully on screen regardless of where its button lands.
+function clampFilterPanel(wrap, panel) {
+  const margin = 12;
+  const wrapRect = wrap.getBoundingClientRect();
+  const panelWidth = panel.offsetWidth;
+  let left = wrapRect.right - panelWidth;
+  left = Math.max(margin, Math.min(left, window.innerWidth - margin - panelWidth));
+  panel.style.left = `${left - wrapRect.left}px`;
+  panel.style.right = 'auto';
+}
+
 // A standalone single-facet dropdown (Grade, Classroom) - the same checkbox
 // list a filterControl section would show, but its own button so it doesn't
 // need the drill-into-a-section step.
@@ -1130,6 +1147,9 @@ function facetDropdown(label, values, set, rerender) {
   button.addEventListener('click', () => {
     panel.hidden = !panel.hidden;
     button.classList.toggle('open', !panel.hidden);
+    if (!panel.hidden) {
+      clampFilterPanel(wrap, panel);
+    }
   });
 
   const updateLabel = () => {
@@ -1192,6 +1212,9 @@ function filterControl(rerender, options = {}) {
   button.addEventListener('click', () => {
     panel.hidden = !panel.hidden;
     button.classList.toggle('open', !panel.hidden);
+    if (!panel.hidden) {
+      clampFilterPanel(wrap, panel);
+    }
   });
 
   const sections = [];
