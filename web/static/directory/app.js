@@ -1357,7 +1357,7 @@ function renderPersonDetail(email) {
     content.append(header);
     const needsFacts = factsNeedUpdate(p);
     const placeholder = needsFacts ? `Add ${self ? 'your' : `${firstName(p.fullName)}'s`} facts for the new year — click the pencil to get started.` : '';
-    const textClass = 'about-text' + (needsFacts ? ' needs-update' : '') + (!p.facts && placeholder ? ' placeholder-text' : '');
+    const textClass = 'about-text' + (editable && needsFacts ? ' needs-update' : '') + (!p.facts && placeholder ? ' placeholder-text' : '');
     const text = el('div', textClass, p.facts || placeholder);
     const status = el('div', 'media-status about-status');
     content.append(text);
