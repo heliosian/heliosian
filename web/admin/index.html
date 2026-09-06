@@ -539,7 +539,15 @@ async function setSpoof(email) {
   // and Spoof Mode tabs, it never tears them down, so switching to a regular admin's
   // view without reloading left them stranded in the DOM from the pre-spoof render —
   // exactly the tier leak a regular admin must never see.
-  location.reload();
+  //
+  // Starting a spoof sends the admin to /people instead of reloading in place: the
+  // spoofed person is very often not an admin, so reloading this page hits the admin
+  // check as them and errors out.
+  if (email) {
+    location.href = '/people';
+  } else {
+    location.reload();
+  }
 }
 
 // Shared by the Admins and Super Admins panels: a working copy of the list, a picker
