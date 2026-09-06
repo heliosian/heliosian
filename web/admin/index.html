@@ -187,8 +187,15 @@
     gap: 10px;
     margin-top: 16px;
   }
-  .add-admin-row select {
+  .add-admin-row .upload-button {
+    border: none;
+  }
+  .person-picker {
+    position: relative;
     flex: 1;
+  }
+  .person-picker input {
+    width: 100%;
     padding: 8px 10px;
     border: 1px solid var(--line);
     border-radius: 8px;
@@ -196,8 +203,32 @@
     font-family: inherit;
     background: #fff;
   }
-  .add-admin-row .upload-button {
-    border: none;
+  .person-picker-list {
+    position: absolute;
+    z-index: 20;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    max-height: 260px;
+    overflow-y: auto;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, .1);
+  }
+  .person-picker-option {
+    padding: 8px 10px;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  .person-picker-option.active,
+  .person-picker-option:hover {
+    background: var(--input);
+  }
+  .person-picker-empty {
+    padding: 8px 10px;
+    font-size: 13px;
+    color: var(--muted);
   }
   .field-row {
     display: flex;
@@ -365,7 +396,7 @@
       <div class="hint">Whoever is on this list can reach this page. Changes save immediately.</div>
       <div id="admins-rows"></div>
       <div class="add-admin-row">
-        <select id="add-admin-select"></select>
+        <div id="add-admin-select"></div>
         <button class="upload-button" id="add-admin-button" type="button">Add</button>
         <span class="save-status" id="admins-status"></span>
       </div>
@@ -375,6 +406,7 @@
 
 <script>
 let state = null;
+let spoofPicker = null;
 
 async function load() {
   const res = await fetch('/api/admin/state');
@@ -428,6 +460,114 @@ function renderTopLevelSpoofBanner() {
   document.body.append(banner);
 }
 
+// Turns a placeholder element into a searchable, autocompleting person picker so a
+// list of 400+ people doesn't get dumped into an unusable native <select>. Returns
+// an accessor: setPeople() replaces the searchable pool, value reads the selected
+// person's email (empty until a suggestion is actually chosen), and reset() clears
+// the typed text and selection after a pick is consumed.
+function createPersonPicker(mountEl) {
+  mountEl.classList.add('person-picker');
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.placeholder = 'Search by name or email…';
+  input.autocomplete = 'off';
+  const list = document.createElement('div');
+  list.className = 'person-picker-list';
+  list.hidden = true;
+  mountEl.append(input, list);
+
+  let people = [];
+  let selected = null;
+  let activeIndex = -1;
+
+  function matches() {
+    const q = input.value.trim().toLowerCase();
+    const pool = q ? people.filter(p => p.name.toLowerCase().includes(q) || p.email.toLowerCase().includes(q)) : people;
+    return pool.slice(0, 50);
+  }
+
+  function close() {
+    list.hidden = true;
+    list.replaceChildren();
+    activeIndex = -1;
+  }
+
+  function setActive(index) {
+    activeIndex = index;
+    [...list.children].forEach((el, i) => el.classList.toggle('active', i === index));
+    if (index >= 0) list.children[index].scrollIntoView({block: 'nearest'});
+  }
+
+  function open() {
+    const found = matches();
+    list.replaceChildren();
+    if (!found.length) {
+      const empty = document.createElement('div');
+      empty.className = 'person-picker-empty';
+      empty.textContent = 'No matches.';
+      list.append(empty);
+    } else {
+      for (const p of found) {
+        const opt = document.createElement('div');
+        opt.className = 'person-picker-option';
+        opt.textContent = `${p.name} (${p.email})`;
+        // mousedown (not click) so this fires before the input's blur handler closes the list.
+        opt.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          choose(p);
+        });
+        list.append(opt);
+      }
+    }
+    activeIndex = -1;
+    list.hidden = false;
+  }
+
+  function choose(p) {
+    selected = p;
+    input.value = `${p.name} (${p.email})`;
+    close();
+  }
+
+  input.addEventListener('input', () => {
+    selected = null;
+    open();
+  });
+  input.addEventListener('focus', open);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (list.hidden) { open(); return; }
+      setActive(Math.min(activeIndex + 1, list.children.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActive(Math.max(activeIndex - 1, 0));
+    } else if (e.key === 'Enter') {
+      const found = matches();
+      if (activeIndex >= 0 && found[activeIndex]) {
+        e.preventDefault();
+        choose(found[activeIndex]);
+      }
+    } else if (e.key === 'Escape') {
+      close();
+    }
+  });
+  input.addEventListener('blur', close);
+
+  return {
+    setPeople(newPeople) {
+      people = newPeople;
+    },
+    get value() {
+      return selected ? selected.email : '';
+    },
+    reset() {
+      selected = null;
+      input.value = '';
+    },
+  };
+}
+
 // A super admin's response carries fields (isSuperAdmin, superAdmins, spoofingAs) that
 // a regular admin's response never does, so this tab and panel only come into
 // existence for a caller the server has already told is a super admin — there is
@@ -461,7 +601,7 @@ function ensureSuperAdminUI() {
       <div class="hint">Super admins can also use Spoof Mode and manage this list. Regular admins never see this tab. Changes save immediately.</div>
       <div id="super-admins-rows"></div>
       <div class="add-admin-row">
-        <select id="add-super-admin-select"></select>
+        <div id="add-super-admin-select"></div>
         <button class="upload-button" id="add-super-admin-button" type="button">Add</button>
         <span class="save-status" id="super-admins-status"></span>
       </div>
@@ -483,14 +623,15 @@ function ensureSuperAdminUI() {
         </div>
       </div>
       <div id="spoof-picker" class="add-admin-row">
-        <select id="spoof-select"></select>
+        <div id="spoof-select"></div>
         <button class="upload-button" id="start-spoof-button" type="button">View As</button>
       </div>
       <span class="save-status" id="spoof-status"></span>
     </div>`;
   container.append(spoofPanel);
 
-  document.querySelector('#start-spoof-button').addEventListener('click', () => setSpoof(document.querySelector('#spoof-select').value));
+  spoofPicker = createPersonPicker(document.querySelector('#spoof-select'));
+  document.querySelector('#start-spoof-button').addEventListener('click', () => setSpoof(spoofPicker.value));
   document.querySelector('#stop-spoof-button').addEventListener('click', () => setSpoof(''));
 }
 
@@ -539,14 +680,7 @@ function renderSpoofPanel() {
   } else {
     active.hidden = true;
     picker.hidden = false;
-    const select = document.querySelector('#spoof-select');
-    select.replaceChildren();
-    for (const p of state.people) {
-      const opt = document.createElement('option');
-      opt.value = p.email;
-      opt.textContent = `${p.name} (${p.email})`;
-      select.append(opt);
-    }
+    spoofPicker.setPeople(state.people);
   }
 }
 
@@ -641,17 +775,10 @@ function buildAdminListEditor(rowsSelector, selectSelector, statusSelector, url,
     }
   }
 
+  const picker = createPersonPicker(selectEl);
+
   function renderSelect() {
-    selectEl.replaceChildren();
-    for (const p of state.people) {
-      if (pending.includes(p.email)) {
-        continue;
-      }
-      const opt = document.createElement('option');
-      opt.value = p.email;
-      opt.textContent = `${p.name} (${p.email})`;
-      selectEl.append(opt);
-    }
+    picker.setPeople(state.people.filter(p => !pending.includes(p.email)));
   }
 
   renderRows();
@@ -659,9 +786,10 @@ function buildAdminListEditor(rowsSelector, selectSelector, statusSelector, url,
 
   const addButton = selectEl.parentElement.querySelector('.upload-button');
   addButton.onclick = async () => {
-    const email = selectEl.value;
+    const email = picker.value;
     if (email && !pending.includes(email)) {
       pending.push(email);
+      picker.reset();
       renderRows();
       renderSelect();
       await persist();

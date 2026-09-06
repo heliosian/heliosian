@@ -87,6 +87,7 @@ const icons = {
   sync: '<svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>',
   lock: '<svg viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
   gear: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
+  volume: '<svg viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>',
 };
 
 function isMobile() {
@@ -166,6 +167,84 @@ function personLink(p) {
 
 function familyLink(key) {
   return withFrom('/families/' + encodeURIComponent(key));
+}
+
+// Shared by the desktop topbar search and the mobile search overlay - both just
+// point a different results container at this. People/grades/classrooms are all
+// loaded client-side already (state.model), so this is a plain client-side filter
+// rather than a server round trip.
+function renderGlobalSearchResults(resultsEl, query) {
+  const q = query.trim().toLowerCase();
+  resultsEl.replaceChildren();
+  if (!q || !state.model) {
+    resultsEl.hidden = true;
+    return;
+  }
+  const people = state.model.people
+    .filter(p => p.fullName.toLowerCase().includes(q) || p.email.toLowerCase().includes(q))
+    .slice(0, 8);
+  const grades = state.model.grades
+    .filter(g => g.name.toLowerCase().includes(q))
+    .slice(0, 5);
+  const classrooms = state.model.classrooms
+    .filter(c => c.name.toLowerCase().includes(q))
+    .slice(0, 5);
+
+  if (!people.length && !grades.length && !classrooms.length) {
+    resultsEl.append(el('div', 'gsearch-empty', 'No matches.'));
+    resultsEl.hidden = false;
+    return;
+  }
+
+  function group(label, items, buildRow) {
+    if (!items.length) {
+      return;
+    }
+    resultsEl.append(el('div', 'gsearch-label', label));
+    for (const item of items) {
+      resultsEl.append(buildRow(item));
+    }
+  }
+
+  group('People', people, p => {
+    const row = el('a', 'gsearch-result');
+    row.href = personLink(p);
+    row.append(photoOrInitials(p.photoUrl, p.fullName, 'gsearch-avatar'));
+    const info = el('div', 'gsearch-info');
+    info.append(el('div', 'gsearch-title', p.fullName));
+    const sub = gradeChain(p) || roleLabel(p);
+    if (sub) {
+      info.append(el('div', 'gsearch-sub', sub));
+    }
+    row.append(info);
+    return row;
+  });
+
+  group('Grades', grades, g => {
+    const row = el('a', 'gsearch-result');
+    row.href = withFrom('/grades/' + slugify(g.name));
+    const avatar = el('div', 'gsearch-avatar gsearch-avatar-icon');
+    avatar.append(svg('students'));
+    row.append(avatar);
+    const info = el('div', 'gsearch-info');
+    info.append(el('div', 'gsearch-title', g.name));
+    row.append(info);
+    return row;
+  });
+
+  group('Classrooms', classrooms, c => {
+    const row = el('a', 'gsearch-result');
+    row.href = withFrom('/classrooms/' + slugify(c.name));
+    const avatar = el('div', 'gsearch-avatar gsearch-avatar-icon');
+    avatar.append(svg('classrooms'));
+    row.append(avatar);
+    const info = el('div', 'gsearch-info');
+    info.append(el('div', 'gsearch-title', c.name));
+    row.append(info);
+    return row;
+  });
+
+  resultsEl.hidden = false;
 }
 
 function myFamilyKey() {
@@ -556,13 +635,18 @@ function photoOrInitials(url, name, className) {
   return div;
 }
 
-function roleLabel(p) {
-  let role = 'Parent';
+function baseRole(p) {
   if (p.isStudent) {
-    role = 'Student';
-  } else if (p.isStaff) {
-    role = 'Staff';
+    return 'Student';
   }
+  if (p.isStaff) {
+    return 'Staff';
+  }
+  return 'Parent';
+}
+
+function roleLabel(p) {
+  const role = baseRole(p);
   return (p.pronouns ? `${role} (${p.pronouns})` : role).toUpperCase();
 }
 
@@ -1057,13 +1141,27 @@ function breadcrumbs(parts, tagEmail) {
   });
   top.append(crumbs);
   if (tagEmail) {
-    top.append(tagControl(tagEmail, 'tag-wrap', 'tag-button', () => {}));
+    const tagArea = el('div', 'tag-area');
+    const tagList = el('div', 'tag-list');
+    const renderTagList = () => {
+      tagList.replaceChildren();
+      for (const name of tagsOf(tagEmail)) {
+        const chip = el('a', 'tag-chip', name);
+        chip.href = '/people?tag=' + encodeURIComponent(name);
+        chip.title = `See everyone tagged "${name}"`;
+        tagList.append(chip);
+      }
+    };
+    renderTagList();
+    tagArea.append(tagList, tagControl(tagEmail, 'tag-wrap', 'tag-button', renderTagList));
+    top.append(tagArea);
   }
   return top;
 }
 
 function iconButton(name, label, action) {
   const node = el(typeof action === 'string' ? 'a' : 'button', 'icon-button');
+  node.title = label;
   if (typeof action === 'string') {
     node.href = action;
     node.target = '_blank';
@@ -1074,8 +1172,39 @@ function iconButton(name, label, action) {
   return node;
 }
 
+// "she/her" -> "She / Her", for the pronouns line under a name on the profile page.
+function formatPronouns(pronouns) {
+  return pronouns.split('/').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' / ');
+}
+
+function pronouncePill(url, name) {
+  const btn = el('button', 'pronounce-pill');
+  btn.type = 'button';
+  btn.title = 'Hear how to pronounce ' + name;
+  btn.append(svg('volume'), el('span', '', name));
+  btn.addEventListener('click', () => new Audio(url).play());
+  return btn;
+}
+
 function copyButton(text) {
   return iconButton('copy', 'Copy', () => navigator.clipboard.writeText(text));
+}
+
+function personSummaryText(p, family) {
+  const lines = [p.fullName];
+  lines.push(p.pronouns ? `${baseRole(p)} · ${formatPronouns(p.pronouns)}` : baseRole(p));
+  lines.push('');
+  if (p.phone) {
+    lines.push('Phone: ' + p.phone);
+  }
+  lines.push('Email: ' + p.email);
+  if (family && family.address) {
+    lines.push('Address: ' + family.address);
+  }
+  if (p.facts) {
+    lines.push('', 'About: ' + p.facts);
+  }
+  return lines.join('\n');
 }
 
 function copyGlyph(text) {
@@ -1190,51 +1319,85 @@ function memberRow(p, label, sub) {
   return row;
 }
 
+function familyCardRow(p, subtitle) {
+  const row = el('a', 'fcard-row');
+  row.href = personLink(p);
+  row.append(photoOrInitials(p.photoUrl, p.fullName, 'fcard-avatar'));
+  const info = el('div', 'fcard-info');
+  info.append(el('div', 'fcard-name', p.fullName));
+  if (subtitle) {
+    info.append(el('div', 'fcard-sub', subtitle));
+  }
+  row.append(info);
+  const chev = el('div', 'fcard-chevron');
+  chev.append(svg('chevron-right'));
+  row.append(chev);
+  return row;
+}
+
 function familyBand(p, family) {
-  const band = el('div', 'band');
-  const grid = el('div', 'band-grid container');
-  const left = el('div', 'band-left');
-  left.append(el('h2', '', `${p.fullName}'s Family`));
+  const band = el('div', 'container fcard-wrap');
+  const card = el('div', 'detail-card fcard');
+  const head = el('div', 'fcard-head');
+  head.append(el('h2', 'fcard-title', family.name));
+  const seeLink = el('a', 'fcard-see-link');
+  seeLink.href = familyLink(family.key);
+  seeLink.append(el('span', '', 'View full family profile'), svg('chevron-right'));
+  head.append(seeLink);
+  card.append(head);
+
+  const grid = el('div', 'fcard-grid');
+  const left = el('div');
+  const familyEditable = family.key === myFamilyKey() || state.model.superEdit;
+  const showFamilyPhotoEdit = familyEditable && familyPhotoNeedsUpdate(family);
+  // The "update for the new year" nagging (dashed outline + reminder text) is meant
+  // for students, same as personal photos/facts - an adult visiting their own page
+  // still gets the camera icon to make uploading easy, just without the nag.
+  const nagFamilyPhoto = showFamilyPhotoEdit && p.isStudent;
+  const photoWrap = el('div', 'photo-wrap' + (nagFamilyPhoto ? ' needs-update' : ''));
   if (family.photoUrl) {
-    const img = el('img', 'band-photo');
+    const img = el('img', 'fcard-photo');
     img.src = thumbUrl(family.photoUrl);
     img.alt = '';
-    left.append(img);
+    photoWrap.append(img);
+  } else {
+    photoWrap.append(photoOrInitials(null, family.name, 'fcard-photo fcard-photo-empty'));
+  }
+  left.append(photoWrap);
+  if (showFamilyPhotoEdit) {
+    const status = el('div', 'media-status');
+    if (nagFamilyPhoto) {
+      status.textContent = 'Add your family photo for the new year';
+    }
+    photoWrap.append(uploadIcon('camera', 'Upload family photo', 'image/*', 'family', family.key, 'photo', status));
+    left.append(status);
   }
   if (family.photoCaption) {
-    left.append(el('div', 'band-caption', family.photoCaption));
+    left.append(el('div', 'fcard-caption', family.photoCaption));
   }
   grid.append(left);
 
-  const right = el('div', 'band-right');
+  const right = el('div');
   const kidsList = (family.kidEmails || []).map(e => byEmail[e]).filter(Boolean);
   if (kidsList.length && !(p.isStudent && kidsList.length === 1 && kidsList[0].email === p.email)) {
-    right.append(el('div', 'member-header', 'Kids'));
+    right.append(el('div', 'fcard-section-header', 'Children'));
     for (const kid of kidsList) {
       if (p.isStudent && kid.email === p.email) {
         continue;
       }
-      const label = kid.pronouns ? `${gradeChain(kid)} (${kid.pronouns})` : gradeChain(kid);
-      right.append(memberRow(kid, label.toUpperCase(), kid.email));
+      right.append(familyCardRow(kid, gradeChain(kid)));
     }
   }
   const adults = (family.adultEmails || []).map(e => byEmail[e]).filter(Boolean).filter(a => a.email !== p.email);
   if (adults.length) {
-    right.append(el('div', 'member-header', 'Adults'));
+    right.append(el('div', 'fcard-section-header', 'Other Family Members'));
     for (const adult of adults) {
-      const label = [adult.phone, adult.pronouns ? `(${adult.pronouns.toUpperCase()})` : ''].filter(Boolean).join(' ');
-      right.append(memberRow(adult, label, adult.email));
+      right.append(familyCardRow(adult, baseRole(adult)));
     }
   }
-  const see = el('a', 'see-family');
-  see.href = familyLink(family.key);
-  see.append(el('span', '', `See ${family.name}`));
-  const chev = el('div', 'member-chevron');
-  chev.append(svg('chevron-right'));
-  see.append(chev);
-  right.append(see);
   grid.append(right);
-  band.append(grid);
+  card.append(grid);
+  band.append(card);
   return band;
 }
 
@@ -1261,7 +1424,11 @@ function renderPersonDetail(email) {
 
   const editable = canEditPerson(p.email);
   const editing = editable && personEdit === p.email;
-  const showPhotoEdit = editing || (editable && photoNeedsUpdate(p));
+  // The "update for the new year" nag (dashed outline + reminder text) is student-only,
+  // same as elsewhere - but anyone editable with no photo yet still gets a camera icon
+  // to make uploading easy, without implying it's overdue.
+  const nagPhoto = editable && photoNeedsUpdate(p);
+  const showPhotoEdit = editing || nagPhoto || (editable && !p.photoUrl);
   const showFactsEdit = editing || (editable && factsNeedUpdate(p));
   const self = p.email === document.body.dataset.userEmail;
 
@@ -1275,47 +1442,63 @@ function renderPersonDetail(email) {
   }
 
   const content = el('div', 'container detail-content');
+  const headerCard = el('div', 'detail-card');
   const grid = el('div', 'detail-grid');
   const left = el('div');
-  if (p.photoUrl || showPhotoEdit) {
-    const wrap = el('div', 'photo-wrap' + (editable && photoNeedsUpdate(p) ? ' needs-update' : ''));
-    if (p.photoUrl) {
-      const img = el('img', 'detail-photo');
-      img.src = p.photoUrl;
-      img.alt = '';
-      wrap.append(img);
-    } else {
-      wrap.append(el('div', 'detail-photo detail-photo-empty'));
+  const wrap = el('div', 'photo-wrap' + (nagPhoto ? ' needs-update' : ''));
+  if (p.photoUrl) {
+    const img = el('img', 'detail-photo');
+    img.src = p.photoUrl;
+    img.alt = '';
+    wrap.append(img);
+  } else {
+    // No uploaded photo: fall back to the same colored-initials shape the directory
+    // grid uses instead of an empty gray box, so a profile never looks broken.
+    wrap.append(photoOrInitials(null, p.fullName, 'detail-photo detail-photo-empty'));
+  }
+  left.append(wrap);
+  if (showPhotoEdit) {
+    const status = el('div', 'media-status');
+    if (nagPhoto) {
+      status.textContent = `Add ${self ? 'your' : `${firstName(p.fullName)}'s`} photo for the new year`;
     }
-    left.append(wrap);
-    if (showPhotoEdit) {
-      const status = el('div', 'media-status');
-      if (photoNeedsUpdate(p)) {
-        status.textContent = `Add ${self ? 'your' : `${firstName(p.fullName)}'s`} photo for the new year`;
-      }
-      wrap.append(uploadIcon('camera', 'Upload photo', 'image/*', 'person', p.email, 'photo', status));
-      left.append(status);
-    }
-    if ((p.photos || []).length > 1) {
-      left.append(photoSwitcher(p, wrap.querySelector('.detail-photo'), editable));
-    }
+    wrap.append(uploadIcon('camera', 'Upload photo', 'image/*', 'person', p.email, 'photo', status));
+    left.append(status);
+  }
+  if ((p.photos || []).length > 1) {
+    left.append(photoSwitcher(p, wrap.querySelector('.detail-photo'), editable));
   }
   grid.append(left);
 
   const right = el('div');
+  const family = state.model.families[p.familyKey];
   const topRow = el('div', 'detail-top');
-  topRow.append(el('div', 'role-label', roleLabel(p)));
+  const roleText = p.pronouns ? `${baseRole(p)} (${formatPronouns(p.pronouns)})` : baseRole(p);
+  topRow.append(el('div', 'role-label', roleText));
   if (editable) {
-    const toggle = el('button', 'media-button edit-toggle', editing ? 'Done' : 'Edit info');
-    toggle.addEventListener('click', () => {
-      personEdit = editing ? null : p.email;
-      renderPersonDetail(email);
-    });
-    topRow.append(toggle);
+    const topActions = el('div', 'detail-top-actions');
+    const toggle = editing
+      ? el('button', 'media-button edit-toggle', 'Done')
+      : iconButton('pencil', 'Edit info', () => {
+        personEdit = p.email;
+        renderPersonDetail(email);
+      });
+    if (editing) {
+      toggle.addEventListener('click', () => {
+        personEdit = null;
+        renderPersonDetail(email);
+      });
+    }
+    topActions.append(toggle);
+    topActions.append(iconButton('copy', 'Copy all info', () => navigator.clipboard.writeText(personSummaryText(p, family))));
+    topRow.append(topActions);
   }
   right.append(topRow);
   const nameHeader = el('h1', 'detail-name');
   nameHeader.append(el('span', '', p.fullName));
+  if (p.pronunciationUrl && !editing) {
+    nameHeader.append(pronouncePill(p.pronunciationUrl, firstName(p.fullName)));
+  }
   right.append(nameHeader);
   if (editing) {
     const pencil = editPencil('Edit preferred name');
@@ -1337,12 +1520,12 @@ function renderPersonDetail(email) {
   }
   if (p.phone || editing) {
     const actions = p.phone ? [
-      copyButton(p.phone),
       iconButton('message', 'Text', 'sms:' + p.phone),
       iconButton('phone', 'Call', 'tel:' + p.phone),
+      copyButton(p.phone),
     ] : [];
     const phoneValue = el('div', 'contact-value editable-value');
-    phoneValue.append(el('span', '', p.phone || 'No phone number'));
+    phoneValue.append(svg('phone'), el('span', '', p.phone || 'No phone number'));
     const phoneRow = contactRow(phoneValue, actions);
     right.append(phoneRow);
     if (editing) {
@@ -1355,22 +1538,22 @@ function renderPersonDetail(email) {
       }));
     }
   }
-  right.append(contactRow(el('div', 'contact-value', p.email), [
-    copyButton(p.email),
+  const emailValue = el('div', 'contact-value');
+  emailValue.append(svg('mail'), el('span', '', p.email));
+  right.append(contactRow(emailValue, [
     iconButton('mail', 'Email', 'mailto:' + p.email),
+    copyButton(p.email),
   ]));
-  const family = state.model.families[p.familyKey];
   const addressEditable = editing && family && p.email === document.body.dataset.userEmail &&
     (family.adultEmails || []).includes(p.email);
   if (family && (family.address || addressEditable)) {
     const block = el('div');
-    block.append(el('div', 'field-label', 'Address'));
     const addressValue = el('div', 'contact-value editable-value');
-    addressValue.append(el('span', '', family.address || 'No address'));
+    addressValue.append(svg('map'), el('span', '', family.address || 'No address'));
     block.append(addressValue);
     const actions = family.address ? [
-      copyButton(family.address),
       iconButton('map', 'Map', 'https://maps.google.com/?q=' + encodeURIComponent(family.address)),
+      copyButton(family.address),
     ] : [];
     const addressRow = contactRow(block, actions);
     right.append(addressRow);
@@ -1384,7 +1567,7 @@ function renderPersonDetail(email) {
       }));
     }
   }
-  if (p.pronunciationUrl || editing) {
+  if (editing) {
     right.append(el('div', 'pronounce-label', 'How do I pronounce this?'));
     if (p.pronunciationUrl) {
       const audio = el('audio', 'pronounce-player');
@@ -1393,32 +1576,32 @@ function renderPersonDetail(email) {
       audio.src = p.pronunciationUrl;
       right.append(audio);
     }
-    if (editing) {
-      right.append(pronounceEditor('person', p.email));
-    }
+    right.append(pronounceEditor('person', p.email));
   }
   grid.append(right);
-  content.append(grid);
+  headerCard.append(grid);
+  content.append(headerCard);
 
   if (p.facts || showFactsEdit) {
+    const aboutCard = el('div', 'detail-card');
     const header = el('h2', 'about-header', 'About Me');
-    content.append(header);
+    aboutCard.append(header);
     const needsFacts = factsNeedUpdate(p);
     const placeholder = needsFacts ? `Add ${self ? 'your' : `${firstName(p.fullName)}'s`} facts for the new year — click the pencil to get started.` : '';
     const textClass = 'about-text' + (editable && needsFacts ? ' needs-update' : '') + (!p.facts && placeholder ? ' placeholder-text' : '');
     const text = el('div', textClass, p.facts || placeholder);
     const status = el('div', 'media-status about-status');
-    content.append(text);
+    aboutCard.append(text);
     if (p.facts) {
       const when = monthYear(p.factsUpdated);
       if (editable && needsFacts) {
-        content.append(el('div', 'about-note about-note-stale',
+        aboutCard.append(el('div', 'about-note about-note-stale',
           when ? `Posted ${when} — please refresh this for the new year.` : 'Please refresh this for the new year.'));
       } else if (!editable && when) {
-        content.append(el('div', 'about-note', `Posted ${when}`));
+        aboutCard.append(el('div', 'about-note', `Posted ${when}`));
       }
     }
-    content.append(status);
+    aboutCard.append(status);
     if (showFactsEdit) {
       const pencil = el('button', 'edit-icon inline');
       pencil.title = 'Edit';
@@ -1459,9 +1642,11 @@ function renderPersonDetail(email) {
         pencil.click();
       }
     }
+    content.append(aboutCard);
   }
 
   if (editing) {
+    const privacyCard = el('div', 'detail-card');
     const header = el('h2', 'about-header', 'Privacy');
     const button = el('button', 'media-button',
       'Remove ' + (self ? 'me' : firstName(p.fullName)) + ' from this directory');
@@ -1486,7 +1671,8 @@ function renderPersonDetail(email) {
       }
       location.reload();
     });
-    content.append(header, button, status);
+    privacyCard.append(header, button, status);
+    content.append(privacyCard);
   }
   main.append(content);
 
@@ -1535,29 +1721,28 @@ function renderFamilyDetail(key) {
   }
 
   const content = el('div', 'container detail-content');
+  const headerCard = el('div', 'detail-card');
   const grid = el('div', 'detail-grid');
   const left = el('div');
   left.id = 'family-photo';
-  if (family.photoUrl || editable) {
-    const wrap = el('div', 'photo-wrap');
-    if (family.photoUrl) {
-      const link = el('a');
-      link.href = family.photoUrl;
-      link.target = '_blank';
-      const img = el('img', 'detail-photo');
-      img.src = family.photoUrl;
-      img.alt = '';
-      link.append(img);
-      wrap.append(link);
-    } else {
-      wrap.append(el('div', 'detail-photo detail-photo-empty'));
-    }
-    left.append(wrap);
-    if (editable) {
-      const status = el('div', 'media-status');
-      wrap.append(uploadIcon('camera', 'Upload family photo', 'image/*', 'family', key, 'photo', status));
-      left.append(status);
-    }
+  const wrap = el('div', 'photo-wrap');
+  if (family.photoUrl) {
+    const link = el('a');
+    link.href = family.photoUrl;
+    link.target = '_blank';
+    const img = el('img', 'detail-photo');
+    img.src = family.photoUrl;
+    img.alt = '';
+    link.append(img);
+    wrap.append(link);
+  } else {
+    wrap.append(photoOrInitials(null, family.name, 'detail-photo detail-photo-empty'));
+  }
+  left.append(wrap);
+  if (editable) {
+    const status = el('div', 'media-status');
+    wrap.append(uploadIcon('camera', 'Upload family photo', 'image/*', 'family', key, 'photo', status));
+    left.append(status);
   }
   if (family.photoCaption) {
     left.append(el('div', 'family-caption', family.photoCaption));
@@ -1578,9 +1763,11 @@ function renderFamilyDetail(key) {
     right.append(el('div', 'detail-sub', firsts.join(', ')));
   }
   if (family.address) {
-    right.append(contactRow(el('div', 'contact-value', family.address), [
-      copyButton(family.address),
+    const addressValue = el('div', 'contact-value');
+    addressValue.append(svg('map'), el('span', '', family.address));
+    right.append(contactRow(addressValue, [
       iconButton('map', 'Map', 'https://maps.google.com/?q=' + encodeURIComponent(family.address)),
+      copyButton(family.address),
     ]));
   }
   if (family.pronunciationUrl || editable) {
@@ -1597,7 +1784,8 @@ function renderFamilyDetail(key) {
     }
   }
   grid.append(right);
-  content.append(grid);
+  headerCard.append(grid);
+  content.append(headerCard);
   main.append(content);
 
   const band = el('div', 'band');
@@ -2698,6 +2886,10 @@ function render() {
     renderFamilyDetail(seg[1]);
   } else if (seg[0] === 'people') {
     state.tab = tabParam('everyone');
+    const tagParam = new URLSearchParams(location.search).get('tag');
+    if (tagParam) {
+      state.filterTags = new Set([tagParam]);
+    }
     renderPeople();
   } else if (seg[0] === 'classrooms' && seg[1]) {
     state.rosterTab = tabParam('students');
@@ -2723,14 +2915,14 @@ function render() {
   }
 }
 
+// The topbar only has room for the avatar (no name label), so - unlike the old
+// sidebar row, which let a name click open the menu and an avatar click jump
+// straight to the profile - the avatar's only job now is opening the menu, whose
+// first item is "View Profile".
 const userMenu = document.querySelector('#user-menu');
 document.querySelector('#user').addEventListener('click', e => {
   e.stopPropagation();
   userMenu.hidden = !userMenu.hidden;
-});
-document.querySelector('#user .user-avatar').addEventListener('click', e => {
-  e.stopPropagation();
-  location.href = withFrom('/people/' + encodeURIComponent(personSlug(document.body.dataset.userEmail)));
 });
 
 const drawer = document.querySelector('#drawer');
@@ -2752,6 +2944,34 @@ document.querySelector('#drawer-user-more').addEventListener('click', e => {
   e.stopPropagation();
   drawerUserMenu.hidden = !drawerUserMenu.hidden;
 });
+
+const topbarSearchInput = document.querySelector('#topbar-search-input');
+const topbarSearchResults = document.querySelector('#topbar-search-results');
+topbarSearchInput.addEventListener('input', () => {
+  renderGlobalSearchResults(topbarSearchResults, topbarSearchInput.value);
+});
+topbarSearchInput.addEventListener('focus', () => {
+  if (topbarSearchInput.value.trim()) {
+    renderGlobalSearchResults(topbarSearchResults, topbarSearchInput.value);
+  }
+});
+
+const mobileSearchOverlay = document.querySelector('#mobile-search-overlay');
+const mobileSearchInput = document.querySelector('#mobile-search-input');
+const mobileSearchResults = document.querySelector('#mobile-search-results');
+function setMobileSearch(open) {
+  mobileSearchOverlay.hidden = !open;
+  if (open) {
+    mobileSearchInput.value = '';
+    mobileSearchResults.replaceChildren();
+    mobileSearchInput.focus();
+  }
+}
+document.querySelector('#mobile-search-btn').addEventListener('click', () => setMobileSearch(true));
+document.querySelector('#mobile-search-close').addEventListener('click', () => setMobileSearch(false));
+mobileSearchInput.addEventListener('input', () => {
+  renderGlobalSearchResults(mobileSearchResults, mobileSearchInput.value);
+});
 function closeFilterPanels() {
   for (const panel of document.querySelectorAll('.filter-panel')) {
     panel.hidden = true;
@@ -2762,6 +2982,9 @@ function closeFilterPanels() {
 document.addEventListener('click', e => {
   userMenu.hidden = true;
   drawerUserMenu.hidden = true;
+  if (!topbarSearchResults.hidden && !e.target.closest('.topbar-search')) {
+    topbarSearchResults.hidden = true;
+  }
   for (const menu of document.querySelectorAll('.more-menu, .card-menu')) {
     if (!menu.hidden && !menu.parentElement.contains(e.target)) {
       menu.hidden = true;
@@ -2778,6 +3001,8 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     userMenu.hidden = true;
     setDrawer(false);
+    setMobileSearch(false);
+    topbarSearchResults.hidden = true;
     closeFilterPanels();
     for (const menu of document.querySelectorAll('.more-menu, .card-menu')) {
       menu.hidden = true;
@@ -2894,11 +3119,38 @@ function myPrivacyWarnings() {
 
 function renderPrivacyMenuAlert() {
   const hasMismatch = myPrivacyWarnings().length > 0;
-  for (const badge of document.querySelectorAll('.user-menu-alert, .user-row-alert')) {
+  const staleCount = staleItems().length;
+  const hasStale = staleCount > 0;
+
+  for (const badge of document.querySelectorAll('.user-menu-alert')) {
     badge.hidden = !hasMismatch;
     if (hasMismatch && !badge.firstChild) {
       badge.append(svg('alert'));
     }
+  }
+
+  // The mobile drawer only has room for one dot next to the name, so it stays a
+  // single merged signal; the desktop topbar has room for two separate, clickable
+  // icons - one per condition - so each links straight to where you'd fix it.
+  for (const badge of document.querySelectorAll('.user-row-alert')) {
+    badge.hidden = !(hasMismatch || hasStale);
+    badge.title = hasMismatch && hasStale ? 'Some family info is out of date, and your privacy settings don’t match Veracross'
+      : hasMismatch ? 'Your privacy settings don’t match Veracross'
+      : 'Some family info is missing or out of date';
+    if ((hasMismatch || hasStale) && !badge.firstChild) {
+      badge.append(svg('alert'));
+    }
+  }
+
+  const staleButton = document.querySelector('#topbar-stale-alert');
+  if (staleButton) {
+    staleButton.hidden = !hasStale;
+    staleButton.title = `${staleCount} thing${staleCount === 1 ? '' : 's'} to update for the new year`;
+    document.querySelector('#topbar-stale-count').textContent = String(staleCount);
+  }
+  const privacyButton = document.querySelector('#topbar-privacy-alert');
+  if (privacyButton) {
+    privacyButton.hidden = !hasMismatch;
   }
 }
 

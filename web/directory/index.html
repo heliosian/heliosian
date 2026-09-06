@@ -52,20 +52,44 @@
 <button class="mobile-menu-btn" id="mobile-menu-btn" aria-label="Menu"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
 <a class="mobile-back" id="mobile-back" hidden><svg viewBox="0 0 24 24"><path d="M19 12H5m7-7-7 7 7 7"/></svg></a>
 <div class="mobile-title" id="mobile-title"></div>
+<button class="mobile-search-btn" id="mobile-search-btn" aria-label="Search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></button>
 </header>
+<div class="app-shell">
 <aside class="sidebar">
 <div class="brand"><a href="/people"><img src="/static/brand/logo-wordmark.png" alt="Helios Who?"></a></div>
 <nav class="app-nav" id="nav"></nav>
+</aside>
+<div class="content-col">
+<header class="topbar">
+<div class="topbar-search">
+<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+<input type="text" id="topbar-search-input" placeholder="Search by name, student, grade, or classroom…" autocomplete="off">
+<div class="gsearch-results" id="topbar-search-results" hidden></div>
+</div>
+<div class="topbar-user">
+<a class="topbar-alert topbar-alert-count" id="topbar-stale-alert" href="/my-family" title="Some family info is missing or out of date" hidden><span id="topbar-stale-count"></span></a>
+<a class="topbar-alert" id="topbar-privacy-alert" href="/my-privacy" title="Your privacy settings don’t match Veracross" hidden><svg viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg></a>
+<div class="user" id="user"><span class="user-avatar">{{.UserInitial}}</span><span class="user-name">{{.UserName}}</span></div>
 <div class="user-menu" id="user-menu" hidden>
 <a href="/people/{{.UserEmailSlug}}">View Profile</a>
 <a href="/my-privacy" class="user-menu-privacy">My Privacy<span class="user-menu-alert" hidden></span></a>
 {{if .IsAdmin}}<a href="/admin">Admin Tools</a>{{end}}
 <form method="post" action="/auth/logout"><button>Sign Out</button></form>
 </div>
-<div class="user" id="user"><span class="user-avatar">{{.UserInitial}}</span><span>{{.UserName}}</span><span class="user-row-alert" id="user-row-alert" hidden></span></div>
-</aside>
+</div>
+</header>
 <main id="main"></main>
+</div>
+</div>
 <nav class="mobile-tabs" id="mobile-tabs"></nav>
+<div class="mobile-search-overlay" id="mobile-search-overlay" hidden>
+<div class="mobile-search-head">
+<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+<input type="text" id="mobile-search-input" placeholder="Search by name, student, grade, or classroom…" autocomplete="off">
+<button class="mobile-search-close" id="mobile-search-close" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+</div>
+<div class="gsearch-results gsearch-results-mobile" id="mobile-search-results"></div>
+</div>
 <div class="drawer-overlay" id="drawer-overlay" hidden></div>
 <aside class="drawer" id="drawer" hidden>
 <div class="drawer-head">
