@@ -1723,6 +1723,10 @@ const classroomsTabRenderers = {
 function renderClassroomsPage() {
   const main = resetMain();
 
+  const pageHeader = el('div', 'page-header container');
+  pageHeader.append(el('h1', 'page-title', 'Classrooms'));
+  main.append(pageHeader);
+
   main.append(tabStrip(classroomsTabs, state.classTab, 1, key => {
     state.classTab = key;
     state.q = '';
@@ -1765,9 +1769,12 @@ function renderClassroomsPage() {
 function renderStaffPage() {
   const main = resetMain();
 
+  const pageHeader = el('div', 'page-header container');
+  pageHeader.append(el('h1', 'page-title', 'Staff'));
+  main.append(pageHeader);
+
   const content = el('div', 'content container');
-  const header = el('div', 'content-header');
-  header.append(el('h1', '', 'Staff'));
+  const header = el('div', 'content-header content-header-solo');
   const controls = el('div', 'controls');
   const search = el('div', 'search');
   search.append(svg('search'));
