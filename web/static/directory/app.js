@@ -255,6 +255,13 @@ function factsNeedUpdate(p) {
   return p.isStudent && (!p.facts || agedPast(p.facts, p.factsUpdated, staleYears.facts));
 }
 
+// Unlike a person's own photo, which falls back to the family photo when missing, the
+// family photo has no further fallback: a missing one needs updating just as much as a
+// stale one.
+function familyPhotoNeedsUpdate(family) {
+  return !family.photoUrl || agedPast(family.photoUrl, family.photoUpdated, staleYears.familyPhoto);
+}
+
 function staleItems() {
   const me = byEmail[document.body.dataset.userEmail];
   if (!me) {
@@ -271,7 +278,7 @@ function staleItems() {
       items.push({type: 'facts', target: 'person', key: p.email, text: `Update ${whose} facts for new year`, person: p});
     }
   }
-  if (family && agedPast(family.photoUrl, family.photoUpdated, staleYears.familyPhoto)) {
+  if (family && familyPhotoNeedsUpdate(family)) {
     items.push({type: 'photo', target: 'family', key: family.key, text: 'Update your family photo for new year'});
   }
   return items;
