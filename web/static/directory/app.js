@@ -18,7 +18,7 @@ function saveNavOpen(navOpen) {
   }
 }
 
-const state = {model: null, tab: 'everyone', classTab: 'by-classroom', rosterTab: 'students', rosterSectionExcluded: new Set(), q: '', filterGrades: new Set(), filterClassrooms: new Set(), filterRoles: new Set(), filterCities: new Set(), filterPronouns: new Set(), filterTags: new Set(), filterNew: false, navOpen: loadNavOpen()};
+const state = {model: null, tab: 'everyone', classTab: 'by-classroom', rosterTab: 'students', rosterSectionExcluded: new Set(), q: '', filterGrades: new Set(), filterClassrooms: new Set(), filterRoles: new Set(), filterRoleExcluded: new Set(), filterCities: new Set(), filterPronouns: new Set(), filterTags: new Set(), filterNew: false, navOpen: loadNavOpen()};
 let byEmail = {};
 let tags = {};
 
@@ -115,9 +115,7 @@ const mobileNavSections = [
 
 const peopleTabs = [
   {key: 'everyone', label: 'Everyone'},
-  {key: 'students', label: 'Students'},
   {key: 'families', label: 'Families'},
-  {key: 'staff', label: 'Staff'},
 ];
 
 function el(tag, className, text) {
@@ -385,23 +383,27 @@ function staleItems() {
   const items = [];
   for (const p of familyNavPeople()) {
     const whose = p.email === me.email ? 'your' : `${p.fullName}'s`;
+    const shortWhose = p.email === me.email ? 'your' : `${firstName(p.fullName)}'s`;
     if (photoNeedsUpdate(p)) {
-      items.push({type: 'photo', target: 'person', key: p.email, text: `Update ${whose} photo for new year`, person: p});
+      items.push({type: 'photo', target: 'person', key: p.email, text: `Update ${whose} photo for new year`, label: `${shortWhose} photo`, person: p});
     }
     if (factsNeedUpdate(p)) {
-      items.push({type: 'facts', target: 'person', key: p.email, text: `Update ${whose} facts for new year`, person: p});
+      items.push({type: 'facts', target: 'person', key: p.email, text: `Update ${whose} facts for new year`, label: `${shortWhose} facts`, person: p});
     }
   }
   if (family && familyPhotoNeedsUpdate(family)) {
-    items.push({type: 'photo', target: 'family', key: family.key, text: 'Update your family photo for new year'});
+    items.push({type: 'photo', target: 'family', key: family.key, text: 'Update your family photo for new year', label: 'your family photo'});
   }
   return items;
 }
 
+// The banner's description names the actual items ("Sam's photo, Ella's photo…")
+// rather than just a count, so it's useful at a glance without opening My Family.
 function familyInfoBanner(items) {
   const count = items.length;
-  const desc = `${count} thing${count === 1 ? '' : 's'} to update for the new year.`;
-  return infoBanner('alert', 'alert', 'Update Family Info', desc, 'Update Family Info', '/my-family', false);
+  const title = `${count} Update${count === 1 ? '' : 's'} Needed`;
+  const desc = items.map(i => i.label).join(', ');
+  return infoBanner('alert', 'alert', title, desc, 'Update Family Info', '/my-family', false);
 }
 
 function todoPhotoRow(item) {
@@ -639,6 +641,18 @@ function firstName(fullName) {
   return fullName.trim().split(/\s+/)[0];
 }
 
+// Fisher-Yates, returning a new array so callers can shuffle once at load and
+// keep that order stable across re-renders (typing in search shouldn't also
+// reshuffle everything still on screen) - a fresh page load reshuffles again.
+function shuffled(items) {
+  const copy = [...items];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
 function thumbUrl(url) {
   return url ? url + '?thumb=1' : url;
 }
@@ -808,7 +822,7 @@ function personCard(p) {
 function renderEveryone(grid) {
   grid.className = 'people-grid';
   const q = state.q;
-  const matches = state.model.people.filter(p => {
+  const matches = state.everyoneOrder.filter(p => {
     const family = state.model.families[p.familyKey];
     return `${p.fullName} ${family ? family.name : ''}`.toLowerCase().includes(q) && matchesFilters(p);
   });
@@ -847,40 +861,31 @@ function renderStudents(grid) {
   return matches.length;
 }
 
+// Only families with at least one kid on record - a staff member with no kids
+// (a Family record with no kidEmails, or no Family record at all) isn't a
+// family in the school-community sense the Families tab is showing, so those
+// don't get an entry here at all.
 function familyEntries() {
-  const entries = Object.values(state.model.families).map(f => {
-    const members = [...(f.kidEmails || []), ...(f.adultEmails || [])];
-    const kidGrades = [...new Set((f.kidEmails || []).map(e => byEmail[e]?.grade).filter(Boolean))];
-    return {
-      key: f.key,
-      name: (f.name || '').replace(/ Family$/, ''),
-      label: kidGrades.length ? kidGrades.join(', ') : 'Staff',
-      members: members.map(e => byEmail[e] ? firstName(byEmail[e].fullName) : '').filter(Boolean),
-      photoUrl: f.photoUrl,
-      href: familyLink(f.key),
-    };
-  });
-  for (const p of state.model.people) {
-    if (p.isStaff && !p.isParent && !p.isStudent && !state.model.families[p.familyKey]) {
-      entries.push({
-        name: p.fullName.trim().split(/\s+/).slice(-1)[0],
-        label: 'Staff',
-        members: [firstName(p.fullName)],
-        photoUrl: p.photoUrl,
-        href: personLink(p),
-        email: p.email,
-      });
-    }
-  }
-  entries.sort((a, b) => a.name.localeCompare(b.name));
-  return entries;
+  return Object.values(state.model.families)
+    .filter(f => (f.kidEmails || []).length)
+    .map(f => {
+      const members = [...(f.kidEmails || []), ...(f.adultEmails || [])];
+      const kidGrades = [...new Set((f.kidEmails || []).map(e => byEmail[e]?.grade).filter(Boolean))];
+      return {
+        key: f.key,
+        name: (f.name || '').replace(/ Family$/, ''),
+        label: kidGrades.join(', '),
+        members: members.map(e => byEmail[e] ? firstName(byEmail[e].fullName) : '').filter(Boolean),
+        photoUrl: f.photoUrl,
+        href: familyLink(f.key),
+      };
+    });
 }
 
 function renderFamilies(grid) {
   grid.className = 'family-grid';
-  const matches = familyEntries().filter(f =>
-    `${f.name} ${f.members.join(' ')}`.toLowerCase().includes(state.q) &&
-    (f.key ? familyMatchesFilters(f.key) : matchesFilters(byEmail[f.email])));
+  const matches = state.familyOrder.filter(f =>
+    `${f.name} ${f.members.join(' ')}`.toLowerCase().includes(state.q) && familyMatchesFilters(f.key));
   for (const f of matches) {
     const card = el('a', 'family-card');
     card.href = f.href;
@@ -949,13 +954,24 @@ function renderPeople() {
   main.append(tabStrip(items, state.tab, 2, key => {
     state.tab = key;
     state.q = '';
+    // The Tags dropdown only exists on the Everyone tab - clear it on every
+    // switch so a filter set there can't silently keep narrowing results on a
+    // tab with no control showing it's active. Role chips get the same
+    // treatment without losing the selection: matchesFilters only applies
+    // filterRoleExcluded while state.tab is 'everyone' (see below), so
+    // switching to Families and back restores whatever was toggled off.
+    state.filterTags.clear();
     history.replaceState(null, '', tabHref(key));
     renderPeople();
     finishRender();
   }));
 
   const content = el('div', 'content container');
-  const header = el('div', 'content-header content-header-solo');
+  const isEveryone = state.tab === 'everyone';
+  const header = el('div', 'content-header' + (isEveryone ? '' : ' content-header-solo'));
+  if (isEveryone) {
+    header.append(roleChips(() => renderGrid()));
+  }
   const controls = el('div', 'controls');
   const search = el('div', 'search');
   search.append(svg('search'));
@@ -967,7 +983,14 @@ function renderPeople() {
     renderGrid();
   });
   search.append(input);
-  controls.append(search, filterControl(renderGrid));
+  controls.append(
+    facetDropdown('Grade', gradeOptions(), state.filterGrades, () => renderGrid()),
+    facetDropdown('Classroom', state.model.classrooms.map(c => c.name), state.filterClassrooms, () => renderGrid()),
+  );
+  if (isEveryone) {
+    controls.append(facetDropdown('Tags', tagNames(), state.filterTags, () => renderGrid()));
+  }
+  controls.append(search);
   header.append(controls);
   content.append(header);
 
@@ -1007,16 +1030,34 @@ function cityOf(p) {
 
 function anyFiltersActive() {
   return Boolean(state.filterGrades.size || state.filterClassrooms.size || state.filterRoles.size ||
-    state.filterCities.size || state.filterPronouns.size || state.filterTags.size || state.filterNew);
+    state.filterRoleExcluded.size || state.filterCities.size || state.filterPronouns.size ||
+    state.filterTags.size || state.filterNew);
+}
+
+// Role chips currently show on the Directory page's Everyone tab and on the
+// Email List page - not on Directory's Families tab, which has no chips of
+// its own to reveal that anything is filtered. Keyed off the route rather
+// than state.tab so a stale tab value left over from a different page can't
+// make filterRoleExcluded apply (or not) on the wrong page.
+function roleChipsVisible() {
+  const seg = segments();
+  if (seg[0] === 'people') {
+    return state.tab === 'everyone';
+  }
+  return seg[0] === 'email-list';
 }
 
 function matchesFilters(p) {
   const gradeOK = !state.filterGrades.size || personFacets(p, 'grade').some(g => state.filterGrades.has(g));
   const classOK = !state.filterClassrooms.size || personFacets(p, 'classroom').some(c => state.filterClassrooms.has(c));
-  const roleOK = !state.filterRoles.size ||
+  const roleOK = (!state.filterRoles.size ||
     (state.filterRoles.has('Student') && p.isStudent) ||
     (state.filterRoles.has('Parent') && p.isParent) ||
-    (state.filterRoles.has('Staff') && p.isStaff);
+    (state.filterRoles.has('Staff') && p.isStaff)) &&
+    (!roleChipsVisible() ||
+    (p.isStudent && !state.filterRoleExcluded.has('Student')) ||
+    (p.isParent && !state.filterRoleExcluded.has('Parent')) ||
+    (p.isStaff && !state.filterRoleExcluded.has('Staff')));
   const cityOK = !state.filterCities.size || state.filterCities.has(cityOf(p));
   const pronounsOK = !state.filterPronouns.size || state.filterPronouns.has(p.pronouns);
   const newOK = !state.filterNew || p.isNew;
@@ -1046,7 +1087,103 @@ function pronounOptions() {
   return [...new Set(state.model.people.map(p => p.pronouns).filter(Boolean))].sort();
 }
 
-function filterControl(rerender) {
+const roleChipFacets = [
+  ['Student', 'Students'],
+  ['Parent', 'Parents'],
+  ['Staff', 'Staff'],
+];
+
+// Role as always-visible toggle chips, all on by default. state.filterRoleExcluded
+// tracks only the deselected roles (mirroring rosterSectionExcluded's exclusion-set
+// approach) - kept separate from state.filterRoles, the inclusion set the Role
+// checkboxes elsewhere use, so the two can't fight over what an empty set means.
+function roleChips(rerender) {
+  const bar = el('div', 'chip-row');
+  for (const [key, label] of roleChipFacets) {
+    const btn = el('button', 'chip-toggle' + (!state.filterRoleExcluded.has(key) ? ' active' : ''));
+    btn.type = 'button';
+    btn.append(el('span', '', label));
+    btn.addEventListener('click', () => {
+      if (state.filterRoleExcluded.has(key)) {
+        state.filterRoleExcluded.delete(key);
+      } else {
+        state.filterRoleExcluded.add(key);
+      }
+      btn.classList.toggle('active');
+      rerender();
+    });
+    bar.append(btn);
+  }
+  return bar;
+}
+
+// A standalone single-facet dropdown (Grade, Classroom) - the same checkbox
+// list a filterControl section would show, but its own button so it doesn't
+// need the drill-into-a-section step.
+function facetDropdown(label, values, set, rerender) {
+  const wrap = el('div', 'filter-wrap');
+  const button = el('button', 'filter-button');
+  const labelSpan = el('span', '', label);
+  button.append(labelSpan, svg('chevron'));
+  const panel = el('div', 'filter-panel facet-panel');
+  panel.hidden = true;
+  button.addEventListener('click', () => {
+    panel.hidden = !panel.hidden;
+    button.classList.toggle('open', !panel.hidden);
+  });
+
+  const updateLabel = () => {
+    labelSpan.textContent = set.size ? `${label} (${set.size})` : label;
+  };
+
+  const body = el('div', 'filter-options');
+  for (const v of values) {
+    const row = el('label', 'filter-option');
+    const box = el('input');
+    box.type = 'checkbox';
+    box.checked = set.has(v);
+    box.addEventListener('change', () => {
+      if (box.checked) {
+        set.add(v);
+      } else {
+        set.delete(v);
+      }
+      updateLabel();
+      rerender();
+    });
+    row.append(el('span', '', v), box);
+    body.append(row);
+  }
+  panel.append(body);
+
+  const footer = el('div', 'filter-footer');
+  const clear = el('button', 'filter-clear', 'Clear');
+  clear.addEventListener('click', () => {
+    set.clear();
+    for (const box of body.querySelectorAll('input')) {
+      box.checked = false;
+    }
+    updateLabel();
+    rerender();
+  });
+  const done = el('button', 'filter-done', 'Done');
+  done.addEventListener('click', () => {
+    panel.hidden = true;
+    button.classList.remove('open');
+  });
+  footer.append(clear, done);
+  panel.append(footer);
+
+  updateLabel();
+  wrap.append(button, panel);
+  return wrap;
+}
+
+// options lets a caller opt out of a section (or the "New to Helios" toggle)
+// that it surfaces some other way - the Directory page pulls Role out into
+// chips and Grade/Classroom into their own dropdowns (see roleChips and
+// facetDropdown below), while Staff, Email List, and Map keep the full panel.
+function filterControl(rerender, options = {}) {
   const wrap = el('div', 'filter-wrap');
   const button = el('button', 'filter-button');
   button.append(svg('filter'), el('span', '', 'Filter'), svg('chevron'));
@@ -1057,14 +1194,21 @@ function filterControl(rerender) {
     button.classList.toggle('open', !panel.hidden);
   });
 
-  const sections = [
-    {label: 'Role', values: ['Student', 'Parent', 'Staff'], set: state.filterRoles},
-    {label: 'Class', values: state.model.classrooms.map(c => c.name), set: state.filterClassrooms},
-    {label: 'Grade', values: gradeOptions(), set: state.filterGrades},
-    {label: 'City', values: cityOptions(), set: state.filterCities},
-    {label: 'Pronouns', values: pronounOptions(), set: state.filterPronouns},
-    {label: 'Tags', values: tagNames(), set: state.filterTags},
-  ];
+  const sections = [];
+  if (options.role !== false) {
+    sections.push({label: 'Role', values: ['Student', 'Parent', 'Staff'], set: state.filterRoles});
+  }
+  if (options.classroom !== false) {
+    sections.push({label: 'Class', values: state.model.classrooms.map(c => c.name), set: state.filterClassrooms});
+  }
+  if (options.grade !== false) {
+    sections.push({label: 'Grade', values: gradeOptions(), set: state.filterGrades});
+  }
+  if (options.city !== false) {
+    sections.push({label: 'City', values: cityOptions(), set: state.filterCities});
+  }
+  sections.push({label: 'Pronouns', values: pronounOptions(), set: state.filterPronouns});
+  sections.push({label: 'Tags', values: tagNames(), set: state.filterTags});
   for (const s of sections) {
     const head = el('div', 'filter-section');
     head.append(el('span', '', s.label), svg('chevron'));
@@ -1093,28 +1237,40 @@ function filterControl(rerender) {
     panel.append(head, body);
   }
 
-  const toggleRow = el('label', 'filter-toggle-row');
-  toggleRow.append(el('span', '', 'New to Helios'));
-  const toggle = el('input', 'filter-switch');
-  toggle.type = 'checkbox';
-  toggle.checked = state.filterNew;
-  toggle.addEventListener('change', () => {
-    state.filterNew = toggle.checked;
-    rerender();
-  });
-  toggleRow.append(toggle);
-  panel.append(toggleRow);
+  if (options.newToHelios !== false) {
+    const toggleRow = el('label', 'filter-toggle-row');
+    toggleRow.append(el('span', '', 'New to Helios'));
+    const toggle = el('input', 'filter-switch');
+    toggle.type = 'checkbox';
+    toggle.checked = state.filterNew;
+    toggle.addEventListener('change', () => {
+      state.filterNew = toggle.checked;
+      rerender();
+    });
+    toggleRow.append(toggle);
+    panel.append(toggleRow);
+  }
 
   const footer = el('div', 'filter-footer');
   const clear = el('button', 'filter-clear', 'Clear all');
   clear.addEventListener('click', () => {
-    state.filterGrades.clear();
-    state.filterClassrooms.clear();
-    state.filterRoles.clear();
-    state.filterCities.clear();
+    if (options.grade !== false) {
+      state.filterGrades.clear();
+    }
+    if (options.classroom !== false) {
+      state.filterClassrooms.clear();
+    }
+    if (options.role !== false) {
+      state.filterRoles.clear();
+    }
+    if (options.city !== false) {
+      state.filterCities.clear();
+    }
     state.filterPronouns.clear();
     state.filterTags.clear();
-    state.filterNew = false;
+    if (options.newToHelios !== false) {
+      state.filterNew = false;
+    }
     for (const box of panel.querySelectorAll('input')) {
       box.checked = false;
     }
@@ -1925,10 +2081,99 @@ function listRow(image, label, title, sub, href) {
   }
   info.append(el('div', 'list-title', title));
   if (sub) {
-    info.append(el('div', 'list-sub', sub));
+    info.append(listSub(sub));
   }
   row.append(info);
   return row;
+}
+
+const LIST_SUB_TRUNCATE_LENGTH = 70;
+const LIST_SUB_LINE_PREVIEW = 4;
+const BULLET_LINE = /^\s*(?:[*]|-{1,2})\s+(.+)$/;
+
+// Recognizes "About Me" text that's really a bullet list - every non-blank line
+// starts with *, -, or -- - and returns the items with their markers stripped.
+// A single stray non-bulleted line (a mixed intro-plus-bullets bio) falls back
+// to plain multi-line rendering rather than a half-bulleted list.
+function parseBullets(lines) {
+  const items = [];
+  for (const line of lines) {
+    const m = line.match(BULLET_LINE);
+    if (!m) {
+      return null;
+    }
+    items.push(m[1].trim());
+  }
+  return items;
+}
+
+// A row's "About Me" (or similar) text. Multi-line text (bulleted or not) is
+// capped at LIST_SUB_LINE_PREVIEW lines with a More/Less toggle; a single long
+// line is instead cut down to roughly one line by character count. Either way,
+// stopPropagation on the toggle keeps that click from also triggering the
+// surrounding card's own navigation link.
+function listSub(text) {
+  const wrap = el('div', 'list-sub');
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  if (lines.length > 1) {
+    const bullets = parseBullets(lines);
+    wrap.append(bullets
+      ? collapsibleLines(bullets, 'ul', 'list-sub-bullets', 'li')
+      : collapsibleLines(lines, 'div', 'list-sub-lines', 'div'));
+    return wrap;
+  }
+  if (text.length <= LIST_SUB_TRUNCATE_LENGTH) {
+    wrap.textContent = text;
+    return wrap;
+  }
+  let short = text.slice(0, LIST_SUB_TRUNCATE_LENGTH);
+  short = short.slice(0, short.lastIndexOf(' ')) || short;
+  const textSpan = el('span', '', short + '… ');
+  const toggle = el('button', 'list-sub-more', 'More »');
+  toggle.type = 'button';
+  let expanded = false;
+  toggle.addEventListener('click', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    expanded = !expanded;
+    textSpan.textContent = expanded ? text + ' ' : short + '… ';
+    toggle.textContent = expanded ? 'Less' : 'More »';
+  });
+  wrap.append(textSpan, toggle);
+  return wrap;
+}
+
+// Renders items as wrapTag > itemTag*, capped at LIST_SUB_LINE_PREVIEW with a
+// More(+N)/Less toggle when there are more than that many.
+function collapsibleLines(items, wrapTag, wrapClass, itemTag) {
+  const frag = document.createDocumentFragment();
+  const list = el(wrapTag, wrapClass);
+  const renderItems = shown => {
+    list.replaceChildren();
+    for (const item of shown) {
+      list.append(el(itemTag, '', item));
+    }
+  };
+  if (items.length <= LIST_SUB_LINE_PREVIEW) {
+    renderItems(items);
+    frag.append(list);
+    return frag;
+  }
+  const collapsed = items.slice(0, LIST_SUB_LINE_PREVIEW);
+  const hiddenCount = items.length - LIST_SUB_LINE_PREVIEW;
+  renderItems(collapsed);
+  const toggle = el('button', 'list-sub-more', `More (+${hiddenCount}) »`);
+  toggle.type = 'button';
+  let expanded = false;
+  toggle.addEventListener('click', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    expanded = !expanded;
+    renderItems(expanded ? items : collapsed);
+    toggle.textContent = expanded ? 'Less' : `More (+${hiddenCount}) »`;
+  });
+  frag.append(list, toggle);
+  return frag;
 }
 
 function badgeCard(imageUrl, label, name, href, color) {
@@ -2096,7 +2341,7 @@ function renderClassroomsPage() {
 function renderStaffPage() {
   const main = resetMain();
 
-  const pageHeader = el('div', 'page-header container');
+  const pageHeader = el('div', 'page-header-plain container');
   pageHeader.append(el('h1', 'page-title', 'Staff'));
   main.append(pageHeader);
 
@@ -2205,11 +2450,11 @@ function sectionFilterBar(groups, rerender) {
       state.rosterSectionExcluded.delete(excluded);
     }
   }
-  const bar = el('div', 'section-filter');
+  const bar = el('div', 'chip-row');
   for (const g of sections) {
     const key = g.chipLabel || g.header;
     const active = !state.rosterSectionExcluded.has(key);
-    const btn = el('button', 'section-chip' + (active ? ' active' : ''));
+    const btn = el('button', 'chip-toggle' + (active ? ' active' : ''));
     btn.type = 'button';
     btn.append(el('span', '', g.header));
     btn.addEventListener('click', () => {
@@ -2341,13 +2586,6 @@ function renderClassroomDetail(slug) {
   renderRoster(classroom.name, classroom.imageUrl, groups);
 }
 
-const emailTabs = [
-  {key: 'parents', label: 'Parents'},
-  {key: 'students', label: 'Students'},
-  {key: 'both', label: 'Students & Parents'},
-  {key: 'tagged', label: 'My Tags'},
-];
-
 const emailColumns = [
   {label: 'Full Name', get: r => r.p.fullName},
   {label: 'Email', get: r => r.p.email},
@@ -2370,13 +2608,12 @@ function kidsField(parent, field) {
   return [...new Set(values)].join(', ');
 }
 
-function emailEntries(tab) {
-  if (tab === 'tagged') {
-    return emailEntries('both').filter(r => isTagged(r.p.email));
-  }
-  const students = state.model.people
-    .filter(p => p.isStudent)
-    .sort((a, b) => a.fullName.localeCompare(b.fullName));
+// Every student, their parents, and staff, deduped by email (a parent who's
+// also staff keeps whichever role they were added under first). Role/grade/
+// classroom filtering down from this full set happens the same way the
+// Directory page's Everyone tab does it - via matchesFilters, driven by the
+// role chips and the Grade/Classroom/Tags dropdowns.
+function emailEntries() {
   const rows = [];
   const seen = new Set();
   const add = (p, role, grade, classroom) => {
@@ -2385,19 +2622,24 @@ function emailEntries(tab) {
       rows.push({p, role, grade, classroom});
     }
   };
+  const students = state.model.people
+    .filter(p => p.isStudent)
+    .sort((a, b) => a.fullName.localeCompare(b.fullName));
   for (const s of students) {
-    if (tab !== 'parents') {
-      add(s, 'Student', s.grade || '', s.classroom || '');
-    }
-    if (tab !== 'students') {
-      const family = state.model.families[s.familyKey];
-      for (const email of (family && family.adultEmails) || []) {
-        const parent = byEmail[email];
-        if (parent) {
-          add(parent, 'Parent', kidsField(parent, 'grade'), kidsField(parent, 'classroom'));
-        }
+    add(s, 'Student', s.grade || '', s.classroom || '');
+    const family = state.model.families[s.familyKey];
+    for (const email of (family && family.adultEmails) || []) {
+      const parent = byEmail[email];
+      if (parent) {
+        add(parent, 'Parent', kidsField(parent, 'grade'), kidsField(parent, 'classroom'));
       }
     }
+  }
+  const staff = state.model.people
+    .filter(p => p.isStaff)
+    .sort((a, b) => a.fullName.localeCompare(b.fullName));
+  for (const s of staff) {
+    add(s, 'Staff', '', '');
   }
   return rows;
 }
@@ -2405,20 +2647,14 @@ function emailEntries(tab) {
 function renderEmailListPage() {
   const main = resetMain();
 
-  main.append(el('div', 'container email-hint', 'Use the filters to select for specific grades or classrooms.'));
-
-  const items = emailTabs.map(t => (t.key === 'tagged' ? {...t, icon: 'tag'} : t));
-  main.append(tabStrip(items, state.emailTab, 2, key => {
-    state.emailTab = key;
-    state.q = '';
-    history.replaceState(null, '', tabHref(key));
-    renderEmailListPage();
-    finishRender();
-  }));
+  const pageHeader = el('div', 'page-header-plain container');
+  pageHeader.append(el('h1', 'page-title', 'Email List'));
+  pageHeader.append(el('div', 'page-subtitle', 'Use the filters to select for specific grades or classrooms.'));
+  main.append(pageHeader);
 
   const content = el('div', 'content container');
   const header = el('div', 'content-header');
-  header.append(el('h1', '', emailTabs.find(t => t.key === state.emailTab).label));
+  header.append(roleChips(() => renderTable()));
   const controls = el('div', 'controls');
   const search = el('div', 'search');
   search.append(svg('search'));
@@ -2433,7 +2669,13 @@ function renderEmailListPage() {
   const download = el('a', 'filter-button email-download');
   download.title = 'Download what the table currently shows';
   download.append(svg('download'), el('span', '', 'CSV'));
-  controls.append(search, filterControl(renderTable), download);
+  controls.append(
+    facetDropdown('Grade', gradeOptions(), state.filterGrades, () => renderTable()),
+    facetDropdown('Classroom', state.model.classrooms.map(c => c.name), state.filterClassrooms, () => renderTable()),
+    facetDropdown('Tags', tagNames(), state.filterTags, () => renderTable()),
+    search,
+    download,
+  );
   header.append(controls);
   content.append(header);
 
@@ -2442,7 +2684,7 @@ function renderEmailListPage() {
   main.append(content);
 
   // Which columns the corner copy button copies. Persists across search/filter
-  // re-renders for this page visit, resets when the tab changes.
+  // re-renders for this page visit.
   const selectedColumns = new Set(emailColumns.map((c, i) => i));
   let currentRows = [];
 
@@ -2468,16 +2710,16 @@ function renderEmailListPage() {
 
   function renderTable() {
     holder.replaceChildren();
-    const rows = emailEntries(state.emailTab)
+    const rows = emailEntries()
       .filter(r => (r.p.fullName.toLowerCase().includes(state.q) || r.p.email.toLowerCase().includes(state.q)) && matchesFilters(r.p));
     currentRows = rows;
     const csv = [emailColumns.map(c => c.label).join(',')]
       .concat(rows.map(r => emailColumns.map(c => csvField(c.get(r))).join(',')))
       .join('\n');
     download.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
-    download.download = state.emailTab + '.csv';
+    download.download = 'email-list.csv';
     if (!rows.length) {
-      holder.append(el('div', 'empty', state.emailTab === 'tagged' ? 'No tagged people yet.' : 'No matches.'));
+      holder.append(el('div', 'empty', 'No matches.'));
       return;
     }
     const table = el('table', 'email-table');
@@ -2526,7 +2768,7 @@ function renderEmailListPage() {
       }
       const tagCell = el('td', 'email-tag');
       tagCell.append(tagControl(r.p.email, 'tag-wrap', 'row-tag', () => {
-        if (state.emailTab === 'tagged' || state.filterTags.size) {
+        if (state.filterTags.size) {
           renderTable();
         }
       }));
@@ -2706,7 +2948,7 @@ function renderMapPage() {
 
   const update = el('div', 'map-update');
   const action = el('a', 'map-update-link');
-  action.href = withFrom('/people/' + encodeURIComponent(personSlug(document.body.dataset.userEmail)) + '?edit=1');
+  action.href = withFrom('/my-privacy');
   action.append(svg('zap'), el('span', '', 'Update My Address'));
   update.append(action);
   content.append(update);
@@ -3046,7 +3288,6 @@ function render() {
     state.q = '';
     renderStaffPage();
   } else if (seg[0] === 'email-list') {
-    state.emailTab = tabParam('parents');
     state.q = '';
     renderEmailListPage();
   } else if (seg[0] === 'map') {
@@ -3347,6 +3588,8 @@ async function load() {
   for (const p of state.model.people) {
     byEmail[p.email] = p;
   }
+  state.everyoneOrder = shuffled(state.model.people);
+  state.familyOrder = shuffled(familyEntries());
   renderSuperEditBanner();
   renderSpoofBanner();
   renderPrivacyMenuAlert();

@@ -128,8 +128,8 @@
 }
 
 .todo-card {
-  background: #fff;
-  border: 1px solid var(--line);
+  background: #fdecd9;
+  border: 1px solid #f8cf9e;
   border-radius: 14px;
   padding: 0 20px;
   margin-top: 20px;
@@ -139,7 +139,7 @@
 .todo-card-title {
   font-weight: 700;
   font-size: 15px;
-  color: var(--ink);
+  color: var(--alert);
   padding: 16px 0 10px;
 }
 
@@ -767,7 +767,7 @@ main {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  background-color: #f8fcfd;
+  background-color: #fff;
   display: flex;
   flex-direction: column;
 }
@@ -805,7 +805,7 @@ main {
   padding-top: 10px;
   position: sticky;
   top: 0;
-  background: #fff;
+  background: #f8fcfd;
   z-index: 2;
 }
 
@@ -880,7 +880,11 @@ main {
 
 .page-header {
   padding-top: 24px;
-  background: #fff;
+  background: #f8fcfd;
+}
+
+.page-header-plain {
+  padding-top: 24px;
 }
 
 .page-title {
@@ -1116,14 +1120,6 @@ main {
   text-decoration: none;
 }
 
-.email-hint {
-  color: var(--muted);
-  font-size: 14px;
-  padding-top: 16px;
-  padding-bottom: 2px;
-  background: #fff;
-}
-
 .email-holder {
   overflow-x: auto;
 }
@@ -1139,7 +1135,7 @@ main {
   color: var(--muted);
   font-weight: 500;
   font-size: 13px;
-  background: #f8f9fa;
+  background: #f8fcfd;
 }
 
 .email-table th,
@@ -1705,6 +1701,15 @@ div.student-photo {
   display: block;
   border-radius: 6px;
   background: #f4f5f6;
+  color: #fff;
+}
+
+div.family-photo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2.5rem;
+  font-weight: 500;
 }
 
 .family-label {
@@ -1867,7 +1872,7 @@ a.classroom-card:hover .classroom-photo {
 }
 
 .detail-card {
-  background: #fff;
+  background: #f8fcfd;
   border: 1px solid var(--line);
   border-radius: 18px;
   padding: 28px;
@@ -2065,6 +2070,31 @@ a.list-row:hover {
   white-space: pre-line;
 }
 
+.list-sub-bullets {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.list-sub-bullets li {
+  margin: 2px 0;
+}
+
+.list-sub-more {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--brand);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.list-sub-more:hover {
+  text-decoration: underline;
+}
+
 .class-head {
   display: flex;
   align-items: center;
@@ -2086,7 +2116,7 @@ a.list-row:hover {
 }
 
 .roster-header {
-  background: #fff;
+  background: #f8fcfd;
 }
 
 .roster-tabs {
@@ -2117,14 +2147,17 @@ a.list-row:hover {
   gap: 12px;
 }
 
-.section-filter {
+.chip-row {
   display: flex;
   flex-wrap: wrap;
-  justify-content: flex-end;
   gap: 8px;
 }
 
-.section-chip {
+.roster-heading-row .chip-row {
+  justify-content: flex-end;
+}
+
+.chip-toggle {
   display: inline-flex;
   align-items: center;
   background: var(--input);
@@ -2137,11 +2170,11 @@ a.list-row:hover {
   cursor: pointer;
 }
 
-.section-chip:hover {
+.chip-toggle:hover {
   background: #e2e6e9;
 }
 
-.section-chip.active {
+.chip-toggle.active {
   background: var(--brand);
   color: #fff;
 }
