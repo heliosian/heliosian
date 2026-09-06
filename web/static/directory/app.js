@@ -413,18 +413,20 @@ function renderNav() {
   const nav = document.querySelector('#nav');
   nav.replaceChildren();
 
-  function renderItem(item, showAlert) {
+  function renderItem(item, indicator) {
     const a = el('a');
     a.href = '/' + item.path;
     if (item.path === seg && !(item.path === 'people' && onFamilyMember)) {
       a.className = 'active';
     }
     a.append(svg(item.path), el('span', '', item.label));
-    if (showAlert) {
+    if (indicator === 'alert') {
       const alert = el('span', 'nav-item-alert');
       alert.title = 'Some family info is missing or out of date';
       alert.append(svg('alert'));
       a.append(alert);
+    } else if (indicator) {
+      a.append(navBadge(indicator));
     }
     nav.append(a);
   }
@@ -460,10 +462,11 @@ function renderNav() {
   }
 
   if (familyPeople.length) {
-    const totalTodos = staleItems().length;
-    const open = sectionHeading('family', 'My Family', totalTodos, onFamilyMember);
+    const todos = staleItems();
+    const familyTodos = todos.filter(i => i.target === 'family').length;
+    const open = sectionHeading('family', 'My Family', todos.length, onFamilyMember);
     if (open) {
-      renderItem({path: 'my-family', label: 'My Family'}, totalTodos > 0);
+      renderItem({path: 'my-family', label: 'My Family'}, familyTodos || (todos.length > familyTodos && 'alert'));
       for (const p of familyPeople) {
         nav.append(familyMemberRow(p, me.email, onFamilyMember ? rawSeg[1] : null));
       }
