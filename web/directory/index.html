@@ -55,7 +55,7 @@
 </header>
 <aside class="sidebar">
 <div class="brand"><a href="/people"><img src="/static/brand/logo-wordmark.png" alt="Helios Who?"></a></div>
-<nav id="nav"></nav>
+<nav class="app-nav" id="nav"></nav>
 <div class="user-menu" id="user-menu" hidden>
 <a href="/people/{{.UserEmailSlug}}">View Profile</a>
 <a href="/my-privacy" class="user-menu-privacy">My Privacy<span class="user-menu-alert" hidden></span></a>
@@ -72,6 +72,7 @@
 <a class="drawer-brand" href="/people"><img src="/static/brand/icon-192.png" alt=""><span>Helios Who?</span></a>
 <button class="drawer-close" id="drawer-close" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
 </div>
+<nav class="app-nav drawer-nav" id="drawer-nav"></nav>
 <div class="drawer-user">
 <div class="drawer-user-menu-anchor">
 <div class="user-menu" id="drawer-user-menu" hidden>

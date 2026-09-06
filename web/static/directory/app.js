@@ -86,6 +86,7 @@ const icons = {
   alert: '<svg viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>',
   sync: '<svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>',
   lock: '<svg viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
+  gear: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
 };
 
 function isMobile() {
@@ -106,9 +107,8 @@ const toolsNavItems = [
 const mobileNavSections = [
   {path: 'people', label: 'Directory'},
   {path: 'classrooms', label: 'Classrooms'},
-  {path: 'my-family', label: 'My Family'},
   {path: 'staff', label: 'Staff'},
-  {path: 'map', label: 'Map'},
+  {path: 'my-family', label: 'My Family'},
   {path: 'email-list', label: 'Email List'},
 ];
 
@@ -374,7 +374,7 @@ function resetMain(...children) {
 
 function familyNavPeople() {
   const me = byEmail[document.body.dataset.userEmail];
-  if (!me) {
+  if (!me || (me.isStaff && !me.isParent)) {
     return [];
   }
   const family = state.model.families[me.familyKey];
@@ -428,16 +428,15 @@ function renderNav() {
   const rawSegPerson = rawSeg[0] === 'people' && rawSeg[1] ? personByKey(rawSeg[1]) : undefined;
   const onFamilyMember = !!rawSegPerson && familyEmails.has(rawSegPerson.email);
 
-  const nav = document.querySelector('#nav');
-  nav.replaceChildren();
-
-  function renderItem(item, indicator) {
+  function renderItem(container, item, indicator) {
     const a = el('a');
     a.href = '/' + item.path;
     if (item.path === seg && !(item.path === 'people' && onFamilyMember)) {
       a.className = 'active';
     }
-    a.append(svg(item.path), el('span', '', item.label));
+    const icon = svg(item.path);
+    icon.classList.add('nav-icon-' + item.path);
+    a.append(icon, el('span', '', item.label));
     if (indicator === 'alert') {
       const alert = el('span', 'nav-item-alert');
       alert.title = 'Some family info is missing or out of date';
@@ -446,60 +445,81 @@ function renderNav() {
     } else if (indicator) {
       a.append(navBadge(indicator));
     }
-    nav.append(a);
+    container.append(a);
   }
 
-  function sectionHeading(key, title, indicator, forceOpen) {
-    const open = state.navOpen[key] || forceOpen;
-    const heading = el('div', 'nav-heading nav-heading-toggle' + (open ? ' open' : ''));
-    heading.append(el('span', '', title));
-    if (indicator === 'alert') {
-      const alert = el('span', 'nav-heading-alert');
-      alert.title = 'Some family info is missing or out of date';
-      alert.append(svg('alert'));
-      heading.append(alert);
-    } else if (indicator) {
-      heading.append(navBadge(indicator));
+  function buildNavInto(nav) {
+    nav.replaceChildren();
+
+    function sectionHeading(key, title, icon, indicator, forceOpen) {
+      const open = state.navOpen[key] || forceOpen;
+      const heading = el('div', 'nav-heading nav-heading-toggle' + (open ? ' open' : ''));
+      const chevron = el('span', 'nav-chevron');
+      chevron.append(svg('chevron'));
+      const headingIcon = svg(icon);
+      headingIcon.classList.add('nav-heading-icon-' + icon);
+      heading.append(chevron, headingIcon, el('span', 'nav-heading-title', title));
+      if (indicator === 'alert') {
+        const alert = el('span', 'nav-heading-alert');
+        alert.title = 'Some family info is missing or out of date';
+        alert.append(svg('alert'));
+        heading.append(alert);
+      } else if (indicator) {
+        heading.append(navBadge(indicator));
+      }
+      heading.addEventListener('click', () => {
+        state.navOpen[key] = !state.navOpen[key];
+        saveNavOpen(state.navOpen);
+        renderNav();
+      });
+      nav.append(heading);
+      if (!open) {
+        return null;
+      }
+      const body = el('div', 'nav-section-body');
+      nav.append(body);
+      return body;
     }
-    const chevron = el('span', 'nav-chevron');
-    chevron.append(svg('chevron'));
-    heading.append(chevron);
-    heading.addEventListener('click', () => {
-      state.navOpen[key] = !state.navOpen[key];
-      saveNavOpen(state.navOpen);
-      renderNav();
-    });
-    nav.append(heading);
-    return open;
-  }
 
-  if (sectionHeading('directory', 'Directory', 0, false)) {
-    for (const item of primaryNavItems) {
-      renderItem(item);
+    const directoryBody = sectionHeading('directory', 'Directory', 'people', 0, false);
+    if (directoryBody) {
+      for (const item of primaryNavItems) {
+        renderItem(directoryBody, item);
+      }
     }
-  }
 
-  if (familyPeople.length) {
-    const todos = staleItems();
-    const familyTodos = todos.filter(i => i.target === 'family').length;
-    const open = sectionHeading('family', 'My Family', todos.length, onFamilyMember);
-    if (open) {
-      renderItem({path: 'my-family', label: 'My Family'}, familyTodos || (todos.length > familyTodos && 'alert'));
-      for (const p of familyPeople) {
-        nav.append(familyMemberRow(p, me.email, onFamilyMember ? rawSeg[1] : null));
+    if (familyPeople.length) {
+      const todos = staleItems();
+      const familyTodos = todos.filter(i => i.target === 'family').length;
+      const familyBody = sectionHeading('family', 'My Family', 'families', todos.length, onFamilyMember);
+      if (familyBody) {
+        renderItem(familyBody, {path: 'my-family', label: 'My Family'}, familyTodos || (todos.length > familyTodos && 'alert'));
+        for (const p of familyPeople) {
+          familyBody.append(familyMemberRow(p, me.email, onFamilyMember ? rawSegPerson.email : null));
+        }
+      }
+    }
+
+    const toolsBody = sectionHeading('tools', 'Tools', 'gear', 0, false);
+    if (toolsBody) {
+      for (const item of toolsNavItems) {
+        renderItem(toolsBody, item);
       }
     }
   }
 
-  if (sectionHeading('tools', 'Tools', 0, false)) {
-    for (const item of toolsNavItems) {
-      renderItem(item);
-    }
+  buildNavInto(document.querySelector('#nav'));
+  const drawerNav = document.querySelector('#drawer-nav');
+  if (drawerNav) {
+    buildNavInto(drawerNav);
   }
 
   const tabs = document.querySelector('#mobile-tabs');
   tabs.replaceChildren();
   for (const item of mobileNavSections) {
+    if (item.path === 'my-family' && !familyPeople.length) {
+      continue;
+    }
     const a = el('a', item.path === seg ? 'active' : '');
     a.href = '/' + item.path;
     a.append(svg(item.path), el('span', '', item.label));
