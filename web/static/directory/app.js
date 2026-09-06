@@ -248,7 +248,7 @@ function monthYear(dateStr) {
 }
 
 function photoNeedsUpdate(p) {
-  return !p.photoUrl || agedPast(p.photoUrl, p.photoUpdated, staleYears.photo);
+  return p.isStudent && (!p.photoUrl || agedPast(p.photoUrl, p.photoUpdated, staleYears.photo));
 }
 
 function factsNeedUpdate(p) {
