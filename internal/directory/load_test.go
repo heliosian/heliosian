@@ -88,6 +88,25 @@ func TestStaffWhoIsAlsoAParentMerges(t *testing.T) {
 	}
 }
 
+// Both of Mia's parents carry family cells on their own Overrides rows: Marco's has a
+// stale Family Photo Updated left over from a prior year, Elena's reflects her actual
+// recent upload. The merge must keep the later date regardless of which row it visits
+// first, rather than whichever row happens to be processed last.
+func TestFamilyPhotoUpdatedKeepsTheLatestParentDate(t *testing.T) {
+	m := sampleModel(t)
+	p := m.Person("elena.torres@heliosschool.org")
+	if p == nil || p.FamilyKey == "" {
+		t.Fatalf("elena.torres has no family: %+v", p)
+	}
+	family, ok := m.Families[p.FamilyKey]
+	if !ok {
+		t.Fatalf("family %s not found", p.FamilyKey)
+	}
+	if family.PhotoUpdated != "2026-08-20" {
+		t.Errorf("family photo updated = %q, want Elena's newer date to win over Marco's stale 2023-01-01", family.PhotoUpdated)
+	}
+}
+
 // Staff Veracross does not carry still enter through a flagged Overrides row.
 func TestStaffNotInVeracrossStillLoad(t *testing.T) {
 	p := model(t, "noa.adler@heliosschool.org")

@@ -838,7 +838,17 @@ func (l *loader) buildFamilies() error {
 			p.FamilyKey = l.familyKeys[sets[0]]
 		}
 	}
-	for email, cells := range l.familyOverrides {
+	overrideEmails := make([]string, 0, len(l.familyOverrides))
+	for email := range l.familyOverrides {
+		overrideEmails = append(overrideEmails, email)
+	}
+	sort.Strings(overrideEmails)
+	// Two parents in the same household can each carry family cells on their own
+	// Overrides row (e.g. after only one of them re-uploads the family photo), so this
+	// must resolve conflicts deterministically rather than by map iteration order: keep
+	// the most recently updated photo date rather than whichever row is visited last.
+	for _, email := range overrideEmails {
+		cells := l.familyOverrides[email]
 		p := l.people[email]
 		if !p.IsParent {
 			return fmt.Errorf("overrides row %s has family cells but %s is not a parent", email, email)
@@ -858,7 +868,7 @@ func (l *loader) buildFamilies() error {
 		if cells.hasCaption {
 			family.PhotoCaption = cells.caption
 		}
-		if cells.hasPhotoUpdated {
+		if cells.hasPhotoUpdated && cells.photoUpdated > family.PhotoUpdated {
 			family.PhotoUpdated = cells.photoUpdated
 		}
 		if cells.photo != "" {
