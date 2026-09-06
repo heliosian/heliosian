@@ -1,4 +1,24 @@
-const state = {model: null, tab: 'everyone', classTab: 'by-classroom', rosterTab: 'students', q: '', filterGrades: new Set(), filterClassrooms: new Set(), filterRoles: new Set(), filterCities: new Set(), filterPronouns: new Set(), filterTags: new Set(), filterNew: false};
+function loadNavOpen() {
+  try {
+    const raw = localStorage.getItem('navOpen');
+    if (raw) {
+      return JSON.parse(raw);
+    }
+  } catch (e) {
+    // ignore, fall through to defaults
+  }
+  return {directory: true, family: false, tools: true};
+}
+
+function saveNavOpen(navOpen) {
+  try {
+    localStorage.setItem('navOpen', JSON.stringify(navOpen));
+  } catch (e) {
+    // ignore
+  }
+}
+
+const state = {model: null, tab: 'everyone', classTab: 'by-classroom', rosterTab: 'students', q: '', filterGrades: new Set(), filterClassrooms: new Set(), filterRoles: new Set(), filterCities: new Set(), filterPronouns: new Set(), filterTags: new Set(), filterNew: false, navOpen: loadNavOpen()};
 let byEmail = {};
 let tags = {};
 
@@ -42,9 +62,9 @@ const icons = {
   map: '<svg viewBox="0 0 24 24"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></svg>',
   'email-list': '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/></svg>',
   everyone: '<svg viewBox="0 0 24 24"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>',
-  students: '<svg viewBox="0 0 24 24"><circle cx="8.5" cy="5.5" r="2"/><path d="M8.5 7.5v5M8.5 12.5l-2.5 5M8.5 12.5l2.5 5M5 9.5l3.5 1 3.5-1"/><circle cx="16.5" cy="7" r="1.7"/><path d="M16.5 8.7v4.3M16.5 13l-2 4M16.5 13l2 4M13.8 10.5l2.7.8 2.7-.8"/></svg>',
+  students: '<svg viewBox="0 0 24 24"><path d="M4 10a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/><path d="M8 21v-5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v5"/><path d="M8 10h8"/></svg>',
   families: '<svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
-  'staff-tab': '<svg viewBox="0 0 24 24"><line x1="10" x2="14" y1="2" y2="2"/><line x1="12" x2="15" y1="14" y2="11"/><circle cx="12" cy="14" r="8"/></svg>',
+  'staff-tab': '<svg viewBox="0 0 24 24"><path d="M12 20.94c1.5 0 2.75 1.06 4 1.06 3 0 6-8 6-12.22A4.91 4.91 0 0 0 17 5c-2.22 0-4 1.44-5 2-1-.56-2.78-2-5-2a4.9 4.9 0 0 0-5 4.78C2 14 5 22 8 22c1.25 0 2.5-1.06 4-1.06Z"/><path d="M10 2c1 .5 2 2 2 5"/></svg>',
   search: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>',
   filter: '<svg viewBox="0 0 24 24"><path d="M5 7h14M8 12h8M10.5 17h3"/></svg>',
   chevron: '<svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>',
@@ -63,14 +83,26 @@ const icons = {
   mic: '<svg viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>',
   upload: '<svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>',
   pencil: '<svg viewBox="0 0 24 24"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/></svg>',
+  alert: '<svg viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>',
 };
 
 function isMobile() {
   return matchMedia('(max-width: 900px)').matches;
 }
 
-const navSections = [
-  {path: 'people', label: 'People'},
+const primaryNavItems = [
+  {path: 'people', label: 'Directory'},
+  {path: 'classrooms', label: 'Classrooms'},
+  {path: 'staff', label: 'Staff'},
+];
+
+const toolsNavItems = [
+  {path: 'map', label: 'Map'},
+  {path: 'email-list', label: 'Email List'},
+];
+
+const mobileNavSections = [
+  {path: 'people', label: 'Directory'},
   {path: 'classrooms', label: 'Classrooms'},
   {path: 'my-family', label: 'My Family'},
   {path: 'staff', label: 'Staff'},
@@ -148,18 +180,38 @@ function setChrome(title, backHref) {
 
 const optInForm = 'https://docs.google.com/forms/d/e/1FAIpQLSehrwYXWLJ6LK5_0f5ccdIA1gF0q7jAeDMxV5FWb_Myr4uRog/viewform';
 
+function infoBanner(kind, iconName, title, desc, buttonLabel, buttonHref, external) {
+  const wrap = el('div', 'container infobanner-wrap');
+  const card = el('div', `infobanner infobanner-${kind}`);
+
+  const main = el('div', 'infobanner-main');
+  const iconBadge = el('div', 'infobanner-icon');
+  iconBadge.append(svg(iconName));
+  main.append(iconBadge);
+  const body = el('div', 'infobanner-body');
+  body.append(el('div', 'infobanner-title', title));
+  body.append(el('div', 'infobanner-desc', desc));
+  main.append(body);
+  card.append(main);
+
+  const action = el('a', 'infobanner-button');
+  action.href = buttonHref;
+  if (external) {
+    action.target = '_blank';
+    action.rel = 'noopener';
+  }
+  action.append(el('span', '', buttonLabel), svg('chevron-right'));
+  card.append(action);
+
+  wrap.append(card);
+  return wrap;
+}
+
 function optInBanner() {
-  const banner = el('div', 'optin');
-  const inner = el('div', 'optin-inner container');
-  inner.append(el('h2', '', 'Help! Opt-In Required'));
-  inner.append(el('p', '', 'You have not yet opted into the Helios Community Apps and will lose access on Sept 1. Please opt-in. Thank you!'));
-  const action = el('a', 'optin-button', 'Opt-In');
-  action.href = optInForm;
-  action.target = '_blank';
-  action.rel = 'noopener';
-  inner.append(action);
-  banner.append(inner);
-  return banner;
+  return infoBanner(
+    'alert', 'alert', 'Opt-in required',
+    'You have not yet opted into the Helios Community Apps and will lose access on Sept 1.',
+    'Opt In Now', optInForm, true);
 }
 
 const staleYears = {photo: 0.75, facts: 0.6, familyPhoto: 1.5};
@@ -172,48 +224,90 @@ function agedPast(present, updated, years) {
   return Number.isNaN(when) || Date.now() - when > years * 365.25 * 24 * 60 * 60 * 1000;
 }
 
+function monthYear(dateStr) {
+  const when = Date.parse(dateStr);
+  if (Number.isNaN(when)) {
+    return '';
+  }
+  return new Date(when).toLocaleDateString('en-US', {month: 'long', year: 'numeric'});
+}
+
+function photoNeedsUpdate(p) {
+  return !p.photoUrl || agedPast(p.photoUrl, p.photoUpdated, staleYears.photo);
+}
+
+function factsNeedUpdate(p) {
+  return p.isStudent && (!p.facts || agedPast(p.facts, p.factsUpdated, staleYears.facts));
+}
+
 function staleItems() {
   const me = byEmail[document.body.dataset.userEmail];
   if (!me) {
     return [];
   }
   const family = state.model.families[me.familyKey];
-  const kids = ((family && family.kidEmails) || []).map(e => byEmail[e]).filter(Boolean);
   const items = [];
-  for (const p of [me, ...kids.filter(k => k.email !== me.email)].filter(p => p.isStudent)) {
+  for (const p of familyNavPeople()) {
     const whose = p.email === me.email ? 'your' : `${p.fullName}'s`;
-    const href = personLink(p) + '&edit=1';
-    if (agedPast(p.photoUrl, p.photoUpdated, staleYears.photo)) {
-      items.push({text: `Update ${whose} photo for new year`, href});
+    if (photoNeedsUpdate(p)) {
+      items.push({type: 'photo', target: 'person', key: p.email, text: `Update ${whose} photo for new year`, person: p});
     }
-    if (agedPast(p.facts, p.factsUpdated, staleYears.facts)) {
-      items.push({text: `Update ${whose} facts for new year`, href});
+    if (factsNeedUpdate(p)) {
+      items.push({type: 'facts', target: 'person', key: p.email, text: `Update ${whose} facts for new year`, person: p});
     }
   }
   if (family && agedPast(family.photoUrl, family.photoUpdated, staleYears.familyPhoto)) {
-    items.push({text: 'Update your family photo for new year', href: familyLink(family.key)});
+    items.push({type: 'photo', target: 'family', key: family.key, text: 'Update your family photo for new year'});
   }
   return items;
 }
 
-function staleBanner(items) {
-  const banner = el('div', 'stale');
-  const inner = el('div', 'stale-inner container');
+function familyInfoBanner(items) {
+  const count = items.length;
+  const desc = `${count} thing${count === 1 ? '' : 's'} to update for the new year.`;
+  return infoBanner('alert', 'alert', 'Update Family Info', desc, 'Update Family Info', '/my-family', false);
+}
+
+function todoPhotoRow(item) {
+  const row = el('label', 'todo-row');
+  row.append(el('div', 'todo-mark'));
+  row.append(el('div', 'todo-text', item.text));
+  const status = el('div', 'todo-status');
+  const input = el('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.hidden = true;
+  input.addEventListener('change', () => {
+    if (input.files.length) {
+      row.classList.add('todo-row-busy');
+      submitMedia(item.target, item.key, 'photo', input.files[0], input.files[0].name, status);
+    }
+  });
+  row.append(input, status);
+  const action = el('div', 'todo-chevron');
+  action.append(svg('camera'));
+  row.append(action);
+  return row;
+}
+
+function todoFactsRow(item) {
+  const row = el('a', 'todo-row');
+  row.href = withFrom(`/people/${encodeURIComponent(item.key)}?edit=1&focus=facts`);
+  row.append(el('div', 'todo-mark'));
+  row.append(el('div', 'todo-text', item.text));
+  const chev = el('div', 'todo-chevron');
+  chev.append(svg('chevron-right'));
+  row.append(chev);
+  return row;
+}
+
+function todoChecklist(items) {
+  const card = el('div', 'todo-card');
+  card.append(el('div', 'todo-card-title', `${items.length} thing${items.length === 1 ? '' : 's'} to update for the new year`));
   for (const item of items) {
-    const row = el('a', 'stale-row');
-    row.href = item.href;
-    row.append(el('div', 'stale-mark'));
-    row.append(el('div', 'stale-text', item.text));
-    const chev = el('div', 'member-chevron');
-    chev.append(svg('chevron-right'));
-    row.append(chev);
-    inner.append(row);
+    card.append(item.type === 'photo' ? todoPhotoRow(item) : todoFactsRow(item));
   }
-  const action = el('a', 'stale-button', 'Update Family Info');
-  action.href = '/my-family';
-  inner.append(action);
-  banner.append(inner);
-  return banner;
+  return card;
 }
 
 function resetMain(...children) {
@@ -223,34 +317,144 @@ function resetMain(...children) {
   if (me && me.optStatus === 'default') {
     main.append(optInBanner());
   }
-  const stale = staleItems();
-  if (stale.length) {
-    main.append(staleBanner(stale));
+  const seg = segments();
+  const onOwnFamilyPage = seg[0] === 'families' && seg[1] === myFamilyKey();
+  const familyEmails = new Set(familyNavPeople().map(fp => fp.email));
+  const onOwnFamilyMemberPage = seg[0] === 'people' && seg[1] && familyEmails.has(seg[1]);
+  if (!onOwnFamilyPage && !onOwnFamilyMemberPage) {
+    const stale = staleItems();
+    if (stale.length) {
+      main.append(familyInfoBanner(stale));
+    }
   }
   main.append(...children);
   return main;
 }
 
-function renderNav() {
-  const seg = activeSection();
-  const nav = document.querySelector('#nav');
-  nav.replaceChildren();
-  for (const item of navSections) {
-    if (item.divider) {
-      nav.append(el('div', 'nav-divider'));
+function familyNavPeople() {
+  const me = byEmail[document.body.dataset.userEmail];
+  if (!me) {
+    return [];
+  }
+  const family = state.model.families[me.familyKey];
+  const emails = [me.email, ...((family && family.adultEmails) || []), ...((family && family.kidEmails) || [])];
+  const seen = new Set();
+  const people = [];
+  for (const email of emails) {
+    if (seen.has(email)) {
       continue;
     }
+    seen.add(email);
+    const p = byEmail[email];
+    if (p) {
+      people.push(p);
+    }
+  }
+  return people;
+}
+
+function personTodoCount(p) {
+  return (photoNeedsUpdate(p) ? 1 : 0) + (factsNeedUpdate(p) ? 1 : 0);
+}
+
+function navBadge(count) {
+  return el('span', 'nav-badge', String(count));
+}
+
+function familyMemberRow(p, meEmail, activeEmail) {
+  const a = el('a', 'nav-family-link');
+  a.href = personLink(p);
+  if (p.email === activeEmail) {
+    a.className = 'nav-family-link active';
+  }
+  a.append(photoOrInitials(p.photoUrl, p.fullName, 'nav-family-avatar'));
+  a.append(el('span', 'nav-family-name', p.email === meEmail ? 'Me' : firstName(p.fullName)));
+  const count = personTodoCount(p);
+  if (count) {
+    const badge = navBadge(count);
+    badge.title = `${p.email === meEmail ? 'You have' : `${firstName(p.fullName)} has`} ${count} thing${count === 1 ? '' : 's'} to update`;
+    a.append(badge);
+  }
+  return a;
+}
+
+function renderNav() {
+  const seg = activeSection();
+  const rawSeg = segments();
+  const me = byEmail[document.body.dataset.userEmail];
+  const familyPeople = familyNavPeople();
+  const familyEmails = new Set(familyPeople.map(p => p.email));
+  const onFamilyMember = rawSeg[0] === 'people' && rawSeg[1] && familyEmails.has(rawSeg[1]);
+
+  const nav = document.querySelector('#nav');
+  nav.replaceChildren();
+
+  function renderItem(item, showAlert) {
     const a = el('a');
     a.href = '/' + item.path;
-    if (item.path === seg) {
+    if (item.path === seg && !(item.path === 'people' && onFamilyMember)) {
       a.className = 'active';
     }
     a.append(svg(item.path), el('span', '', item.label));
+    if (showAlert) {
+      const alert = el('span', 'nav-item-alert');
+      alert.title = 'Some family info is missing or out of date';
+      alert.append(svg('alert'));
+      a.append(alert);
+    }
     nav.append(a);
   }
+
+  function sectionHeading(key, title, indicator, forceOpen) {
+    const open = state.navOpen[key] || forceOpen;
+    const heading = el('div', 'nav-heading nav-heading-toggle' + (open ? ' open' : ''));
+    heading.append(el('span', '', title));
+    if (indicator === 'alert') {
+      const alert = el('span', 'nav-heading-alert');
+      alert.title = 'Some family info is missing or out of date';
+      alert.append(svg('alert'));
+      heading.append(alert);
+    } else if (indicator) {
+      heading.append(navBadge(indicator));
+    }
+    const chevron = el('span', 'nav-chevron');
+    chevron.append(svg('chevron'));
+    heading.append(chevron);
+    heading.addEventListener('click', () => {
+      state.navOpen[key] = !state.navOpen[key];
+      saveNavOpen(state.navOpen);
+      renderNav();
+    });
+    nav.append(heading);
+    return open;
+  }
+
+  if (sectionHeading('directory', 'Directory', 0, false)) {
+    for (const item of primaryNavItems) {
+      renderItem(item);
+    }
+  }
+
+  if (familyPeople.length) {
+    const totalTodos = staleItems().length;
+    const open = sectionHeading('family', 'My Family', totalTodos, onFamilyMember);
+    if (open) {
+      renderItem({path: 'my-family', label: 'My Family'}, totalTodos > 0);
+      for (const p of familyPeople) {
+        nav.append(familyMemberRow(p, me.email, onFamilyMember ? rawSeg[1] : null));
+      }
+    }
+  }
+
+  if (sectionHeading('tools', 'Tools', 0, false)) {
+    for (const item of toolsNavItems) {
+      renderItem(item);
+    }
+  }
+
   const tabs = document.querySelector('#mobile-tabs');
   tabs.replaceChildren();
-  for (const item of navSections) {
+  for (const item of mobileNavSections) {
     const a = el('a', item.path === seg ? 'active' : '');
     a.href = '/' + item.path;
     a.append(svg(item.path), el('span', '', item.label));
@@ -527,6 +731,11 @@ const tabRenderers = {
 function renderPeople() {
   const main = resetMain();
 
+  const pageHeader = el('div', 'page-header container');
+  pageHeader.append(el('h1', 'page-title', 'Directory'));
+  pageHeader.append(el('div', 'page-subtitle', 'Find and connect with the Helios community.'));
+  main.append(pageHeader);
+
   const items = peopleTabs.map(t => ({...t, icon: t.key === 'staff' ? 'staff-tab' : t.key}));
   main.append(tabStrip(items, state.tab, 2, key => {
     state.tab = key;
@@ -536,8 +745,7 @@ function renderPeople() {
   }));
 
   const content = el('div', 'content container');
-  const header = el('div', 'content-header');
-  header.append(el('h1', '', peopleTabs.find(t => t.key === state.tab).label));
+  const header = el('div', 'content-header content-header-solo');
   const controls = el('div', 'controls');
   const search = el('div', 'search');
   search.append(svg('search'));
@@ -975,8 +1183,10 @@ function renderPersonDetail(email) {
     return;
   }
   const params = new URLSearchParams(location.search);
+  const focusFacts = params.get('focus') === 'facts';
   if (params.get('edit') === '1') {
     params.delete('edit');
+    params.delete('focus');
     const query = params.toString();
     history.replaceState(null, '', location.pathname + (query ? '?' + query : ''));
     personEdit = email;
@@ -984,13 +1194,26 @@ function renderPersonDetail(email) {
   const origin = fromCrumbs() || [['People', '/people']];
   main.append(breadcrumbs([...origin, [p.fullName, null]], p.email));
 
+  const editable = canEditPerson(p.email);
+  const editing = editable && personEdit === p.email;
+  const showPhotoEdit = editing || (editable && photoNeedsUpdate(p));
+  const showFactsEdit = editing || (editable && factsNeedUpdate(p));
+  const self = p.email === document.body.dataset.userEmail;
+
+  if (editable) {
+    const personTasks = staleItems().filter(i => i.person && i.person.email === p.email);
+    if (personTasks.length) {
+      const wrap = el('div', 'container');
+      wrap.append(todoChecklist(personTasks));
+      main.append(wrap);
+    }
+  }
+
   const content = el('div', 'container detail-content');
   const grid = el('div', 'detail-grid');
   const left = el('div');
-  const editable = canEditPerson(p.email);
-  const editing = editable && personEdit === p.email;
-  if (p.photoUrl || editing) {
-    const wrap = el('div', 'photo-wrap');
+  if (p.photoUrl || showPhotoEdit) {
+    const wrap = el('div', 'photo-wrap' + (editable && photoNeedsUpdate(p) ? ' needs-update' : ''));
     if (p.photoUrl) {
       const img = el('img', 'detail-photo');
       img.src = p.photoUrl;
@@ -1000,8 +1223,11 @@ function renderPersonDetail(email) {
       wrap.append(el('div', 'detail-photo detail-photo-empty'));
     }
     left.append(wrap);
-    if (editing) {
+    if (showPhotoEdit) {
       const status = el('div', 'media-status');
+      if (photoNeedsUpdate(p)) {
+        status.textContent = `Add ${self ? 'your' : `${firstName(p.fullName)}'s`} photo for the new year`;
+      }
       wrap.append(uploadIcon('camera', 'Upload photo', 'image/*', 'person', p.email, 'photo', status));
       left.append(status);
     }
@@ -1109,12 +1335,26 @@ function renderPersonDetail(email) {
   grid.append(right);
   content.append(grid);
 
-  if (p.facts || editing) {
+  if (p.facts || showFactsEdit) {
     const header = el('h2', 'about-header', 'About Me');
     content.append(header);
-    const text = el('div', 'about-text', p.facts || '');
+    const needsFacts = factsNeedUpdate(p);
+    const placeholder = needsFacts ? `Add ${self ? 'your' : `${firstName(p.fullName)}'s`} facts for the new year — click the pencil to get started.` : '';
+    const textClass = 'about-text' + (needsFacts ? ' needs-update' : '') + (!p.facts && placeholder ? ' placeholder-text' : '');
+    const text = el('div', textClass, p.facts || placeholder);
     const status = el('div', 'media-status about-status');
-    if (editing) {
+    content.append(text);
+    if (p.facts) {
+      const when = monthYear(p.factsUpdated);
+      if (editable && needsFacts) {
+        content.append(el('div', 'about-note about-note-stale',
+          when ? `Posted ${when} — please refresh this for the new year.` : 'Please refresh this for the new year.'));
+      } else if (!editable && when) {
+        content.append(el('div', 'about-note', `Posted ${when}`));
+      }
+    }
+    content.append(status);
+    if (showFactsEdit) {
       const pencil = el('button', 'edit-icon inline');
       pencil.title = 'Edit';
       pencil.append(svg('pencil'));
@@ -1150,12 +1390,13 @@ function renderPersonDetail(email) {
           await load();
         });
       });
+      if (focusFacts) {
+        pencil.click();
+      }
     }
-    content.append(text, status);
   }
 
   if (editing) {
-    const self = p.email === document.body.dataset.userEmail;
     const header = el('h2', 'about-header', 'Privacy');
     const button = el('button', 'media-button',
       'Remove ' + (self ? 'me' : firstName(p.fullName)) + ' from this directory');
@@ -1196,6 +1437,7 @@ function renderFamilyDetail(key) {
     main.append(el('div', 'empty', 'Not found.'));
     return;
   }
+  const editable = key === myFamilyKey();
   const shortName = (family.name || '').replace(/ Family$/, '');
   let crumbs = [['People', '/people'], [shortName, null], ['Family', null]];
   const from = fromURL();
@@ -1217,10 +1459,19 @@ function renderFamilyDetail(key) {
   }
   main.append(breadcrumbs(crumbs));
 
+  if (editable) {
+    const items = staleItems();
+    if (items.length) {
+      const wrap = el('div', 'container');
+      wrap.append(todoChecklist(items));
+      main.append(wrap);
+    }
+  }
+
   const content = el('div', 'container detail-content');
   const grid = el('div', 'detail-grid');
   const left = el('div');
-  const editable = key === myFamilyKey();
+  left.id = 'family-photo';
   if (family.photoUrl || editable) {
     const wrap = el('div', 'photo-wrap');
     if (family.photoUrl) {
@@ -1305,6 +1556,13 @@ function renderFamilyDetail(key) {
   inner.append(cols);
   band.append(inner);
   main.append(band);
+
+  if (location.hash) {
+    const target = document.querySelector(location.hash);
+    if (target) {
+      target.scrollIntoView({block: 'center'});
+    }
+  }
 }
 
 function slugify(name) {
