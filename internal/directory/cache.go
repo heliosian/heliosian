@@ -1,17 +1,21 @@
 package directory
 
 import (
+	"errors"
 	"log"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	"heliosian/internal/blob"
 	"heliosian/internal/data"
 	"heliosian/internal/geocode"
 )
 
 const refreshInterval = 5 * time.Minute
+
+var errNoStore = errors.New("image uploads require real-data mode")
 
 type Geocoder interface {
 	Lookup(address string) (geocode.Point, error)
@@ -22,14 +26,32 @@ type Cache struct {
 	geocoder Geocoder
 	blobs    BlobChecker
 	static   BlobChecker
+	store    *blob.Store
 	queue    *Queue
 	mu       sync.RWMutex
 	model    *Model
 	tables   *Tables
+	settings Settings
+
+	// superEdit tracks, per admin, whether they've turned on the switch that lets them
+	// edit anyone's record rather than just their own family's. Deliberately
+	// in-memory only: it resets on every restart rather than staying on forever.
+	superEdit map[string]bool
+
+	// spoof tracks, per admin, which other person they're currently viewing the
+	// directory as. View-only by design — it changes what an admin sees, never who a
+	// write is attributed to, so it never touches upload.go's identity resolution.
+	spoof map[string]string
 }
 
-func NewCache(source data.Source, geocoder Geocoder, blobs, static BlobChecker, queue *Queue) (*Cache, error) {
-	c := &Cache{source: source, geocoder: geocoder, blobs: blobs, static: static, queue: queue}
+// store is the concrete blob store (nil in sample mode), needed for admin operations
+// — reading and writing settings, and replacing a classroom or grade image in place —
+// which need more than the existence check BlobChecker exposes.
+func NewCache(source data.Source, geocoder Geocoder, blobs, static BlobChecker, store *blob.Store, queue *Queue) (*Cache, error) {
+	c := &Cache{
+		source: source, geocoder: geocoder, blobs: blobs, static: static, store: store, queue: queue,
+		settings: loadSettings(store), superEdit: map[string]bool{}, spoof: map[string]string{},
+	}
 	start := time.Now()
 	tables, err := ReadTables(source)
 	if err != nil {
@@ -52,6 +74,118 @@ func (c *Cache) rebuildCurrent() error {
 // model, so a write costs no sheet read.
 func (c *Cache) applyOverride(email string, cells map[string]string) error {
 	return c.rebuild(c.currentTables().withOverride(email, cells), time.Now())
+}
+
+// HasStore reports whether a real blob store is configured, which the admin page uses
+// to explain why image uploads are unavailable in sample mode.
+func (c *Cache) HasStore() bool {
+	return c.store != nil
+}
+
+func (c *Cache) Settings() Settings {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.settings
+}
+
+// IsAdmin reports whether email may use the admin tools at all — either tier.
+func (c *Cache) IsAdmin(email string) bool {
+	email = strings.ToLower(strings.TrimSpace(email))
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	for _, admin := range c.settings.Admins {
+		if admin == email {
+			return true
+		}
+	}
+	for _, admin := range c.settings.SuperAdmins {
+		if admin == email {
+			return true
+		}
+	}
+	return false
+}
+
+// IsSuperAdmin reports whether email is on the super admin list specifically — the
+// tier that can spoof another user and manage who else is a super admin. Regular
+// admins never see anything gated on this, including that it exists.
+func (c *Cache) IsSuperAdmin(email string) bool {
+	email = strings.ToLower(strings.TrimSpace(email))
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	for _, admin := range c.settings.SuperAdmins {
+		if admin == email {
+			return true
+		}
+	}
+	return false
+}
+
+// SuperEditEnabled reports whether this admin has switched on editing anyone's
+// record. Meaningless (and never checked) for a non-admin.
+func (c *Cache) SuperEditEnabled(email string) bool {
+	email = strings.ToLower(strings.TrimSpace(email))
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.superEdit[email]
+}
+
+func (c *Cache) SetSuperEdit(email string, enabled bool) {
+	email = strings.ToLower(strings.TrimSpace(email))
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if enabled {
+		c.superEdit[email] = true
+	} else {
+		delete(c.superEdit, email)
+	}
+}
+
+// SpoofTarget returns who this admin is currently viewing the directory as, or "" if
+// they're viewing as themselves.
+func (c *Cache) SpoofTarget(email string) string {
+	email = strings.ToLower(strings.TrimSpace(email))
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.spoof[email]
+}
+
+func (c *Cache) SetSpoof(email, target string) {
+	email = strings.ToLower(strings.TrimSpace(email))
+	target = strings.ToLower(strings.TrimSpace(target))
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if target == "" {
+		delete(c.spoof, email)
+	} else {
+		c.spoof[email] = target
+	}
+}
+
+// UpdateSettings saves the new settings (when a store is configured) and rebuilds the
+// model so a changed threshold or a replaced image is reflected immediately, not on
+// the next five-minute tick.
+func (c *Cache) UpdateSettings(settings Settings) error {
+	if err := saveSettings(c.store, settings); err != nil {
+		return err
+	}
+	c.mu.Lock()
+	c.settings = settings
+	c.mu.Unlock()
+	return c.rebuildCurrent()
+}
+
+// PutImage replaces a classroom or grade image in the bucket and rebuilds the model so
+// the new URL (the object's generation changes, so its content isn't cached under the
+// old one) shows up right away. Real-data mode only: there is no bucket in sample mode.
+func (c *Cache) PutImage(folder, name, mimeType string, content []byte) error {
+	if c.store == nil {
+		return errNoStore
+	}
+	if err := c.store.PutNamed(folder, name, mimeType, content); err != nil {
+		return err
+	}
+	return c.rebuildCurrent()
 }
 
 func (c *Cache) Model() *Model {
@@ -143,6 +277,7 @@ func (c *Cache) rebuild(tables *Tables, start time.Time) error {
 	}
 	c.geocodeFamilies(model)
 	c.mu.Lock()
+	model.StaleYears = c.settings.StaleYears
 	c.model = model
 	c.tables = tables
 	c.mu.Unlock()

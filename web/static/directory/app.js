@@ -143,8 +143,23 @@ function withFrom(href) {
   return href + (href.includes('?') ? '&' : '?') + 'from=' + from;
 }
 
+function personSlug(email) {
+  return (email || '').split('@')[0];
+}
+
+function personByKey(key) {
+  if (!key) {
+    return undefined;
+  }
+  if (byEmail[key]) {
+    return byEmail[key];
+  }
+  const lower = key.toLowerCase();
+  return Object.values(byEmail).find(p => personSlug(p.email).toLowerCase() === lower);
+}
+
 function personLink(p) {
-  return withFrom('/people/' + encodeURIComponent(p.email));
+  return withFrom('/people/' + encodeURIComponent(personSlug(p.email)));
 }
 
 function familyLink(key) {
@@ -214,7 +229,7 @@ function optInBanner() {
     'Opt In Now', optInForm, true);
 }
 
-const staleYears = {photo: 0.75, facts: 0.6, familyPhoto: 1.5};
+let staleYears = {photo: 0.75, facts: 0.6, familyPhoto: 1.5};
 
 function agedPast(present, updated, years) {
   if (!present) {
@@ -292,7 +307,7 @@ function todoPhotoRow(item) {
 
 function todoFactsRow(item) {
   const row = el('a', 'todo-row');
-  row.href = withFrom(`/people/${encodeURIComponent(item.key)}?edit=1&focus=facts`);
+  row.href = withFrom(`/people/${encodeURIComponent(personSlug(item.key))}?edit=1&focus=facts`);
   row.append(el('div', 'todo-mark'));
   row.append(el('div', 'todo-text', item.text));
   const chev = el('div', 'todo-chevron');
@@ -320,7 +335,8 @@ function resetMain(...children) {
   const seg = segments();
   const onOwnFamilyPage = seg[0] === 'families' && seg[1] === myFamilyKey();
   const familyEmails = new Set(familyNavPeople().map(fp => fp.email));
-  const onOwnFamilyMemberPage = seg[0] === 'people' && seg[1] && familyEmails.has(seg[1]);
+  const segPerson = seg[0] === 'people' && seg[1] ? personByKey(seg[1]) : undefined;
+  const onOwnFamilyMemberPage = !!segPerson && familyEmails.has(segPerson.email);
   if (!onOwnFamilyPage && !onOwnFamilyMemberPage) {
     const stale = staleItems();
     if (stale.length) {
@@ -384,7 +400,8 @@ function renderNav() {
   const me = byEmail[document.body.dataset.userEmail];
   const familyPeople = familyNavPeople();
   const familyEmails = new Set(familyPeople.map(p => p.email));
-  const onFamilyMember = rawSeg[0] === 'people' && rawSeg[1] && familyEmails.has(rawSeg[1]);
+  const rawSegPerson = rawSeg[0] === 'people' && rawSeg[1] ? personByKey(rawSeg[1]) : undefined;
+  const onFamilyMember = !!rawSegPerson && familyEmails.has(rawSegPerson.email);
 
   const nav = document.querySelector('#nav');
   nav.replaceChildren();
@@ -1177,7 +1194,7 @@ let personEdit = null;
 
 function renderPersonDetail(email) {
   const main = resetMain();
-  const p = byEmail[email];
+  const p = personByKey(email);
   if (!p) {
     main.append(el('div', 'empty', 'Not found.'));
     return;
@@ -1437,7 +1454,7 @@ function renderFamilyDetail(key) {
     main.append(el('div', 'empty', 'Not found.'));
     return;
   }
-  const editable = key === myFamilyKey();
+  const editable = key === myFamilyKey() || state.model.superEdit;
   const shortName = (family.name || '').replace(/ Family$/, '');
   let crumbs = [['People', '/people'], [shortName, null], ['Family', null]];
   const from = fromURL();
@@ -1446,8 +1463,9 @@ function renderFamilyDetail(key) {
   } else if (from) {
     const rseg = from.pathname.split('/').filter(Boolean).map(decodeURIComponent);
     const back = from.pathname + from.search;
-    if (rseg[0] === 'people' && rseg[1] && byEmail[rseg[1]]) {
-      const person = byEmail[rseg[1]];
+    const rsegPerson = rseg[0] === 'people' && rseg[1] ? personByKey(rseg[1]) : undefined;
+    if (rsegPerson) {
+      const person = rsegPerson;
       const peopleBack = new URLSearchParams(from.search).get('from');
       const peopleHref = peopleBack && peopleBack.startsWith('/people') && !peopleBack.startsWith('/people/') ? peopleBack : '/people';
       crumbs = [['People', peopleHref], [person.fullName, back], ['Family', null]];
@@ -1594,6 +1612,10 @@ function bandGroups() {
 }
 
 function gradeImage(gradeName) {
+  const grade = state.model.grades.find(g => g.name === gradeName);
+  if (grade && grade.imageUrl) {
+    return grade.imageUrl;
+  }
   const suffix = gradeName === 'Kindergarten' ? 'k' : gradeName.split(' ')[1];
   return '/static/brand/classrooms/grade-' + suffix + '.jpg';
 }
@@ -2187,7 +2209,7 @@ function renderMapPage() {
 
   const update = el('div', 'map-update');
   const action = el('a', 'map-update-link');
-  action.href = withFrom('/people/' + encodeURIComponent(document.body.dataset.userEmail) + '?edit=1');
+  action.href = withFrom('/people/' + encodeURIComponent(personSlug(document.body.dataset.userEmail)) + '?edit=1');
   action.append(svg('zap'), el('span', '', 'Update My Address'));
   update.append(action);
   content.append(update);
@@ -2293,7 +2315,7 @@ async function submitMedia(target, key, kind, file, name, status) {
 
 function canEditPerson(email) {
   const meEmail = document.body.dataset.userEmail;
-  if (email === meEmail) {
+  if (email === meEmail || state.model.superEdit) {
     return true;
   }
   const me = byEmail[meEmail];
@@ -2538,7 +2560,7 @@ document.querySelector('#user').addEventListener('click', e => {
 });
 document.querySelector('#user .user-avatar').addEventListener('click', e => {
   e.stopPropagation();
-  location.href = withFrom('/people/' + encodeURIComponent(document.body.dataset.userEmail));
+  location.href = withFrom('/people/' + encodeURIComponent(personSlug(document.body.dataset.userEmail)));
 });
 
 const drawer = document.querySelector('#drawer');
@@ -2593,17 +2615,105 @@ document.addEventListener('keydown', e => {
   }
 });
 
+// Both banners live in one fixed-position stack so they pile up in normal flow
+// instead of both claiming top:0 and hiding one another — which is exactly what
+// happened once spoofing stopped being mutually exclusive with Super Edit Mode.
+function topBanners() {
+  let stack = document.querySelector('#top-banners');
+  if (!stack) {
+    stack = el('div', '');
+    stack.id = 'top-banners';
+    document.body.append(stack);
+  }
+  return stack;
+}
+
+function updateBannerOffset() {
+  const stack = document.querySelector('#top-banners');
+  document.documentElement.style.setProperty('--banner-h', stack ? stack.offsetHeight + 'px' : '0px');
+}
+window.addEventListener('resize', updateBannerOffset);
+
+function renderSuperEditBanner() {
+  let banner = document.querySelector('.super-edit-banner');
+  if (!state.model.superEdit) {
+    if (banner) {
+      banner.remove();
+      updateBannerOffset();
+    }
+    return;
+  }
+  if (banner) {
+    return;
+  }
+  banner = el('div', 'super-edit-banner');
+  banner.append(el('span', '', 'Super Edit Mode is on — you can edit anyone’s info.'));
+  const link = el('a', '', 'Turn off');
+  link.href = '#';
+  link.addEventListener('click', async e => {
+    e.preventDefault();
+    await fetch('/api/admin/super-edit', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({enabled: false}),
+    });
+    await load();
+  });
+  banner.append(link);
+  topBanners().append(banner);
+  updateBannerOffset();
+}
+
+function renderSpoofBanner() {
+  let banner = document.querySelector('.spoof-banner');
+  if (!state.model.spoofingAs) {
+    if (banner) {
+      banner.remove();
+      updateBannerOffset();
+    }
+    return;
+  }
+  if (banner) {
+    banner.querySelector('.spoof-banner-name').textContent = state.model.spoofingAs;
+    updateBannerOffset();
+    return;
+  }
+  banner = el('div', 'spoof-banner');
+  banner.append(el('span', '', 'Viewing as '));
+  banner.append(el('span', 'spoof-banner-name', state.model.spoofingAs));
+  const link = el('a', '', 'Stop');
+  link.href = '#';
+  link.addEventListener('click', async e => {
+    e.preventDefault();
+    await fetch('/api/admin/spoof', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({email: ''}),
+    });
+    // A full reload, not load(): stopping spoofing changes the effective identity the
+    // server renders into the page itself (username, userEmail, the Admin Tools menu
+    // link), not just the JSON model a plain re-fetch would refresh.
+    location.reload();
+  });
+  banner.append(link);
+  topBanners().append(banner);
+  updateBannerOffset();
+}
+
 async function load() {
   const res = await fetch('/api/directory/model');
   if (!res.ok) {
     throw new Error(`loading model failed: ${res.status}`);
   }
   state.model = await res.json();
+  staleYears = state.model.staleYears || staleYears;
   tags = state.model.tags || {};
   byEmail = {};
   for (const p of state.model.people) {
     byEmail[p.email] = p;
   }
+  renderSuperEditBanner();
+  renderSpoofBanner();
   render();
 }
 

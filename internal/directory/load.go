@@ -193,6 +193,26 @@ func familyHash(members []string) string {
 	return hex.EncodeToString(sum[:])[:16]
 }
 
+// resolveImage prefers an admin-uploaded image in the bucket over the bundled default,
+// so a school that never touches the admin page keeps the illustrations it shipped
+// with, and one that does sees its replacement without a deploy.
+func (l *loader) resolveImage(blobFolder, slug, staticKey string) string {
+	if l.blobs != nil && l.blobs.Has(blobFolder+"/"+slug) {
+		return "/" + blobFolder + "/" + slug + ".jpg"
+	}
+	if l.static.Has(staticKey) {
+		return "/static/" + staticKey
+	}
+	return ""
+}
+
+func gradeSlug(name string) string {
+	if name == "Kindergarten" {
+		return "k"
+	}
+	return strings.TrimPrefix(name, "Grade ")
+}
+
 type loader struct {
 	blobs  BlobChecker
 	static BlobChecker
@@ -1156,11 +1176,8 @@ func (l *loader) deriveClassrooms() error {
 		if len(info.bands) != 1 {
 			return fmt.Errorf("classroom %s spans multiple grade bands", name)
 		}
-		imageURL := ""
-		imageKey := "brand/classrooms/classroom-" + strings.ToLower(name) + ".jpg"
-		if l.static.Has(imageKey) {
-			imageURL = "/static/" + imageKey
-		}
+		slug := strings.ToLower(name)
+		imageURL := l.resolveImage("classroom-images", slug, "brand/classrooms/classroom-"+slug+".jpg")
 		model.Classrooms = append(model.Classrooms, Classroom{
 			Name:     name,
 			ImageURL: imageURL,
@@ -1209,7 +1226,8 @@ func (l *loader) deriveClassrooms() error {
 
 func (l *loader) deriveStructure() error {
 	for i, grade := range gradeOrder {
-		g := Grade{Name: grade, Band: gradeBands[grade]}
+		slug := gradeSlug(grade)
+		g := Grade{Name: grade, Band: gradeBands[grade], ImageURL: l.resolveImage("grade-images", slug, "brand/classrooms/grade-"+slug+".jpg")}
 		if i+1 < len(gradeOrder) {
 			g.NextName = gradeOrder[i+1]
 			g.NextBand = gradeBands[g.NextName]
