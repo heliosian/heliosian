@@ -1551,6 +1551,7 @@ main {
 
 .person-card {
   text-align: center;
+  min-width: 0;
 }
 
 .classroom-card {
@@ -3220,6 +3221,7 @@ a.list-row:hover {
   }
   .controls {
     width: 100%;
+    flex-wrap: wrap;
   }
   .search {
     flex: 1;
@@ -3228,8 +3230,8 @@ a.list-row:hover {
   .search input {
     width: 100%;
   }
-  .filter-button span,
-  .filter-button > svg:last-child {
+  .filter-button:not(.facet-button) span,
+  .filter-button:not(.facet-button) > svg:last-child {
     display: none;
   }
   .card-more-wrap {

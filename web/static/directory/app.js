@@ -1122,7 +1122,7 @@ function roleChips(rerender) {
 // need the drill-into-a-section step.
 function facetDropdown(label, values, set, rerender) {
   const wrap = el('div', 'filter-wrap');
-  const button = el('button', 'filter-button');
+  const button = el('button', 'filter-button facet-button');
   const labelSpan = el('span', '', label);
   button.append(labelSpan, svg('chevron'));
   const panel = el('div', 'filter-panel facet-panel');
@@ -2087,7 +2087,7 @@ function listRow(image, label, title, sub, href) {
   return row;
 }
 
-const LIST_SUB_TRUNCATE_LENGTH = 70;
+const LIST_SUB_TRUNCATE_LENGTH = 280;
 const LIST_SUB_LINE_PREVIEW = 4;
 const BULLET_LINE = /^\s*(?:[*]|-{1,2})\s+(.+)$/;
 
@@ -2107,27 +2107,31 @@ function parseBullets(lines) {
   return items;
 }
 
-// A row's "About Me" (or similar) text. Multi-line text (bulleted or not) is
-// capped at LIST_SUB_LINE_PREVIEW lines with a More/Less toggle; a single long
-// line is instead cut down to roughly one line by character count. Either way,
-// stopPropagation on the toggle keeps that click from also triggering the
-// surrounding card's own navigation link.
+// A row's "About Me" (or similar) text. A bullet list is capped by item count
+// (LIST_SUB_LINE_PREVIEW) since each item is a discrete thing to show or hide;
+// anything else - a single paragraph or a few manual line breaks alike - is
+// capped by total character count instead, so a short bio that merely happens
+// to have a couple of line breaks isn't truncated any more eagerly than an
+// equally-short single-line one, and a long one is capped regardless of how
+// many line breaks it does or doesn't have. Either way, stopPropagation on the
+// toggle keeps that click from also triggering the surrounding card's own
+// navigation link.
 function listSub(text) {
   const wrap = el('div', 'list-sub');
   const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-  if (lines.length > 1) {
-    const bullets = parseBullets(lines);
-    wrap.append(bullets
-      ? collapsibleLines(bullets, 'ul', 'list-sub-bullets', 'li')
-      : collapsibleLines(lines, 'div', 'list-sub-lines', 'div'));
+  const bullets = lines.length > 1 ? parseBullets(lines) : null;
+  if (bullets) {
+    wrap.append(collapsibleLines(bullets, 'ul', 'list-sub-bullets', 'li'));
     return wrap;
   }
-  if (text.length <= LIST_SUB_TRUNCATE_LENGTH) {
-    wrap.textContent = text;
+  const full = lines.join('\n');
+  if (full.length <= LIST_SUB_TRUNCATE_LENGTH) {
+    wrap.textContent = full;
     return wrap;
   }
-  let short = text.slice(0, LIST_SUB_TRUNCATE_LENGTH);
-  short = short.slice(0, short.lastIndexOf(' ')) || short;
+  let short = full.slice(0, LIST_SUB_TRUNCATE_LENGTH);
+  const cutAt = Math.max(short.lastIndexOf(' '), short.lastIndexOf('\n'));
+  short = cutAt > 0 ? short.slice(0, cutAt) : short;
   const textSpan = el('span', '', short + '… ');
   const toggle = el('button', 'list-sub-more', 'More »');
   toggle.type = 'button';
@@ -2136,7 +2140,7 @@ function listSub(text) {
     e.preventDefault();
     e.stopPropagation();
     expanded = !expanded;
-    textSpan.textContent = expanded ? text + ' ' : short + '… ';
+    textSpan.textContent = expanded ? full + ' ' : short + '… ';
     toggle.textContent = expanded ? 'Less' : 'More »';
   });
   wrap.append(textSpan, toggle);
