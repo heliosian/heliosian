@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"strings"
 
-	"heliosian/internal/auth"
 	"heliosian/internal/data"
 )
 
@@ -24,7 +23,7 @@ func RegisterTags(mux *http.ServeMux, cache *Cache, writer data.Writer, queue *Q
 
 func (t tagger) set(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
-	owner := strings.ToLower(auth.Email(r))
+	owner := effectiveEmail(t.cache, r)
 	person := strings.ToLower(strings.TrimSpace(r.FormValue("person")))
 	tag := strings.TrimSpace(r.FormValue("tag"))
 	on := r.FormValue("on") == "1"

@@ -229,7 +229,7 @@ function optInBanner() {
     'Opt In Now', optInForm, true);
 }
 
-const staleYears = {photo: 0.75, facts: 0.6, familyPhoto: 1.5};
+let staleYears = {photo: 0.75, facts: 0.6, familyPhoto: 1.5};
 
 function agedPast(present, updated, years) {
   if (!present) {
@@ -1454,7 +1454,7 @@ function renderFamilyDetail(key) {
     main.append(el('div', 'empty', 'Not found.'));
     return;
   }
-  const editable = key === myFamilyKey();
+  const editable = key === myFamilyKey() || state.model.superEdit;
   const shortName = (family.name || '').replace(/ Family$/, '');
   let crumbs = [['People', '/people'], [shortName, null], ['Family', null]];
   const from = fromURL();
@@ -1612,6 +1612,10 @@ function bandGroups() {
 }
 
 function gradeImage(gradeName) {
+  const grade = state.model.grades.find(g => g.name === gradeName);
+  if (grade && grade.imageUrl) {
+    return grade.imageUrl;
+  }
   const suffix = gradeName === 'Kindergarten' ? 'k' : gradeName.split(' ')[1];
   return '/static/brand/classrooms/grade-' + suffix + '.jpg';
 }
@@ -2311,7 +2315,7 @@ async function submitMedia(target, key, kind, file, name, status) {
 
 function canEditPerson(email) {
   const meEmail = document.body.dataset.userEmail;
-  if (email === meEmail) {
+  if (email === meEmail || state.model.superEdit) {
     return true;
   }
   const me = byEmail[meEmail];
@@ -2611,17 +2615,105 @@ document.addEventListener('keydown', e => {
   }
 });
 
+// Both banners live in one fixed-position stack so they pile up in normal flow
+// instead of both claiming top:0 and hiding one another — which is exactly what
+// happened once spoofing stopped being mutually exclusive with Super Edit Mode.
+function topBanners() {
+  let stack = document.querySelector('#top-banners');
+  if (!stack) {
+    stack = el('div', '');
+    stack.id = 'top-banners';
+    document.body.append(stack);
+  }
+  return stack;
+}
+
+function updateBannerOffset() {
+  const stack = document.querySelector('#top-banners');
+  document.documentElement.style.setProperty('--banner-h', stack ? stack.offsetHeight + 'px' : '0px');
+}
+window.addEventListener('resize', updateBannerOffset);
+
+function renderSuperEditBanner() {
+  let banner = document.querySelector('.super-edit-banner');
+  if (!state.model.superEdit) {
+    if (banner) {
+      banner.remove();
+      updateBannerOffset();
+    }
+    return;
+  }
+  if (banner) {
+    return;
+  }
+  banner = el('div', 'super-edit-banner');
+  banner.append(el('span', '', 'Super Edit Mode is on — you can edit anyone’s info.'));
+  const link = el('a', '', 'Turn off');
+  link.href = '#';
+  link.addEventListener('click', async e => {
+    e.preventDefault();
+    await fetch('/api/admin/super-edit', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({enabled: false}),
+    });
+    await load();
+  });
+  banner.append(link);
+  topBanners().append(banner);
+  updateBannerOffset();
+}
+
+function renderSpoofBanner() {
+  let banner = document.querySelector('.spoof-banner');
+  if (!state.model.spoofingAs) {
+    if (banner) {
+      banner.remove();
+      updateBannerOffset();
+    }
+    return;
+  }
+  if (banner) {
+    banner.querySelector('.spoof-banner-name').textContent = state.model.spoofingAs;
+    updateBannerOffset();
+    return;
+  }
+  banner = el('div', 'spoof-banner');
+  banner.append(el('span', '', 'Viewing as '));
+  banner.append(el('span', 'spoof-banner-name', state.model.spoofingAs));
+  const link = el('a', '', 'Stop');
+  link.href = '#';
+  link.addEventListener('click', async e => {
+    e.preventDefault();
+    await fetch('/api/admin/spoof', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({email: ''}),
+    });
+    // A full reload, not load(): stopping spoofing changes the effective identity the
+    // server renders into the page itself (username, userEmail, the Admin Tools menu
+    // link), not just the JSON model a plain re-fetch would refresh.
+    location.reload();
+  });
+  banner.append(link);
+  topBanners().append(banner);
+  updateBannerOffset();
+}
+
 async function load() {
   const res = await fetch('/api/directory/model');
   if (!res.ok) {
     throw new Error(`loading model failed: ${res.status}`);
   }
   state.model = await res.json();
+  staleYears = state.model.staleYears || staleYears;
   tags = state.model.tags || {};
   byEmail = {};
   for (const p of state.model.people) {
     byEmail[p.email] = p;
   }
+  renderSuperEditBanner();
+  renderSpoofBanner();
   render();
 }
 

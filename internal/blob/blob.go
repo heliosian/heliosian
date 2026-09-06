@@ -37,7 +37,7 @@ const (
 	fetchWorkers    = 32
 )
 
-var folders = []string{"photos", "pronunciation"}
+var folders = []string{"photos", "pronunciation", "classroom-images", "grade-images", "config"}
 
 // Recorded names carry an extension and entries are keyed without one, so an object
 // and its thumbnail share a key.
@@ -84,6 +84,10 @@ func Register(mux *http.ServeMux, s *Store) {
 	// where a blob is stored or who it belongs to reaches the client.
 	mux.HandleFunc("GET /photos/{name}", s.serve)
 	mux.HandleFunc("GET /pronunciation/{name}", s.serve)
+	// Classroom and grade images are named for what they depict, not their bytes, since
+	// an admin replaces one in place rather than adding a new one alongside it.
+	mux.HandleFunc("GET /classroom-images/{name}", s.serve)
+	mux.HandleFunc("GET /grade-images/{name}", s.serve)
 }
 
 func (s *Store) refreshLoop() {
@@ -380,6 +384,32 @@ func (s *Store) Put(folder, name, mimeType string, content []byte) error {
 		return fmt.Errorf("refresh after upload: %w", err)
 	}
 	return nil
+}
+
+// PutNamed writes an object at a fixed, human-chosen name, replacing whatever was there
+// before — the opposite assumption from Put, for the handful of slots (a classroom's
+// logo, the settings blob) that are named for what they are rather than their bytes.
+// Object versioning on the bucket keeps the replaced generation recoverable.
+func (s *Store) PutNamed(folder, name, mimeType string, content []byte) error {
+	if err := writeWithThumbnail(context.Background(), s.service, folder, name, mimeType, content); err != nil {
+		return err
+	}
+	if err := s.refresh(); err != nil {
+		return fmt.Errorf("refresh after upload: %w", err)
+	}
+	return nil
+}
+
+// Get returns the current bytes stored at a fixed name, for config blobs read back
+// into memory rather than served over HTTP.
+func (s *Store) Get(folder, name string) ([]byte, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	e, ok := s.entries[folder+"/"+trimExt(name)]
+	if !ok {
+		return nil, false
+	}
+	return e.data, true
 }
 
 func (s *Store) serve(w http.ResponseWriter, r *http.Request) {

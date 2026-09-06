@@ -8,6 +8,7 @@
   --label: #1f4d53;
   --input: #efefef;
   --alert: #f55e03;
+  --banner-h: 0px;
 }
 
 .infobanner-wrap {
@@ -204,6 +205,7 @@ body {
   flex-direction: column;
   padding: 12px;
   position: relative;
+  margin-top: var(--banner-h);
 }
 
 .brand {
@@ -451,6 +453,7 @@ main {
   flex: 1;
   overflow-y: auto;
   background: #fff;
+  margin-top: var(--banner-h);
 }
 
 .container {
@@ -2107,7 +2110,8 @@ a.list-row:hover {
   }
   main {
     height: 100dvh;
-    padding-top: 48px;
+    margin-top: 0;
+    padding-top: calc(48px + var(--banner-h));
     padding-bottom: calc(62px + env(safe-area-inset-bottom));
   }
   .container {
@@ -2125,7 +2129,7 @@ a.list-row:hover {
     display: flex;
     align-items: center;
     position: fixed;
-    top: 0;
+    top: var(--banner-h);
     left: 0;
     right: 0;
     height: 48px;
@@ -2379,4 +2383,57 @@ a.list-row:hover {
   .optin-button {
     max-width: none;
   }
+}
+
+#top-banners {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+}
+
+.super-edit-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 6px 12px;
+  background: var(--alert);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.super-edit-banner a {
+  color: #fff;
+  text-decoration: underline;
+  flex-shrink: 0;
+}
+
+.spoof-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--alert);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.spoof-banner-name {
+  font-weight: 700;
+}
+
+.spoof-banner a {
+  color: #fff;
+  text-decoration: underline;
+  margin-left: 8px;
+  flex-shrink: 0;
 }

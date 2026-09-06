@@ -1,0 +1,759 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin Tools</title>
+<link rel="icon" href="/static/brand/icon-192.png">
+<style>
+  :root {
+    --brand: #014e54;
+    --sidebar: #173c41;
+    --line: #e2e6eb;
+    --ink: #0d0d0d;
+    --muted: #707070;
+    --input: #efefef;
+    --alert: #f55e03;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: Roboto, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    color: var(--ink);
+    background: #f7f8f9;
+  }
+  header {
+    background: var(--sidebar);
+    color: #fff;
+    padding: 18px 28px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  header .brand-link {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: #fff;
+    text-decoration: none;
+  }
+  header .brand-link img {
+    height: 26px;
+  }
+  header .brand-link span {
+    font-size: 15px;
+    font-weight: 700;
+    padding-left: 10px;
+    border-left: 1px solid rgba(255, 255, 255, 0.3);
+  }
+  header .email {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.75);
+  }
+  .container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 28px;
+  }
+  .tabs {
+    display: flex;
+    gap: 4px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 24px;
+  }
+  .tab {
+    padding: 10px 16px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--muted);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+  }
+  .tab.active {
+    color: var(--brand);
+    border-bottom-color: var(--brand);
+  }
+  .panel[hidden] { display: none; }
+  .card {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin-bottom: 20px;
+  }
+  .card h2 {
+    font-size: 16px;
+    margin: 0 0 4px;
+  }
+  .card .hint {
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 16px;
+  }
+  .super-edit-toggle {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    cursor: pointer;
+  }
+  .super-edit-toggle input {
+    margin-top: 3px;
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    accent-color: var(--alert);
+  }
+  .super-edit-title {
+    font-weight: 700;
+    margin-bottom: 2px;
+  }
+  .super-edit-toggle .hint {
+    margin-bottom: 0;
+  }
+  .notice {
+    background: #fde3d1;
+    color: var(--alert);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 13px;
+    margin-bottom: 16px;
+  }
+  .image-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 12px 0;
+    border-top: 1px solid var(--line);
+  }
+  .image-row:first-of-type { border-top: none; }
+  .image-row img, .image-row .placeholder {
+    width: 56px;
+    height: 56px;
+    border-radius: 8px;
+    object-fit: cover;
+    background: var(--input);
+    flex-shrink: 0;
+  }
+  .image-row .name {
+    flex: 1;
+    font-weight: 500;
+  }
+  .image-row .status {
+    font-size: 12px;
+    color: var(--muted);
+    margin-right: 10px;
+  }
+  .image-row .status.error { color: var(--alert); }
+  .upload-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border-radius: 8px;
+    background: var(--input);
+    color: var(--ink);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .upload-button input { display: none; }
+  .admin-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 0;
+    border-top: 1px solid var(--line);
+  }
+  .admin-row:first-of-type { border-top: none; }
+  .admin-row .name {
+    font-weight: 500;
+  }
+  .admin-row .email {
+    color: var(--muted);
+    font-size: 13px;
+    flex: 1;
+  }
+  .admin-row .remove-button {
+    border: none;
+    background: none;
+    color: var(--alert);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 4px 8px;
+  }
+  .add-admin-row {
+    display: flex;
+    gap: 10px;
+    margin-top: 16px;
+  }
+  .add-admin-row select {
+    flex: 1;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: inherit;
+    background: #fff;
+  }
+  .add-admin-row .upload-button {
+    border: none;
+  }
+  .field-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 0;
+    border-top: 1px solid var(--line);
+  }
+  .field-row:first-of-type { border-top: none; }
+  .field-row input[type=number] {
+    width: 90px;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    font-size: 14px;
+  }
+  textarea {
+    width: 100%;
+    min-height: 140px;
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: inherit;
+    resize: vertical;
+  }
+  .save-button {
+    margin-top: 16px;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 8px;
+    background: var(--brand);
+    color: #fff;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .save-button:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+  .save-status {
+    font-size: 13px;
+    margin-left: 12px;
+    color: var(--muted);
+  }
+  .save-status.error { color: var(--alert); }
+  .save-status.ok { color: var(--brand); }
+  .spoof-banner {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: var(--brand);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 600;
+    text-align: center;
+  }
+  .spoof-banner-name {
+    font-weight: 700;
+  }
+  .spoof-banner a {
+    color: #fff;
+    text-decoration: underline;
+    margin-left: 8px;
+  }
+</style>
+</head>
+<body>
+<header>
+  <a class="brand-link" href="/people">
+    <img src="/static/brand/logo-wordmark.png" alt="Helios Who?">
+    <span>Admin</span>
+  </a>
+  <span class="email" id="me"></span>
+</header>
+<div class="container">
+  <div class="card">
+    <label class="super-edit-toggle">
+      <input type="checkbox" id="super-edit">
+      <div>
+        <div class="super-edit-title">Enable Super Edit Mode</div>
+        <div class="hint">While on, you can edit anyone's photo, facts, and other info from their page — not just your own family's.</div>
+      </div>
+    </label>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" data-panel="images">Images</div>
+    <div class="tab" data-panel="thresholds">Update Thresholds</div>
+    <div class="tab" data-panel="admins">Admins</div>
+  </div>
+
+  <div class="panel" id="panel-images">
+    <div id="store-notice"></div>
+    <div class="card">
+      <h2>Classroom images</h2>
+      <div class="hint">Shown in the directory wherever a classroom is listed. Replacing one takes effect immediately.</div>
+      <div id="classrooms"></div>
+    </div>
+    <div class="card">
+      <h2>Grade images</h2>
+      <div class="hint">Shown in Explore by Grade and on each grade's page.</div>
+      <div id="grades"></div>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-thresholds" hidden>
+    <div class="card">
+      <h2>Update thresholds</h2>
+      <div class="hint">How many years old a photo or facts entry can get before the directory asks someone to refresh it.</div>
+      <div class="field-row">
+        <label for="years-photo">Person photo</label>
+        <input type="number" id="years-photo" step="0.05" min="0.05">
+      </div>
+      <div class="field-row">
+        <label for="years-facts">Student facts</label>
+        <input type="number" id="years-facts" step="0.05" min="0.05">
+      </div>
+      <div class="field-row">
+        <label for="years-family-photo">Family photo</label>
+        <input type="number" id="years-family-photo" step="0.05" min="0.05">
+      </div>
+      <button class="save-button" id="save-years">Save</button>
+      <span class="save-status" id="years-status"></span>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-admins" hidden>
+    <div class="card">
+      <h2>Admins</h2>
+      <div class="hint">Whoever is on this list can reach this page. Changes save immediately.</div>
+      <div id="admins-rows"></div>
+      <div class="add-admin-row">
+        <select id="add-admin-select"></select>
+        <button class="upload-button" id="add-admin-button" type="button">Add</button>
+        <span class="save-status" id="admins-status"></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let state = null;
+
+async function load() {
+  const res = await fetch('/api/admin/state');
+  if (!res.ok) {
+    document.body.innerHTML = '<p style="padding:28px;font-family:sans-serif">' +
+      (res.status === 403 ? 'Admin access required.' : 'Failed to load admin state.') + '</p>';
+    return;
+  }
+  state = await res.json();
+  render();
+}
+
+// The escape hatch for viewing the admin tools as someone else: spoofingAs is always
+// keyed on the real admin regardless of the simulated tier, so this shows (and offers
+// a way out) even on a regular admin's simulated page, which has no Spoof Mode tab of
+// its own to stop it from.
+function renderTopLevelSpoofBanner() {
+  let banner = document.querySelector('.spoof-banner');
+  if (!state.spoofingAs) {
+    if (banner) {
+      banner.remove();
+    }
+    return;
+  }
+  if (banner) {
+    banner.querySelector('.spoof-banner-name').textContent = state.spoofingAs;
+    return;
+  }
+  banner = document.createElement('div');
+  banner.className = 'spoof-banner';
+  const label = document.createElement('span');
+  label.textContent = 'Viewing admin tools as ';
+  banner.append(label);
+  const name = document.createElement('span');
+  name.className = 'spoof-banner-name';
+  name.textContent = state.spoofingAs;
+  banner.append(name);
+  const link = document.createElement('a');
+  link.href = '#';
+  link.textContent = 'Stop';
+  link.addEventListener('click', async e => {
+    e.preventDefault();
+    await fetch('/api/admin/spoof', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({email: ''}),
+    });
+    location.reload();
+  });
+  banner.append(link);
+  document.body.append(banner);
+}
+
+// A super admin's response carries fields (isSuperAdmin, superAdmins, spoofingAs) that
+// a regular admin's response never does, so this tab and panel only come into
+// existence for a caller the server has already told is a super admin — there is
+// nothing for a regular admin's page to hide, because it was never built.
+function ensureSuperAdminUI() {
+  if (!state.isSuperAdmin || document.querySelector('[data-panel="spoof"]')) {
+    return;
+  }
+  const tabs = document.querySelector('.tabs');
+  const superAdminsTab = document.createElement('div');
+  superAdminsTab.className = 'tab';
+  superAdminsTab.dataset.panel = 'super-admins';
+  superAdminsTab.textContent = 'Super Admins';
+  tabs.append(superAdminsTab);
+
+  const spoofTab = document.createElement('div');
+  spoofTab.className = 'tab';
+  spoofTab.dataset.panel = 'spoof';
+  spoofTab.textContent = 'Spoof Mode';
+  tabs.append(spoofTab);
+
+  const container = document.querySelector('.container');
+
+  const superAdminsPanel = document.createElement('div');
+  superAdminsPanel.className = 'panel';
+  superAdminsPanel.id = 'panel-super-admins';
+  superAdminsPanel.hidden = true;
+  superAdminsPanel.innerHTML = `
+    <div class="card">
+      <h2>Super Admins</h2>
+      <div class="hint">Super admins can also use Spoof Mode and manage this list. Regular admins never see this tab. Changes save immediately.</div>
+      <div id="super-admins-rows"></div>
+      <div class="add-admin-row">
+        <select id="add-super-admin-select"></select>
+        <button class="upload-button" id="add-super-admin-button" type="button">Add</button>
+        <span class="save-status" id="super-admins-status"></span>
+      </div>
+    </div>`;
+  container.append(superAdminsPanel);
+
+  const spoofPanel = document.createElement('div');
+  spoofPanel.className = 'panel';
+  spoofPanel.id = 'panel-spoof';
+  spoofPanel.hidden = true;
+  spoofPanel.innerHTML = `
+    <div class="card">
+      <h2>Spoof Mode</h2>
+      <div class="hint">View and use the directory and admin tools exactly as someone else would, including their edit permissions and admin tier.</div>
+      <div id="spoof-active" hidden>
+        <div class="admin-row">
+          <div class="name" id="spoof-active-name"></div>
+          <button class="remove-button" id="stop-spoof-button" type="button">Stop viewing as them</button>
+        </div>
+      </div>
+      <div id="spoof-picker" class="add-admin-row">
+        <select id="spoof-select"></select>
+        <button class="upload-button" id="start-spoof-button" type="button">View As</button>
+      </div>
+      <span class="save-status" id="spoof-status"></span>
+    </div>`;
+  container.append(spoofPanel);
+
+  document.querySelector('#start-spoof-button').addEventListener('click', () => setSpoof(document.querySelector('#spoof-select').value));
+  document.querySelector('#stop-spoof-button').addEventListener('click', () => setSpoof(''));
+}
+
+function render() {
+  document.querySelector('#me').textContent = state.email;
+  document.querySelector('#super-edit').checked = state.superEdit;
+  renderTopLevelSpoofBanner();
+
+  const notice = document.querySelector('#store-notice');
+  notice.innerHTML = '';
+  if (!state.hasStore) {
+    const div = document.createElement('div');
+    div.className = 'notice';
+    div.textContent = 'Running in sample mode: image uploads are disabled because there is no media bucket configured.';
+    notice.append(div);
+  }
+
+  renderImages('#classrooms', state.classrooms, 'classroom');
+  renderImages('#grades', state.grades, 'grade');
+
+  document.querySelector('#years-photo').value = state.staleYears.photo;
+  document.querySelector('#years-facts').value = state.staleYears.facts;
+  document.querySelector('#years-family-photo').value = state.staleYears.familyPhoto;
+
+  buildAdminListEditor(
+    '#admins-rows', '#add-admin-select', '#admins-status', '/api/admin/admins', 'admins', state.admins);
+
+  ensureSuperAdminUI();
+  if (state.isSuperAdmin) {
+    buildAdminListEditor(
+      '#super-admins-rows', '#add-super-admin-select', '#super-admins-status', '/api/admin/super-admins', 'superAdmins', state.superAdmins);
+    renderSpoofPanel();
+  }
+}
+
+function renderSpoofPanel() {
+  const active = document.querySelector('#spoof-active');
+  const picker = document.querySelector('#spoof-picker');
+  if (state.spoofingAs) {
+    active.hidden = false;
+    picker.hidden = true;
+    document.querySelector('#spoof-active-name').textContent = 'Viewing as ' + state.spoofingAs;
+  } else {
+    active.hidden = true;
+    picker.hidden = false;
+    const select = document.querySelector('#spoof-select');
+    select.replaceChildren();
+    for (const p of state.people) {
+      const opt = document.createElement('option');
+      opt.value = p.email;
+      opt.textContent = `${p.name} (${p.email})`;
+      select.append(opt);
+    }
+  }
+}
+
+async function setSpoof(email) {
+  const status = document.querySelector('#spoof-status');
+  status.classList.remove('error', 'ok');
+  status.textContent = email ? 'Switching…' : 'Stopping…';
+  const res = await fetch('/api/admin/spoof', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({email}),
+  });
+  if (!res.ok) {
+    status.classList.add('error');
+    status.textContent = await res.text();
+    return;
+  }
+  // A full reload, not load(): ensureSuperAdminUI() only ever adds the Super Admins
+  // and Spoof Mode tabs, it never tears them down, so switching to a regular admin's
+  // view without reloading left them stranded in the DOM from the pre-spoof render —
+  // exactly the tier leak a regular admin must never see.
+  location.reload();
+}
+
+// Shared by the Admins and Super Admins panels: a working copy of the list, a picker
+// to add from, and a POST that fires immediately on every add or remove — no separate
+// save step to forget, since that's exactly what caused an add to silently not count
+// (the person looked added in the list, but the server never heard about it until an
+// explicit Save that hadn't been clicked).
+function buildAdminListEditor(rowsSelector, selectSelector, statusSelector, url, bodyKey, initial) {
+  let pending = [...initial];
+  const rowsEl = document.querySelector(rowsSelector);
+  const selectEl = document.querySelector(selectSelector);
+  const statusEl = document.querySelector(statusSelector);
+
+  async function persist() {
+    statusEl.classList.remove('error', 'ok');
+    statusEl.textContent = 'Saving…';
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({[bodyKey]: pending}),
+    });
+    if (!res.ok) {
+      statusEl.classList.add('error');
+      statusEl.textContent = await res.text();
+      return;
+    }
+    statusEl.classList.remove('error');
+    statusEl.classList.add('ok');
+    statusEl.textContent = 'Saved.';
+  }
+
+  function renderRows() {
+    rowsEl.replaceChildren();
+    if (!pending.length) {
+      const empty = document.createElement('div');
+      empty.className = 'hint';
+      empty.textContent = 'Nobody yet.';
+      rowsEl.append(empty);
+    }
+    for (const email of pending) {
+      const person = state.people.find(p => p.email === email);
+      const row = document.createElement('div');
+      row.className = 'admin-row';
+      const name = document.createElement('div');
+      name.className = 'name';
+      name.textContent = person ? person.name : email;
+      const emailEl = document.createElement('div');
+      emailEl.className = 'email';
+      emailEl.textContent = email;
+      const remove = document.createElement('button');
+      remove.className = 'remove-button';
+      remove.type = 'button';
+      remove.textContent = 'Remove';
+      remove.addEventListener('click', async () => {
+        pending = pending.filter(e => e !== email);
+        renderRows();
+        renderSelect();
+        await persist();
+      });
+      row.append(name, emailEl, remove);
+      rowsEl.append(row);
+    }
+  }
+
+  function renderSelect() {
+    selectEl.replaceChildren();
+    for (const p of state.people) {
+      if (pending.includes(p.email)) {
+        continue;
+      }
+      const opt = document.createElement('option');
+      opt.value = p.email;
+      opt.textContent = `${p.name} (${p.email})`;
+      selectEl.append(opt);
+    }
+  }
+
+  renderRows();
+  renderSelect();
+
+  const addButton = selectEl.parentElement.querySelector('.upload-button');
+  addButton.onclick = async () => {
+    const email = selectEl.value;
+    if (email && !pending.includes(email)) {
+      pending.push(email);
+      renderRows();
+      renderSelect();
+      await persist();
+    }
+  };
+}
+
+function renderImages(selector, items, kind) {
+  const wrap = document.querySelector(selector);
+  wrap.replaceChildren();
+  for (const item of items) {
+    const row = document.createElement('div');
+    row.className = 'image-row';
+
+    if (item.imageUrl) {
+      const img = document.createElement('img');
+      img.src = item.imageUrl;
+      img.alt = '';
+      row.append(img);
+    } else {
+      row.append(document.createElement('div')).className = 'placeholder';
+    }
+
+    const name = document.createElement('div');
+    name.className = 'name';
+    name.textContent = item.name;
+    row.append(name);
+
+    const status = document.createElement('span');
+    status.className = 'status';
+    row.append(status);
+
+    const label = document.createElement('label');
+    label.className = 'upload-button';
+    label.textContent = 'Replace';
+    if (!state.hasStore) {
+      label.style.opacity = '0.5';
+      label.style.cursor = 'default';
+    }
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.disabled = !state.hasStore;
+    input.addEventListener('change', () => uploadImage(kind, item.name, input, status));
+    label.append(input);
+    row.append(label);
+
+    wrap.append(row);
+  }
+}
+
+async function uploadImage(kind, name, input, status) {
+  if (!input.files.length) {
+    return;
+  }
+  status.classList.remove('error');
+  status.textContent = 'Uploading…';
+  const form = new FormData();
+  form.append('kind', kind);
+  form.append('name', name);
+  form.append('file', input.files[0]);
+  const res = await fetch('/api/admin/images', {method: 'POST', body: form});
+  if (!res.ok) {
+    status.classList.add('error');
+    status.textContent = await res.text();
+    return;
+  }
+  status.textContent = '';
+  await load();
+}
+
+document.querySelector('#super-edit').addEventListener('change', async e => {
+  const checkbox = e.target;
+  checkbox.disabled = true;
+  const res = await fetch('/api/admin/super-edit', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({enabled: checkbox.checked}),
+  });
+  checkbox.disabled = false;
+  if (!res.ok) {
+    checkbox.checked = !checkbox.checked;
+    alert(await res.text());
+    return;
+  }
+  state.superEdit = checkbox.checked;
+});
+
+// Delegated on the container, not bound per-tab, because the Super Admins and Spoof
+// Mode tabs don't exist in the DOM until ensureSuperAdminUI() adds them.
+document.querySelector('.container').addEventListener('click', e => {
+  const tab = e.target.closest('.tab');
+  if (!tab) {
+    return;
+  }
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  tab.classList.add('active');
+  document.querySelectorAll('.panel').forEach(p => p.hidden = true);
+  document.querySelector('#panel-' + tab.dataset.panel).hidden = false;
+});
+
+document.querySelector('#save-years').addEventListener('click', async () => {
+  const status = document.querySelector('#years-status');
+  const button = document.querySelector('#save-years');
+  const years = {
+    photo: Number(document.querySelector('#years-photo').value),
+    facts: Number(document.querySelector('#years-facts').value),
+    familyPhoto: Number(document.querySelector('#years-family-photo').value),
+  };
+  button.disabled = true;
+  status.classList.remove('error', 'ok');
+  status.textContent = 'Saving…';
+  const res = await fetch('/api/admin/stale-years', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(years),
+  });
+  button.disabled = false;
+  if (!res.ok) {
+    status.classList.add('error');
+    status.textContent = await res.text();
+    return;
+  }
+  status.classList.add('ok');
+  status.textContent = 'Saved.';
+  await load();
+});
+
+load();
+</script>
+</body>
+</html>

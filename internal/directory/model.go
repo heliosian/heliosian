@@ -88,6 +88,16 @@ type Grade struct {
 	NextName string `json:"nextName,omitempty"`
 	Band     string `json:"band,omitempty"`
 	NextBand string `json:"nextBand,omitempty"`
+	ImageURL string `json:"imageUrl,omitempty"`
+}
+
+// StaleYears is how old a photo or facts entry can get before the directory asks
+// someone to refresh it. Admin-editable so the school can loosen or tighten the nag
+// without a deploy.
+type StaleYears struct {
+	Photo       float64 `json:"photo"`
+	Facts       float64 `json:"facts"`
+	FamilyPhoto float64 `json:"familyPhoto"`
 }
 
 type Model struct {
@@ -98,6 +108,7 @@ type Model struct {
 	Grades      []Grade             `json:"grades"`
 	RoomParents map[string][]string `json:"roomParents"`
 	Departments []string            `json:"departments"`
+	StaleYears  StaleYears          `json:"staleYears"`
 	byEmail     map[string]int
 }
 

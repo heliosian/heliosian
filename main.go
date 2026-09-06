@@ -121,13 +121,24 @@ func main() {
 		blobs = store
 	}
 	queue := directory.NewQueue()
-	cache, err := directory.NewCache(source, geocoder, blobs, staticFiles{}, queue)
+	cache, err := directory.NewCache(source, geocoder, blobs, staticFiles{}, store, queue)
 	if err != nil {
 		log.Fatalf("[ERROR] load directory data: %v", err)
+	}
+	if sheetID == "" && !cache.IsAdmin(sampleUser) {
+		// Sample mode has no store to persist an admin list in, so grant the fixed
+		// sample user super admin access in memory for local testing of every admin
+		// tool, spoofing included.
+		settings := cache.Settings()
+		settings.SuperAdmins = append(settings.SuperAdmins, sampleUser)
+		if err := cache.UpdateSettings(settings); err != nil {
+			log.Fatalf("[ERROR] grant sample user admin access: %v", err)
+		}
 	}
 	mux := http.NewServeMux()
 	directory.Register(mux, cache, browserKey)
 	directory.RegisterTags(mux, cache, writer, queue)
+	directory.RegisterAdmin(mux, cache)
 	if store != nil {
 		blob.Register(mux, store)
 		directory.RegisterUpload(mux, cache, source.(*data.Sheet), store, queue)

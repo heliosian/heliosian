@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"heliosian/internal/auth"
 	"heliosian/internal/blob"
 	"heliosian/internal/data"
 )
@@ -104,7 +103,7 @@ func (u uploader) edit(w http.ResponseWriter, r *http.Request) {
 	key := strings.ToLower(strings.TrimSpace(r.FormValue("key")))
 	field := r.FormValue("field")
 	value := strings.TrimSpace(r.FormValue("value"))
-	me := auth.Email(r)
+	me := effectiveEmail(u.cache, r)
 	model := u.cache.Model()
 	person := model.Person(key)
 	if person == nil {
@@ -116,7 +115,7 @@ func (u uploader) edit(w http.ResponseWriter, r *http.Request) {
 	previous := map[string]string{}
 	switch field {
 	case "preferred-name":
-		if !mayEdit(model, me, "person", key) {
+		if !u.mayEdit(model, me, "person", key) {
 			http.Error(w, "not allowed to edit this record", http.StatusForbidden)
 			return
 		}
@@ -133,7 +132,7 @@ func (u uploader) edit(w http.ResponseWriter, r *http.Request) {
 		previous["Preferred Name"] = person.PreferredName
 		previous["Full Name"] = person.FullName
 	case "primary-photo":
-		if !mayEdit(model, me, "person", key) {
+		if !u.mayEdit(model, me, "person", key) {
 			http.Error(w, "not allowed to edit this record", http.StatusForbidden)
 			return
 		}
@@ -152,7 +151,7 @@ func (u uploader) edit(w http.ResponseWriter, r *http.Request) {
 		cells["Primary Photo"] = value
 		previous["Primary Photo"] = person.PrimaryPhoto
 	case "phone":
-		if !mayEdit(model, me, "person", key) {
+		if !u.mayEdit(model, me, "person", key) {
 			http.Error(w, "not allowed to edit this record", http.StatusForbidden)
 			return
 		}
@@ -192,13 +191,13 @@ func (u uploader) edit(w http.ResponseWriter, r *http.Request) {
 
 func (u uploader) optOut(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
-	me := auth.Email(r)
+	me := effectiveEmail(u.cache, r)
 	key := strings.ToLower(strings.TrimSpace(r.FormValue("key")))
 	if key == "" {
 		http.Error(w, "bad opt out request", http.StatusBadRequest)
 		return
 	}
-	if !mayEdit(u.cache.Model(), me, "person", key) {
+	if !u.mayEdit(u.cache.Model(), me, "person", key) {
 		http.Error(w, "not allowed to edit this record", http.StatusForbidden)
 		return
 	}
@@ -217,9 +216,9 @@ func (u uploader) facts(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad facts request", http.StatusBadRequest)
 		return
 	}
-	me := auth.Email(r)
+	me := effectiveEmail(u.cache, r)
 	model := u.cache.Model()
-	if !mayEdit(model, me, "person", key) {
+	if !u.mayEdit(model, me, "person", key) {
 		http.Error(w, "not allowed to edit this record", http.StatusForbidden)
 		return
 	}
@@ -250,9 +249,9 @@ func (u uploader) upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	me := auth.Email(r)
+	me := effectiveEmail(u.cache, r)
 	model := u.cache.Model()
-	if !mayEdit(model, me, target, key) {
+	if !u.mayEdit(model, me, target, key) {
 		http.Error(w, "not allowed to edit this record", http.StatusForbidden)
 		return
 	}
@@ -336,7 +335,11 @@ func (u uploader) addPhoto(w http.ResponseWriter, me, key, name, previousUpdated
 		map[string]string{"Primary Photo": "", "Photo Updated": previousUpdated})
 }
 
-func mayEdit(model *Model, me, target, key string) bool {
+func (u uploader) mayEdit(model *Model, me, target, key string) bool {
+	admin := strings.ToLower(strings.TrimSpace(me))
+	if u.cache.IsAdmin(admin) && u.cache.SuperEditEnabled(admin) {
+		return true
+	}
 	mine := model.Person(me)
 	if mine == nil {
 		return false
@@ -353,6 +356,11 @@ func mayEdit(model *Model, me, target, key string) bool {
 	}
 	for _, kid := range family.KidEmails {
 		if kid == key {
+			return true
+		}
+	}
+	for _, adult := range family.AdultEmails {
+		if adult == key {
 			return true
 		}
 	}
