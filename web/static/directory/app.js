@@ -18,7 +18,7 @@ function saveNavOpen(navOpen) {
   }
 }
 
-const state = {model: null, tab: 'everyone', classTab: 'by-classroom', rosterTab: 'students', q: '', filterGrades: new Set(), filterClassrooms: new Set(), filterRoles: new Set(), filterCities: new Set(), filterPronouns: new Set(), filterTags: new Set(), filterNew: false, navOpen: loadNavOpen()};
+const state = {model: null, tab: 'everyone', classTab: 'by-classroom', rosterTab: 'students', rosterSectionExcluded: new Set(), q: '', filterGrades: new Set(), filterClassrooms: new Set(), filterRoles: new Set(), filterCities: new Set(), filterPronouns: new Set(), filterTags: new Set(), filterNew: false, navOpen: loadNavOpen()};
 let byEmail = {};
 let tags = {};
 
@@ -1928,9 +1928,6 @@ function listRow(image, label, title, sub, href) {
     info.append(el('div', 'list-sub', sub));
   }
   row.append(info);
-  const chev = el('div', 'list-chevron');
-  chev.append(svg('chevron-right'));
-  row.append(chev);
   return row;
 }
 
@@ -2178,13 +2175,65 @@ function otherFamilyMembers(student) {
     .join(', ');
 }
 
+function lastName(fullName) {
+  const parts = (fullName || '').trim().split(/\s+/);
+  return parts[parts.length - 1] || '';
+}
+
+function sortPeople(list) {
+  const copy = [...list];
+  copy.sort((a, b) => lastName(a.fullName).localeCompare(lastName(b.fullName)) || a.fullName.localeCompare(b.fullName));
+  return copy;
+}
+
+// Section chips let an admin narrow a multi-crew classroom (or a multi-classroom
+// grade) down to just some groups, toggled on/off independently rather than
+// picking one at a time - every section is on by default. Each chip is labeled
+// with the group's full header (e.g. "Great Egrets"), while chipLabel - the
+// shorter crew name alone (e.g. "Great") - is the filter key, matching what
+// visibleGroups matches against elsewhere in renderRoster. state.rosterSectionExcluded
+// tracks only the deselected keys, and stale entries left over from a different
+// classroom/grade are pruned whenever the available keys change.
+function sectionFilterBar(groups, rerender) {
+  const sections = groups.filter(g => g.header);
+  if (sections.length < 2) {
+    return null;
+  }
+  const keys = sections.map(g => g.chipLabel || g.header);
+  for (const excluded of [...state.rosterSectionExcluded]) {
+    if (!keys.includes(excluded)) {
+      state.rosterSectionExcluded.delete(excluded);
+    }
+  }
+  const bar = el('div', 'section-filter');
+  for (const g of sections) {
+    const key = g.chipLabel || g.header;
+    const active = !state.rosterSectionExcluded.has(key);
+    const btn = el('button', 'section-chip' + (active ? ' active' : ''));
+    btn.type = 'button';
+    btn.append(el('span', '', g.header));
+    btn.addEventListener('click', () => {
+      if (active) {
+        state.rosterSectionExcluded.add(key);
+      } else {
+        state.rosterSectionExcluded.delete(key);
+      }
+      rerender();
+    });
+    bar.append(btn);
+  }
+  return bar;
+}
+
 function renderRoster(title, image, groups, backLabel) {
   const main = resetMain();
   const from = fromURL();
   const back = from && from.pathname === '/classrooms' ? from.pathname + from.search : '/classrooms';
-  main.append(breadcrumbs([['Classrooms', back], [title, null]]));
 
-  const content = el('div', 'container detail-content');
+  const header = el('div', 'roster-header');
+  header.append(breadcrumbs([['Classrooms', back], [title, null]]));
+
+  const headWrap = el('div', 'container');
   const head = el('div', 'class-head');
   if (image) {
     const img = el('img', 'class-tile');
@@ -2193,7 +2242,8 @@ function renderRoster(title, image, groups, backLabel) {
     head.append(img);
   }
   head.append(el('h1', 'class-title', title));
-  content.append(head);
+  headWrap.append(head);
+  header.append(headWrap);
 
   const allStudents = groups.flatMap(g => g.students);
   const teachers = teachersOf([...new Set(allStudents.map(s => s.classroom).filter(Boolean))]);
@@ -2210,35 +2260,54 @@ function renderRoster(title, image, groups, backLabel) {
     renderRoster(title, image, groups, backLabel);
   });
   strip.classList.add('roster-tabs');
-  strip.querySelector('.tabs-row').classList.remove('container');
-  content.append(strip);
+  header.append(strip);
+  main.append(header);
 
+  const content = el('div', 'container detail-content');
   const list = el('div');
+  const rerender = () => renderRoster(title, image, groups, backLabel);
   if (state.rosterTab === 'students') {
-    const heading = el('h2', 'roster-heading', `${allStudents.length} Students`);
-    list.append(heading);
-    for (const group of groups) {
+    const headingRow = el('div', 'roster-heading-row');
+    headingRow.append(el('h2', 'roster-heading', `${allStudents.length} Students`));
+    const filterBar = sectionFilterBar(groups, rerender);
+    if (filterBar) {
+      headingRow.append(filterBar);
+    }
+    list.append(headingRow);
+    const visibleGroups = groups.filter(g => !g.header || !state.rosterSectionExcluded.has(g.chipLabel || g.header));
+    const listBody = el('div', 'roster-list grid');
+    for (const group of visibleGroups) {
       if (group.header) {
-        list.append(el('h2', 'group-header', group.header));
+        listBody.append(el('h2', 'group-header', group.header));
       }
-      for (const s of group.students) {
-        const row = listRow(thumbUrl(s.photoUrl), otherFamilyMembers(s).toUpperCase(), s.fullName, s.facts || '', personLink(s));
-        list.append(row);
+      for (const s of sortPeople(group.students)) {
+        listBody.append(listRow(thumbUrl(s.photoUrl), otherFamilyMembers(s).toUpperCase(), s.fullName, s.facts || '', personLink(s)));
       }
     }
+    list.append(listBody);
   } else if (state.rosterTab === 'staff') {
-    for (const email of teachers) {
+    list.append(el('h2', 'roster-heading', `${teachers.length} Staff`));
+    const listBody = el('div', 'roster-list grid');
+    const staffItems = teachers.map(email => {
       const person = byEmail[email.toLowerCase()];
-      if (person) {
-        list.append(listRow(thumbUrl(person.photoUrl), (person.jobTitle || '').toUpperCase(), person.fullName, person.facts || '', personLink(person)));
+      return person ? {fullName: person.fullName, person} : {fullName: email, email};
+    });
+    for (const item of sortPeople(staffItems)) {
+      if (item.person) {
+        const person = item.person;
+        listBody.append(listRow(thumbUrl(person.photoUrl), (person.jobTitle || '').toUpperCase(), person.fullName, person.facts || '', personLink(person)));
       } else {
-        list.append(el('div', 'list-row plain', email));
+        listBody.append(el('div', 'list-row plain', item.email));
       }
     }
+    list.append(listBody);
   } else {
-    for (const p of parents) {
-      list.append(listRow(thumbUrl(p.photoUrl), '', p.fullName, kidsSummary(p), personLink(p)));
+    list.append(el('h2', 'roster-heading', `${parents.length} Parents`));
+    const listBody = el('div', 'roster-list grid');
+    for (const p of sortPeople(parents)) {
+      listBody.append(listRow(thumbUrl(p.photoUrl), '', p.fullName, kidsSummary(p), personLink(p)));
     }
+    list.append(listBody);
   }
   content.append(list);
   main.append(content);
@@ -2267,8 +2336,8 @@ function renderClassroomDetail(slug) {
   const students = studentsOf(p => p.classroom === classroom.name);
   const crews = [...new Set(students.map(s => s.crew).filter(Boolean))].sort();
   const groups = crews.length
-    ? crews.map(name => ({header: name, students: students.filter(s => s.crew === name)}))
-    : [{header: classroom.name, students}];
+    ? crews.map(name => ({header: `${name} ${classroom.name}`, chipLabel: name, students: students.filter(s => s.crew === name)}))
+    : [{header: '', students}];
   renderRoster(classroom.name, classroom.imageUrl, groups);
 }
 

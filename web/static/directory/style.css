@@ -2042,7 +2042,7 @@ a.list-row:hover {
 .list-tile {
   width: 80px;
   height: 80px;
-  border-radius: 14px;
+  border-radius: 50%;
   object-fit: cover;
   background: #eef1f3;
   flex-shrink: 0;
@@ -2065,33 +2065,17 @@ a.list-row:hover {
   white-space: pre-line;
 }
 
-.list-chevron {
-  margin-left: auto;
-  color: #b6bcc2;
-  flex-shrink: 0;
-}
-
-.list-chevron svg {
-  width: 18px;
-  height: 18px;
-  stroke: currentColor;
-  fill: none;
-  stroke-width: 1.5;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
 .class-head {
   display: flex;
   align-items: center;
   gap: 26px;
-  margin: 4px 0 10px;
+  margin: 20px 0 28px;
 }
 
 .class-tile {
   width: 120px;
   height: 120px;
-  border-radius: 18px;
+  border-radius: 50%;
   object-fit: cover;
 }
 
@@ -2099,6 +2083,10 @@ a.list-row:hover {
   font-size: 28px;
   font-weight: 700;
   margin: 0;
+}
+
+.roster-header {
+  background: #fff;
 }
 
 .roster-tabs {
@@ -2119,6 +2107,78 @@ a.list-row:hover {
   font-size: 22px;
   font-weight: 700;
   margin: 18px 0 4px;
+}
+
+.roster-heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.section-filter {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.section-chip {
+  display: inline-flex;
+  align-items: center;
+  background: var(--input);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 6px 14px;
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.section-chip:hover {
+  background: #e2e6e9;
+}
+
+.section-chip.active {
+  background: var(--brand);
+  color: #fff;
+}
+
+.roster-list.grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.roster-list.grid .group-header {
+  grid-column: 1 / -1;
+  margin: 10px 0 0;
+}
+
+.roster-list.grid .group-header:first-child {
+  margin-top: 0;
+}
+
+.roster-list.grid a.list-row {
+  margin: 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+}
+
+.roster-list.grid a.list-row:hover {
+  background: #f9fafb;
+  border-color: #d5dade;
+}
+
+@media (max-width: 700px) {
+  .roster-list.grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .photo-wrap {
