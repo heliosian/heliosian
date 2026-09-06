@@ -2298,7 +2298,7 @@ function canEditPerson(email) {
   }
   const me = byEmail[meEmail];
   const family = me && state.model.families[me.familyKey];
-  return Boolean(family && (family.kidEmails || []).includes(email));
+  return Boolean(family && [...(family.kidEmails || []), ...(family.adultEmails || [])].includes(email));
 }
 
 // photoSwitcher shows every photo a person has and swaps the big one on click. Which
