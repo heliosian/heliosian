@@ -631,7 +631,11 @@ function photoOrInitials(url, name, className) {
     return img;
   }
   const div = el('div', className, name.trim().split(/\s+/).map(w => w[0]).slice(0, 2).join(''));
-  div.style.background = `hsl(${hue(name)} 45% 55%)`;
+  const h = hue(name);
+  div.style.background = `hsl(${h} 45% 55%)`;
+  // A lighter tint of the same hue, used for the hover ring so it always relates to
+  // this specific avatar's color instead of one fixed ring color for everyone.
+  div.style.setProperty('--avatar-hue', h);
   return div;
 }
 
@@ -891,6 +895,7 @@ function renderPeople() {
     state.q = '';
     history.replaceState(null, '', tabHref(key));
     renderPeople();
+    finishRender();
   }));
 
   const content = el('div', 'content container');
@@ -1294,31 +1299,6 @@ function displayNameLine(p) {
   return p.legalName;
 }
 
-function memberRow(p, label, sub) {
-  const row = el('a', 'member-row');
-  row.href = personLink(p);
-  if (p.photoUrl) {
-    const img = el('img', 'member-thumb');
-    img.src = thumbUrl(p.photoUrl);
-    img.loading = 'lazy';
-    img.alt = '';
-    row.append(img);
-  }
-  const info = el('div', 'member-info');
-  if (label) {
-    info.append(el('div', 'member-label', label));
-  }
-  info.append(el('div', 'member-name', p.fullName));
-  if (sub) {
-    info.append(el('div', 'member-email', sub));
-  }
-  row.append(info);
-  const chev = el('div', 'member-chevron');
-  chev.append(svg('chevron-right'));
-  row.append(chev);
-  return row;
-}
-
 function familyCardRow(p, subtitle) {
   const row = el('a', 'fcard-row');
   row.href = personLink(p);
@@ -1482,11 +1462,13 @@ function renderPersonDetail(email) {
       : iconButton('pencil', 'Edit info', () => {
         personEdit = p.email;
         renderPersonDetail(email);
+        finishRender();
       });
     if (editing) {
       toggle.addEventListener('click', () => {
         personEdit = null;
         renderPersonDetail(email);
+        finishRender();
       });
     }
     topActions.append(toggle);
@@ -1788,27 +1770,27 @@ function renderFamilyDetail(key) {
   content.append(headerCard);
   main.append(content);
 
-  const band = el('div', 'band');
-  const inner = el('div', 'container');
-  inner.append(el('h2', 'band-title', 'Family Members'));
-  const cols = el('div', 'band-grid');
+  const band = el('div', 'container fcard-wrap');
+  const membersCard = el('div', 'detail-card fcard');
+  membersCard.append(el('h2', 'fcard-title', 'Family Members'));
+  const cols = el('div', 'members-grid');
   const adultsCol = el('div');
   if (adults.length) {
-    adultsCol.append(el('div', 'member-header', 'Adults'));
+    adultsCol.append(el('div', 'fcard-section-header', 'Adults'));
     for (const a of adults) {
-      adultsCol.append(memberRow(a, a.pronouns ? a.pronouns.toUpperCase() : ''));
+      adultsCol.append(familyCardRow(a, baseRole(a)));
     }
   }
   const kidsCol = el('div');
   if (kids.length) {
-    kidsCol.append(el('div', 'member-header', 'Kids'));
+    kidsCol.append(el('div', 'fcard-section-header', 'Children'));
     for (const k of kids) {
-      kidsCol.append(memberRow(k, k.pronouns ? k.pronouns.toUpperCase() : '', k.grade));
+      kidsCol.append(familyCardRow(k, gradeChain(k)));
     }
   }
   cols.append(adultsCol, kidsCol);
-  inner.append(cols);
-  band.append(inner);
+  membersCard.append(cols);
+  band.append(membersCard);
   main.append(band);
 
   if (location.hash) {
@@ -1896,6 +1878,23 @@ function listRow(image, label, title, sub, href) {
   return row;
 }
 
+function badgeCard(imageUrl, label, name, href) {
+  const card = el('a', 'classroom-card');
+  card.href = href;
+  if (imageUrl) {
+    const img = el('img', 'classroom-photo');
+    img.src = imageUrl;
+    img.loading = 'lazy';
+    img.alt = '';
+    card.append(img);
+  } else {
+    card.append(el('div', 'classroom-photo'));
+  }
+  card.append(el('div', 'role-label', label));
+  card.append(el('div', 'person-name', name));
+  return card;
+}
+
 const classroomsTabs = [
   {key: 'by-classroom', label: 'Explore by Classroom', heading: 'Explore by Classroom'},
   {key: 'by-grade', label: 'Explore by Grade', heading: 'Explore By Grade'},
@@ -1912,12 +1911,15 @@ function renderClassroomsList(list) {
     if (!rows.length) {
       continue;
     }
-    list.append(el('h2', 'group-header', group.label));
+    list.append(el('h2', 'staff-section', group.label));
+    const grid = el('div', 'people-grid autofit');
     for (const c of rows) {
       const students = studentsOf(p => p.classroom === c.name).length;
-      list.append(listRow(c.imageUrl, `${students} students`, c.name, '', withFrom('/classrooms/' + slugify(c.name))));
+      grid.append(badgeCard(c.imageUrl, `${students} student${students === 1 ? '' : 's'}`, c.name,
+        withFrom('/classrooms/' + slugify(c.name))));
       count++;
     }
+    list.append(grid);
   }
   return count;
 }
@@ -1930,12 +1932,15 @@ function renderGradesList(list) {
     if (!rows.length) {
       continue;
     }
-    list.append(el('h2', 'group-header', group.label));
+    list.append(el('h2', 'staff-section', group.label));
+    const grid = el('div', 'people-grid autofit');
     for (const name of rows) {
       const students = studentsOf(p => p.grade === name).length;
-      list.append(listRow(gradeImage(name), `${students} students`, name, '', withFrom('/grades/' + slugify(name))));
+      grid.append(badgeCard(gradeImage(name), `${students} student${students === 1 ? '' : 's'}`, name,
+        withFrom('/grades/' + slugify(name))));
       count++;
     }
+    list.append(grid);
   }
   return count;
 }
@@ -1963,11 +1968,19 @@ function renderRoomParents(list) {
     if (!parents.length) {
       continue;
     }
-    list.append(el('h2', 'group-header', group.label));
+    list.append(el('h2', 'staff-section', group.label));
+    const grid = el('div', 'people-grid autofit');
     for (const p of parents) {
-      list.append(listRow(thumbUrl(p.photoUrl), '', p.fullName, kidsSummary(p), personLink(p)));
+      const card = el('a', 'person-card');
+      card.href = personLink(p);
+      card.append(cardMore(p.email));
+      card.append(photoOrInitials(p.photoUrl, p.fullName, 'person-photo'));
+      card.append(el('div', 'role-label', kidsSummary(p)));
+      card.append(el('div', 'person-name', p.fullName));
+      grid.append(card);
       count++;
     }
+    list.append(grid);
   }
   return count;
 }
@@ -1990,6 +2003,7 @@ function renderClassroomsPage() {
     state.q = '';
     history.replaceState(null, '', tabHref(key));
     renderClassroomsPage();
+    finishRender();
   }));
 
   const content = el('div', 'content container');
@@ -2272,6 +2286,7 @@ function renderEmailListPage() {
     state.q = '';
     history.replaceState(null, '', tabHref(key));
     renderEmailListPage();
+    finishRender();
   }));
 
   const content = el('div', 'content container');
@@ -2913,6 +2928,21 @@ function render() {
   } else if (seg[0] === 'my-privacy') {
     renderPrivacyPage();
   }
+  finishRender();
+}
+
+// Wraps everything the render just built so it can act as the flexible
+// sticky-footer spacer: on a short page it grows to push the art down to the true
+// bottom of the viewport, and on a tall page it just yields to scrolling. Called
+// both after the top-level render() dispatch and after any in-page tab switch that
+// re-renders by calling its render*() function directly instead of going through
+// render() - those bypass this otherwise, leaving the footer art stuck from
+// whatever page loaded first (or missing it entirely).
+function finishRender() {
+  const main = document.querySelector('#main');
+  const contentWrap = el('div', 'page-content-wrap');
+  contentWrap.append(...main.childNodes);
+  main.append(contentWrap, el('div', 'page-footer-art'));
 }
 
 // The topbar only has room for the avatar (no name label), so - unlike the old

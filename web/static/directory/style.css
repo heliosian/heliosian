@@ -15,8 +15,18 @@
   --privacy-red: #dc2626;
 }
 
+/* A handful of toggled elements (.topbar-alert, .user-menu-alert, .user-row-alert,
+   …) set their own `display` in an author rule with the same specificity as the
+   `[hidden]` UA rule, which - being later in the cascade - would otherwise win and
+   keep the element visible no matter what the `hidden` DOM property says. This one
+   !important rule is the standard fix, and covers every such element at once. */
+[hidden] {
+  display: none !important;
+}
+
 .infobanner-wrap {
   padding-top: 20px;
+  background: #fff;
 }
 
 .infobanner {
@@ -756,13 +766,29 @@ body {
 main {
   flex: 1;
   overflow-y: auto;
-  background-color: #fff;
-  background-image:
-    url('/static/directory/main_bottom_background.png'),
-    linear-gradient(#f5f8f8, #f5f8f8);
-  background-repeat: repeat-x, no-repeat;
-  background-position: left bottom, left bottom;
-  background-size: auto auto, 100% 232px;
+  background-color: #f8fcfd;
+  display: flex;
+  flex-direction: column;
+}
+
+/* A real trailing element (appended once per render, after all page content) rather
+   than a background pinned to main's own box - a pinned background stays glued to
+   the bottom of the viewport regardless of scroll position, so it showed through
+   behind real content instead of only appearing past the true end of the page.
+   .page-content-wrap is the flexible sticky-footer spacer: on a short page it grows
+   to push the art down to the true bottom of the viewport; on a tall page it just
+   takes its natural (larger) size and the art follows right after, reachable by
+   scrolling like normal content. */
+.page-content-wrap {
+  flex: 1 0 auto;
+}
+
+.page-footer-art {
+  flex-shrink: 0;
+  height: 232px;
+  background-image: url('/static/directory/main_bottom_background.png');
+  background-repeat: repeat-x;
+  background-position: left bottom;
 }
 
 .container {
@@ -853,6 +879,7 @@ main {
 
 .page-header {
   padding-top: 24px;
+  background: #fff;
 }
 
 .page-title {
@@ -1093,6 +1120,7 @@ main {
   font-size: 14px;
   padding-top: 16px;
   padding-bottom: 2px;
+  background: #fff;
 }
 
 .email-holder {
@@ -1120,8 +1148,12 @@ main {
   position: relative;
 }
 
+.email-table tbody tr {
+  background: #fff;
+}
+
 .email-table tbody tr:nth-child(even) {
-  background: #fafbfb;
+  background: #f2f5f6;
 }
 
 .email-num {
@@ -1514,13 +1546,31 @@ main {
   gap: 32px 16px;
 }
 
-.people-grid .person-photo {
+.people-grid .person-photo,
+.people-grid .classroom-photo {
   width: 238px;
   max-width: 100%;
 }
 
 .person-card {
   text-align: center;
+}
+
+.classroom-card {
+  display: block;
+  text-align: center;
+  color: inherit;
+  text-decoration: none;
+}
+
+.classroom-photo {
+  width: 62%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+  margin: 0 auto 12px;
+  background: #eef1f3;
 }
 
 .person-photo {
@@ -1708,13 +1758,29 @@ a.family-card {
   border-radius: 12px;
 }
 
-a.person-card:hover,
 a.family-card:hover {
   background: #f6f6f7;
 }
 
 a.student-card:hover {
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+}
+
+/* A ring around the avatar itself instead of a gray fill behind the whole card -
+   hsl(var(--avatar-hue)) ties the ring's color to that specific person's own
+   initials color (set alongside it in photoOrInitials); real photos and anything
+   without a computed hue fall back to a neutral brand-teal ring. */
+a.person-card:hover .person-photo,
+a.classroom-card:hover .classroom-photo {
+  outline: 4px solid hsl(var(--avatar-hue, 185) 55% 80%);
+  outline-offset: 3px;
+}
+
+.person-photo,
+.classroom-photo {
+  transition: outline-color 0.15s ease, outline-offset 0.15s ease;
+  outline: 4px solid transparent;
+  outline-offset: 0;
 }
 
 .detail-top {
@@ -2338,126 +2404,10 @@ a.list-row:hover {
   color: var(--alert);
 }
 
-.band {
-  background: var(--label);
-  color: #fff;
-}
-
-.band-grid {
+.members-grid {
   display: grid;
-  grid-template-columns: minmax(0, 31fr) minmax(0, 69fr);
-  gap: 28px;
-  padding-top: 36px;
-  padding-bottom: 40px;
-}
-
-.band-left h2 {
-  font-size: 24px;
-  font-weight: 700;
-  margin: 8px 0 24px;
-  text-align: center;
-}
-
-.band-photo {
-  width: 100%;
-  border-radius: 8px;
-  display: block;
-}
-
-.band-photo-empty {
-  aspect-ratio: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 3rem;
-  font-weight: 500;
-  color: #fff;
-}
-
-.band-caption {
-  color: rgba(255, 255, 255, 0.72);
-  font-size: 13px;
-  line-height: 1.5;
-  text-align: center;
-  margin-top: 20px;
-}
-
-.band-title {
-  font-size: 24px;
-  font-weight: 700;
-  padding-top: 32px;
-  margin: 0 0 16px;
-}
-
-.member-header {
-  font-weight: 500;
-  font-size: 15px;
-  margin: 14px 0 4px;
-}
-
-.member-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 11px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
-  color: #fff;
-  text-decoration: none;
-}
-
-.member-thumb {
-  width: 50px;
-  height: 50px;
-  border-radius: 8px;
-  object-fit: cover;
-  flex-shrink: 0;
-}
-
-.member-label {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  color: rgba(255, 255, 255, 0.85);
-  text-transform: uppercase;
-}
-
-.member-name {
-  font-weight: 500;
-  font-size: 15px;
-}
-
-.member-email {
-  color: rgba(255, 255, 255, 0.7);
-  font-size: 13px;
-}
-
-.member-chevron {
-  margin-left: auto;
-  color: rgba(255, 255, 255, 0.75);
-}
-
-.member-chevron svg {
-  width: 18px;
-  height: 18px;
-  stroke: currentColor;
-  fill: none;
-  stroke-width: 1.5;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.see-family {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 15px 12px;
-  margin-top: 18px;
-  background: rgba(255, 255, 255, 0.07);
-  border-radius: 8px;
-  color: #fff;
-  text-decoration: none;
-  font-weight: 500;
-  font-size: 15px;
+  grid-template-columns: 1fr 1fr;
+  gap: 40px;
 }
 
 .family-caption {
@@ -2473,10 +2423,6 @@ a.list-row:hover {
   font-size: 12px;
   text-align: center;
   margin-top: 10px;
-}
-
-.band .band-grid .band-right .member-row:last-of-type {
-  border-bottom: 0;
 }
 
 .fcard-wrap {
@@ -2495,7 +2441,11 @@ a.list-row:hover {
   font-family: Georgia, 'Times New Roman', serif;
   font-size: 22px;
   font-weight: 700;
-  margin: 0;
+  margin: 0 0 20px;
+}
+
+.fcard-head .fcard-title {
+  margin-bottom: 0;
 }
 
 .fcard-see-link {
@@ -2627,7 +2577,7 @@ a.list-row:hover {
 
 @media (max-width: 900px) {
   .detail-grid,
-  .band-grid,
+  .members-grid,
   .fcard-grid {
     grid-template-columns: 1fr;
   }
@@ -2971,8 +2921,8 @@ a.list-row:hover {
     right: 0;
     height: calc(62px + env(safe-area-inset-bottom));
     padding-bottom: env(safe-area-inset-bottom);
-    background: #fff;
-    border-top: 1px solid var(--line);
+    background: var(--sidebar);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
     z-index: 30;
   }
   .mobile-tabs a {
@@ -2982,7 +2932,7 @@ a.list-row:hover {
     align-items: center;
     justify-content: center;
     gap: 3px;
-    color: #8a939b;
+    color: rgba(255, 255, 255, 0.6);
     text-decoration: none;
     font-size: 10.5px;
   }
@@ -2994,9 +2944,28 @@ a.list-row:hover {
     stroke-width: 1.6;
     stroke-linecap: round;
     stroke-linejoin: round;
+    opacity: 0.7;
+  }
+  .mobile-tabs a[href="/people"] svg {
+    color: #4ade80;
+  }
+  .mobile-tabs a[href="/classrooms"] svg {
+    color: #60a5fa;
+  }
+  .mobile-tabs a[href="/staff"] svg {
+    color: #f472b6;
+  }
+  .mobile-tabs a[href="/my-family"] svg {
+    color: #f5c451;
+  }
+  .mobile-tabs a[href="/email-list"] svg {
+    color: #a78bfa;
+  }
+  .mobile-tabs a.active svg {
+    opacity: 1;
   }
   .mobile-tabs a.active {
-    color: var(--sidebar);
+    color: #fff;
   }
   .drawer {
     display: flex;
@@ -3143,10 +3112,6 @@ a.list-row:hover {
   }
   .contact-actions {
     flex-shrink: 0;
-  }
-  .band-photo {
-    max-width: 200px;
-    margin: 0 auto;
   }
   .content-header {
     flex-direction: column;
