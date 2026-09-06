@@ -25,6 +25,16 @@ type Settings struct {
 	Admins       []string     `json:"admins"`
 	StaleYears   StaleYears   `json:"staleYears"`
 	PrivacyLinks PrivacyLinks `json:"privacyLinks"`
+
+	// GradeColors and ClassroomColors key on the grade/grade-band and classroom names
+	// themselves (e.g. "Grade 3", "Egrets") rather than a stable id, matching how
+	// Classroom/Grade are recomputed from scratch on every model rebuild rather than
+	// persisted rows - there's no id to key on that would survive a rebuild anyway.
+	// StaffColor is the fallback for anyone (staff, or a parent whose kids have no
+	// grade on record) with no grade-band color to inherit.
+	GradeColors     map[string]string `json:"gradeColors,omitempty"`
+	ClassroomColors map[string]string `json:"classroomColors,omitempty"`
+	StaffColor      string            `json:"staffColor,omitempty"`
 }
 
 // defaultSettings seeds a fresh deploy (or sample mode, which never persists) with a
@@ -38,6 +48,9 @@ func defaultSettings() Settings {
 			VeracrossPreferences: "https://portals.veracross.com/heliosschool/parent/directory-preferences",
 			HeliosWhoOptIn:       "https://hca.run/optin",
 		},
+		GradeColors:     map[string]string{},
+		ClassroomColors: map[string]string{},
+		StaffColor:      "#1f4d53",
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -14,6 +15,8 @@ import (
 type admin struct {
 	cache *Cache
 }
+
+var hexColorPattern = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
 
 // RegisterAdmin wires up the admin tools: image management and the admin list itself.
 // Routes are always registered — even in sample mode — so the page and settings are
@@ -26,6 +29,7 @@ func RegisterAdmin(mux *http.ServeMux, cache *Cache) {
 	mux.HandleFunc("POST /api/admin/stale-years", a.setStaleYears)
 	mux.HandleFunc("POST /api/admin/privacy-links", a.setPrivacyLinks)
 	mux.HandleFunc("POST /api/admin/images", a.setImage)
+	mux.HandleFunc("POST /api/admin/colors", a.setColor)
 	mux.HandleFunc("POST /api/admin/super-edit", a.setSuperEdit)
 	mux.HandleFunc("POST /api/admin/super-admins", a.setSuperAdmins)
 	mux.HandleFunc("POST /api/admin/spoof", a.setSpoof)
@@ -82,6 +86,7 @@ func (a admin) page(w http.ResponseWriter, r *http.Request) {
 type imageInfo struct {
 	Name     string `json:"name"`
 	ImageURL string `json:"imageUrl,omitempty"`
+	Color    string `json:"color,omitempty"`
 }
 
 type personOption struct {
@@ -99,11 +104,11 @@ func (a admin) state(w http.ResponseWriter, r *http.Request) {
 	model := a.cache.Model()
 	classrooms := make([]imageInfo, 0, len(model.Classrooms))
 	for _, c := range model.Classrooms {
-		classrooms = append(classrooms, imageInfo{Name: c.Name, ImageURL: c.ImageURL})
+		classrooms = append(classrooms, imageInfo{Name: c.Name, ImageURL: c.ImageURL, Color: c.Color})
 	}
 	grades := make([]imageInfo, 0, len(model.Grades))
 	for _, g := range model.Grades {
-		grades = append(grades, imageInfo{Name: g.Name, ImageURL: g.ImageURL})
+		grades = append(grades, imageInfo{Name: g.Name, ImageURL: g.ImageURL, Color: g.Color})
 	}
 	people := make([]personOption, 0, len(model.People))
 	for _, p := range model.People {
@@ -120,6 +125,7 @@ func (a admin) state(w http.ResponseWriter, r *http.Request) {
 		SuperEdit    bool           `json:"superEdit"`
 		Classrooms   []imageInfo    `json:"classrooms"`
 		Grades       []imageInfo    `json:"grades"`
+		StaffColor   string         `json:"staffColor"`
 		People       []personOption `json:"people"`
 		IsSuperAdmin bool           `json:"isSuperAdmin"`
 		SuperAdmins  []string       `json:"superAdmins,omitempty"`
@@ -128,7 +134,7 @@ func (a admin) state(w http.ResponseWriter, r *http.Request) {
 		Email: email, HasStore: a.cache.HasStore(), Admins: mergedAdmins(settings), StaleYears: settings.StaleYears,
 		PrivacyLinks: settings.PrivacyLinks,
 		SuperEdit:    a.cache.SuperEditEnabled(email),
-		Classrooms:   classrooms, Grades: grades, People: people,
+		Classrooms:   classrooms, Grades: grades, StaffColor: settings.StaffColor, People: people,
 	}
 	// A regular admin's response stops here — nothing below this line is reachable
 	// unless the effective identity is a super admin, so a regular admin's client
@@ -225,6 +231,62 @@ func (a admin) setPrivacyLinks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log.Printf("admin: %s set privacy links to %+v", email, links)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// setColor upserts one grade, classroom, or the single staff color, matching
+// setImage's per-item shape (kind + name) rather than a bulk replace-all, since
+// Classroom/Grade are recomputed from scratch on every model rebuild and have no id
+// to key a merge on beyond the name itself.
+func (a admin) setColor(w http.ResponseWriter, r *http.Request) {
+	email, ok := a.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Kind  string `json:"kind"`
+		Name  string `json:"name"`
+		Color string `json:"color"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 4<<10)).Decode(&body); err != nil {
+		http.Error(w, "bad request body", http.StatusBadRequest)
+		return
+	}
+	if !hexColorPattern.MatchString(body.Color) {
+		http.Error(w, "color must be a #rrggbb hex value", http.StatusBadRequest)
+		return
+	}
+	settings := a.cache.Settings()
+	switch body.Kind {
+	case "classroom":
+		if body.Name == "" {
+			http.Error(w, "missing name", http.StatusBadRequest)
+			return
+		}
+		if settings.ClassroomColors == nil {
+			settings.ClassroomColors = map[string]string{}
+		}
+		settings.ClassroomColors[body.Name] = body.Color
+	case "grade":
+		if body.Name == "" {
+			http.Error(w, "missing name", http.StatusBadRequest)
+			return
+		}
+		if settings.GradeColors == nil {
+			settings.GradeColors = map[string]string{}
+		}
+		settings.GradeColors[body.Name] = body.Color
+	case "staff":
+		settings.StaffColor = body.Color
+	default:
+		http.Error(w, "bad kind: must be classroom, grade, or staff", http.StatusBadRequest)
+		return
+	}
+	if err := a.cache.UpdateSettings(settings); err != nil {
+		serverError(w, err)
+		return
+	}
+	log.Printf("admin: %s set the %s color for %q to %s", email, body.Kind, body.Name, body.Color)
 	w.WriteHeader(http.StatusNoContent)
 }
 

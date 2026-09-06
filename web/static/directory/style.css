@@ -765,6 +765,7 @@ body {
 
 main {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   background-color: #f8fcfd;
   display: flex;
@@ -1766,13 +1767,13 @@ a.student-card:hover {
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
 }
 
-/* A ring around the avatar itself instead of a gray fill behind the whole card -
-   hsl(var(--avatar-hue)) ties the ring's color to that specific person's own
-   initials color (set alongside it in photoOrInitials); real photos and anything
-   without a computed hue fall back to a neutral brand-teal ring. */
+/* A ring around the avatar itself instead of a gray fill behind the whole card.
+   --ring-color (set in JS via ringColorFor/applyRingColor) is the admin-configured
+   grade/classroom/staff color; if that's ever unset, fall back to a lighter tint of
+   this specific avatar's own hash-based initials color, then to a neutral teal. */
 a.person-card:hover .person-photo,
 a.classroom-card:hover .classroom-photo {
-  outline: 4px solid hsl(var(--avatar-hue, 185) 55% 80%);
+  outline: 4px solid color-mix(in srgb, var(--ring-color, hsl(var(--avatar-hue, 185) 45% 55%)) 45%, white);
   outline-offset: 3px;
 }
 
@@ -2764,6 +2765,12 @@ a.list-row:hover {
   }
   .topbar {
     display: none;
+  }
+  .app-shell {
+    display: block;
+  }
+  .content-col {
+    display: block;
   }
   main {
     height: 100dvh;

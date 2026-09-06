@@ -82,6 +82,7 @@ type Classroom struct {
 	Name     string `json:"name"`
 	ImageURL string `json:"imageUrl,omitempty"`
 	HasCrews bool   `json:"hasCrews"`
+	Color    string `json:"color,omitempty"`
 }
 
 type Crew struct {
@@ -97,6 +98,7 @@ type Grade struct {
 	Band     string `json:"band,omitempty"`
 	NextBand string `json:"nextBand,omitempty"`
 	ImageURL string `json:"imageUrl,omitempty"`
+	Color    string `json:"color,omitempty"`
 }
 
 // StaleYears is how old a photo or facts entry can get before the directory asks
@@ -127,6 +129,7 @@ type Model struct {
 	Departments  []string            `json:"departments"`
 	StaleYears   StaleYears          `json:"staleYears"`
 	PrivacyLinks PrivacyLinks        `json:"privacyLinks"`
+	StaffColor   string              `json:"staffColor,omitempty"`
 	byEmail      map[string]int
 }
 

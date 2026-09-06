@@ -279,6 +279,13 @@ func (c *Cache) rebuild(tables *Tables, start time.Time) error {
 	c.mu.Lock()
 	model.StaleYears = c.settings.StaleYears
 	model.PrivacyLinks = c.settings.PrivacyLinks
+	model.StaffColor = c.settings.StaffColor
+	for i := range model.Classrooms {
+		model.Classrooms[i].Color = c.settings.ClassroomColors[model.Classrooms[i].Name]
+	}
+	for i := range model.Grades {
+		model.Grades[i].Color = c.settings.GradeColors[model.Grades[i].Name]
+	}
 	c.model = model
 	c.tables = tables
 	c.mu.Unlock()

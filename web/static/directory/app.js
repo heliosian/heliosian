@@ -169,6 +169,27 @@ function familyLink(key) {
   return withFrom('/families/' + encodeURIComponent(key));
 }
 
+// The search dropdown's second line: a student's grade chain as before, a staff
+// member's job title, and a parent's "Parent to Leo (Grade 1)" instead of the
+// generic role label, since who someone is a parent OF is more useful here than the
+// fact that they're a parent.
+function personSearchSubtitle(p) {
+  if (p.isStudent) {
+    return gradeChain(p);
+  }
+  if (p.isStaff) {
+    return p.jobTitle || roleLabel(p);
+  }
+  const family = state.model.families[p.familyKey];
+  const kids = ((family && family.kidEmails) || []).map(e => byEmail[e]).filter(Boolean);
+  if (kids.length) {
+    const names = kids.map(k => firstName(k.fullName)).join(', ');
+    const grades = [...new Set(kids.map(k => k.grade).filter(Boolean))].join(', ');
+    return `Parent to ${names}${grades ? ` (${grades})` : ''}`;
+  }
+  return roleLabel(p);
+}
+
 // Shared by the desktop topbar search and the mobile search overlay - both just
 // point a different results container at this. People/grades/classrooms are all
 // loaded client-side already (state.model), so this is a plain client-side filter
@@ -212,7 +233,7 @@ function renderGlobalSearchResults(resultsEl, query) {
     row.append(photoOrInitials(p.photoUrl, p.fullName, 'gsearch-avatar'));
     const info = el('div', 'gsearch-info');
     info.append(el('div', 'gsearch-title', p.fullName));
-    const sub = gradeChain(p) || roleLabel(p);
+    const sub = personSearchSubtitle(p);
     if (sub) {
       info.append(el('div', 'gsearch-sub', sub));
     }
@@ -639,6 +660,41 @@ function photoOrInitials(url, name, className) {
   return div;
 }
 
+// Which admin-configured color a person's hover ring should use: a student gets
+// their own grade's color, a parent gets one of their kids' grade colors (picked
+// stably via a hash of their own email so it doesn't change from render to render),
+// and staff - or anyone with no grade-band to inherit from, like a parent with no
+// kids on record - falls back to the one global staff color.
+function ringColorFor(p) {
+  if (p.isStudent) {
+    const grade = state.model.grades.find(g => g.name === p.grade);
+    return (grade && grade.color) || state.model.staffColor || null;
+  }
+  if (p.isStaff) {
+    return state.model.staffColor || null;
+  }
+  const family = state.model.families[p.familyKey];
+  const kids = ((family && family.kidEmails) || []).map(e => byEmail[e]).filter(Boolean);
+  if (kids.length) {
+    const pick = kids[hue(p.email) % kids.length];
+    const grade = state.model.grades.find(g => g.name === pick.grade);
+    if (grade && grade.color) {
+      return grade.color;
+    }
+  }
+  return state.model.staffColor || null;
+}
+
+// Sets the hover-ring color (see ringColorFor) as an inline CSS variable so
+// a.person-card:hover's outline can pick it up without per-page-type CSS.
+function applyRingColor(photoEl, p) {
+  const color = ringColorFor(p);
+  if (color) {
+    photoEl.style.setProperty('--ring-color', color);
+  }
+  return photoEl;
+}
+
 function baseRole(p) {
   if (p.isStudent) {
     return 'Student';
@@ -739,7 +795,7 @@ function personCard(p) {
   const card = el('a', 'person-card');
   card.append(cardMore(p.email));
   card.href = personLink(p);
-  card.append(photoOrInitials(p.photoUrl, p.fullName, 'person-photo'));
+  card.append(applyRingColor(photoOrInitials(p.photoUrl, p.fullName, 'person-photo'), p));
   card.append(el('div', 'role-label', roleLabel(p)));
   card.append(el('div', 'person-name', p.fullName));
   const context = personContext(p);
@@ -863,7 +919,7 @@ function renderStaff(grid, autoFit) {
       const card = el('a', 'person-card');
       card.href = personLink(p);
       card.append(cardMore(p.email));
-      card.append(photoOrInitials(p.photoUrl, p.fullName, 'person-photo'));
+      card.append(applyRingColor(photoOrInitials(p.photoUrl, p.fullName, 'person-photo'), p));
       card.append(el('div', 'role-label', p.jobTitle || 'Staff'));
       card.append(el('div', 'person-name', p.fullName));
       deptGrid.append(card);
@@ -1878,18 +1934,19 @@ function listRow(image, label, title, sub, href) {
   return row;
 }
 
-function badgeCard(imageUrl, label, name, href) {
+function badgeCard(imageUrl, label, name, href, color) {
   const card = el('a', 'classroom-card');
   card.href = href;
+  const photo = imageUrl ? el('img', 'classroom-photo') : el('div', 'classroom-photo');
   if (imageUrl) {
-    const img = el('img', 'classroom-photo');
-    img.src = imageUrl;
-    img.loading = 'lazy';
-    img.alt = '';
-    card.append(img);
-  } else {
-    card.append(el('div', 'classroom-photo'));
+    photo.src = imageUrl;
+    photo.loading = 'lazy';
+    photo.alt = '';
   }
+  if (color) {
+    photo.style.setProperty('--ring-color', color);
+  }
+  card.append(photo);
   card.append(el('div', 'role-label', label));
   card.append(el('div', 'person-name', name));
   return card;
@@ -1916,7 +1973,7 @@ function renderClassroomsList(list) {
     for (const c of rows) {
       const students = studentsOf(p => p.classroom === c.name).length;
       grid.append(badgeCard(c.imageUrl, `${students} student${students === 1 ? '' : 's'}`, c.name,
-        withFrom('/classrooms/' + slugify(c.name))));
+        withFrom('/classrooms/' + slugify(c.name)), c.color));
       count++;
     }
     list.append(grid);
@@ -1936,8 +1993,9 @@ function renderGradesList(list) {
     const grid = el('div', 'people-grid autofit');
     for (const name of rows) {
       const students = studentsOf(p => p.grade === name).length;
+      const grade = state.model.grades.find(g => g.name === name);
       grid.append(badgeCard(gradeImage(name), `${students} student${students === 1 ? '' : 's'}`, name,
-        withFrom('/grades/' + slugify(name))));
+        withFrom('/grades/' + slugify(name)), grade && grade.color));
       count++;
     }
     list.append(grid);
@@ -1974,7 +2032,7 @@ function renderRoomParents(list) {
       const card = el('a', 'person-card');
       card.href = personLink(p);
       card.append(cardMore(p.email));
-      card.append(photoOrInitials(p.photoUrl, p.fullName, 'person-photo'));
+      card.append(applyRingColor(photoOrInitials(p.photoUrl, p.fullName, 'person-photo'), p));
       card.append(el('div', 'role-label', kidsSummary(p)));
       card.append(el('div', 'person-name', p.fullName));
       grid.append(card);

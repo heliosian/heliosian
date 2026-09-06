@@ -144,6 +144,18 @@
     margin-right: 10px;
   }
   .image-row .status.error { color: var(--alert); }
+  .color-swatch {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: 1px solid var(--line);
+    border-radius: 50%;
+    overflow: hidden;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .color-swatch::-webkit-color-swatch-wrapper { padding: 0; }
+  .color-swatch::-webkit-color-swatch { border: none; border-radius: 50%; }
   .upload-button {
     display: inline-flex;
     align-items: center;
@@ -341,12 +353,21 @@
   <div class="panel" id="panel-images">
     <div id="store-notice"></div>
     <div class="card">
-      <h2>Classroom images</h2>
+      <h2>Staff color</h2>
+      <div class="hint">Used for staff, and for anyone else (like a parent) with no grade-band color to inherit.</div>
+      <div class="image-row">
+        <input type="color" id="staff-color" class="color-swatch" title="Staff color">
+        <div class="name">Staff</div>
+        <span class="status" id="staff-color-status"></span>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Classroom images &amp; colors</h2>
       <div class="hint">Shown in the directory wherever a classroom is listed. Replacing one takes effect immediately.</div>
       <div id="classrooms"></div>
     </div>
     <div class="card">
-      <h2>Grade images</h2>
+      <h2>Grade images &amp; colors</h2>
       <div class="hint">Shown in Explore by Grade and on each grade's page.</div>
       <div id="grades"></div>
     </div>
@@ -649,6 +670,8 @@ function render() {
     notice.append(div);
   }
 
+  document.querySelector('#staff-color').value = state.staffColor || '#1f4d53';
+
   renderImages('#classrooms', state.classrooms, 'classroom');
   renderImages('#grades', state.grades, 'grade');
 
@@ -822,6 +845,14 @@ function renderImages(selector, items, kind) {
     status.className = 'status';
     row.append(status);
 
+    const colorInput = document.createElement('input');
+    colorInput.type = 'color';
+    colorInput.className = 'color-swatch';
+    colorInput.title = `Hover color for ${item.name}`;
+    colorInput.value = item.color || '#8a939b';
+    colorInput.addEventListener('change', () => setColor(kind, item.name, colorInput, status));
+    row.append(colorInput);
+
     const label = document.createElement('label');
     label.className = 'upload-button';
     label.textContent = 'Replace';
@@ -861,6 +892,22 @@ async function uploadImage(kind, name, input, status) {
   await load();
 }
 
+async function setColor(kind, name, input, status) {
+  status.classList.remove('error');
+  status.textContent = 'Saving…';
+  const res = await fetch('/api/admin/colors', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({kind, name, color: input.value}),
+  });
+  if (!res.ok) {
+    status.classList.add('error');
+    status.textContent = await res.text();
+    return;
+  }
+  status.textContent = '';
+}
+
 document.querySelector('#super-edit').addEventListener('change', async e => {
   const checkbox = e.target;
   checkbox.disabled = true;
@@ -876,6 +923,10 @@ document.querySelector('#super-edit').addEventListener('change', async e => {
     return;
   }
   state.superEdit = checkbox.checked;
+});
+
+document.querySelector('#staff-color').addEventListener('change', e => {
+  setColor('staff', '', e.target, document.querySelector('#staff-color-status'));
 });
 
 // Delegated on the container, not bound per-tab, because the Super Admins and Spoof
