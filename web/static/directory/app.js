@@ -1130,7 +1130,7 @@ function familyBand(p, family) {
   const grid = el('div', 'band-grid container');
   const left = el('div', 'band-left');
   left.append(el('h2', '', `${p.fullName}'s Family`));
-  if (family.photoUrl && !p.isStudent) {
+  if (family.photoUrl) {
     const img = el('img', 'band-photo');
     img.src = thumbUrl(family.photoUrl);
     img.alt = '';
