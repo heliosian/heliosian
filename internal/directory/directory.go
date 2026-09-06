@@ -83,12 +83,15 @@ func (a app) page(w http.ResponseWriter, r *http.Request) {
 		serverError(w, err)
 		return
 	}
-	name := a.cache.Model().DisplayName(auth.Email(r))
+	email := auth.Email(r)
+	name := a.cache.Model().DisplayName(email)
+	emailPrefix, _, _ := strings.Cut(email, "@")
 	data := map[string]string{
-		"UserName":    name,
-		"UserInitial": strings.ToUpper(name[:1]),
-		"UserEmail":   auth.Email(r),
-		"MapsKey":     a.mapsKey,
+		"UserName":      name,
+		"UserInitial":   strings.ToUpper(name[:1]),
+		"UserEmail":     email,
+		"UserEmailSlug": emailPrefix,
+		"MapsKey":       a.mapsKey,
 	}
 	if err := t.Execute(w, data); err != nil {
 		log.Printf("[ERROR] render directory page: %v", err)

@@ -143,8 +143,23 @@ function withFrom(href) {
   return href + (href.includes('?') ? '&' : '?') + 'from=' + from;
 }
 
+function personSlug(email) {
+  return (email || '').split('@')[0];
+}
+
+function personByKey(key) {
+  if (!key) {
+    return undefined;
+  }
+  if (byEmail[key]) {
+    return byEmail[key];
+  }
+  const lower = key.toLowerCase();
+  return Object.values(byEmail).find(p => personSlug(p.email).toLowerCase() === lower);
+}
+
 function personLink(p) {
-  return withFrom('/people/' + encodeURIComponent(p.email));
+  return withFrom('/people/' + encodeURIComponent(personSlug(p.email)));
 }
 
 function familyLink(key) {
@@ -292,7 +307,7 @@ function todoPhotoRow(item) {
 
 function todoFactsRow(item) {
   const row = el('a', 'todo-row');
-  row.href = withFrom(`/people/${encodeURIComponent(item.key)}?edit=1&focus=facts`);
+  row.href = withFrom(`/people/${encodeURIComponent(personSlug(item.key))}?edit=1&focus=facts`);
   row.append(el('div', 'todo-mark'));
   row.append(el('div', 'todo-text', item.text));
   const chev = el('div', 'todo-chevron');
@@ -320,7 +335,8 @@ function resetMain(...children) {
   const seg = segments();
   const onOwnFamilyPage = seg[0] === 'families' && seg[1] === myFamilyKey();
   const familyEmails = new Set(familyNavPeople().map(fp => fp.email));
-  const onOwnFamilyMemberPage = seg[0] === 'people' && seg[1] && familyEmails.has(seg[1]);
+  const segPerson = seg[0] === 'people' && seg[1] ? personByKey(seg[1]) : undefined;
+  const onOwnFamilyMemberPage = !!segPerson && familyEmails.has(segPerson.email);
   if (!onOwnFamilyPage && !onOwnFamilyMemberPage) {
     const stale = staleItems();
     if (stale.length) {
@@ -384,7 +400,8 @@ function renderNav() {
   const me = byEmail[document.body.dataset.userEmail];
   const familyPeople = familyNavPeople();
   const familyEmails = new Set(familyPeople.map(p => p.email));
-  const onFamilyMember = rawSeg[0] === 'people' && rawSeg[1] && familyEmails.has(rawSeg[1]);
+  const rawSegPerson = rawSeg[0] === 'people' && rawSeg[1] ? personByKey(rawSeg[1]) : undefined;
+  const onFamilyMember = !!rawSegPerson && familyEmails.has(rawSegPerson.email);
 
   const nav = document.querySelector('#nav');
   nav.replaceChildren();
@@ -1177,7 +1194,7 @@ let personEdit = null;
 
 function renderPersonDetail(email) {
   const main = resetMain();
-  const p = byEmail[email];
+  const p = personByKey(email);
   if (!p) {
     main.append(el('div', 'empty', 'Not found.'));
     return;
@@ -1446,8 +1463,9 @@ function renderFamilyDetail(key) {
   } else if (from) {
     const rseg = from.pathname.split('/').filter(Boolean).map(decodeURIComponent);
     const back = from.pathname + from.search;
-    if (rseg[0] === 'people' && rseg[1] && byEmail[rseg[1]]) {
-      const person = byEmail[rseg[1]];
+    const rsegPerson = rseg[0] === 'people' && rseg[1] ? personByKey(rseg[1]) : undefined;
+    if (rsegPerson) {
+      const person = rsegPerson;
       const peopleBack = new URLSearchParams(from.search).get('from');
       const peopleHref = peopleBack && peopleBack.startsWith('/people') && !peopleBack.startsWith('/people/') ? peopleBack : '/people';
       crumbs = [['People', peopleHref], [person.fullName, back], ['Family', null]];
@@ -2187,7 +2205,7 @@ function renderMapPage() {
 
   const update = el('div', 'map-update');
   const action = el('a', 'map-update-link');
-  action.href = withFrom('/people/' + encodeURIComponent(document.body.dataset.userEmail) + '?edit=1');
+  action.href = withFrom('/people/' + encodeURIComponent(personSlug(document.body.dataset.userEmail)) + '?edit=1');
   action.append(svg('zap'), el('span', '', 'Update My Address'));
   update.append(action);
   content.append(update);
@@ -2538,7 +2556,7 @@ document.querySelector('#user').addEventListener('click', e => {
 });
 document.querySelector('#user .user-avatar').addEventListener('click', e => {
   e.stopPropagation();
-  location.href = withFrom('/people/' + encodeURIComponent(document.body.dataset.userEmail));
+  location.href = withFrom('/people/' + encodeURIComponent(personSlug(document.body.dataset.userEmail)));
 });
 
 const drawer = document.querySelector('#drawer');
