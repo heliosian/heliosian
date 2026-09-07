@@ -2008,35 +2008,6 @@ function renderPersonDetail(email) {
     content.append(aboutCard);
   }
 
-  if (editing) {
-    const privacyCard = el('div', 'detail-card');
-    const header = el('h2', 'about-header', 'Privacy');
-    const button = el('button', 'media-button',
-      'Remove ' + (self ? 'me' : firstName(p.fullName)) + ' from this directory');
-    const status = el('div', 'media-status');
-    button.addEventListener('click', async () => {
-      const message = 'This removes all data about ' + (self ? 'you' : firstName(p.fullName)) +
-        ' from this directory. ' +
-        'For security, users not in the directory cannot access it. ' +
-        "This doesn't affect the values shown in Veracross. Continue?";
-      if (!confirm(message)) {
-        return;
-      }
-      status.classList.remove('error');
-      status.textContent = 'Removing…';
-      const form = new FormData();
-      form.append('key', p.email);
-      const res = await fetch('/api/directory/optout', {method: 'POST', body: form});
-      if (!res.ok) {
-        status.classList.add('error');
-        status.textContent = await res.text();
-        return;
-      }
-      location.reload();
-    });
-    privacyCard.append(header, button, status);
-    content.append(privacyCard);
-  }
   main.append(content);
 
   if (family) {
