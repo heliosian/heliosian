@@ -18,6 +18,25 @@ function saveNavOpen(navOpen) {
   }
 }
 
+// The last tag this user assigned to anyone, anywhere - remembered per
+// browser so a click on the tag button can immediately reapply it instead of
+// making every tagging start from an empty dropdown.
+function loadLastTag() {
+  try {
+    return localStorage.getItem('lastTag') || '';
+  } catch (e) {
+    return '';
+  }
+}
+
+function saveLastTag(tag) {
+  try {
+    localStorage.setItem('lastTag', tag);
+  } catch (e) {
+    // ignore
+  }
+}
+
 const state = {model: null, tab: 'everyone', classTab: 'by-classroom', rosterTab: 'students', rosterSectionExcluded: new Set(), q: '', filterGrades: new Set(), filterClassrooms: new Set(), filterRoles: new Set(), filterRoleExcluded: new Set(), filterCities: new Set(), filterPronouns: new Set(), filterTags: new Set(), filterNew: false, staffDeptExcluded: new Set(), navOpen: loadNavOpen()};
 let byEmail = {};
 let tags = {};
@@ -38,6 +57,7 @@ async function setTag(email, tag, on) {
   const people = tags[tag] || [];
   if (on) {
     tags[tag] = people.includes(email) ? people : [...people, email];
+    saveLastTag(tag);
   } else {
     tags[tag] = people.filter(e => e !== email);
     if (!tags[tag].length) {
@@ -806,7 +826,22 @@ function tagMenu(email, onChange) {
       e.preventDefault();
     }
   });
+  menu.refreshTags = render;
   return menu;
+}
+
+// The tag to quick-assign on a click: the last one used, but only if it's
+// still one of the user's actual current tags - a remembered name whose last
+// person got untagged is gone from tagNames() even though localStorage still
+// has it, and reapplying it would resurrect a tag the user no longer has.
+// With no current tags at all, "My List" is the starting point.
+function mostRecentTag() {
+  const existing = tagNames();
+  if (!existing.length) {
+    return 'My List';
+  }
+  const last = loadLastTag();
+  return existing.includes(last) ? last : existing[0];
 }
 
 function tagControl(email, wrapClass, buttonClass, onChange) {
@@ -818,10 +853,25 @@ function tagControl(email, wrapClass, buttonClass, onChange) {
     button.classList.toggle('active', isTagged(email));
     onChange();
   });
-  button.addEventListener('click', e => {
+  button.addEventListener('click', async e => {
     e.preventDefault();
     e.stopPropagation();
+    const opening = menu.hidden;
     menu.hidden = !menu.hidden;
+    if (!opening) {
+      return;
+    }
+    // Opening the dropdown always applies the user's most recently used tag
+    // first (creating "My List" the very first time), so tagging someone is
+    // a single click in the common case; the dropdown that comes up right
+    // after still shows every tag as a checkbox to adjust or undo the guess.
+    const tag = mostRecentTag();
+    if (!(tags[tag] || []).includes(email)) {
+      await setTag(email, tag, true);
+      menu.refreshTags();
+      button.classList.toggle('active', isTagged(email));
+      onChange();
+    }
   });
   wrap.append(button, menu);
   return wrap;
