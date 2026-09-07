@@ -1835,7 +1835,7 @@ function renderPersonDetail(email) {
     const needsFacts = factsNeedUpdate(p);
     const placeholder = needsFacts ? `Add ${self ? 'your' : `${firstName(p.fullName)}'s`} facts for the new year — click the pencil to get started.` : '';
     const textClass = 'about-text' + (editable && needsFacts ? ' needs-update' : '') + (!p.facts && placeholder ? ' placeholder-text' : '');
-    const text = el('div', textClass, p.facts || placeholder);
+    const text = p.facts ? aboutMeText(textClass, p.facts) : el('div', textClass, placeholder);
     const status = el('div', 'media-status about-status');
     aboutCard.append(text);
     if (p.facts) {
@@ -2142,6 +2142,23 @@ function listRow(image, label, title, sub, href) {
 const LIST_SUB_TRUNCATE_LENGTH = 280;
 const LIST_SUB_LINE_PREVIEW = 4;
 const BULLET_LINE = /^\s*(?:[*]|-{1,2})\s+(.+)$/;
+
+// The profile page's own "About Me" card: plain text (manual line breaks preserved
+// via the .about-text CSS) unless every line is bullet-marked (see parseBullets
+// below), in which case it's a real bulleted list instead of showing the literal
+// *, -, or -- markers as text.
+function aboutMeText(className, facts) {
+  const lines = facts.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const bullets = lines.length > 1 ? parseBullets(lines) : null;
+  if (!bullets) {
+    return el('div', className, facts);
+  }
+  const list = el('ul', className + ' about-bullets');
+  for (const item of bullets) {
+    list.append(el('li', '', item));
+  }
+  return list;
+}
 
 // Recognizes "About Me" text that's really a bullet list - every non-blank line
 // starts with *, -, or -- - and returns the items with their markers stripped.

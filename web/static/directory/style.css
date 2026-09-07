@@ -2533,6 +2533,16 @@ a.list-row:hover {
   white-space: pre-line;
 }
 
+.about-bullets {
+  white-space: normal;
+  margin: 0;
+  padding-left: 20px;
+}
+
+.about-bullets li {
+  margin: 4px 0;
+}
+
 .about-text.needs-update {
   padding: 10px 14px;
   background: rgba(245, 94, 3, 0.06);
