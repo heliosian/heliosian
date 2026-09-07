@@ -180,7 +180,6 @@ const primaryNavItems = [
   {path: 'people', label: 'Directory'},
   {path: 'classrooms', label: 'Gradebands'},
   {path: 'staff', label: 'Staff'},
-  {path: 'map', label: 'Map'},
 ];
 
 const toolsNavItems = [
@@ -3505,13 +3504,21 @@ function initFamilyMap(canvas, familyMatches) {
       m.setMap(null);
     }
     markers = [];
+    const allPeople = new Map();
     const withoutAddress = new Map();
     for (const family of Object.values(state.model.families)) {
       if (!familyMatches(family)) {
         continue;
       }
+      const emails = [...(family.kidEmails || []), ...(family.adultEmails || [])];
+      for (const e of emails) {
+        const p = byEmail[e];
+        if (p) {
+          allPeople.set(p.email, p);
+        }
+      }
       if (!family.address) {
-        for (const e of [...(family.kidEmails || []), ...(family.adultEmails || [])]) {
+        for (const e of emails) {
           const p = byEmail[e];
           if (p) {
             withoutAddress.set(p.email, p);
@@ -3536,7 +3543,7 @@ function initFamilyMap(canvas, familyMatches) {
     }
     missing.replaceChildren();
     if (withoutAddress.size > 10) {
-      missing.textContent = `${withoutAddress.size} people not shown — no address on file`;
+      missing.textContent = `${withoutAddress.size} of ${allPeople.size} people not shown — no address on file`;
     } else if (withoutAddress.size) {
       const names = [...withoutAddress.values()].map(p => p.fullName).sort((a, b) => a.localeCompare(b));
       missing.textContent = `Not shown, no address on file: ${names.join(', ')}`;
