@@ -165,6 +165,38 @@ func TestClearingPronounsSucceeds(t *testing.T) {
 	}
 }
 
+// Family Photo Caption is resolved through the same family-fields-split-
+// across-parent-rows merge as Address/Family Phone (buildFamilies'
+// familyCells), not the generic apply()-based useless-override check Pronouns
+// and Primary Photo go through - so clearing it correctly uses clearable's "-"
+// convention, unlike those two. This is a sanity check that a real caption
+// clears successfully with "-", the opposite regression from the other two
+// tests above.
+func TestClearingFamilyPhotoCaptionSucceeds(t *testing.T) {
+	tables, err := ReadTables(&data.Dir{Root: "../../sampledata"})
+	if err != nil {
+		t.Fatalf("read sample tables: %v", err)
+	}
+	email := "carmen.alvarez@heliosschool.org"
+	withCaption := tables.withOverride(email, map[string]string{"Family Photo Caption": "Carmen at the beach."})
+	m, err := BuildModel(withCaption, noBlobs{}, noBlobs{})
+	if err != nil {
+		t.Fatalf("seed a family photo caption: %v", err)
+	}
+	p := m.Person(email)
+	if p == nil || m.Families[p.FamilyKey].PhotoCaption != "Carmen at the beach." {
+		t.Fatalf("caption did not seed correctly: %+v", m.Families[p.FamilyKey])
+	}
+
+	cleared, err := BuildModel(withCaption.withOverride(email, map[string]string{"Family Photo Caption": "-"}), noBlobs{}, noBlobs{})
+	if err != nil {
+		t.Fatalf("clearing Family Photo Caption with \"-\" should succeed, got: %v", err)
+	}
+	if got := cleared.Families[p.FamilyKey].PhotoCaption; got != "" {
+		t.Errorf("caption = %q after clearing with \"-\", want empty", got)
+	}
+}
+
 // fakeBlobs simulates specific objects existing in the bucket, unlike noBlobs
 // (which simulates none existing) - needed to exercise real photo/crop URL
 // resolution rather than the empty-name early return every other test relies on.

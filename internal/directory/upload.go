@@ -119,6 +119,48 @@ func (u uploader) edit(w http.ResponseWriter, r *http.Request) {
 	value := strings.TrimSpace(r.FormValue("value"))
 	me := effectiveEmail(u.cache, r)
 	model := u.cache.Model()
+
+	// Every other field below is keyed on a person - key is that person's own
+	// email, even for the family-level "address" case (self-service only, so the
+	// caller and the family member being written to are always the same person).
+	// This one is keyed on a family instead, since it's reachable from
+	// super-edit mode editing a family that isn't the caller's own, the same
+	// reason the family photo/pronunciation upload path needed familyRow
+	// instead of just writing the caller's own row.
+	if field == "family-photo-caption" {
+		if !u.mayEdit(model, me, "family", key) {
+			http.Error(w, "not allowed to edit this record", http.StatusForbidden)
+			return
+		}
+		family, ok := model.Families[key]
+		if !ok {
+			http.Error(w, "no such family", http.StatusBadRequest)
+			return
+		}
+		if len(value) > 200 {
+			http.Error(w, "bad caption", http.StatusBadRequest)
+			return
+		}
+		row := familyRow(family)
+		if row == "" {
+			http.Error(w, "no such family", http.StatusBadRequest)
+			return
+		}
+		// Unlike Pronouns/Primary Photo, Family Photo Caption is resolved through
+		// the same family-fields-split-across-parent-rows merge as Address/Family
+		// Phone (buildFamilies' familyCells), which treats "-" as "this row
+		// explicitly says no caption" and "" as "this row has no opinion" - so it
+		// needs clearable(value)'s "-" convention, not a plain "".
+		cells := map[string]string{"Family Photo Caption": clearable(value)}
+		previous := map[string]string{"Family Photo Caption": family.PhotoCaption}
+		if !u.applyOverride(w, me, row, field+" edit", cells, previous) {
+			return
+		}
+		log.Printf("edit: %s set %s on %s", me, field, key)
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
 	person := model.Person(key)
 	if person == nil {
 		http.Error(w, "no such person", http.StatusBadRequest)

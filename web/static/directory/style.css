@@ -2413,6 +2413,7 @@ a.list-row:hover {
 .edit-icon {
   width: 40px;
   height: 40px;
+  flex-shrink: 0;
   border-radius: 50%;
   background: #fff;
   box-shadow: 0 1px 6px rgba(0, 0, 0, 0.3);
@@ -2815,6 +2816,10 @@ a.list-row:hover {
 }
 
 .family-caption {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   color: var(--muted);
   font-size: 13px;
   line-height: 1.5;
