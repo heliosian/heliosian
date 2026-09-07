@@ -35,6 +35,7 @@ type Person struct {
 	Facts                string  `json:"facts,omitempty"`
 	FactsUpdated         string  `json:"factsUpdated,omitempty"`
 	PronunciationURL     string  `json:"pronunciationUrl,omitempty"`
+	HasOwnPronunciation  bool    `json:"hasOwnPronunciation,omitempty"`
 	PhotoURL             string  `json:"photoUrl,omitempty"`
 	Photos               []Photo `json:"photos,omitempty"`
 	primaryPhotoOverride string

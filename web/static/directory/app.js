@@ -1939,7 +1939,7 @@ function renderPersonDetail(email) {
       audio.src = p.pronunciationUrl;
       right.append(audio);
     }
-    right.append(pronounceEditor('person', p.email));
+    right.append(pronounceEditor('person', p.email, !!p.hasOwnPronunciation));
   }
   grid.append(right);
   headerCard.append(grid);
@@ -2143,7 +2143,7 @@ function renderFamilyDetail(key) {
       audio.src = family.pronunciationUrl;
       right.append(audio);
     }
-    right.append(pronounceEditor('family', key));
+    right.append(pronounceEditor('family', key, !!family.pronunciationUrl));
   }
   grid.append(right);
   headerCard.append(grid);
@@ -3855,13 +3855,25 @@ function recordIcon(target, key, status, preview) {
   return button;
 }
 
-function pronounceEditor(target, key) {
+function deletePronunciationIcon(target, key, status) {
+  const button = el('button', 'edit-icon');
+  button.type = 'button';
+  button.title = 'Delete pronunciation';
+  button.append(svg('trash'));
+  button.addEventListener('click', () => submitField(key, target === 'family' ? 'family-pronunciation' : 'pronunciation', '', status));
+  return button;
+}
+
+function pronounceEditor(target, key, hasPronunciation) {
   const box = el('div', 'pronounce-edit');
   const actions = el('div', 'pronounce-actions');
   const status = el('div', 'media-status');
   const preview = el('div', 'record-preview');
   actions.append(recordIcon(target, key, status, preview));
   actions.append(uploadIcon('upload', 'Upload an audio file', 'audio/*', target, key, 'pronunciation', status));
+  if (hasPronunciation) {
+    actions.append(deletePronunciationIcon(target, key, status));
+  }
   box.append(actions, status, preview);
   return box;
 }

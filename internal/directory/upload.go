@@ -161,6 +161,40 @@ func (u uploader) edit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A pronunciation recording can only be set through the upload endpoint (it's a
+	// file), but there was no way to clear one once set. This is that: the value is
+	// always empty, since it only ever deletes. Family Pronunciation, like Family
+	// Photo Caption above, is keyed on a family (via familyRow) rather than the
+	// caller's own email, for the same super-edit reason.
+	if field == "family-pronunciation" {
+		if !u.mayEdit(model, me, "family", key) {
+			http.Error(w, "not allowed to edit this record", http.StatusForbidden)
+			return
+		}
+		if value != "" {
+			http.Error(w, "pronunciation can only be cleared through this field", http.StatusBadRequest)
+			return
+		}
+		family, ok := model.Families[key]
+		if !ok {
+			http.Error(w, "no such family", http.StatusBadRequest)
+			return
+		}
+		row := familyRow(family)
+		if row == "" {
+			http.Error(w, "no such family", http.StatusBadRequest)
+			return
+		}
+		cells := map[string]string{"Family Pronunciation": ""}
+		previous := map[string]string{"Family Pronunciation": family.pronunciation}
+		if !u.applyOverride(w, me, row, field+" edit", cells, previous) {
+			return
+		}
+		log.Printf("edit: %s set %s on %s", me, field, key)
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
 	person := model.Person(key)
 	if person == nil {
 		http.Error(w, "no such person", http.StatusBadRequest)
@@ -214,6 +248,20 @@ func (u uploader) edit(w http.ResponseWriter, r *http.Request) {
 		// literal "-" as clearing an already-empty value, failing the whole load.
 		cells["Pronouns"] = value
 		previous["Pronouns"] = person.Pronouns
+	case "pronunciation":
+		if !u.mayEdit(model, me, "person", key) {
+			http.Error(w, "not allowed to edit this record", http.StatusForbidden)
+			return
+		}
+		if value != "" {
+			http.Error(w, "pronunciation can only be cleared through this field", http.StatusBadRequest)
+			return
+		}
+		// Same no-baseline "" convention as Pronouns above, not clearable()'s "-" -
+		// Pronunciation is only ever set by the upload endpoint, so there's nothing
+		// for apply() to see as a pre-existing baseline value.
+		cells["Pronunciation"] = ""
+		previous["Pronunciation"] = person.pronunciation
 	case "address":
 		if key != strings.ToLower(me) || !person.IsParent {
 			http.Error(w, "not allowed to edit this record", http.StatusForbidden)

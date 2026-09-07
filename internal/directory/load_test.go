@@ -197,6 +197,68 @@ func TestClearingFamilyPhotoCaptionSucceeds(t *testing.T) {
 	}
 }
 
+// Pronunciation is only ever set via the upload endpoint (edit's "pronunciation"
+// case rejects a non-empty value) - it has no import baseline, same class as
+// Pronouns/Primary Photo above, so clearing it must write "" rather than
+// clearable's "-".
+func TestClearingPronunciationSucceeds(t *testing.T) {
+	tables, err := ReadTables(&data.Dir{Root: "../../sampledata"})
+	if err != nil {
+		t.Fatalf("read sample tables: %v", err)
+	}
+	email := "ruth.amari@heliosschool.org"
+	blobs := fakeBlobs{"pronunciation/somefile.webm": true}
+	withPronunciation := tables.withOverride(email, map[string]string{"Pronunciation": "somefile.webm"})
+	seeded, err := BuildModel(withPronunciation, blobs, noBlobs{})
+	if err != nil {
+		t.Fatalf("seed a pronunciation: %v", err)
+	}
+	if got := seeded.Person(email).pronunciation; got != "somefile.webm" {
+		t.Fatalf("pronunciation did not seed correctly: %q", got)
+	}
+
+	cleared, err := BuildModel(withPronunciation.withOverride(email, map[string]string{"Pronunciation": ""}), blobs, noBlobs{})
+	if err != nil {
+		t.Errorf("clearing Pronunciation with an empty string should succeed, got: %v", err)
+	} else if got := cleared.Person(email).pronunciation; got != "" {
+		t.Errorf("pronunciation = %q after clearing with \"\", want empty", got)
+	}
+
+	if _, err := BuildModel(withPronunciation.withOverride(email, map[string]string{"Pronunciation": "-"}), noBlobs{}, noBlobs{}); err == nil {
+		t.Errorf("clearing Pronunciation with \"-\" should still fail the useless-override check, documenting why \"\" is required")
+	}
+}
+
+// Family Pronunciation is a raw Overrides read (buildFamilies), not routed
+// through apply()'s useless-override check - so unlike person Pronunciation
+// above, clearing it with "" works with no "-" fallback to document, since
+// there's no useless-override check to trip either way.
+func TestClearingFamilyPronunciationSucceeds(t *testing.T) {
+	tables, err := ReadTables(&data.Dir{Root: "../../sampledata"})
+	if err != nil {
+		t.Fatalf("read sample tables: %v", err)
+	}
+	email := "carmen.alvarez@heliosschool.org"
+	blobs := fakeBlobs{"pronunciation/somefile.webm": true}
+	withPronunciation := tables.withOverride(email, map[string]string{"Family Pronunciation": "somefile.webm"})
+	seeded, err := BuildModel(withPronunciation, blobs, noBlobs{})
+	if err != nil {
+		t.Fatalf("seed a family pronunciation: %v", err)
+	}
+	p := seeded.Person(email)
+	if got := seeded.Families[p.FamilyKey].pronunciation; got != "somefile.webm" {
+		t.Fatalf("family pronunciation did not seed correctly: %q", got)
+	}
+
+	cleared, err := BuildModel(withPronunciation.withOverride(email, map[string]string{"Family Pronunciation": ""}), blobs, noBlobs{})
+	if err != nil {
+		t.Fatalf("clearing Family Pronunciation with an empty string should succeed, got: %v", err)
+	}
+	if got := cleared.Families[p.FamilyKey].pronunciation; got != "" {
+		t.Errorf("family pronunciation = %q after clearing with \"\", want empty", got)
+	}
+}
+
 // fakeBlobs simulates specific objects existing in the bucket, unlike noBlobs
 // (which simulates none existing) - needed to exercise real photo/crop URL
 // resolution rather than the empty-name early return every other test relies on.
@@ -279,6 +341,58 @@ func TestPersonWithNoPhotosFallsBackToFamilyPhoto(t *testing.T) {
 	}
 	if p.PhotoUpdated != "" {
 		t.Errorf("PhotoUpdated = %q, want it to stay unset so photoNeedsUpdate still nags for a real photo", p.PhotoUpdated)
+	}
+}
+
+// Same fallback as the photo case above, for pronunciation: a family member with
+// no recording of their own hears the family's instead of nothing.
+func TestPersonWithNoPronunciationFallsBackToFamilyPronunciation(t *testing.T) {
+	tables, err := ReadTables(&data.Dir{Root: "../../sampledata"})
+	if err != nil {
+		t.Fatalf("read sample tables: %v", err)
+	}
+	email := "elena.torres@heliosschool.org"
+	withFamilyPronunciation := tables.withOverride(email, map[string]string{"Family Pronunciation": "family.webm"})
+	blobs := fakeBlobs{"pronunciation/family.webm": true}
+	m, err := BuildModel(withFamilyPronunciation, blobs, noBlobs{})
+	if err != nil {
+		t.Fatalf("build model with a family pronunciation: %v", err)
+	}
+	p := m.Person("mia.torres@heliosschool.org")
+	if p == nil || p.FamilyKey == "" {
+		t.Fatalf("mia.torres has no family: %+v", p)
+	}
+	if p.HasOwnPronunciation {
+		t.Fatalf("test assumes mia.torres has no pronunciation of her own, got HasOwnPronunciation=true")
+	}
+	family := m.Families[p.FamilyKey]
+	if p.PronunciationURL != family.PronunciationURL || p.PronunciationURL != "/pronunciation/family.webm" {
+		t.Errorf("PronunciationURL = %q, want it to fall back to the family pronunciation %q", p.PronunciationURL, family.PronunciationURL)
+	}
+}
+
+// A personal recording overrides the family's fallback rather than being masked
+// by it - HasOwnPronunciation is what the frontend uses to decide whether the
+// delete button (which clears only the personal recording) should show.
+func TestOwnPronunciationOverridesFamilyFallback(t *testing.T) {
+	tables, err := ReadTables(&data.Dir{Root: "../../sampledata"})
+	if err != nil {
+		t.Fatalf("read sample tables: %v", err)
+	}
+	withBoth := tables.
+		withOverride("elena.torres@heliosschool.org", map[string]string{"Family Pronunciation": "family.webm"}).
+		withOverride("mia.torres@heliosschool.org", map[string]string{"Pronunciation": "mia.webm"})
+	blobs := fakeBlobs{"pronunciation/family.webm": true, "pronunciation/mia.webm": true}
+	m, err := BuildModel(withBoth, blobs, noBlobs{})
+	if err != nil {
+		t.Fatalf("build model with both a personal and family pronunciation: %v", err)
+	}
+	p := m.Person("mia.torres@heliosschool.org")
+	if !p.HasOwnPronunciation {
+		t.Errorf("HasOwnPronunciation = false, want true since mia.torres has her own recording")
+	}
+	if p.PronunciationURL != "/pronunciation/mia.webm" {
+		t.Errorf("PronunciationURL = %q, want mia's own recording to take priority over the family's", p.PronunciationURL)
 	}
 }
 

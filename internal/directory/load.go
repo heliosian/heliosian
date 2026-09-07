@@ -1207,6 +1207,7 @@ func (l *loader) attachBlobs() error {
 			return err
 		}
 		p.PronunciationURL = url
+		p.HasOwnPronunciation = url != ""
 	}
 	for key, family := range l.model.Families {
 		photo, err := l.blobURL("photos", family.photo, key)
@@ -1220,16 +1221,24 @@ func (l *loader) attachBlobs() error {
 		family.PhotoURL, family.PronunciationURL = photo, pronunciation
 		l.model.Families[key] = family
 	}
-	// A person with no photos of their own shows the family photo instead of blank
-	// initials - PhotoUpdated stays unset either way, so photoNeedsUpdate (frontend)
-	// still nags them to add their own rather than treating the family photo as
-	// satisfying that need forever.
 	for _, p := range l.people {
-		if len(p.Photos) > 0 {
+		family, ok := l.model.Families[p.FamilyKey]
+		if !ok {
 			continue
 		}
-		if family, ok := l.model.Families[p.FamilyKey]; ok && family.PhotoURL != "" {
+		// A person with no photos of their own shows the family photo instead of
+		// blank initials - PhotoUpdated stays unset either way, so photoNeedsUpdate
+		// (frontend) still nags them to add their own rather than treating the
+		// family photo as satisfying that need forever.
+		if len(p.Photos) == 0 && family.PhotoURL != "" {
 			p.PhotoURL = family.PhotoURL
+		}
+		// Same fallback for pronunciation: a personal recording (set via the
+		// person-keyed upload) overrides the family's, but clearing it should
+		// reveal the family's again rather than going silent - so this is a
+		// display-time fallback, not a stored value, matching the photo case.
+		if p.PronunciationURL == "" && family.PronunciationURL != "" {
+			p.PronunciationURL = family.PronunciationURL
 		}
 	}
 	return nil
