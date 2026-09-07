@@ -71,6 +71,15 @@ var staffImportColumns = []string{
 // Veracross faculty types belonging to people who are not school staff.
 var excludedFacultyTypes = map[string]bool{"Vendors": true}
 
+// noEmailMarker flags a Veracross-generated placeholder address, assigned to someone
+// the school hasn't given a real email yet. The address is still that person's real
+// identity/key everywhere in this app (routing, Overrides rows, Tags, Photos) - it
+// must keep loading and resolving normally. All this marks is that the address itself
+// is fake and must never be shown to a viewer (see personEmailDisplay in directory.go
+// and app.js's use of it): show no email at all for that person, rather than a
+// mailto: link nobody can actually use.
+const noEmailMarker = ".noemail"
+
 // The permission column's header is misspelled in the form itself; it must match verbatim.
 const (
 	preferenceTimestamp  = "Timestamp"
@@ -452,6 +461,7 @@ func BuildModel(tables *Tables, blobs, static BlobChecker) (*Model, error) {
 		l.transformImport,
 		l.transformStaffImport,
 		l.applyOverrides,
+		l.maskFakeEmails,
 		l.hideStudentPhones,
 		l.buildFamilies,
 		l.classifyVeracrossVisibility,
@@ -948,6 +958,20 @@ func (l *loader) applyOverrides() error {
 	if len(l.useless) > 0 {
 		return fmt.Errorf("%d useless override cells, delete them from the Overrides tab:\n  %s",
 			len(l.useless), strings.Join(l.useless, "\n  "))
+	}
+	return nil
+}
+
+// maskFakeEmails flags every person whose email is a Veracross-generated placeholder
+// (see noEmailMarker) with EmailMasked, so viewers never see it, mailto: it, or copy
+// it - the address itself stays completely untouched everywhere else this app uses
+// it, since it's still that person's real identity/key (routing, Overrides, Tags,
+// Photos).
+func (l *loader) maskFakeEmails() error {
+	for _, p := range l.people {
+		if strings.Contains(p.Email, noEmailMarker) {
+			p.EmailMasked = true
+		}
 	}
 	return nil
 }

@@ -1464,7 +1464,9 @@ function personSummaryText(p, family) {
   if (p.phone) {
     lines.push('Phone: ' + p.phone);
   }
-  lines.push('Email: ' + p.email);
+  if (!p.emailMasked) {
+    lines.push('Email: ' + p.email);
+  }
   if (family && family.address) {
     lines.push('Address: ' + family.address);
   }
@@ -1880,12 +1882,14 @@ function renderPersonDetail(email) {
       right.append(el('div', 'detail-sub', chain));
     }
   }
-  const emailValue = el('div', 'contact-value');
-  emailValue.append(svg('mail'), el('span', '', p.email));
-  right.append(contactRow(emailValue, [
-    iconButton('mail', 'Email', 'mailto:' + p.email),
-    copyButton(p.email),
-  ]));
+  if (!p.emailMasked) {
+    const emailValue = el('div', 'contact-value');
+    emailValue.append(svg('mail'), el('span', '', p.email));
+    right.append(contactRow(emailValue, [
+      iconButton('mail', 'Email', 'mailto:' + p.email),
+      copyButton(p.email),
+    ]));
+  }
   if (p.phone || editing) {
     const actions = p.phone ? [
       iconButton('message', 'Text', 'sms:' + p.phone),
@@ -2818,10 +2822,14 @@ function emailEntries() {
   const rows = [];
   const seen = new Set();
   const add = (p, role, grade, classroom) => {
-    if (!seen.has(p.email)) {
-      seen.add(p.email);
-      rows.push({p, role, grade, classroom});
+    // A masked email is a Veracross placeholder nobody can actually reach - it has no
+    // place in a mailing list, so this person is left out of it entirely rather than
+    // appearing with a blank or fake address.
+    if (p.emailMasked || seen.has(p.email)) {
+      return;
     }
+    seen.add(p.email);
+    rows.push({p, role, grade, classroom});
   };
   const students = state.model.people
     .filter(p => p.isStudent)

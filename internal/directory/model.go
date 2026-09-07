@@ -70,6 +70,14 @@ type Person struct {
 	OptStatus     OptStatus `json:"optStatus"`
 	AddressMasked bool      `json:"addressMasked,omitempty"`
 	PhoneMasked   bool      `json:"phoneMasked,omitempty"`
+	// EmailMasked marks a Veracross-generated placeholder address (see noEmailMarker in
+	// load.go) - unlike AddressMasked/PhoneMasked, which blank the field they mask
+	// because the underlying data is sensitive, Email itself is left completely
+	// untouched here: it's still this person's real identity/key everywhere in the app
+	// (routing, Overrides, Tags, Photos). This only tells a viewer's client not to
+	// render it - no visible address, no mailto: link, no copy button - since nobody
+	// can actually reach the fake one.
+	EmailMasked bool `json:"emailMasked,omitempty"`
 }
 
 type Family struct {
