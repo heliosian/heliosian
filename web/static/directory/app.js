@@ -793,7 +793,19 @@ function tagMenu(email, onChange) {
     menu.append(form);
   };
   render();
-  menu.addEventListener('click', e => e.stopPropagation());
+  // The menu lives inside the card's own <a>, so a plain click here would
+  // otherwise bubble up to (or, for a non-self-activating target like the
+  // "New tag" input, resolve straight to) the card's link and navigate to
+  // the profile page. Checkboxes and their labels already shield themselves
+  // from that - they're self-activating - and must keep working natively
+  // (preventDefault on them would cancel their own toggle too), so this only
+  // steps in for everything else in the menu.
+  menu.addEventListener('click', e => {
+    e.stopPropagation();
+    if (!e.target.closest('.tag-option')) {
+      e.preventDefault();
+    }
+  });
   return menu;
 }
 
@@ -819,11 +831,20 @@ function cardMore(email) {
   return tagControl(email, 'card-more-wrap', 'card-more', () => {});
 }
 
+// Pins the personal-tag button to the photo's own corner rather than the
+// surrounding card - the card is often much wider than the photo once it's
+// centered in a flexible grid column, which left the button floating in
+// blank space instead of sitting on the photo.
+function photoWithTag(photoEl, email) {
+  const wrap = el('div', 'photo-wrap');
+  wrap.append(photoEl, cardMore(email));
+  return wrap;
+}
+
 function personCard(p) {
   const card = el('a', 'person-card');
-  card.append(cardMore(p.email));
   card.href = personLink(p);
-  card.append(applyRingColor(photoOrInitials(p.photoUrl, p.fullName, 'person-photo'), p));
+  card.append(photoWithTag(applyRingColor(photoOrInitials(p.photoUrl, p.fullName, 'person-photo'), p), p.email));
   card.append(el('div', 'role-label', roleLabel(p)));
   card.append(el('div', 'person-name', p.fullName));
   const context = personContext(p);
@@ -852,7 +873,6 @@ function renderStudents(grid) {
   for (const p of matches) {
     const card = el('a', 'student-card');
     card.href = personLink(p);
-    card.append(cardMore(p.email));
     const head = el('div', 'student-head');
     const family = state.model.families[p.familyKey];
     if (family && family.photoUrl) {
@@ -863,6 +883,7 @@ function renderStudents(grid) {
       head.append(bg);
     }
     head.append(photoOrInitials(p.photoUrl, p.fullName, 'student-photo'));
+    head.append(cardMore(p.email));
     card.append(head);
     card.append(el('div', 'student-first', firstName(p.fullName)));
     card.append(el('div', 'student-last', p.fullName.replace(firstName(p.fullName), '').trim()));
@@ -940,8 +961,7 @@ function renderStaff(grid, autoFit) {
     for (const p of groups.get(dept)) {
       const card = el('a', 'person-card');
       card.href = personLink(p);
-      card.append(cardMore(p.email));
-      card.append(applyRingColor(photoOrInitials(p.photoUrl, p.fullName, 'person-photo'), p));
+      card.append(photoWithTag(applyRingColor(photoOrInitials(p.photoUrl, p.fullName, 'person-photo'), p), p.email));
       card.append(el('div', 'role-label', p.jobTitle || 'Staff'));
       card.append(el('div', 'person-name', p.fullName));
       deptGrid.append(card);
@@ -2538,8 +2558,7 @@ function renderRoomParents(list) {
     for (const p of parents) {
       const card = el('a', 'person-card');
       card.href = personLink(p);
-      card.append(cardMore(p.email));
-      card.append(applyRingColor(photoOrInitials(p.photoUrl, p.fullName, 'person-photo'), p));
+      card.append(photoWithTag(applyRingColor(photoOrInitials(p.photoUrl, p.fullName, 'person-photo'), p), p.email));
       card.append(el('div', 'person-name', p.fullName));
       card.append(el('div', 'person-sub', kidsSummary(p)));
       grid.append(card);

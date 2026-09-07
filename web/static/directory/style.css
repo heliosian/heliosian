@@ -3075,9 +3075,19 @@ img.fcard-photo {
 .mobile-tabs,
 .drawer,
 .drawer-overlay,
-.mobile-search-overlay,
-.card-more-wrap {
+.mobile-search-overlay {
   display: none;
+}
+
+.photo-wrap {
+  position: relative;
+  display: inline-block;
+}
+
+.card-more-wrap {
+  position: absolute;
+  top: 6px;
+  right: 6px;
 }
 
 .more-wrap {
@@ -3190,6 +3200,17 @@ img.fcard-photo {
   stroke-width: 1.8;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+/* Matches .tag-button.active/.row-tag.active elsewhere - a filled, brand-colored
+   icon once the person has at least one tag, instead of the plain gray outline. */
+.card-more.active {
+  color: var(--brand);
+}
+
+.card-more.active svg {
+  fill: currentColor;
+  stroke: none;
 }
 
 .tag-menu {
@@ -3622,16 +3643,6 @@ img.fcard-photo {
   .filter-button:not(.facet-button) span,
   .filter-button:not(.facet-button) > svg:last-child {
     display: none;
-  }
-  .card-more-wrap {
-    display: block;
-    position: absolute;
-    top: 6px;
-    right: 6px;
-  }
-  a.person-card,
-  a.student-card {
-    position: relative;
   }
   .map-canvas {
     height: 62vh;
