@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -85,28 +86,145 @@ func clearable(value string) string {
 }
 
 func (u uploader) applyOverride(w http.ResponseWriter, actor, email, action string, cells, previous map[string]string) bool {
+	return applyOverrideWrite(u.cache, u.sheet, u.queue, w, actor, email, action, cells, previous)
+}
+
+// applyOverrideWrite folds an Overrides change into the cache and, once the rebuild
+// accepts it, persists the same cells to the real sheet plus a change log row. Shared
+// by uploader (self-service field edits, keyed on *data.Sheet) and admin (structural
+// field edits, keyed on the narrower data.Writer) so the write path - and its
+// reject-before-persist ordering - can't drift between the two.
+func applyOverrideWrite(cache *Cache, writer data.Writer, queue *Queue, w http.ResponseWriter, actor, email, action string, cells, previous map[string]string) bool {
 	logRow := changeLogRow(actor, email, previous)
 	applied := make(chan error, 1)
-	u.queue.Add(func() {
+	queue.Add(func() {
 		// If the in-memory rebuild rejects this change, don't write it to the real
 		// sheet either - otherwise the sheet ends up holding a value the model can
 		// never load, and every future rebuild (including the next server start)
 		// fails the same way until someone finds and fixes the cell by hand.
-		err := u.cache.applyOverride(email, cells)
+		err := cache.applyOverride(email, cells)
 		applied <- err
 		if err != nil {
 			return
 		}
-		if err := u.sheet.Upsert(appName, "Overrides", "Email", email, cells); err != nil {
+		if err := writer.Upsert(appName, "Overrides", "Email", email, cells); err != nil {
 			log.Printf("[ERROR] set overrides for %s: %v", email, err)
 			return
 		}
-		if err := u.sheet.Append(appName, changeLogTable, logRow); err != nil {
+		if err := writer.Append(appName, changeLogTable, logRow); err != nil {
 			log.Fatalf("[ERROR] append change log after %s for %s: %v", action, email, err)
 		}
 	})
 	if err := <-applied; err != nil {
 		serverError(w, fmt.Errorf("rebuild model after %s: %w", action, err))
+		return false
+	}
+	return true
+}
+
+// applyEmailRenameWrite is applyOverrideWrite for an added-only person's email change
+// (admin.go's setAddedFields is the only caller): besides the Overrides row itself, it
+// renames every Tags row where they're the owner or the tagged person, and every
+// Photos row that belongs to them (see Tables.withEmailRenamed), so the rename doesn't
+// silently strand their tags or photos under the old address.
+//
+// The existence checks before each Tags/Photos Upsert matter: data.Writer's Upsert
+// contract inserts a new row when nothing matches its key, which is exactly right for
+// "this person has exactly one Overrides row" but wrong here - a person with zero tags
+// or photos (the common case) would otherwise get a garbage row invented for them, one
+// with only the renamed column set and everything else blank. Checking first against
+// the tables snapshot from just before the rename (still keyed under oldEmail) means
+// each Upsert only ever fires when a real row is there to rename.
+func applyEmailRenameWrite(cache *Cache, writer data.Writer, queue *Queue, w http.ResponseWriter, actor, oldEmail, newEmail string, cells map[string]string) bool {
+	logRow := changeLogRow(actor, newEmail, map[string]string{"Email": oldEmail})
+	applied := make(chan error, 1)
+	queue.Add(func() {
+		before := cache.currentTables()
+		hasTagOwner := slices.ContainsFunc(before.Tags, func(row map[string]string) bool {
+			return strings.EqualFold(row[tagOwner], oldEmail)
+		})
+		hasTagPerson := slices.ContainsFunc(before.Tags, func(row map[string]string) bool {
+			return strings.EqualFold(row[tagPerson], oldEmail)
+		})
+		hasPhotos := slices.ContainsFunc(before.Photos, func(row map[string]string) bool {
+			return strings.EqualFold(row["Email"], oldEmail)
+		})
+
+		err := cache.applyEmailRename(oldEmail, newEmail, cells)
+		applied <- err
+		if err != nil {
+			return
+		}
+		overrideCells := map[string]string{"Email": newEmail}
+		for column, value := range cells {
+			overrideCells[column] = value
+		}
+		if err := writer.Upsert(appName, "Overrides", "Email", oldEmail, overrideCells); err != nil {
+			log.Printf("[ERROR] rename overrides row %s -> %s: %v", oldEmail, newEmail, err)
+			return
+		}
+		if hasTagOwner {
+			if err := writer.Upsert(appName, tagsTable, tagOwner, oldEmail, map[string]string{tagOwner: newEmail}); err != nil {
+				log.Printf("[ERROR] rename tag owner %s -> %s: %v", oldEmail, newEmail, err)
+			}
+		}
+		if hasTagPerson {
+			if err := writer.Upsert(appName, tagsTable, tagPerson, oldEmail, map[string]string{tagPerson: newEmail}); err != nil {
+				log.Printf("[ERROR] rename tag person %s -> %s: %v", oldEmail, newEmail, err)
+			}
+		}
+		if hasPhotos {
+			if err := writer.Upsert(appName, "Photos", "Email", oldEmail, map[string]string{"Email": newEmail}); err != nil {
+				log.Printf("[ERROR] rename photos %s -> %s: %v", oldEmail, newEmail, err)
+			}
+		}
+		if err := writer.Append(appName, changeLogTable, logRow); err != nil {
+			log.Fatalf("[ERROR] append change log after email rename %s -> %s: %v", oldEmail, newEmail, err)
+		}
+	})
+	if err := <-applied; err != nil {
+		serverError(w, fmt.Errorf("rebuild model after email rename: %w", err))
+		return false
+	}
+	return true
+}
+
+// applyDeletePersonWrite is applyOverrideWrite for permanently removing an added-only
+// person (admin.go's setAddedFields, the Added Overrides tab's delete, is the only
+// caller): besides their Overrides row, it deletes every Tags row where they're the
+// owner or the tagged person, and every Photos row that belongs to them (see
+// Tables.withoutPerson). Unlike applyEmailRenameWrite's Upsert calls, data.Writer's
+// Delete is safe to call even when nothing matches - both implementations just delete
+// zero rows and return no error - so this doesn't need the existence checks that
+// rename does.
+func applyDeletePersonWrite(cache *Cache, writer data.Writer, queue *Queue, w http.ResponseWriter, actor, email string, previous map[string]string) bool {
+	logRow := changeLogRow(actor, email, previous)
+	applied := make(chan error, 1)
+	queue.Add(func() {
+		err := cache.applyDeletePerson(email)
+		applied <- err
+		if err != nil {
+			return
+		}
+		if err := writer.Delete(appName, "Overrides", map[string]string{"Email": email}); err != nil {
+			log.Printf("[ERROR] delete overrides row for %s: %v", email, err)
+			return
+		}
+		if err := writer.Delete(appName, tagsTable, map[string]string{tagOwner: email}); err != nil {
+			log.Printf("[ERROR] delete tags owned by %s: %v", email, err)
+		}
+		if err := writer.Delete(appName, tagsTable, map[string]string{tagPerson: email}); err != nil {
+			log.Printf("[ERROR] delete tags naming %s: %v", email, err)
+		}
+		if err := writer.Delete(appName, "Photos", map[string]string{"Email": email}); err != nil {
+			log.Printf("[ERROR] delete photos for %s: %v", email, err)
+		}
+		if err := writer.Append(appName, changeLogTable, logRow); err != nil {
+			log.Fatalf("[ERROR] append change log after deleting %s: %v", email, err)
+		}
+	})
+	if err := <-applied; err != nil {
+		serverError(w, fmt.Errorf("rebuild model after delete: %w", err))
 		return false
 	}
 	return true

@@ -41,6 +41,21 @@ type Person struct {
 	primaryPhotoOverride string
 	veracrossPhoto       string
 	pronunciation        string
+	// overrideRow is this person's raw Overrides sheet row, or nil if they don't have
+	// one. Internal only: admin.go reads it (via overrideStringValue/overrideBoolValue)
+	// to show and edit exactly what Overrides currently holds for a column, distinct
+	// from the resolved value below - a plain nil-map lookup safely returns "" for
+	// someone with no row at all, meaning "no override".
+	overrideRow map[string]string
+	// imported snapshots this person's Veracross-import-derived field values, captured
+	// in applyOverrides (load.go) before overrideRow's cells could change any of them.
+	// Internal only: nil for a person with no override row - their live field values
+	// above already ARE the import values, since nothing here ever changed them, so
+	// admin.go falls back to those directly in that case. Only holds columns that can
+	// genuinely come from Veracross (Full Name, Legal Name, Preferred Name, Grade,
+	// Classroom, Crew, Phone, Job Title, Is Staff); Department, Grade Band, Pronouns,
+	// Facts and Room Parent have no import source for anyone.
+	imported map[string]string
 	PhotoUpdated         string   `json:"photoUpdated,omitempty"`
 	Grade                string   `json:"grade,omitempty"`
 	Classroom            string   `json:"classroom,omitempty"`
@@ -82,6 +97,13 @@ type Family struct {
 	VeracrossPhone   string `json:"veracrossPhone"`
 
 	photo, pronunciation string
+
+	// importedAddress snapshots the household's Veracross-import address, captured in
+	// buildFamilies (load.go) before any adult's familyOverrides cells could change
+	// Address above. Internal only: admin.go's Parent Overrides tab shows this as the
+	// "Veracross" reference next to the (possibly different) value actually in
+	// Overrides.
+	importedAddress string
 }
 
 type Classroom struct {
@@ -137,6 +159,13 @@ type Model struct {
 	PrivacyLinks PrivacyLinks        `json:"privacyLinks"`
 	StaffColor   string              `json:"staffColor,omitempty"`
 	byEmail      map[string]int
+	// hiddenEmails lists everyone removeOptedOut (load.go) just deleted from People -
+	// captured there because that's the last point any of their data (even just their
+	// email) is still reachable. Internal only, deliberately never serialized: this
+	// app's one public API (the directory model JSON) must never reveal who opted out,
+	// which is the whole point of opting out. admin.go's Hidden Overrides tab is the
+	// only reader, and only for a caller already confirmed to be an admin.
+	hiddenEmails []string
 }
 
 func (m *Model) Person(email string) *Person {

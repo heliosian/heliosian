@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Admin Tools</title>
 <link rel="icon" href="/static/brand/icon-192.png">
+<link rel="stylesheet" href="/static/fonts/fonts.css">
 <style>
   :root {
     --brand: #014e54;
@@ -50,28 +51,50 @@
     font-size: 13px;
     color: rgba(255, 255, 255, 0.75);
   }
+  .layout {
+    display: flex;
+    align-items: flex-start;
+  }
   .container {
+    flex: 1;
+    min-width: 0;
     max-width: 900px;
-    margin: 0 auto;
     padding: 28px;
   }
-  .tabs {
-    display: flex;
-    gap: 4px;
-    border-bottom: 1px solid var(--line);
-    margin-bottom: 24px;
+  .sidebar {
+    width: 220px;
+    flex-shrink: 0;
+    padding: 20px 0;
+    border-right: 1px solid var(--line);
+    background: #fff;
+    min-height: calc(100vh - 63px);
+  }
+  .sidebar-section + .sidebar-section {
+    margin-top: 20px;
+  }
+  .sidebar-section-title {
+    padding: 0 24px 6px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #9aa4ab;
   }
   .tab {
-    padding: 10px 16px;
+    padding: 10px 24px;
     font-size: 14px;
     font-weight: 600;
     color: var(--muted);
     cursor: pointer;
-    border-bottom: 2px solid transparent;
+    border-left: 3px solid transparent;
+  }
+  .tab:hover {
+    background: var(--input);
   }
   .tab.active {
     color: var(--brand);
-    border-bottom-color: var(--brand);
+    border-left-color: var(--brand);
+    background: #eef4f4;
   }
   .panel[hidden] { display: none; }
   .card {
@@ -89,26 +112,6 @@
     font-size: 13px;
     color: var(--muted);
     margin-bottom: 16px;
-  }
-  .super-edit-toggle {
-    display: flex;
-    align-items: flex-start;
-    gap: 14px;
-    cursor: pointer;
-  }
-  .super-edit-toggle input {
-    margin-top: 3px;
-    width: 18px;
-    height: 18px;
-    flex-shrink: 0;
-    accent-color: var(--alert);
-  }
-  .super-edit-title {
-    font-weight: 700;
-    margin-bottom: 2px;
-  }
-  .super-edit-toggle .hint {
-    margin-bottom: 0;
   }
   .notice {
     background: #fde3d1;
@@ -265,6 +268,148 @@
     border-radius: 8px;
     font-size: 14px;
   }
+  .field-row input[type=text],
+  .field-row select {
+    width: 260px;
+    max-width: 60vw;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: inherit;
+    background: #fff;
+  }
+  .field-value {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+  }
+  .field-current {
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .field-block {
+    padding: 10px 0;
+    border-top: 1px solid var(--line);
+  }
+  .field-block label {
+    display: block;
+    margin-bottom: 8px;
+  }
+  .field-block .field-current {
+    margin-top: 4px;
+  }
+  .data-table-wrap {
+    overflow-x: auto;
+  }
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+  }
+  .data-table th {
+    text-align: left;
+    padding: 8px 10px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--muted);
+    border-bottom: 1px solid var(--line);
+    white-space: nowrap;
+  }
+  .data-table td {
+    padding: 10px;
+    border-bottom: 1px solid var(--line);
+    white-space: nowrap;
+  }
+  .danger-button {
+    border: none;
+    background: none;
+    color: var(--alert);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 4px 8px;
+  }
+  .modal-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 16px;
+  }
+  .modal-actions .save-button {
+    margin-top: 0;
+  }
+  .roles-row {
+    justify-content: flex-start;
+    gap: 20px;
+  }
+  .roles-row label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 400;
+  }
+  .data-table-empty {
+    color: var(--muted);
+    text-align: center;
+    padding: 16px 10px;
+  }
+  .card-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .card-header-row h2 {
+    margin: 0;
+  }
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(13, 13, 13, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    z-index: 50;
+  }
+  .modal-overlay[hidden] {
+    display: none;
+  }
+  .modal {
+    background: #fff;
+    border-radius: 12px;
+    padding: 20px 24px;
+    max-width: 460px;
+    width: 100%;
+    max-height: calc(100vh - 40px);
+    overflow-y: auto;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+  }
+  .modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .modal-header h2 {
+    font-size: 16px;
+    margin: 0;
+  }
+  .modal .hint {
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 16px;
+  }
+  .modal-close {
+    border: none;
+    background: none;
+    font-size: 22px;
+    line-height: 1;
+    color: var(--muted);
+    cursor: pointer;
+    padding: 4px 6px;
+  }
   textarea {
     width: 100%;
     min-height: 140px;
@@ -332,24 +477,28 @@
   </a>
   <span class="email" id="me"></span>
 </header>
-<div class="container">
-  <div class="card">
-    <label class="super-edit-toggle">
-      <input type="checkbox" id="super-edit">
-      <div>
-        <div class="super-edit-title">Enable Super Edit Mode</div>
-        <div class="hint">While on, you can edit anyone's photo, facts, and other info from their page — not just your own family's.</div>
-      </div>
-    </label>
-  </div>
-
-  <div class="tabs">
-    <div class="tab active" data-panel="images">Images</div>
-    <div class="tab" data-panel="thresholds">Update Thresholds</div>
-    <div class="tab" data-panel="privacy-links">Privacy Links</div>
-    <div class="tab" data-panel="admins">Admins</div>
-  </div>
-
+<div class="layout">
+  <nav class="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">Display</div>
+      <div class="tab active" data-panel="images">Images</div>
+      <div class="tab" data-panel="thresholds">Update Thresholds</div>
+      <div class="tab" data-panel="privacy-links">Privacy Links</div>
+    </div>
+    <div class="sidebar-section" id="sidebar-editing-control">
+      <div class="sidebar-section-title">Editing &amp; Control</div>
+      <div class="tab" data-panel="admins">Admins</div>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">Data Overrides</div>
+      <div class="tab" data-panel="staff-assignments">Staff Overrides</div>
+      <div class="tab" data-panel="student-overrides">Student Overrides</div>
+      <div class="tab" data-panel="parent-overrides">Parent Overrides</div>
+      <div class="tab" data-panel="added-overrides">Added Overrides</div>
+      <div class="tab" data-panel="hidden-overrides">Hidden Overrides</div>
+    </div>
+  </nav>
+  <div class="container">
   <div class="panel" id="panel-images">
     <div id="store-notice"></div>
     <div class="card">
@@ -423,11 +572,344 @@
       </div>
     </div>
   </div>
+
+  <div class="panel" id="panel-staff-assignments" hidden>
+    <div class="card">
+      <h2>Find a person</h2>
+      <div class="hint">
+        Edit the fields that decide which classroom or crew a staff member belongs to, plus their
+        name and facts — Classroom, Crew, Department, Job Title, Grade Band, Full Name,
+        Legal Name, Preferred Name, and Facts. Changes here save straight to the Overrides sheet,
+        whether or not the field also has its own self-service editor elsewhere.
+      </div>
+      <div class="add-admin-row">
+        <div id="staff-person-select"></div>
+        <button class="upload-button" id="staff-person-load-button" type="button">Load</button>
+      </div>
+    </div>
+    <div class="card" id="staff-fields-card" hidden>
+      <h2 id="staff-fields-name"></h2>
+      <div class="hint" id="staff-fields-email"></div>
+      <div class="field-row">
+        <label for="staff-full-name">Full name</label>
+        <div class="field-value">
+          <input type="text" id="staff-full-name" maxlength="100">
+          <div class="field-current" id="staff-full-name-current"></div>
+        </div>
+      </div>
+      <div class="field-row">
+        <label for="staff-legal-name">Legal name</label>
+        <div class="field-value">
+          <input type="text" id="staff-legal-name" maxlength="100">
+          <div class="field-current" id="staff-legal-name-current"></div>
+        </div>
+      </div>
+      <div class="field-row">
+        <label for="staff-preferred-name">Preferred name</label>
+        <div class="field-value">
+          <input type="text" id="staff-preferred-name" maxlength="100">
+          <div class="field-current" id="staff-preferred-name-current"></div>
+        </div>
+      </div>
+      <div class="field-row">
+        <label for="staff-classroom">Classroom</label>
+        <div class="field-value">
+          <select id="staff-classroom"></select>
+          <div class="field-current" id="staff-classroom-current"></div>
+        </div>
+      </div>
+      <div class="field-row">
+        <label for="staff-crew">Crew</label>
+        <div class="field-value">
+          <select id="staff-crew"></select>
+          <div class="field-current" id="staff-crew-current"></div>
+        </div>
+      </div>
+      <div class="field-row">
+        <label for="staff-department">Department</label>
+        <div class="field-value">
+          <select id="staff-department"></select>
+          <div class="field-current" id="staff-department-current"></div>
+        </div>
+      </div>
+      <div class="field-row">
+        <label for="staff-job-title">Job title</label>
+        <div class="field-value">
+          <input type="text" id="staff-job-title" maxlength="100">
+          <div class="field-current" id="staff-job-title-current"></div>
+        </div>
+      </div>
+      <div class="field-row">
+        <label for="staff-grade-band">Grade band</label>
+        <div class="field-value">
+          <select id="staff-grade-band"></select>
+          <div class="field-current" id="staff-grade-band-current"></div>
+        </div>
+      </div>
+      <div class="field-block">
+        <label for="staff-facts">Facts</label>
+        <textarea id="staff-facts" maxlength="4000"></textarea>
+        <div class="field-current" id="staff-facts-current"></div>
+      </div>
+      <button class="save-button" id="staff-save-button">Save</button>
+      <span class="save-status" id="staff-fields-status"></span>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-student-overrides" hidden>
+    <div class="card">
+      <h2>Find a student</h2>
+      <div class="hint">
+        Edit a student's Overrides-backed fields — Full Name, Legal Name, Preferred Name, Grade,
+        Classroom, and Crew. Changes here save straight to the Overrides sheet, whether or not the
+        field also has its own self-service editor elsewhere.
+      </div>
+      <div class="add-admin-row">
+        <div id="student-person-select"></div>
+        <button class="upload-button" id="student-person-load-button" type="button">Load</button>
+      </div>
+    </div>
+    <div class="card" id="student-fields-card" hidden>
+      <h2 id="student-fields-name"></h2>
+      <div class="hint" id="student-fields-email"></div>
+      <div class="field-row">
+        <label for="student-full-name">Full name</label>
+        <div class="field-value">
+          <input type="text" id="student-full-name" maxlength="100">
+          <div class="field-current" id="student-full-name-current"></div>
+        </div>
+      </div>
+      <div class="field-row">
+        <label for="student-legal-name">Legal name</label>
+        <div class="field-value">
+          <input type="text" id="student-legal-name" maxlength="100">
+          <div class="field-current" id="student-legal-name-current"></div>
+        </div>
+      </div>
+      <div class="field-row">
+        <label for="student-preferred-name">Preferred name</label>
+        <div class="field-value">
+          <input type="text" id="student-preferred-name" maxlength="100">
+          <div class="field-current" id="student-preferred-name-current"></div>
+        </div>
+      </div>
+      <div class="field-row">
+        <label for="student-grade">Grade</label>
+        <div class="field-value">
+          <select id="student-grade"></select>
+          <div class="field-current" id="student-grade-current"></div>
+        </div>
+      </div>
+      <div class="field-row">
+        <label for="student-classroom">Classroom</label>
+        <div class="field-value">
+          <select id="student-classroom"></select>
+          <div class="field-current" id="student-classroom-current"></div>
+        </div>
+      </div>
+      <div class="field-row">
+        <label for="student-crew">Crew</label>
+        <div class="field-value">
+          <select id="student-crew"></select>
+          <div class="field-current" id="student-crew-current"></div>
+        </div>
+      </div>
+      <button class="save-button" id="student-save-button">Save</button>
+      <span class="save-status" id="student-fields-status"></span>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-parent-overrides" hidden>
+    <div class="card">
+      <h2>Find a parent</h2>
+      <div class="hint">
+        Edit a parent's Overrides-backed fields — Full Name, Legal Name, Preferred Name, Phone,
+        Room Parent, and Address. Address is family-level: it's written to this parent's own row,
+        and merges with whatever their co-parent's row supplies.
+      </div>
+      <div class="add-admin-row">
+        <div id="parent-person-select"></div>
+        <button class="upload-button" id="parent-person-load-button" type="button">Load</button>
+      </div>
+    </div>
+    <div class="card" id="parent-fields-card" hidden>
+      <h2 id="parent-fields-name"></h2>
+      <div class="hint" id="parent-fields-email"></div>
+      <div class="field-row">
+        <label for="parent-full-name">Full name</label>
+        <div class="field-value">
+          <input type="text" id="parent-full-name" maxlength="100">
+          <div class="field-current" id="parent-full-name-current"></div>
+        </div>
+      </div>
+      <div class="field-row">
+        <label for="parent-legal-name">Legal name</label>
+        <div class="field-value">
+          <input type="text" id="parent-legal-name" maxlength="100">
+          <div class="field-current" id="parent-legal-name-current"></div>
+        </div>
+      </div>
+      <div class="field-row">
+        <label for="parent-preferred-name">Preferred name</label>
+        <div class="field-value">
+          <input type="text" id="parent-preferred-name" maxlength="100">
+          <div class="field-current" id="parent-preferred-name-current"></div>
+        </div>
+      </div>
+      <div class="field-row">
+        <label for="parent-phone">Phone</label>
+        <div class="field-value">
+          <input type="text" id="parent-phone" maxlength="40">
+          <div class="field-current" id="parent-phone-current"></div>
+        </div>
+      </div>
+      <div class="field-row">
+        <label for="parent-room-parent">Room parent for</label>
+        <div class="field-value">
+          <select id="parent-room-parent"></select>
+          <div class="field-current" id="parent-room-parent-current"></div>
+        </div>
+      </div>
+      <div class="field-row">
+        <label for="parent-address">Address</label>
+        <div class="field-value">
+          <input type="text" id="parent-address" maxlength="200">
+          <div class="field-current" id="parent-address-current"></div>
+        </div>
+      </div>
+      <button class="save-button" id="parent-save-button">Save</button>
+      <span class="save-status" id="parent-fields-status"></span>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-added-overrides" hidden>
+    <div class="card">
+      <div class="card-header-row">
+        <h2>People not in Veracross</h2>
+        <button class="upload-button" id="open-add-person-button" type="button">+ Add Person</button>
+      </div>
+      <div class="hint">Click Edit on a row to change it.</div>
+      <div class="data-table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Full name</th>
+              <th>Email</th>
+              <th>Student</th>
+              <th>Parent</th>
+              <th>Staff</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="added-people-rows"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-hidden-overrides" hidden>
+    <div class="card">
+      <h2>Hide a person</h2>
+      <div class="hint">
+        Hides an existing person from the whole directory, the same effect as the self-service
+        privacy opt-out - they stop appearing anywhere, including search, until unhidden.
+      </div>
+      <div class="add-admin-row">
+        <div id="hide-person-select"></div>
+        <button class="upload-button" id="hide-person-button" type="button">Hide</button>
+        <span class="save-status" id="hide-person-status"></span>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Currently hidden</h2>
+      <div class="data-table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Email</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="hidden-people-rows"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="add-person-modal" hidden>
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Add a new person</h2>
+      <button class="modal-close" id="close-add-person-button" type="button" aria-label="Close">&times;</button>
+    </div>
+    <div class="hint">
+      Create someone Veracross genuinely doesn't have a record for yet - Overrides becomes the
+      only source of their name and role. Pick at least one role; you can add the rest of their
+      details (classroom, phone, and so on) afterward from the table or the other Overrides tabs.
+    </div>
+    <div class="field-row">
+      <label for="add-person-email">Email</label>
+      <div class="field-value">
+        <input type="text" id="add-person-email" maxlength="200">
+      </div>
+    </div>
+    <div class="field-row">
+      <label for="add-person-full-name">Full name</label>
+      <div class="field-value">
+        <input type="text" id="add-person-full-name" maxlength="100">
+      </div>
+    </div>
+    <div class="field-row roles-row">
+      <label><input type="checkbox" id="add-person-is-student"> Is Student</label>
+      <label><input type="checkbox" id="add-person-is-parent"> Is Parent</label>
+      <label><input type="checkbox" id="add-person-is-staff"> Is Staff</label>
+    </div>
+    <button class="save-button" id="add-person-button" type="button">Add</button>
+    <span class="save-status" id="add-person-status"></span>
+  </div>
+</div>
+
+<div class="modal-overlay" id="edit-person-modal" hidden>
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Edit person</h2>
+      <button class="modal-close" id="close-edit-person-button" type="button" aria-label="Close">&times;</button>
+    </div>
+    <div class="hint">
+      Changing the email renames this person everywhere they're keyed by it - their Overrides
+      row, and any Tags or Photos rows they already have.
+    </div>
+    <div class="field-row">
+      <label for="edit-person-email">Email</label>
+      <div class="field-value">
+        <input type="text" id="edit-person-email" maxlength="200">
+      </div>
+    </div>
+    <div class="field-row">
+      <label for="edit-person-full-name">Full name</label>
+      <div class="field-value">
+        <input type="text" id="edit-person-full-name" maxlength="100">
+      </div>
+    </div>
+    <div class="field-row roles-row">
+      <label><input type="checkbox" id="edit-person-is-student"> Is Student</label>
+      <label><input type="checkbox" id="edit-person-is-parent"> Is Parent</label>
+      <label><input type="checkbox" id="edit-person-is-staff"> Is Staff</label>
+    </div>
+    <div class="modal-actions">
+      <button class="save-button" id="edit-person-button" type="button">Save</button>
+      <button class="danger-button" id="delete-person-button" type="button">Delete</button>
+      <span class="save-status" id="edit-person-status"></span>
+    </div>
+  </div>
 </div>
 
 <script>
 let state = null;
 let spoofPicker = null;
+const overridesPanels = [];
 
 async function load() {
   const res = await fetch('/api/admin/state');
@@ -597,18 +1079,22 @@ function ensureSuperAdminUI() {
   if (!state.isSuperAdmin || document.querySelector('[data-panel="spoof"]')) {
     return;
   }
-  const tabs = document.querySelector('.tabs');
+  // Both land in the Editing & Control section, in requested order (Super Admins,
+  // Admins, Spoof Mode) - Admins is the one static tab already there, so Super Admins
+  // goes in front of it and Spoof Mode after.
+  const editingControl = document.querySelector('#sidebar-editing-control');
+  const adminsTab = editingControl.querySelector('[data-panel="admins"]');
   const superAdminsTab = document.createElement('div');
   superAdminsTab.className = 'tab';
   superAdminsTab.dataset.panel = 'super-admins';
   superAdminsTab.textContent = 'Super Admins';
-  tabs.append(superAdminsTab);
+  editingControl.insertBefore(superAdminsTab, adminsTab);
 
   const spoofTab = document.createElement('div');
   spoofTab.className = 'tab';
   spoofTab.dataset.panel = 'spoof';
   spoofTab.textContent = 'Spoof Mode';
-  tabs.append(spoofTab);
+  editingControl.append(spoofTab);
 
   const container = document.querySelector('.container');
 
@@ -658,7 +1144,6 @@ function ensureSuperAdminUI() {
 
 function render() {
   document.querySelector('#me').textContent = state.email;
-  document.querySelector('#super-edit').checked = state.superEdit;
   renderTopLevelSpoofBanner();
 
   const notice = document.querySelector('#store-notice');
@@ -684,6 +1169,14 @@ function render() {
 
   buildAdminListEditor(
     '#admins-rows', '#add-admin-select', '#admins-status', '/api/admin/admins', 'admins', state.admins);
+
+  for (const panel of overridesPanels) {
+    panel.refreshPeople();
+    panel.refreshSelected();
+  }
+  renderAddedPeopleTable();
+  hidePersonPicker.setPeople(state.people);
+  renderHiddenPeopleTable();
 
   ensureSuperAdminUI();
   if (state.isSuperAdmin) {
@@ -908,30 +1401,473 @@ async function setColor(kind, name, input, status) {
   status.textContent = '';
 }
 
-document.querySelector('#super-edit').addEventListener('change', async e => {
-  const checkbox = e.target;
-  checkbox.disabled = true;
-  const res = await fetch('/api/admin/super-edit', {
+// Replaces a <select>'s options with an empty "— none —" choice plus one per value,
+// then selects current (falling back to empty if current isn't among values - e.g.
+// after switching classrooms, the previous crew rarely belongs to the new one).
+// current is always included as an option even when it's missing from values - e.g. a
+// Crew override can exist with no matching Classroom override (deriveClassrooms only
+// checks Crew against Classroom's crews when a Classroom is actually set), so the
+// options crewNamesFor('') computes for an empty Classroom box wouldn't otherwise
+// contain the real Crew override at all. Without this, fillSelect would silently fall
+// back to "— none —", both hiding a real override from view and, if saved right after,
+// erasing it.
+function fillSelect(select, values, current) {
+  select.replaceChildren();
+  const empty = document.createElement('option');
+  empty.value = '';
+  empty.textContent = '— none —';
+  select.append(empty);
+  const options = current && !values.includes(current) ? [current, ...values] : values;
+  for (const value of options) {
+    const opt = document.createElement('option');
+    opt.value = value;
+    opt.textContent = value;
+    select.append(opt);
+  }
+  select.value = current || '';
+}
+
+// With no classroom chosen, every crew is offered rather than none - a Crew override
+// can legitimately exist with no Classroom override (validCrew in admin.go matches
+// deriveClassrooms' own rule: it only checks crew-against-classroom when a classroom
+// is actually given), so leaving Classroom blank shouldn't make every crew name look
+// invalid.
+function crewNamesFor(classroomName) {
+  const crews = classroomName ? state.crews.filter(c => c.classroom === classroomName) : state.crews;
+  return [...new Set(crews.map(c => c.name))];
+}
+
+function veracrossLabel(value) {
+  return 'Veracross: ' + (value ? value : '— none —');
+}
+
+// Builds the shared "pick a person → edit some Overrides fields → save" behavior for
+// one Overrides panel (Staff/Student/Parent). The HTML for each panel is hand-authored
+// (element ids follow `${prefix}-${field.id}` and `${prefix}-${field.id}-current`) -
+// only the field list, person filter, and save endpoint differ between panels.
+//
+// Each person from the server carries TWO views of every field (see admin.go's
+// overridableFields): `override` is what's literally in the Overrides sheet right now
+// (booleans travel as "TRUE"/"FALSE"/""), and `veracross` is what the Student/Staff
+// Import actually supplies. A field's own box is pre-filled from `override` - so an
+// untouched box never introduces a new override, and clearing one that DOES carry an
+// override removes exactly that override - while the small label underneath shows
+// `veracross`, purely for reference. field.key indexes both (they share overridableFields'
+// JSON keys), and is also the request body key on save.
+//
+// field.kind is 'text' (also covers <textarea>, which shares the same .value API),
+// 'checkbox', or one of the select kinds ('classroom', 'crew', 'department', 'grade',
+// 'band') whose options come from `state`. 'crew' additionally depends on whichever
+// field has kind 'classroom' in the same panel, refetching its options whenever that
+// field's selection changes - mirroring deriveClassrooms' own Classroom/Crew coupling.
+function bindOverridesPanel(spec) {
+  let selectedEmail = null;
+  const el = suffix => document.querySelector(`#${spec.prefix}-${suffix}`);
+  const classroomField = spec.fields.find(f => f.kind === 'classroom');
+  const selectSources = {
+    classroom: () => state.classrooms.map(c => c.name),
+    crew: () => crewNamesFor(classroomField ? el(classroomField.id).value : ''),
+    department: () => state.departments,
+    grade: () => state.grades.map(g => g.name),
+    band: () => state.bands,
+  };
+
+  function loadPerson(email, resetStatus = true) {
+    const person = state.people.find(p => p.email === email);
+    if (!person) {
+      return;
+    }
+    selectedEmail = email;
+    el('fields-card').hidden = false;
+    el('fields-name').textContent = person.name;
+    el('fields-email').textContent = person.email;
+    for (const f of spec.fields) {
+      const overrideValue = person.override[f.key] || '';
+      const veracrossValue = person.veracross[f.key] || '';
+      const input = el(f.id);
+      if (f.kind === 'checkbox') {
+        input.checked = overrideValue === 'TRUE';
+      } else if (selectSources[f.kind]) {
+        fillSelect(input, selectSources[f.kind](), overrideValue);
+      } else {
+        input.value = overrideValue;
+      }
+      const currentEl = el(f.id + '-current');
+      if (currentEl) {
+        const label = f.kind === 'checkbox' ? {TRUE: 'Yes', FALSE: 'No'}[veracrossValue] || '' : veracrossValue;
+        currentEl.textContent = veracrossLabel(label);
+      }
+    }
+    if (resetStatus) {
+      const status = el('fields-status');
+      status.classList.remove('error', 'ok');
+      status.textContent = '';
+    }
+  }
+
+  const picker = createPersonPicker(el('person-select'));
+  el('person-load-button').addEventListener('click', () => {
+    if (picker.value) {
+      loadPerson(picker.value);
+    }
+  });
+  if (classroomField) {
+    const crewField = spec.fields.find(f => f.kind === 'crew');
+    el(classroomField.id).addEventListener('change', e => {
+      if (crewField) {
+        fillSelect(el(crewField.id), crewNamesFor(e.target.value), '');
+      }
+    });
+  }
+  el('save-button').addEventListener('click', async () => {
+    if (!selectedEmail) {
+      return;
+    }
+    const status = el('fields-status');
+    const button = el('save-button');
+    const body = {email: selectedEmail};
+    for (const f of spec.fields) {
+      const input = el(f.id);
+      // Not trimmed here: a lone space is how an admin explicitly force-blanks a
+      // field that has a Veracross default (see diffStringCell in admin.go) - an
+      // empty box instead removes the override outright, falling back to Veracross.
+      // Every server-side field handles its own whitespace normalization.
+      body[f.key] = f.kind === 'checkbox' ? input.checked : input.value;
+    }
+    button.disabled = true;
+    status.classList.remove('error', 'ok');
+    status.textContent = 'Saving…';
+    const res = await fetch(spec.endpoint, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body),
+    });
+    button.disabled = false;
+    if (!res.ok) {
+      status.classList.add('error');
+      status.textContent = await res.text();
+      return;
+    }
+    status.classList.add('ok');
+    status.textContent = 'Saved.';
+    await load();
+  });
+
+  const panel = {
+    refreshPeople() {
+      picker.setPeople(state.people.filter(spec.filter));
+    },
+    // resetStatus is false here, so a post-save refresh redraws the form with the
+    // now-persisted values without stomping on the "Saved."/error message the save
+    // handler just set - only an explicit Load (a new person, or the picker) should
+    // clear a stale status.
+    refreshSelected() {
+      if (selectedEmail) {
+        loadPerson(selectedEmail, false);
+      }
+    },
+    // load lets something other than this panel's own picker (e.g. a table row
+    // elsewhere on the same tab) jump straight to editing a known person.
+    load(email) {
+      loadPerson(email);
+    },
+  };
+  overridesPanels.push(panel);
+  return panel;
+}
+
+bindOverridesPanel({
+  prefix: 'staff',
+  endpoint: '/api/admin/person-fields',
+  filter: p => p.isStaff,
+  fields: [
+    {key: 'fullName', id: 'full-name', kind: 'text'},
+    {key: 'legalName', id: 'legal-name', kind: 'text'},
+    {key: 'preferredName', id: 'preferred-name', kind: 'text'},
+    {key: 'classroom', id: 'classroom', kind: 'classroom'},
+    {key: 'crew', id: 'crew', kind: 'crew'},
+    {key: 'department', id: 'department', kind: 'department'},
+    {key: 'jobTitle', id: 'job-title', kind: 'text'},
+    {key: 'gradeBand', id: 'grade-band', kind: 'band'},
+    {key: 'facts', id: 'facts', kind: 'text'},
+  ],
+});
+
+bindOverridesPanel({
+  prefix: 'student',
+  endpoint: '/api/admin/student-fields',
+  filter: p => p.isStudent,
+  fields: [
+    {key: 'fullName', id: 'full-name', kind: 'text'},
+    {key: 'legalName', id: 'legal-name', kind: 'text'},
+    {key: 'preferredName', id: 'preferred-name', kind: 'text'},
+    {key: 'grade', id: 'grade', kind: 'grade'},
+    {key: 'classroom', id: 'classroom', kind: 'classroom'},
+    {key: 'crew', id: 'crew', kind: 'crew'},
+  ],
+});
+
+bindOverridesPanel({
+  prefix: 'parent',
+  endpoint: '/api/admin/parent-fields',
+  filter: p => p.isParent,
+  fields: [
+    {key: 'fullName', id: 'full-name', kind: 'text'},
+    {key: 'legalName', id: 'legal-name', kind: 'text'},
+    {key: 'preferredName', id: 'preferred-name', kind: 'text'},
+    {key: 'phone', id: 'phone', kind: 'text'},
+    {key: 'roomParent', id: 'room-parent', kind: 'band'},
+    {key: 'address', id: 'address', kind: 'text'},
+  ],
+});
+
+let editingEmail = null;
+
+function renderAddedPeopleTable() {
+  const tbody = document.querySelector('#added-people-rows');
+  const added = state.people.filter(p => p.isAdded);
+  tbody.replaceChildren();
+  if (!added.length) {
+    const row = document.createElement('tr');
+    const cell = document.createElement('td');
+    cell.colSpan = 6;
+    cell.className = 'data-table-empty';
+    cell.textContent = 'Nobody yet.';
+    row.append(cell);
+    tbody.append(row);
+    return;
+  }
+  const mark = yes => yes ? '✓' : '';
+  for (const p of added) {
+    const row = document.createElement('tr');
+    for (const text of [p.name, p.email, mark(p.isStudent), mark(p.isParent), mark(p.isStaff)]) {
+      const cell = document.createElement('td');
+      cell.textContent = text;
+      row.append(cell);
+    }
+    const actionCell = document.createElement('td');
+    const editButton = document.createElement('button');
+    editButton.className = 'upload-button';
+    editButton.type = 'button';
+    editButton.textContent = 'Edit';
+    editButton.addEventListener('click', () => openEditPersonModal(p));
+    actionCell.append(editButton);
+    row.append(actionCell);
+    tbody.append(row);
+  }
+}
+
+function openEditPersonModal(p) {
+  editingEmail = p.email;
+  document.querySelector('#edit-person-email').value = p.email;
+  document.querySelector('#edit-person-full-name').value = p.name;
+  document.querySelector('#edit-person-is-student').checked = p.isStudent;
+  document.querySelector('#edit-person-is-parent').checked = p.isParent;
+  document.querySelector('#edit-person-is-staff').checked = p.isStaff;
+  const status = document.querySelector('#edit-person-status');
+  status.classList.remove('error', 'ok');
+  status.textContent = '';
+  document.querySelector('#edit-person-modal').hidden = false;
+}
+
+function closeEditPersonModal() {
+  document.querySelector('#edit-person-modal').hidden = true;
+  editingEmail = null;
+}
+
+async function deleteAddedPerson(p) {
+  if (!confirm(`Permanently delete ${p.name} (${p.email})? This also removes any tags or photos they have.`)) {
+    return;
+  }
+  const res = await fetch('/api/admin/delete-person', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({enabled: checkbox.checked}),
+    body: JSON.stringify({email: p.email}),
   });
-  checkbox.disabled = false;
   if (!res.ok) {
-    checkbox.checked = !checkbox.checked;
     alert(await res.text());
     return;
   }
-  state.superEdit = checkbox.checked;
+  await load();
+  closeEditPersonModal();
+}
+
+document.querySelector('#delete-person-button').addEventListener('click', () => {
+  if (!editingEmail) {
+    return;
+  }
+  const person = state.people.find(p => p.email === editingEmail);
+  if (person) {
+    deleteAddedPerson(person);
+  }
+});
+
+document.querySelector('#close-edit-person-button').addEventListener('click', closeEditPersonModal);
+document.querySelector('#edit-person-modal').addEventListener('click', e => {
+  if (e.target.id === 'edit-person-modal') {
+    closeEditPersonModal();
+  }
+});
+
+document.querySelector('#edit-person-button').addEventListener('click', async () => {
+  if (!editingEmail) {
+    return;
+  }
+  const status = document.querySelector('#edit-person-status');
+  const button = document.querySelector('#edit-person-button');
+  const body = {
+    email: editingEmail,
+    newEmail: document.querySelector('#edit-person-email').value.trim(),
+    fullName: document.querySelector('#edit-person-full-name').value.trim(),
+    isStudent: document.querySelector('#edit-person-is-student').checked,
+    isParent: document.querySelector('#edit-person-is-parent').checked,
+    isStaff: document.querySelector('#edit-person-is-staff').checked,
+  };
+  button.disabled = true;
+  status.classList.remove('error', 'ok');
+  status.textContent = 'Saving…';
+  const res = await fetch('/api/admin/added-fields', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body),
+  });
+  button.disabled = false;
+  if (!res.ok) {
+    status.classList.add('error');
+    status.textContent = await res.text();
+    return;
+  }
+  await load();
+  closeEditPersonModal();
+});
+
+document.querySelector('#open-add-person-button').addEventListener('click', () => {
+  document.querySelector('#add-person-modal').hidden = false;
+});
+document.querySelector('#close-add-person-button').addEventListener('click', () => {
+  document.querySelector('#add-person-modal').hidden = true;
+});
+document.querySelector('#add-person-modal').addEventListener('click', e => {
+  if (e.target.id === 'add-person-modal') {
+    document.querySelector('#add-person-modal').hidden = true;
+  }
+});
+
+// Never needs filtering: someone already hidden is, by definition, already gone from
+// state.people (removeOptedOut in load.go drops them from the model entirely), so
+// they can't show up here to be hidden a second time.
+const hidePersonPicker = createPersonPicker(document.querySelector('#hide-person-select'));
+
+function renderHiddenPeopleTable() {
+  const tbody = document.querySelector('#hidden-people-rows');
+  tbody.replaceChildren();
+  if (!state.hiddenEmails.length) {
+    const row = document.createElement('tr');
+    const cell = document.createElement('td');
+    cell.colSpan = 2;
+    cell.className = 'data-table-empty';
+    cell.textContent = 'Nobody hidden.';
+    row.append(cell);
+    tbody.append(row);
+    return;
+  }
+  for (const hiddenEmail of state.hiddenEmails) {
+    const row = document.createElement('tr');
+    const emailCell = document.createElement('td');
+    emailCell.textContent = hiddenEmail;
+    row.append(emailCell);
+    const actionCell = document.createElement('td');
+    const unhideButton = document.createElement('button');
+    unhideButton.className = 'upload-button';
+    unhideButton.type = 'button';
+    unhideButton.textContent = 'Unhide';
+    unhideButton.addEventListener('click', async () => {
+      unhideButton.disabled = true;
+      const res = await fetch('/api/admin/unhide-person', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({email: hiddenEmail}),
+      });
+      unhideButton.disabled = false;
+      if (!res.ok) {
+        alert(await res.text());
+        return;
+      }
+      await load();
+    });
+    actionCell.append(unhideButton);
+    row.append(actionCell);
+    tbody.append(row);
+  }
+}
+
+document.querySelector('#hide-person-button').addEventListener('click', async () => {
+  const status = document.querySelector('#hide-person-status');
+  const button = document.querySelector('#hide-person-button');
+  const email = hidePersonPicker.value;
+  if (!email) {
+    return;
+  }
+  button.disabled = true;
+  status.classList.remove('error', 'ok');
+  status.textContent = 'Hiding…';
+  const res = await fetch('/api/admin/hide-person', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({email}),
+  });
+  button.disabled = false;
+  if (!res.ok) {
+    status.classList.add('error');
+    status.textContent = await res.text();
+    return;
+  }
+  hidePersonPicker.reset();
+  status.textContent = '';
+  await load();
+});
+
+document.querySelector('#add-person-button').addEventListener('click', async () => {
+  const status = document.querySelector('#add-person-status');
+  const button = document.querySelector('#add-person-button');
+  const body = {
+    email: document.querySelector('#add-person-email').value.trim(),
+    fullName: document.querySelector('#add-person-full-name').value.trim(),
+    isStudent: document.querySelector('#add-person-is-student').checked,
+    isParent: document.querySelector('#add-person-is-parent').checked,
+    isStaff: document.querySelector('#add-person-is-staff').checked,
+  };
+  button.disabled = true;
+  status.classList.remove('error', 'ok');
+  status.textContent = 'Adding…';
+  const res = await fetch('/api/admin/add-person', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body),
+  });
+  button.disabled = false;
+  if (!res.ok) {
+    status.classList.add('error');
+    status.textContent = await res.text();
+    return;
+  }
+  document.querySelector('#add-person-email').value = '';
+  document.querySelector('#add-person-full-name').value = '';
+  document.querySelector('#add-person-is-student').checked = false;
+  document.querySelector('#add-person-is-parent').checked = false;
+  document.querySelector('#add-person-is-staff').checked = false;
+  status.textContent = '';
+  document.querySelector('#add-person-modal').hidden = true;
+  await load();
 });
 
 document.querySelector('#staff-color').addEventListener('change', e => {
   setColor('staff', '', e.target, document.querySelector('#staff-color-status'));
 });
 
-// Delegated on the container, not bound per-tab, because the Super Admins and Spoof
+// Delegated on the sidebar, not bound per-tab, because the Super Admins and Spoof
 // Mode tabs don't exist in the DOM until ensureSuperAdminUI() adds them.
-document.querySelector('.container').addEventListener('click', e => {
+document.querySelector('.sidebar').addEventListener('click', e => {
   const tab = e.target.closest('.tab');
   if (!tab) {
     return;

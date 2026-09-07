@@ -76,6 +76,20 @@ func (c *Cache) applyOverride(email string, cells map[string]string) error {
 	return c.rebuild(c.currentTables().withOverride(email, cells), time.Now())
 }
 
+// applyEmailRename folds an added-only person's email change (plus any other Overrides
+// cells changing in the same save) into the cached tables and reruns the model, the
+// same "reject before persist" trick as applyOverride - see Tables.withEmailRenamed.
+func (c *Cache) applyEmailRename(oldEmail, newEmail string, cells map[string]string) error {
+	return c.rebuild(c.currentTables().withEmailRenamed(oldEmail, newEmail, cells), time.Now())
+}
+
+// applyDeletePerson folds removing an added-only person's Overrides/Tags/Photos rows
+// into the cached tables and reruns the model, the same "reject before persist" trick
+// as applyOverride - see Tables.withoutPerson.
+func (c *Cache) applyDeletePerson(email string) error {
+	return c.rebuild(c.currentTables().withoutPerson(email), time.Now())
+}
+
 // applyPhotos folds a Photos-sheet rewrite for one person - an upload, a reorder, a
 // delete, or a crop, all just "this person's photo list is now exactly refs" - into
 // the cached tables and reruns the model, mirroring applyOverride's trick so a write

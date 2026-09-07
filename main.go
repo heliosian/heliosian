@@ -138,7 +138,7 @@ func main() {
 	mux := http.NewServeMux()
 	directory.Register(mux, cache, browserKey)
 	directory.RegisterTags(mux, cache, writer, queue)
-	directory.RegisterAdmin(mux, cache)
+	directory.RegisterAdmin(mux, cache, writer, queue)
 	if store != nil {
 		blob.Register(mux, store)
 		directory.RegisterUpload(mux, cache, source.(*data.Sheet), store, queue)

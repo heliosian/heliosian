@@ -293,6 +293,88 @@ func (t *Tables) withOverride(email string, cells map[string]string) *Tables {
 	return &out
 }
 
+// withEmailRenamed is withOverride for a person whose email itself is changing -
+// admin.go's setAddedFields, for an added-only person, is the only caller (everyone
+// else's email comes from Veracross and isn't renameable through this app at all). It
+// renames the Overrides row in place (folding cells into the same pass, same as
+// withOverride) and also renames every Tags row where this person is the owner or the
+// tagged person, and every Photos row that belongs to them, so a rename doesn't
+// silently strand their tags or photos under the old address.
+func (t *Tables) withEmailRenamed(oldEmail, newEmail string, cells map[string]string) *Tables {
+	overrides := make([]map[string]string, len(t.Overrides))
+	copy(overrides, t.Overrides)
+	found := false
+	for i, row := range overrides {
+		if !strings.EqualFold(row["Email"], oldEmail) {
+			continue
+		}
+		next := maps.Clone(row)
+		next["Email"] = newEmail
+		applyCells(next, cells)
+		overrides[i] = next
+		found = true
+	}
+	if !found {
+		row := map[string]string{"Email": newEmail}
+		applyCells(row, cells)
+		overrides = append(overrides, row)
+	}
+
+	renameColumn := func(rows []map[string]string, column string) []map[string]string {
+		next := make([]map[string]string, len(rows))
+		for i, row := range rows {
+			if strings.EqualFold(row[column], oldEmail) {
+				clone := maps.Clone(row)
+				clone[column] = newEmail
+				next[i] = clone
+			} else {
+				next[i] = row
+			}
+		}
+		return next
+	}
+
+	out := *t
+	out.Overrides = overrides
+	out.Tags = renameColumn(renameColumn(t.Tags, tagOwner), tagPerson)
+	out.Photos = renameColumn(t.Photos, "Email")
+	return &out
+}
+
+// withoutPerson removes an added-only person's Overrides row, every Tags row where
+// they're the owner or the tagged person, and every Photos row that belongs to them -
+// admin.go's setAddedFields (the Added Overrides tab's delete) is the only caller.
+// Since an added-only person exists solely because their Overrides row says so (no
+// Veracross import row backs them), removing that row is enough on its own to make
+// them vanish from the next rebuild; the Tags/Photos cleanup is just good hygiene, so
+// their old email doesn't keep orphaned rows around forever.
+func (t *Tables) withoutPerson(email string) *Tables {
+	without := func(rows []map[string]string, column string) []map[string]string {
+		next := make([]map[string]string, 0, len(rows))
+		for _, row := range rows {
+			if !strings.EqualFold(row[column], email) {
+				next = append(next, row)
+			}
+		}
+		return next
+	}
+	withoutTags := func(rows []map[string]string) []map[string]string {
+		next := make([]map[string]string, 0, len(rows))
+		for _, row := range rows {
+			if strings.EqualFold(row[tagOwner], email) || strings.EqualFold(row[tagPerson], email) {
+				continue
+			}
+			next = append(next, row)
+		}
+		return next
+	}
+	out := *t
+	out.Overrides = without(t.Overrides, "Email")
+	out.Tags = withoutTags(t.Tags)
+	out.Photos = without(t.Photos, "Email")
+	return &out
+}
+
 func applyCells(row, cells map[string]string) {
 	for column, value := range cells {
 		// parseTable drops blank cells, so a cleared column vanishes rather than holding "".
@@ -712,6 +794,17 @@ func (l *loader) applyOverrides() error {
 			l.people[email] = p
 			l.order = append(l.order, email)
 		}
+		p.overrideRow = row
+		// Snapshot every field that can genuinely come from Veracross before the
+		// apply()/applyBool() calls below have a chance to change any of them - this is
+		// the only place in the whole load that ever mutates them, so whatever's here
+		// right now is still exactly what the import supplied.
+		p.imported = map[string]string{
+			"Full Name": p.FullName, "Legal Name": p.LegalName, "Preferred Name": p.PreferredName,
+			"Grade": p.Grade, "Classroom": p.Classroom, "Crew": p.Crew,
+			"Phone": p.Phone, "Job Title": p.JobTitle,
+			"Is Staff": map[bool]string{true: "TRUE", false: "FALSE"}[p.IsStaff],
+		}
 
 		// An override that restates what the import already says is dead weight: it
 		// survives long after the import starts supplying the value, and hides the
@@ -875,11 +968,12 @@ func (l *loader) buildFamilies() error {
 		key := familyHash(members)
 		l.familyKeys[setKey] = key
 		l.model.Families[key] = Family{
-			Key:         key,
-			Address:     hh.address,
-			Phone:       hh.phone,
-			AdultEmails: hh.adults,
-			KidEmails:   hh.kids,
+			Key:             key,
+			Address:         hh.address,
+			Phone:           hh.phone,
+			AdultEmails:     hh.adults,
+			KidEmails:       hh.kids,
+			importedAddress: hh.address,
 		}
 	}
 	for email, sets := range l.personHouseholds {
@@ -1086,6 +1180,12 @@ func classifyPhone(family Family, people map[string]*Person) string {
 }
 
 func (l *loader) removeOptedOut() error {
+	hidden := make([]string, 0, len(l.optedOut))
+	for email := range l.optedOut {
+		hidden = append(hidden, email)
+	}
+	sort.Strings(hidden)
+	l.model.hiddenEmails = hidden
 	for email := range l.optedOut {
 		delete(l.people, email)
 	}
