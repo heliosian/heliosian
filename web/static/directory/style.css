@@ -3016,6 +3016,9 @@ img.fcard-photo {
   .infobanner-button {
     justify-content: center;
   }
+  .fcard-phone {
+    display: none;
+  }
 }
 
 .mobile-top,
