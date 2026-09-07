@@ -3979,6 +3979,16 @@ const drawer = document.querySelector('#drawer');
 const drawerOverlay = document.querySelector('#drawer-overlay');
 const drawerUserMenu = document.querySelector('#drawer-user-menu');
 
+// Both the desktop and mobile-drawer user menus carry their own copy of this
+// checkbox (admin-only, server-rendered) - a quicker way to flip Super Edit Mode
+// than the full admin page, which still has its own toggle too. Wired once here
+// since the checkboxes are static; syncSuperEditCheckboxes (called from load())
+// keeps their checked state true to the model after every reload, including one
+// triggered by a different tab or the admin page.
+for (const box of document.querySelectorAll('.super-edit-checkbox')) {
+  box.addEventListener('change', () => setSuperEdit(box.checked));
+}
+
 function setDrawer(open) {
   drawer.hidden = !open;
   drawerOverlay.hidden = !open;
@@ -4079,6 +4089,25 @@ function updateBannerOffset() {
 }
 window.addEventListener('resize', updateBannerOffset);
 
+// setSuperEdit is the one place that actually flips the switch - shared by the
+// banner's "Turn off" link and the user menus' checkbox, both of which just
+// need to call it and let the reload (which calls syncSuperEditCheckboxes and
+// renderSuperEditBanner) bring every copy of the control back in sync.
+async function setSuperEdit(enabled) {
+  await fetch('/api/admin/super-edit', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({enabled}),
+  });
+  await load();
+}
+
+function syncSuperEditCheckboxes() {
+  for (const box of document.querySelectorAll('.super-edit-checkbox')) {
+    box.checked = Boolean(state.model.superEdit);
+  }
+}
+
 function renderSuperEditBanner() {
   let banner = document.querySelector('.super-edit-banner');
   if (!state.model.superEdit) {
@@ -4097,12 +4126,7 @@ function renderSuperEditBanner() {
   link.href = '#';
   link.addEventListener('click', async e => {
     e.preventDefault();
-    await fetch('/api/admin/super-edit', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({enabled: false}),
-    });
-    await load();
+    await setSuperEdit(false);
   });
   banner.append(link);
   topBanners().append(banner);
@@ -4243,6 +4267,7 @@ async function load() {
   state.everyoneOrder = shuffled(state.model.people);
   state.familyOrder = shuffled(familyEntries());
   renderSuperEditBanner();
+  syncSuperEditCheckboxes();
   renderSpoofBanner();
   renderPrivacyMenuAlert();
   render();

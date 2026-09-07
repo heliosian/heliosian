@@ -73,7 +73,8 @@
 <div class="user-menu" id="user-menu" hidden>
 <a href="/people/{{.UserEmailSlug}}">View Profile</a>
 <a href="/my-privacy" class="user-menu-privacy">My Privacy<span class="user-menu-alert" hidden></span></a>
-{{if .IsAdmin}}<a href="/admin">Admin Tools</a>{{end}}
+{{if .IsAdmin}}<a href="/admin">Admin Tools</a>
+<label class="user-menu-toggle"><span>Super Edit Mode</span><input type="checkbox" class="super-edit-checkbox"></label>{{end}}
 <form method="post" action="/auth/logout"><button>Sign Out</button></form>
 </div>
 </div>
@@ -102,7 +103,8 @@
 <div class="user-menu" id="drawer-user-menu" hidden>
 <a href="/people/{{.UserEmailSlug}}">View Profile</a>
 <a href="/my-privacy" class="user-menu-privacy">My Privacy<span class="user-menu-alert" hidden></span></a>
-{{if .IsAdmin}}<a href="/admin">Admin Tools</a>{{end}}
+{{if .IsAdmin}}<a href="/admin">Admin Tools</a>
+<label class="user-menu-toggle"><span>Super Edit Mode</span><input type="checkbox" class="super-edit-checkbox"></label>{{end}}
 <form method="post" action="/auth/logout"><button>Sign Out</button></form>
 </div>
 </div>
