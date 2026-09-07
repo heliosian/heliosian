@@ -1649,6 +1649,17 @@ div.person-photo {
   margin-bottom: 3px;
 }
 
+/* On the profile page only - roster/grid cards center this via text-align on
+   their own text-align:center container, which a bare display:flex here would
+   override (a flex item ignores the parent's text-align and left-aligns by
+   default), so the flex treatment for the inline pronoun-edit pencil is scoped
+   to .detail-top instead of the shared .role-label rule above. */
+.detail-top .role-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .person-name {
   font-weight: 700;
   font-size: 14px;
@@ -2726,6 +2737,29 @@ a.list-row:hover {
   padding: 8px 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
+}
+
+.field-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.field-preset {
+  border: 1px solid var(--line);
+  background: var(--input);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 5px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.field-preset:hover {
+  background: #e2e6e9;
 }
 
 .field-note {

@@ -142,6 +142,29 @@ func TestClearingLegacyPrimaryPhotoOverrideSucceeds(t *testing.T) {
 	}
 }
 
+// Same class of bug as the Primary Photo regression above: Pronouns has no
+// import baseline either (see edit's "pronouns" case, upload.go), so clearing
+// it must also write "" rather than clearable's "-".
+func TestClearingPronounsSucceeds(t *testing.T) {
+	tables, err := ReadTables(&data.Dir{Root: "../../sampledata"})
+	if err != nil {
+		t.Fatalf("read sample tables: %v", err)
+	}
+	email := "ruth.amari@heliosschool.org"
+	withPronouns := tables.withOverride(email, map[string]string{"Pronouns": "she/her"})
+	if _, err := BuildModel(withPronouns, noBlobs{}, noBlobs{}); err != nil {
+		t.Fatalf("seed pronouns: %v", err)
+	}
+
+	if _, err := BuildModel(withPronouns.withOverride(email, map[string]string{"Pronouns": ""}), noBlobs{}, noBlobs{}); err != nil {
+		t.Errorf("clearing Pronouns with an empty string should succeed, got: %v", err)
+	}
+
+	if _, err := BuildModel(withPronouns.withOverride(email, map[string]string{"Pronouns": "-"}), noBlobs{}, noBlobs{}); err == nil {
+		t.Errorf("clearing Pronouns with \"-\" should still fail the useless-override check, documenting why \"\" is required")
+	}
+}
+
 // fakeBlobs simulates specific objects existing in the bucket, unlike noBlobs
 // (which simulates none existing) - needed to exercise real photo/crop URL
 // resolution rather than the empty-name early return every other test relies on.

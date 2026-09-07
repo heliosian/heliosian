@@ -156,6 +156,22 @@ func (u uploader) edit(w http.ResponseWriter, r *http.Request) {
 		}
 		cells["Phone"] = clearable(value)
 		previous["Phone"] = person.Phone
+	case "pronouns":
+		if !u.mayEdit(model, me, "person", key) {
+			http.Error(w, "not allowed to edit this record", http.StatusForbidden)
+			return
+		}
+		if len(value) > 40 {
+			http.Error(w, "bad pronouns", http.StatusBadRequest)
+			return
+		}
+		// Unlike Phone/Address, Pronouns has no import baseline (nothing ever sets
+		// it outside Overrides), so it's cleared with a plain "" - the same reason
+		// Primary Photo needed "" instead of "-" before it was retired - not
+		// clearable(value): applyOverrides always starts it at "" and would flag a
+		// literal "-" as clearing an already-empty value, failing the whole load.
+		cells["Pronouns"] = value
+		previous["Pronouns"] = person.Pronouns
 	case "address":
 		if key != strings.ToLower(me) || !person.IsParent {
 			http.Error(w, "not allowed to edit this record", http.StatusForbidden)

@@ -729,6 +729,15 @@ function roleLabel(p) {
   return (p.pronouns ? `${role} (${p.pronouns})` : role).toUpperCase();
 }
 
+// roleWithPronouns is roleLabel's sentence-case counterpart, for spots that
+// don't already uppercase via CSS (the profile page's own header) or don't
+// want to (a family member's row, where "Parent" reads as plain text next to
+// the name rather than a shouty label).
+function roleWithPronouns(p) {
+  const role = baseRole(p);
+  return p.pronouns ? `${role} (${formatPronouns(p.pronouns)})` : role;
+}
+
 function gradeChain(p) {
   return [p.grade, p.classroom, p.crew].filter(Boolean).join(' ▶ ');
 }
@@ -1505,11 +1514,32 @@ function editPencil(title) {
   return pencil;
 }
 
+// fieldEditor is the shared text-field editor behind every simple Overrides
+// field (preferred name, phone, address, pronouns...): an input, a Save/Cancel
+// pair, and (when opts.allowHide and there's a current value) a Hide button
+// that clears it. opts.presets, if given ([{label, value}]), adds a row of
+// quick-pick buttons above the input - each just fills it in rather than
+// submitting immediately, so picking one still goes through the same explicit
+// Save as typing a custom value, and both are always available side by side.
 function fieldEditor(anchor, pencil, opts) {
   const box = el('div', 'field-editor');
   const input = el('input');
   input.type = 'text';
   input.value = opts.current || '';
+  if (opts.presets) {
+    const presets = el('div', 'field-presets');
+    for (const preset of opts.presets) {
+      const btn = el('button', 'field-preset', preset.label);
+      btn.type = 'button';
+      btn.addEventListener('click', () => {
+        input.value = preset.value;
+        input.focus();
+      });
+      presets.append(btn);
+    }
+    box.append(presets);
+  }
+  box.append(input);
   const note = el('div', 'field-note', "This doesn't affect the values shown in Veracross.");
   const buttons = el('div', 'about-buttons');
   const status = el('div', 'media-status about-status');
@@ -1521,7 +1551,7 @@ function fieldEditor(anchor, pencil, opts) {
     buttons.append(hide);
     hide.addEventListener('click', () => opts.submit('', status));
   }
-  box.append(input, note, buttons, status);
+  box.append(note, buttons, status);
   cancel.addEventListener('click', () => {
     box.remove();
     anchor.hidden = false;
@@ -1638,7 +1668,7 @@ function familyBand(p, family) {
   if (adults.length) {
     right.append(el('div', 'fcard-section-header', 'Other Family Members'));
     for (const adult of adults) {
-      right.append(familyCardRow(adult, baseRole(adult)));
+      right.append(familyCardRow(adult, roleWithPronouns(adult)));
     }
   }
   grid.append(right);
@@ -1790,8 +1820,22 @@ function renderPersonDetail(email) {
   const right = el('div');
   const family = state.model.families[p.familyKey];
   const topRow = el('div', 'detail-top');
-  const roleText = p.pronouns ? `${baseRole(p)} (${formatPronouns(p.pronouns)})` : baseRole(p);
-  topRow.append(el('div', 'role-label', roleText));
+  const roleRow = el('div', 'role-label', roleWithPronouns(p));
+  topRow.append(roleRow);
+  if (editing) {
+    const pronounPencil = editPencil('Edit pronouns');
+    roleRow.append(pronounPencil);
+    pronounPencil.addEventListener('click', () => fieldEditor(roleRow, pronounPencil, {
+      current: p.pronouns || '',
+      allowHide: true,
+      presets: [
+        {label: 'She/her', value: 'she/her'},
+        {label: 'He/him', value: 'he/him'},
+        {label: 'They/them', value: 'they/them'},
+      ],
+      submit: (value, status) => submitField(p.email, 'pronouns', value, status),
+    }));
+  }
   if (editable) {
     const topActions = el('div', 'detail-top-actions');
     const toggle = editing
@@ -2134,7 +2178,7 @@ function renderFamilyDetail(key) {
   if (adults.length) {
     adultsCol.append(el('div', 'fcard-section-header', 'Adults'));
     for (const a of adults) {
-      adultsCol.append(familyCardRow(a, baseRole(a)));
+      adultsCol.append(familyCardRow(a, roleWithPronouns(a)));
     }
   }
   const kidsCol = el('div');
