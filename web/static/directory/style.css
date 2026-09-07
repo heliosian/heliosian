@@ -1862,6 +1862,13 @@ a.classroom-card:hover .classroom-photo {
   padding-top: 24px;
 }
 
+/* The role-label row that sits right above the name (STUDENT, PARENT...) doesn't
+   need the same breathing room as .detail-top's other use as the page's own
+   breadcrumb bar above - scoped to .detail-grid so that one is untouched. */
+.detail-grid .detail-top {
+  padding-bottom: 0;
+}
+
 .detail-top-actions {
   display: flex;
   align-items: center;
@@ -2076,7 +2083,7 @@ div.detail-photo-empty {
   font-family: Georgia, 'Times New Roman', serif;
   font-size: 30px;
   font-weight: 700;
-  margin: 4px 0 6px;
+  margin: 0 0 6px;
 }
 
 .pronounce-pill {
@@ -2831,14 +2838,6 @@ a.list-row:hover {
   padding-bottom: 44px;
 }
 
-.fcard-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 24px;
-}
-
 .fcard-title {
   font-family: Georgia, 'Times New Roman', serif;
   font-size: 22px;
@@ -2846,28 +2845,27 @@ a.list-row:hover {
   margin: 0 0 20px;
 }
 
-.fcard-head .fcard-title {
-  margin-bottom: 0;
-}
-
-.fcard-see-link {
-  display: flex;
+.fcard-see-chip {
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: var(--label);
+  background: var(--input);
+  color: var(--ink);
   font-weight: 600;
-  font-size: 14px;
+  font-size: 13px;
+  padding: 8px 16px;
+  border-radius: 999px;
   text-decoration: none;
-  flex-shrink: 0;
+  margin-top: 16px;
 }
 
-.fcard-see-link:hover {
-  text-decoration: underline;
+.fcard-see-chip:hover {
+  background: #e2e6e9;
 }
 
-.fcard-see-link svg {
-  width: 16px;
-  height: 16px;
+.fcard-see-chip svg {
+  width: 15px;
+  height: 15px;
   stroke: currentColor;
   fill: none;
   stroke-width: 2;

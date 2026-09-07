@@ -1613,13 +1613,7 @@ function familyCardRow(p, subtitle) {
 function familyBand(p, family) {
   const band = el('div', 'container fcard-wrap');
   const card = el('div', 'detail-card fcard');
-  const head = el('div', 'fcard-head');
-  head.append(el('h2', 'fcard-title', family.name));
-  const seeLink = el('a', 'fcard-see-link');
-  seeLink.href = familyLink(family.key);
-  seeLink.append(el('span', '', 'View full family profile'), svg('chevron-right'));
-  head.append(seeLink);
-  card.append(head);
+  card.append(el('h2', 'fcard-title', family.name));
 
   const grid = el('div', 'fcard-grid');
   const left = el('div');
@@ -1671,6 +1665,11 @@ function familyBand(p, family) {
       right.append(familyCardRow(adult, roleWithPronouns(adult)));
     }
   }
+  const seeChip = el('a', 'fcard-see-chip');
+  seeChip.href = familyLink(family.key);
+  const shortName = (family.name || '').replace(/ Family$/, '');
+  seeChip.append(el('span', '', `See ${shortName} Family`), svg('chevron-right'));
+  right.append(seeChip);
   grid.append(right);
   card.append(grid);
   band.append(card);
