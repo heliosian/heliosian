@@ -18,7 +18,7 @@ function saveNavOpen(navOpen) {
   }
 }
 
-const state = {model: null, tab: 'everyone', classTab: 'by-classroom', rosterTab: 'students', rosterSectionExcluded: new Set(), q: '', filterGrades: new Set(), filterClassrooms: new Set(), filterRoles: new Set(), filterRoleExcluded: new Set(), filterCities: new Set(), filterPronouns: new Set(), filterTags: new Set(), filterNew: false, navOpen: loadNavOpen()};
+const state = {model: null, tab: 'everyone', classTab: 'by-classroom', rosterTab: 'students', rosterSectionExcluded: new Set(), q: '', filterGrades: new Set(), filterClassrooms: new Set(), filterRoles: new Set(), filterRoleExcluded: new Set(), filterCities: new Set(), filterPronouns: new Set(), filterTags: new Set(), filterNew: false, staffDeptExcluded: new Set(), navOpen: loadNavOpen()};
 let byEmail = {};
 let tags = {};
 
@@ -932,6 +932,9 @@ function renderStaff(grid, autoFit) {
   });
   let count = 0;
   for (const dept of ordered) {
+    if (state.staffDeptExcluded.has(dept)) {
+      continue;
+    }
     grid.append(el('h2', 'staff-section', dept));
     const deptGrid = el('div', 'people-grid' + (autoFit ? ' autofit' : ''));
     for (const p of groups.get(dept)) {
@@ -947,6 +950,42 @@ function renderStaff(grid, autoFit) {
     grid.append(deptGrid);
   }
   return count;
+}
+
+// Department toggle chips for the Staff page, mirroring roleChips: an
+// exclusion set (state.staffDeptExcluded) so every department starts active,
+// with stale entries pruned whenever the set of departments actually present
+// among staff changes.
+function departmentChips(rerender) {
+  const departments = state.model.departments || [];
+  const present = new Set(state.model.people.filter(p => p.isStaff).map(p => p.department || 'Staff'));
+  const ordered = [...present].sort((a, b) => {
+    const ia = departments.indexOf(a);
+    const ib = departments.indexOf(b);
+    return (ia < 0 ? departments.length : ia) - (ib < 0 ? departments.length : ib);
+  });
+  for (const excluded of [...state.staffDeptExcluded]) {
+    if (!ordered.includes(excluded)) {
+      state.staffDeptExcluded.delete(excluded);
+    }
+  }
+  const bar = el('div', 'chip-row');
+  for (const dept of ordered) {
+    const btn = el('button', 'chip-toggle' + (!state.staffDeptExcluded.has(dept) ? ' active' : ''));
+    btn.type = 'button';
+    btn.append(el('span', '', dept));
+    btn.addEventListener('click', () => {
+      if (state.staffDeptExcluded.has(dept)) {
+        state.staffDeptExcluded.delete(dept);
+      } else {
+        state.staffDeptExcluded.add(dept);
+      }
+      btn.classList.toggle('active');
+      rerender();
+    });
+    bar.append(btn);
+  }
+  return bar;
 }
 
 const tabRenderers = {
@@ -2570,7 +2609,8 @@ function renderStaffPage() {
   main.append(pageHeader);
 
   const content = el('div', 'content container');
-  const header = el('div', 'content-header content-header-solo');
+  const header = el('div', 'content-header');
+  header.append(departmentChips(renderList));
   const controls = el('div', 'controls');
   const search = el('div', 'search');
   search.append(svg('search'));
@@ -2582,7 +2622,7 @@ function renderStaffPage() {
     renderList();
   });
   search.append(input);
-  controls.append(search, filterControl(renderList));
+  controls.append(search);
   header.append(controls);
   content.append(header);
 
