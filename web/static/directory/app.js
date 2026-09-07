@@ -37,7 +37,62 @@ function saveLastTag(tag) {
   }
 }
 
-const state = {model: null, tab: 'everyone', classTab: 'by-classroom', rosterTab: 'students', rosterSectionExcluded: new Set(), q: '', filterGrades: new Set(), filterClassrooms: new Set(), filterRoles: new Set(), filterRoleExcluded: new Set(), filterCities: new Set(), filterPronouns: new Set(), filterTags: new Set(), filterNew: false, staffDeptExcluded: new Set(), navOpen: loadNavOpen()};
+// Which relations (Parents/Children/Siblings) to pull into each tag's list,
+// remembered per tag name so "Birthday" and "Carpool" can each keep their
+// own Include settings across visits.
+function loadTagRelations(tag) {
+  try {
+    const all = JSON.parse(localStorage.getItem('tagRelations') || '{}');
+    return new Set(all[tag] || []);
+  } catch (e) {
+    return new Set();
+  }
+}
+
+function saveTagRelations(tag, relations) {
+  try {
+    const all = JSON.parse(localStorage.getItem('tagRelations') || '{}');
+    all[tag] = [...relations];
+    localStorage.setItem('tagRelations', JSON.stringify(all));
+  } catch (e) {
+    // ignore
+  }
+}
+
+const state = {model: null, tab: 'everyone', classTab: 'by-classroom', rosterTab: 'students', rosterSectionExcluded: new Set(), q: '', filterGrades: new Set(), filterClassrooms: new Set(), filterRoles: new Set(), filterRoleExcluded: new Set(), filterCities: new Set(), filterPronouns: new Set(), filterTags: new Set(), filterTagRelations: new Set(), filterNew: false, staffDeptExcluded: new Set(), tagListView: 'faces', navOpen: loadNavOpen()};
+
+const tagListViews = [
+  {key: 'emails', label: 'Emails', icon: 'email-list'},
+  {key: 'faces', label: 'Faces', icon: 'everyone'},
+  {key: 'map', label: 'Map', icon: 'map'},
+];
+
+// Single-select, icon-only segmented control for how to view a list - it's
+// the same filtered data underneath either way, just displayed differently,
+// so it reads as a display-mode switch (like a grid/list view toggle) rather
+// than a top-level tab or another filter chip.
+function tagListViewSwitch(rerender) {
+  const bar = el('div', 'view-switch');
+  for (const v of tagListViews) {
+    const btn = el('button', 'view-switch-btn' + (state.tagListView === v.key ? ' active' : ''));
+    btn.type = 'button';
+    btn.title = v.label;
+    btn.append(svg(v.icon));
+    btn.addEventListener('click', () => {
+      if (state.tagListView === v.key) {
+        return;
+      }
+      state.tagListView = v.key;
+      for (const sibling of bar.querySelectorAll('.view-switch-btn')) {
+        sibling.classList.remove('active');
+      }
+      btn.classList.add('active');
+      rerender();
+    });
+    bar.append(btn);
+  }
+  return bar;
+}
 let byEmail = {};
 let tags = {};
 
@@ -107,9 +162,11 @@ const icons = {
   sync: '<svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>',
   lock: '<svg viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
   gear: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
+  list: '<svg viewBox="0 0 24 24"><path d="M3 12h.01"/><path d="M3 18h.01"/><path d="M3 6h.01"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M8 6h13"/></svg>',
   volume: '<svg viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>',
   eye: '<svg viewBox="0 0 24 24"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>',
   star: '<svg viewBox="0 0 24 24"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/></svg>',
+  heart: '<svg viewBox="0 0 24 24"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>',
   crop: '<svg viewBox="0 0 24 24"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg>',
   trash: '<svg viewBox="0 0 24 24"><path d="M10 11v6"/><path d="M14 11v6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>',
   'zoom-in': '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/><line x1="11" x2="11" y1="8" y2="14"/><line x1="8" x2="14" y1="11" y2="11"/></svg>',
@@ -127,7 +184,7 @@ const primaryNavItems = [
 
 const toolsNavItems = [
   {path: 'map', label: 'Map'},
-  {path: 'email-list', label: 'Email List'},
+  {path: 'email-list', label: 'Everyone'},
 ];
 
 const mobileNavSections = [
@@ -135,7 +192,7 @@ const mobileNavSections = [
   {path: 'classrooms', label: 'Gradebands'},
   {path: 'staff', label: 'Staff'},
   {path: 'my-family', label: 'My Family'},
-  {path: 'email-list', label: 'Email List'},
+  {path: 'email-list', label: 'Everyone'},
 ];
 
 const peopleTabs = [
@@ -618,7 +675,7 @@ function renderNav() {
     if (familyPeople.length) {
       const todos = staleItems();
       const familyTodos = todos.filter(i => i.target === 'family').length;
-      const familyBody = sectionHeading('family', 'My Family', 'families', todos.length, onFamilyMember);
+      const familyBody = sectionHeading('family', 'My Family', 'heart', todos.length, onFamilyMember);
       if (familyBody) {
         renderItem(familyBody, {path: 'my-family', label: 'My Family'}, familyTodos || (todos.length > familyTodos && 'alert'));
         for (const p of familyPeople) {
@@ -627,10 +684,22 @@ function renderNav() {
       }
     }
 
-    const toolsBody = sectionHeading('tools', 'Tools', 'gear', 0, false);
+    const toolsBody = sectionHeading('tools', 'Lists', 'list', 0, false);
     if (toolsBody) {
       for (const item of toolsNavItems) {
         renderItem(toolsBody, item);
+      }
+      const currentTag = new URLSearchParams(location.search).get('tag');
+      for (const name of tagNames()) {
+        const a = el('a');
+        a.href = '/people?tag=' + encodeURIComponent(name);
+        if (seg === 'people' && currentTag === name) {
+          a.className = 'active';
+        }
+        const icon = svg('tag');
+        icon.classList.add('nav-icon-tag');
+        a.append(icon, el('span', '', name));
+        toolsBody.append(a);
       }
     }
   }
@@ -904,17 +973,31 @@ function personCard(p) {
   return card;
 }
 
-function renderEveryone(grid) {
-  grid.className = 'people-grid directory-grid';
+function everyoneMatches() {
   const q = state.q;
-  const matches = state.everyoneOrder.filter(p => {
+  return state.everyoneOrder.filter(p => {
     const family = state.model.families[p.familyKey];
     return `${p.fullName} ${family ? family.name : ''}`.toLowerCase().includes(q) && matchesFilters(p);
   });
+}
+
+function renderEveryone(grid) {
+  grid.className = 'people-grid directory-grid';
+  const matches = everyoneMatches();
   for (const p of matches) {
     grid.append(personCard(p));
   }
   return matches.length;
+}
+
+// The Map view of a tag list - families that have someone matching the same
+// filters (tag, relations, search, ...) as Faces/Emails, sharing the map
+// plumbing with the standalone Map page.
+function renderTagMap(container) {
+  const canvas = el('div', 'map-canvas');
+  container.append(canvas);
+  const q = state.q;
+  initFamilyMap(canvas, family => familyMatchesFilters(family.key) && familySearchText(family).includes(q));
 }
 
 function renderStudents(grid) {
@@ -1131,6 +1214,181 @@ function renderPeople() {
   input.focus();
 }
 
+// The unified "list" page: a tag's people (/people?tag=X) or literally
+// everyone (/email-list, kept as the URL for continuity) viewed as Faces,
+// Emails, or Map - the same filtered data underneath either way, just a
+// different display of it. Emails is the fullest-featured view (CSV export,
+// per-column copy, a column picker) since that's what this page grew out of.
+function renderListPage() {
+  const main = resetMain();
+
+  const title = state.filterTags.size ? [...state.filterTags].join(', ') : 'Everyone';
+
+  const pageHeader = el('div', 'page-header container page-header-list');
+  const titleWrap = el('div');
+  titleWrap.append(el('h1', 'page-title', title));
+  pageHeader.append(titleWrap);
+  pageHeader.append(tagListViewSwitch(() => renderGrid()));
+  main.append(pageHeader);
+
+  const content = el('div', 'content container');
+  const header = el('div', 'content-header content-header-solo');
+  const controls = el('div', 'controls');
+  controls.append(roleChips(() => renderGrid()));
+  const search = el('div', 'search');
+  search.append(svg('search'));
+  const input = el('input');
+  input.placeholder = 'Search';
+  input.value = state.q;
+  input.addEventListener('input', () => {
+    state.q = input.value.trim().toLowerCase();
+    renderGrid();
+  });
+  search.append(input);
+  controls.append(
+    facetDropdown('Grade', gradeOptions(), state.filterGrades, () => renderGrid()),
+    facetDropdown('Classroom', state.model.classrooms.map(c => c.name), state.filterClassrooms, () => renderGrid()),
+  );
+  if (tagNames().length) {
+    controls.append(facetDropdown('Tags', tagNames(), state.filterTags, () => renderGrid()));
+  }
+  // Only meaningful for a single tag - with several selected at once (or
+  // none, as on the plain Everyone list) there's no one list to pull
+  // relatives in from.
+  if (state.filterTags.size === 1) {
+    const [activeTag] = state.filterTags;
+    controls.append(facetDropdown('Include', tagRelationOptions, state.filterTagRelations, () => {
+      saveTagRelations(activeTag, state.filterTagRelations);
+      renderGrid();
+    }));
+  }
+  const download = el('a', 'filter-button email-download');
+  download.title = 'Download what the list currently shows';
+  download.append(svg('download'), el('span', '', 'CSV'));
+  controls.append(search, download);
+  header.append(controls);
+  content.append(header);
+
+  const grid = el('div');
+  content.append(grid);
+  main.append(content);
+
+  // Emails-view state that should survive a search/filter change, or a trip
+  // through Faces/Map and back, rather than resetting on every render.
+  const selectedColumns = new Set(emailColumns.map((c, i) => i));
+  let currentRows = [];
+  const copyColumns = el('button', 'email-copy-columns');
+  copyColumns.title = 'Copy the checked columns to the clipboard';
+  copyColumns.append(svg('copy'));
+  copyColumns.addEventListener('click', () => {
+    const cols = emailColumns.filter((c, i) => selectedColumns.has(i));
+    if (!cols.length || !currentRows.length) {
+      return;
+    }
+    const text = [cols.map(c => c.label).join('\t')]
+      .concat(currentRows.map(r => cols.map(c => c.get(r)).join('\t')))
+      .join('\n');
+    navigator.clipboard.writeText(text);
+    copyColumns.classList.add('copied');
+    copyColumns.replaceChildren(svg('check'));
+    setTimeout(() => {
+      copyColumns.classList.remove('copied');
+      copyColumns.replaceChildren(svg('copy'));
+    }, 1200);
+  });
+
+  function renderEmailsTable(container, rows) {
+    container.className = 'email-holder';
+    const table = el('table', 'email-table');
+    const thead = el('thead');
+    const headRow = el('tr');
+    const leadTh = el('th', 'email-copy-cell');
+    leadTh.append(copyColumns);
+    headRow.append(leadTh);
+    emailColumns.forEach((c, i) => {
+      const th = el('th');
+      const pick = el('label', 'column-pick');
+      const checkbox = el('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = selectedColumns.has(i);
+      checkbox.addEventListener('change', () => {
+        if (checkbox.checked) {
+          selectedColumns.add(i);
+        } else {
+          selectedColumns.delete(i);
+        }
+      });
+      pick.append(el('span', '', c.label), checkbox);
+      th.append(pick, copyGlyph(rows.map(c.get).filter(Boolean).join('\n')));
+      headRow.append(th);
+    });
+    headRow.append(el('th'));
+    thead.append(headRow);
+    table.append(thead);
+    const tbody = el('tbody');
+    rows.forEach((r, i) => {
+      const tr = el('tr');
+      const num = el('td', 'email-num');
+      num.append(el('span', '', String(i + 1)), copyGlyph(emailColumns.map(c => c.get(r)).join('\t')));
+      tr.append(num);
+      const nameCell = el('td', 'email-name');
+      const nameLink = el('a', '', r.p.fullName);
+      nameLink.href = personLink(r.p);
+      nameCell.append(nameLink, copyGlyph(r.p.fullName));
+      tr.append(nameCell);
+      for (const c of emailColumns.slice(1)) {
+        const td = el('td', '', c.get(r));
+        if (c.get(r)) {
+          td.append(copyGlyph(c.get(r)));
+        }
+        tr.append(td);
+      }
+      const tagCell = el('td', 'email-tag');
+      tagCell.append(tagControl(r.p.email, 'tag-wrap', 'row-tag', () => {
+        if (state.filterTags.size) {
+          renderGrid();
+        }
+      }));
+      tr.append(tagCell);
+      tbody.append(tr);
+    });
+    table.append(tbody);
+    container.append(table);
+  }
+
+  function renderGrid() {
+    grid.replaceChildren();
+    grid.className = '';
+    const rows = emailEntries()
+      .filter(r => (r.p.fullName.toLowerCase().includes(state.q) || r.p.email.toLowerCase().includes(state.q)) && matchesFilters(r.p));
+    currentRows = rows;
+    const csv = [emailColumns.map(c => c.label).join(',')]
+      .concat(rows.map(r => emailColumns.map(c => csvField(c.get(r))).join(',')))
+      .join('\n');
+    download.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+    download.download = 'email-list.csv';
+
+    if (state.tagListView === 'map') {
+      renderTagMap(grid);
+      return;
+    }
+    if (!rows.length) {
+      grid.append(el('div', 'empty', 'No matches.'));
+      return;
+    }
+    if (state.tagListView === 'emails') {
+      renderEmailsTable(grid, rows);
+      return;
+    }
+    grid.className = 'people-grid directory-grid';
+    for (const r of rows) {
+      grid.append(personCard(r.p));
+    }
+  }
+  renderGrid();
+  input.focus();
+}
+
 function personFacets(p, field) {
   if (p.isStudent) {
     return p[field] ? [p[field]] : [];
@@ -1157,17 +1415,56 @@ function anyFiltersActive() {
     state.filterTags.size || state.filterNew);
 }
 
-// Role chips currently show on the Directory page's Everyone tab and on the
-// Email List page - not on Directory's Families tab, which has no chips of
-// its own to reveal that anything is filtered. Keyed off the route rather
-// than state.tab so a stale tab value left over from a different page can't
-// make filterRoleExcluded apply (or not) on the wrong page.
+// Role chips currently show on the Directory page's Everyone tab and on every
+// list page (renderListPage: a tag's list, or the plain Everyone list at
+// /email-list) - not on Directory's Families tab, which has no chips of its
+// own to reveal that anything is filtered. Keyed off the route rather than
+// state.tab so a stale tab value left over from a different page can't make
+// filterRoleExcluded apply (or not) on the wrong page.
 function roleChipsVisible() {
   const seg = segments();
-  if (seg[0] === 'people') {
-    return state.tab === 'everyone';
+  if (seg[0] === 'email-list') {
+    return true;
   }
-  return seg[0] === 'email-list';
+  if (seg[0] === 'people') {
+    // A tag list (renderListPage) always shows the chips regardless of
+    // state.tab, which it doesn't touch - only the plain Directory (renderPeople)
+    // gates them on actually being on its own Everyone tab.
+    return state.filterTags.size > 0 || state.tab === 'everyone';
+  }
+  return false;
+}
+
+const tagRelationOptions = ['Parents', 'Children', 'Siblings'];
+
+// Whether p only belongs on a single-tag list by way of a selected relation
+// to someone directly tagged - a parent of a tagged kid, a kid of a tagged
+// parent, or another kid (a sibling) in a tagged kid's family. Only applies
+// with exactly one active tag; with several selected at once there's no
+// single list to pull relatives in from.
+function tagRelatedMatch(p) {
+  if (state.filterTags.size !== 1 || !state.filterTagRelations.size) {
+    return false;
+  }
+  const [tag] = state.filterTags;
+  const tagged = tags[tag] || [];
+  const family = state.model.families[p.familyKey];
+  if (!family) {
+    return false;
+  }
+  if (state.filterTagRelations.has('Parents') && p.isParent &&
+    (family.kidEmails || []).some(e => tagged.includes(e))) {
+    return true;
+  }
+  if (state.filterTagRelations.has('Children') && p.isStudent &&
+    (family.adultEmails || []).some(e => tagged.includes(e))) {
+    return true;
+  }
+  if (state.filterTagRelations.has('Siblings') && p.isStudent &&
+    (family.kidEmails || []).some(e => e !== p.email && tagged.includes(e))) {
+    return true;
+  }
+  return false;
 }
 
 function matchesFilters(p) {
@@ -1184,7 +1481,7 @@ function matchesFilters(p) {
   const cityOK = !state.filterCities.size || state.filterCities.has(cityOf(p));
   const pronounsOK = !state.filterPronouns.size || (p.pronouns && state.filterPronouns.has(p.pronouns.toLowerCase()));
   const newOK = !state.filterNew || p.isNew;
-  const tagOK = !state.filterTags.size || tagsOf(p.email).some(t => state.filterTags.has(t));
+  const tagOK = !state.filterTags.size || tagsOf(p.email).some(t => state.filterTags.has(t)) || tagRelatedMatch(p);
   return gradeOK && classOK && roleOK && cityOK && pronounsOK && newOK && tagOK;
 }
 
@@ -1323,9 +1620,10 @@ function facetDropdown(label, values, set, rerender) {
 }
 
 // options lets a caller opt out of a section (or the "New to Helios" toggle)
-// that it surfaces some other way - the Directory page pulls Role out into
-// chips and Grade/Classroom into their own dropdowns (see roleChips and
-// facetDropdown below), while Staff, Email List, and Map keep the full panel.
+// that it surfaces some other way - the Directory page and every list page
+// pull Role out into chips and Grade/Classroom/Tags into their own dropdowns
+// (see roleChips and facetDropdown below), while the standalone Map page is
+// the last one still using the full panel.
 function filterControl(rerender, options = {}) {
   const wrap = el('div', 'filter-wrap');
   const button = el('button', 'filter-button');
@@ -1469,7 +1767,8 @@ function fromCrumbs() {
     }
   }
   if (seg[0] === 'people' && !seg[1]) {
-    return [['People', back]];
+    const tag = new URLSearchParams(from.search).get('tag');
+    return [[tag || 'People', back]];
   }
   if (seg[0] === 'classrooms') {
     return [['Gradebands', back]];
@@ -1478,7 +1777,7 @@ function fromCrumbs() {
     return [['Staff', back]];
   }
   if (seg[0] === 'email-list') {
-    return [['Email List', back]];
+    return [['Everyone', back]];
   }
   return null;
 }
@@ -2996,145 +3295,6 @@ function emailEntries() {
   return rows;
 }
 
-function renderEmailListPage() {
-  const main = resetMain();
-
-  const pageHeader = el('div', 'page-header-plain container');
-  pageHeader.append(el('h1', 'page-title', 'Email List'));
-  pageHeader.append(el('div', 'page-subtitle', 'Use the filters to select for specific grades or classrooms.'));
-  main.append(pageHeader);
-
-  const content = el('div', 'content container');
-  const header = el('div', 'content-header');
-  header.append(roleChips(() => renderTable()));
-  const controls = el('div', 'controls');
-  const search = el('div', 'search');
-  search.append(svg('search'));
-  const input = el('input');
-  input.placeholder = 'Search';
-  input.value = state.q;
-  input.addEventListener('input', () => {
-    state.q = input.value.trim().toLowerCase();
-    renderTable();
-  });
-  search.append(input);
-  const download = el('a', 'filter-button email-download');
-  download.title = 'Download what the table currently shows';
-  download.append(svg('download'), el('span', '', 'CSV'));
-  controls.append(
-    facetDropdown('Grade', gradeOptions(), state.filterGrades, () => renderTable()),
-    facetDropdown('Classroom', state.model.classrooms.map(c => c.name), state.filterClassrooms, () => renderTable()),
-  );
-  if (tagNames().length) {
-    controls.append(facetDropdown('Tags', tagNames(), state.filterTags, () => renderTable()));
-  }
-  controls.append(search, download);
-  header.append(controls);
-  content.append(header);
-
-  const holder = el('div', 'email-holder');
-  content.append(holder);
-  main.append(content);
-
-  // Which columns the corner copy button copies. Persists across search/filter
-  // re-renders for this page visit.
-  const selectedColumns = new Set(emailColumns.map((c, i) => i));
-  let currentRows = [];
-
-  const copyColumns = el('button', 'email-copy-columns');
-  copyColumns.title = 'Copy the checked columns to the clipboard';
-  copyColumns.append(svg('copy'));
-  copyColumns.addEventListener('click', () => {
-    const cols = emailColumns.filter((c, i) => selectedColumns.has(i));
-    if (!cols.length || !currentRows.length) {
-      return;
-    }
-    const text = [cols.map(c => c.label).join('\t')]
-      .concat(currentRows.map(r => cols.map(c => c.get(r)).join('\t')))
-      .join('\n');
-    navigator.clipboard.writeText(text);
-    copyColumns.classList.add('copied');
-    copyColumns.replaceChildren(svg('check'));
-    setTimeout(() => {
-      copyColumns.classList.remove('copied');
-      copyColumns.replaceChildren(svg('copy'));
-    }, 1200);
-  });
-
-  function renderTable() {
-    holder.replaceChildren();
-    const rows = emailEntries()
-      .filter(r => (r.p.fullName.toLowerCase().includes(state.q) || r.p.email.toLowerCase().includes(state.q)) && matchesFilters(r.p));
-    currentRows = rows;
-    const csv = [emailColumns.map(c => c.label).join(',')]
-      .concat(rows.map(r => emailColumns.map(c => csvField(c.get(r))).join(',')))
-      .join('\n');
-    download.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
-    download.download = 'email-list.csv';
-    if (!rows.length) {
-      holder.append(el('div', 'empty', 'No matches.'));
-      return;
-    }
-    const table = el('table', 'email-table');
-    const thead = el('thead');
-    const headRow = el('tr');
-    const leadTh = el('th', 'email-copy-cell');
-    leadTh.append(copyColumns);
-    headRow.append(leadTh);
-    emailColumns.forEach((c, i) => {
-      const th = el('th');
-      const pick = el('label', 'column-pick');
-      const checkbox = el('input');
-      checkbox.type = 'checkbox';
-      checkbox.checked = selectedColumns.has(i);
-      checkbox.addEventListener('change', () => {
-        if (checkbox.checked) {
-          selectedColumns.add(i);
-        } else {
-          selectedColumns.delete(i);
-        }
-      });
-      pick.append(el('span', '', c.label), checkbox);
-      th.append(pick, copyGlyph(rows.map(c.get).filter(Boolean).join('\n')));
-      headRow.append(th);
-    });
-    headRow.append(el('th'));
-    thead.append(headRow);
-    table.append(thead);
-    const tbody = el('tbody');
-    rows.forEach((r, i) => {
-      const tr = el('tr');
-      const num = el('td', 'email-num');
-      num.append(el('span', '', String(i + 1)), copyGlyph(emailColumns.map(c => c.get(r)).join('\t')));
-      tr.append(num);
-      const nameCell = el('td', 'email-name');
-      const nameLink = el('a', '', r.p.fullName);
-      nameLink.href = personLink(r.p);
-      nameCell.append(nameLink, copyGlyph(r.p.fullName));
-      tr.append(nameCell);
-      for (const c of emailColumns.slice(1)) {
-        const td = el('td', '', c.get(r));
-        if (c.get(r)) {
-          td.append(copyGlyph(c.get(r)));
-        }
-        tr.append(td);
-      }
-      const tagCell = el('td', 'email-tag');
-      tagCell.append(tagControl(r.p.email, 'tag-wrap', 'row-tag', () => {
-        if (state.filterTags.size) {
-          renderTable();
-        }
-      }));
-      tr.append(tagCell);
-      tbody.append(tr);
-    });
-    table.append(tbody);
-    holder.append(table);
-  }
-  renderTable();
-  input.focus();
-}
-
 const veracrossAddressLabels = {full: 'Full Address', partial: 'Partial (City Only)', hidden: 'Hidden'};
 const veracrossPhoneLabels = {visible: 'Visible', mixed: 'Mixed', hidden: 'Hidden'};
 
@@ -3275,6 +3435,91 @@ const pinIcon = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(
   '<path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0" fill="#173c41" stroke="#fff" stroke-width="1"/>' +
   '<circle cx="12" cy="10" r="3" fill="#fff"/></svg>');
 
+function familySearchText(family) {
+  const members = [...(family.kidEmails || []), ...(family.adultEmails || [])]
+    .map(e => byEmail[e]).filter(Boolean).map(p => p.fullName);
+  return `${family.name || ''} ${members.join(' ')}`.toLowerCase();
+}
+
+function familyMapPopup(family) {
+  const box = el('div', 'map-popup');
+  if (family.photoUrl) {
+    const img = el('img', 'map-popup-photo');
+    img.src = thumbUrl(family.photoUrl);
+    img.alt = '';
+    box.append(img);
+  }
+  const body = el('div', 'map-popup-body');
+  body.append(el('div', 'map-popup-name', family.name));
+  if (family.address) {
+    body.append(el('div', 'map-popup-sub', family.address));
+  }
+  const link = el('a', 'map-popup-link', 'See family');
+  link.href = familyLink(family.key);
+  body.append(link);
+  box.append(body);
+  return box;
+}
+
+// Shared by the standalone Map page and a tag list's own Map view: builds the
+// map into canvas, showing only families for which familyMatches(family) is
+// true, and returns a renderPins() to call again after a filter/search change
+// without recreating the map itself.
+function initFamilyMap(canvas, familyMatches) {
+  let map = null;
+  let info = null;
+  let markers = [];
+
+  function renderPins() {
+    if (!map) {
+      return;
+    }
+    for (const m of markers) {
+      m.setMap(null);
+    }
+    markers = [];
+    for (const family of Object.values(state.model.families)) {
+      if ((!family.lat && !family.lng) || !familyMatches(family)) {
+        continue;
+      }
+      const marker = new google.maps.Marker({
+        map,
+        position: {lat: family.lat, lng: family.lng},
+        icon: {url: pinIcon, anchor: new google.maps.Point(17, 33)},
+        title: family.name,
+      });
+      marker.addListener('click', () => {
+        info.setContent(familyMapPopup(family));
+        info.open(map, marker);
+      });
+      markers.push(marker);
+    }
+  }
+
+  loadMaps().then(() => {
+    if (!canvas.isConnected) {
+      return;
+    }
+    map = new google.maps.Map(canvas, {
+      mapTypeControl: false,
+      streetViewControl: false,
+      fullscreenControl: false,
+    });
+    info = new google.maps.InfoWindow({headerDisabled: true});
+    map.addListener('click', () => info.close());
+    const bounds = new google.maps.LatLngBounds();
+    for (const family of Object.values(state.model.families)) {
+      if ((family.lat || family.lng) && familyMatches(family)) {
+        bounds.extend({lat: family.lat, lng: family.lng});
+      }
+    }
+    map.fitBounds(bounds);
+    renderPins();
+  });
+
+  return () => renderPins();
+}
+
 function renderMapPage() {
   const main = resetMain();
 
@@ -3287,6 +3532,7 @@ function renderMapPage() {
   const input = el('input');
   input.placeholder = 'Search';
   input.value = state.q;
+  let renderPins = () => {};
   input.addEventListener('input', () => {
     state.q = input.value.trim().toLowerCase();
     renderPins();
@@ -3307,85 +3553,7 @@ function renderMapPage() {
   content.append(update);
   main.append(content);
 
-  let map = null;
-  let info = null;
-  let markers = [];
-
-  function familySearchText(family) {
-    const members = [...(family.kidEmails || []), ...(family.adultEmails || [])]
-      .map(e => byEmail[e]).filter(Boolean).map(p => p.fullName);
-    return `${family.name || ''} ${members.join(' ')}`.toLowerCase();
-  }
-
-  function popupContent(family) {
-    const box = el('div', 'map-popup');
-    if (family.photoUrl) {
-      const img = el('img', 'map-popup-photo');
-      img.src = thumbUrl(family.photoUrl);
-      img.alt = '';
-      box.append(img);
-    }
-    const body = el('div', 'map-popup-body');
-    body.append(el('div', 'map-popup-name', family.name));
-    if (family.address) {
-      body.append(el('div', 'map-popup-sub', family.address));
-    }
-    const link = el('a', 'map-popup-link', 'See family');
-    link.href = familyLink(family.key);
-    body.append(link);
-    box.append(body);
-    return box;
-  }
-
-  function renderPins() {
-    if (!map) {
-      return;
-    }
-    for (const m of markers) {
-      m.setMap(null);
-    }
-    markers = [];
-    for (const family of Object.values(state.model.families)) {
-      if (!family.lat && !family.lng) {
-        continue;
-      }
-      if (!familyMatchesFilters(family.key) || !familySearchText(family).includes(state.q)) {
-        continue;
-      }
-      const marker = new google.maps.Marker({
-        map,
-        position: {lat: family.lat, lng: family.lng},
-        icon: {url: pinIcon, anchor: new google.maps.Point(17, 33)},
-        title: family.name,
-      });
-      marker.addListener('click', () => {
-        info.setContent(popupContent(family));
-        info.open(map, marker);
-      });
-      markers.push(marker);
-    }
-  }
-
-  loadMaps().then(() => {
-    if (!canvas.isConnected) {
-      return;
-    }
-    map = new google.maps.Map(canvas, {
-      mapTypeControl: false,
-      streetViewControl: false,
-      fullscreenControl: false,
-    });
-    info = new google.maps.InfoWindow({headerDisabled: true});
-    map.addListener('click', () => info.close());
-    const bounds = new google.maps.LatLngBounds();
-    for (const family of Object.values(state.model.families)) {
-      if (family.lat || family.lng) {
-        bounds.extend({lat: family.lat, lng: family.lng});
-      }
-    }
-    map.fitBounds(bounds);
-    renderPins();
-  });
+  renderPins = initFamilyMap(canvas, family => familyMatchesFilters(family.key) && familySearchText(family).includes(state.q));
 }
 
 async function submitMedia(target, key, kind, file, name, status) {
@@ -4094,7 +4262,7 @@ const sectionTitles = {
   'my-family': 'My Family',
   staff: 'Staff',
   map: 'Map',
-  'email-list': 'Email List',
+  'email-list': 'Everyone',
   'my-privacy': 'My Privacy',
 };
 
@@ -4107,12 +4275,16 @@ function render() {
   } else if (seg[0] === 'families' && seg[1]) {
     renderFamilyDetail(seg[1]);
   } else if (seg[0] === 'people') {
-    state.tab = tabParam('everyone');
     const tagParam = new URLSearchParams(location.search).get('tag');
     if (tagParam) {
       state.filterTags = new Set([tagParam]);
+      state.filterTagRelations = loadTagRelations(tagParam);
+      state.tagListView = 'faces';
+      renderListPage();
+    } else {
+      state.tab = tabParam('everyone');
+      renderPeople();
     }
-    renderPeople();
   } else if (seg[0] === 'classrooms' && seg[1]) {
     state.rosterTab = tabParam('students');
     renderClassroomDetail(seg[1]);
@@ -4127,7 +4299,10 @@ function render() {
     renderStaffPage();
   } else if (seg[0] === 'email-list') {
     state.q = '';
-    renderEmailListPage();
+    state.filterTags = new Set();
+    state.filterTagRelations = new Set();
+    state.tagListView = 'emails';
+    renderListPage();
   } else if (seg[0] === 'map') {
     state.q = '';
     renderMapPage();
