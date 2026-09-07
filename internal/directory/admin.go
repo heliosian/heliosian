@@ -179,6 +179,25 @@ func overrideBoolValue(person *Person, column string) bool {
 	return person.overrideRow[column] == "TRUE"
 }
 
+// familyOf resolves a person's family - the first, for the rare kid with two - with
+// the zero Family (nil sheetRow, empty fields) standing in for someone with none.
+func familyOf(model *Model, email string) Family {
+	keys := model.FamilyKeysOf(email)
+	if len(keys) == 0 {
+		return Family{}
+	}
+	return model.Families[keys[0]]
+}
+
+// familyStringValue is overrideStringValue for a Families-tab column.
+func familyStringValue(family Family, column string) string {
+	cell := family.sheetRow[column]
+	if cell == "-" {
+		return ""
+	}
+	return cell
+}
+
 // importedValue returns column's value as the Veracross Student/Staff Import actually
 // supplies it, independent of any override - resolved is the fallback for a person
 // with no Overrides row at all (nothing ever changed their fields, so the live value
@@ -245,7 +264,7 @@ func (a admin) state(w http.ResponseWriter, r *http.Request) {
 	people := make([]personOption, 0, len(model.People))
 	for i := range model.People {
 		p := &model.People[i]
-		family := model.Families[p.FamilyKey]
+		family := familyOf(model, p.Email)
 		people = append(people, personOption{
 			Name: p.FullName, Email: p.Email,
 			IsStaff: p.IsStaff, IsStudent: p.IsStudent, IsParent: p.IsParent,
@@ -266,7 +285,7 @@ func (a admin) state(w http.ResponseWriter, r *http.Request) {
 				Facts:         overrideStringValue(p, "Facts"),
 				Phone:         overrideStringValue(p, "Phone"),
 				RoomParent:    overrideStringValue(p, "Room Parent"),
-				Address:       overrideStringValue(p, "Address"),
+				Address:       familyStringValue(family, "Address"),
 			},
 			Veracross: overridableFields{
 				IsStaff:       importedValue(p, "Is Staff", boolCell(p.IsStaff)),
@@ -863,12 +882,11 @@ func (a admin) setStudentFields(w http.ResponseWriter, r *http.Request) {
 }
 
 // setParentFields edits a parent's name/phone fields plus the family-level Address and
-// Room Parent. Address is written to this parent's own Overrides row - buildFamilies
-// (load.go) merges family cells across every adult in a household that carries one,
-// the same way the self-service "address" case in upload.go's edit() does for the
-// caller's own row. Room Parent has no Veracross import baseline (nothing but
-// Overrides ever sets it, via l.roomParents), so it's diffed with the no-baseline
-// treatment: a plain "" cell clears it.
+// Room Parent. Address is written to the family's Families-tab row (a second write
+// with its own change log entry, keyed by the family key), the same place the
+// self-service "address" case in upload.go's edit() writes it. Room Parent has no
+// Veracross import baseline (nothing but Overrides ever sets it, via l.roomParents),
+// so it's diffed with the no-baseline treatment: a plain "" cell clears it.
 func (a admin) setParentFields(w http.ResponseWriter, r *http.Request) {
 	actor, ok := a.requireAdmin(w, r)
 	if !ok {
@@ -930,16 +948,27 @@ func (a admin) setParentFields(w http.ResponseWriter, r *http.Request) {
 	diffStringCell(cells, previous, "Preferred Name", body.PreferredName, overrideStringValue(person, "Preferred Name"))
 	diffStringCell(cells, previous, "Phone", body.Phone, overrideStringValue(person, "Phone"))
 	diffStringCellNoBaseline(cells, previous, "Room Parent", body.RoomParent, overrideStringValue(person, "Room Parent"))
-	diffStringCell(cells, previous, "Address", body.Address, overrideStringValue(person, "Address"))
 
-	if len(cells) == 0 {
-		w.WriteHeader(http.StatusNoContent)
-		return
+	family := familyOf(model, person.Email)
+	familyCells := map[string]string{}
+	familyPrevious := map[string]string{}
+	if family.Key != "" {
+		diffStringCell(familyCells, familyPrevious, "Address", body.Address, familyStringValue(family, "Address"))
 	}
-	if !applyOverrideWrite(a.cache, a.writer, a.queue, w, actor, target, "parent fields edit", cells, previous) {
-		return
+
+	if len(cells) > 0 {
+		if !applyOverrideWrite(a.cache, a.writer, a.queue, w, actor, target, "parent fields edit", cells, previous) {
+			return
+		}
 	}
-	log.Printf("admin: %s edited parent fields for %s: %v", actor, target, cells)
+	if len(familyCells) > 0 {
+		if !applyFamilyWrite(a.cache, a.writer, a.queue, w, actor, family.Key, "parent family edit", familyCells, familyPrevious) {
+			return
+		}
+	}
+	if len(cells) > 0 || len(familyCells) > 0 {
+		log.Printf("admin: %s edited parent fields for %s: %v %v", actor, target, cells, familyCells)
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 

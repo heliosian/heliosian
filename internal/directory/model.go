@@ -56,16 +56,15 @@ type Person struct {
 	// Classroom, Crew, Phone, Job Title, Is Staff); Department, Grade Band, Pronouns,
 	// Facts and Room Parent have no import source for anyone.
 	imported map[string]string
-	PhotoUpdated         string   `json:"photoUpdated,omitempty"`
-	Grade                string   `json:"grade,omitempty"`
-	Classroom            string   `json:"classroom,omitempty"`
-	Crew                 string   `json:"crew,omitempty"`
-	Phone                string   `json:"phone,omitempty"`
-	FamilyKey            string   `json:"familyKey,omitempty"`
-	ParentContactEmails  []string `json:"parentContactEmails,omitempty"`
-	JobTitle             string   `json:"jobTitle,omitempty"`
-	Department           string   `json:"department,omitempty"`
-	GradeBand            string   `json:"gradeBand,omitempty"`
+	PhotoUpdated        string   `json:"photoUpdated,omitempty"`
+	Grade               string   `json:"grade,omitempty"`
+	Classroom           string   `json:"classroom,omitempty"`
+	Crew                string   `json:"crew,omitempty"`
+	Phone               string   `json:"phone,omitempty"`
+	ParentContactEmails []string `json:"parentContactEmails,omitempty"`
+	JobTitle            string   `json:"jobTitle,omitempty"`
+	Department          string   `json:"department,omitempty"`
+	GradeBand           string   `json:"gradeBand,omitempty"`
 
 	OptStatus     OptStatus `json:"optStatus"`
 	AddressMasked bool      `json:"addressMasked,omitempty"`
@@ -105,6 +104,12 @@ type Family struct {
 	VeracrossPhone   string `json:"veracrossPhone"`
 
 	photo, pronunciation string
+
+	// sheetRow is this family's raw Families sheet row, or nil if it doesn't have one -
+	// the same shape as Person.overrideRow, and read the same way: admin.go shows and
+	// edits exactly what the tab currently holds for a column, distinct from the
+	// resolved values above.
+	sheetRow map[string]string
 
 	// importedAddress snapshots the household's Veracross-import address, captured in
 	// buildFamilies (load.go) before any adult's familyOverrides cells could change
@@ -167,6 +172,9 @@ type Model struct {
 	PrivacyLinks PrivacyLinks        `json:"privacyLinks"`
 	StaffColor   string              `json:"staffColor,omitempty"`
 	byEmail      map[string]int
+	// familyKeysByEmail is internal only: the client derives the same index from
+	// Families' own member lists, so serializing it would just duplicate them.
+	familyKeysByEmail map[string][]string
 	// hiddenEmails lists everyone removeOptedOut (load.go) just deleted from People -
 	// captured there because that's the last point any of their data (even just their
 	// email) is still reachable. Internal only, deliberately never serialized: this
@@ -182,6 +190,12 @@ func (m *Model) Person(email string) *Person {
 		return nil
 	}
 	return &m.People[i]
+}
+
+// FamilyKeysOf lists every family this person belongs to, in sorted key order - one
+// for a parent (an adult belongs to at most one household), one or more for a kid.
+func (m *Model) FamilyKeysOf(email string) []string {
+	return m.familyKeysByEmail[email]
 }
 
 func (m *Model) Member(email string) bool {

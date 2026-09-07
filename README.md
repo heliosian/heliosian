@@ -5,9 +5,9 @@ Web apps for the Helios school community (K-8), served as one static Go binary o
 ## Quick start
 
     brew install go
-    go run .
+    go run ./tools/startserver
 
-Open http://localhost:8080. That's the whole setup: with no configuration the server loads the fictional community in `sampledata/`, signs every request in as a sample parent, and fakes geocoding — no credentials, no cloud project. Templates, static assets, and sample data are read from disk on every request, so edit a file and refresh; nothing needs restarting.
+Open http://localhost:8080. That's the whole setup: the dev server loads the fictional community in `sampledata/`, signs every request in as a sample parent, and fakes geocoding — no credentials, no cloud project. Templates, static assets, and sample data are read from disk on every request, so edit a file and refresh; nothing needs restarting.
 
 `brew install --cask google-chrome` additionally enables the screenshot tooling used to verify visual changes ([docs/screenshots.md](docs/screenshots.md)). No Node, no Docker. Go 1.27 or later.
 
@@ -15,7 +15,8 @@ To run against real community data instead, see [docs/dev.md](docs/dev.md).
 
 ## Layout
 
-- `main.go` — entry point and app wiring
+- `main.go` — the production entry point; dev serving lives in `tools/startserver`
+- `internal/app` — server wiring shared by production and the dev server, plus the production assembly
 - `internal/auth` — Google sign-in and session cookies
 - `internal/data` — tabular data sources: sample CSVs and Google Sheets
 - `internal/directory` — the directory app: model load, handlers, self-service edits

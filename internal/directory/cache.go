@@ -76,6 +76,11 @@ func (c *Cache) applyOverride(email string, cells map[string]string) error {
 	return c.rebuild(c.currentTables().withOverride(email, cells), time.Now())
 }
 
+// applyFamily is applyOverride for the Families tab, keyed by the family key.
+func (c *Cache) applyFamily(key string, cells map[string]string) error {
+	return c.rebuild(c.currentTables().withFamily(key, cells), time.Now())
+}
+
 // applyEmailRename folds an added-only person's email change (plus any other Overrides
 // cells changing in the same save) into the cached tables and reruns the model, the
 // same "reject before persist" trick as applyOverride - see Tables.withEmailRenamed.

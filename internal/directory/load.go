@@ -1,8 +1,6 @@
 package directory
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -103,10 +101,13 @@ var overrideColumns = []string{
 	"Email", "Added", "Full Name", "Legal Name", "Preferred Name",
 	"Is Student", "Is Parent", "Is Staff", "New to Helios", "Pronouns", "Facts",
 	"Grade", "Classroom", "Crew", "Phone", "Job Title", "Department", "Grade Band", "Room Parent",
-	"Address", "Family Phone", "Family Photo Caption", "Opted Out",
-	"Photo Updated", "Facts Updated", "Family Photo Updated",
+	"Opted Out", "Photo Updated", "Facts Updated",
 	"Veracross Photo", "Primary Photo", "Pronunciation",
-	"Family Photo", "Family Pronunciation",
+}
+
+var familyColumns = []string{
+	"Email", "Address", "Family Phone", "Family Photo Caption",
+	"Family Photo Updated", "Family Photo", "Family Pronunciation",
 }
 
 const updatedFormat = "2006-01-02"
@@ -116,7 +117,7 @@ func checkUpdated(email, column, cell string) error {
 		return nil
 	}
 	if _, err := time.Parse(updatedFormat, cell); err != nil {
-		return fmt.Errorf("overrides row %s has invalid %s %q", email, column, cell)
+		return fmt.Errorf("row %s has invalid %s %q", email, column, cell)
 	}
 	return nil
 }
@@ -176,12 +177,6 @@ type household struct {
 	phone   string
 }
 
-type familyCells struct {
-	address, phone, caption, photoUpdated             string
-	hasAddress, hasPhone, hasCaption, hasPhotoUpdated bool
-	photo, pronunciation                              string
-}
-
 func exactColumns(table string, header, wanted []string) error {
 	if err := requireColumns(table, header, wanted); err != nil {
 		return err
@@ -209,13 +204,6 @@ func requireColumns(table string, header, wanted []string) error {
 		}
 	}
 	return nil
-}
-
-func familyHash(members []string) string {
-	sorted := append([]string{}, members...)
-	sort.Strings(sorted)
-	sum := sha256.Sum256([]byte(strings.Join(sorted, "\n")))
-	return hex.EncodeToString(sum[:])[:16]
 }
 
 // resolveImage prefers an admin-uploaded image in the bucket over the bundled default,
@@ -246,6 +234,7 @@ type loader struct {
 	staffRows      []map[string]string
 	nameRows       []map[string]string
 	overrideRows   []map[string]string
+	familyRows     []map[string]string
 	photoRows      []map[string]string
 	preferenceRows []map[string]string
 	nameToEmail    map[string]string
@@ -256,7 +245,6 @@ type loader struct {
 	householdOrder   []string
 	personHouseholds map[string][]string
 	familyKeys       map[string]string
-	familyOverrides  map[string]familyCells
 	roomParents      map[string][]string
 	optedOut         map[string]bool
 	excluded         map[string]bool
@@ -272,6 +260,7 @@ type Tables struct {
 	Staff       []map[string]string
 	Names       []map[string]string
 	Overrides   []map[string]string
+	Families    []map[string]string
 	Preferences []map[string]string
 	Tags        []map[string]string
 	Photos      []map[string]string
@@ -299,6 +288,31 @@ func (t *Tables) withOverride(email string, cells map[string]string) *Tables {
 	}
 	out := *t
 	out.Overrides = rows
+	return &out
+}
+
+// withFamily is withOverride for the Families tab, keyed by the family key (the
+// alphabetically first parent email, which is also the row's Email cell).
+func (t *Tables) withFamily(key string, cells map[string]string) *Tables {
+	rows := make([]map[string]string, len(t.Families))
+	copy(rows, t.Families)
+	found := false
+	for i, row := range rows {
+		if !strings.EqualFold(row["Email"], key) {
+			continue
+		}
+		next := maps.Clone(row)
+		applyCells(next, cells)
+		rows[i] = next
+		found = true
+	}
+	if !found {
+		row := map[string]string{"Email": key}
+		applyCells(row, cells)
+		rows = append(rows, row)
+	}
+	out := *t
+	out.Families = rows
 	return &out
 }
 
@@ -443,13 +457,13 @@ func BuildModel(tables *Tables, blobs, static BlobChecker) (*Model, error) {
 		staffRows:        tables.Staff,
 		nameRows:         tables.Names,
 		overrideRows:     tables.Overrides,
+		familyRows:       tables.Families,
 		photoRows:        tables.Photos,
 		preferenceRows:   tables.Preferences,
 		people:           map[string]*Person{},
 		households:       map[string]*household{},
 		personHouseholds: map[string][]string{},
 		familyKeys:       map[string]string{},
-		familyOverrides:  map[string]familyCells{},
 		roomParents:      map[string][]string{},
 		optedOut:         map[string]bool{},
 		excluded:         map[string]bool{},
@@ -464,9 +478,11 @@ func BuildModel(tables *Tables, blobs, static BlobChecker) (*Model, error) {
 		l.maskFakeEmails,
 		l.hideStudentPhones,
 		l.buildFamilies,
+		l.applyFamilies,
 		l.classifyVeracrossVisibility,
 		l.applyPreferences,
 		l.removeOptedOut,
+		l.indexFamilies,
 		l.attachBlobs,
 		l.sortPeople,
 		l.deriveClassrooms,
@@ -492,6 +508,7 @@ func ReadTables(source data.Source) (*Tables, error) {
 	staff := &table{app: appName, name: "Veracross Staff Import"}
 	names := &table{app: appName, name: "Name to Email"}
 	overrides := &table{app: appName, name: "Overrides"}
+	families := &table{app: appName, name: "Families"}
 	preferences := &table{app: preferencesApp, name: preferencesTab}
 	tags := &table{app: appName, name: tagsTable}
 	photos := &table{app: appName, name: "Photos"}
@@ -499,7 +516,7 @@ func ReadTables(source data.Source) (*Tables, error) {
 	// member edit forever. Nothing else compares its columns against what the app
 	// writes, and a column missing here truncates every audit row that reaches it.
 	changeLog := &table{app: appName, name: changeLogTable}
-	ordered := []*table{imports, staff, names, overrides, preferences, tags, photos}
+	ordered := []*table{imports, staff, names, overrides, families, preferences, tags, photos}
 	var wg sync.WaitGroup
 	for _, t := range ordered {
 		wg.Go(func() {
@@ -527,6 +544,9 @@ func ReadTables(source data.Source) (*Tables, error) {
 	if err := requireColumns(overrides.name, overrides.header, overrideColumns); err != nil {
 		return nil, err
 	}
+	if err := requireColumns(families.name, families.header, familyColumns); err != nil {
+		return nil, err
+	}
 	if err := exactColumns(preferences.name, preferences.header, []string{
 		preferenceTimestamp, preferenceEmail, preferenceStatus, preferencePermission,
 	}); err != nil {
@@ -546,6 +566,7 @@ func ReadTables(source data.Source) (*Tables, error) {
 		Staff:       staff.rows,
 		Names:       names.rows,
 		Overrides:   overrides.rows,
+		Families:    families.rows,
 		Preferences: preferences.rows,
 		Tags:        tags.rows,
 		Photos:      photos.rows,
@@ -903,41 +924,6 @@ func (l *loader) applyOverrides() error {
 			l.roomParents[cell] = append(l.roomParents[cell], email)
 		}
 
-		cells := familyCells{}
-		if cell := row["Address"]; cell != "" {
-			cells.hasAddress = true
-			if cell != "-" {
-				cells.address = cell
-			}
-		}
-		if cell := row["Family Phone"]; cell != "" {
-			cells.hasPhone = true
-			if cell != "-" {
-				cells.phone = cell
-			}
-		}
-		if cell := row["Family Photo Caption"]; cell != "" {
-			cells.hasCaption = true
-			if cell != "-" {
-				cells.caption = cell
-			}
-		}
-		if cell := row["Family Photo Updated"]; cell != "" {
-			if err := checkUpdated(email, "Family Photo Updated", cell); err != nil {
-				return err
-			}
-			cells.hasPhotoUpdated = true
-			if cell != "-" {
-				cells.photoUpdated = cell
-			}
-		}
-		cells.photo = row["Family Photo"]
-		cells.pronunciation = row["Family Pronunciation"]
-		if cells.hasAddress || cells.hasPhone || cells.hasCaption || cells.hasPhotoUpdated ||
-			cells.photo != "" || cells.pronunciation != "" {
-			l.familyOverrides[email] = cells
-		}
-
 		switch row["Opted Out"] {
 		case "", "-", "FALSE":
 		case "TRUE":
@@ -985,11 +971,14 @@ func (l *loader) hideStudentPhones() error {
 	return nil
 }
 
+// buildFamilies keys each family by its alphabetically first adult email - a real
+// assertion, not a convenience: an adult belongs to at most one household
+// (transformImport enforces it), so the key is unique, and the Families tab is keyed
+// by exactly the same email (applyFamilies enforces that too).
 func (l *loader) buildFamilies() error {
 	for _, setKey := range l.householdOrder {
 		hh := l.households[setKey]
-		members := append(append([]string{}, hh.adults...), hh.kids...)
-		key := familyHash(members)
+		key := slices.Min(hh.adults)
 		l.familyKeys[setKey] = key
 		l.model.Families[key] = Family{
 			Key:             key,
@@ -1000,51 +989,77 @@ func (l *loader) buildFamilies() error {
 			importedAddress: hh.address,
 		}
 	}
-	for email, sets := range l.personHouseholds {
-		if p := l.people[email]; p.FamilyKey == "" {
-			p.FamilyKey = l.familyKeys[sets[0]]
+	return nil
+}
+
+// applyFamilies folds the Families tab in: one row per family, keyed by the family
+// key itself. Family-level fields live only here - person Overrides rows carry none.
+func (l *loader) applyFamilies() error {
+	for _, row := range l.familyRows {
+		email := strings.ToLower(row["Email"])
+		if email == "" {
+			return fmt.Errorf("families row %v has no email", row)
 		}
-	}
-	overrideEmails := make([]string, 0, len(l.familyOverrides))
-	for email := range l.familyOverrides {
-		overrideEmails = append(overrideEmails, email)
-	}
-	sort.Strings(overrideEmails)
-	// Two parents in the same household can each carry family cells on their own
-	// Overrides row (e.g. after only one of them re-uploads the family photo), so this
-	// must resolve conflicts deterministically rather than by map iteration order: keep
-	// the most recently updated photo date rather than whichever row is visited last.
-	for _, email := range overrideEmails {
-		cells := l.familyOverrides[email]
-		p := l.people[email]
-		if !p.IsParent {
-			return fmt.Errorf("overrides row %s has family cells but %s is not a parent", email, email)
+		p, ok := l.people[email]
+		if !ok || !p.IsParent {
+			return fmt.Errorf("families row %s does not name a parent", email)
 		}
 		sets := l.personHouseholds[email]
 		if len(sets) != 1 {
-			return fmt.Errorf("overrides row %s has family cells but %s has no household", email, email)
+			return fmt.Errorf("families row %s names a parent with no household", email)
 		}
 		key := l.familyKeys[sets[0]]
+		if email != key {
+			return fmt.Errorf("families row %s is not the family key %s", email, key)
+		}
 		family := l.model.Families[key]
-		if cells.hasAddress {
-			family.Address = cells.address
+		if family.sheetRow != nil {
+			return fmt.Errorf("families has duplicate rows for %s", key)
 		}
-		if cells.hasPhone {
-			family.Phone = cells.phone
+		family.sheetRow = row
+		if cell := row["Address"]; cell != "" {
+			family.Address = ""
+			if cell != "-" {
+				family.Address = cell
+			}
 		}
-		if cells.hasCaption {
-			family.PhotoCaption = cells.caption
+		if cell := row["Family Phone"]; cell != "" {
+			family.Phone = ""
+			if cell != "-" {
+				family.Phone = cell
+			}
 		}
-		if cells.hasPhotoUpdated && cells.photoUpdated > family.PhotoUpdated {
-			family.PhotoUpdated = cells.photoUpdated
+		if cell := row["Family Photo Caption"]; cell != "" && cell != "-" {
+			family.PhotoCaption = cell
 		}
-		if cells.photo != "" {
-			family.photo = cells.photo
+		if cell := row["Family Photo Updated"]; cell != "" && cell != "-" {
+			if err := checkUpdated(email, "Family Photo Updated", cell); err != nil {
+				return err
+			}
+			family.PhotoUpdated = cell
 		}
-		if cells.pronunciation != "" {
-			family.pronunciation = cells.pronunciation
-		}
+		family.photo = row["Family Photo"]
+		family.pronunciation = row["Family Pronunciation"]
 		l.model.Families[key] = family
+	}
+	return nil
+}
+
+// indexFamilies runs after removeOptedOut so the index covers exactly the people the
+// model still carries; keys are visited in sorted order so a two-household kid's
+// families list is deterministic everywhere it's read.
+func (l *loader) indexFamilies() error {
+	l.model.familyKeysByEmail = map[string][]string{}
+	keys := make([]string, 0, len(l.model.Families))
+	for key := range l.model.Families {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		family := l.model.Families[key]
+		for _, email := range append(append([]string{}, family.AdultEmails...), family.KidEmails...) {
+			l.model.familyKeysByEmail[email] = append(l.model.familyKeysByEmail[email], key)
+		}
 	}
 	return nil
 }
@@ -1345,24 +1360,20 @@ func (l *loader) attachBlobs() error {
 		family.PhotoURL, family.PronunciationURL = photo, pronunciation
 		l.model.Families[key] = family
 	}
+	// A person with no recording of their own hears their family's - a display-time
+	// fallback, not a stored value, so a personal recording (set via the person-keyed
+	// upload) overrides it and clearing that reveals the family's again. A person with
+	// no photos gets no such fallback: they show the initials placeholder, since kids
+	// generally have photos and a family photo standing in read as an error.
 	for _, p := range l.people {
-		family, ok := l.model.Families[p.FamilyKey]
-		if !ok {
+		if p.PronunciationURL != "" {
 			continue
 		}
-		// A person with no photos of their own shows the family photo instead of
-		// blank initials - PhotoUpdated stays unset either way, so photoNeedsUpdate
-		// (frontend) still nags them to add their own rather than treating the
-		// family photo as satisfying that need forever.
-		if len(p.Photos) == 0 && family.PhotoURL != "" {
-			p.PhotoURL = family.PhotoURL
-		}
-		// Same fallback for pronunciation: a personal recording (set via the
-		// person-keyed upload) overrides the family's, but clearing it should
-		// reveal the family's again rather than going silent - so this is a
-		// display-time fallback, not a stored value, matching the photo case.
-		if p.PronunciationURL == "" && family.PronunciationURL != "" {
-			p.PronunciationURL = family.PronunciationURL
+		for _, key := range l.model.familyKeysByEmail[p.Email] {
+			if url := l.model.Families[key].PronunciationURL; url != "" {
+				p.PronunciationURL = url
+				break
+			}
 		}
 	}
 	return nil

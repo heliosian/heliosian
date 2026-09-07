@@ -260,7 +260,7 @@ function personSearchSubtitle(p) {
   if (p.isStaff) {
     return p.jobTitle || roleLabel(p);
   }
-  const family = state.model.families[p.familyKey];
+  const family = familyOf(p);
   const kids = ((family && family.kidEmails) || []).map(e => byEmail[e]).filter(Boolean);
   if (kids.length) {
     const names = kids.map(k => firstName(k.fullName)).join(', ');
@@ -348,9 +348,32 @@ function renderGlobalSearchResults(resultsEl, query) {
   resultsEl.hidden = false;
 }
 
+// familiesByEmail inverts the model's family member lists once per load: every
+// family a person belongs to, in sorted key order - one for a parent (an adult
+// belongs to at most one household), one or more for a kid in two households.
+let familiesByEmail = {};
+
+function indexFamilies() {
+  familiesByEmail = {};
+  for (const key of Object.keys(state.model.families || {}).sort()) {
+    const f = state.model.families[key];
+    for (const email of [...(f.adultEmails || []), ...(f.kidEmails || [])]) {
+      (familiesByEmail[email] = familiesByEmail[email] || []).push(f);
+    }
+  }
+}
+
+function familiesOf(p) {
+  return (p && familiesByEmail[p.email]) || [];
+}
+
+function familyOf(p) {
+  return familiesOf(p)[0];
+}
+
 function myFamilyKey() {
-  const me = byEmail[document.body.dataset.userEmail];
-  return (me && me.familyKey) || '';
+  const family = familyOf(byEmail[document.body.dataset.userEmail]);
+  return (family && family.key) || '';
 }
 
 function activeSection() {
@@ -449,9 +472,8 @@ function factsNeedUpdate(p) {
   return p.isStudent && (!p.facts || agedPast(p.facts, p.factsUpdated, staleYears.facts));
 }
 
-// Unlike a person's own photo, which falls back to the family photo when missing, the
-// family photo has no further fallback: a missing one needs updating just as much as a
-// stale one.
+// Unlike a person's own photo, a missing family photo needs updating just as much as
+// a stale one.
 function familyPhotoNeedsUpdate(family) {
   return !family.photoUrl || agedPast(family.photoUrl, family.photoUpdated, staleYears.familyPhoto);
 }
@@ -461,7 +483,7 @@ function staleItems() {
   if (!me) {
     return [];
   }
-  const family = state.model.families[me.familyKey];
+  const family = familyOf(me);
   const items = [];
   for (const p of familyNavPeople()) {
     const whose = p.email === me.email ? 'your' : `${p.fullName}'s`;
@@ -561,7 +583,7 @@ function familyNavPeople() {
   if (!me || (me.isStaff && !me.isParent)) {
     return [];
   }
-  const family = state.model.families[me.familyKey];
+  const family = familyOf(me);
   const emails = [me.email, ...((family && family.adultEmails) || []), ...((family && family.kidEmails) || [])];
   const seen = new Set();
   const people = [];
@@ -781,7 +803,7 @@ function ringColorFor(p) {
   if (p.isStaff) {
     return state.model.staffColor || null;
   }
-  const family = state.model.families[p.familyKey];
+  const family = familyOf(p);
   const kids = ((family && family.kidEmails) || []).map(e => byEmail[e]).filter(Boolean);
   if (kids.length) {
     const pick = kids[hue(p.email) % kids.length];
@@ -838,7 +860,7 @@ function personContext(p) {
   if (p.isStaff && p.jobTitle) {
     return p.jobTitle;
   }
-  const family = state.model.families[p.familyKey];
+  const family = familyOf(p);
   if (family) {
     return (family.kidEmails || []).map(e => byEmail[e]?.fullName).filter(Boolean).join(', ');
   }
@@ -976,8 +998,8 @@ function personCard(p) {
 function everyoneMatches() {
   const q = state.q;
   return state.everyoneOrder.filter(p => {
-    const family = state.model.families[p.familyKey];
-    return `${p.fullName} ${family ? family.name : ''}`.toLowerCase().includes(q) && matchesFilters(p);
+    const familyNames = familiesOf(p).map(f => f.name).join(' ');
+    return `${p.fullName} ${familyNames}`.toLowerCase().includes(q) && matchesFilters(p);
   });
 }
 
@@ -1007,7 +1029,7 @@ function renderStudents(grid) {
     const card = el('a', 'student-card');
     card.href = personLink(p);
     const head = el('div', 'student-head');
-    const family = state.model.families[p.familyKey];
+    const family = familyOf(p);
     if (family && family.photoUrl) {
       const bg = el('img', 'student-family-photo');
       bg.src = thumbUrl(family.photoUrl);
@@ -1394,14 +1416,14 @@ function personFacets(p, field) {
     return p[field] ? [p[field]] : [];
   }
   if (p.isParent) {
-    const family = state.model.families[p.familyKey];
+    const family = familyOf(p);
     return ((family && family.kidEmails) || []).map(e => byEmail[e]).filter(Boolean).map(k => k[field]).filter(Boolean);
   }
   return [];
 }
 
 function cityOf(p) {
-  const family = state.model.families[p.familyKey];
+  const family = familyOf(p);
   if (!family || !family.address) {
     return '';
   }
@@ -1448,21 +1470,19 @@ function tagRelatedMatch(p) {
   }
   const [tag] = state.filterTags;
   const tagged = tags[tag] || [];
-  const family = state.model.families[p.familyKey];
-  if (!family) {
-    return false;
-  }
-  if (state.filterTagRelations.has('Parents') && p.isParent &&
-    (family.kidEmails || []).some(e => tagged.includes(e))) {
-    return true;
-  }
-  if (state.filterTagRelations.has('Children') && p.isStudent &&
-    (family.adultEmails || []).some(e => tagged.includes(e))) {
-    return true;
-  }
-  if (state.filterTagRelations.has('Siblings') && p.isStudent &&
-    (family.kidEmails || []).some(e => e !== p.email && tagged.includes(e))) {
-    return true;
+  for (const family of familiesOf(p)) {
+    if (state.filterTagRelations.has('Parents') && p.isParent &&
+      (family.kidEmails || []).some(e => tagged.includes(e))) {
+      return true;
+    }
+    if (state.filterTagRelations.has('Children') && p.isStudent &&
+      (family.adultEmails || []).some(e => tagged.includes(e))) {
+      return true;
+    }
+    if (state.filterTagRelations.has('Siblings') && p.isStudent &&
+      (family.kidEmails || []).some(e => e !== p.email && tagged.includes(e))) {
+      return true;
+    }
   }
   return false;
 }
@@ -2187,13 +2207,6 @@ function renderPersonDetail(email) {
     };
     updateCropBadge(initialHeroPhoto);
     if (editable) {
-      // The hero starts out showing this person's own primary photo once they
-      // have any - or, if they don't yet, their family's photo shown as a
-      // stand-in (attachBlobs falls back to it server-side; photos.length === 0
-      // is how the frontend tells the two apart, and how photoMenu knows not to
-      // offer deleting a photo that isn't really theirs yet). Cropping the
-      // fallback adopts the family photo as this person's first personal photo
-      // (cropPhoto, internal/directory/upload.go).
       let currentHeroPhoto = initialHeroPhoto;
       const menu = photoMenu(p, () => currentHeroPhoto, editing, status);
       img.addEventListener('click', () => togglePhotoMenu(menu));
@@ -2229,7 +2242,8 @@ function renderPersonDetail(email) {
   grid.append(left);
 
   const right = el('div');
-  const family = state.model.families[p.familyKey];
+  const families = familiesOf(p);
+  const family = families[0];
   const topRow = el('div', 'detail-top');
   const roleRow = el('div', 'role-label', baseRole(p));
   topRow.append(roleRow);
@@ -2445,8 +2459,10 @@ function renderPersonDetail(email) {
 
   main.append(content);
 
-  if (family) {
-    main.append(familyBand(p, family));
+  // One identical band per family - a kid in two households simply has two families
+  // listed, with nothing calling out why.
+  for (const f of families) {
+    main.append(familyBand(p, f));
   }
 }
 
@@ -2880,7 +2896,7 @@ function abbreviateGrade(name) {
 }
 
 function kidsSummary(parent) {
-  const family = state.model.families[parent.familyKey];
+  const family = familyOf(parent);
   if (!family) {
     return '';
   }
@@ -3013,11 +3029,12 @@ function parentsOf(students) {
   const seen = new Set();
   const parents = [];
   for (const s of students) {
-    const family = state.model.families[s.familyKey];
-    for (const email of (family && family.adultEmails) || []) {
-      if (!seen.has(email) && byEmail[email]) {
-        seen.add(email);
-        parents.push(byEmail[email]);
+    for (const family of familiesOf(s)) {
+      for (const email of family.adultEmails || []) {
+        if (!seen.has(email) && byEmail[email]) {
+          seen.add(email);
+          parents.push(byEmail[email]);
+        }
       }
     }
   }
@@ -3042,16 +3059,18 @@ function teachersOf(classroomNames) {
 }
 
 function otherFamilyMembers(student) {
-  const family = state.model.families[student.familyKey];
-  if (!family) {
-    return '';
+  const seen = new Set();
+  const names = [];
+  for (const family of familiesOf(student)) {
+    for (const email of [...(family.kidEmails || []), ...(family.adultEmails || [])]) {
+      if (email === student.email || seen.has(email) || !byEmail[email]) {
+        continue;
+      }
+      seen.add(email);
+      names.push(byEmail[email].fullName);
+    }
   }
-  return [...(family.kidEmails || []), ...(family.adultEmails || [])]
-    .filter(e => e !== student.email)
-    .map(e => byEmail[e])
-    .filter(Boolean)
-    .map(m => m.fullName)
-    .join(', ');
+  return names.join(', ');
 }
 
 function lastName(fullName) {
@@ -3246,7 +3265,7 @@ function csvField(value) {
 }
 
 function kidsField(parent, field) {
-  const family = state.model.families[parent.familyKey];
+  const family = familyOf(parent);
   const values = ((family && family.kidEmails) || [])
     .map(e => byEmail[e])
     .filter(Boolean)
@@ -3278,11 +3297,12 @@ function emailEntries() {
     .sort((a, b) => a.fullName.localeCompare(b.fullName));
   for (const s of students) {
     add(s, 'Student', s.grade || '', s.classroom || '');
-    const family = state.model.families[s.familyKey];
-    for (const email of (family && family.adultEmails) || []) {
-      const parent = byEmail[email];
-      if (parent) {
-        add(parent, 'Parent', kidsField(parent, 'grade'), kidsField(parent, 'classroom'));
+    for (const family of familiesOf(s)) {
+      for (const email of family.adultEmails || []) {
+        const parent = byEmail[email];
+        if (parent) {
+          add(parent, 'Parent', kidsField(parent, 'grade'), kidsField(parent, 'classroom'));
+        }
       }
     }
   }
@@ -3355,7 +3375,7 @@ function privacyActionButton(iconName, label, href) {
 function renderPrivacyPage() {
   const main = resetMain();
   const me = byEmail[document.body.dataset.userEmail];
-  const family = me && state.model.families[me.familyKey];
+  const family = familyOf(me);
   if (!family) {
     main.append(el('div', 'container', 'No family record found for your account.'));
     return;
@@ -3599,10 +3619,7 @@ async function submitPhotoOrder(key, order, status, onError) {
   return true;
 }
 
-// submitCrop posts a cropped square as the crop for one of a person's photos -
-// name is that photo's name, or '' when this person has no photos of their own
-// yet and is cropping the family photo shown in its place (see cropPhoto,
-// internal/directory/upload.go), which adopts it as their first personal photo.
+// submitCrop posts a cropped square as the crop for one of a person's photos.
 async function submitCrop(key, name, blob, status) {
   status.classList.remove('error');
   status.textContent = 'Saving crop…';
@@ -3625,9 +3642,8 @@ function canEditPerson(email) {
   if (email === meEmail || state.model.superEdit) {
     return true;
   }
-  const me = byEmail[meEmail];
-  const family = me && state.model.families[me.familyKey];
-  return Boolean(family && [...(family.kidEmails || []), ...(family.adultEmails || [])].includes(email));
+  return familiesOf(byEmail[meEmail]).some(family =>
+    [...(family.kidEmails || []), ...(family.adultEmails || [])].includes(email));
 }
 
 // togglePhotoMenu opens/closes a photoMenu. Its CSS anchors with `right: 0`,
@@ -3684,13 +3700,9 @@ function cropBadge() {
 // keep acting on the primary photo even while a different one is on screen.
 // "Set as primary" is hidden when the current photo already is; a grid tile's
 // own click never opens a menu at all (see photoGrid) - drag it to the front,
-// or preview it and use this menu, both end up here. photo.name is '' when
-// this person has no photos of their own and the hero is showing their
-// family's photo as a stand-in (see renderPersonDetail) - there's nothing of
-// theirs to delete in that case, so Delete photo is left off entirely rather
-// than offered and rejected. Delete otherwise only shows in editing mode, same
-// convention as the grid tiles' own delete "x" - destructive actions wait for
-// edit mode.
+// or preview it and use this menu, both end up here. Delete only shows in
+// editing mode, same convention as the grid tiles' own delete "x" -
+// destructive actions wait for edit mode.
 function photoMenu(p, getPhoto, editing, status) {
   const menu = el('div', 'photo-menu');
   menu.hidden = true;
@@ -3717,7 +3729,7 @@ function photoMenu(p, getPhoto, editing, status) {
         submitPhotoOrder(p.email, order, status);
       });
     }
-    if (editing && photo.name) {
+    if (editing) {
       item('trash', 'Delete photo', () => {
         // The school portrait is harder to get back than a self-uploaded photo, so
         // it gets a stronger warning, but either way this is permanent - confirm first.
@@ -3741,10 +3753,7 @@ function photoMenu(p, getPhoto, editing, status) {
 // openCropTool is a full-screen square-crop editor for one of a person's photos.
 // There's no stored crop rectangle to restore - only the resulting cropped image
 // is saved - so cropping a photo that already has a crop just starts fresh from
-// the original and replaces it. photo.name may be '' (see cropPhoto,
-// internal/directory/upload.go): this person has no photos of their own yet and
-// is looking at their family's photo as a stand-in, and cropping it adopts it as
-// their first personal photo.
+// the original and replaces it.
 function openCropTool(p, photo, status) {
   const overlay = el('div', 'crop-overlay');
   const panel = el('div', 'crop-panel');
@@ -4547,8 +4556,7 @@ function privacyWarnings(family) {
 }
 
 function myPrivacyWarnings() {
-  const me = byEmail[document.body.dataset.userEmail];
-  const family = me && state.model.families[me.familyKey];
+  const family = familyOf(byEmail[document.body.dataset.userEmail]);
   return family ? privacyWarnings(family) : [];
 }
 
@@ -4625,6 +4633,7 @@ async function load() {
   for (const p of state.model.people) {
     byEmail[p.email] = p;
   }
+  indexFamilies();
   state.everyoneOrder = shuffled(state.model.people);
   state.familyOrder = shuffled(familyEntries());
   renderSuperEditBanner();

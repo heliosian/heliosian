@@ -88,11 +88,9 @@ func Register(mux *http.ServeMux, cache *Cache, mapsKey string) {
 func (a app) myFamily(w http.ResponseWriter, r *http.Request) {
 	model := a.cache.Model()
 	email := effectiveEmail(a.cache, r)
-	if p := model.Person(email); p != nil && p.FamilyKey != "" {
-		if _, ok := model.Families[p.FamilyKey]; ok {
-			http.Redirect(w, r, "/families/"+url.PathEscape(p.FamilyKey), http.StatusFound)
-			return
-		}
+	if keys := model.FamilyKeysOf(email); len(keys) > 0 {
+		http.Redirect(w, r, "/families/"+url.PathEscape(keys[0]), http.StatusFound)
+		return
 	}
 	http.Error(w, "no family record for "+email, http.StatusNotFound)
 }

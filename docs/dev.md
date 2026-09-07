@@ -2,23 +2,23 @@
 
 ## Run
 
-    go run .
+    go run ./tools/startserver
 
-http://localhost:8080 (override with `PORT`). With `DIRECTORY_SHEET` unset the server serves the fictional community in `sampledata/`, signs every request in as a sample parent, and geocodes with a deterministic fake — no credentials or configuration. Templates and static assets are read from disk on every request; edit a file and refresh. The sample CSVs back a fake spreadsheet that loads each tab on first read and keeps every write in memory, so `sampledata/` never changes on disk — restart to get the fixtures back.
+http://localhost:8080 (override with `PORT`). The dev server serves the fictional community in `sampledata/`, signs every request in as a sample parent, and geocodes with a deterministic fake — no credentials or configuration. All sample-mode composition lives in `tools/startserver`; the production binary and the shared wiring in `internal/app` carry none of it. Templates and static assets are read from disk on every request; edit a file and refresh. The sample CSVs back a fake spreadsheet that loads each tab on first read and keeps every write in memory, so `sampledata/` never changes on disk — restart to get the fixtures back.
 
 Sample-mode limits: the map section needs a real Maps JavaScript key (`GOOGLE_MAPS_BROWSER_KEY`) to render tiles, and self-service edits and media uploads need real-data mode — those handlers register alongside the blob store, which the sample CSVs have no counterpart for. Tags do work, since they need only the writable data source.
 
 `sampledata/` mirrors the production Sheets layout: one directory per app, one CSV per table, first row is the schema, served through the same data-source interface the Sheets backend implements. It stays fictional — real community data never goes here. `sampledata/preferences/` is the consent form's response sheet, exercising every combination the loader has to resolve: both permissions, each alone, an opt-out, a superseded submission, and a two-household student whose parents answered differently.
 
-In sample mode `tools/screenshot` captures pages directly, no session needed (see `docs/screenshots.md`).
+In sample mode `go run ./tools/startserver -capture <path> -out <png>` serves and screenshots one page in a single command, and `tools/screenshot` captures against an already-running server (see `docs/screenshots.md`).
 
 ## Real data
 
-    DIRECTORY_SHEET=<spreadsheet id> PREFERENCES_SHEET=<spreadsheet id> go run .
+    DIRECTORY_SHEET=<spreadsheet id> PREFERENCES_SHEET=<spreadsheet id> SESSION_KEY=<secret> go run .
 
-serves from the production spreadsheets and media bucket (see `docs/data.md`) and turns on the full stack. Both ids are required together; the server refuses to start with only one. The model loads at startup — the server refuses to start if the load fails — and reloads every five minutes. Real data never leaves the process: nothing is written to disk. Requirements:
+runs the production binary: the production spreadsheets, the media bucket (see `docs/data.md`), real geocoding, and Google sign-in, with no sample fallback — every input is required and the server refuses to start without one. The model loads at startup — the server refuses to start if the load fails — and reloads every five minutes. Real data never leaves the process: nothing is written to disk. Requirements:
 
-- **Sign-in** — everything sits behind Google sign-in restricted to the school's Workspace domain (API paths get a 401 instead of the login page). The OAuth web client is read from `creds/oauth-client.json` or `GOOGLE_CLIENT_ID`; its authorized JavaScript origins must include `http://localhost:8080`. The server issues its own HMAC-signed session cookie; set `SESSION_KEY` to keep sessions valid across restarts.
+- **Sign-in** — everything sits behind Google sign-in restricted to the school's Workspace domain (API paths get a 401 instead of the login page). The OAuth web client is read from `creds/oauth-client.json` or `GOOGLE_CLIENT_ID`; its authorized JavaScript origins must include `http://localhost:8080`. The server issues its own HMAC-signed session cookie, keyed by the required `SESSION_KEY`.
 - **Data access** — Google credentials come from application-default credentials impersonating the data service account, set up once per machine:
 
       gcloud auth application-default login --impersonate-service-account=directory@heliosian.iam.gserviceaccount.com
@@ -46,15 +46,13 @@ Each runs as `go run ./tools/<name>`. The sheet, drive, and bucket tools authent
 
 - `screenshot`, `capturebrowser`, `browse` — page capture and browser driving; see `docs/screenshots.md`
 - `deploy` — apply the full production service configuration (needs `DIRECTORY_SHEET`); see `docs/deploy.md`
-- `startserver` — launch the app detached with its output in a log file, and print that path, the command to stop it, and a minted session cookie (needs `SESSION_KEY` and `DIRECTORY_SHEET`)
+- `startserver` — the dev server: sample data in the foreground by default, `-capture` for a one-command page screenshot, `-real` for the production assembly in the foreground, and `-detach` to launch that in the background with its output in a log file plus a minted session cookie (needs `SESSION_KEY` and `DIRECTORY_SHEET`)
 - `cookie` — print a signed session cookie for local API testing
 - `loadcheck` — run the full load pipeline against the directory and preferences sheets and print a model summary
 - `findsheet` — list spreadsheets visible to the service account
 - `sheets` — dump a sheet's tabs, sizes, and header rows
 - `dumptab` / `writetab` — copy one tab to a local CSV / write a local CSV into a tab, header-checked
 - `createtabs` — create the directory sheet's local-layer tabs with their header rows
-- `importdates` — seed the Overrides refresh-date columns from the legacy Glide spreadsheet, adding the columns if absent
 - `setcell` — set one cell in a tab by key column, appending the row if missing
 - `import` — run a fresh Veracross export, upload its portraits, and sync the import tabs (needs `DIRECTORY_SHEET` and `PREFERENCES_SHEET`, and a `vcexport` checkout)
-- `migrateblobs` — write any thumbnail the bucket is missing, and move media still under a retired layout into the content-addressed one
 - `splash` — regenerate the iOS splash battery from the captured original page; see `docs/pwa.md`

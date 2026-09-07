@@ -4,7 +4,11 @@
 
 ## Usage
 
-With the server running:
+For a sample-data page, one self-contained command serves, captures, and exits:
+
+    go run ./tools/startserver -capture /people -out screenshots/directory.png -wait .sidebar
+
+With a server already running, capture against it directly:
 
     go run ./tools/screenshot -url http://localhost:8080/people -out screenshots/directory.png -wait .sidebar
 
@@ -60,10 +64,6 @@ Leave the browser running between capture sessions — never kill it. In practic
 
 ## Agent recipe
 
-One self-contained command that starts the server, captures, and shuts down:
+    go run ./tools/startserver -capture /people -out screenshots/directory.png -wait .sidebar
 
-    go run . &
-    go run ./tools/screenshot -out screenshots/directory.png -wait .sidebar
-    kill $(lsof -ti :8080)
-
-Then read `screenshots/directory.png` to inspect the result.
+serves the sample community in-process, captures, and shuts down by itself — no background server to start or kill. Then read `screenshots/directory.png` to inspect the result.

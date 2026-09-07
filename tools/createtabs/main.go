@@ -50,10 +50,12 @@ var tabs = []struct {
 		"New to Helios", "Pronouns", "Facts",
 		"Grade", "Classroom", "Crew",
 		"Phone", "Job Title", "Department", "Grade Band", "Room Parent",
-		"Address", "Family Phone", "Family Photo Caption", "Opted Out",
-		"Photo Updated", "Facts Updated", "Family Photo Updated",
+		"Opted Out", "Photo Updated", "Facts Updated",
 		"Veracross Photo", "Primary Photo", "Pronunciation",
-		"Family Photo", "Family Pronunciation",
+	}},
+	{"Families", []string{
+		"Email", "Address", "Family Phone", "Family Photo Caption",
+		"Family Photo Updated", "Family Photo", "Family Pronunciation",
 	}},
 	{"Change Log", []string{
 		"Timestamp", "Actor",

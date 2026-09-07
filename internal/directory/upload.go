@@ -20,7 +20,21 @@ const changeLogTable = "Change Log"
 // as one of the slots like any other photo.
 const maxPhotos = 5
 
-var changeLogHeader = append([]string{"Timestamp", "Actor"}, overrideColumns...)
+// changeLogHeader is a fixed list rather than derived from overrideColumns: rows are
+// appended positionally, so it must match the Change Log tab's actual column order,
+// which still interleaves the family columns from when family fields lived on person
+// Overrides rows. One log covers both tabs - a family edit's row is keyed by the
+// family key, which is itself a parent email.
+var changeLogHeader = []string{
+	"Timestamp", "Actor",
+	"Email", "Added", "Full Name", "Legal Name", "Preferred Name",
+	"Is Student", "Is Parent", "Is Staff", "New to Helios", "Pronouns", "Facts",
+	"Grade", "Classroom", "Crew", "Phone", "Job Title", "Department", "Grade Band", "Room Parent",
+	"Address", "Family Phone", "Family Photo Caption", "Opted Out",
+	"Photo Updated", "Facts Updated", "Family Photo Updated",
+	"Veracross Photo", "Primary Photo", "Pronunciation",
+	"Family Photo", "Family Pronunciation",
+}
 
 func changeLogRow(actor, email string, previous map[string]string) []string {
 	row := make([]string, len(changeLogHeader))
@@ -87,6 +101,36 @@ func clearable(value string) string {
 
 func (u uploader) applyOverride(w http.ResponseWriter, actor, email, action string, cells, previous map[string]string) bool {
 	return applyOverrideWrite(u.cache, u.sheet, u.queue, w, actor, email, action, cells, previous)
+}
+
+func (u uploader) applyFamily(w http.ResponseWriter, actor, key, action string, cells, previous map[string]string) bool {
+	return applyFamilyWrite(u.cache, u.sheet, u.queue, w, actor, key, action, cells, previous)
+}
+
+// applyFamilyWrite is applyOverrideWrite for the Families tab, keyed by the family
+// key (the alphabetically first parent email, which is the row's Email cell).
+func applyFamilyWrite(cache *Cache, writer data.Writer, queue *Queue, w http.ResponseWriter, actor, key, action string, cells, previous map[string]string) bool {
+	logRow := changeLogRow(actor, key, previous)
+	applied := make(chan error, 1)
+	queue.Add(func() {
+		err := cache.applyFamily(key, cells)
+		applied <- err
+		if err != nil {
+			return
+		}
+		if err := writer.Upsert(appName, "Families", "Email", key, cells); err != nil {
+			log.Printf("[ERROR] set families row for %s: %v", key, err)
+			return
+		}
+		if err := writer.Append(appName, changeLogTable, logRow); err != nil {
+			log.Fatalf("[ERROR] append change log after %s for %s: %v", action, key, err)
+		}
+	})
+	if err := <-applied; err != nil {
+		serverError(w, fmt.Errorf("rebuild model after %s: %w", action, err))
+		return false
+	}
+	return true
 }
 
 // applyOverrideWrite folds an Overrides change into the cache and, once the rebuild
@@ -242,9 +286,7 @@ func (u uploader) edit(w http.ResponseWriter, r *http.Request) {
 	// email, even for the family-level "address" case (self-service only, so the
 	// caller and the family member being written to are always the same person).
 	// This one is keyed on a family instead, since it's reachable from
-	// super-edit mode editing a family that isn't the caller's own, the same
-	// reason the family photo/pronunciation upload path needed familyRow
-	// instead of just writing the caller's own row.
+	// super-edit mode editing a family that isn't the caller's own.
 	if field == "family-photo-caption" {
 		if !u.mayEdit(model, me, "family", key) {
 			http.Error(w, "not allowed to edit this record", http.StatusForbidden)
@@ -259,19 +301,11 @@ func (u uploader) edit(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "bad caption", http.StatusBadRequest)
 			return
 		}
-		row := familyRow(family)
-		if row == "" {
-			http.Error(w, "no such family", http.StatusBadRequest)
-			return
-		}
-		// Unlike Pronouns/Primary Photo, Family Photo Caption is resolved through
-		// the same family-fields-split-across-parent-rows merge as Address/Family
-		// Phone (buildFamilies' familyCells), which treats "-" as "this row
-		// explicitly says no caption" and "" as "this row has no opinion" - so it
-		// needs clearable(value)'s "-" convention, not a plain "".
+		// clearable's "-" convention, same as every Families-tab column: applyFamilies
+		// reads "-" as an explicit clear and "" as no cell at all.
 		cells := map[string]string{"Family Photo Caption": clearable(value)}
 		previous := map[string]string{"Family Photo Caption": family.PhotoCaption}
-		if !u.applyOverride(w, me, row, field+" edit", cells, previous) {
+		if !u.applyFamily(w, me, family.Key, field+" edit", cells, previous) {
 			return
 		}
 		log.Printf("edit: %s set %s on %s", me, field, key)
@@ -282,8 +316,8 @@ func (u uploader) edit(w http.ResponseWriter, r *http.Request) {
 	// A pronunciation recording can only be set through the upload endpoint (it's a
 	// file), but there was no way to clear one once set. This is that: the value is
 	// always empty, since it only ever deletes. Family Pronunciation, like Family
-	// Photo Caption above, is keyed on a family (via familyRow) rather than the
-	// caller's own email, for the same super-edit reason.
+	// Photo Caption above, is keyed on a family rather than the caller's own email,
+	// for the same super-edit reason.
 	if field == "family-pronunciation" {
 		if !u.mayEdit(model, me, "family", key) {
 			http.Error(w, "not allowed to edit this record", http.StatusForbidden)
@@ -298,14 +332,9 @@ func (u uploader) edit(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "no such family", http.StatusBadRequest)
 			return
 		}
-		row := familyRow(family)
-		if row == "" {
-			http.Error(w, "no such family", http.StatusBadRequest)
-			return
-		}
 		cells := map[string]string{"Family Pronunciation": ""}
 		previous := map[string]string{"Family Pronunciation": family.pronunciation}
-		if !u.applyOverride(w, me, row, field+" edit", cells, previous) {
+		if !u.applyFamily(w, me, family.Key, field+" edit", cells, previous) {
 			return
 		}
 		log.Printf("edit: %s set %s on %s", me, field, key)
@@ -387,17 +416,24 @@ func (u uploader) edit(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "not allowed to edit this record", http.StatusForbidden)
 			return
 		}
-		family, ok := model.Families[person.FamilyKey]
-		if !ok {
+		keys := model.FamilyKeysOf(person.Email)
+		if len(keys) == 0 {
 			http.Error(w, "no family record", http.StatusBadRequest)
 			return
 		}
+		family := model.Families[keys[0]]
 		if len(value) > 200 {
 			http.Error(w, "bad address", http.StatusBadRequest)
 			return
 		}
-		cells["Address"] = clearable(value)
-		previous["Address"] = family.Address
+		familyCells := map[string]string{"Address": clearable(value)}
+		familyPrevious := map[string]string{"Address": family.Address}
+		if !u.applyFamily(w, me, family.Key, field+" edit", familyCells, familyPrevious) {
+			return
+		}
+		log.Printf("edit: %s set %s on %s", me, field, key)
+		w.WriteHeader(http.StatusNoContent)
+		return
 	default:
 		http.Error(w, "bad field", http.StatusBadRequest)
 		return
@@ -508,7 +544,7 @@ func (u uploader) upload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// A person's photos are a list; every other kind is a single slot, named on the
-	// owner's Overrides row.
+	// owner's Overrides or Families row.
 	if kind == "photo" && target == "person" {
 		person := model.Person(key)
 		if len(person.Photos) >= maxPhotos {
@@ -530,28 +566,32 @@ func (u uploader) upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	row, cells, previous := key, map[string]string{}, map[string]string{}
-	switch {
-	case kind == "photo":
-		family := model.Families[key]
-		row = familyRow(family)
-		cells["Family Photo"], cells["Family Photo Updated"] = name, today()
-		previous["Family Photo"] = family.photo
-		previous["Family Photo Updated"] = family.PhotoUpdated
-	case target == "family":
-		family := model.Families[key]
-		row = familyRow(family)
-		cells["Family Pronunciation"] = name
-		previous["Family Pronunciation"] = family.pronunciation
-	default:
-		cells["Pronunciation"] = name
-		previous["Pronunciation"] = model.Person(key).pronunciation
-	}
-	if row == "" {
-		http.Error(w, "no such family", http.StatusBadRequest)
+	if target == "family" {
+		family, ok := model.Families[key]
+		if !ok {
+			http.Error(w, "no such family", http.StatusBadRequest)
+			return
+		}
+		cells, previous := map[string]string{}, map[string]string{}
+		if kind == "photo" {
+			cells["Family Photo"], cells["Family Photo Updated"] = name, today()
+			previous["Family Photo"] = family.photo
+			previous["Family Photo Updated"] = family.PhotoUpdated
+		} else {
+			cells["Family Pronunciation"] = name
+			previous["Family Pronunciation"] = family.pronunciation
+		}
+		if !u.applyFamily(w, me, family.Key, kind+" upload", cells, previous) {
+			return
+		}
+		log.Printf("upload: %s set %s %s %s to %s", me, target, key, kind, name)
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	if !u.applyOverride(w, me, row, kind+" upload", cells, previous) {
+
+	cells := map[string]string{"Pronunciation": name}
+	previous := map[string]string{"Pronunciation": model.Person(key).pronunciation}
+	if !u.applyOverride(w, me, key, kind+" upload", cells, previous) {
 		return
 	}
 	log.Printf("upload: %s set %s %s %s to %s", me, target, key, kind, name)
@@ -660,11 +700,7 @@ func (u uploader) reorderPhotos(w http.ResponseWriter, r *http.Request) {
 
 // cropPhoto attaches a square crop to one of a person's existing photos - name
 // identifies which one, and the uploaded file becomes its crop, replacing any
-// crop it already had. name may instead be empty, meaning "this person has no
-// photos of their own and is looking at their family's photo as a stand-in
-// (attachBlobs falls back to it) - adopt that family photo as their first
-// personal photo, with this crop attached," since there's no existing entry to
-// attach a crop to otherwise.
+// crop it already had.
 func (u uploader) cropPhoto(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 30<<20)
 	if err := r.ParseMultipartForm(30 << 20); err != nil {
@@ -685,28 +721,13 @@ func (u uploader) cropPhoto(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var order []photoRef
-	if name == "" {
-		if len(person.Photos) != 0 {
-			http.Error(w, "name is required once this person has photos of their own", http.StatusBadRequest)
-			return
-		}
-		family, ok := model.Families[person.FamilyKey]
-		if !ok || family.photo == "" {
-			http.Error(w, "no family photo to adopt", http.StatusBadRequest)
-			return
-		}
-		name = family.photo
-		order = []photoRef{{Name: name}}
-	} else {
-		if !isPhotoSubset([]string{name}, person.Photos) {
-			http.Error(w, "not one of this person's photos", http.StatusBadRequest)
-			return
-		}
-		order = make([]photoRef, len(person.Photos))
-		for i, photo := range person.Photos {
-			order[i] = photoRef{Name: photo.Name, CropName: photo.cropName}
-		}
+	if !isPhotoSubset([]string{name}, person.Photos) {
+		http.Error(w, "not one of this person's photos", http.StatusBadRequest)
+		return
+	}
+	order := make([]photoRef, len(person.Photos))
+	for i, photo := range person.Photos {
+		order[i] = photoRef{Name: photo.Name, CropName: photo.cropName}
 	}
 
 	file, header, err := r.FormFile("file")
@@ -774,25 +795,6 @@ func isPhotoSubset(order []string, photos []Photo) bool {
 	return true
 }
 
-// familyRow returns an email belonging to family whose Overrides row can carry
-// a family-level cell (Family Photo, Family Pronunciation) - family data lives
-// on a member's own row (see buildFamilies' merge across parents), so writing
-// it always has to name an actual member of the family being edited. In
-// self-service mode the acting user already is one, but in super-edit mode an
-// admin editing someone else's family isn't - using the admin's own email there
-// would silently attribute the change to the admin's own family instead.
-// Prefers an adult; falls back to a kid for a family with none (empty only for
-// a family key that doesn't actually exist).
-func familyRow(family Family) string {
-	if len(family.AdultEmails) > 0 {
-		return strings.ToLower(family.AdultEmails[0])
-	}
-	if len(family.KidEmails) > 0 {
-		return strings.ToLower(family.KidEmails[0])
-	}
-	return ""
-}
-
 func (u uploader) mayEdit(model *Model, me, target, key string) bool {
 	admin := strings.ToLower(strings.TrimSpace(me))
 	if u.cache.IsAdmin(admin) && u.cache.SuperEditEnabled(admin) {
@@ -803,22 +805,14 @@ func (u uploader) mayEdit(model *Model, me, target, key string) bool {
 		return false
 	}
 	if target == "family" {
-		return mine.FamilyKey != "" && mine.FamilyKey == key
+		return slices.Contains(model.FamilyKeysOf(mine.Email), key)
 	}
 	if key == me {
 		return true
 	}
-	family, ok := model.Families[mine.FamilyKey]
-	if !ok {
-		return false
-	}
-	for _, kid := range family.KidEmails {
-		if kid == key {
-			return true
-		}
-	}
-	for _, adult := range family.AdultEmails {
-		if adult == key {
+	for _, familyKey := range model.FamilyKeysOf(mine.Email) {
+		family := model.Families[familyKey]
+		if slices.Contains(family.KidEmails, key) || slices.Contains(family.AdultEmails, key) {
 			return true
 		}
 	}
