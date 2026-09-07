@@ -936,7 +936,7 @@ function renderStaff(grid, autoFit) {
       continue;
     }
     grid.append(el('h2', 'staff-section', dept));
-    const deptGrid = el('div', 'people-grid' + (autoFit ? ' autofit' : ''));
+    const deptGrid = el('div', 'people-grid directory-grid' + (autoFit ? ' autofit' : ''));
     for (const p of groups.get(dept)) {
       const card = el('a', 'person-card');
       card.href = personLink(p);
@@ -1021,11 +1021,11 @@ function renderPeople() {
 
   const content = el('div', 'content container');
   const isEveryone = state.tab === 'everyone';
-  const header = el('div', 'content-header' + (isEveryone ? '' : ' content-header-solo'));
-  if (isEveryone) {
-    header.append(roleChips(() => renderGrid()));
-  }
+  const header = el('div', 'content-header content-header-solo');
   const controls = el('div', 'controls');
+  if (isEveryone) {
+    controls.append(roleChips(() => renderGrid()));
+  }
   const search = el('div', 'search');
   search.append(svg('search'));
   const input = el('input');
@@ -1467,9 +1467,11 @@ function iconButton(name, label, action) {
   return node;
 }
 
-// "she/her" -> "She / Her", for the pronouns line under a name on the profile page.
+// "She/Her" -> "she / her" - forced lowercase regardless of how the source
+// data is cased (older records predate saving pronouns lowercase), spaced out
+// around the slash for readability in running text.
 function formatPronouns(pronouns) {
-  return pronouns.split('/').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' / ');
+  return pronouns.toLowerCase().split('/').join(' / ');
 }
 
 function pronouncePill(url, name) {
@@ -1913,7 +1915,7 @@ function renderPersonDetail(email) {
     }));
   }
   if (p.pronouns || editing) {
-    const pronounSpan = el('span', 'detail-pronouns', p.pronouns ? p.pronouns.split('/').join(' / ') : (editing ? 'pronouns' : ''));
+    const pronounSpan = el('span', 'detail-pronouns', p.pronouns ? p.pronouns.toLowerCase().split('/').join(' / ') : (editing ? 'pronouns' : ''));
     nameHeader.append(pronounSpan);
     if (editing) {
       const pronounPencil = editPencil('Edit pronouns');
@@ -2609,9 +2611,9 @@ function renderStaffPage() {
   main.append(pageHeader);
 
   const content = el('div', 'content container');
-  const header = el('div', 'content-header');
-  header.append(departmentChips(renderList));
+  const header = el('div', 'content-header content-header-solo');
   const controls = el('div', 'controls');
+  controls.append(departmentChips(renderList));
   const search = el('div', 'search');
   search.append(svg('search'));
   const input = el('input');

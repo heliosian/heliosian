@@ -1590,7 +1590,7 @@ main {
 .people-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(293px, 1fr));
-  gap: 32px 16px;
+  gap: 40px 16px;
 }
 
 .people-grid .person-photo {
@@ -1612,8 +1612,16 @@ main {
   max-width: 100%;
 }
 
-/* Directory's own "Everyone" grid - about 30% smaller than the shared 238px
-   person-card photo used elsewhere (Staff, etc.). */
+/* Directory's "Everyone" grid and Staff's department grids - about 30% smaller
+   than the shared 238px person-card photo used elsewhere, with a matching
+   narrower grid column (close to the default 238px/293px pair's ~0.8
+   photo-to-column ratio, with a bit of extra breathing room) so the smaller
+   photo isn't lost in the wider column, which read as an oversized gap
+   between columns of photos. */
+.directory-grid {
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+}
+
 .directory-grid .person-photo {
   width: 167px;
   max-width: 100%;
