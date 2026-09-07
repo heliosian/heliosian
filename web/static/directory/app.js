@@ -781,7 +781,7 @@ function photoOrInitials(url, name, className) {
     img.alt = '';
     return img;
   }
-  const div = el('div', className, name.trim().split(/\s+/).map(w => w[0]).slice(0, 2).join(''));
+  const div = el('div', className, name.trim().split(/\s+/).filter(w => /\p{L}/u.test(w[0])).map(w => w[0]).slice(0, 2).join(''));
   const h = hue(name);
   div.style.background = `hsl(${h} 45% 55%)`;
   // A lighter tint of the same hue, used for the hover ring so it always relates to
