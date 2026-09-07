@@ -115,6 +115,33 @@ func TestStaffNotInVeracrossStillLoad(t *testing.T) {
 	}
 }
 
+// Regression for the reorder-photos handler failing to retire a legacy Primary
+// Photo override: unlike Phone or Address, Primary Photo has no import-provided
+// baseline, so applyOverrides always starts it at "" and writing "-" to clear it
+// (the convention for fields that do have a baseline) is always flagged as
+// clearing an already-empty value, failing the whole model load. Clearing with an
+// empty string instead - which deletes the cell rather than marking it explicitly
+// blank - is the fix, and this test would have caught the bug reintroduced.
+func TestClearingLegacyPrimaryPhotoOverrideSucceeds(t *testing.T) {
+	tables, err := ReadTables(&data.Dir{Root: "../../sampledata"})
+	if err != nil {
+		t.Fatalf("read sample tables: %v", err)
+	}
+	email := "ruth.amari@heliosschool.org"
+	withPrimary := tables.withOverride(email, map[string]string{"Primary Photo": "somephoto.jpg"})
+	if _, err := BuildModel(withPrimary, noBlobs{}, noBlobs{}); err != nil {
+		t.Fatalf("seed a legacy Primary Photo override: %v", err)
+	}
+
+	if _, err := BuildModel(withPrimary.withOverride(email, map[string]string{"Primary Photo": ""}), noBlobs{}, noBlobs{}); err != nil {
+		t.Errorf("clearing Primary Photo with an empty string should succeed, got: %v", err)
+	}
+
+	if _, err := BuildModel(withPrimary.withOverride(email, map[string]string{"Primary Photo": "-"}), noBlobs{}, noBlobs{}); err == nil {
+		t.Errorf("clearing Primary Photo with \"-\" should still fail the useless-override check, documenting why \"\" is required")
+	}
+}
+
 func model(t *testing.T, email string) *Person {
 	t.Helper()
 	p := sampleModel(t).Person(email)

@@ -15,6 +15,10 @@ import (
 
 const changeLogTable = "Change Log"
 
+// maxPhotos caps a person's photo gallery, the Veracross school portrait counting
+// as one of the slots like any other photo.
+const maxPhotos = 5
+
 var changeLogHeader = append([]string{"Timestamp", "Actor"}, overrideColumns...)
 
 func changeLogRow(actor, email string, previous map[string]string) []string {
@@ -65,6 +69,7 @@ func RegisterUpload(mux *http.ServeMux, cache *Cache, sheet *data.Sheet, store *
 	mux.HandleFunc("POST /api/directory/facts", u.facts)
 	mux.HandleFunc("POST /api/directory/optout", u.optOut)
 	mux.HandleFunc("POST /api/directory/edit", u.edit)
+	mux.HandleFunc("POST /api/directory/reorder-photos", u.reorderPhotos)
 }
 
 func today() string {
@@ -82,7 +87,15 @@ func (u uploader) applyOverride(w http.ResponseWriter, actor, email, action stri
 	logRow := changeLogRow(actor, email, previous)
 	applied := make(chan error, 1)
 	u.queue.Add(func() {
-		applied <- u.cache.applyOverride(email, cells)
+		// If the in-memory rebuild rejects this change, don't write it to the real
+		// sheet either - otherwise the sheet ends up holding a value the model can
+		// never load, and every future rebuild (including the next server start)
+		// fails the same way until someone finds and fixes the cell by hand.
+		err := u.cache.applyOverride(email, cells)
+		applied <- err
+		if err != nil {
+			return
+		}
 		if err := u.sheet.Upsert(appName, "Overrides", "Email", email, cells); err != nil {
 			log.Printf("[ERROR] set overrides for %s: %v", email, err)
 			return
@@ -131,25 +144,6 @@ func (u uploader) edit(w http.ResponseWriter, r *http.Request) {
 		cells["Full Name"] = value + " " + surname(base)
 		previous["Preferred Name"] = person.PreferredName
 		previous["Full Name"] = person.FullName
-	case "primary-photo":
-		if !u.mayEdit(model, me, "person", key) {
-			http.Error(w, "not allowed to edit this record", http.StatusForbidden)
-			return
-		}
-		// Only a photo they already have: the column decides which one the directory
-		// shows, and a name from anywhere else would fail the next model load.
-		chosen := false
-		for _, photo := range person.Photos {
-			if photo.Name == value {
-				chosen = true
-			}
-		}
-		if !chosen {
-			http.Error(w, "not one of this person's photos", http.StatusBadRequest)
-			return
-		}
-		cells["Primary Photo"] = value
-		previous["Primary Photo"] = person.PrimaryPhoto
 	case "phone":
 		if !u.mayEdit(model, me, "person", key) {
 			http.Error(w, "not allowed to edit this record", http.StatusForbidden)
@@ -286,10 +280,22 @@ func (u uploader) upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// A person's photos are a list, so a new one is a row plus a pointer at it. Every
-	// other kind is a single slot, named on the owner's Overrides row.
+	// A person's photos are a list; every other kind is a single slot, named on the
+	// owner's Overrides row.
 	if kind == "photo" && target == "person" {
-		if !u.addPhoto(w, me, key, name, model.Person(key).PhotoUpdated) {
+		person := model.Person(key)
+		if len(person.Photos) >= maxPhotos {
+			http.Error(w, fmt.Sprintf("already has the maximum of %d photos", maxPhotos), http.StatusBadRequest)
+			return
+		}
+		order := make([]string, len(person.Photos), len(person.Photos)+1)
+		for i, photo := range person.Photos {
+			order[i] = photo.Name
+		}
+		order = append(order, name)
+		cells := map[string]string{"Photo Updated": today()}
+		previous := map[string]string{"Photo Updated": person.PhotoUpdated}
+		if !u.setPhotos(w, me, key, order, cells, previous, "photo upload") {
 			return
 		}
 		log.Printf("upload: %s added photo %s for %s", me, name, key)
@@ -319,20 +325,122 @@ func (u uploader) upload(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// addPhoto appends the Photos row and makes the new photo primary, since uploading
-// one is a statement that it should be the one people see.
-func (u uploader) addPhoto(w http.ResponseWriter, me, key, name, previousUpdated string) bool {
-	appended := make(chan error, 1)
+// setPhotos replaces a person's complete photo list and folds the change into the
+// running model before responding, so the caller's very next model fetch sees it.
+// Uploading (append), drag-reorder (permute), and deleting (remove one) all funnel
+// through this one path rather than three ad hoc ones, since each is really just
+// "this person's photo list is now exactly order" - one place to get the
+// sheet-write-then-rebuild interaction right instead of three.
+func (u uploader) setPhotos(w http.ResponseWriter, me, key string, order []string, cells, previous map[string]string, changeAction string) bool {
+	rows := make([][]string, len(order))
+	for i, name := range order {
+		rows[i] = []string{key, name}
+	}
+	rewritten := make(chan error, 1)
 	u.queue.Add(func() {
-		appended <- u.sheet.Append(appName, "Photos", []string{key, name})
+		if err := u.sheet.Delete(appName, "Photos", map[string]string{"Email": key}); err != nil {
+			rewritten <- err
+			return
+		}
+		rewritten <- u.sheet.AppendAll(appName, "Photos", rows)
 	})
-	if err := <-appended; err != nil {
-		serverError(w, fmt.Errorf("record photo %s for %s: %w", name, key, err))
+	if err := <-rewritten; err != nil {
+		serverError(w, fmt.Errorf("rewrite photo list for %s: %w", key, err))
 		return false
 	}
-	return u.applyOverride(w, me, key, "photo upload",
-		map[string]string{"Primary Photo": name, "Photo Updated": today()},
-		map[string]string{"Primary Photo": "", "Photo Updated": previousUpdated})
+	logRow := changeLogRow(me, key, previous)
+	applied := make(chan error, 1)
+	u.queue.Add(func() {
+		// If the in-memory rebuild rejects this change, don't write it to the real
+		// sheet either - otherwise the sheet ends up holding a value the model can
+		// never load, and every future rebuild (including the next server start)
+		// fails the same way until someone finds and fixes the cell by hand.
+		err := u.cache.applyPhotos(key, order, cells)
+		applied <- err
+		if err != nil || len(cells) == 0 {
+			return
+		}
+		if err := u.sheet.Upsert(appName, "Overrides", "Email", key, cells); err != nil {
+			log.Printf("[ERROR] set overrides for %s: %v", key, err)
+			return
+		}
+		if err := u.sheet.Append(appName, changeLogTable, logRow); err != nil {
+			log.Fatalf("[ERROR] append change log after %s for %s: %v", changeAction, key, err)
+		}
+	})
+	if err := <-applied; err != nil {
+		serverError(w, fmt.Errorf("rebuild model after %s: %w", changeAction, err))
+		return false
+	}
+	return true
+}
+
+// reorderPhotos handles both dragging photos into a new order and deleting one: a
+// delete is just "the same list minus one name," so both are the same request.
+func (u uploader) reorderPhotos(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
+	key := strings.ToLower(strings.TrimSpace(r.FormValue("key")))
+	me := effectiveEmail(u.cache, r)
+	model := u.cache.Model()
+	person := model.Person(key)
+	if person == nil {
+		http.Error(w, "no such person", http.StatusBadRequest)
+		return
+	}
+	if !u.mayEdit(model, me, "person", key) {
+		http.Error(w, "not allowed to edit this record", http.StatusForbidden)
+		return
+	}
+	order := splitNonEmpty(r.FormValue("order"), ",")
+	if !isPhotoSubset(order, person.Photos) {
+		http.Error(w, "order must name only this person's current photos, with no duplicates", http.StatusBadRequest)
+		return
+	}
+	cells, previous := map[string]string{}, map[string]string{}
+	if person.primaryPhotoOverride != "" {
+		// Retire the legacy pointer now that order alone decides primary - otherwise
+		// it would resurface and override this reorder on the next model load. An
+		// empty string, not "-": unlike Phone/Address, Primary Photo has no import
+		// baseline to distinguish "no override" from "overridden to blank", so
+		// applyOverrides always starts it at "" and a literal "-" here would just be
+		// flagged as clearing an already-empty value.
+		cells["Primary Photo"] = ""
+		previous["Primary Photo"] = person.primaryPhotoOverride
+	}
+	if !u.setPhotos(w, me, key, order, cells, previous, "photo reorder") {
+		return
+	}
+	log.Printf("reorder-photos: %s set %d photos for %s", me, len(order), key)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func splitNonEmpty(s, sep string) []string {
+	var out []string
+	for _, part := range strings.Split(s, sep) {
+		if part = strings.TrimSpace(part); part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
+}
+
+// isPhotoSubset reports whether order names only photos this person actually has,
+// each at most once - a full permutation for a reorder, one name short for a
+// delete. Anything else (an unknown name, a duplicate) is rejected outright rather
+// than silently ignored, since order is about to become the sheet's source of truth.
+func isPhotoSubset(order []string, photos []Photo) bool {
+	remaining := map[string]int{}
+	for _, photo := range photos {
+		remaining[photo.Name]++
+	}
+	seen := map[string]bool{}
+	for _, name := range order {
+		if seen[name] || remaining[name] == 0 {
+			return false
+		}
+		seen[name] = true
+	}
+	return true
 }
 
 func (u uploader) mayEdit(model *Model, me, target, key string) bool {

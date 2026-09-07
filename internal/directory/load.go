@@ -303,6 +303,25 @@ func applyCells(row, cells map[string]string) {
 	}
 }
 
+// withPhotos mirrors what a Photos-sheet rewrite just wrote: replace this email's
+// rows wholesale with names, in order. Every mutation of a person's photo list
+// (upload, reorder, delete) rewrites the full list this way, so this is the only
+// shape a change to Photos ever takes.
+func (t *Tables) withPhotos(email string, names []string) *Tables {
+	rows := make([]map[string]string, 0, len(t.Photos)+len(names))
+	for _, row := range t.Photos {
+		if !strings.EqualFold(row["Email"], email) {
+			rows = append(rows, row)
+		}
+	}
+	for _, name := range names {
+		rows = append(rows, map[string]string{"Email": email, "Photo Name": name})
+	}
+	out := *t
+	out.Photos = rows
+	return &out
+}
+
 func LoadModel(source data.Source, blobs, static BlobChecker) (*Model, error) {
 	tables, err := ReadTables(source)
 	if err != nil {
@@ -745,7 +764,7 @@ func (l *loader) applyOverrides() error {
 		}
 		apply("Photo Updated", &p.PhotoUpdated)
 		apply("Veracross Photo", &p.veracrossPhoto)
-		apply("Primary Photo", &p.PrimaryPhoto)
+		apply("Primary Photo", &p.primaryPhotoOverride)
 		apply("Pronunciation", &p.pronunciation)
 		if cell := row["Grade"]; cell != "" && cell != "-" && !added && gradeBands[cell] == "" {
 			return fmt.Errorf("overrides row %s has unknown grade %q", email, cell)
@@ -1082,36 +1101,24 @@ func (l *loader) removeOptedOut() error {
 	return nil
 }
 
-func named(names []string, source string) []Photo {
-	photos := make([]Photo, len(names))
-	for i, name := range names {
-		photos[i] = Photo{Name: name, Source: source}
+// reconcileLegacyPrimary moves whichever photo the retired Primary Photo override
+// still names to the front of the just-built order, so shipping order-is-primary
+// doesn't silently change what someone who already made an explicit choice sees.
+// Unlike the mechanism this replaces, it never errors - an override naming a photo
+// that no longer exists is just ignored, since this is display cosmetics now, not
+// data integrity.
+func (l *loader) reconcileLegacyPrimary(p *Person) {
+	if p.primaryPhotoOverride == "" {
+		return
 	}
-	return photos
-}
-
-// setPrimaryPhoto resolves which photo the directory shows. An explicit choice wins,
-// otherwise the school portrait does — a person who uploads without choosing has the
-// upload made primary at upload time, so falling back to the portrait here only
-// affects people who never chose at all.
-func (l *loader) setPrimaryPhoto(p *Person) error {
-	if p.PrimaryPhoto != "" {
-		for _, photo := range p.Photos {
-			if photo.Name == p.PrimaryPhoto {
-				p.PhotoURL = photo.URL
-				return nil
+	for i, photo := range p.Photos {
+		if photo.Name == p.primaryPhotoOverride {
+			if i != 0 {
+				p.Photos[0], p.Photos[i] = p.Photos[i], p.Photos[0]
 			}
-		}
-		return fmt.Errorf("%s has primary photo %q, which is not one of their photos", p.Email, p.PrimaryPhoto)
-	}
-	for _, photo := range p.Photos {
-		if photo.Source == "veracross" {
-			p.PhotoURL = photo.URL
-			p.PrimaryPhoto = photo.Name
-			return nil
+			return
 		}
 	}
-	return nil
 }
 
 func (l *loader) attachBlobs() error {
@@ -1134,15 +1141,34 @@ func (l *loader) attachBlobs() error {
 	}
 
 	for _, p := range l.people {
-		// The school portrait first, then a person's own uploads in sheet order, so a
-		// viewer flipping through them starts where the directory does.
-		for _, photo := range append(
-			[]Photo{{Name: p.veracrossPhoto, Source: "veracross"}},
-			named(uploaded[p.Email], "upload")...,
-		) {
-			if photo.Name == "" {
-				continue
+		// The implicit veracross-first entry only applies when it isn't already one
+		// of this person's own Photos-sheet rows: most people have never explicitly
+		// reordered or deleted it, so it's synthesized in front as before, but the
+		// moment a row exists for it (any mutation - upload, reorder, delete -
+		// persists a complete snapshot, veracross included if it should still be
+		// there), that explicit row is authoritative and it's never synthesized a
+		// second time. This - not "has this person touched the gallery at all" -
+		// is what lets deleting it actually stick.
+		names := uploaded[p.Email]
+		hasVeracrossRow := false
+		for _, name := range names {
+			if p.veracrossPhoto != "" && name == p.veracrossPhoto {
+				hasVeracrossRow = true
+				break
 			}
+		}
+		var ordered []Photo
+		if p.veracrossPhoto != "" && !hasVeracrossRow {
+			ordered = append(ordered, Photo{Name: p.veracrossPhoto, Source: "veracross"})
+		}
+		for _, name := range names {
+			source := "upload"
+			if name == p.veracrossPhoto {
+				source = "veracross"
+			}
+			ordered = append(ordered, Photo{Name: name, Source: source})
+		}
+		for _, photo := range ordered {
 			url, err := l.blobURL("photos", photo.Name, p.Email)
 			if err != nil {
 				return err
@@ -1150,8 +1176,9 @@ func (l *loader) attachBlobs() error {
 			photo.URL = url
 			p.Photos = append(p.Photos, photo)
 		}
-		if err := l.setPrimaryPhoto(p); err != nil {
-			return err
+		l.reconcileLegacyPrimary(p)
+		if len(p.Photos) > 0 {
+			p.PhotoURL = p.Photos[0].URL
 		}
 		url, err := l.blobURL("pronunciation", p.pronunciation, p.Email)
 		if err != nil {

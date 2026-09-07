@@ -76,6 +76,20 @@ func (c *Cache) applyOverride(email string, cells map[string]string) error {
 	return c.rebuild(c.currentTables().withOverride(email, cells), time.Now())
 }
 
+// applyPhotos folds a Photos-sheet rewrite for one person - an upload, a reorder, or
+// a delete, all just "this person's photo list is now exactly names" - into the
+// cached tables and reruns the model, mirroring applyOverride's trick so a write is
+// visible on the very next model build rather than only after the next sheet read.
+// cells, if non-nil, folds in an Overrides change (e.g. retiring the legacy primary
+// pointer) as part of the same rebuild.
+func (c *Cache) applyPhotos(email string, names []string, cells map[string]string) error {
+	tables := c.currentTables().withPhotos(email, names)
+	if len(cells) > 0 {
+		tables = tables.withOverride(email, cells)
+	}
+	return c.rebuild(tables, time.Now())
+}
+
 // HasStore reports whether a real blob store is configured, which the admin page uses
 // to explain why image uploads are unavailable in sample mode.
 func (c *Cache) HasStore() bool {

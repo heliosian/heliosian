@@ -987,7 +987,7 @@ function renderPeople() {
     facetDropdown('Grade', gradeOptions(), state.filterGrades, () => renderGrid()),
     facetDropdown('Classroom', state.model.classrooms.map(c => c.name), state.filterClassrooms, () => renderGrid()),
   );
-  if (isEveryone) {
+  if (isEveryone && tagNames().length) {
     controls.append(facetDropdown('Tags', tagNames(), state.filterTags, () => renderGrid()));
   }
   controls.append(search);
@@ -1231,7 +1231,9 @@ function filterControl(rerender, options = {}) {
     sections.push({label: 'City', values: cityOptions(), set: state.filterCities});
   }
   sections.push({label: 'Pronouns', values: pronounOptions(), set: state.filterPronouns});
-  sections.push({label: 'Tags', values: tagNames(), set: state.filterTags});
+  if (tagNames().length) {
+    sections.push({label: 'Tags', values: tagNames(), set: state.filterTags});
+  }
   for (const s of sections) {
     const head = el('div', 'filter-section');
     head.append(el('span', '', s.label), svg('chevron'));
@@ -1618,6 +1620,29 @@ function familyBand(p, family) {
 
 let personEdit = null;
 
+// The hero photo is always a square crop (same treatment as every other avatar in
+// the app), which can crop a photo awkwardly - this is the escape hatch: click it
+// to see the whole, uncropped image in an overlay. Closes on click-anywhere or Esc.
+function openPhotoLightbox(url) {
+  const overlay = el('div', 'photo-lightbox');
+  const img = el('img');
+  img.src = url;
+  img.alt = '';
+  overlay.append(img);
+  const close = () => {
+    overlay.remove();
+    document.removeEventListener('keydown', onKey);
+  };
+  function onKey(e) {
+    if (e.key === 'Escape') {
+      close();
+    }
+  }
+  overlay.addEventListener('click', close);
+  document.addEventListener('keydown', onKey);
+  document.body.append(overlay);
+}
+
 function renderPersonDetail(email) {
   const main = resetMain();
   const p = personByKey(email);
@@ -1640,10 +1665,11 @@ function renderPersonDetail(email) {
   const editable = canEditPerson(p.email);
   const editing = editable && personEdit === p.email;
   // The "update for the new year" nag (dashed outline + reminder text) is student-only,
-  // same as elsewhere - but anyone editable with no photo yet still gets a camera icon
-  // to make uploading easy, without implying it's overdue.
+  // same as elsewhere. The camera icon is now only for bootstrapping someone with no
+  // photo at all - once they have at least one, the photo grid below (with its own
+  // "+" tile) is the only way to add more, so there's exactly one way to do it.
   const nagPhoto = editable && photoNeedsUpdate(p);
-  const showPhotoEdit = editing || nagPhoto || (editable && !p.photoUrl);
+  const showPhotoEdit = editable && (p.photos || []).length === 0;
   const showFactsEdit = editing || (editable && factsNeedUpdate(p));
   const self = p.email === document.body.dataset.userEmail;
 
@@ -1665,6 +1691,7 @@ function renderPersonDetail(email) {
     const img = el('img', 'detail-photo');
     img.src = p.photoUrl;
     img.alt = '';
+    img.addEventListener('click', () => openPhotoLightbox(img.src));
     wrap.append(img);
   } else {
     // No uploaded photo: fall back to the same colored-initials shape the directory
@@ -1679,9 +1706,11 @@ function renderPersonDetail(email) {
     }
     wrap.append(uploadIcon('camera', 'Upload photo', 'image/*', 'person', p.email, 'photo', status));
     left.append(status);
+  } else if (nagPhoto) {
+    left.append(el('div', 'media-status', `Update ${self ? 'your' : `${firstName(p.fullName)}'s`} photo for the new year`));
   }
-  if ((p.photos || []).length > 1) {
-    left.append(photoSwitcher(p, wrap.querySelector('.detail-photo'), editable));
+  if ((p.photos || []).length >= 1) {
+    left.append(photoGrid(p, editable, editing, wrap.querySelector('.detail-photo')));
   }
   grid.append(left);
 
@@ -2699,10 +2728,11 @@ function renderEmailListPage() {
   controls.append(
     facetDropdown('Grade', gradeOptions(), state.filterGrades, () => renderTable()),
     facetDropdown('Classroom', state.model.classrooms.map(c => c.name), state.filterClassrooms, () => renderTable()),
-    facetDropdown('Tags', tagNames(), state.filterTags, () => renderTable()),
-    search,
-    download,
   );
+  if (tagNames().length) {
+    controls.append(facetDropdown('Tags', tagNames(), state.filterTags, () => renderTable()));
+  }
+  controls.append(search, download);
   header.append(controls);
   content.append(header);
 
@@ -3089,57 +3119,212 @@ function canEditPerson(email) {
   return Boolean(family && [...(family.kidEmails || []), ...(family.adultEmails || [])].includes(email));
 }
 
-// photoSwitcher shows every photo a person has and swaps the big one on click. Which
-// one the directory shows everywhere else is a separate question, and only somebody who
-// may edit the record gets to answer it.
-function photoSwitcher(p, img, editable) {
-  const box = el('div', 'photo-switcher');
-  const strip = el('div', 'photo-strip');
+// photoGrid shows up to 5 photo tiles (already primary-first - the server always
+// returns them in the order that's shown everywhere). Anyone who may edit the
+// record can always drag a tile to reorder it, or add one while under the cap -
+// no separate edit mode needed for either. The delete "x" on each tile is the one
+// control that waits for edit mode, same convention as every other field on this
+// page, since it's destructive. Clicking (rather than dragging) a tile - for
+// anyone, editable or not - just shows that photo bigger in the hero image above;
+// it changes nothing until a drag actually reorders something. Reordering is
+// pointer-events based rather than native HTML5 drag-and-drop, since the latter
+// doesn't work reliably on mobile/touch (iOS Safari in particular) and this app is
+// used heavily on phones.
+function photoGrid(p, editable, editing, heroImg) {
+  const grid = el('div', 'photo-grid');
   const status = el('div', 'media-status');
-  const choose = el('button', 'media-button', 'Show this one everywhere');
-  let showing = p.primaryPhoto;
-  // Hold the frame at the tallest of their photos, measured from the thumbnails the
-  // strip loads anyway. Without it a switch changes the frame's height and everything
-  // below it jumps.
-  const shapes = [];
-  const holdFrame = () => {
-    img.parentElement.classList.add('photo-fixed');
-    img.parentElement.style.aspectRatio = String(Math.min(...shapes));
-  };
-  const paint = () => {
-    for (const thumb of strip.children) {
-      thumb.classList.toggle('current', thumb.dataset.name === showing);
+
+  const previewPhoto = photo => {
+    if (heroImg) {
+      heroImg.src = photo.url;
     }
-    choose.hidden = showing === p.primaryPhoto;
   };
-  for (const photo of p.photos) {
-    const thumb = el('button', 'photo-thumb');
-    thumb.dataset.name = photo.name;
-    thumb.title = photo.source === 'veracross' ? 'School portrait' : 'Uploaded photo';
+
+  const currentOrder = () => [...grid.querySelectorAll('.photo-slot')].map(t => t.dataset.name);
+
+  const commitOrder = (revertOrder) => {
+    status.classList.remove('error');
+    const order = currentOrder();
+    fetch('/api/directory/reorder-photos', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: new URLSearchParams({key: p.email, order: order.join(',')}),
+    }).then(async res => {
+      if (!res.ok) {
+        status.classList.add('error');
+        status.textContent = await res.text();
+        const addTile = grid.querySelector('.photo-slot-add');
+        for (const name of revertOrder) {
+          grid.insertBefore(grid.querySelector(`.photo-slot[data-name="${CSS.escape(name)}"]`), addTile);
+        }
+        return;
+      }
+      await load();
+    });
+  };
+
+  const deletePhoto = (photo) => {
+    const order = currentOrder().filter(name => name !== photo.name);
+    status.classList.remove('error');
+    status.textContent = 'Removing…';
+    fetch('/api/directory/reorder-photos', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: new URLSearchParams({key: p.email, order: order.join(',')}),
+    }).then(async res => {
+      if (!res.ok) {
+        status.classList.add('error');
+        status.textContent = await res.text();
+        return;
+      }
+      await load();
+    });
+  };
+
+  function wireDrag(tile, photo) {
+    let pointerId = null;
+    let dragging = false;
+    let startOrder = null;
+    let startX = 0;
+    let startY = 0;
+    tile.addEventListener('pointerdown', e => {
+      if (e.pointerType === 'mouse' && e.button !== 0) {
+        return;
+      }
+      // Without this, holding and moving over the photo also kicks off the browser's
+      // own image-drag ghost and text/image selection highlight, fighting visually
+      // with the custom drag below.
+      e.preventDefault();
+      pointerId = e.pointerId;
+      startX = e.clientX;
+      startY = e.clientY;
+    });
+    tile.addEventListener('pointermove', e => {
+      if (pointerId !== e.pointerId) {
+        return;
+      }
+      if (!dragging) {
+        if (Math.hypot(e.clientX - startX, e.clientY - startY) < 6) {
+          return;
+        }
+        dragging = true;
+        startOrder = currentOrder();
+        tile.setPointerCapture(pointerId);
+        tile.classList.add('dragging');
+      }
+      const addTile = grid.querySelector('.photo-slot-add');
+      for (const sib of grid.querySelectorAll('.photo-slot')) {
+        if (sib === tile) {
+          continue;
+        }
+        const rect = sib.getBoundingClientRect();
+        const mid = rect.left + rect.width / 2;
+        const tileIsBefore = Boolean(sib.compareDocumentPosition(tile) & Node.DOCUMENT_POSITION_PRECEDING);
+        if (e.clientX < mid && !tileIsBefore) {
+          grid.insertBefore(tile, sib);
+          break;
+        }
+        if (e.clientX > mid && tileIsBefore) {
+          grid.insertBefore(tile, sib.nextSibling === addTile ? addTile : sib.nextSibling);
+          break;
+        }
+      }
+    });
+    const finish = e => {
+      if (pointerId !== e.pointerId) {
+        return;
+      }
+      if (dragging) {
+        tile.classList.remove('dragging');
+        const newOrder = currentOrder();
+        if (startOrder && newOrder.join(',') !== startOrder.join(',')) {
+          commitOrder(startOrder);
+        }
+      } else {
+        // A tap that never crossed the drag threshold: just preview it bigger.
+        previewPhoto(photo);
+      }
+      pointerId = null;
+      dragging = false;
+      startOrder = null;
+    };
+    tile.addEventListener('pointerup', finish);
+    tile.addEventListener('pointercancel', () => {
+      if (dragging && startOrder) {
+        const addTile = grid.querySelector('.photo-slot-add');
+        for (const name of startOrder) {
+          grid.insertBefore(grid.querySelector(`.photo-slot[data-name="${CSS.escape(name)}"]`), addTile);
+        }
+        tile.classList.remove('dragging');
+      }
+      pointerId = null;
+      dragging = false;
+      startOrder = null;
+    });
+  }
+
+  function addTile() {
+    const tile = el('label', 'photo-slot photo-slot-add');
+    tile.title = 'Add photo';
+    tile.append(el('span', '', '+'));
+    const input = el('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.hidden = true;
+    input.addEventListener('change', () => {
+      if (input.files.length) {
+        submitMedia('person', p.email, 'photo', input.files[0], input.files[0].name, status);
+      }
+    });
+    tile.append(input);
+    return tile;
+  }
+
+  p.photos.forEach((photo, i) => {
+    const tile = el('div', 'photo-slot' + (i === 0 ? ' photo-slot-primary' : ''));
+    tile.dataset.name = photo.name;
+    tile.title = photo.source === 'veracross' ? 'School portrait' : 'Uploaded photo';
     const face = el('img');
     face.src = thumbUrl(photo.url);
     face.alt = '';
-    face.addEventListener('load', () => {
-      if (face.naturalHeight) {
-        shapes.push(face.naturalWidth / face.naturalHeight);
-        holdFrame();
-      }
-    });
-    thumb.append(face);
-    thumb.addEventListener('click', () => {
-      img.src = photo.url;
-      showing = photo.name;
-      paint();
-    });
-    strip.append(thumb);
+    face.draggable = false;
+    tile.append(face);
+    if (editing) {
+      const del = el('button', 'photo-slot-delete', '×');
+      del.type = 'button';
+      del.title = 'Remove photo';
+      del.addEventListener('pointerdown', e => e.stopPropagation());
+      del.addEventListener('click', e => {
+        e.stopPropagation();
+        // The school portrait is harder to get back than a self-uploaded photo, so
+        // it gets a stronger warning, but either way this is permanent - confirm first.
+        const message = photo.source === 'veracross'
+          ? 'This is the school portrait from Veracross. Remove it anyway?'
+          : 'Remove this photo?';
+        if (!confirm(message)) {
+          return;
+        }
+        deletePhoto(photo);
+      });
+      tile.append(del);
+    }
+    if (editable) {
+      tile.classList.add('photo-slot-draggable');
+      wireDrag(tile, photo);
+    } else {
+      // No drag wired up here to distinguish a tap from a drag, so a plain click is
+      // always just a preview.
+      tile.addEventListener('click', () => previewPhoto(photo));
+    }
+    grid.append(tile);
+  });
+  if (editable && p.photos.length < 5) {
+    grid.append(addTile());
   }
-  box.append(strip);
-  if (editable) {
-    box.append(choose, status);
-    choose.addEventListener('click', () => submitField(p.email, 'primary-photo', showing, status));
-  }
-  paint();
-  return box;
+
+  const wrap = el('div');
+  wrap.append(grid, status);
+  return wrap;
 }
 
 function uploadIcon(iconName, title, accept, target, key, kind, status) {
