@@ -1593,9 +1593,29 @@ main {
   gap: 32px 16px;
 }
 
-.people-grid .person-photo,
-.people-grid .classroom-photo {
+.people-grid .person-photo {
   width: 238px;
+  max-width: 100%;
+}
+
+/* Classroom/grade tiles (and Room Parents, which reuses person-card/person-photo
+   for its rows) are just a badge icon, not a portrait - a lot smaller than a
+   normal person-card photo, with a matching narrower grid column so they don't
+   sit lost in the same 293px-wide column as a person card. */
+.classroom-grid {
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+}
+
+.classroom-grid .classroom-photo,
+.classroom-grid .person-photo {
+  width: 120px;
+  max-width: 100%;
+}
+
+/* Directory's own "Everyone" grid - about 30% smaller than the shared 238px
+   person-card photo used elsewhere (Staff, etc.). */
+.directory-grid .person-photo {
+  width: 167px;
   max-width: 100%;
 }
 

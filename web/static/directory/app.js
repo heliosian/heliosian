@@ -101,7 +101,7 @@ function isMobile() {
 
 const primaryNavItems = [
   {path: 'people', label: 'Directory'},
-  {path: 'classrooms', label: 'Classrooms'},
+  {path: 'classrooms', label: 'Gradebands'},
   {path: 'staff', label: 'Staff'},
 ];
 
@@ -112,7 +112,7 @@ const toolsNavItems = [
 
 const mobileNavSections = [
   {path: 'people', label: 'Directory'},
-  {path: 'classrooms', label: 'Classrooms'},
+  {path: 'classrooms', label: 'Gradebands'},
   {path: 'staff', label: 'Staff'},
   {path: 'my-family', label: 'My Family'},
   {path: 'email-list', label: 'Email List'},
@@ -256,7 +256,7 @@ function renderGlobalSearchResults(resultsEl, query) {
     return row;
   });
 
-  group('Classrooms', classrooms, c => {
+  group('Gradebands', classrooms, c => {
     const row = el('a', 'gsearch-result');
     row.href = withFrom('/classrooms/' + slugify(c.name));
     const avatar = el('div', 'gsearch-avatar gsearch-avatar-icon');
@@ -834,7 +834,7 @@ function personCard(p) {
 }
 
 function renderEveryone(grid) {
-  grid.className = 'people-grid';
+  grid.className = 'people-grid directory-grid';
   const q = state.q;
   const matches = state.everyoneOrder.filter(p => {
     const family = state.model.families[p.familyKey];
@@ -1350,20 +1350,20 @@ function fromCrumbs() {
   if (seg[0] === 'grades' && seg[1]) {
     const grade = state.model.grades.find(g => slugify(g.name) === seg[1]);
     if (grade) {
-      return [['Classrooms', classroomsBackOf(from)], [grade.name, back]];
+      return [['Gradebands', classroomsBackOf(from)], [grade.name, back]];
     }
   }
   if (seg[0] === 'classrooms' && seg[1]) {
     const classroom = state.model.classrooms.find(c => slugify(c.name) === seg[1]);
     if (classroom) {
-      return [['Classrooms', classroomsBackOf(from)], [classroom.name, back]];
+      return [['Gradebands', classroomsBackOf(from)], [classroom.name, back]];
     }
   }
   if (seg[0] === 'people' && !seg[1]) {
     return [['People', back]];
   }
   if (seg[0] === 'classrooms') {
-    return [['Classrooms', back]];
+    return [['Gradebands', back]];
   }
   if (seg[0] === 'staff') {
     return [['Staff', back]];
@@ -2409,8 +2409,8 @@ function badgeCard(imageUrl, label, name, href, color) {
 }
 
 const classroomsTabs = [
-  {key: 'by-classroom', label: 'Explore by Classroom', heading: 'Explore by Classroom'},
-  {key: 'by-grade', label: 'Explore by Grade', heading: 'Explore By Grade'},
+  {key: 'by-classroom', label: 'Classrooms', heading: 'Classrooms'},
+  {key: 'by-grade', label: 'Grades', heading: 'Grades'},
   {key: 'room-parents', label: 'Room Parents', heading: ''},
 ];
 
@@ -2425,7 +2425,7 @@ function renderClassroomsList(list) {
       continue;
     }
     list.append(el('h2', 'staff-section', group.label));
-    const grid = el('div', 'people-grid autofit');
+    const grid = el('div', 'people-grid autofit classroom-grid');
     for (const c of rows) {
       const students = studentsOf(p => p.classroom === c.name).length;
       grid.append(badgeCard(c.imageUrl, `${students} student${students === 1 ? '' : 's'}`, c.name,
@@ -2446,7 +2446,7 @@ function renderGradesList(list) {
       continue;
     }
     list.append(el('h2', 'staff-section', group.label));
-    const grid = el('div', 'people-grid autofit');
+    const grid = el('div', 'people-grid autofit classroom-grid');
     for (const name of rows) {
       const students = studentsOf(p => p.grade === name).length;
       const grade = state.model.grades.find(g => g.name === name);
@@ -2459,6 +2459,16 @@ function renderGradesList(list) {
   return count;
 }
 
+// abbreviateGrade turns a grade's full name ("Kindergarten", "Grade 4") into
+// the short form used in a parenthetical like "Harrison (Ravens - 4)".
+function abbreviateGrade(name) {
+  if (name === 'Kindergarten') {
+    return 'K';
+  }
+  const match = /^Grade (\d+)$/.exec(name || '');
+  return match ? match[1] : name;
+}
+
 function kidsSummary(parent) {
   const family = state.model.families[parent.familyKey];
   if (!family) {
@@ -2467,7 +2477,7 @@ function kidsSummary(parent) {
   return (family.kidEmails || [])
     .map(e => byEmail[e])
     .filter(Boolean)
-    .map(k => `${firstName(k.fullName)} (${[k.classroom, k.grade].filter(Boolean).join(' - ')})`)
+    .map(k => `${firstName(k.fullName)} (${[k.classroom, abbreviateGrade(k.grade)].filter(Boolean).join(' - ')})`)
     .join(' • ');
 }
 
@@ -2483,14 +2493,14 @@ function renderRoomParents(list) {
       continue;
     }
     list.append(el('h2', 'staff-section', group.label));
-    const grid = el('div', 'people-grid autofit');
+    const grid = el('div', 'people-grid autofit classroom-grid');
     for (const p of parents) {
       const card = el('a', 'person-card');
       card.href = personLink(p);
       card.append(cardMore(p.email));
       card.append(applyRingColor(photoOrInitials(p.photoUrl, p.fullName, 'person-photo'), p));
-      card.append(el('div', 'role-label', kidsSummary(p)));
       card.append(el('div', 'person-name', p.fullName));
+      card.append(el('div', 'person-sub', kidsSummary(p)));
       grid.append(card);
       count++;
     }
@@ -2509,7 +2519,7 @@ function renderClassroomsPage() {
   const main = resetMain();
 
   const pageHeader = el('div', 'page-header container');
-  pageHeader.append(el('h1', 'page-title', 'Classrooms'));
+  pageHeader.append(el('h1', 'page-title', 'Gradebands'));
   main.append(pageHeader);
 
   main.append(tabStrip(classroomsTabs, state.classTab, 1, key => {
@@ -2690,7 +2700,7 @@ function renderRoster(title, image, groups, backLabel) {
   const back = from && from.pathname === '/classrooms' ? from.pathname + from.search : '/classrooms';
 
   const header = el('div', 'roster-header');
-  header.append(breadcrumbs([['Classrooms', back], [title, null]]));
+  header.append(breadcrumbs([['Gradebands', back], [title, null]]));
 
   const headWrap = el('div', 'container');
   const head = el('div', 'class-head');
@@ -3969,7 +3979,7 @@ function tabHref(key) {
 
 const sectionTitles = {
   people: 'People',
-  classrooms: 'Classrooms',
+  classrooms: 'Gradebands',
   'my-family': 'My Family',
   staff: 'Staff',
   map: 'Map',
