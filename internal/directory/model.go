@@ -10,11 +10,16 @@ const (
 
 // Every photo is one content-addressed object; which of a person's photos came from
 // Veracross is recorded in the sheet, not in the object name. Source is "veracross"
-// or "upload".
+// or "upload". A photo may also have a linked square crop, another content-addressed
+// object recorded alongside it - cropName carries that object's name for reuse when
+// a caller needs to rewrite a person's full photo list without dropping it (it isn't
+// exported to JSON; the frontend only ever needs the two resolved URLs below).
 type Photo struct {
-	Name   string `json:"name"`
-	Source string `json:"source"`
-	URL    string `json:"url"`
+	Name        string `json:"name"`
+	Source      string `json:"source"`
+	URL         string `json:"url"`         // the crop, if one exists, else the original
+	OriginalURL string `json:"originalUrl"` // always the original, uncropped image
+	cropName    string
 }
 
 type Person struct {

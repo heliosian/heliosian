@@ -70,6 +70,7 @@ func RegisterUpload(mux *http.ServeMux, cache *Cache, sheet *data.Sheet, store *
 	mux.HandleFunc("POST /api/directory/optout", u.optOut)
 	mux.HandleFunc("POST /api/directory/edit", u.edit)
 	mux.HandleFunc("POST /api/directory/reorder-photos", u.reorderPhotos)
+	mux.HandleFunc("POST /api/directory/crop-photo", u.cropPhoto)
 }
 
 func today() string {
@@ -288,11 +289,11 @@ func (u uploader) upload(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, fmt.Sprintf("already has the maximum of %d photos", maxPhotos), http.StatusBadRequest)
 			return
 		}
-		order := make([]string, len(person.Photos), len(person.Photos)+1)
+		order := make([]photoRef, len(person.Photos), len(person.Photos)+1)
 		for i, photo := range person.Photos {
-			order[i] = photo.Name
+			order[i] = photoRef{Name: photo.Name, CropName: photo.cropName}
 		}
-		order = append(order, name)
+		order = append(order, photoRef{Name: name})
 		cells := map[string]string{"Photo Updated": today()}
 		previous := map[string]string{"Photo Updated": person.PhotoUpdated}
 		if !u.setPhotos(w, me, key, order, cells, previous, "photo upload") {
@@ -306,17 +307,23 @@ func (u uploader) upload(w http.ResponseWriter, r *http.Request) {
 	row, cells, previous := key, map[string]string{}, map[string]string{}
 	switch {
 	case kind == "photo":
-		row = strings.ToLower(me)
+		family := model.Families[key]
+		row = familyRow(family)
 		cells["Family Photo"], cells["Family Photo Updated"] = name, today()
-		previous["Family Photo"] = model.Families[key].photo
-		previous["Family Photo Updated"] = model.Families[key].PhotoUpdated
+		previous["Family Photo"] = family.photo
+		previous["Family Photo Updated"] = family.PhotoUpdated
 	case target == "family":
-		row = strings.ToLower(me)
+		family := model.Families[key]
+		row = familyRow(family)
 		cells["Family Pronunciation"] = name
-		previous["Family Pronunciation"] = model.Families[key].pronunciation
+		previous["Family Pronunciation"] = family.pronunciation
 	default:
 		cells["Pronunciation"] = name
 		previous["Pronunciation"] = model.Person(key).pronunciation
+	}
+	if row == "" {
+		http.Error(w, "no such family", http.StatusBadRequest)
+		return
 	}
 	if !u.applyOverride(w, me, row, kind+" upload", cells, previous) {
 		return
@@ -327,14 +334,14 @@ func (u uploader) upload(w http.ResponseWriter, r *http.Request) {
 
 // setPhotos replaces a person's complete photo list and folds the change into the
 // running model before responding, so the caller's very next model fetch sees it.
-// Uploading (append), drag-reorder (permute), and deleting (remove one) all funnel
-// through this one path rather than three ad hoc ones, since each is really just
-// "this person's photo list is now exactly order" - one place to get the
-// sheet-write-then-rebuild interaction right instead of three.
-func (u uploader) setPhotos(w http.ResponseWriter, me, key string, order []string, cells, previous map[string]string, changeAction string) bool {
+// Uploading (append), drag-reorder (permute), deleting (remove one), and cropping
+// (attach a crop to one) all funnel through this one path rather than four ad hoc
+// ones, since each is really just "this person's photo list is now exactly order" -
+// one place to get the sheet-write-then-rebuild interaction right instead of four.
+func (u uploader) setPhotos(w http.ResponseWriter, me, key string, order []photoRef, cells, previous map[string]string, changeAction string) bool {
 	rows := make([][]string, len(order))
-	for i, name := range order {
-		rows[i] = []string{key, name}
+	for i, ref := range order {
+		rows[i] = []string{key, ref.Name, ref.CropName}
 	}
 	rewritten := make(chan error, 1)
 	u.queue.Add(func() {
@@ -391,10 +398,21 @@ func (u uploader) reorderPhotos(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "not allowed to edit this record", http.StatusForbidden)
 		return
 	}
-	order := splitNonEmpty(r.FormValue("order"), ",")
-	if !isPhotoSubset(order, person.Photos) {
+	names := splitNonEmpty(r.FormValue("order"), ",")
+	if !isPhotoSubset(names, person.Photos) {
 		http.Error(w, "order must name only this person's current photos, with no duplicates", http.StatusBadRequest)
 		return
+	}
+	// A reorder or delete must carry each photo's existing crop link forward - the
+	// client only ever sends names, never crops, so those are looked up here rather
+	// than trusted from the request.
+	cropOf := map[string]string{}
+	for _, photo := range person.Photos {
+		cropOf[photo.Name] = photo.cropName
+	}
+	order := make([]photoRef, len(names))
+	for i, name := range names {
+		order[i] = photoRef{Name: name, CropName: cropOf[name]}
 	}
 	cells, previous := map[string]string{}, map[string]string{}
 	if person.primaryPhotoOverride != "" {
@@ -411,6 +429,93 @@ func (u uploader) reorderPhotos(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log.Printf("reorder-photos: %s set %d photos for %s", me, len(order), key)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// cropPhoto attaches a square crop to one of a person's existing photos - name
+// identifies which one, and the uploaded file becomes its crop, replacing any
+// crop it already had. name may instead be empty, meaning "this person has no
+// photos of their own and is looking at their family's photo as a stand-in
+// (attachBlobs falls back to it) - adopt that family photo as their first
+// personal photo, with this crop attached," since there's no existing entry to
+// attach a crop to otherwise.
+func (u uploader) cropPhoto(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 30<<20)
+	if err := r.ParseMultipartForm(30 << 20); err != nil {
+		http.Error(w, "upload too large or malformed", http.StatusBadRequest)
+		return
+	}
+	key := strings.ToLower(strings.TrimSpace(r.FormValue("key")))
+	name := r.FormValue("name")
+	me := effectiveEmail(u.cache, r)
+	model := u.cache.Model()
+	person := model.Person(key)
+	if person == nil {
+		http.Error(w, "no such person", http.StatusBadRequest)
+		return
+	}
+	if !u.mayEdit(model, me, "person", key) {
+		http.Error(w, "not allowed to edit this record", http.StatusForbidden)
+		return
+	}
+
+	var order []photoRef
+	if name == "" {
+		if len(person.Photos) != 0 {
+			http.Error(w, "name is required once this person has photos of their own", http.StatusBadRequest)
+			return
+		}
+		family, ok := model.Families[person.FamilyKey]
+		if !ok || family.photo == "" {
+			http.Error(w, "no family photo to adopt", http.StatusBadRequest)
+			return
+		}
+		name = family.photo
+		order = []photoRef{{Name: name}}
+	} else {
+		if !isPhotoSubset([]string{name}, person.Photos) {
+			http.Error(w, "not one of this person's photos", http.StatusBadRequest)
+			return
+		}
+		order = make([]photoRef, len(person.Photos))
+		for i, photo := range person.Photos {
+			order[i] = photoRef{Name: photo.Name, CropName: photo.cropName}
+		}
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, "missing file", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+	content, err := io.ReadAll(file)
+	if err != nil || len(content) == 0 {
+		http.Error(w, "unreadable file", http.StatusBadRequest)
+		return
+	}
+	mimeType, ext, err := mediaType("photo", content, header.Header.Get("Content-Type"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	cropName := fmt.Sprintf("%x.%s", sha256.Sum256(content), ext)
+	if err := u.store.Put("photos", cropName, mimeType, content); err != nil {
+		serverError(w, err)
+		return
+	}
+	for i := range order {
+		if order[i].Name == name {
+			order[i].CropName = cropName
+		}
+	}
+
+	cells := map[string]string{"Photo Updated": today()}
+	previous := map[string]string{"Photo Updated": person.PhotoUpdated}
+	if !u.setPhotos(w, me, key, order, cells, previous, "photo crop") {
+		return
+	}
+	log.Printf("crop-photo: %s set a crop on %s's photo %s", me, key, name)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -441,6 +546,25 @@ func isPhotoSubset(order []string, photos []Photo) bool {
 		seen[name] = true
 	}
 	return true
+}
+
+// familyRow returns an email belonging to family whose Overrides row can carry
+// a family-level cell (Family Photo, Family Pronunciation) - family data lives
+// on a member's own row (see buildFamilies' merge across parents), so writing
+// it always has to name an actual member of the family being edited. In
+// self-service mode the acting user already is one, but in super-edit mode an
+// admin editing someone else's family isn't - using the admin's own email there
+// would silently attribute the change to the admin's own family instead.
+// Prefers an adult; falls back to a kid for a family with none (empty only for
+// a family key that doesn't actually exist).
+func familyRow(family Family) string {
+	if len(family.AdultEmails) > 0 {
+		return strings.ToLower(family.AdultEmails[0])
+	}
+	if len(family.KidEmails) > 0 {
+		return strings.ToLower(family.KidEmails[0])
+	}
+	return ""
 }
 
 func (u uploader) mayEdit(model *Model, me, target, key string) bool {

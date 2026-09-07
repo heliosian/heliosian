@@ -142,6 +142,91 @@ func TestClearingLegacyPrimaryPhotoOverrideSucceeds(t *testing.T) {
 	}
 }
 
+// fakeBlobs simulates specific objects existing in the bucket, unlike noBlobs
+// (which simulates none existing) - needed to exercise real photo/crop URL
+// resolution rather than the empty-name early return every other test relies on.
+type fakeBlobs map[string]bool
+
+func (f fakeBlobs) Has(key string) bool { return f[key] }
+
+// A photo with a linked crop shows the crop wherever it's the effective, square
+// display URL, while the original stays available separately for "View photo".
+func TestPhotoCropResolvesOverOriginal(t *testing.T) {
+	tables, err := ReadTables(&data.Dir{Root: "../../sampledata"})
+	if err != nil {
+		t.Fatalf("read sample tables: %v", err)
+	}
+	email := "elena.torres@heliosschool.org"
+	withCrop := tables.withPhotos(email, []photoRef{{Name: "orig.jpg", CropName: "crop.jpg"}})
+	blobs := fakeBlobs{"photos/orig.jpg": true, "photos/crop.jpg": true}
+	m, err := BuildModel(withCrop, blobs, noBlobs{})
+	if err != nil {
+		t.Fatalf("build model with a crop: %v", err)
+	}
+	p := m.Person(email)
+	if len(p.Photos) != 1 {
+		t.Fatalf("photos = %+v, want exactly one", p.Photos)
+	}
+	photo := p.Photos[0]
+	if photo.URL != "/photos/crop.jpg" {
+		t.Errorf("URL = %q, want the crop", photo.URL)
+	}
+	if photo.OriginalURL != "/photos/orig.jpg" {
+		t.Errorf("OriginalURL = %q, want the original regardless of the crop", photo.OriginalURL)
+	}
+}
+
+// A crop naming an object that isn't actually in the bucket - the object went
+// missing, or the sheet row is stale - falls back to the original rather than
+// failing the whole model load, unlike an unresolvable original name.
+func TestMissingCropFallsBackToOriginal(t *testing.T) {
+	tables, err := ReadTables(&data.Dir{Root: "../../sampledata"})
+	if err != nil {
+		t.Fatalf("read sample tables: %v", err)
+	}
+	email := "elena.torres@heliosschool.org"
+	withCrop := tables.withPhotos(email, []photoRef{{Name: "orig.jpg", CropName: "missing-crop.jpg"}})
+	blobs := fakeBlobs{"photos/orig.jpg": true}
+	m, err := BuildModel(withCrop, blobs, noBlobs{})
+	if err != nil {
+		t.Fatalf("a missing crop should not fail the model load: %v", err)
+	}
+	p := m.Person(email)
+	if len(p.Photos) != 1 || p.Photos[0].URL != "/photos/orig.jpg" {
+		t.Errorf("photos = %+v, want URL to fall back to the original", p.Photos)
+	}
+}
+
+// Someone with no photos of their own shows their family's photo instead of blank
+// initials, and PhotoUpdated stays unset so the "add your own" nag isn't silenced.
+func TestPersonWithNoPhotosFallsBackToFamilyPhoto(t *testing.T) {
+	tables, err := ReadTables(&data.Dir{Root: "../../sampledata"})
+	if err != nil {
+		t.Fatalf("read sample tables: %v", err)
+	}
+	email := "elena.torres@heliosschool.org"
+	withFamilyPhoto := tables.withOverride(email, map[string]string{"Family Photo": "family.jpg"})
+	blobs := fakeBlobs{"photos/family.jpg": true}
+	m, err := BuildModel(withFamilyPhoto, blobs, noBlobs{})
+	if err != nil {
+		t.Fatalf("build model with a family photo: %v", err)
+	}
+	p := m.Person("mia.torres@heliosschool.org")
+	if p == nil || p.FamilyKey == "" {
+		t.Fatalf("mia.torres has no family: %+v", p)
+	}
+	if len(p.Photos) != 0 {
+		t.Fatalf("test assumes mia.torres has no photos of her own, got %+v", p.Photos)
+	}
+	family := m.Families[p.FamilyKey]
+	if p.PhotoURL != family.PhotoURL || p.PhotoURL != "/photos/family.jpg" {
+		t.Errorf("PhotoURL = %q, want it to fall back to the family photo %q", p.PhotoURL, family.PhotoURL)
+	}
+	if p.PhotoUpdated != "" {
+		t.Errorf("PhotoUpdated = %q, want it to stay unset so photoNeedsUpdate still nags for a real photo", p.PhotoUpdated)
+	}
+}
+
 func model(t *testing.T, email string) *Person {
 	t.Helper()
 	p := sampleModel(t).Person(email)

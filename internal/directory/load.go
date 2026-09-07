@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"maps"
 	"regexp"
 	"slices"
@@ -303,19 +304,32 @@ func applyCells(row, cells map[string]string) {
 	}
 }
 
+// photoRef names one of a person's photos and, if set, the blob name of its linked
+// square crop - the version shown wherever this photo renders as a square (grid
+// tile, hero, roster avatar). The original itself is untouched and is what
+// "View photo" always shows.
+type photoRef struct {
+	Name     string
+	CropName string
+}
+
 // withPhotos mirrors what a Photos-sheet rewrite just wrote: replace this email's
-// rows wholesale with names, in order. Every mutation of a person's photo list
-// (upload, reorder, delete) rewrites the full list this way, so this is the only
-// shape a change to Photos ever takes.
-func (t *Tables) withPhotos(email string, names []string) *Tables {
-	rows := make([]map[string]string, 0, len(t.Photos)+len(names))
+// rows wholesale with refs, in order. Every mutation of a person's photo list
+// (upload, reorder, delete, crop) rewrites the full list this way, so this is the
+// only shape a change to Photos ever takes.
+func (t *Tables) withPhotos(email string, refs []photoRef) *Tables {
+	rows := make([]map[string]string, 0, len(t.Photos)+len(refs))
 	for _, row := range t.Photos {
 		if !strings.EqualFold(row["Email"], email) {
 			rows = append(rows, row)
 		}
 	}
-	for _, name := range names {
-		rows = append(rows, map[string]string{"Email": email, "Photo Name": name})
+	for _, ref := range refs {
+		row := map[string]string{"Email": email, "Photo Name": ref.Name}
+		if ref.CropName != "" {
+			row["Crop Name"] = ref.CropName
+		}
+		rows = append(rows, row)
 	}
 	out := *t
 	out.Photos = rows
@@ -1125,7 +1139,7 @@ func (l *loader) attachBlobs() error {
 	if l.blobs == nil {
 		return nil
 	}
-	uploaded := map[string][]string{}
+	uploaded := map[string][]photoRef{}
 	for _, row := range l.photoRows {
 		email := strings.ToLower(row["Email"])
 		name := row["Photo Name"]
@@ -1137,7 +1151,7 @@ func (l *loader) attachBlobs() error {
 		if l.people[email] == nil {
 			continue
 		}
-		uploaded[email] = append(uploaded[email], name)
+		uploaded[email] = append(uploaded[email], photoRef{Name: name, CropName: row["Crop Name"]})
 	}
 
 	for _, p := range l.people {
@@ -1149,31 +1163,39 @@ func (l *loader) attachBlobs() error {
 		// there), that explicit row is authoritative and it's never synthesized a
 		// second time. This - not "has this person touched the gallery at all" -
 		// is what lets deleting it actually stick.
-		names := uploaded[p.Email]
+		refs := uploaded[p.Email]
 		hasVeracrossRow := false
-		for _, name := range names {
-			if p.veracrossPhoto != "" && name == p.veracrossPhoto {
+		for _, ref := range refs {
+			if p.veracrossPhoto != "" && ref.Name == p.veracrossPhoto {
 				hasVeracrossRow = true
 				break
 			}
 		}
-		var ordered []Photo
+		var ordered []photoRef
 		if p.veracrossPhoto != "" && !hasVeracrossRow {
-			ordered = append(ordered, Photo{Name: p.veracrossPhoto, Source: "veracross"})
+			ordered = append(ordered, photoRef{Name: p.veracrossPhoto})
 		}
-		for _, name := range names {
+		ordered = append(ordered, refs...)
+		for _, ref := range ordered {
 			source := "upload"
-			if name == p.veracrossPhoto {
+			if ref.Name == p.veracrossPhoto {
 				source = "veracross"
 			}
-			ordered = append(ordered, Photo{Name: name, Source: source})
-		}
-		for _, photo := range ordered {
-			url, err := l.blobURL("photos", photo.Name, p.Email)
+			url, err := l.blobURL("photos", ref.Name, p.Email)
 			if err != nil {
 				return err
 			}
-			photo.URL = url
+			photo := Photo{Name: ref.Name, Source: source, URL: url, OriginalURL: url, cropName: ref.CropName}
+			// A crop that fails to resolve (e.g. its object went missing) just falls
+			// back to the original rather than failing the whole model load - unlike
+			// the original name above, a crop is display cosmetics, not data integrity.
+			if ref.CropName != "" {
+				if cropURL, err := l.blobURL("photos", ref.CropName, p.Email); err != nil {
+					log.Printf("[WARN] resolve crop for %s's photo %s: %v", p.Email, ref.Name, err)
+				} else {
+					photo.URL = cropURL
+				}
+			}
 			p.Photos = append(p.Photos, photo)
 		}
 		l.reconcileLegacyPrimary(p)
@@ -1197,6 +1219,18 @@ func (l *loader) attachBlobs() error {
 		}
 		family.PhotoURL, family.PronunciationURL = photo, pronunciation
 		l.model.Families[key] = family
+	}
+	// A person with no photos of their own shows the family photo instead of blank
+	// initials - PhotoUpdated stays unset either way, so photoNeedsUpdate (frontend)
+	// still nags them to add their own rather than treating the family photo as
+	// satisfying that need forever.
+	for _, p := range l.people {
+		if len(p.Photos) > 0 {
+			continue
+		}
+		if family, ok := l.model.Families[p.FamilyKey]; ok && family.PhotoURL != "" {
+			p.PhotoURL = family.PhotoURL
+		}
 	}
 	return nil
 }

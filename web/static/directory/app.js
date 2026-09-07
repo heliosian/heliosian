@@ -88,6 +88,11 @@ const icons = {
   lock: '<svg viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
   gear: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
   volume: '<svg viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>',
+  eye: '<svg viewBox="0 0 24 24"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>',
+  star: '<svg viewBox="0 0 24 24"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/></svg>',
+  crop: '<svg viewBox="0 0 24 24"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg>',
+  trash: '<svg viewBox="0 0 24 24"><path d="M10 11v6"/><path d="M14 11v6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>',
+  'zoom-in': '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/><line x1="11" x2="11" y1="8" y2="14"/><line x1="8" x2="14" y1="11" y2="11"/></svg>',
 };
 
 function isMobile() {
@@ -1712,12 +1717,54 @@ function renderPersonDetail(email) {
   const grid = el('div', 'detail-grid');
   const left = el('div');
   const wrap = el('div', 'photo-wrap' + (nagPhoto ? ' needs-update' : ''));
+  // Shared between the hero's own photo menu and photoGrid below, so an action
+  // from either place reports success/error in the same spot.
+  const status = el('div', 'media-status');
+  // Set by photoGrid below, if rendered, so tapping a grid tile to preview a
+  // different photo in the hero also redirects the hero's own menu to act on
+  // that photo instead of always the primary one - see the comment on
+  // photoMenu's getPhoto param.
+  let onHeroPreview = null;
   if (p.photoUrl) {
+    // Person.Photos is `omitempty` in the JSON, so p.photos is undefined - not []
+    // - whenever nobody has ever uploaded a photo for this person; every other
+    // read of it in this file already guards for that except the two below.
+    const photos = p.photos || [];
     const img = el('img', 'detail-photo');
     img.src = p.photoUrl;
     img.alt = '';
-    img.addEventListener('click', () => openPhotoLightbox(img.src));
     wrap.append(img);
+    const initialHeroPhoto = photos.length ? photos[0] : {name: '', url: p.photoUrl, originalUrl: p.photoUrl};
+    // Reflects whichever photo the hero is currently showing, same as
+    // photoMenu's getPhoto - a preview swap (photoGrid's previewPhoto) can put a
+    // different photo on screen than the one the page rendered with.
+    const updateCropBadge = photo => {
+      wrap.querySelector('.photo-crop-badge')?.remove();
+      if (photo.url !== photo.originalUrl) {
+        wrap.append(cropBadge());
+      }
+    };
+    updateCropBadge(initialHeroPhoto);
+    if (editable) {
+      // The hero starts out showing this person's own primary photo once they
+      // have any - or, if they don't yet, their family's photo shown as a
+      // stand-in (attachBlobs falls back to it server-side; photos.length === 0
+      // is how the frontend tells the two apart, and how photoMenu knows not to
+      // offer deleting a photo that isn't really theirs yet). Cropping the
+      // fallback adopts the family photo as this person's first personal photo
+      // (cropPhoto, internal/directory/upload.go).
+      let currentHeroPhoto = initialHeroPhoto;
+      const menu = photoMenu(p, () => currentHeroPhoto, editing, status);
+      img.addEventListener('click', () => togglePhotoMenu(menu));
+      wrap.append(menu);
+      onHeroPreview = photo => {
+        currentHeroPhoto = photo;
+        updateCropBadge(photo);
+      };
+    } else {
+      img.addEventListener('click', () => openPhotoLightbox(photos.length ? photos[0].originalUrl : p.photoUrl));
+      onHeroPreview = updateCropBadge;
+    }
   } else {
     // No uploaded photo: fall back to the same colored-initials shape the directory
     // grid uses instead of an empty gray box, so a profile never looks broken.
@@ -1725,17 +1772,18 @@ function renderPersonDetail(email) {
   }
   left.append(wrap);
   if (showPhotoEdit) {
-    const status = el('div', 'media-status');
     if (nagPhoto) {
       status.textContent = `Add ${self ? 'your' : `${firstName(p.fullName)}'s`} photo for the new year`;
     }
     wrap.append(uploadIcon('camera', 'Upload photo', 'image/*', 'person', p.email, 'photo', status));
-    left.append(status);
   } else if (nagPhoto) {
     left.append(el('div', 'media-status', `Update ${self ? 'your' : `${firstName(p.fullName)}'s`} photo for the new year`));
   }
   if ((p.photos || []).length >= 1) {
-    left.append(photoGrid(p, editable, editing, wrap.querySelector('.detail-photo')));
+    left.append(photoGrid(p, editable, editing, wrap.querySelector('.detail-photo'), status, onHeroPreview));
+  }
+  if (editable) {
+    left.append(status);
   }
   grid.append(left);
 
@@ -3183,6 +3231,53 @@ async function submitMedia(target, key, kind, file, name, status) {
   await load();
 }
 
+// submitPhotoOrder posts a person's complete photo order to the reorder-photos
+// endpoint - reordering (drag), deleting (order with one name missing), and
+// setting a photo primary (order with that name moved to the front) are all just
+// this same request, so drag-reorder, delete, and the photo menu's "Set as
+// primary" all funnel through it instead of three separate copies of this fetch.
+// onError, if given, runs only on failure - drag-reorder uses it to snap the tiles
+// back to where they were; delete and "Set as primary" have no DOM order to revert.
+async function submitPhotoOrder(key, order, status, onError) {
+  status.classList.remove('error');
+  const res = await fetch('/api/directory/reorder-photos', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: new URLSearchParams({key, order: order.join(',')}),
+  });
+  if (!res.ok) {
+    status.classList.add('error');
+    status.textContent = await res.text();
+    if (onError) {
+      onError();
+    }
+    return false;
+  }
+  await load();
+  return true;
+}
+
+// submitCrop posts a cropped square as the crop for one of a person's photos -
+// name is that photo's name, or '' when this person has no photos of their own
+// yet and is cropping the family photo shown in its place (see cropPhoto,
+// internal/directory/upload.go), which adopts it as their first personal photo.
+async function submitCrop(key, name, blob, status) {
+  status.classList.remove('error');
+  status.textContent = 'Saving crop…';
+  const form = new FormData();
+  form.append('key', key);
+  form.append('name', name);
+  form.append('file', blob, 'crop.jpg');
+  const res = await fetch('/api/directory/crop-photo', {method: 'POST', body: form});
+  if (!res.ok) {
+    status.classList.add('error');
+    status.textContent = await res.text();
+    return false;
+  }
+  await load();
+  return true;
+}
+
 function canEditPerson(email) {
   const meEmail = document.body.dataset.userEmail;
   if (email === meEmail || state.model.superEdit) {
@@ -3193,66 +3288,337 @@ function canEditPerson(email) {
   return Boolean(family && [...(family.kidEmails || []), ...(family.adultEmails || [])].includes(email));
 }
 
+// togglePhotoMenu opens/closes a photoMenu. Its CSS anchors with `right: 0`,
+// which keeps it on screen for a trigger near the right edge (e.g. the "more"
+// menu, always top-right) but a photo tile can sit anywhere across a grid - on a
+// narrow/mobile viewport a tile nearer the left edge pushes the menu's left side
+// past x=0. After opening, nudge it back on screen with a transform once we can
+// measure where the pure-CSS position actually landed.
+function togglePhotoMenu(menu) {
+  menu.hidden = !menu.hidden;
+  if (menu.hidden) {
+    return;
+  }
+  menu.rebuild();
+  menu.style.transform = '';
+  const rect = menu.getBoundingClientRect();
+  const margin = 8;
+  let shift = 0;
+  if (rect.left < margin) {
+    shift = margin - rect.left;
+  } else if (rect.right > window.innerWidth - margin) {
+    shift = window.innerWidth - margin - rect.right;
+  }
+  if (shift) {
+    menu.style.transform = `translateX(${shift}px)`;
+  }
+}
+
+// cropBadge marks the hero photo as showing a manually cropped square rather
+// than the plain auto-crop of the original - grid tiles are small enough that
+// it would just add clutter, so this is hero-only. A photo's url differs from
+// its originalUrl exactly when a crop is currently applied and resolves (see
+// attachBlobs, internal/directory/load.go) - that's the signal used here rather
+// than a separate field, since it's already exactly what "has a crop" means.
+function cropBadge() {
+  const badge = el('div', 'photo-crop-badge');
+  badge.title = 'Manually cropped';
+  badge.append(svg('zoom-in'));
+  return badge;
+}
+
+// photoMenu builds the Facebook-style "View photo / Set as primary / Delete
+// photo / Crop photo" popup for whichever photo the hero is currently showing.
+// Hidden by default; the caller wires a trigger to call togglePhotoMenu(menu),
+// which rebuilds the item list fresh on every open (via menu.rebuild, set here)
+// and appends the menu inside that trigger's own position:relative container.
+// Reuses the app-wide outside-click/Escape closer (below, alongside
+// .more-menu/.card-menu) for free - no bespoke close handling here.
+//
+// getPhoto() returns the photo currently shown in the hero, which isn't always
+// p.photos[0]: tapping a grid tile (photoGrid's previewPhoto) swaps the hero's
+// preview without touching this menu, so the menu has to ask fresh each time it
+// opens rather than close over one photo at build time - otherwise it would
+// keep acting on the primary photo even while a different one is on screen.
+// "Set as primary" is hidden when the current photo already is; a grid tile's
+// own click never opens a menu at all (see photoGrid) - drag it to the front,
+// or preview it and use this menu, both end up here. photo.name is '' when
+// this person has no photos of their own and the hero is showing their
+// family's photo as a stand-in (see renderPersonDetail) - there's nothing of
+// theirs to delete in that case, so Delete photo is left off entirely rather
+// than offered and rejected. Delete otherwise only shows in editing mode, same
+// convention as the grid tiles' own delete "x" - destructive actions wait for
+// edit mode.
+function photoMenu(p, getPhoto, editing, status) {
+  const menu = el('div', 'photo-menu');
+  menu.hidden = true;
+  menu.rebuild = () => {
+    menu.replaceChildren();
+    const photo = getPhoto();
+    const photos = p.photos || [];
+    const isPrimary = !photos.length || photo.name === photos[0].name;
+    const item = (iconName, label, action) => {
+      const btn = el('button', 'photo-menu-item');
+      btn.type = 'button';
+      btn.append(svg(iconName), el('span', '', label));
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        menu.hidden = true;
+        action();
+      });
+      menu.append(btn);
+    };
+    item('eye', 'View photo', () => openPhotoLightbox(photo.originalUrl));
+    if (!isPrimary) {
+      item('star', 'Set as primary', () => {
+        const order = [photo.name, ...photos.map(ph => ph.name).filter(n => n !== photo.name)];
+        submitPhotoOrder(p.email, order, status);
+      });
+    }
+    if (editing && photo.name) {
+      item('trash', 'Delete photo', () => {
+        // The school portrait is harder to get back than a self-uploaded photo, so
+        // it gets a stronger warning, but either way this is permanent - confirm first.
+        const message = photo.source === 'veracross'
+          ? 'This is the school portrait from Veracross. Remove it anyway?'
+          : 'Remove this photo?';
+        if (!confirm(message)) {
+          return;
+        }
+        status.textContent = 'Removing…';
+        const order = photos.map(ph => ph.name).filter(name => name !== photo.name);
+        submitPhotoOrder(p.email, order, status);
+      });
+    }
+    item('crop', 'Crop photo', () => openCropTool(p, photo, status));
+  };
+  menu.rebuild();
+  return menu;
+}
+
+// openCropTool is a full-screen square-crop editor for one of a person's photos.
+// There's no stored crop rectangle to restore - only the resulting cropped image
+// is saved - so cropping a photo that already has a crop just starts fresh from
+// the original and replaces it. photo.name may be '' (see cropPhoto,
+// internal/directory/upload.go): this person has no photos of their own yet and
+// is looking at their family's photo as a stand-in, and cropping it adopts it as
+// their first personal photo.
+function openCropTool(p, photo, status) {
+  const overlay = el('div', 'crop-overlay');
+  const panel = el('div', 'crop-panel');
+  const stage = el('div', 'crop-stage');
+  const img = el('img', 'crop-image');
+  img.src = photo.originalUrl;
+  img.alt = '';
+  const frame = el('div', 'crop-frame');
+  const handleEls = ['nw', 'ne', 'sw', 'se'].map(corner => {
+    const handle = el('div', 'crop-handle crop-handle-' + corner);
+    handle.dataset.corner = corner;
+    return handle;
+  });
+  frame.append(...handleEls);
+  const maskTop = el('div', 'crop-mask');
+  const maskBottom = el('div', 'crop-mask');
+  const maskLeft = el('div', 'crop-mask');
+  const maskRight = el('div', 'crop-mask');
+  stage.append(img, maskTop, maskLeft, maskRight, maskBottom, frame);
+  const actions = el('div', 'crop-actions');
+  const cancel = el('button', 'media-button', 'Cancel');
+  cancel.type = 'button';
+  const save = el('button', 'media-button primary', 'Save crop');
+  save.type = 'button';
+  actions.append(cancel, save);
+  panel.append(stage, actions);
+  overlay.append(panel);
+
+  const close = () => {
+    overlay.remove();
+    document.removeEventListener('keydown', onKey);
+  };
+  function onKey(e) {
+    if (e.key === 'Escape') {
+      close();
+    }
+  }
+  overlay.addEventListener('click', e => {
+    // Only the dark backdrop closes on click - not the panel, stage, or frame,
+    // which all live inside it and need their own clicks/drags to work.
+    if (e.target === overlay) {
+      close();
+    }
+  });
+  cancel.addEventListener('click', close);
+  document.addEventListener('keydown', onKey);
+  document.body.append(overlay);
+
+  const minSide = 60;
+  let left = 0;
+  let top = 0;
+  let side = 0;
+
+  function render() {
+    frame.style.left = left + 'px';
+    frame.style.top = top + 'px';
+    frame.style.width = side + 'px';
+    frame.style.height = side + 'px';
+    maskTop.style.cssText = `top:0; left:0; right:0; height:${top}px`;
+    maskBottom.style.cssText = `top:${top + side}px; left:0; right:0; bottom:0`;
+    maskLeft.style.cssText = `top:${top}px; left:0; width:${left}px; height:${side}px`;
+    maskRight.style.cssText = `top:${top}px; left:${left + side}px; right:0; height:${side}px`;
+  }
+
+  function setFrame(nextLeft, nextTop, nextSide) {
+    const stageRect = stage.getBoundingClientRect();
+    side = Math.max(minSide, Math.min(nextSide, stageRect.width, stageRect.height));
+    left = Math.max(0, Math.min(nextLeft, stageRect.width - side));
+    top = Math.max(0, Math.min(nextTop, stageRect.height - side));
+    render();
+  }
+
+  function init() {
+    const stageRect = stage.getBoundingClientRect();
+    const initialSide = Math.min(stageRect.width, stageRect.height);
+    setFrame((stageRect.width - initialSide) / 2, (stageRect.height - initialSide) / 2, initialSide);
+  }
+  if (img.complete && img.naturalWidth) {
+    init();
+  } else {
+    img.addEventListener('load', init);
+  }
+
+  // Shared pointer-drag wiring for both moving the frame and resizing it from a
+  // corner handle - same pointerdown/pointermove/pointerup(+capture) pattern
+  // photoGrid's own drag-to-reorder already uses, for mobile/touch reliability.
+  function drag(target, onMove) {
+    target.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      const pointerId = e.pointerId;
+      const startX = e.clientX;
+      const startY = e.clientY;
+      const startLeft = left;
+      const startTop = top;
+      const startSide = side;
+      target.setPointerCapture(pointerId);
+      const move = m => {
+        if (m.pointerId !== pointerId) {
+          return;
+        }
+        onMove(m.clientX - startX, m.clientY - startY, startLeft, startTop, startSide);
+      };
+      const up = u => {
+        if (u.pointerId !== pointerId) {
+          return;
+        }
+        target.removeEventListener('pointermove', move);
+        target.removeEventListener('pointerup', up);
+        target.removeEventListener('pointercancel', up);
+      };
+      target.addEventListener('pointermove', move);
+      target.addEventListener('pointerup', up);
+      target.addEventListener('pointercancel', up);
+    });
+  }
+
+  drag(frame, (dx, dy, startLeft, startTop, startSide) => {
+    setFrame(startLeft + dx, startTop + dy, startSide);
+  });
+  for (const handle of handleEls) {
+    const corner = handle.dataset.corner;
+    drag(handle, (dx, dy, startLeft, startTop, startSide) => {
+      let delta;
+      let nextLeft = startLeft;
+      let nextTop = startTop;
+      if (corner === 'se') {
+        delta = Math.max(dx, dy);
+      } else if (corner === 'nw') {
+        delta = Math.max(-dx, -dy);
+        nextLeft = startLeft - delta;
+        nextTop = startTop - delta;
+      } else if (corner === 'ne') {
+        delta = Math.max(dx, -dy);
+        nextTop = startTop - delta;
+      } else {
+        delta = Math.max(-dx, dy);
+        nextLeft = startLeft - delta;
+      }
+      setFrame(nextLeft, nextTop, startSide + delta);
+    });
+  }
+
+  save.addEventListener('click', () => {
+    const stageRect = stage.getBoundingClientRect();
+    const scale = img.naturalWidth / stageRect.width;
+    const sx = left * scale;
+    const sy = top * scale;
+    const cropSide = side * scale;
+    const outSize = Math.min(Math.round(cropSide), 1200);
+    const canvas = document.createElement('canvas');
+    canvas.width = outSize;
+    canvas.height = outSize;
+    canvas.getContext('2d').drawImage(img, sx, sy, cropSide, cropSide, 0, 0, outSize, outSize);
+    save.disabled = true;
+    save.textContent = 'Saving…';
+    canvas.toBlob(async blob => {
+      if (!blob) {
+        save.disabled = false;
+        save.textContent = 'Save crop';
+        return;
+      }
+      const ok = await submitCrop(p.email, photo.name, blob, status);
+      if (ok) {
+        close();
+      } else {
+        save.disabled = false;
+        save.textContent = 'Save crop';
+      }
+    }, 'image/jpeg', 0.92);
+  });
+}
+
 // photoGrid shows up to 5 photo tiles (already primary-first - the server always
 // returns them in the order that's shown everywhere). Anyone who may edit the
 // record can always drag a tile to reorder it, or add one while under the cap -
 // no separate edit mode needed for either. The delete "x" on each tile is the one
 // control that waits for edit mode, same convention as every other field on this
 // page, since it's destructive. Clicking (rather than dragging) a tile - for
-// anyone, editable or not - just shows that photo bigger in the hero image above;
-// it changes nothing until a drag actually reorders something. Reordering is
-// pointer-events based rather than native HTML5 drag-and-drop, since the latter
-// doesn't work reliably on mobile/touch (iOS Safari in particular) and this app is
-// used heavily on phones.
-function photoGrid(p, editable, editing, heroImg) {
+// anyone, editable or not - just shows that photo bigger in the hero image above
+// (onPreview, if given, also redirects the hero's own View/Set as primary/Delete/
+// Crop menu to that photo - see photoMenu's getPhoto param); it changes nothing
+// until a drag actually reorders something, or an action is chosen from that
+// menu. Tiles don't get a menu of their own - no room to open one well on a
+// narrow screen - so cropping or deleting a non-primary photo means previewing
+// or dragging it to the front first, either of which puts it in reach of the
+// hero's menu. Reordering is pointer-events based rather than native HTML5
+// drag-and-drop, since the latter doesn't work reliably on mobile/touch (iOS
+// Safari in particular) and this app is used heavily on phones. status is shared
+// with the hero photo's own menu so both report errors in the same place.
+function photoGrid(p, editable, editing, heroImg, status, onPreview) {
   const grid = el('div', 'photo-grid');
-  const status = el('div', 'media-status');
 
   const previewPhoto = photo => {
     if (heroImg) {
       heroImg.src = photo.url;
+    }
+    if (onPreview) {
+      onPreview(photo);
     }
   };
 
   const currentOrder = () => [...grid.querySelectorAll('.photo-slot')].map(t => t.dataset.name);
 
   const commitOrder = (revertOrder) => {
-    status.classList.remove('error');
-    const order = currentOrder();
-    fetch('/api/directory/reorder-photos', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-      body: new URLSearchParams({key: p.email, order: order.join(',')}),
-    }).then(async res => {
-      if (!res.ok) {
-        status.classList.add('error');
-        status.textContent = await res.text();
-        const addTile = grid.querySelector('.photo-slot-add');
-        for (const name of revertOrder) {
-          grid.insertBefore(grid.querySelector(`.photo-slot[data-name="${CSS.escape(name)}"]`), addTile);
-        }
-        return;
+    submitPhotoOrder(p.email, currentOrder(), status, () => {
+      const addTile = grid.querySelector('.photo-slot-add');
+      for (const name of revertOrder) {
+        grid.insertBefore(grid.querySelector(`.photo-slot[data-name="${CSS.escape(name)}"]`), addTile);
       }
-      await load();
     });
   };
 
   const deletePhoto = (photo) => {
-    const order = currentOrder().filter(name => name !== photo.name);
-    status.classList.remove('error');
     status.textContent = 'Removing…';
-    fetch('/api/directory/reorder-photos', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-      body: new URLSearchParams({key: p.email, order: order.join(',')}),
-    }).then(async res => {
-      if (!res.ok) {
-        status.classList.add('error');
-        status.textContent = await res.text();
-        return;
-      }
-      await load();
-    });
+    submitPhotoOrder(p.email, currentOrder().filter(name => name !== photo.name), status);
   };
 
   function wireDrag(tile, photo) {
@@ -3397,7 +3763,7 @@ function photoGrid(p, editable, editing, heroImg) {
   }
 
   const wrap = el('div');
-  wrap.append(grid, status);
+  wrap.append(grid);
   return wrap;
 }
 
@@ -3669,7 +4035,7 @@ document.addEventListener('click', e => {
   if (!topbarSearchResults.hidden && !e.target.closest('.topbar-search')) {
     topbarSearchResults.hidden = true;
   }
-  for (const menu of document.querySelectorAll('.more-menu, .card-menu')) {
+  for (const menu of document.querySelectorAll('.more-menu, .card-menu, .photo-menu')) {
     if (!menu.hidden && !menu.parentElement.contains(e.target)) {
       menu.hidden = true;
     }
@@ -3688,7 +4054,7 @@ document.addEventListener('keydown', e => {
     setMobileSearch(false);
     topbarSearchResults.hidden = true;
     closeFilterPanels();
-    for (const menu of document.querySelectorAll('.more-menu, .card-menu')) {
+    for (const menu of document.querySelectorAll('.more-menu, .card-menu, .photo-menu')) {
       menu.hidden = true;
     }
   }
