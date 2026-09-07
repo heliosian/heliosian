@@ -1821,21 +1821,20 @@ function renderPersonDetail(email) {
   const right = el('div');
   const family = state.model.families[p.familyKey];
   const topRow = el('div', 'detail-top');
-  const roleRow = el('div', 'role-label', roleWithPronouns(p));
+  const roleRow = el('div', 'role-label', baseRole(p));
   topRow.append(roleRow);
-  if (editing) {
-    const pronounPencil = editPencil('Edit pronouns');
-    roleRow.append(pronounPencil);
-    pronounPencil.addEventListener('click', () => fieldEditor(roleRow, pronounPencil, {
-      current: p.pronouns || '',
-      allowHide: true,
-      presets: [
-        {label: 'She/her', value: 'she/her'},
-        {label: 'He/him', value: 'he/him'},
-        {label: 'They/them', value: 'they/them'},
-      ],
-      submit: (value, status) => submitField(p.email, 'pronouns', value, status),
-    }));
+  const topRight = el('div', 'detail-top-right');
+  if (p.isStaff || p.isStudent) {
+    if (p.classroom) {
+      const classroomChip = el('a', 'tag-chip', p.classroom);
+      classroomChip.href = withFrom('/classrooms/' + slugify(p.classroom));
+      topRight.append(classroomChip);
+    }
+    if (p.crew) {
+      const crewChip = el('a', 'tag-chip', p.crew);
+      crewChip.href = withFrom('/classrooms/' + slugify(p.classroom));
+      topRight.append(crewChip);
+    }
   }
   if (editable) {
     const topActions = el('div', 'detail-top-actions');
@@ -1855,7 +1854,10 @@ function renderPersonDetail(email) {
     }
     topActions.append(toggle);
     topActions.append(copyButton(personSummaryText(p, family), 'Copy all info'));
-    topRow.append(topActions);
+    topRight.append(topActions);
+  }
+  if (topRight.children.length) {
+    topRow.append(topRight);
   }
   right.append(topRow);
   const nameHeader = el('h1', 'detail-name');
@@ -1863,7 +1865,6 @@ function renderPersonDetail(email) {
   if (p.pronunciationUrl && !editing) {
     nameHeader.append(pronouncePill(p.pronunciationUrl, firstName(p.fullName)));
   }
-  right.append(nameHeader);
   if (editing) {
     const pencil = editPencil('Edit preferred name');
     nameHeader.append(pencil);
@@ -1872,6 +1873,25 @@ function renderPersonDetail(email) {
       submit: (value, status) => submitField(p.email, 'preferred-name', value, status),
     }));
   }
+  if (p.pronouns || editing) {
+    const pronounSpan = el('span', 'detail-pronouns', p.pronouns ? p.pronouns.split('/').join(' / ') : '');
+    nameHeader.append(pronounSpan);
+    if (editing) {
+      const pronounPencil = editPencil('Edit pronouns');
+      nameHeader.append(pronounPencil);
+      pronounPencil.addEventListener('click', () => fieldEditor(pronounSpan, pronounPencil, {
+        current: p.pronouns || '',
+        allowHide: true,
+        presets: [
+          {label: 'She/her', value: 'she/her'},
+          {label: 'He/him', value: 'he/him'},
+          {label: 'They/them', value: 'they/them'},
+        ],
+        submit: (value, status) => submitField(p.email, 'pronouns', value, status),
+      }));
+    }
+  }
+  right.append(nameHeader);
   const nickname = displayNameLine(p);
   if (nickname) {
     right.append(el('div', 'detail-sub', nickname));
@@ -1881,6 +1901,8 @@ function renderPersonDetail(email) {
     if (chain) {
       right.append(el('div', 'detail-sub', chain));
     }
+  } else if (p.isStaff && p.jobTitle) {
+    right.append(el('div', 'detail-sub', p.jobTitle));
   }
   if (!p.emailMasked) {
     const emailValue = el('div', 'contact-value');
