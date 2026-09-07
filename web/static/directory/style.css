@@ -1153,6 +1153,13 @@ main {
   background: #eef1f3;
 }
 
+.map-missing {
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+  margin-top: 14px;
+}
+
 .map-update {
   display: flex;
   justify-content: center;
@@ -2940,6 +2947,30 @@ a.list-row:hover {
 
 .fcard-wrap {
   padding-bottom: 44px;
+}
+
+.fcard-columns {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* Two households read as a pair, not a repeat - side by side above the
+   point where each card would get too narrow to stay legible. */
+.fcard-wrap-multi .fcard-columns {
+  flex-direction: row;
+  align-items: flex-start;
+}
+
+.fcard-wrap-multi .fcard {
+  flex: 1;
+  min-width: 0;
+}
+
+@media (max-width: 900px) {
+  .fcard-wrap-multi .fcard-columns {
+    flex-direction: column;
+  }
 }
 
 .fcard-title {

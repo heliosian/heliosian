@@ -180,10 +180,10 @@ const primaryNavItems = [
   {path: 'people', label: 'Directory'},
   {path: 'classrooms', label: 'Gradebands'},
   {path: 'staff', label: 'Staff'},
+  {path: 'map', label: 'Map'},
 ];
 
 const toolsNavItems = [
-  {path: 'map', label: 'Map'},
   {path: 'email-list', label: 'Everyone'},
 ];
 
@@ -2042,8 +2042,7 @@ function familyCardRow(p, subtitle) {
   return row;
 }
 
-function familyBand(p, family) {
-  const band = el('div', 'container fcard-wrap');
+function familyCard(p, family) {
   const card = el('div', 'detail-card fcard');
   card.append(el('h2', 'fcard-title', family.name));
 
@@ -2104,8 +2103,7 @@ function familyBand(p, family) {
   right.append(seeChip);
   grid.append(right);
   card.append(grid);
-  band.append(card);
-  return band;
+  return card;
 }
 
 let personEdit = null;
@@ -2459,10 +2457,17 @@ function renderPersonDetail(email) {
 
   main.append(content);
 
-  // One identical band per family - a kid in two households simply has two families
-  // listed, with nothing calling out why.
-  for (const f of families) {
-    main.append(familyBand(p, f));
+  // One identical card per family - a kid in two households gets both side by
+  // side (stacking on narrow screens) rather than one buried below the other,
+  // so it reads as "these are the two households" instead of a repeat.
+  if (families.length) {
+    const wrap = el('div', 'container fcard-wrap' + (families.length > 1 ? ' fcard-wrap-multi' : ''));
+    const row = el('div', 'fcard-columns');
+    for (const f of families) {
+      row.append(familyCard(p, f));
+    }
+    wrap.append(row);
+    main.append(wrap);
   }
 }
 
@@ -3489,6 +3494,8 @@ function initFamilyMap(canvas, familyMatches) {
   let map = null;
   let info = null;
   let markers = [];
+  const missing = el('div', 'map-missing');
+  canvas.after(missing);
 
   function renderPins() {
     if (!map) {
@@ -3498,8 +3505,21 @@ function initFamilyMap(canvas, familyMatches) {
       m.setMap(null);
     }
     markers = [];
+    const withoutAddress = new Map();
     for (const family of Object.values(state.model.families)) {
-      if ((!family.lat && !family.lng) || !familyMatches(family)) {
+      if (!familyMatches(family)) {
+        continue;
+      }
+      if (!family.address) {
+        for (const e of [...(family.kidEmails || []), ...(family.adultEmails || [])]) {
+          const p = byEmail[e];
+          if (p) {
+            withoutAddress.set(p.email, p);
+          }
+        }
+        continue;
+      }
+      if (!family.lat && !family.lng) {
         continue;
       }
       const marker = new google.maps.Marker({
@@ -3513,6 +3533,13 @@ function initFamilyMap(canvas, familyMatches) {
         info.open(map, marker);
       });
       markers.push(marker);
+    }
+    missing.replaceChildren();
+    if (withoutAddress.size > 10) {
+      missing.textContent = `${withoutAddress.size} people not shown — no address on file`;
+    } else if (withoutAddress.size) {
+      const names = [...withoutAddress.values()].map(p => p.fullName).sort((a, b) => a.localeCompare(b));
+      missing.textContent = `Not shown, no address on file: ${names.join(', ')}`;
     }
   }
 
