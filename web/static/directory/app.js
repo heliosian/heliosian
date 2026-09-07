@@ -1073,7 +1073,7 @@ function matchesFilters(p) {
     (p.isParent && !state.filterRoleExcluded.has('Parent')) ||
     (p.isStaff && !state.filterRoleExcluded.has('Staff')));
   const cityOK = !state.filterCities.size || state.filterCities.has(cityOf(p));
-  const pronounsOK = !state.filterPronouns.size || state.filterPronouns.has(p.pronouns);
+  const pronounsOK = !state.filterPronouns.size || (p.pronouns && state.filterPronouns.has(p.pronouns.toLowerCase()));
   const newOK = !state.filterNew || p.isNew;
   const tagOK = !state.filterTags.size || tagsOf(p.email).some(t => state.filterTags.has(t));
   return gradeOK && classOK && roleOK && cityOK && pronounsOK && newOK && tagOK;
@@ -1098,7 +1098,7 @@ function cityOptions() {
 }
 
 function pronounOptions() {
-  return [...new Set(state.model.people.map(p => p.pronouns).filter(Boolean))].sort();
+  return [...new Set(state.model.people.map(p => p.pronouns).filter(Boolean).map(p => p.toLowerCase()))].sort();
 }
 
 const roleChipFacets = [
@@ -1874,7 +1874,7 @@ function renderPersonDetail(email) {
     }));
   }
   if (p.pronouns || editing) {
-    const pronounSpan = el('span', 'detail-pronouns', p.pronouns ? p.pronouns.split('/').join(' / ') : '');
+    const pronounSpan = el('span', 'detail-pronouns', p.pronouns ? p.pronouns.split('/').join(' / ') : (editing ? 'pronouns' : ''));
     nameHeader.append(pronounSpan);
     if (editing) {
       const pronounPencil = editPencil('Edit pronouns');
@@ -1883,9 +1883,9 @@ function renderPersonDetail(email) {
         current: p.pronouns || '',
         allowHide: true,
         presets: [
-          {label: 'She/her', value: 'she/her'},
-          {label: 'He/him', value: 'he/him'},
-          {label: 'They/them', value: 'they/them'},
+          {label: 'she/her', value: 'she/her'},
+          {label: 'he/him', value: 'he/him'},
+          {label: 'they/them', value: 'they/them'},
         ],
         submit: (value, status) => submitField(p.email, 'pronouns', value, status),
       }));

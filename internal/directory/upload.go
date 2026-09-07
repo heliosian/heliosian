@@ -364,7 +364,9 @@ func (u uploader) edit(w http.ResponseWriter, r *http.Request) {
 		// Primary Photo needed "" instead of "-" before it was retired - not
 		// clearable(value): applyOverrides always starts it at "" and would flag a
 		// literal "-" as clearing an already-empty value, failing the whole load.
-		cells["Pronouns"] = value
+		// Lowercased so the Pronouns filter (case-sensitive on stored values) stays
+		// one option per pronoun set instead of splitting on casing.
+		cells["Pronouns"] = strings.ToLower(value)
 		previous["Pronouns"] = person.Pronouns
 	case "pronunciation":
 		if !u.mayEdit(model, me, "person", key) {
