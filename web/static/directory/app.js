@@ -1428,8 +1428,19 @@ function pronouncePill(url, name) {
   return btn;
 }
 
-function copyButton(text) {
-  return iconButton('copy', 'Copy', () => navigator.clipboard.writeText(text));
+function copyButton(text, label = 'Copy') {
+  const btn = iconButton('copy', label, () => {
+    navigator.clipboard.writeText(text);
+    btn.classList.add('copied');
+    btn.title = 'Copied';
+    btn.replaceChildren(svg('check'), el('span', '', 'Copied'));
+    setTimeout(() => {
+      btn.classList.remove('copied');
+      btn.title = label;
+      btn.replaceChildren(svg('copy'), el('span', '', label));
+    }, 1200);
+  });
+  return btn;
 }
 
 function personSummaryText(p, family) {
@@ -1546,6 +1557,18 @@ function familyCardRow(p, subtitle) {
     info.append(el('div', 'fcard-sub', subtitle));
   }
   row.append(info);
+  if (p.phone) {
+    const actions = el('div', 'fcard-actions');
+    actions.append(el('span', 'fcard-phone', p.phone));
+    for (const [name, label, scheme] of [['message', 'Text', 'sms:'], ['phone', 'Call', 'tel:']]) {
+      actions.append(iconButton(name, label, e => {
+        e.preventDefault();
+        e.stopPropagation();
+        location.href = scheme + p.phone;
+      }));
+    }
+    row.append(actions);
+  }
   const chev = el('div', 'fcard-chevron');
   chev.append(svg('chevron-right'));
   row.append(chev);
@@ -1576,6 +1599,7 @@ function familyBand(p, family) {
     const img = el('img', 'fcard-photo');
     img.src = thumbUrl(family.photoUrl);
     img.alt = '';
+    img.addEventListener('click', () => openPhotoLightbox(family.photoUrl));
     photoWrap.append(img);
   } else {
     photoWrap.append(photoOrInitials(null, family.name, 'fcard-photo fcard-photo-empty'));
@@ -1619,6 +1643,7 @@ function familyBand(p, family) {
 }
 
 let personEdit = null;
+let familyEdit = null;
 
 // The hero photo is always a square crop (same treatment as every other avatar in
 // the app), which can crop a photo awkwardly - this is the escape hatch: click it
@@ -1736,7 +1761,7 @@ function renderPersonDetail(email) {
       });
     }
     topActions.append(toggle);
-    topActions.append(iconButton('copy', 'Copy all info', () => navigator.clipboard.writeText(personSummaryText(p, family))));
+    topActions.append(copyButton(personSummaryText(p, family), 'Copy all info'));
     topRow.append(topActions);
   }
   right.append(topRow);
@@ -1764,6 +1789,12 @@ function renderPersonDetail(email) {
       right.append(el('div', 'detail-sub', chain));
     }
   }
+  const emailValue = el('div', 'contact-value');
+  emailValue.append(svg('mail'), el('span', '', p.email));
+  right.append(contactRow(emailValue, [
+    iconButton('mail', 'Email', 'mailto:' + p.email),
+    copyButton(p.email),
+  ]));
   if (p.phone || editing) {
     const actions = p.phone ? [
       iconButton('message', 'Text', 'sms:' + p.phone),
@@ -1784,12 +1815,6 @@ function renderPersonDetail(email) {
       }));
     }
   }
-  const emailValue = el('div', 'contact-value');
-  emailValue.append(svg('mail'), el('span', '', p.email));
-  right.append(contactRow(emailValue, [
-    iconButton('mail', 'Email', 'mailto:' + p.email),
-    copyButton(p.email),
-  ]));
   const addressEditable = editing && family && p.email === document.body.dataset.userEmail &&
     (family.adultEmails || []).includes(p.email);
   if (family && (family.address || addressEditable)) {
@@ -1935,6 +1960,7 @@ function renderFamilyDetail(key) {
     return;
   }
   const editable = key === myFamilyKey() || state.model.superEdit;
+  const editing = editable && familyEdit === key;
   const shortName = (family.name || '').replace(/ Family$/, '');
   let crumbs = [['People', '/people'], [shortName, null], ['Family', null]];
   const from = fromURL();
@@ -1973,19 +1999,16 @@ function renderFamilyDetail(key) {
   left.id = 'family-photo';
   const wrap = el('div', 'photo-wrap');
   if (family.photoUrl) {
-    const link = el('a');
-    link.href = family.photoUrl;
-    link.target = '_blank';
     const img = el('img', 'detail-photo');
     img.src = family.photoUrl;
     img.alt = '';
-    link.append(img);
-    wrap.append(link);
+    img.addEventListener('click', () => openPhotoLightbox(img.src));
+    wrap.append(img);
   } else {
     wrap.append(photoOrInitials(null, family.name, 'detail-photo detail-photo-empty'));
   }
   left.append(wrap);
-  if (editable) {
+  if (editing) {
     const status = el('div', 'media-status');
     wrap.append(uploadIcon('camera', 'Upload family photo', 'image/*', 'family', key, 'photo', status));
     left.append(status);
@@ -1993,17 +2016,40 @@ function renderFamilyDetail(key) {
   if (family.photoCaption) {
     left.append(el('div', 'family-caption', family.photoCaption));
   }
-  if (family.photoUrl) {
-    left.append(el('div', 'photo-hint', 'click photo to open full size'));
-  }
   grid.append(left);
 
   const right = el('div');
   const kids = (family.kidEmails || []).map(e => byEmail[e]).filter(Boolean);
   const adults = (family.adultEmails || []).map(e => byEmail[e]).filter(Boolean);
   const grades = [...new Set(kids.map(k => k.grade).filter(Boolean))];
-  right.append(el('div', 'role-label', grades.length ? grades.join(', ') : 'Staff'));
-  right.append(el('h1', 'detail-name', family.name));
+  const topRow = el('div', 'detail-top');
+  topRow.append(el('div', 'role-label', grades.length ? grades.join(', ') : 'Staff'));
+  if (editable) {
+    const topActions = el('div', 'detail-top-actions');
+    const toggle = editing
+      ? el('button', 'media-button edit-toggle', 'Done')
+      : iconButton('pencil', 'Edit info', () => {
+        familyEdit = key;
+        renderFamilyDetail(key);
+        finishRender();
+      });
+    if (editing) {
+      toggle.addEventListener('click', () => {
+        familyEdit = null;
+        renderFamilyDetail(key);
+        finishRender();
+      });
+    }
+    topActions.append(toggle);
+    topRow.append(topActions);
+  }
+  right.append(topRow);
+  const nameHeader = el('h1', 'detail-name');
+  nameHeader.append(el('span', '', family.name));
+  if (family.pronunciationUrl) {
+    nameHeader.append(pronouncePill(family.pronunciationUrl, shortName));
+  }
+  right.append(nameHeader);
   const firsts = [...kids, ...adults].map(m => firstName(m.fullName));
   if (firsts.length) {
     right.append(el('div', 'detail-sub', firsts.join(', ')));
@@ -2016,7 +2062,7 @@ function renderFamilyDetail(key) {
       copyButton(family.address),
     ]));
   }
-  if (family.pronunciationUrl || editable) {
+  if (editing) {
     right.append(el('div', 'pronounce-label', 'How do I pronounce this?'));
     if (family.pronunciationUrl) {
       const audio = el('audio', 'pronounce-player');
@@ -2025,9 +2071,7 @@ function renderFamilyDetail(key) {
       audio.src = family.pronunciationUrl;
       right.append(audio);
     }
-    if (editable) {
-      right.append(pronounceEditor('family', key));
-    }
+    right.append(pronounceEditor('family', key));
   }
   grid.append(right);
   headerCard.append(grid);

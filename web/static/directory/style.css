@@ -1882,7 +1882,7 @@ a.classroom-card:hover .classroom-photo {
 
 .detail-grid {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 309px) minmax(0, 1fr);
   gap: 28px;
 }
 
@@ -2020,6 +2020,12 @@ div.detail-photo-empty {
 
 .icon-button span {
   display: none;
+}
+
+.icon-button.copied {
+  background: var(--brand);
+  color: #fff;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 
 .icon-button svg {
@@ -2577,13 +2583,6 @@ a.list-row:hover {
   margin-top: 14px;
 }
 
-.photo-hint {
-  color: #a8b0b7;
-  font-size: 12px;
-  text-align: center;
-  margin-top: 10px;
-}
-
 .fcard-wrap {
   padding-bottom: 44px;
 }
@@ -2634,20 +2633,24 @@ a.list-row:hover {
 
 .fcard-grid {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 309px) minmax(0, 1fr);
   gap: 28px;
 }
 
 .fcard-photo {
   width: 309px;
   max-width: 100%;
-  aspect-ratio: 4 / 5;
-  object-fit: cover;
   border-radius: 12px;
   display: block;
 }
 
+img.fcard-photo {
+  height: auto;
+  cursor: zoom-in;
+}
+
 .fcard-photo-empty {
+  aspect-ratio: 4 / 5;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2660,6 +2663,7 @@ a.list-row:hover {
   color: var(--muted);
   font-size: 13px;
   line-height: 1.5;
+  text-align: center;
   margin-top: 14px;
 }
 
@@ -2704,6 +2708,7 @@ a.list-row:hover {
 
 .fcard-info {
   min-width: 0;
+  flex: 1;
 }
 
 .fcard-name {
@@ -2717,8 +2722,30 @@ a.list-row:hover {
   margin-top: 2px;
 }
 
+.fcard-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.fcard-phone {
+  color: var(--muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.fcard-actions .icon-button {
+  width: 34px;
+  height: 34px;
+}
+
+.fcard-actions .icon-button svg {
+  width: 16px;
+  height: 16px;
+}
+
 .fcard-chevron {
-  margin-left: auto;
   color: #9aa4ab;
   display: flex;
   flex-shrink: 0;
@@ -3260,6 +3287,8 @@ a.list-row:hover {
   .fcard-photo {
     max-width: 220px;
     margin: 0 auto;
+  }
+  .fcard-photo-empty {
     aspect-ratio: 1;
   }
   .detail-name {
