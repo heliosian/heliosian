@@ -2620,10 +2620,23 @@ function renderRoster(title, image, groups, backLabel) {
     }
     list.append(listBody);
   } else {
-    list.append(el('h2', 'roster-heading', `${parents.length} Parents`));
+    const headingRow = el('div', 'roster-heading-row');
+    headingRow.append(el('h2', 'roster-heading', `${parents.length} Parents`));
+    const parentGroups = groups.map(g => ({header: g.header, chipLabel: g.chipLabel, parents: parentsOf(g.students)}));
+    const filterBar = sectionFilterBar(parentGroups, rerender);
+    if (filterBar) {
+      headingRow.append(filterBar);
+    }
+    list.append(headingRow);
+    const visibleGroups = parentGroups.filter(g => !g.header || !state.rosterSectionExcluded.has(g.chipLabel || g.header));
     const listBody = el('div', 'roster-list grid');
-    for (const p of sortPeople(parents)) {
-      listBody.append(listRow(thumbUrl(p.photoUrl), '', p.fullName, kidsSummary(p), personLink(p)));
+    for (const group of visibleGroups) {
+      if (group.header) {
+        listBody.append(el('h2', 'group-header', group.header));
+      }
+      for (const p of sortPeople(group.parents)) {
+        listBody.append(listRow(thumbUrl(p.photoUrl), otherFamilyMembers(p).toUpperCase(), p.fullName, p.facts || '', personLink(p)));
+      }
     }
     list.append(listBody);
   }
