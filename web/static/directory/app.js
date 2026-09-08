@@ -230,7 +230,11 @@ const mobileNavSections = [
   {path: 'classrooms', label: 'Gradebands'},
   {path: 'staff', label: 'Staff'},
   {path: 'my-family', label: 'My Family'},
-  {path: 'email-list', label: 'Everyone'},
+  // Not a real page - opens the Lists popup instead of navigating (see the
+  // isListsTab handling in renderNav below). Keeps the "email-list" path so
+  // it still lands on Everyone as a fallback (JS disabled, middle-click,
+  // "open in new tab") and so the tab lights up whenever that page is open.
+  {path: 'email-list', label: 'Lists', isListsTab: true},
 ];
 
 const peopleTabs = [
@@ -811,8 +815,18 @@ function renderNav() {
     }
     const a = el('a', item.path === seg ? 'active' : '');
     a.href = '/' + item.path;
-    a.append(svg(item.path), el('span', '', item.label));
+    a.append(svg(item.isListsTab ? 'list' : item.path), el('span', '', item.label));
+    if (item.isListsTab) {
+      a.addEventListener('click', e => {
+        e.preventDefault();
+        e.stopPropagation();
+        setMobileListsMenu(mobileListsMenu.hidden);
+      });
+    }
     tabs.append(a);
+  }
+  if (!mobileListsMenu.hidden) {
+    renderMobileListsMenu();
   }
 }
 
@@ -5713,6 +5727,43 @@ for (const staleButton of document.querySelectorAll('.stale-alert')) {
 
 const drawer = document.querySelector('#drawer');
 const drawerOverlay = document.querySelector('#drawer-overlay');
+
+const mobileListsMenu = document.querySelector('#mobile-lists-menu');
+const mobileListsOverlay = document.querySelector('#mobile-lists-overlay');
+
+function setMobileListsMenu(open) {
+  if (open) {
+    renderMobileListsMenu();
+  }
+  mobileListsMenu.hidden = !open;
+  mobileListsOverlay.hidden = !open;
+}
+
+mobileListsOverlay.addEventListener('click', () => setMobileListsMenu(false));
+
+// The same Everyone/Invites/tag links as the sidebar's "Lists" section
+// (buildNavInto above), just laid out as a mobile bottom sheet instead of a
+// nav list, since there's no sidebar to hold them on a phone-sized screen.
+function renderMobileListsMenu() {
+  const body = mobileListsMenu.querySelector('#mobile-lists-body');
+  body.replaceChildren();
+  const seg = activeSection();
+  const currentTag = new URLSearchParams(location.search).get('tag');
+  for (const item of toolsNavItems) {
+    const a = el('a', 'mobile-lists-item' + (item.path === seg ? ' active' : ''));
+    a.href = '/' + item.path;
+    a.append(svg(item.path), el('span', '', item.label));
+    body.append(a);
+  }
+  for (const name of tagNames()) {
+    const a = el('a', 'mobile-lists-item' + (seg === 'people' && currentTag === name ? ' active' : ''));
+    a.href = '/people?tag=' + encodeURIComponent(name);
+    const icon = svg('tag');
+    icon.style.color = `hsl(${hue(name)}, 65%, 40%)`;
+    a.append(icon, el('span', '', name));
+    body.append(a);
+  }
+}
 
 // Both the desktop and mobile user menus carry their own copy of this
 // checkbox (admin-only, server-rendered) - a quicker way to flip Super Edit Mode
