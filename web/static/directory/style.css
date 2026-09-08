@@ -4037,6 +4037,7 @@ img.fcard-photo {
   }
   .app-shell {
     display: block;
+    margin-top: 0;
   }
   .content-col {
     display: block;
