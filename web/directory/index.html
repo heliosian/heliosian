@@ -53,7 +53,12 @@
 <a class="mobile-back" id="mobile-back" hidden><svg viewBox="0 0 24 24"><path d="M19 12H5m7-7-7 7 7 7"/></svg></a>
 <div class="mobile-title" id="mobile-title"></div>
 <button class="mobile-search-btn" id="mobile-search-btn" aria-label="Search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></button>
-<div class="user" id="mobile-user"><span class="user-avatar">{{.UserInitial}}</span><span class="user-row-alert" id="mobile-user-row-alert" hidden></span></div>
+<span class="stale-wrap">
+<button class="topbar-alert topbar-alert-count stale-alert" type="button" id="mobile-stale-alert" title="Some family info is missing or out of date" hidden><span class="stale-count"></span></button>
+<div class="stale-menu" id="mobile-stale-menu" hidden></div>
+</span>
+<a class="topbar-alert privacy-alert" id="mobile-privacy-alert" href="/my-privacy" title="Your privacy settings don’t match Veracross" hidden><svg viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg></a>
+<div class="user" id="mobile-user"><span class="user-avatar">{{.UserInitial}}</span></div>
 <div class="user-menu" id="mobile-user-menu" hidden>
 <a href="/people/{{.UserEmailSlug}}">View Profile</a>
 <a href="/my-privacy" class="user-menu-privacy">My Privacy<span class="user-menu-alert" hidden></span></a>
@@ -75,8 +80,11 @@
 <div class="gsearch-results" id="topbar-search-results" hidden></div>
 </div>
 <div class="topbar-user">
-<a class="topbar-alert topbar-alert-count" id="topbar-stale-alert" href="/my-family" title="Some family info is missing or out of date" hidden><span id="topbar-stale-count"></span></a>
-<a class="topbar-alert" id="topbar-privacy-alert" href="/my-privacy" title="Your privacy settings don’t match Veracross" hidden><svg viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg></a>
+<span class="stale-wrap">
+<button class="topbar-alert topbar-alert-count stale-alert" type="button" id="topbar-stale-alert" title="Some family info is missing or out of date" hidden><span class="stale-count"></span></button>
+<div class="stale-menu" id="topbar-stale-menu" hidden></div>
+</span>
+<a class="topbar-alert privacy-alert" id="topbar-privacy-alert" href="/my-privacy" title="Your privacy settings don’t match Veracross" hidden><svg viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg></a>
 <div class="user" id="user"><span class="user-avatar">{{.UserInitial}}</span><span class="user-name">{{.UserName}}</span></div>
 <div class="user-menu" id="user-menu" hidden>
 <a href="/people/{{.UserEmailSlug}}">View Profile</a>

@@ -3329,7 +3329,10 @@ function renderPersonDetail(email) {
     personEdit = email;
   }
   const origin = fromCrumbs() || [['People', '/people']];
-  main.append(breadcrumbs([...origin, [p.fullName, null]], p.email));
+  // Held rather than appended immediately - on mobile the crumb trail itself is
+  // hidden (see .crumbs), leaving just the tag button, which reads better below
+  // the alert cards and right above the profile than sandwiched between them.
+  const crumbsRow = breadcrumbs([...origin, [p.fullName, null]], p.email);
 
   const editable = canEditPerson(p.email);
   const editing = editable && personEdit === p.email;
@@ -3350,6 +3353,7 @@ function renderPersonDetail(email) {
       main.append(wrap);
     }
   }
+  main.append(crumbsRow);
 
   const content = el('div', 'container detail-content');
   const headerCard = el('div', 'detail-card');
@@ -5570,6 +5574,27 @@ document.querySelector('#mobile-user').addEventListener('click', e => {
   mobileUserMenu.hidden = !mobileUserMenu.hidden;
 });
 
+// The stale-count badge (desktop and mobile both) used to link straight to
+// /my-family; now it opens a dropdown built from the same todoChecklist used
+// on My Family/a person's own page, so what to fix and the link to fix it are
+// both right there without leaving the current page.
+for (const staleButton of document.querySelectorAll('.stale-alert')) {
+  const wrap = staleButton.closest('.stale-wrap');
+  const panel = wrap.querySelector('.stale-menu');
+  staleButton.addEventListener('click', e => {
+    e.stopPropagation();
+    const opening = panel.hidden;
+    for (const p of document.querySelectorAll('.stale-menu')) {
+      p.hidden = true;
+    }
+    if (opening) {
+      panel.replaceChildren(todoChecklist(staleItems()));
+      panel.hidden = false;
+      clampFilterPanel(wrap, panel);
+    }
+  });
+}
+
 const drawer = document.querySelector('#drawer');
 const drawerOverlay = document.querySelector('#drawer-overlay');
 
@@ -5668,6 +5693,9 @@ function closeFilterPanels() {
 document.addEventListener('click', e => {
   userMenu.hidden = true;
   mobileUserMenu.hidden = true;
+  for (const p of document.querySelectorAll('.stale-menu')) {
+    p.hidden = true;
+  }
   if (!topbarSearchResults.hidden && !e.target.closest('.topbar-search')) {
     topbarSearchResults.hidden = true;
   }
@@ -5694,6 +5722,9 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     userMenu.hidden = true;
     mobileUserMenu.hidden = true;
+    for (const p of document.querySelectorAll('.stale-menu')) {
+      p.hidden = true;
+    }
     setDrawer(false);
     setMobileSearch(false);
     topbarSearchResults.hidden = true;
@@ -5855,27 +5886,18 @@ function renderPrivacyMenuAlert() {
     }
   }
 
-  // The mobile drawer only has room for one dot next to the name, so it stays a
-  // single merged signal; the desktop topbar has room for two separate, clickable
-  // icons - one per condition - so each links straight to where you'd fix it.
-  for (const badge of document.querySelectorAll('.user-row-alert')) {
-    badge.hidden = !(hasMismatch || hasStale);
-    badge.title = hasMismatch && hasStale ? 'Some family info is out of date, and your privacy settings don’t match Veracross'
-      : hasMismatch ? 'Your privacy settings don’t match Veracross'
-      : 'Some family info is missing or out of date';
-    if ((hasMismatch || hasStale) && !badge.firstChild) {
-      badge.append(svg('alert'));
-    }
-  }
-
-  const staleButton = document.querySelector('#topbar-stale-alert');
-  if (staleButton) {
+  // Mobile carries its own copy of both topbar icons now that the avatar lives
+  // in the same top-right corner as desktop's, so both share this one loop
+  // (over every .stale-alert/.privacy-alert in the page) instead of each
+  // querying a single id.
+  for (const staleButton of document.querySelectorAll('.stale-alert')) {
     staleButton.hidden = !hasStale;
     staleButton.title = `${staleCount} thing${staleCount === 1 ? '' : 's'} to update for the new year`;
-    document.querySelector('#topbar-stale-count').textContent = String(staleCount);
   }
-  const privacyButton = document.querySelector('#topbar-privacy-alert');
-  if (privacyButton) {
+  for (const count of document.querySelectorAll('.stale-count')) {
+    count.textContent = String(staleCount);
+  }
+  for (const privacyButton of document.querySelectorAll('.privacy-alert')) {
     privacyButton.hidden = !hasMismatch;
   }
 }

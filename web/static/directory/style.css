@@ -531,6 +531,33 @@ body {
   stroke-linejoin: round;
 }
 
+.stale-wrap {
+  position: relative;
+  display: flex;
+}
+
+.stale-alert {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.stale-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  width: 320px;
+  max-width: calc(100vw - 24px);
+  z-index: 25;
+}
+
+.stale-menu .todo-card {
+  margin: 0;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+}
+
 .user {
   display: flex;
   align-items: center;
@@ -3650,11 +3677,17 @@ img.fcard-photo {
     grid-template-columns: 1fr;
   }
   .infobanner {
+    position: relative;
     flex-direction: column;
     align-items: stretch;
   }
   .infobanner-button {
     justify-content: center;
+  }
+  .infobanner-close {
+    position: absolute;
+    top: 10px;
+    right: 10px;
   }
   .fcard-phone {
     display: none;
@@ -3883,6 +3916,7 @@ img.fcard-photo {
   .mobile-top {
     display: flex;
     align-items: center;
+    gap: 4px;
     position: fixed;
     top: var(--banner-h);
     left: 0;
@@ -3892,10 +3926,15 @@ img.fcard-photo {
     z-index: 30;
     padding: 0 6px;
   }
+  .mobile-top .stale-wrap,
+  .mobile-top .privacy-alert {
+    position: relative;
+    z-index: 31;
+  }
   .mobile-title {
     position: absolute;
     left: 48px;
-    right: 92px;
+    right: 156px;
     text-align: center;
     color: #fff;
     font-weight: 500;
@@ -4135,12 +4174,6 @@ img.fcard-photo {
   #mobile-user {
     position: relative;
     z-index: 31;
-    margin-left: 4px;
-  }
-  #mobile-user .user-row-alert {
-    position: absolute;
-    top: 2px;
-    right: 2px;
   }
   .crumbs {
     display: none;
@@ -4153,13 +4186,20 @@ img.fcard-photo {
     min-height: 44px;
     padding-bottom: 14px;
   }
+  /* .photo-wrap is inline-block so it shrink-wraps a fixed-width photo (desktop),
+     but that leaves .detail-photo/.fcard-photo's 100% below with no definite width
+     to resolve against, collapsing them to their empty-state initials size instead
+     of filling the card. Forcing the wrap to block here gives them one. */
+  .photo-wrap {
+    display: block;
+  }
   .detail-photo {
     width: 100%;
     margin: 0 auto;
     display: block;
   }
   .fcard-photo {
-    max-width: 220px;
+    width: 100%;
     margin: 0 auto;
   }
   .fcard-photo-empty {
