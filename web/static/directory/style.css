@@ -450,12 +450,32 @@ body {
   color: #8b7cf6;
 }
 
+/* Same palette as .mobile-tabs (see the @media max-width:900px block below) -
+   one fixed, memorable color per fixed nav destination so the sidebar reads
+   as quickly by color as by icon shape. Tag links get their own per-name hue
+   instead (see renderNav in app.js), since there's no fixed set of those. */
+.nav-icon-people {
+  color: #4ade80;
+}
+
+.nav-icon-classrooms {
+  color: #60a5fa;
+}
+
+.nav-icon-staff {
+  color: #f472b6;
+}
+
 .nav-icon-email-list {
-  color: #f5c451;
+  color: #fb923c;
 }
 
 .nav-icon-my-family {
   color: #f5c451;
+}
+
+.nav-icon-greenvelope {
+  color: #facc15;
 }
 
 .nav-heading {
@@ -4376,8 +4396,8 @@ img.fcard-photo {
     display: block;
     margin-left: auto;
   }
-  .filter-button:not(.facet-button) span,
-  .filter-button:not(.facet-button) > svg:last-child {
+  .filter-button:not(.facet-button):not(.gv-service-button) span,
+  .filter-button:not(.facet-button):not(.gv-service-button) > svg:last-child {
     display: none;
   }
   .map-canvas {

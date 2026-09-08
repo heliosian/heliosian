@@ -761,6 +761,11 @@ function renderNav() {
         }
         const icon = svg('tag');
         icon.classList.add('nav-icon-tag');
+        // Tags are user-created with no fixed set (unlike Directory/Staff/etc.
+        // above), so instead of a shared color they each get one hashed from
+        // their own name - stable across renders and reasonably legible on
+        // the dark sidebar background.
+        icon.style.color = `hsl(${hue(name)}, 70%, 72%)`;
         a.append(icon, el('span', '', name));
         toolsBody.append(a);
       }
@@ -1363,13 +1368,21 @@ function renderListPage() {
     renderGrid();
   });
   search.append(input);
-  controls.append(
+  const facetFilters = el('div', 'facet-filters');
+  facetFilters.append(
     facetDropdown('Grade', gradeOptions(), state.filterGrades, () => renderGrid()),
     facetDropdown('Classroom', state.model.classrooms.map(c => c.name), state.filterClassrooms, () => renderGrid()),
   );
   if (tagNames().length) {
-    controls.append(facetDropdown('Tags', tagNames(), state.filterTags, () => renderGrid()));
+    facetFilters.append(facetDropdown('Tags', tagNames(), state.filterTags, () => renderGrid()));
   }
+  controls.append(facetFilters);
+  // Small-screen stand-in for the Grade/Classroom/Tags dropdowns above, same as
+  // the Directory page's mobile-filter (see renderPeople) - collapses them into
+  // one funnel-icon button so the controls row doesn't wrap across several lines.
+  const mobileFilter = filterControl(() => renderGrid(), {role: false, city: false, pronouns: false, newToHelios: false});
+  mobileFilter.classList.add('mobile-filter');
+  controls.append(mobileFilter);
   // Only meaningful for a single tag - with several selected at once (or
   // none, as on the plain Everyone list) there's no one list to pull
   // relatives in from.
