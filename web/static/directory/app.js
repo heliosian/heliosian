@@ -3517,7 +3517,7 @@ function initFamilyMap(canvas, familyMatches) {
           allPeople.set(p.email, p);
         }
       }
-      if (!family.address) {
+      if (!family.address || family.veracrossAddress === 'partial') {
         for (const e of emails) {
           const p = byEmail[e];
           if (p) {
@@ -3543,10 +3543,10 @@ function initFamilyMap(canvas, familyMatches) {
     }
     missing.replaceChildren();
     if (withoutAddress.size > 10) {
-      missing.textContent = `${withoutAddress.size} of ${allPeople.size} people not shown — no address on file`;
+      missing.textContent = `${withoutAddress.size} of ${allPeople.size} people not shown — no street address on file`;
     } else if (withoutAddress.size) {
       const names = [...withoutAddress.values()].map(p => p.fullName).sort((a, b) => a.localeCompare(b));
-      missing.textContent = `Not shown, no address on file: ${names.join(', ')}`;
+      missing.textContent = `Not shown, no street address on file: ${names.join(', ')}`;
     }
   }
 
@@ -3563,7 +3563,7 @@ function initFamilyMap(canvas, familyMatches) {
     map.addListener('click', () => info.close());
     const bounds = new google.maps.LatLngBounds();
     for (const family of Object.values(state.model.families)) {
-      if ((family.lat || family.lng) && familyMatches(family)) {
+      if ((family.lat || family.lng) && family.veracrossAddress !== 'partial' && familyMatches(family)) {
         bounds.extend({lat: family.lat, lng: family.lng});
       }
     }
