@@ -10,6 +10,7 @@
   --input: #efefef;
   --alert: #f68c1e;
   --banner-h: 0px;
+  --mobile-title-inset: 156px;
   --privacy-green: #1a8754;
   --privacy-yellow: #c9860a;
   --privacy-red: #dc2626;
@@ -4075,8 +4076,8 @@ img.fcard-photo {
   }
   .mobile-title {
     position: absolute;
-    left: 48px;
-    right: 156px;
+    left: var(--mobile-title-inset);
+    right: var(--mobile-title-inset);
     text-align: center;
     color: #fff;
     font-weight: 500;

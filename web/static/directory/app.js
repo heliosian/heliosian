@@ -437,7 +437,32 @@ function setChrome(title, backHref) {
   if (backHref) {
     back.href = backHref;
   }
+  updateMobileTitleInset();
 }
+
+// .mobile-title is centered by giving it equal left/right insets, so it has to be
+// centered on the whole bar rather than just the space between whichever icons
+// happen to be showing - a fixed inset sized for the busiest icon cluster (search +
+// stale alert + privacy alert + avatar) left the title visibly off-center on every
+// page showing fewer icons than that, including the plain back-button pages. Measured
+// live because which side is wider varies with the route (back vs. menu button) and
+// with per-user alert state (stale info, privacy mismatch).
+function updateMobileTitleInset() {
+  const bar = document.querySelector('.mobile-top');
+  const leftEl = bar.querySelector('#mobile-back:not([hidden]), #mobile-menu-btn:not([hidden])');
+  const searchBtn = document.querySelector('#mobile-search-btn');
+  if (!bar || !leftEl || !searchBtn) {
+    return;
+  }
+  const barRect = bar.getBoundingClientRect();
+  if (!barRect.width) {
+    return;
+  }
+  const leftWidth = leftEl.getBoundingClientRect().right - barRect.left;
+  const rightWidth = barRect.right - searchBtn.getBoundingClientRect().left;
+  document.documentElement.style.setProperty('--mobile-title-inset', Math.max(leftWidth, rightWidth) + 'px');
+}
+window.addEventListener('resize', updateMobileTitleInset);
 
 // Defaults for sample mode / a stale cached page; the model's own privacyLinks
 // (admin-editable, since both URLs belong to other systems this app doesn't control)
