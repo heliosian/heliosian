@@ -3918,13 +3918,13 @@ img.fcard-photo {
     align-items: center;
     gap: 4px;
     position: fixed;
-    top: calc(var(--banner-h) + env(safe-area-inset-top));
+    top: var(--banner-h);
     left: 0;
     right: 0;
-    height: 48px;
+    height: calc(48px + env(safe-area-inset-top));
     background: var(--sidebar);
     z-index: 30;
-    padding: 0 6px;
+    padding: env(safe-area-inset-top) 6px 0;
   }
   .mobile-top .stale-wrap,
   .mobile-top .privacy-alert {
@@ -4189,8 +4189,13 @@ img.fcard-photo {
   /* .photo-wrap is inline-block so it shrink-wraps a fixed-width photo (desktop),
      but that leaves .detail-photo/.fcard-photo's 100% below with no definite width
      to resolve against, collapsing them to their empty-state initials size instead
-     of filling the card. Forcing the wrap to block here gives them one. */
-  .photo-wrap {
+     of filling the card. Forcing the wrap to block here gives them one - scoped to
+     just the hero/family-card photos (the ones that actually go full-width on
+     mobile), since a grid card's .photo-wrap still needs to shrink to its small
+     fixed-width .person-photo so the tag button pinned to its corner (see
+     photoWithTag) lands on the photo, not in the blank space beside it. */
+  .detail-grid .photo-wrap,
+  .fcard-grid .photo-wrap {
     display: block;
   }
   .detail-photo {
@@ -4272,7 +4277,7 @@ img.fcard-photo {
   position: fixed;
   left: 0;
   right: 0;
-  top: env(safe-area-inset-top);
+  top: 0;
   z-index: 60;
   display: flex;
   flex-direction: column;
@@ -4283,7 +4288,7 @@ img.fcard-photo {
   align-items: center;
   justify-content: center;
   gap: 10px;
-  padding: 6px 12px;
+  padding: calc(6px + env(safe-area-inset-top)) 12px 6px;
   background: var(--alert);
   color: #fff;
   font-size: 12px;
@@ -4302,7 +4307,7 @@ img.fcard-photo {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 6px 12px;
+  padding: calc(6px + env(safe-area-inset-top)) 12px 6px;
   background: var(--alert);
   color: #fff;
   font-size: 12px;
