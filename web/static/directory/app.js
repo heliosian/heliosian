@@ -352,7 +352,7 @@ function renderGlobalSearchResults(resultsEl, query) {
   group('People', people, p => {
     const row = el('a', 'gsearch-result');
     row.href = personLink(p);
-    row.append(photoOrInitials(p.photoUrl, p.fullName, 'gsearch-avatar'));
+    row.append(photoOrInitials(personPhotoUrl(p), p.fullName, 'gsearch-avatar'));
     const info = el('div', 'gsearch-info');
     info.append(el('div', 'gsearch-title', p.fullName));
     const sub = personSearchSubtitle(p);
@@ -684,7 +684,7 @@ function familyMemberRow(p, meEmail, activeEmail) {
   if (p.email === activeEmail) {
     a.className = 'nav-family-link active';
   }
-  a.append(photoOrInitials(p.photoUrl, p.fullName, 'nav-family-avatar'));
+  a.append(photoOrInitials(personPhotoUrl(p), p.fullName, 'nav-family-avatar'));
   a.append(el('span', 'nav-family-name', p.email === meEmail ? 'Me' : firstName(p.fullName)));
   const count = personTodoCount(p);
   if (count) {
@@ -856,6 +856,14 @@ function shuffled(items) {
 
 function thumbUrl(url) {
   return url ? url + '?thumb=1' : url;
+}
+
+// A person's own photo if they have one, else their family's - the same fallback
+// the profile page hero uses, so a directory card never shows initials when a
+// family photo is already available to show instead.
+function personPhotoUrl(p) {
+  const family = familyOf(p);
+  return p.photoUrl || (family && family.photoUrl) || '';
 }
 
 function photoOrInitials(url, name, className) {
@@ -1122,7 +1130,7 @@ function photoWithTag(photoEl, email) {
 function personCard(p) {
   const card = el('a', 'person-card');
   card.href = personLink(p);
-  card.append(photoWithTag(applyRingColor(photoOrInitials(p.photoUrl, p.fullName, 'person-photo'), p), p.email));
+  card.append(photoWithTag(applyRingColor(photoOrInitials(personPhotoUrl(p), p.fullName, 'person-photo'), p), p.email));
   card.append(el('div', 'role-label', roleLabel(p)));
   card.append(el('div', 'person-name', p.fullName));
   const context = personContext(p);
@@ -1253,7 +1261,7 @@ function renderStaff(grid, autoFit) {
     for (const p of groups.get(dept)) {
       const card = el('a', 'person-card');
       card.href = personLink(p);
-      card.append(photoWithTag(applyRingColor(photoOrInitials(p.photoUrl, p.fullName, 'person-photo'), p), p.email));
+      card.append(photoWithTag(applyRingColor(photoOrInitials(personPhotoUrl(p), p.fullName, 'person-photo'), p), p.email));
       card.append(el('div', 'role-label', p.jobTitle || 'Staff'));
       card.append(el('div', 'person-name', p.fullName));
       deptGrid.append(card);
@@ -3305,7 +3313,7 @@ function displayNameLine(p) {
 function familyCardRow(p, subtitle) {
   const row = el('a', 'fcard-row');
   row.href = personLink(p);
-  row.append(photoOrInitials(p.photoUrl, p.fullName, 'fcard-avatar'));
+  row.append(photoOrInitials(personPhotoUrl(p), p.fullName, 'fcard-avatar'));
   const info = el('div', 'fcard-info');
   info.append(el('div', 'fcard-name', p.fullName));
   if (subtitle) {
@@ -4204,7 +4212,7 @@ function renderRoomParents(list) {
     for (const p of parents) {
       const card = el('a', 'person-card');
       card.href = personLink(p);
-      card.append(photoWithTag(applyRingColor(photoOrInitials(p.photoUrl, p.fullName, 'person-photo'), p), p.email));
+      card.append(photoWithTag(applyRingColor(photoOrInitials(personPhotoUrl(p), p.fullName, 'person-photo'), p), p.email));
       card.append(el('div', 'person-name', p.fullName));
       card.append(el('div', 'person-sub', kidsSummary(p)));
       grid.append(card);
