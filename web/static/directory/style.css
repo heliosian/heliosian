@@ -973,8 +973,8 @@ main {
 }
 
 .view-switch-btn.active {
-  background: #fff;
-  color: var(--brand);
+  background: var(--brand);
+  color: #fff;
 }
 
 .view-switch-btn svg {

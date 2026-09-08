@@ -62,8 +62,8 @@ function saveTagRelations(tag, relations) {
 const state = {model: null, tab: 'everyone', classTab: 'by-classroom', rosterTab: 'students', rosterSectionExcluded: new Set(), q: '', filterGrades: new Set(), filterClassrooms: new Set(), filterRoles: new Set(), filterRoleExcluded: new Set(), filterCities: new Set(), filterPronouns: new Set(), filterTags: new Set(), filterTagRelations: new Set(), filterNew: false, staffDeptExcluded: new Set(), tagListView: 'faces', navOpen: loadNavOpen()};
 
 const tagListViews = [
-  {key: 'emails', label: 'Emails', icon: 'email-list'},
-  {key: 'faces', label: 'Faces', icon: 'everyone'},
+  {key: 'emails', label: 'Email List', icon: 'email-list'},
+  {key: 'faces', label: 'Profiles', icon: 'everyone'},
   {key: 'map', label: 'Map', icon: 'map'},
 ];
 
@@ -3511,18 +3511,13 @@ function initFamilyMap(canvas, familyMatches) {
         continue;
       }
       const emails = [...(family.kidEmails || []), ...(family.adultEmails || [])];
-      for (const e of emails) {
-        const p = byEmail[e];
-        if (p) {
-          allPeople.set(p.email, p);
-        }
+      const matchingMembers = emails.map(e => byEmail[e]).filter(p => p && matchesFilters(p));
+      for (const p of matchingMembers) {
+        allPeople.set(p.email, p);
       }
       if (!family.address || family.veracrossAddress === 'partial') {
-        for (const e of emails) {
-          const p = byEmail[e];
-          if (p) {
-            withoutAddress.set(p.email, p);
-          }
+        for (const p of matchingMembers) {
+          withoutAddress.set(p.email, p);
         }
         continue;
       }
