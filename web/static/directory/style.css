@@ -136,6 +136,107 @@ html {
   box-shadow: 0 3px 8px rgba(246, 140, 30, 0.35);
 }
 
+.install-prompt-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.35);
+  padding: calc(env(safe-area-inset-top) + 60px) 16px 16px;
+}
+
+.install-prompt-card {
+  position: relative;
+  width: 100%;
+  max-width: 380px;
+  height: fit-content;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+  padding: 24px 20px 20px;
+  text-align: center;
+}
+
+.install-prompt-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 50%;
+  background: var(--input);
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.install-prompt-icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 16px;
+  margin: 0 auto 16px;
+  display: block;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.install-prompt-title {
+  font-weight: 700;
+  font-size: 17px;
+  color: var(--ink);
+  margin-bottom: 6px;
+}
+
+.install-prompt-desc {
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.install-prompt-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.install-prompt-hint svg {
+  width: 18px;
+  height: 18px;
+  stroke: var(--brand);
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.install-prompt-dots {
+  width: 22px !important;
+  stroke: none !important;
+  fill: var(--brand) !important;
+}
+
+.install-prompt-button {
+  width: 100%;
+  margin-top: 16px;
+  padding: 12px 20px;
+  border: none;
+  border-radius: 10px;
+  background: var(--brand);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
 .todo-card {
   background: #fdecd9;
   border: 1px solid #f8cf9e;
