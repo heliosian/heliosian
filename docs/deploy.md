@@ -20,9 +20,9 @@ The Dockerfile builds in two stages: a `golang` stage compiles the static binary
 
 `tools/deploy` holds the full service configuration and is the only place it is written down:
 
-    DIRECTORY_SHEET=<spreadsheet id> PREFERENCES_SHEET=<spreadsheet id> go run ./tools/deploy
+    DIRECTORY_SHEET=<spreadsheet id> PREFERENCES_SHEET=<spreadsheet id> INVITES_SHEET=<spreadsheet id> go run ./tools/deploy
 
-It deploys the `latest` image with every setting the pipeline does not touch, so it both creates the service from nothing and repairs drift on an existing one. The spreadsheet ids come from the environment and the OAuth client id from `creds/oauth-client.json` — the same resolution the server itself uses — so none of them is written into the repository.
+It deploys the `latest` image with every setting the pipeline does not touch, so it both creates the service from nothing and repairs drift on an existing one. The spreadsheet ids come from the environment and the OAuth client id from `creds/oauth-client.json` — the same resolution the server itself uses — so none of them is written into the repository. `INVITES_SHEET` is optional, same as in `Production()`: omitting it leaves the Invites page with nothing to serve rather than failing the deploy. Because a per-push deploy only ever changes the image (see above), setting or changing `INVITES_SHEET` only ever takes effect through a `tools/deploy` run, never a plain push.
 
 Why each setting is what it is:
 
@@ -43,6 +43,7 @@ Plain environment variables:
 
 - `DIRECTORY_SHEET` — the production spreadsheet id: the `Directory` sheet living in the community shared drive.
 - `PREFERENCES_SHEET` — the `Preferences` sheet in the same shared drive: the sharing-consent form's response spreadsheet.
+- `INVITES_SHEET` — the `Invite List Builder` spreadsheet id, optional. Powers the Invites page (`/greenvelope`); omit it and that page just has nothing to serve.
 - `GOOGLE_CLIENT_ID` — the OAuth web client id; not a secret (it is embedded in the login page).
 
 Secret Manager secrets, delivered as environment variables. Values are used raw, so payloads must not carry trailing newlines:

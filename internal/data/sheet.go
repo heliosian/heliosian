@@ -53,6 +53,28 @@ func (s *Sheet) Header(app, name string) ([]string, error) {
 	return parseHeader(name, resp.Values)
 }
 
+// Raw returns every row, header included, with no dedup check and no
+// name-keyed record conversion - see Source.Raw.
+func (s *Sheet) Raw(app, name string) ([][]string, error) {
+	id, ok := s.spreadsheets[app]
+	if !ok {
+		return nil, fmt.Errorf("no spreadsheet configured for app %q", app)
+	}
+	resp, err := s.service.Spreadsheets.Values.Get(id, quoteTab(name)).Do()
+	if err != nil {
+		return nil, err
+	}
+	rows := make([][]string, len(resp.Values))
+	for i, row := range resp.Values {
+		cells := make([]string, len(row))
+		for j, cell := range row {
+			cells[j] = strings.TrimSpace(fmt.Sprint(cell))
+		}
+		rows[i] = cells
+	}
+	return rows, nil
+}
+
 func (s *Sheet) Upsert(app, table, keyColumn, keyValue string, cells map[string]string) error {
 	id, ok := s.spreadsheets[app]
 	if !ok {

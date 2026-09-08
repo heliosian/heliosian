@@ -1,0 +1,2 @@
+Name,Group Name,Email or Phone,Total Invited,Message
+{{ member_name }},{{ greeting }},{{ member_contact }},,

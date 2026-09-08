@@ -85,6 +85,7 @@ func NewCore(cfg Config) *Core {
 	directory.Register(mux, cache, cfg.BrowserKey)
 	directory.RegisterTags(mux, cache, cfg.Writer, queue)
 	directory.RegisterAdmin(mux, cache, cfg.Writer, queue)
+	directory.RegisterInvites(mux, cache, cfg.Source, cfg.Writer)
 	mux.Handle("GET /{$}", http.RedirectHandler("/people", http.StatusFound))
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.Dir("web/static"))))
 	return &Core{Mux: mux, Cache: cache, Queue: queue, Gate: directory.MemberGate(cache, mux)}
@@ -161,13 +162,19 @@ func mapsKey(envName, file string) string {
 }
 
 // Production assembles the real service: the production spreadsheets, the media
-// bucket, real geocoding, and Google sign-in. Every input is required - there
-// are no fallbacks and no other mode here.
+// bucket, real geocoding, and Google sign-in. Every input is required except
+// INVITES_SHEET - the Invite List Builder templates are one optional feature,
+// not the app, so its absence just leaves that feature with nothing to serve
+// rather than failing every other route too.
 func Production() (*http.Server, *directory.Queue) {
 	sheetID := requiredEnv("DIRECTORY_SHEET")
 	preferencesID := requiredEnv("PREFERENCES_SHEET")
 	sessionKey := requiredEnv("SESSION_KEY")
-	sheet, err := data.NewSheet(map[string]string{"directory": sheetID, "preferences": preferencesID})
+	spreadsheets := map[string]string{"directory": sheetID, "preferences": preferencesID}
+	if invitesID := os.Getenv("INVITES_SHEET"); invitesID != "" {
+		spreadsheets["invites"] = invitesID
+	}
+	sheet, err := data.NewSheet(spreadsheets)
 	if err != nil {
 		log.Fatalf("[ERROR] load directory sheet: %v", err)
 	}

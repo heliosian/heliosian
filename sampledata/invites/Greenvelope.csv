@@ -1,0 +1,2 @@
+Couple / Family Greeting,Email,First Name,Last Name,Couple / Family Member 1,Couple / Family Member 2,Couple / Family Member 3,Couple / Family Member 4,Couple / Family Member 5,Couple / Family Member 5
+{{ greeting }},{{ primary_email }},{{ primary_first_name }},{{ primary_last_name }},{{ member_1 }},{{ member_2 }},{{ member_3 }},{{ member_4 }},{{ member_5 }},{{ member_6 }}

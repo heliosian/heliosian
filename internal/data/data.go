@@ -14,6 +14,13 @@ import (
 type Source interface {
 	Table(app, name string) ([]string, []map[string]string, error)
 	Header(app, name string) ([]string, error)
+	// Raw returns every row, header included, exactly as the tab holds it - no
+	// dedup check, no name-keyed records. Table/Header assume one row is one
+	// record and reject a tab whose columns repeat; a few tabs (the Invite List
+	// Builder's per-system templates) are read positionally instead and may
+	// deliberately repeat a column name to match a destination system's own
+	// quirky template, so they need the columns exactly as entered instead.
+	Raw(app, name string) ([][]string, error)
 }
 
 type Writer interface {
@@ -79,6 +86,17 @@ func (d *Dir) Header(app, name string) ([]string, error) {
 		return nil, err
 	}
 	return slices.Clone(t.header), nil
+}
+
+// Raw re-reads the CSV fresh rather than going through the header-deduped cache,
+// so it stays correct even for a tab whose columns repeat.
+func (d *Dir) Raw(app, name string) ([][]string, error) {
+	f, err := os.Open(filepath.Join(d.Root, app, name+".csv"))
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return csv.NewReader(f).ReadAll()
 }
 
 func (d *Dir) Table(app, name string) ([]string, []map[string]string, error) {

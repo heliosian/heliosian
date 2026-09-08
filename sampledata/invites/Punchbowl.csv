@@ -1,0 +1,2 @@
+First Name,Last Name,E-mail Address,Phone Number
+{{ greeting }},,{{ primary_email }},{{ primary_phone }}

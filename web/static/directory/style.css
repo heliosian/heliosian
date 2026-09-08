@@ -1148,6 +1148,173 @@ main {
   color: #fff;
 }
 
+.gv-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 18px 0 4px;
+}
+
+.gv-setting-group {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px 18px 6px;
+}
+
+.gv-setting-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 10px;
+}
+
+.gv-settings-bar {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px 20px;
+}
+
+.gv-settings-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.gv-settings-segment {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.gv-settings-segment:first-child {
+  flex: 1;
+  min-width: 200px;
+}
+
+.gv-settings-divider {
+  align-self: stretch;
+  width: 1px;
+  background: var(--line);
+}
+
+.gv-info-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: none;
+  padding: 0;
+  margin-left: 2px;
+  color: var(--muted);
+  cursor: help;
+  vertical-align: middle;
+}
+
+.gv-info-btn:hover {
+  color: var(--brand);
+}
+
+.gv-info-btn svg {
+  width: 15px;
+  height: 15px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+}
+
+.gv-settings-summary {
+  margin-top: 16px;
+}
+
+.gv-select {
+  display: block;
+  width: 100%;
+  max-width: 320px;
+  font: inherit;
+  font-size: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.gv-service-wrap {
+  width: 100%;
+  max-width: 320px;
+}
+
+.gv-service-button {
+  width: 100%;
+  justify-content: flex-start;
+  background: #fff;
+  border: 1px solid var(--line);
+  padding: 8px 12px;
+}
+
+.gv-service-button svg {
+  width: 16px;
+  height: 16px;
+  stroke: var(--muted);
+  fill: none;
+  stroke-width: 2;
+  margin-left: auto;
+}
+
+.gv-service-panel {
+  left: 0;
+  right: auto;
+  width: 100%;
+  min-width: 220px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.gv-service-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: flex-start;
+  cursor: pointer;
+}
+
+.gv-service-logo {
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  flex-shrink: 0;
+  object-fit: cover;
+}
+
+.gv-service-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.gv-fyi {
+  margin-top: 10px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: #eef6f5;
+  border: 1px solid var(--line);
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.gv-fyi:before {
+  content: 'FYI: ';
+  font-weight: 700;
+  color: var(--brand);
+}
+
 .map-canvas {
   height: 600px;
   border-radius: 12px;
@@ -1248,6 +1415,334 @@ main {
   font-weight: 500;
   font-size: 13px;
   background: #f8fcfd;
+}
+
+.gv-th-select {
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink);
+  padding: 3px 18px 3px 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  width: 100%;
+  min-width: 148px;
+}
+
+.greeting-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.greeting-dialog-panel {
+  width: 400px;
+  max-width: 100%;
+  max-height: 100%;
+  overflow-y: auto;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.3);
+}
+
+.greeting-dialog-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 22px 22px 4px;
+}
+
+.greeting-dialog-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 36px;
+  height: 36px;
+}
+
+.greeting-dialog-icon svg {
+  width: 30px;
+  height: 30px;
+  fill: var(--brand);
+  stroke: none;
+}
+
+.greeting-dialog-header-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.greeting-dialog-title {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+}
+
+.greeting-dialog-subtitle {
+  font-size: 13.5px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.greeting-dialog-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.greeting-dialog-close:hover {
+  color: var(--ink);
+}
+
+.greeting-dialog-close svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.gv-new-greeting-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 22px 22px;
+  text-align: left;
+}
+
+.gv-new-greeting-hint {
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.gv-greeting-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.gv-greeting-list-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+  margin-bottom: 2px;
+}
+
+.gv-greeting-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #f6f7f8;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 11px 12px;
+}
+
+.gv-greeting-card.active {
+  border-color: var(--brand);
+  background: #f0f8f7;
+}
+
+.gv-greeting-card-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gv-greeting-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+}
+
+.gv-greeting-card-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: none;
+  padding: 2px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.gv-greeting-card-btn:hover {
+  color: var(--ink);
+}
+
+.gv-greeting-card-btn-delete:hover {
+  color: #c0392b;
+}
+
+.gv-greeting-card-btn svg {
+  width: 17px;
+  height: 17px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.gv-greeting-add {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  background: #e8f5f2;
+  border-radius: 12px;
+  padding: 11px 14px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--brand);
+  cursor: pointer;
+}
+
+.gv-greeting-add:hover {
+  background: #ddefeb;
+}
+
+.gv-greeting-add-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--brand);
+  color: #fff;
+}
+
+.gv-greeting-add-icon svg {
+  width: 13px;
+  height: 13px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+}
+
+.gv-greeting-divider {
+  height: 1px;
+  background: var(--line);
+  margin: 4px 0 2px;
+}
+
+.gv-greeting-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.gv-new-greeting-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.gv-new-greeting-field input {
+  font: inherit;
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--ink);
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  outline: none;
+}
+
+.gv-new-greeting-field input:focus {
+  border-color: var(--brand);
+}
+
+.gv-new-greeting-preview {
+  font-size: 15px;
+  color: var(--ink);
+  background: #f6f7f8;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.gv-new-greeting-preview-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 3px;
+}
+
+.gv-new-greeting-preview-value {
+  font-weight: 700;
+}
+
+.gv-new-greeting-preview-note {
+  font-size: 11.5px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.gv-new-greeting-error {
+  font-size: 12px;
+  color: #c0392b;
+}
+
+.gv-new-greeting-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.gv-new-greeting-cancel {
+  border: 1px solid var(--line);
+  background: #fff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  cursor: pointer;
+  padding: 9px 18px;
+  border-radius: 10px;
+}
+
+.gv-new-greeting-cancel:hover {
+  background: #f6f6f7;
+}
+
+.gv-new-greeting-save {
+  padding: 9px 20px;
+  border-radius: 10px;
+  font-weight: 600;
 }
 
 .email-table th,

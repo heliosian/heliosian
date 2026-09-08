@@ -3,3 +3,4 @@ imports/
 screenshots/
 *.png
 !web/**/*.png
+.DS_Store

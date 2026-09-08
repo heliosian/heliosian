@@ -1,0 +1,2 @@
+Name,Email
+{{ greeting }},{{ primary_email }}

@@ -46,6 +46,14 @@ func main() {
 	if preferences == "" {
 		log.Fatal("[ERROR] PREFERENCES_SHEET is required")
 	}
+	// Optional, same as Production() itself - the Invite List Builder
+	// templates are one feature, not the app, so a deploy with no
+	// INVITES_SHEET set just leaves that feature with nothing to serve
+	// rather than failing every other route too.
+	envVars := "DIRECTORY_SHEET=" + sheet + ",PREFERENCES_SHEET=" + preferences + ",GOOGLE_CLIENT_ID=" + clientID()
+	if invites := os.Getenv("INVITES_SHEET"); invites != "" {
+		envVars += ",INVITES_SHEET=" + invites
+	}
 	cmd := exec.Command("gcloud",
 		"run", "deploy", service,
 		"--image", image,
@@ -58,7 +66,7 @@ func main() {
 		"--concurrency", "250",
 		"--no-cpu-throttling",
 		"--use-http2",
-		"--set-env-vars", "DIRECTORY_SHEET="+sheet+",PREFERENCES_SHEET="+preferences+",GOOGLE_CLIENT_ID="+clientID(),
+		"--set-env-vars", envVars,
 		"--set-secrets", secrets,
 		"--quiet")
 	cmd.Stdout = os.Stdout
