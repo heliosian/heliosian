@@ -15,6 +15,15 @@
   --privacy-red: #dc2626;
 }
 
+/* Fallback canvas color behind the page itself - in standalone iOS PWA mode,
+   a route change's brief reflow (before 100dvh/layout resettle) can reveal a
+   sliver of whatever's beneath body/main for a frame, at either edge. Without
+   this it's the browser's default white; matching it to the header/tab-bar
+   teal means that sliver reads as part of the UI instead of a flash of white. */
+html {
+  background: var(--sidebar);
+}
+
 /* A handful of toggled elements (.topbar-alert, .user-menu-alert, .user-row-alert,
    …) set their own `display` in an author rule with the same specificity as the
    `[hidden]` UA rule, which - being later in the cascade - would otherwise win and
