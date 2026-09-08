@@ -3636,48 +3636,22 @@ function renderPersonDetail(email) {
       copyButton(p.email),
     ]));
   }
-  if (p.phone || editing) {
-    const actions = p.phone ? [
+  if (p.phone) {
+    const phoneValue = el('div', 'contact-value');
+    phoneValue.append(svg('phone'), el('span', '', p.phone));
+    right.append(contactRow(phoneValue, [
       iconButton('message', 'Text', 'sms:' + p.phone),
       iconButton('phone', 'Call', 'tel:' + p.phone),
       copyButton(p.phone),
-    ] : [];
-    const phoneValue = el('div', 'contact-value editable-value');
-    phoneValue.append(svg('phone'), el('span', '', p.phone || 'No phone number'));
-    const phoneRow = contactRow(phoneValue, actions);
-    right.append(phoneRow);
-    if (editing) {
-      const pencil = editPencil('Edit phone number');
-      phoneValue.append(pencil);
-      pencil.addEventListener('click', () => fieldEditor(phoneRow, pencil, {
-        current: p.phone || '',
-        allowHide: true,
-        submit: (value, status) => submitField(p.email, 'phone', value, status),
-      }));
-    }
+    ]));
   }
-  const addressEditable = editing && family && p.email === document.body.dataset.userEmail &&
-    (family.adultEmails || []).includes(p.email);
-  if (family && (family.address || addressEditable)) {
-    const block = el('div');
-    const addressValue = el('div', 'contact-value editable-value');
-    addressValue.append(svg('map'), el('span', '', family.address || 'No address'));
-    block.append(addressValue);
-    const actions = family.address ? [
+  if (family && family.address) {
+    const addressValue = el('div', 'contact-value');
+    addressValue.append(svg('map'), el('span', '', family.address));
+    right.append(contactRow(addressValue, [
       iconButton('map', 'Map', 'https://maps.google.com/?q=' + encodeURIComponent(family.address)),
       copyButton(family.address),
-    ] : [];
-    const addressRow = contactRow(block, actions);
-    right.append(addressRow);
-    if (addressEditable) {
-      const pencil = editPencil('Edit address');
-      addressValue.append(pencil);
-      pencil.addEventListener('click', () => fieldEditor(addressRow, pencil, {
-        current: family.address || '',
-        allowHide: true,
-        submit: (value, status) => submitField(p.email, 'address', value, status),
-      }));
-    }
+    ]));
   }
   if (editing) {
     right.append(el('div', 'pronounce-label', 'How do I pronounce this?'));
@@ -6055,6 +6029,13 @@ function renderPrivacyMenuAlert() {
   const hasMismatch = myPrivacyWarnings().length > 0;
   const staleCount = staleItems().length;
   const hasStale = staleCount > 0;
+  // My Privacy only has anything to show for someone in a family (it's entirely
+  // about the family's address/phone visibility) - staff with no family record
+  // would just land on an empty page, so hide the link for them instead.
+  const hasFamily = !!familyOf(byEmail[document.body.dataset.userEmail]);
+  for (const link of document.querySelectorAll('.user-menu-privacy')) {
+    link.hidden = !hasFamily;
+  }
 
   for (const badge of document.querySelectorAll('.user-menu-alert')) {
     badge.hidden = !hasMismatch;

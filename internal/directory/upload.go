@@ -368,17 +368,6 @@ func (u uploader) edit(w http.ResponseWriter, r *http.Request) {
 		cells["Full Name"] = value + " " + surname(base)
 		previous["Preferred Name"] = person.PreferredName
 		previous["Full Name"] = person.FullName
-	case "phone":
-		if !u.mayEdit(model, me, "person", key) {
-			http.Error(w, "not allowed to edit this record", http.StatusForbidden)
-			return
-		}
-		if len(value) > 40 {
-			http.Error(w, "bad phone number", http.StatusBadRequest)
-			return
-		}
-		cells["Phone"] = clearable(value)
-		previous["Phone"] = person.Phone
 	case "pronouns":
 		if !u.mayEdit(model, me, "person", key) {
 			http.Error(w, "not allowed to edit this record", http.StatusForbidden)
@@ -411,29 +400,6 @@ func (u uploader) edit(w http.ResponseWriter, r *http.Request) {
 		// for apply() to see as a pre-existing baseline value.
 		cells["Pronunciation"] = ""
 		previous["Pronunciation"] = person.pronunciation
-	case "address":
-		if key != strings.ToLower(me) || !person.IsParent {
-			http.Error(w, "not allowed to edit this record", http.StatusForbidden)
-			return
-		}
-		keys := model.FamilyKeysOf(person.Email)
-		if len(keys) == 0 {
-			http.Error(w, "no family record", http.StatusBadRequest)
-			return
-		}
-		family := model.Families[keys[0]]
-		if len(value) > 200 {
-			http.Error(w, "bad address", http.StatusBadRequest)
-			return
-		}
-		familyCells := map[string]string{"Address": clearable(value)}
-		familyPrevious := map[string]string{"Address": family.Address}
-		if !u.applyFamily(w, me, family.Key, field+" edit", familyCells, familyPrevious) {
-			return
-		}
-		log.Printf("edit: %s set %s on %s", me, field, key)
-		w.WriteHeader(http.StatusNoContent)
-		return
 	default:
 		http.Error(w, "bad field", http.StatusBadRequest)
 		return

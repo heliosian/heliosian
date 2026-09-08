@@ -2158,6 +2158,10 @@ main {
   gap: 8px;
 }
 
+.user-menu-privacy[hidden] {
+  display: none !important;
+}
+
 .user-menu-alert {
   display: flex;
   align-items: center;
