@@ -53,6 +53,14 @@
 <a class="mobile-back" id="mobile-back" hidden><svg viewBox="0 0 24 24"><path d="M19 12H5m7-7-7 7 7 7"/></svg></a>
 <div class="mobile-title" id="mobile-title"></div>
 <button class="mobile-search-btn" id="mobile-search-btn" aria-label="Search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></button>
+<div class="user" id="mobile-user"><span class="user-avatar">{{.UserInitial}}</span><span class="user-row-alert" id="mobile-user-row-alert" hidden></span></div>
+<div class="user-menu" id="mobile-user-menu" hidden>
+<a href="/people/{{.UserEmailSlug}}">View Profile</a>
+<a href="/my-privacy" class="user-menu-privacy">My Privacy<span class="user-menu-alert" hidden></span></a>
+{{if .IsAdmin}}<a href="/admin">Admin Tools</a>
+<label class="user-menu-toggle"><span>Super Edit Mode</span><input type="checkbox" class="super-edit-checkbox"></label>{{end}}
+<form method="post" action="/auth/logout"><button>Sign Out</button></form>
+</div>
 </header>
 <div class="app-shell">
 <aside class="sidebar">
@@ -98,23 +106,6 @@
 <button class="drawer-close" id="drawer-close" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
 </div>
 <nav class="app-nav drawer-nav" id="drawer-nav"></nav>
-<div class="drawer-user">
-<div class="drawer-user-menu-anchor">
-<div class="user-menu" id="drawer-user-menu" hidden>
-<a href="/people/{{.UserEmailSlug}}">View Profile</a>
-<a href="/my-privacy" class="user-menu-privacy">My Privacy<span class="user-menu-alert" hidden></span></a>
-{{if .IsAdmin}}<a href="/admin">Admin Tools</a>
-<label class="user-menu-toggle"><span>Super Edit Mode</span><input type="checkbox" class="super-edit-checkbox"></label>{{end}}
-<form method="post" action="/auth/logout"><button>Sign Out</button></form>
-</div>
-</div>
-<div class="drawer-user-info">
-<div class="drawer-user-name">{{.UserName}}</div>
-<div class="drawer-user-email">{{.UserEmail}}</div>
-</div>
-<span class="user-row-alert" id="drawer-user-row-alert" hidden></span>
-<button class="drawer-user-more" id="drawer-user-more" aria-label="Account"><svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg></button>
-</div>
 </aside>
 <script src="/static/directory/app.js"></script>
 </body>

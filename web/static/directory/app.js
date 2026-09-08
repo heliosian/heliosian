@@ -1248,14 +1248,22 @@ function renderPeople() {
     renderGrid();
   });
   search.append(input);
-  controls.append(
+  const facetFilters = el('div', 'facet-filters');
+  facetFilters.append(
     facetDropdown('Grade', gradeOptions(), state.filterGrades, () => renderGrid()),
     facetDropdown('Classroom', state.model.classrooms.map(c => c.name), state.filterClassrooms, () => renderGrid()),
   );
   if (isEveryone && tagNames().length) {
-    controls.append(facetDropdown('Tags', tagNames(), state.filterTags, () => renderGrid()));
+    facetFilters.append(facetDropdown('Tags', tagNames(), state.filterTags, () => renderGrid()));
   }
-  controls.append(search);
+  controls.append(facetFilters, search);
+  // Small-screen stand-in for the Grade/Classroom/Tags dropdowns above: same
+  // filters, collapsed into one funnel-icon button so the mobile controls row
+  // doesn't have to fit every facet dropdown individually. CSS swaps which of
+  // the two is visible per breakpoint (see .facet-filters/.mobile-filter).
+  const mobileFilter = filterControl(() => renderGrid(), {role: false, city: false, pronouns: false, newToHelios: false, tags: isEveryone});
+  mobileFilter.classList.add('mobile-filter');
+  controls.append(mobileFilter);
   header.append(controls);
   content.append(header);
 
@@ -2835,8 +2843,10 @@ function filterControl(rerender, options = {}) {
   if (options.city !== false) {
     sections.push({label: 'City', values: cityOptions(), set: state.filterCities});
   }
-  sections.push({label: 'Pronouns', values: pronounOptions(), set: state.filterPronouns});
-  if (tagNames().length) {
+  if (options.pronouns !== false) {
+    sections.push({label: 'Pronouns', values: pronounOptions(), set: state.filterPronouns});
+  }
+  if (options.tags !== false && tagNames().length) {
     sections.push({label: 'Tags', values: tagNames(), set: state.filterTags});
   }
   for (const s of sections) {
@@ -2896,8 +2906,12 @@ function filterControl(rerender, options = {}) {
     if (options.city !== false) {
       state.filterCities.clear();
     }
-    state.filterPronouns.clear();
-    state.filterTags.clear();
+    if (options.pronouns !== false) {
+      state.filterPronouns.clear();
+    }
+    if (options.tags !== false) {
+      state.filterTags.clear();
+    }
     if (options.newToHelios !== false) {
       state.filterNew = false;
     }
@@ -5547,11 +5561,19 @@ document.querySelector('#user').addEventListener('click', e => {
   userMenu.hidden = !userMenu.hidden;
 });
 
+// Mobile's counterpart to the desktop topbar avatar above - same menu markup,
+// pinned to the top-right of .mobile-top instead of tucked into the drawer, so
+// the account entry point sits in the same corner on every breakpoint.
+const mobileUserMenu = document.querySelector('#mobile-user-menu');
+document.querySelector('#mobile-user').addEventListener('click', e => {
+  e.stopPropagation();
+  mobileUserMenu.hidden = !mobileUserMenu.hidden;
+});
+
 const drawer = document.querySelector('#drawer');
 const drawerOverlay = document.querySelector('#drawer-overlay');
-const drawerUserMenu = document.querySelector('#drawer-user-menu');
 
-// Both the desktop and mobile-drawer user menus carry their own copy of this
+// Both the desktop and mobile user menus carry their own copy of this
 // checkbox (admin-only, server-rendered) - a quicker way to flip Super Edit Mode
 // than the full admin page, which still has its own toggle too. Wired once here
 // since the checkboxes are static; syncSuperEditCheckboxes (called from load())
@@ -5564,18 +5586,11 @@ for (const box of document.querySelectorAll('.super-edit-checkbox')) {
 function setDrawer(open) {
   drawer.hidden = !open;
   drawerOverlay.hidden = !open;
-  if (!open) {
-    drawerUserMenu.hidden = true;
-  }
 }
 
 document.querySelector('#mobile-menu-btn').addEventListener('click', () => setDrawer(true));
 document.querySelector('#drawer-close').addEventListener('click', () => setDrawer(false));
 drawerOverlay.addEventListener('click', () => setDrawer(false));
-document.querySelector('#drawer-user-more').addEventListener('click', e => {
-  e.stopPropagation();
-  drawerUserMenu.hidden = !drawerUserMenu.hidden;
-});
 
 // Enter jumps straight to the highlighted result, the way a browser's own
 // address bar completes on Enter, so search-then-Enter never requires
@@ -5652,7 +5667,7 @@ function closeFilterPanels() {
 
 document.addEventListener('click', e => {
   userMenu.hidden = true;
-  drawerUserMenu.hidden = true;
+  mobileUserMenu.hidden = true;
   if (!topbarSearchResults.hidden && !e.target.closest('.topbar-search')) {
     topbarSearchResults.hidden = true;
   }
@@ -5678,6 +5693,7 @@ function isEditableTarget(target) {
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     userMenu.hidden = true;
+    mobileUserMenu.hidden = true;
     setDrawer(false);
     setMobileSearch(false);
     topbarSearchResults.hidden = true;
