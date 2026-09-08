@@ -5973,6 +5973,12 @@ function iosDevice() {
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 }
 
+// beforeinstallprompt also fires on desktop Chrome/Edge, but "add to home
+// screen" is a phone/tablet idea - desktop already has a real taskbar.
+function mobileDevice() {
+  return iosDevice() || /android/i.test(navigator.userAgent);
+}
+
 // iOS 26's Safari redesign folded the toolbar's standalone Share icon into a
 // "..." overflow button, so the old "tap Share" instructions point at nothing
 // on 26+. Below that, Share still has its own icon in the toolbar.
@@ -5994,7 +6000,8 @@ window.addEventListener('appinstalled', () => {
 });
 
 function maybeShowInstallPrompt() {
-  if (runningStandalone() || installPromptDismissedRecently() || document.querySelector('.install-prompt-overlay')) {
+  if (!mobileDevice() || runningStandalone() || installPromptDismissedRecently() ||
+      document.querySelector('.install-prompt-overlay')) {
     return;
   }
   const isIOS = iosDevice();
