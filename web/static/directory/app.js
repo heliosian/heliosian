@@ -3476,6 +3476,8 @@ function renderPersonDetail(email) {
   // that photo instead of always the primary one - see the comment on
   // photoMenu's getPhoto param.
   let onHeroPreview = null;
+  const families = familiesOf(p);
+  const family = families[0];
   if (p.photoUrl) {
     // Person.Photos is `omitempty` in the JSON, so p.photos is undefined - not []
     // - whenever nobody has ever uploaded a photo for this person; every other
@@ -3509,9 +3511,19 @@ function renderPersonDetail(email) {
       img.addEventListener('click', () => openPhotoLightbox(photos.length ? photos[0].originalUrl : p.photoUrl));
       onHeroPreview = updateCropBadge;
     }
+  } else if (family && family.photoUrl) {
+    // No uploaded photo of their own: fall back to the family photo rather than a
+    // colored-initials placeholder, since that's the more recognizable default for
+    // a parent (or a kid) whose own photo hasn't been added yet.
+    const img = el('img', 'detail-photo');
+    img.src = thumbUrl(family.photoUrl);
+    img.alt = '';
+    img.addEventListener('click', () => openPhotoLightbox(family.photoUrl));
+    wrap.append(img);
   } else {
-    // No uploaded photo: fall back to the same colored-initials shape the directory
-    // grid uses instead of an empty gray box, so a profile never looks broken.
+    // No uploaded photo, own or family's: fall back to the same colored-initials
+    // shape the directory grid uses instead of an empty gray box, so a profile
+    // never looks broken.
     wrap.append(photoOrInitials(null, p.fullName, 'detail-photo detail-photo-empty'));
   }
   left.append(wrap);
@@ -3532,8 +3544,6 @@ function renderPersonDetail(email) {
   grid.append(left);
 
   const right = el('div');
-  const families = familiesOf(p);
-  const family = families[0];
   const topRow = el('div', 'detail-top');
   const roleRow = el('div', 'role-label', baseRole(p));
   topRow.append(roleRow);
