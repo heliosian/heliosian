@@ -1023,20 +1023,25 @@ function tagControl(email, wrapClass, buttonClass, onChange) {
     if (!opening) {
       return;
     }
-    // Opening the dropdown always applies the user's most recently used tag
-    // first (creating "My List" the very first time), so tagging someone is
-    // a single click in the common case; the dropdown that comes up right
-    // after still shows every tag as a checkbox to adjust or undo the guess.
-    const tag = mostRecentTag();
-    if (!(tags[tag] || []).includes(email)) {
-      await setTag(email, tag, true);
-      menu.refreshTags();
-      button.classList.toggle('active', isTagged(email));
-      onChange();
+    if (isTagged(email)) {
+      // Already has at least one tag - just show them to review or adjust,
+      // rather than guessing another one on top.
+      menu.querySelector('.tag-option input')?.focus();
+      return;
     }
-    // Land keyboard focus straight on the tag that was just (or already)
-    // applied, so a keyboard user's very next keystroke - Space - undoes it
-    // without first hunting for it via Tab or the arrow keys.
+    // Opening the dropdown for someone with no tags yet applies the user's
+    // most recently used tag first (creating "My List" the very first time),
+    // so tagging someone new is a single click in the common case; the
+    // dropdown that comes up right after still shows every tag as a checkbox
+    // to adjust or undo the guess.
+    const tag = mostRecentTag();
+    await setTag(email, tag, true);
+    menu.refreshTags();
+    button.classList.toggle('active', isTagged(email));
+    onChange();
+    // Land keyboard focus straight on the tag that was just applied, so a
+    // keyboard user's very next keystroke - Space - undoes it without first
+    // hunting for it via Tab or the arrow keys.
     menu.focusTag(tag);
   });
   // On a mouse-driven desktop, hovering the button previews the dropdown
