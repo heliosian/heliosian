@@ -37,6 +37,27 @@ function saveLastTag(tag) {
   }
 }
 
+// When each tag was last applied to someone, remembered per browser so the
+// tag picker's checkbox list can surface the tags this user actually reaches
+// for instead of an alphabetical list that never changes.
+function loadTagUsage() {
+  try {
+    return JSON.parse(localStorage.getItem('tagUsage') || '{}');
+  } catch (e) {
+    return {};
+  }
+}
+
+function recordTagUsage(tag) {
+  try {
+    const usage = loadTagUsage();
+    usage[tag] = Date.now();
+    localStorage.setItem('tagUsage', JSON.stringify(usage));
+  } catch (e) {
+    // ignore
+  }
+}
+
 // Which relations (Parents/Children/Siblings) to pull into each tag's list,
 // remembered per tag name so "Birthday" and "Carpool" can each keep their
 // own Include settings across visits.
@@ -100,6 +121,16 @@ function tagNames() {
   return Object.keys(tags).sort((a, b) => a.localeCompare(b));
 }
 
+// Same set of tags as tagNames(), ordered most-recently-used first (falling
+// back to alphabetical for tags this browser has no usage record for, e.g.
+// after clearing localStorage or on another device) - this is the order the
+// tag picker's checkbox list shows, so the tags someone actually uses rise to
+// the top instead of sitting wherever the alphabet puts them.
+function tagNamesByRecency() {
+  const usage = loadTagUsage();
+  return tagNames().sort((a, b) => (usage[b] || 0) - (usage[a] || 0));
+}
+
 function tagsOf(email) {
   return tagNames().filter(name => tags[name].includes(email));
 }
@@ -113,6 +144,7 @@ async function setTag(email, tag, on) {
   if (on) {
     tags[tag] = people.includes(email) ? people : [...people, email];
     saveLastTag(tag);
+    recordTagUsage(tag);
   } else {
     tags[tag] = people.filter(e => e !== email);
     if (!tags[tag].length) {
@@ -880,7 +912,7 @@ function tagMenu(email, onChange) {
   const menu = el('div', 'card-menu tag-menu');
   menu.hidden = true;
   // render() rebuilds every checkbox from scratch on each toggle (simplest way to
-  // stay in sync with tagNames() gaining/losing entries), which would otherwise
+  // stay in sync with tagNamesByRecency() gaining/losing/reordering entries), which would otherwise
   // drop keyboard focus back to nothing on every Space press - focusTag puts it
   // back on the same tag's (new) checkbox so arrow keys/Space can keep going.
   menu.focusTag = name => {
@@ -888,7 +920,7 @@ function tagMenu(email, onChange) {
   };
   const render = () => {
     menu.replaceChildren();
-    for (const name of tagNames()) {
+    for (const name of tagNamesByRecency()) {
       const row = el('label', 'tag-option');
       const box = el('input');
       box.type = 'checkbox';
@@ -1002,6 +1034,24 @@ function tagControl(email, wrapClass, buttonClass, onChange) {
     // without first hunting for it via Tab or the arrow keys.
     menu.focusTag(tag);
   });
+  // On a mouse-driven desktop, hovering the button previews the dropdown
+  // without the click handler's "apply my most recent tag" side effect -
+  // hover is just a look, a click is a commitment. The brief delay before
+  // hiding survives the small visual gap between the button and the menu
+  // below it, so crossing that gap doesn't flicker the menu shut. Skipped
+  // entirely on touch, where there's no hover state to preview with.
+  if (window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
+    let closeTimer = null;
+    wrap.addEventListener('mouseenter', () => {
+      clearTimeout(closeTimer);
+      menu.hidden = false;
+    });
+    wrap.addEventListener('mouseleave', () => {
+      closeTimer = setTimeout(() => {
+        menu.hidden = true;
+      }, 150);
+    });
+  }
   wrap.append(button, menu);
   return wrap;
 }
