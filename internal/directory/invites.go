@@ -12,6 +12,8 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
+	"time"
 
 	"heliosian/internal/data"
 )
@@ -134,6 +136,88 @@ func loadInviteTemplates(source data.Source) ([]InviteTemplate, error) {
 	return templates, nil
 }
 
+const invitesRefreshInterval = 5 * time.Minute
+
+// invitesCache holds the parsed Invite List Builder templates in memory,
+// refreshed on a timer rather than loaded fresh per request. GET
+// /invite-templates sits on the critical path of every visit to the Invites
+// page - a plain page navigation, not an SPA route, so this runs on every
+// single click into it - and loading straight from Sheets there means one
+// API round trip per destination system plus two more for
+// _Services/_Greetings, several seconds of dead time on every visit. A
+// save/edit/delete calls refreshGreetings directly afterward, so a change is
+// visible on the very next load instead of waiting for the next tick.
+type invitesCache struct {
+	source    data.Source
+	mu        sync.RWMutex
+	systems   []InviteTemplate
+	greetings []GreetingTemplate
+	err       string
+}
+
+func newInvitesCache(source data.Source) *invitesCache {
+	c := &invitesCache{source: source}
+	c.refresh()
+	go c.refreshLoop()
+	return c
+}
+
+func (c *invitesCache) refreshLoop() {
+	for range time.Tick(invitesRefreshInterval) {
+		c.refresh()
+	}
+}
+
+// refresh reloads both halves. A load failure (most commonly: no "invites"
+// spreadsheet configured at all) leaves whichever half failed as it was
+// rather than blanking out working data over a transient error - the error
+// string still surfaces so the client can explain it either way.
+func (c *invitesCache) refresh() {
+	systems, sysErr := loadInviteTemplates(c.source)
+	greetings, greetErr := loadGreetingTemplates(c.source)
+	errStr := ""
+	if sysErr != nil {
+		log.Printf("[ERROR] load invite templates: %v", sysErr)
+		errStr = sysErr.Error()
+	}
+	if greetErr != nil {
+		log.Printf("[ERROR] load greeting templates: %v", greetErr)
+		if errStr == "" {
+			errStr = greetErr.Error()
+		}
+	}
+	c.mu.Lock()
+	if sysErr == nil {
+		c.systems = systems
+	}
+	if greetErr == nil {
+		c.greetings = greetings
+	}
+	c.err = errStr
+	c.mu.Unlock()
+}
+
+// refreshGreetings reloads just _Greetings - one Sheets call instead of
+// refresh's seven-plus - so a write handler can call it directly without
+// making the person who just clicked Save wait for the whole template set to
+// reload too.
+func (c *invitesCache) refreshGreetings() {
+	greetings, err := loadGreetingTemplates(c.source)
+	if err != nil {
+		log.Printf("[ERROR] load greeting templates: %v", err)
+		return
+	}
+	c.mu.Lock()
+	c.greetings = greetings
+	c.mu.Unlock()
+}
+
+func (c *invitesCache) view() ([]InviteTemplate, []GreetingTemplate, string) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.systems, c.greetings, c.err
+}
+
 // RegisterInvites serves the parsed Invite List Builder templates to the
 // client, which runs the actual per-family substitution (it already has the
 // filtered, formatted family data the templates draw on), and lets anyone add
@@ -144,29 +228,16 @@ func loadInviteTemplates(source data.Source) ([]InviteTemplate, error) {
 // feature, not the app - POST simply fails the same way any write would with
 // no spreadsheet behind it.
 func RegisterInvites(mux *http.ServeMux, cache *Cache, source data.Source, writer data.Writer) {
+	invites := newInvitesCache(source)
+
 	mux.HandleFunc("GET /api/directory/invite-templates", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		systems, greetings, errStr := invites.view()
 		view := struct {
 			Systems   []InviteTemplate   `json:"systems"`
 			Greetings []GreetingTemplate `json:"greetings"`
 			Error     string             `json:"error,omitempty"`
-		}{}
-		templates, err := loadInviteTemplates(source)
-		if err != nil {
-			log.Printf("[ERROR] load invite templates: %v", err)
-			view.Error = err.Error()
-		} else {
-			view.Systems = templates
-		}
-		greetings, err := loadGreetingTemplates(source)
-		if err != nil {
-			log.Printf("[ERROR] load greeting templates: %v", err)
-			if view.Error == "" {
-				view.Error = err.Error()
-			}
-		} else {
-			view.Greetings = greetings
-		}
+		}{Systems: systems, Greetings: greetings, Error: errStr}
 		if err := json.NewEncoder(w).Encode(view); err != nil {
 			log.Printf("[ERROR] encode invite templates: %v", err)
 		}
@@ -232,6 +303,9 @@ func RegisterInvites(mux *http.ServeMux, cache *Cache, source data.Source, write
 			}
 			log.Printf("greeting: %s added %q", email, name)
 		}
+		// So the change shows up on the very next page load rather than
+		// waiting for invitesCache's next timed refresh.
+		invites.refreshGreetings()
 		w.WriteHeader(http.StatusNoContent)
 	})
 
@@ -266,6 +340,7 @@ func RegisterInvites(mux *http.ServeMux, cache *Cache, source data.Source, write
 			return
 		}
 		log.Printf("greeting: %s deleted %q", email, name)
+		invites.refreshGreetings()
 		w.WriteHeader(http.StatusNoContent)
 	})
 }
