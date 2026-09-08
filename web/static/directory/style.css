@@ -142,8 +142,18 @@ html {
   z-index: 60;
   display: flex;
   justify-content: center;
+  align-items: flex-start;
   background: rgba(0, 0, 0, 0.35);
   padding: calc(env(safe-area-inset-top) + 60px) 16px 16px;
+}
+
+/* Phones keep the Share/"..." button in the bottom toolbar, so anchor the
+   card there instead of under the top address bar. */
+@media (max-width: 900px) {
+  .install-prompt-overlay {
+    align-items: flex-end;
+    padding: 16px 16px calc(env(safe-area-inset-bottom) + 16px);
+  }
 }
 
 .install-prompt-card {
@@ -320,7 +330,12 @@ body {
   -moz-osx-font-smoothing: grayscale;
   display: flex;
   flex-direction: column;
-  height: 100dvh;
+  /* --vh100 (set in app.js from window.innerHeight) stands in for 100dvh - in
+     standalone iOS PWA mode, dvh can settle on a shorter value after an
+     in-page route change than it reported on first load, leaving fixed
+     bottom bars short of the real screen edge. innerHeight matches what
+     position:fixed elements are actually anchored to, so it doesn't drift. */
+  height: var(--vh100, 100dvh);
   overflow: hidden;
   color: var(--ink);
   background: #fff;
@@ -4007,7 +4022,7 @@ img.fcard-photo {
     display: block;
   }
   main {
-    height: 100dvh;
+    height: var(--vh100, 100dvh);
     margin-top: 0;
     padding-top: calc(48px + var(--banner-h) + env(safe-area-inset-top));
     padding-bottom: calc(62px + env(safe-area-inset-bottom));

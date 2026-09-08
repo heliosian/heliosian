@@ -5542,6 +5542,18 @@ function render() {
   finishRender();
 }
 
+// Standalone iOS PWAs can settle 100dvh on a shorter value after an in-page
+// route change than they reported on first load, leaving fixed bottom bars
+// (mobile-tabs) short of the real screen edge - window.innerHeight matches
+// what position:fixed elements are actually anchored to, so mirroring it into
+// a custom property (see body/main's height: var(--vh100, 100dvh) in
+// style.css) keeps them in sync regardless of dvh's own drift.
+function syncViewportHeight() {
+  document.documentElement.style.setProperty('--vh100', window.innerHeight + 'px');
+}
+window.addEventListener('resize', syncViewportHeight);
+window.addEventListener('orientationchange', syncViewportHeight);
+
 // Wraps everything the render just built so it can act as the flexible
 // sticky-footer spacer: on a short page it grows to push the art down to the true
 // bottom of the viewport, and on a tall page it just yields to scrolling. Called
@@ -5550,6 +5562,7 @@ function render() {
 // render() - those bypass this otherwise, leaving the footer art stuck from
 // whatever page loaded first (or missing it entirely).
 function finishRender() {
+  syncViewportHeight();
   const main = document.querySelector('#main');
   const contentWrap = el('div', 'page-content-wrap');
   contentWrap.append(...main.childNodes);
@@ -6018,7 +6031,7 @@ function installPromptOverlay(isIOS) {
     if (iosMajorVersion() >= 26) {
       const dots = svg('ellipsis');
       dots.classList.add('install-prompt-dots');
-      hint.append('Tap ', dots, ' then Share, then “Add to Home Screen”');
+      hint.append('Tap ', dots, ' then ', svg('upload'), ' Share, then “Add to Home Screen”');
     } else {
       hint.append('Tap ', svg('upload'), ' then “Add to Home Screen”');
     }
