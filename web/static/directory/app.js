@@ -323,9 +323,7 @@ function renderGlobalSearchResults(resultsEl, query) {
   group('Grades', grades, g => {
     const row = el('a', 'gsearch-result');
     row.href = withFrom('/grades/' + slugify(g.name));
-    const avatar = el('div', 'gsearch-avatar gsearch-avatar-icon');
-    avatar.append(svg('students'));
-    row.append(avatar);
+    row.append(photoOrInitials(gradeImage(g.name), g.name, 'gsearch-avatar'));
     const info = el('div', 'gsearch-info');
     info.append(el('div', 'gsearch-title', g.name));
     row.append(info);
@@ -335,14 +333,19 @@ function renderGlobalSearchResults(resultsEl, query) {
   group('Gradebands', classrooms, c => {
     const row = el('a', 'gsearch-result');
     row.href = withFrom('/classrooms/' + slugify(c.name));
-    const avatar = el('div', 'gsearch-avatar gsearch-avatar-icon');
-    avatar.append(svg('classrooms'));
-    row.append(avatar);
+    row.append(photoOrInitials(c.imageUrl, c.name, 'gsearch-avatar'));
     const info = el('div', 'gsearch-info');
     info.append(el('div', 'gsearch-title', c.name));
     row.append(info);
     return row;
   });
+
+  // Highlight the top result so Enter in the search box goes straight to it,
+  // without requiring an arrow-key press first.
+  const first = resultsEl.querySelector('.gsearch-result');
+  if (first) {
+    first.classList.add('active');
+  }
 
   resultsEl.hidden = false;
 }
@@ -869,17 +872,26 @@ function personContext(p) {
 function tagMenu(email, onChange) {
   const menu = el('div', 'card-menu tag-menu');
   menu.hidden = true;
+  // render() rebuilds every checkbox from scratch on each toggle (simplest way to
+  // stay in sync with tagNames() gaining/losing entries), which would otherwise
+  // drop keyboard focus back to nothing on every Space press - focusTag puts it
+  // back on the same tag's (new) checkbox so arrow keys/Space can keep going.
+  menu.focusTag = name => {
+    menu.querySelector(`.tag-option input[data-tag-name="${CSS.escape(name)}"]`)?.focus();
+  };
   const render = () => {
     menu.replaceChildren();
     for (const name of tagNames()) {
       const row = el('label', 'tag-option');
       const box = el('input');
       box.type = 'checkbox';
+      box.dataset.tagName = name;
       box.checked = tags[name].includes(email);
       box.addEventListener('change', async () => {
         await setTag(email, name, box.checked);
         render();
         onChange();
+        menu.focusTag(name);
       });
       row.append(el('span', '', name), box);
       menu.append(row);
@@ -915,6 +927,22 @@ function tagMenu(email, onChange) {
     if (!e.target.closest('.tag-option')) {
       e.preventDefault();
     }
+  });
+  // Checkboxes only take Tab natively - Up/Down lets a keyboard user walk the
+  // list the same way the global search dropdown's results do, so reaching a
+  // tag to toggle off never requires the mouse.
+  menu.addEventListener('keydown', e => {
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') {
+      return;
+    }
+    const boxes = [...menu.querySelectorAll('.tag-option input[type="checkbox"]')];
+    const current = boxes.indexOf(document.activeElement);
+    if (current === -1) {
+      return;
+    }
+    e.preventDefault();
+    const delta = e.key === 'ArrowDown' ? 1 : -1;
+    boxes[(current + delta + boxes.length) % boxes.length].focus();
   });
   menu.refreshTags = render;
   return menu;
@@ -962,6 +990,10 @@ function tagControl(email, wrapClass, buttonClass, onChange) {
       button.classList.toggle('active', isTagged(email));
       onChange();
     }
+    // Land keyboard focus straight on the tag that was just (or already)
+    // applied, so a keyboard user's very next keystroke - Space - undoes it
+    // without first hunting for it via Tab or the arrow keys.
+    menu.focusTag(tag);
   });
   wrap.append(button, menu);
   return wrap;
@@ -1836,7 +1868,9 @@ function breadcrumbs(parts, tagEmail) {
       }
     };
     renderTagList();
-    tagArea.append(tagList, tagControl(tagEmail, 'tag-wrap', 'tag-button', renderTagList));
+    const tagWrap = tagControl(tagEmail, 'tag-wrap', 'tag-button', renderTagList);
+    tagWrap.querySelector('.tag-button').title = 'Tags (Shift+T)';
+    tagArea.append(tagList, tagWrap);
     top.append(tagArea);
   }
   return top;
@@ -4404,6 +4438,43 @@ document.querySelector('#drawer-user-more').addEventListener('click', e => {
   drawerUserMenu.hidden = !drawerUserMenu.hidden;
 });
 
+// Enter jumps straight to the highlighted result, the way a browser's own
+// address bar completes on Enter, so search-then-Enter never requires
+// reaching for the mouse. Arrow keys move the highlight between results
+// first, same as any other combobox.
+function goToActiveResult(resultsEl) {
+  const active = resultsEl.querySelector('.gsearch-result.active');
+  if (active) {
+    location.href = active.href;
+  }
+}
+
+function moveActiveResult(resultsEl, delta) {
+  const results = [...resultsEl.querySelectorAll('.gsearch-result')];
+  if (!results.length) {
+    return;
+  }
+  const current = results.findIndex(r => r.classList.contains('active'));
+  const next = (current + delta + results.length) % results.length;
+  if (current >= 0) {
+    results[current].classList.remove('active');
+  }
+  results[next].classList.add('active');
+  results[next].scrollIntoView({block: 'nearest'});
+}
+
+function handleSearchNavKeys(resultsEl, e) {
+  if (e.key === 'Enter') {
+    goToActiveResult(resultsEl);
+  } else if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    moveActiveResult(resultsEl, 1);
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    moveActiveResult(resultsEl, -1);
+  }
+}
+
 const topbarSearchInput = document.querySelector('#topbar-search-input');
 const topbarSearchResults = document.querySelector('#topbar-search-results');
 topbarSearchInput.addEventListener('input', () => {
@@ -4414,6 +4485,7 @@ topbarSearchInput.addEventListener('focus', () => {
     renderGlobalSearchResults(topbarSearchResults, topbarSearchInput.value);
   }
 });
+topbarSearchInput.addEventListener('keydown', e => handleSearchNavKeys(topbarSearchResults, e));
 
 const mobileSearchOverlay = document.querySelector('#mobile-search-overlay');
 const mobileSearchInput = document.querySelector('#mobile-search-input');
@@ -4431,6 +4503,7 @@ document.querySelector('#mobile-search-close').addEventListener('click', () => s
 mobileSearchInput.addEventListener('input', () => {
   renderGlobalSearchResults(mobileSearchResults, mobileSearchInput.value);
 });
+mobileSearchInput.addEventListener('keydown', e => handleSearchNavKeys(mobileSearchResults, e));
 function closeFilterPanels() {
   for (const panel of document.querySelectorAll('.filter-panel')) {
     panel.hidden = true;
@@ -4456,6 +4529,13 @@ document.addEventListener('click', e => {
     }
   }
 });
+// A bare "/" (no modifiers, and not already typing somewhere) jumps straight to
+// search, the way GitHub/Slack do - skipped while any text field, including the
+// search box itself, already has focus so a literal "/" can still be typed.
+function isEditableTarget(target) {
+  return target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+}
+
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     userMenu.hidden = true;
@@ -4465,6 +4545,25 @@ document.addEventListener('keydown', e => {
     closeFilterPanels();
     for (const menu of document.querySelectorAll('.more-menu, .card-menu, .photo-menu')) {
       menu.hidden = true;
+    }
+    if (e.target === topbarSearchInput || e.target === mobileSearchInput) {
+      e.target.blur();
+    }
+  } else if (e.key === '/' && !e.metaKey && !e.ctrlKey && !e.altKey && !isEditableTarget(e.target)) {
+    e.preventDefault();
+    if (isMobile()) {
+      setMobileSearch(true);
+    } else {
+      topbarSearchInput.focus();
+    }
+  } else if (e.key.toLowerCase() === 't' && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && !isEditableTarget(e.target)) {
+    // Same single "the tag button" a person's detail page shows (see
+    // breadcrumbs' tagEmail param) - clicking it does the actual work, so the
+    // shortcut just replays that click rather than duplicating its logic.
+    const tagButton = document.querySelector('.tag-button');
+    if (tagButton) {
+      e.preventDefault();
+      tagButton.click();
     }
   }
 });

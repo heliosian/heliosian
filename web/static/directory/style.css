@@ -747,7 +747,8 @@ body {
   text-decoration: none;
 }
 
-.gsearch-result:hover {
+.gsearch-result:hover,
+.gsearch-result.active {
   background: #f2f4f6;
 }
 
