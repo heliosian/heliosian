@@ -5548,8 +5548,17 @@ function render() {
 // what position:fixed elements are actually anchored to, so mirroring it into
 // a custom property (see body/main's height: var(--vh100, 100dvh) in
 // style.css) keeps them in sync regardless of dvh's own drift.
+//
+// In standalone mode specifically, innerHeight itself under-reports: it
+// comes in ~60pt short of the true screen (no browser chrome exists there to
+// explain the gap), and because body's height ends up as fixed elements'
+// containing block, mobile-tabs' bottom:0 then stops short of the real edge
+// too, leaving a blank strip below it. There's no dynamic toolbar to track in
+// standalone mode, so screen.height - the full, stable device height - is
+// the correct source there instead.
 function syncViewportHeight() {
-  document.documentElement.style.setProperty('--vh100', window.innerHeight + 'px');
+  const h = runningStandalone() ? window.screen.height : window.innerHeight;
+  document.documentElement.style.setProperty('--vh100', h + 'px');
 }
 window.addEventListener('resize', syncViewportHeight);
 window.addEventListener('orientationchange', syncViewportHeight);
