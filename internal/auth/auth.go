@@ -19,6 +19,7 @@ import (
 
 const (
 	Domain        = "heliosschool.org"
+	apex          = "heliosian.com"
 	cookieName    = "session"
 	sessionLength = 30 * 24 * time.Hour
 )
@@ -103,10 +104,10 @@ func (a *Auth) Wrap(next http.Handler) http.Handler {
 // same tier. A host outside the convention gets a host-only cookie.
 func cookieDomain(host string) string {
 	host, _, _ = strings.Cut(host, ":")
-	if host == "heliosian.com" || host == "www.heliosian.com" {
-		return "heliosian.com"
+	if host == apex || host == "www."+apex {
+		return apex
 	}
-	if !strings.HasSuffix(host, ".heliosian.com") {
+	if !strings.HasSuffix(host, "."+apex) {
 		return ""
 	}
 	_, parent, _ := strings.Cut(host, ".")
@@ -151,12 +152,27 @@ func (a *Auth) login(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
-// logout clears the shared cookie and a host-only one: sessions issued before
-// the cookie was scoped to the tier were host-only, and one of those left in
-// place keeps signing its browser in for the rest of its month.
+// logoutDomains lists every domain a session cookie reaching this host could
+// have been set for: host-only, and each parent up to the apex. A production
+// sign-in's apex-domain cookie reaches the lab hosts too, and sessions issued
+// before the cookie was scoped to a tier were host-only; signing out has to
+// end all of them.
+func logoutDomains(host string) []string {
+	host, _, _ = strings.Cut(host, ":")
+	domains := []string{""}
+	if host != apex && !strings.HasSuffix(host, "."+apex) {
+		return domains
+	}
+	for host != apex {
+		_, host, _ = strings.Cut(host, ".")
+		domains = append(domains, host)
+	}
+	return domains
+}
+
 func (a *Auth) logout(w http.ResponseWriter, r *http.Request) {
 	secure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
-	for _, domain := range []string{cookieDomain(r.Host), ""} {
+	for _, domain := range logoutDomains(r.Host) {
 		http.SetCookie(w, &http.Cookie{
 			Name: cookieName, Value: "", Path: "/", Domain: domain,
 			HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode, MaxAge: -1,
