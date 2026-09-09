@@ -24,10 +24,27 @@ import (
 	"heliosian/internal/who"
 )
 
-var hosts = map[string]string{
-	"who.heliosian.com":                       "who",
-	"heliosian-489539474126.us-west1.run.app": "who",
-	"who.local.heliosian.com":                 "who",
+const runAppHost = "heliosian-489539474126.us-west1.run.app"
+
+// appFor reads the app out of a hostname: <app>.heliosian.com in production,
+// <app>.lab.heliosian.com hosted alongside it, <app>.local.heliosian.com on a
+// developer's machine. Home also answers as the bare and www apex.
+func appFor(host string) string {
+	switch host {
+	case "heliosian.com", "www.heliosian.com":
+		return "home"
+	case runAppHost:
+		return "who"
+	}
+	name, ok := strings.CutSuffix(host, ".heliosian.com")
+	if !ok {
+		return ""
+	}
+	app, tier, _ := strings.Cut(name, ".")
+	if tier != "" && tier != "lab" && tier != "local" {
+		return ""
+	}
+	return app
 }
 
 type staticFiles struct{}
@@ -69,7 +86,7 @@ func files(app string, next http.Handler) http.Handler {
 func route(apps map[string]http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		host, _, _ := strings.Cut(r.Host, ":")
-		app, ok := apps[hosts[host]]
+		app, ok := apps[appFor(host)]
 		if !ok {
 			http.NotFound(w, r)
 			return
@@ -123,7 +140,9 @@ func NewCore(cfg Config) *Core {
 	who.Register(mux, cache, cfg.BrowserKey)
 	who.RegisterTags(mux, cache, cfg.Writer, queue)
 	who.RegisterAdmin(mux, cache, cfg.Writer, queue)
-	who.RegisterInvites(mux, cache, cfg.Source, cfg.Writer)
+	if err := who.RegisterInvites(mux, cache, cfg.Source, cfg.Writer); err != nil {
+		log.Fatalf("[ERROR] load invites data: %v", err)
+	}
 	mux.Handle("GET /{$}", http.RedirectHandler("/people", http.StatusFound))
 	return &Core{Mux: mux, Cache: cache, Queue: queue, Gate: who.MemberGate(cache, mux)}
 }
@@ -213,18 +232,14 @@ func mapsKey(envName, file string) string {
 }
 
 // Production assembles the real service: the production spreadsheets, the media
-// bucket, real geocoding, and Google sign-in. Every input is required except
-// INVITES_SHEET - the Invite List Builder templates are one optional feature,
-// not the app, so its absence just leaves that feature with nothing to serve
-// rather than failing every other route too.
+// bucket, real geocoding, and Google sign-in. Every input is required.
 func Production() (*http.Server, *who.Queue) {
-	sheetID := requiredEnv("DIRECTORY_SHEET")
-	preferencesID := requiredEnv("PREFERENCES_SHEET")
-	sessionKey := requiredEnv("SESSION_KEY")
-	spreadsheets := map[string]string{"directory": sheetID, "preferences": preferencesID}
-	if invitesID := os.Getenv("INVITES_SHEET"); invitesID != "" {
-		spreadsheets["invites"] = invitesID
+	spreadsheets := map[string]string{
+		"directory":   requiredEnv("DIRECTORY_SHEET"),
+		"preferences": requiredEnv("PREFERENCES_SHEET"),
+		"invites":     requiredEnv("INVITES_SHEET"),
 	}
+	sessionKey := requiredEnv("SESSION_KEY")
 	sheet, err := data.NewSheet(spreadsheets)
 	if err != nil {
 		log.Fatalf("[ERROR] load directory sheet: %v", err)

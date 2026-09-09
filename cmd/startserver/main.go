@@ -88,11 +88,10 @@ func detachReal(email string) {
 	if key == "" {
 		log.Fatal("[ERROR] SESSION_KEY is required (the server and the minted cookie must share it)")
 	}
-	if os.Getenv("DIRECTORY_SHEET") == "" {
-		log.Fatal("[ERROR] DIRECTORY_SHEET is required")
-	}
-	if os.Getenv("PREFERENCES_SHEET") == "" {
-		log.Fatal("[ERROR] PREFERENCES_SHEET is required")
+	for _, name := range []string{"DIRECTORY_SHEET", "PREFERENCES_SHEET", "INVITES_SHEET"} {
+		if os.Getenv(name) == "" {
+			log.Fatalf("[ERROR] %s is required", name)
+		}
 	}
 
 	logFile, err := os.Create(logPath)

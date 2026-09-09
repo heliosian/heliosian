@@ -8,7 +8,7 @@ https://who.local.heliosian.com:8080 (override the port with `PORT`), clicking p
 
 ## Hosts and files
 
-One binary serves every app, and the hostname picks the app: `internal/app` holds the table of hostnames the service answers to (`who.heliosian.com`, the run.app URL, and `who.local.heliosian.com` all mean the directory), and any other host gets a 404. Public DNS points `*.local.heliosian.com` at loopback, so local development uses real hostnames under it with no hosts-file entry, and the OAuth client and Maps key can name them (Google refuses made-up domains such as `.localhost`).
+One binary serves every app, and the hostname picks the app by convention: `<app>.heliosian.com` is production, `<app>.lab.heliosian.com` is the same service under a second name, and `<app>.local.heliosian.com` is a developer's machine, so `who.heliosian.com`, `who.lab.heliosian.com`, and `who.local.heliosian.com` all mean the directory. Home additionally answers as `heliosian.com` and `www.heliosian.com`, the run.app URL means the directory, and any other host gets a 404 (`internal/app`). Public DNS points `*.local.heliosian.com` at loopback, so local development uses real hostnames under it with no hosts-file entry, and the OAuth client and Maps key can name them (Google refuses made-up domains such as `.localhost`).
 
 ## Local HTTPS
 
@@ -24,9 +24,9 @@ In sample mode `go run ./cmd/startserver -capture <path> -out <png>` serves and 
 
 ## Real data
 
-    DIRECTORY_SHEET=<spreadsheet id> PREFERENCES_SHEET=<spreadsheet id> SESSION_KEY=<secret> go run .
+    DIRECTORY_SHEET=<spreadsheet id> PREFERENCES_SHEET=<spreadsheet id> INVITES_SHEET=<spreadsheet id> SESSION_KEY=<secret> go run .
 
-runs the production binary: the production spreadsheets, the media bucket (see `docs/who/data.md`), real geocoding, and Google sign-in, with no sample fallback — every input is required and the server refuses to start without one. The model loads at startup — the server refuses to start if the load fails — and reloads every five minutes. Real data never leaves the process: nothing is written to disk. Requirements:
+runs the production binary: the production spreadsheets, the media bucket (see `docs/who/data.md`), real geocoding, and Google sign-in, with no sample fallback — every input is required and the server refuses to start without one. `eval "$(go run ./cmd/findsheet)"` sets the three spreadsheet ids from the sheets the service account can see. The model loads at startup — the server refuses to start if the load fails — and reloads every five minutes. Real data never leaves the process: nothing is written to disk. Requirements:
 
 - **Sign-in** — everything sits behind Google sign-in restricted to the school's Workspace domain (API paths get a 401 instead of the login page). The OAuth web client is read from `creds/oauth-client.json` or `GOOGLE_CLIENT_ID`; its authorized JavaScript origins must include `https://who.local.heliosian.com:8080`. The server issues its own HMAC-signed session cookie, keyed by the required `SESSION_KEY`.
 - **Data access** — Google credentials come from application-default credentials impersonating the data service account, set up once per machine:

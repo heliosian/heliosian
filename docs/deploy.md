@@ -1,6 +1,6 @@
 # Production deployment
 
-The server runs as Cloud Run service `heliosian` in project `heliosian`, region `us-west1`, at https://heliosian-489539474126.us-west1.run.app, with https://who.heliosian.com mapped on top. The one service hosts every app, choosing by hostname: both of those hostnames name the directory in the host table in `internal/app`, and a hostname the table does not list gets a 404 even if Cloud Run routes it here. Administration is driven with the gcloud CLI (`brew install --cask gcloud-cli`) authenticated as a project owner (`gcloud auth login`).
+The server runs as Cloud Run service `heliosian` in project `heliosian`, region `us-west1`, at https://heliosian-489539474126.us-west1.run.app, with https://who.heliosian.com mapped on top. The one service hosts every app, choosing by hostname: `<app>.heliosian.com` and `<app>.lab.heliosian.com` name the app, the apex and `www` name home, the run.app URL names the directory, and any other hostname gets a 404 even if Cloud Run routes it here (`internal/app`). Administration is driven with the gcloud CLI (`brew install --cask gcloud-cli`) authenticated as a project owner (`gcloud auth login`).
 
 ## Build and deploy pipeline
 
@@ -22,7 +22,7 @@ The Dockerfile builds in two stages: a `golang` stage compiles the static binary
 
     DIRECTORY_SHEET=<spreadsheet id> PREFERENCES_SHEET=<spreadsheet id> INVITES_SHEET=<spreadsheet id> go run ./cmd/deploy
 
-It deploys the `latest` image with every setting the pipeline does not touch, so it both creates the service from nothing and repairs drift on an existing one. The spreadsheet ids come from the environment and the OAuth client id from `creds/oauth-client.json` — the same resolution the server itself uses — so none of them is written into the repository. `INVITES_SHEET` is optional, same as in `Production()`: omitting it leaves the Invites page with nothing to serve rather than failing the deploy. Because a per-push deploy only ever changes the image (see above), setting or changing `INVITES_SHEET` only ever takes effect through a `cmd/deploy` run, never a plain push.
+It deploys the `latest` image with every setting the pipeline does not touch, so it both creates the service from nothing and repairs drift on an existing one. The spreadsheet ids come from the environment (`cmd/findsheet` prints them as shell exports) and the OAuth client id from `creds/oauth-client.json` — the same resolution the server itself uses — so none of them is written into the repository. All three spreadsheet ids are required, here and in `Production()`. Because a per-push deploy only ever changes the image (see above), changing a spreadsheet id only ever takes effect through a `cmd/deploy` run, never a plain push.
 
 Why each setting is what it is:
 
@@ -43,7 +43,7 @@ Plain environment variables:
 
 - `DIRECTORY_SHEET` — the production spreadsheet id: the `Directory` sheet living in the community shared drive.
 - `PREFERENCES_SHEET` — the `Preferences` sheet in the same shared drive: the sharing-consent form's response spreadsheet.
-- `INVITES_SHEET` — the `Invite List Builder` spreadsheet id, optional. Powers the Invites page (`/greenvelope`); omit it and that page just has nothing to serve.
+- `INVITES_SHEET` — the `Invite List Builder` spreadsheet id. Powers the Invites page (`/greenvelope`).
 - `GOOGLE_CLIENT_ID` — the OAuth web client id; not a secret (it is embedded in the login page).
 
 Secret Manager secrets, delivered as environment variables. Values are used raw, so payloads must not carry trailing newlines:
@@ -82,7 +82,7 @@ The web client's authorized JavaScript origins are the `*.local.heliosian.com` d
 
 ## Domain
 
-`who.heliosian.com` is a Cloud Run domain mapping on the service. DNS carries `who CNAME ghs.googlehosted.com.`; Google provisions and renews the certificate once the record resolves. The run.app URL stays live alongside it. A new hostname takes both a domain mapping here and an entry in the host table in `internal/app` naming the app it serves.
+`who.heliosian.com` and `who.lab.heliosian.com` are Cloud Run domain mappings on the service. DNS carries `CNAME ghs.googlehosted.com.` for each; Google provisions and renews the certificate once the record resolves. The run.app URL stays live alongside them. A new app's hostnames take only domain mappings here; the server already routes them by the naming convention.
 
 ## Verifying a deploy
 

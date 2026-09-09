@@ -155,11 +155,19 @@ type invitesCache struct {
 	err       string
 }
 
-func newInvitesCache(source data.Source) *invitesCache {
-	c := &invitesCache{source: source}
-	c.refresh()
+func newInvitesCache(source data.Source) (*invitesCache, error) {
+	systems, err := loadInviteTemplates(source)
+	if err != nil {
+		return nil, fmt.Errorf("load invite templates: %w", err)
+	}
+	greetings, err := loadGreetingTemplates(source)
+	if err != nil {
+		return nil, fmt.Errorf("load greeting templates: %w", err)
+	}
+	log.Printf("loaded invite templates: %d systems, %d greetings", len(systems), len(greetings))
+	c := &invitesCache{source: source, systems: systems, greetings: greetings}
 	go c.refreshLoop()
-	return c
+	return c, nil
 }
 
 func (c *invitesCache) refreshLoop() {
@@ -168,10 +176,9 @@ func (c *invitesCache) refreshLoop() {
 	}
 }
 
-// refresh reloads both halves. A load failure (most commonly: no "invites"
-// spreadsheet configured at all) leaves whichever half failed as it was
-// rather than blanking out working data over a transient error - the error
-// string still surfaces so the client can explain it either way.
+// refresh reloads both halves. A transient load failure leaves whichever half
+// failed as it was rather than blanking out working data - the error string
+// still surfaces so the client can explain it.
 func (c *invitesCache) refresh() {
 	systems, sysErr := loadInviteTemplates(c.source)
 	greetings, greetErr := loadGreetingTemplates(c.source)
@@ -222,13 +229,13 @@ func (c *invitesCache) view() ([]InviteTemplate, []GreetingTemplate, string) {
 // client, which runs the actual per-family substitution (it already has the
 // filtered, formatted family data the templates draw on), and lets anyone add
 // their own greeting to _Greetings. Source/writer are the same ones
-// directory/preferences read and write through; if no "invites" spreadsheet is
-// configured, GET comes back with systems/greetings empty and an explanatory
-// error string rather than a failed request, since this is one optional
-// feature, not the app - POST simply fails the same way any write would with
-// no spreadsheet behind it.
-func RegisterInvites(mux *http.ServeMux, cache *Cache, source data.Source, writer data.Writer) {
-	invites := newInvitesCache(source)
+// directory/preferences read and write through. The templates load before
+// the server listens and a failure is fatal, the same as the directory model.
+func RegisterInvites(mux *http.ServeMux, cache *Cache, source data.Source, writer data.Writer) error {
+	invites, err := newInvitesCache(source)
+	if err != nil {
+		return err
+	}
 
 	mux.HandleFunc("GET /api/directory/invite-templates", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -343,6 +350,7 @@ func RegisterInvites(mux *http.ServeMux, cache *Cache, source data.Source, write
 		invites.refreshGreetings()
 		w.WriteHeader(http.StatusNoContent)
 	})
+	return nil
 }
 
 // ownsGreeting reports whether the named _Greetings row exists and was

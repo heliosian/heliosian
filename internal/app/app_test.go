@@ -36,16 +36,40 @@ func TestFiles(t *testing.T) {
 	}
 }
 
+func TestAppFor(t *testing.T) {
+	cases := map[string]string{
+		"who.heliosian.com":                       "who",
+		"who.lab.heliosian.com":                   "who",
+		"who.local.heliosian.com":                 "who",
+		"heliosian-489539474126.us-west1.run.app": "who",
+		"home.heliosian.com":                      "home",
+		"home.lab.heliosian.com":                  "home",
+		"home.local.heliosian.com":                "home",
+		"heliosian.com":                           "home",
+		"www.heliosian.com":                       "home",
+		"localhost":                               "",
+		"lab.heliosian.com":                       "lab",
+		"who.staging.heliosian.com":               "",
+		"who.lab.local.heliosian.com":             "",
+		"who.heliosian.com.evil.example":          "",
+	}
+	for host, want := range cases {
+		if got := appFor(host); got != want {
+			t.Errorf("%s: got %q, want %q", host, got, want)
+		}
+	}
+}
+
 func TestRoute(t *testing.T) {
 	handler := route(map[string]http.Handler{"who": http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusTeapot)
 	})})
-	for _, host := range []string{"who.local.heliosian.com:8080", "who.heliosian.com", "heliosian-489539474126.us-west1.run.app"} {
+	for _, host := range []string{"who.local.heliosian.com:8080", "who.lab.heliosian.com", "who.heliosian.com"} {
 		if rec := serve(t, handler, host, "/people"); rec.Code != http.StatusTeapot {
 			t.Errorf("%s: got %d, want routed", host, rec.Code)
 		}
 	}
-	for _, host := range []string{"localhost:8080", "heliosian.com", "home.local.heliosian.com"} {
+	for _, host := range []string{"localhost:8080", "heliosian.com", "home.local.heliosian.com", "lab.heliosian.com"} {
 		if rec := serve(t, handler, host, "/people"); rec.Code != http.StatusNotFound {
 			t.Errorf("%s: got %d, want 404", host, rec.Code)
 		}

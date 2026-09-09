@@ -37,23 +37,19 @@ func clientID() string {
 	return parsed.Web.ClientID
 }
 
+func requiredEnv(name string) string {
+	value := os.Getenv(name)
+	if value == "" {
+		log.Fatalf("[ERROR] %s is required", name)
+	}
+	return value
+}
+
 func main() {
-	sheet := os.Getenv("DIRECTORY_SHEET")
-	if sheet == "" {
-		log.Fatal("[ERROR] DIRECTORY_SHEET is required")
-	}
-	preferences := os.Getenv("PREFERENCES_SHEET")
-	if preferences == "" {
-		log.Fatal("[ERROR] PREFERENCES_SHEET is required")
-	}
-	// Optional, same as Production() itself - the Invite List Builder
-	// templates are one feature, not the app, so a deploy with no
-	// INVITES_SHEET set just leaves that feature with nothing to serve
-	// rather than failing every other route too.
-	envVars := "DIRECTORY_SHEET=" + sheet + ",PREFERENCES_SHEET=" + preferences + ",GOOGLE_CLIENT_ID=" + clientID()
-	if invites := os.Getenv("INVITES_SHEET"); invites != "" {
-		envVars += ",INVITES_SHEET=" + invites
-	}
+	envVars := "DIRECTORY_SHEET=" + requiredEnv("DIRECTORY_SHEET") +
+		",PREFERENCES_SHEET=" + requiredEnv("PREFERENCES_SHEET") +
+		",INVITES_SHEET=" + requiredEnv("INVITES_SHEET") +
+		",GOOGLE_CLIENT_ID=" + clientID()
 	cmd := exec.Command("gcloud",
 		"run", "deploy", service,
 		"--image", image,
