@@ -11,7 +11,6 @@ import (
 	"sort"
 	"strings"
 
-	"heliosian/internal/auth"
 	"heliosian/internal/config"
 	"heliosian/internal/data"
 )
@@ -66,7 +65,7 @@ func (a admin) requireAdmin(w http.ResponseWriter, r *http.Request) (string, boo
 // of who they're currently viewing as, or the on-page banner's "stop" would be locked
 // out by the very spoof it's meant to end.
 func (a admin) requireRealSuperAdmin(w http.ResponseWriter, r *http.Request) (string, bool) {
-	email := strings.ToLower(auth.Email(r))
+	email := realEmail(a.cache, r)
 	if !a.cache.IsSuperAdmin(email) {
 		http.Error(w, "admin access required", http.StatusForbidden)
 		return "", false
@@ -212,7 +211,7 @@ type crewOption struct {
 }
 
 func (a admin) state(w http.ResponseWriter, r *http.Request) {
-	real := strings.ToLower(auth.Email(r))
+	real := realEmail(a.cache, r)
 	email := effectiveEmail(a.cache, r)
 	if !a.cache.IsAdmin(email) {
 		http.Error(w, "admin access required", http.StatusForbidden)

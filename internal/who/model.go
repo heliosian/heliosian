@@ -166,6 +166,17 @@ type Model struct {
 	// which is the whole point of opting out. admin.go's Hidden Overrides tab is the
 	// only reader, and only for a caller already confirmed to be an admin.
 	hiddenEmails []string
+	aliases      Aliases
+}
+
+// Resolve maps an address someone signs in with onto the one the directory keys
+// them by, so a Workspace account whose primary address is an alias still reaches
+// its own record.
+func (m *Model) Resolve(email string) string {
+	if resolved, ok := m.aliases[email]; ok {
+		return resolved
+	}
+	return email
 }
 
 func (m *Model) Person(email string) *Person {

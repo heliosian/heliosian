@@ -179,6 +179,15 @@ func caughtUp(override, published string) bool {
 // to clear them - the same bargain pruneNameToEmail strikes for addresses. An
 // override that still says something of its own survives and keeps winning.
 func clearCaughtUpOverrides(source *data.Sheet, bios []map[string]string, apply bool) error {
+	_, aliasRows, err := source.Table("directory", who.AliasesTable)
+	if err != nil {
+		return err
+	}
+	aliases, err := who.ParseAliases(aliasRows)
+	if err != nil {
+		return err
+	}
+	bios, _ = aliases.Rewrite(bios, who.WebsiteEmailColumn)
 	_, nameRows, err := source.Table("directory", namesTab)
 	if err != nil {
 		return err

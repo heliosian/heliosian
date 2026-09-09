@@ -44,6 +44,21 @@ var WebsiteColumns = []string{
 	WebsiteEmailColumn, WebsiteBio, websitePhotoName,
 }
 
+const AliasesTable = "Email Aliases"
+
+const (
+	AliasColumn      = "Alias"
+	AliasEmailColumn = "Email"
+)
+
+var AliasColumns = []string{AliasColumn, AliasEmailColumn}
+
+var importEmailColumns = []string{
+	"student_email",
+	"household_1_person_1_email", "household_1_person_2_email",
+	"household_2_person_1_email", "household_2_person_2_email",
+}
+
 const tagsTable = "Tags"
 
 const (
@@ -254,6 +269,7 @@ type loader struct {
 	blobs  BlobChecker
 	static BlobChecker
 
+	aliasRows      []map[string]string
 	importRows     []map[string]string
 	staffRows      []map[string]string
 	nameRows       []map[string]string
@@ -282,6 +298,7 @@ type loader struct {
 // Tables are the parsed source tables a model is built from. Tags are per-user
 // and deliberately never reach Model, which is served to every member.
 type Tables struct {
+	Aliases     []map[string]string
 	Imports     []map[string]string
 	Staff       []map[string]string
 	Names       []map[string]string
@@ -483,6 +500,7 @@ func BuildModel(tables *Tables, blobs, static BlobChecker) (*Model, error) {
 	l := &loader{
 		blobs:            blobs,
 		static:           static,
+		aliasRows:        tables.Aliases,
 		importRows:       tables.Imports,
 		staffRows:        tables.Staff,
 		nameRows:         tables.Names,
@@ -502,6 +520,7 @@ func BuildModel(tables *Tables, blobs, static BlobChecker) (*Model, error) {
 		model:            &Model{Families: map[string]Family{}, RoomParents: map[string][]string{}},
 	}
 	steps := []func() error{
+		l.applyEmailAliases,
 		l.buildNameToEmail,
 		l.applyNameToEmail,
 		l.transformImport,
@@ -538,6 +557,7 @@ func ReadTables(source data.Source) (*Tables, error) {
 		rows   []map[string]string
 		err    error
 	}
+	aliases := &table{app: appName, name: AliasesTable}
 	imports := &table{app: appName, name: "Veracross Student Import"}
 	staff := &table{app: appName, name: "Veracross Staff Import"}
 	names := &table{app: appName, name: "Name to Email"}
@@ -552,7 +572,7 @@ func ReadTables(source data.Source) (*Tables, error) {
 	// member edit forever. Nothing else compares its columns against what the app
 	// writes, and a column missing here truncates every audit row that reaches it.
 	changeLog := &table{app: appName, name: changeLogTable}
-	ordered := []*table{imports, staff, names, overrides, families, preferences, website, tags, photos, admins}
+	ordered := []*table{aliases, imports, staff, names, overrides, families, preferences, website, tags, photos, admins}
 	var wg sync.WaitGroup
 	for _, t := range ordered {
 		wg.Go(func() {
@@ -567,6 +587,9 @@ func ReadTables(source data.Source) (*Tables, error) {
 		if t.err != nil {
 			return nil, t.err
 		}
+	}
+	if err := exactColumns(aliases.name, aliases.header, AliasColumns); err != nil {
+		return nil, err
 	}
 	if err := requireColumns(imports.name, imports.header, importColumns); err != nil {
 		return nil, err
@@ -604,6 +627,7 @@ func ReadTables(source data.Source) (*Tables, error) {
 		return nil, err
 	}
 	return &Tables{
+		Aliases:     aliases.rows,
 		Imports:     imports.rows,
 		Staff:       staff.rows,
 		Names:       names.rows,
@@ -615,6 +639,86 @@ func ReadTables(source data.Source) (*Tables, error) {
 		Photos:      photos.rows,
 		Admins:      admins.rows,
 	}, nil
+}
+
+// Aliases maps every other address a source publishes for somebody onto the one the
+// directory keys them by, which is the address Veracross exports.
+type Aliases map[string]string
+
+func ParseAliases(rows []map[string]string) (Aliases, error) {
+	aliases := Aliases{}
+	for _, row := range rows {
+		alias, email := strings.ToLower(strings.TrimSpace(row[AliasColumn])), strings.ToLower(strings.TrimSpace(row[AliasEmailColumn]))
+		if !emailForm.MatchString(alias) || !emailForm.MatchString(email) {
+			return nil, fmt.Errorf("email aliases row %v needs an alias and an email", row)
+		}
+		if alias == email {
+			return nil, fmt.Errorf("email aliases row %s is an alias of itself", alias)
+		}
+		if _, ok := aliases[alias]; ok {
+			return nil, fmt.Errorf("email aliases has duplicate alias %s", alias)
+		}
+		aliases[alias] = email
+	}
+	for alias, email := range aliases {
+		if _, ok := aliases[email]; ok {
+			return nil, fmt.Errorf("email aliases maps %s to %s, which is itself an alias", alias, email)
+		}
+	}
+	return aliases, nil
+}
+
+// Rewrite copies rows, replacing an alias in any of the columns with the address it
+// stands for, and reports which aliases it found.
+func (a Aliases) Rewrite(rows []map[string]string, columns ...string) ([]map[string]string, map[string]bool) {
+	out := make([]map[string]string, len(rows))
+	used := map[string]bool{}
+	for i, row := range rows {
+		out[i] = row
+		cloned := false
+		for _, column := range columns {
+			alias := strings.ToLower(strings.TrimSpace(row[column]))
+			email, ok := a[alias]
+			if !ok {
+				continue
+			}
+			if !cloned {
+				out[i] = maps.Clone(row)
+				cloned = true
+			}
+			out[i][column] = email
+			used[alias] = true
+		}
+	}
+	return out, used
+}
+
+// applyEmailAliases rewrites the sources authored outside this app before anything
+// matches on an address. The app's own tabs are keyed by the resolved address and are
+// left alone, so a row written by the app never drifts from the key it was written
+// under.
+func (l *loader) applyEmailAliases() error {
+	aliases, err := ParseAliases(l.aliasRows)
+	if err != nil {
+		return err
+	}
+	l.model.aliases = aliases
+	used := map[string]bool{}
+	rewrite := func(rows []map[string]string, columns ...string) []map[string]string {
+		next, found := aliases.Rewrite(rows, columns...)
+		maps.Copy(used, found)
+		return next
+	}
+	l.importRows = rewrite(l.importRows, importEmailColumns...)
+	l.staffRows = rewrite(l.staffRows, "person_email")
+	l.websiteRows = rewrite(l.websiteRows, WebsiteEmailColumn)
+	l.preferenceRows = rewrite(l.preferenceRows, preferenceEmail)
+	for alias := range aliases {
+		if !used[alias] {
+			return fmt.Errorf("email alias %s matches no row in any import: drop the row", alias)
+		}
+	}
+	return nil
 }
 
 func (l *loader) buildNameToEmail() error {

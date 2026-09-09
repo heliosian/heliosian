@@ -29,10 +29,15 @@ type tab struct {
 
 var layouts = map[string][]tab{
 	"Directory": {
+		// person_photo and person_department are spliced in by vcexport rather than
+		// exported by Veracross, so the tab needs the columns before an import can
+		// mirror it. Nothing reads the department; it is carried to be compared with
+		// the one the school files someone under, which lives in Overrides.
 		{"Veracross Staff Import", []string{
 			"entry_sort_name", "person_full_name", "person_job_title", "person_room",
 			"person_classifications", "person_biography",
 			"person_email", "person_email_2", "person_phone_business", "person_photo",
+			"person_department",
 		}},
 		// student_photo is spliced in by vcexport rather than exported by Veracross, so the
 		// tab needs the column before an import can mirror it.
@@ -56,6 +61,7 @@ var layouts = map[string][]tab{
 			"student_photo",
 		}},
 		{"Name to Email", []string{"Name", "Email"}},
+		{"Email Aliases", []string{"Alias", "Email"}},
 		{"Overrides", []string{
 			"Email", "Added",
 			"Full Name", "Legal Name", "Preferred Name",
@@ -116,11 +122,11 @@ func column(i int) string {
 // addMissingColumns appends headings a tab does not have yet, widening the grid first
 // since a tab is only as wide as it was created. Existing columns are never moved, so
 // every row's data stays under the heading it was written for.
-func addMissingColumns(svc *sheets.Service, sheet, title string, id, grid int64, header []string) error {
+func addMissingColumns(svc *sheets.Service, sheet, title string, id, grid int64, header []string) (int, error) {
 	quoted := "'" + strings.ReplaceAll(title, "'", "''") + "'"
 	resp, err := svc.Spreadsheets.Values.Get(sheet, quoted+"!1:1").Do()
 	if err != nil {
-		return fmt.Errorf("read header of %q: %w", title, err)
+		return 0, fmt.Errorf("read header of %q: %w", title, err)
 	}
 	present := map[string]bool{}
 	width := 0
@@ -137,8 +143,7 @@ func addMissingColumns(svc *sheets.Service, sheet, title string, id, grid int64,
 		}
 	}
 	if len(added) == 0 {
-		log.Printf("tab %q already has every column", title)
-		return nil
+		return 0, nil
 	}
 	if short := int64(width+len(added)) - grid; short > 0 {
 		_, err := svc.Spreadsheets.BatchUpdate(sheet, &sheets.BatchUpdateSpreadsheetRequest{
@@ -147,30 +152,32 @@ func addMissingColumns(svc *sheets.Service, sheet, title string, id, grid int64,
 			}}},
 		}).Do()
 		if err != nil {
-			return fmt.Errorf("widen %q: %w", title, err)
+			return 0, fmt.Errorf("widen %q: %w", title, err)
 		}
 	}
 	_, err = svc.Spreadsheets.Values.Update(sheet, fmt.Sprintf("%s!%s1", quoted, column(width)),
 		&sheets.ValueRange{Values: [][]interface{}{added}}).ValueInputOption("RAW").Do()
 	if err != nil {
-		return fmt.Errorf("add columns to %q: %w", title, err)
+		return 0, fmt.Errorf("add columns to %q: %w", title, err)
 	}
 	log.Printf("added %d columns to %q: %v", len(added), title, added)
-	return nil
+	return len(added), nil
 }
 
 // applyLayout brings one spreadsheet up to its layout. The title is checked against
 // the layout the variable promised: an id pointing at the wrong document would
 // otherwise have tabs added to it before anyone noticed.
-func applyLayout(svc *sheets.Service, sheet, env, layout string) error {
+// applyLayout reports how many tabs it created and columns it added, so a run that
+// changes nothing - which is most of them - says so in one line instead of naming
+// every tab it left alone.
+func applyLayout(svc *sheets.Service, sheet, env, layout string) (tabs, columns int, err error) {
 	meta, err := svc.Spreadsheets.Get(sheet).Fields("properties(title),sheets(properties(sheetId,title,gridProperties(columnCount)))").Do()
 	if err != nil {
-		return fmt.Errorf("get the spreadsheet %s names: %w", env, err)
+		return 0, 0, fmt.Errorf("get the spreadsheet %s names: %w", env, err)
 	}
 	if meta.Properties.Title != layout {
-		return fmt.Errorf("%s names spreadsheet %q, want the one titled %q", env, meta.Properties.Title, layout)
+		return 0, 0, fmt.Errorf("%s names spreadsheet %q, want the one titled %q", env, meta.Properties.Title, layout)
 	}
-	log.Printf("spreadsheet %q: applying the %s layout", meta.Properties.Title, layout)
 	type tabInfo struct{ id, columns int64 }
 	existing := map[string]tabInfo{}
 	for _, s := range meta.Sheets {
@@ -182,9 +189,11 @@ func applyLayout(svc *sheets.Service, sheet, env, layout string) error {
 	}
 	for _, t := range layouts[layout] {
 		if info, ok := existing[t.title]; ok {
-			if err := addMissingColumns(svc, sheet, t.title, info.id, info.columns, t.header); err != nil {
-				return err
+			added, err := addMissingColumns(svc, sheet, t.title, info.id, info.columns, t.header)
+			if err != nil {
+				return 0, 0, err
 			}
+			columns += added
 			continue
 		}
 		_, err := svc.Spreadsheets.BatchUpdate(sheet, &sheets.BatchUpdateSpreadsheetRequest{
@@ -193,7 +202,7 @@ func applyLayout(svc *sheets.Service, sheet, env, layout string) error {
 			}}},
 		}).Do()
 		if err != nil {
-			return fmt.Errorf("create tab %q: %w", t.title, err)
+			return 0, 0, fmt.Errorf("create tab %q: %w", t.title, err)
 		}
 		values := make([]interface{}, len(t.header))
 		for i, h := range t.header {
@@ -204,11 +213,12 @@ func applyLayout(svc *sheets.Service, sheet, env, layout string) error {
 			Values: [][]interface{}{values},
 		}).ValueInputOption("RAW").Do()
 		if err != nil {
-			return fmt.Errorf("write header of %q: %w", t.title, err)
+			return 0, 0, fmt.Errorf("write header of %q: %w", t.title, err)
 		}
-		log.Printf("created tab %q with %d columns", t.title, len(t.header))
+		log.Printf("created tab %q in %q with %d columns", t.title, layout, len(t.header))
+		tabs++
 	}
-	return nil
+	return tabs, columns, nil
 }
 
 func main() {
@@ -225,9 +235,14 @@ func main() {
 	if err != nil {
 		log.Fatalf("[ERROR] create sheets client: %v", err)
 	}
+	tabs, columns := 0, 0
 	for _, s := range spreadsheets {
-		if err := applyLayout(svc, ids[s.env], s.env, s.layout); err != nil {
+		created, added, err := applyLayout(svc, ids[s.env], s.env, s.layout)
+		if err != nil {
 			log.Fatalf("[ERROR] %v", err)
 		}
+		tabs += created
+		columns += added
 	}
+	log.Printf("checked %d spreadsheets: %d tabs created, %d columns added", len(spreadsheets), tabs, columns)
 }

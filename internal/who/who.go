@@ -34,11 +34,18 @@ type app struct {
 // It's read-only by construction — nothing that writes (upload.go, tags.go) calls it,
 // so a write is always attributed to whoever is actually signed in.
 func effectiveEmail(cache *Cache, r *http.Request) string {
-	real := strings.ToLower(auth.Email(r))
+	real := realEmail(cache, r)
 	if target := cache.SpoofTarget(real); target != "" {
 		return target
 	}
 	return real
+}
+
+// realEmail is the signed-in identity as the directory keys it: the address Google
+// vouched for, resolved through Email Aliases, since which of a person's addresses
+// their Workspace account calls primary is nobody's deliberate choice.
+func realEmail(cache *Cache, r *http.Request) string {
+	return cache.Model().Resolve(strings.ToLower(auth.Email(r)))
 }
 
 // spoofDisplayName reports who a super admin is currently spoofing as, by name where
@@ -150,7 +157,7 @@ type user struct {
 
 func (a app) model(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	real := strings.ToLower(auth.Email(r))
+	real := realEmail(a.cache, r)
 	effective := effectiveEmail(a.cache, r)
 	name := a.cache.Model().DisplayName(effective)
 	slug, _, _ := strings.Cut(effective, "@")

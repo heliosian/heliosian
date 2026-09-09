@@ -213,6 +213,51 @@ func TestWebsiteEntryWithNoEmailMatchesByName(t *testing.T) {
 	}
 }
 
+// A staff member the site publishes under a second address is reached through the
+// Email Aliases tab, which resolves it to the address Veracross exports before the
+// layer matches on it.
+func TestWebsiteEntryUnderAnAliasMatchesByEmail(t *testing.T) {
+	p := model(t, "hank.morrow@heliosschool.org")
+	if p.Facts != "Hank has kept the boilers running through nine winters and knows every valve by name." {
+		t.Errorf("facts = %q, want the bio published under the alias", p.Facts)
+	}
+	if p := sampleModel(t).Person("facilities@heliosschool.org"); p != nil {
+		t.Errorf("the alias %s reached the directory as a person", p.Email)
+	}
+}
+
+// Which of a person's addresses their Workspace account calls primary is nobody's
+// deliberate choice, so signing in under an alias has to reach the same record.
+func TestSignInUnderAnAliasResolvesToThePerson(t *testing.T) {
+	m := sampleModel(t)
+	if got := m.Resolve("facilities@heliosschool.org"); got != "hank.morrow@heliosschool.org" {
+		t.Errorf("resolved %q, want the address the directory keys the person by", got)
+	}
+	if got := m.Resolve("ruth.amari@heliosschool.org"); got != "ruth.amari@heliosschool.org" {
+		t.Errorf("resolved %q, want an address that is nobody's alias left alone", got)
+	}
+	if !m.Member(m.Resolve("facilities@heliosschool.org")) {
+		t.Error("an alias sign-in resolved to somebody the directory does not list")
+	}
+}
+
+// An alias nothing publishes any more is stale, and stale entries are refused rather
+// than carried: a match key that quietly stops working looks exactly like a page
+// nobody has updated.
+func TestAliasMatchingNothingIsFatal(t *testing.T) {
+	tables, err := ReadTables(&data.Dir{Root: "../../sampledata"})
+	if err != nil {
+		t.Fatalf("read sample tables: %v", err)
+	}
+	next := *tables
+	next.Aliases = append(append([]map[string]string{}, tables.Aliases...), map[string]string{
+		AliasColumn: "nobody@heliosschool.org", AliasEmailColumn: "ruth.amari@heliosschool.org",
+	})
+	if _, err := BuildModel(&next, noBlobs{}, noBlobs{}); err == nil {
+		t.Error("an alias matching no import row should fail the load")
+	}
+}
+
 // A family is keyed by its alphabetically first adult email, and the Families tab -
 // keyed the same way - is the one home of its fields.
 func TestFamilyFieldsComeFromTheFamiliesTab(t *testing.T) {

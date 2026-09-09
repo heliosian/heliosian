@@ -24,6 +24,8 @@ Two import tabs mirror what Veracross exports, and the shape of that export is n
 
 Veracross carries a department for every staff member, and it disagrees with the school's own filing often enough, and unsystematically enough, that importing it would silently refile people. Department, grade band, classroom and crew therefore stay in Overrides. The import supplies only what the export knows for certain: name, job title, email, business phone.
 
+Veracross's department is carried anyway, in the staff import tab's own `person_department` column, and read by nothing. It is there to be compared with the filing in Overrides — the disagreement above is the reason for the arrangement, and a column nobody has to parse JSON to read is what makes it visible. The Staff page's groupings come from Overrides alone, as they always have.
+
 People whose faculty type is `Vendors` are dropped — contractors running a club appear in Veracross but are not community staff.
 
 Staff who are also parents arrive from both imports, and the household copy of such a name often carries a redundant parenthetical the faculty export omits. The two merge on resolved names rather than raw strings for that reason alone.
@@ -37,6 +39,14 @@ It is an import like any other and runs before Overrides, which behave exactly a
 Running before Overrides also means the page reaches nobody it adds: a staff member Veracross does not carry exists only once Overrides has created them, which is after the layer has run.
 
 The page is not the directory's roster. It carries vendors the directory drops and people who have left, and it publishes no address for a few, who are matched by name through `Name to Email` like anyone else Veracross has no address for. An entry matching nobody is counted and skipped, since the alternative is the whole directory refusing to load over somebody else's web page.
+
+## One person, several addresses
+
+Several staff have more than one address in the school's Workspace, and the sources disagree about which one is theirs: Veracross exports one, the staff page publishes another, and the consent form records whichever the person typed. The address Veracross exports is the one the directory keys a person by, and `Email Aliases` maps every other address onto it. It is applied to the sources authored outside this app — both Veracross imports, the staff page, and the consent form — before anything matches on an address, so every layer downstream sees one address per person. The app's own tabs (Overrides, Families, Tags, Photos, Admins) are keyed by that resolved address and are never rewritten, so a row the app writes can never drift from the key it was written under.
+
+Sign-in goes through the same table. Google vouches for whichever address the person's Workspace account calls primary, and which one that is was never anyone's deliberate choice, so the directory resolves the signed-in address before it asks whether they are a member, whose tags to show, or who a write is attributed to. A person is one address to every part of the app, whichever one they arrived under.
+
+An alias is a claim about a source, and a claim nothing bears out is refused: an alias matching no row in any import fails the load, for the same reason a stale `Name to Email` entry does. An alias of an alias is refused too, so resolution is one lookup with nothing to chase.
 
 The headshot sits behind the Veracross portrait in a person's photos, so importing it never changes the picture the directory already shows. The departments the page files people under are carried in the tab and read by nothing: the school's own filing lives in Overrides, for the reason above.
 
