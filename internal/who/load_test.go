@@ -213,6 +213,32 @@ func TestWebsiteEntryWithNoEmailMatchesByName(t *testing.T) {
 	}
 }
 
+// A staff member the site publishes no address for, but Veracross has one for, is
+// reached by name through the staff import itself: Name to Email cannot carry them,
+// since it refuses to restate an address Veracross exports.
+func TestWebsiteEntryWithNoEmailMatchesVeracrossStaffByName(t *testing.T) {
+	p := model(t, "hana.ito@heliosschool.org")
+	if p.Facts != "Hana came to teaching from marine research and still takes her class tide-pooling every spring." {
+		t.Errorf("facts = %q, want the bio matched by name against the staff import", p.Facts)
+	}
+}
+
+// A name two staff share is refused rather than guessed at.
+func TestWebsiteEntryMatchingTwoStaffByNameIsFatal(t *testing.T) {
+	tables, err := ReadTables(&data.Dir{Root: "../../sampledata"})
+	if err != nil {
+		t.Fatalf("read sample tables: %v", err)
+	}
+	next := *tables
+	next.Staff = append(append([]map[string]string{}, tables.Staff...), map[string]string{
+		"person_full_name": "Hana Ito", "person_email": "hana.ito2@heliosschool.org",
+		"person_classifications": `{"faculty_type":"Specialist"}`,
+	})
+	if _, err := BuildModel(&next, noBlobs{}, noBlobs{}); err == nil {
+		t.Error("a website entry with no address whose name matches two staff should fail the load")
+	}
+}
+
 // A staff member the site publishes under a second address is reached through the
 // Email Aliases tab, which resolves it to the address Veracross exports before the
 // layer matches on it.

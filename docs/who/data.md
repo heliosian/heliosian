@@ -38,7 +38,7 @@ It is an import like any other and runs before Overrides, which behave exactly a
 
 Running before Overrides also means the page reaches nobody it adds: a staff member Veracross does not carry exists only once Overrides has created them, which is after the layer has run.
 
-The page is not the directory's roster. It carries vendors the directory drops and people who have left, and it publishes no address for a few, who are matched by name through `Name to Email` like anyone else Veracross has no address for. An entry matching nobody is counted and skipped, since the alternative is the whole directory refusing to load over somebody else's web page.
+The page is not the directory's roster. It carries vendors the directory drops and people who have left, and it publishes no address for a few. Those are matched by name: through `Name to Email` for anyone Veracross has no address for either, and against the staff import itself for anyone it has, since `Name to Email` refuses to restate an address Veracross exports. A name two staff share is refused rather than guessed at. An entry matching nobody is counted and skipped, since the alternative is the whole directory refusing to load over somebody else's web page.
 
 ## One person, several addresses
 

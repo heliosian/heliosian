@@ -796,15 +796,43 @@ func (l *loader) transformStaffImport() error {
 	return nil
 }
 
-// WebsiteEmail is the address a staff page entry belongs to. The page publishes none
-// for a few people, who are reached by name through the same mapping the Veracross
-// imports use for the people it has no address for. The import resolves entries the
-// same way when it tidies the overrides the page has caught up with.
-func WebsiteEmail(row map[string]string, nameToEmail map[string]string) string {
-	if email := strings.ToLower(strings.TrimSpace(row[WebsiteEmailColumn])); email != "" {
-		return email
+// StaffByName indexes the staff import by resolved name, for the entries the staff
+// page publishes no address for. A name is keyed to every address it belongs to, so
+// a name two staff share can be refused rather than guessed at.
+func StaffByName(staffRows []map[string]string) map[string][]string {
+	byName := map[string][]string{}
+	for _, row := range staffRows {
+		email := strings.ToLower(row["person_email"])
+		if email == "" {
+			continue
+		}
+		name := NormName(parseName(row["person_full_name"]).display)
+		byName[name] = append(byName[name], email)
 	}
-	return nameToEmail[NormName(row[WebsiteName])]
+	return byName
+}
+
+// WebsiteEmail is the address a staff page entry belongs to. The page publishes none
+// for a few people: Name to Email reaches the ones Veracross has no address for
+// either, and the staff import itself, by name, reaches the ones it has. The import
+// resolves entries the same way when it tidies the overrides the page has caught up
+// with.
+func WebsiteEmail(row map[string]string, nameToEmail map[string]string, staffByName map[string][]string) (string, error) {
+	if email := strings.ToLower(strings.TrimSpace(row[WebsiteEmailColumn])); email != "" {
+		return email, nil
+	}
+	name := NormName(row[WebsiteName])
+	if email, ok := nameToEmail[name]; ok {
+		return email, nil
+	}
+	emails := staffByName[name]
+	if len(emails) > 1 {
+		return "", fmt.Errorf("the staff page's entry for %s has no address, and %d staff share the name", row[WebsiteName], len(emails))
+	}
+	if len(emails) == 1 {
+		return emails[0], nil
+	}
+	return "", nil
 }
 
 // applyWebsite folds in what the school publishes about its staff on its own site:
@@ -821,12 +849,16 @@ func WebsiteEmail(row map[string]string, nameToEmail map[string]string) string {
 func (l *loader) applyWebsite() error {
 	unmatched := []string{}
 	seen := map[string]bool{}
+	staffByName := StaffByName(l.staffRows)
 	for _, row := range l.websiteRows {
 		name := row[WebsiteName]
 		if name == "" {
 			return fmt.Errorf("website import row %v has no name", row)
 		}
-		email := WebsiteEmail(row, l.nameToEmail)
+		email, err := WebsiteEmail(row, l.nameToEmail, staffByName)
+		if err != nil {
+			return err
+		}
 		if email != "" && seen[email] {
 			return fmt.Errorf("the staff page has two entries for %s", email)
 		}

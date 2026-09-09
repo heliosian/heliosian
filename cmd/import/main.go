@@ -178,7 +178,7 @@ func caughtUp(override, published string) bool {
 // what an import supplies, so the run that starts publishing bios is the run that has
 // to clear them - the same bargain pruneNameToEmail strikes for addresses. An
 // override that still says something of its own survives and keeps winning.
-func clearCaughtUpOverrides(source *data.Sheet, bios []map[string]string, apply bool) error {
+func clearCaughtUpOverrides(out string, source *data.Sheet, bios []map[string]string, apply bool) error {
 	_, aliasRows, err := source.Table("directory", who.AliasesTable)
 	if err != nil {
 		return err
@@ -188,6 +188,12 @@ func clearCaughtUpOverrides(source *data.Sheet, bios []map[string]string, apply 
 		return err
 	}
 	bios, _ = aliases.Rewrite(bios, who.WebsiteEmailColumn)
+	_, staffRows, err := readCSV(filepath.Join(out, "All Faculty & Staff Directory.csv"))
+	if err != nil {
+		return err
+	}
+	staffRows, _ = aliases.Rewrite(staffRows, "person_email")
+	staffByName := who.StaffByName(staffRows)
 	_, nameRows, err := source.Table("directory", namesTab)
 	if err != nil {
 		return err
@@ -211,7 +217,10 @@ func clearCaughtUpOverrides(source *data.Sheet, bios []map[string]string, apply 
 	}
 	cleared, kept := 0, 0
 	for _, bio := range bios {
-		email := who.WebsiteEmail(bio, nameToEmail)
+		email, err := who.WebsiteEmail(bio, nameToEmail, staffByName)
+		if err != nil {
+			return err
+		}
 		row, ok := overrides[email]
 		if !ok {
 			continue
@@ -433,7 +442,7 @@ func main() {
 		}
 	}
 
-	if err := clearCaughtUpOverrides(source, bios, !*dryRun); err != nil {
+	if err := clearCaughtUpOverrides(out, source, bios, !*dryRun); err != nil {
 		log.Fatalf("[ERROR] clear the overrides the staff page has caught up with: %v", err)
 	}
 
