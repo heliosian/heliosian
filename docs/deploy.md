@@ -1,6 +1,6 @@
 # Production deployment
 
-The server runs as Cloud Run service `heliosian` in project `heliosian`, region `us-west1`, at https://heliosian-489539474126.us-west1.run.app, with https://who2.heliosian.com mapped on top. Administration is driven with the gcloud CLI (`brew install --cask gcloud-cli`) authenticated as a project owner (`gcloud auth login`).
+The server runs as Cloud Run service `heliosian` in project `heliosian`, region `us-west1`, at https://heliosian-489539474126.us-west1.run.app, with https://who.heliosian.com mapped on top. Administration is driven with the gcloud CLI (`brew install --cask gcloud-cli`) authenticated as a project owner (`gcloud auth login`).
 
 ## Build and deploy pipeline
 
@@ -78,11 +78,11 @@ The `heliosian.com` organization ships Google's secure-by-default org policies, 
 
 The consent screen lives in this project, audience External and published to production. Internal is not an option: the app restricts sign-in to `heliosschool.org` accounts (`internal/auth`), and those live outside the `heliosian.com` org. Published-External keeps the basic sign-in scopes free of verification friction.
 
-The web client's authorized JavaScript origins are `http://localhost:8080`, the run.app URL, and `https://who2.heliosian.com`; sign-in fails on any origin not listed, and edits take a few minutes to propagate. The browser maps key is rendered into every page, so it carries an HTTP-referer restriction for the same three origins.
+The web client's authorized JavaScript origins are `http://localhost:8080`, the run.app URL, and `https://who.heliosian.com`; sign-in fails on any origin not listed, and edits take a few minutes to propagate. The browser maps key is rendered into every page, so it carries an HTTP-referer restriction of its own: `http://localhost:8080/*`, the run.app URL, and `https://*.heliosian.com/*`, which covers every host the service answers to.
 
 ## Domain
 
-`who2.heliosian.com` is a Cloud Run domain mapping on the service. DNS carries `who2 CNAME ghs.googlehosted.com.`; Google provisions and renews the certificate once the record resolves. The run.app URL stays live alongside it.
+`who.heliosian.com` is a Cloud Run domain mapping on the service. DNS carries `who CNAME ghs.googlehosted.com.`; Google provisions and renews the certificate once the record resolves. The run.app URL stays live alongside it.
 
 ## Verifying a deploy
 
