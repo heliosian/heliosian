@@ -107,7 +107,7 @@ var overrideColumns = []string{
 
 var familyColumns = []string{
 	"Email", "Address", "Family Phone", "Family Photo Caption",
-	"Family Photo Updated", "Family Photo", "Family Pronunciation",
+	"Family Photo Updated", "Family Photo", "Family Photo Crop", "Family Pronunciation",
 }
 
 const updatedFormat = "2006-01-02"
@@ -1039,6 +1039,7 @@ func (l *loader) applyFamilies() error {
 			family.PhotoUpdated = cell
 		}
 		family.photo = row["Family Photo"]
+		family.photoCropName = row["Family Photo Crop"]
 		family.pronunciation = row["Family Pronunciation"]
 		l.model.Families[key] = family
 	}
@@ -1357,7 +1358,16 @@ func (l *loader) attachBlobs() error {
 		if err != nil {
 			return err
 		}
-		family.PhotoURL, family.PronunciationURL = photo, pronunciation
+		family.PhotoURL, family.OriginalPhotoURL, family.PronunciationURL = photo, photo, pronunciation
+		// Same graceful fallback as a person's photo crop above: a crop that fails
+		// to resolve just leaves the original in place rather than failing the load.
+		if family.photoCropName != "" {
+			if cropURL, err := l.blobURL("photos", family.photoCropName, key); err != nil {
+				log.Printf("[WARN] resolve crop for family %s's photo: %v", key, err)
+			} else {
+				family.PhotoURL = cropURL
+			}
+		}
 		l.model.Families[key] = family
 	}
 	// A person with no recording of their own hears their family's - a display-time

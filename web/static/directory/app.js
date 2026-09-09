@@ -208,6 +208,7 @@ const icons = {
   sparkles: '<svg viewBox="0 0 24 24"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M19 3l.8 2.2L22 6l-2.2.8L19 9l-.8-2.2L16 6l2.2-.8z"/></svg>',
   plus: '<svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></svg>',
   ellipsis: '<svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>',
+  expand: '<svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>',
 };
 
 function isMobile() {
@@ -3351,22 +3352,33 @@ function familyCard(p, family) {
   // still gets the camera icon to make uploading easy, just without the nag.
   const nagFamilyPhoto = showFamilyPhotoEdit && p.isStudent;
   const photoWrap = el('div', 'photo-wrap' + (nagFamilyPhoto ? ' needs-update' : ''));
+  const status = el('div', 'media-status');
   if (family.photoUrl) {
     const img = el('img', 'fcard-photo');
     img.src = thumbUrl(family.photoUrl);
     img.alt = '';
-    img.addEventListener('click', () => openPhotoLightbox(family.photoUrl));
-    photoWrap.append(img);
+    if (family.photoUrl !== family.originalPhotoUrl) {
+      photoWrap.append(cropBadge());
+    }
+    if (familyEditable) {
+      const menu = familyPhotoMenu(family, status);
+      img.addEventListener('click', () => togglePhotoMenu(menu));
+      photoWrap.append(img, menu);
+    } else {
+      img.addEventListener('click', () => openPhotoLightbox(family.originalPhotoUrl || family.photoUrl));
+      photoWrap.append(img);
+    }
   } else {
     photoWrap.append(photoOrInitials(null, family.name, 'fcard-photo fcard-photo-empty'));
   }
   left.append(photoWrap);
   if (showFamilyPhotoEdit) {
-    const status = el('div', 'media-status');
     if (nagFamilyPhoto) {
       status.textContent = 'Add your family photo for the new year';
     }
     photoWrap.append(uploadIcon('camera', 'Upload family photo', 'image/*', 'family', family.key, 'photo', status));
+  }
+  if (familyEditable) {
     left.append(status);
   }
   if (family.photoCaption) {
@@ -3801,19 +3813,30 @@ function renderFamilyDetail(key) {
   const left = el('div');
   left.id = 'family-photo';
   const wrap = el('div', 'photo-wrap');
+  const status = el('div', 'media-status');
   if (family.photoUrl) {
     const img = el('img', 'detail-photo');
     img.src = family.photoUrl;
     img.alt = '';
-    img.addEventListener('click', () => openPhotoLightbox(img.src));
-    wrap.append(img);
+    if (family.photoUrl !== family.originalPhotoUrl) {
+      wrap.append(cropBadge());
+    }
+    if (editable) {
+      const menu = familyPhotoMenu(family, status);
+      img.addEventListener('click', () => togglePhotoMenu(menu));
+      wrap.append(img, menu);
+    } else {
+      img.addEventListener('click', () => openPhotoLightbox(family.originalPhotoUrl || family.photoUrl));
+      wrap.append(img);
+    }
   } else {
     wrap.append(photoOrInitials(null, family.name, 'detail-photo detail-photo-empty'));
   }
   left.append(wrap);
   if (editing) {
-    const status = el('div', 'media-status');
     wrap.append(uploadIcon('camera', 'Upload family photo', 'image/*', 'family', key, 'photo', status));
+  }
+  if (editable) {
     left.append(status);
   }
   if (family.photoCaption || editing) {
@@ -4933,11 +4956,14 @@ async function submitPhotoOrder(key, order, status, onError) {
   return true;
 }
 
-// submitCrop posts a cropped square as the crop for one of a person's photos.
-async function submitCrop(key, name, blob, status) {
+// submitCrop posts a cropped image as the crop for one of a person's photos
+// (target 'person', name identifies which) or for a family's single photo
+// (target 'family', name unused).
+async function submitCrop(target, key, name, blob, status) {
   status.classList.remove('error');
   status.textContent = 'Saving crop…';
   const form = new FormData();
+  form.append('target', target);
   form.append('key', key);
   form.append('name', name);
   form.append('file', blob, 'crop.jpg');
@@ -4992,10 +5018,13 @@ function togglePhotoMenu(menu) {
 // its originalUrl exactly when a crop is currently applied and resolves (see
 // attachBlobs, internal/directory/load.go) - that's the signal used here rather
 // than a separate field, since it's already exactly what "has a crop" means.
+// Purely decorative (pointer-events: none in CSS) - the hero image underneath
+// already opens the original in the lightbox on click, so the badge just
+// labels that behavior rather than duplicating it.
 function cropBadge() {
   const badge = el('div', 'photo-crop-badge');
   badge.title = 'Manually cropped';
-  badge.append(svg('zoom-in'));
+  badge.append(svg('expand'), el('span', '', 'View full photo'));
   return badge;
 }
 
@@ -5058,22 +5087,60 @@ function photoMenu(p, getPhoto, editing, status) {
         submitPhotoOrder(p.email, order, status);
       });
     }
-    item('crop', 'Crop photo', () => openCropTool(p, photo, status));
+    item('crop', 'Crop photo', () => openCropTool(photo.originalUrl, true,
+      blob => submitCrop('person', p.email, photo.name, blob, status)));
   };
   menu.rebuild();
   return menu;
 }
 
-// openCropTool is a full-screen square-crop editor for one of a person's photos.
-// There's no stored crop rectangle to restore - only the resulting cropped image
-// is saved - so cropping a photo that already has a crop just starts fresh from
-// the original and replaces it.
-function openCropTool(p, photo, status) {
+// familyPhotoMenu is photoMenu's family equivalent: a family only ever has one
+// photo (no primary to set, no gallery to delete from), so it's just "View
+// photo" and "Crop photo". Only built when the caller may edit the family -
+// same convention as photoMenu, whose caller (the person hero) does the same
+// check before constructing one at all.
+function familyPhotoMenu(family, status) {
+  const menu = el('div', 'photo-menu');
+  menu.hidden = true;
+  // togglePhotoMenu (shared with photoMenu above) always calls menu.rebuild()
+  // on open - a family's items never change between opens, so there's
+  // nothing to rebuild, but the hook still needs to exist.
+  menu.rebuild = () => {};
+  const item = (iconName, label, action) => {
+    const btn = el('button', 'photo-menu-item');
+    btn.type = 'button';
+    btn.append(svg(iconName), el('span', '', label));
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      menu.hidden = true;
+      action();
+    });
+    menu.append(btn);
+  };
+  item('eye', 'View photo', () => openPhotoLightbox(family.originalPhotoUrl || family.photoUrl));
+  // Unlike a profile photo, a family photo isn't shown anywhere as a fixed
+  // shape (a circle, a square tile), so its crop tool is fully freeform (see
+  // openCropTool's square param) rather than locked to a square.
+  item('crop', 'Crop photo', () => openCropTool(family.originalPhotoUrl || family.photoUrl, false,
+    blob => submitCrop('family', family.key, '', blob, status)));
+  return menu;
+}
+
+// openCropTool is a full-screen crop editor for one photo. When square is
+// true the frame is locked to 1:1, same as a person's profile photo has
+// always been; when false the frame is fully freeform (any position, any
+// size, any shape), for a family photo, which isn't shown anywhere as a fixed
+// shape the way a profile photo is. There's no stored crop rectangle to
+// restore - only the resulting cropped image is saved - so cropping a photo
+// that already has a crop just starts fresh from the original and replaces
+// it. onSave(blob) performs the actual upload and resolves to whether it
+// succeeded; the tool only closes itself on success.
+function openCropTool(imageUrl, square, onSave) {
   const overlay = el('div', 'crop-overlay');
   const panel = el('div', 'crop-panel');
   const stage = el('div', 'crop-stage');
   const img = el('img', 'crop-image');
-  img.src = photo.originalUrl;
+  img.src = imageUrl;
   img.alt = '';
   const frame = el('div', 'crop-frame');
   const handleEls = ['nw', 'ne', 'sw', 'se'].map(corner => {
@@ -5119,31 +5186,51 @@ function openCropTool(p, photo, status) {
   const minSide = 60;
   let left = 0;
   let top = 0;
-  let side = 0;
+  let width = 0;
+  let height = 0;
 
   function render() {
     frame.style.left = left + 'px';
     frame.style.top = top + 'px';
-    frame.style.width = side + 'px';
-    frame.style.height = side + 'px';
+    frame.style.width = width + 'px';
+    frame.style.height = height + 'px';
     maskTop.style.cssText = `top:0; left:0; right:0; height:${top}px`;
-    maskBottom.style.cssText = `top:${top + side}px; left:0; right:0; bottom:0`;
-    maskLeft.style.cssText = `top:${top}px; left:0; width:${left}px; height:${side}px`;
-    maskRight.style.cssText = `top:${top}px; left:${left + side}px; right:0; height:${side}px`;
+    maskBottom.style.cssText = `top:${top + height}px; left:0; right:0; bottom:0`;
+    maskLeft.style.cssText = `top:${top}px; left:0; width:${left}px; height:${height}px`;
+    maskRight.style.cssText = `top:${top}px; left:${left + width}px; right:0; height:${height}px`;
   }
 
-  function setFrame(nextLeft, nextTop, nextSide) {
+  // In square mode every call passes nextWidth === nextHeight (see the drag
+  // handlers below, which move both in lockstep) - but clamping each against
+  // its own axis independently would still let the frame outgrow whichever
+  // axis is shorter (the stage is rarely itself square) and stop being
+  // square, so both are first capped to the same shared bound before the
+  // per-axis clamp below, mirroring the single min(side, width, height) the
+  // old single-side version used.
+  function setFrame(nextLeft, nextTop, nextWidth, nextHeight) {
     const stageRect = stage.getBoundingClientRect();
-    side = Math.max(minSide, Math.min(nextSide, stageRect.width, stageRect.height));
-    left = Math.max(0, Math.min(nextLeft, stageRect.width - side));
-    top = Math.max(0, Math.min(nextTop, stageRect.height - side));
+    if (square) {
+      const maxSide = Math.min(stageRect.width, stageRect.height);
+      nextWidth = Math.min(nextWidth, maxSide);
+      nextHeight = Math.min(nextHeight, maxSide);
+    }
+    width = Math.max(minSide, Math.min(nextWidth, stageRect.width));
+    height = Math.max(minSide, Math.min(nextHeight, stageRect.height));
+    left = Math.max(0, Math.min(nextLeft, stageRect.width - width));
+    top = Math.max(0, Math.min(nextTop, stageRect.height - height));
     render();
   }
 
   function init() {
     const stageRect = stage.getBoundingClientRect();
-    const initialSide = Math.min(stageRect.width, stageRect.height);
-    setFrame((stageRect.width - initialSide) / 2, (stageRect.height - initialSide) / 2, initialSide);
+    if (square) {
+      const initialSide = Math.min(stageRect.width, stageRect.height);
+      setFrame((stageRect.width - initialSide) / 2, (stageRect.height - initialSide) / 2, initialSide, initialSide);
+    } else {
+      const initialWidth = stageRect.width * 0.9;
+      const initialHeight = stageRect.height * 0.9;
+      setFrame((stageRect.width - initialWidth) / 2, (stageRect.height - initialHeight) / 2, initialWidth, initialHeight);
+    }
   }
   if (img.complete && img.naturalWidth) {
     init();
@@ -5163,13 +5250,14 @@ function openCropTool(p, photo, status) {
       const startY = e.clientY;
       const startLeft = left;
       const startTop = top;
-      const startSide = side;
+      const startWidth = width;
+      const startHeight = height;
       target.setPointerCapture(pointerId);
       const move = m => {
         if (m.pointerId !== pointerId) {
           return;
         }
-        onMove(m.clientX - startX, m.clientY - startY, startLeft, startTop, startSide);
+        onMove(m.clientX - startX, m.clientY - startY, startLeft, startTop, startWidth, startHeight);
       };
       const up = u => {
         if (u.pointerId !== pointerId) {
@@ -5185,43 +5273,79 @@ function openCropTool(p, photo, status) {
     });
   }
 
-  drag(frame, (dx, dy, startLeft, startTop, startSide) => {
-    setFrame(startLeft + dx, startTop + dy, startSide);
+  drag(frame, (dx, dy, startLeft, startTop, startWidth, startHeight) => {
+    setFrame(startLeft + dx, startTop + dy, startWidth, startHeight);
   });
   for (const handle of handleEls) {
     const corner = handle.dataset.corner;
-    drag(handle, (dx, dy, startLeft, startTop, startSide) => {
-      let delta;
+    drag(handle, (dx, dy, startLeft, startTop, startWidth, startHeight) => {
+      if (square) {
+        // A square frame must grow/shrink the same amount on both axes to stay
+        // square, so both corners being dragged move by one shared delta - the
+        // larger of the two axis deltas, so the frame always follows whichever
+        // direction the pointer moved furthest in.
+        let delta;
+        let nextLeft = startLeft;
+        let nextTop = startTop;
+        if (corner === 'se') {
+          delta = Math.max(dx, dy);
+        } else if (corner === 'nw') {
+          delta = Math.max(-dx, -dy);
+          nextLeft = startLeft - delta;
+          nextTop = startTop - delta;
+        } else if (corner === 'ne') {
+          delta = Math.max(dx, -dy);
+          nextTop = startTop - delta;
+        } else {
+          delta = Math.max(-dx, dy);
+          nextLeft = startLeft - delta;
+        }
+        setFrame(nextLeft, nextTop, startWidth + delta, startHeight + delta);
+        return;
+      }
+      // Freeform: each corner drags its own two edges independently, with no
+      // coupling between width and height.
       let nextLeft = startLeft;
       let nextTop = startTop;
+      let nextWidth = startWidth;
+      let nextHeight = startHeight;
       if (corner === 'se') {
-        delta = Math.max(dx, dy);
+        nextWidth = startWidth + dx;
+        nextHeight = startHeight + dy;
       } else if (corner === 'nw') {
-        delta = Math.max(-dx, -dy);
-        nextLeft = startLeft - delta;
-        nextTop = startTop - delta;
+        nextLeft = startLeft + dx;
+        nextTop = startTop + dy;
+        nextWidth = startWidth - dx;
+        nextHeight = startHeight - dy;
       } else if (corner === 'ne') {
-        delta = Math.max(dx, -dy);
-        nextTop = startTop - delta;
+        nextTop = startTop + dy;
+        nextWidth = startWidth + dx;
+        nextHeight = startHeight - dy;
       } else {
-        delta = Math.max(-dx, dy);
-        nextLeft = startLeft - delta;
+        nextLeft = startLeft + dx;
+        nextWidth = startWidth - dx;
+        nextHeight = startHeight + dy;
       }
-      setFrame(nextLeft, nextTop, startSide + delta);
+      setFrame(nextLeft, nextTop, nextWidth, nextHeight);
     });
   }
 
   save.addEventListener('click', () => {
     const stageRect = stage.getBoundingClientRect();
-    const scale = img.naturalWidth / stageRect.width;
-    const sx = left * scale;
-    const sy = top * scale;
-    const cropSide = side * scale;
-    const outSize = Math.min(Math.round(cropSide), 1200);
+    const scaleX = img.naturalWidth / stageRect.width;
+    const scaleY = img.naturalHeight / stageRect.height;
+    const sx = left * scaleX;
+    const sy = top * scaleY;
+    const sWidth = width * scaleX;
+    const sHeight = height * scaleY;
+    const maxOut = 1600;
+    const shrink = Math.max(sWidth, sHeight) > maxOut ? maxOut / Math.max(sWidth, sHeight) : 1;
+    const outWidth = Math.max(1, Math.round(sWidth * shrink));
+    const outHeight = Math.max(1, Math.round(sHeight * shrink));
     const canvas = document.createElement('canvas');
-    canvas.width = outSize;
-    canvas.height = outSize;
-    canvas.getContext('2d').drawImage(img, sx, sy, cropSide, cropSide, 0, 0, outSize, outSize);
+    canvas.width = outWidth;
+    canvas.height = outHeight;
+    canvas.getContext('2d').drawImage(img, sx, sy, sWidth, sHeight, 0, 0, outWidth, outHeight);
     save.disabled = true;
     save.textContent = 'Saving…';
     canvas.toBlob(async blob => {
@@ -5230,7 +5354,7 @@ function openCropTool(p, photo, status) {
         save.textContent = 'Save crop';
         return;
       }
-      const ok = await submitCrop(p.email, photo.name, blob, status);
+      const ok = await onSave(blob);
       if (ok) {
         close();
       } else {

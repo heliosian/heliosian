@@ -55,7 +55,7 @@ var tabs = []struct {
 	}},
 	{"Families", []string{
 		"Email", "Address", "Family Phone", "Family Photo Caption",
-		"Family Photo Updated", "Family Photo", "Family Pronunciation",
+		"Family Photo Updated", "Family Photo", "Family Photo Crop", "Family Pronunciation",
 	}},
 	{"Change Log", []string{
 		"Timestamp", "Actor",

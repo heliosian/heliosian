@@ -86,7 +86,8 @@ type Family struct {
 	Phone            string   `json:"phone,omitempty"`
 	Lat              float64  `json:"lat,omitempty"`
 	Lng              float64  `json:"lng,omitempty"`
-	PhotoURL         string   `json:"photoUrl,omitempty"`
+	PhotoURL         string   `json:"photoUrl,omitempty"`         // the crop, if one exists, else the original
+	OriginalPhotoURL string   `json:"originalPhotoUrl,omitempty"` // always the original, uncropped image
 	PhotoCaption     string   `json:"photoCaption,omitempty"`
 	PhotoUpdated     string   `json:"photoUpdated,omitempty"`
 	PronunciationURL string   `json:"pronunciationUrl,omitempty"`
@@ -103,7 +104,10 @@ type Family struct {
 	VeracrossAddress string `json:"veracrossAddress"`
 	VeracrossPhone   string `json:"veracrossPhone"`
 
-	photo, pronunciation string
+	// photoCropName is the object name of family's photo crop, if any - a family
+	// photo may be cropped to an arbitrary shape (unlike a person's, which is
+	// always square), same as Photo.cropName above.
+	photo, pronunciation, photoCropName string
 
 	// sheetRow is this family's raw Families sheet row, or nil if it doesn't have one -
 	// the same shape as Person.overrideRow, and read the same way: admin.go shows and

@@ -664,36 +664,56 @@ func (u uploader) reorderPhotos(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// cropPhoto attaches a square crop to one of a person's existing photos - name
-// identifies which one, and the uploaded file becomes its crop, replacing any
-// crop it already had.
+// cropPhoto attaches a crop to an existing photo - a square crop for one of a
+// person's photos (name identifies which one), or an arbitrary-shape crop for
+// a family's single photo (families only ever have one, so name is unused) -
+// replacing any crop it already had.
 func (u uploader) cropPhoto(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 30<<20)
 	if err := r.ParseMultipartForm(30 << 20); err != nil {
 		http.Error(w, "upload too large or malformed", http.StatusBadRequest)
 		return
 	}
+	target := r.FormValue("target")
+	if target == "" {
+		target = "person"
+	}
 	key := strings.ToLower(strings.TrimSpace(r.FormValue("key")))
 	name := r.FormValue("name")
 	me := effectiveEmail(u.cache, r)
 	model := u.cache.Model()
-	person := model.Person(key)
-	if person == nil {
-		http.Error(w, "no such person", http.StatusBadRequest)
+
+	var person *Person
+	var family Family
+	switch target {
+	case "person":
+		person = model.Person(key)
+		if person == nil {
+			http.Error(w, "no such person", http.StatusBadRequest)
+			return
+		}
+	case "family":
+		var ok bool
+		family, ok = model.Families[key]
+		if !ok {
+			http.Error(w, "no such family", http.StatusBadRequest)
+			return
+		}
+	default:
+		http.Error(w, "bad crop request", http.StatusBadRequest)
 		return
 	}
-	if !u.mayEdit(model, me, "person", key) {
+	if !u.mayEdit(model, me, target, key) {
 		http.Error(w, "not allowed to edit this record", http.StatusForbidden)
 		return
 	}
-
-	if !isPhotoSubset([]string{name}, person.Photos) {
+	if target == "person" && !isPhotoSubset([]string{name}, person.Photos) {
 		http.Error(w, "not one of this person's photos", http.StatusBadRequest)
 		return
 	}
-	order := make([]photoRef, len(person.Photos))
-	for i, photo := range person.Photos {
-		order[i] = photoRef{Name: photo.Name, CropName: photo.cropName}
+	if target == "family" && family.photo == "" {
+		http.Error(w, "family has no photo to crop", http.StatusBadRequest)
+		return
 	}
 
 	file, header, err := r.FormFile("file")
@@ -716,6 +736,22 @@ func (u uploader) cropPhoto(w http.ResponseWriter, r *http.Request) {
 	if err := u.store.Put("photos", cropName, mimeType, content); err != nil {
 		serverError(w, err)
 		return
+	}
+
+	if target == "family" {
+		cells := map[string]string{"Family Photo Crop": cropName, "Family Photo Updated": today()}
+		previous := map[string]string{"Family Photo Crop": family.photoCropName, "Family Photo Updated": family.PhotoUpdated}
+		if !u.applyFamily(w, me, family.Key, "family photo crop", cells, previous) {
+			return
+		}
+		log.Printf("crop-photo: %s set a crop on family %s's photo", me, key)
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	order := make([]photoRef, len(person.Photos))
+	for i, photo := range person.Photos {
+		order[i] = photoRef{Name: photo.Name, CropName: photo.cropName}
 	}
 	for i := range order {
 		if order[i].Name == name {

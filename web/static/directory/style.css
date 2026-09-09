@@ -3308,25 +3308,27 @@ a.list-row:hover {
   position: absolute;
   bottom: 10px;
   left: 10px;
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  background: rgba(0, 0, 0, 0.65);
-  color: #fff;
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 500;
   pointer-events: none;
 }
 
 .photo-crop-badge svg {
-  width: 19px;
-  height: 19px;
+  width: 16px;
+  height: 16px;
   stroke: currentColor;
   fill: none;
   stroke-width: 2.2;
   stroke-linecap: round;
   stroke-linejoin: round;
+  flex-shrink: 0;
 }
 
 .photo-slot-add {
