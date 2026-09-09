@@ -54,5 +54,5 @@ Each runs as `go run ./tools/<name>`. The sheet, drive, and bucket tools authent
 - `dumptab` / `writetab` — copy one tab to a local CSV / write a local CSV into a tab, header-checked
 - `createtabs` — create the directory sheet's local-layer tabs with their header rows
 - `setcell` — set one cell in a tab by key column, appending the row if missing
-- `import` — run a fresh Veracross export, upload its portraits, and sync the import tabs (needs `DIRECTORY_SHEET` and `PREFERENCES_SHEET`, and a `vcexport` checkout)
+- `import` — run a fresh Veracross export, upload its portraits, and sync the import tabs, or report what that would change with `-dry-run` (needs `DIRECTORY_SHEET` and `PREFERENCES_SHEET`, and a `vcexport` checkout)
 - `splash` — regenerate the iOS splash battery from the captured original page; see `docs/pwa.md`

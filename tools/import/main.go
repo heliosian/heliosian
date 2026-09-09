@@ -5,13 +5,13 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/csv"
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"time"
 
 	"google.golang.org/api/option"
 	"google.golang.org/api/sheets/v4"
@@ -23,7 +23,6 @@ import (
 )
 
 const (
-	devtools    = "http://localhost:9222/json/version"
 	studentsTab = "Veracross Student Import"
 	staffTab    = "Veracross Staff Import"
 	namesTab    = "Name to Email"
@@ -72,7 +71,7 @@ func readCSV(path string) ([]string, []map[string]string, error) {
 // so the sheet never indexes an object that is not there yet. The filename is the
 // hash of the bytes, and checking that here is what keeps the two repositories from
 // drifting into a directory full of broken photos.
-func uploadPhotos(dir string) error {
+func uploadPhotos(dir string, apply bool) error {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return err
@@ -81,7 +80,7 @@ func uploadPhotos(dir string) error {
 	if err != nil {
 		return err
 	}
-	uploaded := 0
+	uploaded, pending := 0, 0
 	for _, entry := range entries {
 		content, err := os.ReadFile(filepath.Join(dir, entry.Name()))
 		if err != nil {
@@ -89,6 +88,12 @@ func uploadPhotos(dir string) error {
 		}
 		if want := fmt.Sprintf("%x%s", sha256.Sum256(content), filepath.Ext(entry.Name())); want != entry.Name() {
 			return fmt.Errorf("photo %s is not named for its content, want %s", entry.Name(), want)
+		}
+		if !apply {
+			if !uploader.Has("photos/" + entry.Name()) {
+				pending++
+			}
+			continue
 		}
 		written, err := uploader.Put("photos", entry.Name(), http.DetectContentType(content), content)
 		if err != nil {
@@ -98,18 +103,55 @@ func uploadPhotos(dir string) error {
 			uploaded++
 		}
 	}
+	if !apply {
+		log.Printf("photos: %d in the export, %d not in the bucket yet", len(entries), pending)
+		return nil
+	}
 	log.Printf("photos: %d uploaded, %d already in the bucket", uploaded, len(entries)-uploaded)
 	return nil
 }
 
-func browserRunning() bool {
-	client := http.Client{Timeout: 2 * time.Second}
-	resp, err := client.Get(devtools)
-	if err != nil {
-		return false
+// pruneNameToEmail drops the entries the export has caught up with. The tab supplies
+// what Veracross omits and never overrides it, so an entry naming somebody the export
+// now carries an address for is one the model refuses to load: the import that learns
+// the new address is the run that has to remove the row.
+func pruneNameToEmail(out string, source *data.Sheet, apply bool) error {
+	hasEmail := map[string]bool{}
+	for _, s := range []struct{ file, name, email string }{
+		{"All Students Directory.csv", "student_full_name", "student_email"},
+		{"All Faculty & Staff Directory.csv", "person_full_name", "person_email"},
+	} {
+		_, rows, err := readCSV(filepath.Join(out, s.file))
+		if err != nil {
+			return err
+		}
+		for _, row := range rows {
+			if row[s.email] != "" {
+				hasEmail[directory.NormName(row[s.name])] = true
+			}
+		}
 	}
-	resp.Body.Close()
-	return true
+	_, rows, err := source.Table("directory", namesTab)
+	if err != nil {
+		return err
+	}
+	dropped := 0
+	for _, row := range rows {
+		if row["Email"] == "" || !hasEmail[directory.NormName(row["Name"])] {
+			continue
+		}
+		dropped++
+		if !apply {
+			log.Printf("  would drop %s, veracross now has an address for them", row["Name"])
+			continue
+		}
+		if err := source.Delete("directory", namesTab, map[string]string{"Name": row["Name"]}); err != nil {
+			return err
+		}
+		log.Printf("  dropped %s, veracross now has an address for them", row["Name"])
+	}
+	log.Printf("%s: %d entries the export has caught up with", namesTab, dropped)
+	return nil
 }
 
 func run(dir string, args ...string) error {
@@ -121,6 +163,9 @@ func run(dir string, args ...string) error {
 }
 
 func main() {
+	dryRun := flag.Bool("dry-run", false, "report what the import would change, writing nothing to the sheet or the bucket")
+	flag.Parse()
+
 	sheet := os.Getenv("DIRECTORY_SHEET")
 	preferences := os.Getenv("PREFERENCES_SHEET")
 	exporter := os.Getenv("VCEXPORT")
@@ -135,18 +180,15 @@ func main() {
 		log.Fatalf("[ERROR] create output dir: %v", err)
 	}
 
-	if !browserRunning() {
-		log.Printf("starting the capture browser")
-		if err := run(exporter, "go", "run", "./tools/capturebrowser"); err != nil {
-			log.Fatalf("[ERROR] start capture browser: %v", err)
-		}
+	if *dryRun {
+		log.Printf("dry run: nothing will be written to the sheet or the bucket")
 	}
 	log.Printf("exporting from Veracross into %s", out)
 	if err := run(exporter, "go", "run", ".", "-out", out); err != nil {
 		log.Fatalf("[ERROR] export: %v", err)
 	}
 
-	if err := uploadPhotos(filepath.Join(out, "photos")); err != nil {
+	if err := uploadPhotos(filepath.Join(out, "photos"), !*dryRun); err != nil {
 		log.Fatalf("[ERROR] upload photos: %v", err)
 	}
 
@@ -159,7 +201,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("[ERROR] read %s: %v", s.file, err)
 		}
-		result, err := sheetsync.Sync(svc, sheet, s.tab, header, rows, s.keyCol, s.policy, true)
+		result, err := sheetsync.Sync(svc, sheet, s.tab, header, rows, s.keyCol, s.policy, !*dryRun)
 		if err != nil {
 			log.Fatalf("[ERROR] sync %s: %v", s.tab, err)
 		}
@@ -176,11 +218,15 @@ func main() {
 		}
 	}
 
-	log.Printf("rebuilding the model to check the result")
 	source, err := data.NewSheet(map[string]string{"directory": sheet, "preferences": preferences})
 	if err != nil {
 		log.Fatalf("[ERROR] sheet source: %v", err)
 	}
+	if err := pruneNameToEmail(out, source, !*dryRun); err != nil {
+		log.Fatalf("[ERROR] prune %s: %v", namesTab, err)
+	}
+
+	log.Printf("rebuilding the model to check the result")
 	model, err := directory.LoadModel(source, nil, staticFiles{})
 	if err != nil {
 		log.Fatalf("[ERROR] the sheet no longer loads: %v", err)

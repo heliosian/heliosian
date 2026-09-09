@@ -166,7 +166,9 @@ func splitHomeroom(homeroom string) (classroom, crew string) {
 	return fields[len(fields)-1], strings.Join(fields[:len(fields)-1], " ")
 }
 
-func normName(raw string) string {
+// NormName is how every name in the sheet is matched against a name in the Veracross
+// export. Exported so the import tool finds exactly the rows this package would.
+func NormName(raw string) string {
 	return strings.ToLower(strings.Join(strings.Fields(raw), " "))
 }
 
@@ -580,7 +582,7 @@ func (l *loader) buildNameToEmail() error {
 		// which is why the tab needs a row for them at all: Veracross carries people
 		// the community directory does not, and silence would be indistinguishable
 		// from nobody having looked.
-		name, email := normName(row["Name"]), strings.ToLower(row["Email"])
+		name, email := NormName(row["Name"]), strings.ToLower(row["Email"])
 		if name == "" {
 			return fmt.Errorf("name to email row %v has no name", row)
 		}
@@ -615,7 +617,7 @@ func (l *loader) transformStaffImport() error {
 				return fmt.Errorf("staff %s classifications: %w", rawName, err)
 			}
 		}
-		if excludedFacultyTypes[classifications.FacultyType] || l.excluded[normName(rawName)] {
+		if excludedFacultyTypes[classifications.FacultyType] || l.excluded[NormName(rawName)] {
 			continue
 		}
 		email := strings.ToLower(row["person_email"])
@@ -679,22 +681,36 @@ func (l *loader) addAdult(rawName, email, phone string) error {
 func (l *loader) applyNameToEmail() error {
 	l.importRows = slices.Clone(l.importRows)
 	l.staffRows = slices.Clone(l.staffRows)
-	fill := func(rows []map[string]string, nameColumn, emailColumn, name, email string) int {
+	fill := func(rows []map[string]string, nameColumn, emailColumn, name, email string) (int, error) {
 		matches := 0
 		for i, row := range rows {
-			if normName(row[nameColumn]) != name {
+			if NormName(row[nameColumn]) != name {
 				continue
+			}
+			// The tab supplies what Veracross omits, so it never gets to override what
+			// Veracross has: an entry carrying a value for somebody the export already
+			// has an address for would win silently, right or wrong.
+			if email != "" && row[emailColumn] != "" {
+				return 0, fmt.Errorf("name to email entry %q carries %s, but veracross exports %s for them: drop the row",
+					row[nameColumn], email, row[emailColumn])
 			}
 			next := maps.Clone(row)
 			next[emailColumn] = email
 			rows[i] = next
 			matches++
 		}
-		return matches
+		return matches, nil
 	}
 	for name, email := range l.nameToEmail {
-		matches := fill(l.importRows, "student_full_name", "student_email", name, email)
-		matches += fill(l.staffRows, "person_full_name", "person_email", name, email)
+		matches, err := fill(l.importRows, "student_full_name", "student_email", name, email)
+		if err != nil {
+			return err
+		}
+		staffMatches, err := fill(l.staffRows, "person_full_name", "person_email", name, email)
+		if err != nil {
+			return err
+		}
+		matches += staffMatches
 		if matches != 1 {
 			return fmt.Errorf("name to email entry %q matches %d import rows", name, matches)
 		}
@@ -711,7 +727,7 @@ func (l *loader) transformImport() error {
 		if rawName == "" {
 			return fmt.Errorf("import row %v has no student name", row)
 		}
-		if l.excluded[normName(rawName)] {
+		if l.excluded[NormName(rawName)] {
 			continue
 		}
 		var classifications struct {
