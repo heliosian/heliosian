@@ -2,7 +2,8 @@
 // sample community in the foreground; -capture serves it just long enough to
 // screenshot one page and exits; -real serves the production assembly in the
 // foreground; -detach launches -real in the background with its output in a log
-// file and prints a minted session cookie plus the command to stop it.
+// file and prints a minted session cookie plus the command to stop it. Every
+// mode serves all three apps, each on its own local hostname.
 //
 // All sample-mode composition lives here: the production binary (main.go) and
 // the shared wiring in internal/app carry no dev or sample behavior at all.
@@ -68,10 +69,12 @@ func sampleServer() (*http.Server, *who.Queue) {
 	})
 	core.Mux.Handle("POST /auth/logout", http.RedirectHandler("/", http.StatusSeeOther))
 	core.HomeMux.Handle("POST /auth/logout", http.RedirectHandler("/", http.StatusSeeOther))
+	core.EventsMux.Handle("POST /auth/logout", http.RedirectHandler("/", http.StatusSeeOther))
 	log.Printf("serving sample data as %s", sampleUser)
 	return localTLS(app.Server(map[string]http.Handler{
 		"who":  app.Public("who", auth.Fixed(sampleUser, app.Files("who", core.Gate))),
 		"home": app.Public("home", auth.Fixed(sampleUser, app.Files("home", core.Home))),
+		"hca":  app.Public("hca", auth.Fixed(sampleUser, app.Files("hca", core.Events))),
 	}), core.Queue)
 }
 
@@ -85,7 +88,7 @@ func detachReal(email string) {
 	if key == "" {
 		log.Fatal("[ERROR] SESSION_KEY is required (the server and the minted cookie must share it)")
 	}
-	for _, name := range []string{"DIRECTORY_SHEET", "PREFERENCES_SHEET", "INVITES_SHEET", "APPS_SHEET", "CONFIG_SHEET"} {
+	for _, name := range []string{"DIRECTORY_SHEET", "PREFERENCES_SHEET", "INVITES_SHEET", "APPS_SHEET", "EVENTS_SHEET", "CONFIG_SHEET"} {
 		if os.Getenv(name) == "" {
 			log.Fatalf("[ERROR] %s is required", name)
 		}

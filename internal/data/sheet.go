@@ -144,6 +144,68 @@ func (s *Sheet) Upsert(app, table, keyColumn, keyValue string, cells map[string]
 	return err
 }
 
+func (s *Sheet) Set(app, table string, match, cells map[string]string) error {
+	id, ok := s.spreadsheets[app]
+	if !ok {
+		return fmt.Errorf("no spreadsheet configured for app %q", app)
+	}
+	quoted := quoteTab(table)
+	resp, err := s.service.Spreadsheets.Values.Get(id, quoted).Do()
+	if err != nil {
+		return err
+	}
+	if len(resp.Values) == 0 {
+		return fmt.Errorf("table %s is empty", table)
+	}
+	index := map[string]int{}
+	for i, cell := range resp.Values[0] {
+		index[strings.TrimSpace(fmt.Sprint(cell))] = i
+	}
+	for column := range match {
+		if _, ok := index[column]; !ok {
+			return fmt.Errorf("table %s is missing column %q", table, column)
+		}
+	}
+	for column := range cells {
+		if _, ok := index[column]; !ok {
+			return fmt.Errorf("table %s is missing column %q", table, column)
+		}
+	}
+	ranges := []*sheets.ValueRange{}
+	for i, row := range resp.Values[1:] {
+		if !valuesMatch(row, index, match) {
+			continue
+		}
+		for column, value := range cells {
+			ranges = append(ranges, &sheets.ValueRange{
+				Range:  fmt.Sprintf("%s!%s%d", quoted, columnName(index[column]), i+2),
+				Values: [][]interface{}{{value}},
+			})
+		}
+	}
+	if len(ranges) == 0 {
+		row := make([]interface{}, len(resp.Values[0]))
+		for i := range row {
+			row[i] = ""
+		}
+		for column, value := range match {
+			row[index[column]] = value
+		}
+		for column, value := range cells {
+			row[index[column]] = value
+		}
+		_, err := s.service.Spreadsheets.Values.Append(id, quoted, &sheets.ValueRange{
+			Values: [][]interface{}{row},
+		}).ValueInputOption("RAW").InsertDataOption("INSERT_ROWS").Do()
+		return err
+	}
+	_, err = s.service.Spreadsheets.Values.BatchUpdate(id, &sheets.BatchUpdateValuesRequest{
+		ValueInputOption: "RAW",
+		Data:             ranges,
+	}).Do()
+	return err
+}
+
 func (s *Sheet) Append(app, table string, row []string) error {
 	return s.AppendAll(app, table, [][]string{row})
 }

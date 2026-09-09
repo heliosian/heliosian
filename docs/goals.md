@@ -10,7 +10,7 @@ The first app is a school directory:
 - Individual and family photos
 - Name pronunciation
 
-The second is HCA Home, the community's page of links to everything else. More apps follow over time, all served by the same binary, each at its own hostname.
+The second is HCA Home, the community's page of links to everything else. The third is the HCA Volunteer Portal, where the community association posts what needs doing each school year and families sign up. More apps follow over time, all served by the same binary, each at its own hostname.
 
 ## Principles
 

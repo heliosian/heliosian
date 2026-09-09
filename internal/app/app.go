@@ -21,6 +21,7 @@ import (
 	"heliosian/internal/blob"
 	"heliosian/internal/config"
 	"heliosian/internal/data"
+	"heliosian/internal/events"
 	"heliosian/internal/geocode"
 	"heliosian/internal/home"
 	"heliosian/internal/who"
@@ -68,6 +69,42 @@ func (h homeImages) Has(key string) bool {
 		}
 	}
 	return false
+}
+
+// eventsImages resolves the Image cells of the Events sheet the same way: an
+// uploaded object in the bucket, or a bundled file under the portal's own trees.
+type eventsImages struct {
+	store *blob.Store
+}
+
+func (e eventsImages) Has(key string) bool {
+	if strings.HasPrefix(key, "activity-images/") {
+		return e.store != nil && e.store.Has(key)
+	}
+	for _, root := range []string{"web/hca", "web/public/hca"} {
+		if info, err := os.Stat(filepath.Join(root, filepath.FromSlash(key))); err == nil && info.Mode().IsRegular() {
+			return true
+		}
+	}
+	return false
+}
+
+// directory hands the volunteer portal the directory's view of a person: the
+// address they are keyed by, and their name and photo.
+type directory struct {
+	cache *who.Cache
+}
+
+func (d directory) Resolve(email string) string {
+	return d.cache.Model().Resolve(email)
+}
+
+func (d directory) Person(email string) (string, string, bool) {
+	p := d.cache.Model().Person(email)
+	if p == nil {
+		return "", "", false
+	}
+	return p.FullName, p.PhotoURL, true
 }
 
 func cacheControl(next http.Handler) http.Handler {
@@ -148,12 +185,14 @@ type Config struct {
 // caller's mode-specific routes), the directory model cache, the shared write
 // queue, and each app's handler for the caller to wrap with its authentication.
 type Core struct {
-	Mux     *http.ServeMux
-	HomeMux *http.ServeMux
-	Cache   *who.Cache
-	Queue   *who.Queue
-	Gate    http.Handler
-	Home    http.Handler
+	Mux       *http.ServeMux
+	HomeMux   *http.ServeMux
+	EventsMux *http.ServeMux
+	Cache     *who.Cache
+	Queue     *who.Queue
+	Gate      http.Handler
+	Home      http.Handler
+	Events    http.Handler
 }
 
 // NewCore wires everything every mode serves identically. Fatal on any failure.
@@ -185,7 +224,16 @@ func NewCore(cfg Config) *Core {
 	}
 	homeMux := http.NewServeMux()
 	home.Register(homeMux, homeCache, cfg.Writer, queue, cfg.Store, settings.SuperAdmins)
-	return &Core{Mux: mux, HomeMux: homeMux, Cache: cache, Queue: queue, Gate: who.MemberGate(cache, mux), Home: homeMux}
+	eventsCache, err := events.NewCache(cfg.Source, eventsImages{cfg.Store}, cache.IsSuperAdmin, queue)
+	if err != nil {
+		log.Fatalf("[ERROR] load events data: %v", err)
+	}
+	eventsMux := http.NewServeMux()
+	events.Register(eventsMux, eventsCache, cfg.Writer, queue, cfg.Store, directory{cache}, settings.SuperAdmins)
+	return &Core{
+		Mux: mux, HomeMux: homeMux, EventsMux: eventsMux, Cache: cache, Queue: queue,
+		Gate: who.MemberGate(cache, mux), Home: homeMux, Events: eventsMux,
+	}
 }
 
 // Server dresses the apps, each fully wrapped and keyed by name, in the shared
@@ -276,6 +324,7 @@ func Production() (*http.Server, *who.Queue) {
 		"preferences": requiredEnv("PREFERENCES_SHEET"),
 		"invites":     requiredEnv("INVITES_SHEET"),
 		"apps":        requiredEnv("APPS_SHEET"),
+		"events":      requiredEnv("EVENTS_SHEET"),
 		"config":      requiredEnv("CONFIG_SHEET"),
 	}
 	sessionKey := requiredEnv("SESSION_KEY")
@@ -297,14 +346,18 @@ func Production() (*http.Server, *who.Queue) {
 	})
 	blob.Register(core.Mux, store)
 	blob.RegisterLinkImages(core.HomeMux, store)
+	blob.RegisterEvents(core.EventsMux, store)
 	who.RegisterUpload(core.Mux, core.Cache, sheet, store, core.Queue)
 	client := clientID()
 	whoAuth := auth.New(client, []byte(sessionKey), "web/public/who/login.html")
 	whoAuth.Register(core.Mux)
 	homeAuth := auth.New(client, []byte(sessionKey), "web/public/home/login.html")
 	homeAuth.Register(core.HomeMux)
+	hcaAuth := auth.New(client, []byte(sessionKey), "web/public/hca/login.html")
+	hcaAuth.Register(core.EventsMux)
 	return Server(map[string]http.Handler{
 		"who":  Public("who", whoAuth.Wrap(Files("who", core.Gate))),
 		"home": Public("home", homeAuth.Wrap(Files("home", core.Home))),
+		"hca":  Public("hca", hcaAuth.Wrap(Files("hca", core.Events))),
 	}), core.Queue
 }

@@ -37,7 +37,7 @@ const (
 	fetchWorkers    = 32
 )
 
-var folders = []string{"photos", "pronunciation", "classroom-images", "grade-images", "link-images"}
+var folders = []string{"photos", "pronunciation", "classroom-images", "grade-images", "link-images", "activity-images"}
 
 // Recorded names carry an extension and entries are keyed without one, so an object
 // and its thumbnail share a key.
@@ -94,6 +94,13 @@ func Register(mux *http.ServeMux, s *Store) {
 // addressed like photos.
 func RegisterLinkImages(mux *http.ServeMux, s *Store) {
 	mux.HandleFunc("GET /link-images/{name}", s.serve)
+}
+
+// RegisterEvents serves what the volunteer portal shows: the activity and role
+// images, content addressed, and the directory's photos of the volunteers.
+func RegisterEvents(mux *http.ServeMux, s *Store) {
+	mux.HandleFunc("GET /photos/{name}", s.serve)
+	mux.HandleFunc("GET /activity-images/{name}", s.serve)
 }
 
 func (s *Store) refreshLoop() {

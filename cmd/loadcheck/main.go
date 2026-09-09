@@ -12,6 +12,7 @@ import (
 
 	"heliosian/internal/config"
 	"heliosian/internal/data"
+	"heliosian/internal/events"
 	"heliosian/internal/home"
 	"heliosian/internal/who"
 )
@@ -41,6 +42,21 @@ func (homeImages) Has(key string) bool {
 	return false
 }
 
+// eventsImages trusts bucket names like homeImages does, and checks bundled files.
+type eventsImages struct{}
+
+func (eventsImages) Has(key string) bool {
+	if strings.HasPrefix(key, "activity-images/") {
+		return true
+	}
+	for _, root := range []string{"web/hca", "web/public/hca"} {
+		if (staticFiles{root}).Has(key) {
+			return true
+		}
+	}
+	return false
+}
+
 func requiredEnv(name string) string {
 	value := os.Getenv(name)
 	if value == "" {
@@ -61,6 +77,7 @@ func main() {
 			"preferences": requiredEnv("PREFERENCES_SHEET"),
 			"invites":     requiredEnv("INVITES_SHEET"),
 			"apps":        requiredEnv("APPS_SHEET"),
+			"events":      requiredEnv("EVENTS_SHEET"),
 			"config":      requiredEnv("CONFIG_SHEET"),
 		})
 		if err != nil {
@@ -168,6 +185,37 @@ func main() {
 		}
 	}
 	fmt.Printf("apps admins: %d\n", len(tables.Admins))
+
+	eventTables, err := events.ReadTables(source)
+	if err != nil {
+		log.Fatalf("[ERROR] read events tables: %v", err)
+	}
+	portal, err := events.BuildModel(eventTables, eventsImages{})
+	if err != nil {
+		log.Fatalf("[ERROR] build events model: %v", err)
+	}
+	fmt.Println("events:")
+	byYear := map[string][]*events.Activity{}
+	years := []string{}
+	for _, a := range portal.Activities {
+		if _, seen := byYear[a.Year]; !seen {
+			years = append(years, a.Year)
+		}
+		byYear[a.Year] = append(byYear[a.Year], a)
+	}
+	sort.Strings(years)
+	for _, year := range years {
+		fmt.Printf("  %s: %d activities\n", year, len(byYear[year]))
+		for _, a := range byYear[year] {
+			volunteers := len(a.Volunteers)
+			for _, r := range a.AllRoles() {
+				volunteers += len(r.Volunteers)
+			}
+			fmt.Printf("    %s [%s, %s] roles %d, links %d, volunteers %d, image %v\n",
+				a.Title, a.Category, a.Status, len(a.AllRoles()), len(a.Links), volunteers, a.ImageURL != "")
+		}
+	}
+	fmt.Printf("events admins: %d\n", len(eventTables.Admins))
 
 	configTables, err := config.ReadTables(source)
 	if err != nil {

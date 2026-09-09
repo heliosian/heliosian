@@ -25,6 +25,10 @@ type Source interface {
 
 type Writer interface {
 	Upsert(app, table, keyColumn, keyValue string, cells map[string]string) error
+	// Set is Upsert for a tab keyed by more than one column: every row matching all
+	// of match takes cells, and when none does a row holding match plus cells is
+	// appended.
+	Set(app, table string, match, cells map[string]string) error
 	Append(app, table string, row []string) error
 	Delete(app, table string, match map[string]string) error
 }
@@ -130,6 +134,30 @@ func (d *Dir) Upsert(app, name, keyColumn, keyValue string, cells map[string]str
 	}
 	if !found {
 		row := map[string]string{keyColumn: keyValue}
+		setCells(row, cells)
+		t.rows = append(t.rows, row)
+	}
+	return nil
+}
+
+func (d *Dir) Set(app, name string, match, cells map[string]string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	t, err := d.load(app, name)
+	if err != nil {
+		return err
+	}
+	found := false
+	for _, row := range t.rows {
+		if !rowMatches(row, match) {
+			continue
+		}
+		setCells(row, cells)
+		found = true
+	}
+	if !found {
+		row := map[string]string{}
+		setCells(row, match)
 		setCells(row, cells)
 		t.rows = append(t.rows, row)
 	}

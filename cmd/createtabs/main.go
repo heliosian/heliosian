@@ -11,6 +11,8 @@ import (
 
 	"google.golang.org/api/option"
 	"google.golang.org/api/sheets/v4"
+
+	"heliosian/internal/events"
 )
 
 // spreadsheets pairs each layout with the variable naming the spreadsheet it belongs
@@ -19,6 +21,7 @@ import (
 var spreadsheets = []struct{ env, layout string }{
 	{"DIRECTORY_SHEET", "Directory"},
 	{"APPS_SHEET", "Apps"},
+	{"EVENTS_SHEET", "Events"},
 	{"CONFIG_SHEET", "Config"},
 }
 
@@ -101,6 +104,16 @@ var layouts = map[string][]tab{
 		{"Links", []string{"Title", "Description", "URL", "Image", "Category", "Visible", "Added By", "Added"}},
 		{"Admins", []string{"Email"}},
 		{"Change Log", []string{"Timestamp", "Actor", "Action", "Kind", "Title", "Description", "URL", "Image", "Category", "Visible"}},
+	},
+	"Events": {
+		{"Categories", events.CategoryColumns},
+		{"Activities", events.ActivityColumns},
+		{"Roles", events.RoleColumns},
+		{"Volunteers", events.VolunteerColumns},
+		{"Links", events.LinkColumns},
+		{"Settings", events.SettingColumns},
+		{"Admins", events.AdminColumns},
+		{"Change Log", events.ChangeLogColumns},
 	},
 	"Config": {
 		{"Settings", []string{"Key", "Value"}},
