@@ -437,14 +437,27 @@ export function renderSpoofBanner() {
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({email: ''}),
     });
-    // A full reload, not load(): stopping spoofing changes the effective identity the
-    // server renders into the page itself (username, userEmail, the Admin Tools menu
-    // link), not just the JSON model a plain re-fetch would refresh.
-    location.reload();
+    await load();
   });
   banner.append(link);
   topBanners().append(banner);
   updateBannerOffset();
+}
+
+// Fills the user chrome (both avatars, the name label, the profile links, and
+// the admin-only menu items) from the model's signed-in identity.
+export function renderUserChrome() {
+  const user = state.model.user;
+  for (const avatar of document.querySelectorAll('.user-avatar')) {
+    avatar.textContent = user.initial;
+  }
+  document.querySelector('.user-name').textContent = user.name;
+  for (const link of document.querySelectorAll('.user-menu-profile')) {
+    link.href = '/people/' + encodeURIComponent(user.slug);
+  }
+  for (const item of document.querySelectorAll('.user-menu-admin')) {
+    item.hidden = !user.isAdmin;
+  }
 }
 
 export function renderPrivacyMenuAlert() {
@@ -482,7 +495,7 @@ export function renderPrivacyMenuAlert() {
   }
 }
 
-// Wires the server-rendered chrome (menus, drawer, search, stale badge, global
+// Wires the static chrome (menus, drawer, search, stale badge, global
 // click/keyboard handlers) exactly once, from app.js, so no module does DOM
 // work just by being imported.
 export function initChrome() {
@@ -532,7 +545,7 @@ export function initChrome() {
   mobileListsOverlay.addEventListener('click', () => setMobileListsMenu(false));
 
   // Both the desktop and mobile user menus carry their own copy of this
-  // checkbox (admin-only, server-rendered) - a quicker way to flip Super Edit Mode
+  // checkbox (shown to admins only) - a quicker way to flip Super Edit Mode
   // than the full admin page, which still has its own toggle too. Wired once here
   // since the checkboxes are static; syncSuperEditCheckboxes (called from load())
   // keeps their checked state true to the model after every reload, including one

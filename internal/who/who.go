@@ -3,7 +3,6 @@ package who
 
 import (
 	"encoding/json"
-	"html/template"
 	"log"
 	"net/http"
 	"net/url"
@@ -104,51 +103,42 @@ func (a app) legacyRedirect(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, target, http.StatusMovedPermanently)
 }
 
+// page serves the one static shell every directory route shares; the client
+// reads who it is, and everything else, from the model.
 func (a app) page(w http.ResponseWriter, r *http.Request) {
-	t, err := template.ParseFiles("web/who/index.html")
-	if err != nil {
-		serverError(w, err)
-		return
-	}
-	effective := effectiveEmail(a.cache, r)
-	name := a.cache.Model().DisplayName(effective)
-	emailPrefix, _, _ := strings.Cut(effective, "@")
-	data := struct {
-		UserName      string
-		UserInitial   string
-		UserEmail     string
-		UserEmailSlug string
-		MapsKey       string
-		IsAdmin       bool
-	}{
-		UserName:      name,
-		UserInitial:   strings.ToUpper(name[:1]),
-		UserEmail:     effective,
-		UserEmailSlug: emailPrefix,
-		MapsKey:       a.mapsKey,
-		// Admin-ness (and so the menu link to /admin) follows who's actually being
-		// viewed, not who's signed in — while spoofing, the page should look exactly
-		// like it does to the person being spoofed. A super admin gets back to /admin
-		// through the persistent spoofing banner instead.
-		IsAdmin: a.cache.IsAdmin(effective),
-	}
-	if err := t.Execute(w, data); err != nil {
-		log.Printf("[ERROR] render directory page: %v", err)
-	}
+	http.ServeFile(w, r, "web/who/index.html")
+}
+
+// user is the signed-in identity as the shell shows it. Admin-ness (and so the
+// menu link to /admin) follows who's actually being viewed, not who's signed
+// in - while spoofing, the page should look exactly like it does to the person
+// being spoofed. A super admin gets back to /admin through the spoofing banner.
+type user struct {
+	Name    string `json:"name"`
+	Initial string `json:"initial"`
+	Email   string `json:"email"`
+	Slug    string `json:"slug"`
+	IsAdmin bool   `json:"isAdmin"`
 }
 
 func (a app) model(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	real := strings.ToLower(auth.Email(r))
 	effective := effectiveEmail(a.cache, r)
+	name := a.cache.Model().DisplayName(effective)
+	slug, _, _ := strings.Cut(effective, "@")
 	view := struct {
 		*Model
+		User       user                `json:"user"`
+		MapsKey    string              `json:"mapsKey"`
 		Tags       map[string][]string `json:"tags"`
 		SuperEdit  bool                `json:"superEdit,omitempty"`
 		SpoofingAs string              `json:"spoofingAs,omitempty"`
 	}{
-		Model: a.cache.Model(),
-		Tags:  a.cache.Tags(effective),
+		Model:   a.cache.Model(),
+		User:    user{Name: name, Initial: strings.ToUpper(name[:1]), Email: effective, Slug: slug, IsAdmin: a.cache.IsAdmin(effective)},
+		MapsKey: a.mapsKey,
+		Tags:    a.cache.Tags(effective),
 		// Both computed from the effective identity, so a spoofed view shows exactly
 		// what that person sees — a regular parent's simulated view never carries the
 		// real admin's super-edit powers along with it.

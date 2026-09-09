@@ -14,6 +14,7 @@ var variables = map[string]string{
 	"Directory":           "DIRECTORY_SHEET",
 	"Preferences":         "PREFERENCES_SHEET",
 	"Invite List Builder": "INVITES_SHEET",
+	"Apps":                "APPS_SHEET",
 }
 
 func main() {
@@ -44,7 +45,7 @@ func main() {
 		}
 		found[variable] = f.Id
 	}
-	for _, variable := range []string{"DIRECTORY_SHEET", "PREFERENCES_SHEET", "INVITES_SHEET"} {
+	for _, variable := range []string{"DIRECTORY_SHEET", "PREFERENCES_SHEET", "INVITES_SHEET", "APPS_SHEET"} {
 		id, ok := found[variable]
 		if !ok {
 			log.Fatalf("[ERROR] no spreadsheet found for %s", variable)

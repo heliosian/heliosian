@@ -21,6 +21,7 @@ import (
 	"heliosian/internal/blob"
 	"heliosian/internal/data"
 	"heliosian/internal/geocode"
+	"heliosian/internal/home"
 	"heliosian/internal/who"
 )
 
@@ -54,6 +55,24 @@ func (staticFiles) Has(key string) bool {
 	return err == nil
 }
 
+// homeImages resolves the Image cells of the Apps sheet: an uploaded object in
+// the bucket, or a bundled file under home's own served trees.
+type homeImages struct {
+	store *blob.Store
+}
+
+func (h homeImages) Has(key string) bool {
+	if strings.HasPrefix(key, "link-images/") {
+		return h.store != nil && h.store.Has(key)
+	}
+	for _, root := range []string{"web/home", "web/public/home"} {
+		if info, err := os.Stat(filepath.Join(root, filepath.FromSlash(key))); err == nil && info.Mode().IsRegular() {
+			return true
+		}
+	}
+	return false
+}
+
 func cacheControl(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/fonts/") || strings.HasPrefix(r.URL.Path, "/brand/") {
@@ -65,13 +84,13 @@ func cacheControl(next http.Handler) http.Handler {
 	})
 }
 
-// files answers from web/<app>/ or, failing that, web/common/. Pages are
-// templates rendered by their handlers, so .html never serves raw.
-func files(app string, next http.Handler) http.Handler {
+// serveFrom answers a request from the first root holding a regular file at
+// its path, else hands it on.
+func serveFrom(roots []string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if (r.Method == http.MethodGet || r.Method == http.MethodHead) && !strings.HasSuffix(r.URL.Path, ".html") {
+		if r.Method == http.MethodGet || r.Method == http.MethodHead {
 			rel := filepath.FromSlash(path.Clean(r.URL.Path))
-			for _, root := range []string{"web/" + app, "web/common"} {
+			for _, root := range roots {
 				name := filepath.Join(root, rel)
 				if info, err := os.Stat(name); err == nil && info.Mode().IsRegular() {
 					http.ServeFile(w, r, name)
@@ -81,6 +100,18 @@ func files(app string, next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// Public serves web/public/<app>/ then web/public/common/ ahead of sign-in:
+// the manifest, icons, splash art, and fonts that browsers fetch without
+// credentials and the login page needs.
+func Public(app string, next http.Handler) http.Handler {
+	return serveFrom([]string{"web/public/" + app, "web/public/common"}, next)
+}
+
+// Files serves web/<app>/ then web/common/ and sits inside sign-in.
+func Files(app string, next http.Handler) http.Handler {
+	return serveFrom([]string{"web/" + app, "web/common"}, next)
 }
 
 func route(apps map[string]http.Handler) http.Handler {
@@ -116,14 +147,16 @@ type Config struct {
 	BrowserKey string
 }
 
-// Core is the assembled shared skeleton: the mux (still open for the caller's
-// mode-specific routes), the model cache, the write queue, and the member-gated
-// handler the caller wraps with its authentication.
+// Core is the assembled shared skeleton: each app's mux (still open for the
+// caller's mode-specific routes), the directory model cache, the shared write
+// queue, and each app's handler for the caller to wrap with its authentication.
 type Core struct {
-	Mux   *http.ServeMux
-	Cache *who.Cache
-	Queue *who.Queue
-	Gate  http.Handler
+	Mux     *http.ServeMux
+	HomeMux *http.ServeMux
+	Cache   *who.Cache
+	Queue   *who.Queue
+	Gate    http.Handler
+	Home    http.Handler
 }
 
 // NewCore wires everything every mode serves identically. Fatal on any failure.
@@ -144,20 +177,22 @@ func NewCore(cfg Config) *Core {
 		log.Fatalf("[ERROR] load invites data: %v", err)
 	}
 	mux.Handle("GET /{$}", http.RedirectHandler("/people", http.StatusFound))
-	return &Core{Mux: mux, Cache: cache, Queue: queue, Gate: who.MemberGate(cache, mux)}
+	homeCache, err := home.NewCache(cfg.Source, homeImages{cfg.Store}, cache.IsSuperAdmin, queue)
+	if err != nil {
+		log.Fatalf("[ERROR] load apps data: %v", err)
+	}
+	homeMux := http.NewServeMux()
+	home.Register(homeMux, homeCache, cfg.Writer, queue, cfg.Store, func() []string { return cache.Settings().SuperAdmins })
+	return &Core{Mux: mux, HomeMux: homeMux, Cache: cache, Queue: queue, Gate: who.MemberGate(cache, mux), Home: homeMux}
 }
 
 // Server dresses the apps, each fully wrapped and keyed by name, in the shared
-// HTTP plumbing: host routing, file serving, and cache headers.
+// HTTP plumbing: host routing and cache headers.
 func Server(apps map[string]http.Handler) *http.Server {
-	served := map[string]http.Handler{}
-	for name, handler := range apps {
-		served[name] = files(name, handler)
-	}
 	protocols := new(http.Protocols)
 	protocols.SetHTTP1(true)
 	protocols.SetUnencryptedHTTP2(true)
-	return &http.Server{Addr: ":" + Port(), Handler: cacheControl(route(served)), Protocols: protocols}
+	return &http.Server{Addr: ":" + Port(), Handler: cacheControl(route(apps)), Protocols: protocols}
 }
 
 // Serve runs a server until SIGTERM or interrupt, then shuts down gracefully
@@ -238,6 +273,7 @@ func Production() (*http.Server, *who.Queue) {
 		"directory":   requiredEnv("DIRECTORY_SHEET"),
 		"preferences": requiredEnv("PREFERENCES_SHEET"),
 		"invites":     requiredEnv("INVITES_SHEET"),
+		"apps":        requiredEnv("APPS_SHEET"),
 	}
 	sessionKey := requiredEnv("SESSION_KEY")
 	sheet, err := data.NewSheet(spreadsheets)
@@ -257,8 +293,15 @@ func Production() (*http.Server, *who.Queue) {
 		BrowserKey: mapsKey("GOOGLE_MAPS_BROWSER_KEY", "creds/maps.key"),
 	})
 	blob.Register(core.Mux, store)
+	blob.RegisterLinkImages(core.HomeMux, store)
 	who.RegisterUpload(core.Mux, core.Cache, sheet, store, core.Queue)
-	authn := auth.New(clientID(), []byte(sessionKey), "web/who/login.html")
-	authn.Register(core.Mux)
-	return Server(map[string]http.Handler{"who": authn.Wrap(core.Gate)}), core.Queue
+	client := clientID()
+	whoAuth := auth.New(client, []byte(sessionKey), "web/public/who/login.html")
+	whoAuth.Register(core.Mux)
+	homeAuth := auth.New(client, []byte(sessionKey), "web/public/home/login.html")
+	homeAuth.Register(core.HomeMux)
+	return Server(map[string]http.Handler{
+		"who":  Public("who", whoAuth.Wrap(Files("who", core.Gate))),
+		"home": Public("home", homeAuth.Wrap(Files("home", core.Home))),
+	}), core.Queue
 }

@@ -1,4 +1,4 @@
-// Command createtabs creates the directory sheet's local-layer tabs with their header rows.
+// Command createtabs creates a sheet's tabs with their header rows, picking the layout by the spreadsheet's title.
 package main
 
 import (
@@ -12,66 +12,77 @@ import (
 	"google.golang.org/api/sheets/v4"
 )
 
-var tabs = []struct {
+type tab struct {
 	title  string
 	header []string
-}{
-	{"Veracross Staff Import", []string{
-		"entry_sort_name", "person_full_name", "person_job_title", "person_room",
-		"person_classifications", "person_biography",
-		"person_email", "person_email_2", "person_phone_business", "person_photo",
-	}},
-	// student_photo is spliced in by vcexport rather than exported by Veracross, so the
-	// tab needs the column before an import can mirror it.
-	{"Veracross Student Import", []string{
-		"entry_sort_name", "student_full_name", "student_classifications", "student_email",
-		"student_phone_mobile",
-		"household_1_phone", "household_1_address",
-		"household_1_person_1_full_name", "household_1_person_1_email",
-		"household_1_person_1_email_2", "household_1_person_1_phone_mobile",
-		"household_1_person_1_phone_business",
-		"household_1_person_2_full_name", "household_1_person_2_email",
-		"household_1_person_2_email_2", "household_1_person_2_phone_mobile",
-		"household_1_person_2_phone_business",
-		"household_2_phone", "household_2_address",
-		"household_2_person_1_full_name", "household_2_person_1_email",
-		"household_2_person_1_email_2", "household_2_person_1_phone_mobile",
-		"household_2_person_1_phone_business",
-		"household_2_person_2_full_name", "household_2_person_2_email",
-		"household_2_person_2_email_2", "household_2_person_2_phone_mobile",
-		"household_2_person_2_phone_business",
-		"student_photo",
-	}},
-	{"Name to Email", []string{"Name", "Email"}},
-	{"Overrides", []string{
-		"Email", "Added",
-		"Full Name", "Legal Name", "Preferred Name",
-		"Is Student", "Is Parent", "Is Staff",
-		"New to Helios", "Pronouns", "Facts",
-		"Grade", "Classroom", "Crew",
-		"Phone", "Job Title", "Department", "Grade Band", "Room Parent",
-		"Opted Out", "Photo Updated", "Facts Updated",
-		"Veracross Photo", "Primary Photo", "Pronunciation",
-	}},
-	{"Families", []string{
-		"Email", "Address", "Family Phone", "Family Photo Caption",
-		"Family Photo Updated", "Family Photo", "Family Photo Crop", "Family Pronunciation",
-	}},
-	{"Change Log", []string{
-		"Timestamp", "Actor",
-		"Email", "Added",
-		"Full Name", "Legal Name", "Preferred Name",
-		"Is Student", "Is Parent", "Is Staff",
-		"New to Helios", "Pronouns", "Facts",
-		"Grade", "Classroom", "Crew",
-		"Phone", "Job Title", "Department", "Grade Band", "Room Parent",
-		"Address", "Family Phone", "Family Photo Caption", "Opted Out",
-		"Photo Updated", "Facts Updated", "Family Photo Updated",
-		"Veracross Photo", "Primary Photo", "Pronunciation",
-		"Family Photo", "Family Pronunciation",
-	}},
-	{"Tags", []string{"Owner Email", "Tag", "Person Email"}},
-	{"Photos", []string{"Email", "Photo Name"}},
+}
+
+var layouts = map[string][]tab{
+	"Directory": {
+		{"Veracross Staff Import", []string{
+			"entry_sort_name", "person_full_name", "person_job_title", "person_room",
+			"person_classifications", "person_biography",
+			"person_email", "person_email_2", "person_phone_business", "person_photo",
+		}},
+		// student_photo is spliced in by vcexport rather than exported by Veracross, so the
+		// tab needs the column before an import can mirror it.
+		{"Veracross Student Import", []string{
+			"entry_sort_name", "student_full_name", "student_classifications", "student_email",
+			"student_phone_mobile",
+			"household_1_phone", "household_1_address",
+			"household_1_person_1_full_name", "household_1_person_1_email",
+			"household_1_person_1_email_2", "household_1_person_1_phone_mobile",
+			"household_1_person_1_phone_business",
+			"household_1_person_2_full_name", "household_1_person_2_email",
+			"household_1_person_2_email_2", "household_1_person_2_phone_mobile",
+			"household_1_person_2_phone_business",
+			"household_2_phone", "household_2_address",
+			"household_2_person_1_full_name", "household_2_person_1_email",
+			"household_2_person_1_email_2", "household_2_person_1_phone_mobile",
+			"household_2_person_1_phone_business",
+			"household_2_person_2_full_name", "household_2_person_2_email",
+			"household_2_person_2_email_2", "household_2_person_2_phone_mobile",
+			"household_2_person_2_phone_business",
+			"student_photo",
+		}},
+		{"Name to Email", []string{"Name", "Email"}},
+		{"Overrides", []string{
+			"Email", "Added",
+			"Full Name", "Legal Name", "Preferred Name",
+			"Is Student", "Is Parent", "Is Staff",
+			"New to Helios", "Pronouns", "Facts",
+			"Grade", "Classroom", "Crew",
+			"Phone", "Job Title", "Department", "Grade Band", "Room Parent",
+			"Opted Out", "Photo Updated", "Facts Updated",
+			"Veracross Photo", "Primary Photo", "Pronunciation",
+		}},
+		{"Families", []string{
+			"Email", "Address", "Family Phone", "Family Photo Caption",
+			"Family Photo Updated", "Family Photo", "Family Photo Crop", "Family Pronunciation",
+		}},
+		{"Change Log", []string{
+			"Timestamp", "Actor",
+			"Email", "Added",
+			"Full Name", "Legal Name", "Preferred Name",
+			"Is Student", "Is Parent", "Is Staff",
+			"New to Helios", "Pronouns", "Facts",
+			"Grade", "Classroom", "Crew",
+			"Phone", "Job Title", "Department", "Grade Band", "Room Parent",
+			"Address", "Family Phone", "Family Photo Caption", "Opted Out",
+			"Photo Updated", "Facts Updated", "Family Photo Updated",
+			"Veracross Photo", "Primary Photo", "Pronunciation",
+			"Family Photo", "Family Pronunciation",
+		}},
+		{"Tags", []string{"Owner Email", "Tag", "Person Email"}},
+		{"Photos", []string{"Email", "Photo Name"}},
+		{"Admins", []string{"Email"}},
+	},
+	"Apps": {
+		{"Categories", []string{"Title", "Image"}},
+		{"Links", []string{"Title", "Description", "URL", "Image", "Category", "Visible", "Added By", "Added"}},
+		{"Admins", []string{"Email"}},
+		{"Change Log", []string{"Timestamp", "Actor", "Action", "Kind", "Title", "Description", "URL", "Image", "Category", "Visible"}},
+	},
 }
 
 func column(i int) string {
@@ -140,10 +151,15 @@ func main() {
 	if err != nil {
 		log.Fatalf("[ERROR] create sheets client: %v", err)
 	}
-	meta, err := svc.Spreadsheets.Get(*sheet).Fields("sheets(properties(sheetId,title,gridProperties(columnCount)))").Do()
+	meta, err := svc.Spreadsheets.Get(*sheet).Fields("properties(title),sheets(properties(sheetId,title,gridProperties(columnCount)))").Do()
 	if err != nil {
 		log.Fatalf("[ERROR] get spreadsheet: %v", err)
 	}
+	tabs, ok := layouts[meta.Properties.Title]
+	if !ok {
+		log.Fatalf("[ERROR] spreadsheet %q has no layout here; it must be titled Directory or Apps", meta.Properties.Title)
+	}
+	log.Printf("spreadsheet %q: applying the %s layout", meta.Properties.Title, meta.Properties.Title)
 	type tabInfo struct{ id, columns int64 }
 	existing := map[string]tabInfo{}
 	for _, s := range meta.Sheets {

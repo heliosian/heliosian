@@ -6,7 +6,7 @@
 
 For a sample-data page, one self-contained command serves, captures, and exits:
 
-    go run ./cmd/startserver -capture /people -out screenshots/directory.png -wait .sidebar
+    go run ./cmd/startserver -capture https://who.local.heliosian.com:8080/people -out screenshots/directory.png -wait .sidebar
 
 With a server already running, capture against it directly:
 
@@ -64,6 +64,6 @@ Leave the browser running between capture sessions — never kill it. In practic
 
 ## Agent recipe
 
-    go run ./cmd/startserver -capture /people -out screenshots/directory.png -wait .sidebar
+    go run ./cmd/startserver -capture https://who.local.heliosian.com:8080/people -out screenshots/directory.png -wait .sidebar
 
 serves the sample community in-process, captures, and shuts down by itself — no background server to start or kill. Then read `screenshots/directory.png` to inspect the result.

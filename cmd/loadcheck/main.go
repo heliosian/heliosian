@@ -1,4 +1,4 @@
-// Command loadcheck loads the directory model from a sheet and prints a summary.
+// Command loadcheck runs every app's load pipeline against the production sheets and prints a summary.
 package main
 
 import (
@@ -8,39 +8,67 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"heliosian/internal/data"
+	"heliosian/internal/home"
 	"heliosian/internal/who"
 )
 
-type staticFiles struct{}
+type staticFiles struct {
+	root string
+}
 
-func (staticFiles) Has(key string) bool {
-	_, err := os.Stat(filepath.Join("web/who", filepath.FromSlash(key)))
+func (s staticFiles) Has(key string) bool {
+	_, err := os.Stat(filepath.Join(s.root, filepath.FromSlash(key)))
 	return err == nil
 }
 
+// homeImages trusts bucket names, since this tool carries no bucket client,
+// and checks bundled files on disk.
+type homeImages struct{}
+
+func (homeImages) Has(key string) bool {
+	if strings.HasPrefix(key, "link-images/") {
+		return true
+	}
+	for _, root := range []string{"web/home", "web/public/home"} {
+		if (staticFiles{root}).Has(key) {
+			return true
+		}
+	}
+	return false
+}
+
+func requiredEnv(name string) string {
+	value := os.Getenv(name)
+	if value == "" {
+		log.Fatalf("[ERROR] %s is required", name)
+	}
+	return value
+}
+
 func main() {
-	sheet := flag.String("sheet", "", "spreadsheet id")
-	preferences := flag.String("preferences", "", "preferences spreadsheet id")
 	dir := flag.String("dir", "", "load from a directory of dumped tabs instead of the live sheets")
 	flag.Parse()
 	var source data.Source
-	switch {
-	case *dir != "":
+	if *dir != "" {
 		source = &data.Dir{Root: *dir}
-	case *sheet != "" && *preferences != "":
-		live, err := data.NewSheet(map[string]string{"directory": *sheet, "preferences": *preferences})
+	} else {
+		live, err := data.NewSheet(map[string]string{
+			"directory":   requiredEnv("DIRECTORY_SHEET"),
+			"preferences": requiredEnv("PREFERENCES_SHEET"),
+			"invites":     requiredEnv("INVITES_SHEET"),
+			"apps":        requiredEnv("APPS_SHEET"),
+		})
 		if err != nil {
 			log.Fatalf("[ERROR] sheet source: %v", err)
 		}
 		source = live
-	default:
-		log.Fatal("[ERROR] -dir, or both -sheet and -preferences, are required")
 	}
-	model, err := who.LoadModel(source, nil, staticFiles{})
+	model, err := who.LoadModel(source, nil, staticFiles{"web/who"})
 	if err != nil {
-		log.Fatalf("[ERROR] load model: %v", err)
+		log.Fatalf("[ERROR] load directory model: %v", err)
 	}
 	students, parents, staff, isNew := 0, 0, 0, 0
 	for _, p := range model.People {
@@ -117,4 +145,25 @@ func main() {
 	for _, g := range model.Grades {
 		fmt.Printf("  %s -> %s (%s -> %s)\n", g.Name, g.NextName, g.Band, g.NextBand)
 	}
+
+	tables, err := home.ReadTables(source)
+	if err != nil {
+		log.Fatalf("[ERROR] read apps tables: %v", err)
+	}
+	apps, err := home.BuildModel(tables, homeImages{})
+	if err != nil {
+		log.Fatalf("[ERROR] build apps model: %v", err)
+	}
+	fmt.Println("apps:")
+	for _, c := range apps.Categories {
+		fmt.Printf("  %s (image %v): %d links\n", c.Title, c.ImageURL != "", len(c.Links))
+		for _, l := range c.Links {
+			visible := "visible"
+			if !l.Visible {
+				visible = "hidden"
+			}
+			fmt.Printf("    %s -> %s (%s, image %v)\n", l.Title, l.URL, visible, l.ImageURL != "")
+		}
+	}
+	fmt.Printf("apps admins: %d\n", len(tables.Admins))
 }

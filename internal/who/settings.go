@@ -12,17 +12,17 @@ const settingsFolder = "config"
 const settingsName = "settings.json"
 
 // Settings holds everything an admin can change without a deploy. It lives as one
-// JSON blob in the media bucket rather than a sheet tab, since neither admins nor
-// stale-photo thresholds are rows tied to a person or family.
+// JSON blob in the media bucket rather than a sheet tab, since none of it is a row
+// tied to a person or family.
 //
-// Admins and SuperAdmins are deliberately separate, disjoint lists rather than one
+// SuperAdmins live here, platform-wide; regular admins are per app, in each app's
+// own Admins tab. The two are deliberately separate, disjoint lists rather than one
 // list with a role flag: a regular admin's view of the admin page is built from an API
 // response that a super admin's request never shares a code path with, so there's no
 // field to trim or hide — a regular admin's client simply never receives anything
 // about super admins to begin with.
 type Settings struct {
 	SuperAdmins  []string     `json:"superAdmins"`
-	Admins       []string     `json:"admins"`
 	StaleYears   StaleYears   `json:"staleYears"`
 	PrivacyLinks PrivacyLinks `json:"privacyLinks"`
 
@@ -42,7 +42,6 @@ type Settings struct {
 func defaultSettings() Settings {
 	return Settings{
 		SuperAdmins: []string{"gayle.mcdowell@heliosschool.org", "ian.gulliver@heliosschool.org"},
-		Admins:      []string{},
 		StaleYears:  StaleYears{Photo: 0.75, Facts: 0.6, FamilyPhoto: 1.5},
 		PrivacyLinks: PrivacyLinks{
 			VeracrossPreferences: "https://portals.veracross.com/heliosschool/parent/directory-preferences",
@@ -96,15 +95,8 @@ func normalizeEmails(emails []string) []string {
 	return out
 }
 
-// mergedAdmins is what the Admins tab actually shows: every admin, either tier,
-// indistinguishable, sorted together. A regular admin's client never learns which
-// names came from which list, because there's only one list here.
-func mergedAdmins(settings Settings) []string {
-	return normalizeEmails(append(append([]string{}, settings.Admins...), settings.SuperAdmins...))
-}
-
 // withoutSuperAdmins drops any email that's currently a super admin, so the merged
-// list the Admins tab submits back can never write a super admin into settings.Admins
+// list the Admins tab submits back can never write a super admin into the Admins tab
 // (or, by their absence from an edited list, be mistaken for removed from
 // settings.SuperAdmins — that list is untouched here regardless).
 func withoutSuperAdmins(emails, superAdmins []string) []string {

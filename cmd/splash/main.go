@@ -1,39 +1,44 @@
-// Command splash extracts the original app's ios splash screens into web/who/brand/splash.
+// Command splash downloads an original app's ios splash screens from its Glide manifest into a brand directory.
 package main
 
 import (
+	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
-	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
 
 func main() {
-	raw, err := os.ReadFile("screenshots/who-old/brand/page-source.html")
+	manifest := flag.String("manifest", "", "the captured Glide manifest json")
+	out := flag.String("out", "", "directory to write the splash pngs into, e.g. web/public/home/brand/splash")
+	flag.Parse()
+	if *manifest == "" || *out == "" {
+		log.Fatal("[ERROR] --manifest and --out are required")
+	}
+	raw, err := os.ReadFile(*manifest)
 	if err != nil {
-		log.Fatalf("[ERROR] read page source: %v", err)
+		log.Fatalf("[ERROR] read manifest: %v", err)
 	}
-	blobs := regexp.MustCompile(`decodeURIComponent\("([^"]+)"\)`).FindAllStringSubmatch(string(raw), -1)
-	links := [][]string{}
+	var parsed struct {
+		Head string `json:"glidePWAAddToHead"`
+	}
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		log.Fatalf("[ERROR] parse manifest: %v", err)
+	}
 	linkRE := regexp.MustCompile(`<link rel="apple-touch-startup-image" media="([^"]+)" href="([^"]+)"`)
-	for _, blob := range blobs {
-		decoded, err := url.PathUnescape(blob[1])
-		if err != nil {
-			log.Fatalf("[ERROR] decode blob: %v", err)
-		}
-		decoded = strings.ReplaceAll(decoded, `\"`, `"`)
-		links = append(links, linkRE.FindAllStringSubmatch(decoded, -1)...)
-	}
+	links := linkRE.FindAllStringSubmatch(parsed.Head, -1)
 	if len(links) == 0 {
-		log.Fatal("[ERROR] no splash links found in page source")
+		log.Fatal("[ERROR] no splash links found in manifest")
 	}
 	mediaRE := regexp.MustCompile(`device-width: (\d+)px\) and \(device-height: (\d+)px\) and \(-webkit-device-pixel-ratio: (\d+)\) and \(orientation: (\w+)\)`)
-	if err := os.MkdirAll("web/who/brand/splash", 0o755); err != nil {
-		log.Fatalf("[ERROR] create splash dir: %v", err)
+	if err := os.MkdirAll(*out, 0o755); err != nil {
+		log.Fatalf("[ERROR] create %s: %v", *out, err)
 	}
 	for _, link := range links {
 		media, href := link[1], link[2]
@@ -54,7 +59,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("[ERROR] read %s: %v", href, err)
 		}
-		if err := os.WriteFile("web/who/brand/splash/"+name, data, 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(*out, name), data, 0o644); err != nil {
 			log.Fatalf("[ERROR] write %s: %v", name, err)
 		}
 		fmt.Printf("<link rel=\"apple-touch-startup-image\" media=\"%s\" href=\"/brand/splash/%s\">\n", media, name)

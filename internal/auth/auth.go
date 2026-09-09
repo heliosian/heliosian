@@ -2,13 +2,12 @@
 package auth
 
 import (
-	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
-	"html/template"
 	"log"
 	"net/http"
 	"strconv"
@@ -26,14 +25,17 @@ const (
 
 type contextKey struct{}
 
+// Auth gates one app behind Google sign-in. loginPage is the app's static
+// splash page under web/public, the one page anyone without a session sees;
+// it fetches clientID from /auth/client rather than carrying it.
 type Auth struct {
-	clientID      string
-	key           []byte
-	loginTemplate string
+	clientID  string
+	key       []byte
+	loginPage string
 }
 
-func New(clientID string, key []byte, loginTemplate string) *Auth {
-	return &Auth{clientID: clientID, key: key, loginTemplate: loginTemplate}
+func New(clientID string, key []byte, loginPage string) *Auth {
+	return &Auth{clientID: clientID, key: key, loginPage: loginPage}
 }
 
 func Email(r *http.Request) string {
@@ -47,8 +49,10 @@ func Fixed(email string, next http.Handler) http.Handler {
 	})
 }
 
+// Public names the two endpoints the splash page needs before anyone has a
+// session: the client id it initializes Google sign-in with, and the login POST.
 func Public(path string) bool {
-	return path == "/auth/login"
+	return path == "/auth/login" || path == "/auth/client"
 }
 
 func Token(key []byte, email string, expiry time.Time) string {
@@ -63,8 +67,16 @@ func sign(key []byte, payload string) string {
 }
 
 func (a *Auth) Register(mux *http.ServeMux) {
+	mux.HandleFunc("GET /auth/client", a.client)
 	mux.HandleFunc("POST /auth/login", a.login)
 	mux.HandleFunc("POST /auth/logout", a.logout)
+}
+
+func (a *Auth) client(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(map[string]string{"clientId": a.clientID}); err != nil {
+		log.Printf("[ERROR] encode client id: %v", err)
+	}
 }
 
 func (a *Auth) Wrap(next http.Handler) http.Handler {
@@ -79,36 +91,32 @@ func (a *Auth) Wrap(next http.Handler) http.Handler {
 				http.Error(w, "unauthenticated", http.StatusUnauthorized)
 				return
 			}
-			a.loginPage(w, r)
+			a.splash(w, r)
 			return
 		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), contextKey{}, email)))
 	})
 }
 
-func (a *Auth) loginPage(w http.ResponseWriter, r *http.Request) {
-	t, err := template.ParseFiles(a.loginTemplate)
-	if err != nil {
-		log.Printf("[ERROR] parse login page: %v", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
+// cookieDomain follows the hostname convention (<app>.<tier>.heliosian.com):
+// the session is scoped one label up, so one sign-in covers every app in the
+// same tier. A host outside the convention gets a host-only cookie.
+func cookieDomain(host string) string {
+	host, _, _ = strings.Cut(host, ":")
+	if host == "heliosian.com" || host == "www.heliosian.com" {
+		return "heliosian.com"
 	}
-	scheme := "http"
-	if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
-		scheme = "https"
+	if !strings.HasSuffix(host, ".heliosian.com") {
+		return ""
 	}
-	var page bytes.Buffer
-	err = t.Execute(&page, map[string]string{
-		"ClientID": a.clientID,
-		"LoginURI": scheme + "://" + r.Host + "/auth/login",
-	})
-	if err != nil {
-		log.Printf("[ERROR] render login page: %v", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(page.Bytes()))
+	_, parent, _ := strings.Cut(host, ".")
+	return parent
+}
+
+// splash serves the login page at whatever URL was asked for, so signing in
+// lands back on it. ServeFile is handed a fixed name, never the request path.
+func (a *Auth) splash(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, a.loginPage)
 }
 
 func (a *Auth) login(w http.ResponseWriter, r *http.Request) {
@@ -134,6 +142,7 @@ func (a *Auth) login(w http.ResponseWriter, r *http.Request) {
 		Name:     cookieName,
 		Value:    Token(a.key, email, time.Now().Add(sessionLength)),
 		Path:     "/",
+		Domain:   cookieDomain(r.Host),
 		HttpOnly: true,
 		Secure:   r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https",
 		SameSite: http.SameSiteLaxMode,
@@ -143,7 +152,7 @@ func (a *Auth) login(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *Auth) logout(w http.ResponseWriter, r *http.Request) {
-	http.SetCookie(w, &http.Cookie{Name: cookieName, Value: "", Path: "/", HttpOnly: true, MaxAge: -1})
+	http.SetCookie(w, &http.Cookie{Name: cookieName, Value: "", Path: "/", Domain: cookieDomain(r.Host), HttpOnly: true, MaxAge: -1})
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 

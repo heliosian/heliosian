@@ -22,13 +22,34 @@ func TestFiles(t *testing.T) {
 		fallthroughs++
 		w.WriteHeader(http.StatusTeapot)
 	})
-	handler := files("who", next)
-	for _, path := range []string{"/style.css", "/brand/icon-192.png", "/fonts/fonts.css", "/manifest.webmanifest"} {
+	handler := Files("who", next)
+	for _, path := range []string{"/style.css", "/brand/logo-wordmark.png", "/brand/classrooms/grade-k.jpg"} {
 		if rec := serve(t, handler, "who.local.heliosian.com", path); rec.Code != http.StatusOK {
 			t.Errorf("%s: got %d, want 200", path, rec.Code)
 		}
 	}
-	for _, path := range []string{"/", "/people", "/admin", "/index.html", "/login.html", "/../go.mod", "/missing.js"} {
+	for _, path := range []string{"/", "/people", "/admin", "/../go.mod", "/missing.js", "/manifest.webmanifest", "/fonts/fonts.css"} {
+		before := fallthroughs
+		if rec := serve(t, handler, "who.local.heliosian.com", path); rec.Code != http.StatusTeapot || fallthroughs != before+1 {
+			t.Errorf("%s: got %d, want fallthrough", path, rec.Code)
+		}
+	}
+}
+
+func TestPublic(t *testing.T) {
+	t.Chdir("../..")
+	fallthroughs := 0
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fallthroughs++
+		w.WriteHeader(http.StatusTeapot)
+	})
+	handler := Public("who", next)
+	for _, path := range []string{"/manifest.webmanifest", "/brand/icon-192.png", "/brand/login-art.jpg", "/brand/splash/splash-390x844-3x-portrait.png", "/fonts/fonts.css", "/fonts/Roboto-Regular.woff2"} {
+		if rec := serve(t, handler, "who.local.heliosian.com", path); rec.Code != http.StatusOK {
+			t.Errorf("%s: got %d, want 200", path, rec.Code)
+		}
+	}
+	for _, path := range []string{"/", "/people", "/style.css", "/app.js", "/brand/logo-wordmark.png", "/brand/classrooms/grade-k.jpg"} {
 		before := fallthroughs
 		if rec := serve(t, handler, "who.local.heliosian.com", path); rec.Code != http.StatusTeapot || fallthroughs != before+1 {
 			t.Errorf("%s: got %d, want fallthrough", path, rec.Code)

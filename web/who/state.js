@@ -32,6 +32,8 @@ export let staleYears = {photo: 0.75, facts: 0.6, familyPhoto: 1.5};
 
 export function applyModel(model) {
   state.model = model;
+  document.body.dataset.userEmail = model.user.email;
+  document.body.dataset.mapsKey = model.mapsKey;
   staleYears = model.staleYears || staleYears;
   privacyLinks = model.privacyLinks || privacyLinks;
   tags = model.tags || {};

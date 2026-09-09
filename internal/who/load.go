@@ -266,7 +266,10 @@ type Tables struct {
 	Preferences []map[string]string
 	Tags        []map[string]string
 	Photos      []map[string]string
+	Admins      []map[string]string
 }
+
+const adminsTable = "Admins"
 
 // withOverride mirrors what data.Sheet.Upsert just wrote, copying the rows it
 // touches so the tables the current model was built from stay intact.
@@ -514,11 +517,12 @@ func ReadTables(source data.Source) (*Tables, error) {
 	preferences := &table{app: preferencesApp, name: preferencesTab}
 	tags := &table{app: appName, name: tagsTable}
 	photos := &table{app: appName, name: "Photos"}
+	admins := &table{app: appName, name: adminsTable}
 	// Header only: the change log is never read into the model, and it gains a row per
 	// member edit forever. Nothing else compares its columns against what the app
 	// writes, and a column missing here truncates every audit row that reaches it.
 	changeLog := &table{app: appName, name: changeLogTable}
-	ordered := []*table{imports, staff, names, overrides, families, preferences, tags, photos}
+	ordered := []*table{imports, staff, names, overrides, families, preferences, tags, photos, admins}
 	var wg sync.WaitGroup
 	for _, t := range ordered {
 		wg.Go(func() {
@@ -560,6 +564,9 @@ func ReadTables(source data.Source) (*Tables, error) {
 	if err := requireColumns(photos.name, photos.header, []string{"Email", "Photo Name"}); err != nil {
 		return nil, err
 	}
+	if err := exactColumns(admins.name, admins.header, []string{"Email"}); err != nil {
+		return nil, err
+	}
 	if err := exactColumns(changeLog.name, changeLog.header, changeLogHeader); err != nil {
 		return nil, err
 	}
@@ -572,6 +579,7 @@ func ReadTables(source data.Source) (*Tables, error) {
 		Preferences: preferences.rows,
 		Tags:        tags.rows,
 		Photos:      photos.rows,
+		Admins:      admins.rows,
 	}, nil
 }
 

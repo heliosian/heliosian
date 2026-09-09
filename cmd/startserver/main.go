@@ -38,7 +38,7 @@ func main() {
 	email := flag.String("email", "ian.gulliver@heliosschool.org", "session email for -detach's minted cookie")
 	real := flag.Bool("real", false, "serve the production assembly in the foreground")
 	detach := flag.Bool("detach", false, "launch -real in the background with a log file and a minted cookie")
-	capturePath := flag.String("capture", "", "serve sample data in-process, capture this server path as a PNG, and exit")
+	capturePath := flag.String("capture", "", "serve sample data in-process, capture this url (on any app's local hostname) as a PNG, and exit")
 	out := flag.String("out", "screenshots/capture.png", "output png path for -capture")
 	wait := flag.String("wait", "body", "css selector that must be visible before capturing, for -capture")
 	flag.Parse()
@@ -66,7 +66,7 @@ func sampleServer() (*http.Server, *who.Queue) {
 		Geocoder:   geocode.Fake{},
 		BrowserKey: os.Getenv("GOOGLE_MAPS_BROWSER_KEY"),
 	})
-	if !core.Cache.IsAdmin(sampleUser) {
+	if !core.Cache.IsSuperAdmin(sampleUser) {
 		settings := core.Cache.Settings()
 		settings.SuperAdmins = append(settings.SuperAdmins, sampleUser)
 		if err := core.Cache.UpdateSettings(settings); err != nil {
@@ -74,8 +74,12 @@ func sampleServer() (*http.Server, *who.Queue) {
 		}
 	}
 	core.Mux.Handle("POST /auth/logout", http.RedirectHandler("/", http.StatusSeeOther))
+	core.HomeMux.Handle("POST /auth/logout", http.RedirectHandler("/", http.StatusSeeOther))
 	log.Printf("serving sample data as %s", sampleUser)
-	return localTLS(app.Server(map[string]http.Handler{"who": auth.Fixed(sampleUser, core.Gate)}), core.Queue)
+	return localTLS(app.Server(map[string]http.Handler{
+		"who":  app.Public("who", auth.Fixed(sampleUser, app.Files("who", core.Gate))),
+		"home": app.Public("home", auth.Fixed(sampleUser, app.Files("home", core.Home))),
+	}), core.Queue)
 }
 
 func localTLS(server *http.Server, queue *who.Queue) (*http.Server, *who.Queue) {
@@ -88,7 +92,7 @@ func detachReal(email string) {
 	if key == "" {
 		log.Fatal("[ERROR] SESSION_KEY is required (the server and the minted cookie must share it)")
 	}
-	for _, name := range []string{"DIRECTORY_SHEET", "PREFERENCES_SHEET", "INVITES_SHEET"} {
+	for _, name := range []string{"DIRECTORY_SHEET", "PREFERENCES_SHEET", "INVITES_SHEET", "APPS_SHEET"} {
 		if os.Getenv(name) == "" {
 			log.Fatalf("[ERROR] %s is required", name)
 		}
@@ -117,7 +121,7 @@ func detachReal(email string) {
 	fmt.Printf("header: Cookie: session=%s\n", cookie)
 }
 
-func captureOnce(path, out, wait string) {
+func captureOnce(url, out, wait string) {
 	server, queue := sampleServer()
 	served := make(chan error, 1)
 	go func() {
@@ -144,7 +148,7 @@ func captureOnce(path, out, wait string) {
 		log.Fatalf("[ERROR] server did not become ready on %s", base)
 	}
 
-	png, captureErr := capture.PNG(capture.Options{URL: base + path, Wait: wait})
+	png, captureErr := capture.PNG(capture.Options{URL: url, Wait: wait})
 	if err := server.Shutdown(context.Background()); err != nil {
 		log.Printf("[ERROR] shutdown: %v", err)
 	}
@@ -159,5 +163,5 @@ func captureOnce(path, out, wait string) {
 	if err := os.WriteFile(out, png, 0o644); err != nil {
 		log.Fatalf("[ERROR] write %s: %v", out, err)
 	}
-	log.Printf("captured %s to %s", base+path, out)
+	log.Printf("captured %s to %s", url, out)
 }

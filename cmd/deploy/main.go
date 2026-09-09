@@ -8,16 +8,6 @@ import (
 	"os/exec"
 )
 
-const (
-	service  = "heliosian"
-	region   = "us-west1"
-	image    = "us-west1-docker.pkg.dev/heliosian/heliosian/heliosian:latest"
-	identity = "directory@heliosian.iam.gserviceaccount.com"
-	secrets  = "SESSION_KEY=heliosian-session-key:latest," +
-		"GOOGLE_MAPS_SERVER_KEY=heliosian-geocoding-key:latest," +
-		"GOOGLE_MAPS_BROWSER_KEY=heliosian-maps-browser-key:latest"
-)
-
 func clientID() string {
 	if id := os.Getenv("GOOGLE_CLIENT_ID"); id != "" {
 		return id
@@ -37,6 +27,16 @@ func clientID() string {
 	return parsed.Web.ClientID
 }
 
+const (
+	service  = "heliosian"
+	region   = "us-west1"
+	image    = "us-west1-docker.pkg.dev/heliosian/heliosian/heliosian:latest"
+	identity = "directory@heliosian.iam.gserviceaccount.com"
+	secrets  = "SESSION_KEY=heliosian-session-key:latest," +
+		"GOOGLE_MAPS_SERVER_KEY=heliosian-geocoding-key:latest," +
+		"GOOGLE_MAPS_BROWSER_KEY=heliosian-maps-browser-key:latest"
+)
+
 func requiredEnv(name string) string {
 	value := os.Getenv(name)
 	if value == "" {
@@ -49,6 +49,7 @@ func main() {
 	envVars := "DIRECTORY_SHEET=" + requiredEnv("DIRECTORY_SHEET") +
 		",PREFERENCES_SHEET=" + requiredEnv("PREFERENCES_SHEET") +
 		",INVITES_SHEET=" + requiredEnv("INVITES_SHEET") +
+		",APPS_SHEET=" + requiredEnv("APPS_SHEET") +
 		",GOOGLE_CLIENT_ID=" + clientID()
 	cmd := exec.Command("gcloud",
 		"run", "deploy", service,

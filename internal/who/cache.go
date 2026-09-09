@@ -121,13 +121,14 @@ func (c *Cache) Settings() Settings {
 	return c.settings
 }
 
-// IsAdmin reports whether email may use the admin tools at all — either tier.
+// IsAdmin reports whether email may use the admin tools at all — either tier:
+// a row in the Admins tab, or the super admin list in settings.
 func (c *Cache) IsAdmin(email string) bool {
 	email = strings.ToLower(strings.TrimSpace(email))
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	for _, admin := range c.settings.Admins {
-		if admin == email {
+	for _, row := range c.tables.Admins {
+		if strings.EqualFold(strings.TrimSpace(row["Email"]), email) {
 			return true
 		}
 	}
@@ -137,6 +138,38 @@ func (c *Cache) IsAdmin(email string) bool {
 		}
 	}
 	return false
+}
+
+// tabAdmins is the Admins tab as written, normalized.
+func (c *Cache) tabAdmins() []string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	emails := make([]string, 0, len(c.tables.Admins))
+	for _, row := range c.tables.Admins {
+		emails = append(emails, row["Email"])
+	}
+	return normalizeEmails(emails)
+}
+
+// Admins is what the Admins tab of the admin page shows: every admin, either
+// tier, indistinguishable, sorted together. A regular admin's client never
+// learns which names came from which list, because there's only one list here.
+func (c *Cache) Admins() []string {
+	admins := normalizeEmails(append(c.tabAdmins(), c.Settings().SuperAdmins...))
+	sort.Strings(admins)
+	return admins
+}
+
+func (c *Cache) applyAdmins(emails []string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	rows := make([]map[string]string, 0, len(emails))
+	for _, email := range emails {
+		rows = append(rows, map[string]string{"Email": email})
+	}
+	next := *c.tables
+	next.Admins = rows
+	c.tables = &next
 }
 
 // IsSuperAdmin reports whether email is on the super admin list specifically — the

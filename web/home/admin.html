@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HCA Home Admin</title>
+<link rel="icon" href="/brand/icon-192.png">
+<link rel="stylesheet" href="/fonts/fonts.css">
+<link rel="stylesheet" href="/style.css">
+<style>
+  .layout { max-width: 760px; margin: 0 auto; padding: 20px; }
+  .card {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin-bottom: 20px;
+  }
+  .card h2 { font-size: 16px; margin: 0 0 4px; }
+  .hint { font-size: 13px; color: var(--muted); margin-bottom: 16px; }
+  .notice {
+    background: #fde3d1;
+    color: #a94d0e;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 13px;
+    margin-bottom: 16px;
+  }
+  .admin-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 0;
+    border-top: 1px solid var(--line);
+  }
+  .admin-row:first-of-type { border-top: none; }
+  .admin-row .email { flex: 1; }
+  .add-admin-row { display: flex; gap: 10px; margin-top: 16px; }
+  .add-admin-row input {
+    flex: 1;
+    padding: 9px 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    font: inherit;
+  }
+  .crumb { color: var(--muted); font-size: 13px; margin-bottom: 12px; }
+  .crumb a { color: var(--brand-ink); }
+</style>
+</head>
+<body>
+<header class="topbar">
+<a class="brand" href="/"><img src="/brand/icon-192.png" alt=""><span>HCA Home</span></a>
+<span id="me" style="font-size:13px;opacity:.85"></span>
+</header>
+<div class="layout">
+<div class="crumb"><a href="/">← Links</a></div>
+<div id="store-notice"></div>
+<div class="card">
+<h2>Admins</h2>
+<div class="hint">Whoever is on this list can add, edit, and delete links and categories, and reach this page. Changes save immediately. Links and categories themselves are edited on the Links page.</div>
+<div id="admins-rows"></div>
+<div class="add-admin-row">
+<input type="email" id="add-admin-email" placeholder="name@heliosschool.org">
+<button class="button" id="add-admin-button" type="button">Add</button>
+<span class="save-status" id="admins-status"></span>
+</div>
+</div>
+</div>
+<script type="module" src="/admin/app.js"></script>
+</body>
+</html>

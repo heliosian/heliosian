@@ -323,7 +323,7 @@ func (a admin) state(w http.ResponseWriter, r *http.Request) {
 		SuperAdmins  []string       `json:"superAdmins,omitempty"`
 		SpoofingAs   string         `json:"spoofingAs,omitempty"`
 	}{
-		Email: email, HasStore: a.cache.HasStore(), Admins: mergedAdmins(settings), StaleYears: settings.StaleYears,
+		Email: email, HasStore: a.cache.HasStore(), Admins: a.cache.Admins(), StaleYears: settings.StaleYears,
 		PrivacyLinks: settings.PrivacyLinks,
 		Classrooms:   classrooms, Grades: grades, Bands: bands, Crews: crews, Departments: model.Departments,
 		StaffColor: settings.StaffColor, People: people, HiddenEmails: model.hiddenEmails,
@@ -357,23 +357,54 @@ func (a admin) setAdmins(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad request body", http.StatusBadRequest)
 		return
 	}
-	settings := a.cache.Settings()
 	// The Admins tab shows every admin merged together, super admins included, so a
 	// regular admin can't tell the two tiers apart. Submitting that merged list back
-	// must not be able to write a super admin into the regular list (or drop them from
+	// must not be able to write a super admin into the Admins tab (or drop them from
 	// super admin by omission) — a super admin's presence here is display-only and
-	// never round-trips into settings.Admins. This is also why an empty result isn't
+	// never round-trips into the tab. This is also why an empty result isn't
 	// rejected the way it is for super admins: losing every regular admin can't lock
 	// the tools, since the super admin list alone already guarantees access.
-	admins := normalizeEmails(body.Admins)
-	admins = withoutSuperAdmins(admins, settings.SuperAdmins)
-	settings.Admins = admins
-	if err := a.cache.UpdateSettings(settings); err != nil {
-		serverError(w, err)
-		return
-	}
+	admins := withoutSuperAdmins(normalizeEmails(body.Admins), a.cache.Settings().SuperAdmins)
+	current := a.cache.tabAdmins()
+	added, removed := listDiff(current, admins)
+	applied := make(chan struct{})
+	a.queue.Add(func() {
+		a.cache.applyAdmins(admins)
+		close(applied)
+		for _, e := range removed {
+			if err := a.writer.Delete(appName, adminsTable, map[string]string{"Email": e}); err != nil {
+				log.Printf("[ERROR] remove admin %s: %v", e, err)
+			}
+		}
+		for _, e := range added {
+			if err := a.writer.Append(appName, adminsTable, []string{e}); err != nil {
+				log.Printf("[ERROR] add admin %s: %v", e, err)
+			}
+		}
+	})
+	<-applied
 	log.Printf("admin: %s set the admin list to %s", email, strings.Join(admins, ", "))
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func listDiff(before, after []string) (added, removed []string) {
+	was := map[string]bool{}
+	for _, e := range before {
+		was[e] = true
+	}
+	is := map[string]bool{}
+	for _, e := range after {
+		is[e] = true
+		if !was[e] {
+			added = append(added, e)
+		}
+	}
+	for _, e := range before {
+		if !is[e] {
+			removed = append(removed, e)
+		}
+	}
+	return added, removed
 }
 
 func (a admin) setStaleYears(w http.ResponseWriter, r *http.Request) {

@@ -37,7 +37,7 @@ const (
 	fetchWorkers    = 32
 )
 
-var folders = []string{"photos", "pronunciation", "classroom-images", "grade-images", "config"}
+var folders = []string{"photos", "pronunciation", "classroom-images", "grade-images", "link-images", "config"}
 
 // Recorded names carry an extension and entries are keyed without one, so an object
 // and its thumbnail share a key.
@@ -88,6 +88,12 @@ func Register(mux *http.ServeMux, s *Store) {
 	// an admin replaces one in place rather than adding a new one alongside it.
 	mux.HandleFunc("GET /classroom-images/{name}", s.serve)
 	mux.HandleFunc("GET /grade-images/{name}", s.serve)
+}
+
+// RegisterLinkImages serves the home app's link and category images, content
+// addressed like photos.
+func RegisterLinkImages(mux *http.ServeMux, s *Store) {
+	mux.HandleFunc("GET /link-images/{name}", s.serve)
 }
 
 func (s *Store) refreshLoop() {

@@ -1,0 +1,17 @@
+{
+  "name": "HCA Home",
+  "short_name": "HCA Home",
+  "description": "HCA Home Base",
+  "display": "standalone",
+  "id": "/",
+  "scope": "/",
+  "start_url": "/",
+  "theme_color": "#789436",
+  "background_color": "#789436",
+  "icons": [
+    {"src": "/brand/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "/brand/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+    {"src": "/brand/maskable-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable"},
+    {"src": "/brand/maskable-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ]
+}
