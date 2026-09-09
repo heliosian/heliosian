@@ -46,6 +46,30 @@
 <link rel="apple-touch-startup-image" media="(device-width: 568px) and (device-height: 320px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" href="/static/brand/splash/splash-568x320-2x-landscape.png">
 <link rel="stylesheet" href="/static/fonts/fonts.css">
 <link rel="stylesheet" href="/static/directory/style.css">
+<link rel="modulepreload" href="/static/directory/app.js">
+<link rel="modulepreload" href="/static/directory/state.js">
+<link rel="modulepreload" href="/static/directory/storage.js">
+<link rel="modulepreload" href="/static/directory/dom.js">
+<link rel="modulepreload" href="/static/directory/families.js">
+<link rel="modulepreload" href="/static/directory/people.js">
+<link rel="modulepreload" href="/static/directory/tags.js">
+<link rel="modulepreload" href="/static/directory/filters.js">
+<link rel="modulepreload" href="/static/directory/stale.js">
+<link rel="modulepreload" href="/static/directory/edit.js">
+<link rel="modulepreload" href="/static/directory/photos.js">
+<link rel="modulepreload" href="/static/directory/crumbs.js">
+<link rel="modulepreload" href="/static/directory/search.js">
+<link rel="modulepreload" href="/static/directory/chrome.js">
+<link rel="modulepreload" href="/static/directory/install.js">
+<link rel="modulepreload" href="/static/directory/pages/people.js">
+<link rel="modulepreload" href="/static/directory/pages/staff.js">
+<link rel="modulepreload" href="/static/directory/pages/list.js">
+<link rel="modulepreload" href="/static/directory/pages/invites.js">
+<link rel="modulepreload" href="/static/directory/pages/person.js">
+<link rel="modulepreload" href="/static/directory/pages/family.js">
+<link rel="modulepreload" href="/static/directory/pages/classrooms.js">
+<link rel="modulepreload" href="/static/directory/pages/privacy.js">
+<link rel="modulepreload" href="/static/directory/pages/map.js">
 </head>
 <body data-user-email="{{.UserEmail}}" data-maps-key="{{.MapsKey}}">
 <header class="mobile-top">
@@ -120,6 +144,6 @@
 </div>
 <nav class="app-nav drawer-nav" id="drawer-nav"></nav>
 </aside>
-<script src="/static/directory/app.js"></script>
+<script type="module" src="/static/directory/app.js"></script>
 </body>
 </html>
