@@ -1,20 +1,20 @@
 # Screenshots
 
-`tools/screenshot` captures pages from the local dev server as PNGs, so humans and agents can verify visual changes. It drives a locally installed Chrome (or Chromium) headless via chromedp; no other browser tooling is required.
+`cmd/screenshot` captures pages from the local dev server as PNGs, so humans and agents can verify visual changes. It drives a locally installed Chrome (or Chromium) headless via chromedp; no other browser tooling is required.
 
 ## Usage
 
 For a sample-data page, one self-contained command serves, captures, and exits:
 
-    go run ./tools/startserver -capture /people -out screenshots/directory.png -wait .sidebar
+    go run ./cmd/startserver -capture /people -out screenshots/directory.png -wait .sidebar
 
 With a server already running, capture against it directly:
 
-    go run ./tools/screenshot -url http://localhost:8080/people -out screenshots/directory.png -wait .sidebar
+    go run ./cmd/screenshot -url https://who.local.heliosian.com:8080/people -out screenshots/directory.png -wait .sidebar
 
 Flags:
 
-- `-url` — page to capture (default `http://localhost:8080/people`)
+- `-url` — page to capture (default `https://who.local.heliosian.com:8080/people`)
 - `-out` — output PNG path (default `screenshots/capture.png`); `screenshots/` is gitignored
 - `-wait` — CSS selector that must be visible before capture (default `body`); pass a selector the page's JavaScript renders (for example `.card`) to capture after data loads
 
@@ -24,24 +24,24 @@ The capture is a full-page screenshot at a 1280×800 viewport.
 
 Some source material (like the production apps being ported) sits behind a login. The capture browser handles this:
 
-    go run ./tools/capturebrowser
+    go run ./cmd/capturebrowser
 
 launches a headed Chrome with a dedicated profile in `~/.heliosian/capture-profile` and DevTools on `localhost:9222`. Log in to the target site in that window; the session persists in the profile across restarts. The browser stays out of the repo entirely — no cookies or credentials ever land here.
 
 With the capture browser running, add `-remote` to attach to it instead of launching headless Chrome:
 
-    go run ./tools/screenshot -remote -url https://example.com/some/page -out screenshots/existing/page.png -wait body
+    go run ./cmd/screenshot -remote -url https://example.com/some/page -out screenshots/existing/page.png -wait body
 
 Each capture opens a fresh tab in the authenticated session, navigates, waits for the `-wait` selector, screenshots, and closes the tab. Exploring a site is a series of `-remote` captures over its URLs.
 
 ## Interactive exploration
 
-`tools/browse` drives the capture browser one step at a time: each invocation attaches to the current tab, performs at most one action, then captures and reports the resulting URL and title. The tab survives between invocations, so state (login, SPA position) carries across steps.
+`cmd/browse` drives the capture browser one step at a time: each invocation attaches to the current tab, performs at most one action, then captures and reports the resulting URL and title. The tab survives between invocations, so state (login, SPA position) carries across steps.
 
-    go run ./tools/browse -nav https://example.com/ -out screenshots/step1.png
-    go run ./tools/browse -clicksel "a.next" -wait "h1" -out screenshots/step2.png
-    go run ./tools/browse -click 640,300 -out screenshots/step3.png
-    go run ./tools/browse -dump
+    go run ./cmd/browse -nav https://example.com/ -out screenshots/step1.png
+    go run ./cmd/browse -clicksel "a.next" -wait "h1" -out screenshots/step2.png
+    go run ./cmd/browse -click 640,300 -out screenshots/step3.png
+    go run ./cmd/browse -dump
 
 Actions (at most one step's worth per invocation):
 
@@ -64,6 +64,6 @@ Leave the browser running between capture sessions — never kill it. In practic
 
 ## Agent recipe
 
-    go run ./tools/startserver -capture /people -out screenshots/directory.png -wait .sidebar
+    go run ./cmd/startserver -capture /people -out screenshots/directory.png -wait .sidebar
 
 serves the sample community in-process, captures, and shuts down by itself — no background server to start or kill. Then read `screenshots/directory.png` to inspect the result.

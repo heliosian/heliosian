@@ -4,7 +4,7 @@
     {
       "name": "heliosian-dev",
       "runtimeExecutable": "go",
-      "runtimeArgs": ["run", "./tools/startserver"],
+      "runtimeArgs": ["run", "./cmd/startserver"],
       "port": 8080,
       "autoPort": true
     }

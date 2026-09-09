@@ -10,7 +10,7 @@ The first app is a school directory:
 - Individual and family photos
 - Name pronunciation
 
-More apps follow over time, all served by the same binary.
+More apps follow over time, all served by the same binary, each at its own hostname.
 
 ## Principles
 

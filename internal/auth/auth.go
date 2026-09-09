@@ -27,12 +27,13 @@ const (
 type contextKey struct{}
 
 type Auth struct {
-	clientID string
-	key      []byte
+	clientID      string
+	key           []byte
+	loginTemplate string
 }
 
-func New(clientID string, key []byte) *Auth {
-	return &Auth{clientID: clientID, key: key}
+func New(clientID string, key []byte, loginTemplate string) *Auth {
+	return &Auth{clientID: clientID, key: key, loginTemplate: loginTemplate}
 }
 
 func Email(r *http.Request) string {
@@ -47,7 +48,7 @@ func Fixed(email string, next http.Handler) http.Handler {
 }
 
 func Public(path string) bool {
-	return path == "/auth/login" || strings.HasPrefix(path, "/static/")
+	return path == "/auth/login"
 }
 
 func Token(key []byte, email string, expiry time.Time) string {
@@ -86,7 +87,7 @@ func (a *Auth) Wrap(next http.Handler) http.Handler {
 }
 
 func (a *Auth) loginPage(w http.ResponseWriter, r *http.Request) {
-	t, err := template.ParseFiles("web/login.html")
+	t, err := template.ParseFiles(a.loginTemplate)
 	if err != nil {
 		log.Printf("[ERROR] parse login page: %v", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)

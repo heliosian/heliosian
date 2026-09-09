@@ -1,6 +1,7 @@
 // Package app wires and serves the Helios community apps: a mode-free core every
-// server shares, and the production assembly. Nothing here knows about sample
-// data or any other dev convenience - that composition lives under tools/.
+// server shares, the host routing that picks an app per request, and the
+// production assembly. Nothing here knows about sample data or any other dev
+// convenience - that composition lives under cmd/.
 package app
 
 import (
@@ -11,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -18,25 +20,61 @@ import (
 	"heliosian/internal/auth"
 	"heliosian/internal/blob"
 	"heliosian/internal/data"
-	"heliosian/internal/directory"
 	"heliosian/internal/geocode"
+	"heliosian/internal/who"
 )
+
+var hosts = map[string]string{
+	"who.heliosian.com":                       "who",
+	"heliosian-489539474126.us-west1.run.app": "who",
+	"who.local.heliosian.com":                 "who",
+}
 
 type staticFiles struct{}
 
 func (staticFiles) Has(key string) bool {
-	_, err := os.Stat(filepath.Join("web/static", filepath.FromSlash(key)))
+	_, err := os.Stat(filepath.Join("web/who", filepath.FromSlash(key)))
 	return err == nil
 }
 
 func cacheControl(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/static/fonts/") || strings.HasPrefix(r.URL.Path, "/static/brand/") {
+		if strings.HasPrefix(r.URL.Path, "/fonts/") || strings.HasPrefix(r.URL.Path, "/brand/") {
 			w.Header().Set("Cache-Control", "public, max-age=86400")
 		} else {
 			w.Header().Set("Cache-Control", "no-cache")
 		}
 		next.ServeHTTP(w, r)
+	})
+}
+
+// files answers from web/<app>/ or, failing that, web/common/. Pages are
+// templates rendered by their handlers, so .html never serves raw.
+func files(app string, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if (r.Method == http.MethodGet || r.Method == http.MethodHead) && !strings.HasSuffix(r.URL.Path, ".html") {
+			rel := filepath.FromSlash(path.Clean(r.URL.Path))
+			for _, root := range []string{"web/" + app, "web/common"} {
+				name := filepath.Join(root, rel)
+				if info, err := os.Stat(name); err == nil && info.Mode().IsRegular() {
+					http.ServeFile(w, r, name)
+					return
+				}
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func route(apps map[string]http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host, _, _ := strings.Cut(r.Host, ":")
+		app, ok := apps[hosts[host]]
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		app.ServeHTTP(w, r)
 	})
 }
 
@@ -55,8 +93,8 @@ func Port() string {
 type Config struct {
 	Source     data.Source
 	Writer     data.Writer
-	Geocoder   directory.Geocoder
-	Blobs      directory.BlobChecker
+	Geocoder   who.Geocoder
+	Blobs      who.BlobChecker
 	Store      *blob.Store
 	BrowserKey string
 }
@@ -66,8 +104,8 @@ type Config struct {
 // handler the caller wraps with its authentication.
 type Core struct {
 	Mux   *http.ServeMux
-	Cache *directory.Cache
-	Queue *directory.Queue
+	Cache *who.Cache
+	Queue *who.Queue
 	Gate  http.Handler
 }
 
@@ -76,32 +114,36 @@ func NewCore(cfg Config) *Core {
 	if err := mime.AddExtensionType(".webmanifest", "application/manifest+json"); err != nil {
 		log.Fatalf("[ERROR] register manifest mime type: %v", err)
 	}
-	queue := directory.NewQueue()
-	cache, err := directory.NewCache(cfg.Source, cfg.Geocoder, cfg.Blobs, staticFiles{}, cfg.Store, queue)
+	queue := who.NewQueue()
+	cache, err := who.NewCache(cfg.Source, cfg.Geocoder, cfg.Blobs, staticFiles{}, cfg.Store, queue)
 	if err != nil {
 		log.Fatalf("[ERROR] load directory data: %v", err)
 	}
 	mux := http.NewServeMux()
-	directory.Register(mux, cache, cfg.BrowserKey)
-	directory.RegisterTags(mux, cache, cfg.Writer, queue)
-	directory.RegisterAdmin(mux, cache, cfg.Writer, queue)
-	directory.RegisterInvites(mux, cache, cfg.Source, cfg.Writer)
+	who.Register(mux, cache, cfg.BrowserKey)
+	who.RegisterTags(mux, cache, cfg.Writer, queue)
+	who.RegisterAdmin(mux, cache, cfg.Writer, queue)
+	who.RegisterInvites(mux, cache, cfg.Source, cfg.Writer)
 	mux.Handle("GET /{$}", http.RedirectHandler("/people", http.StatusFound))
-	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.Dir("web/static"))))
-	return &Core{Mux: mux, Cache: cache, Queue: queue, Gate: directory.MemberGate(cache, mux)}
+	return &Core{Mux: mux, Cache: cache, Queue: queue, Gate: who.MemberGate(cache, mux)}
 }
 
-// Server dresses a fully wrapped handler in the shared HTTP plumbing.
-func Server(handler http.Handler) *http.Server {
+// Server dresses the apps, each fully wrapped and keyed by name, in the shared
+// HTTP plumbing: host routing, file serving, and cache headers.
+func Server(apps map[string]http.Handler) *http.Server {
+	served := map[string]http.Handler{}
+	for name, handler := range apps {
+		served[name] = files(name, handler)
+	}
 	protocols := new(http.Protocols)
 	protocols.SetHTTP1(true)
 	protocols.SetUnencryptedHTTP2(true)
-	return &http.Server{Addr: ":" + Port(), Handler: cacheControl(handler), Protocols: protocols}
+	return &http.Server{Addr: ":" + Port(), Handler: cacheControl(route(served)), Protocols: protocols}
 }
 
 // Serve runs a server until SIGTERM or interrupt, then shuts down gracefully
 // and drains the write queue.
-func Serve(server *http.Server, queue *directory.Queue) {
+func Serve(server *http.Server, queue *who.Queue) {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGTERM, os.Interrupt)
 	go func() {
@@ -111,12 +153,21 @@ func Serve(server *http.Server, queue *directory.Queue) {
 			log.Printf("[ERROR] shutdown: %v", err)
 		}
 	}()
-	log.Printf("listening on http://localhost:%s", Port())
-	if err := server.ListenAndServe(); err != http.ErrServerClosed {
+	log.Printf("listening on :%s", Port())
+	if err := ListenAndServe(server); err != http.ErrServerClosed {
 		log.Fatal(err)
 	}
 	<-queue.Drain()
 	log.Printf("queue drained")
+}
+
+// ListenAndServe speaks TLS only when the server carries a TLSConfig, which
+// local development sets; Cloud Run terminates TLS in front of production.
+func ListenAndServe(server *http.Server) error {
+	if server.TLSConfig != nil {
+		return server.ListenAndServeTLS("", "")
+	}
+	return server.ListenAndServe()
 }
 
 func requiredEnv(name string) string {
@@ -166,7 +217,7 @@ func mapsKey(envName, file string) string {
 // INVITES_SHEET - the Invite List Builder templates are one optional feature,
 // not the app, so its absence just leaves that feature with nothing to serve
 // rather than failing every other route too.
-func Production() (*http.Server, *directory.Queue) {
+func Production() (*http.Server, *who.Queue) {
 	sheetID := requiredEnv("DIRECTORY_SHEET")
 	preferencesID := requiredEnv("PREFERENCES_SHEET")
 	sessionKey := requiredEnv("SESSION_KEY")
@@ -191,8 +242,8 @@ func Production() (*http.Server, *directory.Queue) {
 		BrowserKey: mapsKey("GOOGLE_MAPS_BROWSER_KEY", "creds/maps.key"),
 	})
 	blob.Register(core.Mux, store)
-	directory.RegisterUpload(core.Mux, core.Cache, sheet, store, core.Queue)
-	authn := auth.New(clientID(), []byte(sessionKey))
+	who.RegisterUpload(core.Mux, core.Cache, sheet, store, core.Queue)
+	authn := auth.New(clientID(), []byte(sessionKey), "web/who/login.html")
 	authn.Register(core.Mux)
-	return Server(authn.Wrap(core.Gate)), core.Queue
+	return Server(map[string]http.Handler{"who": authn.Wrap(core.Gate)}), core.Queue
 }

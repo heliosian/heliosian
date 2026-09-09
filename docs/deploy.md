@@ -1,6 +1,6 @@
 # Production deployment
 
-The server runs as Cloud Run service `heliosian` in project `heliosian`, region `us-west1`, at https://heliosian-489539474126.us-west1.run.app, with https://who.heliosian.com mapped on top. Administration is driven with the gcloud CLI (`brew install --cask gcloud-cli`) authenticated as a project owner (`gcloud auth login`).
+The server runs as Cloud Run service `heliosian` in project `heliosian`, region `us-west1`, at https://heliosian-489539474126.us-west1.run.app, with https://who.heliosian.com mapped on top. The one service hosts every app, choosing by hostname: both of those hostnames name the directory in the host table in `internal/app`, and a hostname the table does not list gets a 404 even if Cloud Run routes it here. Administration is driven with the gcloud CLI (`brew install --cask gcloud-cli`) authenticated as a project owner (`gcloud auth login`).
 
 ## Build and deploy pipeline
 
@@ -18,11 +18,11 @@ The Dockerfile builds in two stages: a `golang` stage compiles the static binary
 
 ## Service configuration
 
-`tools/deploy` holds the full service configuration and is the only place it is written down:
+`cmd/deploy` holds the full service configuration and is the only place it is written down:
 
-    DIRECTORY_SHEET=<spreadsheet id> PREFERENCES_SHEET=<spreadsheet id> INVITES_SHEET=<spreadsheet id> go run ./tools/deploy
+    DIRECTORY_SHEET=<spreadsheet id> PREFERENCES_SHEET=<spreadsheet id> INVITES_SHEET=<spreadsheet id> go run ./cmd/deploy
 
-It deploys the `latest` image with every setting the pipeline does not touch, so it both creates the service from nothing and repairs drift on an existing one. The spreadsheet ids come from the environment and the OAuth client id from `creds/oauth-client.json` — the same resolution the server itself uses — so none of them is written into the repository. `INVITES_SHEET` is optional, same as in `Production()`: omitting it leaves the Invites page with nothing to serve rather than failing the deploy. Because a per-push deploy only ever changes the image (see above), setting or changing `INVITES_SHEET` only ever takes effect through a `tools/deploy` run, never a plain push.
+It deploys the `latest` image with every setting the pipeline does not touch, so it both creates the service from nothing and repairs drift on an existing one. The spreadsheet ids come from the environment and the OAuth client id from `creds/oauth-client.json` — the same resolution the server itself uses — so none of them is written into the repository. `INVITES_SHEET` is optional, same as in `Production()`: omitting it leaves the Invites page with nothing to serve rather than failing the deploy. Because a per-push deploy only ever changes the image (see above), setting or changing `INVITES_SHEET` only ever takes effect through a `cmd/deploy` run, never a plain push.
 
 Why each setting is what it is:
 
@@ -54,7 +54,7 @@ Secret Manager secrets, delivered as environment variables. Values are used raw,
 
 ## Media storage
 
-Photos and pronunciation recordings live in `gs://heliosian-media` (us-west1, uniform access, public access prevented, object versioning on), the single source of truth for media — see `docs/data.md` for the naming convention and stored thumbnails. It sits in the same region as the service, so the whole set preloads into memory in about eight seconds with no per-request throttle to work around. Object versioning no longer carries the upload history: an object is named for its own bytes and is never rewritten, so every version that once accumulated under one name is now a separate object that the sheet either still names or does not.
+Photos and pronunciation recordings live in `gs://heliosian-media` (us-west1, uniform access, public access prevented, object versioning on), the single source of truth for media — see `docs/who/data.md` for the naming convention and stored thumbnails. It sits in the same region as the service, so the whole set preloads into memory in about eight seconds with no per-request throttle to work around. Object versioning no longer carries the upload history: an object is named for its own bytes and is never rewritten, so every version that once accumulated under one name is now a separate object that the sheet either still names or does not.
 
 Because the bucket is private and every read goes through the app's own sign-in gate, no object is ever publicly readable; the service reads and writes it as `directory@`.
 
@@ -78,11 +78,11 @@ The `heliosian.com` organization ships Google's secure-by-default org policies, 
 
 The consent screen lives in this project, audience External and published to production. Internal is not an option: the app restricts sign-in to `heliosschool.org` accounts (`internal/auth`), and those live outside the `heliosian.com` org. Published-External keeps the basic sign-in scopes free of verification friction.
 
-The web client's authorized JavaScript origins are `http://localhost:8080`, the run.app URL, and `https://who.heliosian.com`; sign-in fails on any origin not listed, and edits take a few minutes to propagate. The browser maps key is rendered into every page, so it carries an HTTP-referer restriction of its own: `http://localhost:8080/*`, the run.app URL, and `https://*.heliosian.com/*`, which covers every host the service answers to.
+The web client's authorized JavaScript origins are the `*.local.heliosian.com` development hosts, the run.app URL, and `https://who.heliosian.com`; sign-in fails on any origin not listed, and edits take a few minutes to propagate. Google rejects made-up domains such as `.localhost` here, which is why local development runs under a real subdomain that public DNS points at loopback, and it only accepts a plain-HTTP login URI on `localhost` itself, which is why the dev server serves HTTPS with a self-signed certificate (`docs/dev.md`). The browser maps key is rendered into every page, so it carries an HTTP-referer restriction of its own: `https://*.local.heliosian.com:8080/*`, the run.app URL, and `https://*.heliosian.com/*`, which covers every host the service answers to.
 
 ## Domain
 
-`who.heliosian.com` is a Cloud Run domain mapping on the service. DNS carries `who CNAME ghs.googlehosted.com.`; Google provisions and renews the certificate once the record resolves. The run.app URL stays live alongside it.
+`who.heliosian.com` is a Cloud Run domain mapping on the service. DNS carries `who CNAME ghs.googlehosted.com.`; Google provisions and renews the certificate once the record resolves. The run.app URL stays live alongside it. A new hostname takes both a domain mapping here and an entry in the host table in `internal/app` naming the app it serves.
 
 ## Verifying a deploy
 
