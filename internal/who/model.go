@@ -55,7 +55,7 @@ type Person struct {
 	// genuinely come from Veracross (Full Name, Legal Name, Preferred Name, Grade,
 	// Classroom, Crew, Phone, Job Title, Is Staff); Department, Grade Band, Pronouns,
 	// Facts and Room Parent have no import source for anyone.
-	imported map[string]string
+	imported            map[string]string
 	PhotoUpdated        string   `json:"photoUpdated,omitempty"`
 	Grade               string   `json:"grade,omitempty"`
 	Classroom           string   `json:"classroom,omitempty"`
@@ -127,7 +127,6 @@ type Classroom struct {
 	Name     string `json:"name"`
 	ImageURL string `json:"imageUrl,omitempty"`
 	HasCrews bool   `json:"hasCrews"`
-	Color    string `json:"color,omitempty"`
 }
 
 type Crew struct {
@@ -143,39 +142,17 @@ type Grade struct {
 	Band     string `json:"band,omitempty"`
 	NextBand string `json:"nextBand,omitempty"`
 	ImageURL string `json:"imageUrl,omitempty"`
-	Color    string `json:"color,omitempty"`
-}
-
-// StaleYears is how old a photo or facts entry can get before the directory asks
-// someone to refresh it. Admin-editable so the school can loosen or tighten the nag
-// without a deploy.
-type StaleYears struct {
-	Photo       float64 `json:"photo"`
-	Facts       float64 `json:"facts"`
-	FamilyPhoto float64 `json:"familyPhoto"`
-}
-
-// PrivacyLinks are the two external URLs My Privacy sends someone to fix a mismatch
-// between Veracross and their Helios Who opt-in. Admin-editable, since both belong to
-// other systems (Veracross's own portal, the consent Google Form) this app doesn't
-// control and can't guarantee will stay put.
-type PrivacyLinks struct {
-	VeracrossPreferences string `json:"veracrossPreferences"`
-	HeliosWhoOptIn       string `json:"heliosWhoOptIn"`
 }
 
 type Model struct {
-	People       []Person            `json:"people"`
-	Families     map[string]Family   `json:"families"`
-	Classrooms   []Classroom         `json:"classrooms"`
-	Crews        []Crew              `json:"crews"`
-	Grades       []Grade             `json:"grades"`
-	RoomParents  map[string][]string `json:"roomParents"`
-	Departments  []string            `json:"departments"`
-	StaleYears   StaleYears          `json:"staleYears"`
-	PrivacyLinks PrivacyLinks        `json:"privacyLinks"`
-	StaffColor   string              `json:"staffColor,omitempty"`
-	byEmail      map[string]int
+	People      []Person            `json:"people"`
+	Families    map[string]Family   `json:"families"`
+	Classrooms  []Classroom         `json:"classrooms"`
+	Crews       []Crew              `json:"crews"`
+	Grades      []Grade             `json:"grades"`
+	RoomParents map[string][]string `json:"roomParents"`
+	Departments []string            `json:"departments"`
+	byEmail     map[string]int
 	// familyKeysByEmail is internal only: the client derives the same index from
 	// Families' own member lists, so serializing it would just duplicate them.
 	familyKeysByEmail map[string][]string

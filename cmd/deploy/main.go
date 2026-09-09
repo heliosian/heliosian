@@ -50,6 +50,7 @@ func main() {
 		",PREFERENCES_SHEET=" + requiredEnv("PREFERENCES_SHEET") +
 		",INVITES_SHEET=" + requiredEnv("INVITES_SHEET") +
 		",APPS_SHEET=" + requiredEnv("APPS_SHEET") +
+		",CONFIG_SHEET=" + requiredEnv("CONFIG_SHEET") +
 		",GOOGLE_CLIENT_ID=" + clientID()
 	cmd := exec.Command("gcloud",
 		"run", "deploy", service,

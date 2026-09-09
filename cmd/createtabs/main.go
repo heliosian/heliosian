@@ -83,6 +83,12 @@ var layouts = map[string][]tab{
 		{"Admins", []string{"Email"}},
 		{"Change Log", []string{"Timestamp", "Actor", "Action", "Kind", "Title", "Description", "URL", "Image", "Category", "Visible"}},
 	},
+	"Config": {
+		{"Settings", []string{"Key", "Value"}},
+		{"Super Admins", []string{"Email"}},
+		{"Grade Colors", []string{"Grade", "Color"}},
+		{"Classroom Colors", []string{"Classroom", "Color"}},
+	},
 }
 
 func column(i int) string {
@@ -157,7 +163,7 @@ func main() {
 	}
 	tabs, ok := layouts[meta.Properties.Title]
 	if !ok {
-		log.Fatalf("[ERROR] spreadsheet %q has no layout here; it must be titled Directory or Apps", meta.Properties.Title)
+		log.Fatalf("[ERROR] spreadsheet %q has no layout here; it must be titled Directory, Apps, or Config", meta.Properties.Title)
 	}
 	log.Printf("spreadsheet %q: applying the %s layout", meta.Properties.Title, meta.Properties.Title)
 	type tabInfo struct{ id, columns int64 }

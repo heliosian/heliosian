@@ -20,9 +20,9 @@ The Dockerfile builds in two stages: a `golang` stage compiles the static binary
 
 `cmd/deploy` holds the full service configuration and is the only place it is written down:
 
-    DIRECTORY_SHEET=<spreadsheet id> PREFERENCES_SHEET=<spreadsheet id> INVITES_SHEET=<spreadsheet id> APPS_SHEET=<spreadsheet id> go run ./cmd/deploy
+    DIRECTORY_SHEET=<spreadsheet id> PREFERENCES_SHEET=<spreadsheet id> INVITES_SHEET=<spreadsheet id> APPS_SHEET=<spreadsheet id> CONFIG_SHEET=<spreadsheet id> go run ./cmd/deploy
 
-It deploys the `latest` image with every setting the pipeline does not touch, so it both creates the service from nothing and repairs drift on an existing one. The spreadsheet ids come from the environment (`cmd/findsheet` prints them as shell exports) and the OAuth client id from `creds/oauth-client.json` — the same resolution the server itself uses — so none of them is written into the repository. All four spreadsheet ids are required, here and in `Production()`. Because a per-push deploy only ever changes the image (see above), changing a spreadsheet id only ever takes effect through a `cmd/deploy` run, never a plain push.
+It deploys the `latest` image with every setting the pipeline does not touch, so it both creates the service from nothing and repairs drift on an existing one. The spreadsheet ids come from the environment (`cmd/findsheet` prints them as shell exports) and the OAuth client id from `creds/oauth-client.json` — the same resolution the server itself uses — so none of them is written into the repository. All five spreadsheet ids are required, here and in `Production()`. Because a per-push deploy only ever changes the image (see above), changing a spreadsheet id only ever takes effect through a `cmd/deploy` run, never a plain push.
 
 Why each setting is what it is:
 
@@ -45,6 +45,7 @@ Plain environment variables:
 - `PREFERENCES_SHEET` — the `Preferences` sheet in the same shared drive: the sharing-consent form's response spreadsheet.
 - `INVITES_SHEET` — the `Invite List Builder` spreadsheet id. Powers the Invites page (`/greenvelope`).
 - `APPS_SHEET` — the `Apps` spreadsheet id: HCA Home's categories, links, and admins (`docs/home/data.md`).
+- `CONFIG_SHEET` — the `Config` spreadsheet id: the platform super admins and settings (`docs/config.md`).
 - `GOOGLE_CLIENT_ID` — the OAuth web client id; not a secret (every login page fetches it from `/auth/client`), but kept out of the repository.
 
 Secret Manager secrets, delivered as environment variables. Values are used raw, so payloads must not carry trailing newlines:
@@ -83,7 +84,7 @@ The web client's authorized JavaScript origins are the `*.local.heliosian.com` d
 
 ## Domain
 
-`who.heliosian.com` and `who.lab.heliosian.com` are Cloud Run domain mappings on the service. DNS carries `CNAME ghs.googlehosted.com.` for each; Google provisions and renews the certificate once the record resolves. The run.app URL stays live alongside them. A new app's hostnames take only domain mappings here; the server already routes them by the naming convention.
+Every hostname is a Cloud Run domain mapping on the one service: `who.heliosian.com`, `who.lab.heliosian.com`, `home.heliosian.com`, `home.lab.heliosian.com`, `www.heliosian.com`, and the apex `heliosian.com`. DNS carries `CNAME ghs.googlehosted.com.` for each subdomain; the apex, which cannot be a CNAME, carries Google's four A records (`216.239.32.21`, `216.239.34.21`, `216.239.36.21`, `216.239.38.21`) and four AAAA records (`2001:4860:4802:32::15`, `:34::15`, `:36::15`, `:38::15`). Google provisions and renews each certificate once its record resolves. The run.app URL stays live alongside them. A new app's hostnames take only domain mappings here; the server already routes them by the naming convention.
 
 ## Verifying a deploy
 

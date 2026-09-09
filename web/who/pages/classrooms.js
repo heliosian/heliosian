@@ -1,4 +1,4 @@
-import {state, byEmail} from '../state.js';
+import {state, byEmail, colors} from '../state.js';
 import {el, svg, withFrom, slugify, ordinal, thumbUrl, firstName, tabStrip, tabHref, listSub} from '../dom.js';
 import {familyOf, familiesOf} from '../families.js';
 import {personLink, photoWithTag, applyRingColor, photoOrInitials, personPhotoUrl, sortPeople} from '../people.js';
@@ -109,7 +109,7 @@ function renderClassroomsList(list) {
     for (const c of rows) {
       const students = studentsOf(p => p.classroom === c.name).length;
       grid.append(badgeCard(c.imageUrl, `${students} student${students === 1 ? '' : 's'}`, c.name,
-        withFrom('/classrooms/' + slugify(c.name)), c.color));
+        withFrom('/classrooms/' + slugify(c.name)), colors.classrooms[c.name]));
       count++;
     }
     list.append(grid);
@@ -129,9 +129,8 @@ function renderGradesList(list) {
     const grid = el('div', 'people-grid autofit classroom-grid');
     for (const name of rows) {
       const students = studentsOf(p => p.grade === name).length;
-      const grade = state.model.grades.find(g => g.name === name);
       grid.append(badgeCard(gradeImage(name), `${students} student${students === 1 ? '' : 's'}`, name,
-        withFrom('/grades/' + slugify(name)), grade && grade.color));
+        withFrom('/grades/' + slugify(name)), colors.grades[name]));
       count++;
     }
     list.append(grid);

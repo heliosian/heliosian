@@ -20,22 +20,23 @@ function indexFamilies() {
   }
 }
 
-// Defaults for sample mode / a stale cached page; the model's own privacyLinks
-// (admin-editable, since both URLs belong to other systems this app doesn't control)
-// overwrite these once it loads - see `applyModel()`.
-export let privacyLinks = {
-  veracrossPreferences: 'https://portals.veracross.com/heliosschool/parent/directory-preferences',
-  heliosWhoOptIn: 'https://hca.run/optin',
-};
+// The platform config, fetched from /api/config beside the model: the privacy links
+// (admin-editable, since both URLs belong to other systems this app doesn't control),
+// the staleness thresholds, and the colors keyed by grade and classroom name.
+export let privacyLinks = null;
+export let staleYears = null;
+export let colors = null;
 
-export let staleYears = {photo: 0.75, facts: 0.6, familyPhoto: 1.5};
+export function applyConfig(config) {
+  privacyLinks = config.privacyLinks;
+  staleYears = config.staleYears;
+  colors = {staff: config.staffColor, grades: config.gradeColors, classrooms: config.classroomColors};
+}
 
 export function applyModel(model) {
   state.model = model;
   document.body.dataset.userEmail = model.user.email;
   document.body.dataset.mapsKey = model.mapsKey;
-  staleYears = model.staleYears || staleYears;
-  privacyLinks = model.privacyLinks || privacyLinks;
   tags = model.tags || {};
   byEmail = {};
   for (const p of model.people) {

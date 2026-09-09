@@ -56,8 +56,8 @@ func main() {
 }
 
 // sampleServer assembles the fictional community: sample CSVs, fake geocoding,
-// no media bucket, every request signed in as the sample parent, who is granted
-// super admin in memory so every admin tool is testable locally.
+// no media bucket, every request signed in as the sample parent, whom the sample
+// Config sheet lists as a super admin so every admin tool is testable locally.
 func sampleServer() (*http.Server, *who.Queue) {
 	dir := &data.Dir{Root: "sampledata"}
 	core := app.NewCore(app.Config{
@@ -66,13 +66,6 @@ func sampleServer() (*http.Server, *who.Queue) {
 		Geocoder:   geocode.Fake{},
 		BrowserKey: os.Getenv("GOOGLE_MAPS_BROWSER_KEY"),
 	})
-	if !core.Cache.IsSuperAdmin(sampleUser) {
-		settings := core.Cache.Settings()
-		settings.SuperAdmins = append(settings.SuperAdmins, sampleUser)
-		if err := core.Cache.UpdateSettings(settings); err != nil {
-			log.Fatalf("[ERROR] grant sample user admin access: %v", err)
-		}
-	}
 	core.Mux.Handle("POST /auth/logout", http.RedirectHandler("/", http.StatusSeeOther))
 	core.HomeMux.Handle("POST /auth/logout", http.RedirectHandler("/", http.StatusSeeOther))
 	log.Printf("serving sample data as %s", sampleUser)
@@ -92,7 +85,7 @@ func detachReal(email string) {
 	if key == "" {
 		log.Fatal("[ERROR] SESSION_KEY is required (the server and the minted cookie must share it)")
 	}
-	for _, name := range []string{"DIRECTORY_SHEET", "PREFERENCES_SHEET", "INVITES_SHEET", "APPS_SHEET"} {
+	for _, name := range []string{"DIRECTORY_SHEET", "PREFERENCES_SHEET", "INVITES_SHEET", "APPS_SHEET", "CONFIG_SHEET"} {
 		if os.Getenv(name) == "" {
 			log.Fatalf("[ERROR] %s is required", name)
 		}

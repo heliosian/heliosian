@@ -17,7 +17,7 @@ export function initSettings() {
     button.disabled = true;
     status.classList.remove('error', 'ok');
     status.textContent = 'Saving…';
-    const res = await fetch('/api/admin/stale-years', {
+    const res = await fetch('/api/config/stale-years', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(years),
@@ -43,7 +43,7 @@ export function initSettings() {
     button.disabled = true;
     status.classList.remove('error', 'ok');
     status.textContent = 'Saving…';
-    const res = await fetch('/api/admin/privacy-links', {
+    const res = await fetch('/api/config/privacy-links', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(links),

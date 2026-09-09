@@ -168,12 +168,13 @@ func main() {
 
 	sheet := os.Getenv("DIRECTORY_SHEET")
 	preferences := os.Getenv("PREFERENCES_SHEET")
+	config := os.Getenv("CONFIG_SHEET")
 	exporter := os.Getenv("VCEXPORT")
 	if exporter == "" {
 		exporter = "../vcexport"
 	}
-	if sheet == "" || preferences == "" {
-		log.Fatal("[ERROR] DIRECTORY_SHEET and PREFERENCES_SHEET are required")
+	if sheet == "" || preferences == "" || config == "" {
+		log.Fatal("[ERROR] DIRECTORY_SHEET, PREFERENCES_SHEET, and CONFIG_SHEET are required")
 	}
 	out, err := os.MkdirTemp("", "vcexport")
 	if err != nil {
@@ -218,7 +219,7 @@ func main() {
 		}
 	}
 
-	source, err := data.NewSheet(map[string]string{"directory": sheet, "preferences": preferences})
+	source, err := data.NewSheet(map[string]string{"directory": sheet, "preferences": preferences, "config": config})
 	if err != nil {
 		log.Fatalf("[ERROR] sheet source: %v", err)
 	}

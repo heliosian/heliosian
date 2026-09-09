@@ -8,7 +8,7 @@ Home's data lives in one Google Sheet, `Apps`, in the community shared drive, re
 
 - `Categories` — Title, Image. Row order is display order.
 - `Links` — Title, Description, URL, Image, Category, Visible, Added By, Added. Row order is display order within a category.
-- `Admins` — Email. Who may edit, beyond the platform super admins.
+- `Admins` — Email. Who may edit, beyond the platform super admins (`docs/config.md`).
 - `Change Log` — Timestamp, Actor, Action, Kind, and the link or category fields. Appended on every change; never read back.
 
 The sheet is the schema from scratch, not an import of the Glide app's tables. The Glide app's links were carried over once, transcribed from captures of its pages, with their images copied into the bucket.

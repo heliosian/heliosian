@@ -1,4 +1,4 @@
-import {state, byEmail} from './state.js';
+import {state, byEmail, colors} from './state.js';
 import {el, withFrom, thumbUrl, hue, lastName} from './dom.js';
 import {familyOf} from './families.js';
 import {tagControl} from './tags.js';
@@ -54,22 +54,20 @@ export function photoOrInitials(url, name, className) {
 // kids on record - falls back to the one global staff color.
 function ringColorFor(p) {
   if (p.isStudent) {
-    const grade = state.model.grades.find(g => g.name === p.grade);
-    return (grade && grade.color) || state.model.staffColor || null;
+    return colors.grades[p.grade] || colors.staff || null;
   }
   if (p.isStaff) {
-    return state.model.staffColor || null;
+    return colors.staff || null;
   }
   const family = familyOf(p);
   const kids = ((family && family.kidEmails) || []).map(e => byEmail[e]).filter(Boolean);
   if (kids.length) {
     const pick = kids[hue(p.email) % kids.length];
-    const grade = state.model.grades.find(g => g.name === pick.grade);
-    if (grade && grade.color) {
-      return grade.color;
+    if (colors.grades[pick.grade]) {
+      return colors.grades[pick.grade];
     }
   }
-  return state.model.staffColor || null;
+  return colors.staff || null;
 }
 
 // Sets the hover-ring color (see ringColorFor) as an inline CSS variable so

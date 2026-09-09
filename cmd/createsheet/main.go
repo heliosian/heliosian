@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	"google.golang.org/api/drive/v3"
 	"google.golang.org/api/option"
@@ -52,5 +53,5 @@ func main() {
 		log.Fatalf("[ERROR] create spreadsheet: %v", err)
 	}
 	log.Printf("created %q beside the directory sheet", *title)
-	fmt.Printf("export %s_SHEET=%s\n", "APPS", created.Id)
+	fmt.Printf("export %s_SHEET=%s\n", strings.ToUpper(*title), created.Id)
 }

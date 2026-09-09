@@ -1,4 +1,4 @@
-import {state, applyModel} from './state.js';
+import {state, applyModel, applyConfig} from './state.js';
 import {segments, shuffled, tabParam} from './dom.js';
 import {loadTagRelations} from './storage.js';
 import {familyEntries} from './families.js';
@@ -78,10 +78,14 @@ function render() {
 }
 
 export async function load() {
-  const res = await fetch('/api/directory/model');
+  const [res, configRes] = await Promise.all([fetch('/api/directory/model'), fetch('/api/config')]);
   if (!res.ok) {
     throw new Error(`loading model failed: ${res.status}`);
   }
+  if (!configRes.ok) {
+    throw new Error(`loading config failed: ${configRes.status}`);
+  }
+  applyConfig(await configRes.json());
   applyModel(await res.json());
   state.everyoneOrder = shuffled(state.model.people);
   state.familyOrder = shuffled(familyEntries());

@@ -3,12 +3,14 @@ package who
 import (
 	"errors"
 	"log"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"heliosian/internal/blob"
+	"heliosian/internal/config"
 	"heliosian/internal/data"
 	"heliosian/internal/geocode"
 )
@@ -28,10 +30,12 @@ type Cache struct {
 	static   BlobChecker
 	store    *blob.Store
 	queue    *Queue
-	mu       sync.RWMutex
-	model    *Model
-	tables   *Tables
-	settings Settings
+	// superAdmins reads the platform list out of the Config sheet's own cache.
+	superAdmins func() []string
+
+	mu     sync.RWMutex
+	model  *Model
+	tables *Tables
 
 	// superEdit tracks, per admin, whether they've turned on the switch that lets them
 	// edit anyone's record rather than just their own family's. Deliberately
@@ -44,13 +48,12 @@ type Cache struct {
 	spoof map[string]string
 }
 
-// store is the concrete blob store (nil in sample mode), needed for admin operations
-// — reading and writing settings, and replacing a classroom or grade image in place —
-// which need more than the existence check BlobChecker exposes.
-func NewCache(source data.Source, geocoder Geocoder, blobs, static BlobChecker, store *blob.Store, queue *Queue) (*Cache, error) {
+// store is the concrete blob store (nil in sample mode), needed to replace a classroom
+// or grade image in place, which needs more than the existence check BlobChecker exposes.
+func NewCache(source data.Source, geocoder Geocoder, blobs, static BlobChecker, store *blob.Store, queue *Queue, superAdmins func() []string) (*Cache, error) {
 	c := &Cache{
 		source: source, geocoder: geocoder, blobs: blobs, static: static, store: store, queue: queue,
-		settings: loadSettings(store), superEdit: map[string]bool{}, spoof: map[string]string{},
+		superAdmins: superAdmins, superEdit: map[string]bool{}, spoof: map[string]string{},
 	}
 	start := time.Now()
 	tables, err := ReadTables(source)
@@ -115,25 +118,17 @@ func (c *Cache) HasStore() bool {
 	return c.store != nil
 }
 
-func (c *Cache) Settings() Settings {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.settings
-}
-
 // IsAdmin reports whether email may use the admin tools at all — either tier:
-// a row in the Admins tab, or the super admin list in settings.
+// a row in the Admins tab, or the platform super admin list.
 func (c *Cache) IsAdmin(email string) bool {
 	email = strings.ToLower(strings.TrimSpace(email))
+	if c.IsSuperAdmin(email) {
+		return true
+	}
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	for _, row := range c.tables.Admins {
 		if strings.EqualFold(strings.TrimSpace(row["Email"]), email) {
-			return true
-		}
-	}
-	for _, admin := range c.settings.SuperAdmins {
-		if admin == email {
 			return true
 		}
 	}
@@ -148,14 +143,14 @@ func (c *Cache) tabAdmins() []string {
 	for _, row := range c.tables.Admins {
 		emails = append(emails, row["Email"])
 	}
-	return normalizeEmails(emails)
+	return config.NormalizeEmails(emails)
 }
 
 // Admins is what the Admins tab of the admin page shows: every admin, either
 // tier, indistinguishable, sorted together. A regular admin's client never
 // learns which names came from which list, because there's only one list here.
 func (c *Cache) Admins() []string {
-	admins := normalizeEmails(append(c.tabAdmins(), c.Settings().SuperAdmins...))
+	admins := config.NormalizeEmails(append(c.tabAdmins(), c.superAdmins()...))
 	sort.Strings(admins)
 	return admins
 }
@@ -177,14 +172,7 @@ func (c *Cache) applyAdmins(emails []string) {
 // admins never see anything gated on this, including that it exists.
 func (c *Cache) IsSuperAdmin(email string) bool {
 	email = strings.ToLower(strings.TrimSpace(email))
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	for _, admin := range c.settings.SuperAdmins {
-		if admin == email {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(c.superAdmins(), email)
 }
 
 // SuperEditEnabled reports whether this admin has switched on editing anyone's
@@ -226,19 +214,6 @@ func (c *Cache) SetSpoof(email, target string) {
 	} else {
 		c.spoof[email] = target
 	}
-}
-
-// UpdateSettings saves the new settings (when a store is configured) and rebuilds the
-// model so a changed threshold or a replaced image is reflected immediately, not on
-// the next five-minute tick.
-func (c *Cache) UpdateSettings(settings Settings) error {
-	if err := saveSettings(c.store, settings); err != nil {
-		return err
-	}
-	c.mu.Lock()
-	c.settings = settings
-	c.mu.Unlock()
-	return c.rebuildCurrent()
 }
 
 // PutImage replaces a classroom or grade image in the bucket and rebuilds the model so
@@ -343,15 +318,6 @@ func (c *Cache) rebuild(tables *Tables, start time.Time) error {
 	}
 	c.geocodeFamilies(model)
 	c.mu.Lock()
-	model.StaleYears = c.settings.StaleYears
-	model.PrivacyLinks = c.settings.PrivacyLinks
-	model.StaffColor = c.settings.StaffColor
-	for i := range model.Classrooms {
-		model.Classrooms[i].Color = c.settings.ClassroomColors[model.Classrooms[i].Name]
-	}
-	for i := range model.Grades {
-		model.Grades[i].Color = c.settings.GradeColors[model.Grades[i].Name]
-	}
 	c.model = model
 	c.tables = tables
 	c.mu.Unlock()

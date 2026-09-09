@@ -19,6 +19,7 @@ To run against real community data instead, see [docs/dev.md](docs/dev.md).
 - `internal/app` — server wiring shared by production and the dev server: host routing, file serving, and the production assembly
 - `internal/auth` — Google sign-in and session cookies
 - `internal/data` — tabular data sources: sample CSVs and Google Sheets
+- `internal/config` — the Config sheet: super admins and the platform settings, served at `/api/config`
 - `internal/who` — the directory app: model load, handlers, admin tools, self-service edits
 - `internal/home` — the link portal: model load, handlers, admin edits
 - `internal/blob` — media from Cloud Storage, held in memory with stored thumbnails
@@ -38,6 +39,7 @@ Platform:
 - [dev.md](docs/dev.md) — local development, including real-data mode
 - [screenshots.md](docs/screenshots.md) — page capture for humans and agents
 - [deploy.md](docs/deploy.md) — production deployment
+- [config.md](docs/config.md) — the Config sheet: super admins and the platform settings
 - [plan.md](docs/plan.md) — what remains to build
 
 Helios Who?, in `docs/who/`:

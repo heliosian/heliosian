@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 
+	"heliosian/internal/config"
 	"heliosian/internal/data"
 	"heliosian/internal/home"
 	"heliosian/internal/who"
@@ -60,6 +61,7 @@ func main() {
 			"preferences": requiredEnv("PREFERENCES_SHEET"),
 			"invites":     requiredEnv("INVITES_SHEET"),
 			"apps":        requiredEnv("APPS_SHEET"),
+			"config":      requiredEnv("CONFIG_SHEET"),
 		})
 		if err != nil {
 			log.Fatalf("[ERROR] sheet source: %v", err)
@@ -166,4 +168,15 @@ func main() {
 		}
 	}
 	fmt.Printf("apps admins: %d\n", len(tables.Admins))
+
+	configTables, err := config.ReadTables(source)
+	if err != nil {
+		log.Fatalf("[ERROR] read config tables: %v", err)
+	}
+	settings, err := config.Parse(configTables)
+	if err != nil {
+		log.Fatalf("[ERROR] parse config: %v", err)
+	}
+	fmt.Printf("config: %d super admins, stale years %+v, staff color %s, %d grade colors, %d classroom colors\n",
+		len(settings.SuperAdmins), settings.StaleYears, settings.StaffColor, len(settings.GradeColors), len(settings.ClassroomColors))
 }

@@ -19,6 +19,7 @@ import (
 
 	"heliosian/internal/auth"
 	"heliosian/internal/blob"
+	"heliosian/internal/config"
 	"heliosian/internal/data"
 	"heliosian/internal/geocode"
 	"heliosian/internal/home"
@@ -165,11 +166,16 @@ func NewCore(cfg Config) *Core {
 		log.Fatalf("[ERROR] register manifest mime type: %v", err)
 	}
 	queue := who.NewQueue()
-	cache, err := who.NewCache(cfg.Source, cfg.Geocoder, cfg.Blobs, staticFiles{}, cfg.Store, queue)
+	settings, err := config.NewCache(cfg.Source, queue)
+	if err != nil {
+		log.Fatalf("[ERROR] load config: %v", err)
+	}
+	cache, err := who.NewCache(cfg.Source, cfg.Geocoder, cfg.Blobs, staticFiles{}, cfg.Store, queue, settings.SuperAdmins)
 	if err != nil {
 		log.Fatalf("[ERROR] load directory data: %v", err)
 	}
 	mux := http.NewServeMux()
+	config.Register(mux, settings, cfg.Writer, cache.IsAdmin)
 	who.Register(mux, cache, cfg.BrowserKey)
 	who.RegisterTags(mux, cache, cfg.Writer, queue)
 	who.RegisterAdmin(mux, cache, cfg.Writer, queue)
@@ -182,7 +188,7 @@ func NewCore(cfg Config) *Core {
 		log.Fatalf("[ERROR] load apps data: %v", err)
 	}
 	homeMux := http.NewServeMux()
-	home.Register(homeMux, homeCache, cfg.Writer, queue, cfg.Store, func() []string { return cache.Settings().SuperAdmins })
+	home.Register(homeMux, homeCache, cfg.Writer, queue, cfg.Store, settings.SuperAdmins)
 	return &Core{Mux: mux, HomeMux: homeMux, Cache: cache, Queue: queue, Gate: who.MemberGate(cache, mux), Home: homeMux}
 }
 
@@ -274,6 +280,7 @@ func Production() (*http.Server, *who.Queue) {
 		"preferences": requiredEnv("PREFERENCES_SHEET"),
 		"invites":     requiredEnv("INVITES_SHEET"),
 		"apps":        requiredEnv("APPS_SHEET"),
+		"config":      requiredEnv("CONFIG_SHEET"),
 	}
 	sessionKey := requiredEnv("SESSION_KEY")
 	sheet, err := data.NewSheet(spreadsheets)

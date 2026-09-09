@@ -1,7 +1,7 @@
 import {state} from './state.js';
 import {load} from './app.js';
 
-export function renderImages(selector, items, kind) {
+export function renderImages(selector, items, kind, colors) {
   const wrap = document.querySelector(selector);
   wrap.replaceChildren();
   for (const item of items) {
@@ -30,7 +30,7 @@ export function renderImages(selector, items, kind) {
     colorInput.type = 'color';
     colorInput.className = 'color-swatch';
     colorInput.title = `Hover color for ${item.name}`;
-    colorInput.value = item.color || '#8a939b';
+    colorInput.value = colors[item.name] || '#8a939b';
     colorInput.addEventListener('change', () => setColor(kind, item.name, colorInput, status));
     row.append(colorInput);
 
@@ -76,7 +76,7 @@ async function uploadImage(kind, name, input, status) {
 export async function setColor(kind, name, input, status) {
   status.classList.remove('error');
   status.textContent = 'Saving…';
-  const res = await fetch('/api/admin/colors', {
+  const res = await fetch('/api/config/color', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({kind, name, color: input.value}),
