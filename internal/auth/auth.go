@@ -151,8 +151,17 @@ func (a *Auth) login(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
+// logout clears the shared cookie and a host-only one: sessions issued before
+// the cookie was scoped to the tier were host-only, and one of those left in
+// place keeps signing its browser in for the rest of its month.
 func (a *Auth) logout(w http.ResponseWriter, r *http.Request) {
-	http.SetCookie(w, &http.Cookie{Name: cookieName, Value: "", Path: "/", Domain: cookieDomain(r.Host), HttpOnly: true, MaxAge: -1})
+	secure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
+	for _, domain := range []string{cookieDomain(r.Host), ""} {
+		http.SetCookie(w, &http.Cookie{
+			Name: cookieName, Value: "", Path: "/", Domain: domain,
+			HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode, MaxAge: -1,
+		})
+	}
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
