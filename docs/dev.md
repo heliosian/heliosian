@@ -22,7 +22,7 @@ Sample-mode limits: the map section needs a real Maps JavaScript key (`GOOGLE_MA
 
 `sampledata/` mirrors the production Sheets layout: one directory per spreadsheet (`directory`, `preferences`, `invites`, `apps`, `config`), one CSV per tab, first row is the schema, served through the same data-source interface the Sheets backend implements. It stays fictional — real community data never goes here. `sampledata/preferences/` is the consent form's response sheet, exercising every combination the loader has to resolve: both permissions, each alone, an opt-out, a superseded submission, and a two-household student whose parents answered differently.
 
-In sample mode `go run ./cmd/startserver -capture <url> -out <png>` serves and screenshots one page of either app in a single command, and `cmd/screenshot` captures against an already-running server (see `docs/screenshots.md`).
+In sample mode `go run ./cmd/startserver --capture <url> --out <png>` serves and screenshots one page of either app in a single command, and `cmd/screenshot` captures against an already-running server (see `docs/screenshots.md`).
 
 ## Real data
 
@@ -38,7 +38,7 @@ runs the production binary: the production spreadsheets, the media bucket (see `
   This requires `roles/iam.serviceAccountTokenCreator` on that account. `directory@` reaches the `Directory` sheet as a content manager of the community shared drive, and the media bucket through project IAM; local processes then act as exactly the identity production runs as, with no key file anywhere (the org forbids creating one).
 - **Maps** — a server key for the Geocoding API (`creds/geocoding.key` or `GOOGLE_MAPS_SERVER_KEY`; never rendered into pages, restrict by server IP or leave unrestricted for dev) and a browser key for the Maps JavaScript API (`creds/maps.key` or `GOOGLE_MAPS_BROWSER_KEY`; rendered into pages, restrict by HTTP referer). Geocoding results are cached in memory per address.
 
-To capture authenticated real-data pages, launch the capture browser (`go run ./cmd/capturebrowser`), sign in to the local server there once, and use `cmd/browse` or `cmd/screenshot -remote` — the session cookie lives in the capture profile.
+To capture authenticated real-data pages, launch the capture browser (`go run ./cmd/capturebrowser`), sign in to the local server there once, and use `cmd/browse` or `cmd/screenshot --remote` — the session cookie lives in the capture profile.
 
 ## Setup
 
@@ -58,7 +58,7 @@ Each runs as `go run ./cmd/<name>`. The sheet, drive, and bucket tools authentic
 
 - `screenshot`, `capturebrowser`, `browse` — page capture and browser driving; see `docs/screenshots.md`
 - `deploy` — apply the full production service configuration (needs `DIRECTORY_SHEET`); see `docs/deploy.md`
-- `startserver` — the dev server: sample data in the foreground by default, `-capture` for a one-command page screenshot, `-real` for the production assembly in the foreground, and `-detach` to launch that in the background with its output in a log file plus a minted session cookie (needs `SESSION_KEY` and the five spreadsheet ids)
+- `startserver` — the dev server: sample data in the foreground by default, `--capture` for a one-command page screenshot, `--real` for the production assembly in the foreground, and `--detach` to launch that in the background with its output in a log file plus a minted session cookie (needs `SESSION_KEY` and the five spreadsheet ids)
 - `cookie` — print a signed session cookie for local API testing
 - `loadcheck` — run the full load pipeline against the directory and preferences sheets and print a model summary
 - `findsheet` — print the spreadsheet ids the server needs as shell exports, found by the sheets' titles (`Directory`, `Preferences`, `Invite List Builder`, `Apps`, `Config`), with every other visible spreadsheet as a comment
@@ -66,5 +66,5 @@ Each runs as `go run ./cmd/<name>`. The sheet, drive, and bucket tools authentic
 - `dumptab` / `writetab` — copy one tab to a local CSV / write a local CSV into a tab, header-checked
 - `createtabs` — create a sheet's tabs with their header rows, adding missing columns to tabs that exist; the layout follows the spreadsheet's title, `Directory`, `Apps`, or `Config`
 - `setcell` — set one cell in a tab by key column, appending the row if missing
-- `import` — run a fresh Veracross export, upload its portraits, and sync the import tabs, or report what that would change with `-dry-run` (needs `DIRECTORY_SHEET`, `PREFERENCES_SHEET`, and `CONFIG_SHEET`, and a `vcexport` checkout)
+- `import` — run a fresh Veracross export, upload its portraits, and sync the import tabs, or report what that would change with `--dry-run` (needs `DIRECTORY_SHEET`, `PREFERENCES_SHEET`, and `CONFIG_SHEET`, and a `vcexport` checkout)
 - `splash` — download an app's iOS splash battery from its captured Glide manifest into a brand directory; see `docs/who/pwa.md`

@@ -20,6 +20,19 @@ import (
 	"github.com/chromedp/chromedp"
 )
 
+// apps that scroll an inner container leave window.scrollBy a no-op, so scroll
+// the tallest element that actually has overflow to scroll
+const scrollScript = `(() => {
+	const candidates = [...document.querySelectorAll("*")].filter(
+		el => el.scrollHeight > el.clientHeight + 1 &&
+			/auto|scroll|overlay/.test(getComputedStyle(el).overflowY)
+	);
+	const room = el => el.scrollHeight - el.clientHeight;
+	const target = candidates.reduce((a, b) => (room(b) > room(a) ? b : a), document.scrollingElement);
+	target.scrollBy(0, %d);
+	return {scrollTop: target.scrollTop, scrollHeight: target.scrollHeight, clientHeight: target.clientHeight};
+})()`
+
 type pageTarget struct {
 	ID    string `json:"id"`
 	Type  string `json:"type"`
@@ -140,6 +153,11 @@ func main() {
 		}
 		viewport = chromedp.EmulateViewport(width, height)
 	}
+	scrolled := struct {
+		ScrollTop    float64 `json:"scrollTop"`
+		ScrollHeight float64 `json:"scrollHeight"`
+		ClientHeight float64 `json:"clientHeight"`
+	}{}
 	actions := []chromedp.Action{viewport}
 	if *cookie != "" {
 		name, value, ok := strings.Cut(*cookie, "=")
@@ -155,7 +173,7 @@ func main() {
 		actions = append(actions, chromedp.NavigateBack())
 	}
 	if *scroll != 0 {
-		actions = append(actions, chromedp.Evaluate(fmt.Sprintf("window.scrollBy(0, %d)", *scroll), nil))
+		actions = append(actions, chromedp.Evaluate(fmt.Sprintf(scrollScript, *scroll), &scrolled))
 	}
 	if *clickSel != "" {
 		actions = append(actions, chromedp.Click(*clickSel, chromedp.ByQuery))
@@ -210,4 +228,7 @@ func main() {
 		}
 	}
 	fmt.Printf("url: %s\ntitle: %s\n", location, title)
+	if *scroll != 0 {
+		fmt.Printf("scroll: %.0f of %.0f, viewport %.0f\n", scrolled.ScrollTop, scrolled.ScrollHeight, scrolled.ClientHeight)
+	}
 }

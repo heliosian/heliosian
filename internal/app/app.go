@@ -26,8 +26,6 @@ import (
 	"heliosian/internal/who"
 )
 
-const runAppHost = "heliosian-489539474126.us-west1.run.app"
-
 // appFor reads the app out of a hostname: <app>.heliosian.com in production,
 // <app>.lab.heliosian.com hosted alongside it, <app>.local.heliosian.com on a
 // developer's machine. Home also answers as the bare and www apex.
@@ -35,8 +33,6 @@ func appFor(host string) string {
 	switch host {
 	case "heliosian.com", "www.heliosian.com":
 		return "home"
-	case runAppHost:
-		return "who"
 	}
 	name, ok := strings.CutSuffix(host, ".heliosian.com")
 	if !ok {
