@@ -149,6 +149,70 @@ func TestKidLosesAHouseholdThatNeverSubmitted(t *testing.T) {
 	}
 }
 
+// The school's staff page is the only source of a bio, and it fills a title only
+// where Veracross has none.
+func TestWebsiteImportSuppliesTheBioAndNotTheTitle(t *testing.T) {
+	p := model(t, "bill.ryder@heliosschool.org")
+	if p.Facts != "Bill runs the front office and knows where everything in the building is." {
+		t.Errorf("facts = %q, want the website bio", p.Facts)
+	}
+	if p.JobTitle != "Office Manager" {
+		t.Errorf("job title = %q, want the imported Veracross title", p.JobTitle)
+	}
+}
+
+// Overrides outrank the website like they outrank Veracross, which is why the layer
+// runs off the override row rather than the value it resolved to.
+func TestOverriddenFactsBeatTheWebsiteBio(t *testing.T) {
+	p := model(t, "ruth.amari@heliosschool.org")
+	if p.Facts != "Twelve years teaching kindergarten, keeper of the class worm farm." {
+		t.Errorf("facts = %q, want the Overrides value", p.Facts)
+	}
+}
+
+// An override that clears a field with "-" has to stay cleared: the website filling
+// it back in would quietly undo a deliberate removal.
+func TestClearedFactsAreNotRefilledFromTheWebsite(t *testing.T) {
+	tables, err := ReadTables(&data.Dir{Root: "../../sampledata"})
+	if err != nil {
+		t.Fatalf("read sample tables: %v", err)
+	}
+	email := "bill.ryder@heliosschool.org"
+	m, err := BuildModel(tables.withOverride(email, map[string]string{"Facts": "-"}), noBlobs{}, noBlobs{})
+	if err != nil {
+		t.Fatalf("build model with the facts cleared: %v", err)
+	}
+	if got := m.Person(email).Facts; got != "" {
+		t.Errorf("facts = %q, want the cleared value to hold", got)
+	}
+}
+
+// Staff added by hand don't exist until applyOverrides, which runs after the website
+// layer, so the page reaches nobody Veracross doesn't carry. Reaching them means
+// creating added people before the layer rather than moving the layer.
+func TestAddedStaffAreOutOfTheWebsiteLayersReach(t *testing.T) {
+	p := model(t, "noa.adler@heliosschool.org")
+	if p.Facts != "" {
+		t.Errorf("facts = %q, want the website layer to have missed an added-only person", p.Facts)
+	}
+}
+
+// The website lists people the directory drops - vendors, and anyone who has left.
+func TestWebsiteEntryMatchingNobodyIsSkipped(t *testing.T) {
+	if p := sampleModel(t).Person("sasha.pike@heliosschool.org"); p != nil {
+		t.Errorf("%s is on the staff page but not in the directory, and should stay out", p.Email)
+	}
+}
+
+// A staff member the site publishes no address for is matched by name, the same way
+// the Veracross imports reach the people it has no address for.
+func TestWebsiteEntryWithNoEmailMatchesByName(t *testing.T) {
+	p := model(t, "luis.ortega@heliosschool.org")
+	if p.Facts == "" {
+		t.Error("a website entry with no address did not reach its person by name")
+	}
+}
+
 // A family is keyed by its alphabetically first adult email, and the Families tab -
 // keyed the same way - is the one home of its fields.
 func TestFamilyFieldsComeFromTheFamiliesTab(t *testing.T) {

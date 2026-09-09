@@ -1,6 +1,6 @@
 # Config sheet
 
-The `Config` spreadsheet in the community shared drive holds the platform settings every app shares: who the super admins are, and the handful of values an admin can change without a deploy. `CONFIG_SHEET` names it, and `cmd/createtabs` lays it out from an empty spreadsheet titled `Config`. The tabs, keys, and validation rules are in `internal/config`; this file carries only what reading that code cannot tell you.
+The `Config` spreadsheet in the community shared drive holds the platform settings every app shares: who the super admins are, and the handful of values an admin can change without a deploy. `CONFIG_SHEET` names it, and `cmd/createtabs` reads that variable to lay it out from an empty spreadsheet titled `Config`. The tabs, keys, and validation rules are in `internal/config`; this file carries only what reading that code cannot tell you.
 
 ## Tabs
 

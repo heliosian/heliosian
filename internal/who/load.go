@@ -22,6 +22,28 @@ const (
 	preferencesTab = "Sheet1"
 )
 
+// The school's public staff page, as webexport writes it and cmd/import syncs it: the
+// bio the school publishes, flattened to text on the way in, plus the title and
+// portrait that go with it. Departments are carried for reference and never read -
+// the school's own filing lives in Overrides. Exported so the import writes the tab
+// this reads without a second copy of its shape.
+const WebsiteTable = "Website Staff Import"
+
+const (
+	WebsiteID          = "constituent_id"
+	WebsiteName        = "full_name"
+	WebsiteTitle       = "title"
+	WebsiteDepartments = "departments"
+	WebsiteEmailColumn = "email"
+	WebsiteBio         = "bio"
+	websitePhotoName   = "photo"
+)
+
+var WebsiteColumns = []string{
+	WebsiteID, WebsiteName, WebsiteTitle, WebsiteDepartments,
+	WebsiteEmailColumn, WebsiteBio, websitePhotoName,
+}
+
 const tagsTable = "Tags"
 
 const (
@@ -239,6 +261,7 @@ type loader struct {
 	familyRows     []map[string]string
 	photoRows      []map[string]string
 	preferenceRows []map[string]string
+	websiteRows    []map[string]string
 	nameToEmail    map[string]string
 
 	people           map[string]*Person
@@ -265,6 +288,7 @@ type Tables struct {
 	Overrides   []map[string]string
 	Families    []map[string]string
 	Preferences []map[string]string
+	Website     []map[string]string
 	Tags        []map[string]string
 	Photos      []map[string]string
 	Admins      []map[string]string
@@ -466,6 +490,7 @@ func BuildModel(tables *Tables, blobs, static BlobChecker) (*Model, error) {
 		familyRows:       tables.Families,
 		photoRows:        tables.Photos,
 		preferenceRows:   tables.Preferences,
+		websiteRows:      tables.Website,
 		people:           map[string]*Person{},
 		households:       map[string]*household{},
 		personHouseholds: map[string][]string{},
@@ -481,6 +506,7 @@ func BuildModel(tables *Tables, blobs, static BlobChecker) (*Model, error) {
 		l.applyNameToEmail,
 		l.transformImport,
 		l.transformStaffImport,
+		l.applyWebsite,
 		l.applyOverrides,
 		l.maskFakeEmails,
 		l.hideStudentPhones,
@@ -518,6 +544,7 @@ func ReadTables(source data.Source) (*Tables, error) {
 	overrides := &table{app: appName, name: "Overrides"}
 	families := &table{app: appName, name: "Families"}
 	preferences := &table{app: preferencesApp, name: preferencesTab}
+	website := &table{app: appName, name: WebsiteTable}
 	tags := &table{app: appName, name: tagsTable}
 	photos := &table{app: appName, name: "Photos"}
 	admins := &table{app: appName, name: adminsTable}
@@ -525,7 +552,7 @@ func ReadTables(source data.Source) (*Tables, error) {
 	// member edit forever. Nothing else compares its columns against what the app
 	// writes, and a column missing here truncates every audit row that reaches it.
 	changeLog := &table{app: appName, name: changeLogTable}
-	ordered := []*table{imports, staff, names, overrides, families, preferences, tags, photos, admins}
+	ordered := []*table{imports, staff, names, overrides, families, preferences, website, tags, photos, admins}
 	var wg sync.WaitGroup
 	for _, t := range ordered {
 		wg.Go(func() {
@@ -561,6 +588,9 @@ func ReadTables(source data.Source) (*Tables, error) {
 	}); err != nil {
 		return nil, err
 	}
+	if err := exactColumns(website.name, website.header, WebsiteColumns); err != nil {
+		return nil, err
+	}
 	if err := requireColumns(tags.name, tags.header, tagColumns); err != nil {
 		return nil, err
 	}
@@ -580,6 +610,7 @@ func ReadTables(source data.Source) (*Tables, error) {
 		Overrides:   overrides.rows,
 		Families:    families.rows,
 		Preferences: preferences.rows,
+		Website:     website.rows,
 		Tags:        tags.rows,
 		Photos:      photos.rows,
 		Admins:      admins.rows,
@@ -657,6 +688,61 @@ func (l *loader) transformStaffImport() error {
 			veracrossPhoto: row["person_photo"],
 		}
 		l.order = append(l.order, email)
+	}
+	return nil
+}
+
+// WebsiteEmail is the address a staff page entry belongs to. The page publishes none
+// for a few people, who are reached by name through the same mapping the Veracross
+// imports use for the people it has no address for. The import resolves entries the
+// same way when it tidies the overrides the page has caught up with.
+func WebsiteEmail(row map[string]string, nameToEmail map[string]string) string {
+	if email := strings.ToLower(strings.TrimSpace(row[WebsiteEmailColumn])); email != "" {
+		return email
+	}
+	return nameToEmail[NormName(row[WebsiteName])]
+}
+
+// applyWebsite folds in what the school publishes about its staff on its own site:
+// the bio, which nothing else supplies, and a title and portrait for the people
+// Veracross has none for. It is an import like any other, running before Overrides:
+// a Veracross title still stands, an override still wins, an override that clears a
+// field still clears it, and an override that only restates what the page publishes
+// is still the dead weight the load refuses to carry.
+//
+// The site is not the directory's roster. It carries vendors the directory drops and
+// people who have left, and it publishes no address for a few, so a row that matches
+// nobody is counted and skipped rather than fatal - and the count is logged, because
+// a match key that quietly stops working looks exactly like a page nobody has updated.
+func (l *loader) applyWebsite() error {
+	unmatched := []string{}
+	seen := map[string]bool{}
+	for _, row := range l.websiteRows {
+		name := row[WebsiteName]
+		if name == "" {
+			return fmt.Errorf("website import row %v has no name", row)
+		}
+		email := WebsiteEmail(row, l.nameToEmail)
+		if email != "" && seen[email] {
+			return fmt.Errorf("the staff page has two entries for %s", email)
+		}
+		seen[email] = true
+		p := l.people[email]
+		if p == nil {
+			unmatched = append(unmatched, name)
+			continue
+		}
+		if p.Facts == "" {
+			p.Facts = row[WebsiteBio]
+		}
+		if p.JobTitle == "" {
+			p.JobTitle = row[WebsiteTitle]
+		}
+		p.websitePhoto = row[websitePhotoName]
+	}
+	if len(unmatched) > 0 {
+		log.Printf("website import: %d of %d entries match nobody in the directory: %s",
+			len(unmatched), len(l.websiteRows), strings.Join(unmatched, ", "))
 	}
 	return nil
 }
@@ -860,7 +946,7 @@ func (l *loader) applyOverrides() error {
 		p.imported = map[string]string{
 			"Full Name": p.FullName, "Legal Name": p.LegalName, "Preferred Name": p.PreferredName,
 			"Grade": p.Grade, "Classroom": p.Classroom, "Crew": p.Crew,
-			"Phone": p.Phone, "Job Title": p.JobTitle,
+			"Phone": p.Phone, "Job Title": p.JobTitle, "Facts": p.Facts,
 			"Is Staff": map[bool]string{true: "TRUE", false: "FALSE"}[p.IsStaff],
 		}
 
@@ -1355,22 +1441,34 @@ func (l *loader) attachBlobs() error {
 		// second time. This - not "has this person touched the gallery at all" -
 		// is what lets deleting it actually stick.
 		refs := uploaded[p.Email]
-		hasVeracrossRow := false
-		for _, ref := range refs {
-			if p.veracrossPhoto != "" && ref.Name == p.veracrossPhoto {
-				hasVeracrossRow = true
-				break
+		named := func(name string) bool {
+			if name == "" {
+				return true
 			}
+			for _, ref := range refs {
+				if ref.Name == name {
+					return true
+				}
+			}
+			return false
 		}
 		var ordered []photoRef
-		if p.veracrossPhoto != "" && !hasVeracrossRow {
+		if !named(p.veracrossPhoto) {
 			ordered = append(ordered, photoRef{Name: p.veracrossPhoto})
+		}
+		// The staff page's headshot sits behind the school portrait, so importing it
+		// never changes the photo the directory already shows for someone.
+		if p.websitePhoto != p.veracrossPhoto && !named(p.websitePhoto) {
+			ordered = append(ordered, photoRef{Name: p.websitePhoto})
 		}
 		ordered = append(ordered, refs...)
 		for _, ref := range ordered {
 			source := "upload"
-			if ref.Name == p.veracrossPhoto {
+			switch ref.Name {
+			case p.veracrossPhoto:
 				source = "veracross"
+			case p.websitePhoto:
+				source = "website"
 			}
 			url, err := l.blobURL("photos", ref.Name, p.Email)
 			if err != nil {

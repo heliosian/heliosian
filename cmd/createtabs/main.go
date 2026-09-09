@@ -1,16 +1,26 @@
-// Command createtabs creates a sheet's tabs with their header rows, picking the layout by the spreadsheet's title.
+// Command createtabs creates each spreadsheet's tabs with their header rows, taking
+// the spreadsheet ids from the environment like every other tool here.
 package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 
 	"google.golang.org/api/option"
 	"google.golang.org/api/sheets/v4"
 )
+
+// spreadsheets pairs each layout with the variable naming the spreadsheet it belongs
+// to. Preferences is a Google Form's own response sheet and Invites is authored by
+// hand, so neither has a layout to apply.
+var spreadsheets = []struct{ env, layout string }{
+	{"DIRECTORY_SHEET", "Directory"},
+	{"APPS_SHEET", "Apps"},
+	{"CONFIG_SHEET", "Config"},
+}
 
 type tab struct {
 	title  string
@@ -72,6 +82,9 @@ var layouts = map[string][]tab{
 			"Photo Updated", "Facts Updated", "Family Photo Updated",
 			"Veracross Photo", "Primary Photo", "Pronunciation",
 			"Family Photo", "Family Pronunciation",
+		}},
+		{"Website Staff Import", []string{
+			"constituent_id", "full_name", "title", "departments", "email", "bio", "photo",
 		}},
 		{"Tags", []string{"Owner Email", "Tag", "Person Email"}},
 		{"Photos", []string{"Email", "Photo Name"}},
@@ -146,26 +159,18 @@ func addMissingColumns(svc *sheets.Service, sheet, title string, id, grid int64,
 	return nil
 }
 
-func main() {
-	sheet := flag.String("sheet", "", "spreadsheet id")
-	flag.Parse()
-	if *sheet == "" {
-		log.Fatal("[ERROR] -sheet <spreadsheet id> is required")
-	}
-	svc, err := sheets.NewService(context.Background(),
-		option.WithScopes(sheets.SpreadsheetsScope))
+// applyLayout brings one spreadsheet up to its layout. The title is checked against
+// the layout the variable promised: an id pointing at the wrong document would
+// otherwise have tabs added to it before anyone noticed.
+func applyLayout(svc *sheets.Service, sheet, env, layout string) error {
+	meta, err := svc.Spreadsheets.Get(sheet).Fields("properties(title),sheets(properties(sheetId,title,gridProperties(columnCount)))").Do()
 	if err != nil {
-		log.Fatalf("[ERROR] create sheets client: %v", err)
+		return fmt.Errorf("get the spreadsheet %s names: %w", env, err)
 	}
-	meta, err := svc.Spreadsheets.Get(*sheet).Fields("properties(title),sheets(properties(sheetId,title,gridProperties(columnCount)))").Do()
-	if err != nil {
-		log.Fatalf("[ERROR] get spreadsheet: %v", err)
+	if meta.Properties.Title != layout {
+		return fmt.Errorf("%s names spreadsheet %q, want the one titled %q", env, meta.Properties.Title, layout)
 	}
-	tabs, ok := layouts[meta.Properties.Title]
-	if !ok {
-		log.Fatalf("[ERROR] spreadsheet %q has no layout here; it must be titled Directory, Apps, or Config", meta.Properties.Title)
-	}
-	log.Printf("spreadsheet %q: applying the %s layout", meta.Properties.Title, meta.Properties.Title)
+	log.Printf("spreadsheet %q: applying the %s layout", meta.Properties.Title, layout)
 	type tabInfo struct{ id, columns int64 }
 	existing := map[string]tabInfo{}
 	for _, s := range meta.Sheets {
@@ -175,32 +180,54 @@ func main() {
 		}
 		existing[s.Properties.Title] = info
 	}
-	for _, t := range tabs {
+	for _, t := range layouts[layout] {
 		if info, ok := existing[t.title]; ok {
-			if err := addMissingColumns(svc, *sheet, t.title, info.id, info.columns, t.header); err != nil {
-				log.Fatalf("[ERROR] %v", err)
+			if err := addMissingColumns(svc, sheet, t.title, info.id, info.columns, t.header); err != nil {
+				return err
 			}
 			continue
 		}
-		_, err := svc.Spreadsheets.BatchUpdate(*sheet, &sheets.BatchUpdateSpreadsheetRequest{
+		_, err := svc.Spreadsheets.BatchUpdate(sheet, &sheets.BatchUpdateSpreadsheetRequest{
 			Requests: []*sheets.Request{{AddSheet: &sheets.AddSheetRequest{
 				Properties: &sheets.SheetProperties{Title: t.title},
 			}}},
 		}).Do()
 		if err != nil {
-			log.Fatalf("[ERROR] create tab %q: %v", t.title, err)
+			return fmt.Errorf("create tab %q: %w", t.title, err)
 		}
 		values := make([]interface{}, len(t.header))
 		for i, h := range t.header {
 			values[i] = h
 		}
 		quoted := "'" + strings.ReplaceAll(t.title, "'", "''") + "'"
-		_, err = svc.Spreadsheets.Values.Update(*sheet, quoted+"!1:1", &sheets.ValueRange{
+		_, err = svc.Spreadsheets.Values.Update(sheet, quoted+"!1:1", &sheets.ValueRange{
 			Values: [][]interface{}{values},
 		}).ValueInputOption("RAW").Do()
 		if err != nil {
-			log.Fatalf("[ERROR] write header of %q: %v", t.title, err)
+			return fmt.Errorf("write header of %q: %w", t.title, err)
 		}
 		log.Printf("created tab %q with %d columns", t.title, len(t.header))
+	}
+	return nil
+}
+
+func main() {
+	ids := map[string]string{}
+	for _, s := range spreadsheets {
+		id := os.Getenv(s.env)
+		if id == "" {
+			log.Fatalf("[ERROR] %s is required", s.env)
+		}
+		ids[s.env] = id
+	}
+	svc, err := sheets.NewService(context.Background(),
+		option.WithScopes(sheets.SpreadsheetsScope))
+	if err != nil {
+		log.Fatalf("[ERROR] create sheets client: %v", err)
+	}
+	for _, s := range spreadsheets {
+		if err := applyLayout(svc, ids[s.env], s.env, s.layout); err != nil {
+			log.Fatalf("[ERROR] %v", err)
+		}
 	}
 }

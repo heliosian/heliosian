@@ -8,9 +8,10 @@ const (
 	OptOut     OptStatus = "out"
 )
 
-// Every photo is one content-addressed object; which of a person's photos came from
-// Veracross is recorded in the sheet, not in the object name. Source is "veracross"
-// or "upload". A photo may also have a linked square crop, another content-addressed
+// Every photo is one content-addressed object; where a person's photos came from is
+// recorded in the sheet, not in the object name. Source is "veracross" for the school
+// portrait, "website" for the headshot the school publishes on its staff page, or
+// "upload". A photo may also have a linked square crop, another content-addressed
 // object recorded alongside it - cropName carries that object's name for reuse when
 // a caller needs to rewrite a person's full photo list without dropping it (it isn't
 // exported to JSON; the frontend only ever needs the two resolved URLs below).
@@ -40,6 +41,7 @@ type Person struct {
 	Photos               []Photo `json:"photos,omitempty"`
 	primaryPhotoOverride string
 	veracrossPhoto       string
+	websitePhoto         string
 	pronunciation        string
 	// overrideRow is this person's raw Overrides sheet row, or nil if they don't have
 	// one. Internal only: admin.go reads it (via overrideStringValue/overrideBoolValue)
@@ -51,10 +53,11 @@ type Person struct {
 	// in applyOverrides (load.go) before overrideRow's cells could change any of them.
 	// Internal only: nil for a person with no override row - their live field values
 	// above already ARE the import values, since nothing here ever changed them, so
-	// admin.go falls back to those directly in that case. Only holds columns that can
-	// genuinely come from Veracross (Full Name, Legal Name, Preferred Name, Grade,
-	// Classroom, Crew, Phone, Job Title, Is Staff); Department, Grade Band, Pronouns,
-	// Facts and Room Parent have no import source for anyone.
+	// admin.go falls back to those directly in that case. Only holds columns an import
+	// can genuinely supply: Full Name, Legal Name, Preferred Name, Grade, Classroom,
+	// Crew, Phone, Job Title and Is Staff from Veracross, and Facts from the school's
+	// staff page; Department, Grade Band, Pronouns and Room Parent have no import
+	// source for anyone.
 	imported            map[string]string
 	PhotoUpdated        string   `json:"photoUpdated,omitempty"`
 	Grade               string   `json:"grade,omitempty"`

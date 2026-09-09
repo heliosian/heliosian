@@ -1,6 +1,20 @@
 import {el, svg, thumbUrl} from './dom.js';
 import {submitMedia, submitPhotoOrder, submitCrop} from './edit.js';
 
+const photoLabels = {
+  veracross: 'School portrait',
+  website: 'Staff page headshot',
+  upload: 'Uploaded photo',
+};
+
+// A photo the school supplied is harder to get back than a self-uploaded one, so
+// removing it asks a question that names where it came from.
+const photoRemoveWarnings = {
+  veracross: 'This is the school portrait from Veracross. Remove it anyway?',
+  website: 'This is the headshot from the school website. Remove it anyway?',
+  upload: 'Remove this photo?',
+};
+
 // The hero photo is always a square crop (same treatment as every other avatar in
 // the app), which can crop a photo awkwardly - this is the escape hatch: click it
 // to see the whole, uncropped image in an overlay. Closes on click-anywhere or Esc.
@@ -112,12 +126,7 @@ export function photoMenu(p, getPhoto, editing, status) {
     }
     if (editing) {
       item('trash', 'Delete photo', () => {
-        // The school portrait is harder to get back than a self-uploaded photo, so
-        // it gets a stronger warning, but either way this is permanent - confirm first.
-        const message = photo.source === 'veracross'
-          ? 'This is the school portrait from Veracross. Remove it anyway?'
-          : 'Remove this photo?';
-        if (!confirm(message)) {
+        if (!confirm(photoRemoveWarnings[photo.source])) {
           return;
         }
         status.textContent = 'Removing…';
@@ -550,7 +559,7 @@ export function photoGrid(p, editable, editing, heroImg, status, onPreview) {
   p.photos.forEach((photo, i) => {
     const tile = el('div', 'photo-slot' + (i === 0 ? ' photo-slot-primary' : ''));
     tile.dataset.name = photo.name;
-    tile.title = photo.source === 'veracross' ? 'School portrait' : 'Uploaded photo';
+    tile.title = photoLabels[photo.source];
     const face = el('img');
     face.src = thumbUrl(photo.url);
     face.alt = '';
@@ -563,12 +572,7 @@ export function photoGrid(p, editable, editing, heroImg, status, onPreview) {
       del.addEventListener('pointerdown', e => e.stopPropagation());
       del.addEventListener('click', e => {
         e.stopPropagation();
-        // The school portrait is harder to get back than a self-uploaded photo, so
-        // it gets a stronger warning, but either way this is permanent - confirm first.
-        const message = photo.source === 'veracross'
-          ? 'This is the school portrait from Veracross. Remove it anyway?'
-          : 'Remove this photo?';
-        if (!confirm(message)) {
+        if (!confirm(photoRemoveWarnings[photo.source])) {
           return;
         }
         deletePhoto(photo);

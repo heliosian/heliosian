@@ -2,7 +2,7 @@
 
 The tabs, columns, and validation rules are in `internal/home`; this file carries only what reading that code cannot tell you.
 
-Home's data lives in one Google Sheet, `Apps`, in the community shared drive, reached through drive membership like the directory's sheets. `APPS_SHEET` names it. `cmd/createtabs` lays it out from an empty spreadsheet titled `Apps`; the layout is chosen by the spreadsheet's own title, so the same tool serves the directory sheet.
+Home's data lives in one Google Sheet, `Apps`, in the community shared drive, reached through drive membership like the directory's sheets. `APPS_SHEET` names it, and `cmd/createtabs` reads that variable to lay it out from an empty spreadsheet titled `Apps`, alongside the directory and config sheets it lays out in the same run.
 
 ## Tabs
 

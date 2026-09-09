@@ -28,6 +28,18 @@ People whose faculty type is `Vendors` are dropped — contractors running a clu
 
 Staff who are also parents arrive from both imports, and the household copy of such a name often carries a redundant parenthetical the faculty export omits. The two merge on resolved names rather than raw strings for that reason alone.
 
+## The school's own staff page is a third source
+
+The school publishes a bio, a title and a headshot for its staff on its public website, and `webexport` carries them into the `Website Staff Import` tab. It is the only source of a bio the directory has, and the bios arrive as the school's own HTML — the import flattens them to text, since nothing downstream renders markup.
+
+It is an import like any other and runs before Overrides, which behave exactly as they do over Veracross: a Veracross title stands, an override wins, an override's `-` clears, and an override that only restates what the page publishes is the dead weight the load refuses to carry. That last rule is what makes the import clear the Facts and Job Title overrides the page has caught up with — the ones saying the same thing as the published bio, or that the bio has grown past — the same bargain it strikes with `Name to Email` when Veracross learns an address. An override still saying something of its own survives and keeps winning.
+
+Running before Overrides also means the page reaches nobody it adds: a staff member Veracross does not carry exists only once Overrides has created them, which is after the layer has run.
+
+The page is not the directory's roster. It carries vendors the directory drops and people who have left, and it publishes no address for a few, who are matched by name through `Name to Email` like anyone else Veracross has no address for. An entry matching nobody is counted and skipped, since the alternative is the whole directory refusing to load over somebody else's web page.
+
+The headshot sits behind the Veracross portrait in a person's photos, so importing it never changes the picture the directory already shows. The departments the page files people under are carried in the tab and read by nothing: the school's own filing lives in Overrides, for the reason above.
+
 ## The consent form is authored outside this repository
 
 The `Preferences` sheet belongs to a Google Form, and its wording *is* the data. Every value is matched verbatim and anything unrecognized is fatal — a reworded consent sentence, a renamed option, a new option, an unknown column. A form edit surfaces as a refused startup rather than as a family's preference read the wrong way. Two tolerances are deliberate: an empty permission cell legitimately means "share neither", and a response matching nobody is skipped, because the form is open to the whole Workspace domain and a stray answer must not be able to stop the server.
