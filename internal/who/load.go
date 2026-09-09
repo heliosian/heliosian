@@ -249,6 +249,7 @@ type loader struct {
 	familyKeys       map[string]string
 	roomParents      map[string][]string
 	optedOut         map[string]bool
+	withheld         map[string]bool
 	excluded         map[string]bool
 	useless          []string
 
@@ -471,6 +472,7 @@ func BuildModel(tables *Tables, blobs, static BlobChecker) (*Model, error) {
 		familyKeys:       map[string]string{},
 		roomParents:      map[string][]string{},
 		optedOut:         map[string]bool{},
+		withheld:         map[string]bool{},
 		excluded:         map[string]bool{},
 		model:            &Model{Families: map[string]Family{}, RoomParents: map[string][]string{}},
 	}
@@ -487,6 +489,7 @@ func BuildModel(tables *Tables, blobs, static BlobChecker) (*Model, error) {
 		l.classifyVeracrossVisibility,
 		l.applyPreferences,
 		l.removeOptedOut,
+		l.removeWithheld,
 		l.indexFamilies,
 		l.attachBlobs,
 		l.sortPeople,
@@ -1172,10 +1175,14 @@ func (l *loader) applyPreferences() error {
 		p := l.people[email]
 		p.OptStatus = OptDefault
 		governing := []preference{}
+		answered := true
 		for _, set := range l.personHouseholds[email] {
-			if pref, ok := byFamily[l.familyKeys[set]]; ok {
-				governing = append(governing, pref)
+			pref, ok := byFamily[l.familyKeys[set]]
+			if !ok {
+				answered = false
+				continue
 			}
+			governing = append(governing, pref)
 		}
 		if pref, ok := byPerson[email]; ok {
 			governing = append(governing, pref)
@@ -1191,6 +1198,14 @@ func (l *loader) applyPreferences() error {
 				p.PhoneMasked = true
 				p.Phone = ""
 			}
+		}
+		if len(governing) == 0 {
+			answered = false
+		}
+		// Staff reach the family consent form only through being a parent too, so silence
+		// leaves them listed - but an answer of their own that opts out still removes them.
+		if p.OptStatus == OptOut || (!answered && !p.IsStaff) {
+			l.withheld[email] = true
 		}
 	}
 	return nil
@@ -1250,19 +1265,32 @@ func (l *loader) removeOptedOut() error {
 	}
 	sort.Strings(hidden)
 	l.model.hiddenEmails = hidden
-	for email := range l.optedOut {
+	l.removePeople(l.optedOut)
+	return nil
+}
+
+// removeWithheld drops everyone the consent form does not affirmatively put in the
+// directory, which is the same removal an Overrides opt-out performs - but no part of
+// Hidden Overrides, since there is no cell for an admin to clear to bring them back.
+func (l *loader) removeWithheld() error {
+	l.removePeople(l.withheld)
+	return nil
+}
+
+func (l *loader) removePeople(gone map[string]bool) {
+	for email := range gone {
 		delete(l.people, email)
 	}
 	kept := []string{}
 	for _, email := range l.order {
-		if !l.optedOut[email] {
+		if !gone[email] {
 			kept = append(kept, email)
 		}
 	}
 	l.order = kept
 	for key, family := range l.model.Families {
-		family.AdultEmails = without(family.AdultEmails, l.optedOut)
-		family.KidEmails = without(family.KidEmails, l.optedOut)
+		family.AdultEmails = without(family.AdultEmails, gone)
+		family.KidEmails = without(family.KidEmails, gone)
 		if len(family.AdultEmails)+len(family.KidEmails) == 0 {
 			delete(l.model.Families, key)
 			continue
@@ -1271,12 +1299,11 @@ func (l *loader) removeOptedOut() error {
 		l.model.Families[key] = family
 	}
 	for _, p := range l.people {
-		p.ParentContactEmails = without(p.ParentContactEmails, l.optedOut)
+		p.ParentContactEmails = without(p.ParentContactEmails, gone)
 	}
 	for band, emails := range l.roomParents {
-		l.roomParents[band] = without(emails, l.optedOut)
+		l.roomParents[band] = without(emails, gone)
 	}
-	return nil
 }
 
 // reconcileLegacyPrimary moves whichever photo the retired Primary Photo override

@@ -36,7 +36,7 @@ Last submission wins per family **by timestamp, not sheet order**. The 33 second
 
 Where a two-household student's parents disagree, the stricter answer holds, so the outcome never depends on map ordering.
 
-A family that never submitted is a distinct third state rather than an assumed opt-in. The flag exists so that default can be inverted later without touching resolution.
+Only an affirmative opt-in puts a family in the directory. A household that never answered is dropped from the model exactly as an opt-out is, and silence is one of the answers the stricter-wins resolution weighs, so a two-household student whose other parent never answered is dropped too. Staff are the single exemption and only from silence: the form reaches them through being a parent, so a staff member nobody answered for stays listed, while one who opts out is removed like anyone else.
 
 ## Privacy decisions
 
@@ -44,7 +44,7 @@ A family that never submitted is a distinct third state rather than an assumed o
 
 **Tags never reach the model.** `/api/directory/model` serves one shared model to every member, so a tag table folded into it would hand everyone's private groupings to every reader. They are assembled per request from the caller's identity instead, and the model type has no tag field to leak. No tag is visible to anyone but its owner, including the school.
 
-**Opting out also locks the person out**, because viewing the directory requires being in it. They get a permissions error until the school clears the flag, which is a consequence worth stating aloud before anyone sets it.
+**Being out of the directory also locks the person out**, because viewing it requires being in it — an Overrides opt-out, a consent-form opt-out, and a family that never answered the form all get the no-access page in place of the app. Only the first of those is an admin's to clear; the other two are the family's own to change, so the page carries the consent form's link, served from the Config sheet through `/optin` so the school can move the form without a deploy. It is a consequence worth stating aloud before anyone sets the flag.
 
 **Overrides values skip import normalization**, since they are authored after the transform — which is why canonical-value validation has to run on every layer rather than only on the import.
 

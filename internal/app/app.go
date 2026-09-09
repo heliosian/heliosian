@@ -172,7 +172,7 @@ func NewCore(cfg Config) *Core {
 	}
 	mux := http.NewServeMux()
 	config.Register(mux, settings, cfg.Writer, cache.IsAdmin)
-	who.Register(mux, cache, cfg.BrowserKey)
+	who.Register(mux, cache, cfg.BrowserKey, func() string { return settings.Settings().PrivacyLinks.HeliosWhoOptIn })
 	who.RegisterTags(mux, cache, cfg.Writer, queue)
 	who.RegisterAdmin(mux, cache, cfg.Writer, queue)
 	if err := who.RegisterInvites(mux, cache, cfg.Source, cfg.Writer); err != nil {

@@ -81,10 +81,71 @@ func TestStaffWhoIsAlsoAParentMerges(t *testing.T) {
 	if p.PreferredName != "Dana" {
 		t.Errorf("preferred name = %q, want the household form to survive", p.PreferredName)
 	}
-	// Her family opted out on the consent form, which masks the household phone. The
-	// staff merge must not resurrect it by filling from the export.
+	// Her family shared neither field on the consent form, which masks the household
+	// phone. The staff merge must not resurrect it by filling from the export.
 	if p.Phone != "" || !p.PhoneMasked {
 		t.Errorf("phone = %q masked = %t, want it cleared by preference", p.Phone, p.PhoneMasked)
+	}
+}
+
+// The consent form is what puts a family in the directory at all: a household that
+// never answered it is gone, not listed with its fields masked.
+func TestFamilyThatNeverSubmittedIsAbsent(t *testing.T) {
+	m := sampleModel(t)
+	for _, email := range []string{"april.baxter@heliosschool.org", "leo.baxter@heliosschool.org"} {
+		if p := m.Person(email); p != nil {
+			t.Errorf("%s reached the directory with no consent form submission", p.Email)
+		}
+	}
+	if _, ok := m.Families["april.baxter@heliosschool.org"]; ok {
+		t.Error("a family with no submission still has a family record")
+	}
+}
+
+// Staff reach the family consent form only by being a parent too, so silence leaves
+// them listed - the exemption covers non-submission and nothing else.
+func TestStaffWhoNeverSubmittedStayListed(t *testing.T) {
+	if p := model(t, "ruth.amari@heliosschool.org"); !p.IsStaff {
+		t.Errorf("staff %t, want a staff member with no submission to stay listed", p.IsStaff)
+	}
+}
+
+// An opt-out is an answer rather than silence, so it removes a staff member too.
+func TestConsentOptOutRemovesStaff(t *testing.T) {
+	if p := sampleModel(t).Person("grace.kim@heliosschool.org"); p != nil {
+		t.Errorf("%s opted out on the form and is still in the directory", p.Email)
+	}
+}
+
+// Where a two-household kid's parents disagree the stricter answer holds, and a
+// household that never answered is one of those answers.
+func TestKidLosesAHouseholdThatNeverSubmitted(t *testing.T) {
+	tables, err := ReadTables(&data.Dir{Root: "../../sampledata"})
+	if err != nil {
+		t.Fatalf("read sample tables: %v", err)
+	}
+	kept := make([]map[string]string, 0, len(tables.Preferences))
+	for _, row := range tables.Preferences {
+		if row[preferenceEmail] != "rohan.chandra@heliosschool.org" {
+			kept = append(kept, row)
+		}
+	}
+	next := *tables
+	next.Preferences = kept
+	// Dev is the only student in his crew, which the sample cannot lose while a teacher
+	// is still assigned to it.
+	m, err := BuildModel(next.withOverride("tom.grady@heliosschool.org", map[string]string{"Crew": ""}), noBlobs{}, noBlobs{})
+	if err != nil {
+		t.Fatalf("build model with one household's submission dropped: %v", err)
+	}
+	if p := m.Person("dev.chandra@heliosschool.org"); p != nil {
+		t.Error("a kid whose other household never submitted is still in the directory")
+	}
+	if p := m.Person("rohan.chandra@heliosschool.org"); p != nil {
+		t.Error("the parent who never submitted is still in the directory")
+	}
+	if p := m.Person("asha.chandra@heliosschool.org"); p == nil {
+		t.Error("the household that did submit lost its own adult")
 	}
 }
 
