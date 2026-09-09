@@ -1096,7 +1096,7 @@ func (a admin) unhidePerson(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "not currently hidden", http.StatusBadRequest)
 		return
 	}
-	cells := map[string]string{"Opted Out": "FALSE"}
+	cells := map[string]string{"Opted Out": ""}
 	previous := map[string]string{"Opted Out": "TRUE"}
 	if !applyOverrideWrite(a.cache, a.writer, a.queue, w, actor, target, "unhide person", cells, previous) {
 		return
