@@ -7,7 +7,6 @@ package app
 import (
 	"context"
 	"encoding/json"
-	"log"
 	"log/slog"
 	"mime"
 	"net/http"
@@ -15,10 +14,12 @@ import (
 	"os/signal"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 
 	"heliosian/internal/auth"
+	"heliosian/internal/birthday"
 	"heliosian/internal/blob"
 	"heliosian/internal/config"
 	"heliosian/internal/data"
@@ -51,9 +52,44 @@ func appFor(host string) string {
 
 type staticFiles struct{}
 
-func (staticFiles) Has(key string) bool {
+func (staticFiles) Has(key string) (bool, error) {
 	_, err := os.Stat(filepath.Join("web/who", filepath.FromSlash(key)))
-	return err == nil
+	return err == nil, nil
+}
+
+func (staticFiles) Prefetch([]string) error { return nil }
+
+func bundled(roots []string, key string) bool {
+	for _, root := range roots {
+		if info, err := os.Stat(filepath.Join(root, filepath.FromSlash(key))); err == nil && info.Mode().IsRegular() {
+			return true
+		}
+	}
+	return false
+}
+
+// uploaded asks the bucket for a name the sheet records; with no bucket, as in
+// sample mode, nothing uploaded exists.
+func uploaded(store *blob.Store, key string) (bool, error) {
+	if store == nil {
+		return false, nil
+	}
+	return store.Has(key)
+}
+
+// prefetchUploaded hands the bucket every recorded name under its folder at
+// once, so the fetches run side by side; bundled names are left alone.
+func prefetchUploaded(store *blob.Store, folder string, names []string) error {
+	if store == nil {
+		return nil
+	}
+	keys := []string{}
+	for _, name := range names {
+		if strings.HasPrefix(name, folder) {
+			keys = append(keys, name)
+		}
+	}
+	return store.Prefetch(keys)
 }
 
 // homeImages resolves the Image cells of the Apps sheet: an uploaded object in
@@ -62,16 +98,15 @@ type homeImages struct {
 	store *blob.Store
 }
 
-func (h homeImages) Has(key string) bool {
+func (h homeImages) Has(key string) (bool, error) {
 	if strings.HasPrefix(key, "link-images/") {
-		return h.store != nil && h.store.Has(key)
+		return uploaded(h.store, key)
 	}
-	for _, root := range []string{"web/home", "web/public/home"} {
-		if info, err := os.Stat(filepath.Join(root, filepath.FromSlash(key))); err == nil && info.Mode().IsRegular() {
-			return true
-		}
-	}
-	return false
+	return bundled([]string{"web/home", "web/public/home"}, key), nil
+}
+
+func (h homeImages) Prefetch(names []string) error {
+	return prefetchUploaded(h.store, "link-images/", names)
 }
 
 // eventsImages resolves the Image cells of the Events sheet the same way: an
@@ -80,16 +115,15 @@ type eventsImages struct {
 	store *blob.Store
 }
 
-func (e eventsImages) Has(key string) bool {
+func (e eventsImages) Has(key string) (bool, error) {
 	if strings.HasPrefix(key, "activity-images/") {
-		return e.store != nil && e.store.Has(key)
+		return uploaded(e.store, key)
 	}
-	for _, root := range []string{"web/hca", "web/public/hca"} {
-		if info, err := os.Stat(filepath.Join(root, filepath.FromSlash(key))); err == nil && info.Mode().IsRegular() {
-			return true
-		}
-	}
-	return false
+	return bundled([]string{"web/hca", "web/public/hca"}, key), nil
+}
+
+func (e eventsImages) Prefetch(names []string) error {
+	return prefetchUploaded(e.store, "activity-images/", names)
 }
 
 // directory hands the volunteer portal the directory's view of a person: the
@@ -108,6 +142,44 @@ func (d directory) Person(email string) (string, string, bool) {
 		return "", "", false
 	}
 	return p.FullName, p.PhotoURL, true
+}
+
+// birthdayDirectory hands the birthday app the directory's view of people: who
+// an address resolves to, what is known about one person, and every staff
+// member, with departments in the order the directory lists them.
+type birthdayDirectory struct {
+	cache *who.Cache
+}
+
+func (d birthdayDirectory) Resolve(email string) string {
+	return d.cache.Model().Resolve(email)
+}
+
+func birthdayPerson(p *who.Person) birthday.Person {
+	return birthday.Person{Email: p.Email, Name: p.FullName, PhotoURL: p.PhotoURL, JobTitle: p.JobTitle, Department: p.Department}
+}
+
+func (d birthdayDirectory) Person(email string) (birthday.Person, bool) {
+	p := d.cache.Model().Person(email)
+	if p == nil {
+		return birthday.Person{}, false
+	}
+	return birthdayPerson(p), true
+}
+
+func (d birthdayDirectory) Staff() []birthday.Person {
+	model := d.cache.Model()
+	out := []birthday.Person{}
+	for i := range model.People {
+		if model.People[i].IsStaff {
+			out = append(out, birthdayPerson(&model.People[i]))
+		}
+	}
+	return out
+}
+
+func (d birthdayDirectory) Departments() []string {
+	return d.cache.Model().Departments
 }
 
 func cacheControl(next http.Handler) http.Handler {
@@ -194,29 +266,48 @@ type Config struct {
 // caller's mode-specific routes), the directory model cache, the shared write
 // queue, and each app's handler for the caller to wrap with its authentication.
 type Core struct {
-	Mux       *http.ServeMux
-	HomeMux   *http.ServeMux
-	EventsMux *http.ServeMux
-	Cache     *who.Cache
-	Queue     *who.Queue
-	Gate      http.Handler
-	Home      http.Handler
-	Events    http.Handler
+	Mux         *http.ServeMux
+	HomeMux     *http.ServeMux
+	EventsMux   *http.ServeMux
+	BirthdayMux *http.ServeMux
+	Cache       *who.Cache
+	Queue       *who.Queue
+	Gate        http.Handler
+	Home        http.Handler
+	Events      http.Handler
+	Birthday    http.Handler
 }
 
 // NewCore wires everything every mode serves identically. Fatal on any failure.
 func NewCore(cfg Config) *Core {
 	if err := mime.AddExtensionType(".webmanifest", "application/manifest+json"); err != nil {
-		log.Fatalf("[ERROR] register manifest mime type: %v", err)
+		logging.Fatal("register manifest mime type", "error", err)
 	}
 	queue := who.NewQueue()
 	settings, err := config.NewCache(cfg.Source, queue)
 	if err != nil {
-		log.Fatalf("[ERROR] load config: %v", err)
+		logging.Fatal("load config", "error", err)
+	}
+	superAdmin := func(email string) bool {
+		return slices.Contains(settings.SuperAdmins(), strings.ToLower(strings.TrimSpace(email)))
+	}
+	// The small sheets load first, so a bad column in any of them refuses the
+	// start in seconds rather than after the directory has fetched every photo.
+	homeCache, err := home.NewCache(cfg.Source, homeImages{cfg.Store}, superAdmin, queue)
+	if err != nil {
+		logging.Fatal("load apps data", "error", err)
+	}
+	eventsCache, err := events.NewCache(cfg.Source, eventsImages{cfg.Store}, superAdmin, queue)
+	if err != nil {
+		logging.Fatal("load events data", "error", err)
+	}
+	birthdayCache, err := birthday.NewCache(cfg.Source, superAdmin, queue)
+	if err != nil {
+		logging.Fatal("load birthdays data", "error", err)
 	}
 	cache, err := who.NewCache(cfg.Source, cfg.Geocoder, cfg.Blobs, staticFiles{}, cfg.Store, queue, settings.SuperAdmins)
 	if err != nil {
-		log.Fatalf("[ERROR] load directory data: %v", err)
+		logging.Fatal("load directory data", "error", err)
 	}
 	mux := http.NewServeMux()
 	config.Register(mux, settings, cfg.Writer, cache.IsAdmin)
@@ -224,24 +315,18 @@ func NewCore(cfg Config) *Core {
 	who.RegisterTags(mux, cache, cfg.Writer, queue)
 	who.RegisterAdmin(mux, cache, cfg.Writer, queue)
 	if err := who.RegisterInvites(mux, cache, cfg.Source, cfg.Writer); err != nil {
-		log.Fatalf("[ERROR] load invites data: %v", err)
+		logging.Fatal("load invites data", "error", err)
 	}
 	mux.Handle("GET /{$}", http.RedirectHandler("/people", http.StatusFound))
-	homeCache, err := home.NewCache(cfg.Source, homeImages{cfg.Store}, cache.IsSuperAdmin, queue)
-	if err != nil {
-		log.Fatalf("[ERROR] load apps data: %v", err)
-	}
 	homeMux := http.NewServeMux()
 	home.Register(homeMux, homeCache, cfg.Writer, queue, cfg.Store, settings.SuperAdmins, cache.HeroPhoto)
-	eventsCache, err := events.NewCache(cfg.Source, eventsImages{cfg.Store}, cache.IsSuperAdmin, queue)
-	if err != nil {
-		log.Fatalf("[ERROR] load events data: %v", err)
-	}
 	eventsMux := http.NewServeMux()
 	events.Register(eventsMux, eventsCache, cfg.Writer, queue, cfg.Store, directory{cache}, settings.SuperAdmins)
+	birthdayMux := http.NewServeMux()
+	birthday.Register(birthdayMux, birthdayCache, cfg.Writer, queue, birthdayDirectory{cache}, settings.SuperAdmins)
 	return &Core{
-		Mux: mux, HomeMux: homeMux, EventsMux: eventsMux, Cache: cache, Queue: queue,
-		Gate: who.MemberGate(cache, mux), Home: homeMux, Events: eventsMux,
+		Mux: mux, HomeMux: homeMux, EventsMux: eventsMux, BirthdayMux: birthdayMux, Cache: cache, Queue: queue,
+		Gate: who.MemberGate(cache, mux), Home: homeMux, Events: eventsMux, Birthday: birthdayMux,
 	}
 }
 
@@ -268,7 +353,7 @@ func Serve(server *http.Server, queue *who.Queue) {
 	}()
 	slog.Info("listening", "port", Port())
 	if err := ListenAndServe(server); err != http.ErrServerClosed {
-		log.Fatal(err)
+		logging.Fatal("serve", "error", err)
 	}
 	<-queue.Drain()
 	slog.Info("queue drained")
@@ -286,7 +371,7 @@ func ListenAndServe(server *http.Server) error {
 func requiredEnv(name string) string {
 	value := os.Getenv(name)
 	if value == "" {
-		log.Fatalf("[ERROR] %s is required", name)
+		logging.Fatal("environment variable is required", "name", name)
 	}
 	return value
 }
@@ -297,7 +382,7 @@ func clientID() string {
 	}
 	raw, err := os.ReadFile("creds/oauth-client.json")
 	if err != nil {
-		log.Fatalf("[ERROR] read creds/oauth-client.json (or set GOOGLE_CLIENT_ID): %v", err)
+		logging.Fatal("read creds/oauth-client.json (or set GOOGLE_CLIENT_ID)", "error", err)
 	}
 	var parsed struct {
 		Web struct {
@@ -305,7 +390,7 @@ func clientID() string {
 		} `json:"web"`
 	}
 	if err := json.Unmarshal(raw, &parsed); err != nil || parsed.Web.ClientID == "" {
-		log.Fatal("[ERROR] creds/oauth-client.json is not an oauth web client file")
+		logging.Fatal("creds/oauth-client.json is not an oauth web client file")
 	}
 	return parsed.Web.ClientID
 }
@@ -316,11 +401,11 @@ func mapsKey(envName, file string) string {
 	}
 	raw, err := os.ReadFile(file)
 	if err != nil {
-		log.Fatalf("[ERROR] read %s (or set %s): %v", file, envName, err)
+		logging.Fatal("read key file", "file", file, "or set", envName, "error", err)
 	}
 	key := strings.TrimSpace(string(raw))
 	if key == "" {
-		log.Fatalf("[ERROR] %s is empty", file)
+		logging.Fatal("key file is empty", "file", file)
 	}
 	return key
 }
@@ -334,16 +419,17 @@ func Production() (*http.Server, *who.Queue) {
 		"invites":     requiredEnv("INVITES_SHEET"),
 		"apps":        requiredEnv("APPS_SHEET"),
 		"events":      requiredEnv("EVENTS_SHEET"),
+		"birthdays":   requiredEnv("BIRTHDAY_SHEET"),
 		"config":      requiredEnv("CONFIG_SHEET"),
 	}
 	sessionKey := requiredEnv("SESSION_KEY")
 	sheet, err := data.NewSheet(spreadsheets)
 	if err != nil {
-		log.Fatalf("[ERROR] load directory sheet: %v", err)
+		logging.Fatal("load directory sheet", "error", err)
 	}
 	store, err := blob.New()
 	if err != nil {
-		log.Fatalf("[ERROR] blob store: %v", err)
+		logging.Fatal("blob store", "error", err)
 	}
 	core := NewCore(Config{
 		Source:     sheet,
@@ -356,6 +442,7 @@ func Production() (*http.Server, *who.Queue) {
 	blob.Register(core.Mux, store)
 	blob.RegisterHome(core.HomeMux, store)
 	blob.RegisterEvents(core.EventsMux, store)
+	blob.RegisterBirthday(core.BirthdayMux, store)
 	who.RegisterUpload(core.Mux, core.Cache, sheet, store, core.Queue)
 	client := clientID()
 	whoAuth := auth.New(client, []byte(sessionKey), "web/public/who/login.html")
@@ -364,9 +451,12 @@ func Production() (*http.Server, *who.Queue) {
 	homeAuth.Register(core.HomeMux)
 	hcaAuth := auth.New(client, []byte(sessionKey), "web/public/hca/login.html")
 	hcaAuth.Register(core.EventsMux)
+	birthdayAuth := auth.New(client, []byte(sessionKey), "web/public/birthday/login.html")
+	birthdayAuth.Register(core.BirthdayMux)
 	return Server(map[string]http.Handler{
-		"who":  Public("who", whoAuth.Wrap(Logged("who", Files("who", core.Gate)))),
-		"home": Public("home", homeAuth.Wrap(Logged("home", Files("home", core.Home)))),
-		"hca":  Public("hca", hcaAuth.Wrap(Logged("hca", Files("hca", core.Events)))),
+		"who":      Public("who", whoAuth.Wrap(Logged("who", Files("who", core.Gate)))),
+		"home":     Public("home", homeAuth.Wrap(Logged("home", Files("home", core.Home)))),
+		"hca":      Public("hca", hcaAuth.Wrap(Logged("hca", Files("hca", core.Events)))),
+		"birthday": Public("birthday", birthdayAuth.Wrap(Logged("birthday", Files("birthday", core.Birthday)))),
 	}), core.Queue
 }

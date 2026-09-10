@@ -4,6 +4,7 @@ package data
 import (
 	"encoding/csv"
 	"fmt"
+	"log/slog"
 	"maps"
 	"os"
 	"path/filepath"
@@ -11,6 +12,30 @@ import (
 	"strings"
 	"sync"
 )
+
+// CheckColumns refuses a tab missing a column the caller reads. A column it does
+// not read is somebody else's business and only noted.
+func CheckColumns(table string, header, wanted []string) error {
+	present := map[string]bool{}
+	for _, h := range header {
+		present[h] = true
+	}
+	for _, w := range wanted {
+		if !present[w] {
+			return fmt.Errorf("table %s is missing column %q", table, w)
+		}
+	}
+	known := map[string]bool{}
+	for _, w := range wanted {
+		known[w] = true
+	}
+	for _, h := range header {
+		if !known[h] {
+			slog.Warn("table has a column this app does not read", "table", table, "column", h)
+		}
+	}
+	return nil
+}
 
 type Source interface {
 	Table(app, name string) ([]string, []map[string]string, error)

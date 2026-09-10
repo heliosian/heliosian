@@ -1156,13 +1156,12 @@ func (a admin) setImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sniffed := http.DetectContentType(content)
-	ext, ok := imageExtensions[sniffed]
-	if !ok {
+	if _, ok := imageExtensions[sniffed]; !ok {
 		http.Error(w, "unsupported image type "+sniffed, http.StatusBadRequest)
 		return
 	}
 
-	if err := a.cache.PutImage(folder, slug+"."+ext, sniffed, content); err != nil {
+	if err := a.cache.PutImage(folder, slug, sniffed, content); err != nil {
 		serverError(w, r, err)
 		return
 	}

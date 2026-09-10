@@ -8,9 +8,10 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"log"
 	"math/big"
 	"time"
+
+	"heliosian/internal/logging"
 )
 
 const domain = "local.heliosian.com"
@@ -18,11 +19,11 @@ const domain = "local.heliosian.com"
 func Certificate() tls.Certificate {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
-		log.Fatalf("[ERROR] generate dev key: %v", err)
+		logging.Fatal("generate dev key", "error", err)
 	}
 	serial, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
 	if err != nil {
-		log.Fatalf("[ERROR] generate serial: %v", err)
+		logging.Fatal("generate serial", "error", err)
 	}
 	template := &x509.Certificate{
 		SerialNumber:          serial,
@@ -36,7 +37,7 @@ func Certificate() tls.Certificate {
 	}
 	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
 	if err != nil {
-		log.Fatalf("[ERROR] self-sign dev certificate: %v", err)
+		logging.Fatal("self-sign dev certificate", "error", err)
 	}
 	return tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key}
 }

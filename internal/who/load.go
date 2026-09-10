@@ -159,8 +159,11 @@ func checkUpdated(email, column, cell string) error {
 	return nil
 }
 
+// BlobChecker answers for the media a sheet names: whether an object exists, and
+// a chance to fetch many at once before they are asked for one by one.
 type BlobChecker interface {
-	Has(key string) bool
+	Has(name string) (bool, error)
+	Prefetch(names []string) error
 }
 
 type parsedName struct {
@@ -216,46 +219,27 @@ type household struct {
 	phone   string
 }
 
-func exactColumns(table string, header, wanted []string) error {
-	if err := requireColumns(table, header, wanted); err != nil {
-		return err
-	}
-	known := map[string]bool{}
-	for _, w := range wanted {
-		known[w] = true
-	}
-	for _, h := range header {
-		if !known[h] {
-			return fmt.Errorf("table %s has unexpected column %q", table, h)
-		}
-	}
-	return nil
-}
-
-func requireColumns(table string, header, wanted []string) error {
-	present := map[string]bool{}
-	for _, h := range header {
-		present[h] = true
-	}
-	for _, w := range wanted {
-		if !present[w] {
-			return fmt.Errorf("table %s is missing column %q", table, w)
-		}
-	}
-	return nil
-}
-
 // resolveImage prefers an admin-uploaded image in the bucket over the bundled default,
 // so a school that never touches the admin page keeps the illustrations it shipped
 // with, and one that does sees its replacement without a deploy.
-func (l *loader) resolveImage(blobFolder, slug, staticKey string) string {
-	if l.blobs != nil && l.blobs.Has(blobFolder+"/"+slug) {
-		return "/" + blobFolder + "/" + slug + ".jpg"
+func (l *loader) resolveImage(blobFolder, slug, staticKey string) (string, error) {
+	if l.blobs != nil {
+		uploaded, err := l.blobs.Has(blobFolder + "/" + slug)
+		if err != nil {
+			return "", err
+		}
+		if uploaded {
+			return "/" + blobFolder + "/" + slug + ".jpg", nil
+		}
 	}
-	if l.static.Has(staticKey) {
-		return "/" + staticKey
+	bundled, err := l.static.Has(staticKey)
+	if err != nil {
+		return "", err
 	}
-	return ""
+	if bundled {
+		return "/" + staticKey, nil
+	}
+	return "", nil
 }
 
 func gradeSlug(name string) string {
@@ -588,42 +572,42 @@ func ReadTables(source data.Source) (*Tables, error) {
 			return nil, t.err
 		}
 	}
-	if err := exactColumns(aliases.name, aliases.header, AliasColumns); err != nil {
+	if err := data.CheckColumns(aliases.name, aliases.header, AliasColumns); err != nil {
 		return nil, err
 	}
-	if err := requireColumns(imports.name, imports.header, importColumns); err != nil {
+	if err := data.CheckColumns(imports.name, imports.header, importColumns); err != nil {
 		return nil, err
 	}
-	if err := requireColumns(staff.name, staff.header, staffImportColumns); err != nil {
+	if err := data.CheckColumns(staff.name, staff.header, staffImportColumns); err != nil {
 		return nil, err
 	}
-	if err := requireColumns(names.name, names.header, []string{"Name", "Email"}); err != nil {
+	if err := data.CheckColumns(names.name, names.header, []string{"Name", "Email"}); err != nil {
 		return nil, err
 	}
-	if err := requireColumns(overrides.name, overrides.header, overrideColumns); err != nil {
+	if err := data.CheckColumns(overrides.name, overrides.header, overrideColumns); err != nil {
 		return nil, err
 	}
-	if err := requireColumns(families.name, families.header, familyColumns); err != nil {
+	if err := data.CheckColumns(families.name, families.header, familyColumns); err != nil {
 		return nil, err
 	}
-	if err := exactColumns(preferences.name, preferences.header, []string{
+	if err := data.CheckColumns(preferences.name, preferences.header, []string{
 		preferenceTimestamp, preferenceEmail, preferenceStatus, preferencePermission,
 	}); err != nil {
 		return nil, err
 	}
-	if err := exactColumns(website.name, website.header, WebsiteColumns); err != nil {
+	if err := data.CheckColumns(website.name, website.header, WebsiteColumns); err != nil {
 		return nil, err
 	}
-	if err := requireColumns(tags.name, tags.header, tagColumns); err != nil {
+	if err := data.CheckColumns(tags.name, tags.header, tagColumns); err != nil {
 		return nil, err
 	}
-	if err := requireColumns(photos.name, photos.header, []string{"Email", "Photo Name"}); err != nil {
+	if err := data.CheckColumns(photos.name, photos.header, []string{"Email", "Photo Name"}); err != nil {
 		return nil, err
 	}
-	if err := exactColumns(admins.name, admins.header, []string{"Email"}); err != nil {
+	if err := data.CheckColumns(admins.name, admins.header, []string{"Email"}); err != nil {
 		return nil, err
 	}
-	if err := exactColumns(changeLog.name, changeLog.header, changeLogHeader); err != nil {
+	if err := data.CheckColumns(changeLog.name, changeLog.header, changeLogHeader); err != nil {
 		return nil, err
 	}
 	return &Tables{
@@ -1566,6 +1550,9 @@ func (l *loader) attachBlobs() error {
 		uploaded[email] = append(uploaded[email], photoRef{Name: name, CropName: row["Crop Name"]})
 	}
 
+	if err := l.prefetchMedia(uploaded); err != nil {
+		return err
+	}
 	for _, p := range l.people {
 		// The implicit veracross-first entry only applies when it isn't already one
 		// of this person's own Photos-sheet rows: most people have never explicitly
@@ -1673,6 +1660,37 @@ func (l *loader) attachBlobs() error {
 	return nil
 }
 
+// prefetchMedia hands the bucket every object name the sheets record in one
+// batch, so the fetches run side by side instead of one per row below.
+func (l *loader) prefetchMedia(uploaded map[string][]photoRef) error {
+	if l.blobs == nil {
+		return nil
+	}
+	names := []string{}
+	add := func(kind, name string) {
+		if name != "" {
+			names = append(names, kind+"/"+name)
+		}
+	}
+	for _, refs := range uploaded {
+		for _, ref := range refs {
+			add("photos", ref.Name)
+			add("photos", ref.CropName)
+		}
+	}
+	for _, p := range l.people {
+		add("photos", p.veracrossPhoto)
+		add("photos", p.websitePhoto)
+		add("pronunciation", p.pronunciation)
+	}
+	for _, family := range l.model.Families {
+		add("photos", family.photo)
+		add("photos", family.photoCropName)
+		add("pronunciation", family.pronunciation)
+	}
+	return l.blobs.Prefetch(names)
+}
+
 // blobURL turns a recorded object name into the path clients fetch. A name with no
 // object behind it is fatal: the sheet is the index, so a miss means the two have
 // drifted rather than that the blob is merely absent.
@@ -1680,7 +1698,11 @@ func (l *loader) blobURL(kind, name, owner string) (string, error) {
 	if name == "" {
 		return "", nil
 	}
-	if !l.blobs.Has(kind + "/" + name) {
+	found, err := l.blobs.Has(kind + "/" + name)
+	if err != nil {
+		return "", fmt.Errorf("%s names %s %q: %w", owner, kind, name, err)
+	}
+	if !found {
 		return "", fmt.Errorf("%s names %s %q, which is not in the bucket", owner, kind, name)
 	}
 	return "/" + kind + "/" + name, nil
@@ -1749,7 +1771,10 @@ func (l *loader) deriveClassrooms() error {
 			return fmt.Errorf("classroom %s spans multiple grade bands", name)
 		}
 		slug := strings.ToLower(name)
-		imageURL := l.resolveImage("classroom-images", slug, "brand/classrooms/classroom-"+slug+".jpg")
+		imageURL, err := l.resolveImage("classroom-images", slug, "brand/classrooms/classroom-"+slug+".jpg")
+		if err != nil {
+			return err
+		}
 		model.Classrooms = append(model.Classrooms, Classroom{
 			Name:     name,
 			ImageURL: imageURL,
@@ -1799,7 +1824,11 @@ func (l *loader) deriveClassrooms() error {
 func (l *loader) deriveStructure() error {
 	for i, grade := range gradeOrder {
 		slug := gradeSlug(grade)
-		g := Grade{Name: grade, Band: gradeBands[grade], ImageURL: l.resolveImage("grade-images", slug, "brand/classrooms/grade-"+slug+".jpg")}
+		imageURL, err := l.resolveImage("grade-images", slug, "brand/classrooms/grade-"+slug+".jpg")
+		if err != nil {
+			return err
+		}
+		g := Grade{Name: grade, Band: gradeBands[grade], ImageURL: imageURL}
 		if i+1 < len(gradeOrder) {
 			g.NextName = gradeOrder[i+1]
 			g.NextBand = gradeBands[g.NextName]

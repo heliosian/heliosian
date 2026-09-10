@@ -76,7 +76,8 @@ var yearForm = regexp.MustCompile(`^(\d{4}) - (\d{4})$`)
 var emailForm = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
 
 type ImageChecker interface {
-	Has(key string) bool
+	Has(key string) (bool, error)
+	Prefetch(names []string) error
 }
 
 type Link struct {
@@ -224,28 +225,6 @@ type Tables struct {
 	Admins     []map[string]string
 }
 
-func exactColumns(table string, header, wanted []string) error {
-	present := map[string]bool{}
-	for _, h := range header {
-		present[h] = true
-	}
-	for _, w := range wanted {
-		if !present[w] {
-			return fmt.Errorf("table %s is missing column %q", table, w)
-		}
-	}
-	known := map[string]bool{}
-	for _, w := range wanted {
-		known[w] = true
-	}
-	for _, h := range header {
-		if !known[h] {
-			return fmt.Errorf("table %s has unexpected column %q", table, h)
-		}
-	}
-	return nil
-}
-
 func ReadTables(source data.Source) (*Tables, error) {
 	type table struct {
 		name   string
@@ -277,7 +256,7 @@ func ReadTables(source data.Source) (*Tables, error) {
 		if t.err != nil {
 			return nil, t.err
 		}
-		if err := exactColumns(t.name, t.header, t.want); err != nil {
+		if err := data.CheckColumns(t.name, t.header, t.want); err != nil {
 			return nil, err
 		}
 	}
@@ -416,7 +395,11 @@ func imageURL(images ImageChecker, name string) (string, error) {
 	if name == "" {
 		return "", nil
 	}
-	if !images.Has(name) {
+	found, err := images.Has(name)
+	if err != nil {
+		return "", fmt.Errorf("image %q: %w", name, err)
+	}
+	if !found {
 		return "", fmt.Errorf("image %q does not exist", name)
 	}
 	return "/" + name, nil
@@ -461,9 +444,24 @@ func parseSettings(rows []map[string]string) (Settings, error) {
 // BuildModel validates every row and refuses the whole set on the first problem,
 // the stance every app here takes: a sheet edit that breaks a rule surfaces as a
 // refused load, never as a page quietly missing an event.
+func imageNames(rows ...[]map[string]string) []string {
+	names := []string{}
+	for _, table := range rows {
+		for _, row := range table {
+			if row["Image"] != "" {
+				names = append(names, row["Image"])
+			}
+		}
+	}
+	return names
+}
+
 func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 	settings, err := parseSettings(tables.Settings)
 	if err != nil {
+		return nil, err
+	}
+	if err := images.Prefetch(imageNames(tables.Activities, tables.Roles, tables.Links)); err != nil {
 		return nil, err
 	}
 	model := &Model{Categories: []Category{}, Activities: []*Activity{}, Settings: settings, byKey: map[string]*Activity{}}

@@ -1,9 +1,10 @@
-// Package blob serves directory media from cloud storage, held fully in memory with stored thumbnails.
+// Package blob serves media from cloud storage: every object a sheet names, fetched by that name and held in memory with its stored thumbnail.
 package blob
 
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"image"
 	"image/jpeg"
@@ -12,6 +13,7 @@ import (
 	"net/http"
 	"path"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -29,21 +31,25 @@ import (
 )
 
 const (
-	Bucket          = "heliosian-media"
-	refreshInterval = 5 * time.Minute
-	thumbWidth      = 480
-	thumbSuffix     = "-thumb"
-	thumbExt        = ".jpg"
-	thumbMime       = "image/jpeg"
-	thumbVersion    = "1"
-	fetchWorkers    = 32
+	Bucket        = "heliosian-media"
+	sweepInterval = 5 * time.Minute
+	maxIdle       = 15 * time.Minute
+	thumbWidth    = 480
+	thumbSuffix   = "-thumb"
+	thumbExt      = ".jpg"
+	thumbMime     = "image/jpeg"
+	thumbVersion  = "1"
+	fetchWorkers  = 32
 )
 
 var folders = []string{"photos", "pronunciation", "classroom-images", "grade-images", "link-images", "activity-images"}
 
-// named folders hold objects replaced in place under a fixed name; every other
-// folder is content addressed, so its URLs never change meaning.
+// named folders hold objects replaced in place under a fixed name with no
+// extension; every other folder is content addressed, so its URLs never change
+// meaning.
 var named = map[string]bool{"classroom-images": true, "grade-images": true}
+
+var errNotFound = errors.New("no such object")
 
 // Media reports whether a request path is one of the media routes served here.
 func Media(path string) bool {
@@ -57,20 +63,22 @@ func trimExt(name string) string {
 	return strings.TrimSuffix(name, path.Ext(name))
 }
 
+func thumbName(name string) string {
+	return trimExt(name) + thumbSuffix + thumbExt
+}
+
 type entry struct {
 	name       string
 	generation int64
 	mimeType   string
 	data       []byte
 	thumb      []byte
+	used       time.Time
 }
 
-type object struct {
-	name       string
-	generation int64
-	mimeType   string
-}
-
+// Store holds what the sheets name. Nothing here ever lists the bucket: an
+// object enters memory when a loader asks for it by name, stays while
+// something keeps asking, and leaves once nothing has for a while.
 type Store struct {
 	service *storage.Service
 	mu      sync.RWMutex
@@ -84,10 +92,7 @@ func New() (*Store, error) {
 		return nil, fmt.Errorf("storage client: %w", err)
 	}
 	s := &Store{service: service, entries: map[string]*entry{}}
-	if err := s.refresh(); err != nil {
-		return nil, err
-	}
-	go s.refreshLoop()
+	go s.sweepLoop()
 	return s, nil
 }
 
@@ -117,145 +122,156 @@ func RegisterEvents(mux *http.ServeMux, s *Store) {
 	mux.HandleFunc("GET /activity-images/{name}", s.serve)
 }
 
-func (s *Store) refreshLoop() {
-	for range time.Tick(refreshInterval) {
-		if err := s.refresh(); err != nil {
-			slog.Error("blob refresh", "error", err)
-		}
+// RegisterBirthday serves what the birthday team shows: the directory's photos
+// of the staff and of the team.
+func RegisterBirthday(mux *http.ServeMux, s *Store) {
+	mux.HandleFunc("GET /photos/{name}", s.serve)
+}
+
+func (s *Store) sweepLoop() {
+	for range time.Tick(sweepInterval) {
+		s.sweep(time.Now())
 	}
 }
 
-func list(ctx context.Context, service *storage.Service, folder string) ([]object, error) {
-	objects := []object{}
-	token := ""
-	for {
-		call := service.Objects.List(Bucket).Prefix(folder+"/").
-			Fields("nextPageToken", "items(name,generation,contentType)").MaxResults(1000)
-		if token != "" {
-			call = call.PageToken(token)
+// sweep drops what nothing has asked for lately. Every loader re-asks for
+// every name it holds on its own refresh, so an object a sheet stopped naming
+// is exactly one nobody asks for.
+func (s *Store) sweep(now time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	dropped := 0
+	for key, e := range s.entries {
+		if now.Sub(e.used) > maxIdle {
+			delete(s.entries, key)
+			dropped++
 		}
-		page, err := call.Context(ctx).Do()
-		if err != nil {
-			return nil, fmt.Errorf("list %s: %w", folder, err)
-		}
-		for _, item := range page.Items {
-			objects = append(objects, object{
-				name: item.Name, generation: item.Generation, mimeType: item.ContentType,
-			})
-		}
-		if page.NextPageToken == "" {
-			return objects, nil
-		}
-		token = page.NextPageToken
+	}
+	if dropped > 0 {
+		slog.Info("blob store: swept", "dropped", dropped, "kept", len(s.entries))
 	}
 }
 
-func (s *Store) refresh() error {
+func notFound(err error) bool {
+	var apiErr *googleapi.Error
+	return errors.As(err, &apiErr) && apiErr.Code == http.StatusNotFound
+}
+
+func (s *Store) touch(key string) (*entry, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	e, ok := s.entries[key]
+	if ok {
+		e.used = time.Now()
+	}
+	return e, ok
+}
+
+// Has fetches the named object into memory on first sight and reports whether
+// the bucket holds it. Any trouble other than the object not existing is an
+// error, so a network fault never reads as a missing photo.
+func (s *Store) Has(name string) (bool, error) {
+	if _, ok := s.touch(trimExt(name)); ok {
+		return true, nil
+	}
 	start := time.Now()
-	ctx := context.Background()
-	primaries := map[string]object{}
-	thumbs := map[string]object{}
-	for _, folder := range folders {
-		objects, err := list(ctx, s.service, folder)
-		if err != nil {
-			return err
-		}
-		for _, o := range objects {
-			base := trimExt(path.Base(o.name))
-			if strings.HasSuffix(base, thumbSuffix) {
-				thumbs[folder+"/"+strings.TrimSuffix(base, thumbSuffix)] = o
-				continue
-			}
-			key := folder + "/" + base
-			if existing, ok := primaries[key]; ok {
-				return fmt.Errorf("duplicate media for %s: %s and %s", key, existing.name, o.name)
-			}
-			primaries[key] = o
+	e, err := s.fetch(context.Background(), name)
+	if errors.Is(err, errNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	s.mu.Lock()
+	s.entries[trimExt(name)] = e
+	held := len(s.entries)
+	s.mu.Unlock()
+	slog.Info("blob store: fetched", "name", name, "bytes", len(e.data)+len(e.thumb), "held", held, "took", time.Since(start).Round(time.Millisecond))
+	return true, nil
+}
+
+// Prefetch fetches many names at once, for a loader that is about to ask for
+// each of them; a name the bucket lacks is left for Has to report.
+func (s *Store) Prefetch(names []string) error {
+	start := time.Now()
+	pending := []string{}
+	for _, name := range names {
+		if _, ok := s.touch(trimExt(name)); !ok {
+			pending = append(pending, name)
 		}
 	}
-
-	s.mu.RLock()
-	missing := []string{}
-	for key, o := range primaries {
-		if cached, ok := s.entries[key]; !ok || cached.generation != o.generation {
-			missing = append(missing, key)
-		}
+	if len(pending) == 0 {
+		return nil
 	}
-	s.mu.RUnlock()
-
-	fetched := map[string]*entry{}
+	slog.Info("blob store: prefetching", "names", len(pending))
 	var mu sync.Mutex
 	var firstErr error
 	var wg sync.WaitGroup
 	slots := make(chan struct{}, fetchWorkers)
-	for _, key := range missing {
+	for _, name := range pending {
 		wg.Add(1)
 		slots <- struct{}{}
 		go func() {
 			defer wg.Done()
 			defer func() { <-slots }()
-			e, err := s.load(ctx, primaries[key], thumbs[key])
-			mu.Lock()
-			defer mu.Unlock()
-			if err != nil {
+			if _, err := s.Has(name); err != nil {
+				mu.Lock()
 				if firstErr == nil {
 					firstErr = err
 				}
-				return
+				mu.Unlock()
 			}
-			fetched[key] = e
-			slog.Info("blob store: fetched", "done", len(fetched), "of", len(missing), "key", key, "bytes", len(e.data)+len(e.thumb))
 		}()
 	}
 	wg.Wait()
-	if firstErr != nil {
-		return firstErr
-	}
-
-	next := make(map[string]*entry, len(primaries))
-	var totalBytes int64
-	s.mu.Lock()
-	for key, o := range primaries {
-		if e, ok := fetched[key]; ok {
-			next[key] = e
-		} else if cached, ok := s.entries[key]; ok && cached.generation == o.generation {
-			next[key] = cached
-		}
-	}
-	s.entries = next
-	for _, e := range next {
-		totalBytes += int64(len(e.data) + len(e.thumb))
-	}
-	s.mu.Unlock()
-	slog.Info("blob store: loaded", "files", len(next), "fetched", len(fetched),
-		"mb", float64(totalBytes)/1e6, "took", time.Since(start).Round(time.Millisecond))
-	return nil
+	slog.Info("blob store: prefetched", "names", len(pending), "held", s.count(), "took", time.Since(start).Round(time.Millisecond))
+	return firstErr
 }
 
-func (s *Store) load(ctx context.Context, primary, thumb object) (*entry, error) {
-	data, err := s.read(ctx, primary.name)
-	if err != nil {
-		return nil, err
+func (s *Store) count() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.entries)
+}
+
+// fetch downloads an object and its thumbnail. The download response already
+// carries the generation and content type, so there is no separate stat.
+func (s *Store) fetch(ctx context.Context, name string) (*entry, error) {
+	resp, err := s.service.Objects.Get(Bucket, name).Context(ctx).Download()
+	if notFound(err) {
+		return nil, errNotFound
 	}
-	e := &entry{name: primary.name, generation: primary.generation, mimeType: primary.mimeType, data: data}
-	if !strings.HasPrefix(primary.mimeType, "image/") {
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", name, err)
+	}
+	defer resp.Body.Close()
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", name, err)
+	}
+	generation, err := strconv.ParseInt(resp.Header.Get("x-goog-generation"), 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("read %s: no generation on the response: %w", name, err)
+	}
+	mimeType := resp.Header.Get("Content-Type")
+	e := &entry{name: name, generation: generation, mimeType: mimeType, data: data, used: time.Now()}
+	if !strings.HasPrefix(mimeType, "image/") {
 		return e, nil
 	}
-	if thumb.name == "" {
-		return nil, fmt.Errorf("no thumbnail stored for %s", primary.name)
+	e.thumb, err = read(ctx, s.service, thumbName(name))
+	if errors.Is(err, errNotFound) {
+		return nil, fmt.Errorf("no thumbnail stored for %s", name)
 	}
-	e.thumb, err = s.read(ctx, thumb.name)
 	if err != nil {
 		return nil, err
 	}
 	return e, nil
 }
 
-// Uploader fills the bucket for the tools that load media in bulk. It lists names
-// rather than holding every object in memory the way the serving Store does.
+// Uploader fills the bucket for the tools that load media in bulk, checking each
+// name on its own rather than holding anything in memory.
 type Uploader struct {
 	service *storage.Service
-	present map[string]bool
 }
 
 func NewUploader() (*Uploader, error) {
@@ -264,23 +280,24 @@ func NewUploader() (*Uploader, error) {
 	if err != nil {
 		return nil, fmt.Errorf("storage client: %w", err)
 	}
-	u := &Uploader{service: service, present: map[string]bool{}}
-	for _, folder := range folders {
-		objects, err := list(context.Background(), service, folder)
-		if err != nil {
-			return nil, err
-		}
-		for _, o := range objects {
-			u.present[trimExt(o.name)] = true
-		}
+	return &Uploader{service: service}, nil
+}
+
+func exists(ctx context.Context, service *storage.Service, name string) (bool, error) {
+	_, err := service.Objects.Get(Bucket, name).Fields("name").Context(ctx).Do()
+	if notFound(err) {
+		return false, nil
 	}
-	return u, nil
+	if err != nil {
+		return false, fmt.Errorf("stat %s: %w", name, err)
+	}
+	return true, nil
 }
 
 // Has reports whether the bucket holds an object, so a tool can resolve the names the
 // sheet records without downloading anything.
-func (u *Uploader) Has(key string) bool {
-	return u.present[trimExt(key)]
+func (u *Uploader) Has(name string) (bool, error) {
+	return exists(context.Background(), u.service, name)
 }
 
 // Put writes a content-addressed object and its thumbnail, and reports whether it had
@@ -289,62 +306,37 @@ func (u *Uploader) Has(key string) bool {
 // serving store refuses to load, and skipping on the primary alone leaves it that way.
 func (u *Uploader) Put(folder, name, mimeType string, content []byte) (bool, error) {
 	ctx := context.Background()
-	key := folder + "/" + trimExt(name)
+	full := folder + "/" + name
 	wrote := false
-	if !u.present[key] {
-		if err := write(ctx, u.service, folder+"/"+name, mimeType, content); err != nil {
-			return false, err
-		}
-		u.present[key] = true
-		wrote = true
-	}
-	if !strings.HasPrefix(mimeType, "image/") || u.present[key+thumbSuffix] {
-		return wrote, nil
-	}
-	if err := writeThumbnail(ctx, u.service, folder, name, content); err != nil {
+	present, err := exists(ctx, u.service, full)
+	if err != nil {
 		return false, err
 	}
-	u.present[key+thumbSuffix] = true
-	return true, nil
-}
-
-// Repair writes the thumbnails that objects already in the bucket are missing. The
-// serving store treats an image without one as fatal, so a primary written on its own
-// is not a degraded object but a bucket that will not load at all.
-func (u *Uploader) Repair() (int, error) {
-	ctx := context.Background()
-	repaired := 0
-	for _, folder := range folders {
-		objects, err := list(ctx, u.service, folder)
-		if err != nil {
-			return repaired, err
+	if !present {
+		if err := write(ctx, u.service, full, mimeType, content); err != nil {
+			return false, err
 		}
-		for _, o := range objects {
-			base := trimExt(path.Base(o.name))
-			if strings.HasSuffix(base, thumbSuffix) || !strings.HasPrefix(o.mimeType, "image/") {
-				continue
-			}
-			if u.present[folder+"/"+base+thumbSuffix] {
-				continue
-			}
-			content, err := read(ctx, u.service, o.name)
-			if err != nil {
-				return repaired, err
-			}
-			if err := writeThumbnail(ctx, u.service, folder, path.Base(o.name), content); err != nil {
-				return repaired, err
-			}
-			u.present[folder+"/"+base+thumbSuffix] = true
-			slog.Info("blob repair: wrote the missing thumbnail", "name", o.name)
-			repaired++
-		}
+		wrote = true
 	}
-	return repaired, nil
+	if !strings.HasPrefix(mimeType, "image/") {
+		return wrote, nil
+	}
+	hasThumb, err := exists(ctx, u.service, thumbName(full))
+	if err != nil || hasThumb {
+		return wrote, err
+	}
+	if err := writeThumbnail(ctx, u.service, full, content); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func read(ctx context.Context, service *storage.Service, name string) ([]byte, error) {
 	resp, err := service.Objects.Get(Bucket, name).Context(ctx).Download()
 	if err != nil {
+		if notFound(err) {
+			return nil, errNotFound
+		}
 		return nil, fmt.Errorf("read %s: %w", name, err)
 	}
 	defer resp.Body.Close()
@@ -353,10 +345,6 @@ func read(ctx context.Context, service *storage.Service, name string) ([]byte, e
 		return nil, fmt.Errorf("read %s: %w", name, err)
 	}
 	return content, nil
-}
-
-func (s *Store) read(ctx context.Context, name string) ([]byte, error) {
-	return read(ctx, s.service, name)
 }
 
 func write(ctx context.Context, service *storage.Service, name, mimeType string, content []byte) error {
@@ -369,69 +357,69 @@ func write(ctx context.Context, service *storage.Service, name, mimeType string,
 	return nil
 }
 
-func writeThumbnail(ctx context.Context, service *storage.Service, folder, name string, content []byte) error {
+func writeThumbnail(ctx context.Context, service *storage.Service, name string, content []byte) error {
 	thumb, err := Thumbnail(content)
 	if err != nil {
 		return fmt.Errorf("thumbnail %s: %w", name, err)
 	}
-	return write(ctx, service, folder+"/"+trimExt(name)+thumbSuffix+thumbExt, thumbMime, thumb)
+	return write(ctx, service, thumbName(name), thumbMime, thumb)
 }
 
-func writeWithThumbnail(ctx context.Context, service *storage.Service, folder, name, mimeType string, content []byte) error {
-	if err := write(ctx, service, folder+"/"+name, mimeType, content); err != nil {
+func writeWithThumbnail(ctx context.Context, service *storage.Service, name, mimeType string, content []byte) error {
+	if err := write(ctx, service, name, mimeType, content); err != nil {
 		return err
 	}
 	if !strings.HasPrefix(mimeType, "image/") {
 		return nil
 	}
-	return writeThumbnail(ctx, service, folder, name, content)
+	return writeThumbnail(ctx, service, name, content)
 }
 
-func (s *Store) Has(key string) bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	_, ok := s.entries[trimExt(key)]
-	return ok
-}
-
-// Put writes a content-addressed object and its thumbnail. A name already present is
-// byte-identical by construction, so the write is skipped rather than repeated.
+// Put writes a content-addressed object and its thumbnail and takes it into memory. A
+// name already held is byte-identical by construction, so the write is skipped.
 func (s *Store) Put(folder, name, mimeType string, content []byte) error {
-	key := folder + "/" + trimExt(name)
-	s.mu.RLock()
-	_, exists := s.entries[key]
-	s.mu.RUnlock()
-	if exists {
+	full := folder + "/" + name
+	if _, ok := s.touch(trimExt(full)); ok {
 		return nil
 	}
-	if err := writeWithThumbnail(context.Background(), s.service, folder, name, mimeType, content); err != nil {
+	if err := writeWithThumbnail(context.Background(), s.service, full, mimeType, content); err != nil {
 		return err
 	}
-	if err := s.refresh(); err != nil {
-		return fmt.Errorf("refresh after upload: %w", err)
-	}
-	return nil
+	return s.take(full)
 }
 
-// PutNamed writes an object at a fixed, human-chosen name, replacing whatever was there
-// before — the opposite assumption from Put, for the handful of slots (a classroom's
-// logo, a grade's tile) that are named for what they are rather than their bytes.
-// Object versioning on the bucket keeps the replaced generation recoverable.
+// PutNamed writes an object at a fixed, human-chosen name with no extension,
+// replacing whatever was there before — the opposite assumption from Put, for the
+// handful of slots (a classroom's logo, a grade's tile) that are named for what they
+// are rather than their bytes. Object versioning on the bucket keeps the replaced
+// generation recoverable.
 func (s *Store) PutNamed(folder, name, mimeType string, content []byte) error {
-	if err := writeWithThumbnail(context.Background(), s.service, folder, name, mimeType, content); err != nil {
+	full := folder + "/" + name
+	if err := writeWithThumbnail(context.Background(), s.service, full, mimeType, content); err != nil {
 		return err
 	}
-	if err := s.refresh(); err != nil {
-		return fmt.Errorf("refresh after upload: %w", err)
+	s.mu.Lock()
+	delete(s.entries, full)
+	s.mu.Unlock()
+	return s.take(full)
+}
+
+// take reads a just-written object back, so what is served is exactly what the
+// bucket holds, generation included.
+func (s *Store) take(name string) error {
+	found, err := s.Has(name)
+	if err != nil {
+		return fmt.Errorf("read back %s: %w", name, err)
+	}
+	if !found {
+		return fmt.Errorf("read back %s: not there after writing it", name)
 	}
 	return nil
 }
 
 func (s *Store) serve(w http.ResponseWriter, r *http.Request) {
 	key := trimExt(strings.TrimPrefix(r.URL.Path, "/"))
-	s.mu.RLock()
-	e, ok := s.entries[key]
-	s.mu.RUnlock()
+	e, ok := s.touch(key)
 	if !ok {
 		http.NotFound(w, r)
 		return

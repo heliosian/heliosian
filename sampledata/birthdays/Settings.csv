@@ -1,0 +1,12 @@
+Key,Value
+Default Charity,Second Harvest of Silicon Valley
+Year Start,08-14
+Email Subject,Your birthday donation from the Helios community
+Email Body,"Hi {first name},
+
+Happy early birthday from the Helios Community Association! Each year the HCA celebrates every staff member's birthday with a donation to a charity of their choice, shared in the newsletter.
+
+Which charity would you like this year's donation to go to, and is there a sentence or two you'd like us to share about why? If we don't hear back before the {newsletter date} newsletter, we'll give to {default charity}.
+
+Thank you for everything you do for our kids!"
+No Newsletter Note,"We have a note that you'd rather not be mentioned in the newsletter, so we'll make the donation quietly and leave you out of it. No need to remind us."

@@ -29,6 +29,13 @@ type handler struct {
 	inner slog.Handler
 }
 
+// Fatal logs at ERROR through the default logger, so a startup failure carries
+// that severity into Cloud Logging, then exits.
+func Fatal(msg string, args ...any) {
+	slog.Error(msg, args...)
+	os.Exit(1)
+}
+
 func (h handler) Enabled(ctx context.Context, level slog.Level) bool {
 	return h.inner.Enabled(ctx, level)
 }

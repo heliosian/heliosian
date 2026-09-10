@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
-	"log"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -13,6 +12,7 @@ import (
 
 	"heliosian/internal/blob"
 	"heliosian/internal/data"
+	"heliosian/internal/logging"
 )
 
 const changeLogTable = "Change Log"
@@ -124,7 +124,7 @@ func applyFamilyWrite(cache *Cache, writer data.Writer, queue *Queue, w http.Res
 			return
 		}
 		if err := writer.Append(appName, changeLogTable, logRow); err != nil {
-			log.Fatalf("[ERROR] append change log after %s for %s: %v", action, key, err)
+			logging.Fatal("append change log", "action", action, "key", key, "error", err)
 		}
 	})
 	if err := <-applied; err != nil {
@@ -157,7 +157,7 @@ func applyOverrideWrite(cache *Cache, writer data.Writer, queue *Queue, w http.R
 			return
 		}
 		if err := writer.Append(appName, changeLogTable, logRow); err != nil {
-			log.Fatalf("[ERROR] append change log after %s for %s: %v", action, email, err)
+			logging.Fatal("append change log", "action", action, "email", email, "error", err)
 		}
 	})
 	if err := <-applied; err != nil {
@@ -224,7 +224,7 @@ func applyEmailRenameWrite(cache *Cache, writer data.Writer, queue *Queue, w htt
 			}
 		}
 		if err := writer.Append(appName, changeLogTable, logRow); err != nil {
-			log.Fatalf("[ERROR] append change log after email rename %s -> %s: %v", oldEmail, newEmail, err)
+			logging.Fatal("append change log after email rename", "from", oldEmail, "to", newEmail, "error", err)
 		}
 	})
 	if err := <-applied; err != nil {
@@ -265,7 +265,7 @@ func applyDeletePersonWrite(cache *Cache, writer data.Writer, queue *Queue, w ht
 			slog.ErrorContext(r.Context(), "delete photos", "email", email, "error", err)
 		}
 		if err := writer.Append(appName, changeLogTable, logRow); err != nil {
-			log.Fatalf("[ERROR] append change log after deleting %s: %v", email, err)
+			logging.Fatal("append change log after deleting", "email", email, "error", err)
 		}
 	})
 	if err := <-applied; err != nil {
@@ -605,7 +605,7 @@ func (u uploader) setPhotos(w http.ResponseWriter, r *http.Request, me, key stri
 			return
 		}
 		if err := u.sheet.Append(appName, changeLogTable, logRow); err != nil {
-			log.Fatalf("[ERROR] append change log after %s for %s: %v", changeAction, key, err)
+			logging.Fatal("append change log", "action", changeAction, "key", key, "error", err)
 		}
 	})
 	if err := <-applied; err != nil {

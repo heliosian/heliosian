@@ -98,28 +98,6 @@ type Tables struct {
 	ClassroomColors []map[string]string
 }
 
-func exactColumns(table string, header, wanted []string) error {
-	present := map[string]bool{}
-	for _, h := range header {
-		present[h] = true
-	}
-	for _, w := range wanted {
-		if !present[w] {
-			return fmt.Errorf("table %s is missing column %q", table, w)
-		}
-	}
-	known := map[string]bool{}
-	for _, w := range wanted {
-		known[w] = true
-	}
-	for _, h := range header {
-		if !known[h] {
-			return fmt.Errorf("table %s has unexpected column %q", table, h)
-		}
-	}
-	return nil
-}
-
 func ReadTables(source data.Source) (*Tables, error) {
 	type table struct {
 		name   string
@@ -143,7 +121,7 @@ func ReadTables(source data.Source) (*Tables, error) {
 		if t.err != nil {
 			return nil, t.err
 		}
-		if err := exactColumns(t.name, t.header, t.want); err != nil {
+		if err := data.CheckColumns(t.name, t.header, t.want); err != nil {
 			return nil, err
 		}
 	}

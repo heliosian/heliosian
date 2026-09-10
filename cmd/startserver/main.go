@@ -3,7 +3,7 @@
 // screenshot one page and exits; -real serves the production assembly in the
 // foreground; -detach launches -real in the background with its output in a log
 // file and prints a minted session cookie plus the command to stop it. Every
-// mode serves all three apps, each on its own local hostname.
+// mode serves every app, each on its own local hostname.
 //
 // All sample-mode composition lives here: the production binary (main.go) and
 // the shared wiring in internal/app carry no dev or sample behavior at all.
@@ -14,7 +14,6 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
-	"log"
 	"log/slog"
 	"net/http"
 	"os"
@@ -73,11 +72,13 @@ func sampleServer() (*http.Server, *who.Queue) {
 	core.Mux.Handle("POST /auth/logout", http.RedirectHandler("/", http.StatusSeeOther))
 	core.HomeMux.Handle("POST /auth/logout", http.RedirectHandler("/", http.StatusSeeOther))
 	core.EventsMux.Handle("POST /auth/logout", http.RedirectHandler("/", http.StatusSeeOther))
-	log.Printf("serving sample data as %s", sampleUser)
+	core.BirthdayMux.Handle("POST /auth/logout", http.RedirectHandler("/", http.StatusSeeOther))
+	slog.Info("serving sample data", "as", sampleUser)
 	return localTLS(app.Server(map[string]http.Handler{
-		"who":  app.Public("who", auth.Fixed(sampleUser, app.Logged("who", app.Files("who", core.Gate)))),
-		"home": app.Public("home", auth.Fixed(sampleUser, app.Logged("home", app.Files("home", core.Home)))),
-		"hca":  app.Public("hca", auth.Fixed(sampleUser, app.Logged("hca", app.Files("hca", core.Events)))),
+		"who":      app.Public("who", auth.Fixed(sampleUser, app.Logged("who", app.Files("who", core.Gate)))),
+		"home":     app.Public("home", auth.Fixed(sampleUser, app.Logged("home", app.Files("home", core.Home)))),
+		"hca":      app.Public("hca", auth.Fixed(sampleUser, app.Logged("hca", app.Files("hca", core.Events)))),
+		"birthday": app.Public("birthday", auth.Fixed(sampleUser, app.Logged("birthday", app.Files("birthday", core.Birthday)))),
 	}), core.Queue)
 }
 
@@ -89,21 +90,21 @@ func localTLS(server *http.Server, queue *who.Queue) (*http.Server, *who.Queue) 
 func detachReal(email string) {
 	key := os.Getenv("SESSION_KEY")
 	if key == "" {
-		log.Fatal("[ERROR] SESSION_KEY is required (the server and the minted cookie must share it)")
+		logging.Fatal("SESSION_KEY is required (the server and the minted cookie must share it)")
 	}
-	for _, name := range []string{"DIRECTORY_SHEET", "PREFERENCES_SHEET", "INVITES_SHEET", "APPS_SHEET", "EVENTS_SHEET", "CONFIG_SHEET"} {
+	for _, name := range []string{"DIRECTORY_SHEET", "PREFERENCES_SHEET", "INVITES_SHEET", "APPS_SHEET", "EVENTS_SHEET", "BIRTHDAY_SHEET", "CONFIG_SHEET"} {
 		if os.Getenv(name) == "" {
-			log.Fatalf("[ERROR] %s is required", name)
+			logging.Fatal("environment variable is required", "name", name)
 		}
 	}
 
 	logFile, err := os.Create(logPath)
 	if err != nil {
-		log.Fatalf("[ERROR] create server log: %v", err)
+		logging.Fatal("create server log", "error", err)
 	}
 	self, err := os.Executable()
 	if err != nil {
-		log.Fatalf("[ERROR] resolve own binary: %v", err)
+		logging.Fatal("resolve own binary", "error", err)
 	}
 	cmd := exec.Command(self, "-real")
 	cmd.Stdout = logFile
@@ -111,7 +112,7 @@ func detachReal(email string) {
 	// Its own group, so the printed stop command reaps the server and nothing else.
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
-		log.Fatalf("[ERROR] start server: %v", err)
+		logging.Fatal("start server", "error", err)
 	}
 
 	cookie := auth.Token([]byte(key), email, time.Now().Add(24*time.Hour))
@@ -132,7 +133,7 @@ func captureOnce(url, out, wait string) {
 	for range 100 {
 		select {
 		case err := <-served:
-			log.Fatalf("[ERROR] server: %v", err)
+			logging.Fatal("server", "error", err)
 		default:
 		}
 		resp, err := probe.Get(base + "/people")
@@ -144,23 +145,23 @@ func captureOnce(url, out, wait string) {
 		time.Sleep(100 * time.Millisecond)
 	}
 	if !ready {
-		log.Fatalf("[ERROR] server did not become ready on %s", base)
+		logging.Fatal("server did not become ready", "base", base)
 	}
 
 	png, captureErr := capture.PNG(capture.Options{URL: url, Wait: wait})
 	if err := server.Shutdown(context.Background()); err != nil {
-		log.Printf("[ERROR] shutdown: %v", err)
+		slog.Error("shutdown", "error", err)
 	}
 	<-served
 	<-queue.Drain()
 	if captureErr != nil {
-		log.Fatalf("[ERROR] %v", captureErr)
+		logging.Fatal("capture", "error", captureErr)
 	}
 	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
-		log.Fatalf("[ERROR] create output dir: %v", err)
+		logging.Fatal("create output dir", "error", err)
 	}
 	if err := os.WriteFile(out, png, 0o644); err != nil {
-		log.Fatalf("[ERROR] write %s: %v", out, err)
+		logging.Fatal("write capture", "out", out, "error", err)
 	}
-	log.Printf("captured %s to %s", url, out)
+	slog.Info("captured", "url", url, "out", out)
 }
