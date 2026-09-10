@@ -1,5 +1,5 @@
 import {state, byEmail} from './state.js';
-import {el, svg, segments, isMobile, hue, firstName} from './dom.js';
+import {el, svg, segments, isMobile, hue, firstName, thumbUrl} from './dom.js';
 import {saveNavOpen} from './storage.js';
 import {familyOf, myFamilyKey} from './families.js';
 import {personByKey, personLink, photoOrInitials, personPhotoUrl} from './people.js';
@@ -447,11 +447,21 @@ export function renderSpoofBanner() {
 // the admin-only menu items) from the model's signed-in identity.
 export function renderUserChrome() {
   const user = state.model.user;
+  // The same hero photo the profile page shows (own photo, else family's) -
+  // falling back to the person icon, not the bare initial, when there isn't
+  // one, matching the treatment used elsewhere for "this is about a person".
+  const person = personByKey(user.email);
+  const photoUrl = person && personPhotoUrl(person);
   for (const avatar of document.querySelectorAll('.user-avatar')) {
-    // A person icon instead of the signed-in user's bare initial - matches
-    // the icon gradeBadge/the stale-alert badge use elsewhere for "this is
-    // about a person" rather than a plain letter in a circle.
-    avatar.replaceChildren(svg('user'));
+    if (photoUrl) {
+      const img = el('img', 'user-avatar-photo');
+      img.src = thumbUrl(photoUrl);
+      img.loading = 'lazy';
+      img.alt = '';
+      avatar.replaceChildren(img);
+    } else {
+      avatar.replaceChildren(svg('user'));
+    }
   }
   document.querySelector('.user-name').textContent = user.name;
   for (const link of document.querySelectorAll('.user-menu-profile')) {
