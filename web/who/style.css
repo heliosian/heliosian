@@ -1,18 +1,18 @@
 :root {
-  --brand: #014e54;
-  --topbar: #102a2e;
-  --sidebar: #173c41;
-  --sidebar-active: #2f5054;
+  --brand: #244d53;
+  --topbar: #e8f2f1;
+  --sidebar: #244d53;
+  --sidebar-active: #3c6166;
   --line: #e2e6eb;
   --ink: #0d0d0d;
   --muted: #707070;
-  --label: #1f4d53;
+  --label: #244d53;
   --input: #efefef;
-  --alert: #f68c1e;
+  --alert: #df604a;
   --banner-h: 0px;
   --mobile-title-inset: 156px;
-  --privacy-green: #1a8754;
-  --privacy-yellow: #c9860a;
+  --privacy-green: #8ea604;
+  --privacy-yellow: #f6e24c;
   --privacy-red: #dc2626;
 }
 
@@ -113,8 +113,8 @@ html {
 }
 
 .infobanner-alert {
-  background: #fdecd9;
-  border-color: #f8cf9e;
+  background: #ffe5e1;
+  border-color: var(--alert);
 }
 
 .infobanner-alert .infobanner-icon {
@@ -134,7 +134,11 @@ html {
 .infobanner-alert .infobanner-button {
   background: var(--alert);
   color: #fff;
-  box-shadow: 0 3px 8px rgba(246, 140, 30, 0.35);
+  /* Tied to --alert via color-mix instead of a hardcoded rgba(): that literal
+     rgba(246, 140, 30, ...) was the pre-rebrand orange, left behind when
+     --alert became the new red and silently no longer matching the button
+     it's a shadow of. */
+  box-shadow: 0 3px 8px color-mix(in srgb, var(--alert) 35%, transparent);
 }
 
 .install-prompt-overlay {
@@ -249,8 +253,8 @@ html {
 }
 
 .todo-card {
-  background: #fdecd9;
-  border: 1px solid #f8cf9e;
+  background: #ffe5e1;
+  border: 1px solid var(--alert);
   border-radius: 14px;
   padding: 0 20px;
   margin-top: 20px;
@@ -354,8 +358,8 @@ body {
   flex-shrink: 0;
   background-color: var(--sidebar);
   background-image: url('/toolbar_background.png');
-  background-size: 100% auto;
-  background-position: center bottom;
+  background-size: auto 170px;
+  background-position: right bottom;
   background-repeat: no-repeat;
   color: #fff;
   display: flex;
@@ -386,7 +390,8 @@ body {
 }
 
 .brand img {
-  width: 112px;
+  width: 180px;
+  max-width: 100%;
   height: auto;
   display: block;
 }
@@ -440,11 +445,11 @@ body {
   bottom: 6px;
   width: 3px;
   border-radius: 2px;
-  background: #4ade80;
+  background: #8ea604;
 }
 
 .nav-icon-map {
-  color: #8b7cf6;
+  color: #8ea604;
 }
 
 /* Same palette as .mobile-tabs (see the @media max-width:900px block below) -
@@ -452,27 +457,27 @@ body {
    as quickly by color as by icon shape. Tag links get their own per-name hue
    instead (see renderNav in app.js), since there's no fixed set of those. */
 .nav-icon-people {
-  color: #4ade80;
+  color: #20a39e;
 }
 
 .nav-icon-classrooms {
-  color: #60a5fa;
+  color: #8ea604;
 }
 
 .nav-icon-staff {
-  color: #f472b6;
+  color: #df604a;
 }
 
 .nav-icon-email-list {
-  color: #fb923c;
+  color: #f6e24c;
 }
 
 .nav-icon-my-family {
-  color: #f5c451;
+  color: #20a39e;
 }
 
 .nav-icon-greenvelope {
-  color: #facc15;
+  color: #df604a;
 }
 
 .nav-heading {
@@ -1006,10 +1011,12 @@ main {
 
 .page-footer-art {
   flex-shrink: 0;
-  height: 232px;
+  height: 169.62px;
   background-image: url('/main_bottom_background.png');
+  background-size: auto 169.62px;
   background-repeat: repeat-x;
   background-position: left bottom;
+  opacity: 0.5;
 }
 
 .container {
@@ -1162,11 +1169,32 @@ main {
 }
 
 .page-title {
-  font-size: 32px;
-  font-weight: 800;
+  position: relative;
+  /* Establishes .page-title's own stacking context so ::after's z-index:-1
+     (behind the text, per the swoosh image) stays local instead of escaping
+     to a distant ancestor - see the identical .photo-wrap-peek bug. */
+  z-index: 0;
+  display: inline-block;
+  font-family: Montserrat, Roboto, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  font-size: 40px;
+  font-weight: 400;
   letter-spacing: -0.01em;
   margin: 0;
-  color: var(--ink);
+  padding-bottom: 12px;
+  color: var(--label);
+}
+
+.page-title::after {
+  content: "";
+  position: absolute;
+  left: 2%;
+  right: 2%;
+  bottom: 6px;
+  height: 16px;
+  background-image: url('/swoosh.png');
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  z-index: -1;
 }
 
 .page-subtitle {
@@ -2042,12 +2070,6 @@ main {
   color: var(--brand);
 }
 
-.privacy-page h1 {
-  font-size: 24px;
-  font-weight: 700;
-  margin: 4px 0 18px;
-}
-
 .privacy-intro {
   max-width: 720px;
   color: var(--ink);
@@ -2337,18 +2359,30 @@ main {
   max-width: 100%;
 }
 
-/* Classroom/grade tiles (and Room Parents, which reuses person-card/person-photo
-   for its rows) are just a badge icon, not a portrait - a lot smaller than a
-   normal person-card photo, with a matching narrower grid column so they don't
-   sit lost in the same 293px-wide column as a person card. */
-.classroom-grid {
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+/* Caps the card itself, not just the photo: a.person-card is width:fit-content
+   (see below), which without this happily grows past the photo's own width to
+   fit a long one-line subtitle (e.g. "Grade 5 - Condors - Pinnacles") whenever
+   the grid column has room to spare, stretching the outline wider than the
+   photo instead of wrapping the text. */
+.people-grid .person-card {
+  max-width: 238px;
 }
 
-.classroom-grid .classroom-photo,
+/* Same size as .directory-grid - a classroom/grade tile (and Room Parents,
+   which reuses person-card/person-photo for its rows) used to run smaller as
+   just a badge icon rather than a portrait, but now matches every other
+   person-card grid instead of being its own odd size out. */
+.classroom-grid {
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+}
+
 .classroom-grid .person-photo {
-  width: 120px;
+  width: 167px;
   max-width: 100%;
+}
+
+.classroom-grid .person-card {
+  max-width: 167px;
 }
 
 /* Directory's "Everyone" grid and Staff's department grids - about 30% smaller
@@ -2366,26 +2400,13 @@ main {
   max-width: 100%;
 }
 
+.directory-grid .person-card {
+  max-width: 167px;
+}
+
 .person-card {
   text-align: center;
   min-width: 0;
-}
-
-.classroom-card {
-  display: block;
-  text-align: center;
-  color: inherit;
-  text-decoration: none;
-}
-
-.classroom-photo {
-  width: 62%;
-  aspect-ratio: 1;
-  border-radius: 10px;
-  object-fit: cover;
-  display: block;
-  margin: 0 auto 12px;
-  background: #eef1f3;
 }
 
 .person-photo {
@@ -2408,12 +2429,40 @@ div.person-photo {
 }
 
 .role-label {
+  display: inline-block;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.04em;
   color: var(--label);
   text-transform: uppercase;
-  margin-bottom: 3px;
+  text-decoration: none;
+  margin-bottom: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--input);
+}
+
+a.role-label {
+  cursor: pointer;
+}
+
+a.role-label:hover {
+  filter: brightness(0.95);
+}
+
+.role-label-student {
+  color: #20a39e;
+  background: #ddf1f0;
+}
+
+.role-label-parent {
+  color: #8ea604;
+  background: #eef1d9;
+}
+
+.role-label-staff {
+  color: #df604a;
+  background: #fae7e3;
 }
 
 /* On the profile page only - roster/grid cards center this via text-align on
@@ -2425,6 +2474,11 @@ div.person-photo {
   display: flex;
   align-items: center;
   gap: 6px;
+  /* The base .role-label rule's margin-bottom (for stacked contexts, like a
+     person-card's photo/pill/name column) shifted this pill's vertical center
+     within .detail-top-right's flex row, throwing off alignment with the
+     tag-chips beside it - neither of which carries that margin. */
+  margin-bottom: 0;
 }
 
 .person-name {
@@ -2517,50 +2571,6 @@ div.student-photo {
   margin-top: 10px;
 }
 
-.family-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 32px 24px;
-}
-
-.family-photo {
-  width: 100%;
-  aspect-ratio: 1.32;
-  object-fit: cover;
-  display: block;
-  border-radius: 6px;
-  background: #f4f5f6;
-  color: #fff;
-}
-
-div.family-photo {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 2.5rem;
-  font-weight: 500;
-}
-
-.family-label {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  color: var(--label);
-  text-transform: uppercase;
-  margin: 12px 0 2px;
-}
-
-.family-name {
-  font-weight: 700;
-  font-size: 15px;
-}
-
-.family-kids {
-  color: var(--muted);
-  font-size: 13px;
-  margin-top: 3px;
-}
-
 .staff-section {
   margin: 10px 0 20px;
   font-weight: 500;
@@ -2579,43 +2589,34 @@ div.family-photo {
 }
 
 a.person-card,
-a.student-card,
-a.family-card {
+a.student-card {
   display: block;
   color: inherit;
   text-decoration: none;
 }
 
-a.person-card,
-a.family-card {
-  padding: 14px;
-  margin: -14px;
-  border-radius: 12px;
-}
-
-a.family-card:hover {
-  background: #f6f6f7;
+a.person-card {
+  /* fit-content + centering margin, not stretched to the grid track's full
+     width: without this the border traced the whole (often much wider) grid
+     cell, leaving visible dead space on either side of the photo/text instead
+     of hugging them. */
+  width: fit-content;
+  margin-left: auto;
+  margin-right: auto;
+  /* Flush on every side but the bottom (which just needs room for the text):
+     the peek card (photo-wrap-peek::before) is meant to read as sticking out
+     from behind this whole card, into the page's gutter between grid cells -
+     not as a detail visible somewhere inside the outline. That only works if
+     the card's own border sits exactly at the photo's edge with no padding
+     to its right, and nothing here clips it back in (no overflow:hidden). */
+  padding: 0 0 10px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: #fff;
 }
 
 a.student-card:hover {
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
-}
-
-/* A ring around the avatar itself instead of a gray fill behind the whole card.
-   --ring-color (set in JS via ringColorFor/applyRingColor) is the admin-configured
-   grade/classroom/staff color; if that's ever unset, fall back to a lighter tint of
-   this specific avatar's own hash-based initials color, then to a neutral teal. */
-a.person-card:hover .person-photo,
-a.classroom-card:hover .classroom-photo {
-  outline: 4px solid color-mix(in srgb, var(--ring-color, hsl(var(--avatar-hue, 185) 45% 55%)) 45%, white);
-  outline-offset: 3px;
-}
-
-.person-photo,
-.classroom-photo {
-  transition: outline-color 0.15s ease, outline-offset 0.15s ease;
-  outline: 4px solid transparent;
-  outline-offset: 0;
 }
 
 .detail-top {
@@ -3115,6 +3116,14 @@ a.list-row:hover {
   gap: 8px;
 }
 
+.chip-row-overlay {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  max-width: calc(100% - 12px);
+  gap: 4px;
+}
+
 .roster-heading-row .chip-row {
   justify-content: flex-end;
 }
@@ -3137,8 +3146,20 @@ a.list-row:hover {
 }
 
 .chip-toggle.active {
-  background: var(--brand);
+  background: var(--chip-color, var(--brand));
   color: #fff;
+}
+
+.chip-toggle-student.active {
+  background: #20a39e;
+}
+
+.chip-toggle-parent.active {
+  background: #8ea604;
+}
+
+.chip-toggle-staff.active {
+  background: #df604a;
 }
 
 .roster-list.grid {
@@ -3750,15 +3771,15 @@ img.fcard-photo {
 }
 
 .fcard-avatar {
-  width: 44px;
-  height: 44px;
-  border-radius: 8px;
+  width: 64px;
+  height: 64px;
+  border-radius: 10px;
   object-fit: cover;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
+  font-size: 20px;
   font-weight: 700;
   color: #fff;
 }
@@ -3857,10 +3878,80 @@ img.fcard-photo {
   display: inline-block;
 }
 
+.photo-wrap-peek {
+  /* Block + shrink-to-content, not inline-block: role-label (also inline-block,
+     for its own shrink-wrapped pill shape) is the very next element in the DOM,
+     and two inline-level siblings share a line whenever the first doesn't fill
+     the container's width - which a person-photo narrower than its grid column
+     never does. That packed the role-label beside the photo instead of below it
+     on every card except when its text was too long to fit in the leftover
+     space. Block guarantees the break regardless of label width. */
+  display: block;
+  width: fit-content;
+  margin: 0 auto 16px;
+  z-index: 0;
+}
+
+.photo-wrap-peek::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
+  background: var(--peek-color, #f6e24c);
+  /* Rotating around the bottom-right corner (not center, not top-right - both
+     measured to leak the peek below and/or left of the photo): that corner
+     stays fixed in place, the top-right corner swings out to the right (the
+     visible, rotated "peek"), and the bottom-left and top-left corners barely
+     move outward at all, well short of 0. Verified with the same
+     DOMMatrix-transformPoint measurement used to catch the last two attempts
+     leaking - this one doesn't. */
+  transform: rotate(4deg);
+  transform-origin: bottom right;
+  transition: transform 0.2s ease;
+  z-index: -1;
+}
+
+/* Hover feedback is the peek sliding out further (still pivoting from the
+   same fixed bottom-right corner, so it can't newly leak below/left just from
+   rotating more), instead of the outline ring this replaced. */
+a.person-card:hover .photo-wrap-peek::before {
+  transform: rotate(10deg);
+}
+
 .card-more-wrap {
   position: absolute;
   top: 6px;
   right: 6px;
+}
+
+.grade-badge {
+  position: absolute;
+  top: 9px;
+  left: 6px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+/* A family can have kids in more than one grade - stacks each grade's own
+   badge instead of the single one gradeBadge() pins to an individual
+   student's photo. */
+.grade-badge-group {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.grade-badge-group .grade-badge {
+  position: static;
 }
 
 .more-wrap {
@@ -3913,7 +4004,12 @@ img.fcard-photo {
   border: 0;
   background: none;
   padding: 4px;
-  color: #9aa4ab;
+  /* --peek-color (set on .photo-wrap-peek, this button's parent - see
+     photoWithTag) is that card's own gradeband color, so the tag icon
+     matches the peek/ring color instead of one fixed teal for every card
+     regardless of its theme color. Falls back to the old teal wherever
+     there's no peek context (the profile page's plain .photo-wrap). */
+  color: var(--peek-color, #20a39e);
   cursor: pointer;
   display: flex;
 }
@@ -3954,9 +4050,11 @@ img.fcard-photo {
 .tag-chip {
   background: var(--input);
   color: var(--ink);
-  font-size: 12px;
-  font-weight: 500;
-  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 3px 10px;
   border-radius: 999px;
   white-space: nowrap;
   text-decoration: none;
@@ -4057,8 +4155,7 @@ img.fcard-photo {
     padding-left: 16px;
     padding-right: 16px;
   }
-  .people-grid,
-  .family-grid {
+  .people-grid {
     grid-template-columns: repeat(2, 1fr);
   }
   .student-grid {
@@ -4235,19 +4332,19 @@ img.fcard-photo {
     opacity: 0.7;
   }
   .mobile-tabs a[href="/people"] svg {
-    color: #4ade80;
+    color: #20a39e;
   }
   .mobile-tabs a[href="/classrooms"] svg {
-    color: #60a5fa;
+    color: #8ea604;
   }
   .mobile-tabs a[href="/staff"] svg {
-    color: #f472b6;
+    color: #df604a;
   }
   .mobile-tabs a[href="/my-family"] svg {
-    color: #f5c451;
+    color: #20a39e;
   }
   .mobile-tabs a[href="/email-list"] svg {
-    color: #a78bfa;
+    color: #f6e24c;
   }
   .mobile-tabs a.active svg {
     opacity: 1;

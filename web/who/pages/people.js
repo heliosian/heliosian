@@ -1,4 +1,4 @@
-import {state} from '../state.js';
+import {state, colors} from '../state.js';
 import {el, svg, thumbUrl, firstName, tabStrip, tabHref} from '../dom.js';
 import {familiesOf, familyOf} from '../families.js';
 import {personCard, personLink, photoOrInitials, cardMore, gradeChain} from '../people.js';
@@ -6,6 +6,7 @@ import {tagNames} from '../tags.js';
 import {matchesFilters, familyMatchesFilters, roleChips, facetDropdown, gradeOptions, filterControl} from '../filters.js';
 import {resetMain, finishRender} from '../chrome.js';
 import {renderStaff} from './staff.js';
+import {familyDetailChip} from './family.js';
 
 const peopleTabs = [
   {key: 'everyone', label: 'Everyone'},
@@ -58,17 +59,47 @@ function renderStudents(grid) {
   return matches.length;
 }
 
+// Shares .person-card/.person-photo/.photo-wrap-peek with personCard (see
+// ../people.js), same as badgeCard in classrooms.js - a family tile looks
+// like every other card in the app rather than its own older, plainer style.
 function renderFamilies(grid) {
-  grid.className = 'family-grid';
+  grid.className = 'people-grid directory-grid';
   const matches = state.familyOrder.filter(f =>
     `${f.name} ${f.members.join(' ')}`.toLowerCase().includes(state.q) && familyMatchesFilters(f.key));
   for (const f of matches) {
-    const card = el('a', 'family-card');
+    const card = el('a', 'person-card');
     card.href = f.href;
-    card.append(photoOrInitials(f.photoUrl, f.name, 'family-photo'));
-    card.append(el('div', 'family-label', f.label));
-    card.append(el('div', 'family-name', f.name));
-    card.append(el('div', 'family-kids', f.members.join(', ')));
+    const photo = photoOrInitials(f.photoUrl, f.name, 'person-photo');
+    // A family can span more than one grade - the first kid's grade color
+    // stands in as the one representative color for the photo/peek, same as
+    // ringColorFor does for a parent (picks one kid's grade rather than
+    // trying to blend several).
+    const color = f.grades.length ? colors.grades[f.grades[0]] : null;
+    const wrap = el('div', 'photo-wrap photo-wrap-peek');
+    if (color) {
+      photo.style.setProperty('--ring-color', color);
+      if (photo.tagName === 'DIV') {
+        photo.style.background = `color-mix(in srgb, ${color} 65%, white)`;
+      }
+      wrap.style.setProperty('--peek-color', color);
+    }
+    wrap.append(photo);
+    if (f.grades.length) {
+      // Pinned to the photo's own top-left corner (photoWithTag's cardMore
+      // tag button owns the top-right one) instead of sitting as its own row
+      // below the photo, same corner-badge treatment as gradeBadge does for
+      // an individual student's card.
+      const chipRow = el('div', 'chip-row chip-row-overlay');
+      for (const g of f.grades) {
+        chipRow.append(familyDetailChip(g, colors.grades[g]));
+      }
+      wrap.append(chipRow);
+    }
+    card.append(wrap);
+    card.append(el('div', 'person-name', f.name));
+    if (f.members.length) {
+      card.append(el('div', 'person-sub', f.members.join(', ')));
+    }
     grid.append(card);
   }
   return matches.length;

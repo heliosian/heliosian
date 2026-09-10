@@ -133,7 +133,7 @@ const roleChipFacets = [
 export function roleChips(rerender) {
   const bar = el('div', 'chip-row');
   for (const [key, label] of roleChipFacets) {
-    const btn = el('button', 'chip-toggle' + (!state.filterRoleExcluded.has(key) ? ' active' : ''));
+    const btn = el('button', 'chip-toggle chip-toggle-' + key.toLowerCase() + (!state.filterRoleExcluded.has(key) ? ' active' : ''));
     btn.type = 'button';
     btn.append(el('span', '', label));
     btn.addEventListener('click', () => {

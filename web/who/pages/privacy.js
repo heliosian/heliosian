@@ -74,7 +74,7 @@ export function renderPrivacyPage() {
   }
 
   const content = el('div', 'content container privacy-page');
-  content.append(el('h1', '', 'Your Privacy'));
+  content.append(el('h1', 'page-title', 'Your Privacy'));
 
   const intro = el('div', 'privacy-intro');
   intro.append(el('p', '',

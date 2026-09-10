@@ -221,11 +221,10 @@ export function renderNav() {
         }
         const icon = svg('tag');
         icon.classList.add('nav-icon-tag');
-        // Tags are user-created with no fixed set (unlike Directory/Staff/etc.
-        // above), so instead of a shared color they each get one hashed from
-        // their own name - stable across renders and reasonably legible on
-        // the dark sidebar background.
-        icon.style.color = `hsl(${hue(name)}, 70%, 72%)`;
+        // Plain white, not a per-name hashed color: the hash occasionally
+        // landed near the sidebar's own dark teal, making that tag's icon
+        // nearly invisible against the background it's sitting on.
+        icon.style.color = '#fff';
         a.append(icon, el('span', '', name));
         toolsBody.append(a);
       }

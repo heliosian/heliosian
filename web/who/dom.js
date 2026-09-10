@@ -126,6 +126,17 @@ export function hue(text) {
   return h;
 }
 
+// The 5-color brand palette (see :root in style.css - --brand/--alert/etc.
+// are this same palette applied to specific fixed roles, not meant for an
+// open-ended list of names like a department or tag). Picks a stable color
+// per name via the same hash approach as hue(), so a given name always lands
+// on the same color across renders without needing a fixed, pre-assigned set.
+const brandPalette = ['#20a39e', '#8ea604', '#df604a', '#f6e24c', '#244d53'];
+
+export function paletteColor(text) {
+  return brandPalette[hue(text) % brandPalette.length];
+}
+
 export function firstName(fullName) {
   return fullName.trim().split(/\s+/)[0];
 }

@@ -1,5 +1,5 @@
 import {state} from '../state.js';
-import {el, svg} from '../dom.js';
+import {el, svg, paletteColor} from '../dom.js';
 import {personLink, photoWithTag, applyRingColor, photoOrInitials, personPhotoUrl} from '../people.js';
 import {matchesFilters} from '../filters.js';
 import {resetMain} from '../chrome.js';
@@ -33,7 +33,7 @@ export function renderStaff(grid, autoFit) {
       const card = el('a', 'person-card');
       card.href = personLink(p);
       card.append(photoWithTag(applyRingColor(photoOrInitials(personPhotoUrl(p), p.fullName, 'person-photo'), p), p.email));
-      card.append(el('div', 'role-label', p.jobTitle || 'Staff'));
+      card.append(el('div', 'role-label role-label-staff', p.jobTitle || 'Staff'));
       card.append(el('div', 'person-name', p.fullName));
       deptGrid.append(card);
       count++;
@@ -64,6 +64,7 @@ function departmentChips(rerender) {
   for (const dept of ordered) {
     const btn = el('button', 'chip-toggle' + (!state.staffDeptExcluded.has(dept) ? ' active' : ''));
     btn.type = 'button';
+    btn.style.setProperty('--chip-color', paletteColor(dept));
     btn.append(el('span', '', dept));
     btn.addEventListener('click', () => {
       if (state.staffDeptExcluded.has(dept)) {

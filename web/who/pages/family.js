@@ -1,5 +1,5 @@
-import {state, byEmail} from '../state.js';
-import {el, svg, thumbUrl, firstName, iconButton, copyButton, pronouncePill, contactRow} from '../dom.js';
+import {state, byEmail, colors} from '../state.js';
+import {el, svg, thumbUrl, firstName, iconButton, copyButton, pronouncePill, contactRow, withFrom, slugify} from '../dom.js';
 import {myFamilyKey, familyLink} from '../families.js';
 import {personByKey, personLink, photoOrInitials, personPhotoUrl, roleWithPronouns, gradeChain} from '../people.js';
 import {familyPhotoNeedsUpdate, staleItems, todoChecklist} from '../stale.js';
@@ -7,6 +7,26 @@ import {submitField, editPencil, fieldEditor, uploadIcon, pronounceEditor} from 
 import {openPhotoLightbox, cropBadge, familyPhotoMenu, togglePhotoMenu} from '../photos.js';
 import {fromURL, breadcrumbs} from '../crumbs.js';
 import {resetMain, finishRender} from '../chrome.js';
+
+// A grade/homeroom chip tinted with that grade or classroom's own
+// admin-configured color (light background, solid text - same pairing as
+// .role-label-student/parent/staff) instead of the flat default role-label
+// styling, so it visually matches ringColorFor/applyRingColor's use of the
+// same color elsewhere (person cards, hover). Falls back to the default
+// role-label look if that grade/classroom has no color configured. href, when
+// given, makes it a link to that grade/classroom/staff page (same href shape
+// gradeCard/classroomCard and the Staff nav item use elsewhere).
+export function familyDetailChip(text, color, href) {
+  const chip = el(href ? 'a' : 'div', 'role-label', text);
+  if (href) {
+    chip.href = href;
+  }
+  if (color) {
+    chip.style.background = `color-mix(in srgb, ${color} 20%, white)`;
+    chip.style.color = color;
+  }
+  return chip;
+}
 
 function familyCardRow(p, subtitle) {
   const row = el('a', 'fcard-row');
@@ -203,8 +223,26 @@ export function renderFamilyDetail(key) {
   const kids = (family.kidEmails || []).map(e => byEmail[e]).filter(Boolean);
   const adults = (family.adultEmails || []).map(e => byEmail[e]).filter(Boolean);
   const grades = [...new Set(kids.map(k => k.grade).filter(Boolean))];
+  const homerooms = [...new Set(kids.map(k => k.classroom).filter(Boolean))];
   const topRow = el('div', 'detail-top');
-  topRow.append(el('div', 'role-label', grades.length ? grades.join(', ') : 'Staff'));
+  const chipRow = el('div', 'chip-row');
+  // Each kid's grade and homeroom as its own chip, colored with that grade's
+  // or classroom's admin-configured color (see colors in state.js) rather
+  // than one "GRADE 3, GRADE 6" chip lumping every kid's grade into a single
+  // label - a family with kids spread across grades/homerooms shows one clear
+  // chip per grade and per homeroom instead.
+  for (const g of grades) {
+    chipRow.append(familyDetailChip(g, colors.grades[g], withFrom('/grades/' + slugify(g))));
+  }
+  for (const h of homerooms) {
+    chipRow.append(familyDetailChip(h, colors.classrooms[h], withFrom('/classrooms/' + slugify(h))));
+  }
+  if (adults.some(a => a.isStaff)) {
+    const staffChip = el('a', 'role-label role-label-staff', 'Staff');
+    staffChip.href = withFrom('/staff');
+    chipRow.append(staffChip);
+  }
+  topRow.append(chipRow);
   if (editable) {
     const topActions = el('div', 'detail-top-actions');
     const toggle = editing

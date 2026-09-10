@@ -1,5 +1,5 @@
 import {state, byEmail, colors} from '../state.js';
-import {el, svg, withFrom, slugify, ordinal, thumbUrl, firstName, tabStrip, tabHref, listSub} from '../dom.js';
+import {el, svg, withFrom, slugify, ordinal, thumbUrl, firstName, tabStrip, tabHref, listSub, paletteColor} from '../dom.js';
 import {familyOf, familiesOf} from '../families.js';
 import {personLink, photoWithTag, applyRingColor, photoOrInitials, personPhotoUrl, sortPeople} from '../people.js';
 import {fromURL, breadcrumbs} from '../crumbs.js';
@@ -70,19 +70,27 @@ function listRow(image, label, title, sub, href) {
   return row;
 }
 
+// Shares .person-card/.person-photo/.photo-wrap-peek with personCard (see
+// ../people.js) instead of a parallel .classroom-card/.classroom-photo set,
+// so a classroom or grade tile looks and behaves exactly like a person one -
+// same outline, same peek card, same hover animation - not a lookalike with
+// its own slightly-different rules to keep in sync.
 function badgeCard(imageUrl, label, name, href, color) {
-  const card = el('a', 'classroom-card');
+  const card = el('a', 'person-card');
   card.href = href;
-  const photo = imageUrl ? el('img', 'classroom-photo') : el('div', 'classroom-photo');
+  const photo = imageUrl ? el('img', 'person-photo') : el('div', 'person-photo');
   if (imageUrl) {
     photo.src = imageUrl;
     photo.loading = 'lazy';
     photo.alt = '';
   }
+  const wrap = el('div', 'photo-wrap photo-wrap-peek');
   if (color) {
     photo.style.setProperty('--ring-color', color);
+    wrap.style.setProperty('--peek-color', color);
   }
-  card.append(photo);
+  wrap.append(photo);
+  card.append(wrap);
   card.append(el('div', 'role-label', label));
   card.append(el('div', 'person-name', name));
   return card;
@@ -296,7 +304,7 @@ function otherFamilyMembers(student) {
 // visibleGroups matches against elsewhere in renderRoster. state.rosterSectionExcluded
 // tracks only the deselected keys, and stale entries left over from a different
 // classroom/grade are pruned whenever the available keys change.
-function sectionFilterBar(groups, rerender) {
+function sectionFilterBar(groups, rerender, colorFor) {
   const sections = groups.filter(g => g.header);
   if (sections.length < 2) {
     return null;
@@ -313,6 +321,7 @@ function sectionFilterBar(groups, rerender) {
     const active = !state.rosterSectionExcluded.has(key);
     const btn = el('button', 'chip-toggle' + (active ? ' active' : ''));
     btn.type = 'button';
+    btn.style.setProperty('--chip-color', (colorFor && colorFor(key)) || paletteColor(key));
     btn.append(el('span', '', g.header));
     btn.addEventListener('click', () => {
       if (active) {
@@ -327,7 +336,7 @@ function sectionFilterBar(groups, rerender) {
   return bar;
 }
 
-function renderRoster(title, image, groups, backLabel) {
+function renderRoster(title, image, groups, backLabel, sectionColorFor) {
   const main = resetMain();
   const from = fromURL();
   const back = from && from.pathname === '/classrooms' ? from.pathname + from.search : '/classrooms';
@@ -359,7 +368,7 @@ function renderRoster(title, image, groups, backLabel) {
   const strip = tabStrip(memberTabs, state.rosterTab, 2, key => {
     state.rosterTab = key;
     history.replaceState(null, '', tabHref(key));
-    renderRoster(title, image, groups, backLabel);
+    renderRoster(title, image, groups, backLabel, sectionColorFor);
   });
   strip.classList.add('roster-tabs');
   header.append(strip);
@@ -367,11 +376,11 @@ function renderRoster(title, image, groups, backLabel) {
 
   const content = el('div', 'container detail-content');
   const list = el('div');
-  const rerender = () => renderRoster(title, image, groups, backLabel);
+  const rerender = () => renderRoster(title, image, groups, backLabel, sectionColorFor);
   if (state.rosterTab === 'students') {
     const headingRow = el('div', 'roster-heading-row');
     headingRow.append(el('h2', 'roster-heading', `${allStudents.length} Students`));
-    const filterBar = sectionFilterBar(groups, rerender);
+    const filterBar = sectionFilterBar(groups, rerender, sectionColorFor);
     if (filterBar) {
       headingRow.append(filterBar);
     }
@@ -407,7 +416,7 @@ function renderRoster(title, image, groups, backLabel) {
     const headingRow = el('div', 'roster-heading-row');
     headingRow.append(el('h2', 'roster-heading', `${parents.length} Parents`));
     const parentGroups = groups.map(g => ({header: g.header, chipLabel: g.chipLabel, parents: parentsOf(g.students)}));
-    const filterBar = sectionFilterBar(parentGroups, rerender);
+    const filterBar = sectionFilterBar(parentGroups, rerender, sectionColorFor);
     if (filterBar) {
       headingRow.append(filterBar);
     }
@@ -439,7 +448,11 @@ export function renderGradeDetail(slug) {
   const groups = classrooms.length
     ? classrooms.map(name => ({header: name, students: students.filter(s => s.classroom === name)}))
     : [{header: '', students}];
-  renderRoster(grade.name, gradeImage(grade.name), groups);
+  // Groups here are split by classroom (see above) - color each section chip
+  // with that classroom's own admin-configured color, same as everywhere else
+  // a classroom's color shows (person cards, hover rings), instead of a
+  // generic hash-based one.
+  renderRoster(grade.name, gradeImage(grade.name), groups, undefined, name => colors.classrooms[name]);
 }
 
 export function renderClassroomDetail(slug) {

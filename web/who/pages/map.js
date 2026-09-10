@@ -22,7 +22,7 @@ function loadMaps() {
 
 const pinIcon = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="34" height="34">' +
-  '<path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0" fill="#173c41" stroke="#fff" stroke-width="1"/>' +
+  '<path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0" fill="#244d53" stroke="#fff" stroke-width="1"/>' +
   '<circle cx="12" cy="10" r="3" fill="#fff"/></svg>');
 
 function familyMapPopup(family) {

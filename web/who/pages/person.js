@@ -1,5 +1,6 @@
 import {load} from '../app.js';
-import {el, svg, withFrom, slugify, thumbUrl, firstName, iconButton, copyButton, pronouncePill, contactRow, aboutMeText} from '../dom.js';
+import {colors} from '../state.js';
+import {el, svg, withFrom, slugify, thumbUrl, firstName, iconButton, copyButton, pronouncePill, contactRow, aboutMeText, paletteColor} from '../dom.js';
 import {familiesOf} from '../families.js';
 import {personByKey, baseRole, gradeChain, photoOrInitials, formatPronouns} from '../people.js';
 import {photoNeedsUpdate, factsNeedUpdate, staleItems, todoChecklist, monthYear} from '../stale.js';
@@ -8,6 +9,16 @@ import {openPhotoLightbox, cropBadge, photoMenu, togglePhotoMenu, photoGrid} fro
 import {fromCrumbs, breadcrumbs} from '../crumbs.js';
 import {resetMain, finishRender} from '../chrome.js';
 import {familyCard} from './family.js';
+
+// Light-tint pairing (pale background, solid text) matching role-label and
+// the family-card grade chips, instead of .tag-chip's flat neutral gray -
+// so a classroom/crew chip reads with that classroom's own admin color.
+function tintChip(chip, color) {
+  if (color) {
+    chip.style.background = `color-mix(in srgb, ${color} 20%, white)`;
+    chip.style.color = color;
+  }
+}
 
 function personSummaryText(p, family) {
   const lines = [p.fullName];
@@ -162,18 +173,27 @@ export function renderPersonDetail(email) {
 
   const right = el('div');
   const topRow = el('div', 'detail-top');
-  const roleRow = el('div', 'role-label', baseRole(p));
+  const role = baseRole(p);
+  // Staff has its own dedicated page; Student and Parent don't (Directory's
+  // role chips filter it in place instead of linking anywhere), so both land
+  // on Directory - still somewhere real and relevant, just not pre-filtered.
+  const roleRow = el('a', 'role-label role-label-' + role.toLowerCase(), role);
+  roleRow.href = withFrom(role === 'Staff' ? '/staff' : '/people');
   topRow.append(roleRow);
   const topRight = el('div', 'detail-top-right');
   if (p.isStaff || p.isStudent) {
     if (p.classroom) {
       const classroomChip = el('a', 'tag-chip', p.classroom);
       classroomChip.href = withFrom('/classrooms/' + slugify(p.classroom));
+      tintChip(classroomChip, colors.classrooms[p.classroom]);
       topRight.append(classroomChip);
     }
     if (p.crew) {
       const crewChip = el('a', 'tag-chip', p.crew);
       crewChip.href = withFrom('/classrooms/' + slugify(p.classroom));
+      // Crews have no admin-configured color (unlike grades/classrooms), so
+      // this falls back to the same per-name hash color tags/departments use.
+      tintChip(crewChip, paletteColor(p.crew));
       topRight.append(crewChip);
     }
   }
