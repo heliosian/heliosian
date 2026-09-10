@@ -160,7 +160,10 @@ func (a *Auth) login(w http.ResponseWriter, r *http.Request) {
 func logoutDomains(host string) []string {
 	host, _, _ = strings.Cut(host, ":")
 	domains := []string{""}
-	if host != apex && !strings.HasSuffix(host, "."+apex) {
+	if host == apex {
+		return append(domains, apex)
+	}
+	if !strings.HasSuffix(host, "."+apex) {
 		return domains
 	}
 	for host != apex {
