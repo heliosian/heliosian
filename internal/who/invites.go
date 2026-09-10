@@ -244,7 +244,7 @@ func RegisterInvites(mux *http.ServeMux, cache *Cache, source data.Source, write
 			Systems   []InviteTemplate   `json:"systems"`
 			Greetings []GreetingTemplate `json:"greetings"`
 			Error     string             `json:"error,omitempty"`
-		}{Systems: systems, Greetings: greetings, Error: errStr}
+		}{Systems: systems, Greetings: visibleGreetings(greetings, effectiveEmail(cache, r)), Error: errStr}
 		if err := json.NewEncoder(w).Encode(view); err != nil {
 			slog.ErrorContext(r.Context(), "encode invite templates", "error", err)
 		}
@@ -368,6 +368,21 @@ func ownsGreeting(source data.Source, name, email string) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+// visibleGreetings filters the full _Greetings list down to what one viewer
+// should see: the built-in rows (no CreatedBy - nobody "added" those through
+// the app) plus whichever rows that viewer added themselves. A greeting is
+// tied to the account that created it, not the family, so even another adult
+// in the same family doesn't see it.
+func visibleGreetings(greetings []GreetingTemplate, email string) []GreetingTemplate {
+	visible := make([]GreetingTemplate, 0, len(greetings))
+	for _, g := range greetings {
+		if g.CreatedBy == "" || g.CreatedBy == email {
+			visible = append(visible, g)
+		}
+	}
+	return visible
 }
 
 func yesNo(b bool) string {
