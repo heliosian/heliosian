@@ -6,6 +6,8 @@
 <title>Admin Tools</title>
 <link rel="icon" href="/brand/icon-192.png">
 <link rel="stylesheet" href="/fonts/fonts.css">
+<link rel="stylesheet" href="/github-badge.css">
+<link rel="modulepreload" href="/github-badge.js">
 <link rel="modulepreload" href="/admin/app.js">
 <link rel="modulepreload" href="/admin/state.js">
 <link rel="modulepreload" href="/admin/picker.js">
@@ -29,6 +31,9 @@
   * { box-sizing: border-box; }
   body {
     margin: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
     font-family: Roboto, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
     color: var(--ink);
     background: #f7f8f9;
@@ -63,7 +68,8 @@
   }
   .layout {
     display: flex;
-    align-items: flex-start;
+    align-items: stretch;
+    flex: 1;
   }
   .container {
     flex: 1;
@@ -77,7 +83,6 @@
     padding: 20px 0;
     border-right: 1px solid var(--line);
     background: #fff;
-    min-height: calc(100vh - 63px);
   }
   .sidebar-section + .sidebar-section {
     margin-top: 20px;
@@ -488,7 +493,6 @@
     .sidebar {
       position: relative;
       width: 100%;
-      min-height: auto;
       border-right: 0;
       border-bottom: 1px solid var(--line);
       padding: 0;
@@ -923,6 +927,7 @@
   </div>
   </div>
 </div>
+<footer class="site-footer" id="site-footer"></footer>
 
 <div class="modal-overlay" id="add-person-modal" hidden>
   <div class="modal">

@@ -9,6 +9,7 @@ import {staleItems, familyInfoBanner, todoChecklist, familyNavPeople, personTodo
 import {topbarSearchInput, topbarSearchResults, mobileSearchInput, setMobileSearch} from './search.js';
 import {privacyMismatchCardDismissed, myPrivacyWarnings, privacyMismatchCard} from './pages/privacy.js';
 import {load} from './app.js';
+import {githubBadge} from '/github-badge.js';
 
 const primaryNavItems = [
   {path: 'people', label: 'Directory'},
@@ -292,7 +293,9 @@ export function finishRender() {
   const main = document.querySelector('#main');
   const contentWrap = el('div', 'page-content-wrap');
   contentWrap.append(...main.childNodes);
-  main.append(contentWrap, el('div', 'page-footer-art'));
+  const footer = el('div', 'page-footer');
+  footer.append(el('div', 'page-footer-art'), githubBadge());
+  main.append(contentWrap, footer);
 }
 
 const userMenu = document.querySelector('#user-menu');

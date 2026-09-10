@@ -1027,6 +1027,17 @@ main {
   flex: 1 0 auto;
 }
 
+.page-footer {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.page-footer .github-badge {
+  position: absolute;
+  right: 16px;
+  bottom: 12px;
+}
+
 .page-footer-art {
   flex-shrink: 0;
   height: 169.62px;
