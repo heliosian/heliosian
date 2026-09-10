@@ -489,9 +489,9 @@ main {
    fill, so on a short page the art still lands at the foot of the viewport. */
 .page-art {
   display: block;
-  width: 100%;
+  width: 70%;
   height: auto;
-  margin-top: 28px;
+  margin: 28px 0 0 auto;
   pointer-events: none;
 }
 

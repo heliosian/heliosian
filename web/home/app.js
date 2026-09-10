@@ -1,7 +1,6 @@
 import {state, applyModel, isAdmin} from './state.js';
 import {renderCategories, renderNav} from './cards.js';
 import {initEditing} from './edit.js';
-import {githubBadge} from '/github-badge.js';
 
 function renderChrome() {
   const user = state.model.user;
@@ -47,7 +46,6 @@ function initSearch() {
 }
 
 function initChrome() {
-  document.querySelector('#site-footer').append(githubBadge());
   const menu = document.querySelector('#user-menu');
   document.querySelector('#user').addEventListener('click', e => {
     e.stopPropagation();
