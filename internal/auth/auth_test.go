@@ -10,7 +10,7 @@ func TestLogoutDomains(t *testing.T) {
 	cases := map[string][]string{
 		"who.heliosian.com":                       {"", "heliosian.com"},
 		"hca.lab.heliosian.com:443":               {"", "lab.heliosian.com", "heliosian.com"},
-		"heliosian.com":                           {""},
+		"heliosian.com":                           {"", "heliosian.com"},
 		"www.heliosian.com":                       {"", "heliosian.com"},
 		"who.local.heliosian.com:8080":            {"", "local.heliosian.com", "heliosian.com"},
 		"heliosian-489539474126.us-west1.run.app": {""},

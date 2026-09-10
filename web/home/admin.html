@@ -7,6 +7,8 @@
 <link rel="icon" href="/brand/icon-192.png">
 <link rel="stylesheet" href="/fonts/fonts.css">
 <link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/github-badge.css">
+<link rel="modulepreload" href="/github-badge.js">
 <style>
   /* Admin keeps the plain teal header bar. style.css's .topbar and .brand are
      shaped for the front page's sidebar shell, which this page does not use. */
@@ -35,7 +37,7 @@
     text-transform: uppercase;
     color: rgba(255, 255, 255, 0.72);
   }
-  .layout { max-width: 760px; margin: 0 auto; padding: 20px; }
+  .layout { flex: 1; width: 100%; max-width: 760px; margin: 0 auto; padding: 20px; }
   .card {
     background: #fff;
     border: 1px solid var(--line);
@@ -93,6 +95,7 @@
 </div>
 </div>
 </div>
+<footer class="site-footer" id="site-footer"></footer>
 <script type="module" src="/admin/app.js"></script>
 </body>
 </html>

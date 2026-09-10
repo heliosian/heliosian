@@ -6,6 +6,7 @@ import {overridesPanels, initOverrides} from './overrides.js';
 import {renderAddedPeopleTable, renderHiddenPeopleTable, hidePersonPicker, initPeople} from './people.js';
 import {initSettings} from './settings.js';
 import {initSidebar} from './sidebar.js';
+import {githubBadge} from '/github-badge.js';
 
 // The settings, colors, and super admin list live in the platform config, not the
 // directory: they come from /api/config, and the super admin list only from its own
@@ -79,4 +80,5 @@ initOverrides();
 initPeople();
 initSettings();
 initSidebar();
+document.querySelector('#site-footer').append(githubBadge());
 load();

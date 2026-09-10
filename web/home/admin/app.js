@@ -1,3 +1,5 @@
+import {githubBadge} from '/github-badge.js';
+
 let admins = [];
 
 const rows = document.querySelector('#admins-rows');
@@ -81,6 +83,7 @@ async function load() {
   render();
 }
 
+document.querySelector('#site-footer').append(githubBadge());
 document.querySelector('#add-admin-button').addEventListener('click', add);
 input.addEventListener('keydown', e => {
   if (e.key === 'Enter') {

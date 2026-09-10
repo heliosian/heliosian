@@ -21,6 +21,9 @@
 html, body { margin: 0; min-height: 100%; }
 
 body {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
   background: var(--page);
   color: var(--ink);
   font-family: Roboto, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
@@ -251,6 +254,8 @@ button { font: inherit; }
 .drawer-user form { margin-top: 10px; }
 
 main {
+  flex: 1;
+  width: 100%;
   max-width: 980px;
   margin: 0 auto;
   padding: 20px 20px 60px;
