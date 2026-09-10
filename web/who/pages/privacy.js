@@ -51,6 +51,16 @@ function privacyWarningBanner(label) {
     'Sync Now', privacyLinks.heliosWhoOptIn, true);
 }
 
+// A screenshot of one step of the external opt-in form, so someone can see
+// exactly what to select without having to guess from the text alone.
+function privacyOptinImage(src, alt) {
+  const img = el('img', 'privacy-optin-image');
+  img.src = src;
+  img.alt = alt;
+  img.loading = 'lazy';
+  return img;
+}
+
 function privacyActionButton(iconName, label, href) {
   const a = el('a', 'media-button primary privacy-action');
   a.href = href;
@@ -69,7 +79,8 @@ export function renderPrivacyPage() {
     return;
   }
 
-  for (const label of privacyWarnings(family)) {
+  const warnings = privacyWarnings(family);
+  for (const label of warnings) {
     main.append(privacyWarningBanner(label));
   }
 
@@ -84,18 +95,6 @@ export function renderPrivacyPage() {
   list.append(el('li', '',
     "Matching your Helios Who visibility to Veracross will never show more here than Veracross already shows."));
   intro.append(list);
-  const syncNote = el('p', '');
-  syncNote.append(
-    'To keep these in sync, update the Helios Who opt-in at ',
-    (() => {
-      const a = el('a', '', privacyLinks.heliosWhoOptIn);
-      a.href = privacyLinks.heliosWhoOptIn;
-      a.target = '_blank';
-      a.rel = 'noopener';
-      return a;
-    })(),
-    ' (check both the address and phone boxes on the second page).');
-  intro.append(syncNote);
   content.append(intro);
 
   const holder = el('div', 'email-holder');
@@ -118,6 +117,36 @@ export function renderPrivacyPage() {
     privacyActionButton('pencil', 'Update Veracross', privacyLinks.veracrossPreferences),
     privacyActionButton('sync', 'Update Helios Who Visibility', privacyLinks.heliosWhoOptIn));
   content.append(actions);
+
+  // Only matters to someone whose Helios Who visibility is actually out of
+  // step with Veracross - same condition as the warning banners above.
+  // Someone already in sync has nothing to do here.
+  if (warnings.length > 0) {
+    const howTo = el('div', 'privacy-howto');
+    howTo.append(el('h2', 'privacy-howto-title', 'How to Match Veracross'));
+    const syncNote = el('p', '');
+    syncNote.append(
+      'To share the same information as on Veracross, complete the ',
+      (() => {
+        const a = el('a', '', 'opt in form');
+        a.href = privacyLinks.heliosWhoOptIn;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        return a;
+      })(),
+      ' and select both checkboxes. This will only share what is already on Veracross.');
+    howTo.append(syncNote);
+
+    const optinImages = el('div', 'privacy-optin-images');
+    optinImages.append(
+      privacyOptinImage('/help/optin-status.png', 'Communication Opt-In Status: choose "I agree to have family names and emails in the Helios Community Apps".'),
+      privacyOptinImage('/help/optin-checkboxes.png', 'Opt-In Information: check both Home Address and Adult Phone Number.'));
+    howTo.append(optinImages);
+    const resolveActions = el('div', 'privacy-actions');
+    resolveActions.append(privacyActionButton('sync', 'Resolve Now', privacyLinks.heliosWhoOptIn));
+    howTo.append(resolveActions);
+    content.append(howTo);
+  }
 
   main.append(content);
 }

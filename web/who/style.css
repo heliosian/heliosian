@@ -2105,6 +2105,40 @@ main {
   color: var(--brand);
 }
 
+.privacy-howto {
+  max-width: 720px;
+  margin-top: 28px;
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.privacy-howto-title {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0 0 10px;
+  color: var(--label);
+}
+
+.privacy-howto a {
+  color: var(--brand);
+}
+
+.privacy-optin-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.privacy-optin-image {
+  max-width: 280px;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
 .privacy-table {
   margin-top: 4px;
 }
