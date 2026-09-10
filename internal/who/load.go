@@ -3,7 +3,7 @@ package who
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"maps"
 	"regexp"
 	"slices"
@@ -877,8 +877,7 @@ func (l *loader) applyWebsite() error {
 		p.websitePhoto = row[websitePhotoName]
 	}
 	if len(unmatched) > 0 {
-		log.Printf("website import: %d of %d entries match nobody in the directory: %s",
-			len(unmatched), len(l.websiteRows), strings.Join(unmatched, ", "))
+		slog.Info("website import: entries match nobody in the directory", "unmatched", len(unmatched), "of", len(l.websiteRows), "names", unmatched)
 	}
 	return nil
 }
@@ -1616,7 +1615,7 @@ func (l *loader) attachBlobs() error {
 			// the original name above, a crop is display cosmetics, not data integrity.
 			if ref.CropName != "" {
 				if cropURL, err := l.blobURL("photos", ref.CropName, p.Email); err != nil {
-					log.Printf("[WARN] resolve crop for %s's photo %s: %v", p.Email, ref.Name, err)
+					slog.Warn("resolve photo crop", "email", p.Email, "photo", ref.Name, "error", err)
 				} else {
 					photo.URL = cropURL
 				}
@@ -1648,7 +1647,7 @@ func (l *loader) attachBlobs() error {
 		// to resolve just leaves the original in place rather than failing the load.
 		if family.photoCropName != "" {
 			if cropURL, err := l.blobURL("photos", family.photoCropName, key); err != nil {
-				log.Printf("[WARN] resolve crop for family %s's photo: %v", key, err)
+				slog.Warn("resolve family photo crop", "family", key, "error", err)
 			} else {
 				family.PhotoURL = cropURL
 			}

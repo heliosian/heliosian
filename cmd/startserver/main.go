@@ -15,6 +15,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/exec"
@@ -28,6 +29,7 @@ import (
 	"heliosian/internal/data"
 	"heliosian/internal/devtls"
 	"heliosian/internal/geocode"
+	"heliosian/internal/logging"
 	"heliosian/internal/who"
 )
 
@@ -43,6 +45,7 @@ func main() {
 	out := flag.String("out", "screenshots/capture.png", "output png path for -capture")
 	wait := flag.String("wait", "body", "css selector that must be visible before capturing, for -capture")
 	flag.Parse()
+	slog.SetDefault(logging.Console())
 
 	switch {
 	case *real:
@@ -72,9 +75,9 @@ func sampleServer() (*http.Server, *who.Queue) {
 	core.EventsMux.Handle("POST /auth/logout", http.RedirectHandler("/", http.StatusSeeOther))
 	log.Printf("serving sample data as %s", sampleUser)
 	return localTLS(app.Server(map[string]http.Handler{
-		"who":  app.Public("who", auth.Fixed(sampleUser, app.Files("who", core.Gate))),
-		"home": app.Public("home", auth.Fixed(sampleUser, app.Files("home", core.Home))),
-		"hca":  app.Public("hca", auth.Fixed(sampleUser, app.Files("hca", core.Events))),
+		"who":  app.Public("who", auth.Fixed(sampleUser, app.Logged("who", app.Files("who", core.Gate)))),
+		"home": app.Public("home", auth.Fixed(sampleUser, app.Logged("home", app.Files("home", core.Home)))),
+		"hca":  app.Public("hca", auth.Fixed(sampleUser, app.Logged("hca", app.Files("hca", core.Events)))),
 	}), core.Queue)
 }
 

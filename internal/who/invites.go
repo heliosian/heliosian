@@ -9,7 +9,7 @@ package who
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
@@ -164,7 +164,7 @@ func newInvitesCache(source data.Source) (*invitesCache, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load greeting templates: %w", err)
 	}
-	log.Printf("loaded invite templates: %d systems, %d greetings", len(systems), len(greetings))
+	slog.Info("loaded invite templates", "systems", len(systems), "greetings", len(greetings))
 	c := &invitesCache{source: source, systems: systems, greetings: greetings}
 	go c.refreshLoop()
 	return c, nil
@@ -184,11 +184,11 @@ func (c *invitesCache) refresh() {
 	greetings, greetErr := loadGreetingTemplates(c.source)
 	errStr := ""
 	if sysErr != nil {
-		log.Printf("[ERROR] load invite templates: %v", sysErr)
+		slog.Error("load invite templates", "error", sysErr)
 		errStr = sysErr.Error()
 	}
 	if greetErr != nil {
-		log.Printf("[ERROR] load greeting templates: %v", greetErr)
+		slog.Error("load greeting templates", "error", greetErr)
 		if errStr == "" {
 			errStr = greetErr.Error()
 		}
@@ -211,7 +211,7 @@ func (c *invitesCache) refresh() {
 func (c *invitesCache) refreshGreetings() {
 	greetings, err := loadGreetingTemplates(c.source)
 	if err != nil {
-		log.Printf("[ERROR] load greeting templates: %v", err)
+		slog.Error("load greeting templates", "error", err)
 		return
 	}
 	c.mu.Lock()
@@ -246,7 +246,7 @@ func RegisterInvites(mux *http.ServeMux, cache *Cache, source data.Source, write
 			Error     string             `json:"error,omitempty"`
 		}{Systems: systems, Greetings: greetings, Error: errStr}
 		if err := json.NewEncoder(w).Encode(view); err != nil {
-			log.Printf("[ERROR] encode invite templates: %v", err)
+			slog.ErrorContext(r.Context(), "encode invite templates", "error", err)
 		}
 	})
 
@@ -287,7 +287,7 @@ func RegisterInvites(mux *http.ServeMux, cache *Cache, source data.Source, write
 		if original != "" {
 			owned, err := ownsGreeting(source, original, email)
 			if err != nil {
-				log.Printf("[ERROR] load greetings for edit: %v", err)
+				slog.ErrorContext(r.Context(), "load greetings for edit", "error", err)
 				http.Error(w, "failed to save greeting", http.StatusInternalServerError)
 				return
 			}
@@ -296,19 +296,19 @@ func RegisterInvites(mux *http.ServeMux, cache *Cache, source data.Source, write
 				return
 			}
 			if err := writer.Upsert(invitesApp, "_Greetings", "Name", original, cells); err != nil {
-				log.Printf("[ERROR] update greeting %q: %v", name, err)
+				slog.ErrorContext(r.Context(), "update greeting", "name", name, "error", err)
 				http.Error(w, "failed to save greeting", http.StatusInternalServerError)
 				return
 			}
-			log.Printf("greeting: %s edited %q -> %q", email, original, name)
+			slog.InfoContext(r.Context(), "greeting: edited", "actor", email, "from", original, "to", name)
 		} else {
 			row := []string{name, format, cells["Grouped"], cells["Individual"], email}
 			if err := writer.Append(invitesApp, "_Greetings", row); err != nil {
-				log.Printf("[ERROR] save greeting %q: %v", name, err)
+				slog.ErrorContext(r.Context(), "save greeting", "name", name, "error", err)
 				http.Error(w, "failed to save greeting", http.StatusInternalServerError)
 				return
 			}
-			log.Printf("greeting: %s added %q", email, name)
+			slog.InfoContext(r.Context(), "greeting: added", "actor", email, "name", name)
 		}
 		// So the change shows up on the very next page load rather than
 		// waiting for invitesCache's next timed refresh.
@@ -333,7 +333,7 @@ func RegisterInvites(mux *http.ServeMux, cache *Cache, source data.Source, write
 		email := effectiveEmail(cache, r)
 		owned, err := ownsGreeting(source, name, email)
 		if err != nil {
-			log.Printf("[ERROR] load greetings for delete: %v", err)
+			slog.ErrorContext(r.Context(), "load greetings for delete", "error", err)
 			http.Error(w, "failed to delete greeting", http.StatusInternalServerError)
 			return
 		}
@@ -342,11 +342,11 @@ func RegisterInvites(mux *http.ServeMux, cache *Cache, source data.Source, write
 			return
 		}
 		if err := writer.Delete(invitesApp, "_Greetings", map[string]string{"Name": name}); err != nil {
-			log.Printf("[ERROR] delete greeting %q: %v", name, err)
+			slog.ErrorContext(r.Context(), "delete greeting", "name", name, "error", err)
 			http.Error(w, "failed to delete greeting", http.StatusInternalServerError)
 			return
 		}
-		log.Printf("greeting: %s deleted %q", email, name)
+		slog.InfoContext(r.Context(), "greeting: deleted", "actor", email, "name", name)
 		invites.refreshGreetings()
 		w.WriteHeader(http.StatusNoContent)
 	})

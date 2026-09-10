@@ -3,7 +3,7 @@ package config
 import (
 	"encoding/json"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -58,31 +58,31 @@ func decode(w http.ResponseWriter, r *http.Request, into any) bool {
 	return true
 }
 
-func encode(w http.ResponseWriter, view any) {
+func encode(w http.ResponseWriter, r *http.Request, view any) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
-		log.Printf("[ERROR] encode config: %v", err)
+		slog.ErrorContext(r.Context(), "encode config", "error", err)
 	}
 }
 
-func serverError(w http.ResponseWriter, err error) {
-	log.Printf("[ERROR] %v", err)
+func serverError(w http.ResponseWriter, r *http.Request, err error) {
+	slog.ErrorContext(r.Context(), "config request failed", "error", err)
 	http.Error(w, "internal error", http.StatusInternalServerError)
 }
 
 func (a api) settings(w http.ResponseWriter, r *http.Request) {
-	encode(w, a.cache.Settings())
+	encode(w, r, a.cache.Settings())
 }
 
 func (a api) superAdmins(w http.ResponseWriter, r *http.Request) {
 	if _, ok := a.requireSuperAdmin(w, r); !ok {
 		return
 	}
-	encode(w, map[string][]string{"superAdmins": a.cache.SuperAdmins()})
+	encode(w, r, map[string][]string{"superAdmins": a.cache.SuperAdmins()})
 }
 
 func (a api) setStaleYears(w http.ResponseWriter, r *http.Request) {
-	email, ok := a.requireAdmin(w, r)
+	_, ok := a.requireAdmin(w, r)
 	if !ok {
 		return
 	}
@@ -99,18 +99,18 @@ func (a api) setStaleYears(w http.ResponseWriter, r *http.Request) {
 		FactsStaleYears:       FormatYears(years.Facts),
 		FamilyPhotoStaleYears: FormatYears(years.FamilyPhoto),
 	}
-	if err := a.cache.update("stale years edit", func(t *Tables) *Tables { return t.WithSettings(values) }, func() error {
+	if err := a.cache.update(r.Context(), "stale years edit", func(t *Tables) *Tables { return t.WithSettings(values) }, func() error {
 		return WriteSettings(a.writer, values)
 	}); err != nil {
-		serverError(w, err)
+		serverError(w, r, err)
 		return
 	}
-	log.Printf("config: %s set stale-years thresholds to %+v", email, years)
+	slog.InfoContext(r.Context(), "config: set stale-years thresholds", "photo", years.Photo, "facts", years.Facts, "familyPhoto", years.FamilyPhoto)
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (a api) setPrivacyLinks(w http.ResponseWriter, r *http.Request) {
-	email, ok := a.requireAdmin(w, r)
+	_, ok := a.requireAdmin(w, r)
 	if !ok {
 		return
 	}
@@ -128,13 +128,13 @@ func (a api) setPrivacyLinks(w http.ResponseWriter, r *http.Request) {
 		VeracrossPreferences: links.VeracrossPreferences,
 		HeliosWhoOptIn:       links.HeliosWhoOptIn,
 	}
-	if err := a.cache.update("privacy links edit", func(t *Tables) *Tables { return t.WithSettings(values) }, func() error {
+	if err := a.cache.update(r.Context(), "privacy links edit", func(t *Tables) *Tables { return t.WithSettings(values) }, func() error {
 		return WriteSettings(a.writer, values)
 	}); err != nil {
-		serverError(w, err)
+		serverError(w, r, err)
 		return
 	}
-	log.Printf("config: %s set privacy links to %+v", email, links)
+	slog.InfoContext(r.Context(), "config: set privacy links", "veracrossPreferences", links.VeracrossPreferences, "heliosWhoOptIn", links.HeliosWhoOptIn)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -142,7 +142,7 @@ func (a api) setPrivacyLinks(w http.ResponseWriter, r *http.Request) {
 // rather than a bulk replace-all, since classrooms are recomputed from the
 // directory's data on every load and have no id to key a merge on beyond the name.
 func (a api) setColor(w http.ResponseWriter, r *http.Request) {
-	email, ok := a.requireAdmin(w, r)
+	_, ok := a.requireAdmin(w, r)
 	if !ok {
 		return
 	}
@@ -180,16 +180,16 @@ func (a api) setColor(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing name", http.StatusBadRequest)
 		return
 	}
-	if err := a.cache.update(body.Kind+" color edit", mirror, persist); err != nil {
-		serverError(w, err)
+	if err := a.cache.update(r.Context(), body.Kind+" color edit", mirror, persist); err != nil {
+		serverError(w, r, err)
 		return
 	}
-	log.Printf("config: %s set the %s color for %q to %s", email, body.Kind, name, body.Color)
+	slog.InfoContext(r.Context(), "config: set color", "kind", body.Kind, "name", name, "color", body.Color)
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (a api) setSuperAdmins(w http.ResponseWriter, r *http.Request) {
-	email, ok := a.requireSuperAdmin(w, r)
+	_, ok := a.requireSuperAdmin(w, r)
 	if !ok {
 		return
 	}
@@ -205,12 +205,12 @@ func (a api) setSuperAdmins(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	current := a.cache.SuperAdmins()
-	if err := a.cache.update("super admins edit", func(t *Tables) *Tables { return t.WithSuperAdmins(admins) }, func() error {
+	if err := a.cache.update(r.Context(), "super admins edit", func(t *Tables) *Tables { return t.WithSuperAdmins(admins) }, func() error {
 		return WriteSuperAdmins(a.writer, current, admins)
 	}); err != nil {
-		serverError(w, err)
+		serverError(w, r, err)
 		return
 	}
-	log.Printf("config: %s set the super admin list to %s", email, strings.Join(admins, ", "))
+	slog.InfoContext(r.Context(), "config: set the super admin list", "admins", admins)
 	w.WriteHeader(http.StatusNoContent)
 }

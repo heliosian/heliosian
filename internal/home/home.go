@@ -2,12 +2,13 @@
 package home
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -101,7 +102,7 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
-		log.Printf("[ERROR] encode apps model: %v", err)
+		slog.ErrorContext(r.Context(), "encode apps model", "error", err)
 	}
 }
 
@@ -123,7 +124,7 @@ func visibleCell(visible bool) string {
 // commit rebuilds the model over the proposed tables first, so a change the
 // sheet rules reject never reaches the sheet, then applies it in memory and
 // queues the writes behind every earlier one.
-func (a app) commit(w http.ResponseWriter, tables *Tables, flush func() error) bool {
+func (a app) commit(ctx context.Context, w http.ResponseWriter, tables *Tables, flush func() error) bool {
 	model, err := BuildModel(tables, a.cache.images)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -134,7 +135,7 @@ func (a app) commit(w http.ResponseWriter, tables *Tables, flush func() error) b
 		a.cache.set(tables, model)
 		close(applied)
 		if err := flush(); err != nil {
-			log.Printf("[ERROR] apps write: %v", err)
+			slog.ErrorContext(ctx, "apps write", "error", err)
 		}
 	})
 	<-applied
@@ -181,7 +182,7 @@ func (a app) saveLink(w http.ResponseWriter, r *http.Request) {
 		cells["Added"] = time.Now().Format(addedFormat)
 	}
 	tables := a.cache.Tables().withRow(linksTab, body.Original, cells)
-	if !a.commit(w, tables, func() error {
+	if !a.commit(r.Context(), w, tables, func() error {
 		if body.Original == "" {
 			if err := a.writer.Append(appName, linksTab, []string{cells["Title"], cells["Description"], cells["URL"], cells["Image"], cells["Category"], cells["Visible"], cells["Added By"], cells["Added"]}); err != nil {
 				return err
@@ -193,7 +194,7 @@ func (a app) saveLink(w http.ResponseWriter, r *http.Request) {
 	}) {
 		return
 	}
-	log.Printf("apps: %s %s link %q", actor, action, title)
+	slog.InfoContext(r.Context(), "apps: saved link", "action", action, "title", title)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -209,7 +210,7 @@ func (a app) deleteLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tables := a.cache.Tables().withoutRow(linksTab, body.Title)
-	if !a.commit(w, tables, func() error {
+	if !a.commit(r.Context(), w, tables, func() error {
 		if err := a.writer.Delete(appName, linksTab, map[string]string{"Title": body.Title}); err != nil {
 			return err
 		}
@@ -217,7 +218,7 @@ func (a app) deleteLink(w http.ResponseWriter, r *http.Request) {
 	}) {
 		return
 	}
-	log.Printf("apps: %s deleted link %q", actor, body.Title)
+	slog.InfoContext(r.Context(), "apps: deleted link", "title", body.Title)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -255,7 +256,7 @@ func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 	if body.Original == "" {
 		action = "add"
 	}
-	if !a.commit(w, tables, func() error {
+	if !a.commit(r.Context(), w, tables, func() error {
 		if body.Original == "" {
 			if err := a.writer.Append(appName, categoriesTab, []string{title, cells["Image"]}); err != nil {
 				return err
@@ -279,7 +280,7 @@ func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 	}) {
 		return
 	}
-	log.Printf("apps: %s %s category %q", actor, action, title)
+	slog.InfoContext(r.Context(), "apps: saved category", "action", action, "title", title)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -301,7 +302,7 @@ func (a app) deleteCategory(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	tables := a.cache.Tables().withoutRow(categoriesTab, body.Title)
-	if !a.commit(w, tables, func() error {
+	if !a.commit(r.Context(), w, tables, func() error {
 		if err := a.writer.Delete(appName, categoriesTab, map[string]string{"Title": body.Title}); err != nil {
 			return err
 		}
@@ -309,7 +310,7 @@ func (a app) deleteCategory(w http.ResponseWriter, r *http.Request) {
 	}) {
 		return
 	}
-	log.Printf("apps: %s deleted category %q", actor, body.Title)
+	slog.InfoContext(r.Context(), "apps: deleted category", "title", body.Title)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -344,13 +345,13 @@ func (a app) uploadImage(w http.ResponseWriter, r *http.Request) {
 	sum := sha256.Sum256(content)
 	name := hex.EncodeToString(sum[:]) + ext
 	if err := a.store.Put(imageFolder, name, mimeType, content); err != nil {
-		log.Printf("[ERROR] store link image: %v", err)
+		slog.ErrorContext(r.Context(), "store link image", "error", err)
 		http.Error(w, "could not store the image", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(map[string]string{"name": imageFolder + "/" + name}); err != nil {
-		log.Printf("[ERROR] encode image name: %v", err)
+		slog.ErrorContext(r.Context(), "encode image name", "error", err)
 	}
 }
 
@@ -366,12 +367,12 @@ func (a app) adminState(w http.ResponseWriter, r *http.Request) {
 	}{Email: email, HasStore: a.store != nil, Admins: a.cache.Admins(a.superAdmins())}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
-		log.Printf("[ERROR] encode apps admin state: %v", err)
+		slog.ErrorContext(r.Context(), "encode apps admin state", "error", err)
 	}
 }
 
 func (a app) setAdmins(w http.ResponseWriter, r *http.Request) {
-	actor, ok := a.requireAdmin(w, r)
+	_, ok := a.requireAdmin(w, r)
 	if !ok {
 		return
 	}
@@ -402,7 +403,7 @@ func (a app) setAdmins(w http.ResponseWriter, r *http.Request) {
 		is[e] = true
 	}
 	tables := a.cache.Tables().withAdmins(admins)
-	if !a.commit(w, tables, func() error {
+	if !a.commit(r.Context(), w, tables, func() error {
 		for _, e := range current {
 			if !is[e] {
 				if err := a.writer.Delete(appName, adminsTab, map[string]string{"Email": e}); err != nil {
@@ -421,6 +422,6 @@ func (a app) setAdmins(w http.ResponseWriter, r *http.Request) {
 	}) {
 		return
 	}
-	log.Printf("apps: %s set the admin list to %s", actor, strings.Join(admins, ", "))
+	slog.InfoContext(r.Context(), "apps: set the admin list", "admins", admins)
 	w.WriteHeader(http.StatusNoContent)
 }

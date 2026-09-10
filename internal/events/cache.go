@@ -1,7 +1,7 @@
 package events
 
 import (
-	"log"
+	"log/slog"
 	"sort"
 	"strings"
 	"sync"
@@ -41,7 +41,7 @@ func (c *Cache) refreshLoop() {
 	for range time.Tick(refreshInterval) {
 		c.queue.Add(func() {
 			if err := c.refresh(); err != nil {
-				log.Printf("[ERROR] events model refresh: %v", err)
+				slog.Error("events model refresh", "error", err)
 			}
 		})
 	}
@@ -62,8 +62,8 @@ func (c *Cache) refresh() error {
 	for _, a := range model.Activities {
 		roles += len(a.AllRoles())
 	}
-	log.Printf("loaded events model: %d categories, %d activities, %d roles, %d volunteers in %s",
-		len(model.Categories), len(model.Activities), roles, volunteers, time.Since(start).Round(time.Millisecond))
+	slog.Info("loaded events model", "categories", len(model.Categories), "activities", len(model.Activities),
+		"roles", roles, "volunteers", volunteers, "took", time.Since(start).Round(time.Millisecond))
 	return nil
 }
 

@@ -8,7 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -76,7 +76,7 @@ func (a *Auth) Register(mux *http.ServeMux) {
 func (a *Auth) client(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(map[string]string{"clientId": a.clientID}); err != nil {
-		log.Printf("[ERROR] encode client id: %v", err)
+		slog.ErrorContext(r.Context(), "encode client id", "error", err)
 	}
 }
 
@@ -128,7 +128,7 @@ func (a *Auth) login(w http.ResponseWriter, r *http.Request) {
 	}
 	payload, err := idtoken.Validate(r.Context(), r.FormValue("credential"), a.clientID)
 	if err != nil {
-		log.Printf("[ERROR] validate id token: %v", err)
+		slog.ErrorContext(r.Context(), "validate id token", "error", err)
 		http.Error(w, "invalid credential", http.StatusUnauthorized)
 		return
 	}

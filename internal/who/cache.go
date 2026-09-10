@@ -2,7 +2,7 @@ package who
 
 import (
 	"errors"
-	"log"
+	"log/slog"
 	"slices"
 	"sort"
 	"strings"
@@ -296,7 +296,7 @@ func (c *Cache) refreshLoop() {
 	for range time.Tick(refreshInterval) {
 		c.queue.Add(func() {
 			if err := c.refresh(); err != nil {
-				log.Printf("[ERROR] directory model refresh: %v", err)
+				slog.Error("directory model refresh", "error", err)
 			}
 		})
 	}
@@ -321,9 +321,8 @@ func (c *Cache) rebuild(tables *Tables, start time.Time) error {
 	c.model = model
 	c.tables = tables
 	c.mu.Unlock()
-	log.Printf("loaded directory model: %d people, %d families, %d classrooms, %d crews in %s",
-		len(model.People), len(model.Families), len(model.Classrooms), len(model.Crews),
-		time.Since(start).Round(time.Millisecond))
+	slog.Info("loaded directory model", "people", len(model.People), "families", len(model.Families),
+		"classrooms", len(model.Classrooms), "crews", len(model.Crews), "took", time.Since(start).Round(time.Millisecond))
 	return nil
 }
 
@@ -350,7 +349,7 @@ func (c *Cache) geocodeFamilies(model *Model) {
 			for j := range jobs {
 				point, err := c.geocoder.Lookup(j.address)
 				if err != nil {
-					log.Printf("[ERROR] %v", err)
+					slog.Error("geocode", "error", err)
 					continue
 				}
 				mu.Lock()
@@ -368,5 +367,5 @@ func (c *Cache) geocodeFamilies(model *Model) {
 	}
 	close(jobs)
 	wg.Wait()
-	log.Printf("geocoded %d of %d family addresses in %s", located, len(pending), time.Since(start).Round(time.Millisecond))
+	slog.Info("geocoded family addresses", "located", located, "of", len(pending), "took", time.Since(start).Round(time.Millisecond))
 }

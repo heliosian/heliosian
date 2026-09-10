@@ -1,8 +1,9 @@
 package config
 
 import (
+	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"slices"
 	"sync"
 	"time"
@@ -38,7 +39,7 @@ func (c *Cache) refreshLoop() {
 	for range time.Tick(refreshInterval) {
 		c.queue.Add(func() {
 			if err := c.refresh(); err != nil {
-				log.Printf("[ERROR] config refresh: %v", err)
+				slog.Error("config refresh", "error", err)
 			}
 		})
 	}
@@ -55,9 +56,8 @@ func (c *Cache) refresh() error {
 		return err
 	}
 	c.set(tables, settings)
-	log.Printf("loaded config: %d super admins, %d grade colors, %d classroom colors in %s",
-		len(settings.SuperAdmins), len(settings.GradeColors), len(settings.ClassroomColors),
-		time.Since(start).Round(time.Millisecond))
+	slog.Info("loaded config", "superAdmins", len(settings.SuperAdmins), "gradeColors", len(settings.GradeColors),
+		"classroomColors", len(settings.ClassroomColors), "took", time.Since(start).Round(time.Millisecond))
 	return nil
 }
 
@@ -92,7 +92,7 @@ func (c *Cache) IsSuperAdmin(email string) bool {
 // the sheet rules reject never reaches the sheet - otherwise the sheet ends up
 // holding a value no future load can read, including the next server start - then
 // applies it in memory and persists it behind every earlier write.
-func (c *Cache) update(action string, mirror func(*Tables) *Tables, persist func() error) error {
+func (c *Cache) update(ctx context.Context, action string, mirror func(*Tables) *Tables, persist func() error) error {
 	applied := make(chan error, 1)
 	c.queue.Add(func() {
 		tables := mirror(c.tablesNow())
@@ -103,7 +103,7 @@ func (c *Cache) update(action string, mirror func(*Tables) *Tables, persist func
 		}
 		c.set(tables, settings)
 		if err := persist(); err != nil {
-			log.Printf("[ERROR] %s: %v", action, err)
+			slog.ErrorContext(ctx, "config write", "action", action, "error", err)
 		}
 	})
 	if err := <-applied; err != nil {

@@ -1,12 +1,14 @@
 package events
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"net/http"
 	"slices"
 	"strconv"
@@ -104,7 +106,7 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 	view := Render(a.cache.Model(), a.directory, email, admin, time.Now().In(local))
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
-		log.Printf("[ERROR] encode events model: %v", err)
+		slog.ErrorContext(r.Context(), "encode events model", "error", err)
 	}
 }
 
@@ -119,7 +121,7 @@ func decode(w http.ResponseWriter, r *http.Request, into any) bool {
 // commit rebuilds the model over the proposed tables first, so a change the
 // sheet rules reject never reaches the sheet, then applies it in memory and
 // queues the writes behind every earlier one.
-func (a app) commit(w http.ResponseWriter, tables *Tables, flush func() error) bool {
+func (a app) commit(ctx context.Context, w http.ResponseWriter, tables *Tables, flush func() error) bool {
 	model, err := BuildModel(tables, a.cache.images)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -130,7 +132,7 @@ func (a app) commit(w http.ResponseWriter, tables *Tables, flush func() error) b
 		a.cache.set(tables, model)
 		close(applied)
 		if err := flush(); err != nil {
-			log.Printf("[ERROR] events write: %v", err)
+			slog.ErrorContext(ctx, "events write", "error", err)
 		}
 	})
 	<-applied
@@ -241,7 +243,7 @@ func (a app) saveVolunteer(w http.ResponseWriter, r *http.Request) {
 		cells["Added By"] = actor
 		cells["Added"] = today()
 	}
-	if !a.commit(w, tables.with(volunteersTab, match, cells), func() error {
+	if !a.commit(r.Context(), w, tables.with(volunteersTab, match, cells), func() error {
 		if err := a.writer.Set(appName, volunteersTab, match, cells); err != nil {
 			return err
 		}
@@ -251,7 +253,7 @@ func (a app) saveVolunteer(w http.ResponseWriter, r *http.Request) {
 	}) {
 		return
 	}
-	log.Printf("events: %s %s volunteer %s on %q %q (%s)", actor, action, email, act.Title, body.Role, act.Year)
+	slog.InfoContext(r.Context(), "events: saved volunteer", "actor", actor, "action", action, "email", email, "activity", act.Title, "role", body.Role, "year", act.Year)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -276,7 +278,7 @@ func (a app) removeVolunteer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	match := map[string]string{"Year": act.Year, "Activity": act.Title, "Role": body.Role, "Email": email}
-	if !a.commit(w, a.cache.Tables().without(volunteersTab, match), func() error {
+	if !a.commit(r.Context(), w, a.cache.Tables().without(volunteersTab, match), func() error {
 		if err := a.writer.Delete(appName, volunteersTab, match); err != nil {
 			return err
 		}
@@ -286,7 +288,7 @@ func (a app) removeVolunteer(w http.ResponseWriter, r *http.Request) {
 	}) {
 		return
 	}
-	log.Printf("events: %s removed volunteer %s from %q %q (%s)", actor, email, act.Title, body.Role, act.Year)
+	slog.InfoContext(r.Context(), "events: removed volunteer", "actor", actor, "email", email, "activity", act.Title, "role", body.Role, "year", act.Year)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -392,7 +394,7 @@ func (a app) saveActivity(w http.ResponseWriter, r *http.Request) {
 			tables = tables.renameActivity(current.Year, current.Title, year, title)
 		}
 	}
-	if !a.commit(w, tables, func() error {
+	if !a.commit(r.Context(), w, tables, func() error {
 		if adding {
 			if err := a.writer.Append(appName, activitiesTab, rowOf(ActivityColumns, cells)); err != nil {
 				return err
@@ -418,7 +420,7 @@ func (a app) saveActivity(w http.ResponseWriter, r *http.Request) {
 	}) {
 		return
 	}
-	log.Printf("events: %s %s activity %q (%s) as %s", actor, action, title, year, status)
+	slog.InfoContext(r.Context(), "events: saved activity", "actor", actor, "action", action, "activity", title, "year", year, "status", status)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -471,7 +473,7 @@ func (a app) deleteActivity(w http.ResponseWriter, r *http.Request) {
 	}
 	self := map[string]string{"Year": act.Year, "Title": act.Title}
 	tables = tables.without(rolesTab, match).without(linksTab, match).without(activitiesTab, self)
-	if !a.commit(w, tables, func() error {
+	if !a.commit(r.Context(), w, tables, func() error {
 		for _, tab := range []string{rolesTab, linksTab} {
 			if err := a.writer.Delete(appName, tab, match); err != nil {
 				return err
@@ -484,7 +486,7 @@ func (a app) deleteActivity(w http.ResponseWriter, r *http.Request) {
 	}) {
 		return
 	}
-	log.Printf("events: %s deleted activity %q (%s)", actor, act.Title, act.Year)
+	slog.InfoContext(r.Context(), "events: deleted activity", "actor", actor, "activity", act.Title, "year", act.Year)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -570,7 +572,7 @@ func (a app) saveRole(w http.ResponseWriter, r *http.Request) {
 			tables = tables.renameRole(act.Year, act.Title, body.Original, title)
 		}
 	}
-	if !a.commit(w, tables, func() error {
+	if !a.commit(r.Context(), w, tables, func() error {
 		if adding {
 			if err := a.writer.Append(appName, rolesTab, rowOf(RoleColumns, cells)); err != nil {
 				return err
@@ -594,7 +596,7 @@ func (a app) saveRole(w http.ResponseWriter, r *http.Request) {
 	}) {
 		return
 	}
-	log.Printf("events: %s %s role %q on %q (%s) as %s", actor, action, title, act.Title, act.Year, status)
+	slog.InfoContext(r.Context(), "events: saved role", "actor", actor, "action", action, "role", title, "activity", act.Title, "year", act.Year, "status", status)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -659,7 +661,7 @@ func (a app) deleteRole(w http.ResponseWriter, r *http.Request) {
 	self := map[string]string{"Year": act.Year, "Activity": act.Title, "Title": role.Title}
 	links := map[string]string{"Year": act.Year, "Activity": act.Title, "Role": role.Title}
 	tables = tables.without(linksTab, links).without(rolesTab, self)
-	if !a.commit(w, tables, func() error {
+	if !a.commit(r.Context(), w, tables, func() error {
 		if err := a.writer.Delete(appName, linksTab, links); err != nil {
 			return err
 		}
@@ -670,7 +672,7 @@ func (a app) deleteRole(w http.ResponseWriter, r *http.Request) {
 	}) {
 		return
 	}
-	log.Printf("events: %s deleted role %q on %q (%s)", actor, role.Title, act.Title, act.Year)
+	slog.InfoContext(r.Context(), "events: deleted role", "actor", actor, "role", role.Title, "activity", act.Title, "year", act.Year)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -711,7 +713,7 @@ func (a app) saveLink(w http.ResponseWriter, r *http.Request) {
 		match = map[string]string{"Year": act.Year, "Activity": act.Title, "Role": body.Role, "Title": body.Original}
 		tables = tables.with(linksTab, match, cells)
 	}
-	if !a.commit(w, tables, func() error {
+	if !a.commit(r.Context(), w, tables, func() error {
 		if body.Original == "" {
 			if err := a.writer.Append(appName, linksTab, rowOf(LinkColumns, cells)); err != nil {
 				return err
@@ -723,7 +725,7 @@ func (a app) saveLink(w http.ResponseWriter, r *http.Request) {
 	}) {
 		return
 	}
-	log.Printf("events: %s %s link %q on %q (%s)", actor, action, title, act.Title, act.Year)
+	slog.InfoContext(r.Context(), "events: saved link", "actor", actor, "action", action, "link", title, "activity", act.Title, "year", act.Year)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -747,7 +749,7 @@ func (a app) deleteLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	match := map[string]string{"Year": act.Year, "Activity": act.Title, "Role": body.Role, "Title": body.Title}
-	if !a.commit(w, a.cache.Tables().without(linksTab, match), func() error {
+	if !a.commit(r.Context(), w, a.cache.Tables().without(linksTab, match), func() error {
 		if err := a.writer.Delete(appName, linksTab, match); err != nil {
 			return err
 		}
@@ -755,7 +757,7 @@ func (a app) deleteLink(w http.ResponseWriter, r *http.Request) {
 	}) {
 		return
 	}
-	log.Printf("events: %s deleted link %q on %q (%s)", actor, body.Title, act.Title, act.Year)
+	slog.InfoContext(r.Context(), "events: deleted link", "actor", actor, "link", body.Title, "activity", act.Title, "year", act.Year)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -788,7 +790,7 @@ func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 			tables = tables.with(activitiesTab, map[string]string{"Category": body.Original}, map[string]string{"Category": title})
 		}
 	}
-	if !a.commit(w, tables, func() error {
+	if !a.commit(r.Context(), w, tables, func() error {
 		if body.Original == "" {
 			if err := a.writer.Append(appName, categoriesTab, rowOf(CategoryColumns, cells)); err != nil {
 				return err
@@ -807,7 +809,7 @@ func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 	}) {
 		return
 	}
-	log.Printf("events: %s %s category %q", actor, action, title)
+	slog.InfoContext(r.Context(), "events: saved category", "actor", actor, "action", action, "category", title)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -828,7 +830,7 @@ func (a app) deleteCategory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	match := map[string]string{"Title": body.Title}
-	if !a.commit(w, tables.without(categoriesTab, match), func() error {
+	if !a.commit(r.Context(), w, tables.without(categoriesTab, match), func() error {
 		if err := a.writer.Delete(appName, categoriesTab, match); err != nil {
 			return err
 		}
@@ -836,7 +838,7 @@ func (a app) deleteCategory(w http.ResponseWriter, r *http.Request) {
 	}) {
 		return
 	}
-	log.Printf("events: %s deleted category %q", actor, body.Title)
+	slog.InfoContext(r.Context(), "events: deleted category", "actor", actor, "category", body.Title)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -897,7 +899,7 @@ func (a app) copyActivity(w http.ResponseWriter, r *http.Request) {
 	for _, row := range links {
 		tables = tables.with(linksTab, nil, row)
 	}
-	if !a.commit(w, tables, func() error {
+	if !a.commit(r.Context(), w, tables, func() error {
 		if err := a.writer.Append(appName, activitiesTab, rowOf(ActivityColumns, activity)); err != nil {
 			return err
 		}
@@ -915,7 +917,7 @@ func (a app) copyActivity(w http.ResponseWriter, r *http.Request) {
 	}) {
 		return
 	}
-	log.Printf("events: %s copied activity %q from %s to %s", actor, act.Title, act.Year, year)
+	slog.InfoContext(r.Context(), "events: copied activity", "actor", actor, "activity", act.Title, "from", act.Year, "to", year)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -936,7 +938,7 @@ func (a app) saveSettings(w http.ResponseWriter, r *http.Request) {
 	for key, value := range values {
 		tables = tables.with(settingsTab, map[string]string{"Key": key}, map[string]string{"Value": value})
 	}
-	if !a.commit(w, tables, func() error {
+	if !a.commit(r.Context(), w, tables, func() error {
 		for key, value := range values {
 			if err := a.writer.Set(appName, settingsTab, map[string]string{"Key": key}, map[string]string{"Value": value}); err != nil {
 				return err
@@ -946,7 +948,7 @@ func (a app) saveSettings(w http.ResponseWriter, r *http.Request) {
 	}) {
 		return
 	}
-	log.Printf("events: %s changed the settings", actor)
+	slog.InfoContext(r.Context(), "events: changed the settings", "actor", actor)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -978,13 +980,13 @@ func (a app) uploadImage(w http.ResponseWriter, r *http.Request) {
 	sum := sha256.Sum256(content)
 	name := hex.EncodeToString(sum[:]) + ext
 	if err := a.store.Put(imageFolder, name, mimeType, content); err != nil {
-		log.Printf("[ERROR] store activity image: %v", err)
+		slog.ErrorContext(r.Context(), "store activity image", "error", err)
 		http.Error(w, "could not store the image", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(map[string]string{"name": imageFolder + "/" + name}); err != nil {
-		log.Printf("[ERROR] encode image name: %v", err)
+		slog.ErrorContext(r.Context(), "encode image name", "error", err)
 	}
 }
 
@@ -1000,7 +1002,7 @@ func (a app) adminState(w http.ResponseWriter, r *http.Request) {
 	}{Email: email, HasStore: a.store != nil, Admins: a.cache.Admins(a.superAdmins())}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
-		log.Printf("[ERROR] encode events admin state: %v", err)
+		slog.ErrorContext(r.Context(), "encode events admin state", "error", err)
 	}
 }
 
@@ -1035,7 +1037,7 @@ func (a app) setAdmins(w http.ResponseWriter, r *http.Request) {
 	for _, e := range admins {
 		is[e] = true
 	}
-	if !a.commit(w, a.cache.Tables().withAdmins(admins), func() error {
+	if !a.commit(r.Context(), w, a.cache.Tables().withAdmins(admins), func() error {
 		for _, e := range current {
 			if !is[e] {
 				if err := a.writer.Delete(appName, adminsTab, map[string]string{"Email": e}); err != nil {
@@ -1054,7 +1056,7 @@ func (a app) setAdmins(w http.ResponseWriter, r *http.Request) {
 	}) {
 		return
 	}
-	log.Printf("events: %s set the admin list to %s", actor, strings.Join(admins, ", "))
+	slog.InfoContext(r.Context(), "events: set the admin list", "actor", actor, "admins", admins)
 	w.WriteHeader(http.StatusNoContent)
 }
 

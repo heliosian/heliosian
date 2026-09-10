@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"net/http"
 	"slices"
 	"strings"
@@ -99,17 +100,17 @@ func clearable(value string) string {
 	return value
 }
 
-func (u uploader) applyOverride(w http.ResponseWriter, actor, email, action string, cells, previous map[string]string) bool {
-	return applyOverrideWrite(u.cache, u.sheet, u.queue, w, actor, email, action, cells, previous)
+func (u uploader) applyOverride(w http.ResponseWriter, r *http.Request, actor, email, action string, cells, previous map[string]string) bool {
+	return applyOverrideWrite(u.cache, u.sheet, u.queue, w, r, actor, email, action, cells, previous)
 }
 
-func (u uploader) applyFamily(w http.ResponseWriter, actor, key, action string, cells, previous map[string]string) bool {
-	return applyFamilyWrite(u.cache, u.sheet, u.queue, w, actor, key, action, cells, previous)
+func (u uploader) applyFamily(w http.ResponseWriter, r *http.Request, actor, key, action string, cells, previous map[string]string) bool {
+	return applyFamilyWrite(u.cache, u.sheet, u.queue, w, r, actor, key, action, cells, previous)
 }
 
 // applyFamilyWrite is applyOverrideWrite for the Families tab, keyed by the family
 // key (the alphabetically first parent email, which is the row's Email cell).
-func applyFamilyWrite(cache *Cache, writer data.Writer, queue *Queue, w http.ResponseWriter, actor, key, action string, cells, previous map[string]string) bool {
+func applyFamilyWrite(cache *Cache, writer data.Writer, queue *Queue, w http.ResponseWriter, r *http.Request, actor, key, action string, cells, previous map[string]string) bool {
 	logRow := changeLogRow(actor, key, previous)
 	applied := make(chan error, 1)
 	queue.Add(func() {
@@ -119,7 +120,7 @@ func applyFamilyWrite(cache *Cache, writer data.Writer, queue *Queue, w http.Res
 			return
 		}
 		if err := writer.Upsert(appName, "Families", "Email", key, cells); err != nil {
-			log.Printf("[ERROR] set families row for %s: %v", key, err)
+			slog.ErrorContext(r.Context(), "set families row", "key", key, "error", err)
 			return
 		}
 		if err := writer.Append(appName, changeLogTable, logRow); err != nil {
@@ -127,7 +128,7 @@ func applyFamilyWrite(cache *Cache, writer data.Writer, queue *Queue, w http.Res
 		}
 	})
 	if err := <-applied; err != nil {
-		serverError(w, fmt.Errorf("rebuild model after %s: %w", action, err))
+		serverError(w, r, fmt.Errorf("rebuild model after %s: %w", action, err))
 		return false
 	}
 	return true
@@ -138,7 +139,7 @@ func applyFamilyWrite(cache *Cache, writer data.Writer, queue *Queue, w http.Res
 // by uploader (self-service field edits, keyed on *data.Sheet) and admin (structural
 // field edits, keyed on the narrower data.Writer) so the write path - and its
 // reject-before-persist ordering - can't drift between the two.
-func applyOverrideWrite(cache *Cache, writer data.Writer, queue *Queue, w http.ResponseWriter, actor, email, action string, cells, previous map[string]string) bool {
+func applyOverrideWrite(cache *Cache, writer data.Writer, queue *Queue, w http.ResponseWriter, r *http.Request, actor, email, action string, cells, previous map[string]string) bool {
 	logRow := changeLogRow(actor, email, previous)
 	applied := make(chan error, 1)
 	queue.Add(func() {
@@ -152,7 +153,7 @@ func applyOverrideWrite(cache *Cache, writer data.Writer, queue *Queue, w http.R
 			return
 		}
 		if err := writer.Upsert(appName, "Overrides", "Email", email, cells); err != nil {
-			log.Printf("[ERROR] set overrides for %s: %v", email, err)
+			slog.ErrorContext(r.Context(), "set overrides", "email", email, "error", err)
 			return
 		}
 		if err := writer.Append(appName, changeLogTable, logRow); err != nil {
@@ -160,7 +161,7 @@ func applyOverrideWrite(cache *Cache, writer data.Writer, queue *Queue, w http.R
 		}
 	})
 	if err := <-applied; err != nil {
-		serverError(w, fmt.Errorf("rebuild model after %s: %w", action, err))
+		serverError(w, r, fmt.Errorf("rebuild model after %s: %w", action, err))
 		return false
 	}
 	return true
@@ -179,7 +180,7 @@ func applyOverrideWrite(cache *Cache, writer data.Writer, queue *Queue, w http.R
 // with only the renamed column set and everything else blank. Checking first against
 // the tables snapshot from just before the rename (still keyed under oldEmail) means
 // each Upsert only ever fires when a real row is there to rename.
-func applyEmailRenameWrite(cache *Cache, writer data.Writer, queue *Queue, w http.ResponseWriter, actor, oldEmail, newEmail string, cells map[string]string) bool {
+func applyEmailRenameWrite(cache *Cache, writer data.Writer, queue *Queue, w http.ResponseWriter, r *http.Request, actor, oldEmail, newEmail string, cells map[string]string) bool {
 	logRow := changeLogRow(actor, newEmail, map[string]string{"Email": oldEmail})
 	applied := make(chan error, 1)
 	queue.Add(func() {
@@ -204,22 +205,22 @@ func applyEmailRenameWrite(cache *Cache, writer data.Writer, queue *Queue, w htt
 			overrideCells[column] = value
 		}
 		if err := writer.Upsert(appName, "Overrides", "Email", oldEmail, overrideCells); err != nil {
-			log.Printf("[ERROR] rename overrides row %s -> %s: %v", oldEmail, newEmail, err)
+			slog.ErrorContext(r.Context(), "rename overrides row", "from", oldEmail, "to", newEmail, "error", err)
 			return
 		}
 		if hasTagOwner {
 			if err := writer.Upsert(appName, tagsTable, tagOwner, oldEmail, map[string]string{tagOwner: newEmail}); err != nil {
-				log.Printf("[ERROR] rename tag owner %s -> %s: %v", oldEmail, newEmail, err)
+				slog.ErrorContext(r.Context(), "rename tag owner", "from", oldEmail, "to", newEmail, "error", err)
 			}
 		}
 		if hasTagPerson {
 			if err := writer.Upsert(appName, tagsTable, tagPerson, oldEmail, map[string]string{tagPerson: newEmail}); err != nil {
-				log.Printf("[ERROR] rename tag person %s -> %s: %v", oldEmail, newEmail, err)
+				slog.ErrorContext(r.Context(), "rename tag person", "from", oldEmail, "to", newEmail, "error", err)
 			}
 		}
 		if hasPhotos {
 			if err := writer.Upsert(appName, "Photos", "Email", oldEmail, map[string]string{"Email": newEmail}); err != nil {
-				log.Printf("[ERROR] rename photos %s -> %s: %v", oldEmail, newEmail, err)
+				slog.ErrorContext(r.Context(), "rename photos", "from", oldEmail, "to", newEmail, "error", err)
 			}
 		}
 		if err := writer.Append(appName, changeLogTable, logRow); err != nil {
@@ -227,7 +228,7 @@ func applyEmailRenameWrite(cache *Cache, writer data.Writer, queue *Queue, w htt
 		}
 	})
 	if err := <-applied; err != nil {
-		serverError(w, fmt.Errorf("rebuild model after email rename: %w", err))
+		serverError(w, r, fmt.Errorf("rebuild model after email rename: %w", err))
 		return false
 	}
 	return true
@@ -241,7 +242,7 @@ func applyEmailRenameWrite(cache *Cache, writer data.Writer, queue *Queue, w htt
 // Delete is safe to call even when nothing matches - both implementations just delete
 // zero rows and return no error - so this doesn't need the existence checks that
 // rename does.
-func applyDeletePersonWrite(cache *Cache, writer data.Writer, queue *Queue, w http.ResponseWriter, actor, email string, previous map[string]string) bool {
+func applyDeletePersonWrite(cache *Cache, writer data.Writer, queue *Queue, w http.ResponseWriter, r *http.Request, actor, email string, previous map[string]string) bool {
 	logRow := changeLogRow(actor, email, previous)
 	applied := make(chan error, 1)
 	queue.Add(func() {
@@ -251,24 +252,24 @@ func applyDeletePersonWrite(cache *Cache, writer data.Writer, queue *Queue, w ht
 			return
 		}
 		if err := writer.Delete(appName, "Overrides", map[string]string{"Email": email}); err != nil {
-			log.Printf("[ERROR] delete overrides row for %s: %v", email, err)
+			slog.ErrorContext(r.Context(), "delete overrides row", "email", email, "error", err)
 			return
 		}
 		if err := writer.Delete(appName, tagsTable, map[string]string{tagOwner: email}); err != nil {
-			log.Printf("[ERROR] delete tags owned by %s: %v", email, err)
+			slog.ErrorContext(r.Context(), "delete tags owned", "email", email, "error", err)
 		}
 		if err := writer.Delete(appName, tagsTable, map[string]string{tagPerson: email}); err != nil {
-			log.Printf("[ERROR] delete tags naming %s: %v", email, err)
+			slog.ErrorContext(r.Context(), "delete tags naming", "email", email, "error", err)
 		}
 		if err := writer.Delete(appName, "Photos", map[string]string{"Email": email}); err != nil {
-			log.Printf("[ERROR] delete photos for %s: %v", email, err)
+			slog.ErrorContext(r.Context(), "delete photos", "email", email, "error", err)
 		}
 		if err := writer.Append(appName, changeLogTable, logRow); err != nil {
 			log.Fatalf("[ERROR] append change log after deleting %s: %v", email, err)
 		}
 	})
 	if err := <-applied; err != nil {
-		serverError(w, fmt.Errorf("rebuild model after delete: %w", err))
+		serverError(w, r, fmt.Errorf("rebuild model after delete: %w", err))
 		return false
 	}
 	return true
@@ -305,10 +306,10 @@ func (u uploader) edit(w http.ResponseWriter, r *http.Request) {
 		// reads "-" as an explicit clear and "" as no cell at all.
 		cells := map[string]string{"Family Photo Caption": clearable(value)}
 		previous := map[string]string{"Family Photo Caption": family.PhotoCaption}
-		if !u.applyFamily(w, me, family.Key, field+" edit", cells, previous) {
+		if !u.applyFamily(w, r, me, family.Key, field+" edit", cells, previous) {
 			return
 		}
-		log.Printf("edit: %s set %s on %s", me, field, key)
+		slog.InfoContext(r.Context(), "edit: set field", "actor", me, "field", field, "key", key)
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
@@ -334,10 +335,10 @@ func (u uploader) edit(w http.ResponseWriter, r *http.Request) {
 		}
 		cells := map[string]string{"Family Pronunciation": ""}
 		previous := map[string]string{"Family Pronunciation": family.pronunciation}
-		if !u.applyFamily(w, me, family.Key, field+" edit", cells, previous) {
+		if !u.applyFamily(w, r, me, family.Key, field+" edit", cells, previous) {
 			return
 		}
-		log.Printf("edit: %s set %s on %s", me, field, key)
+		slog.InfoContext(r.Context(), "edit: set field", "actor", me, "field", field, "key", key)
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
@@ -405,10 +406,10 @@ func (u uploader) edit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !u.applyOverride(w, me, key, field+" edit", cells, previous) {
+	if !u.applyOverride(w, r, me, key, field+" edit", cells, previous) {
 		return
 	}
-	log.Printf("edit: %s set %s on %s", me, field, key)
+	slog.InfoContext(r.Context(), "edit: set field", "actor", me, "field", field, "key", key)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -424,10 +425,10 @@ func (u uploader) optOut(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "not allowed to edit this record", http.StatusForbidden)
 		return
 	}
-	if !u.applyOverride(w, me, key, "opt out", map[string]string{"Opted Out": "TRUE"}, map[string]string{"Opted Out": ""}) {
+	if !u.applyOverride(w, r, me, key, "opt out", map[string]string{"Opted Out": "TRUE"}, map[string]string{"Opted Out": ""}) {
 		return
 	}
-	log.Printf("optout: %s removed %s from the directory", me, key)
+	slog.InfoContext(r.Context(), "optout: removed from the directory", "actor", me, "key", key)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -451,10 +452,10 @@ func (u uploader) facts(w http.ResponseWriter, r *http.Request) {
 	}
 	cells := map[string]string{"Facts": facts, "Facts Updated": today()}
 	previous := map[string]string{"Facts": old, "Facts Updated": oldUpdated}
-	if !u.applyOverride(w, me, key, "facts update", cells, previous) {
+	if !u.applyOverride(w, r, me, key, "facts update", cells, previous) {
 		return
 	}
-	log.Printf("facts: %s set %s (%d chars)", me, key, len(facts))
+	slog.InfoContext(r.Context(), "facts: set", "actor", me, "key", key, "chars", len(facts))
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -505,7 +506,7 @@ func (u uploader) upload(w http.ResponseWriter, r *http.Request) {
 	}
 	name := fmt.Sprintf("%x.%s", sha256.Sum256(content), ext)
 	if err := u.store.Put(folder, name, mimeType, content); err != nil {
-		serverError(w, err)
+		serverError(w, r, err)
 		return
 	}
 
@@ -524,10 +525,10 @@ func (u uploader) upload(w http.ResponseWriter, r *http.Request) {
 		order = append(order, photoRef{Name: name})
 		cells := map[string]string{"Photo Updated": today()}
 		previous := map[string]string{"Photo Updated": person.PhotoUpdated}
-		if !u.setPhotos(w, me, key, order, cells, previous, "photo upload") {
+		if !u.setPhotos(w, r, me, key, order, cells, previous, "photo upload") {
 			return
 		}
-		log.Printf("upload: %s added photo %s for %s", me, name, key)
+		slog.InfoContext(r.Context(), "upload: added photo", "actor", me, "name", name, "key", key)
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
@@ -547,20 +548,20 @@ func (u uploader) upload(w http.ResponseWriter, r *http.Request) {
 			cells["Family Pronunciation"] = name
 			previous["Family Pronunciation"] = family.pronunciation
 		}
-		if !u.applyFamily(w, me, family.Key, kind+" upload", cells, previous) {
+		if !u.applyFamily(w, r, me, family.Key, kind+" upload", cells, previous) {
 			return
 		}
-		log.Printf("upload: %s set %s %s %s to %s", me, target, key, kind, name)
+		slog.InfoContext(r.Context(), "upload: set media", "actor", me, "target", target, "key", key, "kind", kind, "name", name)
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 
 	cells := map[string]string{"Pronunciation": name}
 	previous := map[string]string{"Pronunciation": model.Person(key).pronunciation}
-	if !u.applyOverride(w, me, key, kind+" upload", cells, previous) {
+	if !u.applyOverride(w, r, me, key, kind+" upload", cells, previous) {
 		return
 	}
-	log.Printf("upload: %s set %s %s %s to %s", me, target, key, kind, name)
+	slog.InfoContext(r.Context(), "upload: set media", "actor", me, "target", target, "key", key, "kind", kind, "name", name)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -570,7 +571,7 @@ func (u uploader) upload(w http.ResponseWriter, r *http.Request) {
 // (attach a crop to one) all funnel through this one path rather than four ad hoc
 // ones, since each is really just "this person's photo list is now exactly order" -
 // one place to get the sheet-write-then-rebuild interaction right instead of four.
-func (u uploader) setPhotos(w http.ResponseWriter, me, key string, order []photoRef, cells, previous map[string]string, changeAction string) bool {
+func (u uploader) setPhotos(w http.ResponseWriter, r *http.Request, me, key string, order []photoRef, cells, previous map[string]string, changeAction string) bool {
 	rows := make([][]string, len(order))
 	for i, ref := range order {
 		rows[i] = []string{key, ref.Name, ref.CropName}
@@ -584,7 +585,7 @@ func (u uploader) setPhotos(w http.ResponseWriter, me, key string, order []photo
 		rewritten <- u.sheet.AppendAll(appName, "Photos", rows)
 	})
 	if err := <-rewritten; err != nil {
-		serverError(w, fmt.Errorf("rewrite photo list for %s: %w", key, err))
+		serverError(w, r, fmt.Errorf("rewrite photo list for %s: %w", key, err))
 		return false
 	}
 	logRow := changeLogRow(me, key, previous)
@@ -600,7 +601,7 @@ func (u uploader) setPhotos(w http.ResponseWriter, me, key string, order []photo
 			return
 		}
 		if err := u.sheet.Upsert(appName, "Overrides", "Email", key, cells); err != nil {
-			log.Printf("[ERROR] set overrides for %s: %v", key, err)
+			slog.ErrorContext(r.Context(), "set overrides", "email", key, "error", err)
 			return
 		}
 		if err := u.sheet.Append(appName, changeLogTable, logRow); err != nil {
@@ -608,7 +609,7 @@ func (u uploader) setPhotos(w http.ResponseWriter, me, key string, order []photo
 		}
 	})
 	if err := <-applied; err != nil {
-		serverError(w, fmt.Errorf("rebuild model after %s: %w", changeAction, err))
+		serverError(w, r, fmt.Errorf("rebuild model after %s: %w", changeAction, err))
 		return false
 	}
 	return true
@@ -657,10 +658,10 @@ func (u uploader) reorderPhotos(w http.ResponseWriter, r *http.Request) {
 		cells["Primary Photo"] = ""
 		previous["Primary Photo"] = person.primaryPhotoOverride
 	}
-	if !u.setPhotos(w, me, key, order, cells, previous, "photo reorder") {
+	if !u.setPhotos(w, r, me, key, order, cells, previous, "photo reorder") {
 		return
 	}
-	log.Printf("reorder-photos: %s set %d photos for %s", me, len(order), key)
+	slog.InfoContext(r.Context(), "reorder-photos: set photo list", "actor", me, "photos", len(order), "key", key)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -734,17 +735,17 @@ func (u uploader) cropPhoto(w http.ResponseWriter, r *http.Request) {
 	}
 	cropName := fmt.Sprintf("%x.%s", sha256.Sum256(content), ext)
 	if err := u.store.Put("photos", cropName, mimeType, content); err != nil {
-		serverError(w, err)
+		serverError(w, r, err)
 		return
 	}
 
 	if target == "family" {
 		cells := map[string]string{"Family Photo Crop": cropName, "Family Photo Updated": today()}
 		previous := map[string]string{"Family Photo Crop": family.photoCropName, "Family Photo Updated": family.PhotoUpdated}
-		if !u.applyFamily(w, me, family.Key, "family photo crop", cells, previous) {
+		if !u.applyFamily(w, r, me, family.Key, "family photo crop", cells, previous) {
 			return
 		}
-		log.Printf("crop-photo: %s set a crop on family %s's photo", me, key)
+		slog.InfoContext(r.Context(), "crop-photo: set a crop on the family photo", "actor", me, "family", key)
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
@@ -761,10 +762,10 @@ func (u uploader) cropPhoto(w http.ResponseWriter, r *http.Request) {
 
 	cells := map[string]string{"Photo Updated": today()}
 	previous := map[string]string{"Photo Updated": person.PhotoUpdated}
-	if !u.setPhotos(w, me, key, order, cells, previous, "photo crop") {
+	if !u.setPhotos(w, r, me, key, order, cells, previous, "photo crop") {
 		return
 	}
-	log.Printf("crop-photo: %s set a crop on %s's photo %s", me, key, name)
+	slog.InfoContext(r.Context(), "crop-photo: set a crop on a photo", "actor", me, "key", key, "photo", name)
 	w.WriteHeader(http.StatusNoContent)
 }
 

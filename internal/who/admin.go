@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"log"
+	"log/slog"
 	"maps"
 	"net/http"
 	"slices"
@@ -310,7 +310,7 @@ func (a admin) state(w http.ResponseWriter, r *http.Request) {
 	view.SpoofingAs = spoofDisplayName(a.cache, real)
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
-		log.Printf("[ERROR] encode admin state: %v", err)
+		slog.ErrorContext(r.Context(), "encode admin state", "error", err)
 	}
 }
 
@@ -342,17 +342,17 @@ func (a admin) setAdmins(w http.ResponseWriter, r *http.Request) {
 		close(applied)
 		for _, e := range removed {
 			if err := a.writer.Delete(appName, adminsTable, map[string]string{"Email": e}); err != nil {
-				log.Printf("[ERROR] remove admin %s: %v", e, err)
+				slog.ErrorContext(r.Context(), "remove admin", "email", e, "error", err)
 			}
 		}
 		for _, e := range added {
 			if err := a.writer.Append(appName, adminsTable, []string{e}); err != nil {
-				log.Printf("[ERROR] add admin %s: %v", e, err)
+				slog.ErrorContext(r.Context(), "add admin", "email", e, "error", err)
 			}
 		}
 	})
 	<-applied
-	log.Printf("admin: %s set the admin list to %s", email, strings.Join(admins, ", "))
+	slog.InfoContext(r.Context(), "admin: set the admin list", "actor", email, "admins", admins)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -407,7 +407,7 @@ func (a admin) setSuperEdit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.cache.SetSuperEdit(email, body.Enabled)
-	log.Printf("admin: %s set super edit mode to %t", email, body.Enabled)
+	slog.InfoContext(r.Context(), "admin: set super edit mode", "actor", email, "enabled", body.Enabled)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -430,9 +430,9 @@ func (a admin) setSpoof(w http.ResponseWriter, r *http.Request) {
 	}
 	a.cache.SetSpoof(email, target)
 	if target == "" {
-		log.Printf("admin: %s stopped spoofing", email)
+		slog.InfoContext(r.Context(), "admin: stopped spoofing", "actor", email)
 	} else {
-		log.Printf("admin: %s started spoofing as %s", email, target)
+		slog.InfoContext(r.Context(), "admin: started spoofing", "actor", email, "target", target)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -549,10 +549,10 @@ func (a admin) setPersonFields(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	if !applyOverrideWrite(a.cache, a.writer, a.queue, w, actor, target, "person fields edit", cells, previous) {
+	if !applyOverrideWrite(a.cache, a.writer, a.queue, w, r, actor, target, "person fields edit", cells, previous) {
 		return
 	}
-	log.Printf("admin: %s edited fields for %s: %v", actor, target, cells)
+	slog.InfoContext(r.Context(), "admin: edited person fields", "actor", actor, "target", target, "cells", cells)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -759,10 +759,10 @@ func (a admin) setStudentFields(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	if !applyOverrideWrite(a.cache, a.writer, a.queue, w, actor, target, "student fields edit", cells, previous) {
+	if !applyOverrideWrite(a.cache, a.writer, a.queue, w, r, actor, target, "student fields edit", cells, previous) {
 		return
 	}
-	log.Printf("admin: %s edited student fields for %s: %v", actor, target, cells)
+	slog.InfoContext(r.Context(), "admin: edited student fields", "actor", actor, "target", target, "cells", cells)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -842,17 +842,17 @@ func (a admin) setParentFields(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(cells) > 0 {
-		if !applyOverrideWrite(a.cache, a.writer, a.queue, w, actor, target, "parent fields edit", cells, previous) {
+		if !applyOverrideWrite(a.cache, a.writer, a.queue, w, r, actor, target, "parent fields edit", cells, previous) {
 			return
 		}
 	}
 	if len(familyCells) > 0 {
-		if !applyFamilyWrite(a.cache, a.writer, a.queue, w, actor, family.Key, "parent family edit", familyCells, familyPrevious) {
+		if !applyFamilyWrite(a.cache, a.writer, a.queue, w, r, actor, family.Key, "parent family edit", familyCells, familyPrevious) {
 			return
 		}
 	}
 	if len(cells) > 0 || len(familyCells) > 0 {
-		log.Printf("admin: %s edited parent fields for %s: %v %v", actor, target, cells, familyCells)
+		slog.InfoContext(r.Context(), "admin: edited parent fields", "actor", actor, "target", target, "cells", cells, "familyCells", familyCells)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -922,10 +922,10 @@ func (a admin) setAddedFields(w http.ResponseWriter, r *http.Request) {
 	diffBoolCell(cells, previous, "Is Staff", body.IsStaff, overrideBoolValue(person, "Is Staff"))
 
 	if newEmail != target {
-		if !applyEmailRenameWrite(a.cache, a.writer, a.queue, w, actor, target, newEmail, cells) {
+		if !applyEmailRenameWrite(a.cache, a.writer, a.queue, w, r, actor, target, newEmail, cells) {
 			return
 		}
-		log.Printf("admin: %s renamed added person %s to %s and edited fields: %v", actor, target, newEmail, cells)
+		slog.InfoContext(r.Context(), "admin: renamed added person", "actor", actor, "target", target, "newEmail", newEmail, "cells", cells)
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
@@ -934,10 +934,10 @@ func (a admin) setAddedFields(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	if !applyOverrideWrite(a.cache, a.writer, a.queue, w, actor, target, "added person fields edit", cells, previous) {
+	if !applyOverrideWrite(a.cache, a.writer, a.queue, w, r, actor, target, "added person fields edit", cells, previous) {
 		return
 	}
-	log.Printf("admin: %s edited added-person fields for %s: %v", actor, target, cells)
+	slog.InfoContext(r.Context(), "admin: edited added-person fields", "actor", actor, "target", target, "cells", cells)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -996,10 +996,10 @@ func (a admin) addPerson(w http.ResponseWriter, r *http.Request) {
 	if body.IsStaff {
 		cells["Is Staff"] = "TRUE"
 	}
-	if !applyOverrideWrite(a.cache, a.writer, a.queue, w, actor, email, "add person", cells, map[string]string{}) {
+	if !applyOverrideWrite(a.cache, a.writer, a.queue, w, r, actor, email, "add person", cells, map[string]string{}) {
 		return
 	}
-	log.Printf("admin: %s added a new person %s (%s)", actor, email, fullName)
+	slog.InfoContext(r.Context(), "admin: added a new person", "actor", actor, "email", email, "name", fullName)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -1032,10 +1032,10 @@ func (a admin) deletePerson(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	previous := maps.Clone(person.overrideRow)
-	if !applyDeletePersonWrite(a.cache, a.writer, a.queue, w, actor, target, previous) {
+	if !applyDeletePersonWrite(a.cache, a.writer, a.queue, w, r, actor, target, previous) {
 		return
 	}
-	log.Printf("admin: %s deleted added person %s", actor, target)
+	slog.InfoContext(r.Context(), "admin: deleted added person", "actor", actor, "target", target)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -1063,10 +1063,10 @@ func (a admin) hidePerson(w http.ResponseWriter, r *http.Request) {
 	}
 	cells := map[string]string{"Opted Out": "TRUE"}
 	previous := map[string]string{"Opted Out": ""}
-	if !applyOverrideWrite(a.cache, a.writer, a.queue, w, actor, target, "hide person", cells, previous) {
+	if !applyOverrideWrite(a.cache, a.writer, a.queue, w, r, actor, target, "hide person", cells, previous) {
 		return
 	}
-	log.Printf("admin: %s hid %s from the directory", actor, target)
+	slog.InfoContext(r.Context(), "admin: hid person from the directory", "actor", actor, "target", target)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -1097,10 +1097,10 @@ func (a admin) unhidePerson(w http.ResponseWriter, r *http.Request) {
 	}
 	cells := map[string]string{"Opted Out": ""}
 	previous := map[string]string{"Opted Out": "TRUE"}
-	if !applyOverrideWrite(a.cache, a.writer, a.queue, w, actor, target, "unhide person", cells, previous) {
+	if !applyOverrideWrite(a.cache, a.writer, a.queue, w, r, actor, target, "unhide person", cells, previous) {
 		return
 	}
-	log.Printf("admin: %s unhid %s from the directory", actor, target)
+	slog.InfoContext(r.Context(), "admin: unhid person from the directory", "actor", actor, "target", target)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -1162,9 +1162,9 @@ func (a admin) setImage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := a.cache.PutImage(folder, slug+"."+ext, sniffed, content); err != nil {
-		serverError(w, err)
+		serverError(w, r, err)
 		return
 	}
-	log.Printf("admin: %s replaced the %s image for %s", email, kind, name)
+	slog.InfoContext(r.Context(), "admin: replaced image", "actor", email, "kind", kind, "name", name)
 	w.WriteHeader(http.StatusNoContent)
 }

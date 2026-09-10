@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"log/slog"
 	"mime"
 	"net/http"
 	"os"
@@ -24,6 +25,7 @@ import (
 	"heliosian/internal/events"
 	"heliosian/internal/geocode"
 	"heliosian/internal/home"
+	"heliosian/internal/logging"
 	"heliosian/internal/who"
 )
 
@@ -148,6 +150,12 @@ func Files(app string, next http.Handler) http.Handler {
 	return serveFrom([]string{"web/" + app, "web/common"}, next)
 }
 
+// Logged sits inside sign-in too, so every record a request produces names
+// the app and the user, and every request past the media routes gets one.
+func Logged(app string, next http.Handler) http.Handler {
+	return logging.Requests(app, blob.Media, next)
+}
+
 func route(apps map[string]http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		host, _, _ := strings.Cut(r.Host, ":")
@@ -252,17 +260,17 @@ func Serve(server *http.Server, queue *who.Queue) {
 	signal.Notify(stop, syscall.SIGTERM, os.Interrupt)
 	go func() {
 		<-stop
-		log.Printf("shutting down")
+		slog.Info("shutting down")
 		if err := server.Shutdown(context.Background()); err != nil {
-			log.Printf("[ERROR] shutdown: %v", err)
+			slog.Error("shutdown", "error", err)
 		}
 	}()
-	log.Printf("listening on :%s", Port())
+	slog.Info("listening", "port", Port())
 	if err := ListenAndServe(server); err != http.ErrServerClosed {
 		log.Fatal(err)
 	}
 	<-queue.Drain()
-	log.Printf("queue drained")
+	slog.Info("queue drained")
 }
 
 // ListenAndServe speaks TLS only when the server carries a TLSConfig, which
@@ -356,8 +364,8 @@ func Production() (*http.Server, *who.Queue) {
 	hcaAuth := auth.New(client, []byte(sessionKey), "web/public/hca/login.html")
 	hcaAuth.Register(core.EventsMux)
 	return Server(map[string]http.Handler{
-		"who":  Public("who", whoAuth.Wrap(Files("who", core.Gate))),
-		"home": Public("home", homeAuth.Wrap(Files("home", core.Home))),
-		"hca":  Public("hca", hcaAuth.Wrap(Files("hca", core.Events))),
+		"who":  Public("who", whoAuth.Wrap(Logged("who", Files("who", core.Gate)))),
+		"home": Public("home", homeAuth.Wrap(Logged("home", Files("home", core.Home)))),
+		"hca":  Public("hca", hcaAuth.Wrap(Logged("hca", Files("hca", core.Events)))),
 	}), core.Queue
 }

@@ -1,7 +1,7 @@
 package who
 
 import (
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -44,11 +44,11 @@ func (t tagger) set(w http.ResponseWriter, r *http.Request) {
 		t.cache.applyTag(owner, tag, person, on)
 		close(applied)
 		if err := t.flush(owner, tag, person, on); err != nil {
-			log.Printf("[ERROR] tag %q %s for %s: %v", tag, person, owner, err)
+			slog.ErrorContext(r.Context(), "tag write", "owner", owner, "tag", tag, "person", person, "error", err)
 		}
 	})
 	<-applied
-	log.Printf("tag: %s %s %q on %s", owner, map[bool]string{true: "set", false: "cleared"}[on], tag, person)
+	slog.InfoContext(r.Context(), "tag: changed", "owner", owner, "on", on, "tag", tag, "person", person)
 	w.WriteHeader(http.StatusNoContent)
 }
 

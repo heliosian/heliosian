@@ -1,7 +1,7 @@
 package home
 
 import (
-	"log"
+	"log/slog"
 	"sort"
 	"strings"
 	"sync"
@@ -40,7 +40,7 @@ func (c *Cache) refreshLoop() {
 	for range time.Tick(refreshInterval) {
 		c.queue.Add(func() {
 			if err := c.refresh(); err != nil {
-				log.Printf("[ERROR] apps model refresh: %v", err)
+				slog.Error("apps model refresh", "error", err)
 			}
 		})
 	}
@@ -61,7 +61,7 @@ func (c *Cache) refresh() error {
 	for _, category := range model.Categories {
 		links += len(category.Links)
 	}
-	log.Printf("loaded apps model: %d categories, %d links in %s", len(model.Categories), links, time.Since(start).Round(time.Millisecond))
+	slog.Info("loaded apps model", "categories", len(model.Categories), "links", links, "took", time.Since(start).Round(time.Millisecond))
 	return nil
 }
 

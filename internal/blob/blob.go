@@ -8,9 +8,10 @@ import (
 	"image"
 	"image/jpeg"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"path"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -38,6 +39,12 @@ const (
 )
 
 var folders = []string{"photos", "pronunciation", "classroom-images", "grade-images", "link-images", "activity-images"}
+
+// Media reports whether a request path is one of the media routes served here.
+func Media(path string) bool {
+	folder, _, _ := strings.Cut(strings.TrimPrefix(path, "/"), "/")
+	return slices.Contains(folders, folder)
+}
 
 // Recorded names carry an extension and entries are keyed without one, so an object
 // and its thumbnail share a key.
@@ -106,7 +113,7 @@ func RegisterEvents(mux *http.ServeMux, s *Store) {
 func (s *Store) refreshLoop() {
 	for range time.Tick(refreshInterval) {
 		if err := s.refresh(); err != nil {
-			log.Printf("[ERROR] blob refresh: %v", err)
+			slog.Error("blob refresh", "error", err)
 		}
 	}
 }
@@ -190,7 +197,7 @@ func (s *Store) refresh() error {
 				return
 			}
 			fetched[key] = e
-			log.Printf("blob store: fetched %d/%d %s, %d bytes", len(fetched), len(missing), key, len(e.data)+len(e.thumb))
+			slog.Info("blob store: fetched", "done", len(fetched), "of", len(missing), "key", key, "bytes", len(e.data)+len(e.thumb))
 		}()
 	}
 	wg.Wait()
@@ -213,8 +220,8 @@ func (s *Store) refresh() error {
 		totalBytes += int64(len(e.data) + len(e.thumb))
 	}
 	s.mu.Unlock()
-	log.Printf("blob store: %d files, %d fetched, %.1f MB in memory in %s",
-		len(next), len(fetched), float64(totalBytes)/1e6, time.Since(start).Round(time.Millisecond))
+	slog.Info("blob store: loaded", "files", len(next), "fetched", len(fetched),
+		"mb", float64(totalBytes)/1e6, "took", time.Since(start).Round(time.Millisecond))
 	return nil
 }
 
@@ -321,7 +328,7 @@ func (u *Uploader) Repair() (int, error) {
 				return repaired, err
 			}
 			u.present[folder+"/"+base+thumbSuffix] = true
-			log.Printf("blob repair: wrote the missing thumbnail for %s", o.name)
+			slog.Info("blob repair: wrote the missing thumbnail", "name", o.name)
 			repaired++
 		}
 	}

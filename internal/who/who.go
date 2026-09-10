@@ -3,7 +3,7 @@ package who
 
 import (
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -65,16 +65,16 @@ func spoofDisplayName(cache *Cache, realEmail string) string {
 // consent form is the only way in, so the page hands them the link to it.
 const noAccess = "web/public/who/no-access.html"
 
-func denyAccess(w http.ResponseWriter) {
+func denyAccess(w http.ResponseWriter, r *http.Request) {
 	page, err := os.ReadFile(noAccess)
 	if err != nil {
-		serverError(w, err)
+		serverError(w, r, err)
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusForbidden)
 	if _, err := w.Write(page); err != nil {
-		log.Printf("[ERROR] write the no-access page: %v", err)
+		slog.ErrorContext(r.Context(), "write the no-access page", "error", err)
 	}
 }
 
@@ -90,7 +90,7 @@ func MemberGate(cache *Cache, next http.Handler) http.Handler {
 			return
 		}
 		if !cache.Model().Member(effectiveEmail(cache, r)) {
-			denyAccess(w)
+			denyAccess(w, r)
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -183,11 +183,11 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 	// way back, regardless of what the simulated view otherwise looks like.
 	view.SpoofingAs = spoofDisplayName(a.cache, real)
 	if err := json.NewEncoder(w).Encode(view); err != nil {
-		log.Printf("[ERROR] encode model: %v", err)
+		slog.ErrorContext(r.Context(), "encode model", "error", err)
 	}
 }
 
-func serverError(w http.ResponseWriter, err error) {
-	log.Printf("[ERROR] %v", err)
+func serverError(w http.ResponseWriter, r *http.Request, err error) {
+	slog.ErrorContext(r.Context(), "directory request failed", "error", err)
 	http.Error(w, "internal error", http.StatusInternalServerError)
 }

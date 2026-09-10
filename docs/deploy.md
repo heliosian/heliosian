@@ -87,6 +87,20 @@ The web client's authorized JavaScript origins are the `*.local.heliosian.com` d
 
 Every hostname is a Cloud Run domain mapping on the one service: `who.heliosian.com`, `who.lab.heliosian.com`, `home.heliosian.com`, `home.lab.heliosian.com`, `hca.heliosian.com`, `hca.lab.heliosian.com`, `www.heliosian.com`, and the apex `heliosian.com`. DNS at Namecheap carries `CNAME ghs.googlehosted.com.` for each subdomain; the apex, which cannot be a CNAME, carries a Namecheap `ALIAS` record to the same name, which Namecheap flattens into that host's current A and AAAA records on a fixed five-minute TTL. Cloud Run routes by hostname at Google's front end, so any of Google's addresses works, and the Cloud Run console's list of eight static apex addresses is a suggestion, not a check: certificate issuance only needs the challenge to be reachable. Google provisions and renews each certificate once its record resolves, retrying on an hourly poll, so a freshly changed record can take up to an hour to show as provisioned. The run.app URL stays live alongside them. A new app's hostnames take only domain mappings here; the server already routes them by the naming convention.
 
+## Logs
+
+The server writes one JSON object per line to stdout (`internal/logging`), and Cloud Run's agent turns each into a structured entry: `severity` and `message` are promoted, `httpRequest` is rendered like the request log's own summary, and every other field lands in `jsonPayload`, where it can be filtered on. Every record written while handling a request carries `app` (`who`, `home`, or `hca`), `user` (the signed-in address), and Cloud Run's trace, so the Logs Explorer nests it under the Cloud Run request entry with the same trace. Each request past sign-in also gets one record of its own, `message="request"`, holding method, URL, status, latency, and user agent; media reads (`/photos/…` and the other bucket routes) skip that record, since a photo-heavy page fans out hundreds of them and Cloud Run's request log already lists each one. Writes log what changed as fields, and carry `actor` where the acting identity can differ from `user`: the directory and the volunteer portal resolve aliases, and a super admin can spoof.
+
+Queries that answer the usual questions, in Logs Explorer with the service selected or with `gcloud logging read`:
+
+    jsonPayload.user="someone@heliosschool.org"
+    severity>=ERROR
+    jsonPayload.app="hca" AND jsonPayload.message:"events:"
+    jsonPayload.httpRequest.status>=500
+    trace="projects/heliosian/traces/<trace id>"
+
+Local development installs the same records over a text handler on stderr, so the dev server's output shows the same fields in `key=value` form.
+
 ## Verifying a deploy
 
 The startup log (Cloud Run → Logs, or `gcloud logging read`) shows the full boot sequence: the blob store footprint line, geocoding count, directory model load, then `listening` — about ten seconds after the instance starts. After any deploy, an existing session should still work — if everyone got signed out, `SESSION_KEY` stopped reaching the server.
