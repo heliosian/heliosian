@@ -102,10 +102,12 @@ func Register(mux *http.ServeMux, s *Store) {
 	mux.HandleFunc("GET /grade-images/{name}", s.serve)
 }
 
-// RegisterLinkImages serves the home app's link and category images, content
-// addressed like photos.
-func RegisterLinkImages(mux *http.ServeMux, s *Store) {
+// RegisterHome serves what the link portal shows: its link and category
+// images, content addressed, and the directory's photos, for the signed-in
+// person's own avatar - the same pair of needs RegisterEvents covers.
+func RegisterHome(mux *http.ServeMux, s *Store) {
 	mux.HandleFunc("GET /link-images/{name}", s.serve)
+	mux.HandleFunc("GET /photos/{name}", s.serve)
 }
 
 // RegisterEvents serves what the volunteer portal shows: the activity and role

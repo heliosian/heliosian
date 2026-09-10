@@ -283,6 +283,75 @@ func (s *Sheet) Delete(app, table string, match map[string]string) error {
 	return err
 }
 
+// Reorder rewrites the tab's data block in one Values.Update. It permutes the
+// raw rows rather than the parsed ones, so cells in columns this app never
+// models - and any trailing columns - move with their row untouched.
+func (s *Sheet) Reorder(app, table, keyColumn string, keys []string) error {
+	id, ok := s.spreadsheets[app]
+	if !ok {
+		return fmt.Errorf("no spreadsheet configured for app %q", app)
+	}
+	quoted := quoteTab(table)
+	resp, err := s.service.Spreadsheets.Values.Get(id, quoted).Do()
+	if err != nil {
+		return err
+	}
+	if len(resp.Values) == 0 {
+		return fmt.Errorf("table %s is empty", table)
+	}
+	key := -1
+	for i, cell := range resp.Values[0] {
+		if strings.TrimSpace(fmt.Sprint(cell)) == keyColumn {
+			key = i
+			break
+		}
+	}
+	if key < 0 {
+		return fmt.Errorf("table %s is missing column %q", table, keyColumn)
+	}
+	width := len(resp.Values[0])
+	rows := make([]map[string]string, 0, len(resp.Values)-1)
+	raw := map[string][]interface{}{}
+	for _, row := range resp.Values[1:] {
+		name := ""
+		if key < len(row) {
+			name = strings.TrimSpace(fmt.Sprint(row[key]))
+		}
+		rows = append(rows, map[string]string{keyColumn: name})
+		raw[name] = row
+		if len(row) > width {
+			width = len(row)
+		}
+	}
+	ordered, err := orderRows(table, keyColumn, keys, rows, func(row map[string]string) string {
+		return row[keyColumn]
+	})
+	if err != nil {
+		return err
+	}
+	values := make([][]interface{}, 0, len(ordered))
+	for _, row := range ordered {
+		cells := raw[row[keyColumn]]
+		// Pad, so a short row cannot leave the row it displaced showing through.
+		padded := make([]interface{}, width)
+		for i := range padded {
+			if i < len(cells) {
+				padded[i] = cells[i]
+				continue
+			}
+			padded[i] = ""
+		}
+		values = append(values, padded)
+	}
+	if len(values) == 0 {
+		return nil
+	}
+	rng := fmt.Sprintf("%s!A2:%s%d", quoted, columnName(width-1), len(values)+1)
+	_, err = s.service.Spreadsheets.Values.Update(id, rng, &sheets.ValueRange{Values: values}).
+		ValueInputOption("RAW").Do()
+	return err
+}
+
 func valuesMatch(row []interface{}, index map[string]int, match map[string]string) bool {
 	for column, value := range match {
 		i := index[column]

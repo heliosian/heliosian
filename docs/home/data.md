@@ -6,7 +6,7 @@ Home's data lives in one Google Sheet, `Apps`, in the community shared drive, re
 
 ## Tabs
 
-- `Categories` — Title, Image. Row order is display order.
+- `Categories` — Title, Image, Style. Row order is display order.
 - `Links` — Title, Description, URL, Image, Category, Visible, Added By, Added. Row order is display order within a category.
 - `Admins` — Email. Who may edit, beyond the platform super admins (`docs/config.md`).
 - `Change Log` — Timestamp, Actor, Action, Kind, and the link or category fields. Appended on every change; never read back.
@@ -18,6 +18,8 @@ The sheet is the schema from scratch, not an import of the Glide app's tables. T
 **Title is the key.** Links and categories are edited by title, so a title must be unique within its tab. An edit that renames carries the new title in the same write, so the row keeps its place; a category rename rewrites the Category cell of every link in it.
 
 **Visible is Yes or No**, spelled exactly so. Any other value refuses the load.
+
+**Style is `cards` or `tiles`**, spelled exactly so, and every category needs one. `cards` renders the category as large feature cards, each with its image, description, and its own button; `tiles` renders it as a row of compact tiles that carry only an image and a title. A blank or misspelled Style refuses the load rather than guessing a presentation, the same stance Visible takes — the front page's shape is a property of the sheet, not of what the renderer happens to fall back to.
 
 **A category must exist before a link names it**, and cannot be deleted while a link still does.
 

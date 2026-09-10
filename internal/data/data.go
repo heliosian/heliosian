@@ -3,6 +3,7 @@ package data
 
 import (
 	"encoding/csv"
+	"fmt"
 	"maps"
 	"os"
 	"path/filepath"
@@ -31,6 +32,34 @@ type Writer interface {
 	Set(app, table string, match, cells map[string]string) error
 	Append(app, table string, row []string) error
 	Delete(app, table string, match map[string]string) error
+	// Reorder rewrites a tab's data rows into the order the keys give. The keys
+	// must be exactly the tab's existing keyColumn values, each once, so rows
+	// only ever move - nothing is created, dropped, or edited, and columns the
+	// caller does not model travel with their row.
+	Reorder(app, table, keyColumn string, keys []string) error
+}
+
+// orderRows returns rows sorted into the order keys gives, or an error when
+// keys is not a permutation of the rows' keyColumn values. Shared by every
+// Writer so the two backends refuse identically.
+func orderRows(table, keyColumn string, keys []string, rows []map[string]string, keyOf func(map[string]string) string) ([]map[string]string, error) {
+	if len(keys) != len(rows) {
+		return nil, fmt.Errorf("table %s has %d rows but %d were ordered", table, len(rows), len(keys))
+	}
+	byKey := make(map[string]map[string]string, len(rows))
+	for _, row := range rows {
+		byKey[keyOf(row)] = row
+	}
+	ordered := make([]map[string]string, 0, len(rows))
+	for _, key := range keys {
+		row, ok := byKey[key]
+		if !ok {
+			return nil, fmt.Errorf("table %s has no row with %s %q", table, keyColumn, key)
+		}
+		delete(byKey, key)
+		ordered = append(ordered, row)
+	}
+	return ordered, nil
 }
 
 type table struct {
@@ -196,6 +225,23 @@ func (d *Dir) Delete(app, name string, match map[string]string) error {
 		}
 	}
 	t.rows = kept
+	return nil
+}
+
+func (d *Dir) Reorder(app, name, keyColumn string, keys []string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	t, err := d.load(app, name)
+	if err != nil {
+		return err
+	}
+	ordered, err := orderRows(name, keyColumn, keys, t.rows, func(row map[string]string) string {
+		return row[keyColumn]
+	})
+	if err != nil {
+		return err
+	}
+	t.rows = ordered
 	return nil
 }
 

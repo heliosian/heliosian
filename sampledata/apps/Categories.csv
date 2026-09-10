@@ -1,4 +1,4 @@
-Title,Image
-School,brand/icon-192.png
-Events,
-Chats,
+Title,Image,Style
+School,brand/icon-192.png,cards
+Events,,tiles
+Chats,,tiles

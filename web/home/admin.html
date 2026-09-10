@@ -3,13 +3,40 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>HCA Home Admin</title>
+<title>Heliosian Admin</title>
 <link rel="icon" href="/brand/icon-192.png">
 <link rel="stylesheet" href="/fonts/fonts.css">
 <link rel="stylesheet" href="/style.css">
 <link rel="stylesheet" href="/github-badge.css">
 <link rel="modulepreload" href="/github-badge.js">
 <style>
+  /* Admin keeps the plain teal header bar. style.css's .topbar and .brand are
+     shaped for the front page's sidebar shell, which this page does not use. */
+  .topbar {
+    height: 56px;
+    margin: 0;
+    padding: 0 20px;
+    padding-top: env(safe-area-inset-top);
+    justify-content: space-between;
+    background: var(--brand);
+    color: #fff;
+  }
+  .brand { flex-direction: row; align-items: center; gap: 10px; color: #fff; }
+  .brand-mark { display: block; width: 36px; height: 36px; }
+  .brand-name {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.15;
+    font-size: 17px;
+    font-weight: 700;
+  }
+  .brand-name small {
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.72);
+  }
   .layout { flex: 1; width: 100%; max-width: 760px; margin: 0 auto; padding: 20px; }
   .card {
     background: #fff;
@@ -51,7 +78,7 @@
 </head>
 <body>
 <header class="topbar">
-<a class="brand" href="/"><img src="/brand/icon-192.png" alt=""><span>HCA Home</span></a>
+<a class="brand" href="/"><img class="brand-mark" src="/brand/logo-tile.png" alt=""><span class="brand-name">Heliosian<small>Helios Community Apps</small></span></a>
 <span id="me" style="font-size:13px;opacity:.85"></span>
 </header>
 <div class="layout">

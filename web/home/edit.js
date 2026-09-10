@@ -1,11 +1,12 @@
 import {state, categoryTitles} from './state.js';
-import {el} from './dom.js';
+import {el, svg} from './dom.js';
 import {load} from './app.js';
 
 const linkModal = document.querySelector('#link-modal');
 const linkForm = document.querySelector('#link-form');
 const categoryModal = document.querySelector('#category-modal');
 const categoryForm = document.querySelector('#category-form');
+const categoriesModal = document.querySelector('#categories-modal');
 
 let editingLink = null;
 let editingCategory = null;
@@ -104,6 +105,7 @@ export function openCategoryEditor(category) {
   pendingCategoryImage = category ? category.image || '' : '';
   document.querySelector('#category-modal-title').textContent = category ? 'Edit Category' : 'Add Category';
   document.querySelector('#category-title').value = category ? category.title : '';
+  document.querySelector('#category-style').value = category ? category.style : 'tiles';
   document.querySelector('#category-delete').hidden = !category;
   showImage('category', category && category.imageUrl ? category.imageUrl : '');
   setStatus('#category-status', '');
@@ -114,6 +116,107 @@ export function openCategoryEditor(category) {
 function closeModals() {
   linkModal.hidden = true;
   categoryModal.hidden = true;
+}
+
+// The manager hands off to the category editor and stays open behind it, so
+// every save and delete re-renders this list rather than closing it.
+export function refreshCategoryManager() {
+  if (!categoriesModal.hidden) {
+    renderCategoryList();
+  }
+}
+
+async function moveCategory(title, by) {
+  const titles = categoryTitles();
+  const at = titles.indexOf(title);
+  const to = at + by;
+  if (at < 0 || to < 0 || to >= titles.length) {
+    return;
+  }
+  titles.splice(to, 0, ...titles.splice(at, 1));
+  setStatus('#categories-status', 'Saving…');
+  try {
+    await send('POST', '/api/apps/categories/order', {titles});
+    setStatus('#categories-status', '');
+    await load();
+  } catch (err) {
+    setStatus('#categories-status', err.message, true);
+  }
+}
+
+async function removeCategory(category) {
+  if (!confirm(`Delete the category \u201C${category.title}\u201D?`)) {
+    return;
+  }
+  setStatus('#categories-status', 'Deleting\u2026');
+  try {
+    await send('DELETE', '/api/apps/category', {title: category.title});
+    setStatus('#categories-status', '');
+    await load();
+  } catch (err) {
+    setStatus('#categories-status', err.message, true);
+  }
+}
+
+function categoryRow(category, at, total) {
+  const row = el('div', 'category-row');
+  if (category.imageUrl) {
+    const img = el('img', 'category-row-image');
+    img.src = category.imageUrl;
+    img.alt = '';
+    row.append(img);
+  } else {
+    row.append(el('div', 'category-row-image is-blank', category.title.slice(0, 1).toUpperCase()));
+  }
+  const body = el('div', 'category-row-body');
+  body.append(el('div', 'category-row-title', category.title));
+  const style = category.style === 'cards' ? 'Feature cards' : 'Compact tiles';
+  body.append(el('div', 'category-row-meta', `${style} \u00b7 ${category.links.length} link${category.links.length === 1 ? '' : 's'}`));
+  row.append(body);
+
+  const actions = el('div', 'category-row-actions');
+  const up = el('button', 'row-button');
+  up.type = 'button';
+  up.setAttribute('aria-label', `Move ${category.title} up`);
+  up.textContent = '\u2191';
+  up.disabled = at === 0;
+  up.addEventListener('click', () => moveCategory(category.title, -1));
+  const down = el('button', 'row-button');
+  down.type = 'button';
+  down.setAttribute('aria-label', `Move ${category.title} down`);
+  down.textContent = '\u2193';
+  down.disabled = at === total - 1;
+  down.addEventListener('click', () => moveCategory(category.title, 1));
+  const edit = el('button', 'row-button');
+  edit.type = 'button';
+  edit.setAttribute('aria-label', `Edit ${category.title}`);
+  edit.append(svg('edit'));
+  edit.addEventListener('click', () => openCategoryEditor(category));
+  const remove = el('button', 'row-button is-danger');
+  remove.type = 'button';
+  remove.setAttribute('aria-label', `Delete ${category.title}`);
+  remove.textContent = '\u00d7';
+  remove.addEventListener('click', () => removeCategory(category));
+  actions.append(up, down, edit, remove);
+  row.append(actions);
+  return row;
+}
+
+function renderCategoryList() {
+  const list = document.querySelector('#category-list');
+  const categories = state.model.categories;
+  list.replaceChildren();
+  if (!categories.length) {
+    list.append(el('div', 'category-empty', 'No categories yet.'));
+    return;
+  }
+  categories.forEach((category, at) => list.append(categoryRow(category, at, categories.length)));
+}
+
+export function openCategoryManager() {
+  setStatus('#categories-status', '');
+  renderCategoryList();
+  categoriesModal.hidden = false;
 }
 
 async function saveLink(e) {
@@ -157,6 +260,7 @@ async function saveCategory(e) {
     await send('POST', '/api/apps/category', {
       original: editingCategory ? editingCategory.title : '',
       title: document.querySelector('#category-title').value,
+      style: document.querySelector('#category-style').value,
       image: pendingCategoryImage,
     });
     closeModals();
@@ -183,6 +287,7 @@ async function deleteCategory() {
 export function initEditing() {
   document.querySelector('#add-link').addEventListener('click', () => openLinkEditor(null));
   document.querySelector('#add-category').addEventListener('click', () => openCategoryEditor(null));
+  document.querySelector('#edit-categories').addEventListener('click', openCategoryManager);
   linkForm.addEventListener('submit', saveLink);
   categoryForm.addEventListener('submit', saveCategory);
   document.querySelector('#link-delete').addEventListener('click', deleteLink);
@@ -194,18 +299,26 @@ export function initEditing() {
     pendingCategoryImage = name;
   });
   for (const button of document.querySelectorAll('[data-close]')) {
-    button.addEventListener('click', closeModals);
+    button.addEventListener('click', () => {
+      button.closest('.modal-overlay').hidden = true;
+    });
   }
-  for (const overlay of [linkModal, categoryModal]) {
+  for (const overlay of [linkModal, categoryModal, categoriesModal]) {
     overlay.addEventListener('click', e => {
       if (e.target === overlay) {
-        closeModals();
+        overlay.hidden = true;
       }
     });
   }
+  // Escape peels one layer: the editor first when it is over the manager.
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') {
-      closeModals();
+    if (e.key !== 'Escape') {
+      return;
     }
+    if (!linkModal.hidden || !categoryModal.hidden) {
+      closeModals();
+      return;
+    }
+    categoriesModal.hidden = true;
   });
 }

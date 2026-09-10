@@ -1,14 +1,16 @@
 :root {
-  --brand: #789436;
-  --brand-dark: #5f7629;
-  --brand-ink: #4f6a1c;
-  --page: #f7f8f4;
+  --brand: #244d53;
+  --brand-dark: #1c3d42;
+  --brand-ink: #244d53;
+  --page: #fbfaf5;
   --card: #ffffff;
-  --line: #e4e7dd;
+  --sidebar: #fdf4dd;
+  --line: #e2e6eb;
   --ink: #0d0d0d;
   --muted: #707070;
-  --input: #f0f1ec;
+  --input: #efefef;
   --alert: #c0392b;
+  --sidebar-w: 232px;
 }
 
 * { box-sizing: border-box; }
@@ -24,35 +26,155 @@ body {
   font-family: Roboto, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   font-size: 15px;
   -webkit-font-smoothing: antialiased;
-  padding-top: env(safe-area-inset-top);
 }
 
-.topbar {
-  position: sticky;
-  top: 0;
-  z-index: 20;
+.shell {
+  display: grid;
+  grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+  min-height: 100vh;
+}
+
+/* Sidebar */
+
+.sidebar {
+  background: var(--sidebar);
+  padding: 22px 16px 28px;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 56px;
-  padding: 0 20px;
-  background: var(--brand);
-  color: #fff;
+  flex-direction: column;
+  gap: 26px;
+  padding-top: calc(22px + env(safe-area-inset-top));
 }
 
 .brand {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  color: #fff;
+  flex-direction: column;
+  gap: 12px;
+  color: var(--brand);
   text-decoration: none;
-  font-weight: 700;
-  font-size: 17px;
+  padding: 0 14px;
 }
 
-.brand img { width: 32px; height: 32px; }
+/* The sidebar carries the vertical lockup - at this width its "Helios
+   Community Apps" line is still legible, unlike the horizontal lockup's. The
+   narrow header strip is a single short row, so it falls back to the bare
+   mark; both live in the DOM and the breakpoint picks one, with the link's
+   aria-label carrying the name either way. Both sit untiled because the cream
+   sidebar already gives all four petals contrast. */
+.brand-lockup {
+  display: block;
+  width: 175px;
+  max-width: 100%;
+  height: auto;
+}
 
-.topbar-user { position: relative; }
+.brand-mark { display: none; }
+
+.app-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.app-nav a {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  border-radius: 12px;
+  color: var(--brand);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.app-nav a:hover { background: rgba(36, 77, 83, 0.07); }
+
+.app-nav a.is-active { background: #f6e9bd; }
+
+.app-nav svg { width: 20px; height: 20px; flex-shrink: 0; }
+
+.app-nav-image {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+.sidebar-repo {
+  margin: auto 0 0;
+  display: flex;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  color: var(--brand);
+  text-decoration: none;
+}
+
+.sidebar-repo:hover { background: rgba(36, 77, 83, 0.07); }
+
+/* The GitHub mark is a filled path, unlike the stroked icons the nav uses. */
+.repo-mark {
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+  margin-top: 2px;
+  fill: currentColor;
+}
+
+.repo-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.repo-text strong { font-size: 12.5px; }
+
+/* Top bar */
+
+.content { display: flex; flex-direction: column; min-width: 0; }
+
+/* The account shares the heading's row so the two align along the top, rather
+   than the avatar floating on a line of its own above it. */
+.account { flex-shrink: 0; }
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0;
+  margin: 0 0 30px;
+}
+
+.search { flex: 0 1 420px; }
+
+.search-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.search input {
+  width: 100%;
+  padding: 12px 18px 12px 44px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23707070' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E") no-repeat 16px center;
+  background-size: 18px 18px;
+  font: inherit;
+  -webkit-appearance: none;
+}
+
+.search input:focus {
+  outline: 2px solid var(--brand);
+  outline-offset: -1px;
+}
+
+.topbar-user { position: relative; flex-shrink: 0; }
 
 .user { cursor: pointer; }
 
@@ -60,76 +182,94 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
-  background: #fbe6e2;
+  overflow: hidden;
+  background: #e8f2f1;
   color: var(--brand);
   font-weight: 700;
-  font-size: 14px;
+  font-size: 16px;
+}
+
+.user-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 .user-menu {
   position: absolute;
   right: 0;
-  top: 40px;
+  top: 50px;
   min-width: 200px;
   background: #fff;
   color: var(--ink);
   border-radius: 10px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
   padding: 6px 0;
+  z-index: 30;
 }
 
 .user-menu-email {
   padding: 8px 16px;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--muted);
   border-bottom: 1px solid var(--line);
-  margin-bottom: 4px;
+  margin-bottom: 6px;
+  word-break: break-all;
 }
 
 .user-menu a, .user-menu button {
   display: block;
   width: 100%;
-  text-align: left;
   padding: 10px 16px;
-  color: var(--ink);
-  text-decoration: none;
-  background: none;
   border: 0;
+  background: none;
+  color: inherit;
   font: inherit;
+  text-align: left;
+  text-decoration: none;
   cursor: pointer;
 }
 
 .user-menu a:hover, .user-menu button:hover { background: var(--input); }
 
+/* Main */
+
 main {
   flex: 1;
-  width: 100%;
-  max-width: 760px;
-  margin: 0 auto;
-  padding: 20px 20px 60px;
+  padding: 26px 32px 0;
+  min-width: 0;
 }
 
-.page-head {
+.hero {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 8px;
+  gap: 24px;
+  margin-bottom: 26px;
 }
 
-.page-head h1 { font-size: 24px; margin: 8px 0; }
+.hero-title {
+  margin: 0;
+  max-width: 22ch;
+  font-size: clamp(26px, 3.4vw, 38px);
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  color: var(--brand);
+}
 
-.page-actions { display: flex; gap: 8px; }
+.page-actions { display: flex; gap: 8px; margin-bottom: 26px; }
 
 .button {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 9px 16px;
-  border-radius: 8px;
+  gap: 8px;
+  padding: 11px 20px;
+  border-radius: 999px;
   border: 0;
   background: var(--brand);
   color: #fff;
@@ -137,6 +277,7 @@ main {
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
+  text-decoration: none;
 }
 
 .button:hover { background: var(--brand-dark); }
@@ -160,13 +301,24 @@ main {
   padding: 4px 8px;
 }
 
+/* Category sections */
+
+.category {
+  border-top: 1px solid var(--line);
+  padding-top: 22px;
+  margin-top: 30px;
+}
+
+.category:first-child { border-top: 0; padding-top: 0; margin-top: 0; }
+
 .category-title {
-  font-size: 17px;
+  font-size: 24px;
   font-weight: 700;
-  margin: 24px 0 8px;
+  color: var(--brand);
+  margin: 0 0 16px;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .category-edit {
@@ -180,70 +332,147 @@ main {
 
 .category-edit svg { width: 16px; height: 16px; }
 
-.category-panel {
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  overflow: visible;
-}
-
 .category-empty {
-  padding: 16px;
+  padding: 18px;
   color: var(--muted);
   font-size: 14px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
 }
 
-.link-card {
+/* Feature cards - the "cards" style */
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 22px;
+}
+
+/* Tints cycle through the brand palette. The button accents are darkened
+   from the palette hexes so white label text clears 4.5:1 - the raw red and
+   light teal sit near 3:1 and would fail on a button this size. */
+.feature:nth-child(4n+1) { --tint: #e8f2f1; --accent: #244d53; }
+.feature:nth-child(4n+2) { --tint: #fdece8; --accent: #c04a33; }
+.feature:nth-child(4n+3) { --tint: #f2f5e0; --accent: #6c7d03; }
+.feature:nth-child(4n+4) { --tint: #e4f5f4; --accent: #17807c; }
+
+.feature {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 14px 16px;
-  border-top: 1px solid var(--line);
-  position: relative;
+  gap: 22px;
+  padding: 26px;
+  border-radius: 18px;
+  background: var(--tint);
 }
 
-.link-card:first-child { border-top: 0; }
-
-.link-card.is-hidden .link-image,
-.link-card.is-hidden .link-initial,
-.link-card.is-hidden .link-body,
-.link-card.is-hidden .link-actions > .button { opacity: 0.55; }
-
-.link-image {
+.feature-image, .feature-initial {
   flex-shrink: 0;
-  width: 72px;
-  height: 72px;
-  border-radius: 14px;
+  width: 104px;
+  height: 104px;
+  border-radius: 20px;
   object-fit: cover;
-  background: var(--input);
 }
 
-.link-initial {
-  flex-shrink: 0;
-  width: 72px;
-  height: 72px;
-  border-radius: 14px;
+.feature-initial {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 28px;
+  font-size: 40px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--accent);
+}
+
+.feature-body { flex: 1; min-width: 0; }
+
+.feature-title {
+  font-size: 21px;
+  font-weight: 700;
+  color: var(--brand);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.feature-description {
+  margin: 6px 0 16px;
+  color: #4a4a4a;
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+.feature .button { background: var(--accent); }
+
+.feature .button:hover { filter: brightness(0.9); }
+
+.feature .more-wrap { position: absolute; top: 14px; right: 14px; }
+
+.feature.is-hidden > *:not(.more-wrap) { opacity: 0.55; }
+
+/* Compact tiles - the "tiles" style */
+
+.tile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(122px, 1fr));
+  gap: 14px;
+}
+
+.tile {
+  position: relative;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+}
+
+.tile-link {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  height: 100%;
+  padding: 20px 12px 16px;
+  color: inherit;
+  text-decoration: none;
+  text-align: center;
+}
+
+.tile:hover { border-color: var(--brand); }
+
+.tile-image, .tile-initial {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.tile-initial {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
   font-weight: 700;
   color: #fff;
   background: var(--brand);
 }
 
-.link-body { flex: 1; min-width: 0; }
-
-.link-label {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--brand-ink);
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.tile-title {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--brand);
 }
+
+.tile.is-hidden { opacity: 0.55; }
+
+.tile .more-wrap { position: absolute; top: 4px; right: 4px; z-index: 2; }
+
+.tile .more-button { width: 28px; height: 28px; }
+
+.tile .more-button svg { width: 15px; height: 15px; }
 
 .hidden-badge {
   background: var(--muted);
@@ -251,32 +480,28 @@ main {
   border-radius: 999px;
   padding: 1px 8px;
   font-size: 10px;
-  letter-spacing: 0.04em;
-}
-
-.link-url {
   font-weight: 700;
-  font-size: 15px;
-  margin: 3px 0;
-  word-break: break-all;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
-.link-url a { color: inherit; text-decoration: none; }
-
-.link-url a:hover { text-decoration: underline; }
-
-.link-description { color: var(--muted); font-size: 14px; }
-
-.link-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
+.empty-search, .footnote {
+  color: var(--muted);
+  font-size: 14px;
+  text-align: center;
+  margin-top: 32px;
 }
 
-.link-actions .button { padding: 8px 14px; }
-
-.link-actions svg { width: 16px; height: 16px; }
+/* Decorative only, so it carries an empty alt. It spans the content column and
+   sits flush at the very bottom - main takes no bottom padding and grows to
+   fill, so on a short page the art still lands at the foot of the viewport. */
+.page-art {
+  display: block;
+  width: 70%;
+  height: auto;
+  margin: 28px 0 0 auto;
+  pointer-events: none;
+}
 
 .more-button {
   width: 36px;
@@ -423,6 +648,80 @@ main {
 
 .image-placeholder { color: var(--muted); font-size: 13px; flex: 1; }
 
+.modal-hint {
+  margin: 0 0 14px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+#category-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 52vh;
+  overflow-y: auto;
+}
+
+.category-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.category-row-image {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  object-fit: cover;
+}
+
+.category-row-image.is-blank {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  color: #fff;
+  background: var(--brand);
+}
+
+.category-row-body { flex: 1; min-width: 0; }
+
+.category-row-title { font-weight: 700; }
+
+.category-row-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+.category-row-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+
+.row-button {
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.row-button:hover { background: var(--input); }
+
+.row-button:disabled { opacity: 0.3; cursor: default; }
+
+.row-button:disabled:hover { background: none; }
+
+.row-button.is-danger { color: var(--alert); font-size: 20px; }
+
+.row-button svg { width: 15px; height: 15px; }
+
 .modal-actions {
   display: flex;
   align-items: center;
@@ -456,13 +755,63 @@ main {
   font-size: 14px;
   z-index: 60;
 }
+@media (max-width: 900px) {
+  /* Stacked, the two grid children become rows, and the shell's min-height
+     would otherwise share the viewport between them - pinning the rows keeps
+     the header at its content height and gives the rest to the page. */
+  .shell { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr; }
+
+  .sidebar {
+    flex-direction: row;
+    align-items: center;
+    gap: 16px;
+    padding: 10px 16px;
+    padding-top: calc(10px + env(safe-area-inset-top));
+    position: sticky;
+    top: 0;
+    z-index: 25;
+  }
+
+  .brand { flex-direction: row; align-items: center; gap: 10px; padding: 0; }
+  .brand-lockup { display: none; }
+  .brand-mark { display: block; width: 40px; height: 40px; }
+
+  /* The nav becomes a scrolling strip rather than a column, and the motto
+     drops - at this width it costs a whole row for decoration. */
+  .app-nav {
+    flex-direction: row;
+    gap: 4px;
+    margin-left: auto;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .app-nav::-webkit-scrollbar { display: none; }
+  .app-nav a { padding: 8px 12px; font-size: 14px; white-space: nowrap; }
+  .app-nav svg, .app-nav-image { display: none; }
+  .sidebar-repo { margin: 0; padding: 8px; }
+  .repo-text { display: none; }
+
+  .topbar { padding: 0; margin-bottom: 24px; }
+  main { padding: 20px 18px 0; }
+}
 
 @media (max-width: 640px) {
-  main { padding: 12px 12px 40px; }
-  .page-head { flex-wrap: wrap; }
-  .page-head h1 { font-size: 22px; }
-  .link-card { gap: 12px; padding: 12px; }
-  .link-image, .link-initial { width: 52px; height: 52px; border-radius: 12px; }
-  .link-actions .button { display: none; }
-  .brand span { font-size: 16px; }
+  .topbar { padding: 0; gap: 10px; margin-bottom: 20px; }
+  .search { flex: 1 1 auto; min-width: 0; }
+  .search input { padding: 10px 14px 10px 40px; background-position: 13px center; }
+  .user-avatar { width: 38px; height: 38px; font-size: 15px; }
+
+  .card-grid { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+
+  .feature { flex-direction: column; align-items: flex-start; gap: 16px; padding: 20px; }
+  .feature-image, .feature-initial { width: 76px; height: 76px; border-radius: 16px; }
+  .feature-title { font-size: 19px; }
+
+  .tile-grid { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 10px; }
+  .tile-link { padding: 16px 8px 12px; gap: 9px; }
+  .tile-image, .tile-initial { width: 38px; height: 38px; }
+  .tile-title { font-size: 13px; }
+
+  .category-title { font-size: 20px; }
 }

@@ -232,7 +232,7 @@ func NewCore(cfg Config) *Core {
 		log.Fatalf("[ERROR] load apps data: %v", err)
 	}
 	homeMux := http.NewServeMux()
-	home.Register(homeMux, homeCache, cfg.Writer, queue, cfg.Store, settings.SuperAdmins)
+	home.Register(homeMux, homeCache, cfg.Writer, queue, cfg.Store, settings.SuperAdmins, cache.HeroPhoto)
 	eventsCache, err := events.NewCache(cfg.Source, eventsImages{cfg.Store}, cache.IsSuperAdmin, queue)
 	if err != nil {
 		log.Fatalf("[ERROR] load events data: %v", err)
@@ -354,7 +354,7 @@ func Production() (*http.Server, *who.Queue) {
 		BrowserKey: mapsKey("GOOGLE_MAPS_BROWSER_KEY", "creds/maps.key"),
 	})
 	blob.Register(core.Mux, store)
-	blob.RegisterLinkImages(core.HomeMux, store)
+	blob.RegisterHome(core.HomeMux, store)
 	blob.RegisterEvents(core.EventsMux, store)
 	who.RegisterUpload(core.Mux, core.Cache, sheet, store, core.Queue)
 	client := clientID()

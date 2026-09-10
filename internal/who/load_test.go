@@ -623,3 +623,53 @@ func model(t *testing.T, email string) *Person {
 	}
 	return p
 }
+
+// blobsWith reports every named object as present, so a photo name in the
+// sheet resolves to a URL the way it does against the real bucket.
+type blobsWith map[string]bool
+
+func (b blobsWith) Has(name string) bool { return b[name] }
+
+// The topbar avatar on both the directory and the link portal leads with this,
+// so the own-photo-then-family fallback is worth pinning down. The sample
+// carries no photos at all, which is why these are built by hand.
+func TestHeroPhotoPrefersOwnPhotoThenFallsBackToTheFamily(t *testing.T) {
+	const email = "jordan.whitfield@heliosschool.org"
+	key := sampleModel(t).FamilyKeysOf(email)
+	if len(key) == 0 {
+		t.Fatalf("%s has no family in the sample", email)
+	}
+	tables, err := ReadTables(&data.Dir{Root: "../../sampledata"})
+	if err != nil {
+		t.Fatalf("read sample tables: %v", err)
+	}
+	blobs := blobsWith{"photos/own.jpg": true, "photos/fam.jpg": true}
+
+	family := tables.withFamily(key[0], map[string]string{"Family Photo": "fam.jpg"})
+	m, err := BuildModel(family, blobs, noBlobs{})
+	if err != nil {
+		t.Fatalf("build model with a family photo: %v", err)
+	}
+	if got := m.HeroPhoto(email); got != "/photos/fam.jpg" {
+		t.Errorf("with only a family photo: got %q, want the family's", got)
+	}
+
+	own := family.withPhotos(email, []photoRef{{Name: "own.jpg"}})
+	m, err = BuildModel(own, blobs, noBlobs{})
+	if err != nil {
+		t.Fatalf("build model with an own photo: %v", err)
+	}
+	if got := m.HeroPhoto(email); got != "/photos/own.jpg" {
+		t.Errorf("with an own photo: got %q, want their own over the family's", got)
+	}
+}
+
+func TestHeroPhotoIsEmptyForNonMembersAndForNoPhoto(t *testing.T) {
+	m := sampleModel(t)
+	if got := m.HeroPhoto("nobody@example.org"); got != "" {
+		t.Errorf("non-member: got %q, want empty", got)
+	}
+	if got := m.HeroPhoto("jordan.whitfield@heliosschool.org"); got != "" {
+		t.Errorf("member with no photo anywhere: got %q, want empty", got)
+	}
+}

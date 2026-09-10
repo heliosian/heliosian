@@ -170,6 +170,8 @@ func (c *Cache) applyAdmins(emails []string) {
 // IsSuperAdmin reports whether email is on the super admin list specifically — the
 // tier that can spoof another user and manage who else is a super admin. Regular
 // admins never see anything gated on this, including that it exists.
+func (c *Cache) HeroPhoto(email string) string { return c.Model().HeroPhoto(email) }
+
 func (c *Cache) IsSuperAdmin(email string) bool {
 	email = strings.ToLower(strings.TrimSpace(email))
 	return slices.Contains(c.superAdmins(), email)
