@@ -33,6 +33,21 @@ function privacyHeliosCell(masked) {
   return cell;
 }
 
+// The app never actually displays family.phone anywhere - every phone shown
+// to another user (family cards, the person page) is a specific adult's own
+// p.phone. family.phone comes from a separate, largely unmaintained "Family
+// Phone" sheet column, so using it here made Shown Here say "(Hidden)" for
+// families whose adults' numbers were plainly visible everywhere else. Build
+// the real answer the same way the rest of the app does: each adult's own
+// phone, joined, blank if none of them have one on file.
+function familyShownPhone(family) {
+  return (family.adultEmails || [])
+    .map(email => byEmail[email])
+    .filter(p => p && p.phone)
+    .map(p => p.phone)
+    .join(', ');
+}
+
 function privacyRow(label, veracrossState, veracrossLabels, masked, shownValue) {
   const tr = el('tr');
   tr.append(el('td', 'privacy-row-label', label));
@@ -106,7 +121,7 @@ export function renderPrivacyPage() {
   }
   thead.append(headRow);
   const tbody = el('tbody');
-  tbody.append(privacyRow('Phone', family.veracrossPhone, veracrossPhoneLabels, family.phoneMasked, family.phone));
+  tbody.append(privacyRow('Phone', family.veracrossPhone, veracrossPhoneLabels, family.phoneMasked, familyShownPhone(family)));
   tbody.append(privacyRow('Address', family.veracrossAddress, veracrossAddressLabels, family.addressMasked, family.address));
   table.append(thead, tbody);
   holder.append(table);
