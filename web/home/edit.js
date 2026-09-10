@@ -104,6 +104,7 @@ export function openCategoryEditor(category) {
   pendingCategoryImage = category ? category.image || '' : '';
   document.querySelector('#category-modal-title').textContent = category ? 'Edit Category' : 'Add Category';
   document.querySelector('#category-title').value = category ? category.title : '';
+  document.querySelector('#category-style').value = category ? category.style : 'tiles';
   document.querySelector('#category-delete').hidden = !category;
   showImage('category', category && category.imageUrl ? category.imageUrl : '');
   setStatus('#category-status', '');
@@ -157,6 +158,7 @@ async function saveCategory(e) {
     await send('POST', '/api/apps/category', {
       original: editingCategory ? editingCategory.title : '',
       title: document.querySelector('#category-title').value,
+      style: document.querySelector('#category-style').value,
       image: pendingCategoryImage,
     });
     closeModals();

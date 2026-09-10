@@ -1,4 +1,4 @@
-// Package home serves the community's link portal, HCA Home.
+// Package home serves the community's link portal, Heliosian.
 package home
 
 import (
@@ -29,13 +29,16 @@ type app struct {
 	queue       Enqueuer
 	store       *blob.Store
 	superAdmins func() []string
+	heroPhoto   func(string) string
 }
 
 // Register wires the portal: the two pages, the model, and the admin writes.
 // Every route already sits behind sign-in; the writes additionally require an
 // admin. superAdmins reads the platform list out of the directory's settings.
-func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, superAdmins func() []string) {
-	a := app{cache: cache, writer: writer, queue: queue, store: store, superAdmins: superAdmins}
+// heroPhoto resolves the signed-in person's own directory photo; it comes from
+// the directory cache, which this app does not otherwise depend on.
+func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, superAdmins func() []string, heroPhoto func(string) string) {
+	a := app{cache: cache, writer: writer, queue: queue, store: store, superAdmins: superAdmins, heroPhoto: heroPhoto}
 	mux.HandleFunc("GET /{$}", a.page)
 	mux.HandleFunc("GET /admin", a.adminPage)
 	mux.HandleFunc("GET /dl/", func(w http.ResponseWriter, r *http.Request) {
@@ -72,9 +75,10 @@ func (a app) requireAdmin(w http.ResponseWriter, r *http.Request) (string, bool)
 }
 
 type user struct {
-	Email   string `json:"email"`
-	Initial string `json:"initial"`
-	IsAdmin bool   `json:"isAdmin"`
+	Email    string `json:"email"`
+	Initial  string `json:"initial"`
+	PhotoURL string `json:"photoUrl,omitempty"`
+	IsAdmin  bool   `json:"isAdmin"`
 }
 
 // model serves the portal. Hidden links reach only admins, who see them
@@ -85,7 +89,7 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 	full := a.cache.Model()
 	categories := make([]Category, 0, len(full.Categories))
 	for _, category := range full.Categories {
-		shown := Category{Title: category.Title, Image: category.Image, ImageURL: category.ImageURL, Links: []Link{}}
+		shown := Category{Title: category.Title, Image: category.Image, ImageURL: category.ImageURL, Style: category.Style, Links: []Link{}}
 		for _, link := range category.Links {
 			if link.Visible || admin {
 				shown.Links = append(shown.Links, link)
@@ -98,7 +102,7 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 		User       user       `json:"user"`
 	}{
 		Categories: categories,
-		User:       user{Email: email, Initial: strings.ToUpper(email[:1]), IsAdmin: admin},
+		User:       user{Email: email, Initial: strings.ToUpper(email[:1]), PhotoURL: a.heroPhoto(email), IsAdmin: admin},
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
@@ -145,7 +149,7 @@ func (a app) commit(ctx context.Context, w http.ResponseWriter, tables *Tables, 
 func (a app) logChange(actor, action, kind string, cells map[string]string) error {
 	return a.writer.Append(appName, changeLogTab, []string{
 		time.Now().Format(time.RFC3339), actor, action, kind,
-		cells["Title"], cells["Description"], cells["URL"], cells["Image"], cells["Category"], cells["Visible"],
+		cells["Title"], cells["Description"], cells["URL"], cells["Image"], cells["Category"], cells["Visible"], cells["Style"],
 	})
 }
 
@@ -231,6 +235,7 @@ func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 		Original string `json:"original"`
 		Title    string `json:"title"`
 		Image    string `json:"image"`
+		Style    string `json:"style"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -240,7 +245,12 @@ func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "title is required and must be short", http.StatusBadRequest)
 		return
 	}
-	cells := map[string]string{"Title": title, "Image": strings.TrimSpace(body.Image)}
+	style, err := cardsOrTiles(strings.TrimSpace(body.Style))
+	if err != nil {
+		http.Error(w, "style "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	cells := map[string]string{"Title": title, "Image": strings.TrimSpace(body.Image), "Style": style}
 	tables := a.cache.Tables().withRow(categoriesTab, body.Original, cells)
 	// A rename carries every link along, since links name their category by title.
 	if body.Original != "" && body.Original != title {
@@ -258,7 +268,7 @@ func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 	}
 	if !a.commit(r.Context(), w, tables, func() error {
 		if body.Original == "" {
-			if err := a.writer.Append(appName, categoriesTab, []string{title, cells["Image"]}); err != nil {
+			if err := a.writer.Append(appName, categoriesTab, []string{title, cells["Image"], cells["Style"]}); err != nil {
 				return err
 			}
 		} else {

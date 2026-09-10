@@ -100,10 +100,10 @@ var layouts = map[string][]tab{
 		{"Admins", []string{"Email"}},
 	},
 	"Apps": {
-		{"Categories", []string{"Title", "Image"}},
+		{"Categories", []string{"Title", "Image", "Style"}},
 		{"Links", []string{"Title", "Description", "URL", "Image", "Category", "Visible", "Added By", "Added"}},
 		{"Admins", []string{"Email"}},
-		{"Change Log", []string{"Timestamp", "Actor", "Action", "Kind", "Title", "Description", "URL", "Image", "Category", "Visible"}},
+		{"Change Log", []string{"Timestamp", "Actor", "Action", "Kind", "Title", "Description", "URL", "Image", "Category", "Visible", "Style"}},
 	},
 	"Events": {
 		{"Categories", events.CategoryColumns},

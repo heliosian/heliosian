@@ -21,13 +21,18 @@ const (
 	maxTitleLength = 80
 	maxDescLength  = 300
 	maxURLLength   = 1000
+
+	// StyleCards renders a category as large feature cards, StyleTiles as a
+	// row of compact tiles. Every category picks one; see docs/home/data.md.
+	StyleCards = "cards"
+	StyleTiles = "tiles"
 )
 
 var (
-	categoryColumns  = []string{"Title", "Image"}
+	categoryColumns  = []string{"Title", "Image", "Style"}
 	linkColumns      = []string{"Title", "Description", "URL", "Image", "Category", "Visible", "Added By", "Added"}
 	adminColumns     = []string{"Email"}
-	changeLogColumns = []string{"Timestamp", "Actor", "Action", "Kind", "Title", "Description", "URL", "Image", "Category", "Visible"}
+	changeLogColumns = []string{"Timestamp", "Actor", "Action", "Kind", "Title", "Description", "URL", "Image", "Category", "Visible", "Style"}
 )
 
 type ImageChecker interface {
@@ -50,6 +55,7 @@ type Category struct {
 	Title    string `json:"title"`
 	Image    string `json:"image,omitempty"`
 	ImageURL string `json:"imageUrl,omitempty"`
+	Style    string `json:"style"`
 	Links    []Link `json:"links"`
 }
 
@@ -130,6 +136,16 @@ func yesNo(cell string) (bool, error) {
 	return false, fmt.Errorf("%q is not Yes or No", cell)
 }
 
+// cardsOrTiles is spelled exactly, the same stance yesNo takes: a blank or
+// misspelled Style refuses the load rather than guessing a presentation.
+func cardsOrTiles(cell string) (string, error) {
+	switch cell {
+	case StyleCards, StyleTiles:
+		return cell, nil
+	}
+	return "", fmt.Errorf("%q is not %s or %s", cell, StyleCards, StyleTiles)
+}
+
 func checkURL(raw string) error {
 	if len(raw) > maxURLLength {
 		return fmt.Errorf("url is too long")
@@ -172,8 +188,12 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 		if err != nil {
 			return nil, fmt.Errorf("category %q: %w", title, err)
 		}
+		style, err := cardsOrTiles(row["Style"])
+		if err != nil {
+			return nil, fmt.Errorf("category %q: style %w", title, err)
+		}
 		index[title] = len(model.Categories)
-		model.Categories = append(model.Categories, Category{Title: title, Image: row["Image"], ImageURL: image, Links: []Link{}})
+		model.Categories = append(model.Categories, Category{Title: title, Image: row["Image"], ImageURL: image, Style: style, Links: []Link{}})
 	}
 	titles := map[string]bool{}
 	for _, row := range tables.Links {

@@ -193,6 +193,25 @@ func (m *Model) FamilyKeysOf(email string) []string {
 	return m.familyKeysByEmail[email]
 }
 
+// HeroPhoto is the photo the directory leads with for a person: their own,
+// else their family's - the same fallback the profile page and the topbar
+// avatar make. Empty when there is neither, or when the email is not a member.
+func (m *Model) HeroPhoto(email string) string {
+	person := m.Person(email)
+	if person == nil {
+		return ""
+	}
+	if person.PhotoURL != "" {
+		return person.PhotoURL
+	}
+	for _, key := range m.FamilyKeysOf(email) {
+		if family, ok := m.Families[key]; ok && family.PhotoURL != "" {
+			return family.PhotoURL
+		}
+	}
+	return ""
+}
+
 func (m *Model) Member(email string) bool {
 	return m.Person(email) != nil
 }

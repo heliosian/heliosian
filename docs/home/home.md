@@ -1,6 +1,6 @@
 # Home app
 
-HCA Home is the community's front door: one page of links, grouped into categories, to everything the Helios Community Association and the school run elsewhere. It replaces the Glide app of the same name and serves at heliosian.com, www.heliosian.com, and home.heliosian.com.
+Heliosian is the community's front door: one page of links, grouped into categories, to everything the Helios Community Association and the school run elsewhere. It replaces the HCA Home Glide app and serves at heliosian.com, www.heliosian.com, and home.heliosian.com.
 
 ## Entities
 
@@ -25,7 +25,7 @@ Who may edit is the Admins tab of the Apps sheet plus the platform super admins 
 
 ## Sign-in
 
-Everything behind Google sign-in restricted to the school domain, like every app here; there is no public view. The Locked-to-Helios-login flag the Glide app needed does not exist, because every viewer is signed in. The login page is HCA Home's own splash. A session is shared with the directory on the same tier, since the cookie is scoped one label up from the app's hostname.
+Everything behind Google sign-in restricted to the school domain, like every app here; there is no public view. The Locked-to-Helios-login flag the Glide app needed does not exist, because every viewer is signed in. The login page is Heliosian's own splash. A session is shared with the directory on the same tier, since the cookie is scoped one label up from the app's hostname.
 
 ## Installable
 

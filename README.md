@@ -1,6 +1,6 @@
 # Heliosian
 
-Web apps for the Helios school community (K-8), served as one static Go binary on Cloud Run, one app per hostname: the school directory, "Helios Who?", at who.heliosian.com, the community's link portal, "HCA Home", at heliosian.com, and the volunteer sign-up portal, "HCA Volunteer Portal", at hca.heliosian.com. Built in the open by community volunteers, mostly through coding agents; the repo contains no secrets and no real community data.
+Web apps for the Helios school community (K-8), served as one static Go binary on Cloud Run, one app per hostname: the school directory, "Helios Who?", at who.heliosian.com, the community's link portal, "Heliosian", at heliosian.com, and the volunteer sign-up portal, "HCA Volunteer Portal", at hca.heliosian.com. Built in the open by community volunteers, mostly through coding agents; the repo contains no secrets and no real community data.
 
 ## Quick start
 
@@ -50,7 +50,7 @@ Helios Who?, in `docs/who/`:
 - [design.md](docs/who/design.md) — palette, typography, brand
 - [pwa.md](docs/who/pwa.md) — installable-app wiring
 
-HCA Home, in `docs/home/`:
+Heliosian, in `docs/home/`:
 
 - [home.md](docs/home/home.md) — the link portal spec
 - [data.md](docs/home/data.md) — the Apps sheet and its rules
