@@ -18,6 +18,7 @@ import (
 	"heliosian/internal/auth"
 	"heliosian/internal/blob"
 	"heliosian/internal/data"
+	"heliosian/internal/serve"
 )
 
 const (
@@ -78,7 +79,7 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 }
 
 func (a app) page(w http.ResponseWriter, r *http.Request) {
-	http.ServeFile(w, r, shell)
+	serve.File(w, r, shell)
 }
 
 // who is the signed-in person as the portal keys them: the address Google

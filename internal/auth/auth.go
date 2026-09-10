@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"google.golang.org/api/idtoken"
+
+	"heliosian/internal/serve"
 )
 
 const (
@@ -115,9 +117,9 @@ func cookieDomain(host string) string {
 }
 
 // splash serves the login page at whatever URL was asked for, so signing in
-// lands back on it. ServeFile is handed a fixed name, never the request path.
+// lands back on it. The file name is fixed, never the request path.
 func (a *Auth) splash(w http.ResponseWriter, r *http.Request) {
-	http.ServeFile(w, r, a.loginPage)
+	serve.File(w, r, a.loginPage)
 }
 
 func (a *Auth) login(w http.ResponseWriter, r *http.Request) {

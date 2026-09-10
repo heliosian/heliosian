@@ -13,6 +13,7 @@ import (
 
 	"heliosian/internal/config"
 	"heliosian/internal/data"
+	"heliosian/internal/serve"
 )
 
 type admin struct {
@@ -77,7 +78,7 @@ func (a admin) page(w http.ResponseWriter, r *http.Request) {
 	if _, ok := a.requireAdmin(w, r); !ok {
 		return
 	}
-	http.ServeFile(w, r, "web/who/admin.html")
+	serve.File(w, r, "web/who/admin.html")
 }
 
 type imageInfo struct {

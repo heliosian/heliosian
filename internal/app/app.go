@@ -26,6 +26,7 @@ import (
 	"heliosian/internal/geocode"
 	"heliosian/internal/home"
 	"heliosian/internal/logging"
+	"heliosian/internal/serve"
 	"heliosian/internal/who"
 )
 
@@ -129,7 +130,7 @@ func serveFrom(roots []string, next http.Handler) http.Handler {
 			for _, root := range roots {
 				name := filepath.Join(root, rel)
 				if info, err := os.Stat(name); err == nil && info.Mode().IsRegular() {
-					http.ServeFile(w, r, name)
+					serve.File(w, r, name)
 					return
 				}
 			}

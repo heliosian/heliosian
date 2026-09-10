@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"heliosian/internal/auth"
+	"heliosian/internal/serve"
 )
 
 var sections = []string{"people", "classrooms", "staff", "map", "email-list", "greenvelope", "my-privacy"}
@@ -140,7 +141,7 @@ func (a app) legacyRedirect(w http.ResponseWriter, r *http.Request) {
 // page serves the one static shell every directory route shares; the client
 // reads who it is, and everything else, from the model.
 func (a app) page(w http.ResponseWriter, r *http.Request) {
-	http.ServeFile(w, r, "web/who/index.html")
+	serve.File(w, r, "web/who/index.html")
 }
 
 // user is the signed-in identity as the shell shows it. Admin-ness (and so the

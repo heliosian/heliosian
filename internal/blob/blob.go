@@ -35,10 +35,15 @@ const (
 	thumbSuffix     = "-thumb"
 	thumbExt        = ".jpg"
 	thumbMime       = "image/jpeg"
+	thumbVersion    = "1"
 	fetchWorkers    = 32
 )
 
 var folders = []string{"photos", "pronunciation", "classroom-images", "grade-images", "link-images", "activity-images"}
+
+// named folders hold objects replaced in place under a fixed name; every other
+// folder is content addressed, so its URLs never change meaning.
+var named = map[string]bool{"classroom-images": true, "grade-images": true}
 
 // Media reports whether a request path is one of the media routes served here.
 func Media(path string) bool {
@@ -429,8 +434,15 @@ func (s *Store) serve(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	if r.URL.Query().Get("thumb") == "1" {
-		if e.thumb == nil {
+	folder, _, _ := strings.Cut(key, "/")
+	w.Header().Set("ETag", fmt.Sprintf(`"%d"`, e.generation))
+	if named[folder] {
+		w.Header().Set("Cache-Control", "no-cache")
+	} else {
+		w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+	}
+	if thumb := r.URL.Query().Get("thumb"); thumb != "" {
+		if thumb != thumbVersion || e.thumb == nil {
 			http.NotFound(w, r)
 			return
 		}

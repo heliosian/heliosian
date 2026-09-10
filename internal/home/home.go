@@ -16,6 +16,7 @@ import (
 	"heliosian/internal/auth"
 	"heliosian/internal/blob"
 	"heliosian/internal/data"
+	"heliosian/internal/serve"
 )
 
 const (
@@ -52,14 +53,14 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 }
 
 func (a app) page(w http.ResponseWriter, r *http.Request) {
-	http.ServeFile(w, r, "web/home/index.html")
+	serve.File(w, r, "web/home/index.html")
 }
 
 func (a app) adminPage(w http.ResponseWriter, r *http.Request) {
 	if _, ok := a.requireAdmin(w, r); !ok {
 		return
 	}
-	http.ServeFile(w, r, "web/home/admin.html")
+	serve.File(w, r, "web/home/admin.html")
 }
 
 func (a app) requireAdmin(w http.ResponseWriter, r *http.Request) (string, bool) {
