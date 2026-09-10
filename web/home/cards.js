@@ -177,7 +177,19 @@ export function renderNav() {
   for (const category of state.model.categories) {
     const item = el('a', '');
     item.href = '#' + anchorFor(category.title);
-    item.append(svg('section'), el('span', '', category.title));
+    // The category's own image is what distinguishes it everywhere else on the
+    // page, so the nav uses it too; the generic mark only stands in when the
+    // sheet has not given the category a picture.
+    if (category.imageUrl) {
+      const img = el('img', 'app-nav-image');
+      img.src = category.imageUrl;
+      img.alt = '';
+      img.loading = 'lazy';
+      item.append(img);
+    } else {
+      item.append(svg('section'));
+    }
+    item.append(el('span', '', category.title));
     nav.append(item);
   }
   nav.addEventListener('click', e => {

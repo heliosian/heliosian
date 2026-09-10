@@ -74,6 +74,7 @@
 <div class="user" id="user"><span class="user-avatar"></span></div>
 <div class="user-menu" id="user-menu" hidden>
 <div class="user-menu-email"></div>
+<button type="button" class="user-menu-admin" id="edit-categories" hidden>Edit Categories</button>
 <a href="/admin" class="user-menu-admin" hidden>Admin Tools</a>
 <form method="post" action="/auth/logout"><button>Sign Out</button></form>
 </div>
@@ -88,7 +89,6 @@
 </header>
 <div class="page-actions admin-only" hidden>
 <button type="button" class="button" id="add-link">＋ Add Link</button>
-<button type="button" class="button button-secondary" id="add-category">＋ Add Category</button>
 </div>
 <div id="categories"></div>
 <p class="empty-search" id="empty-search" hidden>Nothing matches that search.</p>
@@ -98,6 +98,19 @@
 
 </div>
 </div>
+<div class="modal-overlay" id="categories-modal" hidden>
+<div class="modal">
+<div class="modal-header"><h2>Edit Categories</h2><button class="modal-close" type="button" data-close aria-label="Close">&times;</button></div>
+<p class="modal-hint">Order here is the order on the page. Changes save immediately.</p>
+<div id="category-list"></div>
+<div class="modal-actions">
+<button type="button" class="button" id="add-category">＋ Add Category</button>
+<button type="button" class="button button-secondary" data-close>Done</button>
+<span class="save-status" id="categories-status"></span>
+</div>
+</div>
+</div>
+
 <div class="modal-overlay" id="link-modal" hidden>
 <form class="modal" id="link-form">
 <div class="modal-header"><h2 id="link-modal-title">Add Link</h2><button class="modal-close" type="button" data-close aria-label="Close">&times;</button></div>

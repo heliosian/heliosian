@@ -49,6 +49,7 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	mux.HandleFunc("DELETE /api/apps/link", a.deleteLink)
 	mux.HandleFunc("POST /api/apps/category", a.saveCategory)
 	mux.HandleFunc("DELETE /api/apps/category", a.deleteCategory)
+	mux.HandleFunc("POST /api/apps/categories/order", a.reorderCategories)
 	mux.HandleFunc("POST /api/apps/image", a.uploadImage)
 	mux.HandleFunc("GET /api/admin/state", a.adminState)
 	mux.HandleFunc("POST /api/admin/admins", a.setAdmins)
@@ -291,6 +292,52 @@ func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.InfoContext(r.Context(), "apps: saved category", "action", action, "title", title)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// reorderCategories moves rows rather than rewriting them: the sheet's row
+// order is the display order, so this is the only way to reorder from the app.
+func (a app) reorderCategories(w http.ResponseWriter, r *http.Request) {
+	actor, ok := a.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Titles []string `json:"titles"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	tables := a.cache.Tables()
+	if len(body.Titles) != len(tables.Categories) {
+		http.Error(w, "the order must name every category exactly once", http.StatusBadRequest)
+		return
+	}
+	byTitle := map[string]map[string]string{}
+	for _, row := range tables.Categories {
+		byTitle[row["Title"]] = row
+	}
+	ordered := make([]map[string]string, 0, len(body.Titles))
+	for _, title := range body.Titles {
+		row, ok := byTitle[title]
+		if !ok {
+			http.Error(w, "unknown category "+title, http.StatusBadRequest)
+			return
+		}
+		delete(byTitle, title)
+		ordered = append(ordered, row)
+	}
+	next := *tables
+	next.Categories = ordered
+	if !a.commit(r.Context(), w, &next, func() error {
+		if err := a.writer.Reorder(appName, categoriesTab, "Title", body.Titles); err != nil {
+			return err
+		}
+		return a.logChange(actor, "reorder", "category", map[string]string{"Title": strings.Join(body.Titles, ", ")})
+	}) {
+		return
+	}
+	slog.InfoContext(r.Context(), "apps: reordered categories", "count", len(body.Titles))
 	w.WriteHeader(http.StatusNoContent)
 }
 

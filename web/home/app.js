@@ -1,6 +1,6 @@
 import {state, applyModel, isAdmin} from './state.js';
 import {renderCategories, renderNav} from './cards.js';
-import {initEditing} from './edit.js';
+import {initEditing, refreshCategoryManager} from './edit.js';
 
 function renderChrome() {
   const user = state.model.user;
@@ -16,7 +16,9 @@ function renderChrome() {
     avatar.textContent = user.initial;
   }
   document.querySelector('.user-menu-email').textContent = user.email;
-  document.querySelector('.user-menu-admin').hidden = !user.isAdmin;
+  for (const item of document.querySelectorAll('.user-menu-admin')) {
+    item.hidden = !user.isAdmin;
+  }
   document.querySelector('.page-actions').hidden = !isAdmin();
 }
 
@@ -29,6 +31,7 @@ export async function load() {
   renderChrome();
   renderNav();
   renderCategories(document.querySelector('#search').value);
+  refreshCategoryManager();
 }
 
 function initSearch() {
