@@ -448,7 +448,10 @@ export function renderSpoofBanner() {
 export function renderUserChrome() {
   const user = state.model.user;
   for (const avatar of document.querySelectorAll('.user-avatar')) {
-    avatar.textContent = user.initial;
+    // A person icon instead of the signed-in user's bare initial - matches
+    // the icon gradeBadge/the stale-alert badge use elsewhere for "this is
+    // about a person" rather than a plain letter in a circle.
+    avatar.replaceChildren(svg('user'));
   }
   document.querySelector('.user-name').textContent = user.name;
   for (const link of document.querySelectorAll('.user-menu-profile')) {

@@ -841,6 +841,16 @@ body {
   flex-shrink: 0;
 }
 
+.user-avatar svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .topbar {
   display: flex;
   align-items: center;
