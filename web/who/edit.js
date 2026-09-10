@@ -146,8 +146,10 @@ export function canEditPerson(email) {
   if (email === meEmail || state.model.superEdit) {
     return true;
   }
-  return familiesOf(byEmail[meEmail]).some(family =>
-    [...(family.kidEmails || []), ...(family.adultEmails || [])].includes(email));
+  const me = byEmail[meEmail];
+  return familiesOf(me).some(family =>
+    (family.kidEmails || []).includes(email) ||
+    (!me.isStudent && (family.adultEmails || []).includes(email)));
 }
 
 export function uploadIcon(iconName, title, accept, target, key, kind, status) {

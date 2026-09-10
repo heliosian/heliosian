@@ -815,7 +815,10 @@ func (u uploader) mayEdit(model *Model, me, target, key string) bool {
 	}
 	for _, familyKey := range model.FamilyKeysOf(mine.Email) {
 		family := model.Families[familyKey]
-		if slices.Contains(family.KidEmails, key) || slices.Contains(family.AdultEmails, key) {
+		if slices.Contains(family.KidEmails, key) {
+			return true
+		}
+		if slices.Contains(family.AdultEmails, key) && !mine.IsStudent {
 			return true
 		}
 	}
