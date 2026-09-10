@@ -34,6 +34,16 @@ function iosDevice() {
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 }
 
+// Chrome on iOS (CriOS) is still WebKit under the hood, but its own "Add to
+// Home Screen" only makes a bookmark that reopens in Chrome - no standalone
+// window, no installed icon behaving like an app. Safari is the only iOS
+// browser whose Home Screen entry actually installs the PWA, so Chrome users
+// need to be sent there instead of handed Share-sheet steps that don't do
+// what the prompt promises.
+function iosChrome() {
+  return iosDevice() && /crios/i.test(navigator.userAgent);
+}
+
 // beforeinstallprompt also fires on desktop Chrome/Edge, but "add to home
 // screen" is a phone/tablet idea - desktop already has a real taskbar.
 function mobileDevice() {
@@ -96,7 +106,9 @@ function installPromptOverlay(isIOS) {
 
   if (isIOS) {
     const hint = el('div', 'install-prompt-hint');
-    if (iosMajorVersion() >= 26) {
+    if (iosChrome()) {
+      hint.append('Open this page in Safari to install it.');
+    } else if (iosMajorVersion() >= 26) {
       const dots = svg('ellipsis');
       dots.classList.add('install-prompt-dots');
       hint.append('Tap ', dots, ' then ', svg('upload'), ' Share, then “Add to Home Screen”');
