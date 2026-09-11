@@ -16,9 +16,10 @@ func main() {
 	wait := flag.String("wait", "body", "css selector that must be visible before capturing")
 	remote := flag.Bool("remote", false, "attach to the capture browser on localhost:9222 instead of launching headless chrome")
 	cookie := flag.String("cookie", "", "name=value cookie to set for who.local.heliosian.com before navigating")
-	click := flag.String("click", "", "css selector to click after the wait selector appears")
+	click := flag.String("click", "", "css selector(s) to click after the wait selector appears, several separated by |, each waited for in turn")
+	settle := flag.Duration("settle", 0, "extra time to wait after the last click, e.g. 3s")
 	flag.Parse()
-	png, err := capture.PNG(capture.Options{URL: *url, Wait: *wait, Remote: *remote, Cookie: *cookie, Click: *click})
+	png, err := capture.PNG(capture.Options{URL: *url, Wait: *wait, Remote: *remote, Cookie: *cookie, Click: *click, Settle: *settle})
 	if err != nil {
 		log.Fatalf("[ERROR] %v", err)
 	}

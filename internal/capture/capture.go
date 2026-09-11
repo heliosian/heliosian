@@ -16,7 +16,10 @@ type Options struct {
 	Wait   string
 	Remote bool
 	Cookie string
+	// Click is one selector, or several separated by "|", each waited for
+	// and clicked in turn; Settle is how long to wait after the last.
 	Click  string
+	Settle time.Duration
 }
 
 // PNG captures one page as a full-page screenshot at a 1280×800 viewport.
@@ -49,10 +52,17 @@ func PNG(opts Options) ([]byte, error) {
 		chromedp.WaitVisible(opts.Wait, chromedp.ByQuery),
 	)
 	if opts.Click != "" {
-		actions = append(actions,
-			chromedp.Click(opts.Click, chromedp.ByQuery),
-			chromedp.Sleep(500*time.Millisecond),
-		)
+		for _, sel := range strings.Split(opts.Click, "|") {
+			sel = strings.TrimSpace(sel)
+			actions = append(actions,
+				chromedp.WaitVisible(sel, chromedp.ByQuery),
+				chromedp.Click(sel, chromedp.ByQuery),
+				chromedp.Sleep(500*time.Millisecond),
+			)
+		}
+	}
+	if opts.Settle > 0 {
+		actions = append(actions, chromedp.Sleep(opts.Settle))
 	}
 	actions = append(actions, chromedp.FullScreenshot(&png, 90))
 	if err := chromedp.Run(ctx, actions...); err != nil {

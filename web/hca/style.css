@@ -1946,7 +1946,8 @@ button.side-chair:hover { background: var(--input); }
 
 .roster-none { color: var(--muted); font-style: italic; }
 
-.resources-main .side-links { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+/* auto-fit, not auto-fill: a lone resource fills the width instead of leaving an empty column beside it. */
+.resources-main .side-links { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
 
 .resources-main .side-button { width: auto; margin-top: 10px; }
 
@@ -2511,6 +2512,9 @@ h2.section .link-button { font-size: 14px; }
 }
 
 .modal-overlay[hidden] { display: none; }
+
+/* A sheet stacks above the modal it was opened from. */
+.modal-overlay.modal-sheet { z-index: 60; }
 
 .modal {
   background: #fff;

@@ -76,6 +76,42 @@ async function uploadImage(file) {
   return (await res.json()).name;
 }
 
+// openSheet is a second layer above the modal for something the form needs
+// mid-edit - the image search - so the form underneath keeps every field
+// typed into it. It is its own overlay, made and removed per use; the main
+// modal has no idea it was there.
+function openSheet(title, nodes, options) {
+  const layer = el('div', 'modal-overlay modal-sheet');
+  const box = el('div', 'modal' + (options && options.wide ? ' modal-wide' : ''));
+  const header = el('div', 'modal-header');
+  header.append(el('h2', '', title));
+  const close = el('button', 'modal-close', '×');
+  close.type = 'button';
+  close.setAttribute('aria-label', 'Close');
+  const shut = () => {
+    layer.remove();
+    document.removeEventListener('keydown', onKey, true);
+  };
+  const onKey = e => {
+    if (e.key === 'Escape') {
+      e.stopImmediatePropagation();
+      shut();
+    }
+  };
+  close.addEventListener('click', shut);
+  layer.addEventListener('click', e => {
+    if (e.target === layer) {
+      shut();
+    }
+  });
+  document.addEventListener('keydown', onKey, true);
+  header.append(close);
+  box.append(header, ...nodes);
+  layer.append(box);
+  document.body.append(layer);
+  return shut;
+}
+
 function closeModal() {
   overlay().hidden = true;
   form().replaceChildren();
@@ -277,7 +313,7 @@ function imagePicker(current, currentUrl, options) {
     return true;
   }));
   const plain = Boolean(options && options.plain);
-  const google = el('button', 'button button-secondary button-small', 'Find an image');
+  const google = el('button', 'button button-secondary button-small image-find', 'Find an image');
   google.type = 'button';
   google.hidden = plain || !imageSearchOn();
   google.addEventListener('click', e => {
@@ -1043,7 +1079,8 @@ export function openActivity(act, options) {
   const allowAddingRow = settingRow('Allow adding subactivities',
     'Can users add subactivities? Note that this is a default and can be overwritten by the settings of a category.',
     policyDot(allowAdding, under ? 'inherit' : ADDING.no));
-  const image = imagePicker(act ? act.image : '', act ? act.imageUrl : '');
+  // The search opens on the title, which is usually what the picture is of.
+  const image = imagePicker(act ? act.image : '', act ? act.imageUrl : '', {query: () => title.value.trim()});
   const flyer = imagePicker(act ? act.flyer : '', act ? act.flyerUrl : '', {plain: true});
   const pretty = text(act ? act.prettyId || '' : '', {placeholder: 'applause', maxLength: 40});
   // The address as it will read, kept current as the field is typed in, with a
@@ -1527,7 +1564,7 @@ export function openImageSearch(initial, onPicked) {
               throw new Error(await imported.text());
             }
             const {name} = await imported.json();
-            closeModal();
+            shut();
             await onPicked(name);
           } catch (err) {
             status.textContent = err.message;
@@ -1548,7 +1585,9 @@ export function openImageSearch(initial, onPicked) {
       run();
     }
   });
-  openModal('Find an image', [wrap], {wide: true});
+  // Its own layer, so a Find an image from inside the activity editor comes
+  // back to the form as it was - not to an empty one.
+  const shut = openSheet('Find an image', [wrap], {wide: true});
   input.focus();
   if (input.value) {
     run();
