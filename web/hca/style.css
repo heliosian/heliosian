@@ -180,8 +180,10 @@ button { font: inherit; }
 .nav-event-link.is-active { background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
 
 /* The generic .app-nav a rule would size these like the main items; they are
-   sub-items, so they take the sub-item's type. */
-.app-nav a.nav-tree-item {
+   sub-items - a committee in the open event, or someone in the household
+   under My Sign Ups - so they take the sub-item's type. */
+.app-nav a.nav-tree-item,
+.app-nav a.nav-family-item {
   min-height: 30px;
   padding: 3px 8px;
   gap: 8px;
@@ -191,7 +193,8 @@ button { font: inherit; }
   text-decoration: none;
 }
 
-.app-nav a.nav-tree-item.is-on { background: #fff; font-weight: 700; box-shadow: none; }
+.app-nav a.nav-tree-item.is-on,
+.app-nav a.nav-family-item.is-on { background: #fff; font-weight: 700; box-shadow: none; }
 
 .nav-tree-group { font-weight: 700; }
 
@@ -814,6 +817,8 @@ main {
 .card-under-item svg { width: 15px; height: 15px; flex-shrink: 0; color: var(--muted); }
 
 .card-under-item .side-chair-role { margin-top: 0; }
+
+.card-under-item .card-under-edit { margin-left: auto; width: 26px; height: 26px; }
 
 .card-under-when { font-size: 12.5px; font-weight: 500; color: var(--muted); }
 

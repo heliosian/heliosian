@@ -1,4 +1,4 @@
-import {state, me, isAdmin, years, allYears, activityPath, activity, parentOf, canAdd, ADDING, descendants, rootOf, eventCategories, headingChoices, UNCATEGORIZED} from './state.js';
+import {state, me, isAdmin, years, allYears, activityPath, activity, parentOf, canAdd, ADDING, descendants, rootOf, eventCategories, headingChoices, UNCATEGORIZED, isFamily} from './state.js';
 
 function* allNodes() {
   for (const root of state.model.activities) {
@@ -525,7 +525,9 @@ export async function openPerson(v, node) {
   const info = await personInfo(v.email);
   const head = personHead(v, info);
   const contact = personContact(v, info);
-  if (!node || !node.canEdit || !v.position) {
+  // Whoever runs the thing reaches the sign-up from the face, and so does
+  // the person's own household.
+  if (!node || !(node.canEdit || isFamily(v.email)) || !v.position) {
     const done = el('button', 'button button-secondary', 'Done');
     done.type = 'button';
     done.addEventListener('click', closeModal);

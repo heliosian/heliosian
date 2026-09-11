@@ -1,4 +1,4 @@
-import {applyModel, resolvePath, activityPath} from './state.js';
+import {applyModel, resolvePath, activityPath, isFamily} from './state.js';
 import {el} from './dom.js';
 import {initChrome, renderChrome, setTitle, clearSearch} from './chrome.js';
 import {initModal} from './edit.js';
@@ -41,7 +41,12 @@ function route() {
     case 'years':
       return signUpPage(parts[1] || null);
     case 'my':
-      return myPage();
+      // /my/{email} is a household member's sign-ups; anyone else's is not a
+      // page.
+      if (parts[1] && !isFamily(parts[1])) {
+        return notFound('That person');
+      }
+      return myPage(parts[1] || null);
     case 'calendar':
       return calendarPage();
     case 'admin':

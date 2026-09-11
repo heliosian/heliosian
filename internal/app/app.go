@@ -200,24 +200,41 @@ func (d directory) People() []events.DirectoryPerson {
 		// A parent's children come through the household, as the directory
 		// itself lists them.
 		if p.IsParent {
-			for _, key := range model.FamilyKeysOf(p.Email) {
-				family := model.Families[key]
-				for _, kid := range family.KidEmails {
-					if k := model.Person(kid); k != nil {
-						person.Children = append(person.Children, events.Child{Email: k.Email, Name: k.FullName, Grade: k.Grade})
-					}
-				}
-				for _, adult := range family.AdultEmails {
-					if a := model.Person(adult); a != nil && a.Email != p.Email {
-						person.Spouses = append(person.Spouses, events.Child{Email: a.Email, Name: a.FullName})
-					}
-				}
-			}
+			person.Spouses, person.Children = household(model, p)
 		}
 		out = append(out, person)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
+}
+
+// household is a parent's family as the directory lists it: the other adults
+// in their families, then the children.
+func household(model *who.Model, p who.Person) (adults, kids []events.Child) {
+	for _, key := range model.FamilyKeysOf(p.Email) {
+		family := model.Families[key]
+		for _, adult := range family.AdultEmails {
+			if a := model.Person(adult); a != nil && a.Email != p.Email {
+				adults = append(adults, events.Child{Email: a.Email, Name: a.FullName})
+			}
+		}
+		for _, kid := range family.KidEmails {
+			if k := model.Person(kid); k != nil {
+				kids = append(kids, events.Child{Email: k.Email, Name: k.FullName, Grade: k.Grade})
+			}
+		}
+	}
+	return adults, kids
+}
+
+// Household is the viewer's own family, for the sign-ups they may see and
+// change besides their own; nothing for anyone who is not a parent.
+func (d directory) Household(email string) (adults, kids []events.Child) {
+	p := d.cache.Model().Person(email)
+	if p == nil || !p.IsParent {
+		return nil, nil
+	}
+	return household(d.cache.Model(), *p)
 }
 
 // birthdayDirectory hands the birthday app the directory's view of people: who

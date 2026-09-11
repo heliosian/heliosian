@@ -21,6 +21,9 @@ type Directory interface {
 	Parents(email string) []string
 	// People lists everyone a picker may offer, in the directory's own order.
 	People() []DirectoryPerson
+	// Household is a parent's family as the directory lists it: the other
+	// adults in it, then the children; nothing for anyone else.
+	Household(email string) (adults, kids []Child)
 }
 
 // DirectoryPerson is one row of a people picker: enough to recognise someone -
@@ -76,8 +79,11 @@ func (d viewer) person(email string) (string, string) {
 }
 
 type viewer struct {
-	email     string
-	admin     bool
+	email string
+	admin bool
+	// family is the viewer's household by address - the sign-ups a private
+	// list still shows them.
+	family    map[string]bool
 	directory Directory
 }
 
@@ -135,6 +141,11 @@ type User struct {
 	// SpoofingAs names who a system admin is viewing the portal as, when they
 	// are; the rest of User already describes that person.
 	SpoofingAs string `json:"spoofingAs,omitempty"`
+	// Spouses and Children are the viewer's household, whose sign-ups are
+	// theirs to see and to change - a parent signs a child up, and takes
+	// them off again.
+	Spouses  []Child `json:"spouses,omitempty"`
+	Children []Child `json:"children,omitempty"`
 }
 
 // canEdit reports whether the viewer runs this activity: an admin, or one of its
@@ -161,7 +172,7 @@ func (v viewer) visible(status, addedBy string, editor bool) bool {
 func (v viewer) volunteers(list []Volunteer, hidden, editor bool) []Volunteer {
 	out := []Volunteer{}
 	for _, vol := range list {
-		if hidden && !editor && vol.Position != PositionCoChair && vol.Email != v.email {
+		if hidden && !editor && vol.Position != PositionCoChair && vol.Email != v.email && !v.family[vol.Email] {
 			continue
 		}
 		vol.Name, vol.PhotoURL = v.person(vol.Email)
@@ -205,11 +216,15 @@ func (v viewer) children(list []*Activity, editor, runs bool) []*ActivityView {
 
 // Render is the model as one signed-in person sees it.
 func Render(model *Model, directory Directory, email string, admin bool, now time.Time) View {
-	v := viewer{email: email, admin: admin, directory: directory}
+	v := viewer{email: email, admin: admin, directory: directory, family: map[string]bool{}}
 	name, _ := v.person(email)
+	spouses, children := directory.Household(email)
+	for _, c := range append(append([]Child{}, spouses...), children...) {
+		v.family[c.Email] = true
+	}
 	current := SchoolYear(now)
 	view := View{
-		User:        User{Email: email, Name: name, Initial: strings.ToUpper(name[:1]), IsAdmin: admin},
+		User:        User{Email: email, Name: name, Initial: strings.ToUpper(name[:1]), IsAdmin: admin, Spouses: spouses, Children: children},
 		Years:       Years{Current: current, Last: ShiftYear(current, -1), Next: ShiftYear(current, 1)},
 		Settings:    model.Settings,
 		Categories:  model.Categories,

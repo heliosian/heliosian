@@ -1,4 +1,4 @@
-import {state, whenParts, coChairs, shownVolunteers, descendants, canJoin, isFull, mySignUp, activityPath, rootOf, category, parseWhen, UNCATEGORIZED} from './state.js';
+import {state, me, whenParts, coChairs, shownVolunteers, descendants, canJoin, isFull, mySignUp, signUpOf, activityPath, rootOf, category, parseWhen, UNCATEGORIZED} from './state.js';
 import {el, link, svg, thumb, badge, button} from './dom.js';
 import {openSignUp, openActivity} from './edit.js';
 
@@ -235,10 +235,12 @@ function spotsNote(act) {
 
 // activityCard is the grid tile the opportunities page shows: image with its
 // category chip and date stamp, then title, blurb, and the sign-up action.
-// opts.signUps lists the viewer's sign-ups on the activity and under it, for
-// My Sign Ups: each a link with a check - the event itself by its own title
-// when signed up for directly - with its own date when it has one, in place of
-// the foot; the card says where they are, not what to join.
+// opts.signUps lists one person's sign-ups on the activity and under it, for
+// My Sign Ups - opts.email says whose: the viewer's, or someone in their
+// household - each a link with a check - the event itself by its own title
+// when signed up for directly - with its own date when it has one, and a
+// pencil into the sign-up itself, where it can be changed or removed; all in
+// place of the foot, since the card says where they are, not what to join.
 export function activityCard(act, opts = {}) {
   const card = el('div', 'card' + (act.status === 'Hidden' || act.status === 'Pending' ? ' is-muted' : ''));
   const media = link(activityPath(act), 'card-media');
@@ -275,7 +277,7 @@ export function activityCard(act, opts = {}) {
       item.append(svg('join'), el('span', 'card-under-title', node.title));
       // Chairing it, or offering to, is tagged the way the faces on its page
       // tag it.
-      const mine = mySignUp(node);
+      const mine = signUpOf(node, opts.email || me().email);
       if (mine && mine.position === 'Co-Chair') {
         item.append(el('span', 'side-chair-role', 'Chair'));
       } else if (mine && mine.position === 'Open to Co-Chair') {
@@ -286,6 +288,13 @@ export function activityCard(act, opts = {}) {
       const own = [when.words, when.day, when.time].filter(Boolean).join(' · ');
       if (own) {
         item.append(el('span', 'card-under-when', own));
+      }
+      if (mine) {
+        // button() swallows the click so the item's link does not fire.
+        const pencil = button('', 'edit', 'edit-icon card-under-edit', () => openSignUp(node, mine));
+        pencil.title = 'Edit or remove this sign-up';
+        pencil.setAttribute('aria-label', `Edit ${mine.name}'s sign-up for ${node.title}`);
+        item.append(pencil);
       }
       under.append(item);
     }

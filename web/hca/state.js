@@ -364,10 +364,10 @@ export function listHidden(node) {
 
 // shownVolunteers is who the page lists. The server sends an organizer the
 // whole of a private list, but the page shows an organizer what everyone else
-// sees - the co-chairs and themselves - unless they are editing or have Show
-// Hidden Things on, so the page they look at is the page people get. A system
-// admin sees a private list only with the hat on: off, they are a parent like
-// any other, and the list is not theirs to see.
+// sees - the co-chairs, themselves and their household - unless they are
+// editing or have Show Hidden Things on, so the page they look at is the page
+// people get. A system admin sees a private list only with the hat on: off,
+// they are a parent like any other, and the list is not theirs to see.
 export function listRevealed(node, editing) {
   return !listHidden(node) || editing || state.showHidden || isAdmin();
 }
@@ -377,7 +377,7 @@ export function shownVolunteers(node, editing) {
     return node.volunteers;
   }
   const mine = me().email;
-  return node.volunteers.filter(v => v.position === 'Co-Chair' || v.email === mine);
+  return node.volunteers.filter(v => v.position === 'Co-Chair' || v.email === mine || isFamily(v.email));
 }
 
 export function coChairs(node) {
@@ -385,7 +385,22 @@ export function coChairs(node) {
 }
 
 export function mySignUp(node) {
-  return node.volunteers.find(v => v.email === me().email) || null;
+  return signUpOf(node, me().email);
+}
+
+export function signUpOf(node, email) {
+  return node.volunteers.find(v => v.email === email) || null;
+}
+
+// family is the viewer's household as the directory lists it - the other
+// adults, then the children - whose sign-ups are theirs to see and change.
+export function family() {
+  const user = me();
+  return [...(user.spouses || []), ...(user.children || [])];
+}
+
+export function isFamily(email) {
+  return family().some(c => c.email === email);
 }
 
 export function isFull(node) {
@@ -401,12 +416,13 @@ export function canJoin(node) {
   return Boolean(node.directSignUp);
 }
 
-// myRows lists every sign-up of the viewer's, activity-level and role-level.
-export function myRows() {
+// myRows lists every sign-up of one person's - the viewer's, or someone in
+// their household - activity-level and role-level.
+export function myRows(email = me().email) {
   const rows = [];
   for (const root of state.model.activities) {
     for (const node of [root, ...descendants(root)]) {
-      const v = mySignUp(node);
+      const v = signUpOf(node, email);
       if (v) {
         rows.push({act: node, volunteer: v});
       }

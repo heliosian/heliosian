@@ -22,6 +22,8 @@ const (
 	parent = "robin.whitfield@heliosschool.org"
 	admin  = "jordan.whitfield@heliosschool.org"
 	chair  = "mina.park@heliosschool.org"
+	spouse = "sam.whitfield@heliosschool.org"
+	kid    = "kit.whitfield@heliosschool.org"
 )
 
 type syncQueue struct{}
@@ -33,6 +35,14 @@ type fakeDirectory struct{}
 func (fakeDirectory) Resolve(email string) string { return email }
 
 func (fakeDirectory) People() []DirectoryPerson { return nil }
+
+// The parent's household is a partner and a child; nobody else has one.
+func (fakeDirectory) Household(email string) (adults, kids []Child) {
+	if email == parent {
+		return []Child{{Email: spouse, Name: "Sam Whitfield"}}, []Child{{Email: kid, Name: "Kit Whitfield", Grade: "3"}}
+	}
+	return nil, nil
+}
 
 func (fakeDirectory) Grade(string) string { return "" }
 
@@ -191,6 +201,22 @@ func TestSignUpAndRemove(t *testing.T) {
 	}
 	if rec := call(t, mux, "someone.else@heliosschool.org", "DELETE", "/api/events/volunteer", map[string]any{"id": "E017", "email": parent}); rec.Code != http.StatusForbidden {
 		t.Fatalf("a stranger removed someone: %d", rec.Code)
+	}
+	// A household's sign-ups are each other's to change and remove: the
+	// parent signs the child up, edits the note, and takes them off again -
+	// and the child, with no household of their own, cannot touch the
+	// parent's.
+	if rec := call(t, mux, parent, "POST", "/api/events/volunteer", map[string]any{"id": "E017", "email": kid, "position": PositionVolunteer}); rec.Code != http.StatusNoContent {
+		t.Fatalf("a parent could not sign their child up: %d %s", rec.Code, rec.Body)
+	}
+	if rec := call(t, mux, parent, "POST", "/api/events/volunteer", map[string]any{"id": "E017", "email": kid, "position": PositionVolunteer, "note": "after school only"}); rec.Code != http.StatusNoContent {
+		t.Fatalf("a parent could not edit their child's sign-up: %d %s", rec.Code, rec.Body)
+	}
+	if rec := call(t, mux, kid, "DELETE", "/api/events/volunteer", map[string]any{"id": "E017", "email": parent}); rec.Code != http.StatusForbidden {
+		t.Fatalf("a child removed their parent: %d", rec.Code)
+	}
+	if rec := call(t, mux, parent, "DELETE", "/api/events/volunteer", map[string]any{"id": "E017", "email": kid}); rec.Code != http.StatusNoContent {
+		t.Fatalf("a parent could not remove their child: %d %s", rec.Code, rec.Body)
 	}
 	if rec := call(t, mux, parent, "DELETE", "/api/events/volunteer", map[string]any{"id": "E017", "email": parent}); rec.Code != http.StatusNoContent {
 		t.Fatalf("remove self: %d %s", rec.Code, rec.Body)

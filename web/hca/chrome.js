@@ -1,4 +1,4 @@
-import {state, me, isAdmin, pendingItems, selectedYear, listedIn, years, resolvePath, rootOf, eventCategories, descendants, activityPath, isSystemAdmin, setSuperEdit} from './state.js';
+import {state, me, isAdmin, pendingItems, selectedYear, listedIn, years, resolvePath, rootOf, eventCategories, descendants, activityPath, isSystemAdmin, setSuperEdit, family, myRows, isPrevious} from './state.js';
 import {el, svg, link, button} from './dom.js';
 import {githubBadge} from '/github-badge.js';
 import {openActivity} from './edit.js';
@@ -98,6 +98,32 @@ function categoryLinks() {
     wrap.append(item);
   }
   return wrap.children.length ? wrap : null;
+}
+
+// familyLinks sit under My Sign Ups for anyone with a household in the
+// directory: themselves, then their partner and children, each with how many
+// things they are on this year - the count the page shows, following the Show
+// Completed Events switch as it does. Nobody with no household gets a list of
+// one.
+function familyLinks() {
+  const people = family();
+  if (!people.length) {
+    return null;
+  }
+  const wrap = el('div', 'nav-sub');
+  const current = location.pathname.split('/').filter(Boolean).map(decodeURIComponent);
+  const on = current[0] === 'my' ? current[1] || '' : null;
+  const count = email => myRows(email).filter(r => r.act.year === years().current && (state.showPrevious || !isPrevious(r.act))).length;
+  const add = (href, label, email, self) => {
+    const a = link(href, 'nav-sub-item nav-family-item' + (on === (self ? '' : email) ? ' is-on' : ''));
+    a.append(el('span', 'nav-sub-name', label), el('span', 'nav-sub-count', String(count(email))));
+    wrap.append(a);
+  };
+  add('/my', 'Me', me().email, true);
+  for (const c of people) {
+    add(`/my/${encodeURIComponent(c.email)}`, c.name, c.email, false);
+  }
+  return wrap;
 }
 
 // currentActivity is the thing whose page is open, by either of its addresses,
@@ -224,6 +250,12 @@ function renderNav() {
       }
       if (current) {
         nav.append(eventTree(current));
+      }
+    }
+    if (item.href === '/my') {
+      const people = familyLinks();
+      if (people) {
+        nav.append(people);
       }
     }
   }

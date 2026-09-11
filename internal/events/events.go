@@ -30,7 +30,7 @@ const (
 )
 
 var pages = []string{
-	"/{$}", "/my", "/calendar", "/approvals", "/admin", "/years/{year}", "/activities/{path...}", "/v/{path...}",
+	"/{$}", "/my", "/my/{email}", "/calendar", "/approvals", "/admin", "/years/{year}", "/activities/{path...}", "/v/{path...}",
 }
 
 // local is the school's clock: the sheet's dates are wall-clock there, and a
@@ -333,7 +333,7 @@ func (a app) saveVolunteer(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if existing && !editor && email != actor {
+	if existing && !editor && email != actor && !a.household(actor, email) {
 		http.Error(w, "only a co-chair or admin can change someone else's sign-up", http.StatusForbidden)
 		return
 	}
@@ -366,6 +366,18 @@ func (a app) saveVolunteer(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// household says whether email is in the actor's family - a partner or a
+// child - whose sign-ups the actor may change and remove as their own.
+func (a app) household(actor, email string) bool {
+	adults, kids := a.directory.Household(actor)
+	for _, c := range append(adults, kids...) {
+		if strings.EqualFold(c.Email, email) {
+			return true
+		}
+	}
+	return false
+}
+
 func (a app) removeVolunteer(w http.ResponseWriter, r *http.Request) {
 	actor, admin := a.who(r)
 	var body struct {
@@ -380,7 +392,7 @@ func (a app) removeVolunteer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	email := strings.ToLower(strings.TrimSpace(body.Email))
-	if email != actor && !admin && !a.cache.Model().Runs(act, actor) {
+	if email != actor && !admin && !a.cache.Model().Runs(act, actor) && !a.household(actor, email) {
 		http.Error(w, "only a co-chair or admin can remove someone else", http.StatusForbidden)
 		return
 	}
