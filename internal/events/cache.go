@@ -30,6 +30,31 @@ type Cache struct {
 	// edits counts every change applied from a request, so a refresh that
 	// read the sheet before one landed knows not to put the older sheet back.
 	edits int
+	// spoof is, per system admin, who they are viewing the portal as - Spoof
+	// Mode, as Helios Who? has it. Per process, forgotten on restart.
+	spoof map[string]string
+}
+
+// SpoofTarget is who this admin is viewing the portal as, or "" for themselves.
+func (c *Cache) SpoofTarget(email string) string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.spoof[strings.ToLower(strings.TrimSpace(email))]
+}
+
+// SetSpoof starts (or, with a blank target, stops) an admin viewing as someone.
+func (c *Cache) SetSpoof(email, target string) {
+	email, target = strings.ToLower(strings.TrimSpace(email)), strings.ToLower(strings.TrimSpace(target))
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.spoof == nil {
+		c.spoof = map[string]string{}
+	}
+	if target == "" {
+		delete(c.spoof, email)
+	} else {
+		c.spoof[email] = target
+	}
 }
 
 // NewCache loads the sheet and keeps reloading it. A sheet that will not load

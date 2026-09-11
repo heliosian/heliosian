@@ -346,9 +346,39 @@ export function setTitle(title) {
 }
 
 export function renderChrome() {
+  renderSpoofBanner();
   renderUser();
   renderNav();
   renderTabbar();
+}
+
+// renderSpoofBanner is the red line across the top while a system admin is
+// viewing the portal as someone else - the one thing on the page keyed on who
+// is really signed in, and the way back to being themselves.
+function renderSpoofBanner() {
+  let banner = document.querySelector('.spoof-banner');
+  const as = me().spoofingAs;
+  if (!as) {
+    if (banner) {
+      banner.remove();
+    }
+    return;
+  }
+  if (banner) {
+    banner.querySelector('.spoof-banner-name').textContent = as;
+    return;
+  }
+  banner = el('div', 'spoof-banner');
+  banner.append(el('span', '', 'Viewing as '), el('span', 'spoof-banner-name', as));
+  const stop = el('a', '', 'Stop');
+  stop.href = '#';
+  stop.addEventListener('click', async e => {
+    e.preventDefault();
+    await fetch('/api/admin/spoof', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({email: ''})});
+    location.reload();
+  });
+  banner.append(stop);
+  document.body.prepend(banner);
 }
 
 export function initChrome() {

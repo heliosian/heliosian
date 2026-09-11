@@ -85,6 +85,7 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	mux.HandleFunc("POST /api/events/image", a.ready(a.uploadImage))
 	mux.HandleFunc("GET /api/admin/state", a.ready(a.adminState))
 	mux.HandleFunc("POST /api/admin/admins", a.ready(a.setAdmins))
+	mux.HandleFunc("POST /api/admin/spoof", a.ready(a.setSpoof))
 }
 
 func (a app) page(w http.ResponseWriter, r *http.Request) {
@@ -110,9 +111,59 @@ func (a app) ready(next http.HandlerFunc) http.HandlerFunc {
 
 // who is the signed-in person as the portal keys them: the address Google
 // vouched for, resolved through the directory's aliases.
+// realEmail is who is actually signed in, resolved through the directory's
+// aliases. who is who the portal acts as: the same person, unless a system
+// admin has picked someone to view as (Spoof Mode) - then everything, reads
+// and writes alike, runs as that person, so what the admin sees and can do is
+// exactly what they would.
+func (a app) realEmail(r *http.Request) string {
+	return a.directory.Resolve(strings.ToLower(auth.Email(r)))
+}
+
 func (a app) who(r *http.Request) (string, bool) {
-	email := a.directory.Resolve(strings.ToLower(auth.Email(r)))
+	email := a.realEmail(r)
+	if target := a.cache.SpoofTarget(email); target != "" && a.cache.IsAdmin(email) {
+		email = a.directory.Resolve(target)
+	}
 	return email, a.cache.IsAdmin(email)
+}
+
+// spoofing is the name of who the real admin is viewing as, or "" - keyed on
+// the real identity, so the banner that ends it shows whoever they became.
+func (a app) spoofing(r *http.Request) string {
+	real := a.realEmail(r)
+	target := a.cache.SpoofTarget(real)
+	if target == "" || !a.cache.IsAdmin(real) {
+		return ""
+	}
+	return a.nameOf(target)
+}
+
+// setSpoof starts or stops Spoof Mode for the real signed-in admin; the
+// target must be someone the directory knows. Keyed on the real identity so
+// the banner's Stop still works while viewing as someone with no admin rights.
+func (a app) setSpoof(w http.ResponseWriter, r *http.Request) {
+	real := a.realEmail(r)
+	if !a.cache.IsAdmin(real) {
+		http.Error(w, "admin access required", http.StatusForbidden)
+		return
+	}
+	var body struct {
+		Email string `json:"email"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	target := strings.ToLower(strings.TrimSpace(body.Email))
+	if target != "" {
+		if _, _, ok := a.directory.Person(target); !ok {
+			http.Error(w, "nobody in the directory has that address", http.StatusBadRequest)
+			return
+		}
+	}
+	a.cache.SetSpoof(real, target)
+	slog.InfoContext(r.Context(), "events: spoof", "admin", real, "as", target)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (a app) requireAdmin(w http.ResponseWriter, r *http.Request) (string, bool) {
@@ -135,6 +186,7 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 	// Google join it when their keys are set.
 	view.ImageSearch = true
 	view.ImageSources = a.search.Sources()
+	view.User.SpoofingAs = a.spoofing(r)
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
 		slog.ErrorContext(r.Context(), "encode events model", "error", err)
@@ -1345,7 +1397,10 @@ func (a app) adminState(w http.ResponseWriter, r *http.Request) {
 		Admins   []string `json:"admins"`
 		Notify   []string `json:"notify"`
 		Mail     bool     `json:"mail"`
-	}{Email: email, HasStore: a.store != nil, Admins: a.cache.Admins(a.superAdmins()), Notify: notify, Mail: a.mailer != nil}
+		CanSpoof bool     `json:"canSpoof"`
+		Spoofing string   `json:"spoofing,omitempty"`
+	}{Email: email, HasStore: a.store != nil, Admins: a.cache.Admins(a.superAdmins()), Notify: notify, Mail: a.mailer != nil,
+		CanSpoof: a.cache.IsAdmin(a.realEmail(r)), Spoofing: a.spoofing(r)}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
 		slog.ErrorContext(r.Context(), "encode events admin state", "error", err)

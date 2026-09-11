@@ -3026,3 +3026,28 @@ h2.section .link-button { font-size: 14px; }
 .notify-stack .field-toggle:last-child { border-bottom: 0; }
 
 .notify-stack + .save-status { display: inline-block; margin-top: 8px; }
+
+/* Spoof Mode: the line across the very top while viewing as someone else. */
+.spoof-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: calc(6px + env(safe-area-inset-top)) 12px 6px;
+  background: #b3261e;
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 600;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.spoof-banner-name { font-weight: 700; }
+
+.spoof-banner a { color: #fff; text-decoration: underline; margin-left: 8px; }
+
+.spoof-row { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
+
+.spoof-row .people-picker { flex: 1; min-width: 260px; }
+
+.spoof-row .people-picker input[type=search] { width: 100%; padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; box-sizing: border-box; }

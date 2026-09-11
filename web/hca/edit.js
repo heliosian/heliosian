@@ -670,7 +670,7 @@ function personFoot(v, info, done) {
   return foot.children.length ? foot : el('div');
 }
 
-function peoplePicker() {
+export function peoplePicker() {
   const wrap = el('div', 'people-picker');
   const search = el('input');
   search.type = 'search';

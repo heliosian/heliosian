@@ -132,6 +132,9 @@ type User struct {
 	Name    string `json:"name"`
 	Initial string `json:"initial"`
 	IsAdmin bool   `json:"isAdmin"`
+	// SpoofingAs names who a system admin is viewing the portal as, when they
+	// are; the rest of User already describes that person.
+	SpoofingAs string `json:"spoofingAs,omitempty"`
 }
 
 // canEdit reports whether the viewer runs this activity: an admin, or one of its

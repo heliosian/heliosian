@@ -1,7 +1,7 @@
 import {state, isSystemAdmin} from '../state.js';
 import {el, button} from '../dom.js';
 import {setTitle} from '../chrome.js';
-import {categoryList, openSettings, checkbox, send} from '../edit.js';
+import {categoryList, openSettings, checkbox, send, peoplePicker} from '../edit.js';
 
 function denied() {
   const page = el('div', 'list-page');
@@ -81,6 +81,50 @@ function notifyCard() {
     }
     if (!data.mail) {
       notice.append(el('div', 'notice', 'Email is not set up on this server yet, so nothing is sent; the choices are kept for when it is.'));
+    }
+  });
+  return card;
+}
+
+// spoofCard is Spoof Mode, as Helios Who? has it: pick anyone in the directory
+// and the whole portal - every page, every button, every save - runs as them
+// until Stop, on the banner or here. Only a real system admin gets the card;
+// while viewing as someone without admin rights this page is not reachable,
+// which is what the banner's Stop is for.
+function spoofCard() {
+  const card = el('div', 'admin-card');
+  card.hidden = true;
+  card.append(el('h2', '', 'Spoof Mode'));
+  card.append(el('div', 'hint', 'See the portal exactly as someone else does - what they can open, sign up for and edit. Everything you do while viewing as them is done as them, so look, don\'t touch.'));
+  const current = el('div', 'notice');
+  current.hidden = true;
+  const picker = peoplePicker();
+  const row = el('div', 'spoof-row');
+  const status = el('span', 'save-status');
+  const go = button('View as', 'people', 'button', async () => {
+    const email = picker.value();
+    if (!email) {
+      return;
+    }
+    try {
+      await send('POST', '/api/admin/spoof', {email});
+      location.href = '/';
+    } catch (err) {
+      status.classList.add('error');
+      status.textContent = err.message;
+    }
+  });
+  row.append(picker.wrap, go, status);
+  card.append(current, row);
+  fetch('/api/admin/state').then(async res => {
+    if (!res.ok) {
+      return;
+    }
+    const data = await res.json();
+    card.hidden = !data.canSpoof;
+    if (data.spoofing) {
+      current.hidden = false;
+      current.textContent = `Viewing as ${data.spoofing} - use Stop on the banner above to be yourself again.`;
     }
   });
   return card;
@@ -171,6 +215,6 @@ export function adminPage() {
     return denied();
   }
   const page = el('div', 'list-page');
-  page.append(el('h1', '', 'Admin Tools'), categoriesCard(), settingsCard(), notifyCard(), adminsCard());
+  page.append(el('h1', '', 'Admin Tools'), categoriesCard(), settingsCard(), notifyCard(), adminsCard(), spoofCard());
   return page;
 }
