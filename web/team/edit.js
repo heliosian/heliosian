@@ -1150,18 +1150,25 @@ export function openActivity(act, options) {
   const fields = [field('Title', title)];
   // Only an event has a year of its own; everything under it lives in the event's.
   const yearField = (admin || !act) && !under ? settingRow('School year', 'The year this event belongs to.', year) : null;
+  // A suggestion asks for the least: a title, a few lines, roughly when. The
+  // year is this one and the category is where the button was pressed - the
+  // Just an Idea heading, or the event's category - so neither is asked.
   if (suggesting) {
-    fields.push(field('Year', year));
-  }
-  if (under) {
-    fields.push(underField);
-  }
-  if (under) {
-    if (own.length) {
-      fields.push(field('Category', eventCategory, `One of ${root.title}'s own categories`));
-    }
+    const lead = el('p', 'field-lead suggest-lead', under
+      ? `Have an idea for ${root.title}? Tell us about it and the organizers will take a look.`
+      : 'Have an idea for something the HCA could do? Tell us about it and an organizer will take a look.');
+    fields.unshift(lead);
   } else {
-    fields.push(field('Category', category));
+    if (under) {
+      fields.push(underField);
+    }
+    if (under) {
+      if (own.length) {
+        fields.push(field('Category', eventCategory, `One of ${root.title}'s own categories`));
+      }
+    } else {
+      fields.push(field('Category', category));
+    }
   }
   if (!under && !suggesting && parents.length > 1) {
     // The link takes the slot beside Category, where Under would have been.
@@ -1221,7 +1228,10 @@ export function openActivity(act, options) {
       ]},
     ])];
   } else {
-    fields.push(field('Timing', timing, 'When would this happen?'), image.wrap, coChair.wrap);
+    description.rows = 4;
+    description.placeholder = 'What is it, and what would volunteers do?';
+    timing.placeholder = 'Spring, a Friday in March, a few times a year…';
+    fields.push(field('When (optional)', timing, 'Roughly - the organizers will pin it down with you.'), coChair.wrap);
     body = fields;
   }
   openModal(act ? 'Edit Activity' : (suggesting ? 'Suggest an Idea' : (opts.parent ? `Add under ${opts.parent.title}` : 'Add Activity')), body, {

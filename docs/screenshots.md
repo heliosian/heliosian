@@ -17,6 +17,7 @@ Flags:
 - `--url` — page to capture (default `https://who.local.heliosian.com:8080/people`)
 - `--out` — output PNG path (default `screenshots/capture.png`); `screenshots/` is gitignored
 - `--wait` — CSS selector that must be visible before capture (default `body`); pass a selector the page's JavaScript renders (for example `.card`) to capture after data loads
+- `--width` / `--height` — the viewport, default 1280x800; `--width 390 --height 844` is a phone
 - `--click` — CSS selector(s) to click once `--wait` is visible, several separated by `|` and each waited for before its click (for example `.editor-band button|.tabs button:nth-child(4)|.image-find` opens an editor, switches tab, opens the image search); `--settle 3s` waits that long after the last click before capturing
 
 The capture is a full-page screenshot at a 1280×800 viewport. "Full page" means the document's own scroll extent, so a page that sets `overflow: hidden` on `html` and scrolls an inner container — the shape every Glide app has — yields only the viewport. Capture those with a tall `--size` viewport in `cmd/browse` instead.

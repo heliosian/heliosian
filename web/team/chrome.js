@@ -237,9 +237,10 @@ function eventTree(current) {
   return wrap;
 }
 
-function renderNav() {
-  const nav = document.querySelector('#nav');
-  nav.replaceChildren();
+// fillNav is the toolbar's contents - the pages, the categories and the open
+// event's tree under Opportunities, the household under My Sign Ups, Suggest
+// an Idea - shared by the rail and the phone's drawer, so both say the same.
+function fillNav(nav) {
   const current = currentActivity();
   for (const item of navItems()) {
     nav.append(navLink(item));
@@ -260,6 +261,12 @@ function renderNav() {
     }
   }
   nav.append(suggestButton());
+}
+
+function renderNav() {
+  const nav = document.querySelector('#nav');
+  nav.replaceChildren();
+  fillNav(nav);
 }
 
 function renderTabbar() {
@@ -284,10 +291,9 @@ function renderDrawer() {
   close.addEventListener('click', closeDrawer);
   head.append(icon, el('span', '', 'HCA-Team'), close);
   drawer.append(head);
-  for (const item of navItems()) {
-    drawer.append(navLink(item));
-  }
-  drawer.append(suggestButton());
+  const nav = el('nav', 'app-nav drawer-nav');
+  fillNav(nav);
+  drawer.append(nav);
   const user = el('div', 'drawer-user');
   user.append(el('div', 'name', me().name), el('div', 'email', me().email));
   const form = el('form');
@@ -390,6 +396,9 @@ export function renderChrome() {
 function renderSpoofBanner() {
   let banner = document.querySelector('.spoof-banner');
   const as = me().spoofingAs;
+  // The phone layout pins its bar to the top, so it needs to know to make
+  // room for the line above it.
+  document.body.classList.toggle('has-spoof', Boolean(as));
   if (!as) {
     if (banner) {
       banner.remove();

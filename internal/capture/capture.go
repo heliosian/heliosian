@@ -20,6 +20,8 @@ type Options struct {
 	// and clicked in turn; Settle is how long to wait after the last.
 	Click  string
 	Settle time.Duration
+	// Width and Height set the viewport; zero means 1280x800.
+	Width, Height int
 }
 
 // PNG captures one page as a full-page screenshot at a 1280×800 viewport.
@@ -36,7 +38,11 @@ func PNG(opts Options) ([]byte, error) {
 	defer cancelBrowser()
 	ctx, cancelTimeout := context.WithTimeout(ctx, 30*time.Second)
 	defer cancelTimeout()
-	actions := []chromedp.Action{chromedp.EmulateViewport(1280, 800)}
+	width, height := opts.Width, opts.Height
+	if width == 0 || height == 0 {
+		width, height = 1280, 800
+	}
+	actions := []chromedp.Action{chromedp.EmulateViewport(int64(width), int64(height))}
 	if opts.Cookie != "" {
 		name, value, ok := strings.Cut(opts.Cookie, "=")
 		if !ok {

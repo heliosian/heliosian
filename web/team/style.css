@@ -2795,6 +2795,20 @@ h2.section .link-button { font-size: 14px; }
     white-space: nowrap;
   }
   .mobile-top .user-menu { top: calc(100% + 4px); right: 6px; }
+  /* Spoof Mode's line stays above the pinned bar on a phone - it is the way
+     out of viewing as someone else, so it can never be hidden behind it. */
+  .spoof-banner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 31;
+    height: calc(var(--spoof-h) + env(safe-area-inset-top));
+    padding: env(safe-area-inset-top) 12px 0;
+    box-sizing: border-box;
+  }
+  body.has-spoof .mobile-top { top: calc(var(--spoof-h) + env(safe-area-inset-top)); height: 48px; padding-top: 0; }
+  body.has-spoof main { padding-top: calc(48px + var(--spoof-h) + env(safe-area-inset-top)); }
   .mobile-search-overlay {
     display: block;
     position: fixed;
@@ -3083,6 +3097,8 @@ h2.section .link-button { font-size: 14px; }
 
 .spoof-banner-name { font-weight: 700; }
 
+:root { --spoof-h: 28px; }
+
 .spoof-banner a { color: #fff; text-decoration: underline; margin-left: 8px; }
 
 .spoof-row { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
@@ -3090,3 +3106,6 @@ h2.section .link-button { font-size: 14px; }
 .spoof-row .people-picker { flex: 1; min-width: 260px; }
 
 .spoof-row .people-picker input[type=search] { width: 100%; padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; box-sizing: border-box; }
+
+/* The suggestion form's lead-in, above its few fields. */
+.suggest-lead { margin: 0 0 16px; font-size: 14.5px; line-height: 1.5; color: var(--muted); }
