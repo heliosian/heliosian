@@ -1268,6 +1268,8 @@ export function imageSource() {
 
 const notes = {
   'Unsplash': 'Free to use under the Unsplash License; the photographer is credited on each tile.',
+  'Pexels': 'Free to use under the Pexels License; the photographer is credited on each tile.',
+  'Pixabay': 'Photos, illustrations and vectors, free to use under the Pixabay Content License.',
   'Wikimedia Commons': 'Everything here is free to use; the licence is on each tile, and CC BY ones ask to be credited.',
   'Google Images': 'Pick a picture you have the right to use - a school photo, a poster, a flag, a public-domain image.',
 };

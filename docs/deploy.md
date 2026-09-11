@@ -57,6 +57,7 @@ Secret Manager secrets, delivered as environment variables. Values are used raw,
 - `heliosian-session-key` — session-cookie HMAC key (any long random string); losing or rotating it signs everyone out
 - `heliosian-geocoding-key` — the Geocoding API server key, mirrored locally as `creds/geocoding.key`
 - `heliosian-maps-browser-key` — the Maps JavaScript browser key, mirrored locally as `creds/maps.key`
+- `heliosian-pexels-key` / `heliosian-pixabay-key` (optional, as `PEXELS_KEY` / `PIXABAY_KEY`) — the Pexels and Pixabay API keys, two more sources for the image picker
 - `heliosian-unsplash-key` — the Unsplash API access key (as `UNSPLASH_KEY`) behind the portal's image picker's Unsplash source, mirrored locally as `creds/unsplash.key`; without it the picker offers Wikimedia Commons alone
 - `heliosian-search-key` / `heliosian-search-cx` (optional, as `GOOGLE_SEARCH_KEY` / `GOOGLE_SEARCH_CX`) — a Custom Search API key and Programmable Search Engine id, should Google ever grant this project the JSON API; without them the portal's image picker searches Wikimedia Commons, which needs nothing. Wire them with `gcloud run services update heliosian --region us-west1 --update-secrets ...` and add them to `secrets` in `cmd/deploy` so a full deploy keeps them.
 

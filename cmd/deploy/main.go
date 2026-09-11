@@ -35,7 +35,9 @@ const (
 	secrets  = "SESSION_KEY=heliosian-session-key:latest," +
 		"GOOGLE_MAPS_SERVER_KEY=heliosian-geocoding-key:latest," +
 		"GOOGLE_MAPS_BROWSER_KEY=heliosian-maps-browser-key:latest," +
-		"UNSPLASH_KEY=heliosian-unsplash-key:latest"
+		"UNSPLASH_KEY=heliosian-unsplash-key:latest," +
+		"PEXELS_KEY=heliosian-pexels-key:latest," +
+		"PIXABAY_KEY=heliosian-pixabay-key:latest"
 )
 
 func requiredEnv(name string) string {

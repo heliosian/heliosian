@@ -69,7 +69,7 @@ func sampleServer() (*http.Server, *who.Queue) {
 		Writer:      dir,
 		Geocoder:    geocode.Fake{},
 		BrowserKey:  os.Getenv("GOOGLE_MAPS_BROWSER_KEY"),
-		ImageSearch: events.ImageSearch{Key: os.Getenv("GOOGLE_SEARCH_KEY"), CX: os.Getenv("GOOGLE_SEARCH_CX"), Unsplash: os.Getenv("UNSPLASH_KEY")},
+		ImageSearch: events.ImageSearch{Key: os.Getenv("GOOGLE_SEARCH_KEY"), CX: os.Getenv("GOOGLE_SEARCH_CX"), Unsplash: os.Getenv("UNSPLASH_KEY"), Pexels: os.Getenv("PEXELS_KEY"), Pixabay: os.Getenv("PIXABAY_KEY")},
 	})
 	core.Mux.Handle("POST /auth/logout", http.RedirectHandler("/", http.StatusSeeOther))
 	core.HomeMux.Handle("POST /auth/logout", http.RedirectHandler("/", http.StatusSeeOther))

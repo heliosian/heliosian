@@ -31,6 +31,11 @@ type ImageSearch struct {
 	// ask for a credit line and a ping of the photo's download endpoint when
 	// one is taken, and both are kept here.
 	Unsplash string
+	// Pexels and Pixabay are two more free stock libraries, each behind its
+	// own key; Pixabay also carries illustrations and vectors, which the
+	// photo libraries lack.
+	Pexels  string
+	Pixabay string
 }
 
 func (s ImageSearch) google() bool {
@@ -42,6 +47,12 @@ func (s ImageSearch) Sources() []string {
 	out := []string{}
 	if s.Unsplash != "" {
 		out = append(out, "Unsplash")
+	}
+	if s.Pexels != "" {
+		out = append(out, "Pexels")
+	}
+	if s.Pixabay != "" {
+		out = append(out, "Pixabay")
 	}
 	if s.google() {
 		out = append(out, "Google Images")
@@ -85,6 +96,12 @@ func (a app) searchImages(w http.ResponseWriter, r *http.Request) {
 	switch source := r.URL.Query().Get("source"); {
 	case source == "Unsplash" && a.search.Unsplash != "":
 		a.searchUnsplash(w, r, q)
+		return
+	case source == "Pexels" && a.search.Pexels != "":
+		a.searchPexels(w, r, q)
+		return
+	case source == "Pixabay" && a.search.Pixabay != "":
+		a.searchPixabay(w, r, q)
 		return
 	case source == "Google Images" && a.search.google():
 	case source == "Wikimedia Commons" || !a.search.google():
@@ -193,6 +210,103 @@ func (a app) searchUnsplash(w http.ResponseWriter, r *http.Request, q string) {
 			Thumb: p.URLs.Small, URL: p.URLs.Regular, Width: p.Width, Height: p.Height,
 			Title: p.Description, Source: "Unsplash", Context: p.Links.HTML, License: "Unsplash License",
 			Credit: "Photo by " + p.User.Name + " on Unsplash", Download: p.Links.DownloadLocation,
+		})
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(hits)
+}
+
+// searchPexels asks Pexels for landscape photographs; its licence asks for
+// nothing, and a credit line is given anyway.
+func (a app) searchPexels(w http.ResponseWriter, r *http.Request, q string) {
+	params := url.Values{"query": {q}, "per_page": {"24"}, "orientation": {"landscape"}}
+	req, _ := http.NewRequestWithContext(r.Context(), "GET", "https://api.pexels.com/v1/search?"+params.Encode(), nil)
+	req.Header.Set("Authorization", a.search.Pexels)
+	req.Header.Set("User-Agent", userAgent)
+	resp, err := imageClient.Do(req)
+	if err != nil {
+		http.Error(w, "Pexels did not answer", http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+	var body struct {
+		Photos []struct {
+			Width        int    `json:"width"`
+			Height       int    `json:"height"`
+			URL          string `json:"url"`
+			Photographer string `json:"photographer"`
+			Alt          string `json:"alt"`
+			Src          struct {
+				Large2x string `json:"large2x"`
+				Medium  string `json:"medium"`
+			} `json:"src"`
+		} `json:"photos"`
+		Error string `json:"error"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(&body); err != nil {
+		http.Error(w, "Pexels answered oddly", http.StatusBadGateway)
+		return
+	}
+	if resp.StatusCode != http.StatusOK {
+		slog.WarnContext(r.Context(), "pexels refused", "status", resp.StatusCode, "error", body.Error)
+		http.Error(w, "Pexels refused the search: "+body.Error, http.StatusBadGateway)
+		return
+	}
+	hits := make([]ImageHit, 0, len(body.Photos))
+	for _, p := range body.Photos {
+		hits = append(hits, ImageHit{
+			Thumb: p.Src.Medium, URL: p.Src.Large2x, Width: p.Width, Height: p.Height,
+			Title: p.Alt, Source: "Pexels", Context: p.URL, License: "Pexels License",
+			Credit: "Photo by " + p.Photographer + " on Pexels",
+		})
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(hits)
+}
+
+// searchPixabay asks Pixabay for photos, illustrations and vectors alike,
+// landscape and safe; its licence asks for nothing either.
+func (a app) searchPixabay(w http.ResponseWriter, r *http.Request, q string) {
+	params := url.Values{
+		"key": {a.search.Pixabay}, "q": {q}, "per_page": {"24"}, "orientation": {"horizontal"},
+		"safesearch": {"true"}, "image_type": {"all"},
+	}
+	req, _ := http.NewRequestWithContext(r.Context(), "GET", "https://pixabay.com/api/?"+params.Encode(), nil)
+	req.Header.Set("User-Agent", userAgent)
+	resp, err := imageClient.Do(req)
+	if err != nil {
+		http.Error(w, "Pixabay did not answer", http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	if resp.StatusCode != http.StatusOK {
+		// Pixabay answers a bad key with plain text.
+		slog.WarnContext(r.Context(), "pixabay refused", "status", resp.StatusCode, "body", string(raw))
+		http.Error(w, "Pixabay refused the search: "+strings.TrimSpace(string(raw)), http.StatusBadGateway)
+		return
+	}
+	var body struct {
+		Hits []struct {
+			ImageWidth    int    `json:"imageWidth"`
+			ImageHeight   int    `json:"imageHeight"`
+			PageURL       string `json:"pageURL"`
+			Tags          string `json:"tags"`
+			User          string `json:"user"`
+			WebformatURL  string `json:"webformatURL"`
+			LargeImageURL string `json:"largeImageURL"`
+		} `json:"hits"`
+	}
+	if err := json.Unmarshal(raw, &body); err != nil {
+		http.Error(w, "Pixabay answered oddly", http.StatusBadGateway)
+		return
+	}
+	hits := make([]ImageHit, 0, len(body.Hits))
+	for _, h := range body.Hits {
+		hits = append(hits, ImageHit{
+			Thumb: h.WebformatURL, URL: h.LargeImageURL, Width: h.ImageWidth, Height: h.ImageHeight,
+			Title: h.Tags, Source: "Pixabay", Context: h.PageURL, License: "Pixabay Content License",
+			Credit: "Image by " + h.User + " on Pixabay",
 		})
 	}
 	w.Header().Set("Content-Type", "application/json")
