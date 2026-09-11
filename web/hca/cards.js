@@ -47,7 +47,10 @@ function volunteersLine(node, editing) {
 // (leadsLine), so the two never jostle for one row.
 function labelLine(node) {
   const label = el('div', 'label');
-  const when = whenParts(node);
+  // A thing that just happens when its parent does says nothing about when:
+  // the parent's page already does, and a list of rows all saying the same
+  // date is noise.
+  const when = node.whenFrom ? {} : whenParts(node);
   const iconed = (icon, text) => {
     const span = el('span', 'label-when');
     span.append(svg(icon), el('span', '', text));
