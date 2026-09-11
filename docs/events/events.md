@@ -5,7 +5,7 @@ HCA-Team, the HCA Volunteer Portal, is where the Helios Community Association as
 ## Entities
 
 - **Category** — a heading on the Sign Up page ("Headline Events", "HCA Committees", "Just an Idea"), with a blurb. Categories display in the order their rows sit in the sheet.
-- **Activity** — one thing to help with in one school year: title, description, image, when it happens (a start and end, or a free-text timing like "All Year"), where, how many spots, and its status. Activities form a tree: a committee, task, booth, or shift is an activity whose parent is the event it belongs to, and it can hold activities of its own — a booth with its own performance slot. The roots, the ones with no parent, carry one of the page's categories and are what the opportunities page lists; a child lists under its parent, grouped by whichever of the root event's own categories it names. A root either takes sign-ups directly or only through the things under it; a child always takes them.
+- **Activity** — one thing to help with in one school year: title, description, image, when it happens (a start and end, or a free-text timing like "All Year"), where, how many spots, and its status. Activities form a tree: a committee, task, booth, or shift is an activity whose parent is the event it belongs to, and it can hold activities of its own — a booth with its own performance slot. The roots, the ones with no parent, carry one of the page's categories and are what the opportunities page lists; a child lists under its parent, grouped by whichever of the root event's own categories it names. Any activity either takes sign-ups directly or only through the things under it (Direct Sign-Up).
 - **Volunteer** — a person on an activity at any depth, as a volunteer, a volunteer open to co-chairing, or a co-chair, with an optional note.
 - **Link** — a sign-up sheet, chat group, or document attached to an activity, shown in its Resources card.
 
@@ -18,7 +18,7 @@ An activity or role is `Pending`, `Open`, `Done`, or `Hidden`. Pending is a sugg
 ## Who may do what
 
 - **Anyone signed in** browses everything open, signs themselves or someone else up, removes themselves, suggests an activity or a role (which lands pending), and sees the co-chairs of a private list plus their own entry on it.
-- **Editors of an activity**, its admins and co-chairs, change it and its roles and links, set statuses short of approving, name co-chairs, remove anyone, and open the roster. The server sends them a private volunteer list in full, but the page shows it to them as everyone else sees it - co-chairs and themselves - until they edit or turn on Show Hidden Things, so what an organizer looks at is what people get.
+- **Editors of an activity**, its admins and co-chairs, change it and its roles and links, set statuses short of approving, name co-chairs, remove anyone, and open the roster. The server sends them a secret volunteer list in full, but the page shows it to them as everyone else sees it - nobody - until they edit or turn on Show Hidden Things, so what an organizer looks at is what people get; the Join and sign-up buttons stay. With direct sign-up off, the section keeps its heading and says to pick something below, and the buttons go.
 - **Admins**, the Admins tab plus the platform super admins (`docs/config.md`), approve suggestions, hide and delete, copy an activity into the next year, and manage categories, settings, and the admin list from `/admin`.
 
 ## Pages

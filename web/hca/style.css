@@ -1567,6 +1567,10 @@ button.side-chair:hover { background: var(--input); }
 /* Beats the later h2.section rule, which would put its 24px page margin inside the box. */
 .vol-head h2.section.section-swoosh { margin: 8px 0 4px; font-size: 22px; }
 
+.vol-title { display: flex; align-items: center; gap: 12px; }
+
+.vol-title .vol-max { margin-top: 2px; }
+
 .vol-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
 .vol-people { margin-top: 14px; }
@@ -1584,22 +1588,6 @@ button.side-chair:hover { background: var(--input); }
 .vol-switch strong { display: block; font-size: 14px; color: var(--brand); }
 
 .vol-switch small { display: block; font-size: 12.5px; color: var(--muted); margin-top: 2px; }
-
-.vol-spots { display: flex; align-items: flex-start; gap: 10px; }
-
-.vol-spots input {
-  width: 64px;
-  flex-shrink: 0;
-  text-align: center;
-  padding: 6px 10px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  font: inherit;
-  font-size: 14px;
-  flex-shrink: 0;
-}
-
-.vol-spots input:focus { outline: none; border-color: var(--brand); }
 
 .vol-spots strong { display: block; font-size: 14px; color: var(--brand); padding-top: 6px; }
 

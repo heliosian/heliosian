@@ -357,7 +357,7 @@ export function canJoin(node) {
   if (node.status !== 'Open' || mySignUp(node) || isFull(node)) {
     return false;
   }
-  return node.parent ? true : node.directSignUp;
+  return Boolean(node.directSignUp);
 }
 
 // myRows lists every sign-up of the viewer's, activity-level and role-level.

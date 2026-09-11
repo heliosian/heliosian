@@ -484,35 +484,58 @@ function volunteersBox(node, editing, save) {
   const people = shownVolunteers(node, editing).filter(v => v.position !== 'Co-Chair');
   const box = el('div', 'vol-box');
   const head = el('div', 'vol-head');
-  head.append(el('h2', 'section section-swoosh', people.length ? `Volunteers (${people.length})` : 'Volunteers'));
+  const title = el('div', 'vol-title');
+  title.append(el('h2', 'section section-swoosh', people.length ? `Volunteers (${people.length})` : 'Volunteers'));
+  if (editing) {
+    // The cap on sign-ups sits by the count it caps: a small button, a prompt.
+    const setMax = button(node.spots ? `Max ${node.spots}` : 'Set Max', '', 'button button-secondary button-small vol-max', () => {
+      const answer = prompt('How many people can sign up here? Leave blank for no limit.', node.spots ? String(node.spots) : '');
+      if (answer === null) {
+        return;
+      }
+      const n = Math.max(0, Math.min(99, Number(answer.trim()) || 0));
+      save({spots: n});
+    });
+    setMax.title = 'Set the most people who can sign up here';
+    title.append(setMax);
+  }
+  head.append(title);
+  // With volunteers not allowed here there is nothing to join and nothing to
+  // edit, so the buttons go; a secret list keeps its buttons but shows nobody
+  // to anyone not editing or showing hidden things.
   const actions = el('div', 'vol-actions');
   const mine = mySignUp(node);
-  if (mine) {
-    // Removing yourself lives inside that editor, as its Remove action.
-    actions.append(button('Edit my sign-up', 'edit', 'button button-small', () => openSignUp(node, mine)));
-  } else if (canJoin(node) || (node.canEdit && (node.parent || node.directSignUp))) {
-    actions.append(button('Join', 'join', 'button button-small', () => openSignUp(node, null)));
-  }
-  if (node.canEdit) {
-    actions.append(button('Sign up someone else', 'plus', 'button button-secondary button-small', () => openSignUp(node, null)));
+  if (node.directSignUp) {
+    if (mine) {
+      // Removing yourself lives inside that editor, as its Remove action.
+      actions.append(button('Edit my sign-up', 'edit', 'button button-small', () => openSignUp(node, mine)));
+    } else if (canJoin(node) || node.canEdit) {
+      actions.append(button('Join', 'join', 'button button-small', () => openSignUp(node, null)));
+    }
+    if (node.canEdit) {
+      actions.append(button('Sign up someone else', 'plus', 'button button-secondary button-small', () => openSignUp(node, null)));
+    }
   }
   head.append(actions);
   box.append(head);
-  if (people.length) {
+  const revealed = !listHidden(node) || editing || state.showHidden;
+  if (!node.directSignUp) {
+    box.append(el('div', 'vol-note', 'Sign up for one of the things to do below.'));
+  } else if (!revealed) {
+    box.append(el('div', 'vol-note', 'This list is private; only the organizers see it.'));
+  } else if (people.length) {
     const grid = el('div', 'side-chairs vol-people');
     for (const v of people) {
       grid.append(personTile(node, v, editing, false));
     }
     box.append(grid);
-  } else if (!node.parent && !node.directSignUp) {
-    box.append(el('div', 'vol-note', 'Sign up for one of the things to do below.'));
   } else {
     box.append(el('div', 'vol-note', 'Nobody yet.'));
   }
-  if (node.status === 'Open' && isFull(node) && !mine) {
+  if (node.status === 'Open' && isFull(node) && !mine && node.directSignUp) {
     box.append(el('div', 'vol-note vol-full', 'Every spot is taken. Thank you, everyone!'));
   }
-  if (listHidden(node)) {
+  if (listHidden(node) && revealed) {
     box.append(el('div', 'vol-note', 'This list is private; only the organizers see it.'));
   }
   if (editing) {
@@ -528,25 +551,9 @@ function volunteersBox(node, editing, save) {
       wrap.append(text);
       switches.append(wrap);
     };
-    // A child always takes sign-ups; only a root chooses.
-    if (!node.parent) {
-      add('Allow Volunteers', 'Unchecking will prohibit direct volunteers, but will still allow subcommittees.',
-        node.directSignUp, on => save({directSignUp: on}));
-    }
-    add('Hide Volunteers', 'Only the organizers see who has signed up.', node.volunteersHidden, on => save({volunteersHidden: on}));
-    // Spots belongs with the sign-up switches: it is the third thing that shapes
-    // who can join here. Saved when the field is left, not on every keystroke.
-    const spots = el('label', 'vol-spots');
-    const input = el('input');
-    input.type = 'number';
-    input.min = '0';
-    // Two digits is plenty here, and the hint says what blank means.
-    input.value = node.spots ? String(node.spots) : '';
-    input.addEventListener('change', () => save({spots: Math.max(0, Number(input.value) || 0)}));
-    const text = el('span');
-    text.append(el('strong', '', 'Spots'), el('small', '', 'How many people can sign up here. Leave blank for no limit.'));
-    spots.append(input, text);
-    switches.append(spots);
+    add('Allow volunteers for this itself', 'Unchecking this will allow volunteers for subcommittees, but not this itself.',
+      node.directSignUp, on => save({directSignUp: on}));
+    add('Keep Volunteers Secret', 'Only the organizers see who has signed up.', node.volunteersHidden, on => save({volunteersHidden: on}));
     box.append(switches);
   } else if (node.spots) {
     box.append(el('div', 'vol-note', `${node.taken} of ${node.spots} spots taken.`));
@@ -968,12 +975,10 @@ export function activityPage(node) {
   // under this thing is one list; its hidden and pending rows join it only for
   // an editor who is editing or has Show Hidden Things on, muted.
   const under = node.children.filter(c => c.status !== 'Hidden' && c.status !== 'Pending');
-  // A private list takes its whole box with it - for organizers too - until
-  // they edit or turn on Show Hidden Things; that includes the Join button, so
-  // a private thing is joined from its row or by its organizers.
-  if (!listHidden(node) || editing || state.showHidden) {
-    main.append(volunteersBox(node, editing, save));
-  }
+  // The volunteers section always shows; what it holds follows the switches
+  // (see volunteersBox): no buttons when volunteers are not allowed here, and
+  // nobody listed when the list is secret, until editing or Show Hidden Things.
+  main.append(volunteersBox(node, editing, save));
   if (!parent || under.length || node.canEdit) {
     const things = childrenSection(node, editing);
     if (things) {

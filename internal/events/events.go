@@ -229,9 +229,9 @@ func (a app) saveVolunteer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	status, spots := act.Status, act.Spots
-	// A root that does not take sign-ups itself sends people to the things under
-	// it; a child always takes them.
-	if act.Parent == "" && !act.DirectSignUp && !editor {
+	// A thing with direct sign-up off takes people only through what sits
+	// under it - at any level of the tree; whoever runs it may still place someone.
+	if !act.DirectSignUp && !editor {
 		http.Error(w, "sign up for one of the things under it instead", http.StatusBadRequest)
 		return
 	}

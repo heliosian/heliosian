@@ -833,11 +833,11 @@ export function openActivity(act, options) {
     'This lets people offer to be a co-leader; you still confirm them as co-leaders.');
   // A new thing under a parent starts with the parent's privacy - a private
   // event's committees are usually private too - and can be switched after.
-  const hidden = checkbox('Hide the volunteer list',
+  const hidden = checkbox('Keep volunteers secret',
     act ? act.volunteersHidden : Boolean(opts.parent && opts.parent.volunteersHidden),
     'E.g., hide room parent applications, which are secret.');
-  const direct = checkbox('Allow volunteers for the event itself', act ? act.directSignUp : true,
-    'Unchecking this will allow volunteers for subcommittees, but not the event itself.');
+  const direct = checkbox(under ? 'Allow volunteers for this itself' : 'Allow volunteers for the event itself', act ? act.directSignUp : true,
+    under ? 'Unchecking this will allow volunteers for subcommittees, but not this itself.' : 'Unchecking this will allow volunteers for subcommittees, but not the event itself.');
   const coChair = checkbox("I'd be open to co-chairing this", false);
   // What people who do not run this may add under it - and the default for
   // the event's own categories. Blank takes the parent's; an event's blank is No.
