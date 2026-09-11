@@ -234,6 +234,41 @@ func (s *Sheet) AppendAll(app, table string, rows [][]string) error {
 	return err
 }
 
+func (s *Sheet) AppendCells(app, table string, cells map[string]string) error {
+	id, ok := s.spreadsheets[app]
+	if !ok {
+		return fmt.Errorf("no spreadsheet configured for app %q", app)
+	}
+	quoted := quoteTab(table)
+	// Only the header row is needed to place the cells.
+	resp, err := s.service.Spreadsheets.Values.Get(id, quoted+"!1:1").Do()
+	if err != nil {
+		return err
+	}
+	if len(resp.Values) == 0 {
+		return fmt.Errorf("table %s is empty", table)
+	}
+	index := map[string]int{}
+	for i, cell := range resp.Values[0] {
+		index[strings.TrimSpace(fmt.Sprint(cell))] = i
+	}
+	row := make([]interface{}, len(resp.Values[0]))
+	for i := range row {
+		row[i] = ""
+	}
+	for column, value := range cells {
+		i, ok := index[column]
+		if !ok {
+			return fmt.Errorf("table %s is missing column %q", table, column)
+		}
+		row[i] = value
+	}
+	_, err = s.service.Spreadsheets.Values.Append(id, quoted, &sheets.ValueRange{
+		Values: [][]interface{}{row},
+	}).ValueInputOption("RAW").InsertDataOption("INSERT_ROWS").Do()
+	return err
+}
+
 func (s *Sheet) Delete(app, table string, match map[string]string) error {
 	id, ok := s.spreadsheets[app]
 	if !ok {

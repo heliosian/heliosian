@@ -23,6 +23,12 @@ const paths = {
   menu: 'M4 7h16M4 12h16M4 17h16',
   more: 'M5 12h.01M12 12h.01M19 12h.01',
   chevron: 'M9 6l6 6-6 6',
+  caret: 'M6 9l6 6 6-6',
+  up: 'M12 19V5M5 12l7-7 7 7',
+  mail: 'M3 6h18v12H3zM3 7l9 6 9-6',
+  image: 'M3 5h18v14H3zM3 16l5-5 4 4 3-3 6 6',
+  share: 'M18 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 22a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM8.6 13.5l6.8 4M15.4 6.5l-6.8 4',
+  down: 'M12 5v14M5 12l7 7 7-7',
   back: 'M15 6l-6 6 6 6',
   plus: 'M12 5v14M5 12h14',
   join: 'M20 12a8 8 0 1 1-4-6.9M9 12l2.5 2.5L20 6',
@@ -114,6 +120,21 @@ export function searchBox(placeholder, onInput, light) {
   input.addEventListener('input', () => onInput(input.value.trim().toLowerCase()));
   box.append(svg('search'), input);
   return box;
+}
+
+export function selectPill(icon, options, value, onPick) {
+  const wrap = el('label', 'select-pill');
+  wrap.append(svg(icon));
+  const select = el('select');
+  for (const o of options) {
+    const opt = el('option', '', o.label);
+    opt.value = o.key;
+    opt.selected = o.key === value;
+    select.append(opt);
+  }
+  select.addEventListener('change', () => onPick(select.value));
+  wrap.append(select, svg('caret'));
+  return wrap;
 }
 
 export function toggle(label, checked, onChange) {

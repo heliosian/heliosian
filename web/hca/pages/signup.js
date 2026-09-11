@@ -1,132 +1,127 @@
-import {state, years, activitiesIn, sortByStart, isPrevious, isAdmin, pendingItems, matches, activityPath, rolePath, longDate} from '../state.js';
-import {el, link, svg, button, searchBox, toggle, tabs, thumb} from '../dom.js';
-import {setTitle} from '../chrome.js';
-import {activityRow} from '../cards.js';
-import {openActivity} from '../edit.js';
+import {state, years, allYears, sortByStart, matches, selectedYear, listedIn} from '../state.js';
+import {el, toggle, selectPill, thumb} from '../dom.js';
+import {setTitle, setSearch} from '../chrome.js';
+import {activityCard, categoryClass} from '../cards.js';
 
-let tab = 'current';
 let query = '';
 
-function pendingList() {
-  const panel = el('div', 'panel');
-  const items = pendingItems();
-  if (!items.length) {
-    panel.append(el('div', 'panel-empty', 'Nothing is waiting for approval.'));
-  }
-  for (const {act, role} of items) {
-    const node = role || act;
-    const row = link(role ? rolePath(act, role) : activityPath(act), 'row is-link');
-    row.append(thumb(node.imageUrl || act.imageUrl, node.title));
-    const body = el('div', 'row-body');
-    body.append(el('div', 'label', `Proposed by ${node.addedBy || 'someone'} on ${longDate(node.added)}`));
-    const title = el('div', 'row-title', act.title);
-    if (role) {
-      title.append(el('span', 'chain', '▶'), el('span', '', role.title));
-    }
-    body.append(title);
-    if (node.description) {
-      body.append(el('div', 'row-text clamp', node.description));
-    }
-    row.append(body);
-    const chevron = svg('chevron');
-    chevron.classList.add('chevron');
-    row.append(chevron);
-    panel.append(row);
-  }
-  return panel;
+function shownIn(year) {
+  return sortByStart(listedIn(year)).filter(a =>
+    matches(a, query) && (!state.category || a.category === state.category));
 }
 
-function yearList(year) {
+// Cards are grouped under their category, in the order the Categories tab lists
+// them. An activity naming a category that tab doesn't have is refused at load
+// (internal/events/load.go), so nothing can fall outside these groups.
+function yearGrid(year) {
   const root = el('div');
-  const shown = sortByStart(activitiesIn(year)).filter(a => (state.showPrevious || !isPrevious(a)) && matches(a, query));
-  let any = false;
-  for (const category of state.model.categories) {
-    const items = shown.filter(a => a.category === category.title);
-    if (!items.length) {
+  const items = shownIn(year);
+  if (!items.length) {
+    const panel = el('div', 'panel');
+    panel.append(el('div', 'panel-empty', query || state.category ? 'Nothing matches.' : 'Nothing to sign up for yet.'));
+    root.append(panel);
+    return root;
+  }
+  for (const c of state.model.categories) {
+    const inGroup = items.filter(a => a.category === c.id);
+    if (!inGroup.length) {
       continue;
     }
-    any = true;
-    root.append(el('div', 'section-title', category.title));
-    if (category.description) {
-      root.append(el('div', 'section-note', category.description));
+    const head = el('div', 'group-head');
+    if (c.imageUrl) {
+      head.append(thumb(c.imageUrl, c.title, 'group-image'));
     }
-    const panel = el('div', 'panel');
-    for (const act of items) {
-      panel.append(activityRow(act));
+    const heading = el('div', 'group-heading');
+    heading.append(el('h3', 'group-name', c.title));
+    if (c.description) {
+      heading.append(el('p', 'group-note', c.description));
     }
-    root.append(panel);
-  }
-  if (!any) {
-    const panel = el('div', 'panel');
-    panel.append(el('div', 'panel-empty', query ? 'Nothing matches.' : 'Nothing to sign up for yet.'));
-    root.append(panel);
+    head.append(heading);
+    root.append(head);
+    const grid = el('div', 'card-grid');
+    for (const act of inGroup) {
+      grid.append(activityCard(act));
+    }
+    root.append(grid);
   }
   return root;
 }
 
 function yearContent(year, thisYear) {
   const content = el('div');
-  content.append(el('div', 'year-title', year));
-  const sub = el('div', 'year-sub');
-  sub.append(el('h2', '', thisYear ? 'Sign Up for This School Year' : `Sign Up for ${year}`));
+  const chips = el('div', 'chip-row');
   const list = el('div');
-  sub.append(searchBox('Search', q => {
-    query = q;
-    list.replaceChildren(yearList(year));
+  const paint = () => list.replaceChildren(yearGrid(year));
+
+  // The chip row filters the grid in place: "All" plus one chip per category the
+  // sheet defines, each in that category's own tint.
+  const paintChips = () => {
+    chips.replaceChildren();
+    const add = (id, label) => {
+      const chip = el('button', 'chip ' + (id ? categoryClass(id) : 'chip-all') + (state.category === id ? ' is-on' : ''));
+      chip.type = 'button';
+      chip.textContent = label;
+      chip.addEventListener('click', () => {
+        state.category = state.category === id ? '' : id;
+        paintChips();
+        paint();
+      });
+      chips.append(chip);
+    };
+    add('', 'All');
+    for (const c of state.model.categories) {
+      add(c.id, c.title);
+    }
+  };
+
+  const head = el('div', 'section-head');
+  head.append(el('h2', '', thisYear ? 'Upcoming Opportunities' : `Opportunities for ${year}`));
+  head.append(toggle('Show Completed Events', state.showPrevious, on => {
+    state.showPrevious = on;
+    paint();
   }));
-  content.append(sub);
-  list.append(yearList(year));
-  content.append(list);
+
+  paintChips();
+  paint();
+  content.append(chips, head, list);
+  setSearch('Search opportunities by title, event, or keyword…', q => {
+    query = q;
+    paint();
+  });
   return content;
 }
 
 export function signUpPage(yearParam) {
-  if (yearParam) {
-    tab = yearParam === years().last ? 'last' : 'current';
+  const options = allYears();
+  if (yearParam && options.includes(yearParam)) {
+    state.year = yearParam;
   }
+  const year = selectedYear();
+  state.year = year;
+
   const page = el('div');
   const head = el('div', 'page-head');
-  head.append(el('h1', '', 'HCA Volunteer Portal: Help Needed!'));
-  if (state.model.settings.intro) {
-    head.append(el('p', 'intro', state.model.settings.intro));
-  }
-  const buttons = el('div', 'button-row');
-  const expense = el('a', 'button button-secondary');
-  expense.href = state.model.settings.expenseFormUrl;
-  expense.target = '_blank';
-  expense.rel = 'noopener';
-  expense.append(svg('receipt'), el('span', '', 'Expense Form'));
-  buttons.append(expense, button('Suggest an Idea', 'idea', 'button', () => openActivity(null, {category: 'Just an Idea'})));
-  head.append(buttons);
-  page.append(head);
+  const main = el('div', 'page-head-main');
+  main.append(el('h1', 'page-title', 'Volunteer Opportunities'));
+  head.append(main);
 
-  const band = el('div', 'band');
-  const inner = el('div', 'band-inner');
-  band.append(inner);
-  const items = [{key: 'current', label: 'Current School Year'}, {key: 'last', label: 'Last Year'}];
-  if (isAdmin()) {
-    items.push({key: 'approval', label: `Approval Needed (${pendingItems().length})`});
-  }
+  const body = el('div');
   const render = () => {
-    inner.replaceChildren(tabs(items, tab, key => {
-      tab = key;
-      query = '';
-      history.replaceState(null, '', '/');
-      render();
-    }));
-    if (tab === 'approval') {
-      setTitle('Approval Needed');
-      inner.append(el('div', 'year-title', 'Approval Needed'), pendingList());
-      return;
-    }
-    const year = yearParam || (tab === 'last' ? years().last : years().current);
     setTitle(year);
-    inner.append(yearContent(year, year === years().current));
+    body.replaceChildren(yearContent(year, year === years().current));
   };
-  page.append(toggle('Show Previous Events', state.showPrevious, on => {
-    state.showPrevious = on;
-    render();
-  }), band);
+  // Switching year is a filter on this page, not a new destination, so the URL
+  // is replaced rather than pushed - back still leaves the page rather than
+  // walking every year the reader looked at.
+  head.append(selectPill('calendar', options.map(y => ({key: y, label: y})), year, picked => {
+    state.year = picked;
+    query = '';
+    state.category = '';
+    history.replaceState(null, '', picked === years().current ? '/' : `/years/${encodeURIComponent(picked)}`);
+    document.dispatchEvent(new CustomEvent('hca:refresh'));
+  }));
+
+  page.append(head, body);
   render();
   return page;
 }

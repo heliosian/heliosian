@@ -1,4 +1,4 @@
-import {state, isAdmin, allRoles, parseWhen, activityPath, rolePath} from '../state.js';
+import {state, isAdmin, descendants, parseWhen, activityPath} from '../state.js';
 import {el, link, svg, toggle, button} from '../dom.js';
 import {setTitle} from '../chrome.js';
 
@@ -11,10 +11,10 @@ function shown(status) {
   return status === 'Open' || status === 'Done' || (showUnapproved && status === 'Pending');
 }
 
-// entries lists every dated activity and role, one per day it spans.
+// entries lists every dated activity, root or child, one per day it spans.
 function entries() {
   const out = [];
-  const add = (node, href, isRole) => {
+  const add = (node, isChild) => {
     const start = parseWhen(node.start);
     if (!start || !shown(node.status)) {
       return;
@@ -23,15 +23,15 @@ function entries() {
     const last = end ? end.date : start.date;
     const day = new Date(start.date.getFullYear(), start.date.getMonth(), start.date.getDate());
     for (let i = 0; i < 31 && day <= last; i++) {
-      out.push({key: day.toDateString(), title: node.title, href, isRole});
+      out.push({key: day.toDateString(), title: node.title, href: activityPath(node), isChild});
       day.setDate(day.getDate() + 1);
     }
   };
   for (const act of state.model.activities) {
-    add(act, activityPath(act), false);
+    add(act, false);
     if (shown(act.status)) {
-      for (const role of allRoles(act)) {
-        add(role, rolePath(act, role), true);
+      for (const child of descendants(act)) {
+        add(child, true);
       }
     }
   }
@@ -54,7 +54,7 @@ function grid() {
     const cell = el('div', 'day' + (day.getMonth() !== month.getMonth() ? ' other' : '') + (day.toDateString() === today ? ' today' : ''));
     cell.append(el('div', 'num', String(day.getDate())));
     for (const item of items.filter(e => e.key === day.toDateString())) {
-      const chip = link(item.href, 'chip' + (item.isRole ? ' role' : ''), item.title);
+      const chip = link(item.href, 'chip' + (item.isChild ? ' role' : ''), item.title);
       chip.title = item.title;
       cell.append(chip);
     }

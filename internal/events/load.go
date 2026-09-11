@@ -1,5 +1,5 @@
-// Package events serves the HCA volunteer portal: what the community association
-// runs each school year, and who signed up to help.
+// Package events serves HCA-Team, the HCA volunteer portal: what the community
+// association runs each school year, and who signed up to help.
 package events
 
 import (
@@ -20,7 +20,6 @@ const (
 	appName       = "events"
 	categoriesTab = "Categories"
 	activitiesTab = "Activities"
-	rolesTab      = "Roles"
 	volunteersTab = "Volunteers"
 	linksTab      = "Links"
 	settingsTab   = "Settings"
@@ -61,14 +60,13 @@ const (
 var settingKeys = []string{ExpenseFormKey, IntroKey}
 
 var (
-	CategoryColumns  = []string{"Title", "Description"}
-	ActivityColumns  = []string{"Year", "Title", "Category", "Status", "Description", "Image", "Timing", "Start", "End", "Location", "Spots", "Co-Leader Needed", "Volunteers Hidden", "Direct Sign-Up", "Added By", "Added"}
-	RoleColumns      = []string{"Year", "Activity", "Parent", "Title", "Group", "Status", "Description", "Image", "Start", "End", "Spots", "Co-Leader Needed", "Volunteers Hidden", "Added By", "Added"}
-	VolunteerColumns = []string{"Year", "Activity", "Role", "Email", "Position", "Note", "Added By", "Added"}
-	LinkColumns      = []string{"Year", "Activity", "Role", "Title", "URL", "Image"}
+	CategoryColumns  = []string{"Category ID", "Event ID", "Title", "Description", "Image", "Allow Adding"}
+	ActivityColumns  = []string{"Event ID", "Year", "Title", "Parent", "Category", "Status", "Description", "Image", "Timing", "Start", "End", "Location", "Spots", "Co-Leader Needed", "Volunteers Hidden", "Direct Sign-Up", "Added By", "Added"}
+	VolunteerColumns = []string{"Event ID", "Email", "Position", "Note", "Added By", "Added"}
+	LinkColumns      = []string{"Event ID", "Title", "URL", "Image"}
 	SettingColumns   = []string{"Key", "Value"}
 	AdminColumns     = []string{"Email"}
-	ChangeLogColumns = []string{"Timestamp", "Actor", "Action", "Kind", "Year", "Activity", "Role", "Title", "Email", "Details"}
+	ChangeLogColumns = []string{"Timestamp", "Actor", "Action", "Kind", "Year", "Activity", "Title", "Email", "Details"}
 )
 
 var yearForm = regexp.MustCompile(`^(\d{4}) - (\d{4})$`)
@@ -96,32 +94,16 @@ type Volunteer struct {
 	PhotoURL string `json:"photoUrl,omitempty"`
 }
 
-type Role struct {
-	Year             string      `json:"year"`
-	Activity         string      `json:"activity"`
-	Parent           string      `json:"parent,omitempty"`
-	Title            string      `json:"title"`
-	Group            string      `json:"group,omitempty"`
-	Status           string      `json:"status"`
-	Description      string      `json:"description,omitempty"`
-	Image            string      `json:"image,omitempty"`
-	ImageURL         string      `json:"imageUrl,omitempty"`
-	Start            string      `json:"start,omitempty"`
-	End              string      `json:"end,omitempty"`
-	Spots            int         `json:"spots,omitempty"`
-	CoLeaderNeeded   bool        `json:"coLeaderNeeded"`
-	VolunteersHidden bool        `json:"volunteersHidden"`
-	AddedBy          string      `json:"addedBy,omitempty"`
-	Added            string      `json:"added,omitempty"`
-	Roles            []*Role     `json:"roles"`
-	Links            []Link      `json:"links"`
-	Volunteers       []Volunteer `json:"volunteers"`
-}
-
 type Activity struct {
-	Year             string      `json:"year"`
-	Title            string      `json:"title"`
-	Category         string      `json:"category"`
+	// ID is the key. Parent, volunteers and links all name an activity by it, so a
+	// title is just a title - it can change freely and need not be unique.
+	ID     string `json:"id"`
+	Year   string `json:"year"`
+	Title  string `json:"title"`
+	Parent string `json:"parent,omitempty"`
+	// Category is a Category ID: one of the page's headings for a root, or one of
+	// the root event's own categories for anything under it.
+	Category         string      `json:"category,omitempty"`
 	Status           string      `json:"status"`
 	Description      string      `json:"description,omitempty"`
 	Image            string      `json:"image,omitempty"`
@@ -136,15 +118,39 @@ type Activity struct {
 	DirectSignUp     bool        `json:"directSignUp"`
 	AddedBy          string      `json:"addedBy,omitempty"`
 	Added            string      `json:"added,omitempty"`
-	Roles            []*Role     `json:"roles"`
+	Children         []*Activity `json:"children"`
 	Links            []Link      `json:"links"`
 	Volunteers       []Volunteer `json:"volunteers"`
-	roles            map[string]*Role
+	// Categories are this root event's own, in row order; empty below the root.
+	Categories []Category `json:"categories,omitempty"`
 }
 
+// A Category with no EventID is one of the headings on the opportunities page,
+// and only a root activity may name it. One with an EventID belongs to that root
+// event, and groups the things under it - at any depth of its tree.
 type Category struct {
+	ID          string `json:"id"`
+	EventID     string `json:"eventId,omitempty"`
 	Title       string `json:"title"`
 	Description string `json:"description,omitempty"`
+	Image       string `json:"image,omitempty"`
+	ImageURL    string `json:"imageUrl,omitempty"`
+	// AllowAdding says whether people may propose new things into this category.
+	// Editors of the event (or admins, for a page heading) can always add.
+	AllowAdding bool `json:"allowAdding"`
+	// BuiltIn marks the Uncategorized heading, which the model supplies itself
+	// rather than the sheet: it cannot be edited, reordered or deleted.
+	BuiltIn bool `json:"builtIn,omitempty"`
+}
+
+// UncategorizedID is the built-in heading for root activities whose Category
+// is blank or names nothing in the Categories tab. It never lives in the sheet:
+// a root saved with no category is stored blank and lands here on load.
+const UncategorizedID = "uncategorized"
+
+func uncategorized() *Category {
+	return &Category{ID: UncategorizedID, Title: "Uncategorized",
+		Description: "Things that have not been sorted into a category yet", BuiltIn: true}
 }
 
 type Settings struct {
@@ -152,50 +158,50 @@ type Settings struct {
 	Intro          string `json:"intro"`
 }
 
-// Model is the sheet organized: categories in row order, activities in row order
-// holding their roles as the tree the Parent column describes, and every
-// volunteer under the activity or role they signed up for.
+// Model is the sheet organized: categories in row order, then the root
+// activities in row order, each holding its children as the tree the Parent
+// column describes, and every volunteer under the activity they signed up for.
+// Activities is the roots only; byID indexes every activity, root or child, so
+// one id resolves anywhere in the tree.
 type Model struct {
+	// Categories are the page headings - the ones with no event. An event's own
+	// live on that event.
 	Categories []Category  `json:"categories"`
 	Activities []*Activity `json:"activities"`
 	Settings   Settings    `json:"settings"`
-	byKey      map[string]*Activity
+	byID       map[string]*Activity
+	categories map[string]*Category
 }
 
-func activityKey(year, title string) string {
-	return year + "\x00" + title
+func (m *Model) Activity(id string) *Activity {
+	return m.byID[id]
 }
 
-func (m *Model) Activity(year, title string) *Activity {
-	return m.byKey[activityKey(year, title)]
+// Category finds a category by id wherever it lives - a page heading or one of
+// some event's own.
+func (m *Model) Category(id string) *Category {
+	return m.categories[id]
 }
 
-func (m *Model) HasCategory(title string) bool {
-	for _, c := range m.Categories {
-		if c.Title == title {
-			return true
+// Root climbs to the top of an activity's tree.
+func (m *Model) Root(a *Activity) *Activity {
+	for a.Parent != "" {
+		a = m.byID[a.Parent]
+	}
+	return a
+}
+
+// Descendants walks the tree under this activity in row order.
+func (a *Activity) Descendants() []*Activity {
+	out := []*Activity{}
+	var walk func([]*Activity)
+	walk = func(list []*Activity) {
+		for _, c := range list {
+			out = append(out, c)
+			walk(c.Children)
 		}
 	}
-	return false
-}
-
-// Role finds a role anywhere in the activity's tree by its title, which is
-// unique within the activity.
-func (a *Activity) Role(title string) *Role {
-	return a.roles[title]
-}
-
-// AllRoles walks the tree in row order.
-func (a *Activity) AllRoles() []*Role {
-	out := []*Role{}
-	var walk func([]*Role)
-	walk = func(roles []*Role) {
-		for _, r := range roles {
-			out = append(out, r)
-			walk(r.Roles)
-		}
-	}
-	walk(a.Roles)
+	walk(a.Children)
 	return out
 }
 
@@ -210,6 +216,23 @@ func (a *Activity) CoChairs() []string {
 	return out
 }
 
+// Runs reports whether an address runs this activity: a co-chair of it, or of
+// anything it sits under. Running an event means running the things inside it,
+// which is what let a co-chair edit its roles before roles and activities became
+// the same thing.
+func (m *Model) Runs(a *Activity, email string) bool {
+	for node := a; node != nil; {
+		if node.IsCoChair(email) {
+			return true
+		}
+		if node.Parent == "" {
+			return false
+		}
+		node = m.Activity(node.Parent)
+	}
+	return false
+}
+
 func (a *Activity) IsCoChair(email string) bool {
 	return slices.Contains(a.CoChairs(), strings.ToLower(email))
 }
@@ -217,7 +240,6 @@ func (a *Activity) IsCoChair(email string) bool {
 type Tables struct {
 	Categories []map[string]string
 	Activities []map[string]string
-	Roles      []map[string]string
 	Volunteers []map[string]string
 	Links      []map[string]string
 	Settings   []map[string]string
@@ -256,13 +278,12 @@ func ReadTables(source data.Source) (*Tables, error) {
 	}
 	categories := &table{name: categoriesTab, want: CategoryColumns}
 	activities := &table{name: activitiesTab, want: ActivityColumns}
-	roles := &table{name: rolesTab, want: RoleColumns}
 	volunteers := &table{name: volunteersTab, want: VolunteerColumns}
 	links := &table{name: linksTab, want: LinkColumns}
 	settings := &table{name: settingsTab, want: SettingColumns}
 	admins := &table{name: adminsTab, want: AdminColumns}
 	changeLog := &table{name: changeLogTab, want: ChangeLogColumns}
-	read := []*table{categories, activities, roles, volunteers, links, settings, admins}
+	read := []*table{categories, activities, volunteers, links, settings, admins}
 	var wg sync.WaitGroup
 	for _, t := range read {
 		wg.Go(func() {
@@ -282,7 +303,7 @@ func ReadTables(source data.Source) (*Tables, error) {
 		}
 	}
 	return &Tables{
-		Categories: categories.rows, Activities: activities.rows, Roles: roles.rows,
+		Categories: categories.rows, Activities: activities.rows,
 		Volunteers: volunteers.rows, Links: links.rows, Settings: settings.rows, Admins: admins.rows,
 	}, nil
 }
@@ -422,6 +443,15 @@ func imageURL(images ImageChecker, name string) (string, error) {
 	return "/" + name, nil
 }
 
+// checkID insists on a key: without one the row cannot be named by anything
+// else, and the sheet has to hand one out before the row means anything.
+func checkID(kind, title, id string) error {
+	if strings.TrimSpace(id) == "" {
+		return fmt.Errorf("%s %q has no %s id", kind, title, kind)
+	}
+	return nil
+}
+
 func checkTitle(kind, title string) error {
 	if title == "" {
 		return fmt.Errorf("%s has no title", kind)
@@ -466,116 +496,143 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 	if err != nil {
 		return nil, err
 	}
-	model := &Model{Categories: []Category{}, Activities: []*Activity{}, Settings: settings, byKey: map[string]*Activity{}}
+	model := &Model{Categories: []Category{}, Activities: []*Activity{}, Settings: settings,
+		byID: map[string]*Activity{}, categories: map[string]*Category{}}
+	// Every category is parsed and indexed first; which event each scoped one
+	// belongs to is checked once the activities exist.
+	scoped := []*Category{}
 	for _, row := range tables.Categories {
-		title := row["Title"]
+		id, title := strings.TrimSpace(row["Category ID"]), row["Title"]
 		if err := checkTitle("category", title); err != nil {
 			return nil, err
 		}
-		if model.HasCategory(title) {
-			return nil, fmt.Errorf("duplicate category %q", title)
+		if err := checkID("category", title, id); err != nil {
+			return nil, err
 		}
-		model.Categories = append(model.Categories, Category{Title: title, Description: row["Description"]})
+		if model.categories[id] != nil {
+			return nil, fmt.Errorf("categories share id %q", id)
+		}
+		image, err := imageURL(images, row["Image"])
+		if err != nil {
+			return nil, fmt.Errorf("category %q: %w", title, err)
+		}
+		adding, err := yesNo(row["Allow Adding"])
+		if err != nil {
+			return nil, fmt.Errorf("category %q: allow adding %w", title, err)
+		}
+		c := &Category{
+			ID: id, EventID: strings.TrimSpace(row["Event ID"]), Title: title, Description: row["Description"],
+			Image: row["Image"], ImageURL: image, AllowAdding: adding,
+		}
+		model.categories[id] = c
+		if c.EventID == "" {
+			model.Categories = append(model.Categories, *c)
+		} else {
+			scoped = append(scoped, c)
+		}
 	}
 
+	all := []*Activity{}
 	for _, row := range tables.Activities {
 		a, err := parseActivity(row, model, images)
 		if err != nil {
 			return nil, err
 		}
-		if _, dup := model.byKey[activityKey(a.Year, a.Title)]; dup {
-			return nil, fmt.Errorf("duplicate activity %q in %s", a.Title, a.Year)
+		if other := model.byID[a.ID]; other != nil {
+			return nil, fmt.Errorf("activities %q and %q share event id %q", other.Title, a.Title, a.ID)
 		}
-		model.byKey[activityKey(a.Year, a.Title)] = a
-		model.Activities = append(model.Activities, a)
+		model.byID[a.ID] = a
+		all = append(all, a)
 	}
-
-	for _, row := range tables.Roles {
-		r, err := parseRole(row, images)
-		if err != nil {
-			return nil, err
-		}
-		a := model.Activity(r.Year, r.Activity)
-		if a == nil {
-			return nil, fmt.Errorf("role %q names unknown activity %q in %s", r.Title, r.Activity, r.Year)
-		}
-		if _, dup := a.roles[r.Title]; dup {
-			return nil, fmt.Errorf("duplicate role %q in %s (%s)", r.Title, a.Title, a.Year)
-		}
-		a.roles[r.Title] = r
+	roots, err := attachChildren(all, model.byID)
+	if err != nil {
+		return nil, err
 	}
-	for _, a := range model.Activities {
-		if err := attachRoles(a, tables.Roles); err != nil {
-			return nil, err
+	model.Activities = roots
+	for _, c := range scoped {
+		owner := model.byID[c.EventID]
+		if owner == nil {
+			return nil, fmt.Errorf("category %q names unknown event id %q", c.Title, c.EventID)
 		}
+		if owner.Parent != "" {
+			return nil, fmt.Errorf("category %q belongs to %q, which is not a root event", c.Title, owner.Title)
+		}
+		owner.Categories = append(owner.Categories, *c)
+	}
+	// A root names a page heading; a child names one of its root event's own
+	// categories, or nothing. A blank, unknown or borrowed category is not an
+	// error: the row is shown as Uncategorized (a root) or without a category (a
+	// child) rather than keeping the whole site from loading.
+	fallback := false
+	for _, a := range all {
+		c := model.categories[a.Category]
+		switch {
+		case c != nil && a.Parent == "" && c.EventID == "":
+		case c != nil && a.Parent != "" && c.EventID == model.Root(a).ID:
+		case a.Parent == "":
+			a.Category = UncategorizedID
+			fallback = true
+		default:
+			a.Category = ""
+		}
+	}
+	if fallback && model.categories[UncategorizedID] == nil {
+		c := uncategorized()
+		model.categories[c.ID] = c
+		model.Categories = append(model.Categories, *c)
 	}
 
 	seen := map[string]bool{}
 	for _, row := range tables.Volunteers {
-		year, activity, role := row["Year"], row["Activity"], row["Role"]
+		id := strings.TrimSpace(row["Event ID"])
 		email := strings.ToLower(row["Email"])
 		if !emailForm.MatchString(email) {
 			return nil, fmt.Errorf("volunteer row %v has invalid email", row)
 		}
-		a := model.Activity(year, activity)
+		a := model.Activity(id)
 		if a == nil {
-			return nil, fmt.Errorf("volunteer %s names unknown activity %q in %s", email, activity, year)
+			return nil, fmt.Errorf("volunteer %s names unknown event id %q", email, id)
 		}
 		if !slices.Contains(Positions, row["Position"]) {
-			return nil, fmt.Errorf("volunteer %s on %q: position %q is not one of %s", email, activity, row["Position"], strings.Join(Positions, ", "))
+			return nil, fmt.Errorf("volunteer %s on %q: position %q is not one of %s", email, a.Title, row["Position"], strings.Join(Positions, ", "))
 		}
 		if err := checkAdded(row["Added"]); err != nil {
-			return nil, fmt.Errorf("volunteer %s on %q: %w", email, activity, err)
+			return nil, fmt.Errorf("volunteer %s on %q: %w", email, a.Title, err)
 		}
-		key := activityKey(year, activity) + "\x00" + role + "\x00" + email
+		key := id + "\x00" + email
 		if seen[key] {
-			return nil, fmt.Errorf("volunteer %s is listed twice on %q %q in %s", email, activity, role, year)
+			return nil, fmt.Errorf("volunteer %s is listed twice on %q (%s)", email, a.Title, id)
 		}
 		seen[key] = true
-		v := Volunteer{Email: email, Position: row["Position"], Note: row["Note"], AddedBy: strings.ToLower(row["Added By"]), Added: row["Added"]}
-		if role == "" {
-			a.Volunteers = append(a.Volunteers, v)
-			continue
-		}
-		r := a.Role(role)
-		if r == nil {
-			return nil, fmt.Errorf("volunteer %s names unknown role %q on %q in %s", email, role, activity, year)
-		}
-		r.Volunteers = append(r.Volunteers, v)
+		a.Volunteers = append(a.Volunteers, Volunteer{
+			Email: email, Position: row["Position"], Note: row["Note"],
+			AddedBy: strings.ToLower(row["Added By"]), Added: row["Added"],
+		})
 	}
 
 	linkKeys := map[string]bool{}
 	for _, row := range tables.Links {
-		year, activity, role, title := row["Year"], row["Activity"], row["Role"], row["Title"]
+		id, title := strings.TrimSpace(row["Event ID"]), row["Title"]
 		if err := checkTitle("link", title); err != nil {
 			return nil, err
 		}
-		a := model.Activity(year, activity)
+		a := model.Activity(id)
 		if a == nil {
-			return nil, fmt.Errorf("link %q names unknown activity %q in %s", title, activity, year)
+			return nil, fmt.Errorf("link %q names unknown event id %q", title, id)
 		}
 		if err := checkURL(row["URL"]); err != nil {
-			return nil, fmt.Errorf("link %q on %q: %w", title, activity, err)
+			return nil, fmt.Errorf("link %q on %q: %w", title, a.Title, err)
 		}
 		image, err := imageURL(images, row["Image"])
 		if err != nil {
-			return nil, fmt.Errorf("link %q on %q: %w", title, activity, err)
+			return nil, fmt.Errorf("link %q on %q: %w", title, a.Title, err)
 		}
-		key := activityKey(year, activity) + "\x00" + role + "\x00" + title
+		key := id + "\x00" + title
 		if linkKeys[key] {
-			return nil, fmt.Errorf("duplicate link %q on %q %q in %s", title, activity, role, year)
+			return nil, fmt.Errorf("duplicate link %q on %q (%s)", title, a.Title, id)
 		}
 		linkKeys[key] = true
-		l := Link{Title: title, URL: row["URL"], Image: row["Image"], ImageURL: image}
-		if role == "" {
-			a.Links = append(a.Links, l)
-			continue
-		}
-		r := a.Role(role)
-		if r == nil {
-			return nil, fmt.Errorf("link %q names unknown role %q on %q in %s", title, role, activity, year)
-		}
-		r.Links = append(r.Links, l)
+		a.Links = append(a.Links, Link{Title: title, URL: row["URL"], Image: row["Image"], ImageURL: image})
 	}
 	return model, nil
 }
@@ -588,11 +645,11 @@ func parseActivity(row map[string]string, model *Model, images ImageChecker) (*A
 	fail := func(err error) (*Activity, error) {
 		return nil, fmt.Errorf("activity %q in %s: %w", title, year, err)
 	}
+	if err := checkID("activity", title, row["Event ID"]); err != nil {
+		return nil, err
+	}
 	if err := CheckYear(year); err != nil {
 		return fail(err)
-	}
-	if !model.HasCategory(row["Category"]) {
-		return fail(fmt.Errorf("names unknown category %q", row["Category"]))
 	}
 	if err := checkStatus(row["Status"]); err != nil {
 		return fail(err)
@@ -627,91 +684,51 @@ func parseActivity(row map[string]string, model *Model, images ImageChecker) (*A
 		return fail(fmt.Errorf("direct sign-up %w", err))
 	}
 	return &Activity{
-		Year: year, Title: title, Category: row["Category"], Status: row["Status"],
+		ID: strings.TrimSpace(row["Event ID"]), Year: year, Title: title, Parent: strings.TrimSpace(row["Parent"]),
+		Category: strings.TrimSpace(row["Category"]), Status: row["Status"],
 		Description: row["Description"], Image: row["Image"], ImageURL: image,
 		Timing: row["Timing"], Start: row["Start"], End: row["End"], Location: row["Location"], Spots: spots,
 		CoLeaderNeeded: coLeader, VolunteersHidden: hidden, DirectSignUp: direct,
 		AddedBy: strings.ToLower(row["Added By"]), Added: row["Added"],
-		Roles: []*Role{}, Links: []Link{}, Volunteers: []Volunteer{}, roles: map[string]*Role{},
+		Children: []*Activity{}, Links: []Link{}, Volunteers: []Volunteer{},
 	}, nil
 }
 
-func parseRole(row map[string]string, images ImageChecker) (*Role, error) {
-	title := row["Title"]
-	if err := checkTitle("role", title); err != nil {
-		return nil, err
-	}
-	fail := func(err error) (*Role, error) {
-		return nil, fmt.Errorf("role %q on %q in %s: %w", title, row["Activity"], row["Year"], err)
-	}
-	if err := checkStatus(row["Status"]); err != nil {
-		return fail(err)
-	}
-	if len(row["Description"]) > maxTextLength {
-		return fail(fmt.Errorf("description is too long"))
-	}
-	if err := checkSpan(row["Start"], row["End"]); err != nil {
-		return fail(err)
-	}
-	if err := checkAdded(row["Added"]); err != nil {
-		return fail(err)
-	}
-	spots, err := parseSpots(row["Spots"])
-	if err != nil {
-		return fail(err)
-	}
-	image, err := imageURL(images, row["Image"])
-	if err != nil {
-		return fail(err)
-	}
-	coLeader, err := yesNo(row["Co-Leader Needed"])
-	if err != nil {
-		return fail(fmt.Errorf("co-leader needed %w", err))
-	}
-	hidden, err := yesNo(row["Volunteers Hidden"])
-	if err != nil {
-		return fail(fmt.Errorf("volunteers hidden %w", err))
-	}
-	if row["Parent"] == title {
-		return fail(fmt.Errorf("is its own parent"))
-	}
-	return &Role{
-		Year: row["Year"], Activity: row["Activity"], Parent: row["Parent"], Title: title, Group: row["Group"],
-		Status: row["Status"], Description: row["Description"], Image: row["Image"], ImageURL: image,
-		Start: row["Start"], End: row["End"], Spots: spots, CoLeaderNeeded: coLeader, VolunteersHidden: hidden,
-		AddedBy: strings.ToLower(row["Added By"]), Added: row["Added"],
-		Roles: []*Role{}, Links: []Link{}, Volunteers: []Volunteer{},
-	}, nil
-}
-
-// attachRoles hangs an activity's roles on their parents in row order and refuses
-// a parent that does not exist or a chain that loops back on itself.
-func attachRoles(a *Activity, rows []map[string]string) error {
-	for _, row := range rows {
-		if row["Year"] != a.Year || row["Activity"] != a.Title {
+// attachChildren hangs every activity under the parent its Parent column names,
+// in row order, and returns the roots. A parent in another year is not a parent:
+// the whole tree lives inside one school year.
+func attachChildren(all []*Activity, byID map[string]*Activity) ([]*Activity, error) {
+	roots := []*Activity{}
+	for _, a := range all {
+		if a.Parent == "" {
+			roots = append(roots, a)
 			continue
 		}
-		r := a.roles[row["Title"]]
-		if r.Parent == "" {
-			a.Roles = append(a.Roles, r)
-			continue
-		}
-		parent := a.roles[r.Parent]
+		parent := byID[a.Parent]
 		if parent == nil {
-			return fmt.Errorf("role %q on %q in %s names unknown parent %q", r.Title, a.Title, a.Year, r.Parent)
+			return nil, fmt.Errorf("activity %q in %s names unknown parent id %q", a.Title, a.Year, a.Parent)
 		}
-		parent.Roles = append(parent.Roles, r)
+		if parent == a {
+			return nil, fmt.Errorf("activity %q in %s is its own parent", a.Title, a.Year)
+		}
+		if parent.Year != a.Year {
+			return nil, fmt.Errorf("activity %q in %s has its parent %q in %s", a.Title, a.Year, parent.Title, parent.Year)
+		}
+		parent.Children = append(parent.Children, a)
 	}
-	for _, r := range a.roles {
-		seen := map[string]bool{}
-		for p := r; p.Parent != ""; p = a.roles[p.Parent] {
-			if seen[p.Title] {
-				return fmt.Errorf("role %q on %q in %s is inside a parent loop", r.Title, a.Title, a.Year)
+	// Walk each chain to its root; anything that revisits a title on the way is
+	// in a loop, and would otherwise hang every later walk of the tree.
+	for _, a := range all {
+		seen := map[string]bool{a.ID: true}
+		for p := a; p.Parent != ""; {
+			p = byID[p.Parent]
+			if seen[p.ID] {
+				return nil, fmt.Errorf("activity %q in %s is inside a parent loop", a.Title, a.Year)
 			}
-			seen[p.Title] = true
+			seen[p.ID] = true
 		}
 	}
-	return nil
+	return roots, nil
 }
 
 func cloneRows(rows []map[string]string) []map[string]string {
@@ -747,8 +764,6 @@ func (t *Tables) tab(name string) []map[string]string {
 		return t.Categories
 	case activitiesTab:
 		return t.Activities
-	case rolesTab:
-		return t.Roles
 	case volunteersTab:
 		return t.Volunteers
 	case linksTab:
@@ -765,8 +780,6 @@ func (t *Tables) setTab(name string, rows []map[string]string) {
 		t.Categories = rows
 	case activitiesTab:
 		t.Activities = rows
-	case rolesTab:
-		t.Roles = rows
 	case volunteersTab:
 		t.Volunteers = rows
 	case linksTab:

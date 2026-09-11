@@ -1,13 +1,13 @@
 {
-  "name": "HCA Volunteer Portal",
-  "short_name": "HCA Volunteers",
+  "name": "HCA-Team: HCA Volunteer Portal",
+  "short_name": "HCA-Team",
   "description": "HCA Volunteer Sign Up",
   "display": "standalone",
   "id": "/",
   "scope": "/",
   "start_url": "/",
-  "theme_color": "#4b5d67",
-  "background_color": "#4b5d67",
+  "theme_color": "#00282d",
+  "background_color": "#00282d",
   "icons": [
     {"src": "/brand/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
     {"src": "/brand/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},

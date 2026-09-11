@@ -1,7 +1,7 @@
 import {state, isAdmin} from '../state.js';
 import {el, button} from '../dom.js';
 import {setTitle} from '../chrome.js';
-import {openCategory, openSettings} from '../edit.js';
+import {categoryList, openSettings} from '../edit.js';
 
 function denied() {
   const page = el('div', 'list-page');
@@ -12,20 +12,8 @@ function denied() {
 function categoriesCard() {
   const card = el('div', 'admin-card');
   card.append(el('h2', '', 'Categories'));
-  card.append(el('div', 'hint', 'Activities are grouped under these, in this order. Reorder them by moving rows in the Events sheet.'));
-  for (const category of state.model.categories) {
-    const row = el('div', 'admin-row');
-    const body = el('div', 'grow');
-    body.append(el('div', '', category.title));
-    if (category.description) {
-      body.append(el('div', 'sub', category.description));
-    }
-    row.append(body, button('Edit', 'edit', 'button button-secondary button-small', () => openCategory(category)));
-    card.append(row);
-  }
-  const add = el('div', 'add-row');
-  add.append(button('Add Category', 'plus', 'button', () => openCategory(null)));
-  card.append(add);
+  card.append(el('div', 'hint', 'The headings on the Opportunities page, in this order. Each event manages its own categories from its page.'));
+  card.append(categoryList(null, null));
   return card;
 }
 

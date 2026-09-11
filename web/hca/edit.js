@@ -1,5 +1,12 @@
-import {state, me, isAdmin, years, allYears, allRoles, activityPath, rolePath} from './state.js';
-import {el, toast} from './dom.js';
+import {state, me, isAdmin, years, allYears, activityPath, descendants, rootOf, eventCategories, headingChoices, UNCATEGORIZED} from './state.js';
+
+function* allNodes() {
+  for (const root of state.model.activities) {
+    yield root;
+    yield* descendants(root);
+  }
+}
+import {el, svg, toast, button, thumb} from './dom.js';
 
 let modalState = null;
 
@@ -50,11 +57,18 @@ export function initModal() {
     if (!modalState) {
       return;
     }
+    const {submit, afterSave} = modalState;
+    if (!submit) {
+      return;
+    }
     setStatus('Saving…');
     try {
-      await modalState.submit();
+      await submit();
       closeModal();
       await reload();
+      if (afterSave) {
+        afterSave();
+      }
     } catch (err) {
       setStatus(err.message, true);
     }
@@ -93,6 +107,33 @@ function text(value, options) {
     input.maxLength = options.maxLength;
   }
   return input;
+}
+
+// segmented is a two-or-more-way switch: one button per choice, the chosen one
+// filled. For a choice this small a dropdown hides the other option; this shows
+// both. `value` reads the current choice.
+function segmented(options, initial, onChange) {
+  const wrap = el('div', 'segmented');
+  wrap.setAttribute('role', 'radiogroup');
+  const state = {value: initial};
+  const buttons = options.map(o => {
+    const b = el('button', 'segment' + (o.value === initial ? ' is-on' : ''), o.label);
+    b.type = 'button';
+    b.setAttribute('role', 'radio');
+    b.setAttribute('aria-checked', String(o.value === initial));
+    b.addEventListener('click', () => {
+      state.value = o.value;
+      for (const other of buttons) {
+        const on = other === b;
+        other.classList.toggle('is-on', on);
+        other.setAttribute('aria-checked', String(on));
+      }
+      onChange(o.value);
+    });
+    wrap.append(b);
+    return b;
+  });
+  return {wrap, get value() { return state.value; }};
 }
 
 function textarea(value, rows) {
@@ -175,6 +216,7 @@ function imagePicker(current, currentUrl) {
 function openModal(title, fields, options) {
   const f = form();
   f.replaceChildren();
+  f.classList.toggle('modal-wide', Boolean(options.wide));
   const header = el('div', 'modal-header');
   header.append(el('h2', '', title));
   const close = el('button', 'modal-close', '×');
@@ -187,12 +229,21 @@ function openModal(title, fields, options) {
     f.append(node);
   }
   const actions = el('div', 'modal-actions');
-  const save = el('button', 'button', options.saveLabel || 'Save');
-  save.type = 'submit';
-  const cancel = el('button', 'button button-secondary', 'Cancel');
-  cancel.type = 'button';
-  cancel.addEventListener('click', closeModal);
-  actions.append(save, cancel);
+  if (options.submit) {
+    const save = el('button', 'button', options.saveLabel || 'Save');
+    save.type = 'submit';
+    const cancel = el('button', 'button button-secondary', 'Cancel');
+    cancel.type = 'button';
+    cancel.addEventListener('click', closeModal);
+    actions.append(save, cancel);
+  } else {
+    // A modal that only shows things - the category manager - has nothing to
+    // save, so it gets a single way out.
+    const done = el('button', 'button', 'Done');
+    done.type = 'button';
+    done.addEventListener('click', closeModal);
+    actions.append(done);
+  }
   if (options.onDelete) {
     const del = el('button', 'danger-button', options.deleteLabel || 'Delete');
     del.type = 'button';
@@ -216,7 +267,7 @@ function openModal(title, fields, options) {
   }
   actions.append(el('span', 'save-status'));
   f.append(actions);
-  modalState = {submit: options.submit};
+  modalState = {submit: options.submit, afterSave: options.afterSave};
   overlay().hidden = false;
   const first = f.querySelector('input:not([type=hidden]):not([type=file]), textarea, select');
   if (first) {
@@ -230,17 +281,125 @@ async function goTo(path) {
 }
 
 // openSignUp signs the viewer, or someone they name, up for an activity or one
-// of its roles; with an existing sign-up it edits that one.
-export function openSignUp(act, role, existing) {
-  const node = role || act;
-  const editor = act.canEdit;
-  const who = select([{label: 'Me', value: ''}, {label: 'Someone else', value: 'other'}], existing && existing.email !== me().email ? 'other' : '');
-  const email = text(existing && existing.email !== me().email ? existing.email : '', {type: 'email', placeholder: 'name@heliosschool.org'});
-  const emailField = field('Their email', email);
+// of the things under it; with an existing sign-up it edits that one.
+// peoplePicker is the searchable directory list behind "Someone else": type a
+// few letters, see faces, names and what places each person (a grade, a job,
+// "Parent"), pick one. The list is fetched once per page load. Typing a full
+// address that matches nobody still works - guests and new families are real.
+let peopleCache = null;
+
+async function people() {
+  if (!peopleCache) {
+    const res = await fetch('/api/events/people');
+    peopleCache = res.ok ? await res.json() : [];
+  }
+  return peopleCache;
+}
+
+// personInfo is the directory's row for an address, or null for someone it does
+// not know - a guest, or a family that has not been imported yet.
+export async function personInfo(email) {
+  const all = await people();
+  return all.find(p => p.email === email) || null;
+}
+
+function peoplePicker() {
+  const wrap = el('div', 'people-picker');
+  const search = el('input');
+  search.type = 'search';
+  search.placeholder = 'Search by name…';
+  search.autocomplete = 'off';
+  const results = el('div', 'people-results');
+  results.hidden = true;
+  const chosen = el('div', 'people-chosen');
+  chosen.hidden = true;
+  wrap.append(search, results, chosen);
+  let value = '';
+
+  const tile = person => {
+    const row = el('button', 'people-row');
+    row.type = 'button';
+    const face = el('div', 'avatar people-face');
+    if (person.photoUrl) {
+      const img = el('img');
+      img.src = person.photoUrl;
+      img.alt = '';
+      img.loading = 'lazy';
+      face.append(img);
+    } else {
+      face.textContent = (person.name || person.email).slice(0, 1).toUpperCase();
+    }
+    const text = el('div', 'people-text');
+    text.append(el('div', 'people-name', person.name));
+    if (person.title) {
+      text.append(el('div', 'people-title', person.title));
+    }
+    row.append(face, text);
+    return row;
+  };
+
+  const choose = person => {
+    value = person.email;
+    chosen.replaceChildren();
+    const picked = tile(person);
+    picked.disabled = true;
+    const clear = el('button', 'link-button', 'Change');
+    clear.type = 'button';
+    clear.addEventListener('click', () => {
+      value = '';
+      chosen.hidden = true;
+      search.hidden = false;
+      search.value = '';
+      search.focus();
+    });
+    chosen.append(picked, clear);
+    chosen.hidden = false;
+    results.hidden = true;
+    search.hidden = true;
+  };
+
+  const show = async () => {
+    const q = search.value.trim().toLowerCase();
+    results.replaceChildren();
+    if (!q) {
+      results.hidden = true;
+      return;
+    }
+    const all = await people();
+    const hits = all.filter(p => p.name.toLowerCase().includes(q) || p.email.toLowerCase().includes(q)).slice(0, 8);
+    for (const person of hits) {
+      const row = tile(person);
+      row.addEventListener('click', () => choose(person));
+      results.append(row);
+    }
+    if (!hits.length) {
+      results.append(el('div', 'people-none', q.includes('@') ? `Nobody in the directory - “${q}” will be signed up by email.` : 'Nobody matches.'));
+    }
+    results.hidden = false;
+  };
+  search.addEventListener('input', show);
+  search.addEventListener('focus', show);
+
+  return {
+    wrap,
+    // A typed address that matched nobody is still a value; anything else typed
+    // and not picked is not.
+    value: () => value || (search.value.includes('@') ? search.value.trim() : ''),
+  };
+}
+
+export function openSignUp(node, existing) {
+  const editor = node.canEdit;
+  const picker = peoplePicker();
+  const emailField = field('Who is it?', picker.wrap, 'Search the directory, or type an address for someone not in it');
+  const who = segmented([{label: 'Me', value: ''}, {label: 'Someone else', value: 'other'}],
+    existing && existing.email !== me().email ? 'other' : '', value => {
+      emailField.hidden = value !== 'other';
+      if (value === 'other') {
+        picker.wrap.querySelector('input').focus();
+      }
+    });
   emailField.hidden = who.value !== 'other';
-  who.addEventListener('change', () => {
-    emailField.hidden = who.value !== 'other';
-  });
   const positions = [{label: 'Volunteer', value: 'Volunteer'}, {label: 'Volunteer, and open to co-chairing', value: 'Open to Co-Chair'}];
   if (editor) {
     positions.push({label: 'Co-Chair', value: 'Co-Chair'});
@@ -249,31 +408,28 @@ export function openSignUp(act, role, existing) {
   const note = textarea(existing ? existing.note : '', 3);
   const fields = [];
   if (!existing) {
-    fields.push(field('Who', who), emailField);
+    fields.push(field('Who', who.wrap), emailField);
   }
   fields.push(field('As', position), field('Note', note, 'Anything the organizers should know'));
   openModal(existing ? `Edit sign-up for ${node.title}` : `Sign up for ${node.title}`, fields, {
     saveLabel: existing ? 'Save' : 'Sign Up',
     submit: () => send('POST', '/api/events/volunteer', {
-      year: act.year, activity: act.title, role: role ? role.title : '',
-      email: existing ? existing.email : (who.value === 'other' ? email.value : ''),
+      id: node.id,
+      email: existing ? existing.email : (who.value === 'other' ? picker.value() : ''),
       position: position.value, note: note.value,
     }),
-    onDelete: existing ? () => send('DELETE', '/api/events/volunteer', {
-      year: act.year, activity: act.title, role: role ? role.title : '', email: existing.email,
-    }) : null,
+    onDelete: existing ? () => send('DELETE', '/api/events/volunteer', {id: node.id, email: existing.email}) : null,
     deleteLabel: 'Remove',
     confirmDelete: existing ? `Remove ${existing.name} from ${node.title}?` : '',
   });
 }
 
-export async function removeVolunteer(act, role, volunteer) {
-  const node = role || act;
+export async function removeVolunteer(node, volunteer) {
   if (!confirm(`Remove ${volunteer.name} from ${node.title}?`)) {
     return;
   }
   try {
-    await send('DELETE', '/api/events/volunteer', {year: act.year, activity: act.title, role: role ? role.title : '', email: volunteer.email});
+    await send('DELETE', '/api/events/volunteer', {id: node.id, email: volunteer.email});
     await reload();
   } catch (err) {
     toast(err.message);
@@ -299,7 +455,34 @@ export function openActivity(act, options) {
   }
   const year = select(yearOptions, act ? act.year : years().current);
   const title = text(act ? act.title : '', {required: true, maxLength: 120});
-  const category = select(state.model.categories.map(c => c.title), act ? act.category : (opts.category || state.model.categories[0].title));
+  // Everything is an activity; what it sits under is the only difference between
+  // a headline event and a shift on its sign-up sheet.
+  const under = act ? act.parent : (opts.parent ? opts.parent.id : '');
+  const root = act ? rootOf(act) : (opts.parent ? rootOf(opts.parent) : null);
+  const parents = [{label: 'Nothing - this stands on its own', value: ''}];
+  if (root) {
+    // Anything in the tree can be the parent except the row itself and what
+    // already sits under it - the server refuses the loop, so don't offer it.
+    const below = new Set(act ? descendants(act).map(d => d.id) : []);
+    for (const node of [root, ...descendants(root)]) {
+      if ((!act || node.id !== act.id) && !below.has(node.id)) {
+        parents.push({label: node.title, value: node.id});
+      }
+    }
+  }
+  const parentSelect = select(parents, under);
+  // The category select follows where the row sits: a root picks one of the
+  // page's headings, a child picks one of its root event's own, or none. Someone
+  // proposing rather than running the event only sees categories that allow it.
+  const editor = admin || (root ? root.canEdit : false);
+  // Uncategorized is only for editors: it is where things land without a
+  // heading, not a heading people propose into.
+  const headings = headingChoices(c => editor || c.allowAdding).filter(c => editor || c.value !== UNCATEGORIZED);
+  const category = select(headings,
+    act ? act.category : (opts.category || (headings[0] ? headings[0].value : '')));
+  const own = root ? eventCategories(root).filter(c => editor || c.allowAdding) : [];
+  const eventCategory = select([{label: 'None', value: ''}, ...own.map(c => ({label: c.title, value: c.id}))],
+    act ? act.category : (opts.category || ''));
   const status = select(['Pending', 'Open', 'Done', 'Hidden'], act ? act.status : 'Open');
   const description = textarea(act ? act.description : '', 6);
   const timing = text(act ? act.timing : '', {placeholder: 'All Year, Late February, A few times per year'});
@@ -309,14 +492,23 @@ export function openActivity(act, options) {
   const spots = text(act && act.spots ? String(act.spots) : '', {type: 'number', placeholder: 'Unlimited'});
   const coLeader = checkbox('Co-leader needed', act ? act.coLeaderNeeded : false);
   const hidden = checkbox('Hide the volunteer list from everyone but co-chairs', act ? act.volunteersHidden : false);
-  const direct = checkbox('People can sign up for the activity itself, not just its roles', act ? act.directSignUp : true);
+  const direct = checkbox('People can sign up for this itself, not just the things under it', act ? act.directSignUp : true);
   const coChair = checkbox("I'd be open to co-chairing this", false);
   const image = imagePicker(act ? act.image : '', act ? act.imageUrl : '');
   const fields = [field('Title', title)];
   if (admin || !act) {
     fields.push(field('Year', year));
   }
-  fields.push(field('Category', category));
+  if (root) {
+    fields.push(field('Under', parentSelect, 'What this sits inside, if anything'));
+  }
+  if (under) {
+    if (own.length) {
+      fields.push(field('Category', eventCategory, `One of ${root.title}'s own categories`));
+    }
+  } else {
+    fields.push(field('Category', category));
+  }
   if (admin && act) {
     fields.push(field('Status', status));
   } else if (act && act.status !== 'Pending') {
@@ -332,12 +524,13 @@ export function openActivity(act, options) {
     fields.push(field('Timing', timing, 'When would this happen?'), image.wrap, coChair.wrap);
   }
   const statusField = fields.find(f => f.firstChild && f.firstChild.textContent === 'Status');
-  openModal(act ? 'Edit Activity' : (suggesting ? 'Suggest an Idea' : 'Add Activity'), fields, {
+  openModal(act ? 'Edit' : (suggesting ? 'Suggest an Idea' : (opts.parent ? `Add under ${opts.parent.title}` : 'Add Activity')), fields, {
     saveLabel: suggesting ? 'Suggest' : 'Save',
     submit: async () => {
       const body = {
-        original: act ? {year: act.year, title: act.title} : {year: '', title: ''},
-        year: year.value, title: title.value, category: category.value,
+        id: act ? act.id : '',
+        year: year.value, title: title.value, parent: parentSelect.value,
+        category: parentSelect.value ? eventCategory.value : category.value,
         status: statusField ? statusField.querySelector('select').value : '',
         description: description.value, image: image.value(), timing: timing.value,
         start: start.value, end: end.value, location: location.value, spots: Number(spots.value) || 0,
@@ -345,91 +538,312 @@ export function openActivity(act, options) {
         coChair: coChair.input.checked,
       };
       await send('POST', '/api/events/activity', body);
-      if (!act || act.year !== body.year || act.title !== body.title) {
-        await goTo(activityPath({year: body.year, title: body.title}));
+      if (!act) {
+        // The server minted the id, so find the new row by the one thing we
+        // know about it - the reload has already run, so the model is current.
+        await reload();
+        const made = [...allNodes()].find(n => n.year === body.year && n.title === body.title && n.parent === body.parent);
+        if (made) {
+          await goTo(activityPath(made));
+        }
       }
     },
-    onDelete: act && admin ? () => send('DELETE', '/api/events/activity', {year: act.year, title: act.title}) : null,
-    confirmDelete: act ? `Delete “${act.title}” (${act.year})? Its roles and links go with it.` : '',
+    onDelete: act && admin ? () => send('DELETE', '/api/events/activity', {id: act.id}) : null,
+    confirmDelete: act ? `Delete “${act.title}” (${act.year})? Its links go with it.` : '',
     afterDelete: () => goTo('/'),
   });
 }
 
-// openRole edits a role, or adds one under an activity or another role. An
-// editor's addition opens right away; anyone else's is a suggestion.
-export function openRole(act, role, parent) {
-  const editor = act.canEdit;
-  const suggesting = !role && !editor;
-  const title = text(role ? role.title : '', {required: true, maxLength: 120});
-  const parents = [{label: 'The activity itself', value: ''}];
-  for (const r of allRoles(act)) {
-    if (!role || r.title !== role.title) {
-      parents.push({label: r.title, value: r.title});
-    }
-  }
-  const parentSelect = select(parents, role ? role.parent : (parent ? parent.title : ''));
-  const group = text(role ? role.group : (parent ? '' : ''), {placeholder: 'Event Support, Booths, Shifts…'});
-  const status = select(['Pending', 'Open', 'Done', 'Hidden'], role ? role.status : 'Open');
-  const description = textarea(role ? role.description : '', 4);
-  const start = text(role ? role.start : '', {placeholder: '2026-09-24 12:30'});
-  const end = text(role ? role.end : '', {placeholder: '2026-09-24 16:00'});
-  const spots = text(role && role.spots ? String(role.spots) : '', {type: 'number', placeholder: 'Unlimited'});
-  const coLeader = checkbox('Co-leader needed', role ? role.coLeaderNeeded : false);
-  const hidden = checkbox('Hide the volunteer list from everyone but co-chairs', role ? role.volunteersHidden : false);
-  const coChair = checkbox("I'd be open to co-chairing this", false);
-  const image = imagePicker(role ? role.image : '', role ? role.imageUrl : '');
-  const fields = [field('Title', title), field('Under', parentSelect), field('Description', description)];
-  if (!suggesting) {
-    const grid = el('div', 'field-grid');
-    grid.append(field('Start', start, whenHint()), field('End', end));
-    fields.push(field('Group', group, 'Roles with the same group show under one heading'), field('Status', status), grid,
-      field('Spots', spots), image.wrap, coLeader.wrap, hidden.wrap);
-  } else {
-    fields.push(image.wrap, coChair.wrap);
-  }
-  openModal(role ? 'Edit Role' : (suggesting ? 'Suggest a Role' : 'Add Role'), fields, {
-    saveLabel: suggesting ? 'Suggest' : 'Save',
-    submit: async () => {
-      const body = {
-        year: act.year, activity: act.title, original: role ? role.title : '',
-        title: title.value, parent: parentSelect.value, group: group.value, status: suggesting ? '' : status.value,
-        description: description.value, image: image.value(), start: start.value, end: end.value,
-        spots: Number(spots.value) || 0, coLeaderNeeded: coLeader.input.checked, volunteersHidden: hidden.input.checked,
-        coChair: coChair.input.checked,
-      };
-      await send('POST', '/api/events/role', body);
-      if (role && role.title !== body.title) {
-        await goTo(rolePath(act, {title: body.title}));
-      }
-    },
-    onDelete: role && editor ? () => send('DELETE', '/api/events/role', {year: act.year, activity: act.title, title: role.title}) : null,
-    confirmDelete: role ? `Delete the role “${role.title}”?` : '',
-    afterDelete: () => goTo(activityPath(act)),
-  });
-}
-
-export function openLink(act, role, item) {
+export function openLink(node, item) {
   const title = text(item ? item.title : '', {required: true, maxLength: 120});
   const url = text(item ? item.url : '', {type: 'url', required: true, placeholder: 'https://'});
   const image = imagePicker(item ? item.image : '', item ? item.imageUrl : '');
   openModal(item ? 'Edit Link' : 'Add Link', [field('Title', title), field('URL', url), image.wrap], {
     submit: () => send('POST', '/api/events/link', {
-      year: act.year, activity: act.title, role: role ? role.title : '', original: item ? item.title : '',
+      id: node.id, original: item ? item.title : '',
       title: title.value, url: url.value, image: image.value(),
     }),
-    onDelete: item ? () => send('DELETE', '/api/events/link', {year: act.year, activity: act.title, role: role ? role.title : '', title: item.title}) : null,
+    onDelete: item ? () => send('DELETE', '/api/events/link', {id: node.id, title: item.title}) : null,
     confirmDelete: item ? `Remove the link “${item.title}”?` : '',
   });
 }
 
-export function openCategory(category) {
+// openVolunteerGrid is the organizers' roster for an event: every sign-up in the
+// tree, with where it is (category > committee > ... , or "(itself)"), the
+// position, the address, and for a student the parents' addresses - the people
+// an organizer actually needs to reach. Copy emails copies every address in it.
+export function openVolunteerGrid(root, nodes, pathOf) {
+  const rows = [];
+  for (const node of nodes) {
+    for (const v of node.volunteers) {
+      rows.push({node, v});
+    }
+  }
+  const table = el('table', 'roster');
+  const head = el('tr');
+  for (const h of ['Volunteer', 'Where', 'As', 'Email', "Parents' email"]) {
+    head.append(el('th', '', h));
+  }
+  const thead = el('thead');
+  thead.append(head);
+  table.append(thead);
+  const body = el('tbody');
+  const addresses = new Set();
+  const parentCells = [];
+  for (const {node, v} of rows) {
+    const tr = el('tr');
+    const who = el('td', 'roster-who');
+    const face = el('div', 'avatar people-face');
+    if (v.photoUrl) {
+      const img = el('img');
+      img.src = v.photoUrl;
+      img.alt = '';
+      face.append(img);
+    } else {
+      face.textContent = (v.name || v.email).slice(0, 1).toUpperCase();
+    }
+    who.append(face, el('span', '', v.name));
+    tr.append(who);
+    tr.append(el('td', 'roster-where', pathOf(node)));
+    tr.append(el('td', '', v.position));
+    const mail = el('td', 'roster-mail');
+    mail.append(mailto(v.email));
+    tr.append(mail);
+    addresses.add(v.email);
+    const parents = el('td', 'roster-mail');
+    parentCells.push({cell: parents, email: v.email});
+    tr.append(parents);
+    body.append(tr);
+  }
+  table.append(body);
+  // The directory lookup is the slow part, and only the parents column needs
+  // it, so the roster shows at once and that column fills in behind it.
+  people().then(all => {
+    const byEmail = new Map(all.map(p => [p.email, p]));
+    for (const {cell, email} of parentCells) {
+      const info = byEmail.get(email);
+      if (!info || !info.isStudent) {
+        continue;
+      }
+      for (const e of info.parentEmails || []) {
+        cell.append(mailto(e));
+        addresses.add(e);
+      }
+      if (!(info.parentEmails || []).length) {
+        cell.append(el('span', 'roster-none', 'none listed'));
+      }
+    }
+  });
+  const scroll = el('div', 'roster-scroll');
+  scroll.append(rows.length ? table : el('div', 'panel-empty', 'Nobody has signed up yet.'));
+  const tools = el('div', 'roster-tools');
+  tools.append(el('span', 'roster-count', `${rows.length} sign-up${rows.length === 1 ? '' : 's'}`));
+  const copy = el('button', 'button button-secondary button-small', 'Copy emails');
+  copy.type = 'button';
+  copy.addEventListener('click', () => {
+    navigator.clipboard.writeText([...addresses].join(', ')).then(() => toast('Emails copied'), () => toast('Could not copy'));
+  });
+  tools.append(copy);
+  openModal(`${root.title}: Volunteers`, [tools, scroll], {wide: true});
+}
+
+function mailto(email) {
+  const a = el('a', 'roster-link', email);
+  a.href = `mailto:${email}`;
+  return a;
+}
+
+// editPencil and fieldEditor are the inline editing pattern Helios Who? uses:
+// a small pencil beside a value, and on click the value and its pencil step
+// aside for an input with Save/Cancel right there. Nothing else on the page
+// moves, and the reader never leaves the page to change one thing.
+export function editPencil(label) {
+  const pencil = el('button', 'edit-icon');
+  pencil.type = 'button';
+  pencil.title = label;
+  pencil.setAttribute('aria-label', label);
+  pencil.append(svg('edit'));
+  return pencil;
+}
+
+// opts: {input, value(), submit(value), hint}. A successful submit reloads the
+// model and repaints the page, which takes the editor with it - so there is no
+// close-on-success path to get wrong. Failures surface as a toast, the way every
+// other write in this app reports itself.
+export function fieldEditor(anchor, pencil, opts) {
+  const box = el('div', 'field-editor');
+  box.append(opts.input);
+  if (opts.hint) {
+    box.append(el('small', 'field-note', opts.hint));
+  }
+  const actions = el('div', 'field-editor-actions');
+  const save = el('button', 'button button-small', 'Save');
+  save.type = 'button';
+  const cancel = el('button', 'button button-secondary button-small', 'Cancel');
+  cancel.type = 'button';
+  const status = el('span', 'field-status');
+  actions.append(save, cancel, status);
+  box.append(actions);
+  const close = () => {
+    box.remove();
+    anchor.hidden = false;
+    pencil.hidden = false;
+  };
+  cancel.addEventListener('click', close);
+  save.addEventListener('click', async () => {
+    const value = opts.value();
+    // A validate() that returns a message stops the save and says why, right
+    // beside the buttons - nothing is sent and the editor stays open.
+    const problem = opts.validate ? opts.validate(value) : '';
+    if (problem) {
+      status.classList.add('error');
+      status.textContent = problem;
+      return;
+    }
+    status.classList.remove('error');
+    save.disabled = true;
+    status.textContent = 'Saving…';
+    await opts.submit(value);
+    save.disabled = false;
+    status.textContent = '';
+  });
+  box.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      close();
+    }
+    if (e.key === 'Enter' && opts.input.tagName !== 'TEXTAREA') {
+      e.preventDefault();
+      save.click();
+    }
+  });
+  anchor.hidden = true;
+  pencil.hidden = true;
+  anchor.after(box);
+  opts.input.focus();
+}
+
+// editable hangs a pencil off a rendered value and wires it to one field of the
+// activity. The caller says how to render the input and what to send.
+export function editable(anchor, label, make, submit) {
+  const pencil = editPencil(label);
+  pencil.addEventListener('click', () => {
+    const built = make();
+    fieldEditor(anchor, pencil, {
+      input: built.input,
+      hint: built.hint,
+      value: built.value,
+      validate: built.validate,
+      submit,
+    });
+  });
+  return pencil;
+}
+
+export function textInput(value, options) {
+  return text(value, options);
+}
+
+export function textAreaInput(value, rows) {
+  return textarea(value, rows);
+}
+
+export function selectInput(options, value) {
+  return select(options, value);
+}
+
+// uploadAndSave uploads the chosen file and records it in one step: the upload
+// returns a name, and that name is the only field saved, so the hero updates as
+// soon as it lands with no separate Save to remember. `save` is whichever of
+// saveActivityFields, which is every node's save now.
+export async function uploadAndSave(save, file) {
+  try {
+    const name = await uploadImage(file);
+    await save({image: name});
+  } catch (err) {
+    toast(err.message);
+  }
+}
+
+// openCategory edits one category, or adds one to `eventId`'s event - or to the
+// page's headings when eventId is empty.
+export function openCategory(category, eventId, after) {
   const title = text(category ? category.title : '', {required: true, maxLength: 120});
   const description = textarea(category ? category.description : '', 3);
-  openModal(category ? 'Edit Category' : 'Add Category', [field('Title', title), field('Description', description)], {
-    submit: () => send('POST', '/api/events/category', {original: category ? category.title : '', title: title.value, description: description.value}),
-    onDelete: category ? () => send('DELETE', '/api/events/category', {title: category.title}) : null,
+  const image = imagePicker(category ? category.image : '', category ? category.imageUrl : '');
+  const adding = checkbox('People can add new things to this category', category ? category.allowAdding : true);
+  openModal(category ? 'Edit Category' : 'Add Category', [field('Title', title), field('Description', description), image.wrap, adding.wrap], {
+    submit: () => send('POST', '/api/events/category', {
+      id: category ? category.id : '', eventId: eventId || '',
+      title: title.value, description: description.value, image: image.value(), allowAdding: adding.input.checked,
+    }),
+    afterSave: after,
+    onDelete: category ? () => send('DELETE', '/api/events/category', {id: category.id}) : null,
     confirmDelete: category ? `Delete the category “${category.title}”?` : '',
+    afterDelete: after,
   });
+}
+
+// categoryList is the one list of categories with reorder, edit and add. The
+// Admin Tools card and the manager an editor opens from an event both show it,
+// so they cannot drift. `after` runs once the model has reloaded from a change -
+// the manager passes itself, so it comes back showing the new state; the admin
+// page passes nothing, since it re-renders on its own.
+export function categoryList(root, after) {
+  const wrap = el('div', 'category-list');
+  const eventId = root ? root.id : '';
+  const list = root ? eventCategories(root) : state.model.categories.filter(c => !c.builtIn);
+  const move = async (from, to) => {
+    const ids = list.map(c => c.id);
+    const [moved] = ids.splice(from, 1);
+    ids.splice(to, 0, moved);
+    try {
+      await send('POST', '/api/events/categories/order', {eventId, ids});
+      await reload();
+      if (after) {
+        after();
+      }
+    } catch (err) {
+      toast(err.message);
+    }
+  };
+  list.forEach((category, i) => {
+    const row = el('div', 'admin-row');
+    if (category.imageUrl) {
+      row.append(thumb(category.imageUrl, category.title, 'small'));
+    }
+    const body = el('div', 'grow');
+    body.append(el('div', '', category.title));
+    body.append(el('div', 'sub', [category.description, category.allowAdding ? 'People can add here' : 'Only organizers add here'].filter(Boolean).join(' · ')));
+    const up = button('', 'up', 'icon-button', () => move(i, i - 1));
+    up.setAttribute('aria-label', `Move ${category.title} up`);
+    up.disabled = i === 0;
+    const down = button('', 'down', 'icon-button', () => move(i, i + 1));
+    down.setAttribute('aria-label', `Move ${category.title} down`);
+    down.disabled = i === list.length - 1;
+    row.append(body, up, down, button('Edit', 'edit', 'button button-secondary button-small', () => openCategory(category, eventId, after)));
+    wrap.append(row);
+  });
+  if (!list.length) {
+    wrap.append(el('div', 'panel-empty', root ? `${root.title} has no categories of its own yet.` : 'No categories yet.'));
+  }
+  if (!root) {
+    wrap.append(el('div', 'hint', 'Uncategorized is built in: it collects events whose category is blank or names nothing here.'));
+  }
+  const add = el('div', 'add-row');
+  add.append(button('Add Category', 'plus', 'button', () => openCategory(null, eventId, after)));
+  wrap.append(add);
+  return wrap;
+}
+
+// openCategoryManager is an event's own categories in a modal, for whoever runs
+// it: the headings its committees, booths and shifts are grouped under.
+export function openCategoryManager(root) {
+  const again = () => openCategoryManager(root);
+  openModal(`${root.title}: Categories`, [
+    el('div', 'hint', 'The things under this event are grouped by these, in this order. Each one says whether people may add to it.'),
+    categoryList(root, again),
+  ], {});
 }
 
 export function openSettings() {
@@ -442,11 +856,11 @@ export function openSettings() {
 }
 
 export async function copyToNextYear(act) {
-  if (!confirm(`Copy “${act.title}” and its roles into ${years().next}?`)) {
+  if (!confirm(`Copy “${act.title}” and everything under it into ${years().next}?`)) {
     return;
   }
   try {
-    await send('POST', '/api/events/copy', {year: act.year, title: act.title});
+    await send('POST', '/api/events/copy', {id: act.id});
     await reload();
     toast(`Copied to ${years().next}`);
   } catch (err) {
@@ -458,8 +872,9 @@ export async function copyToNextYear(act) {
 // whole record with that field changed.
 export async function saveActivityFields(act, changes) {
   const body = {
-    original: {year: act.year, title: act.title},
-    year: act.year, title: act.title, category: act.category, status: act.status,
+    id: act.id,
+    year: act.year, title: act.title, parent: act.parent || '',
+    category: act.category || '', status: act.status,
     description: act.description || '', image: act.image || '', timing: act.timing || '',
     start: act.start || '', end: act.end || '', location: act.location || '', spots: act.spots || 0,
     coLeaderNeeded: act.coLeaderNeeded, volunteersHidden: act.volunteersHidden, directSignUp: act.directSignUp,
@@ -474,19 +889,3 @@ export async function saveActivityFields(act, changes) {
   }
 }
 
-export async function saveRoleFields(act, role, changes) {
-  const body = {
-    year: act.year, activity: act.title, original: role.title,
-    title: role.title, parent: role.parent || '', group: role.group || '', status: role.status,
-    description: role.description || '', image: role.image || '', start: role.start || '', end: role.end || '',
-    spots: role.spots || 0, coLeaderNeeded: role.coLeaderNeeded, volunteersHidden: role.volunteersHidden,
-    ...changes,
-  };
-  try {
-    await send('POST', '/api/events/role', body);
-    await reload();
-  } catch (err) {
-    toast(err.message);
-    await reload();
-  }
-}

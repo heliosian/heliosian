@@ -2,6 +2,7 @@ package events
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -28,8 +29,7 @@ const (
 )
 
 var pages = []string{
-	"/{$}", "/my", "/calendar", "/all", "/people", "/people/{email}", "/admin", "/years/{year}",
-	"/activities/{year}/{activity}", "/activities/{year}/{activity}/roles/{role}",
+	"/{$}", "/my", "/calendar", "/approvals", "/admin", "/years/{year}", "/activities/{id}",
 }
 
 // local is the school's clock: the sheet's dates are wall-clock there, and a
@@ -61,16 +61,16 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 		mux.HandleFunc("GET "+page, a.page)
 	}
 	mux.HandleFunc("GET /api/events/model", a.model)
+	mux.HandleFunc("GET /api/events/people", a.people)
 	mux.HandleFunc("POST /api/events/volunteer", a.saveVolunteer)
 	mux.HandleFunc("DELETE /api/events/volunteer", a.removeVolunteer)
 	mux.HandleFunc("POST /api/events/activity", a.saveActivity)
 	mux.HandleFunc("DELETE /api/events/activity", a.deleteActivity)
-	mux.HandleFunc("POST /api/events/role", a.saveRole)
-	mux.HandleFunc("DELETE /api/events/role", a.deleteRole)
 	mux.HandleFunc("POST /api/events/link", a.saveLink)
 	mux.HandleFunc("DELETE /api/events/link", a.deleteLink)
 	mux.HandleFunc("POST /api/events/category", a.saveCategory)
 	mux.HandleFunc("DELETE /api/events/category", a.deleteCategory)
+	mux.HandleFunc("POST /api/events/categories/order", a.reorderCategories)
 	mux.HandleFunc("POST /api/events/copy", a.copyActivity)
 	mux.HandleFunc("POST /api/events/settings", a.saveSettings)
 	mux.HandleFunc("POST /api/events/image", a.uploadImage)
@@ -140,41 +140,55 @@ func (a app) commit(ctx context.Context, w http.ResponseWriter, tables *Tables, 
 	return true
 }
 
-func rowOf(columns []string, cells map[string]string) []string {
-	row := make([]string, len(columns))
-	for i, column := range columns {
-		row[i] = cells[column]
-	}
-	return row
-}
-
 func (a app) logChange(actor, action, kind string, cells map[string]string) error {
-	return a.writer.Append(appName, changeLogTab, []string{
-		time.Now().Format(time.RFC3339), actor, action, kind,
-		cells["Year"], cells["Activity"], cells["Role"], cells["Title"], cells["Email"], cells["Details"],
+	return a.writer.AppendCells(appName, changeLogTab, map[string]string{
+		"Timestamp": time.Now().Format(time.RFC3339), "Actor": actor, "Action": action, "Kind": kind,
+		"Year": cells["Year"], "Activity": cells["Activity"], "Title": cells["Title"], "Email": cells["Email"], "Details": cells["Details"],
 	})
 }
 
 type activityRef struct {
-	Year  string `json:"year"`
-	Title string `json:"title"`
+	ID string `json:"id"`
 }
 
-func (a app) findActivity(w http.ResponseWriter, year, title string) (*Activity, bool) {
-	act := a.cache.Model().Activity(year, title)
+func (a app) findActivity(w http.ResponseWriter, id string) (*Activity, bool) {
+	act := a.cache.Model().Activity(strings.TrimSpace(id))
 	if act == nil {
-		http.Error(w, fmt.Sprintf("no activity %q in %s", title, year), http.StatusNotFound)
+		http.Error(w, fmt.Sprintf("no activity with id %q", id), http.StatusNotFound)
 		return nil, false
 	}
 	return act, true
 }
 
+// newID mints a key for a row the app creates. Eight characters from a 32-symbol
+// alphabet is 40 bits - collisions are not a practical concern at this scale,
+// and the load refuses a duplicate anyway rather than letting one through.
+func newID() string {
+	const alphabet = "abcdefghjkmnpqrstuvwxyz23456789"
+	var raw [8]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		panic(err)
+	}
+	out := make([]byte, len(raw))
+	for i, b := range raw {
+		out[i] = alphabet[int(b)%len(alphabet)]
+	}
+	return string(out)
+}
+
+// people is the directory for the sign-up picker. Anyone signed in may see it -
+// it is the same list the school directory shows every member.
+func (a app) people(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(a.directory.People()); err != nil {
+		slog.ErrorContext(r.Context(), "events: encode people", "error", err)
+	}
+}
+
 func (a app) saveVolunteer(w http.ResponseWriter, r *http.Request) {
 	actor, admin := a.who(r)
 	var body struct {
-		Year     string `json:"year"`
-		Activity string `json:"activity"`
-		Role     string `json:"role"`
+		ID       string `json:"id"`
 		Email    string `json:"email"`
 		Position string `json:"position"`
 		Note     string `json:"note"`
@@ -182,11 +196,11 @@ func (a app) saveVolunteer(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	act, ok := a.findActivity(w, body.Year, body.Activity)
+	act, ok := a.findActivity(w, body.ID)
 	if !ok {
 		return
 	}
-	editor := admin || act.IsCoChair(actor)
+	editor := admin || a.cache.Model().Runs(act, actor)
 	email := strings.ToLower(strings.TrimSpace(body.Email))
 	if email == "" {
 		email = actor
@@ -196,15 +210,10 @@ func (a app) saveVolunteer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	status, spots := act.Status, act.Spots
-	if body.Role != "" {
-		role := act.Role(body.Role)
-		if role == nil {
-			http.Error(w, fmt.Sprintf("no role %q on %s", body.Role, act.Title), http.StatusNotFound)
-			return
-		}
-		status, spots = role.Status, role.Spots
-	} else if !act.DirectSignUp && !editor {
-		http.Error(w, "sign up for one of its roles instead", http.StatusBadRequest)
+	// A root that does not take sign-ups itself sends people to the things under
+	// it; a child always takes them.
+	if act.Parent == "" && !act.DirectSignUp && !editor {
+		http.Error(w, "sign up for one of the things under it instead", http.StatusBadRequest)
 		return
 	}
 	if !editor && status != StatusOpen {
@@ -223,7 +232,7 @@ func (a app) saveVolunteer(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "the note is too long", http.StatusBadRequest)
 		return
 	}
-	match := map[string]string{"Year": act.Year, "Activity": act.Title, "Role": body.Role, "Email": email}
+	match := map[string]string{"Event ID": act.ID, "Email": email}
 	tables := a.cache.Tables()
 	existing := tables.count(volunteersTab, match) > 0
 	if existing && !editor && email != actor {
@@ -231,7 +240,7 @@ func (a app) saveVolunteer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !existing && !editor && spots > 0 {
-		taken := tables.count(volunteersTab, map[string]string{"Year": act.Year, "Activity": act.Title, "Role": body.Role})
+		taken := tables.count(volunteersTab, map[string]string{"Event ID": act.ID})
 		if taken >= spots {
 			http.Error(w, "every spot is taken", http.StatusBadRequest)
 			return
@@ -249,67 +258,66 @@ func (a app) saveVolunteer(w http.ResponseWriter, r *http.Request) {
 			return err
 		}
 		return a.logChange(actor, action, "volunteer", map[string]string{
-			"Year": act.Year, "Activity": act.Title, "Role": body.Role, "Email": email, "Details": body.Position,
+			"Year": act.Year, "Activity": act.Title, "Email": email, "Details": body.Position,
 		})
 	}) {
 		return
 	}
-	slog.InfoContext(r.Context(), "events: saved volunteer", "actor", actor, "action", action, "email", email, "activity", act.Title, "role", body.Role, "year", act.Year)
+	slog.InfoContext(r.Context(), "events: saved volunteer", "actor", actor, "action", action, "email", email, "activity", act.Title, "year", act.Year)
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (a app) removeVolunteer(w http.ResponseWriter, r *http.Request) {
 	actor, admin := a.who(r)
 	var body struct {
-		Year     string `json:"year"`
-		Activity string `json:"activity"`
-		Role     string `json:"role"`
-		Email    string `json:"email"`
+		ID    string `json:"id"`
+		Email string `json:"email"`
 	}
 	if !decode(w, r, &body) {
 		return
 	}
-	act, ok := a.findActivity(w, body.Year, body.Activity)
+	act, ok := a.findActivity(w, body.ID)
 	if !ok {
 		return
 	}
 	email := strings.ToLower(strings.TrimSpace(body.Email))
-	if email != actor && !admin && !act.IsCoChair(actor) {
+	if email != actor && !admin && !a.cache.Model().Runs(act, actor) {
 		http.Error(w, "only a co-chair or admin can remove someone else", http.StatusForbidden)
 		return
 	}
-	match := map[string]string{"Year": act.Year, "Activity": act.Title, "Role": body.Role, "Email": email}
+	match := map[string]string{"Event ID": act.ID, "Email": email}
 	if !a.commit(r.Context(), w, a.cache.Tables().without(volunteersTab, match), func() error {
 		if err := a.writer.Delete(appName, volunteersTab, match); err != nil {
 			return err
 		}
 		return a.logChange(actor, "remove", "volunteer", map[string]string{
-			"Year": act.Year, "Activity": act.Title, "Role": body.Role, "Email": email,
+			"Year": act.Year, "Activity": act.Title, "Email": email,
 		})
 	}) {
 		return
 	}
-	slog.InfoContext(r.Context(), "events: removed volunteer", "actor", actor, "email", email, "activity", act.Title, "role", body.Role, "year", act.Year)
+	slog.InfoContext(r.Context(), "events: removed volunteer", "actor", actor, "email", email, "activity", act.Title, "year", act.Year)
 	w.WriteHeader(http.StatusNoContent)
 }
 
 type activityBody struct {
-	Original         activityRef `json:"original"`
-	Year             string      `json:"year"`
-	Title            string      `json:"title"`
-	Category         string      `json:"category"`
-	Status           string      `json:"status"`
-	Description      string      `json:"description"`
-	Image            string      `json:"image"`
-	Timing           string      `json:"timing"`
-	Start            string      `json:"start"`
-	End              string      `json:"end"`
-	Location         string      `json:"location"`
-	Spots            int         `json:"spots"`
-	CoLeaderNeeded   bool        `json:"coLeaderNeeded"`
-	VolunteersHidden bool        `json:"volunteersHidden"`
-	DirectSignUp     bool        `json:"directSignUp"`
-	CoChair          bool        `json:"coChair"`
+	ID               string `json:"id"`
+	Year             string `json:"year"`
+	Title            string `json:"title"`
+	Parent           string `json:"parent"`
+	Category         string `json:"category"`
+	Status           string `json:"status"`
+	Description      string `json:"description"`
+	Image            string `json:"image"`
+	Timing           string `json:"timing"`
+	Start            string `json:"start"`
+	End              string `json:"end"`
+	Location         string `json:"location"`
+	Spots            int    `json:"spots"`
+	CoLeaderNeeded   bool   `json:"coLeaderNeeded"`
+	VolunteersHidden bool   `json:"volunteersHidden"`
+	DirectSignUp     bool   `json:"directSignUp"`
+	CoChair          bool   `json:"coChair"`
 }
 
 func spotsCell(n int) string {
@@ -329,17 +337,18 @@ func (a app) saveActivity(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
+	model := a.cache.Model()
 	title := strings.TrimSpace(body.Title)
 	year := strings.TrimSpace(body.Year)
-	adding := body.Original.Title == ""
+	adding := body.ID == ""
 	var current *Activity
 	if !adding {
-		act, ok := a.findActivity(w, body.Original.Year, body.Original.Title)
+		act, ok := a.findActivity(w, body.ID)
 		if !ok {
 			return
 		}
 		current = act
-		if !admin && !act.IsCoChair(actor) {
+		if !admin && !model.Runs(act, actor) {
 			http.Error(w, "only a co-chair or admin can edit this", http.StatusForbidden)
 			return
 		}
@@ -359,8 +368,70 @@ func (a app) saveActivity(w http.ResponseWriter, r *http.Request) {
 		}
 		year = current.Year
 	}
+	// A parent is an id in the same year, and not the row itself or anything
+	// under it - the loader would refuse the loop, so refuse it here first.
+	parent := strings.TrimSpace(body.Parent)
+	if parent != "" {
+		p := model.Activity(parent)
+		if p == nil {
+			http.Error(w, fmt.Sprintf("no activity with id %q to sit under", parent), http.StatusBadRequest)
+			return
+		}
+		if p.Year != year {
+			http.Error(w, "a parent has to be in the same school year", http.StatusBadRequest)
+			return
+		}
+		if current != nil {
+			for node := p; node != nil; node = model.Activity(node.Parent) {
+				if node.ID == current.ID {
+					http.Error(w, "that would put this inside itself", http.StatusBadRequest)
+					return
+				}
+			}
+		}
+	}
+	// Uncategorized is the model's name for a root with no category; the sheet
+	// stores that as a blank.
+	category := strings.TrimSpace(body.Category)
+	if category == UncategorizedID {
+		category = ""
+	}
+	editor := admin
+	if parent != "" {
+		editor = editor || model.Runs(model.Activity(parent), actor)
+	}
+	if category == "" && parent == "" && adding && !editor {
+		http.Error(w, "pick a category", http.StatusBadRequest)
+		return
+	}
+	if category != "" {
+		c := model.Category(category)
+		if c == nil {
+			http.Error(w, fmt.Sprintf("no category with id %q", category), http.StatusBadRequest)
+			return
+		}
+		if parent == "" && c.EventID != "" {
+			http.Error(w, fmt.Sprintf("%q belongs to one event, not the page", c.Title), http.StatusBadRequest)
+			return
+		}
+		if parent != "" && c.EventID != model.Root(model.Activity(parent)).ID {
+			http.Error(w, fmt.Sprintf("%q is not one of this event's categories", c.Title), http.StatusBadRequest)
+			return
+		}
+		// Allow Adding gates proposals from people who do not run the thing;
+		// whoever runs it decides where its pieces go.
+		if adding && !editor && !c.AllowAdding {
+			http.Error(w, fmt.Sprintf("new things cannot be added to %q", c.Title), http.StatusBadRequest)
+			return
+		}
+	}
+	id := body.ID
+	if adding {
+		id = newID()
+	}
 	cells := map[string]string{
-		"Year": year, "Title": title, "Category": strings.TrimSpace(body.Category), "Status": status,
+		"Event ID": id, "Year": year, "Title": title, "Parent": parent,
+		"Category": category, "Status": status,
 		"Description": strings.TrimSpace(body.Description), "Image": strings.TrimSpace(body.Image),
 		"Timing": strings.TrimSpace(body.Timing), "Start": strings.TrimSpace(body.Start), "End": strings.TrimSpace(body.End),
 		"Location": strings.TrimSpace(body.Location), "Spots": spotsCell(body.Spots),
@@ -369,41 +440,38 @@ func (a app) saveActivity(w http.ResponseWriter, r *http.Request) {
 	}
 	tables := a.cache.Tables()
 	action := "edit"
-	var match map[string]string
+	match := map[string]string{"Event ID": id}
+	// Moving a root to another year takes its whole tree along, since a parent
+	// and child in different years is something the loader refuses.
+	var moved []*Activity
 	if adding {
 		action = "add"
 		cells["Added By"] = actor
 		cells["Added"] = today()
-		if a.cache.Model().Activity(year, title) != nil {
-			http.Error(w, fmt.Sprintf("%q already exists in %s", title, year), http.StatusBadRequest)
-			return
-		}
 		tables = tables.with(activitiesTab, nil, cells)
 		if body.CoChair {
 			tables = tables.with(volunteersTab, nil, map[string]string{
-				"Year": year, "Activity": title, "Email": actor, "Position": PositionOpen, "Added By": actor, "Added": today(),
+				"Event ID": id, "Email": actor, "Position": PositionOpen, "Added By": actor, "Added": today(),
 			})
 		}
 	} else {
-		match = map[string]string{"Year": current.Year, "Title": current.Title}
 		tables = tables.with(activitiesTab, match, cells)
-		if current.Year != year || current.Title != title {
-			if a.cache.Model().Activity(year, title) != nil {
-				http.Error(w, fmt.Sprintf("%q already exists in %s", title, year), http.StatusBadRequest)
-				return
+		if current.Year != year {
+			moved = current.Descendants()
+			for _, d := range moved {
+				tables = tables.with(activitiesTab, map[string]string{"Event ID": d.ID}, map[string]string{"Year": year})
 			}
-			tables = tables.renameActivity(current.Year, current.Title, year, title)
 		}
 	}
 	if !a.commit(r.Context(), w, tables, func() error {
 		if adding {
-			if err := a.writer.Append(appName, activitiesTab, rowOf(ActivityColumns, cells)); err != nil {
+			if err := a.writer.AppendCells(appName, activitiesTab, cells); err != nil {
 				return err
 			}
 			if body.CoChair {
-				if err := a.writer.Append(appName, volunteersTab, rowOf(VolunteerColumns, map[string]string{
-					"Year": year, "Activity": title, "Email": actor, "Position": PositionOpen, "Added By": actor, "Added": today(),
-				})); err != nil {
+				if err := a.writer.AppendCells(appName, volunteersTab, map[string]string{
+					"Event ID": id, "Email": actor, "Position": PositionOpen, "Added By": actor, "Added": today(),
+				}); err != nil {
 					return err
 				}
 			}
@@ -411,46 +479,18 @@ func (a app) saveActivity(w http.ResponseWriter, r *http.Request) {
 			if err := a.writer.Set(appName, activitiesTab, match, cells); err != nil {
 				return err
 			}
-			if current.Year != year || current.Title != title {
-				if err := a.flushRename(current.Year, current.Title, year, title); err != nil {
+			for _, d := range moved {
+				if err := a.writer.Set(appName, activitiesTab, map[string]string{"Event ID": d.ID}, map[string]string{"Year": year}); err != nil {
 					return err
 				}
 			}
 		}
-		return a.logChange(actor, action, "activity", map[string]string{"Year": year, "Activity": title, "Details": status})
+		return a.logChange(actor, action, "activity", map[string]string{"Year": year, "Activity": title, "Details": status + " " + id})
 	}) {
 		return
 	}
-	slog.InfoContext(r.Context(), "events: saved activity", "actor", actor, "action", action, "activity", title, "year", year, "status", status)
+	slog.InfoContext(r.Context(), "events: saved activity", "actor", actor, "action", action, "activity", title, "id", id, "year", year, "status", status)
 	w.WriteHeader(http.StatusNoContent)
-}
-
-// renameActivity carries every role, volunteer, and link along with a renamed
-// or moved activity, since they all name it by year and title.
-func (t *Tables) renameActivity(oldYear, oldTitle, year, title string) *Tables {
-	match := map[string]string{"Year": oldYear, "Activity": oldTitle}
-	cells := map[string]string{"Year": year, "Activity": title}
-	out := t
-	for _, tab := range []string{rolesTab, volunteersTab, linksTab} {
-		if out.count(tab, match) > 0 {
-			out = out.with(tab, match, cells)
-		}
-	}
-	return out
-}
-
-func (a app) flushRename(oldYear, oldTitle, year, title string) error {
-	match := map[string]string{"Year": oldYear, "Activity": oldTitle}
-	cells := map[string]string{"Year": year, "Activity": title}
-	for _, tab := range []string{rolesTab, volunteersTab, linksTab} {
-		if a.cache.Tables().count(tab, map[string]string{"Year": year, "Activity": title}) == 0 {
-			continue
-		}
-		if err := a.writer.Set(appName, tab, match, cells); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func (a app) deleteActivity(w http.ResponseWriter, r *http.Request) {
@@ -462,25 +502,28 @@ func (a app) deleteActivity(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	act, ok := a.findActivity(w, body.Year, body.Title)
+	act, ok := a.findActivity(w, body.ID)
 	if !ok {
 		return
 	}
-	match := map[string]string{"Year": act.Year, "Activity": act.Title}
+	match := map[string]string{"Event ID": act.ID}
 	tables := a.cache.Tables()
 	if tables.count(volunteersTab, match) > 0 {
 		http.Error(w, "remove its volunteers first", http.StatusBadRequest)
 		return
 	}
-	self := map[string]string{"Year": act.Year, "Title": act.Title}
-	tables = tables.without(rolesTab, match).without(linksTab, match).without(activitiesTab, self)
+	// Deleting a parent would orphan whatever hangs off it, and the next load
+	// would refuse the whole sheet over the dangling Parent.
+	if len(act.Children) > 0 {
+		http.Error(w, "delete the things under it first", http.StatusBadRequest)
+		return
+	}
+	tables = tables.without(linksTab, match).without(activitiesTab, match)
 	if !a.commit(r.Context(), w, tables, func() error {
-		for _, tab := range []string{rolesTab, linksTab} {
-			if err := a.writer.Delete(appName, tab, match); err != nil {
-				return err
-			}
+		if err := a.writer.Delete(appName, linksTab, match); err != nil {
+			return err
 		}
-		if err := a.writer.Delete(appName, activitiesTab, self); err != nil {
+		if err := a.writer.Delete(appName, activitiesTab, match); err != nil {
 			return err
 		}
 		return a.logChange(actor, "delete", "activity", map[string]string{"Year": act.Year, "Activity": act.Title})
@@ -491,198 +534,10 @@ func (a app) deleteActivity(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-type roleBody struct {
-	Year             string `json:"year"`
-	Activity         string `json:"activity"`
-	Original         string `json:"original"`
-	Title            string `json:"title"`
-	Parent           string `json:"parent"`
-	Group            string `json:"group"`
-	Status           string `json:"status"`
-	Description      string `json:"description"`
-	Image            string `json:"image"`
-	Start            string `json:"start"`
-	End              string `json:"end"`
-	Spots            int    `json:"spots"`
-	CoLeaderNeeded   bool   `json:"coLeaderNeeded"`
-	VolunteersHidden bool   `json:"volunteersHidden"`
-	CoChair          bool   `json:"coChair"`
-}
-
-// saveRole adds or edits a role under an activity. Anyone may suggest one on an
-// open activity, which lands as Pending; the activity's editors add them open
-// and change them.
-func (a app) saveRole(w http.ResponseWriter, r *http.Request) {
-	actor, admin := a.who(r)
-	var body roleBody
-	if !decode(w, r, &body) {
-		return
-	}
-	act, ok := a.findActivity(w, body.Year, body.Activity)
-	if !ok {
-		return
-	}
-	editor := admin || act.IsCoChair(actor)
-	title := strings.TrimSpace(body.Title)
-	adding := body.Original == ""
-	if !adding && !editor {
-		http.Error(w, "only a co-chair or admin can edit this", http.StatusForbidden)
-		return
-	}
-	if adding && !editor && act.Status != StatusOpen {
-		http.Error(w, "this activity is not open for suggestions", http.StatusBadRequest)
-		return
-	}
-	status := body.Status
-	if !editor {
-		status = StatusPending
-	} else if status == "" {
-		status = StatusOpen
-	}
-	cells := map[string]string{
-		"Year": act.Year, "Activity": act.Title, "Parent": strings.TrimSpace(body.Parent), "Title": title,
-		"Group": strings.TrimSpace(body.Group), "Status": status, "Description": strings.TrimSpace(body.Description),
-		"Image": strings.TrimSpace(body.Image), "Start": strings.TrimSpace(body.Start), "End": strings.TrimSpace(body.End),
-		"Spots": spotsCell(body.Spots), "Co-Leader Needed": YesNo(body.CoLeaderNeeded), "Volunteers Hidden": YesNo(body.VolunteersHidden),
-	}
-	tables := a.cache.Tables()
-	action := "edit"
-	var match map[string]string
-	renamed := !adding && body.Original != title
-	if adding || renamed {
-		if act.Role(title) != nil {
-			http.Error(w, fmt.Sprintf("%q already has a role called %q", act.Title, title), http.StatusBadRequest)
-			return
-		}
-	}
-	volunteer := map[string]string{
-		"Year": act.Year, "Activity": act.Title, "Role": title, "Email": actor, "Position": PositionOpen, "Added By": actor, "Added": today(),
-	}
-	if adding {
-		action = "add"
-		cells["Added By"] = actor
-		cells["Added"] = today()
-		tables = tables.with(rolesTab, nil, cells)
-		if body.CoChair {
-			tables = tables.with(volunteersTab, nil, volunteer)
-		}
-	} else {
-		match = map[string]string{"Year": act.Year, "Activity": act.Title, "Title": body.Original}
-		tables = tables.with(rolesTab, match, cells)
-		if renamed {
-			tables = tables.renameRole(act.Year, act.Title, body.Original, title)
-		}
-	}
-	if !a.commit(r.Context(), w, tables, func() error {
-		if adding {
-			if err := a.writer.Append(appName, rolesTab, rowOf(RoleColumns, cells)); err != nil {
-				return err
-			}
-			if body.CoChair {
-				if err := a.writer.Append(appName, volunteersTab, rowOf(VolunteerColumns, volunteer)); err != nil {
-					return err
-				}
-			}
-		} else {
-			if err := a.writer.Set(appName, rolesTab, match, cells); err != nil {
-				return err
-			}
-			if renamed {
-				if err := a.flushRoleRename(act.Year, act.Title, body.Original, title); err != nil {
-					return err
-				}
-			}
-		}
-		return a.logChange(actor, action, "role", map[string]string{"Year": act.Year, "Activity": act.Title, "Role": title, "Details": status})
-	}) {
-		return
-	}
-	slog.InfoContext(r.Context(), "events: saved role", "actor", actor, "action", action, "role", title, "activity", act.Title, "year", act.Year, "status", status)
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// renameRole carries sub-roles, volunteers, and links along with a renamed role.
-func (t *Tables) renameRole(year, activity, oldTitle, title string) *Tables {
-	base := map[string]string{"Year": year, "Activity": activity}
-	out := t
-	for _, step := range []struct{ tab, column string }{{rolesTab, "Parent"}, {volunteersTab, "Role"}, {linksTab, "Role"}} {
-		match := map[string]string{"Year": base["Year"], "Activity": base["Activity"], step.column: oldTitle}
-		if out.count(step.tab, match) > 0 {
-			out = out.with(step.tab, match, map[string]string{step.column: title})
-		}
-	}
-	return out
-}
-
-func (a app) flushRoleRename(year, activity, oldTitle, title string) error {
-	for _, step := range []struct{ tab, column string }{{rolesTab, "Parent"}, {volunteersTab, "Role"}, {linksTab, "Role"}} {
-		if a.cache.Tables().count(step.tab, map[string]string{"Year": year, "Activity": activity, step.column: title}) == 0 {
-			continue
-		}
-		match := map[string]string{"Year": year, "Activity": activity, step.column: oldTitle}
-		if err := a.writer.Set(appName, step.tab, match, map[string]string{step.column: title}); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (a app) deleteRole(w http.ResponseWriter, r *http.Request) {
-	actor, admin := a.who(r)
-	var body struct {
-		Year     string `json:"year"`
-		Activity string `json:"activity"`
-		Title    string `json:"title"`
-	}
-	if !decode(w, r, &body) {
-		return
-	}
-	act, ok := a.findActivity(w, body.Year, body.Activity)
-	if !ok {
-		return
-	}
-	if !admin && !act.IsCoChair(actor) {
-		http.Error(w, "only a co-chair or admin can delete this", http.StatusForbidden)
-		return
-	}
-	role := act.Role(body.Title)
-	if role == nil {
-		http.Error(w, "no such role", http.StatusNotFound)
-		return
-	}
-	tables := a.cache.Tables()
-	if len(role.Roles) > 0 {
-		http.Error(w, "delete the roles under it first", http.StatusBadRequest)
-		return
-	}
-	if tables.count(volunteersTab, map[string]string{"Year": act.Year, "Activity": act.Title, "Role": role.Title}) > 0 {
-		http.Error(w, "remove its volunteers first", http.StatusBadRequest)
-		return
-	}
-	self := map[string]string{"Year": act.Year, "Activity": act.Title, "Title": role.Title}
-	links := map[string]string{"Year": act.Year, "Activity": act.Title, "Role": role.Title}
-	tables = tables.without(linksTab, links).without(rolesTab, self)
-	if !a.commit(r.Context(), w, tables, func() error {
-		if err := a.writer.Delete(appName, linksTab, links); err != nil {
-			return err
-		}
-		if err := a.writer.Delete(appName, rolesTab, self); err != nil {
-			return err
-		}
-		return a.logChange(actor, "delete", "role", map[string]string{"Year": act.Year, "Activity": act.Title, "Role": role.Title})
-	}) {
-		return
-	}
-	slog.InfoContext(r.Context(), "events: deleted role", "actor", actor, "role", role.Title, "activity", act.Title, "year", act.Year)
-	w.WriteHeader(http.StatusNoContent)
-}
-
 func (a app) saveLink(w http.ResponseWriter, r *http.Request) {
 	actor, admin := a.who(r)
 	var body struct {
-		Year     string `json:"year"`
-		Activity string `json:"activity"`
-		Role     string `json:"role"`
+		ID       string `json:"id"`
 		Original string `json:"original"`
 		Title    string `json:"title"`
 		URL      string `json:"url"`
@@ -691,17 +546,17 @@ func (a app) saveLink(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	act, ok := a.findActivity(w, body.Year, body.Activity)
+	act, ok := a.findActivity(w, body.ID)
 	if !ok {
 		return
 	}
-	if !admin && !act.IsCoChair(actor) {
+	if !admin && !a.cache.Model().Runs(act, actor) {
 		http.Error(w, "only a co-chair or admin can add links", http.StatusForbidden)
 		return
 	}
 	title := strings.TrimSpace(body.Title)
 	cells := map[string]string{
-		"Year": act.Year, "Activity": act.Title, "Role": body.Role, "Title": title,
+		"Event ID": act.ID, "Title": title,
 		"URL": strings.TrimSpace(body.URL), "Image": strings.TrimSpace(body.Image),
 	}
 	tables := a.cache.Tables()
@@ -711,18 +566,18 @@ func (a app) saveLink(w http.ResponseWriter, r *http.Request) {
 		action = "add"
 		tables = tables.with(linksTab, nil, cells)
 	} else {
-		match = map[string]string{"Year": act.Year, "Activity": act.Title, "Role": body.Role, "Title": body.Original}
+		match = map[string]string{"Event ID": act.ID, "Title": body.Original}
 		tables = tables.with(linksTab, match, cells)
 	}
 	if !a.commit(r.Context(), w, tables, func() error {
 		if body.Original == "" {
-			if err := a.writer.Append(appName, linksTab, rowOf(LinkColumns, cells)); err != nil {
+			if err := a.writer.AppendCells(appName, linksTab, cells); err != nil {
 				return err
 			}
 		} else if err := a.writer.Set(appName, linksTab, match, cells); err != nil {
 			return err
 		}
-		return a.logChange(actor, action, "link", map[string]string{"Year": act.Year, "Activity": act.Title, "Role": body.Role, "Title": title, "Details": cells["URL"]})
+		return a.logChange(actor, action, "link", map[string]string{"Year": act.Year, "Activity": act.Title, "Title": title, "Details": cells["URL"]})
 	}) {
 		return
 	}
@@ -733,28 +588,26 @@ func (a app) saveLink(w http.ResponseWriter, r *http.Request) {
 func (a app) deleteLink(w http.ResponseWriter, r *http.Request) {
 	actor, admin := a.who(r)
 	var body struct {
-		Year     string `json:"year"`
-		Activity string `json:"activity"`
-		Role     string `json:"role"`
-		Title    string `json:"title"`
+		ID    string `json:"id"`
+		Title string `json:"title"`
 	}
 	if !decode(w, r, &body) {
 		return
 	}
-	act, ok := a.findActivity(w, body.Year, body.Activity)
+	act, ok := a.findActivity(w, body.ID)
 	if !ok {
 		return
 	}
-	if !admin && !act.IsCoChair(actor) {
+	if !admin && !a.cache.Model().Runs(act, actor) {
 		http.Error(w, "only a co-chair or admin can remove links", http.StatusForbidden)
 		return
 	}
-	match := map[string]string{"Year": act.Year, "Activity": act.Title, "Role": body.Role, "Title": body.Title}
+	match := map[string]string{"Event ID": act.ID, "Title": body.Title}
 	if !a.commit(r.Context(), w, a.cache.Tables().without(linksTab, match), func() error {
 		if err := a.writer.Delete(appName, linksTab, match); err != nil {
 			return err
 		}
-		return a.logChange(actor, "delete", "link", map[string]string{"Year": act.Year, "Activity": act.Title, "Role": body.Role, "Title": body.Title})
+		return a.logChange(actor, "delete", "link", map[string]string{"Year": act.Year, "Activity": act.Title, "Title": body.Title})
 	}) {
 		return
 	}
@@ -762,84 +615,201 @@ func (a app) deleteLink(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
-	actor, ok := a.requireAdmin(w, r)
-	if !ok {
-		return
+// categoryEditor decides who may change a category: an admin for a page
+// heading, and for an event's own category, anyone who runs that event.
+func (a app) categoryEditor(w http.ResponseWriter, r *http.Request, eventID string) (string, bool) {
+	actor, admin := a.who(r)
+	if admin {
+		return actor, true
 	}
+	if eventID == "" {
+		http.Error(w, "only an admin can change the page's categories", http.StatusForbidden)
+		return "", false
+	}
+	event := a.cache.Model().Activity(eventID)
+	if event == nil || !a.cache.Model().Runs(event, actor) {
+		http.Error(w, "only a co-chair or admin can change this event's categories", http.StatusForbidden)
+		return "", false
+	}
+	return actor, true
+}
+
+func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Original    string `json:"original"`
+		ID          string `json:"id"`
+		EventID     string `json:"eventId"`
 		Title       string `json:"title"`
 		Description string `json:"description"`
+		Image       string `json:"image"`
+		AllowAdding bool   `json:"allowAdding"`
 	}
 	if !decode(w, r, &body) {
 		return
 	}
+	model := a.cache.Model()
 	title := strings.TrimSpace(body.Title)
-	cells := map[string]string{"Title": title, "Description": strings.TrimSpace(body.Description)}
+	eventID := strings.TrimSpace(body.EventID)
+	adding := body.ID == ""
+	id := strings.TrimSpace(body.ID)
+	if !adding {
+		current := model.Category(id)
+		if current == nil {
+			http.Error(w, fmt.Sprintf("no category with id %q", id), http.StatusNotFound)
+			return
+		}
+		if current.BuiltIn {
+			http.Error(w, "Uncategorized is built in and cannot be changed", http.StatusBadRequest)
+			return
+		}
+		// A category stays where it was made: moving one between events, or
+		// between an event and the page, would strand whatever names it.
+		eventID = current.EventID
+	} else if eventID != "" {
+		event := model.Activity(eventID)
+		if event == nil || event.Parent != "" {
+			http.Error(w, "an event's category has to belong to a root event", http.StatusBadRequest)
+			return
+		}
+	}
+	actor, ok := a.categoryEditor(w, r, eventID)
+	if !ok {
+		return
+	}
+	if adding {
+		id = newID()
+	}
+	cells := map[string]string{
+		"Category ID":  id,
+		"Event ID":     eventID,
+		"Title":        title,
+		"Description":  strings.TrimSpace(body.Description),
+		"Image":        strings.TrimSpace(body.Image),
+		"Allow Adding": YesNo(body.AllowAdding),
+	}
 	tables := a.cache.Tables()
 	action := "edit"
-	var match map[string]string
-	renamed := body.Original != "" && body.Original != title
-	if body.Original == "" {
+	match := map[string]string{"Category ID": id}
+	if adding {
 		action = "add"
 		tables = tables.with(categoriesTab, nil, cells)
 	} else {
-		match = map[string]string{"Title": body.Original}
 		tables = tables.with(categoriesTab, match, cells)
-		if renamed {
-			tables = tables.with(activitiesTab, map[string]string{"Category": body.Original}, map[string]string{"Category": title})
-		}
 	}
 	if !a.commit(r.Context(), w, tables, func() error {
-		if body.Original == "" {
-			if err := a.writer.Append(appName, categoriesTab, rowOf(CategoryColumns, cells)); err != nil {
+		if adding {
+			if err := a.writer.AppendCells(appName, categoriesTab, cells); err != nil {
 				return err
 			}
-		} else {
-			if err := a.writer.Set(appName, categoriesTab, match, cells); err != nil {
-				return err
-			}
-			if renamed && a.cache.Tables().count(activitiesTab, map[string]string{"Category": title}) > 0 {
-				if err := a.writer.Set(appName, activitiesTab, map[string]string{"Category": body.Original}, map[string]string{"Category": title}); err != nil {
-					return err
-				}
-			}
+		} else if err := a.writer.Set(appName, categoriesTab, match, cells); err != nil {
+			return err
 		}
-		return a.logChange(actor, action, "category", map[string]string{"Title": title})
+		return a.logChange(actor, action, "category", map[string]string{"Title": title, "Details": id + " " + eventID})
 	}) {
 		return
 	}
-	slog.InfoContext(r.Context(), "events: saved category", "actor", actor, "action", action, "category", title)
+	slog.InfoContext(r.Context(), "events: saved category", "actor", actor, "action", action, "category", title, "id", id, "event", eventID)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// reorderCategories puts one scope's categories - the page's, or one event's -
+// into the given order. The writer's Reorder wants every row of the tab exactly
+// once, so the other scopes' rows are threaded through untouched, each in the
+// slot it already had.
+func (a app) reorderCategories(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		EventID string   `json:"eventId"`
+		IDs     []string `json:"ids"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	eventID := strings.TrimSpace(body.EventID)
+	actor, ok := a.categoryEditor(w, r, eventID)
+	if !ok {
+		return
+	}
+	tables := a.cache.Tables()
+	inScope := map[string]map[string]string{}
+	for _, row := range tables.Categories {
+		if strings.TrimSpace(row["Event ID"]) == eventID {
+			inScope[row["Category ID"]] = row
+		}
+	}
+	if len(body.IDs) != len(inScope) {
+		http.Error(w, "the order must name every category exactly once", http.StatusBadRequest)
+		return
+	}
+	for _, id := range body.IDs {
+		if _, ok := inScope[id]; !ok {
+			http.Error(w, "the order must name every category exactly once", http.StatusBadRequest)
+			return
+		}
+		delete(inScope, id)
+	}
+	ordered := make([]map[string]string, 0, len(tables.Categories))
+	keys := make([]string, 0, len(tables.Categories))
+	next := 0
+	byID := map[string]map[string]string{}
+	for _, row := range tables.Categories {
+		byID[row["Category ID"]] = row
+	}
+	for _, row := range tables.Categories {
+		if strings.TrimSpace(row["Event ID"]) == eventID {
+			row = byID[body.IDs[next]]
+			next++
+		}
+		ordered = append(ordered, row)
+		keys = append(keys, row["Category ID"])
+	}
+	nextTables := *tables
+	nextTables.Categories = ordered
+	if !a.commit(r.Context(), w, &nextTables, func() error {
+		if err := a.writer.Reorder(appName, categoriesTab, "Category ID", keys); err != nil {
+			return err
+		}
+		return a.logChange(actor, "reorder", "category", map[string]string{"Details": eventID + ": " + strings.Join(body.IDs, ", ")})
+	}) {
+		return
+	}
+	slog.InfoContext(r.Context(), "events: reordered categories", "actor", actor, "event", eventID, "count", len(body.IDs))
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (a app) deleteCategory(w http.ResponseWriter, r *http.Request) {
-	actor, ok := a.requireAdmin(w, r)
-	if !ok {
-		return
-	}
 	var body struct {
-		Title string `json:"title"`
+		ID string `json:"id"`
 	}
 	if !decode(w, r, &body) {
 		return
 	}
+	cat := a.cache.Model().Category(strings.TrimSpace(body.ID))
+	if cat == nil {
+		http.Error(w, "no such category", http.StatusNotFound)
+		return
+	}
+	if cat.BuiltIn {
+		http.Error(w, "Uncategorized is built in and cannot be deleted", http.StatusBadRequest)
+		return
+	}
+	actor, ok := a.categoryEditor(w, r, cat.EventID)
+	if !ok {
+		return
+	}
 	tables := a.cache.Tables()
-	if tables.count(activitiesTab, map[string]string{"Category": body.Title}) > 0 {
+	if tables.count(activitiesTab, map[string]string{"Category": cat.ID}) > 0 {
 		http.Error(w, "move or delete its activities first", http.StatusBadRequest)
 		return
 	}
-	match := map[string]string{"Title": body.Title}
+	match := map[string]string{"Category ID": cat.ID}
 	if !a.commit(r.Context(), w, tables.without(categoriesTab, match), func() error {
 		if err := a.writer.Delete(appName, categoriesTab, match); err != nil {
 			return err
 		}
-		return a.logChange(actor, "delete", "category", map[string]string{"Title": body.Title})
+		return a.logChange(actor, "delete", "category", map[string]string{"Title": cat.Title, "Details": cat.ID})
 	}) {
 		return
 	}
-	slog.InfoContext(r.Context(), "events: deleted category", "actor", actor, "category", body.Title)
+	slog.InfoContext(r.Context(), "events: deleted category", "actor", actor, "category", cat.Title, "id", cat.ID)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -856,69 +826,106 @@ func (a app) copyActivity(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	act, ok := a.findActivity(w, body.Year, body.Title)
+	act, ok := a.findActivity(w, body.ID)
 	if !ok {
 		return
 	}
-	year := ShiftYear(act.Year, 1)
-	if a.cache.Model().Activity(year, act.Title) != nil {
-		http.Error(w, fmt.Sprintf("%q already exists in %s", act.Title, year), http.StatusBadRequest)
+	if act.Parent != "" {
+		http.Error(w, "copy the whole activity it sits under instead", http.StatusBadRequest)
 		return
 	}
-	activity := map[string]string{
-		"Year": year, "Title": act.Title, "Category": act.Category, "Status": StatusOpen,
-		"Description": act.Description, "Image": act.Image, "Timing": act.Timing, "Location": act.Location,
-		"Spots": spotsCell(act.Spots), "Co-Leader Needed": YesNo(act.CoLeaderNeeded),
-		"Volunteers Hidden": YesNo(act.VolunteersHidden), "Direct Sign-Up": YesNo(act.DirectSignUp),
-		"Added By": actor, "Added": today(),
-	}
-	roles := []map[string]string{}
-	for _, role := range act.AllRoles() {
-		if role.Status == StatusPending {
-			continue
+	year := ShiftYear(act.Year, 1)
+	// Titles are not keys, so "already copied" has to be judged the way a person
+	// would: something of the same name already sits at the top of next year.
+	for _, other := range a.cache.Model().Activities {
+		if other.Year == year && other.Title == act.Title {
+			http.Error(w, fmt.Sprintf("%q already exists in %s", act.Title, year), http.StatusBadRequest)
+			return
 		}
-		roles = append(roles, map[string]string{
-			"Year": year, "Activity": act.Title, "Parent": role.Parent, "Title": role.Title, "Group": role.Group,
-			"Status": role.Status, "Description": role.Description, "Image": role.Image, "Spots": spotsCell(role.Spots),
-			"Co-Leader Needed": YesNo(role.CoLeaderNeeded), "Volunteers Hidden": YesNo(role.VolunteersHidden),
-			"Added By": actor, "Added": today(),
+	}
+	// Every copied row gets a fresh id, and the old-to-new map rewires each
+	// child's Parent onto its copied parent. A pending one is somebody's
+	// unapproved suggestion for the old year, so it does not travel.
+	fresh := map[string]string{act.ID: newID()}
+	// The event's own categories come along under new ids, so the copied
+	// children can name them; page headings are shared and keep their id.
+	catRows := []map[string]string{}
+	for _, c := range act.Categories {
+		fresh[c.ID] = newID()
+		catRows = append(catRows, map[string]string{
+			"Category ID": fresh[c.ID], "Event ID": fresh[act.ID], "Title": c.Title, "Description": c.Description,
+			"Image": c.Image, "Allow Adding": YesNo(c.AllowAdding),
 		})
 	}
-	links := []map[string]string{}
-	for _, l := range act.Links {
-		links = append(links, map[string]string{"Year": year, "Activity": act.Title, "Title": l.Title, "URL": l.URL, "Image": l.Image})
+	remap := func(id string) string {
+		if to, ok := fresh[id]; ok {
+			return to
+		}
+		if id == UncategorizedID {
+			return ""
+		}
+		return id
 	}
-	for _, role := range act.AllRoles() {
-		for _, l := range role.Links {
-			links = append(links, map[string]string{"Year": year, "Activity": act.Title, "Role": role.Title, "Title": l.Title, "URL": l.URL, "Image": l.Image})
+	rowFor := func(c *Activity, parent string) map[string]string {
+		return map[string]string{
+			"Event ID": fresh[c.ID], "Year": year, "Title": c.Title, "Parent": parent, "Category": remap(c.Category),
+			"Status": c.Status, "Description": c.Description, "Image": c.Image, "Timing": c.Timing,
+			"Location": c.Location, "Spots": spotsCell(c.Spots),
+			"Co-Leader Needed": YesNo(c.CoLeaderNeeded), "Volunteers Hidden": YesNo(c.VolunteersHidden),
+			"Direct Sign-Up": YesNo(c.DirectSignUp), "Added By": actor, "Added": today(),
 		}
 	}
-	tables := a.cache.Tables().with(activitiesTab, nil, activity)
-	for _, row := range roles {
-		tables = tables.with(rolesTab, nil, row)
+	rows := []map[string]string{rowFor(act, "")}
+	rows[0]["Status"] = StatusOpen
+	copied := []*Activity{act}
+	for _, c := range act.Descendants() {
+		if c.Status == StatusPending {
+			continue
+		}
+		if _, ok := fresh[c.Parent]; !ok {
+			continue // under a pending one that did not travel
+		}
+		fresh[c.ID] = newID()
+		rows = append(rows, rowFor(c, fresh[c.Parent]))
+		copied = append(copied, c)
+	}
+	links := []map[string]string{}
+	for _, node := range copied {
+		for _, l := range node.Links {
+			links = append(links, map[string]string{"Event ID": fresh[node.ID], "Title": l.Title, "URL": l.URL, "Image": l.Image})
+		}
+	}
+	tables := a.cache.Tables()
+	for _, row := range catRows {
+		tables = tables.with(categoriesTab, nil, row)
+	}
+	for _, row := range rows {
+		tables = tables.with(activitiesTab, nil, row)
 	}
 	for _, row := range links {
 		tables = tables.with(linksTab, nil, row)
 	}
 	if !a.commit(r.Context(), w, tables, func() error {
-		if err := a.writer.Append(appName, activitiesTab, rowOf(ActivityColumns, activity)); err != nil {
-			return err
+		for _, row := range catRows {
+			if err := a.writer.AppendCells(appName, categoriesTab, row); err != nil {
+				return err
+			}
 		}
-		for _, row := range roles {
-			if err := a.writer.Append(appName, rolesTab, rowOf(RoleColumns, row)); err != nil {
+		for _, row := range rows {
+			if err := a.writer.AppendCells(appName, activitiesTab, row); err != nil {
 				return err
 			}
 		}
 		for _, row := range links {
-			if err := a.writer.Append(appName, linksTab, rowOf(LinkColumns, row)); err != nil {
+			if err := a.writer.AppendCells(appName, linksTab, row); err != nil {
 				return err
 			}
 		}
-		return a.logChange(actor, "copy", "activity", map[string]string{"Year": year, "Activity": act.Title, "Details": "from " + act.Year})
+		return a.logChange(actor, "copy", "activity", map[string]string{"Year": year, "Activity": act.Title, "Details": "from " + act.Year + " as " + fresh[act.ID]})
 	}) {
 		return
 	}
-	slog.InfoContext(r.Context(), "events: copied activity", "actor", actor, "activity", act.Title, "from", act.Year, "to", year)
+	slog.InfoContext(r.Context(), "events: copied activity", "actor", actor, "activity", act.Title, "from", act.Year, "to", year, "id", fresh[act.ID])
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -1048,7 +1055,7 @@ func (a app) setAdmins(w http.ResponseWriter, r *http.Request) {
 		}
 		for _, e := range admins {
 			if !was[e] {
-				if err := a.writer.Append(appName, adminsTab, []string{e}); err != nil {
+				if err := a.writer.AppendCells(appName, adminsTab, map[string]string{"Email": e}); err != nil {
 					return err
 				}
 			}

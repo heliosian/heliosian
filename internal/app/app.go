@@ -15,6 +15,7 @@ import (
 	"os/signal"
 	"path"
 	"path/filepath"
+	"sort"
 	"strings"
 	"syscall"
 
@@ -108,6 +109,36 @@ func (d directory) Person(email string) (string, string, bool) {
 		return "", "", false
 	}
 	return p.FullName, p.PhotoURL, true
+}
+
+// People is the directory as a picker sees it: everyone, with the one word that
+// places them - a staff member's job, a student's grade, or "Parent".
+func (d directory) People() []events.DirectoryPerson {
+	model := d.cache.Model()
+	out := make([]events.DirectoryPerson, 0, len(model.People))
+	for _, p := range model.People {
+		title := ""
+		switch {
+		case p.IsStaff:
+			title = p.JobTitle
+			if title == "" {
+				title = "Staff"
+			}
+		case p.IsStudent:
+			title = p.Grade
+			if title == "" {
+				title = "Student"
+			}
+		case p.IsParent:
+			title = "Parent"
+		}
+		out = append(out, events.DirectoryPerson{
+			Email: p.Email, Name: p.FullName, PhotoURL: model.HeroPhoto(p.Email), Title: title,
+			IsStudent: p.IsStudent, ParentEmails: p.ParentContactEmails,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
 }
 
 func cacheControl(next http.Handler) http.Handler {

@@ -6,20 +6,36 @@ The portal's data lives in one Google Sheet, `Events`, in the community shared d
 
 ## Tabs
 
-- `Categories` — Title, Description. Row order is display order.
-- `Activities` — Year, Title, Category, Status, Description, Image, Timing, Start, End, Location, Spots, Co-Leader Needed, Volunteers Hidden, Direct Sign-Up, Added By, Added.
-- `Roles` — Year, Activity, Parent, Title, Group, Status, Description, Image, Start, End, Spots, Co-Leader Needed, Volunteers Hidden, Added By, Added.
-- `Volunteers` — Year, Activity, Role, Email, Position, Note, Added By, Added. A blank Role is the activity itself.
-- `Links` — Year, Activity, Role, Title, URL, Image.
+- `Categories` — Category ID, Event ID, Title, Description, Image, Allow Adding. Row order is display order within a scope. A blank Event ID makes a heading on the Opportunities page; an Event ID makes one of that root event's own categories, which the things under it are grouped by.
+- `Activities` — Event ID, Year, Title, Parent, Category, Status, Description, Image, Timing, Start, End, Location, Spots, Co-Leader Needed, Volunteers Hidden, Direct Sign-Up, Added By, Added. Parent is an Event ID. Category is a Category ID: a page heading for a root, one of the root event's own for anything under it (or blank).
+- `Volunteers` — Event ID, Email, Position, Note, Added By, Added.
+- `Links` — Event ID, Title, URL, Image.
+
 - `Settings` — Key, Value: `Expense Form URL` and `Intro`, both required.
 - `Admins` — Email.
-- `Change Log` — appended on every change; never read back.
+- `Change Log` — Timestamp, Actor, Action, Kind, Year, Activity, Title, Email, Details; appended on every change, never read back.
 
-## Keys are names
+**Column order does not matter, column names do.** Every write places each cell under the column of that name wherever the tab keeps it (`Writer.AppendCells`), so columns may be rearranged by hand. The tabs that are read back must have exactly the columns listed - a missing one and an extra one both refuse the load, since a misspelt header would otherwise be ignored silently. Tabs the app never reads (`Change Log`, and any tab kept for backup such as the old `Roles`) are left alone.
 
-Nothing carries an opaque id. An activity is its year and title; a role is its year, activity, and title; a volunteer is those plus an email. The sheet reads as prose, and a person fixing something by hand needs no lookup. The cost is that a rename cascades, and the app pays it: renaming an activity rewrites every role, volunteer, and link naming it, and renaming a role rewrites its sub-roles, volunteers, and links, all in one write batch through the queue.
+## One table, one tree
 
-A role title is unique within its activity across every level of nesting, which is what lets a volunteer row name its role by title alone. The Parent column names another role of the same activity; the loader refuses a parent that does not exist and a chain that loops.
+There is no separate table of roles. A committee, a booth, or a shift is an activity like the event it sits under, distinguished only by naming that event in its `Parent` column; the roots — the things with no parent — are what the opportunities page lists. The tree nests to any depth: a booth can hold its own performance slot. `Group` is the sub-heading a child lists under on its parent's page and means nothing on a root. A child needs no `Category`: it takes its root's for tinting and filing.
+
+`Parent` is the Event ID of another activity **in the same year**; the loader refuses a parent that does not exist, a row that is its own parent, a parent in another year, and a chain that loops. Deleting something with children is refused, since the next load would refuse the orphaned rows. Moving a root to another year takes its whole tree with it.
+
+## Two kinds of category
+
+A category row with no Event ID is a heading on the Opportunities page, and only a root activity may name one. A root whose Category is blank, or names an id that is not a heading, is shown under a built-in **Uncategorized** heading (id `uncategorized`), which appears last and only while something needs it; it cannot be edited, reordered or deleted, and saving a root as Uncategorized stores a blank. A child whose Category names anything but one of its own event's categories is treated as having none. A row with an Event ID belongs to that root event: the things under the event — at any depth — are grouped by these on its page, in their row order, with the uncategorised ones last. Each event manages its own from its page (the Edit Categories button while editing); the page's headings are managed from Admin Tools. Whoever runs an event may change its categories; the page's need an admin. A category never moves between scopes once made.
+
+`Allow Adding` says whether people who do not run the thing may propose new items into a category — a booth into "Place & Culture Booths", an idea into "Just an Idea". Editors of the event (admins, for the page) can always add. The loader refuses a root naming an event's category, a child naming a page heading or another event's category, and a scoped category whose Event ID is not a root.
+
+Copying an event to the next year copies its categories too, under fresh ids, and the copied children point at the copies.
+
+## Keys are ids
+
+Every activity has an `Event ID` and every category a `Category ID`, unique across the sheet, and everything that refers to one does so by id: a child's `Parent`, a root's `Category`, and the `Event ID` on every volunteer and link row. Titles are just titles — two booths under different events can both be "Set Up Crew", a rename touches one cell and nothing else, and every node lives at `/activities/{id}`. The app mints an id when it creates a row (eight characters from a 32-symbol alphabet); rows added by hand need one too, and the loader refuses a row without one or two rows sharing one.
+
+The cost is that the sheet no longer reads as prose on its own — a volunteer row says `E017`, not "Clean Up Crew" — so the Change Log keeps writing titles alongside ids for the humans who read it.
 
 ## Why the Glide tables were not kept
 

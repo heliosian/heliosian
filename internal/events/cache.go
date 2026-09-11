@@ -58,12 +58,12 @@ func (c *Cache) refresh() error {
 		return err
 	}
 	c.set(tables, model)
-	roles, volunteers := 0, len(tables.Volunteers)
+	children, volunteers := 0, len(tables.Volunteers)
 	for _, a := range model.Activities {
-		roles += len(a.AllRoles())
+		children += len(a.Descendants())
 	}
-	slog.Info("loaded events model", "categories", len(model.Categories), "activities", len(model.Activities),
-		"roles", roles, "volunteers", volunteers, "took", time.Since(start).Round(time.Millisecond))
+	slog.Info("loaded events model", "categories", len(model.Categories), "roots", len(model.Activities),
+		"children", children, "volunteers", volunteers, "took", time.Since(start).Round(time.Millisecond))
 	return nil
 }
 

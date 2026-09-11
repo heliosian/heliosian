@@ -1,14 +1,13 @@
-import {applyModel, activity, findRole} from './state.js';
+import {applyModel, activity} from './state.js';
 import {el} from './dom.js';
-import {initChrome, renderChrome, setTitle} from './chrome.js';
+import {initChrome, renderChrome, setTitle, clearSearch} from './chrome.js';
 import {initModal} from './edit.js';
 import {signUpPage} from './pages/signup.js';
 import {myPage} from './pages/my.js';
 import {calendarPage} from './pages/calendar.js';
-import {activityPage, rolePage} from './pages/detail.js';
-import {allPage} from './pages/all.js';
-import {peoplePage, personPage} from './pages/people.js';
+import {activityPage} from './pages/detail.js';
 import {adminPage} from './pages/admin.js';
+import {approvalsPage} from './pages/approvals.js';
 
 export async function load() {
   const res = await fetch('/api/events/model');
@@ -23,7 +22,7 @@ export async function load() {
 export function navigate(path) {
   history.pushState(null, '', path);
   render();
-  window.scrollTo(0, 0);
+  document.querySelector('#main').scrollTo(0, 0);
 }
 
 function notFound(what) {
@@ -45,31 +44,28 @@ function route() {
       return myPage();
     case 'calendar':
       return calendarPage();
-    case 'all':
-      return allPage();
-    case 'people':
-      return parts[1] ? personPage(parts[1]) : peoplePage();
     case 'admin':
       return adminPage();
+    case 'approvals':
+      return approvalsPage();
     case 'activities': {
-      const act = activity(parts[1], parts[2]);
-      if (!act) {
-        return notFound(parts[2] || 'That activity');
-      }
-      if (parts[3] === 'roles') {
-        const role = findRole(act, parts[4]);
-        return role ? rolePage(act, role) : notFound(parts[4] || 'That role');
-      }
-      return activityPage(act);
+      // Everything under an activity is an activity with an id, so one shape of
+      // URL reaches a headline event and a single shift alike.
+      const act = activity(parts[1]);
+      return act ? activityPage(act) : notFound('That activity');
     }
   }
   return notFound('That page');
 }
 
 export function render() {
-  const main = document.querySelector('#page');
-  main.className = '';
-  main.replaceChildren(route());
+  const page = document.querySelector('#page');
+  page.className = '';
+  clearSearch();
+  page.replaceChildren(route());
+  // After the page, so the rail's active item and its per-category counts
+  // reflect where we just landed and what that page filtered to.
+  renderChrome();
 }
 
 document.addEventListener('click', e => {
@@ -82,6 +78,7 @@ document.addEventListener('click', e => {
 });
 
 window.addEventListener('popstate', render);
+document.addEventListener('hca:refresh', render);
 
 initChrome();
 initModal();

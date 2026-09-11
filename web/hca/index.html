@@ -6,11 +6,11 @@
 <meta name="theme-color" content="#ffffff">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>HCA Volunteer Portal</title>
+<title>HCA-Team: HCA Volunteer Portal</title>
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="16x16" href="/brand/favicon-16.png">
 <link rel="icon" type="image/png" sizes="32x32" href="/brand/favicon-32.png">
-<link rel="icon" href="/brand/icon-192.png">
+<link rel="icon" href="/brand/favicon.png">
 <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
 <link rel="apple-touch-startup-image" media="(device-width: 1366px) and (device-height: 1024px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" href="/brand/splash/splash-1366x1024-2x-landscape.png">
 <link rel="apple-touch-startup-image" media="(device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" href="/brand/splash/splash-1024x1366-2x-portrait.png">
@@ -58,31 +58,58 @@
 <link rel="modulepreload" href="/pages/my.js">
 <link rel="modulepreload" href="/pages/calendar.js">
 <link rel="modulepreload" href="/pages/detail.js">
-<link rel="modulepreload" href="/pages/all.js">
-<link rel="modulepreload" href="/pages/people.js">
 <link rel="modulepreload" href="/pages/admin.js">
 </head>
 <body>
-<header class="topbar">
-<button type="button" class="icon-button menu-button" id="menu-button" aria-label="Menu"></button>
-<a class="brand" href="/" data-link><img src="/brand/icon-192.png" alt=""><span>HCA Volunteer Portal</span></a>
+<header class="mobile-top">
+<button type="button" class="mobile-menu-btn" id="menu-button" aria-label="Menu"></button>
 <div class="mobile-title" id="mobile-title"></div>
-<nav class="nav" id="nav"></nav>
+<button type="button" class="mobile-search-btn" id="mobile-search-btn" aria-label="Search" hidden></button>
+<button type="button" class="user" id="mobile-user" aria-label="Account"><span class="user-avatar"></span></button>
+<div class="user-menu" id="mobile-user-menu" hidden>
+<div class="user-menu-email"></div>
+<label class="user-menu-toggle user-menu-admin" hidden><span>Show Hidden Events</span><input type="checkbox" class="show-hidden-checkbox"></label>
+<a href="/admin" class="user-menu-admin" data-link hidden>Admin Tools</a>
+<form method="post" action="/auth/logout"><button>Sign Out</button></form>
+</div>
+</header>
+<div class="app-shell">
+<aside class="sidebar">
+<div class="brand"><a href="/" data-link><img src="/brand/logo-lockup-vertical.png" alt="HCA-Team: HCA Volunteer Portal"></a></div>
+<nav class="app-nav" id="nav"></nav>
+</aside>
+<div class="content-col">
+<header class="topbar">
+<div class="topbar-search" id="topbar-search" hidden>
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
+<input type="search" id="search-input" placeholder="Search" autocomplete="off">
+</div>
 <div class="topbar-user">
-<button type="button" class="user" id="user" aria-label="Account"><span class="user-avatar"></span></button>
+<button type="button" class="user" id="user" aria-label="Account"><span class="user-avatar"></span><span class="user-name"></span></button>
 <div class="user-menu" id="user-menu" hidden>
 <div class="user-menu-email"></div>
+<label class="user-menu-toggle user-menu-admin" hidden><span>Show Hidden Events</span><input type="checkbox" class="show-hidden-checkbox"></label>
 <a href="/admin" class="user-menu-admin" data-link hidden>Admin Tools</a>
 <form method="post" action="/auth/logout"><button>Sign Out</button></form>
 </div>
 </div>
 </header>
+<main id="main">
+<div id="page"></div>
+<footer class="site-footer" id="site-footer"></footer>
+</main>
+</div>
+</div>
+<nav class="tabbar" id="tabbar"></nav>
 <div class="drawer-overlay" id="drawer-overlay" hidden>
 <aside class="drawer" id="drawer"></aside>
 </div>
-<main id="page"></main>
-<footer class="site-footer" id="site-footer"></footer>
-<nav class="tabbar" id="tabbar"></nav>
+<div class="mobile-search-overlay" id="mobile-search-overlay" hidden>
+<div class="mobile-search-head">
+<input type="search" id="mobile-search-input" placeholder="Search" autocomplete="off">
+<button type="button" class="mobile-search-close" id="mobile-search-close" aria-label="Close"></button>
+</div>
+</div>
 <div class="modal-overlay" id="modal-overlay" hidden><form class="modal" id="modal"></form></div>
 <div class="toast" id="toast" hidden></div>
 <script type="module" src="/app.js"></script>

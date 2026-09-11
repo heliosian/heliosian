@@ -1,61 +1,696 @@
-import {me, isAdmin, years, allRoles, parentOf, whenLabel, longDate, parseWhen, coChairs, mySignUp, canJoin, isFull, matches, activityPath, rolePath} from '../state.js';
+import {state, isAdmin, years, allYears, descendants, parentOf, rootOf, category, eventCategories, longDate, parseWhen, coChairs, mySignUp, canJoin, isFull, matches, activityPath, listedIn, sortByStart, shiftedEnd, headingChoices} from '../state.js';
 import {el, link, svg, thumb, avatar, badge, button, searchBox, tabs, copyText} from '../dom.js';
 import {setTitle} from '../chrome.js';
-import {roleRow, linkRow} from '../cards.js';
-import {openSignUp, openActivity, openRole, openLink, removeVolunteer, copyToNextYear, saveActivityFields, saveRoleFields} from '../edit.js';
+import {childRow, categoryClass} from '../cards.js';
+import {openSignUp, openActivity, openLink, saveActivityFields, editable, textInput, textAreaInput, selectInput, uploadAndSave, openCategoryManager, openVolunteerGrid} from '../edit.js';
 
-function crumb(parts) {
-  const nav = el('div', 'crumb');
-  const back = link(parts[parts.length - 2].href, '');
-  back.append(svg('back'));
-  nav.append(back);
-  parts.forEach((part, i) => {
-    if (i) {
-      nav.append(el('span', '', '/'));
+
+// Which activity is in edit mode, by path. Keyed rather than a bare boolean so
+// opening a different activity never inherits the last one's edit mode. Mirrors
+// Helios Who?'s personEdit: one Edit button reveals every field's pencil, and
+// becomes Done.
+let editingPath = null;
+
+const weekdayFormat = new Intl.DateTimeFormat('en-US', {weekday: 'short'});
+const monthShort = new Intl.DateTimeFormat('en-US', {month: 'short'});
+const fullDate = new Intl.DateTimeFormat('en-US', {weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'});
+const clock = new Intl.DateTimeFormat('en-US', {hour: 'numeric', minute: '2-digit'});
+
+function timeRange(node) {
+  const start = parseWhen(node.start);
+  if (!start || !start.hasTime) {
+    return '';
+  }
+  const end = parseWhen(node.end);
+  return end && end.hasTime ? `${clock.format(start.date)} – ${clock.format(end.date)}` : clock.format(start.date);
+}
+
+// heroStamp is the card floating over the hero image: weekday, date, and the
+// hours. An activity with no parsed date shows its timing words instead.
+function heroStamp(act) {
+  const start = parseWhen(act.start);
+  if (!start) {
+    return act.timing ? el('div', 'hero-stamp hero-stamp-text', act.timing) : null;
+  }
+  const stamp = el('div', 'hero-stamp');
+  stamp.append(el('div', 'hero-stamp-weekday', weekdayFormat.format(start.date).toUpperCase()));
+  stamp.append(el('div', 'hero-stamp-date', `${monthShort.format(start.date).toUpperCase()} ${start.date.getDate()}`));
+  const hours = timeRange(act);
+  if (hours) {
+    stamp.append(el('div', 'hero-stamp-time', hours));
+  }
+  return stamp;
+}
+
+// heroImageBar is the strip across the foot of the hero while editing: pick a
+// file and it uploads and saves in one go, since an image the reader picked but
+// did not save would be a half-finished state with nothing to show for it.
+function heroImageBar(node, save) {
+  const bar = el('div', 'hero-image-bar');
+  const choose = el('label', 'hero-image-action');
+  choose.append(svg('image'), el('span', '', node.image ? 'Replace image' : 'Add an image'));
+  const file = el('input');
+  file.type = 'file';
+  file.accept = 'image/*';
+  file.hidden = true;
+  file.addEventListener('change', async () => {
+    if (!file.files.length) {
+      return;
     }
-    if (part.href && i < parts.length - 1) {
-      nav.append(link(part.href, '', part.label));
-    } else {
-      nav.append(el('span', 'current', part.label));
-    }
+    bar.replaceChildren(el('span', 'hero-image-status', 'Uploading…'));
+    await uploadAndSave(save, file.files[0]);
   });
+  choose.append(file);
+  bar.append(choose);
+  if (node.image) {
+    const remove = el('button', 'hero-image-action');
+    remove.type = 'button';
+    remove.append(svg('trash'), el('span', '', 'Remove'));
+    remove.addEventListener('click', () => save({image: ''}));
+    bar.append(remove);
+  }
+  return bar;
+}
+
+// prevNext walks the same list, in the same order, that the opportunities grid
+// shows for this year, so "next" means what the reader would expect from where
+// they came in.
+function prevNext(node) {
+  const parent = parentOf(node);
+  const siblings = parent
+    ? parent.children.filter(c => c.status !== 'Hidden' && c.status !== 'Pending')
+    : sortByStart(listedIn(node.year));
+  const i = siblings.findIndex(a => a.title === node.title);
+  const nav = el('div', 'detail-jump');
+  const make = (target, label, icon, cls) => {
+    if (!target) {
+      const dead = el('span', 'detail-jump-link is-off');
+      dead.append(icon === 'back' ? svg('back') : el('span', '', label));
+      dead.append(icon === 'back' ? el('span', '', label) : svg('chevron'));
+      return dead;
+    }
+    const a = link(activityPath(target), 'detail-jump-link');
+    a.title = target.title;
+    if (icon === 'back') {
+      a.append(svg('back'), el('span', '', label));
+    } else {
+      a.append(el('span', '', label), svg('chevron'));
+    }
+    return a;
+  };
+  nav.append(make(i > 0 ? siblings[i - 1] : null, 'Previous', 'back'));
+  nav.append(make(i >= 0 && i < siblings.length - 1 ? siblings[i + 1] : null, 'Next', 'next'));
   return nav;
 }
 
-function header(node, act) {
-  const head = el('div', 'detail-head');
-  head.append(thumb(node.imageUrl || act.imageUrl, node.title));
-  const body = el('div', 'row-body');
-  const label = el('div', 'label');
-  const when = whenLabel(node);
-  if (when) {
-    label.append(el('span', '', when));
+// whenPickers is a date picker beside an optional time picker. The sheet stores
+// "YYYY-MM-DD" or "YYYY-MM-DD HH:MM", and a blank time is meaningful - it is how
+// an all-day thing is written - so the two stay separate controls rather than
+// one datetime-local, which would silently stamp midnight onto every all-day date.
+function whenPickers(value, onChange, clearable) {
+  const m = /^(\d{4}-\d{2}-\d{2})(?: (\d{2}:\d{2}))?$/.exec(value || '');
+  const wrap = el('div', 'field-when-pair');
+  const date = el('input');
+  date.type = 'date';
+  date.value = m ? m[1] : '';
+  const time = el('input');
+  time.type = 'time';
+  time.value = m && m[2] ? m[2] : '';
+  wrap.append(date, time);
+  const read = () => (date.value ? (time.value ? `${date.value} ${time.value}` : date.value) : '');
+  if (clearable) {
+    // Clearing both is how an activity ends up with no end at all - a start on
+    // its own is a perfectly good way to describe something.
+    const clear = el('button', 'field-when-clear');
+    clear.type = 'button';
+    clear.title = 'No end time';
+    clear.setAttribute('aria-label', 'Clear the end time');
+    clear.append(svg('close'), el('span', '', 'No end time'));
+    clear.addEventListener('click', () => {
+      date.value = '';
+      time.value = '';
+      date.focus();
+    });
+    wrap.append(clear);
   }
-  if (node.coLeaderNeeded) {
-    label.append(el('span', 'need', '• Co-leader needed!'));
+  if (onChange) {
+    date.addEventListener('change', onChange);
+    time.addEventListener('change', onChange);
   }
-  if (node.status !== 'Open') {
-    label.append(badge(node.status === 'Pending' ? 'Needs approval' : node.status, node.status.toLowerCase()));
+  return {
+    wrap,
+    date,
+    focus: () => date.focus(),
+    value: read,
+    hasTime: () => Boolean(time.value),
+    // set writes a Date back out in the shape the sheet uses, keeping whether
+    // this end of the range carries a time - shifting an all-day date by a few
+    // hours must not give it one.
+    set: written => {
+      const m2 = /^(\d{4}-\d{2}-\d{2})(?: (\d{2}:\d{2}))?$/.exec(written);
+      date.value = m2 ? m2[1] : '';
+      time.value = m2 && m2[2] ? m2[2] : '';
+    },
+  };
+}
+
+function sideCard(className) {
+  return el('div', 'side-card ' + (className || ''));
+}
+
+function sideRow(icon, title, lines) {
+  const row = el('div', 'side-row');
+  const mark = el('div', 'side-icon');
+  mark.append(svg(icon));
+  row.append(mark);
+  const body = el('div', 'side-row-body');
+  body.append(el('div', 'side-title', title));
+  for (const line of lines.filter(Boolean)) {
+    body.append(el('div', 'side-line', line));
   }
-  if (node.status === 'Open' && isFull(node)) {
-    label.append(badge('Full', 'full'));
+  row.append(body);
+  return row;
+}
+
+// facts is the summary rail beside the description: when it happens, where, and
+// who runs it. Anything the sheet leaves blank simply doesn't appear.
+function factsCard(node, editing, save) {
+  const card = sideCard();
+  let any = false;
+  const start = parseWhen(node.start);
+  const when = [];
+  if (start) {
+    when.push(fullDate.format(start.date));
+    const hours = timeRange(node);
+    if (hours) {
+      when.push(hours);
+    }
+  } else if (node.timing) {
+    when.push(node.timing);
   }
-  body.append(label, el('h1', '', node.title));
-  if (node.description) {
-    body.append(el('div', 'row-text', node.description));
+  if (when.length || editing) {
+    const row = sideRow('calendar', 'Date & Time', when.length ? when : ['Not scheduled']);
+    const body = row.querySelector('.side-row-body');
+    if (editing) {
+      // Start, end and the free-text timing are one thought, so they are one
+      // editor rather than three pencils in a row.
+      const lines = el('div', 'side-when');
+      while (body.children.length > 1) {
+        lines.append(body.children[1]);
+      }
+      body.append(lines);
+      body.querySelector('.side-title').append(editable(lines, 'Edit when this happens',
+        () => {
+          const input = el('div', 'field-when');
+          let last = node.start || '';
+          // Moving the start drags the end with it, so the length of the thing
+          // stays put and only its position changes.
+          const shiftEnd = () => {
+            const now = from.value();
+            const moved = shiftedEnd(last, now, to.value(), to.hasTime());
+            if (moved) {
+              to.set(moved);
+            }
+            if (parseWhen(now)) {
+              last = now;
+              to.date.min = from.date.value;
+            }
+          };
+          const from = whenPickers(node.start, shiftEnd);
+          const to = whenPickers(node.end, null, true);
+          to.date.min = from.date.value;
+          const timingInput = textInput(node.timing || '', {placeholder: 'All Year, Late February'});
+          input.append(el('span', 'field-when-label', 'Starts'), from.wrap,
+            el('span', 'field-when-label', 'Ends'), to.wrap,
+            el('span', 'field-when-label', 'Or in words'), timingInput);
+          input.focus = () => from.focus();
+          return {
+            input,
+            hint: 'Leave the time blank for something that runs all day.',
+            value: () => ({start: from.value(), end: to.value(), timing: timingInput.value.trim()}),
+            validate: v => {
+              const a = parseWhen(v.start);
+              const b = parseWhen(v.end);
+              if (v.end && !v.start) {
+                return 'Give it a start as well as an end.';
+              }
+              return a && b && b.date <= a.date ? 'The end has to come after the start.' : '';
+            },
+          };
+        },
+        value => save(value)));
+    }
+    if (start) {
+      body.append(button('Add to Calendar', 'calendar', 'button button-secondary button-small side-button',
+        () => downloadCalendar(node)));
+    }
+    card.append(row);
+    any = true;
   }
-  const meta = [];
-  if (node.location) {
-    meta.push(node.location);
+  const chairs = coChairs(node);
+  // Whether a co-chair is wanted lives here, with the co-chairs themselves: the
+  // row shows when there are any, when one is wanted, or while editing (so the
+  // switch is reachable even when neither is true yet).
+  if (chairs.length || node.coLeaderNeeded || editing) {
+    const row = el('div', 'side-row');
+    const mark = el('div', 'side-icon');
+    mark.append(svg('people'));
+    row.append(mark);
+    const body = el('div', 'side-row-body');
+    body.append(el('div', 'side-title', 'Co-Chairs'));
+    if (chairs.length) {
+      const list = el('div', 'side-chairs');
+      for (const v of chairs) {
+        list.append(personTile(node, v, editing, false));
+      }
+      body.append(list);
+    } else {
+      body.append(el('div', 'side-line', 'Nobody yet.'));
+    }
+    if (editing) {
+      const wants = el('label', 'side-switch');
+      const box = checkbox(node.coLeaderNeeded, on => save({coLeaderNeeded: on}));
+      wants.append(box, el('span', '', 'A co-chair is needed'));
+      body.append(wants);
+    } else if (node.coLeaderNeeded) {
+      body.append(el('div', 'side-line side-need', 'A co-chair is needed - could that be you?'));
+    }
+    row.append(body);
+    card.append(row);
+    any = true;
   }
-  if (node.spots) {
-    meta.push(`${node.taken} of ${node.spots} spots taken`);
+  // Who has signed up, under whoever runs it. By default this is the event
+  // itself; the filter adds any of the committees under it. It is also where a
+  // sign-up gets edited or removed while editing - the old Volunteers tab is
+  // gone. A hidden list has already been trimmed by the server to the co-chairs
+  // and the viewer, so nothing needs hiding here.
+  const below = descendants(node);
+  const ownHelpers = node.volunteers.filter(v => v.position !== 'Co-Chair');
+  if (ownHelpers.length || below.length || node.parent || node.directSignUp) {
+    card.append(volunteersRow(node, below, editing));
+    any = true;
   }
-  if (meta.length) {
-    body.append(el('div', 'detail-meta', meta.join(' · ')));
+  return any ? card : null;
+}
+
+// personTile is one avatar + name in the rail. While editing it is a button that
+// opens that sign-up's editor, whose Remove is how someone is taken off.
+function personTile(owner, v, editing, star) {
+  const tile = el(editing ? 'button' : 'div', 'side-chair' + (editing ? ' is-editable' : ''));
+  if (editing) {
+    tile.type = 'button';
+    tile.title = `Edit ${v.name}'s sign-up`;
+    tile.addEventListener('click', () => openSignUp(owner, v));
   }
-  head.append(body);
-  return head;
+  tile.append(avatar(v), el('div', 'side-chair-name', v.name + (star && v.position === 'Co-Chair' ? '*' : '')));
+  return tile;
+}
+
+// whereIs names a node's place in its event the way organizers say it: the top
+// committee's category, then each committee down to the node - "Booths > Poland
+// > Performance". The event itself is just "(itself)".
+function whereIs(root, node) {
+  if (node === root) {
+    return '(itself)';
+  }
+  const chain = [];
+  for (let n = node; n && n !== root; n = parentOf(n)) {
+    chain.unshift(n);
+  }
+  const top = chain[0];
+  const cat = top && top.category ? category(top.category) : null;
+  return [cat ? cat.title : null, ...chain.map(n => n.title)].filter(Boolean).join(' > ');
+}
+
+// editCrumb is the line above the hero while editing: school year, then the
+// parent for a child, then the category - each its own thing to change. Only an
+// admin moves something between years; the server refuses anyone else, so the
+// pencil is not offered to them. The category menu also offers "Change Parent
+// Event…", which turns this event into a child of another and drops its page
+// category, since children name their event's categories instead.
+function editCrumb(node, parent, root, save) {
+  const crumb = el('div', 'detail-crumb');
+  const yearItem = el('span', 'crumb-item', node.year);
+  crumb.append(yearItem);
+  if (isAdmin() && !parent) {
+    crumb.append(editable(yearItem, 'Change the school year',
+      () => {
+        const options = allYears();
+        for (const y of [years().current, years().next]) {
+          if (!options.includes(y)) {
+            options.unshift(y);
+          }
+        }
+        const input = selectInput(options, node.year);
+        return {input, hint: 'Everything under it moves with it.', value: () => input.value};
+      },
+      value => save({year: value})));
+  }
+  if (parent) {
+    crumb.append(el('span', 'crumb-sep', '›'));
+    crumb.append(link(activityPath(parent), 'crumb-item crumb-link', parent.title));
+  }
+  crumb.append(el('span', 'crumb-sep', '›'));
+  const current = category(node.category);
+  const catItem = el('span', 'crumb-item' + (current ? '' : ' is-empty'), current ? current.title : 'No category');
+  crumb.append(catItem);
+  crumb.append(editable(catItem, 'Change category',
+    () => {
+      const REPARENT = '\u0000reparent';
+      const choices = parent
+        ? [{label: 'No category', value: ''}, ...eventCategories(root).map(c => ({label: c.title, value: c.id}))]
+        : headingChoices();
+      if (!parent) {
+        choices.push({label: 'Change Parent Event…', value: REPARENT});
+      }
+      const wrap = el('div', 'field-when');
+      const pick = selectInput(choices, node.category || '');
+      wrap.append(pick);
+      // Every activity in this year except the row itself and what sits under it;
+      // nested ones are labelled by their path so the list reads as a tree.
+      const mine = new Set([node.id, ...descendants(node).map(d => d.id)]);
+      const candidates = [];
+      for (const top of state.model.activities.filter(a => a.year === node.year)) {
+        for (const n of [top, ...descendants(top)]) {
+          if (mine.has(n.id)) {
+            continue;
+          }
+          const titles = [];
+          for (let x = n; x; x = parentOf(x)) {
+            titles.unshift(x.title);
+          }
+          candidates.push({label: titles.join(' › '), value: n.id});
+        }
+      }
+      const target = selectInput(candidates, candidates[0] ? candidates[0].value : '');
+      const targetLabel = el('span', 'field-when-label', 'Put this under');
+      targetLabel.hidden = target.hidden = true;
+      wrap.append(targetLabel, target);
+      pick.addEventListener('change', () => {
+        targetLabel.hidden = target.hidden = pick.value !== REPARENT;
+      });
+      wrap.focus = () => pick.focus();
+      return {
+        input: wrap,
+        hint: parent ? '' : 'Or make this part of another event; it drops its category and lists under that event instead.',
+        value: () => (pick.value === REPARENT ? {parent: target.value, category: ''} : {category: pick.value}),
+        validate: v => (v.parent === '' && pick.value === REPARENT ? 'Pick the event to put this under.' : ''),
+      };
+    },
+    value => save(value)));
+  return crumb;
+}
+
+// volunteersRow is the rail's list of who signed up, with a filter over which
+// parts of the tree to include. The event itself shows its plain volunteers (its
+// co-chairs have their own row above); a committee ticked in the filter shows
+// everyone on it, co-chairs starred, since they appear nowhere else on this page.
+function volunteersRow(node, below, editing) {
+  const row = el('div', 'side-row');
+  const mark = el('div', 'side-icon');
+  mark.append(svg('star'));
+  row.append(mark);
+  const body = el('div', 'side-row-body');
+  const head = el('div', 'side-head');
+  const title = el('div', 'side-title', 'Volunteers');
+  head.append(title);
+  body.append(head);
+  const list = el('div');
+  body.append(list);
+  const chosen = new Set([node.id]);
+  // The thing on this page, named as itself, so the label reads the same whether
+  // it is an event, a committee, or a shift.
+  const self = `${node.title} (itself)`;
+
+  const paint = () => {
+    list.replaceChildren();
+    const sources = [node, ...below].filter(n => chosen.has(n.id));
+    if (!sources.length) {
+      list.append(el('div', 'side-line', 'Nothing selected.'));
+      title.textContent = 'Volunteers';
+      return;
+    }
+    let total = 0;
+    for (const src of sources) {
+      const people = src === node ? src.volunteers.filter(v => v.position !== 'Co-Chair') : src.volunteers;
+      if (sources.length > 1) {
+        list.append(el('div', 'side-group', src === node ? self : src.title));
+      }
+      if (!people.length) {
+        list.append(el('div', 'side-line', 'Nobody yet.'));
+        continue;
+      }
+      const grid = el('div', 'side-chairs');
+      for (const v of people) {
+        grid.append(personTile(src, v, editing, src !== node));
+      }
+      list.append(grid);
+      total += people.length;
+    }
+    title.textContent = total ? `Volunteers (${total})` : 'Volunteers';
+  };
+
+  if (below.length) {
+    // The filter: a summary button that drops a list of checkboxes, one for the
+    // event and one per thing under it, indented by depth.
+    const filter = el('div', 'side-filter');
+    const toggle = el('button', 'side-filter-toggle');
+    toggle.type = 'button';
+    const summary = el('span', '', self);
+    toggle.append(summary, svg('caret'));
+    const menu = el('div', 'side-filter-menu');
+    menu.hidden = true;
+    const depthOf = n => {
+      let d = 0;
+      for (let p = parentOf(n); p && p !== node; p = parentOf(p)) {
+        d++;
+      }
+      return d;
+    };
+    const boxes = [];
+    const refresh = () => {
+      const count = chosen.size;
+      summary.textContent = count === 1 && chosen.has(node.id) ? self : (count ? `${count} selected` : 'None');
+      paint();
+    };
+    const option = (n, label) => {
+      const item = el('label', 'side-filter-item');
+      item.style.paddingLeft = `${10 + (n === node ? 0 : (depthOf(n) + 1) * 14)}px`;
+      const box = el('input');
+      box.type = 'checkbox';
+      box.checked = chosen.has(n.id);
+      box.addEventListener('change', () => {
+        if (box.checked) {
+          chosen.add(n.id);
+        } else {
+          chosen.delete(n.id);
+        }
+        refresh();
+      });
+      boxes.push({box, id: n.id});
+      item.append(box, el('span', '', label));
+      return item;
+    };
+    // Select All / Clear All set every box and the selection in one go, so a
+    // long list can be flipped without walking it.
+    const bulk = el('div', 'side-filter-bulk');
+    const setAll = on => {
+      chosen.clear();
+      for (const {box, id} of boxes) {
+        box.checked = on;
+        if (on) {
+          chosen.add(id);
+        }
+      }
+      refresh();
+    };
+    const all = el('button', 'link-button', 'Select All');
+    all.type = 'button';
+    all.addEventListener('click', () => setAll(true));
+    const none = el('button', 'link-button', 'Clear All');
+    none.type = 'button';
+    none.addEventListener('click', () => setAll(false));
+    bulk.append(all, none);
+    menu.append(bulk);
+    menu.append(option(node, self));
+    for (const n of below) {
+      menu.append(option(n, n.title));
+    }
+    toggle.addEventListener('click', e => {
+      e.stopPropagation();
+      menu.hidden = !menu.hidden;
+    });
+    menu.addEventListener('click', e => e.stopPropagation());
+    document.addEventListener('click', () => {
+      menu.hidden = true;
+    });
+    filter.append(toggle, menu);
+    head.append(filter);
+  }
+  paint();
+  if (node.canEdit) {
+    // The organizers' roster: every sign-up in the tree with where it is and how
+    // to reach them, including a student's parents.
+    body.append(button('More Info', 'list', 'button button-secondary button-small side-button roster-open',
+      () => openVolunteerGrid(node, [node, ...below], n => whereIs(node, n))));
+  }
+  row.append(body);
+  return row;
+}
+
+// volunteersBox is the sign-up surface for this thing itself: who is on it, the
+// way to join, and - while editing - whether people may join it directly and
+// whether the list is private. Sign-ups for the things under it live on their
+// own pages; the rail's filter is the cross-tree view.
+function volunteersBox(node, editing, save) {
+  const people = node.volunteers.filter(v => v.position !== 'Co-Chair');
+  const box = el('div', 'vol-box');
+  const head = el('div', 'vol-head');
+  head.append(el('h2', 'section', people.length ? `Volunteers (${people.length})` : 'Volunteers'));
+  const actions = el('div', 'vol-actions');
+  const mine = mySignUp(node);
+  if (mine) {
+    // Removing yourself lives inside that editor, as its Remove action.
+    actions.append(button('Edit my sign-up', 'edit', 'button button-small', () => openSignUp(node, mine)));
+  } else if (canJoin(node) || (node.canEdit && (node.parent || node.directSignUp))) {
+    actions.append(button('Join', 'join', 'button button-small', () => openSignUp(node, null)));
+  }
+  if (node.canEdit) {
+    actions.append(button('Sign up someone else', 'plus', 'button button-secondary button-small', () => openSignUp(node, null)));
+  }
+  head.append(actions);
+  box.append(head);
+  if (people.length) {
+    const grid = el('div', 'side-chairs vol-people');
+    for (const v of people) {
+      grid.append(personTile(node, v, editing, false));
+    }
+    box.append(grid);
+  } else if (!node.parent && !node.directSignUp) {
+    box.append(el('div', 'vol-note', 'Sign up for one of the things to do below.'));
+  } else {
+    box.append(el('div', 'vol-note', 'Nobody yet.'));
+  }
+  if (node.status === 'Open' && isFull(node) && !mine) {
+    box.append(el('div', 'vol-note vol-full', 'Every spot is taken. Thank you, everyone!'));
+  }
+  if (node.volunteersHidden && !node.canEdit) {
+    box.append(el('div', 'vol-note', 'This list is private; the organizers see everyone.'));
+  }
+  if (editing) {
+    const switches = el('div', 'vol-switches');
+    const add = (label, hint, checked, onChange) => {
+      const wrap = el('label', 'vol-switch');
+      wrap.append(checkbox(checked, onChange));
+      const text = el('span');
+      text.append(el('strong', '', label));
+      if (hint) {
+        text.append(el('small', '', hint));
+      }
+      wrap.append(text);
+      switches.append(wrap);
+    };
+    // A child always takes sign-ups; only a root chooses.
+    if (!node.parent) {
+      add('Allow Volunteers', 'Unchecking will prohibit direct volunteers, but will still allow subcommittees.',
+        node.directSignUp, on => save({directSignUp: on}));
+    }
+    add('Hide Volunteers', 'Only the organizers see who has signed up.', node.volunteersHidden, on => save({volunteersHidden: on}));
+    // Spots belongs with the sign-up switches: it is the third thing that shapes
+    // who can join here. Saved when the field is left, not on every keystroke.
+    const spots = el('label', 'vol-spots');
+    const input = el('input');
+    input.type = 'number';
+    input.min = '0';
+    input.placeholder = 'Unlimited';
+    input.value = node.spots ? String(node.spots) : '';
+    input.addEventListener('change', () => save({spots: Math.max(0, Number(input.value) || 0)}));
+    const text = el('span');
+    text.append(el('strong', '', 'Spots'), el('small', '', 'How many people can sign up here. Leave blank for no limit.'));
+    spots.append(input, text);
+    switches.append(spots);
+    box.append(switches);
+  } else if (node.spots) {
+    box.append(el('div', 'vol-note', `${node.taken} of ${node.spots} spots taken.`));
+  }
+  return box;
+}
+
+// resourcesCard is the activity's own links, plus the editor's way to add one.
+function resourcesCard(node, editing) {
+  // The card earns its place with links, or while editing so one can be added.
+  if (!node.links.length && !editing) {
+    return null;
+  }
+  const card = sideCard();
+  const head = el('div', 'side-head');
+  head.append(el('div', 'side-title', 'Resources'));
+  if (node.links.length) {
+    head.append(el('span', 'side-count', String(node.links.length)));
+  }
+  card.append(head);
+  const links = el('div', 'side-links');
+  card.append(links);
+  for (const item of node.links) {
+    const row = link(item.url, 'side-link');
+    row.removeAttribute('data-link');
+    row.target = '_blank';
+    row.rel = 'noopener';
+    row.append(thumb(item.imageUrl || node.imageUrl || rootOf(node).imageUrl, item.title, 'side-link-thumb'));
+    const body = el('div', 'side-row-body');
+    body.append(el('div', 'side-link-title', item.title));
+    body.append(el('div', 'side-line', item.url.replace(/^https?:\/\//, '').replace(/\/$/, '')));
+    row.append(body, svg('open'));
+    links.append(row);
+  }
+  if (editing) {
+    card.append(button('Add a Resource', 'plus', 'button button-secondary button-small side-button',
+      () => openLink(node, null)));
+  }
+  return card;
+}
+
+// helpCard points at the people who run the activity. Only shown when there is
+// somebody to point at - co-chairs are the ones with a published address here.
+function helpCard(node) {
+  const chairs = coChairs(node).filter(v => v.email);
+  if (!chairs.length) {
+    return null;
+  }
+  const card = sideCard('side-card-help');
+  card.append(el('div', 'side-title', 'Need help?'));
+  card.append(el('p', 'side-line', `Have a question about ${node.title}? Ask whoever is running it.`));
+  const mail = el('a', 'button button-secondary button-small side-button');
+  mail.href = `mailto:${chairs.map(v => v.email).join(',')}?subject=${encodeURIComponent(node.title)}`;
+  mail.append(svg('mail'), el('span', '', 'Contact the Co-Chairs'));
+  card.append(mail);
+  return card;
+}
+
+function heroButton(icon, label, onClick) {
+  const node = el('button', 'hero-action');
+  node.type = 'button';
+  node.title = label;
+  node.setAttribute('aria-label', label);
+  node.append(svg(icon));
+  node.addEventListener('click', onClick);
+  return node;
+}
+
+function shareButton(node) {
+  return heroButton('share', 'Share this page', async () => {
+    const url = location.href;
+    if (navigator.share) {
+      try {
+        await navigator.share({title: node.title, url});
+        return;
+      } catch {
+        // The reader dismissed the sheet, or the browser refused it - fall
+        // through to the clipboard rather than leaving the button dead.
+      }
+    }
+    copyText(url, 'Link copied');
+  });
 }
 
 function pad(n) {
@@ -69,10 +704,11 @@ function icsStamp(date, hasTime) {
 
 // downloadCalendar hands the browser a one-event calendar file with floating
 // local times, the same wall-clock the sheet holds.
-function downloadCalendar(node, act) {
+function downloadCalendar(node) {
+  const act = rootOf(node);
   const start = parseWhen(node.start);
   const end = parseWhen(node.end);
-  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//HCA//Volunteer Portal//EN', 'BEGIN:VEVENT',
+  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//HCA//HCA-Team//EN', 'BEGIN:VEVENT',
     `UID:${encodeURIComponent(act.year + act.title + node.title)}@hca.heliosian.com`,
     `DTSTAMP:${icsStamp(new Date(), true)}Z`];
   if (start.hasTime) {
@@ -103,152 +739,71 @@ function downloadCalendar(node, act) {
   URL.revokeObjectURL(a.href);
 }
 
-function linksBand(act, role, node) {
-  const editor = act.canEdit;
-  if (!node.links.length && !editor) {
-    return null;
-  }
-  const band = el('div', 'links-band');
-  for (const item of node.links) {
-    band.append(linkRow(act, item, editor, () => openLink(act, role, item)));
-  }
-  if (editor) {
-    const row = el('div', 'row');
-    row.append(button('Add Link', 'plus', 'button button-small', () => openLink(act, role, null)));
-    band.append(row);
-  }
-  return band;
-}
-
-function signUpBand(act, role, node) {
-  const mine = mySignUp(node);
-  const band = el('div', 'signup-band');
-  if (mine) {
-    band.append(el('div', 'status', `You're signed up as ${mine.position.toLowerCase()}${mine.note ? ` (${mine.note})` : ''}`));
-    const actions = el('div', 'center-actions');
-    actions.append(button('Edit my sign-up', 'edit', 'button', () => openSignUp(act, role, mine)));
-    actions.append(button('Remove me', null, 'button button-secondary', () => removeVolunteer(act, role, mine)));
-    if (act.canEdit) {
-      actions.append(button('Sign up someone else', 'plus', 'button button-secondary', () => openSignUp(act, role, null)));
-    }
-    band.append(actions);
-    return band;
-  }
-  if (canJoin(act, node) || act.canEdit) {
-    band.append(el('div', 'label', 'Sign up below (or sign up someone else)'));
-    band.append(button('Sign Up', 'join', 'button', () => openSignUp(act, role, null)));
-    return band;
-  }
-  if (node.status === 'Open' && isFull(node)) {
-    band.append(el('div', 'status', 'Every spot is taken. Thank you, everyone!'));
-    return band;
-  }
-  return null;
-}
-
-function chairsSection(node) {
-  const chairs = coChairs(node);
-  if (!chairs.length) {
-    return null;
-  }
-  const wrap = el('div');
-  wrap.append(el('h2', 'section', 'Co-Chairs'));
-  const list = el('div', 'chairs');
-  for (const v of chairs) {
-    const card = el('div', 'chair');
-    card.append(avatar(v), el('div', '', v.name + '*'));
-    if (v.note) {
-      card.append(el('div', 'row-text', v.note));
-    }
-    list.append(card);
-  }
-  wrap.append(list);
-  return wrap;
-}
-
-function personCard(act, role, v) {
-  const card = el('div', 'person-card');
-  if (v.photoUrl) {
-    const img = el('img', 'photo');
-    img.src = v.photoUrl;
-    img.alt = '';
-    img.loading = 'lazy';
-    card.append(img);
-  } else {
-    card.append(el('div', 'photo initial', v.name.slice(0, 1).toUpperCase()));
-  }
-  card.append(el('div', 'name', v.name + (v.position === 'Co-Chair' ? '*' : '')));
-  const sub = [role ? role.title : act.title];
-  if (v.position === 'Open to Co-Chair') {
-    sub.push('Open to co-chairing');
-  }
-  if (v.note) {
-    sub.push(v.note);
-  }
-  card.append(el('div', 'sub', sub.join('\n')));
-  if (act.canEdit || v.email === me().email) {
-    card.append(button('Edit', null, 'button button-small', () => openSignUp(act, role, v)));
-    card.append(button('Remove', null, 'button button-secondary button-small', () => removeVolunteer(act, role, v)));
-  }
-  return card;
-}
-
-function volunteersSection(act, nodes) {
-  const wrap = el('div');
-  let any = false;
-  for (const {role, node} of nodes) {
-    if (!node.volunteers.length) {
-      continue;
-    }
-    any = true;
-    wrap.append(el('div', 'group-title', role ? role.title : `${act.title} (the activity itself)`));
-    const grid = el('div', 'people-grid');
-    for (const v of node.volunteers) {
-      grid.append(personCard(act, role, v));
-    }
-    wrap.append(grid);
-  }
-  if (!any) {
-    wrap.append(el('div', 'panel').appendChild(el('div', 'panel-empty', 'Nobody has signed up yet.')).parentNode);
-  }
-  if (act.volunteersHidden && !act.canEdit) {
-    wrap.append(el('div', 'footnote', 'Sign-ups here are kept private; only the co-chairs see the full list.'));
-  }
-  return wrap;
-}
-
-function rolesSection(act, role, node, hiddenOnes) {
+function childrenSection(node, children, hiddenOnes, editing) {
+  const root = rootOf(node);
   const wrap = el('div');
   const head = el('div', 'list-head');
-  const title = hiddenOnes ? 'Hidden and Pending' : (role ? 'Under this' : 'Committees, Tasks, and Roles');
+  const title = hiddenOnes ? 'Hidden and Pending' : (node.parent ? 'Under this' : 'Things To Do');
   head.append(el('h2', 'section', title));
   const actions = el('div', 'row-actions');
   let query = '';
   const list = el('div');
-  const roles = node.roles.filter(r => hiddenOnes ? r.status === 'Hidden' || r.status === 'Pending' : r.status !== 'Hidden' && r.status !== 'Pending');
+  const roles = children.filter(r => hiddenOnes ? r.status === 'Hidden' || r.status === 'Pending' : r.status !== 'Hidden' && r.status !== 'Pending');
+  // Children are grouped by the root event's own categories, in the order the
+  // event keeps them, with the uncategorised run last. Each category carries its
+  // own add button when it allows adding - so a new thing lands where you were
+  // looking - and whoever runs the event can add into any of them regardless.
+  const groupHead = cat => {
+    const row = el('div', 'group-row');
+    // The run without a category is only worth naming when there are others.
+    row.append(el('div', 'group-title', cat ? cat.title : (eventCategories(root).length ? 'Uncategorized' : '')));
+    if (hiddenOnes) {
+      return row;
+    }
+    const open = () => openActivity(null, {parent: node, category: cat ? cat.id : ''});
+    let add = null;
+    if (node.canEdit) {
+      add = button('Add', 'plus', 'button button-secondary button-small', open);
+    } else if (node.status === 'Open' && cat && cat.allowAdding) {
+      add = button('Suggest', 'plus', 'button button-secondary button-small', open);
+    }
+    if (add) {
+      add.title = cat ? `Add to ${cat.title}` : 'Add without a category';
+      row.append(add);
+    }
+    return row;
+  };
   const render = () => {
     list.replaceChildren();
     const shown = roles.filter(r => matches(r, query));
-    const groups = [];
-    for (const r of shown) {
-      const name = r.group || '';
-      if (!groups.includes(name)) {
-        groups.push(name);
+    const order = [...eventCategories(root).map(c => c.id), ''];
+    const present = new Set(shown.map(r => r.category || ''));
+    for (const id of order) {
+      if (!present.has(id)) {
+        continue;
       }
-    }
-    for (const name of groups) {
-      if (name) {
-        list.append(el('div', 'group-title', name));
-      }
+      list.append(groupHead(id ? category(id) : null));
       const panel = el('div', 'panel');
-      for (const r of shown.filter(x => (x.group || '') === name)) {
-        panel.append(roleRow(act, r));
+      for (const r of shown.filter(x => (x.category || '') === id)) {
+        panel.append(childRow(r, editing));
       }
       list.append(panel);
     }
+    // A category with nothing in it yet still gets its heading and add button,
+    // otherwise there would be no way to put the first thing into it.
+    if (!hiddenOnes && !query) {
+      for (const c of eventCategories(root)) {
+        if (!present.has(c.id)) {
+          list.append(groupHead(c));
+        }
+      }
+    }
     if (!shown.length) {
+      if (!hiddenOnes && !eventCategories(root).length) {
+        list.append(groupHead(null));
+      }
       const panel = el('div', 'panel');
-      panel.append(el('div', 'panel-empty', hiddenOnes ? 'Nothing hidden or pending.' : 'No roles yet.'));
+      panel.append(el('div', 'panel-empty', hiddenOnes ? 'Nothing hidden or pending.' : (query ? 'Nothing matches.' : 'Nothing here yet.')));
       list.append(panel);
     }
   };
@@ -257,28 +812,11 @@ function rolesSection(act, role, node, hiddenOnes) {
       query = q;
       render();
     }, true));
-    if (act.canEdit) {
-      actions.append(button('Add a Role', 'plus', 'button', () => openRole(act, null, role)));
-    } else if (act.status === 'Open') {
-      actions.append(button('Suggest a Role', 'plus', 'button', () => openRole(act, null, role)));
-    }
   }
   head.append(actions);
   wrap.append(head);
   render();
   wrap.append(list);
-  return wrap;
-}
-
-function control(label, hint, input) {
-  const wrap = el('label');
-  wrap.append(input);
-  const text = el('span');
-  text.append(el('span', '', label));
-  if (hint) {
-    text.append(el('small', '', hint));
-  }
-  wrap.append(text);
   return wrap;
 }
 
@@ -302,38 +840,12 @@ function statusSelect(current, options, onChange) {
   return input;
 }
 
-function emailsOf(act, nodes) {
-  const set = new Set();
-  for (const {node} of nodes) {
-    for (const v of node.volunteers) {
-      set.add(v.email);
-    }
-  }
-  return [...set].join(', ');
-}
-
-function editorBand(act, role, node, nodes) {
+function editorBand(node) {
+  const child = Boolean(node.parent);
   const band = el('div', 'editor-band');
-  band.append(el('h2', '', role ? 'Role Controls' : 'Admin Controls'));
-  const controls = el('div', 'editor-controls');
-  const save = changes => (role ? saveRoleFields(act, role, changes) : saveActivityFields(act, changes));
-  const statuses = isAdmin() || role ? ['Pending', 'Open', 'Done', 'Hidden'] : ['Open', 'Done'];
-  controls.append(control('Status', role ? 'Pending roles wait for approval; hidden ones only show here' : 'Open takes sign-ups; done and hidden do not',
-    statusSelect(node.status, statuses, value => save({status: value}))));
-  controls.append(control('Co-leader needed', 'Flag this as looking for someone to lead it', checkbox(node.coLeaderNeeded, on => save({coLeaderNeeded: on}))));
-  controls.append(control('Hide volunteers', 'Check this if the sign-up list should stay private', checkbox(node.volunteersHidden, on => save({volunteersHidden: on}))));
-  if (!role) {
-    controls.append(control('Direct sign-up', 'People can join the activity itself, not only its roles', checkbox(act.directSignUp, on => save({directSignUp: on}))));
-  }
-  band.append(controls);
+  band.append(el('h2', '', child ? 'Controls' : 'Admin Controls'));
   const actions = el('div', 'editor-actions');
-  actions.append(button('Copy Volunteer Emails', 'copy', 'button', () => copyText(emailsOf(act, nodes), 'Emails copied')));
-  actions.append(button(role ? 'Edit Role' : 'Edit Activity', 'edit', 'button', () => (role ? openRole(act, role, null) : openActivity(act))));
-  actions.append(button('Add Link', 'plus', 'button', () => openLink(act, role, null)));
-  actions.append(button('Add a Role', 'plus', 'button', () => openRole(act, null, role)));
-  if (!role && isAdmin() && act.year < years().next) {
-    actions.append(button('Copy to Next Year', 'copy', 'button', () => copyToNextYear(act)));
-  }
+  actions.append(button('Edit', 'edit', 'button', () => openActivity(node)));
   band.append(actions);
   if (node.addedBy) {
     band.append(el('div', 'footnote', `Proposed by ${node.addedBy} on ${longDate(node.added)}`));
@@ -341,115 +853,172 @@ function editorBand(act, role, node, nodes) {
   return band;
 }
 
-function calendarButton(node, act) {
-  if (!parseWhen(node.start)) {
-    return null;
-  }
-  const actions = el('div', 'center-actions');
-  actions.append(button('Add to Calendar', 'calendar', 'button button-secondary', () => downloadCalendar(node, act)));
-  return actions;
-}
+// activityPage is every node's page: a headline event and a single shift on
+// its sign-up sheet are the same kind of thing at a different depth, so they
+// get the same page. What varies follows from having a parent or not.
+export function activityPage(node) {
+  const root = rootOf(node);
+  const parent = parentOf(node);
+  const path = activityPath(node);
+  const save = changes => saveActivityFields(node, changes);
+  setTitle(node.title);
+  const editing = node.canEdit && editingPath === path;
+  const page = el('div', 'detail');
 
-export function activityPage(act) {
-  setTitle(act.title);
-  const page = el('div');
-  page.append(crumb([{label: act.year, href: `/years/${encodeURIComponent(act.year)}`}, {label: act.title}]));
-  page.append(el('div', 'detail-year', act.year), header(act, act));
-  const links = linksBand(act, null, act);
-  if (links) {
-    page.append(links);
-  }
-  const cal = calendarButton(act, act);
-  if (cal) {
-    page.append(cal);
-  }
-  const chairs = chairsSection(act);
-  if (chairs) {
-    page.append(chairs);
-  }
-  if (act.directSignUp || act.canEdit) {
-    const band = signUpBand(act, null, act);
-    if (band) {
-      page.append(band);
-    }
-  }
-  const nodes = [{role: null, node: act}, ...allRoles(act).map(r => ({role: r, node: r}))];
-  const items = [{key: 'roles', label: 'Committees & Tasks'}, {key: 'volunteers', label: 'Volunteers'}];
-  const hiddenRoles = allRoles(act).filter(r => r.status === 'Hidden' || r.status === 'Pending');
-  if (act.canEdit && hiddenRoles.length) {
-    items.push({key: 'hidden', label: `Hidden Things (${hiddenRoles.length})`});
-  }
-  let tab = 'roles';
-  const body = el('div');
-  const render = () => {
-    body.replaceChildren(tabs(items, tab, key => {
-      tab = key;
-      render();
-    }, true));
-    if (tab === 'roles') {
-      body.append(rolesSection(act, null, act, false));
-    } else if (tab === 'volunteers') {
-      body.append(volunteersSection(act, nodes));
-    } else {
-      body.append(rolesSection(act, null, {roles: hiddenRoles}, true));
-    }
-  };
-  render();
-  page.append(body);
-  page.append(el('div', 'footnote', 'To remove yourself from a committee, open it and click Remove me.'));
-  if (act.canEdit) {
-    page.append(editorBand(act, null, act, nodes));
-  }
-  return page;
-}
+  const top = el('div', 'detail-top');
+  const back = link(parent ? activityPath(parent) : '/', 'detail-back');
+  back.append(svg('back'), el('span', '', parent ? `Back to ${parent.title}` : 'Back to Opportunities'));
+  top.append(back, prevNext(node));
+  page.append(top);
 
-export function rolePage(act, role) {
-  setTitle(role.title);
-  const page = el('div');
-  const parent = parentOf(act, role);
-  const parts = [{label: act.year, href: `/years/${encodeURIComponent(act.year)}`}, {label: act.title, href: activityPath(act)}];
-  if (parent) {
-    parts.push({label: parent.title, href: rolePath(act, parent)});
+  if (editing) {
+    page.append(editCrumb(node, parent, root, save));
   }
-  parts.push({label: role.title});
-  page.append(crumb(parts));
-  page.append(el('div', 'detail-year', act.year));
-  const up = link(parent ? rolePath(act, parent) : activityPath(act), 'row is-link panel');
-  up.append(thumb((parent || act).imageUrl || act.imageUrl, (parent || act).title, 'small'));
-  const upBody = el('div', 'row-body');
-  upBody.append(el('div', 'label', parent ? 'Part of' : 'Activity'), el('div', 'row-title', (parent || act).title));
-  up.append(upBody);
-  const chevron = svg('chevron');
-  chevron.classList.add('chevron');
-  up.append(chevron);
-  page.append(up, header(role, act));
-  const links = linksBand(act, role, role);
-  if (links) {
-    page.append(links);
+
+  const hero = el('div', 'detail-hero');
+  hero.append(thumb(node.imageUrl || root.imageUrl, node.title, 'detail-hero-image ' + categoryClass(root.category)));
+  const stamp = heroStamp(node);
+  if (stamp) {
+    hero.append(stamp);
   }
-  const cal = calendarButton(role, act);
-  if (cal) {
-    page.append(cal);
+  const heroActions = el('div', 'hero-actions');
+  if (node.canEdit) {
+    const toggle = heroButton(editing ? 'join' : 'edit', editing ? 'Done editing' : 'Edit this page', () => {
+      editingPath = editing ? null : path;
+      document.dispatchEvent(new CustomEvent('hca:refresh'));
+    });
+    if (editing) {
+      toggle.classList.add('is-editing');
+    }
+    heroActions.append(toggle);
   }
-  const band = signUpBand(act, role, role);
-  if (band) {
-    page.append(band);
+  heroActions.append(shareButton(node));
+  hero.append(heroActions);
+  if (editing) {
+    // Status sits right under the pencil that revealed it: a co-chair may only
+    // open or finish a thing; an admin can also park it as pending or hidden.
+    const statuses = isAdmin() || parent ? ['Pending', 'Open', 'Done', 'Hidden'] : ['Open', 'Done'];
+    const status = el('label', 'hero-status');
+    status.append(el('span', '', 'Status'), statusSelect(node.status, statuses, value => save({status: value})));
+    hero.append(status);
+    hero.append(heroImageBar(node, save));
   }
-  const chairs = chairsSection(role);
-  if (chairs) {
-    page.append(chairs);
-  }
-  const nodes = [{role, node: role}];
-  page.append(el('h2', 'section', 'Volunteers'), volunteersSection(act, nodes));
-  if (role.roles.length || act.canEdit) {
-    page.append(rolesSection(act, role, role, false));
-    const hidden = role.roles.filter(r => r.status === 'Hidden' || r.status === 'Pending');
-    if (act.canEdit && hidden.length) {
-      page.append(rolesSection(act, role, {roles: hidden}, true));
+  page.append(hero);
+
+  const cols = el('div', 'detail-cols');
+  const main = el('div', 'detail-main');
+  const marks = el('div', 'detail-marks');
+  if (!editing) {
+    if (parent) {
+      // A child's chip is the thing it sits under, in its root's colour - the way
+      // back up, and the reminder of what this is part of.
+      marks.append(link(activityPath(parent), 'card-chip is-inline is-link ' + categoryClass(root.category), parent.title));
+    } else if (category(node.category)) {
+      marks.append(el('span', 'card-chip is-inline ' + categoryClass(node.category), category(node.category).title));
     }
   }
-  if (act.canEdit) {
-    page.append(editorBand(act, role, role, nodes));
+  if (node.coLeaderNeeded) {
+    marks.append(el('span', 'need', 'Co-leader needed!'));
   }
+  if (node.status !== 'Open') {
+    marks.append(badge(node.status === 'Pending' ? 'Needs approval' : node.status, node.status.toLowerCase()));
+  } else if (isFull(node)) {
+    marks.append(badge('Full', 'full'));
+  }
+  if (editing && !parent) {
+    // An event's own categories are what its committees, booths and shifts are
+    // grouped under; whoever runs the event shapes them from here.
+    marks.append(button('Edit Categories', 'list', 'button button-secondary button-small', () => openCategoryManager(node)));
+  }
+  if (marks.children.length) {
+    main.append(marks);
+  }
+  const heading = el('div', 'detail-heading');
+  const title = el('h1', 'detail-title', node.title);
+  heading.append(title);
+  if (editing) {
+    heading.append(editable(title, 'Edit the title',
+      () => {
+        const input = textInput(node.title, {maxLength: 120});
+        return {input, value: () => input.value.trim()};
+      },
+      value => save({title: value})));
+  }
+  main.append(heading);
+  const blurb = el('div', 'detail-blurb');
+  if (node.description) {
+    // The sheet holds one text cell, so blank lines are the only paragraph
+    // marks there are.
+    for (const para of node.description.split(/\n\s*\n/).filter(t => t.trim())) {
+      blurb.append(el('p', 'detail-text', para.trim()));
+    }
+  } else if (editing) {
+    blurb.append(el('p', 'detail-text is-empty', 'No description yet.'));
+  }
+  if (blurb.children.length) {
+    main.append(blurb);
+    if (editing) {
+      main.append(editable(blurb, 'Edit the description',
+        () => {
+          const input = textAreaInput(node.description || '', 7);
+          return {input, hint: 'Leave a blank line between paragraphs.', value: () => input.value};
+        },
+        value => save({description: value})));
+    }
+  }
+
+  // Resources read as part of the write-up, so they sit under it rather than in
+  // the rail with the facts.
+  const resources = resourcesCard(node, editing);
+  if (resources) {
+    resources.classList.add('resources-main');
+    main.append(resources);
+  }
+
+  // Volunteers live in the rail now, with a filter over the tree; the tabs are
+  // what sits under this thing, and for editors what is hidden or pending.
+  const nodes = [node, ...descendants(node)];
+  const under = node.children.filter(c => c.status !== 'Hidden' && c.status !== 'Pending');
+  const items = [];
+  if (!parent || under.length || node.canEdit) {
+    items.push({key: 'children', label: parent ? `Under this (${under.length})` : 'Committees & Tasks'});
+  }
+  const hidden = descendants(node).filter(c => c.status === 'Hidden' || c.status === 'Pending');
+  if (node.canEdit && hidden.length) {
+    items.push({key: 'hidden', label: `Hidden Things (${hidden.length})`});
+  }
+  main.append(volunteersBox(node, editing, save));
+  if (items.length) {
+    let tab = items[0].key;
+    const body = el('div');
+    const render = () => {
+      body.replaceChildren();
+      // One tab is not a choice, so the bar only appears when there are two.
+      if (items.length > 1) {
+        body.append(tabs(items, tab, key => {
+          tab = key;
+          render();
+        }, true));
+      }
+      body.append(childrenSection(node, tab === 'children' ? node.children : hidden, tab !== 'children', editing));
+    };
+    render();
+    main.append(body);
+  }
+  if (!parent) {
+    main.append(el('div', 'footnote', 'To leave a committee, open it and use Edit my sign-up.'));
+  }
+  if (node.canEdit) {
+    main.append(editorBand(node));
+  }
+
+  const side = el('aside', 'detail-side');
+  for (const card of [factsCard(node, editing, save), helpCard(node)]) {
+    if (card) {
+      side.append(card);
+    }
+  }
+  cols.append(main, side);
+  page.append(cols);
   return page;
 }

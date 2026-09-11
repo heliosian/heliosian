@@ -11,6 +11,21 @@ import (
 type Directory interface {
 	Resolve(email string) string
 	Person(email string) (name, photoURL string, ok bool)
+	// People lists everyone a picker may offer, in the directory's own order.
+	People() []DirectoryPerson
+}
+
+// DirectoryPerson is one row of a people picker: enough to recognise someone -
+// face, name, and the one word that places them (a grade, a job, "Parent").
+type DirectoryPerson struct {
+	Email    string `json:"email"`
+	Name     string `json:"name"`
+	PhotoURL string `json:"photoUrl,omitempty"`
+	Title    string `json:"title,omitempty"`
+	// A student's parents' addresses, so a list of volunteers can reach the
+	// grown-up behind a child's sign-up. Empty for anyone who is not a student.
+	IsStudent    bool     `json:"isStudent,omitempty"`
+	ParentEmails []string `json:"parentEmails,omitempty"`
 }
 
 // displayName reads a name out of an address for someone the directory does not
@@ -47,17 +62,10 @@ type Years struct {
 // viewer can still see whether spots remain.
 type ActivityView struct {
 	*Activity
-	Roles      []*RoleView `json:"roles"`
-	Volunteers []Volunteer `json:"volunteers"`
-	Taken      int         `json:"taken"`
-	CanEdit    bool        `json:"canEdit"`
-}
-
-type RoleView struct {
-	*Role
-	Roles      []*RoleView `json:"roles"`
-	Volunteers []Volunteer `json:"volunteers"`
-	Taken      int         `json:"taken"`
+	Children   []*ActivityView `json:"children"`
+	Volunteers []Volunteer     `json:"volunteers"`
+	Taken      int             `json:"taken"`
+	CanEdit    bool            `json:"canEdit"`
 }
 
 type PersonView struct {
@@ -123,17 +131,23 @@ func (v viewer) volunteers(list []Volunteer, hidden, editor bool) []Volunteer {
 	return out
 }
 
-func (v viewer) roles(roles []*Role, hidden, editor bool) []*RoleView {
-	out := []*RoleView{}
-	for _, r := range roles {
-		if !v.visible(r.Status, r.AddedBy, editor) {
+// children renders the tree under an activity. An editor of the root edits the
+// whole tree, so canEdit is inherited rather than recomputed from co-chairs at
+// each level - a co-chair of a child still edits that child, because they are a
+// co-chair there.
+func (v viewer) children(list []*Activity, hidden, editor bool) []*ActivityView {
+	out := []*ActivityView{}
+	for _, c := range list {
+		own := editor || v.canEdit(c)
+		if !v.visible(c.Status, c.AddedBy, own) {
 			continue
 		}
-		out = append(out, &RoleView{
-			Role:       r,
-			Roles:      v.roles(r.Roles, hidden || r.VolunteersHidden, editor),
-			Volunteers: v.volunteers(r.Volunteers, hidden || r.VolunteersHidden, editor),
-			Taken:      len(r.Volunteers),
+		out = append(out, &ActivityView{
+			Activity:   c,
+			Children:   v.children(c.Children, hidden || c.VolunteersHidden, own),
+			Volunteers: v.volunteers(c.Volunteers, hidden || c.VolunteersHidden, own),
+			Taken:      len(c.Volunteers),
+			CanEdit:    own,
 		})
 	}
 	return out
@@ -158,7 +172,7 @@ func Render(model *Model, directory Directory, email string, admin bool, now tim
 		}
 		view.Activities = append(view.Activities, ActivityView{
 			Activity:   a,
-			Roles:      v.roles(a.Roles, a.VolunteersHidden, editor),
+			Children:   v.children(a.Children, a.VolunteersHidden, editor),
 			Volunteers: v.volunteers(a.Volunteers, a.VolunteersHidden, editor),
 			Taken:      len(a.Volunteers),
 			CanEdit:    editor,
@@ -189,8 +203,8 @@ func (v viewer) people(model *Model) []PersonView {
 	}
 	for _, a := range model.Activities {
 		count(a.Volunteers)
-		for _, r := range a.AllRoles() {
-			count(r.Volunteers)
+		for _, c := range a.Descendants() {
+			count(c.Volunteers)
 		}
 	}
 	out := make([]PersonView, 0, len(byEmail))

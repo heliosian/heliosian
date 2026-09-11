@@ -1,16 +1,15 @@
 # Volunteer portal
 
-The HCA Volunteer Portal is where the Helios Community Association asks for help and where families answer: every event, committee, and idea the association runs each school year, the roles under each, and who signed up. It replaces the Glide app of the same name and serves at hca.heliosian.com. The sheet, package, and API are named for what they hold, `Events`; only the hostname and the branding carry the association's name.
+HCA-Team, the HCA Volunteer Portal, is where the Helios Community Association asks for help and where families answer: every event, committee, and idea the association runs each school year, the roles under each, and who signed up. It replaces the Glide app of the same name and serves at hca.heliosian.com. The sheet, package, and API are named for what they hold, `Events`; only the hostname and the branding carry the association's name.
 
 ## Entities
 
 - **Category** — a heading on the Sign Up page ("Headline Events", "HCA Committees", "Just an Idea"), with a blurb. Categories display in the order their rows sit in the sheet.
-- **Activity** — one thing to help with in one school year: title, category, description, image, when it happens (a start and end, or a free-text timing like "All Year"), where, how many spots, and its status. An activity either takes sign-ups directly or only through its roles.
-- **Role** — a committee, task, booth, or shift under an activity. Roles nest: a booth can hold its own performance slot. A role's group is the heading it shows under on the activity page.
-- **Volunteer** — a person on an activity or a role, as a volunteer, a volunteer open to co-chairing, or a co-chair, with an optional note.
-- **Link** — a sign-up sheet, chat group, or document attached to an activity or a role, shown in a band under its description.
+- **Activity** — one thing to help with in one school year: title, description, image, when it happens (a start and end, or a free-text timing like "All Year"), where, how many spots, and its status. Activities form a tree: a committee, task, booth, or shift is an activity whose parent is the event it belongs to, and it can hold activities of its own — a booth with its own performance slot. The roots, the ones with no parent, carry one of the page's categories and are what the opportunities page lists; a child lists under its parent, grouped by whichever of the root event's own categories it names. A root either takes sign-ups directly or only through the things under it; a child always takes them.
+- **Volunteer** — a person on an activity at any depth, as a volunteer, a volunteer open to co-chairing, or a co-chair, with an optional note.
+- **Link** — a sign-up sheet, chat group, or document attached to an activity, shown in its Resources card.
 
-Activities repeat year to year by being copied: "Spring Celebration" in one year and the next are two activities, each with its own roles and sign-ups.
+Activities repeat year to year by being copied: "Spring Celebration" in one year and the next are two activities, each carrying its own tree and sign-ups. Running an activity means running everything under it: a co-chair of the event edits its shifts too.
 
 ## Status
 
@@ -24,16 +23,16 @@ An activity or role is `Pending`, `Open`, `Done`, or `Hidden`. Pending is a sugg
 
 ## Pages
 
-One shell, `web/hca/index.html`, routes every page on the client.
+One shell, `web/hca/index.html`, routes every page on the client: a left toolbar (Opportunities with each category and its count, My Sign Ups, Calendar, Approval Needed for admins, and Suggest an Idea) beside a top search bar that filters whatever page is open.
 
-- **Sign Up** (`/`) — the intro, the expense form and Suggest an Idea buttons, and tabs for this school year, last year, and (for admins) what needs approval. Each year lists its categories in sheet order, activities within a category by start date with undated ones after, and a Show Previous Events switch that brings back what is done or past. Another year is `/years/{year}`.
-- **My Activities** (`/my`) — the viewer's own sign-ups by year and category, each as Activity ▶ Role.
-- **HCA Calendar** (`/calendar`) — a month grid of every dated activity and role.
-- **Activity** (`/activities/{year}/{title}`) — the image, when and where, description, link band, Add to Calendar, co-chairs, the sign-up band, and tabs for its roles (grouped), its volunteers, and, for editors, the hidden and pending roles. Editors get a control band: status, the flags, and the edit, link, role, copy-emails, and copy-to-next-year actions.
-- **Role** (`.../roles/{title}`) — the same shape one level down, with the roles under it.
-- **All Activities** (`/all`), **People** (`/people`), and **Admin Tools** (`/admin`) — admin pages: every year with Copy to Next Year on each activity, sign-up counts per person, and the categories, settings, and admin list.
+- **Opportunities** (`/`) — cards for this school year's root activities, grouped under their categories in sheet order, with a category chip row that filters the grid and an academic-year dropdown. Undated activities follow dated ones. Hidden and pending activities stay off the grid unless an admin turns on Show Hidden Events in the account menu; Show Completed Events brings back what is done or past. Another year is `/years/{year}`.
+- **My Sign Ups** (`/my`) — the viewer's own sign-ups at any depth, by year and by the root's category.
+- **Calendar** (`/calendar`) — a month grid of every dated activity, root or child.
+- **Approval Needed** (`/approvals`) — admins: every pending activity at any depth, shown as Root ▶ Child.
+- **Activity** (`/activities/{id}`) — one page for every node. A hero image with the date stamp, then the description beside a rail of when, who runs it, resources, and who to ask. A child's chip is a link up to its parent; a root's is its category. Tabs list the things under it grouped by the event's own categories — each with an Add button for whoever runs the event, and a Suggest button for everyone else where the category allows adding — its volunteers, and, for editors, the hidden and pending ones. Editors click the hero's pencil to reveal inline editing of the title, description, category, image, and dates, an Edit Categories button that manages the event's own categories, and a control band for status and the flags.
+- **Admin Tools** (`/admin`) — the page's category headings (with images, reorderable), settings, and admin list.
 
-On phones the top bar carries the page title and a drawer for the rest, and a bottom tab bar holds Sign Up, My Activities, and HCA Calendar, matching the app this replaces.
+On phones the toolbar becomes a drawer, the search bar an overlay, and a bottom tab bar holds Opportunities, My Sign Ups, and Calendar.
 
 ## The school year
 

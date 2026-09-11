@@ -31,6 +31,10 @@ type Writer interface {
 	// appended.
 	Set(app, table string, match, cells map[string]string) error
 	Append(app, table string, row []string) error
+	// AppendCells adds a row placing each cell under the column of that name,
+	// wherever the tab keeps it, and rejects a column the tab does not have. It
+	// is Append for a tab whose column order people may have rearranged by hand.
+	AppendCells(app, table string, cells map[string]string) error
 	Delete(app, table string, match map[string]string) error
 	// Reorder rewrites a tab's data rows into the order the keys give. The keys
 	// must be exactly the tab's existing keyColumn values, each once, so rows
@@ -206,6 +210,30 @@ func (d *Dir) Append(app, name string, row []string) error {
 			continue
 		}
 		record[t.header[i]] = cell
+	}
+	t.rows = append(t.rows, record)
+	return nil
+}
+
+func (d *Dir) AppendCells(app, name string, cells map[string]string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	t, err := d.load(app, name)
+	if err != nil {
+		return err
+	}
+	known := map[string]bool{}
+	for _, column := range t.header {
+		known[column] = true
+	}
+	record := map[string]string{}
+	for column, cell := range cells {
+		if !known[column] {
+			return fmt.Errorf("table %s is missing column %q", name, column)
+		}
+		if cell != "" {
+			record[column] = cell
+		}
 	}
 	t.rows = append(t.rows, record)
 	return nil

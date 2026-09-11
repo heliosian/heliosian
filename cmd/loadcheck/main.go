@@ -208,11 +208,11 @@ func main() {
 		fmt.Printf("  %s: %d activities\n", year, len(byYear[year]))
 		for _, a := range byYear[year] {
 			volunteers := len(a.Volunteers)
-			for _, r := range a.AllRoles() {
-				volunteers += len(r.Volunteers)
+			for _, c := range a.Descendants() {
+				volunteers += len(c.Volunteers)
 			}
-			fmt.Printf("    %s [%s, %s] roles %d, links %d, volunteers %d, image %v\n",
-				a.Title, a.Category, a.Status, len(a.AllRoles()), len(a.Links), volunteers, a.ImageURL != "")
+			fmt.Printf("    %s [%s, %s] under it %d, links %d, volunteers %d, image %v\n",
+				a.Title, a.Category, a.Status, len(a.Descendants()), len(a.Links), volunteers, a.ImageURL != "")
 		}
 	}
 	fmt.Printf("events admins: %d\n", len(eventTables.Admins))
