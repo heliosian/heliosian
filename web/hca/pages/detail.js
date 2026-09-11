@@ -243,17 +243,6 @@ function factsCard(node, editing, save) {
     card.append(row);
     any = true;
   }
-  // Who has signed up, under whoever runs it. By default this is the event
-  // itself; the filter adds any of the committees under it. It is also where a
-  // sign-up gets edited or removed while editing - the old Volunteers tab is
-  // gone. A private list shows an organizer only what everyone sees unless
-  // they are editing or have Show Hidden Things on (shownVolunteers).
-  const below = descendants(node);
-  const ownHelpers = shownVolunteers(node, editing).filter(v => v.position !== 'Co-Chair');
-  if (ownHelpers.length || below.length || node.parent || node.directSignUp) {
-    card.append(volunteersRow(node, below, editing));
-    any = true;
-  }
   return any ? card : null;
 }
 
@@ -374,142 +363,88 @@ function editCrumb(node, parent, root, save) {
   return crumb;
 }
 
-// volunteersRow is the rail's list of who signed up, with a filter over which
-// parts of the tree to include. The event itself shows its plain volunteers (its
-// co-chairs have their own row above); a committee ticked in the filter shows
-// everyone on it, co-chairs starred, since they appear nowhere else on this page.
-function volunteersRow(node, below, editing) {
-  const row = el('div', 'side-row');
-  const mark = el('div', 'side-icon');
-  mark.append(svg('star'));
-  row.append(mark);
-  const body = el('div', 'side-row-body');
-  const head = el('div', 'side-head');
-  const title = el('div', 'side-title', 'Volunteers');
-  head.append(title);
-  body.append(head);
-  const list = el('div');
-  body.append(list);
+// treeFilter is the dropdown that picks which of a thing's descendants the
+// volunteers list includes: a summary button that drops a list of checkboxes,
+// one for the thing itself - named as itself, so the label reads the same for
+// an event, a committee or a shift - and one per thing under it, indented by
+// depth, with Select All / Clear All. `onChange` runs with the chosen nodes.
+function treeFilter(node, below, onChange) {
   const chosen = new Set([node.id]);
-  // The thing on this page, named as itself, so the label reads the same whether
-  // it is an event, a committee, or a shift.
   const self = `${node.title} (itself)`;
-
-  const paint = () => {
-    list.replaceChildren();
-    const sources = [node, ...below].filter(n => chosen.has(n.id));
-    if (!sources.length) {
-      list.append(el('div', 'side-line', 'Nothing selected.'));
-      title.textContent = 'Volunteers';
-      return;
+  const filter = el('div', 'side-filter');
+  const toggle = el('button', 'side-filter-toggle');
+  toggle.type = 'button';
+  const summary = el('span', '', self);
+  toggle.append(summary, svg('caret'));
+  const menu = el('div', 'side-filter-menu');
+  menu.hidden = true;
+  const depthOf = n => {
+    let d = 0;
+    for (let p = parentOf(n); p && p !== node; p = parentOf(p)) {
+      d++;
     }
-    let total = 0;
-    for (const src of sources) {
-      const shown = shownVolunteers(src, editing);
-      const people = src === node ? shown.filter(v => v.position !== 'Co-Chair') : shown;
-      if (sources.length > 1) {
-        list.append(el('div', 'side-group', src === node ? self : src.title));
-      }
-      if (!people.length) {
-        list.append(el('div', 'side-line', 'Nobody yet.'));
-        continue;
-      }
-      const grid = el('div', 'side-chairs');
-      for (const v of people) {
-        grid.append(personTile(src, v, editing, src !== node));
-      }
-      list.append(grid);
-      total += people.length;
-    }
-    title.textContent = total ? `Volunteers (${total})` : 'Volunteers';
+    return d;
   };
-
-  if (below.length) {
-    // The filter: a summary button that drops a list of checkboxes, one for the
-    // event and one per thing under it, indented by depth.
-    const filter = el('div', 'side-filter');
-    const toggle = el('button', 'side-filter-toggle');
-    toggle.type = 'button';
-    const summary = el('span', '', self);
-    toggle.append(summary, svg('caret'));
-    const menu = el('div', 'side-filter-menu');
-    menu.hidden = true;
-    const depthOf = n => {
-      let d = 0;
-      for (let p = parentOf(n); p && p !== node; p = parentOf(p)) {
-        d++;
-      }
-      return d;
-    };
-    const boxes = [];
-    const refresh = () => {
-      const count = chosen.size;
-      summary.textContent = count === 1 && chosen.has(node.id) ? self : (count ? `${count} selected` : 'None');
-      paint();
-    };
-    const option = (n, label) => {
-      const item = el('label', 'side-filter-item');
-      item.style.paddingLeft = `${10 + (n === node ? 0 : (depthOf(n) + 1) * 14)}px`;
-      const box = el('input');
-      box.type = 'checkbox';
-      box.checked = chosen.has(n.id);
-      box.addEventListener('change', () => {
-        if (box.checked) {
-          chosen.add(n.id);
-        } else {
-          chosen.delete(n.id);
-        }
-        refresh();
-      });
-      boxes.push({box, id: n.id});
-      item.append(box, el('span', '', label));
-      return item;
-    };
-    // Select All / Clear All set every box and the selection in one go, so a
-    // long list can be flipped without walking it.
-    const bulk = el('div', 'side-filter-bulk');
-    const setAll = on => {
-      chosen.clear();
-      for (const {box, id} of boxes) {
-        box.checked = on;
-        if (on) {
-          chosen.add(id);
-        }
+  const boxes = [];
+  const sources = () => [node, ...below].filter(n => chosen.has(n.id));
+  const refresh = () => {
+    const count = chosen.size;
+    summary.textContent = count === 1 && chosen.has(node.id) ? self : (count ? `${count} selected` : 'None');
+    onChange(sources());
+  };
+  const option = (n, label) => {
+    const item = el('label', 'side-filter-item');
+    item.style.paddingLeft = `${10 + (n === node ? 0 : (depthOf(n) + 1) * 14)}px`;
+    const box = el('input');
+    box.type = 'checkbox';
+    box.checked = chosen.has(n.id);
+    box.addEventListener('change', () => {
+      if (box.checked) {
+        chosen.add(n.id);
+      } else {
+        chosen.delete(n.id);
       }
       refresh();
-    };
-    const all = el('button', 'link-button', 'Select All');
-    all.type = 'button';
-    all.addEventListener('click', () => setAll(true));
-    const none = el('button', 'link-button', 'Clear All');
-    none.type = 'button';
-    none.addEventListener('click', () => setAll(false));
-    bulk.append(all, none);
-    menu.append(bulk);
-    menu.append(option(node, self));
-    for (const n of below) {
-      menu.append(option(n, n.title));
+    });
+    boxes.push({box, id: n.id});
+    item.append(box, el('span', '', label));
+    return item;
+  };
+  // Select All / Clear All set every box and the selection in one go, so a
+  // long list can be flipped without walking it.
+  const bulk = el('div', 'side-filter-bulk');
+  const setAll = on => {
+    chosen.clear();
+    for (const {box, id} of boxes) {
+      box.checked = on;
+      if (on) {
+        chosen.add(id);
+      }
     }
-    toggle.addEventListener('click', e => {
-      e.stopPropagation();
-      menu.hidden = !menu.hidden;
-    });
-    menu.addEventListener('click', e => e.stopPropagation());
-    document.addEventListener('click', () => {
-      menu.hidden = true;
-    });
-    filter.append(toggle, menu);
-    head.append(filter);
+    refresh();
+  };
+  const all = el('button', 'link-button', 'Select All');
+  all.type = 'button';
+  all.addEventListener('click', () => setAll(true));
+  const none = el('button', 'link-button', 'Clear All');
+  none.type = 'button';
+  none.addEventListener('click', () => setAll(false));
+  bulk.append(all, none);
+  menu.append(bulk);
+  menu.append(option(node, self));
+  for (const n of below) {
+    menu.append(option(n, n.title));
   }
-  paint();
-  if (node.canEdit) {
-    // The organizers' roster: every sign-up in the tree with where it is and how
-    // to reach them, including a student's parents.
-    body.append(button('Volunteer Info', 'list', 'button button-secondary button-small side-button roster-open',
-      () => openVolunteerGrid(node, [node, ...below], n => whereIs(node, n))));
-  }
-  row.append(body);
-  return row;
+  toggle.addEventListener('click', e => {
+    e.stopPropagation();
+    menu.hidden = !menu.hidden;
+  });
+  menu.addEventListener('click', e => e.stopPropagation());
+  document.addEventListener('click', () => {
+    menu.hidden = true;
+  });
+  filter.append(toggle, menu);
+  return {wrap: filter, sources, self};
 }
 
 // volunteersBox is the sign-up surface for this thing itself: who is on it, the
@@ -536,11 +471,22 @@ function volunteersBox(node, editing, save) {
     setMax.title = 'Set the most people who can sign up here';
     title.append(setMax);
   }
+  // With things under it, a filter beside the heading brings their
+  // volunteers into the list too, each run under its committee's name.
+  const below = descendants(node);
+  const listing = el('div', 'vol-listing');
+  let filter = null;
+  if (below.length) {
+    filter = treeFilter(node, below, () => paintListing());
+  }
   head.append(title);
   // With volunteers not allowed here there is nothing to join and nothing to
   // edit, so the buttons go; a secret list keeps its buttons but shows nobody
   // to anyone not editing or showing hidden things.
   const actions = el('div', 'vol-actions');
+  if (filter) {
+    actions.append(filter.wrap);
+  }
   const mine = mySignUp(node);
   if (node.directSignUp) {
     if (mine) {
@@ -553,30 +499,64 @@ function volunteersBox(node, editing, save) {
       actions.append(button('Sign up someone else', 'plus', 'button button-secondary button-small', () => openSignUp(node, null)));
     }
   }
+  if (node.canEdit) {
+    // The organizers' roster: every sign-up in the tree with where it is and
+    // how to reach them, including a student's parents.
+    actions.append(button('Volunteer Info', 'list', 'button button-secondary button-small roster-open',
+      () => openVolunteerGrid(node, [node, ...below], n => whereIs(node, n))));
+  }
   head.append(actions);
   box.append(head);
   // The chairs lead the list whatever else it shows - they are public, and
   // they keep the section from standing bare - each marked as a chair; then
-  // the volunteers, or the reason there are none to show.
+  // the volunteers, or the reason there are none to show; then, when the
+  // filter brings them in, each chosen committee's volunteers under its name.
   const revealed = !listHidden(node) || editing || state.showHidden;
   const showPeople = node.directSignUp && revealed ? people : [];
-  if (chairs.length || showPeople.length) {
-    const grid = el('div', 'side-chairs vol-people');
-    for (const v of chairs) {
-      grid.append(personTile(node, v, editing, false, true));
+  const paintListing = () => {
+    listing.replaceChildren();
+    const sources = filter ? filter.sources() : [node];
+    const own = sources.includes(node);
+    const others = sources.filter(n => n !== node);
+    if (own) {
+      if (chairs.length || showPeople.length) {
+        const grid = el('div', 'side-chairs vol-people');
+        for (const v of chairs) {
+          grid.append(personTile(node, v, editing, false, true));
+        }
+        for (const v of showPeople) {
+          grid.append(personTile(node, v, editing, false));
+        }
+        if (others.length) {
+          listing.append(el('div', 'side-group', filter.self));
+        }
+        listing.append(grid);
+      }
+      if (node.directSignUp && !revealed) {
+        listing.append(el('div', 'vol-note', 'This list is private; only the organizers see it.'));
+      } else if (node.directSignUp && !people.length) {
+        listing.append(el('div', 'vol-note', chairs.length ? 'No volunteers yet.' : 'Nobody yet.'));
+      }
     }
-    for (const v of showPeople) {
-      grid.append(personTile(node, v, editing, false));
+    for (const src of others) {
+      listing.append(el('div', 'side-group', src.title));
+      const theirs = shownVolunteers(src, editing);
+      if (!theirs.length) {
+        listing.append(el('div', 'vol-note', 'Nobody yet.'));
+        continue;
+      }
+      const grid = el('div', 'side-chairs vol-people');
+      for (const v of theirs) {
+        grid.append(personTile(src, v, editing, true));
+      }
+      listing.append(grid);
     }
-    box.append(grid);
-  }
-  if (!node.directSignUp) {
-    box.append(el('div', 'vol-note', 'Sign up for one of the things to do below.'));
-  } else if (!revealed) {
-    box.append(el('div', 'vol-note', 'This list is private; only the organizers see it.'));
-  } else if (!people.length) {
-    box.append(el('div', 'vol-note', chairs.length ? 'No volunteers yet.' : 'Nobody yet.'));
-  }
+    if (!sources.length) {
+      listing.append(el('div', 'vol-note', 'Nothing selected.'));
+    }
+  };
+  paintListing();
+  box.append(listing);
   if (node.status === 'Open' && isFull(node) && !mine && node.directSignUp) {
     box.append(el('div', 'vol-note vol-full', 'Every spot is taken. Thank you, everyone!'));
   }
@@ -642,7 +622,7 @@ function resourcesCard(node, editing) {
 
 // flyerCard is the event's poster in the rail, under the details: the whole
 // picture at the rail's width, a click to see it full size, and while editing
-// the ways to put one up - a file, the image libraries, a crop - or take it down.
+// a way to put one up or take it down.
 function flyerCard(node, editing, save) {
   if (!node.flyerUrl && !editing) {
     return null;
@@ -677,14 +657,10 @@ function flyerCard(node, editing, save) {
     });
     const upload = el('label', 'button button-secondary button-small');
     upload.append(svg('up'), el('span', '', node.flyer ? 'Replace' : 'Upload'), file);
+    // A flyer is a finished poster: it is uploaded whole, never found in a
+    // library or cropped.
     bar.append(upload);
-    bar.append(button('Find an image', 'search', 'button button-secondary button-small',
-      () => openImageSearch(node.title, picked => save({flyer: picked}))));
     if (node.flyer) {
-      bar.append(button('Crop', 'crop', 'button button-secondary button-small', () => openCropTool(node.flyerUrl, false, async blob => {
-        await uploadAndSave(changes => save({flyer: changes.image}), new File([blob], 'crop.jpg', {type: 'image/jpeg'}));
-        return true;
-      })));
       bar.append(button('Remove', 'trash', 'button button-secondary button-small', () => save({flyer: ''})));
     }
     card.append(bar);

@@ -247,7 +247,7 @@ function imagePicker(current, currentUrl, options) {
     preview.hidden = !url;
     placeholder.hidden = Boolean(url);
     remove.hidden = !url;
-    crop.hidden = !url;
+    crop.hidden = !url || Boolean(options && options.plain);
     if (url) {
       preview.src = url;
     }
@@ -276,9 +276,10 @@ function imagePicker(current, currentUrl, options) {
     await upload(new File([blob], 'crop.jpg', {type: 'image/jpeg'}));
     return true;
   }));
+  const plain = Boolean(options && options.plain);
   const google = el('button', 'button button-secondary button-small', 'Find an image');
   google.type = 'button';
-  google.hidden = !imageSearchOn();
+  google.hidden = plain || !imageSearchOn();
   google.addEventListener('click', e => {
     e.stopPropagation();
     openImageSearch(options && options.query ? options.query() : '', async picked => {
@@ -866,7 +867,7 @@ export function openActivity(act, options) {
     'Can users add subactivities? Note that this is a default and can be overwritten by the settings of a category.',
     policyDot(allowAdding, under ? 'inherit' : ADDING.no));
   const image = imagePicker(act ? act.image : '', act ? act.imageUrl : '');
-  const flyer = imagePicker(act ? act.flyer : '', act ? act.flyerUrl : '');
+  const flyer = imagePicker(act ? act.flyer : '', act ? act.flyerUrl : '', {plain: true});
   const pretty = text(act ? act.prettyId || '' : '', {placeholder: 'applause', maxLength: 40});
   // The address as it will read, kept current as the field is typed in, with a
   // way to copy it - what the form is for, in the end.

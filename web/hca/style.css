@@ -1599,7 +1599,16 @@ button.side-chair:hover { background: var(--input); }
 /* Beats the later h2.section rule, which would put its 24px page margin inside the box. */
 .vol-head h2.section.section-swoosh { margin: 8px 0 4px; font-size: 22px; }
 
-.vol-title { display: flex; align-items: center; gap: 12px; }
+.vol-title { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+
+.vol-actions .side-filter { align-self: center; }
+
+/* Beside the small buttons, the filter takes their size and shape. */
+.vol-actions .side-filter-toggle { padding: 6px 10px 6px 12px; border-radius: 8px; font-size: 13px; color: var(--ink); }
+
+.vol-actions .side-filter-toggle span { max-width: none; }
+
+.vol-listing .side-group { margin: 14px 0 6px; }
 
 .vol-title .vol-max { margin-top: 2px; }
 
