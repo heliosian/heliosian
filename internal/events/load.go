@@ -62,7 +62,7 @@ var settingKeys = []string{ExpenseFormKey, IntroKey}
 
 var (
 	CategoryColumns  = []string{"Category ID", "Event ID", "Title", "Description", "Image", "Allow Adding", "Show On Main Page"}
-	ActivityColumns  = []string{"Event ID", "Year", "Title", "Parent", "Category", "Status", "Description", "Image", "Timing", "Start", "End", "Location", "Spots", "Co-Leader Needed", "Volunteers Hidden", "Direct Sign-Up", "Pretty ID", "Allow Adding", "Flyer Image", "Added By", "Added"}
+	ActivityColumns  = []string{"Event ID", "Year", "Title", "Parent", "Category", "Status", "Description", "Image", "Timing", "Start", "End", "Location", "Spots", "Co-Leader Needed", "Volunteers Hidden", "Direct Sign-Up", "Pretty ID", "Allow Adding", "Flyer Image", "Highlight Headline", "Highlight Body", "Highlight Icon", "Added By", "Added"}
 	VolunteerColumns = []string{"Event ID", "Email", "Position", "Note", "Added By", "Added"}
 	LinkColumns      = []string{"Event ID", "Title", "URL", "Image", "Description"}
 	SettingColumns   = []string{"Key", "Value"}
@@ -114,6 +114,24 @@ type Link struct {
 	ImageURL    string `json:"imageUrl,omitempty"`
 }
 
+// Highlight is an activity's callout. Icon names one of the page's own icons,
+// or is anything else - an emoji, say - typed into the sheet, shown as is.
+type Highlight struct {
+	Headline string `json:"headline"`
+	Body     string `json:"body"`
+	Icon     string `json:"icon,omitempty"`
+}
+
+// highlightOf reads a row's Highlight columns; a row with neither headline
+// nor body has no highlight, whatever its icon cell says.
+func highlightOf(row map[string]string) *Highlight {
+	h := &Highlight{Headline: strings.TrimSpace(row["Highlight Headline"]), Body: strings.TrimSpace(row["Highlight Body"]), Icon: strings.TrimSpace(row["Highlight Icon"])}
+	if h.Headline == "" && h.Body == "" {
+		return nil
+	}
+	return h
+}
+
 type Volunteer struct {
 	Email    string `json:"email"`
 	Position string `json:"position"`
@@ -140,16 +158,19 @@ type Activity struct {
 	ImageURL    string `json:"imageUrl,omitempty"`
 	// Flyer is the event's poster, shown in the page's rail and used for the
 	// share card in place of the banner when there is one.
-	Flyer            string `json:"flyer,omitempty"`
-	FlyerURL         string `json:"flyerUrl,omitempty"`
-	Timing           string `json:"timing,omitempty"`
-	Start            string `json:"start,omitempty"`
-	End              string `json:"end,omitempty"`
-	Location         string `json:"location,omitempty"`
-	Spots            int    `json:"spots,omitempty"`
-	CoLeaderNeeded   bool   `json:"coLeaderNeeded"`
-	VolunteersHidden bool   `json:"volunteersHidden"`
-	DirectSignUp     bool   `json:"directSignUp"`
+	Flyer    string `json:"flyer,omitempty"`
+	FlyerURL string `json:"flyerUrl,omitempty"`
+	// Highlight is the callout on the page - a headline, a few lines and an
+	// icon - for the one thing organizers most want read; nil when there is none.
+	Highlight        *Highlight `json:"highlight,omitempty"`
+	Timing           string     `json:"timing,omitempty"`
+	Start            string     `json:"start,omitempty"`
+	End              string     `json:"end,omitempty"`
+	Location         string     `json:"location,omitempty"`
+	Spots            int        `json:"spots,omitempty"`
+	CoLeaderNeeded   bool       `json:"coLeaderNeeded"`
+	VolunteersHidden bool       `json:"volunteersHidden"`
+	DirectSignUp     bool       `json:"directSignUp"`
 	// PrettyID is the activity's friendly address, /v/{PrettyID}, unique across
 	// every year; blank for most rows.
 	PrettyID string `json:"prettyId,omitempty"`
@@ -997,7 +1018,7 @@ func parseActivity(row map[string]string, model *Model, images ImageChecker) (*A
 	return &Activity{
 		ID: strings.TrimSpace(row["Event ID"]), Year: year, Title: title, Parent: strings.TrimSpace(row["Parent"]),
 		Category: strings.TrimSpace(row["Category"]), Status: row["Status"],
-		Description: row["Description"], Image: row["Image"], ImageURL: image, Flyer: row["Flyer Image"], FlyerURL: flyer,
+		Description: row["Description"], Image: row["Image"], ImageURL: image, Flyer: row["Flyer Image"], FlyerURL: flyer, Highlight: highlightOf(row),
 		Timing: row["Timing"], Start: row["Start"], End: row["End"], Location: row["Location"], Spots: spots,
 		CoLeaderNeeded: coLeader, VolunteersHidden: hidden, DirectSignUp: direct, PrettyID: pretty, AllowAdding: allowAdding,
 		AddedBy: strings.ToLower(row["Added By"]), Added: row["Added"],

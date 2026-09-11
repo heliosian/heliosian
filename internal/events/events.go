@@ -339,26 +339,27 @@ func (a app) removeVolunteer(w http.ResponseWriter, r *http.Request) {
 }
 
 type activityBody struct {
-	ID               string `json:"id"`
-	Year             string `json:"year"`
-	Title            string `json:"title"`
-	Parent           string `json:"parent"`
-	Category         string `json:"category"`
-	Status           string `json:"status"`
-	Description      string `json:"description"`
-	Image            string `json:"image"`
-	Flyer            string `json:"flyer"`
-	Timing           string `json:"timing"`
-	Start            string `json:"start"`
-	End              string `json:"end"`
-	Location         string `json:"location"`
-	Spots            int    `json:"spots"`
-	CoLeaderNeeded   bool   `json:"coLeaderNeeded"`
-	VolunteersHidden bool   `json:"volunteersHidden"`
-	DirectSignUp     bool   `json:"directSignUp"`
-	CoChair          bool   `json:"coChair"`
-	PrettyID         string `json:"prettyId"`
-	AllowAdding      string `json:"allowAdding"`
+	ID               string     `json:"id"`
+	Year             string     `json:"year"`
+	Title            string     `json:"title"`
+	Parent           string     `json:"parent"`
+	Category         string     `json:"category"`
+	Status           string     `json:"status"`
+	Description      string     `json:"description"`
+	Image            string     `json:"image"`
+	Flyer            string     `json:"flyer"`
+	Highlight        *Highlight `json:"highlight"`
+	Timing           string     `json:"timing"`
+	Start            string     `json:"start"`
+	End              string     `json:"end"`
+	Location         string     `json:"location"`
+	Spots            int        `json:"spots"`
+	CoLeaderNeeded   bool       `json:"coLeaderNeeded"`
+	VolunteersHidden bool       `json:"volunteersHidden"`
+	DirectSignUp     bool       `json:"directSignUp"`
+	CoChair          bool       `json:"coChair"`
+	PrettyID         string     `json:"prettyId"`
+	AllowAdding      string     `json:"allowAdding"`
 	// TakeOver says the sender has agreed to rename a prior year's activity
 	// that holds the same Pretty ID - see prettyConflict.
 	TakeOver bool `json:"takeOver"`
@@ -581,6 +582,9 @@ func (a app) saveActivity(w http.ResponseWriter, r *http.Request) {
 		"Co-Leader Needed": YesNo(body.CoLeaderNeeded), "Volunteers Hidden": YesNo(body.VolunteersHidden),
 		"Direct Sign-Up": YesNo(body.DirectSignUp), "Pretty ID": pretty, "Allow Adding": allowAdding,
 	}
+	for k, v := range highlightCells(body.Highlight) {
+		cells[k] = v
+	}
 	tables := a.cache.Tables()
 	if displaced != nil {
 		tables = tables.with(activitiesTab, map[string]string{"Event ID": displaced.ID}, map[string]string{"Pretty ID": renamed})
@@ -766,6 +770,18 @@ func (a app) saveLink(w http.ResponseWriter, r *http.Request) {
 	}
 	slog.InfoContext(r.Context(), "events: saved link", "actor", actor, "action", action, "link", title, "activity", act.Title, "year", act.Year)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// highlightCells is the three Highlight columns for a highlight, blank cells
+// for none - so removing one clears the row.
+func highlightCells(h *Highlight) map[string]string {
+	cells := map[string]string{"Highlight Headline": "", "Highlight Body": "", "Highlight Icon": ""}
+	if h != nil && (strings.TrimSpace(h.Headline) != "" || strings.TrimSpace(h.Body) != "") {
+		cells["Highlight Headline"] = strings.TrimSpace(h.Headline)
+		cells["Highlight Body"] = strings.TrimSpace(h.Body)
+		cells["Highlight Icon"] = strings.TrimSpace(h.Icon)
+	}
+	return cells
 }
 
 func (a app) deleteLink(w http.ResponseWriter, r *http.Request) {
@@ -1062,7 +1078,7 @@ func (a app) copyActivity(w http.ResponseWriter, r *http.Request) {
 		return id
 	}
 	rowFor := func(c *Activity, parent string) map[string]string {
-		return map[string]string{
+		row := map[string]string{
 			"Event ID": fresh[c.ID], "Year": year, "Title": c.Title, "Parent": parent, "Category": remap(c.Category),
 			"Status": c.Status, "Description": c.Description, "Image": c.Image, "Flyer Image": c.Flyer, "Timing": c.Timing,
 			"Location": c.Location, "Spots": spotsCell(c.Spots),
@@ -1070,6 +1086,10 @@ func (a app) copyActivity(w http.ResponseWriter, r *http.Request) {
 			// The address stays with the original: two years cannot share one.
 			"Direct Sign-Up": YesNo(c.DirectSignUp), "Pretty ID": "", "Allow Adding": c.AllowAdding, "Added By": actor, "Added": today(),
 		}
+		for k, v := range highlightCells(c.Highlight) {
+			row[k] = v
+		}
+		return row
 	}
 	rows := []map[string]string{rowFor(act, "")}
 	rows[0]["Status"] = StatusOpen

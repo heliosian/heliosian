@@ -2918,3 +2918,41 @@ h2.section .link-button { font-size: 14px; }
   display: flex;
   gap: 10px;
 }
+
+/* The highlight callout under the description: warm, with the emoji large. */
+.highlight-card { display: flex; align-items: flex-start; gap: 18px; padding: 20px 24px; margin: 18px 0 6px; background: #fbf7e6; border-radius: 16px; }
+
+.highlight-icon { font-size: 40px; line-height: 1; flex-shrink: 0; margin-top: 2px; }
+
+.highlight-body { min-width: 0; }
+
+.highlight-headline { font-size: 20px; font-weight: 700; color: var(--brand); margin-bottom: 6px; }
+
+.highlight-text { margin: 0 0 8px; font-size: 15px; line-height: 1.5; }
+
+.highlight-text:last-child { margin-bottom: 0; }
+
+/* Its editor on the Basics tab: a button that opens into the section. */
+.highlight-fields { margin-top: 14px; }
+
+.highlight-editor .field { margin-top: 12px; }
+
+.highlight-add { margin: 14px 0 6px; }
+
+.field-editor .highlight-inputs .field + .field { margin-top: 12px; }
+
+.highlight-editor > .button { margin-top: 6px; }
+
+.emoji-row { display: flex; align-items: flex-start; gap: 12px; }
+
+.field .emoji-row > input.highlight-icon-input { width: 64px; flex: 0 0 64px; text-align: center; font-size: 20px; }
+
+.emoji-picks { display: flex; gap: 2px; flex-wrap: wrap; flex: 1; min-width: 0; }
+
+.emoji-pick { border: 1px solid transparent; background: none; border-radius: 8px; font-size: 20px; line-height: 1; padding: 5px 6px; cursor: pointer; }
+
+
+
+.emoji-pick:hover { background: var(--input); }
+
+.emoji-pick.is-active { border-color: var(--accent); background: #eaf3f3; }

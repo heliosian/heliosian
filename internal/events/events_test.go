@@ -94,6 +94,9 @@ func TestSampleLoads(t *testing.T) {
 	if perf.Category != "" {
 		t.Fatalf("a child should inherit its root's category, got %q", perf.Category)
 	}
+	if night.Highlight == nil || night.Highlight.Headline != "Performances" || night.Highlight.Icon != "📣" || perf.Highlight != nil {
+		t.Fatalf("highlight: night %+v, perf %+v", night.Highlight, perf.Highlight)
+	}
 	if len(night.CoChairs()) != 2 {
 		t.Fatalf("co-chairs: %v", night.CoChairs())
 	}

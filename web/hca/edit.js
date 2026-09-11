@@ -814,6 +814,93 @@ export async function removeVolunteer(node, volunteer) {
   }
 }
 
+// highlightInputs is the callout's three fields - the headline, the body and
+// an emoji for it, with a row of usual ones to tap or any typed in - shared by
+// the activity editor's Basics tab and the page's inline pencil. Its value is
+// null when there is nothing to show, which is how a highlight comes off.
+export function highlightInputs(current) {
+  const wrap = el('div', 'highlight-inputs');
+  const headline = text(current ? current.headline : '', {maxLength: 80, placeholder: 'Performances'});
+  const body = textarea(current ? current.body : '', 4);
+  body.placeholder = 'A few lines people should not miss. **Double stars** make words bold.';
+  const icon = text(current ? current.icon || '' : '', {maxLength: 8, placeholder: '📣'});
+  icon.classList.add('highlight-icon-input');
+  const picks = el('div', 'emoji-picks');
+  // The usual suspects for a school callout - announce, warn, celebrate, feed,
+  // perform, build, thank - any emoji still goes in the box.
+  const usual = [
+    '📣', '📢', '⭐', '✨', '⚠️', '❗', '💡', '✅', '📌', '📅', '⏰', '🗓️',
+    '🎉', '🎊', '🎈', '🎂', '🎁', '❤️', '🙏', '👏', '🤝', '🙋', '👋', '👨‍👩‍👧',
+    '🎭', '🎶', '🎤', '🎨', '📸', '🎬', '📚', '✏️', '🏫', '🎓', '🔬', '🧩',
+    '🍕', '🍪', '☕', '🧁', '🥗', '🍎', '🌮', '🍜', '🍿', '🧃',
+    '🏃', '⚽', '🚴', '🥾', '🌳', '🌸', '🌍', '☀️', '🌧️', '🔥',
+    '🛠️', '🧹', '📦', '🚗', '🅿️', '🎟️', '💰', '🛍️', '🧺', '🪑',
+  ];
+  const paintPicks = () => {
+    picks.querySelectorAll('.emoji-pick').forEach(b => b.classList.toggle('is-active', b.textContent === icon.value));
+  };
+  for (const e of usual) {
+    const b = el('button', 'emoji-pick', e);
+    b.type = 'button';
+    b.addEventListener('click', () => {
+      icon.value = e;
+      paintPicks();
+    });
+    picks.append(b);
+  }
+  icon.addEventListener('input', paintPicks);
+  paintPicks();
+  const iconRow = el('div', 'emoji-row');
+  iconRow.append(icon, picks);
+  wrap.append(field('Headline', headline), field('Body', body), field('Emoji', iconRow));
+  // fieldEditor focuses whatever it is handed.
+  wrap.focus = () => headline.focus();
+  return {
+    wrap,
+    clear: () => {
+      headline.value = '';
+      body.value = '';
+      icon.value = '';
+      paintPicks();
+    },
+    value: () => {
+      if (!headline.value.trim() && !body.value.trim()) {
+        return null;
+      }
+      return {headline: headline.value.trim(), body: body.value.trim(), icon: icon.value.trim()};
+    },
+  };
+}
+
+// highlightFields is the Basics tab's callout editor. It starts as one button,
+// Add Highlight Section, and opens into the fields with a way to take the
+// section off again.
+function highlightFields(current) {
+  const wrap = el('div', 'highlight-fields');
+  const inputs = highlightInputs(current);
+  const add = button('Add Highlight Section', 'plus', 'button button-secondary button-small', () => {
+    section.hidden = false;
+    add.hidden = true;
+    inputs.wrap.focus();
+  });
+  const section = el('div', 'setting-card highlight-editor');
+  section.hidden = !current;
+  add.hidden = Boolean(current);
+  const remove = button('Remove highlight', 'trash', 'button button-secondary button-small', () => {
+    inputs.clear();
+    section.hidden = true;
+    add.hidden = false;
+  });
+  section.append(el('div', 'setting-label', 'Highlight section'),
+    el('div', 'setting-hint', 'A callout under the description for the one thing people must read.'),
+    inputs.wrap, remove);
+  wrap.append(add, section);
+  return {
+    wrap,
+    value: () => (section.hidden ? null : inputs.value()),
+  };
+}
+
 // whenFields is the When tab: the shared when editor (dom.js) in a form field,
 // offered the parent's timing to follow when the thing sits under one.
 function whenFields(act, parent) {
@@ -1008,6 +1095,7 @@ export function openActivity(act, options) {
   // never shows it (a suggestion is pending until approved).
   const statusRow = statusSelect ? settingRow('Status', 'Control whether this activity is open for sign-ups.', dotted(statusSelect)) : null;
   fields.push(field('Description', description));
+  const highlight = highlightFields(act ? act.highlight : null);
   let body;
   if (!suggesting) {
     // The full form is long, so it is a wide modal with the fields sorted into
@@ -1033,7 +1121,7 @@ export function openActivity(act, options) {
     }
     const about = settingRow('Description', 'What people should know before they sign up.', description);
     about.classList.add('is-stacked');
-    basics.push(about);
+    basics.push(about, highlight.wrap);
     body = [tabbedFields([
       {label: 'Basics', icon: 'doc', fields: basics},
       {label: 'When', icon: 'calendar', fields: [...(yearField ? [yearField] : []), when.wrap]},
@@ -1066,6 +1154,7 @@ export function openActivity(act, options) {
         category: parentSelect.value ? eventCategory.value : category.value,
         status: statusSelect ? statusSelect.value : '',
         description: description.value, image: image.value(), flyer: flyer.value(), timing: scheduled.timing,
+        highlight: highlight.value(),
         // Location is no longer asked for or shown; a value already in the sheet is kept.
         start: scheduled.start, end: scheduled.end, location: act ? act.location || '' : '', spots: unlimited.input.checked ? 0 : Number(spots.value) || 0,
         coLeaderNeeded: coLeader.input.checked, volunteersHidden: hidden.input.checked, directSignUp: direct.input.checked,
@@ -1292,7 +1381,7 @@ export function fieldEditor(anchor, pencil, opts) {
       e.stopPropagation();
       close();
     }
-    if (e.key === 'Enter' && opts.input.tagName !== 'TEXTAREA') {
+    if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') {
       e.preventDefault();
       save.click();
     }
@@ -1618,7 +1707,7 @@ export async function saveActivityFields(act, changes) {
     description: act.description || '', image: act.image || '', flyer: act.flyer || '', timing: act.own.timing,
     start: act.own.start, end: act.own.end, location: act.location || '', spots: act.spots || 0,
     coLeaderNeeded: act.coLeaderNeeded, volunteersHidden: act.volunteersHidden, directSignUp: act.directSignUp,
-    prettyId: act.prettyId || '', allowAdding: act.allowAddingOwn || '',
+    prettyId: act.prettyId || '', allowAdding: act.allowAddingOwn || '', highlight: act.highlight || null,
     ...changes,
   };
   try {

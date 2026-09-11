@@ -3,7 +3,7 @@ import {el, link, svg, thumb, avatar, badge, button, searchBox, copyText, whenEd
 import {setTitle} from '../chrome.js';
 import {childRow, categoryClass} from '../cards.js';
 import {openCropTool, openPhotoLightbox} from '../crop.js';
-import {openSignUp, openActivity, openLink, saveActivityFields, openPerson, openImageSearch, imageSearchOn, editable, textInput, textAreaInput, selectInput, uploadAndSave, openCategoryManager, openVolunteerGrid} from '../edit.js';
+import {openSignUp, openActivity, openLink, saveActivityFields, openPerson, openImageSearch, imageSearchOn, editable, fieldEditor, highlightInputs, textInput, textAreaInput, selectInput, uploadAndSave, openCategoryManager, openVolunteerGrid} from '../edit.js';
 
 
 // Which activity is in edit mode, by id. Keyed rather than a bare boolean so
@@ -654,6 +654,34 @@ function resourcesCard(node, editing) {
   return card;
 }
 
+// highlightCard is the callout on the page: the emoji large at the left, the
+// headline, and the body with its **bold** runs made bold - the only markup
+// the sheet allows, so a line can stress "one performance" without HTML.
+function highlightCard(node) {
+  const h = node.highlight;
+  if (!h) {
+    return null;
+  }
+  const card = el('div', 'highlight-card');
+  if (h.icon) {
+    card.append(el('div', 'highlight-icon', h.icon));
+  }
+  const body = el('div', 'highlight-body');
+  if (h.headline) {
+    body.append(el('div', 'highlight-headline', h.headline));
+  }
+  for (const para of (h.body || '').split(/\n\s*\n/).filter(t => t.trim())) {
+    const p = el('p', 'highlight-text');
+    para.trim().split(/(\*\*[^*]+\*\*)/).forEach(part => {
+      const bold = part.match(/^\*\*([^*]+)\*\*$/);
+      p.append(bold ? el('strong', '', bold[1]) : part);
+    });
+    body.append(p);
+  }
+  card.append(body);
+  return card;
+}
+
 // flyerCard is the event's poster in the rail, under the details: the whole
 // picture at the rail's width, a click to see it full size, and while editing
 // a way to put one up or take it down.
@@ -1070,6 +1098,30 @@ export function activityPage(node) {
     }
   }
 
+  // The highlight is the one thing organizers most want read, so it follows
+  // the write-up as a warm callout: emoji, headline, a few lines. In edit
+  // mode it takes a pencil, or - with none yet - a quiet button to add one.
+  const highlight = highlightCard(node);
+  const highlightHint = 'Clear the headline and body to take the highlight off.';
+  if (highlight) {
+    main.append(highlight);
+    if (editing) {
+      main.append(editable(highlight, 'Edit the highlight',
+        () => {
+          const inputs = highlightInputs(node.highlight);
+          return {input: inputs.wrap, hint: highlightHint, value: inputs.value};
+        },
+        value => save({highlight: value})));
+    }
+  } else if (editing) {
+    const add = button('Add Highlight Section', 'plus', 'button button-secondary button-small', () => {
+      const inputs = highlightInputs(null);
+      fieldEditor(slot, add, {input: inputs.wrap, hint: highlightHint, value: inputs.value, submit: value => save({highlight: value})});
+    });
+    const slot = el('div', 'highlight-add');
+    slot.append(add);
+    main.append(slot);
+  }
   // Resources read as part of the write-up, so they sit under it rather than in
   // the rail with the facts.
   const resources = resourcesCard(node, editing);
