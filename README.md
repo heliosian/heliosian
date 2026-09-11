@@ -1,6 +1,6 @@
 # Heliosian
 
-Web apps for the Helios school community (K-8), served as one static Go binary on Cloud Run, one app per hostname: the school directory, "Helios Who?", at who.heliosian.com, the community's link portal, "Heliosian", at heliosian.com, and the volunteer sign-up portal, "HCA-Team", at hca.heliosian.com. Built in the open by community volunteers, mostly through coding agents; the repo contains no secrets and no real community data.
+Web apps for the Helios school community (K-8), served as one static Go binary on Cloud Run, one app per hostname under heliosian.com; each app is described under Docs below. Built in the open by community volunteers, mostly through coding agents; the repo contains no secrets and no real community data.
 
 ## Quick start
 
@@ -23,11 +23,12 @@ To run against real community data instead, see [docs/dev.md](docs/dev.md).
 - `internal/who` — the directory app: model load, handlers, admin tools, self-service edits
 - `internal/home` — the link portal: model load, handlers, admin edits
 - `internal/events` — the volunteer portal: the Events sheet's model, handlers, sign-ups, and admin edits
+- `internal/birthday` — the birthday team: the Birthdays sheet's model, the derived dates and stages, handlers, and admin edits
 - `internal/blob` — media from Cloud Storage, held in memory with stored thumbnails
 - `internal/geocode` — address → coordinates for the map
 - `internal/capture` — drive Chrome and screenshot a page, for the dev tools
 - `internal/devtls` — the in-memory self-signed certificate local HTTPS runs on
-- `web/` — one directory per app (`web/who/`, `web/home/`, `web/hca/`) holding its pages and every file it serves behind sign-in, `web/common/` for what all apps share, and `web/public/<app>/` and `web/public/common/` for the few files served before sign-in (frameworkless JavaScript throughout)
+- `web/` — one directory per app, named for its hostname, holding its pages and every file it serves behind sign-in, `web/common/` for what all apps share, and `web/public/<app>/` and `web/public/common/` for the few files served before sign-in (frameworkless JavaScript throughout)
 - `sampledata/` — the fictional community served by default
 - `cmd/` — dev tooling: screenshots, browser driving, sheet inspection
 - `docs/` — everything below
@@ -59,5 +60,10 @@ HCA-Team, in `docs/events/`:
 
 - [events.md](docs/events/events.md) — the volunteer portal spec
 - [data.md](docs/events/data.md) — the Events sheet and its rules
+
+Helios Staff Birthdays, in `docs/birthday/`:
+
+- [birthday.md](docs/birthday/birthday.md) — the birthday team app spec
+- [data.md](docs/birthday/data.md) — the Birthdays sheet and its rules
 
 Each app keeps its own docs under `docs/<app>/`, named for the sheet it serves; the top level is only what every app shares.

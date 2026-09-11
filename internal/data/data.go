@@ -12,6 +12,21 @@ import (
 	"sync"
 )
 
+// CheckColumns refuses a tab missing a column the caller reads. A column it does
+// not read is somebody else's business.
+func CheckColumns(table string, header, wanted []string) error {
+	present := map[string]bool{}
+	for _, h := range header {
+		present[h] = true
+	}
+	for _, w := range wanted {
+		if !present[w] {
+			return fmt.Errorf("table %s is missing column %q", table, w)
+		}
+	}
+	return nil
+}
+
 type Source interface {
 	Table(app, name string) ([]string, []map[string]string, error)
 	Header(app, name string) ([]string, error)

@@ -283,7 +283,11 @@ func uploadPhotos(dir string, apply bool) error {
 			return fmt.Errorf("photo %s is not named for its content, want %s", entry.Name(), want)
 		}
 		if !apply {
-			if !uploader.Has("photos/" + entry.Name()) {
+			present, err := uploader.Has("photos/" + entry.Name())
+			if err != nil {
+				return err
+			}
+			if !present {
 				pending++
 			}
 			continue
@@ -473,7 +477,9 @@ func main() {
 
 type staticFiles struct{}
 
-func (staticFiles) Has(key string) bool {
+func (staticFiles) Has(key string) (bool, error) {
 	_, err := os.Stat(filepath.Join("web/who", filepath.FromSlash(key)))
-	return err == nil
+	return err == nil, nil
 }
+
+func (staticFiles) Prefetch([]string) error { return nil }

@@ -8,7 +8,9 @@ import (
 
 type noBlobs struct{}
 
-func (noBlobs) Has(string) bool { return false }
+func (noBlobs) Has(string) (bool, error) { return false, nil }
+
+func (noBlobs) Prefetch([]string) error { return nil }
 
 func sampleModel(t *testing.T) *Model {
 	t.Helper()
@@ -488,7 +490,9 @@ func TestClearingFamilyPronunciationSucceeds(t *testing.T) {
 // resolution rather than the empty-name early return every other test relies on.
 type fakeBlobs map[string]bool
 
-func (f fakeBlobs) Has(key string) bool { return f[key] }
+func (f fakeBlobs) Has(key string) (bool, error) { return f[key], nil }
+
+func (fakeBlobs) Prefetch([]string) error { return nil }
 
 // A photo with a linked crop shows the crop wherever it's the effective, square
 // display URL, while the original stays available separately for "View photo".
@@ -628,7 +632,9 @@ func model(t *testing.T, email string) *Person {
 // sheet resolves to a URL the way it does against the real bucket.
 type blobsWith map[string]bool
 
-func (b blobsWith) Has(name string) bool { return b[name] }
+func (b blobsWith) Has(name string) (bool, error) { return b[name], nil }
+
+func (blobsWith) Prefetch([]string) error { return nil }
 
 // The topbar avatar on both the directory and the link portal leads with this,
 // so the own-photo-then-family fallback is worth pinning down. The sample

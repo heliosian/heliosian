@@ -39,7 +39,9 @@ func (fakeDirectory) Person(email string) (string, string, bool) {
 
 type bundled struct{}
 
-func (bundled) Has(key string) bool { return strings.HasPrefix(key, "brand/") }
+func (bundled) Has(key string) (bool, error) { return strings.HasPrefix(key, "brand/"), nil }
+
+func (bundled) Prefetch([]string) error { return nil }
 
 func newServer(t *testing.T) (*Cache, *http.ServeMux) {
 	t.Helper()

@@ -20,16 +20,17 @@ The Dockerfile builds in two stages: a `golang` stage compiles the static binary
 
 `cmd/deploy` holds the full service configuration and is the only place it is written down:
 
-    DIRECTORY_SHEET=<spreadsheet id> PREFERENCES_SHEET=<spreadsheet id> INVITES_SHEET=<spreadsheet id> APPS_SHEET=<spreadsheet id> EVENTS_SHEET=<spreadsheet id> CONFIG_SHEET=<spreadsheet id> go run ./cmd/deploy
+    eval "$(go run ./cmd/findsheet)"
+    go run ./cmd/deploy
 
-It deploys the `latest` image with every setting the pipeline does not touch, so it both creates the service from nothing and repairs drift on an existing one. The spreadsheet ids come from the environment (`cmd/findsheet` prints them as shell exports) and the OAuth client id from `creds/oauth-client.json` — the same resolution the server itself uses — so none of them is written into the repository. All six spreadsheet ids are required, here and in `Production()`. Because a per-push deploy only ever changes the image (see above), changing a spreadsheet id only ever takes effect through a `cmd/deploy` run, never a plain push.
+It deploys the `latest` image with every setting the pipeline does not touch, so it both creates the service from nothing and repairs drift on an existing one. The spreadsheet ids come from the environment (`cmd/findsheet` prints them as shell exports) and the OAuth client id from `creds/oauth-client.json` — the same resolution the server itself uses — so none of them is written into the repository. Every spreadsheet id is required, here and in `Production()`. Because a per-push deploy only ever changes the image (see above), changing a spreadsheet id only ever takes effect through a `cmd/deploy` run, never a plain push.
 
 Why each setting is what it is:
 
 - **service account** — the runtime identity, `directory@`. Application-default credentials inside the container resolve to it through the metadata server; there is no key file anywhere in the system.
-- **min instances 1** — startup preloads every media object before listening (about ten seconds); still worth avoiding on a cold request.
+- **min instances 1** — startup fetches every media object the sheets name before listening (about ten seconds); still worth avoiding on a cold request.
 - **max instances 1** — the directory model and blob store live in per-instance memory with no cross-instance coherency; a self-service edit refreshes only the instance that handled it, so a second instance would serve stale data.
-- **memory 2Gi** — the blob store holds all media and thumbnails in RAM. Because thumbnails are stored rather than generated, startup decodes no images and the preload peak sits close to the steady state: a roughly 360 MB blob store runs the container at about a quarter of this limit. The startup log line `blob store: … MB in memory` reports the footprint; resize when it approaches half the limit.
+- **memory 2Gi** — the blob store holds every named object and its thumbnail in RAM. Because thumbnails are stored rather than generated, startup decodes no images and the peak sits close to the steady state: a roughly 360 MB blob store runs the container at about a quarter of this limit. The startup log line `blob store: prefetched` reports how many objects are held; resize when the footprint approaches half the limit.
 - **concurrency 250** — with a single instance, every simultaneous request shares it, and a photo-heavy page fans out many image requests at once. The work is served from memory, so the ceiling exists to bound queueing, not CPU.
 - **no CPU throttling** — the directory model and blob store refresh on five-minute tickers between requests; default throttling would starve them.
 - **HTTP/2** — Cloud Run speaks cleartext HTTP/2 to the container, which the server accepts. Browsers already get HTTP/2 from the frontend either way.
@@ -46,6 +47,7 @@ Plain environment variables:
 - `INVITES_SHEET` — the `Invite List Builder` spreadsheet id. Powers the Invites page (`/greenvelope`).
 - `APPS_SHEET` — the `Apps` spreadsheet id: Heliosian's categories, links, and admins (`docs/home/data.md`).
 - `EVENTS_SHEET` — the `Events` spreadsheet id: the volunteer portal's activities, roles, sign-ups, and admins (`docs/events/data.md`).
+- `BIRTHDAY_SHEET` — the `Birthdays` spreadsheet id: the birthday team's staff birthdays, pipeline progress, charities, and admins (`docs/birthday/data.md`).
 - `CONFIG_SHEET` — the `Config` spreadsheet id: the platform super admins and settings (`docs/config.md`).
 - `GOOGLE_CLIENT_ID` — the OAuth web client id; not a secret (every login page fetches it from `/auth/client`), but kept out of the repository.
 
@@ -57,7 +59,7 @@ Secret Manager secrets, delivered as environment variables. Values are used raw,
 
 ## Media storage
 
-Photos, pronunciation recordings, Heliosian's link images, and the volunteer portal's activity images live in `gs://heliosian-media` (us-west1, uniform access, public access prevented, object versioning on), the single source of truth for media — see `docs/who/data.md` for the naming convention and stored thumbnails. It sits in the same region as the service, so the whole set preloads into memory in about eight seconds with no per-request throttle to work around. Object versioning no longer carries the upload history: an object is named for its own bytes and is never rewritten, so every version that once accumulated under one name is now a separate object that the sheet either still names or does not.
+Photos, pronunciation recordings, Heliosian's link images, and the volunteer portal's activity images live in `gs://heliosian-media` (us-west1, uniform access, public access prevented, object versioning on), the single source of truth for media — see `docs/who/data.md` for the naming convention and stored thumbnails. It sits in the same region as the service, so everything the sheets name fetches into memory in about eight seconds with no per-request throttle to work around. Nothing ever lists the bucket: the sheets are the index, each loader asks for its objects by name, and an object no sheet has named for a while is dropped from memory. Object versioning no longer carries the upload history: an object is named for its own bytes and is never rewritten, so every version that once accumulated under one name is now a separate object that the sheet either still names or does not.
 
 Because the bucket is private and every read goes through the app's own sign-in gate, no object is ever publicly readable; the service reads and writes it as `directory@`.
 
@@ -85,11 +87,19 @@ The web client's authorized JavaScript origins are the `*.local.heliosian.com` d
 
 ## Domain
 
-Every hostname is a Cloud Run domain mapping on the one service: `who.heliosian.com`, `who.lab.heliosian.com`, `home.heliosian.com`, `home.lab.heliosian.com`, `hca.heliosian.com`, `hca.lab.heliosian.com`, `www.heliosian.com`, and the apex `heliosian.com`. DNS at Namecheap carries `CNAME ghs.googlehosted.com.` for each subdomain; the apex, which cannot be a CNAME, carries a Namecheap `ALIAS` record to the same name, which Namecheap flattens into that host's current A and AAAA records on a fixed five-minute TTL. Cloud Run routes by hostname at Google's front end, so any of Google's addresses works, and the Cloud Run console's list of eight static apex addresses is a suggestion, not a check: certificate issuance only needs the challenge to be reachable. Google provisions and renews each certificate once its record resolves, retrying on an hourly poll, so a freshly changed record can take up to an hour to show as provisioned. A new app's hostnames take only domain mappings here; the server already routes them by the naming convention.
+Every hostname is a Cloud Run domain mapping on the one service, one per app per tier plus `www` and the apex. The current set, with each certificate's status:
+
+    gcloud beta run domain-mappings list --region us-west1 --project heliosian --format "table(metadata.name,status.conditions[0].status)"
+
+A new hostname is one more mapping:
+
+    gcloud beta run domain-mappings create --service heliosian --domain <host>.heliosian.com --region us-west1 --project heliosian
+
+DNS at Namecheap carries `CNAME ghs.googlehosted.com.` for each subdomain; the apex, which cannot be a CNAME, carries a Namecheap `ALIAS` record to the same name, which Namecheap flattens into that host's current A and AAAA records on a fixed five-minute TTL. Cloud Run routes by hostname at Google's front end, so any of Google's addresses works, and the Cloud Run console's list of eight static apex addresses is a suggestion, not a check: certificate issuance only needs the challenge to be reachable. Google provisions and renews each certificate once its record resolves, retrying on an hourly poll, so a freshly changed record can take up to an hour to show as provisioned. A new app's hostnames take only domain mappings here; the server already routes them by the naming convention.
 
 ## Logs
 
-The server writes one JSON object per line to stdout (`internal/logging`), and Cloud Run's agent turns each into a structured entry: `severity` and `message` are promoted, `httpRequest` is rendered like the request log's own summary, and every other field lands in `jsonPayload`, where it can be filtered on. Every record written while handling a request carries `app` (`who`, `home`, or `hca`), `user` (the signed-in address), and Cloud Run's trace, so the Logs Explorer nests it under the Cloud Run request entry with the same trace. Each request past sign-in also gets one record of its own, `message="request"`, holding method, URL, status, latency, and user agent; media reads (`/photos/…` and the other bucket routes) skip that record, since a photo-heavy page fans out hundreds of them and Cloud Run's request log already lists each one. Writes log what changed as fields, and carry `actor` where the acting identity can differ from `user`: the directory and the volunteer portal resolve aliases, and a super admin can spoof.
+The server writes one JSON object per line to stdout (`internal/logging`), and Cloud Run's agent turns each into a structured entry: `severity` and `message` are promoted, `httpRequest` is rendered like the request log's own summary, and every other field lands in `jsonPayload`, where it can be filtered on. Every record written while handling a request carries `app` (the app's hostname label), `user` (the signed-in address), and Cloud Run's trace, so the Logs Explorer nests it under the Cloud Run request entry with the same trace. Each request past sign-in also gets one record of its own, `message="request"`, holding method, URL, status, latency, and user agent; media reads (`/photos/…` and the other bucket routes) skip that record, since a photo-heavy page fans out hundreds of them and Cloud Run's request log already lists each one. Writes log what changed as fields, and carry `actor` where the acting identity can differ from `user`: the directory and the volunteer portal resolve aliases, and a super admin can spoof.
 
 Queries that answer the usual questions, in Logs Explorer with the service selected or with `gcloud logging read`:
 
@@ -103,4 +113,4 @@ Local development installs the same records over a text handler on stderr, so th
 
 ## Verifying a deploy
 
-The startup log (Cloud Run → Logs, or `gcloud logging read`) shows the full boot sequence: the blob store footprint line, geocoding count, directory model load, then `listening` — about ten seconds after the instance starts. After any deploy, an existing session should still work — if everyone got signed out, `SESSION_KEY` stopped reaching the server.
+The startup log (Cloud Run → Logs, or `gcloud logging read`) shows the full boot sequence: the blob store's prefetch line, geocoding count, directory model load, then `listening` — about ten seconds after the instance starts. After any deploy, an existing session should still work — if everyone got signed out, `SESSION_KEY` stopped reaching the server.

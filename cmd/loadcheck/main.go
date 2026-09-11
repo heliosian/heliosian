@@ -21,41 +21,46 @@ type staticFiles struct {
 	root string
 }
 
-func (s staticFiles) Has(key string) bool {
+func (s staticFiles) Has(key string) (bool, error) {
 	_, err := os.Stat(filepath.Join(s.root, filepath.FromSlash(key)))
-	return err == nil
+	return err == nil, nil
+}
+
+func (staticFiles) Prefetch([]string) error { return nil }
+
+func bundled(roots []string, key string) bool {
+	for _, root := range roots {
+		if found, _ := (staticFiles{root}).Has(key); found {
+			return true
+		}
+	}
+	return false
 }
 
 // homeImages trusts bucket names, since this tool carries no bucket client,
 // and checks bundled files on disk.
 type homeImages struct{}
 
-func (homeImages) Has(key string) bool {
+func (homeImages) Has(key string) (bool, error) {
 	if strings.HasPrefix(key, "link-images/") {
-		return true
+		return true, nil
 	}
-	for _, root := range []string{"web/home", "web/public/home"} {
-		if (staticFiles{root}).Has(key) {
-			return true
-		}
-	}
-	return false
+	return bundled([]string{"web/home", "web/public/home"}, key), nil
 }
+
+func (homeImages) Prefetch([]string) error { return nil }
 
 // eventsImages trusts bucket names like homeImages does, and checks bundled files.
 type eventsImages struct{}
 
-func (eventsImages) Has(key string) bool {
+func (eventsImages) Has(key string) (bool, error) {
 	if strings.HasPrefix(key, "activity-images/") {
-		return true
+		return true, nil
 	}
-	for _, root := range []string{"web/hca", "web/public/hca"} {
-		if (staticFiles{root}).Has(key) {
-			return true
-		}
-	}
-	return false
+	return bundled([]string{"web/hca", "web/public/hca"}, key), nil
 }
+
+func (eventsImages) Prefetch([]string) error { return nil }
 
 func requiredEnv(name string) string {
 	value := os.Getenv(name)

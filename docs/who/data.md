@@ -72,7 +72,7 @@ Only an affirmative opt-in puts a family in the directory. A household that neve
 
 ## Media is named by content, and the sheet is the index
 
-Every object in the bucket is named for the hash of its own bytes, under `photos/` or `pronunciation/`. The bucket therefore says nothing about who owns what — the `Photos` tab, the `Families` tab, and the Overrides pronunciation column do, and a name recorded there with no object behind it is fatal rather than treated as an absence, because the two disagreeing is a bug and not a missing file.
+Every object in the bucket is named for the hash of its own bytes, under `photos/` or `pronunciation/`. The bucket therefore says nothing about who owns what — the `Photos` tab, the `Families` tab, and the Overrides pronunciation column do, and a name recorded there with no object behind it is fatal rather than treated as an absence, because the two disagreeing is a bug and not a missing file. The server never lists the bucket; it fetches exactly the names the sheets record. The two exceptions to content naming are the classroom and grade tiles under `classroom-images/` and `grade-images/`, replaced in place under the slug alone with no extension, since the loader asks for them by slug.
 
 The reason is that a name derived from a person could be written twice. Under the layout this replaced, a photo was stored at a name built from its owner's email, so an upload overwrote whatever was there. Content addressing makes an upload additive: two people who upload an identical image share one object, and neither can destroy the other's, because nothing is ever written to a name that already exists.
 

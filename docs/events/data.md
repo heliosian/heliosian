@@ -15,7 +15,7 @@ The portal's data lives in one Google Sheet, `Events`, in the community shared d
 - `Admins` — Email.
 - `Change Log` — Timestamp, Actor, Action, Kind, Year, Activity, Title, Email, Details; appended on every change, never read back.
 
-**Column order does not matter, column names do.** Every write places each cell under the column of that name wherever the tab keeps it (`Writer.AppendCells`), so columns may be rearranged by hand. The tabs that are read back must have exactly the columns listed - a missing one and an extra one both refuse the load, since a misspelt header would otherwise be ignored silently. `Change Log` is only appended to, so it needs the columns the app writes and may keep others (its old `Role` column, say); tabs the app never touches (one kept for backup, such as the old `Roles`) are left alone.
+**Column order does not matter, column names do.** Every write places each cell under the column of that name wherever the tab keeps it (`Writer.AppendCells`), so columns may be rearranged by hand. Every tab needs the columns listed; a column the app does not read is somebody else's business and is left alone (`data.CheckColumns`), as is a tab the app never touches, such as one kept for backup. The price is that a misspelt header for an optional-looking column is not caught - the loader only misses what it needs.
 
 ## One table, one tree
 

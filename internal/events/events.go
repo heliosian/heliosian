@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -19,6 +18,7 @@ import (
 	"heliosian/internal/auth"
 	"heliosian/internal/blob"
 	"heliosian/internal/data"
+	"heliosian/internal/logging"
 	"heliosian/internal/serve"
 )
 
@@ -39,7 +39,7 @@ var local = mustLocation("America/Los_Angeles")
 func mustLocation(name string) *time.Location {
 	loc, err := time.LoadLocation(name)
 	if err != nil {
-		log.Fatalf("[ERROR] load time zone %s: %v", name, err)
+		logging.Fatal("load time zone", "name", name, "error", err)
 	}
 	return loc
 }
