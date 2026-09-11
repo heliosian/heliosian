@@ -60,7 +60,7 @@ const (
 var settingKeys = []string{ExpenseFormKey, IntroKey}
 
 var (
-	CategoryColumns  = []string{"Category ID", "Event ID", "Title", "Description", "Image", "Allow Adding"}
+	CategoryColumns  = []string{"Category ID", "Event ID", "Title", "Description", "Image", "Allow Adding", "Show On Main Page"}
 	ActivityColumns  = []string{"Event ID", "Year", "Title", "Parent", "Category", "Status", "Description", "Image", "Timing", "Start", "End", "Location", "Spots", "Co-Leader Needed", "Volunteers Hidden", "Direct Sign-Up", "Added By", "Added"}
 	VolunteerColumns = []string{"Event ID", "Email", "Position", "Note", "Added By", "Added"}
 	LinkColumns      = []string{"Event ID", "Title", "URL", "Image"}
@@ -139,6 +139,11 @@ type Category struct {
 	// AllowAdding says whether people may propose new things into this category.
 	// Editors of the event (or admins, for a page heading) can always add.
 	AllowAdding bool `json:"allowAdding"`
+	// ShowOnMain says whether the Opportunities page lists this heading's
+	// events among everyone else's. A heading kept off the page still sits in
+	// the rail with its count, and clicking it there shows its events. Means
+	// nothing for an event's own categories.
+	ShowOnMain bool `json:"showOnMain"`
 	// BuiltIn marks the Uncategorized heading, which the model supplies itself
 	// rather than the sheet: it cannot be edited, reordered or deleted.
 	BuiltIn bool `json:"builtIn,omitempty"`
@@ -151,7 +156,7 @@ const UncategorizedID = "uncategorized"
 
 func uncategorized() *Category {
 	return &Category{ID: UncategorizedID, Title: "Uncategorized",
-		Description: "Things that have not been sorted into a category yet", BuiltIn: true}
+		Description: "Things that have not been sorted into a category yet", ShowOnMain: true, BuiltIn: true}
 }
 
 type Settings struct {
@@ -539,9 +544,13 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 		if err != nil {
 			return nil, fmt.Errorf("category %q: allow adding %w", title, err)
 		}
+		onMain, err := yesNo(row["Show On Main Page"], true)
+		if err != nil {
+			return nil, fmt.Errorf("category %q: show on main page %w", title, err)
+		}
 		c := &Category{
 			ID: id, EventID: strings.TrimSpace(row["Event ID"]), Title: title, Description: row["Description"],
-			Image: row["Image"], ImageURL: image, AllowAdding: adding,
+			Image: row["Image"], ImageURL: image, AllowAdding: adding, ShowOnMain: onMain || strings.TrimSpace(row["Event ID"]) != "",
 		}
 		model.categories[id] = c
 		if c.EventID == "" {

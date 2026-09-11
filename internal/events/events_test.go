@@ -494,3 +494,39 @@ func TestHandWrittenRows(t *testing.T) {
 		t.Fatalf("a child in another year loaded: %v", err)
 	}
 }
+
+func TestShowOnMainPage(t *testing.T) {
+	cache, mux := newServer(t)
+	if c := cache.Model().Category("C01"); !c.ShowOnMain {
+		t.Fatalf("a heading defaults to being shown: %+v", c)
+	}
+	// A blank cell means shown; an event's own category is always shown.
+	tables := cache.Tables()
+	next := *tables
+	next.Categories = cloneRows(tables.Categories)
+	next.Categories[0]["Show On Main Page"] = ""
+	next.Categories[6]["Show On Main Page"] = "No"
+	m, err := BuildModel(&next, bundled{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !m.Category("C01").ShowOnMain || !m.Category("C07").ShowOnMain {
+		t.Fatalf("blank or event-scoped categories should be shown")
+	}
+	off := false
+	edit := map[string]any{"id": "C02", "title": "Activities", "allowAdding": false, "showOnMain": off}
+	if rec := call(t, mux, admin, "POST", "/api/events/category", edit); rec.Code != http.StatusNoContent {
+		t.Fatalf("edit: %d %s", rec.Code, rec.Body)
+	}
+	if cache.Model().Category("C02").ShowOnMain || cache.Tables().count(categoriesTab, map[string]string{"Category ID": "C02", "Show On Main Page": "No"}) != 1 {
+		t.Fatalf("the heading was not taken off the page")
+	}
+	// The event's own categories never carry the flag in the sheet.
+	own := map[string]any{"eventId": "E001", "title": "Shifts", "allowAdding": true, "showOnMain": off}
+	if rec := call(t, mux, chair, "POST", "/api/events/category", own); rec.Code != http.StatusNoContent {
+		t.Fatalf("add: %d %s", rec.Code, rec.Body)
+	}
+	if cache.Tables().count(categoriesTab, map[string]string{"Title": "Shifts", "Show On Main Page": ""}) != 1 {
+		t.Fatalf("an event category carried the page flag")
+	}
+}

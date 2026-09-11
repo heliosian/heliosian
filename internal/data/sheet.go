@@ -132,10 +132,7 @@ func (s *Sheet) Upsert(app, table, keyColumn, keyValue string, cells map[string]
 		for column, value := range cells {
 			row[colIdx[column]] = value
 		}
-		_, err := s.service.Spreadsheets.Values.Append(id, quoted, &sheets.ValueRange{
-			Values: [][]interface{}{row},
-		}).ValueInputOption("RAW").InsertDataOption("INSERT_ROWS").Do()
-		return err
+		return s.writeRows(id, table, len(resp.Values), [][]interface{}{row})
 	}
 	_, err = s.service.Spreadsheets.Values.BatchUpdate(id, &sheets.BatchUpdateValuesRequest{
 		ValueInputOption: "RAW",
@@ -194,10 +191,7 @@ func (s *Sheet) Set(app, table string, match, cells map[string]string) error {
 		for column, value := range cells {
 			row[index[column]] = value
 		}
-		_, err := s.service.Spreadsheets.Values.Append(id, quoted, &sheets.ValueRange{
-			Values: [][]interface{}{row},
-		}).ValueInputOption("RAW").InsertDataOption("INSERT_ROWS").Do()
-		return err
+		return s.writeRows(id, table, len(resp.Values), [][]interface{}{row})
 	}
 	_, err = s.service.Spreadsheets.Values.BatchUpdate(id, &sheets.BatchUpdateValuesRequest{
 		ValueInputOption: "RAW",
@@ -228,9 +222,57 @@ func (s *Sheet) AppendAll(app, table string, rows [][]string) error {
 		}
 		values[i] = cells
 	}
-	_, err := s.service.Spreadsheets.Values.Append(id, quoteTab(table), &sheets.ValueRange{
-		Values: values,
-	}).ValueInputOption("RAW").InsertDataOption("INSERT_ROWS").Do()
+	used, err := s.rowCount(id, table)
+	if err != nil {
+		return err
+	}
+	return s.writeRows(id, table, used, values)
+}
+
+// rowCount is how many rows of the tab hold anything, header included: the
+// next row is where an appended row goes.
+func (s *Sheet) rowCount(id, table string) (int, error) {
+	resp, err := s.service.Spreadsheets.Values.Get(id, quoteTab(table)).Do()
+	if err != nil {
+		return 0, err
+	}
+	return len(resp.Values), nil
+}
+
+// writeRows puts rows at an explicit address - the first row after the `used`
+// rows the tab already has, starting in column A - growing the grid first when
+// it is too short. The Sheets append call is not used: it "detects a table"
+// from the range it is given, and a blank row, or a column that is empty for a
+// stretch, makes it pick a different table and start the row in that table's
+// first column, which lands cells under the wrong headers.
+func (s *Sheet) writeRows(id, table string, used int, rows [][]interface{}) error {
+	quoted := quoteTab(table)
+	tab, err := s.tabID(id, table)
+	if err != nil {
+		return err
+	}
+	meta, err := s.service.Spreadsheets.Get(id).Fields("sheets(properties(sheetId,gridProperties(rowCount)))").Do()
+	if err != nil {
+		return err
+	}
+	for _, sh := range meta.Sheets {
+		if sh.Properties.SheetId != tab {
+			continue
+		}
+		if short := int64(used+len(rows)) - sh.Properties.GridProperties.RowCount; short > 0 {
+			_, err := s.service.Spreadsheets.BatchUpdate(id, &sheets.BatchUpdateSpreadsheetRequest{
+				Requests: []*sheets.Request{{AppendDimension: &sheets.AppendDimensionRequest{
+					SheetId: tab, Dimension: "ROWS", Length: short + 100,
+				}}},
+			}).Do()
+			if err != nil {
+				return err
+			}
+		}
+	}
+	_, err = s.service.Spreadsheets.Values.Update(id, fmt.Sprintf("%s!A%d", quoted, used+1), &sheets.ValueRange{
+		Values: rows,
+	}).ValueInputOption("RAW").Do()
 	return err
 }
 
@@ -240,8 +282,9 @@ func (s *Sheet) AppendCells(app, table string, cells map[string]string) error {
 		return fmt.Errorf("no spreadsheet configured for app %q", app)
 	}
 	quoted := quoteTab(table)
-	// Only the header row is needed to place the cells.
-	resp, err := s.service.Spreadsheets.Values.Get(id, quoted+"!1:1").Do()
+	// The whole tab is read: the header to place the cells, the row count to
+	// place the row.
+	resp, err := s.service.Spreadsheets.Values.Get(id, quoted).Do()
 	if err != nil {
 		return err
 	}
@@ -263,10 +306,7 @@ func (s *Sheet) AppendCells(app, table string, cells map[string]string) error {
 		}
 		row[i] = value
 	}
-	_, err = s.service.Spreadsheets.Values.Append(id, quoted, &sheets.ValueRange{
-		Values: [][]interface{}{row},
-	}).ValueInputOption("RAW").InsertDataOption("INSERT_ROWS").Do()
-	return err
+	return s.writeRows(id, table, len(resp.Values), [][]interface{}{row})
 }
 
 func (s *Sheet) Delete(app, table string, match map[string]string) error {

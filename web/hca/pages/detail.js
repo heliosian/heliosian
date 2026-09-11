@@ -602,7 +602,7 @@ function volunteersBox(node, editing, save) {
     const input = el('input');
     input.type = 'number';
     input.min = '0';
-    input.placeholder = 'Unlimited';
+    // Two digits is plenty here, and the hint says what blank means.
     input.value = node.spots ? String(node.spots) : '';
     input.addEventListener('change', () => save({spots: Math.max(0, Number(input.value) || 0)}));
     const text = el('span');
@@ -840,15 +840,15 @@ function statusSelect(current, options, onChange) {
   return input;
 }
 
+// editorBand is the quiet tail of the page for whoever runs the thing: one
+// small button into the full form, and who proposed it. The pencil on the hero
+// is the editing entrance; this is the fallback for everything at once.
 function editorBand(node) {
-  const child = Boolean(node.parent);
   const band = el('div', 'editor-band');
-  band.append(el('h2', '', child ? 'Controls' : 'Admin Controls'));
-  const actions = el('div', 'editor-actions');
-  actions.append(button('Edit', 'edit', 'button', () => openActivity(node)));
-  band.append(actions);
+  band.append(button('Edit', 'edit', 'button button-secondary button-small', () => openActivity(node)));
   if (node.addedBy) {
-    band.append(el('div', 'footnote', `Proposed by ${node.addedBy} on ${longDate(node.added)}`));
+    const when = node.added ? ` on ${longDate(node.added)}` : '';
+    band.append(el('div', 'footnote', `Proposed by ${node.addedBy}${when}`));
   }
   return band;
 }

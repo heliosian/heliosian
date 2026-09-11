@@ -11,11 +11,17 @@ function shownIn(year) {
 }
 
 // Cards are grouped under their category, in the order the Categories tab lists
-// them. An activity naming a category that tab doesn't have is refused at load
-// (internal/events/load.go), so nothing can fall outside these groups.
+// them. An activity naming a category that tab doesn't have lands under the
+// built-in Uncategorized heading (internal/events/load.go), so nothing can fall
+// outside these groups.
 function yearGrid(year) {
   const root = el('div');
-  const items = shownIn(year);
+  // A heading kept off the main page only appears when it is the one asked
+  // for - from the rail, or its chip.
+  const items = shownIn(year).filter(a => {
+    const c = state.model.categories.find(c => c.id === a.category);
+    return !c || c.showOnMain || state.category === c.id;
+  });
   if (!items.length) {
     const panel = el('div', 'panel');
     panel.append(el('div', 'panel-empty', query || state.category ? 'Nothing matches.' : 'Nothing to sign up for yet.'));
@@ -73,7 +79,7 @@ function yearContent(year, thisYear) {
     };
     add('', 'All');
     for (const c of state.model.categories) {
-      if (present.has(c.id)) {
+      if (present.has(c.id) && (c.showOnMain || state.category === c.id)) {
         add(c.id, c.title);
       }
     }

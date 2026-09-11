@@ -6,7 +6,7 @@ The portal's data lives in one Google Sheet, `Events`, in the community shared d
 
 ## Tabs
 
-- `Categories` — Category ID, Event ID, Title, Description, Image, Allow Adding. Row order is display order within a scope. A blank Event ID makes a heading on the Opportunities page; an Event ID makes one of that root event's own categories, which the things under it are grouped by.
+- `Categories` — Category ID, Event ID, Title, Description, Image, Allow Adding, Show On Main Page. Row order is display order within a scope. A blank Event ID makes a heading on the Opportunities page; an Event ID makes one of that root event's own categories, which the things under it are grouped by.
 - `Activities` — Event ID, Year, Title, Parent, Category, Status, Description, Image, Timing, Start, End, Location, Spots, Co-Leader Needed, Volunteers Hidden, Direct Sign-Up, Added By, Added. Parent is an Event ID. Category is a Category ID: a page heading for a root, one of the root event's own for anything under it (or blank).
 - `Volunteers` — Event ID, Email, Position, Note, Added By, Added.
 - `Links` — Event ID, Title, URL, Image.
@@ -15,7 +15,7 @@ The portal's data lives in one Google Sheet, `Events`, in the community shared d
 - `Admins` — Email.
 - `Change Log` — Timestamp, Actor, Action, Kind, Year, Activity, Title, Email, Details; appended on every change, never read back.
 
-**Column order does not matter, column names do.** Every write places each cell under the column of that name wherever the tab keeps it (`Writer.AppendCells`), so columns may be rearranged by hand. Every tab needs the columns listed; a column the app does not read is somebody else's business and is left alone (`data.CheckColumns`), as is a tab the app never touches, such as one kept for backup. The price is that a misspelt header for an optional-looking column is not caught - the loader only misses what it needs.
+**Column order does not matter, column names do.** Every write places each cell under the column of that name wherever the tab keeps it (`Writer.AppendCells`), so columns may be rearranged by hand; a new row is written at an explicit address (the row after the last used one, from column A) rather than through the Sheets append call, whose table detection starts a row in the wrong column when the tab has a blank row or a sparse column. Every tab needs the columns listed; a column the app does not read is somebody else's business and is left alone (`data.CheckColumns`), as is a tab the app never touches, such as one kept for backup. The price is that a misspelt header for an optional-looking column is not caught - the loader only misses what it needs.
 
 ## One table, one tree
 
@@ -28,6 +28,8 @@ There is no separate table of roles. A committee, a booth, or a shift is an acti
 A category row with no Event ID is a heading on the Opportunities page, and only a root activity may name one. A root whose Category is blank, or names an id that is not a heading, is shown under a built-in **Uncategorized** heading (id `uncategorized`), which appears last and only while something needs it; it cannot be edited, reordered or deleted, and saving a root as Uncategorized stores a blank. A child whose Category names anything but one of its own event's categories is treated as having none. A row with an Event ID belongs to that root event: the things under the event — at any depth — are grouped by these on its page, in their row order, with the uncategorised ones last. Each event manages its own from its page (the Edit Categories button while editing); the page's headings are managed from Admin Tools. Whoever runs an event may change its categories; the page's need an admin. A category never moves between scopes once made.
 
 `Allow Adding` says whether people who do not run the thing may propose new items into a category — a booth into "Place & Culture Booths", an idea into "Just an Idea". Editors of the event (admins, for the page) can always add. The loader refuses a root naming an event's category, a child naming a page heading or another event's category, and a scoped category whose Event ID is not a root.
+
+`Show On Main Page` (default Yes) says whether a heading's events appear on the Opportunities page among everyone else's. A heading set to No still sits in the toolbar with its count, and choosing it there (or its chip) shows its events; it is a way to keep a long tail - old committees, standing needs - off the front without hiding it. It means nothing for an event's own categories, which the app leaves blank.
 
 Copying an event to the next year copies its categories too, under fresh ids, and the copied children point at the copies.
 
@@ -49,7 +51,7 @@ Start and End are wall-clock, `2026-09-24 16:00` or `2026-09-24` for a whole day
 The Glide export stamped its local times as `2025-03-01T17:30:00.000Z`; `go run ./cmd/fixdates` (dry run; `-write` to change) rewrites those cells into these forms, keeping the clock as written.
 ## Yes and No
 
-Flag cells are `Yes`, `No`, or blank. A blank takes the column's default, chosen so a hand-added row asks for help unless it says otherwise: `Co-Leader Needed` and `Direct Sign-Up` default to Yes, `Volunteers Hidden` and a category's `Allow Adding` to No. The app always writes Yes or No explicitly.
+Flag cells are `Yes`, `No`, or blank. A blank takes the column's default, chosen so a hand-added row asks for help unless it says otherwise: `Co-Leader Needed`, `Direct Sign-Up` and a category's `Show On Main Page` default to Yes, `Volunteers Hidden` and `Allow Adding` to No. The app always writes Yes or No explicitly.
 
 ## Status and spots
 

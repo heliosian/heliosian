@@ -659,6 +659,7 @@ func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 		Description string `json:"description"`
 		Image       string `json:"image"`
 		AllowAdding bool   `json:"allowAdding"`
+		ShowOnMain  *bool  `json:"showOnMain"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -702,6 +703,12 @@ func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 		"Description":  strings.TrimSpace(body.Description),
 		"Image":        strings.TrimSpace(body.Image),
 		"Allow Adding": YesNo(body.AllowAdding),
+		// Only a page heading can be kept off the page; an event's own
+		// categories are always shown on the event, and left blank here.
+		"Show On Main Page": "",
+	}
+	if eventID == "" {
+		cells["Show On Main Page"] = YesNo(body.ShowOnMain == nil || *body.ShowOnMain)
 	}
 	tables := a.cache.Tables()
 	action := "edit"
@@ -871,7 +878,7 @@ func (a app) copyActivity(w http.ResponseWriter, r *http.Request) {
 		fresh[c.ID] = newID()
 		catRows = append(catRows, map[string]string{
 			"Category ID": fresh[c.ID], "Event ID": fresh[act.ID], "Title": c.Title, "Description": c.Description,
-			"Image": c.Image, "Allow Adding": YesNo(c.AllowAdding),
+			"Image": c.Image, "Allow Adding": YesNo(c.AllowAdding), "Show On Main Page": "",
 		})
 	}
 	remap := func(id string) string {

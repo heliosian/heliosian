@@ -1405,7 +1405,9 @@ button.side-chair:hover { background: var(--input); }
 .vol-spots { display: flex; align-items: flex-start; gap: 10px; }
 
 .vol-spots input {
-  width: 84px;
+  width: 64px;
+  flex-shrink: 0;
+  text-align: center;
   padding: 6px 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -1844,40 +1846,16 @@ h2.section .link-button { font-size: 14px; }
 .group-title { font-weight: 700; margin: 18px 0 6px; }
 
 .editor-band {
-  background: var(--brand-deep);
-  color: #fff;
-  margin: 28px -20px 0;
-  padding: 20px 20px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 28px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
 }
 
-.editor-band h2 { font-size: 20px; margin: 0 0 12px; }
-
-.editor-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
-
-.editor-controls label { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; cursor: pointer; }
-
-.editor-controls label span { display: block; }
-
-.editor-controls label small { display: block; color: rgba(255, 255, 255, 0.6); }
-
-.editor-controls input[type=checkbox] { width: 18px; height: 18px; margin-top: 2px; accent-color: var(--accent); }
-
-.editor-controls select, .editor-controls input[type=number] {
-  padding: 6px 8px;
-  border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  background: #fff;
-  color: var(--ink);
-  font: inherit;
-}
-
-.editor-actions { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; margin-top: 18px; }
-
-.editor-actions .button { background: rgba(255, 255, 255, 0.1); }
-
-.editor-actions .button:hover { background: rgba(255, 255, 255, 0.2); }
-
-.editor-band .footnote { color: rgba(255, 255, 255, 0.6); margin-top: 18px; }
+.editor-band .footnote { margin: 0; }
 
 .calendar-head {
   display: flex;
@@ -2186,7 +2164,7 @@ h2.section .link-button { font-size: 14px; }
   }
   .tabbar a.is-active { color: var(--brand); }
   .tabbar svg { width: 22px; height: 22px; }
-  .band, .links-band, .signup-band, .editor-band { margin-left: -12px; margin-right: -12px; padding-left: 12px; padding-right: 12px; }
+  .band, .links-band, .signup-band { margin-left: -12px; margin-right: -12px; padding-left: 12px; padding-right: 12px; }
   .page-head h1 { font-size: 24px; }
   .year-title { font-size: 32px; }
   .row { gap: 10px; padding: 10px; }

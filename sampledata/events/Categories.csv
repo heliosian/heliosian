@@ -1,11 +1,11 @@
-Category ID,Event ID,Title,Description,Image,Allow Adding
-C01,,Headline Events,All-school events that anchor the calendar,brand/icon-192.png,No
-C02,,Activities,Bringing the community together,,No
-C03,,Coffee & Community,Casual coffee and a snack for parents and staff,,No
-C04,,HCA Committees,Groups that work throughout the year,brand/logo-mark.png,No
-C05,,Skills & Needs,"A little help, now and again",,No
-C06,,Just an Idea,"Someone came up with this idea, but we need someone to design it and run with it. What would it look like? Can you lead it? Most of these won't happen, and that's okay!",,Yes
-C07,E001,Event Support,,,No
-C08,E001,Place & Culture Booths,,,Yes
-C09,E013,Event Support,,,No
-C10,E013,Place & Culture Booths,,,Yes
+Category ID,Event ID,Title,Description,Image,Allow Adding,Show On Main Page
+C01,,Headline Events,All-school events that anchor the calendar,brand/icon-192.png,No,Yes
+C02,,Activities,Bringing the community together,,No,Yes
+C03,,Coffee & Community,Casual coffee and a snack for parents and staff,,No,Yes
+C04,,HCA Committees,Groups that work throughout the year,brand/logo-mark.png,No,Yes
+C05,,Skills & Needs,"A little help, now and again",,No,Yes
+C06,,Just an Idea,"Someone came up with this idea, but we need someone to design it and run with it. What would it look like? Can you lead it? Most of these won't happen, and that's okay!",,Yes,Yes
+C07,E001,Event Support,,,No,
+C08,E001,Place & Culture Booths,,,Yes,
+C09,E013,Event Support,,,No,
+C10,E013,Place & Culture Booths,,,Yes,

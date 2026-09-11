@@ -772,10 +772,18 @@ export function openCategory(category, eventId, after) {
   const description = textarea(category ? category.description : '', 3);
   const image = imagePicker(category ? category.image : '', category ? category.imageUrl : '');
   const adding = checkbox('People can add new things to this category', category ? category.allowAdding : true);
-  openModal(category ? 'Edit Category' : 'Add Category', [field('Title', title), field('Description', description), image.wrap, adding.wrap], {
+  const fields = [field('Title', title), field('Description', description), image.wrap, adding.wrap];
+  // Only a page heading can be kept off the main page; it still sits in the
+  // rail with its count, and clicking it there shows its events.
+  const onMain = eventId ? null : checkbox('Show on the main page (it stays in the toolbar either way)', category ? category.showOnMain : true);
+  if (onMain) {
+    fields.push(onMain.wrap);
+  }
+  openModal(category ? 'Edit Category' : 'Add Category', fields, {
     submit: () => send('POST', '/api/events/category', {
       id: category ? category.id : '', eventId: eventId || '',
       title: title.value, description: description.value, image: image.value(), allowAdding: adding.input.checked,
+      showOnMain: onMain ? onMain.input.checked : true,
     }),
     afterSave: after,
     onDelete: category ? () => send('DELETE', '/api/events/category', {id: category.id}) : null,
@@ -814,7 +822,8 @@ export function categoryList(root, after) {
     }
     const body = el('div', 'grow');
     body.append(el('div', '', category.title));
-    body.append(el('div', 'sub', [category.description, category.allowAdding ? 'People can add here' : 'Only organizers add here'].filter(Boolean).join(' · ')));
+    body.append(el('div', 'sub', [category.description, category.allowAdding ? 'People can add here' : 'Only organizers add here',
+      !root && !category.showOnMain ? 'Toolbar only' : ''].filter(Boolean).join(' · ')));
     const up = button('', 'up', 'icon-button', () => move(i, i - 1));
     up.setAttribute('aria-label', `Move ${category.title} up`);
     up.disabled = i === 0;

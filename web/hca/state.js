@@ -68,7 +68,11 @@ export function category(id) {
 // eventCategories are a root event's own categories - what the things under it
 // are grouped by. Empty for anything that is not a root.
 export function eventCategories(root) {
-  return root.categories || [];
+  // Look the event up again rather than trusting the object handed in: a modal
+  // that reopens itself after a save still holds the node from before the
+  // reload, whose categories are the old ones.
+  const fresh = activity(root.id) || root;
+  return fresh.categories || [];
 }
 
 export function activitiesIn(year) {
