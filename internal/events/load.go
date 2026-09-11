@@ -140,6 +140,9 @@ type Volunteer struct {
 	Added    string `json:"added,omitempty"`
 	Name     string `json:"name,omitempty"`
 	PhotoURL string `json:"photoUrl,omitempty"`
+	// Grade is filled in for the page from the directory: a student's grade,
+	// shown as a badge on their face.
+	Grade string `json:"grade,omitempty"`
 }
 
 type Activity struct {

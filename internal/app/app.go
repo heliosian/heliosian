@@ -145,6 +145,15 @@ func (d directory) Person(email string) (string, string, bool) {
 	return p.FullName, p.PhotoURL, true
 }
 
+// Grade is a student's grade for the badge on their face; blank for grown-ups.
+func (d directory) Grade(email string) string {
+	p := d.cache.Model().Person(email)
+	if p == nil || !p.IsStudent {
+		return ""
+	}
+	return p.Grade
+}
+
 // People is the directory as a picker sees it: everyone, with the one word that
 // places them - a staff member's job, a student's grade, or "Parent".
 func (d directory) People() []events.DirectoryPerson {

@@ -1382,9 +1382,13 @@ a.card-chip.is-link:hover { filter: brightness(0.92); text-decoration: underline
 
 .modal-person .form-tab-body > .field:has(> select) { max-width: none; }
 
+.modal-person .form-tab-body { min-height: 0; }
+
 .who-head { display: flex; align-items: center; gap: 22px; margin: 4px 0 22px; }
 
-.who-face { width: 112px; height: 112px; font-size: 40px; flex-shrink: 0; }
+.avatar.who-face { width: 112px; height: 112px; font-size: 40px; flex-shrink: 0; border-radius: 22px; }
+
+.who-face img { border-radius: 22px; }
 
 .who-names { min-width: 0; }
 
@@ -2960,3 +2964,33 @@ h2.section .link-button { font-size: 14px; }
 .emoji-pick:hover { background: var(--input); }
 
 .emoji-pick.is-active { border-color: var(--accent); background: #eaf3f3; }
+
+/* Offering to co-chair, right under the ask for one. */
+.side-offer { margin-top: 10px; }
+
+.side-offered { color: var(--brand); font-weight: 600; margin-top: 6px; }
+
+/* Faces in the Volunteers list are square-cornered tiles, a little larger,
+   with a student's grade badged on the corner. */
+.vol-people .side-chair { width: 68px; }
+
+.vol-people .side-chair .avatar { width: 56px; height: 56px; border-radius: 12px; font-size: 20px; }
+
+.vol-people .side-chair .avatar img { border-radius: 12px; }
+
+.grade-badge {
+  position: absolute;
+  left: -6px;
+  top: -6px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--brand);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 20px;
+  text-align: center;
+  box-shadow: 0 0 0 2px #fff;
+}

@@ -30,6 +30,8 @@ func (fakeDirectory) Resolve(email string) string { return email }
 
 func (fakeDirectory) People() []DirectoryPerson { return nil }
 
+func (fakeDirectory) Grade(string) string { return "" }
+
 func (fakeDirectory) Person(email string) (string, string, bool) {
 	if email == parent {
 		return "Robin Whitfield", "", true

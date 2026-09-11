@@ -237,8 +237,11 @@ func (a app) saveVolunteer(w http.ResponseWriter, r *http.Request) {
 	}
 	status, spots := act.Status, act.Spots
 	// A thing with direct sign-up off takes people only through what sits
-	// under it - at any level of the tree; whoever runs it may still place someone.
-	if !act.DirectSignUp && !editor {
+	// under it - at any level of the tree; whoever runs it may still place
+	// someone, and an offer to co-chair is about the thing itself, so it is
+	// taken wherever a co-chair is wanted.
+	offering := body.Position == PositionOpen && act.CoLeaderNeeded
+	if !act.DirectSignUp && !editor && !offering {
 		http.Error(w, "sign up for one of the things under it instead", http.StatusBadRequest)
 		return
 	}

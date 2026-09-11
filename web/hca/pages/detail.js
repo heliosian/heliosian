@@ -1,9 +1,9 @@
 import {state, isAdmin, years, allYears, descendants, parentOf, rootOf, category, eventCategories, longDate, parseWhen, coChairs, mySignUp, canJoin, isFull, matches, activityPath, listedIn, sortByStart, shiftedEnd, headingChoices, shownVolunteers, listHidden, canAdd, addLabel, ADDING} from '../state.js';
-import {el, link, svg, thumb, avatar, badge, button, searchBox, copyText, whenEditor} from '../dom.js';
+import {el, link, svg, thumb, avatar, badge, button, searchBox, copyText, whenEditor, toast} from '../dom.js';
 import {setTitle} from '../chrome.js';
 import {childRow, categoryClass} from '../cards.js';
 import {openCropTool, openPhotoLightbox} from '../crop.js';
-import {openSignUp, openActivity, openLink, saveActivityFields, openPerson, openImageSearch, imageSearchOn, editable, fieldEditor, highlightInputs, textInput, textAreaInput, selectInput, uploadAndSave, openCategoryManager, openVolunteerGrid} from '../edit.js';
+import {send, reload, openSignUp, openActivity, openLink, saveActivityFields, openPerson, openImageSearch, imageSearchOn, editable, fieldEditor, highlightInputs, textInput, textAreaInput, selectInput, uploadAndSave, openCategoryManager, openVolunteerGrid} from '../edit.js';
 
 
 // Which activity is in edit mode, by id. Keyed rather than a bare boolean so
@@ -250,6 +250,22 @@ function factsCard(node, editing, save) {
       body.append(wants);
     } else if (node.coLeaderNeeded) {
       body.append(el('div', 'side-line side-need', 'A co-chair is needed - could that be you?'));
+      // One click offers: the viewer's sign-up becomes (or starts as) open to
+      // co-chairing, and the chairs see them under Co-Chair Options.
+      const mine = mySignUp(node);
+      if (mine && mine.position === 'Open to Co-Chair') {
+        body.append(el('div', 'side-line side-offered', 'You have offered to co-chair - thank you!'));
+      } else if (!mine || mine.position !== 'Co-Chair') {
+        body.append(button('Offer to Co-Chair', 'people', 'button button-small side-offer', async () => {
+          try {
+            await send('POST', '/api/events/volunteer', {id: node.id, position: 'Open to Co-Chair', note: mine ? mine.note : ''});
+            await reload();
+            toast('Thank you - the organizers will be in touch.');
+          } catch (err) {
+            toast(err.message);
+          }
+        }));
+      }
     }
     row.append(body);
     card.append(row);
@@ -265,7 +281,14 @@ function personTile(owner, v, editing, star, chair, option) {
   tile.type = 'button';
   tile.title = owner.canEdit ? `${v.name} and their sign-up` : `About ${v.name}`;
   tile.addEventListener('click', () => openPerson(v, owner));
-  tile.append(avatar(v), el('div', 'side-chair-name', v.name + (star && v.position === 'Co-Chair' ? '*' : '')));
+  const face = avatar(v);
+  // A student's grade rides on the corner of their face, short: "5", "K".
+  if (v.grade) {
+    const grade = el('span', 'grade-badge', v.grade.replace(/^grade\s*/i, ''));
+    grade.title = v.grade;
+    face.append(grade);
+  }
+  tile.append(face, el('div', 'side-chair-name', v.name + (star && v.position === 'Co-Chair' ? '*' : '')));
   if (chair) {
     tile.append(el('div', 'side-chair-role', 'Chair'));
   } else if (option) {

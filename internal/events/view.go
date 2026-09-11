@@ -11,6 +11,8 @@ import (
 type Directory interface {
 	Resolve(email string) string
 	Person(email string) (name, photoURL string, ok bool)
+	// Grade is a student's grade, as the directory writes it; "" for anyone else.
+	Grade(email string) string
 	// People lists everyone a picker may offer, in the directory's own order.
 	People() []DirectoryPerson
 }
@@ -148,6 +150,7 @@ func (v viewer) volunteers(list []Volunteer, hidden, editor bool) []Volunteer {
 			continue
 		}
 		vol.Name, vol.PhotoURL = v.person(vol.Email)
+		vol.Grade = v.directory.Grade(vol.Email)
 		if !editor {
 			vol.AddedBy = ""
 		}
