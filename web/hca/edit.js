@@ -842,10 +842,13 @@ export function openActivity(act, options) {
   // What people who do not run this may add under it - and the default for
   // the event's own categories. Blank takes the parent's; an event's blank is No.
   const inheritLabel = under ? 'Same as the parent' : 'No, unless a category says otherwise';
+  // An event's blank already means No, so it needs no No of its own; a
+  // committee under a permissive parent does.
   const allowAdding = select([
     {label: inheritLabel, value: ''},
     {label: 'Yes - people can add, and it goes live', value: ADDING.yes},
     {label: 'Approval needed - people can add, an admin approves', value: ADDING.approval},
+    ...(under ? [{label: 'No - only organizers add here', value: ADDING.no}] : []),
   ], act ? act.allowAddingOwn || '' : '');
   const allowAddingRow = settingRow('Allow adding subactivities',
     'Can users add subactivities? Note that this is a default and can be overwritten by the settings of a category.',
