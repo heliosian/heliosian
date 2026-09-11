@@ -19,32 +19,47 @@ function statusBadges(node) {
   return out;
 }
 
-// labelLine is the small-caps line: when it happens, who chairs a role, and
-// the co-leader call.
-// volunteersLine is who has signed up, under the row's text: the row's own
-// volunteers in sign-up order, then everyone under its sub-activities with the
-// sub-activity named - "Marco Torres, Alice Che (Performance)" - up to twelve
-// names, then "and 5 more". The server already withholds a hidden list from
-// anyone who does not run the thing, so whatever arrives may be shown.
-function volunteersLine(node, editing) {
+// peopleLine is who is on a thing, one line under the row's text: the leads
+// first, in ink and each marked "(Lead)", then the volunteers in sign-up
+// order, then everyone under its sub-activities with the sub-activity named
+// - "Alice Che (Performance)" - up to twelve names in all, then "and 5 more".
+// The server already withholds a hidden list from anyone who does not run
+// the thing, so whatever arrives may be shown.
+function peopleLine(node, editing) {
+  const line = el('div', 'row-people');
+  const parts = [];
+  for (const v of coChairs(node)) {
+    const lead = el('span', 'row-lead', `${v.name} (Lead)`);
+    parts.push(lead);
+  }
   const names = shownVolunteers(node, editing).filter(v => v.position !== 'Co-Chair').map(v => v.name);
   for (const sub of descendants(node)) {
     for (const v of shownVolunteers(sub, editing)) {
       names.push(`${v.name} (${sub.title})`);
     }
   }
-  if (!names.length) {
-    return '';
+  const room = Math.max(0, 12 - parts.length);
+  for (const name of names.slice(0, room)) {
+    parts.push(el('span', '', name));
   }
-  if (names.length > 12) {
-    return `${names.slice(0, 12).join(', ')}, and ${names.length - 12} more`;
+  if (!parts.length) {
+    return null;
   }
-  return names.join(', ');
+  parts.forEach((part, i) => {
+    if (i > 0) {
+      line.append(', ');
+    }
+    line.append(part);
+  });
+  if (names.length > room) {
+    line.append(`, and ${names.length - room} more`);
+  }
+  return line;
 }
 
 // labelLine is the small first line over a title: the day and time, each
-// behind an icon, and any status badges. Who leads it is its own line below
-// (leadsLine), so the two never jostle for one row.
+// behind an icon, and any status badges. Who is on it is its own line below
+// (peopleLine), so the two never jostle for one row.
 function labelLine(node) {
   const label = el('div', 'label');
   // A thing that just happens when its parent does says nothing about when:
@@ -71,19 +86,6 @@ function labelLine(node) {
   return label;
 }
 
-// leadsLine says who leads a thing - "Leads: Alice Che, Marco Torres" - under
-// the row's text; nothing when nobody does yet.
-function leadsLine(node) {
-  const chairs = coChairs(node).map(v => v.name);
-  if (!chairs.length) {
-    return null;
-  }
-  const line = el('div', 'label label-leads');
-  const who = el('span', 'label-people');
-  who.append(el('span', 'label-leads-word', chairs.length === 1 ? 'Lead: ' : 'Leads: '), el('span', '', chairs.join(', ')));
-  line.append(who);
-  return line;
-}
 
 // needChip is the co-leader-wanted chip, which sits with the row's actions.
 function needChip(node) {
@@ -124,16 +126,10 @@ export function childRow(node, editing, moves) {
   if (node.children.length) {
     body.append(el('div', 'row-text', `${node.children.length} more under this`));
   }
-  // Who is on it comes last: the leads, then the volunteers on a line of
-  // their own - a separator between the two would start the line whenever
-  // the names wrap.
-  const leads = leadsLine(node);
-  if (leads) {
-    body.append(leads);
-  }
-  const people = volunteersLine(node, editing);
+  // Who is on it comes last, leads first.
+  const people = peopleLine(node, editing);
   if (people) {
-    body.append(el('div', 'row-people', people));
+    body.append(people);
   }
   row.append(body);
   const actions = el('div', 'row-actions');
