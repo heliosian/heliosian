@@ -791,6 +791,49 @@ function signUpForm(node, existing) {
   if (!existing) {
     fields.push(field('Who', who.wrap), emailField);
   }
+  // An existing sign-up can move to a neighbour: what this sits under, the
+  // things beside it, the things under it - whichever take sign-ups (or any,
+  // for whoever runs it). The row leaves the old thing as it lands on the new.
+  let where = null;
+  if (existing) {
+    const options = [];
+    const offer = (n, group) => {
+      if (n === node || n.directSignUp || n.canEdit) {
+        options.push({label: n.title, value: n.id, group});
+      }
+    };
+    const up = parentOf(node);
+    if (up) {
+      offer(up, 'Part of');
+    }
+    options.push({label: node.title, value: node.id, group: 'This'});
+    for (const s of (up ? up.children : state.model.activities.filter(a => a.year === node.year))) {
+      if (s !== node) {
+        offer(s, up ? 'Alongside it' : 'Other events');
+      }
+    }
+    for (const c of node.children) {
+      offer(c, 'Under it');
+    }
+    if (options.length > 1) {
+      where = el('select');
+      let groupEl = null;
+      let lastGroup = null;
+      for (const o of options) {
+        if (o.group !== lastGroup) {
+          groupEl = el('optgroup');
+          groupEl.label = o.group;
+          where.append(groupEl);
+          lastGroup = o.group;
+        }
+        const opt = el('option', '', o.label);
+        opt.value = o.value;
+        opt.selected = o.value === node.id;
+        groupEl.append(opt);
+      }
+      fields.push(field('Signed up for', where, 'Pick another to move this sign-up there.'));
+    }
+  }
   if (isChair && !editor) {
     fields.push(field('Availability', el('div', 'field-static', 'Co-Chair')));
   } else {
@@ -830,7 +873,8 @@ function signUpForm(node, existing) {
     fields,
     saveLabel: existing ? 'Save' : 'Sign Up',
     submit: () => send('POST', '/api/events/volunteer', {
-      id: node.id,
+      id: where ? where.value : node.id,
+      from: where && where.value !== node.id ? node.id : '',
       email: existing ? existing.email : (who.value === 'other' ? picker.value() : ''),
       position: isChair && !editor ? 'Co-Chair' : position.value, note: note.value,
     }),

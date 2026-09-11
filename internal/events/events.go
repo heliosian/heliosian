@@ -275,6 +275,9 @@ func (a app) saveVolunteer(w http.ResponseWriter, r *http.Request) {
 		Email    string `json:"email"`
 		Position string `json:"position"`
 		Note     string `json:"note"`
+		// From moves a sign-up: the thing it is on now, whose row goes as the
+		// new one lands - one change, so it is never on both or neither.
+		From string `json:"from"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -284,6 +287,12 @@ func (a app) saveVolunteer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	editor := admin || a.cache.Model().Runs(act, actor)
+	var from *Activity
+	if strings.TrimSpace(body.From) != "" && strings.TrimSpace(body.From) != act.ID {
+		if from, ok = a.findActivity(w, body.From); !ok {
+			return
+		}
+	}
 	email := strings.ToLower(strings.TrimSpace(body.Email))
 	if email == "" {
 		email = actor
@@ -316,6 +325,21 @@ func (a app) saveVolunteer(w http.ResponseWriter, r *http.Request) {
 	}
 	match := map[string]string{"Event ID": act.ID, "Email": email}
 	tables := a.cache.Tables()
+	// Moving: taking the row off the old thing is a removal there, allowed
+	// to whoever could remove it - themselves, their household, its editors.
+	var fromMatch map[string]string
+	if from != nil {
+		fromMatch = map[string]string{"Event ID": from.ID, "Email": email}
+		if tables.count(volunteersTab, fromMatch) == 0 {
+			http.Error(w, fmt.Sprintf("%s is not signed up for %s", email, from.Title), http.StatusBadRequest)
+			return
+		}
+		if email != actor && !admin && !a.cache.Model().Runs(from, actor) && !a.household(actor, email) {
+			http.Error(w, "only a co-chair or admin can move someone else's sign-up", http.StatusForbidden)
+			return
+		}
+		tables = tables.without(volunteersTab, fromMatch)
+	}
 	existing := tables.count(volunteersTab, match) > 0
 	// Co-chair is an appointment, not a choice: whoever runs the event - an
 	// admin or one of its co-chairs - makes one, and unmakes one. Anyone else
@@ -325,6 +349,14 @@ func (a app) saveVolunteer(w http.ResponseWriter, r *http.Request) {
 	for _, row := range tables.Volunteers {
 		if row["Event ID"] == act.ID && strings.EqualFold(strings.TrimSpace(row["Email"]), email) {
 			was = row["Position"]
+		}
+	}
+	if from != nil && was == "" {
+		// A moved row keeps its standing where it came from.
+		for _, row := range a.cache.Tables().Volunteers {
+			if row["Event ID"] == from.ID && strings.EqualFold(strings.TrimSpace(row["Email"]), email) {
+				was = row["Position"]
+			}
 		}
 	}
 	if !editor {
@@ -351,18 +383,29 @@ func (a app) saveVolunteer(w http.ResponseWriter, r *http.Request) {
 		cells["Added By"] = actor
 		cells["Added"] = today()
 	}
+	details := body.Position
+	if from != nil {
+		action = "move"
+		details = fmt.Sprintf("%s, from %s", body.Position, from.Title)
+	}
 	if !a.commit(r.Context(), w, tables.with(volunteersTab, match, cells), func() error {
+		if fromMatch != nil {
+			if err := a.writer.Delete(appName, volunteersTab, fromMatch); err != nil {
+				return err
+			}
+		}
 		if err := a.writer.Set(appName, volunteersTab, match, cells); err != nil {
 			return err
 		}
 		return a.logChange(actor, action, "volunteer", map[string]string{
-			"Year": act.Year, "Activity": act.Title, "Email": email, "Details": body.Position,
+			"Year": act.Year, "Activity": act.Title, "Email": email, "Details": details,
 		})
 	}) {
 		return
 	}
 	slog.InfoContext(r.Context(), "events: saved volunteer", "actor", actor, "action", action, "email", email, "activity", act.Title, "year", act.Year)
-	a.mailSignUp(r, act, email, body.Position, strings.TrimSpace(body.Note), actor, existing, was)
+	// A move is a change to a sign-up, not a new one: no thank-you goes out.
+	a.mailSignUp(r, act, email, body.Position, strings.TrimSpace(body.Note), actor, existing || from != nil, was)
 	w.WriteHeader(http.StatusNoContent)
 }
 

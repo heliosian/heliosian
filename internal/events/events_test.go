@@ -301,6 +301,36 @@ func keys(m map[string]mail.Message) []string {
 	return out
 }
 
+// TestMoveSignUp moves a sign-up from one thing to its sibling in one change:
+// the old row goes as the new one lands, a stranger may not, and moving onto a
+// thing you are already on simply leaves the old one.
+func TestMoveSignUp(t *testing.T) {
+	cache, mux := newServer(t)
+	on := func(id string) bool {
+		for _, v := range cache.Model().Activity(id).Volunteers {
+			if v.Email == parent {
+				return true
+			}
+		}
+		return false
+	}
+	if rec := call(t, mux, parent, "POST", "/api/events/volunteer", map[string]any{"id": "E017", "position": PositionVolunteer, "note": "evenings"}); rec.Code != http.StatusNoContent {
+		t.Fatalf("sign up: %d %s", rec.Code, rec.Body)
+	}
+	if rec := call(t, mux, "someone.else@heliosschool.org", "POST", "/api/events/volunteer", map[string]any{"id": "E018", "email": parent, "position": PositionVolunteer, "from": "E017"}); rec.Code != http.StatusForbidden {
+		t.Fatalf("a stranger moved someone: %d", rec.Code)
+	}
+	if rec := call(t, mux, parent, "POST", "/api/events/volunteer", map[string]any{"id": "E018", "position": PositionVolunteer, "note": "evenings", "from": "E017"}); rec.Code != http.StatusNoContent {
+		t.Fatalf("move: %d %s", rec.Code, rec.Body)
+	}
+	if on("E017") || !on("E018") {
+		t.Fatalf("after the move: on E017 %v, on E018 %v", on("E017"), on("E018"))
+	}
+	if rec := call(t, mux, parent, "POST", "/api/events/volunteer", map[string]any{"id": "E019", "position": PositionVolunteer, "from": "E017"}); rec.Code != http.StatusBadRequest {
+		t.Fatalf("moved from a thing not signed up for: %d", rec.Code)
+	}
+}
+
 func TestReorderChildren(t *testing.T) {
 	cache, mux := newServer(t)
 	titles := func() []string {
