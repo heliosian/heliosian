@@ -7,6 +7,7 @@ function* allNodes() {
   }
 }
 import {el, svg, toast, button, thumb, whenEditor} from './dom.js';
+import {openCropTool} from './crop.js';
 
 let modalState = null;
 
@@ -239,11 +240,14 @@ function imagePicker(current, currentUrl, options) {
   choose.append(file);
   const remove = el('button', 'link-button', 'Remove');
   remove.type = 'button';
+  const crop = el('button', 'link-button', 'Crop');
+  crop.type = 'button';
   let name = current || '';
   const show = url => {
     preview.hidden = !url;
     placeholder.hidden = Boolean(url);
     remove.hidden = !url;
+    crop.hidden = !url;
     if (url) {
       preview.src = url;
     }
@@ -268,6 +272,10 @@ function imagePicker(current, currentUrl, options) {
     name = '';
     show('');
   });
+  crop.addEventListener('click', () => openCropTool(preview.src, false, async blob => {
+    await upload(new File([blob], 'crop.jpg', {type: 'image/jpeg'}));
+    return true;
+  }));
   if (dropzone) {
     // The zone itself takes a click (anywhere but the buttons) and a drop.
     row.addEventListener('click', e => {
@@ -285,9 +293,9 @@ function imagePicker(current, currentUrl, options) {
       row.classList.remove('is-dragover');
       upload(e.dataTransfer.files[0]);
     });
-    row.append(preview, placeholder, choose, el('small', 'image-drop-note', 'JPG, PNG or GIF (max 8 MB)'), remove);
+    row.append(preview, placeholder, choose, el('small', 'image-drop-note', 'JPG, PNG or GIF (max 8 MB)'), crop, remove);
   } else {
-    row.append(preview, placeholder, choose, remove);
+    row.append(preview, placeholder, choose, crop, remove);
   }
   wrap.append(row);
   return {wrap, value: () => name};

@@ -2,6 +2,7 @@ import {state, isAdmin, years, allYears, descendants, parentOf, rootOf, category
 import {el, link, svg, thumb, avatar, badge, button, searchBox, copyText, whenEditor} from '../dom.js';
 import {setTitle} from '../chrome.js';
 import {childRow, categoryClass} from '../cards.js';
+import {openCropTool, openPhotoLightbox} from '../crop.js';
 import {openSignUp, openActivity, openLink, saveActivityFields, openPerson, editable, textInput, textAreaInput, selectInput, uploadAndSave, openCategoryManager, openVolunteerGrid} from '../edit.js';
 
 
@@ -63,6 +64,16 @@ function heroImageBar(node, save) {
   choose.append(file);
   bar.append(choose);
   if (node.image) {
+    // Crop opens the tool over the current picture; what is inside the frame
+    // is uploaded as a new image and saved in the picture's place.
+    const crop = el('button', 'hero-image-action');
+    crop.type = 'button';
+    crop.append(svg('crop'), el('span', '', 'Crop'));
+    crop.addEventListener('click', () => openCropTool(node.imageUrl, false, async blob => {
+      await uploadAndSave(save, new File([blob], 'crop.jpg', {type: 'image/jpeg'}));
+      return true;
+    }));
+    bar.append(crop);
     const remove = el('button', 'hero-image-action');
     remove.type = 'button';
     remove.append(svg('trash'), el('span', '', 'Remove'));
@@ -867,6 +878,10 @@ export function activityPage(node) {
     heroActions.append(toggle);
   }
   heroActions.append(shareButton(node));
+  if (node.imageUrl) {
+    // The hero crops a picture to its band; this shows the whole of it.
+    heroActions.append(heroButton('expand', 'View full size', () => openPhotoLightbox(node.imageUrl)));
+  }
   hero.append(heroActions);
   if (editing) {
     // Status sits right under the pencil that revealed it: a co-chair may only

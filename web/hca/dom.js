@@ -26,6 +26,8 @@ const paths = {
   clock: 'M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18zM12 7v5l3 2',
   chat: 'M4 5h16v11H8l-4 4z',
   phone: 'M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z',
+  crop: 'M6 2v14a2 2 0 0 0 2 2h14M18 22V8a2 2 0 0 0-2-2H2',
+  expand: 'M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7',
   menu: 'M4 7h16M4 12h16M4 17h16',
   more: 'M5 12h.01M12 12h.01M19 12h.01',
   chevron: 'M9 6l6 6-6 6',
