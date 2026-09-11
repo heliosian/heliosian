@@ -1,4 +1,4 @@
-import {state, me, isAdmin, pendingItems, selectedYear, listedIn, years, resolvePath, rootOf, eventCategories, descendants, activityPath} from './state.js';
+import {state, me, isAdmin, pendingItems, selectedYear, listedIn, years, resolvePath, rootOf, eventCategories, descendants, activityPath, isSystemAdmin, setSuperEdit} from './state.js';
 import {el, svg, link, button} from './dom.js';
 import {githubBadge} from '/github-badge.js';
 import {openActivity} from './edit.js';
@@ -292,6 +292,12 @@ function renderUser() {
   for (const line of document.querySelectorAll('.user-menu-email')) {
     line.textContent = user.email;
   }
+  for (const superRow of document.querySelectorAll('.user-menu-super')) {
+    superRow.hidden = !isSystemAdmin();
+  }
+  for (const box of document.querySelectorAll('.super-edit-checkbox')) {
+    box.checked = state.superEdit;
+  }
   for (const admin of document.querySelectorAll('.user-menu-admin')) {
     admin.hidden = !isAdmin();
   }
@@ -387,6 +393,14 @@ export function initChrome() {
       for (const other of document.querySelectorAll('.show-hidden-checkbox')) {
         other.checked = box.checked;
       }
+      document.dispatchEvent(new CustomEvent('hca:refresh'));
+    });
+  }
+  // Super Edit Mode puts a system admin's hat on or takes it off; the page
+  // repaints as the other kind of user.
+  for (const box of document.querySelectorAll('.super-edit-checkbox')) {
+    box.addEventListener('change', () => {
+      setSuperEdit(box.checked);
       document.dispatchEvent(new CustomEvent('hca:refresh'));
     });
   }

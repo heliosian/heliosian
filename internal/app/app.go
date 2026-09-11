@@ -130,7 +130,8 @@ func (e eventsImages) Prefetch(names []string) error {
 // directory hands the volunteer portal the directory's view of a person: the
 // address they are keyed by, and their name and photo.
 type directory struct {
-	cache *who.Cache
+	cache    *who.Cache
+	settings *config.Cache
 }
 
 func (d directory) Resolve(email string) string {
@@ -152,6 +153,11 @@ func (d directory) Grade(email string) string {
 		return ""
 	}
 	return p.Grade
+}
+
+// GradeColors is the config sheet's colour per grade, as Who? paints them.
+func (d directory) GradeColors() map[string]string {
+	return d.settings.Settings().GradeColors
 }
 
 // People is the directory as a picker sees it: everyone, with the one word that
@@ -387,7 +393,7 @@ func NewCore(cfg Config) *Core {
 	homeMux := http.NewServeMux()
 	home.Register(homeMux, homeCache, cfg.Writer, queue, cfg.Store, settings.SuperAdmins, cache.HeroPhoto)
 	eventsMux := http.NewServeMux()
-	events.Register(eventsMux, eventsCache, cfg.Writer, queue, cfg.Store, directory{cache}, settings.SuperAdmins, cfg.ImageSearch)
+	events.Register(eventsMux, eventsCache, cfg.Writer, queue, cfg.Store, directory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch)
 	birthdayMux := http.NewServeMux()
 	birthday.Register(birthdayMux, birthdayCache, cfg.Writer, queue, birthdayDirectory{cache}, settings.SuperAdmins)
 	return &Core{

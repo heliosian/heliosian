@@ -1,4 +1,29 @@
-export const state = {model: null, showPrevious: false, showHidden: false, year: '', category: ''};
+// superEdit is a system admin's hat: off, they see and can do what any parent
+// can (plus whatever they co-chair); on, every admin control comes back. It
+// is remembered per browser.
+export const state = {model: null, showPrevious: false, showHidden: false, superEdit: readSuperEdit(), year: '', category: ''};
+
+function readSuperEdit() {
+  try {
+    return localStorage.getItem('hca.superEdit') === '1';
+  } catch (err) {
+    return false;
+  }
+}
+
+export function setSuperEdit(on) {
+  state.superEdit = on;
+  if (!on) {
+    state.showHidden = false;
+  }
+  try {
+    localStorage.setItem('hca.superEdit', on ? '1' : '0');
+  } catch (err) {
+    // A browser that refuses storage just forgets the choice on reload.
+  }
+  // canEdit is derived from the hat, so the tree is re-derived.
+  applyModel(state.model);
+}
 
 const index = new Map();
 
@@ -14,6 +39,9 @@ export function applyModel(model) {
   const add = (list, parent) => {
     for (const a of list) {
       index.set(a.id, a);
+      // The server's canEdit counts the admin hat; here it counts only when
+      // the hat is on. A co-chair edits their own things either way.
+      a.canEdit = Boolean(a.runs) || isAdmin();
       a.own = {start: a.start || '', end: a.end || '', timing: a.timing || ''};
       a.whenFrom = null;
       if (parent && !a.own.start && !a.own.timing) {
@@ -32,7 +60,14 @@ export function me() {
   return state.model.user;
 }
 
+// isAdmin is the admin hat as worn: a system admin in Super Edit Mode.
 export function isAdmin() {
+  return state.model.user.isAdmin && state.superEdit;
+}
+
+// isSystemAdmin is the admin list itself, whatever the hat - what decides
+// whether the Super Edit Mode switch is offered.
+export function isSystemAdmin() {
   return state.model.user.isAdmin;
 }
 

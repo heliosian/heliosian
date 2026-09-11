@@ -13,6 +13,9 @@ type Directory interface {
 	Person(email string) (name, photoURL string, ok bool)
 	// Grade is a student's grade, as the directory writes it; "" for anyone else.
 	Grade(email string) string
+	// GradeColors is Helios Who?'s colour for each grade, so a grade reads the
+	// same here as there.
+	GradeColors() map[string]string
 	// People lists everyone a picker may offer, in the directory's own order.
 	People() []DirectoryPerson
 }
@@ -89,6 +92,10 @@ type ActivityView struct {
 	Volunteers []Volunteer     `json:"volunteers"`
 	Taken      int             `json:"taken"`
 	CanEdit    bool            `json:"canEdit"`
+	// Runs says the viewer is a co-chair of this or something above it - what
+	// CanEdit means for them without their admin hat, which the page can take
+	// off (Super Edit Mode).
+	Runs bool `json:"runs,omitempty"`
 }
 
 type PersonView struct {
@@ -113,6 +120,8 @@ type View struct {
 	// lists where it can look, first first, for the picker.
 	ImageSearch  bool     `json:"imageSearch"`
 	ImageSources []string `json:"imageSources,omitempty"`
+	// GradeColors colours the grade badges as Helios Who? does.
+	GradeColors map[string]string `json:"gradeColors,omitempty"`
 }
 
 type User struct {
@@ -168,19 +177,21 @@ func (v viewer) volunteers(list []Volunteer, hidden, editor bool) []Volunteer {
 // co-chair there. Whether a volunteer list is private is each thing's own
 // switch and nothing more: an event that hides its list does not hide its
 // committees'.
-func (v viewer) children(list []*Activity, editor bool) []*ActivityView {
+func (v viewer) children(list []*Activity, editor, runs bool) []*ActivityView {
 	out := []*ActivityView{}
 	for _, c := range list {
 		own := editor || v.canEdit(c)
 		if !v.visible(c.Status, c.AddedBy, own) {
 			continue
 		}
+		chairs := runs || c.IsCoChair(v.email)
 		out = append(out, &ActivityView{
 			Activity:   c,
-			Children:   v.children(c.Children, own),
+			Children:   v.children(c.Children, own, chairs),
 			Volunteers: v.volunteers(c.Volunteers, c.VolunteersHidden, own),
 			Taken:      len(c.Volunteers),
 			CanEdit:    own,
+			Runs:       chairs,
 		})
 	}
 	return out
@@ -192,24 +203,27 @@ func Render(model *Model, directory Directory, email string, admin bool, now tim
 	name, _ := v.person(email)
 	current := SchoolYear(now)
 	view := View{
-		User:       User{Email: email, Name: name, Initial: strings.ToUpper(name[:1]), IsAdmin: admin},
-		Years:      Years{Current: current, Last: ShiftYear(current, -1), Next: ShiftYear(current, 1)},
-		Settings:   model.Settings,
-		Categories: model.Categories,
-		Activities: []ActivityView{},
-		Redirects:  model.Redirects,
+		User:        User{Email: email, Name: name, Initial: strings.ToUpper(name[:1]), IsAdmin: admin},
+		Years:       Years{Current: current, Last: ShiftYear(current, -1), Next: ShiftYear(current, 1)},
+		Settings:    model.Settings,
+		Categories:  model.Categories,
+		Activities:  []ActivityView{},
+		Redirects:   model.Redirects,
+		GradeColors: directory.GradeColors(),
 	}
 	for _, a := range model.Activities {
 		editor := v.canEdit(a)
 		if !v.visible(a.Status, a.AddedBy, editor) {
 			continue
 		}
+		chairs := a.IsCoChair(v.email)
 		view.Activities = append(view.Activities, ActivityView{
 			Activity:   a,
-			Children:   v.children(a.Children, editor),
+			Children:   v.children(a.Children, editor, chairs),
 			Volunteers: v.volunteers(a.Volunteers, a.VolunteersHidden, editor),
 			Taken:      len(a.Volunteers),
 			CanEdit:    editor,
+			Runs:       chairs,
 		})
 	}
 	if admin {

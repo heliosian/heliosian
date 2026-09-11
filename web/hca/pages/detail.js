@@ -231,15 +231,18 @@ function factsCard(node, editing, save) {
     } else {
       body.append(el('div', 'side-line', 'Nobody yet.'));
     }
-    // Whoever runs the event sees who has offered to co-chair, each a way into
-    // their sign-up, where Co-Chair is theirs to choose.
-    const options = node.canEdit ? shownVolunteers(node, true).filter(v => v.position === 'Open to Co-Chair') : [];
+    // Who has offered to co-chair is public - a secret list still keeps its
+    // offers to the editors - and for whoever runs the event each is a way
+    // into their sign-up, where Co-Chair is theirs to choose.
+    const options = shownVolunteers(node, node.canEdit).filter(v => v.position === 'Open to Co-Chair');
     if (options.length) {
       body.append(el('div', 'side-subtitle', 'Co-Chair Options'));
-      body.append(el('div', 'side-line', 'Promote one or more to co-chair.'));
+      if (node.canEdit) {
+        body.append(el('div', 'side-line', 'Promote one or more to co-chair.'));
+      }
       const list = el('div', 'side-chairs');
       for (const v of options) {
-        list.append(personTile(node, v, true, false, false, true));
+        list.append(personTile(node, v, node.canEdit, false, false, true));
       }
       body.append(list);
     }
@@ -249,13 +252,16 @@ function factsCard(node, editing, save) {
       wants.append(box, el('span', '', 'A co-chair is needed'));
       body.append(wants);
     } else if (node.coLeaderNeeded) {
-      body.append(el('div', 'side-line side-need', 'A co-chair is needed - could that be you?'));
       // One click offers: the viewer's sign-up becomes (or starts as) open to
-      // co-chairing, and the chairs see them under Co-Chair Options.
+      // co-chairing, and the chairs see them under Co-Chair Options. Once
+      // they have, the ask gives way to the thanks.
       const mine = mySignUp(node);
       if (mine && mine.position === 'Open to Co-Chair') {
         body.append(el('div', 'side-line side-offered', 'You have offered to co-chair - thank you!'));
-      } else if (!mine || mine.position !== 'Co-Chair') {
+      } else {
+        body.append(el('div', 'side-line side-need', 'A co-chair is needed - could that be you?'));
+      }
+      if (!mine || mine.position === 'Volunteer') {
         body.append(button('Offer to Co-Chair', 'people', 'button button-small side-offer', async () => {
           try {
             await send('POST', '/api/events/volunteer', {id: node.id, position: 'Open to Co-Chair', note: mine ? mine.note : ''});
@@ -286,6 +292,12 @@ function personTile(owner, v, editing, star, chair, option) {
   if (v.grade) {
     const grade = el('span', 'grade-badge', v.grade.replace(/^grade\s*/i, ''));
     grade.title = v.grade;
+    // Helios Who?'s colour for the grade, darkened as Who? darkens it, so
+    // white text stays legible even on a yellow.
+    const color = (state.model.gradeColors || {})[v.grade];
+    if (color) {
+      grade.style.background = `color-mix(in srgb, ${color} 65%, black)`;
+    }
     face.append(grade);
   }
   tile.append(face, el('div', 'side-chair-name', v.name + (star && v.position === 'Co-Chair' ? '*' : '')));
@@ -524,9 +536,11 @@ function volunteersBox(node, editing, save) {
     const me = mine
       ? {label: 'Edit my sign-up', icon: 'edit', onClick: () => openSignUp(node, mine)}
       : (canJoin(node) || node.canEdit ? {label: 'Join', icon: 'join', onClick: () => openSignUp(node, null)} : null);
-    if (node.canEdit) {
-      // For an organizer the two ways to sign someone up are one control:
-      // "Sign up: Me | Someone else".
+    // Anyone may sign up someone else - a partner, a child, a friend who said
+    // yes - so while it is open the two ways to sign up are one control:
+    // "Sign up: Me | Someone else". Whoever runs it keeps it at all times.
+    const others = node.canEdit || (node.status === 'Open' && !isFull(node));
+    if (others) {
       const split = el('div', 'split-button');
       split.append(el('span', 'split-label', 'Sign up'));
       if (me) {
@@ -557,9 +571,9 @@ function volunteersBox(node, editing, save) {
         for (const v of chairs) {
           grid.append(personTile(node, v, editing, false, true));
         }
-        // For whoever runs it, those open to co-chairing come next, marked;
-        // everyone else sees them as the volunteers they are.
-        const isOption = v => node.canEdit && v.position === 'Open to Co-Chair';
+        // Those open to co-chairing come next, marked for everyone - an offer
+        // is public, and seeing one is what nudges the next.
+        const isOption = v => v.position === 'Open to Co-Chair';
         for (const v of showPeople.filter(isOption)) {
           grid.append(personTile(node, v, editing, false, false, true));
         }
