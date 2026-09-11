@@ -1294,7 +1294,7 @@ export function openImageSearch(initial, onPicked) {
   const note = el('div', 'hint', notes[source] || '');
   input.placeholder = `Search ${source}…`;
   if (picker) {
-    wrap.append(picker);
+    wrap.append(picker.wrap);
   }
   wrap.append(bar, status, grid, note);
   let busy = false;
