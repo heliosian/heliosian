@@ -1698,6 +1698,11 @@ button.side-chair:hover { background: var(--input); }
    swooshed heading with the actions beside it, no box. */
 .vol-box { margin: 18px 0 26px; }
 
+/* The quiet form: one line, the hint left and the filter right. */
+.vol-box.is-quiet { margin: 14px 0 18px; }
+
+.vol-quiet { font-size: 14px; color: var(--muted); }
+
 .vol-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 
 /* Beats the later h2.section rule, which would put its 24px page margin inside the box. */

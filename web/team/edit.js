@@ -802,18 +802,20 @@ function signUpForm(node, existing) {
         options.push({label: n.title, value: n.id, group});
       }
     };
+    // In the order someone reaches for them: this, what it is part of, what
+    // is under it, then the rest beside it.
     const up = parentOf(node);
+    options.push({label: node.title, value: node.id, group: 'This'});
     if (up) {
       offer(up, 'Part of');
     }
-    options.push({label: node.title, value: node.id, group: 'This'});
+    for (const c of node.children) {
+      offer(c, 'Under it');
+    }
     for (const s of (up ? up.children : state.model.activities.filter(a => a.year === node.year))) {
       if (s !== node) {
         offer(s, up ? 'Alongside it' : 'Other events');
       }
-    }
-    for (const c of node.children) {
-      offer(c, 'Under it');
     }
     if (options.length > 1) {
       where = el('select');

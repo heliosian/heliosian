@@ -498,9 +498,18 @@ function volunteersBox(node, editing, save) {
   const box = el('div', 'vol-box');
   const head = el('div', 'vol-head');
   const title = el('div', 'vol-title');
+  // A thing that takes no sign-ups itself and has nobody chairing it has no
+  // list to head: the section shrinks to one quiet line - where to sign up
+  // instead, with the committee filter beside it - rather than an empty box.
+  const quiet = !node.directSignUp && !chairs.length && !editing;
   // The count is everyone on it, chairs included.
   const count = chairs.length + people.length;
-  title.append(el('h2', 'section section-swoosh', count ? `Volunteers (${count})` : 'Volunteers'));
+  if (quiet) {
+    box.classList.add('is-quiet');
+    title.append(el('div', 'vol-quiet', 'Sign up for something below.'));
+  } else {
+    title.append(el('h2', 'section section-swoosh', count ? `Volunteers (${count})` : 'Volunteers'));
+  }
   if (editing) {
     // The cap on sign-ups sits by the count it caps: a small button, a prompt.
     const setMax = button(node.spots ? `Max ${node.spots}` : 'Set Max', '', 'button button-secondary button-small vol-max', () => {
@@ -587,8 +596,10 @@ function volunteersBox(node, editing, save) {
       }
       if (!node.directSignUp) {
         // Volunteers are taken only by the things under it, so say so where
-        // the sign-up button would be.
-        listing.append(el('div', 'vol-note', 'Sign up for something below.'));
+        // the sign-up button would be - unless the heading already does.
+        if (!quiet) {
+          listing.append(el('div', 'vol-note', 'Sign up for something below.'));
+        }
       } else if (!revealed) {
         listing.append(el('div', 'vol-note', 'This list is private; only the organizers see it.'));
       } else if (!people.length && !chairs.length) {
