@@ -110,7 +110,9 @@ function joinButton(node) {
 // childRow is the row a thing under an activity gets in its parent's list. While
 // the parent is in edit mode, each row carries a pencil that opens that child's
 // editor in place - fixing three titles should not mean visiting three pages.
-export function childRow(node, editing) {
+// moves, while editing, is {up, down}: what to do when the row is nudged a
+// place in either direction, null where it is already at that end.
+export function childRow(node, editing, moves) {
   const row = link(activityPath(node), 'row is-link' + (node.status === 'Hidden' || node.status === 'Pending' ? ' is-muted' : ''));
   row.append(thumb(node.imageUrl || rootOf(node).imageUrl, node.title));
   const body = el('div', 'row-body');
@@ -152,6 +154,18 @@ export function childRow(node, editing) {
       row.classList.add('is-dragging');
     });
     row.addEventListener('dragend', () => row.classList.remove('is-dragging'));
+    // A place up or down among its siblings, for anyone not dragging.
+    if (moves) {
+      const nudge = el('div', 'row-nudge');
+      for (const [dir, fn] of [['up', moves.up], ['down', moves.down]]) {
+        const b = button('', dir, 'edit-icon', fn || (() => {}));
+        b.title = `Move ${dir}`;
+        b.setAttribute('aria-label', `Move ${node.title} ${dir}`);
+        b.disabled = !fn;
+        nudge.append(b);
+      }
+      actions.append(nudge);
+    }
     // button() swallows the click so the row's link does not fire underneath.
     const pencil = button('', 'edit', 'edit-icon', () => openActivity(node));
     pencil.title = `Edit ${node.title}`;

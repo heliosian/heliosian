@@ -1,4 +1,4 @@
-import {state, isAdmin} from '../state.js';
+import {state, isSystemAdmin} from '../state.js';
 import {el, button} from '../dom.js';
 import {setTitle} from '../chrome.js';
 import {categoryList, openSettings} from '../edit.js';
@@ -115,7 +115,8 @@ function adminsCard() {
 
 export function adminPage() {
   setTitle('Admin Tools');
-  if (!isAdmin()) {
+  // The page goes with being on the admin list, hat or no hat.
+  if (!isSystemAdmin()) {
     return denied();
   }
   const page = el('div', 'list-page');

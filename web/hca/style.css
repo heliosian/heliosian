@@ -2994,3 +2994,11 @@ h2.section .link-button { font-size: 14px; }
   text-align: center;
   box-shadow: 0 0 0 2px #fff;
 }
+
+/* Reordering while editing: nudge arrows on each row, and a line where a
+   dragged row will land. */
+.row-nudge { display: flex; gap: 2px; }
+
+.row-nudge .edit-icon:disabled { opacity: 0.3; cursor: default; }
+
+.row.is-dropbefore { box-shadow: 0 -3px 0 0 var(--accent); }

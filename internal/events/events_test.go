@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -191,6 +192,36 @@ func TestSignUpAndRemove(t *testing.T) {
 	}
 	if n := len(cache.Model().Activity("E017").Volunteers); n != 0 {
 		t.Fatalf("%d volunteers left after removal", n)
+	}
+}
+
+// TestReorderChildren puts Spring Celebration's committees in a new order: a
+// parent may not, the co-chair may, the order sticks, and a stranger's id is
+// refused.
+func TestReorderChildren(t *testing.T) {
+	cache, mux := newServer(t)
+	titles := func() []string {
+		out := []string{}
+		for _, c := range cache.Model().Activity("E002").Children {
+			out = append(out, c.Title)
+		}
+		return out
+	}
+	if got := titles(); !slices.Equal(got, []string{"Decor", "Childcare", "Marketing"}) {
+		t.Fatalf("row order to start: %v", got)
+	}
+	body := map[string]any{"parent": "E002", "ids": []string{"E025", "E023", "E024"}}
+	if rec := call(t, mux, parent, "POST", "/api/events/order", body); rec.Code != http.StatusForbidden {
+		t.Fatalf("a parent reordered: %d", rec.Code)
+	}
+	if rec := call(t, mux, chair, "POST", "/api/events/order", body); rec.Code != http.StatusNoContent {
+		t.Fatalf("the chair could not reorder: %d %s", rec.Code, rec.Body)
+	}
+	if got := titles(); !slices.Equal(got, []string{"Marketing", "Decor", "Childcare"}) {
+		t.Fatalf("order after: %v", got)
+	}
+	if rec := call(t, mux, chair, "POST", "/api/events/order", map[string]any{"parent": "E002", "ids": []string{"E025", "E001"}}); rec.Code != http.StatusBadRequest {
+		t.Fatalf("a stranger's id was taken: %d", rec.Code)
 	}
 }
 

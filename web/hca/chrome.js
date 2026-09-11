@@ -292,8 +292,10 @@ function renderUser() {
   for (const line of document.querySelectorAll('.user-menu-email')) {
     line.textContent = user.email;
   }
-  for (const superRow of document.querySelectorAll('.user-menu-super')) {
-    superRow.hidden = !isSystemAdmin();
+  // The switch and Admin Tools go with being on the admin list; the rest of
+  // the admin rows come and go with the hat.
+  for (const row of document.querySelectorAll('.user-menu-super, .user-menu-system')) {
+    row.hidden = !isSystemAdmin();
   }
   for (const box of document.querySelectorAll('.super-edit-checkbox')) {
     box.checked = state.superEdit;

@@ -1210,7 +1210,10 @@ export function openActivity(act, options) {
     },
     onDelete: act && admin ? () => send('DELETE', '/api/events/activity', {id: act.id}) : null,
     confirmDelete: act ? `Delete “${act.title}” (${act.year})? Its links go with it.` : '',
-    afterDelete: () => goTo('/'),
+    // A deleted thing under an event sends you back up to that event; a
+    // deleted event, to the front page. The path is taken now, while the
+    // parent is still in the model as this thing's parent.
+    afterDelete: () => goTo(currentParent ? activityPath(currentParent) : '/'),
   });
 }
 

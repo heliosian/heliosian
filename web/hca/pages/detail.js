@@ -585,9 +585,13 @@ function volunteersBox(node, editing, save) {
         }
         listing.append(grid);
       }
-      if (node.directSignUp && !revealed) {
+      if (!node.directSignUp) {
+        // Volunteers are taken only by the things under it, so say so where
+        // the sign-up button would be.
+        listing.append(el('div', 'vol-note', 'Sign up for something below.'));
+      } else if (!revealed) {
         listing.append(el('div', 'vol-note', 'This list is private; only the organizers see it.'));
-      } else if (node.directSignUp && !people.length) {
+      } else if (!people.length) {
         listing.append(el('div', 'vol-note', chairs.length ? 'No volunteers yet.' : 'Nobody yet.'));
       }
     }
@@ -901,9 +905,36 @@ function childrenSection(node, editing) {
     }
     return row;
   };
+  // reorder saves the children in a new order: every child of the thing, as
+  // they stand, with `id` moved to sit just before `before` - or at the end
+  // of its category when there is no before. Groups keep their own runs,
+  // since the page shows them apart.
+  const reorder = async (id, before, categoryId) => {
+    const ids = node.children.map(c => c.id).filter(x => x !== id);
+    let at = before ? ids.indexOf(before) : -1;
+    if (at < 0) {
+      // After the last of its category, or at the very end.
+      at = ids.length;
+      for (let i = ids.length - 1; i >= 0; i--) {
+        const c = node.children.find(x => x.id === ids[i]);
+        if ((c.category || '') === categoryId) {
+          at = i + 1;
+          break;
+        }
+      }
+    }
+    ids.splice(at, 0, id);
+    try {
+      await send('POST', '/api/events/order', {parent: node.id, ids});
+      await reload();
+    } catch (err) {
+      toast(err.message);
+    }
+  };
   // While editing, every category's panel takes a dropped row: the row's id
-  // rides along in the drag, and landing it saves the new category. The
-  // browser insists on preventDefault during dragover for a drop to happen.
+  // rides along in the drag, and landing it saves the new category - or,
+  // dropped among its own siblings, its new place. The browser insists on
+  // preventDefault during dragover for a drop to happen.
   const dropTarget = (panel, categoryId) => {
     if (!editing) {
       return panel;
@@ -918,8 +949,19 @@ function childrenSection(node, editing) {
       e.preventDefault();
       panel.classList.remove('is-dragover');
       const moved = roles.find(r => r.id === e.dataTransfer.getData('text/plain'));
-      if (moved && (moved.category || '') !== categoryId) {
+      if (!moved) {
+        return;
+      }
+      if ((moved.category || '') !== categoryId) {
         saveActivityFields(moved, {category: categoryId});
+        return;
+      }
+      // Onto one of its siblings: take that row's place; onto the panel's
+      // empty space: go last.
+      const over = e.target.closest('.row');
+      const before = over && over.dataset.id !== moved.id ? over.dataset.id : '';
+      if (before || !over) {
+        reorder(moved.id, before, categoryId);
       }
     });
     return panel;
@@ -938,9 +980,26 @@ function childrenSection(node, editing) {
       }
       list.append(groupHead(id ? category(id) : null, others));
       const panel = dropTarget(el('div', 'panel'), id);
-      for (const r of shown.filter(x => (x.category || '') === id)) {
-        panel.append(childRow(r, editing));
-      }
+      const group = shown.filter(x => (x.category || '') === id);
+      group.forEach((r, i) => {
+        // Up swaps with the row above (moving before it); down moves past the
+        // row below (before the one after that, or to the end).
+        const moves = editing ? {
+          up: i > 0 ? () => reorder(r.id, group[i - 1].id, id) : null,
+          down: i < group.length - 1 ? () => reorder(r.id, group[i + 2] ? group[i + 2].id : '', id) : null,
+        } : null;
+        const row = childRow(r, editing, moves);
+        row.dataset.id = r.id;
+        if (editing) {
+          row.addEventListener('dragover', e => {
+            e.preventDefault();
+            row.classList.add('is-dropbefore');
+          });
+          row.addEventListener('dragleave', () => row.classList.remove('is-dropbefore'));
+          row.addEventListener('drop', () => row.classList.remove('is-dropbefore'));
+        }
+        panel.append(row);
+      });
       list.append(panel);
     }
     // On the event itself a category with nothing in it yet still gets its

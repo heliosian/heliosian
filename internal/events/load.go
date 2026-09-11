@@ -5,9 +5,11 @@ package events
 import (
 	"fmt"
 	"maps"
+	"math"
 	"net/url"
 	"regexp"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -67,6 +69,10 @@ var (
 	LinkColumns      = []string{"Event ID", "Title", "URL", "Image", "Description"}
 	SettingColumns   = []string{"Key", "Value"}
 	RedirectColumns  = []string{"Type", "Old", "New", "Date"}
+	// OrderColumn is optional on Activities: a number that puts a thing among
+	// its siblings, written when an organizer reorders them. A tab without it
+	// lists children in row order and cannot be reordered.
+	OrderColumn      = "Order"
 	AdminColumns     = []string{"Email"}
 	ChangeLogColumns = []string{"Timestamp", "Actor", "Action", "Kind", "Year", "Activity", "Title", "Email", "Details"}
 )
@@ -165,15 +171,18 @@ type Activity struct {
 	FlyerURL string `json:"flyerUrl,omitempty"`
 	// Highlight is the callout on the page - a headline, a few lines and an
 	// icon - for the one thing organizers most want read; nil when there is none.
-	Highlight        *Highlight `json:"highlight,omitempty"`
-	Timing           string     `json:"timing,omitempty"`
-	Start            string     `json:"start,omitempty"`
-	End              string     `json:"end,omitempty"`
-	Location         string     `json:"location,omitempty"`
-	Spots            int        `json:"spots,omitempty"`
-	CoLeaderNeeded   bool       `json:"coLeaderNeeded"`
-	VolunteersHidden bool       `json:"volunteersHidden"`
-	DirectSignUp     bool       `json:"directSignUp"`
+	Highlight *Highlight `json:"highlight,omitempty"`
+	// Order places this among its siblings: lower first, 0 (blank) after every
+	// ordered one, then row order.
+	Order            int    `json:"order,omitempty"`
+	Timing           string `json:"timing,omitempty"`
+	Start            string `json:"start,omitempty"`
+	End              string `json:"end,omitempty"`
+	Location         string `json:"location,omitempty"`
+	Spots            int    `json:"spots,omitempty"`
+	CoLeaderNeeded   bool   `json:"coLeaderNeeded"`
+	VolunteersHidden bool   `json:"volunteersHidden"`
+	DirectSignUp     bool   `json:"directSignUp"`
 	// PrettyID is the activity's friendly address, /v/{PrettyID}, unique across
 	// every year; blank for most rows.
 	PrettyID string `json:"prettyId,omitempty"`
@@ -466,13 +475,16 @@ func (a *Activity) IsCoChair(email string) bool {
 }
 
 type Tables struct {
-	Categories []map[string]string
-	Activities []map[string]string
-	Volunteers []map[string]string
-	Links      []map[string]string
-	Settings   []map[string]string
-	Admins     []map[string]string
-	Redirects  []map[string]string
+	// ActivityHeader is the Activities tab's columns as found, for the optional
+	// ones (Order) a write must not name when the tab lacks them.
+	ActivityHeader []string
+	Categories     []map[string]string
+	Activities     []map[string]string
+	Volunteers     []map[string]string
+	Links          []map[string]string
+	Settings       []map[string]string
+	Admins         []map[string]string
+	Redirects      []map[string]string
 }
 
 func ReadTables(source data.Source) (*Tables, error) {
@@ -511,9 +523,20 @@ func ReadTables(source data.Source) (*Tables, error) {
 		}
 	}
 	return &Tables{
-		Categories: categories.rows, Activities: activities.rows,
+		ActivityHeader: activities.header,
+		Categories:     categories.rows, Activities: activities.rows,
 		Volunteers: volunteers.rows, Links: links.rows, Settings: settings.rows, Admins: admins.rows, Redirects: redirects.rows,
 	}, nil
+}
+
+// orderOf reads the optional Order cell: a whole number, or 0 for blank or
+// anything else - a stray word there should not stall the whole portal.
+func orderOf(cell string) int {
+	n, err := strconv.Atoi(strings.TrimSpace(cell))
+	if err != nil || n < 0 {
+		return 0
+	}
+	return n
 }
 
 // yesNo reads a Yes/No cell; a blank takes the column's default, which is what
@@ -1022,6 +1045,7 @@ func parseActivity(row map[string]string, model *Model, images ImageChecker) (*A
 		ID: strings.TrimSpace(row["Event ID"]), Year: year, Title: title, Parent: strings.TrimSpace(row["Parent"]),
 		Category: strings.TrimSpace(row["Category"]), Status: row["Status"],
 		Description: row["Description"], Image: row["Image"], ImageURL: image, Flyer: row["Flyer Image"], FlyerURL: flyer, Highlight: highlightOf(row),
+		Order:  orderOf(row[OrderColumn]),
 		Timing: row["Timing"], Start: row["Start"], End: row["End"], Location: row["Location"], Spots: spots,
 		CoLeaderNeeded: coLeader, VolunteersHidden: hidden, DirectSignUp: direct, PrettyID: pretty, AllowAdding: allowAdding,
 		AddedBy: strings.ToLower(row["Added By"]), Added: row["Added"],
@@ -1051,6 +1075,18 @@ func dropOrphans(all []*Activity, byID map[string]*Activity) ([]*Activity, int) 
 	}
 }
 
+// HasOrder says the Activities tab carries the optional Order column.
+func (t *Tables) HasOrder() bool {
+	return slices.Contains(t.ActivityHeader, OrderColumn)
+}
+
+func orderKey(a *Activity) int {
+	if a.Order <= 0 {
+		return math.MaxInt
+	}
+	return a.Order
+}
+
 // attachChildren hangs every activity under the parent its Parent column names,
 // in row order, and returns the roots. A parent in another year is not a parent:
 // the whole tree lives inside one school year.
@@ -1066,6 +1102,12 @@ func attachChildren(all []*Activity, byID map[string]*Activity) ([]*Activity, er
 			return nil, fmt.Errorf("activity %q in %s is its own parent", a.Title, a.Year)
 		}
 		parent.Children = append(parent.Children, a)
+	}
+	// Siblings with an Order come first, by it; the rest follow in row order.
+	for _, p := range all {
+		sort.SliceStable(p.Children, func(i, j int) bool {
+			return orderKey(p.Children[i]) < orderKey(p.Children[j])
+		})
 	}
 	// Walk each chain to its root; anything that revisits an id on the way is
 	// in a loop, and would otherwise hang every later walk of the tree. The

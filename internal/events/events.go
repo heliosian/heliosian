@@ -70,6 +70,7 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	mux.HandleFunc("POST /api/events/volunteer", a.ready(a.saveVolunteer))
 	mux.HandleFunc("DELETE /api/events/volunteer", a.ready(a.removeVolunteer))
 	mux.HandleFunc("POST /api/events/activity", a.ready(a.saveActivity))
+	mux.HandleFunc("POST /api/events/order", a.ready(a.orderChildren))
 	mux.HandleFunc("DELETE /api/events/activity", a.ready(a.deleteActivity))
 	mux.HandleFunc("POST /api/events/link", a.ready(a.saveLink))
 	mux.HandleFunc("DELETE /api/events/link", a.ready(a.deleteLink))
@@ -775,6 +776,68 @@ func (a app) saveLink(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// orderChildren writes the order an organizer put a thing's children in: the
+// ids as they should read, top to bottom, each given its place as a number in
+// the optional Order column. Only whoever runs the parent may, and only the
+// parent's own children may be named; a tab without the column says so.
+func (a app) orderChildren(w http.ResponseWriter, r *http.Request) {
+	actor, admin := a.who(r)
+	var body struct {
+		Parent string   `json:"parent"`
+		IDs    []string `json:"ids"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	parent, ok := a.findActivity(w, body.Parent)
+	if !ok {
+		return
+	}
+	if !admin && !a.cache.Model().Runs(parent, actor) {
+		http.Error(w, "only a co-chair or admin can reorder these", http.StatusForbidden)
+		return
+	}
+	tables := a.cache.Tables()
+	if !tables.HasOrder() {
+		http.Error(w, "the Activities tab needs an Order column before things can be reordered", http.StatusBadRequest)
+		return
+	}
+	children := map[string]*Activity{}
+	for _, c := range parent.Children {
+		children[c.ID] = c
+	}
+	changes := map[string]string{}
+	seen := map[string]bool{}
+	for i, id := range body.IDs {
+		c := children[strings.TrimSpace(id)]
+		if c == nil || seen[c.ID] {
+			http.Error(w, fmt.Sprintf("%q is not one of the things under %s", id, parent.Title), http.StatusBadRequest)
+			return
+		}
+		seen[c.ID] = true
+		if c.Order != i+1 {
+			changes[c.ID] = strconv.Itoa(i + 1)
+		}
+		tables = tables.with(activitiesTab, map[string]string{"Event ID": c.ID}, map[string]string{OrderColumn: strconv.Itoa(i + 1)})
+	}
+	if len(changes) == 0 {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if !a.commit(r.Context(), w, tables, func() error {
+		for id, n := range changes {
+			if err := a.writer.Set(appName, activitiesTab, map[string]string{"Event ID": id}, map[string]string{OrderColumn: n}); err != nil {
+				return err
+			}
+		}
+		return a.logChange(actor, "reorder", "activity", map[string]string{"Year": parent.Year, "Activity": parent.Title, "Title": parent.Title, "Details": fmt.Sprintf("%d things reordered", len(changes))})
+	}) {
+		return
+	}
+	slog.InfoContext(r.Context(), "events: reordered", "actor", actor, "parent", parent.Title, "year", parent.Year, "changed", len(changes))
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // highlightCells is the three Highlight columns for a highlight, blank cells
 // for none - so removing one clears the row.
 func highlightCells(h *Highlight) map[string]string {
@@ -1091,6 +1154,9 @@ func (a app) copyActivity(w http.ResponseWriter, r *http.Request) {
 		}
 		for k, v := range highlightCells(c.Highlight) {
 			row[k] = v
+		}
+		if c.Order > 0 && a.cache.Tables().HasOrder() {
+			row[OrderColumn] = strconv.Itoa(c.Order)
 		}
 		return row
 	}
