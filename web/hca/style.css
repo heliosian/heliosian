@@ -195,6 +195,34 @@ button { font: inherit; }
 
 .nav-tree-group { font-weight: 700; }
 
+/* A committee row: its own chevron (or a blank of the same width) beside the link. */
+.nav-tree-row { display: flex; align-items: center; gap: 2px; }
+
+.nav-tree-row .nav-tree-item { flex: 1; min-width: 0; }
+
+.nav-tree-toggle {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--brand);
+  cursor: pointer;
+}
+
+.nav-tree-toggle:hover { background: rgba(255, 255, 255, 0.55); }
+
+.nav-tree-toggle svg { width: 14px; height: 14px; transition: transform 0.15s; }
+
+.nav-tree-toggle.is-open svg { transform: rotate(90deg); }
+
+.nav-tree-toggle.is-leaf { cursor: default; }
+
 .nav-tree-group svg { width: 14px; height: 14px; flex-shrink: 0; transition: transform 0.15s; }
 
 .nav-tree-group.is-open svg { transform: rotate(90deg); }
@@ -1434,7 +1462,8 @@ button.side-chair:hover { background: var(--input); }
 
 .vol-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 
-.vol-head h2 { margin: 0; font-size: 19px; }
+/* Beats the later h2.section rule, which would put its 24px page margin inside the box. */
+.vol-head h2.section { margin: 0; font-size: 19px; }
 
 .vol-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 

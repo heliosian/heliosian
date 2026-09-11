@@ -646,3 +646,35 @@ func TestPrettyIDs(t *testing.T) {
 		t.Fatalf("duplicate in the sheet: %+v", dup.Skipped)
 	}
 }
+
+func TestSharePreview(t *testing.T) {
+	cache, mux := newServer(t)
+	head := PreviewHead(cache)
+	// An open event previews with its title, its date and a line of its
+	// description, and its card; a hidden one, and any other page, show nothing.
+	tags := head(httptest.NewRequest("GET", "https://hca.heliosian.com/v/intl-night/", nil))
+	for _, want := range []string{`og:title" content="International Night"`, `og:url" content="https://hca.heliosian.com/v/international-night"`,
+		`og:image" content="https://hca.heliosian.com/share/E001.png"`, `Thursday, September 24 · 4:00–6:00 PM — We invite you`} {
+		if !strings.Contains(tags, want) {
+			t.Fatalf("preview lacks %s:\n%s", want, tags)
+		}
+	}
+	if head(httptest.NewRequest("GET", "https://hca.heliosian.com/activities/E006", nil)) != "" {
+		t.Fatalf("a hidden thing was previewed")
+	}
+	if head(httptest.NewRequest("GET", "https://hca.heliosian.com/my", nil)) != "" {
+		t.Fatalf("a page with nothing to preview got tags")
+	}
+	// The card is public - the mux is called without a session - and only for
+	// what previews.
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest("GET", "/share/E001.png", nil))
+	if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "image/png" || rec.Body.Len() < 10000 {
+		t.Fatalf("card: %d %s %d bytes", rec.Code, rec.Header().Get("Content-Type"), rec.Body.Len())
+	}
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest("GET", "/share/E006.png", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("a hidden thing has a card: %d", rec.Code)
+	}
+}

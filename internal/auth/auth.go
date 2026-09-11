@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -35,6 +36,10 @@ type Auth struct {
 	clientID  string
 	key       []byte
 	loginPage string
+	// Preview, when set, supplies extra <head> markup for the login page served
+	// at a given path - the Open Graph tags a chat app reads to preview a link
+	// that leads to sign-in. Empty for a path with nothing to preview.
+	Preview func(r *http.Request) string
 }
 
 func New(clientID string, key []byte, loginPage string) *Auth {
@@ -54,8 +59,11 @@ func Fixed(email string, next http.Handler) http.Handler {
 
 // Public names the two endpoints the splash page needs before anyone has a
 // session: the client id it initializes Google sign-in with, and the login POST.
+// Public is what serves without a session: the sign-in exchange itself, and an
+// app's share cards - the images a chat app fetches to preview a link, which
+// no crawler could sign in for.
 func Public(path string) bool {
-	return path == "/auth/login" || path == "/auth/client"
+	return path == "/auth/login" || path == "/auth/client" || strings.HasPrefix(path, "/share/")
 }
 
 func Token(key []byte, email string, expiry time.Time) string {
@@ -119,7 +127,26 @@ func cookieDomain(host string) string {
 // splash serves the login page at whatever URL was asked for, so signing in
 // lands back on it. The file name is fixed, never the request path.
 func (a *Auth) splash(w http.ResponseWriter, r *http.Request) {
-	serve.File(w, r, a.loginPage)
+	extra := ""
+	if a.Preview != nil {
+		extra = a.Preview(r)
+	}
+	if extra == "" {
+		serve.File(w, r, a.loginPage)
+		return
+	}
+	// The same page, with the preview tags slipped into its head. Varies by
+	// path, so it is not cached the way the plain page is.
+	page, err := os.ReadFile(a.loginPage)
+	if err != nil {
+		slog.ErrorContext(r.Context(), "read login page", "error", err)
+		serve.File(w, r, a.loginPage)
+		return
+	}
+	html := strings.Replace(string(page), "</head>", extra+"</head>", 1)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Write([]byte(html))
 }
 
 func (a *Auth) login(w http.ResponseWriter, r *http.Request) {

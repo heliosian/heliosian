@@ -61,6 +61,8 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 		mux.HandleFunc("GET "+page, a.ready(a.page))
 	}
 	mux.HandleFunc("GET /api/events/model", a.ready(a.model))
+	// Public, past sign-in (auth.Public): the image a chat app shows for a link.
+	mux.HandleFunc("GET /share/{id}", a.ready(a.shareCard))
 	mux.HandleFunc("GET /api/events/people", a.ready(a.people))
 	mux.HandleFunc("POST /api/events/volunteer", a.ready(a.saveVolunteer))
 	mux.HandleFunc("DELETE /api/events/volunteer", a.ready(a.removeVolunteer))

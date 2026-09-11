@@ -56,7 +56,7 @@ Start and End are wall-clock, `2026-09-24 16:00` or `2026-09-24` for a whole day
 The Glide export stamped its local times as `2025-03-01T17:30:00.000Z`; `go run ./cmd/fixdates` (dry run; `-write` to change) rewrites those cells into these forms, keeping the clock as written.
 ## Yes and No
 
-Flag cells are `Yes`, `No`, or blank. A blank takes the column's default, chosen so a hand-added row asks for help unless it says otherwise: `Co-Leader Needed`, `Direct Sign-Up` and a category's `Show On Main Page` default to Yes, `Volunteers Hidden` and `Allow Adding` to No. The app always writes Yes or No explicitly.
+Flag cells are `Yes`, `No`, or blank. A blank takes the column's default, chosen so a hand-added row asks for help unless it says otherwise: `Co-Leader Needed`, `Direct Sign-Up` and a category's `Show On Main Page` default to Yes, `Volunteers Hidden` and `Allow Adding` to No. `Volunteers Hidden` is each thing's own: an event that hides its list does not hide its committees' - but a thing added under a parent starts with the parent's setting, to be changed after. The app always writes Yes or No explicitly.
 
 ## Status and spots
 

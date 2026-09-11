@@ -751,14 +751,25 @@ function childrenSection(node, editing) {
   const list = el('div');
   const unlisted = r => r.status === 'Hidden' || r.status === 'Pending';
   const roles = node.children.filter(r => !unlisted(r) || (node.canEdit && (editing || state.showHidden)));
+  // Nothing under it yet, and no categories to lay out: the whole section is
+  // one button for whoever runs it, and nothing at all for anyone else.
+  if (!roles.length && (node.parent || !eventCategories(root).length)) {
+    if (!node.canEdit) {
+      return null;
+    }
+    const bar = el('div', 'add-row');
+    bar.append(button('Add Activity', 'plus', 'button button-secondary button-small', () => openActivity(null, {parent: node, category: ''})));
+    return bar;
+  }
   // Children are grouped by the root event's own categories, in the order the
   // event keeps them, with the uncategorised run last. Each category carries its
   // own add button when it allows adding - so a new thing lands where you were
   // looking - and whoever runs the event can add into any of them regardless.
-  const groupHead = cat => {
+  // `others` says whether named groups are on the page too: the run without a
+  // category is only worth calling Uncategorized when there are.
+  const groupHead = (cat, others) => {
     const row = el('div', 'group-row');
-    // The run without a category is only worth naming when there are others.
-    row.append(el('div', 'group-title', cat ? cat.title : (eventCategories(root).length ? 'Uncategorized' : '')));
+    row.append(el('div', 'group-title', cat ? cat.title : (others ? 'Uncategorized' : '')));
     const open = () => openActivity(null, {parent: node, category: cat ? cat.id : ''});
     let add = null;
     if (node.canEdit) {
@@ -800,21 +811,26 @@ function childrenSection(node, editing) {
     const shown = roles.filter(r => matches(r, query));
     const order = [...eventCategories(root).map(c => c.id), ''];
     const present = new Set(shown.map(r => r.category || ''));
+    // Named groups on this page: the ones with things in them, plus on the
+    // event itself every category, since those all get a heading below.
+    const others = node.parent ? [...present].some(Boolean) : eventCategories(root).length > 0;
     for (const id of order) {
       if (!present.has(id)) {
         continue;
       }
-      list.append(groupHead(id ? category(id) : null));
+      list.append(groupHead(id ? category(id) : null, others));
       const panel = dropTarget(el('div', 'panel'), id);
       for (const r of shown.filter(x => (x.category || '') === id)) {
         panel.append(childRow(r, editing));
       }
       list.append(panel);
     }
-    // A category with nothing in it yet still gets its heading and add button,
-    // otherwise there would be no way to put the first thing into it - and,
-    // while editing, an empty panel to drop something into.
-    if (!query) {
+    // On the event itself a category with nothing in it yet still gets its
+    // heading and add button, otherwise there would be no way to put the first
+    // thing into it - and, while editing, an empty panel to drop something
+    // into. Under a committee only the categories its own things use appear:
+    // the event's full list belongs to the event's page.
+    if (!query && !node.parent) {
       for (const c of eventCategories(root)) {
         if (!present.has(c.id)) {
           list.append(groupHead(c));
@@ -827,8 +843,8 @@ function childrenSection(node, editing) {
       }
     }
     if (!shown.length) {
-      if (!eventCategories(root).length) {
-        list.append(groupHead(null));
+      if (!eventCategories(root).length || node.parent) {
+        list.append(groupHead(null, false));
       }
       const panel = el('div', 'panel');
       panel.append(el('div', 'panel-empty', query ? 'Nothing matches.' : 'Nothing here yet.'));
@@ -1013,7 +1029,10 @@ export function activityPage(node) {
     main.append(volunteersBox(node, editing, save));
   }
   if (!parent || under.length || node.canEdit) {
-    main.append(childrenSection(node, editing));
+    const things = childrenSection(node, editing);
+    if (things) {
+      main.append(things);
+    }
   }
   if (!parent) {
     main.append(el('div', 'footnote', 'To leave a committee, open it and use Edit my sign-up.'));

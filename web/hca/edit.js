@@ -537,7 +537,10 @@ export function openActivity(act, options) {
   const location = text(act ? act.location : '');
   const spots = text(act && act.spots ? String(act.spots) : '', {type: 'number', placeholder: 'Unlimited'});
   const coLeader = checkbox('Co-leader needed', act ? act.coLeaderNeeded : false);
-  const hidden = checkbox('Hide the volunteer list from everyone but co-chairs', act ? act.volunteersHidden : false);
+  // A new thing under a parent starts with the parent's privacy - a private
+  // event's committees are usually private too - and can be switched after.
+  const hidden = checkbox('Hide the volunteer list from everyone but co-chairs',
+    act ? act.volunteersHidden : Boolean(opts.parent && opts.parent.volunteersHidden));
   const direct = checkbox('People can sign up for this itself, not just the things under it', act ? act.directSignUp : true);
   const coChair = checkbox("I'd be open to co-chairing this", false);
   const image = imagePicker(act ? act.image : '', act ? act.imageUrl : '');

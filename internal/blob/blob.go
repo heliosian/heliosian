@@ -167,6 +167,17 @@ func (s *Store) touch(key string) (*entry, bool) {
 	return e, ok
 }
 
+// Bytes is an object the store already holds, with its media type, for a
+// caller that composes rather than serves - the share card draws an event's
+// image into itself. Nothing is fetched: what the sheets name is prefetched.
+func (s *Store) Bytes(name string) ([]byte, string, bool) {
+	e, ok := s.touch(trimExt(name))
+	if !ok {
+		return nil, "", false
+	}
+	return e.data, e.mimeType, true
+}
+
 // Has fetches the named object into memory on first sight and reports whether
 // the bucket holds it. Any trouble other than the object not existing is an
 // error, so a network fault never reads as a missing photo.

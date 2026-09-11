@@ -128,10 +128,10 @@ function countLabel(node) {
 }
 
 // eventTree is the rail's entry for the event whose page is open: the event
-// itself, then its committees grouped by the event's categories, each group
-// closed until opened (the group holding the open page starts open), and inside
-// each the whole tree, nested. Hidden and pending things appear only with Show
-// Hidden Things on.
+// itself, then its committees grouped by the event's categories. Every group,
+// and every committee with things under it, starts closed - the counts say
+// what is inside - and stays as it was toggled while moving around the event.
+// Hidden and pending things appear only with Show Hidden Things on.
 function eventTree(current) {
   const root = rootOf(current);
   const wrap = el('div', 'nav-event');
@@ -141,15 +141,44 @@ function eventTree(current) {
   const shown = n => state.showHidden || (n.status !== 'Hidden' && n.status !== 'Pending');
   const list = el('div', 'nav-sub nav-tree');
   const grouped = eventCategories(root).length > 0;
+  const flip = key => {
+    if (openGroups.has(key)) {
+      openGroups.delete(key);
+    } else {
+      openGroups.add(key);
+    }
+    renderNav();
+  };
+  // A disclosure chevron opens a group or a committee with things under it;
+  // a leaf gets a blank of the same width so titles line up.
+  const disclosure = (key, open) => {
+    const b = el('button', 'nav-tree-toggle' + (open ? ' is-open' : ''));
+    b.type = 'button';
+    b.setAttribute('aria-expanded', String(open));
+    b.setAttribute('aria-label', open ? 'Collapse' : 'Expand');
+    b.append(svg('chevron'));
+    b.addEventListener('click', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      flip(key);
+    });
+    return b;
+  };
   // Rows under a group start where the group's title starts (past its chevron)
   // and step in again for each level below that; without groups, from the edge.
   const item = (node, depth) => {
-    const row = link(activityPath(node), 'nav-sub-item nav-tree-item' + (node === current ? ' is-on' : ''));
-    row.style.paddingLeft = `${(grouped ? 30 : 8) + depth * 14}px`;
-    row.append(el('span', 'nav-sub-name', node.title), el('span', 'nav-sub-count', countLabel(node)));
+    const row = el('div', 'nav-tree-row');
+    row.style.paddingLeft = `${(grouped ? 22 : 0) + depth * 14}px`;
+    const kids = node.children.filter(shown);
+    const key = 'node/' + node.id;
+    const open = kids.length > 0 && openGroups.has(key);
+    row.append(kids.length ? disclosure(key, open) : el('span', 'nav-tree-toggle is-leaf'));
+    const a = link(activityPath(node), 'nav-sub-item nav-tree-item' + (node === current ? ' is-on' : ''));
+    a.append(el('span', 'nav-sub-name', node.title), el('span', 'nav-sub-count', countLabel(node)));
+    row.append(a);
     list.append(row);
-    for (const child of node.children.filter(shown)) {
-      item(child, depth + 1);
+    if (open) {
+      kids.forEach(k => item(k, depth + 1));
     }
   };
   const groups = [...eventCategories(root).map(c => ({id: c.id, title: c.title})), {id: '', title: 'Uncategorized'}];
@@ -164,24 +193,13 @@ function eventTree(current) {
       continue;
     }
     const key = root.id + '/' + group.id;
-    const holdsCurrent = members.some(m => m === current || descendants(m).includes(current));
-    if (holdsCurrent) {
-      openGroups.add(key);
-    }
     const open = openGroups.has(key);
     const toggle = el('button', 'nav-sub-item nav-tree-group' + (open ? ' is-open' : ''));
     toggle.type = 'button';
     toggle.setAttribute('aria-expanded', String(open));
     toggle.append(svg('chevron'), el('span', 'nav-sub-name', group.title),
       el('span', 'nav-sub-count', String(members.reduce((n, m) => n + signUps(m), 0))));
-    toggle.addEventListener('click', () => {
-      if (openGroups.has(key)) {
-        openGroups.delete(key);
-      } else {
-        openGroups.add(key);
-      }
-      renderNav();
-    });
+    toggle.addEventListener('click', () => flip(key));
     list.append(toggle);
     if (open) {
       members.forEach(m => item(m, 0));

@@ -137,8 +137,10 @@ func (v viewer) volunteers(list []Volunteer, hidden, editor bool) []Volunteer {
 // children renders the tree under an activity. An editor of the root edits the
 // whole tree, so canEdit is inherited rather than recomputed from co-chairs at
 // each level - a co-chair of a child still edits that child, because they are a
-// co-chair there.
-func (v viewer) children(list []*Activity, hidden, editor bool) []*ActivityView {
+// co-chair there. Whether a volunteer list is private is each thing's own
+// switch and nothing more: an event that hides its list does not hide its
+// committees'.
+func (v viewer) children(list []*Activity, editor bool) []*ActivityView {
 	out := []*ActivityView{}
 	for _, c := range list {
 		own := editor || v.canEdit(c)
@@ -147,8 +149,8 @@ func (v viewer) children(list []*Activity, hidden, editor bool) []*ActivityView 
 		}
 		out = append(out, &ActivityView{
 			Activity:   c,
-			Children:   v.children(c.Children, hidden || c.VolunteersHidden, own),
-			Volunteers: v.volunteers(c.Volunteers, hidden || c.VolunteersHidden, own),
+			Children:   v.children(c.Children, own),
+			Volunteers: v.volunteers(c.Volunteers, c.VolunteersHidden, own),
 			Taken:      len(c.Volunteers),
 			CanEdit:    own,
 		})
@@ -176,7 +178,7 @@ func Render(model *Model, directory Directory, email string, admin bool, now tim
 		}
 		view.Activities = append(view.Activities, ActivityView{
 			Activity:   a,
-			Children:   v.children(a.Children, a.VolunteersHidden, editor),
+			Children:   v.children(a.Children, editor),
 			Volunteers: v.volunteers(a.Volunteers, a.VolunteersHidden, editor),
 			Taken:      len(a.Volunteers),
 			CanEdit:    editor,

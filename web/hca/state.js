@@ -272,15 +272,10 @@ export function isPrevious(node) {
 }
 
 // listHidden says whether a thing's volunteer list is private: its own switch,
-// or one on anything above it, the way the server reads it for people who do
-// not run the event.
+// and only its own - an event that hides its list does not hide its
+// committees'.
 export function listHidden(node) {
-  for (let n = node; n; n = parentOf(n)) {
-    if (n.volunteersHidden) {
-      return true;
-    }
-  }
-  return false;
+  return Boolean(node.volunteersHidden);
 }
 
 // shownVolunteers is who the page lists. The server sends an organizer the

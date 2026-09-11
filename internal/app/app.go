@@ -300,6 +300,7 @@ type Core struct {
 	Mux         *http.ServeMux
 	HomeMux     *http.ServeMux
 	EventsMux   *http.ServeMux
+	EventsCache *events.Cache
 	BirthdayMux *http.ServeMux
 	Cache       *who.Cache
 	Queue       *who.Queue
@@ -359,7 +360,7 @@ func NewCore(cfg Config) *Core {
 	birthdayMux := http.NewServeMux()
 	birthday.Register(birthdayMux, birthdayCache, cfg.Writer, queue, birthdayDirectory{cache}, settings.SuperAdmins)
 	return &Core{
-		Mux: mux, HomeMux: homeMux, EventsMux: eventsMux, BirthdayMux: birthdayMux, Cache: cache, Queue: queue,
+		Mux: mux, HomeMux: homeMux, EventsMux: eventsMux, EventsCache: eventsCache, BirthdayMux: birthdayMux, Cache: cache, Queue: queue,
 		Gate: who.MemberGate(cache, mux), Home: homeMux, Events: eventsMux, Birthday: birthdayMux,
 	}
 }
@@ -484,6 +485,9 @@ func Production() (*http.Server, *who.Queue) {
 	homeAuth := auth.New(client, []byte(sessionKey), "web/public/home/login.html")
 	homeAuth.Register(core.HomeMux)
 	hcaAuth := auth.New(client, []byte(sessionKey), "web/public/hca/login.html")
+	// A shared link to an event previews in chat apps: the sign-in page it
+	// leads to carries the event's Open Graph tags.
+	hcaAuth.Preview = events.PreviewHead(core.EventsCache)
 	hcaAuth.Register(core.EventsMux)
 	birthdayAuth := auth.New(client, []byte(sessionKey), "web/public/birthday/login.html")
 	birthdayAuth.Register(core.BirthdayMux)
