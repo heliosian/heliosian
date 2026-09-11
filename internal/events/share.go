@@ -50,6 +50,29 @@ func previewable(a *Activity) bool {
 	return a != nil && (a.Status == StatusOpen || a.Status == StatusDone)
 }
 
+// timed is the thing whose date a preview shows: the thing itself, or when it
+// has no date or timing of its own, the nearest thing above it that does - a
+// booth happens when its event does.
+func timed(m *Model, a *Activity) *Activity {
+	for n := a; n != nil; n = m.byID[n.Parent] {
+		if n.Start != "" || n.Timing != "" {
+			return n
+		}
+	}
+	return a
+}
+
+// lineage is what a thing sits under, root first - "International Night ›
+// Booths" for a booth's performance slot - so a preview says what it belongs
+// to. Empty for an event.
+func lineage(m *Model, a *Activity) string {
+	names := []string{}
+	for n := m.byID[a.Parent]; n != nil; n = m.byID[n.Parent] {
+		names = append([]string{n.Title}, names...)
+	}
+	return strings.Join(names, " › ")
+}
+
 // when is the one line under the title: the date and time, or the timing text.
 func when(a *Activity) string {
 	start, err := time.ParseInLocation(DateTimeFormat, a.Start, local)
@@ -102,7 +125,7 @@ func PreviewHead(cache *Cache) func(r *http.Request) string {
 		}
 		origin := "https://" + r.Host
 		desc := blurb(a)
-		if line := when(a); line != "" {
+		if line := when(timed(model, a)); line != "" {
 			if desc != "" {
 				desc = line + " — " + desc
 			} else {
@@ -112,17 +135,23 @@ func PreviewHead(cache *Cache) func(r *http.Request) string {
 		if desc == "" {
 			desc = "Sign up to help on HCA-Team, the HCA Volunteer Portal."
 		}
+		// A thing under an event is titled with the event, so the preview says
+		// what it is part of: "Poland Booth · International Night".
+		title := a.Title
+		if under := lineage(model, a); under != "" {
+			title = a.Title + " · " + under
+		}
 		tags := [][2]string{
 			{"og:type", "website"},
 			{"og:site_name", "HCA-Team"},
-			{"og:title", a.Title},
+			{"og:title", title},
 			{"og:description", desc},
 			{"og:url", origin + model.PathOf(a)},
 			{"og:image", origin + "/share/" + a.ID + ".png"},
 			{"og:image:width", fmt.Sprint(cardWidth)},
 			{"og:image:height", fmt.Sprint(cardHeight)},
 			{"twitter:card", "summary_large_image"},
-			{"twitter:title", a.Title},
+			{"twitter:title", title},
 			{"twitter:description", desc},
 			{"twitter:image", origin + "/share/" + a.ID + ".png"},
 		}
@@ -150,14 +179,21 @@ func (a app) shareCard(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	imageBytes := a.readImage(act.Image)
-	sum := sha256.Sum256([]byte(act.Title + "\x00" + when(act) + "\x00" + act.Image))
+	model := a.cache.Model()
+	// A thing under an event with no image of its own shows the event's.
+	picture := act.Image
+	for n := act; picture == "" && n != nil; n = model.byID[n.Parent] {
+		picture = n.Image
+	}
+	imageBytes := a.readImage(picture)
+	line, under := when(timed(model, act)), lineage(model, act)
+	sum := sha256.Sum256([]byte(act.Title + "\x00" + under + "\x00" + line + "\x00" + picture))
 	etag := `"` + hex.EncodeToString(sum[:8]) + `"`
 	if r.Header.Get("If-None-Match") == etag {
 		w.WriteHeader(http.StatusNotModified)
 		return
 	}
-	card, err := drawCard(act.Title, when(act), r.Host+a.cache.Model().PathOf(act), imageBytes)
+	card, err := drawCard(under, act.Title, line, r.Host+model.PathOf(act), imageBytes)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -282,7 +318,7 @@ func wrap(d *font.Drawer, text string, width fixed.Int26_6) []string {
 // title as large as fits in three lines with the brand's yellow swoosh under
 // it, the date line, the address, and the event's image filling the right
 // side when there is one.
-func drawCard(title, line, address string, picture []byte) ([]byte, error) {
+func drawCard(under, title, line, address string, picture []byte) ([]byte, error) {
 	bold, medium, err := loadFaces()
 	if err != nil {
 		return nil, fmt.Errorf("share card fonts: %w", err)
@@ -337,10 +373,32 @@ func drawCard(title, line, address string, picture []byte) ([]byte, error) {
 	d.Dot = fixed.P(x+2, y+70)
 	d.DrawString("HCA VOLUNTEER PORTAL")
 
-	// The title, shrunk until it fits three lines.
+	// What it is part of, as a kicker above the title, so a booth's card
+	// plainly belongs to its event.
 	width := fixed.I(textRight - 72)
+	top := 250
+	if under != "" {
+		kicker, err := face(medium, 24)
+		if err != nil {
+			return nil, err
+		}
+		d.Face, d.Src = kicker, image.NewUniform(cardAccent)
+		kickerLines := wrap(d, strings.ToUpper(under), width)
+		if len(kickerLines) > 1 {
+			kickerLines = kickerLines[:1]
+			kickerLines[0] += "…"
+		}
+		d.Dot = fixed.P(72, 196)
+		d.DrawString(kickerLines[0])
+		top = 262
+	}
+
+	// The title, shrunk until it fits three lines.
 	var lines []string
 	size := 72.0
+	if under != "" {
+		size = 64
+	}
 	for ; size >= 36; size -= 4 {
 		titleFace, err := face(bold, size)
 		if err != nil {
@@ -353,7 +411,6 @@ func drawCard(title, line, address string, picture []byte) ([]byte, error) {
 		}
 	}
 	d.Src = image.NewUniform(cardBrand)
-	top := 250
 	lineHeight := int(size * 1.15)
 	for i, l := range lines {
 		d.Dot = fixed.P(72, top+i*lineHeight)
@@ -369,18 +426,28 @@ func drawCard(title, line, address string, picture []byte) ([]byte, error) {
 	swoosh := image.Rect(72, last+int(size*0.32), min(textRight, 72+lastWidth), last+int(size*0.32)+int(size/7))
 	draw.Draw(img, swoosh, image.NewUniform(cardYellow), image.Point{}, draw.Over)
 
-	// When, then where to find it.
-	body, err := face(medium, 26)
-	if err != nil {
-		return nil, err
-	}
-	d.Face, d.Src = body, image.NewUniform(cardMuted)
-	y = last + int(size*0.32) + 64
+	// When - large, it is the second thing anyone wants to know - then where
+	// to find it. The date line shrinks to fit on one line if it can.
+	y = last + int(size*0.32) + 76
 	if line != "" {
-		for _, l := range wrap(d, line, width) {
+		var dateLines []string
+		dateSize := 40.0
+		for ; dateSize >= 26; dateSize -= 2 {
+			body, err := face(bold, dateSize)
+			if err != nil {
+				return nil, err
+			}
+			d.Face = body
+			dateLines = wrap(d, line, width)
+			if len(dateLines) == 1 {
+				break
+			}
+		}
+		d.Src = image.NewUniform(cardAccent)
+		for _, l := range dateLines {
 			d.Dot = fixed.P(72, y)
 			d.DrawString(l)
-			y += 38
+			y += int(dateSize * 1.3)
 		}
 	}
 	foot, err := face(medium, 22)

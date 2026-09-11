@@ -43,7 +43,7 @@ function labelLine(node, withPeople, editing) {
     }
   }
   if (node.coLeaderNeeded) {
-    label.append(el('span', 'need', '• Co-leader needed!'));
+    label.append(el('span', 'need', 'Co-leader needed!'));
   }
   for (const b of statusBadges(node)) {
     label.append(b);

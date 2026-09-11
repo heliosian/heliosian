@@ -629,13 +629,46 @@ export function openVolunteerGrid(root, nodes, pathOf) {
   const rows = [];
   for (const node of nodes) {
     for (const v of node.volunteers) {
-      rows.push({node, v});
+      rows.push({node, v, parents: []});
     }
   }
+  // The columns as text, for copying: each header has a glyph that copies its
+  // column one value per line, and the toolbar copies the whole table
+  // tab-separated with its headings, which pastes into a spreadsheet as cells.
+  const columns = [
+    {label: 'Volunteer', get: r => r.v.name || r.v.email},
+    {label: 'Where', get: r => pathOf(r.node)},
+    {label: 'As', get: r => r.v.position},
+    {label: 'Email', get: r => r.v.email},
+    {label: "Parents' email", get: r => r.parents.join(', ')},
+  ];
+  const copied = (btn, icon, label) => {
+    btn.classList.add('copied');
+    btn.replaceChildren(svg('check'));
+    setTimeout(() => {
+      btn.classList.remove('copied');
+      btn.replaceChildren(svg(icon));
+      if (label) {
+        btn.append(el('span', '', label));
+      }
+    }, 1200);
+  };
+  const copyGlyph = (title, text) => {
+    const btn = el('button', 'copy-glyph');
+    btn.type = 'button';
+    btn.title = title;
+    btn.append(svg('copy'));
+    btn.addEventListener('click', () => {
+      navigator.clipboard.writeText(text()).then(() => copied(btn, 'copy'), () => toast('Could not copy'));
+    });
+    return btn;
+  };
   const table = el('table', 'roster');
   const head = el('tr');
-  for (const h of ['Volunteer', 'Where', 'As', 'Email', "Parents' email"]) {
-    head.append(el('th', '', h));
+  for (const c of columns) {
+    const th = el('th');
+    th.append(el('span', '', c.label), copyGlyph(`Copy the ${c.label} column`, () => rows.map(c.get).filter(Boolean).join('\n')));
+    head.append(th);
   }
   const thead = el('thead');
   thead.append(head);
@@ -643,7 +676,8 @@ export function openVolunteerGrid(root, nodes, pathOf) {
   const body = el('tbody');
   const addresses = new Set();
   const parentCells = [];
-  for (const {node, v} of rows) {
+  for (const row of rows) {
+    const {node, v} = row;
     const tr = el('tr');
     const who = el('td', 'roster-who');
     const face = el('div', 'avatar people-face');
@@ -664,7 +698,7 @@ export function openVolunteerGrid(root, nodes, pathOf) {
     tr.append(mail);
     addresses.add(v.email);
     const parents = el('td', 'roster-mail');
-    parentCells.push({cell: parents, email: v.email});
+    parentCells.push({cell: parents, row});
     tr.append(parents);
     body.append(tr);
   }
@@ -673,16 +707,17 @@ export function openVolunteerGrid(root, nodes, pathOf) {
   // it, so the roster shows at once and that column fills in behind it.
   people().then(all => {
     const byEmail = new Map(all.map(p => [p.email, p]));
-    for (const {cell, email} of parentCells) {
-      const info = byEmail.get(email);
+    for (const {cell, row} of parentCells) {
+      const info = byEmail.get(row.v.email);
       if (!info || !info.isStudent) {
         continue;
       }
-      for (const e of info.parentEmails || []) {
+      row.parents = info.parentEmails || [];
+      for (const e of row.parents) {
         cell.append(mailto(e));
         addresses.add(e);
       }
-      if (!(info.parentEmails || []).length) {
+      if (!row.parents.length) {
         cell.append(el('span', 'roster-none', 'none listed'));
       }
     }
@@ -691,12 +726,18 @@ export function openVolunteerGrid(root, nodes, pathOf) {
   scroll.append(rows.length ? table : el('div', 'panel-empty', 'Nobody has signed up yet.'));
   const tools = el('div', 'roster-tools');
   tools.append(el('span', 'roster-count', `${rows.length} sign-up${rows.length === 1 ? '' : 's'}`));
-  const copy = el('button', 'button button-secondary button-small', 'Copy emails');
-  copy.type = 'button';
-  copy.addEventListener('click', () => {
-    navigator.clipboard.writeText([...addresses].join(', ')).then(() => toast('Emails copied'), () => toast('Could not copy'));
+  const buttons = el('div', 'roster-buttons');
+  const copyTable = button('Copy table', 'copy', 'button button-secondary button-small', () => {
+    const text = [columns.map(c => c.label).join('\t'), ...rows.map(r => columns.map(c => c.get(r)).join('\t'))].join('\n');
+    navigator.clipboard.writeText(text).then(() => copied(copyTable, 'copy', 'Copy table'), () => toast('Could not copy'));
   });
-  tools.append(copy);
+  copyTable.title = 'Copy every column, ready to paste into a spreadsheet';
+  const copyEmails = button('Copy emails', 'copy', 'button button-secondary button-small', () => {
+    navigator.clipboard.writeText([...addresses].join(', ')).then(() => copied(copyEmails, 'copy', 'Copy emails'), () => toast('Could not copy'));
+  });
+  copyEmails.title = "Every volunteer's address, and their parents' for students, comma-separated";
+  buttons.append(copyTable, copyEmails);
+  tools.append(buttons);
   openModal(`${root.title}: Volunteers`, [tools, scroll], {wide: true});
 }
 

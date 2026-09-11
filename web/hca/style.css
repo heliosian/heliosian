@@ -1044,6 +1044,9 @@ main {
 
 .label .need { color: #a95f1b; }
 
+/* The dot separates the need from whatever came before it; first in line, it has nothing to separate. */
+.label > * + .need::before { content: '• '; }
+
 /* The people on a row can run long; they wrap within the label rather than widen the row. */
 .label .label-people { min-width: 0; white-space: normal; letter-spacing: 0.02em; }
 
@@ -1587,6 +1590,33 @@ button.side-chair:hover { background: var(--input); }
 .roster-tools { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
 
 .roster-count { font-size: 13.5px; color: var(--muted); }
+
+.roster-buttons { display: flex; gap: 8px; }
+
+/* Each heading carries a glyph that copies its column; it shows on hover, the
+   way Helios Who?'s table copies do, and turns into a check once copied. */
+.roster th { position: relative; padding-right: 28px; }
+
+.copy-glyph {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  padding: 2px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: #98a0a6;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.copy-glyph svg { width: 14px; height: 14px; }
+
+.roster th:hover > .copy-glyph, .copy-glyph.copied { opacity: 1; }
+
+.copy-glyph:hover, .copy-glyph.copied { color: var(--brand); }
 
 .roster-scroll { overflow: auto; max-height: calc(100vh - 220px); border: 1px solid var(--line); border-radius: 10px; }
 

@@ -659,6 +659,14 @@ func TestSharePreview(t *testing.T) {
 			t.Fatalf("preview lacks %s:\n%s", want, tags)
 		}
 	}
+	// A thing under an event is titled with the event and, having no date of
+	// its own, previews with the event's.
+	tags = head(httptest.NewRequest("GET", "https://hca.heliosian.com/v/international-night/E020", nil))
+	for _, want := range []string{`og:title" content="India · International Night"`, `Thursday, September 24 · 4:00–6:00 PM`} {
+		if !strings.Contains(tags, want) {
+			t.Fatalf("child preview lacks %s:\n%s", want, tags)
+		}
+	}
 	if head(httptest.NewRequest("GET", "https://hca.heliosian.com/activities/E006", nil)) != "" {
 		t.Fatalf("a hidden thing was previewed")
 	}
