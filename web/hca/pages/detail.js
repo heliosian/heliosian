@@ -773,6 +773,29 @@ function childrenSection(node, children, hiddenOnes, editing) {
     }
     return row;
   };
+  // While editing, every category's panel takes a dropped row: the row's id
+  // rides along in the drag, and landing it saves the new category. The
+  // browser insists on preventDefault during dragover for a drop to happen.
+  const dropTarget = (panel, categoryId) => {
+    if (!editing || hiddenOnes) {
+      return panel;
+    }
+    panel.addEventListener('dragover', e => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      panel.classList.add('is-dragover');
+    });
+    panel.addEventListener('dragleave', () => panel.classList.remove('is-dragover'));
+    panel.addEventListener('drop', e => {
+      e.preventDefault();
+      panel.classList.remove('is-dragover');
+      const moved = roles.find(r => r.id === e.dataTransfer.getData('text/plain'));
+      if (moved && (moved.category || '') !== categoryId) {
+        saveActivityFields(moved, {category: categoryId});
+      }
+    });
+    return panel;
+  };
   const render = () => {
     list.replaceChildren();
     const shown = roles.filter(r => matches(r, query));
@@ -783,18 +806,24 @@ function childrenSection(node, children, hiddenOnes, editing) {
         continue;
       }
       list.append(groupHead(id ? category(id) : null));
-      const panel = el('div', 'panel');
+      const panel = dropTarget(el('div', 'panel'), id);
       for (const r of shown.filter(x => (x.category || '') === id)) {
         panel.append(childRow(r, editing));
       }
       list.append(panel);
     }
     // A category with nothing in it yet still gets its heading and add button,
-    // otherwise there would be no way to put the first thing into it.
+    // otherwise there would be no way to put the first thing into it - and,
+    // while editing, an empty panel to drop something into.
     if (!hiddenOnes && !query) {
       for (const c of eventCategories(root)) {
         if (!present.has(c.id)) {
           list.append(groupHead(c));
+          if (editing) {
+            const panel = dropTarget(el('div', 'panel is-drop-hint'), c.id);
+            panel.append(el('div', 'panel-empty', 'Drag something here'));
+            list.append(panel);
+          }
         }
       }
     }

@@ -85,6 +85,15 @@ export function childRow(node, editing) {
     actions.append(join);
   }
   if (editing) {
+    // While editing, a row can be picked up and dropped on another category's
+    // panel (detail.js wires the targets); the row carries its id along.
+    row.draggable = true;
+    row.addEventListener('dragstart', e => {
+      e.dataTransfer.setData('text/plain', node.id);
+      e.dataTransfer.effectAllowed = 'move';
+      row.classList.add('is-dragging');
+    });
+    row.addEventListener('dragend', () => row.classList.remove('is-dragging'));
     // button() swallows the click so the row's link does not fire underneath.
     const pencil = button('', 'edit', 'edit-icon', () => openActivity(node));
     pencil.title = `Edit ${node.title}`;

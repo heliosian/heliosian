@@ -912,6 +912,13 @@ main {
 
 .panel-empty { padding: 16px; color: var(--muted); font-size: 14px; }
 
+/* Dragging a row between categories while editing. */
+.row[draggable=true] { cursor: grab; }
+.row.is-dragging { opacity: 0.4; }
+.panel.is-dragover { border-color: var(--accent); box-shadow: 0 0 0 2px #bfe6e4 inset; }
+.panel.is-drop-hint { border-style: dashed; }
+.panel.is-drop-hint .panel-empty { text-align: center; }
+
 .row {
   display: flex;
   align-items: center;
