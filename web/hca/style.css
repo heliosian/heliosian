@@ -820,7 +820,9 @@ main {
   gap: 8px;
   padding: 9px 16px;
   border-radius: 8px;
-  border: 0;
+  /* Every button carries the same 1px border, so a filled one and an outlined
+     one beside it stand the same height. */
+  border: 1px solid var(--brand);
   background: var(--brand);
   color: #fff;
   font-weight: 600;
@@ -829,7 +831,7 @@ main {
   text-decoration: none;
 }
 
-.button:hover { background: var(--brand-dark); }
+.button:hover { background: var(--brand-dark); border-color: var(--brand-dark); }
 
 .button svg { width: 16px; height: 16px; }
 
@@ -1261,6 +1263,31 @@ main {
   min-height: 32px;
 }
 
+/* The first group sits right under the section heading. */
+.list-head + div > .group-row:first-child { margin-top: 0; }
+
+/* The section heading with the site's swoosh under it, as the page titles have. */
+h2.section.section-swoosh {
+  position: relative;
+  z-index: 0;
+  display: inline-block;
+  padding-bottom: 10px;
+  margin: 8px 0 4px;
+}
+
+h2.section.section-swoosh::after {
+  content: '';
+  position: absolute;
+  left: 2%;
+  right: 2%;
+  bottom: 2px;
+  height: 12px;
+  background-image: url('/swoosh.png');
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  z-index: -1;
+}
+
 .group-row .group-title { margin: 0; }
 
 .card-chip.is-inline { position: static; max-width: none; }
@@ -1350,7 +1377,29 @@ a.card-chip.is-link:hover { filter: brightness(0.92); text-decoration: underline
 
 .who-card-link:hover { text-decoration: underline; }
 
-.who-card-foot { margin-top: 18px; }
+/* Contact lines: icon, value, round buttons at the right. */
+.who-contact { display: flex; align-items: center; gap: 10px; font-size: 14px; }
+
+.who-contact > svg { width: 18px; height: 18px; color: var(--muted); flex-shrink: 0; }
+
+.who-contact-value { min-width: 0; word-break: break-all; }
+
+.who-contact-actions { margin-left: auto; display: flex; gap: 8px; flex-shrink: 0; }
+
+.icon-round { width: 36px; height: 36px; border-radius: 50%; border: 0; background: var(--input); color: var(--brand); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; text-decoration: none; }
+
+.icon-round:hover { background: #dfe9e9; }
+
+.icon-round svg { width: 17px; height: 17px; }
+
+.who-card-foot { margin-top: 12px; }
+
+/* Household chips open that person's own card. */
+.who-card-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.who-card-chip { border: 1px solid var(--line); background: var(--input); border-radius: 999px; padding: 3px 10px; font: inherit; font-size: 13px; color: var(--brand); cursor: pointer; }
+
+.who-card-chip:hover { background: #dfe9e9; }
 
 /* .avatar carries no size of its own - without this it collapses to its text
    and any photo inside, sized 100%/100%, squashes with it. */
@@ -1509,18 +1558,14 @@ button.side-chair:hover { background: var(--input); }
 
 /* The event's own sign-up box: who is on it, Join top right, and the two
    switches while editing. */
-.vol-box {
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  padding: 16px;
-  margin: 18px 0 22px;
-}
+/* The volunteers section sits on the page like Opportunities & Needs does: a
+   swooshed heading with the actions beside it, no box. */
+.vol-box { margin: 18px 0 26px; }
 
 .vol-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 
 /* Beats the later h2.section rule, which would put its 24px page margin inside the box. */
-.vol-head h2.section { margin: 0; font-size: 19px; }
+.vol-head h2.section.section-swoosh { margin: 8px 0 4px; font-size: 22px; }
 
 .vol-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 

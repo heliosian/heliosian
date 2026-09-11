@@ -496,20 +496,57 @@ export async function openPerson(v) {
     r.append(el('span', 'who-card-label', label), node);
     rows.append(r);
   };
-  const mail = el('a', 'who-card-link', v.email);
-  mail.href = `mailto:${v.email}`;
-  row('Email', mail);
+  // Contact rows as Helios Who? lays them out: the value behind its icon, and
+  // round buttons on the right to mail, text, call or copy it.
+  const roundButton = (icon, title, onClick, href) => {
+    const b = el(href ? 'a' : 'button', 'icon-round');
+    if (href) {
+      b.href = href;
+    } else {
+      b.type = 'button';
+      b.addEventListener('click', onClick);
+    }
+    b.title = title;
+    b.setAttribute('aria-label', title);
+    b.append(svg(icon));
+    return b;
+  };
+  const copyOf = (text, what) => roundButton('copy', `Copy ${what}`, () => {
+    navigator.clipboard.writeText(text).then(() => toast(`${what} copied`), () => toast('Could not copy'));
+  });
+  const contact = (icon, value, buttons) => {
+    const line = el('div', 'who-contact');
+    line.append(svg(icon), el('span', 'who-contact-value', value));
+    const acts = el('div', 'who-contact-actions');
+    acts.append(...buttons);
+    line.append(acts);
+    rows.append(line);
+  };
+  contact('mail', v.email, [roundButton('mail', 'Email', null, `mailto:${v.email}`), copyOf(v.email, 'Email')]);
   if (info && info.phone) {
-    const tel = el('a', 'who-card-link', info.phone);
-    tel.href = `tel:${info.phone.replace(/[^+\d]/g, '')}`;
-    row('Phone', tel);
+    const digits = info.phone.replace(/[^+\d]/g, '');
+    contact('phone', info.phone, [
+      roundButton('chat', 'Text', null, `sms:${digits}`),
+      roundButton('phone', 'Call', null, `tel:${digits}`),
+      copyOf(info.phone, 'Phone'),
+    ]);
+  }
+  // Household: each name is a chip that opens that person's own card.
+  const chips = list => {
+    const wrap = el('div', 'who-card-chips');
+    for (const p of list) {
+      const chip = el('button', 'who-card-chip', p.grade ? `${p.name} (${p.grade})` : p.name);
+      chip.type = 'button';
+      chip.addEventListener('click', () => openPerson({email: p.email, name: p.name}));
+      wrap.append(chip);
+    }
+    return wrap;
+  };
+  if (info && info.spouses && info.spouses.length) {
+    row(info.spouses.length === 1 ? 'Partner' : 'Partners', chips(info.spouses));
   }
   if (info && info.children && info.children.length) {
-    const kids = el('div');
-    for (const k of info.children) {
-      kids.append(el('div', '', k.grade ? `${k.name} (${k.grade})` : k.name));
-    }
-    row(info.children.length === 1 ? 'Child' : 'Children', kids);
+    row(info.children.length === 1 ? 'Child' : 'Children', chips(info.children));
   }
   if (info && info.isStudent && info.parentEmails && info.parentEmails.length) {
     const parents = el('div');
@@ -522,7 +559,7 @@ export async function openPerson(v) {
   }
   card.append(rows);
   if (info) {
-    const profile = el('a', 'button button-secondary button-small', 'Open in Helios Who?');
+    const profile = el('a', 'button button-small', 'Open Helios Who? Profile');
     profile.href = whoProfile(v.email);
     profile.target = '_blank';
     profile.rel = 'noopener';

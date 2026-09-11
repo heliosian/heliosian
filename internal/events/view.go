@@ -36,11 +36,15 @@ type DirectoryPerson struct {
 	JobTitle   string  `json:"jobTitle,omitempty"`
 	Department string  `json:"department,omitempty"`
 	Children   []Child `json:"children,omitempty"`
+	// Spouses are the other adults of the household, by address.
+	Spouses []Child `json:"spouses,omitempty"`
 }
 
-// A Child is one of a parent's children as the card lists them: a name and
-// the grade they are in.
+// A Child is one of a parent's children as the card lists them - or another
+// adult of the household: an address to open their own card, a name, and for
+// a child the grade they are in.
 type Child struct {
+	Email string `json:"email"`
 	Name  string `json:"name"`
 	Grade string `json:"grade,omitempty"`
 }

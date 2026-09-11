@@ -176,9 +176,15 @@ func (d directory) People() []events.DirectoryPerson {
 		// itself lists them.
 		if p.IsParent {
 			for _, key := range model.FamilyKeysOf(p.Email) {
-				for _, kid := range model.Families[key].KidEmails {
+				family := model.Families[key]
+				for _, kid := range family.KidEmails {
 					if k := model.Person(kid); k != nil {
-						person.Children = append(person.Children, events.Child{Name: k.FullName, Grade: k.Grade})
+						person.Children = append(person.Children, events.Child{Email: k.Email, Name: k.FullName, Grade: k.Grade})
+					}
+				}
+				for _, adult := range family.AdultEmails {
+					if a := model.Person(adult); a != nil && a.Email != p.Email {
+						person.Spouses = append(person.Spouses, events.Child{Email: a.Email, Name: a.FullName})
 					}
 				}
 			}

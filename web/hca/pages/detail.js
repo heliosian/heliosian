@@ -473,7 +473,7 @@ function volunteersBox(node, editing, save) {
   const people = shownVolunteers(node, editing).filter(v => v.position !== 'Co-Chair');
   const box = el('div', 'vol-box');
   const head = el('div', 'vol-head');
-  head.append(el('h2', 'section', people.length ? `Volunteers (${people.length})` : 'Volunteers'));
+  head.append(el('h2', 'section section-swoosh', people.length ? `Volunteers (${people.length})` : 'Volunteers'));
   const actions = el('div', 'vol-actions');
   const mine = mySignUp(node);
   if (mine) {
@@ -671,7 +671,7 @@ function childrenSection(node, editing) {
   const root = rootOf(node);
   const wrap = el('div');
   const head = el('div', 'list-head');
-  head.append(el('h2', 'section', 'Things To Do'));
+  head.append(el('h2', 'section section-swoosh', 'Opportunities & Needs'));
   const actions = el('div', 'row-actions');
   let query = '';
   const list = el('div');
