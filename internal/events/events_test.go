@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -390,5 +392,47 @@ func TestUncategorizedFallback(t *testing.T) {
 	}
 	if rec := call(t, mux, admin, "DELETE", "/api/events/category", map[string]any{"id": UncategorizedID}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("deleted the built-in heading: %d", rec.Code)
+	}
+}
+
+func TestBrokenSheetStallsThePortalOnly(t *testing.T) {
+	t.Chdir("../..")
+	// A Volunteers tab still in the old shape: the load fails, but the cache
+	// exists, every route says why, and the first good refresh brings it back.
+	broken := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(broken, "events"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"Categories", "Activities", "Links", "Settings", "Admins"} {
+		raw, err := os.ReadFile(filepath.Join("sampledata", "events", name+".csv"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(broken, "events", name+".csv"), raw, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(broken, "events", "Volunteers.csv"), []byte("Year,Activity,Role,Email,Position,Note,Added By,Added\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cache, err := NewCache(&data.Dir{Root: broken}, bundled{}, func(string) bool { return false }, syncQueue{})
+	if err == nil || cache == nil || cache.Model() != nil {
+		t.Fatalf("a broken sheet should give a cache without a model and an error, got %v %v", cache, err)
+	}
+	mux := http.NewServeMux()
+	Register(mux, cache, &data.Dir{Root: broken}, syncQueue{}, nil, fakeDirectory{}, func() []string { return nil })
+	rec := call(t, mux, parent, "GET", "/api/events/model", nil)
+	if rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), `missing column "Event ID"`) {
+		t.Fatalf("before the sheet loads: %d %s", rec.Code, rec.Body)
+	}
+	if cache.IsAdmin(admin) {
+		t.Fatalf("nobody is a tab admin before the tab has loaded")
+	}
+	cache.source = &data.Dir{Root: "sampledata"}
+	if err := cache.refresh(); err != nil {
+		t.Fatal(err)
+	}
+	if rec := call(t, mux, parent, "GET", "/api/events/model", nil); rec.Code != http.StatusOK || cache.Err() != nil {
+		t.Fatalf("after the sheet loads: %d %v", rec.Code, cache.Err())
 	}
 }

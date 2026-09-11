@@ -58,28 +58,45 @@ type app struct {
 func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, directory Directory, superAdmins func() []string) {
 	a := app{cache: cache, writer: writer, queue: queue, store: store, directory: directory, superAdmins: superAdmins}
 	for _, page := range pages {
-		mux.HandleFunc("GET "+page, a.page)
+		mux.HandleFunc("GET "+page, a.ready(a.page))
 	}
-	mux.HandleFunc("GET /api/events/model", a.model)
-	mux.HandleFunc("GET /api/events/people", a.people)
-	mux.HandleFunc("POST /api/events/volunteer", a.saveVolunteer)
-	mux.HandleFunc("DELETE /api/events/volunteer", a.removeVolunteer)
-	mux.HandleFunc("POST /api/events/activity", a.saveActivity)
-	mux.HandleFunc("DELETE /api/events/activity", a.deleteActivity)
-	mux.HandleFunc("POST /api/events/link", a.saveLink)
-	mux.HandleFunc("DELETE /api/events/link", a.deleteLink)
-	mux.HandleFunc("POST /api/events/category", a.saveCategory)
-	mux.HandleFunc("DELETE /api/events/category", a.deleteCategory)
-	mux.HandleFunc("POST /api/events/categories/order", a.reorderCategories)
-	mux.HandleFunc("POST /api/events/copy", a.copyActivity)
-	mux.HandleFunc("POST /api/events/settings", a.saveSettings)
-	mux.HandleFunc("POST /api/events/image", a.uploadImage)
-	mux.HandleFunc("GET /api/admin/state", a.adminState)
-	mux.HandleFunc("POST /api/admin/admins", a.setAdmins)
+	mux.HandleFunc("GET /api/events/model", a.ready(a.model))
+	mux.HandleFunc("GET /api/events/people", a.ready(a.people))
+	mux.HandleFunc("POST /api/events/volunteer", a.ready(a.saveVolunteer))
+	mux.HandleFunc("DELETE /api/events/volunteer", a.ready(a.removeVolunteer))
+	mux.HandleFunc("POST /api/events/activity", a.ready(a.saveActivity))
+	mux.HandleFunc("DELETE /api/events/activity", a.ready(a.deleteActivity))
+	mux.HandleFunc("POST /api/events/link", a.ready(a.saveLink))
+	mux.HandleFunc("DELETE /api/events/link", a.ready(a.deleteLink))
+	mux.HandleFunc("POST /api/events/category", a.ready(a.saveCategory))
+	mux.HandleFunc("DELETE /api/events/category", a.ready(a.deleteCategory))
+	mux.HandleFunc("POST /api/events/categories/order", a.ready(a.reorderCategories))
+	mux.HandleFunc("POST /api/events/copy", a.ready(a.copyActivity))
+	mux.HandleFunc("POST /api/events/settings", a.ready(a.saveSettings))
+	mux.HandleFunc("POST /api/events/image", a.ready(a.uploadImage))
+	mux.HandleFunc("GET /api/admin/state", a.ready(a.adminState))
+	mux.HandleFunc("POST /api/admin/admins", a.ready(a.setAdmins))
 }
 
 func (a app) page(w http.ResponseWriter, r *http.Request) {
 	serve.File(w, r, shell)
+}
+
+// ready holds every route until the sheet has loaded once. Before then the
+// portal answers 503 with the reason, so a sheet that needs fixing says what is
+// wrong instead of taking the server down with the directory on it.
+func (a app) ready(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if a.cache.Model() == nil {
+			reason := "the Events sheet has not loaded yet"
+			if err := a.cache.Err(); err != nil {
+				reason = err.Error()
+			}
+			http.Error(w, "HCA-Team cannot load its data: "+reason, http.StatusServiceUnavailable)
+			return
+		}
+		next(w, r)
+	}
 }
 
 // who is the signed-in person as the portal keys them: the address Google

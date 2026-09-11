@@ -59,7 +59,7 @@ An Image cell is an object under `activity-images/` in the media bucket, content
 
 ## A load either succeeds whole or refuses
 
-The same stance as the other apps: the server does not start, or does not refresh, on a sheet that breaks a rule, and never serves a page quietly missing an event.
+The same stance as the other apps: a sheet that breaks a rule does not load, or does not refresh, and the portal never serves a page quietly missing an event. Unlike the directory, though, a failed load does not stop the server: the portal shares its process with the directory and the front page, and its sheet is the one edited by hand, so until the first load succeeds every portal route answers `503` with the loader's reason, the other apps serve normally, and the five-minute refresh brings the portal up on its own once the sheet is fixed. A refresh that fails after a good load keeps serving the last good model and logs the reason (`Cache.Err`). `go run ./cmd/loadcheck` runs the same loader against the live sheets and prints the first thing it refuses.
 
 ## Sample data
 

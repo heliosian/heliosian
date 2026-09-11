@@ -264,9 +264,12 @@ func NewCore(cfg Config) *Core {
 	}
 	homeMux := http.NewServeMux()
 	home.Register(homeMux, homeCache, cfg.Writer, queue, cfg.Store, settings.SuperAdmins, cache.HeroPhoto)
+	// The portal's sheet is edited by hand more than the others, so a load
+	// failure keeps only the portal down: it answers with the reason and comes
+	// back on its own once the sheet loads.
 	eventsCache, err := events.NewCache(cfg.Source, eventsImages{cfg.Store}, cache.IsSuperAdmin, queue)
 	if err != nil {
-		log.Fatalf("[ERROR] load events data: %v", err)
+		log.Printf("[ERROR] load events data: %v", err)
 	}
 	eventsMux := http.NewServeMux()
 	events.Register(eventsMux, eventsCache, cfg.Writer, queue, cfg.Store, directory{cache}, settings.SuperAdmins)

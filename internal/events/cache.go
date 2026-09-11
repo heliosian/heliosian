@@ -26,15 +26,20 @@ type Cache struct {
 	mu         sync.RWMutex
 	model      *Model
 	tables     *Tables
+	err        error
 }
 
+// NewCache loads the sheet and keeps reloading it. A sheet that will not load
+// is returned as the error, but the cache is still usable and keeps trying on
+// the refresh interval: Model and Tables are nil until a load succeeds, and Err
+// says why. That way a broken Events sheet stalls the portal rather than the
+// server it shares with the directory, and comes back once the sheet is fixed
+// without a restart.
 func NewCache(source data.Source, images ImageChecker, superAdmin func(string) bool, queue Enqueuer) (*Cache, error) {
 	c := &Cache{source: source, images: images, superAdmin: superAdmin, queue: queue}
-	if err := c.refresh(); err != nil {
-		return nil, err
-	}
+	err := c.refresh()
 	go c.refreshLoop()
-	return c, nil
+	return c, err
 }
 
 func (c *Cache) refreshLoop() {
@@ -50,14 +55,19 @@ func (c *Cache) refreshLoop() {
 func (c *Cache) refresh() error {
 	start := time.Now()
 	tables, err := ReadTables(c.source)
+	if err == nil {
+		var model *Model
+		if model, err = BuildModel(tables, c.images); err == nil {
+			c.set(tables, model)
+		}
+	}
+	c.mu.Lock()
+	c.err = err
+	c.mu.Unlock()
 	if err != nil {
 		return err
 	}
-	model, err := BuildModel(tables, c.images)
-	if err != nil {
-		return err
-	}
-	c.set(tables, model)
+	model := c.Model()
 	children, volunteers := 0, len(tables.Volunteers)
 	for _, a := range model.Activities {
 		children += len(a.Descendants())
@@ -86,8 +96,19 @@ func (c *Cache) Tables() *Tables {
 	return c.tables
 }
 
+// Err is why the last load failed, or nil. A failed refresh keeps the previous
+// model serving, so Err can be set while Model is still usable.
+func (c *Cache) Err() error {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.err
+}
+
 func (c *Cache) tabAdmins() []string {
 	tables := c.Tables()
+	if tables == nil {
+		return nil
+	}
 	emails := make([]string, 0, len(tables.Admins))
 	for _, row := range tables.Admins {
 		emails = append(emails, row["Email"])
