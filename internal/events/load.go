@@ -246,7 +246,7 @@ type Tables struct {
 	Admins     []map[string]string
 }
 
-func exactColumns(table string, header, wanted []string) error {
+func hasColumns(table string, header, wanted []string) error {
 	present := map[string]bool{}
 	for _, h := range header {
 		present[h] = true
@@ -255,6 +255,13 @@ func exactColumns(table string, header, wanted []string) error {
 		if !present[w] {
 			return fmt.Errorf("table %s is missing column %q", table, w)
 		}
+	}
+	return nil
+}
+
+func exactColumns(table string, header, wanted []string) error {
+	if err := hasColumns(table, header, wanted); err != nil {
+		return err
 	}
 	known := map[string]bool{}
 	for _, w := range wanted {
@@ -294,7 +301,7 @@ func ReadTables(source data.Source) (*Tables, error) {
 		changeLog.header, changeLog.err = source.Header(appName, changeLog.name)
 	})
 	wg.Wait()
-	for _, t := range append(read, changeLog) {
+	for _, t := range read {
 		if t.err != nil {
 			return nil, t.err
 		}
@@ -302,18 +309,30 @@ func ReadTables(source data.Source) (*Tables, error) {
 			return nil, err
 		}
 	}
+	// The log is only ever appended to, by column name, so it needs the columns
+	// the app writes and may keep any others (an older layout's, or notes).
+	if changeLog.err != nil {
+		return nil, changeLog.err
+	}
+	if err := hasColumns(changeLog.name, changeLog.header, changeLog.want); err != nil {
+		return nil, err
+	}
 	return &Tables{
 		Categories: categories.rows, Activities: activities.rows,
 		Volunteers: volunteers.rows, Links: links.rows, Settings: settings.rows, Admins: admins.rows,
 	}, nil
 }
 
-func yesNo(cell string) (bool, error) {
+// yesNo reads a Yes/No cell; a blank takes the column's default, which is what
+// a row someone typed by hand (or an older import) means by leaving it out.
+func yesNo(cell string, blank bool) (bool, error) {
 	switch cell {
 	case "Yes":
 		return true, nil
-	case "No", "":
+	case "No":
 		return false, nil
+	case "":
+		return blank, nil
 	}
 	return false, fmt.Errorf("%q is not Yes, No, or blank", cell)
 }
@@ -516,7 +535,7 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 		if err != nil {
 			return nil, fmt.Errorf("category %q: %w", title, err)
 		}
-		adding, err := yesNo(row["Allow Adding"])
+		adding, err := yesNo(row["Allow Adding"], false)
 		if err != nil {
 			return nil, fmt.Errorf("category %q: allow adding %w", title, err)
 		}
@@ -537,6 +556,9 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 		a, err := parseActivity(row, model, images)
 		if err != nil {
 			return nil, err
+		}
+		if a == nil {
+			continue
 		}
 		if other := model.byID[a.ID]; other != nil {
 			return nil, fmt.Errorf("activities %q and %q share event id %q", other.Title, a.Title, a.ID)
@@ -585,6 +607,9 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 	seen := map[string]bool{}
 	for _, row := range tables.Volunteers {
 		id := strings.TrimSpace(row["Event ID"])
+		if id == "" {
+			continue
+		}
 		email := strings.ToLower(row["Email"])
 		if !emailForm.MatchString(email) {
 			return nil, fmt.Errorf("volunteer row %v has invalid email", row)
@@ -616,6 +641,9 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 		if err := checkTitle("link", title); err != nil {
 			return nil, err
 		}
+		if id == "" {
+			continue
+		}
 		a := model.Activity(id)
 		if a == nil {
 			return nil, fmt.Errorf("link %q names unknown event id %q", title, id)
@@ -645,11 +673,17 @@ func parseActivity(row map[string]string, model *Model, images ImageChecker) (*A
 	fail := func(err error) (*Activity, error) {
 		return nil, fmt.Errorf("activity %q in %s: %w", title, year, err)
 	}
-	if err := checkID("activity", title, row["Event ID"]); err != nil {
-		return nil, err
+	// A row with no Event ID is a deleted activity left in place; it is not
+	// loaded, and nothing may point at it.
+	if strings.TrimSpace(row["Event ID"]) == "" {
+		return nil, nil
 	}
-	if err := CheckYear(year); err != nil {
-		return fail(err)
+	// Anything under a parent lives in the parent's year, so its own Year may
+	// be left blank; attachChildren fills it in from the root.
+	if year != "" || strings.TrimSpace(row["Parent"]) == "" {
+		if err := CheckYear(year); err != nil {
+			return fail(err)
+		}
 	}
 	if err := checkStatus(row["Status"]); err != nil {
 		return fail(err)
@@ -671,15 +705,18 @@ func parseActivity(row map[string]string, model *Model, images ImageChecker) (*A
 	if err != nil {
 		return fail(err)
 	}
-	coLeader, err := yesNo(row["Co-Leader Needed"])
+	// Blank switches lean towards asking for help: a co-leader is wanted and
+	// people may sign up directly unless the row says otherwise; volunteers
+	// are shown unless hidden on purpose.
+	coLeader, err := yesNo(row["Co-Leader Needed"], true)
 	if err != nil {
 		return fail(fmt.Errorf("co-leader needed %w", err))
 	}
-	hidden, err := yesNo(row["Volunteers Hidden"])
+	hidden, err := yesNo(row["Volunteers Hidden"], false)
 	if err != nil {
 		return fail(fmt.Errorf("volunteers hidden %w", err))
 	}
-	direct, err := yesNo(row["Direct Sign-Up"])
+	direct, err := yesNo(row["Direct Sign-Up"], true)
 	if err != nil {
 		return fail(fmt.Errorf("direct sign-up %w", err))
 	}
@@ -711,21 +748,26 @@ func attachChildren(all []*Activity, byID map[string]*Activity) ([]*Activity, er
 		if parent == a {
 			return nil, fmt.Errorf("activity %q in %s is its own parent", a.Title, a.Year)
 		}
-		if parent.Year != a.Year {
-			return nil, fmt.Errorf("activity %q in %s has its parent %q in %s", a.Title, a.Year, parent.Title, parent.Year)
-		}
 		parent.Children = append(parent.Children, a)
 	}
-	// Walk each chain to its root; anything that revisits a title on the way is
-	// in a loop, and would otherwise hang every later walk of the tree.
+	// Walk each chain to its root; anything that revisits an id on the way is
+	// in a loop, and would otherwise hang every later walk of the tree. The
+	// root's year is the whole chain's: a blank Year takes it, and a different
+	// one is refused.
 	for _, a := range all {
 		seen := map[string]bool{a.ID: true}
-		for p := a; p.Parent != ""; {
+		p := a
+		for p.Parent != "" {
 			p = byID[p.Parent]
 			if seen[p.ID] {
 				return nil, fmt.Errorf("activity %q in %s is inside a parent loop", a.Title, a.Year)
 			}
 			seen[p.ID] = true
+		}
+		if a.Year == "" {
+			a.Year = p.Year
+		} else if a.Year != p.Year {
+			return nil, fmt.Errorf("activity %q in %s has its parent %q in %s", a.Title, a.Year, byID[a.Parent].Title, p.Year)
 		}
 	}
 	return roots, nil

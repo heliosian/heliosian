@@ -15,13 +15,13 @@ The portal's data lives in one Google Sheet, `Events`, in the community shared d
 - `Admins` — Email.
 - `Change Log` — Timestamp, Actor, Action, Kind, Year, Activity, Title, Email, Details; appended on every change, never read back.
 
-**Column order does not matter, column names do.** Every write places each cell under the column of that name wherever the tab keeps it (`Writer.AppendCells`), so columns may be rearranged by hand. The tabs that are read back must have exactly the columns listed - a missing one and an extra one both refuse the load, since a misspelt header would otherwise be ignored silently. Tabs the app never reads (`Change Log`, and any tab kept for backup such as the old `Roles`) are left alone.
+**Column order does not matter, column names do.** Every write places each cell under the column of that name wherever the tab keeps it (`Writer.AppendCells`), so columns may be rearranged by hand. The tabs that are read back must have exactly the columns listed - a missing one and an extra one both refuse the load, since a misspelt header would otherwise be ignored silently. `Change Log` is only appended to, so it needs the columns the app writes and may keep others (its old `Role` column, say); tabs the app never touches (one kept for backup, such as the old `Roles`) are left alone.
 
 ## One table, one tree
 
 There is no separate table of roles. A committee, a booth, or a shift is an activity like the event it sits under, distinguished only by naming that event in its `Parent` column; the roots — the things with no parent — are what the opportunities page lists. The tree nests to any depth: a booth can hold its own performance slot. `Group` is the sub-heading a child lists under on its parent's page and means nothing on a root. A child needs no `Category`: it takes its root's for tinting and filing.
 
-`Parent` is the Event ID of another activity **in the same year**; the loader refuses a parent that does not exist, a row that is its own parent, a parent in another year, and a chain that loops. Deleting something with children is refused, since the next load would refuse the orphaned rows. Moving a root to another year takes its whole tree with it.
+`Parent` is the Event ID of another activity **in the same year**; the loader refuses a parent that does not exist, a row that is its own parent, a parent in another year, and a chain that loops. Anything under a parent may leave its own `Year` blank and takes the root's — only roots need one. Deleting something with children is refused, since the next load would refuse the orphaned rows. Moving a root to another year takes its whole tree with it.
 
 ## Two kinds of category
 
@@ -33,7 +33,7 @@ Copying an event to the next year copies its categories too, under fresh ids, an
 
 ## Keys are ids
 
-Every activity has an `Event ID` and every category a `Category ID`, unique across the sheet, and everything that refers to one does so by id: a child's `Parent`, a root's `Category`, and the `Event ID` on every volunteer and link row. Titles are just titles — two booths under different events can both be "Set Up Crew", a rename touches one cell and nothing else, and every node lives at `/activities/{id}`. The app mints an id when it creates a row (eight characters from a 32-symbol alphabet); rows added by hand need one too, and the loader refuses a row without one or two rows sharing one.
+Every activity has an `Event ID` and every category a `Category ID`, unique across the sheet, and everything that refers to one does so by id: a child's `Parent`, a root's `Category`, and the `Event ID` on every volunteer and link row. Titles are just titles — two booths under different events can both be "Set Up Crew", a rename touches one cell and nothing else, and every node lives at `/activities/{id}`. The app mints an id when it creates a row (eight characters from a 32-symbol alphabet); rows added by hand need one too, and the loader refuses two rows sharing one. A row with a **blank Event ID is a deleted activity** left in place: it is not loaded, and a volunteer or link row with a blank Event ID is skipped the same way. Pointing at an id no row has (a `Parent`, a volunteer, a link) is still refused, since that is a dangling reference rather than a deletion.
 
 The cost is that the sheet no longer reads as prose on its own — a volunteer row says `E017`, not "Clean Up Crew" — so the Change Log keeps writing titles alongside ids for the humans who read it.
 
@@ -47,7 +47,7 @@ Start and End are wall-clock, `2026-09-24 16:00` or `2026-09-24` for a whole day
 
 ## Yes and No
 
-Flag cells are `Yes`, `No`, or blank, and blank means No, so a hand-added row needs only the flags it turns on.
+Flag cells are `Yes`, `No`, or blank. A blank takes the column's default, chosen so a hand-added row asks for help unless it says otherwise: `Co-Leader Needed` and `Direct Sign-Up` default to Yes, `Volunteers Hidden` and a category's `Allow Adding` to No. The app always writes Yes or No explicitly.
 
 ## Status and spots
 
