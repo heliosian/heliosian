@@ -743,7 +743,7 @@ function childrenSection(node, children, hiddenOnes, editing) {
   const root = rootOf(node);
   const wrap = el('div');
   const head = el('div', 'list-head');
-  const title = hiddenOnes ? 'Hidden and Pending' : (node.parent ? 'Under this' : 'Things To Do');
+  const title = hiddenOnes ? 'Hidden and Pending' : 'Things To Do';
   head.append(el('h2', 'section', title));
   const actions = el('div', 'row-actions');
   let query = '';
@@ -981,7 +981,7 @@ export function activityPage(node) {
   const under = node.children.filter(c => c.status !== 'Hidden' && c.status !== 'Pending');
   const items = [];
   if (!parent || under.length || node.canEdit) {
-    items.push({key: 'children', label: parent ? `Under this (${under.length})` : 'Committees & Tasks'});
+    items.push({key: 'children', label: parent ? `Things To Do (${under.length})` : 'Things To Do'});
   }
   const hidden = descendants(node).filter(c => c.status === 'Hidden' || c.status === 'Pending');
   if (node.canEdit && hidden.length) {
