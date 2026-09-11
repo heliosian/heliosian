@@ -12,6 +12,11 @@ import {send, reload, openSignUp, openActivity, openLink, saveActivityFields, op
 // becomes Done.
 let editingPath = null;
 
+// phone is the rail-less layout (style.css's breakpoint); crossing it lays
+// the page out again, since the facts card sits in a different place.
+const phone = window.matchMedia('(max-width: 900px)');
+phone.addEventListener('change', () => document.dispatchEvent(new CustomEvent('hca:refresh')));
+
 const weekdayFormat = new Intl.DateTimeFormat('en-US', {weekday: 'short'});
 const monthShort = new Intl.DateTimeFormat('en-US', {month: 'short'});
 const fullDate = new Intl.DateTimeFormat('en-US', {weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'});
@@ -1249,6 +1254,14 @@ export function activityPage(node) {
     resources.classList.add('resources-main');
     main.append(resources);
   }
+  // On a phone there is no rail, and the facts - when it is, who runs it -
+  // matter more than the sign-up list, so the card takes its place here,
+  // right after the write-up, before the volunteers.
+  const facts = factsCard(node, editing, save);
+  if (facts && phone.matches) {
+    facts.classList.add('facts-inline');
+    main.append(facts);
+  }
 
   // Volunteers live in the rail now, with a filter over the tree. What sits
   // under this thing is one list; its hidden and pending rows join it only for
@@ -1272,7 +1285,7 @@ export function activityPage(node) {
   }
 
   const side = el('aside', 'detail-side');
-  for (const card of [factsCard(node, editing, save), flyerCard(node, editing, save), helpCard(node)]) {
+  for (const card of [phone.matches ? null : facts, flyerCard(node, editing, save), helpCard(node)]) {
     if (card) {
       side.append(card);
     }

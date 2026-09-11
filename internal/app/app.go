@@ -143,12 +143,16 @@ func (d directory) Resolve(email string) string {
 	return d.cache.Model().Resolve(email)
 }
 
+// Person is a name and the face Who? shows for them - their own photo, or
+// the family's when they have none of their own - for the account avatar,
+// the volunteer tiles and the person window alike.
 func (d directory) Person(email string) (string, string, bool) {
-	p := d.cache.Model().Person(email)
+	model := d.cache.Model()
+	p := model.Person(email)
 	if p == nil {
 		return "", "", false
 	}
-	return p.FullName, p.PhotoURL, true
+	return p.FullName, model.HeroPhoto(p.Email), true
 }
 
 // Grade is a student's grade for the badge on their face; blank for grown-ups.

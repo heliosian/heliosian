@@ -2878,6 +2878,8 @@ h2.section .link-button { font-size: 14px; }
   .detail-head { flex-direction: column; }
   .detail-cols { grid-template-columns: minmax(0, 1fr); gap: 20px; }
   .detail-side { position: static; }
+  /* The facts card, moved up into the main column on a phone. */
+  .facts-inline { margin: 4px 0 8px; }
   .detail-hero .thumb.detail-hero-image { height: 190px; }
   .detail-title { font-size: 26px; }
   .hero-stamp { top: 10px; right: 10px; min-width: 88px; padding: 9px 12px; }
