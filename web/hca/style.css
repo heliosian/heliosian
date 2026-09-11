@@ -648,6 +648,10 @@ main {
 .cat-5 { background: #cfe3e2; }
 .cat-none { background: #e3e7e6; }
 
+.card-chip.card-need { display: inline-flex; align-items: center; gap: 5px; background: var(--accent); color: #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18); }
+
+.card-chip.card-need svg { width: 13px; height: 13px; }
+
 .card-chip.cat-1 { background: #ee523c; }
 .card-chip.cat-2 { background: #00a69f; }
 .card-chip.cat-3 { background: #d7bb06; }
@@ -755,22 +759,27 @@ main {
   text-overflow: ellipsis;
 }
 
+/* The date stamp is a page off a tear-off calendar: the month as a red band
+   across the top, the day large under it, then the weekday, small and muted. */
 .card-stamp {
   position: absolute;
   right: 10px;
   bottom: -14px;
   min-width: 52px;
-  padding: 5px 8px 6px;
+  padding: 0 0 5px;
   border-radius: 10px;
   background: #fff;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
   text-align: center;
   line-height: 1.1;
+  overflow: hidden;
 }
 
-.card-stamp-month { font-size: 10px; font-weight: 700; color: var(--alert); letter-spacing: 0.06em; }
+.card-stamp-month { padding: 3px 8px; background: #ee523c; color: #fff; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; }
 
-.card-stamp-day { font-size: 17px; font-weight: 700; color: var(--brand); }
+.card-stamp-day { padding: 4px 8px 0; font-size: 19px; font-weight: 700; color: var(--brand); }
+
+.card-stamp-dow { padding: 1px 8px 0; font-size: 9px; font-weight: 700; color: var(--muted); letter-spacing: 0.08em; }
 
 .card-stamp-text {
   bottom: 10px;
@@ -1088,8 +1097,8 @@ main {
   gap: 6px;
   padding: 3px 10px 3px 8px;
   border-radius: 999px;
-  background: #fdecd8;
-  color: #b45d17;
+  background: #dcefe9;
+  color: var(--accent);
   text-transform: none;
   letter-spacing: 0;
   font-size: 12.5px;
@@ -2473,7 +2482,29 @@ h2.section .link-button { font-size: 14px; }
   text-decoration: none;
 }
 
-.calendar .chip.role { background: #558287; }
+/* Entries take their event's category colour; things under an event the
+   lighter tint with dark text; the viewer's own, yellow with a star. */
+.calendar .chip.cat-1 { background: #ee523c; }
+.calendar .chip.cat-2 { background: #00a69f; }
+.calendar .chip.cat-3 { background: #d7bb06; }
+.calendar .chip.cat-4 { background: #8f9403; }
+.calendar .chip.cat-5 { background: #4b8a8d; }
+.calendar .chip.cat-none { background: #5f6f6e; }
+
+.calendar .chip.role { color: var(--brand-deep); }
+
+.calendar .chip.role.cat-1 { background: #f6cfc7; }
+.calendar .chip.role.cat-2 { background: #bfe6e4; }
+.calendar .chip.role.cat-3 { background: #fbeeae; }
+.calendar .chip.role.cat-4 { background: #dfe3ac; }
+.calendar .chip.role.cat-5 { background: #cfe3e2; }
+.calendar .chip.role.cat-none { background: #e3e7e6; }
+
+.calendar .chip.mine { background: var(--yellow); color: var(--brand-deep); font-weight: 700; }
+
+.calendar-chips { margin-bottom: 16px; }
+
+.chip-mine.is-on { background: var(--yellow); color: var(--brand-deep); box-shadow: none; }
 
 .list-page h1 { font-size: 26px; margin: 8px 0 12px; }
 

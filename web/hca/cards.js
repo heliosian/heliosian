@@ -217,8 +217,14 @@ function dateBadge(act) {
   const days = end && end.date.getDate() !== start.date.getDate() && sameMonth
     ? `${start.date.getDate()}-${end.date.getDate()}`
     : String(start.date.getDate());
+  // A tear-off calendar: the month as the red band across the top, the day
+  // large, and the weekday under it - for a single day only; a span of days
+  // has no one weekday.
   stamp.append(el('div', 'card-stamp-month', monthFormat.format(start.date).toUpperCase()),
     el('div', 'card-stamp-day', days));
+  if (!end || end.date.getDate() === start.date.getDate() || !sameMonth) {
+    stamp.append(el('div', 'card-stamp-dow', start.date.toLocaleDateString('en-US', {weekday: 'short'}).toUpperCase()));
+  }
   return stamp;
 }
 
@@ -230,11 +236,13 @@ function spotsNote(act) {
     const left = act.spots - act.taken;
     return `${left} ${left === 1 ? 'spot' : 'spots'} left`;
   }
-  return act.coLeaderNeeded ? 'Co-leader needed' : '';
+  return '';
 }
 
 // activityCard is the grid tile the opportunities page shows: image with its
-// category chip and date stamp, then title, blurb, and the sign-up action.
+// date stamp - and a chip when a co-leader is wanted, the one thing worth
+// flagging on the picture; the category is the heading the card sits under -
+// then title, blurb, and the sign-up action.
 // opts.signUps lists one person's sign-ups on the activity and under it, for
 // My Sign Ups - opts.email says whose: the viewer's, or someone in their
 // household - each a link with a check - the event itself by its own title
@@ -247,9 +255,10 @@ export function activityCard(act, opts = {}) {
   // Without a photo the tile falls back to a big initial; tinting it by category
   // keeps a grid of image-less activities from reading as a wall of one colour.
   media.append(thumb(act.imageUrl, act.title, 'card-image ' + categoryClass(act.category)));
-  const cat = category(act.category);
-  if (cat) {
-    media.append(el('span', 'card-chip ' + categoryClass(act.category), cat.title));
+  if (act.coLeaderNeeded) {
+    const need = el('span', 'card-chip card-need');
+    need.append(svg('people'), el('span', '', 'Co-leader needed'));
+    media.append(need);
   }
   const stamp = dateBadge(act);
   if (stamp) {
