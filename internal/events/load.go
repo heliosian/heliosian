@@ -64,7 +64,7 @@ var (
 	CategoryColumns  = []string{"Category ID", "Event ID", "Title", "Description", "Image", "Allow Adding", "Show On Main Page"}
 	ActivityColumns  = []string{"Event ID", "Year", "Title", "Parent", "Category", "Status", "Description", "Image", "Timing", "Start", "End", "Location", "Spots", "Co-Leader Needed", "Volunteers Hidden", "Direct Sign-Up", "Pretty ID", "Allow Adding", "Flyer Image", "Added By", "Added"}
 	VolunteerColumns = []string{"Event ID", "Email", "Position", "Note", "Added By", "Added"}
-	LinkColumns      = []string{"Event ID", "Title", "URL", "Image"}
+	LinkColumns      = []string{"Event ID", "Title", "URL", "Image", "Description"}
 	SettingColumns   = []string{"Key", "Value"}
 	RedirectColumns  = []string{"Type", "Old", "New", "Date"}
 	AdminColumns     = []string{"Email"}
@@ -107,10 +107,11 @@ type ImageChecker interface {
 }
 
 type Link struct {
-	Title    string `json:"title"`
-	URL      string `json:"url"`
-	Image    string `json:"image,omitempty"`
-	ImageURL string `json:"imageUrl,omitempty"`
+	Title       string `json:"title"`
+	URL         string `json:"url"`
+	Description string `json:"description,omitempty"`
+	Image       string `json:"image,omitempty"`
+	ImageURL    string `json:"imageUrl,omitempty"`
 }
 
 type Volunteer struct {
@@ -921,7 +922,7 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 			return nil, fmt.Errorf("duplicate link %q on %q (%s)", title, a.Title, id)
 		}
 		linkKeys[key] = true
-		a.Links = append(a.Links, Link{Title: title, URL: row["URL"], Image: row["Image"], ImageURL: image})
+		a.Links = append(a.Links, Link{Title: title, URL: row["URL"], Description: strings.TrimSpace(row["Description"]), Image: row["Image"], ImageURL: image})
 	}
 	return model, nil
 }

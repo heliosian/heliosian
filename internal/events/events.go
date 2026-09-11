@@ -250,10 +250,6 @@ func (a app) saveVolunteer(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "position must be one of "+strings.Join(Positions, ", "), http.StatusBadRequest)
 		return
 	}
-	if !editor && body.Position == PositionCoChair {
-		http.Error(w, "only a co-chair or admin can name a co-chair", http.StatusForbidden)
-		return
-	}
 	if len(body.Note) > maxTextLength {
 		http.Error(w, "the note is too long", http.StatusBadRequest)
 		return
@@ -261,6 +257,22 @@ func (a app) saveVolunteer(w http.ResponseWriter, r *http.Request) {
 	match := map[string]string{"Event ID": act.ID, "Email": email}
 	tables := a.cache.Tables()
 	existing := tables.count(volunteersTab, match) > 0
+	// Co-chair is an appointment, not a choice: whoever runs the event - an
+	// admin or one of its co-chairs - makes one, and unmakes one. Anyone else
+	// editing a co-chair's row - the co-chair changing their own note, say -
+	// keeps the position as it is.
+	if !editor {
+		was := ""
+		for _, row := range tables.Volunteers {
+			if row["Event ID"] == act.ID && strings.EqualFold(strings.TrimSpace(row["Email"]), email) {
+				was = row["Position"]
+			}
+		}
+		if (body.Position == PositionCoChair) != (was == PositionCoChair) {
+			http.Error(w, "only a co-chair or admin can make or unmake a co-chair", http.StatusForbidden)
+			return
+		}
+	}
 	if existing && !editor && email != actor {
 		http.Error(w, "only a co-chair or admin can change someone else's sign-up", http.StatusForbidden)
 		return
@@ -706,11 +718,12 @@ func (a app) deleteActivity(w http.ResponseWriter, r *http.Request) {
 func (a app) saveLink(w http.ResponseWriter, r *http.Request) {
 	actor, admin := a.who(r)
 	var body struct {
-		ID       string `json:"id"`
-		Original string `json:"original"`
-		Title    string `json:"title"`
-		URL      string `json:"url"`
-		Image    string `json:"image"`
+		ID          string `json:"id"`
+		Original    string `json:"original"`
+		Title       string `json:"title"`
+		URL         string `json:"url"`
+		Description string `json:"description"`
+		Image       string `json:"image"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -727,6 +740,7 @@ func (a app) saveLink(w http.ResponseWriter, r *http.Request) {
 	cells := map[string]string{
 		"Event ID": act.ID, "Title": title,
 		"URL": strings.TrimSpace(body.URL), "Image": strings.TrimSpace(body.Image),
+		"Description": strings.TrimSpace(body.Description),
 	}
 	tables := a.cache.Tables()
 	action := "edit"
@@ -1074,7 +1088,7 @@ func (a app) copyActivity(w http.ResponseWriter, r *http.Request) {
 	links := []map[string]string{}
 	for _, node := range copied {
 		for _, l := range node.Links {
-			links = append(links, map[string]string{"Event ID": fresh[node.ID], "Title": l.Title, "URL": l.URL, "Image": l.Image})
+			links = append(links, map[string]string{"Event ID": fresh[node.ID], "Title": l.Title, "URL": l.URL, "Image": l.Image, "Description": l.Description})
 		}
 	}
 	tables := a.cache.Tables()

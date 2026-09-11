@@ -1373,33 +1373,56 @@ a.card-chip.is-link:hover { filter: brightness(0.92); text-decoration: underline
 
 .flyer-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 
-/* The person card that opens from a chip. */
-.who-card-head { display: flex; align-items: center; gap: 16px; }
+/* The person window that opens from a chip. */
+.modal.modal-person { max-width: 640px; }
 
-.who-card-face { width: 72px; height: 72px; font-size: 26px; flex-shrink: 0; }
+.modal-person .modal-header { margin-bottom: 0; justify-content: flex-end; }
 
-.who-card-name { font-size: 19px; font-weight: 700; color: var(--brand); }
+.modal-person .modal-header h2:empty { display: none; }
 
-.who-card-sub { font-size: 13.5px; color: var(--muted); margin-top: 2px; }
+.modal-person .form-tab-body > .field:has(> select) { max-width: none; }
 
-.who-card-rows { margin-top: 18px; display: flex; flex-direction: column; gap: 10px; }
+.who-head { display: flex; align-items: center; gap: 22px; margin: 4px 0 22px; }
 
-.who-card-row { display: grid; grid-template-columns: 84px 1fr; gap: 12px; font-size: 14px; align-items: start; }
+.who-face { width: 112px; height: 112px; font-size: 40px; flex-shrink: 0; }
 
-.who-card-label { color: var(--muted); font-weight: 600; font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.03em; padding-top: 2px; }
+.who-names { min-width: 0; }
+
+.who-name { font-size: 26px; font-weight: 700; color: var(--brand); line-height: 1.15; }
+
+.who-sub { font-size: 15px; color: var(--muted); margin-top: 4px; }
+
+.who-actions { margin-left: auto; display: flex; gap: 12px; flex-shrink: 0; }
+
+.who-action { display: flex; flex-direction: column; align-items: center; gap: 6px; border: 0; background: none; padding: 0; font: inherit; color: var(--muted); text-decoration: none; cursor: pointer; }
+
+.who-action .icon-round { width: 48px; height: 48px; background: #eaf3f3; }
+
+.who-action:hover .icon-round { background: #dfe9e9; }
+
+.who-action .icon-round svg { width: 21px; height: 21px; }
+
+.who-action-label { font-size: 12.5px; }
+
+/* Contact rows: icon, label, value, in groups with a hairline between. */
+.who-rows { display: flex; flex-direction: column; }
+
+.who-group { display: flex; flex-direction: column; gap: 14px; padding: 16px 0; border-top: 1px solid var(--line); }
+
+/* Under the tab bar, whose own line already separates, the first group needs none. */
+.form-tab-body > .who-rows > .who-group:first-child { border-top: 0; padding-top: 6px; }
+
+.who-row { display: grid; grid-template-columns: 22px 96px 1fr; gap: 14px; align-items: center; font-size: 15px; }
+
+.who-row > svg { width: 20px; height: 20px; color: var(--muted); }
+
+.who-label { color: var(--muted); font-weight: 600; font-size: 14px; }
+
+.who-value { min-width: 0; word-break: break-all; }
 
 .who-card-link { display: block; color: var(--accent); text-decoration: none; word-break: break-all; }
 
 .who-card-link:hover { text-decoration: underline; }
-
-/* Contact lines: icon, value, round buttons at the right. */
-.who-contact { display: flex; align-items: center; gap: 10px; font-size: 14px; }
-
-.who-contact > svg { width: 18px; height: 18px; color: var(--muted); flex-shrink: 0; }
-
-.who-contact-value { min-width: 0; word-break: break-all; }
-
-.who-contact-actions { margin-left: auto; display: flex; gap: 8px; flex-shrink: 0; }
 
 .icon-round { width: 36px; height: 36px; border-radius: 50%; border: 0; background: var(--input); color: var(--brand); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; text-decoration: none; }
 
@@ -1407,14 +1430,32 @@ a.card-chip.is-link:hover { filter: brightness(0.92); text-decoration: underline
 
 .icon-round svg { width: 17px; height: 17px; }
 
-.who-card-foot { margin-top: 12px; }
+/* The band at the foot: profile link left, Done right. */
+.who-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; padding: 16px; background: #f0f5f5; border-radius: 12px; }
 
-/* Household chips open that person's own card. */
+.who-foot .button svg { width: 17px; height: 17px; }
+
+.form-tab-body > .who-foot { margin-top: 12px; }
+
+/* Household chips open that person's own window. */
 .who-card-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 
-.who-card-chip { border: 1px solid var(--line); background: var(--input); border-radius: 999px; padding: 3px 10px; font: inherit; font-size: 13px; color: var(--brand); cursor: pointer; }
+.who-card-chip { border: 0; background: #eaf3f3; border-radius: 999px; padding: 6px 14px; font: inherit; font-size: 14px; color: var(--brand); cursor: pointer; }
 
 .who-card-chip:hover { background: #dfe9e9; }
+
+/* The co-chair appointment on a sign-up: icon, words, one button. */
+.appoint-card { display: flex; align-items: center; gap: 16px; padding: 16px 18px; background: #eef5f4; border-radius: 12px; margin: 6px 0 18px; }
+
+.appoint-icon { width: 52px; height: 52px; border-radius: 50%; background: #fff; color: var(--brand); display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+
+.appoint-icon svg { width: 24px; height: 24px; }
+
+.appoint-card .setting-text { flex: 1; min-width: 0; }
+
+.appoint-card .button { flex-shrink: 0; }
+
+.field > span > small { font-weight: 400; color: var(--muted); }
 
 /* .avatar carries no size of its own - without this it collapses to its text
    and any photo inside, sized 100%/100%, squashes with it. */
@@ -1461,8 +1502,17 @@ button.side-chair:hover { background: var(--input); }
    name, so the organizers stand out among the volunteers. */
 .side-chair.is-chair .avatar { box-shadow: 0 0 0 3px var(--yellow); }
 
+/* Someone open to co-chairing, as the organizers see them: an accent ring
+   and a tag in the accent colour, apart from the chairs' yellow. */
+.side-chair.is-option .avatar { box-shadow: 0 0 0 3px var(--accent); }
+
+.side-chair-role.is-option { background: var(--accent); color: #fff; }
+
+.side-subtitle { margin-top: 14px; font-size: 12.5px; font-weight: 700; color: var(--brand); text-transform: uppercase; letter-spacing: 0.04em; }
+
 .side-chair-role {
   display: inline-block;
+  white-space: nowrap;
   margin-top: 3px;
   padding: 1px 7px;
   border-radius: 999px;
@@ -1563,30 +1613,53 @@ button.side-chair:hover { background: var(--input); }
 
 .side-switch input { width: 18px; height: 18px; accent-color: var(--brand); flex-shrink: 0; }
 
+/* Each resource is its own card: a big rounded picture, the title and a line
+   about it, and the open glyph out at the right. */
+.side-links { display: flex; flex-direction: column; gap: 10px; }
+
 .side-link {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 0;
+  gap: 18px;
+  padding: 14px 18px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #f4f8f8;
   text-decoration: none;
   color: inherit;
+  transition: border-color 0.15s, background 0.15s;
 }
 
-.side-link + .side-link { border-top: 1px solid var(--line); }
+.side-link:hover { border-color: var(--accent); background: #eef5f5; }
 
 .side-link:hover .side-link-title { text-decoration: underline; }
 
-.side-link .thumb.side-link-thumb { width: 38px; height: 38px; border-radius: 8px; }
+.side-link .thumb.side-link-thumb { width: 84px; height: 84px; border-radius: 12px; flex-shrink: 0; }
 
-.side-link-title { font-weight: 600; font-size: 13.5px; color: var(--brand); }
+.side-link-title { font-weight: 700; font-size: 16px; color: var(--brand); }
 
-.side-link > svg { width: 15px; height: 15px; color: var(--muted); flex-shrink: 0; }
+.side-link-desc { font-size: 13.5px; color: var(--muted); margin-top: 3px; line-height: 1.4; overflow-wrap: anywhere; }
+
+.side-link > svg { width: 22px; height: 22px; color: var(--brand); flex-shrink: 0; margin-left: 6px; }
+
+/* While editing, each resource card carries its pencil outside the link. */
+.side-link-row { display: flex; align-items: center; gap: 8px; }
+
+.side-link-row .side-link { flex: 1; min-width: 0; }
+
+.side-link-edit { flex-shrink: 0; }
 
 .side-button { width: 100%; justify-content: center; margin-top: 12px; }
 
 /* Resources in the main column: the same card, laid out wide - links in a grid
    and the add button back to its natural size. */
-.resources-main { margin: 18px 0 6px; }
+/* In the main column the Resources card sheds its box: the resources
+   themselves are white cards on the page. */
+.resources-main { margin: 18px 0 6px; background: none; border: 0; border-radius: 0; padding: 0; }
+
+.resources-main .side-link { background: var(--card); }
+
+.resources-main .side-link:hover { background: #fbfdfd; }
 
 /* The event's own sign-up box: who is on it, Join top right, and the two
    switches while editing. */
@@ -1602,6 +1675,19 @@ button.side-chair:hover { background: var(--input); }
 .vol-title { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 
 .vol-actions .side-filter { align-self: center; }
+
+.vol-roster { margin-top: 14px; }
+
+/* One control for the two ways to sign someone up: a label, then segments. */
+.split-button { display: inline-flex; align-items: stretch; border: 1px solid var(--brand); border-radius: 8px; overflow: hidden; background: var(--brand); }
+
+.split-label { display: inline-flex; align-items: center; padding: 6px 10px 6px 12px; color: #fff; font-size: 13px; font-weight: 600; }
+
+.split-segment { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: 0; border-left: 1px solid rgba(255, 255, 255, 0.35); background: rgba(255, 255, 255, 0.12); color: #fff; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+
+.split-segment:hover { background: rgba(255, 255, 255, 0.24); }
+
+.split-segment svg { width: 15px; height: 15px; }
 
 /* Beside the small buttons, the filter takes their size and shape. */
 .vol-actions .side-filter-toggle { padding: 6px 10px 6px 12px; border-radius: 8px; font-size: 13px; color: var(--ink); }
@@ -1860,11 +1946,7 @@ button.side-chair:hover { background: var(--input); }
 
 .roster-none { color: var(--muted); font-style: italic; }
 
-.resources-main .side-links { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 4px 20px; }
-
-.resources-main .side-link + .side-link { border-top: 0; }
-
-.resources-main .side-link { border-top: 1px solid var(--line); }
+.resources-main .side-links { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
 
 .resources-main .side-button { width: auto; margin-top: 10px; }
 
@@ -2468,6 +2550,8 @@ h2.section .link-button { font-size: 14px; }
 }
 
 .field textarea { resize: vertical; }
+
+.field-static { padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--input); color: var(--muted); }
 
 .field-toggle { display: flex; align-items: flex-start; gap: 12px; }
 

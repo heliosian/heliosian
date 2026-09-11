@@ -127,7 +127,7 @@ function setStatus(message, error) {
 
 function field(label, input, hint) {
   const wrap = el('label', 'field');
-  wrap.append(el('span', '', label), input);
+  wrap.append(typeof label === 'string' ? el('span', '', label) : label, input);
   if (hint) {
     wrap.append(el('small', '', hint));
   }
@@ -382,7 +382,8 @@ function tabbedFields(panels) {
 function openModal(title, fields, options) {
   const f = form();
   f.replaceChildren();
-  f.classList.toggle('modal-wide', Boolean(options.wide));
+  f.classList.toggle('modal-wide', options.wide === true);
+  f.classList.toggle('modal-person', options.wide === 'person');
   const header = el('div', 'modal-header');
   header.append(el('h2', '', title));
   const close = el('button', 'modal-close', '×');
@@ -395,7 +396,10 @@ function openModal(title, fields, options) {
     f.append(node);
   }
   const actions = el('div', 'modal-actions');
-  if (options.submit) {
+  if (options.actions === false) {
+    // A window whose body carries its own way out - the person card's Done.
+    actions.hidden = true;
+  } else if (options.submit) {
     const save = el('button', 'button', options.saveLabel || 'Save');
     save.type = 'submit';
     const cancel = el('button', 'button button-secondary', 'Cancel');
@@ -477,16 +481,35 @@ export function whoProfile(email) {
   return `${location.protocol}//${host}/people/${encodeURIComponent((email || '').split('@')[0])}`;
 }
 
-// openPerson is the small card that opens from a person's chip: face, name and
-// pronouns, what places them (grade and classroom, job and department, or
-// Parent with the children's names and grades), how to reach them, and the
-// way through to their Helios Who? page. Someone the directory does not know
-// gets just their name and address.
-export async function openPerson(v) {
+// openPerson opens from a person's chip: a header with their face, name and
+// how to reach them, then the contact card. For whoever runs the event a
+// volunteer's chip adds a Sign up tab beside Contact, with their sign-up and
+// the co-chair appointment, since a chair clicking a face wants either.
+export async function openPerson(v, node) {
   const info = await personInfo(v.email);
-  const card = el('div', 'who-card');
-  const head = el('div', 'who-card-head');
-  const face = el('div', 'avatar who-card-face');
+  const head = personHead(v, info);
+  const contact = personContact(v, info);
+  if (!node || !node.canEdit || !v.position) {
+    const done = el('button', 'button button-secondary', 'Done');
+    done.type = 'button';
+    done.addEventListener('click', closeModal);
+    openModal('', [head, contact, personFoot(v, info, done)], {actions: false, wide: 'person'});
+    return;
+  }
+  const form = signUpForm(node, v);
+  const tabs = tabbedFields([
+    {label: 'Contact', icon: 'people', fields: [contact, personFoot(v, info)]},
+    {label: 'Sign up', icon: 'edit', fields: form.fields},
+  ]);
+  openModal('', [head, tabs], {...form, wide: 'person'});
+}
+
+// personHead is the top of a person's window: the big face, the name with
+// pronouns and what places them (grade and classroom, job and department, or
+// Parent), and captioned round buttons to email, text, call or copy them.
+function personHead(v, info) {
+  const head = el('div', 'who-head');
+  const face = el('div', 'avatar who-face');
   const photo = (info && info.photoUrl) || v.photoUrl;
   if (photo) {
     const img = el('img');
@@ -496,63 +519,71 @@ export async function openPerson(v) {
   } else {
     face.textContent = (v.name || v.email).slice(0, 1).toUpperCase();
   }
-  const names = el('div', 'who-card-names');
-  names.append(el('div', 'who-card-name', (info && info.name) || v.name || v.email));
+  const names = el('div', 'who-names');
+  names.append(el('div', 'who-name', (info && info.name) || v.name || v.email));
   if (info && info.pronouns) {
-    names.append(el('div', 'who-card-sub', info.pronouns));
+    names.append(el('div', 'who-sub', info.pronouns));
   }
   if (info) {
     const place = info.isStudent
       ? [info.grade, info.classroom].filter(Boolean).join(' · ')
       : [info.jobTitle, info.department].filter(Boolean).join(' · ') || info.title;
     if (place) {
-      names.append(el('div', 'who-card-sub', place));
+      names.append(el('div', 'who-sub', place));
     }
   }
-  head.append(face, names);
-  card.append(head);
-  const rows = el('div', 'who-card-rows');
-  const row = (label, node) => {
-    const r = el('div', 'who-card-row');
-    r.append(el('span', 'who-card-label', label), node);
-    rows.append(r);
-  };
-  // Contact rows as Helios Who? lays them out: the value behind its icon, and
-  // round buttons on the right to mail, text, call or copy it.
-  const roundButton = (icon, title, onClick, href) => {
-    const b = el(href ? 'a' : 'button', 'icon-round');
+  const actions = el('div', 'who-actions');
+  const action = (icon, label, href, onClick) => {
+    const a = el(href ? 'a' : 'button', 'who-action');
     if (href) {
-      b.href = href;
+      a.href = href;
     } else {
-      b.type = 'button';
-      b.addEventListener('click', onClick);
+      a.type = 'button';
+      a.addEventListener('click', onClick);
     }
-    b.title = title;
-    b.setAttribute('aria-label', title);
-    b.append(svg(icon));
-    return b;
+    a.title = label;
+    const round = el('span', 'icon-round');
+    round.append(svg(icon));
+    a.append(round, el('span', 'who-action-label', label));
+    actions.append(a);
   };
-  const copyOf = (text, what) => roundButton('copy', `Copy ${what}`, () => {
-    navigator.clipboard.writeText(text).then(() => toast(`${what} copied`), () => toast('Could not copy'));
-  });
-  const contact = (icon, value, buttons) => {
-    const line = el('div', 'who-contact');
-    line.append(svg(icon), el('span', 'who-contact-value', value));
-    const acts = el('div', 'who-contact-actions');
-    acts.append(...buttons);
-    line.append(acts);
-    rows.append(line);
-  };
-  contact('mail', v.email, [roundButton('mail', 'Email', null, `mailto:${v.email}`), copyOf(v.email, 'Email')]);
-  if (info && info.phone) {
-    const digits = info.phone.replace(/[^+\d]/g, '');
-    contact('phone', info.phone, [
-      roundButton('chat', 'Text', null, `sms:${digits}`),
-      roundButton('phone', 'Call', null, `tel:${digits}`),
-      copyOf(info.phone, 'Phone'),
-    ]);
+  action('mail', 'Email', `mailto:${v.email}`);
+  const phone = info && info.phone ? info.phone : '';
+  const digits = phone.replace(/[^+\d]/g, '');
+  if (digits) {
+    action('chat', 'Message', `sms:${digits}`);
+    action('phone', 'Call', `tel:${digits}`);
   }
-  // Household: each name is a chip that opens that person's own card.
+  action('copy', 'Copy info', null, () => {
+    const lines = [(info && info.name) || v.name || '', v.email, phone].filter(Boolean);
+    navigator.clipboard.writeText(lines.join('\n')).then(() => toast('Contact info copied'), () => toast('Could not copy'));
+  });
+  head.append(face, names, actions);
+  return head;
+}
+
+// personContact is the card's rows: how to reach them, then the household -
+// each name a chip that opens that person's own window. Someone the directory
+// does not know gets just their address.
+function personContact(v, info) {
+  const card = el('div', 'who-rows');
+  let group = null;
+  const row = (icon, label, value) => {
+    if (!group) {
+      group = el('div', 'who-group');
+      card.append(group);
+    }
+    const r = el('div', 'who-row');
+    r.append(svg(icon), el('span', 'who-label', label), typeof value === 'string' ? el('span', 'who-value', value) : value);
+    group.append(r);
+  };
+  const divide = () => {
+    group = null;
+  };
+  row('mail', 'Email', v.email);
+  if (info && info.phone) {
+    row('phone', 'Phone', info.phone);
+  }
   const chips = list => {
     const wrap = el('div', 'who-card-chips');
     for (const p of list) {
@@ -563,11 +594,15 @@ export async function openPerson(v) {
     }
     return wrap;
   };
+  const household = info && ((info.spouses && info.spouses.length) || (info.children && info.children.length) || (info.isStudent && info.parentEmails && info.parentEmails.length));
+  if (household) {
+    divide();
+  }
   if (info && info.spouses && info.spouses.length) {
-    row(info.spouses.length === 1 ? 'Partner' : 'Partners', chips(info.spouses));
+    row('people', info.spouses.length === 1 ? 'Partner' : 'Partners', chips(info.spouses));
   }
   if (info && info.children && info.children.length) {
-    row(info.children.length === 1 ? 'Child' : 'Children', chips(info.children));
+    row('person', info.children.length === 1 ? 'Child' : 'Children', chips(info.children));
   }
   if (info && info.isStudent && info.parentEmails && info.parentEmails.length) {
     const parents = el('div');
@@ -576,19 +611,27 @@ export async function openPerson(v) {
       a.href = `mailto:${e}`;
       parents.append(a);
     }
-    row('Parents', parents);
+    row('people', 'Parents', parents);
   }
-  card.append(rows);
+  return card;
+}
+
+// personFoot is the band under the card: the way through to their Helios Who?
+// page for someone the directory knows, and whatever button closes the window.
+function personFoot(v, info, done) {
+  const foot = el('div', 'who-foot');
   if (info) {
-    const profile = el('a', 'button button-small', 'Open Helios Who? Profile');
+    const profile = el('a', 'button', '');
+    profile.append(svg('open'), el('span', '', 'Open Helios Who? Profile'));
     profile.href = whoProfile(v.email);
     profile.target = '_blank';
     profile.rel = 'noopener';
-    const foot = el('div', 'who-card-foot');
     foot.append(profile);
-    card.append(foot);
   }
-  openModal('', [card], {});
+  if (done) {
+    foot.append(done);
+  }
+  return foot.children.length ? foot : el('div');
 }
 
 function peoplePicker() {
@@ -677,6 +720,13 @@ function peoplePicker() {
 }
 
 export function openSignUp(node, existing) {
+  const form = signUpForm(node, existing);
+  openModal(existing ? `Edit sign-up for ${node.title}` : `Sign up for ${node.title}`, form.fields, form);
+}
+
+// signUpForm is the sign-up editor's fields and the modal options that save
+// them, so the same form opens on its own and as a tab of a person's window.
+function signUpForm(node, existing) {
   const editor = node.canEdit;
   const picker = peoplePicker();
   const emailField = field('Who is it?', picker.wrap, 'Search the directory, or type an address for someone not in it');
@@ -688,28 +738,68 @@ export function openSignUp(node, existing) {
       }
     });
   emailField.hidden = who.value !== 'other';
+  // Nobody picks Co-Chair for themselves: it is an appointment by whoever runs
+  // the event - an admin or one of its co-chairs - so only they see it in the
+  // list. Anyone else chooses between the two kinds of volunteer, and a sitting
+  // co-chair editing their own note keeps the position.
+  const isChair = Boolean(existing && existing.position === 'Co-Chair');
   const positions = [{label: 'Volunteer', value: 'Volunteer'}, {label: 'Volunteer, and open to co-chairing', value: 'Open to Co-Chair'}];
   if (editor) {
     positions.push({label: 'Co-Chair', value: 'Co-Chair'});
   }
-  const position = select(positions, existing ? existing.position : 'Volunteer');
+  const position = select(positions, existing && (editor || !isChair) ? existing.position : 'Volunteer');
   const note = textarea(existing ? existing.note : '', 3);
   const fields = [];
   if (!existing) {
     fields.push(field('Who', who.wrap), emailField);
   }
-  fields.push(field('As', position), field('Note', note, 'Anything the organizers should know'));
-  openModal(existing ? `Edit sign-up for ${node.title}` : `Sign up for ${node.title}`, fields, {
+  if (isChair && !editor) {
+    fields.push(field('Availability', el('div', 'field-static', 'Co-Chair')));
+  } else {
+    fields.push(field('Availability', position));
+  }
+  note.placeholder = 'Anything the organizers should know';
+  const noteLabel = el('span', '', 'Note ');
+  noteLabel.append(el('small', '', '(optional)'));
+  fields.push(field(noteLabel, note));
+  // Whoever runs the event appoints a co-chair - or lets one step down - with
+  // one button; the change is saved at once, since it is a decision rather
+  // than part of the form.
+  if (existing && editor) {
+    const card = el('div', 'appoint-card');
+    const icon = el('div', 'appoint-icon');
+    icon.append(svg('people'));
+    const text = el('div', 'setting-text');
+    text.append(el('div', 'setting-label', isChair ? 'Co-chair' : 'Make co-chair'),
+      el('div', 'setting-hint', isChair ? `${existing.name} runs this with you.` : 'Give this person co-chair permissions for this role.'));
+    const appoint = button(isChair ? 'Remove as co-chair' : 'Make co-chair', isChair ? 'close' : 'plus',
+      'button button-secondary button-small', async () => {
+        try {
+          await send('POST', '/api/events/volunteer', {
+            id: node.id, email: existing.email, position: isChair ? 'Volunteer' : 'Co-Chair', note: note.value,
+          });
+          closeModal();
+          await reload();
+          toast(isChair ? `${existing.name} is no longer a co-chair` : `${existing.name} is now a co-chair`);
+        } catch (err) {
+          toast(err.message);
+        }
+      });
+    card.append(icon, text, appoint);
+    fields.push(card);
+  }
+  return {
+    fields,
     saveLabel: existing ? 'Save' : 'Sign Up',
     submit: () => send('POST', '/api/events/volunteer', {
       id: node.id,
       email: existing ? existing.email : (who.value === 'other' ? picker.value() : ''),
-      position: position.value, note: note.value,
+      position: isChair && !editor ? 'Co-Chair' : position.value, note: note.value,
     }),
     onDelete: existing ? () => send('DELETE', '/api/events/volunteer', {id: node.id, email: existing.email}) : null,
     deleteLabel: 'Remove',
     confirmDelete: existing ? `Remove ${existing.name} from ${node.title}?` : '',
-  });
+  };
 }
 
 export async function removeVolunteer(node, volunteer) {
@@ -1001,11 +1091,16 @@ export function openActivity(act, options) {
 export function openLink(node, item) {
   const title = text(item ? item.title : '', {required: true, maxLength: 120});
   const url = text(item ? item.url : '', {type: 'url', required: true, placeholder: 'https://'});
+  const description = textarea(item ? item.description || '' : '', 2);
   const image = imagePicker(item ? item.image : '', item ? item.imageUrl : '');
-  openModal(item ? 'Edit Link' : 'Add Link', [field('Title', title), field('URL', url), image.wrap], {
+  openModal(item ? 'Edit Resource' : 'Add Resource', [
+    field('Title', title), field('URL', url),
+    field('Description', description, 'A line about what people will find there'),
+    image.wrap,
+  ], {
     submit: () => send('POST', '/api/events/link', {
       id: node.id, original: item ? item.title : '',
-      title: title.value, url: url.value, image: image.value(),
+      title: title.value, url: url.value, description: description.value, image: image.value(),
     }),
     onDelete: item ? () => send('DELETE', '/api/events/link', {id: node.id, title: item.title}) : null,
     confirmDelete: item ? `Remove the link “${item.title}”?` : '',

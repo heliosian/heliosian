@@ -231,6 +231,18 @@ function factsCard(node, editing, save) {
     } else {
       body.append(el('div', 'side-line', 'Nobody yet.'));
     }
+    // Whoever runs the event sees who has offered to co-chair, each a way into
+    // their sign-up, where Co-Chair is theirs to choose.
+    const options = node.canEdit ? shownVolunteers(node, true).filter(v => v.position === 'Open to Co-Chair') : [];
+    if (options.length) {
+      body.append(el('div', 'side-subtitle', 'Co-Chair Options'));
+      body.append(el('div', 'side-line', 'Promote one or more to co-chair.'));
+      const list = el('div', 'side-chairs');
+      for (const v of options) {
+        list.append(personTile(node, v, true, false, false, true));
+      }
+      body.append(list);
+    }
     if (editing) {
       const wants = el('label', 'side-switch');
       const box = checkbox(node.coLeaderNeeded, on => save({coLeaderNeeded: on}));
@@ -246,24 +258,18 @@ function factsCard(node, editing, save) {
   return any ? card : null;
 }
 
-// personTile is one avatar + name in the rail. While editing it is a button that
-// opens that sign-up's editor, whose Remove is how someone is taken off.
-// personTile is one avatar and name in the rail. It opens the person's card;
-// while editing it opens their sign-up instead, since that is what an editor
-// clicks a face for.
-function personTile(owner, v, editing, star, chair) {
-  const tile = el('button', 'side-chair' + (editing ? ' is-editable' : '') + (chair ? ' is-chair' : ''));
+// personTile is one avatar and name in the rail. It opens the person's window:
+// the contact card, with their sign-up alongside for whoever runs the event.
+function personTile(owner, v, editing, star, chair, option) {
+  const tile = el('button', 'side-chair' + (editing ? ' is-editable' : '') + (chair ? ' is-chair' : '') + (option ? ' is-option' : ''));
   tile.type = 'button';
-  if (editing) {
-    tile.title = `Edit ${v.name}'s sign-up`;
-    tile.addEventListener('click', () => openSignUp(owner, v));
-  } else {
-    tile.title = `About ${v.name}`;
-    tile.addEventListener('click', () => openPerson(v));
-  }
+  tile.title = owner.canEdit ? `${v.name} and their sign-up` : `About ${v.name}`;
+  tile.addEventListener('click', () => openPerson(v, owner));
   tile.append(avatar(v), el('div', 'side-chair-name', v.name + (star && v.position === 'Co-Chair' ? '*' : '')));
   if (chair) {
     tile.append(el('div', 'side-chair-role', 'Chair'));
+  } else if (option) {
+    tile.append(el('div', 'side-chair-role is-option', 'Chair opt'));
   }
   return tile;
 }
@@ -457,7 +463,9 @@ function volunteersBox(node, editing, save) {
   const box = el('div', 'vol-box');
   const head = el('div', 'vol-head');
   const title = el('div', 'vol-title');
-  title.append(el('h2', 'section section-swoosh', people.length ? `Volunteers (${people.length})` : 'Volunteers'));
+  // The count is everyone on it, chairs included.
+  const count = chairs.length + people.length;
+  title.append(el('h2', 'section section-swoosh', count ? `Volunteers (${count})` : 'Volunteers'));
   if (editing) {
     // The cap on sign-ups sits by the count it caps: a small button, a prompt.
     const setMax = button(node.spots ? `Max ${node.spots}` : 'Set Max', '', 'button button-secondary button-small vol-max', () => {
@@ -489,21 +497,23 @@ function volunteersBox(node, editing, save) {
   }
   const mine = mySignUp(node);
   if (node.directSignUp) {
-    if (mine) {
-      // Removing yourself lives inside that editor, as its Remove action.
-      actions.append(button('Edit my sign-up', 'edit', 'button button-small', () => openSignUp(node, mine)));
-    } else if (canJoin(node) || node.canEdit) {
-      actions.append(button('Join', 'join', 'button button-small', () => openSignUp(node, null)));
-    }
+    // Removing yourself lives inside that editor, as its Remove action.
+    const me = mine
+      ? {label: 'Edit my sign-up', icon: 'edit', onClick: () => openSignUp(node, mine)}
+      : (canJoin(node) || node.canEdit ? {label: 'Join', icon: 'join', onClick: () => openSignUp(node, null)} : null);
     if (node.canEdit) {
-      actions.append(button('Sign up someone else', 'plus', 'button button-secondary button-small', () => openSignUp(node, null)));
+      // For an organizer the two ways to sign someone up are one control:
+      // "Sign up: Me | Someone else".
+      const split = el('div', 'split-button');
+      split.append(el('span', 'split-label', 'Sign up'));
+      if (me) {
+        split.append(button(mine ? 'Edit mine' : 'Me', me.icon, 'split-segment', me.onClick));
+      }
+      split.append(button('Someone else', 'plus', 'split-segment', () => openSignUp(node, null)));
+      actions.append(split);
+    } else if (me) {
+      actions.append(button(me.label, me.icon, 'button button-small', me.onClick));
     }
-  }
-  if (node.canEdit) {
-    // The organizers' roster: every sign-up in the tree with where it is and
-    // how to reach them, including a student's parents.
-    actions.append(button('Volunteer Info', 'list', 'button button-secondary button-small roster-open',
-      () => openVolunteerGrid(node, [node, ...below], n => whereIs(node, n))));
   }
   head.append(actions);
   box.append(head);
@@ -524,7 +534,13 @@ function volunteersBox(node, editing, save) {
         for (const v of chairs) {
           grid.append(personTile(node, v, editing, false, true));
         }
-        for (const v of showPeople) {
+        // For whoever runs it, those open to co-chairing come next, marked;
+        // everyone else sees them as the volunteers they are.
+        const isOption = v => node.canEdit && v.position === 'Open to Co-Chair';
+        for (const v of showPeople.filter(isOption)) {
+          grid.append(personTile(node, v, editing, false, false, true));
+        }
+        for (const v of showPeople.filter(v => !isOption(v))) {
           grid.append(personTile(node, v, editing, false));
         }
         if (others.length) {
@@ -557,6 +573,14 @@ function volunteersBox(node, editing, save) {
   };
   paintListing();
   box.append(listing);
+  if (node.canEdit) {
+    // The organizers' roster: every sign-up in the tree with where it is and
+    // how to reach them, including a student's parents - under the list it sums up.
+    const roster = el('div', 'vol-roster');
+    roster.append(button('Volunteer Info', 'list', 'button button-secondary button-small roster-open',
+      () => openVolunteerGrid(node, [node, ...below], n => whereIs(node, n))));
+    box.append(roster);
+  }
   if (node.status === 'Open' && isFull(node) && !mine && node.directSignUp) {
     box.append(el('div', 'vol-note vol-full', 'Every spot is taken. Thank you, everyone!'));
   }
@@ -592,13 +616,11 @@ function resourcesCard(node, editing) {
   if (!node.links.length && !editing) {
     return null;
   }
+  // The resources speak for themselves - no heading over them.
   const card = sideCard();
-  const head = el('div', 'side-head');
-  head.append(el('div', 'side-title', 'Resources'));
-  if (node.links.length) {
-    head.append(el('span', 'side-count', String(node.links.length)));
-  }
-  card.append(head);
+  // Each resource is a picture, its title and a line about it - the host when
+  // nobody wrote one - and opens in a new tab. While editing, a pencil beside
+  // the row opens its editor.
   const links = el('div', 'side-links');
   card.append(links);
   for (const item of node.links) {
@@ -609,9 +631,21 @@ function resourcesCard(node, editing) {
     row.append(thumb(item.imageUrl || node.imageUrl || rootOf(node).imageUrl, item.title, 'side-link-thumb'));
     const body = el('div', 'side-row-body');
     body.append(el('div', 'side-link-title', item.title));
-    body.append(el('div', 'side-line', item.url.replace(/^https?:\/\//, '').replace(/\/$/, '')));
+    body.append(el('div', 'side-link-desc', item.description || item.url.replace(/^https?:\/\//, '').replace(/\/$/, '')));
     row.append(body, svg('open'));
-    links.append(row);
+    if (!editing) {
+      links.append(row);
+      continue;
+    }
+    const line = el('div', 'side-link-row');
+    const edit = el('button', 'icon-round side-link-edit');
+    edit.type = 'button';
+    edit.title = `Edit “${item.title}”`;
+    edit.setAttribute('aria-label', edit.title);
+    edit.append(svg('edit'));
+    edit.addEventListener('click', () => openLink(node, item));
+    line.append(row, edit);
+    links.append(line);
   }
   if (editing) {
     card.append(button('Add a Resource', 'plus', 'button button-secondary button-small side-button',

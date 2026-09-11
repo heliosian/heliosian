@@ -149,8 +149,24 @@ func TestSignUpAndRemove(t *testing.T) {
 	if rec := call(t, mux, parent, "POST", "/api/events/volunteer", body); rec.Code != http.StatusForbidden {
 		t.Fatalf("a parent named themselves co-chair: %d", rec.Code)
 	}
+	// Co-chair is an appointment by whoever runs the event: a co-chair or an
+	// admin makes one, and the new co-chair may then edit their own note
+	// without losing it, or step down - after which they are a volunteer again
+	// and cannot name themselves back.
 	if rec := call(t, mux, chair, "POST", "/api/events/volunteer", map[string]any{"id": "E017", "email": parent, "position": PositionCoChair}); rec.Code != http.StatusNoContent {
 		t.Fatalf("a co-chair could not promote: %d %s", rec.Code, rec.Body)
+	}
+	if rec := call(t, mux, parent, "POST", "/api/events/volunteer", map[string]any{"id": "E017", "position": PositionCoChair, "note": "here to lead"}); rec.Code != http.StatusNoContent {
+		t.Fatalf("a co-chair could not edit their own note: %d %s", rec.Code, rec.Body)
+	}
+	if rec := call(t, mux, parent, "POST", "/api/events/volunteer", map[string]any{"id": "E017", "position": PositionVolunteer}); rec.Code != http.StatusNoContent {
+		t.Fatalf("a co-chair could not step down: %d %s", rec.Code, rec.Body)
+	}
+	if rec := call(t, mux, parent, "POST", "/api/events/volunteer", map[string]any{"id": "E017", "position": PositionCoChair}); rec.Code != http.StatusForbidden {
+		t.Fatalf("a volunteer named themselves co-chair: %d", rec.Code)
+	}
+	if rec := call(t, mux, admin, "POST", "/api/events/volunteer", map[string]any{"id": "E017", "email": parent, "position": PositionCoChair}); rec.Code != http.StatusNoContent {
+		t.Fatalf("an admin could not promote: %d %s", rec.Code, rec.Body)
 	}
 	full := map[string]any{"id": "E026", "position": PositionVolunteer}
 	if rec := call(t, mux, parent, "POST", "/api/events/volunteer", full); rec.Code != http.StatusBadRequest {
