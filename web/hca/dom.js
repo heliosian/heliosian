@@ -1,3 +1,5 @@
+import {shiftedEnd, parseWhen, whenLabel} from './state.js';
+
 export function el(tag, className, text) {
   const node = document.createElement(tag);
   if (className) {
@@ -20,6 +22,8 @@ const paths = {
   signup: 'M12 3v18M4.5 7.5l15 9M19.5 7.5l-15 9',
   star: 'M12 3l2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.8 6.1 21l1.2-6.5L2.5 9.9l6.6-.9z',
   calendar: 'M4 5h16a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zM3 10h18M8 3v4M16 3v4',
+  doc: 'M7 3h7l5 5v13H7zM14 3v5h5M10 13h6M10 17h6',
+  clock: 'M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18zM12 7v5l3 2',
   menu: 'M4 7h16M4 12h16M4 17h16',
   more: 'M5 12h.01M12 12h.01M19 12h.01',
   chevron: 'M9 6l6 6-6 6',
@@ -177,4 +181,196 @@ export function toast(message) {
 export async function copyText(text, message) {
   await navigator.clipboard.writeText(text);
   toast(message || 'Copied');
+}
+
+// whenPickers is a labelled date picker beside an optional time picker. The
+// sheet stores "YYYY-MM-DD" or "YYYY-MM-DD HH:MM", and a blank time is
+// meaningful - it is how an all-day thing is written - so the two stay separate
+// controls rather than one datetime-local, which would silently stamp midnight
+// onto every all-day date. Beside the label sits a way to clear both: a thing
+// with no start is one that runs by its timing text, and a start on its own
+// is a perfectly good way to describe something.
+export function whenPickers(label, value, onChange, clearLabel) {
+  const m = /^(\d{4}-\d{2}-\d{2})(?: (\d{2}:\d{2}))?$/.exec(value || '');
+  const wrap = el('div', 'field-when-block');
+  const head = el('div', 'field-when-head');
+  head.append(el('span', 'field-when-label', label));
+  const pair = el('div', 'field-when-pair');
+  const date = el('input');
+  date.type = 'date';
+  date.value = m ? m[1] : '';
+  const time = el('input');
+  time.type = 'time';
+  time.value = m && m[2] ? m[2] : '';
+  pair.append(date, time);
+  const read = () => (date.value ? (time.value ? `${date.value} ${time.value}` : date.value) : '');
+  const clear = el('button', 'field-when-clear');
+  clear.type = 'button';
+  clear.title = clearLabel;
+  clear.setAttribute('aria-label', clearLabel);
+  clear.append(svg('close'), el('span', '', clearLabel));
+  clear.addEventListener('click', () => {
+    date.value = '';
+    time.value = '';
+    if (onChange) {
+      onChange();
+    }
+    date.focus();
+  });
+  head.append(clear);
+  wrap.append(head, pair);
+  if (onChange) {
+    date.addEventListener('change', onChange);
+    time.addEventListener('change', onChange);
+  }
+  return {
+    wrap,
+    date,
+    focus: () => date.focus(),
+    value: read,
+    hasTime: () => Boolean(time.value),
+    // set writes a Date back out in the shape the sheet uses, keeping whether
+    // this end of the range carries a time - shifting an all-day date by a few
+    // hours must not give it one.
+    set: written => {
+      const m2 = /^(\d{4}-\d{2}-\d{2})(?: (\d{2}:\d{2}))?$/.exec(written);
+      date.value = m2 ? m2[1] : '';
+      time.value = m2 && m2[2] ? m2[2] : '';
+    },
+  };
+}
+
+// whenEditor is the one editor for when a thing happens, shared by the event
+// page's inline pencil and the edit form: a start and an end, each clearable,
+// an all-day switch that puts the times away, and the free-text timing for
+// things without a date. Moving the start drags the end with it, so the length
+// of the thing stays put and only its position changes.
+export function whenEditor(start, end, timing, parent, layout) {
+  const rows = layout === 'rows';
+  const wrap = el('div', 'field-when' + (rows ? ' is-rows' : ''));
+  // Under a parent, the usual answer is "when the parent is": a switch at the
+  // top says so, and while it is on the pickers stay out of sight and the
+  // thing is saved with no dates of its own, so it follows the parent's even
+  // when those change. Switching it off starts from the parent's times.
+  const own = el('div', 'field-when-own');
+  let same = null;
+  if (parent) {
+    const line = el('label', 'field-when-same');
+    same = el('input');
+    same.type = 'checkbox';
+    same.checked = !start && !timing;
+    const text = el('span');
+    text.append(el('span', '', `Same as ${parent.title}`));
+    const theirs = whenLabel(parent);
+    if (theirs) {
+      text.append(el('small', '', theirs));
+    }
+    const knob = el('span', 'switch');
+    knob.append(same, el('span'));
+    if (rows) {
+      // A tinted band: what the switch does on the left, the switch and the
+      // parent's own time on the right.
+      const lead = el('span', 'field-when-same-lead');
+      lead.append(el('span', '', 'Use the same date and time as the parent event'),
+        el('small', '', 'Keep this activity in sync with the event it is part of.'));
+      const control = el('span', 'field-when-same-control');
+      control.append(knob, text);
+      line.append(lead, control);
+    } else {
+      line.append(text, knob);
+    }
+    wrap.append(line);
+    if (same.checked) {
+      start = parent.start || '';
+      end = parent.end || '';
+      timing = parent.timing || '';
+    }
+    same.addEventListener('change', () => {
+      own.hidden = same.checked;
+    });
+  }
+  wrap.append(own);
+  let last = start || '';
+  const shiftEnd = () => {
+    const now = from.value();
+    const moved = shiftedEnd(last, now, to.value(), to.hasTime());
+    if (moved) {
+      to.set(moved);
+    }
+    if (parseWhen(now)) {
+      last = now;
+      to.date.min = from.date.value;
+    }
+  };
+  const from = whenPickers('Starts', start, shiftEnd, 'No start time');
+  const to = whenPickers('Ends', end, null, 'No end time');
+  to.date.min = from.date.value;
+  // All day: the times are put away and cleared, so the dates stand alone.
+  const allDay = el('label', 'field-when-allday');
+  const allDayBox = el('input');
+  allDayBox.type = 'checkbox';
+  allDayBox.checked = Boolean(from.date.value) && !from.hasTime() && !to.hasTime();
+  allDay.append(allDayBox, el('span', '', 'All-day event'));
+  const applyAllDay = () => {
+    for (const p of [from, to]) {
+      p.wrap.classList.toggle('is-all-day', allDayBox.checked);
+      if (allDayBox.checked) {
+        p.set(p.date.value);
+      }
+    }
+    last = from.value();
+  };
+  allDayBox.addEventListener('change', applyAllDay);
+  applyAllDay();
+  const timingInput = el('input');
+  timingInput.type = 'text';
+  timingInput.value = timing || '';
+  timingInput.placeholder = 'All Year, Late February, A few times per year';
+  if (rows) {
+    // Settings rows: each picker's label and a sentence on the left, the
+    // pickers and their clear control in one line on the right.
+    const row = (label, hint, control) => {
+      const r = el('div', 'setting-row');
+      const t = el('div', 'setting-text');
+      t.append(el('div', 'setting-label', label));
+      if (hint) {
+        t.append(el('div', 'setting-hint', hint));
+      }
+      const c = el('div', 'setting-control');
+      c.append(control);
+      r.append(t, c);
+      return r;
+    };
+    for (const p of [from, to]) {
+      // The label moves to the row's left side; the clear control joins the pickers' line.
+      const head = p.wrap.querySelector('.field-when-head');
+      const clear = head.querySelector('.field-when-clear');
+      p.wrap.querySelector('.field-when-pair').append(clear);
+      head.remove();
+    }
+    allDay.querySelector('span').append(el('small', '', 'This activity lasts the entire day.'));
+    own.append(
+      row('Start', 'When does this activity begin?', from.wrap),
+      row('End', 'When does this activity end?', to.wrap),
+      row('', '', allDay),
+      row('Or in words', 'Shown instead of the date and time, when set.', timingInput));
+  } else {
+    own.append(from.wrap, to.wrap, allDay, el('span', 'field-when-label', 'Or in words'), timingInput);
+  }
+  own.hidden = Boolean(same && same.checked);
+  return {
+    wrap,
+    focus: () => (same && same.checked ? same.focus() : from.focus()),
+    value: () => (same && same.checked
+      ? {start: '', end: '', timing: ''}
+      : {start: from.value(), end: to.value(), timing: timingInput.value.trim()}),
+    validate: v => {
+      const a = parseWhen(v.start);
+      const b = parseWhen(v.end);
+      if (v.end && !v.start) {
+        return 'Give it a start as well as an end.';
+      }
+      return a && b && b.date <= a.date ? 'The end has to come after the start.' : '';
+    },
+  };
 }

@@ -1,4 +1,4 @@
-import {state, whenLabel, coChairs, shownVolunteers, canJoin, isFull, mySignUp, activityPath, rootOf, category, parseWhen, UNCATEGORIZED} from './state.js';
+import {state, whenParts, coChairs, shownVolunteers, descendants, canJoin, isFull, mySignUp, activityPath, rootOf, category, parseWhen, UNCATEGORIZED} from './state.js';
 import {el, link, svg, thumb, badge, button} from './dom.js';
 import {openSignUp, openActivity} from './edit.js';
 
@@ -21,34 +21,75 @@ function statusBadges(node) {
 
 // labelLine is the small-caps line: when it happens, who chairs a role, and
 // the co-leader call.
-// peopleLine is who is on a thing, co-chairs first and starred, then everyone
-// else in sign-up order. The server already withholds a hidden list from
+// volunteersLine is who has signed up, under the row's text: the row's own
+// volunteers in sign-up order, then everyone under its sub-activities with the
+// sub-activity named - "Marco Torres, Alice Che (Performance)" - up to twelve
+// names, then "and 5 more". The server already withholds a hidden list from
 // anyone who does not run the thing, so whatever arrives may be shown.
-function peopleLine(node, editing) {
-  const chairs = coChairs(node).map(v => v.name + '*');
-  const others = shownVolunteers(node, editing).filter(v => v.position !== 'Co-Chair').map(v => v.name);
-  return [...chairs, ...others].join(', ');
-}
-
-function labelLine(node, withPeople, editing) {
-  const label = el('div', 'label');
-  const when = whenLabel(node);
-  if (when) {
-    label.append(el('span', '', when));
-  }
-  if (withPeople) {
-    const people = peopleLine(node, editing);
-    if (people) {
-      label.append(el('span', 'label-people', people));
+function volunteersLine(node, editing) {
+  const names = shownVolunteers(node, editing).filter(v => v.position !== 'Co-Chair').map(v => v.name);
+  for (const sub of descendants(node)) {
+    for (const v of shownVolunteers(sub, editing)) {
+      names.push(`${v.name} (${sub.title})`);
     }
   }
-  if (node.coLeaderNeeded) {
-    label.append(el('span', 'need', 'Co-leader needed!'));
+  if (!names.length) {
+    return '';
+  }
+  if (names.length > 12) {
+    return `${names.slice(0, 12).join(', ')}, and ${names.length - 12} more`;
+  }
+  return names.join(', ');
+}
+
+// labelLine is the small first line over a title: the day and time, each
+// behind an icon, and any status badges. Who leads it is its own line below
+// (leadsLine), so the two never jostle for one row.
+function labelLine(node) {
+  const label = el('div', 'label');
+  const when = whenParts(node);
+  const iconed = (icon, text) => {
+    const span = el('span', 'label-when');
+    span.append(svg(icon), el('span', '', text));
+    return span;
+  };
+  if (when.words) {
+    label.append(iconed('calendar', when.words));
+  }
+  if (when.day) {
+    label.append(iconed('calendar', when.day));
+  }
+  if (when.time) {
+    label.append(iconed('clock', when.time));
   }
   for (const b of statusBadges(node)) {
     label.append(b);
   }
   return label;
+}
+
+// leadsLine says who leads a thing - "Leads: Alice Che, Marco Torres" - under
+// the row's text; nothing when nobody does yet.
+function leadsLine(node) {
+  const chairs = coChairs(node).map(v => v.name);
+  if (!chairs.length) {
+    return null;
+  }
+  const line = el('div', 'label label-leads');
+  const who = el('span', 'label-people');
+  who.append(el('span', 'label-leads-word', chairs.length === 1 ? 'Lead: ' : 'Leads: '), el('span', '', chairs.join(', ')));
+  line.append(who);
+  return line;
+}
+
+// needChip is the co-leader-wanted chip, which sits with the row's actions.
+function needChip(node) {
+  if (!node.coLeaderNeeded) {
+    return null;
+  }
+  const chip = el('span', 'need');
+  chip.append(svg('people'), el('span', '', 'Co-leader needed'));
+  return chip;
 }
 
 function joinButton(node) {
@@ -70,7 +111,7 @@ export function childRow(node, editing) {
   const row = link(activityPath(node), 'row is-link' + (node.status === 'Hidden' || node.status === 'Pending' ? ' is-muted' : ''));
   row.append(thumb(node.imageUrl || rootOf(node).imageUrl, node.title));
   const body = el('div', 'row-body');
-  body.append(labelLine(node, true, editing));
+  body.append(labelLine(node));
   body.append(el('div', 'row-title', node.title));
   if (node.description) {
     body.append(el('div', 'row-text clamp', node.description));
@@ -78,8 +119,22 @@ export function childRow(node, editing) {
   if (node.children.length) {
     body.append(el('div', 'row-text', `${node.children.length} more under this`));
   }
+  // Who is on it comes last, on one line: the leads, then the volunteers.
+  const leads = leadsLine(node);
+  const people = volunteersLine(node, editing);
+  if (leads || people) {
+    const line = leads || el('div', 'label label-leads');
+    if (people) {
+      line.append(el('span', 'row-people', (leads ? '· ' : '') + people));
+    }
+    body.append(line);
+  }
   row.append(body);
   const actions = el('div', 'row-actions');
+  const need = needChip(node);
+  if (need) {
+    actions.append(need);
+  }
   const join = joinButton(node);
   if (join) {
     actions.append(join);
@@ -135,7 +190,7 @@ const monthFormat = new Intl.DateTimeFormat('en-US', {month: 'short'});
 // has scheduled) gets its timing word instead, so the corner is never empty.
 function dateBadge(act) {
   const start = parseWhen(act.start);
-  if (!start) {
+  if (act.timing || !start) {
     return act.timing ? el('div', 'card-stamp card-stamp-text', act.timing) : null;
   }
   const stamp = el('div', 'card-stamp');

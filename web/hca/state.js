@@ -7,13 +7,25 @@ const index = new Map();
 export function applyModel(model) {
   state.model = model;
   index.clear();
-  const add = list => {
+  // A thing with no date or timing of its own happens when its parent does:
+  // it takes the nearest ones above it for display, and remembers in `own`
+  // what the sheet actually holds, which is what editing works on. The server
+  // does the same for share previews (internal/events/share.go).
+  const add = (list, parent) => {
     for (const a of list) {
       index.set(a.id, a);
-      add(a.children);
+      a.own = {start: a.start || '', end: a.end || '', timing: a.timing || ''};
+      a.whenFrom = null;
+      if (parent && !a.own.start && !a.own.timing) {
+        a.start = parent.start || '';
+        a.end = parent.end || '';
+        a.timing = parent.timing || '';
+        a.whenFrom = parent.whenFrom || parent;
+      }
+      add(a.children, a);
     }
   };
-  add(model.activities);
+  add(model.activities, null);
 }
 
 export function me() {
@@ -38,6 +50,21 @@ export function activity(id) {
 // blank or names nothing. The server adds it to the model only when something
 // needs it, so pickers use headingChoices() to always offer it.
 export const UNCATEGORIZED = 'uncategorized';
+
+// Adding policies, as the sheet writes them (internal/events/load.go). A
+// thing's `allowAdding` is the resolved policy; `allowAddingOwn` the cell.
+export const ADDING = {yes: 'Yes', approval: 'Approval Needed', no: 'No'};
+
+// canAdd says whether someone who does not run a thing may add into it - a
+// category or an activity - and addLabel is the word for the button: Add when
+// what they add goes live, Suggest when it waits for approval.
+export function canAdd(thing) {
+  return Boolean(thing) && thing.allowAdding !== ADDING.no && Boolean(thing.allowAdding);
+}
+
+export function addLabel(thing) {
+  return thing && thing.allowAdding === ADDING.approval ? 'Suggest' : 'Add';
+}
 
 // headingChoices is the page's headings as select options, ending with
 // Uncategorized whether or not the model currently carries it.
@@ -203,10 +230,32 @@ function sameDay(a, b) {
 
 // whenLabel is the small-caps line above a title: the date and time when one
 // is set, the free-text timing otherwise.
-export function whenLabel(node) {
+// whenLabel is the short line for a thing: its timing words when it has them
+// - "All Year" says more than a date would - otherwise its date and time.
+// whenParts is the same as separate pieces for a label line with icons: the
+// day ("Fri, Jun 4", or a range), the time ("8:00 AM"), or the timing words.
+export function whenParts(node) {
+  if (node.timing) {
+    return {words: node.timing};
+  }
   const start = parseWhen(node.start);
   if (!start) {
-    return node.timing || '';
+    return {};
+  }
+  const end = parseWhen(node.end);
+  if (end && !sameDay(start.date, end.date)) {
+    return {day: `${dateFormat.format(start.date)} – ${dateFormat.format(end.date)}`};
+  }
+  return {day: dayFormat.format(start.date), time: start.hasTime ? timeFormat.format(start.date) : ''};
+}
+
+export function whenLabel(node) {
+  if (node.timing) {
+    return node.timing;
+  }
+  const start = parseWhen(node.start);
+  if (!start) {
+    return '';
   }
   const end = parseWhen(node.end);
   if (end && !sameDay(start.date, end.date)) {

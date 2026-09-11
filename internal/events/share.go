@@ -73,14 +73,19 @@ func lineage(m *Model, a *Activity) string {
 	return strings.Join(names, " › ")
 }
 
-// when is the one line under the title: the date and time, or the timing text.
+// when is the one line under the title: the timing text when there is one -
+// it stands in for the date wherever the site shows a when - else the date
+// and time.
 func when(a *Activity) string {
+	if a.Timing != "" {
+		return a.Timing
+	}
 	start, err := time.ParseInLocation(DateTimeFormat, a.Start, local)
 	if err != nil {
 		if day, err := time.ParseInLocation(DateFormat, a.Start, local); err == nil {
 			return day.Format("Monday, January 2")
 		}
-		return a.Timing
+		return ""
 	}
 	line := start.Format("Monday, January 2 · ")
 	if end, err := time.ParseInLocation(DateTimeFormat, a.End, local); err == nil && end.After(start) {

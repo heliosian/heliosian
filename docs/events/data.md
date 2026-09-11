@@ -7,7 +7,7 @@ The portal's data lives in one Google Sheet, `Events`, in the community shared d
 ## Tabs
 
 - `Categories` — Category ID, Event ID, Title, Description, Image, Allow Adding, Show On Main Page. Row order is display order within a scope. A blank Event ID makes a heading on the Opportunities page; an Event ID makes one of that root event's own categories, which the things under it are grouped by.
-- `Activities` — Event ID, Year, Title, Parent, Category, Status, Description, Image, Timing, Start, End, Location, Spots, Co-Leader Needed, Volunteers Hidden, Direct Sign-Up, Pretty ID, Added By, Added. Parent is an Event ID. Category is a Category ID: a page heading for a root, one of the root event's own for anything under it (or blank).
+- `Activities` — Event ID, Year, Title, Parent, Category, Status, Description, Image, Timing, Start, End, Location, Spots, Co-Leader Needed, Volunteers Hidden, Direct Sign-Up, Pretty ID, Allow Adding, Added By, Added. Parent is an Event ID. Category is a Category ID: a page heading for a root, one of the root event's own for anything under it (or blank).
 - `Volunteers` — Event ID, Email, Position, Note, Added By, Added.
 - `Links` — Event ID, Title, URL, Image.
 
@@ -28,7 +28,7 @@ There is no separate table of roles. A committee, a booth, or a shift is an acti
 
 A category row with no Event ID is a heading on the Opportunities page, and only a root activity may name one. A root whose Category is blank, or names an id that is not a heading, is shown under a built-in **Uncategorized** heading (id `uncategorized`), which appears last and only while something needs it; it cannot be edited, reordered or deleted, and saving a root as Uncategorized stores a blank. A child whose Category names anything but one of its own event's categories is treated as having none. A row with an Event ID belongs to that root event: the things under the event — at any depth — are grouped by these on its page, in their row order, with the uncategorised ones last. Each event manages its own from its page (the Edit Categories button while editing); the page's headings are managed from Admin Tools. Whoever runs an event may change its categories; the page's need an admin. A category never moves between scopes once made.
 
-`Allow Adding` says whether people who do not run the thing may propose new items into a category — a booth into "Place & Culture Booths", an idea into "Just an Idea". Editors of the event (admins, for the page) can always add. The loader refuses a root naming an event's category, a child naming a page heading or another event's category, and a scoped category whose Event ID is not a root.
+`Allow Adding` is what people who do not run a thing may do under it - into a category, or straight under an activity: `Yes` (add, and it goes live), `Approval Needed` (add, and it waits as Pending for an admin), or `No` (only the organizers add). It sits on both tabs: a category's cell, and an activity's cell (`Activities.Allow Adding`), which governs additions with no category under that activity and is the default for the event's own categories. A blank inherits - a category from its event, an activity from its parent - and an event or a page heading with nothing to inherit from takes `No`. Whoever runs the thing adds freely and their additions are live at once; the form offers the choices as "Same as the event/parent", Yes, Approval needed, No.
 
 `Show On Main Page` (default Yes) says whether a heading's events appear on the Opportunities page among everyone else's. A heading set to No still sits in the toolbar with its count, and choosing it there (or its chip) shows its events; it is a way to keep a long tail - old committees, standing needs - off the front without hiding it. It means nothing for an event's own categories, which the app leaves blank.
 
@@ -56,7 +56,7 @@ Start and End are wall-clock, `2026-09-24 16:00` or `2026-09-24` for a whole day
 The Glide export stamped its local times as `2025-03-01T17:30:00.000Z`; `go run ./cmd/fixdates` (dry run; `-write` to change) rewrites those cells into these forms, keeping the clock as written.
 ## Yes and No
 
-Flag cells are `Yes`, `No`, or blank. A blank takes the column's default, chosen so a hand-added row asks for help unless it says otherwise: `Co-Leader Needed`, `Direct Sign-Up` and a category's `Show On Main Page` default to Yes, `Volunteers Hidden` and `Allow Adding` to No. `Volunteers Hidden` is each thing's own: an event that hides its list does not hide its committees' - but a thing added under a parent starts with the parent's setting, to be changed after. The app always writes Yes or No explicitly.
+Flag cells are `Yes`, `No`, or blank. A blank takes the column's default, chosen so a hand-added row asks for help unless it says otherwise: `Co-Leader Needed`, `Direct Sign-Up` and a category's `Show On Main Page` default to Yes, `Volunteers Hidden` to No; `Allow Adding` is not a flag but a policy (above), and blank there means inherit. `Volunteers Hidden` is each thing's own: an event that hides its list does not hide its committees' - but a thing added under a parent starts with the parent's setting, to be changed after. The app always writes Yes or No explicitly.
 
 ## Status and spots
 

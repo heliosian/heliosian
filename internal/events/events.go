@@ -338,6 +338,7 @@ type activityBody struct {
 	DirectSignUp     bool   `json:"directSignUp"`
 	CoChair          bool   `json:"coChair"`
 	PrettyID         string `json:"prettyId"`
+	AllowAdding      string `json:"allowAdding"`
 	// TakeOver says the sender has agreed to rename a prior year's activity
 	// that holds the same Pretty ID - see prettyConflict.
 	TakeOver bool `json:"takeOver"`
@@ -407,7 +408,8 @@ func (a app) saveActivity(w http.ResponseWriter, r *http.Request) {
 	status := body.Status
 	switch {
 	case adding && !admin:
-		status = StatusPending
+		// Refined below by the adding policy; a co-chair's addition is live.
+		status = StatusOpen
 	case adding && status == "":
 		status = StatusOpen
 	case !adding && !admin:
@@ -451,6 +453,13 @@ func (a app) saveActivity(w http.ResponseWriter, r *http.Request) {
 	if parent != "" {
 		editor = editor || model.Runs(model.Activity(parent), actor)
 	}
+	// What someone who does not run the thing may add is the policy of the
+	// category they add into, or of the parent when there is no category; a
+	// new event with no category has nowhere to take a policy from.
+	policy := AddingNo
+	if parent != "" {
+		policy = model.Activity(parent).Adding
+	}
 	if category == "" && parent == "" && adding && !editor {
 		http.Error(w, "pick a category", http.StatusBadRequest)
 		return
@@ -469,10 +478,19 @@ func (a app) saveActivity(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, fmt.Sprintf("%q is not one of this event's categories", c.Title), http.StatusBadRequest)
 			return
 		}
-		// Allow Adding gates proposals from people who do not run the thing;
-		// whoever runs it decides where its pieces go.
-		if adding && !editor && !c.AllowAdding {
-			http.Error(w, fmt.Sprintf("new things cannot be added to %q", c.Title), http.StatusBadRequest)
+		policy = c.Adding
+	}
+	// Allow Adding gates additions from people who do not run the thing, and
+	// says whether what they add waits for approval; whoever runs it adds
+	// freely and their additions are live at once.
+	if adding && !editor {
+		switch policy {
+		case AddingYes:
+			status = StatusOpen
+		case AddingApproval:
+			status = StatusPending
+		default:
+			http.Error(w, "new things cannot be added here", http.StatusBadRequest)
 			return
 		}
 	}
@@ -488,6 +506,19 @@ func (a app) saveActivity(w http.ResponseWriter, r *http.Request) {
 	if err := CheckPretty(pretty); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
+	}
+	// Only whoever runs it sets what others may add under it; a proposal
+	// leaves the cell blank to inherit.
+	allowAdding, err := checkAdding(body.AllowAdding)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if !editor {
+		allowAdding = ""
+		if current != nil {
+			allowAdding = current.AllowAdding
+		}
 	}
 	var displaced *Activity
 	renamed := ""
@@ -528,7 +559,7 @@ func (a app) saveActivity(w http.ResponseWriter, r *http.Request) {
 		"Timing": strings.TrimSpace(body.Timing), "Start": strings.TrimSpace(body.Start), "End": strings.TrimSpace(body.End),
 		"Location": strings.TrimSpace(body.Location), "Spots": spotsCell(body.Spots),
 		"Co-Leader Needed": YesNo(body.CoLeaderNeeded), "Volunteers Hidden": YesNo(body.VolunteersHidden),
-		"Direct Sign-Up": YesNo(body.DirectSignUp), "Pretty ID": pretty,
+		"Direct Sign-Up": YesNo(body.DirectSignUp), "Pretty ID": pretty, "Allow Adding": allowAdding,
 	}
 	tables := a.cache.Tables()
 	if displaced != nil {
@@ -771,7 +802,7 @@ func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 		Title       string `json:"title"`
 		Description string `json:"description"`
 		Image       string `json:"image"`
-		AllowAdding bool   `json:"allowAdding"`
+		AllowAdding string `json:"allowAdding"`
 		ShowOnMain  *bool  `json:"showOnMain"`
 	}
 	if !decode(w, r, &body) {
@@ -806,6 +837,11 @@ func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	allowAdding, err := checkAdding(body.AllowAdding)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	if adding {
 		id = newID()
 	}
@@ -815,7 +851,7 @@ func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 		"Title":        title,
 		"Description":  strings.TrimSpace(body.Description),
 		"Image":        strings.TrimSpace(body.Image),
-		"Allow Adding": YesNo(body.AllowAdding),
+		"Allow Adding": allowAdding,
 		// Only a page heading can be kept off the page; an event's own
 		// categories are always shown on the event, and left blank here.
 		"Show On Main Page": "",
@@ -991,7 +1027,7 @@ func (a app) copyActivity(w http.ResponseWriter, r *http.Request) {
 		fresh[c.ID] = newID()
 		catRows = append(catRows, map[string]string{
 			"Category ID": fresh[c.ID], "Event ID": fresh[act.ID], "Title": c.Title, "Description": c.Description,
-			"Image": c.Image, "Allow Adding": YesNo(c.AllowAdding), "Show On Main Page": "",
+			"Image": c.Image, "Allow Adding": c.AllowAdding, "Show On Main Page": "",
 		})
 	}
 	remap := func(id string) string {
@@ -1010,7 +1046,7 @@ func (a app) copyActivity(w http.ResponseWriter, r *http.Request) {
 			"Location": c.Location, "Spots": spotsCell(c.Spots),
 			"Co-Leader Needed": YesNo(c.CoLeaderNeeded), "Volunteers Hidden": YesNo(c.VolunteersHidden),
 			// The address stays with the original: two years cannot share one.
-			"Direct Sign-Up": YesNo(c.DirectSignUp), "Pretty ID": "", "Added By": actor, "Added": today(),
+			"Direct Sign-Up": YesNo(c.DirectSignUp), "Pretty ID": "", "Allow Adding": c.AllowAdding, "Added By": actor, "Added": today(),
 		}
 	}
 	rows := []map[string]string{rowFor(act, "")}

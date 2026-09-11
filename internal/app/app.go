@@ -166,10 +166,24 @@ func (d directory) People() []events.DirectoryPerson {
 		case p.IsParent:
 			title = "Parent"
 		}
-		out = append(out, events.DirectoryPerson{
+		person := events.DirectoryPerson{
 			Email: p.Email, Name: p.FullName, PhotoURL: model.HeroPhoto(p.Email), Title: title,
 			IsStudent: p.IsStudent, ParentEmails: p.ParentContactEmails,
-		})
+			Pronouns: p.Pronouns, Phone: p.Phone, Grade: p.Grade, Classroom: p.Classroom,
+			JobTitle: p.JobTitle, Department: p.Department,
+		}
+		// A parent's children come through the household, as the directory
+		// itself lists them.
+		if p.IsParent {
+			for _, key := range model.FamilyKeysOf(p.Email) {
+				for _, kid := range model.Families[key].KidEmails {
+					if k := model.Person(kid); k != nil {
+						person.Children = append(person.Children, events.Child{Name: k.FullName, Grade: k.Grade})
+					}
+				}
+			}
+		}
+		out = append(out, person)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out

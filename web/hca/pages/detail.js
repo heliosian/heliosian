@@ -1,8 +1,8 @@
-import {state, isAdmin, years, allYears, descendants, parentOf, rootOf, category, eventCategories, longDate, parseWhen, coChairs, mySignUp, canJoin, isFull, matches, activityPath, listedIn, sortByStart, shiftedEnd, headingChoices, shownVolunteers, listHidden} from '../state.js';
-import {el, link, svg, thumb, avatar, badge, button, searchBox, copyText} from '../dom.js';
+import {state, isAdmin, years, allYears, descendants, parentOf, rootOf, category, eventCategories, longDate, parseWhen, coChairs, mySignUp, canJoin, isFull, matches, activityPath, listedIn, sortByStart, shiftedEnd, headingChoices, shownVolunteers, listHidden, canAdd, addLabel, ADDING} from '../state.js';
+import {el, link, svg, thumb, avatar, badge, button, searchBox, copyText, whenEditor} from '../dom.js';
 import {setTitle} from '../chrome.js';
 import {childRow, categoryClass} from '../cards.js';
-import {openSignUp, openActivity, openLink, saveActivityFields, editable, textInput, textAreaInput, selectInput, uploadAndSave, openCategoryManager, openVolunteerGrid} from '../edit.js';
+import {openSignUp, openActivity, openLink, saveActivityFields, openPerson, editable, textInput, textAreaInput, selectInput, uploadAndSave, openCategoryManager, openVolunteerGrid} from '../edit.js';
 
 
 // Which activity is in edit mode, by id. Keyed rather than a bare boolean so
@@ -29,7 +29,7 @@ function timeRange(node) {
 // hours. An activity with no parsed date shows its timing words instead.
 function heroStamp(act) {
   const start = parseWhen(act.start);
-  if (!start) {
+  if (act.timing || !start) {
     return act.timing ? el('div', 'hero-stamp hero-stamp-text', act.timing) : null;
   }
   const stamp = el('div', 'hero-stamp');
@@ -103,57 +103,6 @@ function prevNext(node) {
   return nav;
 }
 
-// whenPickers is a date picker beside an optional time picker. The sheet stores
-// "YYYY-MM-DD" or "YYYY-MM-DD HH:MM", and a blank time is meaningful - it is how
-// an all-day thing is written - so the two stay separate controls rather than
-// one datetime-local, which would silently stamp midnight onto every all-day date.
-function whenPickers(value, onChange, clearable) {
-  const m = /^(\d{4}-\d{2}-\d{2})(?: (\d{2}:\d{2}))?$/.exec(value || '');
-  const wrap = el('div', 'field-when-pair');
-  const date = el('input');
-  date.type = 'date';
-  date.value = m ? m[1] : '';
-  const time = el('input');
-  time.type = 'time';
-  time.value = m && m[2] ? m[2] : '';
-  wrap.append(date, time);
-  const read = () => (date.value ? (time.value ? `${date.value} ${time.value}` : date.value) : '');
-  if (clearable) {
-    // Clearing both is how an activity ends up with no end at all - a start on
-    // its own is a perfectly good way to describe something.
-    const clear = el('button', 'field-when-clear');
-    clear.type = 'button';
-    clear.title = 'No end time';
-    clear.setAttribute('aria-label', 'Clear the end time');
-    clear.append(svg('close'), el('span', '', 'No end time'));
-    clear.addEventListener('click', () => {
-      date.value = '';
-      time.value = '';
-      date.focus();
-    });
-    wrap.append(clear);
-  }
-  if (onChange) {
-    date.addEventListener('change', onChange);
-    time.addEventListener('change', onChange);
-  }
-  return {
-    wrap,
-    date,
-    focus: () => date.focus(),
-    value: read,
-    hasTime: () => Boolean(time.value),
-    // set writes a Date back out in the shape the sheet uses, keeping whether
-    // this end of the range carries a time - shifting an all-day date by a few
-    // hours must not give it one.
-    set: written => {
-      const m2 = /^(\d{4}-\d{2}-\d{2})(?: (\d{2}:\d{2}))?$/.exec(written);
-      date.value = m2 ? m2[1] : '';
-      time.value = m2 && m2[2] ? m2[2] : '';
-    },
-  };
-}
-
 function sideCard(className) {
   return el('div', 'side-card ' + (className || ''));
 }
@@ -179,14 +128,18 @@ function factsCard(node, editing, save) {
   let any = false;
   const start = parseWhen(node.start);
   const when = [];
-  if (start) {
+  // Timing words stand in for the date and time when both are set.
+  if (node.timing) {
+    when.push(node.timing);
+  } else if (start) {
     when.push(fullDate.format(start.date));
     const hours = timeRange(node);
     if (hours) {
       when.push(hours);
     }
-  } else if (node.timing) {
-    when.push(node.timing);
+  }
+  if (when.length && node.whenFrom) {
+    when.push(`Same as ${node.whenFrom.title}`);
   }
   if (when.length || editing) {
     const row = sideRow('calendar', 'Date & Time', when.length ? when : ['Not scheduled']);
@@ -201,42 +154,9 @@ function factsCard(node, editing, save) {
       body.append(lines);
       body.querySelector('.side-title').append(editable(lines, 'Edit when this happens',
         () => {
-          const input = el('div', 'field-when');
-          let last = node.start || '';
-          // Moving the start drags the end with it, so the length of the thing
-          // stays put and only its position changes.
-          const shiftEnd = () => {
-            const now = from.value();
-            const moved = shiftedEnd(last, now, to.value(), to.hasTime());
-            if (moved) {
-              to.set(moved);
-            }
-            if (parseWhen(now)) {
-              last = now;
-              to.date.min = from.date.value;
-            }
-          };
-          const from = whenPickers(node.start, shiftEnd);
-          const to = whenPickers(node.end, null, true);
-          to.date.min = from.date.value;
-          const timingInput = textInput(node.timing || '', {placeholder: 'All Year, Late February'});
-          input.append(el('span', 'field-when-label', 'Starts'), from.wrap,
-            el('span', 'field-when-label', 'Ends'), to.wrap,
-            el('span', 'field-when-label', 'Or in words'), timingInput);
-          input.focus = () => from.focus();
-          return {
-            input,
-            hint: 'Leave the time blank for something that runs all day.',
-            value: () => ({start: from.value(), end: to.value(), timing: timingInput.value.trim()}),
-            validate: v => {
-              const a = parseWhen(v.start);
-              const b = parseWhen(v.end);
-              if (v.end && !v.start) {
-                return 'Give it a start as well as an end.';
-              }
-              return a && b && b.date <= a.date ? 'The end has to come after the start.' : '';
-            },
-          };
+          const when = whenEditor(node.own.start, node.own.end, node.own.timing, parentOf(node));
+          when.wrap.focus = when.focus;
+          return {input: when.wrap, value: when.value, validate: when.validate};
         },
         value => save(value)));
     }
@@ -295,12 +215,18 @@ function factsCard(node, editing, save) {
 
 // personTile is one avatar + name in the rail. While editing it is a button that
 // opens that sign-up's editor, whose Remove is how someone is taken off.
+// personTile is one avatar and name in the rail. It opens the person's card;
+// while editing it opens their sign-up instead, since that is what an editor
+// clicks a face for.
 function personTile(owner, v, editing, star) {
-  const tile = el(editing ? 'button' : 'div', 'side-chair' + (editing ? ' is-editable' : ''));
+  const tile = el('button', 'side-chair' + (editing ? ' is-editable' : ''));
+  tile.type = 'button';
   if (editing) {
-    tile.type = 'button';
     tile.title = `Edit ${v.name}'s sign-up`;
     tile.addEventListener('click', () => openSignUp(owner, v));
+  } else {
+    tile.title = `About ${v.name}`;
+    tile.addEventListener('click', () => openPerson(v));
   }
   tile.append(avatar(v), el('div', 'side-chair-name', v.name + (star && v.position === 'Co-Chair' ? '*' : '')));
   return tile;
@@ -772,10 +698,12 @@ function childrenSection(node, editing) {
     row.append(el('div', 'group-title', cat ? cat.title : (others ? 'Uncategorized' : '')));
     const open = () => openActivity(null, {parent: node, category: cat ? cat.id : ''});
     let add = null;
+    // Into a category, its policy; straight under the thing, the thing's own.
+    const policy = cat || node;
     if (node.canEdit) {
       add = button('Add', 'plus', 'button button-secondary button-small', open);
-    } else if (node.status === 'Open' && cat && cat.allowAdding) {
-      add = button('Suggest', 'plus', 'button button-secondary button-small', open);
+    } else if (node.status === 'Open' && canAdd(policy)) {
+      add = button(addLabel(policy), 'plus', 'button button-secondary button-small', open);
     }
     if (add) {
       add.title = cat ? `Add to ${cat.title}` : 'Add without a category';
@@ -851,10 +779,13 @@ function childrenSection(node, editing) {
       list.append(panel);
     }
   };
-  actions.append(searchBox('Search', q => {
-    query = q;
-    render();
-  }, true));
+  // A search box only once there is enough to search through.
+  if (roles.length >= 10) {
+    actions.append(searchBox('Search', q => {
+      query = q;
+      render();
+    }, true));
+  }
   head.append(actions);
   wrap.append(head);
   render();

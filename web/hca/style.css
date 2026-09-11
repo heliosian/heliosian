@@ -674,7 +674,9 @@ main {
 
 .group-head:first-child { margin-top: 4px; }
 
-.group-heading { min-width: 0; }
+.group-heading { min-width: 0; flex: 1; }
+
+.group-head .group-add { flex-shrink: 0; }
 
 .group-name { font-size: 17px; margin: 0; color: var(--brand); }
 
@@ -849,6 +851,8 @@ main {
 }
 
 .link-button.danger { color: var(--alert); }
+
+.link-button.move-under { font-size: 13.5px; padding: 0; }
 
 .toggle-row {
   display: flex;
@@ -1031,26 +1035,55 @@ main {
 .row-body { flex: 1; min-width: 0; }
 
 .label {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
   text-transform: uppercase;
   color: var(--muted);
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 6px 12px;
+  margin-bottom: 2px;
 }
 
-.label .need { color: #a95f1b; }
+/* Who leads it, on its own line under the date, in plain case. */
+.label.label-leads { text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 500; color: var(--ink); margin: 6px 0 0; gap: 0 4px; }
 
-/* The dot separates the need from whatever came before it; first in line, it has nothing to separate. */
-.label > * + .need::before { content: '• '; }
+.row-actions .need { white-space: nowrap; }
 
-/* The people on a row can run long; they wrap within the label rather than widen the row. */
+.label-leads .label-leads-word { color: inherit; }
+
+/* The day and time each sit behind a small icon, in the brand's colour. */
+.label .label-when { display: inline-flex; align-items: center; gap: 5px; text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 600; color: var(--brand); }
+
+.label .label-when svg { width: 15px; height: 15px; color: var(--muted); }
+
+/* A co-leader wanted is a warm chip; being a chip, it needs no separator. */
+.need {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px 3px 8px;
+  border-radius: 999px;
+  background: #fdecd8;
+  color: #b45d17;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.need svg { width: 14px; height: 14px; }
+
+
+/* The co-chairs on a row's label line wrap within it rather than widen the row. */
 .label .label-people { min-width: 0; white-space: normal; letter-spacing: 0.02em; }
 
-.row-title { font-weight: 700; font-size: 15px; margin: 2px 0; }
+/* The volunteers, under the row's text. */
+.row-people { font-size: 12.5px; color: var(--muted); font-weight: 500; }
+
+.row-title { font-weight: 700; font-size: 16px; margin: 3px 0 2px; }
 
 .row-title .chain { color: var(--muted); font-weight: 400; margin: 0 6px; }
 
@@ -1296,7 +1329,28 @@ a.card-chip.is-link:hover { filter: brightness(0.92); text-decoration: underline
 
 .side-chairs { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 8px; }
 
-.side-chair { width: 62px; text-align: center; }
+.side-chair { width: 62px; text-align: center; border: 0; background: none; padding: 0; font: inherit; color: inherit; cursor: pointer; }
+
+/* The person card that opens from a chip. */
+.who-card-head { display: flex; align-items: center; gap: 16px; }
+
+.who-card-face { width: 72px; height: 72px; font-size: 26px; flex-shrink: 0; }
+
+.who-card-name { font-size: 19px; font-weight: 700; color: var(--brand); }
+
+.who-card-sub { font-size: 13.5px; color: var(--muted); margin-top: 2px; }
+
+.who-card-rows { margin-top: 18px; display: flex; flex-direction: column; gap: 10px; }
+
+.who-card-row { display: grid; grid-template-columns: 84px 1fr; gap: 12px; font-size: 14px; align-items: start; }
+
+.who-card-label { color: var(--muted); font-weight: 600; font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.03em; padding-top: 2px; }
+
+.who-card-link { display: block; color: var(--accent); text-decoration: none; word-break: break-all; }
+
+.who-card-link:hover { text-decoration: underline; }
+
+.who-card-foot { margin-top: 18px; }
 
 /* .avatar carries no size of its own - without this it collapses to its text
    and any photo inside, sized 100%/100%, squashes with it. */
@@ -1587,6 +1641,86 @@ button.side-chair:hover { background: var(--input); }
 /* The organizers' roster modal: wider than a form, a scrolling table inside. */
 .modal.modal-wide { max-width: 900px; }
 
+/* A form laid out in tabs: the bar sits flush with the modal's header, and each
+   panel keeps a floor so switching tabs does not bounce the buttons about. */
+.form-tabs .tabs { margin: -4px 0 18px; gap: 6px; }
+
+.form-tabs .tabs button { display: inline-flex; align-items: center; gap: 10px; padding: 10px 16px; border-radius: 8px 8px 0 0; font-weight: 600; }
+
+.form-tabs .tabs button svg { width: 18px; height: 18px; }
+
+.form-tabs .tabs.light button.is-active { background: #eaf3f3; color: var(--brand); border-bottom-color: var(--accent); }
+
+.form-tab-body { min-height: 300px; }
+
+/* Settings rows: the setting and a sentence about it, the control beside. */
+.setting-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px 24px; align-items: start; padding: 16px 0; border-bottom: 1px solid var(--line); }
+
+.setting-row:last-child { border-bottom: 0; }
+
+.setting-label { font-size: 15px; font-weight: 700; }
+
+.setting-hint { font-size: 13.5px; color: var(--muted); margin-top: 3px; }
+
+.setting-control .field { margin: 0; }
+
+.setting-control select, .setting-control input[type=number] { padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; background: #fff; }
+
+.setting-control select { min-width: 220px; }
+
+.setting-stack { display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
+
+.setting-stack > select, .setting-stack > .field.is-compact { align-self: stretch; }
+
+.setting-stack .field.is-compact { margin: 0; }
+
+.setting-control input[type=text] { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; background: #fff; }
+
+.setting-control select { width: 100%; }
+
+/* A row whose control wants the whole width - the description - stacks. */
+.setting-row.is-stacked { grid-template-columns: 1fr; gap: 10px; }
+
+.setting-row.is-stacked textarea { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; resize: vertical; }
+
+.setting-stack .field-unit input[type=number] { width: 96px; text-align: left; }
+
+.field-toggle.is-compact { margin: 0; }
+
+.form-tab-body > .field-toggle { padding: 14px 0; margin: 0; border-bottom: 1px solid var(--line); }
+
+.form-tab-body > .field-toggle:last-child { border-bottom: 0; }
+
+.form-tab-body > .field-toggle > span > span:first-child, .setting-stack .field-toggle > span > span:first-child { font-size: 15px; }
+
+.form-tab-body .field-toggle small { font-size: 13.5px; }
+
+/* The status select carries a dot in the colour of its state. */
+.status-select { position: relative; display: inline-flex; align-items: center; }
+
+.status-select::before { content: ''; position: absolute; left: 12px; top: 50%; width: 10px; height: 10px; border-radius: 50%; transform: translateY(-50%); background: #2fb344; pointer-events: none; }
+
+.status-select select { padding-left: 32px !important; }
+
+.status-select[data-status=Pending]::before { background: #e0a616; }
+
+.status-select[data-status=Done]::before { background: #98a0a6; }
+
+.status-select[data-status=Hidden]::before { background: var(--alert); }
+
+/* Policy selects: green yes, yellow approval, red no, grey inherit. */
+.policy-select::before { background: #98a0a6; }
+
+.policy-select[data-policy=Yes]::before { background: #2fb344; }
+
+.policy-select[data-policy="Approval Needed"]::before { background: #e0a616; }
+
+.policy-select[data-policy=No]::before { background: var(--alert); }
+
+.field .policy-select { display: flex; }
+
+.field .policy-select select { width: 100%; }
+
 .roster-tools { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
 
 .roster-count { font-size: 13.5px; color: var(--muted); }
@@ -1816,11 +1950,83 @@ button.side-chair:hover { background: var(--input); }
 /* Native date and time controls have a hard minimum width of their own; in a
    320px rail there is no room for both plus a clear button on one line, so the
    pair sits on its own row and the clear button tucks under it. */
+.field-when-block { display: flex; flex-direction: column; gap: 4px; }
+
+.field-when > .field-when-block:not(:first-child) { margin-top: 8px; }
+
+.field-when-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+
 .field-when-pair { display: flex; flex-wrap: wrap; gap: 6px; }
 
 .field-when-pair input[type=date] { flex: 1 1 58%; min-width: 0; padding-left: 10px; padding-right: 8px; }
 
 .field-when-pair input[type=time] { flex: 1 1 34%; min-width: 0; padding-left: 10px; padding-right: 8px; }
+
+/* In a form the pickers take the field's own box; in the wide modal they need
+   not stretch across the whole line. */
+.field.field-when { max-width: 420px; }
+
+.form-tab-body > .field:has(> select) { max-width: 420px; }
+
+.field.field-when .field-when-pair input { padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; background: #fff; }
+
+.field.field-when > .field-when-block:not(:first-child), .field.field-when > .field-when-label:not(:first-child) { margin-top: 12px; }
+
+/* "Same as the parent" sits above the pickers and puts them away while on. */
+.field-when-same { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; cursor: pointer; }
+
+.field-when-same > span > span { display: block; font-size: 13.5px; font-weight: 600; color: var(--brand); }
+
+.field-when-same small { display: block; font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+
+.field-when-own { display: flex; flex-direction: column; gap: 3px; }
+
+.field-when-own > .field-when-block:not(:first-child), .field-when-own > .field-when-label:not(:first-child) { margin-top: 12px; }
+
+/* The When tab as settings rows. */
+.field.field-when.is-rows { max-width: none; }
+
+.field-when.is-rows .field-when-same { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: center; padding: 18px 20px; border-radius: 12px; background: #eaf3f3; margin-bottom: 8px; }
+
+.field-when.is-rows .field-when-same-lead > span { display: block; font-size: 15px; font-weight: 700; color: var(--ink); }
+
+.field-when.is-rows .field-when-same-lead > small { display: block; font-size: 13.5px; color: var(--muted); margin-top: 3px; }
+
+.field-when.is-rows .field-when-same-control { display: flex; align-items: center; gap: 14px; }
+
+.field-when.is-rows .field-when-same-control > span > span { font-size: 15px; font-weight: 700; color: var(--ink); }
+
+.field-when.is-rows .field-when-own { gap: 0; }
+
+.field-when.is-rows .field-when-own > .setting-row { margin: 0; grid-template-columns: minmax(0, 0.75fr) minmax(0, 1.25fr); }
+
+.field-when.is-rows .field-when-clear { white-space: nowrap; flex-shrink: 0; }
+
+.field-when.is-rows .field-when-pair { flex-wrap: nowrap; align-items: center; gap: 10px; }
+
+.field-when.is-rows .field-when-pair input[type=date] { flex: 0 1 190px; min-width: 150px; }
+
+.field-when.is-rows .field-when-pair input[type=time] { flex: 0 1 140px; min-width: 110px; }
+
+.field-when.is-rows .field-when-block.is-all-day .field-when-pair input[type=time] { display: none; }
+
+.field-when.is-rows .field-when-allday { margin: 0; align-items: flex-start; }
+
+.field-when.is-rows .field-when-allday input { width: 20px; height: 20px; margin-top: 1px; }
+
+.field-when.is-rows .field-when-allday > span > small { display: block; font-size: 13.5px; font-weight: 400; color: var(--muted); margin-top: 2px; }
+
+.field-when.is-rows input[type=text] { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; background: #fff; }
+
+/* The all-day switch puts the time pickers away. */
+.field-when-allday { display: inline-flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 13.5px; font-weight: 600; color: var(--brand); cursor: pointer; }
+
+.field-when-allday input { width: 16px; height: 16px; accent-color: var(--brand); }
+
+.field-when-block.is-all-day input[type=time] { display: none; }
+
+/* A link standing in a field's slot lines up with the select beside it. */
+.field-link-slot { display: flex; align-items: center; padding-top: 24px; }
 
 .field-when-clear {
   display: inline-flex;
@@ -2127,19 +2333,110 @@ h2.section .link-button { font-size: 14px; }
 
 .field textarea { resize: vertical; }
 
-.field-toggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.field-toggle { display: flex; align-items: flex-start; gap: 12px; }
+
+.field-toggle .switch { margin-top: 1px; }
 
 .field-toggle > span { margin: 0; }
 
-.field-toggle input { width: 20px; height: 20px; accent-color: var(--brand); flex-shrink: 0; }
+.field-toggle > span > small { display: block; margin-top: 2px; font-weight: 400; color: var(--muted); }
+
+.field-toggle .switch { flex-shrink: 0; }
+
+/* The address a friendly name makes, with a copy button. */
+.address-line { display: flex; align-items: center; gap: 10px; margin: -6px 0 16px; }
+
+.address-text { font-size: 13.5px; color: var(--brand); word-break: break-all; }
 
 .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+
+/* A number with its unit beside it: two digits' worth of box, no more. */
+.field-unit { display: flex; align-items: center; gap: 10px; }
+
+.field .field-unit input[type=number] { width: 84px; text-align: center; }
+
+.field-unit-label { font-size: 14px; color: var(--muted); }
 
 .image-row { display: flex; align-items: center; gap: 12px; }
 
 .image-row img { width: 56px; height: 56px; border-radius: 10px; object-fit: cover; }
 
 .image-placeholder { color: var(--muted); font-size: 13px; flex: 1; }
+
+/* A required field's label carries a mark; a lead-in hint sits under the label. */
+.field.is-required > span:first-child::after { content: ' *'; color: var(--alert); }
+
+.field > small.field-lead { margin: -2px 0 8px; }
+
+/* The large image drop zone. */
+.image-drop {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 28px 20px;
+  border: 1.5px dashed rgba(12, 76, 84, 0.3);
+  border-radius: 12px;
+  background: #f4f8f8;
+  cursor: pointer;
+  text-align: center;
+}
+
+.image-drop.is-dragover { border-color: var(--accent); background: #eaf3f3; }
+
+.image-drop img { width: 220px; height: 150px; border-radius: 10px; object-fit: cover; }
+
+.image-drop .image-placeholder { display: flex; flex-direction: column; align-items: center; gap: 2px; color: var(--ink); flex: none; }
+
+.image-drop .image-placeholder svg { width: 40px; height: 40px; color: var(--muted); margin-bottom: 8px; }
+
+.image-drop .image-placeholder strong { font-size: 15px; }
+
+.image-drop .image-placeholder small { font-size: 13px; color: var(--muted); }
+
+.image-drop .button { margin-top: 6px; }
+
+.image-drop-note { font-size: 12.5px; color: var(--muted); }
+
+/* Settings cards: the Image & Address tab. */
+.setting-card { padding: 18px 20px; border: 1px solid var(--line); border-radius: 12px; margin-bottom: 14px; }
+
+.setting-card > .setting-hint { margin-bottom: 12px; }
+
+.setting-card > input[type=text] { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; background: #fff; }
+
+.setting-card .address-line { margin: 12px 0 0; }
+
+.setting-card .address-text { padding: 8px 12px; border-radius: 8px; background: #eef3f3; }
+
+.setting-card .image-row { align-items: stretch; gap: 16px; }
+
+.setting-card .image-row img { width: 160px; height: 120px; border-radius: 10px; }
+
+.setting-card .image-placeholder {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 260px;
+  height: 120px;
+  border: 1.5px dashed rgba(12, 76, 84, 0.3);
+  border-radius: 12px;
+  background: #f4f8f8;
+  color: var(--brand);
+}
+
+.setting-card .image-placeholder svg { width: 26px; height: 26px; margin-bottom: 4px; }
+
+.setting-card .image-placeholder strong { font-size: 15px; }
+
+.setting-card .image-placeholder small { font-size: 12.5px; color: var(--muted); }
+
+.setting-card .image-row .button { align-self: center; }
 
 .modal-actions { display: flex; align-items: center; gap: 8px; margin-top: 20px; flex-wrap: wrap; }
 

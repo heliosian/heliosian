@@ -280,7 +280,7 @@ func TestEventCategories(t *testing.T) {
 	cache, mux := newServer(t)
 	m := cache.Model()
 	night := m.Activity("E001")
-	if len(night.Categories) != 2 || night.Categories[1].ID != "C08" || !night.Categories[1].AllowAdding {
+	if len(night.Categories) != 2 || night.Categories[1].ID != "C08" || night.Categories[1].Adding != AddingYes {
 		t.Fatalf("international night's categories: %+v", night.Categories)
 	}
 	if len(m.Categories) != 6 {
@@ -294,6 +294,19 @@ func TestEventCategories(t *testing.T) {
 	if code := propose(parent, "C08"); code != http.StatusNoContent {
 		t.Fatalf("a booth under an open category was refused: %d", code)
 	}
+	// "Yes" means live at once; the event's own "Approval Needed" applies to a
+	// booth added with no category at all.
+	if sweden := byTitle(cache.Model(), "2026 - 2027", "Sweden"); sweden == nil || sweden.Status != StatusOpen {
+		t.Fatalf("a booth added under a Yes category should be open: %+v", sweden)
+	}
+	if code := call(t, mux, parent, "POST", "/api/events/activity", map[string]any{
+		"year": "2026 - 2027", "title": "Loose Booth", "parent": "E001", "category": "", "status": StatusOpen, "directSignUp": true,
+	}).Code; code != http.StatusNoContent {
+		t.Fatalf("an uncategorised proposal under an Approval Needed event was refused: %d", code)
+	}
+	if loose := byTitle(cache.Model(), "2026 - 2027", "Loose Booth"); loose == nil || loose.Status != StatusPending {
+		t.Fatalf("an uncategorised proposal should wait for approval: %+v", loose)
+	}
 	if code := propose(parent, "C07"); code != http.StatusBadRequest {
 		t.Fatalf("a proposal into a closed category went through: %d", code)
 	}
@@ -304,7 +317,7 @@ func TestEventCategories(t *testing.T) {
 		t.Fatalf("a child took a page heading as its category: %d", code)
 	}
 	// Only the event's own editors manage its categories; the page's need an admin.
-	own := map[string]any{"eventId": "E001", "title": "Performances", "allowAdding": true}
+	own := map[string]any{"eventId": "E001", "title": "Performances", "allowAdding": AddingYes}
 	if rec := call(t, mux, parent, "POST", "/api/events/category", own); rec.Code != http.StatusForbidden {
 		t.Fatalf("a parent made an event category: %d", rec.Code)
 	}
@@ -514,7 +527,7 @@ func TestShowOnMainPage(t *testing.T) {
 		t.Fatalf("blank or event-scoped categories should be shown")
 	}
 	off := false
-	edit := map[string]any{"id": "C02", "title": "Activities", "allowAdding": false, "showOnMain": off}
+	edit := map[string]any{"id": "C02", "title": "Activities", "allowAdding": AddingNo, "showOnMain": off}
 	if rec := call(t, mux, admin, "POST", "/api/events/category", edit); rec.Code != http.StatusNoContent {
 		t.Fatalf("edit: %d %s", rec.Code, rec.Body)
 	}
@@ -522,7 +535,7 @@ func TestShowOnMainPage(t *testing.T) {
 		t.Fatalf("the heading was not taken off the page")
 	}
 	// The event's own categories never carry the flag in the sheet.
-	own := map[string]any{"eventId": "E001", "title": "Shifts", "allowAdding": true, "showOnMain": off}
+	own := map[string]any{"eventId": "E001", "title": "Shifts", "allowAdding": "", "showOnMain": off}
 	if rec := call(t, mux, chair, "POST", "/api/events/category", own); rec.Code != http.StatusNoContent {
 		t.Fatalf("add: %d %s", rec.Code, rec.Body)
 	}

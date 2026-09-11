@@ -62,7 +62,7 @@ var settingKeys = []string{ExpenseFormKey, IntroKey}
 
 var (
 	CategoryColumns  = []string{"Category ID", "Event ID", "Title", "Description", "Image", "Allow Adding", "Show On Main Page"}
-	ActivityColumns  = []string{"Event ID", "Year", "Title", "Parent", "Category", "Status", "Description", "Image", "Timing", "Start", "End", "Location", "Spots", "Co-Leader Needed", "Volunteers Hidden", "Direct Sign-Up", "Pretty ID", "Added By", "Added"}
+	ActivityColumns  = []string{"Event ID", "Year", "Title", "Parent", "Category", "Status", "Description", "Image", "Timing", "Start", "End", "Location", "Spots", "Co-Leader Needed", "Volunteers Hidden", "Direct Sign-Up", "Pretty ID", "Allow Adding", "Added By", "Added"}
 	VolunteerColumns = []string{"Event ID", "Email", "Position", "Note", "Added By", "Added"}
 	LinkColumns      = []string{"Event ID", "Title", "URL", "Image"}
 	SettingColumns   = []string{"Key", "Value"}
@@ -147,12 +147,17 @@ type Activity struct {
 	DirectSignUp     bool   `json:"directSignUp"`
 	// PrettyID is the activity's friendly address, /v/{PrettyID}, unique across
 	// every year; blank for most rows.
-	PrettyID   string      `json:"prettyId,omitempty"`
-	AddedBy    string      `json:"addedBy,omitempty"`
-	Added      string      `json:"added,omitempty"`
-	Children   []*Activity `json:"children"`
-	Links      []Link      `json:"links"`
-	Volunteers []Volunteer `json:"volunteers"`
+	PrettyID string `json:"prettyId,omitempty"`
+	// AllowAdding is the row's own policy for what people may add under it,
+	// blank to take the parent's; Adding is the resolved one. It is also the
+	// default for the event's own categories.
+	AllowAdding string      `json:"allowAddingOwn,omitempty"`
+	Adding      string      `json:"allowAdding"`
+	AddedBy     string      `json:"addedBy,omitempty"`
+	Added       string      `json:"added,omitempty"`
+	Children    []*Activity `json:"children"`
+	Links       []Link      `json:"links"`
+	Volunteers  []Volunteer `json:"volunteers"`
 	// Categories are this root event's own, in row order; empty below the root.
 	Categories []Category `json:"categories,omitempty"`
 }
@@ -167,9 +172,11 @@ type Category struct {
 	Description string `json:"description,omitempty"`
 	Image       string `json:"image,omitempty"`
 	ImageURL    string `json:"imageUrl,omitempty"`
-	// AllowAdding says whether people may propose new things into this category.
-	// Editors of the event (or admins, for a page heading) can always add.
-	AllowAdding bool `json:"allowAdding"`
+	// AllowAdding is the category's own policy cell (see AddingYes and friends),
+	// blank to inherit; Adding is what applies once inheritance is resolved,
+	// which is what pages act on.
+	AllowAdding string `json:"allowAddingOwn,omitempty"`
+	Adding      string `json:"allowAdding"`
 	// ShowOnMain says whether the Opportunities page lists this heading's
 	// events among everyone else's. A heading kept off the page still sits in
 	// the rail with its count, and clicking it there shows its events. Means
@@ -180,6 +187,30 @@ type Category struct {
 	BuiltIn bool `json:"builtIn,omitempty"`
 }
 
+// An adding policy says what people who do not run a thing may do under it -
+// into a category, or straight under an activity. Yes: add, and it goes live;
+// Approval Needed: add, and it waits as Pending for an admin; No: only the
+// organizers add. A blank cell inherits: a category from its event, an activity
+// from its parent, and an event or page heading with nothing to inherit from
+// takes No. Whoever runs the thing may always add, and their additions are
+// live at once.
+const (
+	AddingYes      = "Yes"
+	AddingApproval = "Approval Needed"
+	AddingNo       = "No"
+)
+
+var AddingPolicies = []string{AddingYes, AddingApproval, AddingNo}
+
+// checkAdding reads an Allow Adding cell: one of the policies, or blank.
+func checkAdding(cell string) (string, error) {
+	cell = strings.TrimSpace(cell)
+	if cell == "" || slices.Contains(AddingPolicies, cell) {
+		return cell, nil
+	}
+	return "", fmt.Errorf("allow adding %q is not %s, or blank", cell, strings.Join(AddingPolicies, ", "))
+}
+
 // UncategorizedID is the built-in heading for root activities whose Category
 // is blank or names nothing in the Categories tab. It never lives in the sheet:
 // a root saved with no category is stored blank and lands here on load.
@@ -187,7 +218,7 @@ const UncategorizedID = "uncategorized"
 
 func uncategorized() *Category {
 	return &Category{ID: UncategorizedID, Title: "Uncategorized",
-		Description: "Things that have not been sorted into a category yet", ShowOnMain: true, BuiltIn: true}
+		Description: "Things that have not been sorted into a category yet", Adding: AddingNo, ShowOnMain: true, BuiltIn: true}
 }
 
 type Settings struct {
@@ -687,9 +718,9 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 		if err != nil {
 			return nil, fmt.Errorf("category %q: %w", title, err)
 		}
-		adding, err := yesNo(row["Allow Adding"], false)
+		adding, err := checkAdding(row["Allow Adding"])
 		if err != nil {
-			return nil, fmt.Errorf("category %q: allow adding %w", title, err)
+			return nil, fmt.Errorf("category %q: %w", title, err)
 		}
 		onMain, err := yesNo(row["Show On Main Page"], true)
 		if err != nil {
@@ -701,6 +732,11 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 		}
 		model.categories[id] = c
 		if c.EventID == "" {
+			// A page heading has nothing to inherit from: blank is No.
+			c.Adding = c.AllowAdding
+			if c.Adding == "" {
+				c.Adding = AddingNo
+			}
 			model.Categories = append(model.Categories, *c)
 		} else {
 			scoped = append(scoped, c)
@@ -770,10 +806,29 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 		model.Redirects = append(model.Redirects, Redirect{Type: strings.TrimSpace(row["Type"]), Old: from, New: to, Date: row["Date"]})
 	}
 	model.Activities = roots
+	// Resolve the adding policies down the tree: a blank takes the parent's,
+	// and a root's blank is No.
+	var resolveAdding func(a *Activity, inherited string)
+	resolveAdding = func(a *Activity, inherited string) {
+		a.Adding = a.AllowAdding
+		if a.Adding == "" {
+			a.Adding = inherited
+		}
+		for _, c := range a.Children {
+			resolveAdding(c, a.Adding)
+		}
+	}
+	for _, a := range roots {
+		resolveAdding(a, AddingNo)
+	}
 	for _, c := range scoped {
 		owner := model.byID[c.EventID]
 		if owner == nil {
 			return nil, fmt.Errorf("category %q names unknown event id %q", c.Title, c.EventID)
+		}
+		c.Adding = c.AllowAdding
+		if c.Adding == "" {
+			c.Adding = owner.Adding
 		}
 		if owner.Parent != "" {
 			return nil, fmt.Errorf("category %q belongs to %q, which is not a root event", c.Title, owner.Title)
@@ -924,12 +979,16 @@ func parseActivity(row map[string]string, model *Model, images ImageChecker) (*A
 	if err := CheckPretty(pretty); err != nil {
 		return fail(err)
 	}
+	allowAdding, err := checkAdding(row["Allow Adding"])
+	if err != nil {
+		return fail(err)
+	}
 	return &Activity{
 		ID: strings.TrimSpace(row["Event ID"]), Year: year, Title: title, Parent: strings.TrimSpace(row["Parent"]),
 		Category: strings.TrimSpace(row["Category"]), Status: row["Status"],
 		Description: row["Description"], Image: row["Image"], ImageURL: image,
 		Timing: row["Timing"], Start: row["Start"], End: row["End"], Location: row["Location"], Spots: spots,
-		CoLeaderNeeded: coLeader, VolunteersHidden: hidden, DirectSignUp: direct, PrettyID: pretty,
+		CoLeaderNeeded: coLeader, VolunteersHidden: hidden, DirectSignUp: direct, PrettyID: pretty, AllowAdding: allowAdding,
 		AddedBy: strings.ToLower(row["Added By"]), Added: row["Added"],
 		Children: []*Activity{}, Links: []Link{}, Volunteers: []Volunteer{},
 	}, nil

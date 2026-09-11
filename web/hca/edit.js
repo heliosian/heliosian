@@ -1,4 +1,4 @@
-import {state, me, isAdmin, years, allYears, activityPath, activity, descendants, rootOf, eventCategories, headingChoices, UNCATEGORIZED} from './state.js';
+import {state, me, isAdmin, years, allYears, activityPath, activity, parentOf, canAdd, ADDING, descendants, rootOf, eventCategories, headingChoices, UNCATEGORIZED} from './state.js';
 
 function* allNodes() {
   for (const root of state.model.activities) {
@@ -6,7 +6,7 @@ function* allNodes() {
     yield* descendants(root);
   }
 }
-import {el, svg, toast, button, thumb} from './dom.js';
+import {el, svg, toast, button, thumb, whenEditor} from './dom.js';
 
 let modalState = null;
 
@@ -35,12 +35,6 @@ export async function send(method, url, body) {
     }
     throw err;
   }
-}
-
-// prettyHost is where a Pretty ID lives: this site, /v/... - shown beside the
-// field so people see the whole address they are choosing.
-export function prettyHost() {
-  return `${location.host}/v/`;
 }
 
 // saveActivity posts one activity, and when its Pretty ID belongs to a prior
@@ -200,25 +194,44 @@ function select(options, value) {
   return input;
 }
 
-function checkbox(label, checked) {
+// checkbox is a labelled switch - the same control the page's toggle rows use -
+// with an optional line of explanation under the label.
+function checkbox(label, checked, hint) {
   const wrap = el('label', 'field field-toggle');
   const input = el('input');
   input.type = 'checkbox';
   input.checked = Boolean(checked);
-  wrap.append(el('span', '', label), input);
+  const text = el('span');
+  text.append(el('span', '', label));
+  if (hint) {
+    text.append(el('small', '', hint));
+  }
+  const knob = el('span', 'switch');
+  knob.append(input, el('span'));
+  wrap.append(knob, text);
   return {wrap, input};
 }
 
 // imagePicker uploads on selection, so the save that follows only records the
-// name the server handed back.
-function imagePicker(current, currentUrl) {
+// name the server handed back. `dropzone` is the large form: a dashed area that
+// takes a dropped file or a click, with the Choose button inside it.
+function imagePicker(current, currentUrl, options) {
+  const dropzone = Boolean(options && options.dropzone);
   const wrap = el('div', 'field');
   wrap.append(el('span', '', 'Image'));
-  const row = el('div', 'image-row');
+  if (options && options.hint) {
+    wrap.append(el('small', 'field-lead', options.hint));
+  }
+  const row = el('div', dropzone ? 'image-drop' : 'image-row');
   const preview = el('img');
   preview.alt = '';
-  const placeholder = el('div', 'image-placeholder', 'No image');
-  const choose = el('label', 'button button-secondary button-small', 'Choose');
+  const placeholder = el('div', 'image-placeholder');
+  if (dropzone) {
+    placeholder.append(svg('image'), el('strong', '', 'Drag and drop an image here'), el('small', '', 'or click to choose a file'));
+  } else {
+    placeholder.append(svg('image'), el('strong', '', 'No image'), el('small', '', 'JPG, PNG or GIF'));
+  }
+  const choose = el('label', 'button button-secondary button-small', dropzone ? 'Choose image' : 'Choose');
   const file = el('input');
   file.type = 'file';
   file.accept = 'image/*';
@@ -236,27 +249,113 @@ function imagePicker(current, currentUrl) {
     }
   };
   show(currentUrl);
-  file.addEventListener('change', async () => {
-    if (!file.files.length) {
+  const upload = async picked => {
+    if (!picked) {
       return;
     }
     setStatus('Uploading image…');
     try {
-      name = await uploadImage(file.files[0]);
+      name = await uploadImage(picked);
       show('/' + name);
       setStatus('');
     } catch (err) {
       setStatus(err.message, true);
     }
     file.value = '';
-  });
+  };
+  file.addEventListener('change', () => upload(file.files[0]));
   remove.addEventListener('click', () => {
     name = '';
     show('');
   });
-  row.append(preview, placeholder, choose, remove);
+  if (dropzone) {
+    // The zone itself takes a click (anywhere but the buttons) and a drop.
+    row.addEventListener('click', e => {
+      if (!e.target.closest('label, button')) {
+        file.click();
+      }
+    });
+    row.addEventListener('dragover', e => {
+      e.preventDefault();
+      row.classList.add('is-dragover');
+    });
+    row.addEventListener('dragleave', () => row.classList.remove('is-dragover'));
+    row.addEventListener('drop', e => {
+      e.preventDefault();
+      row.classList.remove('is-dragover');
+      upload(e.dataTransfer.files[0]);
+    });
+    row.append(preview, placeholder, choose, el('small', 'image-drop-note', 'JPG, PNG or GIF (max 8 MB)'), remove);
+  } else {
+    row.append(preview, placeholder, choose, remove);
+  }
   wrap.append(row);
   return {wrap, value: () => name};
+}
+
+// settingCard is a bordered panel for one setting: its name and a sentence,
+// then whatever controls it takes, one under another.
+function settingCard(label, hint, ...controls) {
+  const card = el('div', 'setting-card');
+  card.append(el('div', 'setting-label', label), el('div', 'setting-hint', hint));
+  for (const c of controls) {
+    card.append(c);
+  }
+  return card;
+}
+
+// settingRow is one line of a settings-style form: what the setting is and a
+// sentence about it on the left, the control on the right, a hairline under.
+function settingRow(label, hint, control) {
+  const row = el('div', 'setting-row');
+  const text = el('div', 'setting-text');
+  text.append(el('div', 'setting-label', label));
+  if (hint) {
+    text.append(el('div', 'setting-hint', hint));
+  }
+  const side = el('div', 'setting-control');
+  side.append(control);
+  row.append(text, side);
+  return row;
+}
+
+// tabbedFields lays a long form out as tabs. Every field stays in the form -
+// only the panels hide - so values and validation survive switching. A field
+// the browser refuses on submit brings its own tab forward, since a hidden
+// invalid control would otherwise block the save without a word.
+function tabbedFields(panels) {
+  const wrap = el('div', 'form-tabs');
+  const bar = el('div', 'tabs light');
+  const bodies = [];
+  let active = 0;
+  const show = i => {
+    active = i;
+    bar.querySelectorAll('button').forEach((b, j) => b.classList.toggle('is-active', j === i));
+    bodies.forEach((body, j) => {
+      body.hidden = j !== i;
+    });
+  };
+  panels.forEach((panel, i) => {
+    const tab = el('button', i === 0 ? 'is-active' : '');
+    tab.type = 'button';
+    if (panel.icon) {
+      tab.append(svg(panel.icon));
+    }
+    tab.append(el('span', '', panel.label));
+    tab.addEventListener('click', () => show(i));
+    bar.append(tab);
+    const body = el('div', 'form-tab-body');
+    body.hidden = i !== 0;
+    body.append(...panel.fields);
+    body.addEventListener('invalid', () => {
+      if (active !== i) {
+        show(i);
+      }
+    }, true);
+    bodies.push(body);
+  });
+  wrap.append(bar, ...bodies);
+  return wrap;
 }
 
 function openModal(title, fields, options) {
@@ -347,6 +446,91 @@ async function people() {
 export async function personInfo(email) {
   const all = await people();
   return all.find(p => p.email === email) || null;
+}
+
+// whoProfile is a person's page on Helios Who?, on this tier: hca.x.heliosian.com
+// pairs with who.x.heliosian.com, and the page is named by the address's local
+// part, as Who's own links are.
+export function whoProfile(email) {
+  const host = location.host.replace(/^hca\./, 'who.');
+  return `${location.protocol}//${host}/people/${encodeURIComponent((email || '').split('@')[0])}`;
+}
+
+// openPerson is the small card that opens from a person's chip: face, name and
+// pronouns, what places them (grade and classroom, job and department, or
+// Parent with the children's names and grades), how to reach them, and the
+// way through to their Helios Who? page. Someone the directory does not know
+// gets just their name and address.
+export async function openPerson(v) {
+  const info = await personInfo(v.email);
+  const card = el('div', 'who-card');
+  const head = el('div', 'who-card-head');
+  const face = el('div', 'avatar who-card-face');
+  const photo = (info && info.photoUrl) || v.photoUrl;
+  if (photo) {
+    const img = el('img');
+    img.src = photo;
+    img.alt = '';
+    face.append(img);
+  } else {
+    face.textContent = (v.name || v.email).slice(0, 1).toUpperCase();
+  }
+  const names = el('div', 'who-card-names');
+  names.append(el('div', 'who-card-name', (info && info.name) || v.name || v.email));
+  if (info && info.pronouns) {
+    names.append(el('div', 'who-card-sub', info.pronouns));
+  }
+  if (info) {
+    const place = info.isStudent
+      ? [info.grade, info.classroom].filter(Boolean).join(' · ')
+      : [info.jobTitle, info.department].filter(Boolean).join(' · ') || info.title;
+    if (place) {
+      names.append(el('div', 'who-card-sub', place));
+    }
+  }
+  head.append(face, names);
+  card.append(head);
+  const rows = el('div', 'who-card-rows');
+  const row = (label, node) => {
+    const r = el('div', 'who-card-row');
+    r.append(el('span', 'who-card-label', label), node);
+    rows.append(r);
+  };
+  const mail = el('a', 'who-card-link', v.email);
+  mail.href = `mailto:${v.email}`;
+  row('Email', mail);
+  if (info && info.phone) {
+    const tel = el('a', 'who-card-link', info.phone);
+    tel.href = `tel:${info.phone.replace(/[^+\d]/g, '')}`;
+    row('Phone', tel);
+  }
+  if (info && info.children && info.children.length) {
+    const kids = el('div');
+    for (const k of info.children) {
+      kids.append(el('div', '', k.grade ? `${k.name} (${k.grade})` : k.name));
+    }
+    row(info.children.length === 1 ? 'Child' : 'Children', kids);
+  }
+  if (info && info.isStudent && info.parentEmails && info.parentEmails.length) {
+    const parents = el('div');
+    for (const e of info.parentEmails) {
+      const a = el('a', 'who-card-link', e);
+      a.href = `mailto:${e}`;
+      parents.append(a);
+    }
+    row('Parents', parents);
+  }
+  card.append(rows);
+  if (info) {
+    const profile = el('a', 'button button-secondary button-small', 'Open in Helios Who?');
+    profile.href = whoProfile(v.email);
+    profile.target = '_blank';
+    profile.rel = 'noopener';
+    const foot = el('div', 'who-card-foot');
+    foot.append(profile);
+    card.append(foot);
+  }
+  openModal('', [card], {});
 }
 
 function peoplePicker() {
@@ -482,8 +666,13 @@ export async function removeVolunteer(node, volunteer) {
   }
 }
 
-function whenHint() {
-  return 'Like 2026-09-24 16:00, or 2026-09-24 for a whole day';
+// whenFields is the When tab: the shared when editor (dom.js) in a form field,
+// offered the parent's timing to follow when the thing sits under one.
+function whenFields(act, parent) {
+  const own = act ? act.own : {start: '', end: '', timing: ''};
+  const when = whenEditor(own.start, own.end, own.timing, parent, 'rows');
+  when.wrap.classList.add('field');
+  return when;
 }
 
 // openActivity edits an activity, or with none adds one: an admin's addition
@@ -505,52 +694,143 @@ export function openActivity(act, options) {
   // a headline event and a shift on its sign-up sheet.
   const under = act ? act.parent : (opts.parent ? opts.parent.id : '');
   const root = act ? rootOf(act) : (opts.parent ? rootOf(opts.parent) : null);
+  // Where it can move to is one level: a thing under an event may move to any
+  // of that event's siblings, and an event may move under any other event of
+  // the year. Never itself or anything under it - the server refuses the loop.
+  const yearOf = act ? act.year : (opts.parent ? opts.parent.year : year.value);
+  const roots = state.model.activities.filter(a => a.year === yearOf);
+  const currentParent = under ? activity(under) : null;
+  const grandparent = currentParent ? parentOf(currentParent) : null;
+  const level = currentParent ? (grandparent ? grandparent.children : roots) : roots;
+  const mine = new Set(act ? [act.id, ...descendants(act).map(d => d.id)] : []);
   const parents = [{label: 'Nothing - this stands on its own', value: ''}];
-  if (root) {
-    // Anything in the tree can be the parent except the row itself and what
-    // already sits under it - the server refuses the loop, so don't offer it.
-    const below = new Set(act ? descendants(act).map(d => d.id) : []);
-    for (const node of [root, ...descendants(root)]) {
-      if ((!act || node.id !== act.id) && !below.has(node.id)) {
-        parents.push({label: node.title, value: node.id});
-      }
+  for (const n of level) {
+    if (!mine.has(n.id)) {
+      parents.push({label: n.title, value: n.id});
     }
   }
   const parentSelect = select(parents, under);
+  // An event's Under select stays out of the way behind a small link until it
+  // is wanted; a thing already under something shows it outright.
+  const moveLink = el('button', 'link-button move-under', 'Move under an event…');
+  moveLink.type = 'button';
+  moveLink.addEventListener('click', () => {
+    moveLink.hidden = true;
+    underField.hidden = false;
+    parentSelect.focus();
+  });
+  const underField = field('Parent Event', parentSelect, 'What this is part of, if anything');
   // The category select follows where the row sits: a root picks one of the
   // page's headings, a child picks one of its root event's own, or none. Someone
   // proposing rather than running the event only sees categories that allow it.
   const editor = admin || (root ? root.canEdit : false);
   // Uncategorized is only for editors: it is where things land without a
   // heading, not a heading people propose into.
-  const headings = headingChoices(c => editor || c.allowAdding).filter(c => editor || c.value !== UNCATEGORIZED);
+  const headings = headingChoices(c => editor || canAdd(c)).filter(c => editor || c.value !== UNCATEGORIZED);
   const category = select(headings,
     act ? act.category : (opts.category || (headings[0] ? headings[0].value : '')));
-  const own = root ? eventCategories(root).filter(c => editor || c.allowAdding) : [];
+  const own = root ? eventCategories(root).filter(c => editor || canAdd(c)) : [];
   const eventCategory = select([{label: 'None', value: ''}, ...own.map(c => ({label: c.title, value: c.id}))],
     act ? act.category : (opts.category || ''));
   const status = select(['Pending', 'Open', 'Done', 'Hidden'], act ? act.status : 'Open');
+  // A coloured dot beside a policy select: green for yes, yellow for approval,
+  // red for no, grey for "same as the parent". `blank` says what a blank means.
+  const policyDot = (sel, blank) => {
+    const wrap = el('div', 'status-select policy-select');
+    const paint = () => {
+      wrap.dataset.policy = sel.value || blank;
+    };
+    sel.addEventListener('change', paint);
+    paint();
+    wrap.append(sel);
+    return wrap;
+  };
+  // A coloured dot beside the status, the way the mockup reads it at a glance.
+  const dotted = sel => {
+    const wrap = el('div', 'status-select');
+    wrap.dataset.status = sel.value;
+    sel.addEventListener('change', () => {
+      wrap.dataset.status = sel.value;
+    });
+    wrap.append(sel);
+    return wrap;
+  };
   const description = textarea(act ? act.description : '', 6);
-  const timing = text(act ? act.timing : '', {placeholder: 'All Year, Late February, A few times per year'});
-  const start = text(act ? act.start : '', {placeholder: '2026-09-24 16:00'});
-  const end = text(act ? act.end : '', {placeholder: '2026-09-24 18:00'});
-  const location = text(act ? act.location : '');
-  const spots = text(act && act.spots ? String(act.spots) : '', {type: 'number', placeholder: 'Unlimited'});
-  const coLeader = checkbox('Co-leader needed', act ? act.coLeaderNeeded : false);
+  const when = whenFields(act, act ? parentOf(act) : opts.parent || null);
+  const timing = text(act ? act.own.timing : '', {placeholder: 'All Year, Late February, A few times per year'});
+  const spots = text(act && act.spots ? String(act.spots) : '', {type: 'number'});
+  spots.min = '1';
+  spots.max = '99';
+  // Unlimited by default; switching that off shows a small box for the number,
+  // with its unit beside it.
+  const unlimited = checkbox('Unlimited spots', !(act && act.spots), 'Allow unlimited volunteers to sign up.');
+  const spotsRow = el('div', 'field-unit');
+  spotsRow.append(spots, el('span', 'field-unit-label', 'people'));
+  const spotsField = settingRow('Volunteer spots', 'How many volunteers can sign up for this activity?', el('div', 'setting-stack'));
+  spotsField.querySelector('.setting-stack').append(spotsRow, unlimited.wrap);
+  unlimited.wrap.classList.add('is-compact');
+  const paintSpots = () => {
+    spotsRow.hidden = unlimited.input.checked;
+    if (!unlimited.input.checked && !spots.value) {
+      spots.value = act && act.spots ? String(act.spots) : '10';
+    }
+  };
+  unlimited.input.addEventListener('change', () => {
+    paintSpots();
+    if (!unlimited.input.checked) {
+      spots.focus();
+    }
+  });
+  paintSpots();
+  // A new thing starts wanting a co-leader - most do, and the sheet's own
+  // default for a blank cell says the same.
+  const coLeader = checkbox('Co-leader needed', act ? act.coLeaderNeeded : true,
+    'This lets people offer to be a co-leader; you still confirm them as co-leaders.');
   // A new thing under a parent starts with the parent's privacy - a private
   // event's committees are usually private too - and can be switched after.
-  const hidden = checkbox('Hide the volunteer list from everyone but co-chairs',
-    act ? act.volunteersHidden : Boolean(opts.parent && opts.parent.volunteersHidden));
-  const direct = checkbox('People can sign up for this itself, not just the things under it', act ? act.directSignUp : true);
+  const hidden = checkbox('Hide the volunteer list',
+    act ? act.volunteersHidden : Boolean(opts.parent && opts.parent.volunteersHidden),
+    'E.g., hide room parent applications, which are secret.');
+  const direct = checkbox('Allow volunteers for the event itself', act ? act.directSignUp : true,
+    'Unchecking this will allow volunteers for subcommittees, but not the event itself.');
   const coChair = checkbox("I'd be open to co-chairing this", false);
+  // What people who do not run this may add under it - and the default for
+  // the event's own categories. Blank takes the parent's; an event's blank is No.
+  const inheritLabel = under ? 'Same as the parent' : 'No, unless a category says otherwise';
+  const allowAdding = select([
+    {label: inheritLabel, value: ''},
+    {label: 'Yes - people can add, and it goes live', value: ADDING.yes},
+    {label: 'Approval needed - people can add, an admin approves', value: ADDING.approval},
+  ], act ? act.allowAddingOwn || '' : '');
+  const allowAddingRow = settingRow('Allow adding subactivities',
+    'Can users add subactivities? Note that this is a default and can be overwritten by the settings of a category.',
+    policyDot(allowAdding, under ? 'inherit' : ADDING.no));
   const image = imagePicker(act ? act.image : '', act ? act.imageUrl : '');
   const pretty = text(act ? act.prettyId || '' : '', {placeholder: 'applause', maxLength: 40});
+  // The address as it will read, kept current as the field is typed in, with a
+  // way to copy it - what the form is for, in the end.
+  const addressBase = () => `${location.origin}${under ? activityPath(root) + '/' : '/v/'}`;
+  const addressLine = el('div', 'address-line');
+  const addressText = el('code', 'address-text');
+  const addressCopy = button('Copy', 'copy', 'button button-secondary button-small', () => {
+    navigator.clipboard.writeText(addressText.textContent).then(() => toast('Address copied'), () => toast('Could not copy'));
+  });
+  const paintAddress = () => {
+    const slug = pretty.value.trim().toLowerCase();
+    addressText.textContent = addressBase() + (slug || (act ? act.id : '…'));
+    addressCopy.disabled = !act && !slug;
+  };
+  pretty.addEventListener('input', paintAddress);
+  paintAddress();
+  addressLine.append(addressText, addressCopy);
   const fields = [field('Title', title)];
-  if (admin || !act) {
+  // Only an event has a year of its own; everything under it lives in the event's.
+  const yearField = (admin || !act) && !under ? settingRow('School year', 'The year this event belongs to.', year) : null;
+  if (suggesting) {
     fields.push(field('Year', year));
   }
-  if (root) {
-    fields.push(field('Under', parentSelect, 'What this sits inside, if anything'));
+  if (under) {
+    fields.push(underField);
   }
   if (under) {
     if (own.length) {
@@ -559,36 +839,84 @@ export function openActivity(act, options) {
   } else {
     fields.push(field('Category', category));
   }
-  if (admin && act) {
-    fields.push(field('Status', status));
-  } else if (act && act.status !== 'Pending') {
-    fields.push(field('Status', select(['Open', 'Done'], act.status === 'Done' ? 'Done' : 'Open')));
+  if (!under && !suggesting && parents.length > 1) {
+    // The link takes the slot beside Category, where Under would have been.
+    underField.hidden = true;
+    const slot = el('div', 'field field-link-slot');
+    slot.append(moveLink);
+    fields.push(slot, underField);
   }
+  let statusSelect = null;
+  if (admin && act) {
+    statusSelect = status;
+  } else if (act && act.status !== 'Pending') {
+    statusSelect = select(['Open', 'Done'], act.status === 'Done' ? 'Done' : 'Open');
+  }
+  // Status lives on the Sign-ups tab as a settings row; the short Suggest form
+  // never shows it (a suggestion is pending until approved).
+  const statusRow = statusSelect ? settingRow('Status', 'Control whether this activity is open for sign-ups.', dotted(statusSelect)) : null;
   fields.push(field('Description', description));
+  let body;
   if (!suggesting) {
-    const grid = el('div', 'field-grid');
-    grid.append(field('Start', start, whenHint()), field('End', end));
-    fields.push(field('Timing', timing, 'Shown when there is no date'), grid, field('Location', location),
-      field('Spots', spots, 'How many volunteers can sign up for the activity itself'), image.wrap, coLeader.wrap, hidden.wrap, direct.wrap,
-      field('Friendly address', pretty, under
-        ? `Under ${root.title}'s address: ${prettyHost()}${(root.prettyId || root.id)}/… - letters, digits and hyphens; unique among the things beside it`
-        : `${prettyHost()}… - letters, digits and hyphens; one address per event, across every year`));
+    // The full form is long, so it is a wide modal with the fields sorted into
+    // tabs: what it is, when and where, who may sign up, how it looks and
+    // where it lives. The short selects pair up across the width; the title
+    // and description keep the whole line. A suggestion stays one column.
+    // Basics as settings rows, like the other tabs: the title, what it is
+    // part of and where it is listed, then the description across the width.
+    const basics = [settingRow('Title', 'What this is called.', title)];
+    if (under) {
+      basics.push(settingRow('Parent Event', 'What this is part of.', parentSelect));
+      if (own.length) {
+        basics.push(settingRow('Category', `One of ${root.title}'s own categories.`, eventCategory));
+      }
+    } else {
+      const where = el('div', 'setting-stack');
+      where.append(category);
+      if (parents.length > 1) {
+        where.append(moveLink, underField);
+        underField.classList.add('is-compact');
+      }
+      basics.push(settingRow('Category', 'Where this is listed on the Opportunities page.', where));
+    }
+    const about = settingRow('Description', 'What people should know before they sign up.', description);
+    about.classList.add('is-stacked');
+    basics.push(about);
+    body = [tabbedFields([
+      {label: 'Basics', icon: 'doc', fields: basics},
+      {label: 'When', icon: 'calendar', fields: [...(yearField ? [yearField] : []), when.wrap]},
+      {label: 'Sign-ups', icon: 'people', fields: [...(statusRow ? [statusRow] : []), spotsField, allowAddingRow, coLeader.wrap, hidden.wrap, direct.wrap]},
+      {label: 'Image & Address', icon: 'image', fields: [
+        settingCard('Image', 'A picture makes this activity stand out (optional).', image.wrap.querySelector('.image-row')),
+        settingCard('Friendly address', under
+          ? 'A short address for this activity, under its event. Letters, digits and hyphens; unique among the things beside it.'
+          : 'A short address for this event. Letters, digits and hyphens; one address per event, across every year.',
+        pretty, addressLine),
+      ]},
+    ])];
   } else {
     fields.push(field('Timing', timing, 'When would this happen?'), image.wrap, coChair.wrap);
+    body = fields;
   }
-  const statusField = fields.find(f => f.firstChild && f.firstChild.textContent === 'Status');
-  openModal(act ? 'Edit' : (suggesting ? 'Suggest an Idea' : (opts.parent ? `Add under ${opts.parent.title}` : 'Add Activity')), fields, {
-    saveLabel: suggesting ? 'Suggest' : 'Save',
+  openModal(act ? 'Edit Activity' : (suggesting ? 'Suggest an Idea' : (opts.parent ? `Add under ${opts.parent.title}` : 'Add Activity')), body, {
+    saveLabel: suggesting ? 'Suggest' : (act ? 'Save changes' : 'Add'),
+    deleteLabel: 'Delete activity',
+    wide: !suggesting,
     submit: async () => {
+      const scheduled = suggesting ? {start: '', end: '', timing: timing.value} : when.value();
+      if (!suggesting && when.validate(scheduled)) {
+        throw new Error(when.validate(scheduled));
+      }
       const body = {
         id: act ? act.id : '',
         year: year.value, title: title.value, parent: parentSelect.value,
         category: parentSelect.value ? eventCategory.value : category.value,
-        status: statusField ? statusField.querySelector('select').value : '',
-        description: description.value, image: image.value(), timing: timing.value,
-        start: start.value, end: end.value, location: location.value, spots: Number(spots.value) || 0,
+        status: statusSelect ? statusSelect.value : '',
+        description: description.value, image: image.value(), timing: scheduled.timing,
+        // Location is no longer asked for or shown; a value already in the sheet is kept.
+        start: scheduled.start, end: scheduled.end, location: act ? act.location || '' : '', spots: unlimited.input.checked ? 0 : Number(spots.value) || 0,
         coLeaderNeeded: coLeader.input.checked, volunteersHidden: hidden.input.checked, directSignUp: direct.input.checked,
-        coChair: coChair.input.checked, prettyId: pretty.value.trim().toLowerCase(),
+        coChair: coChair.input.checked, prettyId: pretty.value.trim().toLowerCase(), allowAdding: allowAdding.value,
       };
       await saveActivity(body);
       if (!act) {
@@ -864,9 +1192,30 @@ export async function uploadAndSave(save, file) {
 export function openCategory(category, eventId, after) {
   const title = text(category ? category.title : '', {required: true, maxLength: 120});
   const description = textarea(category ? category.description : '', 3);
-  const image = imagePicker(category ? category.image : '', category ? category.imageUrl : '');
-  const adding = checkbox('People can add new things to this category', category ? category.allowAdding : true);
-  const fields = [field('Title', title), field('Description', description), image.wrap, adding.wrap];
+  description.placeholder = 'Add a brief description (optional).';
+  const image = imagePicker(category ? category.image : '', category ? category.imageUrl : '',
+    {dropzone: true, hint: 'Add an image to represent this category (optional).'});
+  // What people may add here: live, after approval, or not at all - and for an
+  // event's own category, the event's own setting unless said otherwise.
+  const policies = [
+    ...(eventId ? [{label: 'Same as the event', value: ''}] : []),
+    {label: 'Yes - people can add, and it goes live', value: ADDING.yes},
+    {label: 'Approval needed - people can add, an admin approves', value: ADDING.approval},
+    {label: 'No - only organizers add here', value: ADDING.no},
+  ];
+  const adding = select(policies, category ? category.allowAddingOwn || '' : (eventId ? '' : ADDING.no));
+  const addingWrap = el('div', 'status-select policy-select');
+  const paintAdding = () => {
+    addingWrap.dataset.policy = adding.value || 'inherit';
+  };
+  adding.addEventListener('change', paintAdding);
+  paintAdding();
+  addingWrap.append(adding);
+  const titleField = field('Title', title, 'A short, clear name for this category.');
+  titleField.classList.add('is-required');
+  const addingField = field('Allow adding', addingWrap, 'Control whether people can add activities to this category.');
+  addingField.classList.add('is-required');
+  const fields = [titleField, field('Description', description), image.wrap, addingField];
   // Only a page heading can be kept off the main page; it still sits in the
   // rail with its count, and clicking it there shows its events.
   const onMain = eventId ? null : checkbox('Show on the main page (it stays in the toolbar either way)', category ? category.showOnMain : true);
@@ -874,9 +1223,10 @@ export function openCategory(category, eventId, after) {
     fields.push(onMain.wrap);
   }
   openModal(category ? 'Edit Category' : 'Add Category', fields, {
+    saveLabel: category ? 'Save changes' : 'Add',
     submit: () => send('POST', '/api/events/category', {
       id: category ? category.id : '', eventId: eventId || '',
-      title: title.value, description: description.value, image: image.value(), allowAdding: adding.input.checked,
+      title: title.value, description: description.value, image: image.value(), allowAdding: adding.value,
       showOnMain: onMain ? onMain.input.checked : true,
     }),
     afterSave: after,
@@ -884,6 +1234,13 @@ export function openCategory(category, eventId, after) {
     confirmDelete: category ? `Delete the category “${category.title}”?` : '',
     afterDelete: after,
   });
+}
+
+// addingWords is a category's policy in a phrase for the manager's list.
+function addingWords(category) {
+  const own = category.allowAddingOwn || '';
+  const word = {[ADDING.yes]: 'People can add here', [ADDING.approval]: 'People can suggest here', [ADDING.no]: 'Only organizers add here'}[category.allowAdding] || '';
+  return own ? word : (category.eventId ? `${word} (same as the event)` : word);
 }
 
 // categoryList is the one list of categories with reorder, edit and add. The
@@ -916,7 +1273,7 @@ export function categoryList(root, after) {
     }
     const body = el('div', 'grow');
     body.append(el('div', '', category.title));
-    body.append(el('div', 'sub', [category.description, category.allowAdding ? 'People can add here' : 'Only organizers add here',
+    body.append(el('div', 'sub', [category.description, addingWords(category),
       !root && !category.showOnMain ? 'Toolbar only' : ''].filter(Boolean).join(' · ')));
     const up = button('', 'up', 'icon-button', () => move(i, i - 1));
     up.setAttribute('aria-label', `Move ${category.title} up`);
@@ -978,10 +1335,11 @@ export async function saveActivityFields(act, changes) {
     id: act.id,
     year: act.year, title: act.title, parent: act.parent || '',
     category: act.category || '', status: act.status,
-    description: act.description || '', image: act.image || '', timing: act.timing || '',
-    start: act.start || '', end: act.end || '', location: act.location || '', spots: act.spots || 0,
+    // The sheet's own dates, not the ones inherited for display (state.js).
+    description: act.description || '', image: act.image || '', timing: act.own.timing,
+    start: act.own.start, end: act.own.end, location: act.location || '', spots: act.spots || 0,
     coLeaderNeeded: act.coLeaderNeeded, volunteersHidden: act.volunteersHidden, directSignUp: act.directSignUp,
-    prettyId: act.prettyId || '',
+    prettyId: act.prettyId || '', allowAdding: act.allowAddingOwn || '',
     ...changes,
   };
   try {

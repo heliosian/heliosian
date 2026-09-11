@@ -1,7 +1,8 @@
-import {state, years, allYears, sortByStart, matches, selectedYear, listedIn} from '../state.js';
-import {el, toggle, selectPill, thumb} from '../dom.js';
+import {state, isAdmin, years, allYears, sortByStart, matches, selectedYear, listedIn, canAdd, addLabel} from '../state.js';
+import {el, toggle, selectPill, thumb, button} from '../dom.js';
 import {setTitle, setSearch} from '../chrome.js';
 import {activityCard, categoryClass} from '../cards.js';
+import {openActivity} from '../edit.js';
 
 let query = '';
 
@@ -43,6 +44,15 @@ function yearGrid(year) {
       heading.append(el('p', 'group-note', c.description));
     }
     head.append(heading);
+    // An Add button on the heading, when the category takes additions from
+    // people, or always for an admin, so a new thing lands in the right place;
+    // the built-in Uncategorized heading takes none.
+    if (!c.builtIn && (canAdd(c) || isAdmin())) {
+      const add = button(isAdmin() ? 'Add' : addLabel(c), 'plus', 'button button-secondary button-small group-add',
+        () => openActivity(null, {category: c.id}));
+      add.title = `Add to ${c.title}`;
+      head.append(add);
+    }
     root.append(head);
     const grid = el('div', 'card-grid');
     for (const act of inGroup) {

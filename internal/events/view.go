@@ -26,6 +26,23 @@ type DirectoryPerson struct {
 	// grown-up behind a child's sign-up. Empty for anyone who is not a student.
 	IsStudent    bool     `json:"isStudent,omitempty"`
 	ParentEmails []string `json:"parentEmails,omitempty"`
+	// The rest fills the card that opens from a person's chip: how to reach
+	// them (as the directory would show it, so a masked phone stays blank),
+	// what places them, and for a parent their children.
+	Pronouns   string  `json:"pronouns,omitempty"`
+	Phone      string  `json:"phone,omitempty"`
+	Grade      string  `json:"grade,omitempty"`
+	Classroom  string  `json:"classroom,omitempty"`
+	JobTitle   string  `json:"jobTitle,omitempty"`
+	Department string  `json:"department,omitempty"`
+	Children   []Child `json:"children,omitempty"`
+}
+
+// A Child is one of a parent's children as the card lists them: a name and
+// the grade they are in.
+type Child struct {
+	Name  string `json:"name"`
+	Grade string `json:"grade,omitempty"`
 }
 
 // displayName reads a name out of an address for someone the directory does not
