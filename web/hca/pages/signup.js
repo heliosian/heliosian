@@ -53,10 +53,13 @@ function yearContent(year, thisYear) {
   const list = el('div');
   const paint = () => list.replaceChildren(yearGrid(year));
 
-  // The chip row filters the grid in place: "All" plus one chip per category the
-  // sheet defines, each in that category's own tint.
+  // The chip row filters the grid in place: "All" plus one chip per category
+  // that has something in it this year, each in that category's own tint. The
+  // chips follow the year and the switches but not the search or the chosen
+  // chip, so filtering never makes the other chips disappear.
   const paintChips = () => {
     chips.replaceChildren();
+    const present = new Set(listedIn(year).map(a => a.category));
     const add = (id, label) => {
       const chip = el('button', 'chip ' + (id ? categoryClass(id) : 'chip-all') + (state.category === id ? ' is-on' : ''));
       chip.type = 'button';
@@ -70,7 +73,9 @@ function yearContent(year, thisYear) {
     };
     add('', 'All');
     for (const c of state.model.categories) {
-      add(c.id, c.title);
+      if (present.has(c.id)) {
+        add(c.id, c.title);
+      }
     }
   };
 

@@ -1,4 +1,4 @@
-import {state, me, isAdmin, pendingItems, selectedYear, listedIn} from './state.js';
+import {state, me, isAdmin, pendingItems, selectedYear, listedIn, years} from './state.js';
 import {el, svg, link, button} from './dom.js';
 import {githubBadge} from '/github-badge.js';
 import {openActivity} from './edit.js';
@@ -24,8 +24,24 @@ function active(href) {
   return path === href || path.startsWith(href + '/');
 }
 
+// yearPath is the opportunities page for the chosen year: the root for the
+// current year, /years/... for any other, matching what the year dropdown puts
+// in the address bar.
+function yearPath() {
+  const year = selectedYear();
+  return year === years().current ? '/' : `/years/${encodeURIComponent(year)}`;
+}
+
 function navLink(item) {
-  const a = link(item.href, active(item.href) ? 'is-active' : '');
+  const href = item.href === '/' ? yearPath() : item.href;
+  const a = link(href, active(item.href) ? 'is-active' : '');
+  if (item.href === '/') {
+    // Opportunities is the whole year: it drops whatever category a chip or
+    // the rail had narrowed the page to, but keeps the year.
+    a.addEventListener('click', () => {
+      state.category = '';
+    });
+  }
   a.append(svg(item.icon), el('span', '', item.label));
   const n = item.count ? item.count() : 0;
   if (n) {
@@ -64,7 +80,7 @@ function categoryLinks() {
     counts.set(a.category, (counts.get(a.category) || 0) + 1);
   }
   for (const c of state.model.categories) {
-    const n = counts.get(c.title) || 0;
+    const n = counts.get(c.id) || 0;
     // An empty category is nothing to click through to, so it drops out of the
     // rail until the year or the switches bring something back into it.
     if (!n) {
