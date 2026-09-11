@@ -8,7 +8,7 @@ Every app answers at `https://<app>.local.heliosian.com:8080`, under the same na
 
 ## Hosts and files
 
-One binary serves every app, and the hostname picks the app by convention: `<app>.heliosian.com` is production, `<app>.lab.heliosian.com` is the same service under a second name, and `<app>.local.heliosian.com` is a developer's machine, so `who.heliosian.com`, `who.lab.heliosian.com`, and `who.local.heliosian.com` all mean the directory. Home additionally answers as `heliosian.com` and `www.heliosian.com`, and any other host gets a 404 (`internal/app`). Public DNS points `*.local.heliosian.com` at loopback, so local development uses real hostnames under it with no hosts-file entry, and the OAuth client and Maps key can name them (Google refuses made-up domains such as `.localhost`).
+One binary serves every app, and the hostname picks the app by convention: `<app>.heliosian.com` is production, `<app>.lab.heliosian.com` is the same service under a second name, and `<app>.local.heliosian.com` is a developer's machine, so `who.heliosian.com`, `who.lab.heliosian.com`, and `who.local.heliosian.com` all mean the directory. Home additionally answers as `heliosian.com` and `www.heliosian.com`, the volunteer portal (`team`) as `hca` on every tier, and any other host gets a 404 (`internal/app`). Public DNS points `*.local.heliosian.com` at loopback, so local development uses real hostnames under it with no hosts-file entry, and the OAuth client and Maps key can name them (Google refuses made-up domains such as `.localhost`).
 
 ## Local HTTPS
 

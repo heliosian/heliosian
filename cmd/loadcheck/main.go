@@ -57,7 +57,7 @@ func (eventsImages) Has(key string) (bool, error) {
 	if strings.HasPrefix(key, "activity-images/") {
 		return true, nil
 	}
-	return bundled([]string{"web/hca", "web/public/hca"}, key), nil
+	return bundled([]string{"web/team", "web/public/team"}, key), nil
 }
 
 func (eventsImages) Prefetch([]string) error { return nil }

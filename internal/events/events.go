@@ -26,7 +26,7 @@ import (
 const (
 	imageFolder  = "activity-images"
 	maxImageSize = 8 << 20
-	shell        = "web/hca/index.html"
+	shell        = "web/team/index.html"
 )
 
 var pages = []string{

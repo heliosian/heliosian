@@ -509,11 +509,11 @@ export async function personInfo(email) {
   return all.find(p => p.email === email) || null;
 }
 
-// whoProfile is a person's page on Helios Who?, on this tier: hca.x.heliosian.com
-// pairs with who.x.heliosian.com, and the page is named by the address's local
-// part, as Who's own links are.
+// whoProfile is a person's page on Helios Who?, on this tier: team.x.heliosian.com
+// (or its alias hca.x.heliosian.com) pairs with who.x.heliosian.com, and the page
+// is named by the address's local part, as Who's own links are.
 export function whoProfile(email) {
-  const host = location.host.replace(/^hca\./, 'who.');
+  const host = location.host.replace(/^(team|hca)\./, 'who.');
   return `${location.protocol}//${host}/people/${encodeURIComponent((email || '').split('@')[0])}`;
 }
 

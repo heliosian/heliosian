@@ -41,7 +41,7 @@ Every activity has an `Event ID` and every category a `Category ID`, unique acro
 The cost is that the sheet no longer reads as prose on its own — a volunteer row says `E017`, not "Clean Up Crew" — so the Change Log keeps writing titles alongside ids for the humans who read it.
 
 
-`Pretty ID` is an optional friendly address: `applause` puts the activity at `hca.heliosian.com/v/applause`, and every link to it and the share button use that address. Lower-case letters, digits and hyphens, at most 40; one address for one thing **across every year**. Saving refuses an address another activity holds in the same or a later year; one held by a prior year's activity is offered for renaming - to `applause-2025`, the address with that year - and taken once the editor agrees. Changing or removing one writes a row to `Redirects`, so the old address keeps working and the browser's address bar is corrected to the live one. Copying an event into the next year leaves the copy without one. A duplicate typed into the sheet loads with the latest year keeping the address (counted in `Model.Skipped`).
+`Pretty ID` is an optional friendly address: `applause` puts the activity at `team.heliosian.com/v/applause`, and every link to it and the share button use that address. Lower-case letters, digits and hyphens, at most 40; one address for one thing **across every year**. Saving refuses an address another activity holds in the same or a later year; one held by a prior year's activity is offered for renaming - to `applause-2025`, the address with that year - and taken once the editor agrees. Changing or removing one writes a row to `Redirects`, so the old address keeps working and the browser's address bar is corrected to the live one. Copying an event into the next year leaves the copy without one. A duplicate typed into the sheet loads with the latest year keeping the address (counted in `Model.Skipped`).
 
 A thing under an event is addressed under the event's path - `/v/inight/poland`, or `/v/inight/{id}` when it has no friendly name of its own, or `/activities/{event id}/...` when the event has none - so a child's friendly name only needs to be unique among its siblings, and `poland` can exist under every year's International Night. The bare `/activities/{id}` of a child still resolves, and the browser's address bar is corrected to the full path.
 ## Why the Glide tables were not kept
@@ -64,7 +64,7 @@ Status is one of `Pending`, `Open`, `Done`, `Hidden`, spelled exactly so. Spots 
 
 ## Images
 
-An Image cell is an object under `activity-images/` in the media bucket, content-addressed and written by the image picker, or a path to a bundled file under `web/hca/` or `web/public/hca/`. A name that resolves to neither refuses the load. A role with no image shows its activity's.
+An Image cell is an object under `activity-images/` in the media bucket, content-addressed and written by the image picker, or a path to a bundled file under `web/team/` or `web/public/team/`. A name that resolves to neither refuses the load. A role with no image shows its activity's.
 
 ## A load either succeeds whole or refuses
 

@@ -83,7 +83,7 @@ var imageClient = &http.Client{Timeout: 20 * time.Second}
 // smaller one for the grid is the same address with the width swapped.
 var thumbWidth = regexp.MustCompile(`/\d+px-`)
 
-const userAgent = "HCA-Team image search (+https://hca.heliosian.com)"
+const userAgent = "HCA-Team image search (+https://team.heliosian.com)"
 
 // searchImages answers one image search from whichever source is set up,
 // keeping any key on the server. SafeSearch is always on; this is a school.

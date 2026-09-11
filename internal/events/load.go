@@ -79,7 +79,7 @@ var (
 
 var yearForm = regexp.MustCompile(`^(\d{4}) - (\d{4})$`)
 
-// prettyForm is what a Pretty ID may look like: the tail of hca.heliosian.com/v/...,
+// prettyForm is what a Pretty ID may look like: the tail of team.heliosian.com/v/...,
 // lower case letters, digits and hyphens, so it types easily and reads aloud.
 var prettyForm = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 
@@ -265,7 +265,7 @@ type Settings struct {
 }
 
 // A Redirect keeps an old address working after it changed: someone holding
-// hca.heliosian.com/v/inight/poland still lands on the booth after the event or
+// team.heliosian.com/v/inight/poland still lands on the booth after the event or
 // the booth was renamed. Old and New are paths as the site serves them -
 // /v/inight/poland, or /activities/{id}/... for a thing under an event with no
 // friendly address; a bare word is taken as /v/{word}. Type names the kind of

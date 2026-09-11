@@ -80,7 +80,7 @@ func chairsAround(m *Model, act *Activity) []string {
 }
 
 // baseURL is the site as the request reached it, for the links and pictures
-// in a message - hca.lab.heliosian.com today, hca.heliosian.com later.
+// in a message - team.lab.heliosian.com today, team.heliosian.com later.
 func baseURL(r *http.Request) string {
 	scheme := "https"
 	if r.TLS == nil && !strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") && strings.HasPrefix(r.Host, "localhost") {

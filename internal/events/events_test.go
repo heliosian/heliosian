@@ -822,25 +822,25 @@ func TestSharePreview(t *testing.T) {
 	head := PreviewHead(cache)
 	// An open event previews with its title, its date and a line of its
 	// description, and its card; a hidden one, and any other page, show nothing.
-	tags := head(httptest.NewRequest("GET", "https://hca.heliosian.com/v/intl-night/", nil))
-	for _, want := range []string{`og:title" content="International Night"`, `og:url" content="https://hca.heliosian.com/v/international-night"`,
-		`og:image" content="https://hca.heliosian.com/share/E001.png"`, `Thursday, September 24 · 4:00–6:00 PM — We invite you`} {
+	tags := head(httptest.NewRequest("GET", "https://team.heliosian.com/v/intl-night/", nil))
+	for _, want := range []string{`og:title" content="International Night"`, `og:url" content="https://team.heliosian.com/v/international-night"`,
+		`og:image" content="https://team.heliosian.com/share/E001.png"`, `Thursday, September 24 · 4:00–6:00 PM — We invite you`} {
 		if !strings.Contains(tags, want) {
 			t.Fatalf("preview lacks %s:\n%s", want, tags)
 		}
 	}
 	// A thing under an event is titled with the event and, having no date of
 	// its own, previews with the event's.
-	tags = head(httptest.NewRequest("GET", "https://hca.heliosian.com/v/international-night/E020", nil))
+	tags = head(httptest.NewRequest("GET", "https://team.heliosian.com/v/international-night/E020", nil))
 	for _, want := range []string{`og:title" content="India · International Night"`, `Thursday, September 24 · 4:00–6:00 PM`} {
 		if !strings.Contains(tags, want) {
 			t.Fatalf("child preview lacks %s:\n%s", want, tags)
 		}
 	}
-	if head(httptest.NewRequest("GET", "https://hca.heliosian.com/activities/E006", nil)) != "" {
+	if head(httptest.NewRequest("GET", "https://team.heliosian.com/activities/E006", nil)) != "" {
 		t.Fatalf("a hidden thing was previewed")
 	}
-	if head(httptest.NewRequest("GET", "https://hca.heliosian.com/my", nil)) != "" {
+	if head(httptest.NewRequest("GET", "https://team.heliosian.com/my", nil)) != "" {
 		t.Fatalf("a page with nothing to preview got tags")
 	}
 	// The card is public - the mux is called without a session - and only for

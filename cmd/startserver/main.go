@@ -91,7 +91,7 @@ func sampleServer() (*http.Server, *who.Queue) {
 	return localTLS(app.Server(map[string]http.Handler{
 		"who":      app.Public("who", auth.Fixed(sampleUser, app.Logged("who", app.Files("who", core.Gate)))),
 		"home":     app.Public("home", auth.Fixed(sampleUser, app.Logged("home", app.Files("home", core.Home)))),
-		"hca":      app.Public("hca", auth.Fixed(sampleUser, app.Logged("hca", app.Files("hca", core.Events)))),
+		"team":     app.Public("team", auth.Fixed(sampleUser, app.Logged("team", app.Files("team", core.Events)))),
 		"birthday": app.Public("birthday", auth.Fixed(sampleUser, app.Logged("birthday", app.Files("birthday", core.Birthday)))),
 	}), core.Queue)
 }

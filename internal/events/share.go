@@ -232,7 +232,7 @@ func (a app) readImage(key string) []byte {
 		}
 		return data
 	}
-	for _, dir := range []string{"web/hca", "web/public/hca"} {
+	for _, dir := range []string{"web/team", "web/public/team"} {
 		if data, err := os.ReadFile(path.Join(dir, key)); err == nil {
 			return data
 		}
@@ -255,7 +255,7 @@ var (
 func loadFaces() (*opentype.Font, *opentype.Font, error) {
 	facesOnce.Do(func() {
 		load := func(name string) *opentype.Font {
-			data, err := os.ReadFile("web/hca/fonts/" + name)
+			data, err := os.ReadFile("web/team/fonts/" + name)
 			if err != nil {
 				faces.err = err
 				return nil
@@ -279,7 +279,7 @@ var (
 
 func loadMeadow() image.Image {
 	meadowOnce.Do(func() {
-		data, err := os.ReadFile("web/hca/toolbar_background.png")
+		data, err := os.ReadFile("web/team/toolbar_background.png")
 		if err != nil {
 			return
 		}
@@ -290,7 +290,7 @@ func loadMeadow() image.Image {
 
 func loadMark() image.Image {
 	markOnce.Do(func() {
-		data, err := os.ReadFile("web/public/hca/brand/logo-mark.png")
+		data, err := os.ReadFile("web/public/team/brand/logo-mark.png")
 		if err != nil {
 			return
 		}

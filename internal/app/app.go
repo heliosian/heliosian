@@ -35,7 +35,8 @@ import (
 
 // appFor reads the app out of a hostname: <app>.heliosian.com in production,
 // <app>.lab.heliosian.com hosted alongside it, <app>.local.heliosian.com on a
-// developer's machine. Home also answers as the bare and www apex.
+// developer's machine. Home also answers as the bare and www apex, and the
+// volunteer portal, team, as hca.
 func appFor(host string) string {
 	switch host {
 	case "heliosian.com", "www.heliosian.com":
@@ -48,6 +49,9 @@ func appFor(host string) string {
 	app, tier, _ := strings.Cut(name, ".")
 	if tier != "" && tier != "lab" && tier != "local" {
 		return ""
+	}
+	if app == "hca" {
+		return "team"
 	}
 	return app
 }
@@ -121,7 +125,7 @@ func (e eventsImages) Has(key string) (bool, error) {
 	if strings.HasPrefix(key, "activity-images/") {
 		return uploaded(e.store, key)
 	}
-	return bundled([]string{"web/hca", "web/public/hca"}, key), nil
+	return bundled([]string{"web/team", "web/public/team"}, key), nil
 }
 
 func (e eventsImages) Prefetch(names []string) error {
@@ -582,17 +586,17 @@ func Production() (*http.Server, *who.Queue) {
 	whoAuth.Register(core.Mux)
 	homeAuth := auth.New(client, []byte(sessionKey), "web/public/home/login.html")
 	homeAuth.Register(core.HomeMux)
-	hcaAuth := auth.New(client, []byte(sessionKey), "web/public/hca/login.html")
+	teamAuth := auth.New(client, []byte(sessionKey), "web/public/team/login.html")
 	// A shared link to an event previews in chat apps: the sign-in page it
 	// leads to carries the event's Open Graph tags.
-	hcaAuth.Preview = events.PreviewHead(core.EventsCache)
-	hcaAuth.Register(core.EventsMux)
+	teamAuth.Preview = events.PreviewHead(core.EventsCache)
+	teamAuth.Register(core.EventsMux)
 	birthdayAuth := auth.New(client, []byte(sessionKey), "web/public/birthday/login.html")
 	birthdayAuth.Register(core.BirthdayMux)
 	return Server(map[string]http.Handler{
 		"who":      Public("who", whoAuth.Wrap(Logged("who", Files("who", core.Gate)))),
 		"home":     Public("home", homeAuth.Wrap(Logged("home", Files("home", core.Home)))),
-		"hca":      Public("hca", hcaAuth.Wrap(Logged("hca", Files("hca", core.Events)))),
+		"team":     Public("team", teamAuth.Wrap(Logged("team", Files("team", core.Events)))),
 		"birthday": Public("birthday", birthdayAuth.Wrap(Logged("birthday", Files("birthday", core.Birthday)))),
 	}), core.Queue
 }

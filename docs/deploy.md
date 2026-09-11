@@ -110,7 +110,7 @@ Queries that answer the usual questions, in Logs Explorer with the service selec
 
     jsonPayload.user="someone@heliosschool.org"
     severity>=ERROR
-    jsonPayload.app="hca" AND jsonPayload.message:"events:"
+    jsonPayload.app="team" AND jsonPayload.message:"events:"
     jsonPayload.httpRequest.status>=500
     trace="projects/heliosian/traces/<trace id>"
 
