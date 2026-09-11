@@ -27,6 +27,7 @@ import (
 	"heliosian/internal/capture"
 	"heliosian/internal/data"
 	"heliosian/internal/devtls"
+	"heliosian/internal/events"
 	"heliosian/internal/geocode"
 	"heliosian/internal/logging"
 	"heliosian/internal/who"
@@ -64,10 +65,11 @@ func main() {
 func sampleServer() (*http.Server, *who.Queue) {
 	dir := &data.Dir{Root: "sampledata"}
 	core := app.NewCore(app.Config{
-		Source:     dir,
-		Writer:     dir,
-		Geocoder:   geocode.Fake{},
-		BrowserKey: os.Getenv("GOOGLE_MAPS_BROWSER_KEY"),
+		Source:      dir,
+		Writer:      dir,
+		Geocoder:    geocode.Fake{},
+		BrowserKey:  os.Getenv("GOOGLE_MAPS_BROWSER_KEY"),
+		ImageSearch: events.ImageSearch{Key: os.Getenv("GOOGLE_SEARCH_KEY"), CX: os.Getenv("GOOGLE_SEARCH_CX"), Unsplash: os.Getenv("UNSPLASH_KEY")},
 	})
 	core.Mux.Handle("POST /auth/logout", http.RedirectHandler("/", http.StatusSeeOther))
 	core.HomeMux.Handle("POST /auth/logout", http.RedirectHandler("/", http.StatusSeeOther))

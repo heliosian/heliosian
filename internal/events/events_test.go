@@ -52,7 +52,7 @@ func newServer(t *testing.T) (*Cache, *http.ServeMux) {
 		t.Fatal(err)
 	}
 	mux := http.NewServeMux()
-	Register(mux, cache, dir, syncQueue{}, nil, fakeDirectory{}, func() []string { return []string{admin} })
+	Register(mux, cache, dir, syncQueue{}, nil, fakeDirectory{}, func() []string { return []string{admin} }, ImageSearch{})
 	return cache, mux
 }
 
@@ -435,7 +435,7 @@ func TestBrokenSheetStallsThePortalOnly(t *testing.T) {
 		t.Fatalf("a broken sheet should give a cache without a model and an error, got %v %v", cache, err)
 	}
 	mux := http.NewServeMux()
-	Register(mux, cache, &data.Dir{Root: broken}, syncQueue{}, nil, fakeDirectory{}, func() []string { return nil })
+	Register(mux, cache, &data.Dir{Root: broken}, syncQueue{}, nil, fakeDirectory{}, func() []string { return nil }, ImageSearch{})
 	rec := call(t, mux, parent, "GET", "/api/events/model", nil)
 	if rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), `missing column "Event ID"`) {
 		t.Fatalf("before the sheet loads: %d %s", rec.Code, rec.Body)

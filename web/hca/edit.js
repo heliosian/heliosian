@@ -276,6 +276,16 @@ function imagePicker(current, currentUrl, options) {
     await upload(new File([blob], 'crop.jpg', {type: 'image/jpeg'}));
     return true;
   }));
+  const google = el('button', 'button button-secondary button-small', 'Find an image');
+  google.type = 'button';
+  google.hidden = !imageSearchOn();
+  google.addEventListener('click', e => {
+    e.stopPropagation();
+    openImageSearch(options && options.query ? options.query() : '', async picked => {
+      name = picked;
+      show('/' + picked);
+    });
+  });
   if (dropzone) {
     // The zone itself takes a click (anywhere but the buttons) and a drop.
     row.addEventListener('click', e => {
@@ -293,9 +303,11 @@ function imagePicker(current, currentUrl, options) {
       row.classList.remove('is-dragover');
       upload(e.dataTransfer.files[0]);
     });
-    row.append(preview, placeholder, choose, el('small', 'image-drop-note', 'JPG, PNG or GIF (max 8 MB)'), crop, remove);
+    const buttons = el('div', 'image-drop-buttons');
+    buttons.append(choose, google);
+    row.append(preview, placeholder, buttons, el('small', 'image-drop-note', 'JPG, PNG or GIF (max 8 MB)'), crop, remove);
   } else {
-    row.append(preview, placeholder, choose, crop, remove);
+    row.append(preview, placeholder, choose, google, crop, remove);
   }
   wrap.append(row);
   return {wrap, value: () => name};
@@ -1232,6 +1244,125 @@ export async function uploadAndSave(save, file) {
     await save({image: name});
   } catch (err) {
     toast(err.message);
+  }
+}
+
+// imageSearchOn says the server can search Google Images (it has a key).
+export function imageSearchOn() {
+  return Boolean(state.model && state.model.imageSearch);
+}
+
+// openImageSearch is the Google Images picker: a search box, a grid of
+// results, and a click on one imports it through the server - which fetches
+// and stores the picture like an upload - and hands the stored name to
+// `onPicked`. SafeSearch is on server-side.
+// imageSources is where the server can look, first first; imageSource the
+// one the picker leads with.
+export function imageSources() {
+  return (state.model && state.model.imageSources) || ['Wikimedia Commons'];
+}
+
+export function imageSource() {
+  return imageSources()[0];
+}
+
+const notes = {
+  'Unsplash': 'Free to use under the Unsplash License; the photographer is credited on each tile.',
+  'Wikimedia Commons': 'Everything here is free to use; the licence is on each tile, and CC BY ones ask to be credited.',
+  'Google Images': 'Pick a picture you have the right to use - a school photo, a poster, a flag, a public-domain image.',
+};
+
+export function openImageSearch(initial, onPicked) {
+  const wrap = el('div', 'image-search');
+  const bar = el('div', 'image-search-bar');
+  const input = el('input');
+  input.type = 'search';
+  input.value = initial || '';
+  const go = button('Search', 'search', 'button', () => run());
+  // With more than one place to look, a segmented switch picks between them.
+  let source = imageSource();
+  const sources = imageSources();
+  const picker = sources.length > 1 ? segmented(sources.map(s => ({label: s, value: s})), source, v => {
+    source = v;
+    input.placeholder = `Search ${source}…`;
+    note.textContent = notes[source] || '';
+    run();
+  }) : null;
+  bar.append(input, go);
+  const status = el('div', 'image-search-status');
+  const grid = el('div', 'image-search-grid');
+  const note = el('div', 'hint', notes[source] || '');
+  input.placeholder = `Search ${source}…`;
+  if (picker) {
+    wrap.append(picker);
+  }
+  wrap.append(bar, status, grid, note);
+  let busy = false;
+  const run = async () => {
+    const q = input.value.trim();
+    if (!q || busy) {
+      return;
+    }
+    busy = true;
+    status.textContent = 'Searching…';
+    grid.replaceChildren();
+    try {
+      const res = await fetch(`/api/events/images/search?q=${encodeURIComponent(q)}&source=${encodeURIComponent(source)}`);
+      if (!res.ok) {
+        throw new Error(await res.text());
+      }
+      const hits = await res.json();
+      status.textContent = hits.length ? '' : 'Nothing found.';
+      for (const hit of hits) {
+        const tile = el('button', 'image-search-hit');
+        tile.type = 'button';
+        const img = el('img');
+        img.src = hit.thumb;
+        img.alt = hit.title;
+        img.loading = 'lazy';
+        img.addEventListener('load', () => img.classList.add('is-loaded'));
+        tile.append(img, el('span', 'image-search-source', hit.credit || (hit.license ? `${hit.license} · ${hit.source}` : hit.source)));
+        tile.title = `${hit.title} - ${hit.width}×${hit.height}${hit.license ? ` - ${hit.license}` : ''}`;
+        tile.addEventListener('click', async () => {
+          if (busy) {
+            return;
+          }
+          busy = true;
+          status.textContent = 'Importing…';
+          tile.classList.add('is-picked');
+          try {
+            const imported = await fetch('/api/events/images/import', {
+              method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({url: hit.url, download: hit.download || ''}),
+            });
+            if (!imported.ok) {
+              throw new Error(await imported.text());
+            }
+            const {name} = await imported.json();
+            closeModal();
+            await onPicked(name);
+          } catch (err) {
+            status.textContent = err.message;
+            tile.classList.remove('is-picked');
+          }
+          busy = false;
+        });
+        grid.append(tile);
+      }
+    } catch (err) {
+      status.textContent = err.message;
+    }
+    busy = false;
+  };
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      run();
+    }
+  });
+  openModal('Find an image', [wrap], {wide: true});
+  input.focus();
+  if (input.value) {
+    run();
   }
 }
 

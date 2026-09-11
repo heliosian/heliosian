@@ -107,6 +107,10 @@ type View struct {
 	// Redirects let the client send an old friendly address to where the thing
 	// is now, without a round trip.
 	Redirects []Redirect `json:"redirects"`
+	// ImageSearch says the server can search for a picture, and ImageSources
+	// lists where it can look, first first, for the picker.
+	ImageSearch  bool     `json:"imageSearch"`
+	ImageSources []string `json:"imageSources,omitempty"`
 }
 
 type User struct {

@@ -51,16 +51,19 @@ type app struct {
 	store       *blob.Store
 	directory   Directory
 	superAdmins func() []string
+	search      ImageSearch
 }
 
 // Register wires the portal: one shell for every page, the model, and the
 // writes. Every route already sits behind sign-in.
-func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, directory Directory, superAdmins func() []string) {
-	a := app{cache: cache, writer: writer, queue: queue, store: store, directory: directory, superAdmins: superAdmins}
+func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, directory Directory, superAdmins func() []string, search ImageSearch) {
+	a := app{cache: cache, writer: writer, queue: queue, store: store, directory: directory, superAdmins: superAdmins, search: search}
 	for _, page := range pages {
 		mux.HandleFunc("GET "+page, a.ready(a.page))
 	}
 	mux.HandleFunc("GET /api/events/model", a.ready(a.model))
+	mux.HandleFunc("GET /api/events/images/search", a.ready(a.searchImages))
+	mux.HandleFunc("POST /api/events/images/import", a.ready(a.importImage))
 	// Public, past sign-in (auth.Public): the image a chat app shows for a link.
 	mux.HandleFunc("GET /share/{id}", a.ready(a.shareCard))
 	mux.HandleFunc("GET /api/events/people", a.ready(a.people))
@@ -124,6 +127,10 @@ func today() string {
 func (a app) model(w http.ResponseWriter, r *http.Request) {
 	email, admin := a.who(r)
 	view := Render(a.cache.Model(), a.directory, email, admin, time.Now().In(local))
+	// Image search is always on: Wikimedia Commons needs no key; Unsplash and
+	// Google join it when their keys are set.
+	view.ImageSearch = true
+	view.ImageSources = a.search.Sources()
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
 		slog.ErrorContext(r.Context(), "encode events model", "error", err)

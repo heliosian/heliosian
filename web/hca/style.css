@@ -1941,6 +1941,68 @@ button.side-chair:hover { background: var(--input); }
 
 .hero-image-action:hover { background: #fff; }
 
+/* The image menu on the hero: two ways to bring a picture in. */
+.hero-image-menu-holder { position: relative; display: inline-block; }
+
+.hero-image-menu {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 8px);
+  min-width: 190px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  padding: 6px 0;
+  z-index: 5;
+}
+
+.hero-image-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 14px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.hero-image-menu-item:hover { background: var(--input); }
+
+.hero-image-menu-item svg { width: 16px; height: 16px; color: var(--brand); }
+
+/* The Google Images picker. */
+.image-search > .segmented { margin-bottom: 12px; }
+
+.image-search-bar { display: flex; gap: 8px; }
+
+.image-search-bar input { flex: 1; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; }
+
+.image-search-status { min-height: 20px; margin: 10px 0 6px; font-size: 13.5px; color: var(--muted); }
+
+.image-search-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+
+.image-search-hit { position: relative; padding: 0; border: 2px solid transparent; border-radius: 10px; background: var(--input); overflow: hidden; cursor: pointer; aspect-ratio: 4 / 3; }
+
+.image-search-hit img { width: 100%; height: 100%; object-fit: cover; display: block; opacity: 0; transition: opacity 0.2s; }
+
+.image-search-hit img.is-loaded { opacity: 1; }
+
+.image-search-hit:hover { border-color: var(--accent); }
+
+.image-search-hit.is-picked { border-color: var(--brand); opacity: 0.6; }
+
+.image-search-source { position: absolute; left: 0; right: 0; bottom: 0; padding: 3px 6px; font-size: 11px; color: #fff; background: rgba(0, 0, 0, 0.55); text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.image-search .hint { margin-top: 12px; font-size: 12.5px; color: var(--muted); }
+
+.image-drop-buttons { display: flex; gap: 8px; margin-top: 6px; }
+
 .hero-image-action svg { width: 15px; height: 15px; }
 
 .hero-image-status { color: #fff; font-size: 13px; font-weight: 600; }

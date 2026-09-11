@@ -311,6 +311,8 @@ type Config struct {
 	Blobs      who.BlobChecker
 	Store      *blob.Store
 	BrowserKey string
+	// ImageSearch is the portal's Google image search; zero when not set up.
+	ImageSearch events.ImageSearch
 }
 
 // Core is the assembled shared skeleton: each app's mux (still open for the
@@ -376,7 +378,7 @@ func NewCore(cfg Config) *Core {
 	homeMux := http.NewServeMux()
 	home.Register(homeMux, homeCache, cfg.Writer, queue, cfg.Store, settings.SuperAdmins, cache.HeroPhoto)
 	eventsMux := http.NewServeMux()
-	events.Register(eventsMux, eventsCache, cfg.Writer, queue, cfg.Store, directory{cache}, settings.SuperAdmins)
+	events.Register(eventsMux, eventsCache, cfg.Writer, queue, cfg.Store, directory{cache}, settings.SuperAdmins, cfg.ImageSearch)
 	birthdayMux := http.NewServeMux()
 	birthday.Register(birthdayMux, birthdayCache, cfg.Writer, queue, birthdayDirectory{cache}, settings.SuperAdmins)
 	return &Core{
@@ -450,6 +452,19 @@ func clientID() string {
 	return parsed.Web.ClientID
 }
 
+// optionalKey is mapsKey for something the server runs without: empty when
+// neither the variable nor the file is there.
+func optionalKey(envName, file string) string {
+	if key := os.Getenv(envName); key != "" {
+		return key
+	}
+	raw, err := os.ReadFile(file)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(raw))
+}
+
 func mapsKey(envName, file string) string {
 	if key := os.Getenv(envName); key != "" {
 		return key
@@ -493,6 +508,11 @@ func Production() (*http.Server, *who.Queue) {
 		Blobs:      store,
 		Store:      store,
 		BrowserKey: mapsKey("GOOGLE_MAPS_BROWSER_KEY", "creds/maps.key"),
+		ImageSearch: events.ImageSearch{
+			Key:      optionalKey("GOOGLE_SEARCH_KEY", "creds/search.key"),
+			CX:       optionalKey("GOOGLE_SEARCH_CX", "creds/search.cx"),
+			Unsplash: optionalKey("UNSPLASH_KEY", "creds/unsplash.key"),
+		},
 	})
 	blob.Register(core.Mux, store)
 	blob.RegisterHome(core.HomeMux, store)

@@ -3,7 +3,7 @@ import {el, link, svg, thumb, avatar, badge, button, searchBox, copyText, whenEd
 import {setTitle} from '../chrome.js';
 import {childRow, categoryClass} from '../cards.js';
 import {openCropTool, openPhotoLightbox} from '../crop.js';
-import {openSignUp, openActivity, openLink, saveActivityFields, openPerson, editable, textInput, textAreaInput, selectInput, uploadAndSave, openCategoryManager, openVolunteerGrid} from '../edit.js';
+import {openSignUp, openActivity, openLink, saveActivityFields, openPerson, openImageSearch, imageSearchOn, editable, textInput, textAreaInput, selectInput, uploadAndSave, openCategoryManager, openVolunteerGrid} from '../edit.js';
 
 
 // Which activity is in edit mode, by id. Keyed rather than a bare boolean so
@@ -48,8 +48,6 @@ function heroStamp(act) {
 // did not save would be a half-finished state with nothing to show for it.
 function heroImageBar(node, save) {
   const bar = el('div', 'hero-image-bar');
-  const choose = el('label', 'hero-image-action');
-  choose.append(svg('image'), el('span', '', node.image ? 'Replace image' : 'Add an image'));
   const file = el('input');
   file.type = 'file';
   file.accept = 'image/*';
@@ -61,8 +59,43 @@ function heroImageBar(node, save) {
     bar.replaceChildren(el('span', 'hero-image-status', 'Uploading…'));
     await uploadAndSave(save, file.files[0]);
   });
-  choose.append(file);
-  bar.append(choose);
+  // The image comes from a file or from Google Images; with search set up the
+  // button is a small menu of the two, otherwise it is the file picker itself.
+  const label = node.image ? 'Replace image' : 'Add an image';
+  if (imageSearchOn()) {
+    const holder = el('div', 'hero-image-menu-holder');
+    const toggle = el('button', 'hero-image-action');
+    toggle.type = 'button';
+    toggle.setAttribute('aria-haspopup', 'menu');
+    toggle.append(svg('image'), el('span', '', label), svg('caret'));
+    const menu = el('div', 'hero-image-menu');
+    menu.hidden = true;
+    const item = (icon, text, onClick) => {
+      const b = el('button', 'hero-image-menu-item');
+      b.type = 'button';
+      b.append(svg(icon), el('span', '', text));
+      b.addEventListener('click', () => {
+        menu.hidden = true;
+        onClick();
+      });
+      menu.append(b);
+    };
+    item('up', 'Upload image', () => file.click());
+    item('search', 'Find an image', () => openImageSearch(node.title, picked => save({image: picked})));
+    toggle.addEventListener('click', e => {
+      e.stopPropagation();
+      menu.hidden = !menu.hidden;
+    });
+    document.addEventListener('click', () => {
+      menu.hidden = true;
+    }, {once: true, capture: true});
+    holder.append(toggle, menu, file);
+    bar.append(holder);
+  } else {
+    const choose = el('label', 'hero-image-action');
+    choose.append(svg('image'), el('span', '', label), file);
+    bar.append(choose);
+  }
   if (node.image) {
     // Crop opens the tool over the current picture; what is inside the frame
     // is uploaded as a new image and saved in the picture's place.
