@@ -3001,4 +3001,13 @@ h2.section .link-button { font-size: 14px; }
 
 .row-nudge .edit-icon:disabled { opacity: 0.3; cursor: default; }
 
+.is-reordering .row-nudge { opacity: 0.4; pointer-events: none; }
+
 .row.is-dropbefore { box-shadow: 0 -3px 0 0 var(--accent); }
+
+/* The admin's notification switches, stacked like the settings rows. */
+.notify-stack .field-toggle { display: flex; width: 100%; max-width: 560px; padding: 12px 0; margin: 0; border-bottom: 1px solid var(--line); }
+
+.notify-stack .field-toggle:last-child { border-bottom: 0; }
+
+.notify-stack + .save-status { display: inline-block; margin-top: 8px; }

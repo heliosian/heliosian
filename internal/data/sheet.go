@@ -227,6 +227,68 @@ func (s *Sheet) Set(app, table string, match, cells map[string]string) error {
 	return err
 }
 
+func (s *Sheet) SetMany(app, table, keyColumn string, cells map[string]map[string]string) error {
+	id, ok := s.spreadsheets[app]
+	if !ok {
+		return fmt.Errorf("no spreadsheet configured for app %q", app)
+	}
+	quoted := quoteTab(table)
+	resp, err := call("get "+table, s.service.Spreadsheets.Values.Get(id, quoted).Do)
+	if err != nil {
+		return err
+	}
+	if len(resp.Values) == 0 {
+		return fmt.Errorf("table %s is empty", table)
+	}
+	index := map[string]int{}
+	for i, cell := range resp.Values[0] {
+		index[strings.TrimSpace(fmt.Sprint(cell))] = i
+	}
+	if _, ok := index[keyColumn]; !ok {
+		return fmt.Errorf("table %s is missing column %q", table, keyColumn)
+	}
+	for _, c := range cells {
+		for column := range c {
+			if _, ok := index[column]; !ok {
+				return fmt.Errorf("table %s is missing column %q", table, column)
+			}
+		}
+	}
+	ranges := []*sheets.ValueRange{}
+	seen := map[string]bool{}
+	for i, row := range resp.Values[1:] {
+		k := index[keyColumn]
+		if k >= len(row) {
+			continue
+		}
+		key := strings.TrimSpace(fmt.Sprint(row[k]))
+		c, ok := cells[key]
+		if !ok {
+			continue
+		}
+		seen[key] = true
+		for column, value := range c {
+			ranges = append(ranges, &sheets.ValueRange{
+				Range:  fmt.Sprintf("%s!%s%d", quoted, columnName(index[column]), i+2),
+				Values: [][]interface{}{{value}},
+			})
+		}
+	}
+	for key := range cells {
+		if !seen[key] {
+			return fmt.Errorf("table %s has no row with %s %q", table, keyColumn, key)
+		}
+	}
+	if len(ranges) == 0 {
+		return nil
+	}
+	_, err = call("set "+table, s.service.Spreadsheets.Values.BatchUpdate(id, &sheets.BatchUpdateValuesRequest{
+		ValueInputOption: "RAW",
+		Data:             ranges,
+	}).Do)
+	return err
+}
+
 func (s *Sheet) Append(app, table string, row []string) error {
 	return s.AppendAll(app, table, [][]string{row})
 }

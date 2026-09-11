@@ -1,7 +1,7 @@
 import {state, isSystemAdmin} from '../state.js';
 import {el, button} from '../dom.js';
 import {setTitle} from '../chrome.js';
-import {categoryList, openSettings} from '../edit.js';
+import {categoryList, openSettings, checkbox, send} from '../edit.js';
 
 function denied() {
   const page = el('div', 'list-page');
@@ -32,6 +32,57 @@ function settingsCard() {
   const add = el('div', 'add-row');
   add.append(button('Edit Settings', 'edit', 'button', openSettings));
   card.append(expense, intro, add);
+  return card;
+}
+
+// notifyCard is the signed-in admin's own email notices: four switches, each
+// saved the moment it is flipped. Every admin has their own set.
+function notifyCard() {
+  const card = el('div', 'admin-card');
+  card.append(el('h2', '', 'Email notifications'));
+  card.append(el('div', 'hint', 'Which of these you want an email about. These are yours alone; every admin picks their own.'));
+  const kinds = [
+    ['events', 'A new event is added', 'Someone adds an event to the Opportunities page, or suggests one.'],
+    ['activities', 'A new activity is added under an event', 'A committee, booth or shift is added or suggested under any event.'],
+    ['signups', 'Someone signs up', 'A new volunteer on any event or thing under one.'],
+    ['offers', 'Someone offers to co-chair', 'A volunteer marks themselves open to co-chairing.'],
+  ];
+  const stack = el('div', 'setting-stack notify-stack');
+  const status = el('span', 'save-status');
+  const boxes = {};
+  const persist = async () => {
+    status.classList.remove('error');
+    status.textContent = 'Saving…';
+    try {
+      await send('POST', '/api/events/notify', {kinds: kinds.map(k => k[0]).filter(k => boxes[k].checked)});
+      status.textContent = 'Saved.';
+    } catch (err) {
+      status.classList.add('error');
+      status.textContent = err.message;
+    }
+  };
+  for (const [kind, label, hint] of kinds) {
+    const box = checkbox(label, false, hint);
+    box.input.disabled = true;
+    box.input.addEventListener('change', persist);
+    boxes[kind] = box.input;
+    stack.append(box.wrap);
+  }
+  const notice = el('div');
+  card.append(notice, stack, status);
+  fetch('/api/admin/state').then(async res => {
+    if (!res.ok) {
+      return;
+    }
+    const data = await res.json();
+    for (const kind of Object.keys(boxes)) {
+      boxes[kind].checked = (data.notify || []).includes(kind);
+      boxes[kind].disabled = false;
+    }
+    if (!data.mail) {
+      notice.append(el('div', 'notice', 'Email is not set up on this server yet, so nothing is sent; the choices are kept for when it is.'));
+    }
+  });
   return card;
 }
 
@@ -120,6 +171,6 @@ export function adminPage() {
     return denied();
   }
   const page = el('div', 'list-page');
-  page.append(el('h1', '', 'Admin Tools'), categoriesCard(), settingsCard(), adminsCard());
+  page.append(el('h1', '', 'Admin Tools'), categoriesCard(), settingsCard(), notifyCard(), adminsCard());
   return page;
 }

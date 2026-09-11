@@ -19,6 +19,7 @@ import (
 	"heliosian/internal/blob"
 	"heliosian/internal/data"
 	"heliosian/internal/logging"
+	"heliosian/internal/mail"
 	"heliosian/internal/serve"
 )
 
@@ -52,12 +53,13 @@ type app struct {
 	directory   Directory
 	superAdmins func() []string
 	search      ImageSearch
+	mailer      mail.Sender
 }
 
 // Register wires the portal: one shell for every page, the model, and the
 // writes. Every route already sits behind sign-in.
-func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, directory Directory, superAdmins func() []string, search ImageSearch) {
-	a := app{cache: cache, writer: writer, queue: queue, store: store, directory: directory, superAdmins: superAdmins, search: search}
+func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, directory Directory, superAdmins func() []string, search ImageSearch, mailer mail.Sender) {
+	a := app{cache: cache, writer: writer, queue: queue, store: store, directory: directory, superAdmins: superAdmins, search: search, mailer: mailer}
 	for _, page := range pages {
 		mux.HandleFunc("GET "+page, a.ready(a.page))
 	}
@@ -79,6 +81,7 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	mux.HandleFunc("POST /api/events/categories/order", a.ready(a.reorderCategories))
 	mux.HandleFunc("POST /api/events/copy", a.ready(a.copyActivity))
 	mux.HandleFunc("POST /api/events/settings", a.ready(a.saveSettings))
+	mux.HandleFunc("POST /api/events/notify", a.ready(a.saveNotify))
 	mux.HandleFunc("POST /api/events/image", a.ready(a.uploadImage))
 	mux.HandleFunc("GET /api/admin/state", a.ready(a.adminState))
 	mux.HandleFunc("POST /api/admin/admins", a.ready(a.setAdmins))
@@ -147,23 +150,24 @@ func decode(w http.ResponseWriter, r *http.Request, into any) bool {
 }
 
 // commit rebuilds the model over the proposed tables first, so a change the
-// sheet rules reject never reaches the sheet, then applies it in memory and
-// queues the writes behind every earlier one.
+// sheet rules reject never reaches the sheet, then applies it in memory at
+// once and queues the writes behind every earlier one. The page reads the
+// memory, so the change shows the moment the request returns, however long
+// the sheet takes - a throttled Sheets call can hold the queue for most of a
+// minute, which must not hold the next click. The periodic refresh waits in
+// the same queue, so it cannot read the sheet back over an unflushed change.
 func (a app) commit(ctx context.Context, w http.ResponseWriter, tables *Tables, flush func() error) bool {
 	model, err := BuildModel(tables, a.cache.images)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return false
 	}
-	applied := make(chan struct{})
+	a.cache.set(tables, model)
 	a.queue.Add(func() {
-		a.cache.set(tables, model)
-		close(applied)
 		if err := flush(); err != nil {
 			slog.ErrorContext(ctx, "events write", "error", err)
 		}
 	})
-	<-applied
 	return true
 }
 
@@ -265,13 +269,13 @@ func (a app) saveVolunteer(w http.ResponseWriter, r *http.Request) {
 	// admin or one of its co-chairs - makes one, and unmakes one. Anyone else
 	// editing a co-chair's row - the co-chair changing their own note, say -
 	// keeps the position as it is.
-	if !editor {
-		was := ""
-		for _, row := range tables.Volunteers {
-			if row["Event ID"] == act.ID && strings.EqualFold(strings.TrimSpace(row["Email"]), email) {
-				was = row["Position"]
-			}
+	was := ""
+	for _, row := range tables.Volunteers {
+		if row["Event ID"] == act.ID && strings.EqualFold(strings.TrimSpace(row["Email"]), email) {
+			was = row["Position"]
 		}
+	}
+	if !editor {
 		if (body.Position == PositionCoChair) != (was == PositionCoChair) {
 			http.Error(w, "only a co-chair or admin can make or unmake a co-chair", http.StatusForbidden)
 			return
@@ -306,6 +310,7 @@ func (a app) saveVolunteer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.InfoContext(r.Context(), "events: saved volunteer", "actor", actor, "action", action, "email", email, "activity", act.Title, "year", act.Year)
+	a.mailSignUp(r, act, email, body.Position, strings.TrimSpace(body.Note), actor, existing, was)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -679,6 +684,11 @@ func (a app) saveActivity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.InfoContext(r.Context(), "events: saved activity", "actor", actor, "action", action, "activity", title, "id", id, "year", year, "status", status)
+	if action == "add" {
+		if made := a.cache.Model().Activity(id); made != nil {
+			a.mailNewActivity(r, made, actor)
+		}
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -824,11 +834,15 @@ func (a app) orderChildren(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
+	cells := map[string]map[string]string{}
+	for id, n := range changes {
+		cells[id] = map[string]string{OrderColumn: n}
+	}
 	if !a.commit(r.Context(), w, tables, func() error {
-		for id, n := range changes {
-			if err := a.writer.Set(appName, activitiesTab, map[string]string{"Event ID": id}, map[string]string{OrderColumn: n}); err != nil {
-				return err
-			}
+		// One read and one write for the lot: row by row, a few clicks of the
+		// arrows would spend the Sheets quota and leave the next ones waiting.
+		if err := a.writer.SetMany(appName, activitiesTab, "Event ID", cells); err != nil {
+			return err
 		}
 		return a.logChange(actor, "reorder", "activity", map[string]string{"Year": parent.Year, "Activity": parent.Title, "Title": parent.Title, "Details": fmt.Sprintf("%d things reordered", len(changes))})
 	}) {
@@ -1245,6 +1259,36 @@ func (a app) saveSettings(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// saveNotify records which notices the signed-in admin wants, as one Settings
+// row: notify:<email> = the kinds turned on, comma-separated.
+func (a app) saveNotify(w http.ResponseWriter, r *http.Request) {
+	actor, ok := a.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Kinds []string `json:"kinds"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	kinds := []string{}
+	for _, k := range NotifyKinds {
+		if slices.Contains(body.Kinds, k) {
+			kinds = append(kinds, k)
+		}
+	}
+	key, value := notifyPrefix+actor, strings.Join(kinds, ",")
+	tables := a.cache.Tables().with(settingsTab, map[string]string{"Key": key}, map[string]string{"Value": value})
+	if !a.commit(r.Context(), w, tables, func() error {
+		return a.writer.Set(appName, settingsTab, map[string]string{"Key": key}, map[string]string{"Value": value})
+	}) {
+		return
+	}
+	slog.InfoContext(r.Context(), "events: set notifications", "actor", actor, "kinds", value)
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // uploadImage stores a content-addressed image and returns the name the sheet
 // should record; the save that follows references it.
 func (a app) uploadImage(w http.ResponseWriter, r *http.Request) {
@@ -1288,11 +1332,20 @@ func (a app) adminState(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	prefs := a.cache.Tables().notifyPrefs(email)
+	notify := []string{}
+	for _, k := range NotifyKinds {
+		if prefs[k] {
+			notify = append(notify, k)
+		}
+	}
 	view := struct {
 		Email    string   `json:"email"`
 		HasStore bool     `json:"hasStore"`
 		Admins   []string `json:"admins"`
-	}{Email: email, HasStore: a.store != nil, Admins: a.cache.Admins(a.superAdmins())}
+		Notify   []string `json:"notify"`
+		Mail     bool     `json:"mail"`
+	}{Email: email, HasStore: a.store != nil, Admins: a.cache.Admins(a.superAdmins()), Notify: notify, Mail: a.mailer != nil}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
 		slog.ErrorContext(r.Context(), "encode events admin state", "error", err)

@@ -16,6 +16,9 @@ type Directory interface {
 	// GradeColors is Helios Who?'s colour for each grade, so a grade reads the
 	// same here as there.
 	GradeColors() map[string]string
+	// Parents is a student's parents' addresses, copied on the student's mail;
+	// empty for anyone else.
+	Parents(email string) []string
 	// People lists everyone a picker may offer, in the directory's own order.
 	People() []DirectoryPerson
 }

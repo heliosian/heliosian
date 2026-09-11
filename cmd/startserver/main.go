@@ -30,6 +30,7 @@ import (
 	"heliosian/internal/events"
 	"heliosian/internal/geocode"
 	"heliosian/internal/logging"
+	"heliosian/internal/mail"
 	"heliosian/internal/who"
 )
 
@@ -59,6 +60,15 @@ func main() {
 	}
 }
 
+// mailDir is where sample mode writes its mail: MAIL_DIR, or hca-mail under
+// the system temp directory.
+func mailDir() string {
+	if dir := os.Getenv("MAIL_DIR"); dir != "" {
+		return dir
+	}
+	return filepath.Join(os.TempDir(), "hca-mail")
+}
+
 // sampleServer assembles the fictional community: sample CSVs, fake geocoding,
 // no media bucket, every request signed in as the sample parent, whom the sample
 // Config sheet lists as a super admin so every admin tool is testable locally.
@@ -70,6 +80,8 @@ func sampleServer() (*http.Server, *who.Queue) {
 		Geocoder:    geocode.Fake{},
 		BrowserKey:  os.Getenv("GOOGLE_MAPS_BROWSER_KEY"),
 		ImageSearch: events.ImageSearch{Key: os.Getenv("GOOGLE_SEARCH_KEY"), CX: os.Getenv("GOOGLE_SEARCH_CX"), Unsplash: os.Getenv("UNSPLASH_KEY"), Pexels: os.Getenv("PEXELS_KEY"), Pixabay: os.Getenv("PIXABAY_KEY")},
+		// Sample mail lands as .html files to open in a browser, never sent.
+		Mail: mail.New("", "", "", "", "", "HCA-Team <hca@example.org>", mailDir()),
 	})
 	core.Mux.Handle("POST /auth/logout", http.RedirectHandler("/", http.StatusSeeOther))
 	core.HomeMux.Handle("POST /auth/logout", http.RedirectHandler("/", http.StatusSeeOther))

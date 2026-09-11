@@ -27,6 +27,9 @@ type Cache struct {
 	model      *Model
 	tables     *Tables
 	err        error
+	// edits counts every change applied from a request, so a refresh that
+	// read the sheet before one landed knows not to put the older sheet back.
+	edits int
 }
 
 // NewCache loads the sheet and keeps reloading it. A sheet that will not load
@@ -54,11 +57,23 @@ func (c *Cache) refreshLoop() {
 
 func (c *Cache) refresh() error {
 	start := time.Now()
+	c.mu.RLock()
+	before := c.edits
+	c.mu.RUnlock()
 	tables, err := ReadTables(c.source)
 	if err == nil {
 		var model *Model
 		if model, err = BuildModel(tables, c.images); err == nil {
-			c.set(tables, model)
+			// A request's change applied while the sheet was being read is newer
+			// than what was read, and its write is still queued behind this
+			// refresh; keep it, and let the next refresh pick the sheet up.
+			c.mu.Lock()
+			if c.edits == before {
+				c.tables, c.model = tables, model
+			} else {
+				slog.Info("events model refresh skipped: edited while reading")
+			}
+			c.mu.Unlock()
 		}
 	}
 	c.mu.Lock()
@@ -77,11 +92,14 @@ func (c *Cache) refresh() error {
 	return nil
 }
 
+// set applies a request's change. It counts as an edit, which a refresh in
+// flight defers to.
 func (c *Cache) set(tables *Tables, model *Model) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.tables = tables
 	c.model = model
+	c.edits++
 }
 
 func (c *Cache) Model() *Model {

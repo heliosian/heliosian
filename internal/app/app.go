@@ -28,6 +28,7 @@ import (
 	"heliosian/internal/geocode"
 	"heliosian/internal/home"
 	"heliosian/internal/logging"
+	"heliosian/internal/mail"
 	"heliosian/internal/serve"
 	"heliosian/internal/who"
 )
@@ -153,6 +154,15 @@ func (d directory) Grade(email string) string {
 		return ""
 	}
 	return p.Grade
+}
+
+// Parents is a student's parent contact addresses, for copying on their mail.
+func (d directory) Parents(email string) []string {
+	p := d.cache.Model().Person(email)
+	if p == nil || !p.IsStudent {
+		return nil
+	}
+	return p.ParentContactEmails
 }
 
 // GradeColors is the config sheet's colour per grade, as Who? paints them.
@@ -328,6 +338,8 @@ type Config struct {
 	BrowserKey string
 	// ImageSearch is the portal's Google image search; zero when not set up.
 	ImageSearch events.ImageSearch
+	// Mail sends the portal's email; nil drops it.
+	Mail mail.Sender
 }
 
 // Core is the assembled shared skeleton: each app's mux (still open for the
@@ -393,7 +405,7 @@ func NewCore(cfg Config) *Core {
 	homeMux := http.NewServeMux()
 	home.Register(homeMux, homeCache, cfg.Writer, queue, cfg.Store, settings.SuperAdmins, cache.HeroPhoto)
 	eventsMux := http.NewServeMux()
-	events.Register(eventsMux, eventsCache, cfg.Writer, queue, cfg.Store, directory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch)
+	events.Register(eventsMux, eventsCache, cfg.Writer, queue, cfg.Store, directory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.Mail)
 	birthdayMux := http.NewServeMux()
 	birthday.Register(birthdayMux, birthdayCache, cfg.Writer, queue, birthdayDirectory{cache}, settings.SuperAdmins)
 	return &Core{
@@ -469,6 +481,14 @@ func clientID() string {
 
 // optionalKey is mapsKey for something the server runs without: empty when
 // neither the variable nor the file is there.
+// mailFrom is the address the portal's mail comes from.
+func mailFrom() string {
+	if from := os.Getenv("MAIL_FROM"); from != "" {
+		return from
+	}
+	return "HCA-Team <team@heliosian.com>"
+}
+
 func optionalKey(envName, file string) string {
 	if key := os.Getenv(envName); key != "" {
 		return key
@@ -530,6 +550,10 @@ func Production() (*http.Server, *who.Queue) {
 			Pexels:   optionalKey("PEXELS_KEY", "creds/pexels.key"),
 			Pixabay:  optionalKey("PIXABAY_KEY", "creds/pixabay.key"),
 		},
+		// Mail goes through Resend when its key is set, else over SMTP when
+		// SMTP_HOST is; otherwise, in real-data mode, it is dropped and logged.
+		Mail: mail.New(optionalKey("RESEND_KEY", "creds/resend.key"), os.Getenv("SMTP_HOST"), os.Getenv("SMTP_PORT"),
+			optionalKey("SMTP_USER", "creds/smtp.user"), optionalKey("SMTP_PASS", "creds/smtp.pass"), mailFrom(), ""),
 	})
 	blob.Register(core.Mux, store)
 	blob.RegisterHome(core.HomeMux, store)

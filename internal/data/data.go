@@ -45,6 +45,11 @@ type Writer interface {
 	// of match takes cells, and when none does a row holding match plus cells is
 	// appended.
 	Set(app, table string, match, cells map[string]string) error
+	// SetMany is Set for several rows of one tab at once, keyed by one column:
+	// every row whose keyColumn is a key in cells takes that key's cells. One
+	// read and one write, however many rows - a row at a time, the same edit
+	// spends its Sheets quota many times over. A key no row carries is an error.
+	SetMany(app, table, keyColumn string, cells map[string]map[string]string) error
 	Append(app, table string, row []string) error
 	// AppendCells adds a row placing each cell under the column of that name,
 	// wherever the tab keeps it, and rejects a column the tab does not have. It
@@ -208,6 +213,28 @@ func (d *Dir) Set(app, name string, match, cells map[string]string) error {
 		setCells(row, match)
 		setCells(row, cells)
 		t.rows = append(t.rows, row)
+	}
+	return nil
+}
+
+func (d *Dir) SetMany(app, name, keyColumn string, cells map[string]map[string]string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	t, err := d.load(app, name)
+	if err != nil {
+		return err
+	}
+	seen := map[string]bool{}
+	for _, row := range t.rows {
+		if c, ok := cells[row[keyColumn]]; ok {
+			setCells(row, c)
+			seen[row[keyColumn]] = true
+		}
+	}
+	for key := range cells {
+		if !seen[key] {
+			return fmt.Errorf("table %s has no row with %s %q", name, keyColumn, key)
+		}
 	}
 	return nil
 }

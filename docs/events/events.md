@@ -46,6 +46,16 @@ The portal stores only email addresses. Names and photos come from the directory
 
 As in the other apps: in place, through modals, with every change applied to the in-memory model first and then written to the sheet cell by cell through the shared write queue and appended to the Change Log. A change the rules reject is refused before anything is written. Deleting an activity or role refuses while anyone is signed up for it, and deleting a category refuses while an activity names it.
 
+## Email
+
+The portal sends three kinds of mail (`internal/events/mail.go`, over `internal/mail`), each laid out the same way: the HCA-Team bar, the thing's share card as its picture (the one image a mail client can fetch without signing in; a pending or hidden thing has none), a heading and a line of explanation, a details box (title, what it is part of, when, where, and rows for the occasion) and a button to the page.
+
+- **Thank you for volunteering** — to whoever was signed up (new sign-ups only; edits send nothing), copied to the chairs of the thing and everything above it, and to a student's parents. Says who signed them up when it was someone else, their role and note, and that Edit my sign-up is how to change or cancel.
+- **You're a co-chair** — to someone made a co-chair, copied to the other chairs.
+- **Admin notices** — to each admin who turned them on in Admin Tools › Email notifications: a new event, a new thing under an event (each saying whether it awaits approval), a new sign-up, an offer to co-chair. Choices are one Settings row per admin, `notify:<email>` = `events,activities,signups,offers`; the person acting never gets a notice about their own action.
+
+Sending happens off the request and a failure is logged, never shown - the sign-up itself already took. Mail goes out through Resend, from team@heliosian.com with Reply-To set to the chairs, so a reply reaches a person (`docs/deploy.md`); without a key nothing is sent and the Admin Tools card says so; in sample mode each message is written as an `.html` file under `MAIL_DIR` (default `$TMPDIR/hca-mail`) to open in a browser.
+
 ## Sign-in and install
 
 A link to an event previews in chat apps and social feeds even though the site is behind sign-in: the sign-in page served at an event's address carries the event's Open Graph tags (title, the date line and a sentence of the description, the canonical address), and `/share/{id}.png` is a public 1200x630 card drawn on the server - the mark and wordmark, the title with the yellow swoosh, when it is (large), the address, and the event's flyer shown whole on a tinted panel - or, without one, its banner filling the right side, or the rail's meadow when it has neither. A thing under an event is labelled with what it sits under - "INTERNATIONAL NIGHT" above "India", and "India · International Night" in the tags - and takes the nearest date, timing and image above it when it has none of its own. Only what is open or done previews; a hidden or pending thing, or any other page, gets the plain sign-in page and no card. The tags say what a poster on the wall would say and never who signed up; anyone holding the link sees them, so an event's title, description and image are public in that sense. Montserrat is bundled as TTF in `web/hca/fonts/` for the card (`internal/events/share.go`).

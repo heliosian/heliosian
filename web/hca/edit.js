@@ -233,7 +233,7 @@ function select(options, value) {
 
 // checkbox is a labelled switch - the same control the page's toggle rows use -
 // with an optional line of explanation under the label.
-function checkbox(label, checked, hint) {
+export function checkbox(label, checked, hint) {
   const wrap = el('label', 'field field-toggle');
   const input = el('input');
   input.type = 'checkbox';

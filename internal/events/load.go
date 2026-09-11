@@ -708,6 +708,11 @@ func parseSettings(rows []map[string]string) (Settings, error) {
 	values := map[string]string{}
 	for _, row := range rows {
 		key := row["Key"]
+		// notify:<email> rows are an admin's mail choices (mail.go), read
+		// where they are used rather than here.
+		if strings.HasPrefix(key, notifyPrefix) {
+			continue
+		}
 		if !slices.Contains(settingKeys, key) {
 			return Settings{}, fmt.Errorf("%s has unknown key %q", settingsTab, key)
 		}

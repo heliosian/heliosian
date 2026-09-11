@@ -2,6 +2,7 @@ package events
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -10,9 +11,11 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"heliosian/internal/auth"
 	"heliosian/internal/data"
+	"heliosian/internal/mail"
 )
 
 const (
@@ -34,6 +37,8 @@ func (fakeDirectory) People() []DirectoryPerson { return nil }
 func (fakeDirectory) Grade(string) string { return "" }
 
 func (fakeDirectory) GradeColors() map[string]string { return nil }
+
+func (fakeDirectory) Parents(string) []string { return nil }
 
 func (fakeDirectory) Person(email string) (string, string, bool) {
 	if email == parent {
@@ -57,7 +62,7 @@ func newServer(t *testing.T) (*Cache, *http.ServeMux) {
 		t.Fatal(err)
 	}
 	mux := http.NewServeMux()
-	Register(mux, cache, dir, syncQueue{}, nil, fakeDirectory{}, func() []string { return []string{admin} }, ImageSearch{})
+	Register(mux, cache, dir, syncQueue{}, nil, fakeDirectory{}, func() []string { return []string{admin} }, ImageSearch{}, nil)
 	return cache, mux
 }
 
@@ -198,6 +203,78 @@ func TestSignUpAndRemove(t *testing.T) {
 // TestReorderChildren puts Spring Celebration's committees in a new order: a
 // parent may not, the co-chair may, the order sticks, and a stranger's id is
 // refused.
+// recorder is a mail.Sender that hands each message to a channel.
+type recorder struct{ got chan mail.Message }
+
+func (r recorder) Send(_ context.Context, m mail.Message) error {
+	r.got <- m
+	return nil
+}
+
+func (r recorder) next(t *testing.T) mail.Message {
+	t.Helper()
+	select {
+	case m := <-r.got:
+		return m
+	case <-time.After(2 * time.Second):
+		t.Fatal("no mail arrived")
+		return mail.Message{}
+	}
+}
+
+// TestMail signs a parent up under International Night and makes them a
+// co-chair: the thank-you goes to them with the event's chairs copied, the
+// admin who asked hears of the sign-up, and the appointment gets its own note.
+func TestMail(t *testing.T) {
+	t.Chdir("../..")
+	dir := &data.Dir{Root: "sampledata"}
+	cache, err := NewCache(dir, bundled{}, func(e string) bool { return e == admin }, syncQueue{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	rec := recorder{got: make(chan mail.Message, 8)}
+	Register(mux, cache, dir, syncQueue{}, nil, fakeDirectory{}, func() []string { return []string{admin} }, ImageSearch{}, rec)
+	if r := call(t, mux, admin, "POST", "/api/events/notify", map[string]any{"kinds": []string{"signups", "offers"}}); r.Code != http.StatusNoContent {
+		t.Fatalf("notify prefs: %d %s", r.Code, r.Body)
+	}
+	if r := call(t, mux, parent, "POST", "/api/events/volunteer", map[string]any{"id": "E017", "position": PositionOpen, "note": "happy to help"}); r.Code != http.StatusNoContent {
+		t.Fatalf("sign up: %d %s", r.Code, r.Body)
+	}
+	// Three messages, in no fixed order: the thank-you, the sign-up notice
+	// and the offer notice.
+	bySubject := map[string]mail.Message{}
+	for range 3 {
+		m := rec.next(t)
+		bySubject[m.Subject] = m
+	}
+	thanks, ok := bySubject["Thanks for volunteering for Clean Up Crew"]
+	if !ok || !slices.Equal(thanks.To, []string{parent}) || !slices.Contains(thanks.CC, chair) || !strings.Contains(thanks.HTML, "Hi Robin") || !strings.Contains(thanks.HTML, "/share/E017.png") {
+		t.Fatalf("thank-you: %+v (subjects %v)", thanks, keys(bySubject))
+	}
+	if n, ok := bySubject["New sign-up: Robin Whitfield for Clean Up Crew"]; !ok || !slices.Equal(n.To, []string{admin}) {
+		t.Fatalf("sign-up notice: %+v", n)
+	}
+	if n, ok := bySubject["Co-chair offer: Robin Whitfield for Clean Up Crew"]; !ok || !slices.Equal(n.To, []string{admin}) {
+		t.Fatalf("offer notice: %+v", n)
+	}
+	if r := call(t, mux, chair, "POST", "/api/events/volunteer", map[string]any{"id": "E017", "email": parent, "position": PositionCoChair}); r.Code != http.StatusNoContent {
+		t.Fatalf("promote: %d %s", r.Code, r.Body)
+	}
+	m := rec.next(t)
+	if m.Subject != "You're a co-chair of Clean Up Crew" || !slices.Equal(m.To, []string{parent}) || !slices.Contains(m.CC, chair) {
+		t.Fatalf("co-chair note: %+v", m)
+	}
+}
+
+func keys(m map[string]mail.Message) []string {
+	out := []string{}
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
+}
+
 func TestReorderChildren(t *testing.T) {
 	cache, mux := newServer(t)
 	titles := func() []string {
@@ -489,7 +566,7 @@ func TestBrokenSheetStallsThePortalOnly(t *testing.T) {
 		t.Fatalf("a broken sheet should give a cache without a model and an error, got %v %v", cache, err)
 	}
 	mux := http.NewServeMux()
-	Register(mux, cache, &data.Dir{Root: broken}, syncQueue{}, nil, fakeDirectory{}, func() []string { return nil }, ImageSearch{})
+	Register(mux, cache, &data.Dir{Root: broken}, syncQueue{}, nil, fakeDirectory{}, func() []string { return nil }, ImageSearch{}, nil)
 	rec := call(t, mux, parent, "GET", "/api/events/model", nil)
 	if rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), `missing column "Event ID"`) {
 		t.Fatalf("before the sheet loads: %d %s", rec.Code, rec.Body)

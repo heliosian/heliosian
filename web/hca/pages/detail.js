@@ -909,7 +909,15 @@ function childrenSection(node, editing) {
   // they stand, with `id` moved to sit just before `before` - or at the end
   // of its category when there is no before. Groups keep their own runs,
   // since the page shows them apart.
+  let reordering = false;
   const reorder = async (id, before, categoryId) => {
+    // One at a time: a second click before the first has saved would be
+    // computed from an order that is about to change.
+    if (reordering) {
+      return;
+    }
+    reordering = true;
+    list.classList.add('is-reordering');
     const ids = node.children.map(c => c.id).filter(x => x !== id);
     let at = before ? ids.indexOf(before) : -1;
     if (at < 0) {
@@ -929,6 +937,9 @@ function childrenSection(node, editing) {
       await reload();
     } catch (err) {
       toast(err.message);
+    } finally {
+      reordering = false;
+      list.classList.remove('is-reordering');
     }
   };
   // While editing, every category's panel takes a dropped row: the row's id
