@@ -967,6 +967,9 @@ main {
 
 .label .need { color: #a95f1b; }
 
+/* The people on a row can run long; they wrap within the label rather than widen the row. */
+.label .label-people { min-width: 0; white-space: normal; letter-spacing: 0.02em; }
+
 .row-title { font-weight: 700; font-size: 15px; margin: 2px 0; }
 
 .row-title .chain { color: var(--muted); font-weight: 400; margin: 0 6px; }

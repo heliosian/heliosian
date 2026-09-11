@@ -2,13 +2,40 @@ package data
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
+	"time"
 
+	"google.golang.org/api/googleapi"
 	"google.golang.org/api/option"
 	"google.golang.org/api/sheets/v4"
 )
+
+// retryWaits paces a call the Sheets API has refused for quota: its read and
+// write quotas are per minute per user, and a server starting up reads every
+// tab of every sheet at once - or deploys twice in a minute - so a burst runs
+// into them. Waiting out the minute and asking again is the whole fix; giving
+// up would drop a write or refuse to start.
+var retryWaits = []time.Duration{5 * time.Second, 10 * time.Second, 20 * time.Second, 40 * time.Second}
+
+// call runs one Sheets API request - its Do method - retrying only a quota
+// refusal (429).
+func call[T any](what string, do func(...googleapi.CallOption) (T, error)) (T, error) {
+	var out T
+	var err error
+	for attempt := 0; ; attempt++ {
+		out, err = do()
+		var apiErr *googleapi.Error
+		if err == nil || !errors.As(err, &apiErr) || apiErr.Code != 429 || attempt >= len(retryWaits) {
+			return out, err
+		}
+		slog.Warn("sheets quota refused a call; waiting to retry", "call", what, "wait", retryWaits[attempt])
+		time.Sleep(retryWaits[attempt])
+	}
+}
 
 type Sheet struct {
 	service      *sheets.Service
@@ -31,7 +58,7 @@ func (s *Sheet) Table(app, name string) ([]string, []map[string]string, error) {
 	if !ok {
 		return nil, nil, fmt.Errorf("no spreadsheet configured for app %q", app)
 	}
-	resp, err := s.service.Spreadsheets.Values.Get(id, quoteTab(name)).Do()
+	resp, err := call("get "+name, s.service.Spreadsheets.Values.Get(id, quoteTab(name)).Do)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -46,7 +73,7 @@ func (s *Sheet) Header(app, name string) ([]string, error) {
 	if !ok {
 		return nil, fmt.Errorf("no spreadsheet configured for app %q", app)
 	}
-	resp, err := s.service.Spreadsheets.Values.Get(id, quoteTab(name)+"!1:1").Do()
+	resp, err := call("header "+name, s.service.Spreadsheets.Values.Get(id, quoteTab(name)+"!1:1").Do)
 	if err != nil {
 		return nil, err
 	}
@@ -60,7 +87,7 @@ func (s *Sheet) Raw(app, name string) ([][]string, error) {
 	if !ok {
 		return nil, fmt.Errorf("no spreadsheet configured for app %q", app)
 	}
-	resp, err := s.service.Spreadsheets.Values.Get(id, quoteTab(name)).Do()
+	resp, err := call("get "+name, s.service.Spreadsheets.Values.Get(id, quoteTab(name)).Do)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +108,7 @@ func (s *Sheet) Upsert(app, table, keyColumn, keyValue string, cells map[string]
 		return fmt.Errorf("no spreadsheet configured for app %q", app)
 	}
 	quoted := quoteTab(table)
-	resp, err := s.service.Spreadsheets.Values.Get(id, quoted).Do()
+	resp, err := call("get "+table, s.service.Spreadsheets.Values.Get(id, quoted).Do)
 	if err != nil {
 		return err
 	}
@@ -134,10 +161,10 @@ func (s *Sheet) Upsert(app, table, keyColumn, keyValue string, cells map[string]
 		}
 		return s.writeRows(id, table, len(resp.Values), [][]interface{}{row})
 	}
-	_, err = s.service.Spreadsheets.Values.BatchUpdate(id, &sheets.BatchUpdateValuesRequest{
+	_, err = call("set "+table, s.service.Spreadsheets.Values.BatchUpdate(id, &sheets.BatchUpdateValuesRequest{
 		ValueInputOption: "RAW",
 		Data:             ranges,
-	}).Do()
+	}).Do)
 	return err
 }
 
@@ -147,7 +174,7 @@ func (s *Sheet) Set(app, table string, match, cells map[string]string) error {
 		return fmt.Errorf("no spreadsheet configured for app %q", app)
 	}
 	quoted := quoteTab(table)
-	resp, err := s.service.Spreadsheets.Values.Get(id, quoted).Do()
+	resp, err := call("get "+table, s.service.Spreadsheets.Values.Get(id, quoted).Do)
 	if err != nil {
 		return err
 	}
@@ -193,10 +220,10 @@ func (s *Sheet) Set(app, table string, match, cells map[string]string) error {
 		}
 		return s.writeRows(id, table, len(resp.Values), [][]interface{}{row})
 	}
-	_, err = s.service.Spreadsheets.Values.BatchUpdate(id, &sheets.BatchUpdateValuesRequest{
+	_, err = call("set "+table, s.service.Spreadsheets.Values.BatchUpdate(id, &sheets.BatchUpdateValuesRequest{
 		ValueInputOption: "RAW",
 		Data:             ranges,
-	}).Do()
+	}).Do)
 	return err
 }
 
@@ -232,7 +259,7 @@ func (s *Sheet) AppendAll(app, table string, rows [][]string) error {
 // rowCount is how many rows of the tab hold anything, header included: the
 // next row is where an appended row goes.
 func (s *Sheet) rowCount(id, table string) (int, error) {
-	resp, err := s.service.Spreadsheets.Values.Get(id, quoteTab(table)).Do()
+	resp, err := call("get "+table, s.service.Spreadsheets.Values.Get(id, quoteTab(table)).Do)
 	if err != nil {
 		return 0, err
 	}
@@ -251,7 +278,7 @@ func (s *Sheet) writeRows(id, table string, used int, rows [][]interface{}) erro
 	if err != nil {
 		return err
 	}
-	meta, err := s.service.Spreadsheets.Get(id).Fields("sheets(properties(sheetId,gridProperties(rowCount)))").Do()
+	meta, err := call("grid "+table, s.service.Spreadsheets.Get(id).Fields("sheets(properties(sheetId,gridProperties(rowCount)))").Do)
 	if err != nil {
 		return err
 	}
@@ -260,19 +287,19 @@ func (s *Sheet) writeRows(id, table string, used int, rows [][]interface{}) erro
 			continue
 		}
 		if short := int64(used+len(rows)) - sh.Properties.GridProperties.RowCount; short > 0 {
-			_, err := s.service.Spreadsheets.BatchUpdate(id, &sheets.BatchUpdateSpreadsheetRequest{
+			_, err := call("grow "+table, s.service.Spreadsheets.BatchUpdate(id, &sheets.BatchUpdateSpreadsheetRequest{
 				Requests: []*sheets.Request{{AppendDimension: &sheets.AppendDimensionRequest{
 					SheetId: tab, Dimension: "ROWS", Length: short + 100,
 				}}},
-			}).Do()
+			}).Do)
 			if err != nil {
 				return err
 			}
 		}
 	}
-	_, err = s.service.Spreadsheets.Values.Update(id, fmt.Sprintf("%s!A%d", quoted, used+1), &sheets.ValueRange{
+	_, err = call("append "+table, s.service.Spreadsheets.Values.Update(id, fmt.Sprintf("%s!A%d", quoted, used+1), &sheets.ValueRange{
 		Values: rows,
-	}).ValueInputOption("RAW").Do()
+	}).ValueInputOption("RAW").Do)
 	return err
 }
 
@@ -284,7 +311,7 @@ func (s *Sheet) AppendCells(app, table string, cells map[string]string) error {
 	quoted := quoteTab(table)
 	// The whole tab is read: the header to place the cells, the row count to
 	// place the row.
-	resp, err := s.service.Spreadsheets.Values.Get(id, quoted).Do()
+	resp, err := call("get "+table, s.service.Spreadsheets.Values.Get(id, quoted).Do)
 	if err != nil {
 		return err
 	}
@@ -314,7 +341,7 @@ func (s *Sheet) Delete(app, table string, match map[string]string) error {
 	if !ok {
 		return fmt.Errorf("no spreadsheet configured for app %q", app)
 	}
-	resp, err := s.service.Spreadsheets.Values.Get(id, quoteTab(table)).Do()
+	resp, err := call("get "+table, s.service.Spreadsheets.Values.Get(id, quoteTab(table)).Do)
 	if err != nil {
 		return err
 	}
@@ -352,9 +379,9 @@ func (s *Sheet) Delete(app, table string, match map[string]string) error {
 	if len(requests) == 0 {
 		return nil
 	}
-	_, err = s.service.Spreadsheets.BatchUpdate(id, &sheets.BatchUpdateSpreadsheetRequest{
+	_, err = call("delete "+table, s.service.Spreadsheets.BatchUpdate(id, &sheets.BatchUpdateSpreadsheetRequest{
 		Requests: requests,
-	}).Do()
+	}).Do)
 	return err
 }
 
@@ -367,7 +394,7 @@ func (s *Sheet) Reorder(app, table, keyColumn string, keys []string) error {
 		return fmt.Errorf("no spreadsheet configured for app %q", app)
 	}
 	quoted := quoteTab(table)
-	resp, err := s.service.Spreadsheets.Values.Get(id, quoted).Do()
+	resp, err := call("get "+table, s.service.Spreadsheets.Values.Get(id, quoted).Do)
 	if err != nil {
 		return err
 	}
@@ -422,8 +449,8 @@ func (s *Sheet) Reorder(app, table, keyColumn string, keys []string) error {
 		return nil
 	}
 	rng := fmt.Sprintf("%s!A2:%s%d", quoted, columnName(width-1), len(values)+1)
-	_, err = s.service.Spreadsheets.Values.Update(id, rng, &sheets.ValueRange{Values: values}).
-		ValueInputOption("RAW").Do()
+	_, err = call("reorder "+table, s.service.Spreadsheets.Values.Update(id, rng, &sheets.ValueRange{Values: values}).
+		ValueInputOption("RAW").Do)
 	return err
 }
 
@@ -444,7 +471,7 @@ func (s *Sheet) tabID(id, title string) (int64, error) {
 	if tab, ok := s.ids[key]; ok {
 		return tab, nil
 	}
-	meta, err := s.service.Spreadsheets.Get(id).Fields("sheets(properties(sheetId,title))").Do()
+	meta, err := call("tabs", s.service.Spreadsheets.Get(id).Fields("sheets(properties(sheetId,title))").Do)
 	if err != nil {
 		return 0, err
 	}

@@ -21,16 +21,25 @@ function statusBadges(node) {
 
 // labelLine is the small-caps line: when it happens, who chairs a role, and
 // the co-leader call.
-function labelLine(node, withChairs) {
+// peopleLine is who is on a thing, co-chairs first and starred, then everyone
+// else in sign-up order. The server already withholds a hidden list from
+// anyone who does not run the thing, so whatever arrives may be shown.
+function peopleLine(node) {
+  const chairs = coChairs(node).map(v => v.name + '*');
+  const others = node.volunteers.filter(v => v.position !== 'Co-Chair').map(v => v.name);
+  return [...chairs, ...others].join(', ');
+}
+
+function labelLine(node, withPeople) {
   const label = el('div', 'label');
   const when = whenLabel(node);
   if (when) {
     label.append(el('span', '', when));
   }
-  if (withChairs) {
-    const chairs = coChairs(node).map(v => v.name).join(', ');
-    if (chairs) {
-      label.append(el('span', '', chairs));
+  if (withPeople) {
+    const people = peopleLine(node);
+    if (people) {
+      label.append(el('span', 'label-people', people));
     }
   }
   if (node.coLeaderNeeded) {
