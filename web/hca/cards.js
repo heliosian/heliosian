@@ -124,15 +124,16 @@ export function childRow(node, editing, moves) {
   if (node.children.length) {
     body.append(el('div', 'row-text', `${node.children.length} more under this`));
   }
-  // Who is on it comes last, on one line: the leads, then the volunteers.
+  // Who is on it comes last: the leads, then the volunteers on a line of
+  // their own - a separator between the two would start the line whenever
+  // the names wrap.
   const leads = leadsLine(node);
+  if (leads) {
+    body.append(leads);
+  }
   const people = volunteersLine(node, editing);
-  if (leads || people) {
-    const line = leads || el('div', 'label label-leads');
-    if (people) {
-      line.append(el('span', 'row-people', (leads ? '· ' : '') + people));
-    }
-    body.append(line);
+  if (people) {
+    body.append(el('div', 'row-people', people));
   }
   row.append(body);
   const actions = el('div', 'row-actions');
@@ -234,7 +235,11 @@ function spotsNote(act) {
 
 // activityCard is the grid tile the opportunities page shows: image with its
 // category chip and date stamp, then title, blurb, and the sign-up action.
-export function activityCard(act) {
+// opts.signUps lists the viewer's sign-ups on the activity and under it, for
+// My Sign Ups: each a link with a check - the event itself by its own title
+// when signed up for directly - with its own date when it has one, in place of
+// the foot; the card says where they are, not what to join.
+export function activityCard(act, opts = {}) {
   const card = el('div', 'card' + (act.status === 'Hidden' || act.status === 'Pending' ? ' is-muted' : ''));
   const media = link(activityPath(act), 'card-media');
   // Without a photo the tile falls back to a big initial; tinting it by category
@@ -263,7 +268,33 @@ export function activityCard(act) {
   if (marks.children.length) {
     body.append(marks);
   }
+  if (opts.signUps) {
+    const under = el('div', 'card-under');
+    for (const node of opts.signUps) {
+      const item = link(activityPath(node), 'card-under-item');
+      item.append(svg('join'), el('span', 'card-under-title', node.title));
+      // Chairing it, or offering to, is tagged the way the faces on its page
+      // tag it.
+      const mine = mySignUp(node);
+      if (mine && mine.position === 'Co-Chair') {
+        item.append(el('span', 'side-chair-role', 'Chair'));
+      } else if (mine && mine.position === 'Open to Co-Chair') {
+        item.append(el('span', 'side-chair-role is-option', 'Chair opt'));
+      }
+      // The card's stamp already dates the event itself.
+      const when = node.whenFrom || node === act ? {} : whenParts(node);
+      const own = [when.words, when.day, when.time].filter(Boolean).join(' · ');
+      if (own) {
+        item.append(el('span', 'card-under-when', own));
+      }
+      under.append(item);
+    }
+    body.append(under);
+  }
   card.append(body);
+  if (opts.signUps) {
+    return card;
+  }
   const foot = el('div', 'card-foot');
   const join = joinButton(act);
   foot.append(join || link(activityPath(act), 'button button-secondary button-small', 'Learn More'));

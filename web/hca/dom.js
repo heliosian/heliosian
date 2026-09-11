@@ -160,17 +160,6 @@ export function toggle(label, checked, onChange) {
   return row;
 }
 
-export function tabs(items, active, onPick, light) {
-  const bar = el('div', 'tabs' + (light ? ' light' : ''));
-  for (const item of items) {
-    const b = el('button', item.key === active ? 'is-active' : '', item.label);
-    b.type = 'button';
-    b.addEventListener('click', () => onPick(item.key));
-    bar.append(b);
-  }
-  return bar;
-}
-
 let toastTimer;
 
 export function toast(message) {

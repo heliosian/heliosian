@@ -1,36 +1,31 @@
-import {state, years, myRows, sortByStart, isPrevious, matches, rootOf} from '../state.js';
-import {el, toggle, tabs} from '../dom.js';
+import {state, years, myRows, sortByStart, isPrevious, matches, rootOf, descendants} from '../state.js';
+import {el, toggle, selectPill} from '../dom.js';
 import {setTitle, setSearch} from '../chrome.js';
-import {childRow} from '../cards.js';
+import {activityCard} from '../cards.js';
 
 let year = null;
 let query = '';
 
+// list is the year's sign-ups in date order, one card per event, as on the
+// opportunities page, each naming the sign-ups on it: the event itself when
+// signed up for directly, then whatever was signed up for under it, by date
+// and then in the event's own order - a committee alone does not say which
+// event it belongs to. Events with no date come last.
 function list(rows) {
-  const root = el('div');
   const shown = rows.filter(r => (state.showPrevious || !isPrevious(r.act)) && (matches(r.act, query) || matches(rootOf(r.act), query)));
-  let any = false;
-  for (const category of state.model.categories) {
-    // A child has no category of its own; it files under its root's.
-    const items = shown.filter(r => rootOf(r.act).category === category.id);
-    if (!items.length) {
-      continue;
-    }
-    any = true;
-    root.append(el('div', 'section-title', category.title));
-    const panel = el('div', 'panel');
-    const ordered = sortByStart(items.map(r => ({...r.act, _row: r}))).map(n => n._row);
-    for (const r of ordered) {
-      panel.append(childRow(r.act));
-    }
-    root.append(panel);
-  }
-  if (!any) {
+  const signed = new Set(shown.map(r => r.act));
+  const events = sortByStart([...new Set(shown.map(r => rootOf(r.act)))]);
+  if (!events.length) {
     const panel = el('div', 'panel');
     panel.append(el('div', 'panel-empty', query ? 'Nothing matches.' : "You haven't signed up for anything this year. Head to Sign Up!"));
-    root.append(panel);
+    return panel;
   }
-  return root;
+  const grid = el('div', 'card-grid');
+  for (const event of events) {
+    const own = signed.has(event) ? [event] : [];
+    grid.append(activityCard(event, {signUps: [...own, ...sortByStart(descendants(event).filter(n => signed.has(n)))]}));
+  }
+  return grid;
 }
 
 export function myPage() {
@@ -43,30 +38,27 @@ export function myPage() {
     year = years().current;
   }
   const page = el('div', 'list-page');
-  page.append(el('h1', '', 'My Activities'));
+  // The year is a pill beside the title, as on the opportunities page.
+  const head = el('div', 'list-head');
+  head.append(el('h1', '', 'My Activities'));
   const body = el('div');
   const render = () => {
     body.replaceChildren();
-    body.append(tabs(options.map(y => ({key: y, label: y})), year, key => {
-      year = key;
-      render();
-    }, true));
     body.append(toggle('Show Completed Events', state.showPrevious, on => {
       state.showPrevious = on;
       render();
     }));
-    const sub = el('div', 'year-sub');
-    sub.append(el('h2', '', year));
-    body.append(sub);
-    const wrap = el('div', 'year-list');
-    wrap.append(list(rows.filter(r => r.act.year === year)));
-    body.append(wrap);
+    body.append(list(rows.filter(r => r.act.year === year)));
   };
+  head.append(selectPill('calendar', options.map(y => ({key: y, label: y})), year, picked => {
+    year = picked;
+    render();
+  }));
   render();
   setSearch('Search my sign ups', q => {
     query = q;
     render();
   });
-  page.append(body);
+  page.append(head, body);
   return page;
 }
