@@ -335,6 +335,7 @@ type activityBody struct {
 	Status           string `json:"status"`
 	Description      string `json:"description"`
 	Image            string `json:"image"`
+	Flyer            string `json:"flyer"`
 	Timing           string `json:"timing"`
 	Start            string `json:"start"`
 	End              string `json:"end"`
@@ -562,7 +563,7 @@ func (a app) saveActivity(w http.ResponseWriter, r *http.Request) {
 	cells := map[string]string{
 		"Event ID": id, "Year": year, "Title": title, "Parent": parent,
 		"Category": category, "Status": status,
-		"Description": strings.TrimSpace(body.Description), "Image": strings.TrimSpace(body.Image),
+		"Description": strings.TrimSpace(body.Description), "Image": strings.TrimSpace(body.Image), "Flyer Image": strings.TrimSpace(body.Flyer),
 		"Timing": strings.TrimSpace(body.Timing), "Start": strings.TrimSpace(body.Start), "End": strings.TrimSpace(body.End),
 		"Location": strings.TrimSpace(body.Location), "Spots": spotsCell(body.Spots),
 		"Co-Leader Needed": YesNo(body.CoLeaderNeeded), "Volunteers Hidden": YesNo(body.VolunteersHidden),
@@ -1049,7 +1050,7 @@ func (a app) copyActivity(w http.ResponseWriter, r *http.Request) {
 	rowFor := func(c *Activity, parent string) map[string]string {
 		return map[string]string{
 			"Event ID": fresh[c.ID], "Year": year, "Title": c.Title, "Parent": parent, "Category": remap(c.Category),
-			"Status": c.Status, "Description": c.Description, "Image": c.Image, "Timing": c.Timing,
+			"Status": c.Status, "Description": c.Description, "Image": c.Image, "Flyer Image": c.Flyer, "Timing": c.Timing,
 			"Location": c.Location, "Spots": spotsCell(c.Spots),
 			"Co-Leader Needed": YesNo(c.CoLeaderNeeded), "Volunteers Hidden": YesNo(c.VolunteersHidden),
 			// The address stays with the original: two years cannot share one.

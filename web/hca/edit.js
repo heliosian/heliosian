@@ -866,6 +866,7 @@ export function openActivity(act, options) {
     'Can users add subactivities? Note that this is a default and can be overwritten by the settings of a category.',
     policyDot(allowAdding, under ? 'inherit' : ADDING.no));
   const image = imagePicker(act ? act.image : '', act ? act.imageUrl : '');
+  const flyer = imagePicker(act ? act.flyer : '', act ? act.flyerUrl : '');
   const pretty = text(act ? act.prettyId || '' : '', {placeholder: 'applause', maxLength: 40});
   // The address as it will read, kept current as the field is typed in, with a
   // way to copy it - what the form is for, in the end.
@@ -947,7 +948,8 @@ export function openActivity(act, options) {
       {label: 'When', icon: 'calendar', fields: [...(yearField ? [yearField] : []), when.wrap]},
       {label: 'Sign-ups', icon: 'people', fields: [...(statusRow ? [statusRow] : []), spotsField, allowAddingRow, coLeader.wrap, hidden.wrap, direct.wrap]},
       {label: 'Image & Address', icon: 'image', fields: [
-        settingCard('Image', 'A picture makes this activity stand out (optional).', image.wrap.querySelector('.image-row')),
+        settingCard('Top Banner Image', 'The wide picture across the top of the page and on the card (optional).', image.wrap.querySelector('.image-row')),
+        settingCard('Flyer', 'The event\'s poster, shown beside the details and used for the social share image when there is one (optional).', flyer.wrap.querySelector('.image-row')),
         settingCard('Friendly address', under
           ? 'A short address for this activity, under its event. Letters, digits and hyphens; unique among the things beside it.'
           : 'A short address for this event. Letters, digits and hyphens; one address per event, across every year.',
@@ -972,7 +974,7 @@ export function openActivity(act, options) {
         year: year.value, title: title.value, parent: parentSelect.value,
         category: parentSelect.value ? eventCategory.value : category.value,
         status: statusSelect ? statusSelect.value : '',
-        description: description.value, image: image.value(), timing: scheduled.timing,
+        description: description.value, image: image.value(), flyer: flyer.value(), timing: scheduled.timing,
         // Location is no longer asked for or shown; a value already in the sheet is kept.
         start: scheduled.start, end: scheduled.end, location: act ? act.location || '' : '', spots: unlimited.input.checked ? 0 : Number(spots.value) || 0,
         coLeaderNeeded: coLeader.input.checked, volunteersHidden: hidden.input.checked, directSignUp: direct.input.checked,
@@ -1517,7 +1519,7 @@ export async function saveActivityFields(act, changes) {
     year: act.year, title: act.title, parent: act.parent || '',
     category: act.category || '', status: act.status,
     // The sheet's own dates, not the ones inherited for display (state.js).
-    description: act.description || '', image: act.image || '', timing: act.own.timing,
+    description: act.description || '', image: act.image || '', flyer: act.flyer || '', timing: act.own.timing,
     start: act.own.start, end: act.own.end, location: act.location || '', spots: act.spots || 0,
     coLeaderNeeded: act.coLeaderNeeded, volunteersHidden: act.volunteersHidden, directSignUp: act.directSignUp,
     prettyId: act.prettyId || '', allowAdding: act.allowAddingOwn || '',

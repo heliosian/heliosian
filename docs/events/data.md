@@ -7,7 +7,7 @@ The portal's data lives in one Google Sheet, `Events`, in the community shared d
 ## Tabs
 
 - `Categories` — Category ID, Event ID, Title, Description, Image, Allow Adding, Show On Main Page. Row order is display order within a scope. A blank Event ID makes a heading on the Opportunities page; an Event ID makes one of that root event's own categories, which the things under it are grouped by.
-- `Activities` — Event ID, Year, Title, Parent, Category, Status, Description, Image, Timing, Start, End, Location, Spots, Co-Leader Needed, Volunteers Hidden, Direct Sign-Up, Pretty ID, Allow Adding, Added By, Added. Parent is an Event ID. Category is a Category ID: a page heading for a root, one of the root event's own for anything under it (or blank).
+- `Activities` — Event ID, Year, Title, Parent, Category, Status, Description, Image, Timing, Start, End, Location, Spots, Co-Leader Needed, Volunteers Hidden, Direct Sign-Up, Pretty ID, Allow Adding, Flyer Image, Added By, Added. `Image` is the wide banner across the page and the card; `Flyer Image` is the event's poster, shown whole in the page's rail and, when present, on the share card instead of the banner. Both are stored image names, uploaded, found in the image libraries, or cropped from the page. Parent is an Event ID. Category is a Category ID: a page heading for a root, one of the root event's own for anything under it (or blank).
 - `Volunteers` — Event ID, Email, Position, Note, Added By, Added.
 - `Links` — Event ID, Title, URL, Image.
 

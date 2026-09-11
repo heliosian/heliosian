@@ -1356,7 +1356,22 @@ a.card-chip.is-link:hover { filter: brightness(0.92); text-decoration: underline
 
 .side-chairs { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 8px; }
 
-.side-chair { width: 62px; text-align: center; border: 0; background: none; padding: 0; font: inherit; color: inherit; cursor: pointer; }
+/* Tiles in a row stretch to one height and stack face, name, role from the
+   top, so the roles line up across tiles whether a name wraps or not. */
+.side-chair { width: 62px; display: flex; flex-direction: column; align-items: center; text-align: center; border: 0; background: none; padding: 0; font: inherit; color: inherit; cursor: pointer; }
+
+.side-chair .side-chair-name { flex: 1; }
+
+/* The flyer in the rail: the poster at the rail's width, clickable to see it whole. */
+.flyer-card { padding: 16px; }
+
+.flyer-head { margin-bottom: 10px; }
+
+.flyer-open { display: block; width: 100%; padding: 0; border: 0; background: none; cursor: zoom-in; border-radius: 10px; overflow: hidden; }
+
+.flyer-image { display: block; width: 100%; height: auto; border-radius: 10px; }
+
+.flyer-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 
 /* The person card that opens from a chip. */
 .who-card-head { display: flex; align-items: center; gap: 16px; }
@@ -1441,6 +1456,23 @@ button.side-chair:hover { background: var(--input); }
 }
 
 .side-chair .avatar { position: relative; overflow: visible; }
+
+/* A chair's tile: a brand ring around the face and a small role line under the
+   name, so the organizers stand out among the volunteers. */
+.side-chair.is-chair .avatar { box-shadow: 0 0 0 3px var(--yellow); }
+
+.side-chair-role {
+  display: inline-block;
+  margin-top: 3px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--yellow);
+  color: var(--brand-deep);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
 
 .side-chair .avatar img { border-radius: 50%; }
 

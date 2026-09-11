@@ -185,10 +185,14 @@ func (a app) shareCard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	model := a.cache.Model()
-	// A thing under an event with no image of its own shows the event's.
-	picture := act.Image
+	// The flyer is what the card shows when there is one; otherwise the
+	// banner, and a thing under an event with neither shows the event's.
+	picture, isFlyer := "", false
 	for n := act; picture == "" && n != nil; n = model.byID[n.Parent] {
-		picture = n.Image
+		picture, isFlyer = n.Flyer, true
+		if picture == "" {
+			picture, isFlyer = n.Image, false
+		}
 	}
 	imageBytes := a.readImage(picture)
 	line, under := when(timed(model, act)), lineage(model, act)
@@ -198,7 +202,7 @@ func (a app) shareCard(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotModified)
 		return
 	}
-	card, err := drawCard(under, act.Title, line, r.Host+model.PathOf(act), imageBytes)
+	card, err := drawCard(under, act.Title, line, r.Host+model.PathOf(act), imageBytes, isFlyer)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -323,7 +327,9 @@ func wrap(d *font.Drawer, text string, width fixed.Int26_6) []string {
 // title as large as fits in three lines with the brand's yellow swoosh under
 // it, the date line, the address, and the event's image filling the right
 // side when there is one.
-func drawCard(under, title, line, address string, picture []byte) ([]byte, error) {
+// A flyer is shown whole - a poster cropped loses its words - on a tinted
+// panel; a banner is scaled to cover the panel and cropped to it.
+func drawCard(under, title, line, address string, picture []byte, whole bool) ([]byte, error) {
 	bold, medium, err := loadFaces()
 	if err != nil {
 		return nil, fmt.Errorf("share card fonts: %w", err)
@@ -347,12 +353,21 @@ func drawCard(under, title, line, address string, picture []byte) ([]byte, error
 	} else {
 		panel := image.Rect(720, 0, cardWidth, cardHeight)
 		b := pic.Bounds()
-		scale := max(float64(panel.Dx())/float64(b.Dx()), float64(panel.Dy())/float64(b.Dy()))
-		w, h := int(float64(b.Dx())*scale+0.5), int(float64(b.Dy())*scale+0.5)
-		dst := image.Rect(0, 0, w, h).Add(image.Pt(panel.Min.X-(w-panel.Dx())/2, panel.Min.Y-(h-panel.Dy())/2))
-		fitted := image.NewRGBA(dst)
-		draw.CatmullRom.Scale(fitted, dst, pic, b, draw.Src, nil)
-		draw.Draw(img, panel, fitted, panel.Min, draw.Src)
+		if whole {
+			draw.Draw(img, panel, image.NewUniform(color.RGBA{0xdc, 0xe9, 0xe4, 0xff}), image.Point{}, draw.Src)
+			inset := panel.Inset(28)
+			scale := min(float64(inset.Dx())/float64(b.Dx()), float64(inset.Dy())/float64(b.Dy()))
+			w, h := int(float64(b.Dx())*scale+0.5), int(float64(b.Dy())*scale+0.5)
+			dst := image.Rect(0, 0, w, h).Add(image.Pt(inset.Min.X+(inset.Dx()-w)/2, inset.Min.Y+(inset.Dy()-h)/2))
+			draw.CatmullRom.Scale(img, dst, pic, b, draw.Over, nil)
+		} else {
+			scale := max(float64(panel.Dx())/float64(b.Dx()), float64(panel.Dy())/float64(b.Dy()))
+			w, h := int(float64(b.Dx())*scale+0.5), int(float64(b.Dy())*scale+0.5)
+			dst := image.Rect(0, 0, w, h).Add(image.Pt(panel.Min.X-(w-panel.Dx())/2, panel.Min.Y-(h-panel.Dy())/2))
+			fitted := image.NewRGBA(dst)
+			draw.CatmullRom.Scale(fitted, dst, pic, b, draw.Src, nil)
+			draw.Draw(img, panel, fitted, panel.Min, draw.Src)
+		}
 		textRight = 720 - 48
 	}
 

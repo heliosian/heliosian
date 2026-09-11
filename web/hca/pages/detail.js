@@ -262,8 +262,8 @@ function factsCard(node, editing, save) {
 // personTile is one avatar and name in the rail. It opens the person's card;
 // while editing it opens their sign-up instead, since that is what an editor
 // clicks a face for.
-function personTile(owner, v, editing, star) {
-  const tile = el('button', 'side-chair' + (editing ? ' is-editable' : ''));
+function personTile(owner, v, editing, star, chair) {
+  const tile = el('button', 'side-chair' + (editing ? ' is-editable' : '') + (chair ? ' is-chair' : ''));
   tile.type = 'button';
   if (editing) {
     tile.title = `Edit ${v.name}'s sign-up`;
@@ -273,6 +273,9 @@ function personTile(owner, v, editing, star) {
     tile.addEventListener('click', () => openPerson(v));
   }
   tile.append(avatar(v), el('div', 'side-chair-name', v.name + (star && v.position === 'Co-Chair' ? '*' : '')));
+  if (chair) {
+    tile.append(el('div', 'side-chair-role', 'Chair'));
+  }
   return tile;
 }
 
@@ -515,6 +518,7 @@ function volunteersRow(node, below, editing) {
 // own pages; the rail's filter is the cross-tree view.
 function volunteersBox(node, editing, save) {
   const people = shownVolunteers(node, editing).filter(v => v.position !== 'Co-Chair');
+  const chairs = coChairs(node);
   const box = el('div', 'vol-box');
   const head = el('div', 'vol-head');
   const title = el('div', 'vol-title');
@@ -551,19 +555,27 @@ function volunteersBox(node, editing, save) {
   }
   head.append(actions);
   box.append(head);
+  // The chairs lead the list whatever else it shows - they are public, and
+  // they keep the section from standing bare - each marked as a chair; then
+  // the volunteers, or the reason there are none to show.
   const revealed = !listHidden(node) || editing || state.showHidden;
+  const showPeople = node.directSignUp && revealed ? people : [];
+  if (chairs.length || showPeople.length) {
+    const grid = el('div', 'side-chairs vol-people');
+    for (const v of chairs) {
+      grid.append(personTile(node, v, editing, false, true));
+    }
+    for (const v of showPeople) {
+      grid.append(personTile(node, v, editing, false));
+    }
+    box.append(grid);
+  }
   if (!node.directSignUp) {
     box.append(el('div', 'vol-note', 'Sign up for one of the things to do below.'));
   } else if (!revealed) {
     box.append(el('div', 'vol-note', 'This list is private; only the organizers see it.'));
-  } else if (people.length) {
-    const grid = el('div', 'side-chairs vol-people');
-    for (const v of people) {
-      grid.append(personTile(node, v, editing, false));
-    }
-    box.append(grid);
-  } else {
-    box.append(el('div', 'vol-note', 'Nobody yet.'));
+  } else if (!people.length) {
+    box.append(el('div', 'vol-note', chairs.length ? 'No volunteers yet.' : 'Nobody yet.'));
   }
   if (node.status === 'Open' && isFull(node) && !mine && node.directSignUp) {
     box.append(el('div', 'vol-note vol-full', 'Every spot is taken. Thank you, everyone!'));
@@ -624,6 +636,58 @@ function resourcesCard(node, editing) {
   if (editing) {
     card.append(button('Add a Resource', 'plus', 'button button-secondary button-small side-button',
       () => openLink(node, null)));
+  }
+  return card;
+}
+
+// flyerCard is the event's poster in the rail, under the details: the whole
+// picture at the rail's width, a click to see it full size, and while editing
+// the ways to put one up - a file, the image libraries, a crop - or take it down.
+function flyerCard(node, editing, save) {
+  if (!node.flyerUrl && !editing) {
+    return null;
+  }
+  const card = sideCard('flyer-card');
+  const head = el('div', 'flyer-head');
+  head.append(el('div', 'side-title', 'Flyer'));
+  card.append(head);
+  if (node.flyerUrl) {
+    const open = el('button', 'flyer-open');
+    open.type = 'button';
+    open.title = 'View full size';
+    const img = el('img', 'flyer-image');
+    img.src = node.flyerUrl;
+    img.alt = `${node.title} flyer`;
+    open.append(img);
+    open.addEventListener('click', () => openPhotoLightbox(node.flyerUrl));
+    card.append(open);
+  } else {
+    card.append(el('div', 'side-line', 'No flyer yet.'));
+  }
+  if (editing) {
+    const bar = el('div', 'flyer-actions');
+    const file = el('input');
+    file.type = 'file';
+    file.accept = 'image/*';
+    file.hidden = true;
+    file.addEventListener('change', async () => {
+      if (file.files.length) {
+        await uploadAndSave(changes => save({flyer: changes.image}), file.files[0]);
+      }
+    });
+    const upload = el('label', 'button button-secondary button-small');
+    upload.append(svg('up'), el('span', '', node.flyer ? 'Replace' : 'Upload'), file);
+    bar.append(upload);
+    bar.append(button('Find an image', 'search', 'button button-secondary button-small',
+      () => openImageSearch(node.title, picked => save({flyer: picked}))));
+    if (node.flyer) {
+      bar.append(button('Crop', 'crop', 'button button-secondary button-small', () => openCropTool(node.flyerUrl, false, async blob => {
+        await uploadAndSave(changes => save({flyer: changes.image}), new File([blob], 'crop.jpg', {type: 'image/jpeg'}));
+        return true;
+      })));
+      bar.append(button('Remove', 'trash', 'button button-secondary button-small', () => save({flyer: ''})));
+    }
+    card.append(bar);
   }
   return card;
 }
@@ -1026,7 +1090,7 @@ export function activityPage(node) {
   }
 
   const side = el('aside', 'detail-side');
-  for (const card of [factsCard(node, editing, save), helpCard(node)]) {
+  for (const card of [factsCard(node, editing, save), flyerCard(node, editing, save), helpCard(node)]) {
     if (card) {
       side.append(card);
     }

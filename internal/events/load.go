@@ -62,7 +62,7 @@ var settingKeys = []string{ExpenseFormKey, IntroKey}
 
 var (
 	CategoryColumns  = []string{"Category ID", "Event ID", "Title", "Description", "Image", "Allow Adding", "Show On Main Page"}
-	ActivityColumns  = []string{"Event ID", "Year", "Title", "Parent", "Category", "Status", "Description", "Image", "Timing", "Start", "End", "Location", "Spots", "Co-Leader Needed", "Volunteers Hidden", "Direct Sign-Up", "Pretty ID", "Allow Adding", "Added By", "Added"}
+	ActivityColumns  = []string{"Event ID", "Year", "Title", "Parent", "Category", "Status", "Description", "Image", "Timing", "Start", "End", "Location", "Spots", "Co-Leader Needed", "Volunteers Hidden", "Direct Sign-Up", "Pretty ID", "Allow Adding", "Flyer Image", "Added By", "Added"}
 	VolunteerColumns = []string{"Event ID", "Email", "Position", "Note", "Added By", "Added"}
 	LinkColumns      = []string{"Event ID", "Title", "URL", "Image"}
 	SettingColumns   = []string{"Key", "Value"}
@@ -132,11 +132,15 @@ type Activity struct {
 	Parent string `json:"parent,omitempty"`
 	// Category is a Category ID: one of the page's headings for a root, or one of
 	// the root event's own categories for anything under it.
-	Category         string `json:"category,omitempty"`
-	Status           string `json:"status"`
-	Description      string `json:"description,omitempty"`
-	Image            string `json:"image,omitempty"`
-	ImageURL         string `json:"imageUrl,omitempty"`
+	Category    string `json:"category,omitempty"`
+	Status      string `json:"status"`
+	Description string `json:"description,omitempty"`
+	Image       string `json:"image,omitempty"`
+	ImageURL    string `json:"imageUrl,omitempty"`
+	// Flyer is the event's poster, shown in the page's rail and used for the
+	// share card in place of the banner when there is one.
+	Flyer            string `json:"flyer,omitempty"`
+	FlyerURL         string `json:"flyerUrl,omitempty"`
 	Timing           string `json:"timing,omitempty"`
 	Start            string `json:"start,omitempty"`
 	End              string `json:"end,omitempty"`
@@ -682,8 +686,10 @@ func imageNames(rows ...[]map[string]string) []string {
 	names := []string{}
 	for _, table := range rows {
 		for _, row := range table {
-			if row["Image"] != "" {
-				names = append(names, row["Image"])
+			for _, column := range []string{"Image", "Flyer Image"} {
+				if row[column] != "" {
+					names = append(names, row[column])
+				}
 			}
 		}
 	}
@@ -983,10 +989,14 @@ func parseActivity(row map[string]string, model *Model, images ImageChecker) (*A
 	if err != nil {
 		return fail(err)
 	}
+	flyer, err := imageURL(images, row["Flyer Image"])
+	if err != nil {
+		return fail(fmt.Errorf("flyer %w", err))
+	}
 	return &Activity{
 		ID: strings.TrimSpace(row["Event ID"]), Year: year, Title: title, Parent: strings.TrimSpace(row["Parent"]),
 		Category: strings.TrimSpace(row["Category"]), Status: row["Status"],
-		Description: row["Description"], Image: row["Image"], ImageURL: image,
+		Description: row["Description"], Image: row["Image"], ImageURL: image, Flyer: row["Flyer Image"], FlyerURL: flyer,
 		Timing: row["Timing"], Start: row["Start"], End: row["End"], Location: row["Location"], Spots: spots,
 		CoLeaderNeeded: coLeader, VolunteersHidden: hidden, DirectSignUp: direct, PrettyID: pretty, AllowAdding: allowAdding,
 		AddedBy: strings.ToLower(row["Added By"]), Added: row["Added"],

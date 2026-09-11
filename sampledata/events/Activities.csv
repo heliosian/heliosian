@@ -1,44 +1,44 @@
-Event ID,Year,Title,Parent,Category,Status,Description,Image,Timing,Start,End,Location,Spots,Co-Leader Needed,Volunteers Hidden,Direct Sign-Up,Pretty ID,Allow Adding,Added By,Added
+Event ID,Year,Title,Parent,Category,Status,Description,Image,Timing,Start,End,Location,Spots,Co-Leader Needed,Volunteers Hidden,Direct Sign-Up,Pretty ID,Allow Adding,Flyer Image,Added By,Added
 E001,2026 - 2027,International Night,,C01,Open,"We invite you to represent anything that you feel connected to, that gives you a sense of belonging, or that you feel excited to explore. This could be a country, region, state, province, city, cultural heritage, or another community.
 
-Your booth can be as simple or creative as you'd like! Share a favorite food, photos, traditions, crafts, music, clothing, or anything else that tells your story.",brand/icon-192.png,,2026-09-24 16:00,2026-09-24 18:00,Helios Blacktop,,No,No,No,international-night,Approval Needed,jordan.whitfield@heliosschool.org,2026-04-29
-E002,2026 - 2027,Spring Celebration,,C01,Open,"Organizing the adult-only celebration including food, drinks, theme, activities and decor",,,2027-03-06 17:30,2027-03-06 22:00,Elks Lodge,,Yes,No,Yes,spring-celebration,,jordan.whitfield@heliosschool.org,2026-08-13
-E003,2026 - 2027,All School Movie Night,,C02,Open,"Arriving early to set up projector and speakers, any decorations, putting together treat bags, picking the movie",,,2026-11-06 18:00,2026-11-06 20:00,Helios Field,,Yes,No,Yes,,,jordan.whitfield@heliosschool.org,2026-05-27
-E004,2026 - 2027,Cocoa & Cookies,,C02,Open,"Join your kids before dismissal for winter break for cocoa and cookies. We need people to run the cocoa table, and people to provide treats, potluck-style.",,,2026-12-16 11:45,2026-12-16 13:00,,,Yes,No,Yes,,,jordan.whitfield@heliosschool.org,2026-08-13
-E005,2026 - 2027,Back to School Social,,C02,Done,"Set up tables for after-school clubs, coordinate ice cream, run the welcome table with name tags",,,2026-08-20 15:00,2026-08-20 17:00,Helios Blacktop,,No,No,Yes,,,jordan.whitfield@heliosschool.org,2026-06-01
-E006,2026 - 2027,Book Fair,,C02,Hidden,Book fair supported by the local bookshop. Not announced yet.,,,2027-03-30,2027-04-02,Helios Gym,,No,No,Yes,,,jordan.whitfield@heliosschool.org,2026-08-28
-E007,2026 - 2027,Coffee Carts,,C03,Open,Let's redesign what our coffee carts are! What if we have a yogurt parfait bar? Or a fancy toast station?,,A few times per year,,,,,No,No,Yes,,,jordan.whitfield@heliosschool.org,2026-06-08
-E008,2026 - 2027,Helios Cares,,C04,Open,"The Helios Cares team leads efforts that support our community, both internally and externally: community service drives, campus beautification, staff birthdays and gifts.",,All Year,,,,,No,No,Yes,,,jordan.whitfield@heliosschool.org,2026-04-29
+Your booth can be as simple or creative as you'd like! Share a favorite food, photos, traditions, crafts, music, clothing, or anything else that tells your story.",brand/icon-192.png,,2026-09-24 16:00,2026-09-24 18:00,Helios Blacktop,,No,No,No,international-night,Approval Needed,,jordan.whitfield@heliosschool.org,2026-04-29
+E002,2026 - 2027,Spring Celebration,,C01,Open,"Organizing the adult-only celebration including food, drinks, theme, activities and decor",,,2027-03-06 17:30,2027-03-06 22:00,Elks Lodge,,Yes,No,Yes,spring-celebration,,brand/logo-lockup-vertical.png,jordan.whitfield@heliosschool.org,2026-08-13
+E003,2026 - 2027,All School Movie Night,,C02,Open,"Arriving early to set up projector and speakers, any decorations, putting together treat bags, picking the movie",,,2026-11-06 18:00,2026-11-06 20:00,Helios Field,,Yes,No,Yes,,,,jordan.whitfield@heliosschool.org,2026-05-27
+E004,2026 - 2027,Cocoa & Cookies,,C02,Open,"Join your kids before dismissal for winter break for cocoa and cookies. We need people to run the cocoa table, and people to provide treats, potluck-style.",,,2026-12-16 11:45,2026-12-16 13:00,,,Yes,No,Yes,,,,jordan.whitfield@heliosschool.org,2026-08-13
+E005,2026 - 2027,Back to School Social,,C02,Done,"Set up tables for after-school clubs, coordinate ice cream, run the welcome table with name tags",,,2026-08-20 15:00,2026-08-20 17:00,Helios Blacktop,,No,No,Yes,,,,jordan.whitfield@heliosschool.org,2026-06-01
+E006,2026 - 2027,Book Fair,,C02,Hidden,Book fair supported by the local bookshop. Not announced yet.,,,2027-03-30,2027-04-02,Helios Gym,,No,No,Yes,,,,jordan.whitfield@heliosschool.org,2026-08-28
+E007,2026 - 2027,Coffee Carts,,C03,Open,Let's redesign what our coffee carts are! What if we have a yogurt parfait bar? Or a fancy toast station?,,A few times per year,,,,,No,No,Yes,,,,jordan.whitfield@heliosschool.org,2026-06-08
+E008,2026 - 2027,Helios Cares,,C04,Open,"The Helios Cares team leads efforts that support our community, both internally and externally: community service drives, campus beautification, staff birthdays and gifts.",,All Year,,,,,No,No,Yes,,,,jordan.whitfield@heliosschool.org,2026-04-29
 E009,2026 - 2027,Room Parents,,C04,Open,"Interested in being a room parent? Express interest here. New parents welcome! Sign-ups are hidden for privacy.
 
-There will be about three room parents for each gradeband. A room parent forwards messages to the classroom chats, coordinates a few events, and puts together the yearbook write-up.",,All Year,,,,,No,Yes,No,,,jordan.whitfield@heliosschool.org,2026-04-27
-E010,2026 - 2027,Tech Team,,C05,Open,"Help out with various tech things, such as learning how to set up for outdoor movie nights or setting up the photo booth",,All Year,,,,,Yes,No,Yes,,,jordan.whitfield@heliosschool.org,2026-08-13
-E011,2026 - 2027,Pi Day,,C06,Open,Pi day is March 14. What might a school-wide pi day event look like? Needs someone to design and lead this idea.,,March 14,,,,,Yes,No,Yes,,,jordan.whitfield@heliosschool.org,2026-05-27
-E012,2026 - 2027,Family Escape Room Night,,C01,Pending,Several classrooms serve as escape rooms with puzzles that must be solved for teams to exit.,,,,,,,No,No,Yes,,,elena.torres@heliosschool.org,2026-08-30
-E013,2025 - 2026,International Night,,C01,Done,Looking for booths and performances. Represent your real (or real-ish) land!,,,2025-10-16 16:00,2025-10-16 18:00,Helios Blacktop,,No,No,No,international-night-2025,,jordan.whitfield@heliosschool.org,2025-05-03
-E014,2025 - 2026,Talent Show,,C01,Done,Help organize an all-ages non-competitive talent show,,,2026-02-07 18:00,2026-02-07 21:00,Helios Gym,,No,No,Yes,,,jordan.whitfield@heliosschool.org,2025-09-02
-E015,2025 - 2026,Helios Cares,,C04,Done,"The Helios Cares team leads efforts that support our community, both internally and externally.",,All Year,,,,,No,No,Yes,,,jordan.whitfield@heliosschool.org,2025-08-16
-E016,2026 - 2027,Set Up Crew,E001,C07,Open,"Set up from 12:30pm on, or earlier",,,2026-09-24 12:30,2026-09-24 16:00,,4,No,No,Yes,,,jordan.whitfield@heliosschool.org,2026-08-27
-E017,2026 - 2027,Clean Up Crew,E001,C07,Open,Help us clean up the event. We need as many people as we can get!,,,,,,,No,No,Yes,,,jordan.whitfield@heliosschool.org,2026-08-27
-E018,2026 - 2027,Performance Tech,E001,C07,Open,Help with sound for the performances,,,,,,,Yes,No,Yes,,,jordan.whitfield@heliosschool.org,2026-09-04
-E019,2026 - 2027,Norway,E001,C08,Open,Kringla and trolls,,,,,,,No,No,Yes,,,elena.torres@heliosschool.org,2026-05-27
-E020,2026 - 2027,India,E001,C08,Open,,,,,,,,Yes,No,Yes,,,deepa.natarajan@heliosschool.org,2026-05-27
-E021,2026 - 2027,India Performance,E020,,Open,Max of 2 minutes per performance.,,,,,,,No,No,Yes,,,deepa.natarajan@heliosschool.org,2026-08-27
-E022,2026 - 2027,Cybertron,E001,C08,Pending,A booth about Cybertron (planet of the Transformers),,,,,,,No,No,Yes,,,daniel.park@heliosschool.org,2026-08-30
-E023,2026 - 2027,Decor,E002,,Open,What's our theme? How do we make it fit our vibe?,,,,,,,No,No,Yes,,,jordan.whitfield@heliosschool.org,2026-08-13
-E024,2026 - 2027,Childcare,E002,,Open,Order pizza and bring in some activities for the childcare room,,,,,,,No,No,Yes,,,jordan.whitfield@heliosschool.org,2026-08-13
-E025,2026 - 2027,Marketing,E002,,Open,"Flyers, posters, tickets, oh my!",,,,,,,No,No,Yes,,,jordan.whitfield@heliosschool.org,2026-08-13
-E026,2026 - 2027,Tech Setup,E003,,Open,,,,,,,2,No,No,Yes,,,jordan.whitfield@heliosschool.org,2026-08-11
-E027,2026 - 2027,Concessions,E003,,Open,,,,,,,,No,No,Yes,,,jordan.whitfield@heliosschool.org,2026-08-11
-E028,2026 - 2027,Cocoa Table,E004,,Open,Help set up and manage the cocoa table,,,,,,,No,No,Yes,,,jordan.whitfield@heliosschool.org,2026-08-13
-E029,2026 - 2027,Bring a Treat,E004,,Open,"Cookies and treats are potluck-style! Bring a treat to share with the school (nut-free, as always).",,,,,,,No,No,Yes,,,jordan.whitfield@heliosschool.org,2026-08-13
-E030,2026 - 2027,Staff Gifts,E008,,Open,Coordinate winter and end-of-year gifts,,,,,,,No,No,Yes,,,jordan.whitfield@heliosschool.org,2026-08-13
-E031,2026 - 2027,Community Service,E008,,Open,"Organize community service through the year, such as a backpack drive, mobile pack, beach clean up",,,,,,,No,No,Yes,,,jordan.whitfield@heliosschool.org,2026-08-13
-E032,2026 - 2027,Winter Coat Drive,E031,,Open,Collect gently used coats and jackets for local families in need,,,,,,,No,No,Yes,,,asha.chandra@heliosschool.org,2026-09-01
-E033,2026 - 2027,Hummingbirds,E009,,Open,Room parent for kindergarten,,,,,,3,No,Yes,Yes,,,jordan.whitfield@heliosschool.org,2026-04-27
-E034,2026 - 2027,Halcons,E009,,Open,Room parent for 1st and 2nd grade,,,,,,3,No,Yes,Yes,,,jordan.whitfield@heliosschool.org,2026-04-27
-E035,2026 - 2027,Jayvens,E009,,Open,Room parent for 3rd and 4th grade,,,,,,3,No,Yes,Yes,,,jordan.whitfield@heliosschool.org,2026-04-27
-E036,2026 - 2027,Cospreys,E009,,Open,Room parent for 5th and 6th grade,,,,,,3,No,Yes,Yes,,,jordan.whitfield@heliosschool.org,2026-04-27
-E037,2026 - 2027,Hegrets,E009,,Open,Room parent for 7th and 8th grade,,,,,,3,No,Yes,Yes,,,jordan.whitfield@heliosschool.org,2026-04-27
-E038,2025 - 2026,Set Up Crew,E013,C09,Done,,,,,,,,No,No,Yes,,,jordan.whitfield@heliosschool.org,2025-10-09
-E039,2025 - 2026,USA,E013,C10,Done,,,,,,,,No,No,Yes,,,jordan.whitfield@heliosschool.org,2025-05-03
+There will be about three room parents for each gradeband. A room parent forwards messages to the classroom chats, coordinates a few events, and puts together the yearbook write-up.",,All Year,,,,,No,Yes,No,,,,jordan.whitfield@heliosschool.org,2026-04-27
+E010,2026 - 2027,Tech Team,,C05,Open,"Help out with various tech things, such as learning how to set up for outdoor movie nights or setting up the photo booth",,All Year,,,,,Yes,No,Yes,,,,jordan.whitfield@heliosschool.org,2026-08-13
+E011,2026 - 2027,Pi Day,,C06,Open,Pi day is March 14. What might a school-wide pi day event look like? Needs someone to design and lead this idea.,,March 14,,,,,Yes,No,Yes,,,,jordan.whitfield@heliosschool.org,2026-05-27
+E012,2026 - 2027,Family Escape Room Night,,C01,Pending,Several classrooms serve as escape rooms with puzzles that must be solved for teams to exit.,,,,,,,No,No,Yes,,,,elena.torres@heliosschool.org,2026-08-30
+E013,2025 - 2026,International Night,,C01,Done,Looking for booths and performances. Represent your real (or real-ish) land!,,,2025-10-16 16:00,2025-10-16 18:00,Helios Blacktop,,No,No,No,international-night-2025,,,jordan.whitfield@heliosschool.org,2025-05-03
+E014,2025 - 2026,Talent Show,,C01,Done,Help organize an all-ages non-competitive talent show,,,2026-02-07 18:00,2026-02-07 21:00,Helios Gym,,No,No,Yes,,,,jordan.whitfield@heliosschool.org,2025-09-02
+E015,2025 - 2026,Helios Cares,,C04,Done,"The Helios Cares team leads efforts that support our community, both internally and externally.",,All Year,,,,,No,No,Yes,,,,jordan.whitfield@heliosschool.org,2025-08-16
+E016,2026 - 2027,Set Up Crew,E001,C07,Open,"Set up from 12:30pm on, or earlier",,,2026-09-24 12:30,2026-09-24 16:00,,4,No,No,Yes,,,,jordan.whitfield@heliosschool.org,2026-08-27
+E017,2026 - 2027,Clean Up Crew,E001,C07,Open,Help us clean up the event. We need as many people as we can get!,,,,,,,No,No,Yes,,,,jordan.whitfield@heliosschool.org,2026-08-27
+E018,2026 - 2027,Performance Tech,E001,C07,Open,Help with sound for the performances,,,,,,,Yes,No,Yes,,,,jordan.whitfield@heliosschool.org,2026-09-04
+E019,2026 - 2027,Norway,E001,C08,Open,Kringla and trolls,,,,,,,No,No,Yes,,,,elena.torres@heliosschool.org,2026-05-27
+E020,2026 - 2027,India,E001,C08,Open,,,,,,,,Yes,No,Yes,,,,deepa.natarajan@heliosschool.org,2026-05-27
+E021,2026 - 2027,India Performance,E020,,Open,Max of 2 minutes per performance.,,,,,,,No,No,Yes,,,,deepa.natarajan@heliosschool.org,2026-08-27
+E022,2026 - 2027,Cybertron,E001,C08,Pending,A booth about Cybertron (planet of the Transformers),,,,,,,No,No,Yes,,,,daniel.park@heliosschool.org,2026-08-30
+E023,2026 - 2027,Decor,E002,,Open,What's our theme? How do we make it fit our vibe?,,,,,,,No,No,Yes,,,,jordan.whitfield@heliosschool.org,2026-08-13
+E024,2026 - 2027,Childcare,E002,,Open,Order pizza and bring in some activities for the childcare room,,,,,,,No,No,Yes,,,,jordan.whitfield@heliosschool.org,2026-08-13
+E025,2026 - 2027,Marketing,E002,,Open,"Flyers, posters, tickets, oh my!",,,,,,,No,No,Yes,,,,jordan.whitfield@heliosschool.org,2026-08-13
+E026,2026 - 2027,Tech Setup,E003,,Open,,,,,,,2,No,No,Yes,,,,jordan.whitfield@heliosschool.org,2026-08-11
+E027,2026 - 2027,Concessions,E003,,Open,,,,,,,,No,No,Yes,,,,jordan.whitfield@heliosschool.org,2026-08-11
+E028,2026 - 2027,Cocoa Table,E004,,Open,Help set up and manage the cocoa table,,,,,,,No,No,Yes,,,,jordan.whitfield@heliosschool.org,2026-08-13
+E029,2026 - 2027,Bring a Treat,E004,,Open,"Cookies and treats are potluck-style! Bring a treat to share with the school (nut-free, as always).",,,,,,,No,No,Yes,,,,jordan.whitfield@heliosschool.org,2026-08-13
+E030,2026 - 2027,Staff Gifts,E008,,Open,Coordinate winter and end-of-year gifts,,,,,,,No,No,Yes,,,,jordan.whitfield@heliosschool.org,2026-08-13
+E031,2026 - 2027,Community Service,E008,,Open,"Organize community service through the year, such as a backpack drive, mobile pack, beach clean up",,,,,,,No,No,Yes,,,,jordan.whitfield@heliosschool.org,2026-08-13
+E032,2026 - 2027,Winter Coat Drive,E031,,Open,Collect gently used coats and jackets for local families in need,,,,,,,No,No,Yes,,,,asha.chandra@heliosschool.org,2026-09-01
+E033,2026 - 2027,Hummingbirds,E009,,Open,Room parent for kindergarten,,,,,,3,No,Yes,Yes,,,,jordan.whitfield@heliosschool.org,2026-04-27
+E034,2026 - 2027,Halcons,E009,,Open,Room parent for 1st and 2nd grade,,,,,,3,No,Yes,Yes,,,,jordan.whitfield@heliosschool.org,2026-04-27
+E035,2026 - 2027,Jayvens,E009,,Open,Room parent for 3rd and 4th grade,,,,,,3,No,Yes,Yes,,,,jordan.whitfield@heliosschool.org,2026-04-27
+E036,2026 - 2027,Cospreys,E009,,Open,Room parent for 5th and 6th grade,,,,,,3,No,Yes,Yes,,,,jordan.whitfield@heliosschool.org,2026-04-27
+E037,2026 - 2027,Hegrets,E009,,Open,Room parent for 7th and 8th grade,,,,,,3,No,Yes,Yes,,,,jordan.whitfield@heliosschool.org,2026-04-27
+E038,2025 - 2026,Set Up Crew,E013,C09,Done,,,,,,,,No,No,Yes,,,,jordan.whitfield@heliosschool.org,2025-10-09
+E039,2025 - 2026,USA,E013,C10,Done,,,,,,,,No,No,Yes,,,,jordan.whitfield@heliosschool.org,2025-05-03
