@@ -1,4 +1,4 @@
-import {state, isAdmin, years, allYears, descendants, parentOf, rootOf, category, eventCategories, longDate, parseWhen, coChairs, mySignUp, canJoin, isFull, matches, activityPath, listedIn, sortByStart, shiftedEnd, headingChoices, shownVolunteers, listHidden, canAdd, addLabel, ADDING} from '../state.js';
+import {state, isAdmin, years, allYears, descendants, parentOf, rootOf, category, eventCategories, longDate, parseWhen, coChairs, mySignUp, canJoin, isFull, matches, activityPath, listedIn, sortByStart, shiftedEnd, headingChoices, shownVolunteers, listHidden, listRevealed, canAdd, addLabel, ADDING} from '../state.js';
 import {el, link, svg, thumb, avatar, badge, button, searchBox, copyText, whenEditor, toast} from '../dom.js';
 import {setTitle} from '../chrome.js';
 import {childRow, categoryClass} from '../cards.js';
@@ -558,7 +558,7 @@ function volunteersBox(node, editing, save) {
   // they keep the section from standing bare - each marked as a chair; then
   // the volunteers, or the reason there are none to show; then, when the
   // filter brings them in, each chosen committee's volunteers under its name.
-  const revealed = !listHidden(node) || editing || state.showHidden;
+  const revealed = listRevealed(node, editing);
   const showPeople = node.directSignUp && revealed ? people : [];
   const paintListing = () => {
     listing.replaceChildren();
@@ -591,8 +591,10 @@ function volunteersBox(node, editing, save) {
         listing.append(el('div', 'vol-note', 'Sign up for something below.'));
       } else if (!revealed) {
         listing.append(el('div', 'vol-note', 'This list is private; only the organizers see it.'));
-      } else if (!people.length) {
-        listing.append(el('div', 'vol-note', chairs.length ? 'No volunteers yet.' : 'Nobody yet.'));
+      } else if (!people.length && !chairs.length) {
+        // The chairs above are enough to say who's involved; only an empty
+        // section needs the note.
+        listing.append(el('div', 'vol-note', 'Nobody yet.'));
       }
     }
     for (const src of others) {

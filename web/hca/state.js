@@ -365,9 +365,15 @@ export function listHidden(node) {
 // shownVolunteers is who the page lists. The server sends an organizer the
 // whole of a private list, but the page shows an organizer what everyone else
 // sees - the co-chairs and themselves - unless they are editing or have Show
-// Hidden Things on, so the page they look at is the page people get.
+// Hidden Things on, so the page they look at is the page people get. A system
+// admin sees a private list only with the hat on: off, they are a parent like
+// any other, and the list is not theirs to see.
+export function listRevealed(node, editing) {
+  return !listHidden(node) || editing || state.showHidden || isAdmin();
+}
+
 export function shownVolunteers(node, editing) {
-  if (!listHidden(node) || editing || state.showHidden) {
+  if (listRevealed(node, editing)) {
     return node.volunteers;
   }
   const mine = me().email;
