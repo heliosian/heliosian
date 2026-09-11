@@ -461,6 +461,31 @@ func TestHandWrittenRows(t *testing.T) {
 	if byTitle(m, "2026 - 2027", "Gone") != nil {
 		t.Fatalf("a row without an id was loaded")
 	}
+	// Whatever pointed at a deleted row is deleted with it, all the way down;
+	// a person listed twice on one thing counts once.
+	next.Activities = append(next.Activities,
+		map[string]string{"Event ID": "E910", "Title": "Orphan", "Parent": "gone-id", "Status": StatusOpen},
+		map[string]string{"Event ID": "E911", "Title": "Orphan's Child", "Parent": "E910", "Status": StatusOpen},
+	)
+	next.Volunteers = append(next.Volunteers,
+		map[string]string{"Event ID": "gone-id", "Email": parent, "Position": PositionVolunteer},
+		map[string]string{"Event ID": "E001", "Email": chair, "Position": PositionVolunteer},
+	)
+	next.Links = append(next.Links, map[string]string{"Event ID": "E910", "Title": "Lost", "URL": "https://example.com"})
+	m, err = BuildModel(&next, bundled{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Activity("E910") != nil || m.Activity("E911") != nil {
+		t.Fatalf("orphans were loaded")
+	}
+	want := Skipped{Deleted: 1, Orphans: 2, Volunteers: 2, Links: 2, Duplicates: 1}
+	if m.Skipped != want {
+		t.Fatalf("skipped %+v, want %+v", m.Skipped, want)
+	}
+	if n := len(m.Activity("E001").Volunteers); n != len(cache.Model().Activity("E001").Volunteers) {
+		t.Fatalf("the duplicate sign-up was added: %d volunteers", n)
+	}
 	// A child whose Year disagrees with its root is still refused.
 	next.Activities = append(next.Activities, map[string]string{"Event ID": "E901", "Title": "Lost", "Year": "2025 - 2026", "Parent": "E020", "Status": StatusOpen})
 	if _, err := BuildModel(&next, bundled{}); err == nil || !strings.Contains(err.Error(), "has its parent") {

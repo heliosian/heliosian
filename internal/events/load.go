@@ -169,8 +169,25 @@ type Model struct {
 	Categories []Category  `json:"categories"`
 	Activities []*Activity `json:"activities"`
 	Settings   Settings    `json:"settings"`
+	// Skipped counts the rows a load left out on purpose: deleted activities
+	// and what still pointed at them. Logged, so a typo that made a row vanish
+	// shows up as a count rather than nothing at all.
+	Skipped    Skipped `json:"-"`
 	byID       map[string]*Activity
 	categories map[string]*Category
+}
+
+// Skipped is what a load left out, by reason. A row with no Event ID is a
+// deleted activity; a child pointing at an id no live row has belongs to one,
+// and is deleted with it, as is a volunteer or link row whose Event ID is
+// blank or names nothing. A person listed twice on the same thing is counted
+// once.
+type Skipped struct {
+	Deleted    int
+	Orphans    int
+	Volunteers int
+	Links      int
+	Duplicates int
 }
 
 func (m *Model) Activity(id string) *Activity {
@@ -558,6 +575,7 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 			return nil, err
 		}
 		if a == nil {
+			model.Skipped.Deleted++
 			continue
 		}
 		if other := model.byID[a.ID]; other != nil {
@@ -566,6 +584,7 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 		model.byID[a.ID] = a
 		all = append(all, a)
 	}
+	all, model.Skipped.Orphans = dropOrphans(all, model.byID)
 	roots, err := attachChildren(all, model.byID)
 	if err != nil {
 		return nil, err
@@ -608,6 +627,7 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 	for _, row := range tables.Volunteers {
 		id := strings.TrimSpace(row["Event ID"])
 		if id == "" {
+			model.Skipped.Volunteers++
 			continue
 		}
 		email := strings.ToLower(row["Email"])
@@ -616,7 +636,8 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 		}
 		a := model.Activity(id)
 		if a == nil {
-			return nil, fmt.Errorf("volunteer %s names unknown event id %q", email, id)
+			model.Skipped.Volunteers++
+			continue
 		}
 		if !slices.Contains(Positions, row["Position"]) {
 			return nil, fmt.Errorf("volunteer %s on %q: position %q is not one of %s", email, a.Title, row["Position"], strings.Join(Positions, ", "))
@@ -626,7 +647,8 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 		}
 		key := id + "\x00" + email
 		if seen[key] {
-			return nil, fmt.Errorf("volunteer %s is listed twice on %q (%s)", email, a.Title, id)
+			model.Skipped.Duplicates++
+			continue
 		}
 		seen[key] = true
 		a.Volunteers = append(a.Volunteers, Volunteer{
@@ -641,12 +663,10 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 		if err := checkTitle("link", title); err != nil {
 			return nil, err
 		}
-		if id == "" {
-			continue
-		}
 		a := model.Activity(id)
 		if a == nil {
-			return nil, fmt.Errorf("link %q names unknown event id %q", title, id)
+			model.Skipped.Links++
+			continue
 		}
 		if err := checkURL(row["URL"]); err != nil {
 			return nil, fmt.Errorf("link %q on %q: %w", title, a.Title, err)
@@ -731,6 +751,28 @@ func parseActivity(row map[string]string, model *Model, images ImageChecker) (*A
 	}, nil
 }
 
+// dropOrphans removes every activity whose parent is not a live row - and, in
+// turn, everything under those - since a missing parent is a deleted one and
+// its pieces went with it. It returns how many were dropped.
+func dropOrphans(all []*Activity, byID map[string]*Activity) ([]*Activity, int) {
+	dropped := 0
+	for {
+		kept := all[:0:0]
+		for _, a := range all {
+			if a.Parent != "" && byID[a.Parent] == nil {
+				delete(byID, a.ID)
+				dropped++
+				continue
+			}
+			kept = append(kept, a)
+		}
+		if len(kept) == len(all) {
+			return kept, dropped
+		}
+		all = kept
+	}
+}
+
 // attachChildren hangs every activity under the parent its Parent column names,
 // in row order, and returns the roots. A parent in another year is not a parent:
 // the whole tree lives inside one school year.
@@ -742,9 +784,6 @@ func attachChildren(all []*Activity, byID map[string]*Activity) ([]*Activity, er
 			continue
 		}
 		parent := byID[a.Parent]
-		if parent == nil {
-			return nil, fmt.Errorf("activity %q in %s names unknown parent id %q", a.Title, a.Year, a.Parent)
-		}
 		if parent == a {
 			return nil, fmt.Errorf("activity %q in %s is its own parent", a.Title, a.Year)
 		}

@@ -66,5 +66,6 @@ Each runs as `go run ./cmd/<name>`. The sheet, drive, and bucket tools authentic
 - `dumptab` / `writetab` — copy one tab to a local CSV / write a local CSV into a tab, header-checked
 - `createtabs` — create the tabs of the `Directory`, `Apps`, `Events`, and `Config` spreadsheets with their header rows, adding missing columns to tabs that exist (needs `DIRECTORY_SHEET`, `APPS_SHEET`, `EVENTS_SHEET`, and `CONFIG_SHEET`, and refuses a spreadsheet whose title isn't the layout the variable promised)
 - `setcell` — set one cell in a tab by key column, appending the row if missing
+- `fixdates` — rewrite Glide-style `…T17:30:00.000Z` timestamps in the Events sheet into the loader's `2025-03-01 17:30` / `2025-03-01` forms (needs `EVENTS_SHEET`; dry run unless `-write`)
 - `import` — run a fresh Veracross export and a fresh export of the school website's staff page, upload the portraits from both, sync the import tabs, and clear the overrides those imports have caught up with, or report what that would change with `--dry-run` (needs `DIRECTORY_SHEET`, `PREFERENCES_SHEET`, and `CONFIG_SHEET`, and a `vcexport` and a `webexport` checkout, found at `../vcexport` and `../webexport` or wherever `VCEXPORT` and `WEBEXPORT` point)
 - `splash` — download an app's iOS splash battery from its captured Glide manifest into a brand directory; see `docs/who/pwa.md`

@@ -33,7 +33,7 @@ Copying an event to the next year copies its categories too, under fresh ids, an
 
 ## Keys are ids
 
-Every activity has an `Event ID` and every category a `Category ID`, unique across the sheet, and everything that refers to one does so by id: a child's `Parent`, a root's `Category`, and the `Event ID` on every volunteer and link row. Titles are just titles — two booths under different events can both be "Set Up Crew", a rename touches one cell and nothing else, and every node lives at `/activities/{id}`. The app mints an id when it creates a row (eight characters from a 32-symbol alphabet); rows added by hand need one too, and the loader refuses two rows sharing one. A row with a **blank Event ID is a deleted activity** left in place: it is not loaded, and a volunteer or link row with a blank Event ID is skipped the same way. Pointing at an id no row has (a `Parent`, a volunteer, a link) is still refused, since that is a dangling reference rather than a deletion.
+Every activity has an `Event ID` and every category a `Category ID`, unique across the sheet, and everything that refers to one does so by id: a child's `Parent`, a root's `Category`, and the `Event ID` on every volunteer and link row. Titles are just titles — two booths under different events can both be "Set Up Crew", a rename touches one cell and nothing else, and every node lives at `/activities/{id}`. The app mints an id when it creates a row (eight characters from a 32-symbol alphabet); rows added by hand need one too, and the loader refuses two rows sharing one. A row with a **blank Event ID is a deleted activity** left in place: it is not loaded, and a volunteer or link row with a blank Event ID is skipped the same way. A child whose `Parent` is not a live row belongs to a deleted event and is skipped too, with everything under it; so is a volunteer or link row naming an id no live row has. A person listed twice on one thing counts once. Each load logs how many rows it skipped for each reason (`Model.Skipped`), so a mistyped id shows up as a count rather than a silently missing row.
 
 The cost is that the sheet no longer reads as prose on its own — a volunteer row says `E017`, not "Clean Up Crew" — so the Change Log keeps writing titles alongside ids for the humans who read it.
 
@@ -45,6 +45,8 @@ The app this replaced held everything in one tree table keyed by row id, with su
 
 Start and End are wall-clock, `2026-09-24 16:00` or `2026-09-24` for a whole day, with no time zone: an event at four o'clock is at four o'clock at the school. The client formats them as local time and the calendar file it downloads uses floating times. Timing is the free text shown when there is no date ("All Year", "Late February"). Added is a date, `2026-09-24`.
 
+
+The Glide export stamped its local times as `2025-03-01T17:30:00.000Z`; `go run ./cmd/fixdates` (dry run; `-write` to change) rewrites those cells into these forms, keeping the clock as written.
 ## Yes and No
 
 Flag cells are `Yes`, `No`, or blank. A blank takes the column's default, chosen so a hand-added row asks for help unless it says otherwise: `Co-Leader Needed` and `Direct Sign-Up` default to Yes, `Volunteers Hidden` and a category's `Allow Adding` to No. The app always writes Yes or No explicitly.

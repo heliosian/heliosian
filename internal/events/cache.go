@@ -73,7 +73,7 @@ func (c *Cache) refresh() error {
 		children += len(a.Descendants())
 	}
 	slog.Info("loaded events model", "categories", len(model.Categories), "roots", len(model.Activities),
-		"children", children, "volunteers", volunteers, "took", time.Since(start).Round(time.Millisecond))
+		"children", children, "volunteers", volunteers, "skipped", model.Skipped, "took", time.Since(start).Round(time.Millisecond))
 	return nil
 }
 
