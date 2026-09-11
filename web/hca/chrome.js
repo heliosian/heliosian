@@ -1,4 +1,4 @@
-import {state, me, isAdmin, pendingItems, selectedYear, listedIn, years} from './state.js';
+import {state, me, isAdmin, pendingItems, selectedYear, listedIn, years, resolvePath, rootOf, eventCategories, descendants, activityPath} from './state.js';
 import {el, svg, link, button} from './dom.js';
 import {githubBadge} from '/github-badge.js';
 import {openActivity} from './edit.js';
@@ -19,7 +19,7 @@ function navItems() {
 function active(href) {
   const path = location.pathname;
   if (href === '/') {
-    return path === '/' || path.startsWith('/years/') || path.startsWith('/activities/');
+    return path === '/' || path.startsWith('/years/') || path.startsWith('/activities/') || path.startsWith('/v/');
   }
   return path === href || path.startsWith(href + '/');
 }
@@ -100,15 +100,112 @@ function categoryLinks() {
   return wrap.children.length ? wrap : null;
 }
 
+// currentActivity is the thing whose page is open, by either of its addresses,
+// or null on every other page.
+function currentActivity() {
+  const first = location.pathname.split('/').filter(Boolean)[0];
+  return first === 'activities' || first === 'v' ? resolvePath(location.pathname) : null;
+}
+
+// Which of an event's category groups are open in the rail, by root id and
+// category id. Kept across renders - every navigation redraws the rail - so a
+// group someone opened stays open while they move around the event.
+const openGroups = new Set();
+
+// signUps is a thing's sign-ups and those of everything under it - the number
+// the rail shows against a committee. Taken counts a private list too, so the
+// number is right for whoever looks.
+function signUps(node) {
+  return node.taken + descendants(node).reduce((n, d) => n + d.taken, 0);
+}
+
+// countLabel is "3", or "2 of 5" when the thing itself is after a set number.
+function countLabel(node) {
+  if (node.spots) {
+    return `${node.taken} of ${node.spots}`;
+  }
+  return String(signUps(node));
+}
+
+// eventTree is the rail's entry for the event whose page is open: the event
+// itself, then its committees grouped by the event's categories, each group
+// closed until opened (the group holding the open page starts open), and inside
+// each the whole tree, nested. Hidden and pending things appear only with Show
+// Hidden Things on.
+function eventTree(current) {
+  const root = rootOf(current);
+  const wrap = el('div', 'nav-event');
+  const head = link(activityPath(root), 'nav-event-link' + (current === root ? ' is-active' : ''));
+  head.append(svg('join'), el('span', '', root.title));
+  wrap.append(head);
+  const shown = n => state.showHidden || (n.status !== 'Hidden' && n.status !== 'Pending');
+  const list = el('div', 'nav-sub nav-tree');
+  const grouped = eventCategories(root).length > 0;
+  // Rows under a group start where the group's title starts (past its chevron)
+  // and step in again for each level below that; without groups, from the edge.
+  const item = (node, depth) => {
+    const row = link(activityPath(node), 'nav-sub-item nav-tree-item' + (node === current ? ' is-on' : ''));
+    row.style.paddingLeft = `${(grouped ? 30 : 8) + depth * 14}px`;
+    row.append(el('span', 'nav-sub-name', node.title), el('span', 'nav-sub-count', countLabel(node)));
+    list.append(row);
+    for (const child of node.children.filter(shown)) {
+      item(child, depth + 1);
+    }
+  };
+  const groups = [...eventCategories(root).map(c => ({id: c.id, title: c.title})), {id: '', title: 'Uncategorized'}];
+  const children = root.children.filter(shown);
+  for (const group of groups) {
+    const members = children.filter(c => (c.category || '') === group.id);
+    if (!members.length) {
+      continue;
+    }
+    if (!grouped) {
+      members.forEach(m => item(m, 0));
+      continue;
+    }
+    const key = root.id + '/' + group.id;
+    const holdsCurrent = members.some(m => m === current || descendants(m).includes(current));
+    if (holdsCurrent) {
+      openGroups.add(key);
+    }
+    const open = openGroups.has(key);
+    const toggle = el('button', 'nav-sub-item nav-tree-group' + (open ? ' is-open' : ''));
+    toggle.type = 'button';
+    toggle.setAttribute('aria-expanded', String(open));
+    toggle.append(svg('chevron'), el('span', 'nav-sub-name', group.title),
+      el('span', 'nav-sub-count', String(members.reduce((n, m) => n + signUps(m), 0))));
+    toggle.addEventListener('click', () => {
+      if (openGroups.has(key)) {
+        openGroups.delete(key);
+      } else {
+        openGroups.add(key);
+      }
+      renderNav();
+    });
+    list.append(toggle);
+    if (open) {
+      members.forEach(m => item(m, 0));
+    }
+  }
+  if (list.children.length) {
+    wrap.append(list);
+  }
+  return wrap;
+}
+
 function renderNav() {
   const nav = document.querySelector('#nav');
   nav.replaceChildren();
+  const current = currentActivity();
   for (const item of navItems()) {
     nav.append(navLink(item));
     if (item.href === '/') {
       const categories = categoryLinks();
       if (categories) {
         nav.append(categories);
+      }
+      if (current) {
+        nav.append(eventTree(current));
       }
     }
   }

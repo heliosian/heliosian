@@ -1,11 +1,11 @@
-import {state, isAdmin, years, allYears, descendants, parentOf, rootOf, category, eventCategories, longDate, parseWhen, coChairs, mySignUp, canJoin, isFull, matches, activityPath, listedIn, sortByStart, shiftedEnd, headingChoices} from '../state.js';
-import {el, link, svg, thumb, avatar, badge, button, searchBox, tabs, copyText} from '../dom.js';
+import {state, isAdmin, years, allYears, descendants, parentOf, rootOf, category, eventCategories, longDate, parseWhen, coChairs, mySignUp, canJoin, isFull, matches, activityPath, listedIn, sortByStart, shiftedEnd, headingChoices, shownVolunteers, listHidden} from '../state.js';
+import {el, link, svg, thumb, avatar, badge, button, searchBox, copyText} from '../dom.js';
 import {setTitle} from '../chrome.js';
 import {childRow, categoryClass} from '../cards.js';
 import {openSignUp, openActivity, openLink, saveActivityFields, editable, textInput, textAreaInput, selectInput, uploadAndSave, openCategoryManager, openVolunteerGrid} from '../edit.js';
 
 
-// Which activity is in edit mode, by path. Keyed rather than a bare boolean so
+// Which activity is in edit mode, by id. Keyed rather than a bare boolean so
 // opening a different activity never inherits the last one's edit mode. Mirrors
 // Helios Who?'s personEdit: one Edit button reveals every field's pencil, and
 // becomes Done.
@@ -282,10 +282,10 @@ function factsCard(node, editing, save) {
   // Who has signed up, under whoever runs it. By default this is the event
   // itself; the filter adds any of the committees under it. It is also where a
   // sign-up gets edited or removed while editing - the old Volunteers tab is
-  // gone. A hidden list has already been trimmed by the server to the co-chairs
-  // and the viewer, so nothing needs hiding here.
+  // gone. A private list shows an organizer only what everyone sees unless
+  // they are editing or have Show Hidden Things on (shownVolunteers).
   const below = descendants(node);
-  const ownHelpers = node.volunteers.filter(v => v.position !== 'Co-Chair');
+  const ownHelpers = shownVolunteers(node, editing).filter(v => v.position !== 'Co-Chair');
   if (ownHelpers.length || below.length || node.parent || node.directSignUp) {
     card.append(volunteersRow(node, below, editing));
     any = true;
@@ -432,7 +432,8 @@ function volunteersRow(node, below, editing) {
     }
     let total = 0;
     for (const src of sources) {
-      const people = src === node ? src.volunteers.filter(v => v.position !== 'Co-Chair') : src.volunteers;
+      const shown = shownVolunteers(src, editing);
+      const people = src === node ? shown.filter(v => v.position !== 'Co-Chair') : shown;
       if (sources.length > 1) {
         list.append(el('div', 'side-group', src === node ? self : src.title));
       }
@@ -531,7 +532,7 @@ function volunteersRow(node, below, editing) {
   if (node.canEdit) {
     // The organizers' roster: every sign-up in the tree with where it is and how
     // to reach them, including a student's parents.
-    body.append(button('More Info', 'list', 'button button-secondary button-small side-button roster-open',
+    body.append(button('Volunteer Info', 'list', 'button button-secondary button-small side-button roster-open',
       () => openVolunteerGrid(node, [node, ...below], n => whereIs(node, n))));
   }
   row.append(body);
@@ -543,7 +544,7 @@ function volunteersRow(node, below, editing) {
 // whether the list is private. Sign-ups for the things under it live on their
 // own pages; the rail's filter is the cross-tree view.
 function volunteersBox(node, editing, save) {
-  const people = node.volunteers.filter(v => v.position !== 'Co-Chair');
+  const people = shownVolunteers(node, editing).filter(v => v.position !== 'Co-Chair');
   const box = el('div', 'vol-box');
   const head = el('div', 'vol-head');
   head.append(el('h2', 'section', people.length ? `Volunteers (${people.length})` : 'Volunteers'));
@@ -574,8 +575,8 @@ function volunteersBox(node, editing, save) {
   if (node.status === 'Open' && isFull(node) && !mine) {
     box.append(el('div', 'vol-note vol-full', 'Every spot is taken. Thank you, everyone!'));
   }
-  if (node.volunteersHidden && !node.canEdit) {
-    box.append(el('div', 'vol-note', 'This list is private; the organizers see everyone.'));
+  if (listHidden(node)) {
+    box.append(el('div', 'vol-note', 'This list is private; only the organizers see it.'));
   }
   if (editing) {
     const switches = el('div', 'vol-switches');
@@ -679,7 +680,8 @@ function heroButton(icon, label, onClick) {
 
 function shareButton(node) {
   return heroButton('share', 'Share this page', async () => {
-    const url = location.href;
+    // The friendly address when there is one, however this page was reached.
+    const url = location.origin + activityPath(node);
     if (navigator.share) {
       try {
         await navigator.share({title: node.title, url});
@@ -730,7 +732,7 @@ function downloadCalendar(node) {
   if (node.description) {
     lines.push(`DESCRIPTION:${escape(node.description)}`);
   }
-  lines.push(`URL:${location.href}`, 'END:VEVENT', 'END:VCALENDAR');
+  lines.push(`URL:${location.origin + activityPath(node)}`, 'END:VEVENT', 'END:VCALENDAR');
   const blob = new Blob([lines.join('\r\n')], {type: 'text/calendar'});
   const a = el('a');
   a.href = URL.createObjectURL(blob);
@@ -739,16 +741,16 @@ function downloadCalendar(node) {
   URL.revokeObjectURL(a.href);
 }
 
-function childrenSection(node, children, hiddenOnes, editing) {
+function childrenSection(node, editing) {
   const root = rootOf(node);
   const wrap = el('div');
   const head = el('div', 'list-head');
-  const title = hiddenOnes ? 'Hidden and Pending' : 'Things To Do';
-  head.append(el('h2', 'section', title));
+  head.append(el('h2', 'section', 'Things To Do'));
   const actions = el('div', 'row-actions');
   let query = '';
   const list = el('div');
-  const roles = children.filter(r => hiddenOnes ? r.status === 'Hidden' || r.status === 'Pending' : r.status !== 'Hidden' && r.status !== 'Pending');
+  const unlisted = r => r.status === 'Hidden' || r.status === 'Pending';
+  const roles = node.children.filter(r => !unlisted(r) || (node.canEdit && (editing || state.showHidden)));
   // Children are grouped by the root event's own categories, in the order the
   // event keeps them, with the uncategorised run last. Each category carries its
   // own add button when it allows adding - so a new thing lands where you were
@@ -757,9 +759,6 @@ function childrenSection(node, children, hiddenOnes, editing) {
     const row = el('div', 'group-row');
     // The run without a category is only worth naming when there are others.
     row.append(el('div', 'group-title', cat ? cat.title : (eventCategories(root).length ? 'Uncategorized' : '')));
-    if (hiddenOnes) {
-      return row;
-    }
     const open = () => openActivity(null, {parent: node, category: cat ? cat.id : ''});
     let add = null;
     if (node.canEdit) {
@@ -777,7 +776,7 @@ function childrenSection(node, children, hiddenOnes, editing) {
   // rides along in the drag, and landing it saves the new category. The
   // browser insists on preventDefault during dragover for a drop to happen.
   const dropTarget = (panel, categoryId) => {
-    if (!editing || hiddenOnes) {
+    if (!editing) {
       return panel;
     }
     panel.addEventListener('dragover', e => {
@@ -815,7 +814,7 @@ function childrenSection(node, children, hiddenOnes, editing) {
     // A category with nothing in it yet still gets its heading and add button,
     // otherwise there would be no way to put the first thing into it - and,
     // while editing, an empty panel to drop something into.
-    if (!hiddenOnes && !query) {
+    if (!query) {
       for (const c of eventCategories(root)) {
         if (!present.has(c.id)) {
           list.append(groupHead(c));
@@ -828,20 +827,18 @@ function childrenSection(node, children, hiddenOnes, editing) {
       }
     }
     if (!shown.length) {
-      if (!hiddenOnes && !eventCategories(root).length) {
+      if (!eventCategories(root).length) {
         list.append(groupHead(null));
       }
       const panel = el('div', 'panel');
-      panel.append(el('div', 'panel-empty', hiddenOnes ? 'Nothing hidden or pending.' : (query ? 'Nothing matches.' : 'Nothing here yet.')));
+      panel.append(el('div', 'panel-empty', query ? 'Nothing matches.' : 'Nothing here yet.'));
       list.append(panel);
     }
   };
-  if (!hiddenOnes) {
-    actions.append(searchBox('Search', q => {
-      query = q;
-      render();
-    }, true));
-  }
+  actions.append(searchBox('Search', q => {
+    query = q;
+    render();
+  }, true));
   head.append(actions);
   wrap.append(head);
   render();
@@ -888,10 +885,11 @@ function editorBand(node) {
 export function activityPage(node) {
   const root = rootOf(node);
   const parent = parentOf(node);
-  const path = activityPath(node);
   const save = changes => saveActivityFields(node, changes);
   setTitle(node.title);
-  const editing = node.canEdit && editingPath === path;
+  // Keyed by id, not address: giving the thing a friendly address while
+  // editing must not drop it out of edit mode.
+  const editing = node.canEdit && editingPath === node.id;
   const page = el('div', 'detail');
 
   const top = el('div', 'detail-top');
@@ -913,7 +911,7 @@ export function activityPage(node) {
   const heroActions = el('div', 'hero-actions');
   if (node.canEdit) {
     const toggle = heroButton(editing ? 'join' : 'edit', editing ? 'Done editing' : 'Edit this page', () => {
-      editingPath = editing ? null : path;
+      editingPath = editing ? null : node.id;
       document.dispatchEvent(new CustomEvent('hca:refresh'));
     });
     if (editing) {
@@ -1004,35 +1002,18 @@ export function activityPage(node) {
     main.append(resources);
   }
 
-  // Volunteers live in the rail now, with a filter over the tree; the tabs are
-  // what sits under this thing, and for editors what is hidden or pending.
-  const nodes = [node, ...descendants(node)];
+  // Volunteers live in the rail now, with a filter over the tree. What sits
+  // under this thing is one list; its hidden and pending rows join it only for
+  // an editor who is editing or has Show Hidden Things on, muted.
   const under = node.children.filter(c => c.status !== 'Hidden' && c.status !== 'Pending');
-  const items = [];
+  // A private list takes its whole box with it - for organizers too - until
+  // they edit or turn on Show Hidden Things; that includes the Join button, so
+  // a private thing is joined from its row or by its organizers.
+  if (!listHidden(node) || editing || state.showHidden) {
+    main.append(volunteersBox(node, editing, save));
+  }
   if (!parent || under.length || node.canEdit) {
-    items.push({key: 'children', label: parent ? `Things To Do (${under.length})` : 'Things To Do'});
-  }
-  const hidden = descendants(node).filter(c => c.status === 'Hidden' || c.status === 'Pending');
-  if (node.canEdit && hidden.length) {
-    items.push({key: 'hidden', label: `Hidden Things (${hidden.length})`});
-  }
-  main.append(volunteersBox(node, editing, save));
-  if (items.length) {
-    let tab = items[0].key;
-    const body = el('div');
-    const render = () => {
-      body.replaceChildren();
-      // One tab is not a choice, so the bar only appears when there are two.
-      if (items.length > 1) {
-        body.append(tabs(items, tab, key => {
-          tab = key;
-          render();
-        }, true));
-      }
-      body.append(childrenSection(node, tab === 'children' ? node.children : hidden, tab !== 'children', editing));
-    };
-    render();
-    main.append(body);
+    main.append(childrenSection(node, editing));
   }
   if (!parent) {
     main.append(el('div', 'footnote', 'To leave a committee, open it and use Edit my sign-up.'));

@@ -157,6 +157,48 @@ button { font: inherit; }
   text-align: center;
 }
 
+/* The open event in the rail: its own link in the style of the main items, then
+   its committees by category, closed until opened, nested by depth. */
+.nav-event { margin-top: 4px; }
+
+.nav-event-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  color: var(--brand);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.nav-event-link svg { width: 20px; height: 20px; flex-shrink: 0; }
+
+.nav-event-link:hover { background: rgba(255, 255, 255, 0.55); }
+
+.nav-event-link.is-active { background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
+
+/* The generic .app-nav a rule would size these like the main items; they are
+   sub-items, so they take the sub-item's type. */
+.app-nav a.nav-tree-item {
+  min-height: 30px;
+  padding: 3px 8px;
+  gap: 8px;
+  border-radius: 7px;
+  font-size: 12.5px;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.app-nav a.nav-tree-item.is-on { background: #fff; font-weight: 700; box-shadow: none; }
+
+.nav-tree-group { font-weight: 700; }
+
+.nav-tree-group svg { width: 14px; height: 14px; flex-shrink: 0; transition: transform 0.15s; }
+
+.nav-tree-group.is-open svg { transform: rotate(90deg); }
+
 /* On the pale rail a solid brand-teal fill is the darkest thing on screen and
    fights the wash; an outlined pill keeps the brand colour and the affordance
    without the weight. .button.nav-action rather than .nav-action because the

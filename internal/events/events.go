@@ -29,7 +29,7 @@ const (
 )
 
 var pages = []string{
-	"/{$}", "/my", "/calendar", "/approvals", "/admin", "/years/{year}", "/activities/{id}",
+	"/{$}", "/my", "/calendar", "/approvals", "/admin", "/years/{year}", "/activities/{path...}", "/v/{path...}",
 }
 
 // local is the school's clock: the sheet's dates are wall-clock there, and a
@@ -335,6 +335,38 @@ type activityBody struct {
 	VolunteersHidden bool   `json:"volunteersHidden"`
 	DirectSignUp     bool   `json:"directSignUp"`
 	CoChair          bool   `json:"coChair"`
+	PrettyID         string `json:"prettyId"`
+	// TakeOver says the sender has agreed to rename a prior year's activity
+	// that holds the same Pretty ID - see prettyConflict.
+	TakeOver bool `json:"takeOver"`
+}
+
+// prettyConflict is the answer when a Pretty ID is already someone else's: who
+// has it, and whether they are in a prior year - in which case the sender may
+// ask again with takeOver, and the old one is renamed to Renamed.
+type prettyConflict struct {
+	Error   string `json:"error"`
+	ID      string `json:"id"`
+	Title   string `json:"title"`
+	Year    string `json:"year"`
+	Prior   bool   `json:"prior"`
+	Renamed string `json:"renamed,omitempty"`
+}
+
+// renamedPretty is the address a prior year's activity moves to when a newer
+// one takes its Pretty ID: the same word with the year it belonged to, or the
+// first free numbered variant of that.
+func renamedPretty(model *Model, pretty, year string) string {
+	base := pretty
+	if m := yearForm.FindStringSubmatch(year); m != nil {
+		base = pretty + "-" + m[1]
+	}
+	for i, candidate := 2, base; ; i++ {
+		if model.ByPretty(candidate) == nil && len(candidate) <= maxPrettyLength {
+			return candidate
+		}
+		candidate = fmt.Sprintf("%s-%d", base, i)
+	}
 }
 
 func spotsCell(n int) string {
@@ -446,6 +478,47 @@ func (a app) saveActivity(w http.ResponseWriter, r *http.Request) {
 	if adding {
 		id = newID()
 	}
+	// A root's Pretty ID is one address across every year. Another root holding
+	// it in this year or a later one is simply a clash; one in a prior year can
+	// be renamed out of the way, once the sender has agreed to that. A child's
+	// is one address among its siblings, under the parent's path.
+	pretty := NormalizePretty(body.PrettyID)
+	if err := CheckPretty(pretty); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	var displaced *Activity
+	renamed := ""
+	if pretty != "" && parent != "" {
+		for _, sibling := range model.Activity(parent).Children {
+			if sibling.ID != id && sibling.PrettyID == pretty {
+				conflict := prettyConflict{ID: sibling.ID, Title: sibling.Title, Year: sibling.Year,
+					Error: fmt.Sprintf("%q is already the address of %q under the same parent", pretty, sibling.Title)}
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusConflict)
+				json.NewEncoder(w).Encode(conflict)
+				return
+			}
+		}
+	}
+	if other := model.ByPretty(pretty); pretty != "" && parent == "" && other != nil && other.ID != id {
+		conflict := prettyConflict{ID: other.ID, Title: other.Title, Year: other.Year, Prior: other.Year < year}
+		if conflict.Prior {
+			conflict.Renamed = renamedPretty(model, pretty, other.Year)
+		}
+		if !conflict.Prior || !body.TakeOver {
+			if conflict.Prior {
+				conflict.Error = fmt.Sprintf("%q is the address of %q from %s", pretty, other.Title, other.Year)
+			} else {
+				conflict.Error = fmt.Sprintf("%q is already the address of %q (%s)", pretty, other.Title, other.Year)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusConflict)
+			json.NewEncoder(w).Encode(conflict)
+			return
+		}
+		displaced, renamed = other, conflict.Renamed
+	}
 	cells := map[string]string{
 		"Event ID": id, "Year": year, "Title": title, "Parent": parent,
 		"Category": category, "Status": status,
@@ -453,9 +526,34 @@ func (a app) saveActivity(w http.ResponseWriter, r *http.Request) {
 		"Timing": strings.TrimSpace(body.Timing), "Start": strings.TrimSpace(body.Start), "End": strings.TrimSpace(body.End),
 		"Location": strings.TrimSpace(body.Location), "Spots": spotsCell(body.Spots),
 		"Co-Leader Needed": YesNo(body.CoLeaderNeeded), "Volunteers Hidden": YesNo(body.VolunteersHidden),
-		"Direct Sign-Up": YesNo(body.DirectSignUp),
+		"Direct Sign-Up": YesNo(body.DirectSignUp), "Pretty ID": pretty,
 	}
 	tables := a.cache.Tables()
+	if displaced != nil {
+		tables = tables.with(activitiesTab, map[string]string{"Event ID": displaced.ID}, map[string]string{"Pretty ID": renamed})
+	}
+	// An address that changes - a new or removed friendly name, or a move under
+	// another parent - leaves a redirect from the old path to the new, so a
+	// link someone kept still lands here. A root's redirect carries everything
+	// under it along, so its children need none of their own.
+	var redirect map[string]string
+	if current != nil {
+		was := model.PathOf(current)
+		now := "/activities/" + id
+		if parent != "" {
+			seg := id
+			if pretty != "" {
+				seg = pretty
+			}
+			now = model.PathOf(model.Activity(parent)) + "/" + seg
+		} else if pretty != "" {
+			now = "/v/" + pretty
+		}
+		if was != now {
+			redirect = map[string]string{"Type": RedirectActivity, "Old": was, "New": now, "Date": today()}
+			tables = tables.with(redirectsTab, nil, redirect)
+		}
+	}
 	action := "edit"
 	match := map[string]string{"Event ID": id}
 	// Moving a root to another year takes its whole tree along, since a parent
@@ -500,6 +598,19 @@ func (a app) saveActivity(w http.ResponseWriter, r *http.Request) {
 				if err := a.writer.Set(appName, activitiesTab, map[string]string{"Event ID": d.ID}, map[string]string{"Year": year}); err != nil {
 					return err
 				}
+			}
+		}
+		if redirect != nil {
+			if err := a.writer.AppendCells(appName, redirectsTab, redirect); err != nil {
+				return err
+			}
+		}
+		if displaced != nil {
+			if err := a.writer.Set(appName, activitiesTab, map[string]string{"Event ID": displaced.ID}, map[string]string{"Pretty ID": renamed}); err != nil {
+				return err
+			}
+			if err := a.logChange(actor, "rename", "activity", map[string]string{"Year": displaced.Year, "Activity": displaced.Title, "Details": "pretty id " + pretty + " -> " + renamed + " " + displaced.ID}); err != nil {
+				return err
 			}
 		}
 		return a.logChange(actor, action, "activity", map[string]string{"Year": year, "Activity": title, "Details": status + " " + id})
@@ -896,7 +1007,8 @@ func (a app) copyActivity(w http.ResponseWriter, r *http.Request) {
 			"Status": c.Status, "Description": c.Description, "Image": c.Image, "Timing": c.Timing,
 			"Location": c.Location, "Spots": spotsCell(c.Spots),
 			"Co-Leader Needed": YesNo(c.CoLeaderNeeded), "Volunteers Hidden": YesNo(c.VolunteersHidden),
-			"Direct Sign-Up": YesNo(c.DirectSignUp), "Added By": actor, "Added": today(),
+			// The address stays with the original: two years cannot share one.
+			"Direct Sign-Up": YesNo(c.DirectSignUp), "Pretty ID": "", "Added By": actor, "Added": today(),
 		}
 	}
 	rows := []map[string]string{rowFor(act, "")}

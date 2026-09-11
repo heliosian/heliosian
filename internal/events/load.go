@@ -24,6 +24,7 @@ const (
 	linksTab      = "Links"
 	settingsTab   = "Settings"
 	adminsTab     = "Admins"
+	redirectsTab  = "Redirects"
 	changeLogTab  = "Change Log"
 )
 
@@ -61,15 +62,42 @@ var settingKeys = []string{ExpenseFormKey, IntroKey}
 
 var (
 	CategoryColumns  = []string{"Category ID", "Event ID", "Title", "Description", "Image", "Allow Adding", "Show On Main Page"}
-	ActivityColumns  = []string{"Event ID", "Year", "Title", "Parent", "Category", "Status", "Description", "Image", "Timing", "Start", "End", "Location", "Spots", "Co-Leader Needed", "Volunteers Hidden", "Direct Sign-Up", "Added By", "Added"}
+	ActivityColumns  = []string{"Event ID", "Year", "Title", "Parent", "Category", "Status", "Description", "Image", "Timing", "Start", "End", "Location", "Spots", "Co-Leader Needed", "Volunteers Hidden", "Direct Sign-Up", "Pretty ID", "Added By", "Added"}
 	VolunteerColumns = []string{"Event ID", "Email", "Position", "Note", "Added By", "Added"}
 	LinkColumns      = []string{"Event ID", "Title", "URL", "Image"}
 	SettingColumns   = []string{"Key", "Value"}
+	RedirectColumns  = []string{"Type", "Old", "New", "Date"}
 	AdminColumns     = []string{"Email"}
 	ChangeLogColumns = []string{"Timestamp", "Actor", "Action", "Kind", "Year", "Activity", "Title", "Email", "Details"}
 )
 
 var yearForm = regexp.MustCompile(`^(\d{4}) - (\d{4})$`)
+
+// prettyForm is what a Pretty ID may look like: the tail of hca.heliosian.com/v/...,
+// lower case letters, digits and hyphens, so it types easily and reads aloud.
+var prettyForm = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
+
+const maxPrettyLength = 40
+
+// NormalizePretty is the Pretty ID as stored: trimmed and lower-cased, so
+// "Applause" and "applause" are the same address.
+func NormalizePretty(raw string) string {
+	return strings.ToLower(strings.TrimSpace(raw))
+}
+
+// CheckPretty refuses a Pretty ID that could not be a URL segment.
+func CheckPretty(pretty string) error {
+	if pretty == "" {
+		return nil
+	}
+	if len(pretty) > maxPrettyLength {
+		return fmt.Errorf("pretty id %q is too long", pretty)
+	}
+	if !prettyForm.MatchString(pretty) {
+		return fmt.Errorf("pretty id %q is not lower-case letters, digits and hyphens", pretty)
+	}
+	return nil
+}
 
 var emailForm = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
 
@@ -104,24 +132,27 @@ type Activity struct {
 	Parent string `json:"parent,omitempty"`
 	// Category is a Category ID: one of the page's headings for a root, or one of
 	// the root event's own categories for anything under it.
-	Category         string      `json:"category,omitempty"`
-	Status           string      `json:"status"`
-	Description      string      `json:"description,omitempty"`
-	Image            string      `json:"image,omitempty"`
-	ImageURL         string      `json:"imageUrl,omitempty"`
-	Timing           string      `json:"timing,omitempty"`
-	Start            string      `json:"start,omitempty"`
-	End              string      `json:"end,omitempty"`
-	Location         string      `json:"location,omitempty"`
-	Spots            int         `json:"spots,omitempty"`
-	CoLeaderNeeded   bool        `json:"coLeaderNeeded"`
-	VolunteersHidden bool        `json:"volunteersHidden"`
-	DirectSignUp     bool        `json:"directSignUp"`
-	AddedBy          string      `json:"addedBy,omitempty"`
-	Added            string      `json:"added,omitempty"`
-	Children         []*Activity `json:"children"`
-	Links            []Link      `json:"links"`
-	Volunteers       []Volunteer `json:"volunteers"`
+	Category         string `json:"category,omitempty"`
+	Status           string `json:"status"`
+	Description      string `json:"description,omitempty"`
+	Image            string `json:"image,omitempty"`
+	ImageURL         string `json:"imageUrl,omitempty"`
+	Timing           string `json:"timing,omitempty"`
+	Start            string `json:"start,omitempty"`
+	End              string `json:"end,omitempty"`
+	Location         string `json:"location,omitempty"`
+	Spots            int    `json:"spots,omitempty"`
+	CoLeaderNeeded   bool   `json:"coLeaderNeeded"`
+	VolunteersHidden bool   `json:"volunteersHidden"`
+	DirectSignUp     bool   `json:"directSignUp"`
+	// PrettyID is the activity's friendly address, /v/{PrettyID}, unique across
+	// every year; blank for most rows.
+	PrettyID   string      `json:"prettyId,omitempty"`
+	AddedBy    string      `json:"addedBy,omitempty"`
+	Added      string      `json:"added,omitempty"`
+	Children   []*Activity `json:"children"`
+	Links      []Link      `json:"links"`
+	Volunteers []Volunteer `json:"volunteers"`
 	// Categories are this root event's own, in row order; empty below the root.
 	Categories []Category `json:"categories,omitempty"`
 }
@@ -164,6 +195,36 @@ type Settings struct {
 	Intro          string `json:"intro"`
 }
 
+// A Redirect keeps an old address working after it changed: someone holding
+// hca.heliosian.com/v/inight/poland still lands on the booth after the event or
+// the booth was renamed. Old and New are paths as the site serves them -
+// /v/inight/poland, or /activities/{id}/... for a thing under an event with no
+// friendly address; a bare word is taken as /v/{word}. Type names the kind of
+// thing, "Activity". A live address always wins over a redirect of the same
+// name, a chain of renames is followed to its end, and a redirect of an event's
+// address carries everything under it along.
+type Redirect struct {
+	Type string `json:"type"`
+	Old  string `json:"old"`
+	New  string `json:"new"`
+	Date string `json:"date,omitempty"`
+}
+
+const RedirectActivity = "Activity"
+
+// redirectPath is a redirect cell as a site path: trimmed, given the /v/ prefix
+// when it is a bare friendly address, and without a trailing slash.
+func redirectPath(cell string) string {
+	path := strings.TrimSpace(cell)
+	if path == "" {
+		return ""
+	}
+	if !strings.HasPrefix(path, "/") {
+		path = "/v/" + path
+	}
+	return strings.TrimRight(path, "/")
+}
+
 // Model is the sheet organized: categories in row order, then the root
 // activities in row order, each holding its children as the tree the Parent
 // column describes, and every volunteer under the activity they signed up for.
@@ -175,12 +236,93 @@ type Model struct {
 	Categories []Category  `json:"categories"`
 	Activities []*Activity `json:"activities"`
 	Settings   Settings    `json:"settings"`
+	Redirects  []Redirect  `json:"redirects"`
 	// Skipped counts the rows a load left out on purpose: deleted activities
 	// and what still pointed at them. Logged, so a typo that made a row vanish
 	// shows up as a count rather than nothing at all.
 	Skipped    Skipped `json:"-"`
 	byID       map[string]*Activity
 	categories map[string]*Category
+	pretty     map[string]*Activity
+}
+
+// ByPretty finds the root activity whose friendly address this is now. Only
+// roots are addressed by a bare friendly name; a thing under an event is
+// addressed under the event's path - see PathOf.
+func (m *Model) ByPretty(pretty string) *Activity {
+	return m.pretty[NormalizePretty(pretty)]
+}
+
+// PathOf is the address a thing is served at: /v/{pretty} for a root with a
+// friendly address, /activities/{id} for one without, and under an event each
+// thing adds its own segment - its friendly address, or its id.
+func (m *Model) PathOf(a *Activity) string {
+	if a.Parent == "" {
+		if a.PrettyID != "" {
+			return "/v/" + a.PrettyID
+		}
+		return "/activities/" + a.ID
+	}
+	seg := a.ID
+	if a.PrettyID != "" {
+		seg = a.PrettyID
+	}
+	return m.PathOf(m.byID[a.Parent]) + "/" + seg
+}
+
+// walk follows one path to a thing, or nil: the first segment names a root by
+// friendly address (/v/) or id (/activities/), and each further segment one of
+// the children by friendly address or id. A child reached by its own id with
+// no parent segment, the old /activities/{id} form, still resolves.
+func (m *Model) walk(path string) *Activity {
+	segs := strings.Split(strings.Trim(path, "/"), "/")
+	if len(segs) < 2 {
+		return nil
+	}
+	var node *Activity
+	switch segs[0] {
+	case "v":
+		node = m.pretty[NormalizePretty(segs[1])]
+	case "activities":
+		node = m.byID[segs[1]]
+	}
+	for _, seg := range segs[2:] {
+		if node == nil {
+			return nil
+		}
+		next := (*Activity)(nil)
+		for _, c := range node.Children {
+			if c.ID == seg || (c.PrettyID != "" && c.PrettyID == NormalizePretty(seg)) {
+				next = c
+				break
+			}
+		}
+		node = next
+	}
+	return node
+}
+
+// Resolve finds the thing at a path: the one there now, or the one an old
+// address has been redirected to, through any chain of renames. A redirect of
+// a prefix - the event's own address - carries the rest of the path along, so
+// renaming an event keeps every link into it working.
+func (m *Model) Resolve(path string) *Activity {
+	at := redirectPath(path)
+	for hops := 0; hops < 20 && at != ""; hops++ {
+		if a := m.walk(at); a != nil {
+			return a
+		}
+		moved := ""
+		for _, r := range m.Redirects {
+			if strings.EqualFold(r.Old, at) {
+				moved = r.New
+			} else if strings.HasPrefix(strings.ToLower(at), strings.ToLower(r.Old)+"/") && len(r.Old) > len(moved) {
+				moved = r.New + at[len(r.Old):]
+			}
+		}
+		at = moved
+	}
+	return nil
 }
 
 // Skipped is what a load left out, by reason. A row with no Event ID is a
@@ -194,6 +336,9 @@ type Skipped struct {
 	Volunteers int
 	Links      int
 	Duplicates int
+	// PrettyIDs is how many rows lost a Pretty ID another row also claimed;
+	// the row in the latest year keeps it.
+	PrettyIDs int
 }
 
 func (m *Model) Activity(id string) *Activity {
@@ -267,6 +412,7 @@ type Tables struct {
 	Links      []map[string]string
 	Settings   []map[string]string
 	Admins     []map[string]string
+	Redirects  []map[string]string
 }
 
 func ReadTables(source data.Source) (*Tables, error) {
@@ -283,8 +429,9 @@ func ReadTables(source data.Source) (*Tables, error) {
 	links := &table{name: linksTab, want: LinkColumns}
 	settings := &table{name: settingsTab, want: SettingColumns}
 	admins := &table{name: adminsTab, want: AdminColumns}
+	redirects := &table{name: redirectsTab, want: RedirectColumns}
 	changeLog := &table{name: changeLogTab, want: ChangeLogColumns}
-	read := []*table{categories, activities, volunteers, links, settings, admins}
+	read := []*table{categories, activities, volunteers, links, settings, admins, redirects}
 	var wg sync.WaitGroup
 	for _, t := range read {
 		wg.Go(func() {
@@ -305,7 +452,7 @@ func ReadTables(source data.Source) (*Tables, error) {
 	}
 	return &Tables{
 		Categories: categories.rows, Activities: activities.rows,
-		Volunteers: volunteers.rows, Links: links.rows, Settings: settings.rows, Admins: admins.rows,
+		Volunteers: volunteers.rows, Links: links.rows, Settings: settings.rows, Admins: admins.rows, Redirects: redirects.rows,
 	}, nil
 }
 
@@ -521,7 +668,7 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 		return nil, err
 	}
 	model := &Model{Categories: []Category{}, Activities: []*Activity{}, Settings: settings,
-		byID: map[string]*Activity{}, categories: map[string]*Category{}}
+		byID: map[string]*Activity{}, categories: map[string]*Category{}, pretty: map[string]*Activity{}, Redirects: []Redirect{}}
 	// Every category is parsed and indexed first; which event each scoped one
 	// belongs to is checked once the activities exist.
 	scoped := []*Category{}
@@ -580,6 +727,47 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 	roots, err := attachChildren(all, model.byID)
 	if err != nil {
 		return nil, err
+	}
+	// A root's Pretty ID is one address across every year; a child's is one
+	// among its siblings, under its parent's path. Saving refuses a clash, but a
+	// hand-edited sheet can still carry one: among roots the row in the latest
+	// year keeps the address, among siblings the first row does, and the other
+	// goes without.
+	for _, a := range all {
+		if a.PrettyID == "" || a.Parent != "" {
+			continue
+		}
+		if other := model.pretty[a.PrettyID]; other != nil {
+			if other.Year >= a.Year {
+				a.PrettyID = ""
+				model.Skipped.PrettyIDs++
+				continue
+			}
+			other.PrettyID = ""
+			model.Skipped.PrettyIDs++
+		}
+		model.pretty[a.PrettyID] = a
+	}
+	for _, a := range all {
+		seen := map[string]bool{}
+		for _, c := range a.Children {
+			if c.PrettyID == "" {
+				continue
+			}
+			if seen[c.PrettyID] {
+				c.PrettyID = ""
+				model.Skipped.PrettyIDs++
+				continue
+			}
+			seen[c.PrettyID] = true
+		}
+	}
+	for _, row := range tables.Redirects {
+		from, to := redirectPath(row["Old"]), redirectPath(row["New"])
+		if from == "" || to == "" {
+			continue
+		}
+		model.Redirects = append(model.Redirects, Redirect{Type: strings.TrimSpace(row["Type"]), Old: from, New: to, Date: row["Date"]})
 	}
 	model.Activities = roots
 	for _, c := range scoped {
@@ -732,12 +920,16 @@ func parseActivity(row map[string]string, model *Model, images ImageChecker) (*A
 	if err != nil {
 		return fail(fmt.Errorf("direct sign-up %w", err))
 	}
+	pretty := NormalizePretty(row["Pretty ID"])
+	if err := CheckPretty(pretty); err != nil {
+		return fail(err)
+	}
 	return &Activity{
 		ID: strings.TrimSpace(row["Event ID"]), Year: year, Title: title, Parent: strings.TrimSpace(row["Parent"]),
 		Category: strings.TrimSpace(row["Category"]), Status: row["Status"],
 		Description: row["Description"], Image: row["Image"], ImageURL: image,
 		Timing: row["Timing"], Start: row["Start"], End: row["End"], Location: row["Location"], Spots: spots,
-		CoLeaderNeeded: coLeader, VolunteersHidden: hidden, DirectSignUp: direct,
+		CoLeaderNeeded: coLeader, VolunteersHidden: hidden, DirectSignUp: direct, PrettyID: pretty,
 		AddedBy: strings.ToLower(row["Added By"]), Added: row["Added"],
 		Children: []*Activity{}, Links: []Link{}, Volunteers: []Volunteer{},
 	}, nil
@@ -843,6 +1035,8 @@ func (t *Tables) tab(name string) []map[string]string {
 		return t.Links
 	case settingsTab:
 		return t.Settings
+	case redirectsTab:
+		return t.Redirects
 	}
 	return t.Admins
 }
@@ -859,6 +1053,8 @@ func (t *Tables) setTab(name string, rows []map[string]string) {
 		t.Links = rows
 	case settingsTab:
 		t.Settings = rows
+	case redirectsTab:
+		t.Redirects = rows
 	default:
 		t.Admins = rows
 	}

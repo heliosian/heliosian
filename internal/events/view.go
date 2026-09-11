@@ -83,6 +83,9 @@ type View struct {
 	Categories []Category     `json:"categories"`
 	Activities []ActivityView `json:"activities"`
 	People     []PersonView   `json:"people,omitempty"`
+	// Redirects let the client send an old friendly address to where the thing
+	// is now, without a round trip.
+	Redirects []Redirect `json:"redirects"`
 }
 
 type User struct {
@@ -164,6 +167,7 @@ func Render(model *Model, directory Directory, email string, admin bool, now tim
 		Settings:   model.Settings,
 		Categories: model.Categories,
 		Activities: []ActivityView{},
+		Redirects:  model.Redirects,
 	}
 	for _, a := range model.Activities {
 		editor := v.canEdit(a)

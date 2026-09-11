@@ -1,4 +1,4 @@
-import {state, whenLabel, coChairs, canJoin, isFull, mySignUp, activityPath, rootOf, category, parseWhen, UNCATEGORIZED} from './state.js';
+import {state, whenLabel, coChairs, shownVolunteers, canJoin, isFull, mySignUp, activityPath, rootOf, category, parseWhen, UNCATEGORIZED} from './state.js';
 import {el, link, svg, thumb, badge, button} from './dom.js';
 import {openSignUp, openActivity} from './edit.js';
 
@@ -24,20 +24,20 @@ function statusBadges(node) {
 // peopleLine is who is on a thing, co-chairs first and starred, then everyone
 // else in sign-up order. The server already withholds a hidden list from
 // anyone who does not run the thing, so whatever arrives may be shown.
-function peopleLine(node) {
+function peopleLine(node, editing) {
   const chairs = coChairs(node).map(v => v.name + '*');
-  const others = node.volunteers.filter(v => v.position !== 'Co-Chair').map(v => v.name);
+  const others = shownVolunteers(node, editing).filter(v => v.position !== 'Co-Chair').map(v => v.name);
   return [...chairs, ...others].join(', ');
 }
 
-function labelLine(node, withPeople) {
+function labelLine(node, withPeople, editing) {
   const label = el('div', 'label');
   const when = whenLabel(node);
   if (when) {
     label.append(el('span', '', when));
   }
   if (withPeople) {
-    const people = peopleLine(node);
+    const people = peopleLine(node, editing);
     if (people) {
       label.append(el('span', 'label-people', people));
     }
@@ -70,7 +70,7 @@ export function childRow(node, editing) {
   const row = link(activityPath(node), 'row is-link' + (node.status === 'Hidden' || node.status === 'Pending' ? ' is-muted' : ''));
   row.append(thumb(node.imageUrl || rootOf(node).imageUrl, node.title));
   const body = el('div', 'row-body');
-  body.append(labelLine(node, true));
+  body.append(labelLine(node, true, editing));
   body.append(el('div', 'row-title', node.title));
   if (node.description) {
     body.append(el('div', 'row-text clamp', node.description));

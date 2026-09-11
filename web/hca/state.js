@@ -112,8 +112,70 @@ export function rootOf(node) {
   return top;
 }
 
+// activityPath is the address a link uses, the same one the server builds
+// (Model.PathOf): /v/{pretty} for a root with a friendly address, otherwise
+// /activities/{id}; and under an event each thing adds its own segment, its
+// friendly address or its id - /v/inight/poland.
 export function activityPath(act) {
-  return `/activities/${encodeURIComponent(act.id)}`;
+  const own = act.prettyId ? encodeURIComponent(act.prettyId) : encodeURIComponent(act.id);
+  const parent = parentOf(act);
+  if (parent) {
+    return `${activityPath(parent)}/${own}`;
+  }
+  return act.prettyId ? `/v/${own}` : `/activities/${own}`;
+}
+
+export function byPretty(pretty) {
+  const want = (pretty || '').toLowerCase();
+  return state.model.activities.find(a => a.prettyId === want) || null;
+}
+
+// walkPath follows one path to a thing, or null: the first segment names a
+// root by friendly address (/v/) or id (/activities/), each further segment one
+// of the children by friendly address or id. A child's bare /activities/{id}
+// still resolves, so old links keep working.
+function walkPath(path) {
+  const segs = path.split('/').filter(Boolean).map(decodeURIComponent);
+  if (segs.length < 2) {
+    return null;
+  }
+  let node = segs[0] === 'v' ? byPretty(segs[1]) : (segs[0] === 'activities' ? activity(segs[1]) : null);
+  for (const seg of segs.slice(2)) {
+    if (!node) {
+      return null;
+    }
+    const want = seg.toLowerCase();
+    node = node.children.find(c => c.id === seg || (c.prettyId && c.prettyId === want)) || null;
+  }
+  return node;
+}
+
+// resolvePath is walkPath plus the Redirects tab, mirroring Model.Resolve: an
+// address that has since changed is followed through the chain of renames,
+// and a redirect of an event's own address carries the rest of the path along.
+export function resolvePath(path) {
+  let at = (path || '').replace(/\/+$/, '');
+  if (at && !at.startsWith('/')) {
+    at = '/v/' + at;
+  }
+  for (let hops = 0; hops < 20 && at; hops++) {
+    const live = walkPath(at);
+    if (live) {
+      return live;
+    }
+    let moved = '';
+    const lower = at.toLowerCase();
+    for (const r of state.model.redirects || []) {
+      const old = r.old.toLowerCase();
+      if (old === lower) {
+        moved = r.new;
+      } else if (lower.startsWith(old + '/') && r.old.length > moved.length) {
+        moved = r.new + at.slice(r.old.length);
+      }
+    }
+    at = moved;
+  }
+  return null;
 }
 
 export function parseWhen(s) {
@@ -207,6 +269,30 @@ export function isPrevious(node) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   return last.date < today;
+}
+
+// listHidden says whether a thing's volunteer list is private: its own switch,
+// or one on anything above it, the way the server reads it for people who do
+// not run the event.
+export function listHidden(node) {
+  for (let n = node; n; n = parentOf(n)) {
+    if (n.volunteersHidden) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// shownVolunteers is who the page lists. The server sends an organizer the
+// whole of a private list, but the page shows an organizer what everyone else
+// sees - the co-chairs and themselves - unless they are editing or have Show
+// Hidden Things on, so the page they look at is the page people get.
+export function shownVolunteers(node, editing) {
+  if (!listHidden(node) || editing || state.showHidden) {
+    return node.volunteers;
+  }
+  const mine = me().email;
+  return node.volunteers.filter(v => v.position === 'Co-Chair' || v.email === mine);
 }
 
 export function coChairs(node) {

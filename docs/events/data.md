@@ -7,12 +7,13 @@ The portal's data lives in one Google Sheet, `Events`, in the community shared d
 ## Tabs
 
 - `Categories` — Category ID, Event ID, Title, Description, Image, Allow Adding, Show On Main Page. Row order is display order within a scope. A blank Event ID makes a heading on the Opportunities page; an Event ID makes one of that root event's own categories, which the things under it are grouped by.
-- `Activities` — Event ID, Year, Title, Parent, Category, Status, Description, Image, Timing, Start, End, Location, Spots, Co-Leader Needed, Volunteers Hidden, Direct Sign-Up, Added By, Added. Parent is an Event ID. Category is a Category ID: a page heading for a root, one of the root event's own for anything under it (or blank).
+- `Activities` — Event ID, Year, Title, Parent, Category, Status, Description, Image, Timing, Start, End, Location, Spots, Co-Leader Needed, Volunteers Hidden, Direct Sign-Up, Pretty ID, Added By, Added. Parent is an Event ID. Category is a Category ID: a page heading for a root, one of the root event's own for anything under it (or blank).
 - `Volunteers` — Event ID, Email, Position, Note, Added By, Added.
 - `Links` — Event ID, Title, URL, Image.
 
 - `Settings` — Key, Value: `Expense Form URL` and `Intro`, both required.
 - `Admins` — Email.
+- `Redirects` — Type, Old, New, Date. Written whenever a thing's address changes - a friendly name set, changed or removed, or a move under another parent - so a link someone kept still works. Old and New are site paths (`/v/inight/poland`, `/activities/{id}/...`); a bare word means `/v/{word}`; Type is the kind of thing, `Activity`. Read at load; a live address always wins over a redirect of the same name, a chain of renames is followed to its end, and a redirect of an event's own address carries every path under it along (`Model.Resolve`).
 - `Change Log` — Timestamp, Actor, Action, Kind, Year, Activity, Title, Email, Details; appended on every change, never read back.
 
 **Column order does not matter, column names do.** Every write places each cell under the column of that name wherever the tab keeps it (`Writer.AppendCells`), so columns may be rearranged by hand; a new row is written at an explicit address (the row after the last used one, from column A) rather than through the Sheets append call, whose table detection starts a row in the wrong column when the tab has a blank row or a sparse column. Every tab needs the columns listed; a column the app does not read is somebody else's business and is left alone (`data.CheckColumns`), as is a tab the app never touches, such as one kept for backup. The price is that a misspelt header for an optional-looking column is not caught - the loader only misses what it needs.
@@ -39,6 +40,10 @@ Every activity has an `Event ID` and every category a `Category ID`, unique acro
 
 The cost is that the sheet no longer reads as prose on its own — a volunteer row says `E017`, not "Clean Up Crew" — so the Change Log keeps writing titles alongside ids for the humans who read it.
 
+
+`Pretty ID` is an optional friendly address: `applause` puts the activity at `hca.heliosian.com/v/applause`, and every link to it and the share button use that address. Lower-case letters, digits and hyphens, at most 40; one address for one thing **across every year**. Saving refuses an address another activity holds in the same or a later year; one held by a prior year's activity is offered for renaming - to `applause-2025`, the address with that year - and taken once the editor agrees. Changing or removing one writes a row to `Redirects`, so the old address keeps working and the browser's address bar is corrected to the live one. Copying an event into the next year leaves the copy without one. A duplicate typed into the sheet loads with the latest year keeping the address (counted in `Model.Skipped`).
+
+A thing under an event is addressed under the event's path - `/v/inight/poland`, or `/v/inight/{id}` when it has no friendly name of its own, or `/activities/{event id}/...` when the event has none - so a child's friendly name only needs to be unique among its siblings, and `poland` can exist under every year's International Night. The bare `/activities/{id}` of a child still resolves, and the browser's address bar is corrected to the full path.
 ## Why the Glide tables were not kept
 
 The app this replaced held everything in one tree table keyed by row id, with sub-tasks and sub-sub-tasks as rows of the same shape as events, and eleven boolean and rank columns standing in for a status. Volunteers pointed at any node by id, names and photos were copied from the directory into four more tables, and the current year lived in a one-row "key info" table. The status column, the two tabs, the derived school year, and the directory lookup each replace one of those, and the row-id keys became names.

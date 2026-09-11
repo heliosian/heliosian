@@ -114,6 +114,7 @@ var layouts = map[string][]tab{
 		{"Links", events.LinkColumns},
 		{"Settings", events.SettingColumns},
 		{"Admins", events.AdminColumns},
+		{"Redirects", events.RedirectColumns},
 		{"Change Log", events.ChangeLogColumns},
 	},
 	"Birthdays": {

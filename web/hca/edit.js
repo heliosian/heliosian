@@ -1,4 +1,4 @@
-import {state, me, isAdmin, years, allYears, activityPath, descendants, rootOf, eventCategories, headingChoices, UNCATEGORIZED} from './state.js';
+import {state, me, isAdmin, years, allYears, activityPath, activity, descendants, rootOf, eventCategories, headingChoices, UNCATEGORIZED} from './state.js';
 
 function* allNodes() {
   for (const root of state.model.activities) {
@@ -21,7 +21,53 @@ export async function reload() {
 export async function send(method, url, body) {
   const res = await fetch(url, {method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
   if (!res.ok) {
-    throw new Error(await res.text());
+    const text = await res.text();
+    const err = new Error(text);
+    // A conflict comes back as JSON with the details of what stands in the
+    // way, so the caller can offer a way round it.
+    if (res.status === 409 && (res.headers.get('Content-Type') || '').includes('json')) {
+      try {
+        Object.assign(err, {conflict: JSON.parse(text)});
+        err.message = err.conflict.error || text;
+      } catch {
+        // Not JSON after all; the text is the message.
+      }
+    }
+    throw err;
+  }
+}
+
+// prettyHost is where a Pretty ID lives: this site, /v/... - shown beside the
+// field so people see the whole address they are choosing.
+export function prettyHost() {
+  return `${location.host}/v/`;
+}
+
+// saveActivity posts one activity, and when its Pretty ID belongs to a prior
+// year's activity, asks whether to rename that one out of the way and then
+// posts again with the agreement.
+export async function saveActivity(body) {
+  const before = body.id && activity(body.id) ? activityPath(activity(body.id)) : null;
+  try {
+    await send('POST', '/api/events/activity', body);
+  } catch (err) {
+    const c = err.conflict;
+    if (!c || !c.prior) {
+      throw err;
+    }
+    if (!confirm(`“${body.prettyId}” is the address of “${c.title}” from ${c.year}. Rename that one to “${c.renamed}” and use “${body.prettyId}” here?`)) {
+      throw new Error('Pick another address, or agree to rename the old one.');
+    }
+    await send('POST', '/api/events/activity', {...body, takeOver: true});
+  }
+  await reload();
+  // Changing the friendly address while on its page moves the page: the old
+  // address no longer names anything, so the bar follows to the new one.
+  const now = body.id ? activity(body.id) : null;
+  if (before && now && location.pathname === before && activityPath(now) !== before) {
+    history.replaceState(null, '', activityPath(now));
+    const {render} = await import('./app.js');
+    render();
   }
 }
 
@@ -495,6 +541,7 @@ export function openActivity(act, options) {
   const direct = checkbox('People can sign up for this itself, not just the things under it', act ? act.directSignUp : true);
   const coChair = checkbox("I'd be open to co-chairing this", false);
   const image = imagePicker(act ? act.image : '', act ? act.imageUrl : '');
+  const pretty = text(act ? act.prettyId || '' : '', {placeholder: 'applause', maxLength: 40});
   const fields = [field('Title', title)];
   if (admin || !act) {
     fields.push(field('Year', year));
@@ -519,7 +566,10 @@ export function openActivity(act, options) {
     const grid = el('div', 'field-grid');
     grid.append(field('Start', start, whenHint()), field('End', end));
     fields.push(field('Timing', timing, 'Shown when there is no date'), grid, field('Location', location),
-      field('Spots', spots, 'How many volunteers can sign up for the activity itself'), image.wrap, coLeader.wrap, hidden.wrap, direct.wrap);
+      field('Spots', spots, 'How many volunteers can sign up for the activity itself'), image.wrap, coLeader.wrap, hidden.wrap, direct.wrap,
+      field('Friendly address', pretty, under
+        ? `Under ${root.title}'s address: ${prettyHost()}${(root.prettyId || root.id)}/… - letters, digits and hyphens; unique among the things beside it`
+        : `${prettyHost()}… - letters, digits and hyphens; one address per event, across every year`));
   } else {
     fields.push(field('Timing', timing, 'When would this happen?'), image.wrap, coChair.wrap);
   }
@@ -535,9 +585,9 @@ export function openActivity(act, options) {
         description: description.value, image: image.value(), timing: timing.value,
         start: start.value, end: end.value, location: location.value, spots: Number(spots.value) || 0,
         coLeaderNeeded: coLeader.input.checked, volunteersHidden: hidden.input.checked, directSignUp: direct.input.checked,
-        coChair: coChair.input.checked,
+        coChair: coChair.input.checked, prettyId: pretty.value.trim().toLowerCase(),
       };
-      await send('POST', '/api/events/activity', body);
+      await saveActivity(body);
       if (!act) {
         // The server minted the id, so find the new row by the one thing we
         // know about it - the reload has already run, so the model is current.
@@ -887,11 +937,11 @@ export async function saveActivityFields(act, changes) {
     description: act.description || '', image: act.image || '', timing: act.timing || '',
     start: act.start || '', end: act.end || '', location: act.location || '', spots: act.spots || 0,
     coLeaderNeeded: act.coLeaderNeeded, volunteersHidden: act.volunteersHidden, directSignUp: act.directSignUp,
+    prettyId: act.prettyId || '',
     ...changes,
   };
   try {
-    await send('POST', '/api/events/activity', body);
-    await reload();
+    await saveActivity(body);
   } catch (err) {
     toast(err.message);
     await reload();

@@ -530,3 +530,119 @@ func TestShowOnMainPage(t *testing.T) {
 		t.Fatalf("an event category carried the page flag")
 	}
 }
+
+func TestPrettyIDs(t *testing.T) {
+	cache, mux := newServer(t)
+	m := cache.Model()
+	if m.ByPretty("International-Night") != m.Activity("E001") || m.ByPretty("nope") != nil {
+		t.Fatalf("pretty lookup")
+	}
+	edit := func(id, pretty string, takeOver bool) *httptest.ResponseRecorder {
+		act := cache.Model().Activity(id)
+		return call(t, mux, admin, "POST", "/api/events/activity", map[string]any{
+			"id": id, "year": act.Year, "title": act.Title, "category": act.Category, "status": act.Status,
+			"directSignUp": true, "prettyId": pretty, "takeOver": takeOver,
+		})
+	}
+	if rec := edit("E002", "Bad Address!", false); rec.Code != http.StatusBadRequest {
+		t.Fatalf("a pretty id with spaces went through: %d", rec.Code)
+	}
+	// The same year's address is a plain clash.
+	rec := edit("E002", "international-night", false)
+	var conflict prettyConflict
+	if rec.Code != http.StatusConflict || json.Unmarshal(rec.Body.Bytes(), &conflict) != nil || conflict.Prior || conflict.ID != "E001" {
+		t.Fatalf("same-year clash: %d %s", rec.Code, rec.Body)
+	}
+	if rec := edit("E002", "international-night", true); rec.Code != http.StatusConflict {
+		t.Fatalf("take-over of a current address went through: %d", rec.Code)
+	}
+	// A prior year's address is offered for renaming, and taken once agreed.
+	last := byTitle(cache.Model(), "2025 - 2026", "International Night")
+	rec = edit("E002", "international-night-2025", false)
+	if rec.Code != http.StatusConflict || json.Unmarshal(rec.Body.Bytes(), &conflict) != nil || !conflict.Prior || conflict.ID != last.ID || conflict.Renamed != "international-night-2025-2025" {
+		t.Fatalf("prior-year clash: %d %s", rec.Code, rec.Body)
+	}
+	if rec := edit("E002", "international-night-2025", true); rec.Code != http.StatusNoContent {
+		t.Fatalf("take-over: %d %s", rec.Code, rec.Body)
+	}
+	m = cache.Model()
+	if m.Activity("E002").PrettyID != "international-night-2025" || m.Activity(last.ID).PrettyID != "international-night-2025-2025" {
+		t.Fatalf("after take-over: %q %q", m.Activity("E002").PrettyID, m.Activity(last.ID).PrettyID)
+	}
+	// Every change of address leaves a redirect from the old path to the new:
+	// the old address still finds the thing, through a chain of renames, and
+	// a removed address sends people to the row's plain path. A bare word in
+	// the sheet means /v/{word}. The sample sheet starts with one redirect.
+	if m.Resolve("intl-night") != m.Activity("E001") || m.Resolve("/v/intl-night") != m.Activity("E001") || m.Resolve("nope") != nil {
+		t.Fatalf("sample redirect")
+	}
+	if rec := edit("E002", "spring-party", false); rec.Code != http.StatusNoContent {
+		t.Fatalf("rename: %d %s", rec.Code, rec.Body)
+	}
+	if rec := edit("E002", "", false); rec.Code != http.StatusNoContent {
+		t.Fatalf("remove: %d %s", rec.Code, rec.Body)
+	}
+	m = cache.Model()
+	for _, old := range []string{"/v/spring-celebration", "/v/international-night-2025", "/v/spring-party", "/activities/E002"} {
+		if m.Resolve(old) != m.Activity("E002") {
+			t.Fatalf("%s did not reach the event: %+v", old, m.Redirects)
+		}
+	}
+	if n := cache.Tables().count(redirectsTab, map[string]string{"Type": RedirectActivity, "Old": "/v/spring-party", "New": "/activities/E002"}); n != 1 {
+		t.Fatalf("a removed address should redirect to the row: %+v", m.Redirects)
+	}
+	if rec := edit("E002", "international-night-2025", false); rec.Code != http.StatusNoContent {
+		t.Fatalf("restore: %d %s", rec.Code, rec.Body)
+	}
+	// A child is addressed under its parent, by friendly name or id, and its
+	// friendly name only has to be unique among its siblings. Renaming the
+	// event carries every path under it along.
+	m = cache.Model()
+	norway, india := byTitle(m, "2026 - 2027", "Norway"), byTitle(m, "2026 - 2027", "India")
+	if m.PathOf(norway) != "/v/international-night/"+norway.ID {
+		t.Fatalf("child path %q", m.PathOf(norway))
+	}
+	child := func(node *Activity, pretty string) *httptest.ResponseRecorder {
+		return call(t, mux, admin, "POST", "/api/events/activity", map[string]any{
+			"id": node.ID, "year": node.Year, "title": node.Title, "parent": node.Parent, "category": node.Category, "status": node.Status,
+			"directSignUp": true, "prettyId": pretty,
+		})
+	}
+	if rec := child(norway, "norway"); rec.Code != http.StatusNoContent {
+		t.Fatalf("child pretty: %d %s", rec.Code, rec.Body)
+	}
+	if rec := child(india, "norway"); rec.Code != http.StatusConflict {
+		t.Fatalf("two siblings took one address: %d", rec.Code)
+	}
+	m = cache.Model()
+	if m.Resolve("/v/international-night/norway") != m.Activity(norway.ID) || m.Resolve("/v/international-night/"+norway.ID) != m.Activity(norway.ID) || m.Resolve("/v/intl-night/norway") != m.Activity(norway.ID) {
+		t.Fatalf("child by path: %q", m.PathOf(m.Activity(norway.ID)))
+	}
+	if rec := edit("E001", "inight", false); rec.Code != http.StatusNoContent {
+		t.Fatalf("rename event: %d %s", rec.Code, rec.Body)
+	}
+	m = cache.Model()
+	if m.PathOf(m.Activity(norway.ID)) != "/v/inight/norway" || m.Resolve("/v/international-night/norway") != m.Activity(norway.ID) || m.Resolve("/v/intl-night/norway") != m.Activity(norway.ID) {
+		t.Fatalf("event rename did not carry the booth: %q", m.PathOf(m.Activity(norway.ID)))
+	}
+	// Keeping one's own address is not a clash; a hand-edited duplicate loads
+	// with the latest year keeping it.
+	if rec := edit("E002", "International-Night-2025", false); rec.Code != http.StatusNoContent {
+		t.Fatalf("re-saving own address: %d %s", rec.Code, rec.Body)
+	}
+	tables := cache.Tables()
+	next := *tables
+	next.Activities = cloneRows(tables.Activities)
+	for _, row := range next.Activities {
+		if row["Event ID"] == last.ID {
+			row["Pretty ID"] = "inight"
+		}
+	}
+	dup, err := BuildModel(&next, bundled{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dup.ByPretty("inight") != dup.Activity("E001") || dup.Activity(last.ID).PrettyID != "" || dup.Skipped.PrettyIDs != 1 {
+		t.Fatalf("duplicate in the sheet: %+v", dup.Skipped)
+	}
+}

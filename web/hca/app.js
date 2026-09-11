@@ -1,4 +1,4 @@
-import {applyModel, activity} from './state.js';
+import {applyModel, resolvePath, activityPath} from './state.js';
 import {el} from './dom.js';
 import {initChrome, renderChrome, setTitle, clearSearch} from './chrome.js';
 import {initModal} from './edit.js';
@@ -48,11 +48,16 @@ function route() {
       return adminPage();
     case 'approvals':
       return approvalsPage();
-    case 'activities': {
-      // Everything under an activity is an activity with an id, so one shape of
-      // URL reaches a headline event and a single shift alike.
-      const act = activity(parts[1]);
-      return act ? activityPage(act) : notFound('That activity');
+    case 'activities':
+    case 'v': {
+      // /activities/{id}/... and /v/{pretty}/... both reach one page per node,
+      // through the Redirects tab when an address has since changed; the bar
+      // is corrected so the address people copy next is the live one.
+      const act = resolvePath(location.pathname);
+      if (act && activityPath(act) !== location.pathname) {
+        history.replaceState(null, '', activityPath(act));
+      }
+      return act ? activityPage(act) : notFound(parts[0] === 'v' ? 'That address' : 'That activity');
     }
   }
   return notFound('That page');
