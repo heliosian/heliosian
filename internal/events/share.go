@@ -391,29 +391,16 @@ func drawCard(under, title, day, hours string, picture []byte, whole bool) ([]by
 		textRight = panel.Min.X - 48
 	}
 
-	// The meadow in the bottom-left corner, as the rail has it: the same
-	// picture at the text column's width, of which only the bottom band shows
-	// - flowers at the left, the field and hills running right - its top
-	// faded so grass tips never fight the text above.
+	// The meadow in the bottom-left corner, as the rail has it: the whole
+	// picture, small - a quarter of the card's height, clear of the text
+	// above - so nothing in it is cropped or faded; a corner, not a
+	// foreground.
 	if meadow := loadMeadow(); meadow != nil {
 		b := meadow.Bounds()
-		w := textRight + 48
-		h := b.Dy() * w / b.Dx()
-		band, fade := 200, 90
-		layer := image.NewRGBA(image.Rect(0, cardHeight-h, w, cardHeight))
-		draw.CatmullRom.Scale(layer, layer.Bounds(), meadow, b, draw.Src, nil)
-		top := cardHeight - band
-		for y := top; y < top+fade; y++ {
-			a := uint32((y - top) * 0xffff / fade)
-			for x := 0; x < w; x++ {
-				i := layer.PixOffset(x, y)
-				for c := 0; c < 4; c++ {
-					layer.Pix[i+c] = uint8(uint32(layer.Pix[i+c]) * a / 0xffff)
-				}
-			}
-		}
-		shown := image.Rect(0, top, w, cardHeight)
-		draw.Draw(img, shown, layer, shown.Min, draw.Over)
+		h := cardHeight / 4
+		w := b.Dx() * h / max(b.Dy(), 1)
+		dst := image.Rect(0, cardHeight-h, w, cardHeight)
+		draw.CatmullRom.Scale(img, dst, meadow, b, draw.Over, nil)
 	}
 
 	// Mark and wordmark, top left.
