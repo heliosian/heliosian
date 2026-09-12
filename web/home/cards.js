@@ -367,12 +367,15 @@ function eventCard(event) {
     body.append(when);
   }
   open.append(art, body);
+  // One row: a calendar-with-plus icon button, and Volunteer.
   const actions = el('div', 'event-actions');
-  const calendar = el('a', 'button button-secondary button-small');
+  const calendar = el('a', 'button button-secondary button-small event-calendar');
   calendar.href = calendarLink(event);
   calendar.target = '_blank';
   calendar.rel = 'noopener';
-  calendar.append(svg('calendar'), el('span', '', 'Add to Calendar'));
+  calendar.title = 'Add to Calendar';
+  calendar.setAttribute('aria-label', `Add ${event.title} to your calendar`);
+  calendar.append(svg('calendarAdd'));
   const volunteer = el('a', 'button button-small');
   volunteer.href = open.href;
   volunteer.append(svg('volunteer'), el('span', '', 'Volunteer'));
