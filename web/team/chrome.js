@@ -383,7 +383,21 @@ export function setTitle(title) {
   document.title = title === 'HCA-Team' ? title : `${title} · HCA-Team`;
 }
 
+// syncViewportHeight is the fix Helios Who? carries for the phone shell: in
+// standalone (Add to Home Screen) mode 100dvh can settle short after an
+// in-page route change, and window.innerHeight itself under-reports there,
+// so fixed bottom bars stop short of the screen and leave a blank strip.
+// screen.height is the stable full height in standalone mode; innerHeight
+// matches what position:fixed is anchored to in a browser tab. Either way
+// it lands in --vh100, which main's height reads instead of 100dvh.
+function syncViewportHeight() {
+  const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  const height = standalone ? screen.height : window.innerHeight;
+  document.documentElement.style.setProperty('--vh100', height + 'px');
+}
+
 export function renderChrome() {
+  syncViewportHeight();
   renderSpoofBanner();
   renderUser();
   renderNav();
@@ -477,6 +491,8 @@ export function initChrome() {
       document.dispatchEvent(new CustomEvent('hca:refresh'));
     });
   }
+  window.addEventListener('resize', syncViewportHeight);
+  window.addEventListener('orientationchange', syncViewportHeight);
   document.addEventListener('click', closeMenus);
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {

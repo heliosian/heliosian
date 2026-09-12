@@ -2749,7 +2749,9 @@ h2.section .link-button { font-size: 14px; }
   .content-col { display: block; }
   main {
     display: block;
-    height: 100dvh;
+    /* --vh100 (chrome.js) stands in for 100dvh, which drifts in standalone
+       iOS mode - see syncViewportHeight. */
+    height: var(--vh100, 100dvh);
     overflow-y: auto;
     padding-top: calc(48px + env(safe-area-inset-top));
     padding-bottom: calc(var(--tabbar) + env(safe-area-inset-bottom));
@@ -2809,6 +2811,16 @@ h2.section .link-button { font-size: 14px; }
   }
   body.has-spoof .mobile-top { top: calc(var(--spoof-h) + env(safe-area-inset-top)); height: 48px; padding-top: 0; }
   body.has-spoof main { padding-top: calc(48px + var(--spoof-h) + env(safe-area-inset-top)); }
+  /* The person window on a phone: the face and name on one row, the
+     contact buttons on their own row under them, so nothing overlaps. */
+  .who-head { flex-wrap: wrap; gap: 14px; }
+  .avatar.who-face { width: 84px; height: 84px; font-size: 30px; border-radius: 18px; }
+  .who-face img { border-radius: 18px; }
+  .who-names { flex: 1; min-width: 0; }
+  .who-name { font-size: 22px; overflow-wrap: anywhere; }
+  .who-actions { margin-left: 0; width: 100%; justify-content: flex-start; gap: 18px; }
+  .who-row { grid-template-columns: 22px 72px 1fr; gap: 10px; font-size: 14px; }
+  .who-foot { flex-wrap: wrap; }
   .mobile-search-overlay {
     display: block;
     position: fixed;
