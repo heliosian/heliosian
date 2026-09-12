@@ -272,11 +272,34 @@ main {
 
 .category-icon.is-emoji { font-size: 26px; line-height: 1; }
 
+/* The heading treatment Helios Who? and HCA-Team share: Montserrat, light,
+   over the hand-drawn swoosh sitting behind the text. z-index:0 keeps
+   ::after's z-index:-1 inside the heading's own stacking context. */
 .category-title {
-  font-size: 24px;
-  font-weight: 700;
+  position: relative;
+  z-index: 0;
+  display: inline-block;
+  font-family: Montserrat, Roboto, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  font-size: 32px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
   color: var(--brand);
   margin: 0;
+  padding-bottom: 10px;
+}
+
+.category-title::after {
+  content: '';
+  position: absolute;
+  left: 2%;
+  right: 2%;
+  bottom: 3px;
+  height: 13px;
+  background-image: url('/swoosh.png');
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  z-index: -1;
 }
 
 .category-edit {
@@ -1495,7 +1518,7 @@ main {
 
   .tile-image { width: 76px; height: 76px; }
 
-  .category-title { font-size: 20px; }
+  .category-title { font-size: 26px; }
   .category-icon svg { width: 24px; height: 24px; }
   /* The "see all" link drops under the title rather than squeezing it. */
   .category-head { flex-wrap: wrap; }
