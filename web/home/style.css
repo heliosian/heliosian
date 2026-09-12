@@ -259,19 +259,6 @@ main {
   margin: 0 0 16px;
 }
 
-.category-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  color: var(--brand);
-}
-
-.category-icon svg { width: 28px; height: 28px; stroke-width: 1.8; }
-
-.category-icon.is-emoji { font-size: 26px; line-height: 1; }
-
 /* The heading treatment Helios Who? and HCA-Team share: Montserrat, light,
    over the hand-drawn swoosh sitting behind the text. z-index:0 keeps
    ::after's z-index:-1 inside the heading's own stacking context. */
@@ -1519,7 +1506,6 @@ main {
   .tile-image { width: 76px; height: 76px; }
 
   .category-title { font-size: 26px; }
-  .category-icon svg { width: 24px; height: 24px; }
   /* The "see all" link drops under the title rather than squeezing it. */
   .category-head { flex-wrap: wrap; }
   .category-more { flex-basis: 100%; margin-left: 42px; }

@@ -27,7 +27,7 @@ The sheet is the schema from scratch, not an import of the Glide app's tables. T
 
 **A category must exist before a link names it**, and cannot be deleted while a link still does.
 
-**A category goes by an emoji, not a picture.** Its Emoji cell is blank or one emoji (a short run of symbol runes, joiners and variation selectors - a flag or a skin-toned face passes, a word refuses the load). The editor offers a grid of them and takes any other one pasted in. The emoji heads the section, marks the rail, and stands in for a link with no image of its own; without one, an outline read off the title does (a school building, a calendar, a chat bubble, else a grid).
+**A category goes by an emoji, not a picture.** Its Emoji cell is blank or one emoji (a short run of symbol runes, joiners and variation selectors - a flag or a skin-toned face passes, a word refuses the load). The editor offers a grid of them and takes any other one pasted in. The emoji marks the rail and stands in for a link with no image of its own; without one, an outline read off the title does (a school building, a calendar, a chat bubble, else a grid).
 
 **Link images are named, and the name must resolve.** An Image cell is either an object under `link-images/` in the media bucket, content-addressed like photos and written by the image picker (an upload, or a picture found through the search - `internal/imagesearch`, shared with HCA-Team - which fetches and stores it the same way), or a path to a bundled file under `web/home/` or `web/public/home/` (the way the sample data ships). A name that resolves to neither refuses the load, because a recorded image with nothing behind it is a bug, not a missing picture.
 

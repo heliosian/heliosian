@@ -232,9 +232,11 @@ export function renderCategories(query = '') {
     shown += count;
     const section = el('section', 'category' + (events ? ' upcoming' : ''));
     section.id = anchorFor(category.title);
+    // The heading is the title alone; the category's emoji marks it in the
+    // rail, not here.
     const head = el('div', 'category-head');
     const title = el('h2', 'category-title', category.title);
-    head.append(categoryGlyph(category, 'category-icon'), title);
+    head.append(title);
     if (events) {
       const all = el('a', 'category-more');
       all.href = appOrigin('team');
