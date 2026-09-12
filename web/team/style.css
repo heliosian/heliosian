@@ -3123,3 +3123,10 @@ h2.section .link-button { font-size: 14px; }
 
 /* The suggestion form's lead-in, above its few fields. */
 .suggest-lead { margin: 0 0 16px; font-size: 14.5px; line-height: 1.5; color: var(--muted); }
+
+/* What sits under a row: a labelled run of small chips, plainly not prose. */
+.row-under { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
+
+.row-under-chip { border: 0; font: inherit; font-size: 12px; font-weight: 600; color: var(--brand); background: #eaf3f3; border-radius: 999px; padding: 3px 10px; cursor: pointer; }
+
+.row-under-chip:hover { background: #d8e9e9; }

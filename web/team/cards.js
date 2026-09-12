@@ -124,7 +124,24 @@ export function childRow(node, editing, moves) {
     body.append(el('div', 'row-text clamp', node.description));
   }
   if (node.children.length) {
-    body.append(el('div', 'row-text', `${node.children.length} more under this`));
+    // What sits under it, each a small chip - plainly not part of the
+    // description - naming the committee with how many are on it, chairs
+    // included, as "3" or, against a cap, "2 of 5". The row is itself a
+    // link, so a chip is a button that goes to the committee instead (an
+    // anchor inside an anchor is not a thing).
+    const under = node.children.filter(c => c.status !== 'Hidden' && c.status !== 'Pending');
+    if (under.length) {
+      const line = el('div', 'row-under');
+      for (const c of under) {
+        const chip = button(`${c.title} (${c.spots > 0 ? `${c.taken} of ${c.spots}` : c.taken})`, null, 'row-under-chip', async () => {
+          const {navigate} = await import('./app.js');
+          navigate(activityPath(c));
+        });
+        chip.title = `Open ${c.title}`;
+        line.append(chip);
+      }
+      body.append(line);
+    }
   }
   // Who is on it comes last, leads first.
   const people = peopleLine(node, editing);

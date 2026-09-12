@@ -1134,6 +1134,8 @@ export function openActivity(act, options) {
     policyDot(allowAdding, under ? 'inherit' : ADDING.no));
   // The search opens on the title, which is usually what the picture is of.
   const image = imagePicker(act ? act.image : '', act ? act.imageUrl : '', {query: () => title.value.trim()});
+  // The compact picker for a suggestion under an event.
+  const suggestImage = imagePicker('', '', {dropzone: true, query: () => title.value.trim()});
   const flyer = imagePicker(act ? act.flyer : '', act ? act.flyerUrl : '', {plain: true});
   const pretty = text(act ? act.prettyId || '' : '', {placeholder: 'applause', maxLength: 40});
   // The address as it will read, kept current as the field is typed in, with a
@@ -1160,7 +1162,7 @@ export function openActivity(act, options) {
   // Just an Idea heading, or the event's category - so neither is asked.
   if (suggesting) {
     const lead = el('p', 'field-lead suggest-lead', under
-      ? `Have an idea for ${root.title}? Tell us about it and the organizers will take a look.`
+      ? `Adding to ${root.title}. The organizers will take a look before it goes live.`
       : 'Have an idea for something the HCA could do? Tell us about it and an organizer will take a look.');
     fields.unshift(lead);
   } else {
@@ -1235,12 +1237,18 @@ export function openActivity(act, options) {
   } else {
     description.rows = 4;
     description.placeholder = 'What is it, and what would volunteers do?';
-    timing.placeholder = 'Spring, a Friday in March, a few times a year…';
-    fields.push(field('When (optional)', timing, 'Roughly - the organizers will pin it down with you.'), coChair.wrap);
+    if (under) {
+      // Under an event the when is the event's, and it is the chairs' to
+      // place: a title, a few lines and a picture are all that is asked.
+      fields.push(suggestImage.wrap);
+    } else {
+      timing.placeholder = 'Spring, a Friday in March, a few times a year…';
+      fields.push(field('When (optional)', timing, 'Roughly - the organizers will pin it down with you.'), coChair.wrap);
+    }
     body = fields;
   }
-  openModal(act ? 'Edit Activity' : (suggesting ? 'Suggest an Idea' : (opts.parent ? `Add under ${opts.parent.title}` : 'Add Activity')), body, {
-    saveLabel: suggesting ? 'Suggest' : (act ? 'Save changes' : 'Add'),
+  openModal(act ? 'Edit Activity' : (suggesting ? (under ? 'Add New Activity' : 'Suggest an Idea') : (opts.parent ? `Add under ${opts.parent.title}` : 'Add Activity')), body, {
+    saveLabel: suggesting ? (under ? 'Add' : 'Suggest') : (act ? 'Save changes' : 'Add'),
     deleteLabel: 'Delete activity',
     wide: !suggesting,
     submit: async () => {
@@ -1253,7 +1261,7 @@ export function openActivity(act, options) {
         year: year.value, title: title.value, parent: parentSelect.value,
         category: parentSelect.value ? eventCategory.value : category.value,
         status: statusSelect ? statusSelect.value : '',
-        description: description.value, image: image.value(), flyer: flyer.value(), timing: scheduled.timing,
+        description: description.value, image: suggesting && under ? suggestImage.value() : image.value(), flyer: flyer.value(), timing: scheduled.timing,
         highlight: highlight.value(),
         // Location is no longer asked for or shown; a value already in the sheet is kept.
         start: scheduled.start, end: scheduled.end, location: act ? act.location || '' : '', spots: unlimited.input.checked ? 0 : Number(spots.value) || 0,
