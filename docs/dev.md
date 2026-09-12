@@ -59,7 +59,7 @@ No Node, no Docker, and no cloud credentials are needed for local development. R
 
 Each runs as `go run ./cmd/<name>`. The sheet, drive, and bucket tools authenticate with the same impersonated application-default credentials as the server (see Real data).
 
-- `screenshot`, `capturebrowser`, `browse` — page capture and browser driving; see `docs/screenshots.md`
+- `screenshot`, `capturebrowser`, `browse`, `console` — page capture, browser driving, and a page's console output; see `docs/screenshots.md`
 - `deploy` — apply the full production service configuration (needs `DIRECTORY_SHEET`); see `docs/deploy.md`
 - `startserver` — the dev server: sample data in the foreground by default, `--capture` for a one-command page screenshot, `--real` for the production assembly in the foreground, and `--detach` to launch that in the background with its output in a log file plus a minted session cookie (needs `SESSION_KEY` and every spreadsheet id)
 - `cookie` — print a signed session cookie for local API testing
@@ -72,4 +72,5 @@ Each runs as `go run ./cmd/<name>`. The sheet, drive, and bucket tools authentic
 - `fixdates` — rewrite Glide-style `…T17:30:00.000Z` timestamps in the Events sheet into the loader's `2025-03-01 17:30` / `2025-03-01` forms (needs `EVENTS_SHEET`; dry run unless `-write`)
 - `import` — run a fresh Veracross export and a fresh export of the school website's staff page, upload the portraits from both, sync the import tabs, and clear the overrides those imports have caught up with, or report what that would change with `--dry-run` (needs `DIRECTORY_SHEET`, `PREFERENCES_SHEET`, and `CONFIG_SHEET`, and a `vcexport` and a `webexport` checkout, found at `../vcexport` and `../webexport` or wherever `VCEXPORT` and `WEBEXPORT` point)
 - `birthdayimport` — load the Glide birthday app's table exports in `imports/` into the empty `Birthdays` spreadsheet (needs `BIRTHDAY_SHEET`); see `docs/birthday/data.md`
+- `celebrateimport` — convert the old Spring Celebration site's tabs, dumped into `imports/celebrate/`, and load them into the empty `Celebrate` spreadsheet, dry run unless `-write` (needs `CELEBRATE_SHEET`); see `docs/celebrate/data.md`
 - `splash` — download an app's iOS splash battery from its captured Glide manifest into a brand directory; see `docs/who/pwa.md`

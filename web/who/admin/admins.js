@@ -1,5 +1,5 @@
 import {state} from './state.js';
-import {createPersonPicker} from './picker.js';
+import {createPersonPicker} from '/picker.js';
 
 // Shared by the Admins and Super Admins panels: a working copy of the list, a picker
 // to add from, and a POST that fires immediately on every add or remove — no separate

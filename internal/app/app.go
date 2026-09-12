@@ -22,6 +22,7 @@ import (
 	"heliosian/internal/auth"
 	"heliosian/internal/birthday"
 	"heliosian/internal/blob"
+	"heliosian/internal/celebrate"
 	"heliosian/internal/config"
 	"heliosian/internal/data"
 	"heliosian/internal/events"
@@ -133,6 +134,22 @@ func (e eventsImages) Prefetch(names []string) error {
 	return prefetchUploaded(e.store, "activity-images/", names)
 }
 
+// celebrateImages resolves the Image cells of the Celebrate sheet the same way.
+type celebrateImages struct {
+	store *blob.Store
+}
+
+func (c celebrateImages) Has(key string) (bool, error) {
+	if strings.HasPrefix(key, "party-images/") {
+		return uploaded(c.store, key)
+	}
+	return bundled([]string{"web/celebrate", "web/public/celebrate"}, key), nil
+}
+
+func (c celebrateImages) Prefetch(names []string) error {
+	return prefetchUploaded(c.store, "party-images/", names)
+}
+
 // directory hands the volunteer portal the directory's view of a person: the
 // address they are keyed by, and their name and photo.
 type directory struct {
@@ -181,6 +198,20 @@ func (d directory) GradeColors() map[string]string {
 
 // Alerts is Who?'s reckoning of the toolbar badges, against the config
 // sheet's staleness thresholds.
+// HomePeople is the directory as Heliosian's admin pickers list it: everyone
+// with an address to sign in by, by name.
+func (d directory) HomePeople() []home.Person {
+	model := d.cache.Model()
+	out := make([]home.Person, 0, len(model.People))
+	for _, p := range model.People {
+		if p.Email != "" {
+			out = append(out, home.Person{Name: p.FullName, Email: p.Email})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
 func (d directory) Alerts(email string) (int, bool) {
 	alerts := d.cache.Alerts(email, d.settings.Settings().StaleYears)
 	return alerts.Stale, alerts.Privacy
@@ -307,6 +338,95 @@ func (d birthdayDirectory) Departments() []string {
 	return d.cache.Model().Departments
 }
 
+// celebrateDirectory hands Helios Celebrate the directory's view
+// of people: who an address resolves to, what places one person, their
+// household, everyone for the pickers, and the toolbar's badges.
+type celebrateDirectory struct {
+	cache    *who.Cache
+	settings *config.Cache
+}
+
+func (d celebrateDirectory) Resolve(email string) string {
+	return d.cache.Model().Resolve(email)
+}
+
+func celebratePerson(model *who.Model, p *who.Person) celebrate.Person {
+	title := ""
+	switch {
+	case p.IsStudent:
+		title = p.Grade
+		if title == "" {
+			title = "Student"
+		}
+	case p.IsStaff:
+		title = p.JobTitle
+		if title == "" {
+			title = "Staff"
+		}
+	case p.IsParent:
+		title = "Parent"
+	}
+	return celebrate.Person{
+		Email: p.Email, Name: p.FullName, PhotoURL: model.HeroPhoto(p.Email), IsStudent: p.IsStudent, IsParent: p.IsParent,
+		IsStaff: p.IsStaff, Grade: p.Grade, JobTitle: p.JobTitle, Title: title,
+		Pronouns: p.Pronouns, Phone: p.Phone, Classroom: p.Classroom, Department: p.Department, ParentEmails: p.ParentContactEmails,
+	}
+}
+
+func (d celebrateDirectory) Person(email string) (celebrate.Person, bool) {
+	model := d.cache.Model()
+	p := model.Person(email)
+	if p == nil {
+		return celebrate.Person{}, false
+	}
+	return celebratePerson(model, p), true
+}
+
+// Household is everyone else in a person's families, as the directory lists
+// them: the adults, then the children - a parent's partner and kids, a
+// student's parents and siblings.
+func (d celebrateDirectory) Household(email string) (adults, kids []celebrate.Person) {
+	model := d.cache.Model()
+	seen := map[string]bool{email: true}
+	for _, key := range model.FamilyKeysOf(email) {
+		family := model.Families[key]
+		for _, adult := range family.AdultEmails {
+			if a := model.Person(adult); a != nil && !seen[a.Email] {
+				seen[a.Email] = true
+				adults = append(adults, celebratePerson(model, a))
+			}
+		}
+		for _, kid := range family.KidEmails {
+			if k := model.Person(kid); k != nil && !seen[k.Email] {
+				seen[k.Email] = true
+				kids = append(kids, celebratePerson(model, k))
+			}
+		}
+	}
+	return adults, kids
+}
+
+// People is the directory as the pickers and the person cards see it: everyone,
+// a parent with their household along, since the card lists it.
+func (d celebrateDirectory) People() []celebrate.Person {
+	model := d.cache.Model()
+	out := make([]celebrate.Person, 0, len(model.People))
+	for i := range model.People {
+		person := celebratePerson(model, &model.People[i])
+		if person.IsParent {
+			person.Spouses, person.Children = d.Household(person.Email)
+		}
+		out = append(out, person)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
+func (d celebrateDirectory) Alerts(email string) (int, bool) {
+	alerts := d.cache.Alerts(email, d.settings.Settings().StaleYears)
+	return alerts.Stale, alerts.Privacy
+}
+
 func cacheControl(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/fonts/") || strings.HasPrefix(r.URL.Path, "/brand/") {
@@ -401,12 +521,16 @@ type Core struct {
 	EventsMux   *http.ServeMux
 	EventsCache *events.Cache
 	BirthdayMux *http.ServeMux
-	Cache       *who.Cache
-	Queue       *who.Queue
-	Gate        http.Handler
-	Home        http.Handler
-	Events      http.Handler
-	Birthday    http.Handler
+	// CelebrateMux serves Helios Celebrate, the fun(d)raiser parties site.
+	CelebrateMux   *http.ServeMux
+	CelebrateCache *celebrate.Cache
+	Cache          *who.Cache
+	Queue          *who.Queue
+	Gate           http.Handler
+	Home           http.Handler
+	Events         http.Handler
+	Birthday       http.Handler
+	Celebrate      http.Handler
 }
 
 // NewCore wires everything every mode serves identically. Fatal on any failure.
@@ -439,6 +563,12 @@ func NewCore(cfg Config) *Core {
 	if err != nil {
 		logging.Fatal("load birthdays data", "error", err)
 	}
+	// The celebration's sheet is edited by hand too, so like the portal's a
+	// load failure keeps only that site down until the sheet is fixed.
+	celebrateCache, err := celebrate.NewCache(cfg.Source, celebrateImages{cfg.Store}, superAdmin, queue)
+	if err != nil {
+		slog.Error("load celebrate data", "error", err)
+	}
 	cache, err := who.NewCache(cfg.Source, cfg.Geocoder, cfg.Blobs, staticFiles{}, cfg.Store, queue, settings.SuperAdmins)
 	if err != nil {
 		logging.Fatal("load directory data", "error", err)
@@ -453,14 +583,21 @@ func NewCore(cfg Config) *Core {
 	}
 	mux.Handle("GET /{$}", http.RedirectHandler("/people", http.StatusFound))
 	homeMux := http.NewServeMux()
-	home.Register(homeMux, homeCache, cfg.Writer, queue, cfg.Store, settings.SuperAdmins, cache.HeroPhoto, directory{cache, settings}.Alerts, upcomingEvents{eventsCache}.list, cfg.ImageSearch)
+	home.Register(homeMux, homeCache, cfg.Writer, queue, cfg.Store, settings.SuperAdmins, cache.HeroPhoto, directory{cache, settings}.HomePeople, directory{cache, settings}.Alerts, upcomingEvents{eventsCache}.list, cfg.ImageSearch)
 	eventsMux := http.NewServeMux()
 	events.Register(eventsMux, eventsCache, cfg.Writer, queue, cfg.Store, directory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.Mail)
 	birthdayMux := http.NewServeMux()
 	birthday.Register(birthdayMux, birthdayCache, cfg.Writer, queue, birthdayDirectory{cache}, settings.SuperAdmins)
+	celebrateMux := http.NewServeMux()
+	celebrate.Register(celebrateMux, celebrateCache, cfg.Writer, queue, cfg.Store, celebrateDirectory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch)
+	// Every app's toolbar asks its own origin which apps to leave off its
+	// switch; Heliosian's sheet says, so its cache answers for all of them.
+	for _, m := range []*http.ServeMux{mux, eventsMux, celebrateMux} {
+		home.RegisterHiddenApps(m, homeCache)
+	}
 	return &Core{
-		Mux: mux, HomeMux: homeMux, EventsMux: eventsMux, EventsCache: eventsCache, BirthdayMux: birthdayMux, Cache: cache, Queue: queue,
-		Gate: who.MemberGate(cache, mux), Home: homeMux, Events: eventsMux, Birthday: birthdayMux,
+		Mux: mux, HomeMux: homeMux, EventsMux: eventsMux, EventsCache: eventsCache, BirthdayMux: birthdayMux, CelebrateMux: celebrateMux, CelebrateCache: celebrateCache, Cache: cache, Queue: queue,
+		Gate: who.MemberGate(cache, mux), Home: homeMux, Events: eventsMux, Birthday: birthdayMux, Celebrate: celebrateMux,
 	}
 }
 
@@ -589,6 +726,7 @@ func Production() (*http.Server, *who.Queue) {
 		"apps":        requiredEnv("APPS_SHEET"),
 		"events":      requiredEnv("EVENTS_SHEET"),
 		"birthdays":   requiredEnv("BIRTHDAY_SHEET"),
+		"celebrate":   requiredEnv("CELEBRATE_SHEET"),
 		"config":      requiredEnv("CONFIG_SHEET"),
 	}
 	sessionKey := requiredEnv("SESSION_KEY")
@@ -617,6 +755,7 @@ func Production() (*http.Server, *who.Queue) {
 	blob.RegisterHome(core.HomeMux, store)
 	blob.RegisterEvents(core.EventsMux, store)
 	blob.RegisterBirthday(core.BirthdayMux, store)
+	blob.RegisterCelebrate(core.CelebrateMux, store)
 	who.RegisterUpload(core.Mux, core.Cache, sheet, store, core.Queue)
 	client := clientID()
 	whoAuth := auth.New(client, []byte(sessionKey), "web/public/who/login.html")
@@ -630,10 +769,16 @@ func Production() (*http.Server, *who.Queue) {
 	teamAuth.Register(core.EventsMux)
 	birthdayAuth := auth.New(client, []byte(sessionKey), "web/public/birthday/login.html")
 	birthdayAuth.Register(core.BirthdayMux)
+	celebrateAuth := auth.New(client, []byte(sessionKey), "web/public/celebrate/login.html")
+	// A shared link to a party previews in chat apps: the sign-in page it
+	// leads to carries the party's Open Graph tags.
+	celebrateAuth.Preview = celebrate.PreviewHead(core.CelebrateCache)
+	celebrateAuth.Register(core.CelebrateMux)
 	return Server(map[string]http.Handler{
-		"who":      Public("who", whoAuth.Wrap(Logged("who", Files("who", core.Gate)))),
-		"home":     Public("home", homeAuth.Wrap(Logged("home", Files("home", core.Home)))),
-		"team":     Public("team", teamAuth.Wrap(Logged("team", Files("team", core.Events)))),
-		"birthday": Public("birthday", birthdayAuth.Wrap(Logged("birthday", Files("birthday", core.Birthday)))),
+		"who":       Public("who", whoAuth.Wrap(Logged("who", Files("who", core.Gate)))),
+		"home":      Public("home", homeAuth.Wrap(Logged("home", Files("home", core.Home)))),
+		"team":      Public("team", teamAuth.Wrap(Logged("team", Files("team", core.Events)))),
+		"birthday":  Public("birthday", birthdayAuth.Wrap(Logged("birthday", Files("birthday", core.Birthday)))),
+		"celebrate": Public("celebrate", celebrateAuth.Wrap(Logged("celebrate", Files("celebrate", core.Celebrate)))),
 	}), core.Queue
 }

@@ -10,6 +10,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -32,6 +33,7 @@ type app struct {
 	store       *blob.Store
 	superAdmins func() []string
 	heroPhoto   func(string) string
+	people      func() []Person
 	alerts      func(string) (int, bool)
 	upcoming    func() []Event
 	search      imagesearch.Search
@@ -65,12 +67,13 @@ type alerts struct {
 // the directory cache, which this app does not otherwise depend on.
 // search finds pictures for links on the web, as HCA-Team's editors do.
 // alerts is the directory's reckoning of the toolbar badges for a person;
-// upcoming is the volunteer portal's list of what is ahead.
-func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, superAdmins func() []string, heroPhoto func(string) string, alerts func(string) (int, bool), upcoming func() []Event, search imagesearch.Search) {
+// upcoming is the volunteer portal's list of what is ahead; people is the
+// directory as the admin page's pickers list it.
+func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, superAdmins func() []string, heroPhoto func(string) string, people func() []Person, alerts func(string) (int, bool), upcoming func() []Event, search imagesearch.Search) {
 	if search.UserAgent == "" {
 		search.UserAgent = "Heliosian image search (+https://heliosian.com)"
 	}
-	a := app{cache: cache, writer: writer, queue: queue, store: store, superAdmins: superAdmins, heroPhoto: heroPhoto, alerts: alerts, upcoming: upcoming, search: search}
+	a := app{cache: cache, writer: writer, queue: queue, store: store, superAdmins: superAdmins, heroPhoto: heroPhoto, people: people, alerts: alerts, upcoming: upcoming, search: search}
 	mux.HandleFunc("GET /{$}", a.page)
 	mux.HandleFunc("GET /admin", a.adminPage)
 	mux.HandleFunc("GET /dl/", func(w http.ResponseWriter, r *http.Request) {
@@ -87,6 +90,21 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	mux.HandleFunc("POST /api/apps/images/import", a.requireAdminFunc(a.importImage))
 	mux.HandleFunc("GET /api/admin/state", a.adminState)
 	mux.HandleFunc("POST /api/admin/admins", a.setAdmins)
+	mux.HandleFunc("POST /api/admin/visibility", a.setVisibility)
+	RegisterHiddenApps(mux, cache)
+}
+
+// RegisterHiddenApps serves the signed-in person the apps the Visibility tab
+// keeps off their app switch, which the shared toolbar asks of whichever
+// app's origin it is on - so every app's mux gets this route, and only the
+// front page's the rest of the portal.
+func RegisterHiddenApps(mux *http.ServeMux, cache *Cache) {
+	mux.HandleFunc("GET /api/apps/hidden", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(map[string][]string{"hiddenApps": cache.HiddenApps(auth.Email(r))}); err != nil {
+			slog.ErrorContext(r.Context(), "encode hidden apps", "error", err)
+		}
+	})
 }
 
 func (a app) page(w http.ResponseWriter, r *http.Request) {
@@ -126,16 +144,19 @@ type user struct {
 }
 
 // model serves the portal. Hidden links reach only admins, who see them
-// greyed out; everyone else gets the visible ones.
+// greyed out; everyone else gets the visible ones. A link into a community
+// app narrowed to a list this person is not on is left out altogether,
+// admin or not - the same rows the toolbar leaves off their app switch.
 func (a app) model(w http.ResponseWriter, r *http.Request) {
 	email := strings.ToLower(auth.Email(r))
 	admin := a.cache.IsAdmin(email)
+	hidden := hiddenHosts(r.Host, a.cache.HiddenApps(email))
 	full := a.cache.Model()
 	categories := make([]Category, 0, len(full.Categories))
 	for _, category := range full.Categories {
 		shown := Category{Title: category.Title, Emoji: category.Emoji, Style: category.Style, Max: category.Max, Links: []Link{}, Virtual: category.Virtual}
 		for _, link := range category.Links {
-			if link.Visible || admin {
+			if (link.Visible || admin) && !linksInto(hidden, link.URL) {
 				shown.Links = append(shown.Links, link)
 			}
 		}
@@ -160,6 +181,46 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(view); err != nil {
 		slog.ErrorContext(r.Context(), "encode apps model", "error", err)
 	}
+}
+
+// hiddenHosts is the set of hosts a link into one of the apps has on
+// the requesting page's own tier, mirroring appOrigin in web/common/toolbar.js:
+// from home.lab.heliosian.com the directory is who.lab.heliosian.com, from
+// heliosian.com (or www) it is who.heliosian.com, and a local port carries
+// over. hca.<tier> is the volunteer portal's older name and counts as team's.
+func hiddenHosts(pageHost string, apps []string) map[string]bool {
+	if len(apps) == 0 {
+		return nil
+	}
+	host, port, _ := strings.Cut(strings.ToLower(pageHost), ":")
+	labels := strings.Split(host, ".")
+	if len(labels) > 2 {
+		labels = labels[1:]
+	}
+	tier := strings.Join(labels, ".")
+	if port != "" {
+		tier += ":" + port
+	}
+	hidden := map[string]bool{}
+	for _, app := range apps {
+		hidden[app+"."+tier] = true
+		if app == "team" {
+			hidden["hca."+tier] = true
+		}
+	}
+	return hidden
+}
+
+// linksInto says whether a link's URL opens one of the hosts.
+func linksInto(hosts map[string]bool, link string) bool {
+	if len(hosts) == 0 {
+		return false
+	}
+	u, err := url.Parse(link)
+	if err != nil {
+		return false
+	}
+	return hosts[strings.ToLower(u.Host)]
 }
 
 func decode(w http.ResponseWriter, r *http.Request, into any) bool {
@@ -561,7 +622,11 @@ func (a app) adminState(w http.ResponseWriter, r *http.Request) {
 		Email    string   `json:"email"`
 		HasStore bool     `json:"hasStore"`
 		Admins   []string `json:"admins"`
-	}{Email: email, HasStore: a.store != nil, Admins: a.cache.Admins(a.superAdmins())}
+		// Apps are the community apps the App Visibility panel has a card
+		// for, each with its mode and list; People is who its pickers offer.
+		Apps   []AppVisibility `json:"apps"`
+		People []Person        `json:"people"`
+	}{Email: email, HasStore: a.store != nil, Admins: a.cache.Admins(a.superAdmins()), Apps: a.cache.AppVisibilities(), People: a.people()}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
 		slog.ErrorContext(r.Context(), "encode apps admin state", "error", err)
@@ -620,5 +685,42 @@ func (a app) setAdmins(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.InfoContext(r.Context(), "apps: set the admin list", "admins", admins)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// setVisibility sets one app's mode and list together, the way the admin
+// page edits them: the switch and every add or remove save at once. The list
+// is written whichever the mode, so a list drawn up while the app is
+// everyone's is there when the switch flips.
+func (a app) setVisibility(w http.ResponseWriter, r *http.Request) {
+	_, ok := a.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		App        string   `json:"app"`
+		Visibility string   `json:"visibility"`
+		Emails     []string `json:"emails"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	key := strings.ToLower(strings.TrimSpace(body.App))
+	if !appKnown(key) {
+		http.Error(w, "app must be one of "+strings.Join(appKeys(), ", "), http.StatusBadRequest)
+		return
+	}
+	if body.Visibility != VisibleToEveryone && body.Visibility != VisibleToList {
+		http.Error(w, "visibility must be "+VisibleToEveryone+" or "+VisibleToList, http.StatusBadRequest)
+		return
+	}
+	v := Visibility{Mode: body.Visibility, Emails: normalizeEmails(body.Emails)}
+	tables := a.cache.Tables().withVisibility(key, v)
+	if !a.commit(r.Context(), w, tables, func() error {
+		return a.writer.Upsert(appName, visibilityTab, "App", key, map[string]string{"Visibility": v.Mode, "Emails": joinEmails(v.Emails)})
+	}) {
+		return
+	}
+	slog.InfoContext(r.Context(), "apps: set an app's visibility", "app", key, "visibility", v.Mode, "emails", len(v.Emails))
 	w.WriteHeader(http.StatusNoContent)
 }

@@ -1,26 +1,18 @@
 package events
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"html"
-	"image"
 	"image/color"
-	"image/png"
 	"net/http"
 	"os"
 	"path"
 	"strings"
-	"sync"
 	"time"
 
-	"golang.org/x/image/draw"
-	"golang.org/x/image/font"
-	"golang.org/x/image/font/opentype"
-	"golang.org/x/image/math/fixed"
-	_ "image/jpeg"
+	"heliosian/internal/sharecard"
 )
 
 // A shared link to an event is fetched by whatever chat app it lands in, with
@@ -33,19 +25,19 @@ import (
 // a poster on the wall says - and nothing about who has signed up.
 
 const (
-	cardWidth  = 1200
-	cardHeight = 630
+	cardWidth  = sharecard.Width
+	cardHeight = sharecard.Height
 )
 
-var (
-	cardPage   = color.RGBA{0xee, 0xf6, 0xea, 0xff}
-	cardBrand  = color.RGBA{0x0c, 0x4c, 0x54, 0xff}
-	cardAccent = color.RGBA{0x00, 0x74, 0x6f, 0xff}
-	cardMuted  = color.RGBA{0x4b, 0x5c, 0x5d, 0xff}
-	cardYellow = color.RGBA{0xf8, 0xd9, 0x08, 0xff}
-	// cardInk is the headline's deep teal-black, as the page sets its own.
-	cardInk = color.RGBA{0x0e, 0x3a, 0x42, 0xff}
-)
+// cardStyle is the portal's dress for the card: its palette (the ink is the
+// headline's deep teal-black, as the page sets its own), the lockup, and the
+// rail's meadow in the corner - the same picture the toolbar has.
+var cardStyle = &sharecard.Style{
+	Page: color.RGBA{0xee, 0xf6, 0xea, 0xff}, Brand: color.RGBA{0x0c, 0x4c, 0x54, 0xff}, Accent: color.RGBA{0x00, 0x74, 0x6f, 0xff},
+	Ink: color.RGBA{0x0e, 0x3a, 0x42, 0xff}, Yellow: color.RGBA{0xf8, 0xd9, 0x08, 0xff}, Panel: color.RGBA{0xdc, 0xe9, 0xe4, 0xff},
+	Wordmark: "HCA-Team", Tagline: "HCA VOLUNTEER PORTAL",
+	Mark: "web/public/team/brand/logo-mark.png", Corner: "web/team/toolbar_background.png",
+}
 
 // previewable is what may be shown to someone who has not signed in.
 func previewable(a *Activity) bool {
@@ -205,7 +197,10 @@ func (a app) shareCard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	day, hours := whenLines(timed(model, act))
-	card, err := drawCard(under, act.Title, day, hours, imageBytes, isFlyer)
+	card, err := cardStyle.Draw(sharecard.Card{
+		Kicker: under, Title: act.Title, Picture: imageBytes, Whole: isFlyer,
+		Lines: []sharecard.Line{{Icon: "calendar", Text: day}, {Icon: "clock", Text: hours}},
+	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -240,96 +235,6 @@ func (a app) readImage(key string) []byte {
 	return nil
 }
 
-// The two faces the card is set in, parsed once. Montserrat is the wordmark's
-// face and the site's headline face, so the card reads as the site does.
-var (
-	facesOnce sync.Once
-	faces     struct {
-		bold, medium *opentype.Font
-		err          error
-	}
-	markOnce sync.Once
-	mark     image.Image
-)
-
-func loadFaces() (*opentype.Font, *opentype.Font, error) {
-	facesOnce.Do(func() {
-		load := func(name string) *opentype.Font {
-			data, err := os.ReadFile("web/team/fonts/" + name)
-			if err != nil {
-				faces.err = err
-				return nil
-			}
-			f, err := opentype.Parse(data)
-			if err != nil {
-				faces.err = err
-			}
-			return f
-		}
-		faces.bold = load("Montserrat-ExtraBold.ttf")
-		faces.medium = load("Montserrat-Medium.ttf")
-	})
-	return faces.bold, faces.medium, faces.err
-}
-
-var (
-	meadowOnce sync.Once
-	meadow     image.Image
-)
-
-func loadMeadow() image.Image {
-	meadowOnce.Do(func() {
-		data, err := os.ReadFile("web/team/toolbar_background.png")
-		if err != nil {
-			return
-		}
-		meadow, _, _ = image.Decode(bytes.NewReader(data))
-	})
-	return meadow
-}
-
-func loadMark() image.Image {
-	markOnce.Do(func() {
-		data, err := os.ReadFile("web/public/team/brand/logo-mark.png")
-		if err != nil {
-			return
-		}
-		mark, _, _ = image.Decode(bytes.NewReader(data))
-	})
-	return mark
-}
-
-func face(f *opentype.Font, size float64) (font.Face, error) {
-	return opentype.NewFace(f, &opentype.FaceOptions{Size: size, DPI: 72, Hinting: font.HintingFull})
-}
-
-// wrap breaks text into lines no wider than width, on spaces; a single word
-// wider than the line stands alone and is clipped by the canvas.
-func wrap(d *font.Drawer, text string, width fixed.Int26_6) []string {
-	lines := []string{}
-	line := ""
-	for _, word := range strings.Fields(text) {
-		try := word
-		if line != "" {
-			try = line + " " + word
-		}
-		if d.MeasureString(try) > width && line != "" {
-			lines = append(lines, line)
-			line = word
-			continue
-		}
-		line = try
-	}
-	if line != "" {
-		lines = append(lines, line)
-	}
-	return lines
-}
-
-// drawCard composes the 1200x630 image: pale page, the mark and wordmark, the
-// title as large as fits in three lines with the brand's yellow swoosh under
-// it, the date line, the address, and the event's image filling the right
-// side when there is one.
 // whenLines is the card's two lines: the day, and the time - or the timing
 // words alone when the thing has those instead of a date.
 func whenLines(a *Activity) (string, string) {
@@ -348,166 +253,4 @@ func whenLines(a *Activity) (string, string) {
 		return day, start.Format("3:04") + " – " + end.Format("3:04 PM")
 	}
 	return day, start.Format("3:04 PM")
-}
-
-// drawCard lays the card out the way the site's own hero does: on the left,
-// on the pale wash, the lockup, the title with its yellow swoosh, then the
-// day and the time behind a calendar and a clock, with the rail's meadow
-// growing out of the bottom-left corner; on the right, the picture. A flyer
-// is shown whole, the panel taking the flyer's own proportions so it fills
-// edge to edge; a banner is scaled to cover a fixed panel and cropped to it.
-func drawCard(under, title, day, hours string, picture []byte, whole bool) ([]byte, error) {
-	bold, medium, err := loadFaces()
-	if err != nil {
-		return nil, fmt.Errorf("share card fonts: %w", err)
-	}
-	img := image.NewRGBA(image.Rect(0, 0, cardWidth, cardHeight))
-	draw.Draw(img, img.Bounds(), image.NewUniform(cardPage), image.Point{}, draw.Src)
-
-	// The picture's panel on the right, and where the text column ends.
-	textRight := cardWidth - 72
-	if pic, _, err := image.Decode(bytes.NewReader(picture)); err == nil && picture != nil {
-		b := pic.Bounds()
-		panelW := 480
-		if whole {
-			// The flyer's own proportions, within reason, so it fills the panel.
-			panelW = min(max(cardHeight*b.Dx()/max(b.Dy(), 1), 380), 540)
-		}
-		panel := image.Rect(cardWidth-panelW, 0, cardWidth, cardHeight)
-		if whole {
-			draw.Draw(img, panel, image.NewUniform(color.RGBA{0xdc, 0xe9, 0xe4, 0xff}), image.Point{}, draw.Src)
-			scale := min(float64(panel.Dx())/float64(b.Dx()), float64(panel.Dy())/float64(b.Dy()))
-			w, h := int(float64(b.Dx())*scale+0.5), int(float64(b.Dy())*scale+0.5)
-			dst := image.Rect(0, 0, w, h).Add(image.Pt(panel.Min.X+(panel.Dx()-w)/2, panel.Min.Y+(panel.Dy()-h)/2))
-			draw.CatmullRom.Scale(img, dst, pic, b, draw.Over, nil)
-		} else {
-			scale := max(float64(panel.Dx())/float64(b.Dx()), float64(panel.Dy())/float64(b.Dy()))
-			w, h := int(float64(b.Dx())*scale+0.5), int(float64(b.Dy())*scale+0.5)
-			dst := image.Rect(0, 0, w, h).Add(image.Pt(panel.Min.X-(w-panel.Dx())/2, panel.Min.Y-(h-panel.Dy())/2))
-			fitted := image.NewRGBA(dst)
-			draw.CatmullRom.Scale(fitted, dst, pic, b, draw.Src, nil)
-			draw.Draw(img, panel, fitted, panel.Min, draw.Src)
-		}
-		textRight = panel.Min.X - 48
-	}
-
-	// The meadow in the bottom-left corner, as the rail has it: the whole
-	// picture, small - a quarter of the card's height, clear of the text
-	// above - so nothing in it is cropped or faded; a corner, not a
-	// foreground.
-	if meadow := loadMeadow(); meadow != nil {
-		b := meadow.Bounds()
-		h := cardHeight / 4
-		w := b.Dx() * h / max(b.Dy(), 1)
-		dst := image.Rect(0, cardHeight-h, w, cardHeight)
-		draw.CatmullRom.Scale(img, dst, meadow, b, draw.Over, nil)
-	}
-
-	// Mark and wordmark, top left.
-	x, y := 72, 56
-	if m := loadMark(); m != nil {
-		dst := image.Rect(x, y, x+60, y+60)
-		draw.CatmullRom.Scale(img, dst, m, m.Bounds(), draw.Over, nil)
-		x += 74
-	}
-	wordmark, err := face(bold, 36)
-	if err != nil {
-		return nil, err
-	}
-	d := &font.Drawer{Dst: img, Src: image.NewUniform(cardBrand), Face: wordmark}
-	d.Dot = fixed.P(x, y+40)
-	d.DrawString("HCA-Team")
-	small, err := face(medium, 16)
-	if err != nil {
-		return nil, err
-	}
-	d.Face, d.Src = small, image.NewUniform(cardAccent)
-	d.Dot = fixed.P(x+2, y+62)
-	d.DrawString("HCA VOLUNTEER PORTAL")
-
-	// What it is part of, as a kicker above the title, so a booth's card
-	// plainly belongs to its event.
-	width := fixed.I(textRight - 72)
-	top := 226
-	if under != "" {
-		kicker, err := face(medium, 22)
-		if err != nil {
-			return nil, err
-		}
-		d.Face, d.Src = kicker, image.NewUniform(cardAccent)
-		kickerLines := wrap(d, strings.ToUpper(under), width)
-		if len(kickerLines) > 1 {
-			kickerLines = kickerLines[:1]
-			kickerLines[0] += "…"
-		}
-		d.Dot = fixed.P(72, 176)
-		d.DrawString(kickerLines[0])
-		top = 238
-	}
-
-	// The title, shrunk until it fits three lines, in the deep ink the page's
-	// own headline uses.
-	var lines []string
-	size := 66.0
-	if under != "" {
-		size = 58
-	}
-	for ; size >= 34; size -= 4 {
-		titleFace, err := face(bold, size)
-		if err != nil {
-			return nil, err
-		}
-		d.Face = titleFace
-		lines = wrap(d, title, width)
-		if len(lines) <= 3 {
-			break
-		}
-	}
-	d.Src = image.NewUniform(cardInk)
-	lineHeight := int(size * 1.12)
-	for i, l := range lines {
-		d.Dot = fixed.P(72, top+i*lineHeight)
-		d.DrawString(l)
-	}
-	// The swoosh: a yellow stroke as wide as the text column, under the last
-	// line's descenders, like the one under the site's headlines.
-	last := top + (len(lines)-1)*lineHeight
-	swooshY := last + int(size*0.34)
-	draw.Draw(img, image.Rect(72, swooshY, textRight, swooshY+6), image.NewUniform(cardYellow), image.Point{}, draw.Over)
-
-	// The day behind a calendar, the time behind a clock - the second thing
-	// anyone wants to know, so large. Each line shrinks to fit if it must.
-	y = swooshY + 58
-	for i, text := range []string{day, hours} {
-		if text == "" {
-			continue
-		}
-		var lineFace font.Face
-		lineSize := 34.0
-		for ; lineSize >= 22; lineSize -= 2 {
-			if lineFace, err = face(bold, lineSize); err != nil {
-				return nil, err
-			}
-			d.Face = lineFace
-			if len(wrap(d, text, fixed.I(textRight-136))) == 1 {
-				break
-			}
-		}
-		icon := image.Rect(72, y-int(lineSize*0.78), 72+int(lineSize*0.95), y-int(lineSize*0.78)+int(lineSize*0.95))
-		if i == 0 {
-			drawCalendarIcon(img, icon, cardInk)
-		} else {
-			drawClockIcon(img, icon, cardInk)
-		}
-		d.Src = image.NewUniform(cardInk)
-		d.Dot = fixed.P(72+int(lineSize*1.45), y)
-		d.DrawString(text)
-		y += int(lineSize * 1.55)
-	}
-
-	var out bytes.Buffer
-	if err := png.Encode(&out, img); err != nil {
-		return nil, err
-	}
-	return out.Bytes(), nil
 }

@@ -22,6 +22,14 @@ Flags:
 
 The capture is a full-page screenshot at a 1280×800 viewport. "Full page" means the document's own scroll extent, so a page that sets `overflow: hidden` on `html` and scrolls an inner container — the shape every Glide app has — yields only the viewport. Capture those with a tall `--size` viewport in `cmd/browse` instead.
 
+## Reading the console
+
+A page that renders blank usually threw before it drew anything. `cmd/console` loads a URL in headless Chrome and prints every console message and uncaught exception, with the file, line and column of a syntax error:
+
+    go run ./cmd/console --url https://celebrate.local.heliosian.com:8080/
+
+It listens for four seconds after the load (`--wait` changes that) and prints `(nothing logged)` when the page was quiet.
+
 ## Capturing authenticated external sites
 
 Some source material (like the production apps being ported) sits behind a login. The capture browser handles this:

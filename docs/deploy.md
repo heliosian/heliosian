@@ -49,6 +49,7 @@ Plain environment variables:
 - `APPS_SHEET` — the `Apps` spreadsheet id: Heliosian's categories, links, and admins (`docs/home/data.md`).
 - `EVENTS_SHEET` — the `Events` spreadsheet id: the volunteer portal's activities, roles, sign-ups, and admins (`docs/events/data.md`).
 - `BIRTHDAY_SHEET` — the `Birthdays` spreadsheet id: the birthday team's staff birthdays, pipeline progress, charities, and admins (`docs/birthday/data.md`).
+- `CELEBRATE_SHEET` — the `Celebrate` spreadsheet id: Helios Celebrate's parties, hosts, tickets, and admins (`docs/celebrate/data.md`).
 - `CONFIG_SHEET` — the `Config` spreadsheet id: the platform super admins and settings (`docs/config.md`).
 - `GOOGLE_CLIENT_ID` — the OAuth web client id; not a secret (every login page fetches it from `/auth/client`), but kept out of the repository.
 

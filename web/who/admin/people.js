@@ -1,5 +1,5 @@
 import {state} from './state.js';
-import {createPersonPicker} from './picker.js';
+import {createPersonPicker} from '/picker.js';
 import {load} from './app.js';
 
 let editingEmail = null;

@@ -1,4 +1,4 @@
-package events
+package sharecard
 
 import (
 	"image"
@@ -84,9 +84,9 @@ func paintIcon(dst draw.Image, r *vector.Rasterizer, at image.Rectangle, c color
 	draw.DrawMask(dst, at, image.NewUniform(c), image.Point{}, mask, image.Point{}, draw.Over)
 }
 
-// drawCalendarIcon is the site's calendar glyph: a round-cornered frame, a
+// DrawCalendarIcon is the site's calendar glyph: a round-cornered frame, a
 // rule under its header, two pegs on top.
-func drawCalendarIcon(dst draw.Image, at image.Rectangle, c color.Color) {
+func DrawCalendarIcon(dst draw.Image, at image.Rectangle, c color.Color) {
 	s := float32(at.Dx())
 	t := s * 0.1
 	r := vector.NewRasterizer(at.Dx(), at.Dy())
@@ -99,8 +99,8 @@ func drawCalendarIcon(dst draw.Image, at image.Rectangle, c color.Color) {
 	paintIcon(dst, r, at, c)
 }
 
-// drawClockIcon is the clock glyph: a ring with the hands at four o'clock.
-func drawClockIcon(dst draw.Image, at image.Rectangle, c color.Color) {
+// DrawClockIcon is the clock glyph: a ring with the hands at four o'clock.
+func DrawClockIcon(dst draw.Image, at image.Rectangle, c color.Color) {
 	s := float32(at.Dx())
 	t := s * 0.1
 	r := vector.NewRasterizer(at.Dx(), at.Dy())
@@ -109,5 +109,20 @@ func drawClockIcon(dst draw.Image, at image.Rectangle, c color.Color) {
 	p.circle(s/2, s/2, s/2-t/2-t, false)
 	p.line(s/2, s/2, s/2, s*0.24, t)
 	p.line(s/2, s/2, s*0.7, s*0.62, t)
+	paintIcon(dst, r, at, c)
+}
+
+// DrawPinIcon is the map-pin glyph: a teardrop ring with a dot in it.
+func DrawPinIcon(dst draw.Image, at image.Rectangle, c color.Color) {
+	s := float32(at.Dx())
+	t := s * 0.1
+	r := vector.NewRasterizer(at.Dx(), at.Dy())
+	p := iconPath{r}
+	// The head, as a ring, and the point as two strokes down to the tip.
+	p.circle(s/2, s*0.4, s*0.32, true)
+	p.circle(s/2, s*0.4, s*0.32-t, false)
+	p.line(s*0.28, s*0.62, s/2, s*0.96, t)
+	p.line(s*0.72, s*0.62, s/2, s*0.96, t)
+	p.circle(s/2, s*0.4, s*0.1, true)
 	paintIcon(dst, r, at, c)
 }

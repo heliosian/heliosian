@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0f4e54">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Helios Celebrate: Fun(d)raiser Parties</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="16x16" href="/brand/favicon-16.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/brand/favicon-32.png">
+<link rel="icon" href="/brand/favicon.png">
+<link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
+<link rel="stylesheet" href="/fonts/fonts.css">
+<style>
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0f4e54;
+  font-family: Roboto, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+.panel {
+  width: 20rem;
+  max-width: calc(100vw - 3rem);
+  background: rgba(0, 20, 23, 0.45);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border-radius: 1.25rem;
+  padding: 2.5rem 2rem 2rem;
+  text-align: center;
+  color: white;
+  box-shadow: 0 1.5rem 3rem rgba(0, 0, 0, 0.3);
+}
+.panel img { width: 13rem; max-width: 100%; height: auto; margin-bottom: 1.5rem; }
+.divider { border-top: 1px solid rgba(255, 255, 255, 0.18); margin: 0 0 1.5rem; }
+.button-holder { display: flex; justify-content: center; min-height: 44px; }
+</style>
+</head>
+<body>
+<div class="panel">
+<img src="/brand/logo-lockup-light.png" alt="Helios Celebrate: Fun(d)raiser Parties">
+<div class="divider"></div>
+<div class="button-holder" id="signin"></div>
+</div>
+<script type="module" src="/login.js"></script>
+</body>
+</html>

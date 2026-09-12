@@ -144,6 +144,49 @@ body.admin {
 
 /* On a phone the rail becomes a strip of pills along the top. Who?'s admin
    page has its own fold-out menu instead, so this is opt-in by class. */
+/* The searchable person picker (web/common/picker.js), sized to fill an
+   add-a-person row beside its button. */
+.admin .person-picker {
+  position: relative;
+  flex: 1;
+}
+.admin .person-picker input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: inherit;
+  background: #fff;
+}
+.admin .person-picker-list {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 260px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .1);
+}
+.admin .person-picker-option {
+  padding: 8px 10px;
+  font-size: 14px;
+  cursor: pointer;
+}
+.admin .person-picker-option.active,
+.admin .person-picker-option:hover {
+  background: var(--input);
+}
+.admin .person-picker-empty {
+  padding: 8px 10px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
 @media (max-width: 760px) {
   .admin.admin-strip .layout { flex-direction: column; }
   .admin.admin-strip .sidebar {

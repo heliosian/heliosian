@@ -24,7 +24,9 @@ To run against real community data instead, see [docs/dev.md](docs/dev.md).
 - `internal/home` — the link portal: model load, handlers, admin edits
 - `internal/events` — the volunteer portal: the Events sheet's model, handlers, sign-ups, and admin edits
 - `internal/birthday` — the birthday team: the Birthdays sheet's model, the derived dates and stages, handlers, and admin edits
+- `internal/celebrate` — Helios Celebrate: the Celebrate sheet's model, parties, tickets and the waitlist, handlers, and admin edits
 - `internal/blob` — media from Cloud Storage, held in memory with stored thumbnails
+- `internal/sharecard` — the 1200x630 picture a chat app shows for a shared link, drawn for HCA-Team and Helios Celebrate in each one's dress
 - `internal/imagesearch` — the editors' picture search (stock libraries and Wikimedia Commons) and import, shared by HCA-Team and Heliosian
 - `internal/geocode` — address → coordinates for the map
 - `internal/capture` — drive Chrome and screenshot a page, for the dev tools
@@ -67,5 +69,10 @@ Helios Staff Birthdays, in `docs/birthday/`:
 
 - [birthday.md](docs/birthday/birthday.md) — the birthday team app spec
 - [data.md](docs/birthday/data.md) — the Birthdays sheet and its rules
+
+Helios Celebrate, in `docs/celebrate/`:
+
+- [celebrate.md](docs/celebrate/celebrate.md) — the fun(d)raiser parties site spec
+- [data.md](docs/celebrate/data.md) — the Celebrate sheet and its rules
 
 Each app keeps its own docs under `docs/<app>/`, named for the sheet it serves; the top level is only what every app shares.

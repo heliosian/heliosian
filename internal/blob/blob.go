@@ -128,6 +128,13 @@ func RegisterBirthday(mux *http.ServeMux, s *Store) {
 	mux.HandleFunc("GET /photos/{name}", s.serve)
 }
 
+// RegisterCelebrate serves what Helios Celebrate shows: the party
+// images, content addressed, and the directory's photos of who is coming.
+func RegisterCelebrate(mux *http.ServeMux, s *Store) {
+	mux.HandleFunc("GET /photos/{name}", s.serve)
+	mux.HandleFunc("GET /party-images/{name}", s.serve)
+}
+
 func (s *Store) sweepLoop() {
 	for range time.Tick(sweepInterval) {
 		s.sweep(time.Now())

@@ -19,6 +19,7 @@ const (
 	categoriesTab  = "Categories"
 	linksTab       = "Links"
 	adminsTab      = "Admins"
+	visibilityTab  = "Visibility"
 	changeLogTab   = "Change Log"
 	addedFormat    = "2006-01-02"
 	maxTitleLength = 80
@@ -40,11 +41,51 @@ const (
 )
 
 var (
-	categoryColumns  = []string{"Title", "Emoji", "Style", "Max"}
-	linkColumns      = []string{"Title", "Description", "URL", "Image", "Category", "Visible", "Added By", "Added"}
-	adminColumns     = []string{"Email"}
-	changeLogColumns = []string{"Timestamp", "Actor", "Action", "Kind", "Title", "Description", "URL", "Image", "Category", "Visible", "Style"}
+	categoryColumns   = []string{"Title", "Emoji", "Style", "Max"}
+	linkColumns       = []string{"Title", "Description", "URL", "Image", "Category", "Visible", "Added By", "Added"}
+	adminColumns      = []string{"Email"}
+	visibilityColumns = []string{"App", "Visibility", "Emails"}
+	changeLogColumns  = []string{"Timestamp", "Actor", "Action", "Kind", "Title", "Description", "URL", "Image", "Category", "Visible", "Style"}
 )
+
+// App is one of the community apps the shared toolbar switches between,
+// keyed as the toolbar keys it (web/common/toolbar.js). These are the apps
+// the Visibility tab can narrow to a list of people. Heliosian itself is not
+// among them: it is the front page, and the switch's way home.
+type App struct {
+	Key  string `json:"key"`
+	Name string `json:"name"`
+}
+
+var Apps = []App{
+	{"who", "Helios Who?"},
+	{"team", "HCA-Team"},
+	{"celebrate", "Helios Celebrate"},
+}
+
+// An app's Visibility is VisibleToEveryone - the default, with no row - or
+// VisibleToList, when only the people in its Emails cell see it, in the
+// toolbar's switch and on the front page. Never access: a direct link still
+// opens the app. The list is kept while the app is everyone's, so switching
+// back to it finds the list as it was.
+const (
+	VisibleToEveryone = "everyone"
+	VisibleToList     = "list"
+)
+
+type Visibility struct {
+	Mode   string
+	Emails []string
+}
+
+func appKnown(key string) bool {
+	for _, app := range Apps {
+		if app.Key == key {
+			return true
+		}
+	}
+	return false
+}
 
 type ImageChecker interface {
 	Has(key string) (bool, error)
@@ -79,15 +120,18 @@ type Category struct {
 }
 
 // Model is the portal as the sheet orders it: categories in row order, each
-// holding its links in row order.
+// holding its links in row order. Visibility is the Visibility tab by app,
+// absent for an app with no row.
 type Model struct {
-	Categories []Category `json:"categories"`
+	Categories []Category            `json:"categories"`
+	Visibility map[string]Visibility `json:"-"`
 }
 
 type Tables struct {
 	Categories []map[string]string
 	Links      []map[string]string
 	Admins     []map[string]string
+	Visibility []map[string]string
 }
 
 func ReadTables(source data.Source) (*Tables, error) {
@@ -101,9 +145,10 @@ func ReadTables(source data.Source) (*Tables, error) {
 	categories := &table{name: categoriesTab, want: categoryColumns}
 	links := &table{name: linksTab, want: linkColumns}
 	admins := &table{name: adminsTab, want: adminColumns}
+	visibility := &table{name: visibilityTab, want: visibilityColumns}
 	changeLog := &table{name: changeLogTab, want: changeLogColumns}
 	var wg sync.WaitGroup
-	for _, t := range []*table{categories, links, admins} {
+	for _, t := range []*table{categories, links, admins, visibility} {
 		wg.Go(func() {
 			t.header, t.rows, t.err = source.Table(appName, t.name)
 		})
@@ -112,7 +157,7 @@ func ReadTables(source data.Source) (*Tables, error) {
 		changeLog.header, changeLog.err = source.Header(appName, changeLog.name)
 	})
 	wg.Wait()
-	for _, t := range []*table{categories, links, admins, changeLog} {
+	for _, t := range []*table{categories, links, admins, visibility, changeLog} {
 		if t.err != nil {
 			return nil, t.err
 		}
@@ -120,7 +165,7 @@ func ReadTables(source data.Source) (*Tables, error) {
 			return nil, err
 		}
 	}
-	return &Tables{Categories: categories.rows, Links: links.rows, Admins: admins.rows}, nil
+	return &Tables{Categories: categories.rows, Links: links.rows, Admins: admins.rows, Visibility: visibility.rows}, nil
 }
 
 func yesNo(cell string) (bool, error) {
@@ -306,7 +351,56 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 			Visible: visible, AddedBy: row["Added By"], Added: row["Added"],
 		})
 	}
+	visibility, err := buildVisibility(tables.Visibility)
+	if err != nil {
+		return nil, err
+	}
+	model.Visibility = visibility
 	return model, nil
+}
+
+// buildVisibility reads the Visibility tab: one row per app, naming a known
+// app, spelling its Visibility exactly, and listing in Emails whoever sees
+// it when that is list - separated by commas or line breaks, in the order
+// written. Anything else refuses the load, since a misspelled app or mode
+// would narrow nothing, silently.
+func buildVisibility(rows []map[string]string) (map[string]Visibility, error) {
+	visibility := map[string]Visibility{}
+	for _, row := range rows {
+		app := strings.ToLower(strings.TrimSpace(row["App"]))
+		if !appKnown(app) {
+			return nil, fmt.Errorf("%s row %v: app must be one of %s", visibilityTab, row, strings.Join(appKeys(), ", "))
+		}
+		if _, dup := visibility[app]; dup {
+			return nil, fmt.Errorf("%s has two rows for %q", visibilityTab, app)
+		}
+		mode := row["Visibility"]
+		if mode != VisibleToEveryone && mode != VisibleToList {
+			return nil, fmt.Errorf("%s row for %q: visibility %q is not %s or %s", visibilityTab, app, mode, VisibleToEveryone, VisibleToList)
+		}
+		visibility[app] = Visibility{Mode: mode, Emails: splitEmails(row["Emails"])}
+	}
+	return visibility, nil
+}
+
+// splitEmails reads an Emails cell, normalized and deduplicated, in order.
+func splitEmails(cell string) []string {
+	return normalizeEmails(strings.FieldsFunc(cell, func(r rune) bool {
+		return r == ',' || r == ';' || r == '\n' || r == '\r' || r == ' '
+	}))
+}
+
+// joinEmails writes an Emails cell the way the sheet is read back.
+func joinEmails(emails []string) string {
+	return strings.Join(emails, ", ")
+}
+
+func appKeys() []string {
+	keys := make([]string, 0, len(Apps))
+	for _, app := range Apps {
+		keys = append(keys, app.Key)
+	}
+	return keys
 }
 
 func cloneRows(rows []map[string]string) []map[string]string {
@@ -357,6 +451,25 @@ func (t *Tables) withoutRow(tab, key string) *Tables {
 		}
 	}
 	out.setTab(tab, rows)
+	return &out
+}
+
+// withVisibility mirrors what setVisibility upserts: the app's row takes the
+// mode and the list, appended when the app had none. Its own tab is keyed
+// by App rather than Title, so withRow does not serve it.
+func (t *Tables) withVisibility(app string, v Visibility) *Tables {
+	out := *t
+	out.Visibility = cloneRows(t.Visibility)
+	cells := map[string]string{"App": app, "Visibility": v.Mode, "Emails": joinEmails(v.Emails)}
+	for _, row := range out.Visibility {
+		if strings.EqualFold(strings.TrimSpace(row["App"]), app) {
+			applyCells(row, cells)
+			return &out
+		}
+	}
+	row := map[string]string{}
+	applyCells(row, cells)
+	out.Visibility = append(out.Visibility, row)
 	return &out
 }
 

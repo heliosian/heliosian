@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#ffffff">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Helios Celebrate: Fun(d)raiser Parties</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="16x16" href="/brand/favicon-16.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/brand/favicon-32.png">
+<link rel="icon" href="/brand/favicon.png">
+<link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
+<link rel="stylesheet" href="/fonts/fonts.css">
+<link rel="stylesheet" href="/toolbar.css">
+<link rel="stylesheet" href="/admin.css">
+<link rel="stylesheet" href="/style.css">
+<link rel="modulepreload" href="/app.js">
+<link rel="modulepreload" href="/state.js">
+<link rel="modulepreload" href="/dom.js">
+<link rel="modulepreload" href="/chrome.js">
+<link rel="modulepreload" href="/edit.js">
+<link rel="modulepreload" href="/cards.js">
+<link rel="modulepreload" href="/toolbar.js">
+<link rel="modulepreload" href="/pages/parties.js">
+<link rel="modulepreload" href="/pages/party.js">
+<link rel="modulepreload" href="/pages/my.js">
+<link rel="modulepreload" href="/pages/hosting.js">
+<link rel="modulepreload" href="/pages/admin.js">
+</head>
+<body>
+<header class="mobile-top">
+<div class="mobile-title" id="mobile-title"></div>
+</header>
+<div class="app-shell">
+<aside class="sidebar">
+<div class="brand"><a href="/" data-link><img src="/brand/logo-lockup-vertical.png" alt="Helios Celebrate: Fun(d)raiser Parties"></a></div>
+<nav class="app-nav" id="nav"></nav>
+</aside>
+<div class="content-col">
+<header class="topbar">
+<button type="button" class="topbar-menu" id="menu-button" aria-label="Menu"></button>
+<div class="topbar-search" id="topbar-search">
+<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+<input type="search" id="search-input" placeholder="Search parties…" autocomplete="off">
+<kbd class="topbar-key">/</kbd>
+</div>
+<div class="topbar-user">
+<a class="topbar-alert topbar-alert-count stale-alert" hidden><span class="stale-count"></span></a>
+<a class="topbar-alert privacy-alert" hidden><svg viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg></a>
+<button type="button" class="user" id="user" aria-label="Account"><span class="user-avatar"></span></button>
+<div class="user-menu" id="user-menu" hidden>
+<div class="user-menu-email"></div>
+<a href="/admin" class="user-menu-admin" data-link hidden>Admin Tools</a>
+<form method="post" action="/auth/logout"><button>Sign Out</button></form>
+</div>
+</div>
+<div class="app-switch">
+<button type="button" class="app-switch-button" aria-label="Apps" aria-haspopup="menu"><img src="/brand/heliosian-tile.png" alt=""><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
+<div class="app-switch-menu" hidden></div>
+</div>
+</header>
+<main id="main">
+<div id="page"></div>
+</main>
+</div>
+</div>
+<nav class="tabbar" id="tabbar"></nav>
+<div class="drawer-overlay" id="drawer-overlay" hidden>
+<aside class="drawer" id="drawer"></aside>
+</div>
+<div class="modal-overlay" id="modal-overlay" hidden><form class="modal" id="modal"></form></div>
+<div class="toast" id="toast" hidden></div>
+<script type="module" src="/app.js"></script>
+</body>
+</html>

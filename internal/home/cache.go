@@ -2,6 +2,7 @@ package home
 
 import (
 	"log/slog"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -96,6 +97,54 @@ func normalizeEmails(emails []string) []string {
 		out = append(out, e)
 	}
 	return out
+}
+
+// Person is someone the admin page can list an app for: the directory as a
+// picker sees it.
+type Person struct {
+	Name  string `json:"name"`
+	Email string `json:"email"`
+}
+
+// AppVisibility is one app as the admin page shows it: its name, its mode,
+// and the list, whether or not the mode is using it.
+type AppVisibility struct {
+	App
+	Visibility string   `json:"visibility"`
+	Emails     []string `json:"emails"`
+}
+
+// AppVisibilities is every app's visibility for the admin page, an app with
+// no row of its own everyone's with nobody listed.
+func (c *Cache) AppVisibilities() []AppVisibility {
+	model := c.Model()
+	out := make([]AppVisibility, 0, len(Apps))
+	for _, app := range Apps {
+		v := model.Visibility[app.Key]
+		if v.Mode == "" {
+			v.Mode = VisibleToEveryone
+		}
+		if v.Emails == nil {
+			v.Emails = []string{}
+		}
+		out = append(out, AppVisibility{App: app, Visibility: v.Mode, Emails: v.Emails})
+	}
+	return out
+}
+
+// HiddenApps is which apps are narrowed to a list this person is not on -
+// the rows the toolbar leaves off their switch and the links the front page
+// leaves out. Empty for nearly everyone: an app is everyone's until narrowed.
+func (c *Cache) HiddenApps(email string) []string {
+	email = strings.ToLower(strings.TrimSpace(email))
+	hidden := []string{}
+	for _, app := range Apps {
+		v := c.Model().Visibility[app.Key]
+		if v.Mode == VisibleToList && !slices.Contains(v.Emails, email) {
+			hidden = append(hidden, app.Key)
+		}
+	}
+	return hidden
 }
 
 func (c *Cache) tabAdmins() []string {

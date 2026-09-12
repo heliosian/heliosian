@@ -4,11 +4,13 @@
 // its chrome.
 
 // The apps, in the order the switch lists them. Each is keyed by its hostname's
-// first label; the icons are served from web/public/common/brand/apps/.
+// first label; the icons are served from web/public/common/brand/apps/. The
+// birthday team's app is a small group's and stays off the list.
 const apps = [
   {key: 'home', name: 'Heliosian', tagline: 'Helios Community Apps'},
   {key: 'who', name: 'Helios Who?', tagline: 'A visual directory'},
   {key: 'team', name: 'HCA-Team', tagline: 'HCA Volunteer Portal'},
+  {key: 'celebrate', name: 'Helios Celebrate', tagline: 'Fun(d)raiser Parties'},
 ];
 
 // Hostnames follow the tier of the page's own: beside who.heliosian.com sits
@@ -17,7 +19,7 @@ const apps = [
 // portal is the apex in production (heliosian.com, also www) and home.<tier>
 // elsewhere. The app label comes off the front and the app's own goes on -
 // hca.<tier> is the volunteer portal's older name, so it counts as team's.
-const appLabels = ['who', 'team', 'hca', 'home', 'www'];
+const appLabels = ['who', 'team', 'hca', 'celebrate', 'home', 'www'];
 
 function tierLabels() {
   const labels = location.hostname.split('.');
@@ -26,7 +28,7 @@ function tierLabels() {
 
 export function currentApp() {
   const first = location.hostname.split('.')[0];
-  if (first === 'who' || first === 'team') {
+  if (first === 'who' || first === 'team' || first === 'celebrate') {
     return first;
   }
   return first === 'hca' ? 'team' : 'home';
@@ -38,32 +40,45 @@ export function appOrigin(key) {
   return location.protocol + '//' + host.join('.') + (location.port ? ':' + location.port : '');
 }
 
+// Which of the apps Heliosian's Visibility tab narrows to a list this person
+// is not on, and so leaves off their switch - asked of the page's own origin
+// (every app serves the route). Purely presentation - a direct link still
+// opens the app - so a failed ask hides nothing rather than everything.
+async function hiddenApps() {
+  try {
+    const res = await fetch('/api/apps/hidden');
+    if (!res.ok) {
+      return [];
+    }
+    return (await res.json()).hiddenApps || [];
+  } catch {
+    return [];
+  }
+}
+
 // Fills every .app-switch in the page (the desktop bar's and, where an app has
 // one, the phone bar's) and wires it: click toggles the list, a click anywhere
-// else or Escape closes it.
+// else or Escape closes it. The rows wait on the hidden-apps ask, which is
+// well over before anyone opens the list; the app being viewed is always
+// listed, whether or not the reader is on its list, since it is where they
+// already are.
 export function initAppSwitch() {
   const current = currentApp();
-  for (const wrap of document.querySelectorAll('.app-switch')) {
-    const menu = wrap.querySelector('.app-switch-menu');
-    for (const app of apps) {
-      const row = document.createElement('a');
-      row.href = appOrigin(app.key);
-      row.className = app.key === current ? 'is-current' : '';
-      const icon = document.createElement('img');
-      icon.src = `/brand/apps/${app.key}.png`;
-      icon.alt = '';
-      const text = document.createElement('span');
-      const name = document.createElement('span');
-      name.className = 'app-switch-name';
-      name.textContent = app.name;
-      const tagline = document.createElement('span');
-      tagline.className = 'app-switch-tagline';
-      tagline.textContent = app.tagline;
-      text.append(name, tagline);
-      row.append(icon, text);
-      menu.append(row);
+  const wraps = document.querySelectorAll('.app-switch');
+  hiddenApps().then(hidden => {
+    for (const wrap of wraps) {
+      const menu = wrap.querySelector('.app-switch-menu');
+      for (const app of apps) {
+        if (hidden.includes(app.key) && app.key !== current) {
+          continue;
+        }
+        menu.append(appRow(app, app.key === current));
+      }
+      menu.append(repoLine());
     }
-    menu.append(repoLine());
+  });
+  for (const wrap of wraps) {
+    const menu = wrap.querySelector('.app-switch-menu');
     // The click runs on to the document, where each app's own handler closes
     // its menus - so opening the list closes the account menu, and the
     // document's listener below leaves the switch itself alone.
@@ -83,6 +98,26 @@ export function initAppSwitch() {
       closeAppSwitches();
     }
   });
+}
+
+// One app's row of the switch: its mark, name and tagline, linking to it.
+function appRow(app, isCurrent) {
+  const row = document.createElement('a');
+  row.href = appOrigin(app.key);
+  row.className = isCurrent ? 'is-current' : '';
+  const icon = document.createElement('img');
+  icon.src = `/brand/apps/${app.key}.png`;
+  icon.alt = '';
+  const text = document.createElement('span');
+  const name = document.createElement('span');
+  name.className = 'app-switch-name';
+  name.textContent = app.name;
+  const tagline = document.createElement('span');
+  tagline.className = 'app-switch-tagline';
+  tagline.textContent = app.tagline;
+  text.append(name, tagline);
+  row.append(icon, text);
+  return row;
 }
 
 // The line under the apps: the octocat and a link to where they are built.

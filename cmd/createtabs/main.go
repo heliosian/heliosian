@@ -13,6 +13,7 @@ import (
 	"google.golang.org/api/sheets/v4"
 
 	"heliosian/internal/birthday"
+	"heliosian/internal/celebrate"
 	"heliosian/internal/events"
 	"heliosian/internal/home"
 )
@@ -25,6 +26,7 @@ var spreadsheets = []struct{ env, layout string }{
 	{"APPS_SHEET", "Apps"},
 	{"EVENTS_SHEET", "Events"},
 	{"BIRTHDAY_SHEET", "Birthdays"},
+	{"CELEBRATE_SHEET", "Celebrate"},
 	{"CONFIG_SHEET", "Config"},
 }
 
@@ -112,6 +114,7 @@ var layouts = map[string][]tab{
 		{"Categories", []string{"Title", "Emoji", "Style", "Max"}},
 		{"Links", []string{"Title", "Description", "URL", "Image", "Category", "Visible", "Added By", "Added"}},
 		{"Admins", []string{"Email"}},
+		{"Visibility", []string{"App", "Visibility", "Emails"}},
 		{"Change Log", []string{"Timestamp", "Actor", "Action", "Kind", "Title", "Description", "URL", "Image", "Category", "Visible", "Style"}},
 	},
 	"Events": {
@@ -135,6 +138,17 @@ var layouts = map[string][]tab{
 		{"Settings", birthday.SettingColumns},
 		{"Admins", birthday.AdminColumns},
 		{"Change Log", birthday.ChangeLogColumns},
+	},
+	"Celebrate": {
+		{"Celebrations", celebrate.CelebrationColumns},
+		{"Categories", celebrate.CategoryColumns},
+		{"Parties", celebrate.PartyColumns},
+		{"Hosts", celebrate.HostColumns},
+		{"Tickets", celebrate.TicketColumns},
+		{"Settings", celebrate.SettingColumns},
+		{"Admins", celebrate.AdminColumns},
+		{"Redirects", celebrate.RedirectColumns},
+		{"Change Log", celebrate.ChangeLogColumns},
 	},
 	"Config": {
 		{"Settings", []string{"Key", "Value"}},

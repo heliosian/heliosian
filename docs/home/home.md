@@ -9,6 +9,8 @@ Heliosian is the community's front door: one page of links, grouped into categor
 
 Hidden links (Visible = No) are kept but reach only admins, who see them greyed and badged while **Super Admin Mode** in the account menu is on (off by default, remembered per browser; the same switch brings out the add cards), so a seasonal link can be parked rather than deleted and an admin still sees the page as everyone else does.
 
+Separately, a link into a community app narrowed by the `Visibility` tab (`docs/home/data.md`) to a list the viewer is not on is left out of their model altogether, admin or not, the same way the toolbar's switch leaves the app off - the server recognizes such a link by its host on the page's own tier (`hiddenHosts` in `internal/home/home.go`: from `heliosian.com` the directory's links are `who.heliosian.com`'s, from `home.lab.heliosian.com` they are `who.lab.heliosian.com`'s, and `hca.` counts as `team`'s), so a link out to anything else is untouched. Every app serves the person their own list of what to leave off at `GET /api/apps/hidden` (`home.RegisterHiddenApps`, on every mux), which is how the toolbar knows.
+
 ## The page
 
 A single page. A teal sidebar, dark at the top shading to medium at the foot, carries the white lockup, a link to Home and to each category (its emoji, or without one a school building, a calendar or a chat bubble by the title's wording, else a grid), and the campsite illustration at its foot. The shared toolbar (`docs/toolbar.md`) runs across the top of the content with the search box - it filters the links and the upcoming events as you type, and `/` jumps to it - and the signed-in user's avatar, whose menu holds the email, Edit Categories, Super Admin Mode and Admin Tools for admins, and Sign Out.

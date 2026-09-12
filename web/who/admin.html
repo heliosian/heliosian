@@ -9,7 +9,7 @@
 <link rel="stylesheet" href="/admin.css">
 <link rel="modulepreload" href="/admin/app.js">
 <link rel="modulepreload" href="/admin/state.js">
-<link rel="modulepreload" href="/admin/picker.js">
+<link rel="modulepreload" href="/picker.js">
 <link rel="modulepreload" href="/admin/spoof.js">
 <link rel="modulepreload" href="/admin/admins.js">
 <link rel="modulepreload" href="/admin/images.js">
@@ -110,46 +110,6 @@
   }
   .add-admin-row .upload-button {
     border: none;
-  }
-  .person-picker {
-    position: relative;
-    flex: 1;
-  }
-  .person-picker input {
-    width: 100%;
-    padding: 8px 10px;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    font-size: 14px;
-    font-family: inherit;
-    background: #fff;
-  }
-  .person-picker-list {
-    position: absolute;
-    z-index: 20;
-    top: calc(100% + 4px);
-    left: 0;
-    right: 0;
-    max-height: 260px;
-    overflow-y: auto;
-    background: #fff;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, .1);
-  }
-  .person-picker-option {
-    padding: 8px 10px;
-    font-size: 14px;
-    cursor: pointer;
-  }
-  .person-picker-option.active,
-  .person-picker-option:hover {
-    background: var(--input);
-  }
-  .person-picker-empty {
-    padding: 8px 10px;
-    font-size: 13px;
-    color: var(--muted);
   }
   .field-row {
     display: flex;

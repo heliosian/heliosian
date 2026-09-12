@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 
+	"heliosian/internal/celebrate"
 	"heliosian/internal/config"
 	"heliosian/internal/data"
 	"heliosian/internal/events"
@@ -62,6 +63,18 @@ func (eventsImages) Has(key string) (bool, error) {
 
 func (eventsImages) Prefetch([]string) error { return nil }
 
+// celebrateImages trusts bucket names like the others, and checks bundled files.
+type celebrateImages struct{}
+
+func (celebrateImages) Has(key string) (bool, error) {
+	if strings.HasPrefix(key, "party-images/") {
+		return true, nil
+	}
+	return bundled([]string{"web/celebrate", "web/public/celebrate"}, key), nil
+}
+
+func (celebrateImages) Prefetch([]string) error { return nil }
+
 func requiredEnv(name string) string {
 	value := os.Getenv(name)
 	if value == "" {
@@ -83,6 +96,7 @@ func main() {
 			"invites":     requiredEnv("INVITES_SHEET"),
 			"apps":        requiredEnv("APPS_SHEET"),
 			"events":      requiredEnv("EVENTS_SHEET"),
+			"celebrate":   requiredEnv("CELEBRATE_SHEET"),
 			"config":      requiredEnv("CONFIG_SHEET"),
 		})
 		if err != nil {
@@ -221,6 +235,35 @@ func main() {
 		}
 	}
 	fmt.Printf("events admins: %d\n", len(eventTables.Admins))
+
+	celebrateTables, err := celebrate.ReadTables(source)
+	if err != nil {
+		log.Fatalf("[ERROR] read celebrate tables: %v", err)
+	}
+	site, err := celebrate.BuildModel(celebrateTables, celebrateImages{})
+	if err != nil {
+		log.Fatalf("[ERROR] build celebrate model: %v", err)
+	}
+	fmt.Println("celebrate:")
+	for _, c := range site.Celebrations {
+		sold, waiting, hosts := 0, 0, 0
+		parties := site.SortedParties(c.Code)
+		for _, p := range parties {
+			hosts += len(p.HostEmails)
+			for _, t := range p.Tickets {
+				if t.Status == celebrate.TicketWaitlist {
+					waiting++
+				} else {
+					sold++
+				}
+			}
+		}
+		fmt.Printf("  %s %q (current %v): %d parties, %d hosts, %d tickets sold, %d waiting\n", c.Code, c.Title, c.Current, len(parties), hosts, sold, waiting)
+	}
+	for reason, n := range site.Skipped {
+		fmt.Printf("  skipped %d: %s\n", n, reason)
+	}
+	fmt.Printf("celebrate admins: %d\n", len(celebrateTables.Admins))
 
 	configTables, err := config.ReadTables(source)
 	if err != nil {

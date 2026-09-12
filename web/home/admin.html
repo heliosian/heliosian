@@ -85,6 +85,30 @@
   .category-row .title { font-weight: 600; }
   .category-row .meta { font-size: 13px; color: var(--muted); }
   .card-actions { margin-top: 16px; }
+  /* App Visibility: each app's card leads with the switch between everyone
+     and its list, the list following only while it is in use. */
+  .visibility-switch {
+    display: inline-flex;
+    padding: 3px;
+    border-radius: 999px;
+    background: var(--input);
+    margin: 10px 0 4px;
+  }
+  .visibility-switch label {
+    padding: 7px 16px;
+    border-radius: 999px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .visibility-switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+  .visibility-switch input:checked + span { color: #fff; }
+  .visibility-switch label:has(input:checked) { background: var(--brand); color: #fff; }
+  .visibility-switch label:has(input:focus-visible) { outline: 2px solid var(--brand); outline-offset: 2px; }
+  .visibility-note { font-size: 13px; color: var(--muted); margin: 6px 0 10px; }
+  .visibility-list { margin-top: 6px; }
+  .admin-row .name { font-weight: 600; }
 </style>
 </head>
 <body class="admin admin-strip">
@@ -105,6 +129,7 @@
     <div class="sidebar-section">
       <div class="sidebar-section-title">Editing &amp; Control</div>
       <div class="tab" data-panel="admins">Admins</div>
+      <div class="tab" data-panel="visible-to">App Visibility</div>
     </div>
   </nav>
   <div class="container">
@@ -116,6 +141,13 @@
       <div id="category-rows"></div>
       <div class="card-actions"><a class="button" href="/">Edit on the front page</a></div>
     </div>
+  </div>
+  <div class="panel" id="panel-visible-to" hidden>
+    <div class="card">
+      <h2>App Visibility</h2>
+      <div class="hint">Who sees each app in the app switch and on the front page: everyone at heliosschool.org, or only the people on its list. Nobody is kept out either way - a direct link still opens the app. The list is kept while an app is set to everyone, ready for when it is switched back. Changes save immediately.</div>
+    </div>
+    <div id="visibility-cards"></div>
   </div>
   <div class="panel" id="panel-admins" hidden>
     <div class="card">
