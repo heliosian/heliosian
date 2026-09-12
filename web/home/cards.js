@@ -340,13 +340,13 @@ function eventCard(event) {
     body.append(when);
   }
   open.append(art, body);
-  // One row, two buttons of one size: Add to Calendar and Volunteer.
+  // One row, two buttons of one size: + Add Calendar and Volunteer.
   const actions = el('div', 'event-actions');
   const calendar = el('a', 'button button-secondary button-small event-calendar');
   calendar.href = calendarLink(event);
   calendar.target = '_blank';
   calendar.rel = 'noopener';
-  calendar.append(svg('calendarAdd'), el('span', '', 'Add to Calendar'));
+  calendar.append(svg('plus'), el('span', '', 'Add Calendar'));
   const volunteer = el('a', 'button button-small');
   volunteer.href = open.href;
   volunteer.append(svg('volunteer'), el('span', '', 'Volunteer'));
