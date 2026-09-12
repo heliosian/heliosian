@@ -307,9 +307,10 @@ function eventCard(event) {
   const open = el('a', 'event-open');
   open.href = appOrigin('team') + event.path;
   const art = el('div', 'event-art');
+  // The picture lives on the portal's host, like the page it opens.
   if (event.imageUrl) {
     const img = el('img');
-    img.src = event.imageUrl;
+    img.src = appOrigin('team') + event.imageUrl;
     img.alt = '';
     img.loading = 'lazy';
     art.append(img);
