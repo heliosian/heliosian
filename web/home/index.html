@@ -58,8 +58,9 @@
 <body>
 <div class="shell">
 
-<aside class="sidebar">
-<a class="brand" href="/" aria-label="Heliosian home"><img class="brand-lockup" src="/brand/logo-lockup-light.png" alt=""><img class="brand-mark" src="/brand/logo-tile.png" alt=""></a>
+<div class="drawer-overlay" id="drawer-overlay" hidden></div>
+<aside class="sidebar" id="sidebar">
+<a class="brand" href="/" aria-label="Heliosian home"><img class="brand-lockup" src="/brand/logo-lockup-light.png" alt=""></a>
 <nav class="app-nav" id="app-nav" aria-label="Sections"></nav>
 <div class="sidebar-foot">
 <img class="sidebar-art" src="/brand/sidebar-camp.png" alt="">
@@ -69,6 +70,7 @@
 <div class="content">
 
 <header class="topbar">
+<button type="button" class="topbar-menu" id="menu-button" aria-label="Menu"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
 <div class="topbar-search">
 <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
 <input type="search" id="search" placeholder="Search apps, links, or events…" autocomplete="off" spellcheck="false" aria-label="Search">

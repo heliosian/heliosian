@@ -18,7 +18,7 @@ The hero is a welcome - "Tools and resources for the Helios Community", with a k
 - **cards** — tinted feature cards three to a row: the link's picture (or the category's emoji) in a disc, the title, the description, an Open App button in the card's accent, the picture again large and faint behind the right edge when there is one, and a round chevron in the corner that opens the link too.
 - **tiles** — white cards three to a row: the picture (or, without one, the category's emoji or glyph on a pale ground) beside the title and the description on one line.
 
-A card opens its link; in Super Admin Mode it wears a pencil in its corner, the way into its editor. The foot of the page is the leaves along the bottom edge. On phones the sidebar becomes a header strip (the mark on its tile, the section links), the illustrations at its foot drop, and the grids go to one column.
+A card opens its link; in Super Admin Mode it wears a pencil in its corner, the way into its editor. The foot of the page is the leaves along the bottom edge. On phones the sidebar becomes a drawer behind the toolbar's hamburger - the same column, campsite and all, slid in from the left and closed by a section link, the backdrop or Escape - and the grids go to one column.
 
 The art lives in `web/home/brand/`: `hero-art.png` (the landscape strip, transparent above and to the left), `footer-leaves.png` (the wave and leaves), and `sidebar-camp.png` (the campsite, transparent).
 

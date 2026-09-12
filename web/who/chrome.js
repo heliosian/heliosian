@@ -1,12 +1,12 @@
 import {state, byEmail} from './state.js';
-import {el, svg, segments, isMobile, hue, firstName, thumbUrl} from './dom.js';
+import {el, svg, segments, hue, firstName, thumbUrl} from './dom.js';
 import {saveNavOpen} from './storage.js';
 import {familyOf, myFamilyKey} from './families.js';
 import {personByKey, personLink, photoOrInitials, personPhotoUrl} from './people.js';
 import {tagNames} from './tags.js';
 import {clampFilterPanel, closeFilterPanels} from './filters.js';
 import {staleItems, familyInfoBanner, todoChecklist, familyNavPeople, personTodoCount} from './stale.js';
-import {topbarSearchInput, topbarSearchResults, mobileSearchInput, setMobileSearch} from './search.js';
+import {topbarSearchInput, topbarSearchResults} from './search.js';
 import {privacyMismatchCardDismissed, myPrivacyWarnings, privacyMismatchCard} from './pages/privacy.js';
 import {load} from './app.js';
 import {renderAvatars, onSlash, isEditableTarget, initAppSwitch, markSuper} from '/toolbar.js';
@@ -48,36 +48,25 @@ function activeSection() {
 export function setChrome(title, backHref) {
   document.querySelector('#mobile-title').textContent = title;
   const back = document.querySelector('#mobile-back');
-  const menuBtn = document.querySelector('#mobile-menu-btn');
   back.hidden = !backHref;
-  menuBtn.hidden = Boolean(backHref);
   if (backHref) {
     back.href = backHref;
   }
   updateMobileTitleInset();
 }
 
-// .mobile-title is centered by giving it equal left/right insets, so it has to be
-// centered on the whole bar rather than just the space between whichever icons
-// happen to be showing - a fixed inset sized for the busiest icon cluster (search +
-// stale alert + privacy alert + avatar) left the title visibly off-center on every
-// page showing fewer icons than that, including the plain back-button pages. Measured
-// live because which side is wider varies with the route (back vs. menu button) and
-// with per-user alert state (stale info, privacy mismatch).
+// .mobile-title is centered by giving it equal left/right insets, so it has to
+// be centered on the whole strip rather than just the space beside the back
+// arrow, which is there on detail pages and not on the rest. Measured live.
 function updateMobileTitleInset() {
   const bar = document.querySelector('.mobile-top');
-  const leftEl = bar.querySelector('#mobile-back:not([hidden]), #mobile-menu-btn:not([hidden])');
-  const searchBtn = document.querySelector('#mobile-search-btn');
-  if (!bar || !leftEl || !searchBtn) {
-    return;
-  }
+  const back = document.querySelector('#mobile-back');
   const barRect = bar.getBoundingClientRect();
   if (!barRect.width) {
     return;
   }
-  const leftWidth = leftEl.getBoundingClientRect().right - barRect.left;
-  const rightWidth = barRect.right - searchBtn.getBoundingClientRect().left;
-  document.documentElement.style.setProperty('--mobile-title-inset', Math.max(leftWidth, rightWidth) + 'px');
+  const leftWidth = back.hidden ? 12 : back.getBoundingClientRect().right - barRect.left;
+  document.documentElement.style.setProperty('--mobile-title-inset', leftWidth + 'px');
 }
 
 export function resetMain(...children) {
@@ -299,7 +288,6 @@ export function finishRender() {
 }
 
 const userMenu = document.querySelector('#user-menu');
-const mobileUserMenu = document.querySelector('#mobile-user-menu');
 
 const drawer = document.querySelector('#drawer');
 const drawerOverlay = document.querySelector('#drawer-overlay');
@@ -480,10 +468,8 @@ export function renderPrivacyMenuAlert() {
     }
   }
 
-  // Mobile carries its own copy of both topbar icons now that the avatar lives
-  // in the same top-right corner as desktop's, so both share this one loop
-  // (over every .stale-alert/.privacy-alert in the page) instead of each
-  // querying a single id.
+  // One loop over every .stale-alert/.privacy-alert in the page, however many
+  // bars carry them.
   for (const staleButton of document.querySelectorAll('.stale-alert')) {
     staleButton.hidden = !hasStale;
     staleButton.title = `${staleCount} thing${staleCount === 1 ? '' : 's'} to update for the new year`;
@@ -513,14 +499,6 @@ export function initChrome() {
   document.querySelector('#user').addEventListener('click', e => {
     e.stopPropagation();
     userMenu.hidden = !userMenu.hidden;
-  });
-
-  // Mobile's counterpart to the desktop topbar avatar above - same menu markup,
-  // pinned to the top-right of .mobile-top instead of tucked into the drawer, so
-  // the account entry point sits in the same corner on every breakpoint.
-  document.querySelector('#mobile-user').addEventListener('click', e => {
-    e.stopPropagation();
-    mobileUserMenu.hidden = !mobileUserMenu.hidden;
   });
 
   // The stale-count badge (desktop and mobile both) used to link straight to
@@ -562,7 +540,6 @@ export function initChrome() {
 
   document.addEventListener('click', e => {
     userMenu.hidden = true;
-    mobileUserMenu.hidden = true;
     for (const p of document.querySelectorAll('.stale-menu')) {
       p.hidden = true;
     }
@@ -582,31 +559,21 @@ export function initChrome() {
     }
   });
 
-  // On a phone the search box lives behind the magnifier, so "/" opens that
-  // overlay instead of focusing the (hidden) desktop box.
-  onSlash(() => {
-    if (isMobile()) {
-      setMobileSearch(true);
-    } else {
-      topbarSearchInput.focus();
-    }
-  });
+  onSlash(() => topbarSearchInput.focus());
 
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
       userMenu.hidden = true;
-      mobileUserMenu.hidden = true;
       for (const p of document.querySelectorAll('.stale-menu')) {
         p.hidden = true;
       }
       setDrawer(false);
-      setMobileSearch(false);
       topbarSearchResults.hidden = true;
       closeFilterPanels();
       for (const menu of document.querySelectorAll('.more-menu, .card-menu, .photo-menu')) {
         menu.hidden = true;
       }
-      if (e.target === topbarSearchInput || e.target === mobileSearchInput) {
+      if (e.target === topbarSearchInput) {
         e.target.blur();
       }
     } else if (e.key.toLowerCase() === 't' && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && !isEditableTarget(e.target)) {

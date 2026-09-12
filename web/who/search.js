@@ -25,10 +25,9 @@ function personSearchSubtitle(p) {
   return roleLabel(p);
 }
 
-// Shared by the desktop topbar search and the mobile search overlay - both just
-// point a different results container at this. People/grades/classrooms are all
-// loaded client-side already (state.model), so this is a plain client-side filter
-// rather than a server round trip.
+// The toolbar's search, on every width: people/grades/classrooms are all
+// loaded client-side already (state.model), so this is a plain client-side
+// filter rather than a server round trip.
 function renderGlobalSearchResults(resultsEl, query) {
   const q = query.trim().toLowerCase();
   resultsEl.replaceChildren();
@@ -146,19 +145,6 @@ function handleSearchNavKeys(resultsEl, e) {
 export const topbarSearchInput = document.querySelector('#topbar-search-input');
 export const topbarSearchResults = document.querySelector('#topbar-search-results');
 
-const mobileSearchOverlay = document.querySelector('#mobile-search-overlay');
-export const mobileSearchInput = document.querySelector('#mobile-search-input');
-const mobileSearchResults = document.querySelector('#mobile-search-results');
-
-export function setMobileSearch(open) {
-  mobileSearchOverlay.hidden = !open;
-  if (open) {
-    mobileSearchInput.value = '';
-    mobileSearchResults.replaceChildren();
-    mobileSearchInput.focus();
-  }
-}
-
 export function initSearch() {
   topbarSearchInput.addEventListener('input', () => {
     renderGlobalSearchResults(topbarSearchResults, topbarSearchInput.value);
@@ -169,11 +155,4 @@ export function initSearch() {
     }
   });
   topbarSearchInput.addEventListener('keydown', e => handleSearchNavKeys(topbarSearchResults, e));
-
-  document.querySelector('#mobile-search-btn').addEventListener('click', () => setMobileSearch(true));
-  document.querySelector('#mobile-search-close').addEventListener('click', () => setMobileSearch(false));
-  mobileSearchInput.addEventListener('input', () => {
-    renderGlobalSearchResults(mobileSearchResults, mobileSearchInput.value);
-  });
-  mobileSearchInput.addEventListener('keydown', e => handleSearchNavKeys(mobileSearchResults, e));
 }

@@ -404,15 +404,49 @@ body.is-super .user-avatar {
   fill: currentColor;
 }
 
-/* On a phone the bar keeps its height but loses its keyboard hint and the
-   switch's chevron - whether that bar is this .topbar (Heliosian) or the
-   app's own .mobile-top (Who, HCA-Team), which shares the avatar and switch
-   sizes above. */
+/* The hamburger that opens an app's drawer on a phone (Who?, HCA-Team); the
+   desktop rail makes it needless there. */
+.topbar-menu {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  margin-left: -6px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--brand);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.topbar-menu svg {
+  width: 22px;
+  height: 22px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* On a phone the bar is the topmost thing in every app, pinned there, under
+   the status bar; it loses its keyboard hint and the switch's chevron. Each
+   app pads its content for it. */
 @media (max-width: 900px) {
   .topbar {
-    gap: 12px;
-    padding: 0 12px;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 30;
+    gap: 10px;
+    height: calc(48px + env(safe-area-inset-top));
+    padding: env(safe-area-inset-top) 12px 0;
   }
+  .topbar-menu { display: flex; }
   .topbar-search input { padding-right: 16px; }
   /* No keyboard to press it on. */
   .topbar-key { display: none; }

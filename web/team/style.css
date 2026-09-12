@@ -290,8 +290,6 @@ button { font: inherit; }
 /* Mobile chrome: the sidebar becomes a drawer, the search bar an overlay. */
 .mobile-top { display: none; }
 
-.mobile-search-overlay { display: none; }
-
 .tabbar { display: none; }
 
 .drawer-overlay {
@@ -2598,7 +2596,6 @@ body.is-admin main { padding: 0; }
 @media (max-width: 900px) {
   body { display: block; height: auto; }
   .sidebar { display: none; }
-  .topbar { display: none; }
   .app-shell { display: block; min-height: 0; }
   .content-col { display: block; }
   main {
@@ -2607,37 +2604,25 @@ body.is-admin main { padding: 0; }
        iOS mode - see syncViewportHeight. */
     height: var(--vh100, 100dvh);
     overflow-y: auto;
-    padding-top: calc(48px + env(safe-area-inset-top));
+    padding-top: calc(88px + env(safe-area-inset-top));
     padding-bottom: calc(var(--tabbar) + env(safe-area-inset-bottom));
   }
   #page { padding: 12px 12px 40px; }
+  /* The shared toolbar is pinned on top (toolbar.css); this is the title
+     strip under it. */
   .mobile-top {
     display: flex;
     align-items: center;
-    gap: 4px;
     position: fixed;
-    top: 0;
+    top: calc(48px + env(safe-area-inset-top));
     left: 0;
     right: 0;
-    height: calc(48px + env(safe-area-inset-top));
-    padding: env(safe-area-inset-top) 6px 0;
+    height: 40px;
+    padding: 0 12px;
     background: var(--brand);
     color: #fff;
-    z-index: 30;
+    z-index: 29;
   }
-  .mobile-menu-btn, .mobile-search-btn {
-    width: 40px;
-    height: 40px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border: 0;
-    background: none;
-    color: rgba(255, 255, 255, 0.9);
-    cursor: pointer;
-  }
-  .mobile-search-btn { margin-left: auto; }
-  .mobile-menu-btn svg, .mobile-search-btn svg { width: 22px; height: 22px; }
   .mobile-title {
     flex: 1;
     min-width: 0;
@@ -2648,8 +2633,6 @@ body.is-admin main { padding: 0; }
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .mobile-top .user-menu { top: calc(100% + 4px); right: 6px; }
-  .mobile-top .app-switch { margin-left: 6px; }
   /* Spoof Mode's line stays above the pinned bar on a phone - it is the way
      out of viewing as someone else, so it can never be hidden behind it. */
   .spoof-banner {
@@ -2662,8 +2645,9 @@ body.is-admin main { padding: 0; }
     padding: env(safe-area-inset-top) 12px 0;
     box-sizing: border-box;
   }
-  body.has-spoof .mobile-top { top: calc(var(--spoof-h) + env(safe-area-inset-top)); height: 48px; padding-top: 0; }
-  body.has-spoof main { padding-top: calc(48px + var(--spoof-h) + env(safe-area-inset-top)); }
+  body.has-spoof .topbar { top: calc(var(--spoof-h) + env(safe-area-inset-top)); height: 48px; padding-top: 0; }
+  body.has-spoof .mobile-top { top: calc(48px + var(--spoof-h) + env(safe-area-inset-top)); }
+  body.has-spoof main { padding-top: calc(88px + var(--spoof-h) + env(safe-area-inset-top)); }
   /* The person window on a phone: the face and name on one row, the
      contact buttons on their own row under them, so nothing overlaps. */
   .who-head { flex-wrap: wrap; gap: 14px; }
@@ -2674,40 +2658,6 @@ body.is-admin main { padding: 0; }
   .who-actions { margin-left: 0; width: 100%; justify-content: flex-start; gap: 18px; }
   .who-row { grid-template-columns: 22px 72px 1fr; gap: 10px; font-size: 14px; }
   .who-foot { flex-wrap: wrap; }
-  .mobile-search-overlay {
-    display: block;
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    padding: calc(env(safe-area-inset-top) + 6px) 8px 8px;
-    background: var(--brand);
-    z-index: 41;
-  }
-  .mobile-search-overlay[hidden] { display: none; }
-  .mobile-search-head { display: flex; align-items: center; gap: 6px; }
-  .mobile-search-head input {
-    flex: 1;
-    height: 38px;
-    border: 0;
-    border-radius: 999px;
-    padding: 0 16px;
-    font: inherit;
-    font-size: 15px;
-    outline: none;
-  }
-  .mobile-search-close {
-    width: 36px;
-    height: 36px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border: 0;
-    background: none;
-    color: #fff;
-    cursor: pointer;
-  }
-  .mobile-search-close svg { width: 20px; height: 20px; }
   .tabbar {
     display: flex;
     position: fixed;

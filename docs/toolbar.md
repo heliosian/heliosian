@@ -24,4 +24,4 @@ Every app's Admin Tools wears the same chrome, from `web/common/admin.css` (scop
 
 ## On phones
 
-Who? and HCA-Team already had a 48px brand-coloured bar - hamburger, title, magnifier, avatar - in place of the sidebar; that stays, with the avatar and the app switch (tile only, no chevron) at the shared size. Heliosian has no sidebar to fold away, so its toolbar simply sticks under the header strip that carries its mark and section links.
+The bar is the topmost thing in every app, pinned under the status bar, at 48px: Who? and HCA-Team add a hamburger at its left for their drawer, the search box stays a box (no magnifier-and-overlay), and the keyboard hint and the switch's chevron drop. Under it Who? and HCA-Team keep a slim teal strip for the page title (or a back arrow and a record's name); Heliosian's rail is a drawer behind the hamburger, the same column slid in from the left.

@@ -746,13 +746,6 @@ body {
   color: var(--muted);
 }
 
-.mobile-search-btn {
-  background: none;
-  border: 0;
-  cursor: pointer;
-  display: flex;
-}
-
 main {
   flex: 1;
   min-height: 0;
@@ -3672,8 +3665,7 @@ img.fcard-photo {
 .drawer,
 .drawer-overlay,
 .mobile-lists-menu,
-.mobile-lists-overlay,
-.mobile-search-overlay {
+.mobile-lists-overlay {
   display: none;
 }
 
@@ -3939,9 +3931,9 @@ a.person-card:hover .photo-wrap-peek::before {
   .sidebar {
     display: none;
   }
-  .topbar {
-    display: none;
-  }
+  /* The shared toolbar is pinned on top (toolbar.css); the title strip sits
+     under it, and both clear the banners above them. */
+  .topbar { top: var(--banner-h); }
   .app-shell {
     display: block;
     margin-top: 0;
@@ -3952,7 +3944,7 @@ a.person-card:hover .photo-wrap-peek::before {
   main {
     height: var(--vh100, 100dvh);
     margin-top: 0;
-    padding-top: calc(48px + var(--banner-h) + env(safe-area-inset-top));
+    padding-top: calc(88px + var(--banner-h) + env(safe-area-inset-top));
     padding-bottom: calc(62px + env(safe-area-inset-bottom));
   }
   .container {
@@ -3968,20 +3960,14 @@ a.person-card:hover .photo-wrap-peek::before {
   .mobile-top {
     display: flex;
     align-items: center;
-    gap: 4px;
     position: fixed;
-    top: var(--banner-h);
+    top: calc(48px + var(--banner-h) + env(safe-area-inset-top));
     left: 0;
     right: 0;
-    height: calc(48px + env(safe-area-inset-top));
+    height: 40px;
     background: var(--sidebar);
-    z-index: 30;
-    padding: env(safe-area-inset-top) 6px 0;
-  }
-  .mobile-top .stale-wrap,
-  .mobile-top .privacy-alert {
-    position: relative;
-    z-index: 31;
+    z-index: 29;
+    padding: 0 6px;
   }
   .mobile-title {
     position: absolute;
@@ -3995,11 +3981,9 @@ a.person-card:hover .photo-wrap-peek::before {
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .mobile-menu-btn[hidden],
   .mobile-back[hidden] {
     display: none;
   }
-  .mobile-menu-btn,
   .mobile-back {
     background: none;
     border: 0;
@@ -4012,7 +3996,6 @@ a.person-card:hover .photo-wrap-peek::before {
     position: relative;
     z-index: 31;
   }
-  .mobile-menu-btn svg,
   .mobile-back svg {
     width: 22px;
     height: 22px;
@@ -4021,86 +4004,6 @@ a.person-card:hover .photo-wrap-peek::before {
     stroke-width: 2;
     stroke-linecap: round;
     stroke-linejoin: round;
-  }
-  .mobile-search-btn {
-    width: 40px;
-    height: 40px;
-    margin-left: auto;
-    align-items: center;
-    justify-content: center;
-    position: relative;
-    z-index: 31;
-  }
-  .mobile-search-btn svg {
-    width: 20px;
-    height: 20px;
-    stroke: rgba(255, 255, 255, 0.85);
-    fill: none;
-    stroke-width: 2;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-  }
-  .mobile-search-overlay {
-    display: flex;
-    flex-direction: column;
-    position: fixed;
-    inset: 0;
-    background: #fff;
-    z-index: 55;
-  }
-  .mobile-search-overlay[hidden] {
-    display: none;
-  }
-  .mobile-search-head {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-shrink: 0;
-    padding: calc(env(safe-area-inset-top) + 12px) 16px 12px;
-    border-bottom: 1px solid var(--line);
-  }
-  .mobile-search-head svg {
-    width: 18px;
-    height: 18px;
-    stroke: var(--muted);
-    fill: none;
-    stroke-width: 1.8;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-    flex-shrink: 0;
-  }
-  .mobile-search-head input {
-    flex: 1;
-    min-width: 0;
-    border: 0;
-    outline: none;
-    font: inherit;
-    font-size: 16px;
-    color: var(--ink);
-  }
-  .mobile-search-close {
-    background: none;
-    border: 0;
-    padding: 4px;
-    color: var(--muted);
-    cursor: pointer;
-    display: flex;
-    flex-shrink: 0;
-  }
-  .mobile-search-close svg {
-    width: 20px;
-    height: 20px;
-    stroke: currentColor;
-    fill: none;
-    stroke-width: 2;
-  }
-  .gsearch-results-mobile {
-    position: static;
-    flex: 1;
-    overflow-y: auto;
-    box-shadow: none;
-    border-radius: 0;
-    padding: 6px 0 24px;
   }
   .mobile-tabs {
     display: flex;
@@ -4295,13 +4198,6 @@ a.person-card:hover .photo-wrap-peek::before {
     overflow-y: auto;
     padding: 4px 12px 12px;
   }
-  #mobile-user,
-  .mobile-top .app-switch {
-    position: relative;
-    z-index: 31;
-  }
-  .mobile-top .user-menu { top: calc(100% + 4px); right: 6px; }
-  .mobile-top .app-switch { margin-left: 6px; }
   .crumbs {
     display: none;
   }

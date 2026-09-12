@@ -354,7 +354,7 @@ let carriedQuery = '';
 const defaultPlaceholder = 'Search opportunities…';
 
 function searchInputs() {
-  return ['#search-input', '#mobile-search-input'].map(id => document.querySelector(id));
+  return [document.querySelector('#search-input')];
 }
 
 export function setSearch(placeholder, handler) {
@@ -376,11 +376,6 @@ export function clearSearch() {
     input.value = '';
     input.placeholder = defaultPlaceholder;
   }
-  // Words on their way to the opportunities list keep the phone's search
-  // overlay open, so the reader carries on typing where they started.
-  if (!carriedQuery) {
-    closeMobileSearch();
-  }
 }
 
 function search(value) {
@@ -396,23 +391,8 @@ function search(value) {
   document.dispatchEvent(new CustomEvent('hca:refresh'));
 }
 
-function openMobileSearch() {
-  document.querySelector('#mobile-search-overlay').hidden = false;
-  document.querySelector('#mobile-search-input').focus();
-}
-
-// On a phone the box lives behind the magnifier, so "/" opens that overlay
-// instead of focusing the (hidden) desktop box.
 function focusSearch() {
-  if (window.matchMedia('(max-width: 900px)').matches) {
-    openMobileSearch();
-  } else {
-    document.querySelector('#search-input').focus();
-  }
-}
-
-function closeMobileSearch() {
-  document.querySelector('#mobile-search-overlay').hidden = true;
+  document.querySelector('#search-input').focus();
 }
 
 export function setTitle(title) {
@@ -477,10 +457,6 @@ export function initChrome() {
   initAppSwitch();
   document.querySelector('#menu-button').append(svg('menu'));
   document.querySelector('#menu-button').addEventListener('click', openDrawer);
-  document.querySelector('#mobile-search-btn').append(svg('search'));
-  document.querySelector('#mobile-search-close').append(svg('close'));
-  document.querySelector('#mobile-search-btn').addEventListener('click', openMobileSearch);
-  document.querySelector('#mobile-search-close').addEventListener('click', closeMobileSearch);
   for (const input of searchInputs()) {
     input.addEventListener('input', () => search(input.value));
   }
@@ -495,7 +471,7 @@ export function initChrome() {
       closeDrawer();
     }
   });
-  for (const [button, menu] of [['#user', '#user-menu'], ['#mobile-user', '#mobile-user-menu']]) {
+  for (const [button, menu] of [['#user', '#user-menu']]) {
     const panel = document.querySelector(menu);
     document.querySelector(button).addEventListener('click', e => {
       e.stopPropagation();
@@ -531,7 +507,6 @@ export function initChrome() {
     if (e.key === 'Escape') {
       closeMenus();
       closeDrawer();
-      closeMobileSearch();
     }
   });
 }

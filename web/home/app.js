@@ -44,8 +44,31 @@ function initSearch() {
   onSlash(() => search.focus());
 }
 
+// On a phone the rail is a drawer behind the toolbar's hamburger: open on
+// the button, closed on the backdrop, a section link, or Escape.
+function setDrawer(open) {
+  document.body.classList.toggle('drawer-open', open);
+  document.querySelector('#drawer-overlay').hidden = !open;
+}
+
+function initDrawer() {
+  document.querySelector('#menu-button').addEventListener('click', () => setDrawer(!document.body.classList.contains('drawer-open')));
+  document.querySelector('#drawer-overlay').addEventListener('click', () => setDrawer(false));
+  document.querySelector('#app-nav').addEventListener('click', e => {
+    if (e.target.closest('a')) {
+      setDrawer(false);
+    }
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      setDrawer(false);
+    }
+  });
+}
+
 function initChrome() {
   initAppSwitch();
+  initDrawer();
   const menu = document.querySelector('#user-menu');
   document.querySelector('#user').addEventListener('click', e => {
     e.stopPropagation();
