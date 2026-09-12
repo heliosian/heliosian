@@ -16,12 +16,35 @@ function denied() {
 function bannerCard() {
   const card = el('div', 'card');
   card.append(el('h2', '', 'Banner'));
-  card.append(el('div', 'hint', 'The band across the top of the parties page: the current celebration\u2019s background picture, title and theme, date and place, and its button. Edit the current celebration to change it; Celebrations is where another year becomes current.'));
-  const c = celebration(state.model.current);
+  card.append(el('div', 'hint', 'The band across the top of the parties page: a celebration\u2019s background picture, title and theme, date and place, and its button. Which celebration it advertises is separate from which one\u2019s parties are listed, so next year\u2019s gala can sit over this season\u2019s parties.'));
+  const c = celebration(state.model.banner);
   if (!c) {
-    card.append(el('div', 'notice', 'No celebration is current yet - add one under Celebrations and mark it current.'));
+    card.append(el('div', 'notice', 'No celebration to show yet - add one under Celebrations.'));
     return card;
   }
+  // Which celebration the band shows, switched right here.
+  const pick = el('select');
+  for (const each of state.model.celebrations) {
+    const o = new Option(each.title, each.code);
+    o.selected = each.code === c.code;
+    pick.append(o);
+  }
+  pick.addEventListener('change', async () => {
+    const chosen = celebration(pick.value);
+    try {
+      await send('POST', '/api/celebrate/celebration', {
+        original: chosen.code, code: chosen.code, title: chosen.title, subtitle: chosen.subtitle || '', start: chosen.start || '', end: chosen.end || '',
+        location: chosen.location || '', address: chosen.address || '', description: chosen.description || '', image: chosen.image || '',
+        buttonText: chosen.buttonText || '', buttonUrl: chosen.buttonUrl || '', current: chosen.current, banner: true,
+      });
+      await reload();
+    } catch (err) {
+      alert(err.message);
+    }
+  });
+  const row = el('label', 'field');
+  row.append(el('span', '', 'Show the banner for'), pick);
+  card.append(row);
   const preview = el('div', 'banner-preview');
   preview.append(celebrationBand(c));
   card.append(preview);
@@ -34,11 +57,22 @@ function bannerCard() {
 function celebrationsCard() {
   const card = el('div', 'card');
   card.append(el('h2', '', 'Celebrations'));
-  card.append(el('div', 'hint', "Each year's Spring Celebration. Parties are filed under one; the current one leads the parties page."));
+  card.append(el('div', 'hint', "Each year's Spring Celebration. Parties are filed under one; the current one's parties lead the parties page, and the banner one is advertised across its top."));
   for (const c of state.model.celebrations) {
     const row = el('div', 'admin-row');
     const body = el('div', 'grow');
-    body.append(el('div', '', `${c.title}${c.current ? ' · current' : ''}`), el('div', 'sub', [c.code, c.subtitle, whenLine(c)].filter(Boolean).join(' · ')));
+    // Each row says what the site does with it: whose parties are listed,
+    // and whose banner is shown - two flags, so they can sit on different
+    // years.
+    const name = el('div', 'admin-row-name');
+    name.append(el('span', '', c.title));
+    if (c.current) {
+      name.append(el('span', 'admin-tag is-on', 'Parties listed'));
+    }
+    if (c.code === state.model.banner) {
+      name.append(el('span', 'admin-tag is-on', 'Banner shown'));
+    }
+    body.append(name, el('div', 'sub', [c.code, c.subtitle, whenLine(c)].filter(Boolean).join(' · ')));
     row.append(body, button('Edit', 'edit', 'button button-secondary button-small', () => openCelebration(c)));
     card.append(row);
   }

@@ -287,24 +287,38 @@ export function availabilityLabel(p) {
 }
 
 // googleCalendarLink builds the Add to Google Calendar address for a party.
-export function googleCalendarLink(p) {
-  const start = parseWhen(p.start);
-  if (!start) {
+// calendarLink is a Google Calendar "add this" address for anything with a
+// start, an optional end, a name and a place: the event lands in the
+// reader's calendar with the site's page in its notes.
+export function calendarLink({title, start, end, details, location, address}) {
+  const from = parseWhen(start);
+  if (!from) {
     return '';
   }
-  const end = parseWhen(p.end);
+  const to = parseWhen(end);
   const stamp = d => `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
-    + (start.hasTime ? `T${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}00` : '');
-  let until = end ? end.date : new Date(start.date.getTime() + 2 * 60 * 60 * 1000);
-  if (!start.hasTime) {
-    until = new Date((end ? end.date : start.date).getTime() + 24 * 60 * 60 * 1000);
+    + (from.hasTime ? `T${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}00` : '');
+  let until = to ? to.date : new Date(from.date.getTime() + 2 * 60 * 60 * 1000);
+  if (!from.hasTime) {
+    until = new Date((to ? to.date : from.date).getTime() + 24 * 60 * 60 * 1000);
   }
   const params = new URLSearchParams({
     action: 'TEMPLATE',
-    text: p.title,
-    dates: `${stamp(start.date)}/${stamp(until)}`,
-    details: [p.summary, location.origin + partyPath(p)].filter(Boolean).join('\n\n'),
-    location: p.address || p.location || '',
+    text: title,
+    dates: `${stamp(from.date)}/${stamp(until)}`,
+    details: details || '',
+    location: address || location || '',
   });
   return `https://calendar.google.com/calendar/render?${params}`;
+}
+
+export function googleCalendarLink(p) {
+  return calendarLink({title: p.title, start: p.start, end: p.end, details: [p.summary, location.origin + partyPath(p)].filter(Boolean).join('\n\n'), location: p.location, address: p.address});
+}
+
+// celebrationCalendarLink is the banner's Save the Date: the gala itself,
+// by its title and theme.
+export function celebrationCalendarLink(c) {
+  const title = c.subtitle ? `${c.title} · ${c.subtitle}` : c.title;
+  return calendarLink({title, start: c.start, end: c.end, details: [c.description, location.origin].filter(Boolean).join('\n\n'), location: c.location, address: c.address});
 }

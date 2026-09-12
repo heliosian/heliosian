@@ -184,8 +184,10 @@ type View struct {
 	Settings     Settings       `json:"settings"`
 	Celebrations []*Celebration `json:"celebrations"`
 	Current      string         `json:"current,omitempty"`
-	Categories   []string       `json:"categories"`
-	Parties      []PartyView    `json:"parties"`
+	// Banner is the celebration the band across the top shows.
+	Banner     string      `json:"banner,omitempty"`
+	Categories []string    `json:"categories"`
+	Parties    []PartyView `json:"parties"`
 	// Redirects let the client send an old friendly address to where the
 	// party is now, without a round trip.
 	Redirects []Redirect `json:"redirects"`
@@ -314,6 +316,9 @@ func Render(model *Model, directory Directory, email string, admin bool, now tim
 	}
 	if c := model.Current(); c != nil {
 		view.Current = c.Code
+	}
+	if c := model.Banner(); c != nil {
+		view.Banner = c.Code
 	}
 	if admin {
 		view.Invoicing = model.Invoicing

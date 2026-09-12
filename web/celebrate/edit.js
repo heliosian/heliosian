@@ -1828,21 +1828,36 @@ export function openCelebration(c) {
   const place = text(c ? c.location : '', {maxLength: 120});
   const address = text(c ? c.address : '', {maxLength: 200});
   const description = textarea(c ? c.description : '', 4);
+  // The button opens a page, or adds the gala to the reader's calendar as
+  // a Save the Date - "calendar" in the sheet's Button URL cell.
+  const isCalendar = Boolean(c && c.buttonUrl === 'calendar');
   const buttonText = text(c ? c.buttonText : '', {maxLength: 40, placeholder: 'Learn More'});
-  const buttonUrl = text(c ? c.buttonUrl : '', {type: 'url', maxLength: 500, placeholder: 'https://www.heliosschool.org/spring-celebration'});
-  const current = checkbox('This is the current celebration', c ? c.current : true, 'The parties page leads with it: its banner across the top.');
+  const buttonUrl = text(c && !isCalendar ? c.buttonUrl : '', {type: 'url', maxLength: 500, placeholder: 'https://www.heliosschool.org/spring-celebration'});
+  const urlField = field('Button link', buttonUrl, 'Where it goes - the celebration\u2019s own site, say.');
+  urlField.hidden = isCalendar;
+  let buttonKind = isCalendar ? 'calendar' : 'link';
+  const kind = segmented([{label: 'Opens a link', value: 'link'}, {label: 'Save the Date', value: 'calendar'}], buttonKind, v => {
+    buttonKind = v;
+    urlField.hidden = v === 'calendar';
+    if (v === 'calendar' && !buttonText.value.trim()) {
+      buttonText.value = 'Save the Date';
+    }
+  });
+  const kindField = field('Button', kind.wrap, 'Save the Date adds the celebration - its date, place and theme - to the reader\u2019s calendar.');
+  const current = checkbox('This is the current celebration', c ? c.current : true, 'Its parties are what the parties page lists first.');
+  const banner = checkbox('Show its banner at the top', c ? c.banner : false, 'The band across the top of the parties page advertises it, whichever year\u2019s parties are listed. Only one celebration is the banner.');
   const image = imagePicker(c ? c.image : '', c ? c.imageUrl : '', {query: () => title.value, label: 'Banner image', hint: 'The background of the banner across the top of the parties page.'});
   openModal(c ? `Edit ${c.title}` : 'Add a celebration', [
-    field('Code', code, 'Short and unique, like SC-2027. Parties are filed under it.', true), field('Title', title, 'The banner\u2019s small line: "Helios Spring Celebration 2026".', true),
-    field('Subtitle', subtitle, 'The banner\u2019s big line: the theme.'),
+    field('Code', code, 'Short and unique, like SC-2027. Parties are filed under it.', true), field('Title', title, 'The banner\u2019s big line: "Helios Spring Celebration 2026".', true),
+    field('Subtitle', subtitle, 'The banner\u2019s small line above it: the theme.'),
     field('When', whenWrap), field('Where', place), field('Address', address), field('Description', description),
     el('div', 'field-group-label', 'Banner button'),
-    field('Button text', buttonText, 'Leave both blank for no button.'), field('Button link', buttonUrl, 'Where it goes - the celebration\u2019s own site, say.'),
-    current.wrap, image.wrap,
+    kindField, field('Button text', buttonText, 'Leave it blank for no button.'), urlField,
+    current.wrap, banner.wrap, image.wrap,
   ], {
     submit: () => send('POST', '/api/celebrate/celebration', {
       original: c ? c.code : '', code: code.value.trim(), title: title.value, subtitle: subtitle.value, start: start.value(), end: end.value(),
-      location: place.value, address: address.value, description: description.value, image: image.value(), buttonText: buttonText.value, buttonUrl: buttonUrl.value, current: current.input.checked,
+      location: place.value, address: address.value, description: description.value, image: image.value(), buttonText: buttonText.value, buttonUrl: buttonKind === 'calendar' ? 'calendar' : buttonUrl.value, current: current.input.checked, banner: banner.input.checked,
     }),
     onDelete: c ? () => send('DELETE', '/api/celebrate/celebration', {code: c.code}) : null,
     confirmDelete: c ? `Delete ${c.title}?` : '',

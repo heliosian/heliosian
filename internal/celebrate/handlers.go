@@ -1307,6 +1307,7 @@ func (a app) saveCelebration(w http.ResponseWriter, r *http.Request) {
 		ButtonText  string `json:"buttonText"`
 		ButtonURL   string `json:"buttonUrl"`
 		Current     bool   `json:"current"`
+		Banner      bool   `json:"banner"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -1327,17 +1328,26 @@ func (a app) saveCelebration(w http.ResponseWriter, r *http.Request) {
 		"Code": code, "Title": strings.TrimSpace(body.Title), "Subtitle": strings.TrimSpace(body.Subtitle),
 		"Start": strings.TrimSpace(body.Start), "End": strings.TrimSpace(body.End), "Location": strings.TrimSpace(body.Location),
 		"Address": strings.TrimSpace(body.Address), "Description": strings.TrimSpace(body.Description), "Image": strings.TrimSpace(body.Image),
-		"Button Text": strings.TrimSpace(body.ButtonText), "Button URL": strings.TrimSpace(body.ButtonURL), "Current": YesNo(body.Current),
+		"Button Text": strings.TrimSpace(body.ButtonText), "Button URL": strings.TrimSpace(body.ButtonURL), "Current": YesNo(body.Current), "Banner": YesNo(body.Banner),
 	}
 	tables := a.cache.Tables()
-	// Only one celebration is current: marking this one unmarks the rest.
-	others := []string{}
-	if body.Current {
-		for _, c := range model.Celebrations {
-			if c.Current && c.Code != body.Original {
-				others = append(others, c.Code)
-				tables = tables.with(celebrationsTab, map[string]string{"Code": c.Code}, map[string]string{"Current": "No"})
-			}
+	// One celebration is current and one is the banner: marking this one
+	// unmarks the rest, flag by flag.
+	others := map[string]map[string]string{}
+	for _, c := range model.Celebrations {
+		if c.Code == body.Original {
+			continue
+		}
+		unmark := map[string]string{}
+		if body.Current && c.Current {
+			unmark["Current"] = "No"
+		}
+		if body.Banner && c.Banner {
+			unmark["Banner"] = "No"
+		}
+		if len(unmark) > 0 {
+			others[c.Code] = unmark
+			tables = tables.with(celebrationsTab, map[string]string{"Code": c.Code}, unmark)
 		}
 	}
 	var match map[string]string
@@ -1353,8 +1363,8 @@ func (a app) saveCelebration(w http.ResponseWriter, r *http.Request) {
 	hadParties := !adding && tables.count(partiesTab, map[string]string{"Celebration": code}) > 0
 	action := map[bool]string{true: "add", false: "edit"}[adding]
 	if !a.commit(r.Context(), w, tables, func() error {
-		for _, other := range others {
-			if err := a.writer.Set(appName, celebrationsTab, map[string]string{"Code": other}, map[string]string{"Current": "No"}); err != nil {
+		for other, unmark := range others {
+			if err := a.writer.Set(appName, celebrationsTab, map[string]string{"Code": other}, unmark); err != nil {
 				return err
 			}
 		}

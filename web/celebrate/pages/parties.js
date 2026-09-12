@@ -1,4 +1,4 @@
-import {state, parties, matches, celebration, whenParts, currentCelebration} from '../state.js';
+import {state, parties, matches, celebration, whenParts, currentCelebration, celebrationCalendarLink} from '../state.js';
 import {el, selectPill, tabs, svg} from '../dom.js';
 import {setTitle, setSearch, inTab} from '../chrome.js';
 import {partyCard} from '../cards.js';
@@ -16,7 +16,7 @@ function shown(code) {
 }
 
 // celebrationBand is the year's gala itself, across the top of the parties
-// page: its picture as the background under a teal wash, title, theme, when
+// page: its picture as the background, theme, title, when
 // and where, and its button - Learn More, to the celebration's own site.
 // Admins edit it from Admin Tools › Banner.
 export function celebrationBand(c) {
@@ -24,20 +24,29 @@ export function celebrationBand(c) {
   if (c.imageUrl) {
     band.style.backgroundImage = `url("${c.imageUrl}")`;
   }
+  // The title is the big line; the subtitle - the theme - the small one
+  // above it.
   const words = el('div', 'gala-words');
-  words.append(el('div', 'gala-kicker', c.title));
   if (c.subtitle) {
-    words.append(el('div', 'gala-title', c.subtitle));
+    words.append(el('div', 'gala-kicker', c.subtitle));
   }
+  words.append(el('div', 'gala-title', c.title));
   const when = whenParts(c);
   const line = [when.day, when.time, c.location].filter(Boolean).join(' · ');
   if (line) {
     words.append(el('div', 'gala-when', line));
   }
   band.append(words);
-  if (c.buttonUrl && c.buttonText) {
-    const a = el('a', 'button button-small gala-button', c.buttonText);
-    a.href = c.buttonUrl;
+  // The button opens a page, or - "calendar" - adds the gala to the
+  // reader's calendar as a Save the Date.
+  const href = c.buttonUrl === 'calendar' ? celebrationCalendarLink(c) : c.buttonUrl;
+  if (href && c.buttonText) {
+    const a = el('a', 'button button-small gala-button');
+    if (c.buttonUrl === 'calendar') {
+      a.append(svg('calendar'));
+    }
+    a.append(el('span', '', c.buttonText));
+    a.href = href;
     a.target = '_blank';
     a.rel = 'noopener';
     band.append(a);
@@ -93,8 +102,11 @@ export function partiesPage(code) {
   const c = currentCelebration();
   setTitle('Parties');
   const page = el('div');
-  if (c) {
-    page.append(celebrationBand(c));
+  // The band advertises the banner celebration - next year's gala, say -
+  // whichever year's parties are listed under it.
+  const banner = celebration(state.model.banner) || c;
+  if (banner) {
+    page.append(celebrationBand(banner));
   }
   const head = el('div', 'page-head');
   const main = el('div', 'page-head-main');

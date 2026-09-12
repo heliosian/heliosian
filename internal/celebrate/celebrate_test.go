@@ -579,6 +579,36 @@ func TestCategoriesAndCelebrations(t *testing.T) {
 	if m.Current().Code != "SC-2027" || m.Celebration("SC-2026").Current {
 		t.Fatalf("current after adding: %s", m.Current().Code)
 	}
+	// The button is a link, or "calendar" for a Save the Date - which needs
+	// a date to save.
+	if rec := call(t, mux, admin, "POST", "/api/celebrate/celebration", map[string]any{"original": "SC-2027", "code": "SC-2027", "title": "Helios Spring Celebration 2027", "buttonText": "Save the Date", "buttonUrl": "calendar", "current": true}); rec.Code != http.StatusBadRequest {
+		t.Fatalf("a calendar button with no date: %d %s", rec.Code, rec.Body)
+	}
+	if rec := call(t, mux, admin, "POST", "/api/celebrate/celebration", map[string]any{"original": "SC-2027", "code": "SC-2027", "title": "Helios Spring Celebration 2027", "start": "2027-03-06 17:30", "buttonText": "Save the Date", "buttonUrl": "calendar", "current": true}); rec.Code != http.StatusNoContent {
+		t.Fatalf("a calendar button: %d %s", rec.Code, rec.Body)
+	}
+	if m = cache.Model(); m.Celebration("SC-2027").ButtonURL != ButtonCalendar {
+		t.Fatalf("button: %q", m.Celebration("SC-2027").ButtonURL)
+	}
+	// The banner is its own flag: none marked, it follows the current one;
+	// marking one unmarks the rest and leaves Current alone.
+	if m.Banner().Code != "SC-2027" {
+		t.Fatalf("banner follows current: %s", m.Banner().Code)
+	}
+	if rec := call(t, mux, admin, "POST", "/api/celebrate/celebration", map[string]any{"original": "SC-2026", "code": "SC-2026", "title": "Helios Spring Celebration 2026", "start": "2026-03-07 17:30", "banner": true}); rec.Code != http.StatusNoContent {
+		t.Fatalf("mark banner: %d %s", rec.Code, rec.Body)
+	}
+	m = cache.Model()
+	if m.Banner().Code != "SC-2026" || m.Current().Code != "SC-2027" {
+		t.Fatalf("banner %s current %s", m.Banner().Code, m.Current().Code)
+	}
+	if rec := call(t, mux, admin, "POST", "/api/celebrate/celebration", map[string]any{"original": "SC-2027", "code": "SC-2027", "title": "Helios Spring Celebration 2027", "start": "2027-03-06 17:30", "current": true, "banner": true}); rec.Code != http.StatusNoContent {
+		t.Fatalf("move banner: %d %s", rec.Code, rec.Body)
+	}
+	m = cache.Model()
+	if m.Banner().Code != "SC-2027" || m.Celebration("SC-2026").Banner {
+		t.Fatalf("banner did not move: %s", m.Banner().Code)
+	}
 	if rec := call(t, mux, admin, "DELETE", "/api/celebrate/celebration", map[string]string{"code": "SC-2026"}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("deleted a celebration with parties: %d", rec.Code)
 	}

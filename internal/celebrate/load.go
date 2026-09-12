@@ -65,6 +65,10 @@ var TicketStatuses = []string{TicketSold, TicketWaitlist}
 const (
 	PartiesIntroKey = "Parties Intro"
 	TicketNoteKey   = "Ticket Note"
+	// ButtonCalendar in a celebration's Button URL makes the banner's
+	// button add the celebration to the reader's calendar instead of
+	// opening a page.
+	ButtonCalendar = "calendar"
 	// HostingOpenKey is Yes or No: whether anyone may post a party. Off,
 	// Host a Party goes away for everyone but an admin, and the server
 	// refuses a new party from anyone else. Blank means Yes.
@@ -74,7 +78,7 @@ const (
 var settingKeys = []string{PartiesIntroKey, TicketNoteKey, HostingOpenKey}
 
 var (
-	CelebrationColumns = []string{"Code", "Title", "Subtitle", "Start", "End", "Location", "Address", "Description", "Image", "Button Text", "Button URL", "Current"}
+	CelebrationColumns = []string{"Code", "Title", "Subtitle", "Start", "End", "Location", "Address", "Description", "Image", "Button Text", "Button URL", "Current", "Banner"}
 	CategoryColumns    = []string{"Title"}
 	PartyColumns       = []string{"Party ID", "Celebration", "Title", "Subtitle", "Summary", "Description", "Need To Know", "Note Emoji", "Note Title", "Hosts", "Category", "Audience", "Ticket Unit", "Price", "Capacity", "Minimum", "Start", "End", "Location", "Address", "Image", "Flyer Image", "Pretty ID", "Status", "Tickets", "Waitlist", "Adults", "Students", "Drop-Off", "Parent Ticket Required", "Added By", "Added"}
 	HostColumns        = []string{"Party ID", "Email"}
@@ -170,8 +174,14 @@ type Celebration struct {
 	// ButtonText and ButtonURL are the banner's button - "Learn More" to the
 	// celebration's own site, say. Both or neither.
 	ButtonText string `json:"buttonText,omitempty"`
-	ButtonURL  string `json:"buttonUrl,omitempty"`
-	Current    bool   `json:"current"`
+	// ButtonURL is a web address, or the word "calendar" for a Save the
+	// Date button that adds the celebration to the reader's calendar.
+	ButtonURL string `json:"buttonUrl,omitempty"`
+	Current   bool   `json:"current"`
+	// Banner marks the celebration the band across the top advertises,
+	// which need not be the one whose parties are listed - next year's gala
+	// over this season's parties, say. Blank everywhere means the current.
+	Banner bool `json:"banner"`
 }
 
 // Party is one fun(d)raiser party: what it is, when and where, what a ticket
@@ -340,8 +350,8 @@ func (m *Model) Celebration(code string) *Celebration {
 	return m.byCode[code]
 }
 
-// Current is the celebration the site leads with: the one marked Current,
-// else the latest by start.
+// Current is the celebration whose parties the site lists first: the one
+// marked Current, else the latest by start.
 func (m *Model) Current() *Celebration {
 	var latest *Celebration
 	for _, c := range m.Celebrations {
@@ -353,6 +363,17 @@ func (m *Model) Current() *Celebration {
 		}
 	}
 	return latest
+}
+
+// Banner is the celebration the band across the top shows: the one marked
+// Banner, else the current one.
+func (m *Model) Banner() *Celebration {
+	for _, c := range m.Celebrations {
+		if c.Banner {
+			return c
+		}
+	}
+	return m.Current()
 }
 
 func (m *Model) Party(id string) *Party {
@@ -764,8 +785,12 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 		if err := checkText("description", row["Description"]); err != nil {
 			return fail(err)
 		}
-		if err := checkURL(row["Button URL"]); err != nil {
-			return fail(err)
+		if link := strings.TrimSpace(row["Button URL"]); link != ButtonCalendar {
+			if err := checkURL(link); err != nil {
+				return fail(err)
+			}
+		} else if strings.TrimSpace(row["Start"]) == "" {
+			return fail(fmt.Errorf("a calendar button needs a start date"))
 		}
 		if (strings.TrimSpace(row["Button URL"]) == "") != (strings.TrimSpace(row["Button Text"]) == "") {
 			return fail(fmt.Errorf("the button needs both its text and its link, or neither"))
@@ -773,6 +798,10 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 		current, err := yesNo(row["Current"], false)
 		if err != nil {
 			return fail(fmt.Errorf("current %w", err))
+		}
+		banner, err := yesNo(row["Banner"], false)
+		if err != nil {
+			return fail(fmt.Errorf("banner %w", err))
 		}
 		image := strings.TrimSpace(row["Image"])
 		url, err := imageURL(images, image)
@@ -782,19 +811,25 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 		c := &Celebration{
 			Code: code, Title: strings.TrimSpace(row["Title"]), Subtitle: strings.TrimSpace(row["Subtitle"]),
 			Start: row["Start"], End: row["End"], Location: strings.TrimSpace(row["Location"]), Address: strings.TrimSpace(row["Address"]),
-			Description: row["Description"], Image: image, ImageURL: url, ButtonText: strings.TrimSpace(row["Button Text"]), ButtonURL: strings.TrimSpace(row["Button URL"]), Current: current,
+			Description: row["Description"], Image: image, ImageURL: url, ButtonText: strings.TrimSpace(row["Button Text"]), ButtonURL: strings.TrimSpace(row["Button URL"]), Current: current, Banner: banner,
 		}
 		model.Celebrations = append(model.Celebrations, c)
 		model.byCode[code] = c
 	}
-	current := 0
+	current, banner := 0, 0
 	for _, c := range model.Celebrations {
 		if c.Current {
 			current++
 		}
+		if c.Banner {
+			banner++
+		}
 	}
 	if current > 1 {
 		return nil, fmt.Errorf("%d celebrations are marked Current; only one may be", current)
+	}
+	if banner > 1 {
+		return nil, fmt.Errorf("%d celebrations are marked Banner; only one may be", banner)
 	}
 
 	for _, row := range tables.Categories {

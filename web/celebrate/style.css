@@ -17,6 +17,10 @@
   --ink: #0d0d0d;
   --muted: #647071;
   --input: #edf2f2;
+  /* A party's name and its subtitle: navy over steel blue, on the card and
+     the page alike. */
+  --title: #12385a;
+  --subtitle: #2b6592;
   --alert: #c2442d;
   --tabbar: 64px;
 }
@@ -290,10 +294,12 @@ main {
 .gala-band {
   position: relative;
   display: flex;
-  align-items: center;
-  gap: 18px;
-  min-height: 132px;
-  padding: 22px 26px;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 16px;
+  min-height: 210px;
+  padding: 26px 30px;
   margin-bottom: 22px;
   border-radius: 14px;
   background: linear-gradient(100deg, var(--brand-deep), var(--brand) 60%, #2b6a70);
@@ -303,20 +309,19 @@ main {
   overflow: hidden;
 }
 
-.gala-band.has-image::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(95deg, rgba(10, 50, 54, 0.92) 0%, rgba(10, 50, 54, 0.72) 55%, rgba(10, 50, 54, 0.35) 100%);
-}
+/* The picture shows as it is: no wash over it, just a shadow under the
+   words so they read on whatever is behind them. */
+.gala-band.has-image .gala-kicker, .gala-band.has-image .gala-when { text-shadow: 0 1px 6px rgba(0, 0, 0, 0.6), 0 0 2px rgba(0, 0, 0, 0.5); opacity: 1; }
+
+.gala-band.has-image .gala-title { text-shadow: 0 1px 10px rgba(0, 0, 0, 0.65), 0 0 3px rgba(0, 0, 0, 0.5); }
 
 .gala-band > * { position: relative; }
 
-.gala-words { flex: 1; min-width: 0; }
+.gala-words { min-width: 0; max-width: 60%; }
 
 .gala-kicker { font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.85; }
 
-.gala-title { font-family: Montserrat, Roboto, sans-serif; font-size: 26px; font-weight: 700; line-height: 1.15; margin-top: 3px; text-shadow: 0 1px 8px rgba(0, 0, 0, 0.25); }
+.gala-title { font-family: Montserrat, Roboto, sans-serif; font-size: 30px; font-weight: 700; line-height: 1.15; margin-top: 4px; text-shadow: 0 1px 8px rgba(0, 0, 0, 0.25); }
 
 .gala-when { font-size: 14px; opacity: 0.9; margin-top: 6px; }
 
@@ -447,9 +452,9 @@ main {
 
 .card-body { padding: 20px 14px 10px; flex: 1; }
 
-.card-title { display: block; margin: 0 0 4px; font-size: 16px; font-weight: 700; color: var(--brand); text-decoration: none; }
+.card-title { display: block; margin: 0 0 4px; font-size: 16px; font-weight: 700; color: var(--title); text-decoration: none; }
 
-.card-subtitle { font-size: 14px; font-weight: 600; color: var(--brand); opacity: 0.85; margin-bottom: 6px; }
+.card-subtitle { font-size: 14px; font-weight: 600; color: var(--subtitle); margin-bottom: 6px; }
 
 .card-title:hover { text-decoration: underline; }
 
@@ -709,9 +714,9 @@ main {
 
 .audience-chip.hosting-chip { background: var(--yellow); color: var(--ink); }
 
-.detail-title { font-size: 34px; font-weight: 700; margin: 0 0 6px; color: var(--brand); line-height: 1.15; }
+.detail-title { font-size: 34px; font-weight: 700; margin: 0 0 6px; color: var(--title); line-height: 1.15; }
 
-.detail-subtitle { margin: 0 0 14px; font-size: 17px; color: var(--muted); }
+.detail-subtitle { margin: 0 0 14px; font-size: 17px; font-weight: 600; color: var(--subtitle); }
 
 .detail-text { margin: 0 0 12px; font-size: 15px; }
 
@@ -1322,6 +1327,12 @@ body.is-admin main { padding: 0; background-image: none; }
 
 .admin-row .sub { font-size: 13px; color: var(--muted); white-space: pre-line; }
 
+.admin-row-name { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+
+.admin-tag { padding: 2px 9px; border-radius: 999px; background: var(--input); color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+
+.admin-tag.is-on { background: var(--yellow); color: var(--ink); }
+
 .add-row { display: flex; align-items: center; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
 
 .add-row input { flex: 1; min-width: 200px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; }
@@ -1645,7 +1656,9 @@ body.is-admin main { padding: 0; background-image: none; }
   .who-actions { margin-left: 0; width: 100%; justify-content: flex-start; gap: 18px; }
   .who-row { grid-template-columns: 22px 72px 1fr; gap: 10px; font-size: 14px; }
   .who-foot { flex-wrap: wrap; }
-  .gala-band { flex-wrap: wrap; padding: 16px 18px; }
+  .gala-band { min-height: 150px; padding: 16px 18px; }
+
+  .gala-words { max-width: 100%; }
   .gala-title { font-size: 21px; }
   .row { gap: 10px; padding: 10px; }
   .thumb { width: 60px; height: 60px; }
