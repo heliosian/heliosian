@@ -53,7 +53,7 @@ export function myPage(email) {
   const body = el('div');
   const render = () => {
     body.replaceChildren();
-    body.append(toggle('Show Completed Events', state.showPrevious, on => {
+    body.append(toggle('Show Past Events', state.showPrevious, on => {
       state.showPrevious = on;
       render();
     }));

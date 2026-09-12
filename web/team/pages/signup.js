@@ -97,7 +97,7 @@ function yearContent(year, thisYear) {
 
   const head = el('div', 'section-head');
   head.append(el('h2', '', thisYear ? 'Upcoming Opportunities' : `Opportunities for ${year}`));
-  head.append(toggle('Show Completed Events', state.showPrevious, on => {
+  head.append(toggle('Show Past Events', state.showPrevious, on => {
     state.showPrevious = on;
     paint();
   }));
