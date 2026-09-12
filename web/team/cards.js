@@ -95,7 +95,7 @@ export function completeBadge() {
   return mark;
 }
 
-// needChip is the co-chair-wanted chip, which sits with the row's actions.
+// needChip is the co-chair-wanted chip, which sits beside the row's title.
 function needChip(node) {
   if (!node.coLeaderNeeded) {
     return null;
@@ -127,7 +127,13 @@ export function childRow(node, editing, moves) {
   row.append(thumb(node.imageUrl || rootOf(node).imageUrl, node.title));
   const body = el('div', 'row-body');
   body.append(labelLine(node));
-  body.append(el('div', 'row-title', node.title));
+  const title = el('div', 'row-title', node.title);
+  // The ask sits right by the name, where it is read first.
+  const need = needChip(node);
+  if (need) {
+    title.append(need);
+  }
+  body.append(title);
   if (node.description) {
     body.append(el('div', 'row-text clamp', node.description));
   }
@@ -158,10 +164,6 @@ export function childRow(node, editing, moves) {
   }
   row.append(body);
   const actions = el('div', 'row-actions');
-  const need = needChip(node);
-  if (need) {
-    actions.append(need);
-  }
   const join = joinButton(node);
   if (join) {
     actions.append(join);

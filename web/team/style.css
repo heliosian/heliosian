@@ -949,7 +949,9 @@ main {
 /* The leads open the line, in ink, so they read first. */
 .row-people .row-lead { color: var(--ink); font-weight: 600; }
 
-.row-title { font-weight: 700; font-size: 16px; margin: 3px 0 2px; }
+.row-title { font-weight: 700; font-size: 16px; margin: 3px 0 2px; display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; }
+
+.row-title .need { font-size: 12px; padding: 2px 9px 2px 7px; }
 
 .row-title .chain { color: var(--muted); font-weight: 400; margin: 0 6px; }
 
