@@ -182,6 +182,13 @@ export function ticketFor(p, email) {
   return [...p.attendees, ...p.waitlisted].find(a => a.email === email) || null;
 }
 
+// isKid says the viewer is a student and nothing else: they browse and see
+// who is coming, but tickets are taken and passed on by a parent.
+export function isKid() {
+  const user = me();
+  return Boolean(user.isStudent && !user.isParent && !user.isStaff) && !isAdmin();
+}
+
 // canHost says whether the viewer may post a party: anyone while the
 // Hosting Open setting is on, an admin regardless.
 export function canHost() {

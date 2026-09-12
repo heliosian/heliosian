@@ -1,4 +1,4 @@
-import {isAdmin, whenParts, parseWhen, priceLine, money, googleCalendarLink, partyPath, myTickets, availabilityLabel} from '../state.js';
+import {isAdmin, isKid, whenParts, parseWhen, priceLine, money, googleCalendarLink, partyPath, myTickets, availabilityLabel} from '../state.js';
 import {el, link, svg, button, avatar, thumb, paragraphs, copyText, toast} from '../dom.js';
 import {setTitle, partiesPath} from '../chrome.js';
 import {openBuy, openParty, openFreeTicket, openTicket, openPerson, openReassign, removeTicket, offerTickets, setFlags, setPartyStatus, openContacts, savePartyFields, uploadImage, editable, editPencil, fieldEditor, textInput, textAreaInput, whenInputs, emojiPicker, uploadAndSave, imageSearchOn, openImageSearch} from '../edit.js';
@@ -201,7 +201,13 @@ function ticketBand(p) {
   band.append(el('h2', 'ticket-words', ticketWords(p)));
   const actions = el('div', 'ticket-actions');
   const selling = p.availability === 'available' || p.availability === 'waitlist';
-  if (selling || p.canEdit) {
+  // A student sees the party and who is coming; a parent takes the
+  // tickets and passes them on.
+  if (isKid() && !p.canEdit) {
+    if (selling) {
+      actions.append(el('span', 'ticket-kid-note', 'Ask a parent to sign in to get tickets.'));
+    }
+  } else if (selling || p.canEdit) {
     const label = !selling ? 'Add Attendee' : p.availability === 'waitlist' ? 'Join the Waitlist' : 'Get Tickets';
     actions.append(button(label, 'ticket', 'button', () => openBuy(p)));
   }
@@ -222,7 +228,7 @@ function ticketBand(p) {
       const n = a.quantity || 1;
       words.append(el('span', 'my-ticket-name', a.name), el('span', 'my-ticket-line', a.status === 'Ticket' ? (a.price ? `Ticket · ${money(a.price)}` : 'Free ticket') : `On the waitlist for ${n} ${n === 1 ? 'ticket' : 'tickets'}`));
       row.append(words);
-      if (p.availability !== 'past') {
+      if (p.availability !== 'past' && (!isKid() || p.canEdit)) {
         if (a.status === 'Ticket') {
           row.append(button('Reassign', 'people', 'link-button', () => openReassign(p, a)));
         } else {

@@ -106,45 +106,81 @@ type Person struct {
 	Email string `json:"email"`
 }
 
-// AppVisibility is one app as the admin page shows it: its name, its mode,
-// and the list, whether or not the mode is using it.
+// AppVisibility is one app as the admin page shows it: its name and
+// tagline, its mode, and the list, whether or not the mode is using it.
 type AppVisibility struct {
 	App
 	Visibility string   `json:"visibility"`
 	Emails     []string `json:"emails"`
 }
 
-// AppVisibilities is every app's visibility for the admin page, an app with
-// no row of its own everyone's with nobody listed.
+// visibilityOf is an app's row as the page reads it: the sheet's, or for an
+// app the sheet has no row for yet, the new-app default - a list with nobody
+// on it, and the registry's tagline.
+func visibilityOf(model *Model, app App) Visibility {
+	v, ok := model.Visibility[app.Key]
+	if !ok {
+		v = Visibility{Mode: VisibleToList}
+	}
+	if v.Emails == nil {
+		v.Emails = []string{}
+	}
+	if v.Tagline == "" {
+		v.Tagline = app.Tagline
+	}
+	return v
+}
+
+// AppVisibilities is every app's visibility for the admin page.
 func (c *Cache) AppVisibilities() []AppVisibility {
 	model := c.Model()
 	out := make([]AppVisibility, 0, len(Apps))
 	for _, app := range Apps {
-		v := model.Visibility[app.Key]
-		if v.Mode == "" {
-			v.Mode = VisibleToEveryone
-		}
-		if v.Emails == nil {
-			v.Emails = []string{}
-		}
+		v := visibilityOf(model, app)
+		app.Tagline = v.Tagline
 		out = append(out, AppVisibility{App: app, Visibility: v.Mode, Emails: v.Emails})
+	}
+	return out
+}
+
+// AppList is the registry as the switch and the front page show it: each
+// app with the tagline its row gives it.
+func (c *Cache) AppList() []App {
+	model := c.Model()
+	out := make([]App, 0, len(Apps))
+	for _, app := range Apps {
+		app.Tagline = visibilityOf(model, app).Tagline
+		out = append(out, app)
 	}
 	return out
 }
 
 // HiddenApps is which apps are narrowed to a list this person is not on -
 // the rows the toolbar leaves off their switch and the links the front page
-// leaves out. Empty for nearly everyone: an app is everyone's until narrowed.
+// leaves out. A new app, with no row yet, is on nobody's list.
 func (c *Cache) HiddenApps(email string) []string {
 	email = strings.ToLower(strings.TrimSpace(email))
 	hidden := []string{}
+	model := c.Model()
 	for _, app := range Apps {
-		v := c.Model().Visibility[app.Key]
+		v := visibilityOf(model, app)
 		if v.Mode == VisibleToList && !slices.Contains(v.Emails, email) {
 			hidden = append(hidden, app.Key)
 		}
 	}
 	return hidden
+}
+
+// MissingVisibility is the registry's apps the sheet has no row for yet.
+func (c *Cache) MissingVisibility() []App {
+	model := c.Model()
+	out := []App{}
+	for _, app := range Apps {
+		if _, ok := model.Visibility[app.Key]; !ok {
+			out = append(out, app)
+		}
+	}
+	return out
 }
 
 func (c *Cache) tabAdmins() []string {

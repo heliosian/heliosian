@@ -31,6 +31,11 @@
 
 html, body { margin: 0; min-height: 100%; }
 
+/* The canvas behind the page, for standalone (home screen) mode: a route
+   change can show a sliver of it for a frame at either edge, and the page
+   colour reads as the page where white would read as a flash. */
+html { background: var(--page); }
+
 body {
   margin: 0;
   height: 100dvh;
@@ -297,8 +302,8 @@ main {
   align-items: center;
   justify-content: space-between;
   gap: 24px;
-  min-height: 210px;
-  padding: 26px 30px;
+  min-height: 160px;
+  padding: 22px 28px;
   margin-bottom: 22px;
   border-radius: 14px;
   background: linear-gradient(100deg, var(--brand-deep), var(--brand) 60%, #2b6a70);
@@ -320,7 +325,7 @@ main {
 
 .gala-kicker { font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.85; }
 
-.gala-title { font-family: Montserrat, Roboto, sans-serif; font-size: 30px; font-weight: 700; line-height: 1.15; margin-top: 4px; text-shadow: 0 1px 8px rgba(0, 0, 0, 0.25); }
+.gala-title { font-family: Montserrat, Roboto, sans-serif; font-size: 27px; font-weight: 700; line-height: 1.15; margin-top: 4px; text-shadow: 0 1px 8px rgba(0, 0, 0, 0.25); }
 
 .gala-when { font-size: 14px; opacity: 0.9; margin-top: 6px; }
 
@@ -876,6 +881,8 @@ main {
 .ticket-band.avail-band-waitlist { border-color: #f3dfbd; background: #fdf7ec; }
 
 .ticket-words { margin: 0 0 12px; font-size: 20px; }
+
+.ticket-kid-note { font-size: 14px; color: var(--muted); }
 
 .ticket-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 16px; }
 
@@ -1655,7 +1662,7 @@ body.is-admin main { padding: 0; background-image: none; }
   .who-actions { margin-left: 0; width: 100%; justify-content: flex-start; gap: 18px; }
   .who-row { grid-template-columns: 22px 72px 1fr; gap: 10px; font-size: 14px; }
   .who-foot { flex-wrap: wrap; }
-  .gala-band { flex-direction: column; align-items: flex-start; justify-content: center; gap: 14px; min-height: 150px; padding: 16px 18px; }
+  .gala-band { flex-direction: column; align-items: flex-start; justify-content: center; gap: 14px; min-height: 130px; padding: 16px 18px; }
 
   .gala-words { max-width: 100%; }
   .gala-title { font-size: 21px; }

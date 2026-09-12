@@ -317,6 +317,10 @@ func (a app) buyTickets(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	editor := a.editor(p, actor, admin)
+	if !editor && a.kid(actor) {
+		http.Error(w, "tickets are taken by a parent - ask yours to sign in", http.StatusForbidden)
+		return
+	}
 	if body.Free && !editor {
 		http.Error(w, "only the hosts can give a free ticket", http.StatusForbidden)
 		return
@@ -582,6 +586,10 @@ func (a app) joinWaitlist(w http.ResponseWriter, r *http.Request) {
 	if purchaser == "" {
 		purchaser = actor
 	}
+	if a.kid(actor) {
+		http.Error(w, "the waitlist is joined by a parent - ask yours to sign in", http.StatusForbidden)
+		return
+	}
 	if !slices.Contains(Billable(a.directory, actor), purchaser) {
 		http.Error(w, "the waitlist is for your own family, billed to an adult in it", http.StatusForbidden)
 		return
@@ -730,6 +738,14 @@ func (a app) findTicket(w http.ResponseWriter, id string) (*Ticket, *Party, bool
 
 // owns says whether the actor may act on a ticket as its holder: they bought
 // it, it is for them, or either is someone in their household.
+// kid says the actor is a student and nothing else: tickets are a family's
+// business, so a student neither takes them nor passes them on - a parent
+// does, and a host or admin may on anyone's behalf.
+func (a app) kid(actor string) bool {
+	person, known := a.directory.Person(actor)
+	return known && person.IsStudent && !person.IsParent && !person.IsStaff
+}
+
 func (a app) owns(t *Ticket, actor string) bool {
 	return InHousehold(a.directory, actor, t.Purchaser) || (t.Email != "" && InHousehold(a.directory, actor, t.Email))
 }
@@ -874,8 +890,8 @@ func (a app) reassignTicket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	editor := a.editor(p, actor, admin)
-	if !editor && !a.owns(t, actor) {
-		http.Error(w, "only the family that holds this ticket, a host, or an admin can reassign it", http.StatusForbidden)
+	if !editor && (!a.owns(t, actor) || a.kid(actor)) {
+		http.Error(w, "only a parent in the family that holds this ticket, a host, or an admin can reassign it", http.StatusForbidden)
 		return
 	}
 	if t.Status != TicketSold {

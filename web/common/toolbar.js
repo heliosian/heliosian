@@ -15,7 +15,7 @@ const homeApp = {key: 'home', name: 'Heliosian', tagline: 'Helios Community Apps
 // portal is the apex in production (heliosian.com, also www) and home.<tier>
 // elsewhere. The app label comes off the front and the app's own goes on -
 // hca.<tier> is the volunteer portal's older name, so it counts as team's.
-const appLabels = ['who', 'team', 'hca', 'celebrate', 'home', 'www'];
+const appLabels = ['who', 'team', 'hca', 'celebrate', 'birthday', 'home', 'www'];
 
 function tierLabels() {
   const labels = location.hostname.split('.');
@@ -24,7 +24,7 @@ function tierLabels() {
 
 export function currentApp() {
   const first = location.hostname.split('.')[0];
-  if (first === 'who' || first === 'team' || first === 'celebrate') {
+  if (first === 'who' || first === 'team' || first === 'celebrate' || first === 'birthday') {
     return first;
   }
   return first === 'hca' ? 'team' : 'home';

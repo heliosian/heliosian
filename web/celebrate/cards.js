@@ -1,4 +1,4 @@
-import {partyPath, parseWhen, availabilityLabel, myTickets} from './state.js';
+import {partyPath, parseWhen, availabilityLabel, myTickets, isKid} from './state.js';
 import {el, link, svg, thumb, badge, button} from './dom.js';
 import {openBuy} from './edit.js';
 
@@ -58,6 +58,10 @@ function dateStamp(p) {
 // footButton is the card's action: Get Tickets or Join Waitlist where the
 // party sells, else Learn More into the page.
 function footButton(p) {
+  // A student browses; a parent takes the tickets.
+  if (isKid()) {
+    return link(partyPath(p), 'button button-secondary button-small', 'Learn More');
+  }
   if (p.availability === 'available') {
     return button('Get Tickets', null, 'button button-small', () => openBuy(p));
   }

@@ -107,6 +107,17 @@
   .visibility-switch label:has(input:checked) { background: var(--brand); color: #fff; }
   .visibility-switch label:has(input:focus-visible) { outline: 2px solid var(--brand); outline-offset: 2px; }
   .visibility-note { font-size: 13px; color: var(--muted); margin: 6px 0 10px; }
+  .visibility-tagline { display: flex; align-items: center; gap: 10px; margin: 4px 0 8px; font-size: 13px; color: var(--muted); }
+  .visibility-tagline input {
+    flex: 1;
+    max-width: 420px;
+    padding: 7px 10px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    font: inherit;
+    font-size: 14px;
+    color: var(--ink);
+  }
   .visibility-list { margin-top: 6px; }
   .admin-row .name { font-weight: 600; }
 </style>
@@ -145,7 +156,7 @@
   <div class="panel" id="panel-visible-to" hidden>
     <div class="card">
       <h2>App Visibility</h2>
-      <div class="hint">Who sees each app in the app switch and on the front page: everyone at heliosschool.org, or only the people on its list. Nobody is kept out either way - a direct link still opens the app. The list is kept while an app is set to everyone, ready for when it is switched back. Changes save immediately.</div>
+      <div class="hint">Who sees each app in the app switch and on the front page: everyone at heliosschool.org, or only the people on its list. Nobody is kept out either way - a direct link still opens the app. The list is kept while an app is set to everyone, ready for when it is switched back. A new app starts as "only these people" with nobody on it, out of sight until you let people in. The tagline is the line under the app's name in the switch and on the front page. Changes save immediately.</div>
     </div>
     <div id="visibility-cards"></div>
   </div>

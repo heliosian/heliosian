@@ -234,6 +234,23 @@ func TestBuyTicketsRules(t *testing.T) {
 	buy := func(as, party string, purchaser string, attendees ...map[string]string) *httptest.ResponseRecorder {
 		return call(t, mux, as, "POST", "/api/celebrate/tickets", map[string]any{"partyId": party, "purchaser": purchaser, "attendees": attendees})
 	}
+	// A student takes no tickets, joins no waitlist and passes none on;
+	// their parent does.
+	if rec := buy(kid, "P001", "", map[string]string{"email": kid}); rec.Code != http.StatusForbidden {
+		t.Fatalf("a student bought: %d %s", rec.Code, rec.Body)
+	}
+	if rec := call(t, mux, teen, "POST", "/api/celebrate/waitlist", map[string]any{"partyId": "P006", "quantity": 1}); rec.Code != http.StatusForbidden {
+		t.Fatalf("a student joined the waitlist: %d %s", rec.Code, rec.Body)
+	}
+	var own string
+	for _, tk := range cache.Model().Party("P001").Tickets {
+		if tk.Email == teen {
+			own = tk.ID
+		}
+	}
+	if rec := call(t, mux, teen, "POST", "/api/celebrate/ticket/reassign", map[string]any{"ticketId": own, "email": kid}); rec.Code != http.StatusForbidden {
+		t.Fatalf("a student reassigned: %d %s", rec.Code, rec.Body)
+	}
 	// A parent takes tickets for the household; a student is refused where
 	// only adults may come.
 	if rec := buy(parent, "P002", "", map[string]string{"email": kid}); rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "for adults") {
@@ -257,12 +274,9 @@ func TestBuyTicketsRules(t *testing.T) {
 	if rec := buy(parent, "P002", other, map[string]string{"email": parent}); rec.Code != http.StatusForbidden {
 		t.Fatalf("billed a stranger: %d %s", rec.Code, rec.Body)
 	}
-	// A student's tickets go to a parent.
-	if rec := buy(kid, "P003", "", map[string]string{"email": kid}); rec.Code != http.StatusForbidden {
-		t.Fatalf("a student billed themselves: %d %s", rec.Code, rec.Body)
-	}
-	if rec := buy(kid, "P003", parent, map[string]string{"email": kid}); rec.Code != http.StatusOK {
-		t.Fatalf("a student could not bill a parent: %d %s", rec.Code, rec.Body)
+	// A student's ticket is taken by a parent, and billed to one.
+	if rec := buy(partner, "P003", parent, map[string]string{"email": kid}); rec.Code != http.StatusOK {
+		t.Fatalf("a parent could not take a child's ticket: %d %s", rec.Code, rec.Body)
 	}
 	// The last ticket goes; the next person waits.
 	if rec := buy(parent, "P002", "", map[string]string{"name": "Aunt May"}); rec.Code != http.StatusOK {

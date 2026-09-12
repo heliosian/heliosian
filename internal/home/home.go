@@ -93,6 +93,37 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	mux.HandleFunc("POST /api/admin/admins", a.setAdmins)
 	mux.HandleFunc("POST /api/admin/visibility", a.setVisibility)
 	RegisterSwitch(mux, cache)
+	a.discoverApps()
+}
+
+// discoverApps writes the Visibility tab a row for every app of the registry
+// it has none for - a new app, at its first start - as a list with nobody on
+// it, so an app is out of sight until an admin lets people in, and the row
+// is there in the sheet to edit. Nothing is written when every app has one.
+func (a app) discoverApps() {
+	missing := a.cache.MissingVisibility()
+	if len(missing) == 0 {
+		return
+	}
+	tables := a.cache.Tables()
+	for _, app := range missing {
+		tables = tables.withVisibility(app.Key, Visibility{Mode: VisibleToList, Tagline: app.Tagline})
+	}
+	model, err := BuildModel(tables, a.cache.images)
+	if err != nil {
+		slog.Error("apps: discover apps", "error", err)
+		return
+	}
+	a.queue.Add(func() {
+		a.cache.set(tables, model)
+		for _, app := range missing {
+			if err := a.writer.AppendCells(appName, visibilityTab, map[string]string{"App": app.Key, "Visibility": VisibleToList, "Tagline": app.Tagline}); err != nil {
+				slog.Error("apps: write a new app's visibility row", "app", app.Key, "error", err)
+				return
+			}
+			slog.Info("apps: found a new app, listed for nobody yet", "app", app.Key)
+		}
+	})
 }
 
 // RegisterSwitch serves the app switch: every app in the order the switch
@@ -105,7 +136,7 @@ func RegisterSwitch(mux *http.ServeMux, cache *Cache) {
 		view := struct {
 			Apps   []App    `json:"apps"`
 			Hidden []string `json:"hidden"`
-		}{Apps: append([]App{Home}, Apps...), Hidden: cache.HiddenApps(auth.Email(r))}
+		}{Apps: append([]App{Home}, cache.AppList()...), Hidden: cache.HiddenApps(auth.Email(r))}
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(view); err != nil {
 			slog.ErrorContext(r.Context(), "encode app switch", "error", err)
@@ -118,7 +149,7 @@ func RegisterSwitch(mux *http.ServeMux, cache *Cache) {
 func (a app) visibleApps(email string) []App {
 	hidden := a.cache.HiddenApps(email)
 	out := []App{}
-	for _, app := range Apps {
+	for _, app := range a.cache.AppList() {
 		if !slices.Contains(hidden, app.Key) {
 			out = append(out, app)
 		}
@@ -737,10 +768,10 @@ func (a app) setAdmins(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// setVisibility sets one app's mode and list together, the way the admin
-// page edits them: the switch and every add or remove save at once. The list
-// is written whichever the mode, so a list drawn up while the app is
-// everyone's is there when the switch flips.
+// setVisibility sets one app's tagline, mode and list together, the way the
+// admin page edits them: the switch, the tagline and every add or remove
+// save at once. The list is written whichever the mode, so a list drawn up
+// while the app is everyone's is there when the switch flips.
 func (a app) setVisibility(w http.ResponseWriter, r *http.Request) {
 	_, ok := a.requireAdmin(w, r)
 	if !ok {
@@ -750,6 +781,7 @@ func (a app) setVisibility(w http.ResponseWriter, r *http.Request) {
 		App        string   `json:"app"`
 		Visibility string   `json:"visibility"`
 		Emails     []string `json:"emails"`
+		Tagline    string   `json:"tagline"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -763,13 +795,18 @@ func (a app) setVisibility(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "visibility must be "+VisibleToEveryone+" or "+VisibleToList, http.StatusBadRequest)
 		return
 	}
-	v := Visibility{Mode: body.Visibility, Emails: normalizeEmails(body.Emails)}
+	tagline := strings.TrimSpace(body.Tagline)
+	if tagline == "" || len(tagline) > maxDescLength {
+		http.Error(w, "a short tagline is required", http.StatusBadRequest)
+		return
+	}
+	v := Visibility{Mode: body.Visibility, Emails: normalizeEmails(body.Emails), Tagline: tagline}
 	tables := a.cache.Tables().withVisibility(key, v)
 	if !a.commit(r.Context(), w, tables, func() error {
-		return a.writer.Upsert(appName, visibilityTab, "App", key, map[string]string{"Visibility": v.Mode, "Emails": joinEmails(v.Emails)})
+		return a.writer.Upsert(appName, visibilityTab, "App", key, map[string]string{"Visibility": v.Mode, "Emails": joinEmails(v.Emails), "Tagline": v.Tagline})
 	}) {
 		return
 	}
-	slog.InfoContext(r.Context(), "apps: set an app's visibility", "app", key, "visibility", v.Mode, "emails", len(v.Emails))
+	slog.InfoContext(r.Context(), "apps: set an app's visibility", "app", key, "visibility", v.Mode, "emails", len(v.Emails), "tagline", v.Tagline)
 	w.WriteHeader(http.StatusNoContent)
 }

@@ -86,12 +86,43 @@ function renderVisibility(apps, people) {
 function visibilityCard(app, people) {
   let visibility = app.visibility;
   let emails = [...app.emails];
+  let tagline = app.tagline;
   const byEmail = new Map(people.map(p => [p.email, p.name]));
 
   const card = document.createElement('div');
   card.className = 'card';
   const title = document.createElement('h2');
   title.textContent = app.name;
+
+  // The tagline saves when the field is left or Enter is pressed, and only
+  // if it changed; an emptied field goes back to what it was.
+  const taglineRow = document.createElement('label');
+  taglineRow.className = 'visibility-tagline';
+  taglineRow.append(Object.assign(document.createElement('span'), {textContent: 'Tagline'}));
+  const taglineInput = document.createElement('input');
+  taglineInput.type = 'text';
+  taglineInput.value = tagline;
+  taglineInput.maxLength = 300;
+  taglineRow.append(taglineInput);
+  const saveTagline = async () => {
+    const next = taglineInput.value.trim();
+    if (!next) {
+      taglineInput.value = tagline;
+      return;
+    }
+    if (next === tagline) {
+      return;
+    }
+    tagline = next;
+    await persist();
+  };
+  taglineInput.addEventListener('change', saveTagline);
+  taglineInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      taglineInput.blur();
+    }
+  });
 
   const toggle = document.createElement('div');
   toggle.className = 'visibility-switch';
@@ -129,7 +160,7 @@ function visibilityCard(app, people) {
   status.className = 'save-status';
   addRow.append(mount, button, status);
   listWrap.append(rows, addRow);
-  card.append(title, toggle, note, listWrap);
+  card.append(title, taglineRow, toggle, note, listWrap);
 
   const picker = createPersonPicker(mount);
 
@@ -139,7 +170,7 @@ function visibilityCard(app, people) {
     const res = await fetch('/api/admin/visibility', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({app: app.key, visibility, emails}),
+      body: JSON.stringify({app: app.key, visibility, emails, tagline}),
     });
     if (!res.ok) {
       status.classList.add('error');

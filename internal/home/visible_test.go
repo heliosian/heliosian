@@ -22,19 +22,23 @@ func sampleCache(t *testing.T) *Cache {
 	return c
 }
 
-// An app with no row, or one visible to everyone, is everyone's; one
-// narrowed to a list is hidden from everyone not on it. The sample sheet
-// narrows the celebration to the sample parent and one other.
+// An app visible to everyone is everyone's; one narrowed to a list is hidden
+// from everyone not on it; one with no row yet - a new app - is hidden from
+// everyone. The sample sheet narrows the celebration to the sample parent
+// and one other, and has no row for the birthday team's app.
 func TestVisibilityNarrowsAnApp(t *testing.T) {
 	c := sampleCache(t)
-	if got := c.HiddenApps("jordan.whitfield@heliosschool.org"); len(got) != 0 {
-		t.Errorf("hidden from the sample parent = %v, want nothing", got)
+	if got := c.HiddenApps("jordan.whitfield@heliosschool.org"); len(got) != 1 || got[0] != "birthday" {
+		t.Errorf("hidden from the sample parent = %v, want just the app with no row", got)
 	}
-	if got := c.HiddenApps(" Mia.Torres@heliosschool.org "); len(got) != 0 {
-		t.Errorf("hidden from mia = %v, want nothing, her address normalized", got)
+	if got := c.HiddenApps(" Mia.Torres@heliosschool.org "); len(got) != 1 || got[0] != "birthday" {
+		t.Errorf("hidden from mia = %v, want just the app with no row, her address normalized", got)
 	}
-	if got := c.HiddenApps("sam.whitfield@heliosschool.org"); len(got) != 1 || got[0] != "celebrate" {
-		t.Errorf("hidden from sam = %v, want [celebrate]", got)
+	if got := c.HiddenApps("sam.whitfield@heliosschool.org"); len(got) != 2 || got[0] != "celebrate" || got[1] != "birthday" {
+		t.Errorf("hidden from sam = %v, want [celebrate birthday]", got)
+	}
+	if got := c.MissingVisibility(); len(got) != 1 || got[0].Key != "birthday" {
+		t.Errorf("apps without a row = %v, want the birthday team's", got)
 	}
 	apps := c.AppVisibilities()
 	if len(apps) != len(Apps) || apps[0].Visibility != VisibleToEveryone || len(apps[0].Emails) != 0 {
@@ -43,11 +47,24 @@ func TestVisibilityNarrowsAnApp(t *testing.T) {
 	if apps[2].Key != "celebrate" || apps[2].Visibility != VisibleToList || len(apps[2].Emails) != 2 {
 		t.Errorf("celebrate = %+v, want narrowed to two", apps[2])
 	}
+	if apps[3].Key != "birthday" || apps[3].Visibility != VisibleToList || len(apps[3].Emails) != 0 {
+		t.Errorf("birthday = %+v, want the new-app default, a list with nobody", apps[3])
+	}
+
+	// The tagline is the row's where it has one, else the registry's.
+	list := c.AppList()
+	if list[0].Tagline != "A visual directory" || list[1].Tagline != "HCA Volunteer Portal" {
+		t.Errorf("taglines = %q %q, want the registry's for who and the sheet's for team", list[0].Tagline, list[1].Tagline)
+	}
+	c.set(c.Tables(), mustBuild(t, c.Tables().withVisibility("who", Visibility{Mode: VisibleToEveryone, Tagline: "Find anyone"})))
+	if got := c.AppList()[0].Tagline; got != "Find anyone" {
+		t.Errorf("who's tagline after an edit = %q", got)
+	}
 
 	// The list is kept while the app is everyone's, and hides nobody.
 	c.set(c.Tables(), mustBuild(t, c.Tables().withVisibility("celebrate", Visibility{Mode: VisibleToEveryone, Emails: []string{"mia.torres@heliosschool.org"}})))
-	if got := c.HiddenApps("sam.whitfield@heliosschool.org"); len(got) != 0 {
-		t.Errorf("hidden from sam with the celebration everyone's = %v, want nothing", got)
+	if got := c.HiddenApps("sam.whitfield@heliosschool.org"); len(got) != 1 || got[0] != "birthday" {
+		t.Errorf("hidden from sam with the celebration everyone's = %v, want just birthday", got)
 	}
 	if got := c.AppVisibilities()[2].Emails; len(got) != 1 {
 		t.Errorf("the celebration's list = %v, want kept while everyone's", got)
@@ -55,8 +72,8 @@ func TestVisibilityNarrowsAnApp(t *testing.T) {
 
 	// A list with nobody on it hides the app from everyone.
 	c.set(c.Tables(), mustBuild(t, c.Tables().withVisibility("who", Visibility{Mode: VisibleToList})))
-	if got := c.HiddenApps("jordan.whitfield@heliosschool.org"); len(got) != 1 || got[0] != "who" {
-		t.Errorf("hidden from the sample parent with who's list empty = %v, want [who]", got)
+	if got := c.HiddenApps("jordan.whitfield@heliosschool.org"); len(got) != 2 || got[0] != "who" {
+		t.Errorf("hidden from the sample parent with who's list empty = %v, want [who birthday]", got)
 	}
 }
 
@@ -76,7 +93,7 @@ func TestVisibilityRowsAreChecked(t *testing.T) {
 		rows []map[string]string
 		want string
 	}{
-		{[]map[string]string{{"App": "birthday", "Visibility": "list"}}, "app must be one of"},
+		{[]map[string]string{{"App": "bogus", "Visibility": "list"}}, "app must be one of"},
 		{[]map[string]string{{"App": "who", "Visibility": "List"}}, "is not everyone or list"},
 		{[]map[string]string{{"App": "who"}}, "is not everyone or list"},
 		{[]map[string]string{{"App": "who", "Visibility": "list"}, {"App": "who", "Visibility": "everyone"}}, "two rows"},

@@ -49,17 +49,19 @@ var (
 	categoryColumns   = []string{"Title", "Emoji", "Style", "Max"}
 	linkColumns       = []string{"Title", "Description", "URL", "Image", "Category", "Visible", "Added By", "Added"}
 	adminColumns      = []string{"Email"}
-	visibilityColumns = []string{"App", "Visibility", "Emails"}
+	visibilityColumns = []string{"App", "Visibility", "Emails", "Tagline"}
 	changeLogColumns  = []string{"Timestamp", "Actor", "Action", "Kind", "Title", "Description", "URL", "Image", "Category", "Visible", "Style"}
 )
 
 // App is one of the community apps the shared toolbar switches between,
 // keyed by its hostname's first label; its mark is served from
-// web/public/common/brand/apps/<key>.png. Apps are the ones the Visibility
-// tab can narrow to a list of people and the front page's apps section
-// lists; Heliosian itself, Home, heads the switch but is neither - it is the
-// front page, and the switch's way home. The birthday team's app is a small
-// group's and stays off both.
+// web/public/common/brand/apps/<key>.png. Apps is the registry: every app
+// the Visibility tab has a row for and the front page's apps section can
+// list, in the switch's order. Key and Name are the code's - each app is a
+// package here and a hostname routed in internal/app - and the Tagline is
+// the default the sheet's row starts with; the row's own wins once edited.
+// Heliosian itself, Home, heads the switch but is not among them: it is the
+// front page, and the switch's way home.
 type App struct {
 	Key     string `json:"key"`
 	Name    string `json:"name"`
@@ -72,30 +74,39 @@ var Apps = []App{
 	{"who", "Helios Who?", "A visual directory"},
 	{"team", "HCA-Team", "HCA Volunteer Portal"},
 	{"celebrate", "Helios Celebrate", "Fun(d)raiser Parties"},
+	{"birthday", "Helios Birthday Team", "Staff birthday donations"},
 }
 
-// An app's Visibility is VisibleToEveryone - the default, with no row - or
-// VisibleToList, when only the people in its Emails cell see it, in the
-// toolbar's switch and on the front page. Never access: a direct link still
-// opens the app. The list is kept while the app is everyone's, so switching
-// back to it finds the list as it was.
+func appByKey(key string) (App, bool) {
+	for _, app := range Apps {
+		if app.Key == key {
+			return app, true
+		}
+	}
+	return App{}, false
+}
+
+// An app's Visibility is VisibleToEveryone or VisibleToList, when only the
+// people in its Emails cell see it, in the toolbar's switch and on the front
+// page. Never access: a direct link still opens the app. The list is kept
+// while the app is everyone's, so switching back to it finds the list as it
+// was. An app with no row is a new one, and starts as VisibleToList with
+// nobody on it - out of sight until an admin lets people in - and the
+// server writes it that row when it finds it (Register).
 const (
 	VisibleToEveryone = "everyone"
 	VisibleToList     = "list"
 )
 
 type Visibility struct {
-	Mode   string
-	Emails []string
+	Mode    string
+	Emails  []string
+	Tagline string
 }
 
 func appKnown(key string) bool {
-	for _, app := range Apps {
-		if app.Key == key {
-			return true
-		}
-	}
-	return false
+	_, ok := appByKey(key)
+	return ok
 }
 
 type ImageChecker interface {
@@ -398,7 +409,11 @@ func buildVisibility(rows []map[string]string) (map[string]Visibility, error) {
 		if mode != VisibleToEveryone && mode != VisibleToList {
 			return nil, fmt.Errorf("%s row for %q: visibility %q is not %s or %s", visibilityTab, app, mode, VisibleToEveryone, VisibleToList)
 		}
-		visibility[app] = Visibility{Mode: mode, Emails: splitEmails(row["Emails"])}
+		tagline := strings.TrimSpace(row["Tagline"])
+		if len(tagline) > maxDescLength {
+			return nil, fmt.Errorf("%s row for %q: tagline is too long", visibilityTab, app)
+		}
+		visibility[app] = Visibility{Mode: mode, Emails: splitEmails(row["Emails"]), Tagline: tagline}
 	}
 	return visibility, nil
 }
@@ -480,7 +495,7 @@ func (t *Tables) withoutRow(tab, key string) *Tables {
 func (t *Tables) withVisibility(app string, v Visibility) *Tables {
 	out := *t
 	out.Visibility = cloneRows(t.Visibility)
-	cells := map[string]string{"App": app, "Visibility": v.Mode, "Emails": joinEmails(v.Emails)}
+	cells := map[string]string{"App": app, "Visibility": v.Mode, "Emails": joinEmails(v.Emails), "Tagline": v.Tagline}
 	for _, row := range out.Visibility {
 		if strings.EqualFold(strings.TrimSpace(row["App"]), app) {
 			applyCells(row, cells)

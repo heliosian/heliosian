@@ -594,7 +594,7 @@ func NewCore(cfg Config) *Core {
 	celebrate.Register(celebrateMux, celebrateCache, cfg.Writer, queue, cfg.Store, celebrateDirectory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.CelebrateMail)
 	// Every app's toolbar asks its own origin what its switch lists and
 	// which rows to leave off; Heliosian's cache answers for all of them.
-	for _, m := range []*http.ServeMux{mux, eventsMux, celebrateMux} {
+	for _, m := range []*http.ServeMux{mux, eventsMux, birthdayMux, celebrateMux} {
 		home.RegisterSwitch(m, homeCache)
 	}
 	return &Core{
