@@ -7,8 +7,10 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"heliosian/internal/mail"
 )
@@ -47,7 +49,51 @@ type letter struct {
 	Intro    string
 	Rows     [][2]string
 	Button   string
+	// Calendar is an "add to calendar" address for the party, shown as a
+	// second button when set - on a note that says someone is going.
+	Calendar string
 	Footnote string
+}
+
+// calendarLink is the Google Calendar "add this" address for a party, as
+// the page's own Add to Calendar button makes it: the title, the hours (two
+// hours from the start when there is no end; the whole day when there is
+// no time), the street address, and the party's page in the notes.
+func calendarLink(p *Party, page string) string {
+	start, err := time.ParseInLocation(DateTimeFormat, p.Start, local)
+	timed := err == nil
+	if !timed {
+		if start, err = time.ParseInLocation(DateFormat, p.Start, local); err != nil {
+			return ""
+		}
+	}
+	stamp := func(t time.Time) string {
+		if timed {
+			return t.Format("20060102T150405")
+		}
+		return t.Format("20060102")
+	}
+	var until time.Time
+	if end, err := time.ParseInLocation(DateTimeFormat, p.End, local); err == nil && timed && end.After(start) {
+		until = end
+	} else if timed {
+		until = start.Add(2 * time.Hour)
+	} else {
+		until = start.Add(24 * time.Hour)
+	}
+	where := p.Address
+	if where == "" {
+		where = p.Location
+	}
+	details := strings.TrimSpace(p.Summary)
+	if details != "" {
+		details += "\n\n"
+	}
+	details += page
+	q := url.Values{
+		"action": {"TEMPLATE"}, "text": {p.Title}, "dates": {stamp(start) + "/" + stamp(until)}, "details": {details}, "location": {where},
+	}
+	return "https://calendar.google.com/calendar/render?" + q.Encode()
 }
 
 func (a app) letterFor(base string, p *Party) letter {
@@ -98,6 +144,7 @@ var letterTemplate = template.Must(template.New("letter").Parse(`<!doctype html>
 </td></tr>
 <tr><td style="padding:18px 28px 28px;">
 <a href="{{.Path}}" style="display:inline-block;background:#0f4e54;color:#ffffff;text-decoration:none;font-weight:700;font-size:15px;padding:12px 20px;border-radius:10px;">{{.Button}}</a>
+{{if .Calendar}}<a href="{{.Calendar}}" style="display:inline-block;margin-left:10px;background:#ffffff;color:#0f4e54;border:2px solid #0f4e54;text-decoration:none;font-weight:700;font-size:15px;padding:10px 18px;border-radius:10px;">Add to Calendar</a>{{end}}
 {{if .Footnote}}<p style="margin:18px 0 0;font-size:13.5px;line-height:1.5;color:#5c6b6c;">{{.Footnote}}</p>{{end}}
 </td></tr>
 <tr><td style="padding:14px 28px;background:#f4f8f8;font-size:12.5px;color:#7a8788;">
@@ -128,6 +175,9 @@ func (l letter) render() (string, string) {
 		fmt.Fprintf(&text, "%s: %s\n", row[0], row[1])
 	}
 	fmt.Fprintf(&text, "\n%s\n", l.Path)
+	if l.Calendar != "" {
+		fmt.Fprintf(&text, "Add to calendar: %s\n", l.Calendar)
+	}
 	if l.Footnote != "" {
 		fmt.Fprintf(&text, "\n%s\n", l.Footnote)
 	}
@@ -294,7 +344,11 @@ func (a app) mailTickets(r *http.Request, p *Party, purchaser string, taken []ma
 	}
 	l.Button = "See the party"
 	if len(sold) > 0 {
-		l.Footnote = model.Settings.TicketNote
+		l.Calendar = calendarLink(p, l.Path)
+		// The Ticket Note says how invoicing works; a gift is not invoiced.
+		if !free {
+			l.Footnote = model.Settings.TicketNote
+		}
 	}
 	cc := []string{}
 	if actor != purchaser {
@@ -370,6 +424,7 @@ func (a app) mailOffered(r *http.Request, p *Party, purchaser string, tickets []
 		l.Rows = append(l.Rows, [2]string{"Hosts", hosts})
 	}
 	l.Button = "See the party"
+	l.Calendar = calendarLink(p, l.Path)
 	l.Footnote = "A ticket marked \"to be named\" is a guest's: open the party and use Reassign beside it to say who is coming. " + a.cache.Model().Settings.TicketNote
 	a.send(r.Context(), fmt.Sprintf("You're in: %d %s to %s", n, plural(n, "ticket"), p.Title), []string{purchaser}, without(p.HostEmails, purchaser), l, without(p.HostEmails, purchaser)...)
 }

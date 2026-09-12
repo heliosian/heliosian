@@ -740,7 +740,7 @@ func TestMail(t *testing.T) {
 	if m.Subject != "Your tickets to Wurst Helios Party" || m.To[0] != parent || !slices.Contains(m.CC, "sofia.marchetti@heliosschool.org") || !slices.Contains(m.CC, partner) {
 		t.Fatalf("confirmation: %+v", m)
 	}
-	for _, want := range []string{"Hi Jordan", "Robin Whitfield, Aunt May", "$150 (2 × $75)", "Robin Whitfield took them", "/share/P004.png", "88 Castro Street", "invoiced by Helios"} {
+	for _, want := range []string{"Hi Jordan", "Robin Whitfield, Aunt May", "$150 (2 × $75)", "Robin Whitfield took them", "/share/P004.png", "88 Castro Street", "invoiced by Helios", "calendar.google.com/calendar/render?action=TEMPLATE", "Add to Calendar"} {
 		if !strings.Contains(m.HTML, want) {
 			t.Errorf("confirmation lacks %q", want)
 		}
@@ -761,6 +761,15 @@ func TestMail(t *testing.T) {
 		if !strings.Contains(m.HTML, want) {
 			t.Errorf("a child's note lacks %q", want)
 		}
+	}
+	// A free ticket's note says nothing about invoicing, and still offers
+	// the calendar.
+	if r := call(t, mux, "sofia.marchetti@heliosschool.org", "POST", "/api/celebrate/tickets", map[string]any{"partyId": "P004", "free": true, "attendees": []map[string]string{{"name": "Peter Parker"}}}); r.Code != http.StatusOK {
+		t.Fatalf("free: %d %s", r.Code, r.Body)
+	}
+	m = rec.next(t)
+	if !strings.Contains(m.HTML, "no charge") || strings.Contains(m.HTML, "invoiced") || !strings.Contains(m.HTML, "Add to Calendar") {
+		t.Fatalf("free ticket note: %s", m.HTML)
 	}
 	// A full party: joining the waitlist gets a note that says so, and that
 	// nothing is billed yet.
