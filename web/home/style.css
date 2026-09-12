@@ -351,7 +351,8 @@ main {
 
 .event-actions svg { width: 17px; height: 17px; flex-shrink: 0; }
 
-.event-calendar svg { stroke-width: 2.6; }
+/* The plus is the point of the icon: heavier than the calendar around it. */
+.event-calendar svg { width: 18px; height: 18px; stroke-width: 2.4; }
 
 .event-art {
   position: relative;
