@@ -364,6 +364,12 @@ func (a app) saveVolunteer(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "only a co-chair or admin can make or unmake a co-chair", http.StatusForbidden)
 			return
 		}
+		// An offer to co-chair is only made where one is wanted; an offer
+		// already standing stays as it is.
+		if body.Position == PositionOpen && was != PositionOpen && !act.CoLeaderNeeded {
+			http.Error(w, "this is not looking for a co-chair", http.StatusBadRequest)
+			return
+		}
 	}
 	if existing && !editor && email != actor && !a.household(actor, email) {
 		http.Error(w, "only a co-chair or admin can change someone else's sign-up", http.StatusForbidden)

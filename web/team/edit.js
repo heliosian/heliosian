@@ -781,7 +781,12 @@ function signUpForm(node, existing) {
   // list. Anyone else chooses between the two kinds of volunteer, and a sitting
   // co-chair editing their own note keeps the position.
   const isChair = Boolean(existing && existing.position === 'Co-Chair');
-  const positions = [{label: 'Volunteer', value: 'Volunteer'}, {label: 'Volunteer, and open to co-chairing', value: 'Open to Co-Chair'}];
+  // Offering to co-chair is only a choice where a co-chair is wanted - or
+  // where the offer already stands, so it is not lost by opening the form.
+  const positions = [{label: 'Volunteer', value: 'Volunteer'}];
+  if (node.coLeaderNeeded || (existing && existing.position === 'Open to Co-Chair')) {
+    positions.push({label: 'Volunteer, and open to co-chairing', value: 'Open to Co-Chair'});
+  }
   if (editor) {
     positions.push({label: 'Co-Chair', value: 'Co-Chair'});
   }

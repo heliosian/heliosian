@@ -329,6 +329,10 @@ func TestMoveSignUp(t *testing.T) {
 	if rec := call(t, mux, parent, "POST", "/api/events/volunteer", map[string]any{"id": "E019", "position": PositionVolunteer, "from": "E017"}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("moved from a thing not signed up for: %d", rec.Code)
 	}
+	// Offering to co-chair needs a thing that wants one: Set Up Crew does not.
+	if rec := call(t, mux, parent, "POST", "/api/events/volunteer", map[string]any{"id": "E016", "position": PositionOpen}); rec.Code != http.StatusBadRequest {
+		t.Fatalf("offered to co-chair where none is wanted: %d", rec.Code)
+	}
 }
 
 func TestReorderChildren(t *testing.T) {
