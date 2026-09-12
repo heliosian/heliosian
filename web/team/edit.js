@@ -1239,7 +1239,11 @@ export function openActivity(act, options) {
     description.placeholder = 'What is it, and what would volunteers do?';
     if (under) {
       // Under an event the when is the event's, and it is the chairs' to
-      // place: a title, a few lines and a picture are all that is asked.
+      // place: a title, where it goes among the event's categories (when it
+      // has any), a few lines and a picture are all that is asked.
+      if (own.length) {
+        fields.splice(fields.indexOf(fields.find(f => f.querySelector && f.querySelector('textarea'))), 0, field('Category', eventCategory));
+      }
       fields.push(suggestImage.wrap);
     } else {
       timing.placeholder = 'Spring, a Friday in March, a few times a year…';
