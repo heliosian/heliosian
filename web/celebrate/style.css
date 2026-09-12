@@ -1353,6 +1353,8 @@ body.is-admin main { padding: 0; background-image: none; }
 
 .invoice-date { color: var(--muted); font-variant-numeric: tabular-nums; }
 
+.invoice-status.invoice-number { text-transform: none; letter-spacing: 0; font-size: 12.5px; }
+
 .invoice-bar .invoice-search { flex: 1; min-width: 160px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; }
 
 .invoice-price { text-align: right; }

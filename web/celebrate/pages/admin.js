@@ -142,6 +142,15 @@ function invoicesCard() {
   const table = el('div');
   card.append(totals, table);
   const ledger = () => (state.model.invoicing || []).filter(l => l.code === code);
+  // The ledger holds addresses; the parties' tickets know the names.
+  const names = new Map();
+  for (const p of state.model.parties) {
+    for (const a of [...p.attendees, ...p.waitlisted]) {
+      if (a.purchaser && a.purchaserName) {
+        names.set(a.purchaser, a.purchaserName);
+      }
+    }
+  }
   const paintParties = () => {
     party.replaceChildren(new Option('All parties', ''));
     for (const title of [...new Set(ledger().map(l => l.party))].sort((x, y) => x.localeCompare(y))) {
@@ -163,7 +172,7 @@ function invoicesCard() {
       if (status.value === 'done' && !l.invoice) {
         return false;
       }
-      return !q || [l.purchaser, l.guest, l.invoice, l.invoiceTo, l.party].some(v => (v || '').toLowerCase().includes(q));
+      return !q || [l.purchaser, names.get(l.purchaser), l.guest, l.invoice, l.invoiceTo, l.party].some(v => (v || '').toLowerCase().includes(q));
     });
     const byPurchaser = new Map();
     let sum = 0;
@@ -184,19 +193,19 @@ function invoicesCard() {
       }
     }
     totals.append(el('div', 'invoice-total', `${tickets} tickets · ${money(sum)} · ${money(invoiced)} invoiced · ${money(sum - invoiced)} still to invoice`));
-    const groups = [...byPurchaser.values()].sort((x, y) => x.email.localeCompare(y.email));
+    const groups = [...byPurchaser.values()].sort((x, y) => (names.get(x.email) || x.email).localeCompare(names.get(y.email) || y.email));
     if (!groups.length) {
       table.append(el('div', 'hint', rows.length || ledger().length ? 'Nothing matches.' : 'Nothing in the ledger yet.'));
     }
     for (const g of groups) {
       const head = el('div', 'invoice-head');
-      head.append(el('span', 'invoice-name', g.email), el('span', 'invoice-email', `${g.rows.length} ${g.rows.length === 1 ? 'row' : 'rows'}`), el('span', 'invoice-sum', money(g.total)));
+      head.append(el('span', 'invoice-name', names.get(g.email) || g.email), el('span', 'invoice-email', `${g.email} · ${g.rows.length} ${g.rows.length === 1 ? 'row' : 'rows'}`), el('span', 'invoice-sum', money(g.total)));
       table.append(head);
       for (const l of g.rows) {
         const row = el('div', 'invoice-row invoice-ledger-row');
         row.append(el('span', 'invoice-date', l.date), el('span', 'invoice-party', l.party), el('span', 'invoice-who', l.guest),
           el('span', 'invoice-price', money((l.cost || 0) * (l.quantity || 1))),
-          el('span', 'invoice-status ' + (l.invoice ? 'is-paid' : ''), l.invoice ? `${l.invoice}${l.invoiceTo ? ' · ' + l.invoiceTo : ''}` : 'not yet'));
+          el('span', 'invoice-status ' + (l.invoice ? 'is-paid invoice-number' : ''), l.invoice ? `${l.invoice}${l.invoiceTo ? ' · ' + l.invoiceTo : ''}` : 'not yet'));
         table.append(row);
       }
     }
