@@ -7,7 +7,7 @@ function* allNodes() {
   }
 }
 import {el, svg, toast, button, thumb, whenEditor} from './dom.js';
-import {openCropTool} from './crop.js';
+import {openCropTool} from '/crop.js';
 
 let modalState = null;
 

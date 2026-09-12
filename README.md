@@ -25,6 +25,7 @@ To run against real community data instead, see [docs/dev.md](docs/dev.md).
 - `internal/events` — the volunteer portal: the Events sheet's model, handlers, sign-ups, and admin edits
 - `internal/birthday` — the birthday team: the Birthdays sheet's model, the derived dates and stages, handlers, and admin edits
 - `internal/blob` — media from Cloud Storage, held in memory with stored thumbnails
+- `internal/imagesearch` — the editors' picture search (stock libraries and Wikimedia Commons) and import, shared by HCA-Team and Heliosian
 - `internal/geocode` — address → coordinates for the map
 - `internal/capture` — drive Chrome and screenshot a page, for the dev tools
 - `internal/devtls` — the in-memory self-signed certificate local HTTPS runs on
@@ -42,6 +43,7 @@ Platform:
 - [screenshots.md](docs/screenshots.md) — page capture for humans and agents
 - [deploy.md](docs/deploy.md) — production deployment
 - [config.md](docs/config.md) — the Config sheet: super admins and the platform settings
+- [toolbar.md](docs/toolbar.md) — the top bar every app shares: search with `/`, the account avatar, the switch between apps
 - [plan.md](docs/plan.md) — what remains to build
 
 Helios Who?, in `docs/who/`:

@@ -9,7 +9,7 @@ import {staleItems, familyInfoBanner, todoChecklist, familyNavPeople, personTodo
 import {topbarSearchInput, topbarSearchResults, mobileSearchInput, setMobileSearch} from './search.js';
 import {privacyMismatchCardDismissed, myPrivacyWarnings, privacyMismatchCard} from './pages/privacy.js';
 import {load} from './app.js';
-import {githubBadge} from '/github-badge.js';
+import {renderAvatars, onSlash, isEditableTarget, initAppSwitch, markSuper} from '/toolbar.js';
 
 const primaryNavItems = [
   {path: 'people', label: 'Directory'},
@@ -294,7 +294,7 @@ export function finishRender() {
   const contentWrap = el('div', 'page-content-wrap');
   contentWrap.append(...main.childNodes);
   const footer = el('div', 'page-footer');
-  footer.append(el('div', 'page-footer-art'), githubBadge());
+  footer.append(el('div', 'page-footer-art'));
   main.append(contentWrap, footer);
 }
 
@@ -344,16 +344,9 @@ function setDrawer(open) {
   drawerOverlay.hidden = !open;
 }
 
-// A bare "/" (no modifiers, and not already typing somewhere) jumps straight to
-// search, the way GitHub/Slack do - skipped while any text field, including the
-// search box itself, already has focus so a literal "/" can still be typed.
-function isEditableTarget(target) {
-  return target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
-}
-
 // Both banners live in one fixed-position stack so they pile up in normal flow
 // instead of both claiming top:0 and hiding one another — which is exactly what
-// happened once spoofing stopped being mutually exclusive with Super Edit Mode.
+// happened once spoofing stopped being mutually exclusive with Super Admin Mode.
 function topBanners() {
   let stack = document.querySelector('#top-banners');
   if (!stack) {
@@ -383,6 +376,7 @@ async function setSuperEdit(enabled) {
 }
 
 export function syncSuperEditCheckboxes() {
+  markSuper(state.model.superEdit);
   for (const box of document.querySelectorAll('.super-edit-checkbox')) {
     box.checked = Boolean(state.model.superEdit);
   }
@@ -401,7 +395,7 @@ export function renderSuperEditBanner() {
     return;
   }
   banner = el('div', 'super-edit-banner');
-  banner.append(el('span', '', 'Super Edit Mode is on — you can edit anyone’s info.'));
+  banner.append(el('span', '', 'Super Admin Mode is on — you can edit anyone’s info.'));
   const link = el('a', '', 'Turn off');
   link.href = '#';
   link.addEventListener('click', async e => {
@@ -446,27 +440,16 @@ export function renderSpoofBanner() {
   updateBannerOffset();
 }
 
-// Fills the user chrome (both avatars, the name label, the profile links, and
-// the admin-only menu items) from the model's signed-in identity.
+// Fills the user chrome (both avatars, the profile links, and the admin-only
+// menu items) from the model's signed-in identity.
 export function renderUserChrome() {
   const user = state.model.user;
-  // The same hero photo the profile page shows (own photo, else family's) -
-  // falling back to the person icon, not the bare initial, when there isn't
-  // one, matching the treatment used elsewhere for "this is about a person".
+  // The same hero photo the profile page shows (own photo, else family's), with
+  // the initial standing in when there isn't one - the same avatar every
+  // Heliosian app's toolbar shows.
   const person = personByKey(user.email);
   const photoUrl = person && personPhotoUrl(person);
-  for (const avatar of document.querySelectorAll('.user-avatar')) {
-    if (photoUrl) {
-      const img = el('img', 'user-avatar-photo');
-      img.src = thumbUrl(photoUrl);
-      img.loading = 'lazy';
-      img.alt = '';
-      avatar.replaceChildren(img);
-    } else {
-      avatar.replaceChildren(svg('user'));
-    }
-  }
-  document.querySelector('.user-name').textContent = user.name;
+  renderAvatars({photoUrl: photoUrl && thumbUrl(photoUrl), initial: user.initial});
   for (const link of document.querySelectorAll('.user-menu-profile')) {
     link.href = '/people/' + encodeURIComponent(user.slug);
   }
@@ -514,6 +497,7 @@ export function renderPrivacyMenuAlert() {
 // click/keyboard handlers) exactly once, from app.js, so no module does DOM
 // work just by being imported.
 export function initChrome() {
+  initAppSwitch();
   window.addEventListener('resize', updateMobileTitleInset);
   window.addEventListener('resize', syncViewportHeight);
   window.addEventListener('orientationchange', syncViewportHeight);
@@ -560,7 +544,7 @@ export function initChrome() {
   mobileListsOverlay.addEventListener('click', () => setMobileListsMenu(false));
 
   // Both the desktop and mobile user menus carry their own copy of this
-  // checkbox (shown to admins only) - a quicker way to flip Super Edit Mode
+  // checkbox (shown to admins only) - a quicker way to flip Super Admin Mode
   // than the full admin page, which still has its own toggle too. Wired once here
   // since the checkboxes are static; syncSuperEditCheckboxes (called from load())
   // keeps their checked state true to the model after every reload, including one
@@ -595,6 +579,16 @@ export function initChrome() {
     }
   });
 
+  // On a phone the search box lives behind the magnifier, so "/" opens that
+  // overlay instead of focusing the (hidden) desktop box.
+  onSlash(() => {
+    if (isMobile()) {
+      setMobileSearch(true);
+    } else {
+      topbarSearchInput.focus();
+    }
+  });
+
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
       userMenu.hidden = true;
@@ -611,13 +605,6 @@ export function initChrome() {
       }
       if (e.target === topbarSearchInput || e.target === mobileSearchInput) {
         e.target.blur();
-      }
-    } else if (e.key === '/' && !e.metaKey && !e.ctrlKey && !e.altKey && !isEditableTarget(e.target)) {
-      e.preventDefault();
-      if (isMobile()) {
-        setMobileSearch(true);
-      } else {
-        topbarSearchInput.focus();
       }
     } else if (e.key.toLowerCase() === 't' && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && !isEditableTarget(e.target)) {
       // Same single "the tag button" a person's detail page shows (see

@@ -1,6 +1,5 @@
 :root {
   --brand: #244d53;
-  --topbar: #e8f2f1;
   --sidebar: #244d53;
   --sidebar-active: #3c6166;
   --line: #e2e6eb;
@@ -620,75 +619,9 @@ body {
   stroke-linejoin: round;
 }
 
-.topbar-user {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  position: relative;
-  flex-shrink: 0;
-  margin-left: auto;
-}
-
-.topbar-alert {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  color: var(--alert);
-  flex-shrink: 0;
-}
-
-.topbar-alert:hover {
-  background: rgba(255, 255, 255, 0.1);
-}
-
-.topbar-alert-count {
-  width: 24px;
-  height: 24px;
-}
-
-.topbar-alert-count:hover {
-  background: none;
-  opacity: 0.85;
-}
-
-.topbar-alert-count span {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  background: var(--alert);
-  color: #fff;
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1;
-}
-
-.topbar-alert svg {
-  width: 18px;
-  height: 18px;
-  stroke: currentColor;
-  fill: none;
-  stroke-width: 2.1;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
 .stale-wrap {
   position: relative;
   display: flex;
-}
-
-.stale-alert {
-  border: 0;
-  background: none;
-  padding: 0;
-  font: inherit;
-  cursor: pointer;
 }
 
 .stale-menu {
@@ -703,26 +636,6 @@ body {
 .stale-menu .todo-card {
   margin: 0;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
-}
-
-.user {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px;
-  font-size: 14px;
-  font-weight: 500;
-  color: rgba(255, 255, 255, 0.8);
-  border-radius: 999px;
-  cursor: pointer;
-}
-
-.user:hover {
-  background: rgba(255, 255, 255, 0.1);
-}
-
-.user-name {
-  display: none;
 }
 
 .user-row-alert {
@@ -825,86 +738,6 @@ body {
 
 .user-menu-toggle input:checked::before {
   left: 16px;
-}
-
-.user-avatar {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: #f5f1d0;
-  color: #333;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 13px;
-  font-weight: 500;
-  flex-shrink: 0;
-  overflow: hidden;
-}
-
-.user-avatar svg {
-  width: 16px;
-  height: 16px;
-  stroke: currentColor;
-  fill: none;
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.user-avatar-photo {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-.topbar {
-  display: flex;
-  align-items: center;
-  gap: 24px;
-  height: 64px;
-  flex-shrink: 0;
-  padding: 0 20px;
-  background: var(--topbar);
-}
-
-.topbar-search {
-  position: relative;
-  flex: 1;
-  max-width: 480px;
-  display: flex;
-  align-items: center;
-}
-
-.topbar-search svg {
-  position: absolute;
-  left: 14px;
-  width: 17px;
-  height: 17px;
-  stroke: var(--muted);
-  fill: none;
-  stroke-width: 1.8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  pointer-events: none;
-}
-
-.topbar-search input {
-  width: 100%;
-  height: 38px;
-  border: 0;
-  border-radius: 999px;
-  padding: 0 16px 0 40px;
-  background: rgba(255, 255, 255, 0.92);
-  color: var(--ink);
-  font: inherit;
-  font-size: 14px;
-  outline: none;
-}
-
-.topbar-search input:focus {
-  background: #fff;
 }
 
 .gsearch-results {
@@ -1030,12 +863,6 @@ main {
 .page-footer {
   position: relative;
   flex-shrink: 0;
-}
-
-.page-footer .github-badge {
-  position: absolute;
-  right: 16px;
-  bottom: 12px;
 }
 
 .page-footer-art {
@@ -4554,10 +4381,12 @@ a.person-card:hover .photo-wrap-peek::before {
     overflow-y: auto;
     padding: 4px 12px 12px;
   }
-  #mobile-user {
+  #mobile-user,
+  .mobile-top .app-switch {
     position: relative;
     z-index: 31;
   }
+  .mobile-top .app-switch { margin-left: 6px; }
   .crumbs {
     display: none;
   }

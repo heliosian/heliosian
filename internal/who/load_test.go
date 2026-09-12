@@ -2,7 +2,9 @@ package who
 
 import (
 	"testing"
+	"time"
 
+	"heliosian/internal/config"
 	"heliosian/internal/data"
 )
 
@@ -677,5 +679,20 @@ func TestHeroPhotoIsEmptyForNonMembersAndForNoPhoto(t *testing.T) {
 	}
 	if got := m.HeroPhoto("jordan.whitfield@heliosschool.org"); got != "" {
 		t.Errorf("member with no photo anywhere: got %q, want empty", got)
+	}
+}
+
+// The sample parent's badges match what the directory's own page shows them:
+// four things to update (the client's stale.js reckoning) and a privacy
+// mismatch - and a stranger gets nothing.
+func TestAlertsMatchTheDirectoryPage(t *testing.T) {
+	m := sampleModel(t)
+	years := config.StaleYears{Photo: 0.75, Facts: 0.6, FamilyPhoto: 1.5} // the sample Settings
+	got := m.Alerts("jordan.whitfield@heliosschool.org", years, time.Now())
+	if got.Stale != 4 || !got.Privacy {
+		t.Errorf("alerts for the sample parent = %+v, want 4 stale and a privacy mismatch", got)
+	}
+	if got := m.Alerts("nobody@example.org", years, time.Now()); got != (Alerts{}) {
+		t.Errorf("alerts for a stranger = %+v, want none", got)
 	}
 }

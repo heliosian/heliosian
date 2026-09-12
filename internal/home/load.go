@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"heliosian/internal/data"
 )
@@ -24,12 +26,20 @@ const (
 
 	// StyleCards renders a category as large feature cards, StyleTiles as a
 	// row of compact tiles. Every category picks one; see docs/home/data.md.
-	StyleCards = "cards"
-	StyleTiles = "tiles"
+	// StyleEvents is the one section that holds no links: HCA-Team's upcoming
+	// events. The sheet may carry one such row, to name, mark and place it;
+	// without one the page synthesizes it at the top (see BuildModel).
+	StyleCards  = "cards"
+	StyleTiles  = "tiles"
+	StyleEvents = "events"
+
+	// The events section as it stands until the sheet says otherwise.
+	EventsTitle = "Upcoming Events"
+	EventsEmoji = "📅"
 )
 
 var (
-	categoryColumns  = []string{"Title", "Image", "Style"}
+	categoryColumns  = []string{"Title", "Emoji", "Style"}
 	linkColumns      = []string{"Title", "Description", "URL", "Image", "Category", "Visible", "Added By", "Added"}
 	adminColumns     = []string{"Email"}
 	changeLogColumns = []string{"Timestamp", "Actor", "Action", "Kind", "Title", "Description", "URL", "Image", "Category", "Visible", "Style"}
@@ -52,12 +62,17 @@ type Link struct {
 	Added       string `json:"added,omitempty"`
 }
 
+// A category goes by an emoji rather than a picture: it heads the section,
+// marks the rail, and stands in for a link that has no image of its own.
+// Virtual marks the events section when the sheet has no row for it yet: it
+// shows and edits like any other, and the first rename, emoji or move writes
+// its row.
 type Category struct {
-	Title    string `json:"title"`
-	Image    string `json:"image,omitempty"`
-	ImageURL string `json:"imageUrl,omitempty"`
-	Style    string `json:"style"`
-	Links    []Link `json:"links"`
+	Title   string `json:"title"`
+	Emoji   string `json:"emoji,omitempty"`
+	Style   string `json:"style"`
+	Links   []Link `json:"links"`
+	Virtual bool   `json:"virtual,omitempty"`
 }
 
 // Model is the portal as the sheet orders it: categories in row order, each
@@ -115,14 +130,33 @@ func yesNo(cell string) (bool, error) {
 	return false, fmt.Errorf("%q is not Yes or No", cell)
 }
 
-// cardsOrTiles is spelled exactly, the same stance yesNo takes: a blank or
+// checkStyle is spelled exactly, the same stance yesNo takes: a blank or
 // misspelled Style refuses the load rather than guessing a presentation.
-func cardsOrTiles(cell string) (string, error) {
+func checkStyle(cell string) (string, error) {
 	switch cell {
-	case StyleCards, StyleTiles:
+	case StyleCards, StyleTiles, StyleEvents:
 		return cell, nil
 	}
-	return "", fmt.Errorf("%q is not %s or %s", cell, StyleCards, StyleTiles)
+	return "", fmt.Errorf("%q is not %s, %s or %s", cell, StyleCards, StyleTiles, StyleEvents)
+}
+
+// checkEmoji accepts a blank cell or one emoji - a short run of symbol runes,
+// joiners and variation selectors, so a flag or a skin-toned face passes and
+// a word does not.
+func checkEmoji(cell string) error {
+	if cell == "" {
+		return nil
+	}
+	if utf8.RuneCountInString(cell) > 10 {
+		return fmt.Errorf("emoji %q is too long", cell)
+	}
+	for _, r := range cell {
+		joiner := r == 0x200d || r == 0xfe0f || r == 0xfe0e || (r >= 0x1f3fb && r <= 0x1f3ff) || r == 0x20e3
+		if !joiner && (unicode.IsLetter(r) || unicode.IsDigit(r) || unicode.IsSpace(r) || r < 0x2000) {
+			return fmt.Errorf("%q is not an emoji", cell)
+		}
+	}
+	return nil
 }
 
 func checkURL(raw string) error {
@@ -169,11 +203,12 @@ func imageNames(rows ...[]map[string]string) []string {
 }
 
 func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
-	if err := images.Prefetch(imageNames(tables.Categories, tables.Links)); err != nil {
+	if err := images.Prefetch(imageNames(tables.Links)); err != nil {
 		return nil, err
 	}
 	model := &Model{Categories: []Category{}}
 	index := map[string]int{}
+	events := false
 	for _, row := range tables.Categories {
 		title := strings.TrimSpace(row["Title"])
 		if title == "" {
@@ -182,16 +217,34 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 		if _, dup := index[title]; dup {
 			return nil, fmt.Errorf("duplicate category %q", title)
 		}
-		image, err := imageURL(images, row["Image"])
-		if err != nil {
+		emoji := strings.TrimSpace(row["Emoji"])
+		if err := checkEmoji(emoji); err != nil {
 			return nil, fmt.Errorf("category %q: %w", title, err)
 		}
-		style, err := cardsOrTiles(row["Style"])
+		style, err := checkStyle(row["Style"])
 		if err != nil {
 			return nil, fmt.Errorf("category %q: style %w", title, err)
 		}
+		if style == StyleEvents {
+			if events {
+				return nil, fmt.Errorf("category %q: only one category can be the %s section", title, StyleEvents)
+			}
+			events = true
+		}
 		index[title] = len(model.Categories)
-		model.Categories = append(model.Categories, Category{Title: title, Image: row["Image"], ImageURL: image, Style: style, Links: []Link{}})
+		model.Categories = append(model.Categories, Category{Title: title, Emoji: emoji, Style: style, Links: []Link{}})
+	}
+	// The events section is always on the page: at the top, under its own
+	// name, until a row places and names it.
+	if !events {
+		if _, taken := index[EventsTitle]; taken {
+			return nil, fmt.Errorf("category %q is the events section's name; give it the %s style or another title", EventsTitle, StyleEvents)
+		}
+		model.Categories = append([]Category{{Title: EventsTitle, Emoji: EventsEmoji, Style: StyleEvents, Links: []Link{}, Virtual: true}}, model.Categories...)
+		for title := range index {
+			index[title]++
+		}
+		index[EventsTitle] = 0
 	}
 	titles := map[string]bool{}
 	for _, row := range tables.Links {
@@ -209,6 +262,9 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 		at, ok := index[row["Category"]]
 		if !ok {
 			return nil, fmt.Errorf("link %q names unknown category %q", title, row["Category"])
+		}
+		if model.Categories[at].Style == StyleEvents {
+			return nil, fmt.Errorf("link %q sits under %q, which holds HCA-Team's events rather than links", title, row["Category"])
 		}
 		visible, err := yesNo(row["Visible"])
 		if err != nil {

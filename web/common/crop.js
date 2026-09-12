@@ -1,8 +1,20 @@
-// Cropping and the full-size view for an activity's image, ported from Helios
-// Who?'s photos.js so the two apps handle a picture the same way. The crop tool
-// is freeform: a frame dragged over the image, corners to resize, and Save
-// hands the caller a JPEG blob of what is inside it (at most 1600px a side).
-import {el} from './dom.js';
+// Cropping and the full-size view for a picture, ported from Helios Who?'s
+// photos.js so the apps handle one the same way; HCA-Team and Heliosian share
+// this copy (served from web/common/). The crop tool is freeform: a frame
+// dragged over the image, corners to resize, and Save hands the caller a JPEG
+// blob of what is inside it (at most 1600px a side). The styles it needs
+// (.crop-* and .photo-lightbox) live in each app's own stylesheet.
+
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) {
+    node.className = className;
+  }
+  if (text !== undefined) {
+    node.textContent = text;
+  }
+  return node;
+}
 
 // openPhotoLightbox shows the whole image over the page - the hero and card
 // crops can cut a picture awkwardly, and this is the way to see all of it.

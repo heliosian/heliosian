@@ -1,0 +1,163 @@
+/* The admin pages' chrome, the same in every app: a teal header with the
+   app's mark, "Admin", the signed-in address and a close button; a white
+   rail of grouped tabs on the left; cards on the right. Each app's own
+   stylesheet (or the page's :root) supplies --brand, --line, --ink, --muted,
+   --input and --alert; this file supplies the shapes. */
+
+.admin, .admin * { box-sizing: border-box; } box-sizing: border-box; }
+body.admin {
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  font-family: Roboto, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  color: var(--ink);
+  background: #f7f8f9;
+}
+.admin header {
+  background: var(--brand);
+  color: #fff;
+  padding: 18px 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.admin header .brand-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #fff;
+  text-decoration: none;
+}
+.admin header .brand-link img {
+  height: 26px;
+}
+/* An app whose mark needs its own ground shows its icon tile instead of a
+   wordmark. */
+.admin header .brand-link img.admin-tile { height: 32px; border-radius: 8px; }
+.admin header .brand-link span {
+  font-size: 15px;
+  font-weight: 700;
+  padding-left: 10px;
+  border-left: 1px solid rgba(255, 255, 255, 0.3);
+}
+.admin header .email {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.75);
+}
+.admin .layout {
+  display: flex;
+  align-items: stretch;
+  flex: 1;
+}
+.admin .container {
+  flex: 1;
+  min-width: 0;
+  max-width: 900px;
+  padding: 28px;
+}
+.admin .sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  padding: 20px 0;
+  border-right: 1px solid var(--line);
+  background: #fff;
+}
+.admin .sidebar-section + .sidebar-section {
+  margin-top: 20px;
+}
+.admin .sidebar-section-title {
+  padding: 0 24px 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #9aa4ab;
+}
+.admin .tab {
+  padding: 10px 24px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  border-left: 3px solid transparent;
+}
+.admin .tab:hover {
+  background: var(--input);
+}
+.admin .tab.active {
+  color: var(--brand);
+  border-left-color: var(--brand);
+  background: #eef4f4;
+}
+.admin .panel[hidden] { display: none; }
+.admin .card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 20px 24px;
+  margin-bottom: 20px;
+}
+.admin .card h2 {
+  font-size: 16px;
+  margin: 0 0 4px;
+}
+.admin .card .hint {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 16px;
+}
+.admin .notice {
+  background: #fde3d1;
+  color: var(--alert);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+.admin header .right {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.admin .admin-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  color: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.1);
+  text-decoration: none;
+}
+.admin .admin-close:hover { background: rgba(255, 255, 255, 0.2); color: #fff; }
+.admin .admin-close svg {
+  width: 20px;
+  height: 20px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* On a phone the rail becomes a strip of pills along the top. Who?'s admin
+   page has its own fold-out menu instead, so this is opt-in by class. */
+@media (max-width: 760px) {
+  .admin.admin-strip .layout { flex-direction: column; }
+  .admin.admin-strip .sidebar {
+    width: auto;
+    display: flex;
+    gap: 2px;
+    overflow-x: auto;
+    padding: 8px 12px;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .admin.admin-strip .sidebar-section { display: flex; align-items: center; gap: 2px; }
+  .admin.admin-strip .sidebar-section + .sidebar-section { margin-top: 0; }
+  .admin.admin-strip .sidebar-section-title { display: none; }
+  .admin.admin-strip .tab { white-space: nowrap; padding: 8px 12px; border-left: 0; border-radius: 999px; }
+  .admin.admin-strip .container { padding: 16px; }
+}

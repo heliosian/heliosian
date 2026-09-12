@@ -4,10 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Admin Tools</title>
-<link rel="icon" href="/brand/icon-192.png">
+<link rel="icon" href="/brand/favicon-192.png">
 <link rel="stylesheet" href="/fonts/fonts.css">
-<link rel="stylesheet" href="/github-badge.css">
-<link rel="modulepreload" href="/github-badge.js">
+<link rel="stylesheet" href="/admin.css">
 <link rel="modulepreload" href="/admin/app.js">
 <link rel="modulepreload" href="/admin/state.js">
 <link rel="modulepreload" href="/admin/picker.js">
@@ -27,114 +26,6 @@
     --muted: #707070;
     --input: #efefef;
     --alert: #df604a;
-  }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    font-family: Roboto, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-    color: var(--ink);
-    background: #f7f8f9;
-  }
-  header {
-    background: var(--sidebar);
-    color: #fff;
-    padding: 18px 28px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-  header .brand-link {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    color: #fff;
-    text-decoration: none;
-  }
-  header .brand-link img {
-    height: 26px;
-  }
-  header .brand-link span {
-    font-size: 15px;
-    font-weight: 700;
-    padding-left: 10px;
-    border-left: 1px solid rgba(255, 255, 255, 0.3);
-  }
-  header .email {
-    font-size: 13px;
-    color: rgba(255, 255, 255, 0.75);
-  }
-  .layout {
-    display: flex;
-    align-items: stretch;
-    flex: 1;
-  }
-  .container {
-    flex: 1;
-    min-width: 0;
-    max-width: 900px;
-    padding: 28px;
-  }
-  .sidebar {
-    width: 220px;
-    flex-shrink: 0;
-    padding: 20px 0;
-    border-right: 1px solid var(--line);
-    background: #fff;
-  }
-  .sidebar-section + .sidebar-section {
-    margin-top: 20px;
-  }
-  .sidebar-section-title {
-    padding: 0 24px 6px;
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: #9aa4ab;
-  }
-  .tab {
-    padding: 10px 24px;
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--muted);
-    cursor: pointer;
-    border-left: 3px solid transparent;
-  }
-  .tab:hover {
-    background: var(--input);
-  }
-  .tab.active {
-    color: var(--brand);
-    border-left-color: var(--brand);
-    background: #eef4f4;
-  }
-  .panel[hidden] { display: none; }
-  .card {
-    background: #fff;
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    padding: 20px 24px;
-    margin-bottom: 20px;
-  }
-  .card h2 {
-    font-size: 16px;
-    margin: 0 0 4px;
-  }
-  .card .hint {
-    font-size: 13px;
-    color: var(--muted);
-    margin-bottom: 16px;
-  }
-  .notice {
-    background: #fde3d1;
-    color: var(--alert);
-    border-radius: 8px;
-    padding: 10px 14px;
-    font-size: 13px;
-    margin-bottom: 16px;
   }
   .image-row {
     display: flex;
@@ -553,13 +444,14 @@
   }
 </style>
 </head>
-<body>
+<body class="admin">
 <header>
   <a class="brand-link" href="/people">
     <img src="/brand/logo-wordmark.png" alt="Helios Who?">
     <span>Admin</span>
   </a>
-  <span class="email" id="me"></span>
+  <span class="right"><span class="email" id="me"></span>
+  <a class="admin-close" href="/people" aria-label="Close admin tools"><svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></a></span>
 </header>
 <div class="layout">
   <nav class="sidebar">
@@ -927,7 +819,6 @@
   </div>
   </div>
 </div>
-<footer class="site-footer" id="site-footer"></footer>
 
 <div class="modal-overlay" id="add-person-modal" hidden>
   <div class="modal">

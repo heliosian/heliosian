@@ -41,10 +41,9 @@ The app is light-on-white; dark teal is reserved for the sidebar, the family ban
 
 ## Logo and identity
 
-- The lockup: "Helios" in a light-weight white geometric sans, its "o" replaced by a small orange disc overlapping a much larger yellow sun disc (red where they overlap), with "Who?" sweeping underneath in a lime-to-green gradient brush script, finished with a brush underline. It sits on the brand teal.
-- The app icon and splash art are the same lockup.
+- The mark: a teal spiral-bound address book with a person on its cover, a green and a red book fanned behind it, and a yellow sun rising over them. The lockup sets "Helios" in white and "Who" in the brush lime with a yellow question mark, "A VISUAL DIRECTORY" letterspaced beneath; a dark-text variant exists for light grounds but the app only uses the white one, on the dark-teal sidebar and the admin header (`web/who/brand/logo-wordmark.png`).
+- The app icons (`web/public/who/brand/icon-*.png`, `apple-touch-icon.png`) are the mark on `#002f35`; the maskable icon keeps the mark at 58% for the safe circle; the favicons are the bare mark on a transparent ground; the splash screens are the vertical white lockup centred on `#002f35`.
 - The wordmark's geometric face appears only in the logo artwork; it is not the UI font.
-- Actual raster assets pulled from the existing app live locally (uncommitted) in `screenshots/who-old/brand/`: favicons (16, 32), app icons (192, 512, plus maskable variants), the full-lockup splash (2732×2048), and the PWA manifest. Vector originals still need to come from the school.
 
 ## Classroom mascots
 

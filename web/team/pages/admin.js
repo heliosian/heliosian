@@ -1,5 +1,5 @@
-import {state, isSystemAdmin} from '../state.js';
-import {el, button} from '../dom.js';
+import {state, isSystemAdmin, me} from '../state.js';
+import {el, button, svg} from '../dom.js';
 import {setTitle} from '../chrome.js';
 import {categoryList, openSettings, checkbox, send, peoplePicker} from '../edit.js';
 
@@ -10,7 +10,7 @@ function denied() {
 }
 
 function categoriesCard() {
-  const card = el('div', 'admin-card');
+  const card = el('div', 'card');
   card.append(el('h2', '', 'Categories'));
   card.append(el('div', 'hint', 'The headings on the Opportunities page, in this order. Each event manages its own categories from its page.'));
   card.append(categoryList(null, null));
@@ -18,7 +18,7 @@ function categoriesCard() {
 }
 
 function settingsCard() {
-  const card = el('div', 'admin-card');
+  const card = el('div', 'card');
   card.append(el('h2', '', 'Settings'));
   card.append(el('div', 'hint', 'The expense form the Sign Up page links to, and the intro under its heading.'));
   const expense = el('div', 'admin-row');
@@ -38,7 +38,7 @@ function settingsCard() {
 // notifyCard is the signed-in admin's own email notices: four switches, each
 // saved the moment it is flipped. Every admin has their own set.
 function notifyCard() {
-  const card = el('div', 'admin-card');
+  const card = el('div', 'card');
   card.append(el('h2', '', 'Email notifications'));
   card.append(el('div', 'hint', 'Which of these you want an email about. These are yours alone; every admin picks their own.'));
   const kinds = [
@@ -92,7 +92,7 @@ function notifyCard() {
 // while viewing as someone without admin rights this page is not reachable,
 // which is what the banner's Stop is for.
 function spoofCard() {
-  const card = el('div', 'admin-card');
+  const card = el('div', 'card');
   card.hidden = true;
   card.append(el('h2', '', 'Spoof Mode'));
   card.append(el('div', 'hint', 'See the portal exactly as someone else does - what they can open, sign up for and edit. Everything you do while viewing as them is done as them, so look, don\'t touch.'));
@@ -133,7 +133,7 @@ function spoofCard() {
 // adminsCard mirrors the other apps' admin lists: every add or remove posts
 // immediately, so nothing looks saved that isn't.
 function adminsCard() {
-  const card = el('div', 'admin-card');
+  const card = el('div', 'card');
   card.append(el('h2', '', 'Admins'));
   card.append(el('div', 'hint', 'Whoever is on this list can approve suggestions, edit any activity, and reach this page. Co-chairs edit their own activities without being here.'));
   const notice = el('div');
@@ -208,13 +208,77 @@ function adminsCard() {
   return card;
 }
 
+// The admin chrome every app shares (web/common/admin.css): the teal header
+// with the mark, "Admin", the address and a close button; the rail of grouped
+// tabs; one panel showing at a time.
+const sections = [
+  {title: 'Display', tabs: [
+    {key: 'categories', label: 'Categories', card: categoriesCard},
+    {key: 'settings', label: 'Settings', card: settingsCard},
+  ]},
+  {title: 'Editing & Control', tabs: [
+    {key: 'notify', label: 'Email Notifications', card: notifyCard},
+    {key: 'admins', label: 'Admins', card: adminsCard},
+    {key: 'spoof', label: 'Spoof Mode', card: spoofCard},
+  ]},
+];
+
 export function adminPage() {
   setTitle('Admin Tools');
   // The page goes with being on the admin list, hat or no hat.
   if (!isSystemAdmin()) {
     return denied();
   }
-  const page = el('div', 'list-page');
-  page.append(el('h1', '', 'Admin Tools'), categoriesCard(), settingsCard(), notifyCard(), adminsCard(), spoofCard());
+  const page = el('div', 'admin admin-strip');
+  const header = el('header');
+  const brand = el('a', 'brand-link');
+  brand.href = '/';
+  brand.setAttribute('data-link', '');
+  const mark = el('img', 'admin-tile');
+  mark.src = '/brand/icon-192.png';
+  mark.alt = 'HCA-Team';
+  brand.append(mark, el('span', '', 'Admin'));
+  const right = el('span', 'right');
+  right.append(el('span', 'email', me().email));
+  const close = el('a', 'admin-close');
+  close.href = '/';
+  close.setAttribute('data-link', '');
+  close.setAttribute('aria-label', 'Close admin tools');
+  close.append(svg('close'));
+  right.append(close);
+  header.append(brand, right);
+
+  const layout = el('div', 'layout');
+  const rail = el('nav', 'sidebar');
+  const container = el('div', 'container');
+  const panels = {};
+  const tabs = [];
+  const show = key => {
+    for (const tab of tabs) {
+      tab.classList.toggle('active', tab.dataset.panel === key);
+    }
+    for (const [k, panel] of Object.entries(panels)) {
+      panel.hidden = k !== key;
+    }
+  };
+  for (const section of sections) {
+    const group = el('div', 'sidebar-section');
+    group.append(el('div', 'sidebar-section-title', section.title));
+    for (const item of section.tabs) {
+      const tab = el('div', 'tab', item.label);
+      tab.dataset.panel = item.key;
+      tab.addEventListener('click', () => show(item.key));
+      tabs.push(tab);
+      group.append(tab);
+      const panel = el('div', 'panel');
+      panel.append(item.card());
+      panels[item.key] = panel;
+      container.append(panel);
+    }
+    rail.append(group);
+  }
+  show(sections[0].tabs[0].key);
+  layout.append(rail, container);
+  page.append(header, layout);
   return page;
 }

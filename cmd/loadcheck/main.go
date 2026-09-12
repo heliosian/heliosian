@@ -180,7 +180,7 @@ func main() {
 	}
 	fmt.Println("apps:")
 	for _, c := range apps.Categories {
-		fmt.Printf("  %s (image %v): %d links\n", c.Title, c.ImageURL != "", len(c.Links))
+		fmt.Printf("  %s %s: %d links\n", c.Title, c.Emoji, len(c.Links))
 		for _, l := range c.Links {
 			visible := "visible"
 			if !l.Visible {

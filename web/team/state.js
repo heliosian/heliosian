@@ -60,13 +60,13 @@ export function me() {
   return state.model.user;
 }
 
-// isAdmin is the admin hat as worn: a system admin in Super Edit Mode.
+// isAdmin is the admin hat as worn: a system admin in Super Admin Mode.
 export function isAdmin() {
   return state.model.user.isAdmin && state.superEdit;
 }
 
 // isSystemAdmin is the admin list itself, whatever the hat - what decides
-// whether the Super Edit Mode switch is offered.
+// whether the Super Admin Mode switch is offered.
 export function isSystemAdmin() {
   return state.model.user.isAdmin;
 }

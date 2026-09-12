@@ -2,15 +2,17 @@
   --brand: #244d53;
   --brand-dark: #1c3d42;
   --brand-ink: #244d53;
-  --page: #fbfaf5;
+  --page: #f3f7f2;
+  --hero: #f3f7f2;
   --card: #ffffff;
-  --sidebar: #fdf4dd;
+  --sidebar: #2e5c63; /* the foot of the rail's gradient; --sidebar-top its head */
+  --sidebar-top: #122d31;
   --line: #e2e6eb;
   --ink: #0d0d0d;
   --muted: #707070;
   --input: #efefef;
   --alert: #c0392b;
-  --sidebar-w: 232px;
+  --sidebar-w: 200px;
 }
 
 * { box-sizing: border-box; }
@@ -34,37 +36,45 @@ body {
   min-height: 100vh;
 }
 
-/* Sidebar */
+/* Sidebar: the brand teal, the lockup in white, the sections, and the campsite
+   at the foot. It stays put while the page scrolls - pinned to the viewport's
+   height - so the campsite always sits at the bottom of what is on screen. */
 
 .sidebar {
-  background: var(--sidebar);
-  padding: 22px 16px 28px;
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  background: linear-gradient(180deg, var(--sidebar-top), var(--sidebar));
+  color: #fff;
+  padding: 26px 12px 0;
   display: flex;
   flex-direction: column;
   gap: 26px;
-  padding-top: calc(22px + env(safe-area-inset-top));
+  padding-top: calc(26px + env(safe-area-inset-top));
 }
 
 .brand {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  color: var(--brand);
+  color: #fff;
   text-decoration: none;
   padding: 0 14px;
 }
 
-/* The sidebar carries the vertical lockup - at this width its "Helios
-   Community Apps" line is still legible, unlike the horizontal lockup's. The
-   narrow header strip is a single short row, so it falls back to the bare
-   mark; both live in the DOM and the breakpoint picks one, with the link's
-   aria-label carrying the name either way. Both sit untiled because the cream
-   sidebar already gives all four petals contrast. */
+/* The wide rail carries the vertical lockup, white on the teal. The narrow
+   header strip is a single short row, so it falls back to the mark on its
+   white tile (bare, the mark would lose its dark-teal petal against the
+   teal); both live in the DOM and the breakpoint picks one, with the link's
+   aria-label carrying the name either way. */
 .brand-lockup {
   display: block;
-  width: 175px;
+  width: 150px;
   max-width: 100%;
   height: auto;
+  margin: 0 auto;
 }
 
 .brand-mark { display: none; }
@@ -72,138 +82,71 @@ body {
 .app-nav {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
 }
 
 .app-nav a {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   padding: 11px 14px;
   border-radius: 12px;
-  color: var(--brand);
+  color: #fff;
   text-decoration: none;
-  font-weight: 600;
+  font-weight: 500;
   font-size: 15px;
 }
 
-.app-nav a:hover { background: rgba(36, 77, 83, 0.07); }
+.app-nav a:hover { background: rgba(255, 255, 255, 0.08); }
 
-.app-nav a.is-active { background: #f6e9bd; }
+.app-nav a.is-active { background: rgba(255, 255, 255, 0.16); font-weight: 600; }
 
-.app-nav svg { width: 20px; height: 20px; flex-shrink: 0; }
-
-.app-nav-image {
-  width: 22px;
-  height: 22px;
-  flex-shrink: 0;
-  border-radius: 6px;
-  object-fit: cover;
-}
-
-.sidebar-repo {
-  margin: auto 0 0;
-  display: flex;
-  gap: 10px;
-  padding: 12px 14px;
-  border-radius: 12px;
-  color: var(--brand);
-  text-decoration: none;
-}
-
-.sidebar-repo:hover { background: rgba(36, 77, 83, 0.07); }
-
-/* The GitHub mark is a filled path, unlike the stroked icons the nav uses. */
-.repo-mark {
-  width: 17px;
-  height: 17px;
-  flex-shrink: 0;
-  margin-top: 2px;
-  fill: currentColor;
-}
-
-.repo-text {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  font-size: 11.5px;
-  line-height: 1.45;
-}
-
-.repo-text strong { font-size: 12.5px; }
-
-/* Top bar */
-
-.content { display: flex; flex-direction: column; min-width: 0; }
-
-/* The account shares the heading's row so the two align along the top, rather
-   than the avatar floating on a line of its own above it. */
-.account { flex-shrink: 0; }
-
-.topbar {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 0;
-  margin: 0 0 30px;
-}
-
-.search { flex: 0 1 420px; }
-
-.search-label {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-}
-
-.search input {
-  width: 100%;
-  padding: 12px 18px 12px 44px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--card) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23707070' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E") no-repeat 16px center;
-  background-size: 18px 18px;
-  font: inherit;
-  -webkit-appearance: none;
-}
-
-.search input:focus {
-  outline: 2px solid var(--brand);
-  outline-offset: -1px;
-}
-
-.topbar-user { position: relative; flex-shrink: 0; }
-
-.user { cursor: pointer; }
-
-.user-avatar {
+.app-nav-glyph {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  overflow: hidden;
-  background: #e8f2f1;
-  color: var(--brand);
-  font-weight: 700;
-  font-size: 16px;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
 }
 
-.user-avatar img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+.app-nav svg { width: 20px; height: 20px; flex-shrink: 0; opacity: 0.9; }
+
+.app-nav-glyph.is-emoji { font-size: 18px; line-height: 1; }
+
+/* The campsite spans the rail edge to edge, outside the rail's own padding. */
+.sidebar-foot {
+  margin: auto -12px 0;
+}
+
+/* On a short window the campsite gives way rather than pushing the nav. */
+.sidebar-art {
   display: block;
+  width: 100%;
+  height: auto;
+  max-height: 45vh;
+  object-fit: cover;
+  object-position: bottom;
+  pointer-events: none;
+}
+
+/* Top bar - the shared one (toolbar.css). The page scrolls as a whole here,
+   unlike the apps whose main scrolls inside a fixed shell, so the bar sticks
+   to keep search and the account in reach the way they are there. */
+
+.content { display: flex; flex-direction: column; min-width: 0; }
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
 }
 
 .user-menu {
   position: absolute;
   right: 0;
-  top: 50px;
-  min-width: 200px;
+  top: calc(100% + 8px);
+  min-width: 250px;
   background: #fff;
   color: var(--ink);
   border-radius: 10px;
@@ -236,39 +179,114 @@ body {
 
 .user-menu a:hover, .user-menu button:hover { background: var(--input); }
 
+.user-menu-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  cursor: pointer;
+}
+
+.user-menu-toggle:hover { background: var(--input); }
+
+.user-menu-toggle input {
+  appearance: none;
+  position: relative;
+  width: 34px;
+  height: 20px;
+  margin: 0;
+  border-radius: 999px;
+  background: #d5dadd;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.user-menu-toggle input::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: left 0.15s;
+}
+
+.user-menu-toggle input:checked { background: var(--brand); }
+
+.user-menu-toggle input:checked::before { left: 16px; }
+
 /* Main */
 
 main {
   flex: 1;
-  padding: 26px 32px 0;
+  display: flex;
+  flex-direction: column;
   min-width: 0;
 }
 
+/* The hero: the welcome over the transparent left of the landscape, which
+   sits along the bottom edge and ends in the pale wave the sections start
+   under. */
 .hero {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 24px;
-  margin-bottom: 26px;
+  position: relative;
+  background: var(--hero);
+  padding: 34px 32px 0;
+  min-height: 236px;
+  overflow: hidden;
+}
+
+.hero-text {
+  position: relative;
+  z-index: 1;
+  max-width: 540px;
+  padding-bottom: 64px;
+}
+
+.hero-kicker {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: #2d7a80;
+  margin-bottom: 12px;
 }
 
 .hero-title {
   margin: 0;
-  max-width: 22ch;
-  font-size: clamp(26px, 3.4vw, 38px);
+  font-size: clamp(28px, 3.2vw, 40px);
   font-weight: 700;
-  line-height: 1.15;
+  line-height: 1.12;
   letter-spacing: -0.01em;
   color: var(--brand);
 }
 
-.page-actions { display: flex; gap: 8px; margin-bottom: 26px; }
+.hero-lead {
+  margin: 14px 0 0;
+  font-size: 17px;
+  color: #3f5558;
+}
+
+.hero-art {
+  position: absolute;
+  right: 0;
+  bottom: -2px;
+  width: max(100%, 760px);
+  height: auto;
+  pointer-events: none;
+}
+
+.page-body { padding: 26px 32px 0; }
 
 .button {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 11px 20px;
+  padding: 10px 22px;
   border-radius: 999px;
   border: 0;
   background: var(--brand);
@@ -306,19 +324,36 @@ main {
 .category {
   border-top: 1px solid var(--line);
   padding-top: 22px;
-  margin-top: 30px;
+  margin-top: 26px;
 }
 
 .category:first-child { border-top: 0; padding-top: 0; margin-top: 0; }
+
+.category-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 16px;
+}
+
+.category-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  color: var(--brand);
+}
+
+.category-icon svg { width: 28px; height: 28px; stroke-width: 1.8; }
+
+.category-icon.is-emoji { font-size: 26px; line-height: 1; }
 
 .category-title {
   font-size: 24px;
   font-weight: 700;
   color: var(--brand);
-  margin: 0 0 16px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
+  margin: 0;
 }
 
 .category-edit {
@@ -332,63 +367,202 @@ main {
 
 .category-edit svg { width: 16px; height: 16px; }
 
-.category-empty {
-  padding: 18px;
-  color: var(--muted);
+.category-more {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: 14px;
+  font-weight: 600;
+  color: var(--brand);
+  text-decoration: none;
+}
+
+.category-more:hover { text-decoration: underline; }
+
+.category-more svg { width: 16px; height: 16px; }
+
+/* Upcoming Events - the portal's next few, as cards with a date stamp. It
+   sits above the categories, so it draws the rule the next section would. */
+.upcoming {
+  padding-bottom: 26px;
+  margin-bottom: 26px;
+  border-bottom: 1px solid var(--line);
+}
+
+.event-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 20px;
+}
+
+.event-card {
+  display: flex;
+  flex-direction: column;
   background: var(--card);
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(36, 77, 83, 0.04);
 }
+
+.event-card:hover { border-color: var(--brand); }
+
+.event-open {
+  display: block;
+  flex: 1;
+  color: inherit;
+  text-decoration: none;
+}
+
+.event-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 14px 14px;
+}
+
+/* Two to a row where they fit, one under the other where they do not - never
+   past the card's edge. */
+.event-actions .button {
+  flex: 1 1 auto;
+  min-width: 0;
+  justify-content: center;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.event-actions svg { width: 15px; height: 15px; flex-shrink: 0; }
+
+.event-art {
+  position: relative;
+  height: 120px;
+  background: #e3f0ef;
+  color: var(--brand);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.event-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.event-art > svg { width: 40px; height: 40px; opacity: 0.45; }
+
+.event-stamp {
+  position: absolute;
+  right: 12px;
+  bottom: -14px;
+  width: 50px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  text-align: center;
+  line-height: 1;
+}
+
+.event-stamp-month {
+  display: block;
+  padding: 4px 0 3px;
+  background: #c04a33;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.event-stamp-day {
+  display: block;
+  padding: 5px 0 6px;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--brand);
+}
+
+.event-body { padding: 20px 14px 12px; }
+
+.event-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--brand);
+  line-height: 1.25;
+  padding-right: 56px;
+}
+
+.event-when {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 14px;
+  line-height: 1.3;
+  color: #6b7576;
+}
+
+.event-when > svg { width: 20px; height: 20px; flex-shrink: 0; color: var(--brand); }
+
+.event-when-lines { display: flex; flex-direction: column; }
 
 /* Feature cards - the "cards" style */
 
 .card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
-  gap: 22px;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
 }
 
 /* Tints cycle through the brand palette. The button accents are darkened
    from the palette hexes so white label text clears 4.5:1 - the raw red and
    light teal sit near 3:1 and would fail on a button this size. */
-.feature:nth-child(4n+1) { --tint: #e8f2f1; --accent: #244d53; }
-.feature:nth-child(4n+2) { --tint: #fdece8; --accent: #c04a33; }
-.feature:nth-child(4n+3) { --tint: #f2f5e0; --accent: #6c7d03; }
-.feature:nth-child(4n+4) { --tint: #e4f5f4; --accent: #17807c; }
+.feature:nth-child(4n+1) { --tint: #e3f0ef; --accent: #244d53; }
+.feature:nth-child(4n+2) { --tint: #fbe9e5; --accent: #c04a33; }
+.feature:nth-child(4n+3) { --tint: #eef3dc; --accent: #6c7d03; }
+.feature:nth-child(4n+4) { --tint: #e0f3f2; --accent: #17807c; }
 
 .feature {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 22px;
-  padding: 26px;
+  gap: 18px;
+  padding: 24px 22px;
+  min-height: 176px;
   border-radius: 18px;
   background: var(--tint);
+  overflow: hidden;
 }
 
-.feature-image, .feature-initial {
+.feature-disc {
+  position: relative;
+  z-index: 1;
   flex-shrink: 0;
-  width: 104px;
-  height: 104px;
-  border-radius: 20px;
-  object-fit: cover;
-}
-
-.feature-initial {
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.6);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 40px;
-  font-weight: 700;
-  color: #fff;
-  background: var(--accent);
 }
 
-.feature-body { flex: 1; min-width: 0; }
+.feature-image {
+  width: 50px;
+  height: 50px;
+  object-fit: contain;
+}
+
+.feature-initial {
+  font-size: 34px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.feature-initial.is-emoji { font-size: 40px; line-height: 1; }
+
+.feature-body { position: relative; z-index: 1; flex: 1; min-width: 0; }
 
 .feature-title {
-  font-size: 21px;
+  font-size: 20px;
   font-weight: 700;
   color: var(--brand);
   display: flex;
@@ -398,9 +572,9 @@ main {
 }
 
 .feature-description {
-  margin: 6px 0 16px;
+  margin: 4px 0 16px;
   color: #4a4a4a;
-  font-size: 15px;
+  font-size: 14px;
   line-height: 1.4;
 }
 
@@ -408,16 +582,50 @@ main {
 
 .feature .button:hover { filter: brightness(0.9); }
 
-.feature .more-wrap { position: absolute; top: 14px; right: 14px; }
+/* The picture again, large and faint, bleeding off the right edge. */
+.feature-watermark {
+  position: absolute;
+  right: -18px;
+  top: 50%;
+  width: 150px;
+  height: 150px;
+  transform: translateY(-50%);
+  object-fit: contain;
+  filter: grayscale(1);
+  opacity: 0.1;
+  pointer-events: none;
+}
+
+.feature-corner {
+  position: absolute;
+  right: 20px;
+  bottom: 20px;
+  z-index: 1;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.85);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.feature-corner:hover { background: #fff; }
+
+.feature-corner svg { width: 18px; height: 18px; }
+
+.feature .more-wrap { position: absolute; top: 12px; right: 12px; z-index: 2; }
 
 .feature.is-hidden > *:not(.more-wrap) { opacity: 0.55; }
 
-/* Compact tiles - the "tiles" style */
+/* Tiles - the "tiles" style: a picture beside the initial, the title and a
+   line about it. */
 
 .tile-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(122px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 20px;
 }
 
 .tile {
@@ -425,52 +633,162 @@ main {
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: 16px;
+  box-shadow: 0 1px 2px rgba(36, 77, 83, 0.04);
 }
 
 .tile-link {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 12px;
+  gap: 16px;
   height: 100%;
-  padding: 20px 12px 16px;
+  padding: 12px;
   color: inherit;
   text-decoration: none;
-  text-align: center;
 }
 
 .tile:hover { border-color: var(--brand); }
 
-.tile-image, .tile-initial {
-  width: 44px;
-  height: 44px;
+.tile-image {
+  flex-shrink: 0;
+  width: 96px;
+  height: 96px;
   border-radius: 12px;
   object-fit: cover;
-  flex-shrink: 0;
 }
+
+.tile-image-blank {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #e3f0ef;
+  color: var(--brand);
+}
+
+.tile-glyph { display: inline-flex; }
+
+.tile-glyph svg { width: 36px; height: 36px; opacity: 0.5; }
+
+.tile-glyph.is-emoji { font-size: 40px; line-height: 1; }
+
+.tile-body { flex: 1; min-width: 0; padding-right: 28px; }
 
 .tile-initial {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 20px;
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  margin-bottom: 8px;
+  font-size: 17px;
   font-weight: 700;
   color: #fff;
   background: var(--brand);
 }
 
 .tile-title {
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 16px;
+  font-weight: 700;
   line-height: 1.25;
   color: var(--brand);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.tile-description {
+  margin-top: 3px;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tile.is-hidden { opacity: 0.55; }
 
-.tile .more-wrap { position: absolute; top: 4px; right: 4px; z-index: 2; }
+.tile .more-wrap { position: absolute; top: 8px; right: 8px; z-index: 2; }
 
 .tile .more-button { width: 28px; height: 28px; }
+
+.tile .more-button svg { width: 15px; height: 15px; }
+
+/* The admin's dashed add card, at the end of every category. */
+.add-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 120px;
+  padding: 18px;
+  border: 1.5px dashed #c9d3d4;
+  border-radius: 16px;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+}
+
+.add-card.feature { min-height: 176px; border-radius: 18px; }
+
+.add-card:hover { border-color: var(--brand); color: var(--brand); background: rgba(36, 77, 83, 0.03); }
+
+.add-card-disc {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #e3f0ef;
+  color: var(--brand);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.add-card-disc svg { width: 20px; height: 20px; }
+
+.add-card-title { font-size: 15px; font-weight: 600; color: var(--ink); }
+
+.add-card-sub { font-size: 12px; }
+
+.hidden-badge {
+  background: var(--muted);
+  color: #fff;
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.empty-search, .footnote {
+  color: var(--muted);
+  font-size: 14px;
+  text-align: center;
+  margin-top: 32px;
+}
+
+/* The foot: the leaves along the bottom edge. main grows to fill, so on a
+   short page the art still lands at the foot of the viewport. Decorative
+   only, so it carries an empty alt. */
+.page-foot {
+  position: relative;
+  margin-top: auto;
+  padding-top: 48px;
+}
+
+.page-art {
+  display: block;
+  width: 100%;
+  height: auto;
+  pointer-events: none;
+}
+
+.more-button { width: 28px; height: 28px; }
 
 .tile .more-button svg { width: 15px; height: 15px; }
 
@@ -633,20 +951,263 @@ main {
 
 .field-toggle input { width: 20px; height: 20px; accent-color: var(--brand); }
 
-.image-row {
+.field-lead {
+  display: block;
+  margin: -2px 0 8px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.button-small { padding: 8px 16px; font-size: 14px; }
+
+/* The picture zone, as HCA-Team's editors have it: a drop or a click, the
+   two buttons, and Crop and Remove once there is a picture. */
+.image-drop {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 28px 20px;
+  border: 1.5px dashed rgba(36, 77, 83, 0.3);
+  border-radius: 12px;
+  background: #f4f8f8;
+  cursor: pointer;
+  text-align: center;
+}
+
+.image-drop.is-dragover { border-color: var(--brand); background: #eaf3f3; }
+
+.image-drop img { width: 220px; height: 150px; border-radius: 10px; object-fit: cover; }
+
+.image-placeholder { display: flex; flex-direction: column; align-items: center; gap: 2px; color: var(--ink); }
+
+.image-placeholder svg {
+  width: 40px;
+  height: 40px;
+  margin-bottom: 8px;
+  stroke: var(--muted);
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.image-placeholder strong { font-size: 15px; }
+
+.image-placeholder small { font-size: 13px; color: var(--muted); }
+
+.image-drop-buttons { display: flex; gap: 8px; margin-top: 6px; }
+
+.image-drop-note { font-size: 12.5px; color: var(--muted); }
+
+/* The crop tool (web/common/crop.js). */
+.crop-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  background: rgba(0, 0, 0, 0.85);
+}
+
+.crop-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  max-width: 100%;
+}
+
+.crop-stage {
+  position: relative;
+  display: inline-block;
+  line-height: 0;
+}
+
+.crop-image {
+  display: block;
+  max-width: min(90vw, 640px);
+  max-height: 70vh;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.crop-mask {
+  position: absolute;
+  background: rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+}
+
+.crop-frame {
+  position: absolute;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+  cursor: move;
+  touch-action: none;
+}
+
+.crop-handle {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  margin: -8px;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.4);
+  border-radius: 50%;
+  touch-action: none;
+}
+
+.crop-handle-nw { top: 0; left: 0; cursor: nwse-resize; }
+
+.crop-handle-ne { top: 0; right: 0; cursor: nesw-resize; }
+
+.crop-handle-sw { bottom: 0; left: 0; cursor: nesw-resize; }
+
+.crop-handle-se { bottom: 0; right: 0; cursor: nwse-resize; }
+
+.crop-actions { display: flex; gap: 10px; }
+
+/* The category's emoji: the swatch, the box, and the grid of ones on offer. */
+.emoji-row {
   display: flex;
   align-items: center;
   gap: 12px;
 }
 
-.image-row img {
+.emoji-current {
+  flex-shrink: 0;
   width: 56px;
   height: 56px;
-  border-radius: 10px;
-  object-fit: cover;
+  border-radius: 12px;
+  background: #e3f0ef;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  line-height: 1;
 }
 
-.image-placeholder { color: var(--muted); font-size: 13px; flex: 1; }
+.emoji-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font: inherit;
+}
+
+.emoji-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 10px;
+}
+
+.emoji-grid button {
+  width: 38px;
+  height: 38px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: none;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.emoji-grid button:hover { background: var(--input); }
+
+.emoji-grid button.is-picked { border-color: var(--brand); background: #e3f0ef; }
+
+/* The picture search sheet, as HCA-Team's: the libraries on a segmented
+   switch, the box and its Search, the grid, and the licence note. */
+.modal-wide { max-width: 900px; }
+
+.image-search-sources {
+  display: inline-flex;
+  flex-wrap: wrap;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--input);
+  margin-bottom: 12px;
+}
+
+.image-search-sources:empty { display: none; }
+
+.segment {
+  border: 0;
+  border-radius: 999px;
+  padding: 7px 16px;
+  background: none;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.segment.is-on { background: #fff; color: var(--brand); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
+
+.image-search-bar { display: flex; gap: 8px; }
+
+.image-search-bar .button svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+.image-search-bar input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font: inherit;
+}
+
+.image-search-status { min-height: 20px; margin: 10px 0 6px; font-size: 13px; color: var(--muted); }
+
+.image-search-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.image-search-hit {
+  position: relative;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--input);
+  cursor: pointer;
+  aspect-ratio: 4 / 3;
+}
+
+.image-search-hit img { width: 100%; height: 100%; object-fit: cover; display: block; opacity: 0; transition: opacity 0.2s; }
+
+.image-search-hit img.is-loaded { opacity: 1; }
+
+.image-search-hit:hover { border-color: var(--brand); }
+
+.image-search-hit.is-picked { border-color: var(--brand); opacity: 0.6; }
+
+.image-search-source {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 3px 6px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 11px;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 .modal-hint {
   margin: 0 0 14px;
@@ -676,13 +1237,16 @@ main {
   width: 40px;
   height: 40px;
   border-radius: 10px;
-  object-fit: cover;
-}
-
-.category-row-image.is-blank {
   display: flex;
   align-items: center;
   justify-content: center;
+  font-size: 24px;
+  line-height: 1;
+  background: #e3f0ef;
+}
+
+.category-row-image.is-blank {
+  font-size: 16px;
   font-weight: 700;
   color: #fff;
   background: var(--brand);
@@ -761,10 +1325,14 @@ main {
      the header at its content height and gives the rest to the page. */
   .shell { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr; }
 
+  /* A fixed height, so the toolbar below knows where to stick. */
   .sidebar {
     flex-direction: row;
     align-items: center;
     gap: 16px;
+    align-self: auto;
+    overflow: visible;
+    height: calc(60px + env(safe-area-inset-top));
     padding: 10px 16px;
     padding-top: calc(10px + env(safe-area-inset-top));
     position: sticky;
@@ -774,10 +1342,10 @@ main {
 
   .brand { flex-direction: row; align-items: center; gap: 10px; padding: 0; }
   .brand-lockup { display: none; }
-  .brand-mark { display: block; width: 40px; height: 40px; }
+  .brand-mark { display: block; width: 40px; height: 40px; border-radius: 10px; }
 
-  /* The nav becomes a scrolling strip rather than a column, and the motto
-     drops - at this width it costs a whole row for decoration. */
+  /* The nav becomes a scrolling strip rather than a column, and the campsite
+     drops - a single short row has no room for it. */
   .app-nav {
     flex-direction: row;
     gap: 4px;
@@ -788,30 +1356,34 @@ main {
 
   .app-nav::-webkit-scrollbar { display: none; }
   .app-nav a { padding: 8px 12px; font-size: 14px; white-space: nowrap; }
-  .app-nav svg, .app-nav-image { display: none; }
-  .sidebar-repo { margin: 0; padding: 8px; }
-  .repo-text { display: none; }
+  .app-nav svg { display: none; }
+  .sidebar-foot { display: none; }
 
-  .topbar { padding: 0; margin-bottom: 24px; }
-  main { padding: 20px 18px 0; }
+  /* Under the header strip, which stays put too. */
+  .topbar { top: calc(60px + env(safe-area-inset-top)); }
+  .hero { padding: 26px 18px 0; min-height: 0; }
+  .hero-text { padding-bottom: 96px; }
+  .hero-art { width: max(100%, 620px); }
+  .page-body { padding: 20px 18px 0; }
 }
 
 @media (max-width: 640px) {
-  .topbar { padding: 0; gap: 10px; margin-bottom: 20px; }
-  .search { flex: 1 1 auto; min-width: 0; }
-  .search input { padding: 10px 14px 10px 40px; background-position: 13px center; }
-  .user-avatar { width: 38px; height: 38px; font-size: 15px; }
+  .card-grid, .tile-grid { grid-template-columns: minmax(0, 1fr); gap: 14px; }
 
-  .card-grid { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .feature { padding: 20px 18px; min-height: 0; }
+  .add-card.feature { min-height: 120px; }
+  .feature-disc { width: 68px; height: 68px; }
+  .feature-image { width: 40px; height: 40px; }
+  .feature-title { font-size: 18px; }
+  .feature-corner { display: none; }
 
-  .feature { flex-direction: column; align-items: flex-start; gap: 16px; padding: 20px; }
-  .feature-image, .feature-initial { width: 76px; height: 76px; border-radius: 16px; }
-  .feature-title { font-size: 19px; }
-
-  .tile-grid { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 10px; }
-  .tile-link { padding: 16px 8px 12px; gap: 9px; }
-  .tile-image, .tile-initial { width: 38px; height: 38px; }
-  .tile-title { font-size: 13px; }
+  .tile-image { width: 76px; height: 76px; }
 
   .category-title { font-size: 20px; }
+  .category-icon svg { width: 24px; height: 24px; }
+  /* The "see all" link drops under the title rather than squeezing it. */
+  .category-head { flex-wrap: wrap; }
+  .category-more { flex-basis: 100%; margin-left: 42px; }
+
+  .hero-lead { font-size: 15px; }
 }

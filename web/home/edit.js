@@ -1,17 +1,22 @@
-import {state, categoryTitles} from './state.js';
+import {state, categoryTitles, linkCategoryTitles} from './state.js';
 import {el, svg} from './dom.js';
 import {load} from './app.js';
+import {openCropTool} from '/crop.js';
 
 const linkModal = document.querySelector('#link-modal');
 const linkForm = document.querySelector('#link-form');
 const categoryModal = document.querySelector('#category-modal');
 const categoryForm = document.querySelector('#category-form');
 const categoriesModal = document.querySelector('#categories-modal');
+const imageSearchModal = document.querySelector('#image-search-modal');
 
 let editingLink = null;
 let editingCategory = null;
 let pendingLinkImage = '';
-let pendingCategoryImage = '';
+
+// The emoji on offer for a category, school-flavoured first; any other emoji
+// can be pasted into the box beside them.
+const emojiChoices = ['🏫', '📅', '💬', '📚', '🎒', '🧑‍🏫', '🍎', '🚌', '🎉', '🎨', '🎵', '⚽', '🏀', '🏕️', '🌞', '🌱', '🌻', '❤️', '⭐', '🏆', '📣', '📰', '🗳️', '🤝', '🧭', '🍕', '🎂', '🎃', '🎄', '📷', '🎬', '🔗', '📌', '🛠️', '🧩', '🐦'];
 
 function setStatus(selector, message, error) {
   const status = document.querySelector(selector);
@@ -34,24 +39,30 @@ async function uploadImage(file) {
 function showImage(prefix, url) {
   const preview = document.querySelector(`#${prefix}-image-preview`);
   const placeholder = document.querySelector(`#${prefix}-image-placeholder`);
-  const remove = document.querySelector(`#${prefix}-image-remove`);
   preview.hidden = !url;
   placeholder.hidden = Boolean(url);
-  remove.hidden = !url;
+  for (const id of ['remove', 'crop']) {
+    document.querySelector(`#${prefix}-image-${id}`).hidden = !url;
+  }
   if (url) {
     preview.src = url;
   }
 }
 
+// The link's picture, the way HCA-Team's editors pick one: a zone that takes a
+// drop or a click, a Choose and a Find an image button, and once there is a
+// picture, Crop (the freeform tool from web/common/crop.js) and Remove.
 function wireImagePicker(prefix, onChange) {
+  const zone = document.querySelector(`#${prefix}-image-drop`);
   const file = document.querySelector(`#${prefix}-image-file`);
-  file.addEventListener('change', async () => {
-    if (!file.files.length) {
+  const preview = document.querySelector(`#${prefix}-image-preview`);
+  const upload = async picked => {
+    if (!picked) {
       return;
     }
     setStatus(`#${prefix}-status`, 'Uploading image…');
     try {
-      const name = await uploadImage(file.files[0]);
+      const name = await uploadImage(picked);
       onChange(name);
       showImage(prefix, '/' + name);
       setStatus(`#${prefix}-status`, '');
@@ -59,7 +70,28 @@ function wireImagePicker(prefix, onChange) {
       setStatus(`#${prefix}-status`, err.message, true);
     }
     file.value = '';
+  };
+  file.addEventListener('change', () => upload(file.files[0]));
+  // The zone itself takes a click (anywhere but the buttons) and a drop.
+  zone.addEventListener('click', e => {
+    if (!e.target.closest('label, button')) {
+      file.click();
+    }
   });
+  zone.addEventListener('dragover', e => {
+    e.preventDefault();
+    zone.classList.add('is-dragover');
+  });
+  zone.addEventListener('dragleave', () => zone.classList.remove('is-dragover'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.classList.remove('is-dragover');
+    upload(e.dataTransfer.files[0]);
+  });
+  document.querySelector(`#${prefix}-image-crop`).addEventListener('click', () => openCropTool(preview.src, false, async blob => {
+    await upload(new File([blob], 'crop.jpg', {type: 'image/jpeg'}));
+    return true;
+  }));
   document.querySelector(`#${prefix}-image-remove`).addEventListener('click', () => {
     onChange('');
     showImage(prefix, '');
@@ -76,7 +108,7 @@ async function send(method, url, body) {
 function fillCategories(selected) {
   const select = document.querySelector('#link-category');
   select.replaceChildren();
-  for (const title of categoryTitles()) {
+  for (const title of linkCategoryTitles()) {
     const option = el('option', '', title);
     option.value = title;
     option.selected = title === selected;
@@ -84,7 +116,8 @@ function fillCategories(selected) {
   }
 }
 
-export function openLinkEditor(link) {
+// category is the one to start in for a new link (an add card names its own).
+export function openLinkEditor(link, category) {
   editingLink = link;
   pendingLinkImage = link ? link.image || '' : '';
   document.querySelector('#link-modal-title').textContent = link ? 'Edit Link' : 'Add Link';
@@ -93,7 +126,7 @@ export function openLinkEditor(link) {
   document.querySelector('#link-url').value = link ? link.url : '';
   document.querySelector('#link-visible').checked = link ? link.visible : true;
   document.querySelector('#link-delete').hidden = !link;
-  fillCategories(link ? link.category : categoryTitles()[0]);
+  fillCategories(link ? link.category : category || linkCategoryTitles()[0]);
   showImage('link', link && link.imageUrl ? link.imageUrl : '');
   setStatus('#link-status', '');
   linkModal.hidden = false;
@@ -102,15 +135,45 @@ export function openLinkEditor(link) {
 
 export function openCategoryEditor(category) {
   editingCategory = category;
-  pendingCategoryImage = category ? category.image || '' : '';
   document.querySelector('#category-modal-title').textContent = category ? 'Edit Category' : 'Add Category';
   document.querySelector('#category-title').value = category ? category.title : '';
-  document.querySelector('#category-style').value = category ? category.style : 'tiles';
-  document.querySelector('#category-delete').hidden = !category;
-  showImage('category', category && category.imageUrl ? category.imageUrl : '');
+  // The events section keeps its style and cannot be deleted; the rest of
+  // the editor - name and emoji - is its to use.
+  const events = Boolean(category && category.style === 'events');
+  document.querySelector('#category-style').value = category && !events ? category.style : 'tiles';
+  document.querySelector('#category-style-field').hidden = events;
+  document.querySelector('#category-events-note').hidden = !events;
+  document.querySelector('#category-delete').hidden = !category || events;
+  setEmoji(category ? category.emoji || '' : '');
   setStatus('#category-status', '');
   categoryModal.hidden = false;
   document.querySelector('#category-title').focus();
+}
+
+// The emoji field: the box holds the choice, the big swatch shows it, and the
+// grid below marks it; setEmoji keeps the three agreeing.
+function setEmoji(value) {
+  const input = document.querySelector('#category-emoji');
+  input.value = value;
+  document.querySelector('#category-emoji-current').textContent = value;
+  document.querySelector('#category-emoji-clear').hidden = !value;
+  for (const button of document.querySelectorAll('#category-emoji-grid button')) {
+    button.classList.toggle('is-picked', button.textContent === value);
+  }
+}
+
+function wireEmojiPicker() {
+  const grid = document.querySelector('#category-emoji-grid');
+  for (const emoji of emojiChoices) {
+    const button = el('button', '', emoji);
+    button.type = 'button';
+    button.setAttribute('aria-label', emoji);
+    button.addEventListener('click', () => setEmoji(emoji));
+    grid.append(button);
+  }
+  const input = document.querySelector('#category-emoji');
+  input.addEventListener('input', () => setEmoji(input.value.trim()));
+  document.querySelector('#category-emoji-clear').addEventListener('click', () => setEmoji(''));
 }
 
 function closeModals() {
@@ -160,18 +223,16 @@ async function removeCategory(category) {
 
 function categoryRow(category, at, total) {
   const row = el('div', 'category-row');
-  if (category.imageUrl) {
-    const img = el('img', 'category-row-image');
-    img.src = category.imageUrl;
-    img.alt = '';
-    row.append(img);
-  } else {
-    row.append(el('div', 'category-row-image is-blank', category.title.slice(0, 1).toUpperCase()));
-  }
+  row.append(el('div', 'category-row-image' + (category.emoji ? '' : ' is-blank'), category.emoji || category.title.slice(0, 1).toUpperCase()));
   const body = el('div', 'category-row-body');
   body.append(el('div', 'category-row-title', category.title));
-  const style = category.style === 'cards' ? 'Feature cards' : 'Compact tiles';
-  body.append(el('div', 'category-row-meta', `${style} \u00b7 ${category.links.length} link${category.links.length === 1 ? '' : 's'}`));
+  if (category.style === 'events') {
+    const n = (state.model.upcoming || []).length;
+    body.append(el('div', 'category-row-meta', `Upcoming events from HCA-Team \u00b7 ${n} ahead`));
+  } else {
+    const style = category.style === 'cards' ? 'Feature cards' : 'Compact tiles';
+    body.append(el('div', 'category-row-meta', `${style} \u00b7 ${category.links.length} link${category.links.length === 1 ? '' : 's'}`));
+  }
   row.append(body);
 
   const actions = el('div', 'category-row-actions');
@@ -196,6 +257,8 @@ function categoryRow(category, at, total) {
   remove.type = 'button';
   remove.setAttribute('aria-label', `Delete ${category.title}`);
   remove.textContent = '\u00d7';
+  remove.disabled = category.style === 'events';
+  remove.title = category.style === 'events' ? 'The events section can be renamed or moved, not deleted' : '';
   remove.addEventListener('click', () => removeCategory(category));
   actions.append(up, down, edit, remove);
   row.append(actions);
@@ -260,8 +323,8 @@ async function saveCategory(e) {
     await send('POST', '/api/apps/category', {
       original: editingCategory ? editingCategory.title : '',
       title: document.querySelector('#category-title').value,
-      style: document.querySelector('#category-style').value,
-      image: pendingCategoryImage,
+      style: editingCategory && editingCategory.style === 'events' ? 'events' : document.querySelector('#category-style').value,
+      emoji: document.querySelector('#category-emoji').value.trim(),
     });
     closeModals();
     await load();
@@ -285,7 +348,6 @@ async function deleteCategory() {
 }
 
 export function initEditing() {
-  document.querySelector('#add-link').addEventListener('click', () => openLinkEditor(null));
   document.querySelector('#add-category').addEventListener('click', () => openCategoryEditor(null));
   document.querySelector('#edit-categories').addEventListener('click', openCategoryManager);
   linkForm.addEventListener('submit', saveLink);
@@ -295,15 +357,21 @@ export function initEditing() {
   wireImagePicker('link', name => {
     pendingLinkImage = name;
   });
-  wireImagePicker('category', name => {
-    pendingCategoryImage = name;
+  document.querySelector('#link-image-find').addEventListener('click', e => {
+    e.stopPropagation();
+    openImageSearch(document.querySelector('#link-title').value.trim(), name => {
+      pendingLinkImage = name;
+      showImage('link', '/' + name);
+    });
   });
+  wireEmojiPicker();
+  wireImageSearch();
   for (const button of document.querySelectorAll('[data-close]')) {
     button.addEventListener('click', () => {
       button.closest('.modal-overlay').hidden = true;
     });
   }
-  for (const overlay of [linkModal, categoryModal, categoriesModal]) {
+  for (const overlay of [linkModal, categoryModal, categoriesModal, imageSearchModal]) {
     overlay.addEventListener('click', e => {
       if (e.target === overlay) {
         overlay.hidden = true;
@@ -320,5 +388,135 @@ export function initEditing() {
       return;
     }
     categoriesModal.hidden = true;
+  });
+}
+
+// The picture search, as HCA-Team's editors have it: a box, a grid of results
+// from whichever library is set up (Wikimedia Commons always; Unsplash,
+// Pexels, Pixabay and Google Images behind their keys), and a click on one
+// imports it through the server - which fetches and stores the picture like an
+// upload - and hands the stored name to onPicked. SafeSearch is on server-side.
+const sourceNotes = {
+  'Unsplash': 'Free to use under the Unsplash License; the photographer is credited on each tile.',
+  'Pexels': 'Free to use under the Pexels License; the photographer is credited on each tile.',
+  'Pixabay': 'Photos, illustrations and vectors, free to use under the Pixabay Content License.',
+  'Wikimedia Commons': 'Everything here is free to use; the licence is on each tile, and CC BY ones ask to be credited.',
+  'Google Images': 'Pick a picture you have the right to use - a school photo, a poster, a flag, a public-domain image.',
+};
+
+let imageSource = '';
+let onImagePicked = null;
+let imageSearchBusy = false;
+
+function imageSources() {
+  return (state.model && state.model.imageSources) || ['Wikimedia Commons'];
+}
+
+function paintImageSources() {
+  const wrap = document.querySelector('#image-search-sources');
+  wrap.replaceChildren();
+  const sources = imageSources();
+  if (!sources.includes(imageSource)) {
+    imageSource = sources[0];
+  }
+  // With more than one place to look, a segmented switch picks between them.
+  if (sources.length > 1) {
+    for (const source of sources) {
+      const button = el('button', 'segment' + (source === imageSource ? ' is-on' : ''), source);
+      button.type = 'button';
+      button.addEventListener('click', () => {
+        imageSource = source;
+        paintImageSources();
+        runImageSearch();
+      });
+      wrap.append(button);
+    }
+  }
+  document.querySelector('#image-search-input').placeholder = `Search ${imageSource}…`;
+  document.querySelector('#image-search-note').textContent = sourceNotes[imageSource] || '';
+}
+
+function openImageSearch(initial, onPicked) {
+  onImagePicked = onPicked;
+  const input = document.querySelector('#image-search-input');
+  input.value = initial || '';
+  document.querySelector('#image-search-grid').replaceChildren();
+  document.querySelector('#image-search-status').textContent = '';
+  paintImageSources();
+  imageSearchModal.hidden = false;
+  input.focus();
+  if (input.value) {
+    runImageSearch();
+  }
+}
+
+async function runImageSearch() {
+  const q = document.querySelector('#image-search-input').value.trim();
+  const status = document.querySelector('#image-search-status');
+  const grid = document.querySelector('#image-search-grid');
+  if (!q || imageSearchBusy) {
+    return;
+  }
+  imageSearchBusy = true;
+  status.textContent = 'Searching…';
+  grid.replaceChildren();
+  try {
+    const res = await fetch(`/api/apps/images/search?q=${encodeURIComponent(q)}&source=${encodeURIComponent(imageSource)}`);
+    if (!res.ok) {
+      throw new Error(await res.text());
+    }
+    const hits = await res.json();
+    status.textContent = hits.length ? '' : 'Nothing found.';
+    for (const hit of hits) {
+      const tile = el('button', 'image-search-hit');
+      tile.type = 'button';
+      const img = el('img');
+      img.src = hit.thumb;
+      img.alt = hit.title;
+      img.loading = 'lazy';
+      img.addEventListener('load', () => img.classList.add('is-loaded'));
+      tile.append(img, el('span', 'image-search-source', hit.credit || (hit.license ? `${hit.license} · ${hit.source}` : hit.source)));
+      tile.title = `${hit.title} - ${hit.width}×${hit.height}${hit.license ? ` - ${hit.license}` : ''}`;
+      tile.addEventListener('click', () => importImage(hit, tile));
+      grid.append(tile);
+    }
+  } catch (err) {
+    status.textContent = err.message;
+  }
+  imageSearchBusy = false;
+}
+
+async function importImage(hit, tile) {
+  const status = document.querySelector('#image-search-status');
+  if (imageSearchBusy) {
+    return;
+  }
+  imageSearchBusy = true;
+  status.textContent = 'Importing…';
+  tile.classList.add('is-picked');
+  try {
+    const res = await fetch('/api/apps/images/import', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({url: hit.url, download: hit.download || ''}),
+    });
+    if (!res.ok) {
+      throw new Error(await res.text());
+    }
+    const {name} = await res.json();
+    imageSearchModal.hidden = true;
+    onImagePicked(name);
+  } catch (err) {
+    status.textContent = err.message;
+    tile.classList.remove('is-picked');
+  }
+  imageSearchBusy = false;
+}
+
+function wireImageSearch() {
+  document.querySelector('#image-search-go').addEventListener('click', runImageSearch);
+  document.querySelector('#image-search-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      runImageSearch();
+    }
   });
 }

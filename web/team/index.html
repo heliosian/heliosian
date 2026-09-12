@@ -45,9 +45,10 @@
 <link rel="apple-touch-startup-image" media="(device-width: 667px) and (device-height: 375px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" href="/brand/splash/splash-667x375-2x-landscape.png">
 <link rel="apple-touch-startup-image" media="(device-width: 568px) and (device-height: 320px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" href="/brand/splash/splash-568x320-2x-landscape.png">
 <link rel="stylesheet" href="/fonts/fonts.css">
+<link rel="stylesheet" href="/toolbar.css">
+<link rel="stylesheet" href="/admin.css">
 <link rel="stylesheet" href="/style.css">
-<link rel="stylesheet" href="/github-badge.css">
-<link rel="modulepreload" href="/github-badge.js">
+<link rel="modulepreload" href="/toolbar.js">
 <link rel="modulepreload" href="/app.js">
 <link rel="modulepreload" href="/state.js">
 <link rel="modulepreload" href="/dom.js">
@@ -64,14 +65,20 @@
 <header class="mobile-top">
 <button type="button" class="mobile-menu-btn" id="menu-button" aria-label="Menu"></button>
 <div class="mobile-title" id="mobile-title"></div>
-<button type="button" class="mobile-search-btn" id="mobile-search-btn" aria-label="Search" hidden></button>
+<button type="button" class="mobile-search-btn" id="mobile-search-btn" aria-label="Search"></button>
+<a class="topbar-alert topbar-alert-count stale-alert" hidden><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span class="stale-count"></span></a>
+<a class="topbar-alert privacy-alert" hidden><svg viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg></a>
 <button type="button" class="user" id="mobile-user" aria-label="Account"><span class="user-avatar"></span></button>
 <div class="user-menu" id="mobile-user-menu" hidden>
 <div class="user-menu-email"></div>
-<label class="user-menu-toggle user-menu-super" hidden><span>Super Edit Mode</span><input type="checkbox" class="super-edit-checkbox"></label>
+<label class="user-menu-toggle user-menu-super" hidden><span>Super Admin Mode</span><input type="checkbox" class="super-edit-checkbox"></label>
 <label class="user-menu-toggle user-menu-admin" hidden><span>Show Hidden Things</span><input type="checkbox" class="show-hidden-checkbox"></label>
 <a href="/admin" class="user-menu-system" data-link hidden>Admin Tools</a>
 <form method="post" action="/auth/logout"><button>Sign Out</button></form>
+</div>
+<div class="app-switch">
+<button type="button" class="app-switch-button" aria-label="Apps" aria-haspopup="menu"><img src="/brand/heliosian-tile.png" alt=""><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
+<div class="app-switch-menu" hidden></div>
 </div>
 </header>
 <div class="app-shell">
@@ -81,24 +88,30 @@
 </aside>
 <div class="content-col">
 <header class="topbar">
-<div class="topbar-search" id="topbar-search" hidden>
-<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
-<input type="search" id="search-input" placeholder="Search" autocomplete="off">
+<div class="topbar-search" id="topbar-search">
+<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+<input type="search" id="search-input" placeholder="Search opportunities…" autocomplete="off">
+<kbd class="topbar-key">/</kbd>
 </div>
 <div class="topbar-user">
-<button type="button" class="user" id="user" aria-label="Account"><span class="user-avatar"></span><span class="user-name"></span></button>
+<a class="topbar-alert topbar-alert-count stale-alert" hidden><span class="stale-count"></span></a>
+<a class="topbar-alert privacy-alert" hidden><svg viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg></a>
+<button type="button" class="user" id="user" aria-label="Account"><span class="user-avatar"></span></button>
 <div class="user-menu" id="user-menu" hidden>
 <div class="user-menu-email"></div>
-<label class="user-menu-toggle user-menu-super" hidden><span>Super Edit Mode</span><input type="checkbox" class="super-edit-checkbox"></label>
+<label class="user-menu-toggle user-menu-super" hidden><span>Super Admin Mode</span><input type="checkbox" class="super-edit-checkbox"></label>
 <label class="user-menu-toggle user-menu-admin" hidden><span>Show Hidden Things</span><input type="checkbox" class="show-hidden-checkbox"></label>
 <a href="/admin" class="user-menu-system" data-link hidden>Admin Tools</a>
 <form method="post" action="/auth/logout"><button>Sign Out</button></form>
 </div>
 </div>
+<div class="app-switch">
+<button type="button" class="app-switch-button" aria-label="Apps" aria-haspopup="menu"><img src="/brand/heliosian-tile.png" alt=""><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
+<div class="app-switch-menu" hidden></div>
+</div>
 </header>
 <main id="main">
 <div id="page"></div>
-<footer class="site-footer" id="site-footer"></footer>
 </main>
 </div>
 </div>
@@ -108,7 +121,7 @@
 </div>
 <div class="mobile-search-overlay" id="mobile-search-overlay" hidden>
 <div class="mobile-search-head">
-<input type="search" id="mobile-search-input" placeholder="Search" autocomplete="off">
+<input type="search" id="mobile-search-input" placeholder="Search opportunities…" autocomplete="off">
 <button type="button" class="mobile-search-close" id="mobile-search-close" aria-label="Close"></button>
 </div>
 </div>

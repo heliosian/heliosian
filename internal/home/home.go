@@ -16,6 +16,7 @@ import (
 	"heliosian/internal/auth"
 	"heliosian/internal/blob"
 	"heliosian/internal/data"
+	"heliosian/internal/imagesearch"
 	"heliosian/internal/serve"
 )
 
@@ -31,6 +32,30 @@ type app struct {
 	store       *blob.Store
 	superAdmins func() []string
 	heroPhoto   func(string) string
+	alerts      func(string) (int, bool)
+	upcoming    func() []Event
+	search      imagesearch.Search
+}
+
+// Event is an HCA-Team event as the front page's Upcoming Events lists it:
+// the portal reckons which are ahead, and the page links across to it.
+type Event struct {
+	Title       string `json:"title"`
+	Path        string `json:"path"`
+	Start       string `json:"start"`
+	When        string `json:"when"`
+	StartAt     string `json:"startAt"`
+	EndAt       string `json:"endAt,omitempty"`
+	Location    string `json:"location,omitempty"`
+	Description string `json:"description,omitempty"`
+	ImageURL    string `json:"imageUrl,omitempty"`
+}
+
+// alerts is what the toolbar's badges say, reckoned by the directory: things
+// to update for the new year, and a privacy mismatch.
+type alerts struct {
+	Stale   int  `json:"stale"`
+	Privacy bool `json:"privacy"`
 }
 
 // Register wires the portal: the two pages, the model, and the admin writes.
@@ -38,8 +63,14 @@ type app struct {
 // admin. superAdmins reads the platform list out of the directory's settings.
 // heroPhoto resolves the signed-in person's own directory photo; it comes from
 // the directory cache, which this app does not otherwise depend on.
-func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, superAdmins func() []string, heroPhoto func(string) string) {
-	a := app{cache: cache, writer: writer, queue: queue, store: store, superAdmins: superAdmins, heroPhoto: heroPhoto}
+// search finds pictures for links on the web, as HCA-Team's editors do.
+// alerts is the directory's reckoning of the toolbar badges for a person;
+// upcoming is the volunteer portal's list of what is ahead.
+func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, superAdmins func() []string, heroPhoto func(string) string, alerts func(string) (int, bool), upcoming func() []Event, search imagesearch.Search) {
+	if search.UserAgent == "" {
+		search.UserAgent = "Heliosian image search (+https://heliosian.com)"
+	}
+	a := app{cache: cache, writer: writer, queue: queue, store: store, superAdmins: superAdmins, heroPhoto: heroPhoto, alerts: alerts, upcoming: upcoming, search: search}
 	mux.HandleFunc("GET /{$}", a.page)
 	mux.HandleFunc("GET /admin", a.adminPage)
 	mux.HandleFunc("GET /dl/", func(w http.ResponseWriter, r *http.Request) {
@@ -52,6 +83,8 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	mux.HandleFunc("DELETE /api/apps/category", a.deleteCategory)
 	mux.HandleFunc("POST /api/apps/categories/order", a.reorderCategories)
 	mux.HandleFunc("POST /api/apps/image", a.uploadImage)
+	mux.HandleFunc("GET /api/apps/images/search", a.requireAdminFunc(a.search.ServeSearch))
+	mux.HandleFunc("POST /api/apps/images/import", a.requireAdminFunc(a.importImage))
 	mux.HandleFunc("GET /api/admin/state", a.adminState)
 	mux.HandleFunc("POST /api/admin/admins", a.setAdmins)
 }
@@ -76,6 +109,15 @@ func (a app) requireAdmin(w http.ResponseWriter, r *http.Request) (string, bool)
 	return email, true
 }
 
+// requireAdminFunc guards a handler that has no admin-only body of its own.
+func (a app) requireAdminFunc(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := a.requireAdmin(w, r); ok {
+			next(w, r)
+		}
+	}
+}
+
 type user struct {
 	Email    string `json:"email"`
 	Initial  string `json:"initial"`
@@ -91,7 +133,7 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 	full := a.cache.Model()
 	categories := make([]Category, 0, len(full.Categories))
 	for _, category := range full.Categories {
-		shown := Category{Title: category.Title, Image: category.Image, ImageURL: category.ImageURL, Style: category.Style, Links: []Link{}}
+		shown := Category{Title: category.Title, Emoji: category.Emoji, Style: category.Style, Links: []Link{}, Virtual: category.Virtual}
 		for _, link := range category.Links {
 			if link.Visible || admin {
 				shown.Links = append(shown.Links, link)
@@ -102,10 +144,18 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 	view := struct {
 		Categories []Category `json:"categories"`
 		User       user       `json:"user"`
+		// ImageSources lists where the link editor's picture search can
+		// look, first first.
+		ImageSources []string `json:"imageSources"`
+		Alerts       alerts   `json:"alerts"`
+		Upcoming     []Event  `json:"upcoming"`
 	}{
-		Categories: categories,
-		User:       user{Email: email, Initial: strings.ToUpper(email[:1]), PhotoURL: a.heroPhoto(email), IsAdmin: admin},
+		Categories:   categories,
+		User:         user{Email: email, Initial: strings.ToUpper(email[:1]), PhotoURL: a.heroPhoto(email), IsAdmin: admin},
+		ImageSources: a.search.Sources(),
+		Upcoming:     a.upcoming(),
 	}
+	view.Alerts.Stale, view.Alerts.Privacy = a.alerts(email)
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
 		slog.ErrorContext(r.Context(), "encode apps model", "error", err)
@@ -153,6 +203,11 @@ func (a app) logChange(actor, action, kind string, cells map[string]string) erro
 		time.Now().Format(time.RFC3339), actor, action, kind,
 		cells["Title"], cells["Description"], cells["URL"], cells["Image"], cells["Category"], cells["Visible"], cells["Style"],
 	})
+}
+
+// importImage stores a picked search result the way an upload is stored.
+func (a app) importImage(w http.ResponseWriter, r *http.Request) {
+	a.search.ServeImport(w, r, a.store, imageFolder, maxImageSize)
 }
 
 func (a app) saveLink(w http.ResponseWriter, r *http.Request) {
@@ -236,7 +291,7 @@ func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Original string `json:"original"`
 		Title    string `json:"title"`
-		Image    string `json:"image"`
+		Emoji    string `json:"emoji"`
 		Style    string `json:"style"`
 	}
 	if !decode(w, r, &body) {
@@ -247,13 +302,36 @@ func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "title is required and must be short", http.StatusBadRequest)
 		return
 	}
-	style, err := cardsOrTiles(strings.TrimSpace(body.Style))
+	style, err := checkStyle(strings.TrimSpace(body.Style))
 	if err != nil {
 		http.Error(w, "style "+err.Error(), http.StatusBadRequest)
 		return
 	}
-	cells := map[string]string{"Title": title, "Image": strings.TrimSpace(body.Image), "Style": style}
-	tables := a.cache.Tables().withRow(categoriesTab, body.Original, cells)
+	emoji := strings.TrimSpace(body.Emoji)
+	if err := checkEmoji(emoji); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	// The events section keeps its style: it is the one section the portal
+	// fills, and can only be one thing. Edited while it is still synthesized,
+	// it gets its row now - first, where the page has been showing it.
+	virtual := a.virtualEvents(body.Original)
+	if virtual {
+		style = StyleEvents
+	} else if body.Original != "" && a.styleOf(body.Original) == StyleEvents {
+		style = StyleEvents
+	} else if style == StyleEvents {
+		http.Error(w, "the events section is the one the page already has", http.StatusBadRequest)
+		return
+	}
+	cells := map[string]string{"Title": title, "Emoji": emoji, "Style": style}
+	var tables *Tables
+	if virtual {
+		tables = a.cache.Tables().withRow(categoriesTab, "", cells)
+		tables.Categories = append([]map[string]string{tables.Categories[len(tables.Categories)-1]}, tables.Categories[:len(tables.Categories)-1]...)
+	} else {
+		tables = a.cache.Tables().withRow(categoriesTab, body.Original, cells)
+	}
 	// A rename carries every link along, since links name their category by title.
 	if body.Original != "" && body.Original != title {
 		links := cloneRows(tables.Links)
@@ -269,9 +347,14 @@ func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 		action = "add"
 	}
 	if !a.commit(r.Context(), w, tables, func() error {
-		if body.Original == "" {
-			if err := a.writer.Append(appName, categoriesTab, []string{title, cells["Image"], cells["Style"]}); err != nil {
+		if body.Original == "" || virtual {
+			if err := a.writer.Append(appName, categoriesTab, []string{title, cells["Emoji"], cells["Style"]}); err != nil {
 				return err
+			}
+			if virtual {
+				if err := a.writer.Reorder(appName, categoriesTab, "Title", rowTitles(tables.Categories)); err != nil {
+					return err
+				}
 			}
 		} else {
 			if err := a.writer.Upsert(appName, categoriesTab, "Title", body.Original, cells); err != nil {
@@ -310,6 +393,16 @@ func (a app) reorderCategories(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tables := a.cache.Tables()
+	// Moving the events section while it is still synthesized is what writes
+	// its row: appended with its standing name and mark, then ordered with
+	// the rest.
+	var materialized []string
+	for _, title := range body.Titles {
+		if a.virtualEvents(title) {
+			tables = tables.withRow(categoriesTab, "", map[string]string{"Title": title, "Emoji": EventsEmoji, "Style": StyleEvents})
+			materialized = []string{title, EventsEmoji, StyleEvents}
+		}
+	}
 	if len(body.Titles) != len(tables.Categories) {
 		http.Error(w, "the order must name every category exactly once", http.StatusBadRequest)
 		return
@@ -331,6 +424,11 @@ func (a app) reorderCategories(w http.ResponseWriter, r *http.Request) {
 	next := *tables
 	next.Categories = ordered
 	if !a.commit(r.Context(), w, &next, func() error {
+		if materialized != nil {
+			if err := a.writer.Append(appName, categoriesTab, materialized); err != nil {
+				return err
+			}
+		}
 		if err := a.writer.Reorder(appName, categoriesTab, "Title", body.Titles); err != nil {
 			return err
 		}
@@ -353,6 +451,10 @@ func (a app) deleteCategory(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
+	if a.styleOf(body.Title) == StyleEvents {
+		http.Error(w, "the events section can be renamed or moved, not deleted", http.StatusBadRequest)
+		return
+	}
 	for _, row := range a.cache.Tables().Links {
 		if row["Category"] == body.Title {
 			http.Error(w, "move or delete its links first", http.StatusBadRequest)
@@ -370,6 +472,36 @@ func (a app) deleteCategory(w http.ResponseWriter, r *http.Request) {
 	}
 	slog.InfoContext(r.Context(), "apps: deleted category", "title", body.Title)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// styleOf is a category's style as the page has it, "" for no such category
+// - the synthesized events section included.
+func (a app) styleOf(title string) string {
+	for _, c := range a.cache.Model().Categories {
+		if c.Title == title {
+			return c.Style
+		}
+	}
+	return ""
+}
+
+// virtualEvents says whether title names the events section while it is
+// still synthesized, with no row of its own yet.
+func (a app) virtualEvents(title string) bool {
+	for _, c := range a.cache.Model().Categories {
+		if c.Title == title {
+			return c.Virtual
+		}
+	}
+	return false
+}
+
+func rowTitles(rows []map[string]string) []string {
+	out := make([]string, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, row["Title"])
+	}
+	return out
 }
 
 // uploadImage stores a content-addressed image and returns the name the sheet

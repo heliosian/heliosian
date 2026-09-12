@@ -27,7 +27,6 @@ import (
 	"heliosian/internal/capture"
 	"heliosian/internal/data"
 	"heliosian/internal/devtls"
-	"heliosian/internal/events"
 	"heliosian/internal/geocode"
 	"heliosian/internal/logging"
 	"heliosian/internal/mail"
@@ -79,7 +78,7 @@ func sampleServer() (*http.Server, *who.Queue) {
 		Writer:      dir,
 		Geocoder:    geocode.Fake{},
 		BrowserKey:  os.Getenv("GOOGLE_MAPS_BROWSER_KEY"),
-		ImageSearch: events.ImageSearch{Key: os.Getenv("GOOGLE_SEARCH_KEY"), CX: os.Getenv("GOOGLE_SEARCH_CX"), Unsplash: os.Getenv("UNSPLASH_KEY"), Pexels: os.Getenv("PEXELS_KEY"), Pixabay: os.Getenv("PIXABAY_KEY")},
+		ImageSearch: app.ImageSearchKeys(),
 		// Sample mail lands as .html files to open in a browser, never sent.
 		Mail: mail.New("", "", "", "", "", "HCA-Team <hca@example.org>", mailDir()),
 	})

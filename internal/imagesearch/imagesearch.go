@@ -1,4 +1,8 @@
-package events
+// Package imagesearch finds pictures on the web for an app's editors - stock
+// libraries and Wikimedia Commons behind the server's own keys - and imports
+// a picked one into the media bucket the way an upload lands there. HCA-Team
+// and Heliosian share it.
+package imagesearch
 
 import (
 	"context"
@@ -15,15 +19,17 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"heliosian/internal/blob"
 )
 
-// ImageSearch is an optional Google Programmable Search Engine to search
+// Search is an optional Google Programmable Search Engine to search
 // images with: an API key for the Custom Search JSON API and the engine's id.
 // Without one the portal searches Wikimedia Commons instead, which needs no
 // key and holds free-to-use pictures - flags, foods, places, holidays - which
 // suits a school better than the open web anyway. (Google has stopped
 // granting new projects access to the JSON API, so Commons is the usual path.)
-type ImageSearch struct {
+type Search struct {
 	Key string
 	CX  string
 	// Unsplash is an Unsplash API access key: free stock photographs, which
@@ -36,14 +42,16 @@ type ImageSearch struct {
 	// photo libraries lack.
 	Pexels  string
 	Pixabay string
+	// UserAgent names the app to the sites it fetches from, as Commons asks.
+	UserAgent string
 }
 
-func (s ImageSearch) google() bool {
+func (s Search) google() bool {
 	return s.Key != "" && s.CX != ""
 }
 
 // Sources lists where the portal can look, in the order the picker offers them.
-func (s ImageSearch) Sources() []string {
+func (s Search) Sources() []string {
 	out := []string{}
 	if s.Unsplash != "" {
 		out = append(out, "Unsplash")
@@ -60,9 +68,9 @@ func (s ImageSearch) Sources() []string {
 	return append(out, "Wikimedia Commons")
 }
 
-// ImageHit is one result as the picker shows it: a thumbnail to show, the
+// Hit is one result as the picker shows it: a thumbnail to show, the
 // full image to import, where it came from, and its licence when known.
-type ImageHit struct {
+type Hit struct {
 	Thumb   string `json:"thumb"`
 	URL     string `json:"url"`
 	Width   int    `json:"width"`
@@ -83,33 +91,32 @@ var imageClient = &http.Client{Timeout: 20 * time.Second}
 // smaller one for the grid is the same address with the width swapped.
 var thumbWidth = regexp.MustCompile(`/\d+px-`)
 
-const userAgent = "HCA-Team image search (+https://team.heliosian.com)"
-
-// searchImages answers one image search from whichever source is set up,
-// keeping any key on the server. SafeSearch is always on; this is a school.
-func (a app) searchImages(w http.ResponseWriter, r *http.Request) {
+// ServeSearch answers one image search (?q= and ?source=) from whichever
+// source is set up, keeping any key on the server. SafeSearch is always on;
+// this is a school.
+func (s Search) ServeSearch(w http.ResponseWriter, r *http.Request) {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	if q == "" {
 		http.Error(w, "say what to search for", http.StatusBadRequest)
 		return
 	}
 	switch source := r.URL.Query().Get("source"); {
-	case source == "Unsplash" && a.search.Unsplash != "":
-		a.searchUnsplash(w, r, q)
+	case source == "Unsplash" && s.Unsplash != "":
+		s.searchUnsplash(w, r, q)
 		return
-	case source == "Pexels" && a.search.Pexels != "":
-		a.searchPexels(w, r, q)
+	case source == "Pexels" && s.Pexels != "":
+		s.searchPexels(w, r, q)
 		return
-	case source == "Pixabay" && a.search.Pixabay != "":
-		a.searchPixabay(w, r, q)
+	case source == "Pixabay" && s.Pixabay != "":
+		s.searchPixabay(w, r, q)
 		return
-	case source == "Google Images" && a.search.google():
-	case source == "Wikimedia Commons" || !a.search.google():
-		a.searchCommons(w, r, q)
+	case source == "Google Images" && s.google():
+	case source == "Wikimedia Commons" || !s.google():
+		s.searchCommons(w, r, q)
 		return
 	}
 	params := url.Values{
-		"key": {a.search.Key}, "cx": {a.search.CX}, "q": {q},
+		"key": {s.Key}, "cx": {s.CX}, "q": {q},
 		"searchType": {"image"}, "num": {"10"}, "safe": {"active"}, "imgSize": {"large"},
 	}
 	if start := r.URL.Query().Get("start"); start != "" {
@@ -147,9 +154,9 @@ func (a app) searchImages(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "the search was refused: "+body.Error.Message, http.StatusBadGateway)
 		return
 	}
-	hits := []ImageHit{}
+	hits := []Hit{}
 	for _, it := range body.Items {
-		hits = append(hits, ImageHit{
+		hits = append(hits, Hit{
 			Thumb: it.Image.ThumbnailLink, URL: it.Link, Width: it.Image.Width, Height: it.Image.Height,
 			Title: it.Title, Source: it.DisplayLink, Context: it.Image.ContextLink,
 		})
@@ -161,12 +168,12 @@ func (a app) searchImages(w http.ResponseWriter, r *http.Request) {
 // searchUnsplash asks Unsplash for photographs matching the words: landscape
 // ones, filtered for a school, each with its photographer for the credit line
 // and its download endpoint for the ping.
-func (a app) searchUnsplash(w http.ResponseWriter, r *http.Request, q string) {
+func (s Search) searchUnsplash(w http.ResponseWriter, r *http.Request, q string) {
 	params := url.Values{"query": {q}, "per_page": {"24"}, "orientation": {"landscape"}, "content_filter": {"high"}}
 	req, _ := http.NewRequestWithContext(r.Context(), "GET", "https://api.unsplash.com/search/photos?"+params.Encode(), nil)
-	req.Header.Set("Authorization", "Client-ID "+a.search.Unsplash)
+	req.Header.Set("Authorization", "Client-ID "+s.Unsplash)
 	req.Header.Set("Accept-Version", "v1")
-	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("User-Agent", s.UserAgent)
 	resp, err := imageClient.Do(req)
 	if err != nil {
 		http.Error(w, "Unsplash did not answer", http.StatusBadGateway)
@@ -204,9 +211,9 @@ func (a app) searchUnsplash(w http.ResponseWriter, r *http.Request, q string) {
 		http.Error(w, "Unsplash refused the search: "+strings.Join(body.Errors, "; "), http.StatusBadGateway)
 		return
 	}
-	hits := make([]ImageHit, 0, len(body.Results))
+	hits := make([]Hit, 0, len(body.Results))
 	for _, p := range body.Results {
-		hits = append(hits, ImageHit{
+		hits = append(hits, Hit{
 			Thumb: p.URLs.Small, URL: p.URLs.Regular, Width: p.Width, Height: p.Height,
 			Title: p.Description, Source: "Unsplash", Context: p.Links.HTML, License: "Unsplash License",
 			Credit: "Photo by " + p.User.Name + " on Unsplash", Download: p.Links.DownloadLocation,
@@ -218,11 +225,11 @@ func (a app) searchUnsplash(w http.ResponseWriter, r *http.Request, q string) {
 
 // searchPexels asks Pexels for landscape photographs; its licence asks for
 // nothing, and a credit line is given anyway.
-func (a app) searchPexels(w http.ResponseWriter, r *http.Request, q string) {
+func (s Search) searchPexels(w http.ResponseWriter, r *http.Request, q string) {
 	params := url.Values{"query": {q}, "per_page": {"24"}, "orientation": {"landscape"}}
 	req, _ := http.NewRequestWithContext(r.Context(), "GET", "https://api.pexels.com/v1/search?"+params.Encode(), nil)
-	req.Header.Set("Authorization", a.search.Pexels)
-	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("Authorization", s.Pexels)
+	req.Header.Set("User-Agent", s.UserAgent)
 	resp, err := imageClient.Do(req)
 	if err != nil {
 		http.Error(w, "Pexels did not answer", http.StatusBadGateway)
@@ -252,9 +259,9 @@ func (a app) searchPexels(w http.ResponseWriter, r *http.Request, q string) {
 		http.Error(w, "Pexels refused the search: "+body.Error, http.StatusBadGateway)
 		return
 	}
-	hits := make([]ImageHit, 0, len(body.Photos))
+	hits := make([]Hit, 0, len(body.Photos))
 	for _, p := range body.Photos {
-		hits = append(hits, ImageHit{
+		hits = append(hits, Hit{
 			Thumb: p.Src.Medium, URL: p.Src.Large2x, Width: p.Width, Height: p.Height,
 			Title: p.Alt, Source: "Pexels", Context: p.URL, License: "Pexels License",
 			Credit: "Photo by " + p.Photographer + " on Pexels",
@@ -266,13 +273,13 @@ func (a app) searchPexels(w http.ResponseWriter, r *http.Request, q string) {
 
 // searchPixabay asks Pixabay for photos, illustrations and vectors alike,
 // landscape and safe; its licence asks for nothing either.
-func (a app) searchPixabay(w http.ResponseWriter, r *http.Request, q string) {
+func (s Search) searchPixabay(w http.ResponseWriter, r *http.Request, q string) {
 	params := url.Values{
-		"key": {a.search.Pixabay}, "q": {q}, "per_page": {"24"}, "orientation": {"horizontal"},
+		"key": {s.Pixabay}, "q": {q}, "per_page": {"24"}, "orientation": {"horizontal"},
 		"safesearch": {"true"}, "image_type": {"all"},
 	}
 	req, _ := http.NewRequestWithContext(r.Context(), "GET", "https://pixabay.com/api/?"+params.Encode(), nil)
-	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("User-Agent", s.UserAgent)
 	resp, err := imageClient.Do(req)
 	if err != nil {
 		http.Error(w, "Pixabay did not answer", http.StatusBadGateway)
@@ -301,9 +308,9 @@ func (a app) searchPixabay(w http.ResponseWriter, r *http.Request, q string) {
 		http.Error(w, "Pixabay answered oddly", http.StatusBadGateway)
 		return
 	}
-	hits := make([]ImageHit, 0, len(body.Hits))
+	hits := make([]Hit, 0, len(body.Hits))
 	for _, h := range body.Hits {
-		hits = append(hits, ImageHit{
+		hits = append(hits, Hit{
 			Thumb: h.WebformatURL, URL: h.LargeImageURL, Width: h.ImageWidth, Height: h.ImageHeight,
 			Title: h.Tags, Source: "Pixabay", Context: h.PageURL, License: "Pixabay Content License",
 			Credit: "Image by " + h.User + " on Pixabay",
@@ -318,7 +325,7 @@ func (a app) searchPixabay(w http.ResponseWriter, r *http.Request, q string) {
 // and a 1600px rendering - which is a PNG even for an SVG, so a flag imports
 // as a picture the site can show. The thumbnail is the same rendering at
 // 400px, which Commons names by width.
-func (a app) searchCommons(w http.ResponseWriter, r *http.Request, q string) {
+func (s Search) searchCommons(w http.ResponseWriter, r *http.Request, q string) {
 	params := url.Values{
 		"action": {"query"}, "format": {"json"}, "generator": {"search"},
 		"gsrsearch": {q}, "gsrnamespace": {"6"}, "gsrlimit": {"24"},
@@ -326,7 +333,7 @@ func (a app) searchCommons(w http.ResponseWriter, r *http.Request, q string) {
 		"iiextmetadatafilter": {"LicenseShortName"},
 	}
 	req, _ := http.NewRequestWithContext(r.Context(), "GET", "https://commons.wikimedia.org/w/api.php?"+params.Encode(), nil)
-	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("User-Agent", s.UserAgent)
 	resp, err := imageClient.Do(req)
 	if err != nil {
 		http.Error(w, "Wikimedia Commons did not answer", http.StatusBadGateway)
@@ -358,7 +365,7 @@ func (a app) searchCommons(w http.ResponseWriter, r *http.Request, q string) {
 	}
 	type ranked struct {
 		index int
-		hit   ImageHit
+		hit   Hit
 	}
 	found := []ranked{}
 	for _, page := range body.Query.Pages {
@@ -370,7 +377,7 @@ func (a app) searchCommons(w http.ResponseWriter, r *http.Request, q string) {
 			continue
 		}
 		// Only what the site can store: the rendering is a PNG or JPEG.
-		hit := ImageHit{
+		hit := Hit{
 			Thumb: thumbWidth.ReplaceAllString(ii.ThumbURL, "/400px-"), URL: ii.ThumbURL,
 			Width: ii.Width, Height: ii.Height,
 			Title:  strings.TrimSuffix(strings.TrimPrefix(page.Title, "File:"), path.Ext(page.Title)),
@@ -382,7 +389,7 @@ func (a app) searchCommons(w http.ResponseWriter, r *http.Request, q string) {
 		found = append(found, ranked{page.Index, hit})
 	}
 	sort.Slice(found, func(i, j int) bool { return found[i].index < found[j].index })
-	hits := make([]ImageHit, 0, len(found))
+	hits := make([]Hit, 0, len(found))
 	for _, f := range found {
 		hits = append(hits, f.hit)
 	}
@@ -390,10 +397,11 @@ func (a app) searchCommons(w http.ResponseWriter, r *http.Request, q string) {
 	json.NewEncoder(w).Encode(hits)
 }
 
-// importImage fetches a picked image from the web and stores it the way an
-// upload is stored, answering with the name the sheet should record.
-func (a app) importImage(w http.ResponseWriter, r *http.Request) {
-	if a.store == nil {
+// ServeImport fetches a picked image ({"url","download"} in the body) and
+// stores it in `folder` of the store the way an upload is stored, answering
+// with the name the sheet should record. A nil store (sample mode) refuses.
+func (s Search) ServeImport(w http.ResponseWriter, r *http.Request, store *blob.Store, folder string, maxSize int64) {
+	if store == nil {
 		http.Error(w, "image uploads require real-data mode", http.StatusBadRequest)
 		return
 	}
@@ -401,15 +409,16 @@ func (a app) importImage(w http.ResponseWriter, r *http.Request) {
 		URL      string `json:"url"`
 		Download string `json:"download"`
 	}
-	if !decode(w, r, &body) {
+	if err := json.NewDecoder(io.LimitReader(r.Body, 16<<10)).Decode(&body); err != nil {
+		http.Error(w, "bad request body", http.StatusBadRequest)
 		return
 	}
 	// Unsplash counts a download through its own endpoint, and asks that a
 	// taken photo be reported there; the answer does not matter.
-	if body.Download != "" && strings.HasPrefix(body.Download, "https://api.unsplash.com/") && a.search.Unsplash != "" {
+	if body.Download != "" && strings.HasPrefix(body.Download, "https://api.unsplash.com/") && s.Unsplash != "" {
 		go func(endpoint string) {
 			req, _ := http.NewRequest("GET", endpoint, nil)
-			req.Header.Set("Authorization", "Client-ID "+a.search.Unsplash)
+			req.Header.Set("Authorization", "Client-ID "+s.Unsplash)
 			if resp, err := imageClient.Do(req); err == nil {
 				resp.Body.Close()
 			}
@@ -423,7 +432,7 @@ func (a app) importImage(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
 	req, _ := http.NewRequestWithContext(ctx, "GET", src.String(), nil)
-	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("User-Agent", s.UserAgent)
 	resp, err := imageClient.Do(req)
 	if err != nil {
 		http.Error(w, "could not fetch that image", http.StatusBadGateway)
@@ -434,8 +443,8 @@ func (a app) importImage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("that site answered %d", resp.StatusCode), http.StatusBadGateway)
 		return
 	}
-	content, err := io.ReadAll(io.LimitReader(resp.Body, maxImageSize+1))
-	if err != nil || len(content) > maxImageSize {
+	content, err := io.ReadAll(io.LimitReader(resp.Body, maxSize+1))
+	if err != nil || int64(len(content)) > maxSize {
 		http.Error(w, "that image is too large", http.StatusBadRequest)
 		return
 	}
@@ -447,12 +456,12 @@ func (a app) importImage(w http.ResponseWriter, r *http.Request) {
 	}
 	sum := sha256.Sum256(content)
 	name := hex.EncodeToString(sum[:]) + ext
-	if err := a.store.Put(imageFolder, name, mimeType, content); err != nil {
+	if err := store.Put(folder, name, mimeType, content); err != nil {
 		slog.ErrorContext(r.Context(), "store imported image", "error", err)
 		http.Error(w, "could not store the image", http.StatusInternalServerError)
 		return
 	}
-	slog.InfoContext(r.Context(), "events: imported image", "from", src.Host, "name", name)
+	slog.InfoContext(r.Context(), "imported image", "from", src.Host, "name", name)
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"name": imageFolder + "/" + name})
+	json.NewEncoder(w).Encode(map[string]string{"name": folder + "/" + name})
 }

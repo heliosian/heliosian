@@ -24,6 +24,15 @@ type Directory interface {
 	// Household is a parent's family as the directory lists it: the other
 	// adults in it, then the children; nothing for anyone else.
 	Household(email string) (adults, kids []Child)
+	// Alerts is what the toolbar's badges say for a person, as the directory
+	// reckons them: things to update for the new year, and a privacy mismatch.
+	Alerts(email string) (stale int, privacy bool)
+}
+
+// Alerts carries the directory's badge reckoning to the toolbar.
+type Alerts struct {
+	Stale   int  `json:"stale"`
+	Privacy bool `json:"privacy"`
 }
 
 // DirectoryPerson is one row of a people picker: enough to recognise someone -
@@ -103,7 +112,7 @@ type ActivityView struct {
 	CanEdit    bool            `json:"canEdit"`
 	// Runs says the viewer is a co-chair of this or something above it - what
 	// CanEdit means for them without their admin hat, which the page can take
-	// off (Super Edit Mode).
+	// off (Super Admin Mode).
 	Runs bool `json:"runs,omitempty"`
 }
 
@@ -129,6 +138,7 @@ type View struct {
 	// lists where it can look, first first, for the picker.
 	ImageSearch  bool     `json:"imageSearch"`
 	ImageSources []string `json:"imageSources,omitempty"`
+	Alerts       Alerts   `json:"alerts"`
 	// GradeColors colours the grade badges as Helios Who? does.
 	GradeColors map[string]string `json:"gradeColors,omitempty"`
 }
@@ -137,7 +147,11 @@ type User struct {
 	Email   string `json:"email"`
 	Name    string `json:"name"`
 	Initial string `json:"initial"`
-	IsAdmin bool   `json:"isAdmin"`
+	// PhotoURL is the face the directory leads with for the viewer - their
+	// own photo, else the family's - for the toolbar avatar; "" shows the
+	// initial instead.
+	PhotoURL string `json:"photoUrl,omitempty"`
+	IsAdmin  bool   `json:"isAdmin"`
 	// SpoofingAs names who a system admin is viewing the portal as, when they
 	// are; the rest of User already describes that person.
 	SpoofingAs string `json:"spoofingAs,omitempty"`
@@ -217,14 +231,16 @@ func (v viewer) children(list []*Activity, editor, runs bool) []*ActivityView {
 // Render is the model as one signed-in person sees it.
 func Render(model *Model, directory Directory, email string, admin bool, now time.Time) View {
 	v := viewer{email: email, admin: admin, directory: directory, family: map[string]bool{}}
-	name, _ := v.person(email)
+	name, photo := v.person(email)
 	spouses, children := directory.Household(email)
 	for _, c := range append(append([]Child{}, spouses...), children...) {
 		v.family[c.Email] = true
 	}
 	current := SchoolYear(now)
+	stale, privacy := directory.Alerts(email)
 	view := View{
-		User:        User{Email: email, Name: name, Initial: strings.ToUpper(name[:1]), IsAdmin: admin, Spouses: spouses, Children: children},
+		User:        User{Email: email, Name: name, Initial: strings.ToUpper(name[:1]), PhotoURL: photo, IsAdmin: admin, Spouses: spouses, Children: children},
+		Alerts:      Alerts{Stale: stale, Privacy: privacy},
 		Years:       Years{Current: current, Last: ShiftYear(current, -1), Next: ShiftYear(current, 1)},
 		Settings:    model.Settings,
 		Categories:  model.Categories,

@@ -46,13 +46,15 @@ func (fakeDirectory) Household(email string) (adults, kids []Child) {
 
 func (fakeDirectory) Grade(string) string { return "" }
 
+func (fakeDirectory) Alerts(string) (int, bool) { return 0, false }
+
 func (fakeDirectory) GradeColors() map[string]string { return nil }
 
 func (fakeDirectory) Parents(string) []string { return nil }
 
 func (fakeDirectory) Person(email string) (string, string, bool) {
 	if email == parent {
-		return "Robin Whitfield", "", true
+		return "Robin Whitfield", "/photos/robin.jpg", true
 	}
 	return "", "", false
 }
@@ -140,7 +142,8 @@ func TestRenderHidesWhatItShould(t *testing.T) {
 			}
 		}
 	}
-	if view.User.Name != "Robin Whitfield" || view.People != nil {
+	// The toolbar avatar is the face the directory leads with for the viewer.
+	if view.User.Name != "Robin Whitfield" || view.User.PhotoURL != "/photos/robin.jpg" || view.People != nil {
 		t.Errorf("user %+v, people %v", view.User, view.People)
 	}
 	suggester := Render(cache.Model(), fakeDirectory{}, "elena.torres@heliosschool.org", false, now())
@@ -888,5 +891,31 @@ func TestSharePreview(t *testing.T) {
 	mux.ServeHTTP(rec, httptest.NewRequest("GET", "/share/E006.png", nil))
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("a hidden thing has a card: %d", rec.Code)
+	}
+}
+
+// The front page's Upcoming Events: open, dated roots still ahead, soonest
+// first; the done, the pending and the undated stay out.
+func TestUpcomingListsOpenDatedRootsAhead(t *testing.T) {
+	cache, _ := newServer(t)
+	m := cache.Model()
+	got := m.Upcoming(now(), 0)
+	if len(got) == 0 {
+		t.Fatal("no upcoming events in the sample")
+	}
+	for i, u := range got {
+		a := m.Resolve(u.Path)
+		if a == nil || a.Parent != "" || a.Status != StatusOpen || a.Start == "" {
+			t.Errorf("upcoming %q resolves to %+v, want an open dated root", u.Title, a)
+		}
+		if i > 0 && got[i-1].Start > u.Start {
+			t.Errorf("upcoming out of order: %q (%s) after %q (%s)", u.Title, u.Start, got[i-1].Title, got[i-1].Start)
+		}
+		if u.When == "" {
+			t.Errorf("upcoming %q has no when line", u.Title)
+		}
+	}
+	if limited := m.Upcoming(now(), 1); len(limited) != 1 || limited[0] != got[0] {
+		t.Errorf("limit 1 = %+v, want just %+v", limited, got[0])
 	}
 }

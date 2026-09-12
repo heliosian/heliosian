@@ -27,6 +27,7 @@ import (
 	"heliosian/internal/events"
 	"heliosian/internal/geocode"
 	"heliosian/internal/home"
+	"heliosian/internal/imagesearch"
 	"heliosian/internal/logging"
 	"heliosian/internal/mail"
 	"heliosian/internal/serve"
@@ -178,6 +179,13 @@ func (d directory) GradeColors() map[string]string {
 	return d.settings.Settings().GradeColors
 }
 
+// Alerts is Who?'s reckoning of the toolbar badges, against the config
+// sheet's staleness thresholds.
+func (d directory) Alerts(email string) (int, bool) {
+	alerts := d.cache.Alerts(email, d.settings.Settings().StaleYears)
+	return alerts.Stale, alerts.Privacy
+}
+
 // People is the directory as a picker sees it: everyone, with the one word that
 // places them - a staff member's job, a student's grade, or "Parent".
 func (d directory) People() []events.DirectoryPerson {
@@ -243,6 +251,22 @@ func (d directory) Household(email string) (adults, kids []events.Child) {
 		return nil, nil
 	}
 	return household(d.cache.Model(), *p)
+}
+
+// upcomingEvents hands the front page the portal's next few events.
+type upcomingEvents struct {
+	cache *events.Cache
+}
+
+func (u upcomingEvents) list() []home.Event {
+	out := []home.Event{}
+	for _, e := range u.cache.Upcoming(6) {
+		out = append(out, home.Event{
+			Title: e.Title, Path: e.Path, Start: e.Start, When: e.When,
+			StartAt: e.StartAt, EndAt: e.EndAt, Location: e.Location, Description: e.Description, ImageURL: e.ImageURL,
+		})
+	}
+	return out
 }
 
 // birthdayDirectory hands the birthday app the directory's view of people: who
@@ -361,8 +385,9 @@ type Config struct {
 	Blobs      who.BlobChecker
 	Store      *blob.Store
 	BrowserKey string
-	// ImageSearch is the portal's Google image search; zero when not set up.
-	ImageSearch events.ImageSearch
+	// ImageSearch is the picture search HCA-Team's and Heliosian's editors
+	// share; zero means Wikimedia Commons alone.
+	ImageSearch imagesearch.Search
 	// Mail sends the portal's email; nil drops it.
 	Mail mail.Sender
 }
@@ -428,7 +453,7 @@ func NewCore(cfg Config) *Core {
 	}
 	mux.Handle("GET /{$}", http.RedirectHandler("/people", http.StatusFound))
 	homeMux := http.NewServeMux()
-	home.Register(homeMux, homeCache, cfg.Writer, queue, cfg.Store, settings.SuperAdmins, cache.HeroPhoto)
+	home.Register(homeMux, homeCache, cfg.Writer, queue, cfg.Store, settings.SuperAdmins, cache.HeroPhoto, directory{cache, settings}.Alerts, upcomingEvents{eventsCache}.list, cfg.ImageSearch)
 	eventsMux := http.NewServeMux()
 	events.Register(eventsMux, eventsCache, cfg.Writer, queue, cfg.Store, directory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.Mail)
 	birthdayMux := http.NewServeMux()
@@ -514,6 +539,20 @@ func mailFrom() string {
 	return "HCA-Team <team@heliosian.com>"
 }
 
+// ImageSearchKeys reads the picture search's keys the way every mode does:
+// each from its environment variable, else from its file under creds/, else
+// absent - Wikimedia Commons needs none. Sample mode uses it too, so a
+// developer with keys on disk gets the same libraries as production.
+func ImageSearchKeys() imagesearch.Search {
+	return imagesearch.Search{
+		Key:      optionalKey("GOOGLE_SEARCH_KEY", "creds/search.key"),
+		CX:       optionalKey("GOOGLE_SEARCH_CX", "creds/search.cx"),
+		Unsplash: optionalKey("UNSPLASH_KEY", "creds/unsplash.key"),
+		Pexels:   optionalKey("PEXELS_KEY", "creds/pexels.key"),
+		Pixabay:  optionalKey("PIXABAY_KEY", "creds/pixabay.key"),
+	}
+}
+
 func optionalKey(envName, file string) string {
 	if key := os.Getenv(envName); key != "" {
 		return key
@@ -562,19 +601,13 @@ func Production() (*http.Server, *who.Queue) {
 		logging.Fatal("blob store", "error", err)
 	}
 	core := NewCore(Config{
-		Source:     sheet,
-		Writer:     sheet,
-		Geocoder:   geocode.New(mapsKey("GOOGLE_MAPS_SERVER_KEY", "creds/geocoding.key")),
-		Blobs:      store,
-		Store:      store,
-		BrowserKey: mapsKey("GOOGLE_MAPS_BROWSER_KEY", "creds/maps.key"),
-		ImageSearch: events.ImageSearch{
-			Key:      optionalKey("GOOGLE_SEARCH_KEY", "creds/search.key"),
-			CX:       optionalKey("GOOGLE_SEARCH_CX", "creds/search.cx"),
-			Unsplash: optionalKey("UNSPLASH_KEY", "creds/unsplash.key"),
-			Pexels:   optionalKey("PEXELS_KEY", "creds/pexels.key"),
-			Pixabay:  optionalKey("PIXABAY_KEY", "creds/pixabay.key"),
-		},
+		Source:      sheet,
+		Writer:      sheet,
+		Geocoder:    geocode.New(mapsKey("GOOGLE_MAPS_SERVER_KEY", "creds/geocoding.key")),
+		Blobs:       store,
+		Store:       store,
+		BrowserKey:  mapsKey("GOOGLE_MAPS_BROWSER_KEY", "creds/maps.key"),
+		ImageSearch: ImageSearchKeys(),
 		// Mail goes through Resend when its key is set, else over SMTP when
 		// SMTP_HOST is; otherwise, in real-data mode, it is dropped and logged.
 		Mail: mail.New(optionalKey("RESEND_KEY", "creds/resend.key"), os.Getenv("SMTP_HOST"), os.Getenv("SMTP_PORT"),

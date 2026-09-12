@@ -12,7 +12,6 @@
   --input: #edf2f2;
   --alert: #be4230;
   --ok: #727503;
-  --topbar: 64px;
   --tabbar: 64px;
 }
 
@@ -269,86 +268,6 @@ button { font: inherit; }
   flex: 1;
   min-width: 0;
 }
-
-.topbar {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  height: var(--topbar);
-  flex-shrink: 0;
-  padding: 0 24px;
-  background: #fff;
-  border-bottom: 1px solid var(--line);
-}
-
-.topbar-search {
-  position: relative;
-  flex: 1;
-  max-width: 520px;
-  display: flex;
-  align-items: center;
-}
-
-.topbar-search > svg {
-  position: absolute;
-  left: 14px;
-  width: 17px;
-  height: 17px;
-  color: var(--muted);
-  pointer-events: none;
-}
-
-.topbar-search input {
-  width: 100%;
-  height: 40px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 0 16px 0 40px;
-  background: var(--page);
-  color: var(--ink);
-  font: inherit;
-  font-size: 14px;
-  outline: none;
-}
-
-.topbar-search input:focus {
-  background: #fff;
-  border-color: var(--brand);
-}
-
-.topbar-search input::-webkit-search-cancel-button { cursor: pointer; }
-
-.topbar-user { position: relative; margin-left: auto; flex-shrink: 0; }
-
-.user {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  border: 0;
-  background: none;
-  padding: 0;
-  cursor: pointer;
-  color: inherit;
-}
-
-.user-name { font-weight: 600; font-size: 14px; }
-
-.user-avatar {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: #e6f6f5;
-  color: var(--accent);
-  font-weight: 700;
-  font-size: 14px;
-  flex-shrink: 0;
-  overflow: hidden;
-}
-
-.user-avatar img { width: 100%; height: 100%; object-fit: cover; }
 
 .user-menu {
   position: absolute;
@@ -2521,17 +2440,18 @@ h2.section .link-button { font-size: 14px; }
 
 .year-block h2 { font-size: 18px; margin: 0 0 8px; }
 
-.admin-card {
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 20px 24px;
-  margin-bottom: 20px;
-}
+/* Admin Tools takes the window: the shell's rail, bars and page padding step
+   aside and the shared admin chrome (admin.css) fills it. */
+body.is-admin > .app-shell > .sidebar,
+body.is-admin > .app-shell .topbar,
+body.is-admin > .mobile-top,
+body.is-admin > .tabbar { display: none !important; }
 
-.admin-card h2 { font-size: 16px; margin: 0 0 4px; }
+body.is-admin #page { max-width: none; padding: 0; }
 
-.admin-card .hint { font-size: 13px; color: var(--muted); margin-bottom: 16px; }
+body.is-admin main { padding: 0; }
+
+.admin { min-height: 100%; display: flex; flex-direction: column; background: #f7f8f9; }
 
 .admin-row {
   display: flex;
@@ -2773,7 +2693,6 @@ h2.section .link-button { font-size: 14px; }
     color: #fff;
     z-index: 30;
   }
-  .mobile-top .user-avatar { width: 28px; height: 28px; }
   .mobile-menu-btn, .mobile-search-btn {
     width: 40px;
     height: 40px;
@@ -2786,7 +2705,6 @@ h2.section .link-button { font-size: 14px; }
     cursor: pointer;
   }
   .mobile-search-btn { margin-left: auto; }
-  .mobile-search-btn[hidden] { display: none; }
   .mobile-menu-btn svg, .mobile-search-btn svg { width: 22px; height: 22px; }
   .mobile-title {
     flex: 1;
@@ -2799,6 +2717,7 @@ h2.section .link-button { font-size: 14px; }
     white-space: nowrap;
   }
   .mobile-top .user-menu { top: calc(100% + 4px); right: 6px; }
+  .mobile-top .app-switch { margin-left: 6px; }
   /* Spoof Mode's line stays above the pinned bar on a phone - it is the way
      out of viewing as someone else, so it can never be hidden behind it. */
   .spoof-banner {

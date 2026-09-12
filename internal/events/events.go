@@ -18,6 +18,7 @@ import (
 	"heliosian/internal/auth"
 	"heliosian/internal/blob"
 	"heliosian/internal/data"
+	"heliosian/internal/imagesearch"
 	"heliosian/internal/logging"
 	"heliosian/internal/mail"
 	"heliosian/internal/serve"
@@ -57,14 +58,25 @@ type app struct {
 }
 
 // Register wires the portal: one shell for every page, the model, and the
+// ImageSearch is the portal's picture search, shared with Heliosian.
+type ImageSearch = imagesearch.Search
+
+// importImage stores a picked search result under the portal's own folder.
+func (a app) importImage(w http.ResponseWriter, r *http.Request) {
+	a.search.ServeImport(w, r, a.store, imageFolder, maxImageSize)
+}
+
 // writes. Every route already sits behind sign-in.
 func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, directory Directory, superAdmins func() []string, search ImageSearch, mailer mail.Sender) {
+	if search.UserAgent == "" {
+		search.UserAgent = "HCA-Team image search (+https://team.heliosian.com)"
+	}
 	a := app{cache: cache, writer: writer, queue: queue, store: store, directory: directory, superAdmins: superAdmins, search: search, mailer: mailer}
 	for _, page := range pages {
 		mux.HandleFunc("GET "+page, a.ready(a.page))
 	}
 	mux.HandleFunc("GET /api/events/model", a.ready(a.model))
-	mux.HandleFunc("GET /api/events/images/search", a.ready(a.searchImages))
+	mux.HandleFunc("GET /api/events/images/search", a.ready(a.search.ServeSearch))
 	mux.HandleFunc("POST /api/events/images/import", a.ready(a.importImage))
 	// Public, past sign-in (auth.Public): the image a chat app shows for a link.
 	mux.HandleFunc("GET /share/{id}", a.ready(a.shareCard))

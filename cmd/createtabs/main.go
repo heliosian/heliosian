@@ -14,6 +14,7 @@ import (
 
 	"heliosian/internal/birthday"
 	"heliosian/internal/events"
+	"heliosian/internal/home"
 )
 
 // spreadsheets pairs each layout with the variable naming the spreadsheet it belongs
@@ -30,6 +31,12 @@ var spreadsheets = []struct{ env, layout string }{
 type tab struct {
 	title  string
 	header []string
+}
+
+// seeds are the rows a fresh tab starts with, where the app expects a row to
+// exist: the Apps sheet's events section (see docs/home/data.md).
+var seeds = map[string]map[string][]string{
+	"Apps": {"Categories": {home.EventsTitle, home.EventsEmoji, home.StyleEvents}},
 }
 
 var layouts = map[string][]tab{
@@ -102,7 +109,7 @@ var layouts = map[string][]tab{
 		{"Admins", []string{"Email"}},
 	},
 	"Apps": {
-		{"Categories", []string{"Title", "Image", "Style"}},
+		{"Categories", []string{"Title", "Emoji", "Style"}},
 		{"Links", []string{"Title", "Description", "URL", "Image", "Category", "Visible", "Added By", "Added"}},
 		{"Admins", []string{"Email"}},
 		{"Change Log", []string{"Timestamp", "Actor", "Action", "Kind", "Title", "Description", "URL", "Image", "Category", "Visible", "Style"}},
@@ -231,13 +238,13 @@ func applyLayout(svc *sheets.Service, sheet, env, layout string) (tabs, columns 
 		if err != nil {
 			return 0, 0, fmt.Errorf("create tab %q: %w", t.title, err)
 		}
-		values := make([]interface{}, len(t.header))
-		for i, h := range t.header {
-			values[i] = h
+		rows := [][]interface{}{cells(t.header)}
+		if seed := seeds[layout][t.title]; seed != nil {
+			rows = append(rows, cells(seed))
 		}
 		quoted := "'" + strings.ReplaceAll(t.title, "'", "''") + "'"
 		_, err = svc.Spreadsheets.Values.Update(sheet, quoted+"!1:1", &sheets.ValueRange{
-			Values: [][]interface{}{values},
+			Values: rows,
 		}).ValueInputOption("RAW").Do()
 		if err != nil {
 			return 0, 0, fmt.Errorf("write header of %q: %w", t.title, err)
@@ -246,6 +253,14 @@ func applyLayout(svc *sheets.Service, sheet, env, layout string) (tabs, columns 
 		tabs++
 	}
 	return tabs, columns, nil
+}
+
+func cells(row []string) []interface{} {
+	out := make([]interface{}, len(row))
+	for i, c := range row {
+		out[i] = c
+	}
+	return out
 }
 
 func main() {

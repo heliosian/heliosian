@@ -1,6 +1,5 @@
 import {me, isAdmin} from './state.js';
 import {el, svg, link} from './dom.js';
-import {githubBadge} from '/github-badge.js';
 
 const appName = 'Helios Staff Birthdays';
 
@@ -137,7 +136,6 @@ export function renderChrome() {
 }
 
 export function initChrome() {
-  document.querySelector('#site-footer').append(githubBadge());
   document.querySelector('#menu-button').append(svg('menu'));
   document.querySelector('#menu-button').addEventListener('click', openDrawer);
   document.querySelector('#drawer-overlay').addEventListener('click', e => {

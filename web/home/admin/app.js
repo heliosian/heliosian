@@ -1,4 +1,3 @@
-import {githubBadge} from '/github-badge.js';
 
 let admins = [];
 
@@ -62,6 +61,54 @@ async function add() {
   await persist();
 }
 
+// The tabs on the left show one panel at a time, as Who?'s admin does.
+function initTabs() {
+  for (const tab of document.querySelectorAll('.tab')) {
+    tab.addEventListener('click', () => {
+      for (const other of document.querySelectorAll('.tab')) {
+        other.classList.toggle('active', other === tab);
+      }
+      for (const panel of document.querySelectorAll('.panel')) {
+        panel.hidden = panel.id !== 'panel-' + tab.dataset.panel;
+      }
+    });
+  }
+}
+
+// The categories as the front page has them, read from its own model.
+async function loadCategories() {
+  const list = document.querySelector('#category-rows');
+  const res = await fetch('/api/apps/model');
+  if (!res.ok) {
+    list.textContent = 'Could not load the categories.';
+    return;
+  }
+  const model = await res.json();
+  list.replaceChildren();
+  for (const category of model.categories) {
+    const row = document.createElement('div');
+    row.className = 'category-row';
+    const emoji = document.createElement('div');
+    emoji.className = 'emoji' + (category.emoji ? '' : ' is-blank');
+    emoji.textContent = category.emoji || category.title.slice(0, 1).toUpperCase();
+    const body = document.createElement('div');
+    const title = document.createElement('div');
+    title.className = 'title';
+    title.textContent = category.title;
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    if (category.style === 'events') {
+      meta.textContent = `Upcoming events from HCA-Team · ${(model.upcoming || []).length} ahead`;
+    } else {
+      const style = category.style === 'cards' ? 'Feature cards' : 'Compact tiles';
+      meta.textContent = `${style} · ${category.links.length} link${category.links.length === 1 ? '' : 's'}`;
+    }
+    body.append(title, meta);
+    row.append(emoji, body);
+    list.append(row);
+  }
+}
+
 async function load() {
   const res = await fetch('/api/admin/state');
   if (!res.ok) {
@@ -81,9 +128,10 @@ async function load() {
     notice.append(div);
   }
   render();
+  loadCategories();
 }
 
-document.querySelector('#site-footer').append(githubBadge());
+initTabs();
 document.querySelector('#add-admin-button').addEventListener('click', add);
 input.addEventListener('keydown', e => {
   if (e.key === 'Enter') {

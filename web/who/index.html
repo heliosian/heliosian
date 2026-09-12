@@ -10,7 +10,7 @@
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="16x16" href="/brand/favicon-16.png">
 <link rel="icon" type="image/png" sizes="32x32" href="/brand/favicon-32.png">
-<link rel="icon" href="/brand/icon-192.png">
+<link rel="icon" href="/brand/favicon-192.png">
 <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
 <link rel="apple-touch-startup-image" media="(device-width: 1366px) and (device-height: 1024px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" href="/brand/splash/splash-1366x1024-2x-landscape.png">
 <link rel="apple-touch-startup-image" media="(device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" href="/brand/splash/splash-1024x1366-2x-portrait.png">
@@ -45,9 +45,9 @@
 <link rel="apple-touch-startup-image" media="(device-width: 667px) and (device-height: 375px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" href="/brand/splash/splash-667x375-2x-landscape.png">
 <link rel="apple-touch-startup-image" media="(device-width: 568px) and (device-height: 320px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" href="/brand/splash/splash-568x320-2x-landscape.png">
 <link rel="stylesheet" href="/fonts/fonts.css">
+<link rel="stylesheet" href="/toolbar.css">
 <link rel="stylesheet" href="/style.css">
-<link rel="stylesheet" href="/github-badge.css">
-<link rel="modulepreload" href="/github-badge.js">
+<link rel="modulepreload" href="/toolbar.js">
 <link rel="modulepreload" href="/app.js">
 <link rel="modulepreload" href="/state.js">
 <link rel="modulepreload" href="/storage.js">
@@ -84,13 +84,17 @@
 <div class="stale-menu" id="mobile-stale-menu" hidden></div>
 </span>
 <a class="topbar-alert privacy-alert" id="mobile-privacy-alert" href="/my-privacy" title="Your privacy settings don’t match Veracross" hidden><svg viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg></a>
-<div class="user" id="mobile-user"><span class="user-avatar"></span></div>
+<button type="button" class="user" id="mobile-user" aria-label="Account"><span class="user-avatar"></span></button>
 <div class="user-menu" id="mobile-user-menu" hidden>
 <a href="/people" class="user-menu-profile">View Profile</a>
 <a href="/my-privacy" class="user-menu-privacy">My Privacy<span class="user-menu-alert" hidden></span></a>
 <a href="/admin" class="user-menu-admin" hidden>Admin Tools</a>
-<label class="user-menu-toggle user-menu-admin" hidden><span>Super Edit Mode</span><input type="checkbox" class="super-edit-checkbox"></label>
+<label class="user-menu-toggle user-menu-admin" hidden><span>Super Admin Mode</span><input type="checkbox" class="super-edit-checkbox"></label>
 <form method="post" action="/auth/logout"><button>Sign Out</button></form>
+</div>
+<div class="app-switch">
+<button type="button" class="app-switch-button" aria-label="Apps" aria-haspopup="menu"><img src="/brand/heliosian-tile.png" alt=""><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
+<div class="app-switch-menu" hidden></div>
 </div>
 </header>
 <div class="app-shell">
@@ -102,7 +106,8 @@
 <header class="topbar">
 <div class="topbar-search">
 <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-<input type="text" id="topbar-search-input" placeholder="Search by name, student, grade, or classroom… (press /)" autocomplete="off">
+<input type="search" id="topbar-search-input" placeholder="Search by name, student, grade, or classroom…" autocomplete="off">
+<kbd class="topbar-key">/</kbd>
 <div class="gsearch-results" id="topbar-search-results" hidden></div>
 </div>
 <div class="topbar-user">
@@ -111,14 +116,18 @@
 <div class="stale-menu" id="topbar-stale-menu" hidden></div>
 </span>
 <a class="topbar-alert privacy-alert" id="topbar-privacy-alert" href="/my-privacy" title="Your privacy settings don’t match Veracross" hidden><svg viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg></a>
-<div class="user" id="user"><span class="user-avatar"></span><span class="user-name"></span></div>
+<button type="button" class="user" id="user" aria-label="Account"><span class="user-avatar"></span></button>
 <div class="user-menu" id="user-menu" hidden>
 <a href="/people" class="user-menu-profile">View Profile</a>
 <a href="/my-privacy" class="user-menu-privacy">My Privacy<span class="user-menu-alert" hidden></span></a>
 <a href="/admin" class="user-menu-admin" hidden>Admin Tools</a>
-<label class="user-menu-toggle user-menu-admin" hidden><span>Super Edit Mode</span><input type="checkbox" class="super-edit-checkbox"></label>
+<label class="user-menu-toggle user-menu-admin" hidden><span>Super Admin Mode</span><input type="checkbox" class="super-edit-checkbox"></label>
 <form method="post" action="/auth/logout"><button>Sign Out</button></form>
 </div>
+</div>
+<div class="app-switch">
+<button type="button" class="app-switch-button" aria-label="Apps" aria-haspopup="menu"><img src="/brand/heliosian-tile.png" alt=""><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
+<div class="app-switch-menu" hidden></div>
 </div>
 </header>
 <main id="main"></main>

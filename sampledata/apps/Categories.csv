@@ -1,4 +1,5 @@
-Title,Image,Style
-School,brand/icon-192.png,cards
-Events,,tiles
-Chats,,tiles
+Title,Emoji,Style
+Upcoming Events,📅,events
+School,🏫,cards
+Events,📅,tiles
+Chats,💬,tiles

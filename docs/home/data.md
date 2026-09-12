@@ -6,7 +6,7 @@ Home's data lives in one Google Sheet, `Apps`, in the community shared drive, re
 
 ## Tabs
 
-- `Categories` — Title, Image, Style. Row order is display order.
+- `Categories` — Title, Emoji, Style. Row order is display order.
 - `Links` — Title, Description, URL, Image, Category, Visible, Added By, Added. Row order is display order within a category.
 - `Admins` — Email. Who may edit, beyond the platform super admins (`docs/config.md`).
 - `Change Log` — Timestamp, Actor, Action, Kind, and the link or category fields. Appended on every change; never read back.
@@ -19,11 +19,15 @@ The sheet is the schema from scratch, not an import of the Glide app's tables. T
 
 **Visible is Yes or No**, spelled exactly so. Any other value refuses the load.
 
-**Style is `cards` or `tiles`**, spelled exactly so, and every category needs one. `cards` renders the category as large feature cards, each with its image, description, and its own button; `tiles` renders it as a row of compact tiles that carry only an image and a title. A blank or misspelled Style refuses the load rather than guessing a presentation, the same stance Visible takes — the front page's shape is a property of the sheet, not of what the renderer happens to fall back to.
+**Style is `cards`, `tiles` or `events`**, spelled exactly so, and every category needs one. `cards` renders the category as large feature cards, each with its image, description, and its own button; `tiles` renders it as a row of compact tiles with a picture, the title and a line. A blank or misspelled Style refuses the load rather than guessing a presentation, the same stance Visible takes — the front page's shape is a property of the sheet, not of what the renderer happens to fall back to.
+
+**`events` is the one section that holds no links**: HCA-Team's upcoming events, which the portal supplies. The Style value is what marks the row as the app's own - no other column says so, and the row has no id: the sheet is keyed by Title throughout, and at most one row may carry this style, so it is found by that. `cmd/createtabs` seeds the row ("Upcoming Events" 📅) when it makes the tab, and the sample data carries it, so normally the sheet holds it like any other category and it is renamed, re-marked and moved like one. A sheet without the row (one laid out before the section existed) still gets the section, synthesized at the top under that standing name; the app writes the row the first time an admin renames it, changes its emoji or moves it (`saveCategory` and `reorderCategories` in `internal/home/home.go` append it, then order it where the page had it). No link may name it as its category, and it cannot be deleted - only renamed and moved.
 
 **A category must exist before a link names it**, and cannot be deleted while a link still does.
 
-**Images are named, and the name must resolve.** An Image cell is either an object under `link-images/` in the media bucket, content-addressed like photos and written by the image picker, or a path to a bundled file under `web/home/` or `web/public/home/` (the way the sample data and the category marks ship). A name that resolves to neither refuses the load, because a recorded image with nothing behind it is a bug, not a missing picture.
+**A category goes by an emoji, not a picture.** Its Emoji cell is blank or one emoji (a short run of symbol runes, joiners and variation selectors - a flag or a skin-toned face passes, a word refuses the load). The editor offers a grid of them and takes any other one pasted in. The emoji heads the section, marks the rail, and stands in for a link with no image of its own; without one, an outline read off the title does (a school building, a calendar, a chat bubble, else a grid).
+
+**Link images are named, and the name must resolve.** An Image cell is either an object under `link-images/` in the media bucket, content-addressed like photos and written by the image picker (an upload, or a picture found through the search - `internal/imagesearch`, shared with HCA-Team - which fetches and stores it the same way), or a path to a bundled file under `web/home/` or `web/public/home/` (the way the sample data ships). A name that resolves to neither refuses the load, because a recorded image with nothing behind it is a bug, not a missing picture.
 
 **A load either succeeds whole or refuses**, the same stance as the directory: the server does not start, or does not refresh, on a sheet that breaks a rule, and never serves a page quietly missing a link.
 

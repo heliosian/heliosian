@@ -1,6 +1,6 @@
 import {state, me, isAdmin, pendingItems, selectedYear, listedIn, years, resolvePath, rootOf, eventCategories, descendants, activityPath, isSystemAdmin, setSuperEdit, family, myRows, isPrevious} from './state.js';
 import {el, svg, link, button} from './dom.js';
-import {githubBadge} from '/github-badge.js';
+import {renderAvatars, renderAlerts, onSlash, initAppSwitch, markSuper} from '/toolbar.js';
 import {openActivity} from './edit.js';
 
 // The rail and the drawer show these; the mobile tab bar drops the admin ones.
@@ -315,18 +315,10 @@ export function closeDrawer() {
 
 function renderUser() {
   const user = me();
-  for (const avatar of document.querySelectorAll('.user-avatar')) {
-    avatar.replaceChildren();
-    if (user.photoUrl) {
-      const img = el('img');
-      img.src = user.photoUrl;
-      img.alt = '';
-      avatar.append(img);
-    } else {
-      avatar.textContent = user.initial;
-    }
-  }
-  document.querySelector('.user-name').textContent = user.name;
+  // The same hero photo the directory leads with (their own, else their
+  // family's); the initial only stands in when there is no photo at all.
+  renderAvatars({photoUrl: user.photoUrl && user.photoUrl + '?thumb=1', initial: user.initial});
+  renderAlerts(state.model.alerts || {});
   for (const line of document.querySelectorAll('.user-menu-email')) {
     line.textContent = user.email;
   }
@@ -338,6 +330,7 @@ function renderUser() {
   for (const box of document.querySelectorAll('.super-edit-checkbox')) {
     box.checked = state.superEdit;
   }
+  markSuper(state.superEdit);
   for (const admin of document.querySelectorAll('.user-menu-admin')) {
     admin.hidden = !isAdmin();
   }
@@ -346,32 +339,76 @@ function renderUser() {
   }
 }
 
-// One search box, in the top bar, and each page says what it filters. Pages that
-// filter nothing leave it hidden; app.js clears the binding on every route
-// change, so a stale handler can never outlive the page that set it.
+// One search box, in the top bar, and each page says what it filters. app.js
+// clears the binding on every route change, so a stale handler can never
+// outlive the page that set it. A page that filters nothing (a detail page,
+// the calendar) keeps the box, with the opportunities list as its subject:
+// typing there jumps to that list with the words carried along (see
+// carriedQuery), so search is always one keystroke away, wherever you are.
 let onSearch = null;
+
+// The words typed on a page without its own search, on their way to the
+// opportunities list: setSearch there hands them to the list's handler.
+let carriedQuery = '';
+
+const defaultPlaceholder = 'Search opportunities…';
+
+function searchInputs() {
+  return ['#search-input', '#mobile-search-input'].map(id => document.querySelector(id));
+}
 
 export function setSearch(placeholder, handler) {
   onSearch = handler;
-  for (const id of ['#search-input', '#mobile-search-input']) {
-    const input = document.querySelector(id);
-    input.value = '';
-    input.placeholder = placeholder || 'Search';
+  const query = carriedQuery;
+  carriedQuery = '';
+  for (const input of searchInputs()) {
+    input.value = query;
+    input.placeholder = placeholder || defaultPlaceholder;
   }
-  document.querySelector('#topbar-search').hidden = false;
-  document.querySelector('#mobile-search-btn').hidden = false;
+  if (query) {
+    handler(query.trim().toLowerCase());
+  }
 }
 
 export function clearSearch() {
   onSearch = null;
-  document.querySelector('#topbar-search').hidden = true;
-  document.querySelector('#mobile-search-btn').hidden = true;
-  closeMobileSearch();
+  for (const input of searchInputs()) {
+    input.value = '';
+    input.placeholder = defaultPlaceholder;
+  }
+  // Words on their way to the opportunities list keep the phone's search
+  // overlay open, so the reader carries on typing where they started.
+  if (!carriedQuery) {
+    closeMobileSearch();
+  }
+}
+
+function search(value) {
+  if (onSearch) {
+    onSearch(value.trim().toLowerCase());
+    return;
+  }
+  if (!value.trim()) {
+    return;
+  }
+  carriedQuery = value;
+  history.pushState(null, '', yearPath());
+  document.dispatchEvent(new CustomEvent('hca:refresh'));
 }
 
 function openMobileSearch() {
   document.querySelector('#mobile-search-overlay').hidden = false;
   document.querySelector('#mobile-search-input').focus();
+}
+
+// On a phone the box lives behind the magnifier, so "/" opens that overlay
+// instead of focusing the (hidden) desktop box.
+function focusSearch() {
+  if (window.matchMedia('(max-width: 900px)').matches) {
+    openMobileSearch();
+  } else {
+    document.querySelector('#search-input').focus();
+  }
 }
 
 function closeMobileSearch() {
@@ -437,21 +474,17 @@ function renderSpoofBanner() {
 }
 
 export function initChrome() {
-  document.querySelector('#site-footer').append(githubBadge());
+  initAppSwitch();
   document.querySelector('#menu-button').append(svg('menu'));
   document.querySelector('#menu-button').addEventListener('click', openDrawer);
   document.querySelector('#mobile-search-btn').append(svg('search'));
   document.querySelector('#mobile-search-close').append(svg('close'));
   document.querySelector('#mobile-search-btn').addEventListener('click', openMobileSearch);
   document.querySelector('#mobile-search-close').addEventListener('click', closeMobileSearch);
-  for (const id of ['#search-input', '#mobile-search-input']) {
-    const input = document.querySelector(id);
-    input.addEventListener('input', () => {
-      if (onSearch) {
-        onSearch(input.value.trim().toLowerCase());
-      }
-    });
+  for (const input of searchInputs()) {
+    input.addEventListener('input', () => search(input.value));
   }
+  onSlash(focusSearch);
   document.querySelector('#drawer-overlay').addEventListener('click', e => {
     if (e.target === e.currentTarget) {
       closeDrawer();
@@ -483,7 +516,7 @@ export function initChrome() {
       document.dispatchEvent(new CustomEvent('hca:refresh'));
     });
   }
-  // Super Edit Mode puts a system admin's hat on or takes it off; the page
+  // Super Admin Mode puts a system admin's hat on or takes it off; the page
   // repaints as the other kind of user.
   for (const box of document.querySelectorAll('.super-edit-checkbox')) {
     box.addEventListener('change', () => {

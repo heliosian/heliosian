@@ -73,6 +73,9 @@ export function render() {
   page.className = '';
   clearSearch();
   page.replaceChildren(route());
+  // Admin Tools is its own window: the shell's rail, toolbar and tab bar
+  // step aside for the admin chrome (see pages/admin.js).
+  document.body.classList.toggle('is-admin', location.pathname === '/admin');
   // After the page, so the rail's active item and its per-category counts
   // reflect where we just landed and what that page filtered to.
   renderChrome();

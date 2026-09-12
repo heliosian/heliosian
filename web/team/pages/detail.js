@@ -2,7 +2,7 @@ import {state, isAdmin, years, allYears, descendants, parentOf, rootOf, category
 import {el, link, svg, thumb, avatar, badge, button, searchBox, copyText, whenEditor, toast} from '../dom.js';
 import {setTitle} from '../chrome.js';
 import {childRow, categoryClass} from '../cards.js';
-import {openCropTool, openPhotoLightbox} from '../crop.js';
+import {openCropTool, openPhotoLightbox} from '/crop.js';
 import {send, reload, openSignUp, openActivity, openLink, saveActivityFields, openPerson, openImageSearch, imageSearchOn, editable, fieldEditor, highlightInputs, textInput, textAreaInput, selectInput, uploadAndSave, openCategoryManager, openVolunteerGrid} from '../edit.js';
 
 

@@ -4,56 +4,43 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Heliosian Admin</title>
-<link rel="icon" href="/brand/icon-192.png">
+<link rel="icon" href="/brand/favicon-192.png">
 <link rel="stylesheet" href="/fonts/fonts.css">
-<link rel="stylesheet" href="/style.css">
-<link rel="stylesheet" href="/github-badge.css">
-<link rel="modulepreload" href="/github-badge.js">
+<link rel="stylesheet" href="/admin.css">
 <style>
-  /* Admin keeps the plain teal header bar. style.css's .topbar and .brand are
-     shaped for the front page's sidebar shell, which this page does not use. */
-  .topbar {
-    height: 56px;
-    margin: 0;
-    padding: 0 20px;
-    padding-top: env(safe-area-inset-top);
-    justify-content: space-between;
+  /* The page's own palette; the chrome comes from admin.css. */
+  :root {
+    --brand: #244d53;
+    --line: #e2e6eb;
+    --ink: #0d0d0d;
+    --muted: #707070;
+    --input: #efefef;
+    --alert: #c0392b;
+  }
+  .button {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 18px;
+    border-radius: 999px;
+    border: 0;
     background: var(--brand);
     color: #fff;
-  }
-  .brand { flex-direction: row; align-items: center; gap: 10px; color: #fff; }
-  .brand-mark { display: block; width: 36px; height: 36px; }
-  .brand-name {
-    display: flex;
-    flex-direction: column;
-    line-height: 1.15;
-    font-size: 17px;
-    font-weight: 700;
-  }
-  .brand-name small {
-    font-size: 9.5px;
+    font: inherit;
     font-weight: 600;
-    letter-spacing: 0.07em;
-    text-transform: uppercase;
-    color: rgba(255, 255, 255, 0.72);
+    cursor: pointer;
+    text-decoration: none;
   }
-  .layout { flex: 1; width: 100%; max-width: 760px; margin: 0 auto; padding: 20px; }
-  .card {
-    background: #fff;
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    padding: 20px 24px;
-    margin-bottom: 20px;
-  }
-  .card h2 { font-size: 16px; margin: 0 0 4px; }
-  .hint { font-size: 13px; color: var(--muted); margin-bottom: 16px; }
-  .notice {
-    background: #fde3d1;
-    color: #a94d0e;
-    border-radius: 8px;
-    padding: 10px 14px;
+  .button:hover { background: #1c3d42; }
+  .link-button {
+    background: none;
+    border: 0;
+    color: var(--alert);
+    font: inherit;
     font-size: 13px;
-    margin-bottom: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 4px 8px;
   }
   .admin-row {
     display: flex;
@@ -64,7 +51,7 @@
   }
   .admin-row:first-of-type { border-top: none; }
   .admin-row .email { flex: 1; }
-  .add-admin-row { display: flex; gap: 10px; margin-top: 16px; }
+  .add-admin-row { display: flex; align-items: center; gap: 10px; margin-top: 16px; }
   .add-admin-row input {
     flex: 1;
     padding: 9px 12px;
@@ -72,30 +59,78 @@
     border-radius: 8px;
     font: inherit;
   }
-  .crumb { color: var(--muted); font-size: 13px; margin-bottom: 12px; }
-  .crumb a { color: var(--brand-ink); }
+  .save-status { font-size: 13px; color: var(--muted); }
+  .save-status.error { color: var(--alert); }
+  .category-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 10px 0;
+    border-top: 1px solid var(--line);
+  }
+  .category-row:first-of-type { border-top: none; }
+  .category-row .emoji {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    background: #e3f0ef;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+  .category-row .emoji.is-blank { font-size: 15px; font-weight: 700; color: #fff; background: var(--brand); }
+  .category-row .title { font-weight: 600; }
+  .category-row .meta { font-size: 13px; color: var(--muted); }
+  .card-actions { margin-top: 16px; }
 </style>
 </head>
-<body>
-<header class="topbar">
-<a class="brand" href="/"><img class="brand-mark" src="/brand/logo-tile.png" alt=""><span class="brand-name">Heliosian<small>Helios Community Apps</small></span></a>
-<span id="me" style="font-size:13px;opacity:.85"></span>
+<body class="admin admin-strip">
+<header>
+  <a class="brand-link" href="/">
+    <img class="admin-tile" src="/brand/logo-tile.png" alt="Heliosian">
+    <span>Admin</span>
+  </a>
+  <span class="right"><span class="email" id="me"></span>
+  <a class="admin-close" href="/" aria-label="Close admin tools"><svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></a></span>
 </header>
 <div class="layout">
-<div class="crumb"><a href="/">← Links</a></div>
-<div id="store-notice"></div>
-<div class="card">
-<h2>Admins</h2>
-<div class="hint">Whoever is on this list can add, edit, and delete links and categories, and reach this page. Changes save immediately. Links and categories themselves are edited on the Links page.</div>
-<div id="admins-rows"></div>
-<div class="add-admin-row">
-<input type="email" id="add-admin-email" placeholder="name@heliosschool.org">
-<button class="button" id="add-admin-button" type="button">Add</button>
-<span class="save-status" id="admins-status"></span>
+  <nav class="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">Display</div>
+      <div class="tab active" data-panel="categories">Categories</div>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">Editing &amp; Control</div>
+      <div class="tab" data-panel="admins">Admins</div>
+    </div>
+  </nav>
+  <div class="container">
+  <div id="store-notice"></div>
+  <div class="panel" id="panel-categories">
+    <div class="card">
+      <h2>Categories</h2>
+      <div class="hint">The sections of the front page, in this order, with their emoji and what each holds. Rename, re-mark, reorder and add them from the front page in Super Admin Mode, through Edit Categories in the account menu.</div>
+      <div id="category-rows"></div>
+      <div class="card-actions"><a class="button" href="/">Edit on the front page</a></div>
+    </div>
+  </div>
+  <div class="panel" id="panel-admins" hidden>
+    <div class="card">
+      <h2>Admins</h2>
+      <div class="hint">Whoever is on this list can add, edit, and delete links and categories, and reach this page. Changes save immediately.</div>
+      <div id="admins-rows"></div>
+      <div class="add-admin-row">
+        <input type="email" id="add-admin-email" placeholder="name@heliosschool.org">
+        <button class="button" id="add-admin-button" type="button">Add</button>
+        <span class="save-status" id="admins-status"></span>
+      </div>
+    </div>
+  </div>
+  </div>
 </div>
-</div>
-</div>
-<footer class="site-footer" id="site-footer"></footer>
 <script type="module" src="/admin/app.js"></script>
 </body>
 </html>
