@@ -215,8 +215,31 @@ func (a app) mailTickets(r *http.Request, p *Party, purchaser string, taken []ma
 			waiting += max(n, 1)
 		}
 	}
+	// A single ticket for someone other than whoever is billed - a child, a
+	// guest, a colleague a host added - is that person's note: it speaks to
+	// them by name, and goes to them (a student: to their parents) with the
+	// purchaser alongside. Anything else speaks to the purchaser.
+	to := []string{purchaser}
+	holder := ""
+	if len(sold) == 1 && waiting == 0 {
+		t := taken[0]
+		if t["Email"] != purchaser {
+			holder = sold[0]
+			if t["Email"] != "" {
+				if person, known := a.directory.Person(t["Email"]); known && person.IsStudent {
+					to = append(to, person.ParentEmails...)
+				} else {
+					to = append(to, t["Email"])
+				}
+			}
+		}
+	}
 	hi := "Hi"
-	if first := a.firstName(purchaser); first != "" {
+	if holder != "" {
+		if words := strings.Fields(holder); len(words) > 0 {
+			hi = "Hi " + words[0]
+		}
+	} else if first := a.firstName(purchaser); first != "" {
 		hi = "Hi " + first
 	}
 	by := ""
@@ -224,6 +247,8 @@ func (a app) mailTickets(r *http.Request, p *Party, purchaser string, taken []ma
 	switch {
 	case free:
 		by = fmt.Sprintf(" %s has added you at no charge - a gift from the hosts.", a.nameOf(actor))
+	case holder != "":
+		by = fmt.Sprintf(" %s took it for you.", a.nameOf(actor))
 	case actor != purchaser:
 		by = fmt.Sprintf(" %s took them for your family.", a.nameOf(actor))
 	}
@@ -233,6 +258,10 @@ func (a app) mailTickets(r *http.Request, p *Party, purchaser string, taken []ma
 		l.Heading = "Your tickets, and a place on the waitlist"
 		l.Intro = fmt.Sprintf("%s - %s. The party was full before everyone could get in, so your family is on the waitlist for %d more; the hosts will offer places as they open up. The hosts are copied here, so just reply if you have a question.", hi, ticketsWords(len(sold), p.Title), waiting) + by
 		subject = "Your tickets to " + p.Title
+	case holder != "":
+		l.Heading = strings.Fields(holder)[0] + ", you're going!"
+		l.Intro = fmt.Sprintf("%s - %s.%s The hosts are copied here, so just reply if you have a question.", hi, ticketsWords(1, p.Title), by)
+		subject = holder + "'s ticket to " + p.Title
 	case len(sold) > 0:
 		l.Heading = "You're going!"
 		l.Intro = fmt.Sprintf("%s - %s.%s The hosts are copied here, so just reply if you have a question.", hi, ticketsWords(len(sold), p.Title), by)
@@ -277,7 +306,7 @@ func (a app) mailTickets(r *http.Request, p *Party, purchaser string, taken []ma
 	if len(sold) > 0 {
 		cc = append(cc, without(p.HostEmails, purchaser)...)
 	}
-	a.send(r.Context(), subject, []string{purchaser}, cc, l, without(p.HostEmails, purchaser)...)
+	a.send(r.Context(), subject, to, cc, l, without(p.HostEmails, purchaser)...)
 	if len(sold) == 0 && waiting > 0 {
 		a.mailWaitlistHosts(r, p, purchaser, waiting, taken[0]["Note"], actor)
 	}

@@ -718,6 +718,20 @@ func TestMail(t *testing.T) {
 	if !slices.Equal(m.ReplyTo, []string{"sofia.marchetti@heliosschool.org", "paolo.marchetti@heliosschool.org"}) {
 		t.Errorf("reply-to: %v", m.ReplyTo)
 	}
+	// One ticket for a child is the child's note: it speaks to them by name
+	// and goes to both parents, the hosts copied.
+	if r := buy(parent, "P003", "", map[string]string{"email": kid}); r.Code != http.StatusOK {
+		t.Fatalf("buy for a child: %d %s", r.Code, r.Body)
+	}
+	m = rec.next(t)
+	if m.Subject != "Sam Whitfield's ticket to K-Pop for a Cause!" || !slices.Equal(m.To, []string{parent, partner}) || !slices.Contains(m.CC, "deepa.natarajan@heliosschool.org") {
+		t.Fatalf("a child's note: %+v", m)
+	}
+	for _, want := range []string{"Sam, you&#39;re going!", "Hi Sam - you have a ticket"} {
+		if !strings.Contains(m.HTML, want) {
+			t.Errorf("a child's note lacks %q", want)
+		}
+	}
 	// A full party: joining the waitlist gets a note that says so, and that
 	// nothing is billed yet.
 	if r := call(t, mux, teacher, "POST", "/api/celebrate/waitlist", map[string]any{"partyId": "P006", "quantity": 2, "note": "either day works"}); r.Code != http.StatusOK {
