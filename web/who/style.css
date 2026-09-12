@@ -653,92 +653,6 @@ body {
   stroke-width: 2.2;
 }
 
-.user-menu {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 10px);
-  width: 190px;
-  background: #fff;
-  border-radius: 10px;
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.25);
-  padding: 6px 0;
-  z-index: 10;
-}
-
-.user-menu form {
-  margin: 0;
-}
-
-.user-menu a,
-.user-menu button {
-  display: block;
-  width: 100%;
-  padding: 8px 16px;
-  border: 0;
-  background: none;
-  text-align: left;
-  text-decoration: none;
-  font: inherit;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--ink);
-  cursor: pointer;
-}
-
-.user-menu a:hover,
-.user-menu button:hover {
-  background: #f2f4f6;
-}
-
-.user-menu-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  width: 100%;
-  padding: 8px 16px;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--ink);
-  cursor: pointer;
-}
-
-.user-menu-toggle:hover {
-  background: #f2f4f6;
-}
-
-.user-menu-toggle input {
-  appearance: none;
-  width: 34px;
-  height: 20px;
-  border-radius: 10px;
-  background: #d5dadd;
-  position: relative;
-  flex-shrink: 0;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-
-.user-menu-toggle input::before {
-  content: '';
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
-  transition: left 0.15s;
-}
-
-.user-menu-toggle input:checked {
-  background: var(--brand);
-}
-
-.user-menu-toggle input:checked::before {
-  left: 16px;
-}
 
 .gsearch-results {
   position: absolute;
@@ -4386,6 +4300,7 @@ a.person-card:hover .photo-wrap-peek::before {
     position: relative;
     z-index: 31;
   }
+  .mobile-top .user-menu { top: calc(100% + 4px); right: 6px; }
   .mobile-top .app-switch { margin-left: 6px; }
   .crumbs {
     display: none;

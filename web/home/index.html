@@ -172,6 +172,7 @@
 <button type="button" class="link-button" id="category-emoji-clear">None</button>
 </div>
 <div class="emoji-grid" id="category-emoji-grid"></div>
+<button type="button" class="button button-secondary button-small emoji-more" id="category-emoji-more">More emoji…</button>
 </div>
 <div class="modal-actions">
 <button type="submit" class="button" id="category-save">Save</button>
@@ -180,6 +181,13 @@
 <span class="save-status" id="category-status"></span>
 </div>
 </form>
+</div>
+<div class="modal-overlay" id="emoji-library-modal" hidden>
+<div class="modal modal-wide">
+<div class="modal-header"><h2>All emoji</h2><button class="modal-close" type="button" data-close aria-label="Close">&times;</button></div>
+<input type="search" class="emoji-library-search" id="emoji-library-search" placeholder="Search by name - “cat”, “star”, “bus”…" autocomplete="off" spellcheck="false">
+<div class="emoji-library" id="emoji-library"></div>
+</div>
 </div>
 <div class="modal-overlay" id="image-search-modal" hidden>
 <div class="modal modal-wide">

@@ -403,8 +403,10 @@ export function isFamily(email) {
   return family().some(c => c.email === email);
 }
 
+// isFull is "volunteers complete": the organizers have said so, or every
+// spot is taken.
 export function isFull(node) {
-  return node.spots > 0 && node.taken >= node.spots;
+  return Boolean(node.volunteersComplete) || (node.spots > 0 && node.taken >= node.spots);
 }
 
 // A root that does not take sign-ups itself sends people to the things under it;

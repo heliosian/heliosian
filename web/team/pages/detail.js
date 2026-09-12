@@ -226,7 +226,8 @@ function factsCard(node, editing, save) {
     mark.append(svg('people'));
     row.append(mark);
     const body = el('div', 'side-row-body');
-    body.append(el('div', 'side-title', 'Co-Chairs'));
+    // One person chairs; two or more co-chair.
+    body.append(el('div', 'side-title', chairs.length === 1 ? 'Chair' : 'Co-Chairs'));
     if (chairs.length) {
       const list = el('div', 'side-chairs');
       for (const v of chairs) {
@@ -500,6 +501,9 @@ function treeFilter(node, below, onChange) {
 function volunteersBox(node, editing, save) {
   const people = shownVolunteers(node, editing).filter(v => v.position !== 'Co-Chair');
   const chairs = coChairs(node);
+  // Whether anything sits under the node for a reader to sign up for; without
+  // it, the lines that point "below" say nothing.
+  const somethingBelow = node.children.some(c => c.status !== 'Hidden' && c.status !== 'Pending');
   const box = el('div', 'vol-box');
   const head = el('div', 'vol-head');
   const title = el('div', 'vol-title');
@@ -511,7 +515,9 @@ function volunteersBox(node, editing, save) {
   const count = chairs.length + people.length;
   if (quiet) {
     box.classList.add('is-quiet');
-    title.append(el('div', 'vol-quiet', 'Sign up for something below.'));
+    if (somethingBelow) {
+      title.append(el('div', 'vol-quiet', 'Sign up for something below.'));
+    }
   } else {
     title.append(el('h2', 'section section-swoosh', count ? `Volunteers (${count})` : 'Volunteers'));
   }
@@ -527,6 +533,11 @@ function volunteersBox(node, editing, save) {
     });
     setMax.title = 'Set the most people who can sign up here';
     title.append(setMax);
+    // The organizers' say-so that the thing is staffed, whatever the count:
+    // it wears the Volunteers Complete badge and takes no more sign-ups.
+    const done = el('label', 'side-switch vol-complete');
+    done.append(checkbox(Boolean(node.volunteersComplete), on => save({volunteersComplete: on})), el('span', '', 'Volunteers complete'));
+    title.append(done);
   }
   // With things under it, a filter beside the heading brings their
   // volunteers into the list too, each run under its committee's name.
@@ -602,7 +613,7 @@ function volunteersBox(node, editing, save) {
       if (!node.directSignUp) {
         // Volunteers are taken only by the things under it, so say so where
         // the sign-up button would be - unless the heading already does.
-        if (!quiet) {
+        if (!quiet && somethingBelow) {
           listing.append(el('div', 'vol-note', 'Sign up for something below.'));
         }
       } else if (!revealed) {
@@ -641,7 +652,7 @@ function volunteersBox(node, editing, save) {
     box.append(roster);
   }
   if (node.status === 'Open' && isFull(node) && !mine && node.directSignUp) {
-    box.append(el('div', 'vol-note vol-full', 'Every spot is taken. Thank you, everyone!'));
+    box.append(el('div', 'vol-note vol-full', node.volunteersComplete ? 'The volunteers are all set. Thank you, everyone!' : 'Every spot is taken. Thank you, everyone!'));
   }
   if (listHidden(node) && revealed) {
     box.append(el('div', 'vol-note', 'This list is private; only the organizers see it.'));
@@ -801,7 +812,7 @@ function helpCard(node) {
   card.append(el('p', 'side-line', `Have a question about ${node.title}? Ask whoever is running it.`));
   const mail = el('a', 'button button-secondary button-small side-button');
   mail.href = `mailto:${chairs.map(v => v.email).join(',')}?subject=${encodeURIComponent(node.title)}`;
-  mail.append(svg('mail'), el('span', '', 'Contact the Co-Chairs'));
+  mail.append(svg('mail'), el('span', '', chairs.length === 1 ? 'Contact the Chair' : 'Contact the Co-Chairs'));
   card.append(mail);
   return card;
 }
@@ -1179,7 +1190,7 @@ export function activityPage(node) {
   if (node.status !== 'Open') {
     marks.append(badge(node.status === 'Pending' ? 'Needs approval' : node.status, node.status.toLowerCase()));
   } else if (isFull(node)) {
-    marks.append(badge('Full', 'full'));
+    marks.append(badge('Volunteers Complete', 'full'));
   }
   if (editing && !parent) {
     // An event's own categories are what its committees, booths and shifts are
@@ -1277,7 +1288,8 @@ export function activityPage(node) {
       main.append(things);
     }
   }
-  if (!parent) {
+  // The way out of a committee is worth saying only where there are some.
+  if (!parent && under.length) {
     main.append(el('div', 'footnote', 'To leave a committee, open it and use Edit my sign-up.'));
   }
   if (node.canEdit) {

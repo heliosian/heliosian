@@ -473,27 +473,28 @@ func (a app) removeVolunteer(w http.ResponseWriter, r *http.Request) {
 }
 
 type activityBody struct {
-	ID               string     `json:"id"`
-	Year             string     `json:"year"`
-	Title            string     `json:"title"`
-	Parent           string     `json:"parent"`
-	Category         string     `json:"category"`
-	Status           string     `json:"status"`
-	Description      string     `json:"description"`
-	Image            string     `json:"image"`
-	Flyer            string     `json:"flyer"`
-	Highlight        *Highlight `json:"highlight"`
-	Timing           string     `json:"timing"`
-	Start            string     `json:"start"`
-	End              string     `json:"end"`
-	Location         string     `json:"location"`
-	Spots            int        `json:"spots"`
-	CoLeaderNeeded   bool       `json:"coLeaderNeeded"`
-	VolunteersHidden bool       `json:"volunteersHidden"`
-	DirectSignUp     bool       `json:"directSignUp"`
-	CoChair          bool       `json:"coChair"`
-	PrettyID         string     `json:"prettyId"`
-	AllowAdding      string     `json:"allowAdding"`
+	ID                 string     `json:"id"`
+	Year               string     `json:"year"`
+	Title              string     `json:"title"`
+	Parent             string     `json:"parent"`
+	Category           string     `json:"category"`
+	Status             string     `json:"status"`
+	Description        string     `json:"description"`
+	Image              string     `json:"image"`
+	Flyer              string     `json:"flyer"`
+	Highlight          *Highlight `json:"highlight"`
+	Timing             string     `json:"timing"`
+	Start              string     `json:"start"`
+	End                string     `json:"end"`
+	Location           string     `json:"location"`
+	Spots              int        `json:"spots"`
+	CoLeaderNeeded     bool       `json:"coLeaderNeeded"`
+	VolunteersHidden   bool       `json:"volunteersHidden"`
+	VolunteersComplete bool       `json:"volunteersComplete"`
+	DirectSignUp       bool       `json:"directSignUp"`
+	CoChair            bool       `json:"coChair"`
+	PrettyID           string     `json:"prettyId"`
+	AllowAdding        string     `json:"allowAdding"`
 	// TakeOver says the sender has agreed to rename a prior year's activity
 	// that holds the same Pretty ID - see prettyConflict.
 	TakeOver bool `json:"takeOver"`
@@ -720,6 +721,10 @@ func (a app) saveActivity(w http.ResponseWriter, r *http.Request) {
 		cells[k] = v
 	}
 	tables := a.cache.Tables()
+	// The column is optional; a sheet without it cannot hold the switch.
+	if tables.HasComplete() {
+		cells[CompleteColumn] = YesNo(body.VolunteersComplete)
+	}
 	if displaced != nil {
 		tables = tables.with(activitiesTab, map[string]string{"Event ID": displaced.ID}, map[string]string{"Pretty ID": renamed})
 	}
@@ -1296,6 +1301,10 @@ func (a app) copyActivity(w http.ResponseWriter, r *http.Request) {
 		}
 		if c.Order > 0 && a.cache.Tables().HasOrder() {
 			row[OrderColumn] = strconv.Itoa(c.Order)
+		}
+		// A copy for next year starts unstaffed.
+		if a.cache.Tables().HasComplete() {
+			row[CompleteColumn] = YesNo(false)
 		}
 		return row
 	}

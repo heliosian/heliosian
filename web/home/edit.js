@@ -9,14 +9,24 @@ const categoryModal = document.querySelector('#category-modal');
 const categoryForm = document.querySelector('#category-form');
 const categoriesModal = document.querySelector('#categories-modal');
 const imageSearchModal = document.querySelector('#image-search-modal');
+const emojiLibraryModal = document.querySelector('#emoji-library-modal');
 
 let editingLink = null;
 let editingCategory = null;
 let pendingLinkImage = '';
 
-// The emoji on offer for a category, school-flavoured first; any other emoji
-// can be pasted into the box beside them.
-const emojiChoices = ['🏫', '📅', '💬', '📚', '🎒', '🧑‍🏫', '🍎', '🚌', '🎉', '🎨', '🎵', '⚽', '🏀', '🏕️', '🌞', '🌱', '🌻', '❤️', '⭐', '🏆', '📣', '📰', '🗳️', '🤝', '🧭', '🍕', '🎂', '🎃', '🎄', '📷', '🎬', '🔗', '📌', '🛠️', '🧩', '🐦'];
+// The emoji on offer for a category, in groups a school community reaches
+// for; any other emoji can be pasted into the box above them.
+const emojiGroups = [
+  ['School', ['🏫', '📚', '🎒', '🧑‍🏫', '🍎', '🚌', '✏️', '📝', '📖', '🔬', '🧪', '🧮', '🖍️', '🎓', '🏛️', '🔔', '🗓️', '📅', '📋', '📎']],
+  ['Celebrations', ['🎉', '🎊', '🎂', '🎁', '🎈', '🥳', '🎃', '🎄', '🎆', '🎇', '🪅', '🎀', '🕯️', '🍀', '🐣', '❄️', '🌟', '✨', '🏮', '🎏']],
+  ['Sports & Play', ['⚽', '🏀', '🏈', '⚾', '🎾', '🏐', '🏊', '🚴', '🏃', '🤸', '🧗', '⛷️', '🏄', '🥋', '🏆', '🥇', '🎯', '🎲', '🧩', '🪁']],
+  ['Arts & Music', ['🎨', '🖌️', '🎭', '🎵', '🎶', '🎤', '🎸', '🎹', '🥁', '🎻', '📷', '🎬', '📽️', '🖼️', '✂️', '🧵', '🧶', '📻', '🎧', '🩰']],
+  ['Food', ['🍕', '🍔', '🌮', '🍜', '🍣', '🥗', '🍪', '🧁', '🍩', '🍦', '🍿', '☕', '🍵', '🧃', '🍫', '🍓', '🥐', '🍱', '🍲', '🥤']],
+  ['Outdoors', ['🏕️', '🌞', '🌱', '🌻', '🌳', '🌲', '🌈', '🌊', '🏔️', '🐦', '🦋', '🐝', '🐢', '🌸', '🍁', '🍂', '☀️', '🌙', '🔥', '🧭']],
+  ['Community', ['💬', '🤝', '❤️', '🫶', '👋', '👨‍👩‍👧‍👦', '🧑‍🤝‍🧑', '🙌', '👏', '🗳️', '📣', '📰', '💌', '🏠', '🏘️', '🚗', '🧡', '💛', '💚', '💙']],
+  ['Things', ['⭐', '🔗', '📌', '📍', '🛠️', '🔧', '💡', '🔑', '💰', '🧾', '📦', '🛒', '🎟️', '🗂️', '📊', '💻', '📱', '🖨️', '⏰', '🧭']],
+];
 
 function setStatus(selector, message, error) {
   const status = document.querySelector(selector);
@@ -165,16 +175,70 @@ function setEmoji(value) {
 
 function wireEmojiPicker() {
   const grid = document.querySelector('#category-emoji-grid');
-  for (const emoji of emojiChoices) {
-    const button = el('button', '', emoji);
-    button.type = 'button';
-    button.setAttribute('aria-label', emoji);
-    button.addEventListener('click', () => setEmoji(emoji));
-    grid.append(button);
+  for (const [name, choices] of emojiGroups) {
+    grid.append(el('div', 'emoji-group', name));
+    for (const emoji of choices) {
+      const button = el('button', '', emoji);
+      button.type = 'button';
+      button.setAttribute('aria-label', emoji);
+      button.addEventListener('click', () => setEmoji(emoji));
+      grid.append(button);
+    }
   }
   const input = document.querySelector('#category-emoji');
   input.addEventListener('input', () => setEmoji(input.value.trim()));
   document.querySelector('#category-emoji-clear').addEventListener('click', () => setEmoji(''));
+  document.querySelector('#category-emoji-more').addEventListener('click', openEmojiLibrary);
+  document.querySelector('#emoji-library-search').addEventListener('input', paintEmojiLibrary);
+}
+
+// The whole library - every single-character emoji, by group, with its
+// Unicode name for the search box - loads from /emoji.json the first time it
+// is opened. A pick lands in the category editor and closes the sheet.
+let emojiLibrary = null;
+
+async function openEmojiLibrary() {
+  emojiLibraryModal.hidden = false;
+  const search = document.querySelector('#emoji-library-search');
+  search.value = '';
+  search.focus();
+  if (!emojiLibrary) {
+    document.querySelector('#emoji-library').textContent = 'Loading…';
+    const res = await fetch('/emoji.json');
+    emojiLibrary = res.ok ? await res.json() : [];
+  }
+  paintEmojiLibrary();
+}
+
+function paintEmojiLibrary() {
+  const root = document.querySelector('#emoji-library');
+  const needle = document.querySelector('#emoji-library-search').value.trim().toLowerCase();
+  root.replaceChildren();
+  let shown = 0;
+  for (const [group, entries] of emojiLibrary || []) {
+    const matches = entries.filter(([, name]) => !needle || name.includes(needle));
+    if (!matches.length) {
+      continue;
+    }
+    root.append(el('div', 'emoji-group', group));
+    const row = el('div', 'emoji-library-row');
+    for (const [emoji, name] of matches) {
+      const button = el('button', '', emoji);
+      button.type = 'button';
+      button.title = name;
+      button.setAttribute('aria-label', name);
+      button.addEventListener('click', () => {
+        setEmoji(emoji);
+        emojiLibraryModal.hidden = true;
+      });
+      row.append(button);
+    }
+    root.append(row);
+    shown += matches.length;
+  }
+  if (!shown) {
+    root.append(el('div', 'modal-hint', 'Nothing by that name.'));
+  }
 }
 
 function closeModals() {
@@ -374,7 +438,7 @@ export function initEditing() {
       button.closest('.modal-overlay').hidden = true;
     });
   }
-  for (const overlay of [linkModal, categoryModal, categoriesModal, imageSearchModal]) {
+  for (const overlay of [linkModal, categoryModal, categoriesModal, imageSearchModal, emojiLibraryModal]) {
     overlay.addEventListener('click', e => {
       if (e.target === overlay) {
         overlay.hidden = true;

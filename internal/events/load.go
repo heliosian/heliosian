@@ -72,7 +72,11 @@ var (
 	// OrderColumn is optional on Activities: a number that puts a thing among
 	// its siblings, written when an organizer reorders them. A tab without it
 	// lists children in row order and cannot be reordered.
-	OrderColumn      = "Order"
+	OrderColumn = "Order"
+	// CompleteColumn is optional on Activities too: Yes when the organizers
+	// have all the volunteers they need, whatever the spots say. A tab
+	// without it can only fill up by count.
+	CompleteColumn   = "Volunteers Complete"
 	AdminColumns     = []string{"Email"}
 	ChangeLogColumns = []string{"Timestamp", "Actor", "Action", "Kind", "Year", "Activity", "Title", "Email", "Details"}
 )
@@ -174,15 +178,18 @@ type Activity struct {
 	Highlight *Highlight `json:"highlight,omitempty"`
 	// Order places this among its siblings: lower first, 0 (blank) after every
 	// ordered one, then row order.
-	Order            int    `json:"order,omitempty"`
-	Timing           string `json:"timing,omitempty"`
-	Start            string `json:"start,omitempty"`
-	End              string `json:"end,omitempty"`
-	Location         string `json:"location,omitempty"`
-	Spots            int    `json:"spots,omitempty"`
-	CoLeaderNeeded   bool   `json:"coLeaderNeeded"`
-	VolunteersHidden bool   `json:"volunteersHidden"`
-	DirectSignUp     bool   `json:"directSignUp"`
+	Order          int    `json:"order,omitempty"`
+	Timing         string `json:"timing,omitempty"`
+	Start          string `json:"start,omitempty"`
+	End            string `json:"end,omitempty"`
+	Location       string `json:"location,omitempty"`
+	Spots          int    `json:"spots,omitempty"`
+	CoLeaderNeeded bool   `json:"coLeaderNeeded"`
+	// VolunteersComplete is the organizers' say-so that the thing is staffed;
+	// the page treats it as full, spots or no spots.
+	VolunteersComplete bool `json:"volunteersComplete"`
+	VolunteersHidden   bool `json:"volunteersHidden"`
+	DirectSignUp       bool `json:"directSignUp"`
 	// PrettyID is the activity's friendly address, /v/{PrettyID}, unique across
 	// every year; blank for most rows.
 	PrettyID string `json:"prettyId,omitempty"`
@@ -1030,6 +1037,10 @@ func parseActivity(row map[string]string, model *Model, images ImageChecker) (*A
 	if err != nil {
 		return fail(fmt.Errorf("volunteers hidden %w", err))
 	}
+	complete, err := yesNo(row[CompleteColumn], false)
+	if err != nil {
+		return fail(fmt.Errorf("volunteers complete %w", err))
+	}
 	direct, err := yesNo(row["Direct Sign-Up"], true)
 	if err != nil {
 		return fail(fmt.Errorf("direct sign-up %w", err))
@@ -1052,7 +1063,7 @@ func parseActivity(row map[string]string, model *Model, images ImageChecker) (*A
 		Description: row["Description"], Image: row["Image"], ImageURL: image, Flyer: row["Flyer Image"], FlyerURL: flyer, Highlight: highlightOf(row),
 		Order:  orderOf(row[OrderColumn]),
 		Timing: row["Timing"], Start: row["Start"], End: row["End"], Location: row["Location"], Spots: spots,
-		CoLeaderNeeded: coLeader, VolunteersHidden: hidden, DirectSignUp: direct, PrettyID: pretty, AllowAdding: allowAdding,
+		CoLeaderNeeded: coLeader, VolunteersComplete: complete, VolunteersHidden: hidden, DirectSignUp: direct, PrettyID: pretty, AllowAdding: allowAdding,
 		AddedBy: strings.ToLower(row["Added By"]), Added: row["Added"],
 		Children: []*Activity{}, Links: []Link{}, Volunteers: []Volunteer{},
 	}, nil
@@ -1083,6 +1094,12 @@ func dropOrphans(all []*Activity, byID map[string]*Activity) ([]*Activity, int) 
 // HasOrder says the Activities tab carries the optional Order column.
 func (t *Tables) HasOrder() bool {
 	return slices.Contains(t.ActivityHeader, OrderColumn)
+}
+
+// HasComplete says the Activities tab carries the optional Volunteers
+// Complete column.
+func (t *Tables) HasComplete() bool {
+	return slices.Contains(t.ActivityHeader, CompleteColumn)
 }
 
 func orderKey(a *Activity) int {

@@ -1115,6 +1115,8 @@ export function openActivity(act, options) {
   const hidden = checkbox('Keep volunteers secret',
     act ? act.volunteersHidden : Boolean(opts.parent && opts.parent.volunteersHidden),
     'E.g., hide room parent applications, which are secret.');
+  const complete = checkbox('Volunteers complete', act ? Boolean(act.volunteersComplete) : false,
+    'Say the volunteers are all set, whatever the count; this shows a Volunteers Complete badge and stops sign-ups.');
   const direct = checkbox(under ? 'Allow volunteers for this itself' : 'Allow volunteers for the event itself', act ? act.directSignUp : true,
     under ? 'Unchecking this will allow volunteers for subcommittees, but not this itself.' : 'Unchecking this will allow volunteers for subcommittees, but not the event itself.');
   const coChair = checkbox("I'd be open to co-chairing this", false);
@@ -1224,7 +1226,7 @@ export function openActivity(act, options) {
     body = [tabbedFields([
       {label: 'Basics', icon: 'doc', fields: basics},
       {label: 'When', icon: 'calendar', fields: [...(yearField ? [yearField] : []), when.wrap]},
-      {label: 'Sign-ups', icon: 'people', fields: [...(statusRow ? [statusRow] : []), spotsField, allowAddingRow, coLeader.wrap, hidden.wrap, direct.wrap]},
+      {label: 'Sign-ups', icon: 'people', fields: [...(statusRow ? [statusRow] : []), spotsField, complete.wrap, allowAddingRow, coLeader.wrap, hidden.wrap, direct.wrap]},
       {label: 'Image & Address', icon: 'image', fields: [
         settingCard('Top Banner Image', 'The wide picture across the top of the page and on the card (optional).', image.wrap.querySelector('.image-row')),
         settingCard('Flyer', 'The event\'s poster, shown beside the details and used for the social share image when there is one (optional).', flyer.wrap.querySelector('.image-row')),
@@ -1269,7 +1271,7 @@ export function openActivity(act, options) {
         highlight: highlight.value(),
         // Location is no longer asked for or shown; a value already in the sheet is kept.
         start: scheduled.start, end: scheduled.end, location: act ? act.location || '' : '', spots: unlimited.input.checked ? 0 : Number(spots.value) || 0,
-        coLeaderNeeded: coLeader.input.checked, volunteersHidden: hidden.input.checked, directSignUp: direct.input.checked,
+        coLeaderNeeded: coLeader.input.checked, volunteersHidden: hidden.input.checked, volunteersComplete: complete.input.checked, directSignUp: direct.input.checked,
         coChair: coChair.input.checked, prettyId: pretty.value.trim().toLowerCase(), allowAdding: allowAdding.value,
       };
       await saveActivity(body);
@@ -1823,7 +1825,7 @@ export async function saveActivityFields(act, changes) {
     // The sheet's own dates, not the ones inherited for display (state.js).
     description: act.description || '', image: act.image || '', flyer: act.flyer || '', timing: act.own.timing,
     start: act.own.start, end: act.own.end, location: act.location || '', spots: act.spots || 0,
-    coLeaderNeeded: act.coLeaderNeeded, volunteersHidden: act.volunteersHidden, directSignUp: act.directSignUp,
+    coLeaderNeeded: act.coLeaderNeeded, volunteersHidden: act.volunteersHidden, volunteersComplete: Boolean(act.volunteersComplete), directSignUp: act.directSignUp,
     prettyId: act.prettyId || '', allowAdding: act.allowAddingOwn || '', highlight: act.highlight || null,
     ...changes,
   };

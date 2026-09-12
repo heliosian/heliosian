@@ -116,7 +116,7 @@ var layouts = map[string][]tab{
 	},
 	"Events": {
 		{"Categories", events.CategoryColumns},
-		{"Activities", append(events.ActivityColumns, events.OrderColumn)},
+		{"Activities", append(events.ActivityColumns, events.OrderColumn, events.CompleteColumn)},
 		{"Volunteers", events.VolunteerColumns},
 		{"Links", events.LinkColumns},
 		{"Settings", events.SettingColumns},

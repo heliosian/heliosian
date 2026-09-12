@@ -408,6 +408,15 @@ function eventsMatching(needle) {
   return (state.model.upcoming || []).filter(e => !needle || e.title.toLowerCase().includes(needle)).length;
 }
 
+// Whether a category has anything on the page for the reader: a visible
+// link, or an event ahead - and, in Super Admin Mode, anything at all.
+function hasSomething(category) {
+  if (isAdmin() && state.superAdmin) {
+    return true;
+  }
+  return category.style === 'events' ? eventsMatching('') > 0 : category.links.some(listed);
+}
+
 export function renderNav() {
   const nav = document.querySelector('#app-nav');
   nav.replaceChildren();
@@ -415,22 +424,28 @@ export function renderNav() {
   home.href = '#';
   home.append(svg('home'), el('span', '', 'Home'));
   nav.append(home);
-  for (const category of state.model.categories) {
+  // The rail lists the sections the page shows, so an empty one stays off
+  // it too.
+  for (const category of state.model.categories.filter(hasSomething)) {
     const item = el('a', '');
     item.href = '#' + anchorFor(category.title);
     item.append(categoryGlyph(category, 'app-nav-glyph'), el('span', '', category.title));
     nav.append(item);
   }
-  nav.addEventListener('click', e => {
-    const link = e.target.closest('a');
-    if (!link) {
-      return;
-    }
-    for (const a of nav.querySelectorAll('a')) {
-      a.classList.toggle('is-active', a === link);
-    }
-  });
 }
+
+// The rail marks the section last chosen; wired once, since the rail is
+// rebuilt on every load and mode change.
+document.querySelector('#app-nav').addEventListener('click', e => {
+  const nav = e.currentTarget;
+  const link = e.target.closest('a');
+  if (!link) {
+    return;
+  }
+  for (const a of nav.querySelectorAll('a')) {
+    a.classList.toggle('is-active', a === link);
+  }
+});
 
 document.addEventListener('click', closeMenus);
 document.addEventListener('keydown', e => {

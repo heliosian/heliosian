@@ -14,7 +14,7 @@ function statusBadges(node) {
     out.push(badge('Done', 'done'));
   }
   if (node.status === 'Open' && isFull(node)) {
-    out.push(badge('Full', 'full'));
+    out.push(badge('Volunteers Complete', 'full'));
   }
   return out;
 }
@@ -243,7 +243,7 @@ function dateBadge(act) {
 
 function spotsNote(act) {
   if (isFull(act)) {
-    return 'Full';
+    return 'Volunteers complete';
   }
   if (act.spots > 0) {
     const left = act.spots - act.taken;

@@ -57,6 +57,7 @@ function initChrome() {
   superAdmin.addEventListener('change', () => {
     setSuperAdmin(superAdmin.checked);
     markSuper(superAdmin.checked);
+    renderNav();
     renderCategories(document.querySelector('#search').value);
   });
   superAdmin.closest('label').addEventListener('click', e => e.stopPropagation());

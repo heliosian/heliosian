@@ -450,6 +450,9 @@ export function renderUserChrome() {
   const person = personByKey(user.email);
   const photoUrl = person && personPhotoUrl(person);
   renderAvatars({photoUrl: photoUrl && thumbUrl(photoUrl), initial: user.initial});
+  for (const line of document.querySelectorAll('.user-menu-email')) {
+    line.textContent = user.email;
+  }
   for (const link of document.querySelectorAll('.user-menu-profile')) {
     link.href = '/people/' + encodeURIComponent(user.slug);
   }
