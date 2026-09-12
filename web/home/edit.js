@@ -144,6 +144,7 @@ export function openCategoryEditor(category) {
   document.querySelector('#category-style-field').hidden = events;
   document.querySelector('#category-events-note').hidden = !events;
   document.querySelector('#category-delete').hidden = !category || events;
+  document.querySelector('#category-max').value = category && category.max ? String(category.max) : '';
   setEmoji(category ? category.emoji || '' : '');
   setStatus('#category-status', '');
   categoryModal.hidden = false;
@@ -226,12 +227,13 @@ function categoryRow(category, at, total) {
   row.append(el('div', 'category-row-image' + (category.emoji ? '' : ' is-blank'), category.emoji || category.title.slice(0, 1).toUpperCase()));
   const body = el('div', 'category-row-body');
   body.append(el('div', 'category-row-title', category.title));
+  const limit = category.max ? ` \u00b7 shows ${category.max}` : '';
   if (category.style === 'events') {
     const n = (state.model.upcoming || []).length;
-    body.append(el('div', 'category-row-meta', `Upcoming events from HCA-Team \u00b7 ${n} ahead`));
+    body.append(el('div', 'category-row-meta', `Upcoming events from HCA-Team \u00b7 ${n} ahead${limit}`));
   } else {
     const style = category.style === 'cards' ? 'Feature cards' : 'Compact tiles';
-    body.append(el('div', 'category-row-meta', `${style} \u00b7 ${category.links.length} link${category.links.length === 1 ? '' : 's'}`));
+    body.append(el('div', 'category-row-meta', `${style} \u00b7 ${category.links.length} link${category.links.length === 1 ? '' : 's'}${limit}`));
   }
   row.append(body);
 
@@ -325,6 +327,7 @@ async function saveCategory(e) {
       title: document.querySelector('#category-title').value,
       style: editingCategory && editingCategory.style === 'events' ? 'events' : document.querySelector('#category-style').value,
       emoji: document.querySelector('#category-emoji').value.trim(),
+      max: document.querySelector('#category-max').value.trim(),
     });
     closeModals();
     await load();

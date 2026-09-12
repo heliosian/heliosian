@@ -180,18 +180,46 @@ function addCard(category, cards) {
   return card;
 }
 
+// A category's Max caps what shows until See More; the choice to see more
+// lasts until the next reload, and a search shows every match regardless.
+const expanded = new Set();
+
+function limited(category, items, needle) {
+  if (!category.max || needle || expanded.has(category.title) || items.length <= category.max) {
+    return {shown: items, hidden: 0};
+  }
+  return {shown: items.slice(0, category.max), hidden: items.length - category.max};
+}
+
+function seeMore(category, hidden, rerender) {
+  const button = el('button', 'button button-secondary see-more');
+  button.type = 'button';
+  button.append(el('span', '', `See more (${hidden})`), svg('chevron'));
+  button.addEventListener('click', () => {
+    expanded.add(category.title);
+    rerender();
+  });
+  return button;
+}
+
 // The sheet's Style column decides the shape of each section; the loader has
 // already refused anything that is not one of these two.
-function panel(category, links) {
+function panel(category, links, needle) {
   const cards = category.style === 'cards';
+  const wrap = el('div');
   const grid = el('div', cards ? 'card-grid' : 'tile-grid');
-  for (const link of links) {
+  const {shown, hidden} = limited(category, links, needle);
+  for (const link of shown) {
     grid.append(cards ? featureCard(link, category) : tile(link, category));
   }
   if (isAdmin() && state.superAdmin) {
     grid.append(addCard(category, cards));
   }
-  return grid;
+  wrap.append(grid);
+  if (hidden) {
+    wrap.append(seeMore(category, hidden, () => renderCategories(needle)));
+  }
+  return wrap;
 }
 
 export function anchorFor(title) {
@@ -223,9 +251,9 @@ export function renderCategories(query = '') {
     const events = category.style === 'events';
     const links = events ? [] : category.links.filter(link => listed(link) && matches(link, needle));
     const count = events ? eventsMatching(needle) : links.length;
-    // A search hides empty sections outright; without one, an admin still sees
-    // an empty category so it can be edited or filled.
-    if (!count && (needle || !isAdmin())) {
+    // A section with nothing to show stays off the page - except in Super
+    // Admin Mode, where it appears empty so it can be filled or edited.
+    if (!count && (needle || !isAdmin() || !state.superAdmin)) {
       continue;
     }
     shown += count;
@@ -252,7 +280,7 @@ export function renderCategories(query = '') {
     }
     section.append(head);
     // An empty category still gets its grid for the admin's add card.
-    section.append(events ? eventsPanel(category, needle) : panel(category, links));
+    section.append(events ? eventsPanel(category, needle) : panel(category, links, needle));
     root.append(section);
   }
   const empty = document.querySelector('#empty-search');
@@ -360,11 +388,17 @@ function eventsPanel(category, needle) {
   if (!events.length) {
     return el('div', 'category-empty', needle ? 'No events match.' : 'Nothing coming up yet.');
   }
+  const wrap = el('div');
   const grid = el('div', 'event-grid');
-  for (const event of events) {
+  const {shown, hidden} = limited(category, events, needle);
+  for (const event of shown) {
     grid.append(eventCard(event));
   }
-  return grid;
+  wrap.append(grid);
+  if (hidden) {
+    wrap.append(seeMore(category, hidden, () => renderCategories(needle)));
+  }
+  return wrap;
 }
 
 function eventsMatching(needle) {

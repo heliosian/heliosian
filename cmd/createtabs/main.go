@@ -109,7 +109,7 @@ var layouts = map[string][]tab{
 		{"Admins", []string{"Email"}},
 	},
 	"Apps": {
-		{"Categories", []string{"Title", "Emoji", "Style"}},
+		{"Categories", []string{"Title", "Emoji", "Style", "Max"}},
 		{"Links", []string{"Title", "Description", "URL", "Image", "Category", "Visible", "Added By", "Added"}},
 		{"Admins", []string{"Email"}},
 		{"Change Log", []string{"Timestamp", "Actor", "Action", "Kind", "Title", "Description", "URL", "Image", "Category", "Visible", "Style"}},

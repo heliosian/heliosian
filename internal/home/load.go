@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"maps"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -39,7 +40,7 @@ const (
 )
 
 var (
-	categoryColumns  = []string{"Title", "Emoji", "Style"}
+	categoryColumns  = []string{"Title", "Emoji", "Style", "Max"}
 	linkColumns      = []string{"Title", "Description", "URL", "Image", "Category", "Visible", "Added By", "Added"}
 	adminColumns     = []string{"Email"}
 	changeLogColumns = []string{"Timestamp", "Actor", "Action", "Kind", "Title", "Description", "URL", "Image", "Category", "Visible", "Style"}
@@ -64,13 +65,15 @@ type Link struct {
 
 // A category goes by an emoji rather than a picture: it heads the section,
 // marks the rail, and stands in for a link that has no image of its own.
-// Virtual marks the events section when the sheet has no row for it yet: it
-// shows and edits like any other, and the first rename, emoji or move writes
-// its row.
+// Max is how many of its things the page shows before a See More; zero
+// shows them all. Virtual marks the events section when the sheet has no row
+// for it yet: it shows and edits like any other, and the first rename, emoji
+// or move writes its row.
 type Category struct {
 	Title   string `json:"title"`
 	Emoji   string `json:"emoji,omitempty"`
 	Style   string `json:"style"`
+	Max     int    `json:"max,omitempty"`
 	Links   []Link `json:"links"`
 	Virtual bool   `json:"virtual,omitempty"`
 }
@@ -128,6 +131,20 @@ func yesNo(cell string) (bool, error) {
 		return false, nil
 	}
 	return false, fmt.Errorf("%q is not Yes or No", cell)
+}
+
+// checkMax reads a Max cell: blank for no limit, else a whole number of one
+// or more.
+func checkMax(cell string) (int, error) {
+	cell = strings.TrimSpace(cell)
+	if cell == "" {
+		return 0, nil
+	}
+	n, err := strconv.Atoi(cell)
+	if err != nil || n < 1 {
+		return 0, fmt.Errorf("max %q is not a whole number of one or more", cell)
+	}
+	return n, nil
 }
 
 // checkStyle is spelled exactly, the same stance yesNo takes: a blank or
@@ -231,8 +248,12 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 			}
 			events = true
 		}
+		max, err := checkMax(row["Max"])
+		if err != nil {
+			return nil, fmt.Errorf("category %q: %w", title, err)
+		}
 		index[title] = len(model.Categories)
-		model.Categories = append(model.Categories, Category{Title: title, Emoji: emoji, Style: style, Links: []Link{}})
+		model.Categories = append(model.Categories, Category{Title: title, Emoji: emoji, Style: style, Max: max, Links: []Link{}})
 	}
 	// The events section is always on the page: at the top, under its own
 	// name, until a row places and names it.

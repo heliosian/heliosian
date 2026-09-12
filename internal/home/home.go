@@ -133,7 +133,7 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 	full := a.cache.Model()
 	categories := make([]Category, 0, len(full.Categories))
 	for _, category := range full.Categories {
-		shown := Category{Title: category.Title, Emoji: category.Emoji, Style: category.Style, Links: []Link{}, Virtual: category.Virtual}
+		shown := Category{Title: category.Title, Emoji: category.Emoji, Style: category.Style, Max: category.Max, Links: []Link{}, Virtual: category.Virtual}
 		for _, link := range category.Links {
 			if link.Visible || admin {
 				shown.Links = append(shown.Links, link)
@@ -293,6 +293,9 @@ func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 		Title    string `json:"title"`
 		Emoji    string `json:"emoji"`
 		Style    string `json:"style"`
+		// Max is a count, or blank for no limit; it arrives as text since that
+		// is what the sheet holds and what an empty field sends.
+		Max string `json:"max"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -324,7 +327,11 @@ func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "the events section is the one the page already has", http.StatusBadRequest)
 		return
 	}
-	cells := map[string]string{"Title": title, "Emoji": emoji, "Style": style}
+	if _, err := checkMax(body.Max); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	cells := map[string]string{"Title": title, "Emoji": emoji, "Style": style, "Max": strings.TrimSpace(body.Max)}
 	var tables *Tables
 	if virtual {
 		tables = a.cache.Tables().withRow(categoriesTab, "", cells)
@@ -348,7 +355,7 @@ func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 	}
 	if !a.commit(r.Context(), w, tables, func() error {
 		if body.Original == "" || virtual {
-			if err := a.writer.Append(appName, categoriesTab, []string{title, cells["Emoji"], cells["Style"]}); err != nil {
+			if err := a.writer.Append(appName, categoriesTab, []string{title, cells["Emoji"], cells["Style"], cells["Max"]}); err != nil {
 				return err
 			}
 			if virtual {

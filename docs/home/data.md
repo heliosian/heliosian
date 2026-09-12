@@ -6,7 +6,7 @@ Home's data lives in one Google Sheet, `Apps`, in the community shared drive, re
 
 ## Tabs
 
-- `Categories` — Title, Emoji, Style. Row order is display order.
+- `Categories` — Title, Emoji, Style, Max. Row order is display order.
 - `Links` — Title, Description, URL, Image, Category, Visible, Added By, Added. Row order is display order within a category.
 - `Admins` — Email. Who may edit, beyond the platform super admins (`docs/config.md`).
 - `Change Log` — Timestamp, Actor, Action, Kind, and the link or category fields. Appended on every change; never read back.
@@ -22,6 +22,8 @@ The sheet is the schema from scratch, not an import of the Glide app's tables. T
 **Style is `cards`, `tiles` or `events`**, spelled exactly so, and every category needs one. `cards` renders the category as large feature cards, each with its image, description, and its own button; `tiles` renders it as a row of compact tiles with a picture, the title and a line. A blank or misspelled Style refuses the load rather than guessing a presentation, the same stance Visible takes — the front page's shape is a property of the sheet, not of what the renderer happens to fall back to.
 
 **`events` is the one section that holds no links**: HCA-Team's upcoming events, which the portal supplies. The Style value is what marks the row as the app's own - no other column says so, and the row has no id: the sheet is keyed by Title throughout, and at most one row may carry this style, so it is found by that. `cmd/createtabs` seeds the row ("Upcoming Events" 📅) when it makes the tab, and the sample data carries it, so normally the sheet holds it like any other category and it is renamed, re-marked and moved like one. A sheet without the row (one laid out before the section existed) still gets the section, synthesized at the top under that standing name; the app writes the row the first time an admin renames it, changes its emoji or moves it (`saveCategory` and `reorderCategories` in `internal/home/home.go` append it, then order it where the page had it). No link may name it as its category, and it cannot be deleted - only renamed and moved.
+
+**Max caps what a section shows.** Blank shows everything; a whole number of one or more shows that many links (or, for the events section, events) and puts the rest behind a See More button, which opens the section for the rest of the visit. A search shows every match regardless. Anything else in the cell refuses the load. The category editor's "Show at most" field sets it.
 
 **A category must exist before a link names it**, and cannot be deleted while a link still does.
 

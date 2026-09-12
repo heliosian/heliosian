@@ -504,6 +504,33 @@ main {
 
 .event-when-lines { display: flex; flex-direction: column; }
 
+.category-empty {
+  padding: 18px;
+  color: var(--muted);
+  font-size: 14px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+
+/* The rest of a capped section waits behind this. */
+.see-more {
+  display: inline-flex;
+  margin-top: 16px;
+}
+
+.see-more svg { width: 16px; height: 16px; transform: rotate(90deg); }
+
+.field-max input {
+  width: 120px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font: inherit;
+}
+
+.field-max .field-lead { margin-top: 6px; }
+
 /* Feature cards - the "cards" style */
 
 .card-grid {

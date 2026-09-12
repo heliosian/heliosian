@@ -1,5 +1,5 @@
-Title,Emoji,Style
-Upcoming Events,📅,events
-School,🏫,cards
-Events,📅,tiles
-Chats,💬,tiles
+Title,Emoji,Style,Max
+Upcoming Events,📅,events,
+School,🏫,cards,
+Events,📅,tiles,1
+Chats,💬,tiles,
