@@ -1490,11 +1490,13 @@ a.card-chip.is-link:hover { filter: brightness(0.92); text-decoration: underline
 
 /* .avatar carries no size of its own - without this it collapses to its text
    and any photo inside, sized 100%/100%, squashes with it. */
+/* Square-cornered, like every face in the portal. */
 .side-chair .avatar {
   width: 48px;
   height: 48px;
   margin: 0 auto 4px;
   font-size: 18px;
+  border-radius: 11px;
 }
 
 .side-chair-name { font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.25; }
@@ -1555,7 +1557,7 @@ button.side-chair:hover { background: var(--input); }
   text-transform: uppercase;
 }
 
-.side-chair .avatar img { border-radius: 50%; }
+.side-chair .avatar img { border-radius: 11px; }
 
 .side-group {
   font-size: 11.5px;
