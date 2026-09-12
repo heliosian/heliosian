@@ -273,7 +273,9 @@ export function renderCategories(query = '') {
 // community lives in Google Workspace, so this beats an .ics download on
 // every device it has.
 function calendarLink(event) {
-  const compact = cell => cell.replace(/[-: ]/g, '');
+  // "2026-10-15 16:00" -> "20261015T160000", the form Google reads: the T
+  // between day and time is required, not decoration.
+  const stamp = cell => cell.slice(0, 10).replace(/-/g, '') + 'T' + cell.slice(11).replace(':', '') + '00';
   const timed = event.startAt.length > 10;
   let dates;
   if (timed) {
@@ -284,13 +286,13 @@ function calendarLink(event) {
       const pad = n => String(n).padStart(2, '0');
       end = `${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())} ${pad(start.getHours())}:${pad(start.getMinutes())}`;
     }
-    dates = `${compact(event.startAt)}00/${compact(end)}00`;
+    dates = `${stamp(event.startAt)}/${stamp(end)}`;
   } else {
     // All-day entries end on the day after the last day.
     const last = new Date((event.endAt || event.startAt).slice(0, 10) + 'T00:00:00');
     last.setDate(last.getDate() + 1);
     const pad = n => String(n).padStart(2, '0');
-    dates = `${compact(event.startAt.slice(0, 10))}/${last.getFullYear()}${pad(last.getMonth() + 1)}${pad(last.getDate())}`;
+    dates = `${event.startAt.slice(0, 10).replace(/-/g, '')}/${last.getFullYear()}${pad(last.getMonth() + 1)}${pad(last.getDate())}`;
   }
   const params = new URLSearchParams({
     action: 'TEMPLATE', text: event.title, dates, ctz: 'America/Los_Angeles',
