@@ -115,7 +115,12 @@ export function partiesPage(code) {
     main.append(el('p', 'page-intro', state.model.settings.partiesIntro));
   }
   head.append(main);
-  const options = state.model.celebrations.map(x => ({key: x.code, label: x.title}));
+  // The picker offers the years that have parties to show - and the one
+  // being looked at, so it never lists what it stands on. A gala posted
+  // ahead of its parties stays out until the first is approved.
+  const options = state.model.celebrations
+    .filter(x => x.code === state.celebration || parties(x.code).length)
+    .map(x => ({key: x.code, label: x.title}));
   if (options.length > 1) {
     head.append(selectPill('calendar', options, state.celebration, picked => {
       state.celebration = picked;
