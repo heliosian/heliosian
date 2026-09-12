@@ -305,13 +305,7 @@ main {
 
 .category-more svg { width: 16px; height: 16px; }
 
-/* Upcoming Events - the portal's next few, as cards with a date stamp. It
-   sits above the categories, so it draws the rule the next section would. */
-.upcoming {
-  padding-bottom: 26px;
-  margin-bottom: 26px;
-  border-bottom: 1px solid var(--line);
-}
+/* Upcoming Events - the portal's next few, as cards with a date stamp. */
 
 .event-grid {
   display: grid;
@@ -344,18 +338,21 @@ main {
   padding: 0 14px 14px;
 }
 
-/* Two buttons of one size, halving the row: the calendar's icon alone, and
-   Volunteer. */
+/* Two buttons of one size, halving the row. */
 .event-actions .button {
   flex: 1 1 0;
   min-width: 0;
   height: 36px;
   justify-content: center;
-  padding: 0 10px;
+  padding: 0 8px;
   font-size: 13px;
+  white-space: nowrap;
 }
 
-.event-actions svg { width: 16px; height: 16px; flex-shrink: 0; }
+.event-actions svg { width: 17px; height: 17px; flex-shrink: 0; }
+
+/* The plus is the point of the icon: heavier than the calendar around it. */
+.event-calendar svg { stroke-width: 2.4; }
 
 .event-art {
   position: relative;
@@ -565,9 +562,9 @@ main {
 
 .feature-corner svg { width: 18px; height: 18px; }
 
-.feature .more-wrap { position: absolute; top: 12px; right: 12px; z-index: 2; }
+.feature .link-edit { position: absolute; top: 12px; right: 12px; z-index: 2; }
 
-.feature.is-hidden > *:not(.more-wrap) { opacity: 0.55; }
+.feature.is-hidden > *:not(.link-edit) { opacity: 0.55; }
 
 /* Tiles - the "tiles" style: a picture beside the initial, the title and a
    line about it. */
@@ -645,11 +642,7 @@ main {
 
 .tile.is-hidden { opacity: 0.55; }
 
-.tile .more-wrap { position: absolute; top: 8px; right: 8px; z-index: 2; }
-
-.tile .more-button { width: 28px; height: 28px; }
-
-.tile .more-button svg { width: 15px; height: 15px; }
+.tile .link-edit { position: absolute; top: 8px; right: 8px; z-index: 2; }
 
 /* The admin's dashed add card, at the end of every category. */
 .add-card {
@@ -724,9 +717,74 @@ main {
   pointer-events: none;
 }
 
-.more-button { width: 28px; height: 28px; }
+.hidden-badge {
+  background: var(--muted);
+  color: #fff;
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
 
-.tile .more-button svg { width: 15px; height: 15px; }
+.empty-search, .footnote {
+  color: var(--muted);
+  font-size: 14px;
+  text-align: center;
+  margin-top: 32px;
+}
+
+/* Decorative only, so it carries an empty alt. It spans the content column and
+   sits flush at the very bottom - main takes no bottom padding and grows to
+   fill, so on a short page the art still lands at the foot of the viewport. */
+.page-art {
+  display: block;
+  width: 70%;
+  height: auto;
+  margin: 28px 0 0 auto;
+  pointer-events: none;
+}
+
+.link-edit {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 0;
+  background: rgba(255, 255, 255, 0.85);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--brand);
+}
+
+.link-edit:hover { background: #fff; }
+
+.link-edit svg { width: 15px; height: 15px; }
+
+.footnote {
+  color: var(--muted);
+  font-size: 14px;
+  text-align: center;
+  margin-top: 32px;
+}
+
+/* The foot: the leaves along the bottom edge. main grows to fill, so on a
+   short page the art still lands at the foot of the viewport. Decorative
+   only, so it carries an empty alt. */
+.page-foot {
+  position: relative;
+  margin-top: auto;
+  padding-top: 48px;
+}
+
+.page-art {
+  display: block;
+  width: 100%;
+  height: auto;
+  pointer-events: none;
+}
 
 .hidden-badge {
   background: var(--muted);
@@ -757,53 +815,126 @@ main {
   pointer-events: none;
 }
 
-.more-button {
-  width: 36px;
-  height: 36px;
+.footnote {
+  color: var(--muted);
+  font-size: 14px;
+  text-align: center;
+  margin-top: 32px;
+}
+
+/* The foot: the leaves along the bottom edge. main grows to fill, so on a
+   short page the art still lands at the foot of the viewport. Decorative
+   only, so it carries an empty alt. */
+.page-foot {
+  position: relative;
+  margin-top: auto;
+  padding-top: 48px;
+}
+
+.page-art {
+  display: block;
+  width: 100%;
+  height: auto;
+  pointer-events: none;
+}
+
+.hidden-badge {
+  background: var(--muted);
+  color: #fff;
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.empty-search, .footnote {
+  color: var(--muted);
+  font-size: 14px;
+  text-align: center;
+  margin-top: 32px;
+}
+
+/* Decorative only, so it carries an empty alt. It spans the content column and
+   sits flush at the very bottom - main takes no bottom padding and grows to
+   fill, so on a short page the art still lands at the foot of the viewport. */
+.page-art {
+  display: block;
+  width: 70%;
+  height: auto;
+  margin: 28px 0 0 auto;
+  pointer-events: none;
+}
+
+.link-edit {
+  width: 30px;
+  height: 30px;
   border-radius: 8px;
   border: 0;
-  background: none;
+  background: rgba(255, 255, 255, 0.85);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--ink);
+  color: var(--brand);
 }
 
-.more-button:hover { background: var(--input); }
+.link-edit:hover { background: #fff; }
 
-.more-button svg { width: 18px; height: 18px; }
+.link-edit svg { width: 15px; height: 15px; }
 
-.more-wrap { position: relative; }
-
-.more-menu {
-  position: absolute;
-  right: 0;
-  top: 40px;
-  min-width: 160px;
-  background: #fff;
-  border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
-  padding: 6px 0;
-  z-index: 10;
+.footnote {
+  color: var(--muted);
+  font-size: 14px;
+  text-align: center;
+  margin-top: 32px;
 }
 
-.more-menu button {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+/* The foot: the leaves along the bottom edge. main grows to fill, so on a
+   short page the art still lands at the foot of the viewport. Decorative
+   only, so it carries an empty alt. */
+.page-foot {
+  position: relative;
+  margin-top: auto;
+  padding-top: 48px;
+}
+
+.page-art {
+  display: block;
   width: 100%;
-  padding: 10px 16px;
-  border: 0;
-  background: none;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
+  height: auto;
+  pointer-events: none;
 }
 
-.more-menu button:hover { background: var(--input); }
+.hidden-badge {
+  background: var(--muted);
+  color: #fff;
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
 
-.more-menu svg { width: 16px; height: 16px; }
+.empty-search, .footnote {
+  color: var(--muted);
+  font-size: 14px;
+  text-align: center;
+  margin-top: 32px;
+}
+
+/* Decorative only, so it carries an empty alt. It spans the content column and
+   sits flush at the very bottom - main takes no bottom padding and grows to
+   fill, so on a short page the art still lands at the foot of the viewport. */
+.page-art {
+  display: block;
+  width: 70%;
+  height: auto;
+  margin: 28px 0 0 auto;
+  pointer-events: none;
+}
 
 .footnote {
   color: var(--muted);

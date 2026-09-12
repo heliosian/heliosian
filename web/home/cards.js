@@ -1,59 +1,25 @@
 import {state, isAdmin} from './state.js';
-import {el, svg, toast, categoryIcon} from './dom.js';
+import {el, svg, categoryIcon} from './dom.js';
 import {openLinkEditor, openCategoryEditor} from './edit.js';
 import {appOrigin} from '/toolbar.js';
 
-function closeMenus() {
-  for (const menu of document.querySelectorAll('.more-menu')) {
-    menu.hidden = true;
+// In Super Admin Mode every link wears a pencil in its corner, the way into
+// its editor; a card has no other menu.
+function editPencil(link) {
+  if (!isAdmin() || !state.superAdmin) {
+    return null;
   }
-}
-
-async function copyLink(link) {
-  await navigator.clipboard.writeText(link.url);
-  toast('Link copied');
-}
-
-function openLink(link) {
-  window.open(link.url, '_blank', 'noopener');
-}
-
-function menuItem(icon, label, action) {
-  const button = el('button', '', '');
-  button.type = 'button';
-  button.append(svg(icon), el('span', '', label));
-  button.addEventListener('click', e => {
-    e.stopPropagation();
-    closeMenus();
-    action();
-  });
-  return button;
-}
-
-// Every link carries the same overflow menu in both styles; it is the only
-// route to Edit, and on a tile it is the only route to Copy Link as well.
-function moreMenu(link) {
-  const wrap = el('div', 'more-wrap');
-  const more = el('button', 'more-button');
-  more.type = 'button';
-  more.setAttribute('aria-label', `More for ${link.title}`);
-  more.append(svg('more'));
-  const menu = el('div', 'more-menu');
-  menu.hidden = true;
-  menu.append(menuItem('go', 'Go!', () => openLink(link)));
-  menu.append(menuItem('copy', 'Copy Link', () => copyLink(link)));
-  if (isAdmin() && state.superAdmin) {
-    menu.append(menuItem('edit', 'Edit', () => openLinkEditor(link)));
-  }
-  more.addEventListener('click', e => {
+  const pencil = el('button', 'link-edit');
+  pencil.type = 'button';
+  pencil.title = 'Edit link';
+  pencil.setAttribute('aria-label', `Edit ${link.title}`);
+  pencil.append(svg('edit'));
+  pencil.addEventListener('click', e => {
     e.stopPropagation();
     e.preventDefault();
-    const opening = menu.hidden;
-    closeMenus();
-    menu.hidden = !opening;
+    openLinkEditor(link);
   });
-  wrap.append(more, menu);
-  return wrap;
+  return pencil;
 }
 
 // The glyph a category goes by: its emoji when the sheet gives it one, else
@@ -123,7 +89,11 @@ function featureCard(link, category) {
   corner.className = 'feature-corner';
   corner.setAttribute('aria-label', `Open ${link.title}`);
   corner.append(svg('chevron'));
-  card.append(corner, moreMenu(link));
+  card.append(corner);
+  const pencil = editPencil(link);
+  if (pencil) {
+    card.append(pencil);
+  }
   return card;
 }
 
@@ -151,7 +121,11 @@ function tile(link, category) {
     body.append(el('div', 'tile-description', link.description));
   }
   open.append(body);
-  card.append(open, moreMenu(link));
+  card.append(open);
+  const pencil = editPencil(link);
+  if (pencil) {
+    card.append(pencil);
+  }
   return card;
 }
 
@@ -366,15 +340,13 @@ function eventCard(event) {
     body.append(when);
   }
   open.append(art, body);
-  // One row: a calendar-with-plus icon button, and Volunteer.
+  // One row, two buttons of one size: Add to Calendar and Volunteer.
   const actions = el('div', 'event-actions');
   const calendar = el('a', 'button button-secondary button-small event-calendar');
   calendar.href = calendarLink(event);
   calendar.target = '_blank';
   calendar.rel = 'noopener';
-  calendar.title = 'Add to Calendar';
-  calendar.setAttribute('aria-label', `Add ${event.title} to your calendar`);
-  calendar.append(svg('calendarAdd'));
+  calendar.append(svg('calendarAdd'), el('span', '', 'Add to Calendar'));
   const volunteer = el('a', 'button button-small');
   volunteer.href = open.href;
   volunteer.append(svg('volunteer'), el('span', '', 'Volunteer'));
@@ -446,9 +418,3 @@ document.querySelector('#app-nav').addEventListener('click', e => {
   }
 });
 
-document.addEventListener('click', closeMenus);
-document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') {
-    closeMenus();
-  }
-});
