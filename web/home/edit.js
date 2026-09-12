@@ -148,11 +148,13 @@ export function openCategoryEditor(category) {
   document.querySelector('#category-modal-title').textContent = category ? 'Edit Category' : 'Add Category';
   document.querySelector('#category-title').value = category ? category.title : '';
   // The events section keeps its style and cannot be deleted; the rest of
-  // the editor - name and emoji - is its to use.
+  // the editor - name and emoji - is its to use. The apps section is a
+  // style like any other, with a note on what it holds.
   const events = Boolean(category && category.style === 'events');
   document.querySelector('#category-style').value = category && !events ? category.style : 'tiles';
   document.querySelector('#category-style-field').hidden = events;
   document.querySelector('#category-events-note').hidden = !events;
+  syncAppsNote();
   document.querySelector('#category-delete').hidden = !category || events;
   document.querySelector('#category-max').value = category && category.max ? String(category.max) : '';
   setEmoji(category ? category.emoji || '' : '');
@@ -295,6 +297,9 @@ function categoryRow(category, at, total) {
   if (category.style === 'events') {
     const n = (state.model.upcoming || []).length;
     body.append(el('div', 'category-row-meta', `Upcoming events from HCA-Team \u00b7 ${n} ahead${limit}`));
+  } else if (category.style === 'apps') {
+    const n = (state.model.apps || []).length;
+    body.append(el('div', 'category-row-meta', `The community apps \u00b7 ${n} you see${limit}`));
   } else {
     const style = category.style === 'cards' ? 'Feature cards' : 'Compact tiles';
     body.append(el('div', 'category-row-meta', `${style} \u00b7 ${category.links.length} link${category.links.length === 1 ? '' : 's'}${limit}`));
@@ -414,7 +419,14 @@ async function deleteCategory() {
   }
 }
 
+// The apps note shows under the style menu while Community apps is chosen.
+function syncAppsNote() {
+  const style = document.querySelector('#category-style');
+  document.querySelector('#category-apps-note').hidden = style.closest('.field').hidden || style.value !== 'apps';
+}
+
 export function initEditing() {
+  document.querySelector('#category-style').addEventListener('change', syncAppsNote);
   document.querySelector('#add-category').addEventListener('click', () => openCategoryEditor(null));
   document.querySelector('#edit-categories').addEventListener('click', openCategoryManager);
   linkForm.addEventListener('submit', saveLink);

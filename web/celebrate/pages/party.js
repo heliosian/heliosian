@@ -1,13 +1,18 @@
 import {isAdmin, whenParts, parseWhen, priceLine, money, googleCalendarLink, partyPath, myTickets, availabilityLabel} from '../state.js';
 import {el, link, svg, button, avatar, thumb, paragraphs, copyText, toast} from '../dom.js';
 import {setTitle, partiesPath} from '../chrome.js';
-import {openBuy, openParty, openTicket, openPerson, removeTicket, setTicketStatus, setFlags, setPartyStatus, openContacts, savePartyFields, uploadImage} from '../edit.js';
+import {openBuy, openParty, openFreeTicket, openTicket, openPerson, openReassign, removeTicket, offerTickets, setFlags, setPartyStatus, openContacts, savePartyFields, uploadImage, editable, editPencil, fieldEditor, textInput, textAreaInput, whenInputs, emojiPicker, uploadAndSave, imageSearchOn, openImageSearch} from '../edit.js';
 import {statusBadges} from '../cards.js';
-import {openPhotoLightbox} from '/crop.js';
+import {openPhotoLightbox, openCropTool} from '/crop.js';
 
 // The page is laid out the way HCA-Team lays out an event: the wide banner
 // with the date stamp and the tools floating over it, then the words beside a
 // rail of facts, the flyer, and who to ask.
+
+// Which party is in edit mode, by id - as HCA-Team's event page has it: the
+// hero's pencil reveals every section's pencil, and becomes Done. Keyed
+// rather than a bare boolean so opening another party never inherits it.
+let editingId = null;
 
 // phone is the rail-less layout (style.css's breakpoint); crossing it lays the
 // page out again, since the facts card sits in a different place.
@@ -37,9 +42,9 @@ function heroStamp(p) {
 }
 
 // heroTools are the round buttons at the banner's top-left: the pencil for
-// whoever runs the party, the share (copy link), and the expand into a
-// full-size view of the picture.
-function heroTools(p) {
+// whoever runs the party (edit mode on and off) and the share. The picture
+// itself opens full size on a click.
+function heroTools(p, editing) {
   const tools = el('div', 'hero-actions');
   const tool = (icon, label, onClick) => {
     const b = button('', icon, 'hero-action', onClick);
@@ -48,19 +53,132 @@ function heroTools(p) {
     return b;
   };
   if (p.canEdit) {
-    tools.append(tool('edit', 'Edit party', () => openParty(p)));
+    const toggle = tool(editing ? 'check' : 'edit', editing ? 'Done editing' : 'Edit party', () => {
+      editingId = editing ? null : p.id;
+      document.dispatchEvent(new CustomEvent('celebrate:refresh'));
+    });
+    toggle.classList.toggle('is-editing', editing);
+    tools.append(toggle);
   }
-  tools.append(tool('copy', 'Copy link', () => copyText(location.origin + partyPath(p), 'Link copied')));
-  if (p.imageUrl) {
-    tools.append(tool('expand', 'View full size', () => openPhotoLightbox(p.imageUrl)));
-  }
+  // Share hands the link to the phone's share sheet, as HCA-Team does; where
+  // there is none it copies the link instead.
+  tools.append(tool('share', 'Share this party', async () => {
+    const url = location.origin + partyPath(p);
+    if (navigator.share) {
+      try {
+        await navigator.share({title: p.title, url});
+        return;
+      } catch {
+        // Dismissed or refused: fall through to the clipboard.
+      }
+    }
+    copyText(url, 'Link copied');
+  }));
   return tools;
 }
 
-function hero(p) {
+// heroImageBar is the strip across the foot of the banner while editing:
+// pick a file and it uploads and saves in one go, find one in the image
+// libraries, crop, or remove.
+function heroImageBar(p, save) {
+  const bar = el('div', 'hero-image-bar');
+  const file = el('input');
+  file.type = 'file';
+  file.accept = 'image/*';
+  file.hidden = true;
+  file.addEventListener('change', async () => {
+    if (!file.files.length) {
+      return;
+    }
+    bar.replaceChildren(el('span', 'hero-image-status', 'Uploading…'));
+    await uploadAndSave(save, file.files[0]);
+  });
+  const label = p.image ? 'Replace image' : 'Add an image';
+  if (imageSearchOn()) {
+    const holder = el('div', 'hero-image-menu-holder');
+    const toggle = el('button', 'hero-image-action');
+    toggle.type = 'button';
+    toggle.setAttribute('aria-haspopup', 'menu');
+    toggle.append(svg('image'), el('span', '', label), svg('caret'));
+    const menu = el('div', 'hero-image-menu');
+    menu.hidden = true;
+    const item = (icon, words, onClick) => {
+      const b = el('button', 'hero-image-menu-item');
+      b.type = 'button';
+      b.append(svg(icon), el('span', '', words));
+      b.addEventListener('click', () => {
+        menu.hidden = true;
+        onClick();
+      });
+      menu.append(b);
+    };
+    item('up', 'Upload image', () => file.click());
+    item('search', 'Find an image', () => openImageSearch(p.title, picked => save({image: picked})));
+    toggle.addEventListener('click', e => {
+      e.stopPropagation();
+      menu.hidden = !menu.hidden;
+    });
+    document.addEventListener('click', () => {
+      menu.hidden = true;
+    }, {once: true, capture: true});
+    holder.append(toggle, menu, file);
+    bar.append(holder);
+  } else {
+    const choose = el('label', 'hero-image-action');
+    choose.append(svg('image'), el('span', '', label), file);
+    bar.append(choose);
+  }
+  if (p.image) {
+    const crop = el('button', 'hero-image-action');
+    crop.type = 'button';
+    crop.append(svg('expand'), el('span', '', 'Crop'));
+    crop.addEventListener('click', () => openCropTool(p.imageUrl, false, async blob => {
+      await uploadAndSave(save, new File([blob], 'crop.jpg', {type: 'image/jpeg'}));
+      return true;
+    }));
+    bar.append(crop);
+    const remove = el('button', 'hero-image-action');
+    remove.type = 'button';
+    remove.append(svg('trash'), el('span', '', 'Remove'));
+    remove.addEventListener('click', () => save({image: ''}));
+    bar.append(remove);
+  }
+  return bar;
+}
+
+function hero(p, editing, save) {
   const wrap = el('div', 'detail-hero');
-  wrap.append(thumb(p.imageUrl, p.title, 'detail-hero-image'), heroTools(p), heroStamp(p));
+  // The banner itself opens full size on a click; there is no tool for it.
+  const image = thumb(p.imageUrl, p.title, 'detail-hero-image');
+  if (p.imageUrl) {
+    image.classList.add('is-openable');
+    image.addEventListener('click', () => openPhotoLightbox(p.imageUrl));
+  }
+  wrap.append(image, heroTools(p, editing), heroStamp(p));
+  if (editing) {
+    wrap.append(heroImageBar(p, save));
+  }
   return wrap;
+}
+
+// withPencil puts a value and its pencil on one row, while editing.
+function withPencil(node, pencil) {
+  const row = el('div', 'edit-row');
+  row.append(node, pencil);
+  return row;
+}
+
+// emptyPrompt is what an empty section shows in edit mode: an invitation
+// that opens the editor for it.
+function emptyPrompt(label, make, submit) {
+  const b = el('button', 'edit-empty');
+  b.type = 'button';
+  b.append(svg('plus'), el('span', '', label));
+  b.addEventListener('click', () => {
+    const built = make();
+    fieldEditor(b, null, {input: built.input, hint: built.hint, value: built.value, validate: built.validate, submit});
+  });
+  return b;
 }
 
 // ticketWords is the headline of the ticket band, in the old site's voice.
@@ -101,10 +219,15 @@ function ticketBand(p) {
       const row = el('div', 'my-ticket');
       row.append(avatar(a, 'my-ticket-face'));
       const words = el('span', 'my-ticket-words');
-      words.append(el('span', 'my-ticket-name', a.name), el('span', 'my-ticket-line', a.status === 'Ticket' ? `Ticket · ${money(a.price || 0)}` : 'On the waitlist'));
+      const n = a.quantity || 1;
+      words.append(el('span', 'my-ticket-name', a.name), el('span', 'my-ticket-line', a.status === 'Ticket' ? (a.price ? `Ticket · ${money(a.price)}` : 'Free ticket') : `On the waitlist for ${n} ${n === 1 ? 'ticket' : 'tickets'}`));
       row.append(words);
-      if (a.status !== 'Ticket' && p.availability !== 'past') {
-        row.append(button('Leave waitlist', 'close', 'link-button', () => removeTicket(p, a)));
+      if (p.availability !== 'past') {
+        if (a.status === 'Ticket') {
+          row.append(button('Reassign', 'people', 'link-button', () => openReassign(p, a)));
+        } else {
+          row.append(button('Leave waitlist', 'close', 'link-button', () => removeTicket(p, a)));
+        }
       }
       list.append(row);
     }
@@ -171,17 +294,17 @@ function waitlistSection(p) {
   const section = el('section', 'attendees waitlist');
   section.append(el('h3', 'section-title', `Waitlist (${p.waitlisted.length})`));
   const list = el('div', 'wait-list');
+  // Each entry is a family's request: who asked, and for how many.
   p.waitlisted.forEach((a, i) => {
     const row = el('div', 'wait-row');
     row.append(el('span', 'wait-num', String(i + 1)), avatar(a, 'wait-face'));
     const words = el('span', 'wait-words');
     words.append(el('span', 'wait-name', a.name));
-    if (a.line) {
-      words.append(el('span', 'wait-line', a.line));
-    }
+    const n = a.quantity || 1;
+    words.append(el('span', 'wait-line', `${n} ${n === 1 ? 'ticket' : 'tickets'}${a.line ? ` · ${a.line}` : ''}`));
     row.append(words);
     if (p.canEdit) {
-      row.append(button('Offer a ticket', 'ticket', 'button button-secondary button-small', () => setTicketStatus(a, 'Ticket')));
+      row.append(button(`Offer ${n === 1 ? 'a ticket' : n + ' tickets'}`, 'ticket', 'button button-secondary button-small', () => offerTickets(p, a)));
       row.append(button('', 'edit', 'edit-icon', () => openTicket(p, a)));
     } else if (a.mine) {
       row.append(button('Leave', 'close', 'link-button', () => removeTicket(p, a)));
@@ -193,17 +316,41 @@ function waitlistSection(p) {
 }
 
 // callout is the party's need-to-know line in the tinted card HCA-Team uses
-// for an event's highlight, behind a megaphone.
-function callout(p) {
+// for an event's highlight, behind a megaphone and "Good to know" unless
+// the host has dressed it with their own emoji and title.
+function callout(p, editing, save) {
+  const make = () => noteInputs(p);
   if (!p.needToKnow) {
-    return null;
+    return editing ? emptyPrompt('Add a need-to-know line', make, save) : null;
   }
   const card = el('div', 'highlight-card');
-  card.append(el('div', 'highlight-icon', '📣'));
+  card.append(el('div', 'highlight-icon', p.noteEmoji || '📣'));
   const body = el('div', 'highlight-body');
-  body.append(el('div', 'highlight-headline', 'Good to know'), el('p', 'highlight-text', p.needToKnow));
+  body.append(el('div', 'highlight-headline', p.noteTitle || 'Good to know'), el('p', 'highlight-text', p.needToKnow));
   card.append(body);
+  if (editing) {
+    return withPencil(card, editable(card, 'Edit the need-to-know line', make, save));
+  }
   return card;
+}
+
+// noteInputs is the callout's editor: the emoji and the title on one line,
+// the words under them.
+function noteInputs(p) {
+  const emojiPick = emojiPicker(p.noteEmoji);
+  const emoji = emojiPick.input;
+  const title = textInput(p.noteTitle || '', {maxLength: 60, placeholder: 'Good to know'});
+  title.setAttribute('aria-label', 'Title');
+  const text = textAreaInput(p.needToKnow || '', 3);
+  const head = el('div', 'note-head-inputs');
+  head.append(emojiPick.wrap, title);
+  const wrap = el('div', 'note-inputs');
+  wrap.append(head, text);
+  return {
+    input: wrap,
+    value: () => ({noteEmoji: emoji.value.trim(), noteTitle: title.value.trim(), needToKnow: text.value}),
+    hint: p.needToKnow ? 'Clear the words to take the callout off. Leave the emoji or title blank for the megaphone and "Good to know".' : 'Leave the emoji or title blank for the megaphone and "Good to know".',
+  };
 }
 
 // switchRow is one of the host's switches, saved the moment it is flipped.
@@ -232,15 +379,17 @@ function hostBand(p) {
   rows.append(
     switchRow('Tickets on sale', 'Off, the party is listed but sells nothing', p.ticketsOpen, on => setFlags(p, {ticketsOpen: on})),
     switchRow('Waitlist when full', 'Off, a full party shows Sold Out', p.waitlist, on => setFlags(p, {waitlist: on})),
-    switchRow('Parents', 'Can parents hold a ticket?', p.parents, on => setFlags(p, {parents: on})),
+    switchRow('Adults', 'Can parents and staff hold a ticket?', p.adults, on => setFlags(p, {adults: on})),
     switchRow('Students', 'Can students hold a ticket?', p.students, on => setFlags(p, {students: on})),
-    switchRow('Staff', 'Can staff hold a ticket?', p.staff, on => setFlags(p, {staff: on})),
     switchRow('Drop-off', 'Can kids come without a parent?', p.dropOff, on => setFlags(p, {dropOff: on})),
     switchRow('Parent ticket required', 'If a parent stays, do they need a ticket?', p.parentTicket, on => setFlags(p, {parentTicket: on})),
   );
   band.append(rows);
   const actions = el('div', 'host-actions');
-  actions.append(button('Edit Party', 'edit', 'button', () => openParty(p)));
+  actions.append(button('Edit all fields', 'edit', 'button button-secondary', () => openParty(p)));
+  if (p.availability !== 'past') {
+    actions.append(button('Add Free Ticket', 'ticket', 'button button-secondary', () => openFreeTicket(p)));
+  }
   if (isAdmin()) {
     if (p.status === 'Pending') {
       actions.append(button('Approve', 'check', 'button', () => setPartyStatus(p, 'Open')));
@@ -281,9 +430,20 @@ function sideRow(icon, title, ...lines) {
 
 // factsCard is when, where, what a ticket costs, and who hosts - with Add to
 // Calendar under the date.
-function factsCard(p) {
+function factsCard(p, editing, save) {
   const card = sideCard('facts-card');
   const when = whenParts(p);
+  // In edit mode each row grows a pencil; the row's own body is what the
+  // editor stands in for.
+  const pencilFor = (row, label, make) => {
+    if (!editing) {
+      return row;
+    }
+    const body = row.querySelector('.side-row-body');
+    const pencil = editable(body, label, make, save);
+    row.append(pencil);
+    return row;
+  };
   const cal = googleCalendarLink(p);
   let calButton = null;
   if (cal) {
@@ -293,7 +453,10 @@ function factsCard(p) {
     calButton.rel = 'noopener';
     calButton.append(svg('calendar'), el('span', '', 'Add to Calendar'));
   }
-  card.append(sideRow('calendar', 'Date & Time', when.longDay || 'Date to come', when.time || '', calButton));
+  card.append(pencilFor(sideRow('calendar', 'Date & Time', when.longDay || 'Date to come', when.time || '', calButton), 'Edit the date and time', () => {
+    const w = whenInputs(p.start, p.end);
+    return {input: w.input, value: w.value, validate: w.validate};
+  }));
   // Where: the place in words for everyone, and under it the street address
   // - which only signed-in members ever see - with a map link.
   if (p.location || p.address) {
@@ -307,7 +470,29 @@ function factsCard(p) {
       mapLink.append(svg('open'), el('span', '', p.address));
       note = el('div', 'side-note', 'Address shown to signed-in Helios members only');
     }
-    card.append(sideRow('pin', 'Where', p.location || '', mapLink, note));
+    card.append(pencilFor(sideRow('pin', 'Where', p.location || '', mapLink, note), 'Edit where', () => {
+      const place = textInput(p.location || '', {placeholder: "The Parks' House in Los Altos", maxLength: 120});
+      const address = textInput(p.address || '', {placeholder: '1420 Alder Court, Los Altos, CA 94024', maxLength: 200});
+      const stack = el('div', 'field-editor-stack');
+      const l1 = el('label');
+      l1.append('In words, for everyone', place);
+      const l2 = el('label');
+      l2.append('Street address, for signed-in members', address);
+      stack.append(l1, l2);
+      return {input: stack, value: () => ({location: place.value, address: address.value})};
+    }));
+  } else if (editing) {
+    card.append(pencilFor(sideRow('pin', 'Where', 'Not set yet'), 'Edit where', () => {
+      const place = textInput('', {placeholder: "The Parks' House in Los Altos", maxLength: 120});
+      const address = textInput('', {placeholder: '1420 Alder Court, Los Altos, CA 94024', maxLength: 200});
+      const stack = el('div', 'field-editor-stack');
+      const l1 = el('label');
+      l1.append('In words, for everyone', place);
+      const l2 = el('label');
+      l2.append('Street address, for signed-in members', address);
+      stack.append(l1, l2);
+      return {input: stack, value: () => ({location: place.value, address: address.value})};
+    }));
   }
   const ticketLines = [priceLine(p)];
   if (p.capacity) {
@@ -315,10 +500,24 @@ function factsCard(p) {
   } else {
     ticketLines.push(`${p.sold} sold · no limit`);
   }
-  if (p.minimum) {
+  // The minimum is the host's business - a line for whoever runs it, not a
+  // worry for guests.
+  if (p.minimum && p.canEdit) {
     ticketLines.push(`Goes ahead with at least ${p.minimum} tickets sold`);
   }
-  card.append(sideRow('ticket', 'Tickets', ...ticketLines));
+  card.append(pencilFor(sideRow('ticket', 'Tickets', ...ticketLines), 'Edit the price and tickets', () => {
+    const price = textInput(p.price, {type: 'number', min: 0, step: '0.01'});
+    const unit = textInput(p.unit || '', {placeholder: 'person, adult, child', maxLength: 40});
+    const capacity = textInput(p.capacity || '', {type: 'number', min: 1, step: 1, placeholder: 'No limit'});
+    const minimum = textInput(p.minimum || '', {type: 'number', min: 1, step: 1, placeholder: 'None'});
+    const stack = el('div', 'field-editor-stack');
+    for (const [words, input] of [['Price, in dollars', price], ['One ticket covers ("per …")', unit], ['Tickets available', capacity], ['Minimum to go ahead', minimum]]) {
+      const l = el('label');
+      l.append(words, input);
+      stack.append(l);
+    }
+    return {input: stack, value: () => ({price: Number(price.value || 0), unit: unit.value, capacity: Number(capacity.value || 0), minimum: Number(minimum.value || 0)})};
+  }));
   // The hosts: faces with names, the way the portal shows co-chairs.
   if (p.hostPeople.length || p.hosts) {
     const hostsRow = sideRow('people', p.hostPeople.length === 1 ? 'Host' : 'Hosts', p.hosts || '');
@@ -335,6 +534,12 @@ function factsCard(p) {
     if (faces.children.length) {
       hostsRow.querySelector('.side-row-body').append(faces);
     }
+    if (editing) {
+      // Who runs it is a list of people; the full editor's Hosts tab does that.
+      const pencil = editPencil('Edit the hosts');
+      pencil.addEventListener('click', () => openParty(p));
+      hostsRow.append(pencil);
+    }
     card.append(hostsRow);
   }
   return card;
@@ -343,8 +548,8 @@ function factsCard(p) {
 // flyerCard is the party's poster in the rail, under the facts: the whole
 // picture at the rail's width, a click to see it full size, and for whoever
 // runs the party a way to put one up or take it down.
-function flyerCard(p) {
-  if (!p.flyerUrl && !p.canEdit) {
+function flyerCard(p, editing) {
+  if (!p.flyerUrl && !editing) {
     return null;
   }
   const card = sideCard('flyer-card');
@@ -362,7 +567,7 @@ function flyerCard(p) {
   } else {
     card.append(el('div', 'side-line', 'No flyer yet - upload the party’s poster and it shows here.'));
   }
-  if (p.canEdit) {
+  if (editing) {
     const bar = el('div', 'flyer-actions');
     const file = el('input');
     file.type = 'file';
@@ -408,20 +613,36 @@ function helpCard(p) {
 
 export function partyPage(p) {
   setTitle(p.title);
-  const page = el('div', 'party-page');
+  const editing = Boolean(p.canEdit && editingId === p.id);
+  const save = changes => savePartyFields(p, changes);
+  const page = el('div', 'party-page' + (editing ? ' is-editing' : ''));
   const top = el('div', 'detail-top');
   const back = link(partiesPath(), 'detail-back');
   back.append(svg('back'), el('span', '', 'Back to Parties'));
   top.append(back);
-  page.append(top, hero(p));
+  page.append(top, hero(p, editing, save));
 
   const cols = el('div', 'detail-cols');
   const main = el('div', 'detail-main');
   const side = el('div', 'detail-side');
 
   const marks = el('div', 'detail-marks');
+  // The viewer's own party says so first, in the card's yellow.
+  if (p.hosting) {
+    marks.append(el('span', 'audience-chip hosting-chip', 'Hosting'));
+  }
+  const audienceMake = () => {
+    const input = textInput(p.audience || '', {placeholder: 'Adults, Families, Kids & Adults, Grades 3-6', maxLength: 60});
+    return {input, value: () => ({audience: input.value}), hint: 'The words on the card: who the party is for.'};
+  };
   if (p.audience) {
-    marks.append(el('span', 'audience-chip', p.audience));
+    const chip = el('span', 'audience-chip', p.audience);
+    marks.append(chip);
+    if (editing) {
+      marks.append(editable(chip, 'Edit who it is for', audienceMake, save));
+    }
+  } else if (editing) {
+    marks.append(emptyPrompt('Say who it is for', audienceMake, save));
   }
   if (p.availability !== 'available') {
     marks.append(el('span', 'avail avail-' + p.availability, availabilityLabel(p)));
@@ -430,22 +651,52 @@ export function partyPage(p) {
     marks.append(b);
   }
   main.append(marks);
-  main.append(el('h1', 'detail-title', p.title));
+  const title = el('h1', 'detail-title', p.title);
+  if (editing) {
+    main.append(withPencil(title, editable(title, 'Edit the title', () => {
+      const input = textInput(p.title, {maxLength: 120});
+      return {input, value: () => ({title: input.value}), validate: v => (v.title.trim() ? '' : 'A party needs a title.')};
+    }, save)));
+  } else {
+    main.append(title);
+  }
+  const subtitleMake = () => {
+    const input = textInput(p.subtitle || '', {maxLength: 120, placeholder: 'Sweet & Savory Fondue, plus Build-Your-Own Fort'});
+    return {input, value: () => ({subtitle: input.value})};
+  };
   if (p.subtitle) {
-    main.append(el('p', 'detail-subtitle', p.subtitle));
+    const subtitle = el('p', 'detail-subtitle', p.subtitle);
+    main.append(editing ? withPencil(subtitle, editable(subtitle, 'Edit the subtitle', subtitleMake, save)) : subtitle);
+  } else if (editing) {
+    main.append(emptyPrompt('Add a subtitle', subtitleMake, save));
   }
   // On a phone the facts come up under the title, where the rail would be.
   if (phone.matches) {
-    const facts = factsCard(p);
+    const facts = factsCard(p, editing, save);
     facts.classList.add('facts-inline');
     main.append(facts);
   }
+  const descriptionMake = () => {
+    const input = textAreaInput(p.description || '', 8);
+    return {input, value: () => ({description: input.value})};
+  };
   if (p.description) {
-    main.append(paragraphs(p.description, 'prose detail-text'));
+    const prose = paragraphs(p.description, 'prose detail-text');
+    main.append(editing ? withPencil(prose, editable(prose, 'Edit the description', descriptionMake, save)) : prose);
+  } else if (editing) {
+    main.append(emptyPrompt('Add a description', descriptionMake, save));
   } else if (p.summary) {
     main.append(el('p', 'detail-text', p.summary));
   }
-  const note = callout(p);
+  if (editing) {
+    const summaryMake = () => {
+      const input = textAreaInput(p.summary || '', 2);
+      return {input, value: () => ({summary: input.value}), hint: 'One or two sentences for the party card.'};
+    };
+    const summary = el('p', 'detail-summary', p.summary ? `Card summary: ${p.summary}` : '');
+    main.append(p.summary ? withPencil(summary, editable(summary, 'Edit the card summary', summaryMake, save)) : emptyPrompt('Add a card summary', summaryMake, save));
+  }
+  const note = callout(p, editing, save);
   if (note) {
     main.append(note);
   }
@@ -459,7 +710,7 @@ export function partyPage(p) {
     main.append(hostBand(p));
   }
 
-  for (const card of [phone.matches ? null : factsCard(p), flyerCard(p), helpCard(p)]) {
+  for (const card of [phone.matches ? null : factsCard(p, editing, save), flyerCard(p, editing), helpCard(p)]) {
     if (card) {
       side.append(card);
     }

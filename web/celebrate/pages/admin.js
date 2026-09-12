@@ -1,7 +1,7 @@
-import {state, isAdmin, me, money, whenLine, celebration} from '../state.js';
+import {state, isSystemAdmin, me, money, whenLine, celebration} from '../state.js';
 import {el, button, svg} from '../dom.js';
 import {setTitle} from '../chrome.js';
-import {openCelebration, openCategory, openSettings, send, reload, openTicket} from '../edit.js';
+import {openCelebration, openCategory, openSettings, send, reload} from '../edit.js';
 import {celebrationBand} from './parties.js';
 
 function denied() {
@@ -95,8 +95,8 @@ function categoriesCard() {
 function settingsCard() {
   const card = el('div', 'card');
   card.append(el('h2', '', 'Settings'));
-  card.append(el('div', 'hint', 'The intro under the parties heading, and the note on the ticket form.'));
-  for (const [label, value] of [['Parties intro', state.model.settings.partiesIntro], ['Ticket note', state.model.settings.ticketNote]]) {
+  card.append(el('div', 'hint', 'The intro under the parties heading, the note on the ticket form, and whether anyone can post a party.'));
+  for (const [label, value] of [['Parties intro', state.model.settings.partiesIntro], ['Ticket note', state.model.settings.ticketNote], ['Hosting', state.model.settings.hostingOpen ? 'Open - anyone can post a party' : 'Closed - only admins can post a party']]) {
     const row = el('div', 'admin-row');
     const body = el('div', 'grow');
     body.append(el('div', '', label), el('div', 'sub', value || '—'));
@@ -109,12 +109,15 @@ function settingsCard() {
   return card;
 }
 
-// invoicesCard is every ticket of the chosen celebration by purchaser, with
-// the totals the business office needs and a CSV of the same.
+// invoicesCard is the INVOICING ledger - the sheet's own accounting tab -
+// for the chosen celebration, grouped by who is billed, with filters to
+// find a family, a party, or what is still to be invoiced. The app writes
+// a row when a ticket sells; accounting fills in Invoice and Invoice To in
+// the sheet, and this is where it shows.
 function invoicesCard() {
   const card = el('div', 'card');
   card.append(el('h2', '', 'Invoicing'));
-  card.append(el('div', 'hint', 'Every ticket, grouped by who is billed. Click a ticket to mark its invoice sent or paid. Nothing is charged here - the office invoices from this list.'));
+  card.append(el('div', 'hint', 'The INVOICING tab of the sheet, as accounting keeps it: a row for every ticket sold, with the invoice number and who it went to once the office fills them in. Nothing is charged here.'));
   let code = state.model.current || (state.model.celebrations[0] || {}).code;
   const pick = el('select');
   for (const c of state.model.celebrations) {
@@ -122,61 +125,91 @@ function invoicesCard() {
     o.selected = c.code === code;
     pick.append(o);
   }
+  const party = el('select');
+  const status = el('select');
+  for (const [label, value] of [['All rows', 'all'], ['Not yet invoiced', 'open'], ['Invoiced', 'done']]) {
+    status.append(new Option(label, value));
+  }
+  const find = el('input', 'invoice-search');
+  find.type = 'search';
+  find.placeholder = 'Search purchaser, guest, invoice…';
   const csv = el('a', 'button button-secondary button-small');
   csv.append(svg('download'), el('span', '', 'Download CSV'));
   const bar = el('div', 'invoice-bar');
-  bar.append(pick, csv);
+  bar.append(pick, party, status, find, csv);
   card.append(bar);
   const totals = el('div', 'invoice-totals');
   const table = el('div');
   card.append(totals, table);
+  const ledger = () => (state.model.invoicing || []).filter(l => l.code === code);
+  const paintParties = () => {
+    party.replaceChildren(new Option('All parties', ''));
+    for (const title of [...new Set(ledger().map(l => l.party))].sort((x, y) => x.localeCompare(y))) {
+      party.append(new Option(title, title));
+    }
+  };
   const paint = () => {
     csv.href = `/api/celebrate/invoices.csv?celebration=${encodeURIComponent(code)}`;
     table.replaceChildren();
     totals.replaceChildren();
+    const q = find.value.trim().toLowerCase();
+    const rows = ledger().filter(l => {
+      if (party.value && l.party !== party.value) {
+        return false;
+      }
+      if (status.value === 'open' && l.invoice) {
+        return false;
+      }
+      if (status.value === 'done' && !l.invoice) {
+        return false;
+      }
+      return !q || [l.purchaser, l.guest, l.invoice, l.invoiceTo, l.party].some(v => (v || '').toLowerCase().includes(q));
+    });
     const byPurchaser = new Map();
     let sum = 0;
-    let paid = 0;
-    let sold = 0;
-    for (const p of state.model.parties.filter(p => p.celebration === code)) {
-      for (const a of p.attendees) {
-        const key = a.purchaser || '?';
-        if (!byPurchaser.has(key)) {
-          byPurchaser.set(key, {name: a.purchaserName || key, email: key, rows: [], total: 0});
-        }
-        const group = byPurchaser.get(key);
-        group.rows.push({p, a});
-        group.total += a.price || 0;
-        sum += a.price || 0;
-        sold++;
-        if (a.invoice === 'Paid') {
-          paid += a.price || 0;
-        }
+    let invoiced = 0;
+    let tickets = 0;
+    for (const l of rows) {
+      if (!byPurchaser.has(l.purchaser)) {
+        byPurchaser.set(l.purchaser, {email: l.purchaser, rows: [], total: 0});
+      }
+      const g = byPurchaser.get(l.purchaser);
+      const amount = (l.cost || 0) * (l.quantity || 1);
+      g.rows.push(l);
+      g.total += amount;
+      sum += amount;
+      tickets += l.quantity || 1;
+      if (l.invoice) {
+        invoiced += amount;
       }
     }
-    totals.append(el('div', 'invoice-total', `${sold} tickets · ${money(sum)} raised · ${money(paid)} paid`));
-    const groups = [...byPurchaser.values()].sort((x, y) => x.name.localeCompare(y.name));
+    totals.append(el('div', 'invoice-total', `${tickets} tickets · ${money(sum)} · ${money(invoiced)} invoiced · ${money(sum - invoiced)} still to invoice`));
+    const groups = [...byPurchaser.values()].sort((x, y) => x.email.localeCompare(y.email));
     if (!groups.length) {
-      table.append(el('div', 'hint', 'No tickets yet.'));
+      table.append(el('div', 'hint', rows.length || ledger().length ? 'Nothing matches.' : 'Nothing in the ledger yet.'));
     }
     for (const g of groups) {
       const head = el('div', 'invoice-head');
-      head.append(el('span', 'invoice-name', g.name), el('span', 'invoice-email', g.email), el('span', 'invoice-sum', money(g.total)));
+      head.append(el('span', 'invoice-name', g.email), el('span', 'invoice-email', `${g.rows.length} ${g.rows.length === 1 ? 'row' : 'rows'}`), el('span', 'invoice-sum', money(g.total)));
       table.append(head);
-      for (const {p, a} of g.rows) {
-        const row = el('button', 'invoice-row');
-        row.type = 'button';
-        row.append(el('span', 'invoice-party', p.title), el('span', 'invoice-who', a.name), el('span', 'invoice-price', money(a.price || 0)),
-          el('span', 'invoice-status ' + (a.invoice ? 'is-' + a.invoice.toLowerCase() : ''), a.invoice || 'not yet'));
-        row.addEventListener('click', () => openTicket(p, a));
+      for (const l of g.rows) {
+        const row = el('div', 'invoice-row invoice-ledger-row');
+        row.append(el('span', 'invoice-date', l.date), el('span', 'invoice-party', l.party), el('span', 'invoice-who', l.guest),
+          el('span', 'invoice-price', money((l.cost || 0) * (l.quantity || 1))),
+          el('span', 'invoice-status ' + (l.invoice ? 'is-paid' : ''), l.invoice ? `${l.invoice}${l.invoiceTo ? ' · ' + l.invoiceTo : ''}` : 'not yet'));
         table.append(row);
       }
     }
   };
   pick.addEventListener('change', () => {
     code = pick.value;
+    paintParties();
     paint();
   });
+  party.addEventListener('change', paint);
+  status.addEventListener('change', paint);
+  find.addEventListener('input', paint);
+  paintParties();
   paint();
   return card;
 }
@@ -276,7 +309,8 @@ const sections = [
 // tabs; one panel showing at a time.
 export function adminPage() {
   setTitle('Admin Tools');
-  if (!isAdmin()) {
+  // The page goes with being on the admin list, hat or no hat.
+  if (!isSystemAdmin()) {
     return denied();
   }
   const page = el('div', 'admin admin-strip');

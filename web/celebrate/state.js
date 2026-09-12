@@ -1,7 +1,35 @@
 // The model as the server rendered it for the viewer, plus the page's own
 // choices: which celebration's parties are showing, the list's tab, the
 // category filter.
-export const state = {model: null, celebration: '', tab: 'available', category: ''};
+// superEdit is a system admin's hat, as HCA-Team has it: off, they see and
+// can do what any parent can (plus whatever they host); on, every admin
+// control comes back. It is remembered per browser. The server keeps
+// enforcing by the admin list either way; the switch is about what the page
+// shows and offers.
+export const state = {model: null, celebration: '', tab: 'available', category: '', superEdit: readSuperEdit()};
+
+function readSuperEdit() {
+  try {
+    return localStorage.getItem('celebrate.superEdit') === '1';
+  } catch (err) {
+    return false;
+  }
+}
+
+export function setSuperEdit(on) {
+  state.superEdit = on;
+  try {
+    localStorage.setItem('celebrate.superEdit', on ? '1' : '0');
+  } catch (err) {
+    // A browser that refuses storage just forgets the choice on reload.
+  }
+  applyModel(state.model);
+}
+
+// isSystemAdmin says the person is on the admin list, hat or no hat.
+export function isSystemAdmin() {
+  return state.model.user.isAdmin;
+}
 
 const byId = new Map();
 
@@ -10,6 +38,9 @@ export function applyModel(model) {
   byId.clear();
   for (const p of model.parties) {
     byId.set(p.id, p);
+    // The server's canEdit counts the admin hat; here it counts only when
+    // the hat is on. A host edits their own party either way.
+    p.canEdit = Boolean(p.hosting) || isAdmin();
   }
   if (!state.celebration || !model.celebrations.some(c => c.code === state.celebration)) {
     state.celebration = model.current || (model.celebrations[0] ? model.celebrations[0].code : '');
@@ -21,7 +52,7 @@ export function me() {
 }
 
 export function isAdmin() {
-  return state.model.user.isAdmin;
+  return state.model.user.isAdmin && state.superEdit;
 }
 
 export function settings() {
@@ -123,19 +154,17 @@ export function billable() {
   return out.concat(user.adults);
 }
 
-// admits says whether a party's audience rules let this person hold a ticket.
+// admits says whether a party's audience rules let this person hold a
+// ticket: adults are parents and staff alike.
 export function admits(p, person) {
-  return (person.isParent && p.parents) || (person.isStudent && p.students) || (person.isStaff && p.staff);
+  return ((person.isParent || person.isStaff) && p.adults) || (person.isStudent && p.students);
 }
 
-// audienceWords is the party's rule in words: "parents and staff".
+// audienceWords is the party's rule in words: "adults and students".
 export function audienceWords(p) {
   const words = [];
-  if (p.parents) {
-    words.push('parents');
-  }
-  if (p.staff) {
-    words.push('staff');
+  if (p.adults) {
+    words.push('adults');
   }
   if (p.students) {
     words.push('students');
@@ -151,6 +180,12 @@ export function myTickets(p) {
 
 export function ticketFor(p, email) {
   return [...p.attendees, ...p.waitlisted].find(a => a.email === email) || null;
+}
+
+// canHost says whether the viewer may post a party: anyone while the
+// Hosting Open setting is on, an admin regardless.
+export function canHost() {
+  return Boolean(state.model.settings && state.model.settings.hostingOpen) || isAdmin();
 }
 
 export function isHosting(p) {

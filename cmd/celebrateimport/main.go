@@ -323,20 +323,11 @@ func (c *conversion) parties() {
 	}
 }
 
-// invoice is one INVOICING row still to be matched to a ticket: the guest's
-// name where the row has one, and where the money stands.
-type invoice struct {
-	guest, status string
-}
-
 // tickets converts the Attendees tab, one ticket per row still attending,
-// with where the invoice stands from the INVOICING tab. An invoice row finds
-// its ticket by party and purchaser, then by the guest's name where both
-// sides have one - the old sheet wrote the purchaser's own name as the guest
-// for their own ticket, which the attendee row leaves blank.
+// and carries the INVOICING tab across as it stands - the new site keeps
+// the same ledger, in the same columns, so accounting's rows come along
+// untouched, less the auction items that were never a party.
 func (c *conversion) tickets() {
-	invoices := map[string][]invoice{}
-	byYear := map[string]int{}
 	for _, row := range read("INVOICING") {
 		title := trim(row["Party Title"])
 		p := c.byTitle[title]
@@ -344,42 +335,11 @@ func (c *conversion) tickets() {
 			c.skipped["invoice rows for auction items rather than parties"]++
 			continue
 		}
-		byYear[p.code]++
-		key := title + "\x00" + email(row["Purchaser Email"])
-		invoices[key] = append(invoices[key], invoice{guest: trim(row["Guest Name"]), status: trim(row["Invoice"])})
-	}
-	takeInvoice := func(p *party, purchaser, guest string) string {
-		key := p.title + "\x00" + purchaser
-		pool := invoices[key]
-		at := -1
-		for i, inv := range pool {
-			if guest != "" && strings.EqualFold(inv.guest, guest) {
-				at = i
-				break
-			}
-		}
-		if at < 0 && len(pool) > 0 {
-			// The purchaser's own ticket, or a guest the two tabs name
-			// differently: the next of their rows for the party.
-			at = 0
-		}
-		if at < 0 {
-			if byYear[p.code] == 0 {
-				c.skipped["tickets of a season the INVOICING tab does not cover ("+p.code+"), left uninvoiced"]++
-			} else {
-				c.skipped["tickets with no invoice row"]++
-			}
-			return ""
-		}
-		status := pool[at].status
-		invoices[key] = append(pool[:at:at], pool[at+1:]...)
-		switch status {
-		case celebrate.InvoiceSent, celebrate.InvoicePaid:
-			return status
-		case "Removed":
-			c.skipped["tickets whose invoice was marked Removed, imported uninvoiced"]++
-		}
-		return ""
+		c.tables.Invoicing = append(c.tables.Invoicing, map[string]string{
+			"Date": when(row["Date"], yearOf(p.code)), "Party Title": title, "Event Code": p.code, "Purchaser Email": email(row["Purchaser Email"]),
+			"Guest Name": trim(row["Guest Name"]), "Action": trim(row["Action"]), "Quantity": trim(row["Quantity"]), "Cost": price(row["Cost"]),
+			"Invoice": trim(row["Invoice"]), "Invoice To": trim(row["Invoice To"]),
+		})
 	}
 
 	for _, row := range read("Attendees") {
@@ -414,7 +374,6 @@ func (c *conversion) tickets() {
 		c.tables.Tickets = append(c.tables.Tickets, map[string]string{
 			"Ticket ID": celebrate.NewID(), "Party ID": p.id, "Email": attendee, "Name": name, "Purchaser": purchaser,
 			"Status": celebrate.TicketSold, "Price": price(row["Cost"]),
-			"Invoice":  takeInvoice(p, purchaser, name),
 			"Added By": purchaser, "Added": when(row["Date"], yearOf(p.code)),
 		})
 	}
@@ -588,6 +547,7 @@ func main() {
 		{"Parties", celebrate.PartyColumns, c.tables.Parties},
 		{"Hosts", celebrate.HostColumns, c.tables.Hosts},
 		{"Tickets", celebrate.TicketColumns, c.tables.Tickets},
+		{"INVOICING", celebrate.InvoicingColumns, c.tables.Invoicing},
 	}
 	for _, t := range tabs {
 		save(t)

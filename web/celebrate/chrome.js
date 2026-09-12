@@ -1,6 +1,6 @@
-import {state, me, isAdmin, pendingParties, hostedParties, parties, household, familyMember, myPath} from './state.js';
+import {state, me, isAdmin, isSystemAdmin, setSuperEdit, pendingParties, hostedParties, parties, household, familyMember, myPath, canHost} from './state.js';
 import {el, svg, link, button} from './dom.js';
-import {renderAvatars, renderAlerts, onSlash, initAppSwitch} from '/toolbar.js';
+import {renderAvatars, renderAlerts, onSlash, initAppSwitch, markSuper} from '/toolbar.js';
 import {openParty} from './edit.js';
 
 // The rail and the drawer show these; the phone's tab bar drops the admin one.
@@ -140,7 +140,9 @@ function fillNav(nav) {
       }
     }
   }
-  nav.append(hostButton());
+  if (canHost()) {
+    nav.append(hostButton());
+  }
 }
 
 function renderNav() {
@@ -176,7 +178,7 @@ function renderDrawer() {
   drawer.append(nav);
   const user = el('div', 'drawer-user');
   user.append(el('div', 'name', me().name), el('div', 'email', me().email));
-  if (isAdmin()) {
+  if (isSystemAdmin()) {
     user.append(link('/admin', 'drawer-admin', 'Admin Tools'));
   }
   const form = el('form');
@@ -203,9 +205,15 @@ function renderUser() {
   for (const line of document.querySelectorAll('.user-menu-email')) {
     line.textContent = user.email;
   }
-  for (const admin of document.querySelectorAll('.user-menu-admin')) {
-    admin.hidden = !isAdmin();
+  // The switch and Admin Tools go with being on the admin list; the rest of
+  // the admin rows come and go with the hat.
+  for (const row of document.querySelectorAll('.user-menu-super, .user-menu-admin')) {
+    row.hidden = !isSystemAdmin();
   }
+  for (const box of document.querySelectorAll('.super-edit-checkbox')) {
+    box.checked = state.superEdit;
+  }
+  markSuper(isSystemAdmin() && state.superEdit);
 }
 
 // One search box, in the top bar, and each page says what it filters. app.js
@@ -297,6 +305,14 @@ export function initChrome() {
     closeMenus();
     panel.hidden = !opening;
   });
+  // Super Admin Mode puts a system admin's hat on or takes it off; the page
+  // repaints as the other kind of user.
+  for (const box of document.querySelectorAll('.super-edit-checkbox')) {
+    box.addEventListener('change', () => {
+      setSuperEdit(box.checked);
+      document.dispatchEvent(new CustomEvent('celebrate:refresh'));
+    });
+  }
   window.addEventListener('resize', syncViewportHeight);
   window.addEventListener('orientationchange', syncViewportHeight);
   document.addEventListener('click', closeMenus);

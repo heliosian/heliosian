@@ -508,8 +508,10 @@ type Config struct {
 	// ImageSearch is the picture search HCA-Team's and Heliosian's editors
 	// share; zero means Wikimedia Commons alone.
 	ImageSearch imagesearch.Search
-	// Mail sends the portal's email; nil drops it.
-	Mail mail.Sender
+	// Mail sends the portal's email; nil drops it. CelebrateMail is the
+	// same for Helios Celebrate, from its own address.
+	Mail          mail.Sender
+	CelebrateMail mail.Sender
 }
 
 // Core is the assembled shared skeleton: each app's mux (still open for the
@@ -589,11 +591,11 @@ func NewCore(cfg Config) *Core {
 	birthdayMux := http.NewServeMux()
 	birthday.Register(birthdayMux, birthdayCache, cfg.Writer, queue, birthdayDirectory{cache}, settings.SuperAdmins)
 	celebrateMux := http.NewServeMux()
-	celebrate.Register(celebrateMux, celebrateCache, cfg.Writer, queue, cfg.Store, celebrateDirectory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch)
-	// Every app's toolbar asks its own origin which apps to leave off its
-	// switch; Heliosian's sheet says, so its cache answers for all of them.
+	celebrate.Register(celebrateMux, celebrateCache, cfg.Writer, queue, cfg.Store, celebrateDirectory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.CelebrateMail)
+	// Every app's toolbar asks its own origin what its switch lists and
+	// which rows to leave off; Heliosian's cache answers for all of them.
 	for _, m := range []*http.ServeMux{mux, eventsMux, celebrateMux} {
-		home.RegisterHiddenApps(m, homeCache)
+		home.RegisterSwitch(m, homeCache)
 	}
 	return &Core{
 		Mux: mux, HomeMux: homeMux, EventsMux: eventsMux, EventsCache: eventsCache, BirthdayMux: birthdayMux, CelebrateMux: celebrateMux, CelebrateCache: celebrateCache, Cache: cache, Queue: queue,
@@ -668,12 +670,27 @@ func clientID() string {
 
 // optionalKey is mapsKey for something the server runs without: empty when
 // neither the variable nor the file is there.
-// mailFrom is the address the portal's mail comes from.
+// mailFrom is the address the portal's mail comes from; celebrateMailFrom
+// the address Helios Celebrate's does.
 func mailFrom() string {
 	if from := os.Getenv("MAIL_FROM"); from != "" {
 		return from
 	}
 	return "HCA-Team <team@heliosian.com>"
+}
+
+func celebrateMailFrom() string {
+	if from := os.Getenv("CELEBRATE_MAIL_FROM"); from != "" {
+		return from
+	}
+	return "Helios Celebrate <celebrate@heliosian.com>"
+}
+
+// newMailer is the sender the environment describes - Resend when its key
+// is set, else SMTP when SMTP_HOST is, else nothing - from one address.
+func newMailer(from string) mail.Sender {
+	return mail.New(optionalKey("RESEND_KEY", "creds/resend.key"), os.Getenv("SMTP_HOST"), os.Getenv("SMTP_PORT"),
+		optionalKey("SMTP_USER", "creds/smtp.user"), optionalKey("SMTP_PASS", "creds/smtp.pass"), from, "")
 }
 
 // ImageSearchKeys reads the picture search's keys the way every mode does:
@@ -748,8 +765,8 @@ func Production() (*http.Server, *who.Queue) {
 		ImageSearch: ImageSearchKeys(),
 		// Mail goes through Resend when its key is set, else over SMTP when
 		// SMTP_HOST is; otherwise, in real-data mode, it is dropped and logged.
-		Mail: mail.New(optionalKey("RESEND_KEY", "creds/resend.key"), os.Getenv("SMTP_HOST"), os.Getenv("SMTP_PORT"),
-			optionalKey("SMTP_USER", "creds/smtp.user"), optionalKey("SMTP_PASS", "creds/smtp.pass"), mailFrom(), ""),
+		Mail:          newMailer(mailFrom()),
+		CelebrateMail: newMailer(celebrateMailFrom()),
 	})
 	blob.Register(core.Mux, store)
 	blob.RegisterHome(core.HomeMux, store)

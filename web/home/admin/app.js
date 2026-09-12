@@ -239,6 +239,8 @@ async function loadCategories() {
     meta.className = 'meta';
     if (category.style === 'events') {
       meta.textContent = `Upcoming events from HCA-Team · ${(model.upcoming || []).length} ahead`;
+    } else if (category.style === 'apps') {
+      meta.textContent = `The community apps · ${(model.apps || []).length} you see`;
     } else {
       const style = category.style === 'cards' ? 'Feature cards' : 'Compact tiles';
       meta.textContent = `${style} · ${category.links.length} link${category.links.length === 1 ? '' : 's'}`;

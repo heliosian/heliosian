@@ -108,3 +108,24 @@ func TestVisibilityEmailsCell(t *testing.T) {
 		t.Errorf("the tables mirrored into changed: %v", tables.Visibility)
 	}
 }
+
+// The apps section is one category at most and holds no links.
+func TestAppsSection(t *testing.T) {
+	tables := &Tables{Categories: []map[string]string{category("Helios Community Apps", "📌", StyleApps), category("School", "", StyleTiles)}}
+	m, err := BuildModel(tables, noImages{})
+	if err != nil {
+		t.Fatalf("build with an apps row: %v", err)
+	}
+	if len(m.Categories) != 3 || m.Categories[1].Style != StyleApps {
+		t.Errorf("categories = %+v, want the synthesized events section, then the apps section", m.Categories)
+	}
+	tables.Links = []map[string]string{{"Title": "Directory", "URL": "https://who.heliosian.com/", "Category": "Helios Community Apps", "Visible": "Yes"}}
+	if _, err := BuildModel(tables, noImages{}); err == nil || !strings.Contains(err.Error(), "community apps") {
+		t.Errorf("a link under the apps section built: %v", err)
+	}
+	tables.Links = nil
+	tables.Categories = append(tables.Categories, category("More Apps", "", StyleApps))
+	if _, err := BuildModel(tables, noImages{}); err == nil || !strings.Contains(err.Error(), "only one") {
+		t.Errorf("two apps rows built: %v", err)
+	}
+}

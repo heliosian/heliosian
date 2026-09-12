@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"heliosian/internal/data"
 )
@@ -29,6 +30,8 @@ const (
 	adminsTab       = "Admins"
 	redirectsTab    = "Redirects"
 	changeLogTab    = "Change Log"
+	// invoicingTab is the accounting ledger, in the bookkeeper's own layout.
+	invoicingTab = "INVOICING"
 )
 
 const (
@@ -50,7 +53,8 @@ const (
 
 var Statuses = []string{StatusPending, StatusOpen, StatusHidden}
 
-// A ticket row is a sold ticket, or a place on the waitlist.
+// A ticket row is a sold ticket, or a request on the waitlist: a family
+// asking for some number of tickets when places open up.
 const (
 	TicketSold     = "Ticket"
 	TicketWaitlist = "Waitlist"
@@ -58,31 +62,32 @@ const (
 
 var TicketStatuses = []string{TicketSold, TicketWaitlist}
 
-// Invoice is where the money stands: nothing yet, Sent, or Paid.
-const (
-	InvoiceSent = "Sent"
-	InvoicePaid = "Paid"
-)
-
-var InvoiceStatuses = []string{"", InvoiceSent, InvoicePaid}
-
 const (
 	PartiesIntroKey = "Parties Intro"
 	TicketNoteKey   = "Ticket Note"
+	// HostingOpenKey is Yes or No: whether anyone may post a party. Off,
+	// Host a Party goes away for everyone but an admin, and the server
+	// refuses a new party from anyone else. Blank means Yes.
+	HostingOpenKey = "Hosting Open"
 )
 
-var settingKeys = []string{PartiesIntroKey, TicketNoteKey}
+var settingKeys = []string{PartiesIntroKey, TicketNoteKey, HostingOpenKey}
 
 var (
 	CelebrationColumns = []string{"Code", "Title", "Subtitle", "Start", "End", "Location", "Address", "Description", "Image", "Button Text", "Button URL", "Current"}
 	CategoryColumns    = []string{"Title"}
-	PartyColumns       = []string{"Party ID", "Celebration", "Title", "Subtitle", "Summary", "Description", "Need To Know", "Hosts", "Category", "Audience", "Ticket Unit", "Price", "Capacity", "Minimum", "Start", "End", "Location", "Address", "Image", "Flyer Image", "Pretty ID", "Status", "Tickets", "Waitlist", "Parents", "Students", "Staff", "Drop-Off", "Parent Ticket Required", "Added By", "Added"}
+	PartyColumns       = []string{"Party ID", "Celebration", "Title", "Subtitle", "Summary", "Description", "Need To Know", "Note Emoji", "Note Title", "Hosts", "Category", "Audience", "Ticket Unit", "Price", "Capacity", "Minimum", "Start", "End", "Location", "Address", "Image", "Flyer Image", "Pretty ID", "Status", "Tickets", "Waitlist", "Adults", "Students", "Drop-Off", "Parent Ticket Required", "Added By", "Added"}
 	HostColumns        = []string{"Party ID", "Email"}
-	TicketColumns      = []string{"Ticket ID", "Party ID", "Email", "Name", "Purchaser", "Status", "Price", "Note", "Invoice", "Added By", "Added"}
+	TicketColumns      = []string{"Ticket ID", "Party ID", "Email", "Name", "Purchaser", "Status", "Quantity", "Price", "Note", "Added By", "Added"}
 	SettingColumns     = []string{"Key", "Value"}
 	AdminColumns       = []string{"Email"}
 	RedirectColumns    = []string{"Type", "Old", "New", "Date"}
 	ChangeLogColumns   = []string{"Timestamp", "Actor", "Action", "Kind", "Celebration", "Party", "Title", "Email", "Details"}
+	// InvoicingColumns is the accounting ledger's layout, as the bookkeeper
+	// asked for it: one row per sold ticket, Action always ADD, Invoice and
+	// Invoice To left for them to fill in. The app appends and reads it
+	// back for Admin Tools; it never edits a row.
+	InvoicingColumns = []string{"Date", "Party Title", "Event Code", "Purchaser Email", "Guest Name", "Action", "Quantity", "Cost", "Invoice", "Invoice To"}
 )
 
 var emailForm = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
@@ -172,22 +177,26 @@ type Celebration struct {
 // Party is one fun(d)raiser party: what it is, when and where, what a ticket
 // costs and covers, how many there are, who may come, and its switches.
 type Party struct {
-	ID          string  `json:"id"`
-	Celebration string  `json:"celebration"`
-	Title       string  `json:"title"`
-	Subtitle    string  `json:"subtitle,omitempty"`
-	Summary     string  `json:"summary,omitempty"`
-	Description string  `json:"description,omitempty"`
-	NeedToKnow  string  `json:"needToKnow,omitempty"`
-	Hosts       string  `json:"hosts,omitempty"`
-	Category    string  `json:"category,omitempty"`
-	Audience    string  `json:"audience,omitempty"`
-	Unit        string  `json:"unit,omitempty"`
-	Price       float64 `json:"price"`
-	Capacity    int     `json:"capacity,omitempty"`
-	Minimum     int     `json:"minimum,omitempty"`
-	Start       string  `json:"start,omitempty"`
-	End         string  `json:"end,omitempty"`
+	ID          string `json:"id"`
+	Celebration string `json:"celebration"`
+	Title       string `json:"title"`
+	Subtitle    string `json:"subtitle,omitempty"`
+	Summary     string `json:"summary,omitempty"`
+	Description string `json:"description,omitempty"`
+	NeedToKnow  string `json:"needToKnow,omitempty"`
+	// NoteEmoji and NoteTitle dress the need-to-know callout: blank means
+	// the megaphone and "Good to know".
+	NoteEmoji string  `json:"noteEmoji,omitempty"`
+	NoteTitle string  `json:"noteTitle,omitempty"`
+	Hosts     string  `json:"hosts,omitempty"`
+	Category  string  `json:"category,omitempty"`
+	Audience  string  `json:"audience,omitempty"`
+	Unit      string  `json:"unit,omitempty"`
+	Price     float64 `json:"price"`
+	Capacity  int     `json:"capacity,omitempty"`
+	Minimum   int     `json:"minimum,omitempty"`
+	Start     string  `json:"start,omitempty"`
+	End       string  `json:"end,omitempty"`
 	// Location is the place in words for everyone - "The Parks' House in Los
 	// Altos"; Address is the street address, for signed-in members only, so
 	// it never travels in anything shown before sign-in.
@@ -206,10 +215,9 @@ type Party struct {
 	// nothing. Waitlist says whether a full party takes a waitlist.
 	TicketsOpen bool `json:"ticketsOpen"`
 	Waitlist    bool `json:"waitlist"`
-	// Who a ticket may be for.
-	Parents  bool `json:"parents"`
+	// Who a ticket may be for: adults (parents and staff alike), students.
+	Adults   bool `json:"adults"`
 	Students bool `json:"students"`
-	Staff    bool `json:"staff"`
 	// DropOff says a child may come without a parent; ParentTicket says a
 	// parent who stays needs a ticket of their own.
 	DropOff      bool     `json:"dropOff"`
@@ -220,10 +228,11 @@ type Party struct {
 	Tickets      []Ticket `json:"-"`
 }
 
-// Ticket is one person on a party: a sold ticket or a place on the waitlist.
-// Email names someone in the directory; a guest who is not in it has a Name
-// instead. Purchaser is who is invoiced. Price is the party's price when the
-// ticket was taken, so a later change does not reprice it.
+// Ticket is one person on a party - a sold ticket - or, on the waitlist, a
+// family's request for Quantity tickets, held by whoever asked. Email names
+// someone in the directory; a guest who is not in it has a Name instead.
+// Purchaser is who is invoiced. Price is the party's price when the ticket
+// was taken, so a later change does not reprice it.
 type Ticket struct {
 	ID        string  `json:"ticketId"`
 	PartyID   string  `json:"partyId"`
@@ -231,9 +240,9 @@ type Ticket struct {
 	Name      string  `json:"name,omitempty"`
 	Purchaser string  `json:"purchaser"`
 	Status    string  `json:"status"`
+	Quantity  int     `json:"quantity"`
 	Price     float64 `json:"price"`
 	Note      string  `json:"note,omitempty"`
-	Invoice   string  `json:"invoice,omitempty"`
 	AddedBy   string  `json:"addedBy,omitempty"`
 	Added     string  `json:"added,omitempty"`
 }
@@ -241,6 +250,7 @@ type Ticket struct {
 type Settings struct {
 	PartiesIntro string `json:"partiesIntro"`
 	TicketNote   string `json:"ticketNote"`
+	HostingOpen  bool   `json:"hostingOpen"`
 }
 
 // Model is the sheet organized: celebrations and parties in row order, each
@@ -251,6 +261,8 @@ type Model struct {
 	Parties      []*Party
 	Settings     Settings
 	Redirects    []Redirect
+	// Invoicing is the ledger as accounting keeps it, oldest first.
+	Invoicing []InvoiceLine
 	// Skipped counts the rows a load left out and why, so a mistyped id shows
 	// up as a number in the log rather than a silently missing row.
 	Skipped       map[string]int
@@ -259,6 +271,21 @@ type Model struct {
 	byTicket      map[string]*Ticket
 	ticketParties map[string]*Party
 	pretty        map[string]*Party
+}
+
+// InvoiceLine is one row of the INVOICING ledger: what the app wrote when
+// the ticket sold, and what accounting filled in since.
+type InvoiceLine struct {
+	Date      string  `json:"date"`
+	Party     string  `json:"party"`
+	Code      string  `json:"code"`
+	Purchaser string  `json:"purchaser"`
+	Guest     string  `json:"guest"`
+	Action    string  `json:"action"`
+	Quantity  int     `json:"quantity"`
+	Cost      float64 `json:"cost"`
+	Invoice   string  `json:"invoice"`
+	InvoiceTo string  `json:"invoiceTo"`
 }
 
 // ByPretty finds the party whose friendly address this is now.
@@ -353,8 +380,27 @@ func (p *Party) Sold() int {
 	return n
 }
 
+// Raised is the sold tickets' prices added up, each at what it was taken
+// for.
+func (p *Party) Raised() float64 {
+	sum := 0.0
+	for _, t := range p.Tickets {
+		if t.Status == TicketSold {
+			sum += t.Price
+		}
+	}
+	return sum
+}
+
+// Waiting counts the tickets asked for on the waitlist, over every request.
 func (p *Party) Waiting() int {
-	return len(p.Tickets) - p.Sold()
+	n := 0
+	for _, t := range p.Tickets {
+		if t.Status == TicketWaitlist {
+			n += t.Quantity
+		}
+	}
+	return n
 }
 
 // Remaining is how many tickets are left, or -1 for a party with no cap.
@@ -430,6 +476,7 @@ type Tables struct {
 	Settings     []map[string]string
 	Admins       []map[string]string
 	Redirects    []map[string]string
+	Invoicing    []map[string]string
 }
 
 func ReadTables(source data.Source) (*Tables, error) {
@@ -448,8 +495,9 @@ func ReadTables(source data.Source) (*Tables, error) {
 	settings := &table{name: settingsTab, want: SettingColumns}
 	admins := &table{name: adminsTab, want: AdminColumns}
 	redirects := &table{name: redirectsTab, want: RedirectColumns}
+	invoicing := &table{name: invoicingTab, want: InvoicingColumns}
 	changeLog := &table{name: changeLogTab, want: ChangeLogColumns}
-	read := []*table{celebrations, categories, parties, hosts, tickets, settings, admins, redirects}
+	read := []*table{celebrations, categories, parties, hosts, tickets, settings, admins, redirects, invoicing}
 	var wg sync.WaitGroup
 	for _, t := range read {
 		wg.Go(func() {
@@ -470,7 +518,7 @@ func ReadTables(source data.Source) (*Tables, error) {
 	}
 	return &Tables{
 		Celebrations: celebrations.rows, Categories: categories.rows, Parties: parties.rows,
-		Hosts: hosts.rows, Tickets: tickets.rows, Settings: settings.rows, Admins: admins.rows, Redirects: redirects.rows,
+		Hosts: hosts.rows, Tickets: tickets.rows, Settings: settings.rows, Admins: admins.rows, Redirects: redirects.rows, Invoicing: invoicing.rows,
 	}, nil
 }
 
@@ -574,6 +622,18 @@ func checkTitle(kind, title string) error {
 	return nil
 }
 
+// checkNote keeps the callout's dress small: an emoji is a character or
+// few (a flag, a skin tone, a family), never a word; the title is a short headline.
+func checkNote(emoji, title string) error {
+	if n := utf8.RuneCountInString(strings.TrimSpace(emoji)); n > 8 {
+		return fmt.Errorf("note emoji %q is too long", emoji)
+	}
+	if len(strings.TrimSpace(title)) > 60 {
+		return fmt.Errorf("note title %q is too long", title)
+	}
+	return nil
+}
+
 func checkText(what, text string) error {
 	if len(text) > maxTextLength {
 		return fmt.Errorf("%s is too long", what)
@@ -641,7 +701,11 @@ func parseSettings(rows []map[string]string) (Settings, error) {
 		}
 		values[key] = row["Value"]
 	}
-	return Settings{PartiesIntro: values[PartiesIntroKey], TicketNote: values[TicketNoteKey]}, nil
+	hosting, err := yesNo(values[HostingOpenKey], true)
+	if err != nil {
+		return Settings{}, fmt.Errorf("%s %s: %w", settingsTab, HostingOpenKey, err)
+	}
+	return Settings{PartiesIntro: values[PartiesIntroKey], TicketNote: values[TicketNoteKey], HostingOpen: hosting}, nil
 }
 
 func imageNames(rows ...[]map[string]string) []string {
@@ -674,7 +738,7 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 	model := &Model{
 		Celebrations: []*Celebration{}, Categories: []string{}, Parties: []*Party{}, Settings: settings,
 		Skipped: map[string]int{}, byCode: map[string]*Celebration{}, byParty: map[string]*Party{},
-		byTicket: map[string]*Ticket{}, ticketParties: map[string]*Party{}, pretty: map[string]*Party{}, Redirects: []Redirect{},
+		byTicket: map[string]*Ticket{}, ticketParties: map[string]*Party{}, pretty: map[string]*Party{}, Redirects: []Redirect{}, Invoicing: []InvoiceLine{},
 	}
 	for _, row := range tables.Celebrations {
 		code := strings.TrimSpace(row["Code"])
@@ -777,6 +841,24 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 		model.Redirects = append(model.Redirects, Redirect{Type: strings.TrimSpace(row["Type"]), Old: old, New: to, Date: row["Date"]})
 	}
 
+	// The ledger is read as accounting typed it: a row with no party or
+	// purchaser is not one of ours (the old sheet kept auction items there
+	// too) and is skipped; an unreadable cost or quantity reads as blank.
+	for _, row := range tables.Invoicing {
+		title, purchaser := strings.TrimSpace(row["Party Title"]), cleanEmail(row["Purchaser Email"])
+		if title == "" || purchaser == "" {
+			model.Skipped["invoicing rows naming no party or purchaser"]++
+			continue
+		}
+		quantity, _ := strconv.Atoi(strings.TrimSpace(row["Quantity"]))
+		cost, _ := ParsePrice(row["Cost"])
+		model.Invoicing = append(model.Invoicing, InvoiceLine{
+			Date: strings.TrimSpace(row["Date"]), Party: title, Code: strings.TrimSpace(row["Event Code"]), Purchaser: purchaser,
+			Guest: strings.TrimSpace(row["Guest Name"]), Action: strings.TrimSpace(row["Action"]), Quantity: quantity, Cost: cost,
+			Invoice: strings.TrimSpace(row["Invoice"]), InvoiceTo: strings.TrimSpace(row["Invoice To"]),
+		})
+	}
+
 	for _, row := range tables.Hosts {
 		p := model.Party(strings.TrimSpace(row["Party ID"]))
 		if p == nil {
@@ -837,6 +919,9 @@ func parseParty(row map[string]string, model *Model, images ImageChecker) (*Part
 			return nil, err
 		}
 	}
+	if err := checkNote(row["Note Emoji"], row["Note Title"]); err != nil {
+		return nil, err
+	}
 	category := strings.TrimSpace(row["Category"])
 	if category != "" && !slices.Contains(model.Categories, category) {
 		return nil, fmt.Errorf("names category %q, which is not on the Categories tab", category)
@@ -872,15 +957,15 @@ func parseParty(row map[string]string, model *Model, images ImageChecker) (*Part
 	for _, f := range []struct {
 		column string
 		blank  bool
-	}{{"Waitlist", true}, {"Parents", true}, {"Students", false}, {"Staff", true}, {"Drop-Off", false}, {"Parent Ticket Required", false}} {
+	}{{"Waitlist", true}, {"Adults", true}, {"Students", false}, {"Drop-Off", false}, {"Parent Ticket Required", false}} {
 		v, err := yesNo(row[f.column], f.blank)
 		if err != nil {
 			return nil, fmt.Errorf("%s %w", strings.ToLower(f.column), err)
 		}
 		flags[f.column] = v
 	}
-	if !flags["Parents"] && !flags["Students"] && !flags["Staff"] {
-		return nil, fmt.Errorf("allows nobody: parents, students, and staff are all No")
+	if !flags["Adults"] && !flags["Students"] {
+		return nil, fmt.Errorf("allows nobody: adults and students are both No")
 	}
 	if row["Added By"] != "" {
 		if err := checkEmail(strings.ToLower(strings.TrimSpace(row["Added By"]))); err != nil {
@@ -907,11 +992,12 @@ func parseParty(row map[string]string, model *Model, images ImageChecker) (*Part
 	return &Party{
 		ID: strings.TrimSpace(row["Party ID"]), Celebration: celebration, Title: strings.TrimSpace(row["Title"]),
 		Subtitle: strings.TrimSpace(row["Subtitle"]), Summary: strings.TrimSpace(row["Summary"]), Description: row["Description"],
-		NeedToKnow: strings.TrimSpace(row["Need To Know"]), Hosts: strings.TrimSpace(row["Hosts"]), Category: category,
+		NeedToKnow: strings.TrimSpace(row["Need To Know"]), NoteEmoji: strings.TrimSpace(row["Note Emoji"]), NoteTitle: strings.TrimSpace(row["Note Title"]),
+		Hosts: strings.TrimSpace(row["Hosts"]), Category: category,
 		Audience: strings.TrimSpace(row["Audience"]), Unit: strings.TrimSpace(row["Ticket Unit"]), Price: price,
 		Capacity: capacity, Minimum: minimum, Start: row["Start"], End: row["End"], Location: strings.TrimSpace(row["Location"]), Address: strings.TrimSpace(row["Address"]),
 		Image: image, ImageURL: url, Flyer: flyer, FlyerURL: flyerURL, PrettyID: pretty, Status: status, TicketsOpen: ticketsOpen, Waitlist: flags["Waitlist"],
-		Parents: flags["Parents"], Students: flags["Students"], Staff: flags["Staff"], DropOff: flags["Drop-Off"],
+		Adults: flags["Adults"], Students: flags["Students"], DropOff: flags["Drop-Off"],
 		ParentTicket: flags["Parent Ticket Required"], AddedBy: strings.ToLower(strings.TrimSpace(row["Added By"])), Added: row["Added"],
 		HostEmails: []string{}, Tickets: []Ticket{},
 	}, nil
@@ -946,12 +1032,17 @@ func parseTicket(row map[string]string, id string) (*Ticket, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := checkText("note", row["Note"]); err != nil {
+	// Quantity is a waitlist request's; blank is one, and a sold ticket is
+	// always one.
+	quantity, err := parseCount("quantity", row["Quantity"])
+	if err != nil {
 		return nil, err
 	}
-	invoice := strings.TrimSpace(row["Invoice"])
-	if !slices.Contains(InvoiceStatuses, invoice) {
-		return nil, fmt.Errorf("invoice %q is not Sent, Paid, or blank", invoice)
+	if quantity == 0 || status == TicketSold {
+		quantity = 1
+	}
+	if err := checkText("note", row["Note"]); err != nil {
+		return nil, err
 	}
 	if row["Added By"] != "" {
 		if err := checkEmail(strings.ToLower(strings.TrimSpace(row["Added By"]))); err != nil {
@@ -963,7 +1054,7 @@ func parseTicket(row map[string]string, id string) (*Ticket, error) {
 	}
 	return &Ticket{
 		ID: id, PartyID: strings.TrimSpace(row["Party ID"]), Email: email, Name: name, Purchaser: purchaser,
-		Status: status, Price: price, Note: strings.TrimSpace(row["Note"]), Invoice: invoice,
+		Status: status, Quantity: quantity, Price: price, Note: strings.TrimSpace(row["Note"]),
 		AddedBy: strings.ToLower(strings.TrimSpace(row["Added By"])), Added: row["Added"],
 	}, nil
 }
@@ -1033,6 +1124,8 @@ func (t *Tables) tab(name string) []map[string]string {
 		return t.Settings
 	case redirectsTab:
 		return t.Redirects
+	case invoicingTab:
+		return t.Invoicing
 	}
 	return t.Admins
 }
@@ -1053,6 +1146,8 @@ func (t *Tables) setTab(name string, rows []map[string]string) {
 		t.Settings = rows
 	case redirectsTab:
 		t.Redirects = rows
+	case invoicingTab:
+		t.Invoicing = rows
 	default:
 		t.Admins = rows
 	}

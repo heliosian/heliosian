@@ -28,7 +28,7 @@ A page that renders blank usually threw before it drew anything. `cmd/console` l
 
     go run ./cmd/console --url https://celebrate.local.heliosian.com:8080/
 
-It listens for four seconds after the load (`--wait` changes that) and prints `(nothing logged)` when the page was quiet.
+It listens for four seconds after the load (`--wait` changes that) and prints `(nothing logged)` when the page was quiet. `--click ".host-actions .button|.tabs button:nth-of-type(2)"` clicks its way to something first, so an error behind a button shows too, at the desktop viewport `cmd/screenshot` uses; `--out x.png` saves a plain viewport screenshot of the page as it then stands - a full-page capture repaints some pages, so an in-place editor `cmd/screenshot` shows closed can be seen open here.
 
 ## Capturing authenticated external sites
 

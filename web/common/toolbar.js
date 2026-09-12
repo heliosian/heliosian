@@ -3,15 +3,11 @@
 // apps. What the search actually searches is each app's own business, wired in
 // its chrome.
 
-// The apps, in the order the switch lists them. Each is keyed by its hostname's
-// first label; the icons are served from web/public/common/brand/apps/. The
-// birthday team's app is a small group's and stays off the list.
-const apps = [
-  {key: 'home', name: 'Heliosian', tagline: 'Helios Community Apps'},
-  {key: 'who', name: 'Helios Who?', tagline: 'A visual directory'},
-  {key: 'team', name: 'HCA-Team', tagline: 'HCA Volunteer Portal'},
-  {key: 'celebrate', name: 'Helios Celebrate', tagline: 'Fun(d)raiser Parties'},
-];
+// The apps the switch lists come from Heliosian (internal/home.Apps), each
+// keyed by its hostname's first label with its mark served from
+// web/public/common/brand/apps/<key>.png. Home heads the list, and is what
+// the switch falls back to when the ask fails - always a way home.
+const homeApp = {key: 'home', name: 'Heliosian', tagline: 'Helios Community Apps'};
 
 // Hostnames follow the tier of the page's own: beside who.heliosian.com sits
 // team.heliosian.com, beside who.lab.heliosian.com sits team.lab.heliosian.com,
@@ -40,32 +36,33 @@ export function appOrigin(key) {
   return location.protocol + '//' + host.join('.') + (location.port ? ':' + location.port : '');
 }
 
-// Which of the apps Heliosian's Visibility tab narrows to a list this person
-// is not on, and so leaves off their switch - asked of the page's own origin
-// (every app serves the route). Purely presentation - a direct link still
-// opens the app - so a failed ask hides nothing rather than everything.
-async function hiddenApps() {
+// What the switch lists and which rows Heliosian's Visibility tab keeps off
+// this person's - asked of the page's own origin (every app serves the
+// route). Purely presentation - a direct link still opens an app - so a
+// failed ask lists just the way home rather than nothing.
+async function switchList() {
   try {
-    const res = await fetch('/api/apps/hidden');
+    const res = await fetch('/api/apps/switch');
     if (!res.ok) {
-      return [];
+      return {apps: [homeApp], hidden: []};
     }
-    return (await res.json()).hiddenApps || [];
+    const {apps, hidden} = await res.json();
+    return {apps: apps || [homeApp], hidden: hidden || []};
   } catch {
-    return [];
+    return {apps: [homeApp], hidden: []};
   }
 }
 
 // Fills every .app-switch in the page (the desktop bar's and, where an app has
 // one, the phone bar's) and wires it: click toggles the list, a click anywhere
-// else or Escape closes it. The rows wait on the hidden-apps ask, which is
-// well over before anyone opens the list; the app being viewed is always
-// listed, whether or not the reader is on its list, since it is where they
-// already are.
+// else or Escape closes it. The rows wait on the switch ask, which is well
+// over before anyone opens the list; the app being viewed is always listed,
+// whether or not the reader is on its list, since it is where they already
+// are.
 export function initAppSwitch() {
   const current = currentApp();
   const wraps = document.querySelectorAll('.app-switch');
-  hiddenApps().then(hidden => {
+  switchList().then(({apps, hidden}) => {
     for (const wrap of wraps) {
       const menu = wrap.querySelector('.app-switch-menu');
       for (const app of apps) {

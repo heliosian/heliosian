@@ -1,4 +1,4 @@
-import {partyPath, parseWhen, availabilityLabel, myTickets, priceLine} from './state.js';
+import {partyPath, parseWhen, availabilityLabel, myTickets} from './state.js';
 import {el, link, svg, thumb, badge, button} from './dom.js';
 import {openBuy} from './edit.js';
 
@@ -21,10 +21,16 @@ export function availabilityBadge(p) {
   return el('span', 'avail avail-' + p.availability, availabilityLabel(p));
 }
 
-// spotsNote is "41 of 70 left" for a party with a cap and room, or nothing.
+// spotsNote is what the card says about room: "Tickets available" while
+// there is plenty, then a count once the party is getting full - under 40%
+// of its capacity left, or ten tickets or fewer, whichever comes first - so
+// the number is a nudge, not a tally. A waitlist says how many are waiting.
 export function spotsNote(p) {
-  if (p.capacity > 0 && p.availability === 'available') {
-    return `${p.remaining} of ${p.capacity} left`;
+  if (p.availability === 'available') {
+    if (p.capacity > 0 && (p.remaining <= 10 || p.remaining < p.capacity * 0.4)) {
+      return `${p.remaining} ticket${p.remaining === 1 ? '' : 's'} left`;
+    }
+    return 'Tickets available';
   }
   if (p.availability === 'waitlist' && p.waiting) {
     return `${p.waiting} waiting`;
@@ -72,6 +78,11 @@ export function partyCard(p, opts = {}) {
   if (stamp) {
     media.append(stamp);
   }
+  // A party the viewer hosts says so in the picture's top corner, so their
+  // own stand out from the rest of the list.
+  if (p.hosting) {
+    media.append(el('span', 'card-chip card-chip-hosting', 'Hosting'));
+  }
   // Who the party is for, as a chip in the picture's other corner. The
   // category is a filter, not a tag: it stays off the card.
   if (p.audience) {
@@ -115,7 +126,7 @@ export function partyCard(p, opts = {}) {
   card.append(body);
   const foot = el('div', 'card-foot');
   foot.append(footButton(p));
-  const note = spotsNote(p) || (p.availability === 'available' ? priceLine(p) : '');
+  const note = spotsNote(p);
   if (note) {
     foot.append(el('span', 'card-note', note));
   }

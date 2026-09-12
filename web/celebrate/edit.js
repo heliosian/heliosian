@@ -473,6 +473,7 @@ function openModal(title, fields, options) {
   const f = form();
   f.replaceChildren();
   f.classList.toggle('modal-wide', options.wide === true);
+  f.classList.toggle('modal-table', options.wide === 'table');
   f.classList.toggle('modal-person', options.wide === 'person');
   const header = el('div', 'modal-header');
   header.append(el('h2', '', title));
@@ -547,7 +548,7 @@ async function people() {
 // peoplePicker is the searchable directory list: type a few letters, see
 // faces, names and what places each person, pick one. Typing a full address
 // that matches nobody still works.
-export function peoplePicker(placeholder) {
+export function peoplePicker(placeholder, onPick, allow) {
   const wrap = el('div', 'people-picker');
   const search = el('input');
   search.type = 'search';
@@ -573,6 +574,15 @@ export function peoplePicker(placeholder) {
     return row;
   };
   const choose = person => {
+    // With a handler, a pick is handed over at once and the box clears for
+    // the next; without one it stays shown as the choice.
+    if (onPick) {
+      search.value = '';
+      results.hidden = true;
+      results.replaceChildren();
+      onPick(person);
+      return;
+    }
     value = person.email;
     picked = person;
     chosen.replaceChildren();
@@ -601,7 +611,8 @@ export function peoplePicker(placeholder) {
       return;
     }
     const all = await people();
-    const hits = all.filter(p => p.name.toLowerCase().includes(q) || p.email.toLowerCase().includes(q)).slice(0, 8);
+    // With a rule for who may be picked, the rest never show.
+    const hits = all.filter(p => (!allow || allow(p)) && (p.name.toLowerCase().includes(q) || p.email.toLowerCase().includes(q))).slice(0, 8);
     for (const person of hits) {
       const row = tile(person);
       row.addEventListener('click', () => choose(person));
@@ -614,6 +625,17 @@ export function peoplePicker(placeholder) {
   };
   search.addEventListener('input', show);
   search.addEventListener('focus', show);
+  if (onPick) {
+    search.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const typed = search.value.trim().toLowerCase();
+        if (typed.includes('@')) {
+          choose({email: typed, name: typed});
+        }
+      }
+    });
+  }
   return {
     wrap,
     value: () => value || (search.value.includes('@') ? search.value.trim().toLowerCase() : ''),
@@ -798,21 +820,30 @@ function personChip(person, on, disabledWhy) {
   return chip;
 }
 
-// openBuy is the ticket form: who to bill, who is coming - the household by
-// face, guests by name - and a note. Whoever runs the party gets a directory
-// picker instead, to add anyone and bill anyone.
+// openBuy is the ticket form: who to bill, who is coming - the household
+// by face, with an Add someone button under them for a guest by name (or,
+// for whoever runs the party, anyone in the directory) - and a note.
 export function openBuy(p) {
   const editor = p.canEdit;
+  // A full party takes requests, not purchases: its own form.
+  if (p.availability === 'waitlist' && !editor) {
+    openWaitlist(p);
+    return;
+  }
+  const waiting = false;
   const fields = [];
   const chosen = new Set();
   let purchaser = '';
   const bills = billable();
-  const guests = [];
+  // People added through the popup: from the directory (email, name, face)
+  // or guests by name, with an address when one was given.
+  const added = [];
 
-  // Who should we bill?
+  // Who should we bill? An adult of the buyer's own family, nobody else -
+  // hosts included. Someone a host adds from outside the family pays their
+  // own way (a student through a parent).
   const billRow = el('div', 'chip-pick');
-  const billField = field('Who should we bill?', billRow, editor ? 'Tickets are invoiced to this person.' : 'Tickets are invoiced to an adult in your family.', true);
-  const billPicker = editor ? peoplePicker('Search for the person to bill…') : null;
+  const billField = field('Who should we bill?', billRow, 'Tickets are invoiced to an adult in your family.', true);
   const paintBill = () => {
     billRow.replaceChildren();
     for (const b of bills) {
@@ -823,19 +854,21 @@ export function openBuy(p) {
       });
       billRow.append(chip);
     }
-    if (billPicker) {
-      billRow.append(billPicker.wrap);
-    }
   };
   if (bills.length) {
     purchaser = bills[0].email;
   }
   paintBill();
-  fields.push(billField);
+  if (!waiting) {
+    fields.push(billField);
+  }
 
-  // Who's coming?
+  // Who's coming? The household as chips to tap, then whoever was added,
+  // then the button that adds someone else.
   const who = el('div', 'chip-pick');
-  const whoField = field("Who's coming?", who, `This party is for ${audienceWords(p)}.`, true);
+  const whoWrap = el('div');
+  whoWrap.append(who);
+  const whoField = field(waiting ? 'Who wants a ticket?' : "Who's coming?", whoWrap, `This party is for ${audienceWords(p)}.`, true);
   const paintWho = () => {
     who.replaceChildren();
     for (const person of household()) {
@@ -858,92 +891,56 @@ export function openBuy(p) {
       });
       who.append(chip);
     }
-  };
-  paintWho();
-  fields.push(whoField);
-
-  // Whoever runs the party adds anyone in the directory.
-  let anyone = null;
-  const added = [];
-  if (editor) {
-    anyone = peoplePicker('Add someone from the directory…');
-    const addedList = el('div', 'chip-pick');
-    const addRow = el('div', 'guest-add');
-    const addButton = button('Add', 'plus', 'button button-secondary button-small', () => {
-      const email = anyone.value();
-      if (!email || added.some(a => a.email === email) || chosen.has(email)) {
-        return;
-      }
-      added.push({email, name: (anyone.person() || {}).name || email, photoUrl: (anyone.person() || {}).photoUrl});
-      anyone.reset();
-      paintAdded();
-      paintTotal();
-    });
-    const paintAdded = () => {
-      addedList.replaceChildren();
-      for (const a of added) {
-        const chip = personChip(a, true);
-        chip.addEventListener('click', () => {
-          added.splice(added.indexOf(a), 1);
-          paintAdded();
-          paintTotal();
-        });
-        addedList.append(chip);
-      }
-    };
-    addRow.append(anyone.wrap, addButton);
-    const wrap = el('div');
-    wrap.append(addRow, addedList);
-    fields.push(field('Anyone else', wrap, 'Hosts and admins can add anyone in the directory.'));
-  }
-
-  // Guests by name.
-  const guestList = el('div', 'guest-list');
-  const paintGuests = () => {
-    guestList.replaceChildren();
-    guests.forEach((g, i) => {
-      const row = el('div', 'guest-row');
-      const input = text(g.name, {placeholder: 'Full name, e.g. Zander Faulkner (sibling of Everly, age 8)', maxLength: 120});
-      input.addEventListener('input', () => {
-        g.name = input.value;
-      });
-      const remove = button('', 'close', 'edit-icon', () => {
-        guests.splice(i, 1);
-        paintGuests();
+    for (const a of added) {
+      const chip = personChip({name: a.name, photoUrl: a.photoUrl, title: a.guest ? 'Guest' : a.title}, true);
+      chip.title = 'Remove';
+      chip.addEventListener('click', () => {
+        added.splice(added.indexOf(a), 1);
+        paintWho();
         paintTotal();
       });
-      remove.title = 'Remove this guest';
-      row.append(input, remove);
-      guestList.append(row);
-      if (i === guests.length - 1 && !g.name) {
-        setTimeout(() => input.focus(), 0);
-      }
-    });
+      who.append(chip);
+    }
   };
-  const addGuest = button('Add a guest', 'plus', 'button button-secondary button-small', () => {
-    guests.push({name: ''});
-    paintGuests();
+  paintWho();
+  const addRow = el('div', 'who-add');
+  addRow.append(button('Add someone', 'plus', 'button button-secondary button-small', () => openAddSomeone(p, editor, person => {
+    if (person.email && (added.some(a => a.email === person.email) || household().some(h => h.email === person.email))) {
+      toast(`${person.name} is already on the list`);
+      return;
+    }
+    added.push(person);
+    paintWho();
     paintTotal();
-  });
-  const guestWrap = el('div');
-  guestWrap.append(guestList, addGuest);
-  fields.push(field('Guests', guestWrap, "Someone who isn't in the directory - a visiting cousin, a non-Helios sibling, a friend. Enter their full name."));
+  })));
+  whoWrap.append(addRow);
+  fields.push(whoField);
 
   const note = textarea('', 2);
   note.placeholder = 'Anything the hosts should know (optional)';
   fields.push(field('Note', note));
 
-  // The tally: tickets × price, and whether they will be sold or waitlisted.
+  // The tally: who the tickets are for, tickets × price, and whether they
+  // will be sold or waitlisted. On the waitlist there is no sum - only who
+  // is waiting, and who would be billed if a place comes up.
   const total = el('div', 'buy-total');
   const paintTotal = () => {
-    const n = chosen.size + added.length + guests.filter(g => g.name.trim()).length;
+    const n = chosen.size + added.length;
     total.replaceChildren();
     if (!n) {
       total.append(el('span', 'buy-total-hint', 'Pick at least one person.'));
       return;
     }
-    const line = el('span', 'buy-total-sum', `${n} ${n === 1 ? 'ticket' : 'tickets'} × ${money(p.price)} = ${money(n * p.price)}`);
-    total.append(line);
+    const names = [...chosen].map(email => (household().find(h => h.email === email) || {}).name || email)
+      .concat(added.map(a => a.name));
+    total.append(el('span', 'buy-total-names', names.join(', ')));
+    if (waiting) {
+      const billed = bills.find(b => b.email === purchaser);
+      total.append(el('span', 'buy-total-sum', `${n} on the waitlist`));
+      total.append(el('span', 'buy-total-hint', `If a place opens up, tickets are ${money(p.price)} each${billed ? `, billed to ${billed.name}` : ''}.`));
+      return;
+    }
+    total.append(el('span', 'buy-total-sum', `${n} ${n === 1 ? 'ticket' : 'tickets'} × ${money(p.price)} = ${money(n * p.price)}`));
     if (!editor && p.remaining >= 0 && n > p.remaining) {
       const over = n - p.remaining;
       total.append(el('span', 'buy-total-hint', p.remaining
@@ -953,24 +950,22 @@ export function openBuy(p) {
   };
   paintTotal();
   fields.push(total);
-  if (state.model.settings.ticketNote) {
+  if (state.model.settings.ticketNote && !waiting) {
     fields.push(el('p', 'buy-note', state.model.settings.ticketNote));
   }
 
-  openModal(p.availability === 'waitlist' && !editor ? `Join the waitlist for ${p.title}` : `Tickets for ${p.title}`, fields, {
-    saveLabel: p.availability === 'waitlist' && !editor ? 'Join Waitlist' : 'Get Tickets',
+  openModal(waiting ? `Join the waitlist for ${p.title}` : `Tickets for ${p.title}`, fields, {
+    saveLabel: waiting ? 'Join Waitlist' : 'Get Tickets',
     submit: async () => {
-      const bill = editor && billPicker && billPicker.value() ? billPicker.value() : purchaser;
-      if (!bill) {
+      if (!purchaser) {
         throw new Error('Pick who to bill.');
       }
       const attendees = [...chosen].map(email => ({email}))
-        .concat(added.map(a => ({email: a.email})))
-        .concat(guests.filter(g => g.name.trim()).map(g => ({name: g.name.trim()})));
+        .concat(added.map(a => (a.guest ? {name: a.name, email: a.email || ''} : {email: a.email})));
       if (!attendees.length) {
         throw new Error('Pick at least one person.');
       }
-      return send('POST', '/api/celebrate/tickets', {partyId: p.id, purchaser: bill, note: note.value, attendees});
+      return send('POST', '/api/celebrate/tickets', {partyId: p.id, purchaser, note: note.value, attendees});
     },
     afterSave: result => {
       const parts = [];
@@ -982,6 +977,241 @@ export function openBuy(p) {
       }
       toast(parts.join(', ') || 'Done');
     },
+  });
+}
+
+// openWaitlist is the form for a full party: a request, not a purchase. It
+// is for the viewer's own family, asks how many tickets they want and for a
+// note, and bills nothing until a host offers the places. Asking again
+// changes the request.
+export function openWaitlist(p) {
+  const bills = billable();
+  const purchaser = bills.length ? bills[0].email : '';
+  const have = [...p.waitlisted].find(a => a.mine);
+  const fields = [];
+  fields.push(el('p', 'form-lead', `${p.title} is full. Say how many tickets your family would like and the hosts will offer them as places open up - nothing is billed until then, and you\u2019ll get a note when it happens.`));
+  const quantity = text(have ? have.quantity || 1 : 1, {type: 'number', min: 1, max: 20, step: 1, required: true});
+  const qWrap = el('div', 'field-unit');
+  qWrap.append(quantity, el('span', 'field-unit-label', `at ${money(p.price)} each, if a place opens up`));
+  fields.push(field('How many tickets?', qWrap, `This party is for ${audienceWords(p)}.`, true));
+  const note = textarea(have ? have.note || '' : '', 2);
+  note.placeholder = 'Anything the hosts should know - who it\u2019s for, dates that work (optional)';
+  fields.push(field('Note', note));
+  const billed = bills.find(b => b.email === purchaser);
+  if (billed) {
+    fields.push(el('p', 'buy-note', `If the hosts offer you places, the tickets are billed to ${billed.name}.`));
+  }
+  openModal(have ? `Your place on the waitlist for ${p.title}` : `Join the waitlist for ${p.title}`, fields, {
+    saveLabel: have ? 'Update' : 'Join Waitlist',
+    submit: () => send('POST', '/api/celebrate/waitlist', {partyId: p.id, purchaser, quantity: Number(quantity.value) || 1, note: note.value}),
+    afterSave: () => toast(have ? 'Waitlist request updated' : 'You\u2019re on the waitlist'),
+    onDelete: have ? () => send('DELETE', '/api/celebrate/ticket', {ticketId: have.ticketId}) : null,
+    deleteLabel: 'Leave waitlist',
+    confirmDelete: `Leave the waitlist for ${p.title}?`,
+  });
+}
+
+// openAddSomeone is the popup behind Add someone: a guest by name, with an
+// address if they have one, or - for whoever runs the party - anyone in the
+// directory the party admits, behind a switch. It sits above the ticket form,
+// which keeps everything picked so far.
+// The emoji a callout is likely to want, offered in a grid behind the
+// field's caret; anything else can be typed in.
+const calloutEmoji = ['📣', '⚠️', 'ℹ️', '⭐', '🎉', '🎈', '🎁', '🍫', '🍕', '🍷', '🍸', '🧁', '🎂', '🎶', '🎮', '🏊', '🌧️', '☀️', '👟', '🧥', '🚗', '🅿️', '🐶', '🧒', '👨‍👩‍👧', '🔥', '💡', '❤️', '✅', '🕒'];
+
+// emojiPicker is the callout's emoji field: a small input to type into, with
+// a caret that drops a grid of the usual choices. Returns {wrap, input}.
+export function emojiPicker(value) {
+  const input = text(value || '', {maxLength: 16, placeholder: '📣'});
+  input.className = 'note-emoji-input';
+  input.setAttribute('aria-label', 'Emoji');
+  const wrap = el('div', 'emoji-pick');
+  const caret = el('button', 'emoji-pick-caret');
+  caret.type = 'button';
+  caret.setAttribute('aria-label', 'Choose an emoji');
+  caret.append(svg('caret'));
+  const menu = el('div', 'emoji-pick-menu');
+  menu.hidden = true;
+  for (const e of calloutEmoji) {
+    const b = el('button', 'emoji-pick-item', e);
+    b.type = 'button';
+    b.addEventListener('click', () => {
+      input.value = e;
+      menu.hidden = true;
+      input.dispatchEvent(new Event('input', {bubbles: true}));
+    });
+    menu.append(b);
+  }
+  caret.addEventListener('click', e => {
+    e.stopPropagation();
+    menu.hidden = !menu.hidden;
+    if (!menu.hidden) {
+      // Up when the field sits low in its scrolling form, so the grid is
+      // not lost below the fold.
+      const box = wrap.getBoundingClientRect();
+      menu.classList.toggle('is-up', window.innerHeight - box.bottom < 280);
+      document.addEventListener('click', () => {
+        menu.hidden = true;
+      }, {once: true});
+    }
+  });
+  menu.addEventListener('click', e => e.stopPropagation());
+  wrap.append(input, caret, menu);
+  return {wrap, input};
+}
+
+// guestWords says who a guest can be on this party, since the audience
+// rule cannot read a name: a child where only students come, an adult where
+// only adults do, anyone otherwise.
+function guestWords(p) {
+  if (p.students && !p.adults) {
+    return {lead: 'This party is for students, so a guest is a child who isn\u2019t in the directory - a cousin, a friend from another school.', label: 'Full name of the child', example: 'e.g., Percy Jackson'};
+  }
+  if (p.adults && !p.students) {
+    return {lead: 'This party is for adults, so a guest is an adult who isn\u2019t in the directory - a partner, a friend, a visiting relative.', label: 'Full name of the adult', example: 'e.g., Sally Jackson'};
+  }
+  return {lead: 'A guest is anyone who isn\u2019t in the directory - a visiting cousin, a non-Helios sibling, a friend.', label: 'Full name', example: 'e.g., Percy Jackson'};
+}
+
+// guestFields is the guest half of Add someone and Reassign: the lead that
+// says who a guest can be, the name, and an optional address.
+function guestFields(p, name, email) {
+  const words = guestWords(p);
+  return [
+    el('p', 'form-lead', words.lead),
+    field(words.label, name, words.example, true),
+    field('Email address', email, 'Optional - so the hosts can reach them, e.g., percy.jackson@gmail.com'),
+  ];
+}
+
+function openAddSomeone(p, editor, onAdd, opts = {}) {
+  const wrap = el('div', 'add-someone');
+  if (opts.lead) {
+    wrap.append(el('p', 'form-lead', opts.lead));
+  }
+  const guestPanel = el('div');
+  const name = text('', {placeholder: 'Percy Jackson', maxLength: 120, required: true});
+  const email = text('', {type: 'email', placeholder: 'percy.jackson@gmail.com', maxLength: 200});
+  guestPanel.append(...guestFields(p, name, email));
+  const addGuest = button('Add guest', 'plus', 'button', () => {
+    const n = name.value.trim();
+    if (!n) {
+      name.focus();
+      return;
+    }
+    const e = email.value.trim().toLowerCase();
+    if (e && !e.includes('@')) {
+      email.focus();
+      return;
+    }
+    onAdd({guest: true, name: n, email: e});
+    shut();
+  });
+  guestPanel.append(addGuest);
+  name.addEventListener('keydown', ev => {
+    if (ev.key === 'Enter') {
+      ev.preventDefault();
+      addGuest.click();
+    }
+  });
+  email.addEventListener('keydown', ev => {
+    if (ev.key === 'Enter') {
+      ev.preventDefault();
+      addGuest.click();
+    }
+  });
+
+  let directoryPanel = null;
+  if (editor) {
+    // The search says who it is for - "a student" where only students may
+    // come - and offers only them.
+    const kinds = [];
+    if (p.adults) {
+      kinds.push('an adult');
+    }
+    if (p.students) {
+      kinds.push('a student');
+    }
+    const label = kinds.length === 2 ? 'Search the directory…' : `Search for ${kinds.join(' or ')}…`;
+    const picker = peoplePicker(label, person => {
+      onAdd({email: person.email, name: person.name || person.email, photoUrl: person.photoUrl, title: person.title});
+      shut();
+    }, person => admits(p, person));
+    directoryPanel = el('div');
+    directoryPanel.append(field('Who', picker.wrap, `This party is for ${audienceWords(p)}.`));
+  }
+  if (directoryPanel) {
+    const which = segmented([{label: 'From the directory', value: 'directory'}, {label: 'Guest', value: 'guest'}], 'directory', v => {
+      directoryPanel.hidden = v !== 'directory';
+      guestPanel.hidden = v !== 'guest';
+      (v === 'directory' ? directoryPanel.querySelector('input') : name).focus();
+    });
+    guestPanel.hidden = true;
+    wrap.append(which.wrap, directoryPanel, guestPanel);
+  } else {
+    wrap.append(guestPanel);
+  }
+  if (opts.extra) {
+    wrap.append(opts.extra);
+  }
+  const shut = openSheet(opts.title || 'Add someone', [wrap]);
+  const first = wrap.querySelector('input:not([hidden])');
+  if (first) {
+    first.focus();
+  }
+}
+
+// openReassign moves a ticket to someone else - the family passing it to a
+// sibling or reselling it to another family, or a host doing the same for
+// them: a person from the directory the party admits, or a guest by name.
+// The ticket, its price, its place and who is billed all stay; only the
+// name changes - a resale is settled between the families themselves.
+export function openReassign(p, a) {
+  const fields = [];
+  fields.push(el('p', 'form-lead', `${a.name}'s ticket to ${p.title} goes to whoever you pick; ${a.name} comes off the list.`));
+  let mode = 'directory';
+  let picked = null;
+  const kinds = [];
+  if (p.adults) {
+    kinds.push('an adult');
+  }
+  if (p.students) {
+    kinds.push('a student');
+  }
+  const picker = peoplePicker(kinds.length === 2 ? 'Search the directory…' : `Search for ${kinds.join(' or ')}…`, null, person => admits(p, person));
+  const directoryPanel = field('Who', picker.wrap, `This party is for ${audienceWords(p)}.`);
+  const name = text('', {placeholder: 'Percy Jackson', maxLength: 120});
+  const email = text('', {type: 'email', placeholder: 'percy.jackson@gmail.com', maxLength: 200});
+  const guestPanel = el('div');
+  guestPanel.append(...guestFields(p, name, email));
+  guestPanel.hidden = true;
+  const which = segmented([{label: 'From the directory', value: 'directory'}, {label: 'Guest', value: 'guest'}], mode, v => {
+    mode = v;
+    directoryPanel.hidden = v !== 'directory';
+    guestPanel.hidden = v !== 'guest';
+  });
+  fields.push(which.wrap, directoryPanel, guestPanel);
+  fields.push(el('p', 'buy-note', `The ticket stays billed to ${a.purchaserName || a.purchaser || 'the family that took it'}; if it was resold, that is settled between the two families.`));
+  openModal(`Reassign ${a.name}'s ticket`, fields, {
+    saveLabel: 'Reassign',
+    submit: async () => {
+      const body = {ticketId: a.ticketId};
+      if (mode === 'directory') {
+        picked = picker.value();
+        if (!picked) {
+          throw new Error('Pick someone from the directory.');
+        }
+        body.email = picked;
+      } else {
+        if (!name.value.trim()) {
+          throw new Error('Give the guest a name.');
+        }
+        body.name = name.value.trim();
+        body.email = email.value.trim().toLowerCase();
+      }
+      return send('POST', '/api/celebrate/ticket/reassign', body);
+    },
+    afterSave: () => toast('Ticket reassigned'),
   });
 }
 
@@ -1001,21 +1231,47 @@ export async function removeTicket(p, a) {
   }
 }
 
-// setTicketStatus moves a ticket on or off the waitlist - a host's offer.
-export async function setTicketStatus(a, status) {
+// offerTickets answers a waitlist request: the family gets the tickets it
+// asked for (a host may say fewer), and the request comes off the list.
+export async function offerTickets(p, a, quantity) {
+  const n = quantity || a.quantity || 1;
+  if (!confirm(`Offer ${a.name} ${n === 1 ? 'a ticket' : n + ' tickets'} to ${p.title}? They\u2019ll be billed and told by email.`)) {
+    return;
+  }
   try {
-    await send('POST', '/api/celebrate/ticket', {ticketId: a.ticketId, status});
+    await send('POST', '/api/celebrate/waitlist/offer', {ticketId: a.ticketId, quantity: n});
     await reload();
-    toast(status === 'Ticket' ? `${a.name} now has a ticket` : `${a.name} is on the waitlist`);
+    toast(`${a.name} now has ${n === 1 ? 'a ticket' : n + ' tickets'}`);
   } catch (err) {
     toast(err.message);
   }
 }
 
+// openFreeTicket is the host's gift: pick anyone the party admits, from the
+// directory or by name, and they hold a ticket at no charge - nothing lands
+// on an invoice, and the host is never refused for room.
+export function openFreeTicket(p) {
+  // With a cap, the gift can come out of the paid places or be one more
+  // on top of them.
+  const raise = p.capacity ? checkbox('Raise the capacity by one', true, `So this ticket takes none of the ${p.capacity} paid places.`) : null;
+  openAddSomeone(p, true, async person => {
+    try {
+      await send('POST', '/api/celebrate/tickets', {
+        partyId: p.id, free: true, raiseCapacity: Boolean(raise && raise.input.checked), note: 'Free ticket from the hosts',
+        attendees: [{email: person.email || '', name: person.guest ? person.name : ''}],
+      });
+      await reload();
+      toast(`${person.name} has a free ticket`);
+    } catch (err) {
+      toast(err.message);
+    }
+  }, {title: 'Add a free ticket', lead: 'A ticket at no charge - for a helper, a performer, a family you\u2019d like to treat. Nothing is billed.', extra: raise ? raise.wrap : null});
+}
+
 // openTicket is a host's window on someone who is coming, as HCA-Team opens
 // a volunteer's for whoever runs the event: the person's head, then two tabs
 // - Contact, the same card everyone else gets, and Ticket, who bought it, the
-// note, the waitlist offer, and for an admin where the invoice stands.
+// note, the waitlist offer, and Reassign.
 export async function openTicket(p, a) {
   const info = a.email ? await personInfo(a.email) : null;
   const form = ticketForm(p, a);
@@ -1026,7 +1282,9 @@ export async function openTicket(p, a) {
   openModal('', [personHead(a, info), tabs], {...form, wide: 'person'});
 }
 
-// ticketForm is the Ticket tab's fields and the modal options that save them.
+// ticketForm is the Ticket tab's fields and the modal options that save
+// them. Where the invoice stands is the sheet's INVOICING tab's business,
+// shown in Admin Tools; nothing here touches it.
 function ticketForm(p, a) {
   const fields = [];
   const facts = el('div', 'ticket-facts');
@@ -1040,25 +1298,42 @@ function ticketForm(p, a) {
   };
   fact('Party', p.title);
   fact('Billed to', a.purchaserName ? `${a.purchaserName} (${a.purchaser})` : a.purchaser);
-  fact('Price', money(a.price || 0));
+  fact('Price', a.price ? money(a.price) : 'Free');
   fact('Taken', a.added);
   fact('Added by', a.addedBy);
   fields.push(facts);
   const note = textarea(a.note || '', 2);
   fields.push(field('Note', note));
-  const status = select([{label: 'Ticket', value: 'Ticket'}, {label: 'Waitlist', value: 'Waitlist'}], a.status);
-  fields.push(field('Status', status, 'Move a waitlisted person onto a ticket when a place opens up.'));
-  let invoice = null;
-  if (isAdmin()) {
-    invoice = select([{label: 'Not yet', value: ''}, {label: 'Sent', value: 'Sent'}, {label: 'Paid', value: 'Paid'}], a.invoice || '');
-    fields.push(field('Invoice', invoice));
+  // A waitlist request: how many they asked for, and the offer.
+  let quantity = null;
+  if (a.status === 'Waitlist') {
+    quantity = text(a.quantity || 1, {type: 'number', min: 1, step: 1});
+    fields.push(field('Tickets asked for', quantity));
+    const card = el('div', 'appoint-card');
+    const words = el('div', 'setting-text');
+    words.append(el('div', 'setting-label', 'Offer the tickets'), el('div', 'setting-hint', 'They get that many tickets at the price they were asked for, billed to their family, and a note saying so.'));
+    const n = a.quantity || 1;
+    card.append(words, button(`Offer ${n === 1 ? 'a ticket' : n + ' tickets'}`, 'ticket', 'button button-small', () => {
+      closeModal();
+      offerTickets(p, a, Number(quantity.value) || n);
+    }));
+    fields.push(card);
+  }
+  // Reassign: the ticket goes to someone else - a sibling, or another family
+  // it was resold to - and the old holder comes off.
+  if (a.status === 'Ticket') {
+    const card = el('div', 'appoint-card');
+    const words = el('div', 'setting-text');
+    words.append(el('div', 'setting-label', 'Reassign this ticket'), el('div', 'setting-hint', 'Give it to someone else - a sibling, or another family it was resold to.'));
+    card.append(words, button('Reassign', 'people', 'button button-secondary button-small', () => openReassign(p, a)));
+    fields.push(card);
   }
   return {
     fields,
     submit: () => {
-      const body = {ticketId: a.ticketId, note: note.value, status: status.value};
-      if (invoice) {
-        body.invoice = invoice.value;
+      const body = {ticketId: a.ticketId, note: note.value};
+      if (quantity) {
+        body.quantity = Number(quantity.value) || 1;
       }
       return send('POST', '/api/celebrate/ticket', body);
     },
@@ -1118,7 +1393,44 @@ export function openParty(p) {
   description.placeholder = 'Everything a guest should know about the party';
   const needToKnow = textarea(p ? p.needToKnow : '', 2);
   needToKnow.placeholder = 'Adults only; bring a swimsuit; drop-off is fine';
-  const category = select([{label: 'No category', value: ''}, ...state.model.categories.map(c => ({label: c, value: c}))], p ? p.category : '');
+  // The callout's dress: its emoji and title, blank for the megaphone and
+  // "Good to know".
+  const emojiPick = emojiPicker(p ? p.noteEmoji : '');
+  const noteEmoji = emojiPick.input;
+  const noteTitle = text(p ? p.noteTitle : '', {maxLength: 60, placeholder: 'Good to know'});
+  noteTitle.setAttribute('aria-label', 'Title');
+  const noteHead = el('div', 'note-head-inputs');
+  noteHead.append(emojiPick.wrap, noteTitle);
+  // The callout is its own boxed section, tinted as the callout itself is,
+  // behind a Create Callout button until the party has one; Remove empties
+  // it and folds it away again.
+  const calloutBox = el('div', 'callout-editor');
+  const calloutHead = el('div', 'callout-editor-head');
+  const removeCallout = el('button', 'link-button', 'Remove callout');
+  removeCallout.type = 'button';
+  calloutHead.append(el('span', 'callout-editor-title', 'Callout'), removeCallout);
+  calloutBox.append(
+    calloutHead,
+    el('p', 'form-lead', 'A tinted note under the description for the one thing every guest should know.'),
+    field('Emoji and title', noteHead, 'Blank means the megaphone and "Good to know".'),
+    field('Words', needToKnow, '', true),
+  );
+  const createCallout = button('Create Callout', 'plus', 'button button-secondary button-small', () => {
+    calloutBox.hidden = false;
+    createCallout.hidden = true;
+    needToKnow.focus();
+  });
+  removeCallout.addEventListener('click', () => {
+    needToKnow.value = '';
+    noteEmoji.value = '';
+    noteTitle.value = '';
+    calloutBox.hidden = true;
+    createCallout.hidden = false;
+  });
+  calloutBox.hidden = !(p && p.needToKnow);
+  createCallout.hidden = !calloutBox.hidden;
+  const callout = el('div', 'callout-field');
+  callout.append(createCallout, calloutBox);
   const audience = text(p ? p.audience : '', {maxLength: 60, placeholder: 'Adults, Families, Kids & Adults, Grades 3-6'});
   const image = imagePicker(p ? p.image : '', p ? p.imageUrl : '', {query: () => title.value, hint: 'The wide banner across the page and the card.'});
   const flyer = imagePicker(p ? p.flyer : '', p ? p.flyerUrl : '', {label: 'Flyer', plain: true, hint: 'The party\u2019s poster, shown whole beside the page. Optional.'});
@@ -1135,19 +1447,21 @@ export function openParty(p) {
   prettyField.append(prettyHint);
   const basics = [
     field('Title', title, '', true), field('Subtitle', subtitle), field('Summary', summary, 'Shown on the party card.'),
-    field('Description', description), field('Need to know', needToKnow, 'Shown in bold under the description.'),
-    field('Category', category), field('Audience', audience, 'The words on the card: who the party is for.'), prettyField, image.wrap, flyer.wrap,
+    field('Description', description), callout,
   ];
+  const design = [image.wrap, flyer.wrap];
 
   const start = whenPickers('Starts', p ? p.start : '');
   const end = whenPickers('Ends', p ? p.end : '');
   const whenWrap = el('div', 'field-when');
   whenWrap.append(start.wrap, end.wrap);
-  const location = text(p ? p.location : '', {maxLength: 120, placeholder: "The Parks' House in Los Altos"});
+  // Named place, not location: window.location is what the address hint
+  // under the friendly-address field reads.
+  const place = text(p ? p.location : '', {maxLength: 120, placeholder: "The Parks' House in Los Altos"});
   const address = text(p ? p.address : '', {maxLength: 200, placeholder: '1420 Alder Court, Los Altos, CA 94024'});
   const when = [
     field('When', whenWrap),
-    field('Where, in words', location, 'Shown to everyone: the neighborhood or the venue, not the street.'),
+    field('Where, in words', place, 'Shown to everyone: the neighborhood or the venue, not the street.'),
     field('Street address', address, 'Shown only to signed-in Helios members, with a map link.'),
   ];
 
@@ -1157,15 +1471,15 @@ export function openParty(p) {
   const minimum = text(p && p.minimum ? p.minimum : '', {type: 'number', min: 1, step: 1, placeholder: 'Leave blank for none'});
   const ticketsOpen = checkbox('Tickets on sale', p ? p.ticketsOpen : true, 'Off, the party is listed but sells nothing.');
   const waitlist = checkbox('Take a waitlist when full', p ? p.waitlist : true, 'Off, a full party shows Sold Out.');
-  const parents = checkbox('Parents', p ? p.parents : true, 'Parents can hold a ticket.');
+  const adults = checkbox('Adults', p ? p.adults : true, 'Parents and staff can hold a ticket.');
   const students = checkbox('Students', p ? p.students : false, 'Students can hold a ticket.');
-  const staff = checkbox('Staff', p ? p.staff : true, 'Staff can hold a ticket.');
   const dropOff = checkbox('Drop-off is okay', p ? p.dropOff : false, 'Kids can come without a parent.');
   const parentTicket = checkbox('A parent who stays needs a ticket', p ? p.parentTicket : false, '');
   const tickets = [
     field('Price', price, '', true), field('One ticket covers', unit, '"$65 per person": the word after "per".'),
     field('Tickets available', capacity), field('Minimum to hold the party', minimum, 'The party goes ahead only with at least this many tickets sold.'),
-    ticketsOpen.wrap, waitlist.wrap, el('div', 'field-group-label', 'Who can come'), parents.wrap, students.wrap, staff.wrap, dropOff.wrap, parentTicket.wrap,
+    ticketsOpen.wrap, waitlist.wrap, el('div', 'field-group-label', 'Who can come'), adults.wrap, students.wrap, dropOff.wrap, parentTicket.wrap,
+    field('Audience', audience, 'The words on the card: who the party is for.'),
   ];
 
   const hostsText = text(p ? p.hosts : '', {maxLength: 120, placeholder: 'McDowell and Park/Gulliver Families'});
@@ -1178,18 +1492,25 @@ export function openParty(p) {
 
   const panels = [
     {label: 'Basics', icon: 'party', fields: basics},
+    {label: 'Design', icon: 'image', fields: design},
     {label: 'When & where', icon: 'calendar', fields: when},
     {label: 'Tickets', icon: 'ticket', fields: tickets},
     {label: 'Hosts', icon: 'people', fields: hosts},
   ];
+  // Status, celebration, category and the friendly address are an admin's
+  // to set; the server keeps a host's as they are.
   let status = null;
   let celebrationPick = null;
+  let category = null;
   if (isAdmin()) {
     status = select([{label: 'Open', value: 'Open'}, {label: 'Pending approval', value: 'Pending'}, {label: 'Hidden', value: 'Hidden'}], p ? p.status : 'Open');
     celebrationPick = select(state.model.celebrations.map(c => ({label: c.title, value: c.code})), p ? p.celebration : (currentCelebration() || {}).code);
-    panels.push({label: 'Admin', icon: 'tools', fields: [
+    category = select([{label: 'No category', value: ''}, ...state.model.categories.map(c => ({label: c, value: c}))], p ? p.category : '');
+    panels.push({label: 'Admin', icon: 'shield', fields: [
       field('Status', status, 'Open is listed for everyone; Pending waits for approval; Hidden is parked.'),
       field('Celebration', celebrationPick, 'Which year the party belongs to.'),
+      field('Category', category, 'For the filter on the parties page.'),
+      prettyField,
     ]});
   }
   const intro = adding && !isAdmin() ? [el('p', 'form-lead', 'Thank you for hosting! Fill this in and the celebration committee will review it and open it for tickets.')] : [];
@@ -1199,11 +1520,12 @@ export function openParty(p) {
     submit: () => send('POST', '/api/celebrate/party', {
       id: p ? p.id : '', celebration: celebrationPick ? celebrationPick.value : '',
       title: title.value, subtitle: subtitle.value, summary: summary.value, description: description.value, needToKnow: needToKnow.value,
-      hosts: hostsText.value, hostEmails: hostEmails.value(), category: category.value, audience: audience.value, unit: unit.value,
+      noteEmoji: noteEmoji.value.trim(), noteTitle: noteTitle.value.trim(),
+      hosts: hostsText.value, hostEmails: hostEmails.value(), category: category ? category.value : (p ? p.category || '' : ''), audience: audience.value, unit: unit.value,
       price: Number(price.value || 0), capacity: Number(capacity.value || 0), minimum: Number(minimum.value || 0),
-      start: start.value(), end: end.value(), location: location.value, address: address.value, image: image.value(), flyer: flyer.value(), prettyId: pretty.value, status: status ? status.value : '',
-      ticketsOpen: ticketsOpen.input.checked, waitlist: waitlist.input.checked, parents: parents.input.checked,
-      students: students.input.checked, staff: staff.input.checked, dropOff: dropOff.input.checked, parentTicket: parentTicket.input.checked,
+      start: start.value(), end: end.value(), location: place.value, address: address.value, image: image.value(), flyer: flyer.value(), prettyId: isAdmin() ? pretty.value : (p ? p.prettyId || '' : ''), status: status ? status.value : '',
+      ticketsOpen: ticketsOpen.input.checked, waitlist: waitlist.input.checked, adults: adults.input.checked,
+      students: students.input.checked, dropOff: dropOff.input.checked, parentTicket: parentTicket.input.checked,
     }),
     afterSave: result => {
       if (result && result.id && party(result.id)) {
@@ -1225,10 +1547,10 @@ export function openParty(p) {
 export async function savePartyFields(p, changes) {
   const body = {
     id: p.id, celebration: p.celebration, title: p.title, subtitle: p.subtitle || '', summary: p.summary || '', description: p.description || '',
-    needToKnow: p.needToKnow || '', hosts: p.hosts || '', hostEmails: p.hostEmails, category: p.category || '', audience: p.audience || '',
+    needToKnow: p.needToKnow || '', noteEmoji: p.noteEmoji || '', noteTitle: p.noteTitle || '', hosts: p.hosts || '', hostEmails: p.hostEmails, category: p.category || '', audience: p.audience || '',
     unit: p.unit || '', price: p.price, capacity: p.capacity || 0, minimum: p.minimum || 0, start: p.start || '', end: p.end || '',
     location: p.location || '', address: p.address || '', image: p.image || '', flyer: p.flyer || '', prettyId: p.prettyId || '', status: isAdmin() ? p.status : '', ticketsOpen: p.ticketsOpen,
-    waitlist: p.waitlist, parents: p.parents, students: p.students, staff: p.staff, dropOff: p.dropOff, parentTicket: p.parentTicket,
+    waitlist: p.waitlist, adults: p.adults, students: p.students, dropOff: p.dropOff, parentTicket: p.parentTicket,
     ...changes,
   };
   try {
@@ -1242,7 +1564,7 @@ export async function savePartyFields(p, changes) {
 // setFlags posts the party page's row of switches, all together.
 export async function setFlags(p, changes) {
   const body = {
-    id: p.id, ticketsOpen: p.ticketsOpen, waitlist: p.waitlist, parents: p.parents, students: p.students, staff: p.staff,
+    id: p.id, ticketsOpen: p.ticketsOpen, waitlist: p.waitlist, adults: p.adults, students: p.students,
     dropOff: p.dropOff, parentTicket: p.parentTicket, ...changes,
   };
   try {
@@ -1264,71 +1586,234 @@ export async function setPartyStatus(p, status) {
   }
 }
 
-// contactFor is how to reach one ticket holder: a student through their
-// parents, a guest through whoever bought the ticket, anyone else at their
-// own address. Each is a name and the addresses to write to.
+// contactFor is what the hosts need to reach one ticket holder: their grade
+// (or, for a parent, their children's), their own address - or, without
+// one, the address of whoever bought the ticket - and, for a student, the
+// parents' addresses.
 async function contactFor(a) {
-  if (!a.email) {
-    return {via: a.purchaserName ? `${a.purchaserName} (bought the ticket)` : 'the purchaser', emails: a.purchaser ? [a.purchaser] : []};
+  const info = a.email ? await personInfo(a.email) : null;
+  const out = {description: a.line || '', email: a.email || '', parents: []};
+  if (info && info.isStudent) {
+    out.parents = info.parentEmails || [];
+  } else if (info && info.children && info.children.length && !a.line) {
+    out.description = info.children.map(c => c.grade ? `${c.name.split(' ')[0]} (${c.grade})` : c.name).join(', ');
   }
-  const info = await personInfo(a.email);
-  if (info && info.isStudent && info.parentEmails && info.parentEmails.length) {
-    return {via: 'Parents', emails: info.parentEmails};
-  }
-  return {via: '', emails: [a.email]};
+  return out;
 }
 
-// openContacts is the hosts' attendee list: every ticket with how to reach
-// the person - a child's parents, a guest's purchaser - and who is billed,
-// with the whole table and the addresses alone each a click to copy.
+// openContacts is the hosts' attendee list: every ticket with the person's
+// name, what places them (a grade, "Parent to Sam Whitfield (Grade 3)", a
+// job, "Guest of Jordan Whitfield"), their own address, a student's parents'
+// addresses, and who bought the ticket - the whole table and the addresses
+// alone each a click to copy.
 export async function openContacts(p) {
   const all = [...p.attendees, ...p.waitlisted];
   const rows = await Promise.all(all.map(async a => ({a, contact: await contactFor(a)})));
+  const statusOf = a => (a.status === 'Waitlist' ? `Waitlist (${a.quantity || 1})` : a.status);
+  // Each column as words: what the cell shows, and what a copy of the column
+  // gives - addresses joined with commas for a mail client, the rest one a
+  // line. The table itself copies as tab-separated lines for a sheet.
+  const columns = [
+    {name: 'Name', value: ({a}) => a.name},
+    {name: 'Description', value: ({contact}) => contact.description},
+    {name: 'Email', value: ({contact}) => contact.email, mail: true},
+    {name: 'Parents', value: ({contact}) => contact.parents.join(', '), mail: true},
+    {name: 'Purchaser', value: ({a}) => a.purchaserName || '', cell: ({a}) => purchaserCell(a)},
+    {name: 'Purchaser Email', value: ({a}) => a.purchaser || '', mail: true, hidden: true},
+    {name: 'Status', value: ({a}) => statusOf(a)},
+    {name: 'Note', value: ({a}) => a.note || ''},
+  ];
+  const mailLink = e => {
+    const link = el('a', 'contact-email', e);
+    link.href = `mailto:${e}`;
+    return link;
+  };
+  const mailLinks = list => {
+    const cell = el('td', 'contact-mail');
+    list.forEach((e, i) => {
+      if (i) {
+        cell.append(',', el('br'));
+      }
+      cell.append(mailLink(e));
+    });
+    if (!list.length) {
+      cell.append(el('div', 'contact-line', '—'));
+    }
+    return cell;
+  };
+  const purchaserCell = a => {
+    const cell = el('td');
+    if (a.purchaser) {
+      cell.append(el('div', 'contact-name', a.purchaserName || a.purchaser));
+      if (a.purchaserName) {
+        cell.append(el('div', 'contact-line', a.purchaser));
+      }
+    }
+    return cell;
+  };
+  const copy = (words, done) => navigator.clipboard.writeText(words).then(() => toast(done), () => toast('Could not copy'));
+  const columnWords = c => {
+    const values = rows.map(r => c.value(r)).filter(Boolean);
+    if (c.mail) {
+      return [...new Set(values.flatMap(v => v.split(/,\s*/)))].join(', ');
+    }
+    return values.join('\n');
+  };
   const table = el('table', 'contact-table');
   const head = el('tr');
-  for (const h of ['Name', 'Contact', 'Billed to', 'Status', 'Note']) {
-    head.append(el('th', '', h));
+  for (const c of columns.filter(c => !c.hidden)) {
+    const th = el('th');
+    const b = el('button', 'contact-copy');
+    b.type = 'button';
+    b.title = `Copy the ${c.name.toLowerCase()} column`;
+    b.append(el('span', '', c.name), svg('copy'));
+    b.addEventListener('click', () => copy(columnWords(c), `${c.name} copied`));
+    th.append(b);
+    head.append(th);
   }
   table.append(head);
-  for (const {a, contact} of rows) {
+  for (const r of rows) {
     const row = el('tr');
-    const who = el('td');
-    who.append(el('div', 'contact-name', a.name));
-    if (a.line) {
-      who.append(el('div', 'contact-line', a.line));
+    for (const c of columns.filter(c => !c.hidden)) {
+      if (c.cell) {
+        row.append(c.cell(r));
+      } else if (c.mail) {
+        row.append(mailLinks(c.value(r).split(/,\s*/).filter(Boolean)));
+      } else {
+        row.append(el('td', c.name === 'Name' ? 'contact-name' : '', c.value(r)));
+      }
     }
-    const reach = el('td');
-    if (contact.via) {
-      reach.append(el('div', 'contact-line', contact.via));
-    }
-    for (const e of contact.emails) {
-      const link = el('a', 'contact-email', e);
-      link.href = `mailto:${e}`;
-      reach.append(link);
-    }
-    if (!contact.emails.length) {
-      reach.append(el('div', 'contact-line', '—'));
-    }
-    row.append(who, reach, el('td', '', a.purchaserName || a.purchaser || ''), el('td', '', a.status), el('td', '', a.note || ''));
     table.append(row);
   }
-  const emails = [...new Set(rows.flatMap(r => r.contact.emails))];
-  const copyAddresses = button(`Copy ${emails.length} ${emails.length === 1 ? 'address' : 'addresses'}`, 'mail', 'button button-secondary', () => {
-    navigator.clipboard.writeText(emails.join(', ')).then(() => toast('Addresses copied'), () => toast('Could not copy'));
-  });
-  // The table as tab-separated lines, which pastes straight into a sheet.
   const copyTable = button('Copy table', 'copy', 'button button-secondary', () => {
-    const lines = [['Name', 'Line', 'Contact', 'Billed to', 'Status', 'Note'].join('\t')];
-    for (const {a, contact} of rows) {
-      lines.push([a.name, a.line || '', contact.emails.join(' '), a.purchaser || '', a.status, a.note || ''].map(v => v.replace(/\s+/g, ' ')).join('\t'));
+    const lines = [columns.map(c => c.name).join('\t')];
+    for (const r of rows) {
+      lines.push(columns.map(c => String(c.value(r)).replace(/\s+/g, ' ')).join('\t'));
     }
-    navigator.clipboard.writeText(lines.join('\n')).then(() => toast('Table copied'), () => toast('Could not copy'));
+    copy(lines.join('\n'), 'Table copied');
   });
   const actions = el('div', 'contact-actions');
-  actions.append(copyAddresses, copyTable);
+  actions.append(copyTable, el('span', 'contact-hint', 'Click a column heading to copy that column.'));
   const wrap = el('div', 'contact-wrap');
   wrap.append(table);
-  openModal(`Who's coming to ${p.title}`, [actions, wrap], {wide: true});
+  openModal(`Who's coming to ${p.title}`, [actions, wrap], {wide: 'table'});
+}
+
+// The inline editors the party page uses in edit mode, as HCA-Team's event
+// page has them: a pencil beside a value swaps it for a small editor with
+// Save and Cancel. A successful save reloads the model and repaints the
+// page, which takes the editor with it.
+export function editPencil(label) {
+  const pencil = el('button', 'edit-icon');
+  pencil.type = 'button';
+  pencil.title = label;
+  pencil.setAttribute('aria-label', label);
+  pencil.append(svg('edit'));
+  return pencil;
+}
+
+// fieldEditor: opts is {input, value(), submit(value), hint, validate}.
+// Failures surface as a toast, the way every other write here does.
+export function fieldEditor(anchor, pencil, opts) {
+  const box = el('div', 'field-editor');
+  box.append(opts.input);
+  if (opts.hint) {
+    box.append(el('small', 'field-note', opts.hint));
+  }
+  const actions = el('div', 'field-editor-actions');
+  const save = el('button', 'button button-small', 'Save');
+  save.type = 'button';
+  const cancel = el('button', 'button button-secondary button-small', 'Cancel');
+  cancel.type = 'button';
+  const status = el('span', 'field-status');
+  actions.append(save, cancel, status);
+  box.append(actions);
+  const close = () => {
+    box.remove();
+    anchor.hidden = false;
+    if (pencil) {
+      pencil.hidden = false;
+    }
+  };
+  cancel.addEventListener('click', close);
+  save.addEventListener('click', async () => {
+    const value = opts.value();
+    const problem = opts.validate ? opts.validate(value) : '';
+    if (problem) {
+      status.classList.add('error');
+      status.textContent = problem;
+      return;
+    }
+    status.classList.remove('error');
+    save.disabled = true;
+    status.textContent = 'Saving…';
+    await opts.submit(value);
+    save.disabled = false;
+    status.textContent = '';
+  });
+  box.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      close();
+    }
+    if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') {
+      e.preventDefault();
+      save.click();
+    }
+  });
+  anchor.hidden = true;
+  if (pencil) {
+    pencil.hidden = true;
+  }
+  anchor.after(box);
+  const first = opts.input.matches('input, textarea, select') ? opts.input : opts.input.querySelector('input, textarea, select');
+  if (first) {
+    first.focus();
+  }
+}
+
+// editable hangs a pencil off a rendered value and wires it to a field of
+// the party: make() builds {input, value, hint, validate}, submit saves.
+export function editable(anchor, label, make, submit) {
+  const pencil = editPencil(label);
+  pencil.addEventListener('click', () => {
+    const built = make();
+    fieldEditor(anchor, pencil, {input: built.input, hint: built.hint, value: built.value, validate: built.validate, submit});
+  });
+  return pencil;
+}
+
+export function textInput(value, options) {
+  return text(value, options);
+}
+
+export function textAreaInput(value, rows) {
+  return textarea(value, rows);
+}
+
+// whenInputs is the start and end pickers together, for the rail's Date &
+// Time row.
+export function whenInputs(startValue, endValue) {
+  const start = whenPickers('Starts', startValue);
+  const end = whenPickers('Ends', endValue);
+  const wrap = el('div', 'field-when');
+  wrap.append(start.wrap, end.wrap);
+  return {
+    input: wrap,
+    value: () => ({start: start.value(), end: end.value()}),
+    validate: v => (v.end && !v.start ? 'Give it a start as well as an end.' : (v.start && v.end && v.end < v.start ? 'The end has to come after the start.' : '')),
+  };
+}
+
+// uploadAndSave uploads the chosen file and records it in one step, so the
+// picture updates as soon as it lands with no separate Save to remember.
+export async function uploadAndSave(save, file) {
+  try {
+    const name = await uploadImage(file);
+    await save({image: name});
+  } catch (err) {
+    toast(err.message);
+  }
 }
 
 // openCelebration adds or edits a year's celebration.
@@ -1340,7 +1825,7 @@ export function openCelebration(c) {
   const end = whenPickers('Ends', c ? c.end : '');
   const whenWrap = el('div', 'field-when');
   whenWrap.append(start.wrap, end.wrap);
-  const location = text(c ? c.location : '', {maxLength: 120});
+  const place = text(c ? c.location : '', {maxLength: 120});
   const address = text(c ? c.address : '', {maxLength: 200});
   const description = textarea(c ? c.description : '', 4);
   const buttonText = text(c ? c.buttonText : '', {maxLength: 40, placeholder: 'Learn More'});
@@ -1350,14 +1835,14 @@ export function openCelebration(c) {
   openModal(c ? `Edit ${c.title}` : 'Add a celebration', [
     field('Code', code, 'Short and unique, like SC-2027. Parties are filed under it.', true), field('Title', title, 'The banner\u2019s small line: "Helios Spring Celebration 2026".', true),
     field('Subtitle', subtitle, 'The banner\u2019s big line: the theme.'),
-    field('When', whenWrap), field('Where', location), field('Address', address), field('Description', description),
+    field('When', whenWrap), field('Where', place), field('Address', address), field('Description', description),
     el('div', 'field-group-label', 'Banner button'),
     field('Button text', buttonText, 'Leave both blank for no button.'), field('Button link', buttonUrl, 'Where it goes - the celebration\u2019s own site, say.'),
     current.wrap, image.wrap,
   ], {
     submit: () => send('POST', '/api/celebrate/celebration', {
       original: c ? c.code : '', code: code.value.trim(), title: title.value, subtitle: subtitle.value, start: start.value(), end: end.value(),
-      location: location.value, address: address.value, description: description.value, image: image.value(), buttonText: buttonText.value, buttonUrl: buttonUrl.value, current: current.input.checked,
+      location: place.value, address: address.value, description: description.value, image: image.value(), buttonText: buttonText.value, buttonUrl: buttonUrl.value, current: current.input.checked,
     }),
     onDelete: c ? () => send('DELETE', '/api/celebrate/celebration', {code: c.code}) : null,
     confirmDelete: c ? `Delete ${c.title}?` : '',
@@ -1379,10 +1864,12 @@ export function openSettings() {
   const s = state.model.settings;
   const intro = textarea(s.partiesIntro, 3);
   const note = textarea(s.ticketNote, 4);
+  const hosting = checkbox('Hosting open', s.hostingOpen, 'Anyone can post a party. Off, Host a Party goes away for everyone but an admin.');
   openModal('Settings', [
     field('Parties intro', intro, 'The line under the parties page heading.'),
     field('Ticket note', note, 'Shown on the ticket form: how invoicing works, the refund policy.'),
+    hosting.wrap,
   ], {
-    submit: () => send('POST', '/api/celebrate/settings', {partiesIntro: intro.value, ticketNote: note.value}),
+    submit: () => send('POST', '/api/celebrate/settings', {partiesIntro: intro.value, ticketNote: note.value, hostingOpen: hosting.input.checked}),
   });
 }

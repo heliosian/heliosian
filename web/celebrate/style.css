@@ -48,12 +48,19 @@ button { font: inherit; }
    its own, so the toolbar stays put while the page moves. */
 .app-shell { display: flex; flex: 1; min-height: 0; }
 
+/* The rail: the pale wash, with the sprig of leaves growing out of its
+   bottom-left corner. The rail is the viewport's height and never scrolls,
+   so the sprig always sits at the bottom of what is visible; the nav scrolls
+   over it on a short screen. */
 .sidebar {
   width: 240px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  background: linear-gradient(180deg, #eef5f4 0%, #dcebe9 55%, #c5dfdc 100%);
+  background-image: url('/rail_bottom_left.png'), linear-gradient(180deg, #eef5f4 0%, #dcebe9 55%, #c5dfdc 100%);
+  background-size: 67px auto, auto;
+  background-position: left bottom, left top;
+  background-repeat: no-repeat, no-repeat;
   border-right: 1px solid var(--line);
   z-index: 1;
 }
@@ -170,9 +177,19 @@ button { font: inherit; }
 
 .content-col { display: flex; flex-direction: column; flex: 1; min-width: 0; }
 
-main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
+/* The page scrolls inside main, and the leaves in main's bottom-right corner
+   stay put behind it (a background on a scrolling box is pinned to the box,
+   not its content); the page's bottom padding keeps the last row clear. */
+main {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  background: url('/main_bottom_right.png') right bottom / 349px auto no-repeat;
+}
 
-#page { flex: 1; width: 100%; max-width: 1240px; margin: 0 auto; padding: 24px 24px 40px; }
+#page { flex: 1; width: 100%; max-width: 1240px; margin: 0 auto; padding: 24px 24px 180px; }
 
 .icon-button {
   display: inline-flex;
@@ -402,6 +419,9 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
 }
 
+/* The viewer's own parties wear a yellow Hosting chip, top left. */
+.card-chip-hosting { position: absolute; left: 12px; top: 12px; background: var(--yellow); color: var(--ink); }
+
 /* The date stamp is a page off a tear-off calendar, as HCA-Team's cards
    have it: the month as a red band across the top, the day large under it,
    then the weekday, small and muted; it overhangs the picture's bottom edge. */
@@ -630,6 +650,8 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .detail-hero .thumb.detail-hero-image { width: 100%; height: 270px; border-radius: 14px; object-fit: cover; display: block; }
 
+.detail-hero .thumb.detail-hero-image.is-openable { cursor: zoom-in; }
+
 .detail-hero .thumb.detail-hero-image.initial { display: flex; align-items: center; justify-content: center; font-size: 84px; color: var(--brand); background: #cfe3e2; }
 
 /* The date stamp floating over the banner: weekday, date, hours. */
@@ -685,11 +707,17 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .audience-chip { background: var(--input); color: var(--brand); }
 
+.audience-chip.hosting-chip { background: var(--yellow); color: var(--ink); }
+
 .detail-title { font-size: 34px; font-weight: 700; margin: 0 0 6px; color: var(--brand); line-height: 1.15; }
 
 .detail-subtitle { margin: 0 0 14px; font-size: 17px; color: var(--muted); }
 
 .detail-text { margin: 0 0 12px; font-size: 15px; }
+
+.detail-summary { margin: 0 0 12px; font-size: 13.5px; color: var(--muted); font-style: italic; }
+
+.detail-marks .edit-empty { padding: 4px 10px; font-size: 12.5px; }
 
 /* The need-to-know callout, in HCA-Team's highlight card. */
 .highlight-card { display: flex; align-items: flex-start; gap: 18px; padding: 20px 24px; margin: 18px 0 20px; background: #fbf7e6; border-radius: 16px; }
@@ -701,6 +729,61 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 .highlight-headline { font-size: 20px; font-weight: 700; color: var(--brand); margin-bottom: 6px; }
 
 .highlight-text { margin: 0; font-size: 15px; line-height: 1.5; }
+
+/* The callout's editor: the emoji, small, beside the title; the words under.
+   In the full form it is a boxed section, tinted as the callout is, so it
+   reads as one thing apart from the fields around it. */
+.note-inputs { display: flex; flex-direction: column; gap: 8px; }
+
+.callout-field { margin: 4px 0 8px; }
+
+.callout-editor { display: flex; flex-direction: column; gap: 12px; padding: 16px 18px; background: #fbf7e6; border: 1px solid #efe4b8; border-radius: 12px; }
+
+.callout-editor .form-lead { margin: 0; }
+
+.callout-editor .field { margin: 0; }
+
+.callout-editor-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+
+.callout-editor-title { font-size: 15px; font-weight: 700; color: var(--brand); }
+
+.note-head-inputs { display: flex; gap: 8px; }
+
+.note-head-inputs input { min-width: 0; }
+
+.note-head-inputs .note-emoji-input { flex: 0 0 64px; width: 64px; text-align: center; font-size: 20px; }
+
+/* The emoji field's caret drops a grid of the usual choices; the input
+   stays free for anything else. The grid overhangs the form, so the field
+   itself is the anchor. */
+.emoji-pick { position: relative; display: flex; align-items: stretch; flex: 0 0 auto; }
+
+.emoji-pick .note-emoji-input { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+
+.emoji-pick-caret { display: flex; align-items: center; padding: 0 6px; border: 1px solid var(--line); border-left: 0; border-radius: 0 8px 8px 0; background: var(--input); color: var(--brand); cursor: pointer; }
+
+.emoji-pick-caret svg { width: 16px; height: 16px; }
+
+.emoji-pick-menu {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 6px);
+  display: grid;
+  grid-template-columns: repeat(6, 40px);
+  gap: 2px;
+  padding: 8px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  z-index: 6;
+}
+
+.emoji-pick-menu.is-up { top: auto; bottom: calc(100% + 6px); }
+
+.emoji-pick-item { width: 40px; height: 40px; border: 0; border-radius: 8px; background: none; font-size: 22px; line-height: 1; cursor: pointer; }
+
+.emoji-pick-item:hover { background: var(--input); }
 
 /* Section headings with the yellow swipe, as HCA-Team heads Volunteers. */
 .section-swoosh {
@@ -897,6 +980,9 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .modal.modal-wide { max-width: 860px; }
 
+/* The attendee table: as wide as the window allows. */
+.modal.modal-table { max-width: min(1240px, calc(100vw - 40px)); }
+
 .modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 
 .modal-header h2 { font-size: 17px; margin: 0; }
@@ -943,6 +1029,12 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 .field-toggle > span { margin: 0; }
 
 .field-toggle > span > small { display: block; margin-top: 2px; font-weight: 400; color: var(--muted); }
+
+.field-unit { display: flex; align-items: center; gap: 10px; }
+
+.field .field-unit input[type=number] { width: 84px; text-align: center; }
+
+.field-unit-label { font-size: 14px; color: var(--muted); }
 
 .field-group-label { font-size: 13px; font-weight: 700; color: var(--brand); margin: 18px 0 2px; text-transform: uppercase; letter-spacing: 0.04em; }
 
@@ -1007,17 +1099,22 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .person-chip-line { font-size: 11.5px; color: var(--muted); }
 
-.guest-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+/* The Add someone button under the household chips, and its popup. */
+.who-add { margin-top: 10px; }
 
-.guest-row { display: flex; align-items: center; gap: 6px; }
+.add-someone .segmented { margin: 4px 0 10px; }
 
-.guest-row input { flex: 1; }
+.add-someone .field:first-of-type { margin-top: 6px; }
+
+.add-someone > div > .button { margin-top: 4px; }
 
 .guest-add { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px; }
 
 .guest-add .people-picker { flex: 1; }
 
 .buy-total { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 10px; background: var(--input); margin-top: 6px; }
+
+.buy-total-names { font-size: 14px; color: var(--ink); }
 
 .buy-total-sum { font-weight: 700; }
 
@@ -1133,9 +1230,22 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .contact-name { font-weight: 600; }
 
+/* A column heading is a button that copies the column. */
+.contact-copy { display: inline-flex; align-items: center; gap: 5px; padding: 0; border: 0; background: none; font: inherit; font-weight: inherit; color: inherit; cursor: pointer; }
+
+.contact-copy svg { width: 13px; height: 13px; opacity: 0.45; }
+
+.contact-copy:hover svg { opacity: 1; }
+
+.contact-hint { font-size: 12.5px; color: var(--muted); align-self: center; }
+
 .contact-line { font-size: 12px; color: var(--muted); }
 
-.contact-email { display: block; color: var(--brand); text-decoration: none; word-break: break-all; }
+.contact-email { display: inline; color: var(--brand); text-decoration: none; white-space: nowrap; }
+
+.contact-table td.contact-mail { white-space: nowrap; }
+
+.contact-table td:nth-child(2) { min-width: 200px; }
 
 .contact-email:hover { text-decoration: underline; }
 
@@ -1200,7 +1310,7 @@ body.is-admin > .tabbar { display: none !important; }
 
 body.is-admin #page { max-width: none; padding: 0; }
 
-body.is-admin main { padding: 0; }
+body.is-admin main { padding: 0; background-image: none; }
 
 .admin { min-height: 100%; display: flex; flex-direction: column; background: #f7f8f9; }
 
@@ -1235,9 +1345,15 @@ body.is-admin main { padding: 0; }
 
 .invoice-sum { font-weight: 700; }
 
-.invoice-row { display: grid; grid-template-columns: 1fr 1fr 70px 80px; gap: 10px; width: 100%; padding: 7px 0; border: 0; border-bottom: 1px solid var(--line); background: none; font: inherit; font-size: 13.5px; text-align: left; cursor: pointer; }
+.invoice-row { display: grid; grid-template-columns: 1fr 1fr 70px 80px; gap: 10px; width: 100%; padding: 7px 0; border: 0; border-bottom: 1px solid var(--line); background: none; font: inherit; font-size: 13.5px; text-align: left; }
 
-.invoice-row:hover { background: var(--input); }
+/* The ledger's rows: date, party, guest, amount, and the invoice once
+   accounting has written one. */
+.invoice-ledger-row { grid-template-columns: 90px 1.2fr 1fr 70px 1fr; }
+
+.invoice-date { color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.invoice-bar .invoice-search { flex: 1; min-width: 160px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; }
 
 .invoice-price { text-align: right; }
 
@@ -1246,6 +1362,221 @@ body.is-admin main { padding: 0; }
 .invoice-status.is-sent { color: #a95f1b; }
 
 .invoice-status.is-paid { color: var(--green); }
+
+/* The full-size view and the crop tool (web/common/crop.js), as HCA-Team
+   styles them. */
+.photo-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  background: rgba(0, 0, 0, 0.8);
+  cursor: zoom-out;
+}
+
+.photo-lightbox img {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 8px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
+}
+
+.crop-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  background: rgba(0, 0, 0, 0.85);
+}
+
+.crop-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  max-width: 100%;
+}
+
+.crop-stage {
+  position: relative;
+  display: inline-block;
+  line-height: 0;
+}
+
+.crop-image {
+  display: block;
+  max-width: min(90vw, 640px);
+  max-height: 70vh;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.crop-mask {
+  position: absolute;
+  background: rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+}
+
+.crop-frame {
+  position: absolute;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+  cursor: move;
+  touch-action: none;
+}
+
+.crop-handle {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  margin: -8px;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.4);
+  border-radius: 50%;
+  touch-action: none;
+}
+
+.crop-handle-nw {
+  top: 0;
+  left: 0;
+  cursor: nwse-resize;
+}
+
+.crop-handle-ne {
+  top: 0;
+  right: 0;
+  cursor: nesw-resize;
+}
+
+.crop-handle-sw {
+  bottom: 0;
+  left: 0;
+  cursor: nesw-resize;
+}
+
+.crop-handle-se {
+  bottom: 0;
+  right: 0;
+  cursor: nwse-resize;
+}
+
+.crop-actions {
+  display: flex;
+  gap: 10px;
+}
+
+/* Inline editing on the party page, as HCA-Team's event page has it: the
+   hero pencil turns edit mode on, and each section grows a pencil that
+   swaps it for a small editor with Save and Cancel. */
+.hero-action.is-editing { background: var(--brand); color: #fff; }
+
+.hero-action.is-editing:hover { background: var(--brand-dark); }
+
+.hero-image-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 0 0 14px 14px;
+  background: linear-gradient(180deg, rgba(10, 50, 54, 0), rgba(10, 50, 54, 0.82));
+}
+
+.hero-image-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--brand);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.hero-image-action:hover { background: #fff; }
+
+.hero-image-action svg { width: 15px; height: 15px; }
+
+.hero-image-status { color: #fff; font-size: 13px; font-weight: 600; }
+
+.hero-image-menu-holder { position: relative; display: inline-block; }
+
+.hero-image-menu {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 8px);
+  min-width: 190px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  padding: 6px 0;
+  z-index: 5;
+}
+
+.hero-image-menu-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 14px; border: 0; background: none; font: inherit; font-size: 14px; color: var(--ink); text-align: left; cursor: pointer; }
+
+.hero-image-menu-item:hover { background: var(--input); }
+
+.hero-image-menu-item svg { width: 16px; height: 16px; color: var(--brand); }
+
+/* A pencil beside a heading or a rail row, and the editor that replaces it. */
+.edit-row { display: flex; align-items: flex-start; gap: 8px; }
+
+.edit-row > :first-child { flex: 1; min-width: 0; }
+
+.edit-row .edit-icon { flex-shrink: 0; margin-top: 2px; }
+
+.edit-row > .field-editor { flex: 1; min-width: 0; }
+
+.field-editor { margin: 4px 0 12px; }
+
+.field-editor input, .field-editor textarea, .field-editor select {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font: inherit;
+  background: #fff;
+}
+
+.field-editor input:focus, .field-editor textarea:focus, .field-editor select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+
+.field-editor textarea { resize: vertical; min-height: 96px; }
+
+.field-editor-stack { display: flex; flex-direction: column; gap: 8px; }
+
+.field-editor-stack label { display: flex; flex-direction: column; gap: 3px; font-size: 12.5px; font-weight: 600; color: var(--muted); }
+
+.field-editor-actions { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+
+.field-note { display: block; margin-top: 6px; color: var(--muted); font-size: 12.5px; }
+
+.field-status { font-size: 12.5px; color: var(--muted); }
+
+.field-status.error { color: var(--alert); font-weight: 600; }
+
+.side-card .field-editor { margin: 6px 0 4px; }
+
+/* A section that has nothing yet, in edit mode: a dashed invitation. */
+.edit-empty { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border: 1.5px dashed var(--line); border-radius: 10px; color: var(--muted); font-size: 14px; background: none; font: inherit; cursor: pointer; }
+
+.edit-empty:hover { border-color: var(--accent); color: var(--brand); }
+
+.edit-empty svg { width: 15px; height: 15px; }
 
 .toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 10px 18px; border-radius: 999px; font-size: 14px; z-index: 70; }
 
@@ -1262,6 +1593,8 @@ body.is-admin main { padding: 0; }
     padding-bottom: calc(var(--tabbar) + env(safe-area-inset-bottom));
   }
   #page { padding: 12px 12px 40px; }
+  /* The tab bar covers main's bottom edge on a phone, so the leaves go. */
+  main { background-image: none; }
   /* The shared toolbar is pinned on top (toolbar.css); this is the title
      strip under it. */
   .mobile-top {

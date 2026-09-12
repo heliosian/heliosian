@@ -149,6 +149,7 @@ var layouts = map[string][]tab{
 		{"Admins", celebrate.AdminColumns},
 		{"Redirects", celebrate.RedirectColumns},
 		{"Change Log", celebrate.ChangeLogColumns},
+		{"INVOICING", celebrate.InvoicingColumns},
 	},
 	"Config": {
 		{"Settings", []string{"Key", "Value"}},

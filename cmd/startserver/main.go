@@ -80,7 +80,8 @@ func sampleServer() (*http.Server, *who.Queue) {
 		BrowserKey:  os.Getenv("GOOGLE_MAPS_BROWSER_KEY"),
 		ImageSearch: app.ImageSearchKeys(),
 		// Sample mail lands as .html files to open in a browser, never sent.
-		Mail: mail.New("", "", "", "", "", "HCA-Team <hca@example.org>", mailDir()),
+		Mail:          mail.New("", "", "", "", "", "HCA-Team <hca@example.org>", mailDir()),
+		CelebrateMail: mail.New("", "", "", "", "", "Helios Celebrate <celebrate@example.org>", mailDir()),
 	})
 	core.Mux.Handle("POST /auth/logout", http.RedirectHandler("/", http.StatusSeeOther))
 	core.HomeMux.Handle("POST /auth/logout", http.RedirectHandler("/", http.StatusSeeOther))

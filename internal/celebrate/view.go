@@ -106,14 +106,13 @@ func kindOf(p Person, known bool) string {
 }
 
 // Admits says whether the party's audience rules let this kind of person
-// hold a ticket. A guest fits wherever anyone does, since the host is the one
-// who reads the name; someone who is both a parent and staff fits if either
-// does.
+// hold a ticket: adults are parents and staff alike. A guest fits wherever
+// anyone does, since the host is the one who reads the name.
 func (p *Party) Admits(person Person, known bool) bool {
 	if !known {
 		return true
 	}
-	return (person.IsParent && p.Parents) || (person.IsStudent && p.Students) || (person.IsStaff && p.Staff)
+	return ((person.IsParent || person.IsStaff) && p.Adults) || (person.IsStudent && p.Students)
 }
 
 // Attendee is one ticket as the page shows it: a face, a name, a line that
@@ -128,6 +127,8 @@ type Attendee struct {
 	Grade    string `json:"grade,omitempty"`
 	Line     string `json:"line,omitempty"`
 	Status   string `json:"status"`
+	// Quantity is how many tickets a waitlist request asks for.
+	Quantity int    `json:"quantity,omitempty"`
 	Added    string `json:"added,omitempty"`
 	// Mine says the viewer bought it or it is for their household - so the
 	// page offers the way to take it back.
@@ -137,7 +138,6 @@ type Attendee struct {
 	PurchaserName string  `json:"purchaserName,omitempty"`
 	Price         float64 `json:"price,omitempty"`
 	Note          string  `json:"note,omitempty"`
-	Invoice       string  `json:"invoice,omitempty"`
 	AddedBy       string  `json:"addedBy,omitempty"`
 }
 
@@ -148,6 +148,9 @@ type PartyView struct {
 	Availability string `json:"availability"`
 	Sold         int    `json:"sold"`
 	Waiting      int    `json:"waiting"`
+	// Raised sums the sold tickets at the price each was taken - a free
+	// ticket adds nothing, an old price stays what it was.
+	Raised float64 `json:"raised"`
 	// Remaining is what is left against the cap, or -1 with no cap.
 	Remaining  int        `json:"remaining"`
 	HostPeople []Person   `json:"hostPeople"`
@@ -186,6 +189,9 @@ type View struct {
 	// Redirects let the client send an old friendly address to where the
 	// party is now, without a round trip.
 	Redirects []Redirect `json:"redirects"`
+	// Invoicing is the accounting ledger, for an admin alone; everyone else
+	// gets none of it.
+	Invoicing []InvoiceLine `json:"invoicing,omitempty"`
 	// ImageSearch says the server can search for a picture, and ImageSources
 	// lists where it can look, for the picker.
 	ImageSearch  bool     `json:"imageSearch"`
@@ -247,14 +253,11 @@ func (v viewer) attendee(t Ticket, editor bool) Attendee {
 	purchaser := v.person(t.Purchaser)
 	a := Attendee{
 		TicketID: t.ID, Email: t.Email, Name: person.Name, PhotoURL: person.PhotoURL, Kind: kindOf(person, known),
-		Grade: person.Grade, Line: v.line(t, person, known, purchaser.Name), Status: t.Status, Added: t.Added,
+		Grade: person.Grade, Line: v.line(t, person, known, purchaser.Name), Status: t.Status, Quantity: t.Quantity, Added: t.Added,
 	}
 	a.Mine = t.Purchaser == v.email || v.family[t.Purchaser] || (t.Email != "" && (t.Email == v.email || v.family[t.Email]))
 	if editor || a.Mine {
 		a.Purchaser, a.PurchaserName, a.Price, a.Note, a.AddedBy = t.Purchaser, purchaser.Name, t.Price, t.Note, t.AddedBy
-	}
-	if editor {
-		a.Invoice = t.Invoice
 	}
 	return a
 }
@@ -263,7 +266,7 @@ func (v viewer) party(p *Party, now time.Time) PartyView {
 	hosting := p.Hosted(v.email)
 	editor := v.admin || hosting
 	pv := PartyView{
-		Party: p, Availability: p.Availability(now), Sold: p.Sold(), Waiting: p.Waiting(), Remaining: p.Remaining(),
+		Party: p, Availability: p.Availability(now), Sold: p.Sold(), Waiting: p.Waiting(), Raised: p.Raised(), Remaining: p.Remaining(),
 		HostPeople: []Person{}, Attendees: []Attendee{}, Waitlisted: []Attendee{}, CanEdit: editor, Hosting: hosting,
 	}
 	for _, email := range p.HostEmails {
@@ -311,6 +314,9 @@ func Render(model *Model, directory Directory, email string, admin bool, now tim
 	}
 	if c := model.Current(); c != nil {
 		view.Current = c.Code
+	}
+	if admin {
+		view.Invoicing = model.Invoicing
 	}
 	stale, privacy := directory.Alerts(email)
 	view.Alerts = Alerts{Stale: stale, Privacy: privacy}

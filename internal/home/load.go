@@ -28,12 +28,17 @@ const (
 
 	// StyleCards renders a category as large feature cards, StyleTiles as a
 	// row of compact tiles. Every category picks one; see docs/home/data.md.
-	// StyleEvents is the one section that holds no links: HCA-Team's upcoming
-	// events. The sheet may carry one such row, to name, mark and place it;
-	// without one the page synthesizes it at the top (see BuildModel).
+	// StyleEvents and StyleApps are the two sections that hold no links:
+	// HCA-Team's upcoming events, and the community apps themselves - the
+	// same list the toolbar switches between, each with its mark and
+	// tagline, less any the Visibility tab keeps from the viewer. The sheet
+	// may carry one events row, to name, mark and place the section; without
+	// one the page synthesizes it at the top (see BuildModel). The apps
+	// section is on the page only while a row carries its style.
 	StyleCards  = "cards"
 	StyleTiles  = "tiles"
 	StyleEvents = "events"
+	StyleApps   = "apps"
 
 	// The events section as it stands until the sheet says otherwise.
 	EventsTitle = "Upcoming Events"
@@ -49,18 +54,24 @@ var (
 )
 
 // App is one of the community apps the shared toolbar switches between,
-// keyed as the toolbar keys it (web/common/toolbar.js). These are the apps
-// the Visibility tab can narrow to a list of people. Heliosian itself is not
-// among them: it is the front page, and the switch's way home.
+// keyed by its hostname's first label; its mark is served from
+// web/public/common/brand/apps/<key>.png. Apps are the ones the Visibility
+// tab can narrow to a list of people and the front page's apps section
+// lists; Heliosian itself, Home, heads the switch but is neither - it is the
+// front page, and the switch's way home. The birthday team's app is a small
+// group's and stays off both.
 type App struct {
-	Key  string `json:"key"`
-	Name string `json:"name"`
+	Key     string `json:"key"`
+	Name    string `json:"name"`
+	Tagline string `json:"tagline"`
 }
 
+var Home = App{"home", "Heliosian", "Helios Community Apps"}
+
 var Apps = []App{
-	{"who", "Helios Who?"},
-	{"team", "HCA-Team"},
-	{"celebrate", "Helios Celebrate"},
+	{"who", "Helios Who?", "A visual directory"},
+	{"team", "HCA-Team", "HCA Volunteer Portal"},
+	{"celebrate", "Helios Celebrate", "Fun(d)raiser Parties"},
 }
 
 // An app's Visibility is VisibleToEveryone - the default, with no row - or
@@ -196,10 +207,10 @@ func checkMax(cell string) (int, error) {
 // misspelled Style refuses the load rather than guessing a presentation.
 func checkStyle(cell string) (string, error) {
 	switch cell {
-	case StyleCards, StyleTiles, StyleEvents:
+	case StyleCards, StyleTiles, StyleEvents, StyleApps:
 		return cell, nil
 	}
-	return "", fmt.Errorf("%q is not %s, %s or %s", cell, StyleCards, StyleTiles, StyleEvents)
+	return "", fmt.Errorf("%q is not %s, %s, %s or %s", cell, StyleCards, StyleTiles, StyleEvents, StyleApps)
 }
 
 // checkEmoji accepts a blank cell or one emoji - a short run of symbol runes,
@@ -270,7 +281,7 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 	}
 	model := &Model{Categories: []Category{}}
 	index := map[string]int{}
-	events := false
+	events, apps := false, false
 	for _, row := range tables.Categories {
 		title := strings.TrimSpace(row["Title"])
 		if title == "" {
@@ -292,6 +303,12 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 				return nil, fmt.Errorf("category %q: only one category can be the %s section", title, StyleEvents)
 			}
 			events = true
+		}
+		if style == StyleApps {
+			if apps {
+				return nil, fmt.Errorf("category %q: only one category can be the %s section", title, StyleApps)
+			}
+			apps = true
 		}
 		max, err := checkMax(row["Max"])
 		if err != nil {
@@ -331,6 +348,9 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 		}
 		if model.Categories[at].Style == StyleEvents {
 			return nil, fmt.Errorf("link %q sits under %q, which holds HCA-Team's events rather than links", title, row["Category"])
+		}
+		if model.Categories[at].Style == StyleApps {
+			return nil, fmt.Errorf("link %q sits under %q, which holds the community apps rather than links", title, row["Category"])
 		}
 		visible, err := yesNo(row["Visible"])
 		if err != nil {

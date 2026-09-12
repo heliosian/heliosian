@@ -220,10 +220,12 @@ export function renderCategories(query = '') {
   let shown = 0;
   for (const category of state.model.categories) {
     // The events section is the portal's; its cards come from there rather
-    // than from links, and its heading gets a way across to the portal.
+    // than from links, and its heading gets a way across to the portal. The
+    // apps section is the community apps themselves, from the model.
     const events = category.style === 'events';
-    const links = events ? [] : category.links.filter(link => listed(link) && matches(link, needle));
-    const count = events ? eventsMatching(needle) : links.length;
+    const apps = category.style === 'apps';
+    const links = events || apps ? [] : category.links.filter(link => listed(link) && matches(link, needle));
+    const count = events ? eventsMatching(needle) : apps ? appsMatching(needle).length : links.length;
     // A section with nothing to show stays off the page - except in Super
     // Admin Mode, where it appears empty so it can be filled or edited.
     if (!count && (needle || !isAdmin() || !state.superAdmin)) {
@@ -255,7 +257,7 @@ export function renderCategories(query = '') {
     }
     section.append(head);
     // An empty category still gets its grid for the admin's add card.
-    section.append(events ? eventsPanel(category, needle) : panel(category, links, needle));
+    section.append(events ? eventsPanel(category, needle) : apps ? appsPanel(category, needle) : panel(category, links, needle));
     root.append(section);
   }
   const empty = document.querySelector('#empty-search');
@@ -381,13 +383,74 @@ function eventsMatching(needle) {
   return (state.model.upcoming || []).filter(e => !needle || e.title.toLowerCase().includes(needle)).length;
 }
 
+// The apps section: the community apps this person sees, as the model lists
+// them - each a feature card with its mark, name and tagline, opening the app
+// on this tier in the same tab, the way the toolbar's switch does. The search
+// box filters them by name and tagline like the links.
+function appsMatching(needle) {
+  return (state.model.apps || []).filter(a => !needle || `${a.name} ${a.tagline}`.toLowerCase().includes(needle));
+}
+
+function appCard(app) {
+  const card = el('div', 'feature');
+  const disc = el('div', 'feature-disc');
+  const icon = el('img', 'feature-image');
+  icon.src = `/brand/apps/${app.key}.png`;
+  icon.alt = '';
+  disc.append(icon);
+  card.append(disc);
+  const body = el('div', 'feature-body');
+  body.append(el('div', 'feature-title', app.name));
+  body.append(el('div', 'feature-description', app.tagline));
+  const go = el('a', 'button');
+  go.href = appOrigin(app.key);
+  go.append(el('span', '', 'Open App'));
+  body.append(go);
+  card.append(body);
+  const watermark = el('img', 'feature-watermark');
+  watermark.src = icon.src;
+  watermark.alt = '';
+  card.append(watermark);
+  const corner = el('a', 'feature-corner');
+  corner.href = go.href;
+  corner.setAttribute('aria-label', `Open ${app.name}`);
+  corner.append(svg('chevron'));
+  card.append(corner);
+  return card;
+}
+
+function appsPanel(category, needle) {
+  const apps = appsMatching(needle);
+  if (!apps.length) {
+    return el('div', 'category-empty', needle ? 'No apps match.' : 'No apps to show.');
+  }
+  const wrap = el('div');
+  const grid = el('div', 'card-grid');
+  const {shown, hidden} = limited(category, apps, needle);
+  for (const app of shown) {
+    grid.append(appCard(app));
+  }
+  wrap.append(grid);
+  if (hidden) {
+    wrap.append(seeMore(category, hidden, () => renderCategories(needle)));
+  }
+  return wrap;
+}
+
 // Whether a category has anything on the page for the reader: a visible
-// link, or an event ahead - and, in Super Admin Mode, anything at all.
+// link, an event ahead, or an app to show - and, in Super Admin Mode,
+// anything at all.
 function hasSomething(category) {
   if (isAdmin() && state.superAdmin) {
     return true;
   }
-  return category.style === 'events' ? eventsMatching('') > 0 : category.links.some(listed);
+  if (category.style === 'events') {
+    return eventsMatching('') > 0;
+  }
+  if (category.style === 'apps') {
+    return appsMatching('').length > 0;
+  }
+  return category.links.some(listed);
 }
 
 export function renderNav() {

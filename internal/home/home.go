@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -91,20 +92,38 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	mux.HandleFunc("GET /api/admin/state", a.adminState)
 	mux.HandleFunc("POST /api/admin/admins", a.setAdmins)
 	mux.HandleFunc("POST /api/admin/visibility", a.setVisibility)
-	RegisterHiddenApps(mux, cache)
+	RegisterSwitch(mux, cache)
 }
 
-// RegisterHiddenApps serves the signed-in person the apps the Visibility tab
-// keeps off their app switch, which the shared toolbar asks of whichever
-// app's origin it is on - so every app's mux gets this route, and only the
-// front page's the rest of the portal.
-func RegisterHiddenApps(mux *http.ServeMux, cache *Cache) {
-	mux.HandleFunc("GET /api/apps/hidden", func(w http.ResponseWriter, r *http.Request) {
+// RegisterSwitch serves the app switch: every app in the order the switch
+// lists them, Home first, and which of them the Visibility tab keeps off
+// the signed-in person's. The shared toolbar asks whichever app's origin it
+// is on, so every app's mux gets this route, and only the front page's the
+// rest of the portal.
+func RegisterSwitch(mux *http.ServeMux, cache *Cache) {
+	mux.HandleFunc("GET /api/apps/switch", func(w http.ResponseWriter, r *http.Request) {
+		view := struct {
+			Apps   []App    `json:"apps"`
+			Hidden []string `json:"hidden"`
+		}{Apps: append([]App{Home}, Apps...), Hidden: cache.HiddenApps(auth.Email(r))}
 		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(map[string][]string{"hiddenApps": cache.HiddenApps(auth.Email(r))}); err != nil {
-			slog.ErrorContext(r.Context(), "encode hidden apps", "error", err)
+		if err := json.NewEncoder(w).Encode(view); err != nil {
+			slog.ErrorContext(r.Context(), "encode app switch", "error", err)
 		}
 	})
+}
+
+// visibleApps is the community apps as the front page's apps section lists
+// them for a person: every app less those the Visibility tab keeps from them.
+func (a app) visibleApps(email string) []App {
+	hidden := a.cache.HiddenApps(email)
+	out := []App{}
+	for _, app := range Apps {
+		if !slices.Contains(hidden, app.Key) {
+			out = append(out, app)
+		}
+	}
+	return out
 }
 
 func (a app) page(w http.ResponseWriter, r *http.Request) {
@@ -170,11 +189,14 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 		ImageSources []string `json:"imageSources"`
 		Alerts       alerts   `json:"alerts"`
 		Upcoming     []Event  `json:"upcoming"`
+		// Apps fills the apps section: the community apps this person sees.
+		Apps []App `json:"apps"`
 	}{
 		Categories:   categories,
 		User:         user{Email: email, Initial: strings.ToUpper(email[:1]), PhotoURL: a.heroPhoto(email), IsAdmin: admin},
 		ImageSources: a.search.Sources(),
 		Upcoming:     a.upcoming(),
+		Apps:         a.visibleApps(email),
 	}
 	view.Alerts.Stale, view.Alerts.Privacy = a.alerts(email)
 	w.Header().Set("Content-Type", "application/json")
@@ -388,6 +410,23 @@ func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "the events section is the one the page already has", http.StatusBadRequest)
 		return
 	}
+	// The apps section holds the community apps, not links, and there is
+	// only one: a category becomes it once its links are gone, and no other
+	// can while it stands.
+	if style == StyleApps {
+		if other := a.titleOf(StyleApps); other != "" && other != body.Original {
+			http.Error(w, fmt.Sprintf("%q is already the community apps section", other), http.StatusBadRequest)
+			return
+		}
+		if body.Original != "" && a.styleOf(body.Original) != StyleApps {
+			for _, row := range a.cache.Tables().Links {
+				if row["Category"] == body.Original {
+					http.Error(w, "move or delete its links first: the community apps section holds no links", http.StatusBadRequest)
+					return
+				}
+			}
+		}
+	}
 	if _, err := checkMax(body.Max); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -548,6 +587,16 @@ func (a app) styleOf(title string) string {
 	for _, c := range a.cache.Model().Categories {
 		if c.Title == title {
 			return c.Style
+		}
+	}
+	return ""
+}
+
+// titleOf is the title of the category with a style, "" for none.
+func (a app) titleOf(style string) string {
+	for _, c := range a.cache.Model().Categories {
+		if c.Style == style {
+			return c.Title
 		}
 	}
 	return ""

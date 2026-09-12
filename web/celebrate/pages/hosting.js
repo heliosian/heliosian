@@ -1,4 +1,4 @@
-import {state, isAdmin, hostedParties, pendingParties, partyPath, whenLine, money} from '../state.js';
+import {state, isAdmin, hostedParties, pendingParties, partyPath, whenLine, money, canHost} from '../state.js';
 import {el, link, button, tabs, thumb, svg} from '../dom.js';
 import {setTitle, setSearch} from '../chrome.js';
 import {openParty, setPartyStatus} from '../edit.js';
@@ -21,7 +21,7 @@ function hostRow(p) {
   if (p.waiting) {
     counts.push(`${p.waiting} waiting`);
   }
-  counts.push(`${money(p.sold * p.price)} raised`);
+  counts.push(`${money(p.raised)} raised`);
   body.append(el('div', 'row-text', counts.join(' · ')));
   if (p.status === 'Pending') {
     body.append(el('div', 'row-pending', 'Waiting for approval - an admin will open it for tickets.'));
@@ -48,7 +48,9 @@ export function hostingPage() {
   main.append(el('h1', 'page-title', 'Hosting'));
   main.append(el('p', 'page-intro', 'The parties you run. Open one to see who is coming, offer waitlist places, and change its settings.'));
   head.append(main);
-  head.append(button('Host a Party', 'plus', 'button', () => openParty(null)));
+  if (canHost()) {
+    head.append(button('Host a Party', 'plus', 'button', () => openParty(null)));
+  }
   page.append(head);
   const body = el('div');
   const bar = el('div', 'list-bar');
@@ -71,7 +73,7 @@ export function hostingPage() {
     list = list.filter(p => !query || p.title.toLowerCase().includes(query));
     const panel = el('div', 'panel');
     if (!list.length) {
-      panel.append(el('div', 'panel-empty', state.tab === 'approvals' ? 'Nothing waiting for approval.' : state.tab === 'mine' ? "You aren't hosting a party yet - Host a Party to post one." : 'Nothing matches.'));
+      panel.append(el('div', 'panel-empty', state.tab === 'approvals' ? 'Nothing waiting for approval.' : state.tab === 'mine' ? (canHost() ? "You aren't hosting a party yet - Host a Party to post one." : "You aren't hosting a party. Hosting is closed for now.") : 'Nothing matches.'));
     }
     for (const p of list) {
       panel.append(hostRow(p));
