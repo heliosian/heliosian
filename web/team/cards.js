@@ -14,7 +14,7 @@ function statusBadges(node) {
     out.push(badge('Done', 'done'));
   }
   if (node.status === 'Open' && isFull(node)) {
-    out.push(badge('Volunteers Complete', 'full'));
+    out.push(completeBadge());
   }
   return out;
 }
@@ -87,13 +87,21 @@ function labelLine(node) {
 }
 
 
-// needChip is the co-leader-wanted chip, which sits with the row's actions.
+// completeBadge is the Volunteers Complete mark: a green check and the words,
+// no ground - good news, not a warning.
+export function completeBadge() {
+  const mark = el('span', 'badge complete');
+  mark.append(svg('check'), el('span', '', 'Volunteers Complete'));
+  return mark;
+}
+
+// needChip is the co-chair-wanted chip, which sits with the row's actions.
 function needChip(node) {
   if (!node.coLeaderNeeded) {
     return null;
   }
   const chip = el('span', 'need');
-  chip.append(svg('people'), el('span', '', 'Co-leader needed'));
+  chip.append(svg('people'), el('span', '', 'Co-chair needed'));
   return chip;
 }
 
@@ -241,9 +249,11 @@ function dateBadge(act) {
   return stamp;
 }
 
+// The card's corner counts what is left; the Volunteers Complete mark above
+// already says when nothing is.
 function spotsNote(act) {
   if (isFull(act)) {
-    return 'Volunteers complete';
+    return '';
   }
   if (act.spots > 0) {
     const left = act.spots - act.taken;
@@ -253,7 +263,7 @@ function spotsNote(act) {
 }
 
 // activityCard is the grid tile the opportunities page shows: image with its
-// date stamp - and a chip when a co-leader is wanted, the one thing worth
+// date stamp - and a chip when a co-chair is wanted, the one thing worth
 // flagging on the picture; the category is the heading the card sits under -
 // then title, blurb, and the sign-up action.
 // opts.signUps lists one person's sign-ups on the activity and under it, for
@@ -270,7 +280,7 @@ export function activityCard(act, opts = {}) {
   media.append(thumb(act.imageUrl, act.title, 'card-image ' + categoryClass(act.category)));
   if (act.coLeaderNeeded) {
     const need = el('span', 'card-chip card-need');
-    need.append(svg('people'), el('span', '', 'Co-leader needed'));
+    need.append(svg('people'), el('span', '', 'Co-chair needed'));
     media.append(need);
   }
   const stamp = dateBadge(act);

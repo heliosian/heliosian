@@ -1106,10 +1106,10 @@ export function openActivity(act, options) {
     }
   });
   paintSpots();
-  // A new thing starts wanting a co-leader - most do, and the sheet's own
+  // A new thing starts wanting a co-chair - most do, and the sheet's own
   // default for a blank cell says the same.
-  const coLeader = checkbox('Co-leader needed', act ? act.coLeaderNeeded : true,
-    'This lets people offer to be a co-leader; you still confirm them as co-leaders.');
+  const coLeader = checkbox('Co-chair needed', act ? act.coLeaderNeeded : true,
+    'This lets people offer to be a co-chair; you still confirm them as co-chairs.');
   // A new thing under a parent starts with the parent's privacy - a private
   // event's committees are usually private too - and can be switched after.
   const hidden = checkbox('Keep volunteers secret',

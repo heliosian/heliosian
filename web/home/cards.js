@@ -127,7 +127,7 @@ function featureCard(link, category) {
   return card;
 }
 
-// A tile: the picture, then the initial badge over the title and description.
+// A tile: the picture, then the title and description.
 // The anchor holds only the content; the overflow button is a sibling, since
 // a button nested inside an anchor is invalid and swallows its own clicks.
 function tile(link, category) {
@@ -142,7 +142,6 @@ function tile(link, category) {
     open.append(blank);
   }
   const body = el('div', 'tile-body');
-  body.append(el('div', 'tile-initial', link.title.slice(0, 1).toUpperCase()));
   const title = el('div', 'tile-title', link.title);
   if (!link.visible) {
     title.append(el('span', 'hidden-badge', 'Hidden'));

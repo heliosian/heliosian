@@ -485,7 +485,7 @@ main {
 .cat-5 { background: #cfe3e2; }
 .cat-none { background: #e3e7e6; }
 
-.card-chip.card-need { display: inline-flex; align-items: center; gap: 5px; background: var(--accent); color: #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18); }
+.card-chip.card-need { display: inline-flex; align-items: center; gap: 5px; background: var(--alert); color: #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18); }
 
 .card-chip.card-need svg { width: 13px; height: 13px; }
 
@@ -922,15 +922,15 @@ main {
 
 .label .label-when svg { width: 15px; height: 15px; color: var(--muted); }
 
-/* A co-leader wanted is a warm chip; being a chip, it needs no separator. */
+/* A co-chair wanted is a red chip; being a chip, it needs no separator. */
 .need {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   padding: 3px 10px 3px 8px;
   border-radius: 999px;
-  background: #dcefe9;
-  color: var(--accent);
+  background: var(--alert);
+  color: #fff;
   text-transform: none;
   letter-spacing: 0;
   font-size: 12.5px;
@@ -989,6 +989,18 @@ main {
 .badge.done { background: var(--ok); }
 
 .badge.full { background: var(--alert); }
+
+/* Volunteers Complete: green with a check, no ground. */
+.badge.complete {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 0;
+  background: none;
+  color: #2f8f46;
+}
+
+.badge.complete svg { width: 13px; height: 13px; stroke-width: 2.5; }
 
 .badge.chair { background: var(--brand); }
 

@@ -1,7 +1,7 @@
 import {state, isAdmin, years, allYears, descendants, parentOf, rootOf, category, eventCategories, longDate, parseWhen, coChairs, mySignUp, canJoin, isFull, matches, activityPath, listedIn, sortByStart, shiftedEnd, headingChoices, shownVolunteers, listHidden, listRevealed, canAdd, addLabel, ADDING} from '../state.js';
 import {el, link, svg, thumb, avatar, badge, button, searchBox, copyText, whenEditor, toast} from '../dom.js';
 import {setTitle} from '../chrome.js';
-import {childRow, categoryClass} from '../cards.js';
+import {childRow, categoryClass, completeBadge} from '../cards.js';
 import {openCropTool, openPhotoLightbox} from '/crop.js';
 import {send, reload, openSignUp, openActivity, openLink, saveActivityFields, openPerson, openImageSearch, imageSearchOn, editable, fieldEditor, highlightInputs, textInput, textAreaInput, selectInput, uploadAndSave, openCategoryManager, openVolunteerGrid} from '../edit.js';
 
@@ -1185,12 +1185,12 @@ export function activityPage(node) {
     }
   }
   if (node.coLeaderNeeded) {
-    marks.append(el('span', 'need', 'Co-leader needed!'));
+    marks.append(el('span', 'need', 'Co-chair needed!'));
   }
   if (node.status !== 'Open') {
     marks.append(badge(node.status === 'Pending' ? 'Needs approval' : node.status, node.status.toLowerCase()));
   } else if (isFull(node)) {
-    marks.append(badge('Volunteers Complete', 'full'));
+    marks.append(completeBadge());
   }
   if (editing && !parent) {
     // An event's own categories are what its committees, booths and shifts are
