@@ -554,6 +554,20 @@ func NewCore(cfg Config) *Core {
 	if err != nil {
 		logging.Fatal("load apps data", "error", err)
 	}
+	// The share cards say each app's tagline as the registry has it, so an
+	// admin's edit reaches the previews too.
+	taglineOf := func(key string) func() string {
+		return func() string {
+			for _, a := range homeCache.AppList() {
+				if a.Key == key {
+					return a.Tagline
+				}
+			}
+			return ""
+		}
+	}
+	events.ShareTagline(taglineOf("team"))
+	celebrate.ShareTagline(taglineOf("celebrate"))
 	// The portal's sheet is edited by hand more than the others, so a load
 	// failure keeps only the portal down: it answers with the reason and comes
 	// back on its own once the sheet loads.

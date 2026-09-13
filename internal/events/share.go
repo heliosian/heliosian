@@ -39,6 +39,12 @@ var cardStyle = &sharecard.Style{
 	Mark: "web/public/team/brand/logo-mark.png", Corner: "web/team/toolbar_background.png",
 }
 
+// ShareTagline gives the card the app's tagline as the registry has it
+// now, in place of the one written here.
+func ShareTagline(now func() string) {
+	cardStyle.TaglineNow = now
+}
+
 // previewable is what may be shown to someone who has not signed in.
 func previewable(a *Activity) bool {
 	return a != nil && (a.Status == StatusOpen || a.Status == StatusDone)
@@ -190,7 +196,7 @@ func (a app) shareCard(w http.ResponseWriter, r *http.Request) {
 	}
 	imageBytes := a.readImage(picture)
 	line, under := when(timed(model, act)), lineage(model, act)
-	sum := sha256.Sum256([]byte(act.Title + "\x00" + under + "\x00" + line + "\x00" + picture))
+	sum := sha256.Sum256([]byte(act.Title + "\x00" + under + "\x00" + line + "\x00" + picture + "\x00" + cardStyle.TaglineText()))
 	etag := `"` + hex.EncodeToString(sum[:8]) + `"`
 	if r.Header.Get("If-None-Match") == etag {
 		w.WriteHeader(http.StatusNotModified)

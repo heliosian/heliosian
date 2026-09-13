@@ -32,6 +32,10 @@ const (
 type Style struct {
 	Page, Brand, Accent, Ink, Yellow, Panel color.RGBA
 	Wordmark, Tagline                       string
+	// TaglineNow, when set, is asked for the tagline at each draw - the
+	// registry's, as an admin may have edited it - with Tagline as the
+	// fallback for a blank answer.
+	TaglineNow func() string
 	// Mark and Corner are file paths, read once; either may be blank.
 	Mark, Corner string
 	marks        sync.Once
@@ -95,6 +99,16 @@ func readImage(path string) image.Image {
 	}
 	img, _, _ := image.Decode(bytes.NewReader(data))
 	return img
+}
+
+// TaglineText is the tagline the next draw will use, for a caller's ETag.
+func (s *Style) TaglineText() string {
+	if s.TaglineNow != nil {
+		if now := strings.TrimSpace(s.TaglineNow()); now != "" {
+			return now
+		}
+	}
+	return s.Tagline
 }
 
 func (s *Style) art() (image.Image, image.Image) {
@@ -203,7 +217,7 @@ func (s *Style) Draw(c Card) ([]byte, error) {
 	}
 	d.Face, d.Src = small, image.NewUniform(s.Accent)
 	d.Dot = fixed.P(x+2, y+62)
-	d.DrawString(s.Tagline)
+	d.DrawString(strings.ToUpper(s.TaglineText()))
 
 	// The kicker above the title, so a thing under another plainly belongs
 	// to it.

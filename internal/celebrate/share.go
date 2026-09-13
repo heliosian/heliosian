@@ -33,6 +33,12 @@ var cardStyle = &sharecard.Style{
 	Mark: "web/public/celebrate/brand/logo-mark.png",
 }
 
+// ShareTagline gives the card the app's tagline as the registry has it
+// now, in place of the one written here.
+func ShareTagline(now func() string) {
+	cardStyle.TaglineNow = now
+}
+
 // previewable is what may be shown to someone who has not signed in.
 func previewable(p *Party) bool {
 	return p != nil && p.Status == StatusOpen
@@ -140,8 +146,8 @@ func PreviewHead(cache *Cache) func(r *http.Request) string {
 }
 
 // shareCard serves /share/{id}.png: the card for one previewable party. The
-// card depends only on the title, the lines and the picture, so its ETag is
-// a hash of those and a chat app that fetched it once need not again.
+// card depends only on the title, the lines, the picture and the tagline,
+// so its ETag is a hash of those and a chat app that fetched it once need not again.
 func (a app) shareCard(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimSuffix(r.PathValue("id"), ".png")
 	p := a.cache.Model().Party(id)
@@ -156,7 +162,7 @@ func (a app) shareCard(w http.ResponseWriter, r *http.Request) {
 		picture, whole = p.Image, false
 	}
 	day, hours := whenLines(p)
-	sum := sha256.Sum256([]byte(strings.Join([]string{p.Title, day, hours, p.Location, picture}, "\x00")))
+	sum := sha256.Sum256([]byte(strings.Join([]string{p.Title, day, hours, p.Location, picture, cardStyle.TaglineText()}, "\x00")))
 	etag := `"` + hex.EncodeToString(sum[:8]) + `"`
 	if r.Header.Get("If-None-Match") == etag {
 		w.WriteHeader(http.StatusNotModified)
