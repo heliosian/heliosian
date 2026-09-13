@@ -121,12 +121,13 @@ function filterSummary() {
   return `${roomWords} · ${tagWords}`;
 }
 
-// Whether the calendar page's filters are unfolded, remembered per browser.
+// Whether the calendar page's filters are unfolded - folded until someone
+// opens them, and remembered per browser from then on.
 function filtersOpen() {
   try {
-    return localStorage.getItem('calendar.filtersOpen') !== 'no';
+    return localStorage.getItem('calendar.filtersOpen') === 'yes';
   } catch (err) {
-    return true;
+    return false;
   }
 }
 
@@ -134,7 +135,7 @@ function setFiltersOpen(open) {
   try {
     localStorage.setItem('calendar.filtersOpen', open ? 'yes' : 'no');
   } catch (err) {
-    // A browser that refuses storage just opens them next time.
+    // A browser that refuses storage just folds them again next time.
   }
 }
 
