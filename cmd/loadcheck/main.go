@@ -11,6 +11,8 @@ import (
 	"strings"
 
 	"heliosian/internal/celebrate"
+	"heliosian/internal/app"
+	"heliosian/internal/calendar"
 	"heliosian/internal/config"
 	"heliosian/internal/data"
 	"heliosian/internal/events"
@@ -97,6 +99,7 @@ func main() {
 			"apps":        requiredEnv("APPS_SHEET"),
 			"events":      requiredEnv("EVENTS_SHEET"),
 			"celebrate":   requiredEnv("CELEBRATE_SHEET"),
+			"calendar":    requiredEnv("CALENDAR_SHEET"),
 			"config":      requiredEnv("CONFIG_SHEET"),
 		})
 		if err != nil {
@@ -275,4 +278,42 @@ func main() {
 	}
 	fmt.Printf("config: %d super admins, stale years %+v, staff color %s, %d grade colors, %d classroom colors\n",
 		len(settings.SuperAdmins), settings.StaleYears, settings.StaffColor, len(settings.GradeColors), len(settings.ClassroomColors))
+
+	calendarTables, err := calendar.ReadTables(source)
+	if err != nil {
+		log.Fatalf("[ERROR] read calendar tables: %v", err)
+	}
+	plan, err := calendar.BuildModel(calendarTables, app.CalendarRoster(model))
+	if err != nil {
+		log.Fatalf("[ERROR] build calendar model: %v", err)
+	}
+	bySource, byTag := map[string]int{}, map[string]int{}
+	for _, e := range plan.Events {
+		bySource[e.Source]++
+		for _, t := range e.Tags {
+			byTag[t]++
+		}
+	}
+	fmt.Printf("calendar: %d events (google %d, pdf %d, sheet %d), %d hidden\n",
+		len(plan.Events), bySource[calendar.SourceGoogle], bySource[calendar.SourcePDF], bySource[calendar.SourceSheet], plan.Hidden)
+	for _, t := range plan.Tags {
+		fmt.Printf("  %s: %d\n", t.Name, byTag[t.Name])
+	}
+	for reason, n := range plan.Skipped {
+		fmt.Printf("  skipped %d: %s\n", n, reason)
+	}
+	for _, y := range plan.Years {
+		fmt.Printf("  school year %s: %s to %s\n", y.Label, y.FirstDay, y.LastDay)
+	}
+	byType := map[string]int{}
+	for _, byClassroom := range plan.Days {
+		for _, name := range byClassroom {
+			byType[name]++
+		}
+	}
+	fmt.Printf("  day plan: %d dates\n", len(plan.Days))
+	for _, d := range plan.DayTypes {
+		fmt.Printf("    %s: %d classroom-days\n", d.Name, byType[d.Name])
+	}
+	fmt.Printf("calendar admins: %d\n", len(calendarTables.Admins))
 }

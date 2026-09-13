@@ -1,0 +1,62 @@
+# Data model
+
+The tabs, columns, and validation rules are in `internal/calendar`; this file carries only what reading that code cannot tell you.
+
+The calendar's data lives in one Google Sheet, `Calendar`, in the community shared drive, reached through drive membership like the other sheets. `CALENDAR_SHEET` names it, and `cmd/createtabs` reads that variable to lay it out from an empty spreadsheet titled `Calendar`.
+
+## Tabs
+
+- `Google Import` — Key, Start, End, Title, Location, Description, Updated, Sequence. A mirror of the school's public Google Calendar feed, one row per event instance, written only by the import.
+- `PDF Import` — Key, Year, Start, End, Title, Day Type, Tags, Marker, PDF. What the import reads out of the school's published year calendar: one row per line of its Important Dates list and one per shaded day cell in its month grids, written only by the import. Marker is `First Day` or `Last Day` on the two days that bound a school year. PDF is the hash of the document and of the reading that produced the row.
+- `Events` — Event ID, Start, End, Title, Location, Description, Tags, Day Type, Keywords, Added By, Added. Hand-added events no source carries. Event IDs are minted like the volunteer portal's, eight characters from a 32-symbol alphabet.
+- `Enrichment` — Event ID, Tags, Day Type, Keywords, Input Hash, Model, Enriched. What Claude concluded about each imported event, written only by the import.
+- `Overrides` — Event ID, Title, Start, End, Location, Description, Tags, Day Type, Keywords, Hidden, Note. Hand corrections to any event in the three tabs above. Blank keeps, `-` clears. Hidden `Yes` drops the event from every view.
+- `Tags` — Tag, Description. The vocabulary events are filed under, and the toggles a viewer has. The description is the definition the classifier is given, so an admin adds or rewords a tag without a deploy and the next import re-classifies against it.
+- `Day Types` — Day Type, then a start and end for each of the four blocks a day can have: Dropoff, School, Pickup, Aftercare. Hand-authored, since no source publishes bell times. A block with both cells blank does not happen that day, so `No School` is a row with nothing in it.
+- `Day Overrides` — Date, Classrooms, Day Type, Note. Hand corrections to the day plan; blank Classrooms means every classroom.
+- `Admins` — Email.
+- `Change Log` — Timestamp, Actor, Action, Tab, Key, Column, From, To. Appended by the import with every cell it changes, so an event that moved or vanished can be traced, and shaped so a future notifier can read it.
+
+## Three layers, then two
+
+An event's fields resolve import, then enrichment, then overrides. The import supplies what the source states. Enrichment adds what Claude concluded: its tags join the import's, its day type fills a blank one, its keywords join. An override replaces whatever both supplied.
+
+Tags are one list saying what an event is and who it is for. The who is the narrowest audience as classroom names: a Cospreys CAFE is tagged Condors and Ospreys, a school-wide event carries every classroom, and a family's view matches on the classrooms among an event's tags. The what is the `Tags` tab's vocabulary, a Celebration of Learning, a Community event, Parent Ed, a Trip, a Deadline, or Parents, Staff, or Aftercare, as many as apply, a book club being Community and Parents; a viewer's toggles show an event when any of its tags is on. A tag that is neither a row of the tab nor a classroom the directory has refuses the load, which is why the import classifies against the directory's live classrooms and the tab's live descriptions and re-classifies everything when either changes. An event with no tags matches nobody, and the load reports it as a problem rather than guessing. Keywords never repeat a tag; the load strips any that do.
+
+## A load either succeeds whole or refuses
+
+A rule broken refuses the load: a tag no row names, a date that does not parse, two events in one layer giving one classroom two different day types on the same date, an event with no tags, a timed event carrying a day type, which only a whole day can. A load error is fatal to the server, at startup and at every refresh, as the directory's is. The import never builds the model: it pulls, writes, and warns about what it itself saw, and `go run ./cmd/loadcheck` is how an operator checks a sheet after an import, as for every other app.
+
+## The day plan
+
+Nothing materializes a school day in the sheet. The plan is computed at load: every weekday between a school year's `First Day` and `Last Day` markers is `Regular` for every classroom; then every all-day event carrying a day type stamps that type onto the dates it spans for the classrooms among its tags, PDF events first, then feed events, then hand-added events, each layer overwriting the one before; then Day Overrides overwrite all of them. Two events in one layer that disagree are a problem, above.
+
+A viewer's day is one lookup per classroom their students are in, and the blocks come from the type's row. A kindergarten half day is a PDF or feed row tagged Hummingbirds alone, so only Hummingbirds get the shorter day. A day type is data: an admin adds `No Aftercare` or a conference variant as a row and it becomes something an override, an event, or the import can name. Only the four block names are fixed.
+
+The two sources disagree about days often enough that the layering is the point. When the feed says kindergarten dismisses early for four days and the PDF says two, the feed wins because it is the living document, and a Day Override settles it once someone asks the office.
+
+## School years and keys
+
+A school year turns over on the first of July, so a July tuition deadline and June's last day of school belong to the same year. A `PDF Import` row's Year must be the school year of its start date, and each year present needs exactly one `First Day` and one `Last Day` row or the load refuses. A year with no PDF rows has no plan at all rather than a guessed one.
+
+Feed keys are the feed's own UIDs, with an instance of a repeating event keyed as the UID plus its original start. PDF keys are the year, the date, and a slug of the title. Event IDs are unique across all three tabs, and an override or enrichment row naming an id no tab has is skipped and counted (`Model.Skipped`) rather than refused, since feed events vanish when the school cancels them.
+
+## The import
+
+`go run ./cmd/calendarimport` (dry run with `--dry-run`) needs `CALENDAR_SHEET`, `DIRECTORY_SHEET`, `PREFERENCES_SHEET`, and `CONFIG_SHEET`, the same impersonated credentials as every other tool, and an Anthropic API key in `creds/anthropic.key` or `ANTHROPIC_API_KEY`. `Day Types` must already hold `Regular`, `No School`, and `Early Dismissal` rows, the names the PDF's legend maps onto.
+
+One run:
+
+1. Loads the directory to build the audience vocabulary.
+2. Fetches the feed and expands it into instances from the first of July of the previous school year, three years on. Repeating events are expanded to one row each and the feed's own overrides of single instances are applied, so nothing downstream knows about recurrence rules. Times arrive in UTC and are written as school wall-clock. All-day ends arrive exclusive and are written inclusive. Descriptions arrive as HTML now and then and are flattened to text, keeping the address behind each link. Only that window is mirrored: a row outside it, and the enrichment of any event the run did not consider, is carried as it is and never removed.
+3. Fetches the school's calendar page, follows its PDF link, and hashes the document together with the prompts that read it. A hash any `PDF Import` row already carries means neither the PDF nor the reading has changed and the rows stand. A new hash reads the PDF in stages, each its own Claude call: the legend, into wording, an estimated color, and a day type per swatch, since the school changes both wording and colors from year to year; the Important Dates list, into entries whose day type comes only from a dismissal note in the wording, because the list's colors are categories rather than day types; and the twelve month grids, one call per month over a crop of the page rendered at 300 dpi with poppler's `pdftoppm`, since the model reads a grid reliably only when its cells arrive large and the API scales a whole page down to about 1500 pixels. Each month is read twice, compared by day type, and read a third time to break a tie; each read must name every day of the month and echo the grid's title, so a lazy answer is impossible by construction and a page laid out differently fails loudly instead of reading the wrong month. The list's entries and the grid's shaded days are two sets of facts and become two sets of rows: an entry says what happens and to which classrooms, a shaded day says what kind of day it is for every classroom, titled with the legend's wording, and nothing merges them. The rows for that school year are replaced and other years' rows are kept, so the current year keeps its plan when the school posts the next year's calendar. These reads run on Claude Fable 5.1 at maximum effort: cheaper settings answered without looking often enough to matter, and the whole PDF costs a few dollars once per change.
+4. Classifies every imported event whose input hash is new, in batches of ten, into audience, tags, day type, and search keywords. The hash covers the event's text and dates, the vocabulary, and the classifier's whole prompt, so an unchanged event is never sent twice and a renamed classroom, a reworded tag, or a change to the rules re-classifies everything. The answer is an object with one required property per event, so a skipped or doubled event is impossible by construction, and structured output constrains every term to the vocabulary; ten per call is as many as the schema compiler accepts.
+5. Syncs the three import tabs cell by cell through `internal/sheetsync`, mirror policy within the window, and appends the change log.
+
+A stage that fails does not take the others with it. A PDF that cannot be read leaves the rows already there; a classification batch that fails leaves its events with whatever row they had, and their input hashes see to it that the next run asks about exactly those events again. Everything that did complete is written, and only then does the run exit non-zero naming what failed.
+
+The run is idempotent and cheap when nothing changed: one feed fetch, one page fetch, one PDF fetch, no Claude calls. It runs from a laptop (`brew install poppler` supplies `pdftoppm`) and from its own image, `Dockerfile.calendarimport`, a Debian base carrying poppler rather than the server's distroless one, which is where a scheduled Cloud Run Job runs it as the same identity as the server.
+
+## Sample data
+
+`sampledata/calendar/` holds one CSV per tab: a school year with markers, a kindergarten half day the feed and the PDF disagree about with a day override settling it, a hidden duplicate, an override renaming and narrowing a trip, a hand-added HCA meeting, and a `No Aftercare` day type, so every rule loads locally.

@@ -13,6 +13,7 @@ import (
 	"google.golang.org/api/sheets/v4"
 
 	"heliosian/internal/birthday"
+	"heliosian/internal/calendar"
 	"heliosian/internal/celebrate"
 	"heliosian/internal/events"
 	"heliosian/internal/home"
@@ -26,6 +27,7 @@ var spreadsheets = []struct{ env, layout string }{
 	{"APPS_SHEET", "Apps"},
 	{"EVENTS_SHEET", "Events"},
 	{"BIRTHDAY_SHEET", "Birthdays"},
+	{"CALENDAR_SHEET", "Calendar"},
 	{"CELEBRATE_SHEET", "Celebrate"},
 	{"CONFIG_SHEET", "Config"},
 }
@@ -150,6 +152,18 @@ var layouts = map[string][]tab{
 		{"Redirects", celebrate.RedirectColumns},
 		{"Change Log", celebrate.ChangeLogColumns},
 		{"INVOICING", celebrate.InvoicingColumns},
+	},
+	"Calendar": {
+		{calendar.GoogleTab, calendar.GoogleColumns},
+		{calendar.PDFTab, calendar.PDFColumns},
+		{calendar.EventsTab, calendar.EventColumns},
+		{calendar.EnrichmentTab, calendar.EnrichmentColumns},
+		{calendar.OverridesTab, calendar.OverrideColumns},
+		{calendar.DayTypesTab, calendar.DayTypeColumns},
+		{calendar.DayOverridesTab, calendar.DayOverrideColumns},
+		{calendar.TagsTab, calendar.TagColumns},
+		{calendar.AdminsTab, calendar.AdminColumns},
+		{calendar.ChangeLogTab, calendar.ChangeLogColumns},
 	},
 	"Config": {
 		{"Settings", []string{"Key", "Value"}},

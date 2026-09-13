@@ -1,0 +1,22 @@
+Event ID,Tags,Day Type,Keywords,Input Hash,Model,Enriched
+a1@sample,"Hummingbirds, Schedule",Early Dismissal,"half day, kinder, short day",5c1d2e3f4a5b6c7d,claude-fable-5-1,2026-08-02
+a2@sample,"Hummingbirds, Hawks, Falcons, Jays, Ravens, Orientation, Parents",,"BTSN, back to school",5c1d2e3f4a5b6c7e,claude-fable-5-1,2026-08-02
+a3@sample,"Condors, Ospreys, Egrets, Herons, Orientation, Parents",,"BTSN, back to school",5c1d2e3f4a5b6c7f,claude-fable-5-1,2026-08-02
+a4@sample,"Hummingbirds, Hawks, Falcons, Jays, Ravens, Condors, Ospreys, Egrets, Herons, Schedule",No School,holiday,5c1d2e3f4a5b6c80,claude-fable-5-1,2026-08-02
+a5@sample,"Jays, Ravens, Trip",,"camp, overnight",5c1d2e3f4a5b6c81,claude-fable-5-1,2026-08-16
+a6@sample,"Hummingbirds, Community, Parents",,"coffee, kindergarten",5c1d2e3f4a5b6c82,claude-fable-5-1,2026-08-16
+a7@sample,"Hummingbirds, Hawks, Falcons, Jays, Ravens, Condors, Ospreys, Egrets, Herons, Community",,"culture, food, booths",5c1d2e3f4a5b6c83,claude-fable-5-1,2026-08-16
+a8@sample,"Hawks, Falcons, Community, Parents",,coffee,5c1d2e3f4a5b6c84,claude-fable-5-1,2026-08-16
+a9@sample,"Hummingbirds, Hawks, Falcons, Jays, Ravens, Condors, Ospreys, Egrets, Herons, Schedule, Aftercare",No Aftercare,,5c1d2e3f4a5b6c85,claude-fable-5-1,2026-11-02
+a10@sample,"Hummingbirds, Hawks, Falcons, Jays, Ravens, Condors, Ospreys, Egrets, Herons, Schedule",No School,"winter break, holiday",5c1d2e3f4a5b6c86,claude-fable-5-1,2026-11-02
+a11@sample,"Condors, Ospreys, Community, Parents",,coffee,5c1d2e3f4a5b6c87,claude-fable-5-1,2026-08-16
+a12@sample,"Hummingbirds, Hawks, Falcons, Jays, Ravens, Condors, Ospreys, Egrets, Herons, Community",,"gala, auction, fundraiser",5c1d2e3f4a5b6c88,claude-fable-5-1,2026-08-16
+pdf/2026-2027/2026-08-18/first-day-of-school,Schedule,,"first day, welcome",5c1d2e3f4a5b6c89,claude-fable-5-1,2026-08-02
+pdf/2026-2027/2026-08-18/12-30p-dismissals-k-only,Schedule,,"half day, kindergarten",5c1d2e3f4a5b6c8a,claude-fable-5-1,2026-08-02
+pdf/2026-2027/2026-08-21/professional-development-half-day,Schedule,,"PD, half day",5c1d2e3f4a5b6c8b,claude-fable-5-1,2026-08-02
+pdf/2026-2027/2026-09-07/labor-day,Schedule,,holiday,5c1d2e3f4a5b6c8c,claude-fable-5-1,2026-08-02
+pdf/2026-2027/2026-09-29/returning-grade-ilp-conference-half-days,"Conference, Schedule",,"ILP, half day",5c1d2e3f4a5b6c8d,claude-fable-5-1,2026-08-02
+pdf/2026-2027/2026-11-15/second-tuition-installment-due,"Deadline, Parents",,"tuition, payment",5c1d2e3f4a5b6c8e,claude-fable-5-1,2026-08-02
+pdf/2026-2027/2026-11-23/thanksgiving-break,Schedule,,"holiday, break",5c1d2e3f4a5b6c8f,claude-fable-5-1,2026-08-02
+pdf/2026-2027/2026-12-21/winter-break,Schedule,,"holiday, break",5c1d2e3f4a5b6c90,claude-fable-5-1,2026-08-02
+pdf/2026-2027/2027-06-04/last-day-of-school-graduation,"Schedule, Celebration of Learning",,"graduation, last day",5c1d2e3f4a5b6c91,claude-fable-5-1,2026-08-02

@@ -63,7 +63,7 @@ Each runs as `go run ./cmd/<name>`. The sheet, drive, and bucket tools authentic
 - `deploy` — apply the full production service configuration (needs `DIRECTORY_SHEET`); see `docs/deploy.md`
 - `startserver` — the dev server: sample data in the foreground by default, `--capture` for a one-command page screenshot, `--real` for the production assembly in the foreground, and `--detach` to launch that in the background with its output in a log file plus a minted session cookie (needs `SESSION_KEY` and every spreadsheet id)
 - `cookie` — print a signed session cookie for local API testing
-- `loadcheck` — run the full load pipeline against the directory and preferences sheets and print a model summary
+- `loadcheck` — run every app's load pipeline against the live sheets, the calendar's included, and print a model summary or the first thing a loader refuses
 - `findsheet` — print the spreadsheet ids the server needs as shell exports, found by the sheets' titles, with every other visible spreadsheet as a comment
 - `sheets` — dump a sheet's tabs, sizes, and header rows
 - `dumptab` / `writetab` — copy one tab to a local CSV / write a local CSV into a tab, header-checked
@@ -73,4 +73,5 @@ Each runs as `go run ./cmd/<name>`. The sheet, drive, and bucket tools authentic
 - `import` — run a fresh Veracross export and a fresh export of the school website's staff page, upload the portraits from both, sync the import tabs, and clear the overrides those imports have caught up with, or report what that would change with `--dry-run` (needs `DIRECTORY_SHEET`, `PREFERENCES_SHEET`, and `CONFIG_SHEET`, and a `vcexport` and a `webexport` checkout, found at `../vcexport` and `../webexport` or wherever `VCEXPORT` and `WEBEXPORT` point)
 - `birthdayimport` — load the Glide birthday app's table exports in `imports/` into the empty `Birthdays` spreadsheet (needs `BIRTHDAY_SHEET`); see `docs/birthday/data.md`
 - `celebrateimport` — convert the old Spring Celebration site's tabs, dumped into `imports/celebrate/`, and load them into the empty `Celebrate` spreadsheet, dry run unless `-write` (needs `CELEBRATE_SHEET`); see `docs/celebrate/data.md`
+- `calendarimport` — pull the school's public calendar feed and published year calendar into the `Calendar` sheet and have Claude classify every event, or report what that would change with `--dry-run`; either way it refuses to start without `--i-have-user-permission-to-spend-money`, since every run that reaches Claude costs real money and only the person paying says when (needs `CALENDAR_SHEET`, `DIRECTORY_SHEET`, `PREFERENCES_SHEET`, `CONFIG_SHEET`, an Anthropic API key in `creds/anthropic.key` or `ANTHROPIC_API_KEY`, and poppler's `pdftoppm`, `brew install poppler`); see `docs/calendar/data.md`
 - `splash` — download an app's iOS splash battery from its captured Glide manifest into a brand directory; see `docs/who/pwa.md`
