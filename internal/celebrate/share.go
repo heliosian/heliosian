@@ -148,7 +148,7 @@ func PreviewHead(cache *Cache) func(r *http.Request) string {
 }
 
 // shareCard serves /share/{id}.png: the card for one previewable party. The
-// card depends only on the title, the lines, the picture and the tagline,
+// card depends only on the title, the subtitle, the lines and the picture,
 // so its ETag is a hash of those and a chat app that fetched it once need not again.
 func (a app) shareCard(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimSuffix(r.PathValue("id"), ".png")
@@ -164,14 +164,14 @@ func (a app) shareCard(w http.ResponseWriter, r *http.Request) {
 		picture, whole = p.Image, false
 	}
 	day, hours := whenLines(p)
-	sum := sha256.Sum256([]byte(strings.Join([]string{p.Title, day, hours, p.Location, picture, cardStyle.TaglineText()}, "\x00")))
+	sum := sha256.Sum256([]byte(strings.Join([]string{p.Title, p.Subtitle, day, hours, p.Location, picture}, "\x00")))
 	etag := `"` + hex.EncodeToString(sum[:8]) + `"`
 	if r.Header.Get("If-None-Match") == etag {
 		w.WriteHeader(http.StatusNotModified)
 		return
 	}
 	card, err := cardStyle.Draw(sharecard.Card{
-		Title: p.Title, Picture: a.readImage(picture), Whole: whole,
+		Title: p.Title, Subtitle: p.Subtitle, Picture: a.readImage(picture), Whole: whole,
 		Lines: []sharecard.Line{{Icon: "calendar", Text: day}, {Icon: "clock", Text: hours}, {Icon: "pin", Text: p.Location}},
 	})
 	if err != nil {

@@ -54,11 +54,13 @@ type Line struct {
 // or blank), the title, the lines, and the picture - shown whole, as a flyer
 // is, or scaled to cover the panel, as a banner is.
 type Card struct {
-	Kicker  string
-	Title   string
-	Lines   []Line
-	Picture []byte
-	Whole   bool
+	Kicker string
+	Title  string
+	// Subtitle sits under the title's swoosh, in the accent colour.
+	Subtitle string
+	Lines    []Line
+	Picture  []byte
+	Whole    bool
 }
 
 // The two faces the card is set in, parsed once. Montserrat is the sites'
@@ -281,9 +283,38 @@ func (s *Style) Draw(c Card) ([]byte, error) {
 	swooshY := last + int(size*0.34)
 	draw.Draw(img, image.Rect(72, swooshY, textRight, swooshY+6), image.NewUniform(s.Yellow), image.Point{}, draw.Over)
 
+	y = swooshY + 58
+	// The subtitle under the swoosh, in the accent, two lines at most and
+	// shrunk to fit them; the lines below step down to make room.
+	if c.Subtitle != "" {
+		var subLines []string
+		subSize := 26.0
+		for ; subSize >= 18; subSize -= 2 {
+			subFace, err := face(medium, subSize)
+			if err != nil {
+				return nil, err
+			}
+			d.Face = subFace
+			subLines = Wrap(d, c.Subtitle, width)
+			if len(subLines) <= 2 {
+				break
+			}
+		}
+		if len(subLines) > 2 {
+			subLines = subLines[:2]
+			subLines[1] += "…"
+		}
+		d.Src = image.NewUniform(s.Accent)
+		subY := swooshY + 20 + int(subSize)
+		for i, l := range subLines {
+			d.Dot = fixed.P(72, subY+i*int(subSize*1.25))
+			d.DrawString(l)
+		}
+		y = subY + (len(subLines)-1)*int(subSize*1.25) + 52
+	}
+
 	// The lines, each behind its icon - the day behind a calendar, the time
 	// behind a clock, the place behind a pin. Each shrinks to fit if it must.
-	y = swooshY + 58
 	for _, line := range c.Lines {
 		if line.Text == "" {
 			continue
