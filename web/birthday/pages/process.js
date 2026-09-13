@@ -1,6 +1,6 @@
 import {state, stages, stageLabel, isUnassigned, matches} from '../state.js';
-import {el, tabs, searchBox} from '../dom.js';
-import {setTitle} from '../chrome.js';
+import {el, tabs, pageHead} from '../dom.js';
+import {setTitle, setSearch} from '../chrome.js';
 import {staffRow, emptyPanel} from '../cards.js';
 
 let tab = 'unassigned';
@@ -30,10 +30,14 @@ function group(title, rows) {
   return wrap;
 }
 
+function inTab(sv, key) {
+  return key === 'unassigned' ? isUnassigned(sv) : sv.stage === key;
+}
+
 function list() {
   const root = el('div');
   if (tab === 'unassigned') {
-    const rows = state.model.staff.filter(sv => isUnassigned(sv) && matches(sv, query));
+    const rows = state.model.staff.filter(sv => inTab(sv, tab) && matches(sv, query));
     let any = false;
     for (const stage of ['Awaiting Outreach', 'Awaiting Response', 'Awaiting Newsletter', 'Wait']) {
       const inStage = rows.filter(sv => sv.stage === stage);
@@ -48,7 +52,7 @@ function list() {
     }
     return root;
   }
-  const rows = state.model.staff.filter(sv => sv.stage === tab && matches(sv, query));
+  const rows = state.model.staff.filter(sv => inTab(sv, tab) && matches(sv, query));
   if (!rows.length) {
     root.append(emptyPanel(query ? 'Nothing matches.' : 'Nobody here right now.'));
     return root;
@@ -60,23 +64,24 @@ function list() {
 export function processPage() {
   setTitle('Process');
   const page = el('div', 'list-page');
+  page.append(pageHead('Process'));
   const body = el('div');
   const render = () => {
-    body.replaceChildren(tabs(items, tab, key => {
+    const counted = items.map(item => ({...item, count: state.model.staff.filter(sv => inTab(sv, item.key)).length}));
+    body.replaceChildren(tabs(counted, tab, key => {
       tab = key;
       render();
     }));
     body.append(el('div', 'section-note', notes[tab]));
-    const head = el('div', 'list-head');
-    head.append(el('h1', '', items.find(i => i.key === tab).label.replace(/^\d\. /, '')));
-    head.append(searchBox('Search', q => {
-      query = q;
-      body.querySelector('.list').replaceChildren(list());
-    }));
     const wrap = el('div', 'list');
     wrap.append(list());
-    body.append(head, wrap);
+    body.append(wrap);
   };
+  query = '';
+  setSearch('Search staff…', q => {
+    query = q;
+    body.querySelector('.list').replaceChildren(list());
+  });
   render();
   page.append(body);
   return page;

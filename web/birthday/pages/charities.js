@@ -1,6 +1,6 @@
 import {state, isAdmin, charityPath} from '../state.js';
-import {el, link, svg, button, tabs, searchBox} from '../dom.js';
-import {setTitle} from '../chrome.js';
+import {el, link, svg, button, tabs, pageHead} from '../dom.js';
+import {setTitle, setSearch} from '../chrome.js';
 import {charityRow, emptyPanel} from '../cards.js';
 import {openCharity} from '../edit.js';
 
@@ -24,25 +24,23 @@ function list() {
 export function charitiesPage() {
   setTitle('Charities');
   const page = el('div', 'list-page');
+  page.append(pageHead('Charities', [button('Add', 'plus', 'button', () => openCharity(null))]));
   const body = el('div');
   const render = () => {
-    body.replaceChildren(tabs([{key: 'allowed', label: 'Allowed'}, {key: 'prohibited', label: 'Prohibited'}], tab, key => {
+    const count = allowed => state.model.charities.filter(c => c.allowed === allowed).length;
+    body.replaceChildren(tabs([{key: 'allowed', label: 'Allowed', count: count(true)}, {key: 'prohibited', label: 'Prohibited', count: count(false)}], tab, key => {
       tab = key;
       render();
     }));
-    const head = el('div', 'list-head');
-    head.append(el('h1', '', 'Charities'));
-    const actions = el('div', 'row-actions');
-    actions.append(searchBox('Search', q => {
-      query = q;
-      body.querySelector('.list').replaceChildren(list());
-    }));
-    actions.append(button('Add', 'plus', 'button', () => openCharity(null)));
-    head.append(actions);
     const wrap = el('div', 'list');
     wrap.append(list());
-    body.append(head, wrap);
+    body.append(wrap);
   };
+  query = '';
+  setSearch('Search charities…', q => {
+    query = q;
+    body.querySelector('.list').replaceChildren(list());
+  });
   render();
   page.append(body);
   return page;
@@ -56,9 +54,9 @@ export function charityPage(c) {
   back.append(svg('back'));
   nav.append(back, link('/charities', '', 'Charities'), el('span', '', '/'), el('span', 'current', c.name));
   page.append(nav);
-  const head = el('div', 'list-head');
-  const body = el('div', 'row-body');
-  body.append(el('h1', '', c.name));
+  const head = el('div', 'page-head');
+  const body = el('div', 'page-head-main');
+  body.append(el('h1', 'page-title', c.name));
   if (!c.allowed) {
     body.append(el('div', 'label').appendChild(el('span', 'need', `Not allowed: ${c.whyNotAllowed || 'no reason given'}`)).parentNode);
   }

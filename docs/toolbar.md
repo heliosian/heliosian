@@ -1,6 +1,6 @@
 # The toolbar
 
-Every app puts the same bar across the top of its content: 48px tall in a pale wash of the brand teal (`#ecf3f2`) under a hairline, the app's own search on the left, and on the right the signed-in person's face and then, at the far edge, the switch to the other apps. It is one stylesheet and one script, `web/common/toolbar.css` and `web/common/toolbar.js`, served to every app behind sign-in (`app.Files` reads `web/common/` after the app's own directory); each app's `index.html` links the stylesheet ahead of its own, and its `style.css` supplies the palette the bar's rules read (`--brand`, `--line`, `--ink`, `--muted`, `--input`).
+Every app puts the same bar across the top of its content: 48px tall in a pale wash of the brand teal (`#ecf3f2`) under a hairline, the app's own search on the left, and on the right the signed-in person's face and then, at the far edge, the switch to the other apps. Helios Staff Birthdays joined the shell on 2026-09-12, on Celebrate's pattern. It is one stylesheet and one script, `web/common/toolbar.css` and `web/common/toolbar.js`, served to every app behind sign-in (`app.Files` reads `web/common/` after the app's own directory); each app's `index.html` links the stylesheet ahead of its own, and its `style.css` supplies the palette the bar's rules read (`--brand`, `--line`, `--ink`, `--muted`, `--input`).
 
 ## Search
 

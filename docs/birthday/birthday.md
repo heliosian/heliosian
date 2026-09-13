@@ -45,7 +45,7 @@ Someone who has opted out of the directory itself is not listed as staff there a
 
 ## Pages
 
-One shell, `web/birthday/index.html`, routes every page on the client.
+One shell, `web/birthday/index.html`, routes every page on the client. It is the shell HCA-Team and Helios Celebrate use: a rail on the left with the app icon and the six pages, and across the top the toolbar every app shares (`docs/toolbar.md`) - the search box that filters whichever list is open (and from a page with no list jumps to Process with the words), the directory's alert badges, the account menu with Super Admin Mode and Admin Tools for admins, and the app switch. The palette (`web/birthday/style.css`) is sampled from the logo art - the dark teal of STAFF, the lighter teal of BIRTHDAYS, the olive tagline, the sun for the swoosh under a page's title - the same family as Helios Celebrate's.
 
 - **My Jobs** (`/`) — the viewer's assignments in three tabs: My Tasks (awaiting outreach or a response), Wait, and All Done.
 - **Process** (`/process`) — everyone, in tabs: Unassigned, grouped by stage with the overdue ones first, then one tab per stage. Every row offers Assign to Me and, when outreach is due, Mark: Contacted.
@@ -54,9 +54,13 @@ One shell, `web/birthday/index.html`, routes every page on the client.
 - **Charities** (`/charities`, `/charities/{name}`) — allowed and prohibited lists, and a page per charity showing who chose it.
 - **Newsletters** (`/newsletters`) — the year's issues with who lands in each and a copy of the issue's donations for the communications team; admins add the next week or any date.
 - **Skipped** (`/skipped`) — staff the directory lists with no birthday on file, grouped by department, and staff who asked to be left out.
-- **Admin Tools** (`/admin`) — the settings and the admin list.
+- **Admin Tools** (`/admin`) — the settings and the admin list, in the admin chrome every app shares (`web/common/admin.css`), reached from the account menu. It answers to being on the admin list; the pages' admin controls (removing a charity, adding a newsletter date) also want Super Admin Mode on, the switch in the account menu that every app carries, remembered per browser as `birthday.superEdit`.
 
-On phones the top bar carries the page title and a drawer for the rest, and a bottom tab bar holds My Jobs, Process, and Calendar, matching the app this replaces.
+On phones the shared toolbar is pinned on top with a hamburger for the drawer, a teal strip under it carries the page title, and a bottom tab bar holds My Jobs, Process, and Calendar, matching the app this replaces.
+
+## Brand
+
+The cake-on-a-sun mark and the Staff Birthdays lockups live under `web/public/birthday/brand/`, cut from the exports in `~/Dropbox/Kids/Heliosian/images/birthday/` (`birthday.psd` is the master): `appicon.png` for the home-screen icons; the bare mark (`favicon.png` there) for the favicons, `logo-mark.png` (the drawer's head), the app switch row (`web/public/common/brand/apps/birthday.png`) and the maskables at 62% on the icon's dark teal `#0e4d54`; the teal vertical lockup for the rail (`logo-lockup-vertical.png`, 170px wide); the white one for the login page (`logo-lockup-light.png`); the white horizontal for the admin header (`logo-lockup-light-horizontal.png`); the teal horizontal (`logo-lockup.png`) unused so far. The splash battery under `brand/splash/` is the white vertical lockup centered on the teal at every size the shell lists, drawn with ImageMagick rather than downloaded from the old app.
 
 ## Editing
 

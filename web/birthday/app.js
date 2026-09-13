@@ -1,6 +1,6 @@
 import {applyModel, staff, charity} from './state.js';
 import {el} from './dom.js';
-import {initChrome, renderChrome, setTitle} from './chrome.js';
+import {initChrome, renderChrome, setTitle, clearSearch} from './chrome.js';
 import {initModal} from './edit.js';
 import {jobsPage} from './pages/jobs.js';
 import {processPage} from './pages/process.js';
@@ -17,14 +17,13 @@ export async function load() {
     throw new Error(`loading model failed: ${res.status}`);
   }
   applyModel(await res.json());
-  renderChrome();
   render();
 }
 
 export function navigate(path) {
   history.pushState(null, '', path);
   render();
-  window.scrollTo(0, 0);
+  document.querySelector('#main').scrollTo(0, 0);
 }
 
 function notFound(what) {
@@ -66,9 +65,14 @@ function route() {
 }
 
 export function render() {
-  const main = document.querySelector('#page');
-  main.className = '';
-  main.replaceChildren(route());
+  const page = document.querySelector('#page');
+  page.className = '';
+  clearSearch();
+  page.replaceChildren(route());
+  // Admin Tools is its own window: the shell's rail, toolbar and tab bar
+  // step aside for the admin chrome (see pages/admin.js).
+  document.body.classList.toggle('is-admin', location.pathname === '/admin');
+  renderChrome();
 }
 
 document.addEventListener('click', e => {
@@ -81,6 +85,7 @@ document.addEventListener('click', e => {
 });
 
 window.addEventListener('popstate', render);
+document.addEventListener('birthday:refresh', render);
 
 initChrome();
 initModal();

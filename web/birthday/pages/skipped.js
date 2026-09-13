@@ -1,6 +1,6 @@
 import {state, byDepartment, matches} from '../state.js';
-import {el, button, tabs, searchBox} from '../dom.js';
-import {setTitle} from '../chrome.js';
+import {el, button, tabs, pageHead} from '../dom.js';
+import {setTitle, setSearch} from '../chrome.js';
 import {staffRow, emptyPanel} from '../cards.js';
 import {openBirthday, openParticipation} from '../edit.js';
 
@@ -39,27 +39,25 @@ function list() {
 export function skippedPage() {
   setTitle('Skipped');
   const page = el('div', 'list-page');
+  const head = el('div');
   const body = el('div');
   const render = () => {
-    body.replaceChildren(tabs([{key: 'missing', label: 'Missing Birthday'}, {key: 'skipped', label: 'Skipped Birthdays'}], tab, key => {
+    head.replaceChildren(pageHead('Skipped', [button('Add', 'plus', 'button', () => (tab === 'missing' ? openBirthday({}) : openParticipation({})))]));
+    body.replaceChildren(tabs([{key: 'missing', label: 'Missing Birthday', count: state.model.missing.length}, {key: 'skipped', label: 'Opted Out', count: state.model.skipped.length}], tab, key => {
       tab = key;
       render();
     }));
-    const head = el('div', 'list-head');
-    head.append(el('h1', '', tab === 'missing' ? 'Missing Birthdays' : 'Opted Out'));
-    const actions = el('div', 'row-actions');
-    actions.append(searchBox('Search', q => {
-      query = q;
-      body.querySelector('.list').replaceChildren(list());
-    }));
-    actions.append(button('Add', 'plus', 'button', () => (tab === 'missing' ? openBirthday({}) : openParticipation({}))));
-    head.append(actions);
-    body.append(head, el('div', 'section-note', tab === 'missing' ? 'Staff the directory lists who have no birthday on file. Add one, or record that they would rather not take part.' : 'Staff who asked to be left out entirely. Someone who only wants to stay out of the newsletter is still in the process, marked on their page.'));
+    body.append(el('div', 'section-note', tab === 'missing' ? 'Staff the directory lists who have no birthday on file. Add one, or record that they would rather not take part.' : 'Staff who asked to be left out entirely. Someone who only wants to stay out of the newsletter is still in the process, marked on their page.'));
     const wrap = el('div', 'list');
     wrap.append(list());
     body.append(wrap);
   };
+  query = '';
+  setSearch('Search staff…', q => {
+    query = q;
+    body.querySelector('.list').replaceChildren(list());
+  });
   render();
-  page.append(body);
+  page.append(head, body);
   return page;
 }

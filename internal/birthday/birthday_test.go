@@ -60,6 +60,8 @@ func (fakeDirectory) Person(email string) (Person, bool) {
 
 func (fakeDirectory) Staff() []Person { return staff }
 
+func (fakeDirectory) Alerts(string) (int, bool) { return 0, false }
+
 func (fakeDirectory) Departments() []string {
 	return []string{"Admin and Office Staff", "Co-Curriculars and Specialists", "Classroom Teachers", "Facilities Staff"}
 }

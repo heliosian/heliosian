@@ -1,4 +1,4 @@
-import {me, settings, charity, longDate, mediumDate, emailLink, newsletterText, isUnassigned} from '../state.js';
+import {me, isAdmin, settings, charity, longDate, mediumDate, emailLink, newsletterText, isUnassigned} from '../state.js';
 import {el, link, svg, thumb, button, iconButton, copyText} from '../dom.js';
 import {setTitle} from '../chrome.js';
 import {assignToMe, openAssign, markContacted, markUsed, useDefault, reuseLast, openDonation, openBirthday, openParticipation, openNote, removeNote} from '../edit.js';
@@ -173,7 +173,7 @@ function notes(sv) {
   for (const n of sv.notes) {
     const row = el('div', 'note');
     row.append(el('div', 'note-text', n.note), el('div', 'note-meta', `${n.addedBy} · ${mediumDate(n.added)}`));
-    if (n.addedBy === me().email || me().isAdmin) {
+    if (n.addedBy === me().email || isAdmin()) {
       row.append(iconButton('trash', 'Remove note', '', () => removeNote(n)));
     }
     wrap.append(row);

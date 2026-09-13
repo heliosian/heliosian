@@ -1,6 +1,6 @@
 import {state, mine, matches} from '../state.js';
-import {el, tabs, searchBox} from '../dom.js';
-import {setTitle} from '../chrome.js';
+import {el, tabs, pageHead} from '../dom.js';
+import {setTitle, setSearch} from '../chrome.js';
 import {staffRow, emptyPanel, dateSummary} from '../cards.js';
 
 let tab = 'tasks';
@@ -12,9 +12,13 @@ const items = [
   {key: 'done', label: 'All Done', stages: ['Awaiting Newsletter', 'Complete'], empty: "Thank you so much! You're all done!"},
 ];
 
+function inTab(sv, item) {
+  return mine(sv) && item.stages.includes(sv.stage);
+}
+
 function list() {
   const item = items.find(i => i.key === tab);
-  const rows = state.model.staff.filter(sv => mine(sv) && item.stages.includes(sv.stage) && matches(sv, query));
+  const rows = state.model.staff.filter(sv => inTab(sv, item) && matches(sv, query));
   if (!rows.length) {
     return emptyPanel(query ? 'Nothing matches.' : item.empty);
   }
@@ -28,22 +32,23 @@ function list() {
 export function jobsPage() {
   setTitle('My Jobs');
   const page = el('div', 'list-page');
+  page.append(pageHead('My Jobs'));
   const body = el('div');
   const render = () => {
-    body.replaceChildren(tabs(items, tab, key => {
+    const counted = items.map(item => ({...item, count: state.model.staff.filter(sv => inTab(sv, item)).length}));
+    body.replaceChildren(tabs(counted, tab, key => {
       tab = key;
       render();
     }));
-    const head = el('div', 'list-head');
-    head.append(el('h1', '', items.find(i => i.key === tab).label));
-    head.append(searchBox('Search', q => {
-      query = q;
-      body.querySelector('.list').replaceChildren(list());
-    }));
     const wrap = el('div', 'list');
     wrap.append(list());
-    body.append(head, wrap);
+    body.append(wrap);
   };
+  query = '';
+  setSearch('Search my jobs…', q => {
+    query = q;
+    body.querySelector('.list').replaceChildren(list());
+  });
   render();
   page.append(body);
   return page;

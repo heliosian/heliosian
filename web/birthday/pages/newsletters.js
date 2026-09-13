@@ -1,6 +1,6 @@
 import {state, isAdmin, year, staffFor, newsletterText, longDate} from '../state.js';
-import {el, button, searchBox, menu, copyText} from '../dom.js';
-import {setTitle} from '../chrome.js';
+import {el, button, pageHead, menu, copyText} from '../dom.js';
+import {setTitle, setSearch} from '../chrome.js';
 import {newsletterRow, emptyPanel} from '../cards.js';
 import {openNewsletterDate, addNextWeek, removeNewsletterDate} from '../edit.js';
 
@@ -38,18 +38,16 @@ function list() {
 export function newslettersPage() {
   setTitle('Newsletters');
   const page = el('div', 'list-page');
-  const head = el('div', 'list-head');
-  head.append(el('h1', '', 'Newsletter Dates'));
-  const actions = el('div', 'row-actions');
-  actions.append(searchBox('Search', q => {
+  const actions = [];
+  if (isAdmin()) {
+    actions.push(button('Add', 'plus', 'button', openNewsletterDate));
+  }
+  query = '';
+  setSearch('Search newsletter dates…', q => {
     query = q;
     page.querySelector('.list').replaceChildren(list());
-  }));
-  if (isAdmin()) {
-    actions.append(button('Add', 'plus', 'button', openNewsletterDate));
-  }
-  head.append(actions);
-  page.append(head, el('div', 'section-note', `The ${year().current} birthday year runs ${longDate(year().start)} to ${longDate(year().end)}. A birthday lands in the first newsletter on or after it, or the last one of the year for a summer birthday.`));
+  });
+  page.append(pageHead('Newsletter Dates', actions), el('div', 'section-note', `The ${year().current} birthday year runs ${longDate(year().start)} to ${longDate(year().end)}. A birthday lands in the first newsletter on or after it, or the last one of the year for a summer birthday.`));
   const wrap = el('div', 'list');
   wrap.append(list());
   page.append(wrap);

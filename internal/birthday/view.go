@@ -23,6 +23,13 @@ type Directory interface {
 	Person(email string) (Person, bool)
 	Staff() []Person
 	Departments() []string
+	Alerts(email string) (stale int, privacy bool)
+}
+
+// Alerts carries the directory's badge reckoning to the toolbar.
+type Alerts struct {
+	Stale   int  `json:"stale"`
+	Privacy bool `json:"privacy"`
 }
 
 // displayName reads a name out of an address for someone the directory does not
@@ -98,6 +105,7 @@ type View struct {
 	Missing         []StaffView `json:"missing"`
 	Charities       []Charity   `json:"charities"`
 	NewsletterDates []string    `json:"newsletterDates"`
+	Alerts          Alerts      `json:"alerts"`
 	Departments     []string    `json:"departments"`
 }
 
@@ -171,6 +179,8 @@ func Render(model *Model, directory Directory, email string, admin bool, now tim
 		NewsletterDates: model.NewsletterDates,
 		Departments:     directory.Departments(),
 	}
+	stale, privacy := directory.Alerts(email)
+	view.Alerts = Alerts{Stale: stale, Privacy: privacy}
 	// Someone the directory no longer lists has left the school: their row
 	// keeps its history but they are nobody's job.
 	recorded := map[string]bool{}

@@ -100,21 +100,31 @@ export function thumb(person, className) {
   return el('div', 'thumb initial ' + (className || ''), (person.name || '?').slice(0, 1).toUpperCase());
 }
 
-export function searchBox(placeholder, onInput) {
-  const box = el('div', 'search');
-  const input = el('input');
-  input.type = 'search';
-  input.placeholder = placeholder || 'Search';
-  input.addEventListener('input', () => onInput(input.value.trim().toLowerCase()));
-  box.append(svg('search'), input);
-  return box;
+// pageHead is the headline over the swoosh, as every app draws it, with
+// whatever actions belong beside it on the right.
+export function pageHead(title, actions) {
+  const head = el('div', 'page-head');
+  const main = el('div', 'page-head-main');
+  main.append(el('h1', 'page-title', title));
+  head.append(main);
+  if (actions && actions.length) {
+    const wrap = el('div', 'page-actions');
+    wrap.append(...actions);
+    head.append(wrap);
+  }
+  return head;
 }
 
+// tabs draws the list's tabs, each with its count when the item carries one.
 export function tabs(items, active, onPick) {
   const bar = el('div', 'tabs');
   for (const item of items) {
-    const b = el('button', item.key === active ? 'is-active' : '', item.label);
+    const b = el('button', item.key === active ? 'is-active' : '');
     b.type = 'button';
+    b.append(el('span', '', item.label));
+    if (item.count !== undefined) {
+      b.append(el('span', 'tab-count', String(item.count)));
+    }
     b.addEventListener('click', () => onPick(item.key));
     bar.append(b);
   }

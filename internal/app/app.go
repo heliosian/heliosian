@@ -306,9 +306,11 @@ func (u upcomingEvents) list() []home.Event {
 
 // birthdayDirectory hands the birthday app the directory's view of people: who
 // an address resolves to, what is known about one person, and every staff
-// member, with departments in the order the directory lists them.
+// member, with departments in the order the directory lists them, and the
+// toolbar's badges.
 type birthdayDirectory struct {
-	cache *who.Cache
+	cache    *who.Cache
+	settings *config.Cache
 }
 
 func (d birthdayDirectory) Resolve(email string) string {
@@ -340,6 +342,11 @@ func (d birthdayDirectory) Staff() []birthday.Person {
 
 func (d birthdayDirectory) Departments() []string {
 	return d.cache.Model().Departments
+}
+
+func (d birthdayDirectory) Alerts(email string) (int, bool) {
+	alerts := d.cache.Alerts(email, d.settings.Settings().StaleYears)
+	return alerts.Stale, alerts.Privacy
 }
 
 // celebrateDirectory hands Helios Celebrate the directory's view
@@ -671,7 +678,7 @@ func NewCore(cfg Config) *Core {
 	eventsMux := http.NewServeMux()
 	events.Register(eventsMux, eventsCache, cfg.Writer, queue, cfg.Store, directory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.Mail)
 	birthdayMux := http.NewServeMux()
-	birthday.Register(birthdayMux, birthdayCache, cfg.Writer, queue, birthdayDirectory{cache}, settings.SuperAdmins)
+	birthday.Register(birthdayMux, birthdayCache, cfg.Writer, queue, birthdayDirectory{cache, settings}, settings.SuperAdmins)
 	celebrateMux := http.NewServeMux()
 	celebrate.Register(celebrateMux, celebrateCache, cfg.Writer, queue, cfg.Store, celebrateDirectory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.CelebrateMail)
 	calendarMux := http.NewServeMux()

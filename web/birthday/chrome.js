@@ -1,8 +1,12 @@
-import {me, isAdmin} from './state.js';
+import {state, me, isAdmin, isSystemAdmin, setSuperEdit} from './state.js';
 import {el, svg, link} from './dom.js';
+import {renderAvatars, renderAlerts, onSlash, initAppSwitch, markSuper} from '/toolbar.js';
 
 const appName = 'Helios Staff Birthdays';
 
+// The rail and the drawer show all of these; the phone's tab bar keeps the
+// first three. /admin is deliberately absent - Admin Tools is reached from
+// the account menu, as in every app.
 const primary = [
   {href: '/', icon: 'jobs', label: 'My Jobs'},
   {href: '/process', icon: 'process', label: 'Process'},
@@ -13,7 +17,6 @@ const more = [
   {href: '/charities', icon: 'gift', label: 'Charities'},
   {href: '/newsletters', icon: 'newsletter', label: 'Newsletters'},
   {href: '/skipped', icon: 'skipped', label: 'Skipped'},
-  {href: '/admin', icon: 'tools', label: 'Admin Tools', admin: true},
 ];
 
 function active(href) {
@@ -34,34 +37,21 @@ function navLink(item) {
 }
 
 function closeMenus() {
-  for (const menu of document.querySelectorAll('.more-menu, .row-menu, #user-menu')) {
+  for (const menu of document.querySelectorAll('.row-menu, .user-menu')) {
     menu.hidden = true;
+  }
+}
+
+function fillNav(nav) {
+  for (const item of [...primary, ...more]) {
+    nav.append(navLink(item));
   }
 }
 
 function renderNav() {
   const nav = document.querySelector('#nav');
   nav.replaceChildren();
-  for (const item of primary) {
-    nav.append(navLink(item));
-  }
-  const wrap = el('div', 'more-wrap');
-  const button = el('button', 'more-button' + (more.some(item => active(item.href)) ? ' is-active' : ''));
-  button.type = 'button';
-  button.append(svg('menu'), el('span', '', 'More'));
-  const menu = el('div', 'more-menu');
-  menu.hidden = true;
-  for (const item of more.filter(item => !item.admin || isAdmin())) {
-    menu.append(navLink(item));
-  }
-  button.addEventListener('click', e => {
-    e.stopPropagation();
-    const opening = menu.hidden;
-    closeMenus();
-    menu.hidden = !opening;
-  });
-  wrap.append(button, menu);
-  nav.append(wrap);
+  fillNav(nav);
 }
 
 function renderTabbar() {
@@ -77,7 +67,7 @@ function renderDrawer() {
   drawer.replaceChildren();
   const head = el('div', 'drawer-head');
   const icon = el('img');
-  icon.src = '/brand/icon-192.png';
+  icon.src = '/brand/logo-mark.png';
   icon.alt = '';
   const close = el('button', 'icon-button');
   close.type = 'button';
@@ -86,11 +76,14 @@ function renderDrawer() {
   close.addEventListener('click', closeDrawer);
   head.append(icon, el('span', '', appName), close);
   drawer.append(head);
-  for (const item of [...primary, ...more].filter(item => !item.admin || isAdmin())) {
-    drawer.append(navLink(item));
-  }
+  const nav = el('nav', 'app-nav drawer-nav');
+  fillNav(nav);
+  drawer.append(nav);
   const user = el('div', 'drawer-user');
   user.append(el('div', 'name', me().name), el('div', 'email', me().email));
+  if (isSystemAdmin()) {
+    user.append(link('/admin', 'drawer-admin', 'Admin Tools'));
+  }
   const form = el('form');
   form.method = 'post';
   form.action = '/auth/logout';
@@ -110,18 +103,66 @@ export function closeDrawer() {
 
 function renderUser() {
   const user = me();
-  const avatar = document.querySelector('.user-avatar');
-  avatar.replaceChildren();
-  if (user.photoUrl) {
-    const img = el('img');
-    img.src = user.photoUrl;
-    img.alt = '';
-    avatar.append(img);
-  } else {
-    avatar.textContent = user.initial;
+  renderAvatars({photoUrl: user.photoUrl, initial: user.initial});
+  renderAlerts(state.model.alerts || {});
+  for (const line of document.querySelectorAll('.user-menu-email')) {
+    line.textContent = user.email;
   }
-  document.querySelector('.user-menu-email').textContent = user.email;
-  document.querySelector('.user-menu-admin').hidden = !isAdmin();
+  // The switch and Admin Tools go with being on the admin list; what the
+  // pages offer comes and goes with the hat.
+  for (const row of document.querySelectorAll('.user-menu-super, .user-menu-admin')) {
+    row.hidden = !isSystemAdmin();
+  }
+  for (const box of document.querySelectorAll('.super-edit-checkbox')) {
+    box.checked = state.superEdit;
+  }
+  markSuper(isAdmin());
+}
+
+// One search box, in the top bar, and each page says what it filters. app.js
+// clears the binding on every route change. A page that filters nothing (a
+// staff member's page, the calendar) keeps the box, with the process list
+// as its subject: typing there jumps to that list with the words carried
+// along.
+let onSearch = null;
+let carriedQuery = '';
+
+const defaultPlaceholder = 'Search staff…';
+
+function searchInput() {
+  return document.querySelector('#search-input');
+}
+
+export function setSearch(placeholder, handler) {
+  onSearch = handler;
+  const query = carriedQuery;
+  carriedQuery = '';
+  const input = searchInput();
+  input.value = query;
+  input.placeholder = placeholder || defaultPlaceholder;
+  if (query) {
+    handler(query.trim().toLowerCase());
+  }
+}
+
+export function clearSearch() {
+  onSearch = null;
+  const input = searchInput();
+  input.value = '';
+  input.placeholder = defaultPlaceholder;
+}
+
+function search(value) {
+  if (onSearch) {
+    onSearch(value.trim().toLowerCase());
+    return;
+  }
+  if (!value.trim()) {
+    return;
+  }
+  carriedQuery = value;
+  history.pushState(null, '', '/process');
+  document.dispatchEvent(new CustomEvent('birthday:refresh'));
 }
 
 export function setTitle(title) {
@@ -129,15 +170,28 @@ export function setTitle(title) {
   document.title = title === appName ? title : `${title} · ${appName}`;
 }
 
+// syncViewportHeight is the fix Helios Who? carries for the phone shell: in
+// standalone mode 100dvh can settle short after an in-page route change, so
+// --vh100 stands in for it (see team's chrome.js for the long version).
+function syncViewportHeight() {
+  const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  const height = standalone ? screen.height : window.innerHeight;
+  document.documentElement.style.setProperty('--vh100', height + 'px');
+}
+
 export function renderChrome() {
+  syncViewportHeight();
   renderUser();
   renderNav();
   renderTabbar();
 }
 
 export function initChrome() {
+  initAppSwitch();
   document.querySelector('#menu-button').append(svg('menu'));
   document.querySelector('#menu-button').addEventListener('click', openDrawer);
+  searchInput().addEventListener('input', () => search(searchInput().value));
+  onSlash(() => searchInput().focus());
   document.querySelector('#drawer-overlay').addEventListener('click', e => {
     if (e.target === e.currentTarget) {
       closeDrawer();
@@ -148,13 +202,23 @@ export function initChrome() {
       closeDrawer();
     }
   });
-  const menu = document.querySelector('#user-menu');
+  const panel = document.querySelector('#user-menu');
   document.querySelector('#user').addEventListener('click', e => {
     e.stopPropagation();
-    const opening = menu.hidden;
+    const opening = panel.hidden;
     closeMenus();
-    menu.hidden = !opening;
+    panel.hidden = !opening;
   });
+  // Super Admin Mode puts an admin's hat on or takes it off; the page
+  // repaints as the other kind of user.
+  for (const box of document.querySelectorAll('.super-edit-checkbox')) {
+    box.addEventListener('change', () => {
+      setSuperEdit(box.checked);
+      document.dispatchEvent(new CustomEvent('birthday:refresh'));
+    });
+  }
+  window.addEventListener('resize', syncViewportHeight);
+  window.addEventListener('orientationchange', syncViewportHeight);
   document.addEventListener('click', closeMenus);
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {

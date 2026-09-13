@@ -53,9 +53,11 @@ export function calendarPage() {
     month = new Date(now.getFullYear(), now.getMonth(), 1);
   }
   const page = el('div', 'list-page');
-  const head = el('div', 'calendar-head');
-  const title = el('h1', '', monthFormat.format(month));
-  const nav = el('div', 'row-actions');
+  const head = el('div', 'page-head');
+  const main = el('div', 'page-head-main');
+  const title = el('h1', 'page-title', monthFormat.format(month));
+  main.append(title);
+  const nav = el('div', 'page-actions calendar-nav');
   const step = n => {
     month = new Date(month.getFullYear(), month.getMonth() + n, 1);
     title.textContent = monthFormat.format(month);
@@ -75,7 +77,7 @@ export function calendarPage() {
   next.append(svg('next'));
   next.addEventListener('click', () => step(1));
   nav.append(prev, next);
-  head.append(title, nav);
+  head.append(main, nav);
   const legend = el('div', 'legend');
   for (const stage of ['Wait', 'Awaiting Outreach', 'Awaiting Response', 'Awaiting Newsletter', 'Complete']) {
     legend.append(el('span', 'chip ' + stageClass(stage), stage));

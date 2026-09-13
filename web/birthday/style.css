@@ -1,17 +1,25 @@
+/* Helios Staff Birthdays, on the shell HCA-Team and Helios Celebrate use - a
+   rail beside the shared toolbar (web/common/toolbar.css), which reads
+   --brand, --line, --ink, --muted and --input from here. The palette is
+   sampled from the logo art (~/Dropbox/Kids/Heliosian/images/birthday): the
+   dark teal of STAFF, the lighter teal of BIRTHDAYS (darkened where it
+   carries text), the olive of the tagline, the sun for the swoosh under a
+   page's title - the family Helios Celebrate's art shares. */
 :root {
-  --slate: #2f6783;
-  --slate-dark: #25536a;
-  --slate-deep: #1b2733;
-  --accent: #f6a21e;
-  --page: #fafafa;
+  --brand: #0e4d54;
+  --brand-dark: #0c3d41;
+  --brand-deep: #0a3236;
+  --accent: #1f838a;
+  --yellow: #fbe34f;
+  --green: #89a800;
+  --page: #f4f8f8;
   --card: #ffffff;
-  --line: #e6e6e6;
+  --line: #e2e8e9;
   --ink: #0d0d0d;
-  --muted: #6f6f6f;
-  --input: #efefef;
+  --muted: #647071;
+  --input: #edf2f2;
   --alert: #c0392b;
   --ok: #2f7d4f;
-  --topbar: 56px;
   --tabbar: 64px;
 }
 
@@ -19,8 +27,14 @@
 
 html, body { margin: 0; min-height: 100%; }
 
+/* The canvas behind the page, for standalone (home screen) mode: a route
+   change can show a sliver of it for a frame at either edge, and the page
+   colour reads as the page where white would read as a flash. */
+html { background: var(--page); }
+
 body {
-  min-height: 100vh;
+  margin: 0;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
   background: var(--page);
@@ -29,177 +43,92 @@ body {
   font-size: 15px;
   line-height: 1.4;
   -webkit-font-smoothing: antialiased;
-  padding-top: env(safe-area-inset-top);
 }
 
 a { color: inherit; }
 
 button { font: inherit; }
 
-.topbar {
-  position: sticky;
-  top: 0;
-  z-index: 20;
+/* Shell: a fixed-height sidebar beside a content column whose main scrolls on
+   its own, so the toolbar stays put while the page moves. */
+.app-shell { display: flex; flex: 1; min-height: 0; }
+
+/* The rail: the pale teal wash Celebrate's has. It is the viewport's height
+   and never scrolls; the nav scrolls inside it on a short screen. */
+.sidebar {
+  width: 240px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, #eef5f4 0%, #dcebe9 55%, #c5dfdc 100%);
+  border-right: 1px solid var(--line);
+  z-index: 1;
+}
+
+/* The rail carries the vertical lockup, as HCA-Team's and Celebrate's do. */
+.brand { display: flex; justify-content: center; padding: 16px 16px 6px; flex-shrink: 0; }
+
+.brand a { display: block; line-height: 0; }
+
+.brand img { width: 170px; max-width: 100%; height: auto; display: block; }
+
+.app-nav { display: flex; flex-direction: column; gap: 2px; flex: 1; padding: 14px 10px; overflow-y: auto; }
+
+.app-nav a {
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: var(--topbar);
-  padding: 0 20px;
-  background: var(--slate-deep);
-  color: #fff;
-}
-
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  text-decoration: none;
-  font-weight: 700;
-  font-size: 17px;
-  white-space: nowrap;
-  margin-right: 12px;
-}
-
-.brand img { width: 30px; height: 30px; border-radius: 6px; }
-
-.mobile-title { display: none; }
-
-.nav { display: flex; align-items: center; justify-content: center; gap: 4px; flex: 1; }
-
-.nav a, .nav .more-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border-radius: 8px;
-  color: rgba(255, 255, 255, 0.75);
-  text-decoration: none;
-  font-weight: 500;
-  border: 0;
-  background: none;
-  cursor: pointer;
-}
-
-.nav a.is-active, .nav .more-button.is-active { background: rgba(255, 255, 255, 0.12); color: #fff; }
-
-.nav a:hover, .nav .more-button:hover { background: rgba(255, 255, 255, 0.12); color: #fff; }
-
-.nav svg { width: 18px; height: 18px; }
-
-.more-wrap { position: relative; }
-
-.more-menu, .row-menu {
-  position: absolute;
-  right: 0;
-  top: 44px;
-  min-width: 200px;
-  background: #fff;
-  color: var(--ink);
+  gap: 12px;
+  min-height: 42px;
+  padding: 0 12px;
   border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
-  padding: 6px 0;
-  z-index: 30;
-}
-
-.nav .more-menu { left: 0; right: auto; }
-
-.more-menu a, .more-menu button, .row-menu button {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 10px 16px;
-  border: 0;
-  background: none;
-  color: var(--ink);
+  color: var(--brand);
   text-decoration: none;
-  text-align: left;
-  cursor: pointer;
-  font-weight: 500;
-}
-
-.more-menu a:hover, .more-menu button:hover, .row-menu button:hover { background: var(--input); }
-
-.more-menu svg, .row-menu svg { width: 16px; height: 16px; }
-
-.row-menu button.danger { color: var(--alert); }
-
-.topbar-user { position: relative; margin-left: auto; }
-
-.user { border: 0; background: none; padding: 0; cursor: pointer; }
-
-.user-avatar {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: #fde7d8;
-  color: var(--accent);
-  font-weight: 700;
   font-size: 14px;
-  overflow: hidden;
+  font-weight: 600;
 }
 
-.user-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.app-nav a svg { width: 20px; height: 20px; flex-shrink: 0; }
 
-.user-menu {
-  position: absolute;
-  right: 0;
-  top: 40px;
-  min-width: 220px;
-  background: #fff;
-  color: var(--ink);
-  border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
-  padding: 6px 0;
-  z-index: 30;
+.app-nav a:hover { background: rgba(255, 255, 255, 0.55); }
+
+.app-nav a.is-active { background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
+
+.content-col { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+
+/* The page scrolls inside main; the page's bottom padding keeps the last row
+   clear. */
+main {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
 }
 
-.user-menu-email {
-  padding: 8px 16px;
-  font-size: 12px;
-  color: var(--muted);
-  border-bottom: 1px solid var(--line);
-  margin-bottom: 4px;
-}
-
-.user-menu a, .user-menu button {
-  display: block;
-  width: 100%;
-  text-align: left;
-  padding: 10px 16px;
-  color: var(--ink);
-  text-decoration: none;
-  background: none;
-  border: 0;
-  cursor: pointer;
-}
-
-.user-menu a:hover, .user-menu button:hover { background: var(--input); }
+#page { flex: 1; width: 100%; max-width: 1080px; margin: 0 auto; padding: 24px 24px 120px; }
 
 .icon-button {
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
-  border: 0;
-  background: none;
-  cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
   color: inherit;
+  cursor: pointer;
   padding: 0;
+  flex-shrink: 0;
 }
 
 .icon-button:hover { background: rgba(0, 0, 0, 0.06); }
 
 .icon-button svg { width: 20px; height: 20px; }
 
-.icon-button.filled { background: var(--slate); color: #fff; border-radius: 10px; width: 40px; height: 40px; }
+.icon-button.filled { background: var(--brand); color: #fff; border-radius: 10px; width: 40px; height: 40px; }
 
-.icon-button.filled:hover { background: var(--slate-dark); }
+.icon-button.filled:hover { background: var(--brand-dark); }
 
 .icon-button.round { border-radius: 50%; background: rgba(255, 255, 255, 0.15); color: #fff; width: 40px; height: 40px; }
 
@@ -209,20 +138,51 @@ button { font: inherit; }
 
 .detail-actions .icon-button { border: 1px solid var(--line); border-radius: 10px; width: 40px; height: 40px; background: #fff; }
 
-.detail-actions .icon-button.filled { border: 0; background: var(--slate); }
+.detail-actions .icon-button.filled { border: 0; background: var(--brand); }
 
-.menu-button { display: none; color: #fff; }
+/* A row's own menu (the three dots), hung off its actions. */
+.more-wrap { position: relative; }
+
+.row-menu {
+  position: absolute;
+  right: 0;
+  top: 44px;
+  min-width: 200px;
+  background: #fff;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+  padding: 6px 0;
+  z-index: 30;
+}
+
+.row-menu button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 16px;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.row-menu button:hover { background: var(--input); }
+
+.row-menu svg { width: 16px; height: 16px; }
+
+.row-menu button.danger { color: var(--alert); }
+
+/* Phone chrome, off until the breakpoint. */
+.mobile-top { display: none; }
 
 .tabbar { display: none; }
 
-.drawer-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.4);
-  z-index: 40;
-}
-
-.drawer-overlay[hidden] { display: none; }
+.drawer-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.4); z-index: 40; }
 
 .drawer {
   width: 300px;
@@ -234,52 +194,123 @@ button { font: inherit; }
   flex-direction: column;
 }
 
-.drawer-head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 0 16px 16px;
-  font-weight: 700;
-  font-size: 17px;
-}
+.drawer-head { display: flex; align-items: center; gap: 10px; padding: 0 16px 16px; font-weight: 700; font-size: 17px; }
 
-.drawer-head img { width: 32px; height: 32px; border-radius: 6px; }
+.drawer-head img { height: 32px; width: auto; }
 
 .drawer-head .icon-button { margin-left: auto; }
 
-.drawer a {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 12px 20px;
-  color: var(--ink);
-  text-decoration: none;
-  font-size: 16px;
-}
+.drawer-nav { padding: 0; }
 
-.drawer a.is-active { background: var(--input); }
+.drawer a { display: flex; align-items: center; gap: 14px; padding: 12px 20px; color: var(--ink); text-decoration: none; font-size: 16px; border-radius: 0; }
+
+.drawer a.is-active { background: var(--input); box-shadow: none; }
 
 .drawer svg { width: 20px; height: 20px; }
 
-.drawer-user {
-  margin-top: auto;
-  padding: 16px 20px 0;
-  border-top: 1px solid var(--line);
-}
+.drawer-user { margin-top: auto; padding: 16px 20px 0; border-top: 1px solid var(--line); }
 
 .drawer-user .name { font-weight: 700; }
 
 .drawer-user .email { font-size: 12px; color: var(--muted); }
 
+.drawer-user .drawer-admin { display: block; padding: 10px 0 0; font-size: 14px; font-weight: 600; color: var(--brand); }
+
 .drawer-user form { margin-top: 10px; }
 
-main {
-  flex: 1;
-  width: 100%;
-  max-width: 1080px;
-  margin: 0 auto;
-  padding: 16px 20px 60px;
+/* Page heads: the headline over the yellow swoosh, as Helios Who? draws it,
+   with the page's actions beside it. */
+.page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; flex-wrap: wrap; margin: 4px 0 18px; }
+
+.page-head-main { min-width: 0; }
+
+.page-title {
+  position: relative;
+  z-index: 0;
+  display: inline-block;
+  font-family: Montserrat, Roboto, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  font-size: 38px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+  margin: 0;
+  padding-bottom: 12px;
+  color: var(--brand);
 }
+
+.page-title::after {
+  content: "";
+  position: absolute;
+  left: 2%;
+  right: 2%;
+  bottom: 6px;
+  height: 16px;
+  background-image: url('/swoosh.png');
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  z-index: -1;
+}
+
+.page-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; padding-bottom: 14px; }
+
+.page-head .row-text { margin: 4px 0 0; }
+
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 16px; overflow-x: auto; }
+
+.tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 14px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  background: none;
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tabs button.is-active { color: var(--brand); border-bottom-color: var(--brand); }
+
+.tab-count { min-width: 20px; padding: 0 6px; border-radius: 999px; background: var(--input); font-size: 11.5px; font-weight: 700; line-height: 18px; text-align: center; }
+
+.tabs button.is-active .tab-count { background: var(--brand); color: #fff; }
+
+/* Admin Tools takes the window: the shell's rail and bars step aside and the
+   shared admin chrome (admin.css) fills it. */
+body.is-admin > .app-shell > .sidebar,
+body.is-admin > .app-shell .topbar,
+body.is-admin > .mobile-top,
+body.is-admin > .tabbar { display: none !important; }
+
+body.is-admin #page { max-width: none; padding: 0; }
+
+body.is-admin main { padding: 0; }
+
+.admin { min-height: 100%; display: flex; flex-direction: column; background: #f7f8f9; }
+
+.admin-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+
+.admin-row:first-of-type { border-top: 0; }
+
+.admin-row .grow { flex: 1; min-width: 0; }
+
+.admin-row .sub { font-size: 13px; color: var(--muted); }
+
+.admin-row .sub.pre { white-space: pre-line; }
+
+.add-row { display: flex; gap: 10px; margin-top: 16px; align-items: center; }
+
+.add-row input { flex: 1; padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; }
 
 .button {
   display: inline-flex;
@@ -288,7 +319,7 @@ main {
   padding: 9px 16px;
   border-radius: 8px;
   border: 0;
-  background: var(--slate);
+  background: var(--brand);
   color: #fff;
   font-weight: 700;
   cursor: pointer;
@@ -296,7 +327,7 @@ main {
   text-decoration: none;
 }
 
-.button:hover { background: var(--slate-dark); }
+.button:hover { background: var(--brand-dark); }
 
 .button svg { width: 16px; height: 16px; }
 
@@ -315,7 +346,7 @@ main {
 .link-button {
   background: none;
   border: 0;
-  color: var(--slate);
+  color: var(--brand);
   font-weight: 600;
   cursor: pointer;
   padding: 4px 8px;
@@ -323,50 +354,6 @@ main {
 }
 
 .link-button.danger { color: var(--alert); }
-
-.tabs {
-  display: flex;
-  gap: 4px;
-  border-bottom: 1px solid var(--line);
-  margin-bottom: 16px;
-  overflow-x: auto;
-}
-
-.tabs button {
-  border: 0;
-  background: none;
-  color: var(--muted);
-  padding: 10px 12px;
-  border-bottom: 2px solid transparent;
-  cursor: pointer;
-  white-space: nowrap;
-  font-weight: 500;
-}
-
-.tabs button.is-active { color: var(--ink); border-bottom-color: var(--slate); font-weight: 700; }
-
-.search {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: var(--input);
-  border-radius: 8px;
-  padding: 8px 12px;
-  min-width: 220px;
-}
-
-.search input {
-  border: 0;
-  background: none;
-  color: inherit;
-  font: inherit;
-  outline: none;
-  width: 100%;
-}
-
-.search input::placeholder { color: var(--muted); }
-
-.search svg { width: 16px; height: 16px; opacity: 0.7; }
 
 .section-title { font-size: 16px; font-weight: 700; margin: 24px 0 8px; }
 
@@ -415,7 +402,7 @@ main {
   font-size: 28px;
   font-weight: 700;
   color: #fff;
-  background: var(--slate);
+  background: var(--brand);
 }
 
 .row-body { flex: 1; min-width: 0; }
@@ -425,7 +412,7 @@ main {
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--slate);
+  color: var(--accent);
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -475,7 +462,7 @@ main {
 
 .stage-complete { background: #5a7d3c; }
 
-.chip.newsletter { background: #e9eef2; color: var(--slate); }
+.chip.newsletter { background: #e9eef2; color: var(--brand); }
 
 .legend { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
 
@@ -512,14 +499,17 @@ main {
 
 .fact-value { color: var(--muted); font-size: 14px; }
 
-a.fact-value { color: var(--slate); }
+a.fact-value { color: var(--brand); }
 
+/* The bands on a staff member's page: rounded, as Celebrate's gala band is,
+   rather than bleeding to the page's edges. */
 .steps-band, .donation-band, .ask-band {
-  margin: 20px -20px 0;
-  padding: 18px 20px;
+  margin: 20px 0 0;
+  padding: 18px 24px;
+  border-radius: 14px;
 }
 
-.steps-band { background: var(--slate-deep); color: #fff; }
+.steps-band { background: var(--brand-deep); color: #fff; }
 
 .band-inner { max-width: 760px; margin: 0 auto; }
 
@@ -537,7 +527,7 @@ a.fact-value { color: var(--slate); }
 
 .ask-icon { font-size: 34px; flex-shrink: 0; }
 
-.donation-band { background: var(--slate); color: #fff; }
+.donation-band { background: var(--brand); color: #fff; }
 
 .donation-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; max-width: 760px; margin: 0 auto; }
 
@@ -568,15 +558,6 @@ a.fact-value { color: var(--slate); }
 .center-actions { display: flex; justify-content: center; gap: 8px; margin: 18px 0; flex-wrap: wrap; }
 
 h2.section { font-size: 20px; margin: 24px 0 12px; }
-
-.calendar-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin: 4px 0 12px;
-}
-
-.calendar-head h1 { margin: 0; }
 
 .calendar {
   display: grid;
@@ -621,46 +602,6 @@ h2.section { font-size: 20px; margin: 24px 0 12px; }
   text-decoration: none;
 }
 
-.list-page h1 { font-size: 26px; margin: 8px 0 12px; }
-
-.list-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
-
-.list-head h1 { margin: 0; }
-
-.list-head .row-text { margin: 0; }
-
-.admin-card {
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 20px 24px;
-  margin-bottom: 20px;
-}
-
-.admin-card h2 { font-size: 16px; margin: 0 0 4px; }
-
-.admin-card .hint { font-size: 13px; color: var(--muted); margin-bottom: 16px; }
-
-.admin-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 0;
-  border-top: 1px solid var(--line);
-}
-
-.admin-row:first-of-type { border-top: 0; }
-
-.admin-row .grow { flex: 1; min-width: 0; }
-
-.admin-row .sub { font-size: 13px; color: var(--muted); }
-
-.admin-row .sub.pre { white-space: pre-line; }
-
-.add-row { display: flex; gap: 10px; margin-top: 16px; align-items: center; }
-
-.add-row input { flex: 1; padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; }
-
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -671,8 +612,6 @@ h2.section { font-size: 20px; margin: 24px 0 12px; }
   padding: 20px;
   z-index: 50;
 }
-
-.modal-overlay[hidden] { display: none; }
 
 .modal {
   background: #fff;
@@ -717,7 +656,7 @@ h2.section { font-size: 20px; margin: 24px 0 12px; }
 
 .field-toggle > span { margin: 0; }
 
-.field-toggle input { width: 20px; height: 20px; accent-color: var(--slate); flex-shrink: 0; }
+.field-toggle input { width: 20px; height: 20px; accent-color: var(--brand); flex-shrink: 0; }
 
 .field-note { margin: -6px 0 10px; font-size: 13px; }
 
@@ -739,16 +678,38 @@ h2.section { font-size: 20px; margin: 24px 0 12px; }
   padding: 10px 18px;
   border-radius: 999px;
   font-size: 14px;
-  z-index: 60;
+  z-index: 70;
 }
 
-@media (max-width: 760px) {
-  body { padding-bottom: calc(var(--tabbar) + env(safe-area-inset-bottom)); }
-  .topbar { padding: 0 8px; gap: 4px; }
-  .brand { display: none; }
-  .menu-button { display: inline-flex; }
-  .mobile-title { display: block; flex: 1; text-align: center; font-weight: 700; font-size: 17px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .nav { display: none; }
+@media (max-width: 900px) {
+  body { display: block; height: auto; }
+  .sidebar { display: none; }
+  .app-shell { display: block; min-height: 0; }
+  .content-col { display: block; }
+  main {
+    display: block;
+    height: var(--vh100, 100dvh);
+    overflow-y: auto;
+    padding-top: calc(88px + env(safe-area-inset-top));
+    padding-bottom: calc(var(--tabbar) + env(safe-area-inset-bottom));
+  }
+  #page { padding: 12px 12px 40px; }
+  /* The shared toolbar is pinned on top (toolbar.css); this is the title
+     strip under it. */
+  .mobile-top {
+    display: flex;
+    align-items: center;
+    position: fixed;
+    top: calc(48px + env(safe-area-inset-top));
+    left: 0;
+    right: 0;
+    height: 40px;
+    padding: 0 12px;
+    background: var(--brand);
+    color: #fff;
+    z-index: 29;
+  }
+  .mobile-title { flex: 1; min-width: 0; text-align: center; font-weight: 600; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .tabbar {
     display: flex;
     position: fixed;
@@ -761,21 +722,12 @@ h2.section { font-size: 20px; margin: 24px 0 12px; }
     border-top: 1px solid var(--line);
     z-index: 20;
   }
-  .tabbar a {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 3px;
-    color: var(--muted);
-    text-decoration: none;
-    font-size: 11px;
-  }
-  .tabbar a.is-active { color: var(--slate); }
+  .tabbar a { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: var(--muted); text-decoration: none; font-size: 11px; }
+  .tabbar a.is-active { color: var(--brand); }
   .tabbar svg { width: 22px; height: 22px; }
-  main { padding: 12px 12px 40px; }
-  .steps-band, .donation-band, .ask-band { margin-left: -12px; margin-right: -12px; padding-left: 12px; padding-right: 12px; }
+  .page-title { font-size: 28px; }
+  .page-head { gap: 12px; }
+  .steps-band, .donation-band, .ask-band { padding-left: 16px; padding-right: 16px; }
   .row { gap: 10px; padding: 10px; }
   .thumb { width: 60px; height: 60px; }
   .row-actions .button span { display: none; }
@@ -786,5 +738,5 @@ h2.section { font-size: 20px; margin: 24px 0 12px; }
   .donation-cols { grid-template-columns: 1fr; }
   .calendar .day { min-height: 72px; padding: 3px; }
   .calendar .chip { font-size: 10px; padding: 1px 4px; }
-  .search { min-width: 0; flex: 1; }
+  .modal { padding: 16px; }
 }
