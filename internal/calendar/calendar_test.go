@@ -100,7 +100,7 @@ func TestDays(t *testing.T) {
 		{"2026-09-07", "Jays", "No School"},
 		{"2026-09-30", "Condors", "Early Dismissal"},
 		{"2026-12-17", "Ospreys", "No Aftercare"},
-		{"2026-12-18", "Ospreys", "No Aftercare"},
+		{"2026-12-18", "Ospreys", "No School"},
 		{"2026-12-25", "Egrets", "No School"},
 		{"2027-06-04", "Egrets", "Early Dismissal"},
 		{"2026-08-22", "Hawks", ""},
@@ -128,11 +128,25 @@ func TestDays(t *testing.T) {
 	}
 }
 
+func TestNoSchoolWins(t *testing.T) {
+	tb := tables(t)
+	tb.Events = append(tb.Events, map[string]string{"Event ID": "X1", "Start": "2026-09-08", "Title": "Short Day", "Tags": "Jays, Schedule", "Day Type": "Early Dismissal"})
+	tb.Events = append(tb.Events, map[string]string{"Event ID": "X2", "Start": "2026-09-08", "Title": "Closed", "Tags": "Jays, Schedule", "Day Type": "No School"})
+	tb.Events = append(tb.Events, map[string]string{"Event ID": "X3", "Start": "2026-09-08", "Title": "Still Short", "Tags": "Jays, Schedule", "Day Type": "Early Dismissal"})
+	m, err := BuildModel(tb, roster)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := m.Plan("2026-09-08", "Jays"); got.Name != "No School" {
+		t.Errorf("plan = %s, want No School", got.Name)
+	}
+}
+
 func TestRefusals(t *testing.T) {
 	broken := map[string]func(*Tables){
 		"conflicting day types in one layer": func(tb *Tables) {
-			tb.Events = append(tb.Events, map[string]string{"Event ID": "X1", "Start": "2026-09-07", "Title": "Snow Day", "Tags": "Jays, Schedule", "Day Type": "Early Dismissal"})
-			tb.Events = append(tb.Events, map[string]string{"Event ID": "X2", "Start": "2026-09-07", "Title": "Closed", "Tags": "Jays, Schedule", "Day Type": "No School"})
+			tb.Events = append(tb.Events, map[string]string{"Event ID": "X1", "Start": "2026-09-08", "Title": "Short Day", "Tags": "Jays, Schedule", "Day Type": "Early Dismissal"})
+			tb.Events = append(tb.Events, map[string]string{"Event ID": "X2", "Start": "2026-09-08", "Title": "No Care", "Tags": "Jays, Schedule", "Day Type": "No Aftercare"})
 		},
 		"timed event with a day type": func(tb *Tables) {
 			tb.Overrides = append(tb.Overrides, map[string]string{"Event ID": "a7@sample", "Day Type": "Early Dismissal"})

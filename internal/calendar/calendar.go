@@ -28,18 +28,19 @@ const (
 )
 
 const (
-	DateFormat     = "2006-01-02"
-	DateTimeFormat = "2006-01-02 15:04"
-	TimeFormat     = "15:04"
-	RegularDayType = "Regular"
-	Clear          = "-"
-	SourceGoogle   = "google"
-	SourcePDF      = "pdf"
-	SourceSheet    = "sheet"
-	MarkerFirstDay = "First Day"
-	MarkerLastDay  = "Last Day"
-	maxTitleLength = 200
-	maxTextLength  = 6000
+	DateFormat      = "2006-01-02"
+	DateTimeFormat  = "2006-01-02 15:04"
+	TimeFormat      = "15:04"
+	RegularDayType  = "Regular"
+	NoSchoolDayType = "No School"
+	Clear           = "-"
+	SourceGoogle    = "google"
+	SourcePDF       = "pdf"
+	SourceSheet     = "sheet"
+	MarkerFirstDay  = "First Day"
+	MarkerLastDay   = "Last Day"
+	maxTitleLength  = 200
+	maxTextLength   = 6000
 )
 
 var (
@@ -676,19 +677,24 @@ func (b *builder) years(pdfRows []map[string]string) error {
 }
 
 // assign records a day type for classrooms on a date within one layer. Two
-// claims in one layer that differ are refused.
+// claims in one layer that differ are refused, unless one of them is No
+// School, which wins: a break the feed also marks as a no-aftercare day or
+// a half day is still a break.
 func (b *builder) assign(layer map[string]map[string]string, date string, classrooms []string, name, by string) {
 	if layer[date] == nil {
 		layer[date] = map[string]string{}
 	}
 	for _, c := range classrooms {
-		if current, ok := layer[date][c]; ok {
-			if current != name {
-				b.refuse("%s gives %s both %q and %q on %s", by, c, current, name, date)
-			}
-			continue
+		current, ok := layer[date][c]
+		switch {
+		case !ok || current == name:
+			layer[date][c] = name
+		case name == NoSchoolDayType:
+			layer[date][c] = name
+		case current == NoSchoolDayType:
+		default:
+			b.refuse("%s gives %s both %q and %q on %s", by, c, current, name, date)
 		}
-		layer[date][c] = name
 	}
 }
 

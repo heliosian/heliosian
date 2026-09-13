@@ -25,7 +25,7 @@ Tags are one list saying what an event is and who it is for. The who is the narr
 
 ## A load either succeeds whole or refuses
 
-A rule broken refuses the load: a tag no row names, a date that does not parse, two events in one layer giving one classroom two different day types on the same date, an event with no tags, a timed event carrying a day type, which only a whole day can. A load error is fatal to the server, at startup and at every refresh, as the directory's is. The import never builds the model: it pulls, writes, and warns about what it itself saw, and `go run ./cmd/loadcheck` is how an operator checks a sheet after an import, as for every other app.
+A rule broken refuses the load: a tag no row names, a date that does not parse, two events in one layer giving one classroom two different day types on the same date, an event with no tags, a timed event carrying a day type, which only a whole day can. The one disagreement that is not refused is with `No School`, which wins: a holiday the feed also marks as a no-aftercare day, or a conference range that runs across one, is still a holiday. A load error is fatal to the server, at startup and at every refresh, as the directory's is. The import never builds the model: it pulls, writes, and warns about what it itself saw, and `go run ./cmd/loadcheck` is how an operator checks a sheet after an import, as for every other app.
 
 ## The day plan
 
