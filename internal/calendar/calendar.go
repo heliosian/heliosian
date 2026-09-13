@@ -44,6 +44,10 @@ const (
 	TagCelebrate    = "Celebrate"
 	TagHCA          = "HCA"
 	TagMisc         = "Misc"
+	TagGoing        = "Going"
+	TagWaitlisted   = "Waitlisted"
+	MineGoing       = "going"
+	MineWaitlisted  = "waitlisted"
 	MarkerFirstDay  = "First Day"
 	MarkerLastDay   = "Last Day"
 	maxTitleLength  = 200
@@ -125,9 +129,11 @@ type Event struct {
 	Marker      string   `json:"marker,omitempty"`
 	Updated     string   `json:"updated,omitempty"`
 	// Link is the page of an event another app runs, as a path on that site;
-	// Availability is what a reader can do there now.
+	// Availability is what a reader can do there now; Mine is where the
+	// viewer's household already stands with it.
 	Link         string `json:"link,omitempty"`
 	Availability string `json:"availability,omitempty"`
+	Mine         string `json:"mine,omitempty"`
 	Hidden       bool   `json:"-"`
 	duplicate   bool
 	start, end  time.Time

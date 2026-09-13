@@ -485,10 +485,29 @@ export function linkURL(e) {
 
 const callWords = {available: 'Get tickets', waitlist: 'Join the waitlist', 'sold-out': 'Sold out', open: 'Join', full: 'Full'};
 
-// call is what a linked event's row and page say about signing up, or
-// nothing once it has passed or is closed.
+// isParty says which app runs a linked event: a Celebrate party, else an
+// HCA-Team event - the school's own event when one is folded into it.
+export function isParty(e) {
+  return e.source === 'celebrate';
+}
+
+// mineWords is where the viewer's household stands with a linked event, as
+// the row and the page say it in place of the way in.
+export function mineWords(e) {
+  if (e.mine === 'waitlisted') {
+    return 'Waitlisted';
+  }
+  if (e.mine === 'going') {
+    return isParty(e) ? "You're going" : 'Signed up';
+  }
+  return '';
+}
+
+// call is what a linked event's row and page say about signing up: the
+// household's own standing first, else the way in, else nothing once it has
+// passed or is closed.
 export function call(e) {
-  return callWords[e.availability] || '';
+  return mineWords(e) || callWords[e.availability] || '';
 }
 
 export function calendarLink(e) {

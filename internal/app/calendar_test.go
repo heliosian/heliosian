@@ -22,7 +22,18 @@ type directQueue struct{}
 
 func (directQueue) Add(f func()) { f() }
 
-func linkedFromSamples(t *testing.T) []calendar.Linked {
+// sampleHousehold is the Whitfields as the directory would list them for
+// Jordan, and nobody for anyone else.
+type sampleHousehold struct{}
+
+func (sampleHousehold) Household(email string) (adults, kids []celebrate.Person) {
+	if email != "jordan.whitfield@heliosschool.org" {
+		return nil, nil
+	}
+	return []celebrate.Person{{Email: "robin.whitfield@heliosschool.org"}}, []celebrate.Person{{Email: "sam.whitfield@heliosschool.org"}, {Email: "ella.whitfield@heliosschool.org"}}
+}
+
+func samplesLinked(t *testing.T) calendarLinked {
 	t.Helper()
 	t.Chdir("../..")
 	dir := &data.Dir{Root: "sampledata"}
@@ -34,7 +45,39 @@ func linkedFromSamples(t *testing.T) []calendar.Linked {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return calendarLinked{parties, activities}.list()
+	return calendarLinked{parties, activities, sampleHousehold{}}
+}
+
+func linkedFromSamples(t *testing.T) []calendar.Linked {
+	t.Helper()
+	return samplesLinked(t).list("nobody@x.org")
+}
+
+// The viewer's standing: a ticket bought or held by anyone in the household
+// is Going, a waitlist request alone is Waitlisted, a sign-up on an HCA event
+// is Going, and a stranger stands nowhere.
+func TestCalendarLinkedMine(t *testing.T) {
+	linked := samplesLinked(t)
+	byID := map[string]calendar.Linked{}
+	for _, l := range linked.list("jordan.whitfield@heliosschool.org") {
+		byID[l.ID] = l
+	}
+	want := map[string]string{
+		"P001": calendar.MineGoing, "P002": calendar.MineGoing, "P003": calendar.MineGoing, "P005": calendar.MineGoing, "P012": calendar.MineGoing,
+		"P006": calendar.MineWaitlisted, "P007": calendar.MineWaitlisted, "P004": "",
+		"E001": calendar.MineGoing, "E002": "",
+	}
+	for id, mine := range want {
+		l, ok := byID[id]
+		if !ok || l.Mine != mine {
+			t.Errorf("%s: listed %v, mine %q, want %q", id, ok, l.Mine, mine)
+		}
+	}
+	for _, l := range linked.list("nobody@x.org") {
+		if l.Mine != "" {
+			t.Errorf("stranger stands with %s: %q", l.ID, l.Mine)
+		}
+	}
 }
 
 func TestCalendarLinkedParties(t *testing.T) {

@@ -422,7 +422,7 @@ func TestRender(t *testing.T) {
 	if len(v.Feeds) != 1 || v.Today != "2026-09-08" || len(v.Events) != 20 || v.Alerts.Stale != 2 || !v.Alerts.Privacy {
 		t.Errorf("view = feeds %d today %s events %d alerts %+v", len(v.Feeds), v.Today, len(v.Events), v.Alerts)
 	}
-	if v.Days["2026-09-08"]["Jays"] != "Regular" || len(v.Classrooms) != 9 || len(v.Tags) != 18 || v.Colors["Jays"] != "#fec502" {
+	if v.Days["2026-09-08"]["Jays"] != "Regular" || len(v.Classrooms) != 9 || len(v.Tags) != 20 || v.Colors["Jays"] != "#fec502" {
 		t.Errorf("plan, vocabulary, or colors missing")
 	}
 	cases := map[string]string{"sam@x.org": "Jays", "teacher@x.org": "Hawks", "office@x.org": "", "nobody@x.org": ""}
@@ -442,16 +442,16 @@ func TestRenderLinked(t *testing.T) {
 	d := fakeDirectory{people: map[string]Person{}, kids: map[string][]Person{}}
 	at, _ := time.ParseInLocation(DateTimeFormat, "2026-09-08 08:00", Location)
 	linked := []Linked{
-		{Source: SourceCelebrate, ID: "P001", Title: "Fondue & Fort Night", Summary: "A cozy evening of fondue", Description: "Join us.", Location: "The Parks' House", Start: "2026-09-19 17:00", End: "2026-09-19 21:00", Path: "/p/fondue", Availability: "available"},
+		{Source: SourceCelebrate, ID: "P001", Title: "Fondue & Fort Night", Summary: "A cozy evening of fondue", Description: "Join us.", Location: "The Parks' House", Start: "2026-09-19 17:00", End: "2026-09-19 21:00", Path: "/p/fondue", Availability: "available", Mine: MineWaitlisted},
 		{Source: SourceTeam, ID: "E006", Title: "Book Fair", Start: "2027-03-30", End: "2027-04-02", Path: "/activities/E006", Availability: "open"},
-		{Source: SourceTeam, ID: "E001", Title: "HCA International Night 2026", Description: "Booths wanted.", Start: "2026-09-24 15:30", End: "2026-09-24 18:30", Path: "/v/international-night", Availability: "open"},
+		{Source: SourceTeam, ID: "E001", Title: "HCA International Night 2026", Description: "Booths wanted.", Start: "2026-09-24 15:30", End: "2026-09-24 18:30", Path: "/v/international-night", Availability: "open", Mine: MineGoing},
 		{Source: SourceTeam, ID: "E005", Title: "Back to School Social", Start: "2026-08-27 15:00", End: "2026-08-27 17:00", Path: "/activities/E005", Availability: "done"},
 	}
 	v := Render(m, d, "nobody@x.org", false, at, linked)
 	if len(v.Events) != 23 {
 		t.Fatalf("events = %d", len(v.Events))
 	}
-	if len(v.Tags) != 18 || v.Tags[15].Name != TagCelebrate || v.Tags[16].Name != TagHCA || v.Tags[17].Name != TagMisc || len(m.Tags) != 15 {
+	if len(v.Tags) != 20 || v.Tags[15].Name != TagCelebrate || v.Tags[16].Name != TagHCA || v.Tags[17].Name != TagMisc || v.Tags[18].Name != TagGoing || v.Tags[19].Name != TagWaitlisted || len(m.Tags) != 15 {
 		t.Errorf("tags = %+v", v.Tags)
 	}
 	var fondue, fair, night, social *Event
@@ -477,16 +477,16 @@ func TestRenderLinked(t *testing.T) {
 	if fondue == nil || fair == nil || night == nil || social == nil {
 		t.Fatal("linked events missing")
 	}
-	if night.Link != "/v/international-night" || night.Availability != "open" || night.Source != SourceGoogle || !slices.Contains(night.Tags, TagHCA) || !slices.Contains(night.Tags, "Community") || night.Description != "Booths from every classroom." {
+	if night.Link != "/v/international-night" || night.Availability != "open" || night.Mine != MineGoing || night.Source != SourceGoogle || !slices.Contains(night.Tags, TagHCA) || !slices.Contains(night.Tags, TagGoing) || !slices.Contains(night.Tags, "Community") || night.Description != "Booths from every classroom." {
 		t.Errorf("folded event = %+v", night)
 	}
-	if orig := m.Event("a7@sample"); orig.Link != "" || slices.Contains(orig.Tags, TagHCA) {
+	if orig := m.Event("a7@sample"); orig.Link != "" || orig.Mine != "" || slices.Contains(orig.Tags, TagHCA) || slices.Contains(orig.Tags, TagGoing) {
 		t.Errorf("model event changed by folding: %+v", orig)
 	}
-	if social.Link != "/activities/E005" || strings.Join(social.Tags, ",") != TagHCA {
+	if social.Link != "/activities/E005" || social.Mine != "" || strings.Join(social.Tags, ",") != TagHCA {
 		t.Errorf("social folded into back to school night: %+v", social)
 	}
-	if fondue.Source != SourceCelebrate || fondue.Link != "/p/fondue" || fondue.Availability != "available" || fondue.AllDay || strings.Join(fondue.Tags, ",") != TagCelebrate || len(fondue.Classrooms) != 0 {
+	if fondue.Source != SourceCelebrate || fondue.Link != "/p/fondue" || fondue.Availability != "available" || fondue.Mine != MineWaitlisted || fondue.AllDay || strings.Join(fondue.Tags, ",") != TagCelebrate+","+TagWaitlisted || len(fondue.Classrooms) != 0 {
 		t.Errorf("party = %+v", fondue)
 	}
 	if fondue.Description != "A cozy evening of fondue\n\nJoin us." || fondue.End != "2026-09-19 21:00" || strings.Join(fondue.Dates(), ",") != "2026-09-19" {

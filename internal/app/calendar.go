@@ -10,21 +10,38 @@ import (
 	"heliosian/internal/who"
 )
 
-// calendarLinked hands the calendar what the other apps run: every open,
-// dated party on Helios Celebrate and every dated event HCA-Team lists, open
-// or done, each with the page it is served at there and what a reader can do
-// now. An app whose sheet has not loaded contributes nothing.
+// calendarLinked hands the calendar what the other apps run, as one viewer
+// stands with it: every open, dated party on Helios Celebrate and every dated
+// event HCA-Team lists, open or done, each with the page it is served at
+// there, what a reader can do now, and whether the viewer's household - the
+// viewer and everyone in their families, as the directory lists them - is
+// already going or waiting. An app whose sheet has not loaded contributes
+// nothing.
 type calendarLinked struct {
 	celebrate *celebrate.Cache
 	events    *events.Cache
+	directory familyLookup
 }
 
-func (c calendarLinked) list() []calendar.Linked {
+// familyLookup is the one thing the linked list asks of the directory: who
+// else is in a person's families.
+type familyLookup interface {
+	Household(email string) (adults, kids []celebrate.Person)
+}
+
+func (c calendarLinked) list(email string) []calendar.Linked {
 	now := time.Now().In(calendar.Location)
-	return append(c.parties(now), c.activities()...)
+	family := map[string]bool{email: true}
+	adults, kids := c.directory.Household(email)
+	for _, p := range append(append([]celebrate.Person{}, adults...), kids...) {
+		family[p.Email] = true
+	}
+	return append(c.parties(now, family), c.activities(family)...)
 }
 
-func (c calendarLinked) parties(now time.Time) []calendar.Linked {
+// A party is the household's when someone in it bought a ticket or holds
+// one; a waitlist request counts only while no ticket does.
+func (c calendarLinked) parties(now time.Time, family map[string]bool) []calendar.Linked {
 	out := []calendar.Linked{}
 	model := c.celebrate.Model()
 	if model == nil {
@@ -34,17 +51,31 @@ func (c calendarLinked) parties(now time.Time) []calendar.Linked {
 		if p.Status != celebrate.StatusOpen || p.Start == "" {
 			continue
 		}
+		mine := ""
+		for _, t := range p.Tickets {
+			if !family[t.Purchaser] && !family[t.Email] {
+				continue
+			}
+			if t.Status == celebrate.TicketSold {
+				mine = calendar.MineGoing
+				break
+			}
+			if t.Status == celebrate.TicketWaitlist {
+				mine = calendar.MineWaitlisted
+			}
+		}
 		out = append(out, calendar.Linked{
 			Source: calendar.SourceCelebrate, ID: p.ID, Title: p.Title, Summary: p.Summary, Description: p.Description, Location: p.Location,
-			Start: p.Start, End: p.End, Path: model.PathOf(p), Availability: p.Availability(now),
+			Start: p.Start, End: p.End, Path: model.PathOf(p), Availability: p.Availability(now), Mine: mine,
 		})
 	}
 	return out
 }
 
 // An HCA-Team event is open to join until it is done or every spot is taken;
-// the things under it stay off the calendar, since the event stands for them.
-func (c calendarLinked) activities() []calendar.Linked {
+// the things under it stay off the calendar, since the event stands for them,
+// and a sign-up on any of them makes the event the household's.
+func (c calendarLinked) activities(family map[string]bool) []calendar.Linked {
 	out := []calendar.Linked{}
 	model := c.events.Model()
 	if model == nil {
@@ -61,9 +92,17 @@ func (c calendarLinked) activities() []calendar.Linked {
 		case a.VolunteersComplete || (a.Spots > 0 && len(a.Volunteers) >= a.Spots):
 			availability = "full"
 		}
+		mine := ""
+		for _, item := range append([]*events.Activity{a}, a.Descendants()...) {
+			for _, v := range item.Volunteers {
+				if family[v.Email] {
+					mine = calendar.MineGoing
+				}
+			}
+		}
 		out = append(out, calendar.Linked{
 			Source: calendar.SourceTeam, ID: a.ID, Title: a.Title, Description: a.Description, Location: a.Location,
-			Start: a.Start, End: a.End, Path: model.PathOf(a), Availability: availability,
+			Start: a.Start, End: a.End, Path: model.PathOf(a), Availability: availability, Mine: mine,
 		})
 	}
 	return out

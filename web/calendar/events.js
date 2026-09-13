@@ -61,10 +61,11 @@ export function eventRow(e, opts = {}) {
 
 // callPill sits in a linked event's row and goes straight to its page on
 // the app that runs it - where the tickets or the sign-up are - without
-// opening the event here first.
+// opening the event here first; one the household is already in wears its
+// standing instead.
 function callPill(e) {
   const open = e.availability === 'available' || e.availability === 'open';
-  const pill = el('span', 'event-pill' + (open ? ' is-open' : ''), call(e));
+  const pill = el('span', 'event-pill' + (e.mine ? ' is-mine' : open ? ' is-open' : ''), call(e));
   pill.addEventListener('click', ev => {
     ev.preventDefault();
     ev.stopPropagation();

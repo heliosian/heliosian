@@ -461,6 +461,16 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .event-pill:hover { background: var(--brand-dark); border-color: var(--brand-dark); color: #fff; }
 
+/* A linked event the household is already in: its standing, in the amber
+   the page keeps for what is the viewer's own. */
+.event-pill.is-mine { background: var(--early-wash); border-color: var(--amber); color: var(--early); }
+
+.event-pill.is-mine::before { content: "✓ "; }
+
+.event-pill.is-mine:hover { background: var(--amber); border-color: var(--amber); color: #fff; }
+
+.side-card-linked.is-mine { border-color: var(--amber); background: var(--early-wash); }
+
 .room-dots { display: inline-flex; gap: 4px; flex-shrink: 0; }
 
 .room-dot { width: 11px; height: 11px; border-radius: 50%; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12); }

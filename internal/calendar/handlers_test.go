@@ -28,7 +28,7 @@ func testApp(t *testing.T) (http.Handler, *Cache) {
 		kids:   map[string][]Person{},
 	}
 	mux := http.NewServeMux()
-	Register(mux, cache, dir, directQueue{}, d, func() []string { return nil }, func() []Linked { return nil })
+	Register(mux, cache, dir, directQueue{}, d, func() []string { return nil }, func(string) []Linked { return nil })
 	return mux, cache
 }
 

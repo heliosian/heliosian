@@ -1,4 +1,4 @@
-import {whenLine, daysLine, timeLine, calendarLink, sourceWords, dayType, eventDates, dayTypeClass, linkURL, call} from '../state.js';
+import {whenLine, daysLine, timeLine, calendarLink, sourceWords, dayType, eventDates, dayTypeClass, linkURL, call, isParty, mineWords} from '../state.js';
 import {el, link, svg, paragraphs, button, copyText} from '../dom.js';
 import {setTitle} from '../chrome.js';
 import {audienceChips, blocks} from '../events.js';
@@ -102,24 +102,32 @@ const standing = {
   open: 'Volunteers wanted', full: 'Every spot is taken', done: 'This event is done',
 };
 
+const mineStanding = {
+  going: {celebrate: 'Your household holds tickets', team: 'Someone in your household has signed up'},
+  waitlisted: {celebrate: 'Your household is on the waitlist'},
+};
+
 const linkedTitles = {celebrate: 'Fun(d)raiser party', team: 'HCA volunteer event'};
 
 const linkedIcons = {celebrate: 'sun', team: 'people'};
 
 const seeWords = {celebrate: 'See the party', team: 'See the event'};
 
-// linkedCard leads a linked event's rail: how signing up stands, and the way
-// to its page on the app that runs it, where the tickets or the sign-up are.
+// linkedCard leads a linked event's rail: how signing up stands - the
+// household's own standing when it has one - and the way to its page on the
+// app that runs it, where the tickets or the sign-up are.
 function linkedCard(e) {
-  const card = el('div', 'side-card side-card-linked');
+  const kind = isParty(e) ? 'celebrate' : 'team';
+  const card = el('div', 'side-card side-card-linked' + (e.mine ? ' is-mine' : ''));
   const row = el('div', 'side-row');
   const icon = el('div', 'side-icon');
-  icon.append(svg(linkedIcons[e.source]));
+  icon.append(svg(linkedIcons[kind]));
   const body = el('div', 'side-row-body');
-  body.append(el('div', 'side-title', linkedTitles[e.source]), el('div', 'side-line', standing[e.availability] || ''));
+  const line = e.mine ? `${mineWords(e)} · ${mineStanding[e.mine][kind]}` : standing[e.availability] || '';
+  body.append(el('div', 'side-title', linkedTitles[kind]), el('div', 'side-line', line));
   const go = el('a', 'button side-button');
   go.href = linkURL(e);
-  go.append(svg('open'), el('span', '', call(e) || seeWords[e.source]));
+  go.append(svg('open'), el('span', '', e.mine ? seeWords[kind] : call(e) || seeWords[kind]));
   body.append(go);
   row.append(icon, body);
   card.append(row);
