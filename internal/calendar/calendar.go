@@ -135,8 +135,8 @@ type Event struct {
 	Availability string `json:"availability,omitempty"`
 	Mine         string `json:"mine,omitempty"`
 	Hidden       bool   `json:"-"`
-	duplicate   bool
-	start, end  time.Time
+	duplicate    bool
+	start, end   time.Time
 }
 
 // Dates lists every day the event touches, as sheet dates.

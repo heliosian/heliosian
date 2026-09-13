@@ -54,7 +54,7 @@ func linkedEvent(l Linked) *Event {
 	e := &Event{
 		ID: l.Source + "/" + l.ID, Source: l.Source, Title: l.Title, Location: l.Location,
 		Description: strings.TrimSpace(l.Summary + "\n\n" + l.Description),
-		Start: l.Start, End: l.End, AllDay: allDay, Tags: []string{tagBySource[l.Source]}, Classrooms: []string{},
+		Start:       l.Start, End: l.End, AllDay: allDay, Tags: []string{tagBySource[l.Source]}, Classrooms: []string{},
 		Link: l.Path, Availability: l.Availability, Mine: l.Mine, start: start, end: end,
 	}
 	if t := tagByMine[l.Mine]; t != "" {
