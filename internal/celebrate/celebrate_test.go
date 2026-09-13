@@ -707,23 +707,53 @@ func TestSharePreview(t *testing.T) {
 			t.Errorf("preview head lacks %s:\n%s", want, got)
 		}
 	}
-	// The street stays out of the tags; a pending party and any other page
-	// get none.
+	// The street stays out of the tags. A pending party and any other page
+	// preview the site itself: the next party with tickets and the three
+	// after it - never one that is full (P006, today), sold out later
+	// (P007), closed to sales (P011), pending or hidden.
 	if strings.Contains(got, "Alder") {
 		t.Error("the street address leaked into the preview")
 	}
-	for _, path := range []string{"/parties/P013", "/my", "/p/nothing"} {
+	for _, path := range []string{"/", "/parties/P013", "/my", "/p/nothing"} {
 		req := httptest.NewRequest("GET", path, nil)
-		if head(req) != "" {
-			t.Errorf("%s previewed", path)
+		req.Host = "celebrate.heliosian.com"
+		got := head(req)
+		for _, want := range []string{`og:title" content="Upcoming Parties"`, `og:url" content="https://celebrate.heliosian.com/"`,
+			`og:image" content="https://celebrate.heliosian.com/share/upcoming.png"`,
+			`Next up: Fondue &amp; Fort Night — Saturday, September 19 · 5:00 – 9:00 PM — The Parks&#39; House in Los Altos. Also coming: Dink &amp; Clink (Sep 26), K-Pop for a Cause! (Sep 27), Wurst Helios Party (Oct 3).`} {
+			if !strings.Contains(got, want) {
+				t.Errorf("%s: preview head lacks %s:\n%s", path, want, got)
+			}
+		}
+		for _, leak := range []string{"Alder", "Baegels", "Backyard", "Crochet"} {
+			if strings.Contains(got, leak) {
+				t.Errorf("%s: %s is in the preview", path, leak)
+			}
+		}
+	}
+	ids := []string{}
+	for _, p := range upcoming(cache.Model()) {
+		ids = append(ids, p.ID)
+	}
+	if strings.Join(ids, " ") != "P001 P002 P003 P004 P012 P005 P009" {
+		t.Errorf("upcoming: %v", ids)
+	}
+	for _, path := range []string{"/share/P001.png", "/share/upcoming.png"} {
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, httptest.NewRequest("GET", path, nil))
+		if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "image/png" || rec.Body.Len() < 10000 {
+			t.Fatalf("%s: %d %s %d bytes", path, rec.Code, rec.Header().Get("Content-Type"), rec.Body.Len())
+		}
+		etag := rec.Header().Get("ETag")
+		req := httptest.NewRequest("GET", path, nil)
+		req.Header.Set("If-None-Match", etag)
+		rec = httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		if rec.Code != http.StatusNotModified {
+			t.Errorf("%s again with its ETag: %d", path, rec.Code)
 		}
 	}
 	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequest("GET", "/share/P001.png", nil))
-	if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "image/png" || rec.Body.Len() < 10000 {
-		t.Fatalf("share card: %d %s %d bytes", rec.Code, rec.Header().Get("Content-Type"), rec.Body.Len())
-	}
-	rec = httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest("GET", "/share/P013.png", nil))
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("a pending party's card: %d", rec.Code)

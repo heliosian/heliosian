@@ -52,7 +52,8 @@ type Line struct {
 
 // Card is what to draw: a kicker above the title (what the thing sits under,
 // or blank), the title, the lines, and the picture - shown whole, as a flyer
-// is, or scaled to cover the panel, as a banner is.
+// is, or scaled to cover the panel, as a banner is. A Listing takes the
+// picture's place: the right half becomes a panel of headed bullets.
 type Card struct {
 	Kicker string
 	Title  string
@@ -61,6 +62,21 @@ type Card struct {
 	Lines    []Line
 	Picture  []byte
 	Whole    bool
+	Listing  *Listing
+}
+
+// Listing is the right half of a card that names several things rather than
+// showing one picture: a heading over bullets, each a title with a note
+// under it, and a line to show when there are no items at all.
+type Listing struct {
+	Heading string
+	Items   []Item
+	Empty   string
+}
+
+// Item is one bullet of a Listing: what it is, and a note under it - a date.
+type Item struct {
+	Title, Note string
 }
 
 // The two faces the card is set in, parsed once. Montserrat is the sites'
@@ -165,7 +181,13 @@ func (s *Style) Draw(c Card) ([]byte, error) {
 
 	// The picture's panel on the right, and where the text column ends.
 	textRight := Width - 72
-	if pic, _, err := image.Decode(bytes.NewReader(c.Picture)); err == nil && c.Picture != nil {
+	if c.Listing != nil {
+		panel := image.Rect(Width/2, 0, Width, Height)
+		if err := s.drawListing(img, panel, c.Listing, bold, medium); err != nil {
+			return nil, err
+		}
+		textRight = panel.Min.X - 48
+	} else if pic, _, err := image.Decode(bytes.NewReader(c.Picture)); err == nil && c.Picture != nil {
 		b := pic.Bounds()
 		panelW := 480
 		if c.Whole {
@@ -350,4 +372,76 @@ func (s *Style) Draw(c Card) ([]byte, error) {
 		return nil, err
 	}
 	return out.Bytes(), nil
+}
+
+// drawListing paints the right half's panel: the heading over its own yellow
+// swoosh, level with the brand on the left, then the bullets - a dot in the
+// accent, the title in ink on one line, shrunk and then cut to fit, and the
+// note under it in the accent. With no items, the Empty line stands alone.
+func (s *Style) drawListing(img *image.RGBA, panel image.Rectangle, l *Listing, bold, medium *opentype.Font) error {
+	draw.Draw(img, panel, image.NewUniform(s.Panel), image.Point{}, draw.Src)
+	left, right := panel.Min.X+56, panel.Max.X-56
+	width := fixed.I(right - left)
+	d := &font.Drawer{Dst: img, Src: image.NewUniform(s.Brand)}
+
+	heading, err := face(bold, 40)
+	if err != nil {
+		return err
+	}
+	d.Face = heading
+	headY := 128
+	d.Dot = fixed.P(left, headY)
+	d.DrawString(l.Heading)
+	swooshY := headY + 14
+	draw.Draw(img, image.Rect(left, swooshY, right, swooshY+6), image.NewUniform(s.Yellow), image.Point{}, draw.Over)
+
+	y := swooshY + 84
+	if len(l.Items) == 0 && l.Empty != "" {
+		empty, err := face(medium, 26)
+		if err != nil {
+			return err
+		}
+		d.Face, d.Src = empty, image.NewUniform(s.Accent)
+		for i, line := range Wrap(d, l.Empty, width) {
+			d.Dot = fixed.P(left, y+i*34)
+			d.DrawString(line)
+		}
+		return nil
+	}
+	dot := 10
+	for _, item := range l.Items {
+		var title font.Face
+		var lines []string
+		size := 30.0
+		for ; size >= 22; size -= 2 {
+			if title, err = face(bold, size); err != nil {
+				return err
+			}
+			d.Face = title
+			lines = Wrap(d, item.Title, width-fixed.I(dot*3))
+			if len(lines) <= 1 {
+				break
+			}
+		}
+		text := item.Title
+		if len(lines) > 1 {
+			text = lines[0] + "…"
+		}
+		mid := y - int(size*0.36)
+		DrawDot(img, image.Rect(left, mid-dot, left+dot*2, mid+dot), s.Accent)
+		d.Src = image.NewUniform(s.Ink)
+		d.Dot = fixed.P(left+dot*3, y)
+		d.DrawString(text)
+		if item.Note != "" {
+			note, err := face(medium, 24)
+			if err != nil {
+				return err
+			}
+			d.Face, d.Src = note, image.NewUniform(s.Accent)
+			d.Dot = fixed.P(left+dot*3, y+34)
+			d.DrawString(item.Note)
+		}
+		y += 116
+	}
+	return nil
 }

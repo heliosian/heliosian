@@ -20,9 +20,11 @@ import (
 // Graph tags slipped into the sign-in page served at the party's address, and
 // a card image at /share/{id}.png drawn here - the brand, the title, when and
 // where (in words, never the street), and the party's flyer or picture. Only
-// an open party is previewed; a pending or hidden one shows the plain sign-in
-// page. The tags say what a poster on the wall says and nothing about who is
-// coming.
+// an open party is previewed that way; a link to anything else - the site
+// itself, a page, a pending or hidden party - previews what is on sale: the
+// next party with tickets left on the left, and a list of the three after it
+// on the right, at /share/upcoming.png. The tags say what a poster on the
+// wall says and nothing about who is coming.
 
 // cardStyle is the site's dress for the card: the palette sampled from the
 // logo art and the logo itself; no corner art.
@@ -71,6 +73,29 @@ func when(p *Party) string {
 	return day
 }
 
+// upcoming is every party someone could buy a ticket to right now - open,
+// selling, not full, not over - soonest first. Undated parties are left out;
+// they cannot be next.
+func upcoming(m *Model) []*Party {
+	at := now()
+	out := []*Party{}
+	for _, p := range m.SortedParties("") {
+		if p.Start != "" && p.Availability(at) == Available {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// upcomingCount is how many parties the list beside the next one names.
+const upcomingCount = 3
+
+// shortDay is a party's day as the list gives it: "Saturday, September 26".
+func shortDay(p *Party) string {
+	day, _ := whenLines(p)
+	return day
+}
+
 // blurb is the summary, else the description cut to a sentence or two.
 func blurb(p *Party) string {
 	text := strings.Join(strings.Fields(p.Summary), " ")
@@ -87,24 +112,25 @@ func blurb(p *Party) string {
 	return text
 }
 
-// PreviewHead is the Open Graph markup for the party at a request's path, or
-// nothing when there is nothing there to show a stranger. Wired into the
-// sign-in page, which is what an unauthenticated fetch of the address gets.
+// PreviewHead is the Open Graph markup for a request's path: the party there
+// when it is one a stranger may see, else the site's own preview of what is
+// on sale. Wired into the sign-in page, which is what an unauthenticated
+// fetch of the address gets.
 func PreviewHead(cache *Cache) func(r *http.Request) string {
 	return func(r *http.Request) string {
-		first := strings.Split(strings.Trim(r.URL.Path, "/"), "/")[0]
-		if first != "p" && first != "parties" {
-			return ""
-		}
 		model := cache.Model()
 		if model == nil {
 			return ""
 		}
-		p := model.Resolve(r.URL.Path)
-		if !previewable(p) {
-			return ""
-		}
 		origin := "https://" + r.Host
+		first := strings.Split(strings.Trim(r.URL.Path, "/"), "/")[0]
+		var p *Party
+		if first == "p" || first == "parties" {
+			p = model.Resolve(r.URL.Path)
+		}
+		if !previewable(p) {
+			return upcomingHead(model, origin)
+		}
 		parts := []string{}
 		if line := when(p); line != "" {
 			parts = append(parts, line)
@@ -119,32 +145,102 @@ func PreviewHead(cache *Cache) func(r *http.Request) string {
 		if desc == "" {
 			desc = "A fun(d)raiser party for the Helios community."
 		}
-		tags := [][2]string{
-			{"og:type", "website"},
-			{"og:site_name", "Helios Celebrate"},
-			{"og:title", p.Title},
-			{"og:description", desc},
-			{"og:url", origin + model.PathOf(p)},
-			{"og:image", origin + "/share/" + p.ID + ".png"},
-			{"og:image:width", fmt.Sprint(sharecard.Width)},
-			{"og:image:height", fmt.Sprint(sharecard.Height)},
-			{"twitter:card", "summary_large_image"},
-			{"twitter:title", p.Title},
-			{"twitter:description", desc},
-			{"twitter:image", origin + "/share/" + p.ID + ".png"},
-		}
-		var b strings.Builder
-		b.WriteString("\n")
-		for _, t := range tags {
-			attr := "property"
-			if strings.HasPrefix(t[0], "twitter:") {
-				attr = "name"
-			}
-			fmt.Fprintf(&b, `<meta %s="%s" content="%s">`+"\n", attr, t[0], html.EscapeString(t[1]))
-		}
-		fmt.Fprintf(&b, `<meta name="description" content="%s">`+"\n", html.EscapeString(desc))
-		return b.String()
+		return previewTags(p.Title, desc, origin+model.PathOf(p), origin+"/share/"+p.ID+".png")
 	}
+}
+
+// upcomingHead is the site's own preview: the next party with tickets and
+// the few after it, in words, with the card that draws them.
+func upcomingHead(m *Model, origin string) string {
+	parties := upcoming(m)
+	desc := "Fun(d)raiser parties for the Helios community. New parties are on the way."
+	if len(parties) > 0 {
+		next := parties[0]
+		desc = "Next up: " + next.Title
+		if line := when(next); line != "" {
+			desc += " — " + line
+		}
+		if next.Location != "" {
+			desc += " — " + next.Location
+		}
+		if rest := parties[1:min(len(parties), 1+upcomingCount)]; len(rest) > 0 {
+			names := []string{}
+			for _, p := range rest {
+				names = append(names, p.Title+" ("+p.StartTime().Format("Jan 2")+")")
+			}
+			desc += ". Also coming: " + strings.Join(names, ", ") + "."
+		}
+	}
+	return previewTags("Upcoming Parties", desc, origin+"/", origin+"/share/upcoming.png")
+}
+
+// previewTags is the markup itself: the Open Graph and Twitter tags for a
+// title, a description, the page and its card.
+func previewTags(title, desc, url, image string) string {
+	tags := [][2]string{
+		{"og:type", "website"},
+		{"og:site_name", "Helios Celebrate"},
+		{"og:title", title},
+		{"og:description", desc},
+		{"og:url", url},
+		{"og:image", image},
+		{"og:image:width", fmt.Sprint(sharecard.Width)},
+		{"og:image:height", fmt.Sprint(sharecard.Height)},
+		{"twitter:card", "summary_large_image"},
+		{"twitter:title", title},
+		{"twitter:description", desc},
+		{"twitter:image", image},
+	}
+	var b strings.Builder
+	b.WriteString("\n")
+	for _, t := range tags {
+		attr := "property"
+		if strings.HasPrefix(t[0], "twitter:") {
+			attr = "name"
+		}
+		fmt.Fprintf(&b, `<meta %s="%s" content="%s">`+"\n", attr, t[0], html.EscapeString(t[1]))
+	}
+	fmt.Fprintf(&b, `<meta name="description" content="%s">`+"\n", html.EscapeString(desc))
+	return b.String()
+}
+
+// shareUpcoming serves /share/upcoming.png: the card for the site itself,
+// which is the next party with tickets left, dressed as its own card would
+// be, beside a list of the three after it. It changes as parties sell out
+// and pass, so its ETag hashes what it names.
+func (a app) shareUpcoming(w http.ResponseWriter, r *http.Request) {
+	parties := upcoming(a.cache.Model())
+	card := sharecard.Card{
+		Title:   "New parties are on the way",
+		Listing: &sharecard.Listing{Heading: "Upcoming Parties", Empty: "Nothing is on sale just now - check back soon."},
+	}
+	parts := []string{cardStyle.TaglineText()}
+	if len(parties) > 0 {
+		next := parties[0]
+		day, hours := whenLines(next)
+		card.Kicker, card.Title, card.Subtitle = "Next party", next.Title, next.Subtitle
+		card.Lines = []sharecard.Line{{Icon: "calendar", Text: day}, {Icon: "clock", Text: hours}, {Icon: "pin", Text: next.Location}}
+		parts = append(parts, next.Title, next.Subtitle, day, hours, next.Location)
+		for _, p := range parties[1:min(len(parties), 1+upcomingCount)] {
+			card.Listing.Items = append(card.Listing.Items, sharecard.Item{Title: p.Title, Note: shortDay(p)})
+			parts = append(parts, p.Title, p.Start)
+		}
+	}
+	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
+	etag := `"` + hex.EncodeToString(sum[:8]) + `"`
+	if r.Header.Get("If-None-Match") == etag {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+	png, err := cardStyle.Draw(card)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "image/png")
+	w.Header().Set("ETag", etag)
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+	w.Write(png)
 }
 
 // shareCard serves /share/{id}.png: the card for one previewable party. The

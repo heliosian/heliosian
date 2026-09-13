@@ -80,7 +80,9 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	mux.HandleFunc("GET /api/celebrate/images/search", a.ready(a.search.ServeSearch))
 	mux.HandleFunc("POST /api/celebrate/images/import", a.ready(a.importImage))
 	mux.HandleFunc("POST /api/celebrate/image", a.ready(a.uploadImage))
-	// Public, past sign-in (auth.Public): the image a chat app shows for a link.
+	// Public, past sign-in (auth.Public): the image a chat app shows for a
+	// link - one party's, or the site's own.
+	mux.HandleFunc("GET /share/upcoming.png", a.ready(a.shareUpcoming))
 	mux.HandleFunc("GET /share/{id}", a.ready(a.shareCard))
 	mux.HandleFunc("POST /api/celebrate/tickets", a.ready(a.buyTickets))
 	mux.HandleFunc("POST /api/celebrate/waitlist", a.ready(a.joinWaitlist))

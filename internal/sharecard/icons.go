@@ -126,3 +126,11 @@ func DrawPinIcon(dst draw.Image, at image.Rectangle, c color.Color) {
 	p.circle(s/2, s*0.4, s*0.1, true)
 	paintIcon(dst, r, at, c)
 }
+
+// DrawDot is a filled circle - a bullet - filling its rectangle.
+func DrawDot(dst draw.Image, at image.Rectangle, c color.Color) {
+	s := float32(at.Dx())
+	r := vector.NewRasterizer(at.Dx(), at.Dy())
+	iconPath{r}.circle(s/2, s/2, s/2, true)
+	paintIcon(dst, r, at, c)
+}
