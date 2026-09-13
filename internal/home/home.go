@@ -92,6 +92,7 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	mux.HandleFunc("GET /api/admin/state", a.adminState)
 	mux.HandleFunc("POST /api/admin/admins", a.setAdmins)
 	mux.HandleFunc("POST /api/admin/visibility", a.setVisibility)
+	mux.HandleFunc("POST /api/admin/visibility/order", a.setAppOrder)
 	RegisterSwitch(mux, cache)
 	a.discoverApps()
 }
@@ -107,7 +108,7 @@ func (a app) discoverApps() {
 	}
 	tables := a.cache.Tables()
 	for _, app := range missing {
-		tables = tables.withVisibility(app.Key, Visibility{Mode: VisibleToList, Tagline: app.Tagline})
+		tables = tables.withVisibility(app.Key, Visibility{Mode: VisibleToList, Tagline: app.Tagline, Name: app.Name})
 	}
 	model, err := BuildModel(tables, a.cache.images)
 	if err != nil {
@@ -117,7 +118,7 @@ func (a app) discoverApps() {
 	a.queue.Add(func() {
 		a.cache.set(tables, model)
 		for _, app := range missing {
-			if err := a.writer.AppendCells(appName, visibilityTab, map[string]string{"App": app.Key, "Visibility": VisibleToList, "Tagline": app.Tagline}); err != nil {
+			if err := a.writer.AppendCells(appName, visibilityTab, map[string]string{"App": app.Key, "Visibility": VisibleToList, "Tagline": app.Tagline, "Name": app.Name}); err != nil {
 				slog.Error("apps: write a new app's visibility row", "app", app.Key, "error", err)
 				return
 			}
@@ -768,10 +769,11 @@ func (a app) setAdmins(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// setVisibility sets one app's tagline, mode and list together, the way the
-// admin page edits them: the switch, the tagline and every add or remove
-// save at once. The list is written whichever the mode, so a list drawn up
-// while the app is everyone's is there when the switch flips.
+// setVisibility sets one app's name, tagline, mode and list together, the
+// way the admin page edits them: the switch, either field and every add or
+// remove save at once. The list is written whichever the mode, so a list
+// drawn up while the app is everyone's is there when the switch flips. The
+// row's place in the order is kept (setAppOrder moves it).
 func (a app) setVisibility(w http.ResponseWriter, r *http.Request) {
 	_, ok := a.requireAdmin(w, r)
 	if !ok {
@@ -782,6 +784,7 @@ func (a app) setVisibility(w http.ResponseWriter, r *http.Request) {
 		Visibility string   `json:"visibility"`
 		Emails     []string `json:"emails"`
 		Tagline    string   `json:"tagline"`
+		Name       string   `json:"name"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -800,13 +803,69 @@ func (a app) setVisibility(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "a short tagline is required", http.StatusBadRequest)
 		return
 	}
-	v := Visibility{Mode: body.Visibility, Emails: normalizeEmails(body.Emails), Tagline: tagline}
+	name := strings.TrimSpace(body.Name)
+	if name == "" || len(name) > maxTitleLength {
+		http.Error(w, "a short name is required", http.StatusBadRequest)
+		return
+	}
+	app, _ := appByKey(key)
+	v := Visibility{Mode: body.Visibility, Emails: normalizeEmails(body.Emails), Tagline: tagline, Name: name, Order: visibilityOf(a.cache.Model(), app).Order}
 	tables := a.cache.Tables().withVisibility(key, v)
 	if !a.commit(r.Context(), w, tables, func() error {
-		return a.writer.Upsert(appName, visibilityTab, "App", key, map[string]string{"Visibility": v.Mode, "Emails": joinEmails(v.Emails), "Tagline": v.Tagline})
+		return a.writer.Upsert(appName, visibilityTab, "App", key, v.cells())
 	}) {
 		return
 	}
-	slog.InfoContext(r.Context(), "apps: set an app's visibility", "app", key, "visibility", v.Mode, "emails", len(v.Emails), "tagline", v.Tagline)
+	slog.InfoContext(r.Context(), "apps: set an app's visibility", "app", key, "visibility", v.Mode, "emails", len(v.Emails), "name", v.Name, "tagline", v.Tagline)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// setAppOrder takes the whole order at once - every app's key, as the admin
+// page has them after a move - and numbers each row from one, so the switch
+// and the front page follow.
+func (a app) setAppOrder(w http.ResponseWriter, r *http.Request) {
+	_, ok := a.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Apps []string `json:"apps"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	keys := make([]string, 0, len(body.Apps))
+	for _, key := range body.Apps {
+		keys = append(keys, strings.ToLower(strings.TrimSpace(key)))
+	}
+	slices.Sort(keys)
+	want := appKeys()
+	slices.Sort(want)
+	if !slices.Equal(keys, want) {
+		http.Error(w, "the order must list every app once: "+strings.Join(appKeys(), ", "), http.StatusBadRequest)
+		return
+	}
+	model := a.cache.Model()
+	tables := a.cache.Tables()
+	rows := map[string]Visibility{}
+	for i, key := range body.Apps {
+		key = strings.ToLower(strings.TrimSpace(key))
+		app, _ := appByKey(key)
+		v := visibilityOf(model, app)
+		v.Order = i + 1
+		rows[key] = v
+		tables = tables.withVisibility(key, v)
+	}
+	if !a.commit(r.Context(), w, tables, func() error {
+		for key, v := range rows {
+			if err := a.writer.Upsert(appName, visibilityTab, "App", key, v.cells()); err != nil {
+				return err
+			}
+		}
+		return nil
+	}) {
+		return
+	}
+	slog.InfoContext(r.Context(), "apps: set the apps' order", "apps", body.Apps)
 	w.WriteHeader(http.StatusNoContent)
 }

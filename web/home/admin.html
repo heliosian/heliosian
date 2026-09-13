@@ -107,8 +107,31 @@
   .visibility-switch label:has(input:checked) { background: var(--brand); color: #fff; }
   .visibility-switch label:has(input:focus-visible) { outline: 2px solid var(--brand); outline-offset: 2px; }
   .visibility-note { font-size: 13px; color: var(--muted); margin: 6px 0 10px; }
-  .visibility-tagline { display: flex; align-items: center; gap: 10px; margin: 4px 0 8px; font-size: 13px; color: var(--muted); }
-  .visibility-tagline input {
+  .visibility-head { display: flex; align-items: center; gap: 14px; margin-bottom: 10px; }
+  .visibility-head img { width: 44px; height: 44px; border-radius: 10px; flex-shrink: 0; }
+  .visibility-words { flex: 1; min-width: 0; }
+  .visibility-words h2 { margin: 0; }
+  .visibility-url { display: block; font-size: 12.5px; color: var(--muted); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .visibility-url:hover { text-decoration: underline; }
+  .visibility-moves { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+  .visibility-moves .save-status { margin-left: 6px; }
+  .move-button {
+    width: 30px;
+    height: 30px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #fff;
+    color: var(--brand);
+    font: inherit;
+    font-size: 15px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .move-button:hover:not(:disabled) { background: var(--input); }
+  .move-button:disabled { opacity: 0.35; cursor: default; }
+  .visibility-field { display: flex; align-items: center; gap: 10px; margin: 4px 0 8px; font-size: 13px; color: var(--muted); }
+  .visibility-field > span { width: 52px; flex-shrink: 0; }
+  .visibility-field input {
     flex: 1;
     max-width: 420px;
     padding: 7px 10px;
@@ -156,7 +179,7 @@
   <div class="panel" id="panel-visible-to" hidden>
     <div class="card">
       <h2>App Visibility</h2>
-      <div class="hint">Who sees each app in the app switch and on the front page: everyone at heliosschool.org, or only the people on its list. Nobody is kept out either way - a direct link still opens the app. The list is kept while an app is set to everyone, ready for when it is switched back. A new app starts as "only these people" with nobody on it, out of sight until you let people in. The tagline is the line under the app's name in the switch and on the front page. Changes save immediately.</div>
+      <div class="hint">The apps as the app switch and the front page list them, in this order - the arrows move an app. Each card's mark and address are the app's own and stay as they are; the name and the tagline under it are yours to change. Who sees each app: everyone at heliosschool.org, or only the people on its list. Nobody is kept out either way - a direct link still opens the app. The list is kept while an app is set to everyone, ready for when it is switched back. A new app starts as "only these people" with nobody on it, out of sight until you let people in. Changes save immediately.</div>
     </div>
     <div id="visibility-cards"></div>
   </div>

@@ -116,7 +116,7 @@ type AppVisibility struct {
 
 // visibilityOf is an app's row as the page reads it: the sheet's, or for an
 // app the sheet has no row for yet, the new-app default - a list with nobody
-// on it, and the registry's tagline.
+// on it, and the registry's name and tagline.
 func visibilityOf(model *Model, app App) Visibility {
 	v, ok := model.Visibility[app.Key]
 	if !ok {
@@ -128,28 +128,46 @@ func visibilityOf(model *Model, app App) Visibility {
 	if v.Tagline == "" {
 		v.Tagline = app.Tagline
 	}
+	if v.Name == "" {
+		v.Name = app.Name
+	}
 	return v
+}
+
+// orderedApps is the registry in the order the sheet gives it: every app
+// with an Order cell first, by it, then the rest in the registry's order.
+func orderedApps(model *Model) []App {
+	out := slices.Clone(Apps)
+	place := func(app App) int {
+		if v, ok := model.Visibility[app.Key]; ok && v.Order > 0 {
+			return v.Order
+		}
+		return len(Apps) + 1 + slices.Index(Apps, app)
+	}
+	slices.SortStableFunc(out, func(a, b App) int { return place(a) - place(b) })
+	return out
 }
 
 // AppVisibilities is every app's visibility for the admin page.
 func (c *Cache) AppVisibilities() []AppVisibility {
 	model := c.Model()
 	out := make([]AppVisibility, 0, len(Apps))
-	for _, app := range Apps {
+	for _, app := range orderedApps(model) {
 		v := visibilityOf(model, app)
-		app.Tagline = v.Tagline
+		app.Name, app.Tagline = v.Name, v.Tagline
 		out = append(out, AppVisibility{App: app, Visibility: v.Mode, Emails: v.Emails})
 	}
 	return out
 }
 
 // AppList is the registry as the switch and the front page show it: each
-// app with the tagline its row gives it.
+// app with the name and tagline its row gives it, in the row's order.
 func (c *Cache) AppList() []App {
 	model := c.Model()
 	out := make([]App, 0, len(Apps))
-	for _, app := range Apps {
-		app.Tagline = visibilityOf(model, app).Tagline
+	for _, app := range orderedApps(model) {
+		v := visibilityOf(model, app)
+		app.Name, app.Tagline = v.Name, v.Tagline
 		out = append(out, app)
 	}
 	return out

@@ -48,7 +48,7 @@ var (
 	categoryColumns   = []string{"Title", "Emoji", "Style", "Max"}
 	linkColumns       = []string{"Title", "Description", "URL", "Image", "Category", "Visible", "Added By", "Added"}
 	adminColumns      = []string{"Email"}
-	visibilityColumns = []string{"App", "Visibility", "Emails", "Tagline"}
+	visibilityColumns = []string{"App", "Visibility", "Emails", "Tagline", "Name", "Order"}
 	changeLogColumns  = []string{"Timestamp", "Actor", "Action", "Kind", "Title", "Description", "URL", "Image", "Category", "Visible", "Style"}
 )
 
@@ -56,11 +56,12 @@ var (
 // keyed by its hostname's first label; its mark is served from
 // web/public/common/brand/apps/<key>.png. Apps is the registry: every app
 // the Visibility tab has a row for and the front page's apps section can
-// list, in the switch's order. Key and Name are the code's - each app is a
-// package here and a hostname routed in internal/app - and the Tagline is
-// the default the sheet's row starts with; the row's own wins once edited.
-// Heliosian itself, Home, heads the switch but is not among them: it is the
-// front page, and the switch's way home.
+// list, in the order the switch starts with. Key is the code's - each app is
+// a package here and a hostname routed in internal/app - and Name and
+// Tagline are the defaults the sheet's row starts with; the row's own win
+// once edited, and its Order cell moves the app in the switch and on the
+// front page (AppList). Heliosian itself, Home, heads the switch but is not
+// among them: it is the front page, and the switch's way home.
 type App struct {
 	Key     string `json:"key"`
 	Name    string `json:"name"`
@@ -102,6 +103,20 @@ type Visibility struct {
 	Mode    string
 	Emails  []string
 	Tagline string
+	Name    string
+	// Order is the app's place in the switch, counted from one; zero is a
+	// row that has none, which keeps the registry's place after every row
+	// that has one.
+	Order int
+}
+
+// cells is the row as the sheet holds it.
+func (v Visibility) cells() map[string]string {
+	order := ""
+	if v.Order > 0 {
+		order = strconv.Itoa(v.Order)
+	}
+	return map[string]string{"Visibility": v.Mode, "Emails": joinEmails(v.Emails), "Tagline": v.Tagline, "Name": v.Name, "Order": order}
 }
 
 func appKnown(key string) bool {
@@ -409,7 +424,19 @@ func buildVisibility(rows []map[string]string) (map[string]Visibility, error) {
 		if len(tagline) > maxDescLength {
 			return nil, fmt.Errorf("%s row for %q: tagline is too long", visibilityTab, app)
 		}
-		visibility[app] = Visibility{Mode: mode, Emails: splitEmails(row["Emails"]), Tagline: tagline}
+		name := strings.TrimSpace(row["Name"])
+		if len(name) > maxTitleLength {
+			return nil, fmt.Errorf("%s row for %q: name is too long", visibilityTab, app)
+		}
+		order := 0
+		if cell := strings.TrimSpace(row["Order"]); cell != "" {
+			n, err := strconv.Atoi(cell)
+			if err != nil || n < 1 {
+				return nil, fmt.Errorf("%s row for %q: order %q is not a whole number of one or more", visibilityTab, app, cell)
+			}
+			order = n
+		}
+		visibility[app] = Visibility{Mode: mode, Emails: splitEmails(row["Emails"]), Tagline: tagline, Name: name, Order: order}
 	}
 	return visibility, nil
 }
@@ -491,7 +518,8 @@ func (t *Tables) withoutRow(tab, key string) *Tables {
 func (t *Tables) withVisibility(app string, v Visibility) *Tables {
 	out := *t
 	out.Visibility = cloneRows(t.Visibility)
-	cells := map[string]string{"App": app, "Visibility": v.Mode, "Emails": joinEmails(v.Emails), "Tagline": v.Tagline}
+	cells := v.cells()
+	cells["App"] = app
 	for _, row := range out.Visibility {
 		if strings.EqualFold(strings.TrimSpace(row["App"]), app) {
 			applyCells(row, cells)

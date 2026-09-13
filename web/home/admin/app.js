@@ -1,4 +1,5 @@
 import {createPersonPicker} from '/picker.js';
+import {appOrigin} from '/toolbar.js';
 
 
 // A list of addresses that saves itself: every add or remove posts at once, so
@@ -72,56 +73,146 @@ function listEditor({rows, status, input, button, url, body, empty, initial}) {
   render();
 }
 
-// One card per community app: the switch between everyone and its list, and
-// the list itself while that is what the switch says. The switch and every add
-// or remove save at once, together, the way the Admins list does.
+// One card per community app, in the order the switch lists them - the
+// arrows on a card move it, and the whole order saves at once. Each card
+// carries the app's mark and address, which are the code's, then its name
+// and tagline, the switch between everyone and its list, and the list itself
+// while that is what the switch says. The switch and every add or remove
+// save at once, together, the way the Admins list does.
 function renderVisibility(apps, people) {
   const cards = document.querySelector('#visibility-cards');
   cards.replaceChildren();
   for (const app of apps) {
     cards.append(visibilityCard(app, people));
   }
+  updateMoveButtons(cards);
+}
+
+function updateMoveButtons(cards) {
+  const all = [...cards.children];
+  all.forEach((card, i) => {
+    card.querySelector('.move-up').disabled = i === 0;
+    card.querySelector('.move-down').disabled = i === all.length - 1;
+  });
+}
+
+async function saveOrder(cards, status) {
+  status.classList.remove('error');
+  status.textContent = 'Saving…';
+  const res = await fetch('/api/admin/visibility/order', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({apps: [...cards.children].map(card => card.dataset.app)}),
+  });
+  if (!res.ok) {
+    status.classList.add('error');
+    status.textContent = await res.text();
+    return;
+  }
+  status.textContent = 'Saved.';
+}
+
+// A text field that saves when it is left or Enter is pressed, and only if
+// it changed; an emptied field goes back to what it was.
+function textField(label, initial, maxLength, onSave) {
+  let current = initial;
+  const row = document.createElement('label');
+  row.className = 'visibility-field';
+  row.append(Object.assign(document.createElement('span'), {textContent: label}));
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = current;
+  input.maxLength = maxLength;
+  row.append(input);
+  input.addEventListener('change', async () => {
+    const next = input.value.trim();
+    if (!next) {
+      input.value = current;
+      return;
+    }
+    if (next === current) {
+      return;
+    }
+    current = next;
+    await onSave(next);
+  });
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      input.blur();
+    }
+  });
+  return row;
 }
 
 function visibilityCard(app, people) {
   let visibility = app.visibility;
   let emails = [...app.emails];
   let tagline = app.tagline;
+  let name = app.name;
   const byEmail = new Map(people.map(p => [p.email, p.name]));
 
   const card = document.createElement('div');
-  card.className = 'card';
-  const title = document.createElement('h2');
-  title.textContent = app.name;
+  card.className = 'card visibility-card';
+  card.dataset.app = app.key;
 
-  // The tagline saves when the field is left or Enter is pressed, and only
-  // if it changed; an emptied field goes back to what it was.
-  const taglineRow = document.createElement('label');
-  taglineRow.className = 'visibility-tagline';
-  taglineRow.append(Object.assign(document.createElement('span'), {textContent: 'Tagline'}));
-  const taglineInput = document.createElement('input');
-  taglineInput.type = 'text';
-  taglineInput.value = tagline;
-  taglineInput.maxLength = 300;
-  taglineRow.append(taglineInput);
-  const saveTagline = async () => {
-    const next = taglineInput.value.trim();
-    if (!next) {
-      taglineInput.value = tagline;
-      return;
-    }
-    if (next === tagline) {
-      return;
-    }
+  // The head: the mark and the address, which are the code's and stay as
+  // they are, so the card says which app it is whatever it is named; and
+  // the arrows that move the card in the order.
+  const title = document.createElement('div');
+  title.className = 'visibility-head';
+  const icon = document.createElement('img');
+  icon.src = `/brand/apps/${app.key}.png`;
+  icon.alt = '';
+  const words = document.createElement('div');
+  words.className = 'visibility-words';
+  const heading = document.createElement('h2');
+  heading.textContent = name;
+  const url = document.createElement('a');
+  url.className = 'visibility-url';
+  url.href = appOrigin(app.key);
+  url.textContent = appOrigin(app.key).replace(/^https?:\/\//, '');
+  url.target = '_blank';
+  url.rel = 'noopener';
+  words.append(heading, url);
+  const moves = document.createElement('div');
+  moves.className = 'visibility-moves';
+  const orderStatus = document.createElement('span');
+  orderStatus.className = 'save-status';
+  for (const [dir, glyph, label] of [['up', '↑', 'Move up'], ['down', '↓', 'Move down']]) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = `move-button move-${dir}`;
+    b.textContent = glyph;
+    b.setAttribute('aria-label', label);
+    b.title = label;
+    b.addEventListener('click', async () => {
+      const cards = card.parentElement;
+      const sibling = dir === 'up' ? card.previousElementSibling : card.nextElementSibling;
+      if (!sibling) {
+        return;
+      }
+      if (dir === 'up') {
+        cards.insertBefore(card, sibling);
+      } else {
+        cards.insertBefore(sibling, card);
+      }
+      updateMoveButtons(cards);
+      await saveOrder(cards, orderStatus);
+    });
+    moves.append(b);
+  }
+  moves.append(orderStatus);
+  title.append(icon, words, moves);
+
+  const nameRow = textField('Name', name, 80, async next => {
+    name = next;
+    heading.textContent = name;
+    await persist();
+  });
+  const taglineRow = textField('Tagline', tagline, 300, async next => {
     tagline = next;
     await persist();
-  };
-  taglineInput.addEventListener('change', saveTagline);
-  taglineInput.addEventListener('keydown', e => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      taglineInput.blur();
-    }
   });
 
   const toggle = document.createElement('div');
@@ -160,7 +251,7 @@ function visibilityCard(app, people) {
   status.className = 'save-status';
   addRow.append(mount, button, status);
   listWrap.append(rows, addRow);
-  card.append(title, taglineRow, toggle, note, listWrap);
+  card.append(title, nameRow, taglineRow, toggle, note, listWrap);
 
   const picker = createPersonPicker(mount);
 
@@ -170,7 +261,7 @@ function visibilityCard(app, people) {
     const res = await fetch('/api/admin/visibility', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({app: app.key, visibility, emails, tagline}),
+      body: JSON.stringify({app: app.key, visibility, emails, tagline, name}),
     });
     if (!res.ok) {
       status.classList.add('error');
