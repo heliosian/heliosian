@@ -229,17 +229,21 @@ export function weekStart(date) {
   return addDays(date, -parseDate(date).getDay());
 }
 
+// eventDates lists every day an event touches, so a camp-out that runs from
+// Friday evening to Sunday noon sits on all three days, not just the first.
 export function eventDates(e) {
   const out = [];
   const start = e.start.slice(0, 10);
-  if (!e.allDay) {
-    return [start];
-  }
-  const end = e.end.slice(0, 10);
+  const end = (e.end || e.start).slice(0, 10);
   for (let d = start; d <= end; d = addDays(d, 1)) {
     out.push(d);
   }
   return out;
+}
+
+// spansDays says whether an event's end falls on a later day than its start.
+export function spansDays(e) {
+  return Boolean(e.end) && e.end.slice(0, 10) !== e.start.slice(0, 10);
 }
 
 export function parseWhen(s) {
@@ -293,25 +297,51 @@ export function timeRange(from, to) {
 }
 
 // whenLine is an event's date line: "Mon Sep 7" for a day, "Sep 9 – Sep 11"
-// for a span, "Thu Sep 24 · 4:00–6:00 PM" with hours.
+// for a span, "Thu Sep 24 · 4:00–6:00 PM" with hours, and "Fri Oct 2 4:00 PM
+// – Sun Oct 4 12:00 PM" for hours that run across days.
 export function whenLine(e) {
-  const start = parseWhen(e.start);
-  const end = parseWhen(e.end);
   if (e.allDay) {
-    if (end && e.end !== e.start) {
-      return `${monthDayFormat.format(start.date)} – ${monthDayFormat.format(end.date)}`;
-    }
-    return dayFormat.format(start.date);
+    return daysLine(e);
   }
-  return `${dayFormat.format(start.date)} · ${timeLine(e)}`;
+  if (spansDays(e)) {
+    return timeLine(e);
+  }
+  return `${daysLine(e)} · ${timeLine(e)}`;
 }
 
-export function timeLine(e) {
+// daysLine is the day or days alone: "Mon Sep 7", or "Sep 9 – Sep 11".
+export function daysLine(e) {
+  const start = parseWhen(e.start);
+  if (spansDays(e)) {
+    return `${monthDayFormat.format(start.date)} – ${monthDayFormat.format(parseWhen(e.end).date)}`;
+  }
+  return dayFormat.format(start.date);
+}
+
+// timeLine is an event's hours. For hours that run across days it is both
+// ends with their days - or, given the date of the row it sits in, what that
+// day sees of it: "From 4:00 PM", "All day", "Until 12:00 PM".
+export function timeLine(e, date) {
   if (e.allDay) {
     return 'All day';
   }
   if (e.end === e.start) {
     return clock(e.start.slice(11));
+  }
+  if (spansDays(e)) {
+    const first = e.start.slice(0, 10);
+    const last = e.end.slice(0, 10);
+    if (date === first) {
+      return `From ${clock(e.start.slice(11)).trimStart()}`;
+    }
+    if (date === last) {
+      return `Until ${clock(e.end.slice(11)).trimStart()}`;
+    }
+    if (date) {
+      return 'All day';
+    }
+    const at = w => `${dayFormat.format(w.date)} ${clock(w.date.toTimeString().slice(0, 5)).trimStart()}`;
+    return `${at(parseWhen(e.start))} – ${at(parseWhen(e.end))}`;
   }
   return timeRange(e.start.slice(11), e.end.slice(11));
 }

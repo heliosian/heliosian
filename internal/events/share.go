@@ -80,6 +80,12 @@ func when(a *Activity) string {
 	if a.Timing != "" {
 		return a.Timing
 	}
+	if days, hours := spanLines(a); days != "" {
+		if hours != "" {
+			return days + " · " + hours
+		}
+		return days
+	}
 	start, err := time.ParseInLocation(DateTimeFormat, a.Start, local)
 	if err != nil {
 		if day, err := time.ParseInLocation(DateFormat, a.Start, local); err == nil {
@@ -247,6 +253,9 @@ func whenLines(a *Activity) (string, string) {
 	if a.Timing != "" {
 		return a.Timing, ""
 	}
+	if days, hours := spanLines(a); days != "" {
+		return days, hours
+	}
 	start, err := time.ParseInLocation(DateTimeFormat, a.Start, local)
 	if err != nil {
 		if day, err := time.ParseInLocation(DateFormat, a.Start, local); err == nil {
@@ -259,4 +268,28 @@ func whenLines(a *Activity) (string, string) {
 		return day, start.Format("3:04") + " – " + end.Format("3:04 PM")
 	}
 	return day, start.Format("3:04 PM")
+}
+
+// spanLines is the day and time lines of a thing that runs more than one day:
+// "Friday, October 2 – Sunday, October 4", and, when both ends carry a
+// time, "Fri 4:00 PM – Sun 12:00 PM" - each time with its weekday, since the
+// days line no longer says which is which. Both empty for anything else, so
+// the one-day forms above apply.
+func spanLines(a *Activity) (string, string) {
+	start, err := ParseWhen(a.Start)
+	if err != nil {
+		return "", ""
+	}
+	end, err := ParseWhen(a.End)
+	if err != nil || (end.Year() == start.Year() && end.YearDay() == start.YearDay()) {
+		return "", ""
+	}
+	days := start.Format("Monday, January 2") + " – " + end.Format("Monday, January 2")
+	if len(a.Start) > len(DateFormat) && len(a.End) > len(DateFormat) {
+		return days, start.Format("Mon 3:04 PM") + " – " + end.Format("Mon 3:04 PM")
+	}
+	if len(a.Start) > len(DateFormat) {
+		return days, start.Format("Mon 3:04 PM")
+	}
+	return days, ""
 }

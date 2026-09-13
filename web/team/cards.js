@@ -236,16 +236,16 @@ function dateBadge(act) {
   }
   const stamp = el('div', 'card-stamp');
   const end = parseWhen(act.end);
-  const sameMonth = end && end.date.getMonth() === start.date.getMonth();
-  const days = end && end.date.getDate() !== start.date.getDate() && sameMonth
-    ? `${start.date.getDate()}-${end.date.getDate()}`
-    : String(start.date.getDate());
+  const spans = end && end.date.toDateString() !== start.date.toDateString();
+  const sameMonth = spans && end.date.getMonth() === start.date.getMonth() && end.date.getFullYear() === start.date.getFullYear();
   // A tear-off calendar: the month as the red band across the top, the day
   // large, and the weekday under it - for a single day only; a span of days
-  // has no one weekday.
-  stamp.append(el('div', 'card-stamp-month', monthFormat.format(start.date).toUpperCase()),
-    el('div', 'card-stamp-day', days));
-  if (!end || end.date.getDate() === start.date.getDate() || !sameMonth) {
+  // reads "3-5" under its month, or "30-1" under "OCT-NOV" when it crosses
+  // into the next.
+  const month = monthFormat.format(start.date).toUpperCase();
+  stamp.append(el('div', 'card-stamp-month', spans && !sameMonth ? `${month}-${monthFormat.format(end.date).toUpperCase()}` : month),
+    el('div', 'card-stamp-day', spans ? `${start.date.getDate()}-${end.date.getDate()}` : String(start.date.getDate())));
+  if (!spans) {
     stamp.append(el('div', 'card-stamp-dow', start.date.toLocaleDateString('en-US', {weekday: 'short'}).toUpperCase()));
   }
   return stamp;

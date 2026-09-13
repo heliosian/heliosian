@@ -22,25 +22,49 @@ const monthShort = new Intl.DateTimeFormat('en-US', {month: 'short'});
 const fullDate = new Intl.DateTimeFormat('en-US', {weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'});
 const clock = new Intl.DateTimeFormat('en-US', {hour: 'numeric', minute: '2-digit'});
 
+// spansDays says whether a thing runs past the day it starts: its end, when
+// it has one, falls on a later day.
+function spansDays(node) {
+  const start = parseWhen(node.start);
+  const end = parseWhen(node.end);
+  return Boolean(start && end && end.date.toDateString() !== start.date.toDateString());
+}
+
+// timeRange is the hours line: "4:00 PM – 6:00 PM" on a single day; across
+// days each time carries its weekday - "Fri 4:00 PM – Sun 12:00 PM" - since
+// the days line no longer says which is which.
 function timeRange(node) {
   const start = parseWhen(node.start);
   if (!start || !start.hasTime) {
     return '';
   }
   const end = parseWhen(node.end);
+  if (spansDays(node)) {
+    const at = w => `${weekdayFormat.format(w.date)} ${clock.format(w.date)}`;
+    return end.hasTime ? `${at(start)} – ${at(end)}` : at(start);
+  }
   return end && end.hasTime ? `${clock.format(start.date)} – ${clock.format(end.date)}` : clock.format(start.date);
 }
 
 // heroStamp is the card floating over the hero image: weekday, date, and the
-// hours. An activity with no parsed date shows its timing words instead.
+// hours; a span of days reads "FRI – SUN" over "OCT 2 – 4" (or "OCT 30 –
+// NOV 1"). An activity with no parsed date shows its timing words instead.
 function heroStamp(act) {
   const start = parseWhen(act.start);
   if (act.timing || !start) {
     return act.timing ? el('div', 'hero-stamp hero-stamp-text', act.timing) : null;
   }
   const stamp = el('div', 'hero-stamp');
-  stamp.append(el('div', 'hero-stamp-weekday', weekdayFormat.format(start.date).toUpperCase()));
-  stamp.append(el('div', 'hero-stamp-date', `${monthShort.format(start.date).toUpperCase()} ${start.date.getDate()}`));
+  const monthDay = d => `${monthShort.format(d).toUpperCase()} ${d.getDate()}`;
+  if (spansDays(act)) {
+    const end = parseWhen(act.end);
+    const sameMonth = end.date.getMonth() === start.date.getMonth() && end.date.getFullYear() === start.date.getFullYear();
+    stamp.append(el('div', 'hero-stamp-weekday', `${weekdayFormat.format(start.date)} – ${weekdayFormat.format(end.date)}`.toUpperCase()));
+    stamp.append(el('div', 'hero-stamp-date', sameMonth ? `${monthDay(start.date)} – ${end.date.getDate()}` : `${monthDay(start.date)} – ${monthDay(end.date)}`));
+  } else {
+    stamp.append(el('div', 'hero-stamp-weekday', weekdayFormat.format(start.date).toUpperCase()));
+    stamp.append(el('div', 'hero-stamp-date', monthDay(start.date)));
+  }
   const hours = timeRange(act);
   if (hours) {
     stamp.append(el('div', 'hero-stamp-time', hours));
@@ -181,7 +205,7 @@ function factsCard(node, editing, save) {
   if (node.timing) {
     when.push(node.timing);
   } else if (start) {
-    when.push(fullDate.format(start.date));
+    when.push(spansDays(node) ? `${fullDate.format(start.date)} – ${fullDate.format(parseWhen(node.end).date)}` : fullDate.format(start.date));
     const hours = timeRange(node);
     if (hours) {
       when.push(hours);

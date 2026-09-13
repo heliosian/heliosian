@@ -63,7 +63,7 @@ function eventList(date) {
   }
   const list = el('div', 'event-list');
   for (const e of events) {
-    list.append(eventRow(e));
+    list.append(eventRow(e, {date}));
   }
   return list;
 }
@@ -120,7 +120,7 @@ function upcomingPanel(date) {
       if (events.length) {
         const list = el('div', 'event-list');
         for (const e of events) {
-          list.append(eventRow(e));
+          list.append(eventRow(e, {date: d}));
         }
         group.append(list);
       }

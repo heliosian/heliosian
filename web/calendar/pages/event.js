@@ -1,4 +1,4 @@
-import {whenLine, timeLine, calendarLink, sourceWords, dayType, eventDates, dayTypeClass, linkURL, call} from '../state.js';
+import {whenLine, daysLine, timeLine, calendarLink, sourceWords, dayType, eventDates, dayTypeClass, linkURL, call} from '../state.js';
 import {el, link, svg, paragraphs, button, copyText} from '../dom.js';
 import {setTitle} from '../chrome.js';
 import {audienceChips, blocks} from '../events.js';
@@ -52,7 +52,7 @@ export function eventPage(e) {
   const whenIcon = el('div', 'side-icon');
   whenIcon.append(svg('clock'));
   const whenBody = el('div', 'side-row-body');
-  whenBody.append(el('div', 'side-title', whenLine(e)));
+  whenBody.append(el('div', 'side-title', daysLine(e)));
   if (!e.allDay) {
     whenBody.append(el('div', 'side-line', timeLine(e)));
   }

@@ -37,14 +37,16 @@ export function roomDots(e) {
 }
 
 // eventRow is one event in a day's list: its hours, the title, the place,
-// and the classroom colors at the end and down its left edge.
+// and the classroom colors at the end and down its left edge. opts.date is
+// the day the row sits under, for what that day sees of hours that run
+// across days; opts.showDate writes the date in front of the hours instead.
 export function eventRow(e, opts = {}) {
   const row = link(eventPath(e), 'event-row');
   const first = eventColors(e)[0];
   if (first && first.color) {
     row.style.borderLeftColor = first.color;
   }
-  row.append(el('span', 'event-time', opts.showDate ? whenLine(e) : timeLine(e)));
+  row.append(el('span', 'event-time', opts.showDate ? whenLine(e) : timeLine(e, opts.date)));
   const body = el('span', 'event-body');
   body.append(el('span', 'event-title', e.title));
   if (e.location) {

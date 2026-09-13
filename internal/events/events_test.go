@@ -919,3 +919,23 @@ func TestUpcomingListsOpenDatedRootsAhead(t *testing.T) {
 		t.Errorf("limit 1 = %+v, want just %+v", limited, got[0])
 	}
 }
+
+func TestWhenSpansDays(t *testing.T) {
+	for _, tc := range []struct {
+		start, end, line, day, hours string
+	}{
+		{"2026-09-24", "", "Thursday, September 24", "Thursday, September 24", ""},
+		{"2026-09-24 16:00", "2026-09-24 18:00", "Thursday, September 24 · 4:00–6:00 PM", "Thursday, September 24", "4:00 – 6:00 PM"},
+		{"2026-10-02", "2026-10-04", "Friday, October 2 – Sunday, October 4", "Friday, October 2 – Sunday, October 4", ""},
+		{"2026-10-02 16:00", "2026-10-04 12:00", "Friday, October 2 – Sunday, October 4 · Fri 4:00 PM – Sun 12:00 PM", "Friday, October 2 – Sunday, October 4", "Fri 4:00 PM – Sun 12:00 PM"},
+		{"2026-10-30 09:00", "2026-11-01", "Friday, October 30 – Sunday, November 1 · Fri 9:00 AM", "Friday, October 30 – Sunday, November 1", "Fri 9:00 AM"},
+	} {
+		a := &Activity{Start: tc.start, End: tc.end}
+		if got := when(a); got != tc.line {
+			t.Errorf("when(%q, %q) = %q, want %q", tc.start, tc.end, got, tc.line)
+		}
+		if day, hours := whenLines(a); day != tc.day || hours != tc.hours {
+			t.Errorf("whenLines(%q, %q) = %q, %q, want %q, %q", tc.start, tc.end, day, hours, tc.day, tc.hours)
+		}
+	}
+}
