@@ -62,7 +62,7 @@ var (
 	OverrideColumns    = []string{"Event ID", "Title", "Start", "End", "Location", "Description", "Tags", "Day Type", "Keywords", "Hidden", "Note"}
 	DayTypeColumns     = []string{"Day Type", "Dropoff Start", "Dropoff End", "School Start", "School End", "Pickup Start", "Pickup End", "Aftercare Start", "Aftercare End"}
 	DayOverrideColumns = []string{"Date", "Classrooms", "Day Type", "Note"}
-	TagColumns         = []string{"Tag", "Description"}
+	TagColumns         = []string{"Tag", "Description", "Group"}
 	AdminColumns       = []string{"Email"}
 	FeedColumns        = []string{"Token", "Email", "Name", "Classrooms", "Tags", "Created"}
 	ChangeLogColumns   = []string{"Timestamp", "Actor", "Action", "Tab", "Key", "Column", "From", "To"}
@@ -167,9 +167,14 @@ type Year struct {
 
 // Tag is one word of the vocabulary events are filed under, with the
 // description the classifier is given for it.
+// A Tag is one category events are filed under. Group is the line of the
+// filters it sits on, blank for the plain line at the end; BuiltIn marks
+// the tags the app supplies rather than the sheet, whose group is fixed.
 type Tag struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
+	Group       string `json:"group"`
+	BuiltIn     bool   `json:"builtIn,omitempty"`
 }
 
 // A feed with no Classrooms carries every classroom, and one with no Tags
@@ -323,6 +328,13 @@ func (t *Tables) WithFeed(cells map[string]string) *Tables {
 	return &out
 }
 
+// WithTags is the tables with the Tags tab's rows replaced, in their order.
+func (t *Tables) WithTags(rows []map[string]string) *Tables {
+	out := *t
+	out.Tags = cloneRows(rows)
+	return &out
+}
+
 func (t *Tables) WithoutFeed(token string) *Tables {
 	out := *t
 	out.Feeds = []map[string]string{}
@@ -472,7 +484,7 @@ func parseTags(rows []map[string]string) ([]Tag, error) {
 		if row["Description"] == "" {
 			return nil, fmt.Errorf("tag %q has no description", name)
 		}
-		out = append(out, Tag{Name: name, Description: row["Description"]})
+		out = append(out, Tag{Name: name, Description: row["Description"], Group: strings.TrimSpace(row["Group"])})
 	}
 	if len(out) == 0 {
 		return nil, fmt.Errorf("%s has no rows", TagsTab)

@@ -4,7 +4,7 @@ Every app puts the same bar across the top of its content: 48px tall in a pale w
 
 ## Search
 
-The pill holds whatever the app searches - Who? finds people, grades and gradebands as you type; HCA-Team filters the page that is open, or jumps to the opportunities list with the words when the open page has no filter of its own; Heliosian filters its links. A `/` badge at the pill's right edge names the shortcut: a bare `/` anywhere on the page (no modifier, nothing else focused) puts the cursor in the box, the way GitHub and Slack do, and `toolbar.js`'s `onSlash` is that binding. On a phone Who? and HCA-Team fold the box behind a magnifier in their compact bar, and `/` opens that overlay instead. Helios Calendar is the one exception on a wide window: its search is a filter like its classrooms and tags, so it sits with them in the rail and the bar's box is hidden there; on a phone, where the rail is a drawer, the bar's box is the search (`docs/calendar/calendar.md`).
+The pill holds whatever the app searches - Who? finds people, grades and gradebands as you type; HCA-Team filters the page that is open, or jumps to the opportunities list with the words when the open page has no filter of its own; Heliosian filters its links; Helios Calendar filters the whole year, and wears amber while it does (`docs/calendar/calendar.md`). A `/` badge at the pill's right edge names the shortcut: a bare `/` anywhere on the page (no modifier, nothing else focused) puts the cursor in the box, the way GitHub and Slack do, and `toolbar.js`'s `onSlash` is that binding. On a phone Who? and HCA-Team fold the box behind a magnifier in their compact bar, and `/` opens that overlay instead.
 
 ## The alerts
 

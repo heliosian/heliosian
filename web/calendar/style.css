@@ -57,7 +57,7 @@ button { font: inherit; }
 .app-shell { display: flex; flex: 1; min-height: 0; }
 
 .sidebar {
-  width: 250px;
+  width: 300px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -67,12 +67,12 @@ button { font: inherit; }
   overflow-y: auto;
 }
 
-/* The rail carries the vertical lockup, as the other apps' do. */
-.brand { display: flex; justify-content: center; padding: 16px 16px 6px; flex-shrink: 0; }
+/* The rail carries the long horizontal lockup, one line of name over the tagline. */
+.brand { display: flex; justify-content: center; padding: 18px 16px 8px; flex-shrink: 0; }
 
 .brand a { display: block; line-height: 0; }
 
-.brand img { width: 170px; max-width: 100%; height: auto; display: block; }
+.brand img { width: 100%; max-width: 270px; height: auto; display: block; }
 
 .app-nav { display: flex; flex-direction: column; gap: 2px; padding: 12px 10px 6px; }
 
@@ -93,43 +93,175 @@ button { font: inherit; }
 
 .app-nav a:hover { background: rgba(255, 255, 255, 0.55); }
 
-.app-nav a.is-active { background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
+.app-nav a.is-active { background: var(--accent); color: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
 
-/* The filters under the nav: three groups of the same shape - a title, its
-   words at the right edge, and under it the search box or the chips. */
-.rail-filters, .filter-groups { display: flex; flex-direction: column; gap: 16px; }
+/* The day under the nav: the small month to pick a day from, then the day
+   as a card - its name, its date, the plan when the day is not regular, and
+   its events down a timeline. Only the calendar page has a day of its own;
+   the rail's is the last one opened. */
+.rail-day { padding: 10px 12px 24px; }
 
-.rail-filters { padding: 10px 14px 24px; }
+/* The small month and the day card, with air between them. */
+.home-day { display: flex; flex-direction: column; gap: 28px; }
 
-/* The rail's search box: the top bar's pill in the rail's colors, amber
-   while it holds words, as the chips it lights are. */
-.rail-search-box { position: relative; display: flex; align-items: center; }
+.mini-month { padding: 10px 10px 8px; border-radius: 14px; background: var(--card); border: 1px solid var(--line); }
 
-.rail-search-box > svg { position: absolute; left: 11px; width: 16px; height: 16px; stroke: var(--muted); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+.mini-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 2px 4px; }
 
-.rail-search-box input {
-  width: 100%;
-  height: 34px;
-  border: 1.5px solid rgba(20, 79, 90, 0.25);
-  border-radius: 10px;
-  padding: 0 36px 0 34px;
-  background: rgba(255, 255, 255, 0.6);
+.mini-label { font-family: Montserrat, Roboto, sans-serif; font-size: 15px; font-weight: 700; color: var(--brand); }
+
+.mini-arrows { display: flex; gap: 2px; }
+
+.mini-arrow { display: flex; align-items: center; justify-content: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--brand); cursor: pointer; }
+
+.mini-arrow:hover { background: var(--input); }
+
+.mini-arrow svg { width: 16px; height: 16px; }
+
+.mini-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px 0; }
+
+.mini-dow { text-align: center; font-size: 10px; font-weight: 700; color: var(--muted); padding-bottom: 2px; }
+
+/* Each day is a circle in the middle of its column, so the chosen one's fill is round. */
+.mini-day { position: relative; display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; margin: 0 auto; border-radius: 50%; text-decoration: none; color: var(--ink); font-size: 12.5px; font-weight: 600; }
+
+/* The days of the months either side, there to be picked but faded. */
+.mini-day.is-outside { color: #b3c0c2; font-weight: 500; }
+
+.mini-day:hover { background: var(--input); }
+
+.mini-day.is-off { color: var(--muted); font-weight: 500; }
+
+.mini-day.is-today .mini-num { color: var(--amber); }
+
+.mini-day.is-on { background: var(--brand); color: #fff; }
+
+.mini-day.is-on .mini-num { color: #fff; }
+
+.mini-dot { position: absolute; left: 50%; bottom: 2px; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: var(--other); }
+
+.mini-day.is-outside .mini-dot { opacity: 0.5; }
+
+.mini-dot.dt-no-school { background: var(--no-school); }
+
+.mini-dot.dt-early { background: var(--early); }
+
+.mini-dot.dt-no-aftercare { background: var(--no-aftercare); }
+
+.mini-day.is-on .mini-dot { background: #fff !important; }
+
+.day-card { padding: 16px 16px 18px; border-radius: 14px; background: var(--card); border: 1px solid var(--line); }
+
+.day-card-title { font-family: Montserrat, Roboto, sans-serif; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.1; margin: 0; color: var(--brand); }
+
+.day-card-date { margin: 4px 0 0; font-size: 13.5px; color: var(--muted); }
+
+.day-card-plan:not(:empty) { margin-top: 14px; }
+
+.day-card .plan-card { padding: 8px 12px 10px; }
+
+.day-card .plan-type { font-size: 15px; }
+
+.day-card .plan-card.dt-regular { background: var(--page); }
+
+/* Two blocks a row in the rail's width, the hours wrapping when they must. */
+.day-card .blocks { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+.day-card .block { background: #fff; padding: 6px 8px; }
+
+.day-card .block-hours { font-size: 12px; white-space: normal; }
+
+.day-card .panel { margin-top: 14px; border: 0; background: var(--page); }
+
+/* The timeline: a line down the left with a dot per event, in its color. */
+.timeline { display: flex; flex-direction: column; margin-top: 14px; }
+
+.timeline-row { position: relative; display: flex; gap: 14px; padding: 0 0 18px; text-decoration: none; color: inherit; }
+
+.timeline-row::before { content: ""; position: absolute; left: 5px; top: 14px; bottom: 0; width: 2px; background: var(--line); }
+
+.timeline-row:last-child::before { display: none; }
+
+.timeline-row:last-child { padding-bottom: 0; }
+
+.timeline-dot { position: relative; z-index: 1; flex-shrink: 0; width: 12px; height: 12px; margin-top: 3px; border-radius: 50%; box-shadow: 0 0 0 2px #fff; }
+
+.timeline-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+
+.timeline-time { font-size: 13px; font-weight: 600; color: var(--brand); font-variant-numeric: tabular-nums; }
+
+.timeline-title { font-size: 15px; font-weight: 700; color: var(--ink); }
+
+.timeline-row:hover .timeline-title { text-decoration: underline; }
+
+.timeline-place { font-size: 13px; color: var(--muted); }
+
+/* The filters, on the calendar page above the month: a card that folds to
+   one line, and open, two rows of the same shape - a label, its pills, and
+   the chips. The drawer draws the same two rows plain on a phone. */
+.rail-filters { display: flex; flex-direction: column; gap: 16px; }
+
+.home-filters { margin: 0 0 20px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); }
+
+.filters-head { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 18px; border: 0; background: none; font: inherit; color: var(--ink); text-align: left; cursor: pointer; border-radius: 14px; }
+
+.filters-head:hover { background: #fafcfc; }
+
+.filters-title { font-size: 14px; font-weight: 700; color: var(--brand); }
+
+.filters-summary { flex: 1; min-width: 0; font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* The chevron points down to unfold and up to fold. */
+.filters-head svg { width: 18px; height: 18px; flex-shrink: 0; color: var(--muted); transform: rotate(90deg); transition: transform 0.15s; }
+
+.home-filters.is-open .filters-head svg { transform: rotate(-90deg); }
+
+.home-filters.is-open .filters-head { border-bottom: 1px solid var(--line); border-radius: 14px 14px 0 0; }
+
+.filter-rows { display: flex; flex-direction: column; gap: 10px; }
+
+.home-filters .filter-rows { padding: 12px 18px 14px; }
+
+.filter-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+
+.filter-label { width: 90px; flex-shrink: 0; font-size: 13.5px; font-weight: 700; color: var(--brand); }
+
+.filter-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* The pills after the label, All and its company: tinted while they hold. */
+.filter-action { padding: 6px 14px; border: 1px solid transparent; border-radius: 999px; background: #fff; border-color: var(--line); font: inherit; font-size: 13px; font-weight: 600; color: var(--brand); cursor: pointer; }
+
+.filter-action:hover { border-color: var(--accent); }
+
+.filter-action.is-on { background: #d6ebe8; border-color: #d6ebe8; color: var(--brand); }
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
   color: var(--ink);
   font: inherit;
-  font-size: 13.5px;
-  outline: none;
-  -webkit-appearance: none;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
 }
 
-.rail-search-box input::-webkit-search-decoration { -webkit-appearance: none; }
+.filter-chip:hover { border-color: var(--accent); }
 
-.rail-search-box input:focus { border-color: var(--brand); background: #fff; }
+/* A chip that is off fades and loses its fill; on, it is plain and white. */
+.filter-chip:not(.is-on) { background: transparent; color: var(--muted); border-style: dashed; }
 
-.rail-search-box:focus-within .topbar-key { display: none; }
+.filter-chip.has-color::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--room); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12); }
 
-body.is-searching .rail-search-box input { border-color: var(--amber); background: #fff; box-shadow: 0 0 0 2px rgba(232, 163, 61, 0.35); }
+.filter-chip:not(.is-on).has-color::before { opacity: 0.45; }
 
-body.is-searching .rail-search .filter-title { color: var(--early); }
+.filter-chip.has-hidden { border-color: var(--amber); border-style: solid; box-shadow: 0 0 0 2px rgba(232, 163, 61, 0.35); }
+
+.filter-reset { margin: 0 0 0 auto; padding: 4px 6px; font-size: 13px; }
 
 /* The band across the page while searching. */
 .search-band { display: flex; align-items: center; gap: 12px; margin: 0 0 18px; padding: 10px 14px; border: 1.5px solid var(--amber); border-radius: 12px; background: var(--early-wash); color: var(--early); font-size: 14px; }
@@ -140,53 +272,12 @@ body.is-searching .rail-search .filter-title { color: var(--early); }
 
 .search-band strong { color: var(--ink); }
 
-.filter-group { display: flex; flex-direction: column; gap: 8px; }
+/* The feeds form's categories: one line per group, its name at the left. */
+.form-tag-groups { display: flex; flex-direction: column; gap: 8px; }
 
-.filter-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.form-tag-group { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 
-.filter-title { font-size: 11.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
-
-.filter-actions { display: flex; gap: 10px; }
-
-.filter-action { padding: 0; border: 0; background: none; font: inherit; font-size: 12px; font-weight: 600; color: var(--accent); cursor: pointer; }
-
-.filter-action.is-on { color: var(--muted); text-decoration: underline; text-underline-offset: 3px; }
-
-.filter-chips { display: flex; flex-wrap: wrap; gap: 5px; }
-
-.filter-rows { display: flex; flex-direction: column; gap: 5px; }
-
-.filter-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border: 1.5px solid rgba(20, 79, 90, 0.25);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.5);
-  color: var(--brand);
-  font: inherit;
-  font-size: 12.5px;
-  font-weight: 600;
-  cursor: pointer;
-  line-height: 1.3;
-}
-
-.filter-chip:hover { border-color: var(--brand); }
-
-.filter-chip.is-on { background: var(--brand); border-color: var(--brand); color: #fff; }
-
-/* A classroom chip wears its color as a dot, filled when on. */
-.filter-chip.has-color::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--room); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12); }
-
-/* A tag that is off while the search finds things under it. */
-.filter-chip.has-hidden { border-color: var(--amber); box-shadow: 0 0 0 2px rgba(232, 163, 61, 0.35); }
-
-.filter-reset { align-self: flex-start; padding-left: 0; font-size: 13px; margin: 0; }
-
-.filter-chips-form .filter-chip { background: #fff; }
-
-.filter-chips-form .filter-chip.is-on { background: var(--brand); }
+.form-tag-label { width: 110px; flex-shrink: 0; font-size: 12.5px; font-weight: 600; color: var(--muted); }
 
 .content-col { display: flex; flex-direction: column; flex: 1; min-width: 0; }
 
@@ -240,7 +331,7 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .drawer a { display: flex; align-items: center; gap: 14px; padding: 12px 20px; color: var(--ink); text-decoration: none; font-size: 16px; border-radius: 0; }
 
-.drawer a.is-active { background: var(--input); box-shadow: none; }
+.drawer a.is-active { background: var(--input); color: var(--brand); box-shadow: none; }
 
 .drawer svg { width: 20px; height: 20px; }
 
@@ -256,112 +347,78 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .user-menu-link { display: block; padding: 8px 0; font-size: 14px; font-weight: 600; color: var(--brand); text-decoration: none; }
 
-/* The calendar page: the day on the left, upcoming on the right in a panel
-   as tall as the day and scrolling on its own inside that, the month grid
-   under both. The panel's words are taken out of the flow so the row's
-   height is the day's, not the whole year's. */
-.home-top { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 24px; align-items: stretch; }
+/* The calendar page: the month grid on the left, upcoming on the right in a
+   panel as tall as the month and scrolling on its own inside that. The
+   panel's words are taken out of the flow so the row's height is the
+   month's, not the whole year's. The page's own day column is for a phone;
+   on a wide window the rail's is the one showing. */
+.home-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 330px); gap: 0 20px; align-items: stretch; }
 
-.home-day { min-width: 0; }
 
-/* The panel is a box with its own heading and a scrollbar, the bottom edge
-   fading so it reads as a list that goes on. */
-.home-upcoming { position: relative; min-height: 420px; border: 1px solid var(--line); border-radius: 12px; background: #fff; overflow: hidden; }
+.home > .home-day { display: none; }
 
-.upcoming-head { position: absolute; top: 0; left: 0; right: 0; height: 40px; padding: 0 14px; display: flex; align-items: center; font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line); background: #fff; z-index: 1; }
+.home-upcoming { position: relative; min-height: 420px; border: 1px solid var(--line); border-radius: 14px; background: #fff; overflow: hidden; }
 
-.upcoming-body { position: absolute; top: 40px; left: 0; right: 0; bottom: 0; overflow-y: scroll; scrollbar-gutter: stable; padding: 12px 10px 40px 12px; }
+.upcoming-head { position: absolute; top: 0; left: 0; right: 0; height: 52px; padding: 0 18px; display: flex; align-items: center; font-family: Montserrat, Roboto, sans-serif; font-size: 17px; font-weight: 700; color: var(--brand); background: #fff; z-index: 1; }
+
+.upcoming-body { position: absolute; top: 52px; left: 0; right: 0; bottom: 0; overflow-y: scroll; scrollbar-gutter: stable; padding: 0 10px 40px 18px; }
 
 .home-upcoming::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 36px; background: linear-gradient(rgba(255, 255, 255, 0), #fff); pointer-events: none; }
 
-.upcoming-body .event-list { border: 0; border-radius: 0; background: none; }
+.upcoming-later { margin: 10px 0 6px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 13.5px; font-weight: 700; color: var(--brand); }
 
-.upcoming-body .event-row { padding-left: 8px; border-top-color: #eef2f3; }
+/* One row: the date block, the bar, the words, the dot. */
+.up-row { display: flex; align-items: flex-start; gap: 12px; padding: 10px 0; text-decoration: none; color: inherit; border-bottom: 1px solid #eef2f3; }
 
-.upcoming-body .day-group { padding-bottom: 10px; margin-bottom: 8px; border-bottom: 1px solid var(--line); }
+.up-row:last-child { border-bottom: 0; }
 
-.upcoming-body .day-group:last-of-type { border-bottom: 0; }
+.up-date { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; width: 52px; flex-shrink: 0; }
 
-.home-month { margin-top: 28px; }
+.up-dow { padding: 1px 6px; border-radius: 5px; background: var(--input); font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
 
+.up-day { font-size: 14px; font-weight: 700; color: var(--brand); white-space: nowrap; }
+
+.up-bar { align-self: stretch; width: 3px; flex-shrink: 0; border-radius: 2px; background: var(--other); }
+
+.up-row.dt-no-school .up-bar, .up-row.dt-no-school .up-dot { background: var(--no-school); }
+
+.up-row.dt-early .up-bar, .up-row.dt-early .up-dot { background: var(--early); }
+
+.up-row.dt-no-aftercare .up-bar, .up-row.dt-no-aftercare .up-dot { background: var(--no-aftercare); }
+
+.up-body { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+
+.up-title { font-size: 14.5px; font-weight: 700; color: var(--ink); }
+
+.up-row:hover .up-title { text-decoration: underline; }
+
+.up-row.dt-no-school .up-title { color: var(--no-school); }
+
+.up-row.dt-early .up-title { color: var(--early); }
+
+.up-row.dt-no-aftercare .up-title { color: var(--no-aftercare); }
+
+.up-row.dt-other .up-title { color: var(--other); }
+
+.up-time { font-size: 13px; color: var(--ink); font-variant-numeric: tabular-nums; }
+
+.up-place { font-size: 13px; color: var(--muted); }
+
+.up-body .event-pill { margin-top: 4px; padding: 4px 12px; background: var(--brand); color: #fff; }
+
+.up-dot { width: 9px; height: 9px; flex-shrink: 0; margin-top: 4px; border-radius: 50%; background: var(--other); }
+
+.home-month { min-width: 0; container-type: inline-size; }
+
+/* In a narrow month the hours would only be clipped; the title alone. */
+@container (max-width: 640px) {
+  .month-pip-time { display: none; }
+}
 .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; flex-wrap: wrap; margin: 4px 0 18px; }
 
 .page-head-main { min-width: 0; }
 
-.home-day-head { margin: 14px 0 12px; }
-
-.home-day-head .page-title { font-size: 22px; }
-
-.page-title {
-  font-family: Montserrat, Roboto, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-  font-size: 30px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  line-height: 1.1;
-  margin: 0;
-  color: var(--brand);
-}
-
-.page-intro { margin: 5px 0 0; font-size: 14.5px; color: var(--muted); max-width: 720px; }
-
-.section-title { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin: 22px 0 8px; }
-
-.section-title:first-child { margin-top: 0; }
-
-/* The week strip: the days of the chosen day's week, the chosen one filled,
-   today ringed, a day that is not regular carrying a colored mark. */
-.week-strip { display: flex; align-items: center; gap: 6px; }
-
-.strip-days { display: flex; flex: 1; gap: 4px; min-width: 0; }
-
-.strip-day {
-  position: relative;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1px;
-  padding: 6px 2px 10px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--card);
-  text-decoration: none;
-  color: var(--brand);
-}
-
-.strip-day:hover { border-color: var(--accent); }
-
-.strip-day.is-off { background: #f7f9f9; color: var(--muted); }
-
-.strip-day.is-today { border-color: var(--amber); box-shadow: inset 0 0 0 1px var(--amber); }
-
-.strip-day.is-on { background: var(--brand); border-color: var(--brand); color: #fff; }
-
-.strip-dow { font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; opacity: 0.8; }
-
-.strip-num { font-family: Montserrat, Roboto, sans-serif; font-size: 18px; font-weight: 700; line-height: 1.1; }
-
-.strip-dots { display: flex; gap: 3px; min-height: 7px; margin-top: 3px; }
-
-.strip-dot { width: 7px; height: 7px; border-radius: 50%; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1); }
-
-.strip-dot.is-plain { background: #b9c6c8; }
-
-.strip-day.is-on .strip-dot.is-plain { background: rgba(255, 255, 255, 0.7); }
-
-.strip-mark { position: absolute; left: 50%; bottom: 3px; width: 14px; height: 3px; margin-left: -7px; border-radius: 2px; background: var(--other); }
-
-.strip-mark.dt-no-school { background: var(--no-school); }
-
-.strip-mark.dt-early { background: var(--early); }
-
-.strip-mark.dt-no-aftercare { background: var(--no-aftercare); }
-
-.strip-day.is-on .strip-mark { background: #fff; }
-
 .strip-arrow { border: 1px solid var(--line); background: #fff; color: var(--brand); }
-
-.strip-today.is-hidden { visibility: hidden; }
 
 /* What kind of day, as colored words wherever a list mentions it. */
 .day-words { display: inline; }
@@ -536,22 +593,28 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 .link-button.danger { color: var(--alert); }
 
 /* The month grid. */
-.pager { display: flex; align-items: center; gap: 6px; margin: 4px 0 10px; }
+.pager { display: flex; align-items: center; gap: 8px; margin: 4px 0 14px; }
 
-.pager-label { font-family: Montserrat, Roboto, sans-serif; font-size: 19px; font-weight: 700; color: var(--brand); margin: 0 10px; }
+.pager .strip-arrow { width: 40px; height: 40px; border-radius: 10px; }
 
-.pager .button.is-hidden { visibility: hidden; }
+.pager-label { font-family: Montserrat, Roboto, sans-serif; font-size: 26px; font-weight: 700; color: var(--brand); margin: 0 12px; }
 
-.month-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.pager-today { padding: 8px 18px; border-radius: 10px; font-weight: 600; }
 
-.month-dow { text-align: center; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); padding: 4px 0; }
+.pager-feed { margin-left: auto; padding: 8px 16px; border-radius: 10px; font-weight: 600; text-decoration: none; }
+
+.pager-feed svg { width: 16px; height: 16px; }
+
+.month-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+
+.month-dow { text-align: center; font-size: 12.5px; font-weight: 600; color: var(--muted); padding: 4px 0 6px; }
 
 .month-cell {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  min-height: 96px;
-  padding: 5px 6px;
+  gap: 4px;
+  min-height: 112px;
+  padding: 6px 7px 8px;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--card);
@@ -566,20 +629,87 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .month-cell.is-off { background: #f7f9f9; }
 
-.month-cell.is-today { border-color: var(--amber); box-shadow: inset 0 0 0 1px var(--amber); }
+.month-cell.is-today { border-color: var(--amber); box-shadow: inset 0 0 0 1px var(--amber); background: #fffaf0; }
 
-.month-cell-num { align-self: flex-end; font-size: 12.5px; font-weight: 700; color: var(--brand); }
+/* The day open in the rail wears a teal ring - over the amber when it is
+   today, the number staying amber to say so. */
+.month-cell.is-on { border-color: var(--accent); box-shadow: inset 0 0 0 1.5px var(--accent); background: #eef6f5; }
 
-.month-cell.is-today .month-cell-num { background: var(--amber); color: #fff; border-radius: 999px; padding: 0 7px; }
+.month-cell.is-on.is-today { background: #fffaf0; }
 
-.month-mark { padding: 0 0 0 6px; border-left: 3px solid currentColor; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.month-cell { cursor: pointer; }
 
-.month-pip { padding: 1px 6px; border-radius: 6px; font-size: 11.5px; background: var(--input); color: var(--brand); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.month-cell-num { align-self: flex-end; font-size: 13.5px; font-weight: 700; color: var(--brand); margin-bottom: 2px; text-decoration: none; }
 
-.month-pip.is-all-day { background: #e3eef0; font-weight: 600; }
+.month-cell.is-on .month-cell-num { background: var(--accent); color: #fff; border-radius: 999px; padding: 1px 8px; }
+
+.month-cell.is-today .month-cell-num { background: var(--amber); color: #fff; border-radius: 999px; padding: 1px 8px; }
+
+/* A day type is a pill in its wash with a bar down its left. */
+.month-mark { padding: 3px 7px 3px 8px; border-left: 3px solid currentColor; border-radius: 6px; font-size: 11.5px; font-weight: 700; background: var(--other-wash); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.month-mark.dt-no-school { background: var(--no-school-wash); }
+
+.month-mark.dt-early { background: var(--early-wash); }
+
+.month-mark.dt-no-aftercare { background: var(--no-aftercare-wash); }
+
+/* An event is a pill in a wash of its color - its title, then its hours. */
+.month-pip { display: flex; flex-direction: column; gap: 1px; padding: 3px 7px 4px; border-radius: 6px; font-size: 11.5px; background: color-mix(in srgb, var(--c) 14%, #fff); color: color-mix(in srgb, var(--c) 55%, #0d0d0d); overflow: hidden; text-decoration: none; }
+
+.month-pip:hover { background: color-mix(in srgb, var(--c) 26%, #fff); }
+
+.month-pip-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.month-pip-time { font-size: 11px; opacity: 0.85; white-space: nowrap; }
 
 .month-more { font-size: 11px; color: var(--muted); padding-left: 6px; }
 
+/* The card over a month cell: the day's name, its kind, and every event in
+   full, each a link. Fixed to the window, placed by script. */
+.day-peek { position: fixed; z-index: 35; width: 330px; padding: 12px 14px 12px; background: #fff; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.16); display: flex; flex-direction: column; gap: 8px; }
+
+.day-peek-head { display: flex; align-items: baseline; gap: 8px; text-decoration: none; color: var(--brand); }
+
+.day-peek-date { font-family: Montserrat, Roboto, sans-serif; font-size: 15px; font-weight: 700; }
+
+.day-peek-empty { font-size: 13px; color: var(--muted); }
+
+/* The plan in the card: the rail's, at the card's width. */
+.day-peek .plan-card { padding: 8px 12px 10px; }
+
+.day-peek .plan-type { font-size: 15px; }
+
+.day-peek .plan-card.dt-regular { background: var(--page); }
+
+.day-peek .blocks { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+.day-peek .block { background: #fff; padding: 5px 8px; }
+
+.day-peek .block-hours { font-size: 12px; white-space: normal; }
+
+.day-peek-list { display: flex; flex-direction: column; gap: 6px; }
+
+.day-peek-row { display: flex; align-items: flex-start; gap: 10px; padding: 6px 8px 6px 0; border-radius: 8px; text-decoration: none; color: inherit; }
+
+.day-peek-row:hover { background: color-mix(in srgb, var(--c) 10%, #fff); }
+
+.day-peek-bar { align-self: stretch; width: 3px; flex-shrink: 0; border-radius: 2px; background: var(--c); }
+
+.day-peek-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+
+.day-peek-time { font-size: 12px; font-weight: 600; color: var(--brand); }
+
+.day-peek-title { font-size: 14px; font-weight: 700; }
+
+.day-peek-place { font-size: 12.5px; color: var(--muted); }
+
+.day-peek .room-dots { margin-top: 4px; }
+
+/* No pointer to rest, no card. */
+@media (hover: none) {
+  .day-peek { display: none !important; }
+}
 /* The event page. */
 .detail-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 
@@ -670,16 +800,55 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .row-text { color: var(--muted); }
 
+/* Admin Tools: one tool per section. The categories are cards, one per
+   group, its name at the top with arrows to move the group, and a row per
+   category - its name, its description in a box, where it goes, and
+   arrows to move it. */
+.admin-tool { margin-top: 8px; }
+
+.admin-groups { display: flex; flex-direction: column; gap: 14px; margin-top: 12px; }
+
+.admin-group { background: var(--card); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+
+.admin-group-head { display: flex; align-items: center; gap: 6px; padding: 10px 12px 10px 16px; background: #f4f8f8; border-bottom: 1px solid var(--line); }
+
+.admin-group-name { flex: 1; min-width: 0; padding: 7px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; font-size: 15px; font-weight: 700; color: var(--brand); background: #fff; }
+
+.admin-group-name::placeholder { color: var(--muted); font-weight: 600; }
+
+.admin-list { display: flex; flex-direction: column; }
+
+.admin-row { display: flex; align-items: center; gap: 8px; padding: 8px 12px 8px 16px; border-top: 1px solid var(--line); }
+
+.admin-row:first-child { border-top: 0; }
+
+.admin-row-words { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+
+.admin-row-name { font-size: 14.5px; font-weight: 700; }
+
+.admin-row-description { width: 100%; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; font-size: 13px; color: var(--ink); background: #fff; }
+
+.admin-row-description:focus, .admin-group-name:focus, .admin-select:focus { outline: none; border-color: var(--brand); }
+
+.admin-select { flex-shrink: 0; width: 150px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; font-size: 13.5px; background: #fff; color: var(--ink); }
+
+/* The arrows: up and down as the strip's back and forward, turned. */
+.admin-arrow { width: 30px; height: 30px; flex-shrink: 0; }
+
+.admin-arrow svg { width: 18px; height: 18px; transform: rotate(90deg); }
+
+.admin-arrow:disabled { opacity: 0.25; cursor: default; }
+
+.admin-note { margin: 12px 0 0; font-size: 13px; color: var(--muted); }
+
+.admin-add { margin-top: 20px; }
+
+.admin-save { margin-top: 20px; }
+
 .toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 10px 18px; border-radius: 999px; font-size: 14px; z-index: 70; }
 
-/* On a wide window the search lives in the rail with the other filters; the
-   top bar's box is for phones, where the rail is a drawer. */
-@media (min-width: 901px) {
-  .topbar-search { display: none; }
-}
-
-@media (max-width: 1100px) {
-  .home-top { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+@media (max-width: 1200px) {
+  .home-grid { grid-template-columns: minmax(0, 1fr); gap: 24px; }
   .plan-cards { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
   .home-upcoming { min-height: 0; border: 0; background: none; overflow: visible; }
   .home-upcoming::after { display: none; }
@@ -736,8 +905,12 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
   .detail-side { position: static; }
   .event-row { flex-wrap: wrap; gap: 4px 10px; }
   .event-time { width: 100%; }
-  .strip-num { font-size: 15px; }
-  .strip-today { display: none; }
+  .home > .home-day { display: block; margin-bottom: 24px; }
+  /* The big month is right there; the small one would be a second. */
+  .home > .home-day .mini-month { display: none; }
+  .home-filters { display: none; }
+  .home-grid { display: flex; flex-direction: column; }
+  .home-upcoming { order: -1; }
   .month-grid { gap: 2px; }
   .month-cell { min-height: 58px; padding: 3px; border-radius: 6px; }
   .month-pip, .month-more { display: none; }

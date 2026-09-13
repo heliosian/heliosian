@@ -34,12 +34,16 @@ type Linked struct {
 // but no category. Every view carries them beside the sheet's own so the
 // rail can switch each off.
 var builtinTags = []Tag{
-	{Name: TagCelebrate, Description: "Fun(d)raiser parties on Helios Celebrate."},
-	{Name: TagHCA, Description: "Events the HCA runs, from HCA-Team."},
-	{Name: TagMisc, Description: "Events the sheet has not filed under a category."},
-	{Name: TagGoing, Description: "Parties your household holds tickets to, and HCA events someone in it signed up for."},
-	{Name: TagWaitlisted, Description: "Parties your household is on the waitlist for."},
+	{Name: TagCelebrate, Description: "Fun(d)raiser parties on Helios Celebrate.", Group: BuiltinGroup, BuiltIn: true},
+	{Name: TagHCA, Description: "Events the HCA runs, from HCA-Team.", Group: BuiltinGroup, BuiltIn: true},
+	{Name: TagMisc, Description: "Events the sheet has not filed under a category.", Group: BuiltinGroup, BuiltIn: true},
+	{Name: TagGoing, Description: "Parties your household holds tickets to, and HCA events someone in it signed up for.", Group: BuiltinGroup, BuiltIn: true},
+	{Name: TagWaitlisted, Description: "Parties your household is on the waitlist for.", Group: BuiltinGroup, BuiltIn: true},
 }
+
+// BuiltinGroup is the line of the filters the built-in tags sit on - a
+// sheet tag given the same group shares it.
+const BuiltinGroup = "Other"
 
 var tagBySource = map[string]string{SourceCelebrate: TagCelebrate, SourceTeam: TagHCA}
 

@@ -63,7 +63,7 @@ export function eventRow(e, opts = {}) {
 // the app that runs it - where the tickets or the sign-up are - without
 // opening the event here first; one the household is already in wears its
 // standing instead.
-function callPill(e) {
+export function callPill(e) {
   const open = e.availability === 'available' || e.availability === 'open';
   const pill = el('span', 'event-pill' + (e.mine ? ' is-mine' : open ? ' is-open' : ''), call(e));
   pill.addEventListener('click', ev => {

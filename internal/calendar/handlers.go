@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"strings"
 	"time"
@@ -18,7 +19,7 @@ import (
 
 const shell = "web/calendar/index.html"
 
-var pages = []string{"/{$}", "/day/{date}", "/events/{id...}", "/feeds"}
+var pages = []string{"/{$}", "/day/{date}", "/events/{id...}", "/feeds", "/admin"}
 
 type app struct {
 	cache       *Cache
@@ -37,6 +38,7 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	mux.HandleFunc("GET /api/calendar/model", a.model)
 	mux.HandleFunc("POST /api/calendar/feeds", a.addFeed)
 	mux.HandleFunc("DELETE /api/calendar/feeds", a.removeFeed)
+	mux.HandleFunc("POST /api/calendar/tags", a.setTags)
 	mux.HandleFunc("GET /feed/{file}", a.feed)
 }
 
@@ -88,9 +90,9 @@ func (a app) commit(ctx context.Context, w http.ResponseWriter, tables *Tables, 
 	return true
 }
 
-func (a app) logChange(actor, action, key, column, from, to string) error {
+func (a app) logChange(actor, action, tab, key, column, from, to string) error {
 	return a.writer.AppendCells(appName, ChangeLogTab, map[string]string{
-		"Timestamp": now().Format(DateTimeFormat), "Actor": actor, "Action": action, "Tab": FeedsTab, "Key": key, "Column": column, "From": from, "To": to,
+		"Timestamp": now().Format(DateTimeFormat), "Actor": actor, "Action": action, "Tab": tab, "Key": key, "Column": column, "From": from, "To": to,
 	})
 }
 
@@ -130,7 +132,7 @@ func (a app) addFeed(w http.ResponseWriter, r *http.Request) {
 		if err := a.writer.AppendCells(appName, FeedsTab, cells); err != nil {
 			return err
 		}
-		return a.logChange(actor, "added", token, "Name", "", cells["Name"])
+		return a.logChange(actor, "added", FeedsTab, token, "Name", "", cells["Name"])
 	}) {
 		return
 	}
@@ -161,11 +163,139 @@ func (a app) removeFeed(w http.ResponseWriter, r *http.Request) {
 		if err := a.writer.Delete(appName, FeedsTab, map[string]string{"Token": token}); err != nil {
 			return err
 		}
-		return a.logChange(actor, "removed", token, "Name", name, "")
+		return a.logChange(actor, "removed", FeedsTab, token, "Name", name, "")
 	}) {
 		return
 	}
 	slog.InfoContext(r.Context(), "calendar: feed removed", "actor", actor, "name", name)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// setTags is Admin Tools saving the categories: the sheet's tags in the
+// order they should have, each with its description and group, and any new
+// ones at their place. Every tag the sheet has must be there - nothing is
+// dropped from here, since events carry tags by name - and a built-in is
+// refused, having no row. A changed description or group is written to its
+// row, a new tag appended, and then the rows put in the order given, each
+// change logged.
+func (a app) setTags(w http.ResponseWriter, r *http.Request) {
+	actor, admin := a.who(r)
+	if !admin {
+		http.Error(w, "only a calendar admin can change the categories", http.StatusForbidden)
+		return
+	}
+	var body struct {
+		Tags []struct {
+			Name        string `json:"name"`
+			Description string `json:"description"`
+			Group       string `json:"group"`
+		} `json:"tags"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	tables := a.cache.Tables()
+	current := map[string]map[string]string{}
+	for _, row := range tables.Tags {
+		current[row["Tag"]] = row
+	}
+	rows := []map[string]string{}
+	seen := map[string]bool{}
+	changed := map[string]map[string]string{}
+	added := [][]string{}
+	logs := [][]string{}
+	for _, t := range body.Tags {
+		name, description, group := strings.TrimSpace(t.Name), strings.TrimSpace(t.Description), strings.TrimSpace(t.Group)
+		if name == "" || seen[name] {
+			http.Error(w, "every category needs a name of its own", http.StatusBadRequest)
+			return
+		}
+		if description == "" {
+			http.Error(w, fmt.Sprintf("%q needs a description", name), http.StatusBadRequest)
+			return
+		}
+		seen[name] = true
+		row, ok := current[name]
+		if !ok {
+			for _, b := range builtinTags {
+				if b.Name == name {
+					http.Error(w, fmt.Sprintf("%q is built in and has no row of its own", name), http.StatusBadRequest)
+					return
+				}
+			}
+			row = map[string]string{"Tag": name, "Description": description, "Group": group}
+			added = append(added, []string{name})
+			logs = append(logs, []string{"added", name, "Tag", "", name})
+			rows = append(rows, row)
+			continue
+		}
+		row = maps.Clone(row)
+		cells := map[string]string{}
+		if row["Description"] != description {
+			logs = append(logs, []string{"changed", name, "Description", row["Description"], description})
+			cells["Description"] = description
+		}
+		if row["Group"] != group {
+			logs = append(logs, []string{"changed", name, "Group", row["Group"], group})
+			cells["Group"] = group
+		}
+		if len(cells) > 0 {
+			changed[name] = cells
+			maps.Copy(row, cells)
+		}
+		rows = append(rows, row)
+	}
+	for name := range current {
+		if !seen[name] {
+			http.Error(w, fmt.Sprintf("%q is missing - a category cannot be removed from here", name), http.StatusBadRequest)
+			return
+		}
+	}
+	order := make([]string, 0, len(rows))
+	moved := false
+	for i, row := range rows {
+		order = append(order, row["Tag"])
+		if i < len(tables.Tags) && tables.Tags[i]["Tag"] != row["Tag"] {
+			moved = true
+		}
+	}
+	if len(changed) == 0 && len(added) == 0 && !moved {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if moved {
+		logs = append(logs, []string{"reordered", "", "Tag", "", strings.Join(order, ", ")})
+	}
+	newRows := map[string]map[string]string{}
+	for _, row := range rows {
+		newRows[row["Tag"]] = row
+	}
+	if !a.commit(r.Context(), w, tables.WithTags(rows), func() error {
+		if len(changed) > 0 {
+			if err := a.writer.SetMany(appName, TagsTab, "Tag", changed); err != nil {
+				return err
+			}
+		}
+		for _, add := range added {
+			if err := a.writer.AppendCells(appName, TagsTab, newRows[add[0]]); err != nil {
+				return err
+			}
+		}
+		if moved || len(added) > 0 {
+			if err := a.writer.Reorder(appName, TagsTab, "Tag", order); err != nil {
+				return err
+			}
+		}
+		for _, l := range logs {
+			if err := a.logChange(actor, l[0], TagsTab, l[1], l[2], l[3], l[4]); err != nil {
+				return err
+			}
+		}
+		return nil
+	}) {
+		return
+	}
+	slog.InfoContext(r.Context(), "calendar: categories saved", "actor", actor, "changed", len(changed), "added", len(added), "reordered", moved)
 	w.WriteHeader(http.StatusNoContent)
 }
 

@@ -1,4 +1,4 @@
-import {state, me, bands, myClassrooms, classroomNames, tagNames} from '../state.js';
+import {state, me, bands, selectedClassrooms, selectedTags, classroomNames, tagNames, tagGroups, colorOf} from '../state.js';
 import {el, svg, button, copyText, toast} from '../dom.js';
 import {setTitle} from '../chrome.js';
 
@@ -62,20 +62,28 @@ function feedCard(f) {
   return card;
 }
 
-function chip(label, on, onClick) {
+// chip is a pick in the form, the shape of the filter card's: white while
+// it holds, dashed and faded while it does not, a classroom's in its color.
+function chip(label, on, onClick, color) {
   const b = el('button', 'filter-chip' + (on ? ' is-on' : ''), label);
   b.type = 'button';
+  if (color) {
+    b.style.setProperty('--room', color);
+    b.classList.add('has-color');
+  }
   b.addEventListener('click', onClick);
   return b;
 }
 
-// newFeedForm picks the feed's classrooms and tags - the viewer's own
-// classrooms and everything to start - and names it, then mints it.
+// newFeedForm picks the feed's classrooms and categories - what the
+// calendar's filters show, to start, so Get Feed beside the month makes a
+// feed of the view it was pressed on - and names it, then mints it.
 function newFeedForm(onMade) {
   const form = el('form', 'feed-form');
+  form.id = 'new';
   form.append(el('h2', 'section-title', 'New feed'));
-  const rooms = new Set(myClassrooms().length ? myClassrooms() : classroomNames());
-  const tags = new Set(tagNames());
+  const rooms = new Set(selectedClassrooms());
+  const tags = new Set(selectedTags());
   const nameField = el('label', 'field');
   nameField.append(el('span', '', 'Name'));
   const name = el('input');
@@ -99,7 +107,7 @@ function newFeedForm(onMade) {
             rooms.add(c.name);
           }
           paintRooms();
-        }));
+        }, colorOf(c.name)));
       }
     }
   };
@@ -107,26 +115,34 @@ function newFeedForm(onMade) {
   roomsField.append(roomChips, el('small', '', 'Events for any of these classrooms. Pick every classroom for the whole school.'));
   form.append(roomsField);
 
+  // The categories, one line per group as the filter card has them.
   const tagsField = el('div', 'field');
-  tagsField.append(el('span', '', 'Show'));
-  const tagChips = el('div', 'filter-chips filter-chips-form');
+  tagsField.append(el('span', '', 'Categories'));
+  const tagLines = el('div', 'form-tag-groups');
   const paintTags = () => {
-    tagChips.replaceChildren();
-    for (const t of state.model.tags) {
-      const c = chip(t.name, tags.has(t.name), () => {
-        if (tags.has(t.name)) {
-          tags.delete(t.name);
-        } else {
-          tags.add(t.name);
-        }
-        paintTags();
-      });
-      c.title = t.description;
-      tagChips.append(c);
+    tagLines.replaceChildren();
+    for (const group of tagGroups()) {
+      const line = el('div', 'form-tag-group');
+      line.append(el('span', 'form-tag-label', group.name || 'Other categories'));
+      const chips = el('div', 'filter-chips filter-chips-form');
+      for (const t of [...group.tags].sort((a, b) => a.name.localeCompare(b.name))) {
+        const c = chip(t.name, tags.has(t.name), () => {
+          if (tags.has(t.name)) {
+            tags.delete(t.name);
+          } else {
+            tags.add(t.name);
+          }
+          paintTags();
+        });
+        c.title = t.description;
+        chips.append(c);
+      }
+      line.append(chips);
+      tagLines.append(line);
     }
   };
   paintTags();
-  tagsField.append(tagChips, el('small', '', 'Events carrying any of these tags.'));
+  tagsField.append(tagLines, el('small', '', 'Events carrying any of these categories.'));
   form.append(tagsField);
 
   const actions = el('div', 'modal-actions');
@@ -203,9 +219,14 @@ export function feedsPage() {
   help.append(steps);
   page.append(help);
 
-  page.append(newFeedForm(async made => {
+  const form = newFeedForm(async made => {
     await copyText(made.url, 'Feed created and its address copied');
     await refreshModel();
-  }));
+  });
+  page.append(form);
+  // Get Feed on the calendar lands on the form itself.
+  if (location.hash === '#new') {
+    requestAnimationFrame(() => form.scrollIntoView({block: 'start', behavior: 'smooth'}));
+  }
   return page;
 }

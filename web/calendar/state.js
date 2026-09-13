@@ -1,10 +1,11 @@
 // The model as the server rendered it for the viewer, plus the page's own
 // choices: which classrooms and tags are showing, remembered per browser, the
-// search words, and which month the grid is open to. A null filter list means
-// the viewer's own classrooms, or every tag.
+// search words, which day the rail shows (the last one opened, today until
+// then), and which months the grid and the rail's small one are open to. A null filter list means the
+// viewer's own classrooms, or every tag.
 import {appOrigin} from '/toolbar.js';
 
-export const state = {model: null, filters: readFilters(), query: '', month: ''};
+export const state = {model: null, filters: readFilters(), query: '', day: '', month: '', railMonth: ''};
 
 function readFilters() {
   try {
@@ -61,6 +62,28 @@ export function event(id) {
 
 export function classroomNames() {
   return state.model.classrooms.map(c => c.name);
+}
+
+// tagGroups are the tags by the group the sheet files them under, in the
+// order the groups first occur; the tags with no group come last as one
+// unnamed group.
+export function tagGroups() {
+  const groups = [];
+  let loose = null;
+  for (const t of state.model.tags) {
+    if (!t.group) {
+      loose = loose || {name: '', tags: []};
+      loose.tags.push(t);
+      continue;
+    }
+    let g = groups.find(g => g.name === t.group);
+    if (!g) {
+      g = {name: t.group, tags: []};
+      groups.push(g);
+    }
+    g.tags.push(t);
+  }
+  return loose ? [...groups, loose] : groups;
 }
 
 export function tagNames() {
@@ -256,6 +279,7 @@ export function parseWhen(s) {
 
 const dayFormat = new Intl.DateTimeFormat('en-US', {weekday: 'short', month: 'short', day: 'numeric'});
 const longDayFormat = new Intl.DateTimeFormat('en-US', {weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'});
+const shortDayFormat = new Intl.DateTimeFormat('en-US', {weekday: 'short', month: 'short', day: 'numeric', year: 'numeric'});
 const monthDayFormat = new Intl.DateTimeFormat('en-US', {month: 'short', day: 'numeric'});
 const monthFormat = new Intl.DateTimeFormat('en-US', {month: 'long', year: 'numeric'});
 const timeFormat = new Intl.DateTimeFormat('en-US', {hour: 'numeric', minute: '2-digit'});
@@ -266,6 +290,15 @@ export function dayLabel(date) {
 
 export function longDayLabel(date) {
   return longDayFormat.format(parseDate(date));
+}
+
+// shortDayLabel is the rail's date line: "Sun, Sep 13, 2026".
+export function shortDayLabel(date) {
+  return shortDayFormat.format(parseDate(date));
+}
+
+export function weekdayLong(date) {
+  return parseDate(date).toLocaleDateString('en-US', {weekday: 'long'});
 }
 
 export function monthLabel(month) {
@@ -440,6 +473,24 @@ export function eventColors(e) {
     entry.classrooms.push(c);
   }
   return out;
+}
+
+// eventTint is the one color an event wears in the month's pills, the
+// rail's timeline and the upcoming rows: its first classroom color, or for
+// an event that is everyone's, a color for where it comes from - Celebrate's
+// parties pink, HCA's events purple, the school's own blue.
+export function eventTint(e) {
+  const first = eventColors(e).find(c => c.color);
+  if (first) {
+    return first.color;
+  }
+  if (e.tags.includes('Celebrate')) {
+    return '#d94a7c';
+  }
+  if (e.tags.includes('HCA')) {
+    return '#7b56c9';
+  }
+  return '#3b7dc4';
 }
 
 // audienceWords compresses an event's classrooms: every classroom is

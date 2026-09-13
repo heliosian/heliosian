@@ -1,5 +1,6 @@
-import {state, me, bands, selectedClassrooms, toggleClassroom, setClassrooms, classroomNames, myClassrooms, tagNames, selectedTags, toggleTag, setTags, resetFilters, filtersAreDefault, colorOf, hiddenMatches, hiddenClassroomMatches} from './state.js';
+import {state, me, today, bands, tagGroups, selectedClassrooms, toggleClassroom, setClassrooms, classroomNames, myClassrooms, tagNames, selectedTags, toggleTag, setTags, resetFilters, filtersAreDefault, colorOf, hiddenMatches, hiddenClassroomMatches} from './state.js';
 import {el, svg, link, button} from './dom.js';
+import {dayColumn} from './day.js';
 import {renderAvatars, renderAlerts, onSlash, initAppSwitch} from '/toolbar.js';
 
 const primary = [
@@ -45,8 +46,8 @@ function chip(label, on, onClick, color) {
   return b;
 }
 
-// action is one of the words at a filter group's right edge: the same shape
-// in every group, All first.
+// action is one of the pills after a row's label - All, Mine, None - the
+// same shape in every row, All first.
 function action(label, on, onClick) {
   const b = el('button', 'filter-action' + (on ? ' is-on' : ''), label);
   b.type = 'button';
@@ -54,39 +55,25 @@ function action(label, on, onClick) {
   return b;
 }
 
-function groupHead(title, actions) {
-  const head = el('div', 'filter-head');
-  head.append(el('span', 'filter-title', title));
-  const wrap = el('span', 'filter-actions');
+// filterRow is one row of the filters: its label, its pills, then its chips.
+function filterRow(label, actions, chips) {
+  const row = el('div', 'filter-row');
+  row.append(el('span', 'filter-label', label));
   for (const a of actions) {
-    wrap.append(a);
+    row.append(a);
   }
-  head.append(wrap);
-  return head;
+  const wrap = el('span', 'filter-chips');
+  for (const c of chips) {
+    wrap.append(c);
+  }
+  row.append(wrap);
+  return row;
 }
 
-// fillFilters draws the two filter groups: the classrooms, one line per band
-// in their colors, and the tags in alphabetical order. Every change is
-// remembered and repaints.
-export function fillFilters(wrap) {
-  wrap.replaceChildren();
-  const rooms = el('div', 'filter-group');
-  const roomActions = [action('All', selectedClassrooms().length === classroomNames().length, () => {
-    setClassrooms(classroomNames());
-    refresh();
-  })];
-  if (myClassrooms().length) {
-    roomActions.push(action('Mine', selectedClassrooms().join() === myClassrooms().join(), () => {
-      setClassrooms(null);
-      refresh();
-    }));
-  }
-  rooms.append(groupHead('Classrooms', roomActions));
+function classroomChips() {
   const selected = selectedClassrooms();
-  const roomRows = el('div', 'filter-rows');
+  const chips = [];
   for (const band of bands()) {
-    const roomChips = el('div', 'filter-chips');
-    roomRows.append(roomChips);
     for (const c of band.classrooms) {
       const on = selected.includes(c.name);
       const room = chip(c.name, on, () => {
@@ -98,27 +85,16 @@ export function fillFilters(wrap) {
         room.classList.add('has-hidden');
         room.title = `${hidden} match${hidden === 1 ? '' : 'es'} for ${c.name}, which is off`;
       }
-      roomChips.append(room);
+      chips.push(room);
     }
   }
-  rooms.append(roomRows);
-  wrap.append(rooms);
+  return chips;
+}
 
-  const tags = el('div', 'filter-group');
-  tags.append(groupHead('Show', [
-    action('All', selectedTags().length === tagNames().length, () => {
-      setTags(null);
-      refresh();
-    }),
-    action('None', selectedTags().length === 0, () => {
-      setTags([]);
-      refresh();
-    }),
-  ]));
-  const chips = el('div', 'filter-chips');
+function tagChips(tags) {
   const on = selectedTags();
-  const sorted = [...state.model.tags].sort((a, b) => a.name.localeCompare(b.name));
-  for (const t of sorted) {
+  const sorted = [...tags].sort((a, b) => a.name.localeCompare(b.name));
+  return sorted.map(t => {
     const c = chip(t.name, on.includes(t.name), () => {
       toggleTag(t.name);
       refresh();
@@ -131,27 +107,117 @@ export function fillFilters(wrap) {
       c.classList.add('has-hidden');
       c.title = `${hidden} match${hidden === 1 ? '' : 'es'} under ${t.name}, which is off`;
     }
-    chips.append(c);
+    return c;
+  });
+}
+
+// filterSummary is the one line the folded filters show: which classrooms
+// and how many categories.
+function filterSummary() {
+  const rooms = selectedClassrooms();
+  const roomWords = rooms.length === classroomNames().length ? 'All classrooms' : rooms.length ? rooms.join(', ') : 'No classrooms';
+  const tags = selectedTags();
+  const tagWords = tags.length === tagNames().length ? 'all categories' : tags.length ? `${tags.length} of ${tagNames().length} categories` : 'no categories';
+  return `${roomWords} · ${tagWords}`;
+}
+
+// Whether the calendar page's filters are unfolded, remembered per browser.
+function filtersOpen() {
+  try {
+    return localStorage.getItem('calendar.filtersOpen') !== 'no';
+  } catch (err) {
+    return true;
   }
-  tags.append(chips);
-  wrap.append(tags);
+}
+
+function setFiltersOpen(open) {
+  try {
+    localStorage.setItem('calendar.filtersOpen', open ? 'yes' : 'no');
+  } catch (err) {
+    // A browser that refuses storage just opens them next time.
+  }
+}
+
+// fillFilters draws the rows: the classrooms, band by band in their colors,
+// then the categories, one row per group the sheet files them under (the
+// ungrouped last, as plain Categories), each in alphabetical order and
+// headed by its label and its pills - All and None for that row alone -
+// with the way to reset everything at the end. Every change is remembered
+// and repaints. With opts.collapsible the rows sit under a head that folds
+// them away to one line, as on the calendar page; the drawer shows them
+// plain.
+export function fillFilters(wrap, opts = {}) {
+  wrap.replaceChildren();
+  const open = !opts.collapsible || filtersOpen();
+  if (opts.collapsible) {
+    const head = el('button', 'filters-head');
+    head.type = 'button';
+    head.setAttribute('aria-expanded', String(open));
+    head.append(el('span', 'filters-title', 'Filters'), el('span', 'filters-summary', filterSummary()), svg('chevron'));
+    head.addEventListener('click', () => {
+      setFiltersOpen(!open);
+      fillFilters(wrap, opts);
+    });
+    wrap.append(head);
+    wrap.classList.toggle('is-open', open);
+  }
+  if (!open) {
+    return;
+  }
+  const rows = el('div', 'filter-rows');
+  const roomActions = [action('All', selectedClassrooms().length === classroomNames().length, () => {
+    setClassrooms(classroomNames());
+    refresh();
+  })];
+  if (myClassrooms().length) {
+    roomActions.push(action('Mine', selectedClassrooms().join() === myClassrooms().join(), () => {
+      setClassrooms(null);
+      refresh();
+    }));
+  }
+  rows.append(filterRow('Classrooms', roomActions, classroomChips()));
+  // pick keeps the tags in the sheet's order, and every tag on is the
+  // default rather than a list of them all.
+  const pick = list => setTags(list.length === tagNames().length ? null : tagNames().filter(t => list.includes(t)));
+  let last = null;
+  for (const group of tagGroups()) {
+    const names = group.tags.map(t => t.name);
+    const on = selectedTags();
+    const onHere = names.filter(n => on.includes(n));
+    last = filterRow(group.name || 'Categories', [
+      action('All', onHere.length === names.length, () => {
+        pick([...on, ...names]);
+        refresh();
+      }),
+      action('None', onHere.length === 0, () => {
+        pick(on.filter(n => !names.includes(n)));
+        refresh();
+      }),
+    ], tagChips(group.tags));
+    rows.append(last);
+  }
   if (!filtersAreDefault()) {
-    wrap.append(button('Reset filters', null, 'link-button filter-reset', () => {
+    last.append(button('Reset filters', null, 'link-button filter-reset', () => {
       resetFilters();
       refresh();
     }));
   }
+  wrap.append(rows);
 }
 
-export function renderFilters() {
-  fillFilters(document.querySelector('#filters'));
+// The rail's day column, under the nav on a wide window: the day last opened
+// on the calendar page, today until one is. Drawn again after every page and
+// whenever the search words change.
+export function renderRailDay() {
+  const day = dayColumn(state.day || today());
+  document.querySelector('#rail-day').replaceChildren(day.node);
 }
 
 function renderNav() {
   const nav = document.querySelector('#nav');
   nav.replaceChildren();
   fillNav(nav);
-  renderFilters();
+  renderRailDay();
 }
 
 function renderTabbar() {
@@ -222,30 +288,33 @@ function renderUser() {
   for (const line of document.querySelectorAll('.user-menu-email')) {
     line.textContent = user.email;
   }
+  // Admin Tools is in the account menu, for the calendar admins alone.
+  for (const row of document.querySelectorAll('.user-menu-admin')) {
+    row.hidden = !user.isAdmin;
+  }
 }
 
-// Two search boxes with one value: the rail's on a wide window, the top
-// bar's on a phone. The calendar page binds them to its three panels; any
-// other page jumps home with the words carried along.
+// The top bar's search box, as in the other apps. The calendar page binds it
+// to its three panels; any other page jumps home with the words carried
+// along.
 let onSearch = null;
 let carriedQuery = '';
 
 const defaultPlaceholder = 'Search the year…';
 
-function searchInputs() {
-  return [document.querySelector('#search-input'), document.querySelector('#rail-search-input')];
+function searchInput() {
+  return document.querySelector('#search-input');
 }
 
 function typed() {
-  return searchInputs()[0].value;
+  return searchInput().value;
 }
 
-// sync writes the words into both boxes and marks the page as searching.
+// sync writes the words into the box and marks the page as searching.
 function sync(value) {
-  for (const input of searchInputs()) {
-    if (input.value !== value) {
-      input.value = value;
-    }
+  const input = searchInput();
+  if (input.value !== value) {
+    input.value = value;
   }
   document.body.classList.toggle('is-searching', Boolean(value.trim()));
 }
@@ -255,9 +324,7 @@ export function setSearch(placeholder, handler) {
   const query = carriedQuery;
   carriedQuery = '';
   sync(query);
-  for (const input of searchInputs()) {
-    input.placeholder = placeholder || defaultPlaceholder;
-  }
+  searchInput().placeholder = placeholder || defaultPlaceholder;
   if (query) {
     handler(query.trim());
   }
@@ -267,9 +334,7 @@ export function clearSearch() {
   onSearch = null;
   state.query = '';
   sync('');
-  for (const input of searchInputs()) {
-    input.placeholder = defaultPlaceholder;
-  }
+  searchInput().placeholder = defaultPlaceholder;
 }
 
 export function resetSearch() {
@@ -291,10 +356,7 @@ function search(value) {
 }
 
 function focusSearch() {
-  const visible = searchInputs().find(input => input.offsetParent !== null);
-  if (visible) {
-    visible.focus();
-  }
+  searchInput().focus();
 }
 
 export function setTitle(title) {
@@ -319,9 +381,7 @@ export function initChrome() {
   initAppSwitch();
   document.querySelector('#menu-button').append(svg('menu'));
   document.querySelector('#menu-button').addEventListener('click', openDrawer);
-  for (const input of searchInputs()) {
-    input.addEventListener('input', () => search(input.value));
-  }
+  searchInput().addEventListener('input', () => search(typed()));
   onSlash(focusSearch);
   document.querySelector('#drawer-overlay').addEventListener('click', e => {
     if (e.target === e.currentTarget) {

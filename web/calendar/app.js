@@ -1,9 +1,10 @@
-import {applyModel, event, today, parseDate} from './state.js';
+import {applyModel, event, today, parseDate, me} from './state.js';
 import {el} from './dom.js';
 import {initChrome, renderChrome, setTitle, clearSearch} from './chrome.js';
 import {homePage} from './pages/home.js';
 import {eventPage} from './pages/event.js';
 import {feedsPage} from './pages/feeds.js';
+import {adminPage} from './pages/admin.js';
 
 export async function load() {
   const res = await fetch('/api/calendar/model');
@@ -42,6 +43,8 @@ function route() {
     }
     case 'feeds':
       return feedsPage();
+    case 'admin':
+      return me().isAdmin ? adminPage() : notFound('That page');
   }
   return notFound('That page');
 }

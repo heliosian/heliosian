@@ -20,10 +20,12 @@
 <link rel="modulepreload" href="/dom.js">
 <link rel="modulepreload" href="/chrome.js">
 <link rel="modulepreload" href="/events.js">
+<link rel="modulepreload" href="/day.js">
 <link rel="modulepreload" href="/toolbar.js">
 <link rel="modulepreload" href="/pages/home.js">
 <link rel="modulepreload" href="/pages/event.js">
 <link rel="modulepreload" href="/pages/feeds.js">
+<link rel="modulepreload" href="/pages/admin.js">
 </head>
 <body>
 <header class="mobile-top">
@@ -31,19 +33,9 @@
 </header>
 <div class="app-shell">
 <aside class="sidebar">
-<div class="brand"><a href="/" data-link><img src="/brand/logo-lockup-vertical.png" alt="Helios Calendar: The school year, day by day"></a></div>
+<div class="brand"><a href="/" data-link><img src="/brand/logo-lockup-wide.png" alt="Helios Calendar: The school year, day by day"></a></div>
 <nav class="app-nav" id="nav"></nav>
-<div class="rail-filters">
-<div class="filter-group rail-search">
-<div class="filter-head"><span class="filter-title">Search</span></div>
-<div class="rail-search-box">
-<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-<input type="search" id="rail-search-input" placeholder="Search the year…" autocomplete="off">
-<kbd class="topbar-key">/</kbd>
-</div>
-</div>
-<div class="filter-groups" id="filters"></div>
-</div>
+<div class="rail-day" id="rail-day"></div>
 </aside>
 <div class="content-col">
 <header class="topbar">
@@ -60,6 +52,7 @@
 <div class="user-menu" id="user-menu" hidden>
 <div class="user-menu-email"></div>
 <a href="/feeds" class="user-menu-link" data-link>My Calendar Feeds</a>
+<a href="/admin" class="user-menu-link user-menu-admin" data-link hidden>Admin Tools</a>
 <form method="post" action="/auth/logout"><button>Sign Out</button></form>
 </div>
 </div>
