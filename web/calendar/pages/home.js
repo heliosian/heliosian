@@ -1,6 +1,6 @@
-import {state, eventsOn, today, addDays, parseDate, formatDate, longDayLabel, dayLabel, monthLabel, monthOf, shiftMonth, weekStart, specials, scheduleOn, isSchoolDay, dayTypeClass, selectedClassrooms, eventTint, timeLine, eventPath, weekdayShort, call} from '../state.js';
+import {state, eventsOn, today, addDays, parseDate, formatDate, longDayLabel, dayLabel, monthLabel, monthOf, shiftMonth, weekStart, specials, scheduleOn, isSchoolDay, dayTypeClass, dayTypeMatches, selectedClassrooms, eventTint, timeLine, eventPath, weekdayShort, call, isMatch} from '../state.js';
 import {el, link, svg, button} from '../dom.js';
-import {setTitle, setSearch, resetSearch, fillFilters, renderRailDay} from '../chrome.js';
+import {setTitle, setSearch, fillFilters, renderRailDay} from '../chrome.js';
 import {dayColumn} from '../day.js';
 import {callPill, emptyNote, roomDots, planCards} from '../events.js';
 
@@ -11,7 +11,7 @@ let lastDate = '';
 // linked event the way to its tickets or sign-up. A day that is not regular
 // and has no event of its own is a row too, in its day type's color.
 function upcomingRow(date, e, group) {
-  const row = link(e ? eventPath(e) : '/day/' + date, 'up-row' + (e ? '' : ' ' + dayTypeClass(group.name)));
+  const row = link(e ? eventPath(e) : '/day/' + date, 'up-row' + (e ? (isMatch(e) ? ' is-match' : '') : ' ' + dayTypeClass(group.name)));
   const when = el('span', 'up-date');
   when.append(el('span', 'up-dow', weekdayShort(date)), el('span', 'up-day', parseDate(date).toLocaleDateString('en-US', {month: 'short', day: 'numeric'})));
   const bar = el('span', 'up-bar');
@@ -38,16 +38,15 @@ function upcomingRow(date, e, group) {
 // upcomingPanel scrolls on its own beside the month: every event from the
 // day shown on, and - while the Schedule tag is on - every day that is not
 // regular, through the end of the year, the first two weeks under Upcoming
-// and the rest under Later This Year; with words in the search box it is
-// the whole year's matches from today.
+// and the rest under Later This Year; the search words light up the rows
+// they find.
 function upcomingPanel(date) {
   const panel = el('aside', 'home-upcoming');
-  const head = el('div', 'upcoming-head');
+  const head = el('div', 'upcoming-head', 'Upcoming Events');
   const body = el('div', 'upcoming-body');
   const paint = () => {
-    head.textContent = state.query ? 'Matches' : 'Upcoming Events';
     body.replaceChildren();
-    const from = state.query ? today() : date;
+    const from = date;
     const soon = addDays(from, 14);
     const days = scheduleOn();
     let any = false;
@@ -59,7 +58,7 @@ function upcomingPanel(date) {
       if (!events.length && !groups.length) {
         continue;
       }
-      if (!later && !state.query && d >= soon) {
+      if (!later && d >= soon) {
         later = true;
         body.append(el('div', 'upcoming-later', 'Later This Year'));
       }
@@ -72,7 +71,7 @@ function upcomingPanel(date) {
       }
     }
     if (!any) {
-      body.append(emptyNote(state.query ? 'Nothing matches.' : 'Nothing ahead for these classrooms and tags.'));
+      body.append(emptyNote('Nothing ahead for these classrooms and tags.'));
     }
   };
   paint();
@@ -115,15 +114,10 @@ function fillPeek(date) {
   if (date === today()) {
     head.append(el('span', 'day-heading-today', 'Today'));
   }
-  node.append(head);
-  if (!state.query) {
-    node.append(planCards(date));
-  } else if (specials(date).length) {
-    node.append(planCards(date, specials(date)));
-  }
+  node.append(head, planCards(date));
   const events = eventsOn(date);
   if (!events.length) {
-    node.append(el('div', 'day-peek-empty', state.query ? 'Nothing matches on this day.' : 'No events for these classrooms and tags.'));
+    node.append(el('div', 'day-peek-empty', 'No events for these classrooms and tags.'));
     return;
   }
   const list = el('div', 'day-peek-list');
@@ -207,13 +201,13 @@ function dayCell(date, month) {
   const groups = specials(date);
   const all = selectedClassrooms();
   for (const g of groups) {
-    const mark = el('div', 'month-mark ' + dayTypeClass(g.name), g.classrooms.length === all.length ? g.name : `${g.name} (${g.classrooms.length})`);
+    const mark = el('div', 'month-mark ' + dayTypeClass(g.name) + (state.query && dayTypeMatches(g.name, state.query) ? ' is-match' : ''), g.classrooms.length === all.length ? g.name : `${g.name} (${g.classrooms.length})`);
     cell.append(mark);
   }
   const events = eventsOn(date);
   const room = Math.max(0, 3 - groups.length);
   for (const e of events.slice(0, room)) {
-    const pip = link(eventPath(e), 'month-pip');
+    const pip = link(eventPath(e), 'month-pip' + (isMatch(e) ? ' is-match' : ''));
     pip.style.setProperty('--c', eventTint(e));
     pip.append(el('span', 'month-pip-title', e.title));
     if (!e.allDay) {
@@ -277,25 +271,6 @@ function monthGrid() {
   return {node: wrap, paint};
 }
 
-// searchBand runs across the top of the page while there are search words,
-// so it is plain why the page is showing less than usual, with a way out.
-function searchBand() {
-  const band = el('div', 'search-band');
-  const paint = () => {
-    band.replaceChildren();
-    band.hidden = !state.query;
-    if (!state.query) {
-      return;
-    }
-    band.append(svg('search'));
-    const line = el('span', 'search-band-words');
-    line.append('Showing matches for ', el('strong', '', `“${state.query}”`), ' across the whole year');
-    band.append(line, button('Clear search', null, 'button button-secondary button-small', resetSearch));
-  };
-  paint();
-  return {node: band, paint};
-}
-
 // filterGroups are the classroom and tag chips above the month, repainted
 // with the search words so the ones hiding matches light up.
 function filterGroups() {
@@ -305,9 +280,9 @@ function filterGroups() {
   return {node: wrap, paint};
 }
 
-// The page on a wide window: the search band, the filters, then the month
-// with upcoming beside it - the day itself is in the rail. On a phone, where
-// there is no rail, the day heads the page and the filters are the drawer's.
+// The page on a wide window: the filters, then the month with upcoming
+// beside it - the day itself is in the rail. On a phone, where there is no
+// rail, the day heads the page and the filters are the drawer's.
 export function homePage(date) {
   hidePeek();
   setTitle(date === today() ? 'Today' : longDayLabel(date));
@@ -317,19 +292,17 @@ export function homePage(date) {
   }
   state.day = date;
   const page = el('div', 'home');
-  const band = searchBand();
   const day = dayColumn(date);
   const filters = filterGroups();
   const upcoming = upcomingPanel(date);
   const month = monthGrid();
   const grid = el('div', 'home-grid');
   grid.append(month.node, upcoming.node);
-  page.append(band.node, day.node, filters.node, grid);
-  // The search words filter every panel at once, and light up the chips
-  // that hide more matches.
+  page.append(day.node, filters.node, grid);
+  // The search words light up what they find in every panel, and the
+  // chips that hide more matches.
   setSearch('Search the year…', q => {
     state.query = q;
-    band.paint();
     day.paint();
     renderRailDay();
     filters.paint();

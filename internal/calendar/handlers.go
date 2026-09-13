@@ -3,6 +3,8 @@ package calendar
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,7 +15,9 @@ import (
 	"time"
 
 	"heliosian/internal/auth"
+	"heliosian/internal/blob"
 	"heliosian/internal/data"
+	"heliosian/internal/imagesearch"
 	"heliosian/internal/serve"
 )
 
@@ -25,13 +29,28 @@ type app struct {
 	cache       *Cache
 	writer      data.Writer
 	queue       Enqueuer
+	store       *blob.Store
 	directory   Directory
 	superAdmins func() []string
 	linked      func(email string) []Linked
+	search      ImageSearch
 }
 
-func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, directory Directory, superAdmins func() []string, linked func(email string) []Linked) {
-	a := app{cache: cache, writer: writer, queue: queue, directory: directory, superAdmins: superAdmins, linked: linked}
+// ImageSearch is the picture search the other apps' editors share.
+type ImageSearch = imagesearch.Search
+
+// imageFolder is where the category images an admin uploads go, content
+// addressed; maxImageSize bounds one upload.
+const (
+	imageFolder  = "category-images"
+	maxImageSize = 8 << 20
+)
+
+func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, directory Directory, superAdmins func() []string, linked func(email string) []Linked, search ImageSearch) {
+	if search.UserAgent == "" {
+		search.UserAgent = "Helios Calendar image search (+https://when.heliosian.com)"
+	}
+	a := app{cache: cache, writer: writer, queue: queue, store: store, directory: directory, superAdmins: superAdmins, linked: linked, search: search}
 	for _, page := range pages {
 		mux.HandleFunc("GET "+page, a.page)
 	}
@@ -39,6 +58,9 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	mux.HandleFunc("POST /api/calendar/feeds", a.addFeed)
 	mux.HandleFunc("DELETE /api/calendar/feeds", a.removeFeed)
 	mux.HandleFunc("POST /api/calendar/tags", a.setTags)
+	mux.HandleFunc("POST /api/calendar/image", a.uploadImage)
+	mux.HandleFunc("GET /api/calendar/images/search", a.admin(a.search.ServeSearch))
+	mux.HandleFunc("POST /api/calendar/images/import", a.admin(a.importImage))
 	mux.HandleFunc("GET /feed/{file}", a.feed)
 }
 
@@ -58,6 +80,9 @@ var now = func() time.Time {
 func (a app) model(w http.ResponseWriter, r *http.Request) {
 	email, admin := a.who(r)
 	view := Render(a.cache.Model(), a.directory, email, admin, now(), a.linked(email))
+	if admin {
+		view.ImageSources = a.search.Sources()
+	}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
 		slog.ErrorContext(r.Context(), "encode calendar model", "error", err)
@@ -178,6 +203,64 @@ func yesNoWord(b bool) string {
 	return "No"
 }
 
+// admin wraps a handler for the calendar admins alone.
+func (a app) admin(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if _, admin := a.who(r); !admin {
+			http.Error(w, "only a calendar admin can do that", http.StatusForbidden)
+			return
+		}
+		next(w, r)
+	}
+}
+
+// importImage stores a picture picked from the search the way an upload is
+// stored, under the calendar's own folder.
+func (a app) importImage(w http.ResponseWriter, r *http.Request) {
+	a.search.ServeImport(w, r, a.store, imageFolder, maxImageSize)
+}
+
+// uploadImage stores a category image an admin picked, content addressed,
+// and answers with the name the Tags tab records; the save that follows
+// references it. Sample mode has no bucket to put it in.
+func (a app) uploadImage(w http.ResponseWriter, r *http.Request) {
+	if _, admin := a.who(r); !admin {
+		http.Error(w, "only a calendar admin can add an image", http.StatusForbidden)
+		return
+	}
+	if a.store == nil {
+		http.Error(w, "image uploads require real-data mode", http.StatusBadRequest)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxImageSize)
+	file, header, err := r.FormFile("image")
+	if err != nil {
+		http.Error(w, "an image file is required", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+	content, err := io.ReadAll(file)
+	if err != nil {
+		http.Error(w, "could not read the image", http.StatusBadRequest)
+		return
+	}
+	mimeType := http.DetectContentType(content)
+	ext := map[string]string{"image/jpeg": ".jpg", "image/png": ".png", "image/gif": ".gif", "image/webp": ".webp"}[mimeType]
+	if ext == "" {
+		http.Error(w, fmt.Sprintf("%s is not a supported image", header.Filename), http.StatusBadRequest)
+		return
+	}
+	sum := sha256.Sum256(content)
+	name := hex.EncodeToString(sum[:]) + ext
+	if err := a.store.Put(imageFolder, name, mimeType, content); err != nil {
+		slog.ErrorContext(r.Context(), "calendar: store image", "error", err)
+		http.Error(w, "could not store the image", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"name": imageFolder + "/" + name, "url": "/" + imageFolder + "/" + name})
+}
+
 // setTags is Admin Tools saving the categories: the sheet's tags in the
 // order they should have, each with its description and group, and any new
 // ones at their place. Every tag the sheet has must be there - nothing is
@@ -197,6 +280,7 @@ func (a app) setTags(w http.ResponseWriter, r *http.Request) {
 			Description string `json:"description"`
 			Group       string `json:"group"`
 			Default     bool   `json:"default"`
+			Image       string `json:"image"`
 		} `json:"tags"`
 	}
 	if !decode(w, r, &body) {
@@ -213,7 +297,7 @@ func (a app) setTags(w http.ResponseWriter, r *http.Request) {
 	added := [][]string{}
 	logs := [][]string{}
 	for _, t := range body.Tags {
-		name, description, group := strings.TrimSpace(t.Name), strings.TrimSpace(t.Description), strings.TrimSpace(t.Group)
+		name, description, group, image := strings.TrimSpace(t.Name), strings.TrimSpace(t.Description), strings.TrimSpace(t.Group), strings.TrimSpace(t.Image)
 		if name == "" || seen[name] {
 			http.Error(w, "every category needs a name of its own", http.StatusBadRequest)
 			return
@@ -231,7 +315,7 @@ func (a app) setTags(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 			}
-			row = map[string]string{"Tag": name, "Description": description, "Group": group, "Default": yesNoWord(t.Default)}
+			row = map[string]string{"Tag": name, "Description": description, "Group": group, "Default": yesNoWord(t.Default), "Image": image}
 			added = append(added, []string{name})
 			logs = append(logs, []string{"added", name, "Tag", "", name})
 			rows = append(rows, row)
@@ -250,6 +334,10 @@ func (a app) setTags(w http.ResponseWriter, r *http.Request) {
 		if tagDefault(row["Default"]) != t.Default {
 			logs = append(logs, []string{"changed", name, "Default", row["Default"], yesNoWord(t.Default)})
 			cells["Default"] = yesNoWord(t.Default)
+		}
+		if strings.TrimSpace(row["Image"]) != image {
+			logs = append(logs, []string{"changed", name, "Image", row["Image"], image})
+			cells["Image"] = image
 		}
 		if len(cells) > 0 {
 			changed[name] = cells

@@ -62,7 +62,7 @@ var (
 	OverrideColumns    = []string{"Event ID", "Title", "Start", "End", "Location", "Description", "Tags", "Day Type", "Keywords", "Hidden", "Note"}
 	DayTypeColumns     = []string{"Day Type", "Dropoff Start", "Dropoff End", "School Start", "School End", "Pickup Start", "Pickup End", "Aftercare Start", "Aftercare End"}
 	DayOverrideColumns = []string{"Date", "Classrooms", "Day Type", "Note"}
-	TagColumns         = []string{"Tag", "Description", "Group", "Default"}
+	TagColumns         = []string{"Tag", "Description", "Group", "Default", "Image"}
 	AdminColumns       = []string{"Email"}
 	FeedColumns        = []string{"Token", "Email", "Name", "Classrooms", "Tags", "Created"}
 	ChangeLogColumns   = []string{"Timestamp", "Actor", "Action", "Tab", "Key", "Column", "From", "To"}
@@ -130,10 +130,12 @@ type Event struct {
 	Updated     string   `json:"updated,omitempty"`
 	// Link is the page of an event another app runs, as a path on that site;
 	// Availability is what a reader can do there now; Mine is where the
-	// viewer's household already stands with it.
+	// viewer's household already stands with it; Image is its picture
+	// there, as a path on that site too.
 	Link         string `json:"link,omitempty"`
 	Availability string `json:"availability,omitempty"`
 	Mine         string `json:"mine,omitempty"`
+	Image        string `json:"image,omitempty"`
 	Hidden       bool   `json:"-"`
 	duplicate    bool
 	start, end   time.Time
@@ -178,6 +180,19 @@ type Tag struct {
 	Group       string `json:"group"`
 	Default     bool   `json:"default"`
 	BuiltIn     bool   `json:"builtIn,omitempty"`
+	// Image is the picture an event under this tag wears when it has none
+	// of its own, as the sheet names it - an uploaded object or a bundled
+	// file - and ImageURL is where the page fetches it, blank when the name
+	// resolves to nothing.
+	Image    string `json:"image,omitempty"`
+	ImageURL string `json:"imageUrl,omitempty"`
+}
+
+// ImageChecker says whether a name the sheet records is an image the app
+// can serve, and fetches many ahead of time.
+type ImageChecker interface {
+	Has(key string) (bool, error)
+	Prefetch(names []string) error
 }
 
 // tagDefault reads the Default column: anything but No is on, so a column
@@ -493,7 +508,7 @@ func parseTags(rows []map[string]string) ([]Tag, error) {
 		if row["Description"] == "" {
 			return nil, fmt.Errorf("tag %q has no description", name)
 		}
-		out = append(out, Tag{Name: name, Description: row["Description"], Group: strings.TrimSpace(row["Group"]), Default: tagDefault(row["Default"])})
+		out = append(out, Tag{Name: name, Description: row["Description"], Group: strings.TrimSpace(row["Group"]), Default: tagDefault(row["Default"]), Image: strings.TrimSpace(row["Image"])})
 	}
 	if len(out) == 0 {
 		return nil, fmt.Errorf("%s has no rows", TagsTab)

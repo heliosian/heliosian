@@ -203,18 +203,27 @@ button { font: inherit; }
 
 .home-filters { margin: 0 0 20px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); }
 
-.filters-head { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 18px; border: 0; background: none; font: inherit; color: var(--ink); text-align: left; cursor: pointer; border-radius: 14px; }
+.filters-head { display: flex; align-items: center; gap: 10px; padding: 6px 10px 6px 0; border-radius: 14px; }
 
-.filters-head:hover { background: #fafcfc; }
+/* The title and the summary are one button that folds and unfolds. */
+.filters-fold { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; padding: 6px 18px; border: 0; background: none; font: inherit; color: var(--ink); text-align: left; cursor: pointer; border-radius: 14px; }
+
+.filters-fold:hover { background: #fafcfc; }
 
 .filters-title { font-size: 14px; font-weight: 700; color: var(--brand); }
 
 .filters-summary { flex: 1; min-width: 0; font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* The chevron points down to unfold and up to fold. */
-.filters-head svg { width: 18px; height: 18px; flex-shrink: 0; color: var(--muted); transform: rotate(90deg); transition: transform 0.15s; }
+.filters-reset { flex-shrink: 0; }
 
-.home-filters.is-open .filters-head svg { transform: rotate(-90deg); }
+/* The chevron points down to unfold and up to fold. */
+.filters-chevron { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; flex-shrink: 0; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--muted); cursor: pointer; }
+
+.filters-chevron:hover { background: var(--input); }
+
+.filters-chevron svg { width: 18px; height: 18px; transform: rotate(90deg); transition: transform 0.15s; }
+
+.home-filters.is-open .filters-chevron svg { transform: rotate(-90deg); }
 
 .home-filters.is-open .filters-head { border-bottom: 1px solid var(--line); border-radius: 14px 14px 0 0; }
 
@@ -263,14 +272,46 @@ button { font: inherit; }
 
 .filter-reset { margin: 0 0 0 auto; padding: 4px 6px; font-size: 13px; }
 
-/* The band across the page while searching. */
-.search-band { display: flex; align-items: center; gap: 12px; margin: 0 0 18px; padding: 10px 14px; border: 1.5px solid var(--amber); border-radius: 12px; background: var(--early-wash); color: var(--early); font-size: 14px; }
+/* The list under the search box: the events the words find, in date order,
+   each a row with a bar in its color, the date, the title and its line;
+   one the filters keep off the page is faded and says so. The arrow keys
+   move the highlighted row. */
+.search-results { position: absolute; top: calc(100% + 6px); left: 0; right: 0; max-height: min(70vh, 560px); overflow-y: auto; padding: 6px; background: #fff; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.16); z-index: 45; }
 
-.search-band > svg { width: 18px; height: 18px; flex-shrink: 0; }
+.search-row { display: flex; align-items: flex-start; gap: 12px; padding: 8px 10px 8px 8px; border-radius: 8px; text-decoration: none; color: inherit; }
 
-.search-band-words { flex: 1; min-width: 0; }
+.search-row.is-active { background: color-mix(in srgb, var(--c) 10%, #fff); }
 
-.search-band strong { color: var(--ink); }
+.search-row-bar { align-self: stretch; width: 3px; flex-shrink: 0; border-radius: 2px; background: var(--c); }
+
+.search-row-date { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 92px; flex-shrink: 0; }
+
+.search-row-dow { padding: 1px 6px; border-radius: 5px; background: var(--input); font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+
+.search-row-day { font-size: 13.5px; font-weight: 700; color: var(--brand); white-space: nowrap; }
+
+.search-row-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+
+.search-row-title { font-size: 14px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.search-row-line { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.search-row.is-hidden-by-filters { opacity: 0.5; }
+
+.search-row.is-hidden-by-filters .search-row-title { font-weight: 500; }
+
+.search-empty, .search-more { padding: 10px 12px; font-size: 13px; color: var(--muted); }
+
+.search-more { border-top: 1px solid var(--line); margin-top: 4px; }
+
+/* While there are words, what they find wears amber wherever it is drawn,
+   and the month's other pills step back so the matches stand out. */
+.month-pip.is-match, .month-mark.is-match { box-shadow: 0 0 0 2px var(--amber); background: color-mix(in srgb, var(--amber) 22%, #fff); color: var(--early); }
+
+body.is-searching .month-pip:not(.is-match), body.is-searching .month-mark:not(.is-match) { opacity: 0.4; }
+
+.timeline-row.is-match .timeline-title, .up-row.is-match .up-title { background: color-mix(in srgb, var(--amber) 28%, #fff); box-shadow: 0 0 0 3px color-mix(in srgb, var(--amber) 28%, #fff); border-radius: 3px; }
+
 
 /* The feeds form's categories: one line per group, its name at the left. */
 .form-tag-groups { display: flex; flex-direction: column; gap: 8px; }
@@ -713,6 +754,19 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 /* The event page. */
 .detail-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 
+/* The picture across the top of an event, the date on a card at its corner. */
+.detail-hero { position: relative; height: 300px; margin: 0 0 24px; border-radius: 16px; overflow: hidden; background: var(--input); }
+
+.detail-hero img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.hero-date { position: absolute; top: 20px; right: 20px; display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 150px; padding: 12px 18px 14px; border-radius: 14px; background: rgba(255, 255, 255, 0.94); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18); text-align: center; }
+
+.hero-dow { font-size: 12px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+
+.hero-day { font-family: Montserrat, Roboto, sans-serif; font-size: 28px; font-weight: 700; line-height: 1.1; text-transform: uppercase; color: var(--brand); }
+
+.hero-time { font-size: 13.5px; color: var(--ink); white-space: nowrap; }
+
 .detail-back { display: inline-flex; align-items: center; gap: 6px; color: var(--brand); text-decoration: none; font-weight: 600; font-size: 14px; }
 
 .detail-back:hover { text-decoration: underline; }
@@ -733,7 +787,8 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .prose-link { color: var(--accent); word-break: break-all; }
 
-.detail-side { display: flex; flex-direction: column; gap: 16px; position: sticky; top: 0; }
+.detail-side { display: flex; flex-direction: column; gap: 16px; }
+
 
 .side-card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
 
@@ -869,7 +924,65 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .admin-handle svg { width: 16px; height: 16px; }
 
-.admin-row-name { width: 180px; flex-shrink: 0; font-size: 14.5px; font-weight: 700; }
+/* The category's picture: a thumbnail, or the outline of one, that opens
+   the file chooser; a cross beside it takes the picture off. */
+.admin-image { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+
+.admin-image-pick { display: flex; align-items: center; justify-content: center; width: 56px; height: 36px; border: 1px dashed var(--line); border-radius: 8px; overflow: hidden; color: var(--muted); background: #fff; cursor: pointer; }
+
+.admin-image-pick:hover { border-color: var(--brand); color: var(--brand); }
+
+.admin-image-pick img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.admin-image-pick svg { width: 20px; height: 20px; }
+
+.admin-image-find, .admin-image-remove { width: 26px; height: 26px; }
+
+.admin-image-find svg { width: 15px; height: 15px; }
+
+.admin-image-remove svg { width: 14px; height: 14px; }
+
+/* The sheet over the page, and the picture search in it - the same shapes
+   the other apps' editors have. */
+.modal-overlay { position: fixed; inset: 0; background: rgba(13, 13, 13, 0.5); display: flex; align-items: center; justify-content: center; padding: 20px; z-index: 60; }
+
+.modal { background: #fff; border-radius: 14px; padding: 20px 24px; width: 100%; max-width: 560px; max-height: calc(100vh - 40px); overflow-y: auto; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25); }
+
+.modal.modal-wide { max-width: 860px; }
+
+.modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+
+.modal-header h2 { font-size: 17px; margin: 0; }
+
+.modal-close { border: 0; background: none; font-size: 24px; line-height: 1; color: var(--muted); cursor: pointer; }
+
+.segmented { display: inline-flex; padding: 3px; border: 1px solid var(--line); border-radius: 999px; background: var(--input); }
+
+.segment { border: 0; border-radius: 999px; padding: 7px 16px; background: none; font: inherit; font-size: 14px; font-weight: 600; color: var(--muted); cursor: pointer; }
+
+.segment.is-on { background: #fff; color: var(--brand); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
+
+.image-search-bar { display: flex; gap: 8px; margin: 10px 0; }
+
+.image-search-bar input { flex: 1; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; }
+
+.image-search-status { min-height: 20px; font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+
+.image-search-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; min-height: 120px; }
+
+.image-search-hit { position: relative; padding: 0; border: 2px solid transparent; border-radius: 10px; overflow: hidden; background: var(--input); cursor: pointer; line-height: 0; }
+
+.image-search-hit:hover { border-color: var(--accent); }
+
+.image-search-hit.is-picked { border-color: var(--brand); }
+
+.image-search-hit img { width: 100%; height: 120px; object-fit: cover; opacity: 0; transition: opacity 0.2s; }
+
+.image-search-hit img.is-loaded { opacity: 1; }
+
+.image-search-source { position: absolute; left: 0; right: 0; bottom: 0; padding: 3px 6px; background: rgba(0, 0, 0, 0.55); color: #fff; font-size: 10px; line-height: 1.3; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.admin-row-name { width: 160px; flex-shrink: 0; font-size: 14.5px; font-weight: 700; }
 
 /* The description reads as text until it has focus. */
 .admin-row-description { flex: 1; min-width: 0; padding: 6px 8px; margin-left: -8px; border: 1px solid transparent; border-radius: 8px; font: inherit; font-size: 13px; color: var(--muted); background: none; text-overflow: ellipsis; }

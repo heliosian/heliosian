@@ -156,6 +156,24 @@ func (c celebrateImages) Prefetch(names []string) error {
 	return prefetchUploaded(c.store, "party-images/", names)
 }
 
+// calendarImages resolves the Image cells of the calendar's Tags tab the
+// same way: an uploaded object in the bucket, or a bundled file under the
+// calendar's own trees.
+type calendarImages struct {
+	store *blob.Store
+}
+
+func (c calendarImages) Has(key string) (bool, error) {
+	if strings.HasPrefix(key, "category-images/") {
+		return uploaded(c.store, key)
+	}
+	return bundled([]string{"web/calendar", "web/public/calendar"}, key), nil
+}
+
+func (c calendarImages) Prefetch(names []string) error {
+	return prefetchUploaded(c.store, "category-images/", names)
+}
+
 // directory hands the volunteer portal the directory's view of a person: the
 // address they are keyed by, and their name and photo.
 type directory struct {
@@ -712,7 +730,7 @@ func NewCore(cfg Config) *Core {
 	}
 	// The calendar resolves audiences against the directory's live classrooms,
 	// so it loads after the directory and reads the roster on every refresh.
-	calendarCache, err := calendar.NewCache(cfg.Source, func() calendar.Roster { return CalendarRoster(cache.Model()) }, superAdmin, queue)
+	calendarCache, err := calendar.NewCache(cfg.Source, func() calendar.Roster { return CalendarRoster(cache.Model()) }, calendarImages{cfg.Store}, superAdmin, queue)
 	if err != nil {
 		logging.Fatal("load calendar data", "error", err)
 	}
@@ -734,7 +752,7 @@ func NewCore(cfg Config) *Core {
 	celebrateMux := http.NewServeMux()
 	celebrate.Register(celebrateMux, celebrateCache, cfg.Writer, queue, cfg.Store, celebrateDirectory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.CelebrateMail)
 	calendarMux := http.NewServeMux()
-	calendar.Register(calendarMux, calendarCache, cfg.Writer, queue, calendarDirectory{cache, settings}, settings.SuperAdmins, calendarLinked{celebrateCache, eventsCache, celebrateDirectory{cache, settings}}.list)
+	calendar.Register(calendarMux, calendarCache, cfg.Writer, queue, cfg.Store, calendarDirectory{cache, settings}, settings.SuperAdmins, calendarLinked{celebrateCache, eventsCache, celebrateDirectory{cache, settings}}.list, cfg.ImageSearch)
 	// Every app's toolbar asks its own origin what its switch lists and
 	// which rows to leave off; Heliosian's cache answers for all of them.
 	for _, m := range []*http.ServeMux{mux, eventsMux, birthdayMux, celebrateMux, calendarMux} {

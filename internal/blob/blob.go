@@ -42,7 +42,7 @@ const (
 	fetchWorkers  = 32
 )
 
-var folders = []string{"photos", "pronunciation", "classroom-images", "grade-images", "link-images", "activity-images"}
+var folders = []string{"photos", "pronunciation", "classroom-images", "grade-images", "link-images", "activity-images", "category-images"}
 
 // named folders hold objects replaced in place under a fixed name with no
 // extension; every other folder is content addressed, so its URLs never change
@@ -136,9 +136,10 @@ func RegisterCelebrate(mux *http.ServeMux, s *Store) {
 }
 
 // RegisterCalendar serves what Helios Calendar shows: the directory's photo
-// of the viewer, in the toolbar.
+// of the viewer, in the toolbar, and the category images, content addressed.
 func RegisterCalendar(mux *http.ServeMux, s *Store) {
 	mux.HandleFunc("GET /photos/{name}", s.serve)
+	mux.HandleFunc("GET /category-images/{name}", s.serve)
 }
 
 func (s *Store) sweepLoop() {

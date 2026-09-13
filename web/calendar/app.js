@@ -1,4 +1,4 @@
-import {applyModel, event, today, parseDate, me} from './state.js';
+import {applyModel, event, today, parseDate, me, state, eventDates} from './state.js';
 import {el} from './dom.js';
 import {initChrome, renderChrome, setTitle, clearSearch} from './chrome.js';
 import {homePage} from './pages/home.js';
@@ -39,7 +39,13 @@ function route() {
       return parseDate(parts[1]) ? homePage(parts[1]) : notFound('That day');
     case 'events': {
       const e = event(parts.slice(1).join('/'));
-      return e ? eventPage(e) : notFound('That event');
+      if (!e) {
+        return notFound('That event');
+      }
+      // The rail's day jumps to the event's, so its month and its plan
+      // and events are the ones beside the page.
+      state.day = eventDates(e)[0];
+      return eventPage(e);
     }
     case 'feeds':
       return feedsPage();

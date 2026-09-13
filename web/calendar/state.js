@@ -1,11 +1,11 @@
 // The model as the server rendered it for the viewer, plus the page's own
 // choices: which classrooms and tags are showing, remembered per browser, the
 // search words, which day the rail shows (the last one opened, today until
-// then), and which months the grid and the rail's small one are open to. A null filter list means the
+// then), and which month the grid is open to. A null filter list means the
 // viewer's own classrooms, or every tag.
 import {appOrigin} from '/toolbar.js';
 
-export const state = {model: null, filters: readFilters(), query: '', day: '', month: '', railMonth: ''};
+export const state = {model: null, filters: readFilters(), query: '', day: '', month: ''};
 
 function readFilters() {
   try {
@@ -209,15 +209,31 @@ export function matches(e, query) {
   return words(query).every(w => hay.includes(w));
 }
 
-// dayTypeMatches is the search over the schedule: a day type stays on the
-// page while every word typed is in its name.
+// dayTypeMatches is the search over the schedule: a day type lights up
+// while every word typed is in its name.
 export function dayTypeMatches(name, query) {
   const hay = name.toLowerCase();
   return words(query).every(w => hay.includes(w));
 }
 
 export function eventsOn(date) {
-  return (byDate.get(date) || []).filter(eventVisible).filter(e => matches(e, state.query));
+  return (byDate.get(date) || []).filter(eventVisible);
+}
+
+// isMatch says the search words find this event - the highlight the page
+// gives it while there are words.
+export function isMatch(e) {
+  return Boolean(state.query) && matches(e, state.query);
+}
+
+// searchResults are every event the words find, whatever the filters say,
+// in date order - what the search box lists. hidden marks one the filters
+// keep off the page.
+export function searchResults(query) {
+  if (!words(query).length) {
+    return [];
+  }
+  return state.model.events.filter(e => matches(e, query)).sort((a, b) => a.start.localeCompare(b.start)).map(e => ({event: e, hidden: !eventVisible(e)}));
 }
 
 export function parseDate(s) {
@@ -423,7 +439,7 @@ export function isSchoolDay(date) {
 }
 
 export function specials(date) {
-  return plan(date).filter(g => g.name !== 'Regular' && dayTypeMatches(g.name, state.query));
+  return plan(date).filter(g => g.name !== 'Regular');
 }
 
 const scheduleTag = 'Schedule';
@@ -538,6 +554,23 @@ export function sourceWords(e) {
 // own tier.
 export function linkURL(e) {
   return appOrigin(e.source) + e.link;
+}
+
+// eventImage is the picture across the top of an event's page: the event's
+// own, where the app that runs it has one (fetched from that app, on this
+// page's own tier); else the image of the first of its tags that has one,
+// in the order the event carries them; else the calendar's own header.
+export function eventImage(e) {
+  if (e.image) {
+    return e.link ? appOrigin(e.source) + e.image : e.image;
+  }
+  for (const name of e.tags) {
+    const tag = state.model.tags.find(t => t.name === name);
+    if (tag && tag.imageUrl) {
+      return tag.imageUrl;
+    }
+  }
+  return '/brand/default-header.jpg';
 }
 
 const callWords = {available: 'Get tickets', waitlist: 'Join the waitlist', 'sold-out': 'Sold out', open: 'Join', full: 'Full'};

@@ -1,4 +1,4 @@
-import {state, me, today, bands, tagGroups, defaultTags, selectedClassrooms, toggleClassroom, setClassrooms, classroomNames, myClassrooms, tagNames, selectedTags, toggleTag, setTags, resetFilters, filtersAreDefault, colorOf, hiddenMatches, hiddenClassroomMatches} from './state.js';
+import {state, me, today, bands, tagGroups, defaultTags, searchResults, eventPath, eventTint, timeLine, weekdayShort, parseDate, selectedClassrooms, toggleClassroom, setClassrooms, classroomNames, myClassrooms, tagNames, selectedTags, toggleTag, setTags, resetFilters, filtersAreDefault, colorOf, hiddenMatches, hiddenClassroomMatches} from './state.js';
 import {el, svg, link, button} from './dom.js';
 import {dayColumn} from './day.js';
 import {renderAvatars, renderAlerts, onSlash, initAppSwitch} from '/toolbar.js';
@@ -121,23 +121,9 @@ function filterSummary() {
   return `${roomWords} · ${tagWords}`;
 }
 
-// Whether the calendar page's filters are unfolded - folded until someone
-// opens them, and remembered per browser from then on.
-function filtersOpen() {
-  try {
-    return localStorage.getItem('calendar.filtersOpen') === 'yes';
-  } catch (err) {
-    return false;
-  }
-}
-
-function setFiltersOpen(open) {
-  try {
-    localStorage.setItem('calendar.filtersOpen', open ? 'yes' : 'no');
-  } catch (err) {
-    // A browser that refuses storage just folds them again next time.
-  }
-}
+// Whether the calendar page's filters are unfolded: folded on every visit,
+// open only while someone has opened them.
+let filtersUnfolded = false;
 
 // fillFilters draws the rows: the classrooms, band by band in their colors,
 // then the categories, one row per group the sheet files them under (the
@@ -149,16 +135,34 @@ function setFiltersOpen(open) {
 // plain.
 export function fillFilters(wrap, opts = {}) {
   wrap.replaceChildren();
-  const open = !opts.collapsible || filtersOpen();
+  const open = !opts.collapsible || filtersUnfolded;
   if (opts.collapsible) {
-    const head = el('button', 'filters-head');
-    head.type = 'button';
-    head.setAttribute('aria-expanded', String(open));
-    head.append(el('span', 'filters-title', 'Filters'), el('span', 'filters-summary', filterSummary()), svg('chevron'));
-    head.addEventListener('click', () => {
-      setFiltersOpen(!open);
+    const head = el('div', 'filters-head');
+    const fold = el('button', 'filters-fold');
+    fold.type = 'button';
+    fold.setAttribute('aria-expanded', String(open));
+    fold.append(el('span', 'filters-title', 'Filters'), el('span', 'filters-summary', filterSummary()));
+    fold.addEventListener('click', () => {
+      filtersUnfolded = !open;
       fillFilters(wrap, opts);
     });
+    head.append(fold);
+    // Reset sits on the head, so a choice can be undone without unfolding.
+    if (!filtersAreDefault()) {
+      head.append(button('Reset filters', null, 'button button-secondary button-small filters-reset', () => {
+        resetFilters();
+        refresh();
+      }));
+    }
+    const chevron = el('button', 'filters-chevron');
+    chevron.type = 'button';
+    chevron.setAttribute('aria-label', open ? 'Fold the filters' : 'Unfold the filters');
+    chevron.append(svg('chevron'));
+    chevron.addEventListener('click', () => {
+      filtersUnfolded = !open;
+      fillFilters(wrap, opts);
+    });
+    head.append(chevron);
     wrap.append(head);
     wrap.classList.toggle('is-open', open);
   }
@@ -200,7 +204,8 @@ export function fillFilters(wrap, opts = {}) {
     ], tagChips(group.tags));
     rows.append(last);
   }
-  if (!filtersAreDefault()) {
+  // The drawer has no head to carry Reset, so it goes at the rows' end.
+  if (!opts.collapsible && !filtersAreDefault()) {
     last.append(button('Reset filters', null, 'link-button filter-reset', () => {
       resetFilters();
       refresh();
@@ -298,9 +303,10 @@ function renderUser() {
   }
 }
 
-// The top bar's search box, as in the other apps. The calendar page binds it
-// to its three panels; any other page jumps home with the words carried
-// along.
+// The top bar's search box, as in the other apps. Typing opens a list of
+// the events the words find, whatever page is open - each with its date,
+// walked with the arrow keys, Enter opening the one chosen - and on the
+// calendar page the words also light up what they find in every panel.
 let onSearch = null;
 let carriedQuery = '';
 
@@ -338,6 +344,7 @@ export function clearSearch() {
   onSearch = null;
   state.query = '';
   sync('');
+  closeResults();
   searchInput().placeholder = defaultPlaceholder;
 }
 
@@ -347,16 +354,110 @@ export function resetSearch() {
 
 function search(value) {
   sync(value);
+  showResults(value.trim());
   if (onSearch) {
     onSearch(value.trim());
+  }
+}
+
+// The list under the box: up to a dozen of the events the words find, in
+// date order, with how many more there are; one the filters keep off the
+// page says so. Arrow keys move the choice, Enter opens it, Escape closes
+// the list, and a click on a row opens that one.
+const resultLimit = 12;
+let resultRows = [];
+let activeRow = -1;
+
+function resultsNode() {
+  return document.querySelector('#search-results');
+}
+
+function closeResults() {
+  const node = resultsNode();
+  node.hidden = true;
+  node.replaceChildren();
+  resultRows = [];
+  activeRow = -1;
+}
+
+function showResults(query) {
+  const node = resultsNode();
+  const found = query ? searchResults(query) : [];
+  if (!found.length) {
+    closeResults();
+    if (query) {
+      node.append(el('div', 'search-empty', 'Nothing matches.'));
+      node.hidden = false;
+    }
     return;
   }
-  if (!value.trim()) {
+  node.replaceChildren();
+  resultRows = [];
+  activeRow = -1;
+  for (const {event, hidden} of found.slice(0, resultLimit)) {
+    const row = link(eventPath(event), 'search-row' + (hidden ? ' is-hidden-by-filters' : ''));
+    row.style.setProperty('--c', eventTint(event));
+    const when = el('span', 'search-row-date');
+    const day = event.start.slice(0, 10);
+    // The year shows only when it is not this one, so last year's rows
+    // are not mistaken for this year's.
+    const dayWords = parseDate(day).toLocaleDateString('en-US', day.slice(0, 4) === today().slice(0, 4) ? {month: 'short', day: 'numeric'} : {month: 'short', day: 'numeric', year: 'numeric'});
+    when.append(el('span', 'search-row-dow', weekdayShort(day)), el('span', 'search-row-day', dayWords));
+    const body = el('span', 'search-row-body');
+    body.append(el('span', 'search-row-title', event.title));
+    const line = [timeLine(event)];
+    if (event.location) {
+      line.push(event.location);
+    }
+    if (hidden) {
+      line.push('off under the filters');
+    }
+    body.append(el('span', 'search-row-line', line.join(' · ')));
+    row.append(el('span', 'search-row-bar'), when, body);
+    // The box keeps focus through a click on a row, so the list is still
+    // there for the click to land on.
+    row.addEventListener('mousedown', e => e.preventDefault());
+    row.addEventListener('click', closeResults);
+    row.addEventListener('mouseenter', () => setActive(resultRows.indexOf(row)));
+    resultRows.push(row);
+    node.append(row);
+  }
+  if (found.length > resultLimit) {
+    node.append(el('div', 'search-more', `${found.length - resultLimit} more - keep typing to narrow it down`));
+  }
+  node.hidden = false;
+}
+
+function setActive(index) {
+  activeRow = index;
+  resultRows.forEach((row, i) => row.classList.toggle('is-active', i === index));
+  if (index >= 0) {
+    resultRows[index].scrollIntoView({block: 'nearest'});
+  }
+}
+
+function onSearchKey(e) {
+  const node = resultsNode();
+  if (node.hidden) {
     return;
   }
-  carriedQuery = value;
-  history.pushState(null, '', '/');
-  refresh();
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (!resultRows.length) {
+      return;
+    }
+    const step = e.key === 'ArrowDown' ? 1 : -1;
+    setActive((activeRow + step + resultRows.length) % resultRows.length);
+  } else if (e.key === 'Enter') {
+    if (activeRow >= 0) {
+      e.preventDefault();
+      resultRows[activeRow].click();
+    }
+  } else if (e.key === 'Escape') {
+    e.preventDefault();
+    closeResults();
+    searchInput().blur();
+  }
 }
 
 function focusSearch() {
@@ -386,6 +487,11 @@ export function initChrome() {
   document.querySelector('#menu-button').append(svg('menu'));
   document.querySelector('#menu-button').addEventListener('click', openDrawer);
   searchInput().addEventListener('input', () => search(typed()));
+  searchInput().addEventListener('keydown', onSearchKey);
+  // Back in the box with words still there, the list comes back; leaving
+  // it, the list goes but the words and their highlights stay.
+  searchInput().addEventListener('focus', () => showResults(typed().trim()));
+  searchInput().addEventListener('blur', closeResults);
   onSlash(focusSearch);
   document.querySelector('#drawer-overlay').addEventListener('click', e => {
     if (e.target === e.currentTarget) {

@@ -1,7 +1,25 @@
-import {whenLine, daysLine, timeLine, calendarLink, sourceWords, dayType, eventDates, dayTypeClass, linkURL, call, isParty, mineWords} from '../state.js';
+import {daysLine, timeLine, calendarLink, sourceWords, dayType, eventDates, dayTypeClass, linkURL, call, isParty, mineWords, eventImage, weekdayShort, parseDate, spansDays} from '../state.js';
 import {el, link, svg, paragraphs, button, copyText} from '../dom.js';
 import {setTitle} from '../chrome.js';
 import {audienceChips, blocks} from '../events.js';
+
+// hero is the picture across the top of the page - the event's own, its
+// first tag's, or the calendar's - with the date on a card at its corner:
+// the weekday, the day, and the hours or the days it runs across.
+function hero(e) {
+  const wrap = el('div', 'detail-hero');
+  const img = el('img');
+  img.src = eventImage(e);
+  img.alt = '';
+  wrap.append(img);
+  const first = eventDates(e)[0];
+  const date = el('div', 'hero-date');
+  date.append(el('span', 'hero-dow', weekdayShort(first)));
+  date.append(el('span', 'hero-day', parseDate(first).toLocaleDateString('en-US', {month: 'short', day: 'numeric'})));
+  date.append(el('span', 'hero-time', spansDays(e) ? daysLine(e) : timeLine(e)));
+  wrap.append(date);
+  return wrap;
+}
 
 export function eventPage(e) {
   setTitle(e.title);
@@ -12,7 +30,7 @@ export function eventPage(e) {
   back.setAttribute('data-link', '');
   back.append(svg('back'), el('span', '', 'That day'));
   top.append(back);
-  page.append(top);
+  page.append(top, hero(e));
 
   const cols = el('div', 'detail-cols');
   const main = el('div', 'detail-main');
@@ -23,7 +41,6 @@ export function eventPage(e) {
   marks.append(audienceChips(e));
   main.append(marks);
   main.append(el('h1', 'detail-title', e.title));
-  main.append(el('p', 'detail-when', whenLine(e)));
   if (e.description) {
     main.append(paragraphs(e.description, 'prose detail-text'));
   }
@@ -44,9 +61,6 @@ export function eventPage(e) {
   cols.append(main);
 
   const side = el('div', 'detail-side');
-  if (e.link) {
-    side.append(linkedCard(e));
-  }
   const when = el('div', 'side-card');
   const whenRow = el('div', 'side-row');
   const whenIcon = el('div', 'side-icon');
@@ -74,6 +88,10 @@ export function eventPage(e) {
     when.append(whereRow);
   }
   side.append(when);
+  // The way into the app that runs a linked event, under when and where.
+  if (e.link) {
+    side.append(linkedCard(e));
+  }
 
   const about = el('div', 'side-card side-card-help');
   const aboutRow = el('div', 'side-row');

@@ -44,18 +44,21 @@ type User struct {
 }
 
 type View struct {
-	User       User                         `json:"user"`
-	Today      string                       `json:"today"`
-	Now        string                       `json:"now"`
-	Classrooms []Classroom                  `json:"classrooms"`
-	Colors     map[string]string            `json:"colors"`
-	Tags       []Tag                        `json:"tags"`
-	DayTypes   []DayType                    `json:"dayTypes"`
-	Years      []Year                       `json:"years"`
-	Days       map[string]map[string]string `json:"days"`
-	Events     []*Event                     `json:"events"`
-	Feeds      []Feed                       `json:"feeds"`
-	Alerts     Alerts                       `json:"alerts"`
+	User User `json:"user"`
+	// ImageSources are the picture searches Admin Tools can offer, for an
+	// admin alone.
+	ImageSources []string                     `json:"imageSources,omitempty"`
+	Today        string                       `json:"today"`
+	Now          string                       `json:"now"`
+	Classrooms   []Classroom                  `json:"classrooms"`
+	Colors       map[string]string            `json:"colors"`
+	Tags         []Tag                        `json:"tags"`
+	DayTypes     []DayType                    `json:"dayTypes"`
+	Years        []Year                       `json:"years"`
+	Days         map[string]map[string]string `json:"days"`
+	Events       []*Event                     `json:"events"`
+	Feeds        []Feed                       `json:"feeds"`
+	Alerts       Alerts                       `json:"alerts"`
 }
 
 func displayName(email string) string {

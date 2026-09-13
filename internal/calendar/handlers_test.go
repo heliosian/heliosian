@@ -19,7 +19,7 @@ func testApp(t *testing.T) (http.Handler, *Cache) {
 	t.Helper()
 	t.Chdir("../..")
 	dir := &data.Dir{Root: "sampledata"}
-	cache, err := NewCache(dir, func() Roster { return roster }, func(string) bool { return false }, directQueue{})
+	cache, err := NewCache(dir, func() Roster { return roster }, nil, func(string) bool { return false }, directQueue{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,7 +28,7 @@ func testApp(t *testing.T) (http.Handler, *Cache) {
 		kids:   map[string][]Person{},
 	}
 	mux := http.NewServeMux()
-	Register(mux, cache, dir, directQueue{}, d, func() []string { return nil }, func(string) []Linked { return nil })
+	Register(mux, cache, dir, directQueue{}, nil, d, func() []string { return nil }, func(string) []Linked { return nil }, ImageSearch{})
 	return mux, cache
 }
 

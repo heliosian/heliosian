@@ -66,7 +66,7 @@ func (c calendarLinked) parties(now time.Time, family map[string]bool) []calenda
 		}
 		out = append(out, calendar.Linked{
 			Source: calendar.SourceCelebrate, ID: p.ID, Title: p.Title, Summary: p.Summary, Description: p.Description, Location: p.Location,
-			Start: p.Start, End: p.End, Path: model.PathOf(p), Availability: p.Availability(now), Mine: mine,
+			Start: p.Start, End: p.End, Path: model.PathOf(p), Availability: p.Availability(now), Mine: mine, Image: p.ImageURL,
 		})
 	}
 	return out
@@ -102,7 +102,7 @@ func (c calendarLinked) activities(family map[string]bool) []calendar.Linked {
 		}
 		out = append(out, calendar.Linked{
 			Source: calendar.SourceTeam, ID: a.ID, Title: a.Title, Description: a.Description, Location: a.Location,
-			Start: a.Start, End: a.End, Path: model.PathOf(a), Availability: availability, Mine: mine,
+			Start: a.Start, End: a.End, Path: model.PathOf(a), Availability: availability, Mine: mine, Image: a.ImageURL,
 		})
 	}
 	return out
