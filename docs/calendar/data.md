@@ -60,7 +60,7 @@ One run:
 
 A stage that fails does not take the others with it. A PDF that cannot be read leaves the rows already there; a classification batch that fails leaves its events with whatever row they had, and their input hashes see to it that the next run asks about exactly those events again. Everything that did complete is written, and only then does the run exit non-zero naming what failed.
 
-The run is idempotent and cheap when nothing changed: one feed fetch, one page fetch, one PDF fetch, no Claude calls. It runs from a laptop (`brew install poppler` supplies `pdftoppm`) and from its own image, `Dockerfile.calendarimport`, a Debian base carrying poppler rather than the server's distroless one, which is where a scheduled Cloud Run Job runs it as the same identity as the server.
+The run is idempotent and cheap when nothing changed: one feed fetch, one page fetch, one PDF fetch, no Claude calls. It runs from a laptop (`brew install poppler` supplies `pdftoppm`) and from its own image, `Dockerfile.calendarimport`, a Debian base carrying poppler rather than the server's distroless one, which the Cloud Run Job `calendarimport` runs once a day as the same identity as the server (`docs/deploy.md`).
 
 ## Sample data
 

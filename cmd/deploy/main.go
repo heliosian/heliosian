@@ -28,11 +28,14 @@ func clientID() string {
 }
 
 const (
-	service  = "heliosian"
-	region   = "us-west1"
-	image    = "us-west1-docker.pkg.dev/heliosian/heliosian/heliosian:latest"
-	identity = "directory@heliosian.iam.gserviceaccount.com"
-	secrets  = "SESSION_KEY=heliosian-session-key:latest," +
+	service    = "heliosian"
+	region     = "us-west1"
+	image      = "us-west1-docker.pkg.dev/heliosian/heliosian/heliosian:latest"
+	job        = "calendarimport"
+	jobImage   = "us-west1-docker.pkg.dev/heliosian/heliosian/calendarimport:latest"
+	jobSecrets = "ANTHROPIC_API_KEY=heliosian-anthropic-key:latest"
+	identity   = "directory@heliosian.iam.gserviceaccount.com"
+	secrets    = "SESSION_KEY=heliosian-session-key:latest," +
 		"GOOGLE_MAPS_SERVER_KEY=heliosian-geocoding-key:latest," +
 		"GOOGLE_MAPS_BROWSER_KEY=heliosian-maps-browser-key:latest," +
 		"UNSPLASH_KEY=heliosian-unsplash-key:latest," +
@@ -49,19 +52,29 @@ func requiredEnv(name string) string {
 	return value
 }
 
+func gcloud(args ...string) {
+	cmd := exec.Command("gcloud", args...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		log.Fatalf("[ERROR] gcloud %s: %v", args[0], err)
+	}
+}
+
 func main() {
-	envVars := "DIRECTORY_SHEET=" + requiredEnv("DIRECTORY_SHEET") +
+	jobEnvVars := "DIRECTORY_SHEET=" + requiredEnv("DIRECTORY_SHEET") +
 		",PREFERENCES_SHEET=" + requiredEnv("PREFERENCES_SHEET") +
+		",CALENDAR_SHEET=" + requiredEnv("CALENDAR_SHEET") +
+		",CONFIG_SHEET=" + requiredEnv("CONFIG_SHEET")
+	envVars := jobEnvVars +
 		",INVITES_SHEET=" + requiredEnv("INVITES_SHEET") +
 		",APPS_SHEET=" + requiredEnv("APPS_SHEET") +
 		",EVENTS_SHEET=" + requiredEnv("EVENTS_SHEET") +
 		",BIRTHDAY_SHEET=" + requiredEnv("BIRTHDAY_SHEET") +
 		",CELEBRATE_SHEET=" + requiredEnv("CELEBRATE_SHEET") +
-		",CALENDAR_SHEET=" + requiredEnv("CALENDAR_SHEET") +
-		",CONFIG_SHEET=" + requiredEnv("CONFIG_SHEET") +
 		",GOOGLE_CLIENT_ID=" + clientID()
-	cmd := exec.Command("gcloud",
-		"run", "deploy", service,
+	log.Printf("deploying %s to %s in %s", image, service, region)
+	gcloud("run", "deploy", service,
 		"--image", image,
 		"--region", region,
 		"--service-account", identity,
@@ -75,10 +88,16 @@ func main() {
 		"--set-env-vars", envVars,
 		"--set-secrets", secrets,
 		"--quiet")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	log.Printf("deploying %s to %s in %s", image, service, region)
-	if err := cmd.Run(); err != nil {
-		log.Fatalf("[ERROR] deploy: %v", err)
-	}
+	log.Printf("deploying %s to job %s in %s", jobImage, job, region)
+	gcloud("run", "jobs", "deploy", job,
+		"--image", jobImage,
+		"--region", region,
+		"--service-account", identity,
+		"--memory", "1Gi",
+		"--task-timeout", "30m",
+		"--max-retries", "0",
+		"--args=--i-have-user-permission-to-spend-money",
+		"--set-env-vars", jobEnvVars,
+		"--set-secrets", jobSecrets,
+		"--quiet")
 }
