@@ -36,10 +36,12 @@ type Style struct {
 	// registry's, as an admin may have edited it - with Tagline as the
 	// fallback for a blank answer.
 	TaglineNow func() string
-	// Mark and Corner are file paths, read once; either may be blank.
-	Mark, Corner string
-	marks        sync.Once
-	mark, corner image.Image
+	// Mark, Lockup and Corner are file paths, read once; any may be blank.
+	// A Lockup - the brand's own art, mark and words together - stands in
+	// for the mark, wordmark and tagline the card would otherwise set.
+	Mark, Lockup, Corner string
+	marks                sync.Once
+	mark, lockup, corner image.Image
 }
 
 // Line is one line under the title: an icon and the words.
@@ -113,7 +115,7 @@ func (s *Style) TaglineText() string {
 
 func (s *Style) art() (image.Image, image.Image) {
 	s.marks.Do(func() {
-		s.mark, s.corner = readImage(s.Mark), readImage(s.Corner)
+		s.mark, s.lockup, s.corner = readImage(s.Mark), readImage(s.Lockup), readImage(s.Corner)
 	})
 	return s.mark, s.corner
 }
@@ -197,27 +199,37 @@ func (s *Style) Draw(c Card) ([]byte, error) {
 		draw.CatmullRom.Scale(img, dst, corner, b, draw.Over, nil)
 	}
 
-	// Mark and wordmark, top left.
+	// The brand, top left: the lockup as the designer drew it, at the
+	// height the mark and words would take; without one, the mark beside
+	// a set wordmark and tagline.
 	x, y := 72, 56
-	if mark != nil {
-		dst := image.Rect(x, y, x+60, y+60)
-		draw.CatmullRom.Scale(img, dst, mark, mark.Bounds(), draw.Over, nil)
-		x += 74
+	d := &font.Drawer{Dst: img, Src: image.NewUniform(s.Brand)}
+	if s.lockup != nil {
+		b := s.lockup.Bounds()
+		h := 100
+		w := b.Dx() * h / max(b.Dy(), 1)
+		draw.CatmullRom.Scale(img, image.Rect(x, y, x+w, y+h), s.lockup, b, draw.Over, nil)
+	} else {
+		if mark != nil {
+			dst := image.Rect(x, y, x+60, y+60)
+			draw.CatmullRom.Scale(img, dst, mark, mark.Bounds(), draw.Over, nil)
+			x += 74
+		}
+		wordmark, err := face(bold, 36)
+		if err != nil {
+			return nil, err
+		}
+		d.Face = wordmark
+		d.Dot = fixed.P(x, y+40)
+		d.DrawString(s.Wordmark)
+		small, err := face(medium, 16)
+		if err != nil {
+			return nil, err
+		}
+		d.Face, d.Src = small, image.NewUniform(s.Accent)
+		d.Dot = fixed.P(x+2, y+62)
+		d.DrawString(strings.ToUpper(s.TaglineText()))
 	}
-	wordmark, err := face(bold, 36)
-	if err != nil {
-		return nil, err
-	}
-	d := &font.Drawer{Dst: img, Src: image.NewUniform(s.Brand), Face: wordmark}
-	d.Dot = fixed.P(x, y+40)
-	d.DrawString(s.Wordmark)
-	small, err := face(medium, 16)
-	if err != nil {
-		return nil, err
-	}
-	d.Face, d.Src = small, image.NewUniform(s.Accent)
-	d.Dot = fixed.P(x+2, y+62)
-	d.DrawString(strings.ToUpper(s.TaglineText()))
 
 	// The kicker above the title, so a thing under another plainly belongs
 	// to it.

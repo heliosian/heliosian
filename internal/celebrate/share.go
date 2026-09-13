@@ -25,12 +25,14 @@ import (
 // coming.
 
 // cardStyle is the site's dress for the card: the palette sampled from the
-// logo art, the lockup, and the mark; no corner art.
+// logo art and the logo itself; no corner art.
 var cardStyle = &sharecard.Style{
 	Page: color.RGBA{0xf4, 0xf8, 0xf8, 0xff}, Brand: color.RGBA{0x0f, 0x4e, 0x54, 0xff}, Accent: color.RGBA{0x1f, 0x83, 0x8a, 0xff},
 	Ink: color.RGBA{0x0a, 0x32, 0x36, 0xff}, Yellow: color.RGBA{0xfa, 0xe1, 0x05, 0xff}, Panel: color.RGBA{0xdc, 0xe9, 0xe8, 0xff},
 	Wordmark: "Helios Celebrate", Tagline: "FUN(D)RAISER PARTIES",
 	Mark: "web/public/celebrate/brand/logo-mark.png",
+	// The card wears the logo as drawn, not a lockup set here.
+	Lockup: "web/public/celebrate/brand/logo-lockup.png",
 }
 
 // ShareTagline gives the card the app's tagline as the registry has it
