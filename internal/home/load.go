@@ -1,11 +1,16 @@
 package home
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"maps"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -66,16 +71,41 @@ type App struct {
 	Key     string `json:"key"`
 	Name    string `json:"name"`
 	Tagline string `json:"tagline"`
+	// Host is the hostname's first label the switch links to, when it is
+	// not the key: the calendar is the package and the sheet, when. the
+	// address (internal/app sends its other addresses there).
+	Host string `json:"host,omitempty"`
+	// Mark is a fingerprint of the app's mark file, for the switch and the
+	// front page to fetch the file by (?v=), so a redrawn mark reaches a
+	// browser that cached the old one under the day-long brand caching.
+	Mark string `json:"mark,omitempty"`
 }
 
-var Home = App{"home", "Heliosian", "Helios Community Apps"}
+var marks sync.Map
+
+// markVersion fingerprints web/public/common/brand/apps/<key>.png, once per
+// process: the file is part of the build, so it changes only with a deploy.
+func markVersion(key string) string {
+	if v, ok := marks.Load(key); ok {
+		return v.(string)
+	}
+	version := ""
+	if data, err := os.ReadFile(filepath.Join("web", "public", "common", "brand", "apps", key+".png")); err == nil {
+		sum := sha256.Sum256(data)
+		version = hex.EncodeToString(sum[:4])
+	}
+	marks.Store(key, version)
+	return version
+}
+
+var Home = App{Key: "home", Name: "Heliosian", Tagline: "Helios Community Apps"}
 
 var Apps = []App{
-	{"who", "Helios Who?", "A visual directory"},
-	{"team", "HCA-Team", "HCA Volunteer Portal"},
-	{"celebrate", "Helios Celebrate", "Fun(d)raiser Parties"},
-	{"birthday", "Helios Birthday Team", "Staff birthday donations"},
-	{"calendar", "Helios Calendar", "The school year, day by day"},
+	{Key: "who", Name: "Helios Who?", Tagline: "A visual directory"},
+	{Key: "team", Name: "HCA-Team", Tagline: "HCA Volunteer Portal"},
+	{Key: "celebrate", Name: "Helios Celebrate", Tagline: "Fun(d)raiser Parties"},
+	{Key: "birthday", Name: "Helios Birthday Team", Tagline: "Staff birthday donations"},
+	{Key: "calendar", Name: "Helios Calendar", Tagline: "The school year, day by day", Host: "when"},
 }
 
 func appByKey(key string) (App, bool) {

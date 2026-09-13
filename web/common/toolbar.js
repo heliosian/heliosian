@@ -104,10 +104,10 @@ export function initAppSwitch() {
 // One app's row of the switch: its mark, name and tagline, linking to it.
 function appRow(app, isCurrent) {
   const row = document.createElement('a');
-  row.href = appOrigin(app.key);
+  row.href = appOrigin(app.host || app.key);
   row.className = isCurrent ? 'is-current' : '';
   const icon = document.createElement('img');
-  icon.src = `/brand/apps/${app.key}.png`;
+  icon.src = `/brand/apps/${app.key}.png` + (app.mark ? `?v=${app.mark}` : '');
   icon.alt = '';
   const text = document.createElement('span');
   const name = document.createElement('span');

@@ -1,6 +1,6 @@
 # Helios Calendar
 
-Helios Calendar is the school year as one family sees it: what kind of day today is for their students' classrooms, what is coming up, and the whole year to browse, with the school's two published sources merged, classified, and corrected in one sheet. It serves at calendar.heliosian.com, and answers as cal.heliosian.com and when.heliosian.com too. The sheet is `Calendar` (`data.md`), the package is `internal/calendar`, and the API is `/api/calendar/`.
+Helios Calendar is the school year as one family sees it: what kind of day today is for their students' classrooms, what is coming up, and the whole year to browse, with the school's two published sources merged, classified, and corrected in one sheet. It lives at when.heliosian.com; calendar.heliosian.com and cal.heliosian.com are ways of typing it, and a page load at either is sent there (`canonicalHost` in `internal/app`), while a feed fetch or an API call is answered where it arrives, so a calendar subscribed at an older address keeps working. The sheet is `Calendar` (`data.md`), the package is `internal/calendar`, and the API is `/api/calendar/`.
 
 ## What a viewer sees
 
@@ -27,7 +27,7 @@ Search matches every word typed against the title, the description, the place, t
 
 ## Feeds
 
-A feed is an address a calendar app subscribes to: `https://calendar.heliosian.com/feed/{token}.ics`, served without sign-in (`auth.Public`), since Apple Calendar, Google Calendar and Outlook fetch it themselves. The token is the whole secret - 24 characters from a 31-symbol alphabet, minted by the server - so the page says so: anyone holding the address reads the feed, and removing it here is how it stops.
+A feed is an address a calendar app subscribes to: `https://when.heliosian.com/feed/{token}.ics`, served without sign-in (`auth.Public`), since Apple Calendar, Google Calendar and Outlook fetch it themselves. The token is the whole secret - 24 characters from a 31-symbol alphabet, minted by the server - so the page says so: anyone holding the address reads the feed, and removing it here is how it stops.
 
 A viewer makes one from the Feeds page by naming it and picking its classrooms (their own to start) and tags (all to start); every classroom or every tag is stored as no filter at all, so a whole-school feed keeps up as classrooms come and go. It lands in the `Feeds` tab with the viewer's address and is theirs alone: the page lists only their own, and only they, or an admin, can remove it. The address is copied to the clipboard the moment it is made. Subscribe in my calendar app is the same address as `webcal://`, which Apple's and most others open straight into a subscription; Add to Google Calendar opens Google's From URL page to paste it into.
 

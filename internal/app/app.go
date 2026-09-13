@@ -39,7 +39,8 @@ import (
 // appFor reads the app out of a hostname: <app>.heliosian.com in production,
 // <app>.lab.heliosian.com hosted alongside it, <app>.local.heliosian.com on a
 // developer's machine. Home also answers as the bare and www apex, the
-// volunteer portal, team, as hca, and the calendar as cal and when.
+// volunteer portal, team, as hca, and the calendar - whose address is when
+// (canonicalHost) - as calendar and cal.
 func appFor(host string) string {
 	switch host {
 	case "heliosian.com", "www.heliosian.com":
@@ -541,14 +542,50 @@ func Logged(app string, next http.Handler) http.Handler {
 
 func route(apps map[string]http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		host, _, _ := strings.Cut(r.Host, ":")
+		host, port, _ := strings.Cut(r.Host, ":")
 		app, ok := apps[appFor(host)]
 		if !ok {
 			http.NotFound(w, r)
 			return
 		}
+		if canonical := canonicalHost(host); canonical != "" && redirectable(r) {
+			if port != "" {
+				canonical += ":" + port
+			}
+			http.Redirect(w, r, "https://"+canonical+r.URL.RequestURI(), http.StatusMovedPermanently)
+			return
+		}
 		app.ServeHTTP(w, r)
 	})
+}
+
+// canonicalHost is the address an alias sends the browser to, on the same
+// tier: the calendar lives at when.heliosian.com, and calendar. and cal.
+// are ways of typing it. Every other hostname is its own, and gets "".
+func canonicalHost(host string) string {
+	name, ok := strings.CutSuffix(host, ".heliosian.com")
+	if !ok {
+		return ""
+	}
+	app, tier, _ := strings.Cut(name, ".")
+	switch app {
+	case "calendar", "cal":
+		if tier != "" {
+			tier = "." + tier
+		}
+		return "when" + tier + ".heliosian.com"
+	}
+	return ""
+}
+
+// redirectable is a page load: a GET or HEAD outside the API and the
+// calendar feeds, which a subscribed calendar app fetches by the address
+// it was given and should keep getting from it.
+func redirectable(r *http.Request) bool {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		return false
+	}
+	return !strings.HasPrefix(r.URL.Path, "/api/") && !strings.HasPrefix(r.URL.Path, "/feed/")
 }
 
 // Port is the port the server listens on, shared with anything that needs to

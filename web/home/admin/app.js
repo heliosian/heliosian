@@ -162,7 +162,7 @@ function visibilityCard(app, people) {
   const title = document.createElement('div');
   title.className = 'visibility-head';
   const icon = document.createElement('img');
-  icon.src = `/brand/apps/${app.key}.png`;
+  icon.src = `/brand/apps/${app.key}.png` + (app.mark ? `?v=${app.mark}` : '');
   icon.alt = '';
   const words = document.createElement('div');
   words.className = 'visibility-words';
@@ -170,8 +170,8 @@ function visibilityCard(app, people) {
   heading.textContent = name;
   const url = document.createElement('a');
   url.className = 'visibility-url';
-  url.href = appOrigin(app.key);
-  url.textContent = appOrigin(app.key).replace(/^https?:\/\//, '');
+  url.href = appOrigin(app.host || app.key);
+  url.textContent = appOrigin(app.host || app.key).replace(/^https?:\/\//, '');
   url.target = '_blank';
   url.rel = 'noopener';
   words.append(heading, url);

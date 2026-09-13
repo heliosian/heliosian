@@ -105,3 +105,52 @@ func TestRoute(t *testing.T) {
 		}
 	}
 }
+
+func TestCanonicalHost(t *testing.T) {
+	cases := map[string]string{
+		"calendar.heliosian.com":      "when.heliosian.com",
+		"cal.heliosian.com":           "when.heliosian.com",
+		"calendar.lab.heliosian.com":  "when.lab.heliosian.com",
+		"cal.local.heliosian.com":     "when.local.heliosian.com",
+		"when.heliosian.com":          "",
+		"who.heliosian.com":           "",
+		"hca.heliosian.com":           "",
+		"heliosian.com":               "",
+		"calendar.heliosian.com.evil": "",
+	}
+	for host, want := range cases {
+		if got := canonicalHost(host); got != want {
+			t.Errorf("canonicalHost(%q) = %q, want %q", host, got, want)
+		}
+	}
+}
+
+func TestRouteSendsAliasesToWhen(t *testing.T) {
+	served := false
+	apps := map[string]http.Handler{"calendar": http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { served = true })}
+	handler := route(apps)
+	for _, c := range []struct {
+		method, host, path string
+		want               int
+		location           string
+	}{
+		{"GET", "calendar.heliosian.com", "/day/2026-09-13?x=1", 301, "https://when.heliosian.com/day/2026-09-13?x=1"},
+		{"GET", "cal.local.heliosian.com:8080", "/", 301, "https://when.local.heliosian.com:8080/"},
+		{"GET", "calendar.heliosian.com", "/feed/abc.ics", 200, ""},
+		{"GET", "calendar.heliosian.com", "/api/calendar/model", 200, ""},
+		{"POST", "calendar.heliosian.com", "/api/calendar/x", 200, ""},
+		{"GET", "when.heliosian.com", "/", 200, ""},
+	} {
+		served = false
+		r := httptest.NewRequest(c.method, "https://"+c.host+c.path, nil)
+		r.Host = c.host
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+		if w.Code != c.want || (c.want == 200) != served {
+			t.Errorf("%s %s%s: got %d (served %v), want %d", c.method, c.host, c.path, w.Code, served, c.want)
+		}
+		if got := w.Header().Get("Location"); got != c.location {
+			t.Errorf("%s %s%s: location %q, want %q", c.method, c.host, c.path, got, c.location)
+		}
+	}
+}

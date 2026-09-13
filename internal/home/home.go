@@ -137,12 +137,19 @@ func RegisterSwitch(mux *http.ServeMux, cache *Cache) {
 		view := struct {
 			Apps   []App    `json:"apps"`
 			Hidden []string `json:"hidden"`
-		}{Apps: append([]App{Home}, cache.AppList()...), Hidden: cache.HiddenApps(auth.Email(r))}
+		}{Apps: append([]App{homeApp()}, cache.AppList()...), Hidden: cache.HiddenApps(auth.Email(r))}
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(view); err != nil {
 			slog.ErrorContext(r.Context(), "encode app switch", "error", err)
 		}
 	})
+}
+
+// homeApp is Home with its mark's fingerprint on.
+func homeApp() App {
+	app := Home
+	app.Mark = markVersion(app.Key)
+	return app
 }
 
 // visibleApps is the community apps as the front page's apps section lists

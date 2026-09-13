@@ -397,7 +397,7 @@ function appCard(app) {
   const card = el('div', 'feature');
   const disc = el('div', 'feature-disc');
   const icon = el('img', 'feature-image');
-  icon.src = `/brand/apps/${app.key}.png`;
+  icon.src = `/brand/apps/${app.key}.png` + (app.mark ? `?v=${app.mark}` : '');
   icon.alt = '';
   disc.append(icon);
   card.append(disc);
@@ -405,7 +405,7 @@ function appCard(app) {
   body.append(el('div', 'feature-title', app.name));
   body.append(el('div', 'feature-description', app.tagline));
   const go = el('a', 'button');
-  go.href = appOrigin(app.key);
+  go.href = appOrigin(app.host || app.key);
   go.append(el('span', '', 'Open App'));
   body.append(go);
   card.append(body);

@@ -154,7 +154,7 @@ func (c *Cache) AppVisibilities() []AppVisibility {
 	out := make([]AppVisibility, 0, len(Apps))
 	for _, app := range orderedApps(model) {
 		v := visibilityOf(model, app)
-		app.Name, app.Tagline = v.Name, v.Tagline
+		app.Name, app.Tagline, app.Mark = v.Name, v.Tagline, markVersion(app.Key)
 		out = append(out, AppVisibility{App: app, Visibility: v.Mode, Emails: v.Emails})
 	}
 	return out
@@ -167,7 +167,7 @@ func (c *Cache) AppList() []App {
 	out := make([]App, 0, len(Apps))
 	for _, app := range orderedApps(model) {
 		v := visibilityOf(model, app)
-		app.Name, app.Tagline = v.Name, v.Tagline
+		app.Name, app.Tagline, app.Mark = v.Name, v.Tagline, markVersion(app.Key)
 		out = append(out, app)
 	}
 	return out
