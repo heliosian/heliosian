@@ -163,6 +163,7 @@ var layouts = map[string][]tab{
 		{calendar.DayOverridesTab, calendar.DayOverrideColumns},
 		{calendar.TagsTab, calendar.TagColumns},
 		{calendar.AdminsTab, calendar.AdminColumns},
+		{calendar.FeedsTab, calendar.FeedColumns},
 		{calendar.ChangeLogTab, calendar.ChangeLogColumns},
 	},
 	"Config": {

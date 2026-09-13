@@ -59,11 +59,12 @@ func Fixed(email string, next http.Handler) http.Handler {
 
 // Public names the two endpoints the splash page needs before anyone has a
 // session: the client id it initializes Google sign-in with, and the login POST.
-// Public is what serves without a session: the sign-in exchange itself, and an
+// Public is what serves without a session: the sign-in exchange itself, an
 // app's share cards - the images a chat app fetches to preview a link, which
-// no crawler could sign in for.
+// no crawler could sign in for - and the calendar's personal feeds, which a
+// calendar app fetches by their secret address.
 func Public(path string) bool {
-	return path == "/auth/login" || path == "/auth/client" || strings.HasPrefix(path, "/share/")
+	return path == "/auth/login" || path == "/auth/client" || strings.HasPrefix(path, "/share/") || strings.HasPrefix(path, "/feed/")
 }
 
 func Token(key []byte, email string, expiry time.Time) string {

@@ -3,10 +3,11 @@ package calendar
 
 import (
 	"fmt"
+	"maps"
+	"regexp"
 	"slices"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"heliosian/internal/data"
@@ -24,6 +25,7 @@ const (
 	DayOverridesTab = "Day Overrides"
 	TagsTab         = "Tags"
 	AdminsTab       = "Admins"
+	FeedsTab        = "Feeds"
 	ChangeLogTab    = "Change Log"
 )
 
@@ -53,8 +55,13 @@ var (
 	DayOverrideColumns = []string{"Date", "Classrooms", "Day Type", "Note"}
 	TagColumns         = []string{"Tag", "Description"}
 	AdminColumns       = []string{"Email"}
+	FeedColumns        = []string{"Token", "Email", "Name", "Classrooms", "Tags", "Created"}
 	ChangeLogColumns   = []string{"Timestamp", "Actor", "Action", "Tab", "Key", "Column", "From", "To"}
 )
+
+var emailForm = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
+
+const maxFeedNameLength = 80
 
 var Blocks = []string{"Dropoff", "School", "Pickup", "Aftercare"}
 
@@ -72,10 +79,10 @@ func mustLocation(name string) *time.Location {
 // Classroom is one homeroom as the directory knows it: its band, the grades
 // its students are in, and its crews when it has them.
 type Classroom struct {
-	Name   string
-	Band   string
-	Grades []string
-	Crews  []string
+	Name   string   `json:"name"`
+	Band   string   `json:"band,omitempty"`
+	Grades []string `json:"grades"`
+	Crews  []string `json:"crews,omitempty"`
 }
 
 type Roster struct {
@@ -149,6 +156,33 @@ type Tag struct {
 	Description string `json:"description"`
 }
 
+// A feed with no Classrooms carries every classroom, and one with no Tags
+// carries every tag; the token is the whole secret.
+type Feed struct {
+	Token      string   `json:"token"`
+	Email      string   `json:"email"`
+	Name       string   `json:"name"`
+	Classrooms []string `json:"classrooms"`
+	Tags       []string `json:"tags"`
+	Created    string   `json:"created"`
+}
+
+func (f Feed) Carries(e *Event) bool {
+	if len(f.Classrooms) > 0 && len(e.Classrooms) > 0 && !overlaps(f.Classrooms, e.Classrooms) {
+		return false
+	}
+	return len(f.Tags) == 0 || overlaps(f.Tags, e.Tags)
+}
+
+func overlaps(a, b []string) bool {
+	for _, item := range a {
+		if slices.Contains(b, item) {
+			return true
+		}
+	}
+	return false
+}
+
 // Model is the sheet organized: visible events in date order, the day types,
 // the tags, the day plan as date then classroom, and the school years the
 // plan spans.
@@ -159,14 +193,20 @@ type Model struct {
 	Days     map[string]map[string]string
 	Years    []Year
 	Roster   Roster
+	Feeds    []Feed
 	Hidden   int
 	Skipped  map[string]int
 	byID     map[string]*Event
+	byToken  map[string]*Feed
 	tags     map[string]bool
 }
 
 func (m *Model) Event(id string) *Event {
 	return m.byID[id]
+}
+
+func (m *Model) Feed(token string) *Feed {
+	return m.byToken[token]
 }
 
 func (m *Model) DayType(name string) *DayType {
@@ -208,6 +248,7 @@ type Tables struct {
 	DayOverrides []map[string]string
 	Tags         []map[string]string
 	Admins       []map[string]string
+	Feeds        []map[string]string
 }
 
 func ReadTables(source data.Source) (*Tables, error) {
@@ -216,7 +257,6 @@ func ReadTables(source data.Source) (*Tables, error) {
 		want   []string
 		header []string
 		rows   []map[string]string
-		err    error
 	}
 	google := &table{name: GoogleTab, want: GoogleColumns}
 	pdf := &table{name: PDFTab, want: PDFColumns}
@@ -227,30 +267,52 @@ func ReadTables(source data.Source) (*Tables, error) {
 	dayOverrides := &table{name: DayOverridesTab, want: DayOverrideColumns}
 	tags := &table{name: TagsTab, want: TagColumns}
 	admins := &table{name: AdminsTab, want: AdminColumns}
+	feeds := &table{name: FeedsTab, want: FeedColumns}
 	changeLog := &table{name: ChangeLogTab, want: ChangeLogColumns}
-	read := []*table{google, pdf, events, enrichment, overrides, dayTypes, dayOverrides, tags, admins}
-	var wg sync.WaitGroup
+	read := []*table{google, pdf, events, enrichment, overrides, dayTypes, dayOverrides, tags, admins, feeds}
+	names := []string{}
 	for _, t := range read {
-		wg.Go(func() {
-			t.header, t.rows, t.err = source.Table(appName, t.name)
-		})
+		names = append(names, t.name)
 	}
-	wg.Go(func() {
-		changeLog.header, changeLog.err = source.Header(appName, changeLog.name)
-	})
-	wg.Wait()
+	tabs, err := source.Tabs(appName, names, []string{changeLog.name})
+	if err != nil {
+		return nil, err
+	}
 	for _, t := range append(read, changeLog) {
-		if t.err != nil {
-			return nil, t.err
-		}
+		t.header, t.rows = tabs[t.name].Header, tabs[t.name].Rows
 		if err := data.CheckColumns(t.name, t.header, t.want); err != nil {
 			return nil, err
 		}
 	}
 	return &Tables{
 		Google: google.rows, PDF: pdf.rows, Events: events.rows, Enrichment: enrichment.rows,
-		Overrides: overrides.rows, DayTypes: dayTypes.rows, DayOverrides: dayOverrides.rows, Tags: tags.rows, Admins: admins.rows,
+		Overrides: overrides.rows, DayTypes: dayTypes.rows, DayOverrides: dayOverrides.rows, Tags: tags.rows, Admins: admins.rows, Feeds: feeds.rows,
 	}, nil
+}
+
+func cloneRows(rows []map[string]string) []map[string]string {
+	out := make([]map[string]string, len(rows))
+	for i, row := range rows {
+		out[i] = maps.Clone(row)
+	}
+	return out
+}
+
+func (t *Tables) WithFeed(cells map[string]string) *Tables {
+	out := *t
+	out.Feeds = append(cloneRows(t.Feeds), maps.Clone(cells))
+	return &out
+}
+
+func (t *Tables) WithoutFeed(token string) *Tables {
+	out := *t
+	out.Feeds = []map[string]string{}
+	for _, row := range t.Feeds {
+		if row["Token"] != token {
+			out.Feeds = append(out.Feeds, row)
+		}
+	}
+	return &out
 }
 
 // SplitList reads a comma-separated cell.
@@ -637,6 +699,53 @@ func (b *builder) settle() {
 	}
 }
 
+func (b *builder) checkFeed(f Feed) error {
+	if f.Name == "" {
+		return fmt.Errorf("has no name")
+	}
+	if len(f.Name) > maxFeedNameLength {
+		return fmt.Errorf("name is too long")
+	}
+	if !emailForm.MatchString(f.Email) || f.Email != strings.ToLower(f.Email) {
+		return fmt.Errorf("email %q is not a lowercase address", f.Email)
+	}
+	for _, c := range f.Classrooms {
+		if !b.model.Roster.has(c) {
+			return fmt.Errorf("%q is not a classroom", c)
+		}
+	}
+	for _, t := range f.Tags {
+		if !b.model.tags[t] {
+			return fmt.Errorf("%q is not in %s", t, TagsTab)
+		}
+	}
+	return nil
+}
+
+func (b *builder) feeds(rows []map[string]string) error {
+	for _, row := range rows {
+		f := Feed{
+			Token: strings.TrimSpace(row["Token"]), Email: strings.TrimSpace(row["Email"]), Name: strings.TrimSpace(row["Name"]),
+			Classrooms: SplitList(row["Classrooms"]), Tags: SplitList(row["Tags"]), Created: row["Created"],
+		}
+		if f.Token == "" {
+			return fmt.Errorf("%s has a row with no token", FeedsTab)
+		}
+		if b.model.byToken[f.Token] != nil {
+			return fmt.Errorf("feed token %q is listed twice", f.Token)
+		}
+		if err := b.checkFeed(f); err != nil {
+			return fmt.Errorf("feed %q: %w", f.Token, err)
+		}
+		b.model.Feeds = append(b.model.Feeds, f)
+		b.model.byToken[f.Token] = &b.model.Feeds[len(b.model.Feeds)-1]
+	}
+	for i := range b.model.Feeds {
+		b.model.byToken[b.model.Feeds[i].Token] = &b.model.Feeds[i]
+	}
+	return nil
+}
+
 func (b *builder) years(pdfRows []map[string]string) error {
 	type marks struct{ first, last []string }
 	byYear := map[string]*marks{}
@@ -781,7 +890,7 @@ func BuildModel(tables *Tables, roster Roster) (*Model, error) {
 	}
 	m := &Model{
 		Events: []*Event{}, DayTypes: dayTypes, Tags: tags, Days: map[string]map[string]string{}, Years: []Year{},
-		Roster: roster, Skipped: map[string]int{}, byID: map[string]*Event{}, tags: map[string]bool{},
+		Roster: roster, Feeds: []Feed{}, Skipped: map[string]int{}, byID: map[string]*Event{}, byToken: map[string]*Feed{}, tags: map[string]bool{},
 	}
 	for _, t := range tags {
 		m.tags[t.Name] = true
@@ -842,6 +951,9 @@ func BuildModel(tables *Tables, roster Roster) (*Model, error) {
 		return nil, err
 	}
 	if err := b.days(tables.DayOverrides); err != nil {
+		return nil, err
+	}
+	if err := b.feeds(tables.Feeds); err != nil {
 		return nil, err
 	}
 	visible := []*Event{}

@@ -1,0 +1,375 @@
+// The model as the server rendered it for the viewer, plus the page's own
+// choices: which classrooms and tags are showing, remembered per browser. A
+// null list means the viewer's own classrooms, or every tag.
+export const state = {model: null, filters: readFilters(), query: ''};
+
+function readFilters() {
+  try {
+    const raw = JSON.parse(localStorage.getItem('calendar.filters') || '{}');
+    return {classrooms: Array.isArray(raw.classrooms) ? raw.classrooms : null, tags: Array.isArray(raw.tags) ? raw.tags : null};
+  } catch (err) {
+    return {classrooms: null, tags: null};
+  }
+}
+
+function saveFilters() {
+  try {
+    localStorage.setItem('calendar.filters', JSON.stringify(state.filters));
+  } catch (err) {
+    // A browser that refuses storage just forgets the choice on reload.
+  }
+}
+
+const byId = new Map();
+const byDate = new Map();
+
+export function applyModel(model) {
+  state.model = model;
+  byId.clear();
+  byDate.clear();
+  for (const e of model.events) {
+    byId.set(e.id, e);
+    for (const date of eventDates(e)) {
+      if (!byDate.has(date)) {
+        byDate.set(date, []);
+      }
+      byDate.get(date).push(e);
+    }
+  }
+  // Every filter is checked against the live vocabulary, so a classroom
+  // renamed since the choice was made drops out rather than hiding everything.
+  const names = classroomNames();
+  if (state.filters.classrooms) {
+    state.filters.classrooms = state.filters.classrooms.filter(c => names.includes(c));
+  }
+  const tags = tagNames();
+  if (state.filters.tags) {
+    state.filters.tags = state.filters.tags.filter(t => tags.includes(t));
+  }
+}
+
+export function me() {
+  return state.model.user;
+}
+
+export function event(id) {
+  return byId.get(id) || null;
+}
+
+export function classroomNames() {
+  return state.model.classrooms.map(c => c.name);
+}
+
+export function tagNames() {
+  return state.model.tags.map(t => t.name);
+}
+
+// bands groups the roster's classrooms under their band, in roster order.
+export function bands() {
+  const out = [];
+  for (const c of state.model.classrooms) {
+    let band = out.find(b => b.name === (c.band || c.name));
+    if (!band) {
+      band = {name: c.band || c.name, classrooms: []};
+      out.push(band);
+    }
+    band.classrooms.push(c);
+  }
+  return out;
+}
+
+export function myClassrooms() {
+  return me().classrooms;
+}
+
+// selectedClassrooms is the filter in force: the viewer's choice, else their
+// own classrooms, else - for someone with none - every classroom.
+export function selectedClassrooms() {
+  if (state.filters.classrooms) {
+    return state.filters.classrooms;
+  }
+  return myClassrooms().length ? myClassrooms() : classroomNames();
+}
+
+export function setClassrooms(list) {
+  state.filters.classrooms = list;
+  saveFilters();
+}
+
+export function toggleClassroom(name) {
+  const current = selectedClassrooms();
+  setClassrooms(current.includes(name) ? current.filter(c => c !== name) : classroomNames().filter(c => c === name || current.includes(c)));
+}
+
+export function selectedTags() {
+  return state.filters.tags || tagNames();
+}
+
+export function setTags(list) {
+  state.filters.tags = list;
+  saveFilters();
+}
+
+export function toggleTag(name) {
+  const current = selectedTags();
+  setTags(current.includes(name) ? current.filter(t => t !== name) : tagNames().filter(t => t === name || current.includes(t)));
+}
+
+export function filtersAreDefault() {
+  return !state.filters.classrooms && !state.filters.tags;
+}
+
+export function resetFilters() {
+  state.filters = {classrooms: null, tags: null};
+  saveFilters();
+}
+
+// categoryTags is what an event is, as opposed to who it is for: its tags
+// that are not classrooms.
+export function categoryTags(e) {
+  const names = classroomNames();
+  return e.tags.filter(t => !names.includes(t));
+}
+
+function overlaps(a, b) {
+  return a.some(x => b.includes(x));
+}
+
+export function eventVisible(e) {
+  if (e.classrooms.length && !overlaps(e.classrooms, selectedClassrooms())) {
+    return false;
+  }
+  const categories = categoryTags(e);
+  return !categories.length || overlaps(categories, selectedTags());
+}
+
+export function visibleEvents() {
+  return state.model.events.filter(eventVisible);
+}
+
+// matches is the search: every word typed is found somewhere in the title,
+// the description, the place, the tags, or the hidden keywords.
+export function matches(e, query) {
+  const words = (query || '').toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) {
+    return true;
+  }
+  const hay = `${e.title} ${e.description || ''} ${e.location || ''} ${e.tags.join(' ')} ${(e.keywords || []).join(' ')} ${e.dayType || ''}`.toLowerCase();
+  return words.every(w => hay.includes(w));
+}
+
+export function eventsOn(date) {
+  return (byDate.get(date) || []).filter(eventVisible).filter(e => matches(e, state.query));
+}
+
+export function parseDate(s) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s || '');
+  if (!m) {
+    return null;
+  }
+  return new Date(+m[1], m[2] - 1, +m[3]);
+}
+
+export function formatDate(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+export function addDays(date, n) {
+  const d = parseDate(date);
+  d.setDate(d.getDate() + n);
+  return formatDate(d);
+}
+
+export function today() {
+  return state.model.today;
+}
+
+// eventDates lists every day an event touches: an all-day span day by day,
+// a timed event its start's day.
+export function eventDates(e) {
+  const out = [];
+  const start = e.start.slice(0, 10);
+  if (!e.allDay) {
+    return [start];
+  }
+  const end = e.end.slice(0, 10);
+  for (let d = start; d <= end; d = addDays(d, 1)) {
+    out.push(d);
+  }
+  return out;
+}
+
+export function parseWhen(s) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})(?: (\d{2}):(\d{2}))?$/.exec(s || '');
+  if (!m) {
+    return null;
+  }
+  return {date: new Date(+m[1], m[2] - 1, +m[3], m[4] ? +m[4] : 0, m[5] ? +m[5] : 0), hasTime: Boolean(m[4])};
+}
+
+const dayFormat = new Intl.DateTimeFormat('en-US', {weekday: 'short', month: 'short', day: 'numeric'});
+const longDayFormat = new Intl.DateTimeFormat('en-US', {weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'});
+const monthDayFormat = new Intl.DateTimeFormat('en-US', {month: 'short', day: 'numeric'});
+const monthFormat = new Intl.DateTimeFormat('en-US', {month: 'long', year: 'numeric'});
+const timeFormat = new Intl.DateTimeFormat('en-US', {hour: 'numeric', minute: '2-digit'});
+
+export function dayLabel(date) {
+  return dayFormat.format(parseDate(date));
+}
+
+export function longDayLabel(date) {
+  return longDayFormat.format(parseDate(date));
+}
+
+export function monthLabel(month) {
+  return monthFormat.format(parseDate(month + '-01'));
+}
+
+export function clock(hhmm) {
+  const [h, m] = hhmm.split(':').map(Number);
+  return timeFormat.format(new Date(2000, 0, 1, h, m));
+}
+
+// whenLine is an event's date line: "Mon Sep 7" for a day, "Sep 9 – Sep 11"
+// for a span, "Thu Sep 24 · 4:00 PM – 6:00 PM" with hours.
+export function whenLine(e) {
+  const start = parseWhen(e.start);
+  const end = parseWhen(e.end);
+  if (e.allDay) {
+    if (end && e.end !== e.start) {
+      return `${monthDayFormat.format(start.date)} – ${monthDayFormat.format(end.date)}`;
+    }
+    return dayFormat.format(start.date);
+  }
+  return `${dayFormat.format(start.date)} · ${timeLine(e)}`;
+}
+
+// timeLine is the hours alone: "All day", or "4:00 PM – 6:00 PM".
+export function timeLine(e) {
+  if (e.allDay) {
+    return e.end !== e.start ? 'All day (multi-day)' : 'All day';
+  }
+  const start = parseWhen(e.start);
+  const end = parseWhen(e.end);
+  if (!end || e.end === e.start) {
+    return timeFormat.format(start.date);
+  }
+  return `${timeFormat.format(start.date)} – ${timeFormat.format(end.date)}`;
+}
+
+export function eventPath(e) {
+  return '/events/' + e.id.split('/').map(encodeURIComponent).join('/');
+}
+
+export function dayType(name) {
+  return state.model.dayTypes.find(d => d.name === name) || null;
+}
+
+// plan is the day as the selected classrooms have it: the classrooms grouped
+// by day type, in the day types' order, or nothing outside the school year.
+export function plan(date, classrooms) {
+  const byClassroom = state.model.days[date];
+  if (!byClassroom) {
+    return [];
+  }
+  const groups = [];
+  for (const c of classrooms || selectedClassrooms()) {
+    const name = byClassroom[c];
+    if (!name) {
+      continue;
+    }
+    let group = groups.find(g => g.name === name);
+    if (!group) {
+      group = {name, type: dayType(name), classrooms: []};
+      groups.push(group);
+    }
+    group.classrooms.push(c);
+  }
+  const order = state.model.dayTypes.map(d => d.name);
+  groups.sort((a, b) => order.indexOf(a.name) - order.indexOf(b.name));
+  return groups;
+}
+
+export function isSchoolDay(date) {
+  return Boolean(state.model.days[date]);
+}
+
+// specials are the day plan's departures from Regular for the selected
+// classrooms: the groups that are not the usual day.
+export function specials(date) {
+  return plan(date).filter(g => g.name !== 'Regular');
+}
+
+// nextSpecials walks forward from a date to the next n days that are not
+// regular for the selected classrooms.
+export function nextSpecials(from, n) {
+  const out = [];
+  const dates = Object.keys(state.model.days).filter(d => d > from).sort();
+  for (const date of dates) {
+    const groups = specials(date);
+    if (groups.length) {
+      out.push({date, groups});
+      if (out.length >= n) {
+        break;
+      }
+    }
+  }
+  return out;
+}
+
+const knownTypes = {'Regular': 'dt-regular', 'No School': 'dt-no-school', 'Early Dismissal': 'dt-early', 'No Aftercare': 'dt-no-aftercare'};
+
+export function dayTypeClass(name) {
+  return knownTypes[name] || 'dt-other';
+}
+
+// audienceWords compresses an event's classrooms: every classroom is
+// "Everyone", both classrooms of a band are the band, the rest are named.
+export function audienceWords(e) {
+  if (!e.classrooms.length || e.classrooms.length === classroomNames().length) {
+    return ['Everyone'];
+  }
+  const out = [];
+  for (const band of bands()) {
+    const mine = band.classrooms.filter(c => e.classrooms.includes(c.name));
+    if (!mine.length) {
+      continue;
+    }
+    if (mine.length === band.classrooms.length && band.classrooms.length > 1) {
+      out.push(band.name);
+    } else {
+      out.push(...mine.map(c => c.name));
+    }
+  }
+  return out;
+}
+
+export function sourceWords(e) {
+  switch (e.source) {
+    case 'google':
+      return "From the school's calendar feed";
+    case 'pdf':
+      return "From the school's year calendar";
+  }
+  return 'Added by the community';
+}
+
+// calendarLink is a Google Calendar "add this" address for an event.
+export function calendarLink(e) {
+  const from = parseWhen(e.start);
+  const to = parseWhen(e.end);
+  const stamp = d => `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
+    + (from.hasTime ? `T${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}00` : '');
+  let until = to && e.end !== e.start ? to.date : new Date(from.date.getTime() + 60 * 60 * 1000);
+  if (!from.hasTime) {
+    until = new Date((to ? to.date : from.date).getTime() + 24 * 60 * 60 * 1000);
+  }
+  const params = new URLSearchParams({
+    action: 'TEMPLATE',
+    text: e.title,
+    dates: `${stamp(from.date)}/${stamp(until)}`,
+    details: [e.description, location.origin + eventPath(e)].filter(Boolean).join('\n\n'),
+    location: e.location || '',
+  });
+  return `https://calendar.google.com/calendar/render?${params}`;
+}

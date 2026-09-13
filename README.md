@@ -25,7 +25,7 @@ To run against real community data instead, see [docs/dev.md](docs/dev.md).
 - `internal/events` — the volunteer portal: the Events sheet's model, handlers, sign-ups, and admin edits
 - `internal/birthday` — the birthday team: the Birthdays sheet's model, the derived dates and stages, handlers, and admin edits
 - `internal/celebrate` — Helios Celebrate: the Celebrate sheet's model, parties, tickets and the waitlist, handlers, and admin edits
-- `internal/calendar` — the school calendar: the Calendar sheet's model, audience resolution, and the day plan
+- `internal/calendar` — Helios Calendar: the Calendar sheet's model, audience resolution, the day plan, handlers, and personal feeds
 - `internal/ics` — iCalendar feed parsing and recurrence expansion
 - `internal/blob` — media from Cloud Storage, held in memory with stored thumbnails
 - `internal/sharecard` — the 1200x630 picture a chat app shows for a shared link, drawn for HCA-Team and Helios Celebrate in each one's dress
@@ -77,8 +77,9 @@ Helios Celebrate, in `docs/celebrate/`:
 - [celebrate.md](docs/celebrate/celebrate.md) — the fun(d)raiser parties site spec
 - [data.md](docs/celebrate/data.md) — the Celebrate sheet and its rules
 
-The school calendar, in `docs/calendar/`:
+Helios Calendar, in `docs/calendar/`:
 
+- [calendar.md](docs/calendar/calendar.md) — the school calendar app spec: the pages, the filters, and personal feeds
 - [data.md](docs/calendar/data.md) — the Calendar sheet, the day plan, and the import
 
 Each app keeps its own docs under `docs/<app>/`, named for the sheet it serves; the top level is only what every app shares.

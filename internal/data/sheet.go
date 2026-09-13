@@ -16,9 +16,10 @@ import (
 
 // retryWaits paces a call the Sheets API has refused for quota: its read and
 // write quotas are per minute per user, and a server starting up reads every
-// tab of every sheet at once - or deploys twice in a minute - so a burst runs
-// into them. Waiting out the minute and asking again is the whole fix; giving
-// up would drop a write or refuse to start.
+// sheet at once, beside a deploy's previous revision still refreshing, or a
+// burst of local tools, so a burst runs into them. Waiting out the minute
+// and asking again is the whole fix; giving up would drop a write or refuse
+// to start.
 var retryWaits = []time.Duration{5 * time.Second, 10 * time.Second, 20 * time.Second, 40 * time.Second}
 
 // call runs one Sheets API request - its Do method - retrying only a quota
@@ -78,6 +79,46 @@ func (s *Sheet) Header(app, name string) ([]string, error) {
 		return nil, err
 	}
 	return parseHeader(name, resp.Values)
+}
+
+// Tabs is one values.batchGet for the whole spreadsheet: one request against
+// the read quota however many tabs, where a request per tab spends it in the
+// first seconds of a start.
+func (s *Sheet) Tabs(app string, tables, headers []string) (map[string]Tab, error) {
+	id, ok := s.spreadsheets[app]
+	if !ok {
+		return nil, fmt.Errorf("no spreadsheet configured for app %q", app)
+	}
+	ranges := []string{}
+	for _, name := range tables {
+		ranges = append(ranges, quoteTab(name))
+	}
+	for _, name := range headers {
+		ranges = append(ranges, quoteTab(name)+"!1:1")
+	}
+	resp, err := call("batch get "+app, s.service.Spreadsheets.Values.BatchGet(id).Ranges(ranges...).Do)
+	if err != nil {
+		return nil, err
+	}
+	if len(resp.ValueRanges) != len(ranges) {
+		return nil, fmt.Errorf("spreadsheet %s answered %d ranges for %d asked", app, len(resp.ValueRanges), len(ranges))
+	}
+	out := map[string]Tab{}
+	for i, name := range tables {
+		header, rows, err := parseTable(name, resp.ValueRanges[i].Values)
+		if err != nil {
+			return nil, err
+		}
+		out[name] = Tab{Header: header, Rows: rows}
+	}
+	for i, name := range headers {
+		header, err := parseHeader(name, resp.ValueRanges[len(tables)+i].Values)
+		if err != nil {
+			return nil, err
+		}
+		out[name] = Tab{Header: header}
+	}
+	return out, nil
 }
 
 // Raw returns every row, header included, with no dedup check and no

@@ -27,9 +27,21 @@ func CheckColumns(table string, header, wanted []string) error {
 	return nil
 }
 
+// Tab is one tab as Tabs returns it: the header, and the rows unless only the
+// header was asked for.
+type Tab struct {
+	Header []string
+	Rows   []map[string]string
+}
+
 type Source interface {
 	Table(app, name string) ([]string, []map[string]string, error)
 	Header(app, name string) ([]string, error)
+	// Tabs reads many tabs of one app's spreadsheet at once - the tables whole,
+	// the headers first row only - in a single request against the Sheets
+	// read quota, which a startup reading every tab of every sheet one by one
+	// would otherwise exhaust on its own.
+	Tabs(app string, tables, headers []string) (map[string]Tab, error)
 	// Raw returns every row, header included, exactly as the tab holds it - no
 	// dedup check, no name-keyed records. Table/Header assume one row is one
 	// record and reject a tab whose columns repeat; a few tabs (the Invite List
@@ -168,6 +180,25 @@ func (d *Dir) Table(app, name string) ([]string, []map[string]string, error) {
 		rows[i] = maps.Clone(row)
 	}
 	return slices.Clone(t.header), rows, nil
+}
+
+func (d *Dir) Tabs(app string, tables, headers []string) (map[string]Tab, error) {
+	out := map[string]Tab{}
+	for _, name := range tables {
+		header, rows, err := d.Table(app, name)
+		if err != nil {
+			return nil, err
+		}
+		out[name] = Tab{Header: header, Rows: rows}
+	}
+	for _, name := range headers {
+		header, err := d.Header(app, name)
+		if err != nil {
+			return nil, err
+		}
+		out[name] = Tab{Header: header}
+	}
+	return out, nil
 }
 
 func (d *Dir) Upsert(app, name, keyColumn, keyValue string, cells map[string]string) error {

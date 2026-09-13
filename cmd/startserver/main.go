@@ -88,6 +88,7 @@ func sampleServer() (*http.Server, *who.Queue) {
 	core.EventsMux.Handle("POST /auth/logout", http.RedirectHandler("/", http.StatusSeeOther))
 	core.BirthdayMux.Handle("POST /auth/logout", http.RedirectHandler("/", http.StatusSeeOther))
 	core.CelebrateMux.Handle("POST /auth/logout", http.RedirectHandler("/", http.StatusSeeOther))
+	core.CalendarMux.Handle("POST /auth/logout", http.RedirectHandler("/", http.StatusSeeOther))
 	slog.Info("serving sample data", "as", sampleUser)
 	return localTLS(app.Server(map[string]http.Handler{
 		"who":       app.Public("who", auth.Fixed(sampleUser, app.Logged("who", app.Files("who", core.Gate)))),
@@ -95,6 +96,7 @@ func sampleServer() (*http.Server, *who.Queue) {
 		"team":      app.Public("team", auth.Fixed(sampleUser, app.Logged("team", app.Files("team", core.Events)))),
 		"birthday":  app.Public("birthday", auth.Fixed(sampleUser, app.Logged("birthday", app.Files("birthday", core.Birthday)))),
 		"celebrate": app.Public("celebrate", auth.Fixed(sampleUser, app.Logged("celebrate", app.Files("celebrate", core.Celebrate)))),
+		"calendar":  app.Public("calendar", auth.Fixed(sampleUser, app.Logged("calendar", app.Files("calendar", core.Calendar)))),
 	}), core.Queue)
 }
 
@@ -108,7 +110,7 @@ func detachReal(email string) {
 	if key == "" {
 		logging.Fatal("SESSION_KEY is required (the server and the minted cookie must share it)")
 	}
-	for _, name := range []string{"DIRECTORY_SHEET", "PREFERENCES_SHEET", "INVITES_SHEET", "APPS_SHEET", "EVENTS_SHEET", "BIRTHDAY_SHEET", "CELEBRATE_SHEET", "CONFIG_SHEET"} {
+	for _, name := range []string{"DIRECTORY_SHEET", "PREFERENCES_SHEET", "INVITES_SHEET", "APPS_SHEET", "EVENTS_SHEET", "BIRTHDAY_SHEET", "CELEBRATE_SHEET", "CALENDAR_SHEET", "CONFIG_SHEET"} {
 		if os.Getenv(name) == "" {
 			logging.Fatal("environment variable is required", "name", name)
 		}

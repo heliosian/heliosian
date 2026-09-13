@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"heliosian/internal/data"
 )
@@ -181,6 +182,21 @@ func TestRefusals(t *testing.T) {
 		"two first days": func(tb *Tables) {
 			tb.PDF = append(tb.PDF, map[string]string{"Key": "pdf/x", "Year": "2026-2027", "Start": "2026-08-19", "Title": "Another first day", "Marker": MarkerFirstDay})
 		},
+		"feed naming an unknown classroom": func(tb *Tables) {
+			tb.Feeds = append(tb.Feeds, map[string]string{"Token": "t2", "Email": "a@x.org", "Name": "Mine", "Classrooms": "Penguins"})
+		},
+		"feed naming an unknown tag": func(tb *Tables) {
+			tb.Feeds = append(tb.Feeds, map[string]string{"Token": "t2", "Email": "a@x.org", "Name": "Mine", "Tags": "Bake Sales"})
+		},
+		"feed with no name": func(tb *Tables) {
+			tb.Feeds = append(tb.Feeds, map[string]string{"Token": "t2", "Email": "a@x.org"})
+		},
+		"feed with no token": func(tb *Tables) {
+			tb.Feeds = append(tb.Feeds, map[string]string{"Email": "a@x.org", "Name": "Mine"})
+		},
+		"two feeds with one token": func(tb *Tables) {
+			tb.Feeds = append(tb.Feeds, map[string]string{"Token": tb.Feeds[0]["Token"], "Email": "a@x.org", "Name": "Mine"})
+		},
 	}
 	for name, breaker := range broken {
 		tb := tables(t)
@@ -188,6 +204,134 @@ func TestRefusals(t *testing.T) {
 		if _, err := BuildModel(tb, roster); err == nil {
 			t.Errorf("%s: loaded", name)
 		}
+	}
+}
+
+func TestFeeds(t *testing.T) {
+	m := load(t)
+	f := m.Feed("sample7feedtoken4jordan2whitfield")
+	if f == nil || f.Email != "jordan.whitfield@heliosschool.org" || strings.Join(f.Classrooms, ",") != "Jays,Ospreys" {
+		t.Fatalf("feed = %+v", f)
+	}
+	cases := map[string]bool{
+		"pdf/2026-2027/2026-09-07/labor-day": true,
+		"a5@sample":                          true,
+		"a6@sample":                          false,
+		"a7@sample":                          false,
+		"a11@sample":                         false,
+	}
+	for id, want := range cases {
+		if got := f.Carries(m.Event(id)); got != want {
+			t.Errorf("%s carried = %v, want %v", id, got, want)
+		}
+	}
+	everything := Feed{}
+	if !everything.Carries(m.Event("a6@sample")) || !everything.Carries(m.Event("a7@sample")) {
+		t.Errorf("a feed with no filter left something out")
+	}
+	tables := tables(t)
+	next := tables.WithFeed(map[string]string{"Token": "t2", "Email": "a@x.org", "Name": "Mine"})
+	if len(next.Feeds) != 2 || len(tables.Feeds) != 1 {
+		t.Errorf("with feed: %d then %d rows", len(tables.Feeds), len(next.Feeds))
+	}
+	if gone := next.WithoutFeed("t2"); len(gone.Feeds) != 1 || len(next.Feeds) != 2 {
+		t.Errorf("without feed: %d rows", len(gone.Feeds))
+	}
+	if m2, err := BuildModel(next, roster); err != nil || len(m2.Feeds) != 2 {
+		t.Errorf("model over the added feed: %v, %d feeds", err, len(m2.Feeds))
+	}
+}
+
+func TestICS(t *testing.T) {
+	m := load(t)
+	f := m.Feed("sample7feedtoken4jordan2whitfield")
+	at, _ := time.ParseInLocation(DateTimeFormat, "2026-09-01 08:00", Location)
+	out := string(ICS(m, f, "https://calendar.local.heliosian.com:8080", at))
+	for _, want := range []string{
+		"BEGIN:VCALENDAR\r\n", "X-WR-CALNAME:Whitfield school days\r\n", "END:VCALENDAR\r\n",
+		"UID:pdf/2026-2027/2026-09-07/labor-day@calendar.heliosian.com\r\n", "DTSTART;VALUE=DATE:20260907\r\n", "DTEND;VALUE=DATE:20260908\r\n",
+		"SUMMARY:Jays and Ravens Camping\r\n", "DTSTART;VALUE=DATE:20260909\r\n", "DTEND;VALUE=DATE:20260912\r\n",
+		"DTSTAMP:20260901T150000Z\r\n", "URL:https://calendar.local.heliosian.com:8080/events/a5@sample\r\n",
+		"CATEGORIES:Jays\\, Ravens\\, Trip\r\n", "DESCRIPTION:No School\r\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("feed lacks %q", want)
+		}
+	}
+	for _, absent := range []string{"Hummingbird CAFE", "International Night"} {
+		if strings.Contains(out, absent) {
+			t.Errorf("feed carries %q", absent)
+		}
+	}
+	for _, line := range strings.Split(out, "\r\n") {
+		if len(line) > icsLineMax {
+			t.Errorf("line over %d octets: %q", icsLineMax, line)
+		}
+	}
+	long := strings.Repeat("ünïcödé ", 30)
+	for _, piece := range fold("DESCRIPTION:" + long) {
+		if len(piece) > icsLineMax || !utf8.ValidString(piece) {
+			t.Errorf("fold broke a line: %q", piece)
+		}
+	}
+	if got := strings.Join(fold("DESCRIPTION:"+long), ""); strings.ReplaceAll(got, " ", "") != strings.ReplaceAll("DESCRIPTION:"+long, " ", "") {
+		t.Errorf("fold lost text")
+	}
+	if got := icsText("a;b,c\\d\nline"); got != `a\;b\,c\\d\nline` {
+		t.Errorf("escape = %q", got)
+	}
+}
+
+type fakeDirectory struct {
+	people map[string]Person
+	kids   map[string][]Person
+}
+
+func (d fakeDirectory) Resolve(email string) string { return email }
+
+func (d fakeDirectory) Person(email string) (Person, bool) {
+	p, ok := d.people[email]
+	return p, ok
+}
+
+func (d fakeDirectory) Children(email string) []Person { return d.kids[email] }
+
+func (d fakeDirectory) Alerts(string) (int, bool) { return 2, true }
+
+func TestRender(t *testing.T) {
+	m := load(t)
+	sam := Person{Email: "sam@x.org", Name: "Sam", IsStudent: true, Grade: "Grade 3", Classroom: "Jays"}
+	ella := Person{Email: "ella@x.org", Name: "Ella", IsStudent: true, Grade: "Grade 6", Classroom: "Ospreys"}
+	d := fakeDirectory{
+		people: map[string]Person{
+			"jordan.whitfield@heliosschool.org": {Email: "jordan.whitfield@heliosschool.org", Name: "Jordan", IsParent: true},
+			"sam@x.org":                         sam,
+			"ella@x.org":                        ella,
+			"teacher@x.org":                     {Email: "teacher@x.org", Name: "Ms Finch", IsStaff: true, Classroom: "Hawks"},
+			"office@x.org":                      {Email: "office@x.org", Name: "Pat", IsStaff: true},
+		},
+		kids: map[string][]Person{"jordan.whitfield@heliosschool.org": {ella, sam}},
+	}
+	at, _ := time.ParseInLocation(DateTimeFormat, "2026-09-08 08:00", Location)
+	v := Render(m, d, "jordan.whitfield@heliosschool.org", false, at)
+	if strings.Join(v.User.Classrooms, ",") != "Jays,Ospreys" || len(v.User.Students) != 2 || v.User.Initial != "J" {
+		t.Errorf("parent = %+v", v.User)
+	}
+	if len(v.Feeds) != 1 || v.Today != "2026-09-08" || len(v.Events) != 22 || v.Alerts.Stale != 2 || !v.Alerts.Privacy {
+		t.Errorf("view = feeds %d today %s events %d alerts %+v", len(v.Feeds), v.Today, len(v.Events), v.Alerts)
+	}
+	if v.Days["2026-09-08"]["Jays"] != "Regular" || len(v.Classrooms) != 9 || len(v.Tags) != 15 {
+		t.Errorf("plan and vocabulary missing")
+	}
+	cases := map[string]string{"sam@x.org": "Jays", "teacher@x.org": "Hawks", "office@x.org": "", "nobody@x.org": ""}
+	for email, want := range cases {
+		v := Render(m, d, email, false, at)
+		if got := strings.Join(v.User.Classrooms, ","); got != want || len(v.Feeds) != 0 {
+			t.Errorf("%s: classrooms %q, want %q; feeds %d", email, got, want, len(v.Feeds))
+		}
+	}
+	if v := Render(m, d, "nobody@x.org", true, at); v.User.Name != "Nobody" || !v.User.IsAdmin {
+		t.Errorf("stranger = %+v", v.User)
 	}
 }
 

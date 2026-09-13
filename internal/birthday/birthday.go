@@ -10,7 +10,6 @@ import (
 	"slices"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"heliosian/internal/data"
@@ -214,7 +213,6 @@ func ReadTables(source data.Source) (*Tables, error) {
 		want   []string
 		header []string
 		rows   []map[string]string
-		err    error
 	}
 	birthdays := &table{name: birthdaysTab, want: BirthdayColumns}
 	assignments := &table{name: assignmentsTab, want: AssignmentColumns}
@@ -227,20 +225,16 @@ func ReadTables(source data.Source) (*Tables, error) {
 	admins := &table{name: adminsTab, want: AdminColumns}
 	changeLog := &table{name: changeLogTab, want: ChangeLogColumns}
 	read := []*table{birthdays, assignments, outreach, donations, notes, charities, dates, settings, admins}
-	var wg sync.WaitGroup
+	names := []string{}
 	for _, t := range read {
-		wg.Go(func() {
-			t.header, t.rows, t.err = source.Table(appName, t.name)
-		})
+		names = append(names, t.name)
 	}
-	wg.Go(func() {
-		changeLog.header, changeLog.err = source.Header(appName, changeLog.name)
-	})
-	wg.Wait()
+	tabs, err := source.Tabs(appName, names, []string{changeLog.name})
+	if err != nil {
+		return nil, err
+	}
 	for _, t := range append(read, changeLog) {
-		if t.err != nil {
-			return nil, t.err
-		}
+		t.header, t.rows = tabs[t.name].Header, tabs[t.name].Rows
 		if err := data.CheckColumns(t.name, t.header, t.want); err != nil {
 			return nil, err
 		}

@@ -10,9 +10,9 @@ import (
 	"sort"
 	"strings"
 
-	"heliosian/internal/celebrate"
 	"heliosian/internal/app"
 	"heliosian/internal/calendar"
+	"heliosian/internal/celebrate"
 	"heliosian/internal/config"
 	"heliosian/internal/data"
 	"heliosian/internal/events"

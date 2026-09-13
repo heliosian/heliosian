@@ -22,6 +22,7 @@ import (
 	"heliosian/internal/auth"
 	"heliosian/internal/birthday"
 	"heliosian/internal/blob"
+	"heliosian/internal/calendar"
 	"heliosian/internal/celebrate"
 	"heliosian/internal/config"
 	"heliosian/internal/data"
@@ -37,8 +38,8 @@ import (
 
 // appFor reads the app out of a hostname: <app>.heliosian.com in production,
 // <app>.lab.heliosian.com hosted alongside it, <app>.local.heliosian.com on a
-// developer's machine. Home also answers as the bare and www apex, and the
-// volunteer portal, team, as hca.
+// developer's machine. Home also answers as the bare and www apex, the
+// volunteer portal, team, as hca, and the calendar as cal and when.
 func appFor(host string) string {
 	switch host {
 	case "heliosian.com", "www.heliosian.com":
@@ -52,8 +53,11 @@ func appFor(host string) string {
 	if tier != "" && tier != "lab" && tier != "local" {
 		return ""
 	}
-	if app == "hca" {
+	switch app {
+	case "hca":
 		return "team"
+	case "cal", "when":
+		return "calendar"
 	}
 	return app
 }
@@ -427,6 +431,56 @@ func (d celebrateDirectory) Alerts(email string) (int, bool) {
 	return alerts.Stale, alerts.Privacy
 }
 
+// calendarDirectory hands the calendar the directory's view of people: who an
+// address resolves to, who someone is and which classroom they are in, a
+// parent's children, and the toolbar's badges.
+type calendarDirectory struct {
+	cache    *who.Cache
+	settings *config.Cache
+}
+
+func (d calendarDirectory) Resolve(email string) string {
+	return d.cache.Model().Resolve(email)
+}
+
+func calendarPerson(model *who.Model, p *who.Person) calendar.Person {
+	return calendar.Person{
+		Email: p.Email, Name: p.FullName, PhotoURL: model.HeroPhoto(p.Email), IsStudent: p.IsStudent, IsParent: p.IsParent,
+		IsStaff: p.IsStaff, Grade: p.Grade, Classroom: p.Classroom,
+	}
+}
+
+func (d calendarDirectory) Person(email string) (calendar.Person, bool) {
+	model := d.cache.Model()
+	p := model.Person(email)
+	if p == nil {
+		return calendar.Person{}, false
+	}
+	return calendarPerson(model, p), true
+}
+
+func (d calendarDirectory) Children(email string) []calendar.Person {
+	model := d.cache.Model()
+	out := []calendar.Person{}
+	p := model.Person(email)
+	if p == nil || !p.IsParent {
+		return out
+	}
+	for _, key := range model.FamilyKeysOf(email) {
+		for _, kid := range model.Families[key].KidEmails {
+			if k := model.Person(kid); k != nil {
+				out = append(out, calendarPerson(model, k))
+			}
+		}
+	}
+	return out
+}
+
+func (d calendarDirectory) Alerts(email string) (int, bool) {
+	alerts := d.cache.Alerts(email, d.settings.Settings().StaleYears)
+	return alerts.Stale, alerts.Privacy
+}
+
 func cacheControl(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/fonts/") || strings.HasPrefix(r.URL.Path, "/brand/") {
@@ -526,13 +580,17 @@ type Core struct {
 	// CelebrateMux serves Helios Celebrate, the fun(d)raiser parties site.
 	CelebrateMux   *http.ServeMux
 	CelebrateCache *celebrate.Cache
-	Cache          *who.Cache
-	Queue          *who.Queue
-	Gate           http.Handler
-	Home           http.Handler
-	Events         http.Handler
-	Birthday       http.Handler
-	Celebrate      http.Handler
+	// CalendarMux serves Helios Calendar, the school year day by day.
+	CalendarMux   *http.ServeMux
+	CalendarCache *calendar.Cache
+	Cache         *who.Cache
+	Queue         *who.Queue
+	Gate          http.Handler
+	Home          http.Handler
+	Events        http.Handler
+	Birthday      http.Handler
+	Celebrate     http.Handler
+	Calendar      http.Handler
 }
 
 // NewCore wires everything every mode serves identically. Fatal on any failure.
@@ -589,6 +647,12 @@ func NewCore(cfg Config) *Core {
 	if err != nil {
 		logging.Fatal("load directory data", "error", err)
 	}
+	// The calendar resolves audiences against the directory's live classrooms,
+	// so it loads after the directory and reads the roster on every refresh.
+	calendarCache, err := calendar.NewCache(cfg.Source, func() calendar.Roster { return CalendarRoster(cache.Model()) }, superAdmin, queue)
+	if err != nil {
+		logging.Fatal("load calendar data", "error", err)
+	}
 	mux := http.NewServeMux()
 	config.Register(mux, settings, cfg.Writer, cache.IsAdmin)
 	who.Register(mux, cache, cfg.BrowserKey, func() string { return settings.Settings().PrivacyLinks.HeliosWhoOptIn })
@@ -606,14 +670,17 @@ func NewCore(cfg Config) *Core {
 	birthday.Register(birthdayMux, birthdayCache, cfg.Writer, queue, birthdayDirectory{cache}, settings.SuperAdmins)
 	celebrateMux := http.NewServeMux()
 	celebrate.Register(celebrateMux, celebrateCache, cfg.Writer, queue, cfg.Store, celebrateDirectory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.CelebrateMail)
+	calendarMux := http.NewServeMux()
+	calendar.Register(calendarMux, calendarCache, cfg.Writer, queue, calendarDirectory{cache, settings}, settings.SuperAdmins)
 	// Every app's toolbar asks its own origin what its switch lists and
 	// which rows to leave off; Heliosian's cache answers for all of them.
-	for _, m := range []*http.ServeMux{mux, eventsMux, birthdayMux, celebrateMux} {
+	for _, m := range []*http.ServeMux{mux, eventsMux, birthdayMux, celebrateMux, calendarMux} {
 		home.RegisterSwitch(m, homeCache)
 	}
 	return &Core{
-		Mux: mux, HomeMux: homeMux, EventsMux: eventsMux, EventsCache: eventsCache, BirthdayMux: birthdayMux, CelebrateMux: celebrateMux, CelebrateCache: celebrateCache, Cache: cache, Queue: queue,
-		Gate: who.MemberGate(cache, mux), Home: homeMux, Events: eventsMux, Birthday: birthdayMux, Celebrate: celebrateMux,
+		Mux: mux, HomeMux: homeMux, EventsMux: eventsMux, EventsCache: eventsCache, BirthdayMux: birthdayMux, CelebrateMux: celebrateMux, CelebrateCache: celebrateCache,
+		CalendarMux: calendarMux, CalendarCache: calendarCache, Cache: cache, Queue: queue,
+		Gate: who.MemberGate(cache, mux), Home: homeMux, Events: eventsMux, Birthday: birthdayMux, Celebrate: celebrateMux, Calendar: calendarMux,
 	}
 }
 
@@ -758,6 +825,7 @@ func Production() (*http.Server, *who.Queue) {
 		"events":      requiredEnv("EVENTS_SHEET"),
 		"birthdays":   requiredEnv("BIRTHDAY_SHEET"),
 		"celebrate":   requiredEnv("CELEBRATE_SHEET"),
+		"calendar":    requiredEnv("CALENDAR_SHEET"),
 		"config":      requiredEnv("CONFIG_SHEET"),
 	}
 	sessionKey := requiredEnv("SESSION_KEY")
@@ -805,11 +873,14 @@ func Production() (*http.Server, *who.Queue) {
 	// leads to carries the party's Open Graph tags.
 	celebrateAuth.Preview = celebrate.PreviewHead(core.CelebrateCache)
 	celebrateAuth.Register(core.CelebrateMux)
+	calendarAuth := auth.New(client, []byte(sessionKey), "web/public/calendar/login.html")
+	calendarAuth.Register(core.CalendarMux)
 	return Server(map[string]http.Handler{
 		"who":       Public("who", whoAuth.Wrap(Logged("who", Files("who", core.Gate)))),
 		"home":      Public("home", homeAuth.Wrap(Logged("home", Files("home", core.Home)))),
 		"team":      Public("team", teamAuth.Wrap(Logged("team", Files("team", core.Events)))),
 		"birthday":  Public("birthday", birthdayAuth.Wrap(Logged("birthday", Files("birthday", core.Birthday)))),
 		"celebrate": Public("celebrate", celebrateAuth.Wrap(Logged("celebrate", Files("celebrate", core.Celebrate)))),
+		"calendar":  Public("calendar", calendarAuth.Wrap(Logged("calendar", Files("calendar", core.Calendar)))),
 	}), core.Queue
 }

@@ -9,7 +9,6 @@ import (
 	"slices"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"heliosian/internal/data"
@@ -539,7 +538,6 @@ func ReadTables(source data.Source) (*Tables, error) {
 		name   string
 		header []string
 		rows   []map[string]string
-		err    error
 	}
 	aliases := &table{app: appName, name: AliasesTable}
 	imports := &table{app: appName, name: "Veracross Student Import"}
@@ -557,20 +555,28 @@ func ReadTables(source data.Source) (*Tables, error) {
 	// writes, and a column missing here truncates every audit row that reaches it.
 	changeLog := &table{app: appName, name: changeLogTable}
 	ordered := []*table{aliases, imports, staff, names, overrides, families, preferences, website, tags, photos, admins}
-	var wg sync.WaitGroup
+	// One batch per spreadsheet: the directory's tabs and the change log's
+	// header together, the preferences sheet on its own.
+	directoryNames := []string{}
 	for _, t := range ordered {
-		wg.Go(func() {
-			t.header, t.rows, t.err = source.Table(t.app, t.name)
-		})
-	}
-	wg.Go(func() {
-		changeLog.header, changeLog.err = source.Header(changeLog.app, changeLog.name)
-	})
-	wg.Wait()
-	for _, t := range append(ordered, changeLog) {
-		if t.err != nil {
-			return nil, t.err
+		if t.app == appName {
+			directoryNames = append(directoryNames, t.name)
 		}
+	}
+	directoryTabs, err := source.Tabs(appName, directoryNames, []string{changeLog.name})
+	if err != nil {
+		return nil, err
+	}
+	preferenceTabs, err := source.Tabs(preferencesApp, []string{preferences.name}, nil)
+	if err != nil {
+		return nil, err
+	}
+	for _, t := range append(ordered, changeLog) {
+		tab := directoryTabs[t.name]
+		if t.app == preferencesApp {
+			tab = preferenceTabs[t.name]
+		}
+		t.header, t.rows = tab.Header, tab.Rows
 	}
 	if err := data.CheckColumns(aliases.name, aliases.header, AliasColumns); err != nil {
 		return nil, err

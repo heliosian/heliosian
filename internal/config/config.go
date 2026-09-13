@@ -8,7 +8,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 
 	"heliosian/internal/data"
 )
@@ -104,23 +103,22 @@ func ReadTables(source data.Source) (*Tables, error) {
 		want   []string
 		header []string
 		rows   []map[string]string
-		err    error
 	}
 	settings := &table{name: SettingsTab, want: settingsColumns}
 	superAdmins := &table{name: SuperAdminsTab, want: superAdminColumns}
 	gradeColors := &table{name: GradeColorsTab, want: gradeColorColumns}
 	classroomColors := &table{name: ClassroomColorsTab, want: classroomColorColumns}
-	var wg sync.WaitGroup
-	for _, t := range []*table{settings, superAdmins, gradeColors, classroomColors} {
-		wg.Go(func() {
-			t.header, t.rows, t.err = source.Table(App, t.name)
-		})
+	read := []*table{settings, superAdmins, gradeColors, classroomColors}
+	names := []string{}
+	for _, t := range read {
+		names = append(names, t.name)
 	}
-	wg.Wait()
-	for _, t := range []*table{settings, superAdmins, gradeColors, classroomColors} {
-		if t.err != nil {
-			return nil, t.err
-		}
+	tabs, err := source.Tabs(App, names, nil)
+	if err != nil {
+		return nil, err
+	}
+	for _, t := range read {
+		t.header, t.rows = tabs[t.name].Header, tabs[t.name].Rows
 		if err := data.CheckColumns(t.name, t.header, t.want); err != nil {
 			return nil, err
 		}

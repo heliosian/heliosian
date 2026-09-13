@@ -6,7 +6,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -75,6 +74,7 @@ var Apps = []App{
 	{"team", "HCA-Team", "HCA Volunteer Portal"},
 	{"celebrate", "Helios Celebrate", "Fun(d)raiser Parties"},
 	{"birthday", "Helios Birthday Team", "Staff birthday donations"},
+	{"calendar", "Helios Calendar", "The school year, day by day"},
 }
 
 func appByKey(key string) (App, bool) {
@@ -162,27 +162,23 @@ func ReadTables(source data.Source) (*Tables, error) {
 		want   []string
 		header []string
 		rows   []map[string]string
-		err    error
 	}
 	categories := &table{name: categoriesTab, want: categoryColumns}
 	links := &table{name: linksTab, want: linkColumns}
 	admins := &table{name: adminsTab, want: adminColumns}
 	visibility := &table{name: visibilityTab, want: visibilityColumns}
 	changeLog := &table{name: changeLogTab, want: changeLogColumns}
-	var wg sync.WaitGroup
-	for _, t := range []*table{categories, links, admins, visibility} {
-		wg.Go(func() {
-			t.header, t.rows, t.err = source.Table(appName, t.name)
-		})
+	read := []*table{categories, links, admins, visibility}
+	names := []string{}
+	for _, t := range read {
+		names = append(names, t.name)
 	}
-	wg.Go(func() {
-		changeLog.header, changeLog.err = source.Header(appName, changeLog.name)
-	})
-	wg.Wait()
-	for _, t := range []*table{categories, links, admins, visibility, changeLog} {
-		if t.err != nil {
-			return nil, t.err
-		}
+	tabs, err := source.Tabs(appName, names, []string{changeLog.name})
+	if err != nil {
+		return nil, err
+	}
+	for _, t := range append(read, changeLog) {
+		t.header, t.rows = tabs[t.name].Header, tabs[t.name].Rows
 		if err := data.CheckColumns(t.name, t.header, t.want); err != nil {
 			return nil, err
 		}

@@ -12,7 +12,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -506,7 +505,6 @@ func ReadTables(source data.Source) (*Tables, error) {
 		want   []string
 		header []string
 		rows   []map[string]string
-		err    error
 	}
 	celebrations := &table{name: celebrationsTab, want: CelebrationColumns}
 	categories := &table{name: categoriesTab, want: CategoryColumns}
@@ -519,20 +517,16 @@ func ReadTables(source data.Source) (*Tables, error) {
 	invoicing := &table{name: invoicingTab, want: InvoicingColumns}
 	changeLog := &table{name: changeLogTab, want: ChangeLogColumns}
 	read := []*table{celebrations, categories, parties, hosts, tickets, settings, admins, redirects, invoicing}
-	var wg sync.WaitGroup
+	names := []string{}
 	for _, t := range read {
-		wg.Go(func() {
-			t.header, t.rows, t.err = source.Table(appName, t.name)
-		})
+		names = append(names, t.name)
 	}
-	wg.Go(func() {
-		changeLog.header, changeLog.err = source.Header(appName, changeLog.name)
-	})
-	wg.Wait()
+	tabs, err := source.Tabs(appName, names, []string{changeLog.name})
+	if err != nil {
+		return nil, err
+	}
 	for _, t := range append(read, changeLog) {
-		if t.err != nil {
-			return nil, t.err
-		}
+		t.header, t.rows = tabs[t.name].Header, tabs[t.name].Rows
 		if err := data.CheckColumns(t.name, t.header, t.want); err != nil {
 			return nil, err
 		}
