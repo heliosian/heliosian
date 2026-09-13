@@ -2,6 +2,8 @@
 // choices: which classrooms and tags are showing, remembered per browser, the
 // search words, and which month the grid is open to. A null filter list means
 // the viewer's own classrooms, or every tag.
+import {appOrigin} from '/toolbar.js';
+
 export const state = {model: null, filters: readFilters(), query: '', month: ''};
 
 function readFilters() {
@@ -348,6 +350,14 @@ export function specials(date) {
   return plan(date).filter(g => g.name !== 'Regular');
 }
 
+const scheduleTag = 'Schedule';
+
+// scheduleOn says the Upcoming panel lists the days that are not regular:
+// the Schedule tag is on, or the sheet has no such tag to switch them off.
+export function scheduleOn() {
+  return !tagNames().includes(scheduleTag) || selectedTags().includes(scheduleTag);
+}
+
 // nextSpecials walks forward from a date to the next n days that are not
 // regular for the selected classrooms.
 export function nextSpecials(from, n) {
@@ -422,8 +432,26 @@ export function sourceWords(e) {
       return "From the school's calendar feed";
     case 'pdf':
       return "From the school's year calendar";
+    case 'celebrate':
+      return 'A Helios Celebrate party';
+    case 'team':
+      return 'An HCA-Team event';
   }
   return 'Added by the community';
+}
+
+// linkURL is a linked event's page on the app that runs it, on this page's
+// own tier.
+export function linkURL(e) {
+  return appOrigin(e.source) + e.link;
+}
+
+const callWords = {available: 'Get tickets', waitlist: 'Join the waitlist', 'sold-out': 'Sold out', open: 'Join', full: 'Full'};
+
+// call is what a linked event's row and page say about signing up, or
+// nothing once it has passed or is closed.
+export function call(e) {
+  return callWords[e.availability] || '';
 }
 
 export function calendarLink(e) {

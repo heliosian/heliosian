@@ -2,10 +2,72 @@ package app
 
 import (
 	"sort"
+	"time"
 
 	"heliosian/internal/calendar"
+	"heliosian/internal/celebrate"
+	"heliosian/internal/events"
 	"heliosian/internal/who"
 )
+
+// calendarLinked hands the calendar what the other apps run: every open,
+// dated party on Helios Celebrate and every dated event HCA-Team lists, open
+// or done, each with the page it is served at there and what a reader can do
+// now. An app whose sheet has not loaded contributes nothing.
+type calendarLinked struct {
+	celebrate *celebrate.Cache
+	events    *events.Cache
+}
+
+func (c calendarLinked) list() []calendar.Linked {
+	now := time.Now().In(calendar.Location)
+	return append(c.parties(now), c.activities()...)
+}
+
+func (c calendarLinked) parties(now time.Time) []calendar.Linked {
+	out := []calendar.Linked{}
+	model := c.celebrate.Model()
+	if model == nil {
+		return out
+	}
+	for _, p := range model.SortedParties("") {
+		if p.Status != celebrate.StatusOpen || p.Start == "" {
+			continue
+		}
+		out = append(out, calendar.Linked{
+			Source: calendar.SourceCelebrate, ID: p.ID, Title: p.Title, Summary: p.Summary, Description: p.Description, Location: p.Location,
+			Start: p.Start, End: p.End, Path: model.PathOf(p), Availability: p.Availability(now),
+		})
+	}
+	return out
+}
+
+// An HCA-Team event is open to join until it is done or every spot is taken;
+// the things under it stay off the calendar, since the event stands for them.
+func (c calendarLinked) activities() []calendar.Linked {
+	out := []calendar.Linked{}
+	model := c.events.Model()
+	if model == nil {
+		return out
+	}
+	for _, a := range model.Activities {
+		if (a.Status != events.StatusOpen && a.Status != events.StatusDone) || a.Start == "" {
+			continue
+		}
+		availability := "open"
+		switch {
+		case a.Status == events.StatusDone:
+			availability = "done"
+		case a.VolunteersComplete || (a.Spots > 0 && len(a.Volunteers) >= a.Spots):
+			availability = "full"
+		}
+		out = append(out, calendar.Linked{
+			Source: calendar.SourceTeam, ID: a.ID, Title: a.Title, Description: a.Description, Location: a.Location,
+			Start: a.Start, End: a.End, Path: model.PathOf(a), Availability: availability,
+		})
+	}
+	return out
+}
 
 // CalendarRoster is the directory's classrooms as the calendar resolves
 // audiences against them: each with its band, the grades its students are

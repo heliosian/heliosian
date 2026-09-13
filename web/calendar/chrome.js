@@ -65,8 +65,9 @@ function groupHead(title, actions) {
   return head;
 }
 
-// fillFilters draws the two filter groups: the classrooms, grouped by band in
-// their colors, and the tags. Every change is remembered and repaints.
+// fillFilters draws the two filter groups: the classrooms, one line per band
+// in their colors, and the tags in alphabetical order. Every change is
+// remembered and repaints.
 export function fillFilters(wrap) {
   wrap.replaceChildren();
   const rooms = el('div', 'filter-group');
@@ -82,8 +83,10 @@ export function fillFilters(wrap) {
   }
   rooms.append(groupHead('Classrooms', roomActions));
   const selected = selectedClassrooms();
-  const roomChips = el('div', 'filter-chips');
+  const roomRows = el('div', 'filter-rows');
   for (const band of bands()) {
+    const roomChips = el('div', 'filter-chips');
+    roomRows.append(roomChips);
     for (const c of band.classrooms) {
       const on = selected.includes(c.name);
       const room = chip(c.name, on, () => {
@@ -98,7 +101,7 @@ export function fillFilters(wrap) {
       roomChips.append(room);
     }
   }
-  rooms.append(roomChips);
+  rooms.append(roomRows);
   wrap.append(rooms);
 
   const tags = el('div', 'filter-group');
@@ -114,7 +117,8 @@ export function fillFilters(wrap) {
   ]));
   const chips = el('div', 'filter-chips');
   const on = selectedTags();
-  for (const t of state.model.tags) {
+  const sorted = [...state.model.tags].sort((a, b) => a.name.localeCompare(b.name));
+  for (const t of sorted) {
     const c = chip(t.name, on.includes(t.name), () => {
       toggleTag(t.name);
       refresh();

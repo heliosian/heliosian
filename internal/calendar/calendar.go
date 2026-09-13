@@ -39,6 +39,11 @@ const (
 	SourceGoogle    = "google"
 	SourcePDF       = "pdf"
 	SourceSheet     = "sheet"
+	SourceCelebrate = "celebrate"
+	SourceTeam      = "team"
+	TagCelebrate    = "Celebrate"
+	TagHCA          = "HCA"
+	TagMisc         = "Misc"
 	MarkerFirstDay  = "First Day"
 	MarkerLastDay   = "Last Day"
 	maxTitleLength  = 200
@@ -119,7 +124,11 @@ type Event struct {
 	Keywords    []string `json:"keywords,omitempty"`
 	Marker      string   `json:"marker,omitempty"`
 	Updated     string   `json:"updated,omitempty"`
-	Hidden      bool     `json:"-"`
+	// Link is the page of an event another app runs, as a path on that site;
+	// Availability is what a reader can do there now.
+	Link         string `json:"link,omitempty"`
+	Availability string `json:"availability,omitempty"`
+	Hidden       bool   `json:"-"`
 	duplicate   bool
 	start, end  time.Time
 }
@@ -696,6 +705,9 @@ func (b *builder) settle() {
 		}
 		if len(e.Tags) == 0 {
 			b.refuse("%s %q (%s) has no tags, so it matches nobody", e.Source, e.Title, e.ID)
+		}
+		if len(e.Tags) == len(e.Classrooms) {
+			e.Tags = append(e.Tags, TagMisc)
 		}
 		if e.DayType != "" && !e.AllDay {
 			b.refuse("%s %q (%s) is timed but carries the day type %q, which only an all-day event can", e.Source, e.Title, e.ID, e.DayType)

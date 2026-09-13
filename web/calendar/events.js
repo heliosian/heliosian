@@ -1,4 +1,4 @@
-import {eventPath, timeLine, whenLine, timeRange, audienceWords, categoryTags, eventColors, plan, specials, isSchoolDay, dayLabel, dayTypeClass, today, selectedClassrooms, classroomNames} from './state.js';
+import {eventPath, timeLine, whenLine, timeRange, audienceWords, categoryTags, eventColors, plan, specials, isSchoolDay, dayLabel, dayTypeClass, today, selectedClassrooms, classroomNames, linkURL, call} from './state.js';
 import {el, link} from './dom.js';
 
 // audienceChips are the event page's full account of who an event is for
@@ -50,8 +50,25 @@ export function eventRow(e, opts = {}) {
   if (e.location) {
     body.append(el('span', 'event-place', e.location));
   }
+  if (e.link && call(e)) {
+    body.append(callPill(e));
+  }
   row.append(body, roomDots(e));
   return row;
+}
+
+// callPill sits in a linked event's row and goes straight to its page on
+// the app that runs it - where the tickets or the sign-up are - without
+// opening the event here first.
+function callPill(e) {
+  const open = e.availability === 'available' || e.availability === 'open';
+  const pill = el('span', 'event-pill' + (open ? ' is-open' : ''), call(e));
+  pill.addEventListener('click', ev => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    location.href = linkURL(e);
+  });
+  return pill;
 }
 
 // dayWords say what kind of day it is for the selected classrooms, when it
@@ -67,7 +84,7 @@ export function dayWords(date) {
   return wrap;
 }
 
-export function dayHeading(date) {
+export function dayHeading(date, withDayWords) {
   const head = el('div', 'day-heading' + (date === today() ? ' is-today' : ''));
   const words = link('/day/' + date, 'day-heading-date');
   words.append(el('span', 'day-heading-label', dayLabel(date)));
@@ -75,7 +92,7 @@ export function dayHeading(date) {
     words.append(el('span', 'day-heading-today', 'Today'));
   }
   head.append(words);
-  if (isSchoolDay(date)) {
+  if (withDayWords && isSchoolDay(date)) {
     head.append(dayWords(date));
   }
   return head;

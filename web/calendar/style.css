@@ -118,6 +118,8 @@ button { font: inherit; }
 
 .filter-chips { display: flex; flex-wrap: wrap; gap: 5px; }
 
+.filter-rows { display: flex; flex-direction: column; gap: 5px; }
+
 .filter-chip {
   display: inline-flex;
   align-items: center;
@@ -417,6 +419,12 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .event-place::before { content: "· "; }
 
+.event-pill { display: inline-block; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--brand); color: var(--brand); font-size: 11.5px; font-weight: 700; line-height: 1.4; white-space: nowrap; cursor: pointer; }
+
+.event-pill.is-open { background: var(--brand); color: #fff; }
+
+.event-pill:hover { background: var(--brand-dark); border-color: var(--brand-dark); color: #fff; }
+
 .room-dots { display: inline-flex; gap: 4px; flex-shrink: 0; }
 
 .room-dot { width: 11px; height: 11px; border-radius: 50%; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12); }
@@ -554,6 +562,8 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 .side-card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
 
 .side-card-help { background: #eaf4f3; border-color: #d3e7e5; }
+
+.side-card-linked { border-color: var(--brand); }
 
 .side-row { display: flex; gap: 12px; }
 

@@ -26,10 +26,11 @@ type app struct {
 	queue       Enqueuer
 	directory   Directory
 	superAdmins func() []string
+	linked      func() []Linked
 }
 
-func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, directory Directory, superAdmins func() []string) {
-	a := app{cache: cache, writer: writer, queue: queue, directory: directory, superAdmins: superAdmins}
+func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, directory Directory, superAdmins func() []string, linked func() []Linked) {
+	a := app{cache: cache, writer: writer, queue: queue, directory: directory, superAdmins: superAdmins, linked: linked}
 	for _, page := range pages {
 		mux.HandleFunc("GET "+page, a.page)
 	}
@@ -54,7 +55,7 @@ var now = func() time.Time {
 
 func (a app) model(w http.ResponseWriter, r *http.Request) {
 	email, admin := a.who(r)
-	view := Render(a.cache.Model(), a.directory, email, admin, now())
+	view := Render(a.cache.Model(), a.directory, email, admin, now(), a.linked())
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
 		slog.ErrorContext(r.Context(), "encode calendar model", "error", err)

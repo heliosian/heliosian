@@ -415,25 +415,135 @@ func TestRender(t *testing.T) {
 		kids: map[string][]Person{"jordan.whitfield@heliosschool.org": {ella, sam}},
 	}
 	at, _ := time.ParseInLocation(DateTimeFormat, "2026-09-08 08:00", Location)
-	v := Render(m, d, "jordan.whitfield@heliosschool.org", false, at)
+	v := Render(m, d, "jordan.whitfield@heliosschool.org", false, at, nil)
 	if strings.Join(v.User.Classrooms, ",") != "Jays,Ospreys" || len(v.User.Students) != 2 || v.User.Initial != "J" {
 		t.Errorf("parent = %+v", v.User)
 	}
 	if len(v.Feeds) != 1 || v.Today != "2026-09-08" || len(v.Events) != 20 || v.Alerts.Stale != 2 || !v.Alerts.Privacy {
 		t.Errorf("view = feeds %d today %s events %d alerts %+v", len(v.Feeds), v.Today, len(v.Events), v.Alerts)
 	}
-	if v.Days["2026-09-08"]["Jays"] != "Regular" || len(v.Classrooms) != 9 || len(v.Tags) != 15 || v.Colors["Jays"] != "#fec502" {
+	if v.Days["2026-09-08"]["Jays"] != "Regular" || len(v.Classrooms) != 9 || len(v.Tags) != 18 || v.Colors["Jays"] != "#fec502" {
 		t.Errorf("plan, vocabulary, or colors missing")
 	}
 	cases := map[string]string{"sam@x.org": "Jays", "teacher@x.org": "Hawks", "office@x.org": "", "nobody@x.org": ""}
 	for email, want := range cases {
-		v := Render(m, d, email, false, at)
+		v := Render(m, d, email, false, at, nil)
 		if got := strings.Join(v.User.Classrooms, ","); got != want || len(v.Feeds) != 0 {
 			t.Errorf("%s: classrooms %q, want %q; feeds %d", email, got, want, len(v.Feeds))
 		}
 	}
-	if v := Render(m, d, "nobody@x.org", true, at); v.User.Name != "Nobody" || !v.User.IsAdmin {
+	if v := Render(m, d, "nobody@x.org", true, at, nil); v.User.Name != "Nobody" || !v.User.IsAdmin {
 		t.Errorf("stranger = %+v", v.User)
+	}
+}
+
+func TestRenderLinked(t *testing.T) {
+	m := load(t)
+	d := fakeDirectory{people: map[string]Person{}, kids: map[string][]Person{}}
+	at, _ := time.ParseInLocation(DateTimeFormat, "2026-09-08 08:00", Location)
+	linked := []Linked{
+		{Source: SourceCelebrate, ID: "P001", Title: "Fondue & Fort Night", Summary: "A cozy evening of fondue", Description: "Join us.", Location: "The Parks' House", Start: "2026-09-19 17:00", End: "2026-09-19 21:00", Path: "/p/fondue", Availability: "available"},
+		{Source: SourceTeam, ID: "E006", Title: "Book Fair", Start: "2027-03-30", End: "2027-04-02", Path: "/activities/E006", Availability: "open"},
+		{Source: SourceTeam, ID: "E001", Title: "HCA International Night 2026", Description: "Booths wanted.", Start: "2026-09-24 15:30", End: "2026-09-24 18:30", Path: "/v/international-night", Availability: "open"},
+		{Source: SourceTeam, ID: "E005", Title: "Back to School Social", Start: "2026-08-27 15:00", End: "2026-08-27 17:00", Path: "/activities/E005", Availability: "done"},
+	}
+	v := Render(m, d, "nobody@x.org", false, at, linked)
+	if len(v.Events) != 23 {
+		t.Fatalf("events = %d", len(v.Events))
+	}
+	if len(v.Tags) != 18 || v.Tags[15].Name != TagCelebrate || v.Tags[16].Name != TagHCA || v.Tags[17].Name != TagMisc || len(m.Tags) != 15 {
+		t.Errorf("tags = %+v", v.Tags)
+	}
+	var fondue, fair, night, social *Event
+	for i, e := range v.Events {
+		if e.Source == SourceCelebrate || e.Source == SourceTeam {
+			if i == 0 || v.Events[i-1].start.After(e.start) {
+				t.Errorf("linked event out of order at %d", i)
+			}
+		}
+		switch e.ID {
+		case "celebrate/P001":
+			fondue = e
+		case "team/E006":
+			fair = e
+		case "a7@sample":
+			night = e
+		case "team/E005":
+			social = e
+		case "team/E001":
+			t.Errorf("international night listed twice")
+		}
+	}
+	if fondue == nil || fair == nil || night == nil || social == nil {
+		t.Fatal("linked events missing")
+	}
+	if night.Link != "/v/international-night" || night.Availability != "open" || night.Source != SourceGoogle || !slices.Contains(night.Tags, TagHCA) || !slices.Contains(night.Tags, "Community") || night.Description != "Booths from every classroom." {
+		t.Errorf("folded event = %+v", night)
+	}
+	if orig := m.Event("a7@sample"); orig.Link != "" || slices.Contains(orig.Tags, TagHCA) {
+		t.Errorf("model event changed by folding: %+v", orig)
+	}
+	if social.Link != "/activities/E005" || strings.Join(social.Tags, ",") != TagHCA {
+		t.Errorf("social folded into back to school night: %+v", social)
+	}
+	if fondue.Source != SourceCelebrate || fondue.Link != "/p/fondue" || fondue.Availability != "available" || fondue.AllDay || strings.Join(fondue.Tags, ",") != TagCelebrate || len(fondue.Classrooms) != 0 {
+		t.Errorf("party = %+v", fondue)
+	}
+	if fondue.Description != "A cozy evening of fondue\n\nJoin us." || fondue.End != "2026-09-19 21:00" || strings.Join(fondue.Dates(), ",") != "2026-09-19" {
+		t.Errorf("party text or dates = %+v", fondue)
+	}
+	if !fair.AllDay || strings.Join(fair.Tags, ",") != TagHCA || fair.Link != "/activities/E006" || len(fair.Dates()) != 4 {
+		t.Errorf("hca event = %+v", fair)
+	}
+	if len(m.Events) != 20 {
+		t.Errorf("model events changed: %d", len(m.Events))
+	}
+}
+
+func TestSameEvent(t *testing.T) {
+	at := func(start, end string) *Event {
+		s, e, allDay, err := parseWhen(start, end)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return &Event{start: s, end: e, AllDay: allDay}
+	}
+	cases := []struct {
+		a, b   string
+		ea, eb *Event
+		want   bool
+	}{
+		{"International Night", "HCA International Night 2026", at("2026-09-24 16:00", "2026-09-24 18:00"), at("2026-09-24 15:30", "2026-09-24 18:30"), true},
+		{"Movie Night", "All School Movie Night", at("2026-11-06 18:00", "2026-11-06 20:00"), at("2026-11-06", ""), true},
+		{"Spring Celebration", "Helios Spring Celebration 2027", at("2027-03-06 17:30", "2027-03-06 22:00"), at("2027-03-06 17:30", "2027-03-06 22:00"), true},
+		{"LS Back to School Night", "Back to School Social", at("2026-08-27 18:00", "2026-08-27 19:30"), at("2026-08-27 15:00", "2026-08-27 17:00"), false},
+		{"International Night", "International Night", at("2026-09-24 16:00", "2026-09-24 18:00"), at("2026-09-25 16:00", "2026-09-25 18:00"), false},
+		{"Coffee Cart", "Coffee Cart", at("2026-10-02 08:00", "2026-10-02 09:00"), at("2026-10-02 15:00", "2026-10-02 16:00"), false},
+		{"Cocoa & Cookies", "Cocoa and Cookies", at("2026-12-16 11:45", "2026-12-16 13:00"), at("2026-12-16 11:45", "2026-12-16 13:00"), true},
+	}
+	for _, c := range cases {
+		c.ea.Title, c.eb.Title = c.a, c.b
+		if got := sameEvent(c.ea, c.eb); got != c.want {
+			t.Errorf("%q vs %q: %v, want %v", c.a, c.b, got, c.want)
+		}
+	}
+}
+
+func TestMiscTag(t *testing.T) {
+	tb := tables(t)
+	tb.Events = append(cloneRows(tb.Events), map[string]string{
+		"Event ID": "MISC0001", "Start": "2026-10-14 08:30", "End": "2026-10-14 10:00", "Title": "Vision Screening",
+		"Tags": "Hummingbirds, Hawks", "Added By": "office@x.org", "Added": "2026-09-01",
+	})
+	m, err := BuildModel(tb, roster)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e := m.Event("MISC0001"); strings.Join(e.Tags, ",") != "Hummingbirds,Hawks,Misc" || strings.Join(e.Classrooms, ",") != "Hummingbirds,Hawks" {
+		t.Errorf("untagged event = %+v", e)
+	}
+	if e := m.Event("a5@sample"); slices.Contains(e.Tags, TagMisc) {
+		t.Errorf("categorized event got Misc: %+v", e)
 	}
 }
 

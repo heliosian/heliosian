@@ -97,7 +97,7 @@ func classroomsOf(model *Model, me Person, kids []Person) []string {
 	return out
 }
 
-func Render(model *Model, directory Directory, email string, admin bool, now time.Time) View {
+func Render(model *Model, directory Directory, email string, admin bool, now time.Time, linked []Linked) View {
 	me, known := directory.Person(email)
 	if !known {
 		me = Person{Email: email, Name: displayName(email)}
@@ -121,7 +121,7 @@ func Render(model *Model, directory Directory, email string, admin bool, now tim
 	stale, privacy := directory.Alerts(email)
 	return View{
 		User: user, Today: now.Format(DateFormat), Now: now.Format(DateTimeFormat),
-		Classrooms: model.Roster.Classrooms, Colors: directory.ClassroomColors(), Tags: model.Tags, DayTypes: model.DayTypes, Years: model.Years,
-		Days: model.Days, Events: model.Events, Feeds: feeds, Alerts: Alerts{Stale: stale, Privacy: privacy},
+		Classrooms: model.Roster.Classrooms, Colors: directory.ClassroomColors(), Tags: append(append([]Tag{}, model.Tags...), builtinTags...), DayTypes: model.DayTypes, Years: model.Years,
+		Days: model.Days, Events: withLinked(model.Events, linked), Feeds: feeds, Alerts: Alerts{Stale: stale, Privacy: privacy},
 	}
 }

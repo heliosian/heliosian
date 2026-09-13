@@ -675,7 +675,7 @@ func NewCore(cfg Config) *Core {
 	celebrateMux := http.NewServeMux()
 	celebrate.Register(celebrateMux, celebrateCache, cfg.Writer, queue, cfg.Store, celebrateDirectory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.CelebrateMail)
 	calendarMux := http.NewServeMux()
-	calendar.Register(calendarMux, calendarCache, cfg.Writer, queue, calendarDirectory{cache, settings}, settings.SuperAdmins)
+	calendar.Register(calendarMux, calendarCache, cfg.Writer, queue, calendarDirectory{cache, settings}, settings.SuperAdmins, calendarLinked{celebrateCache, eventsCache}.list)
 	// Every app's toolbar asks its own origin what its switch lists and
 	// which rows to leave off; Heliosian's cache answers for all of them.
 	for _, m := range []*http.ServeMux{mux, eventsMux, birthdayMux, celebrateMux, calendarMux} {

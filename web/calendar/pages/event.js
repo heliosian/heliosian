@@ -1,4 +1,4 @@
-import {whenLine, timeLine, calendarLink, sourceWords, dayType, eventDates, dayTypeClass} from '../state.js';
+import {whenLine, timeLine, calendarLink, sourceWords, dayType, eventDates, dayTypeClass, linkURL, call} from '../state.js';
 import {el, link, svg, paragraphs, button, copyText} from '../dom.js';
 import {setTitle} from '../chrome.js';
 import {audienceChips, blocks} from '../events.js';
@@ -44,6 +44,9 @@ export function eventPage(e) {
   cols.append(main);
 
   const side = el('div', 'detail-side');
+  if (e.link) {
+    side.append(linkedCard(e));
+  }
   const when = el('div', 'side-card');
   const whenRow = el('div', 'side-row');
   const whenIcon = el('div', 'side-icon');
@@ -78,7 +81,7 @@ export function eventPage(e) {
   aboutIcon.append(svg('info'));
   const aboutBody = el('div', 'side-row-body');
   aboutBody.append(el('div', 'side-title', sourceWords(e)));
-  aboutBody.append(el('div', 'side-line', 'Something wrong? Tell the office, and the calendar admins can correct it here.'));
+  aboutBody.append(el('div', 'side-line', aboutWords[e.source] || 'Something wrong? Tell the office, and the calendar admins can correct it here.'));
   aboutBody.append(button('Copy link', 'copy', 'link-button', () => copyText(location.origin + location.pathname, 'Link copied')));
   aboutRow.append(aboutIcon, aboutBody);
   about.append(aboutRow);
@@ -86,4 +89,39 @@ export function eventPage(e) {
   cols.append(side);
   page.append(cols);
   return page;
+}
+
+const aboutWords = {
+  celebrate: 'Hosted by families in the community. The party page has the hosts, the price, and who is coming.',
+  team: 'Run by the Helios Community Association. The event page has the roles to fill, who runs it, and who has signed up.',
+};
+
+const standing = {
+  available: 'Tickets available', waitlist: 'Full, and taking a waitlist', 'sold-out': 'Sold out',
+  closed: 'Tickets are not on sale', past: 'This party has happened',
+  open: 'Volunteers wanted', full: 'Every spot is taken', done: 'This event is done',
+};
+
+const linkedTitles = {celebrate: 'Fun(d)raiser party', team: 'HCA volunteer event'};
+
+const linkedIcons = {celebrate: 'sun', team: 'people'};
+
+const seeWords = {celebrate: 'See the party', team: 'See the event'};
+
+// linkedCard leads a linked event's rail: how signing up stands, and the way
+// to its page on the app that runs it, where the tickets or the sign-up are.
+function linkedCard(e) {
+  const card = el('div', 'side-card side-card-linked');
+  const row = el('div', 'side-row');
+  const icon = el('div', 'side-icon');
+  icon.append(svg(linkedIcons[e.source]));
+  const body = el('div', 'side-row-body');
+  body.append(el('div', 'side-title', linkedTitles[e.source]), el('div', 'side-line', standing[e.availability] || ''));
+  const go = el('a', 'button side-button');
+  go.href = linkURL(e);
+  go.append(svg('open'), el('span', '', call(e) || seeWords[e.source]));
+  body.append(go);
+  row.append(icon, body);
+  card.append(row);
+  return card;
 }

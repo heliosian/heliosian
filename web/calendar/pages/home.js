@@ -1,4 +1,4 @@
-import {state, eventsOn, today, addDays, parseDate, formatDate, longDayLabel, monthLabel, monthOf, shiftMonth, weekStart, weekdayShort, specials, isSchoolDay, dayTypeClass, eventColors, selectedClassrooms, classroomNames} from '../state.js';
+import {state, eventsOn, today, addDays, parseDate, formatDate, longDayLabel, monthLabel, monthOf, shiftMonth, weekStart, weekdayShort, specials, scheduleOn, isSchoolDay, dayTypeClass, eventColors, selectedClassrooms, classroomNames} from '../state.js';
 import {el, link, svg, button} from '../dom.js';
 import {setTitle, setSearch, renderFilters} from '../chrome.js';
 import {eventRow, dayHeading, planCards, emptyNote} from '../events.js';
@@ -6,13 +6,13 @@ import {eventRow, dayHeading, planCards, emptyNote} from '../events.js';
 let lastDate = '';
 
 // weekStrip is the week the chosen day sits in, Sunday to Saturday, each day
-// a button carrying its events as dots, with arrows to the weeks either side
+// a button carrying its events as dots, with arrows to the days either side
 // and a way back to today that keeps its place whether or not it shows.
 function weekStrip(date) {
   const strip = el('div', 'week-strip');
   const start = weekStart(date);
-  const prev = link('/day/' + addDays(date, -7), 'icon-button strip-arrow');
-  prev.setAttribute('aria-label', 'Previous week');
+  const prev = link('/day/' + addDays(date, -1), 'icon-button strip-arrow');
+  prev.setAttribute('aria-label', 'Previous day');
   prev.append(svg('back'));
   strip.append(prev);
   const days = el('div', 'strip-days');
@@ -43,8 +43,8 @@ function weekStrip(date) {
     days.append(cell);
   }
   strip.append(days);
-  const next = link('/day/' + addDays(date, 7), 'icon-button strip-arrow');
-  next.setAttribute('aria-label', 'Next week');
+  const next = link('/day/' + addDays(date, 1), 'icon-button strip-arrow');
+  next.setAttribute('aria-label', 'Next day');
   next.append(svg('chevron'));
   strip.append(next);
   strip.append(link('/', 'button button-secondary button-small strip-today' + (date === today() ? ' is-hidden' : ''), 'Today'));
@@ -87,8 +87,9 @@ function dayColumn(date) {
 }
 
 // upcomingPanel scrolls on its own beside the day: every day ahead that has
-// something on it, an event or a day that is not regular, through the end of
-// the year; with words in the search box it is the whole year's matches.
+// something on it, an event or - while the Schedule tag is on - a day that
+// is not regular, through the end of the year; with words in the search box
+// it is the whole year's matches.
 function upcomingPanel(date) {
   const panel = el('aside', 'home-upcoming');
   const head = el('div', 'upcoming-head');
@@ -97,16 +98,17 @@ function upcomingPanel(date) {
     head.textContent = state.query ? 'Matching events' : 'Upcoming';
     body.replaceChildren();
     const from = state.query ? today() : (date > today() ? date : today());
+    const days = scheduleOn();
     let any = false;
     const until = addDays(from, 400);
     for (let d = from; d < until; d = addDays(d, 1)) {
       const events = eventsOn(d);
-      if (!events.length && (state.query || !specials(d).length)) {
+      if (!events.length && (state.query || !days || !specials(d).length)) {
         continue;
       }
       any = true;
       const group = el('div', 'day-group');
-      group.append(dayHeading(d));
+      group.append(dayHeading(d, days));
       if (events.length) {
         const list = el('div', 'event-list');
         for (const e of events) {
