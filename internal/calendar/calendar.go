@@ -780,6 +780,10 @@ func preferred(e, other *Event) bool {
 	return len(e.Dates()) > len(other.Dates())
 }
 
+func normalTitle(title string) string {
+	return strings.ToLower(strings.Join(strings.Fields(title), " "))
+}
+
 // claims is what an all-day event says, one claim per school day per
 // classroom: the day type it imposes, or its title when it imposes none.
 // Weekends are nobody's claim, so a span written across one is covered by
@@ -790,7 +794,7 @@ func claims(e *Event) []string {
 	}
 	what := e.DayType
 	if what == "" {
-		what = "title:" + strings.ToLower(strings.Join(strings.Fields(e.Title), " "))
+		what = "title:" + normalTitle(e.Title)
 	}
 	out := []string{}
 	for _, date := range e.Dates() {
@@ -812,8 +816,8 @@ func claims(e *Event) []string {
 // state every one of them: four one-day feed entries cover a four-day PDF
 // entry, and two feed weeks cover a PDF span written across the weekend
 // between them. A timed event adds nothing when one already kept has its
-// start, end, and tags. The rest are hidden and counted, so the day plan,
-// the lists, and the feeds all see one.
+// start, end, tags, and title. The rest are hidden and counted, so the day
+// plan, the lists, and the feeds all see one.
 func (b *builder) dedupe() {
 	order := []*Event{}
 	for _, e := range b.model.Events {
@@ -829,7 +833,7 @@ func (b *builder) dedupe() {
 		if len(claims) == 0 {
 			tags := slices.Clone(e.Tags)
 			slices.Sort(tags)
-			key := e.Start + "|" + e.End + "|" + e.DayType + "|" + strings.Join(tags, ",")
+			key := e.Start + "|" + e.End + "|" + e.DayType + "|" + strings.Join(tags, ",") + "|" + normalTitle(e.Title)
 			if seen[key] {
 				e.Hidden, e.duplicate = true, true
 			}

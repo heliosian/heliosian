@@ -155,19 +155,22 @@ func TestNoSchoolWins(t *testing.T) {
 
 func TestDedupe(t *testing.T) {
 	tb := tables(t)
-	// A hand-added twin of a feed event wins over it; a differing span or
-	// tag is not a twin.
+	// A hand-added twin of a feed event wins over it; a differing span, tag,
+	// or title is not a twin, so two clubs sharing an hour and an audience
+	// both stand.
 	tb.Events = append(tb.Events,
-		map[string]string{"Event ID": "D1", "Start": "2026-09-24 16:00", "End": "2026-09-24 18:00", "Title": "Intl Night", "Tags": "Hummingbirds, Hawks, Falcons, Jays, Ravens, Condors, Ospreys, Egrets, Herons, Community"},
-		map[string]string{"Event ID": "D2", "Start": "2026-09-24 16:00", "End": "2026-09-24 19:00", "Title": "Intl Night, longer", "Tags": "Hummingbirds, Hawks, Falcons, Jays, Ravens, Condors, Ospreys, Egrets, Herons, Community"},
-		map[string]string{"Event ID": "D3", "Start": "2026-09-24 16:00", "End": "2026-09-24 18:00", "Title": "Intl Night, parents", "Tags": "Hummingbirds, Hawks, Falcons, Jays, Ravens, Condors, Ospreys, Egrets, Herons, Community, Parents"},
+		map[string]string{"Event ID": "D1", "Start": "2026-09-24 16:00", "End": "2026-09-24 18:00", "Title": "international  night", "Tags": "Hummingbirds, Hawks, Falcons, Jays, Ravens, Condors, Ospreys, Egrets, Herons, Community"},
+		map[string]string{"Event ID": "D2", "Start": "2026-09-24 16:00", "End": "2026-09-24 19:00", "Title": "International Night", "Tags": "Hummingbirds, Hawks, Falcons, Jays, Ravens, Condors, Ospreys, Egrets, Herons, Community"},
+		map[string]string{"Event ID": "D3", "Start": "2026-09-24 16:00", "End": "2026-09-24 18:00", "Title": "International Night", "Tags": "Hummingbirds, Hawks, Falcons, Jays, Ravens, Condors, Ospreys, Egrets, Herons, Community, Parents"},
+		map[string]string{"Event ID": "D4", "Start": "2026-09-24 16:00", "End": "2026-09-24 18:00", "Title": "Cross Country", "Tags": "Condors, Ospreys, Egrets, Herons, Clubs"},
+		map[string]string{"Event ID": "D5", "Start": "2026-09-24 16:00", "End": "2026-09-24 18:00", "Title": "Science Olympiad", "Tags": "Condors, Ospreys, Egrets, Herons, Clubs"},
 	)
 	m, err := BuildModel(tb, roster)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.Duplicates != 3 || m.Event("a7@sample") != nil || m.Event("D1") == nil || m.Event("D2") == nil || m.Event("D3") == nil {
-		t.Errorf("duplicates %d, a7 %v, D1 %v, D2 %v, D3 %v", m.Duplicates, m.Event("a7@sample"), m.Event("D1"), m.Event("D2"), m.Event("D3"))
+	if m.Duplicates != 3 || m.Event("a7@sample") != nil || m.Event("D1") == nil || m.Event("D2") == nil || m.Event("D3") == nil || m.Event("D4") == nil || m.Event("D5") == nil {
+		t.Errorf("duplicates %d, a7 %v, D1 %v, D2 %v, D3 %v, D4 %v, D5 %v", m.Duplicates, m.Event("a7@sample"), m.Event("D1"), m.Event("D2"), m.Event("D3"), m.Event("D4"), m.Event("D5"))
 	}
 	// Four one-day feed entries cover the PDF's four-day conference span;
 	// two do not.
@@ -214,19 +217,21 @@ func TestDedupe(t *testing.T) {
 		t.Errorf("a span across a weekend stayed: pdf %v", m.Event("pdf/2026-2027/2026-08-24/map-assessment"))
 	}
 	// A weekend-only event has no claims: it folds against an exact twin,
-	// same dates and tags, and stands beside one a day longer.
+	// same dates, tags, and title, and stands beside one a day longer or
+	// named otherwise.
 	tb = tables(t)
 	tb.Events = append(tb.Events,
 		map[string]string{"Event ID": "W1", "Start": "2026-09-12", "End": "2026-09-13", "Title": "Family Camping", "Tags": "Jays, Ravens, Trip"},
-		map[string]string{"Event ID": "W2", "Start": "2026-09-12", "End": "2026-09-13", "Title": "Camping weekend", "Tags": "Jays, Ravens, Trip"},
-		map[string]string{"Event ID": "W3", "Start": "2026-09-12", "End": "2026-09-14", "Title": "Camping, longer", "Tags": "Jays, Ravens, Trip"},
+		map[string]string{"Event ID": "W2", "Start": "2026-09-12", "End": "2026-09-13", "Title": "family  camping", "Tags": "Jays, Ravens, Trip"},
+		map[string]string{"Event ID": "W3", "Start": "2026-09-12", "End": "2026-09-14", "Title": "Family Camping", "Tags": "Jays, Ravens, Trip"},
+		map[string]string{"Event ID": "W4", "Start": "2026-09-12", "End": "2026-09-13", "Title": "Camping Weekend", "Tags": "Jays, Ravens, Trip"},
 	)
 	m, err = BuildModel(tb, roster)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if (m.Event("W1") == nil) == (m.Event("W2") == nil) || m.Event("W3") == nil {
-		t.Errorf("weekend twins: W1 %v, W2 %v, W3 %v", m.Event("W1"), m.Event("W2"), m.Event("W3"))
+	if (m.Event("W1") == nil) == (m.Event("W2") == nil) || m.Event("W3") == nil || m.Event("W4") == nil {
+		t.Errorf("weekend twins: W1 %v, W2 %v, W3 %v, W4 %v", m.Event("W1"), m.Event("W2"), m.Event("W3"), m.Event("W4"))
 	}
 	// A PDF row carrying a year marker is kept over a feed twin without one.
 	tb = tables(t)
