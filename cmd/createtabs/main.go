@@ -111,6 +111,7 @@ var layouts = map[string][]tab{
 		{"Tags", []string{"Owner Email", "Tag", "Person Email"}},
 		{"Photos", []string{"Email", "Photo Name"}},
 		{"Admins", []string{"Email"}},
+		{"Geocode", []string{"Address", "Lat", "Lng"}},
 	},
 	"Apps": {
 		{"Categories", []string{"Title", "Emoji", "Style", "Max"}},

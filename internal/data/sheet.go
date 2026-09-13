@@ -334,8 +334,6 @@ func (s *Sheet) Append(app, table string, row []string) error {
 	return s.AppendAll(app, table, [][]string{row})
 }
 
-// AppendAll adds many rows in one call, which is the difference between a bulk load
-// finishing and it spending minutes being throttled a row at a time.
 func (s *Sheet) AppendAll(app, table string, rows [][]string) error {
 	id, ok := s.spreadsheets[app]
 	if !ok {

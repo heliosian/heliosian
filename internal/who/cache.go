@@ -2,9 +2,11 @@ package who
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -25,6 +27,7 @@ type Geocoder interface {
 
 type Cache struct {
 	source   data.Source
+	writer   data.Writer
 	geocoder Geocoder
 	blobs    BlobChecker
 	static   BlobChecker
@@ -50,9 +53,9 @@ type Cache struct {
 
 // store is the concrete blob store (nil in sample mode), needed to replace a classroom
 // or grade image in place, which needs more than the existence check BlobChecker exposes.
-func NewCache(source data.Source, geocoder Geocoder, blobs, static BlobChecker, store *blob.Store, queue *Queue, superAdmins func() []string) (*Cache, error) {
+func NewCache(source data.Source, writer data.Writer, geocoder Geocoder, blobs, static BlobChecker, store *blob.Store, queue *Queue, superAdmins func() []string) (*Cache, error) {
 	c := &Cache{
-		source: source, geocoder: geocoder, blobs: blobs, static: static, store: store, queue: queue,
+		source: source, writer: writer, geocoder: geocoder, blobs: blobs, static: static, store: store, queue: queue,
 		superAdmins: superAdmins, superEdit: map[string]bool{}, spoof: map[string]string{},
 	}
 	start := time.Now()
@@ -318,7 +321,9 @@ func (c *Cache) rebuild(tables *Tables, start time.Time) error {
 	if err != nil {
 		return err
 	}
-	c.geocodeFamilies(model)
+	if err := c.geocodeFamilies(model, tables); err != nil {
+		return err
+	}
 	c.mu.Lock()
 	c.model = model
 	c.tables = tables
@@ -328,46 +333,102 @@ func (c *Cache) rebuild(tables *Tables, start time.Time) error {
 	return nil
 }
 
-func (c *Cache) geocodeFamilies(model *Model) {
+func (c *Cache) geocodeFamilies(model *Model, tables *Tables) error {
 	start := time.Now()
-	type job struct {
-		key     string
-		address string
+	known := map[string]geocode.Point{}
+	for _, row := range tables.Geocode {
+		address := row[geocodeAddress]
+		if address == "" {
+			return fmt.Errorf("geocode row %v has no address", row)
+		}
+		lat, err := strconv.ParseFloat(row[geocodeLat], 64)
+		if err != nil {
+			return fmt.Errorf("geocode row %q has invalid %s %q", address, geocodeLat, row[geocodeLat])
+		}
+		lng, err := strconv.ParseFloat(row[geocodeLng], 64)
+		if err != nil {
+			return fmt.Errorf("geocode row %q has invalid %s %q", address, geocodeLng, row[geocodeLng])
+		}
+		known[address] = geocode.Point{Lat: lat, Lng: lng}
 	}
-	pending := []job{}
-	for key, family := range model.Families {
-		if family.Address != "" {
-			pending = append(pending, job{key: key, address: family.Address})
+
+	missing := []string{}
+	for _, family := range model.Families {
+		if family.Address == "" {
+			continue
+		}
+		if _, ok := known[family.Address]; ok {
+			continue
+		}
+		if !slices.Contains(missing, family.Address) {
+			missing = append(missing, family.Address)
 		}
 	}
-	jobs := make(chan job)
+	sort.Strings(missing)
+
+	jobs := make(chan string)
 	var wg sync.WaitGroup
 	var mu sync.Mutex
-	located := 0
+	found := map[string]geocode.Point{}
 	for range 8 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for j := range jobs {
-				point, err := c.geocoder.Lookup(j.address)
+			for address := range jobs {
+				point, err := c.geocoder.Lookup(address)
 				if err != nil {
 					slog.Error("geocode", "error", err)
 					continue
 				}
 				mu.Lock()
-				family := model.Families[j.key]
-				family.Lat = point.Lat
-				family.Lng = point.Lng
-				model.Families[j.key] = family
-				located++
+				found[address] = point
 				mu.Unlock()
 			}
 		}()
 	}
-	for _, j := range pending {
-		jobs <- j
+	for _, address := range missing {
+		jobs <- address
 	}
 	close(jobs)
 	wg.Wait()
-	slog.Info("geocoded family addresses", "located", located, "of", len(pending), "took", time.Since(start).Round(time.Millisecond))
+
+	rows := [][]string{}
+	folded := make([]map[string]string, 0, len(tables.Geocode)+len(found))
+	folded = append(folded, tables.Geocode...)
+	for _, address := range missing {
+		point, ok := found[address]
+		if !ok {
+			continue
+		}
+		known[address] = point
+		lat, lng := strconv.FormatFloat(point.Lat, 'f', -1, 64), strconv.FormatFloat(point.Lng, 'f', -1, 64)
+		rows = append(rows, []string{address, lat, lng})
+		folded = append(folded, map[string]string{geocodeAddress: address, geocodeLat: lat, geocodeLng: lng})
+	}
+	if len(rows) > 0 {
+		if err := c.writer.AppendAll(appName, geocodeTable, rows); err != nil {
+			slog.Error("[ERROR] geocode cache write", "error", err)
+		} else {
+			tables.Geocode = folded
+		}
+	}
+
+	located, withAddress := 0, 0
+	for key, family := range model.Families {
+		if family.Address == "" {
+			continue
+		}
+		withAddress++
+		point, ok := known[family.Address]
+		if !ok {
+			continue
+		}
+		family.Lat = point.Lat
+		family.Lng = point.Lng
+		model.Families[key] = family
+		located++
+	}
+	slog.Info("geocoded family addresses", "located", located, "of", withAddress, "cached", len(known)-len(rows),
+		"looked up", len(missing), "took", time.Since(start).Round(time.Millisecond))
+	return nil
 }

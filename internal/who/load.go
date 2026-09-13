@@ -292,9 +292,20 @@ type Tables struct {
 	Tags        []map[string]string
 	Photos      []map[string]string
 	Admins      []map[string]string
+	Geocode     []map[string]string
 }
 
 const adminsTable = "Admins"
+
+const geocodeTable = "Geocode"
+
+const (
+	geocodeAddress = "Address"
+	geocodeLat     = "Lat"
+	geocodeLng     = "Lng"
+)
+
+var geocodeColumns = []string{geocodeAddress, geocodeLat, geocodeLng}
 
 // withOverride mirrors what data.Sheet.Upsert just wrote, copying the rows it
 // touches so the tables the current model was built from stay intact.
@@ -550,11 +561,12 @@ func ReadTables(source data.Source) (*Tables, error) {
 	tags := &table{app: appName, name: tagsTable}
 	photos := &table{app: appName, name: "Photos"}
 	admins := &table{app: appName, name: adminsTable}
+	geocodes := &table{app: appName, name: geocodeTable}
 	// Header only: the change log is never read into the model, and it gains a row per
 	// member edit forever. Nothing else compares its columns against what the app
 	// writes, and a column missing here truncates every audit row that reaches it.
 	changeLog := &table{app: appName, name: changeLogTable}
-	ordered := []*table{aliases, imports, staff, names, overrides, families, preferences, website, tags, photos, admins}
+	ordered := []*table{aliases, imports, staff, names, overrides, families, preferences, website, tags, photos, admins, geocodes}
 	// One batch per spreadsheet: the directory's tabs and the change log's
 	// header together, the preferences sheet on its own.
 	directoryNames := []string{}
@@ -613,6 +625,9 @@ func ReadTables(source data.Source) (*Tables, error) {
 	if err := data.CheckColumns(admins.name, admins.header, []string{"Email"}); err != nil {
 		return nil, err
 	}
+	if err := data.CheckColumns(geocodes.name, geocodes.header, geocodeColumns); err != nil {
+		return nil, err
+	}
 	if err := data.CheckColumns(changeLog.name, changeLog.header, changeLogHeader); err != nil {
 		return nil, err
 	}
@@ -628,6 +643,7 @@ func ReadTables(source data.Source) (*Tables, error) {
 		Tags:        tags.rows,
 		Photos:      photos.rows,
 		Admins:      admins.rows,
+		Geocode:     geocodes.rows,
 	}, nil
 }
 

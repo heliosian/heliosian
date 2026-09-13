@@ -63,6 +63,9 @@ type Writer interface {
 	// spends its Sheets quota many times over. A key no row carries is an error.
 	SetMany(app, table, keyColumn string, cells map[string]map[string]string) error
 	Append(app, table string, row []string) error
+	// AppendAll adds many rows in one call, which is the difference between a bulk
+	// load finishing and it spending minutes being throttled a row at a time.
+	AppendAll(app, table string, rows [][]string) error
 	// AppendCells adds a row placing each cell under the column of that name,
 	// wherever the tab keeps it, and rejects a column the tab does not have. It
 	// is Append for a tab whose column order people may have rearranged by hand.
@@ -271,20 +274,26 @@ func (d *Dir) SetMany(app, name, keyColumn string, cells map[string]map[string]s
 }
 
 func (d *Dir) Append(app, name string, row []string) error {
+	return d.AppendAll(app, name, [][]string{row})
+}
+
+func (d *Dir) AppendAll(app, name string, rows [][]string) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	t, err := d.load(app, name)
 	if err != nil {
 		return err
 	}
-	record := map[string]string{}
-	for i, cell := range row {
-		if i >= len(t.header) || t.header[i] == "" || cell == "" {
-			continue
+	for _, row := range rows {
+		record := map[string]string{}
+		for i, cell := range row {
+			if i >= len(t.header) || t.header[i] == "" || cell == "" {
+				continue
+			}
+			record[t.header[i]] = cell
 		}
-		record[t.header[i]] = cell
+		t.rows = append(t.rows, record)
 	}
-	t.rows = append(t.rows, record)
 	return nil
 }
 

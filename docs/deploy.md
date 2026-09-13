@@ -10,9 +10,12 @@ Every push to `main` on `github.com/heliosian/heliosian` deploys production. The
 2. push the SHA tag to Artifact Registry (`us-west1-docker.pkg.dev/heliosian/heliosian/heliosian`)
 3. `gcloud run deploy heliosian --image …:<sha>` — image only; every other service setting persists from the last full deploy
 
-The trigger names its build service account (the project's default compute service account) explicitly; trigger creation in this project refuses to infer one. Builds ship the pushed commit, never a working tree. To rebuild and redeploy current `main` without a push:
+A second trigger, `build-calendarimport`, fires on the same push and does the same three steps for the calendar import (`docs/calendar/data.md`): `docker build` of `Dockerfile.calendarimport`, a push to `us-west1-docker.pkg.dev/heliosian/heliosian/calendarimport`, and `gcloud run jobs deploy calendarimport --image …:<sha>`, which changes only the job's image. The job has to exist first, from a `cmd/deploy` run: a job created with nothing but an image would run as the default compute account, which the build account may not act as, so the step fails until the job is there with its identity.
+
+Both triggers name their build service account (the project's default compute service account) explicitly; trigger creation in this project refuses to infer one. Builds ship the pushed commit, never a working tree. To rebuild and redeploy current `main` without a push:
 
     gcloud builds triggers run build-main --region=us-west1 --branch=main
+    gcloud builds triggers run build-calendarimport --region=us-west1 --branch=main
 
 The Dockerfile builds in two stages: a `golang` stage compiles the static binary (`CGO_ENABLED=0`), and `gcr.io/distroless/static-debian12` — CA certificates and tzdata, nothing else — carries the binary plus `web/`, whose templates and static assets are read from disk at runtime. `sampledata/` is deliberately excluded: production always sets `DIRECTORY_SHEET`, and a misconfigured server fails at startup rather than silently serving sample data. `creds/` never enters the image (`.dockerignore`, `.gcloudignore`), and the image holds no credentials of any kind — the runtime identity below is the only Google identity in play.
 
@@ -23,7 +26,7 @@ The Dockerfile builds in two stages: a `golang` stage compiles the static binary
     eval "$(go run ./cmd/findsheet)"
     go run ./cmd/deploy
 
-It deploys the `latest` image with every setting the pipeline does not touch, so it both creates the service from nothing and repairs drift on an existing one. The spreadsheet ids come from the environment (`cmd/findsheet` prints them as shell exports) and the OAuth client id from `creds/oauth-client.json` — the same resolution the server itself uses — so none of them is written into the repository. Every spreadsheet id is required, here and in `Production()`. Because a per-push deploy only ever changes the image (see above), changing a spreadsheet id only ever takes effect through a `cmd/deploy` run, never a plain push.
+It deploys the `latest` image with every setting the pipeline does not touch, so it both creates the service from nothing and repairs drift on an existing one, and then does the same for the `calendarimport` job (below). The spreadsheet ids come from the environment (`cmd/findsheet` prints them as shell exports) and the OAuth client id from `creds/oauth-client.json` — the same resolution the server itself uses — so none of them is written into the repository. Every spreadsheet id is required, here and in `Production()`. Because a per-push deploy only ever changes the image (see above), changing a spreadsheet id only ever takes effect through a `cmd/deploy` run, never a plain push.
 
 Why each setting is what it is:
 
@@ -38,6 +41,21 @@ Why each setting is what it is:
 - **allow unauthenticated** — the app enforces its own Google sign-in; Cloud Run must let everyone reach the login page.
 
 Cloud Run injects `PORT`; the server honors it.
+
+## The calendar import job
+
+The Cloud Run Job `calendarimport` in the same region runs `cmd/calendarimport` from its own image (`docs/calendar/data.md`). `cmd/deploy` writes its configuration beside the service's: the same runtime identity, the four spreadsheet ids the import reads (`DIRECTORY_SHEET`, `PREFERENCES_SHEET`, `CALENDAR_SHEET`, `CONFIG_SHEET`), the Anthropic key as `ANTHROPIC_API_KEY` from the `heliosian-anthropic-key` secret, and the `--i-have-user-permission-to-spend-money` argument, since scheduling the job is that permission. A task gets 1 GiB, since the import rasterizes the year calendar at 300 dpi and works on it pixel by pixel, and 30 minutes, since reading a new PDF is dozens of Claude calls at maximum effort; a task that fails is not retried, because the import already carries what it completed to the sheet and asks about only what failed on the next run, so a retry would spend the same money on the same failure.
+
+Cloud Scheduler job `calendarimport` (location `us-west1`) runs it once a day at five in the morning school time, by posting to the Cloud Run Admin API's run method as `directory@`, which holds `run.invoker` on the job for that. The schedule is a one-time resource like the domain mappings, written here rather than in `cmd/deploy`:
+
+    gcloud run jobs add-iam-policy-binding calendarimport --region us-west1 --project heliosian --member serviceAccount:directory@heliosian.iam.gserviceaccount.com --role roles/run.invoker
+    gcloud scheduler jobs create http calendarimport --location us-west1 --project heliosian --schedule "0 5 * * *" --time-zone America/Los_Angeles --http-method POST --uri https://run.googleapis.com/v2/projects/heliosian/locations/us-west1/jobs/calendarimport:run --oauth-service-account-email directory@heliosian.iam.gserviceaccount.com
+
+To run the import now rather than wait for the morning:
+
+    gcloud run jobs execute calendarimport --region us-west1 --project heliosian --wait
+
+Each execution's log is under the job in the console, or in Logs Explorer with `resource.type="cloud_run_job"`. A run that changed nothing is a few fetches and no Claude calls; a run that read a new PDF or classified new events says so, and one whose stage failed exits non-zero naming it and shows as a failed execution.
 
 ## Configuration values
 
@@ -62,6 +80,7 @@ Secret Manager secrets, delivered as environment variables. Values are used raw,
 - `heliosian-pexels-key` / `heliosian-pixabay-key` (optional, as `PEXELS_KEY` / `PIXABAY_KEY`) — the Pexels and Pixabay API keys, two more sources for the image picker
 - `heliosian-unsplash-key` — the Unsplash API access key (as `UNSPLASH_KEY`) behind the portal's image picker's Unsplash source, mirrored locally as `creds/unsplash.key`; without it the picker offers Wikimedia Commons alone
 - `heliosian-resend-key` — the Resend API key (as `RESEND_KEY`) the volunteer portal's mail goes out through, from `HCA-Team <team@heliosian.com>` (override with `MAIL_FROM`) - and Helios Celebrate's from `Helios Celebrate <celebrate@heliosian.com>` (`CELEBRATE_MAIL_FROM`), through the same key; the sending domain is verified in Resend's dashboard, and every send, bounce and complaint shows there. Mirrored locally as `creds/resend.key`. SMTP is the fallback when there is no Resend key: `SMTP_HOST`, `SMTP_PORT` (587), `SMTP_USER` and a `heliosian-smtp-pass` secret as `SMTP_PASS`. With neither the portal sends nothing and says so in Admin Tools.
+- `heliosian-anthropic-key` — the Anthropic API key (as `ANTHROPIC_API_KEY`) the calendar import job classifies and reads with, mirrored locally as `creds/anthropic.key`; the server itself never sees it
 - `heliosian-search-key` / `heliosian-search-cx` (optional, as `GOOGLE_SEARCH_KEY` / `GOOGLE_SEARCH_CX`) — a Custom Search API key and Programmable Search Engine id, should Google ever grant this project the JSON API; without them the portal's image picker searches Wikimedia Commons, which needs nothing. Wire them with `gcloud run services update heliosian --region us-west1 --update-secrets ...` and add them to `secrets` in `cmd/deploy` so a full deploy keeps them.
 
 ## Media storage
@@ -76,7 +95,8 @@ Because the bucket is private and every read goes through the app's own sign-in 
 
 - Data access: content manager on the community shared drive, which covers editing the `Directory` sheet inside it (self-service edits write cells and append to the Change Log tab). Shared in Drive directly, never through project IAM.
 - Media: `roles/storage.objectAdmin` on `gs://heliosian-media`, granted on the bucket.
-- Runtime: the Cloud Run service runs as it, and it holds Secret Manager Secret Accessor on each secret individually.
+- Runtime: the Cloud Run service and the `calendarimport` job run as it, and it holds Secret Manager Secret Accessor on each secret individually.
+- Scheduling: it holds `roles/run.invoker` on the `calendarimport` job, which is how the Cloud Scheduler job starts an execution as it.
 - Humans: `roles/iam.serviceAccountTokenCreator` on this account enables the local impersonation that real-data development uses (`docs/dev.md`).
 
 The build service account (the default compute service account) holds `cloudbuild.builds.builder`, `run.developer`, and Service Account User on `directory@` — the last because deploying a service that runs as an account requires permission to act as it.
@@ -120,4 +140,4 @@ Local development installs the same records over a text handler on stderr, so th
 
 ## Verifying a deploy
 
-The startup log (Cloud Run → Logs, or `gcloud logging read`) shows the full boot sequence: the blob store's prefetch line, geocoding count, directory model load, then `listening` — about ten seconds after the instance starts. After any deploy, an existing session should still work — if everyone got signed out, `SESSION_KEY` stopped reaching the server.
+The startup log (Cloud Run → Logs, or `gcloud logging read`) shows the full boot sequence: the blob store's prefetch line, the geocoding line (how many addresses came from the `Geocode` tab and how many went to the API), directory model load, then `listening` — about ten seconds after the instance starts. After any deploy, an existing session should still work — if everyone got signed out, `SESSION_KEY` stopped reaching the server.

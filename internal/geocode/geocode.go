@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"sync"
 )
 
 type Point struct {
@@ -15,22 +14,14 @@ type Point struct {
 }
 
 type Client struct {
-	key   string
-	mu    sync.Mutex
-	cache map[string]Point
+	key string
 }
 
 func New(key string) *Client {
-	return &Client{key: key, cache: map[string]Point{}}
+	return &Client{key: key}
 }
 
 func (c *Client) Lookup(address string) (Point, error) {
-	c.mu.Lock()
-	point, ok := c.cache[address]
-	c.mu.Unlock()
-	if ok {
-		return point, nil
-	}
 	resp, err := http.Get("https://maps.googleapis.com/maps/api/geocode/json?address=" +
 		url.QueryEscape(address) + "&key=" + url.QueryEscape(c.key))
 	if err != nil {
@@ -54,9 +45,5 @@ func (c *Client) Lookup(address string) (Point, error) {
 	if parsed.Status != "OK" || len(parsed.Results) == 0 {
 		return Point{}, fmt.Errorf("geocode %q: %s", address, parsed.Status)
 	}
-	point = Point{Lat: parsed.Results[0].Geometry.Location.Lat, Lng: parsed.Results[0].Geometry.Location.Lng}
-	c.mu.Lock()
-	c.cache[address] = point
-	c.mu.Unlock()
-	return point, nil
+	return Point{Lat: parsed.Results[0].Geometry.Location.Lat, Lng: parsed.Results[0].Geometry.Location.Lng}, nil
 }
