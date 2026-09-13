@@ -9,15 +9,16 @@ async function refreshModel() {
 
 // The categories tool works on its own copy of the sheet's tags, grouped as
 // the filters show them: every change - a description, a group's name, a
-// category moved between or within groups, a group moved, a category added
-// - is on the page until Save writes them all at once.
+// category moved between or within groups, a group moved, a category or
+// group added, a default switched - is on the page until Save writes them
+// all at once. A group with nothing in it lives only on the page: the sheet
+// knows a group by the tags that name it.
 function working() {
-  const groups = tagGroups().map(g => ({name: g.name, tags: g.tags.filter(t => !t.builtIn).map(t => ({name: t.name, description: t.description}))}));
-  return groups.filter(g => g.tags.length);
+  return tagGroups().map(g => ({name: g.name, open: true, tags: g.tags.filter(t => !t.builtIn).map(t => ({name: t.name, description: t.description, on: t.default}))})).filter(g => g.tags.length);
 }
 
 function move(list, from, to) {
-  if (to < 0 || to >= list.length) {
+  if (to < 0 || to >= list.length || from === to) {
     return;
   }
   const [item] = list.splice(from, 1);
@@ -37,22 +38,38 @@ const newGroupChoice = '+new';
 
 function categoriesTool() {
   const wrap = el('section', 'admin-tool');
-  wrap.append(el('h2', 'section-title', 'Categories'));
-  wrap.append(el('p', 'page-intro', 'The categories events are filed under, in the groups and the order the filters show them. A group with no name is the plain Categories line at the end. Rename a group here to rename it for every category in it; a category itself keeps its name, since every event carries it.'));
   const groups = working();
   const board = el('div', 'admin-groups');
   const status = el('span', 'save-status');
+  let dragging = null;
 
   const groupNames = () => groups.map(g => g.name).filter(Boolean);
 
   // placeGroup adds a group to the board: a named one ahead of the unnamed
   // group when there is one, the unnamed one last.
   const placeGroup = name => {
-    const group = {name, tags: []};
+    const group = {name, open: true, tags: []};
     const loose = groups.findIndex(g => !g.name);
     groups.splice(name && loose >= 0 ? loose : groups.length, 0, group);
     return group;
   };
+
+  const head = el('div', 'admin-tool-head');
+  head.append(el('h2', 'admin-tool-title', 'Categories'));
+  head.append(button('Add category group', 'plus', 'button', () => {
+    const name = (prompt('Name for the new group') || '').trim();
+    if (!name) {
+      return;
+    }
+    if (groups.some(g => g.name === name)) {
+      toast(`There is already a group called ${name}`);
+      return;
+    }
+    placeGroup(name);
+    paint();
+  }));
+  wrap.append(head);
+  wrap.append(el('p', 'page-intro', 'The categories events are filed under, in the groups and the order the filters show them. A group with no name is the plain Categories line at the end. Rename a group here to rename it for every category in it; a category itself keeps its name, since every event carries it. A category that is off by default is one people see only when they switch it on, and Reset filters leaves it off.'));
 
   // groupPicker moves a category to another group, the unnamed one, or a
   // new one named on the spot.
@@ -79,62 +96,157 @@ function categoriesTool() {
       g.tags.splice(g.tags.indexOf(t), 1);
       const dest = groups.find(x => x.name === target) || placeGroup(target);
       dest.tags.push(t);
-      if (!g.tags.length) {
-        groups.splice(groups.indexOf(g), 1);
-      }
+      dest.open = true;
       paint();
     });
     return select;
   };
 
+  // Dragging: a row picked up by its handle drops before or after another
+  // row, or onto a group's head to join that group at the end.
+  const dropOn = (dest, index) => {
+    if (!dragging) {
+      return;
+    }
+    const from = dragging.group;
+    const at = from.tags.indexOf(dragging.tag);
+    from.tags.splice(at, 1);
+    if (from === dest && at < index) {
+      index -= 1;
+    }
+    dest.tags.splice(Math.min(index, dest.tags.length), 0, dragging.tag);
+    dest.open = true;
+    dragging = null;
+    paint();
+  };
+
+  const clearOver = () => {
+    for (const over of board.querySelectorAll('.is-over, .is-over-below')) {
+      over.classList.remove('is-over', 'is-over-below');
+    }
+  };
+
+  const groupHead = (g, gi) => {
+    const head = el('div', 'admin-group-head');
+    head.append(svg('tag'));
+    const name = el('input', 'admin-group-name');
+    name.type = 'text';
+    name.maxLength = 40;
+    name.placeholder = 'No group';
+    name.value = g.name;
+    name.readOnly = true;
+    name.addEventListener('change', () => {
+      g.name = name.value.trim();
+      paint();
+    });
+    name.addEventListener('blur', () => {
+      name.readOnly = true;
+    });
+    name.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        name.blur();
+      }
+    });
+    head.append(name);
+    head.append(el('span', 'admin-count', `${g.tags.length} categor${g.tags.length === 1 ? 'y' : 'ies'}`));
+    head.append(button('Rename group', 'pencil', 'button button-secondary button-small admin-rename', () => {
+      name.readOnly = false;
+      name.focus();
+      name.select();
+    }));
+    head.append(arrow('back', 'Move group up', gi === 0, () => {
+      move(groups, gi, gi - 1);
+      paint();
+    }));
+    head.append(arrow('chevron', 'Move group down', gi === groups.length - 1, () => {
+      move(groups, gi, gi + 1);
+      paint();
+    }));
+    const fold = button('', 'chevron', 'icon-button admin-fold', () => {
+      g.open = !g.open;
+      paint();
+    });
+    fold.setAttribute('aria-label', g.open ? 'Fold' : 'Unfold');
+    head.append(fold);
+    head.addEventListener('dragover', e => {
+      if (dragging) {
+        e.preventDefault();
+        head.classList.add('is-over');
+      }
+    });
+    head.addEventListener('dragleave', () => head.classList.remove('is-over'));
+    head.addEventListener('drop', e => {
+      e.preventDefault();
+      dropOn(g, g.tags.length);
+    });
+    return head;
+  };
+
+  const tagRow = (g, t, ti) => {
+    const row = el('div', 'admin-row');
+    const handle = el('span', 'admin-handle');
+    handle.append(svg('menu'));
+    handle.title = 'Drag to move';
+    handle.draggable = true;
+    handle.addEventListener('dragstart', e => {
+      dragging = {group: g, tag: t};
+      row.classList.add('is-dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', t.name);
+    });
+    handle.addEventListener('dragend', () => {
+      dragging = null;
+      row.classList.remove('is-dragging');
+      clearOver();
+    });
+    row.addEventListener('dragover', e => {
+      if (dragging && dragging.tag !== t) {
+        e.preventDefault();
+        const below = e.clientY > row.getBoundingClientRect().top + row.offsetHeight / 2;
+        row.classList.toggle('is-over-below', below);
+        row.classList.toggle('is-over', !below);
+      }
+    });
+    row.addEventListener('dragleave', () => row.classList.remove('is-over', 'is-over-below'));
+    row.addEventListener('drop', e => {
+      e.preventDefault();
+      const below = row.classList.contains('is-over-below');
+      dropOn(g, ti + (below ? 1 : 0));
+    });
+    row.append(handle, el('span', 'admin-row-name', t.name));
+    const description = el('input', 'admin-row-description');
+    description.type = 'text';
+    description.value = t.description;
+    description.title = 'Click to edit the description';
+    description.addEventListener('change', () => {
+      t.description = description.value.trim();
+    });
+    row.append(description);
+    const on = el('label', 'admin-default');
+    const box = el('input');
+    box.type = 'checkbox';
+    box.checked = t.on;
+    box.addEventListener('change', () => {
+      t.on = box.checked;
+    });
+    on.append(box, el('span', '', 'On by default'));
+    row.append(on, groupPicker(g, t));
+    return row;
+  };
+
   const paint = () => {
     board.replaceChildren();
     groups.forEach((g, gi) => {
-      const card = el('div', 'admin-group');
-      const head = el('div', 'admin-group-head');
-      const name = el('input', 'admin-group-name');
-      name.type = 'text';
-      name.maxLength = 40;
-      name.placeholder = 'No group';
-      name.value = g.name;
-      name.addEventListener('change', () => {
-        g.name = name.value.trim();
-        paint();
-      });
-      head.append(name);
-      head.append(arrow('back', 'Move group up', gi === 0, () => {
-        move(groups, gi, gi - 1);
-        paint();
-      }));
-      head.append(arrow('chevron', 'Move group down', gi === groups.length - 1, () => {
-        move(groups, gi, gi + 1);
-        paint();
-      }));
-      card.append(head);
-      const list = el('div', 'admin-list');
-      g.tags.forEach((t, ti) => {
-        const row = el('div', 'admin-row');
-        const words = el('div', 'admin-row-words');
-        words.append(el('div', 'admin-row-name', t.name));
-        const description = el('input', 'admin-row-description');
-        description.type = 'text';
-        description.value = t.description;
-        description.addEventListener('change', () => {
-          t.description = description.value.trim();
-        });
-        words.append(description);
-        row.append(words, groupPicker(g, t));
-        row.append(arrow('back', 'Move up', ti === 0, () => {
-          move(g.tags, ti, ti - 1);
-          paint();
-        }));
-        row.append(arrow('chevron', 'Move down', ti === g.tags.length - 1, () => {
-          move(g.tags, ti, ti + 1);
-          paint();
-        }));
-        list.append(row);
-      });
-      card.append(list);
+      const card = el('div', 'admin-group' + (g.open ? ' is-open' : ''));
+      card.append(groupHead(g, gi));
+      if (g.open) {
+        const list = el('div', 'admin-list');
+        if (!g.tags.length) {
+          list.append(el('div', 'admin-empty', 'Nothing here yet - drag a category in, or add one below. An empty group is not kept.'));
+        }
+        g.tags.forEach((t, ti) => list.append(tagRow(g, t, ti)));
+        card.append(list);
+      }
       board.append(card);
     });
   };
@@ -199,7 +311,8 @@ function categoriesTool() {
     }
     const target = newGroup.value.trim();
     const dest = groups.find(g => g.name === target) || placeGroup(target);
-    dest.tags.push({name, description: newDesc.value.trim()});
+    dest.tags.push({name, description: newDesc.value.trim(), on: true});
+    dest.open = true;
     add.reset();
     paint();
     toast(`${name} added - Save categories to keep it`);
@@ -211,7 +324,7 @@ function categoriesTool() {
     const tags = [];
     for (const g of groups) {
       for (const t of g.tags) {
-        tags.push({name: t.name, description: t.description, group: g.name});
+        tags.push({name: t.name, description: t.description, group: g.name, default: t.on});
       }
     }
     save.disabled = true;
@@ -236,11 +349,13 @@ function categoriesTool() {
 export function adminPage() {
   setTitle('Admin Tools');
   const page = el('div');
-  const head = el('div', 'page-head');
+  const head = el('div', 'page-head admin-head');
+  const mark = el('span', 'admin-mark');
+  mark.append(svg('calendar'));
   const main = el('div', 'page-head-main');
   main.append(el('h1', 'page-title', 'Admin Tools'));
   main.append(el('p', 'page-intro', 'What the calendar admins can change from here. Everything else is edited in the sheet.'));
-  head.append(main);
+  head.append(mark, main);
   page.append(head, categoriesTool());
   return page;
 }

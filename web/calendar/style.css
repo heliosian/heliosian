@@ -800,37 +800,91 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .row-text { color: var(--muted); }
 
-/* Admin Tools: one tool per section. The categories are cards, one per
-   group, its name at the top with arrows to move the group, and a row per
-   category - its name, its description in a box, where it goes, and
+/* Admin Tools. The page head carries a mark beside the title; each tool
+   has a heading row with its action at the right. The categories are
+   cards, one per group: a head with the name (a box only while renaming),
+   how many it holds, Rename, arrows to move the group and a chevron to
+   fold it; and a row per category - a handle to drag it, its name, its
+   description (a box on focus), whether it starts on, where it goes, and
    arrows to move it. */
+.admin-head { justify-content: flex-start; align-items: center; gap: 16px; }
+
+.admin-mark { display: flex; align-items: center; justify-content: center; width: 52px; height: 52px; flex-shrink: 0; border-radius: 14px; background: #fff; border: 1px solid var(--line); color: var(--brand); }
+
+.admin-mark svg { width: 30px; height: 30px; }
+
 .admin-tool { margin-top: 8px; }
 
-.admin-groups { display: flex; flex-direction: column; gap: 14px; margin-top: 12px; }
+.admin-tool-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0 0 6px; }
+
+.admin-tool-title { font-family: Montserrat, Roboto, sans-serif; font-size: 22px; font-weight: 700; color: var(--brand); margin: 0; }
+
+.admin-groups { display: flex; flex-direction: column; gap: 12px; margin-top: 14px; }
 
 .admin-group { background: var(--card); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
 
-.admin-group-head { display: flex; align-items: center; gap: 6px; padding: 10px 12px 10px 16px; background: #f4f8f8; border-bottom: 1px solid var(--line); }
+.admin-group-head { display: flex; align-items: center; gap: 10px; padding: 10px 12px 10px 16px; background: #f4f8f8; }
 
-.admin-group-name { flex: 1; min-width: 0; padding: 7px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; font-size: 15px; font-weight: 700; color: var(--brand); background: #fff; }
+.admin-group.is-open .admin-group-head { border-bottom: 1px solid var(--line); }
 
-.admin-group-name::placeholder { color: var(--muted); font-weight: 600; }
+.admin-group-head.is-over { background: #dcebe9; }
+
+.admin-group-head > svg { width: 22px; height: 22px; flex-shrink: 0; color: var(--brand); }
+
+/* The name reads as a heading until Rename makes it a box. */
+.admin-group-name { field-sizing: content; width: auto; min-width: 100px; max-width: 320px; padding: 6px 8px; margin-left: -8px; border: 1px solid transparent; border-radius: 8px; font-family: Montserrat, Roboto, sans-serif; font-size: 18px; font-weight: 700; color: var(--brand); background: none; }
+
+.admin-group-name:not([readonly]) { background: #fff; border-color: var(--brand); }
+
+.admin-group-name::placeholder { color: var(--muted); }
+
+.admin-count { padding: 3px 10px; border: 1px solid var(--line); border-radius: 999px; background: #fff; font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+
+.admin-rename { margin-left: auto; }
+
+.admin-fold svg { transform: rotate(90deg); transition: transform 0.15s; }
+
+.admin-group.is-open .admin-fold svg { transform: rotate(-90deg); }
 
 .admin-list { display: flex; flex-direction: column; }
 
-.admin-row { display: flex; align-items: center; gap: 8px; padding: 8px 12px 8px 16px; border-top: 1px solid var(--line); }
+.admin-empty { padding: 14px 16px; font-size: 13px; color: var(--muted); }
+
+.admin-row { position: relative; display: flex; align-items: center; gap: 10px; padding: 8px 12px 8px 10px; border-top: 1px solid var(--line); }
 
 .admin-row:first-child { border-top: 0; }
 
-.admin-row-words { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.admin-row.is-dragging { opacity: 0.4; }
 
-.admin-row-name { font-size: 14.5px; font-weight: 700; }
+/* A line where the dragged row would land. */
+.admin-row.is-over::before, .admin-row.is-over-below::after { content: ""; position: absolute; left: 12px; right: 12px; height: 3px; border-radius: 2px; background: var(--accent); }
 
-.admin-row-description { width: 100%; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; font-size: 13px; color: var(--ink); background: #fff; }
+.admin-row.is-over::before { top: -2px; }
 
-.admin-row-description:focus, .admin-group-name:focus, .admin-select:focus { outline: none; border-color: var(--brand); }
+.admin-row.is-over-below::after { bottom: -2px; }
+
+.admin-handle { display: flex; align-items: center; flex-shrink: 0; color: #b3c0c2; cursor: grab; }
+
+.admin-handle:active { cursor: grabbing; }
+
+.admin-handle svg { width: 16px; height: 16px; }
+
+.admin-row-name { width: 180px; flex-shrink: 0; font-size: 14.5px; font-weight: 700; }
+
+/* The description reads as text until it has focus. */
+.admin-row-description { flex: 1; min-width: 0; padding: 6px 8px; margin-left: -8px; border: 1px solid transparent; border-radius: 8px; font: inherit; font-size: 13px; color: var(--muted); background: none; text-overflow: ellipsis; }
+
+.admin-row-description:hover { border-color: var(--line); }
+
+.admin-row-description:focus { outline: none; border-color: var(--brand); background: #fff; color: var(--ink); }
+
+.admin-default { display: flex; align-items: center; gap: 6px; flex-shrink: 0; font-size: 12.5px; color: var(--muted); white-space: nowrap; cursor: pointer; }
+
+.admin-default input { accent-color: var(--brand); margin: 0; }
 
 .admin-select { flex-shrink: 0; width: 150px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; font-size: 13.5px; background: #fff; color: var(--ink); }
+
+.admin-select:focus { outline: none; border-color: var(--brand); }
 
 /* The arrows: up and down as the strip's back and forward, turned. */
 .admin-arrow { width: 30px; height: 30px; flex-shrink: 0; }

@@ -171,6 +171,13 @@ func (a app) removeFeed(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func yesNoWord(b bool) string {
+	if b {
+		return "Yes"
+	}
+	return "No"
+}
+
 // setTags is Admin Tools saving the categories: the sheet's tags in the
 // order they should have, each with its description and group, and any new
 // ones at their place. Every tag the sheet has must be there - nothing is
@@ -189,6 +196,7 @@ func (a app) setTags(w http.ResponseWriter, r *http.Request) {
 			Name        string `json:"name"`
 			Description string `json:"description"`
 			Group       string `json:"group"`
+			Default     bool   `json:"default"`
 		} `json:"tags"`
 	}
 	if !decode(w, r, &body) {
@@ -223,7 +231,7 @@ func (a app) setTags(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 			}
-			row = map[string]string{"Tag": name, "Description": description, "Group": group}
+			row = map[string]string{"Tag": name, "Description": description, "Group": group, "Default": yesNoWord(t.Default)}
 			added = append(added, []string{name})
 			logs = append(logs, []string{"added", name, "Tag", "", name})
 			rows = append(rows, row)
@@ -238,6 +246,10 @@ func (a app) setTags(w http.ResponseWriter, r *http.Request) {
 		if row["Group"] != group {
 			logs = append(logs, []string{"changed", name, "Group", row["Group"], group})
 			cells["Group"] = group
+		}
+		if tagDefault(row["Default"]) != t.Default {
+			logs = append(logs, []string{"changed", name, "Default", row["Default"], yesNoWord(t.Default)})
+			cells["Default"] = yesNoWord(t.Default)
 		}
 		if len(cells) > 0 {
 			changed[name] = cells

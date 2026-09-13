@@ -126,8 +126,14 @@ export function toggleClassroom(name) {
   setClassrooms(current.includes(name) ? current.filter(c => c !== name) : classroomNames().filter(c => c === name || current.includes(c)));
 }
 
+// defaultTags are the categories on for someone who has not chosen: the
+// ones the Tags tab (and Admin Tools) mark on by default.
+export function defaultTags() {
+  return state.model.tags.filter(t => t.default).map(t => t.name);
+}
+
 export function selectedTags() {
-  return state.filters.tags || tagNames();
+  return state.filters.tags || defaultTags();
 }
 
 export function setTags(list) {

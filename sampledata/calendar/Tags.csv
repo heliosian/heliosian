@@ -1,16 +1,16 @@
-Tag,Description,Group
-Schedule,"A day that changes the school day itself: first and last days, no school, early dismissal, intersession, picture day.",School day
-Conference,"Family and teacher conferences, ILP and student-led.",School day
-Assessment,Testing such as MAP and AMC.,School day
-Celebration of Learning,"Students showing their work: CoLs in every subject, Passion Projects weeks and presentations, Math Symposium, theater and music performances, book launches.",School day
-Orientation,"Back to School Night, Meet the Teacher, welcome socials for new families.",School day
-Community,"Events the community gathers for, HCA-run or school-wide: International Night, Spring Celebration, Halloween parade, spelling bee, talent show, coffee carts, band and classroom CAFEs, parent coffees, HCA meetings, family camping, book clubs, playdates, movie nights, Third-ish Thursdays.",Community
-Parent Ed,"Sessions where parents learn or are informed: Beacon Wellness, Common Ground, Coffee with Ben or the Board, transitions talks, information sessions.",Community
-Trip,"Camping trips, the Boston trip, backpacking.",Community
-Athletics,Games.,Community
-Clubs,After-school clubs and club session notices.,Community
-Camp,Vacation camp weeks.,Community
-Parents,Adults attend without students.,Who it's for
-Staff,Staff only.,Who it's for
-Aftercare,Concerns the aftercare program.,Who it's for
-Deadline,Due dates such as tuition installments.,Other
+Tag,Description,Group,Default
+Schedule,"A day that changes the school day itself: first and last days, no school, early dismissal, intersession, picture day.",School day,Yes
+Conference,"Family and teacher conferences, ILP and student-led.",School day,Yes
+Assessment,Testing such as MAP and AMC.,School day,Yes
+Celebration of Learning,"Students showing their work: CoLs in every subject, Passion Projects weeks and presentations, Math Symposium, theater and music performances, book launches.",School day,Yes
+Orientation,"Back to School Night, Meet the Teacher, welcome socials for new families.",School day,Yes
+Community,"Events the community gathers for, HCA-run or school-wide: International Night, Spring Celebration, Halloween parade, spelling bee, talent show, coffee carts, band and classroom CAFEs, parent coffees, HCA meetings, family camping, book clubs, playdates, movie nights, Third-ish Thursdays.",Community,Yes
+Parent Ed,"Sessions where parents learn or are informed: Beacon Wellness, Common Ground, Coffee with Ben or the Board, transitions talks, information sessions.",Community,Yes
+Trip,"Camping trips, the Boston trip, backpacking.",Community,Yes
+Athletics,Games.,Community,Yes
+Clubs,After-school clubs and club session notices.,Community,Yes
+Camp,Vacation camp weeks.,Community,Yes
+Parents,Adults attend without students.,Who it's for,Yes
+Staff,Staff only.,Who it's for,No
+Aftercare,Concerns the aftercare program.,Who it's for,Yes
+Deadline,Due dates such as tuition installments.,Other,Yes

@@ -34,11 +34,11 @@ type Linked struct {
 // but no category. Every view carries them beside the sheet's own so the
 // rail can switch each off.
 var builtinTags = []Tag{
-	{Name: TagCelebrate, Description: "Fun(d)raiser parties on Helios Celebrate.", Group: BuiltinGroup, BuiltIn: true},
-	{Name: TagHCA, Description: "Events the HCA runs, from HCA-Team.", Group: BuiltinGroup, BuiltIn: true},
-	{Name: TagMisc, Description: "Events the sheet has not filed under a category.", Group: BuiltinGroup, BuiltIn: true},
-	{Name: TagGoing, Description: "Parties your household holds tickets to, and HCA events someone in it signed up for.", Group: BuiltinGroup, BuiltIn: true},
-	{Name: TagWaitlisted, Description: "Parties your household is on the waitlist for.", Group: BuiltinGroup, BuiltIn: true},
+	{Name: TagCelebrate, Description: "Fun(d)raiser parties on Helios Celebrate.", Group: BuiltinGroup, Default: true, BuiltIn: true},
+	{Name: TagHCA, Description: "Events the HCA runs, from HCA-Team.", Group: BuiltinGroup, Default: true, BuiltIn: true},
+	{Name: TagMisc, Description: "Events the sheet has not filed under a category.", Group: BuiltinGroup, Default: true, BuiltIn: true},
+	{Name: TagGoing, Description: "Parties your household holds tickets to, and HCA events someone in it signed up for.", Group: BuiltinGroup, Default: true, BuiltIn: true},
+	{Name: TagWaitlisted, Description: "Parties your household is on the waitlist for.", Group: BuiltinGroup, Default: true, BuiltIn: true},
 }
 
 // BuiltinGroup is the line of the filters the built-in tags sit on - a

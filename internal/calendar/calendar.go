@@ -62,7 +62,7 @@ var (
 	OverrideColumns    = []string{"Event ID", "Title", "Start", "End", "Location", "Description", "Tags", "Day Type", "Keywords", "Hidden", "Note"}
 	DayTypeColumns     = []string{"Day Type", "Dropoff Start", "Dropoff End", "School Start", "School End", "Pickup Start", "Pickup End", "Aftercare Start", "Aftercare End"}
 	DayOverrideColumns = []string{"Date", "Classrooms", "Day Type", "Note"}
-	TagColumns         = []string{"Tag", "Description", "Group"}
+	TagColumns         = []string{"Tag", "Description", "Group", "Default"}
 	AdminColumns       = []string{"Email"}
 	FeedColumns        = []string{"Token", "Email", "Name", "Classrooms", "Tags", "Created"}
 	ChangeLogColumns   = []string{"Timestamp", "Actor", "Action", "Tab", "Key", "Column", "From", "To"}
@@ -168,13 +168,22 @@ type Year struct {
 // Tag is one word of the vocabulary events are filed under, with the
 // description the classifier is given for it.
 // A Tag is one category events are filed under. Group is the line of the
-// filters it sits on, blank for the plain line at the end; BuiltIn marks
-// the tags the app supplies rather than the sheet, whose group is fixed.
+// filters it sits on, blank for the plain line at the end; Default is
+// whether it starts on for someone who has not chosen - on unless the
+// tab's Default column says No; BuiltIn marks the tags the app supplies
+// rather than the sheet, whose group is fixed.
 type Tag struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Group       string `json:"group"`
+	Default     bool   `json:"default"`
 	BuiltIn     bool   `json:"builtIn,omitempty"`
+}
+
+// tagDefault reads the Default column: anything but No is on, so a column
+// left blank starts everything on.
+func tagDefault(cell string) bool {
+	return !strings.EqualFold(strings.TrimSpace(cell), "No")
 }
 
 // A feed with no Classrooms carries every classroom, and one with no Tags
@@ -484,7 +493,7 @@ func parseTags(rows []map[string]string) ([]Tag, error) {
 		if row["Description"] == "" {
 			return nil, fmt.Errorf("tag %q has no description", name)
 		}
-		out = append(out, Tag{Name: name, Description: row["Description"], Group: strings.TrimSpace(row["Group"])})
+		out = append(out, Tag{Name: name, Description: row["Description"], Group: strings.TrimSpace(row["Group"]), Default: tagDefault(row["Default"])})
 	}
 	if len(out) == 0 {
 		return nil, fmt.Errorf("%s has no rows", TagsTab)

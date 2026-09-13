@@ -1,4 +1,4 @@
-import {state, me, today, bands, tagGroups, selectedClassrooms, toggleClassroom, setClassrooms, classroomNames, myClassrooms, tagNames, selectedTags, toggleTag, setTags, resetFilters, filtersAreDefault, colorOf, hiddenMatches, hiddenClassroomMatches} from './state.js';
+import {state, me, today, bands, tagGroups, defaultTags, selectedClassrooms, toggleClassroom, setClassrooms, classroomNames, myClassrooms, tagNames, selectedTags, toggleTag, setTags, resetFilters, filtersAreDefault, colorOf, hiddenMatches, hiddenClassroomMatches} from './state.js';
 import {el, svg, link, button} from './dom.js';
 import {dayColumn} from './day.js';
 import {renderAvatars, renderAlerts, onSlash, initAppSwitch} from '/toolbar.js';
@@ -177,9 +177,12 @@ export function fillFilters(wrap, opts = {}) {
     }));
   }
   rows.append(filterRow('Classrooms', roomActions, classroomChips()));
-  // pick keeps the tags in the sheet's order, and every tag on is the
-  // default rather than a list of them all.
-  const pick = list => setTags(list.length === tagNames().length ? null : tagNames().filter(t => list.includes(t)));
+  // pick keeps the tags in the sheet's order, and the default set is the
+  // default rather than a list of it.
+  const pick = list => {
+    const ordered = tagNames().filter(t => list.includes(t));
+    setTags(ordered.join() === defaultTags().join() ? null : ordered);
+  };
   let last = null;
   for (const group of tagGroups()) {
     const names = group.tags.map(t => t.name);
