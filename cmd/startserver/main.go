@@ -19,6 +19,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -27,6 +28,7 @@ import (
 	"heliosian/internal/capture"
 	"heliosian/internal/data"
 	"heliosian/internal/devtls"
+	"heliosian/internal/feedback"
 	"heliosian/internal/geocode"
 	"heliosian/internal/logging"
 	"heliosian/internal/mail"
@@ -82,6 +84,7 @@ func sampleServer() (*http.Server, *who.Queue) {
 		// Sample mail lands as .html files to open in a browser, never sent.
 		Mail:          mail.New("", "", "", "", "", "HCA-Team <hca@example.org>", mailDir()),
 		CelebrateMail: mail.New("", "", "", "", "", "Helios Celebrate <celebrate@example.org>", mailDir()),
+		Feedback:      printedFeedback{},
 	})
 	core.Mux.Handle("POST /auth/logout", http.RedirectHandler("/", http.StatusSeeOther))
 	core.HomeMux.Handle("POST /auth/logout", http.RedirectHandler("/", http.StatusSeeOther))
@@ -98,6 +101,14 @@ func sampleServer() (*http.Server, *who.Queue) {
 		"celebrate": app.Public("celebrate", auth.Fixed(sampleUser, app.Logged("celebrate", app.Files("celebrate", core.Celebrate)))),
 		"calendar":  app.Public("calendar", auth.Fixed(sampleUser, app.Logged("calendar", app.Files("calendar", core.Calendar)))),
 	}), core.Queue)
+}
+
+type printedFeedback struct{}
+
+func (printedFeedback) File(ctx context.Context, r feedback.Report) error {
+	title, body, labels := feedback.Render(r)
+	fmt.Printf("\n--- feedback issue ---\n%s\nlabels: %s\n\n%s--- end ---\n\n", title, strings.Join(labels, ", "), body)
+	return nil
 }
 
 func localTLS(server *http.Server, queue *who.Queue) (*http.Server, *who.Queue) {

@@ -27,6 +27,7 @@ import (
 	"heliosian/internal/config"
 	"heliosian/internal/data"
 	"heliosian/internal/events"
+	"heliosian/internal/feedback"
 	"heliosian/internal/geocode"
 	"heliosian/internal/home"
 	"heliosian/internal/imagesearch"
@@ -614,6 +615,7 @@ type Config struct {
 	// same for Helios Celebrate, from its own address.
 	Mail          mail.Sender
 	CelebrateMail mail.Sender
+	Feedback      feedback.Filer
 }
 
 // Core is the assembled shared skeleton: each app's mux (still open for the
@@ -674,6 +676,19 @@ func NewCore(cfg Config) *Core {
 	}
 	events.ShareTagline(taglineOf("team"))
 	celebrate.ShareTagline(taglineOf("celebrate"))
+	appName := func(key string) func() string {
+		return func() string {
+			if key == "home" {
+				return "Heliosian"
+			}
+			for _, a := range homeCache.AppList() {
+				if a.Key == key {
+					return a.Name
+				}
+			}
+			return key
+		}
+	}
 	// The portal's sheet is edited by hand more than the others, so a load
 	// failure keeps only the portal down: it answers with the reason and comes
 	// back on its own once the sheet loads.
@@ -724,6 +739,10 @@ func NewCore(cfg Config) *Core {
 	// which rows to leave off; Heliosian's cache answers for all of them.
 	for _, m := range []*http.ServeMux{mux, eventsMux, birthdayMux, celebrateMux, calendarMux} {
 		home.RegisterSwitch(m, homeCache)
+	}
+	feedbackQueue := feedback.NewQueue(cfg.Feedback)
+	for key, m := range map[string]*http.ServeMux{"who": mux, "home": homeMux, "team": eventsMux, "birthday": birthdayMux, "celebrate": celebrateMux, "calendar": calendarMux} {
+		feedback.Register(m, key, appName(key), superAdmin, feedbackQueue)
 	}
 	return &Core{
 		Mux: mux, HomeMux: homeMux, EventsMux: eventsMux, EventsCache: eventsCache, BirthdayMux: birthdayMux, CelebrateMux: celebrateMux, CelebrateCache: celebrateCache,
@@ -897,6 +916,7 @@ func Production() (*http.Server, *who.Queue) {
 		// SMTP_HOST is; otherwise, in real-data mode, it is dropped and logged.
 		Mail:          newMailer(mailFrom()),
 		CelebrateMail: newMailer(celebrateMailFrom()),
+		Feedback:      &feedback.GitHub{Token: mapsKey("GITHUB_TOKEN", "creds/github.token")},
 	})
 	blob.Register(core.Mux, store)
 	blob.RegisterHome(core.HomeMux, store)

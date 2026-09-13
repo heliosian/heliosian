@@ -27,6 +27,7 @@ To run against real community data instead, see [docs/dev.md](docs/dev.md).
 - `internal/celebrate` — Helios Celebrate: the Celebrate sheet's model, parties, tickets and the waitlist, handlers, and admin edits
 - `internal/calendar` — Helios Calendar: the Calendar sheet's model, audience resolution, the day plan, handlers, and personal feeds
 - `internal/ics` — iCalendar feed parsing and recurrence expansion
+- `internal/feedback` — the toolbar's reports, queued and filed as issues in the private triage repository
 - `internal/blob` — media from Cloud Storage, held in memory with stored thumbnails
 - `internal/sharecard` — the 1200x630 picture a chat app shows for a shared link, drawn for HCA-Team and Helios Celebrate in each one's dress
 - `internal/imagesearch` — the editors' picture search (stock libraries and Wikimedia Commons) and import, shared by HCA-Team and Heliosian
@@ -48,6 +49,7 @@ Platform:
 - [deploy.md](docs/deploy.md) — production deployment
 - [config.md](docs/config.md) — the Config sheet: super admins and the platform settings
 - [toolbar.md](docs/toolbar.md) — the top bar every app shares: search with `/`, the account avatar, the switch between apps
+- [feedback.md](docs/feedback.md) — "Report a problem or idea": the form in every app and the private triage repository it files to
 - [plan.md](docs/plan.md) — what remains to build
 
 Helios Who?, in `docs/who/`:

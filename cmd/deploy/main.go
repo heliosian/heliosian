@@ -41,7 +41,8 @@ const (
 		"UNSPLASH_KEY=heliosian-unsplash-key:latest," +
 		"PEXELS_KEY=heliosian-pexels-key:latest," +
 		"PIXABAY_KEY=heliosian-pixabay-key:latest," +
-		"RESEND_KEY=heliosian-resend-key:latest"
+		"RESEND_KEY=heliosian-resend-key:latest," +
+		"GITHUB_TOKEN=heliosian-github-token:latest"
 )
 
 func requiredEnv(name string) string {
