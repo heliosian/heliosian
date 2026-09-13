@@ -30,7 +30,7 @@ function fillNav(nav) {
 // A filter change repaints the page and carries the search words across,
 // so turning on a lit tag shows the matches it was hiding.
 function refresh() {
-  carriedQuery = searchInput().value;
+  carriedQuery = typed();
   document.dispatchEvent(new CustomEvent('calendar:refresh'));
 }
 
@@ -224,24 +224,40 @@ function renderUser() {
   }
 }
 
-// One search box, in the top bar. The calendar page binds it to its
-// upcoming panel; any other page jumps home with the words carried along.
+// Two search boxes with one value: the rail's on a wide window, the top
+// bar's on a phone. The calendar page binds them to its three panels; any
+// other page jumps home with the words carried along.
 let onSearch = null;
 let carriedQuery = '';
 
 const defaultPlaceholder = 'Search the year…';
 
-function searchInput() {
-  return document.querySelector('#search-input');
+function searchInputs() {
+  return [document.querySelector('#search-input'), document.querySelector('#rail-search-input')];
+}
+
+function typed() {
+  return searchInputs()[0].value;
+}
+
+// sync writes the words into both boxes and marks the page as searching.
+function sync(value) {
+  for (const input of searchInputs()) {
+    if (input.value !== value) {
+      input.value = value;
+    }
+  }
+  document.body.classList.toggle('is-searching', Boolean(value.trim()));
 }
 
 export function setSearch(placeholder, handler) {
   onSearch = handler;
   const query = carriedQuery;
   carriedQuery = '';
-  const input = searchInput();
-  input.value = query;
-  input.placeholder = placeholder || defaultPlaceholder;
+  sync(query);
+  for (const input of searchInputs()) {
+    input.placeholder = placeholder || defaultPlaceholder;
+  }
   if (query) {
     handler(query.trim());
   }
@@ -250,12 +266,18 @@ export function setSearch(placeholder, handler) {
 export function clearSearch() {
   onSearch = null;
   state.query = '';
-  const input = searchInput();
-  input.value = '';
-  input.placeholder = defaultPlaceholder;
+  sync('');
+  for (const input of searchInputs()) {
+    input.placeholder = defaultPlaceholder;
+  }
+}
+
+export function resetSearch() {
+  search('');
 }
 
 function search(value) {
+  sync(value);
   if (onSearch) {
     onSearch(value.trim());
     return;
@@ -266,6 +288,13 @@ function search(value) {
   carriedQuery = value;
   history.pushState(null, '', '/');
   refresh();
+}
+
+function focusSearch() {
+  const visible = searchInputs().find(input => input.offsetParent !== null);
+  if (visible) {
+    visible.focus();
+  }
 }
 
 export function setTitle(title) {
@@ -290,8 +319,10 @@ export function initChrome() {
   initAppSwitch();
   document.querySelector('#menu-button').append(svg('menu'));
   document.querySelector('#menu-button').addEventListener('click', openDrawer);
-  searchInput().addEventListener('input', () => search(searchInput().value));
-  onSlash(() => searchInput().focus());
+  for (const input of searchInputs()) {
+    input.addEventListener('input', () => search(input.value));
+  }
+  onSlash(focusSearch);
   document.querySelector('#drawer-overlay').addEventListener('click', e => {
     if (e.target === e.currentTarget) {
       closeDrawer();

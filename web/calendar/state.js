@@ -169,15 +169,22 @@ export function visibleEvents() {
   return state.model.events.filter(eventVisible);
 }
 
+function words(query) {
+  return (query || '').toLowerCase().split(/\s+/).filter(Boolean);
+}
+
 // matches is the search: every word typed is found somewhere in the title,
 // the description, the place, the tags, or the hidden keywords.
 export function matches(e, query) {
-  const words = (query || '').toLowerCase().split(/\s+/).filter(Boolean);
-  if (!words.length) {
-    return true;
-  }
   const hay = `${e.title} ${e.description || ''} ${e.location || ''} ${e.tags.join(' ')} ${(e.keywords || []).join(' ')} ${e.dayType || ''}`.toLowerCase();
-  return words.every(w => hay.includes(w));
+  return words(query).every(w => hay.includes(w));
+}
+
+// dayTypeMatches is the search over the schedule: a day type stays on the
+// page while every word typed is in its name.
+export function dayTypeMatches(name, query) {
+  const hay = name.toLowerCase();
+  return words(query).every(w => hay.includes(w));
 }
 
 export function eventsOn(date) {
@@ -347,7 +354,7 @@ export function isSchoolDay(date) {
 }
 
 export function specials(date) {
-  return plan(date).filter(g => g.name !== 'Regular');
+  return plan(date).filter(g => g.name !== 'Regular' && dayTypeMatches(g.name, state.query));
 }
 
 const scheduleTag = 'Schedule';

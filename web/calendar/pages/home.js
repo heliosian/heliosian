@@ -1,6 +1,6 @@
 import {state, eventsOn, today, addDays, parseDate, formatDate, longDayLabel, monthLabel, monthOf, shiftMonth, weekStart, weekdayShort, specials, scheduleOn, isSchoolDay, dayTypeClass, eventColors, selectedClassrooms, classroomNames} from '../state.js';
 import {el, link, svg, button} from '../dom.js';
-import {setTitle, setSearch, renderFilters} from '../chrome.js';
+import {setTitle, setSearch, resetSearch, renderFilters} from '../chrome.js';
 import {eventRow, dayHeading, planCards, emptyNote} from '../events.js';
 
 let lastDate = '';
@@ -69,41 +69,49 @@ function eventList(date) {
 }
 
 // dayColumn is the chosen day: the strip, the heading, the plan, the events.
-// paint redraws the strip and the events when the search words change.
+// paint redraws all three when the search words change: the plan stays only
+// for a day type the words name.
 function dayColumn(date) {
   const col = el('section', 'home-day');
   const strip = el('div');
   const head = el('div', 'home-day-head');
   head.append(el('h1', 'page-title', date === today() ? 'Today' : longDayLabel(date)));
   head.append(el('p', 'page-intro', (date === today() ? longDayLabel(date) + ' · ' : '') + roomsLine()));
+  const plan = el('div');
   const events = el('div');
-  col.append(strip, head, planCards(date), el('h2', 'section-title', 'Events'), events);
+  col.append(strip, head, plan, el('h2', 'section-title', 'Events'), events);
   const paint = () => {
     strip.replaceChildren(weekStrip(date));
+    plan.replaceChildren();
+    if (!state.query) {
+      plan.append(planCards(date));
+    } else if (specials(date).length) {
+      plan.append(planCards(date, specials(date)));
+    }
     events.replaceChildren(eventList(date));
   };
   paint();
   return {node: col, paint};
 }
 
-// upcomingPanel scrolls on its own beside the day: every day ahead that has
-// something on it, an event or - while the Schedule tag is on - a day that
-// is not regular, through the end of the year; with words in the search box
-// it is the whole year's matches.
+// upcomingPanel scrolls on its own beside the day: every day after the one
+// shown that has something on it, an event or - while the Schedule tag is
+// on - a day that is not regular, through the end of the year; with words in
+// the search box it is the whole year's matches from today.
 function upcomingPanel(date) {
   const panel = el('aside', 'home-upcoming');
   const head = el('div', 'upcoming-head');
   const body = el('div', 'upcoming-body');
   const paint = () => {
-    head.textContent = state.query ? 'Matching events' : 'Upcoming';
+    head.textContent = state.query ? 'Matches' : 'Upcoming';
     body.replaceChildren();
-    const from = state.query ? today() : (date > today() ? date : today());
+    const from = state.query || date < today() ? today() : addDays(date, 1);
     const days = scheduleOn();
     let any = false;
     const until = addDays(from, 400);
     for (let d = from; d < until; d = addDays(d, 1)) {
       const events = eventsOn(d);
-      if (!events.length && (state.query || !days || !specials(d).length)) {
+      if (!events.length && (!days || !specials(d).length)) {
         continue;
       }
       any = true;
@@ -192,6 +200,25 @@ function monthGrid() {
   return {node: wrap, paint};
 }
 
+// searchBand runs across the top of the page while there are search words,
+// so it is plain why the page is showing less than usual, with a way out.
+function searchBand() {
+  const band = el('div', 'search-band');
+  const paint = () => {
+    band.replaceChildren();
+    band.hidden = !state.query;
+    if (!state.query) {
+      return;
+    }
+    band.append(svg('search'));
+    const line = el('span', 'search-band-words');
+    line.append('Showing matches for ', el('strong', '', `“${state.query}”`), ' across the whole year');
+    band.append(line, button('Clear search', null, 'button button-secondary button-small', resetSearch));
+  };
+  paint();
+  return {node: band, paint};
+}
+
 export function homePage(date) {
   setTitle(date === today() ? 'Today' : longDayLabel(date));
   if (date !== lastDate || !state.month) {
@@ -199,16 +226,18 @@ export function homePage(date) {
     lastDate = date;
   }
   const page = el('div', 'home');
+  const band = searchBand();
   const day = dayColumn(date);
   const upcoming = upcomingPanel(date);
   const month = monthGrid();
   const top = el('div', 'home-top');
   top.append(day.node, upcoming.node);
-  page.append(top, month.node);
+  page.append(band.node, top, month.node);
   // The search words filter all three at once, and light up the tags in the
   // rail that hide more matches.
   setSearch('Search the year…', q => {
     state.query = q;
+    band.paint();
     day.paint();
     upcoming.paint();
     month.paint();

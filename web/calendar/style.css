@@ -95,9 +95,50 @@ button { font: inherit; }
 
 .app-nav a.is-active { background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
 
-/* The filters under the nav: two groups of the same shape - a title, its
-   words at the right edge, its chips under. */
-.rail-filters { display: flex; flex-direction: column; gap: 16px; padding: 10px 14px 24px; }
+/* The filters under the nav: three groups of the same shape - a title, its
+   words at the right edge, and under it the search box or the chips. */
+.rail-filters, .filter-groups { display: flex; flex-direction: column; gap: 16px; }
+
+.rail-filters { padding: 10px 14px 24px; }
+
+/* The rail's search box: the top bar's pill in the rail's colors, amber
+   while it holds words, as the chips it lights are. */
+.rail-search-box { position: relative; display: flex; align-items: center; }
+
+.rail-search-box > svg { position: absolute; left: 11px; width: 16px; height: 16px; stroke: var(--muted); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+
+.rail-search-box input {
+  width: 100%;
+  height: 34px;
+  border: 1.5px solid rgba(20, 79, 90, 0.25);
+  border-radius: 10px;
+  padding: 0 36px 0 34px;
+  background: rgba(255, 255, 255, 0.6);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13.5px;
+  outline: none;
+  -webkit-appearance: none;
+}
+
+.rail-search-box input::-webkit-search-decoration { -webkit-appearance: none; }
+
+.rail-search-box input:focus { border-color: var(--brand); background: #fff; }
+
+.rail-search-box:focus-within .topbar-key { display: none; }
+
+body.is-searching .rail-search-box input { border-color: var(--amber); background: #fff; box-shadow: 0 0 0 2px rgba(232, 163, 61, 0.35); }
+
+body.is-searching .rail-search .filter-title { color: var(--early); }
+
+/* The band across the page while searching. */
+.search-band { display: flex; align-items: center; gap: 12px; margin: 0 0 18px; padding: 10px 14px; border: 1.5px solid var(--amber); border-radius: 12px; background: var(--early-wash); color: var(--early); font-size: 14px; }
+
+.search-band > svg { width: 18px; height: 18px; flex-shrink: 0; }
+
+.search-band-words { flex: 1; min-width: 0; }
+
+.search-band strong { color: var(--ink); }
 
 .filter-group { display: flex; flex-direction: column; gap: 8px; }
 
@@ -620,6 +661,12 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 .row-text { color: var(--muted); }
 
 .toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 10px 18px; border-radius: 999px; font-size: 14px; z-index: 70; }
+
+/* On a wide window the search lives in the rail with the other filters; the
+   top bar's box is for phones, where the rail is a drawer. */
+@media (min-width: 901px) {
+  .topbar-search { display: none; }
+}
 
 @media (max-width: 1100px) {
   .home-top { grid-template-columns: minmax(0, 1fr); gap: 24px; }

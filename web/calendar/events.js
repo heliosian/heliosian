@@ -112,9 +112,8 @@ export function blocks(type) {
 
 // planCards are the day plan for the selected classrooms: one card per day
 // type in force, naming the classrooms it covers when they are not all.
-export function planCards(date) {
+export function planCards(date, groups = plan(date)) {
   const wrap = el('div', 'plan-cards');
-  const groups = plan(date);
   const all = selectedClassrooms();
   if (!groups.length) {
     const card = el('div', 'plan-card plan-card-none');
