@@ -1,9 +1,7 @@
 import {applyModel, event, today, parseDate} from './state.js';
 import {el} from './dom.js';
 import {initChrome, renderChrome, setTitle, clearSearch} from './chrome.js';
-import {dayPage} from './pages/day.js';
-import {upcomingPage} from './pages/upcoming.js';
-import {calendarPage} from './pages/calendar.js';
+import {homePage} from './pages/home.js';
 import {eventPage} from './pages/event.js';
 import {feedsPage} from './pages/feeds.js';
 
@@ -33,19 +31,11 @@ function notFound(what) {
 function route() {
   const parts = location.pathname.split('/').filter(Boolean).map(decodeURIComponent);
   if (!parts.length) {
-    return dayPage(today());
+    return homePage(today());
   }
   switch (parts[0]) {
     case 'day':
-      return parseDate(parts[1]) ? dayPage(parts[1]) : notFound('That day');
-    case 'upcoming':
-      return upcomingPage();
-    case 'month':
-      return calendarPage('month', parts[1]);
-    case 'week':
-      return calendarPage('week', parts[1]);
-    case 'list':
-      return calendarPage('list');
+      return parseDate(parts[1]) ? homePage(parts[1]) : notFound('That day');
     case 'events': {
       const e = event(parts.slice(1).join('/'));
       return e ? eventPage(e) : notFound('That event');

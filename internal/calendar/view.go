@@ -22,6 +22,7 @@ type Directory interface {
 	Person(email string) (Person, bool)
 	Children(email string) []Person
 	Alerts(email string) (stale int, privacy bool)
+	ClassroomColors() map[string]string
 }
 
 type Alerts struct {
@@ -47,6 +48,7 @@ type View struct {
 	Today      string                       `json:"today"`
 	Now        string                       `json:"now"`
 	Classrooms []Classroom                  `json:"classrooms"`
+	Colors     map[string]string            `json:"colors"`
 	Tags       []Tag                        `json:"tags"`
 	DayTypes   []DayType                    `json:"dayTypes"`
 	Years      []Year                       `json:"years"`
@@ -119,7 +121,7 @@ func Render(model *Model, directory Directory, email string, admin bool, now tim
 	stale, privacy := directory.Alerts(email)
 	return View{
 		User: user, Today: now.Format(DateFormat), Now: now.Format(DateTimeFormat),
-		Classrooms: model.Roster.Classrooms, Tags: model.Tags, DayTypes: model.DayTypes, Years: model.Years,
+		Classrooms: model.Roster.Classrooms, Colors: directory.ClassroomColors(), Tags: model.Tags, DayTypes: model.DayTypes, Years: model.Years,
 		Days: model.Days, Events: model.Events, Feeds: feeds, Alerts: Alerts{Stale: stale, Privacy: privacy},
 	}
 }

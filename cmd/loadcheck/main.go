@@ -294,8 +294,8 @@ func main() {
 			byTag[t]++
 		}
 	}
-	fmt.Printf("calendar: %d events (google %d, pdf %d, sheet %d), %d hidden\n",
-		len(plan.Events), bySource[calendar.SourceGoogle], bySource[calendar.SourcePDF], bySource[calendar.SourceSheet], plan.Hidden)
+	fmt.Printf("calendar: %d events (google %d, pdf %d, sheet %d), %d hidden, %d duplicates folded\n",
+		len(plan.Events), bySource[calendar.SourceGoogle], bySource[calendar.SourcePDF], bySource[calendar.SourceSheet], plan.Hidden, plan.Duplicates)
 	for _, t := range plan.Tags {
 		fmt.Printf("  %s: %d\n", t.Name, byTag[t.Name])
 	}

@@ -1,7 +1,8 @@
 // The model as the server rendered it for the viewer, plus the page's own
-// choices: which classrooms and tags are showing, remembered per browser. A
-// null list means the viewer's own classrooms, or every tag.
-export const state = {model: null, filters: readFilters(), query: ''};
+// choices: which classrooms and tags are showing, remembered per browser, the
+// search words, and which month the grid is open to. A null filter list means
+// the viewer's own classrooms, or every tag.
+export const state = {model: null, filters: readFilters(), query: '', month: ''};
 
 function readFilters() {
   try {
@@ -64,7 +65,6 @@ export function tagNames() {
   return state.model.tags.map(t => t.name);
 }
 
-// bands groups the roster's classrooms under their band, in roster order.
 export function bands() {
   const out = [];
   for (const c of state.model.classrooms) {
@@ -124,8 +124,6 @@ export function resetFilters() {
   saveFilters();
 }
 
-// categoryTags is what an event is, as opposed to who it is for: its tags
-// that are not classrooms.
 export function categoryTags(e) {
   const names = classroomNames();
   return e.tags.filter(t => !names.includes(t));
@@ -135,12 +133,34 @@ function overlaps(a, b) {
   return a.some(x => b.includes(x));
 }
 
-export function eventVisible(e) {
-  if (e.classrooms.length && !overlaps(e.classrooms, selectedClassrooms())) {
-    return false;
-  }
+function classroomsAdmit(e) {
+  return !e.classrooms.length || overlaps(e.classrooms, selectedClassrooms());
+}
+
+function tagsAdmit(e) {
   const categories = categoryTags(e);
   return !categories.length || overlaps(categories, selectedTags());
+}
+
+export function eventVisible(e) {
+  return classroomsAdmit(e) && tagsAdmit(e);
+}
+
+// hiddenMatches counts the events the search words find under a tag that is
+// switched off - what the reader would see if they turned it on.
+export function hiddenMatches(tag) {
+  if (!state.query) {
+    return 0;
+  }
+  return state.model.events.filter(e => e.tags.includes(tag) && matches(e, state.query) && classroomsAdmit(e) && !tagsAdmit(e)).length;
+}
+
+// hiddenClassroomMatches is the same for a classroom that is switched off.
+export function hiddenClassroomMatches(classroom) {
+  if (!state.query) {
+    return 0;
+  }
+  return state.model.events.filter(e => e.classrooms.includes(classroom) && matches(e, state.query) && tagsAdmit(e) && !classroomsAdmit(e)).length;
 }
 
 export function visibleEvents() {
@@ -184,8 +204,22 @@ export function today() {
   return state.model.today;
 }
 
-// eventDates lists every day an event touches: an all-day span day by day,
-// a timed event its start's day.
+export function monthOf(date) {
+  return date.slice(0, 7);
+}
+
+export function shiftMonth(month, n) {
+  const d = parseDate(month + '-01');
+  d.setMonth(d.getMonth() + n);
+  return formatDate(d).slice(0, 7);
+}
+
+// weekStart is the Sunday on or before a date, the way a US wall calendar
+// starts its rows.
+export function weekStart(date) {
+  return addDays(date, -parseDate(date).getDay());
+}
+
 export function eventDates(e) {
   const out = [];
   const start = e.start.slice(0, 10);
@@ -225,13 +259,32 @@ export function monthLabel(month) {
   return monthFormat.format(parseDate(month + '-01'));
 }
 
+export function weekdayShort(date) {
+  return parseDate(date).toLocaleDateString('en-US', {weekday: 'short'});
+}
+
+// clock is one wall-clock time as every page writes it: "8:15 AM". A
+// one-digit hour is padded with a figure space, so times line up in a column
+// and a day's hours keep their place when the digits change.
 export function clock(hhmm) {
   const [h, m] = hhmm.split(':').map(Number);
-  return timeFormat.format(new Date(2000, 0, 1, h, m));
+  const out = timeFormat.format(new Date(2000, 0, 1, h, m));
+  return out.length < 8 ? ' ' + out : out;
+}
+
+// timeRange is two times as one span, the AM or PM written once when both
+// share it: "8:00–8:15 AM", "11:30 AM–12:15 PM".
+export function timeRange(from, to) {
+  const a = clock(from);
+  const b = clock(to).trimStart();
+  if (a.slice(-2) === b.slice(-2)) {
+    return `${a.slice(0, -3)}–${b}`;
+  }
+  return `${a}–${b}`;
 }
 
 // whenLine is an event's date line: "Mon Sep 7" for a day, "Sep 9 – Sep 11"
-// for a span, "Thu Sep 24 · 4:00 PM – 6:00 PM" with hours.
+// for a span, "Thu Sep 24 · 4:00–6:00 PM" with hours.
 export function whenLine(e) {
   const start = parseWhen(e.start);
   const end = parseWhen(e.end);
@@ -244,17 +297,14 @@ export function whenLine(e) {
   return `${dayFormat.format(start.date)} · ${timeLine(e)}`;
 }
 
-// timeLine is the hours alone: "All day", or "4:00 PM – 6:00 PM".
 export function timeLine(e) {
   if (e.allDay) {
-    return e.end !== e.start ? 'All day (multi-day)' : 'All day';
+    return 'All day';
   }
-  const start = parseWhen(e.start);
-  const end = parseWhen(e.end);
-  if (!end || e.end === e.start) {
-    return timeFormat.format(start.date);
+  if (e.end === e.start) {
+    return clock(e.start.slice(11));
   }
-  return `${timeFormat.format(start.date)} – ${timeFormat.format(end.date)}`;
+  return timeRange(e.start.slice(11), e.end.slice(11));
 }
 
 export function eventPath(e) {
@@ -294,8 +344,6 @@ export function isSchoolDay(date) {
   return Boolean(state.model.days[date]);
 }
 
-// specials are the day plan's departures from Regular for the selected
-// classrooms: the groups that are not the usual day.
 export function specials(date) {
   return plan(date).filter(g => g.name !== 'Regular');
 }
@@ -321,6 +369,30 @@ const knownTypes = {'Regular': 'dt-regular', 'No School': 'dt-no-school', 'Early
 
 export function dayTypeClass(name) {
   return knownTypes[name] || 'dt-other';
+}
+
+export function colorOf(classroom) {
+  return state.model.colors[classroom] || '';
+}
+
+// eventColors is who an event is for as colors: one per distinct classroom
+// color among its classrooms, each naming the classrooms it stands for, and
+// none for an event that is everyone's.
+export function eventColors(e) {
+  if (!e.classrooms.length || e.classrooms.length === classroomNames().length) {
+    return [];
+  }
+  const out = [];
+  for (const c of e.classrooms) {
+    const color = colorOf(c);
+    let entry = out.find(o => o.color === color);
+    if (!entry) {
+      entry = {color, classrooms: []};
+      out.push(entry);
+    }
+    entry.classrooms.push(c);
+  }
+  return out;
 }
 
 // audienceWords compresses an event's classrooms: every classroom is
@@ -354,7 +426,6 @@ export function sourceWords(e) {
   return 'Added by the community';
 }
 
-// calendarLink is a Google Calendar "add this" address for an event.
 export function calendarLink(e) {
   const from = parseWhen(e.start);
   const to = parseWhen(e.end);

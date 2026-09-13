@@ -42,8 +42,18 @@ func load(t *testing.T) *Model {
 
 func TestSampleModel(t *testing.T) {
 	m := load(t)
-	if m.Hidden != 1 || len(m.Events) != 22 {
-		t.Errorf("visible %d hidden %d", len(m.Events), m.Hidden)
+	if m.Hidden != 1 || m.Duplicates != 2 || len(m.Events) != 20 {
+		t.Errorf("visible %d hidden %d duplicates %d", len(m.Events), m.Hidden, m.Duplicates)
+	}
+	// The feed's Labor Day and the PDF's say the same thing; the feed's is
+	// kept. The PDF's two kindergarten half days are inside the feed's four.
+	if m.Event("a4@sample") == nil || m.Event("pdf/2026-2027/2026-09-07/labor-day") != nil || m.Event("pdf/2026-2027/2026-08-18/12-30p-dismissals-k-only") != nil {
+		t.Errorf("dedupe kept the wrong one")
+	}
+	for _, e := range m.Events {
+		if e.ID == "a12@sample" {
+			t.Errorf("hidden event listed")
+		}
 	}
 	if len(m.Tags) != 15 || m.Tags[0].Name != "Schedule" {
 		t.Errorf("tags = %+v", m.Tags)
@@ -143,6 +153,94 @@ func TestNoSchoolWins(t *testing.T) {
 	}
 }
 
+func TestDedupe(t *testing.T) {
+	tb := tables(t)
+	// A hand-added twin of a feed event wins over it; a differing span or
+	// tag is not a twin.
+	tb.Events = append(tb.Events,
+		map[string]string{"Event ID": "D1", "Start": "2026-09-24 16:00", "End": "2026-09-24 18:00", "Title": "Intl Night", "Tags": "Hummingbirds, Hawks, Falcons, Jays, Ravens, Condors, Ospreys, Egrets, Herons, Community"},
+		map[string]string{"Event ID": "D2", "Start": "2026-09-24 16:00", "End": "2026-09-24 19:00", "Title": "Intl Night, longer", "Tags": "Hummingbirds, Hawks, Falcons, Jays, Ravens, Condors, Ospreys, Egrets, Herons, Community"},
+		map[string]string{"Event ID": "D3", "Start": "2026-09-24 16:00", "End": "2026-09-24 18:00", "Title": "Intl Night, parents", "Tags": "Hummingbirds, Hawks, Falcons, Jays, Ravens, Condors, Ospreys, Egrets, Herons, Community, Parents"},
+	)
+	m, err := BuildModel(tb, roster)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Duplicates != 3 || m.Event("a7@sample") != nil || m.Event("D1") == nil || m.Event("D2") == nil || m.Event("D3") == nil {
+		t.Errorf("duplicates %d, a7 %v, D1 %v, D2 %v, D3 %v", m.Duplicates, m.Event("a7@sample"), m.Event("D1"), m.Event("D2"), m.Event("D3"))
+	}
+	// Four one-day feed entries cover the PDF's four-day conference span;
+	// two do not.
+	everyone := "Hummingbirds, Hawks, Falcons, Jays, Ravens, Condors, Ospreys, Egrets, Herons, Schedule"
+	tb = tables(t)
+	for _, date := range []string{"2026-09-29", "2026-09-30", "2026-10-01", "2026-10-02"} {
+		tb.Events = append(tb.Events, map[string]string{"Event ID": "C" + date, "Start": date, "Title": "Conferences", "Tags": everyone, "Day Type": "Early Dismissal"})
+	}
+	m, err = BuildModel(tb, roster)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Event("pdf/2026-2027/2026-09-29/returning-grade-ilp-conference-half-days") != nil || m.Event("C2026-10-02") == nil {
+		t.Errorf("a covered span stayed")
+	}
+	tb = tables(t)
+	for _, date := range []string{"2026-09-29", "2026-09-30"} {
+		tb.Events = append(tb.Events, map[string]string{"Event ID": "C" + date, "Start": date, "Title": "Conferences", "Tags": everyone, "Day Type": "Early Dismissal"})
+	}
+	m, err = BuildModel(tb, roster)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Event("pdf/2026-2027/2026-09-29/returning-grade-ilp-conference-half-days") == nil {
+		t.Errorf("a half-covered span folded")
+	}
+	// Two feed weeks of a title-only span cover the PDF's one written across
+	// the weekend between them; the feed's pair is the living source.
+	assessment := "Hummingbirds, Hawks, Falcons, Jays, Ravens, Condors, Ospreys, Egrets, Herons, Assessment"
+	tb = tables(t)
+	tb.Google = append(tb.Google,
+		map[string]string{"Key": "m1", "Start": "2026-08-24", "End": "2026-08-28", "Title": "MAP Assessment", "Updated": "2026-08-01 09:00", "Sequence": "0"},
+		map[string]string{"Key": "m2", "Start": "2026-08-31", "End": "2026-09-02", "Title": "MAP Assessment", "Updated": "2026-08-01 09:00", "Sequence": "0"},
+	)
+	tb.PDF = append(tb.PDF, map[string]string{"Key": "pdf/2026-2027/2026-08-24/map-assessment", "Year": "2026-2027", "Start": "2026-08-24", "End": "2026-09-02", "Title": "MAP Assessment", "Tags": "Hummingbirds, Hawks, Falcons, Jays, Ravens, Condors, Ospreys, Egrets, Herons"})
+	for _, id := range []string{"m1", "m2", "pdf/2026-2027/2026-08-24/map-assessment"} {
+		tb.Enrichment = append(tb.Enrichment, map[string]string{"Event ID": id, "Tags": assessment})
+	}
+	m, err = BuildModel(tb, roster)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Event("pdf/2026-2027/2026-08-24/map-assessment") != nil || m.Event("m1") == nil || m.Event("m2") == nil {
+		t.Errorf("a span across a weekend stayed: pdf %v", m.Event("pdf/2026-2027/2026-08-24/map-assessment"))
+	}
+	// A weekend-only event has no claims: it folds against an exact twin,
+	// same dates and tags, and stands beside one a day longer.
+	tb = tables(t)
+	tb.Events = append(tb.Events,
+		map[string]string{"Event ID": "W1", "Start": "2026-09-12", "End": "2026-09-13", "Title": "Family Camping", "Tags": "Jays, Ravens, Trip"},
+		map[string]string{"Event ID": "W2", "Start": "2026-09-12", "End": "2026-09-13", "Title": "Camping weekend", "Tags": "Jays, Ravens, Trip"},
+		map[string]string{"Event ID": "W3", "Start": "2026-09-12", "End": "2026-09-14", "Title": "Camping, longer", "Tags": "Jays, Ravens, Trip"},
+	)
+	m, err = BuildModel(tb, roster)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if (m.Event("W1") == nil) == (m.Event("W2") == nil) || m.Event("W3") == nil {
+		t.Errorf("weekend twins: W1 %v, W2 %v, W3 %v", m.Event("W1"), m.Event("W2"), m.Event("W3"))
+	}
+	// A PDF row carrying a year marker is kept over a feed twin without one.
+	tb = tables(t)
+	tb.Google = append(tb.Google, map[string]string{"Key": "g1", "Start": "2026-08-18", "End": "2026-08-18", "Title": "first  day of SCHOOL", "Updated": "2026-08-01 09:00", "Sequence": "0"})
+	tb.Enrichment = append(tb.Enrichment, map[string]string{"Event ID": "g1", "Tags": "Hummingbirds, Hawks, Falcons, Jays, Ravens, Condors, Ospreys, Egrets, Herons, Schedule"})
+	m, err = BuildModel(tb, roster)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Event("g1") != nil || m.Event("pdf/2026-2027/2026-08-18/first-day-of-school") == nil || len(m.Years) != 1 {
+		t.Errorf("marker twin lost: g1 %v, years %d", m.Event("g1"), len(m.Years))
+	}
+}
+
 func TestRefusals(t *testing.T) {
 	broken := map[string]func(*Tables){
 		"conflicting day types in one layer": func(tb *Tables) {
@@ -214,11 +312,11 @@ func TestFeeds(t *testing.T) {
 		t.Fatalf("feed = %+v", f)
 	}
 	cases := map[string]bool{
-		"pdf/2026-2027/2026-09-07/labor-day": true,
-		"a5@sample":                          true,
-		"a6@sample":                          false,
-		"a7@sample":                          false,
-		"a11@sample":                         false,
+		"a4@sample":  true,
+		"a5@sample":  true,
+		"a6@sample":  false,
+		"a7@sample":  false,
+		"a11@sample": false,
 	}
 	for id, want := range cases {
 		if got := f.Carries(m.Event(id)); got != want {
@@ -249,7 +347,7 @@ func TestICS(t *testing.T) {
 	out := string(ICS(m, f, "https://calendar.local.heliosian.com:8080", at))
 	for _, want := range []string{
 		"BEGIN:VCALENDAR\r\n", "X-WR-CALNAME:Whitfield school days\r\n", "END:VCALENDAR\r\n",
-		"UID:pdf/2026-2027/2026-09-07/labor-day@calendar.heliosian.com\r\n", "DTSTART;VALUE=DATE:20260907\r\n", "DTEND;VALUE=DATE:20260908\r\n",
+		"UID:a4@sample\r\n", "DTSTART;VALUE=DATE:20260907\r\n", "DTEND;VALUE=DATE:20260908\r\n",
 		"SUMMARY:Jays and Ravens Camping\r\n", "DTSTART;VALUE=DATE:20260909\r\n", "DTEND;VALUE=DATE:20260912\r\n",
 		"DTSTAMP:20260901T150000Z\r\n", "URL:https://calendar.local.heliosian.com:8080/events/a5@sample\r\n",
 		"CATEGORIES:Jays\\, Ravens\\, Trip\r\n", "DESCRIPTION:No School\r\n",
@@ -298,6 +396,10 @@ func (d fakeDirectory) Children(email string) []Person { return d.kids[email] }
 
 func (d fakeDirectory) Alerts(string) (int, bool) { return 2, true }
 
+func (d fakeDirectory) ClassroomColors() map[string]string {
+	return map[string]string{"Jays": "#fec502", "Ravens": "#fec502"}
+}
+
 func TestRender(t *testing.T) {
 	m := load(t)
 	sam := Person{Email: "sam@x.org", Name: "Sam", IsStudent: true, Grade: "Grade 3", Classroom: "Jays"}
@@ -317,11 +419,11 @@ func TestRender(t *testing.T) {
 	if strings.Join(v.User.Classrooms, ",") != "Jays,Ospreys" || len(v.User.Students) != 2 || v.User.Initial != "J" {
 		t.Errorf("parent = %+v", v.User)
 	}
-	if len(v.Feeds) != 1 || v.Today != "2026-09-08" || len(v.Events) != 22 || v.Alerts.Stale != 2 || !v.Alerts.Privacy {
+	if len(v.Feeds) != 1 || v.Today != "2026-09-08" || len(v.Events) != 20 || v.Alerts.Stale != 2 || !v.Alerts.Privacy {
 		t.Errorf("view = feeds %d today %s events %d alerts %+v", len(v.Feeds), v.Today, len(v.Events), v.Alerts)
 	}
-	if v.Days["2026-09-08"]["Jays"] != "Regular" || len(v.Classrooms) != 9 || len(v.Tags) != 15 {
-		t.Errorf("plan and vocabulary missing")
+	if v.Days["2026-09-08"]["Jays"] != "Regular" || len(v.Classrooms) != 9 || len(v.Tags) != 15 || v.Colors["Jays"] != "#fec502" {
+		t.Errorf("plan, vocabulary, or colors missing")
 	}
 	cases := map[string]string{"sam@x.org": "Jays", "teacher@x.org": "Hawks", "office@x.org": "", "nobody@x.org": ""}
 	for email, want := range cases {

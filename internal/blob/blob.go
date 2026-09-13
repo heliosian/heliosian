@@ -135,6 +135,12 @@ func RegisterCelebrate(mux *http.ServeMux, s *Store) {
 	mux.HandleFunc("GET /party-images/{name}", s.serve)
 }
 
+// RegisterCalendar serves what Helios Calendar shows: the directory's photo
+// of the viewer, in the toolbar.
+func RegisterCalendar(mux *http.ServeMux, s *Store) {
+	mux.HandleFunc("GET /photos/{name}", s.serve)
+}
+
 func (s *Store) sweepLoop() {
 	for range time.Tick(sweepInterval) {
 		s.sweep(time.Now())

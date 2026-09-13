@@ -18,9 +18,7 @@ import (
 
 const shell = "web/calendar/index.html"
 
-var pages = []string{
-	"/{$}", "/day/{date}", "/upcoming", "/month", "/month/{month}", "/week", "/week/{date}", "/list", "/events/{id...}", "/feeds",
-}
+var pages = []string{"/{$}", "/day/{date}", "/events/{id...}", "/feeds"}
 
 type app struct {
 	cache       *Cache

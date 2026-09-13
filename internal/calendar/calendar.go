@@ -120,6 +120,7 @@ type Event struct {
 	Marker      string   `json:"marker,omitempty"`
 	Updated     string   `json:"updated,omitempty"`
 	Hidden      bool     `json:"-"`
+	duplicate   bool
 	start, end  time.Time
 }
 
@@ -195,10 +196,13 @@ type Model struct {
 	Roster   Roster
 	Feeds    []Feed
 	Hidden   int
-	Skipped  map[string]int
-	byID     map[string]*Event
-	byToken  map[string]*Feed
-	tags     map[string]bool
+	// Duplicates counts the events folded into another that says the same
+	// thing: the same days, day type, and tags from a second source.
+	Duplicates int
+	Skipped    map[string]int
+	byID       map[string]*Event
+	byToken    map[string]*Feed
+	tags       map[string]bool
 }
 
 func (m *Model) Event(id string) *Event {
@@ -746,6 +750,90 @@ func (b *builder) feeds(rows []map[string]string) error {
 	return nil
 }
 
+var sourceRank = map[string]int{SourceSheet: 0, SourceGoogle: 1, SourcePDF: 2}
+
+func preferred(e, other *Event) bool {
+	if (e.Marker != "") != (other.Marker != "") {
+		return e.Marker != ""
+	}
+	if sourceRank[e.Source] != sourceRank[other.Source] {
+		return sourceRank[e.Source] < sourceRank[other.Source]
+	}
+	return len(e.Dates()) > len(other.Dates())
+}
+
+// claims is what an all-day event says, one claim per school day per
+// classroom: the day type it imposes, or its title when it imposes none.
+// Weekends are nobody's claim, so a span written across one is covered by
+// entries for its weekdays.
+func claims(e *Event) []string {
+	if !e.AllDay {
+		return nil
+	}
+	what := e.DayType
+	if what == "" {
+		what = "title:" + strings.ToLower(strings.Join(strings.Fields(e.Title), " "))
+	}
+	out := []string{}
+	for _, date := range e.Dates() {
+		if day, _ := parseDate(date); day.Weekday() == time.Saturday || day.Weekday() == time.Sunday {
+			continue
+		}
+		for _, c := range e.Classrooms {
+			out = append(out, date+"|"+c+"|"+what)
+		}
+	}
+	return out
+}
+
+// dedupe folds events that say the same thing from two sources. Events are
+// taken in order of preference - one carrying a year marker first, then a
+// hand-added row over the feed over the PDF, then the longer span - and each
+// is kept unless it adds nothing. An all-day event is a set of claims, one
+// per school day per classroom, and adds nothing when events already kept
+// state every one of them: four one-day feed entries cover a four-day PDF
+// entry, and two feed weeks cover a PDF span written across the weekend
+// between them. A timed event adds nothing when one already kept has its
+// start, end, and tags. The rest are hidden and counted, so the day plan,
+// the lists, and the feeds all see one.
+func (b *builder) dedupe() {
+	order := []*Event{}
+	for _, e := range b.model.Events {
+		if !e.Hidden {
+			order = append(order, e)
+		}
+	}
+	sort.SliceStable(order, func(i, j int) bool { return preferred(order[i], order[j]) })
+	seen := map[string]bool{}
+	claimed := map[string]bool{}
+	for _, e := range order {
+		claims := claims(e)
+		if len(claims) == 0 {
+			tags := slices.Clone(e.Tags)
+			slices.Sort(tags)
+			key := e.Start + "|" + e.End + "|" + e.DayType + "|" + strings.Join(tags, ",")
+			if seen[key] {
+				e.Hidden, e.duplicate = true, true
+			}
+			seen[key] = true
+			continue
+		}
+		fresh := false
+		for _, claim := range claims {
+			if !claimed[claim] {
+				fresh = true
+			}
+		}
+		if !fresh {
+			e.Hidden, e.duplicate = true, true
+			continue
+		}
+		for _, claim := range claims {
+			claimed[claim] = true
+		}
+	}
+}
+
 func (b *builder) years(pdfRows []map[string]string) error {
 	type marks struct{ first, last []string }
 	byYear := map[string]*marks{}
@@ -947,6 +1035,7 @@ func BuildModel(tables *Tables, roster Roster) (*Model, error) {
 		return m.Events[i].ID < m.Events[j].ID
 	})
 	b.settle()
+	b.dedupe()
 	if err := b.years(tables.PDF); err != nil {
 		return nil, err
 	}
@@ -959,7 +1048,12 @@ func BuildModel(tables *Tables, roster Roster) (*Model, error) {
 	visible := []*Event{}
 	for _, e := range m.Events {
 		if e.Hidden {
-			m.Hidden++
+			if e.duplicate {
+				m.Duplicates++
+			} else {
+				m.Hidden++
+			}
+			delete(m.byID, e.ID)
 			continue
 		}
 		visible = append(visible, e)

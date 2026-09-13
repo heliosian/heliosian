@@ -1,21 +1,16 @@
-import {state, me, bands, selectedClassrooms, toggleClassroom, setClassrooms, classroomNames, myClassrooms, tagNames, selectedTags, toggleTag, setTags, resetFilters, filtersAreDefault} from './state.js';
+import {state, me, bands, selectedClassrooms, toggleClassroom, setClassrooms, classroomNames, myClassrooms, tagNames, selectedTags, toggleTag, setTags, resetFilters, filtersAreDefault, colorOf, hiddenMatches, hiddenClassroomMatches} from './state.js';
 import {el, svg, link, button} from './dom.js';
 import {renderAvatars, renderAlerts, onSlash, initAppSwitch} from '/toolbar.js';
 
 const primary = [
-  {href: '/', icon: 'today', label: 'Today'},
-  {href: '/upcoming', icon: 'upcoming', label: 'Upcoming'},
-  {href: '/month', icon: 'calendar', label: 'Calendar'},
+  {href: '/', icon: 'today', label: 'Calendar'},
   {href: '/feeds', icon: 'feed', label: 'Feeds'},
 ];
 
 function active(href) {
   const path = location.pathname;
-  switch (href) {
-    case '/':
-      return path === '/' || path.startsWith('/day/');
-    case '/month':
-      return path.startsWith('/month') || path.startsWith('/week') || path === '/list';
+  if (href === '/') {
+    return path === '/' || path.startsWith('/day/') || path.startsWith('/events/');
   }
   return path === href || path.startsWith(href + '/');
 }
@@ -32,70 +27,91 @@ function fillNav(nav) {
   }
 }
 
+// A filter change repaints the page and carries the search words across,
+// so turning on a lit tag shows the matches it was hiding.
 function refresh() {
+  carriedQuery = searchInput().value;
   document.dispatchEvent(new CustomEvent('calendar:refresh'));
 }
 
-function chip(label, on, onClick, className) {
-  const b = el('button', 'filter-chip' + (on ? ' is-on' : '') + (className ? ' ' + className : ''), label);
+function chip(label, on, onClick, color) {
+  const b = el('button', 'filter-chip' + (on ? ' is-on' : ''), label);
+  b.type = 'button';
+  if (color) {
+    b.style.setProperty('--room', color);
+    b.classList.add('has-color');
+  }
+  b.addEventListener('click', onClick);
+  return b;
+}
+
+// action is one of the words at a filter group's right edge: the same shape
+// in every group, All first.
+function action(label, on, onClick) {
+  const b = el('button', 'filter-action' + (on ? ' is-on' : ''), label);
   b.type = 'button';
   b.addEventListener('click', onClick);
   return b;
 }
 
-// fillFilters draws the two filter groups: the classrooms, grouped by band
-// with Mine and All shortcuts, and the tags with All and None. Every change
-// is remembered and repaints the page.
+function groupHead(title, actions) {
+  const head = el('div', 'filter-head');
+  head.append(el('span', 'filter-title', title));
+  const wrap = el('span', 'filter-actions');
+  for (const a of actions) {
+    wrap.append(a);
+  }
+  head.append(wrap);
+  return head;
+}
+
+// fillFilters draws the two filter groups: the classrooms, grouped by band in
+// their colors, and the tags. Every change is remembered and repaints.
 export function fillFilters(wrap) {
   wrap.replaceChildren();
   const rooms = el('div', 'filter-group');
-  const roomsHead = el('div', 'filter-head');
-  roomsHead.append(el('span', 'filter-title', 'Classrooms'));
-  const roomActions = el('span', 'filter-actions');
-  if (myClassrooms().length) {
-    roomActions.append(chip('Mine', selectedClassrooms().join() === myClassrooms().join(), () => {
-      setClassrooms(null);
-      refresh();
-    }, 'filter-chip-small'));
-  }
-  roomActions.append(chip('All', selectedClassrooms().length === classroomNames().length, () => {
+  const roomActions = [action('All', selectedClassrooms().length === classroomNames().length, () => {
     setClassrooms(classroomNames());
     refresh();
-  }, 'filter-chip-small'));
-  roomsHead.append(roomActions);
-  rooms.append(roomsHead);
+  })];
+  if (myClassrooms().length) {
+    roomActions.push(action('Mine', selectedClassrooms().join() === myClassrooms().join(), () => {
+      setClassrooms(null);
+      refresh();
+    }));
+  }
+  rooms.append(groupHead('Classrooms', roomActions));
   const selected = selectedClassrooms();
+  const roomChips = el('div', 'filter-chips');
   for (const band of bands()) {
-    const row = el('div', 'filter-band');
-    if (band.classrooms.length > 1) {
-      row.append(el('span', 'filter-band-name', band.name));
-    }
-    const chips = el('div', 'filter-chips');
     for (const c of band.classrooms) {
-      chips.append(chip(c.name, selected.includes(c.name), () => {
+      const on = selected.includes(c.name);
+      const room = chip(c.name, on, () => {
         toggleClassroom(c.name);
         refresh();
-      }));
+      }, colorOf(c.name));
+      const hidden = on ? 0 : hiddenClassroomMatches(c.name);
+      if (hidden) {
+        room.classList.add('has-hidden');
+        room.title = `${hidden} match${hidden === 1 ? '' : 'es'} for ${c.name}, which is off`;
+      }
+      roomChips.append(room);
     }
-    row.append(chips);
-    rooms.append(row);
   }
+  rooms.append(roomChips);
   wrap.append(rooms);
 
   const tags = el('div', 'filter-group');
-  const tagsHead = el('div', 'filter-head');
-  tagsHead.append(el('span', 'filter-title', 'Show'));
-  const tagActions = el('span', 'filter-actions');
-  tagActions.append(chip('All', selectedTags().length === tagNames().length, () => {
-    setTags(null);
-    refresh();
-  }, 'filter-chip-small'));
-  tagActions.append(chip('None', selectedTags().length === 0, () => {
-    setTags([]);
-    refresh();
-  }, 'filter-chip-small'));
-  tagsHead.append(tagActions);
-  tags.append(tagsHead);
+  tags.append(groupHead('Show', [
+    action('All', selectedTags().length === tagNames().length, () => {
+      setTags(null);
+      refresh();
+    }),
+    action('None', selectedTags().length === 0, () => {
+      setTags([]);
+      refresh();
+    }),
+  ]));
   const chips = el('div', 'filter-chips');
   const on = selectedTags();
   for (const t of state.model.tags) {
@@ -104,6 +120,13 @@ export function fillFilters(wrap) {
       refresh();
     });
     c.title = t.description;
+    // A tag that is off but hides things the search words find lights up,
+    // with how many.
+    const hidden = on.includes(t.name) ? 0 : hiddenMatches(t.name);
+    if (hidden) {
+      c.classList.add('has-hidden');
+      c.title = `${hidden} match${hidden === 1 ? '' : 'es'} under ${t.name}, which is off`;
+    }
     chips.append(c);
   }
   tags.append(chips);
@@ -116,11 +139,15 @@ export function fillFilters(wrap) {
   }
 }
 
+export function renderFilters() {
+  fillFilters(document.querySelector('#filters'));
+}
+
 function renderNav() {
   const nav = document.querySelector('#nav');
   nav.replaceChildren();
   fillNav(nav);
-  fillFilters(document.querySelector('#filters'));
+  renderFilters();
 }
 
 function renderTabbar() {
@@ -129,6 +156,14 @@ function renderTabbar() {
   for (const item of primary) {
     bar.append(navLink(item));
   }
+  const filters = el('a', '');
+  filters.href = '#';
+  filters.append(svg('tag'), el('span', '', 'Filters'));
+  filters.addEventListener('click', e => {
+    e.preventDefault();
+    openDrawer();
+  });
+  bar.append(filters);
 }
 
 function renderDrawer() {
@@ -185,12 +220,12 @@ function renderUser() {
   }
 }
 
-// One search box, in the top bar. A page with a list binds it; any other
-// page jumps to the full list with the words carried along.
+// One search box, in the top bar. The calendar page binds it to its
+// upcoming panel; any other page jumps home with the words carried along.
 let onSearch = null;
 let carriedQuery = '';
 
-const defaultPlaceholder = 'Search events…';
+const defaultPlaceholder = 'Search the year…';
 
 function searchInput() {
   return document.querySelector('#search-input');
@@ -225,7 +260,7 @@ function search(value) {
     return;
   }
   carriedQuery = value;
-  history.pushState(null, '', '/list');
+  history.pushState(null, '', '/');
   refresh();
 }
 

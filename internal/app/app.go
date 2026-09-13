@@ -481,6 +481,10 @@ func (d calendarDirectory) Alerts(email string) (int, bool) {
 	return alerts.Stale, alerts.Privacy
 }
 
+func (d calendarDirectory) ClassroomColors() map[string]string {
+	return d.settings.Settings().ClassroomColors
+}
+
 func cacheControl(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/fonts/") || strings.HasPrefix(r.URL.Path, "/brand/") {
@@ -855,6 +859,7 @@ func Production() (*http.Server, *who.Queue) {
 	blob.RegisterEvents(core.EventsMux, store)
 	blob.RegisterBirthday(core.BirthdayMux, store)
 	blob.RegisterCelebrate(core.CelebrateMux, store)
+	blob.RegisterCalendar(core.CalendarMux, store)
 	who.RegisterUpload(core.Mux, core.Cache, sheet, store, core.Queue)
 	client := clientID()
 	whoAuth := auth.New(client, []byte(sessionKey), "web/public/who/login.html")
