@@ -224,7 +224,7 @@ button { font: inherit; }
 
 .filter-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 
-.filter-label { width: 90px; flex-shrink: 0; font-size: 13.5px; font-weight: 700; color: var(--brand); }
+.filter-label { width: 120px; flex-shrink: 0; font-size: 13.5px; font-weight: 700; color: var(--brand); white-space: nowrap; }
 
 .filter-chips { display: flex; flex-wrap: wrap; gap: 8px; }
 
@@ -277,7 +277,7 @@ button { font: inherit; }
 
 .form-tag-group { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 
-.form-tag-label { width: 110px; flex-shrink: 0; font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.form-tag-label { width: 120px; flex-shrink: 0; font-size: 12.5px; font-weight: 600; color: var(--muted); white-space: nowrap; }
 
 .content-col { display: flex; flex-direction: column; flex: 1; min-width: 0; }
 
