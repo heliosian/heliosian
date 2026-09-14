@@ -100,6 +100,10 @@ type User struct {
 	// Saved is the view this person kept, when they have: what the calendar
 	// opens to for them in place of its own defaults.
 	Saved *Setting `json:"saved,omitempty"`
+	// Home is My Heliosian as this person has it: their name and mark for
+	// it, and its place among their calendars - the first being their
+	// default calendar.
+	Home Feed `json:"home"`
 	// Answers is this person's word on each event they have answered, by
 	// event id: yes, no, or hidden.
 	Answers map[string]string `json:"answers,omitempty"`
@@ -186,9 +190,10 @@ func Render(model *Model, directory Directory, email string, admin bool, now tim
 		IsStudent: me.IsStudent, IsParent: me.IsParent, IsStaff: me.IsStaff,
 		Students: kids, Classrooms: classroomsOf(model, me, kids),
 	}
-	if saved, ok := model.Settings[normalizeEmail(email)]; ok {
+	if saved, ok := model.Settings[normalizeEmail(email)]; ok && (len(saved.Classrooms) > 0 || len(saved.Tags) > 0) {
 		user.Saved = &saved
 	}
+	user.Home = model.MyHeliosian(email)
 	user.Answers = model.Answers[normalizeEmail(email)]
 	feeds := []Feed{}
 	for _, f := range model.Feeds {

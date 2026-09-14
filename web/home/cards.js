@@ -435,19 +435,30 @@ function calendarPicker(needle) {
   const cal = state.model.upcomingCalendar;
   const list = cal.calendars || [];
   const current = list.find(c => c.token === cal.calendar) || list[0];
+  const chosen = list.find(c => c.token === cal.default) || list[0];
   const wrap = el('div', 'category-calendar');
   const toggle = el('button', 'category-calendar-toggle');
   toggle.type = 'button';
   toggle.title = 'The saved calendar these events come from';
   toggle.append(current.emoji ? el('span', 'category-calendar-emoji', current.emoji) : svg('calendar'), el('span', '', current.name), svg('chevron'));
+  if (current.locked) {
+    toggle.title = 'The calendar\u2019s own view, for everyone';
+  }
   const menu = el('div', 'category-calendar-menu');
   menu.hidden = true;
   for (const c of list) {
     const item = el('button', 'category-calendar-item' + (c.token === current.token ? ' is-on' : ''));
     item.type = 'button';
     item.append(c.emoji ? el('span', 'category-calendar-emoji', c.emoji) : svg('calendar'), el('span', '', c.name));
-    if (c === list[0]) {
-      item.append(el('span', 'category-calendar-default', 'default'));
+    const tail = el('span', 'category-calendar-tail');
+    if (c.token === chosen.token) {
+      tail.append(el('span', 'category-calendar-default', 'default'));
+    }
+    if (c.locked) {
+      tail.append(el('span', 'category-calendar-lock', '\ud83d\udd12'));
+    }
+    if (tail.childElementCount) {
+      item.append(tail);
     }
     item.addEventListener('click', async () => {
       menu.hidden = true;
@@ -458,7 +469,7 @@ function calendarPicker(needle) {
       }
       const ahead = await res.json();
       state.model.upcoming = ahead.events;
-      state.model.upcomingCalendar = {calendar: ahead.calendar, calendars: ahead.calendars};
+      state.model.upcomingCalendar = {calendar: ahead.calendar, default: ahead.default, calendars: ahead.calendars};
       renderCategories(needle);
     });
     menu.append(item);
@@ -474,11 +485,11 @@ function calendarPicker(needle) {
   });
   menu.addEventListener('click', e => e.stopPropagation());
   wrap.append(toggle, menu);
-  if (current !== list[0]) {
+  if (current.token !== chosen.token) {
     const make = el('button', 'category-calendar-make');
     make.type = 'button';
     make.append(svg('star'), el('span', '', 'Make default'));
-    make.title = 'Open Heliosian and Helios When to this calendar from now on';
+    make.title = 'Open Heliosian and Helios When to this calendar from now on - it moves to the top of the rail';
     make.addEventListener('click', async () => {
       const res = await fetch('/api/apps/calendar/default', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({token: current.token})});
       if (!res.ok) {

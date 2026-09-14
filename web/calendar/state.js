@@ -105,13 +105,39 @@ export function webcalURL(token) {
   return `webcal://${location.host}/feed/${token}.ics`;
 }
 
+// My Heliosian is the calendar everyone has and nobody can change: the
+// calendar's own defaults under a lock, first in the rail, and everyone's
+// default calendar until they make one of their own so.
+export const MY_HELIOSIAN = 'my-heliosian';
+
+export function myHeliosian() {
+  const home = me().home || {};
+  return {token: MY_HELIOSIAN, name: home.name || 'My Heliosian', emoji: home.emoji || '', locked: true, position: home.position || 0, classrooms: [], tags: []};
+}
+
+// allCalendars are the rail's calendars: the viewer's saved ones in their
+// order, with My Heliosian among them at its place.
+export function allCalendars() {
+  const feeds = [...(state.model.feeds || [])];
+  const home = myHeliosian();
+  feeds.splice(Math.min(Math.max(home.position, 0), feeds.length), 0, home);
+  return feeds;
+}
+
 // feedClassrooms and feedTags are a saved calendar's filter as the
-// calendar's own: every classroom or tag where it carries no filter.
+// calendar's own: every classroom or tag where it carries no filter - and
+// for My Heliosian, the calendar's own defaults.
 export function feedClassrooms(f) {
+  if (f.locked) {
+    return builtinClassrooms();
+  }
   return f.classrooms.length ? f.classrooms : classroomNames();
 }
 
 export function feedTags(f) {
+  if (f.locked) {
+    return builtinTags();
+  }
   return f.tags.length ? f.tags : tagNames();
 }
 
@@ -126,14 +152,14 @@ export function showsFeed(f) {
 }
 
 export function savedAlready() {
-  return (state.model.feeds || []).some(showsFeed);
+  return allCalendars().some(showsFeed);
 }
 
-// activeFeed is the saved calendar the viewer is working from: the one the
+// activeFeed is the calendar the viewer is working from: the one the
 // filters are exactly, else the one last opened from the rail if it still
-// exists, else none.
+// exists, else their default calendar.
 export function activeFeed() {
-  const feeds = state.model.feeds || [];
+  const feeds = allCalendars();
   const shown = feeds.find(showsFeed);
   if (shown) {
     if (state.activeFeed !== shown.token) {
@@ -141,7 +167,7 @@ export function activeFeed() {
     }
     return shown;
   }
-  return feeds.find(f => f.token === state.activeFeed) || null;
+  return feeds.find(f => f.token === state.activeFeed) || defaultFeed();
 }
 
 export function classroomNames() {
@@ -197,25 +223,35 @@ export function savedView() {
   return me().saved || null;
 }
 
-// defaultFeed is the viewer's default calendar: the first of their saved
-// calendars, as the rail lists them; null with none.
+// defaultFeed is the viewer's default calendar: the first in the rail.
 export function defaultFeed() {
-  return (state.model.feeds || [])[0] || null;
+  return allCalendars()[0];
 }
 
-// defaultClassrooms are the classrooms on for someone who has not chosen
-// today: their default calendar's, else the ones they saved, else their
-// own, else - for someone with none - every classroom.
-export function defaultClassrooms() {
-  const first = defaultFeed();
-  if (first) {
-    return feedClassrooms(first);
-  }
+// builtinClassrooms and builtinTags are My Heliosian's view: the ones the
+// viewer saved earlier if any, else their own classrooms - every classroom
+// for someone with none - and the categories the Tags tab (and Admin
+// Tools) mark on by default.
+export function builtinClassrooms() {
   const saved = savedView();
   if (saved && saved.classrooms.length) {
     return saved.classrooms;
   }
   return myClassrooms().length ? myClassrooms() : classroomNames();
+}
+
+export function builtinTags() {
+  const saved = savedView();
+  if (saved) {
+    return saved.tags;
+  }
+  return state.model.tags.filter(t => t.default).map(t => t.name);
+}
+
+// defaultClassrooms are the classrooms on for someone who has not chosen
+// today: their default calendar's.
+export function defaultClassrooms() {
+  return feedClassrooms(defaultFeed());
 }
 
 // selectedClassrooms is the filter in force: the viewer's choice, else the
@@ -235,18 +271,9 @@ export function toggleClassroom(name) {
 }
 
 // defaultTags are the categories on for someone who has not chosen today:
-// the ones they saved, else the ones the Tags tab (and Admin Tools) mark
-// on by default.
+// their default calendar's.
 export function defaultTags() {
-  const first = defaultFeed();
-  if (first) {
-    return feedTags(first);
-  }
-  const saved = savedView();
-  if (saved) {
-    return saved.tags;
-  }
-  return state.model.tags.filter(t => t.default).map(t => t.name);
+  return feedTags(defaultFeed());
 }
 
 export function selectedTags() {

@@ -84,17 +84,21 @@ type Standing struct {
 // calendar of theirs - the first their default on Helios Calendar - for
 // the picker beside the heading.
 type Upcoming struct {
-	Events    []Event         `json:"events"`
+	Events []Event `json:"events"`
+	// Calendar is the one the events are read under; Default the one the
+	// person made their default (My Heliosian's token until they do).
 	Calendar  string          `json:"calendar,omitempty"`
+	Default   string          `json:"default,omitempty"`
 	Calendars []SavedCalendar `json:"calendars,omitempty"`
 }
 
 // SavedCalendar is one of a person's saved calendars: its token, name and
-// mark.
+// mark - and Locked for My Heliosian, which nobody changes.
 type SavedCalendar struct {
-	Token string `json:"token"`
-	Name  string `json:"name"`
-	Emoji string `json:"emoji,omitempty"`
+	Token  string `json:"token"`
+	Name   string `json:"name"`
+	Emoji  string `json:"emoji,omitempty"`
+	Locked bool   `json:"locked,omitempty"`
 }
 
 // Month is a month as the rail's calendar shows it, from Helios Calendar:
@@ -380,7 +384,7 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 	ahead := a.upcoming(email, "")
 	view.Upcoming = ahead.Events
 	if ahead.Calendar != "" {
-		view.UpcomingCalendar = &Upcoming{Calendar: ahead.Calendar, Calendars: ahead.Calendars}
+		view.UpcomingCalendar = &Upcoming{Calendar: ahead.Calendar, Default: ahead.Default, Calendars: ahead.Calendars}
 	}
 	view.Alerts.Stale, view.Alerts.Privacy = a.alerts(email)
 	w.Header().Set("Content-Type", "application/json")

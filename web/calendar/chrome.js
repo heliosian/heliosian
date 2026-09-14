@@ -1,4 +1,4 @@
-import {state, me, today, bands, tagGroups, defaultTags, savedView, searchResults, eventPath, eventTint, timeLine, weekdayShort, parseDate, selectedClassrooms, toggleClassroom, setClassrooms, classroomNames, myClassrooms, tagNames, selectedTags, toggleTag, setTags, resetFilters, filtersAreDefault, colorOf, hiddenMatches, hiddenClassroomMatches, feedClassrooms, feedTags, showsFeed, setActiveFeed} from './state.js';
+import {state, me, today, bands, tagGroups, defaultTags, savedView, searchResults, eventPath, eventTint, timeLine, weekdayShort, parseDate, selectedClassrooms, toggleClassroom, setClassrooms, classroomNames, myClassrooms, tagNames, selectedTags, toggleTag, setTags, resetFilters, filtersAreDefault, colorOf, hiddenMatches, hiddenClassroomMatches, feedClassrooms, feedTags, showsFeed, setActiveFeed, activeFeed, allCalendars, defaultFeed} from './state.js';
 import {el, svg, link, button, toast, feedMark, popup, emojiPicker} from './dom.js';
 import {dayColumn} from './day.js';
 import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu} from '/toolbar.js';
@@ -11,7 +11,7 @@ const primary = [
 function active(href) {
   const path = location.pathname;
   if (href === '/') {
-    return path === '/' || path.startsWith('/day/') || path.startsWith('/events/');
+    return path === '/' || path.startsWith('/c/') || path.startsWith('/day/') || path.startsWith('/events/');
   }
   return path === href || path.startsWith(href + '/');
 }
@@ -45,8 +45,9 @@ export function editFeedPopup(f) {
   submit.type = 'submit';
   submit.append(svg('check'), el('span', '', 'Save'));
   const {shut} = popup('Edit calendar', form);
-  // Delete, at the row's far end, takes the calendar and its feed away.
-  const remove = button('Delete calendar', 'trash', 'link-button danger modal-delete', async () => {
+  // Delete, at the row's far end, takes the calendar and its feed away -
+  // not My Heliosian's, which everyone keeps.
+  const remove = f.locked ? el('span', 'modal-delete modal-locked', '\ud83d\udd12 Everyone keeps this one') : button('Delete calendar', 'trash', 'link-button danger modal-delete', async () => {
     if (!confirm(`Delete ${f.name}? A calendar app subscribed to its feed stops updating.`)) {
       return;
     }
@@ -63,14 +64,13 @@ export function editFeedPopup(f) {
   actions.append(submit, button('Cancel', '', 'button button-secondary', shut), status, remove);
   // Make default moves it to the head of the rail: the calendar the page
   // opens to, and Heliosian reads.
-  const feeds = state.model.feeds || [];
-  if (feeds.length > 1 && feeds[0].token !== f.token) {
+  if (defaultFeed().token !== f.token) {
     const first = button('Make default', 'star', 'button button-secondary modal-default', async () => {
       shut();
       await makeDefaultFeed(f);
     });
     actions.insertBefore(first, status);
-  } else if (feeds[0] && feeds[0].token === f.token) {
+  } else {
     actions.insertBefore(el('span', 'modal-default-note', '\u2605 Your default calendar'), status);
   }
   form.append(actions);
@@ -100,12 +100,17 @@ export function editFeedPopup(f) {
   name.select();
 }
 
-// makeDefaultFeed moves one saved calendar to the head of the rail.
+// makeDefaultFeed makes one calendar - a saved one, or My Heliosian - the
+// viewer's default, and reloads.
 export async function makeDefaultFeed(f) {
-  const feeds = state.model.feeds || [];
-  if (await orderFeeds([f.token, ...feeds.map(x => x.token).filter(t => t !== f.token)])) {
-    toast(`${f.name} is your default calendar now.`, 4000);
+  const res = await fetch('/api/calendar/default', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({token: f.token})});
+  if (!res.ok) {
+    toast(await res.text());
+    return;
   }
+  toast(`${f.name} is your default calendar now.`, 4000);
+  const {load} = await import('./app.js');
+  await load();
 }
 
 // orderFeeds puts the viewer's saved calendars in the order the tokens
@@ -164,8 +169,13 @@ function fillNav(nav) {
       });
       nav.addEventListener('drop', e => e.preventDefault());
     }
-    for (const f of feeds) {
-      const row = el('div', 'nav-sub-row' + (editingNav ? ' is-draggable' : ''));
+    const chosen = defaultFeed();
+    const working = activeFeed();
+    const all = allCalendars();
+    for (const f of all) {
+      // My Heliosian drags and renames like the rest; only its filters are
+      // locked and it cannot be removed.
+      const row = el('div', 'nav-sub-row' + (editingNav ? ' is-draggable' : '') + (f.locked ? ' is-locked' : ''));
       row.dataset.token = f.token;
       if (editingNav) {
         // Rows drag into a new order; the drop saves it, the first being
@@ -198,30 +208,34 @@ function fillNav(nav) {
           row.classList.remove('is-dragging');
           dragging = null;
           const order = [...nav.querySelectorAll('.nav-sub-row')].map(r => r.dataset.token);
-          if (order.join() !== feeds.map(x => x.token).join()) {
+          if (order.join() !== all.map(x => x.token).join()) {
             await orderFeeds(order);
           }
         });
       }
       // Lit while the filters are its own; softer while the viewer is
       // working from it with the filters moved.
-      const a = el('a', 'nav-sub' + (active('/') && showsFeed(f) ? ' is-active' : active('/') && state.activeFeed === f.token ? ' is-working' : ''));
-      a.href = '/';
+      const a = el('a', 'nav-sub' + (active('/') && showsFeed(f) ? ' is-active' : active('/') && working && working.token === f.token ? ' is-working' : ''));
+      a.href = '/c/' + f.token;
       a.append(feedMark(f), el('span', '', f.name));
-      a.title = 'Show the calendar as ' + f.name + ' sees it';
-      // The default calendar - the first - wears a star at its end.
-      if (f === feeds[0]) {
+      a.title = f.locked ? 'The calendar\u2019s own view, for everyone' : 'Show the calendar as ' + f.name + ' sees it';
+      // The default calendar wears a star at its end.
+      const marks = el('span', 'nav-sub-marks');
+      if (f.token === chosen.token) {
         const star = el('span', 'nav-sub-star');
         star.title = 'Your default calendar';
         star.append(svg('star'));
-        a.append(star);
+        marks.append(star);
+      }
+      if (marks.childElementCount) {
+        a.append(marks);
       }
       a.addEventListener('click', e => {
         e.preventDefault();
         setActiveFeed(f.token);
         setClassrooms(feedClassrooms(f));
         setTags(feedTags(f));
-        history.pushState(null, '', '/');
+        history.pushState(null, '', '/c/' + f.token);
         refresh();
       });
       if (editingNav) {
@@ -238,6 +252,16 @@ function fillNav(nav) {
         edit.setAttribute('aria-label', edit.title);
         edit.append(svg('pencil'));
         edit.addEventListener('click', () => editFeedPopup(f));
+        row.append(edit);
+        if (f.locked) {
+          // A lock where the cross would be: it cannot be removed.
+          const lock = el('span', 'nav-sub-tool nav-sub-lock');
+          lock.title = 'Everyone keeps this one; its filters are the calendar\u2019s own';
+          lock.append(svg('lock'));
+          row.append(lock);
+          nav.append(row);
+          continue;
+        }
         const remove = el('button', 'nav-sub-tool nav-sub-remove');
         remove.type = 'button';
         remove.title = 'Remove ' + f.name;
@@ -256,7 +280,7 @@ function fillNav(nav) {
           const {load} = await import('./app.js');
           await load();
         });
-        row.append(edit, remove);
+        row.append(remove);
       }
       nav.append(row);
     }
@@ -466,20 +490,30 @@ export function fillFilters(wrap, opts = {}) {
       refresh();
     }));
   }
-  if (!filtersAreDefault()) {
+  // Reset filters goes back to the saved calendar being worked from, and
+  // shows only while the filters have moved off it; with none, back to
+  // the calendar's own defaults.
+  const working = activeFeed();
+  if (working ? !showsFeed(working) : !filtersAreDefault()) {
     foot.append(button('Reset filters', null, 'button button-secondary button-small', () => {
-      resetFilters();
+      if (working) {
+        setClassrooms(feedClassrooms(working));
+        setTags(feedTags(working));
+      } else {
+        resetFilters();
+      }
       refresh();
     }));
-  } else if (savedView()) {
-    // A view saved earlier still stands until forgotten.
-    foot.append(button('Forget my default', null, 'button button-secondary button-small', async () => {
+  } else if (working && working.locked && savedView()) {
+    // A view saved earlier, before My Heliosian was locked, still stands
+    // in for the calendar's defaults until let go.
+    foot.append(button('Forget my saved view', null, 'button button-secondary button-small', async () => {
       const res = await fetch('/api/calendar/settings', {method: 'DELETE'});
       if (!res.ok) {
         toast(await res.text());
         return;
       }
-      toast('Back to the calendar\u2019s own defaults, here and on the Heliosian home page.', 5000);
+      toast('My Heliosian is back to the calendar\u2019s own defaults, here and on the Heliosian home page.', 5000);
       await reloadModel();
     }));
   }

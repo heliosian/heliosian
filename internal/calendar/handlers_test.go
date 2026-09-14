@@ -206,8 +206,6 @@ func TestProvenanceForAdmins(t *testing.T) {
 func TestSavedView(t *testing.T) {
 	handler, cache := testApp(t)
 	me := "jordan.whitfield@heliosschool.org"
-	// A saved calendar would stand in front of the saved view; without it.
-	call(t, as(me, handler), "DELETE", "/api/calendar/feeds", `{"token":"sample7feedtoken4jordan2whitfield"}`)
 	rec := call(t, as(me, handler), "POST", "/api/calendar/settings", `{"classrooms":["Hawks"],"tags":["Community","HCA","Nonsense"]}`)
 	if rec.Code != 204 {
 		t.Fatalf("save: %d %s", rec.Code, rec.Body)
@@ -235,45 +233,79 @@ func TestSavedView(t *testing.T) {
 	}
 }
 
-// A person's first saved calendar is their default: the view the page
-// opens to and Upcoming is read under. Reordering puts another first;
-// an order that is not each of theirs once is refused.
+// Everyone's default calendar is the first in their rail - My Heliosian,
+// the calendar's own defaults, to start; then whichever they make default
+// or drag to the top. The page opens to it and Upcoming is read under it.
 func TestDefaultCalendar(t *testing.T) {
 	handler, cache := testApp(t)
 	me := "jordan.whitfield@heliosschool.org"
 	viewer := as(me, handler)
 	dir := fakeDirectory{people: map[string]Person{}, kids: map[string][]Person{}}
-	// The sample calendar carries Schedule, Trip and Celebration of Learning
-	// for Jays and Ospreys: no Community events, no Hummingbird ones.
+	// Under My Heliosian - every classroom for someone the directory does
+	// not know, the default categories - Community events are in.
+	found := false
 	for _, u := range cache.Model().Upcoming(dir, me, nil, now(), 0) {
-		if strings.Contains(u.Title, "Hummingbird") || u.Title == "International Night" {
-			t.Errorf("under the first saved calendar, upcoming lists %q", u.Title)
+		found = found || u.Title == "International Night"
+	}
+	if !found {
+		t.Errorf("under My Heliosian, upcoming leaves out International Night")
+	}
+	// The sample calendar carries Schedule, Trip and Celebration of Learning
+	// for Jays and Ospreys: no Community events once it is the default.
+	if rec := call(t, viewer, "POST", "/api/calendar/default", `{"token":"nonsense"}`); rec.Code != 400 {
+		t.Errorf("a stranger's token: %d", rec.Code)
+	}
+	if rec := call(t, viewer, "POST", "/api/calendar/default", `{"token":"sample7feedtoken4jordan2whitfield"}`); rec.Code != 204 {
+		t.Fatalf("default: %d %s", rec.Code, rec.Body)
+	}
+	if chosen := cache.Model().DefaultCalendar(me); chosen == nil || chosen.Token != "sample7feedtoken4jordan2whitfield" {
+		t.Errorf("default calendar = %+v", chosen)
+	}
+	if mine := cache.Model().MyCalendars(me); len(mine) != 2 || mine[0].Token != "sample7feedtoken4jordan2whitfield" || !mine[1].Locked {
+		t.Errorf("rail = %+v", mine)
+	}
+	for _, u := range cache.Model().Upcoming(dir, me, nil, now(), 0) {
+		if u.Title == "International Night" {
+			t.Errorf("under the saved calendar, upcoming lists %q", u.Title)
 		}
 	}
+	// Under My Heliosian by its token, the picker's way, the Community
+	// event is back; making it the default again puts it first.
+	found = false
+	for _, u := range cache.Model().UpcomingUnder(dir, me, nil, now(), 0, MyHeliosianToken) {
+		found = found || u.Title == "International Night"
+	}
+	if !found {
+		t.Errorf("under My Heliosian by token, upcoming leaves out International Night")
+	}
+	if rec := call(t, viewer, "POST", "/api/calendar/default", `{"token":"`+MyHeliosianToken+`"}`); rec.Code != 204 || cache.Model().DefaultCalendar(me) != nil {
+		t.Errorf("back to My Heliosian: %d, default %+v", rec.Code, cache.Model().DefaultCalendar(me))
+	}
+	// My Heliosian takes a name and a mark of the person's own; its filters
+	// stay the calendar's.
+	if rec := call(t, viewer, "PUT", "/api/calendar/feeds", `{"token":"`+MyHeliosianToken+`","name":"Home base","emoji":"🏠","classrooms":["Jays"],"tags":["Trip"]}`); rec.Code != 204 {
+		t.Errorf("rename My Heliosian: %d %s", rec.Code, rec.Body)
+	}
+	if home := cache.Model().MyHeliosian(me); home.Name != "Home base" || home.Emoji != "🏠" || !home.Locked || len(home.Classrooms) != 0 {
+		t.Errorf("My Heliosian = %+v", home)
+	}
+	// Dragging another to the top, as the order route says it, makes it
+	// the default; an order that is not each of theirs once is refused.
 	rec := call(t, viewer, "POST", "/api/calendar/feeds", `{"name":"Everything","classrooms":[],"tags":[]}`)
 	var made struct{ Token string }
 	json.Unmarshal(rec.Body.Bytes(), &made)
 	if rec := call(t, viewer, "PUT", "/api/calendar/feeds/order", `{"tokens":["`+made.Token+`"]}`); rec.Code != 400 {
 		t.Errorf("a short order: %d", rec.Code)
 	}
-	if rec := call(t, viewer, "PUT", "/api/calendar/feeds/order", `{"tokens":["`+made.Token+`","sample7feedtoken4jordan2whitfield"]}`); rec.Code != 204 {
+	if rec := call(t, viewer, "PUT", "/api/calendar/feeds/order", `{"tokens":["`+made.Token+`","`+MyHeliosianToken+`","sample7feedtoken4jordan2whitfield"]}`); rec.Code != 204 {
 		t.Fatalf("order: %d %s", rec.Code, rec.Body)
 	}
-	if first := cache.Model().firstFeed(me); first == nil || first.Token != made.Token {
-		t.Errorf("first feed = %+v", first)
+	mine := cache.Model().MyCalendars(me)
+	if len(mine) != 3 || mine[0].Token != made.Token || mine[1].Token != MyHeliosianToken || mine[1].Name != "Home base" {
+		t.Errorf("after ordering: %+v", mine)
 	}
-	found := false
-	for _, u := range cache.Model().Upcoming(dir, me, nil, now(), 0) {
-		found = found || u.Title == "International Night"
-	}
-	if !found {
-		t.Errorf("under Everything, upcoming leaves out International Night")
-	}
-	var view View
-	rec = call(t, viewer, "GET", "/api/calendar/model", "")
-	json.NewDecoder(rec.Body).Decode(&view)
-	if len(view.Feeds) != 2 || view.Feeds[0].Token != made.Token {
-		t.Errorf("feeds in the view = %+v", view.Feeds)
+	if chosen := cache.Model().DefaultCalendar(me); chosen == nil || chosen.Token != made.Token {
+		t.Errorf("the first is not the default: %+v", chosen)
 	}
 }
 
@@ -368,8 +400,6 @@ func TestAnswers(t *testing.T) {
 	handler, cache := testApp(t)
 	me := "jordan.whitfield@heliosschool.org"
 	viewer := as(me, handler)
-	// Under the calendar's own defaults, not Jordan's saved calendar.
-	call(t, viewer, "DELETE", "/api/calendar/feeds", `{"token":"sample7feedtoken4jordan2whitfield"}`)
 	if rec := call(t, viewer, "POST", "/api/calendar/rsvp", `{"id":"a7@sample","answer":"maybe"}`); rec.Code != 400 {
 		t.Errorf("nonsense answer: %d", rec.Code)
 	}

@@ -139,15 +139,21 @@ func admits(model *Model, e *Event, classrooms, tags []string) bool {
 }
 
 // viewOf is the filter the calendar page first shows a viewer under: their
-// first saved calendar's, where they have one (the first of their Feeds
-// rows, in the sheet's order - the one at the head of the rail); else the
-// view they saved in place of both; else their own classrooms - their
-// children's, their own as a teacher, every classroom for someone with
-// none - and the categories on by default.
+// default calendar - the first in their rail - where it is a saved one;
+// else My Heliosian - the view they saved in place of
+// both, if any, else their own classrooms - their children's, their own as
+// a teacher, every classroom for someone with none - and the categories
+// on by default.
 func (m *Model) viewOf(directory Directory, email string) (classrooms, tags []string) {
-	if first := m.firstFeed(email); first != nil {
-		return m.feedView(first)
+	if chosen := m.DefaultCalendar(email); chosen != nil {
+		return m.feedView(chosen)
 	}
+	return m.myHeliosianView(directory, email)
+}
+
+// myHeliosianView is My Heliosian for one person: the calendar's own
+// defaults, or the view they saved in their place.
+func (m *Model) myHeliosianView(directory Directory, email string) (classrooms, tags []string) {
 	me, known := directory.Person(email)
 	if !known {
 		me = Person{Email: email}
@@ -162,8 +168,9 @@ func (m *Model) viewOf(directory Directory, email string) (classrooms, tags []st
 			tags = append(tags, t.Name)
 		}
 	}
-	// A saved view stands in for both.
-	if saved, ok := m.Settings[normalizeEmail(email)]; ok {
+	// A saved view stands in for both - a Settings row that holds one,
+	// rather than only a default calendar.
+	if saved, ok := m.Settings[normalizeEmail(email)]; ok && (len(saved.Classrooms) > 0 || len(saved.Tags) > 0) {
 		if len(saved.Classrooms) > 0 {
 			classrooms = saved.Classrooms
 		}
@@ -187,8 +194,8 @@ func (m *Model) feedView(f *Feed) (classrooms, tags []string) {
 	return classrooms, tags
 }
 
-// MyCalendars are a person's saved calendars in the rail's order, the
-// first their default.
+// MyCalendars are a person's saved calendars in the rail's order, with
+// My Heliosian among them at its position.
 func (m *Model) MyCalendars(email string) []Feed {
 	out := []Feed{}
 	for _, f := range m.Feeds {
@@ -196,25 +203,20 @@ func (m *Model) MyCalendars(email string) []Feed {
 			out = append(out, f)
 		}
 	}
-	return out
+	home := m.MyHeliosian(email)
+	at := min(max(home.Position, 0), len(out))
+	return append(out[:at:at], append([]Feed{home}, out[at:]...)...)
 }
 
-// DefaultCalendar is a person's default calendar - the first of their
-// saved calendars, the one Upcoming is read under - for the front page to
-// name; nil with none.
+// DefaultCalendar is a person's default calendar - the first in their
+// rail, the one the page opens to and Upcoming is read under - as a saved
+// calendar, or nil when it is My Heliosian.
 func (m *Model) DefaultCalendar(email string) *Feed {
-	return m.firstFeed(email)
-}
-
-// firstFeed is a person's default calendar: the first of their saved
-// calendars in the sheet's order, nil with none.
-func (m *Model) firstFeed(email string) *Feed {
-	for i := range m.Feeds {
-		if normalizeEmail(m.Feeds[i].Email) == normalizeEmail(email) {
-			return &m.Feeds[i]
-		}
+	mine := m.MyCalendars(email)
+	if len(mine) == 0 || mine[0].Locked {
+		return nil
 	}
-	return nil
+	return m.Feed(mine[0].Token)
 }
 
 // card is one event as the front page takes it.
@@ -245,11 +247,13 @@ func (m *Model) Upcoming(directory Directory, email string, linked []Linked, now
 }
 
 // UpcomingUnder is Upcoming read under one of the person's saved calendars
-// by token rather than their default - the front page's picker - or under
-// the default for a blank or unknown token.
+// by token, or My Heliosian by its token, rather than their default - the
+// front page's picker - or under the default for a blank or unknown token.
 func (m *Model) UpcomingUnder(directory Directory, email string, linked []Linked, now time.Time, limit int, token string) []Upcoming {
 	classrooms, tags := m.viewOf(directory, email)
-	if f := m.Feed(token); f != nil && token != "" && normalizeEmail(f.Email) == normalizeEmail(email) {
+	if token == MyHeliosianToken {
+		classrooms, tags = m.myHeliosianView(directory, email)
+	} else if f := m.Feed(token); f != nil && token != "" && normalizeEmail(f.Email) == normalizeEmail(email) {
 		classrooms, tags = m.feedView(f)
 	}
 	today := now.Format(DateFormat)

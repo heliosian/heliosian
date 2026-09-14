@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -74,7 +75,7 @@ var (
 	TagColumns         = []string{"Tag", "Description", "Group", "Default", "Image"}
 	AdminColumns       = []string{"Email"}
 	FeedColumns        = []string{"Token", "Email", "Name", "Classrooms", "Tags", "Created", "Emoji"}
-	SettingColumns     = []string{"Email", "Classrooms", "Categories", "Saved"}
+	SettingColumns     = []string{"Email", "Classrooms", "Categories", "Saved", "Home Name", "Home Emoji", "Home Position"}
 	RSVPColumns        = []string{"Email", "Event ID", "Answer", "Answered"}
 	ChangeLogColumns   = []string{"Timestamp", "Actor", "Action", "Tab", "Key", "Column", "From", "To"}
 )
@@ -291,6 +292,39 @@ func GoogleEventURL(key string) string {
 type Setting struct {
 	Classrooms []string `json:"classrooms"`
 	Tags       []string `json:"tags"`
+	// HomeName and HomeEmoji are what the person calls My Heliosian and
+	// marks it with, blank for the given ones; HomePosition where it sits
+	// among their saved calendars, 0 first - the first being their default
+	// calendar.
+	HomeName     string `json:"homeName,omitempty"`
+	HomeEmoji    string `json:"homeEmoji,omitempty"`
+	HomePosition int    `json:"homePosition"`
+}
+
+// MyHeliosian is the calendar everyone has: the calendar's own defaults -
+// the person's classrooms and the categories on by default - which nobody
+// changes or removes, though each person may rename it, mark it and place
+// it among their saved calendars - first to start, and whichever calendar
+// is first is the person's default. MyHeliosianToken names it where a
+// saved calendar's token would.
+const (
+	MyHeliosianToken = "my-heliosian"
+	MyHeliosianName  = "My Heliosian"
+	MyHeliosianEmoji = ""
+)
+
+// MyHeliosian is the calendar as one person has it: their name and mark
+// for it, else the given ones, Locked, at their position.
+func (m *Model) MyHeliosian(email string) Feed {
+	setting := m.Settings[normalizeEmail(email)]
+	f := Feed{Token: MyHeliosianToken, Email: normalizeEmail(email), Name: MyHeliosianName, Emoji: MyHeliosianEmoji, Classrooms: []string{}, Tags: []string{}, Locked: true, Position: setting.HomePosition}
+	if setting.HomeName != "" {
+		f.Name = setting.HomeName
+	}
+	if setting.HomeEmoji != "" {
+		f.Emoji = setting.HomeEmoji
+	}
+	return f
 }
 
 // tagDefault reads the Default column: anything but No is on, so a column
@@ -311,6 +345,11 @@ type Feed struct {
 	// Emoji is the mark the owner gave it, shown before its name in the
 	// rail; blank for the calendar icon.
 	Emoji string `json:"emoji,omitempty"`
+	// Locked marks My Heliosian: its filters are the calendar's own and it
+	// cannot be removed; Position is where it sits among the person's
+	// saved calendars.
+	Locked   bool `json:"locked,omitempty"`
+	Position int  `json:"position,omitempty"`
 }
 
 func (f Feed) Carries(e *Event) bool {
@@ -479,12 +518,21 @@ func (t *Tables) WithTags(rows []map[string]string) *Tables {
 func (t *Tables) WithSetting(email string, cells map[string]string) *Tables {
 	out := *t
 	out.Settings = []map[string]string{}
+	found := false
 	for _, row := range t.Settings {
 		if normalizeEmail(row["Email"]) != email {
 			out.Settings = append(out.Settings, maps.Clone(row))
+			continue
 		}
+		// The person's row keeps what the cells do not name.
+		merged := maps.Clone(row)
+		maps.Copy(merged, cells)
+		out.Settings = append(out.Settings, merged)
+		found = true
 	}
-	out.Settings = append(out.Settings, maps.Clone(cells))
+	if !found {
+		out.Settings = append(out.Settings, maps.Clone(cells))
+	}
 	return &out
 }
 
@@ -1063,6 +1111,9 @@ func (b *builder) settings(rows []map[string]string) {
 				setting.Tags = append(setting.Tags, t)
 			}
 		}
+		setting.HomeName = strings.TrimSpace(row["Home Name"])
+		setting.HomeEmoji = strings.TrimSpace(row["Home Emoji"])
+		setting.HomePosition, _ = strconv.Atoi(strings.TrimSpace(row["Home Position"]))
 		b.model.Settings[email] = setting
 	}
 }

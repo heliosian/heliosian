@@ -11,6 +11,8 @@ import (
 	"log/slog"
 	"maps"
 	"net/http"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,7 +25,7 @@ import (
 
 const shell = "web/calendar/index.html"
 
-var pages = []string{"/{$}", "/day/{date}", "/events/{id...}", "/feeds", "/admin"}
+var pages = []string{"/{$}", "/c/{token}", "/day/{date}", "/events/{id...}", "/feeds", "/admin"}
 
 type app struct {
 	cache       *Cache
@@ -60,6 +62,7 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	mux.HandleFunc("POST /api/calendar/feeds", a.addFeed)
 	mux.HandleFunc("PUT /api/calendar/feeds", a.editFeed)
 	mux.HandleFunc("PUT /api/calendar/feeds/order", a.orderFeeds)
+	mux.HandleFunc("POST /api/calendar/default", a.setDefault)
 	mux.HandleFunc("DELETE /api/calendar/feeds", a.removeFeed)
 	mux.HandleFunc("POST /api/calendar/rsvp", a.rsvp)
 	mux.HandleFunc("POST /api/calendar/settings", a.saveSetting)
@@ -199,6 +202,19 @@ func (a app) editFeed(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
+	if strings.TrimSpace(body.Name) == "" {
+		http.Error(w, "a feed needs a name", http.StatusBadRequest)
+		return
+	}
+	// My Heliosian takes a name and a mark, nothing else.
+	if strings.TrimSpace(body.Token) == MyHeliosianToken {
+		if err := a.saveHome(r.Context(), actor, map[string]string{"Home Name": strings.TrimSpace(body.Name), "Home Emoji": feedEmoji(body.Emoji)}); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	f := a.cache.Model().Feed(strings.TrimSpace(body.Token))
 	if f == nil {
 		http.Error(w, "no such feed", http.StatusNotFound)
@@ -206,10 +222,6 @@ func (a app) editFeed(w http.ResponseWriter, r *http.Request) {
 	}
 	if f.Email != actor && !admin {
 		http.Error(w, "only the person who made a feed, or an admin, can change it", http.StatusForbidden)
-		return
-	}
-	if strings.TrimSpace(body.Name) == "" {
-		http.Error(w, "a feed needs a name", http.StatusBadRequest)
 		return
 	}
 	token := f.Token
@@ -243,12 +255,32 @@ type Hooks struct {
 	MakeDefault func(ctx context.Context, email, token string) error
 }
 
-// makeDefault moves one of a person's saved calendars to the head of
-// their list, for Heliosian's picker.
+// saveHome keeps cells on a person's Settings row - My Heliosian's name,
+// mark and position, or their default calendar - in the model at once and
+// in the sheet behind it.
+func (a app) saveHome(ctx context.Context, email string, cells map[string]string) error {
+	cells["Email"] = email
+	tables := a.cache.Tables().WithSetting(email, cells)
+	built, err := BuildModel(tables, a.cache.roster())
+	if err != nil {
+		return err
+	}
+	a.cache.set(tables, built)
+	a.queue.Add(func() {
+		if err := a.writer.Upsert(appName, SettingsTab, "Email", email, cells); err != nil {
+			slog.ErrorContext(ctx, "calendar write", "error", err)
+		}
+	})
+	return nil
+}
+
+// makeDefault makes one calendar a person's default - the one the page
+// opens to and Heliosian reads - by moving it to the head of their rail:
+// a saved calendar's token, or My Heliosian's.
 func (a app) makeDefault(ctx context.Context, email, token string) error {
 	email = normalizeEmail(email)
 	mine := a.cache.Model().MyCalendars(email)
-	tokens := []string{}
+	tokens := []string{token}
 	found := false
 	for _, f := range mine {
 		if f.Token == token {
@@ -260,14 +292,43 @@ func (a app) makeDefault(ctx context.Context, email, token string) error {
 	if !found {
 		return fmt.Errorf("that is not one of your calendars")
 	}
-	return a.reorder(ctx, email, append([]string{token}, tokens...))
+	if err := a.reorder(ctx, email, tokens); err != nil {
+		return err
+	}
+	slog.InfoContext(ctx, "calendar: default calendar set", "actor", email, "token", token)
+	return nil
+}
+
+// setDefault is the calendar's own route for it: {token}, a saved
+// calendar's or My Heliosian's.
+func (a app) setDefault(w http.ResponseWriter, r *http.Request) {
+	actor, _ := a.who(r)
+	var body struct {
+		Token string `json:"token"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	if err := a.makeDefault(r.Context(), actor, strings.TrimSpace(body.Token)); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // reorder puts one person's saved calendars in the order their tokens
 // come, moving them among the places their rows already hold, so everyone
 // else's rows stay where they are; the tokens must be each of theirs once.
+// My Heliosian's token among them sets where it sits.
 func (a app) reorder(ctx context.Context, email string, tokens []string) error {
 	model := a.cache.Model()
+	if at := slices.Index(tokens, MyHeliosianToken); at >= 0 {
+		if err := a.saveHome(ctx, email, map[string]string{"Home Position": strconv.Itoa(at)}); err != nil {
+			return err
+		}
+		tokens = slices.Delete(slices.Clone(tokens), at, at+1)
+		model = a.cache.Model()
+	}
 	mine := map[string]bool{}
 	for _, f := range model.Feeds {
 		if normalizeEmail(f.Email) == email {
@@ -590,8 +651,10 @@ func (a app) forgetSetting(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	if !a.commit(r.Context(), w, a.cache.Tables().WithoutSetting(email), func() error {
-		if err := a.writer.Delete(appName, SettingsTab, map[string]string{"Email": email}); err != nil {
+	// The row stays for its default calendar; the view's cells empty.
+	cells := map[string]string{"Email": email, "Classrooms": "", "Categories": "", "Saved": ""}
+	if !a.commit(r.Context(), w, a.cache.Tables().WithSetting(email, cells), func() error {
+		if err := a.writer.Upsert(appName, SettingsTab, "Email", email, cells); err != nil {
 			return err
 		}
 		return a.logChange(email, "forgot", SettingsTab, email, "Categories", "", "")

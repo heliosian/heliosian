@@ -1,4 +1,4 @@
-import {applyModel, event, today, parseDate, me, state, eventDates} from './state.js';
+import {applyModel, event, today, parseDate, me, state, eventDates, allCalendars, setActiveFeed, setClassrooms, setTags, feedClassrooms, feedTags} from './state.js';
 import {el} from './dom.js';
 import {initChrome, renderChrome, setTitle, clearSearch} from './chrome.js';
 import {homePage} from './pages/home.js';
@@ -35,6 +35,18 @@ function route() {
     return homePage(today());
   }
   switch (parts[0]) {
+    // /c/{token} opens the calendar as one saved calendar (or My
+    // Heliosian) sees it - the address the rail's rows set.
+    case 'c': {
+      const f = allCalendars().find(x => x.token === parts[1]);
+      if (!f) {
+        return notFound('That calendar');
+      }
+      setActiveFeed(f.token);
+      setClassrooms(feedClassrooms(f));
+      setTags(feedTags(f));
+      return homePage(today());
+    }
     case 'day':
       return parseDate(parts[1]) ? homePage(parts[1]) : notFound('That day');
     case 'events': {

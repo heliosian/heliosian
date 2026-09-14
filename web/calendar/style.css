@@ -134,9 +134,15 @@ button { font: inherit; }
 
 .app-nav a.nav-sub:hover { color: var(--brand); }
 
-.app-nav a.nav-sub .nav-sub-star { display: inline-flex; margin-left: auto; color: var(--amber); }
+.app-nav a.nav-sub .nav-sub-marks { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
+
+.app-nav a.nav-sub .nav-sub-star { display: inline-flex; color: var(--amber); }
 
 .app-nav a.nav-sub .nav-sub-star svg { width: 13px; height: 13px; fill: currentColor; }
+
+.nav-sub-tool.nav-sub-lock { cursor: default; opacity: 0.7; }
+
+.nav-sub-tool.nav-sub-lock:hover { background: none; color: var(--muted); }
 
 .app-nav a.nav-sub.is-active { background: #fff; color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); font-weight: 700; }
 
@@ -292,6 +298,12 @@ button { font: inherit; }
 .calendar-headline-mark { display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; padding: 0; border: 0; border-radius: 10px; background: none; color: var(--accent); cursor: pointer; }
 
 .calendar-headline-mark:hover { background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1); }
+
+.calendar-lock { display: inline-flex; align-self: flex-start; margin: 6px 0 0 2px; color: var(--muted); opacity: 0.7; }
+
+.calendar-lock svg { width: 16px; height: 16px; }
+
+.modal-locked { font-size: 13px; color: var(--muted); }
 
 .modal .field .emoji-field { margin: 0; }
 
@@ -1032,6 +1044,10 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 .day-peek-answer { display: flex; gap: 8px; margin-top: 4px; }
 
 .day-peek-answer .button { flex: 1 1 0; justify-content: center; }
+
+.day-peek-hide { align-self: center; margin-top: -2px; padding: 2px 6px; border: 0; background: none; font: inherit; font-size: 12px; color: var(--muted); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+
+.day-peek-hide:hover { color: var(--brand); }
 
 /* No pointer to rest, no card. */
 @media (hover: none) {

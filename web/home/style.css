@@ -518,7 +518,11 @@ main {
 
 .category-calendar-item > svg { width: 15px; height: 15px; color: var(--accent); }
 
-.category-calendar-default { margin-left: auto; padding-left: 14px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.category-calendar-tail { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; padding-left: 14px; }
+
+.category-calendar-default { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+
+.category-calendar-lock { font-size: 12px; opacity: 0.7; }
 
 .category-calendar-make { display: inline-flex; align-items: center; gap: 5px; padding: 4px 11px; border: 1px solid var(--line); border-radius: 999px; background: #fff; color: var(--brand); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; white-space: nowrap; }
 
@@ -1775,7 +1779,11 @@ main {
 
 .category-calendar-item > svg { width: 15px; height: 15px; color: var(--accent); }
 
-.category-calendar-default { margin-left: auto; padding-left: 14px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.category-calendar-tail { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; padding-left: 14px; }
+
+.category-calendar-default { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+
+.category-calendar-lock { font-size: 12px; opacity: 0.7; }
 
 .category-calendar-make { display: inline-flex; align-items: center; gap: 5px; padding: 4px 11px; border: 1px solid var(--line); border-radius: 999px; background: #fff; color: var(--brand); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; white-space: nowrap; }
 

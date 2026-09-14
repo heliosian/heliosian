@@ -179,6 +179,12 @@ function fillEventPeek(node, date, e) {
     button('No', 'close', 'button button-small' + (word === 'no' ? '' : ' button-secondary'), () => say(word === 'no' ? '' : 'no')),
   );
   node.append(buttons);
+  // Under them, small: Hide - gray on the month, out of the lists - or
+  // Show once hidden.
+  const hide = el('button', 'day-peek-hide', word === 'hidden' ? 'Show event' : 'Hide event');
+  hide.type = 'button';
+  hide.addEventListener('click', () => say(word === 'hidden' ? '' : 'hidden'));
+  node.append(hide);
 }
 
 // placePeek sets the card under the cell, flush with its left edge and
@@ -375,11 +381,10 @@ function saveCalendar() {
 }
 
 // saveButton is Save Calendar beside the month while the filters are not
-// a saved calendar's. With saved calendars, it is a split button: a click
-// saves the filters onto the one the viewer is working from (the one last
-// opened from the rail), or opens Save New Calendar when there is none,
-// and the caret drops a menu with that and Save New Calendar. Without
-// any, a click is Save New Calendar itself.
+// a saved calendar's. Working from a saved calendar it is a split button:
+// a click saves the filters onto it, and the caret drops a menu with that
+// and Save New Calendar. Working from My Heliosian, whose filters are
+// locked, it is Save New Calendar alone.
 function saveButton() {
   const feeds = state.model.feeds || [];
   if (!feeds.length) {
@@ -387,7 +392,15 @@ function saveButton() {
     feed.title = 'Keep what the filters show, by name, under Calendar in the rail';
     return feed;
   }
-  const working = activeFeed();
+  // My Heliosian is locked, so working from it there is only a new one -
+  // and the button says so, with no menu to drop.
+  const active = activeFeed();
+  const working = active && !active.locked ? active : null;
+  if (!working) {
+    const fresh = button('Save New Calendar', 'save', 'button button-secondary button-small pager-feed', saveCalendar);
+    fresh.title = 'Keep what the filters show under a new name';
+    return fresh;
+  }
   const split = el('div', 'split-button pager-feed');
   const main = button('Save Calendar', 'save', 'button button-secondary button-small', () => working ? saveOnto(working) : saveCalendar());
   main.title = working ? `Save these filters onto ${working.name}` : 'Keep what the filters show, by name, under Calendar in the rail';
@@ -570,7 +583,7 @@ export function homePage(date) {
   const shown = activeFeed();
   if (shown) {
     const headline = el('div', 'calendar-headline');
-    // The mark is a button: it opens a popup to change the emoji.
+    // The mark is a button that opens the name-and-emoji popup.
     const mark = el('button', 'calendar-headline-mark');
     mark.type = 'button';
     mark.title = 'Change the name or emoji';
@@ -578,6 +591,12 @@ export function homePage(date) {
     mark.append(feedMark(shown));
     mark.addEventListener('click', () => editFeedPopup(shown));
     headline.append(mark, el('h1', 'calendar-headline-name', shown.name));
+    if (shown.locked) {
+      const lock = el('span', 'calendar-lock');
+      lock.title = 'Its filters are the calendar\u2019s own, and it cannot be removed';
+      lock.append(svg('lock'));
+      headline.append(lock);
+    }
     if (!showsFeed(shown)) {
       const changed = el('span', 'calendar-changed', 'Filters changed \u00b7 not saved');
       changed.title = 'Save Calendar saves these filters onto ' + shown.name;
@@ -585,7 +604,7 @@ export function homePage(date) {
     }
     // The default calendar says so at the row's far end; any other offers
     // to become it, faintly.
-    if (shown === defaultFeed()) {
+    if (shown.token === defaultFeed().token) {
       const badge = el('span', 'calendar-default');
       badge.append(svg('star'), el('span', '', 'Default Calendar'));
       badge.title = 'The calendar this page opens to, and Heliosian reads';

@@ -325,10 +325,13 @@ func (u upcomingEvents) list(email, token string) home.Upcoming {
 	model := u.cache.Model()
 	out := home.Upcoming{Events: homeEvents(model.UpcomingUnder(u.directory, email, u.linked(email), time.Now().In(calendar.Location), 6, token))}
 	for _, f := range model.MyCalendars(email) {
-		out.Calendars = append(out.Calendars, home.SavedCalendar{Token: f.Token, Name: f.Name, Emoji: f.Emoji})
-		if out.Calendar == "" || f.Token == token {
-			out.Calendar = f.Token
-		}
+		out.Calendars = append(out.Calendars, home.SavedCalendar{Token: f.Token, Name: f.Name, Emoji: f.Emoji, Locked: f.Locked})
+	}
+	// The first is the default.
+	out.Default = out.Calendars[0].Token
+	out.Calendar = out.Default
+	if slices.ContainsFunc(out.Calendars, func(c home.SavedCalendar) bool { return c.Token == token }) {
+		out.Calendar = token
 	}
 	return out
 }
