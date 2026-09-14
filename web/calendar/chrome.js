@@ -244,6 +244,7 @@ function fillNav(nav) {
         setClassrooms(feedClassrooms(f));
         setTags(feedTags(f));
         history.pushState(null, '', '/c/' + f.token);
+        document.dispatchEvent(new CustomEvent('calendar:navigate'));
         refresh();
       });
       if (editingNav) {

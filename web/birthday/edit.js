@@ -490,6 +490,40 @@ export function addNextWeek(after) {
   return act('POST', '/api/birthday/newsletter-date', {date: dateCell(next)}, `Added ${longDate(dateCell(next))}`);
 }
 
+// openCreateNewsletterDates lays out a weekly run of issues: a weekday, from
+// a date to a final one, skipping any already listed.
+export function openCreateNewsletterDates() {
+  const dates = state.model.newsletterDates;
+  const last = dates.length ? parseDate(dates[dates.length - 1]) : null;
+  const start = last && dateCell(last) >= state.model.today ? new Date(last.getFullYear(), last.getMonth(), last.getDate() + 1) : parseDate(state.model.today);
+  const weekday = select([['0', 'Sunday'], ['1', 'Monday'], ['2', 'Tuesday'], ['3', 'Wednesday'], ['4', 'Thursday'], ['5', 'Friday'], ['6', 'Saturday']].map(([value, label]) => ({value, label})), String(last ? last.getDay() : 5));
+  const from = text(dateCell(start), {type: 'date', required: true});
+  const to = text(year().end, {type: 'date', required: true});
+  openModal('Create Newsletter Dates', [
+    field('Every', weekday),
+    field('Starting', from, 'The first issue is the first of that weekday on or after this'),
+    field('Through', to, 'The final date; the birthday year ends ' + longDate(year().end)),
+  ], {
+    saveLabel: 'Create',
+    submit: async () => {
+      const res = await fetch('/api/birthday/newsletter-dates/create', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({weekday: Number(weekday.value), from: from.value, to: to.value})});
+      if (!res.ok) {
+        throw new Error(await res.text());
+      }
+      const {added} = await res.json();
+      toast(`Added ${added} ${added === 1 ? 'date' : 'dates'}`);
+    },
+  });
+}
+
+// clearFutureNewsletterDates removes every issue from today on, after a word.
+export function clearFutureNewsletterDates(count) {
+  if (!confirm(`Remove the ${count} newsletter ${count === 1 ? 'date' : 'dates'} from today on? The ones already out stay.`)) {
+    return;
+  }
+  return act('POST', '/api/birthday/newsletter-dates/clear-future', {}, `Removed ${count} ${count === 1 ? 'date' : 'dates'}`);
+}
+
 export function removeNewsletterDate(date) {
   if (!confirm(`Remove the ${longDate(date)} newsletter?`)) {
     return;

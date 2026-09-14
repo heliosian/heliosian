@@ -9,7 +9,7 @@ import (
 
 // requestLeadDays is how far ahead of the newsletter a staff member is asked
 // for their charity, so there is time for a reply before the deadline.
-const requestLeadDays = 10
+const requestLeadDays = 8
 
 var yearForm = regexp.MustCompile(`^(\d{4}) - (\d{4})$`)
 
@@ -89,24 +89,32 @@ func (y Year) Occurrence(birthday time.Time) time.Time {
 	return t
 }
 
-// Newsletter picks the newsletter that carries a birthday: the first one on or
-// after it within the year, else the last one before it, so a birthday after
-// the final newsletter of the year still lands in that final issue.
+// Newsletter picks the newsletter that carries a birthday: the last one before
+// it within the year, so the announcement always goes out ahead of the day and
+// never on it - each issue carrying the birthdays between it and the next. A
+// birthday before the year's first issue lands in that first issue, late
+// rather than lost.
 func (y Year) Newsletter(birthday time.Time, dates []string) (time.Time, bool) {
-	var last time.Time
-	found := false
+	var first, last time.Time
+	found, before := false, false
 	for _, cell := range dates {
 		d, err := ParseDate(cell)
 		if err != nil || d.Before(y.Start) || !d.Before(y.End) {
 			continue
 		}
-		if !d.Before(birthday) {
-			return d, true
+		if !found {
+			first = d
+			found = true
 		}
-		last = d
-		found = true
+		if d.Before(birthday) {
+			last = d
+			before = true
+		}
 	}
-	return last, found
+	if before {
+		return last, true
+	}
+	return first, found
 }
 
 // RequestBy is the day outreach is due for a newsletter.

@@ -29,6 +29,11 @@ function notFound(what) {
   return page;
 }
 
+// appliedCalendar is the /c/{token} address whose calendar the filters
+// were last set from, so arriving at one sets them once and the chips can
+// be changed after that without every repaint setting them back.
+let appliedCalendar = '';
+
 function route() {
   const parts = location.pathname.split('/').filter(Boolean).map(decodeURIComponent);
   if (!parts.length) {
@@ -42,9 +47,12 @@ function route() {
       if (!f) {
         return notFound('That calendar');
       }
-      setActiveFeed(f.token);
-      setClassrooms(feedClassrooms(f));
-      setTags(feedTags(f));
+      if (appliedCalendar !== location.pathname) {
+        appliedCalendar = location.pathname;
+        setActiveFeed(f.token);
+        setClassrooms(feedClassrooms(f));
+        setTags(feedTags(f));
+      }
       return homePage(today());
     }
     case 'day':
@@ -89,6 +97,10 @@ document.addEventListener('click', e => {
 
 window.addEventListener('popstate', render);
 document.addEventListener('calendar:refresh', render);
+// A rail row clicked again re-applies its calendar even at the same address.
+document.addEventListener('calendar:navigate', () => {
+  appliedCalendar = '';
+});
 
 initChrome();
 load();

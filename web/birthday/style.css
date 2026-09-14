@@ -1127,6 +1127,25 @@ a.trow[data-stage="stage-complete"]::before { background: #3aaa5c; }
 
 .calendar.picker .day:has(.chip.is-picked) { background: #fdf0e4; }
 
+.calendar.picker .chip.newsletter { background: #e9eef2; color: var(--brand); text-decoration: none; }
+
+/* A chip's hover card: who is in the issue, over the grid. */
+.calendar.picker { overflow: visible; }
+
+.chip-wrap { position: relative; display: block; margin-top: 4px; }
+
+.chip-wrap .chip { margin-top: 0; }
+
+.chip-pop { display: none; position: absolute; z-index: 5; left: 0; top: calc(100% + 4px); min-width: 200px; max-width: 280px; background: #fff; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14); padding: 8px 12px; font-size: 13px; color: var(--ink); white-space: normal; }
+
+.chip-wrap:hover .chip-pop { display: block; }
+
+.chip-pop-line { display: block; padding: 2px 0; }
+
+.chip-pop-line:first-child { font-weight: 700; color: var(--brand); border-bottom: 1px solid var(--line); padding-bottom: 5px; margin-bottom: 3px; }
+
+.calendar .day:nth-child(7n) .chip-pop, .calendar .day:nth-child(7n-1) .chip-pop { left: auto; right: 0; }
+
 .pick-card { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
 
 .pick-card:empty { display: none; }

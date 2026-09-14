@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -177,9 +178,15 @@ func TestYears(t *testing.T) {
 	if got := y.Occurrence(mustTime("1982-08-13")); got != mustTime("2027-08-13") {
 		t.Errorf("last day of the year: %s", got)
 	}
-	dates := []string{"2026-08-21", "2026-09-04", "2027-06-04", "2027-09-03"}
+	dates := []string{"2026-08-21", "2026-09-04", "2026-09-18", "2027-06-04", "2027-09-03"}
+	if d, ok := y.Newsletter(mustTime("2026-09-10"), dates); !ok || d != mustTime("2026-09-04") {
+		t.Errorf("the last newsletter before: %s %v", d, ok)
+	}
+	if d, ok := y.Newsletter(mustTime("2026-09-04"), dates); !ok || d != mustTime("2026-08-21") {
+		t.Errorf("a birthday on an issue's day goes out the issue before: %s %v", d, ok)
+	}
 	if d, ok := y.Newsletter(mustTime("2026-08-20"), dates); !ok || d != mustTime("2026-08-21") {
-		t.Errorf("first newsletter after: %s %v", d, ok)
+		t.Errorf("a birthday before the first issue lands in it: %s %v", d, ok)
 	}
 	if d, ok := y.Newsletter(mustTime("2027-06-20"), dates); !ok || d != mustTime("2027-06-04") {
 		t.Errorf("last newsletter before a summer birthday: %s %v", d, ok)
@@ -187,7 +194,7 @@ func TestYears(t *testing.T) {
 	if _, ok := y.Newsletter(mustTime("2026-09-01"), []string{"2025-09-05"}); ok {
 		t.Error("a date outside the year was picked")
 	}
-	if got := RequestBy(mustTime("2026-08-21")); got != mustTime("2026-08-11") {
+	if got := RequestBy(mustTime("2026-08-21")); got != mustTime("2026-08-13") {
 		t.Errorf("request by: %s", got)
 	}
 	if err := CheckYear("2026 - 2028"); err == nil {
@@ -218,7 +225,7 @@ func TestRenderStages(t *testing.T) {
 		}
 	}
 	dana := find(v.Staff, "dana.hawkins@heliosschool.org")
-	if dana.BirthdayThisYear != "2026-08-20" || dana.NewsletterDate != "2026-08-21" || dana.RequestBy != "2026-08-11" || dana.AssignedToName != "Jordan Whitfield" {
+	if dana.BirthdayThisYear != "2026-08-20" || dana.NewsletterDate != "2026-08-21" || dana.RequestBy != "2026-08-13" || dana.AssignedToName != "Jordan Whitfield" {
 		t.Errorf("dana: %+v", dana)
 	}
 	if dana.LastDonation == nil || dana.LastDonation.Charity != "Birthfund" || dana.Donation == nil || dana.Donation.UsedOn == "" {
@@ -227,13 +234,13 @@ func TestRenderStages(t *testing.T) {
 	if miguel := find(v.Staff, "miguel.santos@heliosschool.org"); miguel.AssignedTo != "" || miguel.Department != "Classroom Teachers" {
 		t.Errorf("miguel: %+v", miguel)
 	}
-	if kate := find(v.Staff, "kate.doyle@heliosschool.org"); kate.NewsletterDate != "2026-10-23" || kate.RequestBy != "2026-10-13" {
+	if kate := find(v.Staff, "kate.doyle@heliosschool.org"); kate.NewsletterDate != "2026-10-23" || kate.RequestBy != "2026-10-15" {
 		t.Errorf("override: %+v", kate)
 	}
-	if hana := find(v.Staff, "hana.ito@heliosschool.org"); hana.BirthdayThisYear != "2027-02-28" || hana.NewsletterDate != "2027-03-05" {
+	if hana := find(v.Staff, "hana.ito@heliosschool.org"); hana.BirthdayThisYear != "2027-02-28" || hana.NewsletterDate != "2027-02-26" {
 		t.Errorf("leap day: %+v", hana)
 	}
-	if tom := find(v.Staff, "tom.grady@heliosschool.org"); tom.NewsletterDate != "2027-06-04" || tom.RequestBy != "2027-05-25" {
+	if tom := find(v.Staff, "tom.grady@heliosschool.org"); tom.NewsletterDate != "2027-06-04" || tom.RequestBy != "2027-05-27" {
 		t.Errorf("summer: %+v", tom)
 	}
 	if omar := find(v.Staff, "omar.farouk@heliosschool.org"); omar.Level != LevelNoNewsletter || omar.Donation == nil || omar.Donation.UsedOn != "" {
@@ -280,7 +287,7 @@ func TestPipeline(t *testing.T) {
 	}
 	// Unfolded, since the file wraps long lines at 75 octets.
 	ics := strings.ReplaceAll(string(m.Attachments[0].Content), "\r\n ", "")
-	for _, want := range []string{"METHOD:REQUEST", "DTSTART;VALUE=DATE:20260908", "DTEND;VALUE=DATE:20260909", "SUMMARY:Ask Miguel Santos about their birthday charity", "ATTENDEE;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;RSVP=FALSE:mailto:" + parent, "UID:birthday-miguel.santos@heliosschool.org-2026-2027@heliosian.com", "/staff/miguel.santos"} {
+	for _, want := range []string{"METHOD:REQUEST", "DTSTART;VALUE=DATE:20260903", "DTEND;VALUE=DATE:20260904", "SUMMARY:Ask Miguel Santos about their birthday charity", "ATTENDEE;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;RSVP=FALSE:mailto:" + parent, "UID:birthday-miguel.santos@heliosschool.org-2026-2027@heliosian.com", "/staff/miguel.santos"} {
 		if !strings.Contains(ics, want) {
 			t.Fatalf("invite lacks %q:\n%s", want, ics)
 		}
@@ -386,7 +393,7 @@ func TestBirthdays(t *testing.T) {
 		t.Fatalf("add birthday: %d %s", rec.Code, rec.Body)
 	}
 	v := view(t, cache, parent)
-	if sv := find(v.Staff, "sasha.pike@heliosschool.org"); sv == nil || sv.NewsletterDate != "2026-09-18" || len(v.Missing) != 0 {
+	if sv := find(v.Staff, "sasha.pike@heliosschool.org"); sv == nil || sv.NewsletterDate != "2026-09-11" || len(v.Missing) != 0 {
 		t.Fatalf("after adding a birthday: %+v, missing %v", sv, v.Missing)
 	}
 	if rec := call(t, mux, parent, "POST", "/api/birthday/birthday", map[string]any{"email": "sasha.pike@heliosschool.org", "birthday": "September 12"}); rec.Code != http.StatusBadRequest {
@@ -511,10 +518,10 @@ func TestMovedNewsletterRefreshesInvite(t *testing.T) {
 	sent.wait(t, 1)
 	// Miguel's issue moves a day, so his day to ask by does too - and Bill's
 	// and Ruth's, assigned in the same issue: three updates, one each.
-	if rec := call(t, mux, admin, "PUT", "/api/birthday/newsletter-date", map[string]any{"original": "2026-09-18", "date": "2026-09-19"}); rec.Code != http.StatusNoContent {
+	if rec := call(t, mux, admin, "PUT", "/api/birthday/newsletter-date", map[string]any{"original": "2026-09-11", "date": "2026-09-12"}); rec.Code != http.StatusNoContent {
 		t.Fatalf("move: %d %s", rec.Code, rec.Body)
 	}
-	if sv := find(view(t, cache, parent).Staff, "miguel.santos@heliosschool.org"); sv.RequestBy != "2026-09-09" {
+	if sv := find(view(t, cache, parent).Staff, "miguel.santos@heliosschool.org"); sv.RequestBy != "2026-09-04" {
 		t.Fatalf("request by after the move: %+v", sv)
 	}
 	msgs := sent.wait(t, 4)
@@ -524,10 +531,10 @@ func TestMovedNewsletterRefreshesInvite(t *testing.T) {
 			m = &msgs[i+1]
 		}
 	}
-	if m == nil || m.To[0] != parent || m.Subject != "Re: Ask Miguel Santos about their birthday charity" || m.Headers["In-Reply-To"] == "" || !strings.Contains(m.Text, "moved from September 8, 2026 to September 9, 2026") {
+	if m == nil || m.To[0] != parent || m.Subject != "Re: Ask Miguel Santos about their birthday charity" || m.Headers["In-Reply-To"] == "" || !strings.Contains(m.Text, "moved from September 3, 2026 to September 4, 2026") {
 		t.Fatalf("updated invite: %+v", msgs)
 	}
-	if ics := string(m.Attachments[0].Content); !strings.Contains(ics, "DTSTART;VALUE=DATE:20260909") {
+	if ics := string(m.Attachments[0].Content); !strings.Contains(ics, "DTSTART;VALUE=DATE:20260904") {
 		t.Fatalf("updated invite's day:\n%s", ics)
 	}
 	// A write that moves nothing sends nothing.
@@ -542,8 +549,8 @@ func TestMovedNewsletterRefreshesInvite(t *testing.T) {
 
 func TestReminders(t *testing.T) {
 	cache, mux := newServer(t)
-	// Bill is assigned, contacted on the 8th, no donation; Ruth assigned, not
-	// contacted; Miguel unassigned. Both in the September 18 issue, ask by the 8th.
+	// Bill and Ruth are assigned in the September 11 issue, so asked by the 3rd;
+	// Bill was contacted on the 8th, Ruth not; Miguel is unassigned.
 	app := app{cache: cache, writer: &data.Dir{Root: "sampledata"}, queue: syncQueue{}, directory: fakeDirectory{}, mailer: sent, from: "Helios Staff Birthdays <birthday@example.org>", base: "https://birthday.example.org"}
 	kinds := func(day string) []string {
 		out := []string{}
@@ -552,14 +559,15 @@ func TestReminders(t *testing.T) {
 		}
 		return out
 	}
-	if got := kinds("2026-09-07"); len(got) != 0 {
+	if got := kinds("2026-09-02"); len(got) != 0 {
 		t.Fatalf("the day before, due: %v", got)
 	}
-	if got := kinds("2026-09-08"); len(got) != 1 || got[0] != "Ruth Amari:ask" {
+	// On the day, Ruth is due to be asked; Bill's outreach is recorded, so not.
+	if got := kinds("2026-09-03"); len(got) != 1 || got[0] != "Ruth Amari:ask" {
 		t.Fatalf("on the day, due: %v", got)
 	}
 	// Sending records it, so the next look finds nothing new; two days on it is late.
-	if n := app.sendDueReminders(context.Background(), mustTime("2026-09-08")); n != 1 {
+	if n := app.sendDueReminders(context.Background(), mustTime("2026-09-03")); n != 1 {
 		t.Fatalf("sent %d", n)
 	}
 	ask := sent.wait(t, 1)[0]
@@ -571,38 +579,81 @@ func TestReminders(t *testing.T) {
 			t.Fatalf("ask reminder lacks %q:\n%s", want, ask.Text)
 		}
 	}
-	if got := kinds("2026-09-08"); len(got) != 0 {
+	if got := kinds("2026-09-03"); len(got) != 0 {
 		t.Fatalf("after sending, due: %v", got)
 	}
-	if got := kinds("2026-09-09"); len(got) != 0 {
+	if got := kinds("2026-09-04"); len(got) != 0 {
 		t.Fatalf("the day after, due: %v", got)
 	}
-	if got := kinds("2026-09-10"); len(got) != 1 || got[0] != "Ruth Amari:late" {
+	if got := kinds("2026-09-05"); len(got) != 1 || got[0] != "Ruth Amari:late" {
 		t.Fatalf("two days on, due: %v", got)
 	}
-	app.sendDueReminders(context.Background(), mustTime("2026-09-10"))
+	app.sendDueReminders(context.Background(), mustTime("2026-09-05"))
 	late := sent.wait(t, 2)[1]
 	if !strings.Contains(late.Text, "not marked done") || !strings.Contains(late.Text, "mailto:ruth.amari") {
 		t.Fatalf("late reminder: %s", late.Text)
 	}
-	// Two days before the newsletter, Bill (asked, no donation) and Ruth are
-	// nudged to record what came; Dana, complete, is not.
-	got := kinds("2026-09-16")
+	// Two days before the newsletter, Bill (asked by then, no donation) and
+	// Ruth are nudged to record what came; Dana, complete, is not.
+	got := kinds("2026-09-09")
 	if len(got) != 2 || got[0] != "Bill Ryder:donation" || got[1] != "Ruth Amari:donation" {
 		t.Fatalf("before the newsletter, due: %v", got)
 	}
-	app.sendDueReminders(context.Background(), mustTime("2026-09-16"))
+	app.sendDueReminders(context.Background(), mustTime("2026-09-09"))
 	donation := sent.wait(t, 4)[2]
 	if !strings.Contains(donation.Text, "no need to ask again") || !strings.Contains(donation.Text, "Second Harvest of Silicon Valley") {
 		t.Fatalf("donation reminder: %s", donation.Text)
 	}
-	if got := kinds("2026-09-17"); len(got) != 0 {
+	if got := kinds("2026-09-10"); len(got) != 0 {
 		t.Fatalf("the next day, due again: %v", got)
 	}
-	if rows := cache.Tables().Reminders; len(rows) != 5 {
+	if rows := cache.Tables().Reminders; len(rows) != 4 {
 		t.Fatalf("reminder rows: %v", rows)
 	}
 	_ = mux
+}
+
+func TestCreateNewsletterDates(t *testing.T) {
+	cache, mux := newServer(t)
+	if rec := call(t, mux, parent, "POST", "/api/birthday/newsletter-dates/create", map[string]any{"weekday": 4, "from": "2027-08-14", "to": "2027-09-30"}); rec.Code != http.StatusForbidden {
+		t.Fatalf("a non-admin created dates: %d", rec.Code)
+	}
+	// Thursdays from mid-August 2027: the 19th, 26th, and September 2, 9, 16, 23, 30 - seven.
+	rec := call(t, mux, admin, "POST", "/api/birthday/newsletter-dates/create", map[string]any{"weekday": 4, "from": "2027-08-14", "to": "2027-09-30"})
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"added":7`) {
+		t.Fatalf("create: %d %s", rec.Code, rec.Body)
+	}
+	dates := cache.Model().NewsletterDates
+	for _, want := range []string{"2027-08-19", "2027-08-26", "2027-09-30"} {
+		if !slices.Contains(dates, want) {
+			t.Fatalf("missing %s in %v", want, dates)
+		}
+	}
+	if rec := call(t, mux, admin, "POST", "/api/birthday/newsletter-dates/create", map[string]any{"weekday": 4, "from": "2027-08-14", "to": "2027-09-30"}); rec.Code != http.StatusBadRequest {
+		t.Fatalf("the same run again: %d %s", rec.Code, rec.Body)
+	}
+	if rec := call(t, mux, admin, "POST", "/api/birthday/newsletter-dates/create", map[string]any{"weekday": 4, "from": "2027-09-30", "to": "2027-08-14"}); rec.Code != http.StatusBadRequest {
+		t.Fatalf("a backwards run: %d", rec.Code)
+	}
+}
+
+func TestClearFutureNewsletterDates(t *testing.T) {
+	cache, mux := newServer(t)
+	if rec := call(t, mux, parent, "POST", "/api/birthday/newsletter-dates/clear-future", nil); rec.Code != http.StatusForbidden {
+		t.Fatalf("a non-admin cleared the dates: %d", rec.Code)
+	}
+	before := len(cache.Model().NewsletterDates)
+	if rec := call(t, mux, admin, "POST", "/api/birthday/newsletter-dates/clear-future", nil); rec.Code != http.StatusNoContent {
+		t.Fatalf("clear: %d %s", rec.Code, rec.Body)
+	}
+	// Today is September 9: everything from then on is gone, the past stays.
+	left := cache.Model().NewsletterDates
+	if len(left) >= before || len(left) == 0 || left[len(left)-1] >= "2026-09-09" {
+		t.Fatalf("after clearing: %v", left)
+	}
+	if rec := call(t, mux, admin, "POST", "/api/birthday/newsletter-dates/clear-future", nil); rec.Code != http.StatusNoContent {
+		t.Fatalf("clearing nothing: %d %s", rec.Code, rec.Body)
+	}
 }
 
 func TestNewsletterDates(t *testing.T) {

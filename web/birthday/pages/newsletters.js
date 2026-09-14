@@ -2,7 +2,7 @@ import {state, isAdmin, year, staffFor, newsletterText, longDate, mediumDate, da
 import {el, link, svg, thumb, button, pageHead, menu, copyText} from '../dom.js';
 import {setTitle, setSearch} from '../chrome.js';
 import {staffRow, emptyPanel} from '../cards.js';
-import {openNewsletterDate, openChangeNewsletterDate, addNextWeek, removeNewsletterDate} from '../edit.js';
+import {openNewsletterDate, openChangeNewsletterDate, addNextWeek, removeNewsletterDate, clearFutureNewsletterDates, openCreateNewsletterDates} from '../edit.js';
 
 let query = '';
 
@@ -113,7 +113,7 @@ function overview() {
   const title = el('div', 'summary-title');
   const issues = thisYear();
   title.append(el('strong', '', `${year().current} birthday year`), el('span', '', ` · ${issues.length} ${issues.length === 1 ? 'issue' : 'issues'}`));
-  body.append(title, el('div', 'summary-note', `${longDate(year().start)} to ${longDate(year().end)}. A birthday lands in the first newsletter on or after it, or the last one of the year for a summer birthday.`));
+  body.append(title, el('div', 'summary-note', `${longDate(year().start)} to ${longDate(year().end)}. Each issue announces the birthdays between it and the next, so the word goes out before the day, never on it.`));
   band.append(icon, body);
   const next = nextIssue();
   if (next) {
@@ -135,6 +135,11 @@ export function newslettersPage() {
   const page = el('div', 'list-page');
   const actions = [];
   if (isAdmin()) {
+    const future = state.model.newsletterDates.filter(d => d >= state.model.today).length;
+    if (future) {
+      actions.push(button('Clear Future Dates', 'trash', 'button button-secondary', () => clearFutureNewsletterDates(future)));
+    }
+    actions.push(button('Create Newsletters', 'calendar', 'button button-secondary', openCreateNewsletterDates));
     actions.push(button('Add', 'plus', 'button', openNewsletterDate));
   }
   query = '';

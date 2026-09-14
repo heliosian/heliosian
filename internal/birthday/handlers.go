@@ -88,6 +88,8 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	mux.HandleFunc("POST /api/birthday/newsletter-date", a.addNewsletterDate)
 	mux.HandleFunc("PUT /api/birthday/newsletter-date", a.changeNewsletterDate)
 	mux.HandleFunc("DELETE /api/birthday/newsletter-date", a.deleteNewsletterDate)
+	mux.HandleFunc("POST /api/birthday/newsletter-dates/clear-future", a.clearFutureNewsletterDates)
+	mux.HandleFunc("POST /api/birthday/newsletter-dates/create", a.createNewsletterDates)
 	mux.HandleFunc("POST /api/birthday/settings", a.saveSettings)
 	mux.HandleFunc("GET /api/admin/state", a.adminState)
 	mux.HandleFunc("POST /api/admin/admins", a.setAdmins)
@@ -944,6 +946,113 @@ func (a app) deleteNewsletterDate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.InfoContext(r.Context(), "birthday: removed newsletter date", "actor", actor, "date", match["Date"])
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// createNewsletterDates lays out a weekly run of issues: every given weekday
+// from one date to another, skipping any already on the list.
+func (a app) createNewsletterDates(w http.ResponseWriter, r *http.Request) {
+	actor, ok := a.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Weekday int    `json:"weekday"`
+		From    string `json:"from"`
+		To      string `json:"to"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	from, err := ParseDate(strings.TrimSpace(body.From))
+	if err != nil {
+		http.Error(w, "from: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	to, err := ParseDate(strings.TrimSpace(body.To))
+	if err != nil {
+		http.Error(w, "to: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if body.Weekday < 0 || body.Weekday > 6 {
+		http.Error(w, "weekday must be 0 (Sunday) to 6 (Saturday)", http.StatusBadRequest)
+		return
+	}
+	if to.Before(from) {
+		http.Error(w, "the final date is before the first", http.StatusBadRequest)
+		return
+	}
+	if to.Sub(from) > 366*24*time.Hour {
+		http.Error(w, "at most a year at a time", http.StatusBadRequest)
+		return
+	}
+	// The first of the weekday on or after from, then every week to the end.
+	day := from.AddDate(0, 0, (body.Weekday-int(from.Weekday())+7)%7)
+	have := a.cache.Model().NewsletterDates
+	added := []string{}
+	tables := a.cache.Tables()
+	for ; !day.After(to); day = day.AddDate(0, 0, 7) {
+		cell := day.Format(DateFormat)
+		if slices.Contains(have, cell) {
+			continue
+		}
+		added = append(added, cell)
+		tables = tables.with(newsletterDatesTab, nil, map[string]string{"Date": cell})
+	}
+	if len(added) == 0 {
+		http.Error(w, "every one of those dates is already on the list", http.StatusBadRequest)
+		return
+	}
+	if !a.commit(r, w, tables, func() error {
+		rows := make([][]string, 0, len(added))
+		for _, cell := range added {
+			rows = append(rows, []string{cell})
+		}
+		if err := a.writer.AppendAll(appName, newsletterDatesTab, rows); err != nil {
+			return err
+		}
+		return a.logChange(actor, "add", "newsletter dates", "", "", fmt.Sprintf("%d, %s to %s", len(added), added[0], added[len(added)-1]))
+	}) {
+		return
+	}
+	slog.InfoContext(r.Context(), "birthday: created newsletter dates", "actor", actor, "count", len(added), "from", added[0], "to", added[len(added)-1])
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(map[string]int{"added": len(added)}); err != nil {
+		slog.ErrorContext(r.Context(), "encode created dates", "error", err)
+	}
+}
+
+// clearFutureNewsletterDates removes every issue from today on, for starting
+// a year's list over; the ones already out stay, since birthdays landed in them.
+func (a app) clearFutureNewsletterDates(w http.ResponseWriter, r *http.Request) {
+	actor, ok := a.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	day := today()
+	tables := a.cache.Tables()
+	removed := []string{}
+	for _, date := range a.cache.Model().NewsletterDates {
+		if date >= day {
+			removed = append(removed, date)
+			tables = tables.without(newsletterDatesTab, map[string]string{"Date": date})
+		}
+	}
+	if len(removed) == 0 {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if !a.commit(r, w, tables, func() error {
+		for _, date := range removed {
+			if err := a.writer.Delete(appName, newsletterDatesTab, map[string]string{"Date": date}); err != nil {
+				return err
+			}
+		}
+		return a.logChange(actor, "remove", "newsletter dates", "", "", fmt.Sprintf("%d from %s on", len(removed), day))
+	}) {
+		return
+	}
+	slog.InfoContext(r.Context(), "birthday: cleared future newsletter dates", "actor", actor, "count", len(removed), "from", day)
 	w.WriteHeader(http.StatusNoContent)
 }
 

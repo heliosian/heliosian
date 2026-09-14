@@ -1,4 +1,4 @@
-import {state, isUnassigned, parseDate, staffPath, stageClass, stageName, mediumDate} from '../state.js';
+import {state, isUnassigned, parseDate, staffPath, newsletterPath, stageClass, stageName, mediumDate, staffFor} from '../state.js';
 import {el, link, svg, thumb, button, pageHead} from '../dom.js';
 import {setTitle} from '../chrome.js';
 import {emptyPanel} from '../cards.js';
@@ -92,6 +92,16 @@ function list(rows, rerender) {
 
 function grid(rows, rerender) {
   const items = [];
+  // Each issue, with who is announced in it and who holds each, on hover.
+  for (const date of state.model.newsletterDates) {
+    const day = parseDate(date);
+    if (!day) {
+      continue;
+    }
+    const people = staffFor(date);
+    const lines = people.length ? people.map(sv => `${sv.name} · ${sv.assignedTo ? (sv.assignedToName || sv.assignedTo).split(' ')[0] : 'unassigned'}`) : ['No birthdays in this issue'];
+    items.push({key: day.toDateString(), title: 'Newsletter', href: newsletterPath(date), className: 'newsletter', lines: ['Newsletter · ' + mediumDate(date), ...lines]});
+  }
   for (const sv of rows) {
     const day = parseDate(showBy === 'ask' ? sv.requestBy : sv.birthdayThisYear);
     if (day) {
