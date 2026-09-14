@@ -72,6 +72,18 @@ func (c calendarLinked) parties(now time.Time, family map[string]bool) []calenda
 	return out
 }
 
+// activityImage is the picture HCA-Team's own page gives an event: its
+// own, else its category's, as a path on that site.
+func activityImage(model *events.Model, a *events.Activity) string {
+	if a.ImageURL != "" {
+		return a.ImageURL
+	}
+	if c := model.Category(a.Category); c != nil {
+		return c.ImageURL
+	}
+	return ""
+}
+
 // An HCA-Team event is open to join until it is done or every spot is taken;
 // the things under it stay off the calendar, since the event stands for them,
 // and a sign-up on any of them makes the event the household's.
@@ -102,7 +114,7 @@ func (c calendarLinked) activities(family map[string]bool) []calendar.Linked {
 		}
 		out = append(out, calendar.Linked{
 			Source: calendar.SourceTeam, ID: a.ID, Title: a.Title, Description: a.Description, Location: a.Location,
-			Start: a.Start, End: a.End, Path: model.PathOf(a), Availability: availability, Mine: mine, Image: a.ImageURL,
+			Start: a.Start, End: a.End, Path: model.PathOf(a), Availability: availability, Mine: mine, Image: activityImage(model, a),
 		})
 	}
 	return out

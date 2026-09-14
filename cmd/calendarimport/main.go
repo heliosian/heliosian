@@ -45,8 +45,8 @@ import (
 )
 
 const (
-	feedURL   = "https://calendar.google.com/calendar/ical/heliosns.org_cidjj9plktli1gdm2hrkj7gqks%40group.calendar.google.com/public/basic.ics"
-	pageURL   = "https://www.heliosschool.org/school-calendar"
+	feedURL   = calendar.SchoolFeedURL
+	pageURL   = calendar.SchoolCalendarPage
 	modelName = "claude-fable-5-1"
 	actor     = "calendarimport"
 	batchSize = 10

@@ -57,8 +57,12 @@ type View struct {
 	Years        []Year                       `json:"years"`
 	Days         map[string]map[string]string `json:"days"`
 	Events       []*Event                     `json:"events"`
-	Feeds        []Feed                       `json:"feeds"`
-	Alerts       Alerts                       `json:"alerts"`
+	// Provenance is each event's admin-side story, for an admin alone; Names
+	// puts a name to the addresses the events name.
+	Provenance map[string]*Provenance `json:"provenance,omitempty"`
+	Names      map[string]string      `json:"names,omitempty"`
+	Feeds      []Feed                 `json:"feeds"`
+	Alerts     Alerts                 `json:"alerts"`
 }
 
 func displayName(email string) string {
@@ -122,7 +126,20 @@ func Render(model *Model, directory Directory, email string, admin bool, now tim
 		}
 	}
 	stale, privacy := directory.Alerts(email)
+	names := map[string]string{}
+	for _, e := range model.Events {
+		if e.AddedBy != "" {
+			if p, ok := directory.Person(e.AddedBy); ok && p.Name != "" {
+				names[e.AddedBy] = p.Name
+			}
+		}
+	}
+	var provenance map[string]*Provenance
+	if admin {
+		provenance = model.Provenance
+	}
 	return View{
+		Provenance: provenance, Names: names,
 		User: user, Today: now.Format(DateFormat), Now: now.Format(DateTimeFormat),
 		Classrooms: model.Roster.Classrooms, Colors: directory.ClassroomColors(), Tags: append(append([]Tag{}, model.Tags...), builtinTags...), DayTypes: model.DayTypes, Years: model.Years,
 		Days: model.Days, Events: withLinked(model.Events, linked), Feeds: feeds, Alerts: Alerts{Stale: stale, Privacy: privacy},

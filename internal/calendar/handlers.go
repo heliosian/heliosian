@@ -62,6 +62,9 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	mux.HandleFunc("GET /api/calendar/images/search", a.admin(a.search.ServeSearch))
 	mux.HandleFunc("POST /api/calendar/images/import", a.admin(a.importImage))
 	mux.HandleFunc("GET /feed/{file}", a.feed)
+	// Public, past sign-in (auth.Public): the cards a chat app fetches.
+	mux.HandleFunc("GET /share/upcoming.png", a.shareUpcoming)
+	mux.HandleFunc("GET /share/{id...}", a.shareCard)
 }
 
 func (a app) page(w http.ResponseWriter, r *http.Request) {

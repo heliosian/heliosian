@@ -1,5 +1,5 @@
-import {eventPath, timeLine, whenLine, timeRange, audienceWords, categoryTags, eventColors, plan, specials, isSchoolDay, dayLabel, dayTypeClass, today, selectedClassrooms, classroomNames, linkURL, call} from './state.js';
-import {el, link} from './dom.js';
+import {eventPath, timeColumn, whenLine, timeRange, audienceWords, categoryTags, eventColors, plan, specials, isSchoolDay, dayLabel, dayTypeClass, today, selectedClassrooms, classroomNames, linkURL, call} from './state.js';
+import {el, link, svg} from './dom.js';
 
 // audienceChips are the event page's full account of who an event is for
 // and what it is; the lists carry colors instead.
@@ -46,7 +46,7 @@ export function eventRow(e, opts = {}) {
   if (first && first.color) {
     row.style.borderLeftColor = first.color;
   }
-  row.append(el('span', 'event-time', opts.showDate ? whenLine(e) : timeLine(e, opts.date)));
+  row.append(el('span', 'event-time', opts.showDate ? whenLine(e) : timeColumn(e, opts.date)));
   const body = el('span', 'event-body');
   body.append(el('span', 'event-title', e.title));
   if (e.location) {
@@ -101,13 +101,23 @@ export function dayHeading(date, withDayWords) {
   return head;
 }
 
+// blockIcons are the four parts of a school day as pictures: a car at the
+// curb twice, the school, and the people who stay after.
+const blockIcons = {Dropoff: 'car', School: 'school', Pickup: 'car', Aftercare: 'people'};
+
 export function blocks(type) {
   const strip = el('div', 'blocks');
   for (const name of ['Dropoff', 'School', 'Pickup', 'Aftercare']) {
     const block = type.blocks.find(b => b.name === name);
-    const cell = el('div', 'block' + (block ? '' : ' is-off'));
-    cell.append(el('div', 'block-name', name));
-    cell.append(el('div', 'block-hours', block ? timeRange(block.start, block.end) : '—'));
+    const cell = el('div', 'block block-' + name.toLowerCase() + (block ? '' : ' is-off'));
+    const icon = el('span', 'block-icon');
+    icon.append(svg(blockIcons[name]));
+    const body = el('span', 'block-body');
+    body.append(el('span', 'block-name', name));
+    // The hours stand alone in their block, so the figure space that lines
+    // up a column of them elsewhere would only read as an indent here.
+    body.append(el('span', 'block-hours', block ? timeRange(block.start, block.end).trimStart() : '—'));
+    cell.append(icon, body);
     strip.append(cell);
   }
   return strip;

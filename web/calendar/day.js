@@ -3,9 +3,9 @@
 // down a timeline. On a wide window it lives in the rail (chrome.js
 // draws it there for every page); on a phone the calendar page draws the
 // card at the top of the page.
-import {state, eventsOn, today, addDays, parseDate, formatDate, monthOf, shiftMonth, monthLabel, weekStart, shortDayLabel, weekdayLong, specials, isSchoolDay, dayTypeClass, eventTint, timeLine, eventPath, isMatch} from './state.js';
+import {state, eventsOn, today, addDays, parseDate, formatDate, monthOf, shiftMonth, monthLabel, weekStart, weekdayLong, specials, isSchoolDay, dayTypeClass, eventTint, timeLine, eventPath, isMatch} from './state.js';
 import {el, link, svg, button} from './dom.js';
-import {planCards, emptyNote} from './events.js';
+import {planCards} from './events.js';
 
 // The rail's paging, kept across renders: the month its small month is
 // open to, and the day that set it.
@@ -79,10 +79,18 @@ function timelineRow(e, date) {
   return row;
 }
 
+// dayNote is the card's word when a day has no events: a soft box with a
+// ticked calendar.
+function dayNote(words) {
+  const note = el('div', 'day-note');
+  note.append(svg('calcheck'), el('span', '', words));
+  return note;
+}
+
 function timeline(date) {
   const events = eventsOn(date);
   if (!events.length) {
-    return emptyNote('Nothing on the calendar for these classrooms and tags.');
+    return dayNote('Nothing on the calendar for these classrooms and tags.');
   }
   const list = el('div', 'timeline');
   for (const e of events) {
@@ -106,9 +114,13 @@ export function dayColumn(date, paging) {
   const col = el('section', 'home-day');
   const month = el('div');
   const card = el('div', 'day-card');
+  const art = el('img', 'day-card-art');
+  art.src = '/brand/schedule-box.png';
+  art.alt = '';
+  card.append(art);
   const head = el('div', 'day-card-head');
   head.append(el('h1', 'day-card-title', date === today() ? 'Today' : weekdayLong(date)));
-  head.append(el('p', 'day-card-date', shortDayLabel(date)));
+  head.append(el('p', 'day-card-date', parseDate(date).toLocaleDateString('en-US', {month: 'long', day: 'numeric', year: 'numeric'})));
   const plan = el('div', 'day-card-plan');
   const events = el('div');
   card.append(head, plan, events);

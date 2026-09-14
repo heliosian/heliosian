@@ -147,13 +147,6 @@ export function fillFilters(wrap, opts = {}) {
       fillFilters(wrap, opts);
     });
     head.append(fold);
-    // Reset sits on the head, so a choice can be undone without unfolding.
-    if (!filtersAreDefault()) {
-      head.append(button('Reset filters', null, 'button button-secondary button-small filters-reset', () => {
-        resetFilters();
-        refresh();
-      }));
-    }
     const chevron = el('button', 'filters-chevron');
     chevron.type = 'button';
     chevron.setAttribute('aria-label', open ? 'Fold the filters' : 'Unfold the filters');
@@ -204,14 +197,35 @@ export function fillFilters(wrap, opts = {}) {
     ], tagChips(group.tags));
     rows.append(last);
   }
-  // The drawer has no head to carry Reset, so it goes at the rows' end.
-  if (!opts.collapsible && !filtersAreDefault()) {
-    last.append(button('Reset filters', null, 'link-button filter-reset', () => {
+  wrap.append(rows);
+  // Under the rows, the three sweeps: Select all turns every classroom and
+  // category on, Clear all turns every category off (the classrooms stay,
+  // since none at all shows nothing), and Reset filters returns to the
+  // defaults - each only while it would change something.
+  const foot = el('div', 'filters-foot');
+  const everything = selectedClassrooms().length === classroomNames().length && selectedTags().length === tagNames().length;
+  if (!everything) {
+    foot.append(button('Select all', null, 'button button-secondary button-small', () => {
+      setClassrooms(classroomNames());
+      setTags(tagNames());
+      refresh();
+    }));
+  }
+  if (selectedTags().length) {
+    foot.append(button('Clear all', null, 'button button-secondary button-small', () => {
+      pick([]);
+      refresh();
+    }));
+  }
+  if (!filtersAreDefault()) {
+    foot.append(button('Reset filters', null, 'button button-secondary button-small', () => {
       resetFilters();
       refresh();
     }));
   }
-  wrap.append(rows);
+  if (foot.childElementCount) {
+    wrap.append(foot);
+  }
 }
 
 // The rail's day column, under the nav on a wide window: the day last opened

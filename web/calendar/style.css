@@ -150,11 +150,17 @@ button { font: inherit; }
 
 .mini-day.is-on .mini-dot { background: #fff !important; }
 
-.day-card { padding: 16px 16px 18px; border-radius: 14px; background: var(--card); border: 1px solid var(--line); }
+/* The day card wears the bird on its branch at the top right, with the
+   sun behind, its words clear of the art. */
+.day-card { position: relative; padding: 16px 16px 18px; border-radius: 14px; background: var(--card); border: 1px solid var(--line); overflow: hidden; }
+
+.day-card-art { position: absolute; top: 4px; right: 6px; width: 118px; height: auto; pointer-events: none; }
+
+.day-card-head { position: relative; padding-right: 110px; }
 
 .day-card-title { font-family: Montserrat, Roboto, sans-serif; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.1; margin: 0; color: var(--brand); }
 
-.day-card-date { margin: 4px 0 0; font-size: 13.5px; color: var(--muted); }
+.day-card-date { margin: 4px 0 0; font-size: 14px; color: var(--muted); }
 
 .day-card-plan:not(:empty) { margin-top: 14px; }
 
@@ -162,14 +168,28 @@ button { font: inherit; }
 
 .day-card .plan-type { font-size: 15px; }
 
-.day-card .plan-card.dt-regular { background: var(--page); }
+.day-card .plan-card { position: relative; border-left-width: 5px; }
 
-/* Two blocks a row in the rail's width, the hours wrapping when they must. */
-.day-card .blocks { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.day-card .plan-card.dt-regular { background: #fff; border-color: var(--line); border-left-color: var(--accent); }
 
-.day-card .block { background: #fff; padding: 6px 8px; }
+/* In the rail's width the blocks go one to a line, the icon, the name and
+   the hours at the right, so the hours never break. */
+.day-card .blocks { grid-template-columns: minmax(0, 1fr); gap: 6px; }
 
-.day-card .block-hours { font-size: 12px; white-space: normal; }
+.day-card .block { background: var(--page); padding: 6px 12px 6px 8px; border-radius: 12px; }
+
+.day-card .plan-card:not(.dt-regular) .block { background: rgba(255, 255, 255, 0.7); }
+
+.day-card .block-body { flex-direction: row; align-items: baseline; justify-content: space-between; }
+
+.day-card .block-hours { margin-top: 0; font-size: 13px; }
+
+.day-card .panel { margin-top: 14px; border: 0; background: var(--page); }
+
+/* The note when a day has nothing on: a soft green box with a ticked calendar. */
+.day-note { display: flex; align-items: center; gap: 12px; margin-top: 14px; padding: 12px 14px; border-radius: 12px; background: #e8f3f0; color: var(--muted); font-size: 13.5px; }
+
+.day-note svg { width: 24px; height: 24px; flex-shrink: 0; color: var(--accent); }
 
 .day-card .panel { margin-top: 14px; border: 0; background: var(--page); }
 
@@ -214,7 +234,9 @@ button { font: inherit; }
 
 .filters-summary { flex: 1; min-width: 0; font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.filters-reset { flex-shrink: 0; }
+.filters-foot { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; padding: 0 18px 14px; }
+
+.drawer-filters .filters-foot { padding: 6px 0 0; }
 
 /* The chevron points down to unfold and up to fold. */
 .filters-chevron { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; flex-shrink: 0; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--muted); cursor: pointer; }
@@ -324,7 +346,10 @@ body.is-searching .month-pip:not(.is-match), body.is-searching .month-mark:not(.
 
 main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
 
-#page { flex: 1; width: 100%; max-width: 1320px; margin: 0 auto; padding: 20px 24px 120px; }
+#page { flex: 1; display: flex; flex-direction: column; width: 100%; padding: 20px 24px 40px; }
+
+/* The event and feeds pages read best at a measure; the calendar fills the window. */
+#page > :not(.home) { width: 100%; max-width: 1320px; margin: 0 auto; }
 
 .icon-button {
   display: inline-flex;
@@ -393,7 +418,11 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
    panel's words are taken out of the flow so the row's height is the
    month's, not the whole year's. The page's own day column is for a phone;
    on a wide window the rail's is the one showing. */
-.home-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 330px); gap: 0 20px; align-items: stretch; }
+/* The calendar page grows with the window: the month's rows share whatever
+   height is left under the filters, and Upcoming stands as tall. */
+.home { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+
+.home-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 340px); gap: 0 20px; align-items: stretch; }
 
 
 .home > .home-day { display: none; }
@@ -449,7 +478,7 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .up-dot { width: 9px; height: 9px; flex-shrink: 0; margin-top: 4px; border-radius: 50%; background: var(--other); }
 
-.home-month { min-width: 0; container-type: inline-size; }
+.home-month { min-width: 0; display: flex; flex-direction: column; container-type: inline-size; }
 
 /* In a narrow month the hours would only be clipped; the title alone. */
 @container (max-width: 640px) {
@@ -516,13 +545,26 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .blocks { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
 
-.block { padding: 7px 8px; border-radius: 10px; background: rgba(255, 255, 255, 0.85); text-align: left; }
+/* One part of the day: an icon in a tinted circle, the name, the hours. */
+.block { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 10px; background: rgba(255, 255, 255, 0.85); text-align: left; }
 
 .block.is-off { opacity: 0.45; }
 
-.block-name { font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.block-icon { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; flex-shrink: 0; border-radius: 50%; background: #e6edf3; color: #3f5a73; }
 
-.block-hours { font-size: 13px; font-weight: 700; color: var(--brand); margin-top: 2px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.block-icon svg { width: 17px; height: 17px; }
+
+.block-school .block-icon { background: #fdf3dc; color: #a8741c; }
+
+.block-pickup .block-icon { background: #fbe6ea; color: #b5424f; }
+
+.block-aftercare .block-icon { background: #ece7f7; color: #6f4fa0; }
+
+.block-body { display: flex; flex-direction: column; flex: 1; min-width: 0; gap: 1px; }
+
+.block-name { font-size: 13px; color: var(--ink); }
+
+.block-hours { font-size: 13px; font-weight: 700; color: var(--brand); white-space: nowrap; font-variant-numeric: tabular-nums; }
 
 /* Event rows: the hours, the title, and the classroom colors as dots at the
    end and a stripe down the left. */
@@ -646,7 +688,8 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .pager-feed svg { width: 16px; height: 16px; }
 
-.month-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+/* The weekday row keeps its own height; the weeks share the rest. */
+.month-grid { flex: 1; display: grid; grid-template-columns: repeat(7, 1fr); grid-template-rows: auto; grid-auto-rows: minmax(112px, 1fr); gap: 6px; }
 
 .month-dow { text-align: center; font-size: 12.5px; font-weight: 600; color: var(--muted); padding: 4px 0 6px; }
 
@@ -654,7 +697,7 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
   display: flex;
   flex-direction: column;
   gap: 4px;
-  min-height: 112px;
+  min-height: 0;
   padding: 6px 7px 8px;
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -723,11 +766,19 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .day-peek .plan-card.dt-regular { background: var(--page); }
 
-.day-peek .blocks { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.day-peek .blocks { grid-template-columns: minmax(0, 1fr); gap: 4px; }
 
-.day-peek .block { background: #fff; padding: 5px 8px; }
+.day-peek .block { background: var(--page); padding: 4px 10px 4px 6px; }
 
-.day-peek .block-hours { font-size: 12px; white-space: normal; }
+.day-peek .plan-card:not(.dt-regular) .block { background: rgba(255, 255, 255, 0.7); }
+
+.day-peek .block-icon { width: 26px; height: 26px; }
+
+.day-peek .block-icon svg { width: 14px; height: 14px; }
+
+.day-peek .block-body { flex-direction: row; align-items: baseline; justify-content: space-between; }
+
+.day-peek .block-hours { font-size: 12.5px; }
 
 .day-peek-list { display: flex; flex-direction: column; gap: 6px; }
 
@@ -793,6 +844,13 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 .side-card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
 
 .side-card-help { background: #eaf4f3; border-color: #d3e7e5; }
+
+/* The admins' part of the source card, set off under a rule. */
+.side-admin { margin-top: 10px; padding-top: 10px; border-top: 1px dashed #c5dad7; }
+
+.side-admin-title { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+
+.side-row-body .link-button { display: inline-flex; margin-right: 6px; }
 
 .side-card-linked { border-color: var(--brand); }
 

@@ -2,8 +2,10 @@
 package calendar
 
 import (
+	"encoding/base64"
 	"fmt"
 	"maps"
+	"net/url"
 	"regexp"
 	"slices"
 	"sort"
@@ -128,6 +130,16 @@ type Event struct {
 	Keywords    []string `json:"keywords,omitempty"`
 	Marker      string   `json:"marker,omitempty"`
 	Updated     string   `json:"updated,omitempty"`
+	// Where the event's dates came from, for the page to say and link:
+	// SourceURL is the original - the feed's event in Google Calendar, the
+	// school's calendar page for the year calendar - SourceTitle the title
+	// as the source had it, Year the school year a year-calendar row was
+	// read from, and AddedBy and Added who put a hand-added event in and when.
+	SourceURL   string `json:"sourceUrl,omitempty"`
+	SourceTitle string `json:"sourceTitle,omitempty"`
+	Year        string `json:"year,omitempty"`
+	AddedBy     string `json:"addedBy,omitempty"`
+	Added       string `json:"added,omitempty"`
 	// Link is the page of an event another app runs, as a path on that site;
 	// Availability is what a reader can do there now; Mine is where the
 	// viewer's household already stands with it; Image is its picture
@@ -169,6 +181,14 @@ type Year struct {
 
 // Tag is one word of the vocabulary events are filed under, with the
 // description the classifier is given for it.
+// Where the school's own calendar lives: the Google Calendar feed the
+// import mirrors and the page that links the year calendar's PDF - the
+// places an event's source line links to.
+const (
+	SchoolFeedURL      = "https://calendar.google.com/calendar/ical/heliosns.org_cidjj9plktli1gdm2hrkj7gqks%40group.calendar.google.com/public/basic.ics"
+	SchoolCalendarPage = "https://www.heliosschool.org/school-calendar"
+)
+
 // A Tag is one category events are filed under. Group is the line of the
 // filters it sits on, blank for the plain line at the end; Default is
 // whether it starts on for someone who has not chosen - on unless the
@@ -193,6 +213,58 @@ type Tag struct {
 type ImageChecker interface {
 	Has(key string) (bool, error)
 	Prefetch(names []string) error
+}
+
+// Provenance is the admins' side of an event's story: the classifier's
+// filing (which model, when) and the correction the Overrides tab made -
+// the columns it touched and its note.
+type Provenance struct {
+	Model     string   `json:"model,omitempty"`
+	Enriched  string   `json:"enriched,omitempty"`
+	Corrected []string `json:"corrected,omitempty"`
+	Note      string   `json:"note,omitempty"`
+}
+
+func (m *Model) provenance(id string) *Provenance {
+	p := m.Provenance[id]
+	if p == nil {
+		p = &Provenance{}
+		m.Provenance[id] = p
+	}
+	return p
+}
+
+// GoogleEventURL is where a feed event opens in Google Calendar: the
+// feed's calendar and the event's id, as Google encodes the pair. A
+// repeating event's instance carries its start in UTC after an underscore,
+// which is how the import's key - the instance's wall-clock start - reads
+// once turned back. Anything that is not the school's feed gives nothing.
+func GoogleEventURL(key string) string {
+	uid, instance, _ := strings.Cut(key, "/")
+	eventID, ok := strings.CutSuffix(uid, "@google.com")
+	if !ok {
+		return ""
+	}
+	if instance != "" {
+		if len(instance) == 8 {
+			eventID += "_" + instance
+		} else if t, err := time.ParseInLocation("20060102T150405", instance, Location); err == nil {
+			eventID += "_" + t.UTC().Format("20060102T150405Z")
+		} else {
+			return ""
+		}
+	}
+	feed, err := url.Parse(SchoolFeedURL)
+	if err != nil {
+		return ""
+	}
+	parts := strings.Split(feed.Path, "/")
+	if len(parts) < 4 {
+		return ""
+	}
+	calendarID := parts[3]
+	eid := base64.RawStdEncoding.EncodeToString([]byte(eventID + " " + calendarID))
+	return "https://www.google.com/calendar/event?eid=" + eid
 }
 
 // tagDefault reads the Default column: anything but No is on, so a column
@@ -244,6 +316,9 @@ type Model struct {
 	// thing: the same days, day type, and tags from a second source.
 	Duplicates int
 	Skipped    map[string]int
+	// Provenance is what the admins' tabs did to each event - the
+	// classifier's filing and any correction - for the admins' eyes.
+	Provenance map[string]*Provenance
 	byID       map[string]*Event
 	byToken    map[string]*Feed
 	tags       map[string]bool
@@ -569,7 +644,7 @@ func checkTitle(title string) error {
 }
 
 func (b *builder) event(source, id string, row map[string]string) (*Event, error) {
-	e := &Event{ID: id, Source: source, Title: row["Title"], Location: row["Location"], Description: row["Description"]}
+	e := &Event{ID: id, Source: source, Title: row["Title"], SourceTitle: row["Title"], Location: row["Location"], Description: row["Description"]}
 	fail := func(err error) (*Event, error) {
 		return nil, fmt.Errorf("%s row %q: %w", source, id, err)
 	}
@@ -635,6 +710,8 @@ func (b *builder) applyEnrichment(rows []map[string]string) error {
 			}
 		}
 		e.Keywords = union(e.Keywords, SplitList(row["Keywords"]))
+		p := b.model.provenance(id)
+		p.Model, p.Enriched = strings.TrimSpace(row["Model"]), strings.TrimSpace(row["Enriched"])
 	}
 	return nil
 }
@@ -714,6 +791,13 @@ func (b *builder) applyOverrides(rows []map[string]string) error {
 			return fail(fmt.Errorf("hidden %w", err))
 		}
 		e.Hidden = hidden
+		p := b.model.provenance(id)
+		for _, column := range []string{"Title", "Start", "End", "Location", "Description", "Tags", "Day Type", "Keywords", "Hidden"} {
+			if strings.TrimSpace(row[column]) != "" {
+				p.Corrected = append(p.Corrected, column)
+			}
+		}
+		p.Note = strings.TrimSpace(row["Note"])
 	}
 	return nil
 }
@@ -1035,7 +1119,7 @@ func BuildModel(tables *Tables, roster Roster) (*Model, error) {
 		return nil, err
 	}
 	m := &Model{
-		Events: []*Event{}, DayTypes: dayTypes, Tags: tags, Days: map[string]map[string]string{}, Years: []Year{},
+		Events: []*Event{}, DayTypes: dayTypes, Tags: tags, Days: map[string]map[string]string{}, Years: []Year{}, Provenance: map[string]*Provenance{},
 		Roster: roster, Feeds: []Feed{}, Skipped: map[string]int{}, byID: map[string]*Event{}, byToken: map[string]*Feed{}, tags: map[string]bool{},
 	}
 	for _, t := range tags {
@@ -1048,6 +1132,7 @@ func BuildModel(tables *Tables, roster Roster) (*Model, error) {
 			return nil, err
 		}
 		e.Updated = row["Updated"]
+		e.SourceURL = GoogleEventURL(row["Key"])
 		if err := b.add(e); err != nil {
 			return nil, err
 		}
@@ -1060,6 +1145,7 @@ func BuildModel(tables *Tables, roster Roster) (*Model, error) {
 		if want := SchoolYear(e.start); row["Year"] != want {
 			return nil, fmt.Errorf("%s row %q: year %q should be %s", PDFTab, e.ID, row["Year"], want)
 		}
+		e.Year, e.SourceURL = row["Year"], SchoolCalendarPage
 		e.Marker = row["Marker"]
 		if e.Marker != "" && e.Marker != MarkerFirstDay && e.Marker != MarkerLastDay {
 			return nil, fmt.Errorf("%s row %q: marker %q is not blank, %s, or %s", PDFTab, e.ID, e.Marker, MarkerFirstDay, MarkerLastDay)
@@ -1073,6 +1159,7 @@ func BuildModel(tables *Tables, roster Roster) (*Model, error) {
 		if err != nil {
 			return nil, err
 		}
+		e.AddedBy, e.Added = strings.TrimSpace(row["Added By"]), strings.TrimSpace(row["Added"])
 		if err := b.add(e); err != nil {
 			return nil, err
 		}

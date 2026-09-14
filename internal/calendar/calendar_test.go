@@ -1,6 +1,7 @@
 package calendar
 
 import (
+	"encoding/base64"
 	"slices"
 	"strings"
 	"testing"
@@ -559,5 +560,25 @@ func TestSchoolYear(t *testing.T) {
 		if got := SchoolYear(d); got != want {
 			t.Errorf("%s: %s, want %s", date, got, want)
 		}
+	}
+}
+
+// GoogleEventURL encodes the feed's calendar and the event the way Google
+// links an event: a plain event, an all-day instance, a timed instance in
+// UTC, and nothing for a key that is not the feed's.
+func TestGoogleEventURL(t *testing.T) {
+	cases := map[string]string{
+		"abc123@google.com":                 "abc123 heliosns.org_cidjj9plktli1gdm2hrkj7gqks@group.calendar.google.com",
+		"abc123@google.com/20260901":        "abc123_20260901 heliosns.org_cidjj9plktli1gdm2hrkj7gqks@group.calendar.google.com",
+		"abc123@google.com/20260901T160000": "abc123_20260901T230000Z heliosns.org_cidjj9plktli1gdm2hrkj7gqks@group.calendar.google.com",
+	}
+	for key, pair := range cases {
+		want := "https://www.google.com/calendar/event?eid=" + base64.RawStdEncoding.EncodeToString([]byte(pair))
+		if got := GoogleEventURL(key); got != want {
+			t.Errorf("%s: %s, want %s", key, got, want)
+		}
+	}
+	if got := GoogleEventURL("a1@sample"); got != "" {
+		t.Errorf("sample key linked: %s", got)
 	}
 }

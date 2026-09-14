@@ -373,10 +373,17 @@ export function daysLine(e) {
   return dayFormat.format(start.date);
 }
 
-// timeLine is an event's hours. For hours that run across days it is both
-// ends with their days - or, given the date of the row it sits in, what that
-// day sees of it: "From 4:00 PM", "All day", "Until 12:00 PM".
+// timeLine is an event's hours, for a line of its own. For hours that run
+// across days it is both ends with their days - or, given the date of the
+// row it sits in, what that day sees of it: "From 4:00 PM", "All day",
+// "Until 12:00 PM".
 export function timeLine(e, date) {
+  return timeColumn(e, date).trimStart();
+}
+
+// timeColumn is the same words padded as clock pads them, so a column of
+// them lines up - the event list's.
+export function timeColumn(e, date) {
   if (e.allDay) {
     return 'All day';
   }
@@ -539,9 +546,9 @@ export function audienceWords(e) {
 export function sourceWords(e) {
   switch (e.source) {
     case 'google':
-      return "From the school's calendar feed";
+      return "From the school's Google Calendar";
     case 'pdf':
-      return "From the school's year calendar";
+      return "From the school's year calendar (PDF)";
     case 'celebrate':
       return 'A Helios Celebrate party';
     case 'team':
@@ -552,8 +559,16 @@ export function sourceWords(e) {
 
 // linkURL is a linked event's page on the app that runs it, on this page's
 // own tier.
+// linkedApp is the app that runs a linked event: Celebrate for a party,
+// HCA-Team for everything else with a way in - including the school's own
+// listing of an HCA event, which keeps the school as its source once the
+// two are folded together.
+function linkedApp(e) {
+  return e.source === 'celebrate' ? 'celebrate' : 'team';
+}
+
 export function linkURL(e) {
-  return appOrigin(e.source) + e.link;
+  return appOrigin(linkedApp(e)) + e.link;
 }
 
 // eventImage is the picture across the top of an event's page: the event's
@@ -562,7 +577,7 @@ export function linkURL(e) {
 // in the order the event carries them; else the calendar's own header.
 export function eventImage(e) {
   if (e.image) {
-    return e.link ? appOrigin(e.source) + e.image : e.image;
+    return e.link ? appOrigin(linkedApp(e)) + e.image : e.image;
   }
   for (const name of e.tags) {
     const tag = state.model.tags.find(t => t.name === name);

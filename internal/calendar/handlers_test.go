@@ -111,3 +111,66 @@ func TestModelRoute(t *testing.T) {
 		t.Errorf("view = user %s, %d feeds, %d events, %d classrooms", view.User.Email, len(view.Feeds), len(view.Events), len(view.Classrooms))
 	}
 }
+
+// A shared link previews: the sign-in page's tags name the event at the
+// path, or the calendar itself elsewhere, and the cards behind them draw.
+func TestSharePreview(t *testing.T) {
+	handler, cache := testApp(t)
+	head := PreviewHead(cache, func(string) []Linked { return nil })
+	req := httptest.NewRequest("GET", "https://when.local.heliosian.com:8080/events/a7@sample", nil)
+	req.Host = "when.local.heliosian.com:8080"
+	tags := head(req)
+	for _, want := range []string{`property="og:title" content="International Night"`, `Thursday, September 24 · 4:00 – 6:00 PM`, `content="https://when.local.heliosian.com:8080/share/a7@sample.png"`} {
+		if !strings.Contains(tags, want) {
+			t.Errorf("event tags lack %s:\n%s", want, tags)
+		}
+	}
+	req = httptest.NewRequest("GET", "https://when.local.heliosian.com:8080/feeds", nil)
+	req.Host = "when.local.heliosian.com:8080"
+	tags = head(req)
+	if !strings.Contains(tags, `og:title" content="Helios Calendar"`) || !strings.Contains(tags, "/share/upcoming.png") {
+		t.Errorf("site tags:\n%s", tags)
+	}
+	for _, path := range []string{"/share/a7@sample.png", "/share/upcoming.png"} {
+		rec := call(t, handler, "GET", path, "")
+		if rec.Code != 200 || rec.Header().Get("Content-Type") != "image/png" || rec.Body.Len() < 1000 {
+			t.Errorf("%s: %d %s %d bytes", path, rec.Code, rec.Header().Get("Content-Type"), rec.Body.Len())
+		}
+	}
+	if rec := call(t, handler, "GET", "/share/nope.png", ""); rec.Code != 404 {
+		t.Errorf("missing card: %d", rec.Code)
+	}
+}
+
+// Provenance - the classifier's filing and the admins' corrections - is in
+// the view for an admin and absent for anyone else; the source links and
+// who added an event are for everyone.
+func TestProvenanceForAdmins(t *testing.T) {
+	handler, _ := testApp(t)
+	var view View
+	rec := call(t, as("jordan.whitfield@heliosschool.org", handler), "GET", "/api/calendar/model", "")
+	if err := json.NewDecoder(rec.Body).Decode(&view); err != nil {
+		t.Fatal(err)
+	}
+	if view.Provenance != nil {
+		t.Errorf("a parent sees provenance: %v", view.Provenance)
+	}
+	var hand *Event
+	for _, e := range view.Events {
+		if e.ID == "7QK2M4XN" {
+			hand = e
+		}
+	}
+	// The fake directory knows no Dana, so no name comes with the address.
+	if hand == nil || hand.AddedBy != "dana.hawkins@heliosschool.org" || hand.Added == "" {
+		t.Errorf("hand-added event = %+v", hand)
+	}
+	rec = call(t, as("dana.hawkins@heliosschool.org", handler), "GET", "/api/calendar/model", "")
+	if err := json.NewDecoder(rec.Body).Decode(&view); err != nil {
+		t.Fatal(err)
+	}
+	p := view.Provenance["a5@sample"]
+	if p == nil || p.Model == "" || len(p.Corrected) == 0 || p.Note != "Say which classrooms" {
+		t.Errorf("admin provenance for a5@sample = %+v", p)
+	}
+}

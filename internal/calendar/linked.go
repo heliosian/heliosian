@@ -121,6 +121,18 @@ func folded(school, hca *Event) *Event {
 		c.Tags = append(c.Tags, t)
 	}
 	c.Link, c.Availability, c.Mine = hca.Link, hca.Availability, hca.Mine
+	// The school's listing has no picture of its own, and a line of text at
+	// most: HCA-Team's picture stands in, the longer of the two descriptions
+	// is the one, and the school's place is kept only where it has one.
+	if c.Image == "" {
+		c.Image = hca.Image
+	}
+	if len(hca.Description) > len(c.Description) {
+		c.Description = hca.Description
+	}
+	if c.Location == "" {
+		c.Location = hca.Location
+	}
 	return &c
 }
 

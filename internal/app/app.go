@@ -651,14 +651,17 @@ type Core struct {
 	// CalendarMux serves Helios Calendar, the school year day by day.
 	CalendarMux   *http.ServeMux
 	CalendarCache *calendar.Cache
-	Cache         *who.Cache
-	Queue         *who.Queue
-	Gate          http.Handler
-	Home          http.Handler
-	Events        http.Handler
-	Birthday      http.Handler
-	Celebrate     http.Handler
-	Calendar      http.Handler
+	// CalendarLinked is what the other apps put on the calendar for a viewer,
+	// for the share cards a stranger fetches.
+	CalendarLinked func(email string) []calendar.Linked
+	Cache          *who.Cache
+	Queue          *who.Queue
+	Gate           http.Handler
+	Home           http.Handler
+	Events         http.Handler
+	Birthday       http.Handler
+	Celebrate      http.Handler
+	Calendar       http.Handler
 }
 
 // NewCore wires everything every mode serves identically. Fatal on any failure.
@@ -694,6 +697,7 @@ func NewCore(cfg Config) *Core {
 	}
 	events.ShareTagline(taglineOf("team"))
 	celebrate.ShareTagline(taglineOf("celebrate"))
+	calendar.ShareTagline(taglineOf("calendar"))
 	appName := func(key string) func() string {
 		return func() string {
 			if key == "home" {
@@ -752,7 +756,8 @@ func NewCore(cfg Config) *Core {
 	celebrateMux := http.NewServeMux()
 	celebrate.Register(celebrateMux, celebrateCache, cfg.Writer, queue, cfg.Store, celebrateDirectory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.CelebrateMail)
 	calendarMux := http.NewServeMux()
-	calendar.Register(calendarMux, calendarCache, cfg.Writer, queue, cfg.Store, calendarDirectory{cache, settings}, settings.SuperAdmins, calendarLinked{celebrateCache, eventsCache, celebrateDirectory{cache, settings}}.list, cfg.ImageSearch)
+	linked := calendarLinked{celebrateCache, eventsCache, celebrateDirectory{cache, settings}}.list
+	calendar.Register(calendarMux, calendarCache, cfg.Writer, queue, cfg.Store, calendarDirectory{cache, settings}, settings.SuperAdmins, linked, cfg.ImageSearch)
 	// Every app's toolbar asks its own origin what its switch lists and
 	// which rows to leave off; Heliosian's cache answers for all of them.
 	for _, m := range []*http.ServeMux{mux, eventsMux, birthdayMux, celebrateMux, calendarMux} {
@@ -764,7 +769,7 @@ func NewCore(cfg Config) *Core {
 	}
 	return &Core{
 		Mux: mux, HomeMux: homeMux, EventsMux: eventsMux, EventsCache: eventsCache, BirthdayMux: birthdayMux, CelebrateMux: celebrateMux, CelebrateCache: celebrateCache,
-		CalendarMux: calendarMux, CalendarCache: calendarCache, Cache: cache, Queue: queue,
+		CalendarMux: calendarMux, CalendarCache: calendarCache, CalendarLinked: linked, Cache: cache, Queue: queue,
 		Gate: who.MemberGate(cache, mux), Home: homeMux, Events: eventsMux, Birthday: birthdayMux, Celebrate: celebrateMux, Calendar: calendarMux,
 	}
 }
@@ -961,6 +966,9 @@ func Production() (*http.Server, *who.Queue) {
 	celebrateAuth.Preview = celebrate.PreviewHead(core.CelebrateCache)
 	celebrateAuth.Register(core.CelebrateMux)
 	calendarAuth := auth.New(client, []byte(sessionKey), "web/public/calendar/login.html")
+	// A shared link to an event previews in chat apps: the sign-in page it
+	// leads to carries the event's Open Graph tags.
+	calendarAuth.Preview = calendar.PreviewHead(core.CalendarCache, core.CalendarLinked)
 	calendarAuth.Register(core.CalendarMux)
 	return Server(map[string]http.Handler{
 		"who":       Public("who", whoAuth.Wrap(Logged("who", Files("who", core.Gate)))),
