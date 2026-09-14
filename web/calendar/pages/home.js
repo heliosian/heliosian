@@ -1,6 +1,6 @@
 import {state, eventsOn, today, addDays, parseDate, formatDate, longDayLabel, dayLabel, monthLabel, monthOf, shiftMonth, weekStart, specials, scheduleOn, isSchoolDay, dayTypeClass, dayTypeMatches, selectedClassrooms, eventTint, timeLine, eventPath, weekdayShort, call, isMatch, isHidden, isGray} from '../state.js';
 import {el, link, svg, button, peopleLine, toast, popup, copyText, feedMark} from '../dom.js';
-import {setTitle, setSearch, fillFilters, renderRailDay, editFeedPopup} from '../chrome.js';
+import {setTitle, setSearch, fillFilters, renderRailDay, editFeedPopup, makeDefaultFeed} from '../chrome.js';
 import {dayColumn} from '../day.js';
 import {callPill, emptyNote, roomDots, planCards} from '../events.js';
 import {answerOf, answer, linkURL, selectedTags, classroomNames, tagNames, defaultFeedName, showsFeed, activeFeed, setActiveFeed, defaultFeed, feedURL, webcalURL} from '../state.js';
@@ -583,12 +583,17 @@ export function homePage(date) {
       changed.title = 'Save Calendar saves these filters onto ' + shown.name;
       headline.append(changed);
     }
-    // The default calendar says so at the row's far end.
+    // The default calendar says so at the row's far end; any other offers
+    // to become it, faintly.
     if (shown === defaultFeed()) {
       const badge = el('span', 'calendar-default');
       badge.append(svg('star'), el('span', '', 'Default Calendar'));
       badge.title = 'The calendar this page opens to, and Heliosian reads';
       headline.append(badge);
+    } else {
+      const make = button('Make Default', 'star', 'calendar-make-default', () => makeDefaultFeed(shown));
+      make.title = 'Open the calendar and Heliosian to ' + shown.name + ' from now on';
+      headline.append(make);
     }
     page.append(headline);
   }

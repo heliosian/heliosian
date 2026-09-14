@@ -66,10 +66,8 @@ export function editFeedPopup(f) {
   const feeds = state.model.feeds || [];
   if (feeds.length > 1 && feeds[0].token !== f.token) {
     const first = button('Make default', 'star', 'button button-secondary modal-default', async () => {
-      if (await orderFeeds([f.token, ...feeds.map(x => x.token).filter(t => t !== f.token)])) {
-        shut();
-        toast(`${f.name} is your default calendar now.`, 4000);
-      }
+      shut();
+      await makeDefaultFeed(f);
     });
     actions.insertBefore(first, status);
   } else if (feeds[0] && feeds[0].token === f.token) {
@@ -100,6 +98,14 @@ export function editFeedPopup(f) {
   });
   name.focus();
   name.select();
+}
+
+// makeDefaultFeed moves one saved calendar to the head of the rail.
+export async function makeDefaultFeed(f) {
+  const feeds = state.model.feeds || [];
+  if (await orderFeeds([f.token, ...feeds.map(x => x.token).filter(t => t !== f.token)])) {
+    toast(`${f.name} is your default calendar now.`, 4000);
+  }
 }
 
 // orderFeeds puts the viewer's saved calendars in the order the tokens
