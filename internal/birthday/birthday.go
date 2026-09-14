@@ -27,6 +27,7 @@ const (
 	settingsTab        = "Settings"
 	adminsTab          = "Admins"
 	teamTab            = "Team"
+	remindersTab       = "Reminders"
 	changeLogTab       = "Change Log"
 )
 
@@ -61,6 +62,9 @@ const (
 	EmailSubjectKey     = "Email Subject"
 	EmailBodyKey        = "Email Body"
 	NoNewsletterNoteKey = "No Newsletter Note"
+	// OutreachCCKey is who a volunteer copies on the outreach email - the
+	// HCA's address - and may be blank.
+	OutreachCCKey = "Outreach CC"
 )
 
 // The roles on the Team tab: volunteers work the birthdays and are offered
@@ -73,7 +77,10 @@ const (
 
 var Roles = []string{RoleVolunteer, RoleComms}
 
-var settingKeys = []string{DefaultCharityKey, YearStartKey, EmailSubjectKey, EmailBodyKey, NoNewsletterNoteKey}
+var settingKeys = []string{DefaultCharityKey, YearStartKey, EmailSubjectKey, EmailBodyKey, NoNewsletterNoteKey, OutreachCCKey}
+
+// optionalSettingKeys may be missing or blank.
+var optionalSettingKeys = []string{OutreachCCKey}
 
 var (
 	BirthdayColumns       = []string{"Email", "Birthday", "Newsletter Override", "Participation", "Note"}
@@ -86,6 +93,7 @@ var (
 	SettingColumns        = []string{"Key", "Value"}
 	AdminColumns          = []string{"Email"}
 	TeamColumns           = []string{"Email", "Role"}
+	ReminderColumns       = []string{"Email", "Year", "Kind", "Sent On", "Sent To"}
 	ChangeLogColumns      = []string{"Timestamp", "Actor", "Action", "Kind", "Email", "Year", "Details"}
 )
 
@@ -150,6 +158,7 @@ type Settings struct {
 	EmailSubject     string `json:"emailSubject"`
 	EmailBody        string `json:"emailBody"`
 	NoNewsletterNote string `json:"noNewsletterNote"`
+	OutreachCC       string `json:"outreachCC"`
 }
 
 // TeamMember is one person in one role on the Team tab.
@@ -170,9 +179,16 @@ type Model struct {
 	Charities       []Charity
 	NewsletterDates []string
 	Team            []TeamMember
-	Settings        Settings
-	byEmail         map[string]*Birthday
-	byCharity       map[string]*Charity
+	// Reminders is every reminder sent, by the birthday, year and kind, so
+	// none goes twice.
+	Reminders map[string]bool
+	Settings  Settings
+	byEmail   map[string]*Birthday
+	byCharity map[string]*Charity
+}
+
+func reminderKey(email, year, kind string) string {
+	return email + "\x00" + year + "\x00" + kind
 }
 
 func yearKey(email, year string) string {
@@ -225,6 +241,7 @@ type Tables struct {
 	Settings        []map[string]string
 	Admins          []map[string]string
 	Team            []map[string]string
+	Reminders       []map[string]string
 }
 
 func ReadTables(source data.Source) (*Tables, error) {
@@ -244,8 +261,9 @@ func ReadTables(source data.Source) (*Tables, error) {
 	settings := &table{name: settingsTab, want: SettingColumns}
 	admins := &table{name: adminsTab, want: AdminColumns}
 	team := &table{name: teamTab, want: TeamColumns}
+	reminders := &table{name: remindersTab, want: ReminderColumns}
 	changeLog := &table{name: changeLogTab, want: ChangeLogColumns}
-	read := []*table{birthdays, assignments, outreach, donations, notes, charities, dates, settings, admins, team}
+	read := []*table{birthdays, assignments, outreach, donations, notes, charities, dates, settings, admins, team, reminders}
 	names := []string{}
 	for _, t := range read {
 		names = append(names, t.name)
@@ -263,7 +281,7 @@ func ReadTables(source data.Source) (*Tables, error) {
 	return &Tables{
 		Birthdays: birthdays.rows, Assignments: assignments.rows,
 		Outreach: outreach.rows, Donations: donations.rows, Notes: notes.rows, Charities: charities.rows,
-		NewsletterDates: dates.rows, Settings: settings.rows, Admins: admins.rows, Team: team.rows,
+		NewsletterDates: dates.rows, Settings: settings.rows, Admins: admins.rows, Team: team.rows, Reminders: reminders.rows,
 	}, nil
 }
 
@@ -353,7 +371,7 @@ func parseSettings(rows []map[string]string) (Settings, error) {
 		values[key] = row["Value"]
 	}
 	for _, key := range settingKeys {
-		if values[key] == "" {
+		if values[key] == "" && !slices.Contains(optionalSettingKeys, key) {
 			return Settings{}, fmt.Errorf("%s is missing %q", settingsTab, key)
 		}
 	}
@@ -363,6 +381,7 @@ func parseSettings(rows []map[string]string) (Settings, error) {
 	return Settings{
 		DefaultCharity: values[DefaultCharityKey], YearStart: values[YearStartKey],
 		EmailSubject: values[EmailSubjectKey], EmailBody: values[EmailBodyKey], NoNewsletterNote: values[NoNewsletterNoteKey],
+		OutreachCC: strings.TrimSpace(values[OutreachCCKey]),
 	}, nil
 }
 
@@ -377,7 +396,10 @@ func BuildModel(tables *Tables) (*Model, error) {
 	model := &Model{
 		Birthdays: []Birthday{}, Assignments: map[string]Assignment{},
 		Outreach: map[string]Outreach{}, Donations: map[string]Donation{}, Notes: []Note{}, Charities: []Charity{},
-		NewsletterDates: []string{}, Team: []TeamMember{}, Settings: settings, byEmail: map[string]*Birthday{}, byCharity: map[string]*Charity{},
+		NewsletterDates: []string{}, Team: []TeamMember{}, Reminders: map[string]bool{}, Settings: settings, byEmail: map[string]*Birthday{}, byCharity: map[string]*Charity{},
+	}
+	for _, row := range tables.Reminders {
+		model.Reminders[reminderKey(row["Email"], row["Year"], row["Kind"])] = true
 	}
 	seenRoles := map[string]bool{}
 	for _, row := range tables.Team {
@@ -631,6 +653,8 @@ func (t *Tables) tab(name string) []map[string]string {
 		return t.Settings
 	case teamTab:
 		return t.Team
+	case remindersTab:
+		return t.Reminders
 	}
 	return t.Admins
 }
@@ -655,6 +679,8 @@ func (t *Tables) setTab(name string, rows []map[string]string) {
 		t.Settings = rows
 	case teamTab:
 		t.Team = rows
+	case remindersTab:
+		t.Reminders = rows
 	default:
 		t.Admins = rows
 	}

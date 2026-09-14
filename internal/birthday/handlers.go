@@ -48,6 +48,8 @@ type app struct {
 	// address it comes from.
 	mailer mail.Sender
 	from   string
+	// base is the app's address for the links in mail sent off a request.
+	base string
 }
 
 // Describer finds where a charity takes donations and writes the newsletter's
@@ -59,8 +61,11 @@ type Describer interface {
 
 // Register wires the app: one shell for every page, the model, and the writes.
 // Every route already sits behind sign-in.
-func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, directory Directory, superAdmins func() []string, describer Describer, mailer mail.Sender, from string) {
-	a := app{cache: cache, writer: writer, queue: queue, directory: directory, superAdmins: superAdmins, describer: describer, mailer: mailer, from: from}
+func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, directory Directory, superAdmins func() []string, describer Describer, mailer mail.Sender, from, base string) {
+	a := app{cache: cache, writer: writer, queue: queue, directory: directory, superAdmins: superAdmins, describer: describer, mailer: mailer, from: from, base: base}
+	if mailer != nil {
+		go a.remindLoop()
+	}
 	for _, page := range pages {
 		mux.HandleFunc("GET "+page, a.page)
 	}
@@ -144,12 +149,14 @@ func decode(w http.ResponseWriter, r *http.Request, into any) bool {
 // commit rebuilds the model over the proposed tables first, so a change the
 // sheet rules reject never reaches the sheet, then applies it in memory and
 // queues the writes behind every earlier one.
-func (a app) commit(ctx context.Context, w http.ResponseWriter, tables *Tables, flush func() error) bool {
+func (a app) commit(r *http.Request, w http.ResponseWriter, tables *Tables, flush func() error) bool {
+	ctx := r.Context()
 	model, err := BuildModel(tables)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return false
 	}
+	before := a.askDays(a.cache.Model())
 	applied := make(chan struct{})
 	a.queue.Add(func() {
 		a.cache.set(tables, model)
@@ -159,6 +166,7 @@ func (a app) commit(ctx context.Context, w http.ResponseWriter, tables *Tables, 
 		}
 	})
 	<-applied
+	a.mailMovedAskDays(r, before, a.askDays(model))
 	return true
 }
 
@@ -225,7 +233,7 @@ func (a app) assign(w http.ResponseWriter, r *http.Request) {
 	if tables.count(assignmentsTab, match) == 0 {
 		action = "add"
 	}
-	if !a.commit(r.Context(), w, tables.with(assignmentsTab, match, cells), func() error {
+	if !a.commit(r, w, tables.with(assignmentsTab, match, cells), func() error {
 		if err := a.writer.Set(appName, assignmentsTab, match, cells); err != nil {
 			return err
 		}
@@ -252,7 +260,7 @@ func (a app) unassign(w http.ResponseWriter, r *http.Request) {
 	}
 	year := a.year()
 	match := map[string]string{"Email": email, "Year": year}
-	if !a.commit(r.Context(), w, a.cache.Tables().without(assignmentsTab, match), func() error {
+	if !a.commit(r, w, a.cache.Tables().without(assignmentsTab, match), func() error {
 		if err := a.writer.Delete(appName, assignmentsTab, match); err != nil {
 			return err
 		}
@@ -283,7 +291,7 @@ func (a app) outreach(w http.ResponseWriter, r *http.Request) {
 	match := map[string]string{"Email": email, "Year": year}
 	tables := a.cache.Tables()
 	if !body.Contacted {
-		if !a.commit(r.Context(), w, tables.without(outreachTab, match), func() error {
+		if !a.commit(r, w, tables.without(outreachTab, match), func() error {
 			if err := a.writer.Delete(appName, outreachTab, match); err != nil {
 				return err
 			}
@@ -296,7 +304,7 @@ func (a app) outreach(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cells := map[string]string{"Contacted On": today(), "Contacted By": actor}
-	if !a.commit(r.Context(), w, tables.with(outreachTab, match, cells), func() error {
+	if !a.commit(r, w, tables.with(outreachTab, match, cells), func() error {
 		if err := a.writer.Set(appName, outreachTab, match, cells); err != nil {
 			return err
 		}
@@ -343,7 +351,7 @@ func (a app) saveDonation(w http.ResponseWriter, r *http.Request) {
 	if tables.count(donationsTab, match) == 0 {
 		action = "add"
 	}
-	if !a.commit(r.Context(), w, tables.with(donationsTab, match, cells), func() error {
+	if !a.commit(r, w, tables.with(donationsTab, match, cells), func() error {
 		if err := a.writer.Set(appName, donationsTab, match, cells); err != nil {
 			return err
 		}
@@ -369,7 +377,7 @@ func (a app) deleteDonation(w http.ResponseWriter, r *http.Request) {
 	}
 	year := a.year()
 	match := map[string]string{"Email": email, "Year": year}
-	if !a.commit(r.Context(), w, a.cache.Tables().without(donationsTab, match), func() error {
+	if !a.commit(r, w, a.cache.Tables().without(donationsTab, match), func() error {
 		if err := a.writer.Delete(appName, donationsTab, match); err != nil {
 			return err
 		}
@@ -408,7 +416,7 @@ func (a app) used(w http.ResponseWriter, r *http.Request) {
 		cells = map[string]string{"Used On": today(), "Used By": actor}
 		action = "used"
 	}
-	if !a.commit(r.Context(), w, a.cache.Tables().with(donationsTab, match, cells), func() error {
+	if !a.commit(r, w, a.cache.Tables().with(donationsTab, match, cells), func() error {
 		if err := a.writer.Set(appName, donationsTab, match, cells); err != nil {
 			return err
 		}
@@ -445,7 +453,7 @@ func (a app) saveBirthday(w http.ResponseWriter, r *http.Request) {
 	if tables.count(birthdaysTab, match) == 0 {
 		action = "add"
 	}
-	if !a.commit(r.Context(), w, tables.with(birthdaysTab, match, cells), func() error {
+	if !a.commit(r, w, tables.with(birthdaysTab, match, cells), func() error {
 		if err := a.writer.Set(appName, birthdaysTab, match, cells); err != nil {
 			return err
 		}
@@ -481,7 +489,7 @@ func (a app) deleteBirthday(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if !a.commit(r.Context(), w, tables.without(birthdaysTab, match), func() error {
+	if !a.commit(r, w, tables.without(birthdaysTab, match), func() error {
 		if err := a.writer.Delete(appName, birthdaysTab, match); err != nil {
 			return err
 		}
@@ -526,7 +534,7 @@ func (a app) saveParticipation(w http.ResponseWriter, r *http.Request) {
 	if tables.count(birthdaysTab, match) == 0 {
 		action = "add"
 	}
-	if !a.commit(r.Context(), w, tables.with(birthdaysTab, match, cells), func() error {
+	if !a.commit(r, w, tables.with(birthdaysTab, match, cells), func() error {
 		if err := a.writer.Set(appName, birthdaysTab, match, cells); err != nil {
 			return err
 		}
@@ -562,7 +570,7 @@ func (a app) deleteParticipation(w http.ResponseWriter, r *http.Request) {
 	} else {
 		tables = tables.with(birthdaysTab, match, cells)
 	}
-	if !a.commit(r.Context(), w, tables, func() error {
+	if !a.commit(r, w, tables, func() error {
 		if dropRow {
 			if err := a.writer.Delete(appName, birthdaysTab, match); err != nil {
 				return err
@@ -598,7 +606,7 @@ func (a app) addNote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cells := map[string]string{"Email": email, "Note": note, "Added By": actor, "Added": today()}
-	if !a.commit(r.Context(), w, a.cache.Tables().with(notesTab, nil, cells), func() error {
+	if !a.commit(r, w, a.cache.Tables().with(notesTab, nil, cells), func() error {
 		if err := a.writer.Append(appName, notesTab, rowOf(NoteColumns, cells)); err != nil {
 			return err
 		}
@@ -626,7 +634,7 @@ func (a app) deleteNote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	match := map[string]string{"Email": cleanEmail(body.Email), "Note": body.Note, "Added By": cleanEmail(body.AddedBy), "Added": body.Added}
-	if !a.commit(r.Context(), w, a.cache.Tables().without(notesTab, match), func() error {
+	if !a.commit(r, w, a.cache.Tables().without(notesTab, match), func() error {
 		if err := a.writer.Delete(appName, notesTab, match); err != nil {
 			return err
 		}
@@ -699,7 +707,7 @@ func (a app) saveCharity(w http.ResponseWriter, r *http.Request) {
 			tables = tables.renameCharity(body.Original, name)
 		}
 	}
-	if !a.commit(r.Context(), w, tables, func() error {
+	if !a.commit(r, w, tables, func() error {
 		if adding {
 			if err := a.writer.Append(appName, charitiesTab, rowOf(CharityColumns, cells)); err != nil {
 				return err
@@ -813,7 +821,7 @@ func (a app) deleteCharity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	match := map[string]string{"Name": body.Name}
-	if !a.commit(r.Context(), w, tables.without(charitiesTab, match), func() error {
+	if !a.commit(r, w, tables.without(charitiesTab, match), func() error {
 		if err := a.writer.Delete(appName, charitiesTab, match); err != nil {
 			return err
 		}
@@ -846,7 +854,7 @@ func (a app) addNewsletterDate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cells := map[string]string{"Date": date}
-	if !a.commit(r.Context(), w, a.cache.Tables().with(newsletterDatesTab, nil, cells), func() error {
+	if !a.commit(r, w, a.cache.Tables().with(newsletterDatesTab, nil, cells), func() error {
 		if err := a.writer.Append(appName, newsletterDatesTab, rowOf(NewsletterDateColumns, cells)); err != nil {
 			return err
 		}
@@ -898,7 +906,7 @@ func (a app) changeNewsletterDate(w http.ResponseWriter, r *http.Request) {
 	if overrides > 0 {
 		tables = tables.with(birthdaysTab, pinned, moved)
 	}
-	if !a.commit(r.Context(), w, tables, func() error {
+	if !a.commit(r, w, tables, func() error {
 		if err := a.writer.Set(appName, newsletterDatesTab, match, cells); err != nil {
 			return err
 		}
@@ -927,7 +935,7 @@ func (a app) deleteNewsletterDate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	match := map[string]string{"Date": strings.TrimSpace(body.Date)}
-	if !a.commit(r.Context(), w, a.cache.Tables().without(newsletterDatesTab, match), func() error {
+	if !a.commit(r, w, a.cache.Tables().without(newsletterDatesTab, match), func() error {
 		if err := a.writer.Delete(appName, newsletterDatesTab, match); err != nil {
 			return err
 		}
@@ -951,13 +959,13 @@ func (a app) saveSettings(w http.ResponseWriter, r *http.Request) {
 	values := map[string]string{
 		DefaultCharityKey: strings.TrimSpace(body.DefaultCharity), YearStartKey: strings.TrimSpace(body.YearStart),
 		EmailSubjectKey: strings.TrimSpace(body.EmailSubject), EmailBodyKey: strings.TrimSpace(body.EmailBody),
-		NoNewsletterNoteKey: strings.TrimSpace(body.NoNewsletterNote),
+		NoNewsletterNoteKey: strings.TrimSpace(body.NoNewsletterNote), OutreachCCKey: strings.TrimSpace(body.OutreachCC),
 	}
 	tables := a.cache.Tables()
 	for key, value := range values {
 		tables = tables.with(settingsTab, map[string]string{"Key": key}, map[string]string{"Value": value})
 	}
-	if !a.commit(r.Context(), w, tables, func() error {
+	if !a.commit(r, w, tables, func() error {
 		for key, value := range values {
 			if err := a.writer.Set(appName, settingsTab, map[string]string{"Key": key}, map[string]string{"Value": value}); err != nil {
 				return err
@@ -1027,7 +1035,7 @@ func (a app) setAdmins(w http.ResponseWriter, r *http.Request) {
 	for _, e := range admins {
 		is[e] = true
 	}
-	if !a.commit(r.Context(), w, a.cache.Tables().withAdmins(admins), func() error {
+	if !a.commit(r, w, a.cache.Tables().withAdmins(admins), func() error {
 		for _, e := range current {
 			if !is[e] {
 				if err := a.writer.Delete(appName, adminsTab, map[string]string{"Email": e}); err != nil {
@@ -1086,7 +1094,7 @@ func (a app) addTeamMember(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	if !a.commit(r.Context(), w, a.cache.Tables().with(teamTab, nil, row), func() error {
+	if !a.commit(r, w, a.cache.Tables().with(teamTab, nil, row), func() error {
 		if err := a.writer.Append(appName, teamTab, rowOf(TeamColumns, row)); err != nil {
 			return err
 		}
@@ -1107,7 +1115,7 @@ func (a app) removeTeamMember(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !a.commit(r.Context(), w, a.cache.Tables().without(teamTab, row), func() error {
+	if !a.commit(r, w, a.cache.Tables().without(teamTab, row), func() error {
 		if err := a.writer.Delete(appName, teamTab, row); err != nil {
 			return err
 		}

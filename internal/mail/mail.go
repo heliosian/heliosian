@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"mime"
 	"net"
 	"net/http"
@@ -19,6 +20,7 @@ import (
 	"net/smtp"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 )
@@ -34,6 +36,9 @@ type Message struct {
 	Text    string
 	// Attachments ride along, a calendar invite for one.
 	Attachments []Attachment
+	// Headers are extra ones on the wire - Message-ID, In-Reply-To and
+	// References, for the messages about one birthday to make one thread.
+	Headers map[string]string
 }
 
 // Attachment is one file on a message.
@@ -146,6 +151,9 @@ func (r *Resend) Send(ctx context.Context, m Message) error {
 	if len(m.ReplyTo) > 0 {
 		payload["reply_to"] = m.ReplyTo
 	}
+	if len(m.Headers) > 0 {
+		payload["headers"] = m.Headers
+	}
 	if len(m.Attachments) > 0 {
 		files := []map[string]string{}
 		for _, a := range m.Attachments {
@@ -198,6 +206,9 @@ func Compose(from string, m Message) string {
 	}
 	fmt.Fprintf(&b, "Subject: %s\r\n", mime.QEncoding.Encode("utf-8", m.Subject))
 	fmt.Fprintf(&b, "Date: %s\r\n", time.Now().Format(time.RFC1123Z))
+	for _, k := range slices.Sorted(maps.Keys(m.Headers)) {
+		fmt.Fprintf(&b, "%s: %s\r\n", k, m.Headers[k])
+	}
 	fmt.Fprintf(&b, "MIME-Version: 1.0\r\n")
 	if len(m.Attachments) > 0 {
 		fmt.Fprintf(&b, "Content-Type: multipart/mixed; boundary=%q\r\n\r\n", outer)
@@ -241,7 +252,11 @@ func (f *Files) Send(ctx context.Context, m Message) error {
 		return err
 	}
 	name := filepath.Join(f.Dir, fmt.Sprintf("%s-%s.html", time.Now().Format("20060102-150405.000"), slug(m.Subject)))
-	head := fmt.Sprintf("<!-- From: %s\nTo: %s\nCc: %s\nReply-To: %s\nSubject: %s -->\n", f.From, strings.Join(m.To, ", "), strings.Join(m.CC, ", "), strings.Join(m.ReplyTo, ", "), m.Subject)
+	extra := ""
+	for _, k := range slices.Sorted(maps.Keys(m.Headers)) {
+		extra += fmt.Sprintf("\n%s: %s", k, m.Headers[k])
+	}
+	head := fmt.Sprintf("<!-- From: %s\nTo: %s\nCc: %s\nReply-To: %s\nSubject: %s%s -->\n", f.From, strings.Join(m.To, ", "), strings.Join(m.CC, ", "), strings.Join(m.ReplyTo, ", "), m.Subject, extra)
 	if err := os.WriteFile(name, []byte(head+m.HTML), 0o644); err != nil {
 		return err
 	}

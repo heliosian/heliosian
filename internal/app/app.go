@@ -673,6 +673,9 @@ type Config struct {
 	// BirthdayMail sends Staff Birthdays' calendar invites, from BirthdayFrom.
 	BirthdayMail mail.Sender
 	BirthdayFrom string
+	// BirthdayBase is Staff Birthdays' address, for links in mail sent
+	// from its reminder loop, off any request.
+	BirthdayBase string
 	Feedback     feedback.Filer
 	// Describer writes Staff Birthdays' sentence about a charity; nil leaves
 	// that button saying it is not set up.
@@ -799,7 +802,7 @@ func NewCore(cfg Config) *Core {
 	eventsMux := http.NewServeMux()
 	events.Register(eventsMux, eventsCache, cfg.Writer, queue, cfg.Store, directory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.Mail)
 	birthdayMux := http.NewServeMux()
-	birthday.Register(birthdayMux, birthdayCache, cfg.Writer, queue, birthdayDirectory{cache, settings}, settings.SuperAdmins, cfg.Describer, cfg.BirthdayMail, cfg.BirthdayFrom)
+	birthday.Register(birthdayMux, birthdayCache, cfg.Writer, queue, birthdayDirectory{cache, settings}, settings.SuperAdmins, cfg.Describer, cfg.BirthdayMail, cfg.BirthdayFrom, cfg.BirthdayBase)
 	celebrateMux := http.NewServeMux()
 	celebrate.Register(celebrateMux, celebrateCache, cfg.Writer, queue, cfg.Store, celebrateDirectory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.CelebrateMail)
 	calendarMux := http.NewServeMux()
@@ -901,6 +904,14 @@ func birthdayMailFrom() string {
 		return from
 	}
 	return "Helios Staff Birthdays <birthday@heliosian.com>"
+}
+
+// birthdayBase is where Staff Birthdays lives, for the reminder loop's links.
+func birthdayBase() string {
+	if base := os.Getenv("BIRTHDAY_BASE_URL"); base != "" {
+		return strings.TrimSuffix(base, "/")
+	}
+	return "https://birthday.heliosian.com"
 }
 
 func celebrateMailFrom() string {
@@ -1005,6 +1016,7 @@ func Production() (*http.Server, *who.Queue) {
 		CelebrateMail: newMailer(celebrateMailFrom()),
 		BirthdayMail:  newMailer(birthdayMailFrom()),
 		BirthdayFrom:  birthdayMailFrom(),
+		BirthdayBase:  birthdayBase(),
 		Feedback:      &feedback.GitHub{Token: mapsKey("GITHUB_TOKEN", "creds/github.token")},
 	})
 	blob.Register(core.Mux, store)

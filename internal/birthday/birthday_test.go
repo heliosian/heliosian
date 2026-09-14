@@ -46,6 +46,8 @@ func (s *sentMail) wait(t *testing.T, n int) []mail.Message {
 	return nil
 }
 
+// sent is the server's outbox, fresh per newServer so one test's late sends
+// never land in another's.
 var sent = &sentMail{}
 
 const (
@@ -116,7 +118,8 @@ func newServer(t *testing.T) (*Cache, *http.ServeMux) {
 		t.Fatal(err)
 	}
 	mux := http.NewServeMux()
-	Register(mux, cache, dir, syncQueue{}, fakeDirectory{}, func() []string { return []string{admin} }, nil, sent, "Helios Staff Birthdays <birthday@example.org>")
+	sent = &sentMail{}
+	Register(mux, cache, dir, syncQueue{}, fakeDirectory{}, func() []string { return []string{admin} }, nil, sent, "Helios Staff Birthdays <birthday@example.org>", "https://birthday.example.org")
 	return cache, mux
 }
 
@@ -269,7 +272,7 @@ func TestPipeline(t *testing.T) {
 	// The assignee gets the day to ask by as an invite, with the way to the page.
 	invites := sent.wait(t, 1)
 	m := invites[len(invites)-1]
-	if len(m.To) != 1 || m.To[0] != parent || !strings.Contains(m.Subject, "Miguel Santos") || !strings.Contains(m.HTML, "/staff/miguel.santos\"") {
+	if len(m.To) != 1 || m.To[0] != parent || m.Subject != "Ask Miguel Santos about their birthday charity" || !strings.Contains(m.HTML, "/staff/miguel.santos\"") || m.Headers["Message-ID"] == "" {
 		t.Fatalf("invite mail: %+v", m)
 	}
 	if len(m.Attachments) != 1 || m.Attachments[0].Name != "invite.ics" {
@@ -277,7 +280,7 @@ func TestPipeline(t *testing.T) {
 	}
 	// Unfolded, since the file wraps long lines at 75 octets.
 	ics := strings.ReplaceAll(string(m.Attachments[0].Content), "\r\n ", "")
-	for _, want := range []string{"METHOD:REQUEST", "DTSTART;VALUE=DATE:20260908", "DTEND;VALUE=DATE:20260909", `SUMMARY:Ask Miguel Santos about their birthday charity by September 8\, 2026`, "ATTENDEE;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;RSVP=FALSE:mailto:" + parent, "UID:birthday-miguel.santos@heliosschool.org-2026-2027@heliosian.com", "/staff/miguel.santos"} {
+	for _, want := range []string{"METHOD:REQUEST", "DTSTART;VALUE=DATE:20260908", "DTEND;VALUE=DATE:20260909", "SUMMARY:Ask Miguel Santos about their birthday charity", "ATTENDEE;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;RSVP=FALSE:mailto:" + parent, "UID:birthday-miguel.santos@heliosschool.org-2026-2027@heliosian.com", "/staff/miguel.santos"} {
 		if !strings.Contains(ics, want) {
 			t.Fatalf("invite lacks %q:\n%s", want, ics)
 		}
@@ -498,6 +501,108 @@ func TestTeam(t *testing.T) {
 	if m := byEmail["someone.new@gmail.comVolunteer"]; m.Name != "Someone New" {
 		t.Fatalf("someone outside the directory should be named from their address: %+v", v.Team)
 	}
+}
+
+func TestMovedNewsletterRefreshesInvite(t *testing.T) {
+	cache, mux := newServer(t)
+	if rec := call(t, mux, parent, "POST", "/api/birthday/assign", map[string]any{"email": "miguel.santos@heliosschool.org"}); rec.Code != http.StatusNoContent {
+		t.Fatalf("assign: %d %s", rec.Code, rec.Body)
+	}
+	sent.wait(t, 1)
+	// Miguel's issue moves a day, so his day to ask by does too - and Bill's
+	// and Ruth's, assigned in the same issue: three updates, one each.
+	if rec := call(t, mux, admin, "PUT", "/api/birthday/newsletter-date", map[string]any{"original": "2026-09-18", "date": "2026-09-19"}); rec.Code != http.StatusNoContent {
+		t.Fatalf("move: %d %s", rec.Code, rec.Body)
+	}
+	if sv := find(view(t, cache, parent).Staff, "miguel.santos@heliosschool.org"); sv.RequestBy != "2026-09-09" {
+		t.Fatalf("request by after the move: %+v", sv)
+	}
+	msgs := sent.wait(t, 4)
+	var m *mail.Message
+	for i := range msgs[1:] {
+		if strings.Contains(msgs[i+1].Subject, "Miguel Santos") {
+			m = &msgs[i+1]
+		}
+	}
+	if m == nil || m.To[0] != parent || m.Subject != "Re: Ask Miguel Santos about their birthday charity" || m.Headers["In-Reply-To"] == "" || !strings.Contains(m.Text, "moved from September 8, 2026 to September 9, 2026") {
+		t.Fatalf("updated invite: %+v", msgs)
+	}
+	if ics := string(m.Attachments[0].Content); !strings.Contains(ics, "DTSTART;VALUE=DATE:20260909") {
+		t.Fatalf("updated invite's day:\n%s", ics)
+	}
+	// A write that moves nothing sends nothing.
+	if rec := call(t, mux, parent, "POST", "/api/birthday/note", map[string]any{"email": "miguel.santos@heliosschool.org", "note": "Loves the Giants"}); rec.Code != http.StatusNoContent {
+		t.Fatalf("note: %d %s", rec.Code, rec.Body)
+	}
+	time.Sleep(50 * time.Millisecond)
+	if got := len(sent.wait(t, 4)); got != 4 {
+		t.Fatalf("a note sent mail: %d messages", got)
+	}
+}
+
+func TestReminders(t *testing.T) {
+	cache, mux := newServer(t)
+	// Bill is assigned, contacted on the 8th, no donation; Ruth assigned, not
+	// contacted; Miguel unassigned. Both in the September 18 issue, ask by the 8th.
+	app := app{cache: cache, writer: &data.Dir{Root: "sampledata"}, queue: syncQueue{}, directory: fakeDirectory{}, mailer: sent, from: "Helios Staff Birthdays <birthday@example.org>", base: "https://birthday.example.org"}
+	kinds := func(day string) []string {
+		out := []string{}
+		for _, r := range app.dueReminders(cache.Model(), mustTime(day)) {
+			out = append(out, r.sv.Name+":"+r.kind)
+		}
+		return out
+	}
+	if got := kinds("2026-09-07"); len(got) != 0 {
+		t.Fatalf("the day before, due: %v", got)
+	}
+	if got := kinds("2026-09-08"); len(got) != 1 || got[0] != "Ruth Amari:ask" {
+		t.Fatalf("on the day, due: %v", got)
+	}
+	// Sending records it, so the next look finds nothing new; two days on it is late.
+	if n := app.sendDueReminders(context.Background(), mustTime("2026-09-08")); n != 1 {
+		t.Fatalf("sent %d", n)
+	}
+	ask := sent.wait(t, 1)[0]
+	if ask.To[0] != "mina.park@heliosschool.org" || ask.Subject != "Re: Ask Ruth Amari about their birthday charity" || ask.Headers["In-Reply-To"] == "" {
+		t.Fatalf("ask reminder: %+v", ask)
+	}
+	for _, want := range []string{"mailto:ruth.amari@heliosschool.org?", "cc=hca%40heliosschool.org", "Hi Ruth,", "Mina Park", "/staff/ruth.amari"} {
+		if !strings.Contains(ask.Text, want) {
+			t.Fatalf("ask reminder lacks %q:\n%s", want, ask.Text)
+		}
+	}
+	if got := kinds("2026-09-08"); len(got) != 0 {
+		t.Fatalf("after sending, due: %v", got)
+	}
+	if got := kinds("2026-09-09"); len(got) != 0 {
+		t.Fatalf("the day after, due: %v", got)
+	}
+	if got := kinds("2026-09-10"); len(got) != 1 || got[0] != "Ruth Amari:late" {
+		t.Fatalf("two days on, due: %v", got)
+	}
+	app.sendDueReminders(context.Background(), mustTime("2026-09-10"))
+	late := sent.wait(t, 2)[1]
+	if !strings.Contains(late.Text, "not marked done") || !strings.Contains(late.Text, "mailto:ruth.amari") {
+		t.Fatalf("late reminder: %s", late.Text)
+	}
+	// Two days before the newsletter, Bill (asked, no donation) and Ruth are
+	// nudged to record what came; Dana, complete, is not.
+	got := kinds("2026-09-16")
+	if len(got) != 2 || got[0] != "Bill Ryder:donation" || got[1] != "Ruth Amari:donation" {
+		t.Fatalf("before the newsletter, due: %v", got)
+	}
+	app.sendDueReminders(context.Background(), mustTime("2026-09-16"))
+	donation := sent.wait(t, 4)[2]
+	if !strings.Contains(donation.Text, "no need to ask again") || !strings.Contains(donation.Text, "Second Harvest of Silicon Valley") {
+		t.Fatalf("donation reminder: %s", donation.Text)
+	}
+	if got := kinds("2026-09-17"); len(got) != 0 {
+		t.Fatalf("the next day, due again: %v", got)
+	}
+	if rows := cache.Tables().Reminders; len(rows) != 5 {
+		t.Fatalf("reminder rows: %v", rows)
+	}
+	_ = mux
 }
 
 func TestNewsletterDates(t *testing.T) {

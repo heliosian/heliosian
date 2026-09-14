@@ -38,37 +38,100 @@ func baseURL(r *http.Request) string {
 	return scheme + "://" + r.Host
 }
 
+// staffView is one staff member as the pages see them, this year, now.
+func (a app) staffView(model *Model, staffEmail string) (StaffView, bool) {
+	b := model.Birthday(staffEmail)
+	if b == nil {
+		return StaffView{}, false
+	}
+	v := viewer{directory: a.directory}
+	month, day, _ := ParseMonthDay(model.Settings.YearStart)
+	return v.staff(model, b, YearContaining(now(), month, day), now()), true
+}
+
 // mailAssignment sends the assignee their invite, when the app has mail and
 // the birthday has a day to ask by.
 func (a app) mailAssignment(r *http.Request, staffEmail, to string) {
 	if a.mailer == nil {
 		return
 	}
-	model := a.cache.Model()
-	b := model.Birthday(staffEmail)
-	if b == nil {
+	sv, ok := a.staffView(a.cache.Model(), staffEmail)
+	if !ok {
 		return
 	}
-	v := viewer{directory: a.directory}
-	month, day, _ := ParseMonthDay(model.Settings.YearStart)
-	sv := v.staff(model, b, YearContaining(now(), month, day), now())
 	if sv.RequestBy == "" {
 		slog.InfoContext(r.Context(), "birthday: no invite, no newsletter date yet", "email", staffEmail, "to", to)
 		return
 	}
-	m := assignmentMessage(baseURL(r), a.from, sv, to)
+	a.sendInvite(r, sv, to, "")
+}
+
+// askDay is when a birthday's request is due and who it is assigned to,
+// for telling a change apart.
+type askDay struct {
+	requestBy, assignedTo string
+}
+
+// askDays is every assigned birthday's ask day this year.
+func (a app) askDays(model *Model) map[string]askDay {
+	out := map[string]askDay{}
+	if model == nil {
+		return out
+	}
+	for i := range model.Birthdays {
+		sv, ok := a.staffView(model, model.Birthdays[i].Email)
+		if ok && sv.AssignedTo != "" && sv.RequestBy != "" {
+			out[sv.Email] = askDay{requestBy: sv.RequestBy, assignedTo: sv.AssignedTo}
+		}
+	}
+	return out
+}
+
+// mailMovedAskDays sends a fresh invite to the assignee of every birthday
+// whose day to ask by moved with a write - a newsletter date changed, a
+// birthday or its override corrected - so their calendar follows. A birthday
+// whose assignee changed is the assign handler's to mail.
+func (a app) mailMovedAskDays(r *http.Request, before, after map[string]askDay) {
+	if a.mailer == nil {
+		return
+	}
+	model := a.cache.Model()
+	for email, now := range after {
+		was, had := before[email]
+		if !had || was.assignedTo != now.assignedTo || was.requestBy == now.requestBy {
+			continue
+		}
+		sv, ok := a.staffView(model, email)
+		if !ok {
+			continue
+		}
+		slog.InfoContext(r.Context(), "birthday: ask day moved", "email", email, "from", was.requestBy, "to", now.requestBy, "assignee", now.assignedTo)
+		a.sendInvite(r, sv, now.assignedTo, was.requestBy)
+	}
+}
+
+// sendInvite mails the invite off the request; movedFrom, when set, is the
+// day it used to be, and the message says so.
+func (a app) sendInvite(r *http.Request, sv StaffView, to, movedFrom string) {
+	m := assignmentMessage(baseURL(r), a.from, sv, to, movedFrom)
 	go func() {
 		if err := a.mailer.Send(context.WithoutCancel(r.Context()), m); err != nil {
-			slog.Error("birthday: mail invite", "error", err, "to", to, "email", staffEmail)
+			slog.Error("birthday: mail invite", "error", err, "to", to, "email", sv.Email)
 		}
 	}()
 }
 
-// assignmentMessage is the email and its invite.
-func assignmentMessage(base, from string, sv StaffView, to string) mail.Message {
+// assignmentMessage is the email and its invite; movedFrom, when set, makes
+// it an update.
+func assignmentMessage(base, from string, sv StaffView, to, movedFrom string) mail.Message {
 	link := base + staffPath(sv.Email)
 	ask := longDate(sv.RequestBy)
-	subject := fmt.Sprintf("Ask %s about their birthday charity by %s", sv.Name, mediumDate(sv.RequestBy))
+	subject := threadSubject(sv)
+	headers := threadHeaders(sv, true)
+	if movedFrom != "" {
+		subject = "Re: " + subject
+		headers = threadHeaders(sv, false)
+	}
 	rows := [][2]string{
 		{"Birthday", longDate(sv.BirthdayThisYear)},
 		{"Ask by", ask},
@@ -85,8 +148,12 @@ func assignmentMessage(base, from string, sv StaffView, to string) mail.Message 
 		rows = append(rows, [2]string{"Note", "Asked to stay out of the newsletter"})
 	}
 	var text, htm strings.Builder
-	fmt.Fprintf(&text, "%s's birthday is yours this year.\n\nReach out by %s and record the charity they choose:\n%s\n\n", sv.Name, ask, link)
-	fmt.Fprintf(&htm, "<p style=\"font:16px/1.5 -apple-system,Segoe UI,Roboto,sans-serif\"><strong>%s</strong>'s birthday is yours this year.</p>", html.EscapeString(sv.Name))
+	opening := fmt.Sprintf("%s's birthday is yours this year. The day to ask them is %s.", sv.Name, mediumDate(sv.RequestBy))
+	if movedFrom != "" {
+		opening = fmt.Sprintf("The day to ask %s about their birthday charity moved from %s to %s, so here is the invite again.", sv.Name, mediumDate(movedFrom), mediumDate(sv.RequestBy))
+	}
+	fmt.Fprintf(&text, "%s\n\nReach out by %s and record the charity they choose:\n%s\n\n", opening, ask, link)
+	fmt.Fprintf(&htm, "<p style=\"font:16px/1.5 -apple-system,Segoe UI,Roboto,sans-serif\">%s</p>", strings.Replace(html.EscapeString(opening), html.EscapeString(sv.Name), "<strong>"+html.EscapeString(sv.Name)+"</strong>", 1))
 	htm.WriteString("<table style=\"font:15px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;border-collapse:collapse\">")
 	for _, row := range rows {
 		fmt.Fprintf(&text, "%s: %s\n", row[0], row[1])
@@ -105,6 +172,7 @@ func assignmentMessage(base, from string, sv StaffView, to string) mail.Message 
 		Subject: subject,
 		Text:    text.String(),
 		HTML:    htm.String(),
+		Headers: headers,
 		Attachments: []mail.Attachment{{
 			Name:        "invite.ics",
 			ContentType: "text/calendar; method=REQUEST; charset=utf-8",

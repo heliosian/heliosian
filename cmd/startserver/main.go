@@ -89,6 +89,7 @@ func sampleServer() (*http.Server, *who.Queue) {
 		CelebrateMail: mail.New("", "", "", "", "", "Helios Celebrate <celebrate@example.org>", mailDir()),
 		BirthdayMail:  mail.New("", "", "", "", "", "Helios Staff Birthdays <birthday@example.org>", mailDir()),
 		BirthdayFrom:  "Helios Staff Birthdays <birthday@example.org>",
+		BirthdayBase:  "https://birthday.local.heliosian.com:" + app.Port(),
 		Feedback:      printedFeedback{},
 	})
 	core.Mux.Handle("POST /auth/logout", http.RedirectHandler("/", http.StatusSeeOther))
