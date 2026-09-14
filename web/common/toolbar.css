@@ -161,6 +161,56 @@
   stroke-linejoin: round;
 }
 
+/* Each badge sits in a wrap the card it drops down hangs off: the count's
+   card is Who?'s new-year checklist there and a line across to it elsewhere,
+   the triangle's says what the mismatch is. Both open on hover (alertMenu
+   in toolbar.js) and are the pink card of the directory's own checklist. */
+.topbar-alert-wrap {
+  position: relative;
+  display: flex;
+}
+
+.topbar-alert-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  width: 320px;
+  max-width: calc(100vw - 24px);
+  z-index: 25;
+}
+
+.alert-card {
+  padding: 14px 20px 16px;
+  background: #ffe5e1;
+  border: 1px solid #df604a;
+  border-radius: 14px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  color: var(--ink);
+}
+
+.alert-card-title {
+  margin-bottom: 6px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #df604a;
+}
+
+.alert-card-text {
+  margin: 0 0 10px;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.alert-card-link {
+  display: inline-block;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--brand);
+  text-decoration: none;
+}
+
+.alert-card-link:hover { text-decoration: underline; }
+
 /* The avatar is the whole account control: no name label beside it, just the
    hero photo (or the initial standing in for one) that opens the menu. */
 .user {

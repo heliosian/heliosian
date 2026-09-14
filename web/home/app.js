@@ -2,7 +2,7 @@ import {state, applyModel, setSuperAdmin} from './state.js';
 import {renderCategories, renderNav} from './cards.js';
 import {renderMonth} from './month.js';
 import {initEditing, refreshCategoryManager} from './edit.js';
-import {renderAvatars, renderAlerts, onSlash, initAppSwitch, initUserMenu, markSuper} from '/toolbar.js';
+import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, markSuper} from '/toolbar.js';
 
 function renderChrome() {
   const user = state.model.user;
@@ -10,6 +10,7 @@ function renderChrome() {
   // family's); the initial only stands in when there is no photo at all.
   renderAvatars({photoUrl: user.photoUrl && user.photoUrl + '?thumb=1', initial: user.initial});
   renderAlerts(state.model.alerts || {});
+  renderProfileLink(user.email);
   document.querySelector('.user-menu-email').textContent = user.email;
   for (const item of document.querySelectorAll('.user-menu-admin')) {
     item.hidden = !user.isAdmin;

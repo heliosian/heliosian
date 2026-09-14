@@ -1,6 +1,6 @@
 import {state, me, isAdmin, isSystemAdmin, setSuperEdit, pendingParties, hostedParties, parties, household, familyMember, myPath, canHost} from './state.js';
 import {el, svg, link, button} from './dom.js';
-import {renderAvatars, renderAlerts, onSlash, initAppSwitch, initUserMenu, markSuper} from '/toolbar.js';
+import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, markSuper} from '/toolbar.js';
 import {openParty} from './edit.js';
 
 // The rail and the drawer show these; the phone's tab bar drops the admin one.
@@ -202,6 +202,7 @@ function renderUser() {
   const user = me();
   renderAvatars({photoUrl: user.photoUrl && user.photoUrl + '?thumb=1', initial: user.initial});
   renderAlerts(state.model.alerts || {});
+  renderProfileLink(user.email);
   for (const line of document.querySelectorAll('.user-menu-email')) {
     line.textContent = user.email;
   }

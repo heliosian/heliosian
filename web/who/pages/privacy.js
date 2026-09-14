@@ -195,11 +195,16 @@ export function privacyMismatchCardDismissed() {
   }
 }
 
-export function privacyMismatchCard(warnings) {
-  const desc = `Your ${warnings.join(' and ')} ${warnings.length === 1 ? 'is' : 'are'} visible on ` +
+// The sentence that says which detail is out of step - the banner's, and
+// the toolbar triangle's card on hover.
+export function privacyMismatchText(warnings) {
+  return `Your ${warnings.join(' and ')} ${warnings.length === 1 ? 'is' : 'are'} visible on ` +
     'Veracross but hidden in Helios Who. Hiding it here does not hide it on Veracross.';
+}
+
+export function privacyMismatchCard(warnings) {
   return infoBanner(
-    'alert', 'alert', 'Privacy Settings Mismatch', desc,
+    'alert', 'alert', 'Privacy Settings Mismatch', privacyMismatchText(warnings),
     'See Details', '/my-privacy', false,
     () => {
       try {

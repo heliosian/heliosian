@@ -65,7 +65,7 @@ async function switchList() {
 // taps fall to the click handlers, which is where the menus toggle.
 const hoverGrace = 150;
 
-function hoverMenu(button, menu, open, close) {
+export function hoverMenu(button, menu, open, close) {
   let timer;
   const enter = e => {
     if (e.pointerType !== 'mouse') {
@@ -90,7 +90,7 @@ function hoverMenu(button, menu, open, close) {
 // Whether a click came from something that hovers: a mouse, or the keyboard
 // (whose synthetic click names no pointer) on a device that has one. A tap
 // on a phone, and a click from an older browser that does not say, do not.
-function hoverClick(e) {
+export function hoverClick(e) {
   if (e.pointerType) {
     return e.pointerType === 'mouse';
   }
@@ -184,6 +184,9 @@ export function initAppSwitch() {
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
       closeAppSwitches();
+      for (const menu of document.querySelectorAll('.topbar-alert-menu')) {
+        menu.hidden = true;
+      }
     }
   });
 }
@@ -431,16 +434,68 @@ export function renderAvatars({photoUrl, initial}) {
   }
 }
 
+// The card under an alert badge, on the same hover as the menus, in the
+// badge's .topbar-alert-wrap: built afresh by build() on each open, so it
+// says what the badge says now, and kept inside the viewport on a narrow
+// screen, where a card right-aligned to a badge near the bar's left would
+// run off it. A tap does nothing here - the badge is a link, and a phone
+// follows it - so the card is wired once, whatever fills it later.
+export function alertMenu(badge, build) {
+  const wrap = badge.parentElement;
+  let menu = wrap.querySelector('.topbar-alert-menu');
+  if (!menu) {
+    menu = el('div', 'topbar-alert-menu');
+    menu.hidden = true;
+    wrap.append(menu);
+    hoverMenu(badge, menu, () => {
+      menu.replaceChildren(build());
+      menu.hidden = false;
+      clampMenu(wrap, menu);
+    }, () => {
+      menu.hidden = true;
+    });
+  }
+  return menu;
+}
+
+function clampMenu(wrap, menu) {
+  const margin = 12;
+  const wrapRect = wrap.getBoundingClientRect();
+  const width = menu.offsetWidth;
+  const left = Math.max(margin, Math.min(wrapRect.right - width, window.innerWidth - margin - width));
+  menu.style.left = `${left - wrapRect.left}px`;
+  menu.style.right = 'auto';
+}
+
+// The card an alert badge drops down: the badge's message as a title in the
+// alert red, a line more when there is one, and the link to what resolves
+// it - the same pink card the directory's own new-year checklist wears.
+export function alertCard(title, text, linkText, href) {
+  const card = el('div', 'alert-card');
+  card.append(el('div', 'alert-card-title', title));
+  if (text) {
+    card.append(el('p', 'alert-card-text', text));
+  }
+  const link = el('a', 'alert-card-link', linkText);
+  link.href = href;
+  card.append(link);
+  return card;
+}
+
 // Fills the toolbar's alert badges from the directory's reckoning - the
 // count of things to update for the new year, and the privacy-mismatch
-// triangle - linking each across to the page in Who? that resolves it. Who?
-// itself reckons these client-side and does not call this.
+// triangle - linking each across to the page in Who? that resolves it, and
+// hanging a card off each that says so on hover. Who? itself reckons these
+// client-side, with the checklist itself under its count, and does not call
+// this.
 export function renderAlerts({stale = 0, privacy = false} = {}) {
   const who = appOrigin('who');
+  const staleTitle = `${stale} thing${stale === 1 ? '' : 's'} to update for the new year`;
   for (const badge of document.querySelectorAll('.stale-alert')) {
     badge.hidden = !stale;
     badge.href = who + '/my-family';
-    badge.title = `${stale} thing${stale === 1 ? '' : 's'} to update for the new year`;
+    badge.title = staleTitle;
+    alertMenu(badge, () => alertCard(badge.title, 'A photo or a few facts the directory would like refreshed for your family.', 'Open My Family in Helios Who', badge.href));
   }
   for (const count of document.querySelectorAll('.stale-count')) {
     count.textContent = String(stale);
@@ -449,6 +504,17 @@ export function renderAlerts({stale = 0, privacy = false} = {}) {
     badge.hidden = !privacy;
     badge.href = who + '/my-privacy';
     badge.title = 'Your privacy settings don\u2019t match Veracross';
+    alertMenu(badge, () => alertCard('Privacy Settings Mismatch', 'Something your family hides in Helios Who is still visible on Veracross. Hiding it in Who does not hide it there.', 'Review My Privacy in Helios Who', badge.href));
+  }
+}
+
+// Points every View Profile row of the account menu at the signed-in
+// person's page in Who?, whose address is their email's local part. Who?
+// fills its own, from its model.
+export function renderProfileLink(email) {
+  const slug = email.split('@')[0];
+  for (const link of document.querySelectorAll('.user-menu-profile')) {
+    link.href = appOrigin('who') + '/people/' + encodeURIComponent(slug);
   }
 }
 

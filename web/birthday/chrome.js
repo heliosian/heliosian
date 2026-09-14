@@ -1,6 +1,6 @@
 import {state, me, isAdmin, isSystemAdmin, setSuperEdit, isUnassigned} from './state.js';
 import {el, svg, link} from './dom.js';
-import {renderAvatars, renderAlerts, onSlash, initAppSwitch, initUserMenu, markSuper} from '/toolbar.js';
+import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, markSuper} from '/toolbar.js';
 
 const appName = 'Helios Staff Birthdays';
 
@@ -114,6 +114,7 @@ function renderUser() {
   const user = me();
   renderAvatars({photoUrl: user.photoUrl, initial: user.initial});
   renderAlerts(state.model.alerts || {});
+  renderProfileLink(user.email);
   for (const line of document.querySelectorAll('.user-menu-email')) {
     line.textContent = user.email;
   }

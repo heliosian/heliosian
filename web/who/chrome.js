@@ -7,9 +7,9 @@ import {tagNames} from './tags.js';
 import {clampFilterPanel, closeFilterPanels} from './filters.js';
 import {staleItems, familyInfoBanner, todoChecklist, familyNavPeople, personTodoCount} from './stale.js';
 import {topbarSearchInput, topbarSearchResults} from './search.js';
-import {privacyMismatchCardDismissed, myPrivacyWarnings, privacyMismatchCard} from './pages/privacy.js';
+import {privacyMismatchCardDismissed, myPrivacyWarnings, privacyMismatchCard, privacyMismatchText} from './pages/privacy.js';
 import {load} from './app.js';
-import {renderAvatars, onSlash, isEditableTarget, initAppSwitch, initUserMenu, markSuper} from '/toolbar.js';
+import {renderAvatars, onSlash, isEditableTarget, initAppSwitch, initUserMenu, hoverMenu, hoverClick, alertMenu, alertCard, markSuper} from '/toolbar.js';
 
 const primaryNavItems = [
   {path: 'people', label: 'Directory'},
@@ -501,22 +501,39 @@ export function initChrome() {
   // The stale-count badge (desktop and mobile both) used to link straight to
   // /my-family; now it opens a dropdown built from the same todoChecklist used
   // on My Family/a person's own page, so what to fix and the link to fix it are
-  // both right there without leaving the current page.
+  // both right there without leaving the current page. It opens on hover the
+  // way the bar's other menus do, a mouse click leaving it open and a tap
+  // toggling it.
   for (const staleButton of document.querySelectorAll('.stale-alert')) {
     const wrap = staleButton.closest('.stale-wrap');
     const panel = wrap.querySelector('.stale-menu');
-    staleButton.addEventListener('click', e => {
-      e.stopPropagation();
-      const opening = panel.hidden;
+    const open = () => {
       for (const p of document.querySelectorAll('.stale-menu')) {
         p.hidden = true;
       }
-      if (opening) {
-        panel.replaceChildren(todoChecklist(staleItems()));
-        panel.hidden = false;
-        clampFilterPanel(wrap, panel);
+      panel.replaceChildren(todoChecklist(staleItems()));
+      panel.hidden = false;
+      clampFilterPanel(wrap, panel);
+    };
+    const close = () => {
+      panel.hidden = true;
+    };
+    hoverMenu(staleButton, panel, open, close);
+    staleButton.addEventListener('click', e => {
+      e.stopPropagation();
+      if (panel.hidden) {
+        open();
+      } else if (!hoverClick(e)) {
+        close();
       }
     });
+  }
+
+  // The privacy triangle stays a link to My Privacy, and on hover says what
+  // the mismatch is - the sentence the dismissable banner uses - over the
+  // link, so the page need not be left to learn which detail it is.
+  for (const badge of document.querySelectorAll('.privacy-alert')) {
+    alertMenu(badge, () => alertCard('Privacy Settings Mismatch', privacyMismatchText(myPrivacyWarnings()), 'See Details', '/my-privacy'));
   }
 
   mobileListsOverlay.addEventListener('click', () => setMobileListsMenu(false));
