@@ -629,5 +629,5 @@ func (a app) feed(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/calendar; charset=utf-8")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=%q", "helios-calendar.ics"))
 	w.Header().Set("Cache-Control", "no-cache")
-	w.Write(ICS(model, f, "https://"+r.Host, now()))
+	w.Write(ICS(model, f, a.linked(f.Email), "https://"+r.Host, now()))
 }

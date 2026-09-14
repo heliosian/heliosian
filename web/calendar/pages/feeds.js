@@ -1,6 +1,13 @@
-import {state, me, bands, selectedClassrooms, selectedTags, classroomNames, tagNames, tagGroups, colorOf} from '../state.js';
+import {state, me, bands, selectedClassrooms, selectedTags, classroomNames, tagGroups, colorOf} from '../state.js';
 import {el, svg, button, copyText, toast} from '../dom.js';
 import {setTitle} from '../chrome.js';
+
+// feedTagNames are the categories a feed can carry: every one the page
+// has, the built-ins too - a feed carries the parties and HCA events, and
+// the owner's household's standing with them.
+function feedTagNames() {
+  return state.model.tags.map(t => t.name);
+}
 
 function feedURL(token) {
   return `${location.origin}/feed/${token}.ics`;
@@ -83,7 +90,7 @@ function newFeedForm(onMade) {
   form.id = 'new';
   form.append(el('h2', 'section-title', 'New feed'));
   const rooms = new Set(selectedClassrooms());
-  const tags = new Set(selectedTags());
+  const tags = new Set(selectedTags().filter(t => feedTagNames().includes(t)));
   const nameField = el('label', 'field');
   nameField.append(el('span', '', 'Name'));
   const name = el('input');
@@ -122,10 +129,14 @@ function newFeedForm(onMade) {
   const paintTags = () => {
     tagLines.replaceChildren();
     for (const group of tagGroups()) {
+      const offered = group.tags.filter(t => feedTagNames().includes(t.name));
+      if (!offered.length) {
+        continue;
+      }
       const line = el('div', 'form-tag-group');
       line.append(el('span', 'form-tag-label', group.name || 'Other categories'));
       const chips = el('div', 'filter-chips filter-chips-form');
-      for (const t of [...group.tags].sort((a, b) => a.name.localeCompare(b.name))) {
+      for (const t of [...offered].sort((a, b) => a.name.localeCompare(b.name))) {
         const c = chip(t.name, tags.has(t.name), () => {
           if (tags.has(t.name)) {
             tags.delete(t.name);
@@ -170,7 +181,7 @@ function newFeedForm(onMade) {
     const body = {
       name: name.value.trim() || 'Helios Calendar',
       classrooms: rooms.size === classroomNames().length ? [] : classroomNames().filter(c => rooms.has(c)),
-      tags: tags.size === tagNames().length ? [] : tagNames().filter(t => tags.has(t)),
+      tags: tags.size === feedTagNames().length ? [] : feedTagNames().filter(t => tags.has(t)),
     };
     const res = await fetch('/api/calendar/feeds', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
     submit.disabled = false;

@@ -940,8 +940,10 @@ func (b *builder) checkFeed(f Feed) error {
 			return fmt.Errorf("%q is not a classroom", c)
 		}
 	}
+	// A feed carries the other apps' events too, so the built-in tags are
+	// as good as the tab's.
 	for _, t := range f.Tags {
-		if !b.model.tags[t] {
+		if !b.model.tags[t] && !slices.ContainsFunc(builtinTags, func(bt Tag) bool { return bt.Name == t }) {
 			return fmt.Errorf("%q is not in %s", t, TagsTab)
 		}
 	}

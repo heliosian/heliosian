@@ -257,3 +257,36 @@ func TestAdminAddsAndCorrects(t *testing.T) {
 		t.Errorf("parent added an event: %d", rec.Code)
 	}
 }
+
+// A feed takes Misc, the one built-in tag a sheet event wears, and refuses
+// the built-ins no feed could carry.
+func TestFeedTags(t *testing.T) {
+	handler, _ := testApp(t)
+	me := as("jordan.whitfield@heliosschool.org", handler)
+	if rec := call(t, me, "POST", "/api/calendar/feeds", `{"name":"Odds and ends","classrooms":["Jays"],"tags":["Misc","Trip"]}`); rec.Code != 200 {
+		t.Errorf("feed with Misc: %d %s", rec.Code, rec.Body)
+	}
+	if rec := call(t, me, "POST", "/api/calendar/feeds", `{"name":"Parties","classrooms":["Jays"],"tags":["Celebrate","Going"]}`); rec.Code != 200 {
+		t.Errorf("feed with Celebrate and Going: %d %s", rec.Code, rec.Body)
+	}
+	if rec := call(t, me, "POST", "/api/calendar/feeds", `{"name":"Nope","classrooms":["Jays"],"tags":["Nonsense"]}`); rec.Code != 400 {
+		t.Errorf("feed with a made-up tag: %d", rec.Code)
+	}
+}
+
+// A feed carries the other apps' events, read for its owner: a party the
+// owner is going to comes through under Celebrate, and a feed on Going
+// alone is the family's own calendar.
+func TestFeedCarriesLinked(t *testing.T) {
+	handler, cache := testApp(t)
+	linked := []Linked{{Source: SourceCelebrate, ID: "P9", Title: "Fondue Night", Start: "2026-09-19 17:00", End: "2026-09-19 21:00", Path: "/p/fondue", Availability: "available", Mine: MineGoing}}
+	f := &Feed{Token: "t", Email: "jordan.whitfield@heliosschool.org", Name: "Mine", Tags: []string{TagGoing}}
+	out := string(ICS(cache.Model(), f, linked, "https://when.local.heliosian.com:8080", now()))
+	if !strings.Contains(out, "SUMMARY:Fondue Night") || !strings.Contains(out, "URL:https://when.local.heliosian.com:8080/events/celebrate%2FP9") {
+		t.Errorf("feed lacks the party:\n%s", out)
+	}
+	if strings.Contains(out, "SUMMARY:Halloween Parade") {
+		t.Errorf("a Going feed carries an event the family is not in")
+	}
+	_ = handler
+}

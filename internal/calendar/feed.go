@@ -1,6 +1,7 @@
 package calendar
 
 import (
+	"net/url"
 	"strings"
 	"time"
 )
@@ -44,7 +45,12 @@ func uidOf(id string) string {
 	return id + "@calendar.heliosian.com"
 }
 
-func ICS(model *Model, f *Feed, origin string, now time.Time) []byte {
+// ICS is a feed as a calendar app reads it: the sheet's events and the
+// other apps' folded in, read for the feed's owner - so a feed can carry
+// the parties and HCA events, and the owner's household's standing with
+// them as Going or Waitlisted - each carried when the feed's classrooms
+// and tags admit it.
+func ICS(model *Model, f *Feed, linked []Linked, origin string, now time.Time) []byte {
 	lines := []string{
 		"BEGIN:VCALENDAR",
 		"VERSION:2.0",
@@ -57,7 +63,7 @@ func ICS(model *Model, f *Feed, origin string, now time.Time) []byte {
 		"X-PUBLISHED-TTL:PT1H",
 	}
 	stamp := now.UTC().Format(icsStamp)
-	for _, e := range model.Events {
+	for _, e := range withLinked(model.Events, linked) {
 		if !f.Carries(e) {
 			continue
 		}
@@ -87,7 +93,7 @@ func ICS(model *Model, f *Feed, origin string, now time.Time) []byte {
 		if len(e.Tags) > 0 {
 			lines = append(lines, "CATEGORIES:"+icsText(JoinList(e.Tags)))
 		}
-		lines = append(lines, "URL:"+origin+"/events/"+e.ID, "END:VEVENT")
+		lines = append(lines, "URL:"+origin+"/events/"+url.PathEscape(e.ID), "END:VEVENT")
 	}
 	lines = append(lines, "END:VCALENDAR")
 	out := strings.Builder{}
