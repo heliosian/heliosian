@@ -367,6 +367,16 @@ function whereIs(root, node) {
   return [cat ? cat.title : null, ...chain.map(n => n.title)].filter(Boolean).join(' > ');
 }
 
+// chainBelow is a thing's titles from just under root down to itself, so a
+// list on the event tells one country's Performance from another's.
+function chainBelow(root, node) {
+  const titles = [];
+  for (let n = node; n && n !== root; n = parentOf(n)) {
+    titles.unshift(n.title);
+  }
+  return titles.join(' › ');
+}
+
 // editCrumb is the line above the hero while editing: school year, then the
 // parent for a child, then the category - each its own thing to change. Only an
 // admin moves something between years; the server refuses anyone else, so the
@@ -661,7 +671,9 @@ function volunteersBox(node, editing, save) {
       }
     }
     for (const src of others) {
-      listing.append(el('div', 'side-group', src.title));
+      // Named by its chain from here down - "India › Performance" - since
+      // several countries may each have a Performance.
+      listing.append(el('div', 'side-group', chainBelow(node, src)));
       const theirs = shownVolunteers(src, editing);
       if (!theirs.length) {
         listing.append(el('div', 'vol-note', 'Nobody yet.'));
