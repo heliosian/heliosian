@@ -863,7 +863,8 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .side-keywords-edit { width: 100%; margin: 6px 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; font-size: 13px; background: #fff; }
 
-.side-row-body .link-button { display: inline-flex; margin-right: 6px; }
+/* The links in a side card sit flush with its words. */
+.side-row-body .link-button { display: inline-flex; margin-right: 6px; padding-left: 0; }
 
 .side-card-linked { border-color: var(--brand); }
 
@@ -944,6 +945,22 @@ body.is-admin main { padding: 0; }
 .admin .container { max-width: 1100px; }
 
 .admin .card > .hint { margin-bottom: 14px; }
+
+/* The filters over the Events list, one row: words, a category, a
+   classroom, a span of dates, past or not, and how many match. */
+.admin-filters { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 12px 0 4px; padding: 10px 12px; border-radius: 10px; background: var(--page); }
+
+.admin-filter-search { flex: 1; min-width: 160px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; font-size: 13.5px; background: #fff; }
+
+.admin-filters .admin-select { width: auto; }
+
+.admin-filters input[type=date] { padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; font: inherit; font-size: 13px; background: #fff; }
+
+.admin-filter-past { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); cursor: pointer; }
+
+.admin-filter-past input { accent-color: var(--brand); margin: 0; }
+
+.admin-filter-count { margin-left: auto; font-size: 12.5px; color: var(--muted); white-space: nowrap; }
 
 /* The Events list: a row per hand-added event, its start and end as
    pickers, Save appearing once one changes; past ones faded. */

@@ -804,11 +804,79 @@ function eventsTool() {
   const head = el('div', 'admin-tool-head');
   head.append(el('h2', '', 'Events'));
   const list = el('div', 'admin-events');
+  // The filters over the list: words in the title, a category, a
+  // classroom, a span of dates, and whether past events show.
+  const filters = el('div', 'admin-filters');
+  const search = el('input', 'admin-filter-search');
+  search.type = 'search';
+  search.placeholder = 'Search titles…';
+  const category = el('select', 'admin-select');
+  const classroom = el('select', 'admin-select');
+  const fromDate = el('input');
+  fromDate.type = 'date';
+  const toDate = el('input');
+  toDate.type = 'date';
+  const past = el('label', 'admin-filter-past');
+  const pastBox = el('input');
+  pastBox.type = 'checkbox';
+  past.append(pastBox, el('span', '', 'Show past'));
+  const count = el('span', 'admin-filter-count');
+  filters.append(search, category, classroom, el('span', 'admin-event-label', 'From'), fromDate, el('span', 'admin-event-label', 'To'), toDate, past, count);
+  const fillSelects = () => {
+    const mine = state.model.events.filter(e => e.source === 'sheet');
+    const cats = [...new Set(mine.flatMap(e => e.tags.filter(t => !classroomNames().includes(t))))].sort();
+    const chosenCat = category.value;
+    category.replaceChildren();
+    for (const name of ['', ...cats]) {
+      const option = el('option', '', name || 'Any category');
+      option.value = name;
+      category.append(option);
+    }
+    category.value = cats.includes(chosenCat) ? chosenCat : '';
+    const chosenRoom = classroom.value;
+    classroom.replaceChildren();
+    for (const name of ['', ...classroomNames()]) {
+      const option = el('option', '', name || 'Any classroom');
+      option.value = name;
+      classroom.append(option);
+    }
+    classroom.value = classroomNames().includes(chosenRoom) ? chosenRoom : '';
+  };
+  const admits = e => {
+    const words = search.value.trim().toLowerCase();
+    if (words && !e.title.toLowerCase().includes(words)) {
+      return false;
+    }
+    if (category.value && !e.tags.includes(category.value)) {
+      return false;
+    }
+    if (classroom.value && !e.classrooms.includes(classroom.value)) {
+      return false;
+    }
+    if (fromDate.value && e.end.slice(0, 10) < fromDate.value) {
+      return false;
+    }
+    if (toDate.value && e.start.slice(0, 10) > toDate.value) {
+      return false;
+    }
+    if (!pastBox.checked && !fromDate.value && e.end.slice(0, 10) < state.model.today) {
+      return false;
+    }
+    return true;
+  };
   const paint = () => {
     list.replaceChildren();
-    const mine = state.model.events.filter(e => e.source === 'sheet').sort((a, b) => a.start.localeCompare(b.start));
-    if (!mine.length) {
+    fillSelects();
+    const all = state.model.events.filter(e => e.source === 'sheet').sort((a, b) => a.start.localeCompare(b.start));
+    if (!all.length) {
       list.append(el('div', 'admin-empty', 'No events added by hand yet - everything on the calendar came from the school or the other apps.'));
+      count.textContent = '';
+      return;
+    }
+    const mine = all.filter(admits);
+    count.textContent = mine.length === all.length ? `${all.length} events` : `${mine.length} of ${all.length}`;
+    if (!mine.length) {
+      list.append(el('div', 'admin-empty', 'Nothing matches these filters.'));
       return;
     }
     const today = state.model.today;
@@ -846,7 +914,11 @@ function eventsTool() {
     }
   };
   head.append(button('Add Event', 'plus', 'button', () => openAddEvent(null, 4, paint)));
-  card.append(head, el('p', 'hint', 'The events added by hand, in the Events tab. Change when one is right here; the school\u2019s own events are corrected in the sheet\u2019s Overrides tab.'), list);
+  card.append(head, el('p', 'hint', 'The events added by hand, in the Events tab. Change when one is right here; the school\u2019s own events are corrected in the sheet\u2019s Overrides tab.'), filters, list);
+  for (const input of [search, category, classroom, fromDate, toDate, pastBox]) {
+    input.addEventListener('input', paint);
+    input.addEventListener('change', paint);
+  }
   paint();
   const params = new URLSearchParams(location.search);
   if (params.get('clone') && event(params.get('clone'))) {

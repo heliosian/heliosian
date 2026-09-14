@@ -245,10 +245,13 @@ function sourceCard(e) {
     if (!e.link || e.source === 'google' || e.source === 'pdf' || e.source === 'sheet') {
       admin.append(keywordsEditor(e));
     }
-    // A copy of this event, four weeks on, from the add-event tool.
-    const clone = link('/admin?clone=' + encodeURIComponent(e.id) + '&weeks=4', 'link-button');
-    clone.append(svg('copy'), el('span', '', 'Clone this event 4 weeks on'));
-    admin.append(clone);
+    // A copy of a hand-added event, four weeks on, from the add-event
+    // tool; the school's and the other apps' events are not cloned.
+    if (e.source === 'sheet') {
+      const clone = link('/admin?clone=' + encodeURIComponent(e.id) + '&weeks=4', 'link-button');
+      clone.append(svg('copy'), el('span', '', 'Clone this event 4 weeks on'));
+      admin.append(clone);
+    }
     body.append(admin);
   }
   row.append(icon, body);
