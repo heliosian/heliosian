@@ -30,7 +30,7 @@ Search is the top bar's box, as in the other apps; `/` puts the cursor in it. It
 
 ## The front page
 
-Heliosian's Upcoming Events section is the calendar's too (`docs/home/home.md`): `Model.Upcoming` in `internal/calendar/upcoming.go` lists, for the signed-in viewer, what the calendar page would first show them - from today on, admitted by their own classrooms and the categories on by default, the linked events folded in - the first six of them, each with its page here, the picture its page wears and which app serves it, and for a linked event its way in and the words its pill would carry, so a card on the front page says what a row here says.
+Heliosian's Upcoming Events section and the calendar in its rail are the calendar's too (`docs/home/home.md`). `Model.Upcoming` in `internal/calendar/upcoming.go` lists, for the signed-in viewer, what the calendar page would first show them - from today on, admitted by their own classrooms and the categories on by default, the linked events folded in - the first six of them, each with its page here, the picture its page wears and which app serves it, and for a linked event its way in and the words its pill would carry, so a card on the front page says what a row here says. `Model.Month` in `month.go` reckons one month under the same filter for the rail's small month and day card: every school day in it with the day types in force for the viewer's classrooms other than Regular, worded as the day words are, and every event of theirs that touches the month, past days included.
 
 ## Sharing
 

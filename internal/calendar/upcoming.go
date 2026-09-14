@@ -102,26 +102,52 @@ func admits(model *Model, e *Event, classrooms, tags []string) bool {
 	return len(categories) == 0 || overlaps(categories, tags)
 }
 
-// Upcoming lists what is ahead for one viewer, as the calendar page first
-// shows it: every event from today on that their own classrooms admit -
-// their children's, their own as a teacher, every classroom for someone with
-// none - under the categories on by default, the other apps' events folded
-// in, soonest first, at most limit of them.
-func (m *Model) Upcoming(directory Directory, email string, linked []Linked, now time.Time, limit int) []Upcoming {
+// viewOf is the filter the calendar page first shows a viewer under: their
+// own classrooms - their children's, their own as a teacher, every classroom
+// for someone with none - and the categories on by default.
+func (m *Model) viewOf(directory Directory, email string) (classrooms, tags []string) {
 	me, known := directory.Person(email)
 	if !known {
 		me = Person{Email: email}
 	}
-	classrooms := classroomsOf(m, me, students(directory, me))
+	classrooms = classroomsOf(m, me, students(directory, me))
 	if len(classrooms) == 0 {
 		classrooms = m.Roster.Names()
 	}
-	tags := []string{}
+	tags = []string{}
 	for _, t := range append(append([]Tag{}, m.Tags...), builtinTags...) {
 		if t.Default {
 			tags = append(tags, t.Name)
 		}
 	}
+	return classrooms, tags
+}
+
+// card is one event as the front page takes it.
+func (m *Model) card(e *Event) Upcoming {
+	u := Upcoming{
+		Title: e.Title, Path: eventPath(e), Start: e.start.Format(DateFormat), When: when(e),
+		StartAt: e.Start, EndAt: e.End, Location: e.Location, Description: blurb(e),
+		Image: "/" + m.pictureOf(e), ImageApp: appCalendar,
+	}
+	if e.Link != "" {
+		u.Link, u.LinkApp = e.Link, linkedApp(e)
+		u.Mine, u.Availability = e.Mine, e.Availability
+		if u.Call = mineWords(e); u.Call == "" {
+			u.Call = callWords[e.Availability]
+		}
+		if e.Image != "" {
+			u.ImageApp = linkedApp(e)
+		}
+	}
+	return u
+}
+
+// Upcoming lists what is ahead for one viewer, as the calendar page first
+// shows it (viewOf): every event from today on that the view admits, the
+// other apps' events folded in, soonest first, at most limit of them.
+func (m *Model) Upcoming(directory Directory, email string, linked []Linked, now time.Time, limit int) []Upcoming {
+	classrooms, tags := m.viewOf(directory, email)
 	today := now.Format(DateFormat)
 	out := []Upcoming{}
 	for _, e := range withLinked(m.Events, linked) {
@@ -131,22 +157,7 @@ func (m *Model) Upcoming(directory Directory, email string, linked []Linked, now
 		if limit > 0 && len(out) == limit {
 			break
 		}
-		u := Upcoming{
-			Title: e.Title, Path: eventPath(e), Start: e.start.Format(DateFormat), When: when(e),
-			StartAt: e.Start, EndAt: e.End, Location: e.Location, Description: blurb(e),
-			Image: "/" + m.pictureOf(e), ImageApp: appCalendar,
-		}
-		if e.Link != "" {
-			u.Link, u.LinkApp = e.Link, linkedApp(e)
-			u.Mine, u.Availability = e.Mine, e.Availability
-			if u.Call = mineWords(e); u.Call == "" {
-				u.Call = callWords[e.Availability]
-			}
-			if e.Image != "" {
-				u.ImageApp = linkedApp(e)
-			}
-		}
-		out = append(out, u)
+		out = append(out, m.card(e))
 	}
 	return out
 }

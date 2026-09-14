@@ -37,6 +37,7 @@ type app struct {
 	people      func() []Person
 	alerts      func(string) (int, bool)
 	upcoming    func(email string) []Event
+	month       func(email, month string) Month
 	search      imagesearch.Search
 }
 
@@ -63,6 +64,28 @@ type Event struct {
 	Availability string `json:"availability,omitempty"`
 }
 
+// Month is a month as the rail's calendar shows it, from Helios Calendar:
+// today, the school days in it with what kind of day each is for the
+// viewer's classrooms, and the viewer's events that touch it.
+type Month struct {
+	Month  string         `json:"month"`
+	Today  string         `json:"today"`
+	Days   map[string]Day `json:"days"`
+	Events []Event        `json:"events"`
+}
+
+// Day is one school day: the day types in force other than Regular.
+type Day struct {
+	Kinds []Kind `json:"kinds"`
+}
+
+// Kind is one day type in force: its name, and the words for it - "Early
+// Dismissal · Hummingbirds" when it is only some classrooms' day.
+type Kind struct {
+	Name  string `json:"name"`
+	Words string `json:"words"`
+}
+
 // alerts is what the toolbar's badges say, reckoned by the directory: things
 // to update for the new year, and a privacy mismatch.
 type alerts struct {
@@ -77,19 +100,21 @@ type alerts struct {
 // the directory cache, which this app does not otherwise depend on.
 // search finds pictures for links on the web, as HCA-Team's editors do.
 // alerts is the directory's reckoning of the toolbar badges for a person;
-// upcoming is the calendar's list of what is ahead for a person; people is
-// the directory as the admin page's pickers list it.
-func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, superAdmins func() []string, heroPhoto func(string) string, people func() []Person, alerts func(string) (int, bool), upcoming func(string) []Event, search imagesearch.Search) {
+// upcoming is the calendar's list of what is ahead for a person and month
+// its reckoning of one month of theirs; people is the directory as the
+// admin page's pickers list it.
+func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, superAdmins func() []string, heroPhoto func(string) string, people func() []Person, alerts func(string) (int, bool), upcoming func(string) []Event, month func(email, month string) Month, search imagesearch.Search) {
 	if search.UserAgent == "" {
 		search.UserAgent = "Heliosian image search (+https://heliosian.com)"
 	}
-	a := app{cache: cache, writer: writer, queue: queue, store: store, superAdmins: superAdmins, heroPhoto: heroPhoto, people: people, alerts: alerts, upcoming: upcoming, search: search}
+	a := app{cache: cache, writer: writer, queue: queue, store: store, superAdmins: superAdmins, heroPhoto: heroPhoto, people: people, alerts: alerts, upcoming: upcoming, month: month, search: search}
 	mux.HandleFunc("GET /{$}", a.page)
 	mux.HandleFunc("GET /admin", a.adminPage)
 	mux.HandleFunc("GET /dl/", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/", http.StatusMovedPermanently)
 	})
 	mux.HandleFunc("GET /api/apps/model", a.model)
+	mux.HandleFunc("GET /api/apps/calendar", a.calendar)
 	mux.HandleFunc("POST /api/apps/link", a.saveLink)
 	mux.HandleFunc("DELETE /api/apps/link", a.deleteLink)
 	mux.HandleFunc("POST /api/apps/category", a.saveCategory)
@@ -214,6 +239,16 @@ type user struct {
 // greyed out; everyone else gets the visible ones. A link into a community
 // app narrowed to a list this person is not on is left out altogether,
 // admin or not - the same rows the toolbar leaves off their app switch.
+// calendar serves another month for the rail's calendar as it pages:
+// /api/apps/calendar?month=2026-10.
+func (a app) calendar(w http.ResponseWriter, r *http.Request) {
+	email := strings.ToLower(auth.Email(r))
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(a.month(email, r.URL.Query().Get("month"))); err != nil {
+		slog.ErrorContext(r.Context(), "encode apps calendar", "error", err)
+	}
+}
+
 func (a app) model(w http.ResponseWriter, r *http.Request) {
 	email := strings.ToLower(auth.Email(r))
 	admin := a.cache.IsAdmin(email)
@@ -237,6 +272,8 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 		ImageSources []string `json:"imageSources"`
 		Alerts       alerts   `json:"alerts"`
 		Upcoming     []Event  `json:"upcoming"`
+		// Calendar fills the rail's month and day card: the month now is in.
+		Calendar Month `json:"calendar"`
 		// Apps fills the apps section: the community apps this person sees.
 		Apps []App `json:"apps"`
 	}{
@@ -244,6 +281,7 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 		User:         user{Email: email, Initial: strings.ToUpper(email[:1]), PhotoURL: a.heroPhoto(email), IsAdmin: admin},
 		ImageSources: a.search.Sources(),
 		Upcoming:     a.upcoming(email),
+		Calendar:     a.month(email, ""),
 		Apps:         a.visibleApps(email),
 	}
 	view.Alerts.Stale, view.Alerts.Privacy = a.alerts(email)

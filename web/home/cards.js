@@ -312,7 +312,7 @@ function calendarLink(event) {
 // links; with none ahead, or none matching, the section stays off the page.
 // whenOrigin is an app's origin on this tier, the calendar's under the name
 // it answers to rather than the one that redirects there.
-function whenOrigin(app) {
+export function whenOrigin(app) {
   return appOrigin(app === 'calendar' ? 'when' : app);
 }
 

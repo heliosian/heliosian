@@ -12,7 +12,7 @@
   --muted: #707070;
   --input: #efefef;
   --alert: #c0392b;
-  --sidebar-w: 200px;
+  --sidebar-w: 280px; /* wide enough for the month grid */
 }
 
 * { box-sizing: border-box; }
@@ -46,13 +46,16 @@ body {
   align-self: start;
   height: 100vh;
   height: 100dvh;
-  overflow: hidden;
+  /* The month and the day card make the rail taller than a short window;
+     it scrolls on its own then, the campsite last. */
+  overflow: hidden auto;
+  scrollbar-width: none;
   background: linear-gradient(180deg, var(--sidebar-top), var(--sidebar));
   color: #fff;
-  padding: 26px 12px 0;
+  padding: 22px 12px 0;
   display: flex;
   flex-direction: column;
-  gap: 26px;
+  gap: 20px;
   padding-top: calc(26px + env(safe-area-inset-top));
 }
 
@@ -84,7 +87,7 @@ body {
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 11px 14px;
+  padding: 9px 14px;
   border-radius: 12px;
   color: #fff;
   text-decoration: none;
@@ -108,6 +111,181 @@ body {
 .app-nav svg { width: 20px; height: 20px; flex-shrink: 0; opacity: 0.9; }
 
 .app-nav-glyph.is-emoji { font-size: 18px; line-height: 1; }
+
+/* The rail's calendar, from Helios When: the small month, then the day
+   picked as a card - white on the teal, the way the rest of the rail is. */
+
+.rail-calendar {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 0 4px;
+}
+
+.rail-calendar:empty { display: none; }
+
+.mini-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 2px 8px;
+}
+
+.mini-title { font-family: Montserrat, Roboto, sans-serif; font-size: 14px; font-weight: 700; }
+
+.mini-page {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+}
+
+.mini-page:hover { background: rgba(255, 255, 255, 0.12); }
+
+.mini-page svg { width: 16px; height: 16px; }
+
+/* The first arrow points back. */
+.mini-page:first-child svg { transform: rotate(180deg); }
+
+.mini-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px 0;
+}
+
+.mini-weekday {
+  text-align: center;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  opacity: 0.55;
+  padding-bottom: 4px;
+}
+
+.mini-day {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 32px;
+  padding: 2px 0 0;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.mini-day:hover { background: rgba(255, 255, 255, 0.1); }
+
+.mini-day.is-off .mini-number { opacity: 0.4; }
+
+.mini-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  font-weight: 500;
+}
+
+/* Today is ringed in amber, as When rings it; the day open in the card is
+   filled white. */
+.mini-day.is-today .mini-number { box-shadow: inset 0 0 0 2px #e8a33d; font-weight: 700; }
+
+.mini-day.is-selected .mini-number { background: #fff; color: var(--brand); font-weight: 700; opacity: 1; }
+
+/* A day that is not regular wears its day type's colour, lightened for the
+   teal - When's early-dismissal amber, no-school red, no-aftercare violet. */
+.mini-day.dt-early .mini-number { color: #f4c06a; }
+.mini-day.dt-no-school .mini-number { color: #f59d8b; }
+.mini-day.dt-no-aftercare .mini-number { color: #cdb3f5; }
+.mini-day.dt-other .mini-number { color: #a9d3d8; }
+
+.mini-dots { display: flex; gap: 2px; height: 5px; margin-top: 1px; }
+
+.mini-dot { width: 5px; height: 5px; border-radius: 50%; }
+
+/* The dots and the rows wear where an event comes from: the school's own
+   blue, HCA's purple, Celebrate's pink, each lifted for the teal. */
+.is-school { --tint: #86bbf0; }
+.is-team { --tint: #bda4f2; }
+.is-celebrate { --tint: #f394b8; }
+
+.mini-dot { background: var(--tint); }
+
+.rail-day {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 12px 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.rail-day-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  color: #fff;
+  text-decoration: none;
+}
+
+.rail-day-head:hover .rail-day-date { text-decoration: underline; }
+
+.rail-day-title { font-family: Montserrat, Roboto, sans-serif; font-size: 16px; font-weight: 700; }
+
+.rail-day-date { font-size: 13px; opacity: 0.75; }
+
+.rail-day-kinds { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.rail-day-kind {
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--brand-dark);
+  background: #a9d3d8;
+}
+
+.rail-day-kind.dt-early { background: #f4c06a; }
+.rail-day-kind.dt-no-school { background: #f59d8b; }
+.rail-day-kind.dt-no-aftercare { background: #cdb3f5; }
+
+.rail-day-events { display: flex; flex-direction: column; gap: 4px; }
+
+.rail-day-empty { font-size: 13px; opacity: 0.7; }
+
+.rail-event {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 6px 8px;
+  margin: 0 -8px;
+  border-radius: 10px;
+  color: #fff;
+  text-decoration: none;
+}
+
+.rail-event:hover { background: rgba(255, 255, 255, 0.1); }
+
+.rail-event-dot { flex-shrink: 0; width: 8px; height: 8px; margin-top: 6px; border-radius: 50%; background: var(--tint); }
+
+.rail-event-body { display: flex; flex-direction: column; min-width: 0; }
+
+.rail-event-title { font-size: 13.5px; font-weight: 600; line-height: 1.3; }
+
+.rail-event-hours { font-size: 12px; opacity: 0.75; }
 
 /* The campsite spans the rail edge to edge, outside the rail's own padding. */
 .sidebar-foot {

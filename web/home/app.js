@@ -1,5 +1,6 @@
 import {state, applyModel, setSuperAdmin} from './state.js';
 import {renderCategories, renderNav} from './cards.js';
+import {renderMonth} from './month.js';
 import {initEditing, refreshCategoryManager} from './edit.js';
 import {renderAvatars, renderAlerts, onSlash, initAppSwitch, markSuper} from '/toolbar.js';
 
@@ -24,6 +25,7 @@ export async function load() {
   }
   applyModel(await res.json());
   renderChrome();
+  renderMonth();
   renderNav();
   renderCategories(document.querySelector('#search').value);
   refreshCategoryManager();

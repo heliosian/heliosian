@@ -318,8 +318,27 @@ type upcomingEvents struct {
 }
 
 func (u upcomingEvents) list(email string) []home.Event {
+	return homeEvents(u.cache.Model().Upcoming(u.directory, email, u.linked(email), time.Now().In(calendar.Location), 6))
+}
+
+// month hands the rail's calendar one month of the person's: the plan for
+// their classrooms day by day, and what is on.
+func (u upcomingEvents) month(email, month string) home.Month {
+	m := u.cache.Model().Month(u.directory, email, u.linked(email), time.Now().In(calendar.Location), month)
+	days := map[string]home.Day{}
+	for date, d := range m.Days {
+		kinds := []home.Kind{}
+		for _, k := range d.Kinds {
+			kinds = append(kinds, home.Kind{Name: k.Name, Words: k.Words})
+		}
+		days[date] = home.Day{Kinds: kinds}
+	}
+	return home.Month{Month: m.Month, Today: m.Today, Days: days, Events: homeEvents(m.Events)}
+}
+
+func homeEvents(list []calendar.Upcoming) []home.Event {
 	out := []home.Event{}
-	for _, e := range u.cache.Model().Upcoming(u.directory, email, u.linked(email), time.Now().In(calendar.Location), 6) {
+	for _, e := range list {
 		out = append(out, home.Event{
 			Title: e.Title, Path: e.Path, Start: e.Start, When: e.When,
 			StartAt: e.StartAt, EndAt: e.EndAt, Location: e.Location, Description: e.Description,
@@ -756,7 +775,8 @@ func NewCore(cfg Config) *Core {
 	// the way its own page is, so it is wired once the calendar's links are.
 	homeMux := http.NewServeMux()
 	linked := calendarLinked{celebrateCache, eventsCache, celebrateDirectory{cache, settings}}.list
-	home.Register(homeMux, homeCache, cfg.Writer, queue, cfg.Store, settings.SuperAdmins, cache.HeroPhoto, directory{cache, settings}.HomePeople, directory{cache, settings}.Alerts, upcomingEvents{calendarCache, calendarDirectory{cache, settings}, linked}.list, cfg.ImageSearch)
+	frontEvents := upcomingEvents{calendarCache, calendarDirectory{cache, settings}, linked}
+	home.Register(homeMux, homeCache, cfg.Writer, queue, cfg.Store, settings.SuperAdmins, cache.HeroPhoto, directory{cache, settings}.HomePeople, directory{cache, settings}.Alerts, frontEvents.list, frontEvents.month, cfg.ImageSearch)
 	eventsMux := http.NewServeMux()
 	events.Register(eventsMux, eventsCache, cfg.Writer, queue, cfg.Store, directory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.Mail)
 	birthdayMux := http.NewServeMux()
