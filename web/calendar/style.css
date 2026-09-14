@@ -140,6 +140,10 @@ button { font: inherit; }
 
 .app-nav a.nav-sub .nav-sub-star svg { width: 13px; height: 13px; fill: currentColor; }
 
+.app-nav a.nav-sub .nav-sub-locked { display: inline-flex; color: var(--muted); opacity: 0.7; }
+
+.app-nav a.nav-sub .nav-sub-locked svg { width: 13px; height: 13px; }
+
 .nav-sub-tool.nav-sub-lock { cursor: default; opacity: 0.7; }
 
 .nav-sub-tool.nav-sub-lock:hover { background: none; color: var(--muted); }

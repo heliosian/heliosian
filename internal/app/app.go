@@ -324,22 +324,31 @@ type upcomingEvents struct {
 func (u upcomingEvents) list(email, token string) home.Upcoming {
 	model := u.cache.Model()
 	out := home.Upcoming{Events: homeEvents(model.UpcomingUnder(u.directory, email, u.linked(email), time.Now().In(calendar.Location), 6, token))}
-	for _, f := range model.MyCalendars(email) {
-		out.Calendars = append(out.Calendars, home.SavedCalendar{Token: f.Token, Name: f.Name, Emoji: f.Emoji, Locked: f.Locked})
-	}
-	// The first is the default.
-	out.Default = out.Calendars[0].Token
-	out.Calendar = out.Default
-	if slices.ContainsFunc(out.Calendars, func(c home.SavedCalendar) bool { return c.Token == token }) {
-		out.Calendar = token
-	}
+	out.Calendars, out.Default, out.Calendar = savedCalendars(model, email, token)
 	return out
 }
 
+// savedCalendars are a person's saved calendars in the rail's order, the
+// default's token - the first - and the one a token names among them,
+// else the default.
+func savedCalendars(model *calendar.Model, email, token string) (list []home.SavedCalendar, def, current string) {
+	for _, f := range model.MyCalendars(email) {
+		list = append(list, home.SavedCalendar{Token: f.Token, Name: f.Name, Emoji: f.Emoji, Locked: f.Locked})
+	}
+	def = list[0].Token
+	current = def
+	if slices.ContainsFunc(list, func(c home.SavedCalendar) bool { return c.Token == token }) {
+		current = token
+	}
+	return list, def, current
+}
+
 // month hands the rail's calendar one month of the person's: the plan for
-// their classrooms day by day, and what is on.
-func (u upcomingEvents) month(email, month string) home.Month {
-	m := u.cache.Model().Month(u.directory, email, u.linked(email), time.Now().In(calendar.Location), month)
+// their classrooms day by day, and what is on - under their default
+// calendar, or the saved calendar the token names from the rail's picker.
+func (u upcomingEvents) month(email, month, token string) home.Month {
+	model := u.cache.Model()
+	m := model.MonthUnder(u.directory, email, u.linked(email), time.Now().In(calendar.Location), month, token)
 	days := map[string]home.Day{}
 	for date, d := range m.Days {
 		kinds := []home.Kind{}
@@ -348,7 +357,8 @@ func (u upcomingEvents) month(email, month string) home.Month {
 		}
 		days[date] = home.Day{Kinds: kinds}
 	}
-	return home.Month{Month: m.Month, Today: m.Today, Days: days, Events: homeEvents(m.Events)}
+	_, _, current := savedCalendars(model, email, token)
+	return home.Month{Month: m.Month, Today: m.Today, Days: days, Events: homeEvents(m.Events), Calendar: current}
 }
 
 func homeStandings(list []calendar.Standing) []home.Standing {

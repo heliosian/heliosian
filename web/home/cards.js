@@ -427,6 +427,57 @@ export function rsvpButtons(event) {
   return rsvp;
 }
 
+// calendarMark is a saved calendar's mark: its emoji, else the calendar
+// outline.
+export function calendarMark(c) {
+  return c.emoji ? el('span', 'category-calendar-emoji', c.emoji) : svg('calendar');
+}
+
+// calendarMenu lists every saved calendar to pick from, the current one
+// lit, the default and My Heliosian's lock marked at the end of their
+// rows; picking one closes the menu and hands it to onPick. Upcoming
+// Events and the rail's month share it.
+export function calendarMenu(list, current, chosen, onPick) {
+  const menu = el('div', 'category-calendar-menu');
+  menu.hidden = true;
+  for (const c of list) {
+    const item = el('button', 'category-calendar-item' + (c.token === current.token ? ' is-on' : ''));
+    item.type = 'button';
+    item.append(calendarMark(c), el('span', '', c.name));
+    const tail = el('span', 'category-calendar-tail');
+    if (c.token === chosen.token) {
+      tail.append(el('span', 'category-calendar-default', 'default'));
+    }
+    if (c.locked) {
+      tail.append(el('span', 'category-calendar-lock', '\ud83d\udd12'));
+    }
+    if (tail.childElementCount) {
+      item.append(tail);
+    }
+    item.addEventListener('click', () => {
+      menu.hidden = true;
+      onPick(c);
+    });
+    menu.append(item);
+  }
+  return menu;
+}
+
+// dropdown opens the menu under its toggle and closes it on the next
+// click anywhere else.
+export function dropdown(toggle, menu) {
+  toggle.addEventListener('click', e => {
+    e.stopPropagation();
+    menu.hidden = !menu.hidden;
+    if (!menu.hidden) {
+      document.addEventListener('click', () => {
+        menu.hidden = true;
+      }, {once: true});
+    }
+  });
+  menu.addEventListener('click', e => e.stopPropagation());
+}
+
 // calendarPicker is the saved calendar Upcoming Events is read under, as
 // a small dropdown beside the heading: picking another re-reads the
 // events under it, and Make default beside it makes that one the default
@@ -440,50 +491,22 @@ function calendarPicker(needle) {
   const toggle = el('button', 'category-calendar-toggle');
   toggle.type = 'button';
   toggle.title = 'The saved calendar these events come from';
-  toggle.append(current.emoji ? el('span', 'category-calendar-emoji', current.emoji) : svg('calendar'), el('span', '', current.name), svg('chevron'));
+  toggle.append(calendarMark(current), el('span', '', current.name), svg('chevron'));
   if (current.locked) {
     toggle.title = 'The calendar\u2019s own view, for everyone';
   }
-  const menu = el('div', 'category-calendar-menu');
-  menu.hidden = true;
-  for (const c of list) {
-    const item = el('button', 'category-calendar-item' + (c.token === current.token ? ' is-on' : ''));
-    item.type = 'button';
-    item.append(c.emoji ? el('span', 'category-calendar-emoji', c.emoji) : svg('calendar'), el('span', '', c.name));
-    const tail = el('span', 'category-calendar-tail');
-    if (c.token === chosen.token) {
-      tail.append(el('span', 'category-calendar-default', 'default'));
+  const menu = calendarMenu(list, current, chosen, async c => {
+    const res = await fetch('/api/apps/upcoming?calendar=' + encodeURIComponent(c.token));
+    if (!res.ok) {
+      toast(await res.text());
+      return;
     }
-    if (c.locked) {
-      tail.append(el('span', 'category-calendar-lock', '\ud83d\udd12'));
-    }
-    if (tail.childElementCount) {
-      item.append(tail);
-    }
-    item.addEventListener('click', async () => {
-      menu.hidden = true;
-      const res = await fetch('/api/apps/upcoming?calendar=' + encodeURIComponent(c.token));
-      if (!res.ok) {
-        toast(await res.text());
-        return;
-      }
-      const ahead = await res.json();
-      state.model.upcoming = ahead.events;
-      state.model.upcomingCalendar = {calendar: ahead.calendar, default: ahead.default, calendars: ahead.calendars};
-      renderCategories(needle);
-    });
-    menu.append(item);
-  }
-  toggle.addEventListener('click', e => {
-    e.stopPropagation();
-    menu.hidden = !menu.hidden;
-    if (!menu.hidden) {
-      document.addEventListener('click', () => {
-        menu.hidden = true;
-      }, {once: true});
-    }
+    const ahead = await res.json();
+    state.model.upcoming = ahead.events;
+    state.model.upcomingCalendar = {calendar: ahead.calendar, default: ahead.default, calendars: ahead.calendars};
+    renderCategories(needle);
   });
-  menu.addEventListener('click', e => e.stopPropagation());
+  dropdown(toggle, menu);
   wrap.append(toggle, menu);
   if (current.token !== chosen.token) {
     const make = el('button', 'category-calendar-make');

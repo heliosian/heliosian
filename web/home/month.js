@@ -1,6 +1,6 @@
 import {state} from './state.js';
 import {el, svg} from './dom.js';
-import {whenOrigin, rsvpButtons} from './cards.js';
+import {whenOrigin, rsvpButtons, calendarMark, calendarMenu, dropdown} from './cards.js';
 
 // The rail's calendar, from Helios When: a small month, paged on its own,
 // with a dot under each day in the colour of what is on it and today ringed
@@ -8,12 +8,17 @@ import {whenOrigin, rsvpButtons} from './cards.js';
 // the date, what kind of day it is for this person's classrooms when it is
 // not simply regular, and every event on it, each opening its page on When
 // with its Yes and No under it.
-// The month is the viewer's as When first shows it (their classrooms, the
-// default categories); today is the school's, reckoned by the server, so
-// the ring does not drift with the browser's clock.
+// The month is the viewer's as When first shows it - their default
+// calendar - until they pick another of their saved calendars from the
+// faint dropdown above the month's name, which the paging then keeps to;
+// today is the school's, reckoned by the server, so the ring does not
+// drift with the browser's clock.
 
 let month = null;
 let selected = '';
+// loaded is the model's month the one shown came from; a fresh model -
+// after Make default - starts the rail over from its month.
+let loaded = null;
 
 // A YYYY-MM-DD as a local date, without the time zone shifting it.
 function parseDate(date) {
@@ -68,13 +73,13 @@ function shiftMonth(ym, by) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
 }
 
-// Paging asks the server for the month, read for the viewer the way the
-// first was; the day picked becomes today when it is in the month, else
-// the first.
-async function page(by) {
-  const ym = shiftMonth(month.month, by);
+// fetchMonth asks the server for a month read under a saved calendar -
+// paging keeps the calendar and moves the month, the picker keeps the
+// month and moves the calendar; the day picked becomes today when it is
+// in the month, else the first.
+async function fetchMonth(ym, calendar) {
   try {
-    const res = await fetch('/api/apps/calendar?month=' + ym);
+    const res = await fetch('/api/apps/calendar?month=' + ym + '&calendar=' + encodeURIComponent(calendar || ''));
     if (!res.ok) {
       return;
     }
@@ -84,6 +89,32 @@ async function page(by) {
   }
   selected = month.today.startsWith(month.month) ? month.today : month.month + '-01';
   renderMonth();
+}
+
+function page(by) {
+  return fetchMonth(shiftMonth(month.month, by), month.calendar);
+}
+
+// picker is the saved calendar the month is read under, as a faint line
+// above the month's name that drops the rest down to pick from - the same
+// list Upcoming Events offers, without its Make default.
+function picker() {
+  const cal = state.model.upcomingCalendar;
+  const list = (cal && cal.calendars) || [];
+  if (!list.length) {
+    return null;
+  }
+  const current = list.find(c => c.token === month.calendar) || list[0];
+  const chosen = list.find(c => c.token === cal.default) || list[0];
+  const wrap = el('div', 'mini-calendar');
+  const toggle = el('button', 'mini-calendar-toggle');
+  toggle.type = 'button';
+  toggle.title = current.locked ? 'The calendar\u2019s own view, for everyone' : 'The saved calendar this month is read under';
+  toggle.append(calendarMark(current), el('span', 'mini-calendar-name', current.name), svg('chevron'));
+  const menu = calendarMenu(list, current, chosen, c => fetchMonth(month.month, c.token));
+  dropdown(toggle, menu);
+  wrap.append(toggle, menu);
+  return wrap;
 }
 
 function grid() {
@@ -100,6 +131,10 @@ function grid() {
   next.append(svg('chevron'));
   next.addEventListener('click', () => page(1));
   head.append(back, el('span', 'mini-title', monthLabel(month.month)), next);
+  const pick = picker();
+  if (pick) {
+    wrap.append(pick);
+  }
   wrap.append(head);
   const days = el('div', 'mini-grid');
   for (const w of ['S', 'M', 'T', 'W', 'T', 'F', 'S']) {
@@ -191,8 +226,9 @@ function dayCard() {
 export function renderMonth() {
   const root = document.querySelector('#rail-calendar');
   root.replaceChildren();
-  if (!month) {
-    month = state.model.calendar;
+  if (loaded !== state.model.calendar) {
+    loaded = state.model.calendar;
+    month = loaded;
     if (!month || !month.month) {
       return;
     }

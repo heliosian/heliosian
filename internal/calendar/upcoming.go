@@ -151,6 +151,19 @@ func (m *Model) viewOf(directory Directory, email string) (classrooms, tags []st
 	return m.myHeliosianView(directory, email)
 }
 
+// viewUnder is the view one of the person's saved calendars gives, by
+// token - or My Heliosian by its token - and their default view (viewOf)
+// for a blank token or one that is not theirs.
+func (m *Model) viewUnder(directory Directory, email, token string) (classrooms, tags []string) {
+	if token == MyHeliosianToken {
+		return m.myHeliosianView(directory, email)
+	}
+	if f := m.Feed(token); f != nil && token != "" && normalizeEmail(f.Email) == normalizeEmail(email) {
+		return m.feedView(f)
+	}
+	return m.viewOf(directory, email)
+}
+
 // myHeliosianView is My Heliosian for one person: the calendar's own
 // defaults, or the view they saved in their place.
 func (m *Model) myHeliosianView(directory Directory, email string) (classrooms, tags []string) {
@@ -250,12 +263,7 @@ func (m *Model) Upcoming(directory Directory, email string, linked []Linked, now
 // by token, or My Heliosian by its token, rather than their default - the
 // front page's picker - or under the default for a blank or unknown token.
 func (m *Model) UpcomingUnder(directory Directory, email string, linked []Linked, now time.Time, limit int, token string) []Upcoming {
-	classrooms, tags := m.viewOf(directory, email)
-	if token == MyHeliosianToken {
-		classrooms, tags = m.myHeliosianView(directory, email)
-	} else if f := m.Feed(token); f != nil && token != "" && normalizeEmail(f.Email) == normalizeEmail(email) {
-		classrooms, tags = m.feedView(f)
-	}
+	classrooms, tags := m.viewUnder(directory, email, token)
 	today := now.Format(DateFormat)
 	out := []Upcoming{}
 	for _, e := range m.eventsFor(email, linked) {

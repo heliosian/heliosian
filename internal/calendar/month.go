@@ -43,13 +43,20 @@ type Kind struct {
 // with the viewer's answer and the ones they hid left out. A month that
 // does not parse is the month now is in.
 func (m *Model) Month(directory Directory, email string, linked []Linked, now time.Time, month string) Month {
+	return m.MonthUnder(directory, email, linked, now, month, "")
+}
+
+// MonthUnder is Month read under one of the person's saved calendars by
+// token, or My Heliosian by its token, rather than their default - the
+// rail's picker - or under the default for a blank or unknown token.
+func (m *Model) MonthUnder(directory Directory, email string, linked []Linked, now time.Time, month, token string) Month {
 	first, err := time.ParseInLocation(MonthFormat, month, Location)
 	if err != nil {
 		first = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, Location)
 	}
 	last := first.AddDate(0, 1, -1)
 	from, to := first.Format(DateFormat), last.Format(DateFormat)
-	classrooms, tags := m.viewOf(directory, email)
+	classrooms, tags := m.viewUnder(directory, email, token)
 	out := Month{Month: first.Format(MonthFormat), Today: now.Format(DateFormat), Days: map[string]Day{}, Events: []Upcoming{}}
 	for d := first; !d.After(last); d = d.AddDate(0, 0, 1) {
 		date := d.Format(DateFormat)

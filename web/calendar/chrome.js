@@ -219,13 +219,21 @@ function fillNav(nav) {
       a.href = '/c/' + f.token;
       a.append(feedMark(f), el('span', '', f.name));
       a.title = f.locked ? 'The calendar\u2019s own view, for everyone' : 'Show the calendar as ' + f.name + ' sees it';
-      // The default calendar wears a star at its end.
+      // The default calendar wears a star at its end, My Heliosian a
+      // lock - always, so its standing shows wherever it sits; while the
+      // rail is being edited the lock is the tool where its cross would be.
       const marks = el('span', 'nav-sub-marks');
       if (f.token === chosen.token) {
         const star = el('span', 'nav-sub-star');
         star.title = 'Your default calendar';
         star.append(svg('star'));
         marks.append(star);
+      }
+      if (f.locked && !editingNav) {
+        const lock = el('span', 'nav-sub-locked');
+        lock.title = 'Everyone keeps this one; its filters are the calendar\u2019s own';
+        lock.append(svg('lock'));
+        marks.append(lock);
       }
       if (marks.childElementCount) {
         a.append(marks);

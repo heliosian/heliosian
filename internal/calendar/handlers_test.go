@@ -278,6 +278,19 @@ func TestDefaultCalendar(t *testing.T) {
 	if !found {
 		t.Errorf("under My Heliosian by token, upcoming leaves out International Night")
 	}
+	// The rail's month reads the same way: the default leaves the event
+	// out of September, My Heliosian by token puts it back.
+	inMonth := func(token string) bool {
+		for _, u := range cache.Model().MonthUnder(dir, me, nil, now(), "2026-09", token).Events {
+			if u.Title == "International Night" {
+				return true
+			}
+		}
+		return false
+	}
+	if inMonth("") || !inMonth(MyHeliosianToken) {
+		t.Errorf("month under default %v, under My Heliosian %v; want false, true", inMonth(""), inMonth(MyHeliosianToken))
+	}
 	if rec := call(t, viewer, "POST", "/api/calendar/default", `{"token":"`+MyHeliosianToken+`"}`); rec.Code != 204 || cache.Model().DefaultCalendar(me) != nil {
 		t.Errorf("back to My Heliosian: %d, default %+v", rec.Code, cache.Model().DefaultCalendar(me))
 	}

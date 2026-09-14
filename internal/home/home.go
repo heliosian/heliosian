@@ -38,7 +38,7 @@ type app struct {
 	alerts      func(string) (int, bool)
 	upcoming    func(email, token string) Upcoming
 	makeDefault func(ctx context.Context, email, token string) error
-	month       func(email, month string) Month
+	month       func(email, month, token string) Month
 	search      imagesearch.Search
 	// answer records a person's word on a calendar event - yes, no, hidden
 	// - with the calendar, whose lists follow it.
@@ -109,6 +109,9 @@ type Month struct {
 	Today  string         `json:"today"`
 	Days   map[string]Day `json:"days"`
 	Events []Event        `json:"events"`
+	// Calendar is the saved calendar the month is read under, for the
+	// rail's picker; absent with none.
+	Calendar string `json:"calendar,omitempty"`
 }
 
 // Day is one school day: the day types in force other than Regular.
@@ -140,7 +143,7 @@ type alerts struct {
 // upcoming is the calendar's list of what is ahead for a person and month
 // its reckoning of one month of theirs; people is the directory as the
 // admin page's pickers list it.
-func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, superAdmins func() []string, heroPhoto func(string) string, people func() []Person, alerts func(string) (int, bool), upcoming func(email, token string) Upcoming, month func(email, month string) Month, search imagesearch.Search, answer func(ctx context.Context, email, id, answer string) error, makeDefault func(ctx context.Context, email, token string) error) {
+func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, superAdmins func() []string, heroPhoto func(string) string, people func() []Person, alerts func(string) (int, bool), upcoming func(email, token string) Upcoming, month func(email, month, token string) Month, search imagesearch.Search, answer func(ctx context.Context, email, id, answer string) error, makeDefault func(ctx context.Context, email, token string) error) {
 	if search.UserAgent == "" {
 		search.UserAgent = "Heliosian image search (+https://heliosian.com)"
 	}
@@ -279,12 +282,13 @@ type user struct {
 // greyed out; everyone else gets the visible ones. A link into a community
 // app narrowed to a list this person is not on is left out altogether,
 // admin or not - the same rows the toolbar leaves off their app switch.
-// calendar serves another month for the rail's calendar as it pages:
-// /api/apps/calendar?month=2026-10.
+// calendar serves another month for the rail's calendar as it pages, or
+// the month read under another of the person's saved calendars from its
+// picker: /api/apps/calendar?month=2026-10&calendar=<token>.
 func (a app) calendar(w http.ResponseWriter, r *http.Request) {
 	email := strings.ToLower(auth.Email(r))
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(a.month(email, r.URL.Query().Get("month"))); err != nil {
+	if err := json.NewEncoder(w).Encode(a.month(email, r.URL.Query().Get("month"), r.URL.Query().Get("calendar"))); err != nil {
 		slog.ErrorContext(r.Context(), "encode apps calendar", "error", err)
 	}
 }
@@ -378,7 +382,7 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 		Categories:   categories,
 		User:         user{Email: email, Initial: strings.ToUpper(email[:1]), PhotoURL: a.heroPhoto(email), IsAdmin: admin},
 		ImageSources: a.search.Sources(),
-		Calendar:     a.month(email, ""),
+		Calendar:     a.month(email, "", ""),
 		Apps:         a.visibleApps(email),
 	}
 	ahead := a.upcoming(email, "")
