@@ -1,5 +1,5 @@
-import {state, me, bands, selectedClassrooms, selectedTags, classroomNames, tagGroups, colorOf} from '../state.js';
-import {el, svg, button, copyText, toast} from '../dom.js';
+import {state, defaultFeedName, feedURL, webcalURL, bands, selectedClassrooms, selectedTags, classroomNames, tagGroups, colorOf} from '../state.js';
+import {el, svg, button, copyText, toast, feedMark, emojiPicker} from '../dom.js';
 import {setTitle} from '../chrome.js';
 
 // feedTagNames are the categories a feed can carry: every one the page
@@ -9,18 +9,30 @@ function feedTagNames() {
   return state.model.tags.map(t => t.name);
 }
 
-function feedURL(token) {
-  return `${location.origin}/feed/${token}.ics`;
-}
-
-function webcalURL(token) {
-  return `webcal://${location.host}/feed/${token}.ics`;
-}
-
-function filterWords(f) {
-  const rooms = f.classrooms.length ? f.classrooms.join(', ') : 'Every classroom';
-  const tags = f.tags.length ? f.tags.join(', ') : 'Everything';
-  return `${rooms} · ${tags}`;
+// showsLine is what a feed carries, as small chips under its address:
+// its classrooms in their colors, then its categories - or a word for
+// every one where it carries no filter.
+function showsLine(f) {
+  const line = el('div', 'feed-shows');
+  line.append(el('span', 'feed-shows-label', 'Shows'));
+  if (f.classrooms.length) {
+    for (const c of f.classrooms) {
+      const chip = el('span', 'feed-chip has-color', c);
+      chip.style.setProperty('--room', colorOf(c));
+      line.append(chip);
+    }
+  } else {
+    line.append(el('span', 'feed-chip feed-chip-all', 'Every classroom'));
+  }
+  line.append(el('span', 'feed-shows-sep'));
+  if (f.tags.length) {
+    for (const t of f.tags) {
+      line.append(el('span', 'feed-chip', t));
+    }
+  } else {
+    line.append(el('span', 'feed-chip feed-chip-all', 'Every category'));
+  }
+  return line;
 }
 
 async function refreshModel() {
@@ -28,10 +40,46 @@ async function refreshModel() {
   await load();
 }
 
+// createdWords is when a feed was made, from its stamp ("2026-09-14 08:06").
+function createdWords(f) {
+  const [y, m, d] = (f.created || '').slice(0, 10).split('-').map(Number);
+  if (!y) {
+    return '';
+  }
+  return 'Made ' + new Date(y, m - 1, d).toLocaleDateString('en-US', {month: 'long', day: 'numeric', year: 'numeric'});
+}
+
 function feedCard(f) {
   const card = el('div', 'feed-card');
   const head = el('div', 'feed-head');
-  head.append(el('div', 'feed-name', f.name), el('div', 'feed-filter', filterWords(f)));
+  // Edit is the pencil beside the name: it opens the feed's own form under
+  // the card - its name, classrooms and categories as they stand - and a
+  // save keeps the address.
+  const editor = el('div', 'feed-editor');
+  editor.hidden = true;
+  const nameRow = el('div', 'feed-name-row');
+  const openEditor = () => {
+    if (!editor.hidden) {
+      editor.hidden = true;
+      return;
+    }
+    editor.replaceChildren(feedForm({feed: f, onDone: async () => {
+      toast('Feed updated');
+      await refreshModel();
+    }, onCancel: () => {
+      editor.hidden = true;
+    }}));
+    editor.hidden = false;
+    editor.querySelector('input').focus();
+  };
+  const pencil = button('', 'pencil', 'feed-edit', openEditor);
+  pencil.title = 'Edit this feed';
+  pencil.setAttribute('aria-label', 'Edit this feed');
+  nameRow.append(feedMark(f), el('div', 'feed-name', f.name), pencil);
+  head.append(nameRow);
+  if (createdWords(f)) {
+    head.append(el('div', 'feed-made', createdWords(f)));
+  }
   card.append(head);
   const url = el('div', 'feed-url');
   const input = el('input');
@@ -41,7 +89,10 @@ function feedCard(f) {
   input.addEventListener('focus', () => input.select());
   url.append(input);
   url.append(button('Copy', 'copy', 'button button-small', () => copyText(feedURL(f.token), 'Feed address copied')));
-  card.append(url);
+  // The same form opens from Edit at the end of the Shows row.
+  const shows = showsLine(f);
+  shows.append(button('Edit', 'pencil', 'feed-shows-edit', openEditor));
+  card.append(url, shows);
   const actions = el('div', 'feed-actions');
   const open = el('a', 'button button-secondary button-small');
   open.href = webcalURL(f.token);
@@ -65,7 +116,7 @@ function feedCard(f) {
     toast('Feed removed');
     await refreshModel();
   }));
-  card.append(actions);
+  card.append(actions, editor);
   return card;
 }
 
@@ -82,23 +133,36 @@ function chip(label, on, onClick, color) {
   return b;
 }
 
-// newFeedForm picks the feed's classrooms and categories - what the
-// calendar's filters show, to start, so Get Feed beside the month makes a
-// feed of the view it was pressed on - and names it, then mints it.
-function newFeedForm(onMade) {
+// feedForm names a feed and picks its classrooms and categories. A new
+// feed starts from what the calendar's filters show, so Save Calendar beside
+// the month makes a feed of the view it was pressed on, and is minted on
+// submit; an existing one (feed given) starts from its own picks - every
+// classroom or category where it carries no filter - and is changed in
+// place, keeping its address.
+function feedForm({feed = null, onDone, onCancel = null} = {}) {
   const form = el('form', 'feed-form');
-  form.id = 'new';
-  form.append(el('h2', 'section-title', 'New feed'));
-  const rooms = new Set(selectedClassrooms());
-  const tags = new Set(selectedTags().filter(t => feedTagNames().includes(t)));
+  if (!feed) {
+    form.id = 'new';
+    form.append(el('h2', 'section-title', 'New feed'));
+  }
+  const rooms = new Set(feed ? (feed.classrooms.length ? feed.classrooms : classroomNames()) : selectedClassrooms());
+  const tags = new Set(feed ? (feed.tags.length ? feed.tags : feedTagNames()) : selectedTags().filter(t => feedTagNames().includes(t)));
   const nameField = el('label', 'field');
   nameField.append(el('span', '', 'Name'));
   const name = el('input');
   name.type = 'text';
   name.maxLength = 80;
-  name.value = 'Helios Calendar';
+  name.value = feed ? feed.name : defaultFeedName();
   nameField.append(name);
   form.append(nameField);
+
+  // The mark before the name in the rail: an emoji typed or picked, or
+  // none for the calendar icon.
+  const emojiField = el('div', 'field');
+  emojiField.append(el('span', '', 'Emoji'));
+  const {node: emojiRow, input: emoji} = emojiPicker(feed ? feed.emoji || '' : '');
+  emojiField.append(emojiRow, el('small', '', 'Shown before the name under Calendar in the rail; none means the calendar icon.'));
+  form.append(emojiField);
 
   const roomsField = el('div', 'field');
   roomsField.append(el('span', '', 'Classrooms'));
@@ -160,8 +224,12 @@ function newFeedForm(onMade) {
   const status = el('span', 'save-status');
   const submit = el('button', 'button');
   submit.type = 'submit';
-  submit.append(svg('plus'), el('span', '', 'Create feed'));
-  actions.append(submit, status);
+  submit.append(svg(feed ? 'check' : 'plus'), el('span', '', feed ? 'Save changes' : 'Create feed'));
+  actions.append(submit);
+  if (onCancel) {
+    actions.append(button('Cancel', '', 'button button-secondary', onCancel));
+  }
+  actions.append(status);
   form.append(actions);
   form.addEventListener('submit', async e => {
     e.preventDefault();
@@ -177,13 +245,17 @@ function newFeedForm(onMade) {
     }
     submit.disabled = true;
     status.classList.remove('error');
-    status.textContent = 'Creating…';
+    status.textContent = feed ? 'Saving…' : 'Creating…';
     const body = {
-      name: name.value.trim() || 'Helios Calendar',
+      name: name.value.trim() || defaultFeedName(),
+      emoji: emoji.value.trim(),
       classrooms: rooms.size === classroomNames().length ? [] : classroomNames().filter(c => rooms.has(c)),
       tags: tags.size === feedTagNames().length ? [] : feedTagNames().filter(t => tags.has(t)),
     };
-    const res = await fetch('/api/calendar/feeds', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+    if (feed) {
+      body.token = feed.token;
+    }
+    const res = await fetch('/api/calendar/feeds', {method: feed ? 'PUT' : 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
     submit.disabled = false;
     if (!res.ok) {
       status.textContent = await res.text();
@@ -191,7 +263,7 @@ function newFeedForm(onMade) {
       return;
     }
     status.textContent = '';
-    onMade(await res.json());
+    onDone(feed ? null : await res.json());
   });
   return form;
 }
@@ -204,6 +276,23 @@ export function feedsPage() {
   main.append(el('h1', 'page-title', 'Calendar Feeds'));
   main.append(el('p', 'page-intro', 'A feed is an address your own calendar app subscribes to. It carries the events you choose and keeps itself up to date as the school calendar changes.'));
   head.append(main);
+  // New feed opens the form, below the list; it stays out of the way
+  // until then, unless Save Calendar on the calendar sent the viewer here.
+  const holder = el('div', 'feed-new');
+  holder.hidden = true;
+  const form = feedForm({onDone: async made => {
+    await copyText(made.url, 'Feed created and its address copied');
+    await refreshModel();
+  }, onCancel: () => {
+    holder.hidden = true;
+  }});
+  holder.append(form);
+  const openNew = () => {
+    holder.hidden = false;
+    requestAnimationFrame(() => form.scrollIntoView({block: 'start', behavior: 'smooth'}));
+    form.querySelector('input').focus();
+  };
+  head.append(button('New feed', 'plus', 'button', openNew));
   page.append(head);
 
   const mine = state.model.feeds;
@@ -230,14 +319,10 @@ export function feedsPage() {
   help.append(steps);
   page.append(help);
 
-  const form = newFeedForm(async made => {
-    await copyText(made.url, 'Feed created and its address copied');
-    await refreshModel();
-  });
-  page.append(form);
-  // Get Feed on the calendar lands on the form itself.
+  page.append(holder);
+  // Save Calendar on the calendar can land on the form itself.
   if (location.hash === '#new') {
-    requestAnimationFrame(() => form.scrollIntoView({block: 'start', behavior: 'smooth'}));
+    openNew();
   }
   return page;
 }

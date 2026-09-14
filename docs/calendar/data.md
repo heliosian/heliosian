@@ -17,7 +17,7 @@ The calendar's data lives in one Google Sheet, `Calendar`, in the community shar
 - `Day Types` — Day Type, then a start and end for each of the four blocks a day can have: Dropoff, School, Pickup, Aftercare. Hand-authored, since no source publishes bell times. A block with both cells blank does not happen that day, so `No School` is a row with nothing in it.
 - `Day Overrides` — Date, Classrooms, Day Type, Note. Hand corrections to the day plan; blank Classrooms means every classroom.
 - `Admins` — Email.
-- `Feeds` — Token, Email, Name, Classrooms, Tags, Created. The personal calendar addresses people have minted from the app's Feeds page (`calendar.md`), one row each: the token is the secret in the address, Email whose it is, Classrooms and Tags the filter, blank meaning every one. Written by the app; deleting a row is how an admin revokes a feed by hand.
+- `Feeds` — Token, Email, Name, Classrooms, Tags, Created, Emoji. The saved calendars people have kept from the calendar page or the Feeds page (`calendar.md`), one row each, each also a personal feed address: the token is the secret in the address, Email whose it is, Classrooms and Tags the filter, blank meaning every one, Emoji the mark the owner gave it for the rail (blank for the calendar icon). Written by the app; deleting a row is how an admin revokes a feed by hand.
 - `Change Log` — Timestamp, Actor, Action, Tab, Key, Column, From, To. Appended by the import with every cell it changes, so an event that moved or vanished can be traced, and shaped so a future notifier can read it; the app appends a row for every feed made or removed.
 
 ## Three layers, then two

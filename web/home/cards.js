@@ -239,6 +239,12 @@ export function renderCategories(query = '') {
     const head = el('div', 'category-head');
     const title = el('h2', 'category-title', category.title);
     head.append(title);
+    // Upcoming Events names the saved calendar it is read under beside
+    // the heading, as a quiet dropdown of every saved calendar; one that
+    // is not the default gets a Make default beside it.
+    if (events && state.model.upcomingCalendar) {
+      head.append(calendarPicker(needle));
+    }
     if (events) {
       const all = el('a', 'category-more');
       all.href = whenOrigin('calendar');
@@ -419,6 +425,73 @@ export function rsvpButtons(event) {
   });
   rsvp.append(yes, no);
   return rsvp;
+}
+
+// calendarPicker is the saved calendar Upcoming Events is read under, as
+// a small dropdown beside the heading: picking another re-reads the
+// events under it, and Make default beside it makes that one the default
+// on Helios When - the one this page and its rail open to.
+function calendarPicker(needle) {
+  const cal = state.model.upcomingCalendar;
+  const list = cal.calendars || [];
+  const current = list.find(c => c.token === cal.calendar) || list[0];
+  const wrap = el('div', 'category-calendar');
+  const toggle = el('button', 'category-calendar-toggle');
+  toggle.type = 'button';
+  toggle.title = 'The saved calendar these events come from';
+  toggle.append(current.emoji ? el('span', 'category-calendar-emoji', current.emoji) : svg('calendar'), el('span', '', current.name), svg('chevron'));
+  const menu = el('div', 'category-calendar-menu');
+  menu.hidden = true;
+  for (const c of list) {
+    const item = el('button', 'category-calendar-item' + (c.token === current.token ? ' is-on' : ''));
+    item.type = 'button';
+    item.append(c.emoji ? el('span', 'category-calendar-emoji', c.emoji) : svg('calendar'), el('span', '', c.name));
+    if (c === list[0]) {
+      item.append(el('span', 'category-calendar-default', 'default'));
+    }
+    item.addEventListener('click', async () => {
+      menu.hidden = true;
+      const res = await fetch('/api/apps/upcoming?calendar=' + encodeURIComponent(c.token));
+      if (!res.ok) {
+        toast(await res.text());
+        return;
+      }
+      const ahead = await res.json();
+      state.model.upcoming = ahead.events;
+      state.model.upcomingCalendar = {calendar: ahead.calendar, calendars: ahead.calendars};
+      renderCategories(needle);
+    });
+    menu.append(item);
+  }
+  toggle.addEventListener('click', e => {
+    e.stopPropagation();
+    menu.hidden = !menu.hidden;
+    if (!menu.hidden) {
+      document.addEventListener('click', () => {
+        menu.hidden = true;
+      }, {once: true});
+    }
+  });
+  menu.addEventListener('click', e => e.stopPropagation());
+  wrap.append(toggle, menu);
+  if (current !== list[0]) {
+    const make = el('button', 'category-calendar-make');
+    make.type = 'button';
+    make.append(svg('star'), el('span', '', 'Make default'));
+    make.title = 'Open Heliosian and Helios When to this calendar from now on';
+    make.addEventListener('click', async () => {
+      const res = await fetch('/api/apps/calendar/default', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({token: current.token})});
+      if (!res.ok) {
+        toast(await res.text());
+        return;
+      }
+      toast(`${current.name} is your default calendar now`);
+      const {load} = await import('./app.js');
+      await load();
+    });
+    wrap.append(make);
+  }
+  return wrap;
 }
 
 // peopleList is the household's part in a linked event on one line behind

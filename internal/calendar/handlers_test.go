@@ -78,11 +78,36 @@ func TestFeedLifecycle(t *testing.T) {
 	if rec := call(t, mux, http.MethodGet, "/feed/"+made.Token+".ics", ""); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "SUMMARY:Jays and Ravens Camping") || strings.Contains(rec.Body.String(), "Labor Day") {
 		t.Errorf("new feed: %d %s", rec.Code, rec.Body.String())
 	}
+	// A second feed under a name the owner already uses gets a number.
+	rec = call(t, owner, http.MethodPost, "/api/calendar/feeds", `{"name":"just TRIPS","classrooms":["Jays"],"tags":["Trip"]}`)
+	var twin struct{ Token string }
+	json.Unmarshal(rec.Body.Bytes(), &twin)
+	if rec.Code != http.StatusOK || cache.Model().Feed(twin.Token).Name != "just TRIPS 2" {
+		t.Errorf("twin name: %d %+v", rec.Code, cache.Model().Feed(twin.Token))
+	}
+	call(t, owner, http.MethodDelete, "/api/calendar/feeds", `{"token":"`+twin.Token+`"}`)
 	if rec := call(t, owner, http.MethodPost, "/api/calendar/feeds", `{"name":"Bad","classrooms":["Penguins"]}`); rec.Code != http.StatusBadRequest {
 		t.Errorf("unknown classroom: %d", rec.Code)
 	}
 	if rec := call(t, owner, http.MethodPost, "/api/calendar/feeds", `{"name":""}`); rec.Code != http.StatusBadRequest {
 		t.Errorf("no name: %d", rec.Code)
+	}
+	// A change keeps the address and carries the new filter from the next
+	// fetch; someone else's change, or an empty name, is refused.
+	if rec := call(t, other, http.MethodPut, "/api/calendar/feeds", `{"token":"`+made.Token+`","name":"Theirs","classrooms":["Jays"],"tags":["Trip"]}`); rec.Code != http.StatusForbidden {
+		t.Errorf("someone else's change: %d", rec.Code)
+	}
+	if rec := call(t, owner, http.MethodPut, "/api/calendar/feeds", `{"token":"`+made.Token+`","name":"","classrooms":["Jays"],"tags":["Trip"]}`); rec.Code != http.StatusBadRequest {
+		t.Errorf("change to no name: %d", rec.Code)
+	}
+	if rec := call(t, owner, http.MethodPut, "/api/calendar/feeds", `{"token":"`+made.Token+`","name":"Jays days","emoji":" 🚌 ","classrooms":["Jays"],"tags":["Trip","Schedule"]}`); rec.Code != http.StatusNoContent {
+		t.Errorf("owner's change: %d %s", rec.Code, rec.Body.String())
+	}
+	if f := cache.Model().Feed(made.Token); f == nil || f.Name != "Jays days" || f.Emoji != "🚌" || strings.Join(f.Tags, ",") != "Trip,Schedule" || f.Email != "jordan.whitfield@heliosschool.org" {
+		t.Errorf("feed after change: %+v", f)
+	}
+	if rec := call(t, mux, http.MethodGet, "/feed/"+made.Token+".ics", ""); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "X-WR-CALNAME:Jays days") || !strings.Contains(rec.Body.String(), "Labor Day") {
+		t.Errorf("changed feed: %d %s", rec.Code, rec.Body.String())
 	}
 	if rec := call(t, other, http.MethodDelete, "/api/calendar/feeds", `{"token":"`+made.Token+`"}`); rec.Code != http.StatusForbidden {
 		t.Errorf("someone else's removal: %d", rec.Code)
@@ -181,6 +206,8 @@ func TestProvenanceForAdmins(t *testing.T) {
 func TestSavedView(t *testing.T) {
 	handler, cache := testApp(t)
 	me := "jordan.whitfield@heliosschool.org"
+	// A saved calendar would stand in front of the saved view; without it.
+	call(t, as(me, handler), "DELETE", "/api/calendar/feeds", `{"token":"sample7feedtoken4jordan2whitfield"}`)
 	rec := call(t, as(me, handler), "POST", "/api/calendar/settings", `{"classrooms":["Hawks"],"tags":["Community","HCA","Nonsense"]}`)
 	if rec.Code != 204 {
 		t.Fatalf("save: %d %s", rec.Code, rec.Body)
@@ -205,6 +232,48 @@ func TestSavedView(t *testing.T) {
 	json.NewDecoder(rec.Body).Decode(&again)
 	if again.User.Saved != nil {
 		t.Errorf("saved view survives forgetting: %+v", again.User.Saved)
+	}
+}
+
+// A person's first saved calendar is their default: the view the page
+// opens to and Upcoming is read under. Reordering puts another first;
+// an order that is not each of theirs once is refused.
+func TestDefaultCalendar(t *testing.T) {
+	handler, cache := testApp(t)
+	me := "jordan.whitfield@heliosschool.org"
+	viewer := as(me, handler)
+	dir := fakeDirectory{people: map[string]Person{}, kids: map[string][]Person{}}
+	// The sample calendar carries Schedule, Trip and Celebration of Learning
+	// for Jays and Ospreys: no Community events, no Hummingbird ones.
+	for _, u := range cache.Model().Upcoming(dir, me, nil, now(), 0) {
+		if strings.Contains(u.Title, "Hummingbird") || u.Title == "International Night" {
+			t.Errorf("under the first saved calendar, upcoming lists %q", u.Title)
+		}
+	}
+	rec := call(t, viewer, "POST", "/api/calendar/feeds", `{"name":"Everything","classrooms":[],"tags":[]}`)
+	var made struct{ Token string }
+	json.Unmarshal(rec.Body.Bytes(), &made)
+	if rec := call(t, viewer, "PUT", "/api/calendar/feeds/order", `{"tokens":["`+made.Token+`"]}`); rec.Code != 400 {
+		t.Errorf("a short order: %d", rec.Code)
+	}
+	if rec := call(t, viewer, "PUT", "/api/calendar/feeds/order", `{"tokens":["`+made.Token+`","sample7feedtoken4jordan2whitfield"]}`); rec.Code != 204 {
+		t.Fatalf("order: %d %s", rec.Code, rec.Body)
+	}
+	if first := cache.Model().firstFeed(me); first == nil || first.Token != made.Token {
+		t.Errorf("first feed = %+v", first)
+	}
+	found := false
+	for _, u := range cache.Model().Upcoming(dir, me, nil, now(), 0) {
+		found = found || u.Title == "International Night"
+	}
+	if !found {
+		t.Errorf("under Everything, upcoming leaves out International Night")
+	}
+	var view View
+	rec = call(t, viewer, "GET", "/api/calendar/model", "")
+	json.NewDecoder(rec.Body).Decode(&view)
+	if len(view.Feeds) != 2 || view.Feeds[0].Token != made.Token {
+		t.Errorf("feeds in the view = %+v", view.Feeds)
 	}
 }
 
@@ -299,6 +368,8 @@ func TestAnswers(t *testing.T) {
 	handler, cache := testApp(t)
 	me := "jordan.whitfield@heliosschool.org"
 	viewer := as(me, handler)
+	// Under the calendar's own defaults, not Jordan's saved calendar.
+	call(t, viewer, "DELETE", "/api/calendar/feeds", `{"token":"sample7feedtoken4jordan2whitfield"}`)
 	if rec := call(t, viewer, "POST", "/api/calendar/rsvp", `{"id":"a7@sample","answer":"maybe"}`); rec.Code != 400 {
 		t.Errorf("nonsense answer: %d", rec.Code)
 	}

@@ -48,7 +48,7 @@ const (
 	maxImageSize = 8 << 20
 )
 
-func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, directory Directory, superAdmins func() []string, linked func(email string) []Linked, search ImageSearch, mailbox Mail) Answerer {
+func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, directory Directory, superAdmins func() []string, linked func(email string) []Linked, search ImageSearch, mailbox Mail) Hooks {
 	if search.UserAgent == "" {
 		search.UserAgent = "Helios Calendar image search (+https://when.heliosian.com)"
 	}
@@ -58,6 +58,8 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	}
 	mux.HandleFunc("GET /api/calendar/model", a.model)
 	mux.HandleFunc("POST /api/calendar/feeds", a.addFeed)
+	mux.HandleFunc("PUT /api/calendar/feeds", a.editFeed)
+	mux.HandleFunc("PUT /api/calendar/feeds/order", a.orderFeeds)
 	mux.HandleFunc("DELETE /api/calendar/feeds", a.removeFeed)
 	mux.HandleFunc("POST /api/calendar/rsvp", a.rsvp)
 	mux.HandleFunc("POST /api/calendar/settings", a.saveSetting)
@@ -76,7 +78,7 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	// Public too: the mail provider's call for each reply to an invite,
 	// signed with the webhook secret.
 	mux.HandleFunc("POST /api/calendar/replies", a.replies)
-	return a.answer
+	return Hooks{Answer: a.answer, MakeDefault: a.makeDefault}
 }
 
 func (a app) page(w http.ResponseWriter, r *http.Request) {
@@ -157,6 +159,7 @@ func (a app) addFeed(w http.ResponseWriter, r *http.Request) {
 	actor, _ := a.who(r)
 	var body struct {
 		Name       string   `json:"name"`
+		Emoji      string   `json:"emoji"`
 		Classrooms []string `json:"classrooms"`
 		Tags       []string `json:"tags"`
 	}
@@ -165,7 +168,7 @@ func (a app) addFeed(w http.ResponseWriter, r *http.Request) {
 	}
 	token := NewToken()
 	cells := map[string]string{
-		"Token": token, "Email": actor, "Name": strings.TrimSpace(body.Name),
+		"Token": token, "Email": actor, "Name": a.cache.Model().unusedFeedName(actor, strings.TrimSpace(body.Name)), "Emoji": feedEmoji(body.Emoji),
 		"Classrooms": JoinList(SplitList(JoinList(body.Classrooms))), "Tags": JoinList(SplitList(JoinList(body.Tags))), "Created": now().Format(DateTimeFormat),
 	}
 	if !a.commit(r.Context(), w, a.cache.Tables().WithFeed(cells), func() error {
@@ -179,6 +182,160 @@ func (a app) addFeed(w http.ResponseWriter, r *http.Request) {
 	slog.InfoContext(r.Context(), "calendar: feed added", "actor", actor, "name", cells["Name"], "classrooms", cells["Classrooms"], "tags", cells["Tags"])
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"token": token, "url": feedURL(r, token)})
+}
+
+// editFeed changes a feed's name and filter in place, so the calendar
+// apps subscribed at its address carry the new choice from their next
+// refresh; the feed's owner, or an admin, may.
+func (a app) editFeed(w http.ResponseWriter, r *http.Request) {
+	actor, admin := a.who(r)
+	var body struct {
+		Token      string   `json:"token"`
+		Name       string   `json:"name"`
+		Emoji      string   `json:"emoji"`
+		Classrooms []string `json:"classrooms"`
+		Tags       []string `json:"tags"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	f := a.cache.Model().Feed(strings.TrimSpace(body.Token))
+	if f == nil {
+		http.Error(w, "no such feed", http.StatusNotFound)
+		return
+	}
+	if f.Email != actor && !admin {
+		http.Error(w, "only the person who made a feed, or an admin, can change it", http.StatusForbidden)
+		return
+	}
+	if strings.TrimSpace(body.Name) == "" {
+		http.Error(w, "a feed needs a name", http.StatusBadRequest)
+		return
+	}
+	token := f.Token
+	was := map[string]string{"Name": f.Name, "Emoji": f.Emoji, "Classrooms": JoinList(f.Classrooms), "Tags": JoinList(f.Tags)}
+	cells := map[string]string{
+		"Name": strings.TrimSpace(body.Name), "Emoji": feedEmoji(body.Emoji), "Classrooms": JoinList(SplitList(JoinList(body.Classrooms))), "Tags": JoinList(SplitList(JoinList(body.Tags))),
+	}
+	if !a.commit(r.Context(), w, a.cache.Tables().WithFeedChanged(token, cells), func() error {
+		if err := a.writer.Set(appName, FeedsTab, map[string]string{"Token": token}, cells); err != nil {
+			return err
+		}
+		for _, col := range []string{"Name", "Emoji", "Classrooms", "Tags"} {
+			if was[col] != cells[col] {
+				if err := a.logChange(actor, "changed", FeedsTab, token, col, was[col], cells[col]); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}) {
+		return
+	}
+	slog.InfoContext(r.Context(), "calendar: feed changed", "actor", actor, "name", cells["Name"], "classrooms", cells["Classrooms"], "tags", cells["Tags"])
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// Hooks are what the calendar hands Heliosian at start: recording an
+// answer, and making one of a person's saved calendars their default.
+type Hooks struct {
+	Answer      Answerer
+	MakeDefault func(ctx context.Context, email, token string) error
+}
+
+// makeDefault moves one of a person's saved calendars to the head of
+// their list, for Heliosian's picker.
+func (a app) makeDefault(ctx context.Context, email, token string) error {
+	email = normalizeEmail(email)
+	mine := a.cache.Model().MyCalendars(email)
+	tokens := []string{}
+	found := false
+	for _, f := range mine {
+		if f.Token == token {
+			found = true
+			continue
+		}
+		tokens = append(tokens, f.Token)
+	}
+	if !found {
+		return fmt.Errorf("that is not one of your calendars")
+	}
+	return a.reorder(ctx, email, append([]string{token}, tokens...))
+}
+
+// reorder puts one person's saved calendars in the order their tokens
+// come, moving them among the places their rows already hold, so everyone
+// else's rows stay where they are; the tokens must be each of theirs once.
+func (a app) reorder(ctx context.Context, email string, tokens []string) error {
+	model := a.cache.Model()
+	mine := map[string]bool{}
+	for _, f := range model.Feeds {
+		if normalizeEmail(f.Email) == email {
+			mine[f.Token] = true
+		}
+	}
+	if len(tokens) != len(mine) {
+		return fmt.Errorf("the order must name each of your calendars once")
+	}
+	seen := map[string]bool{}
+	for _, t := range tokens {
+		if !mine[t] || seen[t] {
+			return fmt.Errorf("the order must name each of your calendars once")
+		}
+		seen[t] = true
+	}
+	order := []string{}
+	next := 0
+	for _, f := range model.Feeds {
+		if mine[f.Token] {
+			order = append(order, tokens[next])
+			next++
+		} else {
+			order = append(order, f.Token)
+		}
+	}
+	tables := a.cache.Tables().WithFeedOrder(order)
+	built, err := BuildModel(tables, a.cache.roster())
+	if err != nil {
+		return err
+	}
+	a.cache.set(tables, built)
+	a.queue.Add(func() {
+		if err := a.writer.Reorder(appName, FeedsTab, "Token", order); err != nil {
+			slog.ErrorContext(ctx, "calendar write", "error", err)
+		}
+	})
+	slog.InfoContext(ctx, "calendar: feeds ordered", "actor", email, "order", strings.Join(tokens, ","))
+	return nil
+}
+
+// orderFeeds puts one person's saved calendars in the order their tokens
+// come - the first is their default calendar, the one the page opens to
+// and Heliosian reads - moving them among the places their rows already
+// hold, so everyone else's rows stay where they are.
+func (a app) orderFeeds(w http.ResponseWriter, r *http.Request) {
+	actor, _ := a.who(r)
+	var body struct {
+		Tokens []string `json:"tokens"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	if err := a.reorder(r.Context(), actor, body.Tokens); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// feedEmoji is the mark as kept: trimmed, and no more than a few
+// characters - one emoji, with whatever joiners it is made of.
+func feedEmoji(s string) string {
+	s = strings.TrimSpace(s)
+	if r := []rune(s); len(r) > 12 {
+		s = string(r[:12])
+	}
+	return s
 }
 
 func (a app) removeFeed(w http.ResponseWriter, r *http.Request) {

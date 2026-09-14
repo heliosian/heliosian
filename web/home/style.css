@@ -494,6 +494,38 @@ main {
 
 .category-edit svg { width: 16px; height: 16px; }
 
+/* The saved calendar Upcoming Events is read under: a quiet dropdown
+   beside the heading, and Make default beside that for one that is not. */
+.category-calendar { position: relative; display: inline-flex; align-items: center; gap: 10px; margin: 0 0 10px 4px; }
+
+.category-calendar-toggle { display: inline-flex; align-items: center; gap: 5px; padding: 4px 6px; border: 0; border-radius: 8px; background: none; color: var(--muted); font: inherit; font-size: 14px; font-weight: 500; cursor: pointer; white-space: nowrap; }
+
+.category-calendar-toggle:hover { color: var(--brand); background: rgba(255, 255, 255, 0.7); }
+
+.category-calendar-toggle > svg:first-child { width: 15px; height: 15px; }
+
+.category-calendar-toggle > svg:last-child { width: 14px; height: 14px; transform: rotate(90deg); opacity: 0.7; }
+
+.category-calendar-emoji { font-size: 15px; line-height: 1; }
+
+.category-calendar-menu { position: absolute; top: calc(100% + 4px); left: 0; z-index: 30; min-width: 240px; padding: 6px; background: #fff; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.14); display: flex; flex-direction: column; gap: 2px; }
+
+.category-calendar-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px; white-space: nowrap; border: 0; border-radius: 8px; background: none; text-align: left; font: inherit; font-size: 13.5px; font-weight: 600; color: var(--ink); cursor: pointer; }
+
+.category-calendar-item:hover { background: var(--input); }
+
+.category-calendar-item.is-on { color: var(--accent); }
+
+.category-calendar-item > svg { width: 15px; height: 15px; color: var(--accent); }
+
+.category-calendar-default { margin-left: auto; padding-left: 14px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+
+.category-calendar-make { display: inline-flex; align-items: center; gap: 5px; padding: 4px 11px; border: 1px solid var(--line); border-radius: 999px; background: #fff; color: var(--brand); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+
+.category-calendar-make:hover { border-color: var(--accent); }
+
+.category-calendar-make svg { width: 13px; height: 13px; color: #e8a33d; fill: currentColor; }
+
 .category-more {
   margin-left: auto;
   display: inline-flex;
@@ -1719,7 +1751,39 @@ main {
   .category-title { font-size: 26px; }
   /* The "see all" link drops under the title rather than squeezing it. */
   .category-head { flex-wrap: wrap; }
-  .category-more { flex-basis: 100%; margin-left: 42px; }
+  /* The saved calendar Upcoming Events is read under: a quiet dropdown
+   beside the heading, and Make default beside that for one that is not. */
+.category-calendar { position: relative; display: inline-flex; align-items: center; gap: 10px; margin: 0 0 10px 4px; }
+
+.category-calendar-toggle { display: inline-flex; align-items: center; gap: 5px; padding: 4px 6px; border: 0; border-radius: 8px; background: none; color: var(--muted); font: inherit; font-size: 14px; font-weight: 500; cursor: pointer; white-space: nowrap; }
+
+.category-calendar-toggle:hover { color: var(--brand); background: rgba(255, 255, 255, 0.7); }
+
+.category-calendar-toggle > svg:first-child { width: 15px; height: 15px; }
+
+.category-calendar-toggle > svg:last-child { width: 14px; height: 14px; transform: rotate(90deg); opacity: 0.7; }
+
+.category-calendar-emoji { font-size: 15px; line-height: 1; }
+
+.category-calendar-menu { position: absolute; top: calc(100% + 4px); left: 0; z-index: 30; min-width: 240px; padding: 6px; background: #fff; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.14); display: flex; flex-direction: column; gap: 2px; }
+
+.category-calendar-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px; white-space: nowrap; border: 0; border-radius: 8px; background: none; text-align: left; font: inherit; font-size: 13.5px; font-weight: 600; color: var(--ink); cursor: pointer; }
+
+.category-calendar-item:hover { background: var(--input); }
+
+.category-calendar-item.is-on { color: var(--accent); }
+
+.category-calendar-item > svg { width: 15px; height: 15px; color: var(--accent); }
+
+.category-calendar-default { margin-left: auto; padding-left: 14px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+
+.category-calendar-make { display: inline-flex; align-items: center; gap: 5px; padding: 4px 11px; border: 1px solid var(--line); border-radius: 999px; background: #fff; color: var(--brand); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+
+.category-calendar-make:hover { border-color: var(--accent); }
+
+.category-calendar-make svg { width: 13px; height: 13px; color: #e8a33d; fill: currentColor; }
+
+.category-more { flex-basis: 100%; margin-left: 42px; }
 
   .hero-lead { font-size: 15px; }
 }

@@ -1,5 +1,5 @@
-import {state, me, today, bands, tagGroups, defaultTags, savedView, searchResults, eventPath, eventTint, timeLine, weekdayShort, parseDate, selectedClassrooms, toggleClassroom, setClassrooms, classroomNames, myClassrooms, tagNames, selectedTags, toggleTag, setTags, resetFilters, filtersAreDefault, colorOf, hiddenMatches, hiddenClassroomMatches} from './state.js';
-import {el, svg, link, button, toast} from './dom.js';
+import {state, me, today, bands, tagGroups, defaultTags, savedView, searchResults, eventPath, eventTint, timeLine, weekdayShort, parseDate, selectedClassrooms, toggleClassroom, setClassrooms, classroomNames, myClassrooms, tagNames, selectedTags, toggleTag, setTags, resetFilters, filtersAreDefault, colorOf, hiddenMatches, hiddenClassroomMatches, feedClassrooms, feedTags, showsFeed, setActiveFeed} from './state.js';
+import {el, svg, link, button, toast, feedMark, popup, emojiPicker} from './dom.js';
 import {dayColumn} from './day.js';
 import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu} from '/toolbar.js';
 
@@ -22,9 +22,238 @@ function navLink(item) {
   return a;
 }
 
+// editFeedPopup is the small popup for a saved calendar's name and emoji
+// - from the pencil beside it in the rail, and from the mark over the
+// calendar - saved with its filters as they stand.
+export function editFeedPopup(f) {
+  const form = el('form');
+  const nameField = el('label', 'field');
+  nameField.append(el('span', '', 'Name'));
+  const name = el('input');
+  name.type = 'text';
+  name.maxLength = 80;
+  name.value = f.name;
+  nameField.append(name);
+  const emojiField = el('div', 'field');
+  emojiField.append(el('span', '', 'Emoji'));
+  const {node, input} = emojiPicker(f.emoji || '');
+  emojiField.append(node, el('small', '', 'Shown before the name in the rail and over the calendar; none means the calendar icon.'));
+  form.append(nameField, emojiField);
+  const actions = el('div', 'modal-actions');
+  const status = el('span', 'save-status');
+  const submit = el('button', 'button');
+  submit.type = 'submit';
+  submit.append(svg('check'), el('span', '', 'Save'));
+  const {shut} = popup('Edit calendar', form);
+  // Delete, at the row's far end, takes the calendar and its feed away.
+  const remove = button('Delete calendar', 'trash', 'link-button danger modal-delete', async () => {
+    if (!confirm(`Delete ${f.name}? A calendar app subscribed to its feed stops updating.`)) {
+      return;
+    }
+    const res = await fetch('/api/calendar/feeds', {method: 'DELETE', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({token: f.token})});
+    if (!res.ok) {
+      toast(await res.text());
+      return;
+    }
+    shut();
+    toast(`${f.name} deleted`);
+    const {load} = await import('./app.js');
+    await load();
+  });
+  actions.append(submit, button('Cancel', '', 'button button-secondary', shut), status, remove);
+  // Make default moves it to the head of the rail: the calendar the page
+  // opens to, and Heliosian reads.
+  const feeds = state.model.feeds || [];
+  if (feeds.length > 1 && feeds[0].token !== f.token) {
+    const first = button('Make default', 'star', 'button button-secondary modal-default', async () => {
+      if (await orderFeeds([f.token, ...feeds.map(x => x.token).filter(t => t !== f.token)])) {
+        shut();
+        toast(`${f.name} is your default calendar now.`, 4000);
+      }
+    });
+    actions.insertBefore(first, status);
+  } else if (feeds[0] && feeds[0].token === f.token) {
+    actions.insertBefore(el('span', 'modal-default-note', '\u2605 Your default calendar'), status);
+  }
+  form.append(actions);
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    if (!name.value.trim()) {
+      status.textContent = 'Give it a name.';
+      status.classList.add('error');
+      return;
+    }
+    submit.disabled = true;
+    status.classList.remove('error');
+    status.textContent = 'Saving\u2026';
+    const body = {token: f.token, name: name.value.trim(), emoji: input.value.trim(), classrooms: f.classrooms, tags: f.tags};
+    const res = await fetch('/api/calendar/feeds', {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+    submit.disabled = false;
+    if (!res.ok) {
+      status.textContent = await res.text();
+      status.classList.add('error');
+      return;
+    }
+    shut();
+    const {load} = await import('./app.js');
+    await load();
+  });
+  name.focus();
+  name.select();
+}
+
+// orderFeeds puts the viewer's saved calendars in the order the tokens
+// give and reloads; the first is their default calendar.
+async function orderFeeds(tokens) {
+  const res = await fetch('/api/calendar/feeds/order', {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({tokens})});
+  if (!res.ok) {
+    toast(await res.text());
+    return false;
+  }
+  const {load} = await import('./app.js');
+  await load();
+  return true;
+}
+
+// Whether the rail's saved calendars show their edit and remove buttons:
+// the pencil on Calendar toggles it, and it lasts until toggled back.
+let editingNav = false;
+
+// fillNav lists the pages, and under Calendar the viewer's own saved
+// calendars by name: each opens the calendar filtered to what it carries,
+// and is lit while the filters are its own. The pencil on Calendar turns
+// on a pencil and a cross on each of them - the pencil opens its form on
+// the Feeds page, the cross removes it.
 function fillNav(nav) {
   for (const item of primary) {
-    nav.append(navLink(item));
+    const top = navLink(item);
+    nav.append(top);
+    if (item.href !== '/') {
+      continue;
+    }
+    const feeds = state.model.feeds || [];
+    if (feeds.length) {
+      const pencil = el('button', 'nav-edit' + (editingNav ? ' is-on' : ''));
+      pencil.type = 'button';
+      pencil.title = editingNav ? 'Done editing' : 'Edit your saved calendars';
+      pencil.setAttribute('aria-label', pencil.title);
+      pencil.append(svg(editingNav ? 'check' : 'pencil'));
+      pencil.addEventListener('click', e => {
+        e.preventDefault();
+        e.stopPropagation();
+        editingNav = !editingNav;
+        renderNav();
+      });
+      top.append(pencil);
+    }
+    let dragging = null;
+    if (editingNav && !nav.dataset.dropReady) {
+      // The gaps between rows and the nav's own ground take a drop too, so
+      // letting go there is not a cancelled drag.
+      nav.dataset.dropReady = '1';
+      nav.addEventListener('dragover', e => {
+        if (nav.querySelector('.is-dragging')) {
+          e.preventDefault();
+        }
+      });
+      nav.addEventListener('drop', e => e.preventDefault());
+    }
+    for (const f of feeds) {
+      const row = el('div', 'nav-sub-row' + (editingNav ? ' is-draggable' : ''));
+      row.dataset.token = f.token;
+      if (editingNav) {
+        // Rows drag into a new order; the drop saves it, the first being
+        // the default calendar.
+        row.draggable = true;
+        row.addEventListener('dragstart', e => {
+          dragging = row;
+          row.classList.add('is-dragging');
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData('text/plain', f.token);
+        });
+        // The rows shuffle as the pointer passes over them; the drop is
+        // allowed everywhere so the browser fires dragend either way, and
+        // dragend saves whatever order the rows are in then.
+        row.addEventListener('dragover', e => {
+          if (!dragging) {
+            return;
+          }
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          if (dragging === row) {
+            return;
+          }
+          const box = row.getBoundingClientRect();
+          const after = e.clientY > box.top + box.height / 2;
+          row.parentNode.insertBefore(dragging, after ? row.nextSibling : row);
+        });
+        row.addEventListener('drop', e => e.preventDefault());
+        row.addEventListener('dragend', async () => {
+          row.classList.remove('is-dragging');
+          dragging = null;
+          const order = [...nav.querySelectorAll('.nav-sub-row')].map(r => r.dataset.token);
+          if (order.join() !== feeds.map(x => x.token).join()) {
+            await orderFeeds(order);
+          }
+        });
+      }
+      // Lit while the filters are its own; softer while the viewer is
+      // working from it with the filters moved.
+      const a = el('a', 'nav-sub' + (active('/') && showsFeed(f) ? ' is-active' : active('/') && state.activeFeed === f.token ? ' is-working' : ''));
+      a.href = '/';
+      a.append(feedMark(f), el('span', '', f.name));
+      a.title = 'Show the calendar as ' + f.name + ' sees it';
+      // The default calendar - the first - wears a star at its end.
+      if (f === feeds[0]) {
+        const star = el('span', 'nav-sub-star');
+        star.title = 'Your default calendar';
+        star.append(svg('star'));
+        a.append(star);
+      }
+      a.addEventListener('click', e => {
+        e.preventDefault();
+        setActiveFeed(f.token);
+        setClassrooms(feedClassrooms(f));
+        setTags(feedTags(f));
+        history.pushState(null, '', '/');
+        refresh();
+      });
+      if (editingNav) {
+        const grip = el('span', 'nav-sub-grip');
+        grip.title = 'Drag to reorder - the first is your default calendar';
+        grip.append(svg('grip'));
+        row.append(grip);
+      }
+      row.append(a);
+      if (editingNav) {
+        const edit = el('button', 'nav-sub-tool');
+        edit.type = 'button';
+        edit.title = 'Edit ' + f.name;
+        edit.setAttribute('aria-label', edit.title);
+        edit.append(svg('pencil'));
+        edit.addEventListener('click', () => editFeedPopup(f));
+        const remove = el('button', 'nav-sub-tool nav-sub-remove');
+        remove.type = 'button';
+        remove.title = 'Remove ' + f.name;
+        remove.setAttribute('aria-label', remove.title);
+        remove.append(svg('close'));
+        remove.addEventListener('click', async () => {
+          if (!confirm(`Remove ${f.name}? A calendar app subscribed to its feed stops updating.`)) {
+            return;
+          }
+          const res = await fetch('/api/calendar/feeds', {method: 'DELETE', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({token: f.token})});
+          if (!res.ok) {
+            toast(await res.text());
+            return;
+          }
+          toast(`${f.name} removed`);
+          const {load} = await import('./app.js');
+          await load();
+        });
+        row.append(edit, remove);
+      }
+      nav.append(row);
+    }
   }
 }
 
@@ -111,15 +340,28 @@ function tagChips(tags) {
   });
 }
 
-// filterSummary is the one line the folded filters show: which classrooms
-// and how many categories.
+// filterSummary is the one line the folded filters show: the classrooms
+// in view by name - "All classrooms" when every one is - then each
+// category line the same way, "All School day" for a whole line, its
+// chosen names otherwise, a line with none chosen left out. The line
+// ellipsizes where the window is narrow.
 function filterSummary() {
   const rooms = selectedClassrooms();
-  const roomWords = rooms.length === classroomNames().length ? 'All classrooms' : rooms.length ? rooms.join(', ') : 'No classrooms';
+  const parts = [rooms.length === classroomNames().length ? 'All classrooms' : rooms.length ? classroomNames().filter(c => rooms.includes(c)).join(', ') : 'No classrooms'];
   const tags = selectedTags();
-  const tagWords = tags.length === tagNames().length ? 'all categories' : tags.length ? `${tags.length} of ${tagNames().length} categories` : 'no categories';
+  for (const group of tagGroups()) {
+    const chosen = group.tags.filter(t => tags.includes(t.name));
+    if (!chosen.length) {
+      continue;
+    }
+    const label = group.name || 'categories';
+    parts.push(chosen.length === group.tags.length ? `All ${label}` : chosen.map(t => t.name).join(', '));
+  }
+  if (parts.length === 1) {
+    parts.push('No categories');
+  }
   const saved = savedView() && filtersAreDefault() ? ' · your saved view' : '';
-  return `${roomWords} · ${tagWords}${saved}`;
+  return parts.join(' · ') + saved;
 }
 
 // Whether the calendar page's filters are unfolded: folded on every visit,
@@ -223,19 +465,8 @@ export function fillFilters(wrap, opts = {}) {
       resetFilters();
       refresh();
     }));
-    // Save keeps the choice as this person's own default, on every device
-    // and for Heliosian's Upcoming Events.
-    foot.append(button('Save as my default', 'check', 'button button-small', async () => {
-      const res = await fetch('/api/calendar/settings', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({classrooms: selectedClassrooms(), tags: selectedTags()})});
-      if (!res.ok) {
-        toast(await res.text());
-        return;
-      }
-      resetFilters();
-      toast('Saved. The calendar opens to this view for you now - and the events on the Heliosian home page follow it too.', 6000);
-      await reloadModel();
-    }));
   } else if (savedView()) {
+    // A view saved earlier still stands until forgotten.
     foot.append(button('Forget my default', null, 'button button-secondary button-small', async () => {
       const res = await fetch('/api/calendar/settings', {method: 'DELETE'});
       if (!res.ok) {

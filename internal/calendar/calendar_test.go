@@ -528,7 +528,11 @@ func TestRenderLinked(t *testing.T) {
 // viewer, from today on - their own classrooms, the default categories, the
 // other apps' events folded in with their way in - soonest first.
 func TestUpcoming(t *testing.T) {
-	m := load(t)
+	// Without Jordan's saved calendar, which would stand in as their view.
+	m, err := BuildModel(tables(t).WithoutFeed("sample7feedtoken4jordan2whitfield"), roster)
+	if err != nil {
+		t.Fatal(err)
+	}
 	sam := Person{Email: "sam@x.org", Name: "Sam", IsStudent: true, Grade: "Grade 3", Classroom: "Jays"}
 	ella := Person{Email: "ella@x.org", Name: "Ella", IsStudent: true, Grade: "Grade 6", Classroom: "Ospreys"}
 	d := fakeDirectory{

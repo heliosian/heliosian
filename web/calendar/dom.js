@@ -26,9 +26,13 @@ const paths = {
   people: 'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8',
   menu: 'M4 7h16M4 12h16M4 17h16',
   chevron: 'M9 6l6 6-6 6',
+  down: 'M6 9l6 6 6-6',
+  grip: 'M9 5h.01M15 5h.01M9 12h.01M15 12h.01M9 19h.01M15 19h.01',
+  star: 'M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z',
   back: 'M15 6l-6 6 6 6',
   plus: 'M12 5v14M5 12h14',
   check: 'M5 12l5 5L20 7',
+  save: 'M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2zM17 21v-8H7v8M7 3v5h8',
   open: 'M15 3h6v6M10 14 21 3M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5',
   copy: 'M8 8h11a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2zM16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3',
   close: 'M6 6l12 12M18 6L6 18',
@@ -174,4 +178,130 @@ export function peopleLine(list, icon) {
   });
   line.append(names);
   return line;
+}
+
+// popup is a layer over the page with a titled box: closing on its cross,
+// Escape, or a click outside. It hands back the box and the closer.
+export function popup(title, node) {
+  const layer = el('div', 'modal-overlay');
+  const box = el('div', 'modal');
+  const header = el('div', 'modal-header');
+  header.append(el('h2', '', title));
+  const close = el('button', 'modal-close', '\u00d7');
+  close.type = 'button';
+  close.setAttribute('aria-label', 'Close');
+  const shut = () => {
+    layer.remove();
+    document.removeEventListener('keydown', onKey, true);
+  };
+  const onKey = e => {
+    if (e.key === 'Escape') {
+      e.stopImmediatePropagation();
+      shut();
+    }
+  };
+  close.addEventListener('click', shut);
+  layer.addEventListener('click', e => {
+    if (e.target === layer) {
+      shut();
+    }
+  });
+  document.addEventListener('keydown', onKey, true);
+  header.append(close);
+  box.append(header, node);
+  layer.append(box);
+  document.body.append(layer);
+  return {box, shut};
+}
+
+// feedMark is a saved calendar's mark: the emoji its owner gave it, else
+// the calendar icon.
+export function feedMark(f) {
+  if (f.emoji) {
+    return el('span', 'feed-mark', f.emoji);
+  }
+  return svg('calendar');
+}
+
+// feedEmoji are the usual marks for a saved calendar, offered beside the
+// field that takes any.
+const feedEmoji = ['\ud83d\udcc5', '\ud83c\udfeb', '\ud83c\udf92', '\ud83d\ude8c', '\u26bd', '\ud83c\udfad', '\ud83c\udf89', '\ud83c\udfd5\ufe0f', '\ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67', '\ud83c\udf1f', '\u2764\ufe0f', '\ud83d\udcda'];
+
+// emojiPicker is the field for a saved calendar's mark: a small input to
+// type any emoji into, the usual ones to pick, None for the calendar icon,
+// and under them the whole library - every emoji by group, searched by its
+// Unicode name, loaded from /emoji.json the first time. Returns {node, input}.
+let emojiLibrary = null;
+
+export function emojiPicker(value) {
+  const node = el('div', 'emoji-field');
+  const row = el('div', 'emoji-row');
+  const input = el('input');
+  input.type = 'text';
+  input.maxLength = 12;
+  input.placeholder = '\ud83d\udcc5';
+  input.className = 'emoji-input';
+  input.value = value || '';
+  input.setAttribute('aria-label', 'Emoji');
+  row.append(input);
+  const pick = e => {
+    input.value = e;
+    input.dispatchEvent(new Event('input', {bubbles: true}));
+  };
+  for (const e of feedEmoji) {
+    const b = el('button', 'emoji-pick-item', e);
+    b.type = 'button';
+    b.title = 'Use ' + e;
+    b.addEventListener('click', () => pick(e));
+    row.append(b);
+  }
+  const none = el('button', 'emoji-pick-none', 'None');
+  none.type = 'button';
+  none.addEventListener('click', () => pick(''));
+  row.append(none);
+  node.append(row);
+  const search = el('input', 'emoji-search');
+  search.type = 'search';
+  search.placeholder = 'Search all emoji\u2026';
+  search.setAttribute('aria-label', 'Search emoji');
+  const library = el('div', 'emoji-library');
+  const paint = () => {
+    const needle = search.value.trim().toLowerCase();
+    library.replaceChildren();
+    let shown = 0;
+    for (const [group, entries] of emojiLibrary || []) {
+      const matches = entries.filter(([, name]) => !needle || name.includes(needle));
+      if (!matches.length) {
+        continue;
+      }
+      library.append(el('div', 'emoji-group', group));
+      const grid = el('div', 'emoji-grid');
+      for (const [emoji, name] of matches) {
+        const b = el('button', 'emoji-pick-item', emoji);
+        b.type = 'button';
+        b.title = name;
+        b.setAttribute('aria-label', name);
+        b.addEventListener('click', () => pick(emoji));
+        grid.append(b);
+      }
+      library.append(grid);
+      shown += matches.length;
+    }
+    if (!shown) {
+      library.append(el('div', 'emoji-none', emojiLibrary ? 'Nothing by that name.' : 'Loading\u2026'));
+    }
+  };
+  search.addEventListener('input', paint);
+  node.append(search, library);
+  paint();
+  if (!emojiLibrary) {
+    fetch('/emoji.json').then(res => res.ok ? res.json() : []).then(list => {
+      emojiLibrary = list;
+      paint();
+    }).catch(() => {
+      emojiLibrary = [];
+      paint();
+    });
+  }
+  return {node, input};
 }

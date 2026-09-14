@@ -139,10 +139,15 @@ func admits(model *Model, e *Event, classrooms, tags []string) bool {
 }
 
 // viewOf is the filter the calendar page first shows a viewer under: their
-// own classrooms - their children's, their own as a teacher, every classroom
-// for someone with none - and the categories on by default, or the view
-// they saved in place of both.
+// first saved calendar's, where they have one (the first of their Feeds
+// rows, in the sheet's order - the one at the head of the rail); else the
+// view they saved in place of both; else their own classrooms - their
+// children's, their own as a teacher, every classroom for someone with
+// none - and the categories on by default.
 func (m *Model) viewOf(directory Directory, email string) (classrooms, tags []string) {
+	if first := m.firstFeed(email); first != nil {
+		return m.feedView(first)
+	}
 	me, known := directory.Person(email)
 	if !known {
 		me = Person{Email: email}
@@ -165,6 +170,51 @@ func (m *Model) viewOf(directory Directory, email string) (classrooms, tags []st
 		tags = saved.Tags
 	}
 	return classrooms, tags
+}
+
+// feedView is a saved calendar's filter as a view: every classroom or
+// tag where it carries no filter.
+func (m *Model) feedView(f *Feed) (classrooms, tags []string) {
+	classrooms, tags = f.Classrooms, f.Tags
+	if len(classrooms) == 0 {
+		classrooms = m.Roster.Names()
+	}
+	if len(tags) == 0 {
+		for _, t := range append(append([]Tag{}, m.Tags...), builtinTags...) {
+			tags = append(tags, t.Name)
+		}
+	}
+	return classrooms, tags
+}
+
+// MyCalendars are a person's saved calendars in the rail's order, the
+// first their default.
+func (m *Model) MyCalendars(email string) []Feed {
+	out := []Feed{}
+	for _, f := range m.Feeds {
+		if normalizeEmail(f.Email) == normalizeEmail(email) {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// DefaultCalendar is a person's default calendar - the first of their
+// saved calendars, the one Upcoming is read under - for the front page to
+// name; nil with none.
+func (m *Model) DefaultCalendar(email string) *Feed {
+	return m.firstFeed(email)
+}
+
+// firstFeed is a person's default calendar: the first of their saved
+// calendars in the sheet's order, nil with none.
+func (m *Model) firstFeed(email string) *Feed {
+	for i := range m.Feeds {
+		if normalizeEmail(m.Feeds[i].Email) == normalizeEmail(email) {
+			return &m.Feeds[i]
+		}
+	}
+	return nil
 }
 
 // card is one event as the front page takes it.
@@ -191,7 +241,17 @@ func (m *Model) card(e *Event) Upcoming {
 // shows it (viewOf): every event from today on that the view admits, the
 // other apps' events folded in, soonest first, at most limit of them.
 func (m *Model) Upcoming(directory Directory, email string, linked []Linked, now time.Time, limit int) []Upcoming {
+	return m.UpcomingUnder(directory, email, linked, now, limit, "")
+}
+
+// UpcomingUnder is Upcoming read under one of the person's saved calendars
+// by token rather than their default - the front page's picker - or under
+// the default for a blank or unknown token.
+func (m *Model) UpcomingUnder(directory Directory, email string, linked []Linked, now time.Time, limit int, token string) []Upcoming {
 	classrooms, tags := m.viewOf(directory, email)
+	if f := m.Feed(token); f != nil && token != "" && normalizeEmail(f.Email) == normalizeEmail(email) {
+		classrooms, tags = m.feedView(f)
+	}
 	today := now.Format(DateFormat)
 	out := []Upcoming{}
 	for _, e := range m.eventsFor(email, linked) {

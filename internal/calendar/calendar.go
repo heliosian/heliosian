@@ -73,7 +73,7 @@ var (
 	DayOverrideColumns = []string{"Date", "Classrooms", "Day Type", "Note"}
 	TagColumns         = []string{"Tag", "Description", "Group", "Default", "Image"}
 	AdminColumns       = []string{"Email"}
-	FeedColumns        = []string{"Token", "Email", "Name", "Classrooms", "Tags", "Created"}
+	FeedColumns        = []string{"Token", "Email", "Name", "Classrooms", "Tags", "Created", "Emoji"}
 	SettingColumns     = []string{"Email", "Classrooms", "Categories", "Saved"}
 	RSVPColumns        = []string{"Email", "Event ID", "Answer", "Answered"}
 	ChangeLogColumns   = []string{"Timestamp", "Actor", "Action", "Tab", "Key", "Column", "From", "To"}
@@ -308,6 +308,9 @@ type Feed struct {
 	Classrooms []string `json:"classrooms"`
 	Tags       []string `json:"tags"`
 	Created    string   `json:"created"`
+	// Emoji is the mark the owner gave it, shown before its name in the
+	// rail; blank for the calendar icon.
+	Emoji string `json:"emoji,omitempty"`
 }
 
 func (f Feed) Carries(e *Event) bool {
@@ -544,6 +547,61 @@ func (t *Tables) WithoutSetting(email string) *Tables {
 	for _, row := range t.Settings {
 		if normalizeEmail(row["Email"]) != email {
 			out.Settings = append(out.Settings, maps.Clone(row))
+		}
+	}
+	return &out
+}
+
+// unusedFeedName is a name none of one person's feeds has: the one given,
+// or it with the first free number after it - "… 2", "… 3" - so two saved
+// calendars are told apart in the rail and in a calendar app. A blank
+// name stays blank for the check that refuses it.
+func (m *Model) unusedFeedName(email, name string) string {
+	if name == "" {
+		return name
+	}
+	taken := map[string]bool{}
+	for _, f := range m.Feeds {
+		if normalizeEmail(f.Email) == normalizeEmail(email) {
+			taken[strings.ToLower(f.Name)] = true
+		}
+	}
+	if !taken[strings.ToLower(name)] {
+		return name
+	}
+	for n := 2; ; n++ {
+		numbered := fmt.Sprintf("%s %d", name, n)
+		if !taken[strings.ToLower(numbered)] {
+			return numbered
+		}
+	}
+}
+
+// WithFeedOrder is the tables with the Feeds rows in the order the tokens
+// give - every token once, as Reorder wants.
+func (t *Tables) WithFeedOrder(tokens []string) *Tables {
+	out := *t
+	byToken := map[string]map[string]string{}
+	for _, row := range t.Feeds {
+		byToken[row["Token"]] = maps.Clone(row)
+	}
+	out.Feeds = []map[string]string{}
+	for _, token := range tokens {
+		if row := byToken[token]; row != nil {
+			out.Feeds = append(out.Feeds, row)
+		}
+	}
+	return &out
+}
+
+// WithFeedChanged is the tables with one feed's cells changed - its name
+// and filter - on the row its token names.
+func (t *Tables) WithFeedChanged(token string, cells map[string]string) *Tables {
+	out := *t
+	out.Feeds = cloneRows(t.Feeds)
+	for _, row := range out.Feeds {
+		if row["Token"] == token {
+			maps.Copy(row, cells)
 		}
 	}
 	return &out
@@ -1033,7 +1091,7 @@ func (b *builder) feeds(rows []map[string]string) error {
 	for _, row := range rows {
 		f := Feed{
 			Token: strings.TrimSpace(row["Token"]), Email: strings.TrimSpace(row["Email"]), Name: strings.TrimSpace(row["Name"]),
-			Classrooms: SplitList(row["Classrooms"]), Tags: SplitList(row["Tags"]), Created: row["Created"],
+			Classrooms: SplitList(row["Classrooms"]), Tags: SplitList(row["Tags"]), Created: row["Created"], Emoji: strings.TrimSpace(row["Emoji"]),
 		}
 		if f.Token == "" {
 			return fmt.Errorf("%s has a row with no token", FeedsTab)

@@ -5,20 +5,32 @@
 // viewer's own classrooms, or every tag.
 import {appOrigin} from '/toolbar.js';
 
-export const state = {model: null, filters: readFilters(), query: '', day: '', month: ''};
+// activeFeed is the token of the saved calendar the viewer last opened from
+// the rail (or that the filters matched on load): Save Calendar saves the
+// filters back onto it.
+const remembered = readFilters();
+export const state = {model: null, filters: {classrooms: remembered.classrooms, tags: remembered.tags}, query: '', day: '', month: '', activeFeed: remembered.active};
+
+// setActiveFeed marks the saved calendar the viewer is working from.
+export function setActiveFeed(token) {
+  state.activeFeed = token;
+  saveFilters();
+}
 
 function readFilters() {
   try {
     const raw = JSON.parse(localStorage.getItem('calendar.filters') || '{}');
-    return {classrooms: Array.isArray(raw.classrooms) ? raw.classrooms : null, tags: Array.isArray(raw.tags) ? raw.tags : null};
+    return {classrooms: Array.isArray(raw.classrooms) ? raw.classrooms : null, tags: Array.isArray(raw.tags) ? raw.tags : null, active: typeof raw.active === 'string' ? raw.active : ''};
   } catch (err) {
-    return {classrooms: null, tags: null};
+    return {classrooms: null, tags: null, active: ''};
   }
 }
 
+// The filters and the saved calendar being worked from are kept together,
+// so a reload picks up where the viewer was.
 function saveFilters() {
   try {
-    localStorage.setItem('calendar.filters', JSON.stringify(state.filters));
+    localStorage.setItem('calendar.filters', JSON.stringify({...state.filters, active: state.activeFeed}));
   } catch (err) {
     // A browser that refuses storage just forgets the choice on reload.
   }
@@ -58,6 +70,78 @@ export function me() {
 
 export function event(id) {
   return byId.get(id) || null;
+}
+
+// defaultFeedName is the name a saved calendar starts with: the viewer's
+// own first name on it, "Sam's Heliosian Calendar" - the name their
+// calendar app lists its feed by.
+export function defaultFeedName() {
+  const first = (me().name || '').trim().split(/\s+/)[0];
+  return unusedFeedName(first ? `${first}\u2019s Heliosian Calendar` : 'Heliosian Calendar');
+}
+
+// unusedFeedName is a name none of the viewer's saved calendars has: the
+// one given, or it with the first free number after it - "… 2", "… 3".
+export function unusedFeedName(name) {
+  const taken = new Set((state.model.feeds || []).map(f => f.name.toLowerCase()));
+  if (!taken.has(name.toLowerCase())) {
+    return name;
+  }
+  for (let n = 2; ; n++) {
+    if (!taken.has(`${name} ${n}`.toLowerCase())) {
+      return `${name} ${n}`;
+    }
+  }
+}
+
+// feedURL is a feed's address for a calendar app; webcalURL the same as
+// webcal://, which Apple's and most others open straight into a
+// subscription.
+export function feedURL(token) {
+  return `${location.origin}/feed/${token}.ics`;
+}
+
+export function webcalURL(token) {
+  return `webcal://${location.host}/feed/${token}.ics`;
+}
+
+// feedClassrooms and feedTags are a saved calendar's filter as the
+// calendar's own: every classroom or tag where it carries no filter.
+export function feedClassrooms(f) {
+  return f.classrooms.length ? f.classrooms : classroomNames();
+}
+
+export function feedTags(f) {
+  return f.tags.length ? f.tags : tagNames();
+}
+
+function sameSet(a, b) {
+  return a.length === b.length && a.every(x => b.includes(x));
+}
+
+// showsFeed says whether the calendar's filters are one saved calendar's
+// exactly; savedAlready whether they are any saved calendar's.
+export function showsFeed(f) {
+  return sameSet(selectedClassrooms(), feedClassrooms(f)) && sameSet(selectedTags(), feedTags(f));
+}
+
+export function savedAlready() {
+  return (state.model.feeds || []).some(showsFeed);
+}
+
+// activeFeed is the saved calendar the viewer is working from: the one the
+// filters are exactly, else the one last opened from the rail if it still
+// exists, else none.
+export function activeFeed() {
+  const feeds = state.model.feeds || [];
+  const shown = feeds.find(showsFeed);
+  if (shown) {
+    if (state.activeFeed !== shown.token) {
+      setActiveFeed(shown.token);
+    }
+    return shown;
+  }
+  return feeds.find(f => f.token === state.activeFeed) || null;
 }
 
 export function classroomNames() {
@@ -113,10 +197,20 @@ export function savedView() {
   return me().saved || null;
 }
 
+// defaultFeed is the viewer's default calendar: the first of their saved
+// calendars, as the rail lists them; null with none.
+export function defaultFeed() {
+  return (state.model.feeds || [])[0] || null;
+}
+
 // defaultClassrooms are the classrooms on for someone who has not chosen
-// today: the ones they saved, else their own, else - for someone with none
-// - every classroom.
+// today: their default calendar's, else the ones they saved, else their
+// own, else - for someone with none - every classroom.
 export function defaultClassrooms() {
+  const first = defaultFeed();
+  if (first) {
+    return feedClassrooms(first);
+  }
   const saved = savedView();
   if (saved && saved.classrooms.length) {
     return saved.classrooms;
@@ -144,6 +238,10 @@ export function toggleClassroom(name) {
 // the ones they saved, else the ones the Tags tab (and Admin Tools) mark
 // on by default.
 export function defaultTags() {
+  const first = defaultFeed();
+  if (first) {
+    return feedTags(first);
+  }
   const saved = savedView();
   if (saved) {
     return saved.tags;

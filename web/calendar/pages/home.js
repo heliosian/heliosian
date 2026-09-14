@@ -1,9 +1,9 @@
 import {state, eventsOn, today, addDays, parseDate, formatDate, longDayLabel, dayLabel, monthLabel, monthOf, shiftMonth, weekStart, specials, scheduleOn, isSchoolDay, dayTypeClass, dayTypeMatches, selectedClassrooms, eventTint, timeLine, eventPath, weekdayShort, call, isMatch, isHidden, isGray} from '../state.js';
-import {el, link, svg, button, peopleLine} from '../dom.js';
-import {setTitle, setSearch, fillFilters, renderRailDay} from '../chrome.js';
+import {el, link, svg, button, peopleLine, toast, popup, copyText, feedMark} from '../dom.js';
+import {setTitle, setSearch, fillFilters, renderRailDay, editFeedPopup} from '../chrome.js';
 import {dayColumn} from '../day.js';
 import {callPill, emptyNote, roomDots, planCards} from '../events.js';
-import {answerOf, answer, linkURL} from '../state.js';
+import {answerOf, answer, linkURL, selectedTags, classroomNames, tagNames, defaultFeedName, showsFeed, activeFeed, setActiveFeed, defaultFeed, feedURL, webcalURL} from '../state.js';
 
 let lastDate = '';
 
@@ -314,6 +314,173 @@ function dayCell(date, month) {
   return cell;
 }
 
+// saveCalendar keeps what the filters show as a saved calendar - a feed
+// row, by name - listed under Calendar in the rail from then on; the feed
+// address for a calendar app waits on the Feeds page until wanted. A small
+// popup takes the name.
+function saveCalendar() {
+  const form = el('form');
+  const rooms = selectedClassrooms();
+  const tags = selectedTags();
+  const roomWords = rooms.length === classroomNames().length ? 'every classroom' : rooms.join(', ');
+  const tagWords = tags.length === tagNames().length ? 'every category' : `${tags.length} of ${tagNames().length} categories`;
+  form.append(el('p', 'modal-intro', `Keeps what the filters show now - ${roomWords} \u00b7 ${tagWords} - under Calendar in the rail, to come back to by name. Get Feed then gives you its address for your own calendar app.`));
+  const field = el('label', 'field');
+  field.append(el('span', '', 'Name'));
+  const name = el('input');
+  name.type = 'text';
+  name.maxLength = 80;
+  name.value = defaultFeedName();
+  field.append(name);
+  form.append(field);
+  const actions = el('div', 'modal-actions');
+  const status = el('span', 'save-status');
+  const submit = el('button', 'button');
+  submit.type = 'submit';
+  submit.append(svg('check'), el('span', '', 'Save'));
+  const {shut} = popup('Save Calendar', form);
+  actions.append(submit, button('Cancel', '', 'button button-secondary', shut), status);
+  form.append(actions);
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    if (!rooms.length || !tags.length) {
+      status.textContent = 'Pick at least one classroom and one category first.';
+      status.classList.add('error');
+      return;
+    }
+    submit.disabled = true;
+    status.classList.remove('error');
+    status.textContent = 'Saving\u2026';
+    const body = {
+      name: name.value.trim() || defaultFeedName(),
+      classrooms: rooms.length === classroomNames().length ? [] : classroomNames().filter(c => rooms.includes(c)),
+      tags: tags.length === tagNames().length ? [] : tagNames().filter(t => tags.includes(t)),
+    };
+    const res = await fetch('/api/calendar/feeds', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+    submit.disabled = false;
+    if (!res.ok) {
+      status.textContent = await res.text();
+      status.classList.add('error');
+      return;
+    }
+    shut();
+    const made = await res.json();
+    setActiveFeed(made.token);
+    toast(`Saved. ${body.name} is under Calendar in the rail.`, 5000);
+    const {load} = await import('../app.js');
+    await load();
+  });
+  name.focus();
+  name.select();
+}
+
+// saveButton is Save Calendar beside the month while the filters are not
+// a saved calendar's. With saved calendars, it is a split button: a click
+// saves the filters onto the one the viewer is working from (the one last
+// opened from the rail), or opens Save New Calendar when there is none,
+// and the caret drops a menu with that and Save New Calendar. Without
+// any, a click is Save New Calendar itself.
+function saveButton() {
+  const feeds = state.model.feeds || [];
+  if (!feeds.length) {
+    const feed = button('Save Calendar', 'save', 'button button-secondary button-small pager-feed', saveCalendar);
+    feed.title = 'Keep what the filters show, by name, under Calendar in the rail';
+    return feed;
+  }
+  const working = activeFeed();
+  const split = el('div', 'split-button pager-feed');
+  const main = button('Save Calendar', 'save', 'button button-secondary button-small', () => working ? saveOnto(working) : saveCalendar());
+  main.title = working ? `Save these filters onto ${working.name}` : 'Keep what the filters show, by name, under Calendar in the rail';
+  const caret = button('', 'down', 'button button-secondary button-small split-caret', () => {
+    menu.hidden = !menu.hidden;
+    if (!menu.hidden) {
+      setTimeout(() => document.addEventListener('click', () => {
+        menu.hidden = true;
+      }, {once: true}), 0);
+    }
+  });
+  caret.setAttribute('aria-label', 'More ways to save');
+  const menu = el('div', 'split-menu');
+  menu.hidden = true;
+  if (working) {
+    const onto = el('button', 'split-item is-working');
+    onto.type = 'button';
+    onto.append(el('span', 'split-item-title', `Save onto ${working.name}`), el('span', 'split-item-note', 'Replace what it shows with these filters'));
+    onto.addEventListener('click', () => saveOnto(working));
+    menu.append(onto);
+  }
+  const fresh = el('button', 'split-item');
+  fresh.type = 'button';
+  fresh.append(el('span', 'split-item-title', 'Save New Calendar\u2026'), el('span', 'split-item-note', 'Keep these filters under a new name'));
+  fresh.addEventListener('click', saveCalendar);
+  menu.append(fresh);
+  split.append(main, caret, menu);
+  return split;
+}
+
+// saveOnto puts the filters as they stand onto a saved calendar, keeping
+// its name, mark and address.
+async function saveOnto(f) {
+  const rooms = selectedClassrooms();
+  const tags = selectedTags();
+  if (!rooms.length || !tags.length) {
+    toast('Pick at least one classroom and one category first.');
+    return;
+  }
+  const body = {
+    token: f.token, name: f.name, emoji: f.emoji || '',
+    classrooms: rooms.length === classroomNames().length ? [] : classroomNames().filter(c => rooms.includes(c)),
+    tags: tags.length === tagNames().length ? [] : tagNames().filter(t => tags.includes(t)),
+  };
+  const res = await fetch('/api/calendar/feeds', {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+  if (!res.ok) {
+    toast(await res.text());
+    return;
+  }
+  setActiveFeed(f.token);
+  toast(`Saved onto ${f.name}.`, 4000);
+  const {load} = await import('../app.js');
+  await load();
+}
+
+// getFeed is the popup for a saved calendar's feed: its address to copy,
+// the two ways to subscribe, and a word on each calendar app.
+function getFeed(f) {
+  const body = el('div');
+  body.append(el('p', 'modal-intro', `${f.name} as a feed your own calendar app subscribes to. It keeps itself up to date as the school calendar changes.`));
+  const url = el('div', 'feed-url');
+  const input = el('input');
+  input.type = 'text';
+  input.readOnly = true;
+  input.value = feedURL(f.token);
+  input.addEventListener('focus', () => input.select());
+  url.append(input, button('Copy', 'copy', 'button button-small', () => copyText(feedURL(f.token), 'Feed address copied')));
+  body.append(url);
+  const actions = el('div', 'feed-actions');
+  const open = el('a', 'button button-secondary button-small');
+  open.href = webcalURL(f.token);
+  open.append(svg('calendar'), el('span', '', 'Subscribe in my calendar app'));
+  const google = el('a', 'button button-secondary button-small');
+  google.href = 'https://calendar.google.com/calendar/u/0/r/settings/addbyurl';
+  google.target = '_blank';
+  google.rel = 'noopener';
+  google.append(svg('open'), el('span', '', 'Add to Google Calendar'));
+  actions.append(open, google);
+  body.append(actions);
+  const steps = el('ul', 'help-list');
+  for (const words of [
+    'Apple Calendar (iPhone, iPad, Mac): Subscribe in my calendar app opens it straight away.',
+    'Google Calendar: Add to Google Calendar, paste the address under From URL, and Add calendar. Google refreshes every few hours.',
+    'Outlook: Add calendar \u203a Subscribe from web, and paste the address.',
+    'The address is the whole secret: anyone who has it can read the feed. Remove it on the Feeds page and it stops.',
+  ]) {
+    steps.append(el('li', '', words));
+  }
+  body.append(steps);
+  popup('Get Feed', body);
+  input.focus();
+}
+
 // goToday opens today with the grid on its month, from wherever the page
 // is paged to.
 function goToday() {
@@ -340,10 +507,18 @@ function monthGrid() {
       paint();
     });
     fwd.setAttribute('aria-label', 'Next month');
-    const feed = link('/feeds#new', 'button button-secondary button-small pager-feed');
-    feed.append(svg('feed'), el('span', '', 'Get Feed'));
-    feed.title = 'A feed for your own calendar app, of what the filters show';
-    pager.append(back, fwd, el('h2', 'pager-label', monthLabel(month)), feed, button('Today', null, 'button button-secondary button-small pager-today', goToday));
+    pager.append(back, fwd, el('h2', 'pager-label', monthLabel(month)));
+    // Save Calendar offers while the filters are not a saved calendar's;
+    // once they are one's, Get Feed offers that calendar's address.
+    const shown = (state.model.feeds || []).find(showsFeed);
+    if (shown) {
+      const feed = button('Get Feed', 'feed', 'button button-secondary button-small pager-feed', () => getFeed(shown));
+      feed.title = 'The address for your own calendar app';
+      pager.append(feed);
+    } else {
+      pager.append(saveButton());
+    }
+    pager.append(button('Today', null, 'button button-secondary button-small pager-today', goToday));
     wrap.append(pager);
     const grid = el('div', 'month-grid');
     for (const name of ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']) {
@@ -389,6 +564,34 @@ export function homePage(date) {
   const month = monthGrid();
   const grid = el('div', 'home-grid');
   grid.append(month.node, upcoming.node);
+  // The saved calendar the viewer is working from, as a headline over the
+  // page - with a word on it while the filters have moved off what it
+  // carries, since Save Calendar saves back onto it.
+  const shown = activeFeed();
+  if (shown) {
+    const headline = el('div', 'calendar-headline');
+    // The mark is a button: it opens a popup to change the emoji.
+    const mark = el('button', 'calendar-headline-mark');
+    mark.type = 'button';
+    mark.title = 'Change the name or emoji';
+    mark.setAttribute('aria-label', 'Change the name or emoji');
+    mark.append(feedMark(shown));
+    mark.addEventListener('click', () => editFeedPopup(shown));
+    headline.append(mark, el('h1', 'calendar-headline-name', shown.name));
+    if (!showsFeed(shown)) {
+      const changed = el('span', 'calendar-changed', 'Filters changed \u00b7 not saved');
+      changed.title = 'Save Calendar saves these filters onto ' + shown.name;
+      headline.append(changed);
+    }
+    // The default calendar says so at the row's far end.
+    if (shown === defaultFeed()) {
+      const badge = el('span', 'calendar-default');
+      badge.append(svg('star'), el('span', '', 'Default Calendar'));
+      badge.title = 'The calendar this page opens to, and Heliosian reads';
+      headline.append(badge);
+    }
+    page.append(headline);
+  }
   page.append(day.node, filters.node, grid);
   // The search words light up what they find in every panel, and the
   // chips that hide more matches.

@@ -36,7 +36,8 @@ type app struct {
 	heroPhoto   func(string) string
 	people      func() []Person
 	alerts      func(string) (int, bool)
-	upcoming    func(email string) []Event
+	upcoming    func(email, token string) Upcoming
+	makeDefault func(ctx context.Context, email, token string) error
 	month       func(email, month string) Month
 	search      imagesearch.Search
 	// answer records a person's word on a calendar event - yes, no, hidden
@@ -78,6 +79,24 @@ type Standing struct {
 	Note string `json:"note,omitempty"`
 }
 
+// Upcoming is the front page's Upcoming Events for a person: the events,
+// the saved calendar they are read under by token, and every saved
+// calendar of theirs - the first their default on Helios Calendar - for
+// the picker beside the heading.
+type Upcoming struct {
+	Events    []Event         `json:"events"`
+	Calendar  string          `json:"calendar,omitempty"`
+	Calendars []SavedCalendar `json:"calendars,omitempty"`
+}
+
+// SavedCalendar is one of a person's saved calendars: its token, name and
+// mark.
+type SavedCalendar struct {
+	Token string `json:"token"`
+	Name  string `json:"name"`
+	Emoji string `json:"emoji,omitempty"`
+}
+
 // Month is a month as the rail's calendar shows it, from Helios Calendar:
 // today, the school days in it with what kind of day each is for the
 // viewer's classrooms, and the viewer's events that touch it.
@@ -117,11 +136,11 @@ type alerts struct {
 // upcoming is the calendar's list of what is ahead for a person and month
 // its reckoning of one month of theirs; people is the directory as the
 // admin page's pickers list it.
-func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, superAdmins func() []string, heroPhoto func(string) string, people func() []Person, alerts func(string) (int, bool), upcoming func(string) []Event, month func(email, month string) Month, search imagesearch.Search, answer func(ctx context.Context, email, id, answer string) error) {
+func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, superAdmins func() []string, heroPhoto func(string) string, people func() []Person, alerts func(string) (int, bool), upcoming func(email, token string) Upcoming, month func(email, month string) Month, search imagesearch.Search, answer func(ctx context.Context, email, id, answer string) error, makeDefault func(ctx context.Context, email, token string) error) {
 	if search.UserAgent == "" {
 		search.UserAgent = "Heliosian image search (+https://heliosian.com)"
 	}
-	a := app{cache: cache, writer: writer, queue: queue, store: store, superAdmins: superAdmins, heroPhoto: heroPhoto, people: people, alerts: alerts, upcoming: upcoming, month: month, search: search, answer: answer}
+	a := app{cache: cache, writer: writer, queue: queue, store: store, superAdmins: superAdmins, heroPhoto: heroPhoto, people: people, alerts: alerts, upcoming: upcoming, month: month, search: search, answer: answer, makeDefault: makeDefault}
 	mux.HandleFunc("GET /{$}", a.page)
 	mux.HandleFunc("GET /admin", a.adminPage)
 	mux.HandleFunc("GET /dl/", func(w http.ResponseWriter, r *http.Request) {
@@ -129,6 +148,8 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	})
 	mux.HandleFunc("GET /api/apps/model", a.model)
 	mux.HandleFunc("GET /api/apps/calendar", a.calendar)
+	mux.HandleFunc("GET /api/apps/upcoming", a.upcomingUnder)
+	mux.HandleFunc("POST /api/apps/calendar/default", a.setDefault)
 	mux.HandleFunc("POST /api/apps/link", a.saveLink)
 	mux.HandleFunc("POST /api/apps/rsvp", a.rsvp)
 	mux.HandleFunc("DELETE /api/apps/link", a.deleteLink)
@@ -287,6 +308,38 @@ func (a app) rsvp(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// upcomingUnder answers /api/apps/upcoming?calendar=<token>: Upcoming
+// Events read under one of the person's saved calendars, for the picker.
+func (a app) upcomingUnder(w http.ResponseWriter, r *http.Request) {
+	email := strings.ToLower(auth.Email(r))
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(a.upcoming(email, r.URL.Query().Get("calendar"))); err != nil {
+		slog.ErrorContext(r.Context(), "encode upcoming", "error", err)
+	}
+}
+
+// setDefault makes one of the person's saved calendars their default on
+// Helios Calendar - the one Upcoming Events and the rail's month read.
+func (a app) setDefault(w http.ResponseWriter, r *http.Request) {
+	email := strings.ToLower(auth.Email(r))
+	var body struct {
+		Token string `json:"token"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 16<<10)).Decode(&body); err != nil {
+		http.Error(w, "bad request body", http.StatusBadRequest)
+		return
+	}
+	if a.makeDefault == nil {
+		http.Error(w, "the calendar is not set up", http.StatusBadRequest)
+		return
+	}
+	if err := a.makeDefault(r.Context(), email, body.Token); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (a app) model(w http.ResponseWriter, r *http.Request) {
 	email := strings.ToLower(auth.Email(r))
 	admin := a.cache.IsAdmin(email)
@@ -310,6 +363,9 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 		ImageSources []string `json:"imageSources"`
 		Alerts       alerts   `json:"alerts"`
 		Upcoming     []Event  `json:"upcoming"`
+		// UpcomingCalendar is the saved calendar Upcoming is read under, and
+		// every saved calendar of theirs for the picker; absent with none.
+		UpcomingCalendar *Upcoming `json:"upcomingCalendar,omitempty"`
 		// Calendar fills the rail's month and day card: the month now is in.
 		Calendar Month `json:"calendar"`
 		// Apps fills the apps section: the community apps this person sees.
@@ -318,9 +374,13 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 		Categories:   categories,
 		User:         user{Email: email, Initial: strings.ToUpper(email[:1]), PhotoURL: a.heroPhoto(email), IsAdmin: admin},
 		ImageSources: a.search.Sources(),
-		Upcoming:     a.upcoming(email),
 		Calendar:     a.month(email, ""),
 		Apps:         a.visibleApps(email),
+	}
+	ahead := a.upcoming(email, "")
+	view.Upcoming = ahead.Events
+	if ahead.Calendar != "" {
+		view.UpcomingCalendar = &Upcoming{Calendar: ahead.Calendar, Calendars: ahead.Calendars}
 	}
 	view.Alerts.Stale, view.Alerts.Privacy = a.alerts(email)
 	w.Header().Set("Content-Type", "application/json")

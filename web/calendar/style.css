@@ -95,6 +95,53 @@ button { font: inherit; }
 
 .app-nav a.is-active { background: var(--accent); color: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
 
+/* The pencil at Calendar's end that turns the saved calendars' tools on. */
+.app-nav a .nav-edit { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; margin-left: auto; padding: 0; border: 0; border-radius: 8px; background: none; color: inherit; opacity: 0.7; cursor: pointer; }
+
+.app-nav a .nav-edit:hover, .app-nav a .nav-edit.is-on { opacity: 1; background: rgba(255, 255, 255, 0.2); }
+
+.app-nav a .nav-edit svg { width: 15px; height: 15px; }
+
+/* A saved calendar's row: the link, and while editing its pencil and cross. */
+.nav-sub-row { display: flex; align-items: center; gap: 2px; }
+
+.nav-sub-row .nav-sub { flex: 1; min-width: 0; }
+
+.nav-sub-grip { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 26px; flex-shrink: 0; margin-left: 8px; color: var(--muted); cursor: grab; }
+
+.nav-sub-grip svg { width: 14px; height: 14px; stroke-width: 3; }
+
+.nav-sub-row.is-draggable .nav-sub { margin-left: 0; }
+
+.nav-sub-row.is-dragging { opacity: 0.4; }
+
+.nav-sub-tool { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; flex-shrink: 0; padding: 0; border: 0; border-radius: 7px; background: none; color: var(--muted); cursor: pointer; text-decoration: none; }
+
+.nav-sub-tool:hover { background: rgba(255, 255, 255, 0.7); color: var(--brand); }
+
+.nav-sub-tool svg { width: 14px; height: 14px; }
+
+.nav-sub-remove:hover { color: #b3261e; }
+
+/* The viewer's feeds, small under Calendar. */
+.app-nav a.nav-sub { min-height: 30px; margin-left: 22px; padding: 0 10px; gap: 8px; font-size: 12.5px; font-weight: 500; color: var(--muted); }
+
+.app-nav a.nav-sub svg { width: 14px; height: 14px; }
+
+.app-nav a.nav-sub .feed-mark { width: 14px; font-size: 13px; line-height: 1; text-align: center; flex-shrink: 0; }
+
+.app-nav a.nav-sub span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.app-nav a.nav-sub:hover { color: var(--brand); }
+
+.app-nav a.nav-sub .nav-sub-star { display: inline-flex; margin-left: auto; color: var(--amber); }
+
+.app-nav a.nav-sub .nav-sub-star svg { width: 13px; height: 13px; fill: currentColor; }
+
+.app-nav a.nav-sub.is-active { background: #fff; color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); font-weight: 700; }
+
+.app-nav a.nav-sub.is-working { background: rgba(255, 255, 255, 0.55); color: var(--brand); box-shadow: inset 3px 0 0 var(--amber); font-weight: 600; }
+
 /* The day under the nav: the small month to pick a day from, then the day
    as a card - its name, its date, the plan when the day is not regular, and
    its events down a timeline. Only the calendar page has a day of its own;
@@ -220,6 +267,68 @@ button { font: inherit; }
    one line, and open, two rows of the same shape - a label, its pills, and
    the chips. The drawer draws the same two rows plain on a phone. */
 .rail-filters { display: flex; flex-direction: column; gap: 16px; }
+
+/* The saved calendar the page is showing, named over the filters. */
+.calendar-headline { display: flex; align-items: center; gap: 10px; margin: 2px 0 14px; color: var(--brand); }
+
+.calendar-headline svg { width: 22px; height: 22px; flex-shrink: 0; color: var(--accent); }
+
+.calendar-headline .feed-mark { font-size: 22px; line-height: 1; flex-shrink: 0; }
+
+.calendar-changed { display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 999px; background: #fff; border: 1px dashed var(--amber); color: #8a5a00; font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+
+.calendar-default { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; padding: 5px 12px; border-radius: 999px; background: #fff7e0; border: 1px solid #f2d78a; color: #8a5a00; font-size: 13px; font-weight: 700; white-space: nowrap; }
+
+.calendar-default svg { width: 15px; height: 15px; color: var(--amber); fill: currentColor; }
+
+.calendar-headline-mark { display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; padding: 0; border: 0; border-radius: 10px; background: none; color: var(--accent); cursor: pointer; }
+
+.calendar-headline-mark:hover { background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1); }
+
+.modal .field .emoji-field { margin: 0; }
+
+.modal-actions .modal-delete { margin-left: auto; }
+
+.modal-default-note { font-size: 13px; color: var(--muted); }
+
+
+/* The emoji field: a small input, the usual marks to pick, and none. */
+.emoji-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+
+.field input[type=text].emoji-input, .emoji-input { box-sizing: border-box; width: 44px; height: 40px; padding: 0; border: 1.5px solid var(--accent); border-radius: 10px; font: inherit; font-size: 22px; line-height: 1; text-align: center; background: #fff; margin-right: 8px; }
+
+.emoji-pick-item { width: 40px; height: 40px; border: 1px solid transparent; border-radius: 10px; background: none; font-size: 22px; line-height: 1; cursor: pointer; }
+
+.emoji-pick-item:hover { background: var(--input); border-color: var(--line); }
+
+.emoji-pick-none { height: 40px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; font: inherit; font-size: 12.5px; color: var(--muted); cursor: pointer; }
+
+.emoji-pick-none:hover { color: var(--brand); }
+
+/* The whole library under the usual row: a search box, then each group's
+   grid, in a scrolling pane. */
+.emoji-search { display: block; width: 100%; margin: 10px 0 6px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; font-size: 13.5px; background: #fff; }
+
+.emoji-library { max-height: 240px; overflow-y: auto; border: 1px solid var(--line); border-radius: 10px; padding: 6px 8px; background: var(--page); }
+
+.emoji-group { margin: 6px 2px 2px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+
+.emoji-grid { display: flex; flex-wrap: wrap; gap: 2px; }
+
+.emoji-grid .emoji-pick-item { width: 34px; height: 34px; font-size: 19px; }
+
+.emoji-none { padding: 10px 4px; font-size: 13px; color: var(--muted); }
+
+/* The name over the hand-drawn swoosh the other apps' headings wear. */
+.calendar-headline-name { position: relative; z-index: 0; display: inline-block; margin: 0; padding-bottom: 8px; font-family: Montserrat, Roboto, sans-serif; font-size: 24px; font-weight: 700; line-height: 1.2; }
+
+.calendar-headline-name::after { content: ''; position: absolute; left: 2%; right: 2%; bottom: 0; height: 11px; background-image: url('/swoosh.png'); background-repeat: no-repeat; background-size: 100% 100%; z-index: -1; }
+
+.modal .feed-url { margin: 4px 0 12px; }
+
+.modal .feed-actions { margin-bottom: 14px; }
+
+.modal .help-list { margin: 0; padding-left: 18px; font-size: 13px; color: var(--muted); line-height: 1.5; }
 
 .home-filters { margin: 0 0 20px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); }
 
@@ -493,7 +602,9 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 }
 .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; flex-wrap: wrap; margin: 4px 0 18px; }
 
-.page-head-main { min-width: 0; }
+.page-head-main { flex: 1 1 360px; min-width: 0; }
+
+.page-head > .button { flex-shrink: 0; align-self: flex-start; margin-top: 8px; }
 
 .strip-arrow { border: 1px solid var(--line); background: #fff; color: var(--brand); }
 
@@ -700,13 +811,37 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .pager .strip-arrow { width: 40px; height: 40px; border-radius: 10px; }
 
-.pager-label { font-family: Montserrat, Roboto, sans-serif; font-size: 26px; font-weight: 700; color: var(--brand); margin: 0 12px; }
+.pager-label { font-family: Montserrat, Roboto, sans-serif; font-size: 26px; font-weight: 700; color: var(--brand); margin: 0 auto 0 12px; white-space: nowrap; }
+
+.pager-feed, .pager-today { white-space: nowrap; flex-shrink: 0; }
 
 .pager-today { padding: 8px 18px; border-radius: 10px; font-weight: 600; }
 
-.pager-feed { margin-left: auto; padding: 8px 16px; border-radius: 10px; font-weight: 600; text-decoration: none; }
+.pager-feed { padding: 8px 16px; border-radius: 10px; font-weight: 600; text-decoration: none; }
 
 .pager-feed svg { width: 16px; height: 16px; }
+
+/* Save Calendar as a split button: the save, a caret, and a menu under
+   them with the two ways to save. */
+.split-button { position: relative; display: inline-flex; }
+
+.split-button > .button:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; padding: 8px 14px; }
+
+.split-caret { border-top-left-radius: 0; border-bottom-left-radius: 0; border-left: 0; padding: 8px 8px; }
+
+.split-caret svg { width: 14px; height: 14px; }
+
+.split-menu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 30; min-width: 260px; padding: 6px; background: #fff; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.14); display: flex; flex-direction: column; gap: 2px; }
+
+.split-item { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; padding: 8px 12px; border: 0; border-radius: 8px; background: none; text-align: left; font: inherit; cursor: pointer; }
+
+.split-item:hover { background: var(--input); }
+
+.split-item.is-working .split-item-title { color: var(--accent); }
+
+.split-item-title { font-size: 13.5px; font-weight: 600; color: var(--ink); }
+
+.split-item-note { font-size: 12px; color: var(--muted); }
 
 /* The weekday row keeps its own height; the weeks share the rest. */
 .month-grid { flex: 1; display: grid; grid-template-columns: repeat(7, 1fr); grid-template-rows: auto; grid-auto-rows: minmax(112px, 1fr); gap: 6px; }
@@ -995,7 +1130,31 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .feed-name { font-weight: 700; font-size: 16px; color: var(--brand); }
 
-.feed-filter { font-size: 13px; color: var(--muted); }
+.feed-made { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+/* What the feed carries, as small chips under its address. */
+.feed-shows { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+
+.feed-shows-label { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin-right: 3px; }
+
+.feed-shows-sep { width: 1px; height: 14px; background: var(--line); margin: 0 4px; }
+
+.feed-chip { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--line); background: var(--page); font-size: 12px; font-weight: 600; color: var(--ink); }
+
+.feed-chip.has-color::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--room); }
+
+.feed-chip-all { font-weight: 500; color: var(--muted); border-style: dashed; }
+
+.feed-shows-edit { display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--accent); background: #fff; font-size: 12px; font-weight: 700; color: var(--accent); cursor: pointer; font-family: inherit; }
+
+.feed-shows-edit:hover { background: var(--accent); color: #fff; }
+
+.feed-shows-edit svg { width: 12px; height: 12px; }
+
+/* The feed's own form, open under its card. */
+.feed-editor { border-top: 1px solid var(--line); padding-top: 12px; }
+
+.feed-editor .feed-form { padding: 0; border: 0; margin: 0; background: none; box-shadow: none; }
 
 .feed-url { display: flex; gap: 8px; }
 
@@ -1004,6 +1163,18 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 .feed-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 
 .feed-actions .link-button { margin: 0 0 0 auto; }
+
+.feed-name-row { display: flex; align-items: center; gap: 6px; }
+
+.feed-name-row > svg { width: 16px; height: 16px; color: var(--accent); }
+
+.feed-name-row .feed-mark { font-size: 16px; line-height: 1; }
+
+.feed-edit { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 7px; background: none; color: var(--muted); cursor: pointer; }
+
+.feed-edit:hover { background: var(--input); color: var(--brand); }
+
+.feed-edit svg { width: 15px; height: 15px; }
 
 .help-panel { padding: 14px 18px; margin-bottom: 8px; }
 
@@ -1208,6 +1379,8 @@ body.is-admin main { padding: 0; }
 .modal { background: #fff; border-radius: 14px; padding: 20px 24px; width: 100%; max-width: 560px; max-height: calc(100vh - 40px); overflow-y: auto; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25); }
 
 .modal.modal-wide { max-width: 860px; }
+
+.modal-intro { margin: 4px 0 10px; font-size: 14px; color: var(--muted); line-height: 1.5; }
 
 .modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 
