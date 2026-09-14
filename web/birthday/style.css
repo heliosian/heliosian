@@ -1190,3 +1190,6 @@ a.trow[data-stage="stage-complete"]::before { background: #3aaa5c; }
 .admin .team-group { margin-top: 18px; }
 
 .admin .team-group h3 { margin: 0 0 4px; font-size: 16px; }
+
+/* The newcomer's question. */
+.join-blurb p { margin: 10px 0; line-height: 1.5; }

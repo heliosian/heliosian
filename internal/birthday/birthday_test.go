@@ -51,6 +51,9 @@ func (s *sentMail) wait(t *testing.T, n int) []mail.Message {
 // never land in another's.
 var sent = &sentMail{}
 
+// joined is who the app put on its home list, per newServer.
+var joined []string
+
 const (
 	parent = "robin.whitfield@heliosschool.org"
 	admin  = "jordan.whitfield@heliosschool.org"
@@ -120,7 +123,11 @@ func newServer(t *testing.T) (*Cache, *http.ServeMux) {
 	}
 	mux := http.NewServeMux()
 	sent = &sentMail{}
-	Register(mux, cache, dir, syncQueue{}, fakeDirectory{}, func() []string { return []string{admin} }, nil, sent, "Helios Staff Birthdays <birthday@example.org>", "https://birthday.example.org")
+	joined = nil
+	Register(mux, cache, dir, syncQueue{}, fakeDirectory{}, func() []string { return []string{admin} }, nil, sent, "Helios Staff Birthdays <birthday@example.org>", "https://birthday.example.org", func(email string) error {
+		joined = append(joined, email)
+		return nil
+	})
 	return cache, mux
 }
 
@@ -671,6 +678,36 @@ func TestClearFutureNewsletterDates(t *testing.T) {
 	}
 	if rec := call(t, mux, admin, "POST", "/api/birthday/newsletter-dates/clear-future", nil); rec.Code != http.StatusNoContent {
 		t.Fatalf("clearing nothing: %d %s", rec.Code, rec.Body)
+	}
+}
+
+func TestJoinTeam(t *testing.T) {
+	cache, mux := newServer(t)
+	// Robin is already a volunteer; joining again adds nothing but still opens the app to them.
+	if rec := call(t, mux, parent, "POST", "/api/birthday/team/join", nil); rec.Code != http.StatusNoContent {
+		t.Fatalf("join: %d %s", rec.Code, rec.Body)
+	}
+	n := 0
+	for _, m := range cache.Model().Team {
+		if m.Email == parent && m.Role == RoleVolunteer {
+			n++
+		}
+	}
+	if n != 1 || len(joined) != 1 || joined[0] != parent {
+		t.Fatalf("after robin joined: %d rows, home %v", n, joined)
+	}
+	// Jordan is not on the team yet.
+	if rec := call(t, mux, admin, "POST", "/api/birthday/team/join", nil); rec.Code != http.StatusNoContent {
+		t.Fatalf("join: %d %s", rec.Code, rec.Body)
+	}
+	found := false
+	for _, m := range cache.Model().Team {
+		if m.Email == admin && m.Role == RoleVolunteer {
+			found = true
+		}
+	}
+	if !found || len(joined) != 2 {
+		t.Fatalf("after jordan joined: found %v, home %v", found, joined)
 	}
 }
 

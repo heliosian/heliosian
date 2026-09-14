@@ -184,7 +184,9 @@ function openModal(title, fields, options) {
     alt.addEventListener('click', options.alternate.onClick);
     actions.append(alt);
   }
-  actions.append(cancel);
+  if (!options.hideCancel) {
+    actions.append(cancel);
+  }
   if (options.onDelete) {
     const del = el('button', 'danger-button', options.deleteLabel || 'Delete');
     del.type = 'button';
@@ -529,6 +531,51 @@ export function removeNewsletterDate(date) {
     return;
   }
   return act('DELETE', '/api/birthday/newsletter-date', {date});
+}
+
+// The first time someone opens the app, they are asked whether they want to
+// be on the birthday team. Yes puts them on it as a volunteer and opens the
+// app to them on their Heliosian home; Not now is remembered on this
+// browser, and someone already on the team is never asked.
+const askedKey = 'birthday.teamAsked';
+
+export function offerTeam() {
+  const email = me().email;
+  if (state.model.team.some(m => m.email === email)) {
+    return;
+  }
+  try {
+    if (localStorage.getItem(askedKey) === '1') {
+      return;
+    }
+  } catch {
+    // No storage: ask each time rather than never.
+  }
+  const remember = () => {
+    try {
+      localStorage.setItem(askedKey, '1');
+    } catch {
+      // Then it asks again next time.
+    }
+  };
+  const blurb = el('div', 'join-blurb');
+  blurb.append(
+    el('p', '', 'The birthday team celebrates every Helios staff member\'s birthday with a donation to a charity they choose, announced in the newsletter. Volunteers take a birthday each, reach out with a short email, and record the answer - a few minutes apiece.'),
+    el('p', '', 'Would you like to be on the team? You can pick up birthdays from the Unassigned list whenever you have time.'),
+  );
+  openModal('Join the Birthday Team?', [blurb], {
+    saveLabel: 'Join the Team',
+    submit: async () => {
+      await send('POST', '/api/birthday/team/join', {});
+      remember();
+    },
+    afterSave: () => toast('Welcome to the team!'),
+    alternate: {label: 'Not now', onClick: () => {
+      remember();
+      closeModal();
+    }},
+    hideCancel: true,
+  });
 }
 
 export function openSettings() {

@@ -1,7 +1,7 @@
 import {state, applyModel, staff, charity, isUnassigned} from './state.js';
 import {el} from './dom.js';
 import {initChrome, renderChrome, setTitle, clearSearch} from './chrome.js';
-import {initModal} from './edit.js';
+import {initModal, offerTeam} from './edit.js';
 import {jobsPage} from './pages/jobs.js';
 import {processPage} from './pages/process.js';
 import {calendarPage} from './pages/calendar.js';
@@ -12,6 +12,8 @@ import {skippedPage} from './pages/skipped.js';
 import {unassignedPage} from './pages/unassigned.js';
 import {adminPage} from './pages/admin.js';
 
+let offered = false;
+
 export async function load() {
   const res = await fetch('/api/birthday/model');
   if (!res.ok) {
@@ -19,6 +21,11 @@ export async function load() {
   }
   applyModel(await res.json());
   render();
+  // Once the first page is up, the newcomer's question.
+  if (!offered && location.pathname !== '/admin') {
+    offered = true;
+    offerTeam();
+  }
 }
 
 export function navigate(path) {

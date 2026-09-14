@@ -51,6 +51,9 @@ type app struct {
 	from   string
 	// base is the app's address for the links in mail sent off a request.
 	base string
+	// joinHome puts someone who joins the team on the app's list in
+	// Heliosian's settings, so the app shows on their home; nil does nothing.
+	joinHome func(email string) error
 }
 
 // Describer finds where a charity takes donations and writes the newsletter's
@@ -62,8 +65,8 @@ type Describer interface {
 
 // Register wires the app: one shell for every page, the model, and the writes.
 // Every route already sits behind sign-in.
-func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, directory Directory, superAdmins func() []string, describer Describer, mailer mail.Sender, from, base string) {
-	a := app{cache: cache, writer: writer, queue: queue, directory: directory, superAdmins: superAdmins, describer: describer, mailer: mailer, from: from, base: base}
+func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, directory Directory, superAdmins func() []string, describer Describer, mailer mail.Sender, from, base string, joinHome func(email string) error) {
+	a := app{cache: cache, writer: writer, queue: queue, directory: directory, superAdmins: superAdmins, describer: describer, mailer: mailer, from: from, base: base, joinHome: joinHome}
 	if mailer != nil {
 		go a.remindLoop()
 	}
@@ -95,6 +98,7 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	mux.HandleFunc("GET /api/admin/state", a.adminState)
 	mux.HandleFunc("POST /api/admin/admins", a.setAdmins)
 	mux.HandleFunc("POST /api/admin/resend-invites", a.resendInvites)
+	mux.HandleFunc("POST /api/birthday/team/join", a.joinTeam)
 	mux.HandleFunc("POST /api/admin/team", a.addTeamMember)
 	mux.HandleFunc("DELETE /api/admin/team", a.removeTeamMember)
 }
@@ -1196,6 +1200,35 @@ func (a app) resendInvites(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(map[string]int{"sent": n}); err != nil {
 		slog.ErrorContext(r.Context(), "encode resent invites", "error", err)
 	}
+}
+
+// joinTeam takes the signed-in person onto the team as a volunteer, at their
+// own asking, and onto the app's list in Heliosian's settings so it shows on
+// their home.
+func (a app) joinTeam(w http.ResponseWriter, r *http.Request) {
+	actor, _ := a.who(r)
+	if err := checkEmail(actor); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	row := map[string]string{"Email": actor, "Role": RoleVolunteer}
+	if a.cache.Tables().count(teamTab, row) == 0 {
+		if !a.commit(r, w, a.cache.Tables().with(teamTab, nil, row), func() error {
+			if err := a.writer.Append(appName, teamTab, rowOf(TeamColumns, row)); err != nil {
+				return err
+			}
+			return a.logChange(actor, "add", "team member", actor, "", RoleVolunteer+" (joined)")
+		}) {
+			return
+		}
+	}
+	if a.joinHome != nil {
+		if err := a.joinHome(actor); err != nil {
+			slog.ErrorContext(r.Context(), "birthday: put a joiner on the app's list", "error", err, "email", actor)
+		}
+	}
+	slog.InfoContext(r.Context(), "birthday: joined the team", "email", actor)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // teamRow reads the email and role an admin is adding or removing, refusing a

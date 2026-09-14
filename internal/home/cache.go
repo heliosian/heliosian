@@ -1,6 +1,7 @@
 package home
 
 import (
+	"fmt"
 	"log/slog"
 	"slices"
 	"sort"
@@ -228,4 +229,32 @@ func (c *Cache) Admins(superAdmins []string) []string {
 	admins := normalizeEmails(append(c.tabAdmins(), superAdmins...))
 	sort.Strings(admins)
 	return admins
+}
+
+// Grant puts someone on an app's list, so the app shows on their home when
+// the app is only its list's - for an app that takes people on itself, the
+// way Staff Birthdays takes a volunteer. The list is written whichever the
+// mode, as the admin page writes it; someone already on it is left be.
+func Grant(cache *Cache, writer data.Writer, queue Enqueuer, appKey, email string) error {
+	app, ok := appByKey(appKey)
+	if !ok {
+		return fmt.Errorf("no app %q", appKey)
+	}
+	email = strings.ToLower(strings.TrimSpace(email))
+	v := visibilityOf(cache.Model(), app)
+	if slices.Contains(v.Emails, email) {
+		return nil
+	}
+	v.Emails = normalizeEmails(append(v.Emails, email))
+	tables := cache.Tables().withVisibility(app.Key, v)
+	model, err := BuildModel(tables, cache.images)
+	if err != nil {
+		return err
+	}
+	done := make(chan error, 1)
+	queue.Add(func() {
+		cache.set(tables, model)
+		done <- writer.Upsert(appName, visibilityTab, "App", app.Key, v.cells())
+	})
+	return <-done
 }
