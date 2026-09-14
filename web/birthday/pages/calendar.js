@@ -52,13 +52,23 @@ export function monthGrid(month, items, className) {
       } else {
         chip = link(item.href, 'chip ' + item.className, item.title);
       }
-      // A chip with lines to show carries them in a card that shows on hover,
-      // instead of the browser's own tip.
-      if (item.lines && item.lines.length) {
+      // A chip with a card to show - a heading and rows of who, when and
+      // whose - shows it on hover, instead of the browser's own tip.
+      if (item.card) {
         const wrap = el('span', 'chip-wrap');
         const pop = el('span', 'chip-pop');
-        for (const line of item.lines) {
-          pop.append(el('span', 'chip-pop-line', line));
+        const head = el('span', 'chip-pop-head');
+        head.append(el('span', 'chip-pop-title', item.card.title), el('span', 'chip-pop-when', item.card.when));
+        pop.append(head);
+        if (!item.card.rows.length) {
+          pop.append(el('span', 'chip-pop-empty', item.card.empty || 'Nothing here'));
+        }
+        for (const row of item.card.rows) {
+          const line = el('span', 'chip-pop-row');
+          const who = el('span', 'chip-pop-who');
+          who.append(el('span', 'chip-pop-name', row.name), el('span', 'chip-pop-sub', row.sub));
+          line.append(who, el('span', 'chip-pop-note' + (row.warn ? ' is-warn' : ''), row.note));
+          pop.append(line);
         }
         wrap.append(chip, pop);
         cell.append(wrap);

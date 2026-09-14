@@ -1136,13 +1136,31 @@ a.trow[data-stage="stage-complete"]::before { background: #3aaa5c; }
 
 .chip-wrap .chip { margin-top: 0; }
 
-.chip-pop { display: none; position: absolute; z-index: 5; left: 0; top: calc(100% + 4px); min-width: 200px; max-width: 280px; background: #fff; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14); padding: 8px 12px; font-size: 13px; color: var(--ink); white-space: normal; }
+.chip-pop { display: none; position: absolute; z-index: 5; left: 0; top: calc(100% + 4px); width: 260px; background: #fff; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14); padding: 10px 12px; font-size: 13px; color: var(--ink); white-space: normal; text-align: left; }
 
 .chip-wrap:hover .chip-pop { display: block; }
 
-.chip-pop-line { display: block; padding: 2px 0; }
+.chip-pop-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding-bottom: 6px; margin-bottom: 4px; border-bottom: 1px solid var(--line); }
 
-.chip-pop-line:first-child { font-weight: 700; color: var(--brand); border-bottom: 1px solid var(--line); padding-bottom: 5px; margin-bottom: 3px; }
+.chip-pop-title { font-weight: 700; color: var(--brand); }
+
+.chip-pop-when { color: var(--muted); font-weight: 600; white-space: nowrap; }
+
+.chip-pop-empty { display: block; color: var(--muted); padding: 4px 0; }
+
+.chip-pop-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 5px 0; border-top: 1px solid #f0f3f4; }
+
+.chip-pop-row:first-of-type { border-top: 0; }
+
+.chip-pop-who { display: flex; flex-direction: column; min-width: 0; }
+
+.chip-pop-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.chip-pop-sub { font-size: 11px; color: var(--muted); }
+
+.chip-pop-note { flex-shrink: 0; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: #dff0f3; color: #1f6d73; }
+
+.chip-pop-note.is-warn { background: #fdf3d9; color: #8a6800; }
 
 .calendar .day:nth-child(7n) .chip-pop, .calendar .day:nth-child(7n-1) .chip-pop { left: auto; right: 0; }
 

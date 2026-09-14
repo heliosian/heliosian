@@ -1,4 +1,4 @@
-import {state, isUnassigned, parseDate, staffPath, newsletterPath, stageClass, stageName, mediumDate, staffFor} from '../state.js';
+import {state, isUnassigned, parseDate, staffPath, newsletterPath, stageClass, stageName, mediumDate, shortDate, staffFor} from '../state.js';
 import {el, link, svg, thumb, button, pageHead} from '../dom.js';
 import {setTitle} from '../chrome.js';
 import {emptyPanel} from '../cards.js';
@@ -99,8 +99,17 @@ function grid(rows, rerender) {
       continue;
     }
     const people = staffFor(date);
-    const lines = people.length ? people.map(sv => `${sv.name} · ${sv.assignedTo ? (sv.assignedToName || sv.assignedTo).split(' ')[0] : 'unassigned'}`) : ['No birthdays in this issue'];
-    items.push({key: day.toDateString(), title: 'Newsletter', href: newsletterPath(date), className: 'newsletter', lines: ['Newsletter · ' + mediumDate(date), ...lines]});
+    items.push({key: day.toDateString(), title: 'Newsletter', href: newsletterPath(date), className: 'newsletter', card: {
+      title: 'Newsletter',
+      when: shortDate(date),
+      empty: 'No birthdays in this issue',
+      rows: people.map(sv => ({
+        name: sv.name,
+        sub: `Birthday ${shortDate(sv.birthdayThisYear)}`,
+        note: sv.assignedTo ? (sv.assignedToName || sv.assignedTo).split(' ')[0] : 'Unassigned',
+        warn: !sv.assignedTo,
+      })),
+    }});
   }
   for (const sv of rows) {
     const day = parseDate(showBy === 'ask' ? sv.requestBy : sv.birthdayThisYear);
