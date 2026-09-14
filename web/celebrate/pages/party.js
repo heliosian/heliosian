@@ -215,31 +215,41 @@ function ticketBand(p) {
     actions.append(el('span', 'ticket-left', `${p.remaining} of ${p.capacity} left`));
   }
   band.append(actions);
-  // The household's own tickets. A sold ticket stays sold - it is a
-  // fundraiser - so only a place on the waitlist has a way out here.
-  const mine = myTickets(p);
-  if (mine.length) {
-    const list = el('div', 'my-tickets');
-    list.append(el('div', 'my-tickets-head', 'Your family'));
-    for (const a of mine) {
-      const row = el('div', 'my-ticket');
-      row.append(avatar(a, 'my-ticket-face'));
-      const words = el('span', 'my-ticket-words');
-      const n = a.quantity || 1;
-      words.append(el('span', 'my-ticket-name', a.name), el('span', 'my-ticket-line', a.status === 'Ticket' ? (a.price ? `Ticket · ${money(a.price)}` : 'Free ticket') : `On the waitlist for ${n} ${n === 1 ? 'ticket' : 'tickets'}`));
-      row.append(words);
-      if (p.availability !== 'past' && (!isKid() || p.canEdit)) {
-        if (a.status === 'Ticket') {
-          row.append(button('Reassign', 'people', 'link-button', () => openReassign(p, a)));
-        } else {
-          row.append(button('Leave waitlist', 'close', 'link-button', () => removeTicket(p, a)));
-        }
-      }
-      list.append(row);
-    }
-    band.append(list);
-  }
   return band;
+}
+
+// myTicketsSection lists the household's own tickets and waitlist places
+// under their own heading, so a family's tickets don't read as part of
+// the sales band above - a sold-out party's band is all about the
+// waitlist, and a ticket the family holds is not. A sold ticket stays
+// sold - it is a fundraiser - so only a place on the waitlist has a way
+// out here.
+function myTicketsSection(p) {
+  const mine = myTickets(p);
+  if (!mine.length) {
+    return null;
+  }
+  const section = el('section', 'my-tickets');
+  section.append(swooshHeading('My Tickets'));
+  const list = el('div', 'my-ticket-list');
+  for (const a of mine) {
+    const row = el('div', 'my-ticket');
+    row.append(avatar(a, 'my-ticket-face'));
+    const words = el('span', 'my-ticket-words');
+    const n = a.quantity || 1;
+    words.append(el('span', 'my-ticket-name', a.name), el('span', 'my-ticket-line', a.status === 'Ticket' ? (a.price ? `Ticket · ${money(a.price)}` : 'Free ticket') : `On the waitlist for ${n} ${n === 1 ? 'ticket' : 'tickets'}`));
+    row.append(words);
+    if (p.availability !== 'past' && (!isKid() || p.canEdit)) {
+      if (a.status === 'Ticket') {
+        row.append(button('Reassign', 'people', 'link-button', () => openReassign(p, a)));
+      } else {
+        row.append(button('Leave waitlist', 'close', 'link-button', () => removeTicket(p, a)));
+      }
+    }
+    list.append(row);
+  }
+  section.append(list);
+  return section;
 }
 
 // swooshHeading is the section heading with the brand's yellow swipe under
@@ -707,6 +717,10 @@ export function partyPage(p) {
     main.append(note);
   }
   main.append(ticketBand(p));
+  const mine = myTicketsSection(p);
+  if (mine) {
+    main.append(mine);
+  }
   main.append(attendeesSection(p));
   const wait = waitlistSection(p);
   if (wait) {
