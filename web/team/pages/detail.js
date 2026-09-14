@@ -281,6 +281,18 @@ function factsCard(node, editing, save) {
       const box = checkbox(node.coLeaderNeeded, on => save({coLeaderNeeded: on}));
       wants.append(box, el('span', '', 'A co-chair is needed'));
       body.append(wants);
+    } else if (node.coLeaderNeeded && node.canEdit) {
+      // Whoever runs the page is not asked to co-chair their own thing: the
+      // ask becomes the question, answered in place, with the way into
+      // editing beside it.
+      const wants = el('label', 'side-switch');
+      const box = checkbox(true, on => save({coLeaderNeeded: on}));
+      wants.append(box, el('span', '', 'Still looking for a co-chair?'));
+      body.append(wants);
+      body.append(button('Edit', 'edit', 'button button-secondary button-small side-offer', () => {
+        editingPath = node.id;
+        document.dispatchEvent(new CustomEvent('hca:refresh'));
+      }));
     } else if (node.coLeaderNeeded) {
       // One click offers: the viewer's sign-up becomes (or starts as) open to
       // co-chairing, and the chairs see them under Co-Chair Options. Once

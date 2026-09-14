@@ -79,6 +79,31 @@ func chairsAround(m *Model, act *Activity) []string {
 	return out
 }
 
+// chairRows names who runs a thing, a row for each level from the thing
+// itself up to the event, so a volunteer on something within an event sees
+// its leads apart from the event's chairs: "Sealand Leads", then "Event
+// Chairs". A level with nobody is left out; a thing on its own has "Chairs".
+func (a app) chairRows(m *Model, act *Activity) [][2]string {
+	rows := [][2]string{}
+	for n := act; n != nil; n = m.byID[n.Parent] {
+		names := []string{}
+		for _, email := range n.CoChairs() {
+			names = append(names, a.nameOf(email))
+		}
+		if len(names) == 0 {
+			continue
+		}
+		label := "Chairs"
+		if n.Parent != "" && m.byID[n.Parent] != nil {
+			label = n.Title + " Leads"
+		} else if n != act {
+			label = "Event Chairs"
+		}
+		rows = append(rows, [2]string{label, strings.Join(names, ", ")})
+	}
+	return rows
+}
+
 // baseURL is the site as the request reached it, for the links and pictures
 // in a message - team.lab.heliosian.com today, team.heliosian.com later.
 func baseURL(r *http.Request) string {
@@ -289,13 +314,7 @@ func (a app) mailSignUp(r *http.Request, act *Activity, email, position, note, a
 		if note != "" {
 			l.Rows = append(l.Rows, [2]string{"Your note", note})
 		}
-		if len(chairs) > 0 {
-			names := []string{}
-			for _, c := range chairs {
-				names = append(names, a.nameOf(c))
-			}
-			l.Rows = append(l.Rows, [2]string{"Chairs", strings.Join(names, ", ")})
-		}
+		l.Rows = append(l.Rows, a.chairRows(model, act)...)
 		l.Button = "See the details"
 		l.Footnote = "Need to change or cancel? Open the page and use Edit my sign-up."
 		cc := append(without(chairs, email), a.directory.Parents(email)...)

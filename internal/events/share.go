@@ -30,13 +30,15 @@ const (
 )
 
 // cardStyle is the portal's dress for the card: its palette (the ink is the
-// headline's deep teal-black, as the page sets its own), the lockup, and the
-// rail's meadow in the corner - the same picture the toolbar has.
+// headline's deep teal-black, as the page sets its own), the horizontal
+// lockup as the designer drew it, and the rail's meadow in the corner - the
+// same picture the toolbar has. The wordmark and tagline stand in should the
+// lockup ever fail to load.
 var cardStyle = &sharecard.Style{
 	Page: color.RGBA{0xee, 0xf6, 0xea, 0xff}, Brand: color.RGBA{0x0c, 0x4c, 0x54, 0xff}, Accent: color.RGBA{0x00, 0x74, 0x6f, 0xff},
 	Ink: color.RGBA{0x0e, 0x3a, 0x42, 0xff}, Yellow: color.RGBA{0xf8, 0xd9, 0x08, 0xff}, Panel: color.RGBA{0xdc, 0xe9, 0xe4, 0xff},
 	Wordmark: "HCA-Team", Tagline: "HCA VOLUNTEER PORTAL",
-	Mark: "web/public/team/brand/logo-mark.png", Corner: "web/team/toolbar_background.png",
+	Mark: "web/public/team/brand/logo-mark.png", Lockup: "web/public/team/brand/logo-lockup.png", Corner: "web/team/toolbar_background.png",
 }
 
 // ShareTagline gives the card the app's tagline as the registry has it

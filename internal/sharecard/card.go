@@ -223,14 +223,14 @@ func (s *Style) Draw(c Card) ([]byte, error) {
 		draw.CatmullRom.Scale(img, dst, corner, b, draw.Over, nil)
 	}
 
-	// The brand, top left: the lockup as the designer drew it, at the
-	// height the mark and words would take; without one, the mark beside
+	// The brand, top left: the lockup as the designer drew it, tall enough
+	// to read yet clear of the kicker below; without one, the mark beside
 	// a set wordmark and tagline.
 	x, y := 72, 56
 	d := &font.Drawer{Dst: img, Src: image.NewUniform(s.Brand)}
 	if s.lockup != nil {
 		b := s.lockup.Bounds()
-		h := 100
+		h := 84
 		w := b.Dx() * h / max(b.Dy(), 1)
 		draw.CatmullRom.Scale(img, image.Rect(x, y, x+w, y+h), s.lockup, b, draw.Over, nil)
 	} else {

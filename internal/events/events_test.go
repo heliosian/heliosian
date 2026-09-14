@@ -281,6 +281,11 @@ func TestMail(t *testing.T) {
 	if !ok || !slices.Equal(thanks.To, []string{parent}) || !slices.Contains(thanks.CC, chair) || !strings.Contains(thanks.HTML, "Hi Robin") || !strings.Contains(thanks.HTML, "/share/E017.png") {
 		t.Fatalf("thank-you: %+v (subjects %v)", thanks, keys(bySubject))
 	}
+	// Clean Up Crew has no leads of its own, so only the event's chairs are
+	// named - as the event's, not the crew's.
+	if !strings.Contains(thanks.Text, "Event Chairs: ") || strings.Contains(thanks.Text, "Leads") {
+		t.Fatalf("thank-you chairs: %q", thanks.Text)
+	}
 	if n, ok := bySubject["New sign-up: Robin Whitfield for Clean Up Crew"]; !ok || !slices.Equal(n.To, []string{admin}) {
 		t.Fatalf("sign-up notice: %+v", n)
 	}
@@ -293,6 +298,21 @@ func TestMail(t *testing.T) {
 	m := rec.next(t)
 	if m.Subject != "You're a co-chair of Clean Up Crew" || !slices.Equal(m.To, []string{parent}) || !slices.Contains(m.CC, chair) {
 		t.Fatalf("co-chair note: %+v", m)
+	}
+	// Now the crew has a lead, the next volunteer is told the crew's lead and
+	// the event's chairs each under their own heading, with both copied.
+	other := "sam.whitfield@heliosschool.org"
+	if r := call(t, mux, other, "POST", "/api/events/volunteer", map[string]any{"id": "E017", "position": PositionVolunteer}); r.Code != http.StatusNoContent {
+		t.Fatalf("second sign up: %d %s", r.Code, r.Body)
+	}
+	for range 2 {
+		m := rec.next(t)
+		if !strings.HasPrefix(m.Subject, "Thanks for volunteering") {
+			continue
+		}
+		if !strings.Contains(m.Text, "Clean Up Crew Leads: Robin Whitfield\n") || !strings.Contains(m.Text, "Event Chairs: ") || !slices.Contains(m.CC, parent) || !slices.Contains(m.CC, chair) {
+			t.Fatalf("thank-you under a lead: %q cc %v", m.Text, m.CC)
+		}
 	}
 }
 
