@@ -1,8 +1,9 @@
-import {state, eventsOn, today, addDays, parseDate, formatDate, longDayLabel, dayLabel, monthLabel, monthOf, shiftMonth, weekStart, specials, scheduleOn, isSchoolDay, dayTypeClass, dayTypeMatches, selectedClassrooms, eventTint, timeLine, eventPath, weekdayShort, call, isMatch} from '../state.js';
+import {state, eventsOn, today, addDays, parseDate, formatDate, longDayLabel, dayLabel, monthLabel, monthOf, shiftMonth, weekStart, specials, scheduleOn, isSchoolDay, dayTypeClass, dayTypeMatches, selectedClassrooms, eventTint, timeLine, eventPath, weekdayShort, call, isMatch, isHidden} from '../state.js';
 import {el, link, svg, button} from '../dom.js';
 import {setTitle, setSearch, fillFilters, renderRailDay} from '../chrome.js';
 import {dayColumn} from '../day.js';
 import {callPill, emptyNote, roomDots, planCards} from '../events.js';
+import {answerOf, answer, linkURL} from '../state.js';
 
 let lastDate = '';
 
@@ -55,7 +56,7 @@ function upcomingPanel(date) {
     for (let d = from; d < until; d = addDays(d, 1)) {
       const events = eventsOn(d);
       const groups = days ? specials(d) : [];
-      if (!events.length && !groups.length) {
+      if (!events.some(e => !isHidden(e)) && !groups.length) {
         continue;
       }
       if (!later && d >= soon) {
@@ -63,10 +64,11 @@ function upcomingPanel(date) {
         body.append(el('div', 'upcoming-later', 'Later This Year'));
       }
       any = true;
-      for (const e of events) {
+      const shown = events.filter(e => !isHidden(e));
+      for (const e of shown) {
         body.append(upcomingRow(d, e));
       }
-      if (!events.length) {
+      if (!shown.length && !events.length) {
         body.append(upcomingRow(d, null, groups[0]));
       }
     }
@@ -86,57 +88,111 @@ function go(path) {
   document.dispatchEvent(new CustomEvent('calendar:refresh'));
 }
 
-// The card that opens over a month cell while the pointer rests on it: the
-// day's name, the day plan with its hours as the rail shows it, and every
-// event in full - hours, title, place, classrooms - each a link to the
-// event. One card for the
-// page, moved and refilled; it stays while the pointer is on it, so its
-// rows can be clicked.
+// The card that opens over a month cell while the pointer rests on it. On
+// the cell itself it is the day: its name and the day plan with its hours
+// as the rail shows it. On one of the cell's pills it is that event alone
+// - hours, title, place, the household's part, and Yes and No. One card for
+// the page, moved and refilled; it stays while the pointer is on it, so
+// its buttons and links can be clicked.
 let peek = null;
 let peekTimer = 0;
 let peekCell = null;
+let peekEvent = null;
 
 function peekNode() {
   if (!peek) {
     peek = el('div', 'day-peek');
     peek.hidden = true;
-    peek.addEventListener('mouseleave', hidePeek);
+    // Arriving on the card keeps it: no closing, and no other cell's card
+    // taking its place on the way over.
+    peek.addEventListener('mouseenter', () => {
+      clearTimeout(peekGrace);
+      clearTimeout(peekTimer);
+    });
+    peek.addEventListener('mouseleave', hidePeekSoon);
     document.body.append(peek);
   }
   return peek;
 }
 
-function fillPeek(date) {
+function fillPeek(date, e) {
   const node = peekNode();
   node.replaceChildren();
+  if (e) {
+    fillEventPeek(node, date, e);
+    return;
+  }
   const head = link('/day/' + date, 'day-peek-head');
   head.append(el('span', 'day-peek-date', dayLabel(date)));
   if (date === today()) {
     head.append(el('span', 'day-heading-today', 'Today'));
   }
   node.append(head, planCards(date));
-  const events = eventsOn(date);
-  if (!events.length) {
-    node.append(el('div', 'day-peek-empty', 'No events for these classrooms and tags.'));
-    return;
-  }
-  const list = el('div', 'day-peek-list');
-  for (const e of events) {
-    const row = link(eventPath(e), 'day-peek-row');
-    row.style.setProperty('--c', eventTint(e));
-    const body = el('span', 'day-peek-body');
-    body.append(el('span', 'day-peek-time', timeLine(e, date)), el('span', 'day-peek-title', e.title));
-    if (e.location) {
-      body.append(el('span', 'day-peek-place', e.location));
-    }
-    row.append(el('span', 'day-peek-bar'), body, roomDots(e));
-    list.append(row);
-  }
-  node.append(list);
 }
 
-// placePeek sets the card under the cell, flush with its left edge, or
-// above it when there is no room below, and within the window's sides.
+// fillEventPeek is the card for one event: its hours, title and place as a
+// link to it, who in the household is in it, and Yes and No - the one
+// given filled - which answer without leaving the month.
+function fillEventPeek(node, date, e) {
+  const row = link(eventPath(e), 'day-peek-row day-peek-event');
+  row.style.setProperty('--c', eventTint(e));
+  const body = el('span', 'day-peek-body');
+  body.append(el('span', 'day-peek-time', timeLine(e, date)), el('span', 'day-peek-title', e.title));
+  if (e.location) {
+    body.append(el('span', 'day-peek-place', e.location));
+  }
+  row.append(el('span', 'day-peek-bar'), body, roomDots(e));
+  node.append(row);
+  if (e.description) {
+    node.append(el('div', 'day-peek-words', e.description.length > 160 ? e.description.slice(0, 160).replace(/\s+\S*$/, '') + '\u2026' : e.description));
+  }
+  if (e.minePeople && e.minePeople.length) {
+    const people = el('ul', 'side-people');
+    for (const p of e.minePeople) {
+      const item = el('li');
+      item.append(svg(e.source === 'celebrate' ? 'ticket' : 'people'), el('span', 'side-person', p.name));
+      if (p.note) {
+        item.append(el('span', 'side-person-note', p.note));
+      }
+      people.append(item);
+    }
+    node.append(people);
+  }
+  const word = answerOf(e);
+  const buttons = el('div', 'day-peek-answer');
+  const say = async next => {
+    try {
+      await answer(e, next);
+      fillPeek(date, e);
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+  // A party has no yes or no: Send Invite with a ticket in the household,
+  // Add Ticket without one.
+  if (e.source === 'celebrate') {
+    const held = (e.minePeople || []).some(p => p.note !== 'waitlisted');
+    if (held) {
+      buttons.append(button(word === 'yes' ? 'Invite sent' : 'Send Invite', word === 'yes' ? 'check' : 'calendar', 'button button-small' + (word === 'yes' ? ' button-secondary' : ''), () => say('yes')));
+    } else {
+      const add = el('a', 'button button-small' + (e.availability === 'available' ? '' : ' button-secondary'));
+      add.href = linkURL(e);
+      add.append(svg('ticket'), el('span', '', e.availability === 'available' ? 'Add Ticket' : call(e) || 'See the party'));
+      buttons.append(add);
+    }
+    node.append(buttons);
+    return;
+  }
+  buttons.append(
+    button('Yes', 'check', 'button button-small' + (word === 'yes' ? '' : ' button-secondary'), () => say(word === 'yes' ? '' : 'yes')),
+    button('No', 'close', 'button button-small' + (word === 'no' ? '' : ' button-secondary'), () => say(word === 'no' ? '' : 'no')),
+  );
+  node.append(buttons);
+}
+
+// placePeek sets the card under the cell, flush with its left edge and
+// touching its bottom, or above it when there is no room below, and
+// within the window's sides.
 function placePeek(cell) {
   const node = peekNode();
   const box = cell.getBoundingClientRect();
@@ -145,46 +201,88 @@ function placePeek(cell) {
   const height = node.offsetHeight;
   let left = Math.min(box.left, window.innerWidth - width - 12);
   left = Math.max(12, left);
-  let top = box.bottom + 6;
+  let top = box.bottom - 1;
   if (top + height > window.innerHeight - 12) {
-    top = Math.max(12, box.top - height - 6);
+    top = Math.max(12, box.top - height + 1);
   }
   node.style.left = left + 'px';
   node.style.top = top + 'px';
 }
 
-function showPeek(cell, date) {
+function showPeek(cell, date, e) {
   peekCell = cell;
-  fillPeek(date);
+  peekEvent = e || null;
+  fillPeek(date, e);
   placePeek(cell);
 }
 
 function hidePeek() {
   clearTimeout(peekTimer);
+  clearTimeout(peekGrace);
   peekCell = null;
+  peekEvent = null;
   if (peek) {
     peek.hidden = true;
   }
+}
+
+// The card touches the cell, so the pointer crosses straight onto it and
+// arriving there keeps it; off both, the card goes after a short moment,
+// long enough for a corner cut across a neighbour, not long enough to
+// linger.
+let peekGrace = 0;
+
+function hidePeekSoon() {
+  clearTimeout(peekGrace);
+  peekGrace = setTimeout(hidePeek, 250);
 }
 
 // The card waits a beat so sweeping the pointer across the grid does not
 // flash it, and closes when the pointer leaves the cell for anywhere but
 // the card.
 function attachPeek(cell, date) {
-  cell.addEventListener('mouseenter', () => {
+  // Over a pill the card is that event's; off it, the day's. While another
+  // cell's card is open, this one waits long enough for a pointer only
+  // passing through on its way to that card.
+  cell.addEventListener('mouseover', ev => {
+    const pip = ev.target.closest('.month-pip');
+    const e = pip ? pip.peekEvent : null;
+    const open = peek && !peek.hidden;
+    clearTimeout(peekGrace);
     clearTimeout(peekTimer);
-    peekTimer = setTimeout(() => showPeek(cell, date), 220);
+    if (open && peekCell === cell) {
+      if (e) {
+        showPeek(cell, date, e);
+      } else if (peekEvent) {
+        // Off a pill onto the cell's own ground, the event's card stays
+        // long enough to reach - the pointer is most likely on its way
+        // there - and the day's takes over only after that.
+        peekTimer = setTimeout(() => showPeek(cell, date, null), 600);
+      }
+      return;
+    }
+    peekTimer = setTimeout(() => showPeek(cell, date, e), open ? 400 : 300);
   });
+  // Leaving a cell for anywhere but the card starts the card closing -
+  // whichever cell's it is, since passing through this one cancelled the
+  // last cell's closing.
   cell.addEventListener('mouseleave', e => {
     clearTimeout(peekTimer);
     if (peek && !peek.hidden && e.relatedTarget && peek.contains(e.relatedTarget)) {
       return;
     }
-    if (peekCell === cell) {
-      hidePeek();
+    if (peek && !peek.hidden) {
+      hidePeekSoon();
     }
   });
 }
+
+// A scroll moves the cells out from under the card, so it goes at once.
+document.addEventListener('scroll', () => {
+  if (peek && !peek.hidden) {
+    hidePeek();
+  }
+}, {capture: true, passive: true});
 
 // dayCell opens its day; a pill in it opens that event instead. The cell
 // is a box rather than a link so the pills can be links of their own.
@@ -207,13 +305,15 @@ function dayCell(date, month) {
   const events = eventsOn(date);
   const room = Math.max(0, 3 - groups.length);
   for (const e of events.slice(0, room)) {
-    const pip = link(eventPath(e), 'month-pip' + (isMatch(e) ? ' is-match' : ''));
+    // An event the viewer hid is plain gray words, not a pill.
+    const pip = link(eventPath(e), 'month-pip' + (isMatch(e) ? ' is-match' : '') + (isHidden(e) ? ' is-hidden' : ''));
     pip.style.setProperty('--c', eventTint(e));
     pip.append(el('span', 'month-pip-title', e.title));
     if (!e.allDay) {
       pip.append(el('span', 'month-pip-time', timeLine(e, date)));
     }
     pip.addEventListener('click', hidePeek);
+    pip.peekEvent = e;
     cell.append(pip);
   }
   if (events.length > room) {

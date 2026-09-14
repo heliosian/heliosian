@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
@@ -28,7 +29,7 @@ func testApp(t *testing.T) (http.Handler, *Cache) {
 		kids:   map[string][]Person{},
 	}
 	mux := http.NewServeMux()
-	Register(mux, cache, dir, directQueue{}, nil, d, func() []string { return nil }, func(string) []Linked { return nil }, ImageSearch{})
+	Register(mux, cache, dir, directQueue{}, nil, d, func() []string { return nil }, func(string) []Linked { return nil }, ImageSearch{}, nil, "")
 	return mux, cache
 }
 
@@ -289,4 +290,96 @@ func TestFeedCarriesLinked(t *testing.T) {
 		t.Errorf("a Going feed carries an event the family is not in")
 	}
 	_ = handler
+}
+
+// An answer is the viewer's: yes and no mark the event and hidden takes
+// it out of Upcoming and the feeds while it stays on the calendar; a blank
+// answer clears it, and nonsense is refused.
+func TestAnswers(t *testing.T) {
+	handler, cache := testApp(t)
+	me := "jordan.whitfield@heliosschool.org"
+	viewer := as(me, handler)
+	if rec := call(t, viewer, "POST", "/api/calendar/rsvp", `{"id":"a7@sample","answer":"maybe"}`); rec.Code != 400 {
+		t.Errorf("nonsense answer: %d", rec.Code)
+	}
+	if rec := call(t, viewer, "POST", "/api/calendar/rsvp", `{"id":"a7@sample","answer":"hidden"}`); rec.Code != 204 {
+		t.Fatalf("hide: %d %s", rec.Code, rec.Body)
+	}
+	var view View
+	rec := call(t, viewer, "GET", "/api/calendar/model", "")
+	json.NewDecoder(rec.Body).Decode(&view)
+	if view.User.Answers["a7@sample"] != AnswerHidden {
+		t.Errorf("answers = %v", view.User.Answers)
+	}
+	dir := fakeDirectory{people: map[string]Person{}, kids: map[string][]Person{}}
+	for _, u := range cache.Model().Upcoming(dir, me, nil, now(), 0) {
+		if u.ID == "a7@sample" {
+			t.Errorf("a hidden event is in Upcoming")
+		}
+	}
+	f := &Feed{Token: "t", Email: me, Name: "Mine"}
+	if strings.Contains(string(ICS(cache.Model(), f, nil, "https://when.local.heliosian.com:8080", now())), "SUMMARY:International Night") {
+		t.Errorf("a hidden event is in the owner's feed")
+	}
+	if rec := call(t, viewer, "POST", "/api/calendar/rsvp", `{"id":"a7@sample","answer":""}`); rec.Code != 204 {
+		t.Fatalf("clear: %d %s", rec.Code, rec.Body)
+	}
+	if rec := call(t, viewer, "POST", "/api/calendar/rsvp", `{"id":"a7@sample","answer":"yes"}`); rec.Code != 204 {
+		t.Fatalf("yes: %d %s", rec.Code, rec.Body)
+	}
+	found := false
+	for _, u := range cache.Model().Upcoming(dir, me, nil, now(), 0) {
+		if u.ID == "a7@sample" {
+			found = u.Answer == AnswerYes
+		}
+	}
+	if !found {
+		t.Errorf("a yes is not on the Upcoming card")
+	}
+	// A yes files the event under Going for this viewer - in the view, in
+	// their feed - and for nobody else; the model's own event stays as loaded.
+	var mine View
+	rec = call(t, viewer, "GET", "/api/calendar/model", "")
+	json.NewDecoder(rec.Body).Decode(&mine)
+	if i := slices.IndexFunc(mine.Events, func(e *Event) bool { return e.ID == "a7@sample" }); i < 0 || !slices.Contains(mine.Events[i].Tags, TagGoing) {
+		t.Errorf("a yes is not under Going in the viewer's events")
+	}
+	var other View
+	rec = call(t, as("dana.hawkins@heliosschool.org", handler), "GET", "/api/calendar/model", "")
+	json.NewDecoder(rec.Body).Decode(&other)
+	if i := slices.IndexFunc(other.Events, func(e *Event) bool { return e.ID == "a7@sample" }); i < 0 || slices.Contains(other.Events[i].Tags, TagGoing) {
+		t.Errorf("one viewer's yes is under Going for another")
+	}
+	if slices.Contains(cache.Model().Event("a7@sample").Tags, TagGoing) {
+		t.Errorf("a yes changed the model's own event")
+	}
+	going := &Feed{Token: "g", Email: me, Name: "Going", Tags: []string{TagGoing}}
+	if !strings.Contains(string(ICS(cache.Model(), going, nil, "https://when.local.heliosian.com:8080", now())), "SUMMARY:International Night") {
+		t.Errorf("a yes is not in the owner's Going feed")
+	}
+	if got := invite("Helios Calendar <when@heliosian.com>", me, cache.Model().Event("a7@sample"), "https://when.heliosian.com/events/a7@sample", now()); !strings.Contains(got, "METHOD:REQUEST") || !strings.Contains(got, "ORGANIZER;CN=Helios Calendar:mailto:when@heliosian.com") || !strings.Contains(got, "ATTENDEE;CN="+me) {
+		t.Errorf("invite:\n%s", got)
+	}
+}
+
+// Admins see who said yes and no to an event, by name; nobody sees who
+// hid one, and a parent sees none of it.
+func TestResponsesForAdmins(t *testing.T) {
+	handler, _ := testApp(t)
+	call(t, as("jordan.whitfield@heliosschool.org", handler), "POST", "/api/calendar/rsvp", `{"id":"a7@sample","answer":"yes"}`)
+	call(t, as("dana.hawkins@heliosschool.org", handler), "POST", "/api/calendar/rsvp", `{"id":"a7@sample","answer":"no"}`)
+	call(t, as("robin.whitfield@heliosschool.org", handler), "POST", "/api/calendar/rsvp", `{"id":"a7@sample","answer":"hidden"}`)
+	var view View
+	rec := call(t, as("dana.hawkins@heliosschool.org", handler), "GET", "/api/calendar/model", "")
+	json.NewDecoder(rec.Body).Decode(&view)
+	r := view.Responses["a7@sample"]
+	if r == nil || len(r.Yes) != 1 || r.Yes[0].Name != "Jordan" || len(r.No) != 1 {
+		t.Errorf("responses = %+v", r)
+	}
+	rec = call(t, as("jordan.whitfield@heliosschool.org", handler), "GET", "/api/calendar/model", "")
+	var parent View
+	json.NewDecoder(rec.Body).Decode(&parent)
+	if parent.Responses != nil {
+		t.Errorf("a parent sees responses: %v", parent.Responses)
+	}
 }

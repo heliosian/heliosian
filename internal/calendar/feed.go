@@ -63,8 +63,8 @@ func ICS(model *Model, f *Feed, linked []Linked, origin string, now time.Time) [
 		"X-PUBLISHED-TTL:PT1H",
 	}
 	stamp := now.UTC().Format(icsStamp)
-	for _, e := range withLinked(model.Events, linked) {
-		if !f.Carries(e) {
+	for _, e := range model.eventsFor(f.Email, linked) {
+		if !f.Carries(e) || model.AnswerOf(f.Email, e.ID) == AnswerHidden {
 			continue
 		}
 		lines = append(lines, "BEGIN:VEVENT", "UID:"+uidOf(e.ID), "DTSTAMP:"+stamp)

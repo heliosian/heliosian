@@ -39,6 +39,9 @@ type app struct {
 	upcoming    func(email string) []Event
 	month       func(email, month string) Month
 	search      imagesearch.Search
+	// answer records a person's word on a calendar event - yes, no, hidden
+	// - with the calendar, whose lists follow it.
+	answer func(ctx context.Context, email, id, answer string) error
 }
 
 // Event is a Helios Calendar event as the front page's Upcoming Events lists
@@ -47,6 +50,7 @@ type app struct {
 // and for an event another app runs, Link is its page on LinkApp with Call
 // the way in as the calendar words it, Mine and Availability behind that.
 type Event struct {
+	ID           string `json:"id"`
 	Title        string `json:"title"`
 	Path         string `json:"path"`
 	Start        string `json:"start"`
@@ -62,6 +66,16 @@ type Event struct {
 	Call         string `json:"call,omitempty"`
 	Mine         string `json:"mine,omitempty"`
 	Availability string `json:"availability,omitempty"`
+	// Answer is the viewer's word on it: yes, no, or nothing yet.
+	Answer string `json:"answer,omitempty"`
+	// People is everyone in the household with a part in it: a ticket, a
+	// waitlist place, a role.
+	People []Standing `json:"people,omitempty"`
+}
+
+type Standing struct {
+	Name string `json:"name"`
+	Note string `json:"note,omitempty"`
 }
 
 // Month is a month as the rail's calendar shows it, from Helios Calendar:
@@ -103,11 +117,11 @@ type alerts struct {
 // upcoming is the calendar's list of what is ahead for a person and month
 // its reckoning of one month of theirs; people is the directory as the
 // admin page's pickers list it.
-func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, superAdmins func() []string, heroPhoto func(string) string, people func() []Person, alerts func(string) (int, bool), upcoming func(string) []Event, month func(email, month string) Month, search imagesearch.Search) {
+func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, superAdmins func() []string, heroPhoto func(string) string, people func() []Person, alerts func(string) (int, bool), upcoming func(string) []Event, month func(email, month string) Month, search imagesearch.Search, answer func(ctx context.Context, email, id, answer string) error) {
 	if search.UserAgent == "" {
 		search.UserAgent = "Heliosian image search (+https://heliosian.com)"
 	}
-	a := app{cache: cache, writer: writer, queue: queue, store: store, superAdmins: superAdmins, heroPhoto: heroPhoto, people: people, alerts: alerts, upcoming: upcoming, month: month, search: search}
+	a := app{cache: cache, writer: writer, queue: queue, store: store, superAdmins: superAdmins, heroPhoto: heroPhoto, people: people, alerts: alerts, upcoming: upcoming, month: month, search: search, answer: answer}
 	mux.HandleFunc("GET /{$}", a.page)
 	mux.HandleFunc("GET /admin", a.adminPage)
 	mux.HandleFunc("GET /dl/", func(w http.ResponseWriter, r *http.Request) {
@@ -116,6 +130,7 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	mux.HandleFunc("GET /api/apps/model", a.model)
 	mux.HandleFunc("GET /api/apps/calendar", a.calendar)
 	mux.HandleFunc("POST /api/apps/link", a.saveLink)
+	mux.HandleFunc("POST /api/apps/rsvp", a.rsvp)
 	mux.HandleFunc("DELETE /api/apps/link", a.deleteLink)
 	mux.HandleFunc("POST /api/apps/category", a.saveCategory)
 	mux.HandleFunc("DELETE /api/apps/category", a.deleteCategory)
@@ -247,6 +262,29 @@ func (a app) calendar(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(a.month(email, r.URL.Query().Get("month"))); err != nil {
 		slog.ErrorContext(r.Context(), "encode apps calendar", "error", err)
 	}
+}
+
+// rsvp is the viewer's word on an event from a card: passed to the
+// calendar, which keeps it and sends the invite for a yes.
+func (a app) rsvp(w http.ResponseWriter, r *http.Request) {
+	email := strings.ToLower(auth.Email(r))
+	var body struct {
+		ID     string `json:"id"`
+		Answer string `json:"answer"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 16<<10)).Decode(&body); err != nil {
+		http.Error(w, "bad request body", http.StatusBadRequest)
+		return
+	}
+	if a.answer == nil {
+		http.Error(w, "the calendar is not set up", http.StatusBadRequest)
+		return
+	}
+	if err := a.answer(r.Context(), email, body.ID, body.Answer); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (a app) model(w http.ResponseWriter, r *http.Request) {

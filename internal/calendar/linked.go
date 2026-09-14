@@ -27,9 +27,18 @@ type Linked struct {
 	Availability string
 	Mine         string
 	// Who names the household members the standing is theirs, when the
-	// viewer is not among them.
-	Who   []string
-	Image string
+	// viewer is not among them; People is everyone in the household with a
+	// part in it, each with what that part is.
+	Who    []string
+	People []Standing
+	Image  string
+}
+
+// A Standing is one household member's part in a linked event: a ticket
+// held (or a waitlist place), or the role they volunteer for.
+type Standing struct {
+	Name string `json:"name"`
+	Note string `json:"note,omitempty"`
 }
 
 // builtinTags are the tags the load and the linked events file under that no
@@ -41,7 +50,7 @@ var builtinTags = []Tag{
 	{Name: TagCelebrate, Description: "Fun(d)raiser parties on Helios Celebrate.", Group: BuiltinGroup, Default: true, BuiltIn: true},
 	{Name: TagHCA, Description: "Events the HCA runs, from HCA-Team.", Group: BuiltinGroup, Default: true, BuiltIn: true},
 	{Name: TagMisc, Description: "Events the sheet has not filed under a category.", Group: BuiltinGroup, Default: true, BuiltIn: true},
-	{Name: TagGoing, Description: "Parties your household holds tickets to, and HCA events someone in it signed up for.", Group: BuiltinGroup, Default: true, BuiltIn: true},
+	{Name: TagGoing, Description: "Events you said yes to, parties your household holds tickets to, and HCA events someone in it signed up for.", Group: BuiltinGroup, Default: true, BuiltIn: true},
 	{Name: TagWaitlisted, Description: "Parties your household is on the waitlist for.", Group: BuiltinGroup, Default: true, BuiltIn: true},
 }
 
@@ -63,7 +72,7 @@ func linkedEvent(l Linked) *Event {
 		ID: l.Source + "/" + l.ID, Source: l.Source, Title: l.Title, Location: l.Location,
 		Description: strings.TrimSpace(l.Summary + "\n\n" + l.Description),
 		Start:       l.Start, End: l.End, AllDay: allDay, Tags: []string{tagBySource[l.Source]}, Classrooms: []string{},
-		Link: l.Path, Availability: l.Availability, Mine: l.Mine, MineWho: l.Who, Image: l.Image, start: start, end: end,
+		Link: l.Path, Availability: l.Availability, Mine: l.Mine, MineWho: l.Who, MinePeople: l.People, Image: l.Image, start: start, end: end,
 	}
 	if t := tagByMine[l.Mine]; t != "" {
 		e.Tags = append(e.Tags, t)
@@ -123,7 +132,7 @@ func folded(school, hca *Event) *Event {
 	if t := tagByMine[hca.Mine]; t != "" {
 		c.Tags = append(c.Tags, t)
 	}
-	c.Link, c.Availability, c.Mine, c.MineWho = hca.Link, hca.Availability, hca.Mine, hca.MineWho
+	c.Link, c.Availability, c.Mine, c.MineWho, c.MinePeople = hca.Link, hca.Availability, hca.Mine, hca.MineWho, hca.MinePeople
 	// The school's listing has no picture of its own, and a line of text at
 	// most: HCA-Team's picture stands in, the longer of the two descriptions
 	// is the one, and the school's place is kept only where it has one.
@@ -137,6 +146,25 @@ func folded(school, hca *Event) *Event {
 		c.Location = hca.Location
 	}
 	return &c
+}
+
+// eventsFor is every event as one viewer stands with them: the sheet's and
+// the linked ones as one list (withLinked), and each the viewer said yes to
+// wearing the Going tag - on a copy, as a party they hold a ticket to does -
+// so the filters, the feeds and the front page file it with the rest of
+// what they are going to.
+func (m *Model) eventsFor(email string, linked []Linked) []*Event {
+	out := withLinked(m.Events, linked)
+	answers := m.Answers[normalizeEmail(email)]
+	for i, e := range out {
+		if answers[e.ID] != AnswerYes || slices.Contains(e.Tags, TagGoing) {
+			continue
+		}
+		c := *e
+		c.Tags = append(append([]string{}, e.Tags...), TagGoing)
+		out[i] = &c
+	}
+	return out
 }
 
 // withLinked is the sheet's events and the linked ones as one list in date

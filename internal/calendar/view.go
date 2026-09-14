@@ -2,6 +2,7 @@ package calendar
 
 import (
 	"slices"
+	"sort"
 	"strings"
 	"time"
 )
@@ -15,6 +16,9 @@ type Person struct {
 	IsStaff   bool   `json:"isStaff,omitempty"`
 	Grade     string `json:"grade,omitempty"`
 	Classroom string `json:"classroom,omitempty"`
+	// Line is the word under a name on a contact card: a student's grade
+	// and classroom, a parent's children, a staff member's place.
+	Line string `json:"line,omitempty"`
 }
 
 type Directory interface {
@@ -23,6 +27,58 @@ type Directory interface {
 	Children(email string) []Person
 	Alerts(email string) (stale int, privacy bool)
 	ClassroomColors() map[string]string
+	GradeColors() map[string]string
+}
+
+// Responses are the people who answered an event, for an admin: each as
+// the directory knows them, with their photo, for a contact card.
+type Responses struct {
+	Yes []Person `json:"yes,omitempty"`
+	No  []Person `json:"no,omitempty"`
+}
+
+// contactLine is the word under a name on a contact card, as Who? has it:
+// a student's grade and classroom, a parent's children with their grades,
+// a staff member's place.
+func contactLine(directory Directory, p Person) string {
+	switch {
+	case p.IsStudent:
+		parts := []string{}
+		if p.Grade != "" {
+			parts = append(parts, p.Grade)
+		}
+		if p.Classroom != "" {
+			parts = append(parts, p.Classroom)
+		}
+		return strings.Join(parts, " · ")
+	case p.IsParent:
+		kids := []string{}
+		for _, k := range directory.Children(p.Email) {
+			name := k.Name
+			if words := strings.Fields(name); len(words) > 0 {
+				name = words[0]
+			}
+			if k.Grade != "" {
+				name += " (" + k.Grade + ")"
+			}
+			kids = append(kids, name)
+		}
+		if len(kids) > 0 {
+			return "Parent to " + strings.Join(kids, ", ")
+		}
+		return "Parent"
+	case p.IsStaff:
+		return "Staff"
+	}
+	return ""
+}
+
+// thumb is a photo's address at thumbnail size, or nothing.
+func thumb(url string) string {
+	if url == "" {
+		return ""
+	}
+	return url + "?thumb=1"
 }
 
 type Alerts struct {
@@ -44,6 +100,9 @@ type User struct {
 	// Saved is the view this person kept, when they have: what the calendar
 	// opens to for them in place of its own defaults.
 	Saved *Setting `json:"saved,omitempty"`
+	// Answers is this person's word on each event they have answered, by
+	// event id: yes, no, or hidden.
+	Answers map[string]string `json:"answers,omitempty"`
 }
 
 type View struct {
@@ -63,9 +122,14 @@ type View struct {
 	// Provenance is each event's admin-side story, for an admin alone; Names
 	// puts a name to the addresses the events name.
 	Provenance map[string]*Provenance `json:"provenance,omitempty"`
-	Names      map[string]string      `json:"names,omitempty"`
-	Feeds      []Feed                 `json:"feeds"`
-	Alerts     Alerts                 `json:"alerts"`
+	// Responses is who said yes and who said no to each event, by event id,
+	// for an admin alone; hidden is a person's own and named to nobody.
+	Responses map[string]*Responses `json:"responses,omitempty"`
+	// GradeColors are Who?'s colours per grade, for a student's badge.
+	GradeColors map[string]string `json:"gradeColors,omitempty"`
+	Names       map[string]string `json:"names,omitempty"`
+	Feeds       []Feed            `json:"feeds"`
+	Alerts      Alerts            `json:"alerts"`
 }
 
 func displayName(email string) string {
@@ -125,6 +189,7 @@ func Render(model *Model, directory Directory, email string, admin bool, now tim
 	if saved, ok := model.Settings[normalizeEmail(email)]; ok {
 		user.Saved = &saved
 	}
+	user.Answers = model.Answers[normalizeEmail(email)]
 	feeds := []Feed{}
 	for _, f := range model.Feeds {
 		if f.Email == email {
@@ -141,13 +206,43 @@ func Render(model *Model, directory Directory, email string, admin bool, now tim
 		}
 	}
 	var provenance map[string]*Provenance
+	var responses map[string]*Responses
 	if admin {
 		provenance = model.Provenance
+		responses = map[string]*Responses{}
+		for who, answers := range model.Answers {
+			person, ok := directory.Person(who)
+			if !ok {
+				person = Person{Email: who, Name: displayName(who)}
+			}
+			person.PhotoURL = thumb(person.PhotoURL)
+			person.Line = contactLine(directory, person)
+			for id, answer := range answers {
+				r := responses[id]
+				if r == nil {
+					r = &Responses{}
+					responses[id] = r
+				}
+				switch answer {
+				case AnswerYes:
+					r.Yes = append(r.Yes, person)
+				case AnswerNo:
+					r.No = append(r.No, person)
+				}
+			}
+		}
+		byName := func(list []Person) {
+			sort.Slice(list, func(i, j int) bool { return list[i].Name < list[j].Name })
+		}
+		for _, r := range responses {
+			byName(r.Yes)
+			byName(r.No)
+		}
 	}
 	return View{
-		Provenance: provenance, Names: names,
+		Provenance: provenance, Responses: responses, GradeColors: directory.GradeColors(), Names: names,
 		User: user, Today: now.Format(DateFormat), Now: now.Format(DateTimeFormat),
 		Classrooms: model.Roster.Classrooms, Colors: directory.ClassroomColors(), Tags: append(append([]Tag{}, model.Tags...), builtinTags...), DayTypes: model.DayTypes, Years: model.Years,
-		Days: model.Days, Events: withLinked(model.Events, linked), Feeds: feeds, Alerts: Alerts{Stale: stale, Privacy: privacy},
+		Days: model.Days, Events: model.eventsFor(email, linked), Feeds: feeds, Alerts: Alerts{Stale: stale, Privacy: privacy},
 	}
 }

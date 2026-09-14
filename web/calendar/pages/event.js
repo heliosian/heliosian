@@ -1,5 +1,6 @@
-import {state, daysLine, timeLine, calendarLink, sourceWords, dayType, eventDates, dayTypeClass, linkURL, call, isParty, mineWords, eventImage, weekdayShort, parseDate, spansDays, monthLabel, monthOf} from '../state.js';
-import {el, link, svg, paragraphs, button, toast} from '../dom.js';
+import {state, daysLine, timeLine, calendarLink, sourceWords, dayType, eventDates, dayTypeClass, linkURL, call, isParty, mineWords, eventImage, weekdayShort, parseDate, spansDays, monthLabel, monthOf, answerOf, answer} from '../state.js';
+import {el, link, svg, paragraphs, button, toast, avatar} from '../dom.js';
+import {appOrigin} from '/toolbar.js';
 import {setTitle} from '../chrome.js';
 import {audienceChips, blocks} from '../events.js';
 
@@ -59,6 +60,8 @@ export function eventPage(e) {
     main.append(el('h2', 'section-title', 'The day for ' + (e.classrooms.length ? e.classrooms.join(', ') : 'everyone')));
     main.append(card);
   }
+  // The ask, under the event itself: are you going?
+  main.append(rsvpCard(e));
   cols.append(main);
 
   const side = el('div', 'detail-side');
@@ -95,6 +98,9 @@ export function eventPage(e) {
   }
 
   side.append(sourceCard(e));
+  if (state.model.user.isAdmin) {
+    side.append(rsvpsCard(e));
+  }
   cols.append(side);
   page.append(cols);
   return page;
@@ -119,6 +125,126 @@ function outLink(href, words) {
   a.rel = 'noopener';
   a.append(svg('open'), el('span', '', words));
   return a;
+}
+
+// rsvpCard is the ask under the event, behind a ticked calendar: are you
+// going? Yes and No, the one given filled, and under them small links:
+// Clear my RSVP once one is given, and Hide event (Show event once hidden) - a yes brings a calendar invite by email. A party has
+// no yes or no: Send Invite with a ticket in the household, Add Ticket
+// without one. Hiding is the cross on Heliosian's cards.
+function rsvpCard(e) {
+  const band = el('div', 'rsvp-band');
+  const paint = () => {
+    band.replaceChildren();
+    const word = answerOf(e);
+    const say = async next => {
+      try {
+        await answer(e, next);
+        toast(next === 'yes' ? 'A calendar invite is on its way to your email' : next === 'no' ? 'Marked as not going' : next === 'hidden' ? 'Hidden - it shows on the month in gray' : word === 'hidden' ? 'Shown again' : 'Answer cleared');
+        paint();
+      } catch (err) {
+        toast(err.message);
+      }
+    };
+    const art = el('div', 'rsvp-art');
+    art.append(svg('calcheck'));
+    const words = el('div', 'rsvp-words');
+    const buttons = el('div', 'rsvp-buttons');
+    let note = '';
+    if (isParty(e)) {
+      const held = (e.minePeople || []).some(p => p.note !== 'waitlisted');
+      if (held) {
+        words.append(el('div', 'rsvp-title', word === 'yes' ? 'On your calendar' : 'Your household has tickets'), el('div', 'rsvp-lead', word === 'yes' ? 'The invite is in your email.' : 'Want it on your own calendar?'));
+        buttons.append(button(word === 'yes' ? 'Invite sent' : 'Send Invite', word === 'yes' ? 'check' : 'calendar', 'button rsvp-yes' + (word === 'yes' ? ' is-on' : ''), () => say('yes')));
+        note = word === 'yes' ? 'Click again to send it once more.' : 'Send Invite emails you a calendar invite.';
+      } else {
+        words.append(el('div', 'rsvp-title', 'No tickets yet'), el('div', 'rsvp-lead', 'Tickets are on the party page.'));
+        const add = el('a', 'button rsvp-yes' + (e.availability === 'available' ? ' is-on' : ' is-off'));
+        add.href = linkURL(e);
+        add.append(svg('ticket'), el('span', '', e.availability === 'available' ? 'Add Ticket' : call(e) || 'See the party'));
+        buttons.append(add);
+      }
+    } else {
+      words.append(el('div', 'rsvp-title', word === 'yes' ? 'You\u2019re going' : word === 'no' ? 'Not going' : word === 'hidden' ? 'Hidden' : 'Are you going?'), el('div', 'rsvp-lead', word === 'yes' ? 'The invite is in your email.' : word === 'no' ? 'Thanks for letting us know.' : word === 'hidden' ? 'On the month in gray.' : 'Let us know so we can plan!'));
+      buttons.append(
+        button('Yes', 'check', 'button rsvp-yes' + (word === 'yes' ? ' is-on' : ''), () => say(word === 'yes' ? '' : 'yes')),
+        button('No', 'close', 'button rsvp-no' + (word === 'no' ? ' is-on' : ''), () => say(word === 'no' ? '' : 'no')),
+      );
+      note = word === 'yes' || word === 'hidden' ? '' : 'Yes sends you a calendar invite.';
+    }
+    if (note) {
+      words.append(el('div', 'rsvp-note', note));
+    }
+    // Under the buttons: an answer given can be taken back, and the event
+    // hidden from the viewer's lists - or shown again once it is.
+    const side = el('div', 'rsvp-side');
+    side.append(buttons);
+    const links = el('div', 'rsvp-links');
+    const small = (text, next) => {
+      const b = el('button', 'rsvp-clear', text);
+      b.type = 'button';
+      b.addEventListener('click', () => say(next));
+      links.append(b);
+    };
+    if (word === 'yes' || word === 'no') {
+      small('Clear my RSVP', '');
+    }
+    if (word === 'hidden') {
+      small('Show event', '');
+    } else {
+      small('Hide event', 'hidden');
+    }
+    side.append(links);
+    const row = el('div', 'rsvp-band-row');
+    row.append(art, words, side);
+    band.append(row);
+  };
+  paint();
+  return band;
+}
+
+// rsvpsCard is who answered, for an admin: the yeses and the nos as little
+// contact cards - photo or initial, name, address - with counts. Who hid
+// the event is nobody's business but theirs.
+function rsvpsCard(e) {
+  const card = el('div', 'side-card rsvps-card');
+  const r = (state.model.responses || {})[e.id] || {};
+  card.append(el('div', 'side-title', 'RSVPs'));
+  const yes = r.yes || [];
+  const no = r.no || [];
+  if (!yes.length && !no.length) {
+    card.append(el('div', 'side-line', 'Nobody has answered yet.'));
+    return card;
+  }
+  for (const [label, people] of [['Yes', yes], ['No', no]]) {
+    if (!people.length) {
+      continue;
+    }
+    card.append(el('div', 'rsvps-head', `${label} · ${people.length}`));
+    // Each is a face tile as HCA-Team draws its volunteers: the face, a
+    // student's grade badged on its corner in Who?'s colour, the name
+    // under it - opening their page on Who?.
+    const list = el('div', 'rsvps-grid');
+    for (const p of people) {
+      const tile = el('a', 'contact-card');
+      tile.href = appOrigin('who') + '/people/' + encodeURIComponent(p.email);
+      tile.title = [p.name, p.line].filter(Boolean).join(' · ');
+      const face = avatar(p, 'contact-photo');
+      if (p.grade) {
+        const badge = el('span', 'grade-badge', p.grade.replace(/^grade\s*/i, ''));
+        badge.title = p.grade;
+        const color = (state.model.gradeColors || {})[p.grade];
+        if (color) {
+          badge.style.background = `color-mix(in srgb, ${color} 65%, black)`;
+        }
+        face.append(badge);
+      }
+      tile.append(face, el('span', 'contact-name', p.name || p.email));
+      list.append(tile);
+    }
+    card.append(list);
+  }
+  return card;
 }
 
 // keywordsEditor is the search words an admin can change from the page:
@@ -225,7 +351,7 @@ function sourceCard(e) {
     if (host.includes('veracross')) {
       body.append(el('div', 'side-line', 'Veracross asks for your parent portal login.'));
     }
-  } else if (e.link) {
+  } else if (e.link && (e.source === 'celebrate' || e.source === 'team')) {
     body.append(outLink(linkURL(e), isParty(e) ? 'Open on Helios Celebrate' : 'Open on HCA-Team'));
   }
   // The school's listing of an HCA event carries HCA-Team's link too.
@@ -249,7 +375,7 @@ function sourceCard(e) {
     // tool; the school's and the other apps' events are not cloned.
     if (e.source === 'sheet') {
       const clone = link('/admin?clone=' + encodeURIComponent(e.id) + '&weeks=4', 'link-button');
-      clone.append(svg('copy'), el('span', '', 'Clone this event 4 weeks on'));
+      clone.append(svg('copyplus'), el('span', '', 'Clone this event 4 weeks on'));
       admin.append(clone);
     }
     body.append(admin);
@@ -286,8 +412,23 @@ function linkedCard(e) {
   const icon = el('div', 'side-icon');
   icon.append(svg(linkedIcons[kind]));
   const body = el('div', 'side-row-body');
-  const line = e.mine ? `${mineWords(e)} · ${mineStanding[e.mine][kind]}` : standing[e.availability] || '';
-  body.append(el('div', 'side-title', linkedTitles[kind]), el('div', 'side-line', line));
+  body.append(el('div', 'side-title', linkedTitles[kind]));
+  // The household's part, a line per person - a ticket, a waitlist place,
+  // a role - or, before anyone is in, where the tickets or sign-ups stand.
+  if (e.minePeople && e.minePeople.length) {
+    const people = el('ul', 'side-people');
+    for (const p of e.minePeople) {
+      const item = el('li');
+      item.append(svg(kind === 'celebrate' ? 'ticket' : 'people'), el('span', 'side-person', p.name));
+      if (p.note) {
+        item.append(el('span', 'side-person-note', p.note));
+      }
+      people.append(item);
+    }
+    body.append(people);
+  } else {
+    body.append(el('div', 'side-line', e.mine ? `${mineWords(e)} · ${mineStanding[e.mine][kind]}` : standing[e.availability] || ''));
+  }
   const go = el('a', 'button side-button');
   go.href = linkURL(e);
   go.append(svg('open'), el('span', '', e.mine ? seeWords[kind] : call(e) || seeWords[kind]));

@@ -168,6 +168,7 @@ var layouts = map[string][]tab{
 		{calendar.AdminsTab, calendar.AdminColumns},
 		{calendar.FeedsTab, calendar.FeedColumns},
 		{calendar.SettingsTab, calendar.SettingColumns},
+		{calendar.RSVPsTab, calendar.RSVPColumns},
 		{calendar.ChangeLogTab, calendar.ChangeLogColumns},
 	},
 	"Config": {

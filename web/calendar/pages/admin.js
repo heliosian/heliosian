@@ -632,6 +632,16 @@ function addEventForm(from, shift, onDone) {
       endTime.value = from.end.slice(11, 16);
     }
   }
+  // Moving the start moves the end with it, keeping the span - so a copy
+  // dragged to another day stays as long as it was.
+  let lastStart = startDate.value;
+  startDate.addEventListener('change', () => {
+    if (lastStart && startDate.value && endDate.value) {
+      const days = Math.round((parseDate(startDate.value) - parseDate(lastStart)) / 86400000);
+      endDate.value = addDays(endDate.value, days);
+    }
+    lastStart = startDate.value;
+  });
   const whenRow = el('div', 'admin-when');
   whenRow.append(field('Starts', startDate), field('At', startTime, 'Leave blank for all day'), field('Ends', endDate, 'Blank means the same day'), field('Until', endTime));
   eventPanel.append(whenRow);
@@ -907,7 +917,7 @@ function eventsTool() {
       }
       const when = el('div', 'admin-event-when');
       when.append(el('span', 'admin-event-label', 'Starts'), start.node, el('span', 'admin-event-label', 'Ends'), end.node, save);
-      const clone = button('', 'copy', 'icon-button admin-event-clone', () => openAddEvent(e, 4, paint));
+      const clone = button('', 'copyplus', 'icon-button admin-event-clone', () => openAddEvent(e, 4, paint));
       clone.title = 'Add a copy 4 weeks on';
       row.append(words, when, clone);
       list.append(row);

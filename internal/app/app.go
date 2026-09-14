@@ -337,13 +337,21 @@ func (u upcomingEvents) month(email, month string) home.Month {
 	return home.Month{Month: m.Month, Today: m.Today, Days: days, Events: homeEvents(m.Events)}
 }
 
+func homeStandings(list []calendar.Standing) []home.Standing {
+	out := []home.Standing{}
+	for _, s := range list {
+		out = append(out, home.Standing{Name: s.Name, Note: s.Note})
+	}
+	return out
+}
+
 func homeEvents(list []calendar.Upcoming) []home.Event {
 	out := []home.Event{}
 	for _, e := range list {
 		out = append(out, home.Event{
-			Title: e.Title, Path: e.Path, Start: e.Start, When: e.When,
+			ID: e.ID, Title: e.Title, Path: e.Path, Start: e.Start, When: e.When,
 			StartAt: e.StartAt, EndAt: e.EndAt, Location: e.Location, Description: e.Description,
-			Image: e.Image, ImageApp: e.ImageApp, Link: e.Link, LinkApp: e.LinkApp, Call: e.Call, Mine: e.Mine, Availability: e.Availability,
+			Image: e.Image, ImageApp: e.ImageApp, Link: e.Link, LinkApp: e.LinkApp, Call: e.Call, Mine: e.Mine, Availability: e.Availability, Answer: e.Answer, People: homeStandings(e.People),
 		})
 	}
 	return out
@@ -523,6 +531,10 @@ func (d calendarDirectory) Person(email string) (calendar.Person, bool) {
 	return calendarPerson(model, p), true
 }
 
+func (d calendarDirectory) GradeColors() map[string]string {
+	return d.settings.Settings().GradeColors
+}
+
 func (d calendarDirectory) Children(email string) []calendar.Person {
 	model := d.cache.Model()
 	out := []calendar.Person{}
@@ -670,6 +682,9 @@ type Config struct {
 	// same for Helios Celebrate, from its own address.
 	Mail          mail.Sender
 	CelebrateMail mail.Sender
+	// CalendarMail sends the calendar's invites, from CalendarFrom.
+	CalendarMail mail.Sender
+	CalendarFrom string
 	// BirthdayMail sends Staff Birthdays' calendar invites, from BirthdayFrom.
 	BirthdayMail mail.Sender
 	BirthdayFrom string
@@ -795,18 +810,19 @@ func NewCore(cfg Config) *Core {
 	mux.Handle("GET /{$}", http.RedirectHandler("/people", http.StatusFound))
 	// The front page's events come from the calendar, read for the viewer
 	// the way its own page is, so it is wired once the calendar's links are.
-	homeMux := http.NewServeMux()
 	linked := calendarLinked{celebrateCache, eventsCache, celebrateDirectory{cache, settings}}.list
 	frontEvents := upcomingEvents{calendarCache, calendarDirectory{cache, settings}, linked}
-	home.Register(homeMux, homeCache, cfg.Writer, queue, cfg.Store, settings.SuperAdmins, cache.HeroPhoto, directory{cache, settings}.HomePeople, directory{cache, settings}.Alerts, frontEvents.list, frontEvents.month, cfg.ImageSearch)
+	// The calendar goes first: the front page's cards answer through it.
+	calendarMux := http.NewServeMux()
+	answer := calendar.Register(calendarMux, calendarCache, cfg.Writer, queue, cfg.Store, calendarDirectory{cache, settings}, settings.SuperAdmins, linked, cfg.ImageSearch, cfg.CalendarMail, cfg.CalendarFrom)
+	homeMux := http.NewServeMux()
+	home.Register(homeMux, homeCache, cfg.Writer, queue, cfg.Store, settings.SuperAdmins, cache.HeroPhoto, directory{cache, settings}.HomePeople, directory{cache, settings}.Alerts, frontEvents.list, frontEvents.month, cfg.ImageSearch, answer)
 	eventsMux := http.NewServeMux()
 	events.Register(eventsMux, eventsCache, cfg.Writer, queue, cfg.Store, directory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.Mail)
 	birthdayMux := http.NewServeMux()
 	birthday.Register(birthdayMux, birthdayCache, cfg.Writer, queue, birthdayDirectory{cache, settings}, settings.SuperAdmins, cfg.Describer, cfg.BirthdayMail, cfg.BirthdayFrom, cfg.BirthdayBase)
 	celebrateMux := http.NewServeMux()
 	celebrate.Register(celebrateMux, celebrateCache, cfg.Writer, queue, cfg.Store, celebrateDirectory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.CelebrateMail)
-	calendarMux := http.NewServeMux()
-	calendar.Register(calendarMux, calendarCache, cfg.Writer, queue, cfg.Store, calendarDirectory{cache, settings}, settings.SuperAdmins, linked, cfg.ImageSearch)
 	// Every app's toolbar asks its own origin what its switch lists and
 	// which rows to leave off; Heliosian's cache answers for all of them.
 	for _, m := range []*http.ServeMux{mux, eventsMux, birthdayMux, celebrateMux, calendarMux} {
@@ -914,6 +930,13 @@ func birthdayBase() string {
 	return "https://birthday.heliosian.com"
 }
 
+func calendarMailFrom() string {
+	if from := os.Getenv("CALENDAR_MAIL_FROM"); from != "" {
+		return from
+	}
+	return "Helios Calendar <when@heliosian.com>"
+}
+
 func celebrateMailFrom() string {
 	if from := os.Getenv("CELEBRATE_MAIL_FROM"); from != "" {
 		return from
@@ -1014,6 +1037,8 @@ func Production() (*http.Server, *who.Queue) {
 		// SMTP_HOST is; otherwise, in real-data mode, it is dropped and logged.
 		Mail:          newMailer(mailFrom()),
 		CelebrateMail: newMailer(celebrateMailFrom()),
+		CalendarMail:  newMailer(calendarMailFrom()),
+		CalendarFrom:  calendarMailFrom(),
 		BirthdayMail:  newMailer(birthdayMailFrom()),
 		BirthdayFrom:  birthdayMailFrom(),
 		BirthdayBase:  birthdayBase(),

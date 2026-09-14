@@ -87,14 +87,18 @@ export function hoverMenu(button, menu, open, close) {
   }
 }
 
-// Whether a click came from something that hovers: a mouse, or the keyboard
-// (whose synthetic click names no pointer) on a device that has one. A tap
-// on a phone, and a click from an older browser that does not say, do not.
+// Whether a click came from something that hovers. On a phone or a tablet -
+// any device whose primary pointer cannot hover - nothing does, whatever the
+// event claims, since some mobile browsers report a tap as a mouse click;
+// the media query is the reliable tell, and Safari, Chrome and Firefox all
+// answer it. Elsewhere it is the event's pointer: a mouse, or the keyboard
+// (whose synthetic click names no pointer), does; a finger or a pen on a
+// laptop's touchscreen does not.
 export function hoverClick(e) {
-  if (e.pointerType) {
-    return e.pointerType === 'mouse';
+  if (matchMedia('(hover: none)').matches) {
+    return false;
   }
-  return matchMedia('(hover: hover)').matches;
+  return !e.pointerType || e.pointerType === 'mouse';
 }
 
 // Wires the avatar to the account menu under it: the menu opens on hover,

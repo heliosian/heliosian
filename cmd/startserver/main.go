@@ -87,6 +87,8 @@ func sampleServer() (*http.Server, *who.Queue) {
 		// Sample mail lands as .html files to open in a browser, never sent.
 		Mail:          mail.New("", "", "", "", "", "HCA-Team <hca@example.org>", mailDir()),
 		CelebrateMail: mail.New("", "", "", "", "", "Helios Celebrate <celebrate@example.org>", mailDir()),
+		CalendarMail:  mail.New("", "", "", "", "", "Helios Calendar <when@example.org>", mailDir()),
+		CalendarFrom:  "Helios Calendar <when@example.org>",
 		BirthdayMail:  mail.New("", "", "", "", "", "Helios Staff Birthdays <birthday@example.org>", mailDir()),
 		BirthdayFrom:  "Helios Staff Birthdays <birthday@example.org>",
 		BirthdayBase:  "https://birthday.local.heliosian.com:" + app.Port(),

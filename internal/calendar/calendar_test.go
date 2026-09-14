@@ -402,6 +402,8 @@ func (d fakeDirectory) Children(email string) []Person { return d.kids[email] }
 
 func (d fakeDirectory) Alerts(string) (int, bool) { return 2, true }
 
+func (d fakeDirectory) GradeColors() map[string]string { return nil }
+
 func (d fakeDirectory) ClassroomColors() map[string]string {
 	return map[string]string{"Jays": "#fec502", "Ravens": "#fec502"}
 }

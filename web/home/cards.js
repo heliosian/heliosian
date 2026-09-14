@@ -1,5 +1,5 @@
 import {state, isAdmin} from './state.js';
-import {el, svg, categoryIcon} from './dom.js';
+import {el, svg, categoryIcon, toast} from './dom.js';
 import {openLinkEditor, openCategoryEditor} from './edit.js';
 import {appOrigin} from '/toolbar.js';
 
@@ -267,43 +267,6 @@ export function renderCategories(query = '') {
   }
 }
 
-// A Google Calendar "add this" link for an event: an all-day entry for a
-// bare day (or a span of days), a timed one when the sheet gives times - two
-// hours long when it gives no end - pinned to the school's time zone. The
-// community lives in Google Workspace, so this beats an .ics download on
-// every device it has.
-function calendarLink(event) {
-  // "2026-10-15 16:00" -> "20261015T160000", the form Google reads: the T
-  // between day and time is required, not decoration.
-  const stamp = cell => cell.slice(0, 10).replace(/-/g, '') + 'T' + cell.slice(11).replace(':', '') + '00';
-  const timed = event.startAt.length > 10;
-  let dates;
-  if (timed) {
-    let end = event.endAt && event.endAt.length > 10 ? event.endAt : '';
-    if (!end) {
-      const start = new Date(event.startAt.replace(' ', 'T'));
-      start.setHours(start.getHours() + 2);
-      const pad = n => String(n).padStart(2, '0');
-      end = `${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())} ${pad(start.getHours())}:${pad(start.getMinutes())}`;
-    }
-    dates = `${stamp(event.startAt)}/${stamp(end)}`;
-  } else {
-    // All-day entries end on the day after the last day.
-    const last = new Date((event.endAt || event.startAt).slice(0, 10) + 'T00:00:00');
-    last.setDate(last.getDate() + 1);
-    const pad = n => String(n).padStart(2, '0');
-    dates = `${event.startAt.slice(0, 10).replace(/-/g, '')}/${last.getFullYear()}${pad(last.getMonth() + 1)}${pad(last.getDate())}`;
-  }
-  const params = new URLSearchParams({
-    action: 'TEMPLATE', text: event.title, dates, ctz: 'America/Los_Angeles',
-    details: [event.description, whenOrigin('calendar') + event.path].filter(Boolean).join('\n\n'),
-  });
-  if (event.location) {
-    params.set('location', event.location);
-  }
-  return 'https://calendar.google.com/calendar/render?' + params.toString();
-}
-
 // Upcoming Events: Helios When's next few events for this person - the
 // school's, HCA-Team's and Celebrate's as the calendar lists them - each a
 // card that opens its page in When, with Add to Calendar under it and, for an
@@ -316,6 +279,10 @@ export function whenOrigin(app) {
   return appOrigin(app === 'calendar' ? 'when' : app);
 }
 
+// eventCard is one of the events coming up, from Helios Calendar - the
+// school's, HCA-Team's and Celebrate's as the calendar lists them - opening
+// its page on When, with Yes and No under it, a cross to hide it, and for
+// an event another app runs, the way in as When's pill words it.
 function eventCard(event) {
   const card = el('div', 'event-card');
   const open = el('a', 'event-open');
@@ -341,38 +308,143 @@ function eventCard(event) {
   art.append(stamp);
   const body = el('div', 'event-body');
   body.append(el('div', 'event-title', event.title));
-  if (event.when) {
-    // "Saturday, March 6 · 5:30 – 10:00 PM" reads as two lines beside a calendar.
-    const [day, time] = event.when.split(' · ');
+  // The stamp on the picture is the day; under the title, the hours alone.
+  const [, time] = (event.when || '').split(' · ');
+  if (time) {
     const when = el('div', 'event-when');
     const lines = el('div', 'event-when-lines');
-    lines.append(el('span', '', day));
-    if (time) {
-      lines.append(el('span', '', time));
-    }
-    when.append(svg('calendar'), lines);
+    lines.append(el('span', '', time));
+    when.append(svg('clock'), lines);
     body.append(when);
   }
   open.append(art, body);
-  // One row: a calendar-with-plus "Add", and beside it, when the event has a
-  // way in, a button of the same size saying what When's pill says - teal
-  // while it is open or the household is in, plain once it is full.
+  // The cross at the corner hides the event from this person's lists -
+  // still on the calendar's month, in gray, and in its search.
+  const hide = el('button', 'event-hide');
+  hide.type = 'button';
+  hide.title = 'Hide this event';
+  hide.setAttribute('aria-label', 'Hide this event');
+  hide.append(svg('close'));
+  hide.addEventListener('click', async e => {
+    e.preventDefault();
+    if (await answer(event, 'hidden')) {
+      card.remove();
+    }
+  });
+  art.append(hide);
+  // One row: Yes and No, the one given filled - a yes brings a calendar
+  // invite by email - and beside them, when the event has a way in, a
+  // button saying what When's pill says - teal while it is open or the
+  // household is in, plain once it is full.
   const actions = el('div', 'event-actions');
-  const calendar = el('a', 'button button-secondary button-small event-calendar');
-  calendar.href = calendarLink(event);
-  calendar.target = '_blank';
-  calendar.rel = 'noopener';
-  calendar.append(svg('calendarAdd'), el('span', '', 'Add'));
-  actions.append(calendar);
+  const rsvp = el('div', 'event-rsvp');
+  // A party has no yes or no: with a ticket in the household, Send Invite
+  // puts it on this person's calendar; without one, Add Ticket goes to
+  // the party page.
+  if (event.linkApp === 'celebrate') {
+    const held = (event.people || []).some(p => p.note !== 'waitlisted');
+    if (held) {
+      const send = el('button', 'button button-small event-invite' + (event.answer === 'yes' ? ' button-secondary' : ''));
+      send.type = 'button';
+      const label = () => {
+        send.replaceChildren(svg(event.answer === 'yes' ? 'check' : 'calendarAdd'), el('span', '', event.answer === 'yes' ? 'Invite sent' : 'Send Invite'));
+        send.classList.toggle('button-secondary', event.answer === 'yes');
+        send.title = event.answer === 'yes' ? 'Sent to your email - click to send it again' : 'Email me a calendar invite';
+      };
+      label();
+      send.addEventListener('click', async () => {
+        if (await answer(event, 'yes')) {
+          event.answer = 'yes';
+          label();
+          toast('A calendar invite is on its way to your email');
+        }
+      });
+      rsvp.append(send);
+    } else {
+      const live = event.availability === 'available';
+      const add = el('a', 'button button-small' + (live ? '' : ' button-secondary'));
+      add.href = whenOrigin(event.linkApp) + event.link;
+      add.append(svg('ticket'), el('span', '', live ? 'Add Ticket' : event.call || 'See the party'));
+      rsvp.append(add);
+    }
+    actions.append(rsvp);
+    if (event.people && event.people.length) {
+      card.append(open, peopleList(event), actions);
+    } else {
+      card.append(open, actions);
+    }
+    return card;
+  }
+  const yes = el('button', 'button button-small event-yes' + (event.answer === 'yes' ? '' : ' button-secondary'));
+  yes.type = 'button';
+  yes.append(svg('check'), el('span', '', 'Yes'));
+  const no = el('button', 'button button-small event-no' + (event.answer === 'no' ? '' : ' button-secondary'));
+  no.type = 'button';
+  no.append(svg('close'), el('span', '', 'No'));
+  const mark = () => {
+    yes.classList.toggle('button-secondary', event.answer !== 'yes');
+    no.classList.toggle('button-secondary', event.answer !== 'no');
+    yes.title = event.answer === 'yes' ? 'You said yes - the invite is in your email' : 'Yes, and send me a calendar invite';
+  };
+  mark();
+  yes.addEventListener('click', async () => {
+    const next = event.answer === 'yes' ? '' : 'yes';
+    if (await answer(event, next)) {
+      event.answer = next;
+      mark();
+    }
+  });
+  no.addEventListener('click', async () => {
+    const next = event.answer === 'no' ? '' : 'no';
+    if (await answer(event, next)) {
+      event.answer = next;
+      mark();
+    }
+  });
+  rsvp.append(yes, no);
+  actions.append(rsvp);
+  // The household's part in a linked event is a small list above the
+  // buttons - each ticket holder, each volunteer with their role - rather
+  // than a button; the way in stays a button only while nobody is in yet.
+  if (event.people && event.people.length) {
+    card.append(open, peopleList(event), actions);
+    return card;
+  }
   if (event.call) {
-    const live = event.mine || event.availability === 'open' || event.availability === 'available';
+    const live = event.availability === 'open' || event.availability === 'available';
     const go = el('a', 'button button-small' + (live ? '' : ' button-secondary'));
     go.href = whenOrigin(event.linkApp) + event.link;
-    go.append(svg(event.mine ? 'check' : event.linkApp === 'celebrate' ? 'ticket' : 'volunteer'), el('span', '', event.call));
+    go.append(svg(event.linkApp === 'celebrate' ? 'ticket' : 'volunteer'), el('span', '', event.call));
     actions.append(go);
   }
   card.append(open, actions);
   return card;
+}
+
+// peopleList is the household's part in a linked event: a line per ticket
+// holder, or per volunteer with their role.
+function peopleList(event) {
+  const people = el('ul', 'event-people');
+  for (const p of event.people) {
+    const row = el('li');
+    row.append(svg(event.linkApp === 'celebrate' ? 'ticket' : 'volunteer'), el('span', 'event-person', p.name));
+    if (p.note) {
+      row.append(el('span', 'event-person-note', p.note));
+    }
+    people.append(row);
+  }
+  return people;
+}
+
+// answer tells the calendar this person's word on an event - yes, no,
+// hidden, or nothing - and says whether it took.
+async function answer(event, word) {
+  const res = await fetch('/api/apps/rsvp', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id: event.id, answer: word})});
+  if (!res.ok) {
+    toast(await res.text());
+    return false;
+  }
+  return true;
 }
 
 // The events section's body: the portal's next few, or a word when nothing is

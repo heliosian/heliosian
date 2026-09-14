@@ -30,7 +30,14 @@ func (sampleHousehold) Household(email string) (adults, kids []celebrate.Person)
 	if email != "jordan.whitfield@heliosschool.org" {
 		return nil, nil
 	}
-	return []celebrate.Person{{Email: "robin.whitfield@heliosschool.org"}}, []celebrate.Person{{Email: "sam.whitfield@heliosschool.org"}, {Email: "ella.whitfield@heliosschool.org"}}
+	return []celebrate.Person{{Email: "robin.whitfield@heliosschool.org", Name: "Robin Whitfield"}}, []celebrate.Person{{Email: "sam.whitfield@heliosschool.org", Name: "Sam Whitfield"}, {Email: "ella.whitfield@heliosschool.org", Name: "Ella Whitfield"}}
+}
+
+func (sampleHousehold) Person(email string) (celebrate.Person, bool) {
+	if email == "jordan.whitfield@heliosschool.org" {
+		return celebrate.Person{Email: email, Name: "Jordan Whitfield"}, true
+	}
+	return celebrate.Person{}, false
 }
 
 func samplesLinked(t *testing.T) calendarLinked {

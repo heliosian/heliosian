@@ -10,6 +10,8 @@ import (
 // card, add it to a calendar, and send the reader across - to the event's
 // page here, and for an event another app runs, to that app.
 type Upcoming struct {
+	// ID is the event's, for an answer to name it.
+	ID    string `json:"id"`
 	Title string `json:"title"`
 	// Path is the event's page on the calendar, relative to its origin.
 	Path string `json:"path"`
@@ -38,6 +40,10 @@ type Upcoming struct {
 	Call         string `json:"call,omitempty"`
 	Mine         string `json:"mine,omitempty"`
 	Availability string `json:"availability,omitempty"`
+	// Answer is the viewer's word on it: yes, no, or nothing yet.
+	Answer string `json:"answer,omitempty"`
+	// People is everyone in the household with a part in a linked event.
+	People []Standing `json:"people,omitempty"`
 }
 
 // The app keys the front page reaches origins by, as the toolbar names them.
@@ -164,13 +170,13 @@ func (m *Model) viewOf(directory Directory, email string) (classrooms, tags []st
 // card is one event as the front page takes it.
 func (m *Model) card(e *Event) Upcoming {
 	u := Upcoming{
-		Title: e.Title, Path: eventPath(e), Start: e.start.Format(DateFormat), When: when(e),
+		ID: e.ID, Title: e.Title, Path: eventPath(e), Start: e.start.Format(DateFormat), When: when(e),
 		StartAt: e.Start, EndAt: e.End, Location: e.Location, Description: blurb(e),
 		Image: "/" + m.pictureOf(e), ImageApp: appCalendar,
 	}
 	if e.Link != "" {
 		u.Link, u.LinkApp = e.Link, linkedApp(e)
-		u.Mine, u.Availability = e.Mine, e.Availability
+		u.Mine, u.Availability, u.People = e.Mine, e.Availability, e.MinePeople
 		if u.Call = mineWords(e); u.Call == "" {
 			u.Call = callWords[e.Availability]
 		}
@@ -188,14 +194,17 @@ func (m *Model) Upcoming(directory Directory, email string, linked []Linked, now
 	classrooms, tags := m.viewOf(directory, email)
 	today := now.Format(DateFormat)
 	out := []Upcoming{}
-	for _, e := range withLinked(m.Events, linked) {
-		if e.end.Format(DateFormat) < today || !admits(m, e, classrooms, tags) {
+	for _, e := range m.eventsFor(email, linked) {
+		answer := m.AnswerOf(email, e.ID)
+		if e.end.Format(DateFormat) < today || answer == AnswerHidden || !admits(m, e, classrooms, tags) {
 			continue
 		}
 		if limit > 0 && len(out) == limit {
 			break
 		}
-		out = append(out, m.card(e))
+		u := m.card(e)
+		u.Answer = answer
+		out = append(out, u)
 	}
 	return out
 }

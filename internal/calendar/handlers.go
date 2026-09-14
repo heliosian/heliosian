@@ -18,6 +18,7 @@ import (
 	"heliosian/internal/blob"
 	"heliosian/internal/data"
 	"heliosian/internal/imagesearch"
+	"heliosian/internal/mail"
 	"heliosian/internal/serve"
 )
 
@@ -34,6 +35,9 @@ type app struct {
 	superAdmins func() []string
 	linked      func(email string) []Linked
 	search      ImageSearch
+	// mailer sends the invites a yes brings, from mailFrom; nil sends none.
+	mailer   mail.Sender
+	mailFrom string
 }
 
 // ImageSearch is the picture search the other apps' editors share.
@@ -46,17 +50,18 @@ const (
 	maxImageSize = 8 << 20
 )
 
-func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, directory Directory, superAdmins func() []string, linked func(email string) []Linked, search ImageSearch) {
+func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, directory Directory, superAdmins func() []string, linked func(email string) []Linked, search ImageSearch, mailer mail.Sender, mailFrom string) Answerer {
 	if search.UserAgent == "" {
 		search.UserAgent = "Helios Calendar image search (+https://when.heliosian.com)"
 	}
-	a := app{cache: cache, writer: writer, queue: queue, store: store, directory: directory, superAdmins: superAdmins, linked: linked, search: search}
+	a := app{cache: cache, writer: writer, queue: queue, store: store, directory: directory, superAdmins: superAdmins, linked: linked, search: search, mailer: mailer, mailFrom: mailFrom}
 	for _, page := range pages {
 		mux.HandleFunc("GET "+page, a.page)
 	}
 	mux.HandleFunc("GET /api/calendar/model", a.model)
 	mux.HandleFunc("POST /api/calendar/feeds", a.addFeed)
 	mux.HandleFunc("DELETE /api/calendar/feeds", a.removeFeed)
+	mux.HandleFunc("POST /api/calendar/rsvp", a.rsvp)
 	mux.HandleFunc("POST /api/calendar/settings", a.saveSetting)
 	mux.HandleFunc("POST /api/calendar/keywords", a.admin(a.setKeywords))
 	mux.HandleFunc("POST /api/calendar/events", a.admin(a.addEvents))
@@ -70,6 +75,7 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	// Public, past sign-in (auth.Public): the cards a chat app fetches.
 	mux.HandleFunc("GET /share/upcoming.png", a.shareUpcoming)
 	mux.HandleFunc("GET /share/{id...}", a.shareCard)
+	return a.answer
 }
 
 func (a app) page(w http.ResponseWriter, r *http.Request) {

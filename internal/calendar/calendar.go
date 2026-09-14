@@ -29,6 +29,7 @@ const (
 	AdminsTab       = "Admins"
 	FeedsTab        = "Feeds"
 	SettingsTab     = "Settings"
+	RSVPsTab        = "RSVPs"
 	ChangeLogTab    = "Change Log"
 )
 
@@ -51,10 +52,15 @@ const (
 	TagWaitlisted   = "Waitlisted"
 	MineGoing       = "going"
 	MineWaitlisted  = "waitlisted"
-	MarkerFirstDay  = "First Day"
-	MarkerLastDay   = "Last Day"
-	maxTitleLength  = 200
-	maxTextLength   = 6000
+	// A person's answer to an event: going, not going, or hidden from
+	// their lists - still on the month, in gray, and in the search.
+	AnswerYes      = "yes"
+	AnswerNo       = "no"
+	AnswerHidden   = "hidden"
+	MarkerFirstDay = "First Day"
+	MarkerLastDay  = "Last Day"
+	maxTitleLength = 200
+	maxTextLength  = 6000
 )
 
 var (
@@ -69,6 +75,7 @@ var (
 	AdminColumns       = []string{"Email"}
 	FeedColumns        = []string{"Token", "Email", "Name", "Classrooms", "Tags", "Created"}
 	SettingColumns     = []string{"Email", "Classrooms", "Categories", "Saved"}
+	RSVPColumns        = []string{"Email", "Event ID", "Answer", "Answered"}
 	ChangeLogColumns   = []string{"Timestamp", "Actor", "Action", "Tab", "Key", "Column", "From", "To"}
 )
 
@@ -155,9 +162,12 @@ type Event struct {
 	// MineWho names the household members the standing belongs to, when
 	// the viewer is not among them - "Sam is going" rather than "You're
 	// going".
-	MineWho    []string `json:"mineWho,omitempty"`
-	Image      string   `json:"image,omitempty"`
-	Hidden     bool     `json:"-"`
+	MineWho []string `json:"mineWho,omitempty"`
+	// MinePeople is everyone in the household with a part in a linked
+	// event - a ticket, a waitlist place, a role - for the lists to name.
+	MinePeople []Standing `json:"minePeople,omitempty"`
+	Image      string     `json:"image,omitempty"`
+	Hidden     bool       `json:"-"`
 	duplicate  bool
 	start, end time.Time
 }
@@ -327,11 +337,14 @@ type Model struct {
 	// categories the calendar opens to for them, and what Heliosian's
 	// Upcoming Events are read under.
 	Settings map[string]Setting
-	Days     map[string]map[string]string
-	Years    []Year
-	Roster   Roster
-	Feeds    []Feed
-	Hidden   int
+	// Answers is each person's word on each event, by address then event
+	// id: yes, no, or hidden.
+	Answers map[string]map[string]string
+	Days    map[string]map[string]string
+	Years   []Year
+	Roster  Roster
+	Feeds   []Feed
+	Hidden  int
 	// Duplicates counts the events folded into another that says the same
 	// thing: the same days, day type, and tags from a second source.
 	Duplicates int
@@ -393,6 +406,7 @@ type Tables struct {
 	Admins       []map[string]string
 	Feeds        []map[string]string
 	Settings     []map[string]string
+	RSVPs        []map[string]string
 }
 
 func ReadTables(source data.Source) (*Tables, error) {
@@ -413,8 +427,9 @@ func ReadTables(source data.Source) (*Tables, error) {
 	admins := &table{name: AdminsTab, want: AdminColumns}
 	feeds := &table{name: FeedsTab, want: FeedColumns}
 	settings := &table{name: SettingsTab, want: SettingColumns}
+	rsvps := &table{name: RSVPsTab, want: RSVPColumns}
 	changeLog := &table{name: ChangeLogTab, want: ChangeLogColumns}
-	read := []*table{google, pdf, events, enrichment, overrides, dayTypes, dayOverrides, tags, admins, feeds, settings}
+	read := []*table{google, pdf, events, enrichment, overrides, dayTypes, dayOverrides, tags, admins, feeds, settings, rsvps}
 	names := []string{}
 	for _, t := range read {
 		names = append(names, t.name)
@@ -431,7 +446,7 @@ func ReadTables(source data.Source) (*Tables, error) {
 	}
 	return &Tables{
 		Google: google.rows, PDF: pdf.rows, Events: events.rows, Enrichment: enrichment.rows,
-		Overrides: overrides.rows, DayTypes: dayTypes.rows, DayOverrides: dayOverrides.rows, Tags: tags.rows, Admins: admins.rows, Feeds: feeds.rows, Settings: settings.rows,
+		Overrides: overrides.rows, DayTypes: dayTypes.rows, DayOverrides: dayOverrides.rows, Tags: tags.rows, Admins: admins.rows, Feeds: feeds.rows, Settings: settings.rows, RSVPs: rsvps.rows,
 	}, nil
 }
 
@@ -502,6 +517,22 @@ func (t *Tables) WithEventWhen(id, start, end string) *Tables {
 		if row["Event ID"] == id {
 			row["Start"], row["End"] = start, end
 		}
+	}
+	return &out
+}
+
+// WithAnswer is the tables with one person's answer to one event set - the
+// row for the pair replaced or added - or, for a blank answer, dropped.
+func (t *Tables) WithAnswer(email, id, answer string, cells map[string]string) *Tables {
+	out := *t
+	out.RSVPs = []map[string]string{}
+	for _, row := range t.RSVPs {
+		if normalizeEmail(row["Email"]) != email || row["Event ID"] != id {
+			out.RSVPs = append(out.RSVPs, maps.Clone(row))
+		}
+	}
+	if answer != "" {
+		out.RSVPs = append(out.RSVPs, maps.Clone(cells))
 	}
 	return &out
 }
@@ -978,6 +1009,26 @@ func (b *builder) settings(rows []map[string]string) {
 	}
 }
 
+// answers reads each person's word on each event; an answer the app does
+// not know is dropped, and the last row for a pair wins.
+func (b *builder) answers(rows []map[string]string) {
+	for _, row := range rows {
+		email, id, answer := normalizeEmail(row["Email"]), strings.TrimSpace(row["Event ID"]), strings.ToLower(strings.TrimSpace(row["Answer"]))
+		if email == "" || id == "" || (answer != AnswerYes && answer != AnswerNo && answer != AnswerHidden) {
+			continue
+		}
+		if b.model.Answers[email] == nil {
+			b.model.Answers[email] = map[string]string{}
+		}
+		b.model.Answers[email][id] = answer
+	}
+}
+
+// AnswerOf is one person's word on one event, or nothing.
+func (m *Model) AnswerOf(email, id string) string {
+	return m.Answers[normalizeEmail(email)][id]
+}
+
 func (b *builder) feeds(rows []map[string]string) error {
 	for _, row := range rows {
 		f := Feed{
@@ -1234,7 +1285,7 @@ func BuildModel(tables *Tables, roster Roster) (*Model, error) {
 	}
 	m := &Model{
 		Events: []*Event{}, DayTypes: dayTypes, Tags: tags, Days: map[string]map[string]string{}, Years: []Year{}, Provenance: map[string]*Provenance{},
-		Roster: roster, Feeds: []Feed{}, Settings: map[string]Setting{}, Skipped: map[string]int{}, byID: map[string]*Event{}, byToken: map[string]*Feed{}, tags: map[string]bool{},
+		Roster: roster, Feeds: []Feed{}, Settings: map[string]Setting{}, Answers: map[string]map[string]string{}, Skipped: map[string]int{}, byID: map[string]*Event{}, byToken: map[string]*Feed{}, tags: map[string]bool{},
 	}
 	for _, t := range tags {
 		m.tags[t.Name] = true
@@ -1311,6 +1362,7 @@ func BuildModel(tables *Tables, roster Roster) (*Model, error) {
 		return nil, err
 	}
 	b.settings(tables.Settings)
+	b.answers(tables.RSVPs)
 	if err := b.feeds(tables.Feeds); err != nil {
 		return nil, err
 	}

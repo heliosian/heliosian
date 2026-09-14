@@ -534,8 +534,33 @@ main {
 
 .event-actions svg { width: 17px; height: 17px; flex-shrink: 0; }
 
-/* The plus is the point of the icon: heavier than the calendar around it. */
-.event-calendar svg { width: 18px; height: 18px; stroke-width: 2.4; }
+/* Yes and No share one slot, the one given filled. */
+.event-rsvp { flex: 1 1 0; min-width: 0; display: flex; gap: 6px; }
+
+.event-rsvp .button { flex: 1 1 0; }
+
+/* The household's part in the event, under the buttons: a line per
+   person with a ticket or a role. */
+.event-people { list-style: none; margin: 0; padding: 0 14px 12px; display: flex; flex-direction: column; gap: 4px; }
+
+.event-people li { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--brand); }
+
+.event-people svg { width: 15px; height: 15px; flex-shrink: 0; }
+
+.event-person { font-weight: 600; }
+
+.event-person-note { color: var(--muted); }
+
+.event-person-note::before { content: "· "; }
+
+/* The cross at the picture's corner that hides the event. */
+.event-art { position: relative; }
+
+.event-hide { position: absolute; top: 8px; right: 8px; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 50%; background: rgba(255, 255, 255, 0.9); color: var(--muted); cursor: pointer; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2); }
+
+.event-hide:hover { color: var(--brand); background: #fff; }
+
+.event-hide svg { width: 14px; height: 14px; }
 
 .event-art {
   position: relative;

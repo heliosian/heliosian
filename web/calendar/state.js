@@ -590,6 +590,39 @@ export function linkURL(e) {
   return appOrigin(linkedApp(e)) + e.link;
 }
 
+// answerOf is the viewer's word on an event: yes, no, hidden, or nothing.
+export function answerOf(e) {
+  return (me().answers || {})[e.id] || '';
+}
+
+export function isHidden(e) {
+  return answerOf(e) === 'hidden';
+}
+
+// answer tells the calendar the viewer's word on an event and keeps it in
+// the model at once, so the page redraws without a reload: a yes puts the
+// event under Going, as the server files it, and taking the yes back lifts
+// it unless a ticket keeps it there.
+export async function answer(e, word) {
+  const res = await fetch('/api/calendar/rsvp', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id: e.id, answer: word})});
+  if (!res.ok) {
+    throw new Error(await res.text());
+  }
+  const answers = {...(me().answers || {})};
+  if (word) {
+    answers[e.id] = word;
+  } else {
+    delete answers[e.id];
+  }
+  me().answers = answers;
+  const going = word === 'yes' || e.mine === 'going';
+  if (going && !e.tags.includes('Going')) {
+    e.tags = [...e.tags, 'Going'];
+  } else if (!going) {
+    e.tags = e.tags.filter(t => t !== 'Going');
+  }
+}
+
 // eventImage is the picture across the top of an event's page: the event's
 // own, where the app that runs it has one (fetched from that app, on this
 // page's own tier); else the image of the first of its tags that has one,
