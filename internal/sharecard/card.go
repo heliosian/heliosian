@@ -372,7 +372,7 @@ func (s *Style) Draw(c Card) ([]byte, error) {
 
 	// The button: a pill in the brand colour with a check and the word in
 	// white, under the lines, drawn only where it clears the bottom.
-	if c.Button != "" && y+72 <= Height-24 {
+	if c.Button != "" && y+66 <= Height-14 {
 		label, err := face(bold, 26)
 		if err != nil {
 			return nil, err

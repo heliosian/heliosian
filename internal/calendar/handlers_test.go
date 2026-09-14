@@ -154,7 +154,7 @@ func TestSharePreview(t *testing.T) {
 	req = httptest.NewRequest("GET", "https://when.local.heliosian.com:8080/feeds", nil)
 	req.Host = "when.local.heliosian.com:8080"
 	tags = head(req)
-	if !strings.Contains(tags, `og:title" content="Helios Calendar"`) || !strings.Contains(tags, "/share/upcoming.png") {
+	if !strings.Contains(tags, `og:title" content="Helios When"`) || !strings.Contains(tags, "One calendar") || !strings.Contains(tags, "/share/upcoming.png") {
 		t.Errorf("site tags:\n%s", tags)
 	}
 	for _, path := range []string{"/share/a7@sample.png", "/share/upcoming.png"} {

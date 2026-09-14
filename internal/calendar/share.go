@@ -43,9 +43,6 @@ func ShareTagline(now func() string) {
 // categories have one.
 const defaultHeader = "brand/default-header.jpg"
 
-// upcomingCount is how many events the calendar's own card names.
-const upcomingCount = 4
-
 // whenLines is the card's day and time lines: "Thursday, September 24"
 // and "4:00 – 6:00 PM"; for days that run across, the days.
 func whenLines(e *Event) (string, string) {
@@ -114,18 +111,6 @@ func (a app) event(id string) *Event {
 	return nil
 }
 
-// upcoming is every event from today on, soonest first.
-func (a app) upcoming() []*Event {
-	today := now().Format(DateFormat)
-	out := []*Event{}
-	for _, e := range a.events() {
-		if e.end.Format(DateFormat) >= today {
-			out = append(out, e)
-		}
-	}
-	return out
-}
-
 // PreviewHead is the Open Graph markup for a request's path: the event
 // there when the path names one, else the calendar's own preview of what
 // is coming. Wired into the sign-in page, which is what an unauthenticated
@@ -160,16 +145,7 @@ func (a app) eventHead(e *Event, origin string) string {
 // upcomingHead is the calendar's own preview: the next few events, in words,
 // with the card that draws them.
 func (a app) upcomingHead(origin string) string {
-	events := a.upcoming()
-	desc := "The school year, day by day: every event, day type and dismissal for the Helios community."
-	if len(events) > 0 {
-		names := []string{}
-		for _, e := range events[:min(len(events), upcomingCount)] {
-			names = append(names, e.Title+" ("+e.start.Format("Jan 2")+")")
-		}
-		desc = "Coming up: " + strings.Join(names, ", ") + "."
-	}
-	return previewTags("Helios Calendar", desc, origin+"/", origin+"/share/upcoming.png")
+	return previewTags("Helios When", whenWords, origin+"/", origin+"/share/upcoming.png")
 }
 
 // previewTags is the markup itself: the Open Graph and Twitter tags for a
@@ -207,24 +183,8 @@ func previewTags(title, desc, url, image string) string {
 // of the few after it. It changes as days pass, so its ETag hashes what it
 // names.
 func (a app) shareUpcoming(w http.ResponseWriter, r *http.Request) {
-	events := a.upcoming()
-	card := sharecard.Card{
-		Title:   "The school year, day by day",
-		Listing: &sharecard.Listing{Heading: "Coming up", Empty: "Nothing on the calendar just now."},
-	}
-	parts := []string{cardStyle.TaglineText()}
-	if len(events) > 0 {
-		next := events[0]
-		day, hours := whenLines(next)
-		card.Kicker, card.Title = "Next up", next.Title
-		card.Lines = []sharecard.Line{{Icon: "calendar", Text: day}, {Icon: "clock", Text: hours}, {Icon: "pin", Text: next.Location}}
-		parts = append(parts, next.Title, day, hours, next.Location)
-		for _, e := range events[1:min(len(events), 1+upcomingCount)] {
-			card.Listing.Items = append(card.Listing.Items, sharecard.Item{Title: e.Title, Note: e.start.Format("Monday, January 2")})
-			parts = append(parts, e.Title, e.Start)
-		}
-	}
-	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
+	card := whenCard(a.readImage(defaultHeader))
+	sum := sha256.Sum256([]byte(strings.Join([]string{cardStyle.TaglineText(), card.Kicker, card.Title, card.Button}, "\x00")))
 	etag := `"` + hex.EncodeToString(sum[:8]) + `"`
 	if r.Header.Get("If-None-Match") == etag {
 		w.WriteHeader(http.StatusNotModified)
@@ -239,6 +199,26 @@ func (a app) shareUpcoming(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("ETag", etag)
 	w.Header().Set("Cache-Control", "public, max-age=3600")
 	w.Write(png)
+}
+
+// whenWords is what Helios When is, for a link to it - the page rather
+// than an event - in a chat app's preview.
+const whenWords = "One calendar for everything at Helios: every school day, early dismissal and break for your classrooms, every event from the school, the HCA and Helios Celebrate, and calendars you save and subscribe to in your own app."
+
+// whenCard is the card for a link to Helios When itself: what it is, in
+// three lines, over the calendar's own picture.
+func whenCard(picture []byte) sharecard.Card {
+	return sharecard.Card{
+		Kicker: "One calendar for everything at Helios",
+		Title:  "The school year, day by day",
+		Lines: []sharecard.Line{
+			{Icon: "calendar", Text: "School days, dismissals and breaks"},
+			{Icon: "clock", Text: "Events, parties and HCA sign-ups"},
+			{Icon: "pin", Text: "Calendars you save and subscribe to"},
+		},
+		Button:  "Open Helios When",
+		Picture: picture,
+	}
 }
 
 // shareButton is the word on the card's button, what the event's page

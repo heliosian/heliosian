@@ -521,15 +521,14 @@ function monthGrid() {
     });
     fwd.setAttribute('aria-label', 'Next month');
     pager.append(back, fwd, el('h2', 'pager-label', monthLabel(month)));
-    // Save Calendar offers while the filters are not a saved calendar's;
-    // once they are one's, Get Feed offers that calendar's address.
+    // Get Feed offers a saved calendar's address while the filters are
+    // its own; Save Calendar, while they have moved, sits beside the
+    // headline's word on that.
     const shown = (state.model.feeds || []).find(showsFeed);
     if (shown) {
       const feed = button('Get Feed', 'feed', 'button button-secondary button-small pager-feed', () => getFeed(shown));
       feed.title = 'The address for your own calendar app';
       pager.append(feed);
-    } else {
-      pager.append(saveButton());
     }
     pager.append(button('Today', null, 'button button-secondary button-small pager-today', goToday));
     wrap.append(pager);
@@ -599,8 +598,8 @@ export function homePage(date) {
     }
     if (!showsFeed(shown)) {
       const changed = el('span', 'calendar-changed', 'Filters changed \u00b7 not saved');
-      changed.title = 'Save Calendar saves these filters onto ' + shown.name;
-      headline.append(changed);
+      changed.title = shown.locked ? 'My Heliosian keeps its own filters; save these under a new name' : 'Save Calendar saves these filters onto ' + shown.name;
+      headline.append(changed, saveButton());
     }
     // The default calendar says so at the row's far end; any other offers
     // to become it, faintly.
