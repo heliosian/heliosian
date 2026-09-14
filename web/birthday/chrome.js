@@ -20,11 +20,21 @@ function primary() {
   return state.model && state.model.staff.some(isUnassigned) ? [unassignedItem, ...primaryItems] : primaryItems;
 }
 
-const more = [
-  {href: '/charities', icon: 'gift', label: 'Charities'},
+const moreItems = [
   {href: '/newsletters', icon: 'newsletter', label: 'Newsletters'},
+];
+
+// Charities and Skipped - the charity list, and who is missing a birthday
+// or opted out - are the admins' tabs; a charity's page still opens for
+// anyone from a donation.
+const adminItems = [
+  {href: '/charities', icon: 'gift', label: 'Charities'},
   {href: '/skipped', icon: 'skipped', label: 'Skipped'},
 ];
+
+function more() {
+  return isSystemAdmin() ? [...moreItems, ...adminItems] : moreItems;
+}
 
 function active(href) {
   const path = location.pathname;
@@ -52,7 +62,7 @@ function closeMenus() {
 }
 
 function fillNav(nav) {
-  for (const item of [...primary(), ...more]) {
+  for (const item of [...primary(), ...more()]) {
     nav.append(navLink(item));
   }
 }

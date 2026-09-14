@@ -57,7 +57,7 @@ One shell, `web/birthday/index.html`, routes every page on the client. It is the
 - **Calendar** (`/calendar`) — a month grid of birthdays colored by stage, with newsletter days marked.
 - **Charities** (`/charities`, `/charities/{name}`) — allowed and prohibited lists, and a page per charity showing who chose it.
 - **Newsletters** (`/newsletters`) — the year's issues with who lands in each and a copy of the issue's donations for the communications team; admins add the next week or any date.
-- **Skipped** (`/skipped`) — staff the directory lists with no birthday on file, grouped by department, and staff who asked to be left out.
+- **Skipped** (`/skipped`) — staff the directory lists with no birthday on file, grouped by department, and staff who asked to be left out. Admins see it; the tab is not offered to anyone else.
 - **Admin Tools** (`/admin`) — the settings and the admin list, in the admin chrome every app shares (`web/common/admin.css`), reached from the account menu. It answers to being on the admin list; the pages' admin controls (removing a charity, adding a newsletter date) also want Super Admin Mode on, the switch in the account menu that every app carries, remembered per browser as `birthday.superEdit`.
 
 On phones the shared toolbar is pinned on top with a hamburger for the drawer, a teal strip under it carries the page title, and a bottom tab bar holds My Jobs, Process, and Calendar, matching the app this replaces.
