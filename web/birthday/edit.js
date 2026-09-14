@@ -62,10 +62,16 @@ export function initModal() {
     if (!modalState) {
       return;
     }
-    setStatus('Saving…');
+    // The state is taken now: a step that opens the next one replaces it
+    // while its submit runs.
+    const current = modalState;
+    setStatus(current.working || 'Saving…');
     try {
-      const saved = await modalState.submit();
-      const afterSave = modalState.afterSave;
+      const saved = await current.submit();
+      if (current.stay) {
+        return;
+      }
+      const afterSave = current.afterSave;
       closeModal();
       await reload();
       if (afterSave) {
@@ -143,9 +149,14 @@ function checkbox(label, checked) {
   return {wrap, input};
 }
 
+// openModal shows one form. options.submit saves it (closing and reloading
+// after, unless options.stay, for a step that opens the next one itself, with
+// options.working as the status meanwhile); options.alternate is a second
+// way on, beside the save button; options.replace takes an open modal's
+// place rather than stacking on it, so closing goes where it would have.
 function openModal(title, fields, options) {
   const f = form();
-  if (modalState) {
+  if (modalState && !options.replace) {
     stack.push({nodes: [...f.children], state: modalState});
   }
   f.replaceChildren();
@@ -166,7 +177,14 @@ function openModal(title, fields, options) {
   const cancel = el('button', 'button button-secondary', 'Cancel');
   cancel.type = 'button';
   cancel.addEventListener('click', closeModal);
-  actions.append(save, cancel);
+  actions.append(save);
+  if (options.alternate) {
+    const alt = el('button', 'button button-secondary', options.alternate.label);
+    alt.type = 'button';
+    alt.addEventListener('click', options.alternate.onClick);
+    actions.append(alt);
+  }
+  actions.append(cancel);
   if (options.onDelete) {
     const del = el('button', 'danger-button', options.deleteLabel || 'Delete');
     del.type = 'button';
@@ -190,7 +208,7 @@ function openModal(title, fields, options) {
   }
   actions.append(el('span', 'save-status'));
   f.append(actions);
-  modalState = {submit: options.submit, afterSave: options.afterSave};
+  modalState = {submit: options.submit, afterSave: options.afterSave, stay: options.stay, working: options.working};
   overlay().hidden = false;
   const first = f.querySelector('input:not([type=hidden]), textarea, select');
   if (first) {
@@ -260,9 +278,38 @@ export function openDonation(sv) {
   addLink.type = 'button';
   // The charity form opens over this one; saving it brings this one back with
   // the new charity picked.
-  addLink.addEventListener('click', () => openCharity(null, {afterSave: name => fillSelect(pick, charityOptions(name), name)}));
+  addLink.addEventListener('click', () => openCharity(null, {afterSave: name => {
+    fillSelect(pick, charityOptions(name), name);
+    showBlurb();
+  }}));
   add.append(addLink);
-  openModal(existing ? `Edit ${sv.name}'s donation` : `Record ${sv.name}'s donation`, [field('Charity', pick), add, field('Their note', note, 'Why they chose it, in their words, for the newsletter')], {
+  // The charity's own sentence, above the note, so the person can see what
+  // the newsletter already says and write the staff member's reason to it.
+  const blurb = el('div', 'charity-blurb');
+  const showBlurb = () => {
+    const c = charity(pick.value);
+    blurb.replaceChildren();
+    blurb.hidden = !c || !c.about;
+    if (blurb.hidden) {
+      return;
+    }
+    const full = c.about.trim();
+    const short = full.length > 120 ? full.slice(0, 120).replace(/\s+\S*$/, '') + '…' : full;
+    const textNode = el('span', '', short);
+    blurb.append(textNode);
+    if (short !== full) {
+      const more = el('button', 'link-button small', 'read more');
+      more.type = 'button';
+      more.addEventListener('click', () => {
+        textNode.textContent = full;
+        more.remove();
+      });
+      blurb.append(' ', more);
+    }
+  };
+  pick.addEventListener('change', showBlurb);
+  showBlurb();
+  openModal(existing ? `Edit ${sv.name}'s donation` : `Record ${sv.name}'s donation`, [field('Charity', pick), add, blurb, field('Their note', note, 'Why they chose it, in their words, for the newsletter')], {
     submit: () => send('POST', '/api/birthday/donation', {email: sv.email, charity: pick.value, note: note.value}),
     onDelete: existing ? () => send('DELETE', '/api/birthday/donation', {email: sv.email}) : null,
     deleteLabel: 'Remove',
@@ -323,11 +370,47 @@ export function removeNote(note) {
   return act('DELETE', '/api/birthday/note', note);
 }
 
+// describeCharity asks the server what Claude finds: where to donate and the
+// newsletter's sentence.
+async function describeCharity(name, donationLink) {
+  const res = await fetch('/api/birthday/charity/describe', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name, donationLink})});
+  if (!res.ok) {
+    throw new Error(await res.text());
+  }
+  return res.json();
+}
+
+// openCharity is the charity form. A new charity starts with its name alone:
+// Generate Info has Claude find the donation page and write the sentence,
+// then the full form opens filled in for reading over; Enter Information
+// Manually opens it empty. An existing charity opens the full form directly.
 export function openCharity(c, options) {
+  if (c) {
+    openCharityForm(c, {}, options);
+    return;
+  }
+  const name = text('', {required: true, maxLength: 120});
+  const hint = el('div', 'field-note', 'Claude will look the charity up, find where to donate, and write a sentence for the newsletter - all yours to change before saving.');
+  openModal('Add Charity', [field('Name', name), hint], {
+    saveLabel: 'Generate Info',
+    working: 'Looking them up…',
+    stay: true,
+    submit: async () => {
+      const info = await describeCharity(name.value, '');
+      openCharityForm(null, {name: name.value, donationLink: info.donationLink, about: info.sentence, generated: true}, options);
+    },
+    alternate: {label: 'Enter Information Manually', onClick: () => openCharityForm(null, {name: name.value}, options)},
+    afterSave: options && options.afterSave,
+  });
+}
+
+// openCharityForm is the full form, for an existing charity or a new one
+// whose fields start as given.
+function openCharityForm(c, start, options) {
   const admin = isAdmin();
-  const name = text(c ? c.name : '', {required: true, maxLength: 120});
-  const linkInput = text(c ? c.donationLink : '', {type: 'url', required: true, placeholder: 'https://'});
-  const about = textarea(c ? c.about : '', 4);
+  const name = text(c ? c.name : start.name || '', {required: true, maxLength: 120});
+  const linkInput = text(c ? c.donationLink : start.donationLink || '', {type: 'url', required: true, placeholder: 'https://'});
+  const about = textarea(c ? c.about : start.about || '', 4);
   const allowed = checkbox('Allowed', c ? c.allowed : true);
   const why = text(c ? c.whyNotAllowed : '', {placeholder: 'Not a non-profit'});
   const whyField = field('Why not', why);
@@ -335,26 +418,24 @@ export function openCharity(c, options) {
   allowed.input.addEventListener('change', () => {
     whyField.hidden = allowed.input.checked;
   });
-  // Suggest asks the server for the sentence, read from the charity's site;
-  // it lands in the field for the person to read over and change.
+  // Regenerate asks again, from the link as it now stands, filling both
+  // fields for the person to read over.
   const suggestRow = el('div', 'field-note suggest-row');
-  const suggest = el('button', 'link-button', 'Suggest a sentence');
+  const suggest = el('button', 'link-button', start.generated ? 'Generate again' : 'Generate with Claude');
   suggest.type = 'button';
-  const suggestStatus = el('span', 'suggest-status');
+  const suggestStatus = el('span', 'suggest-status', start.generated ? 'Found by Claude - read it over and change anything that is off.' : '');
   suggest.addEventListener('click', async () => {
     if (!name.value.trim()) {
       suggestStatus.textContent = 'Give the name first.';
       return;
     }
     suggest.disabled = true;
-    suggestStatus.textContent = 'Reading their site…';
+    suggestStatus.textContent = 'Looking them up…';
     try {
-      const res = await fetch('/api/birthday/charity/describe', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name: name.value, donationLink: linkInput.value})});
-      if (!res.ok) {
-        throw new Error(await res.text());
-      }
-      about.value = (await res.json()).sentence;
-      suggestStatus.textContent = 'Read it over and change anything that is off.';
+      const info = await describeCharity(name.value, linkInput.value);
+      linkInput.value = info.donationLink || linkInput.value;
+      about.value = info.sentence;
+      suggestStatus.textContent = 'Found by Claude - read it over and change anything that is off.';
     } catch (err) {
       suggestStatus.textContent = err.message;
     } finally {
@@ -367,6 +448,7 @@ export function openCharity(c, options) {
     fields.push(allowed.wrap, whyField);
   }
   openModal(c ? 'Edit Charity' : 'Add Charity', fields, {
+    replace: !c,
     submit: async () => {
       await send('POST', '/api/birthday/charity', {
         original: c ? c.name : '', name: name.value, donationLink: linkInput.value, about: about.value, ein: c ? c.ein : '',

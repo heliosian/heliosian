@@ -13,6 +13,7 @@ import (
 
 	"heliosian/internal/auth"
 	"heliosian/internal/data"
+	"heliosian/internal/describe"
 	"heliosian/internal/logging"
 	"heliosian/internal/serve"
 )
@@ -44,10 +45,11 @@ type app struct {
 	describer   Describer
 }
 
-// Describer writes the sentence about a charity for the newsletter; nil
-// leaves the charity form's suggest button saying it is not set up.
+// Describer finds where a charity takes donations and writes the newsletter's
+// sentence about it; nil leaves the charity form's Generate Info saying it is
+// not set up.
 type Describer interface {
-	Charity(ctx context.Context, name, link string) (string, error)
+	Charity(ctx context.Context, name, link string) (describe.Info, error)
 }
 
 // Register wires the app: one shell for every page, the model, and the writes.
@@ -762,19 +764,19 @@ func (a app) describeCharity(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "suggesting a sentence is not set up on this server", http.StatusServiceUnavailable)
 		return
 	}
-	sentence, err := a.describer.Charity(r.Context(), name, link)
+	info, err := a.describer.Charity(r.Context(), name, link)
 	if err != nil {
 		slog.ErrorContext(r.Context(), "birthday: describe charity", "actor", actor, "name", name, "error", err)
-		http.Error(w, "could not write a sentence right now", http.StatusBadGateway)
+		http.Error(w, "could not look this charity up right now", http.StatusBadGateway)
 		return
 	}
-	if sentence == "" {
-		http.Error(w, "could not find out what this charity does; please write the sentence", http.StatusNotFound)
+	if info.Sentence == "" {
+		http.Error(w, "could not find this charity; please enter its information", http.StatusNotFound)
 		return
 	}
-	slog.InfoContext(r.Context(), "birthday: described charity", "actor", actor, "name", name)
+	slog.InfoContext(r.Context(), "birthday: described charity", "actor", actor, "name", name, "link", info.DonationLink)
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]string{"sentence": sentence}); err != nil {
+	if err := json.NewEncoder(w).Encode(info); err != nil {
 		slog.ErrorContext(r.Context(), "encode charity sentence", "error", err)
 	}
 }

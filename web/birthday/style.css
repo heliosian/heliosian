@@ -1026,6 +1026,11 @@ a.trow[data-stage="stage-complete"]::before { background: #3aaa5c; }
 
 .issue .chevron { width: 18px; height: 18px; color: var(--muted); }
 
+/* The chosen charity's sentence in the donation form, quiet, above the note. */
+.charity-blurb { font-size: 13px; color: var(--muted); margin: -4px 0 12px; line-height: 1.45; }
+
+.charity-blurb .link-button.small { font-size: 13px; padding: 0; }
+
 /* The charity form's suggestion: the link and, beside it, how it is going. */
 .suggest-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: -8px; }
 

@@ -25,8 +25,10 @@ import (
 
 	"heliosian/internal/app"
 	"heliosian/internal/auth"
+	"heliosian/internal/birthday"
 	"heliosian/internal/capture"
 	"heliosian/internal/data"
+	"heliosian/internal/describe"
 	"heliosian/internal/devtls"
 	"heliosian/internal/feedback"
 	"heliosian/internal/geocode"
@@ -81,7 +83,7 @@ func sampleServer() (*http.Server, *who.Queue) {
 		Geocoder:    geocode.Fake{},
 		BrowserKey:  os.Getenv("GOOGLE_MAPS_BROWSER_KEY"),
 		ImageSearch: app.ImageSearchKeys(),
-		Describer:   app.ClaudeDescriber(),
+		Describer:   sampleDescriber(),
 		// Sample mail lands as .html files to open in a browser, never sent.
 		Mail:          mail.New("", "", "", "", "", "HCA-Team <hca@example.org>", mailDir()),
 		CelebrateMail: mail.New("", "", "", "", "", "Helios Celebrate <celebrate@example.org>", mailDir()),
@@ -102,6 +104,15 @@ func sampleServer() (*http.Server, *who.Queue) {
 		"celebrate": app.Public("celebrate", auth.Fixed(sampleUser, app.Logged("celebrate", app.Files("celebrate", core.Celebrate)))),
 		"calendar":  app.Public("calendar", auth.Fixed(sampleUser, app.Logged("calendar", app.Files("calendar", core.Calendar)))),
 	}), core.Queue)
+}
+
+// sampleDescriber is Claude when a key is at hand, else the fake, so the
+// charity form's flow can be tried either way.
+func sampleDescriber() birthday.Describer {
+	if d := app.ClaudeDescriber(); d != nil {
+		return d
+	}
+	return describe.Fake{}
 }
 
 type printedFeedback struct{}
