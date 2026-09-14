@@ -2,15 +2,51 @@ package birthday
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"heliosian/internal/auth"
 	"heliosian/internal/data"
+	"heliosian/internal/mail"
 )
+
+// sentMail keeps what the app sends, and waits for it, since sending
+// happens off the request.
+type sentMail struct {
+	mu       sync.Mutex
+	messages []mail.Message
+}
+
+func (s *sentMail) Send(_ context.Context, m mail.Message) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.messages = append(s.messages, m)
+	return nil
+}
+
+func (s *sentMail) wait(t *testing.T, n int) []mail.Message {
+	t.Helper()
+	for i := 0; i < 100; i++ {
+		s.mu.Lock()
+		if len(s.messages) >= n {
+			out := append([]mail.Message{}, s.messages...)
+			s.mu.Unlock()
+			return out
+		}
+		s.mu.Unlock()
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("waited for %d messages", n)
+	return nil
+}
+
+var sent = &sentMail{}
 
 const (
 	parent = "robin.whitfield@heliosschool.org"
@@ -80,7 +116,7 @@ func newServer(t *testing.T) (*Cache, *http.ServeMux) {
 		t.Fatal(err)
 	}
 	mux := http.NewServeMux()
-	Register(mux, cache, dir, syncQueue{}, fakeDirectory{}, func() []string { return []string{admin} }, nil)
+	Register(mux, cache, dir, syncQueue{}, fakeDirectory{}, func() []string { return []string{admin} }, nil, sent, "Helios Staff Birthdays <birthday@example.org>")
 	return cache, mux
 }
 
@@ -229,6 +265,22 @@ func TestPipeline(t *testing.T) {
 	sv := find(view(t, cache, parent).Staff, "miguel.santos@heliosschool.org")
 	if sv.AssignedTo != parent || sv.AssignedOn != "2026-09-09" || sv.Stage != StageOutreach {
 		t.Fatalf("after assign: %+v", sv)
+	}
+	// The assignee gets the day to ask by as an invite, with the way to the page.
+	invites := sent.wait(t, 1)
+	m := invites[len(invites)-1]
+	if len(m.To) != 1 || m.To[0] != parent || !strings.Contains(m.Subject, "Miguel Santos") || !strings.Contains(m.HTML, "/staff/miguel.santos\"") {
+		t.Fatalf("invite mail: %+v", m)
+	}
+	if len(m.Attachments) != 1 || m.Attachments[0].Name != "invite.ics" {
+		t.Fatalf("invite attachment: %+v", m.Attachments)
+	}
+	// Unfolded, since the file wraps long lines at 75 octets.
+	ics := strings.ReplaceAll(string(m.Attachments[0].Content), "\r\n ", "")
+	for _, want := range []string{"METHOD:REQUEST", "DTSTART;VALUE=DATE:20260908", "DTEND;VALUE=DATE:20260909", `SUMMARY:Ask Miguel Santos about their birthday charity by September 8\, 2026`, "ATTENDEE;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;RSVP=FALSE:mailto:" + parent, "UID:birthday-miguel.santos@heliosschool.org-2026-2027@heliosian.com", "/staff/miguel.santos"} {
+		if !strings.Contains(ics, want) {
+			t.Fatalf("invite lacks %q:\n%s", want, ics)
+		}
 	}
 	if rec := call(t, mux, parent, "POST", "/api/birthday/outreach", map[string]any{"email": miguel["email"], "contacted": true}); rec.Code != http.StatusNoContent {
 		t.Fatalf("outreach: %d %s", rec.Code, rec.Body)

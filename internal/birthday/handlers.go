@@ -15,6 +15,7 @@ import (
 	"heliosian/internal/data"
 	"heliosian/internal/describe"
 	"heliosian/internal/logging"
+	"heliosian/internal/mail"
 	"heliosian/internal/serve"
 )
 
@@ -43,6 +44,10 @@ type app struct {
 	directory   Directory
 	superAdmins func() []string
 	describer   Describer
+	// mailer sends the assignee their invite; nil sends nothing. from is the
+	// address it comes from.
+	mailer mail.Sender
+	from   string
 }
 
 // Describer finds where a charity takes donations and writes the newsletter's
@@ -54,8 +59,8 @@ type Describer interface {
 
 // Register wires the app: one shell for every page, the model, and the writes.
 // Every route already sits behind sign-in.
-func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, directory Directory, superAdmins func() []string, describer Describer) {
-	a := app{cache: cache, writer: writer, queue: queue, directory: directory, superAdmins: superAdmins, describer: describer}
+func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, directory Directory, superAdmins func() []string, describer Describer, mailer mail.Sender, from string) {
+	a := app{cache: cache, writer: writer, queue: queue, directory: directory, superAdmins: superAdmins, describer: describer, mailer: mailer, from: from}
 	for _, page := range pages {
 		mux.HandleFunc("GET "+page, a.page)
 	}
@@ -229,6 +234,7 @@ func (a app) assign(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.InfoContext(r.Context(), "birthday: assigned", "actor", actor, "email", email, "to", to, "year", year)
+	a.mailAssignment(r, email, to)
 	w.WriteHeader(http.StatusNoContent)
 }
 

@@ -209,7 +209,9 @@ body.is-super .user-avatar {
 
 /* The account menu under the avatar, the same in every app: the signed-in
    address on top, then the app's own rows - plain links and buttons, and
-   switches for the modes. Each app positions its phone-bar copy itself. */
+   switches for the modes. It opens while the mouse is over the avatar or
+   the menu (initUserMenu in toolbar.js). Each app positions its phone-bar
+   copy itself. */
 .user-menu {
   position: absolute;
   right: 0;
@@ -293,8 +295,8 @@ body.is-super .user-avatar {
 .user-menu-toggle input:checked::before { left: 16px; }
 
 /* The switch to the other apps: the Heliosian mark on its white tile with a
-   chevron, opening a list
-   of every app with the one this is marked. Filled and wired by toolbar.js. */
+   chevron, a link home that opens a list of every app, with the one this is
+   marked, while the mouse is over it. Filled and wired by toolbar.js. */
 .app-switch {
   position: relative;
   display: flex;
@@ -310,6 +312,7 @@ body.is-super .user-avatar {
   border-radius: 9px;
   background: none;
   color: var(--brand);
+  text-decoration: none;
   cursor: pointer;
 }
 

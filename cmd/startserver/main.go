@@ -87,6 +87,8 @@ func sampleServer() (*http.Server, *who.Queue) {
 		// Sample mail lands as .html files to open in a browser, never sent.
 		Mail:          mail.New("", "", "", "", "", "HCA-Team <hca@example.org>", mailDir()),
 		CelebrateMail: mail.New("", "", "", "", "", "Helios Celebrate <celebrate@example.org>", mailDir()),
+		BirthdayMail:  mail.New("", "", "", "", "", "Helios Staff Birthdays <birthday@example.org>", mailDir()),
+		BirthdayFrom:  "Helios Staff Birthdays <birthday@example.org>",
 		Feedback:      printedFeedback{},
 	})
 	core.Mux.Handle("POST /auth/logout", http.RedirectHandler("/", http.StatusSeeOther))

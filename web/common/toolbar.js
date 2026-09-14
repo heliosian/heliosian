@@ -1,7 +1,7 @@
 // The pieces of the shared toolbar (web/common/toolbar.css) that need script:
-// filling the avatar, the "/" shortcut into search, and the switch to the other
-// apps. What the search actually searches is each app's own business, wired in
-// its chrome.
+// filling the avatar and opening its menu, the "/" shortcut into search, and
+// the switch to the other apps. What the search actually searches is each
+// app's own business, wired in its chrome.
 
 // The apps the switch lists come from Heliosian (internal/home.Apps), each
 // keyed by its hostname's first label with its mark served from
@@ -57,12 +57,87 @@ async function switchList() {
   }
 }
 
+// Both of the bar's dropdowns - the account menu under the avatar and the
+// switch under the Heliosian tile - open on hover: the menu shows while the
+// mouse is over its button or over the menu itself, and goes once the mouse
+// has left both. The going waits a moment so that crossing the gap between
+// button and menu does not shut it. Touch and pen make no hover, so their
+// taps fall to the click handlers, which is where the menus toggle.
+const hoverGrace = 150;
+
+function hoverMenu(button, menu, open, close) {
+  let timer;
+  const enter = e => {
+    if (e.pointerType !== 'mouse') {
+      return;
+    }
+    clearTimeout(timer);
+    open();
+  };
+  const leave = e => {
+    if (e.pointerType !== 'mouse') {
+      return;
+    }
+    clearTimeout(timer);
+    timer = setTimeout(close, hoverGrace);
+  };
+  for (const node of [button, menu]) {
+    node.addEventListener('pointerenter', enter);
+    node.addEventListener('pointerleave', leave);
+  }
+}
+
+// Whether a click came from something that hovers: a mouse, or the keyboard
+// (whose synthetic click names no pointer) on a device that has one. A tap
+// on a phone, and a click from an older browser that does not say, do not.
+function hoverClick(e) {
+  if (e.pointerType) {
+    return e.pointerType === 'mouse';
+  }
+  return matchMedia('(hover: hover)').matches;
+}
+
+// Wires the avatar to the account menu under it: the menu opens on hover,
+// and a click leaves it open where the mouse already holds it (or opens it
+// again after Escape), while a tap toggles it. The click stops at the button
+// so the document click each app uses to close its menus lets this one be.
+// The menu's rows, and closing it from that document click and Escape, are
+// each app's own.
+export function initUserMenu() {
+  const button = document.querySelector('#user');
+  const menu = document.querySelector('#user-menu');
+  const open = () => {
+    closeAppSwitches();
+    menu.hidden = false;
+  };
+  const close = () => {
+    menu.hidden = true;
+  };
+  hoverMenu(button, menu, open, close);
+  button.addEventListener('click', e => {
+    e.stopPropagation();
+    if (menu.hidden) {
+      open();
+    } else if (!hoverClick(e)) {
+      close();
+    }
+  });
+}
+
+function closeUserMenus() {
+  for (const menu of document.querySelectorAll('.user-menu')) {
+    menu.hidden = true;
+  }
+}
+
 // Fills every .app-switch in the page (the desktop bar's and, where an app has
-// one, the phone bar's) and wires it: click toggles the list, a click anywhere
-// else or Escape closes it. The rows wait on the switch ask, which is well
-// over before anyone opens the list; the app being viewed is always listed,
-// whether or not the reader is on its list, since it is where they already
-// are.
+// one, the phone bar's) and wires it: the list opens on hover, and the tile
+// is a link home - to Heliosian on the page's own tier - so a click goes
+// there. A tap, which cannot hover, toggles the list instead, since it is
+// the only way to the list on a phone; a tap anywhere else or Escape closes
+// it. The rows wait on the switch ask, which is well over before anyone
+// opens the list; the app being viewed is always listed, whether or not the
+// reader is on its list, since it is where they already are.
 export function initAppSwitch() {
   const current = currentApp();
   const wraps = document.querySelectorAll('.app-switch');
@@ -79,11 +154,23 @@ export function initAppSwitch() {
     }
   });
   for (const wrap of wraps) {
+    const button = wrap.querySelector('.app-switch-button');
     const menu = wrap.querySelector('.app-switch-menu');
-    // The click runs on to the document, where each app's own handler closes
+    button.href = appOrigin('home');
+    const open = () => {
+      closeUserMenus();
+      closeAppSwitches();
+      menu.hidden = false;
+    };
+    hoverMenu(button, menu, open, closeAppSwitches);
+    // The tap runs on to the document, where each app's own handler closes
     // its menus - so opening the list closes the account menu, and the
     // document's listener below leaves the switch itself alone.
-    wrap.querySelector('.app-switch-button').addEventListener('click', () => {
+    button.addEventListener('click', e => {
+      if (hoverClick(e)) {
+        return;
+      }
+      e.preventDefault();
       const opening = menu.hidden;
       closeAppSwitches();
       menu.hidden = !opening;

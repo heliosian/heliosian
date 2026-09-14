@@ -1,6 +1,6 @@
 import {state, me, isAdmin, isSystemAdmin, setSuperEdit, isUnassigned} from './state.js';
 import {el, svg, link} from './dom.js';
-import {renderAvatars, renderAlerts, onSlash, initAppSwitch, markSuper} from '/toolbar.js';
+import {renderAvatars, renderAlerts, onSlash, initAppSwitch, initUserMenu, markSuper} from '/toolbar.js';
 
 const appName = 'Helios Staff Birthdays';
 
@@ -211,13 +211,7 @@ export function initChrome() {
       closeDrawer();
     }
   });
-  const panel = document.querySelector('#user-menu');
-  document.querySelector('#user').addEventListener('click', e => {
-    e.stopPropagation();
-    const opening = panel.hidden;
-    closeMenus();
-    panel.hidden = !opening;
-  });
+  initUserMenu();
   // Super Admin Mode puts an admin's hat on or takes it off; the page
   // repaints as the other kind of user.
   for (const box of document.querySelectorAll('.super-edit-checkbox')) {

@@ -1,6 +1,6 @@
 import {state, me, isAdmin, pendingItems, selectedYear, listedIn, years, resolvePath, rootOf, eventCategories, descendants, activityPath, isSystemAdmin, setSuperEdit, family, myRows, isPrevious} from './state.js';
 import {el, svg, link, button} from './dom.js';
-import {renderAvatars, renderAlerts, onSlash, initAppSwitch, markSuper} from '/toolbar.js';
+import {renderAvatars, renderAlerts, onSlash, initAppSwitch, initUserMenu, markSuper} from '/toolbar.js';
 import {openActivity} from './edit.js';
 
 // The rail and the drawer show these; the mobile tab bar drops the admin ones.
@@ -471,15 +471,7 @@ export function initChrome() {
       closeDrawer();
     }
   });
-  for (const [button, menu] of [['#user', '#user-menu']]) {
-    const panel = document.querySelector(menu);
-    document.querySelector(button).addEventListener('click', e => {
-      e.stopPropagation();
-      const opening = panel.hidden;
-      closeMenus();
-      panel.hidden = !opening;
-    });
-  }
+  initUserMenu();
   // The switch exists twice (rail menu and mobile menu), so a change on either
   // updates the other. app.js listens for the repaint rather than chrome.js
   // importing render, which would make the two modules import each other.

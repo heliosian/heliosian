@@ -1,7 +1,7 @@
 import {state, me, today, bands, tagGroups, defaultTags, savedView, searchResults, eventPath, eventTint, timeLine, weekdayShort, parseDate, selectedClassrooms, toggleClassroom, setClassrooms, classroomNames, myClassrooms, tagNames, selectedTags, toggleTag, setTags, resetFilters, filtersAreDefault, colorOf, hiddenMatches, hiddenClassroomMatches} from './state.js';
 import {el, svg, link, button, toast} from './dom.js';
 import {dayColumn} from './day.js';
-import {renderAvatars, renderAlerts, onSlash, initAppSwitch} from '/toolbar.js';
+import {renderAvatars, renderAlerts, onSlash, initAppSwitch, initUserMenu} from '/toolbar.js';
 
 const primary = [
   {href: '/', icon: 'today', label: 'Calendar'},
@@ -545,13 +545,7 @@ export function initChrome() {
       closeDrawer();
     }
   });
-  const panel = document.querySelector('#user-menu');
-  document.querySelector('#user').addEventListener('click', e => {
-    e.stopPropagation();
-    const opening = panel.hidden;
-    closeMenus();
-    panel.hidden = !opening;
-  });
+  initUserMenu();
   window.addEventListener('resize', syncViewportHeight);
   window.addEventListener('orientationchange', syncViewportHeight);
   document.addEventListener('click', closeMenus);

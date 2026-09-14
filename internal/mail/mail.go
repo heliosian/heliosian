@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -31,6 +32,15 @@ type Message struct {
 	Subject string
 	HTML    string
 	Text    string
+	// Attachments ride along, a calendar invite for one.
+	Attachments []Attachment
+}
+
+// Attachment is one file on a message.
+type Attachment struct {
+	Name        string
+	ContentType string
+	Content     []byte
 }
 
 type Sender interface {
@@ -136,6 +146,13 @@ func (r *Resend) Send(ctx context.Context, m Message) error {
 	if len(m.ReplyTo) > 0 {
 		payload["reply_to"] = m.ReplyTo
 	}
+	if len(m.Attachments) > 0 {
+		files := []map[string]string{}
+		for _, a := range m.Attachments {
+			files = append(files, map[string]string{"filename": a.Name, "content": base64.StdEncoding.EncodeToString(a.Content), "content_type": a.ContentType})
+		}
+		payload["attachments"] = files
+	}
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return err
@@ -165,9 +182,11 @@ func (r *Resend) Send(ctx context.Context, m Message) error {
 }
 
 // Compose is the message as bytes on the wire: headers, then a
-// multipart/alternative body carrying the text and the HTML.
+// multipart/alternative body carrying the text and the HTML - wrapped in a
+// multipart/mixed with the attachments after it when there are any.
 func Compose(from string, m Message) string {
 	boundary := fmt.Sprintf("hca-%d", time.Now().UnixNano())
+	outer := "mixed-" + boundary
 	var b strings.Builder
 	fmt.Fprintf(&b, "From: %s\r\n", from)
 	fmt.Fprintf(&b, "To: %s\r\n", strings.Join(m.To, ", "))
@@ -180,6 +199,10 @@ func Compose(from string, m Message) string {
 	fmt.Fprintf(&b, "Subject: %s\r\n", mime.QEncoding.Encode("utf-8", m.Subject))
 	fmt.Fprintf(&b, "Date: %s\r\n", time.Now().Format(time.RFC1123Z))
 	fmt.Fprintf(&b, "MIME-Version: 1.0\r\n")
+	if len(m.Attachments) > 0 {
+		fmt.Fprintf(&b, "Content-Type: multipart/mixed; boundary=%q\r\n\r\n", outer)
+		fmt.Fprintf(&b, "--%s\r\n", outer)
+	}
 	fmt.Fprintf(&b, "Content-Type: multipart/alternative; boundary=%q\r\n\r\n", boundary)
 	text := m.Text
 	if text == "" {
@@ -188,6 +211,18 @@ func Compose(from string, m Message) string {
 	fmt.Fprintf(&b, "--%s\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n%s\r\n", boundary, crlf(text))
 	fmt.Fprintf(&b, "--%s\r\nContent-Type: text/html; charset=utf-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n%s\r\n", boundary, crlf(m.HTML))
 	fmt.Fprintf(&b, "--%s--\r\n", boundary)
+	if len(m.Attachments) > 0 {
+		for _, a := range m.Attachments {
+			fmt.Fprintf(&b, "--%s\r\nContent-Type: %s; name=%q\r\nContent-Disposition: attachment; filename=%q\r\nContent-Transfer-Encoding: base64\r\n\r\n", outer, a.ContentType, a.Name, a.Name)
+			enc := base64.StdEncoding.EncodeToString(a.Content)
+			for len(enc) > 76 {
+				b.WriteString(enc[:76] + "\r\n")
+				enc = enc[76:]
+			}
+			b.WriteString(enc + "\r\n")
+		}
+		fmt.Fprintf(&b, "--%s--\r\n", outer)
+	}
 	return b.String()
 }
 
@@ -210,7 +245,12 @@ func (f *Files) Send(ctx context.Context, m Message) error {
 	if err := os.WriteFile(name, []byte(head+m.HTML), 0o644); err != nil {
 		return err
 	}
-	slog.InfoContext(ctx, "mail: wrote message", "file", name, "to", m.To, "cc", m.CC, "subject", m.Subject)
+	for _, a := range m.Attachments {
+		if err := os.WriteFile(strings.TrimSuffix(name, ".html")+"-"+a.Name, a.Content, 0o644); err != nil {
+			return err
+		}
+	}
+	slog.InfoContext(ctx, "mail: wrote message", "file", name, "to", m.To, "cc", m.CC, "subject", m.Subject, "attachments", len(m.Attachments))
 	return nil
 }
 

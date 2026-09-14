@@ -670,7 +670,10 @@ type Config struct {
 	// same for Helios Celebrate, from its own address.
 	Mail          mail.Sender
 	CelebrateMail mail.Sender
-	Feedback      feedback.Filer
+	// BirthdayMail sends Staff Birthdays' calendar invites, from BirthdayFrom.
+	BirthdayMail mail.Sender
+	BirthdayFrom string
+	Feedback     feedback.Filer
 	// Describer writes Staff Birthdays' sentence about a charity; nil leaves
 	// that button saying it is not set up.
 	Describer birthday.Describer
@@ -796,7 +799,7 @@ func NewCore(cfg Config) *Core {
 	eventsMux := http.NewServeMux()
 	events.Register(eventsMux, eventsCache, cfg.Writer, queue, cfg.Store, directory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.Mail)
 	birthdayMux := http.NewServeMux()
-	birthday.Register(birthdayMux, birthdayCache, cfg.Writer, queue, birthdayDirectory{cache, settings}, settings.SuperAdmins, cfg.Describer)
+	birthday.Register(birthdayMux, birthdayCache, cfg.Writer, queue, birthdayDirectory{cache, settings}, settings.SuperAdmins, cfg.Describer, cfg.BirthdayMail, cfg.BirthdayFrom)
 	celebrateMux := http.NewServeMux()
 	celebrate.Register(celebrateMux, celebrateCache, cfg.Writer, queue, cfg.Store, celebrateDirectory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.CelebrateMail)
 	calendarMux := http.NewServeMux()
@@ -891,6 +894,13 @@ func mailFrom() string {
 		return from
 	}
 	return "HCA-Team <team@heliosian.com>"
+}
+
+func birthdayMailFrom() string {
+	if from := os.Getenv("BIRTHDAY_MAIL_FROM"); from != "" {
+		return from
+	}
+	return "Helios Staff Birthdays <birthday@heliosian.com>"
 }
 
 func celebrateMailFrom() string {
@@ -993,6 +1003,8 @@ func Production() (*http.Server, *who.Queue) {
 		// SMTP_HOST is; otherwise, in real-data mode, it is dropped and logged.
 		Mail:          newMailer(mailFrom()),
 		CelebrateMail: newMailer(celebrateMailFrom()),
+		BirthdayMail:  newMailer(birthdayMailFrom()),
+		BirthdayFrom:  birthdayMailFrom(),
 		Feedback:      &feedback.GitHub{Token: mapsKey("GITHUB_TOKEN", "creds/github.token")},
 	})
 	blob.Register(core.Mux, store)

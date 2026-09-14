@@ -2,7 +2,7 @@ import {state, applyModel, setSuperAdmin} from './state.js';
 import {renderCategories, renderNav} from './cards.js';
 import {renderMonth} from './month.js';
 import {initEditing, refreshCategoryManager} from './edit.js';
-import {renderAvatars, renderAlerts, onSlash, initAppSwitch, markSuper} from '/toolbar.js';
+import {renderAvatars, renderAlerts, onSlash, initAppSwitch, initUserMenu, markSuper} from '/toolbar.js';
 
 function renderChrome() {
   const user = state.model.user;
@@ -71,11 +71,8 @@ function initDrawer() {
 function initChrome() {
   initAppSwitch();
   initDrawer();
+  initUserMenu();
   const menu = document.querySelector('#user-menu');
-  document.querySelector('#user').addEventListener('click', e => {
-    e.stopPropagation();
-    menu.hidden = !menu.hidden;
-  });
   // The switch is a row of the menu; flipping it repaints the links and
   // leaves the menu open, so the effect is visible behind it.
   const superAdmin = document.querySelector('#super-admin-mode');

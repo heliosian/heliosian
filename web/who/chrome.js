@@ -9,7 +9,7 @@ import {staleItems, familyInfoBanner, todoChecklist, familyNavPeople, personTodo
 import {topbarSearchInput, topbarSearchResults} from './search.js';
 import {privacyMismatchCardDismissed, myPrivacyWarnings, privacyMismatchCard} from './pages/privacy.js';
 import {load} from './app.js';
-import {renderAvatars, onSlash, isEditableTarget, initAppSwitch, markSuper} from '/toolbar.js';
+import {renderAvatars, onSlash, isEditableTarget, initAppSwitch, initUserMenu, markSuper} from '/toolbar.js';
 
 const primaryNavItems = [
   {path: 'people', label: 'Directory'},
@@ -496,10 +496,7 @@ export function initChrome() {
   // sidebar row, which let a name click open the menu and an avatar click jump
   // straight to the profile - the avatar's only job now is opening the menu, whose
   // first item is "View Profile".
-  document.querySelector('#user').addEventListener('click', e => {
-    e.stopPropagation();
-    userMenu.hidden = !userMenu.hidden;
-  });
+  initUserMenu();
 
   // The stale-count badge (desktop and mobile both) used to link straight to
   // /my-family; now it opens a dropdown built from the same todoChecklist used
