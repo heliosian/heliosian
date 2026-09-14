@@ -825,8 +825,10 @@ function personChip(person, on, disabledWhy) {
 // for whoever runs the party, anyone in the directory) - and a note.
 export function openBuy(p) {
   const editor = p.canEdit;
-  // A full party takes requests, not purchases: its own form.
-  if (p.availability === 'waitlist' && !editor) {
+  // A full party takes requests, not purchases: its own form, for whoever
+  // runs the party as much as anyone - a host's own family waits its turn
+  // too, and places open up through Offer on the waitlist.
+  if (p.availability === 'waitlist') {
     openWaitlist(p);
     return;
   }

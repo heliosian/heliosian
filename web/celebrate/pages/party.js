@@ -227,7 +227,8 @@ function ticketBand(p) {
   const selling = p.availability === 'available' || p.availability === 'waitlist';
   // A family holding a ticket to a full party may still want more, so the
   // way onto the waitlist stays; a family already waiting gets a way to
-  // change their request instead.
+  // change their request instead. A host's family is no different: a full
+  // party sells nothing more until a place is offered off the waitlist.
   const waiting = p.availability === 'waitlist' && mine.some(a => a.status !== 'Ticket');
   // A student sees the party and who is coming; a parent takes the
   // tickets and passes them on.
@@ -238,7 +239,6 @@ function ticketBand(p) {
   } else if (selling || p.canEdit) {
     const label = !selling ? 'Add Attendee'
       : p.availability !== 'waitlist' ? 'Get Tickets'
-      : p.canEdit ? 'Add Attendee'
       : waiting ? 'Update Waitlist Request' : 'Join the Waitlist';
     actions.append(button(label, 'ticket', 'button', () => openBuy(p)));
   }
