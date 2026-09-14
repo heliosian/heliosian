@@ -1,5 +1,5 @@
 import {state, eventsOn, today, addDays, parseDate, formatDate, longDayLabel, dayLabel, monthLabel, monthOf, shiftMonth, weekStart, specials, scheduleOn, isSchoolDay, dayTypeClass, dayTypeMatches, selectedClassrooms, eventTint, timeLine, eventPath, weekdayShort, call, isMatch, isHidden} from '../state.js';
-import {el, link, svg, button} from '../dom.js';
+import {el, link, svg, button, peopleLine} from '../dom.js';
 import {setTitle, setSearch, fillFilters, renderRailDay} from '../chrome.js';
 import {dayColumn} from '../day.js';
 import {callPill, emptyNote, roomDots, planCards} from '../events.js';
@@ -147,16 +147,7 @@ function fillEventPeek(node, date, e) {
     node.append(el('div', 'day-peek-words', e.description.length > 160 ? e.description.slice(0, 160).replace(/\s+\S*$/, '') + '\u2026' : e.description));
   }
   if (e.minePeople && e.minePeople.length) {
-    const people = el('ul', 'side-people');
-    for (const p of e.minePeople) {
-      const item = el('li');
-      item.append(svg(e.source === 'celebrate' ? 'ticket' : 'people'), el('span', 'side-person', p.name));
-      if (p.note) {
-        item.append(el('span', 'side-person-note', p.note));
-      }
-      people.append(item);
-    }
-    node.append(people);
+    node.append(peopleLine(e.minePeople, e.source === 'celebrate' ? 'ticket' : 'people'));
   }
   const word = answerOf(e);
   const buttons = el('div', 'day-peek-answer');

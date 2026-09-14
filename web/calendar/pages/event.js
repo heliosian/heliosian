@@ -1,5 +1,5 @@
 import {state, daysLine, timeLine, calendarLink, sourceWords, dayType, eventDates, dayTypeClass, linkURL, call, isParty, mineWords, eventImage, weekdayShort, parseDate, spansDays, monthLabel, monthOf, answerOf, answer} from '../state.js';
-import {el, link, svg, paragraphs, button, toast, avatar} from '../dom.js';
+import {el, link, svg, paragraphs, button, toast, avatar, peopleLine} from '../dom.js';
 import {appOrigin} from '/toolbar.js';
 import {setTitle} from '../chrome.js';
 import {audienceChips, blocks} from '../events.js';
@@ -413,19 +413,10 @@ function linkedCard(e) {
   icon.append(svg(linkedIcons[kind]));
   const body = el('div', 'side-row-body');
   body.append(el('div', 'side-title', linkedTitles[kind]));
-  // The household's part, a line per person - a ticket, a waitlist place,
-  // a role - or, before anyone is in, where the tickets or sign-ups stand.
+  // The household's part on one line - each ticket, waitlist place or
+  // role - or, before anyone is in, where the tickets or sign-ups stand.
   if (e.minePeople && e.minePeople.length) {
-    const people = el('ul', 'side-people');
-    for (const p of e.minePeople) {
-      const item = el('li');
-      item.append(svg(kind === 'celebrate' ? 'ticket' : 'people'), el('span', 'side-person', p.name));
-      if (p.note) {
-        item.append(el('span', 'side-person-note', p.note));
-      }
-      people.append(item);
-    }
-    body.append(people);
+    body.append(peopleLine(e.minePeople, kind === 'celebrate' ? 'ticket' : 'people'));
   } else {
     body.append(el('div', 'side-line', e.mine ? `${mineWords(e)} · ${mineStanding[e.mine][kind]}` : standing[e.availability] || ''));
   }

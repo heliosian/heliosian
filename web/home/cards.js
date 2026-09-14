@@ -332,15 +332,37 @@ function eventCard(event) {
     }
   });
   art.append(hide);
-  // One row: Yes and No, the one given filled - a yes brings a calendar
-  // invite by email - and beside them, when the event has a way in, a
-  // button saying what When's pill says - teal while it is open or the
-  // household is in, plain once it is full.
+  // One row: Yes and No (a party's Send Invite or Add Ticket), and beside
+  // them, when the event has a way in and nobody is in yet, a button
+  // saying what When's pill says - teal while it is open, plain once it
+  // is full.
   const actions = el('div', 'event-actions');
+  actions.append(rsvpButtons(event));
+  // The household's part in a linked event is a line above the buttons -
+  // each ticket holder, each volunteer with their role - rather than a
+  // button; the way in stays a button only while nobody is in yet.
+  if (event.people && event.people.length) {
+    card.append(open, peopleList(event), actions);
+    return card;
+  }
+  if (event.call && event.linkApp !== 'celebrate') {
+    const live = event.availability === 'open' || event.availability === 'available';
+    const go = el('a', 'button button-small' + (live ? '' : ' button-secondary'));
+    go.href = whenOrigin(event.linkApp) + event.link;
+    go.append(svg('volunteer'), el('span', '', event.call));
+    actions.append(go);
+  }
+  card.append(open, actions);
+  return card;
+}
+
+// rsvpButtons is the event's answer as buttons: Yes and No, the one given
+// filled - a yes brings a calendar invite by email. A party has no yes or
+// no: with a ticket in the household, Send Invite puts it on this person's
+// calendar; without one, Add Ticket goes to the party page. The rail's
+// day card and the Upcoming cards share it.
+export function rsvpButtons(event) {
   const rsvp = el('div', 'event-rsvp');
-  // A party has no yes or no: with a ticket in the household, Send Invite
-  // puts it on this person's calendar; without one, Add Ticket goes to
-  // the party page.
   if (event.linkApp === 'celebrate') {
     const held = (event.people || []).some(p => p.note !== 'waitlisted');
     if (held) {
@@ -367,18 +389,12 @@ function eventCard(event) {
       add.append(svg('ticket'), el('span', '', live ? 'Add Ticket' : event.call || 'See the party'));
       rsvp.append(add);
     }
-    actions.append(rsvp);
-    if (event.people && event.people.length) {
-      card.append(open, peopleList(event), actions);
-    } else {
-      card.append(open, actions);
-    }
-    return card;
+    return rsvp;
   }
-  const yes = el('button', 'button button-small event-yes' + (event.answer === 'yes' ? '' : ' button-secondary'));
+  const yes = el('button', 'button button-small event-yes');
   yes.type = 'button';
   yes.append(svg('check'), el('span', '', 'Yes'));
-  const no = el('button', 'button button-small event-no' + (event.answer === 'no' ? '' : ' button-secondary'));
+  const no = el('button', 'button button-small event-no');
   no.type = 'button';
   no.append(svg('close'), el('span', '', 'No'));
   const mark = () => {
@@ -402,38 +418,27 @@ function eventCard(event) {
     }
   });
   rsvp.append(yes, no);
-  actions.append(rsvp);
-  // The household's part in a linked event is a small list above the
-  // buttons - each ticket holder, each volunteer with their role - rather
-  // than a button; the way in stays a button only while nobody is in yet.
-  if (event.people && event.people.length) {
-    card.append(open, peopleList(event), actions);
-    return card;
-  }
-  if (event.call) {
-    const live = event.availability === 'open' || event.availability === 'available';
-    const go = el('a', 'button button-small' + (live ? '' : ' button-secondary'));
-    go.href = whenOrigin(event.linkApp) + event.link;
-    go.append(svg(event.linkApp === 'celebrate' ? 'ticket' : 'volunteer'), el('span', '', event.call));
-    actions.append(go);
-  }
-  card.append(open, actions);
-  return card;
+  return rsvp;
 }
 
-// peopleList is the household's part in a linked event: a line per ticket
-// holder, or per volunteer with their role.
+// peopleList is the household's part in a linked event on one line behind
+// one icon: the names with a dot between each, and a note - a role, a
+// waitlist place, a guest still to be named - in parentheses after its name.
 function peopleList(event) {
-  const people = el('ul', 'event-people');
-  for (const p of event.people) {
-    const row = el('li');
-    row.append(svg(event.linkApp === 'celebrate' ? 'ticket' : 'volunteer'), el('span', 'event-person', p.name));
-    if (p.note) {
-      row.append(el('span', 'event-person-note', p.note));
+  const line = el('div', 'event-people');
+  line.append(svg(event.linkApp === 'celebrate' ? 'ticket' : 'volunteer'));
+  const names = el('span', 'event-people-names');
+  event.people.forEach((p, i) => {
+    if (i) {
+      names.append(el('span', 'event-people-sep', '\u2022'));
     }
-    people.append(row);
-  }
-  return people;
+    names.append(el('span', 'event-person', p.name));
+    if (p.note) {
+      names.append(el('span', 'event-person-note', `(${p.note})`));
+    }
+  });
+  line.append(names);
+  return line;
 }
 
 // answer tells the calendar this person's word on an event - yes, no,

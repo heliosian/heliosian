@@ -134,3 +134,24 @@ func DrawDot(dst draw.Image, at image.Rectangle, c color.Color) {
 	iconPath{r}.circle(s/2, s/2, s/2, true)
 	paintIcon(dst, r, at, c)
 }
+
+// DrawPill is a filled round-ended rectangle - a button's ground - filling
+// its rectangle.
+func DrawPill(dst draw.Image, at image.Rectangle, c color.Color) {
+	r := vector.NewRasterizer(at.Dx(), at.Dy())
+	p := iconPath{r}
+	w, h := float32(at.Dx()), float32(at.Dy())
+	p.roundRect(0, 0, w, h, h/2, true)
+	paintIcon(dst, r, at, c)
+}
+
+// DrawCheckIcon is a check mark: two round-ended strokes.
+func DrawCheckIcon(dst draw.Image, at image.Rectangle, c color.Color) {
+	r := vector.NewRasterizer(at.Dx(), at.Dy())
+	p := iconPath{r}
+	s := float32(at.Dx())
+	t := s * 0.14
+	p.line(s*0.16, s*0.54, s*0.40, s*0.78, t)
+	p.line(s*0.40, s*0.78, s*0.84, s*0.28, t)
+	paintIcon(dst, r, at, c)
+}

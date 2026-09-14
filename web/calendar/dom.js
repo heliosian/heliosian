@@ -155,3 +155,23 @@ export function paragraphs(text, className) {
   }
   return wrap;
 }
+
+// peopleLine is the household's part in an event on one line behind one
+// icon: the names in order with a dot between each, and a note - a role, a
+// waitlist place, a guest still to be named - in parentheses after its name.
+export function peopleLine(list, icon) {
+  const line = el('div', 'side-people');
+  line.append(svg(icon));
+  const names = el('span', 'side-people-names');
+  list.forEach((p, i) => {
+    if (i) {
+      names.append(el('span', 'side-people-sep', '\u2022'));
+    }
+    names.append(el('span', 'side-person', p.name));
+    if (p.note) {
+      names.append(el('span', 'side-person-note', `(${p.note})`));
+    }
+  });
+  line.append(names);
+  return line;
+}

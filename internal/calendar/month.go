@@ -39,8 +39,9 @@ type Kind struct {
 
 // Month reckons a month for one viewer under the filter the calendar page
 // first shows them (viewOf): the plan for their classrooms day by day, and
-// the events the view admits that fall in the month, in date order. A
-// month that does not parse is the month now is in.
+// the events the view admits that fall in the month, in date order, each
+// with the viewer's answer and the ones they hid left out. A month that
+// does not parse is the month now is in.
 func (m *Model) Month(directory Directory, email string, linked []Linked, now time.Time, month string) Month {
 	first, err := time.ParseInLocation(MonthFormat, month, Location)
 	if err != nil {
@@ -76,11 +77,14 @@ func (m *Model) Month(directory Directory, email string, linked []Linked, now ti
 		}
 		out.Days[date] = day
 	}
-	for _, e := range withLinked(m.Events, linked) {
-		if e.start.Format(DateFormat) > to || e.end.Format(DateFormat) < from || !admits(m, e, classrooms, tags) {
+	for _, e := range m.eventsFor(email, linked) {
+		answer := m.AnswerOf(email, e.ID)
+		if e.start.Format(DateFormat) > to || e.end.Format(DateFormat) < from || answer == AnswerHidden || !admits(m, e, classrooms, tags) {
 			continue
 		}
-		out.Events = append(out.Events, m.card(e))
+		u := m.card(e)
+		u.Answer = answer
+		out.Events = append(out.Events, u)
 	}
 	return out
 }

@@ -60,9 +60,12 @@ type Card struct {
 	// Subtitle sits under the title's swoosh, in the accent colour.
 	Subtitle string
 	Lines    []Line
-	Picture  []byte
-	Whole    bool
-	Listing  *Listing
+	// Button is the word on a button drawn under the lines - RSVP, Get
+	// Tickets - so the card says the page takes an answer; blank for none.
+	Button  string
+	Picture []byte
+	Whole   bool
+	Listing *Listing
 }
 
 // Listing is the right half of a card that names several things rather than
@@ -365,6 +368,26 @@ func (s *Style) Draw(c Card) ([]byte, error) {
 		d.Dot = fixed.P(72+int(lineSize*1.45), y)
 		d.DrawString(line.Text)
 		y += int(lineSize * 1.55)
+	}
+
+	// The button: a pill in the brand colour with a check and the word in
+	// white, under the lines, drawn only where it clears the bottom.
+	if c.Button != "" && y+72 <= Height-24 {
+		label, err := face(bold, 26)
+		if err != nil {
+			return nil, err
+		}
+		d.Face = label
+		textW := d.MeasureString(c.Button).Ceil()
+		h := 62
+		w := 40 + 30 + 14 + textW + 40
+		at := image.Rect(72, y+4, 72+w, y+4+h)
+		DrawPill(img, at, s.Brand)
+		check := image.Rect(at.Min.X+40, at.Min.Y+(h-30)/2, at.Min.X+70, at.Min.Y+(h-30)/2+30)
+		DrawCheckIcon(img, check, color.RGBA{255, 255, 255, 255})
+		d.Src = image.NewUniform(color.RGBA{255, 255, 255, 255})
+		d.Dot = fixed.P(at.Min.X+40+30+14, at.Min.Y+h/2+9)
+		d.DrawString(c.Button)
 	}
 
 	var out bytes.Buffer

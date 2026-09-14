@@ -241,9 +241,25 @@ func (a app) shareUpcoming(w http.ResponseWriter, r *http.Request) {
 	w.Write(png)
 }
 
+// shareButton is the word on the card's button, what the event's page
+// asks: tickets for a party, a sign-up for an HCA event, and an RSVP for
+// everything else - the same for everyone, since the card is public.
+func shareButton(e *Event) string {
+	switch e.Source {
+	case SourceCelebrate:
+		return "Get Tickets"
+	case SourceTeam:
+		return "Sign Up"
+	}
+	if e.Link != "" {
+		return "Sign Up"
+	}
+	return "RSVP"
+}
+
 // shareCard serves /share/{id}.png: the card for one event. It depends only
-// on the title, the lines and the picture, so its ETag is a hash of those
-// and a chat app that fetched it once need not again.
+// on the title, the lines, the picture and the button's word, so its ETag
+// is a hash of those and a chat app that fetched it once need not again.
 func (a app) shareCard(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimSuffix(r.PathValue("id"), ".png")
 	e := a.event(id)
@@ -254,7 +270,8 @@ func (a app) shareCard(w http.ResponseWriter, r *http.Request) {
 	picture := a.cache.Model().pictureOf(e)
 	day, hours := whenLines(e)
 	kicker := a.cache.Model().category(e)
-	sum := sha256.Sum256([]byte(strings.Join([]string{e.Title, kicker, day, hours, e.Location, picture}, "\x00")))
+	button := shareButton(e)
+	sum := sha256.Sum256([]byte(strings.Join([]string{e.Title, kicker, day, hours, e.Location, picture, button}, "\x00")))
 	etag := `"` + hex.EncodeToString(sum[:8]) + `"`
 	if r.Header.Get("If-None-Match") == etag {
 		w.WriteHeader(http.StatusNotModified)
@@ -262,7 +279,8 @@ func (a app) shareCard(w http.ResponseWriter, r *http.Request) {
 	}
 	card, err := cardStyle.Draw(sharecard.Card{
 		Kicker: kicker, Title: e.Title, Picture: a.readImage(picture),
-		Lines: []sharecard.Line{{Icon: "calendar", Text: day}, {Icon: "clock", Text: hours}, {Icon: "pin", Text: e.Location}},
+		Lines:  []sharecard.Line{{Icon: "calendar", Text: day}, {Icon: "clock", Text: hours}, {Icon: "pin", Text: e.Location}},
+		Button: button,
 	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

@@ -1,12 +1,13 @@
 import {state} from './state.js';
 import {el, svg} from './dom.js';
-import {whenOrigin} from './cards.js';
+import {whenOrigin, rsvpButtons} from './cards.js';
 
 // The rail's calendar, from Helios When: a small month, paged on its own,
 // with a dot under each day in the colour of what is on it and today ringed
 // in amber, and under it the day picked - today until one is - as a card:
 // the date, what kind of day it is for this person's classrooms when it is
-// not simply regular, and every event on it, each opening its page on When.
+// not simply regular, and every event on it, each opening its page on When
+// with its Yes and No under it.
 // The month is the viewer's as When first shows it (their classrooms, the
 // default categories); today is the school's, reckoned by the server, so
 // the ring does not drift with the browser's clock.
@@ -167,7 +168,10 @@ function dayCard() {
   if (!events.length) {
     list.append(el('div', 'rail-day-empty', day ? 'Nothing on the calendar.' : 'No school.'));
   }
+  // Each event is its row, opening its page on When, with its answer's
+  // buttons under it - the same Yes and No the Upcoming cards carry.
   for (const event of events) {
+    const item = el('div', 'rail-item');
     const row = el('a', 'rail-event ' + tint(event));
     row.href = whenOrigin('calendar') + event.path;
     row.append(el('span', 'rail-event-dot'));
@@ -175,7 +179,10 @@ function dayCard() {
     body.append(el('span', 'rail-event-title', event.title));
     body.append(el('span', 'rail-event-hours', hours(event, selected)));
     row.append(body);
-    list.append(row);
+    const rsvp = el('div', 'rail-rsvp');
+    rsvp.append(rsvpButtons(event));
+    item.append(row, rsvp);
+    list.append(item);
   }
   card.append(list);
   return card;

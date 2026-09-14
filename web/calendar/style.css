@@ -619,17 +619,17 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 .side-card-linked.is-mine { border-color: var(--amber); background: var(--early-wash); }
 
 /* The household's part in a linked event: a line per person. */
-.side-people { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.side-people { display: flex; align-items: flex-start; gap: 7px; margin: 4px 0 0; font-size: 13.5px; line-height: 1.5; color: var(--brand); }
 
-.side-people li { display: flex; align-items: center; gap: 7px; font-size: 13.5px; color: var(--brand); }
+.side-people svg { width: 15px; height: 15px; flex-shrink: 0; margin-top: 2px; }
 
-.side-people svg { width: 15px; height: 15px; flex-shrink: 0; }
+.side-people-names { min-width: 0; }
+
+.side-people-sep { margin: 0 7px; color: var(--muted); font-size: 10px; vertical-align: 1px; }
 
 .side-person { font-weight: 600; }
 
-.side-person-note { color: var(--muted); }
-
-.side-person-note::before { content: "· "; }
+.side-person-note { margin-left: 4px; color: var(--muted); }
 
 .room-dots { display: inline-flex; gap: 4px; flex-shrink: 0; }
 
