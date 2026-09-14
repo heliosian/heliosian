@@ -25,6 +25,13 @@ type Answerer func(ctx context.Context, email, id, answer string) error
 
 // answer validates and records one, and sends the invite for a yes.
 func (a app) answer(ctx context.Context, email, id, answer string) error {
+	return a.record(ctx, email, id, answer, true)
+}
+
+// record keeps one answer, in the model at once and in the sheet behind
+// it, and sends the invite for a yes when asked - not for a yes that came
+// back as a reply to the invite itself.
+func (a app) record(ctx context.Context, email, id, answer string, invite bool) error {
 	email = normalizeEmail(email)
 	answer = strings.ToLower(strings.TrimSpace(answer))
 	if answer != "" && answer != AnswerYes && answer != AnswerNo && answer != AnswerHidden {
@@ -52,7 +59,7 @@ func (a app) answer(ctx context.Context, email, id, answer string) error {
 			slog.ErrorContext(ctx, "calendar write", "error", err)
 		}
 	})
-	if answer == AnswerYes && a.mailer != nil {
+	if invite && answer == AnswerYes && a.mail.Sender != nil {
 		go a.sendInvite(context.WithoutCancel(ctx), email, e)
 	}
 	return nil
@@ -89,7 +96,9 @@ func (a app) rsvp(w http.ResponseWriter, r *http.Request) {
 // sendInvite mails the person a calendar invite for the event: a message
 // with the event's words and its page, and an .ics they accept into their
 // own calendar. The invite's UID is the feed's for the event, so an event
-// they also take by feed is one entry, not two.
+// they also take by feed is one entry, not two; its organizer is the reply
+// address, so an Accept or Decline in their calendar app comes back here
+// (replies.go).
 func (a app) sendInvite(ctx context.Context, email string, e *Event) {
 	origin := "https://when.heliosian.com"
 	link := origin + "/events/" + e.ID
@@ -113,15 +122,16 @@ func (a app) sendInvite(ctx context.Context, email string, e *Event) {
 	htm.WriteString("</p>")
 	fmt.Fprintf(&htm, "<p style=\"margin:20px 0\"><a href=\"%s\" style=\"display:inline-block;padding:10px 18px;border-radius:8px;background:#0e4d54;color:#fff;font:700 15px -apple-system,Segoe UI,Roboto,sans-serif;text-decoration:none\">Open the event</a></p>", html.EscapeString(link))
 	htm.WriteString("<p style=\"font:13px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#647071\">The invite attached puts it on your calendar.</p>")
-	err := a.mailer.Send(ctx, mail.Message{
+	err := a.mail.Sender.Send(ctx, mail.Message{
 		To:      []string{email},
+		ReplyTo: []string{a.organizer()},
 		Subject: "Invitation: " + e.Title + " · " + day,
 		Text:    text.String(),
 		HTML:    htm.String(),
 		Attachments: []mail.Attachment{{
 			Name:        "invite.ics",
 			ContentType: "text/calendar; method=REQUEST; charset=utf-8",
-			Content:     []byte(invite(a.mailFrom, email, e, link, now())),
+			Content:     []byte(invite(a.organizer(), email, e, link, now())),
 		}},
 	})
 	if err != nil {
@@ -131,8 +141,18 @@ func (a app) sendInvite(ctx context.Context, email string, e *Event) {
 	slog.InfoContext(ctx, "calendar: invite sent", "to", email, "event", e.ID)
 }
 
+// organizer is the address the invites name as their organizer, where a
+// calendar app sends its reply: the reply address, else the from address.
+func (a app) organizer() string {
+	if a.mail.ReplyTo != "" {
+		return a.mail.ReplyTo
+	}
+	return a.mail.From
+}
+
 // invite is the calendar file: the one event, from the calendar to the
-// person, as a request they accept.
+// person, as a request they accept - the organizer being where their
+// calendar app sends the answer.
 func invite(from, to string, e *Event, link string, at time.Time) string {
 	stamp := at.UTC().Format(icsStamp)
 	lines := []string{

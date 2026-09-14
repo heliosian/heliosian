@@ -61,10 +61,11 @@ func Fixed(email string, next http.Handler) http.Handler {
 // session: the client id it initializes Google sign-in with, and the login POST.
 // Public is what serves without a session: the sign-in exchange itself, an
 // app's share cards - the images a chat app fetches to preview a link, which
-// no crawler could sign in for - and the calendar's personal feeds, which a
-// calendar app fetches by their secret address.
+// no crawler could sign in for - the calendar's personal feeds, which a
+// calendar app fetches by their secret address, and the calendar's reply
+// webhook, which the mail provider calls and signs.
 func Public(path string) bool {
-	return path == "/auth/login" || path == "/auth/client" || strings.HasPrefix(path, "/share/") || strings.HasPrefix(path, "/feed/")
+	return path == "/auth/login" || path == "/auth/client" || path == "/api/calendar/replies" || strings.HasPrefix(path, "/share/") || strings.HasPrefix(path, "/feed/")
 }
 
 func Token(key []byte, email string, expiry time.Time) string {

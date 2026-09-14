@@ -682,9 +682,10 @@ type Config struct {
 	// same for Helios Celebrate, from its own address.
 	Mail          mail.Sender
 	CelebrateMail mail.Sender
-	// CalendarMail sends the calendar's invites, from CalendarFrom.
-	CalendarMail mail.Sender
-	CalendarFrom string
+	// CalendarMail is the calendar's mail: the sender its invites go out
+	// through, the addresses they come from and reply to, and the inbox and
+	// webhook secret the replies come back through.
+	CalendarMail calendar.Mail
 	// BirthdayMail sends Staff Birthdays' calendar invites, from BirthdayFrom.
 	BirthdayMail mail.Sender
 	BirthdayFrom string
@@ -814,7 +815,7 @@ func NewCore(cfg Config) *Core {
 	frontEvents := upcomingEvents{calendarCache, calendarDirectory{cache, settings}, linked}
 	// The calendar goes first: the front page's cards answer through it.
 	calendarMux := http.NewServeMux()
-	answer := calendar.Register(calendarMux, calendarCache, cfg.Writer, queue, cfg.Store, calendarDirectory{cache, settings}, settings.SuperAdmins, linked, cfg.ImageSearch, cfg.CalendarMail, cfg.CalendarFrom)
+	answer := calendar.Register(calendarMux, calendarCache, cfg.Writer, queue, cfg.Store, calendarDirectory{cache, settings}, settings.SuperAdmins, linked, cfg.ImageSearch, cfg.CalendarMail)
 	homeMux := http.NewServeMux()
 	home.Register(homeMux, homeCache, cfg.Writer, queue, cfg.Store, settings.SuperAdmins, cache.HeroPhoto, directory{cache, settings}.HomePeople, directory{cache, settings}.Alerts, frontEvents.list, frontEvents.month, cfg.ImageSearch, answer)
 	eventsMux := http.NewServeMux()
@@ -937,6 +938,29 @@ func calendarMailFrom() string {
 	return "Helios Calendar <when@heliosian.com>"
 }
 
+// calendarReplyTo is the address the calendar's invites name as their
+// organizer, where a calendar app sends its Accept or Decline: a receiving
+// domain on Resend (docs/deploy.md), CALENDAR_REPLY_TO to override.
+func calendarReplyTo() string {
+	if to := os.Getenv("CALENDAR_REPLY_TO"); to != "" {
+		return to
+	}
+	return "Helios Calendar <rsvp@reply.heliosian.com>"
+}
+
+// calendarMail is the calendar's mail as the environment describes it: the
+// sender every app shares, the from and reply addresses, and - with a
+// Resend key and the webhook secret (RESEND_WEBHOOK_SECRET, or
+// creds/resend-webhook.secret locally) - the inbox the replies come back
+// through. Without the secret the reply route says it is not set up.
+func calendarMail() calendar.Mail {
+	m := calendar.Mail{Sender: newMailer(calendarMailFrom()), From: calendarMailFrom(), ReplyTo: calendarReplyTo(), Secret: optionalKey("RESEND_WEBHOOK_SECRET", "creds/resend-webhook.secret")}
+	if inbox := mail.NewInbox(optionalKey("RESEND_KEY", "creds/resend.key")); inbox != nil {
+		m.Inbox = inbox
+	}
+	return m
+}
+
 func celebrateMailFrom() string {
 	if from := os.Getenv("CELEBRATE_MAIL_FROM"); from != "" {
 		return from
@@ -1037,8 +1061,7 @@ func Production() (*http.Server, *who.Queue) {
 		// SMTP_HOST is; otherwise, in real-data mode, it is dropped and logged.
 		Mail:          newMailer(mailFrom()),
 		CelebrateMail: newMailer(celebrateMailFrom()),
-		CalendarMail:  newMailer(calendarMailFrom()),
-		CalendarFrom:  calendarMailFrom(),
+		CalendarMail:  calendarMail(),
 		BirthdayMail:  newMailer(birthdayMailFrom()),
 		BirthdayFrom:  birthdayMailFrom(),
 		BirthdayBase:  birthdayBase(),

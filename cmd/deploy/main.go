@@ -42,6 +42,7 @@ const (
 		"PEXELS_KEY=heliosian-pexels-key:latest," +
 		"PIXABAY_KEY=heliosian-pixabay-key:latest," +
 		"RESEND_KEY=heliosian-resend-key:latest," +
+		"RESEND_WEBHOOK_SECRET=heliosian-resend-webhook-secret:latest," +
 		"GITHUB_TOKEN=heliosian-github-token:latest," +
 		"ANTHROPIC_API_KEY=heliosian-anthropic-key:latest"
 )
