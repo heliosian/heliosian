@@ -15,7 +15,7 @@ function settingsCard() {
   const card = el('div', 'card');
   card.append(el('h2', '', 'Settings'));
   card.append(el('div', 'hint', 'The default charity, when the birthday year turns over, and the outreach email.'));
-  for (const [label, value] of [['Default charity', s.defaultCharity], ['Year start', s.yearStart], ['Email subject', s.emailSubject], ['Email body', s.emailBody], ['No-newsletter note', s.noNewsletterNote], ['CC on outreach', s.outreachCC || '—']]) {
+  for (const [label, value] of [['Default charity', s.defaultCharity], ['Year start', s.yearStart], ['Ask-by lead', `${s.requestLeadDays} days before the newsletter`], ['Email subject', s.emailSubject], ['Email body', s.emailBody], ['No-newsletter note', s.noNewsletterNote], ['CC on outreach', s.outreachCC || '—']]) {
     const row = el('div', 'admin-row');
     const body = el('div', 'grow');
     body.append(el('div', '', label), el('div', 'sub pre', value));
@@ -196,12 +196,43 @@ function teamCard() {
   return card;
 }
 
+// invitesCard resends every assignee's calendar invite, for after the dates'
+// rules change under them.
+function invitesCard() {
+  const card = el('div', 'card');
+  card.append(el('h2', '', 'Calendar Invites'));
+  card.append(el('div', 'hint', 'Everyone holding a birthday gets its invite when it is assigned, and again when its day to ask by moves. Resend them all so every calendar shows the dates as they stand now - each replaces its earlier one rather than adding to it.'));
+  const row = el('div', 'add-row');
+  const status = el('span', 'save-status');
+  const send = button('Resend All Invites', 'send', 'button', async () => {
+    if (!confirm('Send everyone holding a birthday its invite again?')) {
+      return;
+    }
+    send.disabled = true;
+    status.classList.remove('error');
+    status.textContent = 'Sending…';
+    const res = await fetch('/api/admin/resend-invites', {method: 'POST'});
+    if (!res.ok) {
+      status.classList.add('error');
+      status.textContent = await res.text();
+    } else {
+      const {sent} = await res.json();
+      status.textContent = `Sent ${sent} ${sent === 1 ? 'invite' : 'invites'}.`;
+    }
+    send.disabled = false;
+  });
+  row.append(send, status);
+  card.append(row);
+  return card;
+}
+
 const sections = [
   {title: 'Display', tabs: [
     {key: 'settings', label: 'Settings', card: settingsCard},
   ]},
   {title: 'Editing & Control', tabs: [
     {key: 'team', label: 'Team', card: teamCard},
+    {key: 'invites', label: 'Calendar Invites', card: invitesCard},
     {key: 'admins', label: 'Admins', card: adminsCard},
   ]},
 ];

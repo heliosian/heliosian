@@ -7,9 +7,10 @@ import (
 	"time"
 )
 
-// requestLeadDays is how far ahead of the newsletter a staff member is asked
-// for their charity, so there is time for a reply before the deadline.
-const requestLeadDays = 8
+// DefaultRequestLeadDays is how far ahead of the newsletter a staff member is
+// asked for their charity, so there is time for a reply before the deadline,
+// when the settings do not say.
+const DefaultRequestLeadDays = 8
 
 var yearForm = regexp.MustCompile(`^(\d{4}) - (\d{4})$`)
 
@@ -117,9 +118,9 @@ func (y Year) Newsletter(birthday time.Time, dates []string) (time.Time, bool) {
 	return first, found
 }
 
-// RequestBy is the day outreach is due for a newsletter.
-func RequestBy(newsletter time.Time) time.Time {
-	return newsletter.AddDate(0, 0, -requestLeadDays)
+// RequestBy is the day outreach is due for a newsletter: lead days before it.
+func RequestBy(newsletter time.Time, lead int) time.Time {
+	return newsletter.AddDate(0, 0, -lead)
 }
 
 // Stage reads how far a birthday has come this year from what has been

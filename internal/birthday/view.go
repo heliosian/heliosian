@@ -143,7 +143,7 @@ func (v viewer) staff(model *Model, b *Birthday, year Year, today time.Time) Sta
 	}
 	if hasNewsletter {
 		sv.NewsletterDate = dateCell(newsletter)
-		sv.RequestBy = dateCell(RequestBy(newsletter))
+		sv.RequestBy = dateCell(RequestBy(newsletter, model.Settings.RequestLeadDays))
 	}
 	if a, ok := model.Assignment(b.Email, year.Label); ok {
 		to, _ := v.person(a.AssignedTo)
@@ -162,7 +162,7 @@ func (v viewer) staff(model *Model, b *Birthday, year Year, today time.Time) Sta
 	if d, ok := model.Donation(b.Email, ShiftYear(year.Label, -1)); ok {
 		sv.LastDonation = &d
 	}
-	sv.Stage = Stage(sv.Level, contacted, donated, used, RequestBy(newsletter), hasNewsletter, today)
+	sv.Stage = Stage(sv.Level, contacted, donated, used, RequestBy(newsletter, model.Settings.RequestLeadDays), hasNewsletter, today)
 	for _, n := range model.Notes {
 		if n.Email == b.Email {
 			sv.Notes = append(sv.Notes, n)

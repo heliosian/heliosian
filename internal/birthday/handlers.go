@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -93,6 +94,7 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	mux.HandleFunc("POST /api/birthday/settings", a.saveSettings)
 	mux.HandleFunc("GET /api/admin/state", a.adminState)
 	mux.HandleFunc("POST /api/admin/admins", a.setAdmins)
+	mux.HandleFunc("POST /api/admin/resend-invites", a.resendInvites)
 	mux.HandleFunc("POST /api/admin/team", a.addTeamMember)
 	mux.HandleFunc("DELETE /api/admin/team", a.removeTeamMember)
 }
@@ -1069,6 +1071,7 @@ func (a app) saveSettings(w http.ResponseWriter, r *http.Request) {
 		DefaultCharityKey: strings.TrimSpace(body.DefaultCharity), YearStartKey: strings.TrimSpace(body.YearStart),
 		EmailSubjectKey: strings.TrimSpace(body.EmailSubject), EmailBodyKey: strings.TrimSpace(body.EmailBody),
 		NoNewsletterNoteKey: strings.TrimSpace(body.NoNewsletterNote), OutreachCCKey: strings.TrimSpace(body.OutreachCC),
+		RequestLeadKey: strconv.Itoa(body.RequestLeadDays),
 	}
 	tables := a.cache.Tables()
 	for key, value := range values {
@@ -1165,6 +1168,34 @@ func (a app) setAdmins(w http.ResponseWriter, r *http.Request) {
 	}
 	slog.InfoContext(r.Context(), "birthday: set the admin list", "actor", actor, "admins", admins)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// resendInvites sends everyone holding a birthday its current invite again,
+// so calendars follow after the dates' rules change.
+func (a app) resendInvites(w http.ResponseWriter, r *http.Request) {
+	actor, ok := a.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	if a.mailer == nil {
+		http.Error(w, "mail is not set up on this server", http.StatusServiceUnavailable)
+		return
+	}
+	model := a.cache.Model()
+	n := 0
+	for i := range model.Birthdays {
+		sv, ok := a.staffView(model, model.Birthdays[i].Email)
+		if !ok || sv.AssignedTo == "" || sv.RequestBy == "" || sv.Stage == StageComplete {
+			continue
+		}
+		a.sendInvite(r, sv, sv.AssignedTo, "")
+		n++
+	}
+	slog.InfoContext(r.Context(), "birthday: resent invites", "actor", actor, "count", n)
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(map[string]int{"sent": n}); err != nil {
+		slog.ErrorContext(r.Context(), "encode resent invites", "error", err)
+	}
 }
 
 // teamRow reads the email and role an admin is adding or removing, refusing a

@@ -52,8 +52,8 @@ export function monthGrid(month, items, className) {
       } else {
         chip = link(item.href, 'chip ' + item.className, item.title);
       }
-      chip.title = item.title;
-      // A chip with lines to show carries them in a card that shows on hover.
+      // A chip with lines to show carries them in a card that shows on hover,
+      // instead of the browser's own tip.
       if (item.lines && item.lines.length) {
         const wrap = el('span', 'chip-wrap');
         const pop = el('span', 'chip-pop');
@@ -64,6 +64,7 @@ export function monthGrid(month, items, className) {
         cell.append(wrap);
         continue;
       }
+      chip.title = item.title;
       cell.append(chip);
     }
     cal.append(cell);

@@ -539,16 +539,20 @@ export function openSettings() {
   const body = textarea(s.emailBody, 10);
   const note = textarea(s.noNewsletterNote, 3);
   const cc = text(s.outreachCC || '', {type: 'email', placeholder: 'hca@heliosschool.org'});
+  const lead = text(String(s.requestLeadDays), {type: 'number', required: true});
+  lead.min = 0;
+  lead.max = 60;
   openModal('Settings', [
     field('Default charity', defaultCharity, 'Where a donation goes when nobody answers'),
     field('Year start', yearStart, 'Month and day the birthday year turns over, like 08-14'),
+    field('Ask-by lead', lead, 'Days before the newsletter that the request is due'),
     field('Email subject', subject),
     field('Email body', body, 'Placeholders: {first name}, {name}, {birthday} (September 26), {newsletter date}, {default charity}, {sender}, {last year} (a heading, the charity and their note), {no newsletter note}'),
     field('No-newsletter note', note, 'Put where {no newsletter note} sits in the body, or at the end, for anyone who asked to stay out of the newsletter'),
     field('CC on outreach', cc, 'Copied on the outreach email a reminder hands over; blank for nobody'),
   ], {
     submit: () => send('POST', '/api/birthday/settings', {
-      defaultCharity: defaultCharity.value, yearStart: yearStart.value, emailSubject: subject.value, emailBody: body.value, noNewsletterNote: note.value, outreachCC: cc.value,
+      defaultCharity: defaultCharity.value, yearStart: yearStart.value, emailSubject: subject.value, emailBody: body.value, noNewsletterNote: note.value, outreachCC: cc.value, requestLeadDays: Number(lead.value),
     }),
   });
 }

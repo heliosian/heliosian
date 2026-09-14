@@ -194,7 +194,7 @@ func TestYears(t *testing.T) {
 	if _, ok := y.Newsletter(mustTime("2026-09-01"), []string{"2025-09-05"}); ok {
 		t.Error("a date outside the year was picked")
 	}
-	if got := RequestBy(mustTime("2026-08-21")); got != mustTime("2026-08-13") {
+	if got := RequestBy(mustTime("2026-08-21"), DefaultRequestLeadDays); got != mustTime("2026-08-13") {
 		t.Errorf("request by: %s", got)
 	}
 	if err := CheckYear("2026 - 2028"); err == nil {
@@ -457,7 +457,7 @@ func TestCharities(t *testing.T) {
 	if rec := call(t, mux, admin, "DELETE", "/api/birthday/charity", map[string]any{"name": "Oceana"}); rec.Code != http.StatusNoContent {
 		t.Fatalf("delete: %d %s", rec.Code, rec.Body)
 	}
-	if rec := call(t, mux, admin, "POST", "/api/birthday/settings", map[string]any{"defaultCharity": "Rocket Dog Rescue, Inc.", "yearStart": "08-14", "emailSubject": "Hi", "emailBody": "Body", "noNewsletterNote": "Note"}); rec.Code != http.StatusNoContent {
+	if rec := call(t, mux, admin, "POST", "/api/birthday/settings", map[string]any{"defaultCharity": "Rocket Dog Rescue, Inc.", "yearStart": "08-14", "emailSubject": "Hi", "emailBody": "Body", "noNewsletterNote": "Note", "requestLeadDays": 12}); rec.Code != http.StatusNoContent {
 		t.Fatalf("settings: %d %s", rec.Code, rec.Body)
 	}
 	if rec := call(t, mux, admin, "POST", "/api/birthday/settings", map[string]any{"defaultCharity": "Sierra Club", "yearStart": "08-14", "emailSubject": "Hi", "emailBody": "Body", "noNewsletterNote": "Note"}); rec.Code != http.StatusBadRequest {
@@ -634,6 +634,24 @@ func TestCreateNewsletterDates(t *testing.T) {
 	}
 	if rec := call(t, mux, admin, "POST", "/api/birthday/newsletter-dates/create", map[string]any{"weekday": 4, "from": "2027-09-30", "to": "2027-08-14"}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("a backwards run: %d", rec.Code)
+	}
+}
+
+func TestResendInvites(t *testing.T) {
+	_, mux := newServer(t)
+	if rec := call(t, mux, parent, "POST", "/api/admin/resend-invites", nil); rec.Code != http.StatusForbidden {
+		t.Fatalf("a non-admin resent invites: %d", rec.Code)
+	}
+	// The sample holds six assignments this year; Dana's is complete, Grace is not in the directory, so four go.
+	rec := call(t, mux, admin, "POST", "/api/admin/resend-invites", nil)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"sent":4`) {
+		t.Fatalf("resend: %d %s", rec.Code, rec.Body)
+	}
+	msgs := sent.wait(t, 4)
+	for _, m := range msgs {
+		if len(m.Attachments) != 1 || m.Headers["Message-ID"] == "" {
+			t.Fatalf("resent invite: %+v", m)
+		}
 	}
 }
 

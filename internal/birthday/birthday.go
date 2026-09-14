@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -65,6 +66,9 @@ const (
 	// OutreachCCKey is who a volunteer copies on the outreach email - the
 	// HCA's address - and may be blank.
 	OutreachCCKey = "Outreach CC"
+	// RequestLeadKey is how many days before the newsletter the request is
+	// due; blank means the default.
+	RequestLeadKey = "Request Lead Days"
 )
 
 // The roles on the Team tab: volunteers work the birthdays and are offered
@@ -77,10 +81,10 @@ const (
 
 var Roles = []string{RoleVolunteer, RoleComms}
 
-var settingKeys = []string{DefaultCharityKey, YearStartKey, EmailSubjectKey, EmailBodyKey, NoNewsletterNoteKey, OutreachCCKey}
+var settingKeys = []string{DefaultCharityKey, YearStartKey, EmailSubjectKey, EmailBodyKey, NoNewsletterNoteKey, OutreachCCKey, RequestLeadKey}
 
 // optionalSettingKeys may be missing or blank.
-var optionalSettingKeys = []string{OutreachCCKey}
+var optionalSettingKeys = []string{OutreachCCKey, RequestLeadKey}
 
 var (
 	BirthdayColumns       = []string{"Email", "Birthday", "Newsletter Override", "Participation", "Note"}
@@ -159,6 +163,7 @@ type Settings struct {
 	EmailBody        string `json:"emailBody"`
 	NoNewsletterNote string `json:"noNewsletterNote"`
 	OutreachCC       string `json:"outreachCC"`
+	RequestLeadDays  int    `json:"requestLeadDays"`
 }
 
 // TeamMember is one person in one role on the Team tab.
@@ -378,10 +383,18 @@ func parseSettings(rows []map[string]string) (Settings, error) {
 	if _, _, err := ParseMonthDay(values[YearStartKey]); err != nil {
 		return Settings{}, fmt.Errorf("setting %q: %w", YearStartKey, err)
 	}
+	lead := DefaultRequestLeadDays
+	if raw := strings.TrimSpace(values[RequestLeadKey]); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 0 || n > 60 {
+			return Settings{}, fmt.Errorf("setting %q: %q is not a number of days from 0 to 60", RequestLeadKey, raw)
+		}
+		lead = n
+	}
 	return Settings{
 		DefaultCharity: values[DefaultCharityKey], YearStart: values[YearStartKey],
 		EmailSubject: values[EmailSubjectKey], EmailBody: values[EmailBodyKey], NoNewsletterNote: values[NoNewsletterNoteKey],
-		OutreachCC: strings.TrimSpace(values[OutreachCCKey]),
+		OutreachCC: strings.TrimSpace(values[OutreachCCKey]), RequestLeadDays: lead,
 	}, nil
 }
 
