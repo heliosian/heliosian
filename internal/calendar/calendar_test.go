@@ -506,6 +506,63 @@ func TestRenderLinked(t *testing.T) {
 	}
 }
 
+// The front page's Upcoming Events: what the calendar page first shows a
+// viewer, from today on - their own classrooms, the default categories, the
+// other apps' events folded in with their way in - soonest first.
+func TestUpcoming(t *testing.T) {
+	m := load(t)
+	sam := Person{Email: "sam@x.org", Name: "Sam", IsStudent: true, Grade: "Grade 3", Classroom: "Jays"}
+	ella := Person{Email: "ella@x.org", Name: "Ella", IsStudent: true, Grade: "Grade 6", Classroom: "Ospreys"}
+	d := fakeDirectory{
+		people: map[string]Person{
+			"jordan.whitfield@heliosschool.org": {Email: "jordan.whitfield@heliosschool.org", Name: "Jordan", IsParent: true},
+			"sam@x.org":                         sam,
+			"ella@x.org":                        ella,
+		},
+		kids: map[string][]Person{"jordan.whitfield@heliosschool.org": {ella, sam}},
+	}
+	at, _ := time.ParseInLocation(DateTimeFormat, "2026-09-10 08:00", Location)
+	linked := []Linked{
+		{Source: SourceCelebrate, ID: "P001", Title: "Fondue & Fort Night", Summary: "A cozy evening of fondue", Location: "The Parks' House", Start: "2026-09-19 17:00", End: "2026-09-19 21:00", Path: "/p/fondue", Availability: "available", Mine: MineWaitlisted, Image: "/party-images/fondue.jpg"},
+		{Source: SourceTeam, ID: "E001", Title: "HCA International Night 2026", Start: "2026-09-24 15:30", End: "2026-09-24 18:30", Path: "/v/international-night", Availability: "open"},
+		{Source: SourceTeam, ID: "E005", Title: "Back to School Social", Start: "2026-08-27 15:00", End: "2026-08-27 17:00", Path: "/activities/E005", Availability: "done"},
+	}
+	got := m.Upcoming(d, "jordan.whitfield@heliosschool.org", linked, at, 0)
+	titles := []string{}
+	for i, u := range got {
+		titles = append(titles, u.Title)
+		if i > 0 && got[i-1].Start > u.Start {
+			t.Errorf("out of order: %q (%s) after %q (%s)", u.Title, u.Start, got[i-1].Title, got[i-1].Start)
+		}
+		if u.EndAt < "2026-09-10" || u.When == "" || u.Path == "" || u.Image == "" || u.ImageApp == "" {
+			t.Errorf("upcoming %+v", u)
+		}
+	}
+	if slices.Contains(titles, "Hummingbird CAFE") || slices.Contains(titles, "Hawks and Falcons CAFE") || !slices.Contains(titles, "Condors and Ospreys CAFE") || slices.Contains(titles, "Back to School Social") {
+		t.Errorf("a parent in Jays and Ospreys sees %v", titles)
+	}
+	// The camping trip is underway on the tenth, so it is still ahead.
+	if len(got) == 0 || got[0].Title != "Jays and Ravens Camping" || got[0].Path != "/events/a5@sample" || got[0].Image != "/brand/default-header.jpg" || got[0].ImageApp != "calendar" || got[0].Link != "" || got[0].Call != "" {
+		t.Errorf("first = %+v", got[0])
+	}
+	party, night := got[1], got[2]
+	if party.Title != "Fondue & Fort Night" || party.Path != "/events/celebrate/P001" || party.Link != "/p/fondue" || party.LinkApp != "celebrate" || party.Call != "Waitlisted" || party.Mine != MineWaitlisted || party.Availability != "available" || party.Image != "/party-images/fondue.jpg" || party.ImageApp != "celebrate" || party.When != "Saturday, September 19 · 5:00 – 9:00 PM" || party.Description != "A cozy evening of fondue" {
+		t.Errorf("party = %+v", party)
+	}
+	if night.Title != "International Night" || night.Path != "/events/a7@sample" || night.Link != "/v/international-night" || night.LinkApp != "team" || night.Call != "Join" || night.Mine != "" || night.ImageApp != "calendar" || night.StartAt != "2026-09-24 16:00" || night.EndAt != "2026-09-24 18:00" {
+		t.Errorf("folded hca event = %+v", night)
+	}
+	if all := m.Upcoming(d, "nobody@x.org", linked, at, 0); len(all) != len(got)+2 {
+		t.Errorf("a stranger sees %d, a parent %d", len(all), len(got))
+	}
+	if two := m.Upcoming(d, "jordan.whitfield@heliosschool.org", linked, at, 2); len(two) != 2 || two[1].Title != party.Title {
+		t.Errorf("limit 2 = %+v", two)
+	}
+	if later := m.Upcoming(d, "nobody@x.org", nil, at.AddDate(1, 0, 0), 0); len(later) != 0 {
+		t.Errorf("a year on = %+v", later)
+	}
+}
+
 func TestSameEvent(t *testing.T) {
 	at := func(start, end string) *Event {
 		s, e, allDay, err := parseWhen(start, end)

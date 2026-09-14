@@ -36,22 +36,31 @@ type app struct {
 	heroPhoto   func(string) string
 	people      func() []Person
 	alerts      func(string) (int, bool)
-	upcoming    func() []Event
+	upcoming    func(email string) []Event
 	search      imagesearch.Search
 }
 
-// Event is an HCA-Team event as the front page's Upcoming Events lists it:
-// the portal reckons which are ahead, and the page links across to it.
+// Event is a Helios Calendar event as the front page's Upcoming Events lists
+// it: the calendar reckons which are ahead for this viewer, and the page
+// links across to it. Image is its picture as a path on ImageApp's host,
+// and for an event another app runs, Link is its page on LinkApp with Call
+// the way in as the calendar words it, Mine and Availability behind that.
 type Event struct {
-	Title       string `json:"title"`
-	Path        string `json:"path"`
-	Start       string `json:"start"`
-	When        string `json:"when"`
-	StartAt     string `json:"startAt"`
-	EndAt       string `json:"endAt,omitempty"`
-	Location    string `json:"location,omitempty"`
-	Description string `json:"description,omitempty"`
-	ImageURL    string `json:"imageUrl,omitempty"`
+	Title        string `json:"title"`
+	Path         string `json:"path"`
+	Start        string `json:"start"`
+	When         string `json:"when"`
+	StartAt      string `json:"startAt"`
+	EndAt        string `json:"endAt,omitempty"`
+	Location     string `json:"location,omitempty"`
+	Description  string `json:"description,omitempty"`
+	Image        string `json:"image,omitempty"`
+	ImageApp     string `json:"imageApp,omitempty"`
+	Link         string `json:"link,omitempty"`
+	LinkApp      string `json:"linkApp,omitempty"`
+	Call         string `json:"call,omitempty"`
+	Mine         string `json:"mine,omitempty"`
+	Availability string `json:"availability,omitempty"`
 }
 
 // alerts is what the toolbar's badges say, reckoned by the directory: things
@@ -68,9 +77,9 @@ type alerts struct {
 // the directory cache, which this app does not otherwise depend on.
 // search finds pictures for links on the web, as HCA-Team's editors do.
 // alerts is the directory's reckoning of the toolbar badges for a person;
-// upcoming is the volunteer portal's list of what is ahead; people is the
-// directory as the admin page's pickers list it.
-func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, superAdmins func() []string, heroPhoto func(string) string, people func() []Person, alerts func(string) (int, bool), upcoming func() []Event, search imagesearch.Search) {
+// upcoming is the calendar's list of what is ahead for a person; people is
+// the directory as the admin page's pickers list it.
+func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, superAdmins func() []string, heroPhoto func(string) string, people func() []Person, alerts func(string) (int, bool), upcoming func(string) []Event, search imagesearch.Search) {
 	if search.UserAgent == "" {
 		search.UserAgent = "Heliosian image search (+https://heliosian.com)"
 	}
@@ -234,7 +243,7 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 		Categories:   categories,
 		User:         user{Email: email, Initial: strings.ToUpper(email[:1]), PhotoURL: a.heroPhoto(email), IsAdmin: admin},
 		ImageSources: a.search.Sources(),
-		Upcoming:     a.upcoming(),
+		Upcoming:     a.upcoming(email),
 		Apps:         a.visibleApps(email),
 	}
 	view.Alerts.Stale, view.Alerts.Privacy = a.alerts(email)

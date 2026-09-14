@@ -33,7 +33,7 @@ const (
 	// StyleCards renders a category as large feature cards, StyleTiles as a
 	// row of compact tiles. Every category picks one; see docs/home/data.md.
 	// StyleEvents and StyleApps are the two sections that hold no links:
-	// HCA-Team's upcoming events, and the community apps themselves - the
+	// Helios When's upcoming events, and the community apps themselves - the
 	// same list the toolbar switches between, each with its mark and
 	// tagline, less any the Visibility tab keeps from the viewer. The sheet
 	// may carry one events row, to name, mark and place the section; without

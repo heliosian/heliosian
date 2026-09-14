@@ -894,32 +894,6 @@ func TestSharePreview(t *testing.T) {
 	}
 }
 
-// The front page's Upcoming Events: open, dated roots still ahead, soonest
-// first; the done, the pending and the undated stay out.
-func TestUpcomingListsOpenDatedRootsAhead(t *testing.T) {
-	cache, _ := newServer(t)
-	m := cache.Model()
-	got := m.Upcoming(now(), 0)
-	if len(got) == 0 {
-		t.Fatal("no upcoming events in the sample")
-	}
-	for i, u := range got {
-		a := m.Resolve(u.Path)
-		if a == nil || a.Parent != "" || a.Status != StatusOpen || a.Start == "" {
-			t.Errorf("upcoming %q resolves to %+v, want an open dated root", u.Title, a)
-		}
-		if i > 0 && got[i-1].Start > u.Start {
-			t.Errorf("upcoming out of order: %q (%s) after %q (%s)", u.Title, u.Start, got[i-1].Title, got[i-1].Start)
-		}
-		if u.When == "" {
-			t.Errorf("upcoming %q has no when line", u.Title)
-		}
-	}
-	if limited := m.Upcoming(now(), 1); len(limited) != 1 || limited[0] != got[0] {
-		t.Errorf("limit 1 = %+v, want just %+v", limited, got[0])
-	}
-}
-
 func TestWhenSpansDays(t *testing.T) {
 	for _, tc := range []struct {
 		start, end, line, day, hours string

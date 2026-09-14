@@ -296,7 +296,7 @@ function categoryRow(category, at, total) {
   const limit = category.max ? ` \u00b7 shows ${category.max}` : '';
   if (category.style === 'events') {
     const n = (state.model.upcoming || []).length;
-    body.append(el('div', 'category-row-meta', `Upcoming events from HCA-Team \u00b7 ${n} ahead${limit}`));
+    body.append(el('div', 'category-row-meta', `Upcoming events from Helios When \u00b7 ${n} ahead${limit}`));
   } else if (category.style === 'apps') {
     const n = (state.model.apps || []).length;
     body.append(el('div', 'category-row-meta', `The community apps \u00b7 ${n} you see${limit}`));

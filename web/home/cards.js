@@ -241,8 +241,8 @@ export function renderCategories(query = '') {
     head.append(title);
     if (events) {
       const all = el('a', 'category-more');
-      all.href = appOrigin('team');
-      all.append(el('span', '', 'See all in HCA-Team'), svg('chevron'));
+      all.href = whenOrigin('calendar');
+      all.append(el('span', '', 'See all in Helios When'), svg('chevron'));
       head.append(all);
     }
     if (isAdmin() && state.superAdmin) {
@@ -296,7 +296,7 @@ function calendarLink(event) {
   }
   const params = new URLSearchParams({
     action: 'TEMPLATE', text: event.title, dates, ctz: 'America/Los_Angeles',
-    details: [event.description, appOrigin('team') + event.path].filter(Boolean).join('\n\n'),
+    details: [event.description, whenOrigin('calendar') + event.path].filter(Boolean).join('\n\n'),
   });
   if (event.location) {
     params.set('location', event.location);
@@ -304,20 +304,28 @@ function calendarLink(event) {
   return 'https://calendar.google.com/calendar/render?' + params.toString();
 }
 
-// Upcoming Events: the portal's next few open, dated events, each a card that
-// opens its page in HCA-Team, with Add to Calendar and Volunteer (the event's
-// page, where the sign-up is) under it. The search box filters them by title
-// like the links; with none ahead, or none matching, the section stays off
-// the page.
+// Upcoming Events: Helios When's next few events for this person - the
+// school's, HCA-Team's and Celebrate's as the calendar lists them - each a
+// card that opens its page in When, with Add to Calendar under it and, for an
+// event another app runs, the way in there: Join, Get tickets, or where the
+// household already stands. The search box filters them by title like the
+// links; with none ahead, or none matching, the section stays off the page.
+// whenOrigin is an app's origin on this tier, the calendar's under the name
+// it answers to rather than the one that redirects there.
+function whenOrigin(app) {
+  return appOrigin(app === 'calendar' ? 'when' : app);
+}
+
 function eventCard(event) {
   const card = el('div', 'event-card');
   const open = el('a', 'event-open');
-  open.href = appOrigin('team') + event.path;
+  open.href = whenOrigin('calendar') + event.path;
   const art = el('div', 'event-art');
-  // The picture lives on the portal's host, like the page it opens.
-  if (event.imageUrl) {
+  // The picture is the one the event's page wears, fetched from whichever
+  // app serves it - the calendar, or the app that runs a linked event.
+  if (event.image) {
     const img = el('img');
-    img.src = appOrigin('team') + event.imageUrl;
+    img.src = whenOrigin(event.imageApp) + event.image;
     img.alt = '';
     img.loading = 'lazy';
     art.append(img);
@@ -334,29 +342,35 @@ function eventCard(event) {
   const body = el('div', 'event-body');
   body.append(el('div', 'event-title', event.title));
   if (event.when) {
-    // "Saturday, March 6 · 5:30–10:00 PM" reads as two lines beside a calendar.
+    // "Saturday, March 6 · 5:30 – 10:00 PM" reads as two lines beside a calendar.
     const [day, time] = event.when.split(' · ');
     const when = el('div', 'event-when');
     const lines = el('div', 'event-when-lines');
     lines.append(el('span', '', day));
     if (time) {
-      lines.append(el('span', '', time.replace('–', ' – ')));
+      lines.append(el('span', '', time));
     }
     when.append(svg('calendar'), lines);
     body.append(when);
   }
   open.append(art, body);
-  // One row, two buttons of one size: a calendar-with-plus "Add", and Volunteer.
+  // One row: a calendar-with-plus "Add", and beside it, when the event has a
+  // way in, a button of the same size saying what When's pill says - teal
+  // while it is open or the household is in, plain once it is full.
   const actions = el('div', 'event-actions');
   const calendar = el('a', 'button button-secondary button-small event-calendar');
   calendar.href = calendarLink(event);
   calendar.target = '_blank';
   calendar.rel = 'noopener';
   calendar.append(svg('calendarAdd'), el('span', '', 'Add'));
-  const volunteer = el('a', 'button button-small');
-  volunteer.href = open.href;
-  volunteer.append(svg('volunteer'), el('span', '', 'Volunteer'));
-  actions.append(calendar, volunteer);
+  actions.append(calendar);
+  if (event.call) {
+    const live = event.mine || event.availability === 'open' || event.availability === 'available';
+    const go = el('a', 'button button-small' + (live ? '' : ' button-secondary'));
+    go.href = whenOrigin(event.linkApp) + event.link;
+    go.append(svg(event.mine ? 'check' : event.linkApp === 'celebrate' ? 'ticket' : 'volunteer'), el('span', '', event.call));
+    actions.append(go);
+  }
   card.append(open, actions);
   return card;
 }

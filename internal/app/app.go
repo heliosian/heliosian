@@ -18,6 +18,7 @@ import (
 	"sort"
 	"strings"
 	"syscall"
+	"time"
 
 	"heliosian/internal/auth"
 	"heliosian/internal/birthday"
@@ -308,17 +309,21 @@ func (d directory) Household(email string) (adults, kids []events.Child) {
 	return household(d.cache.Model(), *p)
 }
 
-// upcomingEvents hands the front page the portal's next few events.
+// upcomingEvents hands the front page the calendar's next few events for a
+// person, the other apps' folded in the way the calendar lists them.
 type upcomingEvents struct {
-	cache *events.Cache
+	cache     *calendar.Cache
+	directory calendar.Directory
+	linked    func(email string) []calendar.Linked
 }
 
-func (u upcomingEvents) list() []home.Event {
+func (u upcomingEvents) list(email string) []home.Event {
 	out := []home.Event{}
-	for _, e := range u.cache.Upcoming(6) {
+	for _, e := range u.cache.Model().Upcoming(u.directory, email, u.linked(email), time.Now().In(calendar.Location), 6) {
 		out = append(out, home.Event{
 			Title: e.Title, Path: e.Path, Start: e.Start, When: e.When,
-			StartAt: e.StartAt, EndAt: e.EndAt, Location: e.Location, Description: e.Description, ImageURL: e.ImageURL,
+			StartAt: e.StartAt, EndAt: e.EndAt, Location: e.Location, Description: e.Description,
+			Image: e.Image, ImageApp: e.ImageApp, Link: e.Link, LinkApp: e.LinkApp, Call: e.Call, Mine: e.Mine, Availability: e.Availability,
 		})
 	}
 	return out
@@ -747,8 +752,11 @@ func NewCore(cfg Config) *Core {
 		logging.Fatal("load invites data", "error", err)
 	}
 	mux.Handle("GET /{$}", http.RedirectHandler("/people", http.StatusFound))
+	// The front page's events come from the calendar, read for the viewer
+	// the way its own page is, so it is wired once the calendar's links are.
 	homeMux := http.NewServeMux()
-	home.Register(homeMux, homeCache, cfg.Writer, queue, cfg.Store, settings.SuperAdmins, cache.HeroPhoto, directory{cache, settings}.HomePeople, directory{cache, settings}.Alerts, upcomingEvents{eventsCache}.list, cfg.ImageSearch)
+	linked := calendarLinked{celebrateCache, eventsCache, celebrateDirectory{cache, settings}}.list
+	home.Register(homeMux, homeCache, cfg.Writer, queue, cfg.Store, settings.SuperAdmins, cache.HeroPhoto, directory{cache, settings}.HomePeople, directory{cache, settings}.Alerts, upcomingEvents{calendarCache, calendarDirectory{cache, settings}, linked}.list, cfg.ImageSearch)
 	eventsMux := http.NewServeMux()
 	events.Register(eventsMux, eventsCache, cfg.Writer, queue, cfg.Store, directory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.Mail)
 	birthdayMux := http.NewServeMux()
@@ -756,7 +764,6 @@ func NewCore(cfg Config) *Core {
 	celebrateMux := http.NewServeMux()
 	celebrate.Register(celebrateMux, celebrateCache, cfg.Writer, queue, cfg.Store, celebrateDirectory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.CelebrateMail)
 	calendarMux := http.NewServeMux()
-	linked := calendarLinked{celebrateCache, eventsCache, celebrateDirectory{cache, settings}}.list
 	calendar.Register(calendarMux, calendarCache, cfg.Writer, queue, cfg.Store, calendarDirectory{cache, settings}, settings.SuperAdmins, linked, cfg.ImageSearch)
 	// Every app's toolbar asks its own origin what its switch lists and
 	// which rows to leave off; Heliosian's cache answers for all of them.

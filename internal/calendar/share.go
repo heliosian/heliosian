@@ -251,7 +251,7 @@ func (a app) shareCard(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	picture := a.pictureOf(e)
+	picture := a.cache.Model().pictureOf(e)
 	day, hours := whenLines(e)
 	kicker := a.cache.Model().category(e)
 	sum := sha256.Sum256([]byte(strings.Join([]string{e.Title, kicker, day, hours, e.Location, picture}, "\x00")))
@@ -278,12 +278,12 @@ func (a app) shareCard(w http.ResponseWriter, r *http.Request) {
 // chooses it: the event's own, the first of its tags that has one, else
 // the calendar's header. A name is a path the app that owns it serves,
 // less its leading slash.
-func (a app) pictureOf(e *Event) string {
+func (m *Model) pictureOf(e *Event) string {
 	if e.Image != "" {
 		return strings.TrimPrefix(e.Image, "/")
 	}
 	for _, name := range e.Tags {
-		for _, t := range a.cache.Model().Tags {
+		for _, t := range m.Tags {
 			if t.Name == name && t.ImageURL != "" {
 				return strings.TrimPrefix(t.ImageURL, "/")
 			}
