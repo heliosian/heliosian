@@ -154,6 +154,22 @@ func TestNoSchoolWins(t *testing.T) {
 	}
 }
 
+// A regular-day claim beside another day type's, in either order, yields
+// to it rather than refusing the load.
+func TestRegularYields(t *testing.T) {
+	tb := tables(t)
+	tb.Events = append(tb.Events, map[string]string{"Event ID": "X1", "Start": "2026-09-08", "Title": "First Day", "Tags": "Jays, Schedule", "Day Type": "Regular"})
+	tb.Events = append(tb.Events, map[string]string{"Event ID": "X2", "Start": "2026-09-08", "Title": "Short Day", "Tags": "Jays, Schedule", "Day Type": "Early Dismissal"})
+	tb.Events = append(tb.Events, map[string]string{"Event ID": "X3", "Start": "2026-09-08", "Title": "Still First Day", "Tags": "Jays, Schedule", "Day Type": "Regular"})
+	m, err := BuildModel(tb, roster)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := m.Plan("2026-09-08", "Jays"); got.Name != "Early Dismissal" {
+		t.Errorf("plan = %s, want Early Dismissal", got.Name)
+	}
+}
+
 func TestDedupe(t *testing.T) {
 	tb := tables(t)
 	// A hand-added twin of a feed event wins over it; a differing span, tag,

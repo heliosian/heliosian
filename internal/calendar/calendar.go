@@ -1182,8 +1182,10 @@ func (b *builder) years(pdfRows []map[string]string) error {
 
 // assign records a day type for classrooms on a date within one layer. Two
 // claims in one layer that differ are refused, unless one of them is No
-// School, which wins: a break the feed also marks as a no-aftercare day or
-// a half day is still a break.
+// School, which wins - a break the feed also marks as a no-aftercare day or
+// a half day is still a break - or one of them is Regular, which yields: a
+// first day of school the enricher files as a regular day is still the
+// half day the feed says it is for kindergarten.
 func (b *builder) assign(layer map[string]map[string]string, date string, classrooms []string, name, by string) {
 	if layer[date] == nil {
 		layer[date] = map[string]string{}
@@ -1196,6 +1198,9 @@ func (b *builder) assign(layer map[string]map[string]string, date string, classr
 		case name == NoSchoolDayType:
 			layer[date][c] = name
 		case current == NoSchoolDayType:
+		case name == RegularDayType:
+		case current == RegularDayType:
+			layer[date][c] = name
 		default:
 			b.refuse("%s gives %s both %q and %q on %s", by, c, current, name, date)
 		}
