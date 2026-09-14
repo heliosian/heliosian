@@ -126,6 +126,43 @@ async function orderFeeds(tokens) {
   return true;
 }
 
+// calendarMenu is a dropdown of the viewer's calendars - My Heliosian and
+// the saved ones, the default starred - each opening the calendar as it
+// sees it; the headline drops it, so a phone without the rail can switch.
+export function calendarMenu(onPick) {
+  const menu = el('div', 'calendar-menu');
+  const chosen = defaultFeed();
+  const working = activeFeed();
+  for (const f of allCalendars()) {
+    const item = el('button', 'calendar-menu-item' + (working && working.token === f.token ? ' is-on' : ''));
+    item.type = 'button';
+    item.append(feedMark(f), el('span', 'calendar-menu-name', f.name));
+    const tail = el('span', 'calendar-menu-tail');
+    if (f.token === chosen.token) {
+      const star = el('span', 'nav-sub-star');
+      star.append(svg('star'));
+      tail.append(star);
+    }
+    if (f.locked) {
+      const lock = el('span', 'calendar-menu-lock');
+      lock.append(svg('lock'));
+      tail.append(lock);
+    }
+    item.append(tail);
+    item.addEventListener('click', () => {
+      onPick();
+      setActiveFeed(f.token);
+      setClassrooms(feedClassrooms(f));
+      setTags(feedTags(f));
+      history.pushState(null, '', '/c/' + f.token);
+      document.dispatchEvent(new CustomEvent('calendar:navigate'));
+      refresh();
+    });
+    menu.append(item);
+  }
+  return menu;
+}
+
 // Whether the rail's saved calendars show their edit and remove buttons:
 // the pencil on Calendar toggles it, and it lasts until toggled back.
 let editingNav = false;
@@ -557,12 +594,15 @@ function renderTabbar() {
   for (const item of primary) {
     bar.append(navLink(item));
   }
+  // Filters unfolds the page's own card and scrolls to it.
   const filters = el('a', '');
   filters.href = '#';
   filters.append(svg('tag'), el('span', '', 'Filters'));
   filters.addEventListener('click', e => {
     e.preventDefault();
-    openDrawer();
+    filtersUnfolded = true;
+    refresh();
+    requestAnimationFrame(() => document.querySelector('.home-filters')?.scrollIntoView({block: 'start', behavior: 'smooth'}));
   });
   bar.append(filters);
 }
@@ -584,9 +624,6 @@ function renderDrawer() {
   const nav = el('nav', 'app-nav drawer-nav');
   fillNav(nav);
   drawer.append(nav);
-  const filters = el('div', 'rail-filters drawer-filters');
-  fillFilters(filters);
-  drawer.append(filters);
   const user = el('div', 'drawer-user');
   user.append(el('div', 'name', me().name), el('div', 'email', me().email));
   const form = el('form');

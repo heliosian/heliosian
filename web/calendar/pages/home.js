@@ -1,6 +1,6 @@
 import {state, eventsOn, today, addDays, parseDate, formatDate, longDayLabel, dayLabel, monthLabel, monthOf, shiftMonth, weekStart, specials, scheduleOn, isSchoolDay, dayTypeClass, dayTypeMatches, selectedClassrooms, eventTint, timeLine, eventPath, weekdayShort, call, isMatch, isHidden, isGray} from '../state.js';
 import {el, link, svg, button, peopleLine, toast, popup, copyText, feedMark} from '../dom.js';
-import {setTitle, setSearch, fillFilters, renderRailDay, editFeedPopup, makeDefaultFeed} from '../chrome.js';
+import {setTitle, setSearch, fillFilters, renderRailDay, editFeedPopup, makeDefaultFeed, calendarMenu} from '../chrome.js';
 import {dayColumn} from '../day.js';
 import {callPill, emptyNote, roomDots, planCards} from '../events.js';
 import {answerOf, answer, linkURL, selectedTags, classroomNames, tagNames, defaultFeedName, showsFeed, activeFeed, setActiveFeed, defaultFeed, feedURL, webcalURL} from '../state.js';
@@ -589,7 +589,28 @@ export function homePage(date) {
     mark.setAttribute('aria-label', 'Change the name or emoji');
     mark.append(feedMark(shown));
     mark.addEventListener('click', () => editFeedPopup(shown));
-    headline.append(mark, el('h1', 'calendar-headline-name', shown.name));
+    // The name drops a menu of every calendar, to switch without the rail.
+    const pick = el('div', 'calendar-pick');
+    const name = el('button', 'calendar-headline-name');
+    name.type = 'button';
+    name.title = 'Switch calendar';
+    name.append(el('h1', '', shown.name), svg('down'));
+    const menu = calendarMenu(() => {
+      menu.hidden = true;
+    });
+    menu.hidden = true;
+    name.addEventListener('click', e => {
+      e.stopPropagation();
+      menu.hidden = !menu.hidden;
+      if (!menu.hidden) {
+        document.addEventListener('click', () => {
+          menu.hidden = true;
+        }, {once: true});
+      }
+    });
+    menu.addEventListener('click', e => e.stopPropagation());
+    pick.append(name, menu);
+    headline.append(mark, pick);
     if (shown.locked) {
       const lock = el('span', 'calendar-lock');
       lock.title = 'Its filters are the calendar\u2019s own, and it cannot be removed';
