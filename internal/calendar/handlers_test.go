@@ -206,3 +206,54 @@ func TestSavedView(t *testing.T) {
 		t.Errorf("saved view survives forgetting: %+v", again.User.Saved)
 	}
 }
+
+// An admin adds an event, repeated every so many weeks, and replaces an
+// event's search words; a parent can do neither.
+func TestAdminAddsAndCorrects(t *testing.T) {
+	handler, cache := testApp(t)
+	admin := as("dana.hawkins@heliosschool.org", handler)
+	rec := call(t, admin, "POST", "/api/calendar/events", `{"title":"Chess Club","start":"2026-10-01 15:30","end":"2026-10-01 16:30","tags":["Jays","Clubs"],"repeatWeeks":4,"repeatTimes":2}`)
+	if rec.Code != 200 {
+		t.Fatalf("add: %d %s", rec.Code, rec.Body)
+	}
+	var made struct{ IDs []string }
+	json.NewDecoder(rec.Body).Decode(&made)
+	if len(made.IDs) != 3 {
+		t.Fatalf("ids = %v", made.IDs)
+	}
+	starts := []string{}
+	for _, id := range made.IDs {
+		e := cache.Model().Event(id)
+		if e == nil || e.Source != SourceSheet || e.AddedBy != "dana.hawkins@heliosschool.org" {
+			t.Fatalf("event %s = %+v", id, e)
+		}
+		starts = append(starts, e.Start)
+	}
+	if strings.Join(starts, " ") != "2026-10-01 15:30 2026-10-29 15:30 2026-11-26 15:30" {
+		t.Errorf("starts = %v", starts)
+	}
+	if rec := call(t, admin, "POST", "/api/calendar/events", `{"title":"Bad","start":"not a date","tags":["Clubs"]}`); rec.Code != 400 {
+		t.Errorf("bad date accepted: %d", rec.Code)
+	}
+	rec = call(t, admin, "POST", "/api/calendar/keywords", `{"id":"`+made.IDs[0]+`","keywords":["chess","board games"]}`)
+	if rec.Code != 204 || strings.Join(cache.Model().Event(made.IDs[0]).Keywords, ",") != "chess,board games" {
+		t.Errorf("keywords: %d %v", rec.Code, cache.Model().Event(made.IDs[0]).Keywords)
+	}
+	if p := cache.Model().Provenance[made.IDs[0]]; p == nil || strings.Join(p.Corrected, ",") != "Keywords" {
+		t.Errorf("provenance = %+v", p)
+	}
+	rec = call(t, admin, "POST", "/api/calendar/events/when", `{"id":"`+made.IDs[0]+`","start":"2026-10-02 16:00","end":"2026-10-02 17:00"}`)
+	if rec.Code != 204 || cache.Model().Event(made.IDs[0]).Start != "2026-10-02 16:00" {
+		t.Errorf("move: %d %s", rec.Code, cache.Model().Event(made.IDs[0]).Start)
+	}
+	if rec := call(t, admin, "POST", "/api/calendar/events/when", `{"id":"a7@sample","start":"2026-10-02 16:00"}`); rec.Code != 400 {
+		t.Errorf("an imported event moved from the list: %d", rec.Code)
+	}
+	parent := as("jordan.whitfield@heliosschool.org", handler)
+	if rec := call(t, parent, "POST", "/api/calendar/keywords", `{"id":"`+made.IDs[0]+`","keywords":["x"]}`); rec.Code != 403 {
+		t.Errorf("parent set keywords: %d", rec.Code)
+	}
+	if rec := call(t, parent, "POST", "/api/calendar/events", `{"title":"X","start":"2026-10-01","tags":["Clubs"]}`); rec.Code != 403 {
+		t.Errorf("parent added an event: %d", rec.Code)
+	}
+}

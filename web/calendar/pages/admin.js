@@ -1,5 +1,5 @@
-import {state, tagGroups} from '../state.js';
-import {el, svg, button, toast, segmented} from '../dom.js';
+import {state, me, tagGroups, bands, classroomNames, myClassrooms, event, eventDates, addDays, parseDate, dayLabel} from '../state.js';
+import {el, link, svg, button, toast, segmented} from '../dom.js';
 import {setTitle} from '../chrome.js';
 
 async function refreshModel() {
@@ -249,7 +249,7 @@ function imageControl(t, onChange) {
 }
 
 function categoriesTool() {
-  const wrap = el('section', 'admin-tool');
+  const wrap = el('div', 'card admin-tool');
   const groups = working();
   const board = el('div', 'admin-groups');
   const status = el('span', 'save-status');
@@ -267,7 +267,7 @@ function categoriesTool() {
   };
 
   const head = el('div', 'admin-tool-head');
-  head.append(el('h2', 'admin-tool-title', 'Categories'));
+  head.append(el('h2', '', 'Categories'));
   head.append(button('Add category group', 'plus', 'button', () => {
     const name = (prompt('Name for the new group') || '').trim();
     if (!name) {
@@ -281,7 +281,7 @@ function categoriesTool() {
     paint();
   }));
   wrap.append(head);
-  wrap.append(el('p', 'page-intro', 'The categories events are filed under, in the groups and the order the filters show them. A group with no name is the plain Categories line at the end. Rename a group here to rename it for every category in it; a category itself keeps its name, since every event carries it. A category that is off by default is one people see only when they switch it on, and Reset filters leaves it off. A category\u2019s picture is what an event under it wears across the top of its page when it has none of its own; the first of an event\u2019s categories with a picture wins.'));
+  wrap.append(el('p', 'hint', 'The categories events are filed under, in the groups and the order the filters show them. A group with no name is the plain Categories line at the end. Rename a group here to rename it for every category in it; a category itself keeps its name, since every event carries it. A category that is off by default is one people see only when they switch it on, and Reset filters leaves it off. A category\u2019s picture is what an event under it wears across the top of its page when it has none of its own; the first of an event\u2019s categories with a picture wins.'));
 
   // groupPicker moves a category to another group, the unnamed one, or a
   // new one named on the spot.
@@ -557,16 +557,369 @@ function categoriesTool() {
   return wrap;
 }
 
+// addEventTool is the form that puts an event in the Events tab: what it
+// is, when, where, who it is for and what kind of thing it is, the day type
+// it imposes, its search words - and, to repeat it, how many weeks apart
+// and how many more times. Opened from an event's page to clone it, the
+// form starts filled from that event with its dates four weeks on.
+function addEventForm(from, shift, onDone) {
+  const form = el('form', 'admin-form');
+  form.append(el('p', 'hint', 'Goes into the Events tab as the community\u2019s own, under your name.'));
+  // Two tabs: the event itself, and the tags it is filed under. Every
+  // field stays in the form - only the panels hide - so nothing typed is
+  // lost in switching.
+  const tabs = el('div', 'tabs');
+  const eventPanel = el('div');
+  const tagPanel = el('div');
+  tagPanel.hidden = true;
+  // The first tab ends in Next, the second in the button that adds.
+  let showPanel = null;
+  const tabButton = (label, panel) => {
+    const b = el('button', 'tab-button', label);
+    b.type = 'button';
+    b.addEventListener('click', () => showPanel(panel));
+    return b;
+  };
+  const eventTab = tabButton('Event', eventPanel);
+  const tagTab = tabButton('Tags', tagPanel);
+  showPanel = panel => {
+    eventTab.classList.toggle('is-active', panel === eventPanel);
+    tagTab.classList.toggle('is-active', panel === tagPanel);
+    eventPanel.hidden = panel !== eventPanel;
+    tagPanel.hidden = panel !== tagPanel;
+  };
+  tabs.append(eventTab, tagTab);
+  form.append(tabs, eventPanel, tagPanel);
+  showPanel(eventPanel);
+  const field = (label, input, note) => {
+    const wrap = el('label', 'field');
+    wrap.append(el('span', '', label), input);
+    if (note) {
+      wrap.append(el('small', '', note));
+    }
+    return wrap;
+  };
+  const text = (value, placeholder) => {
+    const input = el('input');
+    input.type = 'text';
+    input.value = value || '';
+    input.placeholder = placeholder || '';
+    return input;
+  };
+  const title = text(from ? from.title : '');
+  title.required = true;
+  title.maxLength = 200;
+  eventPanel.append(field('Title', title));
+
+  // When: a date and, unless it is all day, a time, for the start and the
+  // end. A cloned event's dates move on by the weeks asked.
+  const startDate = el('input');
+  startDate.type = 'date';
+  startDate.required = true;
+  const startTime = el('input');
+  startTime.type = 'time';
+  const endDate = el('input');
+  endDate.type = 'date';
+  const endTime = el('input');
+  endTime.type = 'time';
+  if (from) {
+    const first = eventDates(from)[0];
+    const last = eventDates(from)[eventDates(from).length - 1];
+    startDate.value = addDays(first, 7 * shift);
+    endDate.value = addDays(last, 7 * shift);
+    if (!from.allDay) {
+      startTime.value = from.start.slice(11, 16);
+      endTime.value = from.end.slice(11, 16);
+    }
+  }
+  const whenRow = el('div', 'admin-when');
+  whenRow.append(field('Starts', startDate), field('At', startTime, 'Leave blank for all day'), field('Ends', endDate, 'Blank means the same day'), field('Until', endTime));
+  eventPanel.append(whenRow);
+  const place = text(from ? from.location : '');
+  eventPanel.append(field('Location', place));
+  const source = text(from ? from.sourceUrl || from.sourceNote || '' : '', 'https://…');
+  eventPanel.append(field('Source', source, 'Where this came from - a web address links from the event\u2019s page; any other words are shown as written.'));
+  const description = el('textarea');
+  description.rows = 4;
+  description.value = from ? from.description || '' : '';
+  eventPanel.append(field('Description', description));
+
+  // Who and what: the classroom chips and the categories, as the filters
+  // have them.
+  const rooms = new Set(from ? from.classrooms : classroomNames());
+  const cats = new Set(from ? from.tags.filter(t => !classroomNames().includes(t)) : []);
+  const chip = (label, on, onClick, color) => {
+    const b = el('button', 'filter-chip' + (on ? ' is-on' : ''), label);
+    b.type = 'button';
+    if (color) {
+      b.style.setProperty('--room', color);
+      b.classList.add('has-color');
+    }
+    b.addEventListener('click', onClick);
+    return b;
+  };
+  const roomField = el('div', 'field');
+  roomField.append(el('span', '', 'Classrooms'));
+  const roomChips = el('div', 'filter-chips');
+  const paintRooms = () => {
+    roomChips.replaceChildren();
+    roomChips.append(chip('Everyone', rooms.size === classroomNames().length, () => {
+      for (const c of classroomNames()) {
+        rooms.add(c);
+      }
+      paintRooms();
+    }));
+    for (const band of bands()) {
+      for (const c of band.classrooms) {
+        roomChips.append(chip(c.name, rooms.has(c.name), () => {
+          if (rooms.has(c.name)) {
+            rooms.delete(c.name);
+          } else {
+            rooms.add(c.name);
+          }
+          paintRooms();
+        }, state.model.colors[c.name]));
+      }
+    }
+  };
+  paintRooms();
+  roomField.append(roomChips, el('small', '', 'Who the event is for. Everyone is the whole school.'));
+  tagPanel.append(roomField);
+  const catField = el('div', 'field');
+  catField.append(el('span', '', 'Categories'));
+  const catLines = el('div', 'form-tag-groups');
+  const paintCats = () => {
+    catLines.replaceChildren();
+    for (const group of tagGroups()) {
+      const line = el('div', 'form-tag-group');
+      line.append(el('span', 'form-tag-label', group.name || 'Other categories'));
+      const chips = el('div', 'filter-chips');
+      for (const t of group.tags.filter(t => !t.builtIn)) {
+        chips.append(chip(t.name, cats.has(t.name), () => {
+          if (cats.has(t.name)) {
+            cats.delete(t.name);
+          } else {
+            cats.add(t.name);
+          }
+          paintCats();
+        }));
+      }
+      line.append(chips);
+      catLines.append(line);
+    }
+  };
+  paintCats();
+  catField.append(catLines, el('small', '', 'What kind of thing it is. An event with none is filed under Misc.'));
+  tagPanel.append(catField);
+
+  const keywords = text(from ? (from.keywords || []).join(', ') : '', 'half day, kinder, short day');
+  tagPanel.append(field('Search words', keywords, 'Words a parent might type that are not in the title, separated by commas.'));
+
+  // Next, under the first tab, checks what it holds and turns to the
+  // second, whose own button adds the event.
+  const nextRow = el('div', 'modal-actions');
+  const next = el('button', 'button');
+  next.type = 'button';
+  next.append(el('span', '', 'Next'), svg('chevron'));
+  next.addEventListener('click', () => {
+    if (!title.value.trim() || !startDate.value) {
+      form.reportValidity();
+      return;
+    }
+    showPanel(tagPanel);
+  });
+  nextRow.append(next);
+  eventPanel.append(nextRow);
+  const actions = el('div', 'modal-actions');
+  const status = el('span', 'save-status');
+  const submit = el('button', 'button');
+  submit.type = 'submit';
+  submit.append(svg('plus'), el('span', '', from ? 'Add the copy' : 'Add the event'));
+  actions.append(submit, status);
+  tagPanel.append(actions);
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    if (!rooms.size) {
+      status.textContent = 'Pick at least one classroom.';
+      status.classList.add('error');
+      return;
+    }
+    const when = (date, time) => (date ? date + (time ? ' ' + time : '') : '');
+    // An end with no time of its own ends when it starts, as the sheet
+    // takes it; an all-day end is its day.
+    const body = {
+      title: title.value.trim(), start: when(startDate.value, startTime.value), end: when(endDate.value || startDate.value, endTime.value || startTime.value),
+      location: place.value.trim(), description: description.value.trim(), source: source.value.trim(),
+      tags: [...classroomNames().filter(c => rooms.has(c)), ...cats], keywords: keywords.value.split(',').map(w => w.trim()).filter(Boolean),
+    };
+    submit.disabled = true;
+    status.classList.remove('error');
+    status.textContent = 'Adding…';
+    const res = await fetch('/api/calendar/events', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+    submit.disabled = false;
+    if (!res.ok) {
+      status.textContent = await res.text();
+      status.classList.add('error');
+      return;
+    }
+    const {ids} = await res.json();
+    status.textContent = '';
+    toast('Event added');
+    await onDone(ids);
+  });
+  return form;
+}
+
+// openAddEvent is the add-event form in a sheet over the page, filled from
+// an event to clone when there is one; done, the list is drawn again.
+function openAddEvent(from, shift, repaint) {
+  let shut = null;
+  const form = addEventForm(from, shift, async () => {
+    await refreshModel();
+    shut();
+    repaint();
+  });
+  shut = openSheet(from ? 'Add a copy of ' + from.title : 'Add an event', form);
+}
+
+// whenPicker is a date and a time for one end of an event, blank time for
+// all day, reading back as the sheet writes a moment.
+function whenPicker(value) {
+  const wrap = el('span', 'admin-when-pick');
+  const date = el('input');
+  date.type = 'date';
+  date.value = (value || '').slice(0, 10);
+  const time = el('input');
+  time.type = 'time';
+  time.value = value && value.length > 10 ? value.slice(11, 16) : '';
+  wrap.append(date, time);
+  return {node: wrap, inputs: [date, time], value: () => (date.value ? date.value + (time.value ? ' ' + time.value : '') : '')};
+}
+
+// eventsTool is the Events tab: the hand-added events as a list, each with
+// its start and end as pickers that save on change, and Add Event, which
+// opens the form. Opened to clone an event, the form is already up.
+function eventsTool() {
+  const card = el('div', 'card');
+  const head = el('div', 'admin-tool-head');
+  head.append(el('h2', '', 'Events'));
+  const list = el('div', 'admin-events');
+  const paint = () => {
+    list.replaceChildren();
+    const mine = state.model.events.filter(e => e.source === 'sheet').sort((a, b) => a.start.localeCompare(b.start));
+    if (!mine.length) {
+      list.append(el('div', 'admin-empty', 'No events added by hand yet - everything on the calendar came from the school or the other apps.'));
+      return;
+    }
+    const today = state.model.today;
+    for (const e of mine) {
+      const row = el('div', 'admin-row admin-event' + (e.end.slice(0, 10) < today ? ' is-past' : ''));
+      const words = el('div', 'admin-row-words');
+      const title = link('/events/' + encodeURIComponent(e.id), 'admin-row-name');
+      title.textContent = e.title;
+      words.append(title, el('div', 'admin-row-note', [e.location, e.tags.filter(t => !classroomNames().includes(t)).join(', ')].filter(Boolean).join(' · ')));
+      const start = whenPicker(e.start);
+      const end = whenPicker(e.end);
+      const save = button('Save', 'check', 'button button-small admin-event-save', async () => {
+        const res = await fetch('/api/calendar/events/when', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id: e.id, start: start.value(), end: end.value()})});
+        if (!res.ok) {
+          toast(await res.text());
+          return;
+        }
+        toast('Moved');
+        await refreshModel();
+        paint();
+      });
+      save.hidden = true;
+      const changed = () => {
+        save.hidden = start.value() === e.start && end.value() === e.end;
+      };
+      for (const input of [...start.inputs, ...end.inputs]) {
+        input.addEventListener('input', changed);
+      }
+      const when = el('div', 'admin-event-when');
+      when.append(el('span', 'admin-event-label', 'Starts'), start.node, el('span', 'admin-event-label', 'Ends'), end.node, save);
+      const clone = button('', 'copy', 'icon-button admin-event-clone', () => openAddEvent(e, 4, paint));
+      clone.title = 'Add a copy 4 weeks on';
+      row.append(words, when, clone);
+      list.append(row);
+    }
+  };
+  head.append(button('Add Event', 'plus', 'button', () => openAddEvent(null, 4, paint)));
+  card.append(head, el('p', 'hint', 'The events added by hand, in the Events tab. Change when one is right here; the school\u2019s own events are corrected in the sheet\u2019s Overrides tab.'), list);
+  paint();
+  const params = new URLSearchParams(location.search);
+  if (params.get('clone') && event(params.get('clone'))) {
+    setTimeout(() => openAddEvent(event(params.get('clone')), Number(params.get('weeks') || 4), paint), 0);
+  }
+  return card;
+}
+
+// The tools, grouped as the rail lists them.
+const sections = [
+  {title: 'Calendar', tabs: [
+    {key: 'events', label: 'Events', card: eventsTool},
+    {key: 'categories', label: 'Categories', card: categoriesTool},
+  ]},
+];
+
+// adminPage is Admin Tools as the other apps have it: its own window over
+// the shell - a teal header with the tile, Admin, the signed-in address and
+// a close button - a rail of tabs, and a card per tool.
 export function adminPage() {
   setTitle('Admin Tools');
-  const page = el('div');
-  const head = el('div', 'page-head admin-head');
-  const mark = el('span', 'admin-mark');
-  mark.append(svg('calendar'));
-  const main = el('div', 'page-head-main');
-  main.append(el('h1', 'page-title', 'Admin Tools'));
-  main.append(el('p', 'page-intro', 'What the calendar admins can change from here. Everything else is edited in the sheet.'));
-  head.append(mark, main);
-  page.append(head, categoriesTool());
+  const page = el('div', 'admin admin-strip');
+  const header = el('header');
+  const brand = el('a', 'brand-link');
+  brand.href = '/';
+  brand.setAttribute('data-link', '');
+  const mark = el('img', 'admin-tile');
+  mark.src = '/brand/icon-192.png';
+  mark.alt = 'Helios Calendar';
+  brand.append(mark, el('span', '', 'Admin'));
+  const right = el('span', 'right');
+  right.append(el('span', 'email', me().email));
+  const close = el('a', 'admin-close');
+  close.href = '/';
+  close.setAttribute('data-link', '');
+  close.setAttribute('aria-label', 'Close admin tools');
+  close.append(svg('close'));
+  right.append(close);
+  header.append(brand, right);
+
+  const layout = el('div', 'layout');
+  const rail = el('nav', 'sidebar');
+  const container = el('div', 'container');
+  const panels = {};
+  const tabList = [];
+  const show = key => {
+    for (const tab of tabList) {
+      tab.classList.toggle('active', tab.dataset.panel === key);
+    }
+    for (const [k, panel] of Object.entries(panels)) {
+      panel.hidden = k !== key;
+    }
+    state.adminTab = key;
+  };
+  for (const section of sections) {
+    const group = el('div', 'sidebar-section');
+    group.append(el('div', 'sidebar-section-title', section.title));
+    for (const item of section.tabs) {
+      const tab = el('div', 'tab', item.label);
+      tab.dataset.panel = item.key;
+      tab.addEventListener('click', () => show(item.key));
+      tabList.push(tab);
+      group.append(tab);
+      const panel = el('div', 'panel');
+      panel.append(item.card());
+      panels[item.key] = panel;
+      container.append(panel);
+    }
+    rail.append(group);
+  }
+  const wanted = new URLSearchParams(location.search).get('tab') || (new URLSearchParams(location.search).get('clone') ? 'events' : state.adminTab);
+  show(wanted && panels[wanted] ? wanted : sections[0].tabs[0].key);
+  layout.append(rail, container);
+  page.append(header, layout);
   return page;
 }

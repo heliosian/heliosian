@@ -857,6 +857,12 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .side-admin-title { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
 
+.side-keywords { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0; }
+
+.side-keyword { padding: 2px 8px; border-radius: 999px; background: #fff; border: 1px solid #c5dad7; font-size: 12px; color: var(--ink); }
+
+.side-keywords-edit { width: 100%; margin: 6px 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; font-size: 13px; background: #fff; }
+
 .side-row-body .link-button { display: inline-flex; margin-right: 6px; }
 
 .side-card-linked { border-color: var(--brand); }
@@ -920,8 +926,76 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .row-text { color: var(--muted); }
 
-/* Admin Tools. The page head carries a mark beside the title; each tool
-   has a heading row with its action at the right. The categories are
+/* Admin Tools is its own window over the shell (web/common/admin.css): the
+   rail, toolbar and tab bar step aside and the page fills the window. */
+body.is-admin > .app-shell > .sidebar,
+body.is-admin > .app-shell .topbar,
+body.is-admin > .mobile-top,
+body.is-admin > .tabbar { display: none !important; }
+
+body.is-admin #page { padding: 0; }
+
+body.is-admin #page > :not(.home) { max-width: none; margin: 0; }
+
+body.is-admin main { padding: 0; }
+
+.admin { min-height: 100%; display: flex; flex-direction: column; background: #f7f8f9; }
+
+.admin .container { max-width: 1100px; }
+
+.admin .card > .hint { margin-bottom: 14px; }
+
+/* The Events list: a row per hand-added event, its start and end as
+   pickers, Save appearing once one changes; past ones faded. */
+.admin-events { display: flex; flex-direction: column; margin-top: 8px; }
+
+.admin-event { display: flex; align-items: center; gap: 14px; padding: 10px 0; border-top: 1px solid var(--line); }
+
+.admin-event:first-child { border-top: 0; }
+
+.admin-event.is-past { opacity: 0.55; }
+
+.admin-event .admin-row-words { flex: 1; min-width: 0; }
+
+.admin-event .admin-row-name { display: block; width: auto; color: var(--brand); text-decoration: none; }
+
+.admin-event .admin-row-name:hover { text-decoration: underline; }
+
+.admin-event-when { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; flex-shrink: 0; }
+
+.admin-event-label { font-size: 12px; font-weight: 600; color: var(--muted); }
+
+.admin-when-pick { display: inline-flex; gap: 4px; }
+
+.admin-when-pick input { padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; font: inherit; font-size: 13px; background: #fff; }
+
+.admin-event-clone { flex-shrink: 0; }
+
+.admin-form { max-width: 720px; }
+
+/* The form's two tabs, in the shape the other apps' forms use. */
+.tabs { display: flex; gap: 4px; margin: 6px 0 12px; border-bottom: 1px solid var(--line); }
+
+.tab-button { padding: 8px 14px; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; background: none; font: inherit; font-size: 14px; font-weight: 600; color: var(--muted); cursor: pointer; }
+
+.tab-button.is-active { color: var(--brand); border-bottom-color: var(--brand); }
+
+/* The add-event form: the four when fields in a row, the repeat line. */
+.admin-form .field textarea, .admin-form .field input[type=date], .admin-form .field input[type=time] { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; background: #fff; }
+
+.admin-when { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0 12px; }
+
+.admin-repeat { margin: 14px 0; }
+
+.admin-repeat .field-label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+
+.admin-repeat-line { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 14px; }
+
+.admin-repeat-line input { width: 64px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; background: #fff; }
+
+.admin-repeat small { display: block; font-size: 12.5px; color: var(--muted); margin-top: 6px; }
+
+/* The categories tool. Each tool The categories are
    cards, one per group: a head with the name (a box only while renaming),
    how many it holds, Rename, arrows to move the group and a chevron to
    fold it; and a row per category - a handle to drag it, its name, its
@@ -933,11 +1007,10 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .admin-mark svg { width: 30px; height: 30px; }
 
-.admin-tool { margin-top: 8px; }
+.admin-tool { margin-top: 0; }
 
 .admin-tool-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0 0 6px; }
 
-.admin-tool-title { font-family: Montserrat, Roboto, sans-serif; font-size: 22px; font-weight: 700; color: var(--brand); margin: 0; }
 
 .admin-groups { display: flex; flex-direction: column; gap: 12px; margin-top: 14px; }
 

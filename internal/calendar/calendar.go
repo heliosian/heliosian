@@ -60,7 +60,7 @@ const (
 var (
 	GoogleColumns      = []string{"Key", "Start", "End", "Title", "Location", "Description", "Updated", "Sequence"}
 	PDFColumns         = []string{"Key", "Year", "Start", "End", "Title", "Day Type", "Tags", "Marker", "PDF"}
-	EventColumns       = []string{"Event ID", "Start", "End", "Title", "Location", "Description", "Tags", "Day Type", "Keywords", "Added By", "Added"}
+	EventColumns       = []string{"Event ID", "Start", "End", "Title", "Location", "Description", "Tags", "Day Type", "Keywords", "Added By", "Added", "Source"}
 	EnrichmentColumns  = []string{"Event ID", "Tags", "Day Type", "Keywords", "Input Hash", "Model", "Enriched"}
 	OverrideColumns    = []string{"Event ID", "Title", "Start", "End", "Location", "Description", "Tags", "Day Type", "Keywords", "Hidden", "Note"}
 	DayTypeColumns     = []string{"Day Type", "Dropoff Start", "Dropoff End", "School Start", "School End", "Pickup Start", "Pickup End", "Aftercare Start", "Aftercare End"}
@@ -139,9 +139,12 @@ type Event struct {
 	// read from, and AddedBy and Added who put a hand-added event in and when.
 	SourceURL   string `json:"sourceUrl,omitempty"`
 	SourceTitle string `json:"sourceTitle,omitempty"`
-	Year        string `json:"year,omitempty"`
-	AddedBy     string `json:"addedBy,omitempty"`
-	Added       string `json:"added,omitempty"`
+	// SourceNote is a hand-added event's proof when it is not an address:
+	// the Events tab's Source cell as written.
+	SourceNote string `json:"sourceNote,omitempty"`
+	Year       string `json:"year,omitempty"`
+	AddedBy    string `json:"addedBy,omitempty"`
+	Added      string `json:"added,omitempty"`
 	// Link is the page of an event another app runs, as a path on that site;
 	// Availability is what a reader can do there now; Mine is where the
 	// viewer's household already stands with it; Image is its picture
@@ -464,6 +467,42 @@ func (t *Tables) WithSetting(email string, cells map[string]string) *Tables {
 		}
 	}
 	out.Settings = append(out.Settings, maps.Clone(cells))
+	return &out
+}
+
+// WithOverride is the tables with an event's Overrides row given cells - the
+// row it has with those cells set, or a new one.
+func (t *Tables) WithOverride(id string, cells map[string]string) *Tables {
+	out := *t
+	out.Overrides = cloneRows(t.Overrides)
+	for _, row := range out.Overrides {
+		if row["Event ID"] == id {
+			maps.Copy(row, cells)
+			return &out
+		}
+	}
+	row := map[string]string{"Event ID": id}
+	maps.Copy(row, cells)
+	out.Overrides = append(out.Overrides, row)
+	return &out
+}
+
+// WithEvents is the tables with rows added to the Events tab.
+func (t *Tables) WithEvents(rows []map[string]string) *Tables {
+	out := *t
+	out.Events = append(cloneRows(t.Events), cloneRows(rows)...)
+	return &out
+}
+
+// WithEventWhen is the tables with one Events tab row's Start and End set.
+func (t *Tables) WithEventWhen(id, start, end string) *Tables {
+	out := *t
+	out.Events = cloneRows(t.Events)
+	for _, row := range out.Events {
+		if row["Event ID"] == id {
+			row["Start"], row["End"] = start, end
+		}
+	}
 	return &out
 }
 
@@ -1233,6 +1272,15 @@ func BuildModel(tables *Tables, roster Roster) (*Model, error) {
 			return nil, err
 		}
 		e.AddedBy, e.Added = strings.TrimSpace(row["Added By"]), strings.TrimSpace(row["Added"])
+		// The Source cell is the row's proof: a web address links, anything
+		// else is said as written.
+		if proof := strings.TrimSpace(row["Source"]); proof != "" {
+			if u, err := url.Parse(proof); err == nil && (u.Scheme == "https" || u.Scheme == "http") && u.Host != "" {
+				e.SourceURL = proof
+			} else {
+				e.SourceNote = proof
+			}
+		}
 		if err := b.add(e); err != nil {
 			return nil, err
 		}

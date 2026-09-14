@@ -60,6 +60,9 @@ export function render() {
   page.className = '';
   clearSearch();
   page.replaceChildren(route());
+  // Admin Tools is its own window: the shell's rail, toolbar and tab bar
+  // step aside for the admin chrome (pages/admin.js).
+  document.body.classList.toggle('is-admin', location.pathname === '/admin');
   renderChrome();
 }
 

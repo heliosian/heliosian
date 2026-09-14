@@ -1,5 +1,5 @@
 import {state, daysLine, timeLine, calendarLink, sourceWords, dayType, eventDates, dayTypeClass, linkURL, call, isParty, mineWords, eventImage, weekdayShort, parseDate, spansDays, monthLabel, monthOf} from '../state.js';
-import {el, link, svg, paragraphs} from '../dom.js';
+import {el, link, svg, paragraphs, button, toast} from '../dom.js';
 import {setTitle} from '../chrome.js';
 import {audienceChips, blocks} from '../events.js';
 
@@ -121,6 +121,51 @@ function outLink(href, words) {
   return a;
 }
 
+// keywordsEditor is the search words an admin can change from the page:
+// the words as chips, Edit making them a box, Save writing them to the
+// event's Overrides row.
+function keywordsEditor(e) {
+  const wrap = el('div');
+  const paint = () => {
+    wrap.replaceChildren();
+    const line = el('div', 'side-line', 'Search words' + (e.keywords && e.keywords.length ? ':' : ': none'));
+    wrap.append(line);
+    if (e.keywords && e.keywords.length) {
+      const chips = el('div', 'side-keywords');
+      for (const w of e.keywords) {
+        chips.append(el('span', 'side-keyword', w));
+      }
+      wrap.append(chips);
+    }
+    const edit = button('Edit search words', 'pencil', 'link-button', () => {
+      wrap.replaceChildren();
+      const input = el('input', 'side-keywords-edit');
+      input.type = 'text';
+      input.value = (e.keywords || []).join(', ');
+      input.placeholder = 'words, separated by commas';
+      const save = button('Save', 'check', 'button button-small', async () => {
+        const keywords = input.value.split(',').map(w => w.trim()).filter(Boolean);
+        const res = await fetch('/api/calendar/keywords', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id: e.id, keywords})});
+        if (!res.ok) {
+          toast(await res.text());
+          return;
+        }
+        toast('Search words saved');
+        const {load} = await import('../app.js');
+        await load();
+      });
+      const cancel = button('Cancel', null, 'button button-secondary button-small', paint);
+      const row = el('div', 'modal-actions');
+      row.append(save, cancel);
+      wrap.append(el('div', 'side-line', 'Search words:'), input, row);
+      input.focus();
+    });
+    wrap.append(edit);
+  };
+  paint();
+  return wrap;
+}
+
 // sourceCard says where the event's dates came from and links to the
 // original: the feed's event in Google Calendar, the school's calendar page
 // for a line of the year calendar, the page on the app that runs a party
@@ -157,6 +202,9 @@ function sourceCard(e) {
       if (who) {
         lines.push(`Added by ${who}${e.added ? ' on ' + stampWords(e.added) : ''}.`);
       }
+      if (e.sourceNote) {
+        lines.push(`Source: ${e.sourceNote}`);
+      }
       break;
     }
     default:
@@ -169,6 +217,14 @@ function sourceCard(e) {
     body.append(outLink(e.sourceUrl, 'Open the school\u2019s calendar page'));
   } else if (e.source === 'google' && e.sourceUrl) {
     body.append(outLink(e.sourceUrl, 'Open in Google Calendar'));
+  } else if (e.source === 'sheet' && e.sourceUrl) {
+    // The proof behind a hand-added event, named by where it lives; the
+    // Veracross portal wants a parent login.
+    const host = new URL(e.sourceUrl).hostname.replace(/^www\./, '');
+    body.append(outLink(e.sourceUrl, host.includes('veracross') ? 'Open the source on Veracross' : `Open the source (${host})`));
+    if (host.includes('veracross')) {
+      body.append(el('div', 'side-line', 'Veracross asks for your parent portal login.'));
+    }
   } else if (e.link) {
     body.append(outLink(linkURL(e), isParty(e) ? 'Open on Helios Celebrate' : 'Open on HCA-Team'));
   }
@@ -176,8 +232,8 @@ function sourceCard(e) {
   if (e.link && e.source !== 'celebrate' && e.source !== 'team') {
     body.append(el('div', 'side-line', 'Also listed on HCA-Team, which runs it.'), outLink(linkURL(e), 'Open on HCA-Team'));
   }
-  const p = (state.model.provenance || {})[e.id];
-  if (p) {
+  if (state.model.user.isAdmin) {
+    const p = (state.model.provenance || {})[e.id] || {};
     const admin = el('div', 'side-admin');
     admin.append(el('div', 'side-admin-title', 'For admins'));
     if (p.enriched) {
@@ -186,6 +242,13 @@ function sourceCard(e) {
     if (p.corrected && p.corrected.length) {
       admin.append(el('div', 'side-line', `Corrected in Overrides: ${p.corrected.join(', ').toLowerCase()}.${p.note ? ' Note: \u201c' + p.note + '\u201d' : ''}`));
     }
+    if (!e.link || e.source === 'google' || e.source === 'pdf' || e.source === 'sheet') {
+      admin.append(keywordsEditor(e));
+    }
+    // A copy of this event, four weeks on, from the add-event tool.
+    const clone = link('/admin?clone=' + encodeURIComponent(e.id) + '&weeks=4', 'link-button');
+    clone.append(svg('copy'), el('span', '', 'Clone this event 4 weeks on'));
+    admin.append(clone);
     body.append(admin);
   }
   row.append(icon, body);

@@ -58,6 +58,9 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	mux.HandleFunc("POST /api/calendar/feeds", a.addFeed)
 	mux.HandleFunc("DELETE /api/calendar/feeds", a.removeFeed)
 	mux.HandleFunc("POST /api/calendar/settings", a.saveSetting)
+	mux.HandleFunc("POST /api/calendar/keywords", a.admin(a.setKeywords))
+	mux.HandleFunc("POST /api/calendar/events", a.admin(a.addEvents))
+	mux.HandleFunc("POST /api/calendar/events/when", a.admin(a.moveEvent))
 	mux.HandleFunc("DELETE /api/calendar/settings", a.forgetSetting)
 	mux.HandleFunc("POST /api/calendar/tags", a.setTags)
 	mux.HandleFunc("POST /api/calendar/image", a.uploadImage)
@@ -223,6 +226,169 @@ func (a app) admin(next http.HandlerFunc) http.HandlerFunc {
 // stored, under the calendar's own folder.
 func (a app) importImage(w http.ResponseWriter, r *http.Request) {
 	a.search.ServeImport(w, r, a.store, imageFolder, maxImageSize)
+}
+
+// setKeywords is an admin replacing an event's search words from its page:
+// the Keywords cell of its Overrides row, which stands over whatever the
+// import and the classifier gave, and stays through every later run. An
+// empty list is written as the clearing mark, since a blank cell keeps.
+func (a app) setKeywords(w http.ResponseWriter, r *http.Request) {
+	actor, _ := a.who(r)
+	var body struct {
+		ID       string   `json:"id"`
+		Keywords []string `json:"keywords"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	e := a.cache.Model().Event(body.ID)
+	if e == nil {
+		http.Error(w, "that event is not in the sheet", http.StatusNotFound)
+		return
+	}
+	words := SplitList(JoinList(body.Keywords))
+	cell := Clear
+	if len(words) > 0 {
+		cell = JoinList(words)
+	}
+	was := JoinList(e.Keywords)
+	if !a.commit(r.Context(), w, a.cache.Tables().WithOverride(e.ID, map[string]string{"Keywords": cell}), func() error {
+		if err := a.writer.Set(appName, OverridesTab, map[string]string{"Event ID": e.ID}, map[string]string{"Keywords": cell}); err != nil {
+			return err
+		}
+		return a.logChange(actor, "changed", OverridesTab, e.ID, "Keywords", was, cell)
+	}) {
+		return
+	}
+	slog.InfoContext(r.Context(), "calendar: keywords set", "actor", actor, "event", e.ID, "keywords", cell)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// newEventID mints an Events tab id the way the volunteer portal does:
+// eight characters from a 32-symbol alphabet.
+func newEventID() string {
+	const alphabet = "ABCDEFGHJKMNPQRSTVWXYZ0123456789"
+	var raw [8]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		panic(err)
+	}
+	out := make([]byte, len(raw))
+	for i, b := range raw {
+		out[i] = alphabet[int(b)%len(alphabet)]
+	}
+	return string(out)
+}
+
+// shiftWhen moves a sheet start or end - a date, or a date with a time -
+// by whole weeks.
+func shiftWhen(when string, weeks int) string {
+	if when == "" {
+		return ""
+	}
+	layout := DateFormat
+	if len(when) > len(DateFormat) {
+		layout = DateTimeFormat
+	}
+	t, err := time.ParseInLocation(layout, when, Location)
+	if err != nil {
+		return when
+	}
+	return t.AddDate(0, 0, 7*weeks).Format(layout)
+}
+
+// addEvents is an admin adding an event to the Events tab from Admin Tools
+// - and, asked to repeat it, the same event again every so many weeks, as
+// many more times as asked, each its own row. The rows go through the
+// sheet's rules first, so a bad date or an unknown tag is refused before
+// anything is written.
+func (a app) addEvents(w http.ResponseWriter, r *http.Request) {
+	actor, _ := a.who(r)
+	var body struct {
+		Title       string   `json:"title"`
+		Start       string   `json:"start"`
+		End         string   `json:"end"`
+		Location    string   `json:"location"`
+		Description string   `json:"description"`
+		Tags        []string `json:"tags"`
+		DayType     string   `json:"dayType"`
+		Keywords    []string `json:"keywords"`
+		Source      string   `json:"source"`
+		RepeatWeeks int      `json:"repeatWeeks"`
+		RepeatTimes int      `json:"repeatTimes"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	if body.RepeatTimes < 0 || body.RepeatTimes > 52 || body.RepeatWeeks < 1 && body.RepeatTimes > 0 {
+		http.Error(w, "repeat up to 52 more times, some whole number of weeks apart", http.StatusBadRequest)
+		return
+	}
+	stamp := now().Format(DateFormat)
+	rows := []map[string]string{}
+	for i := 0; i <= body.RepeatTimes; i++ {
+		rows = append(rows, map[string]string{
+			"Event ID": newEventID(), "Start": shiftWhen(strings.TrimSpace(body.Start), i*body.RepeatWeeks), "End": shiftWhen(strings.TrimSpace(body.End), i*body.RepeatWeeks),
+			"Title": strings.TrimSpace(body.Title), "Location": strings.TrimSpace(body.Location), "Description": strings.TrimSpace(body.Description),
+			"Tags": JoinList(SplitList(JoinList(body.Tags))), "Day Type": strings.TrimSpace(body.DayType), "Keywords": JoinList(SplitList(JoinList(body.Keywords))),
+			"Added By": actor, "Added": stamp, "Source": strings.TrimSpace(body.Source),
+		})
+	}
+	if !a.commit(r.Context(), w, a.cache.Tables().WithEvents(rows), func() error {
+		for _, row := range rows {
+			if err := a.writer.AppendCells(appName, EventsTab, row); err != nil {
+				return err
+			}
+			if err := a.logChange(actor, "added", EventsTab, row["Event ID"], "Title", "", row["Title"]); err != nil {
+				return err
+			}
+		}
+		return nil
+	}) {
+		return
+	}
+	ids := []string{}
+	for _, row := range rows {
+		ids = append(ids, row["Event ID"])
+	}
+	slog.InfoContext(r.Context(), "calendar: events added", "actor", actor, "title", rows[0]["Title"], "count", len(rows))
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"ids": ids})
+}
+
+// moveEvent is an admin changing when a hand-added event is, from the
+// Events list in Admin Tools: its Events tab row's Start and End. Only an
+// event of that tab moves this way; an imported one is corrected in
+// Overrides.
+func (a app) moveEvent(w http.ResponseWriter, r *http.Request) {
+	actor, _ := a.who(r)
+	var body struct {
+		ID    string `json:"id"`
+		Start string `json:"start"`
+		End   string `json:"end"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	e := a.cache.Model().Event(body.ID)
+	if e == nil || e.Source != SourceSheet {
+		http.Error(w, "only an event of the Events tab moves from here", http.StatusBadRequest)
+		return
+	}
+	start, end := strings.TrimSpace(body.Start), strings.TrimSpace(body.End)
+	if end == "" {
+		end = start
+	}
+	was := e.Start + " – " + e.End
+	if !a.commit(r.Context(), w, a.cache.Tables().WithEventWhen(e.ID, start, end), func() error {
+		if err := a.writer.Upsert(appName, EventsTab, "Event ID", e.ID, map[string]string{"Start": start, "End": end}); err != nil {
+			return err
+		}
+		return a.logChange(actor, "moved", EventsTab, e.ID, "Start", was, start+" – "+end)
+	}) {
+		return
+	}
+	slog.InfoContext(r.Context(), "calendar: event moved", "actor", actor, "event", e.ID, "start", start, "end", end)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // saveSetting keeps the viewer's filters as their own default: the row
