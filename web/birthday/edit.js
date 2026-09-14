@@ -508,7 +508,7 @@ export function openSettings() {
     field('Default charity', defaultCharity, 'Where a donation goes when nobody answers'),
     field('Year start', yearStart, 'Month and day the birthday year turns over, like 08-14'),
     field('Email subject', subject),
-    field('Email body', body, 'Placeholders: {first name}, {name}, {birthday}, {newsletter date}, {default charity}, {sender}, {last year}, {no newsletter note}'),
+    field('Email body', body, 'Placeholders: {first name}, {name}, {birthday} (September 26), {newsletter date}, {default charity}, {sender}, {last year} (a heading, the charity and their note), {no newsletter note}'),
     field('No-newsletter note', note, 'Put where {no newsletter note} sits in the body, or at the end, for anyone who asked to stay out of the newsletter'),
   ], {
     submit: () => send('POST', '/api/birthday/settings', {

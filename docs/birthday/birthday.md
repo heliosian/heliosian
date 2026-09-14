@@ -49,6 +49,8 @@ One shell, `web/birthday/index.html`, routes every page on the client. It is the
 
 - **My Jobs** (`/`) — the viewer's assignments in three tabs: My Tasks (awaiting outreach or a response), Wait, and All Done.
 - **Process** (`/process`) — everyone, in tabs: Unassigned, grouped by stage with the overdue ones first, then one tab per stage. Every row offers Assign to Me and, when outreach is due, Mark: Contacted.
+- **Unassigned** (`/unassigned`, and the front page while anyone is unassigned; the tab shows only then) — the unassigned birthdays as a list, each with the day as a leaf off a calendar, beside the month they fall in, with a switch between the day to ask by and the birthday itself; picking one in either shows their card with Open Helios Who and Assign to Me.
+- **My Jobs** (`/jobs`, and the front page once everyone has someone).
 - **Staff** (`/staff/{email}`) — the person, their three dates, the five steps as a dark band with each step's actions, the donation band with this year beside last year (or the default charity), and their notes. The Email button opens a draft from the settings' template with the person's details filled in.
 - **Calendar** (`/calendar`) — a month grid of birthdays colored by stage, with newsletter days marked.
 - **Charities** (`/charities`, `/charities/{name}`) — allowed and prohibited lists, and a page per charity showing who chose it.

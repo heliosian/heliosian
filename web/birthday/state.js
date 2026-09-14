@@ -106,6 +106,7 @@ const longFormat = new Intl.DateTimeFormat('en-US', {weekday: 'long', month: 'lo
 const mediumFormat = new Intl.DateTimeFormat('en-US', {month: 'long', day: 'numeric', year: 'numeric'});
 const shortFormat = new Intl.DateTimeFormat('en-US', {month: 'short', day: 'numeric'});
 const tableFormat = new Intl.DateTimeFormat('en-US', {month: 'short', day: 'numeric', year: 'numeric'});
+const monthDayFormat = new Intl.DateTimeFormat('en-US', {month: 'long', day: 'numeric'});
 const weekdayFormat = new Intl.DateTimeFormat('en-US', {weekday: 'short'});
 
 export function longDate(s) {
@@ -116,6 +117,12 @@ export function longDate(s) {
 export function mediumDate(s) {
   const d = parseDate(s);
   return d ? mediumFormat.format(d) : s || '';
+}
+
+// monthDay is a date without its year, September 26, as the birthday letter says it.
+export function monthDay(s) {
+  const d = parseDate(s);
+  return d ? monthDayFormat.format(d) : s || '';
 }
 
 // tableDate is a date as a table column shows it, Oct 5, 2026, and weekday its
@@ -177,9 +184,16 @@ export function firstName(sv) {
   return sv.name.split(' ')[0];
 }
 
-// lastYearLine is the sentence {last year} stands for, and nothing when there is no last year.
-function lastYearLine(sv) {
-  return sv.lastDonation ? `Last year you chose ${sv.lastDonation.charity}.` : '';
+// lastYearLines is what {last year} stands for: a heading, the charity and
+// the staff member's note from last year, and nothing when there is no last
+// year. The heading wears asterisks, the plain-text mark for bold, since a
+// mailto draft carries no formatting.
+function lastYearLines(sv) {
+  const d = sv.lastDonation;
+  if (!d) {
+    return '';
+  }
+  return ["*Last Year's Charity*", d.charity, d.note || ''].filter(Boolean).join('\n');
 }
 
 // tidy drops the blank lines and trailing spaces an empty placeholder leaves behind.
@@ -192,10 +206,10 @@ export function fill(template, sv) {
     .replaceAll('{first name}', firstName(sv))
     .replaceAll('{name}', sv.name)
     .replaceAll('{newsletter date}', mediumDate(sv.newsletterDate))
-    .replaceAll('{birthday}', mediumDate(sv.birthdayThisYear))
+    .replaceAll('{birthday}', monthDay(sv.birthdayThisYear))
     .replaceAll('{default charity}', settings().defaultCharity)
     .replaceAll('{sender}', me().name)
-    .replaceAll('{last year}', lastYearLine(sv));
+    .replaceAll('{last year}', lastYearLines(sv));
 }
 
 // emailLink is the draft: the body with the person filled in, and the no-newsletter note for anyone who

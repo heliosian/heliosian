@@ -26,9 +26,11 @@ function entries() {
   return out;
 }
 
-function grid() {
-  const items = entries();
-  const cal = el('div', 'calendar');
+// monthGrid draws one month of items - each keyed by its day's toDateString,
+// with a title, a chip class, and a link or an onClick - with a class of its
+// own for a compact drawing.
+export function monthGrid(month, items, className) {
+  const cal = el('div', 'calendar' + (className ? ' ' + className : ''));
   for (const d of ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']) {
     cal.append(el('div', 'dow', d));
   }
@@ -41,14 +43,41 @@ function grid() {
     day.setDate(start.getDate() + i);
     const cell = el('div', 'day' + (day.getMonth() !== month.getMonth() ? ' other' : '') + (day.toDateString() === today ? ' today' : ''));
     cell.append(el('div', 'num', String(day.getDate())));
-    for (const item of items.filter(e => e.key === day.toDateString() && (!shown.size || shown.has(e.className)))) {
-      const chip = link(item.href, 'chip ' + item.className, item.title);
+    for (const item of items.filter(e => e.key === day.toDateString())) {
+      let chip;
+      if (item.onClick) {
+        chip = el('button', 'chip ' + item.className, item.title);
+        chip.type = 'button';
+        chip.addEventListener('click', item.onClick);
+      } else {
+        chip = link(item.href, 'chip ' + item.className, item.title);
+      }
       chip.title = item.title;
       cell.append(chip);
     }
     cal.append(cell);
   }
   return cal;
+}
+
+// monthNav is the Today button and the arrows, calling step with -1, 0 or 1.
+export function monthNav(step) {
+  const nav = el('div', 'page-actions calendar-nav');
+  nav.append(button('Today', null, 'button button-secondary button-small', () => step(0)));
+  const prev = el('button', 'icon-button');
+  prev.type = 'button';
+  prev.append(svg('prev'));
+  prev.addEventListener('click', () => step(-1));
+  const next = el('button', 'icon-button');
+  next.type = 'button';
+  next.append(svg('next'));
+  next.addEventListener('click', () => step(1));
+  nav.append(prev, next);
+  return nav;
+}
+
+function grid() {
+  return monthGrid(month, entries().filter(e => !shown.size || shown.has(e.className)));
 }
 
 export function calendarPage() {
@@ -62,26 +91,12 @@ export function calendarPage() {
   const main = el('div', 'page-head-main');
   const title = el('h1', 'page-title', monthFormat.format(month));
   main.append(title);
-  const nav = el('div', 'page-actions calendar-nav');
-  const step = n => {
-    month = new Date(month.getFullYear(), month.getMonth() + n, 1);
+  const nav = monthNav(n => {
+    const now = new Date();
+    month = n ? new Date(month.getFullYear(), month.getMonth() + n, 1) : new Date(now.getFullYear(), now.getMonth(), 1);
     title.textContent = monthFormat.format(month);
     page.querySelector('.calendar').replaceWith(grid());
-  };
-  nav.append(button('Today', null, 'button button-secondary button-small', () => {
-    const now = new Date();
-    month = new Date(now.getFullYear(), now.getMonth(), 1);
-    step(0);
-  }));
-  const prev = el('button', 'icon-button');
-  prev.type = 'button';
-  prev.append(svg('prev'));
-  prev.addEventListener('click', () => step(-1));
-  const next = el('button', 'icon-button');
-  next.type = 'button';
-  next.append(svg('next'));
-  next.addEventListener('click', () => step(1));
-  nav.append(prev, next);
+  });
   head.append(main, nav);
   const legend = el('div', 'legend');
   const paint = () => {

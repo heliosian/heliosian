@@ -107,6 +107,9 @@ main {
 
 #page { flex: 1; width: 100%; max-width: 1080px; margin: 0 auto; padding: 24px 24px 120px; }
 
+/* The Unassigned page's two columns want the room. */
+#page:has(.split) { max-width: 1400px; }
+
 .icon-button {
   display: inline-flex;
   align-items: center;
@@ -825,6 +828,7 @@ h2.section { font-size: 20px; margin: 24px 0 12px; }
   .step-aside { display: block; margin-left: 0; }
   .ask-band { flex-wrap: wrap; }
   .year-cards { grid-template-columns: 1fr; }
+  .split { grid-template-columns: 1fr; }
   .stage-summary { flex-wrap: wrap; }
   .issue { flex-wrap: wrap; }
   .issue-side { margin-left: auto; }
@@ -1037,6 +1041,113 @@ a.trow[data-stage="stage-complete"]::before { background: #3aaa5c; }
 .suggest-status { font-size: 13px; color: var(--muted); }
 
 .link-button:disabled { opacity: 0.5; cursor: default; }
+
+/* The Unassigned page: the list beside the month, each in a white card, and
+   under the month the one picked, in either, with the way to take them. */
+.split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+
+.card-panel { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 14px; }
+
+.split-calendar { display: flex; flex-direction: column; gap: 16px; }
+
+.split-calendar-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+
+.split-calendar-head h2 { margin: 0; font-size: 22px; }
+
+.show-toggle { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; font-size: 14px; color: var(--muted); }
+
+.segmented { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; padding: 3px; background: var(--input); }
+
+.segment { border: 0; background: transparent; font: inherit; font-size: 13px; font-weight: 600; color: var(--muted); padding: 5px 14px; border-radius: 999px; cursor: pointer; }
+
+.segment.is-on { background: #fff; color: var(--brand); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08); }
+
+.urow { display: flex; align-items: center; gap: 14px; padding: 10px 10px; border-radius: 10px; cursor: pointer; }
+
+.urow + .urow { border-top: 1px solid var(--line); border-radius: 0 0 10px 10px; }
+
+.urow:hover { background: #fafcfc; }
+
+.urow.is-picked, .urow.is-picked + .urow { border-top-color: transparent; }
+
+.urow.is-picked { background: #fdf0e4; }
+
+.urow .thumb.small { border-radius: 10px; }
+
+.urow-body { flex: 1; min-width: 0; }
+
+.urow-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+
+.urow-top .label { margin: 0; }
+
+.urow-name { font-weight: 700; font-size: 16px; }
+
+.urow-text { font-size: 13px; color: var(--muted); }
+
+.urow-when { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+
+.urow-when .day-mark { width: 20px; height: 20px; color: #9aa9ad; }
+
+/* A leaf off a tear-off calendar. */
+.date-leaf { width: 46px; border-radius: 8px; overflow: hidden; background: #fff; border: 1px solid var(--line); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08); text-align: center; line-height: 1; }
+
+.date-leaf-month { background: #d9483b; color: #fff; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; padding: 3px 0; }
+
+.date-leaf-day { font-size: 20px; font-weight: 700; padding: 4px 0 2px; color: var(--ink); }
+
+.date-leaf-weekday { font-size: 9px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); padding-bottom: 4px; }
+
+.urow-open { color: var(--muted); display: flex; flex-shrink: 0; }
+
+.urow-open svg { width: 18px; height: 18px; }
+
+/* Faces without a photo, each in a colour of their own. */
+.thumb.face-orange { background: #e8802e; color: #fff; }
+.thumb.face-sky { background: #6fb3c4; color: #fff; }
+.thumb.face-green { background: #3f8f5c; color: #fff; }
+.thumb.face-yellow { background: #e5b830; color: #fff; }
+.thumb.face-red { background: #d9583b; color: #fff; }
+.thumb.face-teal { background: var(--brand); color: #fff; }
+
+.calendar.compact .day { min-height: 64px; padding: 4px; font-size: 12px; }
+
+.calendar.compact .chip { font-size: 11px; padding: 1px 5px; }
+
+/* On the picker, a chip is a pale pill with a dot in its stage's ink, and
+   the picked one's day is warm. */
+.calendar.picker .chip { border: 0; font: inherit; font-size: 11px; font-weight: 600; cursor: pointer; border-radius: 999px; padding: 2px 8px 2px 6px; display: block; width: 100%; text-align: left; }
+
+.calendar.picker .chip::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: currentColor; margin-right: 5px; vertical-align: 1px; }
+
+.calendar.picker .chip.stage-wait { background: #e8edee; color: #33474c; }
+.calendar.picker .chip.stage-awaiting-outreach { background: #fdf0e4; color: #a4551a; }
+.calendar.picker .chip.stage-awaiting-response { background: #fde8d7; color: #a4551a; }
+.calendar.picker .chip.stage-awaiting-newsletter { background: #ece6f7; color: #5a3fa3; }
+.calendar.picker .chip.stage-complete { background: #e2f3e6; color: #24763c; }
+
+.calendar.picker .day:has(.chip.is-picked) { background: #fdf0e4; }
+
+.pick-card { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
+
+.pick-card:empty { display: none; }
+
+.pick-head { display: flex; align-items: center; gap: 14px; }
+
+.pick-head .thumb.small { border-radius: 12px; width: 56px; height: 56px; font-size: 24px; }
+
+.pick-who { flex: 1; min-width: 0; }
+
+.pick-name { font-weight: 700; font-size: 19px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+
+.pick-title { color: var(--muted); }
+
+.pick-when { text-align: right; flex-shrink: 0; }
+
+.pick-date { font-weight: 700; }
+
+.pick-ask { font-size: 13px; color: var(--muted); }
+
+.pick-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px; }
 
 /* The team card in Admin Tools: one group per role. */
 .admin .team-group { margin-top: 18px; }

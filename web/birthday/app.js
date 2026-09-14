@@ -1,4 +1,4 @@
-import {state, applyModel, staff, charity} from './state.js';
+import {state, applyModel, staff, charity, isUnassigned} from './state.js';
 import {el} from './dom.js';
 import {initChrome, renderChrome, setTitle, clearSearch} from './chrome.js';
 import {initModal} from './edit.js';
@@ -9,6 +9,7 @@ import {staffPage} from './pages/staff.js';
 import {charitiesPage, charityPage} from './pages/charities.js';
 import {newslettersPage, newsletterPage} from './pages/newsletters.js';
 import {skippedPage} from './pages/skipped.js';
+import {unassignedPage} from './pages/unassigned.js';
 import {adminPage} from './pages/admin.js';
 
 export async function load() {
@@ -35,10 +36,14 @@ function notFound(what) {
 
 function route() {
   const parts = location.pathname.split('/').filter(Boolean).map(decodeURIComponent);
+  // The front page is the unassigned birthdays while there are any, and
+  // My Jobs once everyone has someone.
   if (!parts.length) {
-    return jobsPage();
+    return state.model.staff.some(isUnassigned) ? unassignedPage() : jobsPage();
   }
   switch (parts[0]) {
+    case 'jobs':
+      return jobsPage();
     case 'process':
       return processPage();
     case 'calendar':
@@ -54,6 +59,8 @@ function route() {
       return parts[1] && state.model.newsletterDates.includes(parts[1]) ? newsletterPage(parts[1]) : parts[1] ? notFound(parts[1]) : newslettersPage();
     case 'skipped':
       return skippedPage();
+    case 'unassigned':
+      return unassignedPage();
     case 'admin':
       return adminPage();
     case 'staff': {

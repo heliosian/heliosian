@@ -1,17 +1,24 @@
-import {state, me, isAdmin, isSystemAdmin, setSuperEdit} from './state.js';
+import {state, me, isAdmin, isSystemAdmin, setSuperEdit, isUnassigned} from './state.js';
 import {el, svg, link} from './dom.js';
 import {renderAvatars, renderAlerts, onSlash, initAppSwitch, markSuper} from '/toolbar.js';
 
 const appName = 'Helios Staff Birthdays';
 
 // The rail and the drawer show all of these; the phone's tab bar keeps the
-// first three. /admin is deliberately absent - Admin Tools is reached from
-// the account menu, as in every app.
-const primary = [
-  {href: '/', icon: 'jobs', label: 'My Jobs'},
+// first three. Unassigned leads, and only while someone is unassigned. /admin
+// is deliberately absent - Admin Tools is reached from the account menu, as
+// in every app.
+const unassignedItem = {href: '/unassigned', icon: 'users', label: 'Unassigned'};
+
+const primaryItems = [
+  {href: '/jobs', icon: 'jobs', label: 'My Jobs'},
   {href: '/process', icon: 'process', label: 'Process'},
   {href: '/calendar', icon: 'calendar', label: 'Calendar'},
 ];
+
+function primary() {
+  return state.model && state.model.staff.some(isUnassigned) ? [unassignedItem, ...primaryItems] : primaryItems;
+}
 
 const more = [
   {href: '/charities', icon: 'gift', label: 'Charities'},
@@ -21,8 +28,10 @@ const more = [
 
 function active(href) {
   const path = location.pathname;
-  if (href === '/') {
-    return path === '/';
+  // The front page stands for whichever of the two it is showing.
+  if (path === '/') {
+    const anyUnassigned = state.model && state.model.staff.some(isUnassigned);
+    return href === (anyUnassigned ? '/unassigned' : '/jobs');
   }
   if (href === '/process') {
     return path === '/process' || path.startsWith('/staff/');
@@ -43,7 +52,7 @@ function closeMenus() {
 }
 
 function fillNav(nav) {
-  for (const item of [...primary, ...more]) {
+  for (const item of [...primary(), ...more]) {
     nav.append(navLink(item));
   }
 }
@@ -57,7 +66,7 @@ function renderNav() {
 function renderTabbar() {
   const bar = document.querySelector('#tabbar');
   bar.replaceChildren();
-  for (const item of primary) {
+  for (const item of primary().slice(0, 3)) {
     bar.append(navLink(item));
   }
 }

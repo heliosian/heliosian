@@ -21,7 +21,7 @@ import (
 const shell = "web/birthday/index.html"
 
 var pages = []string{
-	"/{$}", "/process", "/calendar", "/charities", "/charities/{name}", "/newsletters", "/skipped", "/admin", "/staff/{handle}",
+	"/{$}", "/jobs", "/process", "/calendar", "/charities", "/charities/{name}", "/newsletters", "/newsletters/{date}", "/skipped", "/unassigned", "/admin", "/staff/{handle}",
 }
 
 // local is the school's clock: a birthday is a day there, and a step taken late
