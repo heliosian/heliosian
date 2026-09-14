@@ -1,4 +1,4 @@
-import {state, daysLine, timeLine, calendarLink, sourceWords, dayType, eventDates, dayTypeClass, linkURL, call, isParty, mineWords, eventImage, weekdayShort, parseDate, spansDays} from '../state.js';
+import {state, daysLine, timeLine, calendarLink, sourceWords, dayType, eventDates, dayTypeClass, linkURL, call, isParty, mineWords, eventImage, weekdayShort, parseDate, spansDays, monthLabel, monthOf} from '../state.js';
 import {el, link, svg, paragraphs} from '../dom.js';
 import {setTitle} from '../chrome.js';
 import {audienceChips, blocks} from '../events.js';
@@ -28,7 +28,8 @@ export function eventPage(e) {
   const back = el('a', 'detail-back');
   back.href = '/day/' + eventDates(e)[0];
   back.setAttribute('data-link', '');
-  back.append(svg('back'), el('span', '', 'That day'));
+  // The way back is to the calendar open to the event's month, so it says so.
+  back.append(svg('back'), el('span', '', monthLabel(monthOf(eventDates(e)[0]))));
   top.append(back);
   page.append(top, hero(e));
 
