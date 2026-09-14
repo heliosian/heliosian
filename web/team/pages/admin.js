@@ -2,6 +2,7 @@ import {state, isSystemAdmin, me} from '../state.js';
 import {el, button, svg} from '../dom.js';
 import {setTitle} from '../chrome.js';
 import {categoryList, openSettings, checkbox, send, peoplePicker} from '../edit.js';
+import {appearanceCard} from '/appearance.js';
 
 function denied() {
   const page = el('div', 'list-page');
@@ -215,6 +216,7 @@ const sections = [
   {title: 'Display', tabs: [
     {key: 'categories', label: 'Categories', card: categoriesCard},
     {key: 'settings', label: 'Settings', card: settingsCard},
+    {key: 'appearance', label: 'Appearance', card: () => appearanceCard({theme: state.model.settings.theme, url: '/api/events/theme', defaults: {sidebar: '#eef5e6', sidebarEnd: '#b7dda2', sidebarText: '#0c4c54', page: '#f7fafa', pageEnd: '#f7fafa'}, pictures: {logo: '/brand/logo-lockup-vertical.png', sidebarImage: '/toolbar_background.png'}})},
   ]},
   {title: 'Editing & Control', tabs: [
     {key: 'notify', label: 'Email Notifications', card: notifyCard},

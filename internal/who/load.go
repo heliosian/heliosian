@@ -3,6 +3,7 @@ package who
 import (
 	"encoding/json"
 	"fmt"
+	"heliosian/internal/theme"
 	"log/slog"
 	"maps"
 	"regexp"
@@ -293,9 +294,43 @@ type Tables struct {
 	Photos      []map[string]string
 	Admins      []map[string]string
 	Geocode     []map[string]string
+	// Settings is the Settings tab, Key/Value: the admin's colouring of the
+	// page (internal/theme) and nothing else yet.
+	Settings []map[string]string
 }
 
 const adminsTable = "Admins"
+
+// settingsTable holds the directory's own settings, Key/Value - as against
+// the platform's, which live in the Config sheet (internal/config).
+const settingsTable = "Settings"
+
+var settingColumns = []string{"Key", "Value"}
+
+// withSettings is the tables with rows of the Settings tab set, each
+// changed in place or added, for the model to be rebuilt and checked
+// before anything is written.
+func (t *Tables) withSettings(values map[string]string) *Tables {
+	rows := make([]map[string]string, 0, len(t.Settings)+len(values))
+	seen := map[string]bool{}
+	for _, row := range t.Settings {
+		key := strings.TrimSpace(row["Key"])
+		if value, ok := values[key]; ok {
+			row = maps.Clone(row)
+			row["Value"] = value
+			seen[key] = true
+		}
+		rows = append(rows, row)
+	}
+	for _, key := range slices.Sorted(maps.Keys(values)) {
+		if !seen[key] {
+			rows = append(rows, map[string]string{"Key": key, "Value": values[key]})
+		}
+	}
+	next := *t
+	next.Settings = rows
+	return &next
+}
 
 const geocodeTable = "Geocode"
 
@@ -540,6 +575,15 @@ func BuildModel(tables *Tables, blobs, static BlobChecker) (*Model, error) {
 			return nil, err
 		}
 	}
+	for _, row := range tables.Settings {
+		if key := strings.TrimSpace(row["Key"]); !theme.IsKey(key) {
+			return nil, fmt.Errorf("%s has unknown key %q", settingsTable, key)
+		}
+	}
+	var err error
+	if l.model.Theme, err = theme.FromRows(tables.Settings); err != nil {
+		return nil, fmt.Errorf("%s: %w", settingsTable, err)
+	}
 	return l.model, nil
 }
 
@@ -562,11 +606,12 @@ func ReadTables(source data.Source) (*Tables, error) {
 	photos := &table{app: appName, name: "Photos"}
 	admins := &table{app: appName, name: adminsTable}
 	geocodes := &table{app: appName, name: geocodeTable}
+	settings := &table{app: appName, name: settingsTable}
 	// Header only: the change log is never read into the model, and it gains a row per
 	// member edit forever. Nothing else compares its columns against what the app
 	// writes, and a column missing here truncates every audit row that reaches it.
 	changeLog := &table{app: appName, name: changeLogTable}
-	ordered := []*table{aliases, imports, staff, names, overrides, families, preferences, website, tags, photos, admins, geocodes}
+	ordered := []*table{aliases, imports, staff, names, overrides, families, preferences, website, tags, photos, admins, geocodes, settings}
 	// One batch per spreadsheet: the directory's tabs and the change log's
 	// header together, the preferences sheet on its own.
 	directoryNames := []string{}
@@ -628,6 +673,9 @@ func ReadTables(source data.Source) (*Tables, error) {
 	if err := data.CheckColumns(geocodes.name, geocodes.header, geocodeColumns); err != nil {
 		return nil, err
 	}
+	if err := data.CheckColumns(settings.name, settings.header, settingColumns); err != nil {
+		return nil, err
+	}
 	if err := data.CheckColumns(changeLog.name, changeLog.header, changeLogHeader); err != nil {
 		return nil, err
 	}
@@ -644,6 +692,7 @@ func ReadTables(source data.Source) (*Tables, error) {
 		Photos:      photos.rows,
 		Admins:      admins.rows,
 		Geocode:     geocodes.rows,
+		Settings:    settings.rows,
 	}, nil
 }
 

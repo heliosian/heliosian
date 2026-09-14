@@ -4,6 +4,7 @@ package events
 
 import (
 	"fmt"
+	"heliosian/internal/theme"
 	"maps"
 	"math"
 	"net/url"
@@ -268,6 +269,9 @@ func uncategorized() *Category {
 type Settings struct {
 	ExpenseFormURL string `json:"expenseFormUrl"`
 	Intro          string `json:"intro"`
+	// Theme is the admin's colouring of the rail and the page, kept in the
+	// same tab under internal/theme's keys.
+	Theme theme.Theme `json:"theme"`
 }
 
 // A Redirect keeps an old address working after it changed: someone holding
@@ -711,7 +715,7 @@ func parseSettings(rows []map[string]string) (Settings, error) {
 		key := row["Key"]
 		// notify:<email> rows are an admin's mail choices (mail.go), read
 		// where they are used rather than here.
-		if strings.HasPrefix(key, notifyPrefix) {
+		if strings.HasPrefix(key, notifyPrefix) || theme.IsKey(key) {
 			continue
 		}
 		if !slices.Contains(settingKeys, key) {
@@ -730,7 +734,11 @@ func parseSettings(rows []map[string]string) (Settings, error) {
 	if !strings.HasPrefix(values[ExpenseFormKey], "https://") {
 		return Settings{}, fmt.Errorf("setting %q must be a full https:// url", ExpenseFormKey)
 	}
-	return Settings{ExpenseFormURL: values[ExpenseFormKey], Intro: values[IntroKey]}, nil
+	t, err := theme.FromRows(rows)
+	if err != nil {
+		return Settings{}, fmt.Errorf("%s: %w", settingsTab, err)
+	}
+	return Settings{ExpenseFormURL: values[ExpenseFormKey], Intro: values[IntroKey], Theme: t}, nil
 }
 
 // BuildModel validates every row and refuses the whole set on the first problem,

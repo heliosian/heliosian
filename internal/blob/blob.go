@@ -42,7 +42,7 @@ const (
 	fetchWorkers  = 32
 )
 
-var folders = []string{"photos", "pronunciation", "classroom-images", "grade-images", "link-images", "activity-images", "category-images"}
+var folders = []string{"photos", "pronunciation", "classroom-images", "grade-images", "link-images", "activity-images", "category-images", "logos"}
 
 // named folders hold objects replaced in place under a fixed name with no
 // extension; every other folder is content addressed, so its URLs never change
@@ -105,6 +105,27 @@ func Register(mux *http.ServeMux, s *Store) {
 	// an admin replaces one in place rather than adding a new one alongside it.
 	mux.HandleFunc("GET /classroom-images/{name}", s.serve)
 	mux.HandleFunc("GET /grade-images/{name}", s.serve)
+}
+
+// RegisterLogos serves the pictures an admin gave an app's rail - its logo
+// and the art at its foot (internal/theme) - content addressed under logos/.
+// Every app's mux carries the route. Nothing prefetches them on a refresh
+// the way a sheet's images are, so a miss in memory reads the bucket.
+func RegisterLogos(mux *http.ServeMux, s *Store) {
+	mux.HandleFunc("GET /logos/{name}", s.serveFetching)
+}
+
+// serveFetching is serve for an object nothing keeps warm: swept from
+// memory since it was last asked for, it is read back from the bucket.
+func (s *Store) serveFetching(w http.ResponseWriter, r *http.Request) {
+	name := strings.TrimPrefix(r.URL.Path, "/")
+	if _, ok := s.touch(trimExt(name)); !ok {
+		if found, err := s.Has(name); err != nil || !found {
+			http.NotFound(w, r)
+			return
+		}
+	}
+	s.serve(w, r)
 }
 
 // RegisterHome serves what the link portal shows: its link and category

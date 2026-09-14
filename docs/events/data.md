@@ -11,7 +11,7 @@ The portal's data lives in one Google Sheet, `Events`, in the community shared d
 - `Volunteers` — Event ID, Email, Position, Note, Added By, Added.
 - `Links` — Event ID, Title, URL, Image, Description.
 
-- `Settings` — Key, Value: `Expense Form URL` and `Intro`, both required.
+- `Settings` — Key, Value: `Expense Form URL` and `Intro`, both required; and the seven theme keys every app shares (`Sidebar Color`, `Sidebar Color 2`, `Sidebar Text Color`, `Page Color`, `Page Color 2`, `Logo`, `Sidebar Image` - `internal/theme`; see `docs/home/data.md`), written by the Appearance panel of Admin Tools, appended when the tab lacks them.
 - `Admins` — Email.
 - `Redirects` — Type, Old, New, Date. Written whenever a thing's address changes - a friendly name set, changed or removed, or a move under another parent - so a link someone kept still works. Old and New are site paths (`/v/inight/poland`, `/activities/{id}/...`); a bare word means `/v/{word}`; Type is the kind of thing, `Activity`. Read at load; a live address always wins over a redirect of the same name, a chain of renames is followed to its end, and a redirect of an event's own address carries every path under it along (`Model.Resolve`).
 - `Change Log` — Timestamp, Actor, Action, Kind, Year, Activity, Title, Email, Details; appended on every change, never read back.

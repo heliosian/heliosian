@@ -58,43 +58,37 @@ function openInNewTab(url) {
   return a;
 }
 
-// A feature card: the picture in a disc, the words, the Open App button, and
-// the same picture again large and faint behind the right edge, with a round
-// chevron in the corner that opens the link too.
+// A feature card is a chip like the community apps': the picture in a
+// white disc over the title, the description and Open App, the picture
+// again faint in the corner, the whole of it the link. The admin's
+// pencil sits beside the link in a slot, not inside it.
 function featureCard(link, category) {
-  const card = el('div', 'feature' + (link.visible ? '' : ' is-hidden'));
-  const disc = el('div', 'feature-disc');
-  disc.append(artwork(link, category, 'feature-image', 'feature-initial'));
+  const slot = el('div', 'chip-slot');
+  const card = openInNewTab(link.url);
+  card.className = 'chip' + (link.visible ? '' : ' is-hidden');
+  const disc = el('div', 'chip-disc');
+  disc.append(artwork(link, category, 'chip-image', 'chip-initial'));
   card.append(disc);
-
-  const body = el('div', 'feature-body');
-  const title = el('div', 'feature-title', link.title);
+  const title = el('div', 'chip-title', link.title);
   if (!link.visible) {
     title.append(el('span', 'hidden-badge', 'Hidden'));
   }
-  body.append(title);
+  card.append(title);
   if (link.description) {
-    body.append(el('div', 'feature-description', link.description));
+    card.append(el('div', 'chip-description', link.description));
   }
-  const go = openInNewTab(link.url);
-  go.className = 'button';
-  go.append(el('span', '', 'Open App'));
-  body.append(go);
-  card.append(body);
-
+  const go = el('span', 'button chip-open');
+  go.append(el('span', '', 'Open App'), svg('arrow'));
+  card.append(go);
   if (link.imageUrl) {
-    card.append(artwork(link, category, 'feature-watermark', ''));
+    card.append(artwork(link, category, 'chip-watermark', ''));
   }
-  const corner = openInNewTab(link.url);
-  corner.className = 'feature-corner';
-  corner.setAttribute('aria-label', `Open ${link.title}`);
-  corner.append(svg('chevron'));
-  card.append(corner);
+  slot.append(card);
   const pencil = editPencil(link);
   if (pencil) {
-    card.append(pencil);
+    slot.append(pencil);
   }
-  return card;
+  return slot;
 }
 
 // A tile: the picture, then the title and description.
@@ -141,7 +135,7 @@ function singular(title) {
 // Super Admin Mode, so the page an admin reads by default is the page
 // everyone else gets.
 function addCard(category, cards) {
-  const card = el('button', cards ? 'feature add-card' : 'tile add-card');
+  const card = el('button', cards ? 'chip add-card' : 'tile add-card');
   card.type = 'button';
   const disc = el('div', 'add-card-disc');
   disc.append(svg('plus'));
@@ -180,7 +174,7 @@ function seeMore(category, hidden, rerender) {
 function panel(category, links, needle) {
   const cards = category.style === 'cards';
   const wrap = el('div');
-  const grid = el('div', cards ? 'card-grid' : 'tile-grid');
+  const grid = el('div', cards ? 'chip-grid' : 'tile-grid');
   const {shown, hidden} = limited(category, links, needle);
   for (const link of shown) {
     grid.append(cards ? featureCard(link, category) : tile(link, category));
@@ -232,7 +226,9 @@ export function renderCategories(query = '') {
       continue;
     }
     shown += count;
-    const section = el('section', 'category' + (events ? ' upcoming' : ''));
+    // A category of compact tiles is a quieter section: a smaller heading
+    // without the swoosh.
+    const section = el('section', 'category' + (events ? ' upcoming' : '') + (category.style === 'tiles' ? ' is-compact' : ''));
     section.id = anchorFor(category.title);
     // The heading is the title alone; the category's emoji marks it in the
     // rail, not here.
@@ -584,38 +580,35 @@ function eventsMatching(needle) {
 }
 
 // The apps section: the community apps this person sees, as the model lists
-// them - each a feature card with its mark, name and tagline, opening the app
+// them - each a chip with its mark, name and tagline, opening the app
 // on this tier in the same tab, the way the toolbar's switch does. The search
 // box filters them by name and tagline like the links.
 function appsMatching(needle) {
   return (state.model.apps || []).filter(a => !needle || `${a.name} ${a.tagline}`.toLowerCase().includes(needle));
 }
 
+// appCard is one community app as a chip: its mark on a white disc, its
+// name and tagline centred under it, and Open App with an arrow, on a
+// tint of its own with the mark again faint in the corner. The whole chip
+// is the link; the button inside is the same one, for the eye.
 function appCard(app) {
-  const card = el('div', 'feature');
-  const disc = el('div', 'feature-disc');
-  const icon = el('img', 'feature-image');
+  const card = el('a', 'chip');
+  card.href = appOrigin(app.host || app.key);
+  const disc = el('div', 'chip-disc');
+  const icon = el('img', 'chip-image');
   icon.src = `/brand/apps/${app.key}.png` + (app.mark ? `?v=${app.mark}` : '');
   icon.alt = '';
   disc.append(icon);
   card.append(disc);
-  const body = el('div', 'feature-body');
-  body.append(el('div', 'feature-title', app.name));
-  body.append(el('div', 'feature-description', app.tagline));
-  const go = el('a', 'button');
-  go.href = appOrigin(app.host || app.key);
-  go.append(el('span', '', 'Open App'));
-  body.append(go);
-  card.append(body);
-  const watermark = el('img', 'feature-watermark');
+  card.append(el('div', 'chip-title', app.name));
+  card.append(el('div', 'chip-description', app.tagline));
+  const go = el('span', 'button chip-open');
+  go.append(el('span', '', 'Open App'), svg('arrow'));
+  card.append(go);
+  const watermark = el('img', 'chip-watermark');
   watermark.src = icon.src;
   watermark.alt = '';
   card.append(watermark);
-  const corner = el('a', 'feature-corner');
-  corner.href = go.href;
-  corner.setAttribute('aria-label', `Open ${app.name}`);
-  corner.append(svg('chevron'));
-  card.append(corner);
   return card;
 }
 
@@ -625,7 +618,7 @@ function appsPanel(category, needle) {
     return el('div', 'category-empty', needle ? 'No apps match.' : 'No apps to show.');
   }
   const wrap = el('div');
-  const grid = el('div', 'card-grid');
+  const grid = el('div', 'chip-grid');
   const {shown, hidden} = limited(category, apps, needle);
   for (const app of shown) {
     grid.append(appCard(app));

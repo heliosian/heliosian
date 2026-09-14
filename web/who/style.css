@@ -355,12 +355,13 @@ body {
 .sidebar {
   width: 236px;
   flex-shrink: 0;
-  background-color: var(--sidebar);
-  background-image: url('/toolbar_background.png');
-  background-size: auto 170px;
-  background-position: right bottom;
-  background-repeat: no-repeat;
-  color: #fff;
+  /* --sidebar-bg and --sidebar-art are the admin's colouring of the rail and
+     the picture at its foot (theme.js), when set. */
+  background-image: var(--sidebar-art, url('/toolbar_background.png')), var(--sidebar-bg, linear-gradient(var(--sidebar), var(--sidebar)));
+  background-size: auto 170px, auto;
+  background-position: right bottom, left top;
+  background-repeat: no-repeat, no-repeat;
+  color: var(--sidebar-fg, #fff);
   display: flex;
   flex-direction: column;
   padding: 12px;
@@ -368,6 +369,9 @@ body {
   box-shadow: 2px 0 8px rgba(0, 0, 0, 0.2);
   z-index: 1;
 }
+
+/* An uploaded foot picture is drawn across the rail's width. */
+.is-themed-sidebar-art .sidebar { background-size: 100% auto, auto; background-position: left bottom, left top; }
 
 .content-col {
   display: flex;
@@ -407,7 +411,7 @@ body {
   align-items: center;
   gap: 12px;
   height: 38px;
-  color: rgba(255, 255, 255, 0.8);
+  color: var(--sidebar-fg, rgba(255, 255, 255, 0.8));
   text-decoration: none;
   font-size: 13px;
   font-weight: 500;
@@ -432,7 +436,7 @@ body {
 
 .app-nav a.active {
   background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+  color: var(--sidebar-fg, #fff);
   position: relative;
 }
 
@@ -482,7 +486,7 @@ body {
 .nav-heading {
   font-size: 15px;
   font-weight: 700;
-  color: rgba(255, 255, 255, 0.92);
+  color: var(--sidebar-fg, rgba(255, 255, 255, 0.92));
 }
 
 .nav-heading-toggle {
@@ -750,7 +754,8 @@ main {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  background-color: #fff;
+  /* --page-bg is the admin's colouring of the page (theme.js), when set. */
+  background: var(--page-bg, #fff);
   display: flex;
   flex-direction: column;
 }
@@ -4139,8 +4144,8 @@ a.person-card:hover .photo-wrap-peek::before {
     left: 0;
     bottom: 0;
     width: 285px;
-    background: var(--sidebar);
-    color: #fff;
+    background: var(--sidebar-bg, var(--sidebar));
+    color: var(--sidebar-fg, #fff);
     z-index: 50;
     box-shadow: 0 0 40px rgba(0, 0, 0, 0.25);
   }

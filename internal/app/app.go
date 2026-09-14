@@ -845,7 +845,7 @@ func NewCore(cfg Config) *Core {
 	eventsMux := http.NewServeMux()
 	events.Register(eventsMux, eventsCache, cfg.Writer, queue, cfg.Store, directory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.Mail)
 	birthdayMux := http.NewServeMux()
-	birthday.Register(birthdayMux, birthdayCache, cfg.Writer, queue, birthdayDirectory{cache, settings}, settings.SuperAdmins, cfg.Describer, cfg.BirthdayMail, cfg.BirthdayFrom, cfg.BirthdayBase, func(email string) error {
+	birthday.Register(birthdayMux, birthdayCache, cfg.Writer, queue, cfg.Store, birthdayDirectory{cache, settings}, settings.SuperAdmins, cfg.Describer, cfg.BirthdayMail, cfg.BirthdayFrom, cfg.BirthdayBase, func(email string) error {
 		return home.Grant(homeCache, cfg.Writer, queue, "birthday", email)
 	})
 	celebrateMux := http.NewServeMux()
@@ -1099,6 +1099,9 @@ func Production() (*http.Server, *who.Queue) {
 	blob.RegisterBirthday(core.BirthdayMux, store)
 	blob.RegisterCelebrate(core.CelebrateMux, store)
 	blob.RegisterCalendar(core.CalendarMux, store)
+	for _, m := range []*http.ServeMux{core.Mux, core.HomeMux, core.EventsMux, core.BirthdayMux, core.CelebrateMux, core.CalendarMux} {
+		blob.RegisterLogos(m, store)
+	}
 	who.RegisterUpload(core.Mux, core.Cache, sheet, store, core.Queue)
 	client := clientID()
 	whoAuth := auth.New(client, []byte(sessionKey), "web/public/who/login.html")

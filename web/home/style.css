@@ -23,7 +23,8 @@ body {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  background: var(--page);
+  /* --page-bg is the admin's colouring of the page (theme.js), when set. */
+  background: var(--page-bg, var(--page));
   color: var(--ink);
   font-family: Roboto, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   font-size: 15px;
@@ -36,9 +37,9 @@ body {
   min-height: 100vh;
 }
 
-/* Sidebar: the brand teal, the lockup in white, the sections, and the campsite
+/* Sidebar: the brand teal, the lockup in white, the sections, and the bird
    at the foot. It stays put while the page scrolls - pinned to the viewport's
-   height - so the campsite always sits at the bottom of what is on screen. */
+   height - so the bird always sits at the bottom of what is on screen. */
 
 .sidebar {
   position: sticky;
@@ -47,11 +48,13 @@ body {
   height: 100vh;
   height: 100dvh;
   /* The month and the day card make the rail taller than a short window;
-     it scrolls on its own then, the campsite last. */
+     it scrolls on its own then, the bird last. */
   overflow: hidden auto;
   scrollbar-width: none;
-  background: linear-gradient(180deg, var(--sidebar-top), var(--sidebar));
-  color: #fff;
+  /* --sidebar-bg and --sidebar-fg are the admin's colouring of the rail and
+     its words (theme.js), when set. */
+  background: var(--sidebar-bg, linear-gradient(180deg, var(--sidebar-top), var(--sidebar)));
+  color: var(--sidebar-fg, #fff);
   padding: 22px 12px 0;
   display: flex;
   flex-direction: column;
@@ -62,7 +65,7 @@ body {
 .brand {
   display: flex;
   flex-direction: column;
-  color: #fff;
+  color: var(--sidebar-fg, #fff);
   text-decoration: none;
   padding: 0 14px;
 }
@@ -89,7 +92,7 @@ body {
   gap: 14px;
   padding: 9px 14px;
   border-radius: 12px;
-  color: #fff;
+  color: var(--sidebar-fg, #fff);
   text-decoration: none;
   font-weight: 500;
   font-size: 15px;
@@ -143,7 +146,7 @@ body {
   border: 0;
   border-radius: 8px;
   background: transparent;
-  color: #fff;
+  color: var(--sidebar-fg, #fff);
   cursor: pointer;
 }
 
@@ -159,7 +162,7 @@ body {
    rest down - the white menu Upcoming Events uses, centred. */
 .mini-calendar { position: relative; display: flex; justify-content: center; margin: 0 0 10px; }
 
-.mini-calendar-toggle { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 2px 8px; border: 0; border-radius: 999px; background: none; color: #fff; opacity: 0.6; font: inherit; font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap; }
+.mini-calendar-toggle { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 2px 8px; border: 0; border-radius: 999px; background: none; color: var(--sidebar-fg, #fff); opacity: 0.6; font: inherit; font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap; }
 
 .mini-calendar-toggle:hover { opacity: 0.95; background: rgba(255, 255, 255, 0.12); }
 
@@ -198,7 +201,7 @@ body {
   border: 0;
   border-radius: 9px;
   background: transparent;
-  color: #fff;
+  color: var(--sidebar-fg, #fff);
   font: inherit;
   font-size: 13px;
   cursor: pointer;
@@ -256,7 +259,7 @@ body {
   display: flex;
   align-items: baseline;
   gap: 8px;
-  color: #fff;
+  color: var(--sidebar-fg, #fff);
   text-decoration: none;
 }
 
@@ -292,7 +295,7 @@ body {
   padding: 6px 8px;
   margin: 0 -8px;
   border-radius: 10px;
-  color: #fff;
+  color: var(--sidebar-fg, #fff);
   text-decoration: none;
 }
 
@@ -319,7 +322,7 @@ body {
 
 .rail-rsvp .button svg { width: 14px; height: 14px; }
 
-.rail-rsvp .button.button-secondary { background: transparent; border-color: rgba(255, 255, 255, 0.35); color: #fff; }
+.rail-rsvp .button.button-secondary { background: transparent; border-color: rgba(255, 255, 255, 0.35); color: var(--sidebar-fg, #fff); }
 
 .rail-rsvp .button.button-secondary:hover { background: rgba(255, 255, 255, 0.12); border-color: rgba(255, 255, 255, 0.6); }
 
@@ -327,19 +330,21 @@ body {
 
 .rail-rsvp .button:not(.button-secondary):hover { background: #eef6f5; }
 
-/* The campsite spans the rail edge to edge, outside the rail's own padding. */
+/* The bird on its branch perches at the rail's foot, off the left edge a
+   little, outside the rail's own padding. */
 .sidebar-foot {
   margin: auto -12px 0;
+  padding: 28px 0 22px;
 }
 
-/* On a short window the campsite gives way rather than pushing the nav. */
+/* On a short window the bird gives way rather than pushing the nav. */
 .sidebar-art {
   display: block;
-  width: 100%;
+  width: 68%;
   height: auto;
-  max-height: 45vh;
-  object-fit: cover;
-  object-position: bottom;
+  max-height: 32vh;
+  object-fit: contain;
+  object-position: left bottom;
   pointer-events: none;
 }
 
@@ -375,6 +380,9 @@ main {
   min-height: 236px;
   overflow: hidden;
 }
+
+/* A coloured page shows through the hero, whose own colour is the page's. */
+.is-themed-page .hero { background: transparent; }
 
 .hero-text {
   position: relative;
@@ -457,13 +465,24 @@ main {
 
 /* Category sections */
 
+/* The sections stack, a rule between each; a compact one - a run of small
+   tiles - takes no rule above or below and shares a line with the next
+   compact one when both fit. */
+#categories { display: flex; flex-wrap: wrap; column-gap: 48px; }
+
 .category {
+  flex: 1 1 100%;
+  min-width: 0;
   border-top: 1px solid var(--line);
   padding-top: 22px;
   margin-top: 26px;
 }
 
 .category:first-child { border-top: 0; padding-top: 0; margin-top: 0; }
+
+.category.is-compact { flex: 1 1 auto; min-width: min(320px, 100%); border-top: 0; padding-top: 0; }
+
+.category.is-compact + .category { border-top: 0; padding-top: 0; }
 
 .category-head {
   display: flex;
@@ -501,6 +520,13 @@ main {
   background-size: 100% 100%;
   z-index: -1;
 }
+
+/* A section of compact tiles takes a smaller heading, with no swoosh. */
+.category.is-compact .category-title { font-size: 22px; font-weight: 500; padding-bottom: 2px; }
+
+.category.is-compact .category-title::after { display: none; }
+
+.category.is-compact .category-head { margin-bottom: 12px; }
 
 .category-edit {
   border: 0;
@@ -737,155 +763,144 @@ main {
 
 .field-max .field-lead { margin-top: 6px; }
 
-/* Feature cards - the "cards" style */
+/* Chips - the community apps and the "cards" style: upright cards on the
+   same columns as the event cards, the picture on a white disc over the
+   name, the line about it and Open App. The tints and their button
+   colours cycle through five by place in the grid - a chip may sit in a
+   slot beside the admin's pencil, so the slot carries the tint - the last
+   a lavender the palette does not otherwise carry. The button colours
+   are darkened from the palette hexes so white label text clears 4.5:1. */
 
-.card-grid {
+.chip-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
   gap: 20px;
 }
 
-/* Tints cycle through the brand palette. The button accents are darkened
-   from the palette hexes so white label text clears 4.5:1 - the raw red and
-   light teal sit near 3:1 and would fail on a button this size. */
-.feature:nth-child(4n+1) { --tint: #e3f0ef; --accent: #244d53; }
-.feature:nth-child(4n+2) { --tint: #fbe9e5; --accent: #c04a33; }
-.feature:nth-child(4n+3) { --tint: #eef3dc; --accent: #6c7d03; }
-.feature:nth-child(4n+4) { --tint: #e0f3f2; --accent: #17807c; }
+.chip-grid > :nth-child(5n+1) { --tint: #dcefee; --accent: #1f8080; }
+.chip-grid > :nth-child(5n+2) { --tint: #fbe6e2; --accent: #d05540; }
+.chip-grid > :nth-child(5n+3) { --tint: #f7f3d5; --accent: #6c7d03; }
+.chip-grid > :nth-child(5n+4) { --tint: #d6eef0; --accent: #17807c; }
+.chip-grid > :nth-child(5n+5) { --tint: #ebe4f6; --accent: #7a5fae; }
 
-.feature {
+.chip-slot { position: relative; display: flex; }
+
+.chip-slot > .chip { flex: 1; }
+
+.chip-slot .link-edit { position: absolute; top: 12px; right: 12px; z-index: 2; }
+
+.chip {
   position: relative;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 18px;
-  padding: 24px 22px;
-  min-height: 176px;
-  border-radius: 18px;
+  text-align: center;
+  padding: 26px 18px 22px;
+  border-radius: 20px;
   background: var(--tint);
   overflow: hidden;
+  color: inherit;
+  text-decoration: none;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
-.feature-disc {
+.chip:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(36, 77, 83, 0.12); }
+
+.chip:hover .button.chip-open { filter: brightness(0.9); }
+
+.chip-disc {
   position: relative;
   z-index: 1;
-  flex-shrink: 0;
-  width: 84px;
-  height: 84px;
+  width: 110px;
+  height: 110px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.6);
+  background: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
+  box-shadow: 0 2px 6px rgba(36, 77, 83, 0.08);
 }
 
-.feature-image {
-  width: 50px;
-  height: 50px;
-  object-fit: contain;
-}
+.chip-image { width: 68px; height: 68px; object-fit: contain; }
 
-.feature-initial {
-  font-size: 34px;
-  font-weight: 700;
-  color: var(--accent);
-}
+.chip-initial { font-size: 40px; font-weight: 700; color: var(--accent); }
 
-.feature-initial.is-emoji { font-size: 40px; line-height: 1; }
+.chip-initial.is-emoji { font-size: 48px; line-height: 1; }
 
-.feature-body { position: relative; z-index: 1; flex: 1; min-width: 0; }
-
-.feature-title {
-  font-size: 20px;
-  font-weight: 700;
-  color: var(--brand);
+.chip-title {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
   flex-wrap: wrap;
+  margin-top: 18px;
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--brand);
 }
 
-.feature-description {
+.chip-description {
+  position: relative;
+  z-index: 1;
   margin: 4px 0 16px;
   color: #4a4a4a;
   font-size: 14px;
   line-height: 1.4;
 }
 
-.feature .button { background: var(--accent); }
+.chip .button.chip-open { position: relative; z-index: 1; margin-top: auto; background: var(--accent); }
 
-.feature .button:hover { filter: brightness(0.9); }
+.chip .button.chip-open svg { width: 16px; height: 16px; }
 
-/* The picture again, large and faint, bleeding off the right edge. */
-.feature-watermark {
+.chip.is-hidden > * { opacity: 0.55; }
+
+/* The mark again, large and faint, off the top-right corner. */
+.chip-watermark {
   position: absolute;
-  right: -18px;
-  top: 50%;
-  width: 150px;
-  height: 150px;
-  transform: translateY(-50%);
+  right: -30px;
+  top: -20px;
+  width: 130px;
+  height: 130px;
   object-fit: contain;
   filter: grayscale(1);
-  opacity: 0.1;
+  opacity: 0.08;
   pointer-events: none;
 }
-
-.feature-corner {
-  position: absolute;
-  right: 20px;
-  bottom: 20px;
-  z-index: 1;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.85);
-  color: var(--accent);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.feature-corner:hover { background: #fff; }
-
-.feature-corner svg { width: 18px; height: 18px; }
-
-.feature .link-edit { position: absolute; top: 12px; right: 12px; z-index: 2; }
-
-.feature.is-hidden > *:not(.link-edit) { opacity: 0.55; }
 
 /* Tiles - the "tiles" style: a picture beside the initial, the title and a
    line about it. */
 
+/* Tiles run along a line and wrap, each as wide as its words. */
 .tile-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 20px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 22px;
 }
 
 .tile {
   position: relative;
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  box-shadow: 0 1px 2px rgba(36, 77, 83, 0.04);
+  border-radius: 12px;
 }
 
 .tile-link {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
   height: 100%;
-  padding: 12px;
+  padding: 8px;
   color: inherit;
   text-decoration: none;
 }
 
-.tile:hover { border-color: var(--brand); }
+.tile:hover { background: rgba(255, 255, 255, 0.7); }
 
 .tile-image {
   flex-shrink: 0;
-  width: 96px;
-  height: 96px;
-  border-radius: 12px;
+  width: 56px;
+  height: 56px;
+  border-radius: 10px;
   object-fit: cover;
 }
 
@@ -899,14 +914,16 @@ main {
 
 .tile-glyph { display: inline-flex; }
 
-.tile-glyph svg { width: 36px; height: 36px; opacity: 0.5; }
+.tile-glyph svg { width: 26px; height: 26px; opacity: 0.5; }
 
-.tile-glyph.is-emoji { font-size: 40px; line-height: 1; }
+.tile-glyph.is-emoji { font-size: 28px; line-height: 1; }
 
-.tile-body { flex: 1; min-width: 0; padding-right: 28px; }
+.tile-body { flex: 1; min-width: 0; padding-right: 6px; }
+
+.tile:has(.link-edit) .tile-body { padding-right: 30px; }
 
 .tile-title {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
   line-height: 1.25;
   color: var(--brand);
@@ -917,8 +934,8 @@ main {
 }
 
 .tile-description {
-  margin-top: 3px;
-  font-size: 13px;
+  margin-top: 2px;
+  font-size: 12.5px;
   color: var(--muted);
   line-height: 1.35;
   overflow: hidden;
@@ -928,7 +945,7 @@ main {
 
 .tile.is-hidden { opacity: 0.55; }
 
-.tile .link-edit { position: absolute; top: 8px; right: 8px; z-index: 2; }
+.tile .link-edit { position: absolute; top: 6px; right: 6px; z-index: 2; }
 
 /* The admin's dashed add card, at the end of every category. */
 .add-card {
@@ -948,7 +965,10 @@ main {
   cursor: pointer;
 }
 
-.add-card.feature { min-height: 176px; border-radius: 18px; }
+.add-card.chip { min-height: 290px; border-radius: 20px; }
+
+/* Among tiles, the add card is one more tile's worth. */
+.add-card.tile { min-height: 72px; min-width: 220px; padding: 10px 16px; gap: 4px; }
 
 .add-card:hover { border-color: var(--brand); color: var(--brand); background: rgba(36, 77, 83, 0.03); }
 
@@ -982,251 +1002,46 @@ main {
 
 .empty-search, .footnote {
   color: var(--muted);
-  font-size: 14px;
-  text-align: center;
-  margin-top: 32px;
-}
-
-/* The foot: the leaves along the bottom edge. main grows to fill, so on a
-   short page the art still lands at the foot of the viewport. Decorative
-   only, so it carries an empty alt. */
-.page-foot {
-  position: relative;
-  margin-top: auto;
-  padding-top: 48px;
-}
-
-.page-art {
-  display: block;
-  width: 100%;
-  height: auto;
-  pointer-events: none;
-}
-
-.hidden-badge {
-  background: var(--muted);
-  color: #fff;
-  border-radius: 999px;
-  padding: 1px 8px;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.empty-search, .footnote {
-  color: var(--muted);
-  font-size: 14px;
-  text-align: center;
-  margin-top: 32px;
-}
-
-/* Decorative only, so it carries an empty alt. It spans the content column and
-   sits flush at the very bottom - main takes no bottom padding and grows to
-   fill, so on a short page the art still lands at the foot of the viewport. */
-.page-art {
-  display: block;
-  width: 70%;
-  height: auto;
-  margin: 28px 0 0 auto;
-  pointer-events: none;
-}
-
-.link-edit {
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
-  border: 0;
-  background: rgba(255, 255, 255, 0.85);
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--brand);
-}
-
-.link-edit:hover { background: #fff; }
-
-.link-edit svg { width: 15px; height: 15px; }
-
-.footnote {
-  color: var(--muted);
-  font-size: 14px;
-  text-align: center;
-  margin-top: 32px;
-}
-
-/* The foot: the leaves along the bottom edge. main grows to fill, so on a
-   short page the art still lands at the foot of the viewport. Decorative
-   only, so it carries an empty alt. */
-.page-foot {
-  position: relative;
-  margin-top: auto;
-  padding-top: 48px;
-}
-
-.page-art {
-  display: block;
-  width: 100%;
-  height: auto;
-  pointer-events: none;
-}
-
-.hidden-badge {
-  background: var(--muted);
-  color: #fff;
-  border-radius: 999px;
-  padding: 1px 8px;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.empty-search, .footnote {
-  color: var(--muted);
-  font-size: 14px;
-  text-align: center;
-  margin-top: 32px;
-}
-
-/* Decorative only, so it carries an empty alt. It spans the content column and
-   sits flush at the very bottom - main takes no bottom padding and grows to
-   fill, so on a short page the art still lands at the foot of the viewport. */
-.page-art {
-  display: block;
-  width: 70%;
-  height: auto;
-  margin: 28px 0 0 auto;
-  pointer-events: none;
-}
-
-.footnote {
-  color: var(--muted);
-  font-size: 14px;
-  text-align: center;
-  margin-top: 32px;
-}
-
-/* The foot: the leaves along the bottom edge. main grows to fill, so on a
-   short page the art still lands at the foot of the viewport. Decorative
-   only, so it carries an empty alt. */
-.page-foot {
-  position: relative;
-  margin-top: auto;
-  padding-top: 48px;
-}
-
-.page-art {
-  display: block;
-  width: 100%;
-  height: auto;
-  pointer-events: none;
-}
-
-.hidden-badge {
-  background: var(--muted);
-  color: #fff;
-  border-radius: 999px;
-  padding: 1px 8px;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.empty-search, .footnote {
-  color: var(--muted);
-  font-size: 14px;
-  text-align: center;
-  margin-top: 32px;
-}
-
-/* Decorative only, so it carries an empty alt. It spans the content column and
-   sits flush at the very bottom - main takes no bottom padding and grows to
-   fill, so on a short page the art still lands at the foot of the viewport. */
-.page-art {
-  display: block;
-  width: 70%;
-  height: auto;
-  margin: 28px 0 0 auto;
-  pointer-events: none;
-}
-
-.link-edit {
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
-  border: 0;
-  background: rgba(255, 255, 255, 0.85);
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--brand);
-}
-
-.link-edit:hover { background: #fff; }
-
-.link-edit svg { width: 15px; height: 15px; }
-
-.footnote {
-  color: var(--muted);
-  font-size: 14px;
-  text-align: center;
-  margin-top: 32px;
-}
-
-/* The foot: the leaves along the bottom edge. main grows to fill, so on a
-   short page the art still lands at the foot of the viewport. Decorative
-   only, so it carries an empty alt. */
-.page-foot {
-  position: relative;
-  margin-top: auto;
-  padding-top: 48px;
-}
-
-.page-art {
-  display: block;
-  width: 100%;
-  height: auto;
-  pointer-events: none;
-}
-
-.hidden-badge {
-  background: var(--muted);
-  color: #fff;
-  border-radius: 999px;
-  padding: 1px 8px;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.empty-search, .footnote {
-  color: var(--muted);
-  font-size: 14px;
-  text-align: center;
-  margin-top: 32px;
-}
-
-/* Decorative only, so it carries an empty alt. It spans the content column and
-   sits flush at the very bottom - main takes no bottom padding and grows to
-   fill, so on a short page the art still lands at the foot of the viewport. */
-.page-art {
-  display: block;
-  width: 70%;
-  height: auto;
-  margin: 28px 0 0 auto;
-  pointer-events: none;
-}
-
-.footnote {
-  color: var(--muted);
   font-size: 13px;
   text-align: center;
   margin-top: 28px;
+}
+
+.link-edit {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 0;
+  background: rgba(255, 255, 255, 0.85);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--brand);
+}
+
+.link-edit:hover { background: #fff; }
+
+.link-edit svg { width: 15px; height: 15px; }
+
+/* The foot: a spray of leaves pinned to the window's bottom-right corner,
+   behind the page - the cards pass over it as the page scrolls, and it is
+   there however long the page is. The foot itself only keeps the last
+   section's text clear of it. Decorative only, so it carries an empty alt. */
+.page-foot {
+  height: 120px;
+  margin-top: auto;
+}
+
+.page-art {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  z-index: -1;
+  display: block;
+  width: min(300px, 45vw);
+  height: auto;
+  pointer-events: none;
 }
 
 .modal-overlay {
@@ -1729,7 +1544,7 @@ main {
 
   /* The shared toolbar is pinned on top (toolbar.css) and the page starts
      under it. The rail becomes a drawer behind the toolbar's hamburger: the
-     same column - lockup, section links, campsite - slid in from the left
+     same column - lockup, section links, bird - slid in from the left
      over a backdrop. */
   .topbar { position: fixed; }
   .shell { padding-top: calc(48px + env(safe-area-inset-top)); }
@@ -1762,16 +1577,16 @@ main {
 }
 
 @media (max-width: 640px) {
-  .card-grid, .tile-grid { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .tile-grid { gap: 4px 14px; }
+  .chip-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .chip { padding: 20px 12px 18px; }
+  .chip-disc { width: 84px; height: 84px; }
+  .chip-image { width: 52px; height: 52px; }
+  .chip-title { font-size: 16px; }
 
-  .feature { padding: 20px 18px; min-height: 0; }
-  .add-card.feature { min-height: 120px; }
-  .feature-disc { width: 68px; height: 68px; }
-  .feature-image { width: 40px; height: 40px; }
-  .feature-title { font-size: 18px; }
-  .feature-corner { display: none; }
+  .add-card.chip { min-height: 120px; }
 
-  .tile-image { width: 76px; height: 76px; }
+  .tile-image { width: 48px; height: 48px; }
 
   .category-title { font-size: 26px; }
   /* The "see all" link drops under the title rather than squeezing it. */

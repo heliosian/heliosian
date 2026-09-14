@@ -5,6 +5,7 @@ package celebrate
 
 import (
 	"fmt"
+	"heliosian/internal/theme"
 	"maps"
 	"math"
 	"regexp"
@@ -260,6 +261,9 @@ type Settings struct {
 	PartiesIntro string `json:"partiesIntro"`
 	TicketNote   string `json:"ticketNote"`
 	HostingOpen  bool   `json:"hostingOpen"`
+	// Theme is the admin's colouring of the rail and the page, kept in the
+	// same tab under internal/theme's keys.
+	Theme theme.Theme `json:"theme"`
 }
 
 // Model is the sheet organized: celebrations and parties in row order, each
@@ -708,6 +712,9 @@ func parseSettings(rows []map[string]string) (Settings, error) {
 	values := map[string]string{}
 	for _, row := range rows {
 		key := row["Key"]
+		if theme.IsKey(key) {
+			continue
+		}
 		if !slices.Contains(settingKeys, key) {
 			return Settings{}, fmt.Errorf("%s has unknown key %q", settingsTab, key)
 		}
@@ -720,7 +727,11 @@ func parseSettings(rows []map[string]string) (Settings, error) {
 	if err != nil {
 		return Settings{}, fmt.Errorf("%s %s: %w", settingsTab, HostingOpenKey, err)
 	}
-	return Settings{PartiesIntro: values[PartiesIntroKey], TicketNote: values[TicketNoteKey], HostingOpen: hosting}, nil
+	t, err := theme.FromRows(rows)
+	if err != nil {
+		return Settings{}, fmt.Errorf("%s: %w", settingsTab, err)
+	}
+	return Settings{PartiesIntro: values[PartiesIntroKey], TicketNote: values[TicketNoteKey], HostingOpen: hosting, Theme: t}, nil
 }
 
 func imageNames(rows ...[]map[string]string) []string {

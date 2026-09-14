@@ -1,3 +1,4 @@
+import {applyTheme} from '/theme.js';
 import {state, applyModel, staff, charity, isUnassigned, isSystemAdmin} from './state.js';
 import {el} from './dom.js';
 import {initChrome, renderChrome, setTitle, clearSearch} from './chrome.js';
@@ -20,6 +21,7 @@ export async function load() {
     throw new Error(`loading model failed: ${res.status}`);
   }
   applyModel(await res.json());
+  applyTheme(state.model.settings && state.model.settings.theme);
   render();
   // Once the first page is up, the newcomer's question.
   if (!offered && location.pathname !== '/admin') {

@@ -124,7 +124,7 @@ func newServer(t *testing.T) (*Cache, *http.ServeMux) {
 	mux := http.NewServeMux()
 	sent = &sentMail{}
 	joined = nil
-	Register(mux, cache, dir, syncQueue{}, fakeDirectory{}, func() []string { return []string{admin} }, nil, sent, "Helios Staff Birthdays <birthday@example.org>", "https://birthday.example.org", func(email string) error {
+	Register(mux, cache, dir, syncQueue{}, nil, fakeDirectory{}, func() []string { return []string{admin} }, nil, sent, "Helios Staff Birthdays <birthday@example.org>", "https://birthday.example.org", func(email string) error {
 		joined = append(joined, email)
 		return nil
 	})

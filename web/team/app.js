@@ -1,4 +1,5 @@
-import {applyModel, resolvePath, activityPath, isFamily} from './state.js';
+import {applyTheme} from '/theme.js';
+import {state, applyModel, resolvePath, activityPath, isFamily} from './state.js';
 import {el} from './dom.js';
 import {initChrome, renderChrome, setTitle, clearSearch} from './chrome.js';
 import {initModal} from './edit.js';
@@ -15,6 +16,7 @@ export async function load() {
     throw new Error(`loading model failed: ${res.status}`);
   }
   applyModel(await res.json());
+  applyTheme(state.model.settings && state.model.settings.theme);
   renderChrome();
   render();
 }

@@ -1,6 +1,7 @@
 package calendar
 
 import (
+	"heliosian/internal/theme"
 	"slices"
 	"sort"
 	"strings"
@@ -134,6 +135,8 @@ type View struct {
 	Names       map[string]string `json:"names,omitempty"`
 	Feeds       []Feed            `json:"feeds"`
 	Alerts      Alerts            `json:"alerts"`
+	// Theme is the admin's colouring of the rail and the page.
+	Theme theme.Theme `json:"theme"`
 }
 
 func displayName(email string) string {
@@ -248,6 +251,6 @@ func Render(model *Model, directory Directory, email string, admin bool, now tim
 		Provenance: provenance, Responses: responses, GradeColors: directory.GradeColors(), Names: names,
 		User: user, Today: now.Format(DateFormat), Now: now.Format(DateTimeFormat),
 		Classrooms: model.Roster.Classrooms, Colors: directory.ClassroomColors(), Tags: append(append([]Tag{}, model.Tags...), builtinTags...), DayTypes: model.DayTypes, Years: model.Years,
-		Days: model.Days, Events: model.eventsFor(email, linked), Feeds: feeds, Alerts: Alerts{Stale: stale, Privacy: privacy},
+		Days: model.Days, Events: model.eventsFor(email, linked), Feeds: feeds, Alerts: Alerts{Stale: stale, Privacy: privacy}, Theme: model.Theme,
 	}
 }

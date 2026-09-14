@@ -30,7 +30,8 @@ body {
   height: 100dvh;
   display: flex;
   flex-direction: column;
-  background: var(--page);
+  /* --page-bg is the admin's colouring of the page (theme.js), when set. */
+  background: var(--page-bg, var(--page));
   color: var(--ink);
   font-family: Roboto, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   font-size: 15px;
@@ -59,7 +60,9 @@ button { font: inherit; }
      bottom scaled to the rail's width, over the pale green wash. It's a
      background rather than an element so it never competes with the nav for
      vertical space on a short viewport - the nav just scrolls over it. */
-  background-image: url('/toolbar_background.png'), linear-gradient(180deg, #eef5e6 0%, #d8ebc6 45%, #b7dda2 100%);
+  /* --sidebar-bg is the admin's colouring of the rail (theme.js), when set;
+     its links read --sidebar-fg for their words. */
+  background-image: var(--sidebar-art, url('/toolbar_background.png')), var(--sidebar-bg, linear-gradient(180deg, #eef5e6 0%, #d8ebc6 45%, #b7dda2 100%));
   background-size: 100% auto, auto;
   background-position: left bottom, left top;
   background-repeat: no-repeat, no-repeat;
@@ -97,7 +100,7 @@ button { font: inherit; }
   min-height: 42px;
   padding: 0 12px;
   border-radius: 10px;
-  color: var(--brand);
+  color: var(--sidebar-fg, var(--brand));
   text-decoration: none;
   font-size: 14px;
   font-weight: 600;
@@ -105,10 +108,11 @@ button { font: inherit; }
 
 .app-nav a svg { width: 20px; height: 20px; flex-shrink: 0; }
 
-.app-nav a:hover { background: rgba(255, 255, 255, 0.55); }
+.app-nav a:hover { background: rgba(255, 255, 255, 0.55); color: var(--brand); }
 
 .app-nav a.is-active {
   background: #fff;
+  color: var(--brand);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
 }
 
@@ -133,14 +137,14 @@ button { font: inherit; }
   font: inherit;
   font-size: 12.5px;
   font-weight: 500;
-  color: var(--brand);
+  color: var(--sidebar-fg, var(--brand));
   text-align: left;
   cursor: pointer;
 }
 
-.nav-sub-item:hover { background: rgba(255, 255, 255, 0.55); }
+.nav-sub-item:hover { background: rgba(255, 255, 255, 0.55); color: var(--brand); }
 
-.nav-sub-item.is-on { background: #fff; font-weight: 700; }
+.nav-sub-item.is-on { background: #fff; color: var(--brand); font-weight: 700; }
 
 .nav-sub-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -166,7 +170,7 @@ button { font: inherit; }
   gap: 12px;
   padding: 10px 12px;
   border-radius: 10px;
-  color: var(--brand);
+  color: var(--sidebar-fg, var(--brand));
   text-decoration: none;
   font-size: 14px;
   font-weight: 600;
@@ -174,9 +178,9 @@ button { font: inherit; }
 
 .nav-event-link svg { width: 20px; height: 20px; flex-shrink: 0; }
 
-.nav-event-link:hover { background: rgba(255, 255, 255, 0.55); }
+.nav-event-link:hover { background: rgba(255, 255, 255, 0.55); color: var(--brand); }
 
-.nav-event-link.is-active { background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
+.nav-event-link.is-active { background: #fff; color: var(--brand); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
 
 /* The generic .app-nav a rule would size these like the main items; they are
    sub-items - a committee in the open event, or someone in the household
@@ -193,7 +197,7 @@ button { font: inherit; }
 }
 
 .app-nav a.nav-tree-item.is-on,
-.app-nav a.nav-family-item.is-on { background: #fff; font-weight: 700; box-shadow: none; }
+.app-nav a.nav-family-item.is-on { background: #fff; color: var(--brand); font-weight: 700; box-shadow: none; }
 
 .nav-tree-group { font-weight: 700; }
 
@@ -217,7 +221,7 @@ button { font: inherit; }
   cursor: pointer;
 }
 
-.nav-tree-toggle:hover { background: rgba(255, 255, 255, 0.55); }
+.nav-tree-toggle:hover { background: rgba(255, 255, 255, 0.55); color: var(--brand); }
 
 .nav-tree-toggle svg { width: 14px; height: 14px; transition: transform 0.15s; }
 

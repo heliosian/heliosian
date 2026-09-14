@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"heliosian/internal/theme"
 	"maps"
 	"net/url"
 	"os"
@@ -24,6 +25,7 @@ const (
 	linksTab       = "Links"
 	adminsTab      = "Admins"
 	visibilityTab  = "Visibility"
+	settingsTab    = "Settings"
 	changeLogTab   = "Change Log"
 	addedFormat    = "2006-01-02"
 	maxTitleLength = 80
@@ -54,9 +56,13 @@ var (
 	linkColumns       = []string{"Title", "Description", "URL", "Image", "Category", "Visible", "Added By", "Added"}
 	adminColumns      = []string{"Email"}
 	visibilityColumns = []string{"App", "Visibility", "Emails", "Tagline", "Name", "Order"}
+	settingColumns    = []string{"Key", "Value"}
 	changeLogColumns  = []string{"Timestamp", "Actor", "Action", "Kind", "Title", "Description", "URL", "Image", "Category", "Visible", "Style"}
 )
 
+// The Settings tab holds the front page's theme (internal/theme): the
+// rail's and the page's colours. Any other key refuses the load, as a
+// misspelled one would otherwise colour nothing, silently.
 // App is one of the community apps the shared toolbar switches between,
 // keyed by its hostname's first label; its mark is served from
 // web/public/common/brand/apps/<key>.png. Apps is the registry: every app
@@ -192,6 +198,7 @@ type Category struct {
 type Model struct {
 	Categories []Category            `json:"categories"`
 	Visibility map[string]Visibility `json:"-"`
+	Theme      theme.Theme           `json:"theme"`
 }
 
 type Tables struct {
@@ -199,6 +206,7 @@ type Tables struct {
 	Links      []map[string]string
 	Admins     []map[string]string
 	Visibility []map[string]string
+	Settings   []map[string]string
 }
 
 func ReadTables(source data.Source) (*Tables, error) {
@@ -212,8 +220,9 @@ func ReadTables(source data.Source) (*Tables, error) {
 	links := &table{name: linksTab, want: linkColumns}
 	admins := &table{name: adminsTab, want: adminColumns}
 	visibility := &table{name: visibilityTab, want: visibilityColumns}
+	settings := &table{name: settingsTab, want: settingColumns}
 	changeLog := &table{name: changeLogTab, want: changeLogColumns}
-	read := []*table{categories, links, admins, visibility}
+	read := []*table{categories, links, admins, visibility, settings}
 	names := []string{}
 	for _, t := range read {
 		names = append(names, t.name)
@@ -228,7 +237,7 @@ func ReadTables(source data.Source) (*Tables, error) {
 			return nil, err
 		}
 	}
-	return &Tables{Categories: categories.rows, Links: links.rows, Admins: admins.rows, Visibility: visibility.rows}, nil
+	return &Tables{Categories: categories.rows, Links: links.rows, Admins: admins.rows, Visibility: visibility.rows, Settings: settings.rows}, nil
 }
 
 func yesNo(cell string) (bool, error) {
@@ -428,7 +437,39 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 		return nil, err
 	}
 	model.Visibility = visibility
+	if model.Theme, err = buildTheme(tables.Settings); err != nil {
+		return nil, err
+	}
 	return model, nil
+}
+
+// buildTheme reads the Settings tab, which holds nothing but the theme.
+func buildTheme(rows []map[string]string) (theme.Theme, error) {
+	for _, row := range rows {
+		if key := strings.TrimSpace(row["Key"]); !theme.IsKey(key) {
+			return theme.Theme{}, fmt.Errorf("%s has unknown key %q", settingsTab, key)
+		}
+	}
+	t, err := theme.FromRows(rows)
+	if err != nil {
+		return theme.Theme{}, fmt.Errorf("%s: %w", settingsTab, err)
+	}
+	return t, nil
+}
+
+// withSetting is Tables with one Settings row set, for the model to be
+// rebuilt and checked before the row is written.
+func (t *Tables) withSetting(key, value string) *Tables {
+	out := *t
+	out.Settings = cloneRows(t.Settings)
+	for _, row := range out.Settings {
+		if strings.EqualFold(strings.TrimSpace(row["Key"]), key) {
+			row["Value"] = value
+			return &out
+		}
+	}
+	out.Settings = append(out.Settings, map[string]string{"Key": key, "Value": value})
+	return &out
 }
 
 // buildVisibility reads the Visibility tab: one row per app, naming a known

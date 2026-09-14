@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"heliosian/internal/blob"
+	"heliosian/internal/theme"
 	"io"
 	"log/slog"
 	"net/http"
@@ -65,7 +67,7 @@ type Describer interface {
 
 // Register wires the app: one shell for every page, the model, and the writes.
 // Every route already sits behind sign-in.
-func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, directory Directory, superAdmins func() []string, describer Describer, mailer mail.Sender, from, base string, joinHome func(email string) error) {
+func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, directory Directory, superAdmins func() []string, describer Describer, mailer mail.Sender, from, base string, joinHome func(email string) error) {
 	a := app{cache: cache, writer: writer, queue: queue, directory: directory, superAdmins: superAdmins, describer: describer, mailer: mailer, from: from, base: base, joinHome: joinHome}
 	if mailer != nil {
 		go a.remindLoop()
@@ -95,6 +97,11 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	mux.HandleFunc("POST /api/birthday/newsletter-dates/clear-future", a.clearFutureNewsletterDates)
 	mux.HandleFunc("POST /api/birthday/newsletter-dates/create", a.createNewsletterDates)
 	mux.HandleFunc("POST /api/birthday/settings", a.saveSettings)
+	mux.HandleFunc("POST /api/birthday/theme", a.saveTheme)
+	mux.HandleFunc("POST /api/birthday/theme/picture", theme.Upload(store, func(w http.ResponseWriter, r *http.Request) bool {
+		_, ok := a.requireAdmin(w, r)
+		return ok
+	}))
 	mux.HandleFunc("GET /api/admin/state", a.adminState)
 	mux.HandleFunc("POST /api/admin/admins", a.setAdmins)
 	mux.HandleFunc("POST /api/admin/resend-invites", a.resendInvites)
@@ -1092,6 +1099,41 @@ func (a app) saveSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.InfoContext(r.Context(), "birthday: changed the settings", "actor", actor)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// saveTheme takes the page's colours at once (internal/theme) and writes
+// their rows of the Settings tab, adding any the tab has not got yet.
+func (a app) saveTheme(w http.ResponseWriter, r *http.Request) {
+	actor, ok := a.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	var body theme.Theme
+	if !decode(w, r, &body) {
+		return
+	}
+	t, err := theme.Of(body.Values())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	values := t.Values()
+	tables := a.cache.Tables()
+	for _, key := range theme.Keys {
+		tables = tables.with(settingsTab, map[string]string{"Key": key}, map[string]string{"Value": values[key]})
+	}
+	if !a.commit(r, w, tables, func() error {
+		for _, key := range theme.Keys {
+			if err := a.writer.Set(appName, settingsTab, map[string]string{"Key": key}, map[string]string{"Value": values[key]}); err != nil {
+				return err
+			}
+		}
+		return a.logChange(actor, "edit", "settings", "", "", "")
+	}) {
+		return
+	}
+	slog.InfoContext(r.Context(), "birthday: changed the theme", "actor", actor, "theme", t)
 	w.WriteHeader(http.StatusNoContent)
 }
 

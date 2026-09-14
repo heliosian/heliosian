@@ -1,3 +1,4 @@
+import {applyTheme} from '/theme.js';
 import {applyModel, event, today, parseDate, me, state, eventDates, allCalendars, setActiveFeed, setClassrooms, setTags, feedClassrooms, feedTags} from './state.js';
 import {el} from './dom.js';
 import {initChrome, renderChrome, setTitle, clearSearch} from './chrome.js';
@@ -12,6 +13,7 @@ export async function load() {
     throw new Error(`loading model failed: ${res.status}`);
   }
   applyModel(await res.json());
+  applyTheme(state.model.theme);
   renderChrome();
   render();
 }

@@ -1,5 +1,6 @@
 import {createPersonPicker} from '/picker.js';
 import {appOrigin} from '/toolbar.js';
+import {appearanceCard} from '/appearance.js';
 
 
 // A list of addresses that saves itself: every add or remove posts at once, so
@@ -401,6 +402,12 @@ async function load() {
     initial: state.admins,
   });
   renderVisibility(state.apps, state.people);
+  document.querySelector('#panel-appearance').replaceChildren(appearanceCard({
+    theme: state.theme, url: '/api/admin/theme',
+    defaults: {sidebar: '#122d31', sidebarEnd: '#2e5c63', sidebarText: '#ffffff', page: '#f3f7f2', pageEnd: '#f3f7f2'},
+    sidebarWords: 'The rail down the left, with the calendar in it', pageWords: 'The page behind the sections',
+    pictures: {logo: '/brand/logo-lockup-light.png', sidebarImage: '/brand/sidebar-bird.png'}, darkRail: true,
+  }));
   loadCategories();
 }
 

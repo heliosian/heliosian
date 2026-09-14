@@ -1,6 +1,7 @@
 import {state, me, tagGroups, bands, classroomNames, myClassrooms, event, eventDates, addDays, parseDate, dayLabel} from '../state.js';
 import {el, link, svg, button, toast, segmented} from '../dom.js';
 import {setTitle} from '../chrome.js';
+import {appearanceCard} from '/appearance.js';
 
 async function refreshModel() {
   const {load} = await import('../app.js');
@@ -942,6 +943,9 @@ const sections = [
   {title: 'Calendar', tabs: [
     {key: 'events', label: 'Events', card: eventsTool},
     {key: 'categories', label: 'Categories', card: categoriesTool},
+  ]},
+  {title: 'Display', tabs: [
+    {key: 'appearance', label: 'Appearance', card: () => appearanceCard({theme: state.model.theme, url: '/api/calendar/theme', defaults: {sidebar: '#eef5f4', sidebarEnd: '#c5dfdc', sidebarText: '#0e4d54', page: '#f4f8f8', pageEnd: '#f4f8f8'}, pictures: {logo: '/brand/logo-lockup-wide.png', sidebarImage: ''}})},
   ]},
 ];
 

@@ -4,6 +4,7 @@ package birthday
 
 import (
 	"fmt"
+	"heliosian/internal/theme"
 	"maps"
 	"net/url"
 	"regexp"
@@ -164,6 +165,9 @@ type Settings struct {
 	NoNewsletterNote string `json:"noNewsletterNote"`
 	OutreachCC       string `json:"outreachCC"`
 	RequestLeadDays  int    `json:"requestLeadDays"`
+	// Theme is the admin's colouring of the rail and the page, kept in the
+	// same tab under internal/theme's keys.
+	Theme theme.Theme `json:"theme"`
 }
 
 // TeamMember is one person in one role on the Team tab.
@@ -367,6 +371,9 @@ func parseSettings(rows []map[string]string) (Settings, error) {
 	values := map[string]string{}
 	for _, row := range rows {
 		key := row["Key"]
+		if theme.IsKey(key) {
+			continue
+		}
 		if !slices.Contains(settingKeys, key) {
 			return Settings{}, fmt.Errorf("%s has unknown key %q", settingsTab, key)
 		}
@@ -391,10 +398,14 @@ func parseSettings(rows []map[string]string) (Settings, error) {
 		}
 		lead = n
 	}
+	t, err := theme.FromRows(rows)
+	if err != nil {
+		return Settings{}, fmt.Errorf("%s: %w", settingsTab, err)
+	}
 	return Settings{
 		DefaultCharity: values[DefaultCharityKey], YearStart: values[YearStartKey],
 		EmailSubject: values[EmailSubjectKey], EmailBody: values[EmailBodyKey], NoNewsletterNote: values[NoNewsletterNoteKey],
-		OutreachCC: strings.TrimSpace(values[OutreachCCKey]), RequestLeadDays: lead,
+		OutreachCC: strings.TrimSpace(values[OutreachCCKey]), RequestLeadDays: lead, Theme: t,
 	}, nil
 }
 
