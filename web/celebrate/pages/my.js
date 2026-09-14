@@ -54,11 +54,10 @@ export function myPage(email) {
       heading.append(avatar(section.person, 'family-face'), el('h2', 'family-name', section.person.name));
       body.append(heading);
       const grid = el('div', 'card-grid');
+      // Each card names everyone in the household on the party, not only
+      // the member whose section it sits in.
       for (const p of list) {
-        const mine = section.guests
-          ? [...p.attendees, ...p.waitlisted].filter(a => a.mine && !isFamily(a.email))
-          : [...p.attendees, ...p.waitlisted].filter(a => a.email === section.person.email);
-        grid.append(partyCard(p, {mine}));
+        grid.append(partyCard(p));
       }
       body.append(grid);
     }

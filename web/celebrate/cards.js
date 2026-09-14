@@ -56,8 +56,10 @@ function dateStamp(p) {
 }
 
 // footButton is the card's action: Get Tickets or Join Waitlist where the
-// party sells, else Learn More into the page.
-function footButton(p) {
+// party sells, else Learn More into the page. A family already on a full
+// party - holding a ticket, or waiting - is not asked to join its waitlist:
+// their names sit on the card, and the page carries their place.
+function footButton(p, mine) {
   // A student browses; a parent takes the tickets.
   if (isKid()) {
     return link(partyPath(p), 'button button-secondary button-small', 'Learn More');
@@ -65,16 +67,17 @@ function footButton(p) {
   if (p.availability === 'available') {
     return button('Get Tickets', null, 'button button-small', () => openBuy(p));
   }
-  if (p.availability === 'waitlist') {
+  if (p.availability === 'waitlist' && !mine.length) {
     return button('Join Waitlist', null, 'button button-small', () => openBuy(p));
   }
   return link(partyPath(p), 'button button-secondary button-small', 'Learn More');
 }
 
 // partyCard is the grid tile: the picture with its date stamp, then the
-// title, the summary, and a foot with the action and what is left. opts.mine
-// lists the household's tickets on it, for My Family's Parties.
-export function partyCard(p, opts = {}) {
+// title, the summary, the household's tickets on it - everyone in the
+// family and the guests they brought, whichever page the card is on - and
+// a foot with the action and what is left.
+export function partyCard(p) {
   const card = el('div', 'card' + (p.status !== 'Open' ? ' is-muted' : ''));
   const media = link(partyPath(p), 'card-media');
   media.append(thumb(p.imageUrl, p.title, 'card-image'));
@@ -115,9 +118,10 @@ export function partyCard(p, opts = {}) {
   if (marks.children.length) {
     body.append(marks);
   }
-  if (opts.mine) {
+  const mine = myTickets(p);
+  if (mine.length) {
     const under = el('div', 'card-under');
-    for (const a of opts.mine) {
+    for (const a of mine) {
       const item = el('div', 'card-under-item');
       item.append(svg(a.status === 'Ticket' ? 'ticket' : 'hourglass'), el('span', 'card-under-name', a.name));
       if (a.status !== 'Ticket') {
@@ -129,16 +133,11 @@ export function partyCard(p, opts = {}) {
   }
   card.append(body);
   const foot = el('div', 'card-foot');
-  foot.append(footButton(p));
+  foot.append(footButton(p, mine));
   const note = spotsNote(p);
   if (note) {
     foot.append(el('span', 'card-note', note));
   }
   card.append(foot);
   return card;
-}
-
-// mineOn is the household's tickets on a party, for the My page's cards.
-export function mineOn(p) {
-  return myTickets(p);
 }

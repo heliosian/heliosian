@@ -182,11 +182,19 @@ function emptyPrompt(label, make, submit) {
 }
 
 // ticketWords is the headline of the ticket band, in the old site's voice.
-function ticketWords(p) {
+// A full party a family is already on says so rather than asking them to
+// join its waitlist.
+function ticketWords(p, mine) {
   switch (p.availability) {
     case 'available':
       return 'Tickets Available!';
     case 'waitlist':
+      if (mine.some(a => a.status === 'Ticket')) {
+        return 'Sold Out - Your Family Is Going';
+      }
+      if (mine.length) {
+        return "Sold Out - You're on the Waitlist";
+      }
       return 'Sold Out - Join the Waitlist';
     case 'sold-out':
       return 'Sold Out';
@@ -197,18 +205,41 @@ function ticketWords(p) {
 }
 
 function ticketBand(p) {
+  const mine = myTickets(p);
   const band = el('div', 'ticket-band avail-band-' + p.availability);
-  band.append(el('h2', 'ticket-words', ticketWords(p)));
+  band.append(el('h2', 'ticket-words', ticketWords(p, mine)));
+  // The family's own place on the waitlist sits in the band with the
+  // request as they made it - who asked, for how many, and their note -
+  // so the button to update it has something to update in view.
+  for (const a of mine.filter(a => a.status !== 'Ticket')) {
+    const row = el('div', 'ticket-mine');
+    row.append(avatar(a, 'my-ticket-face'));
+    const words = el('span', 'my-ticket-words');
+    const n = a.quantity || 1;
+    words.append(el('span', 'my-ticket-name', a.name), el('span', 'my-ticket-line', `Waiting for ${n} ${n === 1 ? 'ticket' : 'tickets'}`));
+    if (a.note) {
+      words.append(el('span', 'ticket-mine-note', `\u201c${a.note}\u201d`));
+    }
+    row.append(words);
+    band.append(row);
+  }
   const actions = el('div', 'ticket-actions');
   const selling = p.availability === 'available' || p.availability === 'waitlist';
+  // A family holding a ticket to a full party may still want more, so the
+  // way onto the waitlist stays; a family already waiting gets a way to
+  // change their request instead.
+  const waiting = p.availability === 'waitlist' && mine.some(a => a.status !== 'Ticket');
   // A student sees the party and who is coming; a parent takes the
   // tickets and passes them on.
   if (isKid() && !p.canEdit) {
-    if (selling) {
+    if (selling && !mine.length) {
       actions.append(el('span', 'ticket-kid-note', 'Ask a parent to sign in to get tickets.'));
     }
   } else if (selling || p.canEdit) {
-    const label = !selling ? 'Add Attendee' : p.availability === 'waitlist' ? 'Join the Waitlist' : 'Get Tickets';
+    const label = !selling ? 'Add Attendee'
+      : p.availability !== 'waitlist' ? 'Get Tickets'
+      : p.canEdit ? 'Add Attendee'
+      : waiting ? 'Update Waitlist Request' : 'Join the Waitlist';
     actions.append(button(label, 'ticket', 'button', () => openBuy(p)));
   }
   if (p.capacity > 0 && p.availability === 'available') {
@@ -218,14 +249,15 @@ function ticketBand(p) {
   return band;
 }
 
-// myTicketsSection lists the household's own tickets and waitlist places
-// under their own heading, so a family's tickets don't read as part of
-// the sales band above - a sold-out party's band is all about the
-// waitlist, and a ticket the family holds is not. A sold ticket stays
-// sold - it is a fundraiser - so only a place on the waitlist has a way
-// out here.
+// myTicketsSection lists the household's own sold tickets under their own
+// heading, so a family's tickets don't read as part of the sales band
+// above - a sold-out party's band is all about the waitlist, and a ticket
+// the family holds is not. A place on the waitlist is not a ticket: it
+// stays in the waitlist below, in its turn, with its way out there. A sold
+// ticket stays sold - it is a fundraiser - so here a ticket can only be
+// passed on.
 function myTicketsSection(p) {
-  const mine = myTickets(p);
+  const mine = myTickets(p).filter(a => a.status === 'Ticket');
   if (!mine.length) {
     return null;
   }
@@ -236,15 +268,10 @@ function myTicketsSection(p) {
     const row = el('div', 'my-ticket');
     row.append(avatar(a, 'my-ticket-face'));
     const words = el('span', 'my-ticket-words');
-    const n = a.quantity || 1;
-    words.append(el('span', 'my-ticket-name', a.name), el('span', 'my-ticket-line', a.status === 'Ticket' ? (a.price ? `Ticket · ${money(a.price)}` : 'Free ticket') : `On the waitlist for ${n} ${n === 1 ? 'ticket' : 'tickets'}`));
+    words.append(el('span', 'my-ticket-name', a.name), el('span', 'my-ticket-line', a.price ? `Ticket · ${money(a.price)}` : 'Free ticket'));
     row.append(words);
     if (p.availability !== 'past' && (!isKid() || p.canEdit)) {
-      if (a.status === 'Ticket') {
-        row.append(button('Reassign', 'people', 'link-button', () => openReassign(p, a)));
-      } else {
-        row.append(button('Leave waitlist', 'close', 'link-button', () => removeTicket(p, a)));
-      }
+      row.append(button('Reassign', 'people', 'link-button', () => openReassign(p, a)));
     }
     list.append(row);
   }
@@ -319,11 +346,15 @@ function waitlistSection(p) {
     const n = a.quantity || 1;
     words.append(el('span', 'wait-line', `${n} ${n === 1 ? 'ticket' : 'tickets'}${a.line ? ` · ${a.line}` : ''}`));
     row.append(words);
+    // The family's own request is marked as their faces are on the grid.
+    if (a.mine) {
+      row.append(el('span', 'wait-mine', 'Your family'));
+    }
     if (p.canEdit) {
       row.append(button(`Offer ${n === 1 ? 'a ticket' : n + ' tickets'}`, 'ticket', 'button button-secondary button-small', () => offerTickets(p, a)));
       row.append(button('', 'edit', 'edit-icon', () => openTicket(p, a)));
-    } else if (a.mine) {
-      row.append(button('Leave', 'close', 'link-button', () => removeTicket(p, a)));
+    } else if (a.mine && !isKid()) {
+      row.append(button('Leave waitlist', 'close', 'link-button', () => removeTicket(p, a)));
     }
     list.append(row);
   });
