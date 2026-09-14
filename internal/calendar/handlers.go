@@ -57,6 +57,8 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	mux.HandleFunc("GET /api/calendar/model", a.model)
 	mux.HandleFunc("POST /api/calendar/feeds", a.addFeed)
 	mux.HandleFunc("DELETE /api/calendar/feeds", a.removeFeed)
+	mux.HandleFunc("POST /api/calendar/settings", a.saveSetting)
+	mux.HandleFunc("DELETE /api/calendar/settings", a.forgetSetting)
 	mux.HandleFunc("POST /api/calendar/tags", a.setTags)
 	mux.HandleFunc("POST /api/calendar/image", a.uploadImage)
 	mux.HandleFunc("GET /api/calendar/images/search", a.admin(a.search.ServeSearch))
@@ -221,6 +223,53 @@ func (a app) admin(next http.HandlerFunc) http.HandlerFunc {
 // stored, under the calendar's own folder.
 func (a app) importImage(w http.ResponseWriter, r *http.Request) {
 	a.search.ServeImport(w, r, a.store, imageFolder, maxImageSize)
+}
+
+// saveSetting keeps the viewer's filters as their own default: the row
+// under their address in the Settings tab, which the calendar opens to
+// for them on every device and Heliosian reads their Upcoming Events under.
+func (a app) saveSetting(w http.ResponseWriter, r *http.Request) {
+	email, _ := a.who(r)
+	var body struct {
+		Classrooms []string `json:"classrooms"`
+		Tags       []string `json:"tags"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	cells := map[string]string{
+		"Email": email, "Classrooms": JoinList(SplitList(JoinList(body.Classrooms))), "Categories": JoinList(SplitList(JoinList(body.Tags))), "Saved": now().Format(DateTimeFormat),
+	}
+	if !a.commit(r.Context(), w, a.cache.Tables().WithSetting(email, cells), func() error {
+		if err := a.writer.Upsert(appName, SettingsTab, "Email", email, cells); err != nil {
+			return err
+		}
+		return a.logChange(email, "saved", SettingsTab, email, "Categories", "", cells["Categories"])
+	}) {
+		return
+	}
+	slog.InfoContext(r.Context(), "calendar: view saved", "actor", email, "classrooms", cells["Classrooms"], "tags", cells["Categories"])
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// forgetSetting drops the viewer's saved view, so the calendar's own
+// defaults are theirs again.
+func (a app) forgetSetting(w http.ResponseWriter, r *http.Request) {
+	email, _ := a.who(r)
+	if _, ok := a.cache.Model().Settings[email]; !ok {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if !a.commit(r.Context(), w, a.cache.Tables().WithoutSetting(email), func() error {
+		if err := a.writer.Delete(appName, SettingsTab, map[string]string{"Email": email}); err != nil {
+			return err
+		}
+		return a.logChange(email, "forgot", SettingsTab, email, "Categories", "", "")
+	}) {
+		return
+	}
+	slog.InfoContext(r.Context(), "calendar: view forgotten", "actor", email)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // uploadImage stores a category image an admin picked, content addressed,

@@ -105,14 +105,16 @@ export function segmented(items, active, onPick) {
 
 let toastTimer;
 
-export function toast(message) {
+// toast shows a line at the foot of the page for a moment - longer, given
+// a duration, for a line worth reading twice.
+export function toast(message, duration = 2600) {
   const node = document.querySelector('#toast');
   node.textContent = message;
   node.hidden = false;
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => {
     node.hidden = true;
-  }, 2600);
+  }, duration);
 }
 
 export async function copyText(text, message) {

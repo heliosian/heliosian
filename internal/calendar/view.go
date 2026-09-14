@@ -41,6 +41,9 @@ type User struct {
 	IsStaff    bool     `json:"isStaff,omitempty"`
 	Students   []Person `json:"students"`
 	Classrooms []string `json:"classrooms"`
+	// Saved is the view this person kept, when they have: what the calendar
+	// opens to for them in place of its own defaults.
+	Saved *Setting `json:"saved,omitempty"`
 }
 
 type View struct {
@@ -118,6 +121,9 @@ func Render(model *Model, directory Directory, email string, admin bool, now tim
 		Email: email, Name: me.Name, Initial: initial, PhotoURL: me.PhotoURL, IsAdmin: admin,
 		IsStudent: me.IsStudent, IsParent: me.IsParent, IsStaff: me.IsStaff,
 		Students: kids, Classrooms: classroomsOf(model, me, kids),
+	}
+	if saved, ok := model.Settings[normalizeEmail(email)]; ok {
+		user.Saved = &saved
 	}
 	feeds := []Feed{}
 	for _, f := range model.Feeds {

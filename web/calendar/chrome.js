@@ -1,5 +1,5 @@
-import {state, me, today, bands, tagGroups, defaultTags, searchResults, eventPath, eventTint, timeLine, weekdayShort, parseDate, selectedClassrooms, toggleClassroom, setClassrooms, classroomNames, myClassrooms, tagNames, selectedTags, toggleTag, setTags, resetFilters, filtersAreDefault, colorOf, hiddenMatches, hiddenClassroomMatches} from './state.js';
-import {el, svg, link, button} from './dom.js';
+import {state, me, today, bands, tagGroups, defaultTags, savedView, searchResults, eventPath, eventTint, timeLine, weekdayShort, parseDate, selectedClassrooms, toggleClassroom, setClassrooms, classroomNames, myClassrooms, tagNames, selectedTags, toggleTag, setTags, resetFilters, filtersAreDefault, colorOf, hiddenMatches, hiddenClassroomMatches} from './state.js';
+import {el, svg, link, button, toast} from './dom.js';
 import {dayColumn} from './day.js';
 import {renderAvatars, renderAlerts, onSlash, initAppSwitch} from '/toolbar.js';
 
@@ -118,7 +118,8 @@ function filterSummary() {
   const roomWords = rooms.length === classroomNames().length ? 'All classrooms' : rooms.length ? rooms.join(', ') : 'No classrooms';
   const tags = selectedTags();
   const tagWords = tags.length === tagNames().length ? 'all categories' : tags.length ? `${tags.length} of ${tagNames().length} categories` : 'no categories';
-  return `${roomWords} · ${tagWords}`;
+  const saved = savedView() && filtersAreDefault() ? ' · your saved view' : '';
+  return `${roomWords} · ${tagWords}${saved}`;
 }
 
 // Whether the calendar page's filters are unfolded: folded on every visit,
@@ -222,10 +223,37 @@ export function fillFilters(wrap, opts = {}) {
       resetFilters();
       refresh();
     }));
+    // Save keeps the choice as this person's own default, on every device
+    // and for Heliosian's Upcoming Events.
+    foot.append(button('Save as my default', 'check', 'button button-small', async () => {
+      const res = await fetch('/api/calendar/settings', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({classrooms: selectedClassrooms(), tags: selectedTags()})});
+      if (!res.ok) {
+        toast(await res.text());
+        return;
+      }
+      resetFilters();
+      toast('Saved. The calendar opens to this view for you now - and the events on the Heliosian home page follow it too.', 6000);
+      await reloadModel();
+    }));
+  } else if (savedView()) {
+    foot.append(button('Forget my default', null, 'button button-secondary button-small', async () => {
+      const res = await fetch('/api/calendar/settings', {method: 'DELETE'});
+      if (!res.ok) {
+        toast(await res.text());
+        return;
+      }
+      toast('Back to the calendar\u2019s own defaults, here and on the Heliosian home page.', 5000);
+      await reloadModel();
+    }));
   }
   if (foot.childElementCount) {
     wrap.append(foot);
   }
+}
+
+async function reloadModel() {
+  const {load} = await import('./app.js');
+  await load();
 }
 
 // The rail's day column, under the nav on a wide window: the day last opened

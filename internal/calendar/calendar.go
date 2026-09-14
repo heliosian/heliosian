@@ -28,6 +28,7 @@ const (
 	TagsTab         = "Tags"
 	AdminsTab       = "Admins"
 	FeedsTab        = "Feeds"
+	SettingsTab     = "Settings"
 	ChangeLogTab    = "Change Log"
 )
 
@@ -67,6 +68,7 @@ var (
 	TagColumns         = []string{"Tag", "Description", "Group", "Default", "Image"}
 	AdminColumns       = []string{"Email"}
 	FeedColumns        = []string{"Token", "Email", "Name", "Classrooms", "Tags", "Created"}
+	SettingColumns     = []string{"Email", "Classrooms", "Categories", "Saved"}
 	ChangeLogColumns   = []string{"Timestamp", "Actor", "Action", "Tab", "Key", "Column", "From", "To"}
 )
 
@@ -147,10 +149,14 @@ type Event struct {
 	Link         string `json:"link,omitempty"`
 	Availability string `json:"availability,omitempty"`
 	Mine         string `json:"mine,omitempty"`
-	Image        string `json:"image,omitempty"`
-	Hidden       bool   `json:"-"`
-	duplicate    bool
-	start, end   time.Time
+	// MineWho names the household members the standing belongs to, when
+	// the viewer is not among them - "Sam is going" rather than "You're
+	// going".
+	MineWho    []string `json:"mineWho,omitempty"`
+	Image      string   `json:"image,omitempty"`
+	Hidden     bool     `json:"-"`
+	duplicate  bool
+	start, end time.Time
 }
 
 // Dates lists every day the event touches, as sheet dates.
@@ -267,6 +273,13 @@ func GoogleEventURL(key string) string {
 	return "https://www.google.com/calendar/event?eid=" + eid
 }
 
+// A Setting is one person's saved view: the classrooms and the categories
+// they chose and kept, in place of the calendar's own defaults.
+type Setting struct {
+	Classrooms []string `json:"classrooms"`
+	Tags       []string `json:"tags"`
+}
+
 // tagDefault reads the Default column: anything but No is on, so a column
 // left blank starts everything on.
 func tagDefault(cell string) bool {
@@ -307,6 +320,10 @@ type Model struct {
 	Events   []*Event
 	DayTypes []DayType
 	Tags     []Tag
+	// Settings is each person's saved view, by address: the classrooms and
+	// categories the calendar opens to for them, and what Heliosian's
+	// Upcoming Events are read under.
+	Settings map[string]Setting
 	Days     map[string]map[string]string
 	Years    []Year
 	Roster   Roster
@@ -372,6 +389,7 @@ type Tables struct {
 	Tags         []map[string]string
 	Admins       []map[string]string
 	Feeds        []map[string]string
+	Settings     []map[string]string
 }
 
 func ReadTables(source data.Source) (*Tables, error) {
@@ -391,8 +409,9 @@ func ReadTables(source data.Source) (*Tables, error) {
 	tags := &table{name: TagsTab, want: TagColumns}
 	admins := &table{name: AdminsTab, want: AdminColumns}
 	feeds := &table{name: FeedsTab, want: FeedColumns}
+	settings := &table{name: SettingsTab, want: SettingColumns}
 	changeLog := &table{name: ChangeLogTab, want: ChangeLogColumns}
-	read := []*table{google, pdf, events, enrichment, overrides, dayTypes, dayOverrides, tags, admins, feeds}
+	read := []*table{google, pdf, events, enrichment, overrides, dayTypes, dayOverrides, tags, admins, feeds, settings}
 	names := []string{}
 	for _, t := range read {
 		names = append(names, t.name)
@@ -409,7 +428,7 @@ func ReadTables(source data.Source) (*Tables, error) {
 	}
 	return &Tables{
 		Google: google.rows, PDF: pdf.rows, Events: events.rows, Enrichment: enrichment.rows,
-		Overrides: overrides.rows, DayTypes: dayTypes.rows, DayOverrides: dayOverrides.rows, Tags: tags.rows, Admins: admins.rows, Feeds: feeds.rows,
+		Overrides: overrides.rows, DayTypes: dayTypes.rows, DayOverrides: dayOverrides.rows, Tags: tags.rows, Admins: admins.rows, Feeds: feeds.rows, Settings: settings.rows,
 	}, nil
 }
 
@@ -431,6 +450,32 @@ func (t *Tables) WithFeed(cells map[string]string) *Tables {
 func (t *Tables) WithTags(rows []map[string]string) *Tables {
 	out := *t
 	out.Tags = cloneRows(rows)
+	return &out
+}
+
+// WithSetting is the tables with one person's saved view set - their row
+// replaced, or added.
+func (t *Tables) WithSetting(email string, cells map[string]string) *Tables {
+	out := *t
+	out.Settings = []map[string]string{}
+	for _, row := range t.Settings {
+		if normalizeEmail(row["Email"]) != email {
+			out.Settings = append(out.Settings, maps.Clone(row))
+		}
+	}
+	out.Settings = append(out.Settings, maps.Clone(cells))
+	return &out
+}
+
+// WithoutSetting is the tables with one person's saved view forgotten.
+func (t *Tables) WithoutSetting(email string) *Tables {
+	out := *t
+	out.Settings = []map[string]string{}
+	for _, row := range t.Settings {
+		if normalizeEmail(row["Email"]) != email {
+			out.Settings = append(out.Settings, maps.Clone(row))
+		}
+	}
 	return &out
 }
 
@@ -864,6 +909,34 @@ func (b *builder) checkFeed(f Feed) error {
 	return nil
 }
 
+func normalizeEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
+}
+
+// settings reads each person's saved view, keeping the classrooms and
+// categories the sheet still has - a renamed one drops out rather than
+// hiding everything - and the last row for an address when there are two.
+func (b *builder) settings(rows []map[string]string) {
+	for _, row := range rows {
+		email := normalizeEmail(row["Email"])
+		if email == "" {
+			continue
+		}
+		setting := Setting{Classrooms: []string{}, Tags: []string{}}
+		for _, c := range SplitList(row["Classrooms"]) {
+			if b.model.Roster.has(c) {
+				setting.Classrooms = append(setting.Classrooms, c)
+			}
+		}
+		for _, t := range SplitList(row["Categories"]) {
+			if b.model.tags[t] || slices.ContainsFunc(builtinTags, func(bt Tag) bool { return bt.Name == t }) {
+				setting.Tags = append(setting.Tags, t)
+			}
+		}
+		b.model.Settings[email] = setting
+	}
+}
+
 func (b *builder) feeds(rows []map[string]string) error {
 	for _, row := range rows {
 		f := Feed{
@@ -1120,7 +1193,7 @@ func BuildModel(tables *Tables, roster Roster) (*Model, error) {
 	}
 	m := &Model{
 		Events: []*Event{}, DayTypes: dayTypes, Tags: tags, Days: map[string]map[string]string{}, Years: []Year{}, Provenance: map[string]*Provenance{},
-		Roster: roster, Feeds: []Feed{}, Skipped: map[string]int{}, byID: map[string]*Event{}, byToken: map[string]*Feed{}, tags: map[string]bool{},
+		Roster: roster, Feeds: []Feed{}, Settings: map[string]Setting{}, Skipped: map[string]int{}, byID: map[string]*Event{}, byToken: map[string]*Feed{}, tags: map[string]bool{},
 	}
 	for _, t := range tags {
 		m.tags[t.Name] = true
@@ -1187,6 +1260,7 @@ func BuildModel(tables *Tables, roster Roster) (*Model, error) {
 	if err := b.days(tables.DayOverrides); err != nil {
 		return nil, err
 	}
+	b.settings(tables.Settings)
 	if err := b.feeds(tables.Feeds); err != nil {
 		return nil, err
 	}

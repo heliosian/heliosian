@@ -52,17 +52,47 @@ const (
 // front page's button says the same.
 var callWords = map[string]string{"available": "Get tickets", "waitlist": "Join the waitlist", "sold-out": "Sold out", "open": "Join", "full": "Full"}
 
+// mineWords is the household's standing in words: the viewer's own as
+// "you", another member's by name - "Sam is going", "Sam and Alex are
+// waitlisted", "Sam signed up".
 func mineWords(e *Event) string {
+	names := joinNames(e.MineWho)
 	switch e.Mine {
 	case MineWaitlisted:
+		if names != "" {
+			return names + " " + isAre(e.MineWho) + " waitlisted"
+		}
 		return "Waitlisted"
 	case MineGoing:
 		if e.Source == SourceCelebrate {
+			if names != "" {
+				return names + " " + isAre(e.MineWho) + " going"
+			}
 			return "You're going"
+		}
+		if names != "" {
+			return names + " signed up"
 		}
 		return "Signed up"
 	}
 	return ""
+}
+
+func joinNames(names []string) string {
+	switch len(names) {
+	case 0:
+		return ""
+	case 1:
+		return names[0]
+	}
+	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
+}
+
+func isAre(names []string) string {
+	if len(names) > 1 {
+		return "are"
+	}
+	return "is"
 }
 
 // linkedApp is the app that runs a linked event: Celebrate for a party,
@@ -104,7 +134,8 @@ func admits(model *Model, e *Event, classrooms, tags []string) bool {
 
 // viewOf is the filter the calendar page first shows a viewer under: their
 // own classrooms - their children's, their own as a teacher, every classroom
-// for someone with none - and the categories on by default.
+// for someone with none - and the categories on by default, or the view
+// they saved in place of both.
 func (m *Model) viewOf(directory Directory, email string) (classrooms, tags []string) {
 	me, known := directory.Person(email)
 	if !known {
@@ -119,6 +150,13 @@ func (m *Model) viewOf(directory Directory, email string) (classrooms, tags []st
 		if t.Default {
 			tags = append(tags, t.Name)
 		}
+	}
+	// A saved view stands in for both.
+	if saved, ok := m.Settings[normalizeEmail(email)]; ok {
+		if len(saved.Classrooms) > 0 {
+			classrooms = saved.Classrooms
+		}
+		tags = saved.Tags
 	}
 	return classrooms, tags
 }

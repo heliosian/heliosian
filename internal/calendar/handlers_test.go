@@ -174,3 +174,35 @@ func TestProvenanceForAdmins(t *testing.T) {
 		t.Errorf("admin provenance for a5@sample = %+v", p)
 	}
 }
+
+// A saved view is the person's defaults on every device - in the view as
+// user.saved and under Heliosian's Upcoming Events - until forgotten.
+func TestSavedView(t *testing.T) {
+	handler, cache := testApp(t)
+	me := "jordan.whitfield@heliosschool.org"
+	rec := call(t, as(me, handler), "POST", "/api/calendar/settings", `{"classrooms":["Hawks"],"tags":["Community","HCA","Nonsense"]}`)
+	if rec.Code != 204 {
+		t.Fatalf("save: %d %s", rec.Code, rec.Body)
+	}
+	var view View
+	rec = call(t, as(me, handler), "GET", "/api/calendar/model", "")
+	json.NewDecoder(rec.Body).Decode(&view)
+	if view.User.Saved == nil || strings.Join(view.User.Saved.Classrooms, ",") != "Hawks" || strings.Join(view.User.Saved.Tags, ",") != "Community,HCA" {
+		t.Errorf("saved view = %+v", view.User.Saved)
+	}
+	for _, u := range cache.Model().Upcoming(fakeDirectory{people: map[string]Person{}, kids: map[string][]Person{}}, me, nil, now(), 0) {
+		if !strings.Contains(u.Title, "Hawks") && !strings.Contains(u.Title, "CAFE") && u.Title != "International Night" && u.Title != "Halloween Parade" && u.Title != "HCA Meeting" && u.Title != "All School Movie Night" && u.Title != "Cocoa & Cookies" && u.Title != "Talent Show" && u.Title != "Back to School Social" && u.Title != "Spring Celebration" {
+			t.Errorf("upcoming under the saved view lists %q", u.Title)
+		}
+	}
+	rec = call(t, as(me, handler), "DELETE", "/api/calendar/settings", "")
+	if rec.Code != 204 {
+		t.Fatalf("forget: %d %s", rec.Code, rec.Body)
+	}
+	var again View
+	rec = call(t, as(me, handler), "GET", "/api/calendar/model", "")
+	json.NewDecoder(rec.Body).Decode(&again)
+	if again.User.Saved != nil {
+		t.Errorf("saved view survives forgetting: %+v", again.User.Saved)
+	}
+}

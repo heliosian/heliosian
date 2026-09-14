@@ -264,7 +264,7 @@ button { font: inherit; }
 
 .filter-action:hover { border-color: var(--accent); }
 
-.filter-action.is-on { background: #d6ebe8; border-color: #d6ebe8; color: var(--brand); }
+.filter-action.is-on { background: #d6ebe8; border-color: #b9dcd7; color: var(--brand); }
 
 .filter-chip {
   display: inline-flex;
@@ -283,14 +283,21 @@ button { font: inherit; }
 
 .filter-chip:hover { border-color: var(--accent); }
 
-/* A chip that is off fades and loses its fill; on, it is plain and white. */
-.filter-chip:not(.is-on) { background: transparent; color: var(--muted); border-style: dashed; }
+/* A chip that is on is filled teal with white words; one that is off is a
+   plain white outline with muted words, so the two read apart at a glance. */
+.filter-chip.is-on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+
+.filter-chip.is-on:hover { background: var(--brand); border-color: var(--brand); }
+
+.filter-chip:not(.is-on) { color: var(--muted); }
 
 .filter-chip.has-color::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--room); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12); }
 
-.filter-chip:not(.is-on).has-color::before { opacity: 0.45; }
+.filter-chip.is-on.has-color::before { box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9); }
 
-.filter-chip.has-hidden { border-color: var(--amber); border-style: solid; box-shadow: 0 0 0 2px rgba(232, 163, 61, 0.35); }
+.filter-chip:not(.is-on).has-color::before { opacity: 0.55; }
+
+.filter-chip.has-hidden { border-color: var(--amber); box-shadow: 0 0 0 2px rgba(232, 163, 61, 0.35); }
 
 .filter-reset { margin: 0 0 0 auto; padding: 4px 6px; font-size: 13px; }
 
@@ -1049,9 +1056,12 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .admin-row-description:focus { outline: none; border-color: var(--brand); background: #fff; color: var(--ink); }
 
-.admin-default { display: flex; align-items: center; gap: 6px; flex-shrink: 0; font-size: 12.5px; color: var(--muted); white-space: nowrap; cursor: pointer; }
+/* The default is a chip like the filters': filled while on, an outline while off. */
+.admin-default { flex-shrink: 0; padding: 5px 12px; border: 1px solid var(--line); border-radius: 999px; background: #fff; font: inherit; font-size: 12.5px; color: var(--muted); white-space: nowrap; cursor: pointer; }
 
-.admin-default input { accent-color: var(--brand); margin: 0; }
+.admin-default:hover { border-color: var(--accent); }
+
+.admin-default.is-on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
 
 .admin-select { flex-shrink: 0; width: 150px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; font-size: 13.5px; background: #fff; color: var(--ink); }
 
@@ -1070,7 +1080,7 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .admin-save { margin-top: 20px; }
 
-.toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 10px 18px; border-radius: 999px; font-size: 14px; z-index: 70; }
+.toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); max-width: min(560px, calc(100vw - 32px)); background: var(--ink); color: #fff; padding: 10px 18px; border-radius: 999px; font-size: 14px; text-align: center; z-index: 70; }
 
 @media (max-width: 1200px) {
   .home-grid { grid-template-columns: minmax(0, 1fr); gap: 24px; }

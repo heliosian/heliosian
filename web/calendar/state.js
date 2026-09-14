@@ -107,13 +107,27 @@ export function myClassrooms() {
   return me().classrooms;
 }
 
-// selectedClassrooms is the filter in force: the viewer's choice, else their
-// own classrooms, else - for someone with none - every classroom.
-export function selectedClassrooms() {
-  if (state.filters.classrooms) {
-    return state.filters.classrooms;
+// savedView is the view this person kept, on the server, for every device
+// and for Heliosian's Upcoming Events - or nothing.
+export function savedView() {
+  return me().saved || null;
+}
+
+// defaultClassrooms are the classrooms on for someone who has not chosen
+// today: the ones they saved, else their own, else - for someone with none
+// - every classroom.
+export function defaultClassrooms() {
+  const saved = savedView();
+  if (saved && saved.classrooms.length) {
+    return saved.classrooms;
   }
   return myClassrooms().length ? myClassrooms() : classroomNames();
+}
+
+// selectedClassrooms is the filter in force: the viewer's choice, else the
+// default.
+export function selectedClassrooms() {
+  return state.filters.classrooms || defaultClassrooms();
 }
 
 export function setClassrooms(list) {
@@ -126,9 +140,14 @@ export function toggleClassroom(name) {
   setClassrooms(current.includes(name) ? current.filter(c => c !== name) : classroomNames().filter(c => c === name || current.includes(c)));
 }
 
-// defaultTags are the categories on for someone who has not chosen: the
-// ones the Tags tab (and Admin Tools) mark on by default.
+// defaultTags are the categories on for someone who has not chosen today:
+// the ones they saved, else the ones the Tags tab (and Admin Tools) mark
+// on by default.
 export function defaultTags() {
+  const saved = savedView();
+  if (saved) {
+    return saved.tags;
+  }
   return state.model.tags.filter(t => t.default).map(t => t.name);
 }
 
@@ -598,12 +617,21 @@ export function isParty(e) {
 
 // mineWords is where the viewer's household stands with a linked event, as
 // the row and the page say it in place of the way in.
+// mineWords is the household's standing in words: the viewer's own as
+// "you", another member's by name - "Sam is going", "Sam and Alex are
+// waitlisted", "Sam signed up".
 export function mineWords(e) {
+  const who = e.mineWho || [];
+  const names = who.length > 1 ? who.slice(0, -1).join(', ') + ' and ' + who[who.length - 1] : who[0] || '';
+  const verb = who.length > 1 ? 'are' : 'is';
   if (e.mine === 'waitlisted') {
-    return 'Waitlisted';
+    return names ? `${names} ${verb} waitlisted` : 'Waitlisted';
   }
   if (e.mine === 'going') {
-    return isParty(e) ? "You're going" : 'Signed up';
+    if (isParty(e)) {
+      return names ? `${names} ${verb} going` : "You're going";
+    }
+    return names ? `${names} signed up` : 'Signed up';
   }
   return '';
 }

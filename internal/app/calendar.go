@@ -1,7 +1,9 @@
 package app
 
 import (
+	"slices"
 	"sort"
+	"strings"
 	"time"
 
 	"heliosian/internal/calendar"
@@ -13,7 +15,7 @@ import (
 // calendarLinked hands the calendar what the other apps run, as one viewer
 // stands with it: every open, dated party on Helios Celebrate and every dated
 // event HCA-Team lists, open or done, each with the page it is served at
-// there, what a reader can do now, and whether the viewer's household - the
+// there, what a reader can do now, and whether the viewer's familyNames - the
 // viewer and everyone in their families, as the directory lists them - is
 // already going or waiting. An app whose sheet has not loaded contributes
 // nothing.
@@ -29,19 +31,75 @@ type familyLookup interface {
 	Household(email string) (adults, kids []celebrate.Person)
 }
 
+// A familyNames is the viewer and everyone in their families, each by
+// address with the name the calendar says them by - the viewer's own
+// blank, since a standing of the viewer's own is said as "you".
+type familyNames map[string]string
+
+func (h familyNames) has(email string) bool {
+	_, ok := h[email]
+	return ok
+}
+
+// firstName is how the calendar names a member of the familyNames: the
+// first word of their name, or their address before the @ when the
+// directory gives none.
+func firstName(name, email string) string {
+	if words := strings.Fields(name); len(words) > 0 {
+		return words[0]
+	}
+	local, _, _ := strings.Cut(email, "@")
+	return local
+}
+
 func (c calendarLinked) list(email string) []calendar.Linked {
 	now := time.Now().In(calendar.Location)
-	family := map[string]bool{email: true}
+	family := familyNames{email: ""}
 	adults, kids := c.directory.Household(email)
 	for _, p := range append(append([]celebrate.Person{}, adults...), kids...) {
-		family[p.Email] = true
+		if p.Email != email {
+			family[p.Email] = firstName(p.Name, p.Email)
+		}
 	}
 	return append(c.parties(now, family), c.activities(family)...)
 }
 
-// A party is the household's when someone in it bought a ticket or holds
+// standing is who in the familyNames the tickets or sign-ups belong to:
+// nothing but "" when the viewer is among them, since that is said as
+// "you"; else the members' names, each once, in the order found.
+type standing struct {
+	mine  bool
+	names []string
+}
+
+func (s *standing) add(family familyNames, email, name string) {
+	if email == "" {
+		return
+	}
+	// The viewer's own entry is the blank one.
+	if family.has(email) && family[email] == "" {
+		s.mine = true
+		return
+	}
+	who := family[email]
+	if who == "" {
+		who = firstName(name, email)
+	}
+	if !slices.Contains(s.names, who) {
+		s.names = append(s.names, who)
+	}
+}
+
+func (s standing) who() []string {
+	if s.mine {
+		return nil
+	}
+	return s.names
+}
+
+// A party is the familyNames's when someone in it bought a ticket or holds
 // one; a waitlist request counts only while no ticket does.
-func (c calendarLinked) parties(now time.Time, family map[string]bool) []calendar.Linked {
+func (c calendarLinked) parties(now time.Time, family familyNames) []calendar.Linked {
 	out := []calendar.Linked{}
 	model := c.celebrate.Model()
 	if model == nil {
@@ -51,22 +109,33 @@ func (c calendarLinked) parties(now time.Time, family map[string]bool) []calenda
 		if p.Status != celebrate.StatusOpen || p.Start == "" {
 			continue
 		}
-		mine := ""
+		// Whose the tickets are: the person named on each, else the buyer
+		// - a guest still to be named is the buyer's.
+		var going, waiting standing
 		for _, t := range p.Tickets {
-			if !family[t.Purchaser] && !family[t.Email] {
+			if !family.has(t.Purchaser) && !family.has(t.Email) {
 				continue
 			}
-			if t.Status == celebrate.TicketSold {
-				mine = calendar.MineGoing
-				break
+			holder := t.Email
+			if !family.has(holder) {
+				holder = t.Purchaser
 			}
-			if t.Status == celebrate.TicketWaitlist {
-				mine = calendar.MineWaitlisted
+			switch t.Status {
+			case celebrate.TicketSold:
+				going.add(family, holder, t.Name)
+			case celebrate.TicketWaitlist:
+				waiting.add(family, holder, t.Name)
 			}
+		}
+		mine, who := "", []string(nil)
+		if going.mine || len(going.names) > 0 {
+			mine, who = calendar.MineGoing, going.who()
+		} else if waiting.mine || len(waiting.names) > 0 {
+			mine, who = calendar.MineWaitlisted, waiting.who()
 		}
 		out = append(out, calendar.Linked{
 			Source: calendar.SourceCelebrate, ID: p.ID, Title: p.Title, Summary: p.Summary, Description: p.Description, Location: p.Location,
-			Start: p.Start, End: p.End, Path: model.PathOf(p), Availability: p.Availability(now), Mine: mine, Image: p.ImageURL,
+			Start: p.Start, End: p.End, Path: model.PathOf(p), Availability: p.Availability(now), Mine: mine, Who: who, Image: p.ImageURL,
 		})
 	}
 	return out
@@ -86,8 +155,8 @@ func activityImage(model *events.Model, a *events.Activity) string {
 
 // An HCA-Team event is open to join until it is done or every spot is taken;
 // the things under it stay off the calendar, since the event stands for them,
-// and a sign-up on any of them makes the event the household's.
-func (c calendarLinked) activities(family map[string]bool) []calendar.Linked {
+// and a sign-up on any of them makes the event the familyNames's.
+func (c calendarLinked) activities(family familyNames) []calendar.Linked {
 	out := []calendar.Linked{}
 	model := c.events.Model()
 	if model == nil {
@@ -104,17 +173,21 @@ func (c calendarLinked) activities(family map[string]bool) []calendar.Linked {
 		case a.VolunteersComplete || (a.Spots > 0 && len(a.Volunteers) >= a.Spots):
 			availability = "full"
 		}
-		mine := ""
+		var signed standing
 		for _, item := range append([]*events.Activity{a}, a.Descendants()...) {
 			for _, v := range item.Volunteers {
-				if family[v.Email] {
-					mine = calendar.MineGoing
+				if family.has(v.Email) {
+					signed.add(family, v.Email, "")
 				}
 			}
 		}
+		mine, who := "", []string(nil)
+		if signed.mine || len(signed.names) > 0 {
+			mine, who = calendar.MineGoing, signed.who()
+		}
 		out = append(out, calendar.Linked{
 			Source: calendar.SourceTeam, ID: a.ID, Title: a.Title, Description: a.Description, Location: a.Location,
-			Start: a.Start, End: a.End, Path: model.PathOf(a), Availability: availability, Mine: mine, Image: activityImage(model, a),
+			Start: a.Start, End: a.End, Path: model.PathOf(a), Availability: availability, Mine: mine, Who: who, Image: activityImage(model, a),
 		})
 	}
 	return out

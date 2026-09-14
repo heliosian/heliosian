@@ -434,14 +434,13 @@ function categoriesTool() {
       t.description = description.value.trim();
     });
     row.append(description);
-    const on = el('label', 'admin-default');
-    const box = el('input');
-    box.type = 'checkbox';
-    box.checked = t.on;
-    box.addEventListener('change', () => {
-      t.on = box.checked;
+    const on = el('button', 'admin-default' + (t.on ? ' is-on' : ''), t.on ? 'On by default' : 'Off by default');
+    on.type = 'button';
+    on.title = 'Whether people see this category before choosing';
+    on.addEventListener('click', () => {
+      t.on = !t.on;
+      paint();
     });
-    on.append(box, el('span', '', 'On by default'));
     row.append(on, groupPicker(g, t));
     return row;
   };

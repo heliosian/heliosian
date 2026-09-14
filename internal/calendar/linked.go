@@ -26,7 +26,10 @@ type Linked struct {
 	Path         string
 	Availability string
 	Mine         string
-	Image        string
+	// Who names the household members the standing is theirs, when the
+	// viewer is not among them.
+	Who   []string
+	Image string
 }
 
 // builtinTags are the tags the load and the linked events file under that no
@@ -60,7 +63,7 @@ func linkedEvent(l Linked) *Event {
 		ID: l.Source + "/" + l.ID, Source: l.Source, Title: l.Title, Location: l.Location,
 		Description: strings.TrimSpace(l.Summary + "\n\n" + l.Description),
 		Start:       l.Start, End: l.End, AllDay: allDay, Tags: []string{tagBySource[l.Source]}, Classrooms: []string{},
-		Link: l.Path, Availability: l.Availability, Mine: l.Mine, Image: l.Image, start: start, end: end,
+		Link: l.Path, Availability: l.Availability, Mine: l.Mine, MineWho: l.Who, Image: l.Image, start: start, end: end,
 	}
 	if t := tagByMine[l.Mine]; t != "" {
 		e.Tags = append(e.Tags, t)
@@ -120,7 +123,7 @@ func folded(school, hca *Event) *Event {
 	if t := tagByMine[hca.Mine]; t != "" {
 		c.Tags = append(c.Tags, t)
 	}
-	c.Link, c.Availability, c.Mine = hca.Link, hca.Availability, hca.Mine
+	c.Link, c.Availability, c.Mine, c.MineWho = hca.Link, hca.Availability, hca.Mine, hca.MineWho
 	// The school's listing has no picture of its own, and a line of text at
 	// most: HCA-Team's picture stands in, the longer of the two descriptions
 	// is the one, and the school's place is kept only where it has one.
