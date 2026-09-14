@@ -1,5 +1,6 @@
-import {state, daysLine, timeLine, calendarLink, sourceWords, dayType, eventDates, dayTypeClass, linkURL, call, isParty, mineWords, eventImage, weekdayShort, parseDate, spansDays, monthLabel, monthOf, answerOf, answer} from '../state.js';
-import {el, link, svg, paragraphs, button, toast, avatar, peopleLine} from '../dom.js';
+import {state, daysLine, timeLine, calendarLink, sourceWords, dayType, eventDates, dayTypeClass, linkURL, call, isParty, mineWords, eventImage, weekdayShort, parseDate, spansDays, monthLabel, monthOf, answerOf, answer, eventPath} from '../state.js';
+import {el, link, svg, paragraphs, button, toast, avatar, peopleLine, popup, copyText} from '../dom.js';
+import {eventForm} from '../eventform.js';
 import {appOrigin} from '/toolbar.js';
 import {setTitle} from '../chrome.js';
 import {audienceChips, blocks} from '../events.js';
@@ -32,7 +33,25 @@ export function eventPage(e) {
   // The way back is to the calendar open to the event's month, so it says so.
   back.append(svg('back'), el('span', '', monthLabel(monthOf(eventDates(e)[0]))));
   top.append(back);
+  // A hand-added event is the poster's, or an admin's, to correct.
+  if (e.source === 'sheet' && (state.model.user.isAdmin || e.addedBy === state.model.user.email)) {
+    const edit = button('Edit event', 'pencil', 'button button-secondary button-small detail-edit', () => {
+      let shut = null;
+      const form = eventForm({edit: e, onDone: async () => {
+        shut();
+        const {load} = await import('../app.js');
+        await load();
+      }});
+      shut = popup('Edit ' + e.title, form, {wide: true}).shut;
+    });
+    top.append(edit);
+  }
   page.append(top, hero(e));
+  if (e.pending || e.declined) {
+    page.append(pendingBand(e));
+  } else if (e.inviteOnly) {
+    page.append(inviteBand(e));
+  }
 
   const cols = el('div', 'detail-cols');
   const main = el('div', 'detail-main');
@@ -98,7 +117,8 @@ export function eventPage(e) {
   }
 
   side.append(sourceCard(e));
-  if (state.model.user.isAdmin) {
+  // Who answered: for an admin, and for whoever shared the event.
+  if (state.model.user.isAdmin || (state.model.responses || {})[e.id] || e.addedBy === state.model.user.email) {
     side.append(rsvpsCard(e));
   }
   cols.append(side);
@@ -200,6 +220,57 @@ function rsvpCard(e) {
     band.append(row);
   };
   paint();
+  return band;
+}
+
+// inviteBand says an event is found by its direct link alone, and offers
+// the link to copy: whoever answers it has it on their calendar.
+function inviteBand(e) {
+  const band = el('div', 'pending-band is-invite');
+  const words = el('div', 'pending-words');
+  const mine = e.addedBy === state.model.user.email;
+  words.append(el('div', 'pending-title', 'Direct link only'), el('div', 'pending-lead', mine ? 'Only people you send this link to can find it. Their yes or no puts it on their calendar.' : 'You were sent this link. Yes or No below puts it on your calendar.'));
+  band.append(svg('link'), words);
+  const url = location.origin + eventPath(e);
+  band.append(button('Copy link', 'copy', 'button button-small', () => copyText(url, 'Link copied')));
+  return band;
+}
+
+// pendingBand says a shared event is waiting for an admin - and, to an
+// admin, offers to approve it onto the calendar or decline it away.
+function pendingBand(e) {
+  const band = el('div', 'pending-band' + (e.declined ? ' is-declined' : ''));
+  const words = el('div', 'pending-words');
+  const who = state.model.names && state.model.names[e.addedBy] ? state.model.names[e.addedBy] : e.addedBy;
+  const mine = e.addedBy === state.model.user.email;
+  if (e.declined) {
+    words.append(el('div', 'pending-title', 'Declined'), el('div', 'pending-lead', mine ? 'An admin declined this event, so it is not on the calendar. You can still edit it; an admin can approve it later.' : `Shared by ${who} and declined. Approve it to put it on the calendar after all.`));
+  } else {
+    words.append(el('div', 'pending-title', 'Waiting for approval'), el('div', 'pending-lead', mine ? 'You shared this event. An admin will approve it onto the calendar; until then only you and the admins see it.' : `Shared by ${who}. Approve it onto the calendar, or decline it.`));
+  }
+  band.append(svg(e.declined ? 'close' : 'clock'), words);
+  if (state.model.user.isAdmin) {
+    const actions = el('div', 'pending-actions');
+    const decide = async (path, done) => {
+      const res = await fetch('/api/calendar/events/' + path, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id: e.id})});
+      if (!res.ok) {
+        toast(await res.text());
+        return;
+      }
+      toast(done);
+      const {load} = await import('../app.js');
+      await load();
+    };
+    actions.append(button('Approve', 'check', 'button button-small', () => decide('approve', 'On the calendar')));
+    if (!e.declined) {
+      actions.append(button('Decline', 'close', 'button button-secondary button-small', () => {
+        if (confirm(`Decline ${e.title}? It comes off the calendar; you can approve it later.`)) {
+          decide('decline', 'Declined');
+        }
+      }));
+    }
+    band.append(actions);
+  }
   return band;
 }
 

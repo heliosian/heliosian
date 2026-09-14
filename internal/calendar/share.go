@@ -108,7 +108,17 @@ func (a app) event(id string) *Event {
 			return e
 		}
 	}
-	return nil
+	// A direct-link or pending event has a page and a card too.
+	return a.cache.Model().Event(id)
+}
+
+// cutEventPath is the event id an event page's path names: /e/{id}, or
+// the older /events/{id} that links in the wild still carry.
+func cutEventPath(path string) (string, bool) {
+	if id, ok := strings.CutPrefix(path, "/e/"); ok {
+		return id, true
+	}
+	return strings.CutPrefix(path, "/events/")
 }
 
 // PreviewHead is the Open Graph markup for a request's path: the event
@@ -122,7 +132,7 @@ func PreviewHead(cache *Cache, linked func(email string) []Linked) func(r *http.
 		}
 		a := app{cache: cache, linked: linked}
 		origin := "https://" + r.Host
-		if id, ok := strings.CutPrefix(r.URL.Path, "/events/"); ok {
+		if id, ok := cutEventPath(r.URL.Path); ok {
 			if e := a.event(id); e != nil {
 				return a.eventHead(e, origin)
 			}
@@ -139,7 +149,7 @@ func (a app) eventHead(e *Event, origin string) string {
 	if b := blurb(e); b != "" {
 		parts = append(parts, b)
 	}
-	return previewTags(e.Title, strings.Join(parts, " — "), origin+"/events/"+e.ID, origin+"/share/"+e.ID+".png")
+	return previewTags(e.Title, strings.Join(parts, " — "), origin+"/e/"+e.ID, origin+"/share/"+e.ID+".png")
 }
 
 // upcomingHead is the calendar's own preview: the next few events, in words,

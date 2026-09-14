@@ -94,7 +94,7 @@ func ICS(model *Model, f *Feed, linked []Linked, origin string, now time.Time) [
 		if len(e.Tags) > 0 {
 			lines = append(lines, "CATEGORIES:"+icsText(JoinList(e.Tags)))
 		}
-		lines = append(lines, "URL:"+origin+"/events/"+url.PathEscape(e.ID), "END:VEVENT")
+		lines = append(lines, "URL:"+origin+"/e/"+url.PathEscape(e.ID), "END:VEVENT")
 	}
 	lines = append(lines, "END:VCALENDAR")
 	out := strings.Builder{}

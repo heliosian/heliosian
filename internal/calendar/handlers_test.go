@@ -52,7 +52,7 @@ func TestFeedRoute(t *testing.T) {
 	if rec.Code != http.StatusOK || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/calendar") {
 		t.Fatalf("feed: %d %s", rec.Code, rec.Header().Get("Content-Type"))
 	}
-	if body := rec.Body.String(); !strings.Contains(body, "X-WR-CALNAME:Whitfield school days") || !strings.Contains(body, "URL:https://calendar.local.heliosian.com:8080/events/a5@sample") {
+	if body := rec.Body.String(); !strings.Contains(body, "X-WR-CALNAME:Whitfield school days") || !strings.Contains(body, "URL:https://calendar.local.heliosian.com:8080/e/a5@sample") {
 		t.Errorf("feed body: %s", body)
 	}
 	if rec := call(t, mux, http.MethodGet, "/feed/nosuchtoken.ics", ""); rec.Code != http.StatusNotFound {
@@ -143,7 +143,7 @@ func TestModelRoute(t *testing.T) {
 func TestSharePreview(t *testing.T) {
 	handler, cache := testApp(t)
 	head := PreviewHead(cache, func(string) []Linked { return nil })
-	req := httptest.NewRequest("GET", "https://when.local.heliosian.com:8080/events/a7@sample", nil)
+	req := httptest.NewRequest("GET", "https://when.local.heliosian.com:8080/e/a7@sample", nil)
 	req.Host = "when.local.heliosian.com:8080"
 	tags := head(req)
 	for _, want := range []string{`property="og:title" content="International Night"`, `Thursday, September 24 · 4:00 – 6:00 PM`, `content="https://when.local.heliosian.com:8080/share/a7@sample.png"`} {
@@ -323,7 +323,8 @@ func TestDefaultCalendar(t *testing.T) {
 }
 
 // An admin adds an event, repeated every so many weeks, and replaces an
-// event's search words; a parent can do neither.
+// event's search words; a parent shares an event, which waits for an
+// admin's approval, and can do nothing else.
 func TestAdminAddsAndCorrects(t *testing.T) {
 	handler, cache := testApp(t)
 	admin := as("dana.hawkins@heliosschool.org", handler)
@@ -368,8 +369,121 @@ func TestAdminAddsAndCorrects(t *testing.T) {
 	if rec := call(t, parent, "POST", "/api/calendar/keywords", `{"id":"`+made.IDs[0]+`","keywords":["x"]}`); rec.Code != 403 {
 		t.Errorf("parent set keywords: %d", rec.Code)
 	}
-	if rec := call(t, parent, "POST", "/api/calendar/events", `{"title":"X","start":"2026-10-01","tags":["Clubs"]}`); rec.Code != 403 {
-		t.Errorf("parent added an event: %d", rec.Code)
+	// A parent's event waits for approval: theirs and the admins' to see,
+	// off the calendar for everyone else, no repeats; an admin approves it
+	// onto the calendar, or declines it away.
+	rec = call(t, parent, "POST", "/api/calendar/events", `{"title":"Bake sale","start":"2026-10-01 15:00","end":"2026-10-01 17:00","tags":["Jays","Community"],"repeatWeeks":1,"repeatTimes":3}`)
+	var shared struct {
+		IDs     []string `json:"ids"`
+		Pending bool     `json:"pending"`
+	}
+	json.Unmarshal(rec.Body.Bytes(), &shared)
+	if rec.Code != 200 || !shared.Pending || len(shared.IDs) != 1 {
+		t.Fatalf("parent shared an event: %d %s", rec.Code, rec.Body)
+	}
+	if e := cache.Model().Event(shared.IDs[0]); e == nil || !e.Pending || cache.Model().Event(shared.IDs[0]) != cache.Model().Pending[len(cache.Model().Pending)-1] {
+		t.Errorf("shared event = %+v", e)
+	}
+	for _, e := range cache.Model().Events {
+		if e.ID == shared.IDs[0] {
+			t.Errorf("a pending event is on the calendar")
+		}
+	}
+	sees := func(who http.Handler) bool {
+		var v View
+		rec := call(t, who, "GET", "/api/calendar/model", "")
+		json.NewDecoder(rec.Body).Decode(&v)
+		return slices.ContainsFunc(v.Events, func(e *Event) bool { return e.ID == shared.IDs[0] && (e.Pending || e.Declined) })
+	}
+	other := as("robin.whitfield@heliosschool.org", handler)
+	if !sees(parent) || !sees(admin) || sees(other) {
+		t.Errorf("pending event seen by parent %v, admin %v, another %v", sees(parent), sees(admin), sees(other))
+	}
+	if rec := call(t, parent, "POST", "/api/calendar/events/approve", `{"id":"`+shared.IDs[0]+`"}`); rec.Code != 403 {
+		t.Errorf("parent approved: %d", rec.Code)
+	}
+	if rec := call(t, admin, "POST", "/api/calendar/events/approve", `{"id":"`+shared.IDs[0]+`"}`); rec.Code != 204 {
+		t.Fatalf("approve: %d %s", rec.Code, rec.Body)
+	}
+	if e := cache.Model().Event(shared.IDs[0]); e == nil || e.Pending || e.Status != StatusApproved || !slices.Contains(cache.Model().Events, e) {
+		t.Errorf("approved event = %+v", e)
+	}
+	// The person who shared an event corrects it; another parent cannot.
+	if rec := call(t, parent, "PUT", "/api/calendar/events", `{"id":"`+shared.IDs[0]+`","title":"Bake sale!","start":"2026-10-01 15:30","end":"2026-10-01 17:30","location":"Gym","tags":["Jays","Community"],"image":"/category-images/cake.jpg"}`); rec.Code != 204 {
+		t.Errorf("owner's edit: %d %s", rec.Code, rec.Body)
+	}
+	if e := cache.Model().Event(shared.IDs[0]); e == nil || e.Title != "Bake sale!" || e.Location != "Gym" || e.Image != "/category-images/cake.jpg" || e.Start != "2026-10-01 15:30" || e.Pending {
+		t.Errorf("edited event = %+v", e)
+	}
+	if rec := call(t, other, "PUT", "/api/calendar/events", `{"id":"`+shared.IDs[0]+`","title":"Mine now","start":"2026-10-01","tags":["Jays"]}`); rec.Code != 403 {
+		t.Errorf("another parent's edit: %d", rec.Code)
+	}
+	// An invite-only event needs no approval and is nobody's until they
+	// answer it by its link; a yes puts it on their calendar, across
+	// classrooms, under Going, and the admins were not asked.
+	rec = call(t, parent, "POST", "/api/calendar/events", `{"title":"Sam\u2019s birthday","start":"2026-10-03 14:00","end":"2026-10-03 16:00","tags":["Jays","Community"],"inviteOnly":true}`)
+	json.Unmarshal(rec.Body.Bytes(), &shared)
+	if rec.Code != 200 || shared.Pending {
+		t.Fatalf("invite only: %d %s", rec.Code, rec.Body)
+	}
+	if e := cache.Model().Event(shared.IDs[0]); e == nil || !e.InviteOnly || e.Status != StatusInviteOnly {
+		t.Errorf("invite-only event = %+v", e)
+	}
+	if sees(other) {
+		t.Errorf("an invite-only event is on another's calendar before they answer")
+	}
+	if rec := call(t, other, "GET", "/api/calendar/event?id="+shared.IDs[0], ""); rec.Code != 200 {
+		t.Errorf("an invite-only event by its link: %d", rec.Code)
+	}
+	if rec := call(t, other, "POST", "/api/calendar/rsvp", `{"id":"`+shared.IDs[0]+`","answer":"yes"}`); rec.Code != 204 {
+		t.Fatalf("yes to an invite-only event: %d %s", rec.Code, rec.Body)
+	}
+	var otherView View
+	rec = call(t, other, "GET", "/api/calendar/model", "")
+	json.NewDecoder(rec.Body).Decode(&otherView)
+	if i := slices.IndexFunc(otherView.Events, func(e *Event) bool { return e.ID == shared.IDs[0] }); i < 0 || !slices.Contains(otherView.Events[i].Tags, TagGoing) {
+		t.Errorf("a yes did not put the invite-only event under Going on the other's calendar")
+	}
+	found := false
+	dir := fakeDirectory{people: map[string]Person{}, kids: map[string][]Person{}}
+	for _, u := range cache.Model().Upcoming(dir, "robin.whitfield@heliosschool.org", nil, now(), 0) {
+		found = found || u.ID == shared.IDs[0]
+	}
+	if !found {
+		t.Errorf("a yes did not put the invite-only event in the other's Upcoming")
+	}
+	// A host may pick the event's own web address; a taken or ill-formed
+	// one is refused.
+	if rec := call(t, parent, "POST", "/api/calendar/events", `{"id":"Sams-Party","title":"Sam\u2019s party","start":"2026-10-04","tags":["Jays"],"inviteOnly":true}`); rec.Code != 200 || cache.Model().Event("sams-party") == nil {
+		t.Errorf("chosen address: %d %s", rec.Code, rec.Body)
+	}
+	// Its page previews and its card draws, for a link sent anywhere.
+	if rec := call(t, handler, "GET", "/share/sams-party.png", ""); rec.Code != 200 || rec.Header().Get("Content-Type") != "image/png" {
+		t.Errorf("a direct-link event's card: %d", rec.Code)
+	}
+	if head := PreviewHead(cache, func(string) []Linked { return nil })(httptest.NewRequest("GET", "https://when.local.heliosian.com:8080/e/sams-party", nil)); !strings.Contains(head, "Sam") || !strings.Contains(head, "/share/sams-party.png") {
+		t.Errorf("a direct-link event's preview:\n%s", head)
+	}
+	if rec := call(t, parent, "POST", "/api/calendar/events", `{"id":"sams-party","title":"Again","start":"2026-10-04","tags":["Jays"]}`); rec.Code != 400 {
+		t.Errorf("a taken address: %d", rec.Code)
+	}
+	if rec := call(t, parent, "POST", "/api/calendar/events", `{"id":"a/b","title":"Odd","start":"2026-10-04","tags":["Jays"]}`); rec.Code != 400 {
+		t.Errorf("an ill-formed address: %d", rec.Code)
+	}
+	rec = call(t, parent, "POST", "/api/calendar/events", `{"title":"Not this","start":"2026-10-02","tags":["Jays"]}`)
+	json.Unmarshal(rec.Body.Bytes(), &shared)
+	if rec := call(t, admin, "POST", "/api/calendar/events/decline", `{"id":"`+shared.IDs[0]+`"}`); rec.Code != 204 {
+		t.Errorf("decline: %d %s", rec.Code, rec.Body)
+	}
+	if e := cache.Model().Event(shared.IDs[0]); e == nil || !e.Declined || e.Status != StatusDeclined || slices.Contains(cache.Model().Events, e) {
+		t.Errorf("declined event = %+v", e)
+	}
+	if !sees(parent) || sees(other) {
+		t.Errorf("declined event seen by parent %v, another %v", sees(parent), sees(other))
+	}
+	// A declined event can still be approved.
+	if rec := call(t, admin, "POST", "/api/calendar/events/approve", `{"id":"`+shared.IDs[0]+`"}`); rec.Code != 204 || cache.Model().Event(shared.IDs[0]).Status != StatusApproved {
+		t.Errorf("approve after decline: %d", rec.Code)
 	}
 }
 
@@ -397,7 +511,7 @@ func TestFeedCarriesLinked(t *testing.T) {
 	linked := []Linked{{Source: SourceCelebrate, ID: "P9", Title: "Fondue Night", Start: "2026-09-19 17:00", End: "2026-09-19 21:00", Path: "/p/fondue", Availability: "available", Mine: MineGoing}}
 	f := &Feed{Token: "t", Email: "jordan.whitfield@heliosschool.org", Name: "Mine", Tags: []string{TagGoing}}
 	out := string(ICS(cache.Model(), f, linked, "https://when.local.heliosian.com:8080", now()))
-	if !strings.Contains(out, "SUMMARY:Fondue Night") || !strings.Contains(out, "URL:https://when.local.heliosian.com:8080/events/celebrate%2FP9") {
+	if !strings.Contains(out, "SUMMARY:Fondue Night") || !strings.Contains(out, "URL:https://when.local.heliosian.com:8080/e/celebrate%2FP9") {
 		t.Errorf("feed lacks the party:\n%s", out)
 	}
 	if strings.Contains(out, "SUMMARY:Halloween Parade") {
@@ -480,7 +594,7 @@ func TestAnswers(t *testing.T) {
 	if !strings.Contains(string(ICS(cache.Model(), going, nil, "https://when.local.heliosian.com:8080", now())), "SUMMARY:International Night") {
 		t.Errorf("a yes is not in the owner's Going feed")
 	}
-	if got := invite("Helios Calendar <when@heliosian.com>", me, cache.Model().Event("a7@sample"), "https://when.heliosian.com/events/a7@sample", now()); !strings.Contains(got, "METHOD:REQUEST") || !strings.Contains(got, "ORGANIZER;CN=Helios Calendar:mailto:when@heliosian.com") || !strings.Contains(got, "ATTENDEE;CN="+me) {
+	if got := invite("Helios Calendar <when@heliosian.com>", me, cache.Model().Event("a7@sample"), "https://when.heliosian.com/e/a7@sample", now()); !strings.Contains(got, "METHOD:REQUEST") || !strings.Contains(got, "ORGANIZER;CN=Helios Calendar:mailto:when@heliosian.com") || !strings.Contains(got, "ATTENDEE;CN="+me) {
 		t.Errorf("invite:\n%s", got)
 	}
 }

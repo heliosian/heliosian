@@ -72,6 +72,23 @@ export function event(id) {
   return byId.get(id) || null;
 }
 
+// fetchEvent asks the server for an event the model does not carry - an
+// invite-only one reached by its link - and keeps it for the page; null
+// when there is none to be had.
+export async function fetchEvent(id) {
+  try {
+    const res = await fetch('/api/calendar/event?id=' + encodeURIComponent(id));
+    if (!res.ok) {
+      return null;
+    }
+    const e = await res.json();
+    byId.set(e.id, e);
+    return e;
+  } catch (err) {
+    return null;
+  }
+}
+
 // defaultFeedName is the name a saved calendar starts with: the viewer's
 // own first name on it, "Sam's Heliosian Calendar" - the name their
 // calendar app lists its feed by.
@@ -317,7 +334,12 @@ function tagsAdmit(e) {
   return !categories.length || overlaps(categories, selectedTags());
 }
 
+// An event the viewer said yes to is on their calendar whatever its
+// classrooms, so long as Going is on: an invite reaches across rooms.
 export function eventVisible(e) {
+  if (answerOf(e) === 'yes' && selectedTags().includes('Going')) {
+    return true;
+  }
   return classroomsAdmit(e) && tagsAdmit(e);
 }
 
@@ -553,7 +575,7 @@ export function timeColumn(e, date) {
 }
 
 export function eventPath(e) {
-  return '/events/' + e.id.split('/').map(encodeURIComponent).join('/');
+  return '/e/' + e.id.split('/').map(encodeURIComponent).join('/');
 }
 
 export function dayType(name) {

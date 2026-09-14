@@ -11,7 +11,7 @@ const primary = [
 function active(href) {
   const path = location.pathname;
   if (href === '/') {
-    return path === '/' || path.startsWith('/c/') || path.startsWith('/day/') || path.startsWith('/events/');
+    return path === '/' || path.startsWith('/c/') || path.startsWith('/day/') || path.startsWith('/e/') || path.startsWith('/events/');
   }
   return path === href || path.startsWith(href + '/');
 }

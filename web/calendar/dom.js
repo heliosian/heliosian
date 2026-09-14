@@ -36,6 +36,7 @@ const paths = {
   save: 'M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2zM17 21v-8H7v8M7 3v5h8',
   open: 'M15 3h6v6M10 14 21 3M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5',
   copy: 'M8 8h11a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2zM16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3',
+  link: 'M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7',
   close: 'M6 6l12 12M18 6L6 18',
   trash: 'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3',
   tag: 'M20 12l-8 8-9-9V3h8zM7 7h.01',
@@ -183,9 +184,9 @@ export function peopleLine(list, icon) {
 
 // popup is a layer over the page with a titled box: closing on its cross,
 // Escape, or a click outside. It hands back the box and the closer.
-export function popup(title, node) {
+export function popup(title, node, {wide = false} = {}) {
   const layer = el('div', 'modal-overlay');
-  const box = el('div', 'modal');
+  const box = el('div', 'modal' + (wide ? ' modal-wide' : ''));
   const header = el('div', 'modal-header');
   header.append(el('h2', '', title));
   const close = el('button', 'modal-close', '\u00d7');

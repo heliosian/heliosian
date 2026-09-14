@@ -7,11 +7,14 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"heliosian/internal/mail"
 	"heliosian/internal/theme"
+	"html"
 	"io"
 	"log/slog"
 	"maps"
 	"net/http"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -26,7 +29,7 @@ import (
 
 const shell = "web/calendar/index.html"
 
-var pages = []string{"/{$}", "/c/{token}", "/day/{date}", "/events/{id...}", "/feeds", "/admin"}
+var pages = []string{"/{$}", "/c/{token}", "/day/{date}", "/e/{id...}", "/events/{id...}", "/feeds", "/admin"}
 
 type app struct {
 	cache       *Cache
@@ -70,13 +73,17 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	mux.HandleFunc("POST /api/calendar/theme", a.admin(a.saveTheme))
 	mux.HandleFunc("POST /api/calendar/theme/picture", a.admin(theme.Upload(store, func(http.ResponseWriter, *http.Request) bool { return true })))
 	mux.HandleFunc("POST /api/calendar/keywords", a.admin(a.setKeywords))
-	mux.HandleFunc("POST /api/calendar/events", a.admin(a.addEvents))
+	mux.HandleFunc("POST /api/calendar/events", a.addEvents)
+	mux.HandleFunc("PUT /api/calendar/events", a.editEvent)
+	mux.HandleFunc("GET /api/calendar/event", a.oneEvent)
+	mux.HandleFunc("POST /api/calendar/events/approve", a.admin(a.approveEvent))
+	mux.HandleFunc("POST /api/calendar/events/decline", a.admin(a.declineEvent))
 	mux.HandleFunc("POST /api/calendar/events/when", a.admin(a.moveEvent))
 	mux.HandleFunc("DELETE /api/calendar/settings", a.forgetSetting)
 	mux.HandleFunc("POST /api/calendar/tags", a.setTags)
 	mux.HandleFunc("POST /api/calendar/image", a.uploadImage)
-	mux.HandleFunc("GET /api/calendar/images/search", a.admin(a.search.ServeSearch))
-	mux.HandleFunc("POST /api/calendar/images/import", a.admin(a.importImage))
+	mux.HandleFunc("GET /api/calendar/images/search", a.search.ServeSearch)
+	mux.HandleFunc("POST /api/calendar/images/import", a.importImage)
 	mux.HandleFunc("GET /feed/{file}", a.feed)
 	// Public, past sign-in (auth.Public): the cards a chat app fetches.
 	mux.HandleFunc("GET /share/upcoming.png", a.shareUpcoming)
@@ -103,9 +110,7 @@ var now = func() time.Time {
 func (a app) model(w http.ResponseWriter, r *http.Request) {
 	email, admin := a.who(r)
 	view := Render(a.cache.Model(), a.directory, email, admin, now(), a.linked(email))
-	if admin {
-		view.ImageSources = a.search.Sources()
-	}
+	view.ImageSources = a.search.Sources()
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
 		slog.ErrorContext(r.Context(), "encode calendar model", "error", err)
@@ -494,6 +499,9 @@ func (a app) setKeywords(w http.ResponseWriter, r *http.Request) {
 
 // newEventID mints an Events tab id the way the volunteer portal does:
 // eight characters from a 32-symbol alphabet.
+// eventIDForm is a web address a host may choose for an event.
+var eventIDForm = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$`)
+
 func newEventID() string {
 	const alphabet = "ABCDEFGHJKMNPQRSTVWXYZ0123456789"
 	var raw [8]byte
@@ -529,8 +537,12 @@ func shiftWhen(when string, weeks int) string {
 // many more times as asked, each its own row. The rows go through the
 // sheet's rules first, so a bad date or an unknown tag is refused before
 // anything is written.
+// addEvents adds an event to the Events tab: an admin's goes straight on
+// the calendar, repeated every so many weeks when asked; anyone else's is
+// one event, shared, whose Status is Pending until an admin approves it -
+// on the calendar for them and the admins until then.
 func (a app) addEvents(w http.ResponseWriter, r *http.Request) {
-	actor, _ := a.who(r)
+	actor, admin := a.who(r)
 	var body struct {
 		Title       string   `json:"title"`
 		Start       string   `json:"start"`
@@ -541,6 +553,9 @@ func (a app) addEvents(w http.ResponseWriter, r *http.Request) {
 		DayType     string   `json:"dayType"`
 		Keywords    []string `json:"keywords"`
 		Source      string   `json:"source"`
+		Image       string   `json:"image"`
+		InviteOnly  bool     `json:"inviteOnly"`
+		ID          string   `json:"id"`
 		RepeatWeeks int      `json:"repeatWeeks"`
 		RepeatTimes int      `json:"repeatTimes"`
 	}
@@ -551,14 +566,42 @@ func (a app) addEvents(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "repeat up to 52 more times, some whole number of weeks apart", http.StatusBadRequest)
 		return
 	}
+	// The id is the event's address: a random one unless the host chose
+	// their own - letters, digits and dashes, free - for the first event
+	// only when there are repeats.
+	chosen := strings.ToLower(strings.TrimSpace(body.ID))
+	if chosen != "" {
+		if !eventIDForm.MatchString(chosen) {
+			http.Error(w, "a web address is 3 to 40 letters, digits and dashes", http.StatusBadRequest)
+			return
+		}
+		if a.cache.Model().Event(chosen) != nil || slices.ContainsFunc(a.cache.Tables().Events, func(row map[string]string) bool { return strings.EqualFold(row["Event ID"], chosen) }) {
+			http.Error(w, "that web address is taken", http.StatusBadRequest)
+			return
+		}
+	}
+	// An invite-only event needs no approval: it is not on the calendar,
+	// only on the calendars of those with the link who answer it.
+	status := StatusApproved
+	if !admin {
+		body.RepeatTimes, body.DayType, status = 0, "", StatusPending
+	}
+	if body.InviteOnly {
+		status = StatusInviteOnly
+	}
+	pending := status == StatusPending
 	stamp := now().Format(DateFormat)
 	rows := []map[string]string{}
 	for i := 0; i <= body.RepeatTimes; i++ {
+		id := newEventID()
+		if i == 0 && chosen != "" {
+			id = chosen
+		}
 		rows = append(rows, map[string]string{
-			"Event ID": newEventID(), "Start": shiftWhen(strings.TrimSpace(body.Start), i*body.RepeatWeeks), "End": shiftWhen(strings.TrimSpace(body.End), i*body.RepeatWeeks),
+			"Event ID": id, "Start": shiftWhen(strings.TrimSpace(body.Start), i*body.RepeatWeeks), "End": shiftWhen(strings.TrimSpace(body.End), i*body.RepeatWeeks),
 			"Title": strings.TrimSpace(body.Title), "Location": strings.TrimSpace(body.Location), "Description": strings.TrimSpace(body.Description),
 			"Tags": JoinList(SplitList(JoinList(body.Tags))), "Day Type": strings.TrimSpace(body.DayType), "Keywords": JoinList(SplitList(JoinList(body.Keywords))),
-			"Added By": actor, "Added": stamp, "Source": strings.TrimSpace(body.Source),
+			"Added By": actor, "Added": stamp, "Source": strings.TrimSpace(body.Source), "Status": status, "Image": strings.Trim(strings.TrimSpace(body.Image), "/"),
 		})
 	}
 	if !a.commit(r.Context(), w, a.cache.Tables().WithEvents(rows), func() error {
@@ -578,9 +621,192 @@ func (a app) addEvents(w http.ResponseWriter, r *http.Request) {
 	for _, row := range rows {
 		ids = append(ids, row["Event ID"])
 	}
-	slog.InfoContext(r.Context(), "calendar: events added", "actor", actor, "title", rows[0]["Title"], "count", len(rows))
+	slog.InfoContext(r.Context(), "calendar: events added", "actor", actor, "title", rows[0]["Title"], "count", len(rows), "pending", pending)
+	// The admins hear of an event waiting for them.
+	if pending && a.mail.Sender != nil {
+		if e := a.cache.Model().Event(ids[0]); e != nil {
+			go a.tellAdmins(context.WithoutCancel(r.Context()), r.Host, actor, e)
+		}
+	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"ids": ids})
+	json.NewEncoder(w).Encode(map[string]any{"ids": ids, "pending": pending})
+}
+
+// oneEvent answers /api/calendar/event?id= with an event the view does
+// not carry: an invite-only one, for anyone with its link; a pending or
+// declined one, for the person who shared it and the admins.
+func (a app) oneEvent(w http.ResponseWriter, r *http.Request) {
+	actor, admin := a.who(r)
+	e := a.cache.Model().Event(strings.TrimSpace(r.URL.Query().Get("id")))
+	if e == nil || !(e.InviteOnly || admin || normalizeEmail(e.AddedBy) == actor) {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(e)
+}
+
+// tellAdmins mails every calendar admin that someone shared an event: its
+// words and when, who shared it, and its page, where Approve and Decline
+// are. One message, every admin on it; nothing when there are none.
+func (a app) tellAdmins(ctx context.Context, host, by string, e *Event) {
+	admins := a.cache.Admins(a.superAdmins())
+	if len(admins) == 0 {
+		return
+	}
+	who := by
+	if p, ok := a.directory.Person(by); ok && p.Name != "" {
+		who = p.Name + " (" + by + ")"
+	}
+	link := "https://" + host + "/e/" + e.ID
+	day, hours := whenLines(e)
+	when := day
+	if hours != "" {
+		when += " · " + hours
+	}
+	var text strings.Builder
+	fmt.Fprintf(&text, "%s shared an event on Helios When that is waiting for approval.\n\n%s\n%s\n", who, e.Title, when)
+	if e.Location != "" {
+		fmt.Fprintf(&text, "%s\n", e.Location)
+	}
+	if e.Description != "" {
+		fmt.Fprintf(&text, "\n%s\n", e.Description)
+	}
+	fmt.Fprintf(&text, "\nApprove or decline it on its page: %s\n", link)
+	var htm strings.Builder
+	fmt.Fprintf(&htm, "<p style=\"font:16px/1.5 -apple-system,Segoe UI,Roboto,sans-serif\">%s shared an event on Helios When that is waiting for approval.</p>", html.EscapeString(who))
+	fmt.Fprintf(&htm, "<p style=\"font:15px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#0e4d54\"><strong>%s</strong><br>%s", html.EscapeString(e.Title), html.EscapeString(when))
+	if e.Location != "" {
+		fmt.Fprintf(&htm, "<br>%s", html.EscapeString(e.Location))
+	}
+	htm.WriteString("</p>")
+	if e.Description != "" {
+		fmt.Fprintf(&htm, "<p style=\"font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#333\">%s</p>", html.EscapeString(e.Description))
+	}
+	fmt.Fprintf(&htm, "<p style=\"margin:20px 0\"><a href=\"%s\" style=\"display:inline-block;padding:10px 18px;border-radius:8px;background:#0e4d54;color:#fff;font:700 15px -apple-system,Segoe UI,Roboto,sans-serif;text-decoration:none\">Review the event</a></p>", html.EscapeString(link))
+	htm.WriteString("<p style=\"font:13px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#647071\">Approve and Decline are at the top of its page. Until then only the person who shared it and the admins see it.</p>")
+	err := a.mail.Sender.Send(ctx, mail.Message{
+		To: admins, Subject: "Event to approve: " + e.Title + " · " + day,
+		Text: text.String(), HTML: htm.String(),
+	})
+	if err != nil {
+		slog.ErrorContext(ctx, "calendar: tell admins", "event", e.ID, "error", err)
+		return
+	}
+	slog.InfoContext(ctx, "calendar: admins told", "event", e.ID, "to", len(admins))
+}
+
+// editEvent changes a hand-added event - the person who added it, or an
+// admin: its words, when, where, tags, search words, source and picture,
+// on its Events row. What an admin approved stays approved.
+func (a app) editEvent(w http.ResponseWriter, r *http.Request) {
+	actor, admin := a.who(r)
+	var body struct {
+		ID          string   `json:"id"`
+		Title       string   `json:"title"`
+		Start       string   `json:"start"`
+		End         string   `json:"end"`
+		Location    string   `json:"location"`
+		Description string   `json:"description"`
+		Tags        []string `json:"tags"`
+		Keywords    []string `json:"keywords"`
+		Source      string   `json:"source"`
+		Image       string   `json:"image"`
+		InviteOnly  bool     `json:"inviteOnly"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	e := a.cache.Model().Event(strings.TrimSpace(body.ID))
+	if e == nil || e.Source != SourceSheet {
+		http.Error(w, "that event is not one added by hand", http.StatusNotFound)
+		return
+	}
+	if normalizeEmail(e.AddedBy) != actor && !admin {
+		http.Error(w, "only the person who added an event, or an admin, can change it", http.StatusForbidden)
+		return
+	}
+	cells := map[string]string{
+		"Title": strings.TrimSpace(body.Title), "Start": strings.TrimSpace(body.Start), "End": strings.TrimSpace(body.End),
+		"Location": strings.TrimSpace(body.Location), "Description": strings.TrimSpace(body.Description),
+		"Tags": JoinList(SplitList(JoinList(body.Tags))), "Keywords": JoinList(SplitList(JoinList(body.Keywords))),
+		"Source": strings.TrimSpace(body.Source), "Image": strings.Trim(strings.TrimSpace(body.Image), "/"),
+	}
+	// Invite only switches on and off: off, a poster's event goes back to
+	// waiting for approval, an admin's onto the calendar.
+	if body.InviteOnly != e.InviteOnly {
+		switch {
+		case body.InviteOnly:
+			cells["Status"] = StatusInviteOnly
+		case admin:
+			cells["Status"] = StatusApproved
+		default:
+			cells["Status"] = StatusPending
+		}
+	}
+	was := map[string]string{}
+	for _, row := range a.cache.Tables().Events {
+		if row["Event ID"] == e.ID {
+			was = maps.Clone(row)
+		}
+	}
+	if !a.commit(r.Context(), w, a.cache.Tables().WithEventCells(e.ID, cells), func() error {
+		if err := a.writer.Set(appName, EventsTab, map[string]string{"Event ID": e.ID}, cells); err != nil {
+			return err
+		}
+		for _, col := range []string{"Title", "Start", "End", "Location", "Description", "Tags", "Keywords", "Source", "Image", "Status"} {
+			if _, set := cells[col]; set && was[col] != cells[col] {
+				if err := a.logChange(actor, "changed", EventsTab, e.ID, col, was[col], cells[col]); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}) {
+		return
+	}
+	slog.InfoContext(r.Context(), "calendar: event changed", "actor", actor, "event", e.ID, "title", cells["Title"])
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// approveEvent is an admin putting a shared event on the calendar - one
+// waiting, or one declined earlier: its Status set to Approved.
+func (a app) approveEvent(w http.ResponseWriter, r *http.Request) {
+	a.setStatus(w, r, StatusApproved, "approved")
+}
+
+// declineEvent is an admin turning a shared event away: its Status set to
+// Declined, the row kept, the event off the calendar and on the page for
+// the person who shared it and the admins.
+func (a app) declineEvent(w http.ResponseWriter, r *http.Request) {
+	a.setStatus(w, r, StatusDeclined, "declined")
+}
+
+// setStatus is approve and decline: the Status cell of a hand-added event
+// set, and the change logged.
+func (a app) setStatus(w http.ResponseWriter, r *http.Request, status, did string) {
+	actor, _ := a.who(r)
+	var body struct {
+		ID string `json:"id"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	e := a.cache.Model().Event(strings.TrimSpace(body.ID))
+	if e == nil || e.Source != SourceSheet {
+		http.Error(w, "that event is not one added by hand", http.StatusNotFound)
+		return
+	}
+	if !a.commit(r.Context(), w, a.cache.Tables().WithEventCells(e.ID, map[string]string{"Status": status}), func() error {
+		if err := a.writer.Set(appName, EventsTab, map[string]string{"Event ID": e.ID}, map[string]string{"Status": status}); err != nil {
+			return err
+		}
+		return a.logChange(actor, did, EventsTab, e.ID, "Status", e.Status, status)
+	}) {
+		return
+	}
+	slog.InfoContext(r.Context(), "calendar: event "+did, "actor", actor, "event", e.ID, "title", e.Title, "by", e.AddedBy)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // moveEvent is an admin changing when a hand-added event is, from the
@@ -696,14 +922,11 @@ func (a app) forgetSetting(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// uploadImage stores a category image an admin picked, content addressed,
-// and answers with the name the Tags tab records; the save that follows
-// references it. Sample mode has no bucket to put it in.
+// uploadImage stores a picture - a category's from an admin, an event's
+// from whoever shares one - content addressed, and answers with the name
+// the sheet records; the save that follows references it. Sample mode has
+// no bucket to put it in.
 func (a app) uploadImage(w http.ResponseWriter, r *http.Request) {
-	if _, admin := a.who(r); !admin {
-		http.Error(w, "only a calendar admin can add an image", http.StatusForbidden)
-		return
-	}
 	if a.store == nil {
 		http.Error(w, "image uploads require real-data mode", http.StatusBadRequest)
 		return

@@ -2,6 +2,7 @@ package calendar
 
 import (
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 )
@@ -118,7 +119,7 @@ func eventPath(e *Event) string {
 	for i, p := range parts {
 		parts[i] = url.PathEscape(p)
 	}
-	return "/events/" + strings.Join(parts, "/")
+	return "/e/" + strings.Join(parts, "/")
 }
 
 // admits says whether the calendar page first shows an event to a viewer:
@@ -268,7 +269,9 @@ func (m *Model) UpcomingUnder(directory Directory, email string, linked []Linked
 	out := []Upcoming{}
 	for _, e := range m.eventsFor(email, linked) {
 		answer := m.AnswerOf(email, e.ID)
-		if e.end.Format(DateFormat) < today || answer == AnswerHidden || !admits(m, e, classrooms, tags) {
+		// A yes reaches across classrooms, so long as Going is in view.
+		going := answer == AnswerYes && slices.Contains(tags, TagGoing)
+		if e.end.Format(DateFormat) < today || answer == AnswerHidden || !(going || admits(m, e, classrooms, tags)) {
 			continue
 		}
 		if limit > 0 && len(out) == limit {

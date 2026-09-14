@@ -371,7 +371,7 @@ func TestICS(t *testing.T) {
 		"BEGIN:VCALENDAR\r\n", "X-WR-CALNAME:Whitfield school days\r\n", "END:VCALENDAR\r\n",
 		"UID:a4@sample\r\n", "DTSTART;VALUE=DATE:20260907\r\n", "DTEND;VALUE=DATE:20260908\r\n",
 		"SUMMARY:Jays and Ravens Camping\r\n", "DTSTART;VALUE=DATE:20260909\r\n", "DTEND;VALUE=DATE:20260912\r\n",
-		"DTSTAMP:20260901T150000Z\r\n", "URL:https://calendar.local.heliosian.com:8080/events/a5@sample\r\n",
+		"DTSTAMP:20260901T150000Z\r\n", "URL:https://calendar.local.heliosian.com:8080/e/a5@sample\r\n",
 		"CATEGORIES:Jays\\, Ravens\\, Trip\r\n", "DESCRIPTION:No School\r\n",
 	} {
 		if !strings.Contains(out, want) {
@@ -560,14 +560,14 @@ func TestUpcoming(t *testing.T) {
 		t.Errorf("a parent in Jays and Ospreys sees %v", titles)
 	}
 	// The camping trip is underway on the tenth, so it is still ahead.
-	if len(got) == 0 || got[0].Title != "Jays and Ravens Camping" || got[0].Path != "/events/a5@sample" || got[0].Image != "/brand/default-header.jpg" || got[0].ImageApp != "calendar" || got[0].Link != "" || got[0].Call != "" {
+	if len(got) == 0 || got[0].Title != "Jays and Ravens Camping" || got[0].Path != "/e/a5@sample" || got[0].Image != "/brand/default-header.jpg" || got[0].ImageApp != "calendar" || got[0].Link != "" || got[0].Call != "" {
 		t.Errorf("first = %+v", got[0])
 	}
 	party, night := got[1], got[2]
-	if party.Title != "Fondue & Fort Night" || party.Path != "/events/celebrate/P001" || party.Link != "/p/fondue" || party.LinkApp != "celebrate" || party.Call != "Waitlisted" || party.Mine != MineWaitlisted || party.Availability != "available" || party.Image != "/party-images/fondue.jpg" || party.ImageApp != "celebrate" || party.When != "Saturday, September 19 · 5:00 – 9:00 PM" || party.Description != "A cozy evening of fondue" {
+	if party.Title != "Fondue & Fort Night" || party.Path != "/e/celebrate/P001" || party.Link != "/p/fondue" || party.LinkApp != "celebrate" || party.Call != "Waitlisted" || party.Mine != MineWaitlisted || party.Availability != "available" || party.Image != "/party-images/fondue.jpg" || party.ImageApp != "celebrate" || party.When != "Saturday, September 19 · 5:00 – 9:00 PM" || party.Description != "A cozy evening of fondue" {
 		t.Errorf("party = %+v", party)
 	}
-	if night.Title != "International Night" || night.Path != "/events/a7@sample" || night.Link != "/v/international-night" || night.LinkApp != "team" || night.Call != "Join" || night.Mine != "" || night.ImageApp != "calendar" || night.StartAt != "2026-09-24 16:00" || night.EndAt != "2026-09-24 18:00" {
+	if night.Title != "International Night" || night.Path != "/e/a7@sample" || night.Link != "/v/international-night" || night.LinkApp != "team" || night.Call != "Join" || night.Mine != "" || night.ImageApp != "calendar" || night.StartAt != "2026-09-24 16:00" || night.EndAt != "2026-09-24 18:00" {
 		t.Errorf("folded hca event = %+v", night)
 	}
 	if all := m.Upcoming(d, "nobody@x.org", linked, at, 0); len(all) != len(got)+2 {

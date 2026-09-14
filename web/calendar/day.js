@@ -4,7 +4,8 @@
 // draws it there for every page); on a phone the calendar page draws the
 // card at the top of the page.
 import {state, eventsOn, today, addDays, parseDate, formatDate, monthOf, shiftMonth, monthLabel, weekStart, weekdayLong, specials, isSchoolDay, dayTypeClass, eventTint, timeLine, eventPath, isMatch, isGray} from './state.js';
-import {el, link, svg, button} from './dom.js';
+import {el, link, svg, button, popup} from './dom.js';
+import {eventForm} from './eventform.js';
 import {planCards} from './events.js';
 
 // The rail's paging, kept across renders: the month its small month is
@@ -67,7 +68,7 @@ function miniMonth(date, paging) {
 // timelineRow is one event down the day's timeline: a dot in its color on
 // the line, then its hours, its title and its place.
 function timelineRow(e, date) {
-  const row = link(eventPath(e), 'timeline-row' + (isMatch(e) ? ' is-match' : '') + (isGray(e) ? ' is-hidden' : ''));
+  const row = link(eventPath(e), 'timeline-row' + (isMatch(e) ? ' is-match' : '') + (isGray(e) ? ' is-hidden' : '') + (e.pending ? ' is-pending' : '') + (e.declined ? ' is-declined' : '') + (e.inviteOnly ? ' is-invite' : ''));
   const dot = el('span', 'timeline-dot');
   dot.style.background = eventTint(e);
   const body = el('span', 'timeline-body');
@@ -124,7 +125,19 @@ export function dayColumn(date, paging) {
   const plan = el('div', 'day-card-plan');
   const events = el('div');
   card.append(head, plan, events);
-  col.append(month, card);
+  // Under the day: anyone can share an event with the community - it
+  // waits for an admin's approval before the calendar carries it.
+  const share = button('Share Event', 'plus', 'button button-secondary share-event', () => {
+    let shut = null;
+    const form = eventForm({onDone: async () => {
+      shut();
+      const {load} = await import('./app.js');
+      await load();
+    }});
+    shut = popup('Share an event', form, {wide: true}).shut;
+  });
+  share.title = 'Add an event for the community; an admin approves it onto the calendar';
+  col.append(month, card, share);
   const paint = () => {
     month.replaceChildren(miniMonth(date, paging));
     plan.replaceChildren(planCards(date));

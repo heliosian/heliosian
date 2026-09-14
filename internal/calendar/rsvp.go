@@ -67,10 +67,15 @@ func (a app) record(ctx context.Context, email, id, answer string, invite bool) 
 
 // eventFor is an event as this person sees it, the other apps' folded in.
 func (a app) eventFor(email, id string) *Event {
-	for _, e := range withLinked(a.cache.Model().Events, a.linked(email)) {
+	model := a.cache.Model()
+	for _, e := range withLinked(model.Events, a.linked(email)) {
 		if e.ID == id {
 			return e
 		}
+	}
+	// An invite-only event takes an answer from anyone with its link.
+	if e := model.Event(id); e != nil && e.InviteOnly {
+		return e
 	}
 	return nil
 }
@@ -101,7 +106,7 @@ func (a app) rsvp(w http.ResponseWriter, r *http.Request) {
 // (replies.go).
 func (a app) sendInvite(ctx context.Context, email string, e *Event) {
 	origin := "https://when.heliosian.com"
-	link := origin + "/events/" + e.ID
+	link := origin + "/e/" + e.ID
 	day, hours := whenLines(e)
 	when := day
 	if hours != "" {

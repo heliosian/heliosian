@@ -71,7 +71,7 @@ const (
 var (
 	GoogleColumns      = []string{"Key", "Start", "End", "Title", "Location", "Description", "Updated", "Sequence"}
 	PDFColumns         = []string{"Key", "Year", "Start", "End", "Title", "Day Type", "Tags", "Marker", "PDF"}
-	EventColumns       = []string{"Event ID", "Start", "End", "Title", "Location", "Description", "Tags", "Day Type", "Keywords", "Added By", "Added", "Source"}
+	EventColumns       = []string{"Event ID", "Start", "End", "Title", "Location", "Description", "Tags", "Day Type", "Keywords", "Added By", "Added", "Source", "Status", "Image"}
 	EnrichmentColumns  = []string{"Event ID", "Tags", "Day Type", "Keywords", "Input Hash", "Model", "Enriched"}
 	OverrideColumns    = []string{"Event ID", "Title", "Start", "End", "Location", "Description", "Tags", "Day Type", "Keywords", "Hidden", "Note"}
 	DayTypeColumns     = []string{"Day Type", "Dropoff Start", "Dropoff End", "School Start", "School End", "Pickup Start", "Pickup End", "Aftercare Start", "Aftercare End"}
@@ -173,7 +173,18 @@ type Event struct {
 	// event - a ticket, a waitlist place, a role - for the lists to name.
 	MinePeople []Standing `json:"minePeople,omitempty"`
 	Image      string     `json:"image,omitempty"`
-	Hidden     bool       `json:"-"`
+	// Status is the Events tab's word on a hand-added event: Pending while
+	// someone other than an admin's waits for approval, Declined once an
+	// admin turned it away - either on the calendar for them and the
+	// admins alone - Direct Link Only for one found by its link alone, on the
+	// calendar of whoever has answered it, and Approved (or blank) for one
+	// that is on for everyone. Pending, Declined and InviteOnly say which,
+	// for the page.
+	Status     string `json:"status,omitempty"`
+	Pending    bool   `json:"pending,omitempty"`
+	Declined   bool   `json:"declined,omitempty"`
+	InviteOnly bool   `json:"inviteOnly,omitempty"`
+	Hidden     bool   `json:"-"`
 	duplicate  bool
 	start, end time.Time
 }
@@ -306,6 +317,14 @@ type Setting struct {
 	HomePosition int    `json:"homePosition"`
 }
 
+// The Events tab's Status words for a hand-added event.
+const (
+	StatusPending    = "Pending"
+	StatusApproved   = "Approved"
+	StatusDeclined   = "Declined"
+	StatusInviteOnly = "Direct Link Only"
+)
+
 // MyHeliosian is the calendar everyone has: the calendar's own defaults -
 // the person's classrooms and the categories on by default - which nobody
 // changes or removes, though each person may rename it, mark it and place
@@ -377,7 +396,13 @@ func overlaps(a, b []string) bool {
 // the tags, the day plan as date then classroom, and the school years the
 // plan spans.
 type Model struct {
-	Events   []*Event
+	Events []*Event
+	// Pending are the hand-added events that are not on the calendar for
+	// everyone - waiting for an admin, declined, or invite only: off the
+	// feeds and the front page, on the page for the person who shared
+	// each and for the admins, and an invite-only one on the calendar of
+	// whoever has answered it.
+	Pending  []*Event
 	DayTypes []DayType
 	Tags     []Tag
 	// Settings is each person's saved view, by address: the classrooms and
@@ -596,6 +621,30 @@ func (t *Tables) WithEventWhen(id, start, end string) *Tables {
 	for _, row := range out.Events {
 		if row["Event ID"] == id {
 			row["Start"], row["End"] = start, end
+		}
+	}
+	return &out
+}
+
+// WithEventCells is the tables with cells set on one Events row.
+func (t *Tables) WithEventCells(id string, cells map[string]string) *Tables {
+	out := *t
+	out.Events = cloneRows(t.Events)
+	for _, row := range out.Events {
+		if row["Event ID"] == id {
+			maps.Copy(row, cells)
+		}
+	}
+	return &out
+}
+
+// WithoutEvent is the tables with one Events row dropped.
+func (t *Tables) WithoutEvent(id string) *Tables {
+	out := *t
+	out.Events = []map[string]string{}
+	for _, row := range t.Events {
+		if row["Event ID"] != id {
+			out.Events = append(out.Events, maps.Clone(row))
 		}
 	}
 	return &out
@@ -1476,6 +1525,15 @@ func BuildModel(tables *Tables, roster Roster) (*Model, error) {
 			return nil, err
 		}
 		e.AddedBy, e.Added = strings.TrimSpace(row["Added By"]), strings.TrimSpace(row["Added"])
+		e.Status = strings.TrimSpace(row["Status"])
+		e.Pending = strings.EqualFold(e.Status, StatusPending)
+		e.Declined = strings.EqualFold(e.Status, StatusDeclined)
+		e.InviteOnly = strings.EqualFold(e.Status, StatusInviteOnly)
+		// The Image cell names an upload in the shared blob store, the way
+		// a category's does; the page fetches it by that path.
+		if image := strings.Trim(strings.TrimSpace(row["Image"]), "/"); image != "" {
+			e.Image = "/" + image
+		}
 		// The Source cell is the row's proof: a web address links, anything
 		// else is said as written.
 		if proof := strings.TrimSpace(row["Source"]); proof != "" {
@@ -1526,6 +1584,12 @@ func BuildModel(tables *Tables, roster Roster) (*Model, error) {
 				m.Hidden++
 			}
 			delete(m.byID, e.ID)
+			continue
+		}
+		// A pending, declined or invite-only event waits apart from the
+		// calendar, still found by id.
+		if e.Pending || e.Declined || e.InviteOnly {
+			m.Pending = append(m.Pending, e)
 			continue
 		}
 		visible = append(visible, e)

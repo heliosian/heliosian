@@ -149,13 +149,21 @@ func folded(school, hca *Event) *Event {
 }
 
 // eventsFor is every event as one viewer stands with them: the sheet's and
-// the linked ones as one list (withLinked), and each the viewer said yes to
-// wearing the Going tag - on a copy, as a party they hold a ticket to does -
+// the linked ones as one list (withLinked), the invite-only ones they have
+// answered among them, and each the viewer said yes to wearing the Going
+// tag - on a copy, as a party they hold a ticket to does -
 // so the filters, the feeds and the front page file it with the rest of
 // what they are going to.
 func (m *Model) eventsFor(email string, linked []Linked) []*Event {
-	out := withLinked(m.Events, linked)
 	answers := m.Answers[normalizeEmail(email)]
+	// An invite-only event the person has answered is on their calendar.
+	events := m.Events
+	for _, e := range m.Pending {
+		if e.InviteOnly && answers[e.ID] != "" {
+			events = append(events[:len(events):len(events)], e)
+		}
+	}
+	out := withLinked(events, linked)
 	for i, e := range out {
 		if answers[e.ID] != AnswerYes || slices.Contains(e.Tags, TagGoing) {
 			continue

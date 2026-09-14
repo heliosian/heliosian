@@ -1,5 +1,5 @@
 import {applyTheme} from '/theme.js';
-import {applyModel, event, today, parseDate, me, state, eventDates, allCalendars, setActiveFeed, setClassrooms, setTags, feedClassrooms, feedTags} from './state.js';
+import {applyModel, event, fetchEvent, today, parseDate, me, state, eventDates, allCalendars, setActiveFeed, setClassrooms, setTags, feedClassrooms, feedTags} from './state.js';
 import {el} from './dom.js';
 import {initChrome, renderChrome, setTitle, clearSearch} from './chrome.js';
 import {homePage} from './pages/home.js';
@@ -36,6 +36,10 @@ function notFound(what) {
 // be changed after that without every repaint setting them back.
 let appliedCalendar = '';
 
+// fetched is every event id asked of the server once, so a link to
+// nothing is not asked again and again.
+const fetched = new Set();
+
 function route() {
   const parts = location.pathname.split('/').filter(Boolean).map(decodeURIComponent);
   if (!parts.length) {
@@ -59,9 +63,22 @@ function route() {
     }
     case 'day':
       return parseDate(parts[1]) ? homePage(parts[1]) : notFound('That day');
+    case 'e':
     case 'events': {
-      const e = event(parts.slice(1).join('/'));
+      const id = parts.slice(1).join('/');
+      const e = event(id);
       if (!e) {
+        // An invite-only event is not in the model: fetch it by its link,
+        // then draw the page again with it in hand.
+        if (!fetched.has(id)) {
+          fetched.add(id);
+          fetchEvent(id).then(found => {
+            if (found) {
+              render();
+            }
+          });
+          return el('div', 'list-page', 'Looking\u2026');
+        }
         return notFound('That event');
       }
       // The rail's day jumps to the event's, so its month and its plan

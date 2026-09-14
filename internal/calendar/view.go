@@ -112,8 +112,8 @@ type User struct {
 
 type View struct {
 	User User `json:"user"`
-	// ImageSources are the picture searches Admin Tools can offer, for an
-	// admin alone.
+	// ImageSources are the picture searches the picker can offer - for a
+	// category's picture in Admin Tools, and for an event anyone shares.
 	ImageSources []string                     `json:"imageSources,omitempty"`
 	Today        string                       `json:"today"`
 	Now          string                       `json:"now"`
@@ -206,17 +206,35 @@ func Render(model *Model, directory Directory, email string, admin bool, now tim
 	}
 	stale, privacy := directory.Alerts(email)
 	names := map[string]string{}
-	for _, e := range model.Events {
+	for _, e := range append(append([]*Event{}, model.Events...), model.Pending...) {
 		if e.AddedBy != "" {
 			if p, ok := directory.Person(e.AddedBy); ok && p.Name != "" {
 				names[e.AddedBy] = p.Name
 			}
 		}
 	}
+	// The events: the calendar's, with the pending ones the viewer shared -
+	// every pending one for an admin - marked as such.
+	events := model.eventsFor(email, linked)
+	for _, e := range model.Pending {
+		if (admin || normalizeEmail(e.AddedBy) == normalizeEmail(email)) && !slices.Contains(events, e) {
+			events = append(events, e)
+		}
+	}
+	// Who answered: every event for an admin, their own for whoever shared
+	// one.
+	mine := map[string]bool{}
+	for _, e := range append(append([]*Event{}, model.Events...), model.Pending...) {
+		if e.AddedBy != "" && normalizeEmail(e.AddedBy) == normalizeEmail(email) {
+			mine[e.ID] = true
+		}
+	}
 	var provenance map[string]*Provenance
 	var responses map[string]*Responses
 	if admin {
 		provenance = model.Provenance
+	}
+	if admin || len(mine) > 0 {
 		responses = map[string]*Responses{}
 		for who, answers := range model.Answers {
 			person, ok := directory.Person(who)
@@ -226,6 +244,9 @@ func Render(model *Model, directory Directory, email string, admin bool, now tim
 			person.PhotoURL = thumb(person.PhotoURL)
 			person.Line = contactLine(directory, person)
 			for id, answer := range answers {
+				if !admin && !mine[id] {
+					continue
+				}
 				r := responses[id]
 				if r == nil {
 					r = &Responses{}
@@ -251,6 +272,6 @@ func Render(model *Model, directory Directory, email string, admin bool, now tim
 		Provenance: provenance, Responses: responses, GradeColors: directory.GradeColors(), Names: names,
 		User: user, Today: now.Format(DateFormat), Now: now.Format(DateTimeFormat),
 		Classrooms: model.Roster.Classrooms, Colors: directory.ClassroomColors(), Tags: append(append([]Tag{}, model.Tags...), builtinTags...), DayTypes: model.DayTypes, Years: model.Years,
-		Days: model.Days, Events: model.eventsFor(email, linked), Feeds: feeds, Alerts: Alerts{Stale: stale, Privacy: privacy}, Theme: model.Theme,
+		Days: model.Days, Events: events, Feeds: feeds, Alerts: Alerts{Stale: stale, Privacy: privacy}, Theme: model.Theme,
 	}
 }
