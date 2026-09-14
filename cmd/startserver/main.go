@@ -81,6 +81,7 @@ func sampleServer() (*http.Server, *who.Queue) {
 		Geocoder:    geocode.Fake{},
 		BrowserKey:  os.Getenv("GOOGLE_MAPS_BROWSER_KEY"),
 		ImageSearch: app.ImageSearchKeys(),
+		Describer:   app.ClaudeDescriber(),
 		// Sample mail lands as .html files to open in a browser, never sent.
 		Mail:          mail.New("", "", "", "", "", "HCA-Team <hca@example.org>", mailDir()),
 		CelebrateMail: mail.New("", "", "", "", "", "Helios Celebrate <celebrate@example.org>", mailDir()),

@@ -1,5 +1,6 @@
 import {state, me, isSystemAdmin, settings} from '../state.js';
 import {el, svg, button} from '../dom.js';
+import {createPersonPicker} from '/picker.js';
 import {setTitle} from '../chrome.js';
 import {openSettings} from '../edit.js';
 
@@ -98,11 +99,109 @@ function adminsCard() {
   return card;
 }
 
+// teamCard is the birthday team by role: who volunteers to work the birthdays
+// and who carries them into the newsletter. Each role takes someone from the
+// directory or an address typed in, and loses them with Remove.
+function teamCard() {
+  const card = el('div', 'card');
+  card.append(el('h2', '', 'Team'));
+  card.append(el('div', 'hint', 'Volunteers are offered when a birthday is assigned. The comms team carries the donations into the newsletter. Pick someone from the directory, or type an address the directory does not have.'));
+  const status = el('span', 'save-status');
+  let team = [];
+  let people = [];
+  const groups = el('div');
+  const roleGroup = (role, blurb) => {
+    const group = el('div', 'team-group');
+    group.append(el('h3', '', role), el('div', 'hint', blurb));
+    const rows = el('div');
+    const add = el('div', 'add-row');
+    const mount = el('div');
+    const picker = createPersonPicker(mount);
+    const render = () => {
+      rows.replaceChildren();
+      const members = team.filter(m => m.role === role);
+      if (!members.length) {
+        rows.append(el('div', 'hint', 'Nobody yet.'));
+      }
+      for (const m of members) {
+        const row = el('div', 'admin-row');
+        const body = el('div', 'grow');
+        body.append(el('div', '', m.name), el('div', 'sub', m.email));
+        row.append(body);
+        const remove = el('button', 'link-button danger', 'Remove');
+        remove.type = 'button';
+        remove.addEventListener('click', () => change('DELETE', m.email, role));
+        row.append(remove);
+        rows.append(row);
+      }
+      picker.setPeople(people.filter(p => !members.some(m => m.email === p.email)));
+    };
+    const addOne = () => {
+      const email = (picker.value || picker.text).toLowerCase();
+      if (!email) {
+        return;
+      }
+      if (!email.includes('@')) {
+        status.classList.add('error');
+        status.textContent = 'Pick someone from the list, or type a full email address.';
+        return;
+      }
+      picker.reset();
+      change('POST', email, role);
+    };
+    mount.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !mount.querySelector('.person-picker-option.active')) {
+        e.preventDefault();
+        addOne();
+      }
+    });
+    add.append(mount, button('Add', null, 'button', addOne));
+    group.append(rows, add);
+    groups.append(group);
+    return render;
+  };
+  const renders = [];
+  const renderAll = () => renders.forEach(r => r());
+  const change = async (method, email, role) => {
+    status.classList.remove('error');
+    status.textContent = 'Saving…';
+    const res = await fetch('/api/admin/team', {method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify({email, role})});
+    if (!res.ok) {
+      status.classList.add('error');
+      status.textContent = await res.text();
+      return;
+    }
+    await load();
+    status.textContent = 'Saved.';
+  };
+  const load = async () => {
+    const res = await fetch('/api/admin/state');
+    if (!res.ok) {
+      status.classList.add('error');
+      status.textContent = 'Failed to load the team.';
+      return;
+    }
+    const data = await res.json();
+    team = data.team;
+    people = data.people;
+    if (!renders.length) {
+      for (const [role, blurb] of [['Volunteer', 'Offered as choices when a birthday is assigned.'], ['Comms Team', 'Carries the donations into the newsletter.']]) {
+        renders.push(roleGroup(role, blurb));
+      }
+    }
+    renderAll();
+  };
+  card.append(groups, status);
+  load();
+  return card;
+}
+
 const sections = [
   {title: 'Display', tabs: [
     {key: 'settings', label: 'Settings', card: settingsCard},
   ]},
   {title: 'Editing & Control', tabs: [
+    {key: 'team', label: 'Team', card: teamCard},
     {key: 'admins', label: 'Admins', card: adminsCard},
   ]},
 ];

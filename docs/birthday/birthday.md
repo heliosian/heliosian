@@ -40,8 +40,8 @@ Someone who has opted out of the directory itself is not listed as staff there a
 
 ## Who may do what
 
-- **Anyone signed in** works the pipeline on any staff member: assigns, contacts, records donations and notes, marks newsletter use, adds and corrects birthdays, records participation wishes, and adds charities.
-- **Admins**, the Admins tab plus the platform super admins (`docs/config.md`), decide which charities are allowed and remove them, manage the newsletter dates, remove birthdays, change the settings, and manage the admin list from `/admin`.
+- **Anyone signed in** works the pipeline on any staff member: assigns, contacts, records donations and notes, marks newsletter use, adds and corrects birthdays, records participation wishes, and adds charities. The charity form's **Suggest a sentence** asks Claude (`internal/describe`, Claude Opus 5 with web fetch and search, at low effort) for the newsletter's one sentence about the charity, read from its own site rather than guessed, in the register the list already uses; it lands in the About field for the person to read over, and nothing is saved until they save the form. With no Anthropic key the button says so. It is a few cents a call and a handful of calls a year.
+- **Admins**, the Admins tab plus the platform super admins (`docs/config.md`), decide which charities are allowed and remove them, add, move and remove the newsletter dates (a birthday pinned to a moved issue by its override moves with it), remove birthdays, change the settings, and manage the admin list and the team from `/admin`. The team is two roles kept on the `Team` tab: volunteers, who are offered (together with anyone already holding an assignment) when a birthday is assigned, and the comms team, who carry the donations into the newsletter; either takes someone picked from the directory or an address typed in.
 
 ## Pages
 

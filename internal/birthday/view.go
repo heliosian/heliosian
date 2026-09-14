@@ -22,6 +22,8 @@ type Directory interface {
 	Resolve(email string) string
 	Person(email string) (Person, bool)
 	Staff() []Person
+	// People is everyone with an address to sign in by, for the pickers.
+	People() []Person
 	Departments() []string
 	Alerts(email string) (stale int, privacy bool)
 }
@@ -95,6 +97,14 @@ type User struct {
 	IsAdmin  bool   `json:"isAdmin"`
 }
 
+// TeamView is a team member as the pages see them: the role, and the name
+// the directory has for them, or the address when it has none.
+type TeamView struct {
+	Email string `json:"email"`
+	Name  string `json:"name"`
+	Role  string `json:"role"`
+}
+
 type View struct {
 	User            User        `json:"user"`
 	Year            YearView    `json:"year"`
@@ -105,6 +115,7 @@ type View struct {
 	Missing         []StaffView `json:"missing"`
 	Charities       []Charity   `json:"charities"`
 	NewsletterDates []string    `json:"newsletterDates"`
+	Team            []TeamView  `json:"team"`
 	Alerts          Alerts      `json:"alerts"`
 	Departments     []string    `json:"departments"`
 }
@@ -177,7 +188,12 @@ func Render(model *Model, directory Directory, email string, admin bool, now tim
 		Missing:         []StaffView{},
 		Charities:       model.Charities,
 		NewsletterDates: model.NewsletterDates,
+		Team:            []TeamView{},
 		Departments:     directory.Departments(),
+	}
+	for _, m := range model.Team {
+		p, _ := v.person(m.Email)
+		view.Team = append(view.Team, TeamView{Email: m.Email, Name: p.Name, Role: m.Role})
 	}
 	stale, privacy := directory.Alerts(email)
 	view.Alerts = Alerts{Stale: stale, Privacy: privacy}

@@ -27,6 +27,7 @@ import (
 	"heliosian/internal/celebrate"
 	"heliosian/internal/config"
 	"heliosian/internal/data"
+	"heliosian/internal/describe"
 	"heliosian/internal/events"
 	"heliosian/internal/feedback"
 	"heliosian/internal/geocode"
@@ -384,6 +385,18 @@ func (d birthdayDirectory) Staff() []birthday.Person {
 	return out
 }
 
+func (d birthdayDirectory) People() []birthday.Person {
+	model := d.cache.Model()
+	out := []birthday.Person{}
+	for i := range model.People {
+		if model.People[i].Email != "" {
+			out = append(out, birthdayPerson(&model.People[i]))
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
 func (d birthdayDirectory) Departments() []string {
 	return d.cache.Model().Departments
 }
@@ -658,6 +671,9 @@ type Config struct {
 	Mail          mail.Sender
 	CelebrateMail mail.Sender
 	Feedback      feedback.Filer
+	// Describer writes Staff Birthdays' sentence about a charity; nil leaves
+	// that button saying it is not set up.
+	Describer birthday.Describer
 }
 
 // Core is the assembled shared skeleton: each app's mux (still open for the
@@ -780,7 +796,7 @@ func NewCore(cfg Config) *Core {
 	eventsMux := http.NewServeMux()
 	events.Register(eventsMux, eventsCache, cfg.Writer, queue, cfg.Store, directory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.Mail)
 	birthdayMux := http.NewServeMux()
-	birthday.Register(birthdayMux, birthdayCache, cfg.Writer, queue, birthdayDirectory{cache, settings}, settings.SuperAdmins)
+	birthday.Register(birthdayMux, birthdayCache, cfg.Writer, queue, birthdayDirectory{cache, settings}, settings.SuperAdmins, cfg.Describer)
 	celebrateMux := http.NewServeMux()
 	celebrate.Register(celebrateMux, celebrateCache, cfg.Writer, queue, cfg.Store, celebrateDirectory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.CelebrateMail)
 	calendarMux := http.NewServeMux()
@@ -895,6 +911,16 @@ func newMailer(from string) mail.Sender {
 // each from its environment variable, else from its file under creds/, else
 // absent - Wikimedia Commons needs none. Sample mode uses it too, so a
 // developer with keys on disk gets the same libraries as production.
+// ClaudeDescriber is Staff Birthdays' charity describer when an Anthropic
+// key is set (ANTHROPIC_API_KEY, or creds/anthropic.key locally), else nil.
+// A nil *describe.Describer must stay a nil interface, or the app would call it.
+func ClaudeDescriber() birthday.Describer {
+	if d := describe.New(optionalKey("ANTHROPIC_API_KEY", "creds/anthropic.key")); d != nil {
+		return d
+	}
+	return nil
+}
+
 func ImageSearchKeys() imagesearch.Search {
 	return imagesearch.Search{
 		Key:      optionalKey("GOOGLE_SEARCH_KEY", "creds/search.key"),
@@ -962,6 +988,7 @@ func Production() (*http.Server, *who.Queue) {
 		Store:       store,
 		BrowserKey:  mapsKey("GOOGLE_MAPS_BROWSER_KEY", "creds/maps.key"),
 		ImageSearch: ImageSearchKeys(),
+		Describer:   ClaudeDescriber(),
 		// Mail goes through Resend when its key is set, else over SMTP when
 		// SMTP_HOST is; otherwise, in real-data mode, it is dropped and logged.
 		Mail:          newMailer(mailFrom()),

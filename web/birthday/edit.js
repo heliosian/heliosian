@@ -1,7 +1,11 @@
-import {state, me, isAdmin, settings, charity, longDate, dateCell, parseDate, year} from './state.js';
+import {state, me, team, isAdmin, settings, charity, longDate, dateCell, parseDate, year} from './state.js';
 import {el, toast} from './dom.js';
 
 let modalState = null;
+
+// Modals stack: one opened while another shows takes its place, and closing
+// it brings the first back as it was, typed text and all.
+const stack = [];
 
 const overlay = () => document.querySelector('#modal-overlay');
 const form = () => document.querySelector('#modal');
@@ -31,6 +35,12 @@ export async function act(method, url, body, message) {
 }
 
 function closeModal() {
+  const below = stack.pop();
+  if (below) {
+    form().replaceChildren(...below.nodes);
+    modalState = below.state;
+    return;
+  }
   overlay().hidden = true;
   form().replaceChildren();
   modalState = null;
@@ -54,9 +64,13 @@ export function initModal() {
     }
     setStatus('Saving…');
     try {
-      await modalState.submit();
+      const saved = await modalState.submit();
+      const afterSave = modalState.afterSave;
       closeModal();
       await reload();
+      if (afterSave) {
+        afterSave(saved);
+      }
     } catch (err) {
       setStatus(err.message, true);
     }
@@ -106,13 +120,18 @@ function textarea(value, rows) {
 
 function select(options, value) {
   const input = el('select');
+  fillSelect(input, options, value);
+  return input;
+}
+
+function fillSelect(input, options, value) {
+  input.replaceChildren();
   for (const option of options) {
     const node = el('option', '', option.label === undefined ? option : option.label);
     node.value = option.value === undefined ? option : option.value;
     node.selected = node.value === value;
     input.append(node);
   }
-  return input;
 }
 
 function checkbox(label, checked) {
@@ -126,6 +145,9 @@ function checkbox(label, checked) {
 
 function openModal(title, fields, options) {
   const f = form();
+  if (modalState) {
+    stack.push({nodes: [...f.children], state: modalState});
+  }
   f.replaceChildren();
   const header = el('div', 'modal-header');
   header.append(el('h2', '', title));
@@ -168,7 +190,7 @@ function openModal(title, fields, options) {
   }
   actions.append(el('span', 'save-status'));
   f.append(actions);
-  modalState = {submit: options.submit};
+  modalState = {submit: options.submit, afterSave: options.afterSave};
   overlay().hidden = false;
   const first = f.querySelector('input:not([type=hidden]), textarea, select');
   if (first) {
@@ -189,17 +211,18 @@ export function unassign(sv) {
   return act('DELETE', '/api/birthday/assign', {email: sv.email});
 }
 
+// openAssign offers the birthday team - the viewer first, then whoever else has
+// someone assigned - with the current assignee kept on the list even when they
+// have nobody else.
 export function openAssign(sv) {
-  const who = select([{label: 'Me', value: ''}, {label: 'Someone else', value: 'other'}], sv.assignedTo && sv.assignedTo !== me().email ? 'other' : '');
-  const email = text(sv.assignedTo && sv.assignedTo !== me().email ? sv.assignedTo : '', {type: 'email', placeholder: 'name@heliosschool.org'});
-  const emailField = field('Their email', email);
-  emailField.hidden = who.value !== 'other';
-  who.addEventListener('change', () => {
-    emailField.hidden = who.value !== 'other';
-  });
-  openModal(`Assign ${sv.name}`, [field('To', who), emailField], {
+  const people = team();
+  if (sv.assignedTo && !people.some(p => p.email === sv.assignedTo)) {
+    people.push({email: sv.assignedTo, name: sv.assignedToName || sv.assignedTo});
+  }
+  const who = select(people.map(p => ({label: p.name, value: p.email})), sv.assignedTo || me().email);
+  openModal(`Assign ${sv.name}`, [field('To', who)], {
     saveLabel: 'Assign',
-    submit: () => send('POST', '/api/birthday/assign', {email: sv.email, assignedTo: who.value === 'other' ? email.value : ''}),
+    submit: () => send('POST', '/api/birthday/assign', {email: sv.email, assignedTo: who.value === me().email ? '' : who.value}),
     onDelete: sv.assignedTo ? () => send('DELETE', '/api/birthday/assign', {email: sv.email}) : null,
     deleteLabel: 'Unassign',
     confirmDelete: `Unassign ${sv.name}?`,
@@ -233,10 +256,11 @@ export function openDonation(sv) {
   const pick = select(charityOptions(existing ? existing.charity : ''), existing ? existing.charity : settings().defaultCharity);
   const note = textarea(existing ? existing.note : '', 5);
   const add = el('div', 'field-note');
-  const addLink = el('a', 'link-button', 'Not on the list? Add a charity first.');
-  addLink.href = '/charities';
-  addLink.setAttribute('data-link', '');
-  addLink.addEventListener('click', closeModal);
+  const addLink = el('button', 'link-button', 'Not on the list? Add a charity.');
+  addLink.type = 'button';
+  // The charity form opens over this one; saving it brings this one back with
+  // the new charity picked.
+  addLink.addEventListener('click', () => openCharity(null, {afterSave: name => fillSelect(pick, charityOptions(name), name)}));
   add.append(addLink);
   openModal(existing ? `Edit ${sv.name}'s donation` : `Record ${sv.name}'s donation`, [field('Charity', pick), add, field('Their note', note, 'Why they chose it, in their words, for the newsletter')], {
     submit: () => send('POST', '/api/birthday/donation', {email: sv.email, charity: pick.value, note: note.value}),
@@ -299,12 +323,11 @@ export function removeNote(note) {
   return act('DELETE', '/api/birthday/note', note);
 }
 
-export function openCharity(c) {
+export function openCharity(c, options) {
   const admin = isAdmin();
   const name = text(c ? c.name : '', {required: true, maxLength: 120});
   const linkInput = text(c ? c.donationLink : '', {type: 'url', required: true, placeholder: 'https://'});
   const about = textarea(c ? c.about : '', 4);
-  const ein = text(c ? c.ein : '', {placeholder: '12-3456789'});
   const allowed = checkbox('Allowed', c ? c.allowed : true);
   const why = text(c ? c.whyNotAllowed : '', {placeholder: 'Not a non-profit'});
   const whyField = field('Why not', why);
@@ -312,20 +335,49 @@ export function openCharity(c) {
   allowed.input.addEventListener('change', () => {
     whyField.hidden = allowed.input.checked;
   });
-  const fields = [field('Name', name), field('Donation link', linkInput), field('About', about, 'A sentence for the newsletter'), field('EIN', ein)];
+  // Suggest asks the server for the sentence, read from the charity's site;
+  // it lands in the field for the person to read over and change.
+  const suggestRow = el('div', 'field-note suggest-row');
+  const suggest = el('button', 'link-button', 'Suggest a sentence');
+  suggest.type = 'button';
+  const suggestStatus = el('span', 'suggest-status');
+  suggest.addEventListener('click', async () => {
+    if (!name.value.trim()) {
+      suggestStatus.textContent = 'Give the name first.';
+      return;
+    }
+    suggest.disabled = true;
+    suggestStatus.textContent = 'Reading their site…';
+    try {
+      const res = await fetch('/api/birthday/charity/describe', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name: name.value, donationLink: linkInput.value})});
+      if (!res.ok) {
+        throw new Error(await res.text());
+      }
+      about.value = (await res.json()).sentence;
+      suggestStatus.textContent = 'Read it over and change anything that is off.';
+    } catch (err) {
+      suggestStatus.textContent = err.message;
+    } finally {
+      suggest.disabled = false;
+    }
+  });
+  suggestRow.append(suggest, suggestStatus);
+  const fields = [field('Name', name), field('Donation link', linkInput), field('About', about, 'A sentence for the newsletter'), suggestRow];
   if (admin) {
     fields.push(allowed.wrap, whyField);
   }
   openModal(c ? 'Edit Charity' : 'Add Charity', fields, {
     submit: async () => {
       await send('POST', '/api/birthday/charity', {
-        original: c ? c.name : '', name: name.value, donationLink: linkInput.value, about: about.value, ein: ein.value,
+        original: c ? c.name : '', name: name.value, donationLink: linkInput.value, about: about.value, ein: c ? c.ein : '',
         allowed: admin ? allowed.input.checked : true, whyNotAllowed: why.value,
       });
       if (c && c.name !== name.value.trim() && location.pathname.startsWith('/charities/')) {
         await goTo(`/charities/${encodeURIComponent(name.value.trim())}`);
       }
+      return name.value.trim();
     },
+    afterSave: options && options.afterSave,
     onDelete: c && admin ? () => send('DELETE', '/api/birthday/charity', {name: c.name}) : null,
     confirmDelete: c ? `Delete “${c.name}”? Charities with donations can only be marked not allowed.` : '',
     afterDelete: () => goTo('/charities'),
@@ -340,6 +392,13 @@ export function openNewsletterDate() {
   openModal('Add Newsletter Date', [field('Date', date)], {
     saveLabel: 'Add',
     submit: () => send('POST', '/api/birthday/newsletter-date', {date: date.value}),
+  });
+}
+
+export function openChangeNewsletterDate(original) {
+  const date = text(original, {type: 'date', required: true});
+  openModal('Change Newsletter Date', [field('Date', date, 'Anyone pinned to this issue moves with it')], {
+    submit: () => send('PUT', '/api/birthday/newsletter-date', {original, date: date.value}),
   });
 }
 
@@ -367,8 +426,8 @@ export function openSettings() {
     field('Default charity', defaultCharity, 'Where a donation goes when nobody answers'),
     field('Year start', yearStart, 'Month and day the birthday year turns over, like 08-14'),
     field('Email subject', subject),
-    field('Email body', body, 'Placeholders: {first name}, {name}, {newsletter date}, {birthday}, {default charity}'),
-    field('No-newsletter note', note, 'Added to the email for anyone who asked to stay out of the newsletter'),
+    field('Email body', body, 'Placeholders: {first name}, {name}, {birthday}, {newsletter date}, {default charity}, {sender}, {last year}, {no newsletter note}'),
+    field('No-newsletter note', note, 'Put where {no newsletter note} sits in the body, or at the end, for anyone who asked to stay out of the newsletter'),
   ], {
     submit: () => send('POST', '/api/birthday/settings', {
       defaultCharity: defaultCharity.value, yearStart: yearStart.value, emailSubject: subject.value, emailBody: body.value, noNewsletterNote: note.value,

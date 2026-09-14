@@ -20,7 +20,7 @@ import (
 const shell = "web/birthday/index.html"
 
 var pages = []string{
-	"/{$}", "/process", "/calendar", "/charities", "/charities/{name}", "/newsletters", "/skipped", "/admin", "/staff/{email}",
+	"/{$}", "/process", "/calendar", "/charities", "/charities/{name}", "/newsletters", "/skipped", "/admin", "/staff/{handle}",
 }
 
 // local is the school's clock: a birthday is a day there, and a step taken late
@@ -41,12 +41,19 @@ type app struct {
 	queue       Enqueuer
 	directory   Directory
 	superAdmins func() []string
+	describer   Describer
+}
+
+// Describer writes the sentence about a charity for the newsletter; nil
+// leaves the charity form's suggest button saying it is not set up.
+type Describer interface {
+	Charity(ctx context.Context, name, link string) (string, error)
 }
 
 // Register wires the app: one shell for every page, the model, and the writes.
 // Every route already sits behind sign-in.
-func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, directory Directory, superAdmins func() []string) {
-	a := app{cache: cache, writer: writer, queue: queue, directory: directory, superAdmins: superAdmins}
+func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, directory Directory, superAdmins func() []string, describer Describer) {
+	a := app{cache: cache, writer: writer, queue: queue, directory: directory, superAdmins: superAdmins, describer: describer}
 	for _, page := range pages {
 		mux.HandleFunc("GET "+page, a.page)
 	}
@@ -65,11 +72,15 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	mux.HandleFunc("DELETE /api/birthday/note", a.deleteNote)
 	mux.HandleFunc("POST /api/birthday/charity", a.saveCharity)
 	mux.HandleFunc("DELETE /api/birthday/charity", a.deleteCharity)
+	mux.HandleFunc("POST /api/birthday/charity/describe", a.describeCharity)
 	mux.HandleFunc("POST /api/birthday/newsletter-date", a.addNewsletterDate)
+	mux.HandleFunc("PUT /api/birthday/newsletter-date", a.changeNewsletterDate)
 	mux.HandleFunc("DELETE /api/birthday/newsletter-date", a.deleteNewsletterDate)
 	mux.HandleFunc("POST /api/birthday/settings", a.saveSettings)
 	mux.HandleFunc("GET /api/admin/state", a.adminState)
 	mux.HandleFunc("POST /api/admin/admins", a.setAdmins)
+	mux.HandleFunc("POST /api/admin/team", a.addTeamMember)
+	mux.HandleFunc("DELETE /api/admin/team", a.removeTeamMember)
 }
 
 func (a app) page(w http.ResponseWriter, r *http.Request) {
@@ -731,6 +742,43 @@ func (a app) flushCharityRename(oldName, name string) error {
 	return nil
 }
 
+// describeCharity asks Claude for the newsletter's sentence about a charity,
+// for the form to offer; nothing is saved until the person saves the form.
+func (a app) describeCharity(w http.ResponseWriter, r *http.Request) {
+	actor, _ := a.who(r)
+	var body struct {
+		Name         string `json:"name"`
+		DonationLink string `json:"donationLink"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	name, link := strings.TrimSpace(body.Name), strings.TrimSpace(body.DonationLink)
+	if name == "" {
+		http.Error(w, "give the charity's name first", http.StatusBadRequest)
+		return
+	}
+	if a.describer == nil {
+		http.Error(w, "suggesting a sentence is not set up on this server", http.StatusServiceUnavailable)
+		return
+	}
+	sentence, err := a.describer.Charity(r.Context(), name, link)
+	if err != nil {
+		slog.ErrorContext(r.Context(), "birthday: describe charity", "actor", actor, "name", name, "error", err)
+		http.Error(w, "could not write a sentence right now", http.StatusBadGateway)
+		return
+	}
+	if sentence == "" {
+		http.Error(w, "could not find out what this charity does; please write the sentence", http.StatusNotFound)
+		return
+	}
+	slog.InfoContext(r.Context(), "birthday: described charity", "actor", actor, "name", name)
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(map[string]string{"sentence": sentence}); err != nil {
+		slog.ErrorContext(r.Context(), "encode charity sentence", "error", err)
+	}
+}
+
 func (a app) deleteCharity(w http.ResponseWriter, r *http.Request) {
 	actor, ok := a.requireAdmin(w, r)
 	if !ok {
@@ -802,6 +850,63 @@ func (a app) addNewsletterDate(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// changeNewsletterDate moves one issue to another day. A birthday pinned to the
+// old day by its override moves with it, so nobody is left pointing at an issue
+// that no longer exists.
+func (a app) changeNewsletterDate(w http.ResponseWriter, r *http.Request) {
+	actor, ok := a.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Original string `json:"original"`
+		Date     string `json:"date"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	original, date := strings.TrimSpace(body.Original), strings.TrimSpace(body.Date)
+	if _, err := ParseDate(date); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	dates := a.cache.Model().NewsletterDates
+	if !slices.Contains(dates, original) {
+		http.Error(w, "no such newsletter date", http.StatusNotFound)
+		return
+	}
+	if date == original {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if slices.Contains(dates, date) {
+		http.Error(w, "that date is already on the list", http.StatusBadRequest)
+		return
+	}
+	match, cells := map[string]string{"Date": original}, map[string]string{"Date": date}
+	pinned, moved := map[string]string{"Newsletter Override": original}, map[string]string{"Newsletter Override": date}
+	tables := a.cache.Tables().with(newsletterDatesTab, match, cells)
+	overrides := tables.count(birthdaysTab, pinned)
+	if overrides > 0 {
+		tables = tables.with(birthdaysTab, pinned, moved)
+	}
+	if !a.commit(r.Context(), w, tables, func() error {
+		if err := a.writer.Set(appName, newsletterDatesTab, match, cells); err != nil {
+			return err
+		}
+		if overrides > 0 {
+			if err := a.writer.Set(appName, birthdaysTab, pinned, moved); err != nil {
+				return err
+			}
+		}
+		return a.logChange(actor, "edit", "newsletter date", "", "", original+" to "+date)
+	}) {
+		return
+	}
+	slog.InfoContext(r.Context(), "birthday: moved newsletter date", "actor", actor, "from", original, "to", date, "overrides", overrides)
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (a app) deleteNewsletterDate(w http.ResponseWriter, r *http.Request) {
 	actor, ok := a.requireAdmin(w, r)
 	if !ok {
@@ -863,10 +968,20 @@ func (a app) adminState(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	model := a.cache.Model()
+	team := make([]TeamView, 0, len(model.Team))
+	v := viewer{directory: a.directory}
+	for _, m := range model.Team {
+		p, _ := v.person(m.Email)
+		team = append(team, TeamView{Email: m.Email, Name: p.Name, Role: m.Role})
+	}
 	view := struct {
-		Email  string   `json:"email"`
-		Admins []string `json:"admins"`
-	}{Email: email, Admins: a.cache.Admins(a.superAdmins())}
+		Email  string     `json:"email"`
+		Admins []string   `json:"admins"`
+		Team   []TeamView `json:"team"`
+		Roles  []string   `json:"roles"`
+		People []Person   `json:"people"`
+	}{Email: email, Admins: a.cache.Admins(a.superAdmins()), Team: team, Roles: Roles, People: a.directory.People()}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
 		slog.ErrorContext(r.Context(), "encode birthday admin state", "error", err)
@@ -924,6 +1039,75 @@ func (a app) setAdmins(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.InfoContext(r.Context(), "birthday: set the admin list", "actor", actor, "admins", admins)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// teamRow reads the email and role an admin is adding or removing, refusing a
+// role the tab does not know.
+func teamRow(w http.ResponseWriter, r *http.Request) (map[string]string, bool) {
+	var body struct {
+		Email string `json:"email"`
+		Role  string `json:"role"`
+	}
+	if !decode(w, r, &body) {
+		return nil, false
+	}
+	email := cleanEmail(body.Email)
+	if err := checkEmail(email); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return nil, false
+	}
+	role := strings.TrimSpace(body.Role)
+	if !slices.Contains(Roles, role) {
+		http.Error(w, fmt.Sprintf("%q is not a role", role), http.StatusBadRequest)
+		return nil, false
+	}
+	return map[string]string{"Email": email, "Role": role}, true
+}
+
+func (a app) addTeamMember(w http.ResponseWriter, r *http.Request) {
+	actor, ok := a.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	row, ok := teamRow(w, r)
+	if !ok {
+		return
+	}
+	if a.cache.Tables().count(teamTab, row) > 0 {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if !a.commit(r.Context(), w, a.cache.Tables().with(teamTab, nil, row), func() error {
+		if err := a.writer.Append(appName, teamTab, rowOf(TeamColumns, row)); err != nil {
+			return err
+		}
+		return a.logChange(actor, "add", "team member", row["Email"], "", row["Role"])
+	}) {
+		return
+	}
+	slog.InfoContext(r.Context(), "birthday: added team member", "actor", actor, "email", row["Email"], "role", row["Role"])
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a app) removeTeamMember(w http.ResponseWriter, r *http.Request) {
+	actor, ok := a.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	row, ok := teamRow(w, r)
+	if !ok {
+		return
+	}
+	if !a.commit(r.Context(), w, a.cache.Tables().without(teamTab, row), func() error {
+		if err := a.writer.Delete(appName, teamTab, row); err != nil {
+			return err
+		}
+		return a.logChange(actor, "remove", "team member", row["Email"], "", row["Role"])
+	}) {
+		return
+	}
+	slog.InfoContext(r.Context(), "birthday: removed team member", "actor", actor, "email", row["Email"], "role", row["Role"])
 	w.WriteHeader(http.StatusNoContent)
 }
 

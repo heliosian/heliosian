@@ -15,6 +15,7 @@ The app's data lives in one Google Sheet, `Birthdays`, in the community shared d
 - `Newsletter Dates` — Date.
 - `Settings` — Key, Value: `Default Charity`, `Year Start`, `Email Subject`, `Email Body`, `No Newsletter Note`, all required.
 - `Admins` — Email.
+- `Team` — Email, Role. One row per person per role: `Volunteer` (offered when a birthday is assigned) or `Comms Team` (carries the donations into the newsletter). Anyone, in the directory or not, by address.
 - `Change Log` — appended on every change; never read back.
 
 ## Keys are names
@@ -31,7 +32,7 @@ Allowed is `Yes`, `No`, or blank, and blank means No.
 
 ## Settings
 
-`Default Charity` must name an allowed charity. `Email Subject` and `Email Body` are the outreach draft, with `{first name}`, `{name}`, `{newsletter date}`, `{birthday}`, and `{default charity}` filled in by the client; `No Newsletter Note` is appended for anyone whose participation is `No Newsletter`.
+`Default Charity` must name an allowed charity. `Email Subject` and `Email Body` are the outreach draft, with `{first name}`, `{name}`, `{birthday}`, `{newsletter date}`, `{default charity}`, `{sender}` (the signed-in person's name), and `{last year}` ("Last year you chose …", or nothing when there is no last year) filled in by the client; `No Newsletter Note` goes where `{no newsletter note}` sits in the body, or at the end when the body has no such place, for anyone whose participation is `No Newsletter`, and is blank for everyone else. Blank lines an empty placeholder leaves behind are dropped.
 
 ## A load either succeeds whole or refuses
 

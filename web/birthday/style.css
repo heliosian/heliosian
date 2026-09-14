@@ -466,6 +466,10 @@ body.is-admin main { padding: 0; }
 
 .legend { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
 
+.legend .chip { border: 0; font: inherit; font-size: 11px; font-weight: 600; cursor: pointer; }
+
+.legend .chip.is-off { opacity: 0.35; }
+
 .footnote { color: var(--muted); font-size: 13px; text-align: center; margin-top: 28px; }
 
 .crumb {
@@ -485,67 +489,145 @@ body.is-admin main { padding: 0; }
 
 .crumb svg { width: 16px; height: 16px; }
 
-.detail-head { display: flex; gap: 18px; align-items: flex-start; max-width: 760px; margin: 0 auto; }
+/* A staff member's page: the head, the three date tiles, the workflow card, the
+   ask band and the two year cards, each the page's full width. */
+.staff-page { max-width: 1040px; margin: 0 auto; }
 
-.detail-head h1 { font-size: 26px; margin: 2px 0 6px; }
+.detail-head { display: flex; gap: 18px; align-items: flex-start; }
+
+.detail-head h1 { font-size: 30px; margin: 2px 0 6px; }
 
 .detail-head .row-text { font-size: 15px; text-decoration: none; }
 
+.detail-mail { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); }
+
+.detail-mail svg { width: 18px; height: 18px; color: var(--brand); }
+
 .detail-actions { display: flex; gap: 8px; flex-shrink: 0; }
 
-.facts { display: flex; flex-wrap: wrap; gap: 16px 40px; max-width: 760px; margin: 22px auto 0; }
+.facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin: 22px 0 0; }
 
-.fact-label { font-weight: 700; font-size: 14px; }
+.fact { display: flex; align-items: center; gap: 14px; }
 
-.fact-value { color: var(--muted); font-size: 14px; }
+.fact-icon {
+  width: 48px; height: 48px; border-radius: 50%; flex-shrink: 0;
+  background: #e2f0ef; color: var(--accent);
+  display: flex; align-items: center; justify-content: center;
+}
+
+.fact-icon svg { width: 22px; height: 22px; }
+
+.fact-label { font-weight: 700; font-size: 15px; }
+
+.fact-value { color: var(--muted); font-size: 15px; }
 
 a.fact-value { color: var(--brand); }
 
-/* The bands on a staff member's page: rounded, as Celebrate's gala band is,
-   rather than bleeding to the page's edges. */
-.steps-band, .donation-band, .ask-band {
-  margin: 20px 0 0;
-  padding: 18px 24px;
-  border-radius: 14px;
+/* The workflow: a white card whose teal head names it and says where the
+   person stands, over the five steps threaded on a timeline. */
+.workflow { margin: 22px 0 0; background: var(--card); border-radius: 14px; box-shadow: 0 1px 3px rgba(10, 50, 54, 0.12); overflow: hidden; }
+
+.workflow-head { background: var(--brand); color: #fff; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 28px; }
+
+.workflow-head h2 { margin: 0; font-size: 22px; }
+
+.workflow-status { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 999px; background: rgba(255, 255, 255, 0.16); font-weight: 600; font-size: 14px; }
+
+.status-dot { width: 12px; height: 12px; border-radius: 50%; background: #f2b632; }
+
+.status-dot.complete { background: #6cc46a; }
+
+.status-dot.waiting { background: #9fb8bc; }
+
+.workflow-steps { padding: 10px 28px 6px; }
+
+.step { display: grid; grid-template-columns: 38px 1fr auto; align-items: center; column-gap: 20px; position: relative; }
+
+/* The thread the numbers sit on, running from one disc to the next. */
+.step::before { content: ''; position: absolute; left: 18px; top: 0; bottom: 0; width: 2px; background: #d9e6e8; }
+
+.step:first-child::before { top: 50%; }
+
+.step:last-child::before { bottom: 50%; }
+
+.step-num {
+  width: 38px; height: 38px; border-radius: 50%; position: relative;
+  display: flex; align-items: center; justify-content: center;
+  background: #cfe3e6; color: var(--brand); font-weight: 700; font-size: 15px;
 }
 
-.steps-band { background: var(--brand-deep); color: #fff; }
+.step-num svg { width: 20px; height: 20px; stroke-width: 3; }
 
-.band-inner { max-width: 760px; margin: 0 auto; }
+.step-done .step-num, .step-current .step-num { background: var(--brand); color: #fff; }
 
-.step { display: flex; align-items: center; gap: 16px; padding: 12px 0; }
+.step-attention .step-num { background: #f2b632; color: #fff; }
 
-.step-body { flex: 1; min-width: 0; }
+.step-body, .step-actions { align-self: stretch; padding: 14px 0; display: flex; flex-direction: column; justify-content: center; }
 
-.step-title { font-weight: 700; }
+.step-body { min-width: 0; }
 
-.step-text { color: rgba(255, 255, 255, 0.72); font-size: 14px; }
+/* The rule under each step, from the text to the card's edge, clear of the thread. */
+.step::after { content: ''; position: absolute; left: 58px; right: 0; bottom: 0; height: 1px; background: var(--line); }
 
-.step-actions { display: flex; gap: 8px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
+.step:last-child::after { display: none; }
 
-.ask-band { background: #fff; display: flex; align-items: center; gap: 16px; max-width: 800px; margin-left: auto; margin-right: auto; }
+.step-title { font-weight: 700; font-size: 16px; }
 
-.ask-icon { font-size: 34px; flex-shrink: 0; }
+.step-text { color: var(--muted); font-size: 14px; }
 
-.donation-band { background: var(--brand); color: #fff; }
+.step-aside { color: #8f9c9e; margin-left: 32px; }
 
-.donation-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; max-width: 760px; margin: 0 auto; }
+.step-actions { flex-direction: row; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
 
-.donation-col { display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center; }
+.step-actions .button-secondary svg, .year-actions .button-secondary svg, .year-empty .button-secondary svg { color: var(--brand); }
 
-.donation-col h3 { margin: 0; font-size: 18px; letter-spacing: 0.04em; text-transform: uppercase; }
+.button-secondary { border-radius: 10px; border-color: #cfdcde; }
 
-.donation-card { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; }
+/* The ask band: a pale yellow strip with the gift in a disc, when there is a
+   donation to choose. */
+.ask-band { margin: 22px 0 0; padding: 18px 28px; border-radius: 14px; background: #fdf5dc; display: flex; align-items: center; gap: 18px; }
+
+.ask-icon { width: 60px; height: 60px; border-radius: 50%; background: #fbe9b4; display: flex; align-items: center; justify-content: center; font-size: 30px; flex-shrink: 0; }
+
+.ask-band .row-title { font-size: 18px; }
+
+.ask-band .row-text { font-size: 15px; }
+
+/* This year and last year, side by side, each on its own pale wash, with a
+   sprig where a donation has yet to be chosen. */
+.year-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin: 22px 0 0; }
+
+.year-card { border-radius: 14px; padding: 22px 32px 26px; position: relative; overflow: hidden; }
+
+.year-mint { background: #e6f3ef; }
+
+.year-sky { background: #e4f0f3; }
+
+.year-card h3 { margin: 0 0 16px; font-size: 24px; font-weight: 600; color: var(--brand); padding-bottom: 8px; border-bottom: 2px solid var(--accent); }
+
+.donation-card { display: flex; align-items: flex-start; gap: 12px; }
 
 .donation-text { flex: 1; min-width: 0; }
 
-.donation-name { font-weight: 700; }
+.donation-name { font-weight: 700; font-size: 18px; margin-bottom: 4px; }
 
-.donation-note { font-size: 13px; color: rgba(255, 255, 255, 0.8); white-space: pre-line; }
+.donation-note { font-size: 14px; color: var(--muted); white-space: pre-line; }
 
 .donation-icons { display: flex; gap: 8px; flex-shrink: 0; }
 
-.notes { max-width: 760px; margin: 12px auto 0; }
+.icon-button.boxed { width: 44px; height: 44px; border-radius: 10px; background: #fff; border: 1px solid #cfdcde; color: var(--brand); }
+
+.year-actions { display: flex; justify-content: center; gap: 8px; margin-top: 18px; position: relative; }
+
+.year-empty { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 20px 0 0; position: relative; }
+
+.year-empty-text { color: var(--muted); font-size: 16px; }
+
+.sprig { width: 60px; height: 60px; color: var(--accent); }
+
+.sprig-corner { position: absolute; left: -14px; bottom: -14px; width: 150px; height: 150px; color: var(--green); opacity: 0.28; transform: rotate(-25deg); }
+
+.notes { margin: 12px 0 0; }
 
 .note { display: flex; align-items: flex-start; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); }
 
@@ -727,16 +809,231 @@ h2.section { font-size: 20px; margin: 24px 0 12px; }
   .tabbar svg { width: 22px; height: 22px; }
   .page-title { font-size: 28px; }
   .page-head { gap: 12px; }
-  .steps-band, .donation-band, .ask-band { padding-left: 16px; padding-right: 16px; }
+  .workflow-head, .workflow-steps, .ask-band, .year-card { padding-left: 16px; padding-right: 16px; }
   .row { gap: 10px; padding: 10px; }
   .thumb { width: 60px; height: 60px; }
   .row-actions .button span { display: none; }
   .row-actions .button { padding: 8px; }
   .detail-head .thumb.large { width: 100px; height: 100px; }
-  .step { flex-direction: column; align-items: stretch; gap: 8px; }
-  .step-actions { justify-content: flex-start; }
-  .donation-cols { grid-template-columns: 1fr; }
+  .facts { grid-template-columns: 1fr; }
+  .step { grid-template-columns: 32px 1fr; column-gap: 12px; }
+  .step::before { left: 15px; }
+  .step-num { width: 32px; height: 32px; font-size: 13px; }
+  .step::after { left: 44px; }
+  .step-body { padding-bottom: 4px; }
+  .step-actions { grid-column: 2; justify-content: flex-start; padding-top: 0; }
+  .step-aside { display: block; margin-left: 0; }
+  .ask-band { flex-wrap: wrap; }
+  .year-cards { grid-template-columns: 1fr; }
+  .stage-summary { flex-wrap: wrap; }
+  .issue { flex-wrap: wrap; }
+  .issue-side { margin-left: auto; }
+  .summary-next { border-left: 0; padding-left: 0; }
+  .filter-bar { flex-wrap: wrap; }
+  .filter-search { flex-basis: 100%; }
+  .filter-sort { margin-left: 0; }
+  .trow { grid-template-columns: 1fr 1fr; padding-left: 18px; }
+  .trow.thead { display: none; }
+  .cell-who { grid-column: 1 / -1; }
+  .cell-status { grid-column: 1 / -1; justify-content: flex-start; }
   .calendar .day { min-height: 72px; padding: 3px; }
   .calendar .chip { font-size: 10px; padding: 1px 4px; }
   .modal { padding: 16px; }
 }
+
+/* The Process page: the pipeline of stage tiles, the band for the stage in
+   view, the filters, and the table of staff. */
+.page-subtitle { color: var(--muted); font-size: 17px; margin-top: 2px; }
+
+.pipeline { display: flex; align-items: stretch; gap: 4px; margin: 4px 0 16px; overflow-x: auto; padding-bottom: 2px; }
+
+.pipeline-arrow { display: flex; align-items: center; color: #9aa9ad; flex-shrink: 0; }
+
+.pipeline-arrow svg { width: 18px; height: 18px; }
+
+.pipeline-tile {
+  flex: 1 1 0; min-width: 120px; display: flex; align-items: center; gap: 10px;
+  padding: 12px 12px; border-radius: 12px; border: 2px solid transparent;
+  font: inherit; text-align: left; cursor: pointer; color: var(--ink);
+}
+
+.pipeline-tile.is-active { border-color: var(--tint-ink); box-shadow: 0 0 0 3px var(--tint-ring); }
+
+.pipeline-icon { width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; color: var(--tint-ink); flex-shrink: 0; }
+
+.pipeline-icon svg { width: 26px; height: 26px; }
+
+.pipeline-label { font-weight: 600; font-size: 14px; line-height: 1.2; }
+
+.pipeline-count { font-size: 18px; font-weight: 500; color: #33474c; }
+
+/* Each stage's wash and ink, on the tile and the band alike. */
+.tint-grey { --tint-bg: #eef1f3; --tint-ink: #6b7c85; --tint-ring: rgba(107, 124, 133, 0.2); }
+.tint-teal { --tint-bg: #dff0f3; --tint-ink: #1f838a; --tint-ring: rgba(31, 131, 138, 0.2); }
+.tint-yellow { --tint-bg: #fdf3d9; --tint-ink: #d9a400; --tint-ring: rgba(217, 164, 0, 0.22); }
+.tint-orange { --tint-bg: #fde8d7; --tint-ink: #e8802e; --tint-ring: rgba(232, 128, 46, 0.2); }
+.tint-purple { --tint-bg: #ece6f7; --tint-ink: #7a5cc7; --tint-ring: rgba(122, 92, 199, 0.2); }
+.tint-green { --tint-bg: #e2f3e6; --tint-ink: #3aaa5c; --tint-ring: rgba(58, 170, 92, 0.2); }
+
+.pipeline-tile, .stage-summary { background: var(--tint-bg); }
+
+.stage-summary { display: flex; align-items: center; gap: 20px; padding: 16px 22px; border-radius: 12px; margin-bottom: 16px; }
+
+.summary-icon { width: 76px; height: 76px; border-radius: 50%; background: rgba(255, 255, 255, 0.6); color: var(--tint-ink); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+
+.summary-icon svg { width: 36px; height: 36px; }
+
+.summary-body { flex: 1; min-width: 0; }
+
+.summary-title { font-size: 20px; }
+
+.summary-title strong { color: var(--brand); }
+
+.summary-note { color: #4a5c61; font-size: 15px; margin-top: 4px; }
+
+.summary-next { display: flex; align-items: center; gap: 14px; padding-left: 24px; border-left: 1px solid rgba(0, 0, 0, 0.08); flex-shrink: 0; }
+
+.summary-next-icon { color: var(--brand); }
+
+.summary-next-icon svg { width: 30px; height: 30px; }
+
+.summary-next-label { font-size: 14px; color: #4a5c61; }
+
+.summary-next-date { font-size: 19px; font-weight: 700; color: var(--brand); }
+
+.summary-next-who { font-size: 14px; color: #4a5c61; }
+
+.filter-bar { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; }
+
+.filter-search { flex: 1 1 120px; min-width: 0; display: flex; align-items: center; gap: 10px; background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 0 14px; height: 44px; color: var(--muted); }
+
+.filter-search svg { width: 20px; height: 20px; flex-shrink: 0; }
+
+.filter-search input { flex: 1; border: 0; outline: 0; font: inherit; background: transparent; min-width: 0; }
+
+.filter-select { height: 44px; padding: 0 30px 0 12px; max-width: 100%; text-overflow: ellipsis; border: 1px solid var(--line); border-radius: 10px; background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23647071' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 12px center / 16px; font: inherit; color: var(--ink); appearance: none; -webkit-appearance: none; cursor: pointer; }
+
+.filter-sort { display: flex; align-items: center; margin-left: auto; position: relative; }
+
+.filter-sort svg { position: absolute; left: 12px; width: 16px; height: 16px; color: var(--muted); pointer-events: none; }
+
+.filter-sort .filter-select { padding-left: 34px; }
+
+.staff-table { background: #fff; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+
+.trow { display: grid; grid-template-columns: 2fr 1.4fr 1.3fr 1.3fr 1.2fr 1.7fr; align-items: center; gap: 12px; padding: 10px 18px 10px 26px; border-top: 1px solid var(--line); color: inherit; text-decoration: none; position: relative; }
+
+.trow.thead { border-top: 0; padding-top: 14px; padding-bottom: 12px; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+
+a.trow:hover { background: #fafcfc; }
+
+/* The bar down a row's left edge, in the ink of its stage. */
+a.trow::before { content: ''; position: absolute; left: 0; top: 6px; bottom: 6px; width: 4px; border-radius: 0 3px 3px 0; background: var(--muted); }
+
+a.trow[data-stage="stage-wait"]::before { background: #1f838a; }
+a.trow[data-stage="stage-awaiting-outreach"]::before { background: #d9a400; }
+a.trow[data-stage="stage-awaiting-response"]::before { background: #e8802e; }
+a.trow[data-stage="stage-awaiting-newsletter"]::before { background: #7a5cc7; }
+a.trow[data-stage="stage-complete"]::before { background: #3aaa5c; }
+
+.cell-who { display: flex; align-items: center; gap: 14px; min-width: 0; }
+
+.cell-name { font-weight: 700; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.thumb.small { width: 46px; height: 46px; border-radius: 50%; font-size: 20px; background: #e2f0ef; color: var(--accent); }
+
+.thumb.tiny { width: 34px; height: 34px; border-radius: 50%; font-size: 14px; }
+
+.cell-role { color: #4a5c61; }
+
+.cell-date { display: flex; align-items: center; gap: 10px; }
+
+.cell-date svg { width: 22px; height: 22px; color: #c0392b; flex-shrink: 0; }
+
+.cell-date.contact svg { color: var(--accent); }
+
+.cell-sub { color: var(--muted); font-size: 13px; }
+
+.cell-assignee { display: flex; align-items: center; gap: 10px; color: #33474c; }
+
+.cell-status { display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
+
+.cell-status > svg { width: 18px; height: 18px; color: var(--muted); }
+
+.status-pill { display: inline-block; white-space: nowrap; padding: 5px 14px; border-radius: 999px; font-size: 13px; font-weight: 600; color: #fff; background: var(--muted); }
+
+.status-pill.stage-wait { background: #dff0f3; color: #1f6d73; }
+.status-pill.stage-awaiting-outreach { background: #fdf3d9; color: #8a6800; }
+.status-pill.stage-awaiting-response { background: #fde8d7; color: #a4551a; }
+.status-pill.stage-awaiting-newsletter { background: #ece6f7; color: #5a3fa3; }
+.status-pill.stage-complete { background: #e2f3e6; color: #24763c; }
+
+.table-empty { padding: 28px; text-align: center; color: var(--muted); }
+
+.table-foot { display: flex; align-items: center; justify-content: flex-end; gap: 6px; padding: 12px 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
+
+.table-foot span { margin-right: 10px; }
+
+.page-arrow { width: 34px; height: 34px; border-radius: 8px; border: 0; background: transparent; color: var(--ink); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+
+.page-arrow:hover { background: var(--input); }
+
+.page-arrow:disabled { opacity: 0.35; cursor: default; }
+
+.page-arrow svg { width: 18px; height: 18px; }
+
+/* The newsletter list: one row per issue, its day on a badge, the people in it
+   as small faces, the next issue ringed and past ones quiet. */
+.issue { display: flex; align-items: center; gap: 16px; padding: 12px 16px 12px 14px; border-top: 1px solid var(--line); text-decoration: none; color: inherit; position: relative; }
+
+.issue:first-child { border-top: 0; }
+
+.issue:hover { background: #fbfbfb; }
+
+.issue.is-past { opacity: 0.6; }
+
+.issue.is-next::before { content: ''; position: absolute; left: 0; top: 6px; bottom: 6px; width: 4px; border-radius: 0 3px 3px 0; background: var(--accent); }
+
+.issue-badge { width: 54px; flex-shrink: 0; border-radius: 10px; background: #e2f0ef; color: var(--brand); text-align: center; padding: 6px 0 7px; line-height: 1.1; }
+
+.issue-badge-month { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+
+.issue-badge-day { font-size: 22px; font-weight: 700; }
+
+.issue.is-next .issue-badge { background: var(--brand); color: #fff; }
+
+.issue.is-next .issue-badge-month { color: rgba(255, 255, 255, 0.8); }
+
+.issue-body { flex: 1; min-width: 0; }
+
+.issue-title { font-weight: 700; font-size: 16px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+.issue-next { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); background: #dff0f3; padding: 2px 8px; border-radius: 999px; }
+
+.issue-people { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 6px; font-size: 14px; color: #33474c; }
+
+.issue-person { display: inline-flex; align-items: center; gap: 6px; }
+
+.issue-person .thumb.tiny { width: 26px; height: 26px; font-size: 12px; }
+
+.issue-none { color: var(--muted); font-size: 14px; }
+
+.issue-side { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+
+.issue-count { padding: 4px 12px; border-radius: 999px; background: #dff0f3; color: #1f6d73; font-size: 13px; font-weight: 600; white-space: nowrap; }
+
+.issue-count.is-empty { background: var(--input); color: var(--muted); }
+
+.issue .chevron { width: 18px; height: 18px; color: var(--muted); }
+
+/* The charity form's suggestion: the link and, beside it, how it is going. */
+.suggest-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: -8px; }
+
+.suggest-status { font-size: 13px; color: var(--muted); }
+
+.link-button:disabled { opacity: 0.5; cursor: default; }
+
+/* The team card in Admin Tools: one group per role. */
+.admin .team-group { margin-top: 18px; }
+
+.admin .team-group h3 { margin: 0 0 4px; font-size: 16px; }

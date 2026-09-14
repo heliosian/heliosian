@@ -1,4 +1,4 @@
-import {state, isAdmin, charityPath} from '../state.js';
+import {state, isAdmin, charityPath, staffPath} from '../state.js';
 import {el, link, svg, button, tabs, pageHead} from '../dom.js';
 import {setTitle, setSearch} from '../chrome.js';
 import {charityRow, emptyPanel} from '../cards.js';
@@ -73,9 +73,6 @@ export function charityPage(c) {
   anchor.rel = 'noopener';
   linkFact.append(el('div', 'fact-label', 'Donation Link'), anchor);
   facts.append(linkFact);
-  const einFact = el('div', 'fact');
-  einFact.append(el('div', 'fact-label', 'EIN'), el('div', 'fact-value', c.ein || 'Unknown'));
-  facts.append(einFact);
   if (c.addedOn) {
     const added = el('div', 'fact');
     added.append(el('div', 'fact-label', 'Added'), el('div', 'fact-value', c.addedOn));
@@ -87,7 +84,7 @@ export function charityPage(c) {
     page.append(el('h2', 'section', 'Chosen by'));
     const panel = el('div', 'panel');
     for (const sv of chosen) {
-      const row = link(`/staff/${encodeURIComponent(sv.email)}`, 'row is-link');
+      const row = link(staffPath(sv), 'row is-link');
       const rb = el('div', 'row-body');
       rb.append(el('div', 'row-title', sv.name), el('div', 'row-text', sv.donation && sv.donation.charity === c.name ? 'This year' : 'Last year'));
       row.append(rb);

@@ -140,6 +140,7 @@ var layouts = map[string][]tab{
 		{"Newsletter Dates", birthday.NewsletterDateColumns},
 		{"Settings", birthday.SettingColumns},
 		{"Admins", birthday.AdminColumns},
+		{"Team", birthday.TeamColumns},
 		{"Change Log", birthday.ChangeLogColumns},
 	},
 	"Celebrate": {

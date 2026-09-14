@@ -1,4 +1,4 @@
-import {longDate, mediumDate, isUnassigned, staffPath, charityPath, staffFor, stageClass} from './state.js';
+import {longDate, mediumDate, isUnassigned, staffPath, charityPath, stageClass, stageName} from './state.js';
 import {el, link, svg, thumb, button, menu} from './dom.js';
 import {assignToMe, markContacted} from './edit.js';
 
@@ -15,7 +15,7 @@ export function staffRow(sv, options) {
     label.append(el('span', '', sv.jobTitle));
   }
   if (opts.stage && sv.stage) {
-    label.append(el('span', 'stage-chip ' + stageClass(sv.stage), sv.stage));
+    label.append(el('span', 'stage-chip ' + stageClass(sv.stage), stageName(sv.stage)));
   }
   body.append(label, el('div', 'row-title', sv.name));
   const lines = [];
@@ -51,7 +51,6 @@ export function charityRow(c, items) {
   const row = link(charityPath(c), 'row is-link');
   const body = el('div', 'row-body');
   const label = el('div', 'label');
-  label.append(el('span', '', c.ein ? `EIN: ${c.ein}` : 'EIN: unknown'));
   if (!c.allowed) {
     label.append(el('span', 'need', c.whyNotAllowed || 'Not allowed'));
   }
@@ -62,23 +61,6 @@ export function charityRow(c, items) {
   row.append(body);
   const actions = el('div', 'row-actions');
   actions.append(menu(items));
-  row.append(actions);
-  return row;
-}
-
-export function newsletterRow(date, items) {
-  const row = el('div', 'row');
-  const body = el('div', 'row-body');
-  const people = staffFor(date);
-  body.append(el('div', 'label', `${people.length} staff`), el('div', 'row-title', longDate(date)));
-  if (people.length) {
-    body.append(el('div', 'row-text', people.map(sv => sv.name.split(' ')[0]).join(', ')));
-  }
-  row.append(body);
-  const actions = el('div', 'row-actions');
-  for (const item of items) {
-    actions.append(item);
-  }
   row.append(actions);
   return row;
 }

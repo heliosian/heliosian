@@ -60,6 +60,10 @@ func (fakeDirectory) Person(email string) (Person, bool) {
 
 func (fakeDirectory) Staff() []Person { return staff }
 
+func (fakeDirectory) People() []Person {
+	return append([]Person{{Email: admin, Name: "Jordan Whitfield"}}, staff...)
+}
+
 func (fakeDirectory) Alerts(string) (int, bool) { return 0, false }
 
 func (fakeDirectory) Departments() []string {
@@ -76,7 +80,7 @@ func newServer(t *testing.T) (*Cache, *http.ServeMux) {
 		t.Fatal(err)
 	}
 	mux := http.NewServeMux()
-	Register(mux, cache, dir, syncQueue{}, fakeDirectory{}, func() []string { return []string{admin} })
+	Register(mux, cache, dir, syncQueue{}, fakeDirectory{}, func() []string { return []string{admin} }, nil)
 	return cache, mux
 }
 
@@ -399,10 +403,58 @@ func TestCharities(t *testing.T) {
 	}
 }
 
+func TestTeam(t *testing.T) {
+	cache, mux := newServer(t)
+	if rec := call(t, mux, parent, "POST", "/api/admin/team", map[string]any{"email": "robin.whitfield@heliosschool.org", "role": RoleVolunteer}); rec.Code != http.StatusForbidden {
+		t.Fatalf("a non-admin added a team member: %d", rec.Code)
+	}
+	if rec := call(t, mux, admin, "POST", "/api/admin/team", map[string]any{"email": "robin.whitfield@heliosschool.org", "role": "Boss"}); rec.Code != http.StatusBadRequest {
+		t.Fatalf("an unknown role was accepted: %d", rec.Code)
+	}
+	for _, role := range []string{RoleVolunteer, RoleComms, RoleVolunteer} {
+		if rec := call(t, mux, admin, "POST", "/api/admin/team", map[string]any{"email": "Robin.Whitfield@heliosschool.org ", "role": role}); rec.Code != http.StatusNoContent {
+			t.Fatalf("add %s: %d %s", role, rec.Code, rec.Body)
+		}
+	}
+	roles := func(email string) []string {
+		out := []string{}
+		for _, m := range cache.Model().Team {
+			if m.Email == email {
+				out = append(out, m.Role)
+			}
+		}
+		return out
+	}
+	// The sample already has Robin as a volunteer, so the repeat adds nothing and the comms role is one row.
+	if got := roles("robin.whitfield@heliosschool.org"); len(got) != 2 || got[0] != RoleVolunteer || got[1] != RoleComms {
+		t.Fatalf("roles after adding: %v", got)
+	}
+	if rec := call(t, mux, admin, "DELETE", "/api/admin/team", map[string]any{"email": "robin.whitfield@heliosschool.org", "role": RoleVolunteer}); rec.Code != http.StatusNoContent {
+		t.Fatalf("remove: %d %s", rec.Code, rec.Body)
+	}
+	if got := roles("robin.whitfield@heliosschool.org"); len(got) != 1 || got[0] != RoleComms {
+		t.Fatalf("roles after removing: %v", got)
+	}
+	if rec := call(t, mux, admin, "POST", "/api/admin/team", map[string]any{"email": "someone.new@gmail.com", "role": RoleVolunteer}); rec.Code != http.StatusNoContent {
+		t.Fatalf("add by address: %d %s", rec.Code, rec.Body)
+	}
+	v := view(t, cache, parent)
+	byEmail := map[string]TeamView{}
+	for _, m := range v.Team {
+		byEmail[m.Email+m.Role] = m
+	}
+	if m := byEmail["someone.new@gmail.comVolunteer"]; m.Name != "Someone New" {
+		t.Fatalf("someone outside the directory should be named from their address: %+v", v.Team)
+	}
+}
+
 func TestNewsletterDates(t *testing.T) {
 	cache, mux := newServer(t)
 	if rec := call(t, mux, parent, "POST", "/api/birthday/newsletter-date", map[string]any{"date": "2027-06-11"}); rec.Code != http.StatusForbidden {
 		t.Fatalf("a non-admin added a date: %d", rec.Code)
+	}
+	if rec := call(t, mux, parent, "PUT", "/api/birthday/newsletter-date", map[string]any{"original": "2027-06-04", "date": "2027-06-05"}); rec.Code != http.StatusForbidden {
+		t.Fatalf("a non-admin moved a date: %d", rec.Code)
 	}
 	if rec := call(t, mux, admin, "POST", "/api/birthday/newsletter-date", map[string]any{"date": "2027-06-04"}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("a duplicate date was accepted: %d", rec.Code)
@@ -413,7 +465,25 @@ func TestNewsletterDates(t *testing.T) {
 	if tom := find(view(t, cache, parent).Staff, "tom.grady@heliosschool.org"); tom.NewsletterDate != "2027-06-11" {
 		t.Fatalf("the summer newsletter did not move: %+v", tom)
 	}
-	if rec := call(t, mux, admin, "DELETE", "/api/birthday/newsletter-date", map[string]any{"date": "2027-06-11"}); rec.Code != http.StatusNoContent {
+	if rec := call(t, mux, admin, "PUT", "/api/birthday/newsletter-date", map[string]any{"original": "2027-06-11", "date": "2027-06-04"}); rec.Code != http.StatusBadRequest {
+		t.Fatalf("a date was moved onto another: %d", rec.Code)
+	}
+	if rec := call(t, mux, admin, "PUT", "/api/birthday/newsletter-date", map[string]any{"original": "2027-07-01", "date": "2027-07-02"}); rec.Code != http.StatusNotFound {
+		t.Fatalf("a date that is not on the list was moved: %d", rec.Code)
+	}
+	if rec := call(t, mux, admin, "PUT", "/api/birthday/newsletter-date", map[string]any{"original": "2027-06-11", "date": "2027-06-18"}); rec.Code != http.StatusNoContent {
+		t.Fatalf("move date: %d %s", rec.Code, rec.Body)
+	}
+	if tom := find(view(t, cache, parent).Staff, "tom.grady@heliosschool.org"); tom.NewsletterDate != "2027-06-18" {
+		t.Fatalf("the summer newsletter did not follow the move: %+v", tom)
+	}
+	if rec := call(t, mux, admin, "PUT", "/api/birthday/newsletter-date", map[string]any{"original": "2026-10-23", "date": "2026-10-22"}); rec.Code != http.StatusNoContent {
+		t.Fatalf("move the overridden date: %d %s", rec.Code, rec.Body)
+	}
+	if kate := find(view(t, cache, parent).Staff, "kate.doyle@heliosschool.org"); kate.Override != "2026-10-22" || kate.NewsletterDate != "2026-10-22" {
+		t.Fatalf("the override did not move with its date: %+v", kate)
+	}
+	if rec := call(t, mux, admin, "DELETE", "/api/birthday/newsletter-date", map[string]any{"date": "2027-06-18"}); rec.Code != http.StatusNoContent {
 		t.Fatalf("remove date: %d %s", rec.Code, rec.Body)
 	}
 	if len(cache.Model().NewsletterDates) != 57 {

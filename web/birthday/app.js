@@ -1,4 +1,4 @@
-import {applyModel, staff, charity} from './state.js';
+import {state, applyModel, staff, charity} from './state.js';
 import {el} from './dom.js';
 import {initChrome, renderChrome, setTitle, clearSearch} from './chrome.js';
 import {initModal} from './edit.js';
@@ -7,7 +7,7 @@ import {processPage} from './pages/process.js';
 import {calendarPage} from './pages/calendar.js';
 import {staffPage} from './pages/staff.js';
 import {charitiesPage, charityPage} from './pages/charities.js';
-import {newslettersPage} from './pages/newsletters.js';
+import {newslettersPage, newsletterPage} from './pages/newsletters.js';
 import {skippedPage} from './pages/skipped.js';
 import {adminPage} from './pages/admin.js';
 
@@ -51,7 +51,7 @@ function route() {
       return c ? charityPage(c) : notFound(parts[1]);
     }
     case 'newsletters':
-      return newslettersPage();
+      return parts[1] && state.model.newsletterDates.includes(parts[1]) ? newsletterPage(parts[1]) : parts[1] ? notFound(parts[1]) : newslettersPage();
     case 'skipped':
       return skippedPage();
     case 'admin':

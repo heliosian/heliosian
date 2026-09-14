@@ -42,7 +42,8 @@ const (
 		"PEXELS_KEY=heliosian-pexels-key:latest," +
 		"PIXABAY_KEY=heliosian-pixabay-key:latest," +
 		"RESEND_KEY=heliosian-resend-key:latest," +
-		"GITHUB_TOKEN=heliosian-github-token:latest"
+		"GITHUB_TOKEN=heliosian-github-token:latest," +
+		"ANTHROPIC_API_KEY=heliosian-anthropic-key:latest"
 )
 
 func requiredEnv(name string) string {

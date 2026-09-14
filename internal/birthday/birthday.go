@@ -26,6 +26,7 @@ const (
 	newsletterDatesTab = "Newsletter Dates"
 	settingsTab        = "Settings"
 	adminsTab          = "Admins"
+	teamTab            = "Team"
 	changeLogTab       = "Change Log"
 )
 
@@ -62,6 +63,16 @@ const (
 	NoNewsletterNoteKey = "No Newsletter Note"
 )
 
+// The roles on the Team tab: volunteers work the birthdays and are offered
+// when one is assigned; the comms team carries the donations into the
+// newsletter.
+const (
+	RoleVolunteer = "Volunteer"
+	RoleComms     = "Comms Team"
+)
+
+var Roles = []string{RoleVolunteer, RoleComms}
+
 var settingKeys = []string{DefaultCharityKey, YearStartKey, EmailSubjectKey, EmailBodyKey, NoNewsletterNoteKey}
 
 var (
@@ -74,6 +85,7 @@ var (
 	NewsletterDateColumns = []string{"Date"}
 	SettingColumns        = []string{"Key", "Value"}
 	AdminColumns          = []string{"Email"}
+	TeamColumns           = []string{"Email", "Role"}
 	ChangeLogColumns      = []string{"Timestamp", "Actor", "Action", "Kind", "Email", "Year", "Details"}
 )
 
@@ -140,6 +152,12 @@ type Settings struct {
 	NoNewsletterNote string `json:"noNewsletterNote"`
 }
 
+// TeamMember is one person in one role on the Team tab.
+type TeamMember struct {
+	Email string `json:"email"`
+	Role  string `json:"role"`
+}
+
 // Model is the sheet organized: birthdays in row order, the per-year progress
 // tables keyed by email and year, charities by name, and the newsletter dates
 // sorted.
@@ -151,6 +169,7 @@ type Model struct {
 	Notes           []Note
 	Charities       []Charity
 	NewsletterDates []string
+	Team            []TeamMember
 	Settings        Settings
 	byEmail         map[string]*Birthday
 	byCharity       map[string]*Charity
@@ -205,6 +224,7 @@ type Tables struct {
 	NewsletterDates []map[string]string
 	Settings        []map[string]string
 	Admins          []map[string]string
+	Team            []map[string]string
 }
 
 func ReadTables(source data.Source) (*Tables, error) {
@@ -223,8 +243,9 @@ func ReadTables(source data.Source) (*Tables, error) {
 	dates := &table{name: newsletterDatesTab, want: NewsletterDateColumns}
 	settings := &table{name: settingsTab, want: SettingColumns}
 	admins := &table{name: adminsTab, want: AdminColumns}
+	team := &table{name: teamTab, want: TeamColumns}
 	changeLog := &table{name: changeLogTab, want: ChangeLogColumns}
-	read := []*table{birthdays, assignments, outreach, donations, notes, charities, dates, settings, admins}
+	read := []*table{birthdays, assignments, outreach, donations, notes, charities, dates, settings, admins, team}
 	names := []string{}
 	for _, t := range read {
 		names = append(names, t.name)
@@ -242,7 +263,7 @@ func ReadTables(source data.Source) (*Tables, error) {
 	return &Tables{
 		Birthdays: birthdays.rows, Assignments: assignments.rows,
 		Outreach: outreach.rows, Donations: donations.rows, Notes: notes.rows, Charities: charities.rows,
-		NewsletterDates: dates.rows, Settings: settings.rows, Admins: admins.rows,
+		NewsletterDates: dates.rows, Settings: settings.rows, Admins: admins.rows, Team: team.rows,
 	}, nil
 }
 
@@ -356,7 +377,22 @@ func BuildModel(tables *Tables) (*Model, error) {
 	model := &Model{
 		Birthdays: []Birthday{}, Assignments: map[string]Assignment{},
 		Outreach: map[string]Outreach{}, Donations: map[string]Donation{}, Notes: []Note{}, Charities: []Charity{},
-		NewsletterDates: []string{}, Settings: settings, byEmail: map[string]*Birthday{}, byCharity: map[string]*Charity{},
+		NewsletterDates: []string{}, Team: []TeamMember{}, Settings: settings, byEmail: map[string]*Birthday{}, byCharity: map[string]*Charity{},
+	}
+	seenRoles := map[string]bool{}
+	for _, row := range tables.Team {
+		email, role := strings.ToLower(strings.TrimSpace(row["Email"])), strings.TrimSpace(row["Role"])
+		if err := checkEmail(email); err != nil {
+			return nil, fmt.Errorf("team member %q: %w", row["Email"], err)
+		}
+		if !slices.Contains(Roles, role) {
+			return nil, fmt.Errorf("team member %s: role %q is not one of %s", email, role, strings.Join(Roles, ", "))
+		}
+		if seenRoles[email+"\x00"+role] {
+			continue
+		}
+		seenRoles[email+"\x00"+role] = true
+		model.Team = append(model.Team, TeamMember{Email: email, Role: role})
 	}
 	for _, row := range tables.Charities {
 		name := row["Name"]
@@ -593,6 +629,8 @@ func (t *Tables) tab(name string) []map[string]string {
 		return t.NewsletterDates
 	case settingsTab:
 		return t.Settings
+	case teamTab:
+		return t.Team
 	}
 	return t.Admins
 }
@@ -615,6 +653,8 @@ func (t *Tables) setTab(name string, rows []map[string]string) {
 		t.NewsletterDates = rows
 	case settingsTab:
 		t.Settings = rows
+	case teamTab:
+		t.Team = rows
 	default:
 		t.Admins = rows
 	}

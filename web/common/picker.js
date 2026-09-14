@@ -2,7 +2,8 @@
 // list of 400+ people doesn't get dumped into an unusable native <select>. Returns
 // an accessor: setPeople() replaces the searchable pool, value reads the selected
 // person's email (empty until a suggestion is actually chosen), and reset() clears
-// the typed text and selection after a pick is consumed.
+// the typed text and selection after a pick is consumed, and text reads what
+// was typed when no suggestion was chosen.
 export function createPersonPicker(mountEl) {
   mountEl.classList.add('person-picker');
   const input = document.createElement('input');
@@ -98,6 +99,11 @@ export function createPersonPicker(mountEl) {
     },
     get value() {
       return selected ? selected.email : '';
+    },
+    // text is what was typed when nothing was chosen, for a caller that also
+    // takes an address the list does not have.
+    get text() {
+      return selected ? '' : input.value.trim();
     },
     reset() {
       selected = null;
