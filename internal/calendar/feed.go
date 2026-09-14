@@ -64,7 +64,8 @@ func ICS(model *Model, f *Feed, linked []Linked, origin string, now time.Time) [
 	}
 	stamp := now.UTC().Format(icsStamp)
 	for _, e := range model.eventsFor(f.Email, linked) {
-		if !f.Carries(e) || model.AnswerOf(f.Email, e.ID) == AnswerHidden {
+		// The owner's own no, like their hiding it, keeps an event out.
+		if answer := model.AnswerOf(f.Email, e.ID); !f.Carries(e) || answer == AnswerHidden || answer == AnswerNo {
 			continue
 		}
 		lines = append(lines, "BEGIN:VEVENT", "UID:"+uidOf(e.ID), "DTSTAMP:"+stamp)

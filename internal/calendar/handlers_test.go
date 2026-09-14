@@ -321,8 +321,17 @@ func TestAnswers(t *testing.T) {
 	if strings.Contains(string(ICS(cache.Model(), f, nil, "https://when.local.heliosian.com:8080", now())), "SUMMARY:International Night") {
 		t.Errorf("a hidden event is in the owner's feed")
 	}
+	if rec := call(t, viewer, "POST", "/api/calendar/rsvp", `{"id":"a7@sample","answer":"no"}`); rec.Code != 204 {
+		t.Fatalf("no: %d %s", rec.Code, rec.Body)
+	}
+	if strings.Contains(string(ICS(cache.Model(), f, nil, "https://when.local.heliosian.com:8080", now())), "SUMMARY:International Night") {
+		t.Errorf("an event the owner said no to is in their feed")
+	}
 	if rec := call(t, viewer, "POST", "/api/calendar/rsvp", `{"id":"a7@sample","answer":""}`); rec.Code != 204 {
 		t.Fatalf("clear: %d %s", rec.Code, rec.Body)
+	}
+	if !strings.Contains(string(ICS(cache.Model(), f, nil, "https://when.local.heliosian.com:8080", now())), "SUMMARY:International Night") {
+		t.Errorf("a cleared answer left the event out of the feed")
 	}
 	if rec := call(t, viewer, "POST", "/api/calendar/rsvp", `{"id":"a7@sample","answer":"yes"}`); rec.Code != 204 {
 		t.Fatalf("yes: %d %s", rec.Code, rec.Body)

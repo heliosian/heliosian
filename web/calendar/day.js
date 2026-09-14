@@ -3,7 +3,7 @@
 // down a timeline. On a wide window it lives in the rail (chrome.js
 // draws it there for every page); on a phone the calendar page draws the
 // card at the top of the page.
-import {state, eventsOn, today, addDays, parseDate, formatDate, monthOf, shiftMonth, monthLabel, weekStart, weekdayLong, specials, isSchoolDay, dayTypeClass, eventTint, timeLine, eventPath, isMatch, isHidden} from './state.js';
+import {state, eventsOn, today, addDays, parseDate, formatDate, monthOf, shiftMonth, monthLabel, weekStart, weekdayLong, specials, isSchoolDay, dayTypeClass, eventTint, timeLine, eventPath, isMatch, isGray} from './state.js';
 import {el, link, svg, button} from './dom.js';
 import {planCards} from './events.js';
 
@@ -67,7 +67,7 @@ function miniMonth(date, paging) {
 // timelineRow is one event down the day's timeline: a dot in its color on
 // the line, then its hours, its title and its place.
 function timelineRow(e, date) {
-  const row = link(eventPath(e), 'timeline-row' + (isMatch(e) ? ' is-match' : '') + (isHidden(e) ? ' is-hidden' : ''));
+  const row = link(eventPath(e), 'timeline-row' + (isMatch(e) ? ' is-match' : '') + (isGray(e) ? ' is-hidden' : ''));
   const dot = el('span', 'timeline-dot');
   dot.style.background = eventTint(e);
   const body = el('span', 'timeline-body');

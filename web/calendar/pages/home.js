@@ -1,4 +1,4 @@
-import {state, eventsOn, today, addDays, parseDate, formatDate, longDayLabel, dayLabel, monthLabel, monthOf, shiftMonth, weekStart, specials, scheduleOn, isSchoolDay, dayTypeClass, dayTypeMatches, selectedClassrooms, eventTint, timeLine, eventPath, weekdayShort, call, isMatch, isHidden} from '../state.js';
+import {state, eventsOn, today, addDays, parseDate, formatDate, longDayLabel, dayLabel, monthLabel, monthOf, shiftMonth, weekStart, specials, scheduleOn, isSchoolDay, dayTypeClass, dayTypeMatches, selectedClassrooms, eventTint, timeLine, eventPath, weekdayShort, call, isMatch, isHidden, isGray} from '../state.js';
 import {el, link, svg, button, peopleLine} from '../dom.js';
 import {setTitle, setSearch, fillFilters, renderRailDay} from '../chrome.js';
 import {dayColumn} from '../day.js';
@@ -296,8 +296,8 @@ function dayCell(date, month) {
   const events = eventsOn(date);
   const room = Math.max(0, 3 - groups.length);
   for (const e of events.slice(0, room)) {
-    // An event the viewer hid is plain gray words, not a pill.
-    const pip = link(eventPath(e), 'month-pip' + (isMatch(e) ? ' is-match' : '') + (isHidden(e) ? ' is-hidden' : ''));
+    // An event the viewer hid, or said no to, is plain gray words, not a pill.
+    const pip = link(eventPath(e), 'month-pip' + (isMatch(e) ? ' is-match' : '') + (isGray(e) ? ' is-hidden' : ''));
     pip.style.setProperty('--c', eventTint(e));
     pip.append(el('span', 'month-pip-title', e.title));
     if (!e.allDay) {

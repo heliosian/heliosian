@@ -599,6 +599,13 @@ export function isHidden(e) {
   return answerOf(e) === 'hidden';
 }
 
+// isGray says whether the month and the timeline show an event in plain
+// gray rather than a pill: one the viewer hid, or said no to.
+export function isGray(e) {
+  const word = answerOf(e);
+  return word === 'hidden' || word === 'no';
+}
+
 // answer tells the calendar the viewer's word on an event and keeps it in
 // the model at once, so the page redraws without a reload: a yes puts the
 // event under Going, as the server files it, and taking the yes back lifts
