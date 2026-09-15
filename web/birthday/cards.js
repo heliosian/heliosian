@@ -1,6 +1,6 @@
 import {longDate, mediumDate, isUnassigned, staffPath, charityPath, stageClass, stageName, emailLink} from './state.js';
 import {el, link, svg, thumb, button, menu} from './dom.js';
-import {assignToMe, markContacted} from './edit.js';
+import {assignToMe, markContacted, openDonation, useDefault, markUsed} from './edit.js';
 
 export function staffRow(sv, options) {
   const opts = options || {};
@@ -40,6 +40,14 @@ export function staffRow(sv, options) {
       mail.append(svg('mail'), el('span', '', 'Compose Email'));
       mail.addEventListener('click', e => e.stopPropagation());
       actions.append(mail, button('Mark Contacted', 'check', 'button button-secondary button-small', () => markContacted(sv, true)));
+    }
+    // Whatever the stage, the row offers its next step.
+    if (sv.stage === 'Awaiting Response') {
+      actions.append(button('Record Donation', 'gift', 'button button-small', () => openDonation(sv)));
+      actions.append(button('Use Default', 'vault', 'button button-secondary button-small', () => useDefault(sv)));
+    }
+    if (sv.stage === 'Awaiting Newsletter') {
+      actions.append(button('Mark Used', 'circlecheck', 'button button-secondary button-small', () => markUsed(sv, true)));
     }
   }
   if (opts.menu) {

@@ -1,5 +1,5 @@
 import {state, me, team, isAdmin, isSystemAdmin, settings, charity, longDate, dateCell, parseDate, year} from './state.js';
-import {el, toast} from './dom.js';
+import {el, button, toast} from './dom.js';
 import {appOrigin} from '/toolbar.js';
 
 let modalState = null;
@@ -407,28 +407,11 @@ async function describeCharity(name, donationLink) {
   return res.json();
 }
 
-// openCharity is the charity form. A new charity starts with its name alone:
-// Generate Info has Claude find the donation page and write the sentence,
-// then the full form opens filled in for reading over; Enter Information
-// Manually opens it empty. An existing charity opens the full form directly.
+// openCharity is the charity form, whole: the name, then Generate with
+// Claude, which finds where to donate and writes the sentence into the
+// fields below for reading over, or the fields typed by hand.
 export function openCharity(c, options) {
-  if (c) {
-    openCharityForm(c, {}, options);
-    return;
-  }
-  const name = text('', {required: true, maxLength: 120});
-  const hint = el('div', 'field-note', 'Claude will look the charity up, find where to donate, and write a sentence for the newsletter - all yours to change before saving.');
-  openModal('Add Charity', [field('Name', name), hint], {
-    saveLabel: 'Generate Info',
-    working: 'Looking them up…',
-    stay: true,
-    submit: async () => {
-      const info = await describeCharity(name.value, '');
-      openCharityForm(null, {name: name.value, donationLink: info.donationLink, about: info.sentence, generated: true}, options);
-    },
-    alternate: {label: 'Enter Information Manually', onClick: () => openCharityForm(null, {name: name.value}, options)},
-    afterSave: options && options.afterSave,
-  });
+  openCharityForm(c, {}, options);
 }
 
 // openCharityForm is the full form, for an existing charity or a new one
@@ -445,13 +428,10 @@ function openCharityForm(c, start, options) {
   allowed.input.addEventListener('change', () => {
     whyField.hidden = allowed.input.checked;
   });
-  // Regenerate asks again, from the link as it now stands, filling both
-  // fields for the person to read over.
-  const suggestRow = el('div', 'field-note suggest-row');
-  const suggest = el('button', 'link-button', start.generated ? 'Generate again' : 'Generate with Claude');
-  suggest.type = 'button';
-  const suggestStatus = el('span', 'suggest-status', start.generated ? 'Found by Claude - read it over and change anything that is off.' : '');
-  suggest.addEventListener('click', async () => {
+  // Generate with Claude looks the charity up by its name and fills the link
+  // and the sentence below, for reading over; from the link too, when one is typed.
+  const suggestRow = el('div', 'suggest-row');
+  const suggest = button('Generate with Claude', 'sparkle', 'button button-secondary button-small', async () => {
     if (!name.value.trim()) {
       suggestStatus.textContent = 'Give the name first.';
       return;
@@ -462,15 +442,16 @@ function openCharityForm(c, start, options) {
       const info = await describeCharity(name.value, linkInput.value);
       linkInput.value = info.donationLink || linkInput.value;
       about.value = info.sentence;
-      suggestStatus.textContent = 'Found by Claude - read it over and change anything that is off.';
+      suggestStatus.textContent = 'Read it over and change anything that is off.';
     } catch (err) {
       suggestStatus.textContent = err.message;
     } finally {
       suggest.disabled = false;
     }
   });
+  const suggestStatus = el('span', 'suggest-status');
   suggestRow.append(suggest, suggestStatus);
-  const fields = [field('Name', name), field('Donation link', linkInput), field('About', about, 'A sentence for the newsletter'), suggestRow];
+  const fields = [field('Name', name), suggestRow, field('Donation link', linkInput), field('About', about, 'A sentence for the newsletter')];
   if (admin) {
     fields.push(allowed.wrap, whyField);
   }
