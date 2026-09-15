@@ -2,7 +2,7 @@ import {state, colors} from '../state.js';
 import {el, svg, thumbUrl, firstName, tabStrip, tabHref} from '../dom.js';
 import {familiesOf, familyOf} from '../families.js';
 import {personCard, personLink, photoOrInitials, cardMore, gradeChain} from '../people.js';
-import {tagNames} from '../tags.js';
+import {tagNames, onTagsChange} from '../tags.js';
 import {matchesFilters, familyMatchesFilters, roleChips, facetDropdown, gradeOptions, filterControl} from '../filters.js';
 import {resetMain, finishRender} from '../chrome.js';
 import {renderStaff} from './staff.js';
@@ -158,17 +158,38 @@ export function renderPeople() {
     facetDropdown('Grade', gradeOptions(), state.filterGrades, () => renderGrid()),
     facetDropdown('Classroom', state.model.classrooms.map(c => c.name), state.filterClassrooms, () => renderGrid()),
   );
-  if (isEveryone && tagNames().length) {
-    facetFilters.append(facetDropdown('Tags', tagNames(), state.filterTags, () => renderGrid()));
-  }
   controls.append(facetFilters, search);
-  // Small-screen stand-in for the Grade/Classroom/Tags dropdowns above: same
-  // filters, collapsed into one funnel-icon button so the mobile controls row
-  // doesn't have to fit every facet dropdown individually. CSS swaps which of
-  // the two is visible per breakpoint (see .facet-filters/.mobile-filter).
-  const mobileFilter = filterControl(() => renderGrid(), {role: false, city: false, pronouns: false, newToHelios: false, tags: isEveryone});
-  mobileFilter.classList.add('mobile-filter');
-  controls.append(mobileFilter);
+  let tagsFacet = null;
+  let mobileFilter = null;
+  const buildTagFilters = () => {
+    if (tagsFacet) {
+      tagsFacet.remove();
+      tagsFacet = null;
+    }
+    if (isEveryone && tagNames().length) {
+      tagsFacet = facetDropdown('Tags', tagNames(), state.filterTags, () => renderGrid());
+      facetFilters.append(tagsFacet);
+    }
+    // Small-screen stand-in for the Grade/Classroom/Tags dropdowns above: same
+    // filters, collapsed into one funnel-icon button so the mobile controls row
+    // doesn't have to fit every facet dropdown individually. CSS swaps which of
+    // the two is visible per breakpoint (see .facet-filters/.mobile-filter).
+    const next = filterControl(() => renderGrid(), {role: false, city: false, pronouns: false, newToHelios: false, tags: isEveryone});
+    next.classList.add('mobile-filter');
+    if (mobileFilter) {
+      mobileFilter.replaceWith(next);
+    } else {
+      controls.append(next);
+    }
+    mobileFilter = next;
+  };
+  buildTagFilters();
+  onTagsChange(() => {
+    buildTagFilters();
+    if (state.filterTags.size) {
+      renderGrid();
+    }
+  });
   header.append(controls);
   content.append(header);
 

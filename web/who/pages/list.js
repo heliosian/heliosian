@@ -2,7 +2,7 @@ import {state, byEmail} from '../state.js';
 import {el, svg, csvField, copyGlyph} from '../dom.js';
 import {familiesOf, familyOf, familySearchText} from '../families.js';
 import {personCard, personLink} from '../people.js';
-import {tagNames, tagControl} from '../tags.js';
+import {tagNames, tagControl, onTagsChange} from '../tags.js';
 import {saveTagRelations} from '../storage.js';
 import {matchesFilters, familyMatchesFilters, roleChips, facetDropdown, gradeOptions, filterControl, tagRelationOptions} from '../filters.js';
 import {resetMain} from '../chrome.js';
@@ -146,16 +146,32 @@ export function renderListPage() {
     facetDropdown('Grade', gradeOptions(), state.filterGrades, () => renderGrid()),
     facetDropdown('Classroom', state.model.classrooms.map(c => c.name), state.filterClassrooms, () => renderGrid()),
   );
-  if (tagNames().length) {
-    facetFilters.append(facetDropdown('Tags', tagNames(), state.filterTags, () => renderGrid()));
-  }
   controls.append(facetFilters);
-  // Small-screen stand-in for the Grade/Classroom/Tags dropdowns above, same as
-  // the Directory page's mobile-filter (see renderPeople) - collapses them into
-  // one funnel-icon button so the controls row doesn't wrap across several lines.
-  const mobileFilter = filterControl(() => renderGrid(), {role: false, city: false, pronouns: false, newToHelios: false});
-  mobileFilter.classList.add('mobile-filter');
-  controls.append(mobileFilter);
+  let tagsFacet = null;
+  let mobileFilter = null;
+  const buildTagFilters = () => {
+    if (tagsFacet) {
+      tagsFacet.remove();
+      tagsFacet = null;
+    }
+    if (tagNames().length) {
+      tagsFacet = facetDropdown('Tags', tagNames(), state.filterTags, () => renderGrid());
+      facetFilters.append(tagsFacet);
+    }
+    // Small-screen stand-in for the Grade/Classroom/Tags dropdowns above, same as
+    // the Directory page's mobile-filter (see renderPeople) - collapses them into
+    // one funnel-icon button so the controls row doesn't wrap across several lines.
+    const next = filterControl(() => renderGrid(), {role: false, city: false, pronouns: false, newToHelios: false});
+    next.classList.add('mobile-filter');
+    if (mobileFilter) {
+      mobileFilter.replaceWith(next);
+    } else {
+      controls.append(next);
+    }
+    mobileFilter = next;
+  };
+  buildTagFilters();
+  onTagsChange(buildTagFilters);
   // Only meaningful for a single tag - with several selected at once (or
   // none, as on the plain Everyone list) there's no one list to pull
   // relatives in from.

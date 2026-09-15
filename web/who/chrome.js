@@ -3,7 +3,7 @@ import {el, svg, segments, hue, firstName, thumbUrl} from './dom.js';
 import {saveNavOpen} from './storage.js';
 import {familyOf, myFamilyKey} from './families.js';
 import {personByKey, personLink, photoOrInitials, personPhotoUrl} from './people.js';
-import {tagNames} from './tags.js';
+import {tagNames, onTagsChange, onTagsChangeChrome} from './tags.js';
 import {clampFilterPanel, closeFilterPanels} from './filters.js';
 import {staleItems, familyInfoBanner, todoChecklist, familyNavPeople, personTodoCount} from './stale.js';
 import {topbarSearchInput, topbarSearchResults} from './search.js';
@@ -72,6 +72,7 @@ function updateMobileTitleInset() {
 export function resetMain(...children) {
   const main = document.querySelector('#main');
   main.replaceChildren();
+  onTagsChange(() => {});
   const seg = segments();
   // My Privacy already shows its own, more detailed version of this per field, so the
   // summary card here would just repeat what's right below it on that page.
@@ -249,6 +250,8 @@ export function renderNav() {
     renderMobileListsMenu();
   }
 }
+
+onTagsChangeChrome(renderNav);
 
 // Standalone iOS PWAs can settle 100dvh on a shorter value after an in-page
 // route change than they reported on first load, leaving fixed bottom bars

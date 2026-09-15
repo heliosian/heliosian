@@ -6,6 +6,17 @@ export function tagNames() {
   return Object.keys(tags).sort((a, b) => a.localeCompare(b));
 }
 
+let pageChanged = () => {};
+let chromeChanged = () => {};
+
+export function onTagsChange(fn) {
+  pageChanged = fn;
+}
+
+export function onTagsChangeChrome(fn) {
+  chromeChanged = fn;
+}
+
 // Same set of tags as tagNames(), ordered most-recently-used first (falling
 // back to alphabetical for tags this browser has no usage record for, e.g.
 // after clearing localStorage or on another device) - this is the order the
@@ -36,6 +47,8 @@ async function setTag(email, tag, on) {
       delete tags[tag];
     }
   }
+  chromeChanged();
+  pageChanged();
   const form = new FormData();
   form.append('person', email);
   form.append('tag', tag);
@@ -57,6 +70,7 @@ function tagMenu(email, onChange) {
     menu.querySelector(`.tag-option input[data-tag-name="${CSS.escape(name)}"]`)?.focus();
   };
   const render = () => {
+    const typed = menu.querySelector('.tag-new input')?.value || '';
     menu.replaceChildren();
     for (const name of tagNamesByRecency()) {
       const row = el('label', 'tag-option');
@@ -77,6 +91,7 @@ function tagMenu(email, onChange) {
     const input = el('input');
     input.placeholder = 'New tag';
     input.maxLength = 40;
+    input.value = typed;
     form.append(input);
     form.addEventListener('submit', async e => {
       e.preventDefault();
@@ -159,6 +174,7 @@ export function tagControl(email, wrapClass, buttonClass, onChange) {
     if (isTagged(email)) {
       // Already has at least one tag - just show them to review or adjust,
       // rather than guessing another one on top.
+      menu.refreshTags();
       menu.querySelector('.tag-option input')?.focus();
       return;
     }
@@ -187,6 +203,9 @@ export function tagControl(email, wrapClass, buttonClass, onChange) {
     let closeTimer = null;
     wrap.addEventListener('mouseenter', () => {
       clearTimeout(closeTimer);
+      if (menu.hidden) {
+        menu.refreshTags();
+      }
       menu.hidden = false;
     });
     wrap.addEventListener('mouseleave', () => {
