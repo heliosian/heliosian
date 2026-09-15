@@ -1,12 +1,15 @@
 package calendar
 
 import (
+	"context"
 	"encoding/json"
+	"heliosian/internal/mail"
 	"net/http"
 	"net/http/httptest"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"heliosian/internal/auth"
 	"heliosian/internal/data"
@@ -322,6 +325,79 @@ func TestDefaultCalendar(t *testing.T) {
 	}
 }
 
+// A sender that keeps what it is given.
+type keptMail struct{ sent []mail.Message }
+
+func (k *keptMail) Send(ctx context.Context, m mail.Message) error {
+	k.sent = append(k.sent, m)
+	return nil
+}
+
+// The admins hear of every event added: one to approve - an admin's own
+// too - and a direct-link one to know of.
+func TestAdminsToldOfSharedEvents(t *testing.T) {
+	t.Chdir("../..")
+	dir := &data.Dir{Root: "sampledata"}
+	cache, err := NewCache(dir, func() Roster { return roster }, nil, func(string) bool { return false }, directQueue{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := fakeDirectory{people: map[string]Person{"jordan.whitfield@heliosschool.org": {Email: "jordan.whitfield@heliosschool.org", Name: "Jordan", IsParent: true}}, kids: map[string][]Person{}}
+	kept := &keptMail{}
+	mux := http.NewServeMux()
+	Register(mux, cache, dir, directQueue{}, nil, d, func() []string { return nil }, func(string) []Linked { return nil }, ImageSearch{}, Mail{Sender: kept, From: "Helios Calendar <when@example.org>"})
+	parent := as("jordan.whitfield@heliosschool.org", mux)
+	admin := as("dana.hawkins@heliosschool.org", mux)
+	wait := func(n int) {
+		for i := 0; i < 50 && len(kept.sent) < n; i++ {
+			time.Sleep(20 * time.Millisecond)
+		}
+	}
+	call(t, parent, "POST", "/api/calendar/events", `{"title":"Bake sale","start":"2026-10-01 15:00","tags":["Jays","Community"]}`)
+	wait(1)
+	if len(kept.sent) != 1 || !strings.HasPrefix(kept.sent[0].Subject, "Event to approve: Bake sale") || !slices.Contains(kept.sent[0].To, "dana.hawkins@heliosschool.org") || !strings.Contains(kept.sent[0].Text, "Jordan") || !strings.Contains(kept.sent[0].HTML, "Review the event") {
+		t.Errorf("public event mail = %+v", kept.sent)
+	}
+	call(t, parent, "POST", "/api/calendar/events", `{"title":"Sam\u2019s party","start":"2026-10-03 14:00","tags":["Jays"],"inviteOnly":true}`)
+	wait(2)
+	if len(kept.sent) != 2 || !strings.HasPrefix(kept.sent[1].Subject, "Direct-link event added: Sam") || !strings.Contains(kept.sent[1].HTML, "See the event") || strings.Contains(kept.sent[1].Text, "waiting for approval") {
+		t.Errorf("direct-link event mail = %+v", kept.sent)
+	}
+	call(t, admin, "POST", "/api/calendar/events", `{"title":"Admin's own","start":"2026-10-05","tags":["Jays"]}`)
+	wait(3)
+	if len(kept.sent) != 3 || !strings.HasPrefix(kept.sent[2].Subject, "Event to approve: Admin's own") {
+		t.Errorf("an admin's own public event waits and is mailed about too: %+v", kept.sent)
+	}
+	// The host turning the direct-link event public puts it up for
+	// approval - the admins told again - while its link keeps working.
+	var v View
+	rec := call(t, parent, "GET", "/api/calendar/model", "")
+	json.NewDecoder(rec.Body).Decode(&v)
+	var party *Event
+	for _, e := range v.Events {
+		if strings.HasPrefix(e.Title, "Sam") {
+			party = e
+		}
+	}
+	if party == nil {
+		t.Fatal("the party is not in the host's view")
+	}
+	if rec := call(t, parent, "PUT", "/api/calendar/events", `{"id":"`+party.ID+`","title":"`+party.Title+`","start":"2026-10-03 14:00","tags":["Jays"],"inviteOnly":false}`); rec.Code != 204 {
+		t.Fatalf("switch to public: %d %s", rec.Code, rec.Body)
+	}
+	wait(4)
+	if e := cache.Model().Event(party.ID); e == nil || !e.Pending || len(kept.sent) != 4 || !strings.HasPrefix(kept.sent[3].Subject, "Event to approve: Sam") {
+		t.Errorf("after the switch: event %+v, mail %d", e, len(kept.sent))
+	}
+	other := as("robin.whitfield@heliosschool.org", mux)
+	if rec := call(t, other, "GET", "/api/calendar/event?id="+party.ID, ""); rec.Code != 200 {
+		t.Errorf("the link of an event waiting for approval: %d", rec.Code)
+	}
+	if rec := call(t, other, "POST", "/api/calendar/rsvp", `{"id":"`+party.ID+`","answer":"yes"}`); rec.Code != 204 {
+		t.Errorf("a yes by link while waiting: %d %s", rec.Code, rec.Body)
+	}
+}
+
 // An admin adds an event, repeated every so many weeks, and replaces an
 // event's search words; a parent shares an event, which waits for an
 // admin's approval, and can do nothing else.
@@ -334,6 +410,16 @@ func TestAdminAddsAndCorrects(t *testing.T) {
 	}
 	var made struct{ IDs []string }
 	json.NewDecoder(rec.Body).Decode(&made)
+	// An admin's public events wait for approval like anyone's; approved,
+	// they are on.
+	for _, id := range made.IDs {
+		if e := cache.Model().Event(id); e == nil || !e.Pending {
+			t.Errorf("an admin's event went straight on: %+v", e)
+		}
+		if rec := call(t, admin, "POST", "/api/calendar/events/approve", `{"id":"`+id+`"}`); rec.Code != 204 {
+			t.Fatalf("approve %s: %d", id, rec.Code)
+		}
+	}
 	if len(made.IDs) != 3 {
 		t.Fatalf("ids = %v", made.IDs)
 	}
@@ -383,6 +469,16 @@ func TestAdminAddsAndCorrects(t *testing.T) {
 	}
 	if e := cache.Model().Event(shared.IDs[0]); e == nil || !e.Pending || cache.Model().Event(shared.IDs[0]) != cache.Model().Pending[len(cache.Model().Pending)-1] {
 		t.Errorf("shared event = %+v", e)
+	}
+	// The host is going to their own event, which their view carries once.
+	if cache.Model().AnswerOf("jordan.whitfield@heliosschool.org", shared.IDs[0]) != AnswerYes {
+		t.Errorf("the host is not going to their own event")
+	}
+	var hostView View
+	rec = call(t, parent, "GET", "/api/calendar/model", "")
+	json.NewDecoder(rec.Body).Decode(&hostView)
+	if n := len(slices.DeleteFunc(slices.Clone(hostView.Events), func(e *Event) bool { return e.ID != shared.IDs[0] })); n != 1 {
+		t.Errorf("the host's view carries their event %d times", n)
 	}
 	for _, e := range cache.Model().Events {
 		if e.ID == shared.IDs[0] {

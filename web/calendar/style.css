@@ -699,6 +699,14 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .chip-tag { background: #fff; border: 1px solid var(--line); color: var(--muted); }
 
+.chip-status-public { background: #e3f3ea; color: #1d6b48; }
+
+.chip-status-link { background: #eef6f5; color: var(--accent); border: 1px dotted var(--accent); }
+
+.chip-status-pending { background: #fff8e8; color: #8a5a00; border: 1px dashed var(--amber); }
+
+.chip-status-declined { background: #fbeeee; color: #b3261e; border: 1px dashed #b3261e; }
+
 .chip-day { color: #fff; background: var(--other); }
 
 .chip-day.dt-no-school { background: var(--no-school); }
@@ -1001,12 +1009,26 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .event-visibility-note { font-size: 12.5px; color: var(--muted); line-height: 1.4; }
 
-.event-add-picture { margin: 2px 0 8px; padding-left: 0; }
-
-.event-add-picture svg { width: 15px; height: 15px; }
-
 /* The event form's picture: the categories' control, larger. */
 .event-image-row .admin-image-pick { width: 120px; height: 68px; }
+
+/* The approvals badge: the count badge in amber rather than the alert red,
+   its card listing each waiting event as a chip that opens its page. */
+.approve-alert span { background: var(--amber); }
+
+.approve-alert + .topbar-alert-menu .alert-card, .topbar-alert-wrap:has(.approve-alert) .alert-card { background: #fff8e8; border-color: var(--amber); }
+
+.topbar-alert-wrap:has(.approve-alert) .alert-card-title { color: #8a5a00; }
+
+.approve-chips { display: flex; flex-direction: column; gap: 6px; margin: 10px 0 12px; }
+
+.approve-chip { display: flex; flex-direction: column; gap: 1px; padding: 8px 12px; border: 1.5px dashed var(--amber); border-radius: 10px; background: #fff8e8; text-decoration: none; color: var(--ink); }
+
+.approve-chip:hover { background: #fff1d1; }
+
+.approve-chip-title { font-size: 13.5px; font-weight: 700; color: var(--brand); }
+
+.approve-chip-note { font-size: 12px; color: var(--muted); }
 
 .admin-pending-head { margin: 4px 0 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #8a5a00; }
 
@@ -1032,7 +1054,7 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .pending-band.is-invite > svg { color: var(--accent); }
 
-.pending-band { display: flex; align-items: center; gap: 14px; margin: 16px 0 0; padding: 14px 18px; border: 1.5px dashed var(--amber); border-radius: 14px; background: #fff8e8; color: #6a4a00; }
+.pending-band { display: flex; align-items: center; gap: 14px; margin: 16px 0 20px; padding: 14px 18px; border: 1.5px dashed var(--amber); border-radius: 14px; background: #fff8e8; color: #6a4a00; }
 
 .pending-band > svg { width: 26px; height: 26px; flex-shrink: 0; color: var(--amber); }
 
@@ -1179,6 +1201,27 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 .detail-hero { position: relative; height: 300px; margin: 0 0 24px; border-radius: 16px; overflow: hidden; background: var(--input); }
 
 .detail-hero img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* The strip across the banner's foot that changes its picture. */
+.hero-image-bar { position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-radius: 0 0 16px 16px; background: linear-gradient(180deg, rgba(10, 50, 54, 0), rgba(10, 50, 54, 0.82)); }
+
+.hero-image-action { display: inline-flex; align-items: center; gap: 7px; padding: 7px 12px; border: 0; border-radius: 999px; background: rgba(255, 255, 255, 0.92); color: var(--brand); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+
+.hero-image-action:hover { background: #fff; }
+
+.hero-image-action svg { width: 15px; height: 15px; }
+
+.hero-image-status { color: #fff; font-size: 13px; font-weight: 600; }
+
+.hero-image-menu-holder { position: relative; display: inline-block; }
+
+.hero-image-menu { position: absolute; left: 0; bottom: calc(100% + 8px); min-width: 190px; background: #fff; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); padding: 6px 0; z-index: 5; }
+
+.hero-image-menu-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 14px; border: 0; background: none; font: inherit; font-size: 14px; color: var(--ink); text-align: left; cursor: pointer; }
+
+.hero-image-menu-item:hover { background: var(--input); }
+
+.hero-image-menu-item svg { width: 16px; height: 16px; color: var(--brand); }
 
 .hero-date { position: absolute; top: 20px; right: 20px; display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 150px; padding: 12px 18px 14px; border-radius: 14px; background: rgba(255, 255, 255, 0.94); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18); text-align: center; }
 

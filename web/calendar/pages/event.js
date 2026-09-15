@@ -1,6 +1,7 @@
 import {state, daysLine, timeLine, calendarLink, sourceWords, dayType, eventDates, dayTypeClass, linkURL, call, isParty, mineWords, eventImage, weekdayShort, parseDate, spansDays, monthLabel, monthOf, answerOf, answer, eventPath} from '../state.js';
 import {el, link, svg, paragraphs, button, toast, avatar, peopleLine, popup, copyText} from '../dom.js';
 import {eventForm} from '../eventform.js';
+import {uploadImage, openImageSearch} from '../images.js';
 import {appOrigin} from '/toolbar.js';
 import {setTitle} from '../chrome.js';
 import {audienceChips, blocks} from '../events.js';
@@ -20,7 +21,95 @@ function hero(e) {
   date.append(el('span', 'hero-day', parseDate(first).toLocaleDateString('en-US', {month: 'short', day: 'numeric'})));
   date.append(el('span', 'hero-time', spansDays(e) ? daysLine(e) : timeLine(e)));
   wrap.append(date);
+  // The poster's or an admin's hand-added event takes a picture from the
+  // strip across the banner's foot, the way the other apps' pages do.
+  if (e.source === 'sheet' && (state.model.user.isAdmin || e.addedBy === state.model.user.email)) {
+    wrap.append(heroImageBar(e));
+  }
   return wrap;
+}
+
+// sheetTags are an event's tags as its sheet row holds them: without the
+// built-in ones the model adds (Misc, Going and the apps').
+function sheetTags(e) {
+  const builtIn = new Set(state.model.tags.filter(t => t.builtIn).map(t => t.name));
+  return e.tags.filter(t => !builtIn.has(t));
+}
+
+// heroImageBar is the strip across the foot of the banner: upload a
+// picture, find one in the image libraries, or take the event's own off -
+// each saved onto the event at once.
+function heroImageBar(e) {
+  const bar = el('div', 'hero-image-bar');
+  const save = async image => {
+    const body = {
+      id: e.id, title: e.title, start: e.start, end: e.end, location: e.location || '', description: e.description || '',
+      tags: sheetTags(e), keywords: e.keywords || [], source: e.sourceUrl || e.sourceNote || '', image, inviteOnly: Boolean(e.inviteOnly),
+    };
+    const res = await fetch('/api/calendar/events', {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+    if (!res.ok) {
+      toast(await res.text());
+      return;
+    }
+    toast(image ? 'Picture saved' : 'Picture removed');
+    const {load} = await import('../app.js');
+    await load();
+  };
+  const file = el('input');
+  file.type = 'file';
+  file.accept = 'image/*';
+  file.hidden = true;
+  file.addEventListener('change', async () => {
+    if (!file.files.length) {
+      return;
+    }
+    bar.replaceChildren(el('span', 'hero-image-status', 'Uploading\u2026'));
+    try {
+      const made = await uploadImage(file.files[0]);
+      await save(made.name);
+    } catch (err) {
+      toast(err.message);
+    }
+  });
+  const holder = el('div', 'hero-image-menu-holder');
+  const toggle = el('button', 'hero-image-action');
+  toggle.type = 'button';
+  toggle.setAttribute('aria-haspopup', 'menu');
+  toggle.append(svg('image'), el('span', '', e.image ? 'Replace image' : 'Add an image'), svg('down'));
+  const menu = el('div', 'hero-image-menu');
+  menu.hidden = true;
+  const item = (icon, words, onClick) => {
+    const b = el('button', 'hero-image-menu-item');
+    b.type = 'button';
+    b.append(svg(icon), el('span', '', words));
+    b.addEventListener('click', () => {
+      menu.hidden = true;
+      onClick();
+    });
+    menu.append(b);
+  };
+  item('image', 'Upload image', () => file.click());
+  item('search', 'Find an image', () => openImageSearch(e.title, name => save(name)));
+  toggle.addEventListener('click', ev => {
+    ev.stopPropagation();
+    menu.hidden = !menu.hidden;
+    if (!menu.hidden) {
+      document.addEventListener('click', () => {
+        menu.hidden = true;
+      }, {once: true});
+    }
+  });
+  menu.addEventListener('click', ev => ev.stopPropagation());
+  holder.append(toggle, menu, file);
+  bar.append(holder);
+  if (e.image) {
+    const remove = el('button', 'hero-image-action');
+    remove.type = 'button';
+    remove.append(svg('trash'), el('span', '', 'Remove'));
+    remove.addEventListener('click', () => save(''));
+    bar.append(remove);
+  }
+  return bar;
 }
 
 export function eventPage(e) {
@@ -60,6 +149,12 @@ export function eventPage(e) {
     marks.append(el('span', 'chip chip-day ' + dayTypeClass(e.dayType), e.dayType));
   }
   marks.append(audienceChips(e));
+  // A hand-added event says how it is shared: public, direct link only,
+  // waiting for approval, or declined.
+  if (e.source === 'sheet') {
+    const status = e.declined ? ['Declined', 'chip-status-declined'] : e.pending ? ['Pending approval', 'chip-status-pending'] : e.inviteOnly ? ['Direct link only', 'chip-status-link'] : ['Public', 'chip-status-public'];
+    marks.append(el('span', 'chip chip-status ' + status[1], status[0]));
+  }
   main.append(marks);
   main.append(el('h1', 'detail-title', e.title));
   if (e.description) {
@@ -441,13 +536,6 @@ function sourceCard(e) {
     }
     if (!e.link || e.source === 'google' || e.source === 'pdf' || e.source === 'sheet') {
       admin.append(keywordsEditor(e));
-    }
-    // A copy of a hand-added event, four weeks on, from the add-event
-    // tool; the school's and the other apps' events are not cloned.
-    if (e.source === 'sheet') {
-      const clone = link('/admin?clone=' + encodeURIComponent(e.id) + '&weeks=4', 'link-button');
-      clone.append(svg('copyplus'), el('span', '', 'Clone this event 4 weeks on'));
-      admin.append(clone);
     }
     body.append(admin);
   }

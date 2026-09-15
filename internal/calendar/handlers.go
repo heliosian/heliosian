@@ -537,10 +537,10 @@ func shiftWhen(when string, weeks int) string {
 // many more times as asked, each its own row. The rows go through the
 // sheet's rules first, so a bad date or an unknown tag is refused before
 // anything is written.
-// addEvents adds an event to the Events tab: an admin's goes straight on
-// the calendar, repeated every so many weeks when asked; anyone else's is
-// one event, shared, whose Status is Pending until an admin approves it -
-// on the calendar for them and the admins until then.
+// addEvents adds an event to the Events tab, repeated every so many weeks
+// when an admin asks: a public one's Status is Pending until an admin
+// approves it - on the calendar for its host and the admins until then,
+// an admin's own included - a direct-link one's Direct Link Only.
 func (a app) addEvents(w http.ResponseWriter, r *http.Request) {
 	actor, admin := a.who(r)
 	var body struct {
@@ -580,12 +580,14 @@ func (a app) addEvents(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	// An invite-only event needs no approval: it is not on the calendar,
-	// only on the calendars of those with the link who answer it.
-	status := StatusApproved
+	// A public event waits for an admin's approval, an admin's own too; a
+	// direct-link event needs none - it is not on the calendar, only on
+	// the calendars of those with the link who answer it. Repeats and a
+	// day type are an admin's alone.
 	if !admin {
-		body.RepeatTimes, body.DayType, status = 0, "", StatusPending
+		body.RepeatTimes, body.DayType = 0, ""
 	}
+	status := StatusPending
 	if body.InviteOnly {
 		status = StatusInviteOnly
 	}
@@ -622,8 +624,17 @@ func (a app) addEvents(w http.ResponseWriter, r *http.Request) {
 		ids = append(ids, row["Event ID"])
 	}
 	slog.InfoContext(r.Context(), "calendar: events added", "actor", actor, "title", rows[0]["Title"], "count", len(rows), "pending", pending)
-	// The admins hear of an event waiting for them.
-	if pending && a.mail.Sender != nil {
+	// The host is going to their own event: a yes on each, with no invite
+	// mailed back to them for it.
+	for _, id := range ids {
+		if err := a.record(r.Context(), actor, id, AnswerYes, false); err != nil {
+			slog.WarnContext(r.Context(), "calendar: host's yes", "event", id, "error", err)
+		}
+	}
+	// The admins hear of every event added - one waiting for them, an
+	// admin's own included, or a direct-link one they would not otherwise
+	// see.
+	if a.mail.Sender != nil {
 		if e := a.cache.Model().Event(ids[0]); e != nil {
 			go a.tellAdmins(context.WithoutCancel(r.Context()), r.Host, actor, e)
 		}
@@ -633,12 +644,13 @@ func (a app) addEvents(w http.ResponseWriter, r *http.Request) {
 }
 
 // oneEvent answers /api/calendar/event?id= with an event the view does
-// not carry: an invite-only one, for anyone with its link; a pending or
-// declined one, for the person who shared it and the admins.
+// not carry: a direct-link one, or one waiting for approval, for anyone
+// with its link; a declined one, for the person who shared it and the
+// admins.
 func (a app) oneEvent(w http.ResponseWriter, r *http.Request) {
 	actor, admin := a.who(r)
 	e := a.cache.Model().Event(strings.TrimSpace(r.URL.Query().Get("id")))
-	if e == nil || !(e.InviteOnly || admin || normalizeEmail(e.AddedBy) == actor) {
+	if e == nil || !(e.InviteOnly || e.Pending || admin || normalizeEmail(e.AddedBy) == actor) {
 		http.NotFound(w, r)
 		return
 	}
@@ -647,8 +659,10 @@ func (a app) oneEvent(w http.ResponseWriter, r *http.Request) {
 }
 
 // tellAdmins mails every calendar admin that someone shared an event: its
-// words and when, who shared it, and its page, where Approve and Decline
-// are. One message, every admin on it; nothing when there are none.
+// words and when, who shared it, and its page - where Approve and Decline
+// are for one waiting, or the event itself for a direct-link one, which
+// needs nothing of them. One message, every admin on it; nothing when
+// there are none.
 func (a app) tellAdmins(ctx context.Context, host, by string, e *Event) {
 	admins := a.cache.Admins(a.superAdmins())
 	if len(admins) == 0 {
@@ -664,17 +678,25 @@ func (a app) tellAdmins(ctx context.Context, host, by string, e *Event) {
 	if hours != "" {
 		when += " · " + hours
 	}
+	lead := who + " shared an event on Helios When that is waiting for approval."
+	closing := "Approve and Decline are at the top of its page. Until then only the person who shared it and the admins see it."
+	subject := "Event to approve: "
+	if e.InviteOnly {
+		lead = who + " added a direct-link event on Helios When. It needs no approval: it is not on the calendar, only on the calendars of those they send the link to who answer it."
+		closing = "Nothing is needed from you; this is so the admins know what is being shared."
+		subject = "Direct-link event added: "
+	}
 	var text strings.Builder
-	fmt.Fprintf(&text, "%s shared an event on Helios When that is waiting for approval.\n\n%s\n%s\n", who, e.Title, when)
+	fmt.Fprintf(&text, "%s\n\n%s\n%s\n", lead, e.Title, when)
 	if e.Location != "" {
 		fmt.Fprintf(&text, "%s\n", e.Location)
 	}
 	if e.Description != "" {
 		fmt.Fprintf(&text, "\n%s\n", e.Description)
 	}
-	fmt.Fprintf(&text, "\nApprove or decline it on its page: %s\n", link)
+	fmt.Fprintf(&text, "\nIts page: %s\n%s\n", link, closing)
 	var htm strings.Builder
-	fmt.Fprintf(&htm, "<p style=\"font:16px/1.5 -apple-system,Segoe UI,Roboto,sans-serif\">%s shared an event on Helios When that is waiting for approval.</p>", html.EscapeString(who))
+	fmt.Fprintf(&htm, "<p style=\"font:16px/1.5 -apple-system,Segoe UI,Roboto,sans-serif\">%s</p>", html.EscapeString(lead))
 	fmt.Fprintf(&htm, "<p style=\"font:15px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#0e4d54\"><strong>%s</strong><br>%s", html.EscapeString(e.Title), html.EscapeString(when))
 	if e.Location != "" {
 		fmt.Fprintf(&htm, "<br>%s", html.EscapeString(e.Location))
@@ -683,10 +705,10 @@ func (a app) tellAdmins(ctx context.Context, host, by string, e *Event) {
 	if e.Description != "" {
 		fmt.Fprintf(&htm, "<p style=\"font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#333\">%s</p>", html.EscapeString(e.Description))
 	}
-	fmt.Fprintf(&htm, "<p style=\"margin:20px 0\"><a href=\"%s\" style=\"display:inline-block;padding:10px 18px;border-radius:8px;background:#0e4d54;color:#fff;font:700 15px -apple-system,Segoe UI,Roboto,sans-serif;text-decoration:none\">Review the event</a></p>", html.EscapeString(link))
-	htm.WriteString("<p style=\"font:13px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#647071\">Approve and Decline are at the top of its page. Until then only the person who shared it and the admins see it.</p>")
+	fmt.Fprintf(&htm, "<p style=\"margin:20px 0\"><a href=\"%s\" style=\"display:inline-block;padding:10px 18px;border-radius:8px;background:#0e4d54;color:#fff;font:700 15px -apple-system,Segoe UI,Roboto,sans-serif;text-decoration:none\">%s</a></p>", html.EscapeString(link), map[bool]string{true: "See the event", false: "Review the event"}[e.InviteOnly])
+	fmt.Fprintf(&htm, "<p style=\"font:13px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#647071\">%s</p>", html.EscapeString(closing))
 	err := a.mail.Sender.Send(ctx, mail.Message{
-		To: admins, Subject: "Event to approve: " + e.Title + " · " + day,
+		To: admins, Subject: subject + e.Title + " · " + day,
 		Text: text.String(), HTML: htm.String(),
 	})
 	if err != nil {
@@ -732,15 +754,12 @@ func (a app) editEvent(w http.ResponseWriter, r *http.Request) {
 		"Tags": JoinList(SplitList(JoinList(body.Tags))), "Keywords": JoinList(SplitList(JoinList(body.Keywords))),
 		"Source": strings.TrimSpace(body.Source), "Image": strings.Trim(strings.TrimSpace(body.Image), "/"),
 	}
-	// Invite only switches on and off: off, a poster's event goes back to
-	// waiting for approval, an admin's onto the calendar.
+	// Direct link only switches on and off: off, the event waits for an
+	// admin's approval, an admin's own too - its link still working in
+	// the meantime.
 	if body.InviteOnly != e.InviteOnly {
-		switch {
-		case body.InviteOnly:
-			cells["Status"] = StatusInviteOnly
-		case admin:
-			cells["Status"] = StatusApproved
-		default:
+		cells["Status"] = StatusInviteOnly
+		if !body.InviteOnly {
 			cells["Status"] = StatusPending
 		}
 	}
@@ -766,6 +785,13 @@ func (a app) editEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.InfoContext(r.Context(), "calendar: event changed", "actor", actor, "event", e.ID, "title", cells["Title"])
+	// A host turning a direct-link event public puts it up for approval,
+	// and the admins hear of it.
+	if cells["Status"] == StatusPending && a.mail.Sender != nil {
+		if changed := a.cache.Model().Event(e.ID); changed != nil {
+			go a.tellAdmins(context.WithoutCancel(r.Context()), r.Host, actor, changed)
+		}
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 

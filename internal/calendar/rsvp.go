@@ -73,8 +73,10 @@ func (a app) eventFor(email, id string) *Event {
 			return e
 		}
 	}
-	// An invite-only event takes an answer from anyone with its link.
-	if e := model.Event(id); e != nil && e.InviteOnly {
+	// A direct-link event takes an answer from anyone with its link, and so
+	// does one waiting for approval - its link works in the meantime; a
+	// declined one, only from the person who shared it.
+	if e := model.Event(id); e != nil && (e.InviteOnly || e.Pending || normalizeEmail(e.AddedBy) == email) {
 		return e
 	}
 	return nil

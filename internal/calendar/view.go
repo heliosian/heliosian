@@ -216,8 +216,13 @@ func Render(model *Model, directory Directory, email string, admin bool, now tim
 	// The events: the calendar's, with the pending ones the viewer shared -
 	// every pending one for an admin - marked as such.
 	events := model.eventsFor(email, linked)
+	carried := map[string]bool{}
+	for _, e := range events {
+		carried[e.ID] = true
+	}
 	for _, e := range model.Pending {
-		if (admin || normalizeEmail(e.AddedBy) == normalizeEmail(email)) && !slices.Contains(events, e) {
+		// One the viewer answered is there already, under Going, as a copy.
+		if (admin || normalizeEmail(e.AddedBy) == normalizeEmail(email)) && !carried[e.ID] {
 			events = append(events, e)
 		}
 	}

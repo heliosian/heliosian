@@ -156,10 +156,11 @@ func folded(school, hca *Event) *Event {
 // what they are going to.
 func (m *Model) eventsFor(email string, linked []Linked) []*Event {
 	answers := m.Answers[normalizeEmail(email)]
-	// An invite-only event the person has answered is on their calendar.
+	// A direct-link event the person has answered is on their calendar -
+	// and one waiting for approval, whose link works in the meantime.
 	events := m.Events
 	for _, e := range m.Pending {
-		if e.InviteOnly && answers[e.ID] != "" {
+		if (e.InviteOnly || e.Pending) && answers[e.ID] != "" {
 			events = append(events[:len(events):len(events)], e)
 		}
 	}

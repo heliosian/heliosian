@@ -25,7 +25,7 @@ export function eventForm({from = null, shift = 0, edit = null, onDone}) {
     shift = 0;
   }
   const form = el('form', 'admin-form');
-  form.append(el('p', 'hint', edit ? 'Change what you need to; the event keeps its place on the calendar.' : admin ? 'Goes into the Events tab as the community\u2019s own, under your name.' : 'Shared under your name. An admin approves it onto the calendar; until then only you and the admins see it, and you will see who answers it.'));
+  form.append(el('p', 'hint', edit ? 'Change what you need to; the event keeps its place on the calendar.' : 'Shared under your name. You will see who answers it.'));
   // Two tabs: the event itself, and the tags it is filed under. Every
   // field stays in the form - only the panels hide - so nothing typed is
   // lost in switching.
@@ -75,7 +75,8 @@ export function eventForm({from = null, shift = 0, edit = null, onDone}) {
   // Who can find it: everyone, on the calendar (an admin approves it
   // first, for anyone but an admin), or only those given its direct link,
   // who answer it onto their own calendars.
-  let inviteOnly = Boolean(from && from.source === 'sheet' && from.inviteOnly);
+  // Direct link only to start; public is the choice to make.
+  let inviteOnly = edit ? Boolean(from && from.source === 'sheet' && from.inviteOnly) : true;
   const whoField = el('div', 'field');
   whoField.append(el('span', '', 'Who can find it'));
   const choices = el('div', 'event-visibility');
@@ -92,8 +93,8 @@ export function eventForm({from = null, shift = 0, edit = null, onDone}) {
     return b;
   };
   choices.append(
-    choice('Public', admin ? 'On the calendar for everyone at Helios to discover.' : 'On the calendar for everyone at Helios to discover. Public events require admin approval, but you can share the link right away directly.', false),
     choice('Direct link only', 'Only people you send the link to. Their yes or no puts it on their calendar.', true),
+    choice('Public', 'On the calendar for everyone at Helios to discover. Public events require admin approval, but you can share the link right away directly.', false),
   );
   whoField.append(choices);
   eventPanel.append(whoField);
@@ -156,6 +157,23 @@ export function eventForm({from = null, shift = 0, edit = null, onDone}) {
     }
     lastStart = startDate.value;
   });
+  // A start time given sets the end two hours on, until the end is set by
+  // hand; the end date follows the start's when it was blank.
+  let endTouched = Boolean(endTime.value);
+  endTime.addEventListener('input', () => {
+    endTouched = Boolean(endTime.value);
+  });
+  startTime.addEventListener('change', () => {
+    if (!startTime.value || endTouched) {
+      return;
+    }
+    const [h, m] = startTime.value.split(':').map(Number);
+    const later = (h + 2) % 24;
+    endTime.value = `${String(later).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    if (!endDate.value) {
+      endDate.value = h + 2 >= 24 && startDate.value ? addDays(startDate.value, 1) : startDate.value;
+    }
+  });
   const whenRow = el('div', 'admin-when');
   whenRow.append(field('Starts', startDate), field('At', startTime, 'Leave blank for all day'), field('Ends', endDate, 'Blank means the same day'), field('Until', endTime));
   eventPanel.append(whenRow);
@@ -172,8 +190,8 @@ export function eventForm({from = null, shift = 0, edit = null, onDone}) {
   // categories use: an upload, a search of the picture libraries, or none
   // for its first category's, or the calendar's own.
   const picture = {name: from ? from.title : '', image: from && from.source === 'sheet' && from.image ? from.image.replace(/^\//, '') : '', imageUrl: from && from.source === 'sheet' ? from.image || '' : ''};
-  // Not asked for up front: a small link opens the field, unless the
-  // event already has a picture.
+  // Not asked for when an event is first posted: the picture is set later,
+  // from the banner on its page or here while editing.
   const imageField = el('div', 'field');
   imageField.append(el('span', '', 'Picture'));
   const imageRow = el('div', 'event-image-row');
@@ -183,21 +201,18 @@ export function eventForm({from = null, shift = 0, edit = null, onDone}) {
   };
   paintImage();
   imageField.append(imageRow, el('small', '', 'Shown across the top of the event\u2019s page and on its share card. Without one, the first category\u2019s picture stands in.'));
-  imageField.hidden = !picture.image;
-  const addPicture = el('button', 'link-button event-add-picture');
-  addPicture.type = 'button';
-  addPicture.append(svg('image'), el('span', '', 'Add a picture'));
-  addPicture.hidden = Boolean(picture.image);
-  addPicture.addEventListener('click', () => {
-    imageField.hidden = false;
-    addPicture.hidden = true;
-  });
-  eventPanel.append(addPicture, imageField);
+  if (edit) {
+    eventPanel.append(imageField);
+  }
 
   // Who and what: the classroom chips and the categories, as the filters
   // have them.
+  // The event's own categories: not its classrooms, and not the built-in
+  // tags the model adds (Misc, Going and the apps'), which no sheet row
+  // may name.
+  const builtIn = new Set(state.model.tags.filter(t => t.builtIn).map(t => t.name));
   const rooms = new Set(from ? from.classrooms : classroomNames());
-  const cats = new Set(from ? from.tags.filter(t => !classroomNames().includes(t)) : []);
+  const cats = new Set(from ? from.tags.filter(t => !classroomNames().includes(t) && !builtIn.has(t)) : []);
   const chip = (label, on, onClick, color) => {
     const b = el('button', 'filter-chip' + (on ? ' is-on' : ''), label);
     b.type = 'button';
@@ -325,7 +340,7 @@ export function eventForm({from = null, shift = 0, edit = null, onDone}) {
       return;
     }
     const {ids, pending} = await res.json();
-    toast(pending ? 'Shared - an admin will approve it onto the calendar. It is on yours now.' : inviteOnly ? 'Added - send people the link from the event\u2019s page.' : 'Event added', pending || inviteOnly ? 6000 : 2600);
+    toast(pending ? 'Shared - an admin will approve it onto the calendar. It is on yours now, and its link works right away.' : 'Added - send people the link from the event\u2019s page.', 6000);
     await onDone(ids);
   });
   return form;

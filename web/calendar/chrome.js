@@ -1,7 +1,7 @@
-import {state, me, today, bands, tagGroups, defaultTags, savedView, searchResults, eventPath, eventTint, timeLine, weekdayShort, parseDate, selectedClassrooms, toggleClassroom, setClassrooms, classroomNames, myClassrooms, tagNames, selectedTags, toggleTag, setTags, resetFilters, filtersAreDefault, colorOf, hiddenMatches, hiddenClassroomMatches, feedClassrooms, feedTags, showsFeed, setActiveFeed, activeFeed, allCalendars, defaultFeed} from './state.js';
+import {state, me, today, bands, tagGroups, defaultTags, savedView, searchResults, eventPath, dayLabel, eventTint, timeLine, weekdayShort, parseDate, selectedClassrooms, toggleClassroom, setClassrooms, classroomNames, myClassrooms, tagNames, selectedTags, toggleTag, setTags, resetFilters, filtersAreDefault, colorOf, hiddenMatches, hiddenClassroomMatches, feedClassrooms, feedTags, showsFeed, setActiveFeed, activeFeed, allCalendars, defaultFeed} from './state.js';
 import {el, svg, link, button, toast, feedMark, popup, emojiPicker} from './dom.js';
 import {dayColumn} from './day.js';
-import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu} from '/toolbar.js';
+import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, alertMenu, alertCard} from '/toolbar.js';
 
 const primary = [
   {href: '/', icon: 'today', label: 'Calendar'},
@@ -649,10 +649,38 @@ function closeMenus() {
   }
 }
 
+// The amber badge in the top bar counts the events waiting for an admin's
+// approval, for the admins alone, and opens Admin Tools' Events list.
+function renderApprovals() {
+  const waiting = me().isAdmin ? state.model.events.filter(e => e.pending).length : 0;
+  for (const badge of document.querySelectorAll('.approve-alert')) {
+    badge.hidden = !waiting;
+    badge.title = `${waiting} event${waiting === 1 ? '' : 's'} waiting for approval`;
+    // The card lists each waiting event as a chip that opens its page,
+    // where Approve and Decline are.
+    alertMenu(badge, () => {
+      const card = alertCard(badge.title, '', 'Open Admin Tools', '/admin');
+      const chips = el('div', 'approve-chips');
+      for (const e of state.model.events.filter(e => e.pending).sort((a, b) => a.start.localeCompare(b.start))) {
+        const chip = link(eventPath(e), 'approve-chip');
+        const who = (state.model.names || {})[e.addedBy] || e.addedBy;
+        chip.append(el('span', 'approve-chip-title', e.title), el('span', 'approve-chip-note', `${dayLabel(e.start.slice(0, 10))} \u00b7 ${who}`));
+        chips.append(chip);
+      }
+      card.insertBefore(chips, card.querySelector('.alert-card-link'));
+      return card;
+    });
+  }
+  for (const count of document.querySelectorAll('.approve-count')) {
+    count.textContent = String(waiting);
+  }
+}
+
 function renderUser() {
   const user = me();
   renderAvatars({photoUrl: user.photoUrl && user.photoUrl + '?thumb=1', initial: user.initial});
   renderAlerts(state.model.alerts || {});
+  renderApprovals();
   renderProfileLink(user.email);
   for (const line of document.querySelectorAll('.user-menu-email')) {
     line.textContent = user.email;
