@@ -125,7 +125,7 @@ function steps(sv) {
     [outlined('Change', null, () => openBirthday(sv))], stepStatus(sv, 2), sv.requestBy ? `(for the ${longDate(sv.newsletterDate)} newsletter)` : ''));
   const mail = el('a', 'button button-secondary');
   mail.href = emailLink(sv);
-  mail.append(svg('mail'), el('span', '', 'Email'));
+  mail.append(svg('mail'), el('span', '', 'Compose Email'));
   inner.append(step(3, 'Outreach', sv.contactedOn ? `Contacted on ${mediumDate(sv.contactedOn)} by ${sv.contactedBy}` : `Contact on ${mediumDate(sv.requestBy)}`,
     [mail, outlined(sv.contactedOn ? 'Mark Not Done' : 'Mark Done', 'circlecheck', () => markContacted(sv, !sv.contactedOn))], stepStatus(sv, 3)));
   const donationActions = sv.donation

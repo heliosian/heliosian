@@ -1,4 +1,4 @@
-import {longDate, mediumDate, isUnassigned, staffPath, charityPath, stageClass, stageName} from './state.js';
+import {longDate, mediumDate, isUnassigned, staffPath, charityPath, stageClass, stageName, emailLink} from './state.js';
 import {el, link, svg, thumb, button, menu} from './dom.js';
 import {assignToMe, markContacted} from './edit.js';
 
@@ -34,7 +34,12 @@ export function staffRow(sv, options) {
       actions.append(button('Assign to Me', 'bolt', 'button button-small', () => assignToMe(sv)));
     }
     if (sv.stage === 'Awaiting Outreach') {
-      actions.append(button('Mark: Contacted', 'check', 'button button-secondary button-small', () => markContacted(sv, true)));
+      // The letter, addressed and written, in their mail app.
+      const mail = el('a', 'button button-small');
+      mail.href = emailLink(sv);
+      mail.append(svg('mail'), el('span', '', 'Compose Email'));
+      mail.addEventListener('click', e => e.stopPropagation());
+      actions.append(mail, button('Mark Contacted', 'check', 'button button-secondary button-small', () => markContacted(sv, true)));
     }
   }
   if (opts.menu) {
