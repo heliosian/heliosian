@@ -363,7 +363,7 @@ function personTile(owner, v, editing, star, chair, option) {
   const face = avatar(v);
   // A student's grade rides on the corner of their face, short: "5", "K".
   if (v.grade) {
-    const grade = el('span', 'grade-badge', v.grade.replace(/^grade\s*/i, ''));
+    const grade = el('span', 'grade-badge', /^kindergarten$/i.test(v.grade) ? 'K' : v.grade.replace(/^grade\s*/i, ''));
     grade.title = v.grade;
     // Helios Who?'s colour for the grade, darkened as Who? darkens it, so
     // white text stays legible even on a yellow.

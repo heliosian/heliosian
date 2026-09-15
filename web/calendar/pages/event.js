@@ -397,7 +397,7 @@ function rsvpsCard(e) {
       tile.title = [p.name, p.line].filter(Boolean).join(' · ');
       const face = avatar(p, 'contact-photo');
       if (p.grade) {
-        const badge = el('span', 'grade-badge', p.grade.replace(/^grade\s*/i, ''));
+        const badge = el('span', 'grade-badge', /^kindergarten$/i.test(p.grade) ? 'K' : p.grade.replace(/^grade\s*/i, ''));
         badge.title = p.grade;
         const color = (state.model.gradeColors || {})[p.grade];
         if (color) {
