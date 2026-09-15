@@ -951,6 +951,8 @@ main {
 /* The leads open the line, in ink, so they read first. */
 .row-people .row-lead { color: var(--ink); font-weight: 600; }
 
+.row-people .row-option { color: var(--accent); font-weight: 600; }
+
 .row-title { font-weight: 700; font-size: 16px; margin: 3px 0 2px; display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; }
 
 .row-title .need { font-size: 12px; padding: 2px 9px 2px 7px; }
@@ -1393,6 +1395,62 @@ button.side-chair:hover { background: var(--input); }
 .side-chair.is-option .avatar { box-shadow: 0 0 0 3px var(--accent); }
 
 .side-chair-role.is-option { background: var(--accent); color: #fff; }
+
+/* An offer to co-chair, as whoever runs it sees it: a tinted card with the
+   face and name over the button that takes them up on it. */
+.side-option {
+  margin-top: 10px;
+  padding: 10px 12px 12px;
+  border-radius: 12px;
+  background: #eaf4f3;
+  border: 1px solid #d3e7e5;
+}
+
+.side-option-who {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.side-option-who .avatar { width: 40px; height: 40px; font-size: 16px; border-radius: 10px; flex-shrink: 0; box-shadow: 0 0 0 2px var(--accent); }
+
+.side-option-who .avatar img { border-radius: 10px; }
+
+.side-option-text { min-width: 0; }
+
+.side-option-name { font-size: 13.5px; font-weight: 700; color: var(--ink); }
+
+.side-option-hint { font-size: 12px; color: var(--accent); font-weight: 600; margin-top: 1px; }
+
+.side-option .side-approve { margin: 8px 0 0 50px; padding: 4px 10px; gap: 5px; font-size: 12px; background: var(--accent); }
+
+.side-option .side-approve svg { width: 13px; height: 13px; }
+
+.side-option .side-approve:hover { background: var(--brand); }
+
+/* The question whoever runs it is asked in place of the ask for a co-chair,
+   with the way into editing at its right. */
+.side-ask {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.side-ask .side-switch { margin-top: 0; font-size: 13px; }
+
+.side-ask .edit-icon { flex-shrink: 0; }
 
 .side-subtitle { margin-top: 14px; font-size: 12.5px; font-weight: 700; color: var(--brand); text-transform: uppercase; letter-spacing: 0.04em; }
 

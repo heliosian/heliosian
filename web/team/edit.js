@@ -519,8 +519,9 @@ export function whoProfile(email) {
 
 // openPerson opens from a person's chip: a header with their face, name and
 // how to reach them, then the contact card. For whoever runs the event a
-// volunteer's chip adds a Sign up tab beside Contact, with their sign-up and
-// the co-chair appointment, since a chair clicking a face wants either.
+// volunteer's chip opens instead on a Sign up tab, with their sign-up and
+// the co-chair appointment - what a chair clicking a face mostly wants -
+// with Contact beside it.
 export async function openPerson(v, node) {
   const info = await personInfo(v.email);
   const head = personHead(v, info);
@@ -536,8 +537,8 @@ export async function openPerson(v, node) {
   }
   const form = signUpForm(node, v);
   const tabs = tabbedFields([
-    {label: 'Contact', icon: 'people', fields: [contact, personFoot(v, info)]},
     {label: 'Sign up', icon: 'edit', fields: form.fields},
+    {label: 'Contact', icon: 'people', fields: [contact, personFoot(v, info)]},
   ]);
   openModal('', [head, tabs], {...form, wide: 'person'});
 }

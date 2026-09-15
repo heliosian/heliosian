@@ -3,7 +3,7 @@ import {el, link, svg, thumb, avatar, badge, button, searchBox, copyText, whenEd
 import {setTitle} from '../chrome.js';
 import {childRow, categoryClass, completeBadge} from '../cards.js';
 import {openCropTool, openPhotoLightbox} from '/crop.js';
-import {send, reload, openSignUp, openActivity, openLink, saveActivityFields, openPerson, openImageSearch, imageSearchOn, editable, fieldEditor, highlightInputs, textInput, textAreaInput, selectInput, uploadAndSave, openCategoryManager, openVolunteerGrid} from '../edit.js';
+import {send, reload, openSignUp, openActivity, openLink, saveActivityFields, openPerson, openImageSearch, imageSearchOn, editable, fieldEditor, highlightInputs, textInput, textAreaInput, selectInput, uploadAndSave, openCategoryManager, openVolunteerGrid, editPencil} from '../edit.js';
 
 
 // Which activity is in edit mode, by id. Keyed rather than a bare boolean so
@@ -241,10 +241,14 @@ function factsCard(node, editing, save) {
     any = true;
   }
   const chairs = coChairs(node);
+  // Who has offered to co-chair is public - a secret list still keeps its
+  // offers to the editors - and an offer stands even once the want is
+  // switched off, so it is what keeps the row up.
+  const options = shownVolunteers(node, node.canEdit).filter(v => v.position === 'Open to Co-Chair');
   // Whether a co-chair is wanted lives here, with the co-chairs themselves: the
-  // row shows when there are any, when one is wanted, or while editing (so the
-  // switch is reachable even when neither is true yet).
-  if (chairs.length || node.coLeaderNeeded || editing) {
+  // row shows when there are any, when one is wanted or offered, or while
+  // editing (so the switch is reachable even when none of that is true yet).
+  if (chairs.length || node.coLeaderNeeded || options.length || editing) {
     const row = el('div', 'side-row');
     const mark = el('div', 'side-icon');
     mark.append(svg('people'));
@@ -261,20 +265,44 @@ function factsCard(node, editing, save) {
     } else {
       body.append(el('div', 'side-line', 'Nobody yet.'));
     }
-    // Who has offered to co-chair is public - a secret list still keeps its
-    // offers to the editors - and for whoever runs the event each is a way
-    // into their sign-up, where Co-Chair is theirs to choose.
-    const options = shownVolunteers(node, node.canEdit).filter(v => v.position === 'Open to Co-Chair');
     if (options.length) {
       body.append(el('div', 'side-subtitle', 'Co-Chair Options'));
       if (node.canEdit) {
-        body.append(el('div', 'side-line', 'Promote one or more to co-chair.'));
+        // Whoever runs it sees each offer as a card - the face and name, what
+        // they offered, and the button that takes them up on it, after a word
+        // of confirmation since it hands them the page. The face still opens
+        // the sign-up for a closer look.
+        for (const v of options) {
+          const card = el('div', 'side-option');
+          const who = el('button', 'side-option-who');
+          who.type = 'button';
+          who.title = `${v.name} and their sign-up`;
+          who.addEventListener('click', () => openPerson(v, node));
+          const text = el('div', 'side-option-text');
+          text.append(el('div', 'side-option-name', v.name), el('div', 'side-option-hint', 'Offered to co-chair'));
+          who.append(avatar(v), text);
+          card.append(who);
+          card.append(button('Make co-chair', 'check', 'button button-small side-approve', async () => {
+            if (!confirm(`Make ${v.name} a co-chair of ${node.title}? They will be able to edit the page and manage everyone who signs up.`)) {
+              return;
+            }
+            try {
+              await send('POST', '/api/events/volunteer', {id: node.id, email: v.email, position: 'Co-Chair', note: v.note || ''});
+              await reload();
+              toast(`${v.name} is now a co-chair`);
+            } catch (err) {
+              toast(err.message);
+            }
+          }));
+          body.append(card);
+        }
+      } else {
+        const list = el('div', 'side-chairs');
+        for (const v of options) {
+          list.append(personTile(node, v, false, false, false, true));
+        }
+        body.append(list);
       }
-      const list = el('div', 'side-chairs');
-      for (const v of options) {
-        list.append(personTile(node, v, node.canEdit, false, false, true));
-      }
-      body.append(list);
     }
     if (editing) {
       const wants = el('label', 'side-switch');
@@ -285,14 +313,17 @@ function factsCard(node, editing, save) {
       // Whoever runs the page is not asked to co-chair their own thing: the
       // ask becomes the question, answered in place, with the way into
       // editing beside it.
+      const ask = el('div', 'side-ask');
       const wants = el('label', 'side-switch');
       const box = checkbox(true, on => save({coLeaderNeeded: on}));
       wants.append(box, el('span', '', 'Still looking for a co-chair?'));
-      body.append(wants);
-      body.append(button('Edit', 'edit', 'button button-secondary button-small side-offer', () => {
+      const pencil = editPencil('Edit this page');
+      pencil.addEventListener('click', () => {
         editingPath = node.id;
         document.dispatchEvent(new CustomEvent('hca:refresh'));
-      }));
+      });
+      ask.append(wants, pencil);
+      body.append(ask);
     } else if (node.coLeaderNeeded) {
       // One click offers: the viewer's sign-up becomes (or starts as) open to
       // co-chairing, and the chairs see them under Co-Chair Options. Once

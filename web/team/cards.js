@@ -21,10 +21,12 @@ function statusBadges(node) {
 
 // peopleLine is who is on a thing, one line under the row's text: the leads
 // first, in ink and each marked "(Lead)", then the volunteers in sign-up
-// order, then everyone under its sub-activities with the sub-activity named
-// - "Alice Che (Performance)" - up to twelve names in all, then "and 5 more".
-// The server already withholds a hidden list from anyone who does not run
-// the thing, so whatever arrives may be shown.
+// order - one open to co-chairing marked "(Co-Chair Opt)", in the accent, so
+// an offer is seen from the list - then everyone under its sub-activities
+// with the sub-activity named - "Alice Che (Performance)" - up to twelve
+// names in all, then "and 5 more". The server already withholds a hidden
+// list from anyone who does not run the thing, so whatever arrives may be
+// shown.
 function peopleLine(node, editing) {
   const line = el('div', 'row-people');
   const parts = [];
@@ -32,7 +34,8 @@ function peopleLine(node, editing) {
     const lead = el('span', 'row-lead', `${v.name} (Lead)`);
     parts.push(lead);
   }
-  const names = shownVolunteers(node, editing).filter(v => v.position !== 'Co-Chair').map(v => v.name);
+  const names = shownVolunteers(node, editing).filter(v => v.position !== 'Co-Chair')
+    .map(v => (v.position === 'Open to Co-Chair' ? el('span', 'row-option', `${v.name} (Co-Chair Opt)`) : v.name));
   for (const sub of descendants(node)) {
     for (const v of shownVolunteers(sub, editing)) {
       names.push(`${v.name} (${sub.title})`);
@@ -40,7 +43,7 @@ function peopleLine(node, editing) {
   }
   const room = Math.max(0, 12 - parts.length);
   for (const name of names.slice(0, room)) {
-    parts.push(el('span', '', name));
+    parts.push(typeof name === 'string' ? el('span', '', name) : name);
   }
   if (!parts.length) {
     return null;
