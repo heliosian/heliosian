@@ -1,6 +1,6 @@
 import {state, byEmail} from './state.js';
 import {el, svg, segments} from './dom.js';
-import {familyOf} from './families.js';
+import {familyOf, familiesOf} from './families.js';
 import {members, tagFacetOptions} from './tags.js';
 
 function personFacets(p, field) {
@@ -50,6 +50,36 @@ function roleChipsVisible() {
   return false;
 }
 
+export const tagRelationOptions = ['Parents', 'Children', 'Siblings'];
+
+// Whether p only belongs on a single-tag list by way of a selected relation
+// to someone directly tagged - a parent of a tagged kid, a kid of a tagged
+// parent, or another kid (a sibling) in a tagged kid's family. Only applies
+// with exactly one active tag; with several selected at once there's no
+// single list to pull relatives in from.
+function tagRelatedMatch(p) {
+  if (state.filterTags.size !== 1 || !state.filterTagRelations.size) {
+    return false;
+  }
+  const [tag] = state.filterTags;
+  const tagged = members(tag);
+  for (const family of familiesOf(p)) {
+    if (state.filterTagRelations.has('Parents') && p.isParent &&
+      (family.kidEmails || []).some(e => tagged.includes(e))) {
+      return true;
+    }
+    if (state.filterTagRelations.has('Children') && p.isStudent &&
+      (family.adultEmails || []).some(e => tagged.includes(e))) {
+      return true;
+    }
+    if (state.filterTagRelations.has('Siblings') && p.isStudent &&
+      (family.kidEmails || []).some(e => e !== p.email && tagged.includes(e))) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function matchesFilters(p) {
   const gradeOK = !state.filterGrades.size || personFacets(p, 'grade').some(g => state.filterGrades.has(g));
   const classOK = !state.filterClassrooms.size || personFacets(p, 'classroom').some(c => state.filterClassrooms.has(c));
@@ -64,7 +94,7 @@ export function matchesFilters(p) {
   const cityOK = !state.filterCities.size || state.filterCities.has(cityOf(p));
   const pronounsOK = !state.filterPronouns.size || (p.pronouns && state.filterPronouns.has(p.pronouns.toLowerCase()));
   const newOK = !state.filterNew || p.isNew;
-  const tagOK = !state.filterTags.size || [...state.filterTags].some(k => members(k).includes(p.email));
+  const tagOK = !state.filterTags.size || [...state.filterTags].some(k => members(k).includes(p.email)) || tagRelatedMatch(p);
   return gradeOK && classOK && roleOK && cityOK && pronounsOK && newOK && tagOK;
 }
 

@@ -58,6 +58,28 @@ export function recordTagUsage(tag) {
   }
 }
 
+// Which relations (Parents/Children/Siblings) to pull into each tag's list,
+// remembered per tag name so "Birthday" and "Carpool" can each keep their
+// own Include settings across visits.
+export function loadTagRelations(tag) {
+  try {
+    const all = JSON.parse(localStorage.getItem('tagRelations') || '{}');
+    return new Set(all[tag] || []);
+  } catch (e) {
+    return new Set();
+  }
+}
+
+export function saveTagRelations(tag, relations) {
+  try {
+    const all = JSON.parse(localStorage.getItem('tagRelations') || '{}');
+    all[tag] = [...relations];
+    localStorage.setItem('tagRelations', JSON.stringify(all));
+  } catch (e) {
+    // ignore
+  }
+}
+
 export function loadNavScroll() {
   return Number(sessionStorage.getItem('navScroll')) || 0;
 }

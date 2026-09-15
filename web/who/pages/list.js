@@ -3,7 +3,8 @@ import {el, svg, csvField, copyGlyph} from '../dom.js';
 import {familiesOf, familyOf, familySearchText} from '../families.js';
 import {personCard, personLink} from '../people.js';
 import {tagControl, onTagsChange, listLabel, members, tagFacetOptions, saveAsTag, deleteTag} from '../tags.js';
-import {matchesFilters, familyMatchesFilters, roleChips, facetDropdown, gradeOptions, filterControl} from '../filters.js';
+import {saveTagRelations} from '../storage.js';
+import {matchesFilters, familyMatchesFilters, roleChips, facetDropdown, gradeOptions, filterControl, tagRelationOptions} from '../filters.js';
 import {resetMain} from '../chrome.js';
 import {initFamilyMap} from './map.js';
 
@@ -181,6 +182,16 @@ export function renderListPage() {
   };
   buildTagFilters();
   onTagsChange(buildTagFilters);
+  // Only meaningful for a single tag - with several selected at once (or
+  // none, as on the plain Everyone list) there's no one list to pull
+  // relatives in from.
+  if (state.filterTags.size === 1) {
+    const [activeTag] = state.filterTags;
+    controls.append(facetDropdown('Include', tagRelationOptions, state.filterTagRelations, () => {
+      saveTagRelations(activeTag, state.filterTagRelations);
+      renderGrid();
+    }));
+  }
   if (smart) {
     const save = el('button', 'filter-button email-download');
     save.type = 'button';

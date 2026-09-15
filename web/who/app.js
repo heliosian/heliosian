@@ -1,6 +1,7 @@
 import {state, applyModel, applyConfig} from './state.js';
 import {applyTheme} from '/theme.js';
 import {segments, shuffled, tabParam} from './dom.js';
+import {loadTagRelations} from './storage.js';
 import {familyEntries} from './families.js';
 import {initChrome, renderNav, setChrome, finishRender, renderUserChrome, renderSuperEditBanner, syncSuperEditCheckboxes, renderPrivacyMenuAlert} from './chrome.js';
 import {initSearch} from './search.js';
@@ -39,6 +40,7 @@ function render() {
     const tagParam = params.get('tag') || params.get('list');
     if (tagParam) {
       state.filterTags = new Set([tagParam]);
+      state.filterTagRelations = loadTagRelations(tagParam);
       state.tagListView = 'faces';
       renderListPage();
     } else {
@@ -60,11 +62,13 @@ function render() {
   } else if (seg[0] === 'email-list') {
     state.q = '';
     state.filterTags = new Set();
+    state.filterTagRelations = new Set();
     state.tagListView = 'emails';
     renderListPage();
   } else if (seg[0] === 'greenvelope') {
     state.q = '';
     state.filterTags = new Set();
+    state.filterTagRelations = new Set();
     renderGreenvelopePage();
   } else if (seg[0] === 'map') {
     state.q = '';
