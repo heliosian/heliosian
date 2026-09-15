@@ -1,5 +1,6 @@
-import {state, me, team, isAdmin, settings, charity, longDate, dateCell, parseDate, year} from './state.js';
+import {state, me, team, isAdmin, isSystemAdmin, settings, charity, longDate, dateCell, parseDate, year} from './state.js';
 import {el, toast} from './dom.js';
+import {appOrigin} from '/toolbar.js';
 
 let modalState = null;
 
@@ -46,14 +47,19 @@ function closeModal() {
   modalState = null;
 }
 
+// A required modal - one that must be answered - ignores the overlay and Escape.
+function dismissable() {
+  return !(modalState && modalState.required);
+}
+
 export function initModal() {
   overlay().addEventListener('click', e => {
-    if (e.target === overlay()) {
+    if (e.target === overlay() && dismissable()) {
       closeModal();
     }
   });
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') {
+    if (e.key === 'Escape' && dismissable()) {
       closeModal();
     }
   });
@@ -162,11 +168,13 @@ function openModal(title, fields, options) {
   f.replaceChildren();
   const header = el('div', 'modal-header');
   header.append(el('h2', '', title));
-  const close = el('button', 'modal-close', '×');
-  close.type = 'button';
-  close.setAttribute('aria-label', 'Close');
-  close.addEventListener('click', closeModal);
-  header.append(close);
+  if (!options.required) {
+    const close = el('button', 'modal-close', '×');
+    close.type = 'button';
+    close.setAttribute('aria-label', 'Close');
+    close.addEventListener('click', closeModal);
+    header.append(close);
+  }
   f.append(header);
   for (const node of fields) {
     f.append(node);
@@ -210,7 +218,7 @@ function openModal(title, fields, options) {
   }
   actions.append(el('span', 'save-status'));
   f.append(actions);
-  modalState = {submit: options.submit, afterSave: options.afterSave, stay: options.stay, working: options.working};
+  modalState = {submit: options.submit, afterSave: options.afterSave, stay: options.stay, working: options.working, required: options.required};
   overlay().hidden = false;
   const first = f.querySelector('input:not([type=hidden]), textarea, select');
   if (first) {
@@ -550,31 +558,15 @@ export function removeNewsletterDate(date) {
   return act('DELETE', '/api/birthday/newsletter-date', {date});
 }
 
-// The first time someone opens the app, they are asked whether they want to
-// be on the birthday team. Yes puts them on it as a volunteer and opens the
-// app to them on their Heliosian home; Not now is remembered on this
-// browser, and someone already on the team is never asked.
-const askedKey = 'birthday.teamAsked';
-
+// Someone who is not on the birthday team is asked, whenever the app opens
+// for them, whether they want to be. Yes puts them on it as a volunteer and
+// opens the app to them on their Heliosian home; No sends them back to the
+// Heliosian home. Admins run the app without being asked.
 export function offerTeam() {
   const email = me().email;
-  if (state.model.team.some(m => m.email === email)) {
+  if (isSystemAdmin() || state.model.team.some(m => m.email === email)) {
     return;
   }
-  try {
-    if (localStorage.getItem(askedKey) === '1') {
-      return;
-    }
-  } catch {
-    // No storage: ask each time rather than never.
-  }
-  const remember = () => {
-    try {
-      localStorage.setItem(askedKey, '1');
-    } catch {
-      // Then it asks again next time.
-    }
-  };
   const blurb = el('div', 'join-blurb');
   blurb.append(
     el('p', '', 'The birthday team celebrates every Helios staff member\'s birthday with a donation to a charity they choose, announced in the newsletter. Volunteers take a birthday each, reach out with a short email, and record the answer - a few minutes apiece.'),
@@ -582,16 +574,13 @@ export function offerTeam() {
   );
   openModal('Join the Birthday Team?', [blurb], {
     saveLabel: 'Join the Team',
-    submit: async () => {
-      await send('POST', '/api/birthday/team/join', {});
-      remember();
-    },
+    submit: () => send('POST', '/api/birthday/team/join', {}),
     afterSave: () => toast('Welcome to the team!'),
-    alternate: {label: 'Not now', onClick: () => {
-      remember();
-      closeModal();
+    alternate: {label: 'No thanks', onClick: () => {
+      location.href = appOrigin('home');
     }},
     hideCancel: true,
+    required: true,
   });
 }
 
