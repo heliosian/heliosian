@@ -394,6 +394,11 @@ func (a admin) setTheme(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// What colours the directory is the platform's tier's alone.
+	if !a.cache.IsSuperAdmin(actor) {
+		http.Error(w, "super admin access required", http.StatusForbidden)
+		return
+	}
 	var body theme.Theme
 	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<10)).Decode(&body); err != nil {
 		http.Error(w, "bad request body", http.StatusBadRequest)

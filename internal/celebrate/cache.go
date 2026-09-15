@@ -130,6 +130,12 @@ func (c *Cache) tabAdmins() []string {
 	return config.NormalizeEmails(emails)
 }
 
+// IsSuperAdmin reports whether email is one of the platform's super admins
+// (docs/config.md) - the tier that colours the app in Appearance.
+func (c *Cache) IsSuperAdmin(email string) bool {
+	return c.superAdmin(strings.ToLower(strings.TrimSpace(email)))
+}
+
 // IsAdmin reports whether email runs the app: a row in the Admins tab, or a
 // platform super admin.
 func (c *Cache) IsAdmin(email string) bool {

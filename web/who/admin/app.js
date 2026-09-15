@@ -46,6 +46,9 @@ function render() {
 
   document.querySelector('#staff-color').value = state.config.staffColor;
 
+  // Appearance - what colours the directory - is the platform's super
+  // admins' alone; a regular admin's page keeps the tab and panel hidden.
+  document.querySelector('[data-panel="appearance"]').hidden = !state.isSuperAdmin;
   document.querySelector('#panel-appearance').replaceChildren(appearanceCard({
     theme: state.theme, url: '/api/admin/theme',
     defaults: {sidebar: '#244d53', sidebarEnd: '#244d53', sidebarText: '#ffffff', page: '#ffffff', pageEnd: '#ffffff'},

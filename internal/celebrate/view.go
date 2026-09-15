@@ -163,14 +163,16 @@ type PartyView struct {
 }
 
 type User struct {
-	Email     string `json:"email"`
-	Name      string `json:"name"`
-	Initial   string `json:"initial"`
-	PhotoURL  string `json:"photoUrl,omitempty"`
-	IsAdmin   bool   `json:"isAdmin"`
-	IsStudent bool   `json:"isStudent,omitempty"`
-	IsParent  bool   `json:"isParent,omitempty"`
-	IsStaff   bool   `json:"isStaff,omitempty"`
+	Email    string `json:"email"`
+	Name     string `json:"name"`
+	Initial  string `json:"initial"`
+	PhotoURL string `json:"photoUrl,omitempty"`
+	IsAdmin  bool   `json:"isAdmin"`
+	// IsSuperAdmin is the platform's tier, for the Appearance tab alone.
+	IsSuperAdmin bool `json:"isSuperAdmin,omitempty"`
+	IsStudent    bool `json:"isStudent,omitempty"`
+	IsParent     bool `json:"isParent,omitempty"`
+	IsStaff      bool `json:"isStaff,omitempty"`
 	// Adults and Children are the viewer's household: who may be billed, and
 	// who they may take tickets for.
 	Adults   []Person `json:"adults"`

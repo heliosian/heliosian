@@ -402,6 +402,9 @@ async function load() {
     initial: state.admins,
   });
   renderVisibility(state.apps, state.people);
+  // Appearance - what colours the front page - is the platform's super
+  // admins' alone; a regular admin's page keeps the tab and panel hidden.
+  document.querySelector('[data-panel="appearance"]').hidden = !state.isSuperAdmin;
   document.querySelector('#panel-appearance').replaceChildren(appearanceCard({
     theme: state.theme, url: '/api/admin/theme',
     defaults: {sidebar: '#122d31', sidebarEnd: '#2e5c63', sidebarText: '#ffffff', page: '#f3f7f2', pageEnd: '#f3f7f2'},

@@ -142,6 +142,17 @@ func (a app) who(r *http.Request) (string, bool) {
 	return email, a.cache.IsAdmin(email)
 }
 
+// requireSuperAdmin is the platform's own tier: what colours the app is
+// theirs alone, not any admin's.
+func (a app) requireSuperAdmin(w http.ResponseWriter, r *http.Request) (string, bool) {
+	email, _ := a.who(r)
+	if !a.cache.IsSuperAdmin(email) {
+		http.Error(w, "super admin access required", http.StatusForbidden)
+		return "", false
+	}
+	return email, true
+}
+
 func (a app) requireAdmin(w http.ResponseWriter, r *http.Request) (string, bool) {
 	email, admin := a.who(r)
 	if !admin {
@@ -168,6 +179,7 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 	view := Render(a.cache.Model(), a.directory, email, admin, now())
 	view.ImageSearch = true
 	view.ImageSources = a.search.Sources()
+	view.User.IsSuperAdmin = a.cache.IsSuperAdmin(email)
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
 		slog.ErrorContext(r.Context(), "encode celebrate model", "error", err)
@@ -1602,7 +1614,7 @@ func (a app) reorderCategories(w http.ResponseWriter, r *http.Request) {
 // saveTheme takes the page's colours at once (internal/theme) and writes
 // their rows of the Settings tab, adding any the tab has not got yet.
 func (a app) saveTheme(w http.ResponseWriter, r *http.Request) {
-	actor, ok := a.requireAdmin(w, r)
+	actor, ok := a.requireSuperAdmin(w, r)
 	if !ok {
 		return
 	}

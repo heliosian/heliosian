@@ -152,6 +152,8 @@ type User struct {
 	// initial instead.
 	PhotoURL string `json:"photoUrl,omitempty"`
 	IsAdmin  bool   `json:"isAdmin"`
+	// IsSuperAdmin is the platform's tier, for the Appearance tab alone.
+	IsSuperAdmin bool `json:"isSuperAdmin,omitempty"`
 	// Spouses and Children are the viewer's household, whose sign-ups are
 	// theirs to see and to change - a parent signs a child up, and takes
 	// them off again.

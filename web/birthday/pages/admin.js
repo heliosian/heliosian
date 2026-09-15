@@ -230,7 +230,7 @@ function invitesCard() {
 const sections = [
   {title: 'Display', tabs: [
     {key: 'settings', label: 'Settings', card: settingsCard},
-    {key: 'appearance', label: 'Appearance', card: () => appearanceCard({theme: settings().theme, url: '/api/birthday/theme', defaults: {sidebar: '#eef5f4', sidebarEnd: '#c5dfdc', sidebarText: '#0e4d54', page: '#f4f8f8', pageEnd: '#f4f8f8'}, pictures: {logo: '/brand/logo-lockup-vertical.png', sidebarImage: ''}})},
+    {key: 'appearance', label: 'Appearance', superOnly: true, card: () => appearanceCard({theme: settings().theme, url: '/api/birthday/theme', defaults: {sidebar: '#eef5f4', sidebarEnd: '#c5dfdc', sidebarText: '#0e4d54', page: '#f4f8f8', pageEnd: '#f4f8f8'}, pictures: {logo: '/brand/logo-lockup-vertical.png', sidebarImage: ''}})},
   ]},
   {title: 'Editing & Control', tabs: [
     {key: 'team', label: 'Team', card: teamCard},
@@ -285,6 +285,11 @@ export function adminPage() {
     const group = el('div', 'sidebar-section');
     group.append(el('div', 'sidebar-section-title', section.title));
     for (const item of section.tabs) {
+      // Appearance - what colours the app - is the platform's super admins'
+      // alone; a regular admin's page is built without it.
+      if (item.superOnly && !me().isSuperAdmin) {
+        continue;
+      }
       const tab = el('div', 'tab', item.label);
       tab.dataset.panel = item.key;
       tab.addEventListener('click', () => show(item.key));

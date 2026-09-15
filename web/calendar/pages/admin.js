@@ -555,7 +555,7 @@ const sections = [
     {key: 'categories', label: 'Categories', card: categoriesTool},
   ]},
   {title: 'Display', tabs: [
-    {key: 'appearance', label: 'Appearance', card: () => appearanceCard({theme: state.model.theme, url: '/api/calendar/theme', defaults: {sidebar: '#eef5f4', sidebarEnd: '#c5dfdc', sidebarText: '#0e4d54', page: '#f4f8f8', pageEnd: '#f4f8f8'}, pictures: {logo: '/brand/logo-lockup-wide.png', sidebarImage: ''}})},
+    {key: 'appearance', label: 'Appearance', superOnly: true, card: () => appearanceCard({theme: state.model.theme, url: '/api/calendar/theme', defaults: {sidebar: '#eef5f4', sidebarEnd: '#c5dfdc', sidebarText: '#0e4d54', page: '#f4f8f8', pageEnd: '#f4f8f8'}, pictures: {logo: '/brand/logo-lockup-wide.png', sidebarImage: ''}})},
   ]},
 ];
 
@@ -601,6 +601,11 @@ export function adminPage() {
     const group = el('div', 'sidebar-section');
     group.append(el('div', 'sidebar-section-title', section.title));
     for (const item of section.tabs) {
+      // Appearance - what colours the app - is the platform's super admins'
+      // alone; a regular admin's page is built without it.
+      if (item.superOnly && !me().isSuperAdmin) {
+        continue;
+      }
       const tab = el('div', 'tab', item.label);
       tab.dataset.panel = item.key;
       tab.addEventListener('click', () => show(item.key));

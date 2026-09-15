@@ -88,16 +88,18 @@ type Alerts struct {
 }
 
 type User struct {
-	Email      string   `json:"email"`
-	Name       string   `json:"name"`
-	Initial    string   `json:"initial"`
-	PhotoURL   string   `json:"photoUrl,omitempty"`
-	IsAdmin    bool     `json:"isAdmin"`
-	IsStudent  bool     `json:"isStudent,omitempty"`
-	IsParent   bool     `json:"isParent,omitempty"`
-	IsStaff    bool     `json:"isStaff,omitempty"`
-	Students   []Person `json:"students"`
-	Classrooms []string `json:"classrooms"`
+	Email    string `json:"email"`
+	Name     string `json:"name"`
+	Initial  string `json:"initial"`
+	PhotoURL string `json:"photoUrl,omitempty"`
+	IsAdmin  bool   `json:"isAdmin"`
+	// IsSuperAdmin is the platform's tier, for the Appearance tab alone.
+	IsSuperAdmin bool     `json:"isSuperAdmin,omitempty"`
+	IsStudent    bool     `json:"isStudent,omitempty"`
+	IsParent     bool     `json:"isParent,omitempty"`
+	IsStaff      bool     `json:"isStaff,omitempty"`
+	Students     []Person `json:"students"`
+	Classrooms   []string `json:"classrooms"`
 	// Saved is the view this person kept, when they have: what the calendar
 	// opens to for them in place of its own defaults.
 	Saved *Setting `json:"saved,omitempty"`

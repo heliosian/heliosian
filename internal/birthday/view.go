@@ -95,6 +95,8 @@ type User struct {
 	Initial  string `json:"initial"`
 	PhotoURL string `json:"photoUrl,omitempty"`
 	IsAdmin  bool   `json:"isAdmin"`
+	// IsSuperAdmin is the platform's tier, for the Appearance tab alone.
+	IsSuperAdmin bool `json:"isSuperAdmin,omitempty"`
 }
 
 // TeamView is a team member as the pages see them: the role, and the name

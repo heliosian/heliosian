@@ -90,7 +90,7 @@ body.admin {
   border-left-color: var(--brand);
   background: #eef4f4;
 }
-.admin .panel[hidden] { display: none; }
+.admin .panel[hidden], .admin .tab[hidden] { display: none; }
 .admin .card {
   background: #fff;
   border: 1px solid var(--line);

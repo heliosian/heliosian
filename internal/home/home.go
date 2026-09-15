@@ -272,6 +272,17 @@ func (a app) adminGate(w http.ResponseWriter, r *http.Request) bool {
 }
 
 // requireAdminFunc guards a handler that has no admin-only body of its own.
+// requireSuperAdmin is the platform's own tier: what colours the front page
+// is theirs alone, not any admin's.
+func (a app) requireSuperAdmin(w http.ResponseWriter, r *http.Request) (string, bool) {
+	email := strings.ToLower(auth.Email(r))
+	if !a.cache.IsSuperAdmin(email) {
+		http.Error(w, "super admin access required", http.StatusForbidden)
+		return "", false
+	}
+	return email, true
+}
+
 func (a app) requireAdminFunc(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if _, ok := a.requireAdmin(w, r); ok {
@@ -879,9 +890,11 @@ func (a app) adminState(w http.ResponseWriter, r *http.Request) {
 		// for, each with its mode and list; People is who its pickers offer.
 		Apps   []AppVisibility `json:"apps"`
 		People []Person        `json:"people"`
-		// Theme is the front page's colouring, for the Appearance panel.
-		Theme theme.Theme `json:"theme"`
-	}{Email: email, HasStore: a.store != nil, Admins: a.cache.Admins(a.superAdmins()), Apps: a.cache.AppVisibilities(), People: a.people(), Theme: a.cache.Model().Theme}
+		// Theme is the front page's colouring, for the Appearance panel,
+		// which only a super admin gets.
+		Theme        theme.Theme `json:"theme"`
+		IsSuperAdmin bool        `json:"isSuperAdmin"`
+	}{Email: email, HasStore: a.store != nil, Admins: a.cache.Admins(a.superAdmins()), Apps: a.cache.AppVisibilities(), People: a.people(), Theme: a.cache.Model().Theme, IsSuperAdmin: a.cache.IsSuperAdmin(email)}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
 		slog.ErrorContext(r.Context(), "encode apps admin state", "error", err)
@@ -998,7 +1011,7 @@ func (a app) setVisibility(w http.ResponseWriter, r *http.Request) {
 // page's, each #rrggbb or blank for the stylesheet's own, and for each the
 // second colour of a gradient - and writes every row of the Settings tab.
 func (a app) setTheme(w http.ResponseWriter, r *http.Request) {
-	_, ok := a.requireAdmin(w, r)
+	_, ok := a.requireSuperAdmin(w, r)
 	if !ok {
 		return
 	}

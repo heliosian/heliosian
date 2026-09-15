@@ -339,7 +339,7 @@ const sections = [
     {key: 'celebrations', label: 'Celebrations', card: celebrationsCard},
     {key: 'categories', label: 'Categories', card: categoriesCard},
     {key: 'settings', label: 'Settings', card: settingsCard},
-    {key: 'appearance', label: 'Appearance', card: () => appearanceCard({theme: state.model.settings.theme, url: '/api/celebrate/theme', defaults: {sidebar: '#eef5f4', sidebarEnd: '#c5dfdc', sidebarText: '#0f4e54', page: '#f4f8f8', pageEnd: '#f4f8f8'}, pictures: {logo: '/brand/logo-lockup-vertical.png', sidebarImage: '/rail_bottom_left.png'}})},
+    {key: 'appearance', label: 'Appearance', superOnly: true, card: () => appearanceCard({theme: state.model.settings.theme, url: '/api/celebrate/theme', defaults: {sidebar: '#eef5f4', sidebarEnd: '#c5dfdc', sidebarText: '#0f4e54', page: '#f4f8f8', pageEnd: '#f4f8f8'}, pictures: {logo: '/brand/logo-lockup-vertical.png', sidebarImage: '/rail_bottom_left.png'}})},
   ]},
   {title: 'Money', tabs: [
     {key: 'invoices', label: 'Invoicing', card: invoicesCard},
@@ -395,6 +395,11 @@ export function adminPage() {
     const group = el('div', 'sidebar-section');
     group.append(el('div', 'sidebar-section-title', section.title));
     for (const item of section.tabs) {
+      // Appearance - what colours the app - is the platform's super admins'
+      // alone; a regular admin's page is built without it.
+      if (item.superOnly && !me().isSuperAdmin) {
+        continue;
+      }
       const tab = el('div', 'tab', item.label);
       tab.dataset.panel = item.key;
       tab.addEventListener('click', () => show(item.key));
