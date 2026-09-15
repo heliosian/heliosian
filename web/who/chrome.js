@@ -241,14 +241,14 @@ export function renderNav() {
         // landed near the sidebar's own dark teal, making that tag's icon
         // nearly invisible against the background it's sitting on.
         icon.style.color = '#fff';
-        a.append(auto ? autoTagIcon(icon) : icon, el('span', '', trimMiddle(name, 40)));
+        a.append(auto ? magicTagIcon(icon) : icon, el('span', '', trimMiddle(name, 40)));
         toolsBody.append(a);
       };
       for (const name of tagNames()) {
         listLink('/people?tag=' + encodeURIComponent(name), 'tag', name, params.get('tag') === name, false);
       }
       if (listKeys().length) {
-        toolsBody.append(autoTagsHeading('nav-subheading'));
+        toolsBody.append(magicTagsHeading('nav-subheading'));
       }
       for (const key of listKeys()) {
         listLink('/people?list=' + encodeURIComponent(key), listIcon(key), listLabel(key), params.get('list') === key, true);
@@ -345,27 +345,27 @@ function setMobileListsMenu(open) {
 
 // The smart lists (a party's guests, an activity's roster, a room parent's
 // families) sit under the user's own tags in both the sidebar and the phone
-// Lists sheet, set apart by this small heading so it's clear they're made
-// and kept up by the app, not something the user typed in - the (i) says so
-// on hover, since "auto-generated" alone doesn't explain where they come
-// from or why they can't be edited.
-const autoTagsTip = 'Made for you from what the directory already knows - who is in a party, an activity, or the families a room parent looks after - and kept up to date on their own. They cannot be edited; use "Save as tag" on one to copy it into a tag of your own.';
+// Lists sheet, set apart as "Magic Tags" so it's clear they're made and kept
+// up by the app, not something the user typed in - the (i) explains on
+// hover, since the name alone doesn't say where they come from or why they
+// can't be edited.
+const magicTagsTip = 'Magic Tags appear on their own, made from what the directory already knows about you: the guests of a party you are hosting, the roster of an activity you run, or the families a room parent looks after. They update themselves as those things change, so there is nothing to keep up. They cannot be edited directly; use "Save as tag" on one to copy it into a tag of your own.';
 
-function autoTagsHeading(className) {
+function magicTagsHeading(className) {
   const heading = el('div', className);
-  const tip = el('span', 'auto-tags-info');
-  tip.title = autoTagsTip;
+  const tip = el('span', 'magic-tags-info');
+  tip.title = magicTagsTip;
   tip.append(svg('info'));
-  heading.append(el('span', '', 'Auto-generated tags'), tip);
+  heading.append(el('span', '', 'Magic Tags'), tip);
   return heading;
 }
 
 // The list's own kind icon with a little sparkle pinned to its corner, the
 // same "made by the app" mark wherever it appears.
-function autoTagIcon(icon) {
-  const wrap = el('span', 'auto-tag-icon');
+function magicTagIcon(icon) {
+  const wrap = el('span', 'magic-tag-icon');
   const spark = svg('sparkles');
-  spark.classList.add('auto-tag-spark');
+  spark.classList.add('magic-tag-spark');
   wrap.append(icon, spark);
   return wrap;
 }
@@ -389,14 +389,14 @@ function renderMobileListsMenu() {
     a.href = href;
     const icon = svg(iconName);
     icon.style.color = `hsl(${hue(name)}, 65%, 40%)`;
-    a.append(auto ? autoTagIcon(icon) : icon, el('span', '', name));
+    a.append(auto ? magicTagIcon(icon) : icon, el('span', '', name));
     body.append(a);
   };
   for (const name of tagNames()) {
     listItem('/people?tag=' + encodeURIComponent(name), 'tag', name, params.get('tag') === name, false);
   }
   if (listKeys().length) {
-    body.append(autoTagsHeading('mobile-lists-subheading'));
+    body.append(magicTagsHeading('mobile-lists-subheading'));
   }
   for (const key of listKeys()) {
     listItem('/people?list=' + encodeURIComponent(key), listIcon(key), listLabel(key), params.get('list') === key, true);

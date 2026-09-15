@@ -572,8 +572,8 @@ body {
   border-left: 1px solid rgba(255, 255, 255, 0.14);
 }
 
-/* "Auto-generated tags" divider inside the Lists section, between the
-   user's own tags and the app-made ones (see autoTagsHeading in chrome.js). */
+/* "Magic Tags" divider inside the Lists section, between the user's own
+   tags and the app-made ones (see magicTagsHeading in chrome.js). */
 .nav-subheading {
   display: flex;
   align-items: center;
@@ -588,12 +588,12 @@ body {
   color: rgba(255, 255, 255, 0.55);
 }
 
-.auto-tags-info {
+.magic-tags-info {
   display: flex;
   cursor: help;
 }
 
-.auto-tags-info svg {
+.magic-tags-info svg {
   width: 14px;
   height: 14px;
   stroke: currentColor;
@@ -606,13 +606,13 @@ body {
 /* A list's kind icon with a sparkle pinned to its top-right corner - the
    sizes here match .app-nav a svg / .mobile-lists-item svg, so the wrapper
    takes exactly the icon's place in the row. */
-.auto-tag-icon {
+.magic-tag-icon {
   position: relative;
   display: flex;
   flex-shrink: 0;
 }
 
-.auto-tag-icon .auto-tag-spark {
+.magic-tag-icon .magic-tag-spark {
   position: absolute;
   top: -6px;
   right: -7px;
@@ -1042,6 +1042,44 @@ main {
   font-size: 15px;
   color: var(--muted);
   margin-top: 6px;
+}
+
+/* The "Magic Tag from Celebrate - open this party" line under a smart list's
+   title (see renderListPage): sparkle, then the source app's mark and a link
+   back to the thing the list mirrors. */
+.magic-source {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.magic-source > svg {
+  width: 16px;
+  height: 16px;
+  fill: #f6e24c;
+  stroke: #c9b52a;
+  stroke-width: 1;
+  flex-shrink: 0;
+}
+
+.magic-source a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--brand);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.magic-source a:hover {
+  text-decoration: underline;
+}
+
+.magic-source img {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
 }
 
 .filter-wrap {

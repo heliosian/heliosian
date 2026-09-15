@@ -1,6 +1,7 @@
 import {tags, lists} from './state.js';
 import {loadLastTag, saveLastTag, loadTagUsage, recordTagUsage} from './storage.js';
 import {el, svg} from './dom.js';
+import {appOrigin} from '/toolbar.js';
 
 export function tagNames() {
   return Object.keys(tags).sort((a, b) => a.localeCompare(b));
@@ -18,6 +19,27 @@ export function listLabel(key) {
 
 export function listIcon(key) {
   return listIcons[lists[key].kind];
+}
+
+// Where a Magic Tag's people come from - the party in Celebrate or the
+// activity in HCA-Team it mirrors - so the list page can link back to the
+// thing itself. A room parent's list is the directory's own (its families
+// are worked out here from the grades they look after), so it has no page
+// elsewhere to point at. The key's id is what the source app's own
+// /parties/{id} and /activities/{id} resolve, redirecting on to the friendly
+// address if the thing has one.
+const listSources = {
+  party: {app: 'celebrate', name: 'Celebrate', path: '/parties/', thing: 'party'},
+  activity: {app: 'team', name: 'HCA-Team', path: '/activities/', thing: 'activity'},
+};
+
+export function listSource(key) {
+  const source = lists[key] && listSources[lists[key].kind];
+  if (!source) {
+    return null;
+  }
+  const id = key.slice(key.indexOf(':') + 1);
+  return {...source, href: appOrigin(source.app) + source.path + encodeURIComponent(id)};
 }
 
 export function members(key) {

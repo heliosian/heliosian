@@ -2,7 +2,7 @@ import {state, byEmail, lists, tags} from '../state.js';
 import {el, svg, csvField, copyGlyph} from '../dom.js';
 import {familiesOf, familyOf, familySearchText} from '../families.js';
 import {personCard, personLink} from '../people.js';
-import {tagControl, onTagsChange, listLabel, members, tagFacetOptions, saveAsTag, deleteTag} from '../tags.js';
+import {tagControl, onTagsChange, listLabel, members, tagFacetOptions, saveAsTag, deleteTag, listSource} from '../tags.js';
 import {saveTagRelations} from '../storage.js';
 import {matchesFilters, familyMatchesFilters, roleChips, facetDropdown, gradeOptions, filterControl, tagRelationOptions} from '../filters.js';
 import {resetMain} from '../chrome.js';
@@ -128,6 +128,26 @@ export function renderListPage() {
   const pageHeader = el('div', 'page-header container page-header-list');
   const titleWrap = el('div');
   titleWrap.append(el('h1', 'page-title', title));
+  if (smart) {
+    // A Magic Tag says what it mirrors and, for one from another app, links
+    // to the thing itself - the party or activity - the way the app switch
+    // does, in the same tab.
+    const line = el('div', 'page-subtitle magic-source');
+    const source = listSource(smart.key);
+    if (source) {
+      line.append(svg('sparkles'), el('span', '', 'Magic Tag from '));
+      const link = el('a');
+      link.href = source.href;
+      const mark = el('img');
+      mark.src = `/brand/apps/${source.app}.png`;
+      mark.alt = '';
+      link.append(mark, el('span', '', `${source.name} - open this ${source.thing}`));
+      line.append(link);
+    } else {
+      line.append(svg('sparkles'), el('span', '', 'Magic Tag from the directory - the families of the grades you are a room parent for'));
+    }
+    titleWrap.append(line);
+  }
   if (smart && smart.guests) {
     titleWrap.append(el('div', 'page-subtitle', smart.guests === 1
       ? 'One guest by name is not in the directory and cannot be listed.'
