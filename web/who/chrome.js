@@ -228,7 +228,7 @@ export function renderNav() {
         renderItem(toolsBody, item);
       }
       const params = new URLSearchParams(location.search);
-      const listLink = (href, iconName, name, active) => {
+      const listLink = (href, iconName, name, active, auto) => {
         const a = el('a');
         a.href = href;
         a.title = name;
@@ -241,14 +241,17 @@ export function renderNav() {
         // landed near the sidebar's own dark teal, making that tag's icon
         // nearly invisible against the background it's sitting on.
         icon.style.color = '#fff';
-        a.append(icon, el('span', '', trimMiddle(name, 40)));
+        a.append(auto ? autoTagIcon(icon) : icon, el('span', '', trimMiddle(name, 40)));
         toolsBody.append(a);
       };
       for (const name of tagNames()) {
-        listLink('/people?tag=' + encodeURIComponent(name), 'tag', name, params.get('tag') === name);
+        listLink('/people?tag=' + encodeURIComponent(name), 'tag', name, params.get('tag') === name, false);
+      }
+      if (listKeys().length) {
+        toolsBody.append(autoTagsHeading('nav-subheading'));
       }
       for (const key of listKeys()) {
-        listLink('/people?list=' + encodeURIComponent(key), listIcon(key), listLabel(key), params.get('list') === key);
+        listLink('/people?list=' + encodeURIComponent(key), listIcon(key), listLabel(key), params.get('list') === key, true);
       }
     }
   }
@@ -340,6 +343,33 @@ function setMobileListsMenu(open) {
   mobileListsOverlay.hidden = !open;
 }
 
+// The smart lists (a party's guests, an activity's roster, a room parent's
+// families) sit under the user's own tags in both the sidebar and the phone
+// Lists sheet, set apart by this small heading so it's clear they're made
+// and kept up by the app, not something the user typed in - the (i) says so
+// on hover, since "auto-generated" alone doesn't explain where they come
+// from or why they can't be edited.
+const autoTagsTip = 'Made for you from what the directory already knows - who is in a party, an activity, or the families a room parent looks after - and kept up to date on their own. They cannot be edited; use "Save as tag" on one to copy it into a tag of your own.';
+
+function autoTagsHeading(className) {
+  const heading = el('div', className);
+  const tip = el('span', 'auto-tags-info');
+  tip.title = autoTagsTip;
+  tip.append(svg('info'));
+  heading.append(el('span', '', 'Auto-generated tags'), tip);
+  return heading;
+}
+
+// The list's own kind icon with a little sparkle pinned to its corner, the
+// same "made by the app" mark wherever it appears.
+function autoTagIcon(icon) {
+  const wrap = el('span', 'auto-tag-icon');
+  const spark = svg('sparkles');
+  spark.classList.add('auto-tag-spark');
+  wrap.append(icon, spark);
+  return wrap;
+}
+
 // The same Everyone/Invites/tag links as the sidebar's "Lists" section
 // (buildNavInto above), just laid out as a mobile bottom sheet instead of a
 // nav list, since there's no sidebar to hold them on a phone-sized screen.
@@ -354,19 +384,22 @@ function renderMobileListsMenu() {
     a.append(svg(item.path), el('span', '', item.label));
     body.append(a);
   }
-  const listItem = (href, iconName, name, active) => {
+  const listItem = (href, iconName, name, active, auto) => {
     const a = el('a', 'mobile-lists-item' + (seg === 'people' && active ? ' active' : ''));
     a.href = href;
     const icon = svg(iconName);
     icon.style.color = `hsl(${hue(name)}, 65%, 40%)`;
-    a.append(icon, el('span', '', name));
+    a.append(auto ? autoTagIcon(icon) : icon, el('span', '', name));
     body.append(a);
   };
   for (const name of tagNames()) {
-    listItem('/people?tag=' + encodeURIComponent(name), 'tag', name, params.get('tag') === name);
+    listItem('/people?tag=' + encodeURIComponent(name), 'tag', name, params.get('tag') === name, false);
+  }
+  if (listKeys().length) {
+    body.append(autoTagsHeading('mobile-lists-subheading'));
   }
   for (const key of listKeys()) {
-    listItem('/people?list=' + encodeURIComponent(key), listIcon(key), listLabel(key), params.get('list') === key);
+    listItem('/people?list=' + encodeURIComponent(key), listIcon(key), listLabel(key), params.get('list') === key, true);
   }
 }
 

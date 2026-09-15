@@ -572,6 +572,58 @@ body {
   border-left: 1px solid rgba(255, 255, 255, 0.14);
 }
 
+/* "Auto-generated tags" divider inside the Lists section, between the
+   user's own tags and the app-made ones (see autoTagsHeading in chrome.js). */
+.nav-subheading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 0 2px;
+  padding: 8px 12px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.auto-tags-info {
+  display: flex;
+  cursor: help;
+}
+
+.auto-tags-info svg {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* A list's kind icon with a sparkle pinned to its top-right corner - the
+   sizes here match .app-nav a svg / .mobile-lists-item svg, so the wrapper
+   takes exactly the icon's place in the row. */
+.auto-tag-icon {
+  position: relative;
+  display: flex;
+  flex-shrink: 0;
+}
+
+.auto-tag-icon .auto-tag-spark {
+  position: absolute;
+  top: -6px;
+  right: -7px;
+  width: 12px !important;
+  height: 12px !important;
+  fill: #f6e24c !important;
+  stroke: #f6e24c !important;
+  stroke-width: 1 !important;
+  opacity: 1 !important;
+}
+
 .nav-family-avatar {
   width: 26px;
   height: 26px;
@@ -4153,6 +4205,19 @@ a.person-card:hover .photo-wrap-peek::before {
     text-decoration: none;
     font-size: 14px;
     font-weight: 500;
+  }
+  .mobile-lists-subheading {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+    padding: 10px 8px 4px;
+    border-top: 1px solid #e6e6e8;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #777;
   }
   .mobile-lists-item:active {
     background: #f2f2f3;

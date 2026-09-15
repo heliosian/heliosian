@@ -270,6 +270,29 @@ func (c *Cache) applyTag(owner, tag, person string, on bool) {
 	c.tables = &next
 }
 
+// dropTag forgets every row of one owner's tag, returning how many there
+// were - zero means the tag wasn't theirs to begin with (or was already gone).
+func (c *Cache) dropTag(owner, tag string) int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	rows := []map[string]string{}
+	dropped := 0
+	for _, row := range c.tables.Tags {
+		if strings.EqualFold(row[tagOwner], owner) && row[tagName] == tag {
+			dropped++
+			continue
+		}
+		rows = append(rows, row)
+	}
+	if dropped == 0 {
+		return 0
+	}
+	next := *c.tables
+	next.Tags = rows
+	c.tables = &next
+	return dropped
+}
+
 func (c *Cache) currentTables() *Tables {
 	c.mu.RLock()
 	defer c.mu.RUnlock()

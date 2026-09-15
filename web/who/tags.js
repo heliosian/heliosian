@@ -58,6 +58,23 @@ export async function saveAsTag(name, people) {
   return true;
 }
 
+// Drops one of the user's own tags whole - everyone in it at once - as the
+// list page's Delete tag button does after they've confirmed. Smart lists
+// (lists) aren't the user's to delete and never come through here.
+export async function deleteTag(name) {
+  const form = new FormData();
+  form.append('tag', name);
+  const res = await fetch('/api/directory/tag-delete', {method: 'POST', body: form});
+  if (!res.ok) {
+    alert(await res.text());
+    return false;
+  }
+  delete tags[name];
+  chromeChanged();
+  pageChanged();
+  return true;
+}
+
 // Same set of tags as tagNames(), ordered most-recently-used first (falling
 // back to alphabetical for tags this browser has no usage record for, e.g.
 // after clearing localStorage or on another device) - this is the order the

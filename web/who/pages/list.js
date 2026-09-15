@@ -1,8 +1,8 @@
-import {state, byEmail, lists} from '../state.js';
+import {state, byEmail, lists, tags} from '../state.js';
 import {el, svg, csvField, copyGlyph} from '../dom.js';
 import {familiesOf, familyOf, familySearchText} from '../families.js';
 import {personCard, personLink} from '../people.js';
-import {tagControl, onTagsChange, listLabel, members, tagFacetOptions, saveAsTag} from '../tags.js';
+import {tagControl, onTagsChange, listLabel, members, tagFacetOptions, saveAsTag, deleteTag} from '../tags.js';
 import {matchesFilters, familyMatchesFilters, roleChips, facetDropdown, gradeOptions, filterControl} from '../filters.js';
 import {resetMain} from '../chrome.js';
 import {initFamilyMap} from './map.js';
@@ -119,6 +119,10 @@ export function renderListPage() {
 
   const title = state.filterTags.size ? [...state.filterTags].map(listLabel).join(', ') : 'Everyone';
   const smart = state.filterTags.size === 1 ? lists[[...state.filterTags][0]] : null;
+  // The one tag this page is showing when it's the user's own (not a smart
+  // list, not several tags picked in the Tags dropdown) - the only case where
+  // deleting "the tag" means something.
+  const ownTag = state.filterTags.size === 1 && !smart && tags[[...state.filterTags][0]] ? [...state.filterTags][0] : null;
 
   const pageHeader = el('div', 'page-header container page-header-list');
   const titleWrap = el('div');
@@ -192,6 +196,23 @@ export function renderListPage() {
       }
     });
     controls.append(save);
+  }
+  if (ownTag) {
+    const remove = el('button', 'filter-button email-download tag-delete');
+    remove.type = 'button';
+    remove.title = 'Delete this tag - nobody is removed from the directory, just untagged';
+    remove.append(svg('trash'), el('span', '', 'Delete tag'));
+    remove.addEventListener('click', async () => {
+      const count = members(ownTag).length;
+      const who = count === 1 ? 'the one person' : `all ${count} people`;
+      if (!confirm(`Delete the tag "${ownTag}"? It comes off ${who} in it. This can't be undone.`)) {
+        return;
+      }
+      if (await deleteTag(ownTag)) {
+        location.href = '/people';
+      }
+    });
+    controls.append(remove);
   }
   const download = el('a', 'filter-button email-download');
   download.title = 'Download what the list currently shows';

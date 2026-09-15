@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/cdproto/runtime"
 	"github.com/chromedp/chromedp"
 )
@@ -20,6 +21,7 @@ func main() {
 	wait := flag.Duration("wait", 4*time.Second, "how long to listen after the page loads")
 	click := flag.String("click", "", "css selector(s) to click once the page is up, several separated by |, so an error behind a button shows too")
 	out := flag.String("out", "", "also save a viewport screenshot here after the clicks, as the page then stands")
+	dialog := flag.String("dialog", "dismiss", "how to answer an alert/confirm/prompt a click opens - accept or dismiss - printing what it asked either way")
 	flag.Parse()
 	ctx, cancel := chromedp.NewExecAllocator(context.Background(), append(chromedp.DefaultExecAllocatorOptions[:], chromedp.Flag("ignore-certificate-errors", true))...)
 	defer cancel()
@@ -41,6 +43,12 @@ func main() {
 				}
 			}
 			fmt.Println()
+		case *page.EventJavascriptDialogOpening:
+			n++
+			fmt.Printf("%s: %s\n", e.Type, e.Message)
+			// Headless Chrome otherwise leaves the dialog up, and every later
+			// action - the next click, the screenshot - hangs behind it.
+			go chromedp.Run(ctx, page.HandleJavaScriptDialog(*dialog == "accept"))
 		case *runtime.EventExceptionThrown:
 			n++
 			d := e.ExceptionDetails
