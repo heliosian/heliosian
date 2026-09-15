@@ -429,8 +429,39 @@ function openCharityForm(c, start, options) {
     whyField.hidden = allowed.input.checked;
   });
   // Generate with Claude looks the charity up by its name and fills the link
-  // and the sentence below, for reading over; from the link too, when one is typed.
+  // and the sentence below, for reading over; from the link too, when one is
+  // typed. A field that already says something different is not overwritten:
+  // the two are shown side by side to choose between.
   const suggestRow = el('div', 'suggest-row');
+  const compares = [];
+  const offer = (input, found, label) => {
+    const have = input.value.trim();
+    if (!found || found === have) {
+      return;
+    }
+    if (!have) {
+      input.value = found;
+      return;
+    }
+    const box = el('div', 'compare');
+    box.append(el('div', 'compare-title', `${label}: yours, or Claude's?`));
+    const pair = el('div', 'compare-pair');
+    for (const [heading, value, pick] of [['Yours', have, have], ["Claude's", found, found]]) {
+      const side = el('div', 'compare-side');
+      side.append(el('div', 'compare-heading', heading), el('div', 'compare-text', value));
+      const use = el('button', 'button button-secondary button-small', `Use ${heading === 'Yours' ? 'mine' : "Claude's"}`);
+      use.type = 'button';
+      use.addEventListener('click', () => {
+        input.value = pick;
+        box.remove();
+      });
+      side.append(use);
+      pair.append(side);
+    }
+    box.append(pair);
+    input.parentNode.after(box);
+    compares.push(box);
+  };
   const suggest = button('Generate with Claude', 'sparkle', 'button button-secondary button-small', async () => {
     if (!name.value.trim()) {
       suggestStatus.textContent = 'Give the name first.';
@@ -438,11 +469,14 @@ function openCharityForm(c, start, options) {
     }
     suggest.disabled = true;
     suggestStatus.textContent = 'Looking them up…';
+    for (const box of compares.splice(0)) {
+      box.remove();
+    }
     try {
       const info = await describeCharity(name.value, linkInput.value);
-      linkInput.value = info.donationLink || linkInput.value;
-      about.value = info.sentence;
-      suggestStatus.textContent = 'Read it over and change anything that is off.';
+      offer(linkInput, info.donationLink, 'Donation link');
+      offer(about, info.sentence, 'About');
+      suggestStatus.textContent = compares.length ? 'Choose below, then read it over.' : 'Read it over and change anything that is off.';
     } catch (err) {
       suggestStatus.textContent = err.message;
     } finally {

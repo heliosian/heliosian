@@ -15,17 +15,15 @@ const pipeline = [
   {key: 'Complete', icon: 'circlecheck', tint: 'green', note: 'Everything is all done.'},
 ];
 
-const pageSize = 10;
-
 const dayFormat = new Intl.DateTimeFormat('en-US', {weekday: 'long', month: 'long', day: 'numeric'});
 
-let tab = 'unassigned';
+// tab is the stage in view, '' for every stage at once.
+let tab = '';
 let query = '';
 let filters = {department: '', month: '', assignedTo: '', sort: 'contact'};
-let pageNo = 0;
 
 function inTab(sv, key) {
-  return key === 'unassigned' ? isUnassigned(sv) : sv.stage === key;
+  return !key || (key === 'unassigned' ? isUnassigned(sv) : sv.stage === key);
 }
 
 function tileName(key) {
@@ -68,7 +66,8 @@ function tiles(onPick) {
     const body = el('div');
     body.append(el('div', 'pipeline-label', tileName(stage.key)), el('div', 'pipeline-count', String(state.model.staff.filter(sv => inTab(sv, stage.key)).length)));
     tile.append(icon, body);
-    tile.addEventListener('click', () => onPick(stage.key));
+    // A tile picks its stage; the one already picked clears back to all.
+    tile.addEventListener('click', () => onPick(stage.key === tab ? '' : stage.key));
     strip.append(tile);
   });
   return strip;
@@ -77,17 +76,19 @@ function tiles(onPick) {
 // summary is the band under the pipeline: the stage in view, how many are in
 // it and what it means, and the next date that matters for them.
 function summary(stage, rows) {
+  const everything = {key: '', icon: 'jobs', tint: 'teal', note: 'Every birthday this year. Pick a stage above, or filter below - by who holds them, say.'};
+  stage = stage || everything;
   const band = el('div', `stage-summary tint-${stage.tint}`);
   const icon = el('div', 'summary-icon');
   icon.append(svg(stage.icon));
   const body = el('div', 'summary-body');
   const title = el('div', 'summary-title');
-  title.append(el('strong', '', tileName(stage.key)), el('span', '', ` · ${rows.length} ${rows.length === 1 ? 'birthday' : 'birthdays'}`));
+  title.append(el('strong', '', stage.key ? tileName(stage.key) : 'All stages'), el('span', '', ` · ${rows.length} ${rows.length === 1 ? 'birthday' : 'birthdays'}`));
   body.append(title, el('div', 'summary-note', stage.note));
   band.append(icon, body);
   const byNewsletter = ['Awaiting Response', 'Awaiting Newsletter'].includes(stage.key);
   const dated = rows.filter(sv => byNewsletter ? sv.newsletterDate : sv.requestBy).sort((a, b) => byNewsletter ? a.newsletterDate.localeCompare(b.newsletterDate) : a.requestBy.localeCompare(b.requestBy));
-  if (dated.length && stage.key !== 'Complete') {
+  if (dated.length && stage.key && stage.key !== 'Complete') {
     const next = dated.find(sv => (byNewsletter ? sv.newsletterDate : sv.requestBy) >= state.model.today) || dated[0];
     const date = byNewsletter ? next.newsletterDate : next.requestBy;
     const past = date < state.model.today;
@@ -126,16 +127,21 @@ function filterBar(rerender) {
   input.value = query;
   input.addEventListener('input', () => {
     query = input.value.trim().toLowerCase();
-    pageNo = 0;
     rerender(false);
   });
   search.append(input);
   bar.append(search);
   const set = key => value => {
     filters = {...filters, [key]: value};
-    pageNo = 0;
     rerender(false);
   };
+  // Status is the same choice as the tiles above, and clears them too.
+  const status = selectOf([{label: 'All Statuses', value: ''}, ...pipeline.map(st => ({label: tileName(st.key), value: st.key}))], tab, key => {
+    tab = key;
+    rerender(true);
+  });
+  status.classList.add('filter-status');
+  bar.append(status);
   bar.append(selectOf([{label: 'All Roles', value: ''}, ...state.model.departments.map(d => ({label: d, value: d}))], filters.department, set('department')));
   const months = [];
   const start = new Date(state.model.year.start + 'T00:00:00');
@@ -201,35 +207,14 @@ function table(rows, rerender) {
   }
   wrap.append(head);
   if (!rows.length) {
-    wrap.append(el('div', 'table-empty', query || filters.department || filters.month || filters.assignedTo ? 'Nothing matches.' : tab === 'unassigned' ? 'Everyone is assigned.' : 'Nobody here right now.'));
+    wrap.append(el('div', 'table-empty', query || filters.department || filters.month || filters.assignedTo ? 'Nothing matches.' : tab === 'unassigned' ? 'Everyone is assigned.' : tab ? 'Nobody here right now.' : 'No birthdays this year.'));
     return wrap;
   }
-  const pages = Math.ceil(rows.length / pageSize);
-  pageNo = Math.min(pageNo, pages - 1);
-  for (const sv of rows.slice(pageNo * pageSize, (pageNo + 1) * pageSize)) {
+  for (const sv of rows) {
     wrap.append(row(sv));
   }
   const foot = el('div', 'table-foot');
-  const from = pageNo * pageSize + 1;
-  const to = Math.min(rows.length, (pageNo + 1) * pageSize);
-  foot.append(el('span', '', `${from}–${to} of ${rows.length}`));
-  const prev = el('button', 'page-arrow');
-  prev.type = 'button';
-  prev.append(svg('prev'));
-  prev.disabled = pageNo === 0;
-  prev.addEventListener('click', () => {
-    pageNo--;
-    rerender(false);
-  });
-  const next = el('button', 'page-arrow');
-  next.type = 'button';
-  next.append(svg('next'));
-  next.disabled = pageNo >= pages - 1;
-  next.addEventListener('click', () => {
-    pageNo++;
-    rerender(false);
-  });
-  foot.append(prev, next);
+  foot.append(el('span', '', `${rows.length} ${rows.length === 1 ? 'birthday' : 'birthdays'}`));
   wrap.append(foot);
   return wrap;
 }
@@ -247,8 +232,7 @@ export function processPage() {
     if (whole) {
       body.replaceChildren(tiles(key => {
         tab = key;
-        pageNo = 0;
-        render(true);
+            render(true);
       }), summary(stage, rows), filterBar(render), table(rows, render));
       return;
     }
@@ -256,10 +240,8 @@ export function processPage() {
     body.querySelector('.staff-table').replaceWith(table(rows, render));
   };
   query = '';
-  pageNo = 0;
   setSearch('Search staff…', q => {
     query = q;
-    pageNo = 0;
     const input = body.querySelector('.filter-search input');
     if (input) {
       input.value = q;

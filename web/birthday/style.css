@@ -906,9 +906,9 @@ h2.section { font-size: 20px; margin: 24px 0 12px; }
 
 .summary-next-who { font-size: 14px; color: #4a5c61; }
 
-.filter-bar { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; }
+.filter-bar { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
 
-.filter-search { flex: 1 1 120px; min-width: 0; display: flex; align-items: center; gap: 10px; background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 0 14px; height: 44px; color: var(--muted); }
+.filter-search { flex: 1 1 220px; min-width: 0; display: flex; align-items: center; gap: 10px; background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 0 14px; height: 44px; color: var(--muted); }
 
 .filter-search svg { width: 20px; height: 20px; flex-shrink: 0; }
 
@@ -1079,6 +1079,23 @@ a.trow[data-stage="stage-complete"]::before { background: #3aaa5c; }
 .suggest-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: -4px 0 14px; }
 
 .suggest-row .button svg { color: #d9a400; }
+
+/* Yours beside Claude's, when a field already says something else. */
+.compare { margin: -6px 0 14px; padding: 12px; border-radius: 10px; background: #fff7d6; border: 1px solid #f0dc8a; }
+
+.compare-title { font-size: 13px; font-weight: 700; margin-bottom: 8px; }
+
+.compare-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+.compare-side { display: flex; flex-direction: column; gap: 6px; background: #fff; border-radius: 8px; padding: 10px; min-width: 0; }
+
+.compare-heading { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+
+.compare-text { font-size: 13px; line-height: 1.45; flex: 1; overflow-wrap: anywhere; }
+
+@media (max-width: 600px) {
+  .compare-pair { grid-template-columns: 1fr; }
+}
 
 .suggest-status { font-size: 13px; color: var(--muted); }
 
