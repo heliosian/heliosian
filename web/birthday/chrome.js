@@ -1,4 +1,4 @@
-import {state, me, isAdmin, isSystemAdmin, setSuperEdit, isUnassigned} from './state.js';
+import {state, me, isAdmin, isSystemAdmin, setSuperEdit, isUnassigned, commsOnly} from './state.js';
 import {el, svg, link} from './dom.js';
 import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, initSpoof, markSuper} from '/toolbar.js';
 
@@ -9,20 +9,24 @@ const appName = 'Helios Staff Birthdays';
 // is deliberately absent - Admin Tools is reached from the account menu, as
 // in every app.
 const unassignedItem = {href: '/unassigned', icon: 'users', label: 'Unassigned'};
+const calendarItem = {href: '/calendar', icon: 'calendar', label: 'Calendar'};
+const newslettersItem = {href: '/newsletters', icon: 'newsletter', label: 'Newsletters'};
 
 const primaryItems = [
   {href: '/jobs', icon: 'jobs', label: 'My Jobs'},
   {href: '/process', icon: 'process', label: 'Process'},
-  {href: '/calendar', icon: 'calendar', label: 'Calendar'},
+  calendarItem,
 ];
 
+// The comms team gets the newsletters and the calendar, nothing more.
 function primary() {
+  if (state.model && commsOnly()) {
+    return [newslettersItem, calendarItem];
+  }
   return state.model && state.model.staff.some(isUnassigned) ? [unassignedItem, ...primaryItems] : primaryItems;
 }
 
-const moreItems = [
-  {href: '/newsletters', icon: 'newsletter', label: 'Newsletters'},
-];
+const moreItems = [newslettersItem];
 
 // Charities and Skipped - the charity list, and who is missing a birthday
 // or opted out - are the admins' tabs; a charity's page still opens for
@@ -33,6 +37,9 @@ const adminItems = [
 ];
 
 function more() {
+  if (commsOnly()) {
+    return [];
+  }
   return isSystemAdmin() ? [...moreItems, ...adminItems] : moreItems;
 }
 
@@ -40,6 +47,9 @@ function active(href) {
   const path = location.pathname;
   // The front page stands for whichever of the two it is showing.
   if (path === '/') {
+    if (state.model && commsOnly()) {
+      return href === '/newsletters';
+    }
     const anyUnassigned = state.model && state.model.staff.some(isUnassigned);
     return href === (anyUnassigned ? '/unassigned' : '/jobs');
   }

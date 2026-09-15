@@ -1,5 +1,5 @@
 import {applyTheme} from '/theme.js';
-import {state, applyModel, staff, charity, isUnassigned, isSystemAdmin} from './state.js';
+import {state, applyModel, staff, charity, isUnassigned, isSystemAdmin, commsOnly} from './state.js';
 import {el} from './dom.js';
 import {initChrome, renderChrome, setTitle, clearSearch} from './chrome.js';
 import {initModal, offerTeam} from './edit.js';
@@ -48,6 +48,9 @@ function route() {
   // The front page is the unassigned birthdays while there are any, and
   // My Jobs once everyone has someone.
   if (!parts.length) {
+    if (commsOnly()) {
+      return newslettersPage();
+    }
     return state.model.staff.some(isUnassigned) ? unassignedPage() : jobsPage();
   }
   switch (parts[0]) {

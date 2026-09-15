@@ -185,3 +185,18 @@ export async function copyText(text, message) {
   await navigator.clipboard.writeText(text);
   toast(message || 'Copied');
 }
+
+// copyRich puts both a formatted and a plain version on the clipboard, so a
+// paste into mail or a document keeps the bold, the picture and the links,
+// and a paste into a plain box gets the words.
+export async function copyRich(text, html, message) {
+  try {
+    await navigator.clipboard.write([new ClipboardItem({
+      'text/plain': new Blob([text], {type: 'text/plain'}),
+      'text/html': new Blob([html], {type: 'text/html'}),
+    })]);
+  } catch {
+    await navigator.clipboard.writeText(text);
+  }
+  toast(message || 'Copied');
+}

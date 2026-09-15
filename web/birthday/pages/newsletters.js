@@ -1,28 +1,41 @@
-import {state, isAdmin, year, staffFor, newsletterText, longDate, mediumDate, dateCell, parseDate, newsletterPath} from '../state.js';
-import {el, link, svg, thumb, button, pageHead, menu, copyText} from '../dom.js';
+import {state, isAdmin, year, staffFor, charity, longDate, mediumDate, monthDay, dateCell, parseDate, newsletterPath} from '../state.js';
+import {el, link, svg, thumb, button, pageHead, menu, copyRich} from '../dom.js';
 import {setTitle, setSearch} from '../chrome.js';
 import {staffRow, emptyPanel} from '../cards.js';
-import {openNewsletterDate, openChangeNewsletterDate, addNextWeek, removeNewsletterDate, clearFutureNewsletterDates, openCreateNewsletterDates} from '../edit.js';
+import {openNewsletterDate, openChangeNewsletterDate, addNextWeek, removeNewsletterDate, clearFutureNewsletterDates, openCreateNewsletterDates, markUsed, markAllUsed} from '../edit.js';
 
 let query = '';
 
-function copyIssue(date) {
-  const lines = staffFor(date).filter(sv => sv.donation).map(sv => newsletterText(sv, sv.donation));
-  if (!lines.length) {
-    return copyText('', 'No donations recorded for this issue yet');
+// Past issues are hidden until asked for, and the asking is remembered on
+// this browser.
+const pastKey = 'birthday.showPastIssues';
+
+function showPast() {
+  try {
+    return localStorage.getItem(pastKey) === '1';
+  } catch {
+    return false;
   }
-  return copyText(lines.join('\n\n'), 'Copied the issue');
 }
 
-// issueMenu is the row's and the issue's own actions: copy for anyone, and for
-// an admin, moving or removing the date.
-function issueMenu(date) {
-  const items = [{icon: 'copy', label: 'Copy this issue', onClick: () => copyIssue(date)}];
-  if (isAdmin()) {
-    items.push({icon: 'edit', label: 'Change date', onClick: () => openChangeNewsletterDate(date)});
-    items.push({icon: 'trash', label: 'Remove', danger: true, onClick: () => removeNewsletterDate(date)});
+function setShowPast(on) {
+  try {
+    localStorage.setItem(pastKey, on ? '1' : '0');
+  } catch {
+    // Then it is forgotten on the next visit.
   }
-  return menu(items);
+}
+
+// issueMenu is an admin's actions on an issue, moving or removing the date;
+// nobody else gets a menu.
+function issueMenu(date) {
+  if (!isAdmin()) {
+    return null;
+  }
+  return menu([
+    {icon: 'edit', label: 'Change date', onClick: () => openChangeNewsletterDate(date)},
+    {icon: 'trash', label: 'Remove', danger: true, onClick: () => removeNewsletterDate(date)},
+  ]);
 }
 
 const monthFormat = new Intl.DateTimeFormat('en-US', {month: 'long', year: 'numeric'});
@@ -77,10 +90,12 @@ function issueRow(date, actions) {
 }
 
 function list() {
-  const dates = thisYear().filter(d => !query || longDate(d).toLowerCase().includes(query));
+  const all = thisYear().filter(d => !query || longDate(d).toLowerCase().includes(query));
+  const next = nextIssue();
+  const dates = (showPast() ? all : all.filter(d => d >= state.model.today)).filter(d => d !== next);
   const root = el('div');
   if (!dates.length) {
-    root.append(emptyPanel(query ? 'Nothing matches.' : 'No newsletter dates this year yet.'));
+    root.append(emptyPanel(query ? 'Nothing matches.' : all.length ? 'Nothing more this year.' : 'No newsletter dates this year yet.'));
     return root;
   }
   let month = '';
@@ -97,10 +112,88 @@ function list() {
     if (isAdmin() && i === dates.length - 1) {
       actions.push(button('Add Next Week', 'bolt', 'button button-secondary button-small', () => addNextWeek(date)));
     }
-    actions.push(issueMenu(date));
+    if (issueMenu(date)) {
+      actions.push(issueMenu(date));
+    }
     panel.append(issueRow(date, actions));
   });
   return root;
+}
+
+// entry is what Copy Info hands the newsletter writer about one staff
+// member: the name and title, the birthday, the photo and its address, the charity,
+// where to give, and what it does - and their own words when they left some.
+// It comes as words and as a formatted twin for a paste into mail or a doc.
+function entry(sv) {
+  const c = charity(sv.donation.charity);
+  const photo = sv.photoUrl ? new URL(sv.photoUrl, location.origin).href : '';
+  const esc = t => String(t).replace(/[&<>"]/g, ch => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[ch]));
+  const linked = v => /^https?:\/\//.test(v) ? `<a href="${esc(v)}">${esc(v)}</a>` : esc(v);
+  // Who they are, then under a DONATION heading the charity, where to give,
+  // what it does, and their own words when they left some.
+  const who = [`Birthday: ${monthDay(sv.birthdayThisYear)}`, `Photo: ${photo || 'None on file'}`];
+  const donation = [sv.donation.charity];
+  if (c && c.donationLink) {
+    donation.push(c.donationLink);
+  }
+  if (c && c.about) {
+    donation.push(c.about);
+  }
+  if (sv.donation.note) {
+    donation.push(`In their words: ${sv.donation.note}`);
+  }
+  const text = [sv.name, sv.jobTitle || '', ...who, '', 'DONATION', ...donation].filter((line, i) => line || i === who.length + 2).join('\n');
+  let html = `<p><b>${esc(sv.name)}</b>${sv.jobTitle ? '<br>' + esc(sv.jobTitle) : ''}</p>`;
+  if (photo) {
+    html += `<p><img src="${esc(photo)}" alt="${esc(sv.name)}" width="160"></p>`;
+  }
+  html += '<p>' + who.map(linked).join('<br>') + '</p>';
+  html += '<p><b>DONATION</b><br>' + donation.map(linked).join('<br>') + '</p>';
+  return {text, html};
+}
+
+// nextCard is the next issue on its own, ahead of the list, so it is never
+// lost among the rest.
+function nextCard() {
+  const next = nextIssue();
+  const wrap = el('div', 'next-issue');
+  if (!next) {
+    return wrap;
+  }
+  wrap.append(el('div', 'section-title', 'Next issue'));
+  const panel = el('div', 'panel issues next-panel');
+  const actions = [];
+  const dates = thisYear();
+  if (isAdmin() && next === dates[dates.length - 1]) {
+    actions.push(button('Add Next Week', 'bolt', 'button button-secondary button-small', () => addNextWeek(next)));
+  }
+  if (issueMenu(next)) {
+    actions.push(issueMenu(next));
+  }
+  panel.append(issueRow(next, actions));
+  wrap.append(panel);
+  return wrap;
+}
+
+// pastSwitch shows or hides the issues already out, just over the list.
+function pastSwitch(onChange) {
+  const past = thisYear().filter(d => d < state.model.today).length;
+  const row = el('label', 'switch-row');
+  if (!past) {
+    row.hidden = true;
+    return row;
+  }
+  const input = el('input');
+  input.type = 'checkbox';
+  input.checked = showPast();
+  input.addEventListener('change', () => {
+    setShowPast(input.checked);
+    onChange();
+  });
+  const track = el('span', 'switch');
+  track.append(el('span', 'switch-knob'));
+  row.append(input, track, el('span', 'switch-label', `Show the ${past} ${past === 1 ? 'issue' : 'issues'} already out`));
+  return row;
 }
 
 // overview is the band under the title: the year, the count of issues, and
@@ -115,18 +208,6 @@ function overview() {
   title.append(el('strong', '', `${year().current} birthday year`), el('span', '', ` · ${issues.length} ${issues.length === 1 ? 'issue' : 'issues'}`));
   body.append(title, el('div', 'summary-note', `${longDate(year().start)} to ${longDate(year().end)}. Each issue announces the birthdays between it and the next, so the word goes out before the day, never on it.`));
   band.append(icon, body);
-  const next = nextIssue();
-  if (next) {
-    const people = staffFor(next);
-    const side = el('div', 'summary-next');
-    const cal = el('div', 'summary-next-icon');
-    cal.append(svg('send'));
-    const text = el('div');
-    text.append(el('div', 'summary-next-label', 'Next issue'), el('div', 'summary-next-date', dayFormat.format(parseDate(next))),
-      el('div', 'summary-next-who', people.length ? people.map(sv => sv.name.split(' ')[0]).join(', ') : 'No birthdays'));
-    side.append(cal, text);
-    band.append(side);
-  }
   return band;
 }
 
@@ -147,8 +228,8 @@ export function newslettersPage() {
     query = q;
     page.querySelector('.list').replaceChildren(list());
   });
-  page.append(pageHead('Newsletter Dates', actions), overview());
   const wrap = el('div', 'list');
+  page.append(pageHead('Newsletter Dates', actions), overview(), nextCard(), pastSwitch(() => wrap.replaceChildren(list())));
   wrap.append(list());
   page.append(wrap);
   return page;
@@ -166,8 +247,25 @@ export function newsletterPage(date) {
   page.append(nav);
   const people = staffFor(date);
   const requestBy = parseDate(date);
-  requestBy.setDate(requestBy.getDate() - 10);
-  page.append(pageHead(longDate(date), [button('Copy this issue', 'copy', 'button button-secondary', () => copyIssue(date)), issueMenu(date)]));
+  requestBy.setDate(requestBy.getDate() - state.model.settings.requestLeadDays);
+  // Copy All is every recorded donation in the issue, ready for the newsletter.
+  const recorded = people.filter(sv => sv.donation);
+  const copyAll = button('Copy All', 'copy', 'button', () => {
+    const entries = recorded.map(entry);
+    copyRich(entries.map(e => e.text).join('\n\n'), entries.map(e => e.html).join('<hr>'), `Copied ${recorded.length} ${recorded.length === 1 ? 'entry' : 'entries'}`);
+  });
+  copyAll.disabled = !recorded.length;
+  copyAll.title = recorded.length ? '' : 'No donations recorded yet';
+  // Mark All Used says the issue carried every donation recorded and not yet marked.
+  const unused = recorded.filter(sv => !sv.donation.usedOn);
+  const markAll = button('Mark All Used', 'circlecheck', 'button button-secondary', () => {
+    if (confirm(`Mark ${unused.length} ${unused.length === 1 ? 'donation' : 'donations'} as used in this issue?`)) {
+      markAllUsed(unused);
+    }
+  });
+  markAll.disabled = !unused.length;
+  markAll.title = unused.length ? '' : recorded.length ? 'Every recorded donation is marked used' : 'No donations recorded yet';
+  page.append(pageHead(longDate(date), [markAll, copyAll, issueMenu(date)].filter(Boolean)));
   page.append(el('div', 'section-note', `${people.length} staff ${people.length === 1 ? 'birthday is' : 'birthdays are'} announced in this issue. Requests go out by ${mediumDate(dateCell(requestBy))}.`));
   if (!people.length) {
     page.append(emptyPanel('No birthdays land in this issue.'));
@@ -183,7 +281,21 @@ export function newsletterPage(date) {
     } else {
       lines.push(sv.assignedTo ? `${sv.assignedToName} to ask by ${mediumDate(sv.requestBy)}` : 'Unassigned');
     }
-    panel.append(staffRow(sv, {stage: true, lines}));
+    const row = staffRow(sv, {stage: true, noActions: true, lines});
+    // Copy Info is this one's entry - name, title, charity and note.
+    const copy = button('Copy Info', 'copy', 'button button-secondary button-small', () => {
+      const e = entry(sv);
+      copyRich(e.text, e.html, `Copied ${sv.name}`);
+    });
+    copy.disabled = !sv.donation;
+    copy.title = sv.donation ? '' : 'No donation recorded yet';
+    const actions = row.querySelector('.row-actions');
+    actions.prepend(copy);
+    if (sv.donation) {
+      const used = Boolean(sv.donation.usedOn);
+      actions.prepend(button(used ? 'Mark Unused' : 'Mark Used', 'circlecheck', used ? 'button button-secondary button-small' : 'button button-small', () => markUsed(sv, !used)));
+    }
+    panel.append(row);
   }
   page.append(panel);
   return page;

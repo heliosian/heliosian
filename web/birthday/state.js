@@ -150,6 +150,14 @@ export function mine(sv) {
   return sv.assignedTo === me().email;
 }
 
+// commsOnly says the viewer is on the comms team and nothing else - not a
+// volunteer, not an admin - so the app shows them the newsletters alone.
+export function commsOnly() {
+  const email = me().email;
+  const roles = state.model.team.filter(m => m.email === email).map(m => m.role);
+  return roles.includes('Comms Team') && !roles.includes('Volunteer') && !isSystemAdmin();
+}
+
 // team is who a birthday can be assigned to: the volunteers on the Team tab
 // and everyone who already has a staff member assigned to them, by name, with
 // the viewer first whether or not they are either.

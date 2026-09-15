@@ -997,6 +997,47 @@ a.trow[data-stage="stage-complete"]::before { background: #3aaa5c; }
 
 .issue.is-next::before { content: ''; position: absolute; left: 0; top: 6px; bottom: 6px; width: 4px; border-radius: 0 3px 3px 0; background: var(--accent); }
 
+/* The next issue's own panel: the sun's yellow, drawn a little larger, so it
+   reads apart from the teal everything else wears. */
+.next-panel { background: #fff7d6; border-color: #f0dc8a; }
+
+.next-panel .issue.is-next::before { background: #e5b830; }
+
+.next-panel .issue.is-next .issue-badge { background: #e5b830; color: #3a2e00; }
+
+.next-panel .issue.is-next .issue-badge-month { color: rgba(58, 46, 0, 0.7); }
+
+.next-panel .issue-next { background: #e5b830; color: #3a2e00; }
+
+.next-panel .issue-count { background: #f6e7a8; color: #6b5300; }
+
+.next-panel .issue:hover { background: #fff3c4; }
+
+.next-panel .issue { padding: 16px 16px 16px 14px; }
+
+.next-panel .issue-title { font-size: 18px; }
+
+.next-panel .issue-badge { width: 60px; }
+
+.next-panel .issue-badge-day { font-size: 24px; }
+
+.next-issue .section-title { margin-top: 20px; }
+
+/* A switch: the box hidden, a track with a knob that slides when it is on. */
+.switch-row { display: flex; align-items: center; gap: 10px; margin: 22px 0 -8px; cursor: pointer; font-size: 14px; color: var(--muted); }
+
+.switch-row input { position: absolute; opacity: 0; width: 0; height: 0; }
+
+.switch { position: relative; width: 38px; height: 22px; border-radius: 999px; background: #c9d4d6; transition: background 0.15s; flex-shrink: 0; }
+
+.switch-knob { position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2); transition: left 0.15s; }
+
+.switch-row input:checked + .switch { background: var(--accent); }
+
+.switch-row input:checked + .switch .switch-knob { left: 19px; }
+
+.switch-row input:focus-visible + .switch { outline: 2px solid var(--accent); outline-offset: 2px; }
+
 .issue-badge { width: 54px; flex-shrink: 0; border-radius: 10px; background: #e2f0ef; color: var(--brand); text-align: center; padding: 6px 0 7px; line-height: 1.1; }
 
 .issue-badge-month { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
@@ -1112,11 +1153,9 @@ a.trow[data-stage="stage-complete"]::before { background: #3aaa5c; }
 
 .calendar.compact .chip { font-size: 11px; padding: 1px 5px; }
 
-/* On the picker, a chip is a pale pill with a dot in its stage's ink, and
-   the picked one's day is warm. */
-.calendar.picker .chip { border: 0; font: inherit; font-size: 11px; font-weight: 600; cursor: pointer; border-radius: 999px; padding: 2px 8px 2px 6px; display: block; width: 100%; text-align: left; }
-
-.calendar.picker .chip::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: currentColor; margin-right: 5px; vertical-align: 1px; }
+/* On the picker, a chip is a pale pill in its stage's colours, wrapping
+   rather than cut short, and the picked one's day is warm. */
+.calendar.picker .chip { border: 0; font: inherit; font-size: 11px; font-weight: 600; cursor: pointer; border-radius: 10px; padding: 2px 6px; display: block; width: 100%; text-align: left; white-space: normal; overflow: visible; line-height: 1.25; }
 
 .calendar.picker .chip.stage-wait { background: #e8edee; color: #33474c; }
 .calendar.picker .chip.stage-awaiting-outreach { background: #fdf0e4; color: #a4551a; }
@@ -1163,27 +1202,19 @@ a.trow[data-stage="stage-complete"]::before { background: #3aaa5c; }
 
 .calendar .day:nth-child(7n) .chip-pop, .calendar .day:nth-child(7n-1) .chip-pop { left: auto; right: 0; }
 
-.pick-card { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
+/* The card under the picked row: the stage and the dates on one line, the
+   ways on under, on the row's own warm wash. */
+.pick-card { background: #fdf0e4; border-radius: 0 0 10px 10px; padding: 10px 14px 14px 72px; margin-top: -4px; }
 
-.pick-card:empty { display: none; }
+.pick-facts { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 
-.pick-head { display: flex; align-items: center; gap: 14px; }
-
-.pick-head .thumb.small { border-radius: 12px; width: 56px; height: 56px; font-size: 24px; }
-
-.pick-who { flex: 1; min-width: 0; }
-
-.pick-name { font-weight: 700; font-size: 19px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-
-.pick-title { color: var(--muted); }
-
-.pick-when { text-align: right; flex-shrink: 0; }
+.pick-when { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 
 .pick-date { font-weight: 700; }
 
 .pick-ask { font-size: 13px; color: var(--muted); }
 
-.pick-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px; }
+.pick-actions { display: flex; justify-content: flex-start; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
 
 /* The team card in Admin Tools: one group per role. */
 .admin .team-group { margin-top: 18px; }
@@ -1198,10 +1229,8 @@ a.trow[data-stage="stage-complete"]::before { background: #3aaa5c; }
    after the page's own rules so it wins. */
 @media (max-width: 900px) {
   .split { grid-template-columns: 1fr; gap: 14px; }
-  .split-calendar { display: contents; }
-  .pick-card { order: 1; }
-  .split-list { order: 2; }
-  .split-calendar > .card-panel { display: none; }
+  .split-calendar { display: none; }
+  .pick-card { padding-left: 14px; }
   .card-panel { padding: 10px; }
   .urow { gap: 10px; padding: 10px 6px; }
   .urow .thumb.small { width: 40px; height: 40px; font-size: 18px; }
@@ -1210,9 +1239,6 @@ a.trow[data-stage="stage-complete"]::before { background: #3aaa5c; }
   .urow-when .day-mark { display: none; }
   .date-leaf { width: 40px; }
   .date-leaf-day { font-size: 17px; }
-  .pick-head { flex-wrap: wrap; }
-  .pick-when { flex-basis: 100%; text-align: left; margin-left: 70px; }
-  .pick-actions { flex-wrap: wrap; justify-content: flex-start; }
 }
 
 /* The Process page on a phone: the six tiles two to a row, each staff member

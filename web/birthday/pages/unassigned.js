@@ -86,6 +86,10 @@ function list(rows, rerender) {
   const panel = el('div', 'urows');
   for (const sv of rows) {
     panel.append(row(sv, rerender));
+    // The card sits right under the row picked, where the eye is.
+    if (sv.email === picked) {
+      panel.append(pickCard(sv));
+    }
   }
   return panel;
 }
@@ -144,23 +148,16 @@ function showToggle(onChange) {
   return wrap;
 }
 
-// pickCard is the one picked: who they are, when, and Take This One.
+// pickCard sits under the row picked with what the row does not say - the
+// stage, the dates, and the ways on - so nothing is said twice.
 function pickCard(sv) {
   const card = el('div', 'pick-card');
-  if (!sv) {
-    return card;
-  }
-  const head = el('div', 'pick-head');
-  head.append(thumb(sv, 'small ' + tintOf(sv)));
-  const who = el('div', 'pick-who');
-  const nameLine = el('div', 'pick-name');
-  nameLine.append(el('span', '', sv.name), el('span', 'status-pill ' + stageClass(sv.stage), stageName(sv.stage)));
-  who.append(nameLine, el('div', 'pick-title', sv.jobTitle || ''));
-  head.append(who);
+  const facts = el('div', 'pick-facts');
+  facts.append(el('span', 'status-pill ' + stageClass(sv.stage), stageName(sv.stage)));
   const when = el('div', 'pick-when');
-  when.append(el('div', 'pick-date', mediumDate(sv.birthdayThisYear)), el('div', 'pick-ask', `Ask by ${mediumDate(sv.requestBy)}`));
-  head.append(when);
-  card.append(head);
+  when.append(el('span', 'pick-date', mediumDate(sv.birthdayThisYear)), el('span', 'pick-ask', `Ask by ${mediumDate(sv.requestBy)}`));
+  facts.append(when);
+  card.append(facts);
   const actions = el('div', 'pick-actions');
   // Their page on Helios Who, in a tab of its own.
   const whoLink = el('a', 'button button-secondary');
@@ -193,7 +190,6 @@ export function unassignedPage() {
   const rerender = () => {
     left.replaceChildren(list(rows, rerender));
     calCard.querySelector('.calendar').replaceWith(grid(rows, rerender));
-    right.querySelector('.pick-card').replaceWith(pickCard(pickedOne(rows)));
   };
   calHead.append(title, monthNav(n => {
     const now = new Date();
@@ -204,7 +200,7 @@ export function unassignedPage() {
   picked = (pickedOne(rows) || {}).email || '';
   left.append(list(rows, rerender));
   calCard.append(calHead, showToggle(rerender), grid(rows, rerender));
-  right.append(pickCard(pickedOne(rows)), calCard);
+  right.append(calCard);
   columns.append(left, right);
   page.append(columns);
   return page;

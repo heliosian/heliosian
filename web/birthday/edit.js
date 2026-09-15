@@ -253,6 +253,23 @@ export function markContacted(sv, contacted) {
   return act('POST', '/api/birthday/outreach', {email: sv.email, contacted}, contacted ? 'Marked as contacted' : 'Outreach reopened');
 }
 
+// markAllUsed marks every donation given as carried by the newsletter, one
+// after another, then says how many.
+export async function markAllUsed(list) {
+  let n = 0;
+  try {
+    for (const sv of list) {
+      await send('POST', '/api/birthday/used', {email: sv.email, used: true});
+      n++;
+    }
+    await reload();
+    toast(`Marked ${n} as used`);
+  } catch (err) {
+    await reload();
+    toast(err.message);
+  }
+}
+
 export function markUsed(sv, used) {
   return act('POST', '/api/birthday/used', {email: sv.email, used}, used ? 'Marked as used in the newsletter' : 'Marked as not yet used');
 }

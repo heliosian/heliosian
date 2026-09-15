@@ -7,7 +7,7 @@ let tab = 'tasks';
 let query = '';
 
 const items = [
-  {key: 'tasks', label: 'My Tasks', stages: ['Awaiting Outreach', 'Awaiting Response'], empty: "There's work to be done!"},
+  {key: 'tasks', label: 'Do Now', stages: ['Awaiting Outreach', 'Awaiting Response'], empty: "There's work to be done!"},
   {key: 'wait', label: 'Wait', stages: ['Wait'], empty: 'This is a waiting area. These staff do not yet need outreach.'},
   {key: 'done', label: 'All Done', stages: ['Awaiting Newsletter', 'Complete'], empty: "Thank you so much! You're all done!"},
 ];
