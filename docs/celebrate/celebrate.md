@@ -11,6 +11,8 @@ Helios Celebrate is the site for the community's fun(d)raiser parties: members o
 
 Names, faces, grades and households come from the directory model at request time, like the volunteer portal; the sheet stores only emails. A ticket holder the directory does not know is shown as a guest.
 
+The directory reads the site back: a host's Lists in Helios Who? carry one list per party they host that has not happened yet - its sold tickets' holders and whoever is billed for them, guests by name counted but not listed (`docs/who/directory.md`).
+
 ## The switches
 
 Every party has, on its page for whoever runs it and in its editor:

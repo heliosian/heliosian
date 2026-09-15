@@ -28,6 +28,7 @@ type app struct {
 	cache   *Cache
 	mapsKey string
 	optIn   func() string
+	lister  Lister
 }
 
 // effectiveEmail is who the directory renders as, and acts as: the person
@@ -78,8 +79,8 @@ func MemberGate(cache *Cache, next http.Handler) http.Handler {
 
 // Register takes the opt-in form's address as a function rather than a value because
 // it lives in the Config sheet, where an admin can change it between requests.
-func Register(mux *http.ServeMux, cache *Cache, mapsKey string, optIn func() string) {
-	a := app{cache: cache, mapsKey: mapsKey, optIn: optIn}
+func Register(mux *http.ServeMux, cache *Cache, mapsKey string, optIn func() string, lister Lister) {
+	a := app{cache: cache, mapsKey: mapsKey, optIn: optIn, lister: lister}
 	for _, section := range sections {
 		mux.HandleFunc("GET /"+section, a.page)
 	}
@@ -145,12 +146,14 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 		User      user                `json:"user"`
 		MapsKey   string              `json:"mapsKey"`
 		Tags      map[string][]string `json:"tags"`
+		Lists     []List              `json:"lists"`
 		SuperEdit bool                `json:"superEdit,omitempty"`
 	}{
 		Model:   a.cache.Model(),
 		User:    user{Name: name, Initial: strings.ToUpper(name[:1]), Email: effective, Slug: slug, IsAdmin: a.cache.IsAdmin(effective)},
 		MapsKey: a.mapsKey,
 		Tags:    a.cache.Tags(effective),
+		Lists:   append(a.cache.Model().RoomParentLists(effective), a.lister.Lists(effective)...),
 		// Both computed from the effective identity, so a spoofed view shows exactly
 		// what that person sees — a regular parent's simulated view never carries the
 		// real admin's super-edit powers along with it.

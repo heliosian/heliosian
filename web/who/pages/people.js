@@ -2,7 +2,7 @@ import {state, colors} from '../state.js';
 import {el, svg, thumbUrl, firstName, tabStrip, tabHref} from '../dom.js';
 import {familiesOf, familyOf} from '../families.js';
 import {personCard, personLink, photoOrInitials, cardMore, gradeChain} from '../people.js';
-import {tagNames, onTagsChange} from '../tags.js';
+import {tagFacetOptions, onTagsChange} from '../tags.js';
 import {matchesFilters, familyMatchesFilters, roleChips, facetDropdown, gradeOptions, filterControl} from '../filters.js';
 import {resetMain, finishRender} from '../chrome.js';
 import {renderStaff} from './staff.js';
@@ -166,8 +166,8 @@ export function renderPeople() {
       tagsFacet.remove();
       tagsFacet = null;
     }
-    if (isEveryone && tagNames().length) {
-      tagsFacet = facetDropdown('Tags', tagNames(), state.filterTags, () => renderGrid());
+    if (isEveryone && tagFacetOptions().length) {
+      tagsFacet = facetDropdown('Tags', tagFacetOptions(), state.filterTags, () => renderGrid());
       facetFilters.append(tagsFacet);
     }
     // Small-screen stand-in for the Grade/Classroom/Tags dropdowns above: same

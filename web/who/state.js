@@ -1,9 +1,10 @@
 import {loadNavOpen} from './storage.js';
 
-export const state = {model: null, tab: 'everyone', classTab: 'by-classroom', rosterTab: 'students', rosterSectionExcluded: new Set(), q: '', filterGrades: new Set(), filterClassrooms: new Set(), filterRoles: new Set(), filterRoleExcluded: new Set(), filterCities: new Set(), filterPronouns: new Set(), filterTags: new Set(), filterTagRelations: new Set(), filterNew: false, staffDeptExcluded: new Set(), tagListView: 'faces', navOpen: loadNavOpen(), gvGreeting: 'Family of the kids', gvSiblings: true, gvKidEmail: false, gvInviteBy: 'group', gvSystem: ''};
+export const state = {model: null, tab: 'everyone', classTab: 'by-classroom', rosterTab: 'students', rosterSectionExcluded: new Set(), q: '', filterGrades: new Set(), filterClassrooms: new Set(), filterRoles: new Set(), filterRoleExcluded: new Set(), filterCities: new Set(), filterPronouns: new Set(), filterTags: new Set(), filterNew: false, staffDeptExcluded: new Set(), tagListView: 'faces', navOpen: loadNavOpen(), gvGreeting: 'Family of the kids', gvSiblings: true, gvKidEmail: false, gvInviteBy: 'group', gvSystem: ''};
 
 export let byEmail = {};
 export let tags = {};
+export let lists = {};
 
 // familiesByEmail inverts the model's family member lists once per load: every
 // family a person belongs to, in sorted key order - one for a parent (an adult
@@ -38,6 +39,10 @@ export function applyModel(model) {
   document.body.dataset.userEmail = model.user.email;
   document.body.dataset.mapsKey = model.mapsKey;
   tags = model.tags || {};
+  lists = {};
+  for (const l of model.lists) {
+    lists[l.key] = l;
+  }
   byEmail = {};
   for (const p of model.people) {
     byEmail[p.email] = p;

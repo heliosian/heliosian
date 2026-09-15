@@ -1,9 +1,9 @@
 import {state, byEmail} from './state.js';
-import {el, svg, segments, hue, firstName, thumbUrl} from './dom.js';
-import {saveNavOpen} from './storage.js';
+import {el, svg, segments, hue, firstName, thumbUrl, trimMiddle} from './dom.js';
+import {saveNavOpen, loadNavScroll, saveNavScroll} from './storage.js';
 import {familyOf, myFamilyKey} from './families.js';
 import {personByKey, personLink, photoOrInitials, personPhotoUrl} from './people.js';
-import {tagNames, onTagsChange, onTagsChangeChrome} from './tags.js';
+import {tagNames, listKeys, listLabel, listIcon, onTagsChange, onTagsChangeChrome} from './tags.js';
 import {clampFilterPanel, closeFilterPanels} from './filters.js';
 import {staleItems, familyInfoBanner, todoChecklist, familyNavPeople, personTodoCount} from './stale.js';
 import {topbarSearchInput, topbarSearchResults} from './search.js';
@@ -117,6 +117,30 @@ function familyMemberRow(p, meEmail, activeEmail) {
   return a;
 }
 
+function navScrollFade() {
+  const nav = document.querySelector('#nav');
+  const above = nav.scrollTop > 4;
+  const below = nav.scrollTop + nav.clientHeight < nav.scrollHeight - 4;
+  nav.style.setProperty('--fade-top', above ? '32px' : '0px');
+  nav.style.setProperty('--fade-bottom', below ? '48px' : '0px');
+}
+
+// The rail is laid out before its logo has loaded, so an offset restored
+// then can be clamped to nothing; the nav's resize observer re-places it
+// until the person scrolls the rail themselves (navSettled).
+let navSettled = false;
+let navExpected = 0;
+
+function placeNavScroll(top) {
+  const nav = document.querySelector('#nav');
+  nav.scrollTop = top;
+  // The last active link: on a list page the Directory item is lit as well,
+  // and it sits at the top, so keeping it in view would scroll the list out.
+  [...nav.querySelectorAll('a.active')].at(-1)?.scrollIntoView({block: 'nearest'});
+  navExpected = nav.scrollTop;
+  navScrollFade();
+}
+
 export function renderNav() {
   const seg = activeSection();
   const rawSeg = segments();
@@ -203,26 +227,36 @@ export function renderNav() {
       for (const item of toolsNavItems) {
         renderItem(toolsBody, item);
       }
-      const currentTag = new URLSearchParams(location.search).get('tag');
-      for (const name of tagNames()) {
+      const params = new URLSearchParams(location.search);
+      const listLink = (href, iconName, name, active) => {
         const a = el('a');
-        a.href = '/people?tag=' + encodeURIComponent(name);
-        if (seg === 'people' && currentTag === name) {
+        a.href = href;
+        a.title = name;
+        if (seg === 'people' && active) {
           a.className = 'active';
         }
-        const icon = svg('tag');
+        const icon = svg(iconName);
         icon.classList.add('nav-icon-tag');
         // Plain white, not a per-name hashed color: the hash occasionally
         // landed near the sidebar's own dark teal, making that tag's icon
         // nearly invisible against the background it's sitting on.
         icon.style.color = '#fff';
-        a.append(icon, el('span', '', name));
+        a.append(icon, el('span', '', trimMiddle(name, 40)));
         toolsBody.append(a);
+      };
+      for (const name of tagNames()) {
+        listLink('/people?tag=' + encodeURIComponent(name), 'tag', name, params.get('tag') === name);
+      }
+      for (const key of listKeys()) {
+        listLink('/people?list=' + encodeURIComponent(key), listIcon(key), listLabel(key), params.get('list') === key);
       }
     }
   }
 
-  buildNavInto(document.querySelector('#nav'));
+  const nav = document.querySelector('#nav');
+  const top = navSettled ? nav.scrollTop : loadNavScroll();
+  buildNavInto(nav);
+  placeNavScroll(top);
   const drawerNav = document.querySelector('#drawer-nav');
   if (drawerNav) {
     buildNavInto(drawerNav);
@@ -313,20 +347,26 @@ function renderMobileListsMenu() {
   const body = mobileListsMenu.querySelector('#mobile-lists-body');
   body.replaceChildren();
   const seg = activeSection();
-  const currentTag = new URLSearchParams(location.search).get('tag');
+  const params = new URLSearchParams(location.search);
   for (const item of toolsNavItems) {
     const a = el('a', 'mobile-lists-item' + (item.path === seg ? ' active' : ''));
     a.href = '/' + item.path;
     a.append(svg(item.path), el('span', '', item.label));
     body.append(a);
   }
-  for (const name of tagNames()) {
-    const a = el('a', 'mobile-lists-item' + (seg === 'people' && currentTag === name ? ' active' : ''));
-    a.href = '/people?tag=' + encodeURIComponent(name);
-    const icon = svg('tag');
+  const listItem = (href, iconName, name, active) => {
+    const a = el('a', 'mobile-lists-item' + (seg === 'people' && active ? ' active' : ''));
+    a.href = href;
+    const icon = svg(iconName);
     icon.style.color = `hsl(${hue(name)}, 65%, 40%)`;
     a.append(icon, el('span', '', name));
     body.append(a);
+  };
+  for (const name of tagNames()) {
+    listItem('/people?tag=' + encodeURIComponent(name), 'tag', name, params.get('tag') === name);
+  }
+  for (const key of listKeys()) {
+    listItem('/people?list=' + encodeURIComponent(key), listIcon(key), listLabel(key), params.get('list') === key);
   }
 }
 
@@ -460,6 +500,21 @@ export function initChrome() {
   window.addEventListener('resize', syncViewportHeight);
   window.addEventListener('orientationchange', syncViewportHeight);
   window.addEventListener('resize', updateBannerOffset);
+  const nav = document.querySelector('#nav');
+  nav.addEventListener('scroll', () => {
+    if (nav.scrollTop !== navExpected) {
+      navSettled = true;
+    }
+    navScrollFade();
+  }, {passive: true});
+  new ResizeObserver(() => {
+    if (navSettled) {
+      navScrollFade();
+    } else {
+      placeNavScroll(loadNavScroll());
+    }
+  }).observe(nav);
+  window.addEventListener('pagehide', () => saveNavScroll(nav.scrollTop));
 
   // The topbar only has room for the avatar (no name label), so - unlike the old
   // sidebar row, which let a name click open the menu and an avatar click jump

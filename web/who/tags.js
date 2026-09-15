@@ -1,9 +1,31 @@
-import {tags} from './state.js';
+import {tags, lists} from './state.js';
 import {loadLastTag, saveLastTag, loadTagUsage, recordTagUsage} from './storage.js';
 import {el, svg} from './dom.js';
 
 export function tagNames() {
   return Object.keys(tags).sort((a, b) => a.localeCompare(b));
+}
+
+const listIcons = {party: 'party', activity: 'activity', room: 'classrooms'};
+
+export function listKeys() {
+  return Object.keys(lists).sort((a, b) => lists[a].name.localeCompare(lists[b].name));
+}
+
+export function listLabel(key) {
+  return lists[key] ? lists[key].name : key;
+}
+
+export function listIcon(key) {
+  return listIcons[lists[key].kind];
+}
+
+export function members(key) {
+  return lists[key] ? lists[key].people : tags[key] || [];
+}
+
+export function tagFacetOptions() {
+  return [...tagNames(), ...listKeys().map(key => ({value: key, label: lists[key].name, icon: listIcon(key)}))];
 }
 
 let pageChanged = () => {};
@@ -15,6 +37,25 @@ export function onTagsChange(fn) {
 
 export function onTagsChangeChrome(fn) {
   chromeChanged = fn;
+}
+
+export async function saveAsTag(name, people) {
+  const form = new FormData();
+  form.append('tag', name);
+  for (const email of people) {
+    form.append('person', email);
+  }
+  const res = await fetch('/api/directory/tag-all', {method: 'POST', body: form});
+  if (!res.ok) {
+    alert(await res.text());
+    return false;
+  }
+  tags[name] = [...new Set([...(tags[name] || []), ...people])].sort();
+  saveLastTag(name);
+  recordTagUsage(name);
+  chromeChanged();
+  pageChanged();
+  return true;
 }
 
 // Same set of tags as tagNames(), ordered most-recently-used first (falling

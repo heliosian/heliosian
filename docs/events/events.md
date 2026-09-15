@@ -42,6 +42,8 @@ School years turn over on July 1 and are written as both calendar years, `2026 -
 
 The portal stores only email addresses. Names and photos come from the directory model at request time, so a volunteer looks the same here as in Helios Who?. Someone the directory does not list, such as a parent who has not opted in, is shown under a name read out of their address. Sign-in resolves through the directory's email aliases too, so a person is one address across every app.
 
+The directory reads the portal back: a co-chair's Lists in Helios Who? carry one list per activity they chair this school year, its volunteers and co-chairs and everything under it (`docs/who/directory.md`).
+
 ## Editing
 
 As in the other apps: in place, through modals, with every change applied to the in-memory model first and then written to the sheet cell by cell through the shared write queue and appended to the Change Log. A change the rules reject is refused before anything is written. Deleting an activity or role refuses while anyone is signed up for it, and deleting a category refuses while an activity names it.

@@ -1,7 +1,7 @@
-import {state, byEmail, tags} from './state.js';
+import {state, byEmail} from './state.js';
 import {el, svg, segments} from './dom.js';
-import {familyOf, familiesOf} from './families.js';
-import {tagsOf, tagNames} from './tags.js';
+import {familyOf} from './families.js';
+import {members, tagFacetOptions} from './tags.js';
 
 function personFacets(p, field) {
   if (p.isStudent) {
@@ -50,36 +50,6 @@ function roleChipsVisible() {
   return false;
 }
 
-export const tagRelationOptions = ['Parents', 'Children', 'Siblings'];
-
-// Whether p only belongs on a single-tag list by way of a selected relation
-// to someone directly tagged - a parent of a tagged kid, a kid of a tagged
-// parent, or another kid (a sibling) in a tagged kid's family. Only applies
-// with exactly one active tag; with several selected at once there's no
-// single list to pull relatives in from.
-function tagRelatedMatch(p) {
-  if (state.filterTags.size !== 1 || !state.filterTagRelations.size) {
-    return false;
-  }
-  const [tag] = state.filterTags;
-  const tagged = tags[tag] || [];
-  for (const family of familiesOf(p)) {
-    if (state.filterTagRelations.has('Parents') && p.isParent &&
-      (family.kidEmails || []).some(e => tagged.includes(e))) {
-      return true;
-    }
-    if (state.filterTagRelations.has('Children') && p.isStudent &&
-      (family.adultEmails || []).some(e => tagged.includes(e))) {
-      return true;
-    }
-    if (state.filterTagRelations.has('Siblings') && p.isStudent &&
-      (family.kidEmails || []).some(e => e !== p.email && tagged.includes(e))) {
-      return true;
-    }
-  }
-  return false;
-}
-
 export function matchesFilters(p) {
   const gradeOK = !state.filterGrades.size || personFacets(p, 'grade').some(g => state.filterGrades.has(g));
   const classOK = !state.filterClassrooms.size || personFacets(p, 'classroom').some(c => state.filterClassrooms.has(c));
@@ -94,7 +64,7 @@ export function matchesFilters(p) {
   const cityOK = !state.filterCities.size || state.filterCities.has(cityOf(p));
   const pronounsOK = !state.filterPronouns.size || (p.pronouns && state.filterPronouns.has(p.pronouns.toLowerCase()));
   const newOK = !state.filterNew || p.isNew;
-  const tagOK = !state.filterTags.size || tagsOf(p.email).some(t => state.filterTags.has(t)) || tagRelatedMatch(p);
+  const tagOK = !state.filterTags.size || [...state.filterTags].some(k => members(k).includes(p.email));
   return gradeOK && classOK && roleOK && cityOK && pronounsOK && newOK && tagOK;
 }
 
@@ -167,6 +137,27 @@ export function clampFilterPanel(wrap, panel) {
   panel.style.right = 'auto';
 }
 
+function optionRow(v, set, onChange) {
+  const {value, label, icon} = typeof v === 'string' ? {value: v, label: v} : v;
+  const row = el('label', 'filter-option');
+  const box = el('input');
+  box.type = 'checkbox';
+  box.checked = set.has(value);
+  box.addEventListener('change', () => {
+    if (box.checked) {
+      set.add(value);
+    } else {
+      set.delete(value);
+    }
+    onChange();
+  });
+  if (icon) {
+    row.append(svg(icon));
+  }
+  row.append(el('span', '', label), box);
+  return row;
+}
+
 // A standalone single-facet dropdown (Grade, Classroom) - the same checkbox
 // list a filterControl section would show, but its own button so it doesn't
 // need the drill-into-a-section step.
@@ -191,21 +182,10 @@ export function facetDropdown(label, values, set, rerender) {
 
   const body = el('div', 'filter-options');
   for (const v of values) {
-    const row = el('label', 'filter-option');
-    const box = el('input');
-    box.type = 'checkbox';
-    box.checked = set.has(v);
-    box.addEventListener('change', () => {
-      if (box.checked) {
-        set.add(v);
-      } else {
-        set.delete(v);
-      }
+    body.append(optionRow(v, set, () => {
       updateLabel();
       rerender();
-    });
-    row.append(el('span', '', v), box);
-    body.append(row);
+    }));
   }
   panel.append(body);
 
@@ -267,8 +247,8 @@ export function filterControl(rerender, options = {}) {
   if (options.pronouns !== false) {
     sections.push({label: 'Pronouns', values: pronounOptions(), set: state.filterPronouns});
   }
-  if (options.tags !== false && tagNames().length) {
-    sections.push({label: 'Tags', values: tagNames(), set: state.filterTags});
+  if (options.tags !== false && tagFacetOptions().length) {
+    sections.push({label: 'Tags', values: tagFacetOptions(), set: state.filterTags});
   }
   for (const s of sections) {
     const head = el('div', 'filter-section');
@@ -280,20 +260,7 @@ export function filterControl(rerender, options = {}) {
       head.classList.toggle('open', !body.hidden);
     });
     for (const v of s.values) {
-      const row = el('label', 'filter-option');
-      const box = el('input');
-      box.type = 'checkbox';
-      box.checked = s.set.has(v);
-      box.addEventListener('change', () => {
-        if (box.checked) {
-          s.set.add(v);
-        } else {
-          s.set.delete(v);
-        }
-        rerender();
-      });
-      row.append(el('span', '', v), box);
-      body.append(row);
+      body.append(optionRow(v, s.set, rerender));
     }
     panel.append(head, body);
   }

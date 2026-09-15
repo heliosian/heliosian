@@ -53,13 +53,17 @@ A Google map of family locations: one brand-teal pin per geocoded family address
 
 ### Email List
 
-A copyable contact table for party planning and outreach: full name, email, role, grade, classroom. Tabs narrow to parents, students, both, or everyone the user has tagged. Filters select grades, classrooms, or one of the user's own tags.
+A copyable contact table for party planning and outreach: full name, email, role, grade, classroom. Tabs narrow to parents, students, both, or everyone the user has tagged. Filters select grades, classrooms, or one of the user's own tags or lists.
+
+### Lists
+
+The sidebar's Lists section holds the user's own tags and, under them, the lists their roles in the other apps give them, each a page at `/people?list={key}` with the same Profiles, Email List and Map views and the CSV as a tag's page: one per party they host on Helios Celebrate that has not happened yet (its sold tickets' holders and whoever is billed for them; a guest by name has no directory record and is counted above the grid instead), one per activity they are a co-chair of on HCA-Team this school year (every volunteer and co-chair on it and on everything under it, one list for the whole tree - a co-chair of the event does not also get one per shift), and one per grade band they are room parent for (the parents of its students). The viewer is never on their own list. Each app's own rule says who runs a thing, and the lists come and go with those roles: nothing is stored. A list cannot be edited here - Save as tag copies its people into a tag of the user's own to prune and keep - and a party or activity list shows a party or a helping-hands icon beside its name in the sidebar and in the Tags filter, where the lists follow the tags.
 
 ## Behaviors
 
 - Everything is cross-linked: parents ↔ kids ↔ families ↔ classrooms; any person reference navigates to that person.
 - Search is per-list and immediate; filters cover role, class, grade, city, pronouns, and new-to-Helios.
-- Tags file people under named groups — a person can be in several at once (soccer team, class party, carpool) — and feed the email list's My Tags tab and tag filter. A member's tags are private to them.
+- Tags file people under named groups — a person can be in several at once (soccer team, class party, carpool) — and feed the email list's My Tags tab and tag filter. A member's tags are private to them. Lists (above) sit beside them wherever tags are offered, except in a card's tag menu, since they cannot be changed.
 - Photos lazy-load; full-size view on click where the photo is the subject (family pages).
 - All data is community-only, behind sign-in; opt-out removes a person on request.
 - Self-service: viewing your own record, your kids', or your family page shows inline edit affordances — photo upload, pronunciation recording or upload, About Me text, preferred name, phone, address — plus opt-out for yourself or your kids. A media upload adds an object and a row naming it, never replacing what was there; sheet-backed edits write the Overrides tab (person fields) or the Families tab (family fields) and append a Change Log row (see `docs/who/data.md`). A facts edit or photo upload also stamps that item's updated date.

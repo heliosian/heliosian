@@ -2,9 +2,8 @@ import {state, byEmail} from '../state.js';
 import {el, svg, firstName, lastName, hue, slugify, csvField, copyGlyph} from '../dom.js';
 import {familyOf, familyLink, familySearchText} from '../families.js';
 import {personLink} from '../people.js';
-import {tagNames} from '../tags.js';
-import {saveTagRelations} from '../storage.js';
-import {anyFiltersActive, matchesFilters, familyMatchesFilters, roleChips, facetDropdown, gradeOptions, tagRelationOptions} from '../filters.js';
+import {tagFacetOptions} from '../tags.js';
+import {anyFiltersActive, matchesFilters, familyMatchesFilters, roleChips, facetDropdown, gradeOptions} from '../filters.js';
 import {resetMain} from '../chrome.js';
 
 // Combines a list of people into one greeting phrase. Two or more people who all
@@ -552,22 +551,8 @@ export function renderGreenvelopePage() {
         facetDropdown('Grade', gradeOptions(), state.filterGrades, renderGrid),
         facetDropdown('Classroom', state.model.classrooms.map(c => c.name), state.filterClassrooms, renderGrid),
       );
-      if (tagNames().length) {
-        // Rebuilds the whole page, not just the grid - selecting down to (or
-        // away from) exactly one tag changes whether the Include control just
-        // below even applies.
-        controls.append(facetDropdown('Tags', tagNames(), state.filterTags, renderAll));
-      }
-      // Who to include beyond the tagged person themselves - only meaningful
-      // for a single tag; with several selected at once (or none) there's no
-      // one list to pull relatives in from. Mirrors renderListPage's identical
-      // control exactly, down to persisting the choice per tag.
-      if (state.filterTags.size === 1) {
-        const [activeTag] = state.filterTags;
-        controls.append(facetDropdown('Include', tagRelationOptions, state.filterTagRelations, () => {
-          saveTagRelations(activeTag, state.filterTagRelations);
-          renderGrid();
-        }));
+      if (tagFacetOptions().length) {
+        controls.append(facetDropdown('Tags', tagFacetOptions(), state.filterTags, renderGrid));
       }
       const download = el('a', 'filter-button email-download');
       download.title = 'Download what the list currently shows';

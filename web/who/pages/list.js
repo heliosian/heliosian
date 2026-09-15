@@ -1,10 +1,9 @@
-import {state, byEmail} from '../state.js';
+import {state, byEmail, lists} from '../state.js';
 import {el, svg, csvField, copyGlyph} from '../dom.js';
 import {familiesOf, familyOf, familySearchText} from '../families.js';
 import {personCard, personLink} from '../people.js';
-import {tagNames, tagControl, onTagsChange} from '../tags.js';
-import {saveTagRelations} from '../storage.js';
-import {matchesFilters, familyMatchesFilters, roleChips, facetDropdown, gradeOptions, filterControl, tagRelationOptions} from '../filters.js';
+import {tagControl, onTagsChange, listLabel, members, tagFacetOptions, saveAsTag} from '../tags.js';
+import {matchesFilters, familyMatchesFilters, roleChips, facetDropdown, gradeOptions, filterControl} from '../filters.js';
 import {resetMain} from '../chrome.js';
 import {initFamilyMap} from './map.js';
 
@@ -118,11 +117,17 @@ function emailEntries() {
 export function renderListPage() {
   const main = resetMain();
 
-  const title = state.filterTags.size ? [...state.filterTags].join(', ') : 'Everyone';
+  const title = state.filterTags.size ? [...state.filterTags].map(listLabel).join(', ') : 'Everyone';
+  const smart = state.filterTags.size === 1 ? lists[[...state.filterTags][0]] : null;
 
   const pageHeader = el('div', 'page-header container page-header-list');
   const titleWrap = el('div');
   titleWrap.append(el('h1', 'page-title', title));
+  if (smart && smart.guests) {
+    titleWrap.append(el('div', 'page-subtitle', smart.guests === 1
+      ? 'One guest by name is not in the directory and cannot be listed.'
+      : `${smart.guests} guests by name are not in the directory and cannot be listed.`));
+  }
   pageHeader.append(titleWrap);
   pageHeader.append(tagListViewSwitch(() => renderGrid()));
   main.append(pageHeader);
@@ -154,8 +159,8 @@ export function renderListPage() {
       tagsFacet.remove();
       tagsFacet = null;
     }
-    if (tagNames().length) {
-      tagsFacet = facetDropdown('Tags', tagNames(), state.filterTags, () => renderGrid());
+    if (tagFacetOptions().length) {
+      tagsFacet = facetDropdown('Tags', tagFacetOptions(), state.filterTags, () => renderGrid());
       facetFilters.append(tagsFacet);
     }
     // Small-screen stand-in for the Grade/Classroom/Tags dropdowns above, same as
@@ -172,15 +177,21 @@ export function renderListPage() {
   };
   buildTagFilters();
   onTagsChange(buildTagFilters);
-  // Only meaningful for a single tag - with several selected at once (or
-  // none, as on the plain Everyone list) there's no one list to pull
-  // relatives in from.
-  if (state.filterTags.size === 1) {
-    const [activeTag] = state.filterTags;
-    controls.append(facetDropdown('Include', tagRelationOptions, state.filterTagRelations, () => {
-      saveTagRelations(activeTag, state.filterTagRelations);
-      renderGrid();
-    }));
+  if (smart) {
+    const save = el('button', 'filter-button email-download');
+    save.type = 'button';
+    save.title = 'Copy this list into a tag of your own, to change as you like';
+    save.append(svg('tag'), el('span', '', 'Save as tag'));
+    save.addEventListener('click', async () => {
+      const name = (prompt('Name for the tag', smart.name) || '').trim().slice(0, 40);
+      if (!name) {
+        return;
+      }
+      if (await saveAsTag(name, members(smart.key))) {
+        location.href = '/people?tag=' + encodeURIComponent(name);
+      }
+    });
+    controls.append(save);
   }
   const download = el('a', 'filter-button email-download');
   download.title = 'Download what the list currently shows';
