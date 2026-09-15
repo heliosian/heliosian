@@ -24,6 +24,8 @@ const (
 	admin   = "dana.hawkins@heliosschool.org"
 	other   = "elena.torres@heliosschool.org"
 	teacher = "grace.kim@heliosschool.org"
+
+	testFrom = "Helios Celebrate <celebrate@example.org>"
 )
 
 // The tests run on a Saturday in September 2026, between the parties that
@@ -102,7 +104,7 @@ func newServer(t *testing.T) (*Cache, *http.ServeMux) {
 		t.Fatal(err)
 	}
 	mux := http.NewServeMux()
-	Register(mux, cache, dir, syncQueue{}, nil, fakeDirectory{}, func() []string { return nil }, ImageSearch{}, nil)
+	Register(mux, cache, dir, syncQueue{}, nil, fakeDirectory{}, func() []string { return nil }, ImageSearch{}, nil, testFrom)
 	return cache, mux
 }
 
@@ -384,13 +386,28 @@ func TestFreeTicket(t *testing.T) {
 	if got := cache.Model().Party("P002").Capacity; got != was+1 {
 		t.Fatalf("capacity %d, want %d", got, was+1)
 	}
+	// A gift can name whose guest the holder is: an adult in the directory
+	// holds it for them - a student cannot.
+	body = map[string]any{"partyId": "P002", "free": true, "purchaser": teen, "attendees": []map[string]string{{"name": "Grover Underwood"}}}
+	if rec := call(t, mux, other, "POST", "/api/celebrate/tickets", body); rec.Code != http.StatusBadRequest {
+		t.Fatalf("a student hosts a guest: %d %s", rec.Code, rec.Body)
+	}
+	body["purchaser"] = parent
+	if rec := call(t, mux, other, "POST", "/api/celebrate/tickets", body); rec.Code != http.StatusOK {
+		t.Fatalf("free ticket as someone's guest: %d %s", rec.Code, rec.Body)
+	}
+	for _, tk := range cache.Model().Party("P002").Tickets {
+		if tk.Name == "Grover Underwood" && (tk.Purchaser != parent || tk.Price != 0) {
+			t.Fatalf("the guest's ticket: %+v", tk)
+		}
+	}
 	// The accounting ledger never sees a free ticket - and sees every paid
 	// one as ADD, one at its cost, with the invoice columns left blank.
 	dir := lastDir
 	_, ledger, _ := dir.Table(appName, "INVOICING")
 	before := len(ledger)
 	for _, l := range ledger {
-		if l["Guest Name"] == "Percy Jackson" || l["Guest Name"] == "Annabeth Chase" {
+		if l["Guest Name"] == "Percy Jackson" || l["Guest Name"] == "Annabeth Chase" || l["Guest Name"] == "Grover Underwood" {
 			t.Fatalf("a free ticket in the ledger: %v", l)
 		}
 	}
@@ -772,7 +789,7 @@ func TestMail(t *testing.T) {
 	}
 	mux := http.NewServeMux()
 	rec := recorder{got: make(chan mail.Message, 8)}
-	Register(mux, cache, dir, syncQueue{}, nil, fakeDirectory{}, func() []string { return nil }, ImageSearch{}, rec)
+	Register(mux, cache, dir, syncQueue{}, nil, fakeDirectory{}, func() []string { return nil }, ImageSearch{}, rec, testFrom)
 	buy := func(as, party, purchaser string, attendees ...map[string]string) *httptest.ResponseRecorder {
 		return call(t, mux, as, "POST", "/api/celebrate/tickets", map[string]any{"partyId": party, "purchaser": purchaser, "note": "We\u2019ll be a little late", "attendees": attendees})
 	}
@@ -780,8 +797,22 @@ func TestMail(t *testing.T) {
 	if r := buy(partner, "P004", parent, map[string]string{"email": partner}, map[string]string{"name": "Aunt May"}); r.Code != http.StatusOK {
 		t.Fatalf("buy: %d %s", r.Code, r.Body)
 	}
-	m := rec.next(t)
-	if m.Subject != "Your tickets to Wurst Helios Party" || m.To[0] != parent || !slices.Contains(m.CC, "sofia.marchetti@heliosschool.org") || !slices.Contains(m.CC, partner) {
+	// Two notes: the family's, with the invite, the hosts to reply to; and
+	// the hosts' own copy - Robin, who took the tickets, alongside - with
+	// no invite and the family to reply to.
+	pair := func() (family, hosts mail.Message) {
+		for range 2 {
+			m := rec.next(t)
+			if len(m.Attachments) > 0 {
+				family = m
+			} else {
+				hosts = m
+			}
+		}
+		return family, hosts
+	}
+	m, hosts := pair()
+	if m.Subject != "Your tickets to Wurst Helios Party" || !slices.Equal(m.To, []string{parent}) || len(m.CC) != 0 {
 		t.Fatalf("confirmation: %+v", m)
 	}
 	for _, want := range []string{"Hi Jordan", "Robin Whitfield, Aunt May", "$150 (2 × $75)", "Robin Whitfield took them", "/share/P004.png", "88 Castro Street", "invoiced by Helios", "calendar.google.com/calendar/render?action=TEMPLATE", "Add to Calendar"} {
@@ -792,28 +823,53 @@ func TestMail(t *testing.T) {
 	if !slices.Equal(m.ReplyTo, []string{"sofia.marchetti@heliosschool.org", "paolo.marchetti@heliosschool.org"}) {
 		t.Errorf("reply-to: %v", m.ReplyTo)
 	}
+	// Long lines are folded on the wire; unfold them to read.
+	ics := strings.ReplaceAll(string(m.Attachments[0].Content), "\r\n ", "")
+	if m.Attachments[0].Name != "invite.ics" || !strings.HasPrefix(m.Attachments[0].ContentType, "text/calendar; method=REQUEST") {
+		t.Fatalf("invite: %+v", m.Attachments[0])
+	}
+	for _, want := range []string{"METHOD:REQUEST", "UID:celebrate-P004-" + parent + "@heliosian.com", "SUMMARY:Wurst Helios Party", "DTSTART:20261003T", "ORGANIZER;CN=Helios Celebrate:mailto:celebrate@example.org", "ATTENDEE;CN=Jordan Whitfield;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;RSVP=FALSE:mailto:" + parent, "LOCATION:88 Castro Street"} {
+		if !strings.Contains(ics, want) {
+			t.Errorf("invite lacks %q:\n%s", want, ics)
+		}
+	}
+	if strings.Contains(ics, "mailto:sofia.marchetti") {
+		t.Errorf("a host is on the family's invite:\n%s", ics)
+	}
+	if hosts.Subject != m.Subject || !slices.Equal(hosts.To, []string{partner, "sofia.marchetti@heliosschool.org", "paolo.marchetti@heliosschool.org"}) || len(hosts.CC) != 0 || !slices.Equal(hosts.ReplyTo, []string{parent}) || len(hosts.Attachments) != 0 {
+		t.Fatalf("hosts' copy: %+v", hosts)
+	}
 	// One ticket for a child is the child's note: it speaks to them by name
 	// and goes to both parents, the hosts copied.
 	if r := buy(parent, "P003", "", map[string]string{"email": kid}); r.Code != http.StatusOK {
 		t.Fatalf("buy for a child: %d %s", r.Code, r.Body)
 	}
-	m = rec.next(t)
-	if m.Subject != "Sam Whitfield's ticket to K-Pop for a Cause!" || !slices.Equal(m.To, []string{parent, partner}) || !slices.Contains(m.CC, "deepa.natarajan@heliosschool.org") {
-		t.Fatalf("a child's note: %+v", m)
+	m, hosts = pair()
+	if m.Subject != "Sam Whitfield's ticket to K-Pop for a Cause!" || !slices.Equal(m.To, []string{parent, partner}) || !slices.Contains(hosts.To, "deepa.natarajan@heliosschool.org") {
+		t.Fatalf("a child's note: %+v / %+v", m, hosts)
 	}
 	for _, want := range []string{"Sam, you&#39;re going!", "Hi Sam - you have a ticket"} {
 		if !strings.Contains(m.HTML, want) {
 			t.Errorf("a child's note lacks %q", want)
 		}
 	}
+	// Both parents are on the invite.
+	if ics := string(m.Attachments[0].Content); !strings.Contains(ics, "mailto:"+parent) || !strings.Contains(ics, "mailto:"+partner) {
+		t.Errorf("a child's invite:\n%s", ics)
+	}
 	// A free ticket's note says nothing about invoicing, and still offers
 	// the calendar.
 	if r := call(t, mux, "sofia.marchetti@heliosschool.org", "POST", "/api/celebrate/tickets", map[string]any{"partyId": "P004", "free": true, "attendees": []map[string]string{{"name": "Peter Parker"}}}); r.Code != http.StatusOK {
 		t.Fatalf("free: %d %s", r.Code, r.Body)
 	}
-	m = rec.next(t)
+	// Sofia hosts and gave it, so the family's note is hers alone; the
+	// only other host, Paolo, gets the copy.
+	m, hosts = pair()
 	if !strings.Contains(m.HTML, "no charge") || strings.Contains(m.HTML, "invoiced") || !strings.Contains(m.HTML, "Add to Calendar") {
 		t.Fatalf("free ticket note: %s", m.HTML)
+	}
+	if !slices.Equal(hosts.To, []string{"paolo.marchetti@heliosschool.org"}) {
+		t.Fatalf("free ticket hosts' copy: %+v", hosts)
 	}
 	// A full party: joining the waitlist gets a note that says so, and that
 	// nothing is billed yet.
@@ -848,9 +904,12 @@ func TestMail(t *testing.T) {
 	if r := call(t, mux, "freja.lindqvist@heliosschool.org", "POST", "/api/celebrate/waitlist/offer", map[string]any{"ticketId": waiting}); r.Code != http.StatusNoContent {
 		t.Fatalf("offer: %d %s", r.Code, r.Body)
 	}
-	m = rec.next(t)
-	if m.Subject != "You're in: 2 tickets to Baegels and Meimosas" || m.To[0] != parent || !strings.Contains(m.HTML, "Freja Lindqvist has offered") || !strings.Contains(m.HTML, "to be named") {
+	m, hosts = pair()
+	if m.Subject != "You're in: 2 tickets to Baegels and Meimosas" || !slices.Equal(m.To, []string{parent}) || !strings.Contains(m.HTML, "Freja Lindqvist has offered") || !strings.Contains(m.HTML, "to be named") {
 		t.Fatalf("offer note: %+v", m)
+	}
+	if !strings.Contains(string(m.Attachments[0].Content), "UID:celebrate-P006-"+parent+"@heliosian.com") || !slices.Equal(hosts.To, []string{"freja.lindqvist@heliosschool.org", "anders.lindqvist@heliosschool.org"}) || !slices.Equal(hosts.ReplyTo, []string{parent}) {
+		t.Fatalf("offer: invite %s / hosts %+v", m.Attachments[0].Content, hosts)
 	}
 }
 

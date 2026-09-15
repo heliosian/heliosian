@@ -735,6 +735,9 @@ type Config struct {
 	// same for Helios Celebrate, from its own address.
 	Mail          mail.Sender
 	CelebrateMail mail.Sender
+	// CelebrateFrom is the address Celebrate's mail comes from, which its
+	// calendar invites name as organizer.
+	CelebrateFrom string
 	// CalendarMail is the calendar's mail: the sender its invites go out
 	// through, the addresses they come from and reply to, and the inbox and
 	// webhook secret the replies come back through.
@@ -881,7 +884,7 @@ func NewCore(cfg Config) *Core {
 		return home.Grant(homeCache, cfg.Writer, queue, "birthday", email)
 	})
 	celebrateMux := http.NewServeMux()
-	celebrate.Register(celebrateMux, celebrateCache, cfg.Writer, queue, cfg.Store, celebrateDirectory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.CelebrateMail)
+	celebrate.Register(celebrateMux, celebrateCache, cfg.Writer, queue, cfg.Store, celebrateDirectory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.CelebrateMail, cfg.CelebrateFrom)
 	// Every app's toolbar asks its own origin what its switch lists and
 	// which rows to leave off; Heliosian's cache answers for all of them.
 	for _, m := range []*http.ServeMux{mux, eventsMux, birthdayMux, celebrateMux, calendarMux} {
@@ -1126,6 +1129,7 @@ func Production() (*http.Server, *who.Queue) {
 		// SMTP_HOST is; otherwise, in real-data mode, it is dropped and logged.
 		Mail:          newMailer(mailFrom()),
 		CelebrateMail: newMailer(celebrateMailFrom()),
+		CelebrateFrom: celebrateMailFrom(),
 		CalendarMail:  calendarMail(),
 		BirthdayMail:  newMailer(birthdayMailFrom()),
 		BirthdayFrom:  birthdayMailFrom(),

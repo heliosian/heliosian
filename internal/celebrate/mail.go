@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -15,12 +16,17 @@ import (
 	"heliosian/internal/mail"
 )
 
-// The site's email. Two kinds go out, each to whoever is billed with the
-// party's hosts copied (and on Reply-To, so a reply reaches a person):
+// The site's email. Two kinds go out, each to whoever is billed, with the
+// party's hosts on Reply-To so a reply reaches a person:
 //
 //   - a confirmation when tickets are taken - who is coming, what each
 //     costs, and how invoicing works;
 //   - a note when a host offers a waitlisted family a ticket.
+//
+// A note that says someone is going carries a calendar invite for the
+// party, for the family alone. The hosts get their own copy of the note
+// without it, so a purchase never lands on a host's calendar - forty
+// tickets would be forty invites - and a host's reply goes to the family.
 //
 // Sending happens off the request, and a failure is logged rather than
 // shown: the tickets themselves already took.
@@ -60,12 +66,9 @@ type letter struct {
 // hours from the start when there is no end; the whole day when there is
 // no time), the street address, and the party's page in the notes.
 func calendarLink(p *Party, page string) string {
-	start, err := time.ParseInLocation(DateTimeFormat, p.Start, local)
-	timed := err == nil
-	if !timed {
-		if start, err = time.ParseInLocation(DateFormat, p.Start, local); err != nil {
-			return ""
-		}
+	start, until, timed, ok := window(p)
+	if !ok {
+		return ""
 	}
 	stamp := func(t time.Time) string {
 		if timed {
@@ -73,7 +76,23 @@ func calendarLink(p *Party, page string) string {
 		}
 		return t.Format("20060102")
 	}
-	var until time.Time
+	q := url.Values{
+		"action": {"TEMPLATE"}, "text": {p.Title}, "dates": {stamp(start) + "/" + stamp(until)}, "details": {details(p, page)}, "location": {where(p)},
+	}
+	return "https://calendar.google.com/calendar/render?" + q.Encode()
+}
+
+// window is the party's hours on a calendar: the start and end as written,
+// two hours from the start when there is no end, the whole day when there
+// is no time; ok is false for a party with no date.
+func window(p *Party) (start, until time.Time, timed, ok bool) {
+	start, err := time.ParseInLocation(DateTimeFormat, p.Start, local)
+	timed = err == nil
+	if !timed {
+		if start, err = time.ParseInLocation(DateFormat, p.Start, local); err != nil {
+			return start, until, false, false
+		}
+	}
 	if end, err := time.ParseInLocation(DateTimeFormat, p.End, local); err == nil && timed && end.After(start) {
 		until = end
 	} else if timed {
@@ -81,19 +100,70 @@ func calendarLink(p *Party, page string) string {
 	} else {
 		until = start.Add(24 * time.Hour)
 	}
-	where := p.Address
-	if where == "" {
-		where = p.Location
+	return start, until, timed, true
+}
+
+// where and details are the place and the notes a calendar entry gets: the
+// street address (else the venue), and the summary with the party's page.
+func where(p *Party) string {
+	if p.Address != "" {
+		return p.Address
 	}
-	details := strings.TrimSpace(p.Summary)
-	if details != "" {
-		details += "\n\n"
+	return p.Location
+}
+
+func details(p *Party, page string) string {
+	d := strings.TrimSpace(p.Summary)
+	if d != "" {
+		d += "\n\n"
 	}
-	details += page
-	q := url.Values{
-		"action": {"TEMPLATE"}, "text": {p.Title}, "dates": {stamp(start) + "/" + stamp(until)}, "details": {details}, "location": {where},
+	return d + page
+}
+
+// invite is the calendar file on a note that says someone is going: the
+// party as one event, from the site to each person the note is for, all
+// marked as coming. Its UID is the party's and the family's, so a later
+// note for the same family - another ticket, an offer off the waitlist -
+// replaces the entry rather than adding a twin.
+func (a app) invite(p *Party, purchaser, page string, to []string) (mail.Attachment, bool) {
+	start, until, timed, ok := window(p)
+	if !ok {
+		return mail.Attachment{}, false
 	}
-	return "https://calendar.google.com/calendar/render?" + q.Encode()
+	stamp := time.Now().UTC()
+	lines := []string{
+		"BEGIN:VCALENDAR",
+		"VERSION:2.0",
+		"PRODID:-//Helios Celebrate//EN",
+		"METHOD:REQUEST",
+		"BEGIN:VEVENT",
+		"UID:" + mail.ICSEscape(fmt.Sprintf("celebrate-%s-%s@heliosian.com", p.ID, purchaser)),
+		"DTSTAMP:" + stamp.Format("20060102T150405Z"),
+		"SEQUENCE:" + fmt.Sprint(stamp.Unix()),
+	}
+	if timed {
+		lines = append(lines, "DTSTART:"+start.UTC().Format("20060102T150405Z"), "DTEND:"+until.UTC().Format("20060102T150405Z"))
+	} else {
+		lines = append(lines, "DTSTART;VALUE=DATE:"+start.Format("20060102"), "DTEND;VALUE=DATE:"+until.Format("20060102"))
+	}
+	lines = append(lines,
+		"SUMMARY:"+mail.ICSEscape(p.Title),
+		"DESCRIPTION:"+mail.ICSEscape(details(p, page)),
+		"URL:"+mail.ICSEscape(page),
+		"ORGANIZER;CN=Helios Celebrate:mailto:"+mail.Address(a.from),
+	)
+	for _, email := range to {
+		lines = append(lines, fmt.Sprintf("ATTENDEE;CN=%s;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;RSVP=FALSE:mailto:%s", mail.ICSEscape(a.nameOf(email)), email))
+	}
+	if w := where(p); w != "" {
+		lines = append(lines, "LOCATION:"+mail.ICSEscape(w))
+	}
+	lines = append(lines, "STATUS:CONFIRMED", "END:VEVENT", "END:VCALENDAR")
+	var b strings.Builder
+	for _, line := range lines {
+		b.WriteString(mail.ICSFold(line) + "\r\n")
+	}
+	return mail.Attachment{Name: "invite.ics", ContentType: "text/calendar; method=REQUEST; charset=utf-8", Content: []byte(b.String())}, true
 }
 
 func (a app) letterFor(base string, p *Party) letter {
@@ -184,12 +254,14 @@ func (l letter) render() (string, string) {
 	return html.String(), text.String()
 }
 
-// send posts a message off the request; the outcome is logged. Recipients
-// are deduplicated and nobody is copied on their own message.
+// send posts a message off the request; the outcome is logged.
 func (a app) send(ctx context.Context, subject string, to []string, cc []string, l letter, replyTo ...string) {
-	if a.mailer == nil || len(to) == 0 {
-		return
-	}
+	a.post(ctx, a.compose(subject, to, cc, l, replyTo...))
+}
+
+// compose is the message: recipients deduplicated, nobody copied on their
+// own message, the letter rendered.
+func (a app) compose(subject string, to []string, cc []string, l letter, replyTo ...string) mail.Message {
 	seen := map[string]bool{}
 	clean := func(list []string) []string {
 		out := []string{}
@@ -207,11 +279,37 @@ func (a app) send(ctx context.Context, subject string, to []string, cc []string,
 	seen = map[string]bool{}
 	m.ReplyTo = clean(replyTo)
 	m.HTML, m.Text = l.render()
+	return m
+}
+
+func (a app) post(ctx context.Context, m mail.Message) {
+	if a.mailer == nil || len(m.To) == 0 {
+		return
+	}
 	go func() {
 		if err := a.mailer.Send(context.WithoutCancel(ctx), m); err != nil {
-			slog.Error("mail: send", "error", err, "subject", subject, "to", m.To)
+			slog.Error("mail: send", "error", err, "subject", m.Subject, "to", m.To)
 		}
 	}()
+}
+
+// sendGoing sends a note that says someone is going, twice: to the family
+// with the party's invite attached, the hosts on Reply-To; and, without the
+// invite, to the hosts and whoever else took the tickets for them, the
+// family on Reply-To. Someone on the family's note is never on the hosts'.
+func (a app) sendGoing(ctx context.Context, subject string, to []string, others []string, l letter, p *Party, purchaser string) {
+	family := a.compose(subject, to, nil, l, without(p.HostEmails, purchaser)...)
+	if inv, ok := a.invite(p, purchaser, l.Path, family.To); ok {
+		family.Attachments = []mail.Attachment{inv}
+	}
+	a.post(ctx, family)
+	rest := []string{}
+	for _, e := range others {
+		if !slices.Contains(family.To, strings.ToLower(strings.TrimSpace(e))) {
+			rest = append(rest, e)
+		}
+	}
+	a.post(ctx, a.compose(subject, rest, nil, l, family.To...))
 }
 
 func without(list []string, drop string) []string {
@@ -284,8 +382,12 @@ func (a app) mailTickets(r *http.Request, p *Party, purchaser string, taken []ma
 			}
 		}
 	}
+	free := len(sold) > 0 && total == 0
+	// A gift by name for someone's guest is that person's note: the guest
+	// has no address of their own, so it speaks to whoever is bringing them.
+	guestOf := free && holder != "" && taken[0]["Email"] == "" && purchaser != actor
 	hi := "Hi"
-	if holder != "" {
+	if holder != "" && !guestOf {
 		if words := strings.Fields(holder); len(words) > 0 {
 			hi = "Hi " + words[0]
 		}
@@ -293,8 +395,9 @@ func (a app) mailTickets(r *http.Request, p *Party, purchaser string, taken []ma
 		hi = "Hi " + first
 	}
 	by := ""
-	free := len(sold) > 0 && total == 0
 	switch {
+	case free && purchaser != actor:
+		by = fmt.Sprintf(" %s has added you at no charge as %s's guest - a gift from the hosts.", a.nameOf(actor), a.nameOf(purchaser))
 	case free:
 		by = fmt.Sprintf(" %s has added you at no charge - a gift from the hosts.", a.nameOf(actor))
 	case holder != "":
@@ -306,15 +409,19 @@ func (a app) mailTickets(r *http.Request, p *Party, purchaser string, taken []ma
 	switch {
 	case len(sold) > 0 && waiting > 0:
 		l.Heading = "Your tickets, and a place on the waitlist"
-		l.Intro = fmt.Sprintf("%s - %s. The party was full before everyone could get in, so your family is on the waitlist for %d more; the hosts will offer places as they open up. The hosts are copied here, so just reply if you have a question.", hi, ticketsWords(len(sold), p.Title), waiting) + by
+		l.Intro = fmt.Sprintf("%s - %s. The party was full before everyone could get in, so your family is on the waitlist for %d more; the hosts will offer places as they open up. Just reply if you have a question - it goes to the hosts.", hi, ticketsWords(len(sold), p.Title), waiting) + by
 		subject = "Your tickets to " + p.Title
+	case guestOf:
+		l.Heading = strings.Fields(holder)[0] + " is going!"
+		l.Intro = fmt.Sprintf("%s - %s has a ticket to %s as your guest; %s added them at no charge - a gift from the hosts. The ticket sits with your family, yours to pass on if plans change. Just reply if you have a question - it goes to the hosts.", hi, holder, p.Title, a.nameOf(actor))
+		subject = holder + "'s ticket to " + p.Title
 	case holder != "":
 		l.Heading = strings.Fields(holder)[0] + ", you're going!"
-		l.Intro = fmt.Sprintf("%s - %s.%s The hosts are copied here, so just reply if you have a question.", hi, ticketsWords(1, p.Title), by)
+		l.Intro = fmt.Sprintf("%s - %s.%s Just reply if you have a question - it goes to the hosts.", hi, ticketsWords(1, p.Title), by)
 		subject = holder + "'s ticket to " + p.Title
 	case len(sold) > 0:
 		l.Heading = "You're going!"
-		l.Intro = fmt.Sprintf("%s - %s.%s The hosts are copied here, so just reply if you have a question.", hi, ticketsWords(len(sold), p.Title), by)
+		l.Intro = fmt.Sprintf("%s - %s.%s Just reply if you have a question - it goes to the hosts.", hi, ticketsWords(len(sold), p.Title), by)
 		subject = "Your tickets to " + p.Title
 	default:
 		l.Heading = "You're on the waitlist"
@@ -350,20 +457,24 @@ func (a app) mailTickets(r *http.Request, p *Party, purchaser string, taken []ma
 			l.Footnote = model.Settings.TicketNote
 		}
 	}
+	// A purchase goes to the hosts as well, on a copy of their own; a
+	// waitlist request sends them a note of their own instead
+	// (mailWaitlistHosts), whose reply goes to the family rather than back
+	// to themselves.
+	if len(sold) > 0 {
+		others := without(p.HostEmails, purchaser)
+		if actor != purchaser {
+			others = append([]string{actor}, others...)
+		}
+		a.sendGoing(r.Context(), subject, to, others, l, p, purchaser)
+		return
+	}
 	cc := []string{}
 	if actor != purchaser {
 		cc = append(cc, actor)
 	}
-	// A purchase copies the hosts in; a waitlist request sends them a note
-	// of their own instead (mailWaitlistHosts), whose reply goes to the
-	// family rather than back to themselves.
-	if len(sold) > 0 {
-		cc = append(cc, without(p.HostEmails, purchaser)...)
-	}
 	a.send(r.Context(), subject, to, cc, l, without(p.HostEmails, purchaser)...)
-	if len(sold) == 0 && waiting > 0 {
-		a.mailWaitlistHosts(r, p, purchaser, waiting, taken[0]["Note"], actor)
-	}
+	a.mailWaitlistHosts(r, p, purchaser, waiting, taken[0]["Note"], actor)
 }
 
 // mailWaitlistHosts tells the hosts a family is waiting: who, how many, and
@@ -418,7 +529,7 @@ func (a app) mailOffered(r *http.Request, p *Party, purchaser string, tickets []
 		total += price
 	}
 	l.Heading = "A place opened up!"
-	l.Intro = fmt.Sprintf("%s - %s has offered your family %d %s to %s, off the waitlist. They're yours now. The hosts are copied here, so just reply if you have a question.", hi, a.nameOf(actor), n, plural(n, "ticket"), p.Title)
+	l.Intro = fmt.Sprintf("%s - %s has offered your family %d %s to %s, off the waitlist. They're yours now. Just reply if you have a question - it goes to the hosts.", hi, a.nameOf(actor), n, plural(n, "ticket"), p.Title)
 	l.Rows = [][2]string{{"Tickets", strings.Join(names, ", ")}, {"Total", fmt.Sprintf("$%s (%d × $%s)", PriceCell(total), n, PriceCell(total/float64(n)))}, {"Billed to", fmt.Sprintf("%s (%s)", a.nameOf(purchaser), purchaser)}}
 	if hosts := a.hostNames(p); hosts != "" {
 		l.Rows = append(l.Rows, [2]string{"Hosts", hosts})
@@ -426,7 +537,7 @@ func (a app) mailOffered(r *http.Request, p *Party, purchaser string, tickets []
 	l.Button = "See the party"
 	l.Calendar = calendarLink(p, l.Path)
 	l.Footnote = "A ticket marked \"to be named\" is a guest's: open the party and use Reassign beside it to say who is coming. " + a.cache.Model().Settings.TicketNote
-	a.send(r.Context(), fmt.Sprintf("You're in: %d %s to %s", n, plural(n, "ticket"), p.Title), []string{purchaser}, without(p.HostEmails, purchaser), l, without(p.HostEmails, purchaser)...)
+	a.sendGoing(r.Context(), fmt.Sprintf("You're in: %d %s to %s", n, plural(n, "ticket"), p.Title), []string{purchaser}, without(p.HostEmails, purchaser), l, p, purchaser)
 }
 
 func (a app) hostNames(p *Party) string {

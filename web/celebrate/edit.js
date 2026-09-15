@@ -1253,21 +1253,31 @@ export async function offerTickets(p, a, quantity) {
 // directory or by name, and they hold a ticket at no charge - nothing lands
 // on an invoice, and the host is never refused for room.
 export function openFreeTicket(p) {
+  // Whose guest the ticket holder is: an adult from the directory, who
+  // holds the ticket for them - it shows under their family, is theirs to
+  // pass on, and the note goes to them. Left blank, the host themselves.
+  const guestOf = peoplePicker('Search for an adult\u2026', null, person => !person.isStudent);
+  const extra = el('div');
+  extra.append(field('Guest of', guestOf.wrap, 'Optional - who is bringing them. They get the note, and the ticket sits with their family to pass on. Blank means you.'));
   // With a cap, the gift can come out of the paid places or be one more
   // on top of them.
   const raise = p.capacity ? checkbox('Raise the capacity by one', true, `So this ticket takes none of the ${p.capacity} paid places.`) : null;
+  if (raise) {
+    extra.append(raise.wrap);
+  }
   openAddSomeone(p, true, async person => {
     try {
       await send('POST', '/api/celebrate/tickets', {
-        partyId: p.id, free: true, raiseCapacity: Boolean(raise && raise.input.checked), note: 'Free ticket from the hosts',
+        partyId: p.id, free: true, purchaser: guestOf.value(), raiseCapacity: Boolean(raise && raise.input.checked), note: 'Free ticket from the hosts',
         attendees: [{email: person.email || '', name: person.guest ? person.name : ''}],
       });
       await reload();
-      toast(`${person.name} has a free ticket`);
+      const host = guestOf.person();
+      toast(host ? `${person.name} has a free ticket as ${host.name}'s guest` : `${person.name} has a free ticket`);
     } catch (err) {
       toast(err.message);
     }
-  }, {title: 'Add a free ticket', lead: 'A ticket at no charge - for a helper, a performer, a family you\u2019d like to treat. Nothing is billed.', extra: raise ? raise.wrap : null});
+  }, {title: 'Add a free ticket', lead: 'A ticket at no charge - for a helper, a performer, a family you\u2019d like to treat. Nothing is billed.', extra});
 }
 
 // openTicket is a host's window on someone who is coming, as HCA-Team opens

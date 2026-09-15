@@ -62,17 +62,20 @@ type app struct {
 	directory   Directory
 	superAdmins func() []string
 	search      ImageSearch
-	mailer      mail.Sender
+	// mailer sends the site's email, from the address in from; nil sends
+	// nothing.
+	mailer mail.Sender
+	from   string
 }
 
 // Register wires the app: one shell for every page, the model, and the
 // writes. Every route already sits behind sign-in. A nil mailer sends
 // nothing.
-func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, directory Directory, superAdmins func() []string, search ImageSearch, mailer mail.Sender) {
+func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, directory Directory, superAdmins func() []string, search ImageSearch, mailer mail.Sender, from string) {
 	if search.UserAgent == "" {
 		search.UserAgent = "Helios Celebrate image search (+https://celebrate.heliosian.com)"
 	}
-	a := app{cache: cache, writer: writer, queue: queue, store: store, directory: directory, superAdmins: superAdmins, search: search, mailer: mailer}
+	a := app{cache: cache, writer: writer, queue: queue, store: store, directory: directory, superAdmins: superAdmins, search: search, mailer: mailer, from: from}
 	for _, page := range pages {
 		mux.HandleFunc("GET "+page, a.ready(a.page))
 	}
@@ -374,7 +377,17 @@ func (a app) buyTickets(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if !slices.Contains(Billable(a.directory, actor), purchaser) {
+	// A host's gift may name whose guest the holder is: an adult in the
+	// directory, who holds the ticket for them - it sits with their family
+	// to pass on, and the note goes to them. Nothing is billed, so the
+	// family rule does not apply.
+	gift := body.Free && purchaser != actor
+	if gift {
+		if host, known := a.directory.Person(purchaser); !known || host.IsStudent {
+			http.Error(w, "a guest's host is an adult in the directory", http.StatusBadRequest)
+			return
+		}
+	} else if !slices.Contains(Billable(a.directory, actor), purchaser) {
 		http.Error(w, "tickets are billed to you or another adult in your family", http.StatusForbidden)
 		return
 	}
@@ -414,7 +427,7 @@ func (a app) buyTickets(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		bill := purchaser
-		if !InHousehold(a.directory, actor, email) {
+		if !InHousehold(a.directory, actor, email) && !gift {
 			if !editor {
 				http.Error(w, "you can take tickets for yourself and your family; a friend goes in as a guest by name", http.StatusForbidden)
 				return
