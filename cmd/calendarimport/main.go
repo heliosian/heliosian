@@ -88,17 +88,29 @@ func apiKey() string {
 	return key
 }
 
+var retryWaits = []time.Duration{10 * time.Second, 20 * time.Second, 40 * time.Second}
+
 func fetch(address string) ([]byte, error) {
 	client := &http.Client{Timeout: 60 * time.Second}
-	resp, err := client.Get(address)
-	if err != nil {
-		return nil, err
+	for attempt := 0; ; attempt++ {
+		resp, err := client.Get(address)
+		if err != nil {
+			return nil, err
+		}
+		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			return nil, err
+		}
+		if resp.StatusCode == http.StatusOK {
+			return body, nil
+		}
+		if resp.StatusCode != http.StatusTooManyRequests || attempt == len(retryWaits) {
+			return nil, fmt.Errorf("get %s: %s", address, resp.Status)
+		}
+		log.Printf("get %s: %s, retrying in %s", address, resp.Status, retryWaits[attempt])
+		time.Sleep(retryWaits[attempt])
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("get %s: %s", address, resp.Status)
-	}
-	return io.ReadAll(resp.Body)
 }
 
 var pdfLink = regexp.MustCompile(`href="([^"]+\.pdf)"`)

@@ -12,7 +12,13 @@ Every push to `main` on `github.com/heliosian/heliosian` deploys production. The
 
 A second trigger, `build-calendarimport`, fires on the same push and does the same three steps for the calendar import (`docs/calendar/data.md`): `docker build` of `Dockerfile.calendarimport`, a push to `us-west1-docker.pkg.dev/heliosian/heliosian/calendarimport`, and `gcloud run jobs deploy calendarimport --image …:<sha>`, which changes only the job's image. The job has to exist first, from a `cmd/deploy` run: a job created with nothing but an image would run as the default compute account, which the build account may not act as, so the step fails until the job is there with its identity.
 
-Both triggers name their build service account (the project's default compute service account) explicitly; trigger creation in this project refuses to infer one. Builds ship the pushed commit, never a working tree. To rebuild and redeploy current `main` without a push:
+Both triggers name their build service account (the project's default compute service account) explicitly; trigger creation in this project refuses to infer one. The triggers themselves are the only record of those steps, so read them rather than this page when a build does something unexpected, and the recent builds with each one's outcome beside them:
+
+    gcloud builds triggers describe build-main --region us-west1 --project heliosian
+    gcloud builds triggers describe build-calendarimport --region us-west1 --project heliosian
+    gcloud builds list --region us-west1 --project heliosian --limit 10
+
+Builds ship the pushed commit, never a working tree. To rebuild and redeploy current `main` without a push:
 
     gcloud builds triggers run build-main --region=us-west1 --branch=main
     gcloud builds triggers run build-calendarimport --region=us-west1 --branch=main
@@ -31,10 +37,10 @@ It deploys the `latest` image with every setting the pipeline does not touch, so
 Why each setting is what it is:
 
 - **service account** — the runtime identity, `directory@`. Application-default credentials inside the container resolve to it through the metadata server; there is no key file anywhere in the system.
-- **min instances 1** — startup fetches every media object the sheets name before listening (about ten seconds); still worth avoiding on a cold request.
+- **min instances 1** — startup fetches every media object the sheets name before listening (how long that takes is in the startup log; see Verifying a deploy); still worth avoiding on a cold request.
 - **Sheets quota** — the API allows 60 read requests per minute per user. Startup reads each spreadsheet in one batch request (`Tabs` in `internal/data`), so a start costs about one read per sheet rather than one per tab, which with every app's tabs would exceed the minute's quota on its own; the invite templates are the exception, read one tab at a time. A start beside the previous revision's refresh, two deploys inside a minute, or a deploy on top of a burst of local `loadcheck`/`dumptab` runs can still hit it, and a refused read at startup used to fail the revision (`load config: Error 429`). `internal/data/sheet.go` waits out a 429 and retries (5, 10, 20, 40 seconds), within the 240-second startup window; a refused write is retried the same way rather than dropped.
 - **max instances 1** — the directory model and blob store live in per-instance memory with no cross-instance coherency; a self-service edit refreshes only the instance that handled it, so a second instance would serve stale data.
-- **memory 2Gi** — the blob store holds every named object and its thumbnail in RAM. Because thumbnails are stored rather than generated, startup decodes no images and the peak sits close to the steady state: a roughly 360 MB blob store runs the container at about a quarter of this limit. The startup log line `blob store: prefetched` reports how many objects are held; resize when the footprint approaches half the limit.
+- **memory 2Gi** — the blob store holds every named object and its thumbnail in RAM. Because thumbnails are stored rather than generated, startup decodes no images and the peak sits close to the steady state. The startup log's `blob store: prefetched` lines report how many objects are held (`held`), and the service's Metrics tab in the Cloud Run console (container memory utilization) shows what share of this limit the container takes; resize when the footprint approaches half the limit.
 - **concurrency 250** — with a single instance, every simultaneous request shares it, and a photo-heavy page fans out many image requests at once. The work is served from memory, so the ceiling exists to bound queueing, not CPU.
 - **no CPU throttling** — the directory model and blob store refresh on five-minute tickers between requests; default throttling would starve them.
 - **HTTP/2** — Cloud Run speaks cleartext HTTP/2 to the container, which the server accepts. Browsers already get HTTP/2 from the frontend either way.
@@ -44,18 +50,34 @@ Cloud Run injects `PORT`; the server honors it.
 
 ## The calendar import job
 
-The Cloud Run Job `calendarimport` in the same region runs `cmd/calendarimport` from its own image (`docs/calendar/data.md`). `cmd/deploy` writes its configuration beside the service's: the same runtime identity, the four spreadsheet ids the import reads (`DIRECTORY_SHEET`, `PREFERENCES_SHEET`, `CALENDAR_SHEET`, `CONFIG_SHEET`), the Anthropic key as `ANTHROPIC_API_KEY` from the `heliosian-anthropic-key` secret, and the `--i-have-user-permission-to-spend-money` argument, since scheduling the job is that permission. A task gets 1 GiB, since the import rasterizes the year calendar at 300 dpi and works on it pixel by pixel, and 30 minutes, since reading a new PDF is dozens of Claude calls at maximum effort; a task that fails is not retried, because the import already carries what it completed to the sheet and asks about only what failed on the next run, so a retry would spend the same money on the same failure.
+The Cloud Run Job `calendarimport` in the same region runs `cmd/calendarimport` from its own image (`docs/calendar/data.md`). `cmd/deploy` writes its configuration beside the service's: the same runtime identity, the four spreadsheet ids the import reads (`DIRECTORY_SHEET`, `PREFERENCES_SHEET`, `CALENDAR_SHEET`, `CONFIG_SHEET`), the Anthropic key as `ANTHROPIC_API_KEY` from the `heliosian-anthropic-key` secret, and the `--i-have-user-permission-to-spend-money` argument, since scheduling the job is that permission. A task gets 1 GiB, since the import rasterizes the year calendar at 300 dpi and works on it pixel by pixel, and 30 minutes, since reading a new PDF is dozens of Claude calls at maximum effort; a task that fails is not retried, because the import already carries what it completed to the sheet and asks about only what failed on the next run, so a retry would spend the same money on the same failure. What the job carries right now - image, identity, resources, timeout, retries, environment and secrets - is `gcloud run jobs describe calendarimport --region us-west1 --project heliosian`, and the service's counterpart is `gcloud run services describe heliosian --region us-west1 --project heliosian`.
 
-Cloud Scheduler job `calendarimport` (location `us-west1`) runs it once a day at five in the morning school time, by posting to the Cloud Run Admin API's run method as `directory@`, which holds `run.invoker` on the job for that. The schedule is a one-time resource like the domain mappings, written here rather than in `cmd/deploy`:
+Cloud Scheduler job `calendarimport` (location `us-west1`) starts an execution on a cron schedule, by posting to the Cloud Run Admin API's run method as `directory@`, which holds `run.invoker` on the job for that. The schedule lives only in that Scheduler job - nothing in the repository records or reconciles it - so read it there rather than assuming a cadence, along with when it last fired and when it fires next:
+
+    gcloud scheduler jobs describe calendarimport --location us-west1 --project heliosian
+
+`schedule` is the cron expression, read in `timeZone` (school time), `lastAttemptTime` the last firing, `scheduleTime` the next. A different cadence is an update to the same resource:
+
+    gcloud scheduler jobs update http calendarimport --location us-west1 --project heliosian --schedule "<cron expression>"
+
+The Scheduler job is a one-time resource like the domain mappings, created by hand rather than in `cmd/deploy`:
 
     gcloud run jobs add-iam-policy-binding calendarimport --region us-west1 --project heliosian --member serviceAccount:directory@heliosian.iam.gserviceaccount.com --role roles/run.invoker
-    gcloud scheduler jobs create http calendarimport --location us-west1 --project heliosian --schedule "0 5 * * *" --time-zone America/Los_Angeles --http-method POST --uri https://run.googleapis.com/v2/projects/heliosian/locations/us-west1/jobs/calendarimport:run --oauth-service-account-email directory@heliosian.iam.gserviceaccount.com
+    gcloud scheduler jobs create http calendarimport --location us-west1 --project heliosian --schedule "<cron expression>" --time-zone America/Los_Angeles --http-method POST --uri https://run.googleapis.com/v2/projects/heliosian/locations/us-west1/jobs/calendarimport:run --oauth-service-account-email directory@heliosian.iam.gserviceaccount.com
 
-To run the import now rather than wait for the morning:
+To run the import now rather than wait for the next firing:
 
     gcloud run jobs execute calendarimport --region us-west1 --project heliosian --wait
 
-Each execution's log is under the job in the console, or in Logs Explorer with `resource.type="cloud_run_job"`. A run that changed nothing is a few fetches and no Claude calls; a run that read a new PDF or classified new events says so, and one whose stage failed exits non-zero naming it and shows as a failed execution.
+The recent executions, each with when it ran and whether it succeeded:
+
+    gcloud run jobs executions list --job calendarimport --region us-west1 --project heliosian --limit 24 --format "table(metadata.name,status.startTime,status.completionTime,status.succeededCount,status.failedCount)"
+
+One execution's log, by the name that list gives:
+
+    gcloud logging read 'resource.type="cloud_run_job" AND labels."run.googleapis.com/execution_name"="<execution name>"' --project heliosian --order asc --format "value(timestamp,severity,textPayload)"
+
+The same logs are under the job in the console, or in Logs Explorer with `resource.type="cloud_run_job"`. A run that changed nothing is a few fetches and no Claude calls; a run that read a new PDF or classified new events says so, and one whose stage failed exits non-zero naming it and shows as a failed execution.
 
 ## Configuration values
 
@@ -87,7 +109,7 @@ Secret Manager secrets, delivered as environment variables. Values are used raw,
 
 ## Media storage
 
-Photos, pronunciation recordings, Heliosian's link images, and the volunteer portal's activity images live in `gs://heliosian-media` (us-west1, uniform access, public access prevented, object versioning on), the single source of truth for media — see `docs/who/data.md` for the naming convention and stored thumbnails. It sits in the same region as the service, so everything the sheets name fetches into memory in about eight seconds with no per-request throttle to work around. Nothing ever lists the bucket: the sheets are the index, each loader asks for its objects by name, and an object no sheet has named for a while is dropped from memory. Object versioning no longer carries the upload history: an object is named for its own bytes and is never rewritten, so every version that once accumulated under one name is now a separate object that the sheet either still names or does not.
+Photos, pronunciation recordings, Heliosian's link images, and the volunteer portal's activity images live in `gs://heliosian-media` (us-west1, uniform access, public access prevented, object versioning on), the single source of truth for media — see `docs/who/data.md` for the naming convention and stored thumbnails. It sits in the same region as the service, so everything the sheets name fetches into memory in a few seconds - each `blob store: prefetched` line in the startup log says how many names and how long (`took`) - with no per-request throttle to work around. Nothing ever lists the bucket: the sheets are the index, each loader asks for its objects by name, and an object no sheet has named for a while is dropped from memory. Object versioning no longer carries the upload history: an object is named for its own bytes and is never rewritten, so every version that once accumulated under one name is now a separate object that the sheet either still names or does not.
 
 Because the bucket is private and every read goes through the app's own sign-in gate, no object is ever publicly readable; the service reads and writes it as `directory@`.
 
@@ -142,4 +164,12 @@ Local development installs the same records over a text handler on stderr, so th
 
 ## Verifying a deploy
 
-The startup log (Cloud Run → Logs, or `gcloud logging read`) shows the full boot sequence: the blob store's prefetch line, the geocoding line (how many addresses came from the `Geocode` tab and how many went to the API), directory model load, then `listening` — about ten seconds after the instance starts. After any deploy, an existing session should still work — if everyone got signed out, `SESSION_KEY` stopped reaching the server.
+The startup log (Cloud Run → Logs, or `gcloud logging read`) shows the full boot sequence: `loaded config`, each app's `loaded … model`, the blob store's `prefetching` and `prefetched` lines around each, the geocoding line (how many addresses came from the `Geocode` tab and how many went to the API), then `listening`; the boot time is the span from the instance's first line to that one. The five-minute refreshes log the same `loaded` and `blob store` lines without a `listening`, so a boot is the run that ends in one. When the most recent boot happened:
+
+    gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="heliosian" AND jsonPayload.message="listening"' --project heliosian --freshness 7d --limit 1 --format "value(timestamp)"
+
+and its whole sequence, over the minute leading up to that time:
+
+    gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="heliosian" AND timestamp>="<a minute before>" AND timestamp<="<that time>" AND (jsonPayload.message:"loaded" OR jsonPayload.message:"blob store: prefetch" OR jsonPayload.message:"geocoded" OR jsonPayload.message="listening")' --project heliosian --order asc --format "value(timestamp,jsonPayload)"
+
+After any deploy, an existing session should still work — if everyone got signed out, `SESSION_KEY` stopped reaching the server.
