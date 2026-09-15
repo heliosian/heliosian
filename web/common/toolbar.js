@@ -512,6 +512,209 @@ export function renderAlerts({stale = 0, privacy = false} = {}) {
   }
 }
 
+// Spoof Mode's switch, for super admins: an eye beside the avatar, a red
+// pill saying whom while it is on, and under it - on the same hover as the
+// bar's other menus - Stop, the last five people viewed as, and a search of
+// the whole directory. Sign-in answers for all of it (/auth/spoof,
+// internal/auth) as the person really signed in, so the switch is there and
+// the way back stays open whoever the page is drawn for; a page drawn for
+// someone who may not spoof gets no switch at all. Starting lands on the
+// app's front page, since the person viewed as may not be allowed where the
+// admin was; stopping reloads in place.
+export function initSpoof() {
+  const user = document.querySelector('#user');
+  if (!user) {
+    return;
+  }
+  fetch('/auth/spoof').then(res => res.ok ? res.json() : null).then(state => {
+    if (state && state.canSpoof) {
+      buildSpoof(user, state);
+    }
+  }).catch(() => {});
+}
+
+function buildSpoof(user, state) {
+  const wrap = el('span', 'spoof-wrap');
+  const pill = el('span', 'spoof-pill');
+  const button = el('button', 'spoof-button');
+  button.type = 'button';
+  button.setAttribute('aria-label', 'Spoof Mode');
+  button.setAttribute('aria-haspopup', 'menu');
+  button.title = 'Spoof Mode: view every app as someone else';
+  const eye = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  eye.setAttribute('viewBox', '0 0 24 24');
+  eye.setAttribute('aria-hidden', 'true');
+  const outline = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  outline.setAttribute('d', 'M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z');
+  const pupil = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+  pupil.setAttribute('cx', '12');
+  pupil.setAttribute('cy', '12');
+  pupil.setAttribute('r', '3');
+  eye.append(outline, pupil);
+  button.append(eye);
+  pill.append(button);
+  const menu = el('div', 'spoof-menu');
+  menu.hidden = true;
+  wrap.append(pill, menu);
+  if (state.spoofing) {
+    wrap.classList.add('is-on');
+    const as = el('span', 'spoof-as');
+    as.append(el('span', 'spoof-as-lead', 'Viewing as '), el('b', '', state.spoofing.name));
+    button.append(as);
+    const stop = el('button', 'spoof-stop', '×');
+    stop.type = 'button';
+    stop.title = 'Stop viewing as ' + state.spoofing.name;
+    stop.setAttribute('aria-label', stop.title);
+    stop.addEventListener('click', () => setSpoof(''));
+    pill.append(stop);
+  }
+  user.before(wrap);
+
+  // The menu: Stop while viewing as someone, the recent five, then the search.
+  if (state.spoofing) {
+    const head = el('div', 'spoof-head');
+    head.append(el('span', '', 'Viewing as '), el('b', '', state.spoofing.name));
+    const stop = el('button', 'spoof-head-stop', 'Stop');
+    stop.type = 'button';
+    stop.addEventListener('click', () => setSpoof(''));
+    head.append(stop);
+    menu.append(head);
+  }
+  if (state.recent.length) {
+    menu.append(el('div', 'spoof-section', 'Recent'));
+    for (const p of state.recent) {
+      menu.append(spoofRow(p, state.spoofing && p.email === state.spoofing.email));
+    }
+  }
+  menu.append(el('div', 'spoof-section', state.recent.length ? 'Someone else' : 'View as'));
+  const search = el('div', 'spoof-search');
+  const input = document.createElement('input');
+  input.type = 'search';
+  input.placeholder = 'Search by name or email…';
+  input.autocomplete = 'off';
+  input.setAttribute('aria-label', 'Search for someone to view as');
+  search.append(input);
+  const results = el('div', 'spoof-results');
+  menu.append(search, results);
+
+  // The directory comes over once, the first time the menu opens; the box
+  // filters it by name, address or the word that places someone, eight
+  // rows at a time, and Enter takes the first (or the one arrowed to).
+  let people = null;
+  let active = -1;
+  const load = () => {
+    if (people) {
+      return;
+    }
+    people = [];
+    fetch('/auth/spoof/people').then(res => res.ok ? res.json() : []).then(list => {
+      people = list;
+      filter();
+    }).catch(() => {});
+  };
+  const filter = () => {
+    const q = input.value.trim().toLowerCase();
+    results.replaceChildren();
+    active = -1;
+    if (!q) {
+      return;
+    }
+    const found = (people || []).filter(p => p.name.toLowerCase().includes(q) || p.email.toLowerCase().includes(q) || (p.words || '').toLowerCase().includes(q)).slice(0, 8);
+    if (!found.length) {
+      results.append(el('div', 'spoof-empty', people && people.length ? 'Nobody matches.' : 'Loading…'));
+      return;
+    }
+    for (const p of found) {
+      results.append(spoofRow(p, false));
+    }
+  };
+  const setActive = index => {
+    const rows = [...results.querySelectorAll('.spoof-row')];
+    active = Math.max(-1, Math.min(index, rows.length - 1));
+    rows.forEach((row, i) => row.classList.toggle('is-active', i === active));
+  };
+  input.addEventListener('focus', load);
+  input.addEventListener('input', filter);
+  input.addEventListener('keydown', e => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActive(active + 1);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActive(active - 1);
+    } else if (e.key === 'Enter') {
+      const rows = results.querySelectorAll('.spoof-row');
+      const row = rows[active >= 0 ? active : 0];
+      if (row) {
+        e.preventDefault();
+        row.click();
+      }
+    }
+  });
+
+  const open = () => {
+    closeUserMenus();
+    closeAppSwitches();
+    menu.hidden = false;
+    load();
+  };
+  // Leaving the menu with the mouse does not close it while the search box
+  // has focus - the mouse wanders while typing - so a click elsewhere, or
+  // Escape, is what closes it then.
+  const close = () => {
+    if (menu.contains(document.activeElement)) {
+      return;
+    }
+    menu.hidden = true;
+  };
+  hoverMenu(pill, menu, open, close);
+  button.addEventListener('click', e => {
+    e.stopPropagation();
+    if (menu.hidden) {
+      open();
+    } else if (!hoverClick(e)) {
+      menu.hidden = true;
+    }
+  });
+  menu.addEventListener('click', e => e.stopPropagation());
+  document.addEventListener('click', () => {
+    menu.hidden = true;
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      menu.hidden = true;
+    }
+  });
+}
+
+// One person of the switch's menu: their name over the word that places
+// them, or their address; the one being viewed as is marked.
+function spoofRow(p, isCurrent) {
+  const row = el('button', 'spoof-row' + (isCurrent ? ' is-current' : ''));
+  row.type = 'button';
+  row.append(el('span', 'spoof-row-name', p.name), el('span', 'spoof-row-words', p.words || p.email));
+  row.addEventListener('click', () => setSpoof(p.email));
+  return row;
+}
+
+async function setSpoof(email) {
+  try {
+    const res = await fetch('/auth/spoof', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({email})});
+    if (!res.ok) {
+      toast(await res.text());
+      return;
+    }
+  } catch {
+    toast('Couldn’t switch; check your connection and try again.');
+    return;
+  }
+  if (email) {
+    location.href = '/';
+  } else {
+    location.reload();
+  }
+}
+
 // Points every View Profile row of the account menu at the signed-in
 // person's page in Who?, whose address is their email's local part. Who?
 // fills its own, from its model.

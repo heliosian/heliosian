@@ -2637,21 +2637,6 @@ body.is-admin main { padding: 0; }
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  /* Spoof Mode's line stays above the pinned bar on a phone - it is the way
-     out of viewing as someone else, so it can never be hidden behind it. */
-  .spoof-banner {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    z-index: 31;
-    height: calc(var(--spoof-h) + env(safe-area-inset-top));
-    padding: env(safe-area-inset-top) 12px 0;
-    box-sizing: border-box;
-  }
-  body.has-spoof .topbar { top: calc(var(--spoof-h) + env(safe-area-inset-top)); height: 48px; padding-top: 0; }
-  body.has-spoof .mobile-top { top: calc(48px + var(--spoof-h) + env(safe-area-inset-top)); }
-  body.has-spoof main { padding-top: calc(88px + var(--spoof-h) + env(safe-area-inset-top)); }
   /* The person window on a phone: the face and name on one row, the
      contact buttons on their own row under them, so nothing overlaps. */
   .who-head { flex-wrap: wrap; gap: 14px; }
@@ -2900,33 +2885,6 @@ body.is-admin main { padding: 0; }
 .notify-stack .field-toggle:last-child { border-bottom: 0; }
 
 .notify-stack + .save-status { display: inline-block; margin-top: 8px; }
-
-/* Spoof Mode: the line across the very top while viewing as someone else. */
-.spoof-banner {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: calc(6px + env(safe-area-inset-top)) 12px 6px;
-  background: #b3261e;
-  color: #fff;
-  font-size: 12.5px;
-  font-weight: 600;
-  text-align: center;
-  flex-shrink: 0;
-}
-
-.spoof-banner-name { font-weight: 700; }
-
-:root { --spoof-h: 28px; }
-
-.spoof-banner a { color: #fff; text-decoration: underline; margin-left: 8px; }
-
-.spoof-row { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
-
-.spoof-row .people-picker { flex: 1; min-width: 260px; }
-
-.spoof-row .people-picker input[type=search] { width: 100%; padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; box-sizing: border-box; }
 
 /* The suggestion form's lead-in, above its few fields. */
 .suggest-lead { margin: 0 0 16px; font-size: 14.5px; line-height: 1.5; color: var(--muted); }

@@ -1,7 +1,7 @@
 import {state, me, today, bands, tagGroups, defaultTags, savedView, searchResults, eventPath, dayLabel, eventTint, timeLine, weekdayShort, parseDate, selectedClassrooms, toggleClassroom, setClassrooms, classroomNames, myClassrooms, tagNames, selectedTags, toggleTag, setTags, resetFilters, filtersAreDefault, colorOf, hiddenMatches, hiddenClassroomMatches, feedClassrooms, feedTags, showsFeed, setActiveFeed, activeFeed, allCalendars, defaultFeed} from './state.js';
 import {el, svg, link, button, toast, feedMark, popup, emojiPicker} from './dom.js';
 import {dayColumn} from './day.js';
-import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, alertMenu, alertCard} from '/toolbar.js';
+import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, initSpoof, alertMenu, alertCard} from '/toolbar.js';
 
 const primary = [
   {href: '/', icon: 'today', label: 'Calendar'},
@@ -892,6 +892,7 @@ export function initChrome() {
     }
   });
   initUserMenu();
+  initSpoof();
   window.addEventListener('resize', syncViewportHeight);
   window.addEventListener('orientationchange', syncViewportHeight);
   document.addEventListener('click', closeMenus);

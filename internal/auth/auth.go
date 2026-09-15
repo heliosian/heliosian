@@ -40,20 +40,27 @@ type Auth struct {
 	// at a given path - the Open Graph tags a chat app reads to preview a link
 	// that leads to sign-in. Empty for a path with nothing to preview.
 	Preview func(r *http.Request) string
+	// Spoof, when set, lets a super admin view every app as someone else
+	// (spoof.go); nil leaves Email the signed-in address always.
+	Spoof *Spoof
 }
 
 func New(clientID string, key []byte, loginPage string) *Auth {
 	return &Auth{clientID: clientID, key: key, loginPage: loginPage}
 }
 
-func Email(r *http.Request) string {
-	email, _ := r.Context().Value(contextKey{}).(string)
-	return email
-}
-
+// Fixed signs every request in as email, with no session at all - for tests.
 func Fixed(email string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), contextKey{}, email)))
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), contextKey{}, identity{real: email, effective: email})))
+	})
+}
+
+// Fixed signs every request in as email with no session, the way the sample
+// server does, but still honours a spoof, so Spoof Mode can be tried there.
+func (a *Auth) Fixed(email string, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), contextKey{}, a.resolve(r, email))))
 	})
 }
 
@@ -83,6 +90,7 @@ func (a *Auth) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /auth/client", a.client)
 	mux.HandleFunc("POST /auth/login", a.login)
 	mux.HandleFunc("POST /auth/logout", a.logout)
+	a.RegisterSpoof(mux)
 }
 
 func (a *Auth) client(w http.ResponseWriter, r *http.Request) {
@@ -107,7 +115,7 @@ func (a *Auth) Wrap(next http.Handler) http.Handler {
 			a.splash(w, r)
 			return
 		}
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), contextKey{}, email)))
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), contextKey{}, a.resolve(r, email))))
 	})
 }
 
@@ -204,13 +212,17 @@ func logoutDomains(host string) []string {
 	return domains
 }
 
+// logout ends the session, and any spoof with it: the next person to sign
+// in on this browser must not inherit a view as someone else.
 func (a *Auth) logout(w http.ResponseWriter, r *http.Request) {
 	secure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
 	for _, domain := range logoutDomains(r.Host) {
-		http.SetCookie(w, &http.Cookie{
-			Name: cookieName, Value: "", Path: "/", Domain: domain,
-			HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode, MaxAge: -1,
-		})
+		for _, name := range []string{cookieName, spoofCookie} {
+			http.SetCookie(w, &http.Cookie{
+				Name: name, Value: "", Path: "/", Domain: domain,
+				HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode, MaxAge: -1,
+			})
+		}
 	}
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }

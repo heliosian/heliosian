@@ -1,6 +1,6 @@
 import {state, me, isAdmin, pendingItems, selectedYear, listedIn, years, resolvePath, rootOf, eventCategories, descendants, activityPath, isSystemAdmin, setSuperEdit, family, myRows, isPrevious} from './state.js';
 import {el, svg, link, button} from './dom.js';
-import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, markSuper} from '/toolbar.js';
+import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, initSpoof, markSuper} from '/toolbar.js';
 import {openActivity} from './edit.js';
 
 // The rail and the drawer show these; the mobile tab bar drops the admin ones.
@@ -416,42 +416,9 @@ function syncViewportHeight() {
 
 export function renderChrome() {
   syncViewportHeight();
-  renderSpoofBanner();
   renderUser();
   renderNav();
   renderTabbar();
-}
-
-// renderSpoofBanner is the red line across the top while a system admin is
-// viewing the portal as someone else - the one thing on the page keyed on who
-// is really signed in, and the way back to being themselves.
-function renderSpoofBanner() {
-  let banner = document.querySelector('.spoof-banner');
-  const as = me().spoofingAs;
-  // The phone layout pins its bar to the top, so it needs to know to make
-  // room for the line above it.
-  document.body.classList.toggle('has-spoof', Boolean(as));
-  if (!as) {
-    if (banner) {
-      banner.remove();
-    }
-    return;
-  }
-  if (banner) {
-    banner.querySelector('.spoof-banner-name').textContent = as;
-    return;
-  }
-  banner = el('div', 'spoof-banner');
-  banner.append(el('span', '', 'Viewing as '), el('span', 'spoof-banner-name', as));
-  const stop = el('a', '', 'Stop');
-  stop.href = '#';
-  stop.addEventListener('click', async e => {
-    e.preventDefault();
-    await fetch('/api/admin/spoof', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({email: ''})});
-    location.reload();
-  });
-  banner.append(stop);
-  document.body.prepend(banner);
 }
 
 export function initChrome() {
@@ -473,6 +440,7 @@ export function initChrome() {
     }
   });
   initUserMenu();
+  initSpoof();
   // The switch exists twice (rail menu and mobile menu), so a change on either
   // updates the other. app.js listens for the repaint rather than chrome.js
   // importing render, which would make the two modules import each other.

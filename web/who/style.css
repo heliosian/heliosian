@@ -4329,27 +4329,3 @@ a.person-card:hover .photo-wrap-peek::before {
   text-decoration: underline;
   flex-shrink: 0;
 }
-
-.spoof-banner {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: calc(6px + env(safe-area-inset-top)) 12px 6px;
-  background: var(--alert);
-  color: #fff;
-  font-size: 12px;
-  font-weight: 600;
-  text-align: center;
-}
-
-.spoof-banner-name {
-  font-weight: 700;
-}
-
-.spoof-banner a {
-  color: #fff;
-  text-decoration: underline;
-  margin-left: 8px;
-  flex-shrink: 0;
-}

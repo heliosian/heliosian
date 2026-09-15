@@ -152,9 +152,6 @@ type User struct {
 	// initial instead.
 	PhotoURL string `json:"photoUrl,omitempty"`
 	IsAdmin  bool   `json:"isAdmin"`
-	// SpoofingAs names who a system admin is viewing the portal as, when they
-	// are; the rest of User already describes that person.
-	SpoofingAs string `json:"spoofingAs,omitempty"`
 	// Spouses and Children are the viewer's household, whose sign-ups are
 	// theirs to see and to change - a parent signs a child up, and takes
 	// them off again.

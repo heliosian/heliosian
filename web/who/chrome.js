@@ -9,7 +9,7 @@ import {staleItems, familyInfoBanner, todoChecklist, familyNavPeople, personTodo
 import {topbarSearchInput, topbarSearchResults} from './search.js';
 import {privacyMismatchCardDismissed, myPrivacyWarnings, privacyMismatchCard, privacyMismatchText} from './pages/privacy.js';
 import {load} from './app.js';
-import {renderAvatars, onSlash, isEditableTarget, initAppSwitch, initUserMenu, hoverMenu, hoverClick, alertMenu, alertCard, markSuper} from '/toolbar.js';
+import {renderAvatars, onSlash, isEditableTarget, initAppSwitch, initUserMenu, initSpoof, hoverMenu, hoverClick, alertMenu, alertCard, markSuper} from '/toolbar.js';
 
 const primaryNavItems = [
   {path: 'people', label: 'Directory'},
@@ -335,9 +335,8 @@ function setDrawer(open) {
   drawerOverlay.hidden = !open;
 }
 
-// Both banners live in one fixed-position stack so they pile up in normal flow
-// instead of both claiming top:0 and hiding one another — which is exactly what
-// happened once spoofing stopped being mutually exclusive with Super Admin Mode.
+// The banners live in one fixed-position stack so they pile up in normal flow
+// instead of each claiming top:0 and hiding one another.
 function topBanners() {
   let stack = document.querySelector('#top-banners');
   if (!stack) {
@@ -392,39 +391,6 @@ export function renderSuperEditBanner() {
   link.addEventListener('click', async e => {
     e.preventDefault();
     await setSuperEdit(false);
-  });
-  banner.append(link);
-  topBanners().append(banner);
-  updateBannerOffset();
-}
-
-export function renderSpoofBanner() {
-  let banner = document.querySelector('.spoof-banner');
-  if (!state.model.spoofingAs) {
-    if (banner) {
-      banner.remove();
-      updateBannerOffset();
-    }
-    return;
-  }
-  if (banner) {
-    banner.querySelector('.spoof-banner-name').textContent = state.model.spoofingAs;
-    updateBannerOffset();
-    return;
-  }
-  banner = el('div', 'spoof-banner');
-  banner.append(el('span', '', 'Viewing as '));
-  banner.append(el('span', 'spoof-banner-name', state.model.spoofingAs));
-  const link = el('a', '', 'Stop');
-  link.href = '#';
-  link.addEventListener('click', async e => {
-    e.preventDefault();
-    await fetch('/api/admin/spoof', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({email: ''}),
-    });
-    await load();
   });
   banner.append(link);
   topBanners().append(banner);
@@ -500,6 +466,7 @@ export function initChrome() {
   // straight to the profile - the avatar's only job now is opening the menu, whose
   // first item is "View Profile".
   initUserMenu();
+  initSpoof();
 
   // The stale-count badge (desktop and mobile both) used to link straight to
   // /my-family; now it opens a dropdown built from the same todoChecklist used

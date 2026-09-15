@@ -94,20 +94,24 @@ func sampleServer() (*http.Server, *who.Queue) {
 		BirthdayBase:  "https://birthday.local.heliosian.com:" + app.Port(),
 		Feedback:      printedFeedback{},
 	})
-	core.Mux.Handle("POST /auth/logout", http.RedirectHandler("/", http.StatusSeeOther))
-	core.HomeMux.Handle("POST /auth/logout", http.RedirectHandler("/", http.StatusSeeOther))
-	core.EventsMux.Handle("POST /auth/logout", http.RedirectHandler("/", http.StatusSeeOther))
-	core.BirthdayMux.Handle("POST /auth/logout", http.RedirectHandler("/", http.StatusSeeOther))
-	core.CelebrateMux.Handle("POST /auth/logout", http.RedirectHandler("/", http.StatusSeeOther))
-	core.CalendarMux.Handle("POST /auth/logout", http.RedirectHandler("/", http.StatusSeeOther))
+	// No Google sign-in here, but Spoof Mode still: a sign-in with a key of
+	// its own signs the spoof cookie and answers the toolbar's switch, and
+	// every request is the sample parent's unless they are viewing as
+	// someone else.
+	signIn := auth.New("", []byte("sample"), "")
+	signIn.Spoof = core.Spoof
+	for _, m := range core.Muxes() {
+		m.Handle("POST /auth/logout", http.RedirectHandler("/", http.StatusSeeOther))
+		signIn.RegisterSpoof(m)
+	}
 	slog.Info("serving sample data", "as", sampleUser)
 	return localTLS(app.Server(map[string]http.Handler{
-		"who":       app.Public("who", auth.Fixed(sampleUser, app.Logged("who", app.Files("who", core.Gate)))),
-		"home":      app.Public("home", auth.Fixed(sampleUser, app.Logged("home", app.Files("home", core.Home)))),
-		"team":      app.Public("team", auth.Fixed(sampleUser, app.Logged("team", app.Files("team", core.Events)))),
-		"birthday":  app.Public("birthday", auth.Fixed(sampleUser, app.Logged("birthday", app.Files("birthday", core.Birthday)))),
-		"celebrate": app.Public("celebrate", auth.Fixed(sampleUser, app.Logged("celebrate", app.Files("celebrate", core.Celebrate)))),
-		"calendar":  app.Public("calendar", auth.Fixed(sampleUser, app.Logged("calendar", app.Files("calendar", core.Calendar)))),
+		"who":       app.Public("who", signIn.Fixed(sampleUser, app.Logged("who", app.Files("who", core.Gate)))),
+		"home":      app.Public("home", signIn.Fixed(sampleUser, app.Logged("home", app.Files("home", core.Home)))),
+		"team":      app.Public("team", signIn.Fixed(sampleUser, app.Logged("team", app.Files("team", core.Events)))),
+		"birthday":  app.Public("birthday", signIn.Fixed(sampleUser, app.Logged("birthday", app.Files("birthday", core.Birthday)))),
+		"celebrate": app.Public("celebrate", signIn.Fixed(sampleUser, app.Logged("celebrate", app.Files("celebrate", core.Celebrate)))),
+		"calendar":  app.Public("calendar", signIn.Fixed(sampleUser, app.Logged("calendar", app.Files("calendar", core.Calendar)))),
 	}), core.Queue)
 }
 

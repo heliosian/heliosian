@@ -21,6 +21,7 @@ type contextKey struct{}
 type request struct {
 	app   string
 	user  string
+	as    string
 	trace string
 	span  string
 }
@@ -49,6 +50,9 @@ func (h handler) Handle(ctx context.Context, record slog.Record) error {
 	record.AddAttrs(slog.String("app", req.app))
 	if req.user != "" {
 		record.AddAttrs(slog.String("user", req.user))
+	}
+	if req.as != "" {
+		record.AddAttrs(slog.String("as", req.as))
 	}
 	if req.trace != "" {
 		record.AddAttrs(
@@ -134,14 +138,15 @@ func (r *recorder) Unwrap() http.ResponseWriter {
 }
 
 // Requests tags every record logged while handling a request with the app, the
-// signed-in user, and the request's trace, and writes one record per request
+// signed-in user - and, while a super admin is viewing as someone else, whom,
+// as `as` - and the request's trace, and writes one record per request
 // with its status and latency. Media requests are tagged but get no record of
 // their own: a photo-heavy page fans out hundreds, and Cloud Run's request log
 // already lists them.
 func Requests(app string, media func(path string) bool, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		req := request{app: app, user: strings.ToLower(auth.Email(r))}
+		req := request{app: app, user: strings.ToLower(auth.RealEmail(r)), as: strings.ToLower(auth.Spoofing(r))}
 		req.trace, req.span = traceOf(r.Header.Get("X-Cloud-Trace-Context"))
 		ctx := context.WithValue(r.Context(), contextKey{}, req)
 		r = r.WithContext(ctx)

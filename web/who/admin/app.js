@@ -1,5 +1,5 @@
 import {state, applyState} from './state.js';
-import {renderTopLevelSpoofBanner, ensureSuperAdminUI, renderSpoofPanel} from './spoof.js';
+import {ensureSuperAdminUI} from './superadmins.js';
 import {buildAdminListEditor} from './admins.js';
 import {renderImages} from './images.js';
 import {overridesPanels, initOverrides} from './overrides.js';
@@ -34,7 +34,6 @@ export async function load() {
 
 function render() {
   document.querySelector('#me').textContent = state.email;
-  renderTopLevelSpoofBanner();
 
   const notice = document.querySelector('#store-notice');
   notice.innerHTML = '';
@@ -79,7 +78,6 @@ function render() {
   if (state.isSuperAdmin) {
     buildAdminListEditor(
       '#super-admins-rows', '#add-super-admin-select', '#super-admins-status', '/api/config/super-admins', 'superAdmins', state.superAdmins);
-    renderSpoofPanel();
   }
 }
 

@@ -243,27 +243,56 @@ func (d directory) Alerts(email string) (int, bool) {
 	return alerts.Stale, alerts.Privacy
 }
 
+// SpoofPerson is someone a super admin may view as, by any of their
+// addresses: the row for them under the one the directory keys them by.
+func (d directory) SpoofPerson(email string) (auth.Person, bool) {
+	model := d.cache.Model()
+	p := model.Person(model.Resolve(strings.ToLower(strings.TrimSpace(email))))
+	if p == nil {
+		return auth.Person{}, false
+	}
+	return auth.Person{Email: p.Email, Name: p.FullName, Words: placeWords(*p)}, true
+}
+
+// SpoofPeople is everyone the switch's search lists, each with the word
+// that places them.
+func (d directory) SpoofPeople() []auth.Person {
+	model := d.cache.Model()
+	out := make([]auth.Person, 0, len(model.People))
+	for _, p := range model.People {
+		out = append(out, auth.Person{Email: p.Email, Name: p.FullName, Words: placeWords(p)})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
+// placeWords is the one word (or few) that places a person beside their
+// name in a picker: a staff member's job, a student's grade, or Parent.
+func placeWords(p who.Person) string {
+	switch {
+	case p.IsStaff:
+		if p.JobTitle == "" {
+			return "Staff"
+		}
+		return p.JobTitle
+	case p.IsStudent:
+		if p.Grade == "" {
+			return "Student"
+		}
+		return p.Grade
+	case p.IsParent:
+		return "Parent"
+	}
+	return ""
+}
+
 // People is the directory as a picker sees it: everyone, with the one word that
 // places them - a staff member's job, a student's grade, or "Parent".
 func (d directory) People() []events.DirectoryPerson {
 	model := d.cache.Model()
 	out := make([]events.DirectoryPerson, 0, len(model.People))
 	for _, p := range model.People {
-		title := ""
-		switch {
-		case p.IsStaff:
-			title = p.JobTitle
-			if title == "" {
-				title = "Staff"
-			}
-		case p.IsStudent:
-			title = p.Grade
-			if title == "" {
-				title = "Student"
-			}
-		case p.IsParent:
-			title = "Parent"
-		}
+		title := placeWords(p)
 		person := events.DirectoryPerson{
 			Email: p.Email, Name: p.FullName, PhotoURL: model.HeroPhoto(p.Email), Title: title,
 			IsStudent: p.IsStudent, ParentEmails: p.ParentContactEmails,
@@ -742,12 +771,15 @@ type Core struct {
 	CalendarLinked func(email string) []calendar.Linked
 	Cache          *who.Cache
 	Queue          *who.Queue
-	Gate           http.Handler
-	Home           http.Handler
-	Events         http.Handler
-	Birthday       http.Handler
-	Celebrate      http.Handler
-	Calendar       http.Handler
+	// Spoof is Spoof Mode as every app's sign-in shares it: the super admins
+	// may view as anyone the directory lists.
+	Spoof     *auth.Spoof
+	Gate      http.Handler
+	Home      http.Handler
+	Events    http.Handler
+	Birthday  http.Handler
+	Celebrate http.Handler
+	Calendar  http.Handler
 }
 
 // NewCore wires everything every mode serves identically. Fatal on any failure.
@@ -862,8 +894,15 @@ func NewCore(cfg Config) *Core {
 	return &Core{
 		Mux: mux, HomeMux: homeMux, EventsMux: eventsMux, EventsCache: eventsCache, BirthdayMux: birthdayMux, CelebrateMux: celebrateMux, CelebrateCache: celebrateCache,
 		CalendarMux: calendarMux, CalendarCache: calendarCache, CalendarLinked: linked, Cache: cache, Queue: queue,
-		Gate: who.MemberGate(cache, mux), Home: homeMux, Events: eventsMux, Birthday: birthdayMux, Celebrate: celebrateMux, Calendar: calendarMux,
+		Spoof: &auth.Spoof{Allowed: superAdmin, Person: directory{cache, settings}.SpoofPerson, People: directory{cache, settings}.SpoofPeople},
+		Gate:  who.MemberGate(cache, mux), Home: homeMux, Events: eventsMux, Birthday: birthdayMux, Celebrate: celebrateMux, Calendar: calendarMux,
 	}
+}
+
+// Muxes is every app's mux, keyed by the app, for what is wired on all of
+// them alike.
+func (c *Core) Muxes() map[string]*http.ServeMux {
+	return map[string]*http.ServeMux{"who": c.Mux, "home": c.HomeMux, "team": c.EventsMux, "birthday": c.BirthdayMux, "celebrate": c.CelebrateMux, "calendar": c.CalendarMux}
 }
 
 // Server dresses the apps, each fully wrapped and keyed by name, in the shared
@@ -1104,23 +1143,30 @@ func Production() (*http.Server, *who.Queue) {
 	}
 	who.RegisterUpload(core.Mux, core.Cache, sheet, store, core.Queue)
 	client := clientID()
-	whoAuth := auth.New(client, []byte(sessionKey), "web/public/who/login.html")
+	// Every app's sign-in shares the key, so one session - and one spoof -
+	// covers them all.
+	newAuth := func(app string) *auth.Auth {
+		a := auth.New(client, []byte(sessionKey), "web/public/"+app+"/login.html")
+		a.Spoof = core.Spoof
+		return a
+	}
+	whoAuth := newAuth("who")
 	whoAuth.Register(core.Mux)
-	homeAuth := auth.New(client, []byte(sessionKey), "web/public/home/login.html")
+	homeAuth := newAuth("home")
 	homeAuth.Register(core.HomeMux)
-	teamAuth := auth.New(client, []byte(sessionKey), "web/public/team/login.html")
+	teamAuth := newAuth("team")
 	// A shared link to an event previews in chat apps: the sign-in page it
 	// leads to carries the event's Open Graph tags.
 	teamAuth.Preview = events.PreviewHead(core.EventsCache)
 	teamAuth.Register(core.EventsMux)
-	birthdayAuth := auth.New(client, []byte(sessionKey), "web/public/birthday/login.html")
+	birthdayAuth := newAuth("birthday")
 	birthdayAuth.Register(core.BirthdayMux)
-	celebrateAuth := auth.New(client, []byte(sessionKey), "web/public/celebrate/login.html")
+	celebrateAuth := newAuth("celebrate")
 	// A shared link to a party previews in chat apps: the sign-in page it
 	// leads to carries the party's Open Graph tags.
 	celebrateAuth.Preview = celebrate.PreviewHead(core.CelebrateCache)
 	celebrateAuth.Register(core.CelebrateMux)
-	calendarAuth := auth.New(client, []byte(sessionKey), "web/public/calendar/login.html")
+	calendarAuth := newAuth("calendar")
 	// A shared link to an event previews in chat apps: the sign-in page it
 	// leads to carries the event's Open Graph tags.
 	calendarAuth.Preview = calendar.PreviewHead(core.CalendarCache, core.CalendarLinked)

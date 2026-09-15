@@ -1,6 +1,6 @@
 import {state, me, isAdmin, isSystemAdmin, setSuperEdit, isUnassigned} from './state.js';
 import {el, svg, link} from './dom.js';
-import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, markSuper} from '/toolbar.js';
+import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, initSpoof, markSuper} from '/toolbar.js';
 
 const appName = 'Helios Staff Birthdays';
 
@@ -223,6 +223,7 @@ export function initChrome() {
     }
   });
   initUserMenu();
+  initSpoof();
   // Super Admin Mode puts an admin's hat on or takes it off; the page
   // repaints as the other kind of user.
   for (const box of document.querySelectorAll('.super-edit-checkbox')) {

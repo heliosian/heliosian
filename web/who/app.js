@@ -3,7 +3,7 @@ import {applyTheme} from '/theme.js';
 import {segments, shuffled, tabParam} from './dom.js';
 import {loadTagRelations} from './storage.js';
 import {familyEntries} from './families.js';
-import {initChrome, renderNav, setChrome, finishRender, renderUserChrome, renderSuperEditBanner, syncSuperEditCheckboxes, renderSpoofBanner, renderPrivacyMenuAlert} from './chrome.js';
+import {initChrome, renderNav, setChrome, finishRender, renderUserChrome, renderSuperEditBanner, syncSuperEditCheckboxes, renderPrivacyMenuAlert} from './chrome.js';
 import {initSearch} from './search.js';
 import {maybeShowInstallPrompt} from './install.js';
 import {renderPeople} from './pages/people.js';
@@ -94,7 +94,6 @@ export async function load() {
   renderUserChrome();
   renderSuperEditBanner();
   syncSuperEditCheckboxes();
-  renderSpoofBanner();
   renderPrivacyMenuAlert();
   render();
   maybeShowInstallPrompt();

@@ -44,11 +44,6 @@ type Cache struct {
 	// edit anyone's record rather than just their own family's. Deliberately
 	// in-memory only: it resets on every restart rather than staying on forever.
 	superEdit map[string]bool
-
-	// spoof tracks, per admin, which other person they're currently viewing the
-	// directory as. View-only by design — it changes what an admin sees, never who a
-	// write is attributed to, so it never touches upload.go's identity resolution.
-	spoof map[string]string
 }
 
 // store is the concrete blob store (nil in sample mode), needed to replace a classroom
@@ -56,7 +51,7 @@ type Cache struct {
 func NewCache(source data.Source, writer data.Writer, geocoder Geocoder, blobs, static BlobChecker, store *blob.Store, queue *Queue, superAdmins func() []string) (*Cache, error) {
 	c := &Cache{
 		source: source, writer: writer, geocoder: geocoder, blobs: blobs, static: static, store: store, queue: queue,
-		superAdmins: superAdmins, superEdit: map[string]bool{}, spoof: map[string]string{},
+		superAdmins: superAdmins, superEdit: map[string]bool{},
 	}
 	start := time.Now()
 	tables, err := ReadTables(source)
@@ -202,27 +197,6 @@ func (c *Cache) SetSuperEdit(email string, enabled bool) {
 		c.superEdit[email] = true
 	} else {
 		delete(c.superEdit, email)
-	}
-}
-
-// SpoofTarget returns who this admin is currently viewing the directory as, or "" if
-// they're viewing as themselves.
-func (c *Cache) SpoofTarget(email string) string {
-	email = strings.ToLower(strings.TrimSpace(email))
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.spoof[email]
-}
-
-func (c *Cache) SetSpoof(email, target string) {
-	email = strings.ToLower(strings.TrimSpace(email))
-	target = strings.ToLower(strings.TrimSpace(target))
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if target == "" {
-		delete(c.spoof, email)
-	} else {
-		c.spoof[email] = target
 	}
 }
 

@@ -1,6 +1,6 @@
 import {state, me, isAdmin, isSystemAdmin, setSuperEdit, pendingParties, hostedParties, parties, household, familyMember, myPath, canHost} from './state.js';
 import {el, svg, link, button} from './dom.js';
-import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, markSuper} from '/toolbar.js';
+import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, initSpoof, markSuper} from '/toolbar.js';
 import {openParty} from './edit.js';
 
 // The rail and the drawer show these; the phone's tab bar drops the admin one.
@@ -300,6 +300,7 @@ export function initChrome() {
     }
   });
   initUserMenu();
+  initSpoof();
   // Super Admin Mode puts a system admin's hat on or takes it off; the page
   // repaints as the other kind of user.
   for (const box of document.querySelectorAll('.super-edit-checkbox')) {

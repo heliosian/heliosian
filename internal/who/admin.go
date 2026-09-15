@@ -42,7 +42,6 @@ func RegisterAdmin(mux *http.ServeMux, cache *Cache, writer data.Writer, queue *
 	}))
 	mux.HandleFunc("POST /api/admin/images", a.setImage)
 	mux.HandleFunc("POST /api/admin/super-edit", a.setSuperEdit)
-	mux.HandleFunc("POST /api/admin/spoof", a.setSpoof)
 	mux.HandleFunc("POST /api/admin/person-fields", a.setPersonFields)
 	mux.HandleFunc("POST /api/admin/student-fields", a.setStudentFields)
 	mux.HandleFunc("POST /api/admin/parent-fields", a.setParentFields)
@@ -53,27 +52,17 @@ func RegisterAdmin(mux *http.ServeMux, cache *Cache, writer data.Writer, queue *
 	mux.HandleFunc("POST /api/admin/unhide-person", a.unhidePerson)
 }
 
-// requireAdmin reports whether the effective identity — the spoof target, if the real
-// admin has picked one to view as, otherwise the real admin themselves — is an admin
-// (either tier), writing the appropriate error response itself when not. Spoofing is
-// full parity, not a read-only preview: every admin handler but setSpoof runs as the
-// effective identity, so it does exactly what that person could or couldn't do.
+// requireAdmin reports whether the effective identity — the person a super
+// admin is viewing as in Spoof Mode, otherwise the signed-in admin themselves
+// — is an admin (either tier), writing the appropriate error response itself
+// when not. Spoofing is full parity, not a read-only preview: every admin
+// handler runs as the effective identity, so it does exactly what that person
+// could or couldn't do; the spoof itself is started and stopped at sign-in
+// (internal/auth), keyed on who is really signed in, so the way back is never
+// locked out by it.
 func (a admin) requireAdmin(w http.ResponseWriter, r *http.Request) (string, bool) {
 	email := effectiveEmail(a.cache, r)
 	if !a.cache.IsAdmin(email) {
-		http.Error(w, "admin access required", http.StatusForbidden)
-		return "", false
-	}
-	return email, true
-}
-
-// requireRealSuperAdmin is keyed on the real identity rather than the effective one:
-// starting or stopping a spoof has to remain reachable by the real admin regardless
-// of who they're currently viewing as, or the on-page banner's "stop" would be locked
-// out by the very spoof it's meant to end.
-func (a admin) requireRealSuperAdmin(w http.ResponseWriter, r *http.Request) (string, bool) {
-	email := realEmail(a.cache, r)
-	if !a.cache.IsSuperAdmin(email) {
 		http.Error(w, "admin access required", http.StatusForbidden)
 		return "", false
 	}
@@ -218,7 +207,6 @@ type crewOption struct {
 }
 
 func (a admin) state(w http.ResponseWriter, r *http.Request) {
-	real := realEmail(a.cache, r)
 	email := effectiveEmail(a.cache, r)
 	if !a.cache.IsAdmin(email) {
 		http.Error(w, "admin access required", http.StatusForbidden)
@@ -301,7 +289,6 @@ func (a admin) state(w http.ResponseWriter, r *http.Request) {
 		People       []personOption `json:"people"`
 		HiddenEmails []string       `json:"hiddenEmails"`
 		IsSuperAdmin bool           `json:"isSuperAdmin"`
-		SpoofingAs   string         `json:"spoofingAs,omitempty"`
 		// Theme is the page's colouring, for the Appearance panel.
 		Theme theme.Theme `json:"theme"`
 	}{
@@ -313,10 +300,6 @@ func (a admin) state(w http.ResponseWriter, r *http.Request) {
 	// and the list itself only from the config API, which answers a regular admin
 	// with the same 403 a non-admin gets.
 	view.IsSuperAdmin = a.cache.IsSuperAdmin(email)
-	// The way back is keyed on the real identity and shown regardless of the
-	// simulated tier — otherwise spoofing as a regular admin would strand the real
-	// super admin on a page with no Spoof Mode tab and no way out.
-	view.SpoofingAs = spoofDisplayName(a.cache, real)
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
 		slog.ErrorContext(r.Context(), "encode admin state", "error", err)
@@ -458,32 +441,6 @@ func (a admin) setSuperEdit(w http.ResponseWriter, r *http.Request) {
 	}
 	a.cache.SetSuperEdit(email, body.Enabled)
 	slog.InfoContext(r.Context(), "admin: set super edit mode", "actor", email, "enabled", body.Enabled)
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (a admin) setSpoof(w http.ResponseWriter, r *http.Request) {
-	email, ok := a.requireRealSuperAdmin(w, r)
-	if !ok {
-		return
-	}
-	var body struct {
-		Email string `json:"email"`
-	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<10)).Decode(&body); err != nil {
-		http.Error(w, "bad request body", http.StatusBadRequest)
-		return
-	}
-	target := strings.ToLower(strings.TrimSpace(body.Email))
-	if target != "" && a.cache.Model().Person(target) == nil {
-		http.Error(w, "no such person", http.StatusBadRequest)
-		return
-	}
-	a.cache.SetSpoof(email, target)
-	if target == "" {
-		slog.InfoContext(r.Context(), "admin: stopped spoofing", "actor", email)
-	} else {
-		slog.InfoContext(r.Context(), "admin: started spoofing", "actor", email, "target", target)
-	}
 	w.WriteHeader(http.StatusNoContent)
 }
 

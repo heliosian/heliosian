@@ -30,36 +30,14 @@ type app struct {
 	optIn   func() string
 }
 
-// effectiveEmail is who the directory should render as: the signed-in admin's spoof
-// target if they've picked one to view as, otherwise the signed-in identity itself.
-// It's read-only by construction — nothing that writes (upload.go, tags.go) calls it,
-// so a write is always attributed to whoever is actually signed in.
+// effectiveEmail is who the directory renders as, and acts as: the person
+// sign-in says - the signed-in address, or whoever a super admin is viewing
+// as in Spoof Mode (internal/auth) - resolved through Email Aliases, since
+// which of a person's addresses their Workspace account calls primary is
+// nobody's deliberate choice. Reads and writes alike run as them, so a
+// spoofed view does exactly what that person could.
 func effectiveEmail(cache *Cache, r *http.Request) string {
-	real := realEmail(cache, r)
-	if target := cache.SpoofTarget(real); target != "" {
-		return target
-	}
-	return real
-}
-
-// realEmail is the signed-in identity as the directory keys it: the address Google
-// vouched for, resolved through Email Aliases, since which of a person's addresses
-// their Workspace account calls primary is nobody's deliberate choice.
-func realEmail(cache *Cache, r *http.Request) string {
 	return cache.Model().Resolve(strings.ToLower(auth.Email(r)))
-}
-
-// spoofDisplayName reports who a super admin is currently spoofing as, by name where
-// possible, for the two places (the admin page, the on-app banner) that tell them so.
-func spoofDisplayName(cache *Cache, realEmail string) string {
-	target := cache.SpoofTarget(realEmail)
-	if target == "" {
-		return ""
-	}
-	if p := cache.Model().Person(target); p != nil {
-		return p.FullName
-	}
-	return target
 }
 
 // noAccess is what someone the directory doesn't list gets instead of the app: the
@@ -147,7 +125,8 @@ func (a app) page(w http.ResponseWriter, r *http.Request) {
 // user is the signed-in identity as the shell shows it. Admin-ness (and so the
 // menu link to /admin) follows who's actually being viewed, not who's signed
 // in - while spoofing, the page should look exactly like it does to the person
-// being spoofed. A super admin gets back to /admin through the spoofing banner.
+// being spoofed. The toolbar's switch, which asks sign-in rather than the
+// directory, is the way back.
 type user struct {
 	Name    string `json:"name"`
 	Initial string `json:"initial"`
@@ -158,17 +137,15 @@ type user struct {
 
 func (a app) model(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	real := realEmail(a.cache, r)
 	effective := effectiveEmail(a.cache, r)
 	name := a.cache.Model().DisplayName(effective)
 	slug, _, _ := strings.Cut(effective, "@")
 	view := struct {
 		*Model
-		User       user                `json:"user"`
-		MapsKey    string              `json:"mapsKey"`
-		Tags       map[string][]string `json:"tags"`
-		SuperEdit  bool                `json:"superEdit,omitempty"`
-		SpoofingAs string              `json:"spoofingAs,omitempty"`
+		User      user                `json:"user"`
+		MapsKey   string              `json:"mapsKey"`
+		Tags      map[string][]string `json:"tags"`
+		SuperEdit bool                `json:"superEdit,omitempty"`
 	}{
 		Model:   a.cache.Model(),
 		User:    user{Name: name, Initial: strings.ToUpper(name[:1]), Email: effective, Slug: slug, IsAdmin: a.cache.IsAdmin(effective)},
@@ -179,10 +156,6 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 		// real admin's super-edit powers along with it.
 		SuperEdit: a.cache.IsAdmin(effective) && a.cache.SuperEditEnabled(effective),
 	}
-	// The spoofing notice itself is the one thing keyed on the real identity: it's
-	// what lets the super admin's own browser show "you're viewing as X" and find its
-	// way back, regardless of what the simulated view otherwise looks like.
-	view.SpoofingAs = spoofDisplayName(a.cache, real)
 	if err := json.NewEncoder(w).Encode(view); err != nil {
 		slog.ErrorContext(r.Context(), "encode model", "error", err)
 	}

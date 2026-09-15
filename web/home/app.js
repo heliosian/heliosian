@@ -2,7 +2,7 @@ import {state, applyModel, setSuperAdmin} from './state.js';
 import {renderCategories, renderNav} from './cards.js';
 import {renderMonth} from './month.js';
 import {initEditing, refreshCategoryManager} from './edit.js';
-import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, markSuper} from '/toolbar.js';
+import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, initSpoof, markSuper} from '/toolbar.js';
 import {applyTheme} from '/theme.js';
 
 function renderChrome() {
@@ -75,6 +75,7 @@ function initChrome() {
   initAppSwitch();
   initDrawer();
   initUserMenu();
+  initSpoof();
   const menu = document.querySelector('#user-menu');
   // The switch is a row of the menu; flipping it repaints the links and
   // leaves the menu open, so the effect is visible behind it.
