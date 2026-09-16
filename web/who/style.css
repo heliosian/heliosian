@@ -2219,6 +2219,110 @@ main {
   gap: 10px;
 }
 
+/* The content header keeps its controls to the right; a row with a lead
+   control (Add family on a tag's page) spreads across the header so the
+   lead sits at the far left, the rest staying where they were. */
+.controls-spread {
+  flex: 1;
+}
+
+.controls-lead {
+  margin-right: auto;
+}
+
+/* A spread row has the most in it, so its search gives ground first, and its
+   chips and buttons hold their shape rather than wrapping mid-row. */
+.controls-spread .search {
+  flex: 0 1 231px;
+  min-width: 150px;
+  width: auto;
+}
+
+.controls-spread .chip-row {
+  flex-wrap: nowrap;
+}
+
+.controls-spread .filter-button {
+  white-space: nowrap;
+}
+
+/* The Add family dropdown (familyDropdown in filters.js): the row's button
+   style, a panel that explains itself, checkboxes on the left, and a note. */
+.family-head {
+  display: flex;
+  gap: 12px;
+  padding: 16px 18px 12px;
+}
+
+.family-head > svg {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  stroke: var(--brand);
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.family-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.family-desc {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.family-options {
+  padding: 4px 0 8px;
+}
+
+.family-option {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 18px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.family-option:hover {
+  background: #f6f6f7;
+}
+
+.family-option input {
+  width: 17px;
+  height: 17px;
+  margin: 0;
+  accent-color: var(--brand);
+}
+
+.family-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 18px 14px;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.family-note svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  margin-top: 1px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .facet-filters {
   display: flex;
   gap: 10px;

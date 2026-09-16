@@ -76,25 +76,6 @@ export function onTagsChangeChrome(fn) {
   chromeChanged = fn;
 }
 
-export async function saveAsTag(name, people) {
-  const form = new FormData();
-  form.append('tag', name);
-  for (const email of people) {
-    form.append('person', email);
-  }
-  const res = await fetch('/api/directory/tag-all', {method: 'POST', body: form});
-  if (!res.ok) {
-    alert(await res.text());
-    return false;
-  }
-  tags[name] = [...new Set([...(tags[name] || []), ...people])].sort();
-  saveLastTag(name);
-  recordTagUsage(name);
-  chromeChanged();
-  pageChanged();
-  return true;
-}
-
 // Drops one of the user's own tags whole - everyone in it at once - as the
 // list page's Delete tag button does after they've confirmed. Smart lists
 // (lists) aren't the user's to delete and never come through here.

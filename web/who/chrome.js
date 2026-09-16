@@ -349,7 +349,7 @@ function setMobileListsMenu(open) {
 // up by the app, not something the user typed in - the (i) explains on
 // hover, since the name alone doesn't say where they come from or why they
 // can't be edited.
-const magicTagsTip = 'Magic Tags appear on their own, made from what the directory already knows about you: the guests of a party you are hosting, the roster of an activity you run, or the families a room parent looks after. They update themselves as those things change, so there is nothing to keep up. They cannot be edited directly; use "Save as tag" on one to copy it into a tag of your own.';
+const magicTagsTip = 'Magic Tags appear on their own, made from what the directory already knows about you: the guests of a party you are hosting, the roster of an activity you run, or the families a room parent looks after. They update themselves as those things change, so there is nothing to keep up. They cannot be edited.';
 
 function magicTagsHeading(className) {
   const heading = el('div', className);

@@ -4,7 +4,7 @@ import {familyOf, familyLink, familySearchText} from '../families.js';
 import {personLink} from '../people.js';
 import {tagFacetOptions} from '../tags.js';
 import {saveTagRelations} from '../storage.js';
-import {anyFiltersActive, matchesFilters, familyMatchesFilters, roleChips, facetDropdown, gradeOptions, tagRelationOptions} from '../filters.js';
+import {anyFiltersActive, matchesFilters, familyMatchesFilters, roleChips, facetDropdown, gradeOptions, tagRelationOptionsFor} from '../filters.js';
 import {resetMain} from '../chrome.js';
 
 // Combines a list of people into one greeting phrase. Two or more people who all
@@ -562,9 +562,10 @@ export function renderGreenvelopePage() {
       // for a single tag; with several selected at once (or none) there's no
       // one list to pull relatives in from. Mirrors renderListPage's identical
       // control exactly, down to persisting the choice per tag.
-      if (state.filterTags.size === 1) {
+      const relationOptions = state.filterTags.size === 1 ? tagRelationOptionsFor([...state.filterTags][0]) : [];
+      if (relationOptions.length) {
         const [activeTag] = state.filterTags;
-        controls.append(facetDropdown('Include', tagRelationOptions, state.filterTagRelations, () => {
+        controls.append(facetDropdown('Include', relationOptions, state.filterTagRelations, () => {
           saveTagRelations(activeTag, state.filterTagRelations);
           renderGrid();
         }));

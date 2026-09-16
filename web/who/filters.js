@@ -50,7 +50,37 @@ function roleChipsVisible() {
   return false;
 }
 
-export const tagRelationOptions = ['Parents', 'Children', 'Siblings'];
+// The relations one tag's list can grow by, given who is actually on it:
+// each is offered only if it would bring someone in - a tagged child with a
+// parent in the directory, a tagged parent with a child, a tagged child
+// with a sibling - who isn't on the list already. So a tag of only children
+// offers no Children, one of only-children no Siblings, and one of nothing
+// but staff none at all, and the control that shows them stays away. A
+// relation remembered for the tag from before (saveTagRelations) but no
+// longer on offer is dropped, so the control's count doesn't claim a choice
+// that isn't there.
+export function tagRelationOptionsFor(tag) {
+  const tagged = new Set(members(tag));
+  const people = [...tagged].map(e => byEmail[e]).filter(Boolean);
+  const brings = (is, relatives) => people.some(p => is(p) && familiesOf(p).some(f =>
+    (relatives(f) || []).some(e => e !== p.email && !tagged.has(e) && byEmail[e])));
+  const options = [];
+  if (brings(p => p.isStudent, f => f.adultEmails)) {
+    options.push('Parents');
+  }
+  if (brings(p => p.isParent, f => f.kidEmails)) {
+    options.push('Children');
+  }
+  if (brings(p => p.isStudent, f => f.kidEmails)) {
+    options.push('Siblings');
+  }
+  for (const chosen of [...state.filterTagRelations]) {
+    if (!options.includes(chosen)) {
+      state.filterTagRelations.delete(chosen);
+    }
+  }
+  return options;
+}
 
 // Whether p only belongs on a single-tag list by way of a selected relation
 // to someone directly tagged - a parent of a tagged kid, a kid of a tagged
@@ -156,13 +186,18 @@ export function roleChips(rerender) {
 // Tags now sitting further left, especially once the controls row wraps on
 // mobile. Clamping with an explicit left (converted back to wrap-relative,
 // since the panel is absolutely positioned inside its position:relative wrap)
-// keeps the panel fully on screen regardless of where its button lands.
+// keeps the panel fully on screen regardless of where its button lands. A
+// button at the head of the row (Add family on a tag's page) would still
+// hang its panel out over the sidebar, so the left bound is the content
+// column's edge, not the viewport's, wherever the panel sits in one.
 export function clampFilterPanel(wrap, panel) {
   const margin = 12;
   const wrapRect = wrap.getBoundingClientRect();
   const panelWidth = panel.offsetWidth;
+  const column = wrap.closest('.container');
+  const minLeft = Math.max(margin, column ? column.getBoundingClientRect().left + parseFloat(getComputedStyle(column).paddingLeft) : 0);
   let left = wrapRect.right - panelWidth;
-  left = Math.max(margin, Math.min(left, window.innerWidth - margin - panelWidth));
+  left = Math.max(minLeft, Math.min(left, window.innerWidth - margin - panelWidth));
   panel.style.left = `${left - wrapRect.left}px`;
   panel.style.right = 'auto';
 }
@@ -186,6 +221,70 @@ function optionRow(v, set, onChange) {
   }
   row.append(el('span', '', label), box);
   return row;
+}
+
+// "Add family" on a tag's page: a dropdown in the row's own button style
+// whose panel says what it does - "Also add family members", a checkbox per
+// relation on offer ("Their parents", ...) and a note that they join the
+// people already matched - since widening a list is a different thing from
+// the narrowing every other dropdown in the row does, and deserves a word.
+// It lists only the relations on offer (tagRelationOptionsFor), however few.
+export function familyDropdown(values, set, onChange) {
+  const toggle = value => {
+    if (set.has(value)) {
+      set.delete(value);
+    } else {
+      set.add(value);
+    }
+    onChange();
+  };
+  const wrap = el('div', 'filter-wrap');
+  const button = el('button', 'filter-button facet-button');
+  const labelSpan = el('span', '', 'Add family');
+  button.append(svg('families'), labelSpan, svg('chevron'));
+  const panel = el('div', 'filter-panel family-panel');
+  panel.hidden = true;
+  button.addEventListener('click', () => {
+    panel.hidden = !panel.hidden;
+    button.classList.toggle('open', !panel.hidden);
+    if (!panel.hidden) {
+      clampFilterPanel(wrap, panel);
+    }
+  });
+  const updateLabel = () => {
+    labelSpan.textContent = set.size ? `Add family (${set.size})` : 'Add family';
+  };
+
+  const head = el('div', 'family-head');
+  head.append(svg('families'));
+  const text = el('div');
+  text.append(el('div', 'family-title', 'Also add family members'),
+    el('div', 'family-desc', 'Add parents, children, or siblings of the people already matched above.'));
+  head.append(text);
+  panel.append(head);
+
+  const body = el('div', 'family-options');
+  for (const value of values) {
+    const row = el('label', 'family-option');
+    const box = el('input');
+    box.type = 'checkbox';
+    box.checked = set.has(value);
+    box.addEventListener('change', () => {
+      toggle(value);
+      updateLabel();
+    });
+    row.append(box, el('span', '', `Their ${value.toLowerCase()}`));
+    body.append(row);
+  }
+  panel.append(body);
+
+  const note = el('div', 'family-note');
+  note.append(svg('info'), el('span', '', 'Adds these relatives to the people already matched above.'));
+  panel.append(note);
+
+  updateLabel();
+  wrap.append(button, panel);
+  return wrap;
 }
 
 // A standalone single-facet dropdown (Grade, Classroom) - the same checkbox
@@ -243,14 +342,18 @@ export function facetDropdown(label, values, set, rerender) {
 }
 
 // options lets a caller opt out of a section (or the "New to Helios" toggle)
-// that it surfaces some other way - the Directory page and every list page
+// that it surfaces some other way - the Directory page and the Everyone list
 // pull Role out into chips and Grade/Classroom/Tags into their own dropdowns
-// (see roleChips and facetDropdown above), while the standalone Map page is
-// the last one still using the full panel.
+// (see roleChips and facetDropdown above), a tag's page keeps Grade/Classroom/
+// Tags together in this one control, and the standalone Map page is the last
+// one still using the full panel. The button and each section head count
+// what's picked ("Filter (2)", "Tags (1)"), since the choices are otherwise
+// out of sight behind the collapsed sections.
 export function filterControl(rerender, options = {}) {
   const wrap = el('div', 'filter-wrap');
   const button = el('button', 'filter-button');
-  button.append(svg('filter'), el('span', '', 'Filter'), svg('chevron'));
+  const labelSpan = el('span', '', 'Filter');
+  button.append(svg('filter'), labelSpan, svg('chevron'));
   const panel = el('div', 'filter-panel');
   panel.hidden = true;
   button.addEventListener('click', () => {
@@ -266,7 +369,7 @@ export function filterControl(rerender, options = {}) {
     sections.push({label: 'Role', values: ['Student', 'Parent', 'Staff'], set: state.filterRoles});
   }
   if (options.classroom !== false) {
-    sections.push({label: 'Class', values: state.model.classrooms.map(c => c.name), set: state.filterClassrooms});
+    sections.push({label: 'Classroom', values: state.model.classrooms.map(c => c.name), set: state.filterClassrooms});
   }
   if (options.grade !== false) {
     sections.push({label: 'Grade', values: gradeOptions(), set: state.filterGrades});
@@ -280,9 +383,22 @@ export function filterControl(rerender, options = {}) {
   if (options.tags !== false && tagFacetOptions().length) {
     sections.push({label: 'Tags', values: tagFacetOptions(), set: state.filterTags});
   }
+  const updateLabels = () => {
+    let total = 0;
+    for (const s of sections) {
+      total += s.set.size;
+      s.labelSpan.textContent = s.set.size ? `${s.label} (${s.set.size})` : s.label;
+    }
+    labelSpan.textContent = total ? `Filter (${total})` : 'Filter';
+  };
+  const changed = () => {
+    updateLabels();
+    rerender();
+  };
   for (const s of sections) {
     const head = el('div', 'filter-section');
-    head.append(el('span', '', s.label), svg('chevron'));
+    s.labelSpan = el('span', '', s.label);
+    head.append(s.labelSpan, svg('chevron'));
     const body = el('div', 'filter-options');
     body.hidden = true;
     head.addEventListener('click', () => {
@@ -290,7 +406,7 @@ export function filterControl(rerender, options = {}) {
       head.classList.toggle('open', !body.hidden);
     });
     for (const v of s.values) {
-      body.append(optionRow(v, s.set, rerender));
+      body.append(optionRow(v, s.set, changed));
     }
     panel.append(head, body);
   }
@@ -336,7 +452,7 @@ export function filterControl(rerender, options = {}) {
     for (const box of panel.querySelectorAll('input')) {
       box.checked = false;
     }
-    rerender();
+    changed();
   });
   const done = el('button', 'filter-done', 'Done');
   done.addEventListener('click', () => {
@@ -346,6 +462,7 @@ export function filterControl(rerender, options = {}) {
   footer.append(clear, done);
   panel.append(footer);
 
+  updateLabels();
   wrap.append(button, panel);
   return wrap;
 }

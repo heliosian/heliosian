@@ -2,9 +2,9 @@ import {state, byEmail, lists, tags} from '../state.js';
 import {el, svg, csvField, copyGlyph} from '../dom.js';
 import {familiesOf, familyOf, familySearchText} from '../families.js';
 import {personCard, personLink, guestCard, guestPerson} from '../people.js';
-import {tagControl, onTagsChange, listLabel, members, tagFacetOptions, saveAsTag, deleteTag, listSource, selectedPartyGuests} from '../tags.js';
+import {tagControl, onTagsChange, listLabel, members, tagFacetOptions, deleteTag, listSource, selectedPartyGuests} from '../tags.js';
 import {saveTagRelations} from '../storage.js';
-import {matchesFilters, familyMatchesFilters, roleChips, facetDropdown, gradeOptions, filterControl, tagRelationOptions} from '../filters.js';
+import {matchesFilters, familyMatchesFilters, roleChips, facetDropdown, gradeOptions, filterControl, tagRelationOptionsFor, familyDropdown} from '../filters.js';
 import {resetMain} from '../chrome.js';
 import {initFamilyMap} from './map.js';
 
@@ -155,6 +155,23 @@ export function renderListPage() {
   const content = el('div', 'content container');
   const header = el('div', 'content-header content-header-solo');
   const controls = el('div', 'controls');
+  // Add family leads the row, ahead of the role chips: it widens who the
+  // list is of - the parents, children or siblings of whoever is tagged -
+  // where everything after it only narrows that down. Only meaningful for
+  // a single tag: with several selected at once (or none, as on the plain
+  // Everyone list) there's no one list to pull relatives in from - and
+  // only offering the relations the tagged people actually have.
+  const familyOptions = state.filterTags.size === 1 ? tagRelationOptionsFor([...state.filterTags][0]) : [];
+  if (familyOptions.length) {
+    const [activeTag] = state.filterTags;
+    const family = familyDropdown(familyOptions, state.filterTagRelations, () => {
+      saveTagRelations(activeTag, state.filterTagRelations);
+      renderGrid();
+    });
+    family.classList.add('controls-lead');
+    controls.classList.add('controls-spread');
+    controls.append(family);
+  }
   controls.append(roleChips(() => renderGrid()));
   const search = el('div', 'search');
   search.append(svg('search'));
@@ -166,12 +183,19 @@ export function renderListPage() {
     renderGrid();
   });
   search.append(input);
+  // A tag's page (one tag or Magic Tag, or several picked together) keeps
+  // Grade, Classroom and Tags behind one Filter button - the row there has
+  // Add family, Delete tag and CSV to fit as well - while the
+  // plain Everyone list still lays the three out as their own dropdowns.
+  const onTagPage = state.filterTags.size > 0;
   const facetFilters = el('div', 'facet-filters');
-  facetFilters.append(
-    facetDropdown('Grade', gradeOptions(), state.filterGrades, () => renderGrid()),
-    facetDropdown('Classroom', state.model.classrooms.map(c => c.name), state.filterClassrooms, () => renderGrid()),
-  );
-  controls.append(facetFilters);
+  if (!onTagPage) {
+    facetFilters.append(
+      facetDropdown('Grade', gradeOptions(), state.filterGrades, () => renderGrid()),
+      facetDropdown('Classroom', state.model.classrooms.map(c => c.name), state.filterClassrooms, () => renderGrid()),
+    );
+    controls.append(facetFilters);
+  }
   let tagsFacet = null;
   let mobileFilter = null;
   const buildTagFilters = () => {
@@ -179,15 +203,19 @@ export function renderListPage() {
       tagsFacet.remove();
       tagsFacet = null;
     }
-    if (tagFacetOptions().length) {
+    if (!onTagPage && tagFacetOptions().length) {
       tagsFacet = facetDropdown('Tags', tagFacetOptions(), state.filterTags, () => renderGrid());
       facetFilters.append(tagsFacet);
     }
-    // Small-screen stand-in for the Grade/Classroom/Tags dropdowns above, same as
-    // the Directory page's mobile-filter (see renderPeople) - collapses them into
-    // one funnel-icon button so the controls row doesn't wrap across several lines.
+    // The one Filter button: what a tag's page shows at every width, and
+    // what the Everyone list falls back to on a small screen (same as the
+    // Directory page's mobile-filter, see renderPeople), collapsing the
+    // Grade/Classroom/Tags dropdowns so the controls row doesn't wrap across
+    // several lines.
     const next = filterControl(() => renderGrid(), {role: false, city: false, pronouns: false, newToHelios: false});
-    next.classList.add('mobile-filter');
+    if (!onTagPage) {
+      next.classList.add('mobile-filter');
+    }
     if (mobileFilter) {
       mobileFilter.replaceWith(next);
     } else {
@@ -197,32 +225,6 @@ export function renderListPage() {
   };
   buildTagFilters();
   onTagsChange(buildTagFilters);
-  // Only meaningful for a single tag - with several selected at once (or
-  // none, as on the plain Everyone list) there's no one list to pull
-  // relatives in from.
-  if (state.filterTags.size === 1) {
-    const [activeTag] = state.filterTags;
-    controls.append(facetDropdown('Include', tagRelationOptions, state.filterTagRelations, () => {
-      saveTagRelations(activeTag, state.filterTagRelations);
-      renderGrid();
-    }));
-  }
-  if (smart) {
-    const save = el('button', 'filter-button email-download');
-    save.type = 'button';
-    save.title = 'Copy this list into a tag of your own, to change as you like';
-    save.append(svg('tag'), el('span', '', 'Save as tag'));
-    save.addEventListener('click', async () => {
-      const name = (prompt('Name for the tag', smart.name) || '').trim().slice(0, 40);
-      if (!name) {
-        return;
-      }
-      if (await saveAsTag(name, members(smart.key))) {
-        location.href = '/people?tag=' + encodeURIComponent(name);
-      }
-    });
-    controls.append(save);
-  }
   if (ownTag) {
     const remove = el('button', 'filter-button email-download tag-delete');
     remove.type = 'button';

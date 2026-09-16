@@ -19,7 +19,6 @@ type tagger struct {
 func RegisterTags(mux *http.ServeMux, cache *Cache, writer data.Writer, queue *Queue) {
 	t := tagger{cache: cache, writer: writer, queue: queue}
 	mux.HandleFunc("POST /api/directory/tag", t.set)
-	mux.HandleFunc("POST /api/directory/tag-all", t.setAll)
 	mux.HandleFunc("POST /api/directory/tag-delete", t.drop)
 }
 
@@ -48,46 +47,6 @@ func (t tagger) drop(w http.ResponseWriter, r *http.Request) {
 	})
 	<-applied
 	slog.InfoContext(r.Context(), "tag: deleted", "owner", owner, "tag", tag, "people", people)
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (t tagger) setAll(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
-	owner := effectiveEmail(t.cache, r)
-	tag := strings.TrimSpace(r.FormValue("tag"))
-	if tag == "" || len(tag) > maxTagLength {
-		http.Error(w, "bad tag name", http.StatusBadRequest)
-		return
-	}
-	people := []string{}
-	for _, raw := range r.Form["person"] {
-		person := strings.ToLower(strings.TrimSpace(raw))
-		if t.cache.Model().Person(person) == nil {
-			http.Error(w, "no such person", http.StatusBadRequest)
-			return
-		}
-		if !t.cache.tagged(owner, tag, person) {
-			people = append(people, person)
-		}
-	}
-	if len(people) == 0 {
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-	applied := make(chan struct{})
-	t.queue.Add(func() {
-		rows := [][]string{}
-		for _, person := range people {
-			t.cache.applyTag(owner, tag, person, true)
-			rows = append(rows, []string{owner, tag, person})
-		}
-		close(applied)
-		if err := t.writer.AppendAll(appName, tagsTable, rows); err != nil {
-			slog.ErrorContext(r.Context(), "tag write", "owner", owner, "tag", tag, "people", len(rows), "error", err)
-		}
-	})
-	<-applied
-	slog.InfoContext(r.Context(), "tag: saved list", "owner", owner, "tag", tag, "people", len(people))
 	w.WriteHeader(http.StatusNoContent)
 }
 
