@@ -3,6 +3,7 @@ package app
 import (
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 )
 
@@ -87,6 +88,26 @@ func TestAppFor(t *testing.T) {
 		if got := appFor(host); got != want {
 			t.Errorf("%s: got %q, want %q", host, got, want)
 		}
+	}
+}
+
+// TestHostnamesCoverTheRouter pins the mapping list to what appFor answers:
+// every hostname listed routes to an app, and every app and alias the router
+// knows is listed on both tiers.
+func TestHostnamesCoverTheRouter(t *testing.T) {
+	hosts := Hostnames()
+	for _, host := range hosts {
+		if appFor(host) == "" {
+			t.Errorf("%s is listed but routes nowhere", host)
+		}
+	}
+	for _, want := range []string{"heliosian.com", "www.heliosian.com", "home.heliosian.com", "who.lab.heliosian.com", "hca.heliosian.com", "when.lab.heliosian.com", "cal.heliosian.com", "groups.heliosian.com", "groups.lab.heliosian.com"} {
+		if !slices.Contains(hosts, want) {
+			t.Errorf("%s is not listed", want)
+		}
+	}
+	if slices.Contains(hosts, "who.local.heliosian.com") {
+		t.Error("the local tier is listed")
 	}
 }
 

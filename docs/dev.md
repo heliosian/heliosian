@@ -62,7 +62,7 @@ No Node, no Docker, and no cloud credentials are needed for local development. R
 Each runs as `go run ./cmd/<name>`. The sheet, drive, and bucket tools authenticate with the same impersonated application-default credentials as the server (see Real data).
 
 - `screenshot`, `capturebrowser`, `browse`, `console` — page capture, browser driving, and a page's console output; see `docs/screenshots.md`
-- `deploy` — apply the full production service configuration (needs `DIRECTORY_SHEET`); see `docs/deploy.md`
+- `deploy` — apply the full production service configuration, add any domain mapping the service lacks, and configure the periodic sync job (needs every spreadsheet id); see `docs/deploy.md`
 - `startserver` — the dev server: sample data in the foreground by default, `--capture` for a one-command page screenshot, `--real` for the production assembly in the foreground, and `--detach` to launch that in the background with its output in a log file plus a minted session cookie (needs `SESSION_KEY` and every spreadsheet id)
 - `cookie` — print a signed session cookie for local API testing
 - `loadcheck` — run every app's load pipeline against the live sheets, the calendar's included, and print a model summary or the first thing a loader refuses

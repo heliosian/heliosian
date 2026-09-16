@@ -6,6 +6,10 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"slices"
+	"strings"
+
+	"heliosian/internal/app"
 )
 
 func clientID() string {
@@ -64,6 +68,33 @@ func gcloud(args ...string) {
 	}
 }
 
+// gcloudLines runs a gcloud command for its output, one value per line.
+func gcloudLines(args ...string) []string {
+	cmd := exec.Command("gcloud", args...)
+	cmd.Stderr = os.Stderr
+	out, err := cmd.Output()
+	if err != nil {
+		log.Fatalf("[ERROR] gcloud %s: %v", args[0], err)
+	}
+	return strings.Fields(string(out))
+}
+
+// mapDomains gives the service a domain mapping for every hostname the
+// router answers (app.Hostnames) that it lacks. Existing mappings are left
+// as they are and none is ever removed; the DNS record each new one needs
+// is printed, since that is written at the registrar by hand.
+func mapDomains() {
+	have := gcloudLines("beta", "run", "domain-mappings", "list", "--region", region, "--format", "value(metadata.name)")
+	for _, host := range app.Hostnames() {
+		if slices.Contains(have, host) {
+			continue
+		}
+		log.Printf("mapping %s to %s", host, service)
+		gcloud("beta", "run", "domain-mappings", "create", "--service", service, "--domain", host, "--region", region, "--quiet")
+		log.Printf("add at the registrar: %s CNAME ghs.googlehosted.com.", strings.TrimSuffix(host, ".heliosian.com"))
+	}
+}
+
 func main() {
 	jobEnvVars := "DIRECTORY_SHEET=" + requiredEnv("DIRECTORY_SHEET") +
 		",PREFERENCES_SHEET=" + requiredEnv("PREFERENCES_SHEET") +
@@ -92,6 +123,7 @@ func main() {
 		"--set-env-vars", envVars,
 		"--set-secrets", secrets,
 		"--quiet")
+	mapDomains()
 	log.Printf("deploying %s to job %s in %s", jobImage, job, region)
 	gcloud("run", "jobs", "deploy", job,
 		"--image", jobImage,

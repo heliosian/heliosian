@@ -32,7 +32,7 @@ The Dockerfile builds in two stages: a `golang` stage compiles the static binary
     eval "$(go run ./cmd/findsheet)"
     go run ./cmd/deploy
 
-It deploys the `latest` image with every setting the pipeline does not touch, so it both creates the service from nothing and repairs drift on an existing one, and then does the same for the `periodicsync` job (below). The spreadsheet ids come from the environment (`cmd/findsheet` prints them as shell exports) and the OAuth client id from `creds/oauth-client.json` — the same resolution the server itself uses — so none of them is written into the repository. Every spreadsheet id is required, here and in `Production()`. Because a per-push deploy only ever changes the image (see above), changing a spreadsheet id only ever takes effect through a `cmd/deploy` run, never a plain push.
+It deploys the `latest` image with every setting the pipeline does not touch, so it both creates the service from nothing and repairs drift on an existing one, then adds any domain mapping the service lacks (Domain, below), and then does the same for the `periodicsync` job (below). The spreadsheet ids come from the environment (`cmd/findsheet` prints them as shell exports) and the OAuth client id from `creds/oauth-client.json` — the same resolution the server itself uses — so none of them is written into the repository. Every spreadsheet id is required, here and in `Production()`. Because a per-push deploy only ever changes the image (see above), changing a spreadsheet id only ever takes effect through a `cmd/deploy` run, never a plain push.
 
 Why each setting is what it is:
 
@@ -60,7 +60,7 @@ Cloud Scheduler job `periodicsync` (location `us-west1`) starts an execution on 
 
     gcloud scheduler jobs update http periodicsync --location us-west1 --project heliosian --schedule "<cron expression>"
 
-The Scheduler job is a one-time resource like the domain mappings, created by hand rather than in `cmd/deploy`:
+The Scheduler job is a one-time resource created by hand rather than in `cmd/deploy`:
 
     gcloud run jobs add-iam-policy-binding periodicsync --region us-west1 --project heliosian --member serviceAccount:directory@heliosian.iam.gserviceaccount.com --role roles/run.invoker
     gcloud scheduler jobs create http periodicsync --location us-west1 --project heliosian --schedule "<cron expression>" --time-zone America/Los_Angeles --http-method POST --uri https://run.googleapis.com/v2/projects/heliosian/locations/us-west1/jobs/periodicsync:run --oauth-service-account-email directory@heliosian.iam.gserviceaccount.com
@@ -142,15 +142,11 @@ The web client's authorized JavaScript origins are the `*.local.heliosian.com` d
 
 ## Domain
 
-Every hostname is a Cloud Run domain mapping on the one service, one per app per tier plus `www` and the apex. The current set, with each certificate's status:
+Every hostname is a Cloud Run domain mapping on the one service, one per app per tier plus `www` and the apex. `cmd/deploy` keeps them: the list of hostnames is the router's own (`app.Hostnames` in `internal/app` - every app in the registry, every alias, the apex and `www`, on the production and lab tiers), and after the service deploy it creates whatever mapping the service lacks, printing the DNS record each new one needs. A mapping already there is left as it is and none is ever removed, so a hostname that leaves the router stays mapped until someone deletes it by hand. A new app therefore takes nothing here beyond its registry entry, a `cmd/deploy` run, its DNS records, and its origins in the OAuth client. The current set, with each certificate's status:
 
     gcloud beta run domain-mappings list --region us-west1 --project heliosian --format "table(metadata.name,status.conditions[0].status)"
 
-A new hostname is one more mapping:
-
-    gcloud beta run domain-mappings create --service heliosian --domain <host>.heliosian.com --region us-west1 --project heliosian
-
-DNS at Namecheap carries `CNAME ghs.googlehosted.com.` for each subdomain; the apex, which cannot be a CNAME, carries a Namecheap `ALIAS` record to the same name, which Namecheap flattens into that host's current A and AAAA records on a fixed five-minute TTL. Cloud Run routes by hostname at Google's front end, so any of Google's addresses works, and the Cloud Run console's list of eight static apex addresses is a suggestion, not a check: certificate issuance only needs the challenge to be reachable. Google provisions and renews each certificate once its record resolves, retrying on an hourly poll, so a freshly changed record can take up to an hour to show as provisioned. A new app's hostnames take only domain mappings here; the server already routes them by the naming convention - Helios Groups is `groups.heliosian.com` and `groups.lab.heliosian.com`, one mapping and one DNS record per tier, and its origins in the OAuth client. Helios Calendar answers under three labels, `calendar`, `cal` and `when`, so it takes three mappings per tier and three DNS records, and its personal feed addresses (`/feed/…`) are fetched by calendar apps with no session, so nothing in front of the service may demand one.
+DNS at Namecheap carries `CNAME ghs.googlehosted.com.` for each subdomain; the apex, which cannot be a CNAME, carries a Namecheap `ALIAS` record to the same name, which Namecheap flattens into that host's current A and AAAA records on a fixed five-minute TTL. Cloud Run routes by hostname at Google's front end, so any of Google's addresses works, and the Cloud Run console's list of eight static apex addresses is a suggestion, not a check: certificate issuance only needs the challenge to be reachable. Google provisions and renews each certificate once its record resolves, retrying on an hourly poll, so a freshly changed record can take up to an hour to show as provisioned. Helios Calendar answers under three labels, `calendar`, `cal` and `when`, so it takes three mappings per tier and three DNS records, and its personal feed addresses (`/feed/…`) are fetched by calendar apps with no session, so nothing in front of the service may demand one.
 
 ## Logs
 
