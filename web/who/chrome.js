@@ -3,7 +3,7 @@ import {el, svg, segments, hue, firstName, thumbUrl, trimMiddle} from './dom.js'
 import {saveNavOpen, loadNavScroll, saveNavScroll} from './storage.js';
 import {familyOf, myFamilyKey} from './families.js';
 import {personByKey, personLink, photoOrInitials, personPhotoUrl} from './people.js';
-import {tagNames, listKeys, listLabel, listApp, onTagsChange, onTagsChangeChrome} from './tags.js';
+import {tagNames, listKeys, listLabel, listApp, sharedKeys, sharedOf, managersOf, tagHref, onTagsChange, onTagsChangeChrome} from './tags.js';
 import {clampFilterPanel, closeFilterPanels} from './filters.js';
 import {staleItems, familyInfoBanner, todoChecklist, familyNavPeople, personTodoCount} from './stale.js';
 import {topbarSearchInput, topbarSearchResults} from './search.js';
@@ -228,24 +228,37 @@ export function renderNav() {
         renderItem(toolsBody, item);
       }
       const params = new URLSearchParams(location.search);
-      const listLink = (href, icon, name, active) => {
+      const listLink = (href, icon, name, active, title) => {
         const a = el('a');
         a.href = href;
-        a.title = name;
+        a.title = title || name;
         if (seg === 'people' && active) {
           a.className = 'active';
         }
         a.append(icon, el('span', '', trimMiddle(name, 40)));
         toolsBody.append(a);
       };
-      for (const name of tagNames()) {
-        const icon = svg('tag');
+      // Plain white, not a per-name hashed color: the hash occasionally
+      // landed near the sidebar's own dark teal, making that tag's icon
+      // nearly invisible against the background it's sitting on.
+      const whiteIcon = name => {
+        const icon = svg(name);
         icon.classList.add('nav-icon-tag');
-        // Plain white, not a per-name hashed color: the hash occasionally
-        // landed near the sidebar's own dark teal, making that tag's icon
-        // nearly invisible against the background it's sitting on.
         icon.style.color = '#fff';
-        listLink('/people?tag=' + encodeURIComponent(name), icon, name, params.get('tag') === name);
+        return icon;
+      };
+      // A tag more than one person manages - the user's own with managers,
+      // or another's shared with them - sits in the Shared Tags group below,
+      // whoever owns it; the plain list is the tags that are theirs alone.
+      const {own, shared} = groupedTags();
+      for (const name of own) {
+        listLink('/people?tag=' + encodeURIComponent(name), whiteIcon('tag'), name, params.get('tag') === name);
+      }
+      if (shared.length) {
+        toolsBody.append(sharedTagsHeading('nav-subheading'));
+      }
+      for (const entry of shared) {
+        listLink(entry.href, sharedTagIcon(whiteIcon('families'), entry.mine), entry.name, entry.active(params), entry.title);
       }
       if (listKeys().length) {
         toolsBody.append(magicTagsHeading('nav-subheading'));
@@ -349,14 +362,83 @@ function setMobileListsMenu(open) {
 // up by the app, not something the user typed in - the (i) explains on
 // hover, since the name alone doesn't say where they come from or why they
 // can't be edited.
-const magicTagsTip = 'Magic Tags appear on their own, made from what the directory already knows about you: the guests of a party you are hosting, the roster of an activity you run, or the families a room parent looks after. They update themselves as those things change, so there is nothing to keep up. They cannot be edited.';
+const magicTagsTip = 'Automagically created based on events and volunteering';
+
+// The (i) beside a Lists subheading shows its hint the moment it's hovered
+// - a title would wait a second first - as a fixed box beside the icon, so
+// the sidebar's own scrolling edge doesn't clip it.
+function hintIcon(text) {
+  const tip = el('span', 'magic-tags-info');
+  tip.append(svg('info'));
+  let box = null;
+  tip.addEventListener('mouseenter', () => {
+    box = el('div', 'hint-box', text);
+    document.body.append(box);
+    const at = tip.getBoundingClientRect();
+    box.style.left = `${at.right + 8}px`;
+    box.style.top = `${at.top + at.height / 2 - box.offsetHeight / 2}px`;
+  });
+  tip.addEventListener('mouseleave', () => {
+    box?.remove();
+    box = null;
+  });
+  return tip;
+}
 
 function magicTagsHeading(className) {
   const heading = el('div', className);
-  const tip = el('span', 'magic-tags-info');
-  tip.title = magicTagsTip;
-  tip.append(svg('info'));
-  heading.append(el('span', '', 'Magic Tags'), tip);
+  heading.append(el('span', '', 'Magic Tags'), hintIcon(magicTagsTip));
+  return heading;
+}
+
+// Tags more than one person manages - the user's own that they've shared,
+// and others' shared with them - sit between the user's private tags and
+// the Magic Tags, under their own small heading; the (i) says as much.
+// The tags of the sidebar's two groups: own is the user's tags nobody else
+// manages; shared is every tag with more than one manager - the user's own
+// that they've shared, and others' shared with them - by name.
+function groupedTags() {
+  const own = tagNames().filter(name => !managersOf(name).length);
+  const shared = [
+    ...tagNames().filter(name => managersOf(name).length).map(name => ({
+      name,
+      mine: true,
+      href: '/people?tag=' + encodeURIComponent(name),
+      title: `${name} - your tag, shared with others`,
+      active: params => params.get('tag') === name,
+    })),
+    ...sharedKeys().map(key => {
+      const t = sharedOf(key);
+      return {
+        name: t.name,
+        mine: false,
+        href: tagHref(key),
+        title: `${t.name} - ${t.ownerName}'s tag, shared with you`,
+        active: params => params.get('shared') === `${t.owner}:${t.name}`,
+      };
+    }),
+  ].sort((a, b) => a.name.localeCompare(b.name));
+  return {own, shared};
+}
+
+// A shared tag's icon: the people, and for one of the user's own a small
+// star at the corner - the owner's mark.
+function sharedTagIcon(icon, mine) {
+  if (!mine) {
+    return icon;
+  }
+  const wrap = el('span', 'magic-tag-icon');
+  const star = svg('star');
+  star.classList.add('owner-star');
+  wrap.append(icon, star);
+  return wrap;
+}
+
+const sharedTagsTip = 'Tags more than one person manages. A star marks yours.';
+
+function sharedTagsHeading(className) {
+  const heading = el('div', className);
+  heading.append(el('span', '', 'Shared Tags'), hintIcon(sharedTagsTip));
   return heading;
 }
 
@@ -365,17 +447,12 @@ function magicTagsHeading(className) {
 // (<key>-outline.png, from ~/Dropbox/Kids/Heliosian/images/<app>/white
 // outline.png): Celebrate's for a party, HCA-Team's for an activity, Who's
 // own for a room parent's list - so the sidebar says at a glance where each
-// is kept up, with a little sparkle pinned to its corner as the "made by
-// the app" sign.
+// is kept up; the heading above them says they're the apps' work.
 function magicTagIcon(key) {
-  const wrap = el('span', 'magic-tag-icon');
   const mark = el('img', 'magic-tag-mark');
   mark.src = `/brand/apps/${listApp(key)}-outline.png`;
   mark.alt = '';
-  const spark = svg('sparkles');
-  spark.classList.add('magic-tag-spark');
-  wrap.append(mark, spark);
-  return wrap;
+  return mark;
 }
 
 // The same Everyone/Invites/tag links as the sidebar's "Lists" section
@@ -398,10 +475,19 @@ function renderMobileListsMenu() {
     a.append(icon, el('span', '', name));
     body.append(a);
   };
-  for (const name of tagNames()) {
+  const {own, shared} = groupedTags();
+  for (const name of own) {
     const icon = svg('tag');
     icon.style.color = `hsl(${hue(name)}, 65%, 40%)`;
     listItem('/people?tag=' + encodeURIComponent(name), icon, name, params.get('tag') === name);
+  }
+  if (shared.length) {
+    body.append(sharedTagsHeading('mobile-lists-subheading'));
+  }
+  for (const entry of shared) {
+    const icon = svg('families');
+    icon.style.color = `hsl(${hue(entry.name)}, 65%, 40%)`;
+    listItem(entry.href, sharedTagIcon(icon, entry.mine), entry.name, entry.active(params));
   }
   if (listKeys().length) {
     body.append(magicTagsHeading('mobile-lists-subheading'));

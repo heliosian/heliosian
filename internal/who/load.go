@@ -69,6 +69,16 @@ const (
 
 var tagColumns = []string{tagOwner, tagName, tagPerson}
 
+// managersTable names the people an owner has let manage one of their tags -
+// a row per manager per tag, the tag still the owner's (its Tags rows keyed
+// by the owner as ever) - so a group a few people run, a Science Olympiad
+// team say, can be kept up by any of them.
+const managersTable = "Tag Managers"
+
+const managerEmail = "Manager Email"
+
+var managerColumns = []string{tagOwner, tagName, managerEmail}
+
 var gradeOrder = []string{
 	"Kindergarten", "Grade 1", "Grade 2", "Grade 3", "Grade 4",
 	"Grade 5", "Grade 6", "Grade 7", "Grade 8",
@@ -291,6 +301,7 @@ type Tables struct {
 	Preferences []map[string]string
 	Website     []map[string]string
 	Tags        []map[string]string
+	Managers    []map[string]string
 	Photos      []map[string]string
 	Admins      []map[string]string
 	Geocode     []map[string]string
@@ -436,6 +447,7 @@ func (t *Tables) withEmailRenamed(oldEmail, newEmail string, cells map[string]st
 	out := *t
 	out.Overrides = overrides
 	out.Tags = renameColumn(renameColumn(t.Tags, tagOwner), tagPerson)
+	out.Managers = renameColumn(renameColumn(t.Managers, tagOwner), managerEmail)
 	out.Photos = renameColumn(t.Photos, "Email")
 	return &out
 }
@@ -457,10 +469,10 @@ func (t *Tables) withoutPerson(email string) *Tables {
 		}
 		return next
 	}
-	withoutTags := func(rows []map[string]string) []map[string]string {
+	withoutEither := func(rows []map[string]string, a, b string) []map[string]string {
 		next := make([]map[string]string, 0, len(rows))
 		for _, row := range rows {
-			if strings.EqualFold(row[tagOwner], email) || strings.EqualFold(row[tagPerson], email) {
+			if strings.EqualFold(row[a], email) || strings.EqualFold(row[b], email) {
 				continue
 			}
 			next = append(next, row)
@@ -469,7 +481,8 @@ func (t *Tables) withoutPerson(email string) *Tables {
 	}
 	out := *t
 	out.Overrides = without(t.Overrides, "Email")
-	out.Tags = withoutTags(t.Tags)
+	out.Tags = withoutEither(t.Tags, tagOwner, tagPerson)
+	out.Managers = withoutEither(t.Managers, tagOwner, managerEmail)
 	out.Photos = without(t.Photos, "Email")
 	return &out
 }
@@ -603,6 +616,7 @@ func ReadTables(source data.Source) (*Tables, error) {
 	preferences := &table{app: preferencesApp, name: preferencesTab}
 	website := &table{app: appName, name: WebsiteTable}
 	tags := &table{app: appName, name: tagsTable}
+	managers := &table{app: appName, name: managersTable}
 	photos := &table{app: appName, name: "Photos"}
 	admins := &table{app: appName, name: adminsTable}
 	geocodes := &table{app: appName, name: geocodeTable}
@@ -611,7 +625,7 @@ func ReadTables(source data.Source) (*Tables, error) {
 	// member edit forever. Nothing else compares its columns against what the app
 	// writes, and a column missing here truncates every audit row that reaches it.
 	changeLog := &table{app: appName, name: changeLogTable}
-	ordered := []*table{aliases, imports, staff, names, overrides, families, preferences, website, tags, photos, admins, geocodes, settings}
+	ordered := []*table{aliases, imports, staff, names, overrides, families, preferences, website, tags, managers, photos, admins, geocodes, settings}
 	// One batch per spreadsheet: the directory's tabs and the change log's
 	// header together, the preferences sheet on its own.
 	directoryNames := []string{}
@@ -664,6 +678,9 @@ func ReadTables(source data.Source) (*Tables, error) {
 	if err := data.CheckColumns(tags.name, tags.header, tagColumns); err != nil {
 		return nil, err
 	}
+	if err := data.CheckColumns(managers.name, managers.header, managerColumns); err != nil {
+		return nil, err
+	}
 	if err := data.CheckColumns(photos.name, photos.header, []string{"Email", "Photo Name"}); err != nil {
 		return nil, err
 	}
@@ -689,6 +706,7 @@ func ReadTables(source data.Source) (*Tables, error) {
 		Preferences: preferences.rows,
 		Website:     website.rows,
 		Tags:        tags.rows,
+		Managers:    managers.rows,
 		Photos:      photos.rows,
 		Admins:      admins.rows,
 		Geocode:     geocodes.rows,

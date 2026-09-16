@@ -593,6 +593,22 @@ body {
   cursor: help;
 }
 
+/* The hint a Lists subheading's (i) shows on hover (hintIcon in chrome.js),
+   fixed beside the icon rather than inside the scrolling sidebar. */
+.hint-box {
+  position: fixed;
+  width: 180px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 12.5px;
+  line-height: 1.4;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
+  z-index: 1000;
+}
+
 .magic-tags-info svg {
   width: 14px;
   height: 14px;
@@ -603,9 +619,9 @@ body {
   stroke-linejoin: round;
 }
 
-/* A list's kind icon with a sparkle pinned to its top-right corner - the
-   sizes here match .app-nav a svg / .mobile-lists-item svg, so the wrapper
-   takes exactly the icon's place in the row. */
+/* A shared tag's people icon with, for the user's own, a star pinned to
+   its top-right corner - the sizes here match .app-nav a svg /
+   .mobile-lists-item svg, so the wrapper takes exactly the icon's place. */
 .magic-tag-icon {
   position: relative;
   display: flex;
@@ -619,12 +635,12 @@ body {
   flex-shrink: 0;
 }
 
-.magic-tag-icon .magic-tag-spark {
+.magic-tag-icon .owner-star {
   position: absolute;
-  top: -6px;
-  right: -7px;
-  width: 12px !important;
-  height: 12px !important;
+  top: -5px;
+  right: -6px;
+  width: 11px !important;
+  height: 11px !important;
   fill: #f6e24c !important;
   stroke: #f6e24c !important;
   stroke-width: 1 !important;
@@ -1087,6 +1103,195 @@ main {
   width: 18px;
   height: 18px;
   border-radius: 4px;
+}
+
+/* "Abena Osei's tag, shared with you" / "Managed with ..." under a tag's
+   title (see renderListPage). */
+.tag-ownership {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px 0;
+}
+
+.tag-ownership > svg {
+  margin-right: 6px;
+}
+
+.tag-ownership .person-chip {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 2px 10px;
+  margin: 0 2px;
+}
+
+.tag-ownership > svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex-shrink: 0;
+}
+
+/* The Manage menu (manageControl in tags.js): Edit name, Share, Delete. */
+.manage-menu {
+  width: 220px;
+  padding: 6px 0;
+}
+
+.manage-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 18px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.manage-item:hover {
+  background: #f6f6f7;
+}
+
+.manage-item svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.manage-item-danger {
+  color: var(--alert);
+  border-top: 1px solid var(--line);
+  margin-top: 4px;
+  padding-top: 12px;
+}
+
+.manage-item-danger svg {
+  color: var(--alert);
+}
+
+/* The Share panel behind the menu's Share item: the managers so far, each
+   with an x, then a search to add one. */
+.share-managers {
+  padding: 2px 0 6px;
+  border-bottom: 1px solid var(--line);
+}
+
+.share-manager,
+.share-result {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 18px;
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.share-manager > span,
+.share-result > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.share-result {
+  width: 100%;
+  border: 0;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+}
+
+.share-result:hover {
+  background: #f6f6f7;
+}
+
+.share-result svg,
+.share-remove svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.share-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.share-remove {
+  display: flex;
+  border: 0;
+  background: none;
+  padding: 4px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.share-remove:hover {
+  background: #eee;
+}
+
+.share-search {
+  padding: 10px 18px 12px;
+}
+
+.share-search input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 14px;
+  outline: 0;
+}
+
+.share-search input:focus {
+  border-color: var(--brand);
+}
+
+.share-results {
+  margin: 6px -18px 0;
+}
+
+.share-empty {
+  padding: 8px 18px 2px;
+  font-size: 13px;
+  color: var(--muted);
 }
 
 .filter-wrap {
@@ -2227,13 +2432,15 @@ main {
 }
 
 /* The content header keeps its controls to the right; a row with a lead
-   control (Add family on a tag's page) spreads across the header so the
+   control (Add and Manage on a tag's page) spreads across the header so the
    lead sits at the far left, the rest staying where they were. */
 .controls-spread {
   flex: 1;
 }
 
 .controls-lead {
+  display: flex;
+  gap: 10px;
   margin-right: auto;
 }
 
@@ -2253,7 +2460,7 @@ main {
   white-space: nowrap;
 }
 
-/* The Add family dropdown (familyDropdown in filters.js): the row's button
+/* The Add dropdown (familyDropdown in filters.js): the row's button
    style, a panel that explains itself, checkboxes on the left, and a note. */
 .family-head {
   display: flex;
@@ -4148,6 +4355,13 @@ a.person-card:hover .photo-wrap-peek::before {
   color: var(--ink);
   cursor: pointer;
   white-space: nowrap;
+}
+
+/* Whose a shared tag is, small beside its name in the card's tag picker. */
+.tag-option-note {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
 }
 
 .tag-option:hover {

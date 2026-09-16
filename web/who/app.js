@@ -40,7 +40,9 @@ function render() {
     renderFamilyDetail(seg[1]);
   } else if (seg[0] === 'people') {
     const params = new URLSearchParams(location.search);
-    const tagParam = params.get('tag') || params.get('list');
+    // ?tag= is one of the user's own, ?list= a Magic Tag's key, ?shared= a
+    // tag shared with them as owner:name - keyed "shared:owner:name" inside.
+    const tagParam = params.get('tag') || params.get('list') || (params.get('shared') ? 'shared:' + params.get('shared') : '');
     if (tagParam) {
       state.filterTags = new Set([tagParam]);
       state.filterTagRelations = loadTagRelations(tagParam);

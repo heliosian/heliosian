@@ -143,17 +143,24 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 	slug, _, _ := strings.Cut(effective, "@")
 	view := struct {
 		*Model
-		User      user                `json:"user"`
-		MapsKey   string              `json:"mapsKey"`
-		Tags      map[string][]string `json:"tags"`
-		Lists     []List              `json:"lists"`
-		SuperEdit bool                `json:"superEdit,omitempty"`
+		User    user                `json:"user"`
+		MapsKey string              `json:"mapsKey"`
+		Tags    map[string][]string `json:"tags"`
+		// TagManagers is who else manages each of this person's tags (tags
+		// with none are absent); SharedTags the tags others have let them
+		// manage.
+		TagManagers map[string][]string `json:"tagManagers"`
+		SharedTags  []SharedTag         `json:"sharedTags"`
+		Lists       []List              `json:"lists"`
+		SuperEdit   bool                `json:"superEdit,omitempty"`
 	}{
-		Model:   a.cache.Model(),
-		User:    user{Name: name, Initial: strings.ToUpper(name[:1]), Email: effective, Slug: slug, IsAdmin: a.cache.IsAdmin(effective)},
-		MapsKey: a.mapsKey,
-		Tags:    a.cache.Tags(effective),
-		Lists:   append(a.cache.Model().RoomParentLists(effective), a.lister.Lists(effective)...),
+		Model:       a.cache.Model(),
+		User:        user{Name: name, Initial: strings.ToUpper(name[:1]), Email: effective, Slug: slug, IsAdmin: a.cache.IsAdmin(effective)},
+		MapsKey:     a.mapsKey,
+		Tags:        a.cache.Tags(effective),
+		TagManagers: a.cache.TagManagers(effective),
+		SharedTags:  a.cache.SharedTags(effective),
+		Lists:       append(a.cache.Model().RoomParentLists(effective), a.lister.Lists(effective)...),
 		// Both computed from the effective identity, so a spoofed view shows exactly
 		// what that person sees — a regular parent's simulated view never carries the
 		// real admin's super-edit powers along with it.

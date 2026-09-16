@@ -4,6 +4,12 @@ export const state = {model: null, tab: 'everyone', classTab: 'by-classroom', ro
 
 export let byEmail = {};
 export let tags = {};
+// tagManagers is who else manages each of the user's own tags (absent when
+// nobody does); shared the tags others let them manage, keyed
+// "shared:<owner>:<name>" so one can't collide with an own tag of the same
+// name (see sharedKey in tags.js).
+export let tagManagers = {};
+export let shared = {};
 export let lists = {};
 
 // familiesByEmail inverts the model's family member lists once per load: every
@@ -39,6 +45,11 @@ export function applyModel(model) {
   document.body.dataset.userEmail = model.user.email;
   document.body.dataset.mapsKey = model.mapsKey;
   tags = model.tags || {};
+  tagManagers = model.tagManagers || {};
+  shared = {};
+  for (const t of model.sharedTags || []) {
+    shared[`shared:${t.owner}:${t.name}`] = t;
+  }
   lists = {};
   for (const l of model.lists) {
     lists[l.key] = l;

@@ -261,6 +261,12 @@ func applyDeletePersonWrite(cache *Cache, writer data.Writer, queue *Queue, w ht
 		if err := writer.Delete(appName, tagsTable, map[string]string{tagPerson: email}); err != nil {
 			slog.ErrorContext(r.Context(), "delete tags naming", "email", email, "error", err)
 		}
+		if err := writer.Delete(appName, managersTable, map[string]string{tagOwner: email}); err != nil {
+			slog.ErrorContext(r.Context(), "delete tag managers owned", "email", email, "error", err)
+		}
+		if err := writer.Delete(appName, managersTable, map[string]string{managerEmail: email}); err != nil {
+			slog.ErrorContext(r.Context(), "delete tag managers naming", "email", email, "error", err)
+		}
 		if err := writer.Delete(appName, "Photos", map[string]string{"Email": email}); err != nil {
 			slog.ErrorContext(r.Context(), "delete photos", "email", email, "error", err)
 		}

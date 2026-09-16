@@ -2,7 +2,7 @@ import {state, byEmail, lists, tags} from '../state.js';
 import {el, svg, csvField, copyGlyph} from '../dom.js';
 import {familiesOf, familyOf, familySearchText} from '../families.js';
 import {personCard, personLink, guestCard, guestPerson} from '../people.js';
-import {tagControl, onTagsChange, listLabel, members, tagFacetOptions, deleteTag, listSource, selectedPartyGuests} from '../tags.js';
+import {tagControl, onTagsChange, listLabel, members, tagFacetOptions, listSource, sharedOf, managersOf, manageControl, selectedPartyGuests} from '../tags.js';
 import {saveTagRelations} from '../storage.js';
 import {matchesFilters, familyMatchesFilters, roleChips, facetDropdown, gradeOptions, filterControl, tagRelationOptionsFor, familyDropdown} from '../filters.js';
 import {resetMain} from '../chrome.js';
@@ -124,6 +124,9 @@ export function renderListPage() {
   // list, not several tags picked in the Tags dropdown) - the only case where
   // deleting "the tag" means something.
   const ownTag = state.filterTags.size === 1 && !smart && tags[[...state.filterTags][0]] ? [...state.filterTags][0] : null;
+  // Or one somebody else shared with the user - theirs to tag on, not to
+  // delete; the user can leave it.
+  const sharedTag = state.filterTags.size === 1 ? sharedOf([...state.filterTags][0]) : null;
 
   const pageHeader = el('div', 'page-header container page-header-list');
   const titleWrap = el('div');
@@ -148,6 +151,45 @@ export function renderListPage() {
     }
     titleWrap.append(line);
   }
+  // Whose tag it is and who else keeps it up: an own tag with managers
+  // names them (the Share button adds and removes them), a shared tag names
+  // its owner and any other managers.
+  // Each person named is a chip to their page, the way a person's own page
+  // shows their tags as chips.
+  const chip = email => {
+    const p = byEmail[email];
+    const a = el('a', 'tag-chip person-chip', p ? p.fullName : email);
+    if (p) {
+      a.href = personLink(p);
+    }
+    return a;
+  };
+  const chips = (target, emails, joiner) => {
+    emails.forEach((email, i) => {
+      if (i) {
+        target.append(el('span', '', i === emails.length - 1 ? ` ${joiner} ` : ', '));
+      }
+      target.append(chip(email));
+    });
+  };
+  const ownership = el('div', 'page-subtitle tag-ownership');
+  const paintOwnership = () => {
+    ownership.replaceChildren();
+    if (sharedTag) {
+      const others = sharedTag.managers.filter(e => e !== state.model.user.email);
+      ownership.append(svg('families'), chip(sharedTag.owner), el('span', '', "'s tag, shared with you" + (others.length ? ' and ' : '')));
+      chips(ownership, others, 'and');
+    } else if (ownTag && managersOf(ownTag).length) {
+      ownership.append(svg('families'), el('span', '', 'Managed with '));
+      chips(ownership, managersOf(ownTag), 'and');
+    } else {
+      ownership.hidden = true;
+      return;
+    }
+    ownership.hidden = false;
+  };
+  paintOwnership();
+  titleWrap.append(ownership);
   pageHeader.append(titleWrap);
   pageHeader.append(tagListViewSwitch(() => renderGrid()));
   main.append(pageHeader);
@@ -155,22 +197,25 @@ export function renderListPage() {
   const content = el('div', 'content container');
   const header = el('div', 'content-header content-header-solo');
   const controls = el('div', 'controls');
-  // Add family leads the row, ahead of the role chips: it widens who the
-  // list is of - the parents, children or siblings of whoever is tagged -
-  // where everything after it only narrows that down. Only meaningful for
-  // a single tag: with several selected at once (or none, as on the plain
-  // Everyone list) there's no one list to pull relatives in from - and
-  // only offering the relations the tagged people actually have.
+  // Add and Manage lead the row, ahead of the role chips: Add widens who
+  // the list is of - the parents, children or siblings of whoever is tagged
+  // - where everything after it only narrows that down, and Manage is the
+  // tag's own housekeeping. Add only means something for a single tag (with
+  // several selected at once, or none as on the plain Everyone list,
+  // there's no one list to pull relatives in from), and only offers the
+  // relations the tagged people actually have.
+  const lead = el('div', 'controls-lead');
   const familyOptions = state.filterTags.size === 1 ? tagRelationOptionsFor([...state.filterTags][0]) : [];
   if (familyOptions.length) {
     const [activeTag] = state.filterTags;
-    const family = familyDropdown(familyOptions, state.filterTagRelations, () => {
+    lead.append(familyDropdown(familyOptions, state.filterTagRelations, () => {
       saveTagRelations(activeTag, state.filterTagRelations);
       renderGrid();
-    });
-    family.classList.add('controls-lead');
+    }));
+  }
+  if (lead.children.length) {
     controls.classList.add('controls-spread');
-    controls.append(family);
+    controls.append(lead);
   }
   controls.append(roleChips(() => renderGrid()));
   const search = el('div', 'search');
@@ -185,7 +230,7 @@ export function renderListPage() {
   search.append(input);
   // A tag's page (one tag or Magic Tag, or several picked together) keeps
   // Grade, Classroom and Tags behind one Filter button - the row there has
-  // Add family, Delete tag and CSV to fit as well - while the
+  // Add, Manage and CSV to fit as well - while the
   // plain Everyone list still lays the three out as their own dropdowns.
   const onTagPage = state.filterTags.size > 0;
   const facetFilters = el('div', 'facet-filters');
@@ -225,22 +270,12 @@ export function renderListPage() {
   };
   buildTagFilters();
   onTagsChange(buildTagFilters);
-  if (ownTag) {
-    const remove = el('button', 'filter-button email-download tag-delete');
-    remove.type = 'button';
-    remove.title = 'Delete this tag - nobody is removed from the directory, just untagged';
-    remove.append(svg('trash'), el('span', '', 'Delete tag'));
-    remove.addEventListener('click', async () => {
-      const count = members(ownTag).length;
-      const who = count === 1 ? 'the one person' : `all ${count} people`;
-      if (!confirm(`Delete the tag "${ownTag}"? It comes off ${who} in it. This can't be undone.`)) {
-        return;
-      }
-      if (await deleteTag(ownTag)) {
-        location.href = '/people';
-      }
-    });
-    controls.append(remove);
+  if (ownTag || sharedTag) {
+    lead.append(manageControl([...state.filterTags][0], paintOwnership));
+    if (!lead.parentElement) {
+      controls.classList.add('controls-spread');
+      controls.prepend(lead);
+    }
   }
   const download = el('a', 'filter-button email-download');
   download.title = 'Download what the list currently shows';

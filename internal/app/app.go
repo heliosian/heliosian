@@ -742,6 +742,8 @@ type Config struct {
 	// through, the addresses they come from and reply to, and the inbox and
 	// webhook secret the replies come back through.
 	CalendarMail calendar.Mail
+	// WhoMail sends the directory's word of a tag shared, from its own address.
+	WhoMail mail.Sender
 	// BirthdayMail sends Staff Birthdays' calendar invites, from BirthdayFrom.
 	BirthdayMail mail.Sender
 	BirthdayFrom string
@@ -862,7 +864,7 @@ func NewCore(cfg Config) *Core {
 	mux := http.NewServeMux()
 	config.Register(mux, settings, cfg.Writer, cache.IsAdmin)
 	who.Register(mux, cache, cfg.BrowserKey, func() string { return settings.Settings().PrivacyLinks.HeliosWhoOptIn }, smartLists{cache, eventsCache, celebrateCache})
-	who.RegisterTags(mux, cache, cfg.Writer, queue)
+	who.RegisterTags(mux, cache, cfg.Writer, queue, cfg.WhoMail)
 	who.RegisterAdmin(mux, cache, cfg.Writer, queue)
 	if err := who.RegisterInvites(mux, cache, cfg.Source, cfg.Writer); err != nil {
 		logging.Fatal("load invites data", "error", err)
@@ -1029,6 +1031,13 @@ func calendarMail() calendar.Mail {
 	return m
 }
 
+func whoMailFrom() string {
+	if from := os.Getenv("WHO_MAIL_FROM"); from != "" {
+		return from
+	}
+	return "Helios Who? <who@heliosian.com>"
+}
+
 func celebrateMailFrom() string {
 	if from := os.Getenv("CELEBRATE_MAIL_FROM"); from != "" {
 		return from
@@ -1128,6 +1137,7 @@ func Production() (*http.Server, *who.Queue) {
 		// Mail goes through Resend when its key is set, else over SMTP when
 		// SMTP_HOST is; otherwise, in real-data mode, it is dropped and logged.
 		Mail:          newMailer(mailFrom()),
+		WhoMail:       newMailer(whoMailFrom()),
 		CelebrateMail: newMailer(celebrateMailFrom()),
 		CelebrateFrom: celebrateMailFrom(),
 		CalendarMail:  calendarMail(),

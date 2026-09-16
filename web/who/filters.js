@@ -186,7 +186,7 @@ export function roleChips(rerender) {
 // mobile. Clamping with an explicit left (converted back to wrap-relative,
 // since the panel is absolutely positioned inside its position:relative wrap)
 // keeps the panel fully on screen regardless of where its button lands. A
-// button at the head of the row (Add family on a tag's page) would still
+// button at the head of the row (Add on a tag's page) would still
 // hang its panel out over the sidebar, so the left bound is the content
 // column's edge, not the viewport's, wherever the panel sits in one.
 export function clampFilterPanel(wrap, panel) {
@@ -222,7 +222,7 @@ function optionRow(v, set, onChange) {
   return row;
 }
 
-// "Add family" on a tag's page: a dropdown in the row's own button style
+// "Add" on a tag's page: a dropdown in the row's own button style
 // whose panel says what it does - "Also add family members", a checkbox per
 // relation on offer ("Their parents", ...) and a note that they join the
 // people already matched - since widening a list is a different thing from
@@ -239,7 +239,7 @@ export function familyDropdown(values, set, onChange) {
   };
   const wrap = el('div', 'filter-wrap');
   const button = el('button', 'filter-button facet-button');
-  const labelSpan = el('span', '', 'Add family');
+  const labelSpan = el('span', '', 'Add');
   button.append(svg('families'), labelSpan, svg('chevron'));
   const panel = el('div', 'filter-panel family-panel');
   panel.hidden = true;
@@ -251,7 +251,7 @@ export function familyDropdown(values, set, onChange) {
     }
   });
   const updateLabel = () => {
-    labelSpan.textContent = set.size ? `Add family (${set.size})` : 'Add family';
+    labelSpan.textContent = set.size ? `Add (${set.size})` : 'Add';
   };
 
   const head = el('div', 'family-head');

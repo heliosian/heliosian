@@ -22,6 +22,10 @@ func main() {
 	click := flag.String("click", "", "css selector(s) to click once the page is up, several separated by |, so an error behind a button shows too")
 	out := flag.String("out", "", "also save a viewport screenshot here after the clicks, as the page then stands")
 	dialog := flag.String("dialog", "dismiss", "how to answer an alert/confirm/prompt a click opens - accept or dismiss - printing what it asked either way")
+	answer := flag.String("answer", "", "what to type into a prompt() before accepting it, with -dialog accept")
+	hover := flag.String("hover", "", "css selector to rest the mouse on before the screenshot, for a tooltip")
+	typed := flag.String("type", "", "text to type into whatever has focus once the clicks are done, for a search box a click opened")
+	after := flag.String("after", "", "css selector(s) to click after typing, | separated, for the result the typing brought up")
 	flag.Parse()
 	ctx, cancel := chromedp.NewExecAllocator(context.Background(), append(chromedp.DefaultExecAllocatorOptions[:], chromedp.Flag("ignore-certificate-errors", true))...)
 	defer cancel()
@@ -48,7 +52,11 @@ func main() {
 			fmt.Printf("%s: %s\n", e.Type, e.Message)
 			// Headless Chrome otherwise leaves the dialog up, and every later
 			// action - the next click, the screenshot - hangs behind it.
-			go chromedp.Run(ctx, page.HandleJavaScriptDialog(*dialog == "accept"))
+			handle := page.HandleJavaScriptDialog(*dialog == "accept")
+			if *answer != "" {
+				handle = handle.WithPromptText(*answer)
+			}
+			go chromedp.Run(ctx, handle)
 		case *runtime.EventExceptionThrown:
 			n++
 			d := e.ExceptionDetails
@@ -71,6 +79,21 @@ func main() {
 			sel = strings.TrimSpace(sel)
 			actions = append(actions, chromedp.WaitVisible(sel, chromedp.ByQuery), chromedp.Click(sel, chromedp.ByQuery), chromedp.Sleep(500*time.Millisecond))
 		}
+	}
+	if *typed != "" {
+		actions = append(actions, chromedp.SendKeys(":focus", *typed, chromedp.ByQuery), chromedp.Sleep(500*time.Millisecond))
+	}
+	if *after != "" {
+		for _, sel := range strings.Split(*after, "|") {
+			sel = strings.TrimSpace(sel)
+			actions = append(actions, chromedp.WaitVisible(sel, chromedp.ByQuery), chromedp.Click(sel, chromedp.ByQuery), chromedp.Sleep(500*time.Millisecond))
+		}
+	}
+	// Headless Chrome has no pointer to rest anywhere, so the hover is the
+	// events a real one would raise on the element, in order.
+	if *hover != "" {
+		script := fmt.Sprintf(`(() => { const e = document.querySelector(%q); for (const t of ['mouseover', 'mouseenter']) { e.dispatchEvent(new MouseEvent(t, {bubbles: t === 'mouseover'})); } return true; })()`, *hover)
+		actions = append(actions, chromedp.WaitVisible(*hover, chromedp.ByQuery), chromedp.Evaluate(script, nil), chromedp.Sleep(300*time.Millisecond))
 	}
 	actions = append(actions, chromedp.Sleep(*wait/2))
 	var png []byte

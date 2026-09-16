@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"slices"
 	"sort"
 	"strconv"
@@ -241,6 +242,122 @@ func (c *Cache) Tags(owner string) map[string][]string {
 	return tags
 }
 
+// A SharedTag is someone else's tag this person may manage, as the model
+// hands it to the page: whose it is, its people, and everyone managing it.
+type SharedTag struct {
+	Owner     string   `json:"owner"`
+	OwnerName string   `json:"ownerName"`
+	Name      string   `json:"name"`
+	People    []string `json:"people"`
+	Managers  []string `json:"managers"`
+}
+
+// TagManagers returns, for each of an owner's tags that has any, who else
+// manages it. A manager no longer in the directory is skipped, as Tags skips
+// a tagged person who has left.
+func (c *Cache) TagManagers(owner string) map[string][]string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	out := map[string][]string{}
+	for _, row := range c.tables.Managers {
+		if !strings.EqualFold(row[tagOwner], owner) {
+			continue
+		}
+		manager := strings.ToLower(row[managerEmail])
+		if c.model.Person(manager) == nil {
+			continue
+		}
+		out[row[tagName]] = append(out[row[tagName]], manager)
+	}
+	for _, managers := range out {
+		sort.Strings(managers)
+	}
+	return out
+}
+
+// SharedTags returns the tags other people have let this person manage,
+// owner by owner, each with its people and its managers - a tag whose owner
+// has left the directory, or that has no rows left, is skipped.
+func (c *Cache) SharedTags(email string) []SharedTag {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	out := []SharedTag{}
+	for _, row := range c.tables.Managers {
+		if !strings.EqualFold(row[managerEmail], email) {
+			continue
+		}
+		owner := strings.ToLower(row[tagOwner])
+		if c.model.Person(owner) == nil {
+			continue
+		}
+		tag := row[tagName]
+		shared := SharedTag{Owner: owner, OwnerName: c.model.DisplayName(owner), Name: tag, People: []string{}, Managers: []string{}}
+		for _, t := range c.tables.Tags {
+			if strings.EqualFold(t[tagOwner], owner) && t[tagName] == tag {
+				person := strings.ToLower(t[tagPerson])
+				if c.model.Person(person) != nil {
+					shared.People = append(shared.People, person)
+				}
+			}
+		}
+		if len(shared.People) == 0 {
+			continue
+		}
+		for _, m := range c.tables.Managers {
+			if strings.EqualFold(m[tagOwner], owner) && m[tagName] == tag {
+				manager := strings.ToLower(m[managerEmail])
+				if c.model.Person(manager) != nil {
+					shared.Managers = append(shared.Managers, manager)
+				}
+			}
+		}
+		sort.Strings(shared.People)
+		sort.Strings(shared.Managers)
+		out = append(out, shared)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Name != out[j].Name {
+			return out[i].Name < out[j].Name
+		}
+		return out[i].Owner < out[j].Owner
+	})
+	return out
+}
+
+// canManage says whether email may change one of owner's tags: the owner
+// always, and anyone the owner has made a manager of that tag.
+func (c *Cache) canManage(email, owner, tag string) bool {
+	if strings.EqualFold(email, owner) {
+		return true
+	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	for _, row := range c.tables.Managers {
+		if strings.EqualFold(row[tagOwner], owner) && row[tagName] == tag && strings.EqualFold(row[managerEmail], email) {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *Cache) applyManager(owner, tag, manager string, on bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	rows := []map[string]string{}
+	for _, row := range c.tables.Managers {
+		if strings.EqualFold(row[tagOwner], owner) && row[tagName] == tag && strings.EqualFold(row[managerEmail], manager) {
+			continue
+		}
+		rows = append(rows, row)
+	}
+	if on {
+		rows = append(rows, map[string]string{tagOwner: owner, tagName: tag, managerEmail: manager})
+	}
+	next := *c.tables
+	next.Managers = rows
+	c.tables = &next
+}
+
 func (c *Cache) tagged(owner, tag, person string) bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -270,8 +387,66 @@ func (c *Cache) applyTag(owner, tag, person string, on bool) {
 	c.tables = &next
 }
 
-// dropTag forgets every row of one owner's tag, returning how many there
-// were - zero means the tag wasn't theirs to begin with (or was already gone).
+// renameTag gives one owner's tag a new name across its rows and its
+// managers', returning how many people it has - zero when there was no such
+// tag to rename.
+func (c *Cache) renameTag(owner, from, to string) int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	rename := func(rows []map[string]string) ([]map[string]string, int) {
+		next := make([]map[string]string, len(rows))
+		n := 0
+		for i, row := range rows {
+			if strings.EqualFold(row[tagOwner], owner) && row[tagName] == from {
+				clone := maps.Clone(row)
+				clone[tagName] = to
+				next[i] = clone
+				n++
+			} else {
+				next[i] = row
+			}
+		}
+		return next, n
+	}
+	tags, people := rename(c.tables.Tags)
+	if people == 0 {
+		return 0
+	}
+	managers, _ := rename(c.tables.Managers)
+	next := *c.tables
+	next.Tags = tags
+	next.Managers = managers
+	c.tables = &next
+	return people
+}
+
+// copyTag gives someone a new tag of their own with the same people as a
+// tag of fromOwner's - their own, or one shared with them - returning the
+// rows it added. The copy is theirs alone: the original's managers aren't
+// carried over.
+func (c *Cache) copyTag(fromOwner, from, owner, to string) [][]string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	rows := slices.Clone(c.tables.Tags)
+	added := [][]string{}
+	for _, row := range c.tables.Tags {
+		if strings.EqualFold(row[tagOwner], fromOwner) && row[tagName] == from {
+			rows = append(rows, map[string]string{tagOwner: owner, tagName: to, tagPerson: row[tagPerson]})
+			added = append(added, []string{owner, to, row[tagPerson]})
+		}
+	}
+	if len(added) == 0 {
+		return nil
+	}
+	next := *c.tables
+	next.Tags = rows
+	c.tables = &next
+	return added
+}
+
+// dropTag forgets every row of one owner's tag, and whoever managed it,
+// returning how many people it had - zero means the tag wasn't theirs to
+// begin with (or was already gone).
 func (c *Cache) dropTag(owner, tag string) int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -287,8 +462,16 @@ func (c *Cache) dropTag(owner, tag string) int {
 	if dropped == 0 {
 		return 0
 	}
+	managers := []map[string]string{}
+	for _, row := range c.tables.Managers {
+		if strings.EqualFold(row[tagOwner], owner) && row[tagName] == tag {
+			continue
+		}
+		managers = append(managers, row)
+	}
 	next := *c.tables
 	next.Tags = rows
+	next.Managers = managers
 	c.tables = &next
 	return dropped
 }

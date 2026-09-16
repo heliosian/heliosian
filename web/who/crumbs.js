@@ -1,6 +1,6 @@
 import {state} from './state.js';
 import {el, svg, slugify} from './dom.js';
-import {tagsOf, tagControl} from './tags.js';
+import {tagsOf, tagControl, tagLabel, tagHref} from './tags.js';
 import {setChrome} from './chrome.js';
 
 export function fromURL() {
@@ -78,10 +78,10 @@ export function breadcrumbs(parts, tagEmail) {
     const tagList = el('div', 'tag-list');
     const renderTagList = () => {
       tagList.replaceChildren();
-      for (const name of tagsOf(tagEmail)) {
-        const chip = el('a', 'tag-chip', name);
-        chip.href = '/people?tag=' + encodeURIComponent(name);
-        chip.title = `See everyone tagged "${name}"`;
+      for (const key of tagsOf(tagEmail)) {
+        const chip = el('a', 'tag-chip', tagLabel(key));
+        chip.href = tagHref(key);
+        chip.title = `See everyone tagged "${tagLabel(key)}"`;
         tagList.append(chip);
       }
     };
