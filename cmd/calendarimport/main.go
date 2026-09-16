@@ -88,7 +88,7 @@ func apiKey() string {
 	return key
 }
 
-var retryWaits = []time.Duration{10 * time.Second, 20 * time.Second, 40 * time.Second}
+var retryWaits = []time.Duration{time.Minute, 2 * time.Minute, 4 * time.Minute, 8 * time.Minute}
 
 func fetch(address string) ([]byte, error) {
 	client := &http.Client{Timeout: 60 * time.Second}
@@ -108,7 +108,7 @@ func fetch(address string) ([]byte, error) {
 		if resp.StatusCode != http.StatusTooManyRequests || attempt == len(retryWaits) {
 			return nil, fmt.Errorf("get %s: %s", address, resp.Status)
 		}
-		log.Printf("get %s: %s, retrying in %s", address, resp.Status, retryWaits[attempt])
+		log.Printf("get %s: %s (retry-after %q), retrying in %s", address, resp.Status, resp.Header.Get("Retry-After"), retryWaits[attempt])
 		time.Sleep(retryWaits[attempt])
 	}
 }
