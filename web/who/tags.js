@@ -283,8 +283,8 @@ export async function shareTag(name, manager, on) {
 // with them - the tag's housekeeping kept together and
 // out of the row's way. Share swaps the menu for its own panel: who manages
 // the tag with the user, each with an x to take them off, and a search of
-// the directory's adults to add one - a student has no business managing a
-// list of families. onManagersChange runs after each such change, for the
+// the whole directory to add one - a student too, for a team or club they
+// run themselves. onManagersChange runs after each such change, for the
 // page's line naming the managers.
 export function manageControl(key, onManagersChange) {
   const isShared = !!shared[key];
@@ -427,7 +427,7 @@ export function manageControl(key, onManagersChange) {
     }
     const me = state.model.user.email;
     const matches = state.model.people
-      .filter(p => !p.isStudent && p.email !== me && !managersOf(name).includes(p.email))
+      .filter(p => p.email !== me && !managersOf(name).includes(p.email))
       .filter(p => p.fullName.toLowerCase().includes(q) || p.email.toLowerCase().includes(q))
       .slice(0, 6);
     if (!matches.length) {

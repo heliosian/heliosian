@@ -145,9 +145,10 @@ func (t tagger) copy(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// share lets the owner of a tag add or remove a manager of it - someone in
-// the directory, other than themselves, who then sees the tag under "Shared
-// with me" and can tag and untag through it as the owner can. Only a tag
+// share lets the owner of a tag add or remove a manager of it - anyone in
+// the directory, a student included, other than themselves, who then sees
+// the tag under "Shared Tags" and can tag and untag through it as the owner
+// can. Only a tag
 // with people in it can be shared: a tag is nothing but its rows, so an
 // empty one isn't there to share.
 func (t tagger) share(w http.ResponseWriter, r *http.Request) {
