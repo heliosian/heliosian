@@ -2,7 +2,7 @@ import {state, byEmail, lists, tags} from '../state.js';
 import {el, svg, csvField, copyGlyph} from '../dom.js';
 import {familiesOf, familyOf, familySearchText} from '../families.js';
 import {personCard, personLink, guestCard, guestPerson} from '../people.js';
-import {tagControl, onTagsChange, listLabel, members, tagFacetOptions, listSource, sharedOf, managersOf, manageControl, selectedPartyGuests} from '../tags.js';
+import {tagControl, onTagsChange, listLabel, members, tagFacetOptions, listSource, sharedOf, managersOf, manageControl, selectedGuests} from '../tags.js';
 import {saveTagRelations} from '../storage.js';
 import {matchesFilters, familyMatchesFilters, roleChips, facetDropdown, gradeOptions, filterControl, tagRelationOptionsFor, familyDropdown} from '../filters.js';
 import {resetMain} from '../chrome.js';
@@ -378,7 +378,7 @@ export function renderListPage() {
     grid.className = '';
     const rows = emailEntries()
       .filter(r => (r.p.fullName.toLowerCase().includes(state.q) || r.p.email.toLowerCase().includes(state.q)) && matchesFilters(r.p))
-      .concat(selectedPartyGuests().map(g => ({p: guestPerson(g), role: 'Guest', grade: '', classroom: ''})));
+      .concat(selectedGuests().map(g => ({p: guestPerson(g), role: 'Guest', grade: '', classroom: ''})));
     currentRows = rows;
     const csv = [emailColumns.map(c => c.label).join(',')]
       .concat(rows.map(r => emailColumns.map(c => csvField(c.get(r))).join(',')))

@@ -30,22 +30,31 @@ func (s smartLists) Lists(email string) []who.List {
 
 // GroupLists is one Magic Tag per group the person manages: its members as
 // the rules pick them out now, less the person themselves, as every Magic
-// Tag leaves the viewer off. Groups are not read against group rules - a
-// group's rule cannot name another group - so these never feed the
-// evaluator, only Who?.
+// Tag leaves the viewer off, and the people added by hand as guests, since
+// the directory does not hold them. Groups are not read against group
+// rules - a group's rule cannot name another group - so these never feed
+// the evaluator, only Who?.
 func GroupLists(model *groups.Model, sources groups.Sources, email string) []who.List {
 	out := []who.List{}
 	for _, g := range model.Groups {
 		if !g.Manages(email) {
 			continue
 		}
-		people := []string{}
+		people, guests := []string{}, []who.Guest{}
 		for _, member := range groups.Members(g, sources) {
-			if member != email {
+			switch {
+			case member == email:
+			case sources.Directory.Person(member) != nil:
 				people = append(people, member)
+			default:
+				name := member
+				if added := g.Addition(member); added != nil && added.Name != "" {
+					name = added.Name
+				}
+				guests = append(guests, who.Guest{ID: g.Name + ":" + member, Name: name, Email: member})
 			}
 		}
-		out = append(out, who.List{Key: who.ListGroup + ":" + g.Name, Name: g.Title, Kind: who.ListGroup, People: people, Guests: []who.Guest{}})
+		out = append(out, who.List{Key: who.ListGroup + ":" + g.Name, Name: g.Title, Kind: who.ListGroup, People: people, Guests: guests})
 	}
 	return out
 }
@@ -77,7 +86,7 @@ func parties(directory *who.Model, model *celebrate.Model, email string, now tim
 			buyer := directory.Resolve(t.Purchaser)
 			known := directory.Person(buyer) != nil
 			if t.Email == "" || directory.Person(holder) == nil {
-				guest := who.Guest{Ticket: t.ID, Name: t.Name, Email: t.Email}
+				guest := who.Guest{ID: t.ID, Name: t.Name, Email: t.Email}
 				if guest.Name == "" {
 					guest.Name = celebrate.DisplayName(t.Email)
 				}

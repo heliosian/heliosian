@@ -1,6 +1,7 @@
 .gcloudignore
 .git
 .gitignore
+cache/
 creds/
 docs/
 sampledata/

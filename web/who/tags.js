@@ -103,16 +103,18 @@ export function members(key) {
   return lists[key] ? lists[key].people : tags[key] || [];
 }
 
-// The guests of the one party list currently selected, for the grids that
-// show them after its directory people; none while a grade, classroom or
-// role filter narrows the list, since none of those can say anything about
-// a guest, and none with several tags selected at once.
-export function selectedPartyGuests() {
+// The guests of the one party or group list currently selected - a party's
+// ticket holders the directory has no record for, a group's people added by
+// hand - for the grids that show them after its directory people; none
+// while a grade, classroom or role filter narrows the list, since none of
+// those can say anything about a guest, and none with several tags
+// selected at once.
+export function selectedGuests() {
   if (state.filterTags.size !== 1 || state.filterGrades.size || state.filterClassrooms.size || state.filterRoles.size) {
     return [];
   }
   const list = lists[[...state.filterTags][0]];
-  if (!list || list.kind !== 'party') {
+  if (!list || (list.kind !== 'party' && list.kind !== 'group')) {
     return [];
   }
   return list.guests.filter(g => g.name.toLowerCase().includes(state.q) || (g.email || '').toLowerCase().includes(state.q));

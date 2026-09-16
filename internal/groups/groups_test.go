@@ -1,6 +1,7 @@
 package groups
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -22,11 +23,23 @@ func TestSampleSheetLoads(t *testing.T) {
 		t.Fatal(err)
 	}
 	g := model.Group("middle-school-parents")
-	if g == nil || len(g.Managers) != 2 || len(g.Rules) != 2 {
+	if g == nil || len(g.Managers) != 2 || len(g.Rules) != 2 || len(g.Additions) != 0 {
 		t.Fatalf("middle-school-parents: %+v", g)
 	}
 	if g.Rules[1].Kind != KindExclude || g.Rules[1].Search != "haddad" {
 		t.Fatalf("exclude rule: %+v", g.Rules[1])
+	}
+	soccer := model.Group("soccer-team")
+	if len(soccer.Additions) != 2 || soccer.Addition("coach.rivera@coastsidesoccer.example.org").Name != "Coach Rivera" {
+		t.Fatalf("soccer-team additions: %+v", soccer.Additions)
+	}
+}
+
+func TestLoadRefusesAnAdditionOnNoGroup(t *testing.T) {
+	tables := sampleTables(t)
+	tables.Additions = append(tables.Additions, map[string]string{"Group": "nobody", "Email": "a@x.org"})
+	if _, err := BuildModel(tables); err == nil {
+		t.Fatal("accepted an addition naming no group")
 	}
 }
 
@@ -48,6 +61,13 @@ func TestChecksRefuseBadGroups(t *testing.T) {
 		"no owner":      func(g *Group) { g.Rules[0].Owner = "" },
 		"long title":    func(g *Group) { g.Title = strings.Repeat("x", 81) },
 		"too many rule": func(g *Group) { g.Rules = append(g.Rules, make([]Rule, maxRules)...) },
+		"bad addition":  func(g *Group) { g.Additions = []Addition{{Email: "not an address", Name: "Nobody"}} },
+		"long name":     func(g *Group) { g.Additions = []Addition{{Email: "a@x.org", Name: strings.Repeat("x", 81)}} },
+		"too many added": func(g *Group) {
+			for i := 0; i <= maxAdditions; i++ {
+				g.Additions = append(g.Additions, Addition{Email: fmt.Sprintf("a%d@x.org", i)})
+			}
+		},
 	}
 	for name, edit := range cases {
 		g := good
@@ -62,7 +82,8 @@ func TestChecksRefuseBadGroups(t *testing.T) {
 
 func TestWithGroupRoundTrips(t *testing.T) {
 	tables := sampleTables(t)
-	g := Normalize(Group{Name: "chess-club", Title: " Chess Club ", Managers: []string{"M@X.org", "m@x.org"}, Rules: []Rule{{Kind: "Include", Search: "  Kim ", Owner: "M@X.org"}}})
+	g := Normalize(Group{Name: "chess-club", Title: " Chess Club ", Managers: []string{"M@X.org", "m@x.org"}, Rules: []Rule{{Kind: "Include", Search: "  Kim ", Owner: "M@X.org"}},
+		Additions: []Addition{{Email: " Coach@Club.org ", Name: "  The  Coach "}, {Email: "coach@club.org", Name: "Again"}}})
 	next := tables.withGroup(g)
 	if len(tables.Groups) != 3 || len(next.Groups) != 4 {
 		t.Fatalf("groups %d -> %d", len(tables.Groups), len(next.Groups))
@@ -75,14 +96,21 @@ func TestWithGroupRoundTrips(t *testing.T) {
 	if got.Title != "Chess Club" || len(got.Managers) != 1 || got.Rules[0].Kind != KindInclude || got.Rules[0].Search != "kim" || got.Rules[0].Owner != "m@x.org" {
 		t.Fatalf("%+v", got)
 	}
+	if len(got.Additions) != 1 || got.Additions[0] != (Addition{Email: "coach@club.org", Name: "The Coach"}) {
+		t.Fatalf("additions: %+v", got.Additions)
+	}
 	g.Rules = append(g.Rules, Rule{Kind: KindExclude, Roles: []string{"Staff"}, Owner: "m@x.org"})
+	g.Additions = nil
 	again := next.withGroup(g)
 	model, err = BuildModel(again)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(model.Group("chess-club").Rules) != 2 || len(again.Groups) != 4 {
+	if len(model.Group("chess-club").Rules) != 2 || len(again.Groups) != 4 || len(model.Group("chess-club").Additions) != 0 {
 		t.Fatalf("second save: %+v", model.Group("chess-club"))
+	}
+	if len(again.Additions) != len(tables.Additions) {
+		t.Fatalf("the additions rows were not replaced: %d", len(again.Additions))
 	}
 	model, err = BuildModel(again.withoutGroup("chess-club"))
 	if err != nil {
@@ -90,6 +118,9 @@ func TestWithGroupRoundTrips(t *testing.T) {
 	}
 	if model.Group("chess-club") != nil || len(model.Groups) != 3 {
 		t.Fatal("the group was not removed")
+	}
+	if len(next.withoutGroup("chess-club").Additions) != len(tables.Additions) {
+		t.Fatal("the additions rows were not removed")
 	}
 }
 

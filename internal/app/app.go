@@ -1149,8 +1149,10 @@ func mapsKey(envName, file string) string {
 }
 
 // Production assembles the real service: the production spreadsheets, the media
-// bucket, real geocoding, and Google sign-in. Every input is required.
-func Production() (*http.Server, *who.Queue) {
+// bucket, real geocoding, and Google sign-in. Every input is required. With a
+// blobCache, the media fetched from the bucket is kept on disk there too and
+// read from there on the next start; the production binary passes none.
+func Production(blobCache string) (*http.Server, *who.Queue) {
 	spreadsheets := map[string]string{
 		"directory":   requiredEnv("DIRECTORY_SHEET"),
 		"preferences": requiredEnv("PREFERENCES_SHEET"),
@@ -1168,7 +1170,7 @@ func Production() (*http.Server, *who.Queue) {
 	if err != nil {
 		logging.Fatal("load directory sheet", "error", err)
 	}
-	store, err := blob.New()
+	store, err := blob.New(blobCache)
 	if err != nil {
 		logging.Fatal("blob store", "error", err)
 	}

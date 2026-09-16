@@ -11,7 +11,9 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
 	"path"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -78,22 +80,126 @@ type entry struct {
 
 // Store holds what the sheets name. Nothing here ever lists the bucket: an
 // object enters memory when a loader asks for it by name, stays while
-// something keeps asking, and leaves once nothing has for a while.
+// something keeps asking, and leaves once nothing has for a while. With a
+// cache directory, every content-addressed object fetched is kept on disk
+// too, and read from there ahead of the bucket on the next start.
 type Store struct {
-	service *storage.Service
-	mu      sync.RWMutex
-	entries map[string]*entry
+	service  *storage.Service
+	cacheDir string
+	mu       sync.RWMutex
+	entries  map[string]*entry
 }
 
-func New() (*Store, error) {
+// New is a store over the bucket, keeping a copy of what it fetches under
+// cacheDir when one is given; "" caches nothing.
+func New(cacheDir string) (*Store, error) {
 	service, err := storage.NewService(context.Background(),
 		option.WithScopes(storage.DevstorageReadWriteScope))
 	if err != nil {
 		return nil, fmt.Errorf("storage client: %w", err)
 	}
-	s := &Store{service: service, entries: map[string]*entry{}}
+	s := &Store{service: service, cacheDir: cacheDir, entries: map[string]*entry{}}
+	if cacheDir != "" {
+		slog.Info("blob store: caching fetched objects on disk", "dir", cacheDir)
+	}
 	go s.sweepLoop()
 	return s, nil
+}
+
+// cacheable is whether an object may be read from and written to the disk
+// cache: only content-addressed folders, whose bytes never change under a
+// name. The named folders are replaced in place, so those always go to the
+// bucket.
+func (s *Store) cacheable(name string) bool {
+	folder, _, _ := strings.Cut(name, "/")
+	return s.cacheDir != "" && !named[folder]
+}
+
+func (s *Store) cachePath(name string) string {
+	return filepath.Join(s.cacheDir, filepath.FromSlash(name))
+}
+
+// cached is an object from the disk cache: its bytes, its thumbnail when it
+// is an image, and its generation and type from the meta file beside it.
+// An object with no meta file is not cached; anything else wrong with the
+// files is an error, since every write lands whole or not at all.
+func (s *Store) cached(name string) (*entry, error) {
+	if !s.cacheable(name) {
+		return nil, nil
+	}
+	meta, err := os.ReadFile(s.cachePath(name) + ".meta")
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read the cache of %s: %w", name, err)
+	}
+	generationText, mimeType, ok := strings.Cut(strings.TrimSpace(string(meta)), "\n")
+	if !ok {
+		return nil, fmt.Errorf("read the cache of %s: the meta file is not generation and type", name)
+	}
+	generation, err := strconv.ParseInt(generationText, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("read the cache of %s: %w", name, err)
+	}
+	data, err := os.ReadFile(s.cachePath(name))
+	if err != nil {
+		return nil, fmt.Errorf("read the cache of %s: %w", name, err)
+	}
+	e := &entry{name: name, generation: generation, mimeType: mimeType, data: data, used: time.Now()}
+	if strings.HasPrefix(mimeType, "image/") {
+		if e.thumb, err = os.ReadFile(s.cachePath(thumbName(name))); err != nil {
+			return nil, fmt.Errorf("read the cache of %s: %w", name, err)
+		}
+	}
+	return e, nil
+}
+
+// cache writes an entry to the disk cache, the meta file last, so a reader
+// that finds the meta file finds the whole object.
+func (s *Store) cache(e *entry) error {
+	if !s.cacheable(e.name) {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(s.cachePath(e.name)), 0o755); err != nil {
+		return fmt.Errorf("cache %s: %w", e.name, err)
+	}
+	if err := writeFile(s.cachePath(e.name), e.data); err != nil {
+		return fmt.Errorf("cache %s: %w", e.name, err)
+	}
+	if e.thumb != nil {
+		if err := writeFile(s.cachePath(thumbName(e.name)), e.thumb); err != nil {
+			return fmt.Errorf("cache %s: %w", e.name, err)
+		}
+	}
+	if err := writeFile(s.cachePath(e.name)+".meta", []byte(strconv.FormatInt(e.generation, 10)+"\n"+e.mimeType+"\n")); err != nil {
+		return fmt.Errorf("cache %s: %w", e.name, err)
+	}
+	return nil
+}
+
+// writeFile lands a file whole: written to a temp file of its own beside its
+// name, then renamed over it. Two writers of the same object - a prefetch
+// asks for a name once per row that carries it - each land the same bytes.
+func writeFile(name string, data []byte) error {
+	tmp, err := os.CreateTemp(filepath.Dir(name), filepath.Base(name)+".*.tmp")
+	if err != nil {
+		return err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		os.Remove(tmp.Name())
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmp.Name())
+		return err
+	}
+	if err := os.Chmod(tmp.Name(), 0o644); err != nil {
+		os.Remove(tmp.Name())
+		return err
+	}
+	return os.Rename(tmp.Name(), name)
 }
 
 func Register(mux *http.ServeMux, s *Store) {
@@ -286,9 +392,24 @@ func (s *Store) count() int {
 	return len(s.entries)
 }
 
-// fetch downloads an object and its thumbnail. The download response already
-// carries the generation and content type, so there is no separate stat.
+// fetch is an object and its thumbnail from the disk cache, else downloaded
+// and cached. The download response already carries the generation and
+// content type, so there is no separate stat.
 func (s *Store) fetch(ctx context.Context, name string) (*entry, error) {
+	if e, err := s.cached(name); err != nil || e != nil {
+		return e, err
+	}
+	e, err := s.download(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.cache(e); err != nil {
+		return nil, err
+	}
+	return e, nil
+}
+
+func (s *Store) download(ctx context.Context, name string) (*entry, error) {
 	resp, err := s.service.Objects.Get(Bucket, name).Context(ctx).Download()
 	if notFound(err) {
 		return nil, errNotFound

@@ -86,12 +86,13 @@ func anyIn(have, want []string) bool {
 // Reason is why a member is on a group: the rule, by its place among the
 // group's rules, and the relation it reached them through and whom - a
 // parent of Mia, say, when the rule matched Mia - or nothing for someone
-// it matched itself.
+// it matched itself; or Added, for someone a manager put on by hand.
 type Reason struct {
 	Rule    int    `json:"rule"`
 	Through string `json:"through,omitempty"`
 	Via     string `json:"via,omitempty"`
 	ViaName string `json:"viaName,omitempty"`
+	Added   bool   `json:"added,omitempty"`
 }
 
 // matches is everyone one rule picks out, each with the relation it reached
@@ -153,10 +154,11 @@ func matches(r Rule, s Sources, tagged map[string][]string) map[string]Reason {
 	return out
 }
 
-// Reasons is everyone a group's rules put on it and why: the include rules'
-// matches less the exclude rules', as addresses the directory keys them by,
-// leaving out anyone whose address is a placeholder nothing can reach, each
-// with every include rule that reached them.
+// Reasons is everyone on a group and why: the include rules' matches less
+// the exclude rules', as addresses the directory keys them by, leaving out
+// anyone whose address is a placeholder nothing can reach, each with every
+// include rule that reached them; then the additions, on by hand whatever
+// the rules say, once each.
 func Reasons(g Group, s Sources) map[string][]Reason {
 	tagged := map[string]map[string][]string{}
 	for _, r := range g.Rules {
@@ -181,6 +183,11 @@ func Reasons(g Group, s Sources) map[string][]Reason {
 	for email := range in {
 		if p := s.Directory.Person(email); out[email] || p == nil || p.EmailMasked {
 			delete(in, email)
+		}
+	}
+	for _, a := range g.Additions {
+		if _, ok := in[a.Email]; !ok {
+			in[a.Email] = []Reason{{Added: true}}
 		}
 	}
 	return in

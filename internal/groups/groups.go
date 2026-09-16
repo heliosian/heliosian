@@ -18,6 +18,7 @@ const (
 	groupsTab    = "Groups"
 	managersTab  = "Managers"
 	rulesTab     = "Rules"
+	additionsTab = "Additions"
 	adminsTab    = "Admins"
 	settingsTab  = "Settings"
 	changeLogTab = "Change Log"
@@ -33,12 +34,15 @@ const (
 	maxDescriptionLength = 300
 	maxSearchLength      = 80
 	maxRules             = 40
+	maxAdditions         = 200
+	maxNameLength        = 80
 )
 
 var (
 	GroupColumns     = []string{"Name", "Title", "Description", "Created By", "Created"}
 	ManagerColumns   = []string{"Group", "Email"}
 	RuleColumns      = []string{"Group", "Kind", "Roles", "Search", "Classrooms", "Grades", "Tags", "Family", "Owner"}
+	AdditionColumns  = []string{"Group", "Email", "Name"}
 	AdminColumns     = []string{"Email"}
 	SettingColumns   = []string{"Key", "Value"}
 	ChangeLogColumns = []string{"Timestamp", "Actor", "Action", "Group", "Detail"}
@@ -75,16 +79,35 @@ type Rule struct {
 	Owner      string   `json:"owner"`
 }
 
+// Addition is someone on a group by hand rather than by rule: an address
+// the directory does not hold, and the name a manager typed for it.
+type Addition struct {
+	Email string `json:"email"`
+	Name  string `json:"name"`
+}
+
 // Group is one group: its name, which is its address's local part and never
-// changes, what it is called and for, who manages it, and its rules.
+// changes, what it is called and for, who manages it, its rules, and the
+// people added by hand from outside the directory.
 type Group struct {
-	Name        string   `json:"name"`
-	Title       string   `json:"title"`
-	Description string   `json:"description"`
-	CreatedBy   string   `json:"createdBy,omitempty"`
-	Created     string   `json:"created,omitempty"`
-	Managers    []string `json:"managers"`
-	Rules       []Rule   `json:"rules"`
+	Name        string     `json:"name"`
+	Title       string     `json:"title"`
+	Description string     `json:"description"`
+	CreatedBy   string     `json:"createdBy,omitempty"`
+	Created     string     `json:"created,omitempty"`
+	Managers    []string   `json:"managers"`
+	Rules       []Rule     `json:"rules"`
+	Additions   []Addition `json:"additions"`
+}
+
+// Addition finds the group's addition at an address, nil for none.
+func (g Group) Addition(email string) *Addition {
+	for i := range g.Additions {
+		if g.Additions[i].Email == email {
+			return &g.Additions[i]
+		}
+	}
+	return nil
 }
 
 // Address is the group's email address.
@@ -114,11 +137,12 @@ func (m *Model) Group(name string) *Group {
 }
 
 type Tables struct {
-	Groups   []map[string]string
-	Managers []map[string]string
-	Rules    []map[string]string
-	Admins   []map[string]string
-	Settings []map[string]string
+	Groups    []map[string]string
+	Managers  []map[string]string
+	Rules     []map[string]string
+	Additions []map[string]string
+	Admins    []map[string]string
+	Settings  []map[string]string
 }
 
 func ReadTables(source data.Source) (*Tables, error) {
@@ -130,10 +154,11 @@ func ReadTables(source data.Source) (*Tables, error) {
 	groups := &table{name: groupsTab, want: GroupColumns}
 	managers := &table{name: managersTab, want: ManagerColumns}
 	rules := &table{name: rulesTab, want: RuleColumns}
+	additions := &table{name: additionsTab, want: AdditionColumns}
 	admins := &table{name: adminsTab, want: AdminColumns}
 	settings := &table{name: settingsTab, want: SettingColumns}
 	changeLog := &table{name: changeLogTab, want: ChangeLogColumns}
-	read := []*table{groups, managers, rules, admins, settings}
+	read := []*table{groups, managers, rules, additions, admins, settings}
 	names := []string{}
 	for _, t := range read {
 		names = append(names, t.name)
@@ -148,7 +173,7 @@ func ReadTables(source data.Source) (*Tables, error) {
 			return nil, err
 		}
 	}
-	return &Tables{Groups: groups.rows, Managers: managers.rows, Rules: rules.rows, Admins: admins.rows, Settings: settings.rows}, nil
+	return &Tables{Groups: groups.rows, Managers: managers.rows, Rules: rules.rows, Additions: additions.rows, Admins: admins.rows, Settings: settings.rows}, nil
 }
 
 // SplitList reads a list cell: comma-separated, trimmed, without repeats.
@@ -262,6 +287,17 @@ func CheckGroup(g Group) error {
 	if includes == 0 {
 		return fmt.Errorf("group %s needs at least one include rule", g.Name)
 	}
+	if len(g.Additions) > maxAdditions {
+		return fmt.Errorf("group %s has too many people added by hand", g.Name)
+	}
+	for _, a := range g.Additions {
+		if !emailForm.MatchString(a.Email) {
+			return fmt.Errorf("group %s: %q is not an email address", g.Name, a.Email)
+		}
+		if len(a.Name) > maxNameLength {
+			return fmt.Errorf("group %s: the name for %s is too long", g.Name, a.Email)
+		}
+	}
 	return nil
 }
 
@@ -285,6 +321,15 @@ func Normalize(g Group) Group {
 		rules = append(rules, r)
 	}
 	g.Rules = rules
+	additions := make([]Addition, 0, len(g.Additions))
+	for _, a := range g.Additions {
+		a.Email = cleanEmail(a.Email)
+		a.Name = strings.Join(strings.Fields(a.Name), " ")
+		if a.Email != "" && !slices.ContainsFunc(additions, func(b Addition) bool { return b.Email == a.Email }) {
+			additions = append(additions, a)
+		}
+	}
+	g.Additions = additions
 	return g
 }
 
@@ -315,6 +360,10 @@ func ruleCells(name string, r Rule) map[string]string {
 	}
 }
 
+func additionCells(name string, a Addition) map[string]string {
+	return map[string]string{"Group": name, "Email": a.Email, "Name": a.Name}
+}
+
 func groupCells(g Group) map[string]string {
 	return map[string]string{"Name": g.Name, "Title": g.Title, "Description": g.Description, "Created By": g.CreatedBy, "Created": g.Created}
 }
@@ -331,6 +380,7 @@ func BuildModel(tables *Tables) (*Model, error) {
 		}
 		g.Managers = []string{}
 		g.Rules = []Rule{}
+		g.Additions = []Addition{}
 		model.byName[g.Name] = len(model.Groups)
 		model.Groups = append(model.Groups, g)
 	}
@@ -352,6 +402,14 @@ func BuildModel(tables *Tables) (*Model, error) {
 			return nil, fmt.Errorf("%s names %q, which %s does not have", rulesTab, row["Group"], groupsTab)
 		}
 		g.Rules = append(g.Rules, ruleFromRow(row))
+	}
+	for _, row := range tables.Additions {
+		name := strings.ToLower(strings.TrimSpace(row["Group"]))
+		g := model.Group(name)
+		if g == nil {
+			return nil, fmt.Errorf("%s names %q, which %s does not have", additionsTab, row["Group"], groupsTab)
+		}
+		g.Additions = append(g.Additions, Addition{Email: row["Email"], Name: row["Name"]})
 	}
 	for i, g := range model.Groups {
 		g = Normalize(g)
@@ -396,7 +454,7 @@ func withoutGroupRows(rows []map[string]string, column, name string) []map[strin
 }
 
 // withGroup mirrors what saving a group writes: its Groups row set or
-// added, and its Managers and Rules rows replaced whole.
+// added, and its Managers, Rules and Additions rows replaced whole.
 func (t *Tables) withGroup(g Group) *Tables {
 	out := *t
 	out.Groups = cloneRows(t.Groups)
@@ -424,6 +482,10 @@ func (t *Tables) withGroup(g Group) *Tables {
 	for _, r := range g.Rules {
 		out.Rules = append(out.Rules, ruleCells(g.Name, r))
 	}
+	out.Additions = withoutGroupRows(t.Additions, "Group", g.Name)
+	for _, a := range g.Additions {
+		out.Additions = append(out.Additions, additionCells(g.Name, a))
+	}
 	return &out
 }
 
@@ -432,6 +494,7 @@ func (t *Tables) withoutGroup(name string) *Tables {
 	out.Groups = withoutGroupRows(t.Groups, "Name", name)
 	out.Managers = withoutGroupRows(t.Managers, "Group", name)
 	out.Rules = withoutGroupRows(t.Rules, "Group", name)
+	out.Additions = withoutGroupRows(t.Additions, "Group", name)
 	return &out
 }
 

@@ -4,9 +4,9 @@ import {personLink, photoOrInitials} from '../people.js';
 import {fromCrumbs, breadcrumbs} from '../crumbs.js';
 import {resetMain} from '../chrome.js';
 
-function findGuest(ticket) {
+function findGuest(id) {
   for (const list of Object.values(lists)) {
-    const guest = list.guests.find(g => g.ticket === ticket);
+    const guest = list.guests.find(g => g.id === id);
     if (guest) {
       return {list, guest};
     }
@@ -14,9 +14,12 @@ function findGuest(ticket) {
   return null;
 }
 
-export function renderGuestDetail(ticket) {
+// A guest's page: a party's ticket holder the directory has no record for,
+// or someone a manager put on a group by hand, either way with the list
+// they came in on and the address to reach them at.
+export function renderGuestDetail(id) {
   const main = resetMain();
-  const found = findGuest(ticket);
+  const found = findGuest(id);
   if (!found) {
     main.append(el('div', 'empty', 'Not found.'));
     return;
@@ -47,7 +50,7 @@ export function renderGuestDetail(ticket) {
   const party = el('div', 'detail-sub');
   const partyLink = el('a', '', list.name);
   partyLink.href = listHref;
-  party.append(el('span', '', 'Guest at '), partyLink);
+  party.append(el('span', '', list.kind === 'group' ? 'On ' : 'Guest at '), partyLink);
   right.append(party);
   if (guest.purchaserName) {
     const by = el('div', 'detail-sub');

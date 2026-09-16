@@ -43,6 +43,11 @@ const logPath = "/tmp/heliosian-server.log"
 
 const sampleUser = "jordan.whitfield@heliosschool.org"
 
+// blobCache is where -real keeps the media it fetches from the bucket, so a
+// restart reads photos from disk rather than fetching every one again;
+// gitignored, and deleted by hand to start clean.
+const blobCache = "cache/blobs"
+
 func main() {
 	email := flag.String("email", "ian.gulliver@heliosschool.org", "session email for -detach's minted cookie")
 	real := flag.Bool("real", false, "serve the production assembly in the foreground")
@@ -55,7 +60,7 @@ func main() {
 
 	switch {
 	case *real:
-		app.Serve(localTLS(app.Production()))
+		app.Serve(localTLS(app.Production(blobCache)))
 	case *detach:
 		detachReal(*email)
 	case *capturePath != "":

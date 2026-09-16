@@ -215,6 +215,28 @@ func TestMagicTagsMatchByKey(t *testing.T) {
 	}
 }
 
+func TestAdditionsJoinTheMembersOnce(t *testing.T) {
+	s, _ := sample(t)
+	mia := "mia.torres@heliosschool.org"
+	g := groups.Normalize(groups.Group{Name: "test", Title: "Test", Managers: []string{jordan},
+		Rules: []groups.Rule{
+			rule(groups.KindInclude, func(r *groups.Rule) { r.Search = "mia torres" }),
+			rule(groups.KindExclude, func(r *groups.Rule) { r.Search = "coach" }),
+		},
+		Additions: []groups.Addition{{Email: "coach@club.example.org", Name: "Coach"}, {Email: mia, Name: "Mia by hand"}},
+	})
+	reasons := groups.Reasons(g, s)
+	if got := reasons["coach@club.example.org"]; !slices.Equal(got, []groups.Reason{{Added: true}}) {
+		t.Fatalf("coach: %+v", got)
+	}
+	if got := reasons[mia]; !slices.Equal(got, []groups.Reason{{Rule: 0}}) {
+		t.Fatalf("mia is on by rule, not by hand: %+v", got)
+	}
+	if got := groups.Members(g, s); !slices.Equal(got, []string{"coach@club.example.org", mia}) {
+		t.Fatalf("members: %v", got)
+	}
+}
+
 func TestSampleGroupsLoadAndPlan(t *testing.T) {
 	s, _ := sample(t)
 	tables, err := groups.ReadTables(&data.Dir{Root: "../../sampledata"})
@@ -235,6 +257,9 @@ func TestSampleGroupsLoadAndPlan(t *testing.T) {
 		}
 		if d.Address() != d.Name+"@loop.heliosian.com" {
 			t.Errorf("address %s", d.Address())
+		}
+		if d.Name == "soccer-team" && !slices.Contains(d.Members, "coach.rivera@coastsidesoccer.example.org") {
+			t.Errorf("the coach is not on the soccer team: %v", d.Members)
 		}
 	}
 }

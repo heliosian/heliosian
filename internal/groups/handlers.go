@@ -154,10 +154,12 @@ type ruleView struct {
 }
 
 // Member is someone on a group, with why: every include rule that reached
-// them.
+// them, or that they were added by hand; Outside marks one the directory
+// does not hold.
 type Member struct {
 	Person
 	Reasons []Reason `json:"reasons"`
+	Outside bool     `json:"outside,omitempty"`
 }
 
 // groupView is a group as its page shows it: the rules with their words,
@@ -214,10 +216,12 @@ func (a app) people(emails []string) []Person {
 	return out
 }
 
-// members is a group's members by name, each with why they are on it.
+// members is a group's members by name, each with why they are on it: the
+// directory's people first, then the additions it does not hold, each
+// under the name the manager typed.
 func (a app) members(g Group) []Member {
 	reasons := Reasons(g, a.sources())
-	out := make([]Member, 0, len(reasons))
+	inside, outside := []Member{}, []Member{}
 	for _, email := range sortedKeys(func() map[string]bool {
 		emails := map[string]bool{}
 		for email := range reasons {
@@ -225,9 +229,28 @@ func (a app) members(g Group) []Member {
 		}
 		return emails
 	}()) {
-		out = append(out, Member{Person: a.person(email), Reasons: reasons[email]})
+		if p, ok := a.directory.Person(email); ok {
+			inside = append(inside, Member{Person: p, Reasons: reasons[email]})
+			continue
+		}
+		name := email
+		if added := g.Addition(email); added != nil && added.Name != "" {
+			name = added.Name
+		}
+		outside = append(outside, Member{Person: Person{Email: email, Name: name, Words: "Outside the directory"}, Reasons: reasons[email], Outside: true})
 	}
-	return out
+	return append(inside, outside...)
+}
+
+// checkAdditions refuses an addition the directory already holds: those
+// people are on a group by rule.
+func (a app) checkAdditions(additions []Addition) error {
+	for _, added := range additions {
+		if p, ok := a.directory.Person(a.directory.Resolve(added.Email)); ok {
+			return fmt.Errorf("%s is in the directory as %s; add them with a rule", added.Email, p.Name)
+		}
+	}
+	return nil
 }
 
 // tagLabels is the words for a rule's tags, read as its owner: a tag's own
@@ -402,13 +425,14 @@ func sameRule(a, b Rule) bool {
 func (a app) preview(w http.ResponseWriter, r *http.Request) {
 	email, admin := a.who(r)
 	var body struct {
-		Name  string `json:"name"`
-		Rules []Rule `json:"rules"`
+		Name      string     `json:"name"`
+		Rules     []Rule     `json:"rules"`
+		Additions []Addition `json:"additions"`
 	}
 	if !decode(w, r, &body) {
 		return
 	}
-	draft := Normalize(Group{Name: "preview", Title: "preview", Managers: []string{email}, Rules: body.Rules})
+	draft := Normalize(Group{Name: "preview", Title: "preview", Managers: []string{email}, Rules: body.Rules, Additions: body.Additions})
 	var existing []Rule
 	if g := a.cache.Model().Group(strings.ToLower(strings.TrimSpace(body.Name))); g != nil {
 		if !admin && !g.Manages(email) {
@@ -430,6 +454,10 @@ func (a app) preview(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, fmt.Sprintf("rule %d: %v", i+1, err), http.StatusBadRequest)
 			return
 		}
+	}
+	if err := a.checkAdditions(draft.Additions); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(map[string]any{"members": a.members(draft)}); err != nil {
@@ -527,6 +555,10 @@ func (a app) saveGroup(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	if err := a.checkAdditions(g.Additions); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	tables := a.cache.Tables().withGroup(g)
 	if !a.commit(r, w, tables, func() error {
 		if action == "add" {
@@ -536,7 +568,7 @@ func (a app) saveGroup(w http.ResponseWriter, r *http.Request) {
 		} else if err := a.writer.Upsert(appName, groupsTab, "Name", g.Name, groupCells(g)); err != nil {
 			return err
 		}
-		for _, tab := range []string{managersTab, rulesTab} {
+		for _, tab := range []string{managersTab, rulesTab, additionsTab} {
 			if err := a.writer.Delete(appName, tab, map[string]string{"Group": g.Name}); err != nil {
 				return err
 			}
@@ -555,11 +587,18 @@ func (a app) saveGroup(w http.ResponseWriter, r *http.Request) {
 		if err := a.writer.AppendAll(appName, rulesTab, rules); err != nil {
 			return err
 		}
-		return a.logChange(email, action, g.Name, fmt.Sprintf("%s; %d managers; %d rules", g.Title, len(g.Managers), len(g.Rules)))
+		additions := [][]string{}
+		for _, added := range g.Additions {
+			additions = append(additions, rowOf(AdditionColumns, additionCells(g.Name, added)))
+		}
+		if err := a.writer.AppendAll(appName, additionsTab, additions); err != nil {
+			return err
+		}
+		return a.logChange(email, action, g.Name, fmt.Sprintf("%s; %d managers; %d rules; %d added by hand", g.Title, len(g.Managers), len(g.Rules), len(g.Additions)))
 	}) {
 		return
 	}
-	slog.InfoContext(r.Context(), "groups: saved group", "action", action, "group", g.Name, "rules", len(g.Rules), "managers", len(g.Managers))
+	slog.InfoContext(r.Context(), "groups: saved group", "action", action, "group", g.Name, "rules", len(g.Rules), "managers", len(g.Managers), "additions", len(g.Additions))
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(a.view(g, email)); err != nil {
 		slog.ErrorContext(r.Context(), "encode saved group", "error", err)
@@ -589,7 +628,7 @@ func (a app) deleteGroup(w http.ResponseWriter, r *http.Request) {
 		if err := a.writer.Delete(appName, groupsTab, map[string]string{"Name": name}); err != nil {
 			return err
 		}
-		for _, tab := range []string{managersTab, rulesTab} {
+		for _, tab := range []string{managersTab, rulesTab, additionsTab} {
 			if err := a.writer.Delete(appName, tab, map[string]string{"Group": name}); err != nil {
 				return err
 			}

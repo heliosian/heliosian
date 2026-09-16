@@ -226,13 +226,15 @@ async function send(method, url, body) {
 }
 
 // editor is the group form, for a new group and an existing one alike: the
-// words, the managers, the include and exclude rules, and a preview of who
-// the rules pick out, asked of the server as the rules change.
+// words, the managers, the include and exclude rules, the people added by
+// hand from outside the directory, and a preview of who all that picks
+// out, asked of the server as it changes.
 function editor(g, isNew) {
   const draft = {
     name: g.name, title: g.title, description: g.description || '',
     managers: g.managers.map(m => m.email),
     rules: g.rules.map(r => ({kind: r.kind, roles: [...r.roles], search: r.search, classrooms: [...r.classrooms], grades: [...r.grades], tags: [...r.tags], family: [...r.family], owner: r.owner, tagLabels: r.tagLabels})),
+    additions: (g.additions || []).map(a => ({email: a.email, name: a.name})),
   };
   if (isNew) {
     draft.rules.push(newRule('include'));
@@ -396,7 +398,7 @@ function editor(g, isNew) {
     previewStatus.textContent = 'Working out the members…';
     try {
       const rules = draft.rules.filter(ruleSaysSomething);
-      const {members} = await send('POST', '/api/groups/preview', {name: isNew ? '' : draft.name, rules});
+      const {members} = await send('POST', '/api/groups/preview', {name: isNew ? '' : draft.name, rules, additions: draft.additions});
       previewHead.textContent = `${members.length} ${members.length === 1 ? 'member' : 'members'}`;
       renderChanges(members, rules);
       previewStatus.textContent = rules.length ? '' : 'Add a rule to pick people out.';
@@ -444,6 +446,73 @@ function editor(g, isNew) {
   };
   form.append(ruleSection('include', 'Include', 'Everyone matching any of these rules is in the group. Within a rule every choice must hold: a parent of a Grade 3 student, say, is Parents and Grade 3 together. Add family widens a rule by the relatives of the people it matches.'));
   form.append(ruleSection('exclude', 'Exclude', 'Anyone matching any of these rules is left out, whatever the include rules say.'));
+
+  // The additions: people the directory does not hold, each a name and an
+  // address typed in, on the group whatever the rules say until removed.
+  const outside = el('div', 'card');
+  outside.append(el('h2', '', 'Outside the directory'));
+  outside.append(el('div', 'hint', 'People the directory does not hold, added by hand: a coach, a league office, a family friend. They are on the group whatever the rules say, until removed here. Someone in the directory is added with a rule instead.'));
+  const additionRows = el('div');
+  const renderAdditions = () => {
+    additionRows.replaceChildren();
+    if (!draft.additions.length) {
+      additionRows.append(el('div', 'rule-empty', 'Nobody added by hand.'));
+    }
+    for (const a of draft.additions) {
+      const remove = el('button', 'link-button danger', 'Remove');
+      remove.type = 'button';
+      remove.addEventListener('click', () => {
+        draft.additions = draft.additions.filter(x => x !== a);
+        renderAdditions();
+        rulesChanged();
+      });
+      additionRows.append(personRow({email: a.email, name: a.name || a.email, outside: true}, remove));
+    }
+  };
+  const additionName = el('input');
+  additionName.type = 'text';
+  additionName.maxLength = 80;
+  additionName.placeholder = 'Name';
+  const additionEmail = el('input');
+  additionEmail.type = 'email';
+  additionEmail.maxLength = 120;
+  additionEmail.placeholder = 'name@example.org';
+  const additionStatus = el('span', 'save-status');
+  const addAddition = () => {
+    const email = additionEmail.value.trim().toLowerCase();
+    const name = additionName.value.trim();
+    additionStatus.classList.remove('error');
+    additionStatus.textContent = '';
+    if (!email.includes('@')) {
+      additionStatus.classList.add('error');
+      additionStatus.textContent = 'An email address is needed.';
+      return;
+    }
+    if (draft.additions.some(a => a.email === email)) {
+      additionStatus.classList.add('error');
+      additionStatus.textContent = 'Already added.';
+      return;
+    }
+    draft.additions.push({email, name});
+    additionName.value = '';
+    additionEmail.value = '';
+    renderAdditions();
+    rulesChanged();
+    additionName.focus();
+  };
+  for (const input of [additionName, additionEmail]) {
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        addAddition();
+      }
+    });
+  }
+  const additionAdd = el('div', 'add-row');
+  additionAdd.append(additionName, additionEmail, button('Add', 'plus', 'button button-secondary', addAddition), additionStatus);
+  outside.append(additionRows, additionAdd);
+  renderAdditions();
+  form.append(outside);
   form.append(preview);
 
   const actions = el('div', 'editor-actions');
@@ -453,7 +522,7 @@ function editor(g, isNew) {
     status.textContent = 'Saving…';
     save.disabled = true;
     try {
-      const body = {original: isNew ? '' : draft.name, name: draft.name, title: draft.title, description: draft.description, managers: draft.managers, rules: draft.rules.filter(ruleSaysSomething)};
+      const body = {original: isNew ? '' : draft.name, name: draft.name, title: draft.title, description: draft.description, managers: draft.managers, rules: draft.rules.filter(ruleSaysSomething), additions: draft.additions};
       const saved = await send('POST', '/api/groups/group', body);
       pendingSync = {name: saved.name, before: g.status || {}};
       await load();
@@ -506,18 +575,22 @@ export function newGroupPage() {
   setTitle('New Group');
   const page = el('div', 'group-page');
   page.append(pageHead('New Group'));
-  page.append(editor({name: '', title: '', description: '', managers: [{email: me().email, name: me().name}], rules: []}, true));
+  page.append(editor({name: '', title: '', description: '', managers: [{email: me().email, name: me().name}], rules: [], additions: []}, true));
   return page;
 }
 
 // reasonWords says why a member is on the group: each include rule that
 // reached them, said of one person - "Tagged in Tech Team", "Student in
 // Hummingbirds" - and, when Add family brought them in, whose relative they
-// are: "Parent of Mia, student in Hummingbirds".
+// are: "Parent of Mia, student in Hummingbirds"; or that a manager added
+// them by hand.
 const throughWords = {Parents: 'Parent', Children: 'Child', Siblings: 'Sibling'};
 
 function reasonWords(member, rules) {
   return (member.reasons || []).map(reason => {
+    if (reason.added) {
+      return 'Added by hand';
+    }
     const rule = rules[reason.rule];
     if (!rule) {
       return '';
@@ -661,7 +734,7 @@ export function groupPage(g) {
 
   const members = el('div', 'card');
   members.append(el('h2', '', `${g.members.length} ${g.members.length === 1 ? 'member' : 'members'}`));
-  members.append(el('div', 'hint', 'Who the rules pick out right now, and the rule that puts each of them here. Google is kept in step as the directory changes.'));
+  members.append(el('div', 'hint', 'Who the rules pick out right now, and the rule that puts each of them here, then anyone added by hand from outside the directory. Google is kept in step as the directory changes.'));
   const list = el('div', 'member-list');
   for (const m of g.members) {
     list.append(personRow(m, null, reasonWords(m, g.rules)));

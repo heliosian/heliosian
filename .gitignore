@@ -1,4 +1,5 @@
 creds/
+cache/
 imports/
 screenshots/
 *.png

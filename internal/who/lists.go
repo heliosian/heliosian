@@ -14,8 +14,11 @@ type List struct {
 	Guests []Guest  `json:"guests"`
 }
 
+// Guest is someone on a list the directory does not hold: a party's ticket
+// holder, keyed by the ticket, or a group's addition, keyed by the group and
+// the address. Purchaser is a party guest's alone.
 type Guest struct {
-	Ticket        string `json:"ticket"`
+	ID            string `json:"id"`
 	Name          string `json:"name"`
 	Email         string `json:"email,omitempty"`
 	Purchaser     string `json:"purchaser,omitempty"`

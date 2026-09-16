@@ -186,6 +186,7 @@ var layouts = map[string][]tab{
 		{"Groups", groups.GroupColumns},
 		{"Managers", groups.ManagerColumns},
 		{"Rules", groups.RuleColumns},
+		{"Additions", groups.AdditionColumns},
 		{"Admins", groups.AdminColumns},
 		{"Settings", groups.SettingColumns},
 		{"Change Log", groups.ChangeLogColumns},
@@ -201,22 +202,20 @@ func column(i int) string {
 	return name
 }
 
-// addMissingColumns appends headings a tab does not have yet, widening the grid first
-// since a tab is only as wide as it was created. Existing columns are never moved, so
-// every row's data stays under the heading it was written for.
-func addMissingColumns(svc *sheets.Service, sheet, title string, id, grid int64, header []string) (int, error) {
-	quoted := "'" + strings.ReplaceAll(title, "'", "''") + "'"
-	resp, err := svc.Spreadsheets.Values.Get(sheet, quoted+"!1:1").Do()
-	if err != nil {
-		return 0, fmt.Errorf("read header of %q: %w", title, err)
-	}
+func quoteTab(title string) string {
+	return "'" + strings.ReplaceAll(title, "'", "''") + "'"
+}
+
+// addMissingColumns appends headings a tab does not have yet, given the header row
+// it has now, widening the grid first since a tab is only as wide as it was created.
+// Existing columns are never moved, so every row's data stays under the heading it
+// was written for.
+func addMissingColumns(svc *sheets.Service, sheet, title string, id, grid int64, current []interface{}, header []string) (int, error) {
+	quoted := quoteTab(title)
 	present := map[string]bool{}
-	width := 0
-	if len(resp.Values) > 0 {
-		width = len(resp.Values[0])
-		for _, cell := range resp.Values[0] {
-			present[strings.TrimSpace(fmt.Sprint(cell))] = true
-		}
+	width := len(current)
+	for _, cell := range current {
+		present[strings.TrimSpace(fmt.Sprint(cell))] = true
 	}
 	added := []interface{}{}
 	for _, name := range header {
@@ -237,9 +236,8 @@ func addMissingColumns(svc *sheets.Service, sheet, title string, id, grid int64,
 			return 0, fmt.Errorf("widen %q: %w", title, err)
 		}
 	}
-	_, err = svc.Spreadsheets.Values.Update(sheet, fmt.Sprintf("%s!%s1", quoted, column(width)),
-		&sheets.ValueRange{Values: [][]interface{}{added}}).ValueInputOption("RAW").Do()
-	if err != nil {
+	if _, err := svc.Spreadsheets.Values.Update(sheet, fmt.Sprintf("%s!%s1", quoted, column(width)),
+		&sheets.ValueRange{Values: [][]interface{}{added}}).ValueInputOption("RAW").Do(); err != nil {
 		return 0, fmt.Errorf("add columns to %q: %w", title, err)
 	}
 	log.Printf("added %d columns to %q: %v", len(added), title, added)
@@ -251,7 +249,9 @@ func addMissingColumns(svc *sheets.Service, sheet, title string, id, grid int64,
 // otherwise have tabs added to it before anyone noticed.
 // applyLayout reports how many tabs it created and columns it added, so a run that
 // changes nothing - which is most of them - says so in one line instead of naming
-// every tab it left alone.
+// every tab it left alone. The tabs' headers come in one batched read per
+// spreadsheet, the way the server's startup reads, so a run stays inside the
+// Sheets API's sixty reads a minute however many tabs the layouts hold.
 func applyLayout(svc *sheets.Service, sheet, env, layout string) (tabs, columns int, err error) {
 	meta, err := svc.Spreadsheets.Get(sheet).Fields("properties(title),sheets(properties(sheetId,title,gridProperties(columnCount)))").Do()
 	if err != nil {
@@ -269,9 +269,35 @@ func applyLayout(svc *sheets.Service, sheet, env, layout string) (tabs, columns 
 		}
 		existing[s.Properties.Title] = info
 	}
+	ranges := []string{}
+	for _, t := range layouts[layout] {
+		if _, ok := existing[t.title]; ok {
+			ranges = append(ranges, quoteTab(t.title)+"!1:1")
+		}
+	}
+	headers := map[string][]interface{}{}
+	if len(ranges) > 0 {
+		resp, err := svc.Spreadsheets.Values.BatchGet(sheet).Ranges(ranges...).Do()
+		if err != nil {
+			return 0, 0, fmt.Errorf("read the headers of %s: %w", env, err)
+		}
+		if len(resp.ValueRanges) != len(ranges) {
+			return 0, 0, fmt.Errorf("read the headers of %s: %d ranges asked, %d answered", env, len(ranges), len(resp.ValueRanges))
+		}
+		i := 0
+		for _, t := range layouts[layout] {
+			if _, ok := existing[t.title]; !ok {
+				continue
+			}
+			if len(resp.ValueRanges[i].Values) > 0 {
+				headers[t.title] = resp.ValueRanges[i].Values[0]
+			}
+			i++
+		}
+	}
 	for _, t := range layouts[layout] {
 		if info, ok := existing[t.title]; ok {
-			added, err := addMissingColumns(svc, sheet, t.title, info.id, info.columns, t.header)
+			added, err := addMissingColumns(svc, sheet, t.title, info.id, info.columns, headers[t.title], t.header)
 			if err != nil {
 				return 0, 0, err
 			}
@@ -290,8 +316,7 @@ func applyLayout(svc *sheets.Service, sheet, env, layout string) (tabs, columns 
 		if seed := seeds[layout][t.title]; seed != nil {
 			rows = append(rows, cells(seed))
 		}
-		quoted := "'" + strings.ReplaceAll(t.title, "'", "''") + "'"
-		_, err = svc.Spreadsheets.Values.Update(sheet, quoted+"!1:1", &sheets.ValueRange{
+		_, err = svc.Spreadsheets.Values.Update(sheet, quoteTab(t.title)+"!1:1", &sheets.ValueRange{
 			Values: rows,
 		}).ValueInputOption("RAW").Do()
 		if err != nil {

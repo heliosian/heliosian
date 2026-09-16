@@ -136,15 +136,17 @@ export async function copyText(text, message) {
 }
 
 // personRow is one person as the member and manager lists show them: face,
-// name linking to their page in Who?, the word that places them, and a
-// note under those when there is one - on a member, why they are on the
-// group.
+// name linking to their page in Who? - plain for someone outside the
+// directory, who has none - the word that places them, and a note under
+// those when there is one - on a member, why they are on the group.
 export function personRow(person, extra, note) {
   const row = el('div', 'person-row');
   row.append(thumb(person, 'small'));
   const body = el('div', 'person-body');
-  const name = el('a', 'person-name', person.name);
-  name.href = whoLink(person.email);
+  const name = el(person.outside ? 'span' : 'a', 'person-name', person.name);
+  if (!person.outside) {
+    name.href = whoLink(person.email);
+  }
   body.append(name);
   const words = [person.words, person.email].filter(Boolean).join(' · ');
   body.append(el('div', 'person-words', words));

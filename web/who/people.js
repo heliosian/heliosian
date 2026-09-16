@@ -20,7 +20,7 @@ export function personByKey(key) {
 
 export function personLink(p) {
   if (p.guest) {
-    return withFrom('/people/' + encodeURIComponent('guest:' + p.guest.ticket));
+    return withFrom('/people/' + encodeURIComponent('guest:' + p.guest.id));
   }
   return withFrom('/people/' + encodeURIComponent(personSlug(p.email)));
 }
