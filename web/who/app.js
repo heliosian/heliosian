@@ -10,6 +10,7 @@ import {renderPeople} from './pages/people.js';
 import {renderListPage} from './pages/list.js';
 import {renderGreenvelopePage} from './pages/invites.js';
 import {renderPersonDetail} from './pages/person.js';
+import {renderGuestDetail} from './pages/guest.js';
 import {renderFamilyDetail} from './pages/family.js';
 import {renderClassroomsPage, renderGradeDetail, renderClassroomDetail} from './pages/classrooms.js';
 import {renderStaffPage} from './pages/staff.js';
@@ -31,7 +32,9 @@ function render() {
   renderNav();
   setChrome(sectionTitles[segments()[0]] || 'Helios Who?', null);
   const seg = segments();
-  if (seg[0] === 'people' && seg[1]) {
+  if (seg[0] === 'people' && seg[1] && seg[1].startsWith('guest:')) {
+    renderGuestDetail(seg[1].slice('guest:'.length));
+  } else if (seg[0] === 'people' && seg[1]) {
     renderPersonDetail(seg[1]);
   } else if (seg[0] === 'families' && seg[1]) {
     renderFamilyDetail(seg[1]);

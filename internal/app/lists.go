@@ -3,6 +3,7 @@ package app
 import (
 	"maps"
 	"slices"
+	"strings"
 	"time"
 
 	"heliosian/internal/calendar"
@@ -33,23 +34,38 @@ func (s smartLists) parties(email string, now time.Time) []who.List {
 		if p.Past(now) || !slices.ContainsFunc(p.HostEmails, func(h string) bool { return directory.Resolve(h) == email }) {
 			continue
 		}
-		list := who.List{Key: who.ListParty + ":" + p.ID, Name: p.Title, Kind: who.ListParty}
+		list := who.List{Key: who.ListParty + ":" + p.ID, Name: p.Title, Kind: who.ListParty, Guests: []who.Guest{}}
 		people := map[string]bool{}
 		for _, t := range p.Tickets {
 			if t.Status != celebrate.TicketSold {
 				continue
 			}
 			holder := directory.Resolve(t.Email)
+			buyer := directory.Resolve(t.Purchaser)
+			known := directory.Person(buyer) != nil
 			if t.Email == "" || directory.Person(holder) == nil {
-				list.Guests++
+				guest := who.Guest{Ticket: t.ID, Name: t.Name, Email: t.Email}
+				if guest.Name == "" {
+					guest.Name = celebrate.DisplayName(t.Email)
+				}
+				if buyer != holder {
+					guest.Purchaser = buyer
+					if p := directory.Person(buyer); p != nil {
+						guest.PurchaserName = p.FullName
+					} else {
+						guest.PurchaserName = celebrate.DisplayName(buyer)
+					}
+				}
+				list.Guests = append(list.Guests, guest)
 			} else if holder != email {
 				people[holder] = true
 			}
-			if buyer := directory.Resolve(t.Purchaser); buyer != email && directory.Person(buyer) != nil {
+			if known && buyer != email {
 				people[buyer] = true
 			}
 		}
 		list.People = slices.Sorted(maps.Keys(people))
+		slices.SortFunc(list.Guests, func(a, b who.Guest) int { return strings.Compare(a.Name, b.Name) })
 		out = append(out, list)
 	}
 	return out
@@ -88,7 +104,7 @@ func (s smartLists) activities(email string, now time.Time) []who.List {
 		}
 		mine := !under && chairs(a)
 		if mine {
-			list := who.List{Key: who.ListActivity + ":" + a.ID, Name: a.Title, Kind: who.ListActivity}
+			list := who.List{Key: who.ListActivity + ":" + a.ID, Name: a.Title, Kind: who.ListActivity, Guests: []who.Guest{}}
 			if a != root {
 				list.Name = root.Title + ": " + a.Title
 			}

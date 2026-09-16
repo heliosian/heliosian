@@ -19,7 +19,28 @@ export function personByKey(key) {
 }
 
 export function personLink(p) {
+  if (p.guest) {
+    return withFrom('/people/' + encodeURIComponent('guest:' + p.guest.ticket));
+  }
   return withFrom('/people/' + encodeURIComponent(personSlug(p.email)));
+}
+
+export function guestPerson(g) {
+  return {fullName: g.name, email: g.email || '', guest: g};
+}
+
+export function guestCard(g) {
+  const card = el('a', 'person-card');
+  card.href = personLink(guestPerson(g));
+  const wrap = el('div', 'photo-wrap photo-wrap-peek');
+  wrap.append(photoOrInitials('', g.name, 'person-photo'));
+  card.append(wrap);
+  card.append(el('div', 'role-label role-label-guest', 'Guest'));
+  card.append(el('div', 'person-name', g.name));
+  if (g.purchaserName) {
+    card.append(el('div', 'person-sub', 'Guest of ' + g.purchaserName));
+  }
+  return card;
 }
 
 // A person's own photo if they have one, else their family's - the same fallback

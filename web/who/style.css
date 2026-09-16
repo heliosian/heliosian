@@ -2396,6 +2396,11 @@ a.role-label:hover {
   background: #fae7e3;
 }
 
+.role-label-guest {
+  color: #244d53;
+  background: #e3e9ea;
+}
+
 /* On the profile page only - roster/grid cards center this via text-align on
    their own text-align:center container, which a bare display:flex here would
    override (a flex item ignores the parent's text-align and left-aligns by

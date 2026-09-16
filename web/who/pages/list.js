@@ -1,8 +1,8 @@
 import {state, byEmail, lists, tags} from '../state.js';
 import {el, svg, csvField, copyGlyph} from '../dom.js';
 import {familiesOf, familyOf, familySearchText} from '../families.js';
-import {personCard, personLink} from '../people.js';
-import {tagControl, onTagsChange, listLabel, members, tagFacetOptions, saveAsTag, deleteTag, listSource} from '../tags.js';
+import {personCard, personLink, guestCard, guestPerson} from '../people.js';
+import {tagControl, onTagsChange, listLabel, members, tagFacetOptions, saveAsTag, deleteTag, listSource, selectedPartyGuests} from '../tags.js';
 import {saveTagRelations} from '../storage.js';
 import {matchesFilters, familyMatchesFilters, roleChips, facetDropdown, gradeOptions, filterControl, tagRelationOptions} from '../filters.js';
 import {resetMain} from '../chrome.js';
@@ -147,11 +147,6 @@ export function renderListPage() {
       line.append(svg('sparkles'), el('span', '', 'Magic Tag from the directory - the families of the grades you are a room parent for'));
     }
     titleWrap.append(line);
-  }
-  if (smart && smart.guests) {
-    titleWrap.append(el('div', 'page-subtitle', smart.guests === 1
-      ? 'One guest by name is not in the directory and cannot be listed.'
-      : `${smart.guests} guests by name are not in the directory and cannot be listed.`));
   }
   pageHeader.append(titleWrap);
   pageHeader.append(tagListViewSwitch(() => renderGrid()));
@@ -327,11 +322,13 @@ export function renderListPage() {
         tr.append(td);
       }
       const tagCell = el('td', 'email-tag');
-      tagCell.append(tagControl(r.p.email, 'tag-wrap', 'row-tag', () => {
-        if (state.filterTags.size) {
-          renderGrid();
-        }
-      }));
+      if (!r.p.guest) {
+        tagCell.append(tagControl(r.p.email, 'tag-wrap', 'row-tag', () => {
+          if (state.filterTags.size) {
+            renderGrid();
+          }
+        }));
+      }
       tr.append(tagCell);
       tbody.append(tr);
     });
@@ -343,7 +340,8 @@ export function renderListPage() {
     grid.replaceChildren();
     grid.className = '';
     const rows = emailEntries()
-      .filter(r => (r.p.fullName.toLowerCase().includes(state.q) || r.p.email.toLowerCase().includes(state.q)) && matchesFilters(r.p));
+      .filter(r => (r.p.fullName.toLowerCase().includes(state.q) || r.p.email.toLowerCase().includes(state.q)) && matchesFilters(r.p))
+      .concat(selectedPartyGuests().map(g => ({p: guestPerson(g), role: 'Guest', grade: '', classroom: ''})));
     currentRows = rows;
     const csv = [emailColumns.map(c => c.label).join(',')]
       .concat(rows.map(r => emailColumns.map(c => csvField(c.get(r))).join(',')))
@@ -365,7 +363,7 @@ export function renderListPage() {
     }
     grid.className = 'people-grid directory-grid';
     for (const r of rows) {
-      grid.append(personCard(r.p));
+      grid.append(r.p.guest ? guestCard(r.p.guest) : personCard(r.p));
     }
   }
   renderGrid();

@@ -11,7 +11,15 @@ type List struct {
 	Name   string   `json:"name"`
 	Kind   string   `json:"kind"`
 	People []string `json:"people"`
-	Guests int      `json:"guests,omitempty"`
+	Guests []Guest  `json:"guests"`
+}
+
+type Guest struct {
+	Ticket        string `json:"ticket"`
+	Name          string `json:"name"`
+	Email         string `json:"email,omitempty"`
+	Purchaser     string `json:"purchaser,omitempty"`
+	PurchaserName string `json:"purchaserName,omitempty"`
 }
 
 const (
@@ -43,7 +51,7 @@ func (m *Model) RoomParentLists(email string) []List {
 				}
 			}
 		}
-		out = append(out, List{Key: ListRoom + ":" + label, Name: label + " Parents", Kind: ListRoom, People: slices.Sorted(maps.Keys(people))})
+		out = append(out, List{Key: ListRoom + ":" + label, Name: label + " Parents", Kind: ListRoom, People: slices.Sorted(maps.Keys(people)), Guests: []Guest{}})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out

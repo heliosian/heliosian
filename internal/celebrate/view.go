@@ -53,9 +53,9 @@ type Alerts struct {
 	Privacy bool `json:"privacy"`
 }
 
-// displayName reads a name out of an address for someone the directory does
+// DisplayName reads a name out of an address for someone the directory does
 // not list, so a list never shows a bare email.
-func displayName(email string) string {
+func DisplayName(email string) string {
 	local, _, _ := strings.Cut(email, "@")
 	words := strings.FieldsFunc(local, func(r rune) bool { return r == '.' || r == '_' || r == '-' })
 	for i, w := range words {
@@ -77,7 +77,7 @@ func (v viewer) person(email string) Person {
 	if p, ok := v.directory.Person(v.directory.Resolve(email)); ok {
 		return p
 	}
-	return Person{Email: email, Name: displayName(email)}
+	return Person{Email: email, Name: DisplayName(email)}
 }
 
 // Kind is what sort of ticket holder someone is, for the attendee tile and
@@ -248,7 +248,7 @@ func (v viewer) attendee(t Ticket, editor bool) Attendee {
 		} else {
 			person = Person{Email: t.Email, Name: t.Name}
 			if person.Name == "" {
-				person.Name = displayName(t.Email)
+				person.Name = DisplayName(t.Email)
 			}
 		}
 	} else {

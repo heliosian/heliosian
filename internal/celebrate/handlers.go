@@ -295,7 +295,7 @@ func (a app) nameOf(email string) string {
 	if p, ok := a.directory.Person(a.directory.Resolve(email)); ok {
 		return p.Name
 	}
-	return displayName(email)
+	return DisplayName(email)
 }
 
 // audienceWords is the party's audience rule in words, for a refusal.

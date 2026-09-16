@@ -1,8 +1,8 @@
 import {state, colors} from '../state.js';
 import {el, svg, thumbUrl, firstName, tabStrip, tabHref} from '../dom.js';
 import {familiesOf, familyOf} from '../families.js';
-import {personCard, personLink, photoOrInitials, cardMore, gradeChain} from '../people.js';
-import {tagFacetOptions, onTagsChange} from '../tags.js';
+import {personCard, personLink, photoOrInitials, cardMore, gradeChain, guestCard} from '../people.js';
+import {tagFacetOptions, onTagsChange, selectedPartyGuests} from '../tags.js';
 import {matchesFilters, familyMatchesFilters, roleChips, facetDropdown, gradeOptions, filterControl} from '../filters.js';
 import {resetMain, finishRender} from '../chrome.js';
 import {renderStaff} from './staff.js';
@@ -27,7 +27,11 @@ function renderEveryone(grid) {
   for (const p of matches) {
     grid.append(personCard(p));
   }
-  return matches.length;
+  const guests = selectedPartyGuests();
+  for (const g of guests) {
+    grid.append(guestCard(g));
+  }
+  return matches.length + guests.length;
 }
 
 function renderStudents(grid) {

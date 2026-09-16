@@ -1,4 +1,4 @@
-import {tags, lists} from './state.js';
+import {state, tags, lists} from './state.js';
 import {loadLastTag, saveLastTag, loadTagUsage, recordTagUsage} from './storage.js';
 import {el, svg} from './dom.js';
 import {appOrigin} from '/toolbar.js';
@@ -44,6 +44,21 @@ export function listSource(key) {
 
 export function members(key) {
   return lists[key] ? lists[key].people : tags[key] || [];
+}
+
+// The guests of the one party list currently selected, for the grids that
+// show them after its directory people; none while a grade, classroom or
+// role filter narrows the list, since none of those can say anything about
+// a guest, and none with several tags selected at once.
+export function selectedPartyGuests() {
+  if (state.filterTags.size !== 1 || state.filterGrades.size || state.filterClassrooms.size || state.filterRoles.size) {
+    return [];
+  }
+  const list = lists[[...state.filterTags][0]];
+  if (!list || list.kind !== 'party') {
+    return [];
+  }
+  return list.guests.filter(g => g.name.toLowerCase().includes(state.q) || (g.email || '').toLowerCase().includes(state.q));
 }
 
 export function tagFacetOptions() {
