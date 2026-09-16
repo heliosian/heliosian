@@ -9,17 +9,45 @@ import (
 	"heliosian/internal/calendar"
 	"heliosian/internal/celebrate"
 	"heliosian/internal/events"
+	"heliosian/internal/groups"
 	"heliosian/internal/who"
 )
 
+// smartLists is Who?'s lister: the Magic Tags a person has from the other
+// apps, and the groups they manage on Helios Groups.
 type smartLists struct {
 	cache     *who.Cache
 	events    *events.Cache
 	celebrate *celebrate.Cache
+	groups    *groups.Cache
+	directory groupsDirectory
 }
 
 func (s smartLists) Lists(email string) []who.List {
-	return SmartLists(s.cache.Model(), s.events.Model(), s.celebrate.Model(), email, time.Now().In(calendar.Location))
+	lists := SmartLists(s.cache.Model(), s.events.Model(), s.celebrate.Model(), email, time.Now().In(calendar.Location))
+	return append(lists, GroupLists(s.groups.Model(), groups.SourcesOf(s.directory), email)...)
+}
+
+// GroupLists is one Magic Tag per group the person manages: its members as
+// the rules pick them out now, less the person themselves, as every Magic
+// Tag leaves the viewer off. Groups are not read against group rules - a
+// group's rule cannot name another group - so these never feed the
+// evaluator, only Who?.
+func GroupLists(model *groups.Model, sources groups.Sources, email string) []who.List {
+	out := []who.List{}
+	for _, g := range model.Groups {
+		if !g.Manages(email) {
+			continue
+		}
+		people := []string{}
+		for _, member := range groups.Members(g, sources) {
+			if member != email {
+				people = append(people, member)
+			}
+		}
+		out = append(out, who.List{Key: who.ListGroup + ":" + g.Name, Name: g.Title, Kind: who.ListGroup, People: people, Guests: []who.Guest{}})
+	}
+	return out
 }
 
 // SmartLists is the Magic Tags a person has from the other apps, over

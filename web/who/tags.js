@@ -52,7 +52,7 @@ export function tagHref(key) {
   return '/people?tag=' + encodeURIComponent(key);
 }
 
-const listIcons = {party: 'party', activity: 'activity', room: 'classrooms'};
+const listIcons = {party: 'party', activity: 'activity', room: 'classrooms', group: 'people'};
 
 export function listKeys() {
   return Object.keys(lists).sort((a, b) => lists[a].name.localeCompare(lists[b].name));
@@ -66,16 +66,18 @@ export function listIcon(key) {
   return listIcons[lists[key].kind];
 }
 
-// Where a Magic Tag's people come from - the party in Celebrate or the
-// activity in HCA-Team it mirrors - so the list page can link back to the
-// thing itself. A room parent's list is the directory's own (its families
-// are worked out here from the grades they look after), so it has no page
-// elsewhere to point at. The key's id is what the source app's own
-// /parties/{id} and /activities/{id} resolve, redirecting on to the friendly
-// address if the thing has one.
+// Where a Magic Tag's people come from - the party in Celebrate, the
+// activity in HCA-Team or the group in Helios Groups it mirrors - so the
+// list page can link back to the thing itself. A room parent's list is the
+// directory's own (its families are worked out here from the grades they
+// look after), so it has no page elsewhere to point at. The key's id is
+// what the source app's own /parties/{id}, /activities/{id} and
+// /groups/{name} resolve, redirecting on to the friendly address if the
+// thing has one.
 const listSources = {
   party: {app: 'celebrate', name: 'Celebrate', path: '/parties/', thing: 'party'},
   activity: {app: 'team', name: 'HCA-Team', path: '/activities/', thing: 'activity'},
+  group: {app: 'groups', name: 'Helios Groups', path: '/groups/', thing: 'group'},
 };
 
 export function listSource(key) {

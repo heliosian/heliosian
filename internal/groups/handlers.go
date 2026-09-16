@@ -105,19 +105,21 @@ func (a app) requireSuperAdmin(w http.ResponseWriter, r *http.Request) (string, 
 	return email, true
 }
 
-func sourcesOf(directory Directory) Sources {
+// SourcesOf is what the rules are read against, as the directory stands
+// when called.
+func SourcesOf(directory Directory) Sources {
 	return Sources{Directory: directory.Model(), Tags: directory.Tags, Lists: directory.Lists, Shared: directory.Shared}
 }
 
 func (a app) sources() Sources {
-	return sourcesOf(a.directory)
+	return SourcesOf(a.directory)
 }
 
 // PlanFor is every group as Google should hold it, read against the models
 // as they stand when called; the syncer calls it on every change.
 func PlanFor(cache *Cache, directory Directory) func() []Desired {
 	return func() []Desired {
-		return Plan(cache.Model(), sourcesOf(directory))
+		return Plan(cache.Model(), SourcesOf(directory))
 	}
 }
 

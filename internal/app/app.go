@@ -890,9 +890,18 @@ func NewCore(cfg Config) *Core {
 	if err != nil {
 		logging.Fatal("load calendar data", "error", err)
 	}
+	// The groups read the directory, its tags and the other apps' Magic
+	// Tags, so every one of those caches tells the syncer when it changes,
+	// and the groups' own cache does too; the directory in turn lists the
+	// groups a person manages among their Magic Tags.
+	groupsCache, err := groups.NewCache(cfg.Source, superAdmin, queue)
+	if err != nil {
+		logging.Fatal("load groups data", "error", err)
+	}
+	groupsDir := groupsDirectory{cache, settings, eventsCache, celebrateCache}
 	mux := http.NewServeMux()
 	config.Register(mux, settings, cfg.Writer, cache.IsAdmin)
-	who.Register(mux, cache, cfg.BrowserKey, func() string { return settings.Settings().PrivacyLinks.HeliosWhoOptIn }, smartLists{cache, eventsCache, celebrateCache})
+	who.Register(mux, cache, cfg.BrowserKey, func() string { return settings.Settings().PrivacyLinks.HeliosWhoOptIn }, smartLists{cache, eventsCache, celebrateCache, groupsCache, groupsDir})
 	who.RegisterTags(mux, cache, cfg.Writer, queue, cfg.WhoMail)
 	who.RegisterAdmin(mux, cache, cfg.Writer, queue)
 	if err := who.RegisterInvites(mux, cache, cfg.Source, cfg.Writer); err != nil {
@@ -916,14 +925,6 @@ func NewCore(cfg Config) *Core {
 	})
 	celebrateMux := http.NewServeMux()
 	celebrate.Register(celebrateMux, celebrateCache, cfg.Writer, queue, cfg.Store, celebrateDirectory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.CelebrateMail, cfg.CelebrateFrom)
-	// The groups read the directory, its tags and the other apps' Magic
-	// Tags, so every one of those caches tells the syncer when it changes,
-	// and the groups' own cache does too.
-	groupsCache, err := groups.NewCache(cfg.Source, superAdmin, queue)
-	if err != nil {
-		logging.Fatal("load groups data", "error", err)
-	}
-	groupsDir := groupsDirectory{cache, settings, smartLists{cache, eventsCache, celebrateCache}}
 	syncer := groups.NewSyncer(cfg.Groups, groups.PlanFor(groupsCache, groupsDir))
 	cache.OnChange(syncer.Notify)
 	eventsCache.OnChange(syncer.Notify)

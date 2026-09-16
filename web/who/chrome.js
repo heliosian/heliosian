@@ -357,12 +357,12 @@ function setMobileListsMenu(open) {
 }
 
 // The smart lists (a party's guests, an activity's roster, a room parent's
-// families) sit under the user's own tags in both the sidebar and the phone
-// Lists sheet, set apart as "Magic Tags" so it's clear they're made and kept
-// up by the app, not something the user typed in - the (i) explains on
-// hover, since the name alone doesn't say where they come from or why they
-// can't be edited.
-const magicTagsTip = 'Automagically created based on events and volunteering';
+// families, a group's members) sit under the user's own tags in both the
+// sidebar and the phone Lists sheet, set apart as "Magic Tags" so it's clear
+// they're made and kept up by the app, not something the user typed in -
+// the (i) explains on hover, since the name alone doesn't say where they
+// come from or why they can't be edited.
+const magicTagsTip = 'Automagically created based on events, volunteering and the groups you manage';
 
 // The (i) beside a Lists subheading shows its hint the moment it's hovered
 // - a title would wait a second first - as a fixed box beside the icon, so
@@ -445,9 +445,10 @@ function sharedTagsHeading(className) {
 // A Magic Tag's icon is the mark of the app it comes from, in the sidebar's
 // own white line style - the outline exports in web/public/common/brand/apps
 // (<key>-outline.png, from ~/Dropbox/Kids/Heliosian/images/<app>/white
-// outline.png): Celebrate's for a party, HCA-Team's for an activity, Who's
-// own for a room parent's list - so the sidebar says at a glance where each
-// is kept up; the heading above them says they're the apps' work.
+// outline.png): Celebrate's for a party, HCA-Team's for an activity, Helios
+// Groups' for a group, Who's own for a room parent's list - so the sidebar
+// says at a glance where each is kept up; the heading above them says
+// they're the apps' work.
 function magicTagIcon(key) {
   const mark = el('img', 'magic-tag-mark');
   mark.src = `/brand/apps/${listApp(key)}-outline.png`;

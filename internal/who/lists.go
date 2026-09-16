@@ -26,6 +26,7 @@ const (
 	ListParty    = "party"
 	ListActivity = "activity"
 	ListRoom     = "room"
+	ListGroup    = "group"
 )
 
 type Lister interface {

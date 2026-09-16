@@ -354,7 +354,20 @@ body.is-admin main { padding: 0; }
 
 .person-body { flex: 1; min-width: 0; }
 
-.person-name { font-weight: 600; }
+.person-name { font-weight: 600; text-decoration: none; }
+
+.person-name:hover { text-decoration: underline; }
+
+/* The group elsewhere: at Google, and as a Magic Tag in Who?. */
+.elsewhere { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 0 0 12px; }
+
+.elsewhere-link { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; color: var(--brand); text-decoration: none; }
+
+.elsewhere-link:hover { text-decoration: underline; }
+
+.elsewhere-link svg { width: 18px; height: 18px; }
+
+.elsewhere-link img { width: 20px; height: 20px; border-radius: 5px; }
 
 .person-words { font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 

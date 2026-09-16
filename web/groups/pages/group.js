@@ -3,6 +3,7 @@ import {el, svg, link, button, iconButton, copyText, toast, personRow, pageHead}
 import {setTitle} from '../chrome.js';
 import {load, navigate} from '../app.js';
 import {createPersonPicker} from '/picker.js';
+import {appOrigin} from '/toolbar.js';
 
 // statusLine says where a group stands with Google: synced and when, not
 // yet, or what went wrong.
@@ -604,6 +605,23 @@ export function groupPage(g) {
   if (g.description) {
     page.append(el('p', 'page-lead', g.description));
   }
+  // The same people elsewhere: the group at Google, with its archive and
+  // settings, and its Magic Tag in Who?, where the members can be filtered,
+  // mapped and mailed one by one.
+  const elsewhere = el('div', 'elsewhere');
+  const google = el('a', 'elsewhere-link');
+  google.href = `https://groups.google.com/a/${state.model.domain}/g/${encodeURIComponent(g.name)}`;
+  google.target = '_blank';
+  google.rel = 'noopener';
+  google.append(svg('groups'), el('span', '', 'Open in Google Groups'));
+  const who = el('a', 'elsewhere-link');
+  who.href = appOrigin('who') + '/people?list=' + encodeURIComponent('group:' + g.name);
+  const mark = el('img');
+  mark.src = '/brand/apps/who.png';
+  mark.alt = '';
+  who.append(mark, el('span', '', 'See these people in Helios Who?'));
+  elsewhere.append(google, who);
+  page.append(elsewhere);
   const line = statusLine(g.status);
   page.append(line);
   // The sync follows a change within seconds; a page arriving after one,
