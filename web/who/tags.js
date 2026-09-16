@@ -42,6 +42,13 @@ export function listSource(key) {
   return {...source, href: appOrigin(source.app) + source.path + encodeURIComponent(id)};
 }
 
+// The app a Magic Tag comes from, for its mark in the sidebar: a party from
+// Celebrate, an activity from HCA-Team, a room parent's list from Who itself.
+export function listApp(key) {
+  const kind = lists[key] && lists[key].kind;
+  return kind === 'room' ? 'who' : listSources[kind] ? listSources[kind].app : 'who';
+}
+
 export function members(key) {
   return lists[key] ? lists[key].people : tags[key] || [];
 }

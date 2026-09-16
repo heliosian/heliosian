@@ -3,7 +3,7 @@ import {el, svg, segments, hue, firstName, thumbUrl, trimMiddle} from './dom.js'
 import {saveNavOpen, loadNavScroll, saveNavScroll} from './storage.js';
 import {familyOf, myFamilyKey} from './families.js';
 import {personByKey, personLink, photoOrInitials, personPhotoUrl} from './people.js';
-import {tagNames, listKeys, listLabel, listIcon, onTagsChange, onTagsChangeChrome} from './tags.js';
+import {tagNames, listKeys, listLabel, listApp, onTagsChange, onTagsChangeChrome} from './tags.js';
 import {clampFilterPanel, closeFilterPanels} from './filters.js';
 import {staleItems, familyInfoBanner, todoChecklist, familyNavPeople, personTodoCount} from './stale.js';
 import {topbarSearchInput, topbarSearchResults} from './search.js';
@@ -228,30 +228,30 @@ export function renderNav() {
         renderItem(toolsBody, item);
       }
       const params = new URLSearchParams(location.search);
-      const listLink = (href, iconName, name, active, auto) => {
+      const listLink = (href, icon, name, active) => {
         const a = el('a');
         a.href = href;
         a.title = name;
         if (seg === 'people' && active) {
           a.className = 'active';
         }
-        const icon = svg(iconName);
+        a.append(icon, el('span', '', trimMiddle(name, 40)));
+        toolsBody.append(a);
+      };
+      for (const name of tagNames()) {
+        const icon = svg('tag');
         icon.classList.add('nav-icon-tag');
         // Plain white, not a per-name hashed color: the hash occasionally
         // landed near the sidebar's own dark teal, making that tag's icon
         // nearly invisible against the background it's sitting on.
         icon.style.color = '#fff';
-        a.append(auto ? magicTagIcon(icon) : icon, el('span', '', trimMiddle(name, 40)));
-        toolsBody.append(a);
-      };
-      for (const name of tagNames()) {
-        listLink('/people?tag=' + encodeURIComponent(name), 'tag', name, params.get('tag') === name, false);
+        listLink('/people?tag=' + encodeURIComponent(name), icon, name, params.get('tag') === name);
       }
       if (listKeys().length) {
         toolsBody.append(magicTagsHeading('nav-subheading'));
       }
       for (const key of listKeys()) {
-        listLink('/people?list=' + encodeURIComponent(key), listIcon(key), listLabel(key), params.get('list') === key, true);
+        listLink('/people?list=' + encodeURIComponent(key), magicTagIcon(key), listLabel(key), params.get('list') === key);
       }
     }
   }
@@ -360,13 +360,21 @@ function magicTagsHeading(className) {
   return heading;
 }
 
-// The list's own kind icon with a little sparkle pinned to its corner, the
-// same "made by the app" mark wherever it appears.
-function magicTagIcon(icon) {
+// A Magic Tag's icon is the mark of the app it comes from, in the sidebar's
+// own white line style - the outline exports in web/public/common/brand/apps
+// (<key>-outline.png, from ~/Dropbox/Kids/Heliosian/images/<app>/white
+// outline.png): Celebrate's for a party, HCA-Team's for an activity, Who's
+// own for a room parent's list - so the sidebar says at a glance where each
+// is kept up, with a little sparkle pinned to its corner as the "made by
+// the app" sign.
+function magicTagIcon(key) {
   const wrap = el('span', 'magic-tag-icon');
+  const mark = el('img', 'magic-tag-mark');
+  mark.src = `/brand/apps/${listApp(key)}-outline.png`;
+  mark.alt = '';
   const spark = svg('sparkles');
   spark.classList.add('magic-tag-spark');
-  wrap.append(icon, spark);
+  wrap.append(mark, spark);
   return wrap;
 }
 
@@ -384,22 +392,22 @@ function renderMobileListsMenu() {
     a.append(svg(item.path), el('span', '', item.label));
     body.append(a);
   }
-  const listItem = (href, iconName, name, active, auto) => {
+  const listItem = (href, icon, name, active) => {
     const a = el('a', 'mobile-lists-item' + (seg === 'people' && active ? ' active' : ''));
     a.href = href;
-    const icon = svg(iconName);
-    icon.style.color = `hsl(${hue(name)}, 65%, 40%)`;
-    a.append(auto ? magicTagIcon(icon) : icon, el('span', '', name));
+    a.append(icon, el('span', '', name));
     body.append(a);
   };
   for (const name of tagNames()) {
-    listItem('/people?tag=' + encodeURIComponent(name), 'tag', name, params.get('tag') === name, false);
+    const icon = svg('tag');
+    icon.style.color = `hsl(${hue(name)}, 65%, 40%)`;
+    listItem('/people?tag=' + encodeURIComponent(name), icon, name, params.get('tag') === name);
   }
   if (listKeys().length) {
     body.append(magicTagsHeading('mobile-lists-subheading'));
   }
   for (const key of listKeys()) {
-    listItem('/people?list=' + encodeURIComponent(key), listIcon(key), listLabel(key), params.get('list') === key, true);
+    listItem('/people?list=' + encodeURIComponent(key), magicTagIcon(key), listLabel(key), params.get('list') === key);
   }
 }
 

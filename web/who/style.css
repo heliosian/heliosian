@@ -612,6 +612,13 @@ body {
   flex-shrink: 0;
 }
 
+.magic-tag-mark {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
 .magic-tag-icon .magic-tag-spark {
   position: absolute;
   top: -6px;
