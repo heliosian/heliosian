@@ -4,18 +4,18 @@
    for the days that are not regular; classrooms wear the Config sheet's
    colors. */
 :root {
-  --brand: #0e4d54;
-  --brand-dark: #0f3d46;
-  --brand-deep: #0a3236;
-  --accent: #1f838a;
-  --amber: #e8a33d;
-  --page: #f4f8f8;
+  --brand: #0f4e54;
+  --brand-dark: #082b2e;
+  --brand-deep: #082b2e;
+  --accent: #00a69f;
+  --amber: #cc8f0b;
+  --page: #ffffff;
   --card: #ffffff;
   --line: #e2e8e9;
   --ink: #0d0d0d;
   --muted: #647071;
   --input: #edf2f2;
-  --alert: #c2442d;
+  --alert: #f15540;
   --tabbar: 64px;
   /* Day types: red for a day off, amber for a short one, plum for no
      aftercare, slate for anything else the sheet defines. */
@@ -27,6 +27,22 @@
   --no-aftercare-wash: #f1ebf9;
   --other: #4c6a70;
   --other-wash: #e9f0f1;
+  /* The shared palette (icons/swatch.psd): teal, green, yellow, gold, red. */
+  --teal-1: #00a69f;
+  --teal-2: #216f76;
+  --teal-3: #0f4e54;
+  --teal-dark: #082b2e;
+  --lime: #c1e524;
+  --green-2: #a4c21e;
+  --green-3: #88a700;
+  --green-dark: #4e5e07;
+  --yellow-pale: #fef7b7;
+  --yellow-1: #fae105;
+  --gold-1: #f1b940;
+  --gold-2: #cc8f0b;
+  --red-1: #f37766;
+  --red-2: #f15540;
+  --red-dark: #872113;
 }
 
 * { box-sizing: border-box; }
@@ -42,8 +58,7 @@ body {
   height: 100dvh;
   display: flex;
   flex-direction: column;
-  /* --page-bg is the admin's colouring of the page (theme.js), when set. */
-  background: var(--page-bg, var(--page));
+  background: var(--page);
   color: var(--ink);
   font-family: Roboto, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   font-size: 15px;
@@ -58,14 +73,11 @@ button { font: inherit; }
 .app-shell { display: flex; flex: 1; min-height: 0; }
 
 .sidebar {
-  width: 300px;
+  width: 280px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  /* --sidebar-bg and --sidebar-art are the admin's colouring of the rail and
-     the picture at its foot (theme.js), when set;
-     its links read --sidebar-fg for their words. */
-  background-image: var(--sidebar-art, none), var(--sidebar-bg, linear-gradient(180deg, #eef5f4 0%, #dcebe9 55%, #c5dfdc 100%));
+  background-image: none, linear-gradient(180deg, #022427, #0f4e54);
   background-size: 100% auto, auto;
   background-position: left bottom, left top;
   background-repeat: no-repeat, no-repeat;
@@ -79,28 +91,33 @@ button { font: inherit; }
 
 .brand a { display: block; line-height: 0; }
 
-.brand img { width: 100%; max-width: 270px; height: auto; display: block; }
+.brand img { height: 170px; width: auto; max-width: 100%; display: block; }
 
 .app-nav { display: flex; flex-direction: column; gap: 2px; padding: 12px 10px 6px; }
 
-.app-nav a {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 42px;
-  padding: 0 12px;
-  border-radius: 10px;
-  color: var(--sidebar-fg, var(--brand));
-  text-decoration: none;
-  font-size: 14px;
-  font-weight: 600;
-}
+.app-nav a { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 14px; border-radius: 10px; color: #fff; text-decoration: none; font-size: 15px; font-weight: 600; line-height: 1.25; }
 
 .app-nav a svg { width: 20px; height: 20px; flex-shrink: 0; }
 
-.app-nav a:hover { background: rgba(255, 255, 255, 0.55); color: var(--brand); }
+.app-nav a:hover { background: rgba(255, 255, 255, 0.1); }
 
-.app-nav a.is-active { background: var(--accent); color: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
+/* The item the page is on: a lighter teal wash with a lime bar at its left,
+   its icon and the chevron at its end in lime, white words. */
+.app-nav a.is-active { background: rgba(0, 166, 159, 0.22); color: #fff; position: relative; border-radius: 0 10px 10px 0; overflow: hidden; }
+/* ...its icon and the chevron at its end in lime. */
+.app-nav a.is-active svg { color: var(--lime); }
+
+.app-nav a.is-active::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  margin-left: auto;
+  border-right: 2.5px solid var(--lime);
+  border-bottom: 2.5px solid var(--lime);
+  transform: rotate(-45deg);
+  flex-shrink: 0;
+}
+
 
 /* The pencil at Calendar's end that turns the saved calendars' tools on. */
 .app-nav a .nav-edit { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; margin-left: auto; padding: 0; border: 0; border-radius: 8px; background: none; color: inherit; opacity: 0.7; cursor: pointer; }
@@ -114,7 +131,7 @@ button { font: inherit; }
 
 .nav-sub-row .nav-sub { flex: 1; min-width: 0; }
 
-.nav-sub-grip { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 26px; flex-shrink: 0; margin-left: 8px; color: var(--muted); cursor: grab; }
+.nav-sub-grip { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 26px; flex-shrink: 0; margin-left: 8px; color: rgba(255, 255, 255, 0.6); cursor: grab; }
 
 .nav-sub-grip svg { width: 14px; height: 14px; stroke-width: 3; }
 
@@ -122,7 +139,7 @@ button { font: inherit; }
 
 .nav-sub-row.is-dragging { opacity: 0.4; }
 
-.nav-sub-tool { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; flex-shrink: 0; padding: 0; border: 0; border-radius: 7px; background: none; color: var(--muted); cursor: pointer; text-decoration: none; }
+.nav-sub-tool { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; flex-shrink: 0; padding: 0; border: 0; border-radius: 7px; background: none; color: rgba(255, 255, 255, 0.75); cursor: pointer; text-decoration: none; }
 
 .nav-sub-tool:hover { background: rgba(255, 255, 255, 0.7); color: var(--brand); }
 
@@ -136,7 +153,7 @@ button { font: inherit; }
 .share-event svg { width: 16px; height: 16px; }
 
 /* The viewer's feeds, small under Calendar. */
-.app-nav a.nav-sub { min-height: 30px; margin-left: 22px; padding: 0 10px; gap: 8px; font-size: 12.5px; font-weight: 500; color: var(--sidebar-fg, var(--muted)); }
+.app-nav a.nav-sub { min-height: 36px; margin-left: 22px; padding: 0 10px; gap: 8px; font-size: 14px; font-weight: 500; color: rgba(255, 255, 255, 0.75); }
 
 .app-nav a.nav-sub svg { width: 14px; height: 14px; }
 
@@ -144,25 +161,26 @@ button { font: inherit; }
 
 .app-nav a.nav-sub span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.app-nav a.nav-sub:hover { color: var(--brand); }
+.app-nav a.nav-sub:hover { color: #fff; background: rgba(255, 255, 255, 0.12); }
 
 .app-nav a.nav-sub .nav-sub-marks { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
 
-.app-nav a.nav-sub .nav-sub-star { display: inline-flex; color: var(--amber); }
+.app-nav a.nav-sub .nav-sub-star { display: inline-flex; color: var(--lime); }
 
 .app-nav a.nav-sub .nav-sub-star svg { width: 13px; height: 13px; fill: currentColor; }
 
-.app-nav a.nav-sub .nav-sub-locked { display: inline-flex; color: var(--muted); opacity: 0.7; }
+.app-nav a.nav-sub .nav-sub-locked { display: inline-flex; color: inherit; opacity: 0.7; }
 
 .app-nav a.nav-sub .nav-sub-locked svg { width: 13px; height: 13px; }
 
 .nav-sub-tool.nav-sub-lock { cursor: default; opacity: 0.7; }
 
-.nav-sub-tool.nav-sub-lock:hover { background: none; color: var(--muted); }
+.nav-sub-tool.nav-sub-lock:hover { background: none; color: rgba(255, 255, 255, 0.75); }
 
-.app-nav a.nav-sub.is-active { background: #fff; color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); font-weight: 700; }
+/* The one the page is on: the same wash and lime bar as a section. */
+.app-nav a.nav-sub.is-active { background: rgba(0, 166, 159, 0.22); color: #fff; position: relative; font-weight: 700; border-radius: 0 10px 10px 0; overflow: hidden; }
 
-.app-nav a.nav-sub.is-working { background: rgba(255, 255, 255, 0.55); color: var(--brand); box-shadow: inset 3px 0 0 var(--amber); font-weight: 600; }
+.app-nav a.nav-sub.is-working { background: rgba(255, 255, 255, 0.1); color: #fff; position: relative; font-weight: 600; border-radius: 0 10px 10px 0; overflow: hidden; }
 
 /* The day under the nav: the small month to pick a day from, then the day
    as a card - its name, its date, the plan when the day is not regular, and
@@ -241,15 +259,15 @@ button { font: inherit; }
 
 .day-card .plan-card.dt-regular { background: #fff; border-color: var(--line); border-left-color: var(--accent); }
 
-/* In the rail's width the blocks go one to a line, the icon, the name and
-   the hours at the right, so the hours never break. */
+/* In the rail's width the blocks go one to a line, the icon, then the
+   name with the hours under it. */
 .day-card .blocks { grid-template-columns: minmax(0, 1fr); gap: 6px; }
 
 .day-card .block { background: var(--page); padding: 6px 12px 6px 8px; border-radius: 12px; }
 
 .day-card .plan-card:not(.dt-regular) .block { background: rgba(255, 255, 255, 0.7); }
 
-.day-card .block-body { flex-direction: row; align-items: baseline; justify-content: space-between; }
+.day-card .block-body { flex-direction: column; align-items: flex-start; }
 
 .day-card .block-hours { margin-top: 0; font-size: 13px; }
 
@@ -461,19 +479,20 @@ button { font: inherit; }
   cursor: pointer;
 }
 
-.filter-chip:hover { border-color: var(--accent); }
+.filter-chip:hover { border-color: var(--green-2); }
 
 /* A chip that is on is filled teal with white words; one that is off is a
    plain white outline with muted words, so the two read apart at a glance. */
-.filter-chip.is-on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+/* A chip that is on is the buttons' green, with dark words. */
+.filter-chip.is-on { background: var(--green-2); border-color: var(--green-2); color: var(--teal-dark); font-weight: 600; }
 
-.filter-chip.is-on:hover { background: var(--brand); border-color: var(--brand); }
+.filter-chip.is-on:hover { background: var(--green-3); border-color: var(--green-3); }
 
 .filter-chip:not(.is-on) { color: var(--muted); }
 
 .filter-chip.has-color::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--room); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12); }
 
-.filter-chip.is-on.has-color::before { box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9); }
+.filter-chip.is-on.has-color::before { box-shadow: 0 0 0 2px rgba(8, 43, 46, 0.35); }
 
 .filter-chip:not(.is-on).has-color::before { opacity: 0.55; }
 
@@ -720,17 +739,29 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 /* The day plan: a card per day type in force, with the four blocks. */
 .plan-cards { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
 
-.plan-card { background: var(--card); border: 1px solid var(--line); border-left: 6px solid var(--accent); border-radius: 12px; padding: 10px 14px 12px; }
+/* A day's card: square at its left, where a bar in the day type's colour
+   runs its full height, and curved at the right. */
+.plan-card { position: relative; overflow: hidden; background: var(--card); border: 1px solid var(--line); border-left: 0; border-radius: 0 12px 12px 0; padding: 10px 14px 12px 18px; }
 
-.plan-card.dt-no-school { border-left-color: var(--no-school); background: var(--no-school-wash); }
+.plan-card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 6px; background: var(--accent); }
 
-.plan-card.dt-early { border-left-color: var(--early); background: var(--early-wash); }
+.plan-card.dt-no-school { background: var(--no-school-wash); }
 
-.plan-card.dt-no-aftercare { border-left-color: var(--no-aftercare); background: var(--no-aftercare-wash); }
+.plan-card.dt-no-school::before { background: var(--no-school); }
 
-.plan-card.dt-other { border-left-color: var(--other); background: var(--other-wash); }
+.plan-card.dt-early { background: var(--early-wash); }
 
-.plan-card-none { border-left-color: var(--line); }
+.plan-card.dt-early::before { background: var(--early); }
+
+.plan-card.dt-no-aftercare { background: var(--no-aftercare-wash); }
+
+.plan-card.dt-no-aftercare::before { background: var(--no-aftercare); }
+
+.plan-card.dt-other { background: var(--other-wash); }
+
+.plan-card.dt-other::before { background: var(--other); }
+
+.plan-card-none::before { background: var(--line); }
 
 .plan-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
 
@@ -855,21 +886,26 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 .button {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 9px 16px;
+  gap: 10px;
+  padding: 11px 20px;
   border-radius: 8px;
-  border: 1px solid var(--brand);
-  background: var(--brand);
-  color: #fff;
+  /* Every button carries the same 1px border, so a filled one and an outlined
+     one beside it stand the same height. */
+  border: 1px solid var(--green-2);
+  background: var(--green-2);
+  color: var(--teal-dark);
+  font: inherit;
+  font-size: 15px;
   font-weight: 600;
+  line-height: 1.3;
   cursor: pointer;
   white-space: nowrap;
   text-decoration: none;
 }
 
-.button:hover { background: var(--brand-dark); border-color: var(--brand-dark); }
+.button:hover { background: var(--green-3); border-color: var(--green-3); }
 
-.button svg { width: 16px; height: 16px; }
+.button svg { width: 18px; height: 18px; flex-shrink: 0; }
 
 .button-secondary { background: #fff; color: var(--ink); border: 1px solid var(--line); }
 
@@ -1138,7 +1174,7 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 .day-peek-empty { font-size: 13px; color: var(--muted); }
 
 /* The plan in the card: the rail's, at the card's width. */
-.day-peek .plan-card { padding: 8px 12px 10px; }
+.day-peek .plan-card { padding: 8px 12px 10px 16px; }
 
 .day-peek .plan-type { font-size: 15px; }
 
@@ -1154,7 +1190,7 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .day-peek .block-icon svg { width: 14px; height: 14px; }
 
-.day-peek .block-body { flex-direction: row; align-items: baseline; justify-content: space-between; }
+.day-peek .block-body { flex-direction: column; align-items: flex-start; }
 
 .day-peek .block-hours { font-size: 12.5px; }
 
@@ -1706,4 +1742,35 @@ body.is-admin main { padding: 0; }
   .month-mark { font-size: 9px; padding: 1px 3px; }
   .blocks { grid-template-columns: repeat(2, 1fr); }
   .pager-label { font-size: 17px; }
+}
+
+/* The lime bar at a selected item's left, straight, clear of the corners. */
+.app-nav a.is-active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 5px;
+  background: var(--lime);
+}
+
+.app-nav a.nav-sub.is-active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 5px;
+  background: var(--lime);
+}
+
+.app-nav a.nav-sub.is-working::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 5px;
+  background: var(--gold-1);
 }

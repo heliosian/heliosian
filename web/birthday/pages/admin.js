@@ -1,7 +1,6 @@
 import {state, me, isSystemAdmin, settings} from '../state.js';
 import {el, svg, button} from '../dom.js';
 import {createPersonPicker} from '/picker.js';
-import {appearanceCard} from '/appearance.js';
 import {setTitle} from '../chrome.js';
 import {openSettings} from '../edit.js';
 
@@ -230,7 +229,6 @@ function invitesCard() {
 const sections = [
   {title: 'Display', tabs: [
     {key: 'settings', label: 'Settings', card: settingsCard},
-    {key: 'appearance', label: 'Appearance', superOnly: true, card: () => appearanceCard({theme: settings().theme, url: '/api/birthday/theme', defaults: {sidebar: '#eef5f4', sidebarEnd: '#c5dfdc', sidebarText: '#0e4d54', page: '#f4f8f8', pageEnd: '#f4f8f8'}, pictures: {logo: '/brand/logo-lockup-vertical.png', sidebarImage: ''}})},
   ]},
   {title: 'Editing & Control', tabs: [
     {key: 'team', label: 'Team', card: teamCard},

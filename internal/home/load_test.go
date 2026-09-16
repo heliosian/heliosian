@@ -3,8 +3,6 @@ package home
 import (
 	"strings"
 	"testing"
-
-	"heliosian/internal/theme"
 )
 
 type noImages struct{}
@@ -53,27 +51,5 @@ func TestLinksCannotNameTheEventsSection(t *testing.T) {
 	}
 	if _, err := BuildModel(tables, noImages{}); err == nil || !strings.Contains(err.Error(), "events") {
 		t.Errorf("a link under the events section built: %v", err)
-	}
-}
-
-// The Settings tab holds the theme and nothing else: an unknown key
-// refuses the load; withSetting changes a row in place, or adds one.
-func TestThemeReadsTheSettingsTab(t *testing.T) {
-	setting := func(key, value string) map[string]string {
-		return map[string]string{"Key": key, "Value": value}
-	}
-	m, err := BuildModel(&Tables{Settings: []map[string]string{setting(theme.SidebarKey, "#1A2B3C"), setting(theme.PageKey, "")}}, noImages{})
-	if err != nil {
-		t.Fatalf("build: %v", err)
-	}
-	if m.Theme != (theme.Theme{Sidebar: "#1a2b3c"}) {
-		t.Errorf("theme = %+v", m.Theme)
-	}
-	if _, err := BuildModel(&Tables{Settings: []map[string]string{setting("Rail Color", "#1a2b3c")}}, noImages{}); err == nil {
-		t.Errorf("an unknown key built")
-	}
-	tables := (&Tables{Settings: []map[string]string{setting(theme.PageKey, "#ffffff")}}).withSetting(theme.PageKey, "#eeeeee").withSetting(theme.SidebarKey, "#000000")
-	if len(tables.Settings) != 2 || tables.Settings[0]["Value"] != "#eeeeee" || tables.Settings[1]["Key"] != theme.SidebarKey {
-		t.Errorf("settings = %v", tables.Settings)
 	}
 }

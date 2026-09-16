@@ -13,7 +13,7 @@ The app's data lives in one Google Sheet, `Birthdays`, in the community shared d
 - `Notes` — Email, Note, Added By, Added.
 - `Charities` — Name, Donation Link, About, EIN, Allowed, Why Not Allowed, Added On.
 - `Newsletter Dates` — Date.
-- `Settings` — Key, Value: `Default Charity`, `Year Start`, `Email Subject`, `Email Body`, `No Newsletter Note`, all required; and the seven theme keys every app shares (`Sidebar Color`, `Sidebar Color 2`, `Sidebar Text Color`, `Page Color`, `Page Color 2`, `Logo`, `Sidebar Image` - `internal/theme`; see `docs/home/data.md`), written by the Appearance panel of Admin Tools, appended when the tab lacks them.
+- `Settings` — Key, Value: `Default Charity`, `Year Start`, `Email Subject`, `Email Body`, `No Newsletter Note`, all required. Rows under the old theme keys (`Sidebar Color` and the like, from the Appearance panel that existed on 2026-09-16) are passed over if the tab still holds them.
 - `Admins` — Email.
 - `Reminders` — Email, Year, Kind, Sent On, Sent To. One row per reminder the app has sent (`ask`, `late`, `donation`), written by the app alone.
 - `Team` — Email, Role. One row per person per role: `Volunteer` (offered when a birthday is assigned) or `Comms Team` (carries the donations into the newsletter). Anyone, in the directory or not, by address.

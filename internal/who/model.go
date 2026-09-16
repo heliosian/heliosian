@@ -1,7 +1,5 @@
 package who
 
-import "heliosian/internal/theme"
-
 type OptStatus string
 
 const (
@@ -157,9 +155,7 @@ type Model struct {
 	Grades      []Grade             `json:"grades"`
 	RoomParents map[string][]string `json:"roomParents"`
 	Departments []string            `json:"departments"`
-	// Theme is the admin's colouring of the rail and the page.
-	Theme   theme.Theme `json:"theme"`
-	byEmail map[string]int
+	byEmail     map[string]int
 	// familyKeysByEmail is internal only: the client derives the same index from
 	// Families' own member lists, so serializing it would just duplicate them.
 	familyKeysByEmail map[string][]string

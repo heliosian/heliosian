@@ -164,7 +164,7 @@
 /* Each badge sits in a wrap the card it drops down hangs off: the count's
    card is Who?'s new-year checklist there and a line across to it elsewhere,
    the triangle's says what the mismatch is. Both open on hover (alertMenu
-   in toolbar.js) and are the pink card of the directory's own checklist. */
+   in toolbar.js) as a pale yellow card with a gold bar. */
 .topbar-alert-wrap {
   position: relative;
   display: flex;
@@ -180,36 +180,68 @@
 }
 
 .alert-card {
-  padding: 14px 20px 16px;
-  background: #ffe5e1;
-  border: 1px solid #df604a;
-  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px 14px 18px;
+  position: relative;
+  overflow: hidden;
+  background: #fef7b7;
+  border-radius: 0 12px 12px 0;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
   color: var(--ink);
-}
-
-.alert-card-title {
-  margin-bottom: 6px;
-  font-size: 15px;
-  font-weight: 700;
-  color: #df604a;
-}
-
-.alert-card-text {
-  margin: 0 0 10px;
-  font-size: 14px;
-  line-height: 1.4;
-}
-
-.alert-card-link {
-  display: inline-block;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--brand);
   text-decoration: none;
 }
 
-.alert-card-link:hover { text-decoration: underline; }
+.alert-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  background: #f1b940;
+}
+
+.alert-card:hover { background: #fdf3a4; }
+
+.alert-card-disc {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: #fbe98f;
+  color: #cc8f0b;
+}
+
+.alert-card-disc svg { width: 22px; height: 22px; }
+
+.alert-card-words { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+
+.alert-card-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #0f4e54;
+}
+
+.alert-card-text {
+  font-size: 13.5px;
+  line-height: 1.4;
+  color: var(--muted, #647071);
+}
+
+.alert-card-chevron {
+  width: 9px;
+  height: 9px;
+  flex-shrink: 0;
+  margin-right: 4px;
+  border-right: 2px solid #0f4e54;
+  border-bottom: 2px solid #0f4e54;
+  transform: rotate(-45deg);
+}
 
 /* Spoof Mode's switch, before the avatar, for super admins alone (initSpoof
    in toolbar.js): an eye in the brand teal, and while viewing as someone a

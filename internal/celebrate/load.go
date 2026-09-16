@@ -5,7 +5,6 @@ package celebrate
 
 import (
 	"fmt"
-	"heliosian/internal/theme"
 	"maps"
 	"math"
 	"regexp"
@@ -76,6 +75,11 @@ const (
 )
 
 var settingKeys = []string{PartiesIntroKey, TicketNoteKey, HostingOpenKey}
+
+// legacyThemeKeys are rows the Appearance panel wrote while the apps could
+// be recoloured (2026-09-16); the tab may still carry them, and they are
+// passed over.
+var legacyThemeKeys = []string{"Sidebar Color", "Sidebar Color 2", "Sidebar Text Color", "Page Color", "Page Color 2", "Logo", "Sidebar Image"}
 
 var (
 	CelebrationColumns = []string{"Code", "Title", "Subtitle", "Start", "End", "Location", "Address", "Description", "Image", "Button Text", "Button URL", "Current", "Banner"}
@@ -261,9 +265,6 @@ type Settings struct {
 	PartiesIntro string `json:"partiesIntro"`
 	TicketNote   string `json:"ticketNote"`
 	HostingOpen  bool   `json:"hostingOpen"`
-	// Theme is the admin's colouring of the rail and the page, kept in the
-	// same tab under internal/theme's keys.
-	Theme theme.Theme `json:"theme"`
 }
 
 // Model is the sheet organized: celebrations and parties in row order, each
@@ -712,7 +713,7 @@ func parseSettings(rows []map[string]string) (Settings, error) {
 	values := map[string]string{}
 	for _, row := range rows {
 		key := row["Key"]
-		if theme.IsKey(key) {
+		if slices.Contains(legacyThemeKeys, key) {
 			continue
 		}
 		if !slices.Contains(settingKeys, key) {
@@ -727,11 +728,7 @@ func parseSettings(rows []map[string]string) (Settings, error) {
 	if err != nil {
 		return Settings{}, fmt.Errorf("%s %s: %w", settingsTab, HostingOpenKey, err)
 	}
-	t, err := theme.FromRows(rows)
-	if err != nil {
-		return Settings{}, fmt.Errorf("%s: %w", settingsTab, err)
-	}
-	return Settings{PartiesIntro: values[PartiesIntroKey], TicketNote: values[TicketNoteKey], HostingOpen: hosting, Theme: t}, nil
+	return Settings{PartiesIntro: values[PartiesIntroKey], TicketNote: values[TicketNoteKey], HostingOpen: hosting}, nil
 }
 
 func imageNames(rows ...[]map[string]string) []string {

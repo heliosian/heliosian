@@ -139,12 +139,20 @@ export async function copyText(text, message) {
 // name linking to their page in Who? - plain for someone outside the
 // directory, who has none - the word that places them, and a note under
 // those when there is one - on a member, why they are on the group.
+// A row with nothing else on it is the link to the person in Who?, whole
+// (not for someone outside); one carrying a control keeps the link on the
+// name alone.
 export function personRow(person, extra, note) {
-  const row = el('div', 'person-row');
+  const whole = !extra && !person.outside;
+  const row = el(whole ? 'a' : 'div', 'person-row' + (whole ? ' person-row-link' : ''));
+  if (whole) {
+    row.href = whoLink(person.email);
+    row.title = `${person.name} in Helios Who?`;
+  }
   row.append(thumb(person, 'small'));
   const body = el('div', 'person-body');
-  const name = el(person.outside ? 'span' : 'a', 'person-name', person.name);
-  if (!person.outside) {
+  const name = el(extra && !person.outside ? 'a' : 'span', 'person-name', person.name);
+  if (extra && !person.outside) {
     name.href = whoLink(person.email);
   }
   body.append(name);

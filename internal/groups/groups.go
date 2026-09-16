@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"heliosian/internal/data"
-	"heliosian/internal/theme"
 )
 
 const (
@@ -20,7 +19,6 @@ const (
 	rulesTab     = "Rules"
 	additionsTab = "Additions"
 	adminsTab    = "Admins"
-	settingsTab  = "Settings"
 	changeLogTab = "Change Log"
 
 	// Domain is where every group lives: a group named parents-k is
@@ -44,7 +42,6 @@ var (
 	RuleColumns      = []string{"Group", "Kind", "Roles", "Search", "Classrooms", "Grades", "Tags", "Family", "Owner"}
 	AdditionColumns  = []string{"Group", "Email", "Name"}
 	AdminColumns     = []string{"Email"}
-	SettingColumns   = []string{"Key", "Value"}
 	ChangeLogColumns = []string{"Timestamp", "Actor", "Action", "Group", "Detail"}
 
 	// Roles are the role facet's values, and Relations the Family facet's:
@@ -123,7 +120,6 @@ func (g Group) Manages(email string) bool {
 // Model is the sheet organized: every group by name, in name order.
 type Model struct {
 	Groups []Group
-	Theme  theme.Theme
 	byName map[string]int
 }
 
@@ -142,7 +138,6 @@ type Tables struct {
 	Rules     []map[string]string
 	Additions []map[string]string
 	Admins    []map[string]string
-	Settings  []map[string]string
 }
 
 func ReadTables(source data.Source) (*Tables, error) {
@@ -156,9 +151,8 @@ func ReadTables(source data.Source) (*Tables, error) {
 	rules := &table{name: rulesTab, want: RuleColumns}
 	additions := &table{name: additionsTab, want: AdditionColumns}
 	admins := &table{name: adminsTab, want: AdminColumns}
-	settings := &table{name: settingsTab, want: SettingColumns}
 	changeLog := &table{name: changeLogTab, want: ChangeLogColumns}
-	read := []*table{groups, managers, rules, additions, admins, settings}
+	read := []*table{groups, managers, rules, additions, admins}
 	names := []string{}
 	for _, t := range read {
 		names = append(names, t.name)
@@ -173,7 +167,7 @@ func ReadTables(source data.Source) (*Tables, error) {
 			return nil, err
 		}
 	}
-	return &Tables{Groups: groups.rows, Managers: managers.rows, Rules: rules.rows, Additions: additions.rows, Admins: admins.rows, Settings: settings.rows}, nil
+	return &Tables{Groups: groups.rows, Managers: managers.rows, Rules: rules.rows, Additions: additions.rows, Admins: admins.rows}, nil
 }
 
 // SplitList reads a list cell: comma-separated, trimmed, without repeats.
@@ -423,15 +417,6 @@ func BuildModel(tables *Tables) (*Model, error) {
 	for i, g := range model.Groups {
 		model.byName[g.Name] = i
 	}
-	for _, row := range tables.Settings {
-		if key := strings.TrimSpace(row["Key"]); !theme.IsKey(key) {
-			return nil, fmt.Errorf("%s has unknown key %q", settingsTab, key)
-		}
-	}
-	var err error
-	if model.Theme, err = theme.FromRows(tables.Settings); err != nil {
-		return nil, fmt.Errorf("%s: %w", settingsTab, err)
-	}
 	return model, nil
 }
 
@@ -504,20 +489,5 @@ func (t *Tables) withAdmins(emails []string) *Tables {
 	for _, email := range emails {
 		out.Admins = append(out.Admins, map[string]string{"Email": email})
 	}
-	return &out
-}
-
-// withSetting is Tables with one Settings row set, for the model to be
-// rebuilt and checked before the row is written.
-func (t *Tables) withSetting(key, value string) *Tables {
-	out := *t
-	out.Settings = cloneRows(t.Settings)
-	for _, row := range out.Settings {
-		if strings.EqualFold(strings.TrimSpace(row["Key"]), key) {
-			row["Value"] = value
-			return &out
-		}
-	}
-	out.Settings = append(out.Settings, map[string]string{"Key": key, "Value": value})
 	return &out
 }

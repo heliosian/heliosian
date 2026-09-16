@@ -1,5 +1,4 @@
 import {state, applyModel, applyConfig} from './state.js';
-import {applyTheme} from '/theme.js';
 import {segments, shuffled, tabParam} from './dom.js';
 import {loadTagRelations} from './storage.js';
 import {familyEntries} from './families.js';
@@ -94,7 +93,6 @@ export async function load() {
   }
   applyConfig(await configRes.json());
   applyModel(await res.json());
-  applyTheme(state.model.theme);
   state.everyoneOrder = shuffled(state.model.people);
   state.familyOrder = shuffled(familyEntries());
   renderUserChrome();

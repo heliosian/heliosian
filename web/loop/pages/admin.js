@@ -1,6 +1,5 @@
 import {state, me, isAdmin} from '../state.js';
 import {el, svg, button} from '../dom.js';
-import {appearanceCard} from '/appearance.js';
 import {setTitle} from '../chrome.js';
 
 function denied() {
@@ -81,9 +80,6 @@ function adminsCard() {
 }
 
 const sections = [
-  {title: 'Display', tabs: [
-    {key: 'appearance', label: 'Appearance', superOnly: true, card: () => appearanceCard({theme: state.model.theme, url: '/api/groups/theme', defaults: {sidebar: '#eef1f7', sidebarEnd: '#d5dde9', sidebarText: '#2f4f7a', page: '#f4f6f9', pageEnd: '#f4f6f9'}, pictures: {logo: '/brand/logo-lockup.png', sidebarImage: ''}})},
-  ]},
   {title: 'Editing & Control', tabs: [
     {key: 'admins', label: 'Admins', card: adminsCard},
   ]},

@@ -114,14 +114,12 @@ var layouts = map[string][]tab{
 		{"Photos", []string{"Email", "Photo Name"}},
 		{"Admins", []string{"Email"}},
 		{"Geocode", []string{"Address", "Lat", "Lng"}},
-		{"Settings", []string{"Key", "Value"}},
 	},
 	"Apps": {
 		{"Categories", []string{"Title", "Emoji", "Style", "Max"}},
 		{"Links", []string{"Title", "Description", "URL", "Image", "Category", "Visible", "Added By", "Added"}},
 		{"Admins", []string{"Email"}},
 		{"Visibility", []string{"App", "Visibility", "Emails", "Tagline", "Name", "Order"}},
-		{"Settings", []string{"Key", "Value"}},
 		{"Change Log", []string{"Timestamp", "Actor", "Action", "Kind", "Title", "Description", "URL", "Image", "Category", "Visible", "Style"}},
 	},
 	"Events": {
@@ -173,7 +171,6 @@ var layouts = map[string][]tab{
 		{calendar.FeedsTab, calendar.FeedColumns},
 		{calendar.SettingsTab, calendar.SettingColumns},
 		{calendar.RSVPsTab, calendar.RSVPColumns},
-		{calendar.ThemeTab, calendar.ThemeColumns},
 		{calendar.ChangeLogTab, calendar.ChangeLogColumns},
 	},
 	"Config": {
@@ -188,7 +185,6 @@ var layouts = map[string][]tab{
 		{"Rules", groups.RuleColumns},
 		{"Additions", groups.AdditionColumns},
 		{"Admins", groups.AdminColumns},
-		{"Settings", groups.SettingColumns},
 		{"Change Log", groups.ChangeLogColumns},
 	},
 }

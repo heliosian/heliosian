@@ -6,7 +6,6 @@ import {overridesPanels, initOverrides} from './overrides.js';
 import {renderAddedPeopleTable, renderHiddenPeopleTable, hidePersonPicker, initPeople} from './people.js';
 import {initSettings} from './settings.js';
 import {initSidebar} from './sidebar.js';
-import {appearanceCard} from '/appearance.js';
 
 // The settings, colors, and super admin list live in the platform config, not the
 // directory: they come from /api/config, and the super admin list only from its own
@@ -45,16 +44,6 @@ function render() {
   }
 
   document.querySelector('#staff-color').value = state.config.staffColor;
-
-  // Appearance - what colours the directory - is the platform's super
-  // admins' alone; a regular admin's page keeps the tab and panel hidden.
-  document.querySelector('[data-panel="appearance"]').hidden = !state.isSuperAdmin;
-  document.querySelector('#panel-appearance').replaceChildren(appearanceCard({
-    theme: state.theme, url: '/api/admin/theme',
-    defaults: {sidebar: '#244d53', sidebarEnd: '#244d53', sidebarText: '#ffffff', page: '#ffffff', pageEnd: '#ffffff'},
-    pageWords: 'The page behind the people',
-    pictures: {logo: '/brand/logo-wordmark.png', sidebarImage: '/toolbar_background.png'}, darkRail: true,
-  }));
 
   renderImages('#classrooms', state.classrooms, 'classroom', state.config.classroomColors);
   renderImages('#grades', state.grades, 'grade', state.config.gradeColors);

@@ -14,7 +14,6 @@ import (
 	"heliosian/internal/blob"
 	"heliosian/internal/data"
 	"heliosian/internal/serve"
-	"heliosian/internal/theme"
 	"heliosian/internal/who"
 )
 
@@ -67,11 +66,6 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	mux.HandleFunc("POST /api/groups/preview", a.preview)
 	mux.HandleFunc("POST /api/groups/group", a.saveGroup)
 	mux.HandleFunc("DELETE /api/groups/group", a.deleteGroup)
-	mux.HandleFunc("POST /api/groups/theme", a.setTheme)
-	mux.HandleFunc("POST /api/groups/theme/picture", theme.Upload(store, func(w http.ResponseWriter, r *http.Request) bool {
-		_, ok := a.requireSuperAdmin(w, r)
-		return ok
-	}))
 	mux.HandleFunc("GET /api/admin/state", a.adminState)
 	mux.HandleFunc("POST /api/admin/admins", a.setAdmins)
 }
@@ -357,14 +351,12 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 		Options options     `json:"options"`
 		People  []Person    `json:"people"`
 		Alerts  alerts      `json:"alerts"`
-		Theme   theme.Theme `json:"theme"`
 	}{
 		User:    user{Email: email, Name: me.Name, Initial: strings.ToUpper(me.Name[:1]), PhotoURL: me.PhotoURL, IsAdmin: admin, IsSuperAdmin: a.cache.IsSuperAdmin(email)},
 		Domain:  Domain,
 		Groups:  []groupView{},
 		Options: a.options(email),
 		People:  a.directory.People(),
-		Theme:   a.cache.Model().Theme,
 	}
 	for _, g := range a.cache.Model().Groups {
 		if admin || g.Manages(email) {
@@ -647,12 +639,11 @@ func (a app) adminState(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	view := struct {
-		Email        string      `json:"email"`
-		HasStore     bool        `json:"hasStore"`
-		Admins       []string    `json:"admins"`
-		Theme        theme.Theme `json:"theme"`
-		IsSuperAdmin bool        `json:"isSuperAdmin"`
-	}{Email: email, HasStore: a.store != nil, Admins: a.cache.Admins(a.superAdmins()), Theme: a.cache.Model().Theme, IsSuperAdmin: a.cache.IsSuperAdmin(email)}
+		Email        string   `json:"email"`
+		HasStore     bool     `json:"hasStore"`
+		Admins       []string `json:"admins"`
+		IsSuperAdmin bool     `json:"isSuperAdmin"`
+	}{Email: email, HasStore: a.store != nil, Admins: a.cache.Admins(a.superAdmins()), IsSuperAdmin: a.cache.IsSuperAdmin(email)}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
 		slog.ErrorContext(r.Context(), "encode groups admin state", "error", err)
@@ -702,40 +693,5 @@ func (a app) setAdmins(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.InfoContext(r.Context(), "groups: set the admin list", "admins", admins)
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// setTheme takes the app's colours at once and writes every row of the
-// Settings tab, for the platform's super admins alone.
-func (a app) setTheme(w http.ResponseWriter, r *http.Request) {
-	_, ok := a.requireSuperAdmin(w, r)
-	if !ok {
-		return
-	}
-	var body theme.Theme
-	if !decode(w, r, &body) {
-		return
-	}
-	t, err := theme.Of(body.Values())
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	values := t.Values()
-	tables := a.cache.Tables()
-	for _, key := range theme.Keys {
-		tables = tables.withSetting(key, values[key])
-	}
-	if !a.commit(r, w, tables, func() error {
-		for _, key := range theme.Keys {
-			if err := a.writer.Upsert(appName, settingsTab, "Key", key, map[string]string{"Value": values[key]}); err != nil {
-				return err
-			}
-		}
-		return nil
-	}) {
-		return
-	}
-	slog.InfoContext(r.Context(), "groups: set the theme", "theme", t)
 	w.WriteHeader(http.StatusNoContent)
 }

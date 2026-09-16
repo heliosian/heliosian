@@ -92,7 +92,7 @@ func main() {
 	// Headless Chrome has no pointer to rest anywhere, so the hover is the
 	// events a real one would raise on the element, in order.
 	if *hover != "" {
-		script := fmt.Sprintf(`(() => { const e = document.querySelector(%q); for (const t of ['mouseover', 'mouseenter']) { e.dispatchEvent(new MouseEvent(t, {bubbles: t === 'mouseover'})); } return true; })()`, *hover)
+		script := fmt.Sprintf(`(() => { const e = document.querySelector(%q); for (const t of ['mouseover', 'mouseenter', 'pointerover', 'pointerenter']) { e.dispatchEvent(new (t.startsWith('pointer') ? PointerEvent : MouseEvent)(t, {bubbles: t.endsWith('over'), pointerType: 'mouse'})); } return true; })()`, *hover)
 		actions = append(actions, chromedp.WaitVisible(*hover, chromedp.ByQuery), chromedp.Evaluate(script, nil), chromedp.Sleep(300*time.Millisecond))
 	}
 	actions = append(actions, chromedp.Sleep(*wait/2))

@@ -4,7 +4,6 @@ package events
 
 import (
 	"fmt"
-	"heliosian/internal/theme"
 	"maps"
 	"math"
 	"net/url"
@@ -61,6 +60,11 @@ const (
 )
 
 var settingKeys = []string{ExpenseFormKey, IntroKey}
+
+// legacyThemeKeys are rows the Appearance panel wrote while the apps could
+// be recoloured (2026-09-16); the tab may still carry them, and they are
+// passed over.
+var legacyThemeKeys = []string{"Sidebar Color", "Sidebar Color 2", "Sidebar Text Color", "Page Color", "Page Color 2", "Logo", "Sidebar Image"}
 
 var (
 	CategoryColumns  = []string{"Category ID", "Event ID", "Title", "Description", "Image", "Allow Adding", "Show On Main Page"}
@@ -269,9 +273,6 @@ func uncategorized() *Category {
 type Settings struct {
 	ExpenseFormURL string `json:"expenseFormUrl"`
 	Intro          string `json:"intro"`
-	// Theme is the admin's colouring of the rail and the page, kept in the
-	// same tab under internal/theme's keys.
-	Theme theme.Theme `json:"theme"`
 }
 
 // A Redirect keeps an old address working after it changed: someone holding
@@ -715,7 +716,7 @@ func parseSettings(rows []map[string]string) (Settings, error) {
 		key := row["Key"]
 		// notify:<email> rows are an admin's mail choices (mail.go), read
 		// where they are used rather than here.
-		if strings.HasPrefix(key, notifyPrefix) || theme.IsKey(key) {
+		if strings.HasPrefix(key, notifyPrefix) || slices.Contains(legacyThemeKeys, key) {
 			continue
 		}
 		if !slices.Contains(settingKeys, key) {
@@ -734,11 +735,7 @@ func parseSettings(rows []map[string]string) (Settings, error) {
 	if !strings.HasPrefix(values[ExpenseFormKey], "https://") {
 		return Settings{}, fmt.Errorf("setting %q must be a full https:// url", ExpenseFormKey)
 	}
-	t, err := theme.FromRows(rows)
-	if err != nil {
-		return Settings{}, fmt.Errorf("%s: %w", settingsTab, err)
-	}
-	return Settings{ExpenseFormURL: values[ExpenseFormKey], Intro: values[IntroKey], Theme: t}, nil
+	return Settings{ExpenseFormURL: values[ExpenseFormKey], Intro: values[IntroKey]}, nil
 }
 
 // BuildModel validates every row and refuses the whole set on the first problem,

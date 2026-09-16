@@ -1207,9 +1207,6 @@ func Production(blobCache string) (*http.Server, *who.Queue) {
 	blob.RegisterCelebrate(core.CelebrateMux, store)
 	blob.RegisterCalendar(core.CalendarMux, store)
 	blob.RegisterGroups(core.GroupsMux, store)
-	for _, m := range []*http.ServeMux{core.Mux, core.HomeMux, core.EventsMux, core.BirthdayMux, core.CelebrateMux, core.CalendarMux, core.GroupsMux} {
-		blob.RegisterLogos(m, store)
-	}
 	who.RegisterUpload(core.Mux, core.Cache, sheet, store, core.Queue)
 	client := clientID()
 	// Every app's sign-in shares the key, so one session - and one spoof -

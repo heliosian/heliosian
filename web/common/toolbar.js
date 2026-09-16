@@ -471,18 +471,22 @@ function clampMenu(wrap, menu) {
   menu.style.right = 'auto';
 }
 
-// The card an alert badge drops down: the badge's message as a title in the
-// alert red, a line more when there is one, and the link to what resolves
-// it - the same pink card the directory's own new-year checklist wears.
+// The card an alert badge drops down: a pale yellow card with a gold bar
+// at its left and a warning mark in a gold disc, the badge's message as
+// its title, a line more when there is one, and a chevron at its end - the
+// whole card the link to what resolves it, linkText its title.
 export function alertCard(title, text, linkText, href) {
-  const card = el('div', 'alert-card');
-  card.append(el('div', 'alert-card-title', title));
+  const card = el('a', 'alert-card');
+  card.href = href;
+  card.title = linkText;
+  const disc = el('span', 'alert-card-disc');
+  disc.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>';
+  const words = el('span', 'alert-card-words');
+  words.append(el('span', 'alert-card-title', title));
   if (text) {
-    card.append(el('p', 'alert-card-text', text));
+    words.append(el('span', 'alert-card-text', text));
   }
-  const link = el('a', 'alert-card-link', linkText);
-  link.href = href;
-  card.append(link);
+  card.append(disc, words, el('span', 'alert-card-chevron'));
   return card;
 }
 

@@ -3,7 +3,6 @@ package who
 import (
 	"encoding/json"
 	"errors"
-	"heliosian/internal/theme"
 	"io"
 	"log/slog"
 	"maps"
@@ -35,11 +34,6 @@ func RegisterAdmin(mux *http.ServeMux, cache *Cache, writer data.Writer, queue *
 	mux.HandleFunc("GET /admin", a.page)
 	mux.HandleFunc("GET /api/admin/state", a.state)
 	mux.HandleFunc("POST /api/admin/admins", a.setAdmins)
-	mux.HandleFunc("POST /api/admin/theme", a.setTheme)
-	mux.HandleFunc("POST /api/admin/theme/picture", theme.Upload(cache.store, func(w http.ResponseWriter, r *http.Request) bool {
-		_, ok := a.requireAdmin(w, r)
-		return ok
-	}))
 	mux.HandleFunc("POST /api/admin/images", a.setImage)
 	mux.HandleFunc("POST /api/admin/super-edit", a.setSuperEdit)
 	mux.HandleFunc("POST /api/admin/person-fields", a.setPersonFields)
@@ -289,12 +283,10 @@ func (a admin) state(w http.ResponseWriter, r *http.Request) {
 		People       []personOption `json:"people"`
 		HiddenEmails []string       `json:"hiddenEmails"`
 		IsSuperAdmin bool           `json:"isSuperAdmin"`
-		// Theme is the page's colouring, for the Appearance panel.
-		Theme theme.Theme `json:"theme"`
 	}{
 		Email: email, HasStore: a.cache.HasStore(), Admins: a.cache.Admins(),
 		Classrooms: classrooms, Grades: grades, Bands: bands, Crews: crews, Departments: model.Departments,
-		People: people, HiddenEmails: model.hiddenEmails, Theme: model.Theme,
+		People: people, HiddenEmails: model.hiddenEmails,
 	}
 	// A regular admin's client learns of the super admin tier only through this flag,
 	// and the list itself only from the config API, which answers a regular admin
@@ -384,52 +376,6 @@ func listDiff(before, after []string) (added, removed []string) {
 		}
 	}
 	return added, removed
-}
-
-// setTheme takes the page's colours at once (internal/theme), folds them
-// into the cached tables, and once the rebuild accepts them writes their
-// rows of the Settings tab - adding any the tab has not got yet.
-func (a admin) setTheme(w http.ResponseWriter, r *http.Request) {
-	actor, ok := a.requireAdmin(w, r)
-	if !ok {
-		return
-	}
-	// What colours the directory is the platform's tier's alone.
-	if !a.cache.IsSuperAdmin(actor) {
-		http.Error(w, "super admin access required", http.StatusForbidden)
-		return
-	}
-	var body theme.Theme
-	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<10)).Decode(&body); err != nil {
-		http.Error(w, "bad request body", http.StatusBadRequest)
-		return
-	}
-	t, err := theme.Of(body.Values())
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	values := t.Values()
-	applied := make(chan error, 1)
-	a.queue.Add(func() {
-		err := a.cache.applyTheme(values)
-		applied <- err
-		if err != nil {
-			return
-		}
-		for _, key := range theme.Keys {
-			if err := a.writer.Upsert(appName, settingsTable, "Key", key, map[string]string{"Value": values[key]}); err != nil {
-				slog.ErrorContext(r.Context(), "set theme", "key", key, "error", err)
-				return
-			}
-		}
-	})
-	if err := <-applied; err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	slog.InfoContext(r.Context(), "directory: changed the theme", "actor", actor, "theme", t)
-	w.WriteHeader(http.StatusNoContent)
 }
 
 func (a admin) setSuperEdit(w http.ResponseWriter, r *http.Request) {

@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"heliosian/internal/mail"
-	"heliosian/internal/theme"
 	"html"
 	"io"
 	"log/slog"
@@ -70,8 +69,6 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	mux.HandleFunc("DELETE /api/calendar/feeds", a.removeFeed)
 	mux.HandleFunc("POST /api/calendar/rsvp", a.rsvp)
 	mux.HandleFunc("POST /api/calendar/settings", a.saveSetting)
-	mux.HandleFunc("POST /api/calendar/theme", a.admin(a.saveTheme))
-	mux.HandleFunc("POST /api/calendar/theme/picture", a.admin(theme.Upload(store, func(http.ResponseWriter, *http.Request) bool { return true })))
 	mux.HandleFunc("POST /api/calendar/keywords", a.admin(a.setKeywords))
 	mux.HandleFunc("POST /api/calendar/events", a.addEvents)
 	mux.HandleFunc("PUT /api/calendar/events", a.editEvent)
@@ -907,37 +904,6 @@ func (a app) saveSetting(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.InfoContext(r.Context(), "calendar: view saved", "actor", email, "classrooms", cells["Classrooms"], "tags", cells["Categories"])
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// saveTheme takes the page's colours at once (internal/theme) and writes
-// the Theme tab's rows, adding any the tab has not got yet.
-func (a app) saveTheme(w http.ResponseWriter, r *http.Request) {
-	actor, ok := a.requireSuperAdmin(w, r)
-	if !ok {
-		return
-	}
-	var body theme.Theme
-	if !decode(w, r, &body) {
-		return
-	}
-	t, err := theme.Of(body.Values())
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	values := t.Values()
-	if !a.commit(r.Context(), w, a.cache.Tables().WithTheme(values), func() error {
-		for _, key := range theme.Keys {
-			if err := a.writer.Upsert(appName, ThemeTab, "Key", key, map[string]string{"Value": values[key]}); err != nil {
-				return err
-			}
-		}
-		return a.logChange(actor, "edit", ThemeTab, "", "", "", "")
-	}) {
-		return
-	}
-	slog.InfoContext(r.Context(), "calendar: changed the theme", "actor", actor, "theme", t)
 	w.WriteHeader(http.StatusNoContent)
 }
 

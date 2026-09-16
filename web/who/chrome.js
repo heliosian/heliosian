@@ -200,6 +200,9 @@ export function renderNav() {
       }
       const body = el('div', 'nav-section-body');
       nav.append(body);
+      // Once the rows are in, a heading with the page's row under it is
+      // lit too, as HCA-Team's sections are.
+      queueMicrotask(() => heading.classList.toggle('active', Boolean(body.querySelector('a.active'))));
       return body;
     }
 

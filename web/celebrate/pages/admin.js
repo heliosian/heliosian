@@ -1,7 +1,6 @@
 import {state, isSystemAdmin, me, money, whenLine, celebration} from '../state.js';
 import {el, button, svg} from '../dom.js';
 import {setTitle} from '../chrome.js';
-import {appearanceCard} from '/appearance.js';
 import {openCelebration, openCategory, openSettings, send, reload} from '../edit.js';
 import {celebrationBand} from './parties.js';
 
@@ -339,7 +338,6 @@ const sections = [
     {key: 'celebrations', label: 'Celebrations', card: celebrationsCard},
     {key: 'categories', label: 'Categories', card: categoriesCard},
     {key: 'settings', label: 'Settings', card: settingsCard},
-    {key: 'appearance', label: 'Appearance', superOnly: true, card: () => appearanceCard({theme: state.model.settings.theme, url: '/api/celebrate/theme', defaults: {sidebar: '#eef5f4', sidebarEnd: '#c5dfdc', sidebarText: '#0f4e54', page: '#f4f8f8', pageEnd: '#f4f8f8'}, pictures: {logo: '/brand/logo-lockup-vertical.png', sidebarImage: '/rail_bottom_left.png'}})},
   ]},
   {title: 'Money', tabs: [
     {key: 'invoices', label: 'Invoicing', card: invoicesCard},

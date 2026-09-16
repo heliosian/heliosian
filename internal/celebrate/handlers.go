@@ -8,7 +8,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"heliosian/internal/theme"
 	"io"
 	"log/slog"
 	"net/http"
@@ -104,11 +103,6 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	mux.HandleFunc("DELETE /api/celebrate/category", a.ready(a.deleteCategory))
 	mux.HandleFunc("POST /api/celebrate/categories/order", a.ready(a.reorderCategories))
 	mux.HandleFunc("POST /api/celebrate/settings", a.ready(a.saveSettings))
-	mux.HandleFunc("POST /api/celebrate/theme", a.ready(a.saveTheme))
-	mux.HandleFunc("POST /api/celebrate/theme/picture", a.ready(theme.Upload(store, func(w http.ResponseWriter, r *http.Request) bool {
-		_, ok := a.requireAdmin(w, r)
-		return ok
-	})))
 	mux.HandleFunc("GET /api/celebrate/invoices.csv", a.ready(a.invoicesCSV))
 	mux.HandleFunc("GET /api/admin/state", a.ready(a.adminState))
 	mux.HandleFunc("POST /api/admin/admins", a.ready(a.setAdmins))
@@ -1608,41 +1602,6 @@ func (a app) reorderCategories(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.InfoContext(r.Context(), "celebrate: reordered categories", "actor", actor)
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// saveTheme takes the page's colours at once (internal/theme) and writes
-// their rows of the Settings tab, adding any the tab has not got yet.
-func (a app) saveTheme(w http.ResponseWriter, r *http.Request) {
-	actor, ok := a.requireSuperAdmin(w, r)
-	if !ok {
-		return
-	}
-	var body theme.Theme
-	if !decode(w, r, &body) {
-		return
-	}
-	t, err := theme.Of(body.Values())
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	values := t.Values()
-	tables := a.cache.Tables()
-	for _, key := range theme.Keys {
-		tables = tables.with(settingsTab, map[string]string{"Key": key}, map[string]string{"Value": values[key]})
-	}
-	if !a.commit(r.Context(), w, tables, func() error {
-		for _, key := range theme.Keys {
-			if err := a.writer.Set(appName, settingsTab, map[string]string{"Key": key}, map[string]string{"Value": values[key]}); err != nil {
-				return err
-			}
-		}
-		return a.logChange(actor, "edit", "settings", nil)
-	}) {
-		return
-	}
-	slog.InfoContext(r.Context(), "celebrate: changed the theme", "actor", actor, "theme", t)
 	w.WriteHeader(http.StatusNoContent)
 }
 

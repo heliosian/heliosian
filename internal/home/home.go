@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"heliosian/internal/theme"
 	"io"
 	"log/slog"
 	"net/http"
@@ -172,8 +171,6 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	mux.HandleFunc("POST /api/admin/admins", a.setAdmins)
 	mux.HandleFunc("POST /api/admin/visibility", a.setVisibility)
 	mux.HandleFunc("POST /api/admin/visibility/order", a.setAppOrder)
-	mux.HandleFunc("POST /api/admin/theme", a.setTheme)
-	mux.HandleFunc("POST /api/admin/theme/picture", theme.Upload(a.store, a.adminGate))
 	RegisterSwitch(mux, cache)
 	a.discoverApps()
 }
@@ -264,12 +261,6 @@ func (a app) requireAdmin(w http.ResponseWriter, r *http.Request) (string, bool)
 		return "", false
 	}
 	return email, true
-}
-
-// adminGate is requireAdmin as theme.Upload wants it.
-func (a app) adminGate(w http.ResponseWriter, r *http.Request) bool {
-	_, ok := a.requireAdmin(w, r)
-	return ok
 }
 
 // requireAdminFunc guards a handler that has no admin-only body of its own.
@@ -399,15 +390,12 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 		Calendar Month `json:"calendar"`
 		// Apps fills the apps section: the community apps this person sees.
 		Apps []App `json:"apps"`
-		// Theme is the admin's colouring of the rail and the page.
-		Theme theme.Theme `json:"theme"`
 	}{
 		Categories:   categories,
 		User:         user{Email: email, Initial: strings.ToUpper(email[:1]), PhotoURL: a.heroPhoto(email), IsAdmin: admin},
 		ImageSources: a.search.Sources(),
 		Calendar:     a.month(email, "", ""),
 		Apps:         a.visibleApps(email),
-		Theme:        full.Theme,
 	}
 	ahead := a.upcoming(email, "")
 	view.Upcoming = ahead.Events
@@ -889,13 +877,10 @@ func (a app) adminState(w http.ResponseWriter, r *http.Request) {
 		Admins   []string `json:"admins"`
 		// Apps are the community apps the App Visibility panel has a card
 		// for, each with its mode and list; People is who its pickers offer.
-		Apps   []AppVisibility `json:"apps"`
-		People []Person        `json:"people"`
-		// Theme is the front page's colouring, for the Appearance panel,
-		// which only a super admin gets.
-		Theme        theme.Theme `json:"theme"`
-		IsSuperAdmin bool        `json:"isSuperAdmin"`
-	}{Email: email, HasStore: a.store != nil, Admins: a.cache.Admins(a.superAdmins()), Apps: a.cache.AppVisibilities(), People: a.people(), Theme: a.cache.Model().Theme, IsSuperAdmin: a.cache.IsSuperAdmin(email)}
+		Apps         []AppVisibility `json:"apps"`
+		People       []Person        `json:"people"`
+		IsSuperAdmin bool            `json:"isSuperAdmin"`
+	}{Email: email, HasStore: a.store != nil, Admins: a.cache.Admins(a.superAdmins()), Apps: a.cache.AppVisibilities(), People: a.people(), IsSuperAdmin: a.cache.IsSuperAdmin(email)}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
 		slog.ErrorContext(r.Context(), "encode apps admin state", "error", err)
@@ -1005,42 +990,6 @@ func (a app) setVisibility(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.InfoContext(r.Context(), "apps: set an app's visibility", "app", key, "visibility", v.Mode, "emails", len(v.Emails), "name", v.Name, "tagline", v.Tagline)
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// setTheme takes the front page's colours at once - the rail's and the
-// page's, each #rrggbb or blank for the stylesheet's own, and for each the
-// second colour of a gradient - and writes every row of the Settings tab.
-func (a app) setTheme(w http.ResponseWriter, r *http.Request) {
-	_, ok := a.requireSuperAdmin(w, r)
-	if !ok {
-		return
-	}
-	var body theme.Theme
-	if !decode(w, r, &body) {
-		return
-	}
-	t, err := theme.Of(body.Values())
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	values := t.Values()
-	tables := a.cache.Tables()
-	for _, key := range theme.Keys {
-		tables = tables.withSetting(key, values[key])
-	}
-	if !a.commit(r.Context(), w, tables, func() error {
-		for _, key := range theme.Keys {
-			if err := a.writer.Upsert(appName, settingsTab, "Key", key, map[string]string{"Value": values[key]}); err != nil {
-				return err
-			}
-		}
-		return nil
-	}) {
-		return
-	}
-	slog.InfoContext(r.Context(), "apps: set the theme", "theme", t)
 	w.WriteHeader(http.StatusNoContent)
 }
 

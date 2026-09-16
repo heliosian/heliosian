@@ -3,7 +3,6 @@ import {renderCategories, renderNav} from './cards.js';
 import {renderMonth} from './month.js';
 import {initEditing, refreshCategoryManager} from './edit.js';
 import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, initSpoof, markSuper} from '/toolbar.js';
-import {applyTheme} from '/theme.js';
 
 function renderChrome() {
   const user = state.model.user;
@@ -26,7 +25,6 @@ export async function load() {
     throw new Error(`loading model failed: ${res.status}`);
   }
   applyModel(await res.json());
-  applyTheme(state.model.theme);
   renderChrome();
   renderMonth();
   renderNav();

@@ -4,7 +4,6 @@ package calendar
 import (
 	"encoding/base64"
 	"fmt"
-	"heliosian/internal/theme"
 	"maps"
 	"net/url"
 	"regexp"
@@ -80,7 +79,6 @@ var (
 	AdminColumns       = []string{"Email"}
 	FeedColumns        = []string{"Token", "Email", "Name", "Classrooms", "Tags", "Created", "Emoji"}
 	SettingColumns     = []string{"Email", "Classrooms", "Categories", "Saved", "Home Name", "Home Emoji", "Home Position"}
-	ThemeColumns       = []string{"Key", "Value"}
 	RSVPColumns        = []string{"Email", "Event ID", "Answer", "Answered"}
 	ChangeLogColumns   = []string{"Timestamp", "Actor", "Action", "Tab", "Key", "Column", "From", "To"}
 )
@@ -417,8 +415,6 @@ type Model struct {
 	Roster  Roster
 	Feeds   []Feed
 	Hidden  int
-	// Theme is the admin's colouring of the rail and the page.
-	Theme theme.Theme
 	// Duplicates counts the events folded into another that says the same
 	// thing: the same days, day type, and tags from a second source.
 	Duplicates int
@@ -481,7 +477,6 @@ type Tables struct {
 	Feeds        []map[string]string
 	Settings     []map[string]string
 	RSVPs        []map[string]string
-	Theme        []map[string]string
 }
 
 func ReadTables(source data.Source) (*Tables, error) {
@@ -503,9 +498,8 @@ func ReadTables(source data.Source) (*Tables, error) {
 	feeds := &table{name: FeedsTab, want: FeedColumns}
 	settings := &table{name: SettingsTab, want: SettingColumns}
 	rsvps := &table{name: RSVPsTab, want: RSVPColumns}
-	themeRows := &table{name: ThemeTab, want: ThemeColumns}
 	changeLog := &table{name: ChangeLogTab, want: ChangeLogColumns}
-	read := []*table{google, pdf, events, enrichment, overrides, dayTypes, dayOverrides, tags, admins, feeds, settings, rsvps, themeRows}
+	read := []*table{google, pdf, events, enrichment, overrides, dayTypes, dayOverrides, tags, admins, feeds, settings, rsvps}
 	names := []string{}
 	for _, t := range read {
 		names = append(names, t.name)
@@ -522,28 +516,8 @@ func ReadTables(source data.Source) (*Tables, error) {
 	}
 	return &Tables{
 		Google: google.rows, PDF: pdf.rows, Events: events.rows, Enrichment: enrichment.rows,
-		Overrides: overrides.rows, DayTypes: dayTypes.rows, DayOverrides: dayOverrides.rows, Tags: tags.rows, Admins: admins.rows, Feeds: feeds.rows, Settings: settings.rows, RSVPs: rsvps.rows, Theme: themeRows.rows,
+		Overrides: overrides.rows, DayTypes: dayTypes.rows, DayOverrides: dayOverrides.rows, Tags: tags.rows, Admins: admins.rows, Feeds: feeds.rows, Settings: settings.rows, RSVPs: rsvps.rows,
 	}, nil
-}
-
-// WithTheme is the tables with the Theme tab's rows set to a theme's
-// values, each row changed in place or added.
-func (t *Tables) WithTheme(values map[string]string) *Tables {
-	out := *t
-	out.Theme = cloneRows(t.Theme)
-	for _, key := range theme.Keys {
-		found := false
-		for _, row := range out.Theme {
-			if strings.EqualFold(strings.TrimSpace(row["Key"]), key) {
-				row["Value"] = values[key]
-				found = true
-			}
-		}
-		if !found {
-			out.Theme = append(out.Theme, map[string]string{"Key": key, "Value": values[key]})
-		}
-	}
-	return &out
 }
 
 func cloneRows(rows []map[string]string) []map[string]string {
@@ -1481,14 +1455,6 @@ func BuildModel(tables *Tables, roster Roster) (*Model, error) {
 	}
 	for _, t := range tags {
 		m.tags[t.Name] = true
-	}
-	for _, row := range tables.Theme {
-		if key := strings.TrimSpace(row["Key"]); !theme.IsKey(key) {
-			return nil, fmt.Errorf("%s has unknown key %q", ThemeTab, key)
-		}
-	}
-	if m.Theme, err = theme.FromRows(tables.Theme); err != nil {
-		return nil, fmt.Errorf("%s: %w", ThemeTab, err)
 	}
 	b := &builder{model: m}
 	for _, row := range tables.Google {

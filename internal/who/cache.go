@@ -98,11 +98,6 @@ func (c *Cache) applyOverride(email string, cells map[string]string) error {
 	return c.rebuild(c.currentTables().withOverride(email, cells), time.Now())
 }
 
-// applyTheme is applyOverride for the Settings tab's theme rows.
-func (c *Cache) applyTheme(values map[string]string) error {
-	return c.rebuild(c.currentTables().withSettings(values), time.Now())
-}
-
 // applyFamily is applyOverride for the Families tab, keyed by the family key.
 func (c *Cache) applyFamily(key string, cells map[string]string) error {
 	return c.rebuild(c.currentTables().withFamily(key, cells), time.Now())

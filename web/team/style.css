@@ -1,18 +1,34 @@
 :root {
-  --brand: #0c4c54;
-  --brand-dark: #093b41;
-  --brand-deep: #00282d;
-  --accent: #00746f;
-  --yellow: #f8d908;
-  --page: #f7fafa;
+  --brand: #0f4e54;
+  --brand-dark: #082b2e;
+  --brand-deep: #082b2e;
+  --accent: #00a69f;
+  --yellow: #fae105;
+  --page: #ffffff;
   --card: #ffffff;
   --line: #e2e8e9;
   --ink: #0d0d0d;
   --muted: #647071;
   --input: #edf2f2;
-  --alert: #be4230;
-  --ok: #727503;
+  --alert: #f15540;
+  --ok: #88a700;
   --tabbar: 64px;
+  /* The shared palette (icons/swatch.psd): teal, green, yellow, gold, red. */
+  --teal-1: #00a69f;
+  --teal-2: #216f76;
+  --teal-3: #0f4e54;
+  --teal-dark: #082b2e;
+  --lime: #c1e524;
+  --green-2: #a4c21e;
+  --green-3: #88a700;
+  --green-dark: #4e5e07;
+  --yellow-pale: #fef7b7;
+  --yellow-1: #fae105;
+  --gold-1: #f1b940;
+  --gold-2: #cc8f0b;
+  --red-1: #f37766;
+  --red-2: #f15540;
+  --red-dark: #872113;
 }
 
 * { box-sizing: border-box; }
@@ -30,8 +46,7 @@ body {
   height: 100dvh;
   display: flex;
   flex-direction: column;
-  /* --page-bg is the admin's colouring of the page (theme.js), when set. */
-  background: var(--page-bg, var(--page));
+  background: var(--page);
   color: var(--ink);
   font-family: Roboto, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   font-size: 15px;
@@ -52,7 +67,7 @@ button { font: inherit; }
 }
 
 .sidebar {
-  width: 240px;
+  width: 280px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -60,9 +75,7 @@ button { font: inherit; }
      bottom scaled to the rail's width, over the pale green wash. It's a
      background rather than an element so it never competes with the nav for
      vertical space on a short viewport - the nav just scrolls over it. */
-  /* --sidebar-bg is the admin's colouring of the rail (theme.js), when set;
-     its links read --sidebar-fg for their words. */
-  background-image: var(--sidebar-art, url('/toolbar_background.png')), var(--sidebar-bg, linear-gradient(180deg, #eef5e6 0%, #d8ebc6 45%, #b7dda2 100%));
+  background-image: url('/toolbar_background.png'), linear-gradient(180deg, #022427, #0f4e54);
   background-size: 100% auto, auto;
   background-position: left bottom, left top;
   background-repeat: no-repeat, no-repeat;
@@ -82,7 +95,7 @@ button { font: inherit; }
 
 .brand a { display: block; line-height: 0; }
 
-.brand img { width: 190px; max-width: 100%; height: auto; display: block; }
+.brand img { height: 170px; width: auto; max-width: 100%; display: block; }
 
 .app-nav {
   display: flex;
@@ -93,35 +106,36 @@ button { font: inherit; }
   overflow-y: auto;
 }
 
-.app-nav a {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 42px;
-  padding: 0 12px;
-  border-radius: 10px;
-  color: var(--sidebar-fg, var(--brand));
-  text-decoration: none;
-  font-size: 14px;
-  font-weight: 600;
-}
+.app-nav a { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 14px; border-radius: 10px; color: #fff; text-decoration: none; font-size: 15px; font-weight: 600; line-height: 1.25; }
 
 .app-nav a svg { width: 20px; height: 20px; flex-shrink: 0; }
 
-.app-nav a:hover { background: rgba(255, 255, 255, 0.55); color: var(--brand); }
+.app-nav a:hover { background: rgba(255, 255, 255, 0.1); }
 
-.app-nav a.is-active {
-  background: #fff;
-  color: var(--brand);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+/* The item the page is on: a lighter teal wash with a lime bar at its left,
+   its icon and the chevron at its end in lime, white words. */
+.app-nav a.is-active { background: rgba(0, 166, 159, 0.22); color: #fff; position: relative; border-radius: 0 10px 10px 0; overflow: hidden; }
+/* ...its icon and the chevron at its end in lime. */
+.app-nav a.is-active svg { color: var(--lime); }
+
+.app-nav a.is-active::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  margin-left: auto;
+  border-right: 2.5px solid var(--lime);
+  border-bottom: 2.5px solid var(--lime);
+  transform: rotate(-45deg);
+  flex-shrink: 0;
 }
+
 
 .nav-sub {
   display: flex;
   flex-direction: column;
   margin: 2px 0 6px 22px;
   padding-left: 10px;
-  border-left: 1.5px solid rgba(12, 76, 84, 0.18);
+  border-left: 1.5px solid rgba(255, 255, 255, 0.14);
 }
 
 .nav-sub-item {
@@ -129,22 +143,23 @@ button { font: inherit; }
   align-items: center;
   gap: 8px;
   width: 100%;
-  min-height: 30px;
-  padding: 3px 8px;
+  min-height: 36px;
+  padding: 3px 10px;
   border: 0;
   border-radius: 7px;
   background: none;
   font: inherit;
-  font-size: 12.5px;
+  font-size: 14px;
   font-weight: 500;
-  color: var(--sidebar-fg, var(--brand));
+  color: #fff;
   text-align: left;
   cursor: pointer;
 }
 
-.nav-sub-item:hover { background: rgba(255, 255, 255, 0.55); color: var(--brand); }
+.nav-sub-item:hover { background: rgba(255, 255, 255, 0.1); }
 
-.nav-sub-item.is-on { background: #fff; color: var(--brand); font-weight: 700; }
+/* The one the page is on: the same wash and lime bar as a section. */
+.nav-sub-item.is-on { background: rgba(0, 166, 159, 0.22); color: #fff; position: relative; font-weight: 700; border-radius: 0 10px 10px 0; overflow: hidden; }
 
 .nav-sub-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -153,7 +168,7 @@ button { font: inherit; }
   min-width: 20px;
   padding: 0 6px;
   border-radius: 999px;
-  background: rgba(12, 76, 84, 0.12);
+  background: rgba(255, 255, 255, 0.16);
   font-size: 11px;
   font-weight: 700;
   line-height: 17px;
@@ -170,7 +185,7 @@ button { font: inherit; }
   gap: 12px;
   padding: 10px 12px;
   border-radius: 10px;
-  color: var(--sidebar-fg, var(--brand));
+  color: #fff;
   text-decoration: none;
   font-size: 14px;
   font-weight: 600;
@@ -178,26 +193,26 @@ button { font: inherit; }
 
 .nav-event-link svg { width: 20px; height: 20px; flex-shrink: 0; }
 
-.nav-event-link:hover { background: rgba(255, 255, 255, 0.55); color: var(--brand); }
+.nav-event-link:hover { background: rgba(255, 255, 255, 0.1); }
 
-.nav-event-link.is-active { background: #fff; color: var(--brand); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
+.nav-event-link.is-active { background: rgba(0, 166, 159, 0.22); color: #fff; position: relative; font-weight: 700; border-radius: 0 10px 10px 0; overflow: hidden; }
 
 /* The generic .app-nav a rule would size these like the main items; they are
    sub-items - a committee in the open event, or someone in the household
    under My Sign Ups - so they take the sub-item's type. */
 .app-nav a.nav-tree-item,
 .app-nav a.nav-family-item {
-  min-height: 30px;
-  padding: 3px 8px;
+  min-height: 36px;
+  padding: 3px 10px;
   gap: 8px;
   border-radius: 7px;
-  font-size: 12.5px;
+  font-size: 14px;
   font-weight: 500;
   text-decoration: none;
 }
 
 .app-nav a.nav-tree-item.is-on,
-.app-nav a.nav-family-item.is-on { background: #fff; color: var(--brand); font-weight: 700; box-shadow: none; }
+.app-nav a.nav-family-item.is-on { background: rgba(0, 166, 159, 0.22); color: #fff; position: relative; font-weight: 700; border-radius: 0 10px 10px 0; overflow: hidden; }
 
 .nav-tree-group { font-weight: 700; }
 
@@ -221,7 +236,7 @@ button { font: inherit; }
   cursor: pointer;
 }
 
-.nav-tree-toggle:hover { background: rgba(255, 255, 255, 0.55); color: var(--brand); }
+.nav-tree-toggle:hover { background: rgba(255, 255, 255, 0.1); }
 
 .nav-tree-toggle svg { width: 14px; height: 14px; transition: transform 0.15s; }
 
@@ -237,19 +252,11 @@ button { font: inherit; }
    fights the wash; an outlined pill keeps the brand colour and the affordance
    without the weight. .button.nav-action rather than .nav-action because the
    base .button rule sits later in the file and would otherwise win. */
+/* The rail's action is the button every page has, filling the rail. */
 .button.nav-action {
   margin: 14px 4px 0;
   justify-content: center;
   width: calc(100% - 8px);
-  background: rgba(255, 255, 255, 0.6);
-  border: 1.5px solid var(--brand);
-  color: var(--brand);
-  transition: background 0.12s, box-shadow 0.12s;
-}
-
-.button.nav-action:hover {
-  background: #fff;
-  box-shadow: 0 1px 4px rgba(12, 76, 84, 0.18);
 }
 
 .drawer .button.nav-action { margin: 16px 20px 0; width: calc(100% - 40px); }
@@ -393,7 +400,7 @@ main {
   z-index: 0;
   display: inline-block;
   font-family: Montserrat, Roboto, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-  font-size: 40px;
+  font-size: 38px;
   font-weight: 400;
   letter-spacing: -0.01em;
   line-height: 1.1;
@@ -727,27 +734,30 @@ main {
 .button {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 9px 16px;
+  gap: 10px;
+  padding: 11px 20px;
   border-radius: 8px;
   /* Every button carries the same 1px border, so a filled one and an outlined
      one beside it stand the same height. */
-  border: 1px solid var(--brand);
-  background: var(--brand);
-  color: #fff;
+  border: 1px solid var(--green-2);
+  background: var(--green-2);
+  color: var(--teal-dark);
+  font: inherit;
+  font-size: 15px;
   font-weight: 600;
+  line-height: 1.3;
   cursor: pointer;
   white-space: nowrap;
   text-decoration: none;
 }
 
-.button:hover { background: var(--brand-dark); border-color: var(--brand-dark); }
+.button:hover { background: var(--green-3); border-color: var(--green-3); }
 
-.button svg { width: 16px; height: 16px; }
+.button svg { width: 18px; height: 18px; flex-shrink: 0; }
 
 .button-secondary { background: #fff; color: var(--ink); border: 1px solid var(--line); }
 
-.button-secondary:hover { background: var(--input); }
+.button-secondary:hover { background: var(--input); border-color: var(--line); }
 
 .button-small { padding: 6px 12px; font-size: 13px; }
 
@@ -2995,3 +3005,44 @@ body.is-admin main { padding: 0; }
 .row-under-chip { border: 0; font: inherit; font-size: 12px; font-weight: 600; color: var(--brand); background: #eaf3f3; border-radius: 999px; padding: 3px 10px; cursor: pointer; }
 
 .row-under-chip:hover { background: #d8e9e9; }
+
+/* The lime bar at a selected item's left, straight, clear of the corners. */
+.app-nav a.is-active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 5px;
+  background: var(--lime);
+}
+
+.nav-sub-item.is-on::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 5px;
+  background: var(--lime);
+}
+
+.nav-event-link.is-active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 5px;
+  background: var(--lime);
+}
+
+.app-nav a.nav-family-item.is-on::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 5px;
+  background: var(--lime);
+}

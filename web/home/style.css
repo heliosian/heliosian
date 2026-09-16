@@ -1,18 +1,34 @@
 :root {
-  --brand: #244d53;
-  --brand-dark: #1c3d42;
-  --brand-ink: #244d53;
-  --page: #f3f7f2;
-  --hero: #f3f7f2;
+  --brand: #0f4e54;
+  --brand-dark: #082b2e;
+  --brand-ink: #0f4e54;
+  --page: #ffffff;
+  --hero: #ffffff;
   --card: #ffffff;
-  --sidebar: #2e5c63; /* the foot of the rail's gradient; --sidebar-top its head */
-  --sidebar-top: #122d31;
-  --line: #e2e6eb;
+  --sidebar: #0f4e54; /* the foot of the rail's gradient; --sidebar-top its head */
+  --sidebar-top: #022427;
+  --line: #e2e8e9;
   --ink: #0d0d0d;
-  --muted: #707070;
-  --input: #efefef;
-  --alert: #c0392b;
+  --muted: #647071;
+  --input: #edf2f2;
+  --alert: #f15540;
   --sidebar-w: 280px; /* wide enough for the month grid */
+  /* The shared palette (icons/swatch.psd): teal, green, yellow, gold, red. */
+  --teal-1: #00a69f;
+  --teal-2: #216f76;
+  --teal-3: #0f4e54;
+  --teal-dark: #082b2e;
+  --lime: #c1e524;
+  --green-2: #a4c21e;
+  --green-3: #88a700;
+  --green-dark: #4e5e07;
+  --yellow-pale: #fef7b7;
+  --yellow-1: #fae105;
+  --gold-1: #f1b940;
+  --gold-2: #cc8f0b;
+  --red-1: #f37766;
+  --red-2: #f15540;
+  --red-dark: #872113;
 }
 
 * { box-sizing: border-box; }
@@ -23,8 +39,7 @@ body {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  /* --page-bg is the admin's colouring of the page (theme.js), when set. */
-  background: var(--page-bg, var(--page));
+  background: var(--page);
   color: var(--ink);
   font-family: Roboto, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   font-size: 15px;
@@ -51,10 +66,8 @@ body {
      it scrolls on its own then, the bird last. */
   overflow: hidden auto;
   scrollbar-width: none;
-  /* --sidebar-bg and --sidebar-fg are the admin's colouring of the rail and
-     its words (theme.js), when set. */
-  background: var(--sidebar-bg, linear-gradient(180deg, var(--sidebar-top), var(--sidebar)));
-  color: var(--sidebar-fg, #fff);
+  background: linear-gradient(180deg, var(--sidebar-top), var(--sidebar));
+  color: #fff;
   padding: 22px 12px 0;
   display: flex;
   flex-direction: column;
@@ -65,7 +78,7 @@ body {
 .brand {
   display: flex;
   flex-direction: column;
-  color: var(--sidebar-fg, #fff);
+  color: #fff;
   text-decoration: none;
   padding: 0 14px;
 }
@@ -74,9 +87,9 @@ body {
    rail is a drawer, so it carries the same. */
 .brand-lockup {
   display: block;
-  width: 150px;
+  height: 170px;
+  width: auto;
   max-width: 100%;
-  height: auto;
   margin: 0 auto;
 }
 
@@ -86,21 +99,27 @@ body {
   gap: 4px;
 }
 
-.app-nav a {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 9px 14px;
-  border-radius: 12px;
-  color: var(--sidebar-fg, #fff);
-  text-decoration: none;
-  font-weight: 500;
-  font-size: 15px;
+.app-nav a { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 14px; border-radius: 10px; color: #fff; text-decoration: none; font-size: 15px; font-weight: 600; line-height: 1.25; }
+
+.app-nav a:hover { background: rgba(255, 255, 255, 0.1); }
+
+/* The item the page is on: a lighter teal wash with a lime bar at its left,
+   its icon and the chevron at its end in lime, white words. */
+.app-nav a.is-active { background: rgba(0, 166, 159, 0.22); color: #fff; font-weight: 600; position: relative; border-radius: 0 10px 10px 0; overflow: hidden; }
+/* ...its icon and the chevron at its end in lime. */
+.app-nav a.is-active svg { color: var(--lime); }
+
+.app-nav a.is-active::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  margin-left: auto;
+  border-right: 2.5px solid var(--lime);
+  border-bottom: 2.5px solid var(--lime);
+  transform: rotate(-45deg);
+  flex-shrink: 0;
 }
 
-.app-nav a:hover { background: rgba(255, 255, 255, 0.08); }
-
-.app-nav a.is-active { background: rgba(255, 255, 255, 0.16); font-weight: 600; }
 
 .app-nav-glyph {
   display: inline-flex;
@@ -146,7 +165,7 @@ body {
   border: 0;
   border-radius: 8px;
   background: transparent;
-  color: var(--sidebar-fg, #fff);
+  color: #fff;
   cursor: pointer;
 }
 
@@ -162,7 +181,7 @@ body {
    rest down - the white menu Upcoming Events uses, centred. */
 .mini-calendar { position: relative; display: flex; justify-content: center; margin: 0 0 10px; }
 
-.mini-calendar-toggle { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 2px 8px; border: 0; border-radius: 999px; background: none; color: var(--sidebar-fg, #fff); opacity: 0.6; font: inherit; font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap; }
+.mini-calendar-toggle { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 2px 8px; border: 0; border-radius: 999px; background: none; color: #fff; opacity: 0.6; font: inherit; font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap; }
 
 .mini-calendar-toggle:hover { opacity: 0.95; background: rgba(255, 255, 255, 0.12); }
 
@@ -201,7 +220,7 @@ body {
   border: 0;
   border-radius: 9px;
   background: transparent;
-  color: var(--sidebar-fg, #fff);
+  color: #fff;
   font: inherit;
   font-size: 13px;
   cursor: pointer;
@@ -259,7 +278,7 @@ body {
   display: flex;
   align-items: baseline;
   gap: 8px;
-  color: var(--sidebar-fg, #fff);
+  color: #fff;
   text-decoration: none;
 }
 
@@ -295,7 +314,7 @@ body {
   padding: 6px 8px;
   margin: 0 -8px;
   border-radius: 10px;
-  color: var(--sidebar-fg, #fff);
+  color: #fff;
   text-decoration: none;
 }
 
@@ -322,7 +341,7 @@ body {
 
 .rail-rsvp .button svg { width: 14px; height: 14px; }
 
-.rail-rsvp .button.button-secondary { background: transparent; border-color: rgba(255, 255, 255, 0.35); color: var(--sidebar-fg, #fff); }
+.rail-rsvp .button.button-secondary { background: transparent; border-color: rgba(255, 255, 255, 0.35); color: #fff; }
 
 .rail-rsvp .button.button-secondary:hover { background: rgba(255, 255, 255, 0.12); border-color: rgba(255, 255, 255, 0.6); }
 
@@ -381,9 +400,6 @@ main {
   overflow: hidden;
 }
 
-/* A coloured page shows through the hero, whose own colour is the page's. */
-.is-themed-page .hero { background: transparent; }
-
 .hero-text {
   position: relative;
   z-index: 1;
@@ -429,28 +445,32 @@ main {
 .button {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 22px;
-  border-radius: 999px;
-  border: 0;
-  background: var(--brand);
-  color: #fff;
+  gap: 10px;
+  padding: 11px 20px;
+  border-radius: 8px;
+  /* Every button carries the same 1px border, so a filled one and an outlined
+     one beside it stand the same height. */
+  border: 1px solid var(--green-2);
+  background: var(--green-2);
+  color: var(--teal-dark);
   font: inherit;
+  font-size: 15px;
   font-weight: 600;
+  line-height: 1.3;
   cursor: pointer;
   white-space: nowrap;
   text-decoration: none;
 }
 
-.button:hover { background: var(--brand-dark); }
+.button:hover { background: var(--green-3); border-color: var(--green-3); }
 
-.button-secondary {
-  background: #fff;
-  color: var(--ink);
-  border: 1px solid var(--line);
-}
+.button svg { width: 18px; height: 18px; flex-shrink: 0; }
 
-.button-secondary:hover { background: var(--input); }
+.button-secondary { background: #fff; color: var(--ink); border: 1px solid var(--line); }
+
+.button-secondary:hover { background: var(--input); border-color: var(--line); }
+
+.button-small { padding: 6px 12px; font-size: 13px; }
 
 .button:disabled { opacity: 0.5; cursor: default; }
 
@@ -651,6 +671,17 @@ main {
 
 /* Yes and No share one slot, the one given filled. */
 .event-rsvp { flex: 1 1 0; min-width: 0; display: flex; gap: 6px; }
+
+/* The party's invite: a quiet link in the buttons' place, with its icon. */
+.event-invite { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0; border: 0; background: none; color: var(--brand); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+
+.event-invite:hover span { text-decoration: underline; }
+
+.event-invite svg { width: 16px; height: 16px; }
+
+.event-invite.is-sent { color: var(--muted); font-weight: 500; }
+
+.rail-rsvp .event-invite { color: #fff; min-height: 28px; font-size: 12px; }
 
 /* What the viewer said, once they have: a quiet line in the buttons' place. */
 .event-said { display: flex; align-items: center; gap: 4px; min-height: 36px; font-size: 13px; color: var(--muted); }
@@ -868,7 +899,7 @@ a.event-people:hover .event-person { text-decoration: underline; }
 
 .chip:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(36, 77, 83, 0.12); }
 
-.chip:hover .button.chip-open { filter: brightness(0.9); }
+.chip:hover .button.chip-open { background: var(--green-3); border-color: var(--green-3); }
 
 .chip-disc {
   position: relative;
@@ -912,7 +943,7 @@ a.event-people:hover .event-person { text-decoration: underline; }
   line-height: 1.45;
 }
 
-.chip .button.chip-open { position: relative; z-index: 1; margin-top: auto; background: var(--accent); }
+.chip .button.chip-open { position: relative; z-index: 1; margin-top: auto; }
 
 .chip .button.chip-open svg { width: 16px; height: 16px; }
 
@@ -1645,4 +1676,15 @@ a.event-people:hover .event-person { text-decoration: underline; }
 .category-more { flex-basis: 100%; margin-left: 42px; }
 
   .hero-lead { font-size: 15px; }
+}
+
+/* The lime bar at a selected item's left, straight, clear of the corners. */
+.app-nav a.is-active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 5px;
+  background: var(--lime);
 }

@@ -1,4 +1,4 @@
-import {state, me, isAdmin} from './state.js';
+import {state, me, isAdmin, groupPath} from './state.js';
 import {el, svg, link} from './dom.js';
 import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, initSpoof, markSuper} from '/toolbar.js';
 
@@ -32,9 +32,30 @@ function closeMenus() {
   }
 }
 
+// The rail lists the pages, and New Group is its action - the green
+// button every rail has - rather than a row. Under My Groups sit the
+// person's groups themselves, each opening its page, the one open lit.
 function fillNav(nav) {
   for (const item of items) {
+    if (item.href === '/new') {
+      const make = link('/new', 'button nav-action');
+      make.append(svg('plus'), el('span', '', item.label));
+      nav.append(make);
+      continue;
+    }
     nav.append(navLink(item));
+    if (item.href === '/' && state.model && state.model.groups.length) {
+      const sub = el('div', 'nav-sub');
+      for (const g of state.model.groups) {
+        const row = link(groupPath(g), 'nav-sub-item' + (decodeURIComponent(location.pathname) === decodeURIComponent(groupPath(g)) ? ' is-on' : ''));
+        row.append(el('span', 'nav-sub-name', g.title || g.name));
+        if (g.members) {
+          row.append(el('span', 'nav-sub-count', String(g.members.length)));
+        }
+        sub.append(row);
+      }
+      nav.append(sub);
+    }
   }
 }
 

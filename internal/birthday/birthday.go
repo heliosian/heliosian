@@ -4,7 +4,6 @@ package birthday
 
 import (
 	"fmt"
-	"heliosian/internal/theme"
 	"maps"
 	"net/url"
 	"regexp"
@@ -83,6 +82,11 @@ const (
 var Roles = []string{RoleVolunteer, RoleComms}
 
 var settingKeys = []string{DefaultCharityKey, YearStartKey, EmailSubjectKey, EmailBodyKey, NoNewsletterNoteKey, OutreachCCKey, RequestLeadKey}
+
+// legacyThemeKeys are rows the Appearance panel wrote while the apps could
+// be recoloured (2026-09-16); the tab may still carry them, and they are
+// passed over.
+var legacyThemeKeys = []string{"Sidebar Color", "Sidebar Color 2", "Sidebar Text Color", "Page Color", "Page Color 2", "Logo", "Sidebar Image"}
 
 // optionalSettingKeys may be missing or blank.
 var optionalSettingKeys = []string{OutreachCCKey, RequestLeadKey}
@@ -165,9 +169,6 @@ type Settings struct {
 	NoNewsletterNote string `json:"noNewsletterNote"`
 	OutreachCC       string `json:"outreachCC"`
 	RequestLeadDays  int    `json:"requestLeadDays"`
-	// Theme is the admin's colouring of the rail and the page, kept in the
-	// same tab under internal/theme's keys.
-	Theme theme.Theme `json:"theme"`
 }
 
 // TeamMember is one person in one role on the Team tab.
@@ -371,7 +372,7 @@ func parseSettings(rows []map[string]string) (Settings, error) {
 	values := map[string]string{}
 	for _, row := range rows {
 		key := row["Key"]
-		if theme.IsKey(key) {
+		if slices.Contains(legacyThemeKeys, key) {
 			continue
 		}
 		if !slices.Contains(settingKeys, key) {
@@ -398,14 +399,10 @@ func parseSettings(rows []map[string]string) (Settings, error) {
 		}
 		lead = n
 	}
-	t, err := theme.FromRows(rows)
-	if err != nil {
-		return Settings{}, fmt.Errorf("%s: %w", settingsTab, err)
-	}
 	return Settings{
 		DefaultCharity: values[DefaultCharityKey], YearStart: values[YearStartKey],
 		EmailSubject: values[EmailSubjectKey], EmailBody: values[EmailBodyKey], NoNewsletterNote: values[NoNewsletterNoteKey],
-		OutreachCC: strings.TrimSpace(values[OutreachCCKey]), RequestLeadDays: lead, Theme: t,
+		OutreachCC: strings.TrimSpace(values[OutreachCCKey]), RequestLeadDays: lead,
 	}, nil
 }
 

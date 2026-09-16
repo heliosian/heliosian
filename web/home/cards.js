@@ -384,11 +384,13 @@ export function rsvpButtons(event) {
   if (event.linkApp === 'celebrate') {
     const held = (event.people || []).some(p => p.note !== 'waitlisted');
     if (held) {
-      const send = el('button', 'button button-small event-invite' + (event.answer === 'yes' ? ' button-secondary' : ''));
+      // The tickets are the viewer's already, so the invite is a quiet
+      // link rather than the card's call.
+      const send = el('button', 'event-invite');
       send.type = 'button';
       const label = () => {
         send.replaceChildren(svg(event.answer === 'yes' ? 'check' : 'calendarAdd'), el('span', '', event.answer === 'yes' ? 'Invite sent' : 'Send Me Invite'));
-        send.classList.toggle('button-secondary', event.answer === 'yes');
+        send.classList.toggle('is-sent', event.answer === 'yes');
         send.title = event.answer === 'yes' ? 'Sent to your email - click to send it again' : 'Email me a calendar invite';
       };
       label();

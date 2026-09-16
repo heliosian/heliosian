@@ -45,7 +45,9 @@ export function groupsPage() {
       return;
     }
     for (const g of shown) {
-      list.append(groupCard(g));
+      const slot = el('div', 'card-slot');
+      slot.append(groupCard(g));
+      list.append(slot);
     }
   };
   render('');
