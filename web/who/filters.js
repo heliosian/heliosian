@@ -51,27 +51,26 @@ function roleChipsVisible() {
 }
 
 // The relations one tag's list can grow by, given who is actually on it:
-// each is offered only if it would bring someone in - a tagged child with a
-// parent in the directory, a tagged parent with a child, a tagged child
-// with a sibling - who isn't on the list already. So a tag of only children
-// offers no Children, one of only-children no Siblings, and one of nothing
-// but staff none at all, and the control that shows them stays away. A
-// relation remembered for the tag from before (saveTagRelations) but no
-// longer on offer is dropped, so the control's count doesn't claim a choice
-// that isn't there.
+// Parents and Siblings once a child is tagged, Children once a parent is -
+// so a tag of nothing but staff offers none, and the control that shows
+// them stays away. Deliberately no cleverer than that (say, hiding
+// Siblings when the tagged children happen to have none): the panel then
+// looks the same from tag to tag, and nobody is left wondering where an
+// option went. A relation remembered for the tag from before
+// (saveTagRelations) but no longer on offer is dropped, so the control's
+// count doesn't claim a choice that isn't there.
 export function tagRelationOptionsFor(tag) {
-  const tagged = new Set(members(tag));
-  const people = [...tagged].map(e => byEmail[e]).filter(Boolean);
-  const brings = (is, relatives) => people.some(p => is(p) && familiesOf(p).some(f =>
-    (relatives(f) || []).some(e => e !== p.email && !tagged.has(e) && byEmail[e])));
+  const tagged = members(tag).map(e => byEmail[e]).filter(Boolean);
+  const hasKids = tagged.some(p => p.isStudent);
+  const hasParents = tagged.some(p => p.isParent);
   const options = [];
-  if (brings(p => p.isStudent, f => f.adultEmails)) {
+  if (hasKids) {
     options.push('Parents');
   }
-  if (brings(p => p.isParent, f => f.kidEmails)) {
+  if (hasParents) {
     options.push('Children');
   }
-  if (brings(p => p.isStudent, f => f.kidEmails)) {
+  if (hasKids) {
     options.push('Siblings');
   }
   for (const chosen of [...state.filterTagRelations]) {
