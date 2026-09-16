@@ -81,8 +81,8 @@ func gcloudLines(args ...string) []string {
 
 // mapDomains gives the service a domain mapping for every hostname the
 // router answers (app.Hostnames) that it lacks. Existing mappings are left
-// as they are and none is ever removed; the DNS record each new one needs
-// is printed, since that is written at the registrar by hand.
+// as they are and none is ever removed. The registrar's wildcard records
+// already resolve every subdomain, so a new mapping needs nothing there.
 func mapDomains() {
 	have := gcloudLines("beta", "run", "domain-mappings", "list", "--region", region, "--format", "value(metadata.name)")
 	for _, host := range app.Hostnames() {
@@ -91,7 +91,6 @@ func mapDomains() {
 		}
 		log.Printf("mapping %s to %s", host, service)
 		gcloud("beta", "run", "domain-mappings", "create", "--service", service, "--domain", host, "--region", region, "--quiet")
-		log.Printf("add at the registrar: %s CNAME ghs.googlehosted.com.", strings.TrimSuffix(host, ".heliosian.com"))
 	}
 }
 
