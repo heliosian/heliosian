@@ -387,7 +387,7 @@ export function rsvpButtons(event) {
       const send = el('button', 'button button-small event-invite' + (event.answer === 'yes' ? ' button-secondary' : ''));
       send.type = 'button';
       const label = () => {
-        send.replaceChildren(svg(event.answer === 'yes' ? 'check' : 'calendarAdd'), el('span', '', event.answer === 'yes' ? 'Invite sent' : 'Send Invite'));
+        send.replaceChildren(svg(event.answer === 'yes' ? 'check' : 'calendarAdd'), el('span', '', event.answer === 'yes' ? 'Invite sent' : 'Send Me Invite'));
         send.classList.toggle('button-secondary', event.answer === 'yes');
         send.title = event.answer === 'yes' ? 'Sent to your email - click to send it again' : 'Email me a calendar invite';
       };
@@ -409,33 +409,47 @@ export function rsvpButtons(event) {
     }
     return rsvp;
   }
-  const yes = el('button', 'button button-small event-yes');
-  yes.type = 'button';
-  yes.append(svg('check'), el('span', '', 'Yes'));
-  const no = el('button', 'button button-small event-no');
-  no.type = 'button';
-  no.append(svg('close'), el('span', '', 'No'));
-  const mark = () => {
+  // Until the viewer answers, Yes and No; once they have, a quiet line
+  // saying what they said, with Change to bring the buttons back.
+  let changing = false;
+  const render = () => {
+    rsvp.replaceChildren();
+    if ((event.answer === 'yes' || event.answer === 'no') && !changing) {
+      const said = el('div', 'event-said');
+      said.append(el('span', '', 'You said '), el('strong', '', event.answer === 'yes' ? 'Yes' : 'No'));
+      const change = el('button', 'event-said-change');
+      change.type = 'button';
+      change.textContent = 'Change';
+      change.addEventListener('click', () => {
+        changing = true;
+        render();
+      });
+      said.append(change);
+      rsvp.append(said);
+      return;
+    }
+    const yes = el('button', 'button button-small event-yes');
+    yes.type = 'button';
+    yes.append(svg('check'), el('span', '', 'Yes'));
+    const no = el('button', 'button button-small event-no');
+    no.type = 'button';
+    no.append(svg('close'), el('span', '', 'No'));
     yes.classList.toggle('button-secondary', event.answer !== 'yes');
     no.classList.toggle('button-secondary', event.answer !== 'no');
-    yes.title = event.answer === 'yes' ? 'You said yes - the invite is in your email' : 'Yes, and send me a calendar invite';
+    yes.title = 'Yes, and send me a calendar invite';
+    const say = async word => {
+      const next = event.answer === word ? '' : word;
+      if (await answer(event, next)) {
+        event.answer = next;
+        changing = false;
+        render();
+      }
+    };
+    yes.addEventListener('click', () => say('yes'));
+    no.addEventListener('click', () => say('no'));
+    rsvp.append(yes, no);
   };
-  mark();
-  yes.addEventListener('click', async () => {
-    const next = event.answer === 'yes' ? '' : 'yes';
-    if (await answer(event, next)) {
-      event.answer = next;
-      mark();
-    }
-  });
-  no.addEventListener('click', async () => {
-    const next = event.answer === 'no' ? '' : 'no';
-    if (await answer(event, next)) {
-      event.answer = next;
-      mark();
-    }
-  });
-  rsvp.append(yes, no);
+  render();
   return rsvp;
 }
 

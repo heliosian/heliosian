@@ -269,9 +269,11 @@ func (m *Model) UpcomingUnder(directory Directory, email string, linked []Linked
 	out := []Upcoming{}
 	for _, e := range m.eventsFor(email, linked) {
 		answer := m.AnswerOf(email, e.ID)
-		// A yes reaches across classrooms, so long as Going is in view.
+		// A yes reaches across classrooms, so long as Going is in view; a
+		// no leaves the list, as hiding does - the month still shows it,
+		// in gray.
 		going := answer == AnswerYes && slices.Contains(tags, TagGoing)
-		if e.end.Format(DateFormat) < today || answer == AnswerHidden || !(going || admits(m, e, classrooms, tags)) {
+		if e.end.Format(DateFormat) < today || answer == AnswerHidden || answer == AnswerNo || !(going || admits(m, e, classrooms, tags)) {
 			continue
 		}
 		if limit > 0 && len(out) == limit {

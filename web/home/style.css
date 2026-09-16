@@ -652,6 +652,19 @@ main {
 /* Yes and No share one slot, the one given filled. */
 .event-rsvp { flex: 1 1 0; min-width: 0; display: flex; gap: 6px; }
 
+/* What the viewer said, once they have: a quiet line in the buttons' place. */
+.event-said { display: flex; align-items: center; gap: 4px; min-height: 36px; font-size: 13px; color: var(--muted); }
+
+.event-said strong { color: var(--brand); }
+
+.event-said-change { margin-left: 8px; padding: 0; border: 0; background: none; color: var(--muted); font: inherit; font-size: 12px; text-decoration: underline; cursor: pointer; }
+
+.event-said-change:hover { color: var(--brand); }
+
+.rail-rsvp .event-said { color: rgba(255, 255, 255, 0.75); min-height: 28px; font-size: 12px; }
+
+.rail-rsvp .event-said strong, .rail-rsvp .event-said-change { color: #fff; }
+
 .event-rsvp .button { flex: 1 1 0; }
 
 /* The household's part in the event, above the buttons: one line, the
