@@ -335,10 +335,52 @@ function editor(g, isNew) {
 
   const preview = el('div', 'card preview');
   const previewHead = el('h2', '', 'Members');
-  const previewNote = el('div', 'hint', 'Who the rules pick out right now. The list follows the directory as it changes.');
+  const previewNote = el('div', 'hint', isNew
+    ? 'Who the rules pick out right now. The list follows the directory as it changes.'
+    : 'Who the rules pick out right now, and what saving changes: who joins the group and who leaves it.');
+  const previewChanges = el('div', 'change-band');
+  previewChanges.hidden = true;
   const previewList = el('div', 'member-list');
   const previewStatus = el('div', 'save-status');
-  preview.append(previewHead, previewNote, previewStatus, previewList);
+  preview.append(previewHead, previewNote, previewStatus, previewChanges, previewList);
+  const current = isNew ? [] : g.members;
+  const currentEmails = new Set(current.map(m => m.email));
+
+  // renderChanges says what a save does to the membership: the people the
+  // draft adds and the people it drops, by name, and marks each in the
+  // list - a joiner with a chip, a leaver greyed at the end.
+  const renderChanges = (members, rules) => {
+    const memberEmails = new Set(members.map(m => m.email));
+    const joining = isNew ? [] : members.filter(m => !currentEmails.has(m.email));
+    const leaving = current.filter(m => !memberEmails.has(m.email));
+    previewChanges.replaceChildren();
+    previewChanges.hidden = isNew;
+    if (!isNew) {
+      if (!joining.length && !leaving.length) {
+        previewChanges.append(el('span', 'change-none', 'Saving changes nobody: the members stay as they are.'));
+      }
+      if (joining.length) {
+        const line = el('div', 'change-line');
+        line.append(el('span', 'chip joins', `${joining.length} ${joining.length === 1 ? 'joins' : 'join'}`), el('span', '', joining.map(m => m.name).join(', ')));
+        previewChanges.append(line);
+      }
+      if (leaving.length) {
+        const line = el('div', 'change-line');
+        line.append(el('span', 'chip leaves', `${leaving.length} ${leaving.length === 1 ? 'leaves' : 'leave'}`), el('span', '', leaving.map(m => m.name).join(', ')));
+        previewChanges.append(line);
+      }
+    }
+    previewList.replaceChildren();
+    for (const m of members) {
+      const mark = !isNew && !currentEmails.has(m.email) ? el('span', 'chip joins', 'Joins') : null;
+      previewList.append(personRow(m, mark, reasonWords(m, rules)));
+    }
+    for (const m of leaving) {
+      const row = personRow(m, el('span', 'chip leaves', 'Leaves'), 'No rule picks them out any more.');
+      row.classList.add('is-leaving');
+      previewList.append(row);
+    }
+  };
 
   let previewTimer;
   let previewing = false;
@@ -355,10 +397,7 @@ function editor(g, isNew) {
       const rules = draft.rules.filter(ruleSaysSomething);
       const {members} = await send('POST', '/api/groups/preview', {name: isNew ? '' : draft.name, rules});
       previewHead.textContent = `${members.length} ${members.length === 1 ? 'member' : 'members'}`;
-      previewList.replaceChildren();
-      for (const m of members) {
-        previewList.append(personRow(m, null, reasonWords(m, rules)));
-      }
+      renderChanges(members, rules);
       previewStatus.textContent = rules.length ? '' : 'Add a rule to pick people out.';
     } catch (err) {
       previewStatus.classList.add('error');

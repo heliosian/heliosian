@@ -360,6 +360,24 @@ body.is-admin main { padding: 0; }
 
 .person-note { font-size: 12.5px; color: var(--accent); margin-top: 2px; }
 
+/* The editor's preview says what a save does: who joins and who leaves,
+   above the list, and marks each in it. */
+.change-band { display: flex; flex-direction: column; gap: 6px; padding: 10px 14px; margin: 0 0 10px; border-radius: 10px; background: #f4f6f9; font-size: 14px; }
+
+.change-none { color: var(--muted); }
+
+.change-line { display: flex; align-items: baseline; gap: 10px; }
+
+.change-line .chip { flex-shrink: 0; }
+
+.chip.joins { background: #e2f3e6; color: #24763c; }
+
+.chip.leaves { background: #fde8d7; color: #a4551a; }
+
+.person-row.is-leaving { opacity: 0.6; }
+
+.person-row.is-leaving .person-note { color: var(--muted); }
+
 .thumb { flex-shrink: 0; width: 40px; height: 40px; border-radius: 50%; object-fit: cover; background: var(--input); }
 
 .thumb.initial { display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 700; color: #fff; background: var(--accent); }
