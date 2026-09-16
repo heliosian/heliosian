@@ -594,11 +594,22 @@ main {
 
 /* Upcoming Events - the portal's next few, as cards with a date stamp. */
 
+/* The event cards sit in the chips' slots, each with a card of an accent
+   peeking out behind it, the accents cycling the way the chips' do; the
+   gap gives the peeks room. */
 .event-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 40px 52px;
 }
+
+.event-grid > :nth-child(5n+1) { --accent: #1f8080; }
+.event-grid > :nth-child(5n+2) { --accent: #d05540; }
+.event-grid > :nth-child(5n+3) { --accent: #6c7d03; }
+.event-grid > :nth-child(5n+4) { --accent: #17807c; }
+.event-grid > :nth-child(5n+5) { --accent: #7a5fae; }
+
+.chip-slot > .event-card { flex: 1; min-width: 0; }
 
 .event-card {
   display: flex;
@@ -645,20 +656,34 @@ main {
 
 /* The household's part in the event, above the buttons: one line, the
    names with a dot between each. */
-.event-people { display: flex; align-items: flex-start; gap: 7px; padding: 0 14px 12px; font-size: 13px; line-height: 1.5; color: var(--brand); }
+.event-people { display: flex; flex-direction: column; gap: 3px; padding: 0 14px 12px; font-size: 13px; line-height: 1.5; color: var(--brand); text-decoration: none; }
+
+.event-people-row { display: flex; align-items: flex-start; gap: 7px; }
+
+a.event-people:hover .event-person { text-decoration: underline; }
 
 .event-people svg { width: 15px; height: 15px; flex-shrink: 0; margin-top: 2px; }
 
 .event-people-names { min-width: 0; }
 
-.event-people-sep { margin: 0 7px; color: var(--muted); font-size: 10px; vertical-align: 1px; }
+.event-people-sep { margin: 0 4px; color: var(--muted); font-size: 10px; vertical-align: 1px; }
+
 
 .event-person { font-weight: 600; }
 
 .event-person-note { margin-left: 4px; color: var(--muted); }
 
+/* The household's row starts flush with the roles above it. */
+.event-person-note.event-people-family { margin-left: 0; }
+
 /* The cross at the picture's corner that hides the event. */
 .event-art { position: relative; }
+
+/* Where the event comes from, at the picture's foot, in the source's tint
+   - the rail's month uses the same three. */
+.event-source { position: absolute; left: 10px; bottom: 10px; padding: 4px 10px; border-radius: 999px; background: var(--tint, #e3f0ef); color: var(--brand); font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; white-space: nowrap; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15); }
+
+.event-source.is-team { color: #fff; }
 
 .event-hide { position: absolute; top: 8px; right: 8px; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 50%; background: rgba(255, 255, 255, 0.9); color: var(--muted); cursor: pointer; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2); }
 
@@ -719,7 +744,6 @@ main {
   font-weight: 700;
   color: var(--brand);
   line-height: 1.25;
-  padding-right: 56px;
 }
 
 .event-when {
@@ -773,9 +797,13 @@ main {
 
 .chip-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 40px 52px;
 }
+
+/* The chips and the event cards share one least size, so a row of either
+   stands as tall as a row of the other. */
+.chip, .event-card { min-height: 320px; }
 
 .chip-grid > :nth-child(5n+1) { --tint: #dcefee; --accent: #1f8080; }
 .chip-grid > :nth-child(5n+2) { --tint: #fbe6e2; --accent: #d05540; }
@@ -783,9 +811,29 @@ main {
 .chip-grid > :nth-child(5n+4) { --tint: #d6eef0; --accent: #17807c; }
 .chip-grid > :nth-child(5n+5) { --tint: #ebe4f6; --accent: #7a5fae; }
 
-.chip-slot { position: relative; display: flex; }
+/* Every chip sits in a slot, and a card of the chip's accent peeks out
+   from behind it, swung a little from the bottom-right corner the way
+   Helios Who?'s photos have one - further on hover. */
+.chip-slot { position: relative; z-index: 0; display: flex; }
 
 .chip-slot > .chip { flex: 1; }
+
+.chip-slot::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 16px;
+  background: var(--accent);
+  /* A tall card swings a long way per degree, so less than the photo's. */
+  transform: rotate(1.5deg);
+  transform-origin: bottom right;
+  transition: transform 0.2s ease;
+  z-index: -1;
+}
+
+.chip-slot:hover::before { transform: rotate(3deg); }
+
+.chip-slot:has(> .chip)::before { border-radius: 18px; }
 
 .chip-slot .link-edit { position: absolute; top: 12px; right: 12px; z-index: 2; }
 
@@ -795,8 +843,9 @@ main {
   flex-direction: column;
   align-items: center;
   text-align: center;
-  padding: 26px 18px 22px;
-  border-radius: 20px;
+  padding: 30px 22px 28px;
+  border: 1px solid rgba(36, 77, 83, 0.24);
+  border-radius: 18px;
   background: var(--tint);
   overflow: hidden;
   color: inherit;
@@ -811,8 +860,8 @@ main {
 .chip-disc {
   position: relative;
   z-index: 1;
-  width: 110px;
-  height: 110px;
+  width: 104px;
+  height: 104px;
   border-radius: 50%;
   background: #fff;
   display: flex;
@@ -821,7 +870,7 @@ main {
   box-shadow: 0 2px 6px rgba(36, 77, 83, 0.08);
 }
 
-.chip-image { width: 68px; height: 68px; object-fit: contain; }
+.chip-image { width: 66px; height: 66px; object-fit: contain; }
 
 .chip-initial { font-size: 40px; font-weight: 700; color: var(--accent); }
 
@@ -835,7 +884,7 @@ main {
   justify-content: center;
   gap: 8px;
   flex-wrap: wrap;
-  margin-top: 18px;
+  margin-top: 22px;
   font-size: 19px;
   font-weight: 700;
   color: var(--brand);
@@ -844,10 +893,10 @@ main {
 .chip-description {
   position: relative;
   z-index: 1;
-  margin: 4px 0 16px;
+  margin: 8px 0 20px;
   color: #4a4a4a;
-  font-size: 14px;
-  line-height: 1.4;
+  font-size: 15.5px;
+  line-height: 1.45;
 }
 
 .chip .button.chip-open { position: relative; z-index: 1; margin-top: auto; background: var(--accent); }
@@ -856,18 +905,6 @@ main {
 
 .chip.is-hidden > * { opacity: 0.55; }
 
-/* The mark again, large and faint, off the top-right corner. */
-.chip-watermark {
-  position: absolute;
-  right: -30px;
-  top: -20px;
-  width: 130px;
-  height: 130px;
-  object-fit: contain;
-  filter: grayscale(1);
-  opacity: 0.08;
-  pointer-events: none;
-}
 
 /* Tiles - the "tiles" style: a picture beside the initial, the title and a
    line about it. */
@@ -1578,7 +1615,7 @@ main {
 
 @media (max-width: 640px) {
   .tile-grid { gap: 4px 14px; }
-  .chip-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .chip-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
   .chip { padding: 20px 12px 18px; }
   .chip-disc { width: 84px; height: 84px; }
   .chip-image { width: 52px; height: 52px; }

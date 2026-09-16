@@ -29,6 +29,7 @@ const paths = {
   close: 'M6 6l12 12M18 6L6 18',
   chevron: 'm9 6 6 6-6 6',
   arrow: 'M5 12h14M13 6l6 6-6 6',
+  family: 'M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM17 10a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM3 20v-1a5 5 0 0 1 5-5h2a5 5 0 0 1 5 5v1M15.5 14H16a4 4 0 0 1 4 4v2',
 };
 
 // The glyph a category goes by, in the rail and at the head of its section:

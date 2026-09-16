@@ -278,6 +278,14 @@ function spotsNote(act) {
 // pencil into the sign-up itself, where it can be changed or removed; all in
 // place of the foot, since the card says where they are, not what to join.
 export function activityCard(act, opts = {}) {
+  const slot = el('div', 'card-slot ' + categoryClass(act.category));
+  slot.append(activityCardBody(act, opts));
+  return slot;
+}
+
+// activityCardBody is the card itself; activityCard puts it in a slot with a
+// card of its category's colour peeking out behind, as Heliosian's do.
+function activityCardBody(act, opts) {
   const card = el('div', 'card' + (act.status === 'Hidden' || act.status === 'Pending' ? ' is-muted' : ''));
   const media = link(activityPath(act), 'card-media');
   // Without a photo the tile falls back to a big initial; tinting it by category

@@ -59,8 +59,8 @@ function openInNewTab(url) {
 }
 
 // A feature card is a chip like the community apps': the picture in a
-// white disc over the title, the description and Open App, the picture
-// again faint in the corner, the whole of it the link. The admin's
+// white disc over the title, the description and Open App, the whole of
+// it the link. The admin's
 // pencil sits beside the link in a slot, not inside it.
 function featureCard(link, category) {
   const slot = el('div', 'chip-slot');
@@ -80,9 +80,6 @@ function featureCard(link, category) {
   const go = el('span', 'button chip-open');
   go.append(el('span', '', 'Open App'), svg('arrow'));
   card.append(go);
-  if (link.imageUrl) {
-    card.append(artwork(link, category, 'chip-watermark', ''));
-  }
   slot.append(card);
   const pencil = editPencil(link);
   if (pencil) {
@@ -281,6 +278,21 @@ export function whenOrigin(app) {
   return appOrigin(app === 'calendar' ? 'when' : app);
 }
 
+// tint is where an event comes from, as the rail's month colours it too.
+function tint(event) {
+  return event.linkApp === 'celebrate' ? 'is-celebrate' : event.linkApp === 'team' ? 'is-team' : 'is-school';
+}
+
+// sourceName is the app an event comes from, as the switch names it, or
+// the school for the calendar's own.
+function sourceName(event) {
+  if (!event.linkApp) {
+    return 'School';
+  }
+  const app = (state.model.apps || []).find(a => a.key === event.linkApp);
+  return app ? app.name : {celebrate: 'Helios Celebrate', team: 'HCA-Team'}[event.linkApp] || event.linkApp;
+}
+
 // eventCard is one of the events coming up, from Helios Calendar - the
 // school's, HCA-Team's and Celebrate's as the calendar lists them - opening
 // its page on When, with Yes and No under it, a cross to hide it, and for
@@ -308,6 +320,10 @@ function eventCard(event) {
   stamp.append(el('span', 'event-stamp-month', new Date(2000, Number(month) - 1, 1).toLocaleDateString('en-US', {month: 'short'})));
   stamp.append(el('span', 'event-stamp-day', String(Number(day))));
   art.append(stamp);
+  // A chip at the picture's foot says where the event comes from: the
+  // app that runs it, by the name the app switch gives it, else the
+  // school's calendar.
+  art.append(el('span', 'event-source ' + tint(event), sourceName(event)));
   const body = el('div', 'event-body');
   body.append(el('div', 'event-title', event.title));
   // The stamp on the picture is the day; under the title, the hours alone.
@@ -528,19 +544,47 @@ function calendarPicker(needle) {
 // one icon: the names with a dot between each, and a note - a role, a
 // waitlist place, a guest still to be named - in parentheses after its name.
 function peopleList(event) {
-  const line = el('div', 'event-people');
-  line.append(svg(event.linkApp === 'celebrate' ? 'ticket' : 'volunteer'));
-  const names = el('span', 'event-people-names');
-  event.people.forEach((p, i) => {
-    if (i) {
-      names.append(el('span', 'event-people-sep', '\u2022'));
-    }
-    names.append(el('span', 'event-person', p.name));
-    if (p.note) {
-      names.append(el('span', 'event-person-note', `(${p.note})`));
-    }
-  });
-  line.append(names);
+  // The line opens the household's standing where it is kept: the party's
+  // page on Celebrate with its tickets, the event's page on HCA-Team.
+  const line = event.link ? el('a', 'event-people') : el('div', 'event-people');
+  if (event.link) {
+    line.href = whenOrigin(event.linkApp) + event.link;
+    line.title = event.linkApp === 'celebrate' ? 'See the tickets' : 'See the sign-ups';
+  }
+  // A row is an icon and its words.
+  const row = (icon, className, words) => {
+    const r = el('span', 'event-people-row');
+    r.append(svg(icon), el('span', className, words));
+    return r;
+  };
+  // A party's tickets are counted rather than named - the household's
+  // holders and guests can run to a paragraph; the volunteers on an
+  // HCA-Team event are named with their roles.
+  if (event.linkApp === 'celebrate') {
+    const n = event.people.length;
+    line.append(row('ticket', 'event-person', `${n} ticket${n === 1 ? '' : 's'}`));
+    return line;
+  }
+  // The viewer's own parts, as the roles alone - "Co-Chair · Performance
+  // Tech" - then, on a row of its own with the family's mark, the rest of
+  // the household as a count of roles.
+  const mine = event.people.filter(p => p.mine);
+  const others = event.people.length - mine.length;
+  if (mine.length) {
+    const roles = el('span', 'event-people-names');
+    mine.forEach((p, i) => {
+      if (i) {
+        roles.append(el('span', 'event-people-sep', '\u2022'));
+      }
+      roles.append(el('span', 'event-person', p.note || 'Signed up'));
+    });
+    const r = el('span', 'event-people-row');
+    r.append(svg('volunteer'), roles);
+    line.append(r);
+  }
+  if (others) {
+    line.append(row('family', 'event-person-note event-people-family', `${others} role${others === 1 ? '' : 's'} in my family`));
+  }
   return line;
 }
 
@@ -566,7 +610,9 @@ function eventsPanel(category, needle) {
   const grid = el('div', 'event-grid');
   const {shown, hidden} = limited(category, events, needle);
   for (const event of shown) {
-    grid.append(eventCard(event));
+    const slot = el('div', 'chip-slot');
+    slot.append(eventCard(event));
+    grid.append(slot);
   }
   wrap.append(grid);
   if (hidden) {
@@ -589,9 +635,11 @@ function appsMatching(needle) {
 
 // appCard is one community app as a chip: its mark on a white disc, its
 // name and tagline centred under it, and Open App with an arrow, on a
-// tint of its own with the mark again faint in the corner. The whole chip
-// is the link; the button inside is the same one, for the eye.
+// tint of its own, in a slot with a card of its accent peeking out behind.
+// The whole chip is the link; the button inside is the same one, for the
+// eye.
 function appCard(app) {
+  const slot = el('div', 'chip-slot');
   const card = el('a', 'chip');
   card.href = appOrigin(app.host || app.key);
   const disc = el('div', 'chip-disc');
@@ -605,11 +653,8 @@ function appCard(app) {
   const go = el('span', 'button chip-open');
   go.append(el('span', '', 'Open App'), svg('arrow'));
   card.append(go);
-  const watermark = el('img', 'chip-watermark');
-  watermark.src = icon.src;
-  watermark.alt = '';
-  card.append(watermark);
-  return card;
+  slot.append(card);
+  return slot;
 }
 
 function appsPanel(category, needle) {

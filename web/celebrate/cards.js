@@ -78,6 +78,15 @@ function footButton(p, mine) {
 // family and the guests they brought, whichever page the card is on - and
 // a foot with the action and what is left.
 export function partyCard(p) {
+  const slot = el('div', 'card-slot');
+  slot.append(partyCardBody(p));
+  return slot;
+}
+
+// partyCardBody is the card itself; partyCard puts it in a slot with a
+// card of an accent peeking out behind, as Heliosian's do, the accents
+// cycling by place in the grid.
+function partyCardBody(p) {
   const card = el('div', 'card' + (p.status !== 'Open' ? ' is-muted' : ''));
   const media = link(partyPath(p), 'card-media');
   media.append(thumb(p.imageUrl, p.title, 'card-image'));

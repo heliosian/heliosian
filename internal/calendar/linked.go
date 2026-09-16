@@ -39,6 +39,8 @@ type Linked struct {
 type Standing struct {
 	Name string `json:"name"`
 	Note string `json:"note,omitempty"`
+	// Mine marks the viewer's own standing among their household's.
+	Mine bool `json:"mine,omitempty"`
 }
 
 // builtinTags are the tags the load and the linked events file under that no

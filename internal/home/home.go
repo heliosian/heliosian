@@ -78,6 +78,7 @@ type Event struct {
 type Standing struct {
 	Name string `json:"name"`
 	Note string `json:"note,omitempty"`
+	Mine bool   `json:"mine,omitempty"`
 }
 
 // Upcoming is the front page's Upcoming Events for a person: the events,

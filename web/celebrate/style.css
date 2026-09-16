@@ -396,7 +396,35 @@ main {
 .group-name:first-child { margin-top: 4px; }
 
 /* Cards. */
-.card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 20px; }
+/* Each card sits in a slot, and a card of an accent peeks out from behind
+   it, swung a little from the bottom-right corner the way Helios Who?'s
+   photos have one - further on hover; the accents cycle by place in the
+   grid, and the gap gives the peeks room. */
+.card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 40px 52px; }
+
+.card-grid > :nth-child(5n+1) { --peek: #1f838a; }
+.card-grid > :nth-child(5n+2) { --peek: #c2442d; }
+.card-grid > :nth-child(5n+3) { --peek: #88a700; }
+.card-grid > :nth-child(5n+4) { --peek: #e0c800; }
+.card-grid > :nth-child(5n+5) { --peek: #0f4e54; }
+
+.card-slot { position: relative; z-index: 0; display: flex; }
+
+.card-slot > .card { flex: 1; min-width: 0; }
+
+.card-slot::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 14px;
+  background: var(--peek, var(--accent));
+  transform: rotate(1.5deg);
+  transform-origin: bottom right;
+  transition: transform 0.2s ease;
+  z-index: -1;
+}
+
+.card-slot:hover::before { transform: rotate(3deg); }
 
 .card {
   display: flex;

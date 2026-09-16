@@ -413,7 +413,7 @@ func (u upcomingEvents) month(email, month, token string) home.Month {
 func homeStandings(list []calendar.Standing) []home.Standing {
 	out := []home.Standing{}
 	for _, s := range list {
-		out = append(out, home.Standing{Name: s.Name, Note: s.Note})
+		out = append(out, home.Standing{Name: s.Name, Note: s.Note, Mine: s.Mine})
 	}
 	return out
 }

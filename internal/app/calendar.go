@@ -146,7 +146,7 @@ func (c calendarLinked) parties(now time.Time, family familyNames, full map[stri
 				// A ticket names its holder; a guest still to be named is
 				// listed by the words on the ticket.
 				if family.has(t.Email) {
-					people = append(people, calendar.Standing{Name: nameOf(full, t.Email, t.Name)})
+					people = append(people, calendar.Standing{Name: nameOf(full, t.Email, t.Name), Mine: family[t.Email] == ""})
 				} else {
 					people = append(people, calendar.Standing{Name: nameOf(full, "", t.Name), Note: "guest"})
 				}
@@ -215,7 +215,7 @@ func (c calendarLinked) activities(family familyNames, full map[string]string) [
 				if item != a {
 					note = item.Title
 				}
-				people = append(people, calendar.Standing{Name: nameOf(full, v.Email, ""), Note: note})
+				people = append(people, calendar.Standing{Name: nameOf(full, v.Email, ""), Note: note, Mine: family[v.Email] == ""})
 			}
 		}
 		mine, who := "", []string(nil)

@@ -458,27 +458,40 @@ main {
   margin-bottom: 22px;
 }
 
-/* Every chip carries its category's tint at low opacity until it is the active
-   filter, when it fills in. Colours are assigned by position in the sheet's
+/* The chips are Helios Who?'s pills: each filled in its category's colour
+   with white words, the one that is the active filter full and ringed, the
+   rest faded back. Colours are assigned by position in the sheet's
    category list, so they stay stable as long as the order does. */
 .chip {
+  display: inline-flex;
+  align-items: center;
   border: 0;
   border-radius: 999px;
-  padding: 9px 18px;
+  padding: 7px 16px;
   font: inherit;
-  font-size: 13.5px;
-  font-weight: 700;
+  font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
-  color: var(--brand);
-  background: var(--input);
-  transition: filter 0.12s;
+  color: #fff;
+  background: var(--brand);
+  opacity: 0.85;
+  transition: opacity 0.12s, box-shadow 0.12s;
 }
 
-.chip:hover { filter: brightness(0.96); }
+.chip:hover { opacity: 1; }
 
-.chip.is-on { box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.28); }
+.chip.is-on { opacity: 1; box-shadow: 0 0 0 2px #fff, 0 0 0 4px rgba(12, 76, 84, 0.4); }
 
-.chip-all.is-on { background: var(--brand); color: #fff; box-shadow: none; }
+/* Helios Who?'s pill colours - its staff coral, student teal and parent
+   olive - then its brand teal and a gold. */
+.chip.cat-1 { background: #df604a; }
+.chip.cat-2 { background: #20a39e; }
+.chip.cat-3 { background: #8ea604; }
+.chip.cat-4 { background: #244d53; }
+.chip.cat-5 { background: #d9a900; }
+.chip.cat-none { background: #5f6f6e; }
+
+.card-slot.cat-1, .card-slot.cat-2, .card-slot.cat-3, .card-slot.cat-4, .card-slot.cat-5, .card-slot.cat-none { background: none; }
 
 .cat-1 { background: #f6cfc7; }
 .cat-2 { background: #bfe6e4; }
@@ -536,11 +549,40 @@ main {
   flex-shrink: 0;
 }
 
+/* Each card sits in a slot, and a card of its category's colour peeks out
+   from behind it, swung a little from the bottom-right corner the way
+   Helios Who?'s photos have one - further on hover; the gap gives the
+   peeks room. */
 .card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 40px 52px;
 }
+
+.card-slot { position: relative; z-index: 0; display: flex; }
+
+.card-slot > .card { flex: 1; min-width: 0; }
+
+.card-slot::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 14px;
+  background: var(--peek, var(--brand));
+  transform: rotate(1.5deg);
+  transform-origin: bottom right;
+  transition: transform 0.2s ease;
+  z-index: -1;
+}
+
+.card-slot:hover::before { transform: rotate(3deg); }
+
+.card-slot.cat-1 { --peek: #ee523c; }
+.card-slot.cat-2 { --peek: #00a69f; }
+.card-slot.cat-3 { --peek: #d7bb06; }
+.card-slot.cat-4 { --peek: #8f9403; }
+.card-slot.cat-5 { --peek: #4b8a8d; }
+.card-slot.cat-none { --peek: #5f6f6e; }
 
 .card {
   display: flex;
