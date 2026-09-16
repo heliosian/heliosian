@@ -2,6 +2,7 @@ package celebrate
 
 import (
 	"log/slog"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -29,7 +30,26 @@ type Cache struct {
 	err        error
 	// edits counts every change applied from a request, so a refresh that
 	// read the sheet before one landed knows not to put the older sheet back.
-	edits int
+	edits     int
+	listeners []func()
+}
+
+// OnChange registers a hook run after every change to the model, from the
+// sheet or from an edit. Helios Groups keeps its Google groups in step
+// through it.
+func (c *Cache) OnChange(fn func()) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.listeners = append(c.listeners, fn)
+}
+
+func (c *Cache) changed() {
+	c.mu.RLock()
+	listeners := slices.Clone(c.listeners)
+	c.mu.RUnlock()
+	for _, fn := range listeners {
+		fn()
+	}
 }
 
 // NewCache loads the sheet and keeps reloading it. A sheet that will not load
@@ -85,6 +105,7 @@ func (c *Cache) refresh() error {
 	}
 	slog.Info("loaded celebrate model", "celebrations", len(model.Celebrations), "parties", len(model.Parties),
 		"tickets", tickets, "skipped", model.Skipped, "took", time.Since(start).Round(time.Millisecond))
+	c.changed()
 	return nil
 }
 
@@ -92,10 +113,11 @@ func (c *Cache) refresh() error {
 // flight defers to.
 func (c *Cache) set(tables *Tables, model *Model) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	c.tables = tables
 	c.model = model
 	c.edits++
+	c.mu.Unlock()
+	c.changed()
 }
 
 func (c *Cache) Model() *Model {

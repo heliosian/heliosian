@@ -19,17 +19,22 @@ type smartLists struct {
 }
 
 func (s smartLists) Lists(email string) []who.List {
-	now := time.Now().In(calendar.Location)
-	return append(s.parties(email, now), s.activities(email, now)...)
+	return SmartLists(s.cache.Model(), s.events.Model(), s.celebrate.Model(), email, time.Now().In(calendar.Location))
 }
 
-func (s smartLists) parties(email string, now time.Time) []who.List {
+// SmartLists is the Magic Tags a person has from the other apps, over
+// models rather than caches: the parties they host on Helios Celebrate that
+// have not happened yet and the activities they co-chair on HCA-Team this
+// school year. An app whose model is nil contributes nothing.
+func SmartLists(directory *who.Model, portal *events.Model, site *celebrate.Model, email string, now time.Time) []who.List {
+	return append(parties(directory, site, email, now), activities(directory, portal, email, now)...)
+}
+
+func parties(directory *who.Model, model *celebrate.Model, email string, now time.Time) []who.List {
 	out := []who.List{}
-	model := s.celebrate.Model()
 	if model == nil {
 		return out
 	}
-	directory := s.cache.Model()
 	for _, p := range model.Parties {
 		if p.Past(now) || !slices.ContainsFunc(p.HostEmails, func(h string) bool { return directory.Resolve(h) == email }) {
 			continue
@@ -71,13 +76,11 @@ func (s smartLists) parties(email string, now time.Time) []who.List {
 	return out
 }
 
-func (s smartLists) activities(email string, now time.Time) []who.List {
+func activities(directory *who.Model, model *events.Model, email string, now time.Time) []who.List {
 	out := []who.List{}
-	model := s.events.Model()
 	if model == nil {
 		return out
 	}
-	directory := s.cache.Model()
 	chairs := func(a *events.Activity) bool {
 		return slices.ContainsFunc(a.CoChairs(), func(c string) bool { return directory.Resolve(c) == email })
 	}

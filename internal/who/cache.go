@@ -45,6 +45,26 @@ type Cache struct {
 	// edit anyone's record rather than just their own family's. Deliberately
 	// in-memory only: it resets on every restart rather than staying on forever.
 	superEdit map[string]bool
+
+	listeners []func()
+}
+
+// OnChange registers a hook run after every change to the model or to the
+// tags: a rebuild from the sheet or from an edit, a tag set or dropped. Helios
+// Groups keeps its Google groups in step through it.
+func (c *Cache) OnChange(fn func()) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.listeners = append(c.listeners, fn)
+}
+
+func (c *Cache) changed() {
+	c.mu.RLock()
+	listeners := slices.Clone(c.listeners)
+	c.mu.RUnlock()
+	for _, fn := range listeners {
+		fn()
+	}
 }
 
 // store is the concrete blob store (nil in sample mode), needed to replace a classroom
@@ -225,13 +245,19 @@ func (c *Cache) Model() *Model {
 func (c *Cache) Tags(owner string) map[string][]string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
+	return TagsOf(c.tables.Tags, c.model, owner)
+}
+
+// TagsOf is Tags over the Tags tab's rows and a model, for a tool holding
+// both without a cache.
+func TagsOf(rows []map[string]string, model *Model, owner string) map[string][]string {
 	tags := map[string][]string{}
-	for _, row := range c.tables.Tags {
+	for _, row := range rows {
 		if !strings.EqualFold(row[tagOwner], owner) {
 			continue
 		}
 		person := strings.ToLower(row[tagPerson])
-		if c.model.Person(person) == nil {
+		if model.Person(person) == nil {
 			continue
 		}
 		tags[row[tagName]] = append(tags[row[tagName]], person)
@@ -515,6 +541,7 @@ func (c *Cache) rebuild(tables *Tables, start time.Time) error {
 	c.mu.Unlock()
 	slog.Info("loaded directory model", "people", len(model.People), "families", len(model.Families),
 		"classrooms", len(model.Classrooms), "crews", len(model.Crews), "took", time.Since(start).Round(time.Millisecond))
+	c.changed()
 	return nil
 }
 

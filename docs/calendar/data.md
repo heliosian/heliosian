@@ -51,7 +51,7 @@ Feed keys are the feed's own UIDs, with an instance of a repeating event keyed a
 
 ## The import
 
-`go run ./cmd/calendarimport` (dry run with `--dry-run`) needs `CALENDAR_SHEET`, `DIRECTORY_SHEET`, `PREFERENCES_SHEET`, and `CONFIG_SHEET`, the same impersonated credentials as every other tool, and an Anthropic API key in `creds/anthropic.key` or `ANTHROPIC_API_KEY`. `Day Types` must already hold `Regular`, `No School`, and `Early Dismissal` rows, the names the PDF's legend maps onto.
+The import is the calendar stage of the periodic sync, `internal/calendarimport`, run by `go run ./cmd/periodicsync` (dry run with `--dry-run`; `docs/dev.md` lists what the job needs, this stage among it `CALENDAR_SHEET`, `DIRECTORY_SHEET`, `PREFERENCES_SHEET` and `CONFIG_SHEET`, the same impersonated credentials as every other tool, and an Anthropic API key in `creds/anthropic.key` or `ANTHROPIC_API_KEY`). `Day Types` must already hold `Regular`, `No School`, and `Early Dismissal` rows, the names the PDF's legend maps onto.
 
 One run:
 
@@ -63,7 +63,7 @@ One run:
 
 A stage that fails does not take the others with it. A PDF that cannot be read leaves the rows already there; a classification batch that fails leaves its events with whatever row they had, and their input hashes see to it that the next run asks about exactly those events again. Everything that did complete is written, and only then does the run exit non-zero naming what failed.
 
-The run is idempotent and cheap when nothing changed: one feed fetch, one page fetch, one PDF fetch, no Claude calls. Google throttles its public feed by client address, which a Cloud Run job shares with strangers, so a `429 Too Many Requests` from any of the three is waited out and asked again, four times over about a quarter of an hour, with whatever `Retry-After` Google sent logged beside each refusal, before the run gives up on it. It runs from a laptop (`brew install poppler` supplies `pdftoppm`) and from its own image, `Dockerfile.calendarimport`, a Debian base carrying poppler rather than the server's distroless one, which the Cloud Run Job `calendarimport` runs on Cloud Scheduler's cadence as the same identity as the server; `docs/deploy.md` says how to read the schedule and the recent runs.
+The run is idempotent and cheap when nothing changed: one feed fetch, one page fetch, one PDF fetch, no Claude calls. Google throttles its public feed by client address, which a Cloud Run job shares with strangers, so a `429 Too Many Requests` from any of the three is waited out and asked again, four times over about a quarter of an hour, with whatever `Retry-After` Google sent logged beside each refusal, before the run gives up on it. It runs from a laptop (`brew install poppler` supplies `pdftoppm`) and from the job's own image, `Dockerfile.periodicsync`, a Debian base carrying poppler rather than the server's distroless one, which the Cloud Run Job `periodicsync` runs on Cloud Scheduler's cadence as the same identity as the server, the groups stage after it; `docs/deploy.md` says how to read the schedule and the recent runs.
 
 ## Sample data
 

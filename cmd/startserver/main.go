@@ -33,6 +33,7 @@ import (
 	"heliosian/internal/devtls"
 	"heliosian/internal/feedback"
 	"heliosian/internal/geocode"
+	"heliosian/internal/groups"
 	"heliosian/internal/logging"
 	"heliosian/internal/mail"
 	"heliosian/internal/who"
@@ -95,6 +96,9 @@ func sampleServer() (*http.Server, *who.Queue) {
 		BirthdayFrom:  "Helios Staff Birthdays <birthday@example.org>",
 		BirthdayBase:  "https://birthday.local.heliosian.com:" + app.Port(),
 		Feedback:      printedFeedback{},
+		// The groups are kept in memory and every change logged, never sent
+		// to Google.
+		Groups: groups.NewFake(),
 	})
 	// No Google sign-in here, but Spoof Mode still: a sign-in with a key of
 	// its own signs the spoof cookie and answers the toolbar's switch, and
@@ -114,6 +118,7 @@ func sampleServer() (*http.Server, *who.Queue) {
 		"birthday":  app.Public("birthday", signIn.Fixed(sampleUser, app.Logged("birthday", app.Files("birthday", core.Birthday)))),
 		"celebrate": app.Public("celebrate", signIn.Fixed(sampleUser, app.Logged("celebrate", app.Files("celebrate", core.Celebrate)))),
 		"calendar":  app.Public("calendar", signIn.Fixed(sampleUser, app.Logged("calendar", app.Files("calendar", core.Calendar)))),
+		"groups":    app.Public("groups", signIn.Fixed(sampleUser, app.Logged("groups", app.Files("groups", core.Groups)))),
 	}), core.Queue)
 }
 
@@ -144,7 +149,7 @@ func detachReal(email string) {
 	if key == "" {
 		logging.Fatal("SESSION_KEY is required (the server and the minted cookie must share it)")
 	}
-	for _, name := range []string{"DIRECTORY_SHEET", "PREFERENCES_SHEET", "INVITES_SHEET", "APPS_SHEET", "EVENTS_SHEET", "BIRTHDAY_SHEET", "CELEBRATE_SHEET", "CALENDAR_SHEET", "CONFIG_SHEET"} {
+	for _, name := range []string{"DIRECTORY_SHEET", "PREFERENCES_SHEET", "INVITES_SHEET", "APPS_SHEET", "EVENTS_SHEET", "BIRTHDAY_SHEET", "CELEBRATE_SHEET", "CALENDAR_SHEET", "CONFIG_SHEET", "GROUPS_SHEET"} {
 		if os.Getenv(name) == "" {
 			logging.Fatal("environment variable is required", "name", name)
 		}

@@ -31,6 +31,7 @@ import (
 	"heliosian/internal/events"
 	"heliosian/internal/feedback"
 	"heliosian/internal/geocode"
+	"heliosian/internal/groups"
 	"heliosian/internal/home"
 	"heliosian/internal/imagesearch"
 	"heliosian/internal/logging"
@@ -754,6 +755,9 @@ type Config struct {
 	// Describer writes Staff Birthdays' sentence about a charity; nil leaves
 	// that button saying it is not set up.
 	Describer birthday.Describer
+	// Groups is the Google Groups side Helios Groups keeps in step: the
+	// Cloud Identity API in production, a fake that logs in sample mode.
+	Groups groups.Google
 }
 
 // Core is the assembled shared skeleton: each app's mux (still open for the
@@ -774,8 +778,13 @@ type Core struct {
 	// CalendarLinked is what the other apps put on the calendar for a viewer,
 	// for the share cards a stranger fetches.
 	CalendarLinked func(email string) []calendar.Linked
-	Cache          *who.Cache
-	Queue          *who.Queue
+	// GroupsMux serves Helios Groups, the email groups drawn from the directory.
+	GroupsMux   *http.ServeMux
+	GroupsCache *groups.Cache
+	// GroupsSyncer keeps the Google groups in step with every change.
+	GroupsSyncer *groups.Syncer
+	Cache        *who.Cache
+	Queue        *who.Queue
 	// Spoof is Spoof Mode as every app's sign-in shares it: the super admins
 	// may view as anyone the directory lists.
 	Spoof     *auth.Spoof
@@ -785,6 +794,7 @@ type Core struct {
 	Birthday  http.Handler
 	Celebrate http.Handler
 	Calendar  http.Handler
+	Groups    http.Handler
 }
 
 // NewCore wires everything every mode serves identically. Fatal on any failure.
@@ -887,27 +897,43 @@ func NewCore(cfg Config) *Core {
 	})
 	celebrateMux := http.NewServeMux()
 	celebrate.Register(celebrateMux, celebrateCache, cfg.Writer, queue, cfg.Store, celebrateDirectory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.CelebrateMail, cfg.CelebrateFrom)
+	// The groups read the directory, its tags and the other apps' Magic
+	// Tags, so every one of those caches tells the syncer when it changes,
+	// and the groups' own cache does too.
+	groupsCache, err := groups.NewCache(cfg.Source, superAdmin, queue)
+	if err != nil {
+		logging.Fatal("load groups data", "error", err)
+	}
+	groupsDir := groupsDirectory{cache, settings, smartLists{cache, eventsCache, celebrateCache}}
+	syncer := groups.NewSyncer(cfg.Groups, groups.PlanFor(groupsCache, groupsDir))
+	cache.OnChange(syncer.Notify)
+	eventsCache.OnChange(syncer.Notify)
+	celebrateCache.OnChange(syncer.Notify)
+	groupsCache.OnChange(syncer.Notify)
+	groupsMux := http.NewServeMux()
+	groups.Register(groupsMux, groupsCache, cfg.Writer, queue, cfg.Store, groupsDir, settings.SuperAdmins, syncer)
+	syncer.Notify()
 	// Every app's toolbar asks its own origin what its switch lists and
 	// which rows to leave off; Heliosian's cache answers for all of them.
-	for _, m := range []*http.ServeMux{mux, eventsMux, birthdayMux, celebrateMux, calendarMux} {
+	for _, m := range []*http.ServeMux{mux, eventsMux, birthdayMux, celebrateMux, calendarMux, groupsMux} {
 		home.RegisterSwitch(m, homeCache)
 	}
 	feedbackQueue := feedback.NewQueue(cfg.Feedback)
-	for key, m := range map[string]*http.ServeMux{"who": mux, "home": homeMux, "team": eventsMux, "birthday": birthdayMux, "celebrate": celebrateMux, "calendar": calendarMux} {
+	for key, m := range map[string]*http.ServeMux{"who": mux, "home": homeMux, "team": eventsMux, "birthday": birthdayMux, "celebrate": celebrateMux, "calendar": calendarMux, "groups": groupsMux} {
 		feedback.Register(m, key, appName(key), superAdmin, feedbackQueue)
 	}
 	return &Core{
 		Mux: mux, HomeMux: homeMux, EventsMux: eventsMux, EventsCache: eventsCache, BirthdayMux: birthdayMux, CelebrateMux: celebrateMux, CelebrateCache: celebrateCache,
-		CalendarMux: calendarMux, CalendarCache: calendarCache, CalendarLinked: linked, Cache: cache, Queue: queue,
+		CalendarMux: calendarMux, CalendarCache: calendarCache, CalendarLinked: linked, GroupsMux: groupsMux, GroupsCache: groupsCache, GroupsSyncer: syncer, Cache: cache, Queue: queue,
 		Spoof: &auth.Spoof{Allowed: superAdmin, Person: directory{cache, settings}.SpoofPerson, People: directory{cache, settings}.SpoofPeople},
-		Gate:  who.MemberGate(cache, mux), Home: homeMux, Events: eventsMux, Birthday: birthdayMux, Celebrate: celebrateMux, Calendar: calendarMux,
+		Gate:  who.MemberGate(cache, mux), Home: homeMux, Events: eventsMux, Birthday: birthdayMux, Celebrate: celebrateMux, Calendar: calendarMux, Groups: groupsMux,
 	}
 }
 
 // Muxes is every app's mux, keyed by the app, for what is wired on all of
 // them alike.
 func (c *Core) Muxes() map[string]*http.ServeMux {
-	return map[string]*http.ServeMux{"who": c.Mux, "home": c.HomeMux, "team": c.EventsMux, "birthday": c.BirthdayMux, "celebrate": c.CelebrateMux, "calendar": c.CalendarMux}
+	return map[string]*http.ServeMux{"who": c.Mux, "home": c.HomeMux, "team": c.EventsMux, "birthday": c.BirthdayMux, "celebrate": c.CelebrateMux, "calendar": c.CalendarMux, "groups": c.GroupsMux}
 }
 
 // Server dresses the apps, each fully wrapped and keyed by name, in the shared
@@ -1115,6 +1141,7 @@ func Production() (*http.Server, *who.Queue) {
 		"celebrate":   requiredEnv("CELEBRATE_SHEET"),
 		"calendar":    requiredEnv("CALENDAR_SHEET"),
 		"config":      requiredEnv("CONFIG_SHEET"),
+		"groups":      requiredEnv("GROUPS_SHEET"),
 	}
 	sessionKey := requiredEnv("SESSION_KEY")
 	sheet, err := data.NewSheet(spreadsheets)
@@ -1124,6 +1151,10 @@ func Production() (*http.Server, *who.Queue) {
 	store, err := blob.New()
 	if err != nil {
 		logging.Fatal("blob store", "error", err)
+	}
+	google, err := groups.NewCloudIdentity(context.Background())
+	if err != nil {
+		logging.Fatal("cloud identity client", "error", err)
 	}
 	core := NewCore(Config{
 		Source:      sheet,
@@ -1145,6 +1176,7 @@ func Production() (*http.Server, *who.Queue) {
 		BirthdayFrom:  birthdayMailFrom(),
 		BirthdayBase:  birthdayBase(),
 		Feedback:      &feedback.GitHub{Token: mapsKey("GITHUB_TOKEN", "creds/github.token")},
+		Groups:        google,
 	})
 	blob.Register(core.Mux, store)
 	blob.RegisterHome(core.HomeMux, store)
@@ -1152,7 +1184,8 @@ func Production() (*http.Server, *who.Queue) {
 	blob.RegisterBirthday(core.BirthdayMux, store)
 	blob.RegisterCelebrate(core.CelebrateMux, store)
 	blob.RegisterCalendar(core.CalendarMux, store)
-	for _, m := range []*http.ServeMux{core.Mux, core.HomeMux, core.EventsMux, core.BirthdayMux, core.CelebrateMux, core.CalendarMux} {
+	blob.RegisterGroups(core.GroupsMux, store)
+	for _, m := range []*http.ServeMux{core.Mux, core.HomeMux, core.EventsMux, core.BirthdayMux, core.CelebrateMux, core.CalendarMux, core.GroupsMux} {
 		blob.RegisterLogos(m, store)
 	}
 	who.RegisterUpload(core.Mux, core.Cache, sheet, store, core.Queue)
@@ -1185,6 +1218,8 @@ func Production() (*http.Server, *who.Queue) {
 	// leads to carries the event's Open Graph tags.
 	calendarAuth.Preview = calendar.PreviewHead(core.CalendarCache, core.CalendarLinked)
 	calendarAuth.Register(core.CalendarMux)
+	groupsAuth := newAuth("groups")
+	groupsAuth.Register(core.GroupsMux)
 	return Server(map[string]http.Handler{
 		"who":       Public("who", whoAuth.Wrap(Logged("who", Files("who", core.Gate)))),
 		"home":      Public("home", homeAuth.Wrap(Logged("home", Files("home", core.Home)))),
@@ -1192,5 +1227,6 @@ func Production() (*http.Server, *who.Queue) {
 		"birthday":  Public("birthday", birthdayAuth.Wrap(Logged("birthday", Files("birthday", core.Birthday)))),
 		"celebrate": Public("celebrate", celebrateAuth.Wrap(Logged("celebrate", Files("celebrate", core.Celebrate)))),
 		"calendar":  Public("calendar", calendarAuth.Wrap(Logged("calendar", Files("calendar", core.Calendar)))),
+		"groups":    Public("groups", groupsAuth.Wrap(Logged("groups", Files("groups", core.Groups)))),
 	}), core.Queue
 }

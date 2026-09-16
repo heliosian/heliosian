@@ -1,0 +1,460 @@
+// Package groups serves Helios Groups: named email groups drawn from the directory by rules and manifested as Google Groups.
+package groups
+
+import (
+	"fmt"
+	"maps"
+	"regexp"
+	"slices"
+	"sort"
+	"strings"
+
+	"heliosian/internal/data"
+	"heliosian/internal/theme"
+)
+
+const (
+	appName      = "groups"
+	groupsTab    = "Groups"
+	managersTab  = "Managers"
+	rulesTab     = "Rules"
+	adminsTab    = "Admins"
+	settingsTab  = "Settings"
+	changeLogTab = "Change Log"
+
+	// Domain is where every group lives: a group named parents-k is
+	// parents-k@groups.heliosian.com.
+	Domain = "groups.heliosian.com"
+
+	KindInclude = "include"
+	KindExclude = "exclude"
+
+	maxTitleLength       = 80
+	maxDescriptionLength = 300
+	maxSearchLength      = 80
+	maxRules             = 40
+)
+
+var (
+	GroupColumns     = []string{"Name", "Title", "Description", "Created By", "Created"}
+	ManagerColumns   = []string{"Group", "Email"}
+	RuleColumns      = []string{"Group", "Kind", "Roles", "Search", "Classrooms", "Grades", "Tags", "Family", "Owner"}
+	AdminColumns     = []string{"Email"}
+	SettingColumns   = []string{"Key", "Value"}
+	ChangeLogColumns = []string{"Timestamp", "Actor", "Action", "Group", "Detail"}
+
+	// Roles are the role facet's values, and Relations the Family facet's:
+	// the relatives a rule's matches are widened by, as Who?'s Add family
+	// does.
+	Roles     = []string{"Student", "Parent", "Staff"}
+	Relations = []string{"Parents", "Children", "Siblings"}
+)
+
+// nameForm is a group's name: the local part of its address, two to forty
+// characters of lowercase letters, digits and hyphens, neither end a hyphen.
+var nameForm = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,38}[a-z0-9]$`)
+
+var reservedNames = []string{"abuse", "admin", "administrator", "hostmaster", "noreply", "no-reply", "postmaster", "root", "webmaster"}
+
+var emailForm = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
+
+// Rule is one line of a group's definition, a filter as Who? has them: every
+// facet set must match (a role, words in the name or address, a classroom,
+// a grade, a tag or Magic Tag of the owner's), and Family widens the matches
+// by their relatives. Include rules are unioned and exclude rules subtracted.
+// Owner is whose tags the Tags facet names, since tags are private to one
+// person.
+type Rule struct {
+	Kind       string   `json:"kind"`
+	Roles      []string `json:"roles"`
+	Search     string   `json:"search"`
+	Classrooms []string `json:"classrooms"`
+	Grades     []string `json:"grades"`
+	Tags       []string `json:"tags"`
+	Family     []string `json:"family"`
+	Owner      string   `json:"owner"`
+}
+
+// Group is one group: its name, which is its address's local part and never
+// changes, what it is called and for, who manages it, and its rules.
+type Group struct {
+	Name        string   `json:"name"`
+	Title       string   `json:"title"`
+	Description string   `json:"description"`
+	CreatedBy   string   `json:"createdBy,omitempty"`
+	Created     string   `json:"created,omitempty"`
+	Managers    []string `json:"managers"`
+	Rules       []Rule   `json:"rules"`
+}
+
+// Address is the group's email address.
+func (g Group) Address() string {
+	return g.Name + "@" + Domain
+}
+
+// Manages says whether email is one of the group's managers.
+func (g Group) Manages(email string) bool {
+	return slices.Contains(g.Managers, email)
+}
+
+// Model is the sheet organized: every group by name, in name order.
+type Model struct {
+	Groups []Group
+	Theme  theme.Theme
+	byName map[string]int
+}
+
+// Group finds a group by name, nil for none.
+func (m *Model) Group(name string) *Group {
+	i, ok := m.byName[name]
+	if !ok {
+		return nil
+	}
+	return &m.Groups[i]
+}
+
+type Tables struct {
+	Groups   []map[string]string
+	Managers []map[string]string
+	Rules    []map[string]string
+	Admins   []map[string]string
+	Settings []map[string]string
+}
+
+func ReadTables(source data.Source) (*Tables, error) {
+	type table struct {
+		name string
+		want []string
+		rows []map[string]string
+	}
+	groups := &table{name: groupsTab, want: GroupColumns}
+	managers := &table{name: managersTab, want: ManagerColumns}
+	rules := &table{name: rulesTab, want: RuleColumns}
+	admins := &table{name: adminsTab, want: AdminColumns}
+	settings := &table{name: settingsTab, want: SettingColumns}
+	changeLog := &table{name: changeLogTab, want: ChangeLogColumns}
+	read := []*table{groups, managers, rules, admins, settings}
+	names := []string{}
+	for _, t := range read {
+		names = append(names, t.name)
+	}
+	tabs, err := source.Tabs(appName, names, []string{changeLog.name})
+	if err != nil {
+		return nil, err
+	}
+	for _, t := range append(read, changeLog) {
+		t.rows = tabs[t.name].Rows
+		if err := data.CheckColumns(t.name, tabs[t.name].Header, t.want); err != nil {
+			return nil, err
+		}
+	}
+	return &Tables{Groups: groups.rows, Managers: managers.rows, Rules: rules.rows, Admins: admins.rows, Settings: settings.rows}, nil
+}
+
+// SplitList reads a list cell: comma-separated, trimmed, without repeats.
+func SplitList(cell string) []string {
+	out := []string{}
+	for _, item := range strings.Split(cell, ",") {
+		item = strings.TrimSpace(item)
+		if item != "" && !slices.Contains(out, item) {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+func JoinList(items []string) string {
+	return strings.Join(items, ", ")
+}
+
+func cleanEmail(raw string) string {
+	return strings.ToLower(strings.TrimSpace(raw))
+}
+
+func cleanEmails(raw []string) []string {
+	out := []string{}
+	for _, e := range raw {
+		e = cleanEmail(e)
+		if e != "" && !slices.Contains(out, e) {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// CheckName refuses a name that cannot be a group's: not the address form,
+// or one mail systems reserve.
+func CheckName(name string) error {
+	if !nameForm.MatchString(name) {
+		return fmt.Errorf("a group's name is two to forty lowercase letters, digits and hyphens, starting and ending with a letter or digit")
+	}
+	if slices.Contains(reservedNames, name) {
+		return fmt.Errorf("%s is reserved", name)
+	}
+	return nil
+}
+
+// CheckRule refuses a rule that says nothing, or says something the facets
+// cannot mean.
+func CheckRule(r Rule) error {
+	if r.Kind != KindInclude && r.Kind != KindExclude {
+		return fmt.Errorf("kind %q is not %s or %s", r.Kind, KindInclude, KindExclude)
+	}
+	for _, role := range r.Roles {
+		if !slices.Contains(Roles, role) {
+			return fmt.Errorf("role %q is not one of %s", role, JoinList(Roles))
+		}
+	}
+	for _, relation := range r.Family {
+		if !slices.Contains(Relations, relation) {
+			return fmt.Errorf("family relation %q is not one of %s", relation, JoinList(Relations))
+		}
+	}
+	if len(r.Search) > maxSearchLength {
+		return fmt.Errorf("the search words are too long")
+	}
+	for _, tag := range r.Tags {
+		if strings.Contains(tag, ",") {
+			return fmt.Errorf("a tag with a comma in its name cannot be used in a rule")
+		}
+	}
+	if !emailForm.MatchString(r.Owner) {
+		return fmt.Errorf("a rule needs an owner")
+	}
+	if len(r.Roles)+len(r.Classrooms)+len(r.Grades)+len(r.Tags) == 0 && r.Search == "" {
+		return fmt.Errorf("a rule needs a role, some words, a classroom, a grade or a tag")
+	}
+	return nil
+}
+
+// CheckGroup refuses a group the sheet's rules do not allow, so one never
+// reaches the sheet and refuses the next load.
+func CheckGroup(g Group) error {
+	if err := CheckName(g.Name); err != nil {
+		return err
+	}
+	if strings.TrimSpace(g.Title) == "" || len(g.Title) > maxTitleLength {
+		return fmt.Errorf("group %s needs a short title", g.Name)
+	}
+	if len(g.Description) > maxDescriptionLength {
+		return fmt.Errorf("group %s: the description is too long", g.Name)
+	}
+	if len(g.Managers) == 0 {
+		return fmt.Errorf("group %s needs at least one manager", g.Name)
+	}
+	for _, m := range g.Managers {
+		if !emailForm.MatchString(m) {
+			return fmt.Errorf("group %s: manager %q is not an email address", g.Name, m)
+		}
+	}
+	if len(g.Rules) > maxRules {
+		return fmt.Errorf("group %s has too many rules", g.Name)
+	}
+	includes := 0
+	for i, r := range g.Rules {
+		if err := CheckRule(r); err != nil {
+			return fmt.Errorf("group %s, rule %d: %w", g.Name, i+1, err)
+		}
+		if r.Kind == KindInclude {
+			includes++
+		}
+	}
+	if includes == 0 {
+		return fmt.Errorf("group %s needs at least one include rule", g.Name)
+	}
+	return nil
+}
+
+// Normalize trims and lowercases what the sheet and the editor may have
+// spelled loosely, so every check and comparison sees one form.
+func Normalize(g Group) Group {
+	g.Name = strings.ToLower(strings.TrimSpace(g.Name))
+	g.Title = strings.TrimSpace(g.Title)
+	g.Description = strings.TrimSpace(g.Description)
+	g.Managers = cleanEmails(g.Managers)
+	rules := make([]Rule, 0, len(g.Rules))
+	for _, r := range g.Rules {
+		r.Kind = strings.ToLower(strings.TrimSpace(r.Kind))
+		r.Roles = SplitList(JoinList(r.Roles))
+		r.Search = strings.Join(strings.Fields(strings.ToLower(r.Search)), " ")
+		r.Classrooms = SplitList(JoinList(r.Classrooms))
+		r.Grades = SplitList(JoinList(r.Grades))
+		r.Tags = trimmed(r.Tags)
+		r.Family = SplitList(JoinList(r.Family))
+		r.Owner = cleanEmail(r.Owner)
+		rules = append(rules, r)
+	}
+	g.Rules = rules
+	return g
+}
+
+func trimmed(items []string) []string {
+	out := []string{}
+	for _, item := range items {
+		item = strings.TrimSpace(item)
+		if item != "" && !slices.Contains(out, item) {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+func ruleFromRow(row map[string]string) Rule {
+	return Rule{
+		Kind: row["Kind"], Roles: SplitList(row["Roles"]), Search: row["Search"],
+		Classrooms: SplitList(row["Classrooms"]), Grades: SplitList(row["Grades"]),
+		Tags: SplitList(row["Tags"]), Family: SplitList(row["Family"]), Owner: row["Owner"],
+	}
+}
+
+func ruleCells(name string, r Rule) map[string]string {
+	return map[string]string{
+		"Group": name, "Kind": r.Kind, "Roles": JoinList(r.Roles), "Search": r.Search,
+		"Classrooms": JoinList(r.Classrooms), "Grades": JoinList(r.Grades),
+		"Tags": JoinList(r.Tags), "Family": JoinList(r.Family), "Owner": r.Owner,
+	}
+}
+
+func groupCells(g Group) map[string]string {
+	return map[string]string{"Name": g.Name, "Title": g.Title, "Description": g.Description, "Created By": g.CreatedBy, "Created": g.Created}
+}
+
+// BuildModel validates every row and refuses the whole set on the first
+// problem, the stance every app takes: a sheet edit that breaks a rule
+// surfaces as a refused load, never as a group quietly matching nobody.
+func BuildModel(tables *Tables) (*Model, error) {
+	model := &Model{Groups: []Group{}, byName: map[string]int{}}
+	for _, row := range tables.Groups {
+		g := Normalize(Group{Name: row["Name"], Title: row["Title"], Description: row["Description"], CreatedBy: row["Created By"], Created: row["Created"]})
+		if _, dup := model.byName[g.Name]; dup {
+			return nil, fmt.Errorf("%s has two rows named %q", groupsTab, g.Name)
+		}
+		g.Managers = []string{}
+		g.Rules = []Rule{}
+		model.byName[g.Name] = len(model.Groups)
+		model.Groups = append(model.Groups, g)
+	}
+	for _, row := range tables.Managers {
+		name := strings.ToLower(strings.TrimSpace(row["Group"]))
+		g := model.Group(name)
+		if g == nil {
+			return nil, fmt.Errorf("%s names %q, which %s does not have", managersTab, row["Group"], groupsTab)
+		}
+		email := cleanEmail(row["Email"])
+		if !slices.Contains(g.Managers, email) {
+			g.Managers = append(g.Managers, email)
+		}
+	}
+	for _, row := range tables.Rules {
+		name := strings.ToLower(strings.TrimSpace(row["Group"]))
+		g := model.Group(name)
+		if g == nil {
+			return nil, fmt.Errorf("%s names %q, which %s does not have", rulesTab, row["Group"], groupsTab)
+		}
+		g.Rules = append(g.Rules, ruleFromRow(row))
+	}
+	for i, g := range model.Groups {
+		g = Normalize(g)
+		if err := CheckGroup(g); err != nil {
+			return nil, err
+		}
+		model.Groups[i] = g
+	}
+	sort.SliceStable(model.Groups, func(i, j int) bool { return model.Groups[i].Name < model.Groups[j].Name })
+	model.byName = map[string]int{}
+	for i, g := range model.Groups {
+		model.byName[g.Name] = i
+	}
+	for _, row := range tables.Settings {
+		if key := strings.TrimSpace(row["Key"]); !theme.IsKey(key) {
+			return nil, fmt.Errorf("%s has unknown key %q", settingsTab, key)
+		}
+	}
+	var err error
+	if model.Theme, err = theme.FromRows(tables.Settings); err != nil {
+		return nil, fmt.Errorf("%s: %w", settingsTab, err)
+	}
+	return model, nil
+}
+
+func cloneRows(rows []map[string]string) []map[string]string {
+	out := make([]map[string]string, len(rows))
+	for i, row := range rows {
+		out[i] = maps.Clone(row)
+	}
+	return out
+}
+
+func withoutGroupRows(rows []map[string]string, column, name string) []map[string]string {
+	out := make([]map[string]string, 0, len(rows))
+	for _, row := range rows {
+		if !strings.EqualFold(strings.TrimSpace(row[column]), name) {
+			out = append(out, row)
+		}
+	}
+	return out
+}
+
+// withGroup mirrors what saving a group writes: its Groups row set or
+// added, and its Managers and Rules rows replaced whole.
+func (t *Tables) withGroup(g Group) *Tables {
+	out := *t
+	out.Groups = cloneRows(t.Groups)
+	found := false
+	for _, row := range out.Groups {
+		if strings.EqualFold(strings.TrimSpace(row["Name"]), g.Name) {
+			for column, value := range groupCells(g) {
+				if value == "" {
+					delete(row, column)
+				} else {
+					row[column] = value
+				}
+			}
+			found = true
+		}
+	}
+	if !found {
+		out.Groups = append(out.Groups, groupCells(g))
+	}
+	out.Managers = withoutGroupRows(t.Managers, "Group", g.Name)
+	for _, m := range g.Managers {
+		out.Managers = append(out.Managers, map[string]string{"Group": g.Name, "Email": m})
+	}
+	out.Rules = withoutGroupRows(t.Rules, "Group", g.Name)
+	for _, r := range g.Rules {
+		out.Rules = append(out.Rules, ruleCells(g.Name, r))
+	}
+	return &out
+}
+
+func (t *Tables) withoutGroup(name string) *Tables {
+	out := *t
+	out.Groups = withoutGroupRows(t.Groups, "Name", name)
+	out.Managers = withoutGroupRows(t.Managers, "Group", name)
+	out.Rules = withoutGroupRows(t.Rules, "Group", name)
+	return &out
+}
+
+func (t *Tables) withAdmins(emails []string) *Tables {
+	out := *t
+	out.Admins = make([]map[string]string, 0, len(emails))
+	for _, email := range emails {
+		out.Admins = append(out.Admins, map[string]string{"Email": email})
+	}
+	return &out
+}
+
+// withSetting is Tables with one Settings row set, for the model to be
+// rebuilt and checked before the row is written.
+func (t *Tables) withSetting(key, value string) *Tables {
+	out := *t
+	out.Settings = cloneRows(t.Settings)
+	for _, row := range out.Settings {
+		if strings.EqualFold(strings.TrimSpace(row["Key"]), key) {
+			row["Value"] = value
+			return &out
+		}
+	}
+	out.Settings = append(out.Settings, map[string]string{"Key": key, "Value": value})
+	return &out
+}

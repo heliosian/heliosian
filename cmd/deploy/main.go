@@ -31,8 +31,8 @@ const (
 	service    = "heliosian"
 	region     = "us-west1"
 	image      = "us-west1-docker.pkg.dev/heliosian/heliosian/heliosian:latest"
-	job        = "calendarimport"
-	jobImage   = "us-west1-docker.pkg.dev/heliosian/heliosian/calendarimport:latest"
+	job        = "periodicsync"
+	jobImage   = "us-west1-docker.pkg.dev/heliosian/heliosian/periodicsync:latest"
 	jobSecrets = "ANTHROPIC_API_KEY=heliosian-anthropic-key:latest"
 	identity   = "directory@heliosian.iam.gserviceaccount.com"
 	secrets    = "SESSION_KEY=heliosian-session-key:latest," +
@@ -68,13 +68,14 @@ func main() {
 	jobEnvVars := "DIRECTORY_SHEET=" + requiredEnv("DIRECTORY_SHEET") +
 		",PREFERENCES_SHEET=" + requiredEnv("PREFERENCES_SHEET") +
 		",CALENDAR_SHEET=" + requiredEnv("CALENDAR_SHEET") +
-		",CONFIG_SHEET=" + requiredEnv("CONFIG_SHEET")
+		",CONFIG_SHEET=" + requiredEnv("CONFIG_SHEET") +
+		",EVENTS_SHEET=" + requiredEnv("EVENTS_SHEET") +
+		",CELEBRATE_SHEET=" + requiredEnv("CELEBRATE_SHEET") +
+		",GROUPS_SHEET=" + requiredEnv("GROUPS_SHEET")
 	envVars := jobEnvVars +
 		",INVITES_SHEET=" + requiredEnv("INVITES_SHEET") +
 		",APPS_SHEET=" + requiredEnv("APPS_SHEET") +
-		",EVENTS_SHEET=" + requiredEnv("EVENTS_SHEET") +
 		",BIRTHDAY_SHEET=" + requiredEnv("BIRTHDAY_SHEET") +
-		",CELEBRATE_SHEET=" + requiredEnv("CELEBRATE_SHEET") +
 		",GOOGLE_CLIENT_ID=" + clientID()
 	log.Printf("deploying %s to %s in %s", image, service, region)
 	gcloud("run", "deploy", service,

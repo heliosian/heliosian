@@ -1,5 +1,5 @@
-// Command calendarimport pulls the school's public calendar feed and its published year calendar into the Calendar sheet, and has Claude classify every event.
-package main
+// Package calendarimport is the periodic sync's calendar stage: it pulls the school's public calendar feed and its published year calendar into the Calendar sheet, and has Claude classify every event.
+package calendarimport
 
 import (
 	"bytes"
@@ -7,7 +7,6 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"image"
 	"image/color"
@@ -33,7 +32,6 @@ import (
 	"github.com/anthropics/anthropic-sdk-go/option"
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
-	gapi "google.golang.org/api/option"
 	"google.golang.org/api/sheets/v4"
 
 	"heliosian/internal/app"
@@ -56,36 +54,16 @@ const (
 
 var legendDayTypes = []string{"No School", "Early Dismissal"}
 
-type staticFiles struct{}
-
-func (staticFiles) Has(key string) (bool, error) {
-	_, err := os.Stat(filepath.Join("web/who", filepath.FromSlash(key)))
-	return err == nil, nil
-}
-
-func (staticFiles) Prefetch([]string) error { return nil }
-
-func requiredEnv(name string) string {
-	value := os.Getenv(name)
-	if value == "" {
-		log.Fatalf("[ERROR] %s is required", name)
-	}
-	return value
-}
-
-func apiKey() string {
-	if key := os.Getenv("ANTHROPIC_API_KEY"); key != "" {
-		return key
-	}
-	raw, err := os.ReadFile("creds/anthropic.key")
-	if err != nil {
-		log.Fatalf("[ERROR] read creds/anthropic.key (or set ANTHROPIC_API_KEY): %v", err)
-	}
-	key := strings.TrimSpace(string(raw))
-	if key == "" {
-		log.Fatal("[ERROR] creds/anthropic.key is empty")
-	}
-	return key
+// Options is what one run needs: the sheets it reads and writes, the
+// directory model already loaded for the audience vocabulary, the Claude key,
+// and whether to write anything.
+type Options struct {
+	Source        *data.Sheet
+	Sheets        *sheets.Service
+	CalendarSheet string
+	Directory     *who.Model
+	AnthropicKey  string
+	DryRun        bool
 }
 
 var retryWaits = []time.Duration{time.Minute, 2 * time.Minute, 4 * time.Minute, 8 * time.Minute}
@@ -1110,38 +1088,20 @@ func titlesOf(rows []map[string]string, keyCol string) map[string]string {
 	return out
 }
 
-func main() {
-	dryRun := flag.Bool("dry-run", false, "report what the import would change, writing nothing to the sheet")
-	permitted := flag.Bool("i-have-user-permission-to-spend-money", false, "every run that reaches Claude costs real money; pass this only when the person paying has said to run it")
-	flag.Parse()
-	if !*permitted {
-		log.Fatal("[ERROR] this run spends money on Claude; pass --i-have-user-permission-to-spend-money only when the user has said to run it")
-	}
-	calendarSheet := requiredEnv("CALENDAR_SHEET")
-	spreadsheets := map[string]string{
-		"calendar":    calendarSheet,
-		"directory":   requiredEnv("DIRECTORY_SHEET"),
-		"preferences": requiredEnv("PREFERENCES_SHEET"),
-		"config":      requiredEnv("CONFIG_SHEET"),
-	}
-	key := apiKey()
-	if *dryRun {
+// Run is one import. A stage that fails leaves the rows it would have
+// replaced standing and the run carries on, so nothing another stage
+// completed is thrown away; everything that did complete is written, and
+// only then does the run report every failure as its error.
+func Run(ctx context.Context, opts Options) error {
+	source, svc, calendarSheet, dryRun := opts.Source, opts.Sheets, opts.CalendarSheet, opts.DryRun
+	if dryRun {
 		log.Printf("dry run: nothing will be written to the sheet")
 	}
-	ctx := context.Background()
-	source, err := data.NewSheet(spreadsheets)
-	if err != nil {
-		log.Fatalf("[ERROR] sheet source: %v", err)
-	}
-	directory, err := who.LoadModel(source, nil, staticFiles{})
-	if err != nil {
-		log.Fatalf("[ERROR] load directory model: %v", err)
-	}
-	roster := app.CalendarRoster(directory)
+	roster := app.CalendarRoster(opts.Directory)
 	log.Printf("roster: %d classrooms", len(roster.Classrooms))
 	tables, err := calendar.ReadTables(source)
 	if err != nil {
-		log.Fatalf("[ERROR] read calendar tables: %v", err)
+		return fmt.Errorf("read calendar tables: %w", err)
 	}
 	dayTypes := []string{}
 	for _, row := range tables.DayTypes {
@@ -1152,27 +1112,27 @@ func main() {
 		tags = append(tags, calendar.Tag{Name: row["Tag"], Description: row["Description"]})
 	}
 	if len(tags) == 0 {
-		log.Fatalf("[ERROR] %s needs rows before the import can run", calendar.TagsTab)
+		return fmt.Errorf("%s needs rows before the import can run", calendar.TagsTab)
 	}
 	for _, name := range append([]string{calendar.RegularDayType}, legendDayTypes...) {
 		if !slices.Contains(dayTypes, name) {
-			log.Fatalf("[ERROR] %s needs a %q row before the import can run", calendar.DayTypesTab, name)
+			return fmt.Errorf("%s needs a %q row before the import can run", calendar.DayTypesTab, name)
 		}
 	}
-	client := anthropic.NewClient(option.WithAPIKey(key))
+	client := anthropic.NewClient(option.WithAPIKey(opts.AnthropicKey))
 
 	from, to := window(time.Now().In(calendar.Location))
 	feed, err := fetch(feedURL)
 	if err != nil {
-		log.Fatalf("[ERROR] fetch the calendar feed: %v", err)
+		return fmt.Errorf("fetch the calendar feed: %w", err)
 	}
 	events, err := ics.Parse(bytes.NewReader(feed), calendar.Location, from, to)
 	if err != nil {
-		log.Fatalf("[ERROR] parse the calendar feed: %v", err)
+		return fmt.Errorf("parse the calendar feed: %w", err)
 	}
 	google, err := googleRows(events)
 	if err != nil {
-		log.Fatalf("[ERROR] %v", err)
+		return err
 	}
 	log.Printf("feed: %d events from %s on", len(google), from.Format(calendar.DateFormat))
 	// Only the window is imported and mirrored; rows outside it, whatever
@@ -1190,15 +1150,15 @@ func main() {
 
 	page, err := fetch(pageURL)
 	if err != nil {
-		log.Fatalf("[ERROR] fetch the school calendar page: %v", err)
+		return fmt.Errorf("fetch the school calendar page: %w", err)
 	}
 	pdfURL, err := findPDF(page)
 	if err != nil {
-		log.Fatalf("[ERROR] %v", err)
+		return err
 	}
 	pdf, err := fetch(pdfURL)
 	if err != nil {
-		log.Fatalf("[ERROR] fetch the year calendar pdf: %v", err)
+		return fmt.Errorf("fetch the year calendar pdf: %w", err)
 	}
 	// The hash covers how the PDF is read as well as its bytes, so a change to
 	// the reading re-reads an unchanged document.
@@ -1324,10 +1284,6 @@ func main() {
 		}
 	}
 
-	svc, err := sheets.NewService(ctx, gapi.WithScopes(sheets.SpreadsheetsScope))
-	if err != nil {
-		log.Fatalf("[ERROR] create sheets client: %v", err)
-	}
 	stamp := time.Now().In(calendar.Location).Format(calendar.DateTimeFormat)
 	logRows := [][]string{}
 	for _, s := range []struct {
@@ -1341,9 +1297,9 @@ func main() {
 		{calendar.GoogleTab, calendar.GoogleColumns, googleRowsNow, tables.Google, "Key"},
 		{calendar.EnrichmentTab, calendar.EnrichmentColumns, enrichment, tables.Enrichment, "Event ID"},
 	} {
-		result, err := syncTab(svc, calendarSheet, s.tab, s.header, s.rows, s.keyCol, !*dryRun)
+		result, err := syncTab(svc, calendarSheet, s.tab, s.header, s.rows, s.keyCol, !dryRun)
 		if err != nil {
-			log.Fatalf("[ERROR] sync %s: %v", s.tab, err)
+			return fmt.Errorf("sync %s: %w", s.tab, err)
 		}
 		titles := titlesOf(s.before, s.keyCol)
 		for k, v := range titlesOf(s.rows, s.keyCol) {
@@ -1351,18 +1307,19 @@ func main() {
 		}
 		logRows = append(logRows, changes(s.tab, result, titles, stamp)...)
 	}
-	if *dryRun {
+	if dryRun {
 		log.Printf("dry run: %d change log rows not written", len(logRows))
 		if len(failures) > 0 {
-			log.Fatalf("[ERROR] %d stages failed: %s", len(failures), strings.Join(failures, "; "))
+			return fmt.Errorf("%d stages failed: %s", len(failures), strings.Join(failures, "; "))
 		}
-		return
+		return nil
 	}
 	if err := source.AppendAll("calendar", calendar.ChangeLogTab, logRows); err != nil {
-		log.Fatalf("[ERROR] append the change log: %v", err)
+		return fmt.Errorf("append the change log: %w", err)
 	}
 	if len(failures) > 0 {
-		log.Fatalf("[ERROR] %d stages failed and will be retried next run: %s", len(failures), strings.Join(failures, "; "))
+		return fmt.Errorf("%d stages failed and will be retried next run: %s", len(failures), strings.Join(failures, "; "))
 	}
 	log.Printf("change log: %d rows appended", len(logRows))
+	return nil
 }

@@ -16,6 +16,7 @@ import (
 	"heliosian/internal/calendar"
 	"heliosian/internal/celebrate"
 	"heliosian/internal/events"
+	"heliosian/internal/groups"
 	"heliosian/internal/home"
 )
 
@@ -30,6 +31,7 @@ var spreadsheets = []struct{ env, layout string }{
 	{"CALENDAR_SHEET", "Calendar"},
 	{"CELEBRATE_SHEET", "Celebrate"},
 	{"CONFIG_SHEET", "Config"},
+	{"GROUPS_SHEET", "Groups"},
 }
 
 type tab struct {
@@ -179,6 +181,14 @@ var layouts = map[string][]tab{
 		{"Super Admins", []string{"Email"}},
 		{"Grade Colors", []string{"Grade", "Color"}},
 		{"Classroom Colors", []string{"Classroom", "Color"}},
+	},
+	"Groups": {
+		{"Groups", groups.GroupColumns},
+		{"Managers", groups.ManagerColumns},
+		{"Rules", groups.RuleColumns},
+		{"Admins", groups.AdminColumns},
+		{"Settings", groups.SettingColumns},
+		{"Change Log", groups.ChangeLogColumns},
 	},
 }
 

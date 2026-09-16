@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"heliosian/internal/app"
 	"heliosian/internal/calendar"
@@ -16,6 +17,7 @@ import (
 	"heliosian/internal/config"
 	"heliosian/internal/data"
 	"heliosian/internal/events"
+	"heliosian/internal/groups"
 	"heliosian/internal/home"
 	"heliosian/internal/who"
 )
@@ -101,6 +103,7 @@ func main() {
 			"celebrate":   requiredEnv("CELEBRATE_SHEET"),
 			"calendar":    requiredEnv("CALENDAR_SHEET"),
 			"config":      requiredEnv("CONFIG_SHEET"),
+			"groups":      requiredEnv("GROUPS_SHEET"),
 		})
 		if err != nil {
 			log.Fatalf("[ERROR] sheet source: %v", err)
@@ -316,4 +319,31 @@ func main() {
 		fmt.Printf("    %s: %d classroom-days\n", d.Name, byType[d.Name])
 	}
 	fmt.Printf("calendar admins: %d\n", len(calendarTables.Admins))
+
+	whoTables, err := who.ReadTables(source)
+	if err != nil {
+		log.Fatalf("[ERROR] read directory tables: %v", err)
+	}
+	groupTables, err := groups.ReadTables(source)
+	if err != nil {
+		log.Fatalf("[ERROR] read groups tables: %v", err)
+	}
+	groupModel, err := groups.BuildModel(groupTables)
+	if err != nil {
+		log.Fatalf("[ERROR] build groups model: %v", err)
+	}
+	now := time.Now().In(calendar.Location)
+	sources := groups.Sources{
+		Directory: model,
+		Tags:      func(owner string) map[string][]string { return who.TagsOf(whoTables.Tags, model, owner) },
+		Lists: func(owner string) []who.List {
+			return append(model.RoomParentLists(owner), app.SmartLists(model, portal, site, owner, now)...)
+		},
+	}
+	fmt.Println("groups:")
+	for _, d := range groups.Plan(groupModel, sources) {
+		g := groupModel.Group(d.Name)
+		fmt.Printf("  %s %q: %d managers, %d rules, %d members\n", d.Address(), d.Title, len(g.Managers), len(g.Rules), len(d.Members))
+	}
+	fmt.Printf("groups admins: %d\n", len(groupTables.Admins))
 }

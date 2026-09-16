@@ -1,0 +1,196 @@
+package groups_test
+
+import (
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+	"testing"
+
+	"heliosian/internal/data"
+	"heliosian/internal/groups"
+	"heliosian/internal/who"
+)
+
+type staticFiles struct{}
+
+func (staticFiles) Has(key string) (bool, error) {
+	_, err := os.Stat(filepath.Join("../../web/who", filepath.FromSlash(key)))
+	return err == nil, nil
+}
+
+func (staticFiles) Prefetch([]string) error { return nil }
+
+const jordan = "jordan.whitfield@heliosschool.org"
+
+func sample(t *testing.T) (groups.Sources, *who.Tables) {
+	t.Helper()
+	dir := &data.Dir{Root: "../../sampledata"}
+	tables, err := who.ReadTables(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	model, err := who.BuildModel(tables, nil, staticFiles{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return groups.Sources{
+		Directory: model,
+		Tags:      func(owner string) map[string][]string { return who.TagsOf(tables.Tags, model, owner) },
+		Lists: func(owner string) []who.List {
+			lists := model.RoomParentLists(owner)
+			if owner == jordan {
+				lists = append(lists, who.List{Key: "party:p1", Name: "Pizza Night", Kind: who.ListParty, People: []string{"abena.osei@heliosschool.org", "colin.quinn@heliosschool.org"}})
+			}
+			return lists
+		},
+	}, tables
+}
+
+func rule(kind string, edit func(r *groups.Rule)) groups.Rule {
+	r := groups.Rule{Kind: kind, Owner: jordan}
+	edit(&r)
+	return r
+}
+
+func members(t *testing.T, s groups.Sources, rules ...groups.Rule) []string {
+	t.Helper()
+	g := groups.Normalize(groups.Group{Name: "test", Title: "Test", Managers: []string{jordan}, Rules: rules})
+	if err := groups.CheckGroup(g); err != nil {
+		t.Fatal(err)
+	}
+	return groups.Members(g, s)
+}
+
+func TestRoleRuleIsEveryoneInTheRole(t *testing.T) {
+	s, _ := sample(t)
+	got := members(t, s, rule(groups.KindInclude, func(r *groups.Rule) { r.Roles = []string{"Student"} }))
+	want := []string{}
+	for _, p := range s.Directory.People {
+		if p.IsStudent && !p.EmailMasked {
+			want = append(want, p.Email)
+		}
+	}
+	slices.Sort(want)
+	if !slices.Equal(got, want) {
+		t.Fatalf("students: got %v, want %v", got, want)
+	}
+}
+
+func TestParentsMatchThroughTheirChildren(t *testing.T) {
+	s, _ := sample(t)
+	got := members(t, s, rule(groups.KindInclude, func(r *groups.Rule) { r.Roles = []string{"Parent"}; r.Grades = []string{"Grade 3"} }))
+	if !slices.Contains(got, jordan) {
+		t.Fatalf("a Grade 3 parent is missing: %v", got)
+	}
+	for _, email := range got {
+		if p := s.Directory.Person(email); !p.IsParent {
+			t.Fatalf("%s is not a parent", email)
+		}
+	}
+}
+
+func TestSearchMatchesNameOrAddress(t *testing.T) {
+	s, _ := sample(t)
+	got := members(t, s, rule(groups.KindInclude, func(r *groups.Rule) { r.Search = "Whitfield" }))
+	if len(got) < 3 {
+		t.Fatalf("whitfield: got %v", got)
+	}
+	for _, email := range got {
+		p := s.Directory.Person(email)
+		if !strings.Contains(strings.ToLower(p.FullName), "whitfield") && !strings.Contains(email, "whitfield") {
+			t.Fatalf("%s does not match", email)
+		}
+	}
+}
+
+func TestFamilyWidensAClassroom(t *testing.T) {
+	s, _ := sample(t)
+	base := func(r *groups.Rule) { r.Roles = []string{"Student"}; r.Classrooms = []string{"Hummingbirds"} }
+	alone := members(t, s, rule(groups.KindInclude, base))
+	if !slices.Contains(alone, "mia.torres@heliosschool.org") {
+		t.Fatalf("hummingbirds: %v", alone)
+	}
+	if slices.Contains(alone, "nico.torres@heliosschool.org") {
+		t.Fatal("a sibling is in without Siblings")
+	}
+	for _, email := range alone {
+		if !s.Directory.Person(email).IsStudent {
+			t.Fatalf("%s is not a student", email)
+		}
+	}
+	widened := members(t, s, rule(groups.KindInclude, func(r *groups.Rule) { base(r); r.Family = []string{"Parents", "Siblings"} }))
+	if !slices.Contains(widened, "nico.torres@heliosschool.org") {
+		t.Fatalf("siblings: %v", widened)
+	}
+	parents := 0
+	for _, email := range widened {
+		if s.Directory.Person(email).IsParent {
+			parents++
+		}
+	}
+	if parents == 0 {
+		t.Fatal("no parent was added")
+	}
+}
+
+func TestExcludeRulesSubtract(t *testing.T) {
+	s, _ := sample(t)
+	got := members(t, s,
+		rule(groups.KindInclude, func(r *groups.Rule) { r.Roles = []string{"Student"} }),
+		rule(groups.KindExclude, func(r *groups.Rule) { r.Search = "torres" }),
+	)
+	for _, email := range got {
+		if strings.Contains(email, "torres") {
+			t.Fatalf("%s was not excluded", email)
+		}
+	}
+	if len(got) == 0 {
+		t.Fatal("everyone was excluded")
+	}
+}
+
+func TestTagsReadTheOwnersOwn(t *testing.T) {
+	s, tables := sample(t)
+	got := members(t, s, rule(groups.KindInclude, func(r *groups.Rule) { r.Tags = []string{"Carpool"} }))
+	want := who.TagsOf(tables.Tags, s.Directory, jordan)["Carpool"]
+	if !slices.Equal(got, want) {
+		t.Fatalf("carpool: got %v, want %v", got, want)
+	}
+	other := members(t, s, rule(groups.KindInclude, func(r *groups.Rule) { r.Tags = []string{"Carpool"}; r.Owner = "asha.chandra@heliosschool.org" }))
+	if len(other) != 0 {
+		t.Fatalf("another owner's reading of the tag found %v", other)
+	}
+}
+
+func TestMagicTagsMatchByKey(t *testing.T) {
+	s, _ := sample(t)
+	got := members(t, s, rule(groups.KindInclude, func(r *groups.Rule) { r.Tags = []string{"party:p1"} }))
+	if !slices.Equal(got, []string{"abena.osei@heliosschool.org", "colin.quinn@heliosschool.org"}) {
+		t.Fatalf("party: %v", got)
+	}
+}
+
+func TestSampleGroupsLoadAndPlan(t *testing.T) {
+	s, _ := sample(t)
+	tables, err := groups.ReadTables(&data.Dir{Root: "../../sampledata"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	model, err := groups.BuildModel(tables)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan := groups.Plan(model, s)
+	if len(plan) != 3 {
+		t.Fatalf("%d groups planned", len(plan))
+	}
+	for _, d := range plan {
+		if len(d.Members) == 0 {
+			t.Errorf("%s has nobody", d.Address())
+		}
+		if d.Address() != d.Name+"@groups.heliosian.com" {
+			t.Errorf("address %s", d.Address())
+		}
+	}
+}

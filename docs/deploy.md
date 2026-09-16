@@ -10,18 +10,18 @@ Every push to `main` on `github.com/heliosian/heliosian` deploys production. The
 2. push the SHA tag to Artifact Registry (`us-west1-docker.pkg.dev/heliosian/heliosian/heliosian`)
 3. `gcloud run deploy heliosian --image …:<sha>` — image only; every other service setting persists from the last full deploy
 
-A second trigger, `build-calendarimport`, fires on the same push and does the same three steps for the calendar import (`docs/calendar/data.md`): `docker build` of `Dockerfile.calendarimport`, a push to `us-west1-docker.pkg.dev/heliosian/heliosian/calendarimport`, and `gcloud run jobs deploy calendarimport --image …:<sha>`, which changes only the job's image. The job has to exist first, from a `cmd/deploy` run: a job created with nothing but an image would run as the default compute account, which the build account may not act as, so the step fails until the job is there with its identity.
+A second trigger, `build-periodicsync`, fires on the same push and does the same three steps for the periodic sync job (below): `docker build` of `Dockerfile.periodicsync`, a push to `us-west1-docker.pkg.dev/heliosian/heliosian/periodicsync`, and `gcloud run jobs deploy periodicsync --image …:<sha>`, which changes only the job's image. The job has to exist first, from a `cmd/deploy` run: a job created with nothing but an image would run as the default compute account, which the build account may not act as, so the step fails until the job is there with its identity.
 
 Both triggers name their build service account (the project's default compute service account) explicitly; trigger creation in this project refuses to infer one. The triggers themselves are the only record of those steps, so read them rather than this page when a build does something unexpected, and the recent builds with each one's outcome beside them:
 
     gcloud builds triggers describe build-main --region us-west1 --project heliosian
-    gcloud builds triggers describe build-calendarimport --region us-west1 --project heliosian
+    gcloud builds triggers describe build-periodicsync --region us-west1 --project heliosian
     gcloud builds list --region us-west1 --project heliosian --limit 10
 
 Builds ship the pushed commit, never a working tree. To rebuild and redeploy current `main` without a push:
 
     gcloud builds triggers run build-main --region=us-west1 --branch=main
-    gcloud builds triggers run build-calendarimport --region=us-west1 --branch=main
+    gcloud builds triggers run build-periodicsync --region=us-west1 --branch=main
 
 The Dockerfile builds in two stages: a `golang` stage compiles the static binary (`CGO_ENABLED=0`), and `gcr.io/distroless/static-debian12` — CA certificates and tzdata, nothing else — carries the binary plus `web/`, whose templates and static assets are read from disk at runtime. `sampledata/` is deliberately excluded: production always sets `DIRECTORY_SHEET`, and a misconfigured server fails at startup rather than silently serving sample data. `creds/` never enters the image (`.dockerignore`, `.gcloudignore`), and the image holds no credentials of any kind — the runtime identity below is the only Google identity in play.
 
@@ -32,7 +32,7 @@ The Dockerfile builds in two stages: a `golang` stage compiles the static binary
     eval "$(go run ./cmd/findsheet)"
     go run ./cmd/deploy
 
-It deploys the `latest` image with every setting the pipeline does not touch, so it both creates the service from nothing and repairs drift on an existing one, and then does the same for the `calendarimport` job (below). The spreadsheet ids come from the environment (`cmd/findsheet` prints them as shell exports) and the OAuth client id from `creds/oauth-client.json` — the same resolution the server itself uses — so none of them is written into the repository. Every spreadsheet id is required, here and in `Production()`. Because a per-push deploy only ever changes the image (see above), changing a spreadsheet id only ever takes effect through a `cmd/deploy` run, never a plain push.
+It deploys the `latest` image with every setting the pipeline does not touch, so it both creates the service from nothing and repairs drift on an existing one, and then does the same for the `periodicsync` job (below). The spreadsheet ids come from the environment (`cmd/findsheet` prints them as shell exports) and the OAuth client id from `creds/oauth-client.json` — the same resolution the server itself uses — so none of them is written into the repository. Every spreadsheet id is required, here and in `Production()`. Because a per-push deploy only ever changes the image (see above), changing a spreadsheet id only ever takes effect through a `cmd/deploy` run, never a plain push.
 
 Why each setting is what it is:
 
@@ -48,36 +48,38 @@ Why each setting is what it is:
 
 Cloud Run injects `PORT`; the server honors it.
 
-## The calendar import job
+## The periodic sync job
 
-The Cloud Run Job `calendarimport` in the same region runs `cmd/calendarimport` from its own image (`docs/calendar/data.md`). `cmd/deploy` writes its configuration beside the service's: the same runtime identity, the four spreadsheet ids the import reads (`DIRECTORY_SHEET`, `PREFERENCES_SHEET`, `CALENDAR_SHEET`, `CONFIG_SHEET`), the Anthropic key as `ANTHROPIC_API_KEY` from the `heliosian-anthropic-key` secret, and the `--i-have-user-permission-to-spend-money` argument, since scheduling the job is that permission. A task gets 1 GiB, since the import rasterizes the year calendar at 300 dpi and works on it pixel by pixel, and 30 minutes, since reading a new PDF is dozens of Claude calls at maximum effort; a task that fails is not retried, because the import already carries what it completed to the sheet and asks about only what failed on the next run, so a retry would spend the same money on the same failure. What the job carries right now - image, identity, resources, timeout, retries, environment and secrets - is `gcloud run jobs describe calendarimport --region us-west1 --project heliosian`, and the service's counterpart is `gcloud run services describe heliosian --region us-west1 --project heliosian`.
+The Cloud Run Job `periodicsync` in the same region runs `cmd/periodicsync` from its own image: one binary running every scheduled stage in turn, the way the service runs every app - the calendar import (`docs/calendar/data.md`), then the Google Groups reconciliation (`docs/groups/data.md`). A stage that fails is logged and the next runs; the run exits non-zero at the end naming every stage that failed. `cmd/deploy` writes the job's configuration beside the service's: the same runtime identity, the spreadsheet ids the stages read (`DIRECTORY_SHEET`, `PREFERENCES_SHEET`, `CALENDAR_SHEET`, `CONFIG_SHEET`, `EVENTS_SHEET`, `CELEBRATE_SHEET`, `GROUPS_SHEET`), the Anthropic key as `ANTHROPIC_API_KEY` from the `heliosian-anthropic-key` secret, and the `--i-have-user-permission-to-spend-money` argument, since scheduling the job is that permission. A task gets 1 GiB, since the import rasterizes the year calendar at 300 dpi and works on it pixel by pixel, and 30 minutes, since reading a new PDF is dozens of Claude calls at maximum effort; a task that fails is not retried, because the import already carries what it completed to the sheet and asks about only what failed on the next run, so a retry would spend the same money on the same failure, and the groups stage is reconciled again on the next firing anyway. What the job carries right now - image, identity, resources, timeout, retries, environment and secrets - is `gcloud run jobs describe periodicsync --region us-west1 --project heliosian`, and the service's counterpart is `gcloud run services describe heliosian --region us-west1 --project heliosian`.
 
-Cloud Scheduler job `calendarimport` (location `us-west1`) starts an execution on a cron schedule, by posting to the Cloud Run Admin API's run method as `directory@`, which holds `run.invoker` on the job for that. The schedule lives only in that Scheduler job - nothing in the repository records or reconciles it - so read it there rather than assuming a cadence, along with when it last fired and when it fires next:
+Cloud Scheduler job `periodicsync` (location `us-west1`) starts an execution on a cron schedule, by posting to the Cloud Run Admin API's run method as `directory@`, which holds `run.invoker` on the job for that. The schedule lives only in that Scheduler job - nothing in the repository records or reconciles it - so read it there rather than assuming a cadence, along with when it last fired and when it fires next:
 
-    gcloud scheduler jobs describe calendarimport --location us-west1 --project heliosian
+    gcloud scheduler jobs describe periodicsync --location us-west1 --project heliosian
 
 `schedule` is the cron expression, read in `timeZone` (school time), `lastAttemptTime` the last firing, `scheduleTime` the next. A different cadence is an update to the same resource:
 
-    gcloud scheduler jobs update http calendarimport --location us-west1 --project heliosian --schedule "<cron expression>"
+    gcloud scheduler jobs update http periodicsync --location us-west1 --project heliosian --schedule "<cron expression>"
 
 The Scheduler job is a one-time resource like the domain mappings, created by hand rather than in `cmd/deploy`:
 
-    gcloud run jobs add-iam-policy-binding calendarimport --region us-west1 --project heliosian --member serviceAccount:directory@heliosian.iam.gserviceaccount.com --role roles/run.invoker
-    gcloud scheduler jobs create http calendarimport --location us-west1 --project heliosian --schedule "<cron expression>" --time-zone America/Los_Angeles --http-method POST --uri https://run.googleapis.com/v2/projects/heliosian/locations/us-west1/jobs/calendarimport:run --oauth-service-account-email directory@heliosian.iam.gserviceaccount.com
+    gcloud run jobs add-iam-policy-binding periodicsync --region us-west1 --project heliosian --member serviceAccount:directory@heliosian.iam.gserviceaccount.com --role roles/run.invoker
+    gcloud scheduler jobs create http periodicsync --location us-west1 --project heliosian --schedule "<cron expression>" --time-zone America/Los_Angeles --http-method POST --uri https://run.googleapis.com/v2/projects/heliosian/locations/us-west1/jobs/periodicsync:run --oauth-service-account-email directory@heliosian.iam.gserviceaccount.com
 
-To run the import now rather than wait for the next firing:
+A project still carrying the earlier `calendarimport` trigger, Cloud Run job and Scheduler job, from when the calendar import was the only stage, moves to these names by hand: the trigger is renamed in the Cloud Build console (its build config is inline there, so the Dockerfile, the image name and the job name change with it), the Cloud Run job is made afresh by `cmd/deploy` under the new name, and the Scheduler job is created again with the commands above, the old three deleted once the new ones have run.
 
-    gcloud run jobs execute calendarimport --region us-west1 --project heliosian --wait
+To run the sync now rather than wait for the next firing:
+
+    gcloud run jobs execute periodicsync --region us-west1 --project heliosian --wait
 
 The recent executions, each with when it ran and whether it succeeded:
 
-    gcloud run jobs executions list --job calendarimport --region us-west1 --project heliosian --limit 24 --format "table(metadata.name,status.startTime,status.completionTime,status.succeededCount,status.failedCount)"
+    gcloud run jobs executions list --job periodicsync --region us-west1 --project heliosian --limit 24 --format "table(metadata.name,status.startTime,status.completionTime,status.succeededCount,status.failedCount)"
 
 One execution's log, by the name that list gives:
 
     gcloud logging read 'resource.type="cloud_run_job" AND labels."run.googleapis.com/execution_name"="<execution name>"' --project heliosian --order asc --format "value(timestamp,severity,textPayload)"
 
-The same logs are under the job in the console, or in Logs Explorer with `resource.type="cloud_run_job"`. A run that changed nothing is a few fetches and no Claude calls; a run that read a new PDF or classified new events says so, and one whose stage failed exits non-zero naming it and shows as a failed execution.
+The same logs are under the job in the console, or in Logs Explorer with `resource.type="cloud_run_job"`. Each stage announces itself with a `stage:` line. A calendar run that changed nothing is a few fetches and no Claude calls; one that read a new PDF or classified new events says so. The groups stage prints one line per group with its member count and the adds and removes it made, a `[WARN]` for every address under `groups.heliosian.com` the sheet does not list, and a summary. A run whose stage failed exits non-zero naming it and shows as a failed execution.
 
 ## Configuration values
 
@@ -92,6 +94,7 @@ Plain environment variables:
 - `CELEBRATE_SHEET` — the `Celebrate` spreadsheet id: Helios Celebrate's parties, hosts, tickets, and admins (`docs/celebrate/data.md`).
 - `CALENDAR_SHEET` — the `Calendar` spreadsheet id: Helios Calendar's imported events, enrichment, overrides, day types, feeds, and admins (`docs/calendar/data.md`).
 - `CONFIG_SHEET` — the `Config` spreadsheet id: the platform super admins and settings (`docs/config.md`).
+- `GROUPS_SHEET` — the `Groups` spreadsheet id: Helios Groups' groups, managers, rules, and admins (`docs/groups/data.md`).
 - `GOOGLE_CLIENT_ID` — the OAuth web client id; not a secret (every login page fetches it from `/auth/client`), but kept out of the repository.
 
 Secret Manager secrets, delivered as environment variables. Values are used raw, so payloads must not carry trailing newlines:
@@ -119,8 +122,9 @@ Because the bucket is private and every read goes through the app's own sign-in 
 
 - Data access: content manager on the community shared drive, which covers editing the `Directory` sheet inside it (self-service edits write cells and append to the Change Log tab). Shared in Drive directly, never through project IAM.
 - Media: `roles/storage.objectAdmin` on `gs://heliosian-media`, granted on the bucket.
-- Runtime: the Cloud Run service and the `calendarimport` job run as it, and it holds Secret Manager Secret Accessor on each secret individually.
-- Scheduling: it holds `roles/run.invoker` on the `calendarimport` job, which is how the Cloud Scheduler job starts an execution as it.
+- Runtime: the Cloud Run service and the `periodicsync` job run as it, and it holds Secret Manager Secret Accessor on each secret individually.
+- Scheduling: it holds `roles/run.invoker` on the `periodicsync` job, which is how the Cloud Scheduler job starts an execution as it.
+- Google Groups: it holds the Groups Admin role in the heliosian.com Workspace, assigned to the service account itself in the Admin console (Account, Admin roles, Groups Admin, Assign service accounts), which is what lets it make, fill and set the groups under `groups.heliosian.com` through the Cloud Identity Groups API and the Groups Settings API, both enabled in the project, with no key and no domain-wide delegation (`docs/groups/data.md`). `groups.heliosian.com` is a domain of that Workspace.
 - Humans: `roles/iam.serviceAccountTokenCreator` on this account enables the local impersonation that real-data development uses (`docs/dev.md`).
 
 The build service account (the default compute service account) holds `cloudbuild.builds.builder`, `run.developer`, and Service Account User on `directory@` — the last because deploying a service that runs as an account requires permission to act as it.
@@ -146,7 +150,7 @@ A new hostname is one more mapping:
 
     gcloud beta run domain-mappings create --service heliosian --domain <host>.heliosian.com --region us-west1 --project heliosian
 
-DNS at Namecheap carries `CNAME ghs.googlehosted.com.` for each subdomain; the apex, which cannot be a CNAME, carries a Namecheap `ALIAS` record to the same name, which Namecheap flattens into that host's current A and AAAA records on a fixed five-minute TTL. Cloud Run routes by hostname at Google's front end, so any of Google's addresses works, and the Cloud Run console's list of eight static apex addresses is a suggestion, not a check: certificate issuance only needs the challenge to be reachable. Google provisions and renews each certificate once its record resolves, retrying on an hourly poll, so a freshly changed record can take up to an hour to show as provisioned. A new app's hostnames take only domain mappings here; the server already routes them by the naming convention. Helios Calendar answers under three labels, `calendar`, `cal` and `when`, so it takes three mappings per tier and three DNS records, and its personal feed addresses (`/feed/…`) are fetched by calendar apps with no session, so nothing in front of the service may demand one.
+DNS at Namecheap carries `CNAME ghs.googlehosted.com.` for each subdomain; the apex, which cannot be a CNAME, carries a Namecheap `ALIAS` record to the same name, which Namecheap flattens into that host's current A and AAAA records on a fixed five-minute TTL. Cloud Run routes by hostname at Google's front end, so any of Google's addresses works, and the Cloud Run console's list of eight static apex addresses is a suggestion, not a check: certificate issuance only needs the challenge to be reachable. Google provisions and renews each certificate once its record resolves, retrying on an hourly poll, so a freshly changed record can take up to an hour to show as provisioned. A new app's hostnames take only domain mappings here; the server already routes them by the naming convention - Helios Groups is `groups.heliosian.com` and `groups.lab.heliosian.com`, one mapping and one DNS record per tier, and its origins in the OAuth client. Helios Calendar answers under three labels, `calendar`, `cal` and `when`, so it takes three mappings per tier and three DNS records, and its personal feed addresses (`/feed/…`) are fetched by calendar apps with no session, so nothing in front of the service may demand one.
 
 ## Logs
 
