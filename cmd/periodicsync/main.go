@@ -117,6 +117,9 @@ func syncGroups(ctx context.Context, source *data.Sheet, directory *who.Model, d
 		Lists: func(owner string) []who.List {
 			return append(directory.RoomParentLists(owner), app.SmartLists(directory, portal, site, owner, now)...)
 		},
+		Shared: func(email string) []who.SharedTag {
+			return who.SharedTagsOf(whoTables.Tags, whoTables.Managers, directory, email)
+		},
 	}
 	desired := groups.Plan(model, sources)
 	if dryRun {

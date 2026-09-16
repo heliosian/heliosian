@@ -44,7 +44,24 @@ func sample(t *testing.T) (groups.Sources, *who.Tables) {
 			}
 			return lists
 		},
+		Shared: func(email string) []who.SharedTag {
+			return who.SharedTagsOf(tables.Tags, tables.Managers, model, email)
+		},
 	}, tables
+}
+
+func TestSharedTagsReadAsTheirManager(t *testing.T) {
+	s, tables := sample(t)
+	key := groups.SharedKey("abena.osei@heliosschool.org", "Book Club")
+	got := members(t, s, rule(groups.KindInclude, func(r *groups.Rule) { r.Tags = []string{key} }))
+	want := who.TagsOf(tables.Tags, s.Directory, "abena.osei@heliosschool.org")["Book Club"]
+	if len(want) == 0 || !slices.Equal(got, want) {
+		t.Fatalf("book club: got %v, want %v", got, want)
+	}
+	unshared := members(t, s, rule(groups.KindInclude, func(r *groups.Rule) { r.Tags = []string{key}; r.Owner = "colin.quinn@heliosschool.org" }))
+	if len(unshared) != 0 {
+		t.Fatalf("someone the tag is not shared with read it: %v", unshared)
+	}
 }
 
 func rule(kind string, edit func(r *groups.Rule)) groups.Rule {

@@ -78,6 +78,7 @@ func (t tagger) rename(w http.ResponseWriter, r *http.Request) {
 		if people == 0 {
 			return
 		}
+		t.cache.changed()
 		if err := t.writer.Set(appName, tagsTable, map[string]string{tagOwner: owner, tagName: from}, map[string]string{tagName: to}); err != nil {
 			slog.ErrorContext(r.Context(), "tag rename", "owner", owner, "from", from, "to", to, "error", err)
 		}
@@ -134,6 +135,7 @@ func (t tagger) copy(w http.ResponseWriter, r *http.Request) {
 		if len(rows) == 0 {
 			return
 		}
+		t.cache.changed()
 		if err := t.writer.AppendAll(appName, tagsTable, rows); err != nil {
 			slog.ErrorContext(r.Context(), "tag copy", "owner", owner, "from", from, "to", to, "error", err)
 		}

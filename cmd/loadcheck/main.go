@@ -339,6 +339,9 @@ func main() {
 		Lists: func(owner string) []who.List {
 			return append(model.RoomParentLists(owner), app.SmartLists(model, portal, site, owner, now)...)
 		},
+		Shared: func(email string) []who.SharedTag {
+			return who.SharedTagsOf(whoTables.Tags, whoTables.Managers, model, email)
+		},
 	}
 	fmt.Println("groups:")
 	for _, d := range groups.Plan(groupModel, sources) {

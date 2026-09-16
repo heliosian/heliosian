@@ -192,7 +192,11 @@ function ruleRow(rule, onChange, onRemove) {
       onChange();
     }));
     const tags = new Set(rule.tags);
-    const tagValues = [...options().tags, ...options().lists.map(l => ({value: l.key, label: l.name, icon: listIcons[l.kind]}))];
+    const tagValues = [
+      ...options().tags,
+      ...options().shared.map(s => ({value: s.key, label: `${s.name} (${s.ownerName}'s)`, icon: 'tag'})),
+      ...options().lists.map(l => ({value: l.key, label: l.name, icon: listIcons[l.kind]})),
+    ];
     controls.append(facetDropdown('Tags', 'tag', tagValues, tags, () => {
       rule.tags = [...tags];
       onChange();

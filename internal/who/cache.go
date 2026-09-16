@@ -307,21 +307,27 @@ func (c *Cache) TagManagers(owner string) map[string][]string {
 func (c *Cache) SharedTags(email string) []SharedTag {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
+	return SharedTagsOf(c.tables.Tags, c.tables.Managers, c.model, email)
+}
+
+// SharedTagsOf is SharedTags over the Tags and Tag Managers tabs' rows and a
+// model, for a tool holding them without a cache.
+func SharedTagsOf(tagRows, managerRows []map[string]string, model *Model, email string) []SharedTag {
 	out := []SharedTag{}
-	for _, row := range c.tables.Managers {
+	for _, row := range managerRows {
 		if !strings.EqualFold(row[managerEmail], email) {
 			continue
 		}
 		owner := strings.ToLower(row[tagOwner])
-		if c.model.Person(owner) == nil {
+		if model.Person(owner) == nil {
 			continue
 		}
 		tag := row[tagName]
-		shared := SharedTag{Owner: owner, OwnerName: c.model.DisplayName(owner), Name: tag, People: []string{}, Managers: []string{}}
-		for _, t := range c.tables.Tags {
+		shared := SharedTag{Owner: owner, OwnerName: model.DisplayName(owner), Name: tag, People: []string{}, Managers: []string{}}
+		for _, t := range tagRows {
 			if strings.EqualFold(t[tagOwner], owner) && t[tagName] == tag {
 				person := strings.ToLower(t[tagPerson])
-				if c.model.Person(person) != nil {
+				if model.Person(person) != nil {
 					shared.People = append(shared.People, person)
 				}
 			}
@@ -329,10 +335,10 @@ func (c *Cache) SharedTags(email string) []SharedTag {
 		if len(shared.People) == 0 {
 			continue
 		}
-		for _, m := range c.tables.Managers {
+		for _, m := range managerRows {
 			if strings.EqualFold(m[tagOwner], owner) && m[tagName] == tag {
 				manager := strings.ToLower(m[managerEmail])
-				if c.model.Person(manager) != nil {
+				if model.Person(manager) != nil {
 					shared.Managers = append(shared.Managers, manager)
 				}
 			}

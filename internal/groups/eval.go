@@ -9,15 +9,28 @@ import (
 )
 
 // Sources is what a rule is read against: the directory, and one person's
-// tags and Magic Tags by owner, since both are private to that person.
+// tags, Magic Tags and the tags shared with them, by owner, since all three
+// are that person's to see.
 type Sources struct {
 	Directory *who.Model
 	Tags      func(owner string) map[string][]string
 	Lists     func(owner string) []who.List
+	Shared    func(email string) []who.SharedTag
 }
 
-// tagged is everyone under one of the owner's tags or Magic Tags, by the
-// name the rule holds: a tag's name, or a Magic Tag's key.
+// sharedPrefix marks a shared tag in a rule's Tags: shared:<owner>:<name>,
+// the owner's address having no colon of its own. It reads as the tag's
+// owner's, and only while the rule's owner still manages it.
+const sharedPrefix = "shared:"
+
+// SharedKey is how a rule names a tag shared with its owner.
+func SharedKey(owner, name string) string {
+	return sharedPrefix + owner + ":" + name
+}
+
+// tagged is everyone under one of the owner's tags, Magic Tags or shared
+// tags, by the name the rule holds: a tag's name, a Magic Tag's key, or a
+// shared tag's key.
 func (s Sources) tagged(owner string) map[string][]string {
 	out := map[string][]string{}
 	for name, people := range s.Tags(owner) {
@@ -25,6 +38,9 @@ func (s Sources) tagged(owner string) map[string][]string {
 	}
 	for _, list := range s.Lists(owner) {
 		out[list.Key] = list.People
+	}
+	for _, shared := range s.Shared(owner) {
+		out[SharedKey(shared.Owner, shared.Name)] = shared.People
 	}
 	return out
 }

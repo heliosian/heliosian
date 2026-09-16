@@ -36,6 +36,11 @@ func (d groupsDirectory) Lists(owner string) []who.List {
 	return append(d.cache.Model().RoomParentLists(owner), d.lists.Lists(owner)...)
 }
 
+// Shared is the tags other people have let this person manage.
+func (d groupsDirectory) Shared(email string) []who.SharedTag {
+	return d.cache.SharedTags(email)
+}
+
 func groupsPerson(model *who.Model, p *who.Person) groups.Person {
 	return groups.Person{Email: p.Email, Name: p.FullName, PhotoURL: model.HeroPhoto(p.Email), Words: placeWords(*p)}
 }

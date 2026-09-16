@@ -8,7 +8,7 @@ The groups live in one Google Sheet, `Groups`, in the community shared drive, re
 
 - `Groups` — Name, Title, Description, Created By, Created. One row per group. Name is the address's local part and the key of every other tab.
 - `Managers` — Group, Email. One row per manager per group; every group needs at least one.
-- `Rules` — Group, Kind, Roles, Search, Classrooms, Grades, Tags, Family, Owner. One row per rule, in the order the editor shows them. Kind is `include` or `exclude`. Roles, Classrooms, Grades, Tags and Family are comma-separated lists; Tags holds tag names and Magic Tag keys (`party:<id>`, `activity:<id>`, `room:<band>`) alike, read as Owner's. A tag with a comma in its name cannot be used in a rule. Every group needs at least one include rule, and every rule at least one of the facets.
+- `Rules` — Group, Kind, Roles, Search, Classrooms, Grades, Tags, Family, Owner. One row per rule, in the order the editor shows them. Kind is `include` or `exclude`. Roles, Classrooms, Grades, Tags and Family are comma-separated lists; Tags holds tag names, Magic Tag keys (`party:<id>`, `activity:<id>`, `room:<band>`) and shared tags (`shared:<owner's address>:<name>`, one the owner has let the rule's Owner manage) alike, read as Owner's. A tag with a comma in its name cannot be used in a rule. Every group needs at least one include rule, and every rule at least one of the facets.
 - `Admins` — Email. Who sees and may change every group, beyond the platform super admins (`docs/config.md`).
 - `Settings` — Key, Value. The app's colours (`internal/theme`, the same seven keys every app keeps in its own sheet), written by the Appearance panel of Admin Tools.
 - `Change Log` — Timestamp, Actor, Action, Group, Detail. Appended on every save and delete; never read back.
@@ -19,7 +19,7 @@ The groups live in one Google Sheet, `Groups`, in the community shared drive, re
 
 ## The membership
 
-A group's members are never stored. They are computed from the directory model, the owner's tags (`Cache.Tags`, or `who.TagsOf` over the tab for a tool) and their Magic Tags (`app.SmartLists` plus the directory's room-parent lists) whenever anything asks: the group's page, the editor's preview, the syncer, the periodic job and `cmd/loadcheck` all call the one evaluator in `internal/groups/eval.go`, a port of Who?'s client-side filter with the same reading of a parent's grade and classroom through their children. The tests pin it to the sample community.
+A group's members are never stored. They are computed from the directory model, the owner's tags (`Cache.Tags`, or `who.TagsOf` over the tab for a tool), the tags shared with them (`Cache.SharedTags`, or `who.SharedTagsOf`) and their Magic Tags (`app.SmartLists` plus the directory's room-parent lists) whenever anything asks: the group's page, the editor's preview, the syncer, the periodic job and `cmd/loadcheck` all call the one evaluator in `internal/groups/eval.go`, a port of Who?'s client-side filter with the same reading of a parent's grade and classroom through their children. The tests pin it to the sample community.
 
 ## Google
 

@@ -31,13 +31,15 @@ type Person struct {
 }
 
 // Directory is what the app needs of Helios Who?: who an address resolves
-// to, the model the rules are read against, a person's tags and Magic
-// Tags, everyone for the pickers, and the toolbar's badges.
+// to, the model the rules are read against, a person's tags, Magic Tags
+// and the tags shared with them, everyone for the pickers, and the
+// toolbar's badges.
 type Directory interface {
 	Resolve(email string) string
 	Model() *who.Model
 	Tags(owner string) map[string][]string
 	Lists(owner string) []who.List
+	Shared(email string) []who.SharedTag
 	Person(email string) (Person, bool)
 	People() []Person
 	Alerts(email string) (int, bool)
@@ -103,15 +105,19 @@ func (a app) requireSuperAdmin(w http.ResponseWriter, r *http.Request) (string, 
 	return email, true
 }
 
+func sourcesOf(directory Directory) Sources {
+	return Sources{Directory: directory.Model(), Tags: directory.Tags, Lists: directory.Lists, Shared: directory.Shared}
+}
+
 func (a app) sources() Sources {
-	return Sources{Directory: a.directory.Model(), Tags: a.directory.Tags, Lists: a.directory.Lists}
+	return sourcesOf(a.directory)
 }
 
 // PlanFor is every group as Google should hold it, read against the models
 // as they stand when called; the syncer calls it on every change.
 func PlanFor(cache *Cache, directory Directory) func() []Desired {
 	return func() []Desired {
-		return Plan(cache.Model(), Sources{Directory: directory.Model(), Tags: directory.Tags, Lists: directory.Lists})
+		return Plan(cache.Model(), sourcesOf(directory))
 	}
 }
 
@@ -165,13 +171,22 @@ type listOption struct {
 	Kind string `json:"kind"`
 }
 
+// sharedOption is a tag shared with the viewer as the rule editor offers
+// it: its key, its name, and whose it is.
+type sharedOption struct {
+	Key       string `json:"key"`
+	Name      string `json:"name"`
+	OwnerName string `json:"ownerName"`
+}
+
 type options struct {
-	Classrooms []string     `json:"classrooms"`
-	Grades     []string     `json:"grades"`
-	Tags       []string     `json:"tags"`
-	Lists      []listOption `json:"lists"`
-	Roles      []string     `json:"roles"`
-	Relations  []string     `json:"relations"`
+	Classrooms []string       `json:"classrooms"`
+	Grades     []string       `json:"grades"`
+	Tags       []string       `json:"tags"`
+	Lists      []listOption   `json:"lists"`
+	Shared     []sharedOption `json:"shared"`
+	Roles      []string       `json:"roles"`
+	Relations  []string       `json:"relations"`
 }
 
 func (a app) person(email string) Person {
@@ -189,11 +204,16 @@ func (a app) people(emails []string) []Person {
 	return out
 }
 
-// tagLabels is the words for a rule's tags, read as its owner.
+// tagLabels is the words for a rule's tags, read as its owner: a tag's own
+// name, a Magic Tag's name, a shared tag's name with whose it is, and a
+// note for one the owner no longer has.
 func (a app) tagLabels(r Rule) []string {
 	names := map[string]string{}
 	for _, list := range a.directory.Lists(r.Owner) {
 		names[list.Key] = list.Name
+	}
+	for _, shared := range a.directory.Shared(r.Owner) {
+		names[SharedKey(shared.Owner, shared.Name)] = shared.Name + " (" + shared.OwnerName + "'s)"
 	}
 	tags := a.directory.Tags(r.Owner)
 	out := make([]string, 0, len(r.Tags))
@@ -203,11 +223,33 @@ func (a app) tagLabels(r Rule) []string {
 			out = append(out, names[tag])
 		case tags[tag] != nil:
 			out = append(out, tag)
+		case strings.HasPrefix(tag, sharedPrefix):
+			out = append(out, strings.TrimPrefix(tag, sharedPrefix)+" (no longer shared)")
 		default:
 			out = append(out, tag+" (no longer a tag)")
 		}
 	}
 	return out
+}
+
+// sharedRules refuses a rule of the viewer's naming a shared tag that is not
+// shared with them, unless the group already holds the rule word for word.
+func (a app) sharedRules(viewer string, existing []Rule, rules []Rule) error {
+	mine := map[string]bool{}
+	for _, shared := range a.directory.Shared(viewer) {
+		mine[SharedKey(shared.Owner, shared.Name)] = true
+	}
+	for i, r := range rules {
+		if r.Owner != viewer || slices.ContainsFunc(existing, func(e Rule) bool { return sameRule(e, r) }) {
+			continue
+		}
+		for _, tag := range r.Tags {
+			if strings.HasPrefix(tag, sharedPrefix) && !mine[tag] {
+				return fmt.Errorf("rule %d names a tag that is not shared with you", i+1)
+			}
+		}
+	}
+	return nil
 }
 
 func (a app) view(g Group, viewer string) groupView {
@@ -247,7 +289,11 @@ func (a app) options(viewer string) options {
 		lists = append(lists, listOption{Key: l.Key, Name: l.Name, Kind: l.Kind})
 	}
 	slices.SortFunc(lists, func(x, y listOption) int { return strings.Compare(x.Name, y.Name) })
-	return options{Classrooms: classrooms, Grades: grades, Tags: tags, Lists: lists, Roles: Roles, Relations: Relations}
+	shared := []sharedOption{}
+	for _, s := range a.directory.Shared(viewer) {
+		shared = append(shared, sharedOption{Key: SharedKey(s.Owner, s.Name), Name: s.Name, OwnerName: s.OwnerName})
+	}
+	return options{Classrooms: classrooms, Grades: grades, Tags: tags, Lists: lists, Shared: shared, Roles: Roles, Relations: Relations}
 }
 
 // model serves the app: the groups the viewer manages - every group, for
@@ -349,6 +395,10 @@ func (a app) preview(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	if err := a.sharedRules(email, existing, draft.Rules); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	for i, rule := range draft.Rules {
 		if err := CheckRule(rule); err != nil {
 			http.Error(w, fmt.Sprintf("rule %d: %v", i+1, err), http.StatusBadRequest)
@@ -440,6 +490,10 @@ func (a app) saveGroup(w http.ResponseWriter, r *http.Request) {
 		action = "edit"
 	}
 	if err := ownRules(email, existing, g.Rules); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := a.sharedRules(email, existing, g.Rules); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
