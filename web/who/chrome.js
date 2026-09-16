@@ -446,7 +446,7 @@ function sharedTagsHeading(className) {
 // own white line style - the outline exports in web/public/common/brand/apps
 // (<key>-outline.png, from ~/Dropbox/Kids/Heliosian/images/<app>/white
 // outline.png): Celebrate's for a party, HCA-Team's for an activity, Helios
-// Groups' for a group, Who's own for a room parent's list - so the sidebar
+// Loop's for a group, Who's own for a room parent's list - so the sidebar
 // says at a glance where each is kept up; the heading above them says
 // they're the apps' work.
 function magicTagIcon(key) {

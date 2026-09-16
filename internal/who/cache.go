@@ -51,7 +51,7 @@ type Cache struct {
 
 // OnChange registers a hook run after every change to the model or to the
 // tags: a rebuild from the sheet or from an edit, a tag set or dropped. Helios
-// Groups keeps its Google groups in step through it.
+// Loop keeps its Google groups in step through it.
 func (c *Cache) OnChange(fn func()) {
 	c.mu.Lock()
 	defer c.mu.Unlock()

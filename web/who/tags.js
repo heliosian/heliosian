@@ -67,7 +67,7 @@ export function listIcon(key) {
 }
 
 // Where a Magic Tag's people come from - the party in Celebrate, the
-// activity in HCA-Team or the group in Helios Groups it mirrors - so the
+// activity in HCA-Team or the group in Helios Loop it mirrors - so the
 // list page can link back to the thing itself. A room parent's list is the
 // directory's own (its families are worked out here from the grades they
 // look after), so it has no page elsewhere to point at. The key's id is
@@ -77,7 +77,7 @@ export function listIcon(key) {
 const listSources = {
   party: {app: 'celebrate', name: 'Celebrate', path: '/parties/', thing: 'party'},
   activity: {app: 'team', name: 'HCA-Team', path: '/activities/', thing: 'activity'},
-  group: {app: 'groups', name: 'Helios Groups', path: '/groups/', thing: 'group'},
+  group: {app: 'loop', name: 'Helios Loop', path: '/groups/', thing: 'group'},
 };
 
 export function listSource(key) {

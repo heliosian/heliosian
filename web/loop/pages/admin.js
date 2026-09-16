@@ -104,7 +104,7 @@ export function adminPage() {
   brand.setAttribute('data-link', '');
   const mark = el('img', 'admin-tile');
   mark.src = '/brand/logo-tile.png';
-  mark.alt = 'Helios Groups';
+  mark.alt = 'Helios Loop';
   brand.append(mark, el('span', '', 'Admin'));
   const right = el('span', 'right');
   right.append(el('span', 'email', me().email));

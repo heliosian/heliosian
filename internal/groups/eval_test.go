@@ -233,7 +233,7 @@ func TestSampleGroupsLoadAndPlan(t *testing.T) {
 		if len(d.Members) == 0 {
 			t.Errorf("%s has nobody", d.Address())
 		}
-		if d.Address() != d.Name+"@groups.heliosian.com" {
+		if d.Address() != d.Name+"@loop.heliosian.com" {
 			t.Errorf("address %s", d.Address())
 		}
 	}

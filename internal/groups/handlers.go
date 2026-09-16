@@ -18,7 +18,7 @@ import (
 	"heliosian/internal/who"
 )
 
-const shell = "web/groups/index.html"
+const shell = "web/loop/index.html"
 
 var pages = []string{"/{$}", "/new", "/groups/{name}", "/admin"}
 

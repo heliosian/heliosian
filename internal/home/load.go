@@ -113,7 +113,7 @@ var Apps = []App{
 	{Key: "celebrate", Name: "Helios Celebrate", Tagline: "Fun(d)raiser Parties"},
 	{Key: "birthday", Name: "Helios Birthday Team", Tagline: "Staff birthday donations"},
 	{Key: "calendar", Name: "Helios Calendar", Tagline: "The school year, day by day", Host: "when"},
-	{Key: "groups", Name: "Helios Groups", Tagline: "Email groups drawn from the directory"},
+	{Key: "loop", Name: "Helios Loop", Tagline: "Email groups drawn from the directory"},
 }
 
 func appByKey(key string) (App, bool) {

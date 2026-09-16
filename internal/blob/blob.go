@@ -163,7 +163,7 @@ func RegisterCalendar(mux *http.ServeMux, s *Store) {
 	mux.HandleFunc("GET /category-images/{name}", s.serve)
 }
 
-// RegisterGroups serves what Helios Groups shows: the directory's photos of
+// RegisterGroups serves what Helios Loop shows: the directory's photos of
 // the viewer, the managers and the members.
 func RegisterGroups(mux *http.ServeMux, s *Store) {
 	mux.HandleFunc("GET /photos/{name}", s.serve)

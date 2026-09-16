@@ -118,7 +118,7 @@ func sampleServer() (*http.Server, *who.Queue) {
 		"birthday":  app.Public("birthday", signIn.Fixed(sampleUser, app.Logged("birthday", app.Files("birthday", core.Birthday)))),
 		"celebrate": app.Public("celebrate", signIn.Fixed(sampleUser, app.Logged("celebrate", app.Files("celebrate", core.Celebrate)))),
 		"calendar":  app.Public("calendar", signIn.Fixed(sampleUser, app.Logged("calendar", app.Files("calendar", core.Calendar)))),
-		"groups":    app.Public("groups", signIn.Fixed(sampleUser, app.Logged("groups", app.Files("groups", core.Groups)))),
+		"loop":      app.Public("loop", signIn.Fixed(sampleUser, app.Logged("loop", app.Files("loop", core.Groups)))),
 	}), core.Queue)
 }
 

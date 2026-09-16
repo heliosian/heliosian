@@ -101,7 +101,7 @@ func TestHostnamesCoverTheRouter(t *testing.T) {
 			t.Errorf("%s is listed but routes nowhere", host)
 		}
 	}
-	for _, want := range []string{"heliosian.com", "www.heliosian.com", "home.heliosian.com", "who.lab.heliosian.com", "hca.heliosian.com", "when.lab.heliosian.com", "cal.heliosian.com", "groups.heliosian.com", "groups.lab.heliosian.com"} {
+	for _, want := range []string{"heliosian.com", "www.heliosian.com", "home.heliosian.com", "who.lab.heliosian.com", "hca.heliosian.com", "when.lab.heliosian.com", "cal.heliosian.com", "loop.heliosian.com", "loop.lab.heliosian.com"} {
 		if !slices.Contains(hosts, want) {
 			t.Errorf("%s is not listed", want)
 		}

@@ -1,4 +1,4 @@
-// Package groups serves Helios Groups: named email groups drawn from the directory by rules and manifested as Google Groups.
+// Package groups serves Helios Loop: named email groups drawn from the directory by rules and manifested as Google Groups.
 package groups
 
 import (
@@ -23,8 +23,8 @@ const (
 	changeLogTab = "Change Log"
 
 	// Domain is where every group lives: a group named parents-k is
-	// parents-k@groups.heliosian.com.
-	Domain = "groups.heliosian.com"
+	// parents-k@loop.heliosian.com.
+	Domain = "loop.heliosian.com"
 
 	KindInclude = "include"
 	KindExclude = "exclude"

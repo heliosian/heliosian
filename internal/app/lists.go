@@ -14,7 +14,7 @@ import (
 )
 
 // smartLists is Who?'s lister: the Magic Tags a person has from the other
-// apps, and the groups they manage on Helios Groups.
+// apps, and the groups they manage on Helios Loop.
 type smartLists struct {
 	cache     *who.Cache
 	events    *events.Cache

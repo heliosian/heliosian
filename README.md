@@ -27,7 +27,7 @@ To run against real community data instead, see [docs/dev.md](docs/dev.md).
 - `internal/celebrate` — Helios Celebrate: the Celebrate sheet's model, parties, tickets and the waitlist, handlers, and admin edits
 - `internal/calendar` — Helios Calendar: the Calendar sheet's model, audience resolution, the day plan, handlers, and personal feeds
 - `internal/calendarimport` — the periodic sync's calendar stage: the school's feed and year calendar into the Calendar sheet, classified by Claude
-- `internal/groups` — Helios Groups: the Groups sheet's model, the rule evaluator, the Google Groups sync, handlers, and admin edits
+- `internal/groups` — Helios Loop: the Groups sheet's model, the rule evaluator, the Google Groups sync, handlers, and admin edits
 - `internal/ics` — iCalendar feed parsing and recurrence expansion
 - `internal/feedback` — the toolbar's reports, queued and filed as issues in the private triage repository
 - `internal/blob` — media from Cloud Storage, held in memory with stored thumbnails
@@ -86,7 +86,7 @@ Helios Calendar, in `docs/calendar/`:
 - [calendar.md](docs/calendar/calendar.md) — the school calendar app spec: the pages, the filters, and personal feeds
 - [data.md](docs/calendar/data.md) — the Calendar sheet, the day plan, and the import
 
-Helios Groups, in `docs/groups/`:
+Helios Loop, in `docs/groups/`:
 
 - [groups.md](docs/groups/groups.md) — the email groups app spec: groups, rules, managers, and how Google is kept in step
 - [data.md](docs/groups/data.md) — the Groups sheet, the membership evaluator, the Google side, and the periodic job

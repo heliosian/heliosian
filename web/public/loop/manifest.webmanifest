@@ -1,6 +1,6 @@
 {
-  "name": "Helios Groups",
-  "short_name": "Groups",
+  "name": "Helios Loop",
+  "short_name": "Loop",
   "description": "Email groups drawn from the Helios directory",
   "display": "standalone",
   "id": "/",

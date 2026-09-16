@@ -10,8 +10,8 @@ func quiet(string, ...any) {}
 
 func TestReconcileMakesAndCorrectsGroups(t *testing.T) {
 	fake := NewFake()
-	fake.Seed("old@groups.heliosian.com", "Old", []string{"a@x.org", "gone@x.org"})
-	fake.Seed("stray@groups.heliosian.com", "Stray", nil)
+	fake.Seed("old@loop.heliosian.com", "Old", []string{"a@x.org", "gone@x.org"})
+	fake.Seed("stray@loop.heliosian.com", "Stray", nil)
 	desired := []Desired{
 		{Name: "old", Title: "Old", Members: []string{"a@x.org", "b@x.org"}},
 		{Name: "new", Title: "New", Description: "fresh", Members: []string{"c@x.org"}},
@@ -23,23 +23,23 @@ func TestReconcileMakesAndCorrectsGroups(t *testing.T) {
 	if result.Added != 2 || result.Removed != 1 {
 		t.Fatalf("added %d removed %d", result.Added, result.Removed)
 	}
-	if !fake.Has("old@groups.heliosian.com", "b@x.org") || fake.Has("old@groups.heliosian.com", "gone@x.org") {
+	if !fake.Has("old@loop.heliosian.com", "b@x.org") || fake.Has("old@loop.heliosian.com", "gone@x.org") {
 		t.Fatal("old's members are wrong")
 	}
-	if !fake.Has("new@groups.heliosian.com", "c@x.org") {
+	if !fake.Has("new@loop.heliosian.com", "c@x.org") {
 		t.Fatal("new was not made")
 	}
-	if !slices.Equal(result.Orphans, []string{"stray@groups.heliosian.com"}) {
+	if !slices.Equal(result.Orphans, []string{"stray@loop.heliosian.com"}) {
 		t.Fatalf("orphans %v", result.Orphans)
 	}
-	if _, err := fake.Members(context.Background(), "stray@groups.heliosian.com"); err != nil {
+	if _, err := fake.Members(context.Background(), "stray@loop.heliosian.com"); err != nil {
 		t.Fatal("the orphan was deleted")
 	}
 }
 
 func TestSyncerSendsOnlyTheDifference(t *testing.T) {
 	fake := NewFake()
-	fake.Seed("a@groups.heliosian.com", "A", []string{"one@x.org"})
+	fake.Seed("a@loop.heliosian.com", "A", []string{"one@x.org"})
 	plan := []Desired{{Name: "a", Title: "A", Members: []string{"one@x.org", "two@x.org"}}}
 	s := NewSyncer(fake, func() []Desired { return slices.Clone(plan) })
 	s.Run(context.Background())
@@ -58,12 +58,12 @@ func TestSyncerSendsOnlyTheDifference(t *testing.T) {
 	if fake.Calls["Add"] != 2 || fake.Calls["Remove"] != 1 || fake.Calls["Ensure"] != 2 {
 		t.Fatalf("second pass: %v", fake.Calls)
 	}
-	if fake.Titles()["a@groups.heliosian.com"] != "A renamed" {
+	if fake.Titles()["a@loop.heliosian.com"] != "A renamed" {
 		t.Fatal("the rename did not land")
 	}
 	plan = append(plan, Desired{Name: "b", Title: "B", Members: []string{"one@x.org"}})
 	s.Run(context.Background())
-	if !fake.Has("b@groups.heliosian.com", "one@x.org") {
+	if !fake.Has("b@loop.heliosian.com", "one@x.org") {
 		t.Fatal("b was not made")
 	}
 	plan = plan[1:]
@@ -86,7 +86,7 @@ func TestSyncerKeepsTheLastSentOnFailure(t *testing.T) {
 	}
 	failing.fail = false
 	s.Run(context.Background())
-	if st := s.Status("a"); st.Error != "" || !failing.Has("a@groups.heliosian.com", "one@x.org") {
+	if st := s.Status("a"); st.Error != "" || !failing.Has("a@loop.heliosian.com", "one@x.org") {
 		t.Fatalf("the retry did not land: %+v", st)
 	}
 }

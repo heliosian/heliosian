@@ -79,7 +79,7 @@ One execution's log, by the name that list gives:
 
     gcloud logging read 'resource.type="cloud_run_job" AND labels."run.googleapis.com/execution_name"="<execution name>"' --project heliosian --order asc --format "value(timestamp,severity,textPayload)"
 
-The same logs are under the job in the console, or in Logs Explorer with `resource.type="cloud_run_job"`. Each stage announces itself with a `stage:` line. A calendar run that changed nothing is a few fetches and no Claude calls; one that read a new PDF or classified new events says so. The groups stage prints one line per group with its member count and the adds and removes it made, a `[WARN]` for every address under `groups.heliosian.com` the sheet does not list, and a summary. A run whose stage failed exits non-zero naming it and shows as a failed execution.
+The same logs are under the job in the console, or in Logs Explorer with `resource.type="cloud_run_job"`. Each stage announces itself with a `stage:` line. A calendar run that changed nothing is a few fetches and no Claude calls; one that read a new PDF or classified new events says so. The groups stage prints one line per group with its member count and the adds and removes it made, a `[WARN]` for every address under `loop.heliosian.com` the sheet does not list, and a summary. A run whose stage failed exits non-zero naming it and shows as a failed execution.
 
 ## Configuration values
 
@@ -94,7 +94,7 @@ Plain environment variables:
 - `CELEBRATE_SHEET` — the `Celebrate` spreadsheet id: Helios Celebrate's parties, hosts, tickets, and admins (`docs/celebrate/data.md`).
 - `CALENDAR_SHEET` — the `Calendar` spreadsheet id: Helios Calendar's imported events, enrichment, overrides, day types, feeds, and admins (`docs/calendar/data.md`).
 - `CONFIG_SHEET` — the `Config` spreadsheet id: the platform super admins and settings (`docs/config.md`).
-- `GROUPS_SHEET` — the `Groups` spreadsheet id: Helios Groups' groups, managers, rules, and admins (`docs/groups/data.md`).
+- `GROUPS_SHEET` — the `Groups` spreadsheet id: Helios Loop's groups, managers, rules, and admins (`docs/groups/data.md`).
 - `GOOGLE_CLIENT_ID` — the OAuth web client id; not a secret (every login page fetches it from `/auth/client`), but kept out of the repository.
 
 Secret Manager secrets, delivered as environment variables. Values are used raw, so payloads must not carry trailing newlines:
@@ -124,7 +124,7 @@ Because the bucket is private and every read goes through the app's own sign-in 
 - Media: `roles/storage.objectAdmin` on `gs://heliosian-media`, granted on the bucket.
 - Runtime: the Cloud Run service and the `periodicsync` job run as it, and it holds Secret Manager Secret Accessor on each secret individually.
 - Scheduling: it holds `roles/run.invoker` on the `periodicsync` job, which is how the Cloud Scheduler job starts an execution as it.
-- Google Groups: it holds the Groups Admin role in the heliosian.com Workspace, assigned to the service account itself in the Admin console (Account, Admin roles, Groups Admin, Assign service accounts), which is what lets it make, fill and set the groups under `groups.heliosian.com` through the Cloud Identity Groups API and the Groups Settings API, both enabled in the project, with no key and no domain-wide delegation (`docs/groups/data.md`). `groups.heliosian.com` is a domain of that Workspace.
+- Google Groups: it holds the Groups Admin role in the heliosian.com Workspace, assigned to the service account itself in the Admin console (Account, Admin roles, Groups Admin, Assign service accounts), which is what lets it make, fill and set the groups under `loop.heliosian.com` through the Cloud Identity Groups API and the Groups Settings API, both enabled in the project, with no key and no domain-wide delegation (`docs/groups/data.md`). `loop.heliosian.com` is a domain of that Workspace.
 - Humans: `roles/iam.serviceAccountTokenCreator` on this account enables the local impersonation that real-data development uses (`docs/dev.md`).
 
 The build service account (the default compute service account) holds `cloudbuild.builds.builder`, `run.developer`, and Service Account User on `directory@` — the last because deploying a service that runs as an account requires permission to act as it.

@@ -774,7 +774,7 @@ type Config struct {
 	// Describer writes Staff Birthdays' sentence about a charity; nil leaves
 	// that button saying it is not set up.
 	Describer birthday.Describer
-	// Groups is the Google Groups side Helios Groups keeps in step: the
+	// Groups is the Google Groups side Helios Loop keeps in step: the
 	// Cloud Identity API in production, a fake that logs in sample mode.
 	Groups groups.Google
 }
@@ -797,7 +797,7 @@ type Core struct {
 	// CalendarLinked is what the other apps put on the calendar for a viewer,
 	// for the share cards a stranger fetches.
 	CalendarLinked func(email string) []calendar.Linked
-	// GroupsMux serves Helios Groups, the email groups drawn from the directory.
+	// GroupsMux serves Helios Loop, the email groups drawn from the directory.
 	GroupsMux   *http.ServeMux
 	GroupsCache *groups.Cache
 	// GroupsSyncer keeps the Google groups in step with every change.
@@ -939,7 +939,7 @@ func NewCore(cfg Config) *Core {
 		home.RegisterSwitch(m, homeCache)
 	}
 	feedbackQueue := feedback.NewQueue(cfg.Feedback)
-	for key, m := range map[string]*http.ServeMux{"who": mux, "home": homeMux, "team": eventsMux, "birthday": birthdayMux, "celebrate": celebrateMux, "calendar": calendarMux, "groups": groupsMux} {
+	for key, m := range map[string]*http.ServeMux{"who": mux, "home": homeMux, "team": eventsMux, "birthday": birthdayMux, "celebrate": celebrateMux, "calendar": calendarMux, "loop": groupsMux} {
 		feedback.Register(m, key, appName(key), superAdmin, feedbackQueue)
 	}
 	return &Core{
@@ -953,7 +953,7 @@ func NewCore(cfg Config) *Core {
 // Muxes is every app's mux, keyed by the app, for what is wired on all of
 // them alike.
 func (c *Core) Muxes() map[string]*http.ServeMux {
-	return map[string]*http.ServeMux{"who": c.Mux, "home": c.HomeMux, "team": c.EventsMux, "birthday": c.BirthdayMux, "celebrate": c.CelebrateMux, "calendar": c.CalendarMux, "groups": c.GroupsMux}
+	return map[string]*http.ServeMux{"who": c.Mux, "home": c.HomeMux, "team": c.EventsMux, "birthday": c.BirthdayMux, "celebrate": c.CelebrateMux, "calendar": c.CalendarMux, "loop": c.GroupsMux}
 }
 
 // Server dresses the apps, each fully wrapped and keyed by name, in the shared
@@ -1238,7 +1238,7 @@ func Production() (*http.Server, *who.Queue) {
 	// leads to carries the event's Open Graph tags.
 	calendarAuth.Preview = calendar.PreviewHead(core.CalendarCache, core.CalendarLinked)
 	calendarAuth.Register(core.CalendarMux)
-	groupsAuth := newAuth("groups")
+	groupsAuth := newAuth("loop")
 	groupsAuth.Register(core.GroupsMux)
 	return Server(map[string]http.Handler{
 		"who":       Public("who", whoAuth.Wrap(Logged("who", Files("who", core.Gate)))),
@@ -1247,6 +1247,6 @@ func Production() (*http.Server, *who.Queue) {
 		"birthday":  Public("birthday", birthdayAuth.Wrap(Logged("birthday", Files("birthday", core.Birthday)))),
 		"celebrate": Public("celebrate", celebrateAuth.Wrap(Logged("celebrate", Files("celebrate", core.Celebrate)))),
 		"calendar":  Public("calendar", calendarAuth.Wrap(Logged("calendar", Files("calendar", core.Calendar)))),
-		"groups":    Public("groups", groupsAuth.Wrap(Logged("groups", Files("groups", core.Groups)))),
+		"loop":      Public("loop", groupsAuth.Wrap(Logged("loop", Files("loop", core.Groups)))),
 	}), core.Queue
 }

@@ -13,7 +13,7 @@ import (
 	"heliosian/internal/who"
 )
 
-// groupsDirectory hands Helios Groups the directory's view of people: who
+// groupsDirectory hands Helios Loop the directory's view of people: who
 // an address resolves to, the model its rules are read against, a person's
 // tags, Magic Tags and the tags shared with them, everyone for the pickers,
 // and the toolbar's badges.

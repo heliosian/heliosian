@@ -9,7 +9,7 @@ import (
 )
 
 func TestNotFoundReadsTheLookupRefusal(t *testing.T) {
-	missing := &googleapi.Error{Code: 403, Message: "Error(2028): Permission denied for resource tech@groups.heliosian.com (or it may not exist)."}
+	missing := &googleapi.Error{Code: 403, Message: "Error(2028): Permission denied for resource tech@loop.heliosian.com (or it may not exist)."}
 	if !notFound(fmt.Errorf("look up: %w", missing)) {
 		t.Fatal("the missing-group 403 was not read as not found")
 	}

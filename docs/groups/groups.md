@@ -1,6 +1,6 @@
-# Helios Groups
+# Helios Loop
 
-Helios Groups is where the community's email groups are made: each is an address at `groups.heliosian.com` whose members follow from rules over the directory, and each is manifested as a real Google Group, kept in step as the directory changes. It serves at groups.heliosian.com. The sheet is `Groups`, the package is `internal/groups`, and the API is `/api/groups/`.
+Helios Loop is where the community's email groups are made: each is an address at `loop.heliosian.com` whose members follow from rules over the directory, and each is manifested as a real Google Group, kept in step as the directory changes. It serves at loop.heliosian.com. The sheet is `Groups`, the package is `internal/groups`, and the API is `/api/groups/`.
 
 ## Entities
 
@@ -34,4 +34,4 @@ Every change that can move a member in or out of a group tells the syncer: the d
 
 ## Brand
 
-The app wears Heliosian's marks as stand-ins under `web/public/groups/brand/` and as its mark in the app switch (`web/public/common/brand/apps/groups.png`), and Who?'s outline as the mark beside its Magic Tags in Who?'s sidebar (`groups-outline.png` there), until it has art of its own.
+The app wears Heliosian's marks as stand-ins under `web/public/loop/brand/` and as its mark in the app switch (`web/public/common/brand/apps/loop.png`), and Who?'s outline as the mark beside its Magic Tags in Who?'s sidebar (`loop-outline.png` there), until it has art of its own.

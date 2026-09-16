@@ -2,7 +2,7 @@ import {state, me, isAdmin} from './state.js';
 import {el, svg, link} from './dom.js';
 import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, initSpoof, markSuper} from '/toolbar.js';
 
-const appName = 'Helios Groups';
+const appName = 'Helios Loop';
 
 const items = [
   {href: '/', icon: 'groups', label: 'My Groups'},
