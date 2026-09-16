@@ -151,6 +151,33 @@ func TestFamilyWidensAClassroom(t *testing.T) {
 	}
 }
 
+func TestReasonsSayWhichRuleAndRelation(t *testing.T) {
+	s, _ := sample(t)
+	g := groups.Normalize(groups.Group{Name: "test", Title: "Test", Managers: []string{jordan}, Rules: []groups.Rule{
+		rule(groups.KindExclude, func(r *groups.Rule) { r.Search = "marco" }),
+		rule(groups.KindInclude, func(r *groups.Rule) {
+			r.Roles = []string{"Student"}
+			r.Classrooms = []string{"Hummingbirds"}
+			r.Family = []string{"Parents", "Siblings"}
+		}),
+		rule(groups.KindInclude, func(r *groups.Rule) { r.Search = "nico" }),
+	}})
+	reasons := groups.Reasons(g, s)
+	if got := reasons["mia.torres@heliosschool.org"]; !slices.Equal(got, []groups.Reason{{Rule: 1}}) {
+		t.Fatalf("mia: %+v", got)
+	}
+	mia := "mia.torres@heliosschool.org"
+	if got := reasons["nico.torres@heliosschool.org"]; !slices.Equal(got, []groups.Reason{{Rule: 1, Through: "Siblings", Via: mia, ViaName: "Mia Torres"}, {Rule: 2}}) {
+		t.Fatalf("nico: %+v", got)
+	}
+	if got := reasons["elena.torres@heliosschool.org"]; !slices.Equal(got, []groups.Reason{{Rule: 1, Through: "Parents", Via: mia, ViaName: "Mia Torres"}}) {
+		t.Fatalf("elena: %+v", got)
+	}
+	if _, in := reasons["marco.torres@heliosschool.org"]; in {
+		t.Fatal("an excluded parent has reasons")
+	}
+}
+
 func TestExcludeRulesSubtract(t *testing.T) {
 	s, _ := sample(t)
 	got := members(t, s,

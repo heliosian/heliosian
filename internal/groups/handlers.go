@@ -151,14 +151,22 @@ type ruleView struct {
 	TagLabels []string `json:"tagLabels"`
 }
 
+// Member is someone on a group, with why: every include rule that reached
+// them.
+type Member struct {
+	Person
+	Reasons []Reason `json:"reasons"`
+}
+
 // groupView is a group as its page shows it: the rules with their words,
-// the managers by name, the members, and where it stands with Google.
+// the managers by name, the members and why each is there, and where it
+// stands with Google.
 type groupView struct {
 	Group
 	Address  string     `json:"address"`
 	Rules    []ruleView `json:"rules"`
 	Managers []Person   `json:"managers"`
-	Members  []Person   `json:"members"`
+	Members  []Member   `json:"members"`
 	Mine     bool       `json:"mine"`
 	Status   Status     `json:"status"`
 }
@@ -200,6 +208,22 @@ func (a app) people(emails []string) []Person {
 	out := make([]Person, 0, len(emails))
 	for _, email := range emails {
 		out = append(out, a.person(email))
+	}
+	return out
+}
+
+// members is a group's members by name, each with why they are on it.
+func (a app) members(g Group) []Member {
+	reasons := Reasons(g, a.sources())
+	out := make([]Member, 0, len(reasons))
+	for _, email := range sortedKeys(func() map[string]bool {
+		emails := map[string]bool{}
+		for email := range reasons {
+			emails[email] = true
+		}
+		return emails
+	}()) {
+		out = append(out, Member{Person: a.person(email), Reasons: reasons[email]})
 	}
 	return out
 }
@@ -257,7 +281,7 @@ func (a app) view(g Group, viewer string) groupView {
 	for _, r := range g.Rules {
 		v.Rules = append(v.Rules, ruleView{Rule: r, TagLabels: a.tagLabels(r)})
 	}
-	v.Members = a.people(Members(g, a.sources()))
+	v.Members = a.members(g)
 	return v
 }
 
@@ -406,7 +430,7 @@ func (a app) preview(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]any{"members": a.people(Members(draft, a.sources()))}); err != nil {
+	if err := json.NewEncoder(w).Encode(map[string]any{"members": a.members(draft)}); err != nil {
 		slog.ErrorContext(r.Context(), "encode groups preview", "error", err)
 	}
 }

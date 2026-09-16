@@ -83,11 +83,24 @@ func anyIn(have, want []string) bool {
 	return false
 }
 
-// matches is everyone one rule picks out: every facet set must hold, then
-// Family adds the relatives asked for.
-func matches(r Rule, s Sources, tagged map[string][]string) map[string]bool {
+// Reason is why a member is on a group: the rule, by its place among the
+// group's rules, and the relation it reached them through and whom - a
+// parent of Mia, say, when the rule matched Mia - or nothing for someone
+// it matched itself.
+type Reason struct {
+	Rule    int    `json:"rule"`
+	Through string `json:"through,omitempty"`
+	Via     string `json:"via,omitempty"`
+	ViaName string `json:"viaName,omitempty"`
+}
+
+// matches is everyone one rule picks out, each with the relation it reached
+// them through: every facet set must hold, then Family adds the relatives
+// asked for. Someone the rule matches itself stays a direct match whatever
+// relations also reach them.
+func matches(r Rule, s Sources, tagged map[string][]string) map[string]Reason {
 	model := s.Directory
-	out := map[string]bool{}
+	out := map[string]Reason{}
 	for i := range model.People {
 		p := &model.People[i]
 		if len(r.Roles) > 0 && !((p.IsStudent && slices.Contains(r.Roles, "Student")) || (p.IsParent && slices.Contains(r.Roles, "Parent")) || (p.IsStaff && slices.Contains(r.Roles, "Staff"))) {
@@ -105,25 +118,34 @@ func matches(r Rule, s Sources, tagged map[string][]string) map[string]bool {
 		if len(r.Tags) > 0 && !slices.ContainsFunc(r.Tags, func(tag string) bool { return slices.Contains(tagged[tag], p.Email) }) {
 			continue
 		}
-		out[p.Email] = true
+		out[p.Email] = Reason{}
 	}
-	for _, email := range sortedKeys(out) {
+	direct := map[string]bool{}
+	for email := range out {
+		direct[email] = true
+	}
+	reach := func(email, through, via string) {
+		if _, ok := out[email]; !ok && email != via {
+			out[email] = Reason{Through: through, Via: via, ViaName: model.DisplayName(via)}
+		}
+	}
+	for _, email := range sortedKeys(direct) {
 		p := model.Person(email)
 		for _, key := range model.FamilyKeysOf(email) {
 			family := model.Families[key]
 			if p.IsStudent && slices.Contains(r.Family, "Parents") {
 				for _, adult := range family.AdultEmails {
-					out[adult] = true
+					reach(adult, "Parents", email)
 				}
 			}
 			if p.IsParent && slices.Contains(r.Family, "Children") {
 				for _, kid := range family.KidEmails {
-					out[kid] = true
+					reach(kid, "Children", email)
 				}
 			}
 			if p.IsStudent && slices.Contains(r.Family, "Siblings") {
 				for _, kid := range family.KidEmails {
-					out[kid] = true
+					reach(kid, "Siblings", email)
 				}
 			}
 		}
@@ -131,34 +153,43 @@ func matches(r Rule, s Sources, tagged map[string][]string) map[string]bool {
 	return out
 }
 
-// Members is everyone a group's rules put on it: the include rules' matches
-// less the exclude rules', as addresses the directory keys them by, leaving
-// out anyone whose address is a placeholder nothing can reach.
-func Members(g Group, s Sources) []string {
+// Reasons is everyone a group's rules put on it and why: the include rules'
+// matches less the exclude rules', as addresses the directory keys them by,
+// leaving out anyone whose address is a placeholder nothing can reach, each
+// with every include rule that reached them.
+func Reasons(g Group, s Sources) map[string][]Reason {
 	tagged := map[string]map[string][]string{}
 	for _, r := range g.Rules {
 		if _, ok := tagged[r.Owner]; !ok && len(r.Tags) > 0 {
 			tagged[r.Owner] = s.tagged(r.Owner)
 		}
 	}
-	in, out := map[string]bool{}, map[string]bool{}
-	for _, r := range g.Rules {
-		into := in
-		if r.Kind == KindExclude {
-			into = out
-		}
-		for email := range matches(r, s, tagged[r.Owner]) {
-			into[email] = true
+	in, out := map[string][]Reason{}, map[string]bool{}
+	for i, r := range g.Rules {
+		for email, reason := range matches(r, s, tagged[r.Owner]) {
+			if r.Kind == KindExclude {
+				out[email] = true
+				continue
+			}
+			reason.Rule = i
+			in[email] = append(in[email], reason)
 		}
 	}
-	members := []string{}
+	for _, reasons := range in {
+		slices.SortFunc(reasons, func(a, b Reason) int { return a.Rule - b.Rule })
+	}
 	for email := range in {
-		if out[email] {
-			continue
+		if p := s.Directory.Person(email); out[email] || p == nil || p.EmailMasked {
+			delete(in, email)
 		}
-		if p := s.Directory.Person(email); p == nil || p.EmailMasked {
-			continue
-		}
+	}
+	return in
+}
+
+// Members is Reasons' people alone, sorted.
+func Members(g Group, s Sources) []string {
+	members := []string{}
+	for email := range Reasons(g, s) {
 		members = append(members, email)
 	}
 	sort.Strings(members)

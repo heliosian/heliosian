@@ -357,7 +357,7 @@ function editor(g, isNew) {
       previewHead.textContent = `${members.length} ${members.length === 1 ? 'member' : 'members'}`;
       previewList.replaceChildren();
       for (const m of members) {
-        previewList.append(personRow(m));
+        previewList.append(personRow(m, null, reasonWords(m, rules)));
       }
       previewStatus.textContent = rules.length ? '' : 'Add a rule to pick people out.';
     } catch (err) {
@@ -470,6 +470,50 @@ export function newGroupPage() {
   return page;
 }
 
+// reasonWords says why a member is on the group: each include rule that
+// reached them, said of one person - "Tagged in Tech Team", "Student in
+// Hummingbirds" - and, when Add family brought them in, whose relative they
+// are: "Parent of Mia, student in Hummingbirds".
+const throughWords = {Parents: 'Parent', Children: 'Child', Siblings: 'Sibling'};
+
+function reasonWords(member, rules) {
+  return (member.reasons || []).map(reason => {
+    const rule = rules[reason.rule];
+    if (!rule) {
+      return '';
+    }
+    const phrase = personWords(rule);
+    if (reason.through) {
+      return `${throughWords[reason.through]} of ${(reason.viaName || '').split(' ')[0]}, ${phrase}`;
+    }
+    return phrase.charAt(0).toUpperCase() + phrase.slice(1);
+  }).filter(Boolean).join(' · ');
+}
+
+const singular = {Student: 'student', Parent: 'parent', Staff: 'staff member'};
+
+// personWords is a rule said of one person who matches it, lowercase, for
+// a member's reason: "parent in Grade 5 or Grade 6", "tagged in Tech Team".
+function personWords(r) {
+  const parts = [];
+  if (r.roles.length) {
+    parts.push(r.roles.map(x => singular[x]).join(' or '));
+  }
+  if (r.search) {
+    parts.push(`with “${r.search}” in their name or address`);
+  }
+  if (r.grades.length) {
+    parts.push('in ' + r.grades.join(' or '));
+  }
+  if (r.classrooms.length) {
+    parts.push('in ' + r.classrooms.join(' or '));
+  }
+  if (r.tags.length) {
+    parts.push('tagged in ' + (r.tagLabels || r.tags).join(' or '));
+  }
+  return parts.join(' ');
+}
+
 // ruleWords is a rule as the group's page reads it out.
 function ruleWords(r) {
   const parts = [];
@@ -488,7 +532,7 @@ function ruleWords(r) {
     parts.push('in ' + r.classrooms.join(' or '));
   }
   if (r.tags.length) {
-    parts.push('tagged ' + r.tagLabels.join(' or '));
+    parts.push('tagged in ' + (r.tagLabels || r.tags).join(' or '));
   }
   let words = parts.join(' ');
   if (r.family.length) {
@@ -560,10 +604,10 @@ export function groupPage(g) {
 
   const members = el('div', 'card');
   members.append(el('h2', '', `${g.members.length} ${g.members.length === 1 ? 'member' : 'members'}`));
-  members.append(el('div', 'hint', 'Who the rules pick out right now. Google is kept in step as the directory changes.'));
+  members.append(el('div', 'hint', 'Who the rules pick out right now, and the rule that puts each of them here. Google is kept in step as the directory changes.'));
   const list = el('div', 'member-list');
   for (const m of g.members) {
-    list.append(personRow(m));
+    list.append(personRow(m, null, reasonWords(m, g.rules)));
   }
   if (!g.members.length) {
     list.append(el('div', 'rule-empty', 'Nobody matches the rules yet.'));

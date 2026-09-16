@@ -129,14 +129,18 @@ export async function copyText(text, message) {
 }
 
 // personRow is one person as the member and manager lists show them: face,
-// name, and the word that places them.
-export function personRow(person, extra) {
+// name, the word that places them, and a note under those when there is
+// one - on a member, why they are on the group.
+export function personRow(person, extra, note) {
   const row = el('div', 'person-row');
   row.append(thumb(person, 'small'));
   const body = el('div', 'person-body');
   body.append(el('div', 'person-name', person.name));
   const words = [person.words, person.email].filter(Boolean).join(' · ');
   body.append(el('div', 'person-words', words));
+  if (note) {
+    body.append(el('div', 'person-note', note));
+  }
   row.append(body);
   if (extra) {
     row.append(extra);
