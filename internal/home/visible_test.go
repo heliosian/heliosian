@@ -86,14 +86,26 @@ func mustBuild(t *testing.T, tables *Tables) *Model {
 	return model
 }
 
-// A row naming an app the switch does not list, a misspelled mode, or a
-// second row for one app refuses the load.
+func TestVisibilityRowForAnUnknownAppIsSkipped(t *testing.T) {
+	rows := []map[string]string{{"App": "bogus", "Visibility": "nonsense"}, {"App": "who", "Visibility": "everyone"}}
+	m, err := BuildModel(&Tables{Visibility: rows}, noImages{})
+	if err != nil {
+		t.Fatalf("a row for an app this build does not know refused the load: %v", err)
+	}
+	if _, ok := m.Visibility["bogus"]; ok {
+		t.Error("the unknown app's row reached the model")
+	}
+	if v, ok := m.Visibility["who"]; !ok || v.Mode != VisibleToEveryone {
+		t.Errorf("who = %+v, want its row read as usual", v)
+	}
+}
+
+// A misspelled mode or a second row for one app refuses the load.
 func TestVisibilityRowsAreChecked(t *testing.T) {
 	for _, c := range []struct {
 		rows []map[string]string
 		want string
 	}{
-		{[]map[string]string{{"App": "bogus", "Visibility": "list"}}, "app must be one of"},
 		{[]map[string]string{{"App": "who", "Visibility": "List"}}, "is not everyone or list"},
 		{[]map[string]string{{"App": "who"}}, "is not everyone or list"},
 		{[]map[string]string{{"App": "who", "Visibility": "list"}, {"App": "who", "Visibility": "everyone"}}, "two rows"},

@@ -56,9 +56,9 @@ The `Preferences` sheet belongs to a Google Form, and its wording *is* the data.
 
 Last submission wins per family **by timestamp, not sheet order**. The 33 seconds in which one family opted out and back in are the whole reason that comparison exists.
 
-Where a two-household student's parents disagree, the stricter answer holds, so the outcome never depends on map ordering.
+The form's answer is per family, and a kid's family is every household they belong to. The households a kid links are one family to the form: every submission from any of their adults goes into one pool, the latest wins, and it governs each of those households alike, membership and permissions both. One household opting in therefore lists the other household's parent too, and a later opt-out from either household removes them all, exactly as it does between two parents of one household.
 
-Only an affirmative opt-in puts a family in the directory. A household that never answered is dropped from the model exactly as an opt-out is, and silence is one of the answers the stricter-wins resolution weighs, so a two-household student whose other parent never answered is dropped too. Staff are the single exemption and only from silence: the form reaches them through being a parent, so a staff member nobody answered for stays listed, while one who opts out is removed like anyone else.
+Only an affirmative opt-in puts a family in the directory. A family none of whose adults answered is dropped from the model exactly as an opt-out is. Staff are the single exemption and only from silence: the form reaches them through being a parent, so a staff member nobody answered for stays listed, while one who opts out is removed like anyone else.
 
 ## Privacy decisions
 

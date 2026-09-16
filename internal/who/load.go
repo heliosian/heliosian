@@ -1426,8 +1426,38 @@ func parsePreference(row map[string]string) (string, preference, error) {
 	return email, pref, nil
 }
 
+func (l *loader) consentFamilies() map[string]string {
+	linked := map[string][]string{}
+	for _, sets := range l.personHouseholds {
+		for _, a := range sets {
+			for _, b := range sets {
+				linked[l.familyKeys[a]] = append(linked[l.familyKeys[a]], l.familyKeys[b])
+			}
+		}
+	}
+	familyOf := map[string]string{}
+	for _, set := range l.householdOrder {
+		start := l.familyKeys[set]
+		if _, seen := familyOf[start]; seen {
+			continue
+		}
+		familyOf[start] = start
+		members := []string{start}
+		for i := 0; i < len(members); i++ {
+			for _, next := range linked[members[i]] {
+				if _, seen := familyOf[next]; !seen {
+					familyOf[next] = start
+					members = append(members, next)
+				}
+			}
+		}
+	}
+	return familyOf
+}
+
 func (l *loader) applyPreferences() error {
-	byFamily := map[string]preference{}
+	familyOf := l.consentFamilies()
+	byConsentFamily := map[string]preference{}
 	byPerson := map[string]preference{}
 	for _, row := range l.preferenceRows {
 		email, pref, err := parsePreference(row)
@@ -1445,10 +1475,16 @@ func (l *loader) applyPreferences() error {
 			continue
 		}
 		for _, set := range sets {
-			key := l.familyKeys[set]
-			if current, ok := byFamily[key]; !ok || pref.when.After(current.when) {
-				byFamily[key] = pref
+			family := familyOf[l.familyKeys[set]]
+			if current, ok := byConsentFamily[family]; !ok || pref.when.After(current.when) {
+				byConsentFamily[family] = pref
 			}
+		}
+	}
+	byFamily := map[string]preference{}
+	for key, family := range familyOf {
+		if pref, ok := byConsentFamily[family]; ok {
+			byFamily[key] = pref
 		}
 	}
 

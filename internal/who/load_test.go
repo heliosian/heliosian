@@ -121,9 +121,7 @@ func TestConsentOptOutRemovesStaff(t *testing.T) {
 	}
 }
 
-// Where a two-household kid's parents disagree the stricter answer holds, and a
-// household that never answered is one of those answers.
-func TestKidLosesAHouseholdThatNeverSubmitted(t *testing.T) {
+func TestOneHouseholdsAnswerCoversTheOther(t *testing.T) {
 	tables, err := ReadTables(&data.Dir{Root: "../../sampledata"})
 	if err != nil {
 		t.Fatalf("read sample tables: %v", err)
@@ -136,20 +134,28 @@ func TestKidLosesAHouseholdThatNeverSubmitted(t *testing.T) {
 	}
 	next := *tables
 	next.Preferences = kept
-	// Dev is the only student in his crew, which the sample cannot lose while a teacher
-	// is still assigned to it.
-	m, err := BuildModel(next.withOverride("tom.grady@heliosschool.org", map[string]string{"Crew": ""}), noBlobs{}, noBlobs{})
+	m, err := BuildModel(&next, noBlobs{}, noBlobs{})
 	if err != nil {
 		t.Fatalf("build model with one household's submission dropped: %v", err)
 	}
-	if p := m.Person("dev.chandra@heliosschool.org"); p != nil {
-		t.Error("a kid whose other household never submitted is still in the directory")
+	for _, email := range []string{"dev.chandra@heliosschool.org", "rohan.chandra@heliosschool.org", "asha.chandra@heliosschool.org"} {
+		if p := m.Person(email); p == nil {
+			t.Errorf("%s is not in the directory, though one of the kid's households opted in", email)
+		}
 	}
-	if p := m.Person("rohan.chandra@heliosschool.org"); p != nil {
-		t.Error("the parent who never submitted is still in the directory")
+	family := m.Families["rohan.chandra@heliosschool.org"]
+	if family.AddressMasked || family.Address == "" || family.PhoneMasked {
+		t.Errorf("the household that never submitted does not carry the other's permissions: %+v", family)
 	}
-	if p := m.Person("asha.chandra@heliosschool.org"); p == nil {
-		t.Error("the household that did submit lost its own adult")
+}
+
+func TestLatestAnswerInAFamilySpeaksForEveryHousehold(t *testing.T) {
+	m := sampleModel(t)
+	for _, key := range []string{"asha.chandra@heliosschool.org", "rohan.chandra@heliosschool.org"} {
+		family := m.Families[key]
+		if !family.AddressMasked || family.Address != "" || family.PhoneMasked {
+			t.Errorf("family %s = %+v, want the later answer's grants, phone only, on both households", key, family)
+		}
 	}
 }
 

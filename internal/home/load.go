@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"heliosian/internal/theme"
+	"log/slog"
 	"maps"
 	"net/url"
 	"os"
@@ -472,17 +473,19 @@ func (t *Tables) withSetting(key, value string) *Tables {
 	return &out
 }
 
-// buildVisibility reads the Visibility tab: one row per app, naming a known
-// app, spelling its Visibility exactly, and listing in Emails whoever sees
-// it when that is list - separated by commas or line breaks, in the order
-// written. Anything else refuses the load, since a misspelled app or mode
-// would narrow nothing, silently.
+// buildVisibility reads the Visibility tab: one row per app, spelling its
+// Visibility exactly, and listing in Emails whoever sees it when that is
+// list - separated by commas or line breaks, in the order written. A row for
+// an app this build does not know is logged and skipped: a newer build has
+// written it, and a partial deploy must not die over it. Anything else
+// refuses the load, since a misspelled mode would narrow nothing, silently.
 func buildVisibility(rows []map[string]string) (map[string]Visibility, error) {
 	visibility := map[string]Visibility{}
 	for _, row := range rows {
 		app := strings.ToLower(strings.TrimSpace(row["App"]))
 		if !appKnown(app) {
-			return nil, fmt.Errorf("%s row %v: app must be one of %s", visibilityTab, row, strings.Join(appKeys(), ", "))
+			slog.Warn("visibility row names an app this build does not know, skipped", "app", app, "known", appKeys())
+			continue
 		}
 		if _, dup := visibility[app]; dup {
 			return nil, fmt.Errorf("%s has two rows for %q", visibilityTab, app)
