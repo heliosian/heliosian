@@ -188,7 +188,7 @@ func invite(from, to string, e *Event, link string, at time.Time) string {
 	}
 	lines = append(lines,
 		"URL:"+link,
-		"ORGANIZER;CN=Helios Calendar:mailto:"+mailAddress(from),
+		"ORGANIZER;CN=Helios When:mailto:"+mailAddress(from),
 		"ATTENDEE;CN="+icsText(to)+";ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:"+to,
 		"END:VEVENT",
 		"END:VCALENDAR",
@@ -203,7 +203,7 @@ func invite(from, to string, e *Event, link string, at time.Time) string {
 	return out.String()
 }
 
-// mailAddress is the address inside "Helios Calendar <when@heliosian.com>",
+// mailAddress is the address inside "Helios When <when@reply.heliosian.com>",
 // or the string itself when it is bare.
 func mailAddress(from string) string {
 	if i := strings.LastIndex(from, "<"); i >= 0 {

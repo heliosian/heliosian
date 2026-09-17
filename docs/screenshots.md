@@ -20,7 +20,7 @@ Flags:
 - `--width` / `--height` — the viewport, default 1280x800; `--width 390 --height 844` is a phone
 - `--click` — CSS selector(s) to click once `--wait` is visible, several separated by `|` and each waited for before its click (for example `.editor-band button|.tab-strip-item:nth-child(4)|.image-find` opens an editor, switches tab, opens the image search); `--settle 3s` waits that long after the last click before capturing
 
-The capture is a full-page screenshot at a 1280×800 viewport. "Full page" means the document's own scroll extent, so a page that sets `overflow: hidden` on `html` and scrolls an inner container — the shape every Glide app has — yields only the viewport. Capture those with a tall `--size` viewport in `cmd/browse` instead.
+The capture is a full-page screenshot at a 1280×800 viewport. "Full page" means the document's own scroll extent, so a page that sets `overflow: hidden` on `html` and scrolls an inner container yields only the viewport. Capture those with a tall `--size` viewport in `cmd/browse` instead.
 
 ## Reading the console
 
@@ -32,7 +32,7 @@ It listens for four seconds after the load (`--wait` changes that) and prints `(
 
 ## Capturing authenticated external sites
 
-Some source material (like the production apps being ported) sits behind a login. The capture browser handles this:
+Some source material sits behind a login. The capture browser handles this:
 
     go run ./cmd/capturebrowser
 

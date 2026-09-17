@@ -12,8 +12,6 @@ Home's data lives in one Google Sheet, `Apps`, in the community shared drive, re
 - `Visibility` — App, Visibility, Emails, Tagline, Name, Order. One row per community app in the registry (`internal/home.Apps`): whether everyone sees it or only the people in its Emails cell - in the app switch of every app's toolbar, and on the front page's apps section - the name it goes by there and the line under it, and its place in the order. The server adds the row for an app that has none.
 - `Change Log` — Timestamp, Actor, Action, Kind, and the link or category fields. Appended on every change; never read back.
 
-The sheet is the schema from scratch, not an import of the Glide app's tables. The Glide app's links were carried over once, transcribed from captures of its pages, with their images copied into the bucket.
-
 ## Rules
 
 **Title is the key.** Links and categories are edited by title, so a title must be unique within its tab. An edit that renames carries the new title in the same write, so the row keeps its place; a category rename rewrites the Category cell of every link in it.

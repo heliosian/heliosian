@@ -11,7 +11,7 @@ The portal's data lives in one Google Sheet, `Events`, in the community shared d
 - `Volunteers` — Event ID, Email, Position, Note, Added By, Added.
 - `Links` — Event ID, Title, URL, Image, Description.
 
-- `Settings` — Key, Value: `Expense Form URL` and `Intro`, both required. Rows under the old theme keys (`Sidebar Color` and the like, from the Appearance panel that existed on 2026-09-16) are passed over if the tab still holds them.
+- `Settings` — Key, Value: `Expense Form URL` and `Intro`, both required.
 - `Change Log` — Timestamp, Actor, Action, Kind, Year, Activity, Title, Email, Details; appended on every change, never read back.
 
 **Column order does not matter, column names do.** Every write places each cell under the column of that name wherever the tab keeps it (`Writer.AppendCells`), so columns may be rearranged by hand; a new row is written at an explicit address (the row after the last used one, from column A) rather than through the Sheets append call, whose table detection starts a row in the wrong column when the tab has a blank row or a sparse column. Every tab needs the columns listed; a column the app does not read is somebody else's business and is left alone (`data.CheckColumns`), as is a tab the app never touches, such as one kept for backup. The price is that a misspelt header for an optional-looking column is not caught - the loader only misses what it needs.
@@ -42,16 +42,11 @@ The cost is that the sheet no longer reads as prose on its own — a volunteer r
 `Pretty ID` is an optional friendly address: `applause` puts the activity at `team.heliosian.com/v/applause`, and every link to it and the share button use that address. Lower-case letters, digits and hyphens, at most 40; one address for one thing **across every year**. Saving refuses an address another activity holds in the same or a later year; one held by a prior year's activity is offered for renaming - to `applause-2025`, the address with that year - and taken once the editor agrees. Changing or removing one writes a row to `Redirects`, so the old address keeps working and the browser's address bar is corrected to the live one. Copying an event into the next year leaves the copy without one. A duplicate typed into the sheet loads with the latest year keeping the address (counted in `Model.Skipped`).
 
 A thing under an event is addressed under the event's path - `/v/inight/poland`, or `/v/inight/{id}` when it has no friendly name of its own, or `/activities/{event id}/...` when the event has none - so a child's friendly name only needs to be unique among its siblings, and `poland` can exist under every year's International Night. The bare `/activities/{id}` of a child still resolves, and the browser's address bar is corrected to the full path.
-## Why the Glide tables were not kept
-
-The app this replaced held everything in one tree table keyed by row id, with sub-tasks and sub-sub-tasks as rows of the same shape as events, and eleven boolean and rank columns standing in for a status. Volunteers pointed at any node by id, names and photos were copied from the directory into four more tables, and the current year lived in a one-row "key info" table. The status column, the two tabs, the derived school year, and the directory lookup each replace one of those, and the row-id keys became names.
 
 ## Dates
 
 Start and End are wall-clock, `2026-09-24 16:00` or `2026-09-24` for a whole day, with no time zone: an event at four o'clock is at four o'clock at the school. The client formats them as local time and the calendar file it downloads uses floating times. Timing is the free text shown when there is no date ("All Year", "Late February"). Added is a date, `2026-09-24`.
 
-
-The Glide export stamped its local times as `2025-03-01T17:30:00.000Z`; `go run ./cmd/fixdates` (dry run; `-write` to change) rewrites those cells into these forms, keeping the clock as written.
 ## Yes and No
 
 Flag cells are `Yes`, `No`, or blank. A blank takes the column's default, chosen so a hand-added row asks for help unless it says otherwise: `Co-Leader Needed`, `Direct Sign-Up` and a category's `Show On Main Page` default to Yes, `Volunteers Hidden` to No; `Allow Adding` is not a flag but a policy (above), and blank there means inherit. `Volunteers Hidden` is each thing's own: an event that hides its list does not hide its committees' - but a thing added under a parent starts with the parent's setting, to be changed after. The app always writes Yes or No explicitly.

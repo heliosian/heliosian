@@ -1,6 +1,6 @@
 # Goals
 
-Heliosian is a small web application platform for the Helios school community (K-8). It hosts the community's apps — previously run on a no-code platform — as one service, built and maintained in the open by community volunteers.
+Heliosian is a small web application platform for the Helios school community (K-8). It hosts the community's apps as one service, built and maintained in the open by community volunteers.
 
 ## What it hosts
 
@@ -24,4 +24,3 @@ The second is Heliosian, the community's page of links to everything else. The t
 
 - Structured data comes from Google Sheets. The system of record is Veracross, and a direct integration replaces Sheets when an API becomes available.
 - Blobs (photos and other uploads) live in Cloud Storage.
-- Existing data is imported from the current platforms.

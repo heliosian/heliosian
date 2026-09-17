@@ -4,8 +4,6 @@ Why the data is shaped the way it is. The tabs, columns, pipeline steps and vali
 
 Structured data lives in two Google Sheets in the community shared drive, reached through drive membership rather than project IAM; blobs are objects in the media bucket, reached through project IAM. Each has exactly one home, and the organized model is held in memory — nothing computed is ever written back. The staleness thresholds, privacy links, and grade and classroom colors are not directory data at all: they live in the platform `Config` sheet (`docs/config.md`), and the directory's client reads them from `/api/config`.
 
-The service account can also see the Glide spreadsheets this app replaced. **They are read-only, permanently.** Nothing here writes to them; they are kept as history.
-
 `imports/` is scratch. It is gitignored, its contents are whatever someone last dumped or generated, and it goes stale the moment the sheet changes. Never reason from a file there without regenerating it first — dump the tab you actually care about.
 
 ## Veracross is a moving target
@@ -84,8 +82,8 @@ That a person's photos are a list rather than a slot follows from the same thing
 
 Every family address on the map was once a Geocoding API call, and a call per address per instance start cost more than the instances did. The `Geocode` tab — Address, Lat, Lng — is that cache. The model build reads it in the same batch as every other tab, asks the API only for an address the tab has no row for, appends every new answer in one write, and folds the answers into the tables it just built from, so a refresh a minute later finds them without a second read. The key is the address string exactly as the family record carries it, so an edited address is simply a miss and gets its own row; the row for the old address stays behind, harmless. A failed write is logged and the next rebuild asks again. There is no other cache: the process holds nothing between rebuilds, and the tab is the one place a coordinate lives. A row with a malformed coordinate refuses the load, since somebody edited it by hand.
 
-## History that constrains the present
+## Refresh dates and family keys
 
-Freshness cannot be read from bucket object generations: moving the media into the bucket reset every generation at once, and now that an object is named for its bytes there is never a second generation to read. The refresh dates in Overrides and Families exist because of that, and were seeded from the legacy Glide spreadsheet, which holds the years this app's history does not cover.
+Freshness cannot be read from bucket object generations: an object is named for its bytes, so there is never a second generation to read. The refresh dates in Overrides and Families exist because of that.
 
 A family's key is its alphabetically first parent's email address — an assertion, not a shorthand: an adult belongs to at most one household, so the key is unique, and the `Families` tab, the one home of family-level fields, is keyed by exactly that email. A row keyed by any other parent of the household refuses to load rather than silently opening a second place for the same family's fields to live. A kid in two households belongs to two families, each with its own row, photo, and page.

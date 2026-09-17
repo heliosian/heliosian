@@ -23,7 +23,7 @@ func replyMail(from, uid, standing string) string {
 	ics := strings.Join([]string{
 		"BEGIN:VCALENDAR", "PRODID:-//Google Inc//Google Calendar 70.9054//EN", "VERSION:2.0", "METHOD:REPLY",
 		"BEGIN:VEVENT", "DTSTART:20260924T230000Z", "DTEND:20260925T010000Z", "DTSTAMP:20260914T170000Z",
-		"ORGANIZER;CN=Helios Calendar:mailto:rsvp@reply.heliosian.com", "UID:" + uid,
+		"ORGANIZER;CN=Helios When:mailto:rsvp@reply.heliosian.com", "UID:" + uid,
 		"ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=" + standing + ";CN=" + from + ";X-NUM-GUESTS=0:mailto:" + from,
 		"SUMMARY:Accepted: International Night", "END:VEVENT", "END:VCALENDAR",
 	}, "\r\n")
@@ -112,8 +112,8 @@ func TestRepliesRecordAnswers(t *testing.T) {
 	}
 	froms := map[string]string{"yes": "Jordan <" + me + ">", "no": me, "stranger": "x@example.org", "forged": "x@example.org"}
 	mux := http.NewServeMux()
-	Register(mux, cache, dir, directQueue{}, nil, d, func() []string { return nil }, func(string) []Linked { return nil }, ImageSearch{}, Mail{Store: store, SigningKey: replySecret, ReplyTo: "Helios Calendar <rsvp@reply.heliosian.com>"})
-	to := "Helios Calendar <RSVP@reply.heliosian.com>"
+	Register(mux, cache, dir, directQueue{}, nil, d, func() []string { return nil }, func(string) []Linked { return nil }, ImageSearch{}, Mail{Store: store, SigningKey: replySecret, ReplyTo: "Helios When <rsvp@reply.heliosian.com>"})
+	to := "Helios When <RSVP@reply.heliosian.com>"
 	post := func(id string, signed bool) int {
 		fields := map[string]string{"recipient": to, "from": froms[id], "subject": "Accepted: International Night", "message-url": stored(id)}
 		if signed {

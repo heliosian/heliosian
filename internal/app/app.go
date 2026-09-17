@@ -1031,14 +1031,14 @@ func mailFrom() string {
 	if from := os.Getenv("MAIL_FROM"); from != "" {
 		return from
 	}
-	return "HCA-Team <team@heliosian.com>"
+	return "HCA-Team <team@reply.heliosian.com>"
 }
 
 func birthdayMailFrom() string {
 	if from := os.Getenv("BIRTHDAY_MAIL_FROM"); from != "" {
 		return from
 	}
-	return "Helios Staff Birthdays <birthday@heliosian.com>"
+	return "Helios Staff Birthdays <birthday@reply.heliosian.com>"
 }
 
 // birthdayBase is where Staff Birthdays lives, for the reminder loop's links.
@@ -1053,17 +1053,19 @@ func calendarMailFrom() string {
 	if from := os.Getenv("CALENDAR_MAIL_FROM"); from != "" {
 		return from
 	}
-	return "Helios Calendar <when@heliosian.com>"
+	return "Helios When <when@reply.heliosian.com>"
 }
 
 // calendarReplyTo is the address the calendar's invites name as their
-// organizer, where a calendar app sends its Accept or Decline: a receiving
-// domain on Mailgun (docs/deploy.md), CALENDAR_REPLY_TO to override.
+// organizer, where a calendar app sends its Accept or Decline: the from
+// address, on a receiving domain on Mailgun (docs/deploy.md), so an app
+// answering the sender rather than the organizer lands there too;
+// CALENDAR_REPLY_TO to override.
 func calendarReplyTo() string {
 	if to := os.Getenv("CALENDAR_REPLY_TO"); to != "" {
 		return to
 	}
-	return "Helios Calendar <rsvp@reply.heliosian.com>"
+	return "Helios When <when@reply.heliosian.com>"
 }
 
 // calendarMail is the calendar's mail as the environment describes it: the
@@ -1096,14 +1098,14 @@ func whoMailFrom() string {
 	if from := os.Getenv("WHO_MAIL_FROM"); from != "" {
 		return from
 	}
-	return "Helios Who? <who@heliosian.com>"
+	return "Helios Who? <who@reply.heliosian.com>"
 }
 
 func celebrateMailFrom() string {
 	if from := os.Getenv("CELEBRATE_MAIL_FROM"); from != "" {
 		return from
 	}
-	return "Helios Celebrate <celebrate@heliosian.com>"
+	return "Helios Celebrate <celebrate@reply.heliosian.com>"
 }
 
 // newMailer is the sender the environment describes - Mailgun when its key

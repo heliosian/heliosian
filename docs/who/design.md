@@ -1,6 +1,6 @@
 # Design language
 
-Visual reference for the apps, extracted from the existing directory app. Colors are sampled from live captures; treat them as the working palette until original brand assets arrive.
+Visual reference for the apps. Colors are sampled from live captures; treat them as the working palette until original brand assets arrive.
 
 ## Palette
 
@@ -49,12 +49,9 @@ The app is light-on-white; dark teal is reserved for the sidebar, the family ban
 
 The nine classrooms are birds — Hummingbirds (K); Hawks and Falcons (1st/2nd); Jays and Ravens (3rd/4th); Condors and Ospreys (5th/6th); Herons and Egrets (7th/8th). Each classroom tile is a square: bird silhouette art (black, or black and white for the water birds) over a yellow sun disc on the band's ground color, named in white brush script. Grade tiles reuse the system, combining both of the band's birds in one composition ("Grade 1" shows hawk and falcon together); Kindergarten's grade tile is a mirrored hummingbird variant. People without photos use a soft illustrated bird avatar in the same spirit.
 
-Original tile art (1254×1254 JPEGs for all nine classrooms and all nine grade tiles) lives locally (uncommitted) in `screenshots/who-old/brand/classrooms/`, with a `contact-sheet.png` overview.
-
 ## Typography
 
-- The UI font is **Roboto**, matching the font the existing (Glide) app renders with, self-hosted as woff2 files in `web/public/common/fonts/` (weights 400, 500, 700, 900; no Google Fonts network dependency) with the fallback stack `-apple-system, BlinkMacSystemFont, system-ui, sans-serif`. Body text is weight 400; the weights in use are 400/500/700/900 — Roboto has no native 600 or 800, so anything that would have called for those collapses to the nearest real weight (600 → 500, 800 → 900) rather than letting the browser synthesize a fake bold, which renders visibly blurry.
-- Roboto Mono (used by the existing app's raw data grid) is not needed here.
+- The UI font is **Roboto**, self-hosted as woff2 files in `web/public/common/fonts/` (weights 400, 500, 700, 900; no Google Fonts network dependency) with the fallback stack `-apple-system, BlinkMacSystemFont, system-ui, sans-serif`. Body text is weight 400; the weights in use are 400/500/700/900 — Roboto has no native 600 or 800, so anything that would have called for those collapses to the nearest real weight (600 → 500, 800 → 900) rather than letting the browser synthesize a fake bold, which renders visibly blurry.
 - Hierarchy: black (900) for the rare oversized splash heading; bold page headings and names; medium-weight secondary emphasis; letterspaced ALL-CAPS micro-labels in brand teal for roles, titles, and section badges; regular body; muted gray secondary text; italics for pronunciation lines.
 - The brush script appears only in brand and mascot artwork, never as UI text.
 
