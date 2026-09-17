@@ -4,18 +4,14 @@
 package mail
 
 import (
-	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"maps"
 	"mime"
 	"net"
-	"net/http"
 	"net/mail"
 	"net/smtp"
 	"os"
@@ -52,14 +48,14 @@ type Sender interface {
 	Send(ctx context.Context, m Message) error
 }
 
-// New picks the sender the environment describes: Resend when it has a key,
+// New picks the sender the environment describes: Mailgun when it has a key,
 // SMTP when a host is set, else files in dir when one is given, else nil - no
 // mail, logged once - which callers treat as "not set up".
-func New(resendKey, host, port, user, pass, from, dir string) Sender {
+func New(mailgunKey, host, port, user, pass, from, dir string) Sender {
 	switch {
-	case resendKey != "":
-		slog.Info("mail: sending through Resend", "from", from)
-		return &Resend{Key: resendKey, From: from}
+	case mailgunKey != "":
+		slog.Info("mail: sending through Mailgun", "from", from)
+		return NewMailgun(mailgunKey, from)
 	case host != "":
 		if port == "" {
 			port = "587"
@@ -127,66 +123,6 @@ func (s *SMTP) Send(ctx context.Context, m Message) error {
 		return err
 	}
 	return c.Quit()
-}
-
-// Resend sends through resend.com's HTTP API: one POST per message, the key
-// as a bearer token. The sending domain is verified in Resend's dashboard.
-type Resend struct {
-	Key, From string
-	// Endpoint stands in for the API in tests; blank means the real one.
-	Endpoint string
-}
-
-func (r *Resend) Send(ctx context.Context, m Message) error {
-	if len(m.To) == 0 {
-		return fmt.Errorf("mail: no recipient")
-	}
-	payload := map[string]any{"from": r.From, "to": m.To, "subject": m.Subject, "html": m.HTML}
-	if m.Text != "" {
-		payload["text"] = m.Text
-	}
-	if len(m.CC) > 0 {
-		payload["cc"] = m.CC
-	}
-	if len(m.ReplyTo) > 0 {
-		payload["reply_to"] = m.ReplyTo
-	}
-	if len(m.Headers) > 0 {
-		payload["headers"] = m.Headers
-	}
-	if len(m.Attachments) > 0 {
-		files := []map[string]string{}
-		for _, a := range m.Attachments {
-			files = append(files, map[string]string{"filename": a.Name, "content": base64.StdEncoding.EncodeToString(a.Content), "content_type": a.ContentType})
-		}
-		payload["attachments"] = files
-	}
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return err
-	}
-	endpoint := r.Endpoint
-	if endpoint == "" {
-		endpoint = "https://api.resend.com/emails"
-	}
-	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Authorization", "Bearer "+r.Key)
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode/100 != 2 {
-		reply, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
-		return fmt.Errorf("mail: resend %d: %s", resp.StatusCode, strings.TrimSpace(string(reply)))
-	}
-	return nil
 }
 
 // Compose is the message as bytes on the wire: headers, then a

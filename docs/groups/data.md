@@ -40,6 +40,6 @@ The group's Magic Tag in Who? (`GroupLists` in `internal/app/lists.go`) sorts th
 
 **Unsubscribe.** Every copy's `List-Unsubscribe` names both forms: `mailto:unsubscribe@loop.heliosian.com?subject=<token>` and `https://loop.heliosian.com/unsubscribe/<token>`, the token the group name and the recipient's address signed with the session key (`internal/groups/unsubscribe.go`), with `List-Unsubscribe-Post: List-Unsubscribe=One-Click` beside them. `GET` on the link is the page with the button; `POST`, from the button or from a mail app's one-click, adds the `Unsubscribed` row and applies it in memory at once, and answers an empty 200 to a one-click and the page to the button. Mail to the address comes through the same route as a post, and its subject, less any `Re:`, is the token; the sender is recorded but not checked, since the token reaches only the one person's copy. All of it is public (`internal/auth`); the signature is the whole of the check.
 
-**Resend** stays where it was for everything else: every other app's mail goes out through it, and the calendar's replies come in through it at `reply.heliosian.com`. Loop fetches nothing from it and sends nothing through it.
+**Every other app** sends through Mailgun too, by its JSON endpoint (`mail.Mailgun.Send`), and the calendar's replies come in through a Mailgun route at `reply.heliosian.com` the same way Loop's posts do; Resend is gone (`docs/deploy.md`).
 
 `cmd/loadcheck` prints every group with its member count, its unsubscribed count and its subject switch.

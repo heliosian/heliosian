@@ -1051,7 +1051,7 @@ func calendarMailFrom() string {
 
 // calendarReplyTo is the address the calendar's invites name as their
 // organizer, where a calendar app sends its Accept or Decline: a receiving
-// domain on Resend (docs/deploy.md), CALENDAR_REPLY_TO to override.
+// domain on Mailgun (docs/deploy.md), CALENDAR_REPLY_TO to override.
 func calendarReplyTo() string {
 	if to := os.Getenv("CALENDAR_REPLY_TO"); to != "" {
 		return to
@@ -1060,16 +1060,29 @@ func calendarReplyTo() string {
 }
 
 // calendarMail is the calendar's mail as the environment describes it: the
-// sender every app shares, the from and reply addresses, and - with a
-// Resend key and the webhook secret (RESEND_WEBHOOK_SECRET, or
-// creds/resend-webhook.secret locally) - the inbox the replies come back
-// through. Without the secret the reply route says it is not set up.
+// sender every app shares, the from and reply addresses, and - with the
+// Mailgun key and its webhook signing key (mailgunKey, mailgunSigningKey) -
+// the fetcher the stored replies come back through. Without both the reply
+// route says it is not set up.
 func calendarMail() calendar.Mail {
-	m := calendar.Mail{Sender: newMailer(calendarMailFrom()), From: calendarMailFrom(), ReplyTo: calendarReplyTo(), Secret: optionalKey("RESEND_WEBHOOK_SECRET", "creds/resend-webhook.secret")}
-	if inbox := mail.NewInbox(optionalKey("RESEND_KEY", "creds/resend.key")); inbox != nil {
-		m.Inbox = inbox
+	m := calendar.Mail{Sender: newMailer(calendarMailFrom()), From: calendarMailFrom(), ReplyTo: calendarReplyTo(), SigningKey: mailgunSigningKey()}
+	if key := mailgunKey(); key != "" {
+		m.Store = mail.NewMailgun(key, "")
 	}
 	return m
+}
+
+// mailgunKey is the Mailgun API key every app's mail goes out through:
+// MAILGUN_KEY, or creds/mailgun.key locally, else nothing.
+func mailgunKey() string {
+	return optionalKey("MAILGUN_KEY", "creds/mailgun.key")
+}
+
+// mailgunSigningKey is Mailgun's HTTP webhook signing key, which signs the
+// route notifications and the delivery events the calendar and Loop take
+// in: MAILGUN_WEBHOOK_KEY, or creds/mailgun-webhook.key locally.
+func mailgunSigningKey() string {
+	return optionalKey("MAILGUN_WEBHOOK_KEY", "creds/mailgun-webhook.key")
 }
 
 func whoMailFrom() string {
@@ -1086,28 +1099,27 @@ func celebrateMailFrom() string {
 	return "Helios Celebrate <celebrate@heliosian.com>"
 }
 
-// newMailer is the sender the environment describes - Resend when its key
+// newMailer is the sender the environment describes - Mailgun when its key
 // is set, else SMTP when SMTP_HOST is, else nothing - from one address.
 func newMailer(from string) mail.Sender {
-	return mail.New(optionalKey("RESEND_KEY", "creds/resend.key"), os.Getenv("SMTP_HOST"), os.Getenv("SMTP_PORT"),
+	return mail.New(mailgunKey(), os.Getenv("SMTP_HOST"), os.Getenv("SMTP_PORT"),
 		optionalKey("SMTP_USER", "creds/smtp.user"), optionalKey("SMTP_PASS", "creds/smtp.pass"), from, "")
 }
 
-// loopMail is Helios Loop's mail as the environment describes it: with a
-// Mailgun key (MAILGUN_KEY, or creds/mailgun.key locally), the API its
-// forwards go out through and its posts are fetched back from; with the
-// webhook signing key (MAILGUN_WEBHOOK_KEY, or creds/mailgun-webhook.key),
-// the routes the posts and the delivery events arrive by; the session key
-// signing its unsubscribe links; and the mail bucket keeping every post.
-// Without all of those the routes say they are not set up.
+// loopMail is Helios Loop's mail as the environment describes it: with the
+// Mailgun key, the API its forwards go out through and its posts are
+// fetched back from; with the webhook signing key, the routes the posts and
+// the delivery events arrive by; the session key signing its unsubscribe
+// links; and the mail bucket keeping every post. Without all of those the
+// routes say they are not set up.
 func loopMail(sessionKey string) groups.Mail {
 	archive, err := blob.NewArchive(blob.MailBucket)
 	if err != nil {
 		logging.Fatal("mail archive", "error", err)
 	}
-	m := groups.Mail{SigningKey: optionalKey("MAILGUN_WEBHOOK_KEY", "creds/mailgun-webhook.key"), Key: []byte(sessionKey), Base: "https://loop.heliosian.com", Archive: archive}
-	if key := optionalKey("MAILGUN_KEY", "creds/mailgun.key"); key != "" {
-		mailgun := mail.NewMailgun(key, groups.Domain)
+	m := groups.Mail{SigningKey: mailgunSigningKey(), Key: []byte(sessionKey), Base: "https://loop.heliosian.com", Archive: archive}
+	if key := mailgunKey(); key != "" {
+		mailgun := mail.NewMailgun(key, "")
 		m.Sender = mailgun
 		m.Store = mailgun
 	}
@@ -1199,7 +1211,7 @@ func Production(blobCache string) (*http.Server, *who.Queue) {
 		BrowserKey:  mapsKey("GOOGLE_MAPS_BROWSER_KEY", "creds/maps.key"),
 		ImageSearch: ImageSearchKeys(),
 		Describer:   ClaudeDescriber(),
-		// Mail goes through Resend when its key is set, else over SMTP when
+		// Mail goes through Mailgun when its key is set, else over SMTP when
 		// SMTP_HOST is; otherwise, in real-data mode, it is dropped and logged.
 		Mail:          newMailer(mailFrom()),
 		MailFrom:      mailFrom(),

@@ -89,6 +89,6 @@ Helios Calendar, in `docs/calendar/`:
 Helios Loop, in `docs/groups/`:
 
 - [groups.md](docs/groups/groups.md) — the email groups app spec: groups, rules, managers, and how mail to a group reaches its members
-- [data.md](docs/groups/data.md) — the Groups sheet, the membership evaluator, and the mail pipeline through Resend
+- [data.md](docs/groups/data.md) — the Groups sheet, the membership evaluator, and the mail pipeline through Mailgun
 
 Each app keeps its own docs under `docs/<app>/`, named for the sheet it serves; the top level is only what every app shares.

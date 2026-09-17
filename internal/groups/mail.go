@@ -59,7 +59,6 @@ const (
 	stateSent        = "sent"
 	stateDropped     = "dropped"
 	stateFailed      = "failed"
-	maxNotifyBody    = 40 << 20
 	maxEventBody     = 1 << 20
 	mailType         = "message/rfc822"
 	unsubscribeLocal = "unsubscribe"
@@ -255,47 +254,17 @@ func (m *mailer) forward(ctx context.Context, j job) string {
 	return state
 }
 
-func notifyFields(r *http.Request) (map[string]string, error) {
-	fields := map[string]string{}
-	if strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
-		var raw map[string]any
-		if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
-			return nil, err
-		}
-		for k, v := range raw {
-			if s, ok := v.(string); ok {
-				fields[strings.ToLower(k)] = s
-			}
-		}
-		return fields, nil
-	}
-	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
-		if err := r.ParseMultipartForm(maxNotifyBody); err != nil {
-			return nil, err
-		}
-	} else if err := r.ParseForm(); err != nil {
-		return nil, err
-	}
-	for k, v := range r.Form {
-		if len(v) > 0 {
-			fields[strings.ToLower(k)] = v[0]
-		}
-	}
-	return fields, nil
-}
-
 func (a app) inbound(w http.ResponseWriter, r *http.Request) {
 	if !a.mail.ready() {
 		http.Error(w, "mail is not set up", http.StatusNotFound)
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, maxNotifyBody)
-	fields, err := notifyFields(r)
+	fields, err := mail.Notification(w, r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if err := mail.VerifyMailgun(a.mail.SigningKey, fields["timestamp"], fields["token"], fields["signature"], time.Now()); err != nil {
+	if err := mail.VerifyNotification(a.mail.SigningKey, fields, time.Now()); err != nil {
 		slog.WarnContext(r.Context(), "groups: inbound call refused", "error", err)
 		http.Error(w, "signature", http.StatusNotAcceptable)
 		return

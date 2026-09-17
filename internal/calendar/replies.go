@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -13,7 +12,6 @@ import (
 	"mime/quotedprintable"
 	"net/http"
 	netmail "net/mail"
-	"slices"
 	"strings"
 
 	"heliosian/internal/mail"
@@ -21,26 +19,28 @@ import (
 
 // An invite names the calendar's reply address as its organizer, so the
 // Accept or Decline a person taps in their own calendar app comes back
-// here as a reply email with an iCalendar REPLY in it. Resend takes those
-// in and calls /api/calendar/replies; the reply's attendee and standing
-// become the person's answer, the same as a Yes or No on the site - with
-// no invite sent back, since they are answering the one they have.
+// here as a reply email with an iCalendar REPLY in it. Mailgun takes those
+// in, stores them and calls /api/calendar/replies; the reply's attendee and
+// standing become the person's answer, the same as a Yes or No on the site
+// - with no invite sent back, since they are answering the one they have.
 
-// Inbox fetches a received message back from the mail provider by its id.
-type Inbox interface {
-	Received(ctx context.Context, id string) (mail.Received, error)
+// Fetcher fetches a stored message back from the mail provider, raw, by
+// the address the notification gave for it.
+type Fetcher interface {
+	Stored(ctx context.Context, url string) ([]byte, error)
 }
 
 // Mail is the calendar's mail: the sender its invites go out through (nil
 // sends none), the address they come from, the address replies go to - the
-// invites' organizer, which the inbox receives for - and the secret the
-// provider signs its webhook calls with.
+// invites' organizer, which the provider receives for - the fetcher the
+// stored replies come back through, and the key the provider signs its
+// notifications with.
 type Mail struct {
-	Sender  mail.Sender
-	From    string
-	ReplyTo string
-	Inbox   Inbox
-	Secret  string
+	Sender     mail.Sender
+	From       string
+	ReplyTo    string
+	Store      Fetcher
+	SigningKey string
 }
 
 // Reply is what an iCalendar REPLY says: which event, who, and their
@@ -49,63 +49,50 @@ type Reply struct {
 	UID, Email, Standing string
 }
 
-// replies is the webhook the mail provider calls for each message the
-// reply address receives. It answers 204 to everything it can read and
-// 400 to a call it cannot trust, so the provider retries only what might
-// be a real fault on this side.
+// replies is the route the mail provider notifies for each message the
+// reply address receives. It answers 200 to everything it can read and 406
+// to a call it cannot trust, which the provider does not retry.
 func (a app) replies(w http.ResponseWriter, r *http.Request) {
-	if a.mail.Secret == "" || a.mail.Inbox == nil {
+	if a.mail.SigningKey == "" || a.mail.Store == nil {
 		http.Error(w, "replies are not set up", http.StatusNotFound)
 		return
 	}
-	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+	fields, err := mail.Notification(w, r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if err := mail.VerifyWebhook(a.mail.Secret, r.Header, body, now()); err != nil {
-		slog.WarnContext(r.Context(), "calendar: reply webhook refused", "error", err)
-		http.Error(w, "signature", http.StatusUnauthorized)
+	if err := mail.VerifyNotification(a.mail.SigningKey, fields, now()); err != nil {
+		slog.WarnContext(r.Context(), "calendar: reply notification refused", "error", err)
+		http.Error(w, "signature", http.StatusNotAcceptable)
 		return
 	}
-	var event struct {
-		Type string `json:"type"`
-		Data struct {
-			EmailID     string   `json:"email_id"`
-			From        string   `json:"from"`
-			To          []string `json:"to"`
-			CC          []string `json:"cc"`
-			BCC         []string `json:"bcc"`
-			ReceivedFor []string `json:"received_for"`
-			Subject     string   `json:"subject"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(body, &event); err != nil || event.Type != "email.received" || event.Data.EmailID == "" {
-		w.WriteHeader(http.StatusNoContent)
+	if !addressed(a.mail.ReplyTo, strings.Split(fields["recipient"], ",")) {
+		w.WriteHeader(http.StatusOK)
 		return
 	}
-	// Every receiving domain's mail reaches every webhook: only what was
-	// addressed to the reply address is fetched.
-	if !addressed(a.mail.ReplyTo, slices.Concat(event.Data.To, event.Data.CC, event.Data.BCC, event.Data.ReceivedFor)) {
-		w.WriteHeader(http.StatusNoContent)
+	source := fields["message-url"]
+	if source == "" {
+		slog.WarnContext(r.Context(), "calendar: reply notification carries no message-url", "from", fields["from"], "subject", fields["subject"])
+		w.WriteHeader(http.StatusOK)
 		return
 	}
-	received, err := a.mail.Inbox.Received(r.Context(), event.Data.EmailID)
+	raw, err := a.mail.Store.Stored(r.Context(), source)
 	if err != nil {
-		slog.ErrorContext(r.Context(), "calendar: fetch reply", "id", event.Data.EmailID, "error", err)
+		slog.ErrorContext(r.Context(), "calendar: fetch reply", "source", source, "error", err)
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
 	}
-	reply, err := ParseReply(received.Raw)
+	reply, err := ParseReply(raw)
 	if err != nil {
-		slog.InfoContext(r.Context(), "calendar: mail received is not a reply", "id", received.ID, "from", received.From, "subject", received.Subject, "error", err)
-		w.WriteHeader(http.StatusNoContent)
+		slog.InfoContext(r.Context(), "calendar: mail received is not a reply", "source", source, "from", fields["from"], "subject", fields["subject"], "error", err)
+		w.WriteHeader(http.StatusOK)
 		return
 	}
-	if err := a.takeReply(r.Context(), reply, received.From); err != nil {
-		slog.WarnContext(r.Context(), "calendar: reply not taken", "id", received.ID, "from", received.From, "uid", reply.UID, "attendee", reply.Email, "standing", reply.Standing, "error", err)
+	if err := a.takeReply(r.Context(), reply, fields["from"]); err != nil {
+		slog.WarnContext(r.Context(), "calendar: reply not taken", "source", source, "from", fields["from"], "uid", reply.UID, "attendee", reply.Email, "standing", reply.Standing, "error", err)
 	}
-	w.WriteHeader(http.StatusNoContent)
+	w.WriteHeader(http.StatusOK)
 }
 
 func addressed(replyTo string, recipients []string) bool {

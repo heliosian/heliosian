@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -13,7 +14,7 @@ import (
 	"heliosian/internal/mail"
 )
 
-const replySecret = "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw"
+const replySecret = "mailgun-signing-key"
 
 // replyMail is a reply the way Google Calendar sends one: alternatives of
 // text, HTML and a base64 calendar, and the same calendar again as a .ics
@@ -77,13 +78,21 @@ func TestParseReply(t *testing.T) {
 	}
 }
 
-type fakeInbox map[string]mail.Received
+type fakeStore map[string][]byte
 
-func (f fakeInbox) Received(ctx context.Context, id string) (mail.Received, error) {
-	return f[id], nil
+func (f fakeStore) Stored(ctx context.Context, url string) ([]byte, error) {
+	raw, ok := f[url]
+	if !ok {
+		return nil, fmt.Errorf("no message at %s", url)
+	}
+	return raw, nil
 }
 
-// A signed webhook call for a reply records the attendee's answer with no
+func stored(id string) string {
+	return "https://sw.api.mailgun.net/v3/domains/reply.heliosian.com/messages/" + id
+}
+
+// A signed notification of a reply records the attendee's answer with no
 // invite sent; an unsigned one is refused; a reply for someone the
 // directory does not know, or from another sender, changes nothing.
 func TestRepliesRecordAnswers(t *testing.T) {
@@ -95,45 +104,49 @@ func TestRepliesRecordAnswers(t *testing.T) {
 	}
 	me := "jordan.whitfield@heliosschool.org"
 	d := fakeDirectory{people: map[string]Person{me: {Email: me, Name: "Jordan", IsParent: true}}, kids: map[string][]Person{}}
-	inbox := fakeInbox{
-		"yes":      {ID: "yes", From: "Jordan <" + me + ">", Raw: []byte(replyMail(me, "a7@sample", "ACCEPTED"))},
-		"no":       {ID: "no", From: me, Raw: []byte(replyMail(me, "a7@sample", "DECLINED"))},
-		"stranger": {ID: "stranger", From: "x@example.org", Raw: []byte(replyMail("x@example.org", "a7@sample", "ACCEPTED"))},
-		"forged":   {ID: "forged", From: "x@example.org", Raw: []byte(replyMail(me, "a7@sample", "DECLINED"))},
+	store := fakeStore{
+		stored("yes"):      []byte(replyMail(me, "a7@sample", "ACCEPTED")),
+		stored("no"):       []byte(replyMail(me, "a7@sample", "DECLINED")),
+		stored("stranger"): []byte(replyMail("x@example.org", "a7@sample", "ACCEPTED")),
+		stored("forged"):   []byte(replyMail(me, "a7@sample", "DECLINED")),
 	}
+	froms := map[string]string{"yes": "Jordan <" + me + ">", "no": me, "stranger": "x@example.org", "forged": "x@example.org"}
 	mux := http.NewServeMux()
-	Register(mux, cache, dir, directQueue{}, nil, d, func() []string { return nil }, func(string) []Linked { return nil }, ImageSearch{}, Mail{Inbox: inbox, Secret: replySecret, ReplyTo: "Helios Calendar <rsvp@reply.heliosian.com>"})
+	Register(mux, cache, dir, directQueue{}, nil, d, func() []string { return nil }, func(string) []Linked { return nil }, ImageSearch{}, Mail{Store: store, SigningKey: replySecret, ReplyTo: "Helios Calendar <rsvp@reply.heliosian.com>"})
 	to := "Helios Calendar <RSVP@reply.heliosian.com>"
 	post := func(id string, signed bool) int {
-		body, _ := json.Marshal(map[string]any{"type": "email.received", "data": map[string]any{"email_id": id, "to": []string{to}}})
-		req := httptest.NewRequest("POST", "https://when.local.heliosian.com:8080/api/calendar/replies", strings.NewReader(string(body)))
+		fields := map[string]string{"recipient": to, "from": froms[id], "subject": "Accepted: International Night", "message-url": stored(id)}
 		if signed {
-			req.Header = mail.SignWebhook(replySecret, "msg_"+id, now(), body)
+			stamp, sig := mail.SignMailgun(replySecret, "token-"+id, now())
+			fields["timestamp"], fields["token"], fields["signature"] = stamp, "token-"+id, sig
 		}
+		body, _ := json.Marshal(fields)
+		req := httptest.NewRequest("POST", "https://when.local.heliosian.com:8080/api/calendar/replies", strings.NewReader(string(body)))
+		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, req)
 		return rec.Code
 	}
-	if code := post("yes", false); code != 401 {
+	if code := post("yes", false); code != 406 {
 		t.Errorf("unsigned call: %d", code)
 	}
-	if code := post("yes", true); code != 204 || cache.Model().AnswerOf(me, "a7@sample") != AnswerYes {
+	if code := post("yes", true); code != 200 || cache.Model().AnswerOf(me, "a7@sample") != AnswerYes {
 		t.Errorf("accepted: %d, answer %q", code, cache.Model().AnswerOf(me, "a7@sample"))
 	}
-	if code := post("no", true); code != 204 || cache.Model().AnswerOf(me, "a7@sample") != AnswerNo {
+	if code := post("no", true); code != 200 || cache.Model().AnswerOf(me, "a7@sample") != AnswerNo {
 		t.Errorf("declined: %d, answer %q", code, cache.Model().AnswerOf(me, "a7@sample"))
 	}
-	if code := post("stranger", true); code != 204 || cache.Model().AnswerOf("x@example.org", "a7@sample") != "" {
+	if code := post("stranger", true); code != 200 || cache.Model().AnswerOf("x@example.org", "a7@sample") != "" {
 		t.Errorf("a stranger's reply was taken")
 	}
 	post("yes", true)
-	if code := post("forged", true); code != 204 || cache.Model().AnswerOf(me, "a7@sample") != AnswerYes {
+	if code := post("forged", true); code != 200 || cache.Model().AnswerOf(me, "a7@sample") != AnswerYes {
 		t.Errorf("a reply from another sender was taken")
 	}
-	// Every receiving domain's mail reaches the webhook; what was not sent
-	// to the reply address is left alone, unfetched.
-	to = "soccer-team@loop.heliosian.com"
-	if code := post("no", true); code != 204 || cache.Model().AnswerOf(me, "a7@sample") != AnswerYes {
+	// A notification for another address under the domain is left alone,
+	// unfetched.
+	to = "someone-else@reply.heliosian.com"
+	if code := post("no", true); code != 200 || cache.Model().AnswerOf(me, "a7@sample") != AnswerYes {
 		t.Errorf("mail for another address was taken as a reply")
 	}
 }

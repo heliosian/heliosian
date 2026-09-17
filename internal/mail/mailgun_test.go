@@ -31,7 +31,7 @@ func TestMailgunSendsRawToEachRecipient(t *testing.T) {
 		w.Write([]byte(`{"id":"<x@y>","message":"Queued. Thank you."}`))
 	}))
 	defer srv.Close()
-	m := &Mailgun{Key: "key-test", Domain: "loop.example.org", Endpoint: srv.URL}
+	m := &Mailgun{Key: "key-test", Endpoint: srv.URL}
 	if err := m.SendRaw(context.Background(), "team@loop.example.org", []string{"a@example.org"}, []byte("From: x\r\n\r\nhi\r\n")); err != nil {
 		t.Fatal(err)
 	}
@@ -50,8 +50,8 @@ func TestMailgunReportsRefusal(t *testing.T) {
 		http.Error(w, `{"message":"Domain not found"}`, http.StatusNotFound)
 	}))
 	defer srv.Close()
-	m := &Mailgun{Key: "key-test", Domain: "loop.example.org", Endpoint: srv.URL}
-	err := m.SendRaw(context.Background(), "x", []string{"a@example.org"}, []byte("hi"))
+	m := &Mailgun{Key: "key-test", Endpoint: srv.URL}
+	err := m.SendRaw(context.Background(), "x@loop.example.org", []string{"a@example.org"}, []byte("hi"))
 	if err == nil || !strings.Contains(err.Error(), "404") || !strings.Contains(err.Error(), "Domain not found") {
 		t.Fatalf("err = %v", err)
 	}
@@ -64,7 +64,7 @@ func TestMailgunFetchesTheStoredMessage(t *testing.T) {
 		w.Write([]byte(`{"recipient":"team@loop.example.org","Body-mime":"From: a@x.org\r\nSubject: hi\r\n\r\nhello\r\n"}`))
 	}))
 	defer srv.Close()
-	m := &Mailgun{Key: "key-test", Domain: "loop.example.org"}
+	m := &Mailgun{Key: "key-test"}
 	raw, err := m.Stored(context.Background(), srv.URL+"/v3/domains/loop.example.org/messages/abc")
 	if err != nil {
 		t.Fatal(err)
