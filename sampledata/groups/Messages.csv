@@ -1,1 +1,2 @@
-ID,Group,Received,From,Subject,State,Recipients,Object,Detail,Source
+ID,Group,Received,From,Subject,State,Recipients,Object,Detail,Source,Message ID
+sample-soccer-1,soccer-team,2026-09-14T08:05:12-07:00,Jordan Whitfield <jordan.whitfield@heliosschool.org>,Saturday's game moves to 10,sent,5,loop/soccer-team/20260914T150512Z-sample-soccer-1.eml,,,CAF1x7qNw3pR@mail.gmail.com

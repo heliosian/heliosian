@@ -51,10 +51,6 @@ const icons = {
   expand: '<svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>',
 };
 
-export function isMobile() {
-  return matchMedia('(max-width: 900px)').matches;
-}
-
 export function el(tag, className, text) {
   const node = document.createElement(tag);
   if (className) {
@@ -358,64 +354,4 @@ function collapsibleLines(items, wrapTag, wrapClass, itemTag) {
   });
   frag.append(list, toggle);
   return frag;
-}
-
-export function tabParam(fallback) {
-  return new URLSearchParams(location.search).get('tab') || fallback;
-}
-
-function tabNode(item, active, onSelect) {
-  const node = el('div', 'tab' + (active ? ' active' : ''));
-  if (item.icon) {
-    node.append(svg(item.icon));
-  }
-  node.append(el('span', '', item.label));
-  if (item.count !== undefined) {
-    node.append(el('span', 'tab-count', String(item.count)));
-  }
-  node.addEventListener('click', () => onSelect(item.key));
-  return node;
-}
-
-export function tabStrip(items, activeKey, mobileVisible, onSelect) {
-  const tabs = el('div', 'tabs');
-  const row = el('div', 'container tabs-row');
-  const visible = isMobile() ? items.slice(0, mobileVisible) : items;
-  const hidden = isMobile() ? items.slice(mobileVisible) : [];
-  for (const item of visible) {
-    row.append(tabNode(item, item.key === activeKey, onSelect));
-  }
-  if (hidden.length) {
-    const wrap = el('div', 'more-wrap');
-    const more = el('div', 'tab' + (hidden.some(t => t.key === activeKey) ? ' active' : ''));
-    more.append(svg('more'), el('span', '', 'More'), svg('chevron'));
-    const menu = el('div', 'more-menu');
-    menu.hidden = true;
-    for (const item of hidden) {
-      const entry = el('div', 'more-item' + (item.key === activeKey ? ' active' : ''));
-      if (item.icon) {
-        entry.append(svg(item.icon));
-      }
-      entry.append(el('span', '', item.label));
-      if (item.count !== undefined) {
-        entry.append(el('span', 'tab-count', String(item.count)));
-      }
-      entry.addEventListener('click', () => onSelect(item.key));
-      menu.append(entry);
-    }
-    more.addEventListener('click', e => {
-      e.stopPropagation();
-      menu.hidden = !menu.hidden;
-    });
-    wrap.append(more, menu);
-    row.append(wrap);
-  }
-  tabs.append(row);
-  return tabs;
-}
-
-export function tabHref(key) {
-  const params = new URLSearchParams(location.search);
-  params.set('tab', key);
-  return location.pathname + '?' + params;
 }

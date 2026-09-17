@@ -79,6 +79,15 @@ func addressOf(from string) string {
 	return strings.Trim(strings.TrimSpace(from), "<>")
 }
 
+func messageID(lines []headerLine) string {
+	for _, l := range lines {
+		if l.name == "message-id" {
+			return messageKey(l.value())
+		}
+	}
+	return ""
+}
+
 func senderName(from string) string {
 	a, err := mail.ParseAddress(from)
 	if err != nil {

@@ -206,6 +206,12 @@ func Members(g Group, s Sources) []string {
 	return members
 }
 
+func OnList(g Group, s Sources, email string) bool {
+	g.Excluded = nil
+	_, ok := Reasons(g, s)[email]
+	return ok
+}
+
 func sortedKeys(m map[string]bool) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {

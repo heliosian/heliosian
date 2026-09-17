@@ -239,7 +239,7 @@ func (m *mailer) forward(ctx context.Context, j job) string {
 	if err := m.mail.Archive.Put(ctx, object, mailType, raw); err != nil {
 		return fail("archive", err)
 	}
-	m.mark(j, stateStored, map[string]string{"Object": object})
+	m.mark(j, stateStored, map[string]string{"Object": object, "Message ID": messageID(lines)})
 	head, err := rewrite(lines, *g)
 	if err != nil {
 		return fail("rewrite", err)

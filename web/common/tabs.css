@@ -1,0 +1,101 @@
+.tab-strip {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--line);
+  padding-top: 10px;
+  position: sticky;
+  top: 0;
+  background: #fff;
+  z-index: 2;
+}
+
+.tab-strip-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 16px;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 500;
+  color: #5b6572;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tab-strip-item svg,
+.tab-strip-menu-item svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex-shrink: 0;
+}
+
+.tab-strip-item.active {
+  background: rgba(1, 78, 84, 0.09);
+  color: var(--brand);
+  font-weight: 600;
+  border-radius: 8px 8px 0 0;
+}
+
+.tab-strip-item.active::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: var(--brand);
+}
+
+.tab-strip-count {
+  background: #eef0f2;
+  border-radius: 10px;
+  padding: 1px 8px;
+  font-size: 12px;
+  color: #5b6572;
+}
+
+.tab-strip-more {
+  position: relative;
+}
+
+.tab-strip-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  min-width: 180px;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.18);
+  padding: 6px 0;
+  z-index: 25;
+}
+
+.tab-strip-menu[hidden] {
+  display: none;
+}
+
+.tab-strip-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.tab-strip-menu-item:hover {
+  background: #f6f6f7;
+}
+
+.tab-strip-menu-item.active {
+  color: var(--brand);
+}

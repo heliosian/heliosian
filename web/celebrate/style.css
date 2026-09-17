@@ -356,29 +356,6 @@ main {
 /* The list bar: the tabs on the left, the category filter on the right. */
 .list-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
 
-.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); }
-
-.tabs button {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 10px 14px;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-  background: none;
-  color: var(--muted);
-  font-weight: 600;
-  font-size: 14px;
-  cursor: pointer;
-}
-
-.tabs button.is-active { color: var(--brand); border-bottom-color: var(--brand); }
-
-.tab-count { min-width: 20px; padding: 0 6px; border-radius: 999px; background: var(--input); font-size: 11.5px; font-weight: 700; line-height: 18px; text-align: center; }
-
-.tabs button.is-active .tab-count { background: var(--brand); color: #fff; }
-
 .select-pill {
   position: relative;
   display: inline-flex;
@@ -1127,13 +1104,7 @@ main {
 
 .segment.is-on { background: #fff; color: var(--brand); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
 
-.form-tabs .tabs { margin: -4px 0 18px; gap: 6px; }
-
-.form-tabs .tabs button { display: inline-flex; align-items: center; gap: 8px; padding: 10px 14px; border-radius: 8px 8px 0 0; }
-
-.form-tabs .tabs button svg { width: 17px; height: 17px; }
-
-.form-tabs .tabs button.is-active { background: #eaf3f3; }
+.form-tabs .tab-strip { position: static; padding-top: 0; margin: -4px 0 18px; }
 
 .form-tab-body { min-height: 280px; }
 
@@ -1733,7 +1704,6 @@ body.is-admin main { padding: 0; background-image: none; }
   .row-actions .button span { display: none; }
   .row-actions .button { padding: 8px; }
   .list-bar { flex-direction: column; align-items: stretch; }
-  .tabs { overflow-x: auto; }
   .modal { padding: 16px; }
   .invoice-row { grid-template-columns: 1fr 1fr; }
 }

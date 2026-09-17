@@ -1,5 +1,6 @@
 import {state, colors} from '../state.js';
-import {el, svg, thumbUrl, firstName, tabStrip, tabHref} from '../dom.js';
+import {el, svg, thumbUrl, firstName} from '../dom.js';
+import {tabStrip, tabHref} from '/tabs.js';
 import {familiesOf, familyOf} from '../families.js';
 import {personCard, personLink, photoOrInitials, cardMore, gradeChain, guestCard} from '../people.js';
 import {tagFacetOptions, onTagsChange, selectedGuests} from '../tags.js';
@@ -124,8 +125,8 @@ export function renderPeople() {
   pageHeader.append(el('div', 'page-subtitle', 'Find and connect with the Helios community.'));
   main.append(pageHeader);
 
-  const items = peopleTabs.map(t => ({...t, icon: t.key === 'staff' ? 'staff-tab' : t.key}));
-  main.append(tabStrip(items, state.tab, 2, key => {
+  const items = peopleTabs.map(t => ({...t, icon: svg(t.key === 'staff' ? 'staff-tab' : t.key)}));
+  const strip = tabStrip(items, state.tab, 2, key => {
     state.tab = key;
     state.q = '';
     // The Tags dropdown only exists on the Everyone tab - clear it on every
@@ -138,7 +139,9 @@ export function renderPeople() {
     history.replaceState(null, '', tabHref(key));
     renderPeople();
     finishRender();
-  }));
+  });
+  strip.classList.add('container');
+  main.append(strip);
 
   const content = el('div', 'content container');
   const isEveryone = state.tab === 'everyone';

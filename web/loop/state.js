@@ -18,6 +18,10 @@ export function isAdmin() {
   return state.model.user.isAdmin;
 }
 
+export function managed(g) {
+  return g.mine || isAdmin();
+}
+
 export function group(name) {
   return byName.get(name) || null;
 }

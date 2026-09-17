@@ -13,20 +13,23 @@ import (
 )
 
 const (
-	appName         = "groups"
-	groupsTab       = "Groups"
-	managersTab     = "Managers"
-	rulesTab        = "Rules"
-	additionsTab    = "Additions"
-	excludedTab     = "Excluded"
-	aliasesTab      = "Aliases"
-	messagesTab     = "Messages"
-	deliveriesTab   = "Deliveries"
-	adminsTab       = "Admins"
-	changeLogTab    = "Change Log"
+	appName       = "groups"
+	groupsTab     = "Groups"
+	managersTab   = "Managers"
+	rulesTab      = "Rules"
+	additionsTab  = "Additions"
+	excludedTab   = "Excluded"
+	aliasesTab    = "Aliases"
+	messagesTab   = "Messages"
+	deliveriesTab = "Deliveries"
+	adminsTab     = "Admins"
+	changeLogTab  = "Change Log"
 
 	prefixColumn = "Subject Prefix"
 	prefixOff    = "off"
+
+	visibleColumn = "Visible"
+	visibleOn     = "on"
 
 	// Domain is where every group lives: a group named parents-k is
 	// parents-k@loop.heliosian.com.
@@ -47,16 +50,16 @@ const (
 )
 
 var (
-	GroupColumns    = []string{"Name", "Title", "Description", "Created By", "Created", prefixColumn}
-	ManagerColumns  = []string{"Group", "Email"}
-	RuleColumns     = []string{"Group", "Kind", "Roles", "Search", "Classrooms", "Grades", "Tags", "Family", "Owner"}
-	AdditionColumns = []string{"Group", "Email", "Name"}
-	ExcludedColumns = []string{"Group", "Email", "Note", "Timestamp"}
-	AliasColumns    = []string{"Group", "Alias"}
-	MessageColumns      = []string{"ID", "Group", "Received", "From", "Subject", "State", "Recipients", "Object", "Detail", "Source"}
-	DeliveryColumns     = []string{"Timestamp", "Group", "Email", "Event", "Message", "Detail"}
-	AdminColumns        = []string{"Email"}
-	ChangeLogColumns    = []string{"Timestamp", "Actor", "Action", "Group", "Detail"}
+	GroupColumns     = []string{"Name", "Title", "Description", "Created By", "Created", prefixColumn, visibleColumn}
+	ManagerColumns   = []string{"Group", "Email"}
+	RuleColumns      = []string{"Group", "Kind", "Roles", "Search", "Classrooms", "Grades", "Tags", "Family", "Owner"}
+	AdditionColumns  = []string{"Group", "Email", "Name"}
+	ExcludedColumns  = []string{"Group", "Email", "Note", "Timestamp"}
+	AliasColumns     = []string{"Group", "Alias"}
+	MessageColumns   = []string{"ID", "Group", "Received", "From", "Subject", "State", "Recipients", "Object", "Detail", "Source", "Message ID"}
+	DeliveryColumns  = []string{"Timestamp", "Group", "Email", "Event", "Message", "Detail"}
+	AdminColumns     = []string{"Email"}
+	ChangeLogColumns = []string{"Timestamp", "Actor", "Action", "Group", "Detail"}
 
 	// Roles are the role facet's values, and Relations the Family facet's:
 	// the relatives a rule's matches are widened by, as Who?'s Add family
@@ -115,6 +118,7 @@ type Group struct {
 	CreatedBy   string     `json:"createdBy,omitempty"`
 	Created     string     `json:"created,omitempty"`
 	Prefix      bool       `json:"prefix"`
+	Visible     bool       `json:"visible"`
 	Managers    []string   `json:"managers"`
 	Rules       []Rule     `json:"rules"`
 	Additions   []Addition `json:"additions"`
@@ -466,8 +470,15 @@ func prefixCell(on bool) string {
 	return prefixOff
 }
 
+func visibleCell(on bool) string {
+	if on {
+		return visibleOn
+	}
+	return ""
+}
+
 func groupCells(g Group) map[string]string {
-	return map[string]string{"Name": g.Name, "Title": g.Title, "Description": g.Description, "Created By": g.CreatedBy, "Created": g.Created, prefixColumn: prefixCell(g.Prefix)}
+	return map[string]string{"Name": g.Name, "Title": g.Title, "Description": g.Description, "Created By": g.CreatedBy, "Created": g.Created, prefixColumn: prefixCell(g.Prefix), visibleColumn: visibleCell(g.Visible)}
 }
 
 // BuildModel validates every row and refuses the whole set on the first
@@ -476,7 +487,7 @@ func groupCells(g Group) map[string]string {
 func BuildModel(tables *Tables) (*Model, error) {
 	model := &Model{Groups: []Group{}, byName: map[string]int{}}
 	for _, row := range tables.Groups {
-		g := Normalize(Group{Name: row["Name"], Title: row["Title"], Description: row["Description"], CreatedBy: row["Created By"], Created: row["Created"], Prefix: strings.ToLower(strings.TrimSpace(row[prefixColumn])) != prefixOff})
+		g := Normalize(Group{Name: row["Name"], Title: row["Title"], Description: row["Description"], CreatedBy: row["Created By"], Created: row["Created"], Prefix: strings.ToLower(strings.TrimSpace(row[prefixColumn])) != prefixOff, Visible: strings.ToLower(strings.TrimSpace(row[visibleColumn])) == visibleOn})
 		if _, dup := model.byName[g.Name]; dup {
 			return nil, fmt.Errorf("%s has two rows named %q", groupsTab, g.Name)
 		}

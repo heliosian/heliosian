@@ -1,8 +1,9 @@
 import {state, me, isAdmin, options, groupPath} from '../state.js';
-import {el, svg, link, button, iconButton, copyText, toast, personRow, pageHead} from '../dom.js';
+import {el, svg, link, button, iconButton, copyText, toast, personRow, pageHead, thumb} from '../dom.js';
 import {setTitle} from '../chrome.js';
 import {load, navigate} from '../app.js';
 import {createPersonPicker} from '/picker.js';
+import {tabStrip, tabParam, tabHref} from '/tabs.js';
 import {appOrigin} from '/toolbar.js';
 
 function chipToggle(label, on, onChange) {
@@ -182,6 +183,7 @@ function editor(g, isNew) {
   const draft = {
     name: g.name, aliases: [...(g.aliases || [])], title: g.title, description: g.description || '',
     prefix: isNew ? true : g.prefix,
+    visible: isNew ? false : g.visible,
     managers: g.managers.map(m => m.email),
     rules: g.rules.map(r => ({kind: r.kind, roles: [...r.roles], search: r.search, classrooms: [...r.classrooms], grades: [...r.grades], tags: [...r.tags], family: [...r.family], owner: r.owner, tagLabels: r.tagLabels})),
     additions: (g.additions || []).map(a => ({email: a.email, name: a.name})),
@@ -283,7 +285,7 @@ function editor(g, isNew) {
   });
   const aliasAdd = el('div', 'add-row');
   aliasAdd.append(aliasInput, button('Add', 'plus', 'button button-secondary', addAlias), aliasStatus);
-  aliasField.append(aliasRows, aliasAdd, el('small', '', `Mail to any of these reaches the group as mail to ${draft.name || '<name>'}@${state.model.domain} does. Each must be unused by every other group.`));
+  aliasField.append(aliasRows, aliasAdd, el('small', '', 'Each must be unused by every other group.'));
   renderAliases();
   words.append(aliasField);
   const descField = el('label', 'field');
@@ -313,11 +315,29 @@ function editor(g, isNew) {
   updatePrefixNote();
   prefixField.append(prefix, el('span', '', 'Put the title in front of every subject'));
   words.append(prefixField, prefixNote);
-  form.append(words);
+  const visibleField = el('label', 'field check');
+  const visible = el('input');
+  visible.type = 'checkbox';
+  visible.checked = draft.visible;
+  visible.addEventListener('change', () => {
+    draft.visible = visible.checked;
+    updateVisibleNote();
+  });
+  const visibleNote = el('small');
+  const updateVisibleNote = () => {
+    visibleNote.textContent = draft.visible
+      ? 'Anyone in Loop can see it, and only managers can change it.'
+      : 'Only the group\'s managers and the admins see it.';
+  };
+  updateVisibleNote();
+  visibleField.append(visible, el('span', '', 'Visible to everyone in Loop'));
+  words.append(visibleField, visibleNote);
+  const overviewPanel = el('div');
+  overviewPanel.append(words);
 
   const managers = el('div', 'card');
   managers.append(el('h2', '', 'Managers'));
-  managers.append(el('div', 'hint', 'Whoever is listed can change the rules and the managers, or delete the group. You are one on a group you make.'));
+  managers.append(el('div', 'hint', 'Managers can edit or delete the group.'));
   const managerRows = el('div');
   const mount = el('div');
   const picker = createPersonPicker(mount);
@@ -355,18 +375,16 @@ function editor(g, isNew) {
   addRow.append(mount, button('Add', null, 'button', addManager));
   managers.append(managerRows, addRow);
   renderManagers();
-  form.append(managers);
+  overviewPanel.append(managers);
 
   const preview = el('div', 'card preview');
   const previewHead = el('h2', '', 'Members');
-  const previewNote = el('div', 'hint', isNew
-    ? 'Who the rules pick out right now. The list follows the directory as it changes.'
-    : 'Who the rules pick out right now, and what saving changes: who joins the group and who leaves it.');
   const previewChanges = el('div', 'change-band');
   previewChanges.hidden = true;
   const previewList = el('div', 'member-list');
   const previewStatus = el('div', 'save-status');
-  preview.append(previewHead, previewNote, previewStatus, previewChanges, previewList);
+  preview.append(previewHead, previewStatus, previewChanges, previewList);
+  const summary = el('span', 'change-summary');
   const current = isNew ? [] : g.members;
   const currentEmails = new Set(current.map(m => m.email));
 
@@ -380,6 +398,7 @@ function editor(g, isNew) {
     previewChanges.replaceChildren();
     previewChanges.hidden = isNew;
     if (!isNew) {
+      summary.textContent = joining.length || leaving.length ? `${joining.length} ${joining.length === 1 ? 'joins' : 'join'} · ${leaving.length} ${leaving.length === 1 ? 'leaves' : 'leave'}` : 'Nobody joins or leaves';
       if (!joining.length && !leaving.length) {
         previewChanges.append(el('span', 'change-none', 'Saving changes nobody: the members stay as they are.'));
       }
@@ -440,7 +459,10 @@ function editor(g, isNew) {
 
   const ruleSection = (kind, heading, blurb) => {
     const card = el('div', 'card');
-    card.append(el('h2', '', heading), el('div', 'hint', blurb));
+    card.append(el('h2', '', heading));
+    if (blurb) {
+      card.append(el('div', 'hint', blurb));
+    }
     const rows = el('div', 'rules');
     const render = () => {
       rows.replaceChildren();
@@ -465,14 +487,15 @@ function editor(g, isNew) {
     card.append(rows, add);
     return card;
   };
-  form.append(ruleSection('include', 'Include', 'Everyone matching any of these rules is in the group. Within a rule every choice must hold: a parent of a Grade 3 student, say, is Parents and Grade 3 together. Add family widens a rule by the relatives of the people it matches.'));
-  form.append(ruleSection('exclude', 'Exclude', 'Anyone matching any of these rules is left out, whatever the include rules say.'));
+  const rulesPanel = el('div');
+  rulesPanel.append(ruleSection('include', 'Include', 'Someone matches a rule only if every choice in it holds.'));
+  rulesPanel.append(ruleSection('exclude', 'Exclude', null));
 
   // The additions: people the directory does not hold, each a name and an
   // address typed in, on the group whatever the rules say until removed.
   const outside = el('div', 'card');
   outside.append(el('h2', '', 'Outside the directory'));
-  outside.append(el('div', 'hint', 'People the directory does not hold, added by hand: a coach, a league office, a family friend. They are on the group whatever the rules say, until removed here. Someone in the directory is added with a rule instead.'));
+  outside.append(el('div', 'hint', 'For people who aren\'t in the directory.'));
   const additionRows = el('div');
   const renderAdditions = () => {
     additionRows.replaceChildren();
@@ -533,14 +556,12 @@ function editor(g, isNew) {
   additionAdd.append(additionName, additionEmail, button('Add', 'plus', 'button button-secondary', addAddition), additionStatus);
   outside.append(additionRows, additionAdd);
   renderAdditions();
-  form.append(outside);
+  rulesPanel.append(outside);
 
   // The excluded: addresses kept off the group whatever the rules and the
   // additions say - people who unsubscribed, and anyone a manager lists
   // here with a note saying why.
   const excluded = el('div', 'card');
-  excluded.append(el('h2', '', 'Excluded'));
-  excluded.append(el('div', 'hint', 'Addresses that get no mail from this group, whatever the rules say: people who unsubscribed through their mail app, and anyone listed here by hand, each with a note saying why. Remove one to put them back.'));
   const excludedRows = el('div');
   const renderExcluded = () => {
     excludedRows.replaceChildren();
@@ -601,8 +622,16 @@ function editor(g, isNew) {
   excludedAdd.append(excludedEmail, excludedNote, button('Add', 'plus', 'button button-secondary', addExcluded), excludedStatus);
   excluded.append(excludedRows, excludedAdd);
   renderExcluded();
-  form.append(excluded);
-  form.append(preview);
+  const tabs = [
+    {key: 'overview', label: 'Overview', panel: overviewPanel},
+    {key: 'members', label: 'Members', panel: preview},
+    {key: 'rules', label: 'Rules', panel: rulesPanel},
+    {key: 'excluded', label: 'Excluded', panel: excluded},
+  ];
+  if (!isNew) {
+    tabs.push(historyTab(g));
+  }
+  form.append(tabbed(tabs));
 
   const actions = el('div', 'editor-actions');
   const status = el('span', 'save-status');
@@ -611,11 +640,11 @@ function editor(g, isNew) {
     status.textContent = 'Saving…';
     save.disabled = true;
     try {
-      const body = {original: isNew ? '' : draft.name, name: draft.name, aliases: draft.aliases, title: draft.title, description: draft.description, prefix: draft.prefix, managers: draft.managers, rules: draft.rules.filter(ruleSaysSomething), additions: draft.additions, excluded: draft.excluded};
+      const body = {original: isNew ? '' : draft.name, name: draft.name, aliases: draft.aliases, title: draft.title, description: draft.description, prefix: draft.prefix, visible: draft.visible, managers: draft.managers, rules: draft.rules.filter(ruleSaysSomething), additions: draft.additions, excluded: draft.excluded};
       const saved = await send('POST', '/api/groups/group', body);
       await load();
       toast(isNew ? 'Group made' : 'Saved');
-      navigate(groupPath(saved));
+      navigate(withTab(groupPath(saved)));
     } catch (err) {
       status.classList.add('error');
       status.textContent = err.message;
@@ -624,7 +653,7 @@ function editor(g, isNew) {
   });
   actions.append(save);
   if (!isNew) {
-    actions.append(button('Cancel', null, 'button button-secondary', () => navigate(groupPath(g))));
+    actions.append(button('Cancel', null, 'button button-secondary', () => navigate(withTab(groupPath(g)))), summary);
     const del = el('button', 'danger-button', 'Delete group');
     del.type = 'button';
     del.addEventListener('click', async () => {
@@ -641,7 +670,9 @@ function editor(g, isNew) {
         status.textContent = err.message;
       }
     });
-    actions.append(del);
+    const danger = el('div', 'editor-danger');
+    danger.append(del);
+    overviewPanel.append(danger);
   } else {
     actions.append(button('Cancel', null, 'button button-secondary', () => navigate('/')));
   }
@@ -762,36 +793,58 @@ export function groupPage(g) {
   }
   const actions = [];
   if (canEdit) {
-    actions.push(button('Edit', 'edit', 'button', () => navigate(groupPath(g) + '?edit=1')));
+    actions.push(button('Edit', 'edit', 'button', () => navigate(withTab(groupPath(g) + '?edit=1'))));
+  }
+  if (g.member) {
+    const toggle = button(g.unsubscribed ? 'Resubscribe' : 'Unsubscribe', null, 'button button-secondary', async () => {
+      toggle.disabled = true;
+      try {
+        await send('POST', '/api/groups/subscription', {name: g.name, subscribed: g.unsubscribed});
+        await load();
+        toast(g.unsubscribed ? 'Resubscribed' : 'Unsubscribed');
+      } catch (err) {
+        toggle.disabled = false;
+        toast(err.message);
+      }
+    });
+    actions.push(toggle);
   }
   page.append(pageHead(g.title, actions));
+  const overview = el('div');
   const address = el('div', 'address-band');
   const mail = el('a', 'address-mail');
   mail.href = 'mailto:' + g.address;
   mail.append(svg('mail'), el('span', '', g.address));
   address.append(mail, iconButton('copy', 'Copy the address', '', () => copyText(g.address, 'Address copied')));
-  page.append(address);
+  overview.append(address);
   if (g.aliases.length) {
-    page.append(el('div', 'subject-note', 'Also reached as ' + g.aliases.map(a => `${a}@${state.model.domain}`).join(', ') + '.'));
+    overview.append(el('div', 'subject-note', 'Also reached as ' + g.aliases.map(a => `${a}@${state.model.domain}`).join(', ') + '.'));
   }
-  page.append(el('div', 'subject-note', g.prefix ? `Every message goes out with “[${g.title}]” at the front of its subject.` : 'Subjects go out as written.'));
+  overview.append(el('div', 'subject-note', g.prefix ? `Every message goes out with “[${g.title}]” at the front of its subject.` : 'Subjects go out as written.'));
+  if (g.visible) {
+    overview.append(el('div', 'subject-note', 'Visible to everyone in Loop; only its managers can change it.'));
+  }
+  if (g.member && g.unsubscribed) {
+    overview.append(el('div', 'subject-note', 'You are on this group\'s excluded list and get no mail from it. Resubscribe to get its mail again.'));
+  }
   if (g.description) {
-    page.append(el('p', 'page-lead', g.description));
+    overview.append(el('p', 'page-lead', g.description));
   }
   // The same people elsewhere: the group's Magic Tag in Who?, where the
   // members can be filtered, mapped and mailed one by one.
-  const elsewhere = el('div', 'elsewhere');
-  const who = el('a', 'elsewhere-link');
-  who.href = appOrigin('who') + '/people?list=' + encodeURIComponent('group:' + g.name);
-  const mark = el('img');
-  mark.src = '/brand/apps/who.png';
-  mark.alt = '';
-  who.append(mark, el('span', '', 'See these people in Helios Who?'));
-  elsewhere.append(who);
-  page.append(elsewhere);
+  if (canEdit) {
+    const elsewhere = el('div', 'elsewhere');
+    const who = el('a', 'elsewhere-link');
+    who.href = appOrigin('who') + '/people?list=' + encodeURIComponent('group:' + g.name);
+    const mark = el('img');
+    mark.src = '/brand/apps/who.png';
+    mark.alt = '';
+    who.append(mark, el('span', '', 'See these people in Helios Who?'));
+    elsewhere.append(who);
+    overview.append(elsewhere);
+  }
 
   const rules = el('div', 'card');
-  rules.append(el('h2', '', 'Rules'));
   for (const kind of ['include', 'exclude']) {
     const own = g.rules.filter(r => r.kind === kind);
     if (!own.length) {
@@ -804,18 +857,15 @@ export function groupPage(g) {
     }
     rules.append(list);
   }
-  page.append(rules);
 
   const managers = el('div', 'card');
   managers.append(el('h2', '', 'Managers'));
   for (const m of g.managers) {
     managers.append(personRow(m));
   }
-  page.append(managers);
+  overview.append(managers);
 
   const members = el('div', 'card');
-  members.append(el('h2', '', `${g.members.length} ${g.members.length === 1 ? 'member' : 'members'}`));
-  members.append(el('div', 'hint', 'Who the rules pick out right now, and the rule that puts each of them here, then anyone added by hand from outside the directory. A message to the address goes to these people as they stand when it arrives.'));
   const list = el('div', 'member-list');
   for (const m of g.members) {
     list.append(personRow(m, null, reasonWords(m, g.rules)));
@@ -824,29 +874,129 @@ export function groupPage(g) {
     list.append(el('div', 'rule-empty', 'Nobody matches the rules yet.'));
   }
   members.append(list);
-  page.append(members);
 
-  if (g.excluded.length) {
-    const excluded = el('div', 'card');
-    excluded.append(el('h2', '', `${g.excluded.length} excluded`));
-    excluded.append(el('div', 'hint', 'Addresses that get no mail from this group whatever the rules say: people who unsubscribed through their mail app, and anyone a manager listed, each with the note saying why. A manager removes one in the editor to put them back.'));
-    for (const e of g.excluded) {
-      excluded.append(personRow(excludedPerson(e)));
-    }
-    page.append(excluded);
+  const excluded = el('div', 'card');
+  for (const e of g.excluded) {
+    excluded.append(personRow(excludedPerson(e)));
+  }
+  if (!g.excluded.length) {
+    excluded.append(el('div', 'rule-empty', 'Nobody is excluded.'));
   }
 
-  if (g.trouble.length) {
-    const trouble = el('div', 'card');
-    trouble.append(el('h2', '', 'Delivery trouble'));
-    trouble.append(el('div', 'hint', 'Mail the provider could not deliver lately, newest first. An address that keeps bouncing is one to fix in the directory or drop from the group.'));
-    for (const t of g.trouble) {
-      const person = state.model.people.find(p => p.email === t.email);
-      const words = [t.event, t.when ? new Date(t.when).toLocaleString() : ''].filter(Boolean).join(' · ');
-      trouble.append(personRow({email: t.email, name: t.name || t.email, photoUrl: person ? person.photoUrl : '', words, outside: !person}, el('span'), t.detail));
-    }
-    page.append(trouble);
+  const tabs = [
+    {key: 'overview', label: 'Overview', panel: overview},
+    {key: 'members', label: 'Members', count: g.members.length, panel: members},
+    {key: 'rules', label: 'Rules', count: g.rules.length, panel: rules},
+    {key: 'excluded', label: 'Excluded', count: g.excluded.length, panel: excluded},
+  ];
+  if (canEdit) {
+    tabs.push(historyTab(g));
   }
+  page.append(tabbed(tabs));
   page.append(link('/', 'back-link', '← All groups'));
   return page;
+}
+
+function tabbed(tabs) {
+  const wrap = el('div', 'group-tabs');
+  const fallback = tabs[0].key;
+  const wanted = tabParam(fallback);
+  let strip = null;
+  const show = key => {
+    const next = tabStrip(tabs, key, 3, pick => {
+      history.replaceState(null, '', tabHref(pick));
+      show(pick);
+    });
+    if (strip) {
+      strip.replaceWith(next);
+    }
+    strip = next;
+    for (const t of tabs) {
+      t.panel.hidden = t.key !== key;
+      if (t.key === key && t.onShow) {
+        t.onShow();
+      }
+    }
+  };
+  show(tabs.some(t => t.key === wanted) ? wanted : fallback);
+  wrap.append(strip, ...tabs.map(t => t.panel));
+  return wrap;
+}
+
+function withTab(path) {
+  const tab = new URLSearchParams(location.search).get('tab');
+  if (!tab) {
+    return path;
+  }
+  return path + (path.includes('?') ? '&' : '?') + 'tab=' + encodeURIComponent(tab);
+}
+
+const troubleWords = {bounced: 'bounced', delivery_delayed: 'delayed', complained: 'marked it as spam'};
+
+function historyTab(g) {
+  const panel = el('div', 'card');
+  const status = el('div', 'save-status', 'Loading…');
+  const list = el('div', 'message-list');
+  panel.append(status, list);
+  let loaded = false;
+  const load = async () => {
+    loaded = true;
+    try {
+      const res = await fetch('/api/groups/messages?name=' + encodeURIComponent(g.name));
+      if (!res.ok) {
+        throw new Error(await res.text());
+      }
+      const {messages} = await res.json();
+      status.textContent = messages.length ? '' : 'Nothing has been sent to the group yet.';
+      for (const m of messages) {
+        list.append(messageRow(m));
+      }
+    } catch (err) {
+      loaded = false;
+      status.classList.add('error');
+      status.textContent = err.message;
+    }
+  };
+  return {key: 'history', label: 'History', count: g.sent, panel, onShow: () => {
+    if (!loaded) {
+      load();
+    }
+  }};
+}
+
+function messageRow(m) {
+  const row = el('div', 'message-row');
+  const head = el('div', 'message-head');
+  const person = state.model.people.find(p => p.email === m.from.email);
+  head.append(thumb(person || m.from, 'small'));
+  const body = el('div', 'person-body');
+  body.append(el('div', 'message-subject', m.subject || '(no subject)'));
+  const when = m.received ? new Date(m.received).toLocaleString() : '';
+  body.append(el('div', 'person-words', [m.from.name, when, `${m.recipients} ${m.recipients === 1 ? 'copy' : 'copies'} sent`].filter(Boolean).join(' · ')));
+  head.append(body);
+  row.append(head);
+  if (!m.trouble.length) {
+    return row;
+  }
+  const counts = {};
+  for (const t of m.trouble) {
+    counts[t.event] = (counts[t.event] || 0) + 1;
+  }
+  const toggle = el('button', 'trouble-toggle');
+  toggle.type = 'button';
+  toggle.append(el('span', '', Object.entries(counts).map(([event, n]) => `${n} ${troubleWords[event] || event}`).join(' · ')), svg('chevron'));
+  const details = el('div', 'trouble-list');
+  details.hidden = true;
+  for (const t of m.trouble) {
+    const known = state.model.people.find(p => p.email === t.email);
+    const words = [troubleWords[t.event] || t.event, t.when ? new Date(t.when).toLocaleString() : ''].filter(Boolean).join(' · ');
+    details.append(personRow({email: t.email, name: t.name || t.email, photoUrl: known ? known.photoUrl : '', words, outside: !known}, el('span'), t.detail));
+  }
+  toggle.addEventListener('click', () => {
+    details.hidden = !details.hidden;
+    toggle.classList.toggle('open', !details.hidden);
+  });
+  head.append(toggle);
+  row.append(details);
+  return row;
 }

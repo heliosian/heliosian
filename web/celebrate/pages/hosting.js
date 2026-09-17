@@ -1,5 +1,6 @@
 import {state, isAdmin, hostedParties, pendingParties, partyPath, whenLine, money, canHost} from '../state.js';
-import {el, link, button, tabs, thumb, svg} from '../dom.js';
+import {el, link, button, thumb, svg} from '../dom.js';
+import {tabStrip} from '/tabs.js';
 import {setTitle, setSearch} from '../chrome.js';
 import {openParty, setPartyStatus} from '../edit.js';
 import {availabilityBadge} from '../cards.js';
@@ -60,20 +61,20 @@ export function hostingPage() {
     items.push({key: 'approvals', label: 'Approval Needed', count: pendingParties().length});
     items.push({key: 'all', label: 'All Parties', count: state.model.parties.length});
   }
-  if (!items.some(i => i.key === state.tab)) {
-    state.tab = 'mine';
+  if (!items.some(i => i.key === state.hostingTab)) {
+    state.hostingTab = 'mine';
   }
   const paint = () => {
-    bar.replaceChildren(tabs(items, state.tab, key => {
-      state.tab = key;
+    bar.replaceChildren(tabStrip(items, state.hostingTab, 2, key => {
+      state.hostingTab = key;
       paint();
     }));
     body.replaceChildren();
-    let list = state.tab === 'mine' ? hostedParties() : state.tab === 'approvals' ? pendingParties() : state.model.parties;
+    let list = state.hostingTab === 'mine' ? hostedParties() : state.hostingTab === 'approvals' ? pendingParties() : state.model.parties;
     list = list.filter(p => !query || p.title.toLowerCase().includes(query));
     const panel = el('div', 'panel');
     if (!list.length) {
-      panel.append(el('div', 'panel-empty', state.tab === 'approvals' ? 'Nothing waiting for approval.' : state.tab === 'mine' ? (canHost() ? "You aren't hosting a party yet - Host a Party to post one." : "You aren't hosting a party. Hosting is closed for now.") : 'Nothing matches.'));
+      panel.append(el('div', 'panel-empty', state.hostingTab === 'approvals' ? 'Nothing waiting for approval.' : state.hostingTab === 'mine' ? (canHost() ? "You aren't hosting a party yet - Host a Party to post one." : "You aren't hosting a party. Hosting is closed for now.") : 'Nothing matches.'));
     }
     for (const p of list) {
       panel.append(hostRow(p));

@@ -1,6 +1,7 @@
 import {state, me, isAdmin, household, billable, admits, audienceWords, ticketFor, money, currentCelebration, partyPath, party} from './state.js';
 import {el, svg, toast, button, avatar} from './dom.js';
 import {openCropTool} from '/crop.js';
+import {tabStrip} from '/tabs.js';
 
 let modalState = null;
 
@@ -436,25 +437,23 @@ export function openImageSearch(initial, onPicked) {
 // only the panels hide - so values and validation survive switching.
 function tabbedFields(panels) {
   const wrap = el('div', 'form-tabs');
-  const bar = el('div', 'tabs light');
+  const items = panels.map((panel, i) => ({key: String(i), label: panel.label, icon: panel.icon ? svg(panel.icon) : null}));
   const bodies = [];
   let active = 0;
+  let bar = null;
   const show = i => {
     active = i;
-    bar.querySelectorAll('button').forEach((b, j) => b.classList.toggle('is-active', j === i));
+    const next = tabStrip(items, String(i), items.length, key => show(Number(key)));
+    if (bar) {
+      bar.replaceWith(next);
+    }
+    bar = next;
     bodies.forEach((body, j) => {
       body.hidden = j !== i;
     });
   };
+  show(0);
   panels.forEach((panel, i) => {
-    const tab = el('button', i === 0 ? 'is-active' : '');
-    tab.type = 'button';
-    if (panel.icon) {
-      tab.append(svg(panel.icon));
-    }
-    tab.append(el('span', '', panel.label));
-    tab.addEventListener('click', () => show(i));
-    bar.append(tab);
     const body = el('div', 'form-tab-body');
     body.hidden = i !== 0;
     body.append(...panel.fields);

@@ -132,21 +132,6 @@ export function selectPill(icon, options, value, onPick) {
   return wrap;
 }
 
-export function tabs(items, active, onPick) {
-  const bar = el('div', 'tabs');
-  for (const item of items) {
-    const b = el('button', item.key === active ? 'is-active' : '');
-    b.type = 'button';
-    b.append(el('span', '', item.label));
-    if (item.count !== undefined) {
-      b.append(el('span', 'tab-count', String(item.count)));
-    }
-    b.addEventListener('click', () => onPick(item.key));
-    bar.append(b);
-  }
-  return bar;
-}
-
 let toastTimer;
 
 export function toast(message) {

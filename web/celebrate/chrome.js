@@ -22,7 +22,7 @@ function active(href) {
     return path === '/' || path.startsWith('/parties/') || path.startsWith('/celebrations/');
   }
   if (href === '/approvals') {
-    return path === '/hosting' && state.tab === 'approvals';
+    return path === '/hosting' && state.hostingTab === 'approvals';
   }
   return path === href || path.startsWith(href + '/');
 }
@@ -43,9 +43,9 @@ function navLink(item) {
   const a = link(href, active(item.href) ? 'is-active' : '');
   a.addEventListener('click', () => {
     if (item.href === '/approvals') {
-      state.tab = 'approvals';
+      state.hostingTab = 'approvals';
     } else if (item.href === '/hosting') {
-      state.tab = 'mine';
+      state.hostingTab = 'mine';
     }
   });
   a.append(svg(item.icon), el('span', '', item.label));

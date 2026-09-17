@@ -1,4 +1,4 @@
-import {state, me, isAdmin, groupPath} from './state.js';
+import {state, me, isAdmin, managed, groupPath} from './state.js';
 import {el, svg, link} from './dom.js';
 import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, initSpoof, markSuper} from '/toolbar.js';
 
@@ -44,9 +44,10 @@ function fillNav(nav) {
       continue;
     }
     nav.append(navLink(item));
-    if (item.href === '/' && state.model && state.model.groups.length) {
+    const mine = state.model ? state.model.groups.filter(managed) : [];
+    if (item.href === '/' && mine.length) {
       const sub = el('div', 'nav-sub');
-      for (const g of state.model.groups) {
+      for (const g of mine) {
         const row = link(groupPath(g), 'nav-sub-item' + (decodeURIComponent(location.pathname) === decodeURIComponent(groupPath(g)) ? ' is-on' : ''));
         row.append(el('span', 'nav-sub-name', g.title || g.name));
         if (g.members) {

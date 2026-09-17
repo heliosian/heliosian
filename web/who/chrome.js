@@ -716,7 +716,7 @@ export function initChrome() {
     if (!topbarSearchResults.hidden && !e.target.closest('.topbar-search')) {
       topbarSearchResults.hidden = true;
     }
-    for (const menu of document.querySelectorAll('.more-menu, .card-menu, .photo-menu')) {
+    for (const menu of document.querySelectorAll('.card-menu, .photo-menu')) {
       if (!menu.hidden && !menu.parentElement.contains(e.target)) {
         menu.hidden = true;
       }
@@ -740,7 +740,7 @@ export function initChrome() {
       setDrawer(false);
       topbarSearchResults.hidden = true;
       closeFilterPanels();
-      for (const menu of document.querySelectorAll('.more-menu, .card-menu, .photo-menu')) {
+      for (const menu of document.querySelectorAll('.card-menu, .photo-menu')) {
         menu.hidden = true;
       }
       if (e.target === topbarSearchInput) {

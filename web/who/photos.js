@@ -86,7 +86,7 @@ export function cropBadge() {
 // which rebuilds the item list fresh on every open (via menu.rebuild, set here)
 // and appends the menu inside that trigger's own position:relative container.
 // Reuses the app-wide outside-click/Escape closer (in chrome.js, alongside
-// .more-menu/.card-menu) for free - no bespoke close handling here.
+// .card-menu) for free - no bespoke close handling here.
 //
 // getPhoto() returns the photo currently shown in the hero, which isn't always
 // p.photos[0]: tapping a grid tile (photoGrid's previewPhoto) swaps the hero's

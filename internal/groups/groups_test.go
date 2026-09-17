@@ -24,8 +24,11 @@ func TestSampleSheetLoads(t *testing.T) {
 		t.Fatal(err)
 	}
 	g := model.Group("middle-school-parents")
-	if g == nil || len(g.Managers) != 2 || len(g.Rules) != 2 || len(g.Additions) != 0 {
+	if g == nil || len(g.Managers) != 2 || len(g.Rules) != 2 || len(g.Additions) != 0 || !g.Visible {
 		t.Fatalf("middle-school-parents: %+v", g)
+	}
+	if model.Group("soccer-team").Visible || model.Group("hummingbird-families").Visible {
+		t.Fatal("a group with a blank Visible cell is visible")
 	}
 	if g.Rules[1].Kind != KindExclude || g.Rules[1].Search != "haddad" {
 		t.Fatalf("exclude rule: %+v", g.Rules[1])
@@ -83,7 +86,7 @@ func TestChecksRefuseBadGroups(t *testing.T) {
 
 func TestWithGroupRoundTrips(t *testing.T) {
 	tables := sampleTables(t)
-	g := Normalize(Group{Name: "chess-club", Title: " Chess Club ", Managers: []string{"M@X.org", "m@x.org"}, Rules: []Rule{{Kind: "Include", Search: "  Kim ", Owner: "M@X.org"}},
+	g := Normalize(Group{Name: "chess-club", Title: " Chess Club ", Visible: true, Managers: []string{"M@X.org", "m@x.org"}, Rules: []Rule{{Kind: "Include", Search: "  Kim ", Owner: "M@X.org"}},
 		Additions: []Addition{{Email: " Coach@Club.org ", Name: "  The  Coach "}, {Email: "coach@club.org", Name: "Again"}}})
 	next := tables.withGroup(g)
 	if len(tables.Groups) != 3 || len(next.Groups) != 4 {
@@ -94,7 +97,7 @@ func TestWithGroupRoundTrips(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := model.Group("chess-club")
-	if got.Title != "Chess Club" || len(got.Managers) != 1 || got.Rules[0].Kind != KindInclude || got.Rules[0].Search != "kim" || got.Rules[0].Owner != "m@x.org" {
+	if got.Title != "Chess Club" || !got.Visible || len(got.Managers) != 1 || got.Rules[0].Kind != KindInclude || got.Rules[0].Search != "kim" || got.Rules[0].Owner != "m@x.org" {
 		t.Fatalf("%+v", got)
 	}
 	if len(got.Additions) != 1 || got.Additions[0] != (Addition{Email: "coach@club.org", Name: "The Coach"}) {
@@ -102,12 +105,13 @@ func TestWithGroupRoundTrips(t *testing.T) {
 	}
 	g.Rules = append(g.Rules, Rule{Kind: KindExclude, Roles: []string{"Staff"}, Owner: "m@x.org"})
 	g.Additions = nil
+	g.Visible = false
 	again := next.withGroup(g)
 	model, err = BuildModel(again)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(model.Group("chess-club").Rules) != 2 || len(again.Groups) != 4 || len(model.Group("chess-club").Additions) != 0 {
+	if len(model.Group("chess-club").Rules) != 2 || len(again.Groups) != 4 || len(model.Group("chess-club").Additions) != 0 || model.Group("chess-club").Visible {
 		t.Fatalf("second save: %+v", model.Group("chess-club"))
 	}
 	if len(again.Additions) != len(tables.Additions) {

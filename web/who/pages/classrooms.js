@@ -1,5 +1,6 @@
 import {state, byEmail, colors} from '../state.js';
-import {el, svg, withFrom, slugify, ordinal, thumbUrl, firstName, tabStrip, tabHref, listSub, paletteColor} from '../dom.js';
+import {el, svg, withFrom, slugify, ordinal, thumbUrl, firstName, listSub, paletteColor} from '../dom.js';
+import {tabStrip, tabHref} from '/tabs.js';
 import {familyOf, familiesOf} from '../families.js';
 import {personLink, photoWithTag, applyRingColor, photoOrInitials, personPhotoUrl, sortPeople} from '../people.js';
 import {fromURL, breadcrumbs} from '../crumbs.js';
@@ -208,13 +209,15 @@ export function renderClassroomsPage() {
   pageHeader.append(el('h1', 'page-title', 'Gradebands'));
   main.append(pageHeader);
 
-  main.append(tabStrip(classroomsTabs, state.classTab, 1, key => {
+  const strip = tabStrip(classroomsTabs, state.classTab, 1, key => {
     state.classTab = key;
     state.q = '';
     history.replaceState(null, '', tabHref(key));
     renderClassroomsPage();
     finishRender();
-  }));
+  });
+  strip.classList.add('container');
+  main.append(strip);
 
   const content = el('div', 'content container');
   const header = el('div', 'content-header');
@@ -360,9 +363,9 @@ function renderRoster(title, image, groups, backLabel, sectionColorFor) {
   const teachers = teachersOf([...new Set(allStudents.map(s => s.classroom).filter(Boolean))]);
   const parents = parentsOf(allStudents);
   const memberTabs = [
-    {key: 'students', label: 'Students', icon: 'students', count: allStudents.length},
-    {key: 'staff', label: 'Staff', icon: 'staff-tab', count: teachers.length},
-    {key: 'parents', label: 'Parents', icon: 'families', count: parents.length},
+    {key: 'students', label: 'Students', icon: svg('students'), count: allStudents.length},
+    {key: 'staff', label: 'Staff', icon: svg('staff-tab'), count: teachers.length},
+    {key: 'parents', label: 'Parents', icon: svg('families'), count: parents.length},
   ];
 
   const strip = tabStrip(memberTabs, state.rosterTab, 2, key => {
@@ -370,7 +373,7 @@ function renderRoster(title, image, groups, backLabel, sectionColorFor) {
     history.replaceState(null, '', tabHref(key));
     renderRoster(title, image, groups, backLabel, sectionColorFor);
   });
-  strip.classList.add('roster-tabs');
+  strip.classList.add('container', 'roster-tabs');
   header.append(strip);
   main.append(header);
 

@@ -345,6 +345,8 @@ body.is-admin main { padding: 0; }
 .group-list > :nth-child(5n+4) { --peek: var(--gold-1); }
 .group-list > :nth-child(5n+5) { --peek: var(--teal-3); }
 
+.section-title { font-family: Montserrat, Roboto, -apple-system, BlinkMacSystemFont, system-ui, sans-serif; font-size: 24px; font-weight: 400; color: var(--brand); margin: 44px 0 6px; }
+
 .card-slot { position: relative; z-index: 0; display: flex; }
 
 .card-slot > .group-card { flex: 1; min-width: 0; }
@@ -462,6 +464,30 @@ a.person-row-link:hover .person-name { text-decoration: underline; }
 .person-row.is-leaving { opacity: 0.6; }
 
 .person-row.is-leaving .person-note { color: var(--muted); }
+
+.group-tabs .tab-strip { margin: 0 0 18px; }
+
+.card h3:first-child { margin-top: 0; }
+
+.change-summary { font-size: 14px; font-weight: 600; color: var(--muted); }
+
+.editor-danger { display: flex; justify-content: flex-end; margin: -4px 0 20px; }
+
+.message-row { padding: 10px 0; border-top: 1px solid var(--line); }
+
+.message-row:first-child { border-top: 0; }
+
+.message-head { display: flex; align-items: center; gap: 12px; }
+
+.message-subject { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.trouble-toggle { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; border: 0; border-radius: 999px; padding: 4px 8px 4px 12px; background: #fde8d7; color: #a4551a; font-size: 12px; font-weight: 600; cursor: pointer; }
+
+.trouble-toggle svg { width: 14px; height: 14px; transition: transform 0.15s ease; }
+
+.trouble-toggle.open svg { transform: rotate(180deg); }
+
+.trouble-list { margin: 8px 0 0 52px; }
 
 .thumb { flex-shrink: 0; width: 40px; height: 40px; border-radius: 50%; object-fit: cover; background: var(--input); }
 

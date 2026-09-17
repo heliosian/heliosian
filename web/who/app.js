@@ -1,5 +1,6 @@
 import {state, applyModel, applyConfig} from './state.js';
-import {segments, shuffled, tabParam} from './dom.js';
+import {segments, shuffled} from './dom.js';
+import {tabParam} from '/tabs.js';
 import {loadTagRelations} from './storage.js';
 import {familyEntries} from './families.js';
 import {initChrome, renderNav, setChrome, finishRender, renderUserChrome, renderSuperEditBanner, syncSuperEditCheckboxes, renderPrivacyMenuAlert} from './chrome.js';

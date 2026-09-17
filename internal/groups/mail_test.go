@@ -417,11 +417,12 @@ func TestAFetchFailureIsRecordedAndRetriedOnReplay(t *testing.T) {
 
 func TestMailForNoGroupIsIgnored(t *testing.T) {
 	h := newHarness(t, &fakeStore{raw: []byte(post)})
+	before := len(h.rows(messagesTab))
 	if rec := h.inbound(notify("m5", "nobody@loop.heliosian.com")); rec.Code != http.StatusOK {
 		t.Fatalf("inbound answered %d", rec.Code)
 	}
 	time.Sleep(100 * time.Millisecond)
-	if len(h.sender.all()) != 0 || len(h.rows(messagesTab)) != 0 {
+	if len(h.sender.all()) != 0 || len(h.rows(messagesTab)) != before {
 		t.Fatal("mail for no group was taken")
 	}
 }
@@ -469,6 +470,54 @@ func TestBouncesAreRecordedAgainstTheGroup(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 	if len(h.rows(deliveriesTab)) != before+3 {
 		t.Fatalf("a delivery or another app's bounce was recorded: %+v", h.rows(deliveriesTab))
+	}
+}
+
+func TestHistoryListsSentMessagesWithTheirBounces(t *testing.T) {
+	h := newHarness(t, &fakeStore{raw: []byte(post)})
+	h.inbound(notify("m10", "soccer-team@loop.heliosian.com"))
+	h.waitFor("the forward", func() bool { return h.messageState("m10", "soccer-team") == stateSent })
+	if id := h.messageRow("m10", "soccer-team")["Message ID"]; id != "abc@gmail.com" {
+		t.Fatalf("message id %q", id)
+	}
+	from := "Alice via Soccer Team Families <soccer-team@loop.heliosian.com>"
+	h.post("/api/loop/events", event("failed", "permanent", from, "gone@example.org", "550 no such user"), jsonHeader)
+	h.waitFor("the delivery row", func() bool {
+		for _, row := range h.rows(deliveriesTab) {
+			if row["Email"] == "gone@example.org" {
+				return true
+			}
+		}
+		return false
+	})
+	if err := h.cache.refresh(); err != nil {
+		t.Fatal(err)
+	}
+	rec := h.as("jordan.whitfield@heliosschool.org", http.MethodGet, "/api/groups/messages?name=soccer-team", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("messages answered %d: %s", rec.Code, rec.Body)
+	}
+	var body struct {
+		Messages []SentMessage `json:"messages"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Messages) != 2 {
+		t.Fatalf("messages %+v", body.Messages)
+	}
+	m := body.Messages[0]
+	if m.Subject != "Re: Saturday's game" || m.From.Email != "alice@gmail.com" || m.Recipients != len(h.members("soccer-team")) || len(m.Trouble) != 1 || m.Trouble[0].Email != "gone@example.org" || m.Trouble[0].Event != "bounced" {
+		t.Fatalf("newest message %+v", m)
+	}
+	if sample := body.Messages[1]; sample.From.Name != "Jordan Whitfield" || len(sample.Trouble) != 1 || sample.Trouble[0].Email != "office@coastsidesoccer.example.org" {
+		t.Fatalf("sample message %+v", sample)
+	}
+	if (app{cache: h.cache}).sentCount("soccer-team") != 2 {
+		t.Fatal("the sent count is not the history's length")
+	}
+	if rec := h.as("ruth.amari@heliosschool.org", http.MethodGet, "/api/groups/messages?name=soccer-team", ""); rec.Code != http.StatusForbidden {
+		t.Fatalf("a non-manager got %d", rec.Code)
 	}
 }
 

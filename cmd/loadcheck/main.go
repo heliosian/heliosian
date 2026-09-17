@@ -345,7 +345,7 @@ func main() {
 	}
 	fmt.Println("groups:")
 	for _, g := range groupModel.Groups {
-		fmt.Printf("  %s %q: aliases %v, %d managers, %d rules, %d members, %d excluded, prefix %v\n", g.Address(), g.Title, g.Aliases, len(g.Managers), len(g.Rules), len(groups.Members(g, sources)), len(g.Excluded), g.Prefix)
+		fmt.Printf("  %s %q: aliases %v, %d managers, %d rules, %d members, %d excluded, prefix %v, visible %v\n", g.Address(), g.Title, g.Aliases, len(g.Managers), len(g.Rules), len(groups.Members(g, sources)), len(g.Excluded), g.Prefix, g.Visible)
 	}
 	fmt.Printf("groups admins: %d\n", len(groupTables.Admins))
 }

@@ -1,12 +1,12 @@
 // The model as the server rendered it for the viewer, plus the page's own
 // choices: which celebration's parties are showing, the list's tab, the
-// category filter.
+// Hosting page's tab, the category filter.
 // superEdit is a system admin's hat, as HCA-Team has it: off, they see and
 // can do what any parent can (plus whatever they host); on, every admin
 // control comes back. It is remembered per browser. The server keeps
 // enforcing by the admin list either way; the switch is about what the page
 // shows and offers.
-export const state = {model: null, celebration: '', tab: 'available', category: '', superEdit: readSuperEdit()};
+export const state = {model: null, celebration: '', tab: 'available', hostingTab: 'mine', category: '', superEdit: readSuperEdit()};
 
 function readSuperEdit() {
   try {

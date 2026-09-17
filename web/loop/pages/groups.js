@@ -1,4 +1,4 @@
-import {state, isAdmin, matches, groupPath} from '../state.js';
+import {state, isAdmin, managed, matches, groupPath} from '../state.js';
 import {el, svg, link, button, iconButton, copyText, pageHead} from '../dom.js';
 import {setTitle, setSearch} from '../chrome.js';
 import {navigate} from '../app.js';
@@ -25,9 +25,20 @@ function groupCard(g) {
   const meta = el('div', 'group-meta');
   const count = g.members.length;
   meta.append(el('span', 'chip', `${count} ${count === 1 ? 'member' : 'members'}`));
+  if (g.visible) {
+    meta.append(el('span', 'chip', 'Visible to everyone'));
+  }
   meta.append(el('span', 'group-managers', 'Managed by ' + g.managers.map(m => m.name).join(', ')));
   card.append(meta);
   return card;
+}
+
+function cards(list, groups) {
+  for (const g of groups) {
+    const slot = el('div', 'card-slot');
+    slot.append(groupCard(g));
+    list.append(slot);
+  }
 }
 
 export function groupsPage() {
@@ -37,22 +48,26 @@ export function groupsPage() {
   page.append(el('p', 'page-lead', 'Each group is an email address at ' + state.model.domain + ' whose members follow from its rules, drawn from the directory as it changes.'));
   const list = el('div', 'group-list');
   const empty = el('div', 'panel-empty');
+  const others = el('div');
+  others.append(el('h2', 'section-title', 'Visible to everyone'));
+  others.append(el('p', 'page-lead', 'Groups their managers have opened to everyone in Loop. Open one to see who is on it; if you are, you can take yourself off it there, or put yourself back.'));
+  const othersList = el('div', 'group-list');
+  others.append(othersList);
   const render = query => {
     list.replaceChildren();
-    const shown = state.model.groups.filter(g => matches(g, query));
-    if (!shown.length) {
-      empty.textContent = query ? 'No group matches that.' : 'You manage no groups yet. Make one, and its address is yours to hand out.';
+    othersList.replaceChildren();
+    const mine = state.model.groups.filter(g => managed(g) && matches(g, query));
+    const visible = state.model.groups.filter(g => !managed(g) && matches(g, query));
+    if (!mine.length) {
+      empty.textContent = query ? 'No group of yours matches that.' : 'You manage no groups yet. Make one, and its address is yours to hand out.';
       list.append(empty);
-      return;
     }
-    for (const g of shown) {
-      const slot = el('div', 'card-slot');
-      slot.append(groupCard(g));
-      list.append(slot);
-    }
+    cards(list, mine);
+    others.hidden = !visible.length;
+    cards(othersList, visible);
   };
   render('');
   setSearch(render);
-  page.append(list);
+  page.append(list, others);
   return page;
 }

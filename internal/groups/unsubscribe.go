@@ -136,6 +136,36 @@ func (a app) unsubscribeAddress(ctx context.Context, g *Group, email, how string
 	return nil
 }
 
+const loopPage = "the group's page in Loop"
+
+func (a app) resubscribeAddress(ctx context.Context, g *Group, email string) error {
+	if !g.HasExcluded(email) {
+		return nil
+	}
+	next := *g
+	next.Excluded = slices.DeleteFunc(slices.Clone(g.Excluded), func(e Excluded) bool { return e.Email == email })
+	tables := a.cache.Tables().withGroup(next)
+	model, err := BuildModel(tables)
+	if err != nil {
+		return err
+	}
+	applied := make(chan struct{})
+	a.queue.Add(func() {
+		a.cache.set(tables, model)
+		close(applied)
+		if err := a.writer.Delete(appName, excludedTab, map[string]string{"Group": g.Name, "Email": email}); err != nil {
+			slog.ErrorContext(ctx, "groups: resubscribe write", "error", err)
+			return
+		}
+		if err := a.logChange(email, "resubscribe", g.Name, email+" by "+loopPage); err != nil {
+			slog.ErrorContext(ctx, "groups: resubscribe log", "error", err)
+		}
+	})
+	<-applied
+	slog.InfoContext(ctx, "groups: resubscribed", "group", g.Name, "email", email)
+	return nil
+}
+
 func (a app) unsubscribe(w http.ResponseWriter, r *http.Request) {
 	g, email, ok := a.unsubscribeGroup(w, r)
 	if !ok {

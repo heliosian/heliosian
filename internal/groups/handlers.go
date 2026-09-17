@@ -68,6 +68,8 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	mux.HandleFunc("POST /api/groups/preview", a.preview)
 	mux.HandleFunc("POST /api/groups/group", a.saveGroup)
 	mux.HandleFunc("DELETE /api/groups/group", a.deleteGroup)
+	mux.HandleFunc("GET /api/groups/messages", a.messages)
+	mux.HandleFunc("POST /api/groups/subscription", a.subscription)
 	mux.HandleFunc("GET /api/admin/state", a.adminState)
 	mux.HandleFunc("POST /api/admin/admins", a.setAdmins)
 	mux.HandleFunc("POST /api/loop/mail", a.inbound)
@@ -156,40 +158,17 @@ type Member struct {
 }
 
 // groupView is a group as its page shows it: the rules with their words,
-// the managers by name, the members and why each is there, and the mail
-// that lately failed to reach someone.
+// the managers by name, and the members and why each is there.
 type groupView struct {
 	Group
-	Address  string     `json:"address"`
-	Rules    []ruleView `json:"rules"`
-	Managers []Person   `json:"managers"`
-	Members  []Member   `json:"members"`
-	Mine     bool       `json:"mine"`
-	Trouble  []Trouble  `json:"trouble"`
-}
-
-type Trouble struct {
-	When   string `json:"when"`
-	Email  string `json:"email"`
-	Name   string `json:"name"`
-	Event  string `json:"event"`
-	Detail string `json:"detail,omitempty"`
-}
-
-const maxTrouble = 20
-
-func (a app) trouble(name string) []Trouble {
-	rows := a.cache.Tables().Deliveries
-	out := []Trouble{}
-	for i := len(rows) - 1; i >= 0 && len(out) < maxTrouble; i-- {
-		row := rows[i]
-		if !strings.EqualFold(strings.TrimSpace(row["Group"]), name) {
-			continue
-		}
-		email := cleanEmail(row["Email"])
-		out = append(out, Trouble{When: row["Timestamp"], Email: email, Name: a.person(email).Name, Event: row["Event"], Detail: row["Detail"]})
-	}
-	return out
+	Address      string     `json:"address"`
+	Rules        []ruleView `json:"rules"`
+	Managers     []Person   `json:"managers"`
+	Members      []Member   `json:"members"`
+	Mine         bool       `json:"mine"`
+	Member       bool       `json:"member"`
+	Unsubscribed bool       `json:"unsubscribed"`
+	Sent         int        `json:"sent"`
 }
 
 // listOption is one of the viewer's Magic Tags as the rule editor offers
@@ -318,8 +297,12 @@ func (a app) sharedRules(viewer string, existing []Rule, rules []Rule) error {
 	return nil
 }
 
+func (a app) sees(g Group, viewer string, admin bool) bool {
+	return admin || g.Visible || g.Manages(viewer)
+}
+
 func (a app) view(g Group, viewer string) groupView {
-	v := groupView{Group: g, Address: g.Address(), Rules: []ruleView{}, Managers: a.people(g.Managers), Mine: g.Manages(viewer), Trouble: a.trouble(g.Name)}
+	v := groupView{Group: g, Address: g.Address(), Rules: []ruleView{}, Managers: a.people(g.Managers), Mine: g.Manages(viewer), Member: OnList(g, a.sources(), viewer), Unsubscribed: g.HasExcluded(viewer), Sent: a.sentCount(g.Name)}
 	for _, r := range g.Rules {
 		v.Rules = append(v.Rules, ruleView{Rule: r, TagLabels: a.tagLabels(r)})
 	}
@@ -382,7 +365,7 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 		People:  a.directory.People(),
 	}
 	for _, g := range a.cache.Model().Groups {
-		if admin || g.Manages(email) {
+		if a.sees(g, email, admin) {
 			view.Groups = append(view.Groups, a.view(g, email))
 		}
 	}
@@ -606,11 +589,11 @@ func (a app) saveGroup(w http.ResponseWriter, r *http.Request) {
 		if err := a.writer.AppendAll(appName, aliasesTab, aliases); err != nil {
 			return err
 		}
-		return a.logChange(email, action, g.Name, fmt.Sprintf("%s; %d aliases; %d managers; %d rules; %d added by hand; %d excluded; prefix %v", g.Title, len(g.Aliases), len(g.Managers), len(g.Rules), len(g.Additions), len(g.Excluded), g.Prefix))
+		return a.logChange(email, action, g.Name, fmt.Sprintf("%s; %d aliases; %d managers; %d rules; %d added by hand; %d excluded; prefix %v; visible %v", g.Title, len(g.Aliases), len(g.Managers), len(g.Rules), len(g.Additions), len(g.Excluded), g.Prefix, g.Visible))
 	}) {
 		return
 	}
-	slog.InfoContext(r.Context(), "groups: saved group", "action", action, "group", g.Name, "aliases", len(g.Aliases), "rules", len(g.Rules), "managers", len(g.Managers), "additions", len(g.Additions), "excluded", len(g.Excluded), "prefix", g.Prefix)
+	slog.InfoContext(r.Context(), "groups: saved group", "action", action, "group", g.Name, "aliases", len(g.Aliases), "rules", len(g.Rules), "managers", len(g.Managers), "additions", len(g.Additions), "excluded", len(g.Excluded), "prefix", g.Prefix, "visible", g.Visible)
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(a.view(g, email)); err != nil {
 		slog.ErrorContext(r.Context(), "encode saved group", "error", err)
@@ -651,6 +634,40 @@ func (a app) deleteGroup(w http.ResponseWriter, r *http.Request) {
 	}
 	slog.InfoContext(r.Context(), "groups: deleted group", "group", name)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a app) subscription(w http.ResponseWriter, r *http.Request) {
+	email, admin := a.who(r)
+	var body struct {
+		Name       string `json:"name"`
+		Subscribed bool   `json:"subscribed"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	g := a.cache.Model().Group(strings.ToLower(strings.TrimSpace(body.Name)))
+	if g == nil || !a.sees(*g, email, admin) {
+		http.Error(w, "no such group", http.StatusNotFound)
+		return
+	}
+	if !OnList(*g, a.sources(), email) {
+		http.Error(w, "you are not on this group", http.StatusForbidden)
+		return
+	}
+	var err error
+	if body.Subscribed {
+		err = a.resubscribeAddress(r.Context(), g, email)
+	} else {
+		err = a.unsubscribeAddress(r.Context(), g, email, loopPage)
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(a.view(*a.cache.Model().Group(g.Name), email)); err != nil {
+		slog.ErrorContext(r.Context(), "encode subscription", "error", err)
+	}
 }
 
 func (a app) adminState(w http.ResponseWriter, r *http.Request) {

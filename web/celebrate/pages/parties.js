@@ -1,5 +1,6 @@
 import {state, parties, matches, celebration, whenParts, currentCelebration, celebrationCalendarLink} from '../state.js';
-import {el, selectPill, tabs, svg} from '../dom.js';
+import {el, selectPill, svg} from '../dom.js';
+import {tabStrip} from '/tabs.js';
 import {setTitle, setSearch, inTab, listTabs} from '../chrome.js';
 import {partyCard} from '../cards.js';
 
@@ -119,7 +120,7 @@ export function partiesPage(code) {
   }
   const paintTabs = () => {
     bar.replaceChildren();
-    bar.append(tabs(listTabs.map(t => ({...t, count: counts[t.key]})), state.tab, key => {
+    bar.append(tabStrip(listTabs.map(t => ({...t, count: counts[t.key]})), state.tab, 2, key => {
       state.tab = key;
       paintTabs();
       paint();
