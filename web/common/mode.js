@@ -6,11 +6,26 @@
 // data-theme="dark" on its root; light carries nothing.
 const cookie = 'heliosian-mode';
 
+// The cookie sits on the root domain - heliosian.com - so heliosian.com,
+// who.heliosian.com and the local hosts under it all read one choice; a
+// bare host or an address gets no domain.
 function domain() {
   const labels = location.hostname.split('.');
-  // who.heliosian.com and who.local.heliosian.com share heliosian.com and
-  // local.heliosian.com with their siblings; a bare host gets no domain.
-  return labels.length > 2 ? '.' + labels.slice(1).join('.') : '';
+  if (labels.length < 2 || /^\d+$/.test(labels[labels.length - 1])) {
+    return '';
+  }
+  return '.' + labels.slice(-2).join('.');
+}
+
+// Where earlier builds left the cookie - on the host alone, and one label
+// up - which would shadow the root one; setMode clears those.
+function strays() {
+  const labels = location.hostname.split('.');
+  const places = [''];
+  if (labels.length > 2) {
+    places.push('.' + labels.slice(1).join('.'));
+  }
+  return places.filter(d => d !== domain());
 }
 
 export function readMode() {
@@ -20,6 +35,9 @@ export function readMode() {
 
 export function setMode(mode) {
   const d = domain();
+  for (const stray of strays()) {
+    document.cookie = `${cookie}=; path=/; max-age=0${stray ? '; domain=' + stray : ''}${location.protocol === 'https:' ? '; Secure' : ''}`;
+  }
   document.cookie = `${cookie}=${mode}; path=/; max-age=31536000; SameSite=Lax${d ? '; domain=' + d : ''}${location.protocol === 'https:' ? '; Secure' : ''}`;
   applyMode();
 }
