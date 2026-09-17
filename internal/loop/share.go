@@ -3,6 +3,7 @@ package loop
 import (
 	"image/color"
 	"net/http"
+	"strings"
 
 	"heliosian/internal/sharecard"
 )
@@ -22,18 +23,30 @@ var cardStyle = &sharecard.Style{
 	Lockup: "web/public/loop/brand/logo-lockup-horizontal.png",
 }
 
-// ShareTagline gives the card the app's tagline as the registry has it
-// now, in place of the one written here.
-func ShareTagline(now func() string) {
-	cardStyle.TaglineNow = now
+// ShareWords gives the card the app's name and tagline as the registry has
+// them now - the big words and the line under them - in place of the ones
+// written here.
+func ShareWords(name, tagline func() string) {
+	shareName = name
+	cardStyle.TaglineNow = tagline
 }
 
-// The card's and the tags' words.
-const (
-	shareTitle = "One address reaches the whole group"
-	shareLead  = "Email groups for the Helios community."
-	shareDesc  = "Each group is an address at loop.heliosian.com - a class, a team, a committee, a party's guests - whose members follow from the directory, so it stays current as families come and go, and every message sent to it reaches them. Sign in with your school Google account."
-)
+// shareName is the app's name as the registry has it, the card's title.
+var shareName func() string
+
+// title is the card's big words: the app's name from the registry, else
+// the wordmark written here.
+func title() string {
+	if shareName != nil {
+		if now := strings.TrimSpace(shareName()); now != "" {
+			return now
+		}
+	}
+	return cardStyle.Wordmark
+}
+
+// shareDesc is the tags' longer words, after the tagline.
+const shareDesc = "Each group is an address at loop.heliosian.com - a class, a team, a committee, a party's guests - whose members follow from the directory, so it stays current as families come and go, and every message sent to it reaches them. Sign in with your school Google account."
 
 // shareListing is the right half of the card: how a group works.
 func shareListing() *sharecard.Listing {
@@ -51,14 +64,14 @@ func shareListing() *sharecard.Listing {
 func PreviewHead() func(r *http.Request) string {
 	return func(r *http.Request) string {
 		origin := "https://" + r.Host
-		return sharecard.PreviewTags("Helios Loop", shareTitle, cardStyle.TaglineText()+". "+shareDesc, origin+"/", origin+"/open/share/about.png")
+		return sharecard.PreviewTags(title(), title(), cardStyle.TaglineText()+". "+shareDesc, origin+"/", origin+"/open/share/about.png")
 	}
 }
 
-// shareCard serves /open/share/about.png: Loop's card. Its ETag hashes the
-// words, which change with the tagline alone.
+// shareCard serves /open/share/about.png: Loop's card - its name over its
+// tagline, as the registry has them. Its ETag hashes the words.
 func (a app) shareCard(w http.ResponseWriter, r *http.Request) {
 	listing := shareListing()
-	card := sharecard.Card{Title: shareTitle, Subtitle: shareLead, Button: "Open Loop", Listing: listing}
-	cardStyle.Serve(w, r, card, sharecard.ETag(append(listing.Words(), shareTitle, shareLead, cardStyle.TaglineText())...))
+	card := sharecard.Card{Title: title(), Subtitle: cardStyle.TaglineText(), Button: "Open Loop", Listing: listing}
+	cardStyle.Serve(w, r, card, sharecard.ETag(append(listing.Words(), title(), cardStyle.TaglineText())...))
 }

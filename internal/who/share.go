@@ -3,6 +3,7 @@ package who
 import (
 	"image/color"
 	"net/http"
+	"strings"
 
 	"heliosian/internal/sharecard"
 )
@@ -23,18 +24,30 @@ var cardStyle = &sharecard.Style{
 	Lockup: "web/public/who/brand/logo-lockup.png",
 }
 
-// ShareTagline gives the card the app's tagline as the registry has it
-// now, in place of the one written here.
-func ShareTagline(now func() string) {
-	cardStyle.TaglineNow = now
+// ShareWords gives the card the app's name and tagline as the registry has
+// them now - the big words and the line under them - in place of the ones
+// written here.
+func ShareWords(name, tagline func() string) {
+	shareName = name
+	cardStyle.TaglineNow = tagline
 }
 
-// The card's and the tags' words.
-const (
-	shareTitle = "Put a face to a name"
-	shareLead  = "The who's-who of the Helios community, for families and staff."
-	shareDesc  = "Students, parents and staff, browsable by person, family, classroom and grade - photos, pronunciations, room parents and the lists families keep together. Sign in with your school Google account."
-)
+// shareName is the app's name as the registry has it, the card's title.
+var shareName func() string
+
+// title is the card's big words: the app's name from the registry, else
+// the wordmark written here.
+func title() string {
+	if shareName != nil {
+		if now := strings.TrimSpace(shareName()); now != "" {
+			return now
+		}
+	}
+	return cardStyle.Wordmark
+}
+
+// shareDesc is the tags' longer words, after the tagline.
+const shareDesc = "Students, parents and staff, browsable by person, family, classroom and grade - photos, pronunciations, room parents and the lists families keep together. Sign in with your school Google account."
 
 // shareListing is the right half of the card: what the directory holds, in
 // kind, never in person.
@@ -53,14 +66,14 @@ func shareListing() *sharecard.Listing {
 func PreviewHead() func(r *http.Request) string {
 	return func(r *http.Request) string {
 		origin := "https://" + r.Host
-		return sharecard.PreviewTags("Helios Who?", shareTitle, cardStyle.TaglineText()+". "+shareDesc, origin+"/", origin+"/open/share/about.png")
+		return sharecard.PreviewTags(title(), title(), cardStyle.TaglineText()+". "+shareDesc, origin+"/", origin+"/open/share/about.png")
 	}
 }
 
-// shareCard serves /open/share/about.png: the directory's card. Its ETag
-// hashes the words, which change with the tagline alone.
+// shareCard serves /open/share/about.png: the directory's card - its name
+// over its tagline, as the registry has them. Its ETag hashes the words.
 func (a app) shareCard(w http.ResponseWriter, r *http.Request) {
 	listing := shareListing()
-	card := sharecard.Card{Title: shareTitle, Subtitle: shareLead, Button: "Open Who?", Listing: listing}
-	cardStyle.Serve(w, r, card, sharecard.ETag(append(listing.Words(), shareTitle, shareLead, cardStyle.TaglineText())...))
+	card := sharecard.Card{Title: title(), Subtitle: cardStyle.TaglineText(), Button: "Open Who?", Listing: listing}
+	cardStyle.Serve(w, r, card, sharecard.ETag(append(listing.Words(), title(), cardStyle.TaglineText())...))
 }

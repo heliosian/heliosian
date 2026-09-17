@@ -935,7 +935,7 @@ func TestSharePreview(t *testing.T) {
 	// still wants volunteers, soonest first, never the hidden thing.
 	for _, path := range []string{"/activities/E006", "/my", "/"} {
 		tags = head(httptest.NewRequest("GET", "https://team.heliosian.com"+path, nil))
-		for _, want := range []string{`og:title" content="Lend a hand this year"`, `og:image" content="https://team.heliosian.com/open/share/upcoming.png"`, "Volunteers needed: "} {
+		for _, want := range []string{`og:title" content="HCA-Team"`, `og:image" content="https://team.heliosian.com/open/share/upcoming.png"`, "Volunteers needed: "} {
 			if !strings.Contains(tags, want) {
 				t.Fatalf("%s preview lacks %s:\n%s", path, want, tags)
 			}

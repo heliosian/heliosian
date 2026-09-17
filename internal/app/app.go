@@ -863,12 +863,6 @@ func NewCore(cfg Config) *Core {
 			return ""
 		}
 	}
-	team.ShareTagline(taglineOf("team"))
-	celebrate.ShareTagline(taglineOf("celebrate"))
-	calendar.ShareTagline(taglineOf("calendar"))
-	who.ShareTagline(taglineOf("who"))
-	birthday.ShareTagline(taglineOf("birthday"))
-	loop.ShareTagline(taglineOf("loop"))
 	appName := func(key string) func() string {
 		return func() string {
 			if key == "home" {
@@ -882,6 +876,14 @@ func NewCore(cfg Config) *Core {
 			return key
 		}
 	}
+	celebrate.ShareTagline(taglineOf("celebrate"))
+	calendar.ShareTagline(taglineOf("calendar"))
+	// The apps whose own card is the app itself say its name and tagline as
+	// the registry has them.
+	team.ShareWords(appName("team"), taglineOf("team"))
+	who.ShareWords(appName("who"), taglineOf("who"))
+	birthday.ShareWords(appName("birthday"), taglineOf("birthday"))
+	loop.ShareWords(appName("loop"), taglineOf("loop"))
 	// The portal's sheet is edited by hand more than the others, so a load
 	// failure keeps only the portal down: it answers with the reason and comes
 	// back on its own once the sheet loads.

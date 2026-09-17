@@ -44,10 +44,26 @@ var cardStyle = &sharecard.Style{
 	Mark: "web/public/team/brand/logo-mark.png", Lockup: "web/public/team/brand/logo-lockup.png", Corner: "web/team/toolbar_background.png",
 }
 
-// ShareTagline gives the card the app's tagline as the registry has it
-// now, in place of the one written here.
-func ShareTagline(now func() string) {
-	cardStyle.TaglineNow = now
+// ShareWords gives the card the app's name and tagline as the registry has
+// them now - the big words and the line under them - in place of the ones
+// written here.
+func ShareWords(name, tagline func() string) {
+	shareName = name
+	cardStyle.TaglineNow = tagline
+}
+
+// shareName is the app's name as the registry has it, the card's title.
+var shareName func() string
+
+// title is the card's big words: the app's name from the registry, else
+// the wordmark written here.
+func title() string {
+	if shareName != nil {
+		if now := strings.TrimSpace(shareName()); now != "" {
+			return now
+		}
+	}
+	return cardStyle.Wordmark
 }
 
 // previewable is what may be shown to someone who has not signed in.
@@ -211,10 +227,9 @@ func needNote(a *Activity) string {
 	return strings.Join(parts, " · ")
 }
 
-// The portal's own card and tags: what it is, and the things still short of
-// hands.
+// The portal's own card and tags: its name over its tagline, as the
+// registry has them, and the things still short of hands.
 const (
-	upcomingTitle = "Lend a hand this year"
 	upcomingLead  = "Sign up for a shift, a booth or a committee."
 	upcomingEmpty = "Nothing needs hands just now - check back soon."
 )
@@ -234,7 +249,7 @@ func upcomingHead(m *Model, origin string, at time.Time) string {
 		}
 		desc = "Volunteers needed: " + strings.Join(names, "; ") + ". " + upcomingLead
 	}
-	return previewTags(upcomingTitle, desc, origin+"/", origin+"/open/share/upcoming.png")
+	return previewTags(title(), desc, origin+"/", origin+"/open/share/upcoming.png")
 }
 
 // shareUpcoming serves /open/share/upcoming.png: the card for the portal
@@ -248,8 +263,8 @@ func (a app) shareUpcoming(w http.ResponseWriter, r *http.Request) {
 		}
 		listing.Items = append(listing.Items, sharecard.Item{Title: act.Title, Note: needNote(act)})
 	}
-	card := sharecard.Card{Title: upcomingTitle, Subtitle: upcomingLead, Button: "See what's open", Listing: listing}
-	cardStyle.Serve(w, r, card, sharecard.ETag(append(listing.Words(), cardStyle.TaglineText())...))
+	card := sharecard.Card{Title: title(), Subtitle: cardStyle.TaglineText(), Button: "See what's open", Listing: listing}
+	cardStyle.Serve(w, r, card, sharecard.ETag(append(listing.Words(), title(), cardStyle.TaglineText())...))
 }
 
 // shareCard serves /open/share/{id}.png: the card for one previewable thing. The

@@ -9,14 +9,21 @@ import (
 	"testing"
 )
 
-// A link to any address previews as what the app is - the same tags and the
-// same card wherever it leads - and the card is drawn without a session.
+// A link to any address previews as what the app is - its name over its
+// tagline, the same tags and the same card wherever it leads - and the card
+// is drawn without a session.
 func TestSharePreview(t *testing.T) {
 	t.Chdir("../..")
 	head := PreviewHead()
+	// The registry's name and tagline are the words when it gives them.
+	ShareWords(func() string { return "Renamed" }, func() string { return "A new line" })
+	if tags := head(httptest.NewRequest("GET", "https://birthday.heliosian.com/", nil)); !strings.Contains(tags, `og:title" content="Renamed"`) || !strings.Contains(tags, `content="A new line. `) {
+		t.Fatalf("the registry's words are not the preview's:\n%s", tags)
+	}
+	ShareWords(func() string { return "" }, func() string { return "" })
 	for _, path := range []string{"/", "/some/page"} {
 		tags := head(httptest.NewRequest("GET", "https://birthday.heliosian.com"+path, nil))
-		for _, want := range []string{`og:site_name" content="Helios Birthday"`, `og:title" content="Help celebrate our staff`, `og:url" content="https://birthday.heliosian.com/"`, `og:image" content="https://birthday.heliosian.com/open/share/about.png"`} {
+		for _, want := range []string{`og:site_name" content="Helios Birthday"`, `og:title" content="Helios Birthday"`, `og:url" content="https://birthday.heliosian.com/"`, `og:image" content="https://birthday.heliosian.com/open/share/about.png"`} {
 			if !strings.Contains(tags, want) {
 				t.Fatalf("%s preview lacks %s:\n%s", path, want, tags)
 			}
