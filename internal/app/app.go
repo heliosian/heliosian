@@ -796,6 +796,7 @@ type Config struct {
 type Core struct {
 	Mux         *http.ServeMux
 	HomeMux     *http.ServeMux
+	HomeCache   *home.Cache
 	TeamMux     *http.ServeMux
 	TeamCache   *team.Cache
 	BirthdayMux *http.ServeMux
@@ -945,7 +946,7 @@ func NewCore(cfg Config) *Core {
 		feedback.Register(m, key, appName(key), superAdmin, feedbackQueue)
 	}
 	return &Core{
-		Mux: mux, HomeMux: homeMux, TeamMux: teamMux, TeamCache: teamCache, BirthdayMux: birthdayMux, CelebrateMux: celebrateMux, CelebrateCache: celebrateCache,
+		Mux: mux, HomeMux: homeMux, HomeCache: homeCache, TeamMux: teamMux, TeamCache: teamCache, BirthdayMux: birthdayMux, CelebrateMux: celebrateMux, CelebrateCache: celebrateCache,
 		CalendarMux: calendarMux, CalendarCache: calendarCache, CalendarLinked: linked, LoopMux: loopMux, LoopCache: loopCache, Cache: cache, Queue: queue,
 		Spoof: &auth.Spoof{Allowed: superAdmin, Person: directory{cache, settings}.SpoofPerson, People: directory{cache, settings}.SpoofPeople},
 		Gate:  who.MemberGate(cache, mux), Home: homeMux, Team: teamMux, Birthday: birthdayMux, Celebrate: celebrateMux, Calendar: calendarMux, Loop: loopMux,
@@ -1253,6 +1254,9 @@ func Production(blobCache string) (*http.Server, *who.Queue) {
 	whoAuth := newAuth("who")
 	whoAuth.Register(core.Mux)
 	homeAuth := newAuth("home")
+	// A shared link to the portal previews in chat apps: the sign-in page
+	// carries tags naming the apps everyone has, and a card that draws them.
+	homeAuth.Preview = home.PreviewHead(core.HomeCache)
 	homeAuth.Register(core.HomeMux)
 	teamAuth := newAuth("team")
 	// A shared link to an event previews in chat apps: the sign-in page it

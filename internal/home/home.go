@@ -154,6 +154,7 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	mux.HandleFunc("GET /dl/", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/", http.StatusMovedPermanently)
 	})
+	mux.HandleFunc("GET /open/share/apps.png", a.shareApps)
 	mux.HandleFunc("GET /api/apps/model", a.model)
 	mux.HandleFunc("GET /api/apps/calendar", a.calendar)
 	mux.HandleFunc("GET /api/apps/upcoming", a.upcomingUnder)
@@ -418,15 +419,7 @@ func hiddenHosts(pageHost string, apps []string) map[string]bool {
 	if len(apps) == 0 {
 		return nil
 	}
-	host, port, _ := strings.Cut(strings.ToLower(pageHost), ":")
-	labels := strings.Split(host, ".")
-	if len(labels) > 2 {
-		labels = labels[1:]
-	}
-	tier := strings.Join(labels, ".")
-	if port != "" {
-		tier += ":" + port
-	}
+	tier := tierOf(pageHost)
 	hidden := map[string]bool{}
 	for _, app := range apps {
 		hidden[app+"."+tier] = true

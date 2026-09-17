@@ -70,16 +70,20 @@ type Card struct {
 
 // Listing is the right half of a card that names several things rather than
 // showing one picture: a heading over bullets, each a title with a note
-// under it, and a line to show when there are no items at all.
+// under it, and a line to show when there are no items at all. Without a
+// heading the bullets start at the top, and however many there are they
+// share the panel's height, closing up as they must.
 type Listing struct {
 	Heading string
 	Items   []Item
 	Empty   string
 }
 
-// Item is one bullet of a Listing: what it is, and a note under it - a date.
+// Item is one bullet of a Listing: what it is, and a note under it - a
+// date, an address. An Icon, when there is one, stands where the dot would.
 type Item struct {
 	Title, Note string
+	Icon        image.Image
 }
 
 // The two faces the card is set in, parsed once. Montserrat is the sites'
@@ -399,26 +403,30 @@ func (s *Style) Draw(c Card) ([]byte, error) {
 
 // drawListing paints the right half's panel: the heading over its own yellow
 // swoosh, level with the brand on the left, then the bullets - a dot in the
-// accent, the title in ink on one line, shrunk and then cut to fit, and the
-// note under it in the accent. With no items, the Empty line stands alone.
+// accent, or the item's own icon, the title in ink on one line, shrunk and
+// then cut to fit, and the note under it in the accent. With no items, the
+// Empty line stands alone. The rows are spaced to fill the panel, no closer
+// than the icons allow.
 func (s *Style) drawListing(img *image.RGBA, panel image.Rectangle, l *Listing, bold, medium *opentype.Font) error {
 	draw.Draw(img, panel, image.NewUniform(s.Panel), image.Point{}, draw.Src)
 	left, right := panel.Min.X+56, panel.Max.X-56
 	width := fixed.I(right - left)
 	d := &font.Drawer{Dst: img, Src: image.NewUniform(s.Brand)}
 
-	heading, err := face(bold, 40)
-	if err != nil {
-		return err
+	y := 100
+	if l.Heading != "" {
+		heading, err := face(bold, 40)
+		if err != nil {
+			return err
+		}
+		d.Face = heading
+		headY := 128
+		d.Dot = fixed.P(left, headY)
+		d.DrawString(l.Heading)
+		swooshY := headY + 14
+		draw.Draw(img, image.Rect(left, swooshY, right, swooshY+6), image.NewUniform(s.Yellow), image.Point{}, draw.Over)
+		y = swooshY + 84
 	}
-	d.Face = heading
-	headY := 128
-	d.Dot = fixed.P(left, headY)
-	d.DrawString(l.Heading)
-	swooshY := headY + 14
-	draw.Draw(img, image.Rect(left, swooshY, right, swooshY+6), image.NewUniform(s.Yellow), image.Point{}, draw.Over)
-
-	y := swooshY + 84
 	if len(l.Items) == 0 && l.Empty != "" {
 		empty, err := face(medium, 26)
 		if err != nil {
@@ -431,17 +439,32 @@ func (s *Style) drawListing(img *image.RGBA, panel image.Rectangle, l *Listing, 
 		}
 		return nil
 	}
+	// The rows step down to share what is left of the panel, at most as far
+	// apart as a short list is set; a long one closes up, its type with it.
+	step := 116
+	if n := len(l.Items); n > 0 {
+		step = min(step, max((panel.Max.Y-40-y)/n, 72))
+	}
+	titleSize, noteSize := 30.0, 24.0
+	if step < 100 {
+		titleSize, noteSize = 26, 20
+	}
 	dot := 10
 	for _, item := range l.Items {
+		indent := dot * 3
+		if item.Icon != nil {
+			indent = 62
+		}
 		var title font.Face
 		var lines []string
-		size := 30.0
-		for ; size >= 22; size -= 2 {
+		var err error
+		size := titleSize
+		for ; size >= 20; size -= 2 {
 			if title, err = face(bold, size); err != nil {
 				return err
 			}
 			d.Face = title
-			lines = Wrap(d, item.Title, width-fixed.I(dot*3))
+			lines = Wrap(d, item.Title, width-fixed.I(indent))
 			if len(lines) <= 1 {
 				break
 			}
@@ -451,20 +474,29 @@ func (s *Style) drawListing(img *image.RGBA, panel image.Rectangle, l *Listing, 
 			text = lines[0] + "…"
 		}
 		mid := y - int(size*0.36)
-		DrawDot(img, image.Rect(left, mid-dot, left+dot*2, mid+dot), s.Accent)
+		if item.Icon != nil {
+			// The icon centred on the row's two lines, not the title alone.
+			if item.Note != "" {
+				mid = y + int(noteSize*0.55) - int(size*0.36)
+			}
+			at := image.Rect(left, mid-24, left+48, mid+24)
+			draw.CatmullRom.Scale(img, at, item.Icon, item.Icon.Bounds(), draw.Over, nil)
+		} else {
+			DrawDot(img, image.Rect(left, mid-dot, left+dot*2, mid+dot), s.Accent)
+		}
 		d.Src = image.NewUniform(s.Ink)
-		d.Dot = fixed.P(left+dot*3, y)
+		d.Dot = fixed.P(left+indent, y)
 		d.DrawString(text)
 		if item.Note != "" {
-			note, err := face(medium, 24)
+			note, err := face(medium, noteSize)
 			if err != nil {
 				return err
 			}
 			d.Face, d.Src = note, image.NewUniform(s.Accent)
-			d.Dot = fixed.P(left+dot*3, y+34)
+			d.Dot = fixed.P(left+indent, y+int(noteSize*1.4))
 			d.DrawString(item.Note)
 		}
-		y += 116
+		y += step
 	}
 	return nil
 }

@@ -38,6 +38,8 @@ Who may edit is the Admins tab of the Apps sheet plus the platform super admins 
 
 Everything behind Google sign-in restricted to the school domain, like every app here; there is no public view. The login page is Heliosian's own splash. A session is shared with the directory on the same tier, since the cookie is scoped one label up from the app's hostname.
 
+A link to Heliosian pasted into a chat app previews the way the apps' pages do (`internal/home/share.go`, on the shared drawer `internal/sharecard`): the sign-in page served at any address on the portal carries Open Graph tags - "Tools and resources for the Helios Community", a line naming each app everyone has with its tagline and address, and a sign-in note - and names a card at `/open/share/apps.png`: the four-petal mark and wordmark over the registry's tagline, the headline over the yellow swoosh, the sign-in note and an Open Heliosian button; down the right, each app everyone has with its mark, its name and its tagline as the Visibility tab has them (the tags carry each app's address too, on the tier the link was to - `who.heliosian.com`, `when.heliosian.com`, a local port carried over). An app narrowed to a list, or one with no row yet, is nobody's to preview and is left off the card and the tags alike. The card is public, as every `/open/share/` path is, and its ETag hashes the apps it names, so a renamed or newly shared app reaches a chat app that cached it.
+
 ## Installable
 
 Ships as an installable web app like the directory (`docs/who/pwa.md` describes the mechanics): its own manifest, icons, and iOS splash battery under `web/public/home/`.
