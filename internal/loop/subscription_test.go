@@ -1,4 +1,4 @@
-package groups
+package loop
 
 import (
 	"encoding/json"
@@ -43,7 +43,7 @@ func TestAMemberOfAVisibleGroupTakesThemselvesOffAndBack(t *testing.T) {
 	if member == "" {
 		t.Fatal("every member manages the group")
 	}
-	rec := h.as(member, http.MethodGet, "/api/groups/model", "")
+	rec := h.as(member, http.MethodGet, "/api/loop/model", "")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("model answered %d: %s", rec.Code, rec.Body)
 	}
@@ -57,7 +57,7 @@ func TestAMemberOfAVisibleGroupTakesThemselvesOffAndBack(t *testing.T) {
 		t.Fatalf("a member sees %+v", model.Groups)
 	}
 
-	rec = h.as(member, http.MethodPost, "/api/groups/subscription", `{"name":"`+name+`","subscribed":false}`)
+	rec = h.as(member, http.MethodPost, "/api/loop/subscription", `{"name":"`+name+`","subscribed":false}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("unsubscribe answered %d: %s", rec.Code, rec.Body)
 	}
@@ -77,7 +77,7 @@ func TestAMemberOfAVisibleGroupTakesThemselvesOffAndBack(t *testing.T) {
 	}
 	h.waitFor("the excluded row", func() bool { return h.excludedRows(name, member) == 1 })
 
-	rec = h.as(member, http.MethodPost, "/api/groups/subscription", `{"name":"`+name+`","subscribed":true}`)
+	rec = h.as(member, http.MethodPost, "/api/loop/subscription", `{"name":"`+name+`","subscribed":true}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("resubscribe answered %d: %s", rec.Code, rec.Body)
 	}
@@ -91,19 +91,19 @@ func TestAMemberOfAVisibleGroupTakesThemselvesOffAndBack(t *testing.T) {
 		t.Fatal("not back on the group")
 	}
 	h.waitFor("the row to go", func() bool { return h.excludedRows(name, member) == 0 })
-	if rec = h.as(member, http.MethodPost, "/api/groups/subscription", `{"name":"`+name+`","subscribed":true}`); rec.Code != http.StatusOK {
+	if rec = h.as(member, http.MethodPost, "/api/loop/subscription", `{"name":"`+name+`","subscribed":true}`); rec.Code != http.StatusOK {
 		t.Fatalf("a second resubscribe answered %d", rec.Code)
 	}
 
-	rec = h.as(member, http.MethodPost, "/api/groups/group", `{"original":"`+name+`","name":"`+name+`","title":"Taken over","managers":["`+member+`"],"rules":[]}`)
+	rec = h.as(member, http.MethodPost, "/api/loop/group", `{"original":"`+name+`","name":"`+name+`","title":"Taken over","managers":["`+member+`"],"rules":[]}`)
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("a member's save answered %d: %s", rec.Code, rec.Body)
 	}
-	rec = h.as(member, http.MethodPost, "/api/groups/subscription", `{"name":"soccer-team","subscribed":false}`)
+	rec = h.as(member, http.MethodPost, "/api/loop/subscription", `{"name":"soccer-team","subscribed":false}`)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("a group not visible answered %d: %s", rec.Code, rec.Body)
 	}
-	rec = h.as("mia.torres@heliosschool.org", http.MethodPost, "/api/groups/subscription", `{"name":"`+name+`","subscribed":false}`)
+	rec = h.as("mia.torres@heliosschool.org", http.MethodPost, "/api/loop/subscription", `{"name":"`+name+`","subscribed":false}`)
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("someone not on the list answered %d: %s", rec.Code, rec.Body)
 	}

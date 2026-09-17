@@ -51,14 +51,14 @@ func call(t *testing.T, handler http.Handler, method, path, body string) *httpte
 
 func TestFeedRoute(t *testing.T) {
 	mux, _ := testApp(t)
-	rec := call(t, mux, http.MethodGet, "/feed/sample7feedtoken4jordan2whitfield.ics", "")
+	rec := call(t, mux, http.MethodGet, "/open/feed/sample7feedtoken4jordan2whitfield.ics", "")
 	if rec.Code != http.StatusOK || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/calendar") {
 		t.Fatalf("feed: %d %s", rec.Code, rec.Header().Get("Content-Type"))
 	}
 	if body := rec.Body.String(); !strings.Contains(body, "X-WR-CALNAME:Whitfield school days") || !strings.Contains(body, "URL:https://calendar.local.heliosian.com:8080/e/a5@sample") {
 		t.Errorf("feed body: %s", body)
 	}
-	if rec := call(t, mux, http.MethodGet, "/feed/nosuchtoken.ics", ""); rec.Code != http.StatusNotFound {
+	if rec := call(t, mux, http.MethodGet, "/open/feed/nosuchtoken.ics", ""); rec.Code != http.StatusNotFound {
 		t.Errorf("unknown token: %d", rec.Code)
 	}
 }
@@ -72,13 +72,13 @@ func TestFeedLifecycle(t *testing.T) {
 		t.Fatalf("add: %d %s", rec.Code, rec.Body.String())
 	}
 	var made struct{ Token, URL string }
-	if err := json.Unmarshal(rec.Body.Bytes(), &made); err != nil || len(made.Token) != 24 || made.URL != "https://calendar.local.heliosian.com:8080/feed/"+made.Token+".ics" {
+	if err := json.Unmarshal(rec.Body.Bytes(), &made); err != nil || len(made.Token) != 24 || made.URL != "https://calendar.local.heliosian.com:8080/open/feed/"+made.Token+".ics" {
 		t.Fatalf("add answered %s", rec.Body.String())
 	}
 	if len(cache.Model().Feeds) != 2 || cache.Model().Feed(made.Token).Email != "jordan.whitfield@heliosschool.org" {
 		t.Fatalf("feeds after add: %+v", cache.Model().Feeds)
 	}
-	if rec := call(t, mux, http.MethodGet, "/feed/"+made.Token+".ics", ""); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "SUMMARY:Jays and Ravens Camping") || strings.Contains(rec.Body.String(), "Labor Day") {
+	if rec := call(t, mux, http.MethodGet, "/open/feed/"+made.Token+".ics", ""); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "SUMMARY:Jays and Ravens Camping") || strings.Contains(rec.Body.String(), "Labor Day") {
 		t.Errorf("new feed: %d %s", rec.Code, rec.Body.String())
 	}
 	// A second feed under a name the owner already uses gets a number.
@@ -109,7 +109,7 @@ func TestFeedLifecycle(t *testing.T) {
 	if f := cache.Model().Feed(made.Token); f == nil || f.Name != "Jays days" || f.Emoji != "🚌" || strings.Join(f.Tags, ",") != "Trip,Schedule" || f.Email != "jordan.whitfield@heliosschool.org" {
 		t.Errorf("feed after change: %+v", f)
 	}
-	if rec := call(t, mux, http.MethodGet, "/feed/"+made.Token+".ics", ""); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "X-WR-CALNAME:Jays days") || !strings.Contains(rec.Body.String(), "Labor Day") {
+	if rec := call(t, mux, http.MethodGet, "/open/feed/"+made.Token+".ics", ""); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "X-WR-CALNAME:Jays days") || !strings.Contains(rec.Body.String(), "Labor Day") {
 		t.Errorf("changed feed: %d %s", rec.Code, rec.Body.String())
 	}
 	if rec := call(t, other, http.MethodDelete, "/api/calendar/feeds", `{"token":"`+made.Token+`"}`); rec.Code != http.StatusForbidden {
@@ -121,7 +121,7 @@ func TestFeedLifecycle(t *testing.T) {
 	if len(cache.Model().Feeds) != 1 || cache.Model().Feed(made.Token) != nil {
 		t.Errorf("feeds after removal: %+v", cache.Model().Feeds)
 	}
-	if rec := call(t, mux, http.MethodGet, "/feed/"+made.Token+".ics", ""); rec.Code != http.StatusNotFound {
+	if rec := call(t, mux, http.MethodGet, "/open/feed/"+made.Token+".ics", ""); rec.Code != http.StatusNotFound {
 		t.Errorf("removed feed still serves: %d", rec.Code)
 	}
 }
@@ -149,7 +149,7 @@ func TestSharePreview(t *testing.T) {
 	req := httptest.NewRequest("GET", "https://when.local.heliosian.com:8080/e/a7@sample", nil)
 	req.Host = "when.local.heliosian.com:8080"
 	tags := head(req)
-	for _, want := range []string{`property="og:title" content="International Night"`, `Thursday, September 24 · 4:00 – 6:00 PM`, `content="https://when.local.heliosian.com:8080/share/a7@sample.png"`} {
+	for _, want := range []string{`property="og:title" content="International Night"`, `Thursday, September 24 · 4:00 – 6:00 PM`, `content="https://when.local.heliosian.com:8080/open/share/a7@sample.png"`} {
 		if !strings.Contains(tags, want) {
 			t.Errorf("event tags lack %s:\n%s", want, tags)
 		}
@@ -157,16 +157,16 @@ func TestSharePreview(t *testing.T) {
 	req = httptest.NewRequest("GET", "https://when.local.heliosian.com:8080/feeds", nil)
 	req.Host = "when.local.heliosian.com:8080"
 	tags = head(req)
-	if !strings.Contains(tags, `og:title" content="Helios When"`) || !strings.Contains(tags, "One calendar") || !strings.Contains(tags, "/share/upcoming.png") {
+	if !strings.Contains(tags, `og:title" content="Helios When"`) || !strings.Contains(tags, "One calendar") || !strings.Contains(tags, "/open/share/upcoming.png") {
 		t.Errorf("site tags:\n%s", tags)
 	}
-	for _, path := range []string{"/share/a7@sample.png", "/share/upcoming.png"} {
+	for _, path := range []string{"/open/share/a7@sample.png", "/open/share/upcoming.png"} {
 		rec := call(t, handler, "GET", path, "")
 		if rec.Code != 200 || rec.Header().Get("Content-Type") != "image/png" || rec.Body.Len() < 1000 {
 			t.Errorf("%s: %d %s %d bytes", path, rec.Code, rec.Header().Get("Content-Type"), rec.Body.Len())
 		}
 	}
-	if rec := call(t, handler, "GET", "/share/nope.png", ""); rec.Code != 404 {
+	if rec := call(t, handler, "GET", "/open/share/nope.png", ""); rec.Code != 404 {
 		t.Errorf("missing card: %d", rec.Code)
 	}
 }
@@ -554,10 +554,10 @@ func TestAdminAddsAndCorrects(t *testing.T) {
 		t.Errorf("chosen address: %d %s", rec.Code, rec.Body)
 	}
 	// Its page previews and its card draws, for a link sent anywhere.
-	if rec := call(t, handler, "GET", "/share/sams-party.png", ""); rec.Code != 200 || rec.Header().Get("Content-Type") != "image/png" {
+	if rec := call(t, handler, "GET", "/open/share/sams-party.png", ""); rec.Code != 200 || rec.Header().Get("Content-Type") != "image/png" {
 		t.Errorf("a direct-link event's card: %d", rec.Code)
 	}
-	if head := PreviewHead(cache, func(string) []Linked { return nil })(httptest.NewRequest("GET", "https://when.local.heliosian.com:8080/e/sams-party", nil)); !strings.Contains(head, "Sam") || !strings.Contains(head, "/share/sams-party.png") {
+	if head := PreviewHead(cache, func(string) []Linked { return nil })(httptest.NewRequest("GET", "https://when.local.heliosian.com:8080/e/sams-party", nil)); !strings.Contains(head, "Sam") || !strings.Contains(head, "/open/share/sams-party.png") {
 		t.Errorf("a direct-link event's preview:\n%s", head)
 	}
 	if rec := call(t, parent, "POST", "/api/calendar/events", `{"id":"sams-party","title":"Again","start":"2026-10-04","tags":["Jays"]}`); rec.Code != 400 {

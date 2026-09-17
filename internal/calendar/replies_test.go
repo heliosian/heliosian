@@ -121,7 +121,7 @@ func TestRepliesRecordAnswers(t *testing.T) {
 			fields["timestamp"], fields["token"], fields["signature"] = stamp, "token-"+id, sig
 		}
 		body, _ := json.Marshal(fields)
-		req := httptest.NewRequest("POST", "https://when.local.heliosian.com:8080/api/calendar/replies", strings.NewReader(string(body)))
+		req := httptest.NewRequest("POST", "https://when.local.heliosian.com:8080/hooks/replies", strings.NewReader(string(body)))
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, req)

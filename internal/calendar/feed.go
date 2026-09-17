@@ -54,7 +54,7 @@ func ICS(model *Model, f *Feed, linked []Linked, origin string, now time.Time) [
 	lines := []string{
 		"BEGIN:VCALENDAR",
 		"VERSION:2.0",
-		"PRODID:-//Heliosian//Helios Calendar//EN",
+		"PRODID:-//Heliosian//Helios When//EN",
 		"CALSCALE:GREGORIAN",
 		"METHOD:PUBLISH",
 		"X-WR-CALNAME:" + icsText(f.Name),

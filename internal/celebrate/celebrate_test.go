@@ -719,7 +719,7 @@ func TestSharePreview(t *testing.T) {
 	req.Host = "celebrate.heliosian.com"
 	got := head(req)
 	for _, want := range []string{`og:title" content="Fondue &amp; Fort Night"`, `og:url" content="https://celebrate.heliosian.com/p/fondue"`,
-		`og:image" content="https://celebrate.heliosian.com/share/P001.png"`, `Saturday, September 19 · 5:00 – 9:00 PM — The Parks&#39; House in Los Altos — A cozy evening`} {
+		`og:image" content="https://celebrate.heliosian.com/open/share/P001.png"`, `Saturday, September 19 · 5:00 – 9:00 PM — The Parks&#39; House in Los Altos — A cozy evening`} {
 		if !strings.Contains(got, want) {
 			t.Errorf("preview head lacks %s:\n%s", want, got)
 		}
@@ -736,7 +736,7 @@ func TestSharePreview(t *testing.T) {
 		req.Host = "celebrate.heliosian.com"
 		got := head(req)
 		for _, want := range []string{`og:title" content="Upcoming Parties"`, `og:url" content="https://celebrate.heliosian.com/"`,
-			`og:image" content="https://celebrate.heliosian.com/share/upcoming.png"`,
+			`og:image" content="https://celebrate.heliosian.com/open/share/upcoming.png"`,
 			`Next up: Fondue &amp; Fort Night — Saturday, September 19 · 5:00 – 9:00 PM — The Parks&#39; House in Los Altos. Also coming: Dink &amp; Clink (Sep 26), K-Pop for a Cause! (Sep 27), Wurst Helios Party (Oct 3).`} {
 			if !strings.Contains(got, want) {
 				t.Errorf("%s: preview head lacks %s:\n%s", path, want, got)
@@ -755,7 +755,7 @@ func TestSharePreview(t *testing.T) {
 	if strings.Join(ids, " ") != "P001 P002 P003 P004 P012 P005 P009" {
 		t.Errorf("upcoming: %v", ids)
 	}
-	for _, path := range []string{"/share/P001.png", "/share/upcoming.png"} {
+	for _, path := range []string{"/open/share/P001.png", "/open/share/upcoming.png"} {
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, httptest.NewRequest("GET", path, nil))
 		if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "image/png" || rec.Body.Len() < 10000 {
@@ -771,7 +771,7 @@ func TestSharePreview(t *testing.T) {
 		}
 	}
 	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequest("GET", "/share/P013.png", nil))
+	mux.ServeHTTP(rec, httptest.NewRequest("GET", "/open/share/P013.png", nil))
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("a pending party's card: %d", rec.Code)
 	}
@@ -815,7 +815,7 @@ func TestMail(t *testing.T) {
 	if m.Subject != "Your tickets to Wurst Helios Party" || !slices.Equal(m.To, []string{parent}) || !slices.Equal(m.CC, []string{partner, "sofia.marchetti@heliosschool.org", "paolo.marchetti@heliosschool.org"}) || len(m.Attachments) != 0 {
 		t.Fatalf("confirmation: %+v", m)
 	}
-	for _, want := range []string{"Hi Jordan", "Robin Whitfield, Aunt May", "$150 (2 × $75)", "Robin Whitfield took them", "/share/P004.png", "88 Castro Street", "invoiced by Helios", "calendar.google.com/calendar/render?action=TEMPLATE", "Add to Calendar"} {
+	for _, want := range []string{"Hi Jordan", "Robin Whitfield, Aunt May", "$150 (2 × $75)", "Robin Whitfield took them", "/open/share/P004.png", "88 Castro Street", "invoiced by Helios", "calendar.google.com/calendar/render?action=TEMPLATE", "Add to Calendar"} {
 		if !strings.Contains(m.HTML, want) {
 			t.Errorf("confirmation lacks %q", want)
 		}

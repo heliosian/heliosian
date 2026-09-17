@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"heliosian/internal/data"
-	"heliosian/internal/groups"
+	"heliosian/internal/loop"
 	"heliosian/internal/who"
 )
 
@@ -20,15 +20,15 @@ func TestGroupListsCarryAdditionsAsGuests(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	groupTables, err := groups.ReadTables(dir)
+	groupTables, err := loop.ReadTables(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	model, err := groups.BuildModel(groupTables)
+	model, err := loop.BuildModel(groupTables)
 	if err != nil {
 		t.Fatal(err)
 	}
-	sources := groups.Sources{
+	sources := loop.Sources{
 		Directory: directory,
 		Tags:      func(owner string) map[string][]string { return who.TagsOf(tables.Tags, directory, owner) },
 		Lists:     directory.RoomParentLists,

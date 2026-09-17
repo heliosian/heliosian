@@ -165,7 +165,7 @@ func invite(from, to string, e *Event, link string, at time.Time) string {
 	lines := []string{
 		"BEGIN:VCALENDAR",
 		"VERSION:2.0",
-		"PRODID:-//Heliosian//Helios Calendar//EN",
+		"PRODID:-//Heliosian//Helios When//EN",
 		"METHOD:REQUEST",
 		"BEGIN:VEVENT",
 		"UID:" + uidOf(e.ID),

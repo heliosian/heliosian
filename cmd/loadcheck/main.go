@@ -16,9 +16,9 @@ import (
 	"heliosian/internal/celebrate"
 	"heliosian/internal/config"
 	"heliosian/internal/data"
-	"heliosian/internal/events"
-	"heliosian/internal/groups"
 	"heliosian/internal/home"
+	"heliosian/internal/loop"
+	"heliosian/internal/team"
 	"heliosian/internal/who"
 )
 
@@ -55,17 +55,17 @@ func (homeImages) Has(key string) (bool, error) {
 
 func (homeImages) Prefetch([]string) error { return nil }
 
-// eventsImages trusts bucket names like homeImages does, and checks bundled files.
-type eventsImages struct{}
+// teamImages trusts bucket names like homeImages does, and checks bundled files.
+type teamImages struct{}
 
-func (eventsImages) Has(key string) (bool, error) {
+func (teamImages) Has(key string) (bool, error) {
 	if strings.HasPrefix(key, "activity-images/") {
 		return true, nil
 	}
 	return bundled([]string{"web/team", "web/public/team"}, key), nil
 }
 
-func (eventsImages) Prefetch([]string) error { return nil }
+func (teamImages) Prefetch([]string) error { return nil }
 
 // celebrateImages trusts bucket names like the others, and checks bundled files.
 type celebrateImages struct{}
@@ -211,16 +211,16 @@ func main() {
 	}
 	fmt.Printf("apps admins: %d\n", len(tables.Admins))
 
-	eventTables, err := events.ReadTables(source)
+	eventTables, err := team.ReadTables(source)
 	if err != nil {
 		log.Fatalf("[ERROR] read events tables: %v", err)
 	}
-	portal, err := events.BuildModel(eventTables, eventsImages{})
+	portal, err := team.BuildModel(eventTables, teamImages{})
 	if err != nil {
 		log.Fatalf("[ERROR] build events model: %v", err)
 	}
 	fmt.Println("events:")
-	byYear := map[string][]*events.Activity{}
+	byYear := map[string][]*team.Activity{}
 	years := []string{}
 	for _, a := range portal.Activities {
 		if _, seen := byYear[a.Year]; !seen {
@@ -324,16 +324,16 @@ func main() {
 	if err != nil {
 		log.Fatalf("[ERROR] read directory tables: %v", err)
 	}
-	groupTables, err := groups.ReadTables(source)
+	groupTables, err := loop.ReadTables(source)
 	if err != nil {
 		log.Fatalf("[ERROR] read groups tables: %v", err)
 	}
-	groupModel, err := groups.BuildModel(groupTables)
+	groupModel, err := loop.BuildModel(groupTables)
 	if err != nil {
 		log.Fatalf("[ERROR] build groups model: %v", err)
 	}
 	now := time.Now().In(calendar.Location)
-	sources := groups.Sources{
+	sources := loop.Sources{
 		Directory: model,
 		Tags:      func(owner string) map[string][]string { return who.TagsOf(whoTables.Tags, model, owner) },
 		Lists: func(owner string) []who.List {
@@ -345,7 +345,7 @@ func main() {
 	}
 	fmt.Println("groups:")
 	for _, g := range groupModel.Groups {
-		fmt.Printf("  %s %q: aliases %v, %d managers, %d rules, %d members, %d excluded, prefix %v, visible %v\n", g.Address(), g.Title, g.Aliases, len(g.Managers), len(g.Rules), len(groups.Members(g, sources)), len(g.Excluded), g.Prefix, g.Visible)
+		fmt.Printf("  %s %q: aliases %v, %d managers, %d rules, %d members, %d excluded, prefix %v, visible %v\n", g.Address(), g.Title, g.Aliases, len(g.Managers), len(g.Rules), len(loop.Members(g, sources)), len(g.Excluded), g.Prefix, g.Visible)
 	}
 	fmt.Printf("groups admins: %d\n", len(groupTables.Admins))
 }

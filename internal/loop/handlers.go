@@ -1,4 +1,4 @@
-package groups
+package loop
 
 import (
 	"encoding/json"
@@ -57,25 +57,25 @@ type app struct {
 
 // Register wires the app: one shell for every page, the model, the preview,
 // the writes, and Admin Tools. Every route sits behind sign-in but the mail
-// provider's webhook and the unsubscribe links (auth.Public).
+// provider's webhooks under /hooks/ and the unsubscribe links (auth.Public).
 func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, directory Directory, superAdmins func() []string, mailbox Mail) {
 	a := app{cache: cache, writer: writer, queue: queue, store: store, directory: directory, superAdmins: superAdmins, mail: mailbox}
 	a.mailer = newMailer(cache, writer, queue, directory, mailbox)
 	for _, page := range pages {
 		mux.HandleFunc("GET "+page, a.page)
 	}
-	mux.HandleFunc("GET /api/groups/model", a.model)
-	mux.HandleFunc("POST /api/groups/preview", a.preview)
-	mux.HandleFunc("POST /api/groups/group", a.saveGroup)
-	mux.HandleFunc("DELETE /api/groups/group", a.deleteGroup)
-	mux.HandleFunc("GET /api/groups/messages", a.messages)
-	mux.HandleFunc("POST /api/groups/subscription", a.subscription)
+	mux.HandleFunc("GET /api/loop/model", a.model)
+	mux.HandleFunc("POST /api/loop/preview", a.preview)
+	mux.HandleFunc("POST /api/loop/group", a.saveGroup)
+	mux.HandleFunc("DELETE /api/loop/group", a.deleteGroup)
+	mux.HandleFunc("GET /api/loop/messages", a.messages)
+	mux.HandleFunc("POST /api/loop/subscription", a.subscription)
 	mux.HandleFunc("GET /api/admin/state", a.adminState)
 	mux.HandleFunc("POST /api/admin/admins", a.setAdmins)
-	mux.HandleFunc("POST /api/loop/mail", a.inbound)
-	mux.HandleFunc("POST /api/loop/events", a.events)
-	mux.HandleFunc("GET /unsubscribe/{token}", a.unsubscribePage)
-	mux.HandleFunc("POST /unsubscribe/{token}", a.unsubscribe)
+	mux.HandleFunc("POST /hooks/mail", a.inbound)
+	mux.HandleFunc("POST /hooks/events", a.events)
+	mux.HandleFunc("GET /open/unsubscribe/{token}", a.unsubscribePage)
+	mux.HandleFunc("POST /open/unsubscribe/{token}", a.unsubscribe)
 	a.mailer.recover()
 }
 

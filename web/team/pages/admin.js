@@ -54,7 +54,7 @@ function notifyCard() {
     status.classList.remove('error');
     status.textContent = 'Saving…';
     try {
-      await send('POST', '/api/events/notify', {kinds: kinds.map(k => k[0]).filter(k => boxes[k].checked)});
+      await send('POST', '/api/team/notify', {kinds: kinds.map(k => k[0]).filter(k => boxes[k].checked)});
       status.textContent = 'Saved.';
     } catch (err) {
       status.classList.add('error');

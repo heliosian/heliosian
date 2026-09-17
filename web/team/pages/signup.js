@@ -13,7 +13,7 @@ function shownIn(year) {
 
 // Cards are grouped under their category, in the order the Categories tab lists
 // them. An activity naming a category that tab doesn't have lands under the
-// built-in Uncategorized heading (internal/events/load.go), so nothing can fall
+// built-in Uncategorized heading (internal/team/load.go), so nothing can fall
 // outside these groups.
 function yearGrid(year) {
   const root = el('div');

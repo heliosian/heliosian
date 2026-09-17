@@ -1,6 +1,6 @@
 {
-  "name": "Helios Calendar: The school year, day by day",
-  "short_name": "Calendar",
+  "name": "Helios When: The school year, day by day",
+  "short_name": "When",
   "description": "The school year, day by day",
   "display": "standalone",
   "id": "/",

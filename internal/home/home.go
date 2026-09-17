@@ -45,7 +45,7 @@ type app struct {
 	answer func(ctx context.Context, email, id, answer string) error
 }
 
-// Event is a Helios Calendar event as the front page's Upcoming Events lists
+// Event is a Helios When event as the front page's Upcoming Events lists
 // it: the calendar reckons which are ahead for this viewer, and the page
 // links across to it. Image is its picture as a path on ImageApp's host,
 // and for an event another app runs, Link is its page on LinkApp with Call
@@ -82,7 +82,7 @@ type Standing struct {
 
 // Upcoming is the front page's Upcoming Events for a person: the events,
 // the saved calendar they are read under by token, and every saved
-// calendar of theirs - the first their default on Helios Calendar - for
+// calendar of theirs - the first their default on Helios When - for
 // the picker beside the heading.
 type Upcoming struct {
 	Events []Event `json:"events"`
@@ -102,7 +102,7 @@ type SavedCalendar struct {
 	Locked bool   `json:"locked,omitempty"`
 }
 
-// Month is a month as the rail's calendar shows it, from Helios Calendar:
+// Month is a month as the rail's calendar shows it, from Helios When:
 // today, the school days in it with what kind of day each is for the
 // viewer's classrooms, and the viewer's events that touch it.
 type Month struct {
@@ -339,7 +339,7 @@ func (a app) upcomingUnder(w http.ResponseWriter, r *http.Request) {
 }
 
 // setDefault makes one of the person's saved calendars their default on
-// Helios Calendar - the one Upcoming Events and the rail's month read.
+// Helios When - the one Upcoming Events and the rail's month read.
 func (a app) setDefault(w http.ResponseWriter, r *http.Request) {
 	email := strings.ToLower(auth.Email(r))
 	var body struct {

@@ -1,5 +1,5 @@
-// Package groups serves Helios Loop: named email groups drawn from the directory by rules, each an address mail is received for and forwarded from.
-package groups
+// Package loop serves Helios Loop: named email groups drawn from the directory by rules, each an address mail is received for and forwarded from.
+package loop
 
 import (
 	"fmt"

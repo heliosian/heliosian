@@ -1,4 +1,4 @@
-package events
+package team
 
 import (
 	"bytes"
@@ -155,7 +155,7 @@ func (a app) letterFor(base string, act *Activity) letter {
 	// date. A pending or hidden thing has none.
 	for n := act; n != nil; n = model.byID[n.Parent] {
 		if previewable(n) {
-			l.Picture = base + "/share/" + n.ID + ".png"
+			l.Picture = base + "/open/share/" + n.ID + ".png"
 			break
 		}
 	}

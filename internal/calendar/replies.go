@@ -20,7 +20,7 @@ import (
 // An invite names the calendar's reply address as its organizer, so the
 // Accept or Decline a person taps in their own calendar app comes back
 // here as a reply email with an iCalendar REPLY in it. Mailgun takes those
-// in, stores them and calls /api/calendar/replies; the reply's attendee and
+// in, stores them and calls /hooks/replies; the reply's attendee and
 // standing become the person's answer, the same as a Yes or No on the site
 // - with no invite sent back, since they are answering the one they have.
 

@@ -6,7 +6,7 @@ import {groupPage, newGroupPage} from './pages/group.js';
 import {adminPage} from './pages/admin.js';
 
 export async function load() {
-  const res = await fetch('/api/groups/model');
+  const res = await fetch('/api/loop/model');
   if (!res.ok) {
     throw new Error(`loading model failed: ${res.status}`);
   }

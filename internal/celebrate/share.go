@@ -18,12 +18,12 @@ import (
 // A shared link to a party is fetched by whatever chat app it lands in, with
 // no session, so the preview it shows comes from two public things: Open
 // Graph tags slipped into the sign-in page served at the party's address, and
-// a card image at /share/{id}.png drawn here - the brand, the title, when and
+// a card image at /open/share/{id}.png drawn here - the brand, the title, when and
 // where (in words, never the street), and the party's flyer or picture. Only
 // an open party is previewed that way; a link to anything else - the site
 // itself, a page, a pending or hidden party - previews what is on sale: the
 // next party with tickets left on the left, and a list of the three after it
-// on the right, at /share/upcoming.png. The tags say what a poster on the
+// on the right, at /open/share/upcoming.png. The tags say what a poster on the
 // wall says and nothing about who is coming.
 
 // cardStyle is the site's dress for the card: the palette sampled from the
@@ -145,7 +145,7 @@ func PreviewHead(cache *Cache) func(r *http.Request) string {
 		if desc == "" {
 			desc = "A fun(d)raiser party for the Helios community."
 		}
-		return previewTags(p.Title, desc, origin+model.PathOf(p), origin+"/share/"+p.ID+".png")
+		return previewTags(p.Title, desc, origin+model.PathOf(p), origin+"/open/share/"+p.ID+".png")
 	}
 }
 
@@ -171,7 +171,7 @@ func upcomingHead(m *Model, origin string) string {
 			desc += ". Also coming: " + strings.Join(names, ", ") + "."
 		}
 	}
-	return previewTags("Upcoming Parties", desc, origin+"/", origin+"/share/upcoming.png")
+	return previewTags("Upcoming Parties", desc, origin+"/", origin+"/open/share/upcoming.png")
 }
 
 // previewTags is the markup itself: the Open Graph and Twitter tags for a
@@ -204,7 +204,7 @@ func previewTags(title, desc, url, image string) string {
 	return b.String()
 }
 
-// shareUpcoming serves /share/upcoming.png: the card for the site itself,
+// shareUpcoming serves /open/share/upcoming.png: the card for the site itself,
 // which is the next party with tickets left, dressed as its own card would
 // be, beside a list of the three after it. It changes as parties sell out
 // and pass, so its ETag hashes what it names.
@@ -243,7 +243,7 @@ func (a app) shareUpcoming(w http.ResponseWriter, r *http.Request) {
 	w.Write(png)
 }
 
-// shareCard serves /share/{id}.png: the card for one previewable party. The
+// shareCard serves /open/share/{id}.png: the card for one previewable party. The
 // card depends only on the title, the subtitle, the lines and the picture,
 // so its ETag is a hash of those and a chat app that fetched it once need not again.
 func (a app) shareCard(w http.ResponseWriter, r *http.Request) {

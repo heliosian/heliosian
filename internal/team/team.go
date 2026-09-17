@@ -1,4 +1,4 @@
-package events
+package team
 
 import (
 	"context"
@@ -78,26 +78,26 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	for _, page := range pages {
 		mux.HandleFunc("GET "+page, a.ready(a.page))
 	}
-	mux.HandleFunc("GET /api/events/model", a.ready(a.model))
-	mux.HandleFunc("GET /api/events/images/search", a.ready(a.search.ServeSearch))
-	mux.HandleFunc("POST /api/events/images/import", a.ready(a.importImage))
+	mux.HandleFunc("GET /api/team/model", a.ready(a.model))
+	mux.HandleFunc("GET /api/team/images/search", a.ready(a.search.ServeSearch))
+	mux.HandleFunc("POST /api/team/images/import", a.ready(a.importImage))
 	// Public, past sign-in (auth.Public): the image a chat app shows for a link.
-	mux.HandleFunc("GET /share/{id}", a.ready(a.shareCard))
-	mux.HandleFunc("GET /api/events/people", a.ready(a.people))
-	mux.HandleFunc("POST /api/events/volunteer", a.ready(a.saveVolunteer))
-	mux.HandleFunc("DELETE /api/events/volunteer", a.ready(a.removeVolunteer))
-	mux.HandleFunc("POST /api/events/activity", a.ready(a.saveActivity))
-	mux.HandleFunc("POST /api/events/order", a.ready(a.orderChildren))
-	mux.HandleFunc("DELETE /api/events/activity", a.ready(a.deleteActivity))
-	mux.HandleFunc("POST /api/events/link", a.ready(a.saveLink))
-	mux.HandleFunc("DELETE /api/events/link", a.ready(a.deleteLink))
-	mux.HandleFunc("POST /api/events/category", a.ready(a.saveCategory))
-	mux.HandleFunc("DELETE /api/events/category", a.ready(a.deleteCategory))
-	mux.HandleFunc("POST /api/events/categories/order", a.ready(a.reorderCategories))
-	mux.HandleFunc("POST /api/events/copy", a.ready(a.copyActivity))
-	mux.HandleFunc("POST /api/events/settings", a.ready(a.saveSettings))
-	mux.HandleFunc("POST /api/events/notify", a.ready(a.saveNotify))
-	mux.HandleFunc("POST /api/events/image", a.ready(a.uploadImage))
+	mux.HandleFunc("GET /open/share/{id}", a.ready(a.shareCard))
+	mux.HandleFunc("GET /api/team/people", a.ready(a.people))
+	mux.HandleFunc("POST /api/team/volunteer", a.ready(a.saveVolunteer))
+	mux.HandleFunc("DELETE /api/team/volunteer", a.ready(a.removeVolunteer))
+	mux.HandleFunc("POST /api/team/activity", a.ready(a.saveActivity))
+	mux.HandleFunc("POST /api/team/order", a.ready(a.orderChildren))
+	mux.HandleFunc("DELETE /api/team/activity", a.ready(a.deleteActivity))
+	mux.HandleFunc("POST /api/team/link", a.ready(a.saveLink))
+	mux.HandleFunc("DELETE /api/team/link", a.ready(a.deleteLink))
+	mux.HandleFunc("POST /api/team/category", a.ready(a.saveCategory))
+	mux.HandleFunc("DELETE /api/team/category", a.ready(a.deleteCategory))
+	mux.HandleFunc("POST /api/team/categories/order", a.ready(a.reorderCategories))
+	mux.HandleFunc("POST /api/team/copy", a.ready(a.copyActivity))
+	mux.HandleFunc("POST /api/team/settings", a.ready(a.saveSettings))
+	mux.HandleFunc("POST /api/team/notify", a.ready(a.saveNotify))
+	mux.HandleFunc("POST /api/team/image", a.ready(a.uploadImage))
 	mux.HandleFunc("GET /api/admin/state", a.ready(a.adminState))
 	mux.HandleFunc("POST /api/admin/admins", a.ready(a.setAdmins))
 }

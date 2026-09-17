@@ -33,8 +33,8 @@ import (
 	"heliosian/internal/devtls"
 	"heliosian/internal/feedback"
 	"heliosian/internal/geocode"
-	"heliosian/internal/groups"
 	"heliosian/internal/logging"
+	"heliosian/internal/loop"
 	"heliosian/internal/mail"
 	"heliosian/internal/who"
 )
@@ -104,7 +104,7 @@ func sampleServer() (*http.Server, *who.Queue) {
 		Feedback:      printedFeedback{},
 		// Loop's forwards would land as .eml files beside the other sample
 		// mail and its archive under loop/ there; nothing receives for it.
-		Loop: groups.Mail{Sender: &mail.Files{Dir: mailDir(), From: "Helios Loop"}, Key: []byte("sample"), Base: "https://loop.local.heliosian.com:" + app.Port(), Archive: groups.DirArchive{Dir: mailDir()}},
+		Loop: loop.Mail{Sender: &mail.Files{Dir: mailDir(), From: "Helios Loop"}, Key: []byte("sample"), Base: "https://loop.local.heliosian.com:" + app.Port(), Archive: loop.DirArchive{Dir: mailDir()}},
 	})
 	// No Google sign-in here, but Spoof Mode still: a sign-in with a key of
 	// its own signs the spoof cookie and answers the toolbar's switch, and
@@ -120,11 +120,11 @@ func sampleServer() (*http.Server, *who.Queue) {
 	return localTLS(app.Server(map[string]http.Handler{
 		"who":       app.Public("who", signIn.Fixed(sampleUser, app.Logged("who", app.Files("who", core.Gate)))),
 		"home":      app.Public("home", signIn.Fixed(sampleUser, app.Logged("home", app.Files("home", core.Home)))),
-		"team":      app.Public("team", signIn.Fixed(sampleUser, app.Logged("team", app.Files("team", core.Events)))),
+		"team":      app.Public("team", signIn.Fixed(sampleUser, app.Logged("team", app.Files("team", core.Team)))),
 		"birthday":  app.Public("birthday", signIn.Fixed(sampleUser, app.Logged("birthday", app.Files("birthday", core.Birthday)))),
 		"celebrate": app.Public("celebrate", signIn.Fixed(sampleUser, app.Logged("celebrate", app.Files("celebrate", core.Celebrate)))),
 		"calendar":  app.Public("calendar", signIn.Fixed(sampleUser, app.Logged("calendar", app.Files("calendar", core.Calendar)))),
-		"loop":      app.Public("loop", signIn.Fixed(sampleUser, app.Logged("loop", app.Files("loop", core.Groups)))),
+		"loop":      app.Public("loop", signIn.Fixed(sampleUser, app.Logged("loop", app.Files("loop", core.Loop)))),
 	}), core.Queue)
 }
 

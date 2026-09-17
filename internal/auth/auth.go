@@ -64,19 +64,13 @@ func (a *Auth) Fixed(email string, next http.Handler) http.Handler {
 	})
 }
 
-// Public names the two endpoints the splash page needs before anyone has a
-// session: the client id it initializes Google sign-in with, and the login POST.
-// Public is what serves without a session: the sign-in exchange itself, an
-// app's share cards - the images a chat app fetches to preview a link, which
-// no crawler could sign in for - the calendar's personal feeds, which a
-// calendar app fetches by their secret address, the calendar's reply
-// webhook and Loop's mail and delivery-event routes, which the mail
-// providers call and sign, Loop's unsubscribe links, which a mail app
-// follows by their signed token, and everything under /hooks/, where every
-// inbound webhook from here on lives, each proving its caller its own way.
+// Public is what serves without a session: the sign-in exchange itself,
+// everything under /hooks/, the callbacks the service asked other services
+// for, and everything under /open/, the addresses it hands out - share cards,
+// the calendar's personal feeds, Loop's unsubscribe links - that a crawler,
+// a calendar app or a mail client follows, each proving its caller its own way.
 func Public(path string) bool {
-	return path == "/auth/login" || path == "/auth/client" || path == "/api/calendar/replies" || path == "/api/loop/mail" || path == "/api/loop/events" ||
-		strings.HasPrefix(path, "/share/") || strings.HasPrefix(path, "/feed/") || strings.HasPrefix(path, "/unsubscribe/") || strings.HasPrefix(path, "/hooks/")
+	return path == "/auth/login" || path == "/auth/client" || strings.HasPrefix(path, "/hooks/") || strings.HasPrefix(path, "/open/")
 }
 
 func Token(key []byte, email string, expiry time.Time) string {

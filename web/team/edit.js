@@ -44,7 +44,7 @@ export async function send(method, url, body) {
 export async function saveActivity(body) {
   const before = body.id && activity(body.id) ? activityPath(activity(body.id)) : null;
   try {
-    await send('POST', '/api/events/activity', body);
+    await send('POST', '/api/team/activity', body);
   } catch (err) {
     const c = err.conflict;
     if (!c || !c.prior) {
@@ -53,7 +53,7 @@ export async function saveActivity(body) {
     if (!confirm(`“${body.prettyId}” is the address of “${c.title}” from ${c.year}. Rename that one to “${c.renamed}” and use “${body.prettyId}” here?`)) {
       throw new Error('Pick another address, or agree to rename the old one.');
     }
-    await send('POST', '/api/events/activity', {...body, takeOver: true});
+    await send('POST', '/api/team/activity', {...body, takeOver: true});
   }
   await reload();
   // Changing the friendly address while on its page moves the page: the old
@@ -69,7 +69,7 @@ export async function saveActivity(body) {
 async function uploadImage(file) {
   const body = new FormData();
   body.append('image', file);
-  const res = await fetch('/api/events/image', {method: 'POST', body});
+  const res = await fetch('/api/team/image', {method: 'POST', body});
   if (!res.ok) {
     throw new Error(await res.text());
   }
@@ -496,7 +496,7 @@ let peopleCache = null;
 
 async function people() {
   if (!peopleCache) {
-    const res = await fetch('/api/events/people');
+    const res = await fetch('/api/team/people');
     peopleCache = res.ok ? await res.json() : [];
   }
   return peopleCache;
@@ -864,7 +864,7 @@ function signUpForm(node, existing) {
     const appoint = button(isChair ? 'Remove as co-chair' : 'Make co-chair', isChair ? 'close' : 'plus',
       'button button-secondary button-small', async () => {
         try {
-          await send('POST', '/api/events/volunteer', {
+          await send('POST', '/api/team/volunteer', {
             id: node.id, email: existing.email, position: isChair ? 'Volunteer' : 'Co-Chair', note: note.value,
           });
           closeModal();
@@ -880,13 +880,13 @@ function signUpForm(node, existing) {
   return {
     fields,
     saveLabel: existing ? 'Save' : 'Sign Up',
-    submit: () => send('POST', '/api/events/volunteer', {
+    submit: () => send('POST', '/api/team/volunteer', {
       id: where ? where.value : node.id,
       from: where && where.value !== node.id ? node.id : '',
       email: existing ? existing.email : (who.value === 'other' ? picker.value() : ''),
       position: isChair && !editor ? 'Co-Chair' : position.value, note: note.value,
     }),
-    onDelete: existing ? () => send('DELETE', '/api/events/volunteer', {id: node.id, email: existing.email}) : null,
+    onDelete: existing ? () => send('DELETE', '/api/team/volunteer', {id: node.id, email: existing.email}) : null,
     deleteLabel: 'Remove',
     confirmDelete: existing ? `Remove ${existing.name} from ${node.title}?` : '',
   };
@@ -897,7 +897,7 @@ export async function removeVolunteer(node, volunteer) {
     return;
   }
   try {
-    await send('DELETE', '/api/events/volunteer', {id: node.id, email: volunteer.email});
+    await send('DELETE', '/api/team/volunteer', {id: node.id, email: volunteer.email});
     await reload();
   } catch (err) {
     toast(err.message);
@@ -1307,7 +1307,7 @@ export function openActivity(act, options) {
         }
       }
     },
-    onDelete: act && admin ? () => send('DELETE', '/api/events/activity', {id: act.id}) : null,
+    onDelete: act && admin ? () => send('DELETE', '/api/team/activity', {id: act.id}) : null,
     confirmDelete: act ? `Delete “${act.title}” (${act.year})? Its links go with it.` : '',
     // A deleted thing under an event sends you back up to that event; a
     // deleted event, to the front page. The path is taken now, while the
@@ -1326,11 +1326,11 @@ export function openLink(node, item) {
     field('Description', description, 'A line about what people will find there'),
     image.wrap,
   ], {
-    submit: () => send('POST', '/api/events/link', {
+    submit: () => send('POST', '/api/team/link', {
       id: node.id, original: item ? item.title : '',
       title: title.value, url: url.value, description: description.value, image: image.value(),
     }),
-    onDelete: item ? () => send('DELETE', '/api/events/link', {id: node.id, title: item.title}) : null,
+    onDelete: item ? () => send('DELETE', '/api/team/link', {id: node.id, title: item.title}) : null,
     confirmDelete: item ? `Remove the link “${item.title}”?` : '',
   });
 }
@@ -1635,7 +1635,7 @@ export function openImageSearch(initial, onPicked) {
     status.textContent = 'Searching…';
     grid.replaceChildren();
     try {
-      const res = await fetch(`/api/events/images/search?q=${encodeURIComponent(q)}&source=${encodeURIComponent(source)}`);
+      const res = await fetch(`/api/team/images/search?q=${encodeURIComponent(q)}&source=${encodeURIComponent(source)}`);
       if (!res.ok) {
         throw new Error(await res.text());
       }
@@ -1659,7 +1659,7 @@ export function openImageSearch(initial, onPicked) {
           status.textContent = 'Importing…';
           tile.classList.add('is-picked');
           try {
-            const imported = await fetch('/api/events/images/import', {
+            const imported = await fetch('/api/team/images/import', {
               method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({url: hit.url, download: hit.download || ''}),
             });
             if (!imported.ok) {
@@ -1733,13 +1733,13 @@ export function openCategory(category, eventId, after) {
   }
   openModal(category ? 'Edit Category' : 'Add Category', fields, {
     saveLabel: category ? 'Save changes' : 'Add',
-    submit: () => send('POST', '/api/events/category', {
+    submit: () => send('POST', '/api/team/category', {
       id: category ? category.id : '', eventId: eventId || '',
       title: title.value, description: description.value, image: image.value(), allowAdding: adding.value,
       showOnMain: onMain ? onMain.input.checked : true,
     }),
     afterSave: after,
-    onDelete: category ? () => send('DELETE', '/api/events/category', {id: category.id}) : null,
+    onDelete: category ? () => send('DELETE', '/api/team/category', {id: category.id}) : null,
     confirmDelete: category ? `Delete the category “${category.title}”?` : '',
     afterDelete: after,
   });
@@ -1766,7 +1766,7 @@ export function categoryList(root, after) {
     const [moved] = ids.splice(from, 1);
     ids.splice(to, 0, moved);
     try {
-      await send('POST', '/api/events/categories/order', {eventId, ids});
+      await send('POST', '/api/team/categories/order', {eventId, ids});
       await reload();
       if (after) {
         after();
@@ -1820,7 +1820,7 @@ export function openSettings() {
   const expense = text(settings.expenseFormUrl, {type: 'url', required: true});
   const intro = textarea(settings.intro, 4);
   openModal('Settings', [field('Expense form URL', expense), field('Intro', intro, 'Shown under the Sign Up heading')], {
-    submit: () => send('POST', '/api/events/settings', {expenseFormUrl: expense.value, intro: intro.value}),
+    submit: () => send('POST', '/api/team/settings', {expenseFormUrl: expense.value, intro: intro.value}),
   });
 }
 
@@ -1829,7 +1829,7 @@ export async function copyToNextYear(act) {
     return;
   }
   try {
-    await send('POST', '/api/events/copy', {id: act.id});
+    await send('POST', '/api/team/copy', {id: act.id});
     await reload();
     toast(`Copied to ${years().next}`);
   } catch (err) {

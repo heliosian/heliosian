@@ -22,12 +22,12 @@ To run against real community data instead, see [docs/dev.md](docs/dev.md).
 - `internal/config` — the Config sheet: super admins and the platform settings, served at `/api/config`
 - `internal/who` — the directory app: model load, handlers, admin tools, self-service edits
 - `internal/home` — the link portal: model load, handlers, admin edits
-- `internal/events` — the volunteer portal: the Events sheet's model, handlers, sign-ups, and admin edits
+- `internal/team` — HCA-Team, the volunteer portal: the Events sheet's model, handlers, sign-ups, and admin edits
 - `internal/birthday` — the birthday team: the Birthdays sheet's model, the derived dates and stages, handlers, and admin edits
 - `internal/celebrate` — Helios Celebrate: the Celebrate sheet's model, parties, tickets and the waitlist, handlers, and admin edits
-- `internal/calendar` — Helios Calendar: the Calendar sheet's model, audience resolution, the day plan, handlers, and personal feeds
+- `internal/calendar` — Helios When: the Calendar sheet's model, audience resolution, the day plan, handlers, and personal feeds
 - `internal/calendarimport` — the calendar import: the school's Google Calendar into the Calendar sheet as it changes, from the serving binary, and its year calendar PDF from the periodic sync, classified by Claude
-- `internal/groups` — Helios Loop: the Groups sheet's model, the rule evaluator, the mail received and forwarded, handlers, and admin edits
+- `internal/loop` — Helios Loop: the Groups sheet's model, the rule evaluator, the mail received and forwarded, handlers, and admin edits
 - `internal/feedback` — the toolbar's reports, queued and filed as issues in the private triage repository
 - `internal/blob` — media from Cloud Storage, held in memory with stored thumbnails
 - `internal/sharecard` — the 1200x630 picture a chat app shows for a shared link, drawn for HCA-Team and Helios Celebrate in each one's dress
@@ -65,10 +65,10 @@ Heliosian, in `docs/home/`:
 - [home.md](docs/home/home.md) — the link portal spec
 - [data.md](docs/home/data.md) — the Apps sheet and its rules
 
-HCA-Team, in `docs/events/`:
+HCA-Team, in `docs/team/`:
 
-- [events.md](docs/events/events.md) — the volunteer portal spec
-- [data.md](docs/events/data.md) — the Events sheet and its rules
+- [team.md](docs/team/team.md) — the volunteer portal spec
+- [data.md](docs/team/data.md) — the Events sheet and its rules
 
 Helios Staff Birthdays, in `docs/birthday/`:
 
@@ -80,14 +80,14 @@ Helios Celebrate, in `docs/celebrate/`:
 - [celebrate.md](docs/celebrate/celebrate.md) — the fun(d)raiser parties site spec
 - [data.md](docs/celebrate/data.md) — the Celebrate sheet and its rules
 
-Helios Calendar, in `docs/calendar/`:
+Helios When, in `docs/calendar/`:
 
 - [calendar.md](docs/calendar/calendar.md) — the school calendar app spec: the pages, the filters, and personal feeds
 - [data.md](docs/calendar/data.md) — the Calendar sheet, the day plan, and the import
 
-Helios Loop, in `docs/groups/`:
+Helios Loop, in `docs/loop/`:
 
-- [groups.md](docs/groups/groups.md) — the email groups app spec: groups, rules, managers, and how mail to a group reaches its members
-- [data.md](docs/groups/data.md) — the Groups sheet, the membership evaluator, and the mail pipeline through Mailgun
+- [loop.md](docs/loop/loop.md) — the email groups app spec: groups, rules, managers, and how mail to a group reaches its members
+- [data.md](docs/loop/data.md) — the Groups sheet, the membership evaluator, and the mail pipeline through Mailgun
 
-Each app keeps its own docs under `docs/<app>/`, named for the sheet it serves; the top level is only what every app shares.
+Each app keeps its own docs under `docs/<app>/`, named for its hostname; the top level is only what every app shares.

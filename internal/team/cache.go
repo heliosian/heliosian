@@ -1,4 +1,4 @@
-package groups
+package team
 
 import (
 	"log/slog"
@@ -20,30 +20,36 @@ type Enqueuer interface {
 
 type Cache struct {
 	source     data.Source
+	images     ImageChecker
 	superAdmin func(email string) bool
 	queue      Enqueuer
 	mu         sync.RWMutex
 	model      *Model
 	tables     *Tables
+	err        error
 	// edits counts every change applied from a request, so a refresh that
 	// read the sheet before one landed knows not to put the older sheet back.
 	edits int
 }
 
-func NewCache(source data.Source, superAdmin func(string) bool, queue Enqueuer) (*Cache, error) {
-	c := &Cache{source: source, superAdmin: superAdmin, queue: queue}
-	if err := c.refresh(); err != nil {
-		return nil, err
-	}
+// NewCache loads the sheet and keeps reloading it. A sheet that will not load
+// is returned as the error, but the cache is still usable and keeps trying on
+// the refresh interval: Model and Tables are nil until a load succeeds, and Err
+// says why. That way a broken Events sheet stalls the portal rather than the
+// server it shares with the directory, and comes back once the sheet is fixed
+// without a restart.
+func NewCache(source data.Source, images ImageChecker, superAdmin func(string) bool, queue Enqueuer) (*Cache, error) {
+	c := &Cache{source: source, images: images, superAdmin: superAdmin, queue: queue}
+	err := c.refresh()
 	go c.refreshLoop()
-	return c, nil
+	return c, err
 }
 
 func (c *Cache) refreshLoop() {
 	for range time.Tick(refreshInterval) {
 		c.queue.Add(func() {
 			if err := c.refresh(); err != nil {
-				slog.Error("groups model refresh", "error", err)
+				slog.Error("events model refresh", "error", err)
 			}
 		})
 	}
@@ -55,39 +61,43 @@ func (c *Cache) refresh() error {
 	before := c.edits
 	c.mu.RUnlock()
 	tables, err := ReadTables(c.source)
-	if err != nil {
-		return err
-	}
-	model, err := BuildModel(tables)
-	if err != nil {
-		return err
+	if err == nil {
+		var model *Model
+		if model, err = BuildModel(tables, c.images); err == nil {
+			// A request's change applied while the sheet was being read is newer
+			// than what was read, and its write is still queued behind this
+			// refresh; keep it, and let the next refresh pick the sheet up.
+			c.mu.Lock()
+			if c.edits == before {
+				c.tables, c.model = tables, model
+			} else {
+				slog.Info("events model refresh skipped: edited while reading")
+			}
+			c.mu.Unlock()
+		}
 	}
 	c.mu.Lock()
-	if c.edits == before {
-		c.tables, c.model = tables, model
-	} else {
-		slog.Info("groups model refresh skipped: edited while reading")
-	}
+	c.err = err
 	c.mu.Unlock()
-	rules := 0
-	for _, g := range model.Groups {
-		rules += len(g.Rules)
+	if err != nil {
+		return err
 	}
-	slog.Info("loaded groups model", "groups", len(model.Groups), "rules", rules, "took", time.Since(start).Round(time.Millisecond))
+	model := c.Model()
+	children, volunteers := 0, len(tables.Volunteers)
+	for _, a := range model.Activities {
+		children += len(a.Descendants())
+	}
+	slog.Info("loaded events model", "categories", len(model.Categories), "roots", len(model.Activities),
+		"children", children, "volunteers", volunteers, "skipped", model.Skipped, "took", time.Since(start).Round(time.Millisecond))
 	return nil
 }
 
+// set applies a request's change. It counts as an edit, which a refresh in
+// flight defers to.
 func (c *Cache) set(tables *Tables, model *Model) {
 	c.mu.Lock()
 	c.tables = tables
 	c.model = model
-	c.edits++
-	c.mu.Unlock()
-}
-
-func (c *Cache) edit(fn func(*Tables) *Tables) {
-	c.mu.Lock()
-	c.tables = fn(c.tables)
 	c.edits++
 	c.mu.Unlock()
 }
@@ -104,8 +114,19 @@ func (c *Cache) Tables() *Tables {
 	return c.tables
 }
 
+// Err is why the last load failed, or nil. A failed refresh keeps the previous
+// model serving, so Err can be set while Model is still usable.
+func (c *Cache) Err() error {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.err
+}
+
 func (c *Cache) tabAdmins() []string {
 	tables := c.Tables()
+	if tables == nil {
+		return nil
+	}
 	emails := make([]string, 0, len(tables.Admins))
 	for _, row := range tables.Admins {
 		emails = append(emails, row["Email"])
@@ -119,8 +140,8 @@ func (c *Cache) IsSuperAdmin(email string) bool {
 	return c.superAdmin(strings.ToLower(strings.TrimSpace(email)))
 }
 
-// IsAdmin reports whether email runs the app - sees and edits every group:
-// a row in the Admins tab, or a platform super admin.
+// IsAdmin reports whether email runs the portal: a row in the Admins tab, or a
+// platform super admin.
 func (c *Cache) IsAdmin(email string) bool {
 	email = strings.ToLower(strings.TrimSpace(email))
 	for _, admin := range c.tabAdmins() {

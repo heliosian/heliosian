@@ -1,6 +1,6 @@
 # Data model
 
-The tabs, columns, and validation rules are in `internal/events`; this file carries only what reading that code cannot tell you.
+The tabs, columns, and validation rules are in `internal/team`; this file carries only what reading that code cannot tell you.
 
 The portal's data lives in one Google Sheet, `Events`, in the community shared drive, reached through drive membership like the other sheets. `EVENTS_SHEET` names it, and `cmd/createtabs` reads that variable to lay it out from an empty spreadsheet titled `Events`.
 

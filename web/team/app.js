@@ -10,7 +10,7 @@ import {adminPage} from './pages/admin.js';
 import {approvalsPage} from './pages/approvals.js';
 
 export async function load() {
-  const res = await fetch('/api/events/model');
+  const res = await fetch('/api/team/model');
   if (!res.ok) {
     throw new Error(`loading model failed: ${res.status}`);
   }

@@ -7,7 +7,7 @@ import (
 	"heliosian/internal/calendar"
 	"heliosian/internal/celebrate"
 	"heliosian/internal/data"
-	"heliosian/internal/events"
+	"heliosian/internal/team"
 )
 
 type sampleImages struct{}
@@ -48,7 +48,7 @@ func samplesLinked(t *testing.T) calendarLinked {
 	if err != nil {
 		t.Fatal(err)
 	}
-	activities, err := events.NewCache(dir, sampleImages{}, func(string) bool { return false }, directQueue{})
+	activities, err := team.NewCache(dir, sampleImages{}, func(string) bool { return false }, directQueue{})
 	if err != nil {
 		t.Fatal(err)
 	}

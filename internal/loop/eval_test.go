@@ -1,4 +1,4 @@
-package groups_test
+package loop_test
 
 import (
 	"os"
@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"heliosian/internal/data"
-	"heliosian/internal/groups"
+	"heliosian/internal/loop"
 	"heliosian/internal/who"
 )
 
@@ -23,7 +23,7 @@ func (staticFiles) Prefetch([]string) error { return nil }
 
 const jordan = "jordan.whitfield@heliosschool.org"
 
-func sample(t *testing.T) (groups.Sources, *who.Tables) {
+func sample(t *testing.T) (loop.Sources, *who.Tables) {
 	t.Helper()
 	dir := &data.Dir{Root: "../../sampledata"}
 	tables, err := who.ReadTables(dir)
@@ -34,7 +34,7 @@ func sample(t *testing.T) (groups.Sources, *who.Tables) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return groups.Sources{
+	return loop.Sources{
 		Directory: model,
 		Tags:      func(owner string) map[string][]string { return who.TagsOf(tables.Tags, model, owner) },
 		Lists: func(owner string) []who.List {
@@ -52,36 +52,36 @@ func sample(t *testing.T) (groups.Sources, *who.Tables) {
 
 func TestSharedTagsReadAsTheirManager(t *testing.T) {
 	s, tables := sample(t)
-	key := groups.SharedKey("abena.osei@heliosschool.org", "Book Club")
-	got := members(t, s, rule(groups.KindInclude, func(r *groups.Rule) { r.Tags = []string{key} }))
+	key := loop.SharedKey("abena.osei@heliosschool.org", "Book Club")
+	got := members(t, s, rule(loop.KindInclude, func(r *loop.Rule) { r.Tags = []string{key} }))
 	want := who.TagsOf(tables.Tags, s.Directory, "abena.osei@heliosschool.org")["Book Club"]
 	if len(want) == 0 || !slices.Equal(got, want) {
 		t.Fatalf("book club: got %v, want %v", got, want)
 	}
-	unshared := members(t, s, rule(groups.KindInclude, func(r *groups.Rule) { r.Tags = []string{key}; r.Owner = "colin.quinn@heliosschool.org" }))
+	unshared := members(t, s, rule(loop.KindInclude, func(r *loop.Rule) { r.Tags = []string{key}; r.Owner = "colin.quinn@heliosschool.org" }))
 	if len(unshared) != 0 {
 		t.Fatalf("someone the tag is not shared with read it: %v", unshared)
 	}
 }
 
-func rule(kind string, edit func(r *groups.Rule)) groups.Rule {
-	r := groups.Rule{Kind: kind, Owner: jordan}
+func rule(kind string, edit func(r *loop.Rule)) loop.Rule {
+	r := loop.Rule{Kind: kind, Owner: jordan}
 	edit(&r)
 	return r
 }
 
-func members(t *testing.T, s groups.Sources, rules ...groups.Rule) []string {
+func members(t *testing.T, s loop.Sources, rules ...loop.Rule) []string {
 	t.Helper()
-	g := groups.Normalize(groups.Group{Name: "test", Title: "Test", Managers: []string{jordan}, Rules: rules})
-	if err := groups.CheckGroup(g); err != nil {
+	g := loop.Normalize(loop.Group{Name: "test", Title: "Test", Managers: []string{jordan}, Rules: rules})
+	if err := loop.CheckGroup(g); err != nil {
 		t.Fatal(err)
 	}
-	return groups.Members(g, s)
+	return loop.Members(g, s)
 }
 
 func TestRoleRuleIsEveryoneInTheRole(t *testing.T) {
 	s, _ := sample(t)
-	got := members(t, s, rule(groups.KindInclude, func(r *groups.Rule) { r.Roles = []string{"Student"} }))
+	got := members(t, s, rule(loop.KindInclude, func(r *loop.Rule) { r.Roles = []string{"Student"} }))
 	want := []string{}
 	for _, p := range s.Directory.People {
 		if p.IsStudent && !p.EmailMasked {
@@ -96,7 +96,7 @@ func TestRoleRuleIsEveryoneInTheRole(t *testing.T) {
 
 func TestParentsMatchThroughTheirChildren(t *testing.T) {
 	s, _ := sample(t)
-	got := members(t, s, rule(groups.KindInclude, func(r *groups.Rule) { r.Roles = []string{"Parent"}; r.Grades = []string{"Grade 3"} }))
+	got := members(t, s, rule(loop.KindInclude, func(r *loop.Rule) { r.Roles = []string{"Parent"}; r.Grades = []string{"Grade 3"} }))
 	if !slices.Contains(got, jordan) {
 		t.Fatalf("a Grade 3 parent is missing: %v", got)
 	}
@@ -109,7 +109,7 @@ func TestParentsMatchThroughTheirChildren(t *testing.T) {
 
 func TestSearchMatchesNameOrAddress(t *testing.T) {
 	s, _ := sample(t)
-	got := members(t, s, rule(groups.KindInclude, func(r *groups.Rule) { r.Search = "Whitfield" }))
+	got := members(t, s, rule(loop.KindInclude, func(r *loop.Rule) { r.Search = "Whitfield" }))
 	if len(got) < 3 {
 		t.Fatalf("whitfield: got %v", got)
 	}
@@ -123,8 +123,8 @@ func TestSearchMatchesNameOrAddress(t *testing.T) {
 
 func TestFamilyWidensAClassroom(t *testing.T) {
 	s, _ := sample(t)
-	base := func(r *groups.Rule) { r.Roles = []string{"Student"}; r.Classrooms = []string{"Hummingbirds"} }
-	alone := members(t, s, rule(groups.KindInclude, base))
+	base := func(r *loop.Rule) { r.Roles = []string{"Student"}; r.Classrooms = []string{"Hummingbirds"} }
+	alone := members(t, s, rule(loop.KindInclude, base))
 	if !slices.Contains(alone, "mia.torres@heliosschool.org") {
 		t.Fatalf("hummingbirds: %v", alone)
 	}
@@ -136,7 +136,7 @@ func TestFamilyWidensAClassroom(t *testing.T) {
 			t.Fatalf("%s is not a student", email)
 		}
 	}
-	widened := members(t, s, rule(groups.KindInclude, func(r *groups.Rule) { base(r); r.Family = []string{"Parents", "Siblings"} }))
+	widened := members(t, s, rule(loop.KindInclude, func(r *loop.Rule) { base(r); r.Family = []string{"Parents", "Siblings"} }))
 	if !slices.Contains(widened, "nico.torres@heliosschool.org") {
 		t.Fatalf("siblings: %v", widened)
 	}
@@ -153,24 +153,24 @@ func TestFamilyWidensAClassroom(t *testing.T) {
 
 func TestReasonsSayWhichRuleAndRelation(t *testing.T) {
 	s, _ := sample(t)
-	g := groups.Normalize(groups.Group{Name: "test", Title: "Test", Managers: []string{jordan}, Rules: []groups.Rule{
-		rule(groups.KindExclude, func(r *groups.Rule) { r.Search = "marco" }),
-		rule(groups.KindInclude, func(r *groups.Rule) {
+	g := loop.Normalize(loop.Group{Name: "test", Title: "Test", Managers: []string{jordan}, Rules: []loop.Rule{
+		rule(loop.KindExclude, func(r *loop.Rule) { r.Search = "marco" }),
+		rule(loop.KindInclude, func(r *loop.Rule) {
 			r.Roles = []string{"Student"}
 			r.Classrooms = []string{"Hummingbirds"}
 			r.Family = []string{"Parents", "Siblings"}
 		}),
-		rule(groups.KindInclude, func(r *groups.Rule) { r.Search = "nico" }),
+		rule(loop.KindInclude, func(r *loop.Rule) { r.Search = "nico" }),
 	}})
-	reasons := groups.Reasons(g, s)
-	if got := reasons["mia.torres@heliosschool.org"]; !slices.Equal(got, []groups.Reason{{Rule: 1}}) {
+	reasons := loop.Reasons(g, s)
+	if got := reasons["mia.torres@heliosschool.org"]; !slices.Equal(got, []loop.Reason{{Rule: 1}}) {
 		t.Fatalf("mia: %+v", got)
 	}
 	mia := "mia.torres@heliosschool.org"
-	if got := reasons["nico.torres@heliosschool.org"]; !slices.Equal(got, []groups.Reason{{Rule: 1, Through: "Siblings", Via: mia, ViaName: "Mia Torres"}, {Rule: 2}}) {
+	if got := reasons["nico.torres@heliosschool.org"]; !slices.Equal(got, []loop.Reason{{Rule: 1, Through: "Siblings", Via: mia, ViaName: "Mia Torres"}, {Rule: 2}}) {
 		t.Fatalf("nico: %+v", got)
 	}
-	if got := reasons["elena.torres@heliosschool.org"]; !slices.Equal(got, []groups.Reason{{Rule: 1, Through: "Parents", Via: mia, ViaName: "Mia Torres"}}) {
+	if got := reasons["elena.torres@heliosschool.org"]; !slices.Equal(got, []loop.Reason{{Rule: 1, Through: "Parents", Via: mia, ViaName: "Mia Torres"}}) {
 		t.Fatalf("elena: %+v", got)
 	}
 	if _, in := reasons["marco.torres@heliosschool.org"]; in {
@@ -181,8 +181,8 @@ func TestReasonsSayWhichRuleAndRelation(t *testing.T) {
 func TestExcludeRulesSubtract(t *testing.T) {
 	s, _ := sample(t)
 	got := members(t, s,
-		rule(groups.KindInclude, func(r *groups.Rule) { r.Roles = []string{"Student"} }),
-		rule(groups.KindExclude, func(r *groups.Rule) { r.Search = "torres" }),
+		rule(loop.KindInclude, func(r *loop.Rule) { r.Roles = []string{"Student"} }),
+		rule(loop.KindExclude, func(r *loop.Rule) { r.Search = "torres" }),
 	)
 	for _, email := range got {
 		if strings.Contains(email, "torres") {
@@ -196,12 +196,12 @@ func TestExcludeRulesSubtract(t *testing.T) {
 
 func TestTagsReadTheOwnersOwn(t *testing.T) {
 	s, tables := sample(t)
-	got := members(t, s, rule(groups.KindInclude, func(r *groups.Rule) { r.Tags = []string{"Carpool"} }))
+	got := members(t, s, rule(loop.KindInclude, func(r *loop.Rule) { r.Tags = []string{"Carpool"} }))
 	want := who.TagsOf(tables.Tags, s.Directory, jordan)["Carpool"]
 	if !slices.Equal(got, want) {
 		t.Fatalf("carpool: got %v, want %v", got, want)
 	}
-	other := members(t, s, rule(groups.KindInclude, func(r *groups.Rule) { r.Tags = []string{"Carpool"}; r.Owner = "asha.chandra@heliosschool.org" }))
+	other := members(t, s, rule(loop.KindInclude, func(r *loop.Rule) { r.Tags = []string{"Carpool"}; r.Owner = "asha.chandra@heliosschool.org" }))
 	if len(other) != 0 {
 		t.Fatalf("another owner's reading of the tag found %v", other)
 	}
@@ -209,7 +209,7 @@ func TestTagsReadTheOwnersOwn(t *testing.T) {
 
 func TestMagicTagsMatchByKey(t *testing.T) {
 	s, _ := sample(t)
-	got := members(t, s, rule(groups.KindInclude, func(r *groups.Rule) { r.Tags = []string{"party:p1"} }))
+	got := members(t, s, rule(loop.KindInclude, func(r *loop.Rule) { r.Tags = []string{"party:p1"} }))
 	if !slices.Equal(got, []string{"abena.osei@heliosschool.org", "colin.quinn@heliosschool.org"}) {
 		t.Fatalf("party: %v", got)
 	}
@@ -218,32 +218,32 @@ func TestMagicTagsMatchByKey(t *testing.T) {
 func TestAdditionsJoinTheMembersOnce(t *testing.T) {
 	s, _ := sample(t)
 	mia := "mia.torres@heliosschool.org"
-	g := groups.Normalize(groups.Group{Name: "test", Title: "Test", Managers: []string{jordan},
-		Rules: []groups.Rule{
-			rule(groups.KindInclude, func(r *groups.Rule) { r.Search = "mia torres" }),
-			rule(groups.KindExclude, func(r *groups.Rule) { r.Search = "coach" }),
+	g := loop.Normalize(loop.Group{Name: "test", Title: "Test", Managers: []string{jordan},
+		Rules: []loop.Rule{
+			rule(loop.KindInclude, func(r *loop.Rule) { r.Search = "mia torres" }),
+			rule(loop.KindExclude, func(r *loop.Rule) { r.Search = "coach" }),
 		},
-		Additions: []groups.Addition{{Email: "coach@club.example.org", Name: "Coach"}, {Email: mia, Name: "Mia by hand"}},
+		Additions: []loop.Addition{{Email: "coach@club.example.org", Name: "Coach"}, {Email: mia, Name: "Mia by hand"}},
 	})
-	reasons := groups.Reasons(g, s)
-	if got := reasons["coach@club.example.org"]; !slices.Equal(got, []groups.Reason{{Added: true}}) {
+	reasons := loop.Reasons(g, s)
+	if got := reasons["coach@club.example.org"]; !slices.Equal(got, []loop.Reason{{Added: true}}) {
 		t.Fatalf("coach: %+v", got)
 	}
-	if got := reasons[mia]; !slices.Equal(got, []groups.Reason{{Rule: 0}}) {
+	if got := reasons[mia]; !slices.Equal(got, []loop.Reason{{Rule: 0}}) {
 		t.Fatalf("mia is on by rule, not by hand: %+v", got)
 	}
-	if got := groups.Members(g, s); !slices.Equal(got, []string{"coach@club.example.org", mia}) {
+	if got := loop.Members(g, s); !slices.Equal(got, []string{"coach@club.example.org", mia}) {
 		t.Fatalf("members: %v", got)
 	}
 }
 
 func TestSampleGroupsLoadAndHaveMembers(t *testing.T) {
 	s, _ := sample(t)
-	tables, err := groups.ReadTables(&data.Dir{Root: "../../sampledata"})
+	tables, err := loop.ReadTables(&data.Dir{Root: "../../sampledata"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	model, err := groups.BuildModel(tables)
+	model, err := loop.BuildModel(tables)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -251,7 +251,7 @@ func TestSampleGroupsLoadAndHaveMembers(t *testing.T) {
 		t.Fatalf("%d groups loaded", len(model.Groups))
 	}
 	for _, g := range model.Groups {
-		members := groups.Members(g, s)
+		members := loop.Members(g, s)
 		if len(members) == 0 {
 			t.Errorf("%s has nobody", g.Address())
 		}
@@ -270,15 +270,15 @@ func TestSampleGroupsLoadAndHaveMembers(t *testing.T) {
 func TestExcludedAreLeftOff(t *testing.T) {
 	s, _ := sample(t)
 	mia := "mia.torres@heliosschool.org"
-	g := groups.Normalize(groups.Group{Name: "test", Title: "Test", Managers: []string{jordan},
-		Rules:     []groups.Rule{rule(groups.KindInclude, func(r *groups.Rule) { r.Search = "torres" })},
-		Additions: []groups.Addition{{Email: "coach@club.example.org", Name: "Coach"}},
-		Excluded:  []groups.Excluded{{Email: " Mia.Torres@heliosschool.org ", Note: "  Asked  to be left off ", When: "2026-09-16T10:00:00Z"}, {Email: "coach@club.example.org"}},
+	g := loop.Normalize(loop.Group{Name: "test", Title: "Test", Managers: []string{jordan},
+		Rules:     []loop.Rule{rule(loop.KindInclude, func(r *loop.Rule) { r.Search = "torres" })},
+		Additions: []loop.Addition{{Email: "coach@club.example.org", Name: "Coach"}},
+		Excluded:  []loop.Excluded{{Email: " Mia.Torres@heliosschool.org ", Note: "  Asked  to be left off ", When: "2026-09-16T10:00:00Z"}, {Email: "coach@club.example.org"}},
 	})
 	if len(g.Excluded) != 2 || g.Excluded[0].Email != mia || g.Excluded[0].Note != "Asked to be left off" || !g.HasExcluded(mia) {
 		t.Fatalf("excluded: %+v", g.Excluded)
 	}
-	members := groups.Members(g, s)
+	members := loop.Members(g, s)
 	if slices.Contains(members, mia) || slices.Contains(members, "coach@club.example.org") {
 		t.Fatalf("an excluded person is on the group: %v", members)
 	}

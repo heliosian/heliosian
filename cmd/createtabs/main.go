@@ -15,9 +15,9 @@ import (
 	"heliosian/internal/birthday"
 	"heliosian/internal/calendar"
 	"heliosian/internal/celebrate"
-	"heliosian/internal/events"
-	"heliosian/internal/groups"
 	"heliosian/internal/home"
+	"heliosian/internal/loop"
+	"heliosian/internal/team"
 )
 
 // spreadsheets pairs each layout with the variable naming the spreadsheet it belongs
@@ -123,14 +123,14 @@ var layouts = map[string][]tab{
 		{"Change Log", []string{"Timestamp", "Actor", "Action", "Kind", "Title", "Description", "URL", "Image", "Category", "Visible", "Style"}},
 	},
 	"Events": {
-		{"Categories", events.CategoryColumns},
-		{"Activities", append(events.ActivityColumns, events.OrderColumn, events.CompleteColumn)},
-		{"Volunteers", events.VolunteerColumns},
-		{"Links", events.LinkColumns},
-		{"Settings", events.SettingColumns},
-		{"Admins", events.AdminColumns},
-		{"Redirects", events.RedirectColumns},
-		{"Change Log", events.ChangeLogColumns},
+		{"Categories", team.CategoryColumns},
+		{"Activities", append(team.ActivityColumns, team.OrderColumn, team.CompleteColumn)},
+		{"Volunteers", team.VolunteerColumns},
+		{"Links", team.LinkColumns},
+		{"Settings", team.SettingColumns},
+		{"Admins", team.AdminColumns},
+		{"Redirects", team.RedirectColumns},
+		{"Change Log", team.ChangeLogColumns},
 	},
 	"Birthdays": {
 		{"Birthdays", birthday.BirthdayColumns},
@@ -180,16 +180,16 @@ var layouts = map[string][]tab{
 		{"Classroom Colors", []string{"Classroom", "Color"}},
 	},
 	"Groups": {
-		{"Groups", groups.GroupColumns},
-		{"Managers", groups.ManagerColumns},
-		{"Rules", groups.RuleColumns},
-		{"Additions", groups.AdditionColumns},
-		{"Excluded", groups.ExcludedColumns},
-		{"Aliases", groups.AliasColumns},
-		{"Messages", groups.MessageColumns},
-		{"Deliveries", groups.DeliveryColumns},
-		{"Admins", groups.AdminColumns},
-		{"Change Log", groups.ChangeLogColumns},
+		{"Groups", loop.GroupColumns},
+		{"Managers", loop.ManagerColumns},
+		{"Rules", loop.RuleColumns},
+		{"Additions", loop.AdditionColumns},
+		{"Excluded", loop.ExcludedColumns},
+		{"Aliases", loop.AliasColumns},
+		{"Messages", loop.MessageColumns},
+		{"Deliveries", loop.DeliveryColumns},
+		{"Admins", loop.AdminColumns},
+		{"Change Log", loop.ChangeLogColumns},
 	},
 }
 

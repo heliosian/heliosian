@@ -1,4 +1,4 @@
-package groups
+package loop
 
 import (
 	"strings"
@@ -30,7 +30,7 @@ func TestRewriteKeepsTheThreadAndTheBody(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	out := string(render(head, []string{"List-Unsubscribe: <https://loop.heliosian.com/unsubscribe/x>"}, body))
+	out := string(render(head, []string{"List-Unsubscribe: <https://loop.heliosian.com/open/unsubscribe/x>"}, body))
 	for _, want := range []string{
 		"From: \"Alice Smith via Soccer Team Families\" <soccer-team@loop.heliosian.com>\r\n",
 		"Subject: Re: [Soccer Team Families] Saturday's game\r\n",
@@ -44,7 +44,7 @@ func TestRewriteKeepsTheThreadAndTheBody(t *testing.T) {
 		"List-Post: <mailto:soccer-team@loop.heliosian.com>\r\n",
 		"Precedence: list\r\n",
 		"X-Helios-Loop: soccer-team\r\n",
-		"List-Unsubscribe: <https://loop.heliosian.com/unsubscribe/x>\r\n",
+		"List-Unsubscribe: <https://loop.heliosian.com/open/unsubscribe/x>\r\n",
 		"Received: from mx.example.org by inbound.resend.com\r\n",
 		"\r\n\r\nSee you at 9.\r\n",
 	} {

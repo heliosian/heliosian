@@ -619,7 +619,7 @@ function renderDrawer() {
   close.setAttribute('aria-label', 'Close');
   close.append(svg('close'));
   close.addEventListener('click', closeDrawer);
-  head.append(icon, el('span', '', 'Helios Calendar'), close);
+  head.append(icon, el('span', '', 'Helios When'), close);
   drawer.append(head);
   const nav = el('nav', 'app-nav drawer-nav');
   fillNav(nav);
@@ -854,7 +854,7 @@ function focusSearch() {
 
 export function setTitle(title) {
   document.querySelector('#mobile-title').textContent = title;
-  document.title = `${title} · Helios Calendar`;
+  document.title = `${title} · Helios When`;
 }
 
 function syncViewportHeight() {

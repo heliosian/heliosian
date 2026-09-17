@@ -1,6 +1,6 @@
-// Package events serves HCA-Team, the HCA volunteer portal: what the community
+// Package team serves HCA-Team, the HCA volunteer portal: what the community
 // association runs each school year, and who signed up to help.
-package events
+package team
 
 import (
 	"fmt"

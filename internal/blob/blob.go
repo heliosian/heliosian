@@ -215,15 +215,15 @@ func Register(mux *http.ServeMux, s *Store) {
 
 // RegisterHome serves what the link portal shows: its link and category
 // images, content addressed, and the directory's photos, for the signed-in
-// person's own avatar - the same pair of needs RegisterEvents covers.
+// person's own avatar - the same pair of needs RegisterTeam covers.
 func RegisterHome(mux *http.ServeMux, s *Store) {
 	mux.HandleFunc("GET /link-images/{name}", s.serve)
 	mux.HandleFunc("GET /photos/{name}", s.serve)
 }
 
-// RegisterEvents serves what the volunteer portal shows: the activity and role
+// RegisterTeam serves what the volunteer portal shows: the activity and role
 // images, content addressed, and the directory's photos of the volunteers.
-func RegisterEvents(mux *http.ServeMux, s *Store) {
+func RegisterTeam(mux *http.ServeMux, s *Store) {
 	mux.HandleFunc("GET /photos/{name}", s.serve)
 	mux.HandleFunc("GET /activity-images/{name}", s.serve)
 }
@@ -241,16 +241,16 @@ func RegisterCelebrate(mux *http.ServeMux, s *Store) {
 	mux.HandleFunc("GET /party-images/{name}", s.serve)
 }
 
-// RegisterCalendar serves what Helios Calendar shows: the directory's photo
+// RegisterCalendar serves what Helios When shows: the directory's photo
 // of the viewer, in the toolbar, and the category images, content addressed.
 func RegisterCalendar(mux *http.ServeMux, s *Store) {
 	mux.HandleFunc("GET /photos/{name}", s.serve)
 	mux.HandleFunc("GET /category-images/{name}", s.serve)
 }
 
-// RegisterGroups serves what Helios Loop shows: the directory's photos of
+// RegisterLoop serves what Helios Loop shows: the directory's photos of
 // the viewer, the managers and the members.
-func RegisterGroups(mux *http.ServeMux, s *Store) {
+func RegisterLoop(mux *http.ServeMux, s *Store) {
 	mux.HandleFunc("GET /photos/{name}", s.serve)
 }
 

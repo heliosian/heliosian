@@ -293,7 +293,7 @@ function sourceName(event) {
   return app ? app.name : {celebrate: 'Helios Celebrate', team: 'HCA-Team'}[event.linkApp] || event.linkApp;
 }
 
-// eventCard is one of the events coming up, from Helios Calendar - the
+// eventCard is one of the events coming up, from Helios When - the
 // school's, HCA-Team's and Celebrate's as the calendar lists them - opening
 // its page on When, with Yes and No under it, a cross to hide it, and for
 // an event another app runs, the way in as When's pill words it.

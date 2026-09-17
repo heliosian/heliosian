@@ -55,7 +55,7 @@ const (
 
 func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, directory Directory, superAdmins func() []string, linked func(email string) []Linked, search ImageSearch, mailbox Mail) Hooks {
 	if search.UserAgent == "" {
-		search.UserAgent = "Helios Calendar image search (+https://when.heliosian.com)"
+		search.UserAgent = "Helios When image search (+https://when.heliosian.com)"
 	}
 	a := app{cache: cache, writer: writer, queue: queue, store: store, directory: directory, superAdmins: superAdmins, linked: linked, search: search, mail: mailbox}
 	for _, page := range pages {
@@ -81,13 +81,13 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	mux.HandleFunc("POST /api/calendar/image", a.uploadImage)
 	mux.HandleFunc("GET /api/calendar/images/search", a.search.ServeSearch)
 	mux.HandleFunc("POST /api/calendar/images/import", a.importImage)
-	mux.HandleFunc("GET /feed/{file}", a.feed)
+	mux.HandleFunc("GET /open/feed/{file}", a.feed)
 	// Public, past sign-in (auth.Public): the cards a chat app fetches.
-	mux.HandleFunc("GET /share/upcoming.png", a.shareUpcoming)
-	mux.HandleFunc("GET /share/{id...}", a.shareCard)
-	// Public too: the mail provider's call for each reply to an invite,
-	// signed with the webhook secret.
-	mux.HandleFunc("POST /api/calendar/replies", a.replies)
+	mux.HandleFunc("GET /open/share/upcoming.png", a.shareUpcoming)
+	mux.HandleFunc("GET /open/share/{id...}", a.shareCard)
+	// Public too, under /hooks/: the mail provider's call for each reply to
+	// an invite, signed with the webhook secret.
+	mux.HandleFunc("POST /hooks/replies", a.replies)
 	return Hooks{Answer: a.answer, MakeDefault: a.makeDefault}
 }
 
@@ -172,7 +172,7 @@ func NewToken() string {
 }
 
 func feedURL(r *http.Request, token string) string {
-	return "https://" + r.Host + "/feed/" + token + ".ics"
+	return "https://" + r.Host + "/open/feed/" + token + ".ics"
 }
 
 func (a app) addFeed(w http.ResponseWriter, r *http.Request) {

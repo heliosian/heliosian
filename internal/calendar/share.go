@@ -17,10 +17,10 @@ import (
 // A shared link to an event is fetched by whatever chat app it lands in,
 // with no session, so the preview it shows comes from two public things:
 // Open Graph tags slipped into the sign-in page served at the event's
-// address, and a card image at /share/{id}.png drawn here - the brand, the
+// address, and a card image at /open/share/{id}.png drawn here - the brand, the
 // title, the day, the hours and the place, over the picture the event's
 // page wears. A link to anything else previews the calendar itself: the
-// next few events, at /share/upcoming.png. The tags say what the school's
+// next few events, at /open/share/upcoming.png. The tags say what the school's
 // own calendar says and nothing about who is going.
 
 // cardStyle is the calendar's dress for the card: the brand teal, the
@@ -149,13 +149,13 @@ func (a app) eventHead(e *Event, origin string) string {
 	if b := blurb(e); b != "" {
 		parts = append(parts, b)
 	}
-	return previewTags(e.Title, strings.Join(parts, " — "), origin+"/e/"+e.ID, origin+"/share/"+e.ID+".png")
+	return previewTags(e.Title, strings.Join(parts, " — "), origin+"/e/"+e.ID, origin+"/open/share/"+e.ID+".png")
 }
 
 // upcomingHead is the calendar's own preview: the next few events, in words,
 // with the card that draws them.
 func (a app) upcomingHead(origin string) string {
-	return previewTags("Helios When", whenWords, origin+"/", origin+"/share/upcoming.png")
+	return previewTags("Helios When", whenWords, origin+"/", origin+"/open/share/upcoming.png")
 }
 
 // previewTags is the markup itself: the Open Graph and Twitter tags for a
@@ -163,7 +163,7 @@ func (a app) upcomingHead(origin string) string {
 func previewTags(title, desc, url, image string) string {
 	tags := [][2]string{
 		{"og:type", "website"},
-		{"og:site_name", "Helios Calendar"},
+		{"og:site_name", "Helios When"},
 		{"og:title", title},
 		{"og:description", desc},
 		{"og:url", url},
@@ -188,7 +188,7 @@ func previewTags(title, desc, url, image string) string {
 	return b.String()
 }
 
-// shareUpcoming serves /share/upcoming.png: the card for the calendar
+// shareUpcoming serves /open/share/upcoming.png: the card for the calendar
 // itself - the next event dressed as its own card would be, beside a list
 // of the few after it. It changes as days pass, so its ETag hashes what it
 // names.
@@ -247,7 +247,7 @@ func shareButton(e *Event) string {
 	return "RSVP"
 }
 
-// shareCard serves /share/{id}.png: the card for one event. It depends only
+// shareCard serves /open/share/{id}.png: the card for one event. It depends only
 // on the title, the lines, the picture and the button's word, so its ETag
 // is a hash of those and a chat app that fetched it once need not again.
 func (a app) shareCard(w http.ResponseWriter, r *http.Request) {

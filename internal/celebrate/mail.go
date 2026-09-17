@@ -178,7 +178,7 @@ func (a app) letterFor(base string, p *Party) letter {
 	// The share card is the one picture a mail client can fetch without
 	// signing in; a pending or hidden party has none.
 	if previewable(p) {
-		l.Picture = base + "/share/" + p.ID + ".png"
+		l.Picture = base + "/open/share/" + p.ID + ".png"
 	}
 	return l
 }

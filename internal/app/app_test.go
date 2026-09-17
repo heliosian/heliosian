@@ -157,7 +157,7 @@ func TestRouteSendsAliasesToWhen(t *testing.T) {
 	}{
 		{"GET", "calendar.heliosian.com", "/day/2026-09-13?x=1", 301, "https://when.heliosian.com/day/2026-09-13?x=1"},
 		{"GET", "cal.local.heliosian.com:8080", "/", 301, "https://when.local.heliosian.com:8080/"},
-		{"GET", "calendar.heliosian.com", "/feed/abc.ics", 200, ""},
+		{"GET", "calendar.heliosian.com", "/open/feed/abc.ics", 200, ""},
 		{"GET", "calendar.heliosian.com", "/api/calendar/model", 200, ""},
 		{"POST", "calendar.heliosian.com", "/api/calendar/x", 200, ""},
 		{"GET", "when.heliosian.com", "/", 200, ""},

@@ -8,7 +8,7 @@ import (
 
 	"heliosian/internal/calendar"
 	"heliosian/internal/celebrate"
-	"heliosian/internal/events"
+	"heliosian/internal/team"
 	"heliosian/internal/who"
 )
 
@@ -21,7 +21,7 @@ import (
 // nothing.
 type calendarLinked struct {
 	celebrate *celebrate.Cache
-	events    *events.Cache
+	team      *team.Cache
 	directory familyLookup
 }
 
@@ -171,7 +171,7 @@ func (c calendarLinked) parties(now time.Time, family familyNames, full map[stri
 
 // activityImage is the picture HCA-Team's own page gives an event: its
 // own, else its category's, as a path on that site.
-func activityImage(model *events.Model, a *events.Activity) string {
+func activityImage(model *team.Model, a *team.Activity) string {
 	if a.ImageURL != "" {
 		return a.ImageURL
 	}
@@ -186,24 +186,24 @@ func activityImage(model *events.Model, a *events.Activity) string {
 // and a sign-up on any of them makes the event the familyNames's.
 func (c calendarLinked) activities(family familyNames, full map[string]string) []calendar.Linked {
 	out := []calendar.Linked{}
-	model := c.events.Model()
+	model := c.team.Model()
 	if model == nil {
 		return out
 	}
 	for _, a := range model.Activities {
-		if (a.Status != events.StatusOpen && a.Status != events.StatusDone) || a.Start == "" {
+		if (a.Status != team.StatusOpen && a.Status != team.StatusDone) || a.Start == "" {
 			continue
 		}
 		availability := "open"
 		switch {
-		case a.Status == events.StatusDone:
+		case a.Status == team.StatusDone:
 			availability = "done"
 		case a.VolunteersComplete || (a.Spots > 0 && len(a.Volunteers) >= a.Spots):
 			availability = "full"
 		}
 		var signed standing
 		people := []calendar.Standing{}
-		for _, item := range append([]*events.Activity{a}, a.Descendants()...) {
+		for _, item := range append([]*team.Activity{a}, a.Descendants()...) {
 			for _, v := range item.Volunteers {
 				if !family.has(v.Email) {
 					continue

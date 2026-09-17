@@ -438,7 +438,7 @@ function editor(g, isNew) {
     previewStatus.textContent = 'Working out the members…';
     try {
       const rules = draft.rules.filter(ruleSaysSomething);
-      const {members} = await send('POST', '/api/groups/preview', {name: isNew ? '' : draft.name, rules, additions: draft.additions, excluded: draft.excluded});
+      const {members} = await send('POST', '/api/loop/preview', {name: isNew ? '' : draft.name, rules, additions: draft.additions, excluded: draft.excluded});
       previewHead.textContent = `${members.length} ${members.length === 1 ? 'member' : 'members'}`;
       renderChanges(members, rules);
       previewStatus.textContent = rules.length ? '' : 'Add a rule to pick people out.';
@@ -641,7 +641,7 @@ function editor(g, isNew) {
     save.disabled = true;
     try {
       const body = {original: isNew ? '' : draft.name, name: draft.name, aliases: draft.aliases, title: draft.title, description: draft.description, prefix: draft.prefix, visible: draft.visible, managers: draft.managers, rules: draft.rules.filter(ruleSaysSomething), additions: draft.additions, excluded: draft.excluded};
-      const saved = await send('POST', '/api/groups/group', body);
+      const saved = await send('POST', '/api/loop/group', body);
       await load();
       toast(isNew ? 'Group made' : 'Saved');
       navigate(withTab(groupPath(saved)));
@@ -661,7 +661,7 @@ function editor(g, isNew) {
         return;
       }
       try {
-        await send('DELETE', '/api/groups/group', {name: g.name});
+        await send('DELETE', '/api/loop/group', {name: g.name});
         await load();
         toast('Group deleted');
         navigate('/');
@@ -799,7 +799,7 @@ export function groupPage(g) {
     const toggle = button(g.unsubscribed ? 'Resubscribe' : 'Unsubscribe', null, 'button button-secondary', async () => {
       toggle.disabled = true;
       try {
-        await send('POST', '/api/groups/subscription', {name: g.name, subscribed: g.unsubscribed});
+        await send('POST', '/api/loop/subscription', {name: g.name, subscribed: g.unsubscribed});
         await load();
         toast(g.unsubscribed ? 'Resubscribed' : 'Unsubscribed');
       } catch (err) {
@@ -942,7 +942,7 @@ function historyTab(g) {
   const load = async () => {
     loaded = true;
     try {
-      const res = await fetch('/api/groups/messages?name=' + encodeURIComponent(g.name));
+      const res = await fetch('/api/loop/messages?name=' + encodeURIComponent(g.name));
       if (!res.ok) {
         throw new Error(await res.text());
       }

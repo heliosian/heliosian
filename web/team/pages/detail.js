@@ -287,7 +287,7 @@ function factsCard(node, editing, save) {
               return;
             }
             try {
-              await send('POST', '/api/events/volunteer', {id: node.id, email: v.email, position: 'Co-Chair', note: v.note || ''});
+              await send('POST', '/api/team/volunteer', {id: node.id, email: v.email, position: 'Co-Chair', note: v.note || ''});
               await reload();
               toast(`${v.name} is now a co-chair`);
             } catch (err) {
@@ -337,7 +337,7 @@ function factsCard(node, editing, save) {
       if (!mine || mine.position === 'Volunteer') {
         body.append(button('Offer to Co-Chair', 'people', 'button button-small side-offer', async () => {
           try {
-            await send('POST', '/api/events/volunteer', {id: node.id, position: 'Open to Co-Chair', note: mine ? mine.note : ''});
+            await send('POST', '/api/team/volunteer', {id: node.id, position: 'Open to Co-Chair', note: mine ? mine.note : ''});
             await reload();
             toast('Thank you - the organizers will be in touch.');
           } catch (err) {
@@ -1106,7 +1106,7 @@ function childrenSection(node, editing) {
     }
     ids.splice(at, 0, id);
     try {
-      await send('POST', '/api/events/order', {parent: node.id, ids});
+      await send('POST', '/api/team/order', {parent: node.id, ids});
       await reload();
     } catch (err) {
       toast(err.message);

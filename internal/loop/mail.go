@@ -1,4 +1,4 @@
-package groups
+package loop
 
 import (
 	"context"
@@ -253,7 +253,7 @@ func (m *mailer) forward(ctx context.Context, j job) string {
 	sent, failures := 0, []string{}
 	for _, rcpt := range members {
 		tok := token(m.mail.Key, g.Name, rcpt)
-		unsubscribe := "List-Unsubscribe: <mailto:" + unsubscribeLocal + "@" + Domain + "?subject=" + tok + ">, <" + m.mail.Base + "/unsubscribe/" + tok + ">"
+		unsubscribe := "List-Unsubscribe: <mailto:" + unsubscribeLocal + "@" + Domain + "?subject=" + tok + ">, <" + m.mail.Base + "/open/unsubscribe/" + tok + ">"
 		msg := render(head, []string{unsubscribe, "List-Unsubscribe-Post: List-Unsubscribe=One-Click"}, body)
 		if err := m.mail.Sender.SendRaw(ctx, g.Address(), []string{rcpt}, msg); err != nil {
 			log.Error("groups: send failed", "to", rcpt, "error", err)

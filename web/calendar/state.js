@@ -115,11 +115,11 @@ export function unusedFeedName(name) {
 // webcal://, which Apple's and most others open straight into a
 // subscription.
 export function feedURL(token) {
-  return `${location.origin}/feed/${token}.ics`;
+  return `${location.origin}/open/feed/${token}.ics`;
 }
 
 export function webcalURL(token) {
-  return `webcal://${location.host}/feed/${token}.ics`;
+  return `webcal://${location.host}/open/feed/${token}.ics`;
 }
 
 // My Heliosian is the calendar everyone has and nobody can change: the

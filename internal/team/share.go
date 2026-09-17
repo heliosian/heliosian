@@ -1,4 +1,4 @@
-package events
+package team
 
 import (
 	"crypto/sha256"
@@ -18,7 +18,7 @@ import (
 // A shared link to an event is fetched by whatever chat app it lands in, with
 // no session, so the preview it shows comes from two public things: Open Graph
 // tags slipped into the sign-in page served at the event's address, and a card
-// image at /share/{id}.png drawn here - the brand, the title, when it is, and
+// image at /open/share/{id}.png drawn here - the brand, the title, when it is, and
 // the event's own image when it has one. Only what is open or done is
 // previewed; a hidden or pending thing shows the plain sign-in page. The tags
 // say the title, a sentence of the description and the date - the same things
@@ -160,13 +160,13 @@ func PreviewHead(cache *Cache) func(r *http.Request) string {
 			{"og:title", title},
 			{"og:description", desc},
 			{"og:url", origin + model.PathOf(a)},
-			{"og:image", origin + "/share/" + a.ID + ".png"},
+			{"og:image", origin + "/open/share/" + a.ID + ".png"},
 			{"og:image:width", fmt.Sprint(cardWidth)},
 			{"og:image:height", fmt.Sprint(cardHeight)},
 			{"twitter:card", "summary_large_image"},
 			{"twitter:title", title},
 			{"twitter:description", desc},
-			{"twitter:image", origin + "/share/" + a.ID + ".png"},
+			{"twitter:image", origin + "/open/share/" + a.ID + ".png"},
 		}
 		var b strings.Builder
 		b.WriteString("\n")
@@ -182,7 +182,7 @@ func PreviewHead(cache *Cache) func(r *http.Request) string {
 	}
 }
 
-// shareCard serves /share/{id}.png: the card for one previewable thing. The
+// shareCard serves /open/share/{id}.png: the card for one previewable thing. The
 // card depends only on the title, the date line and the image, so its ETag is
 // a hash of those and a chat app that fetched it once need not again.
 func (a app) shareCard(w http.ResponseWriter, r *http.Request) {

@@ -1,4 +1,4 @@
-package events
+package team
 
 import (
 	"bytes"
@@ -166,7 +166,7 @@ func TestRenderHidesWhatItShould(t *testing.T) {
 func TestSignUpAndRemove(t *testing.T) {
 	cache, mux := newServer(t)
 	body := map[string]any{"id": "E017", "position": PositionOpen, "note": "happy to help"}
-	if rec := call(t, mux, parent, "POST", "/api/events/volunteer", body); rec.Code != http.StatusNoContent {
+	if rec := call(t, mux, parent, "POST", "/api/team/volunteer", body); rec.Code != http.StatusNoContent {
 		t.Fatalf("sign up: %d %s", rec.Code, rec.Body)
 	}
 	role := cache.Model().Activity("E017")
@@ -174,56 +174,56 @@ func TestSignUpAndRemove(t *testing.T) {
 		t.Fatalf("volunteers after sign up: %+v", role.Volunteers)
 	}
 	body["position"] = PositionCoChair
-	if rec := call(t, mux, parent, "POST", "/api/events/volunteer", body); rec.Code != http.StatusForbidden {
+	if rec := call(t, mux, parent, "POST", "/api/team/volunteer", body); rec.Code != http.StatusForbidden {
 		t.Fatalf("a parent named themselves co-chair: %d", rec.Code)
 	}
 	// Co-chair is an appointment by whoever runs the event: a co-chair or an
 	// admin makes one, and the new co-chair may then edit their own note
 	// without losing it, or step down - after which they are a volunteer again
 	// and cannot name themselves back.
-	if rec := call(t, mux, chair, "POST", "/api/events/volunteer", map[string]any{"id": "E017", "email": parent, "position": PositionCoChair}); rec.Code != http.StatusNoContent {
+	if rec := call(t, mux, chair, "POST", "/api/team/volunteer", map[string]any{"id": "E017", "email": parent, "position": PositionCoChair}); rec.Code != http.StatusNoContent {
 		t.Fatalf("a co-chair could not promote: %d %s", rec.Code, rec.Body)
 	}
-	if rec := call(t, mux, parent, "POST", "/api/events/volunteer", map[string]any{"id": "E017", "position": PositionCoChair, "note": "here to lead"}); rec.Code != http.StatusNoContent {
+	if rec := call(t, mux, parent, "POST", "/api/team/volunteer", map[string]any{"id": "E017", "position": PositionCoChair, "note": "here to lead"}); rec.Code != http.StatusNoContent {
 		t.Fatalf("a co-chair could not edit their own note: %d %s", rec.Code, rec.Body)
 	}
-	if rec := call(t, mux, parent, "POST", "/api/events/volunteer", map[string]any{"id": "E017", "position": PositionVolunteer}); rec.Code != http.StatusNoContent {
+	if rec := call(t, mux, parent, "POST", "/api/team/volunteer", map[string]any{"id": "E017", "position": PositionVolunteer}); rec.Code != http.StatusNoContent {
 		t.Fatalf("a co-chair could not step down: %d %s", rec.Code, rec.Body)
 	}
-	if rec := call(t, mux, parent, "POST", "/api/events/volunteer", map[string]any{"id": "E017", "position": PositionCoChair}); rec.Code != http.StatusForbidden {
+	if rec := call(t, mux, parent, "POST", "/api/team/volunteer", map[string]any{"id": "E017", "position": PositionCoChair}); rec.Code != http.StatusForbidden {
 		t.Fatalf("a volunteer named themselves co-chair: %d", rec.Code)
 	}
-	if rec := call(t, mux, admin, "POST", "/api/events/volunteer", map[string]any{"id": "E017", "email": parent, "position": PositionCoChair}); rec.Code != http.StatusNoContent {
+	if rec := call(t, mux, admin, "POST", "/api/team/volunteer", map[string]any{"id": "E017", "email": parent, "position": PositionCoChair}); rec.Code != http.StatusNoContent {
 		t.Fatalf("an admin could not promote: %d %s", rec.Code, rec.Body)
 	}
 	full := map[string]any{"id": "E026", "position": PositionVolunteer}
-	if rec := call(t, mux, parent, "POST", "/api/events/volunteer", full); rec.Code != http.StatusBadRequest {
+	if rec := call(t, mux, parent, "POST", "/api/team/volunteer", full); rec.Code != http.StatusBadRequest {
 		t.Fatalf("a full role took a sign-up: %d", rec.Code)
 	}
 	direct := map[string]any{"id": "E001", "position": PositionVolunteer}
-	if rec := call(t, mux, parent, "POST", "/api/events/volunteer", direct); rec.Code != http.StatusBadRequest {
+	if rec := call(t, mux, parent, "POST", "/api/team/volunteer", direct); rec.Code != http.StatusBadRequest {
 		t.Fatalf("an activity without direct sign-up took one: %d", rec.Code)
 	}
-	if rec := call(t, mux, "someone.else@heliosschool.org", "DELETE", "/api/events/volunteer", map[string]any{"id": "E017", "email": parent}); rec.Code != http.StatusForbidden {
+	if rec := call(t, mux, "someone.else@heliosschool.org", "DELETE", "/api/team/volunteer", map[string]any{"id": "E017", "email": parent}); rec.Code != http.StatusForbidden {
 		t.Fatalf("a stranger removed someone: %d", rec.Code)
 	}
 	// A household's sign-ups are each other's to change and remove: the
 	// parent signs the child up, edits the note, and takes them off again -
 	// and the child, with no household of their own, cannot touch the
 	// parent's.
-	if rec := call(t, mux, parent, "POST", "/api/events/volunteer", map[string]any{"id": "E017", "email": kid, "position": PositionVolunteer}); rec.Code != http.StatusNoContent {
+	if rec := call(t, mux, parent, "POST", "/api/team/volunteer", map[string]any{"id": "E017", "email": kid, "position": PositionVolunteer}); rec.Code != http.StatusNoContent {
 		t.Fatalf("a parent could not sign their child up: %d %s", rec.Code, rec.Body)
 	}
-	if rec := call(t, mux, parent, "POST", "/api/events/volunteer", map[string]any{"id": "E017", "email": kid, "position": PositionVolunteer, "note": "after school only"}); rec.Code != http.StatusNoContent {
+	if rec := call(t, mux, parent, "POST", "/api/team/volunteer", map[string]any{"id": "E017", "email": kid, "position": PositionVolunteer, "note": "after school only"}); rec.Code != http.StatusNoContent {
 		t.Fatalf("a parent could not edit their child's sign-up: %d %s", rec.Code, rec.Body)
 	}
-	if rec := call(t, mux, kid, "DELETE", "/api/events/volunteer", map[string]any{"id": "E017", "email": parent}); rec.Code != http.StatusForbidden {
+	if rec := call(t, mux, kid, "DELETE", "/api/team/volunteer", map[string]any{"id": "E017", "email": parent}); rec.Code != http.StatusForbidden {
 		t.Fatalf("a child removed their parent: %d", rec.Code)
 	}
-	if rec := call(t, mux, parent, "DELETE", "/api/events/volunteer", map[string]any{"id": "E017", "email": kid}); rec.Code != http.StatusNoContent {
+	if rec := call(t, mux, parent, "DELETE", "/api/team/volunteer", map[string]any{"id": "E017", "email": kid}); rec.Code != http.StatusNoContent {
 		t.Fatalf("a parent could not remove their child: %d %s", rec.Code, rec.Body)
 	}
-	if rec := call(t, mux, parent, "DELETE", "/api/events/volunteer", map[string]any{"id": "E017", "email": parent}); rec.Code != http.StatusNoContent {
+	if rec := call(t, mux, parent, "DELETE", "/api/team/volunteer", map[string]any{"id": "E017", "email": parent}); rec.Code != http.StatusNoContent {
 		t.Fatalf("remove self: %d %s", rec.Code, rec.Body)
 	}
 	if n := len(cache.Model().Activity("E017").Volunteers); n != 0 {
@@ -266,10 +266,10 @@ func TestMail(t *testing.T) {
 	mux := http.NewServeMux()
 	rec := recorder{got: make(chan mail.Message, 8)}
 	Register(mux, cache, dir, syncQueue{}, nil, fakeDirectory{}, func() []string { return []string{admin} }, ImageSearch{}, rec, testFrom)
-	if r := call(t, mux, admin, "POST", "/api/events/notify", map[string]any{"kinds": []string{"signups", "offers"}}); r.Code != http.StatusNoContent {
+	if r := call(t, mux, admin, "POST", "/api/team/notify", map[string]any{"kinds": []string{"signups", "offers"}}); r.Code != http.StatusNoContent {
 		t.Fatalf("notify prefs: %d %s", r.Code, r.Body)
 	}
-	if r := call(t, mux, parent, "POST", "/api/events/volunteer", map[string]any{"id": "E017", "position": PositionOpen, "note": "happy to help"}); r.Code != http.StatusNoContent {
+	if r := call(t, mux, parent, "POST", "/api/team/volunteer", map[string]any{"id": "E017", "position": PositionOpen, "note": "happy to help"}); r.Code != http.StatusNoContent {
 		t.Fatalf("sign up: %d %s", r.Code, r.Body)
 	}
 	// Four messages, in no fixed order: the thank-you with the chairs
@@ -281,7 +281,7 @@ func TestMail(t *testing.T) {
 		bySubject[m.Subject] = m
 	}
 	thanks := bySubject["Thanks for volunteering for Clean Up Crew"]
-	if !slices.Equal(thanks.To, []string{parent}) || !slices.Equal(thanks.CC, []string{admin, chair}) || len(thanks.Attachments) != 0 || !strings.Contains(thanks.HTML, "Hi Robin") || !strings.Contains(thanks.HTML, "/share/E017.png") || !strings.Contains(thanks.HTML, "Add to Calendar") {
+	if !slices.Equal(thanks.To, []string{parent}) || !slices.Equal(thanks.CC, []string{admin, chair}) || len(thanks.Attachments) != 0 || !strings.Contains(thanks.HTML, "Hi Robin") || !strings.Contains(thanks.HTML, "/open/share/E017.png") || !strings.Contains(thanks.HTML, "Add to Calendar") {
 		t.Fatalf("thank-you: %+v (subjects %v)", thanks, keys(bySubject))
 	}
 	if !slices.Equal(thanks.ReplyTo, []string{admin, chair}) {
@@ -314,7 +314,7 @@ func TestMail(t *testing.T) {
 	if n, ok := bySubject["Co-chair offer: Robin Whitfield for Clean Up Crew"]; !ok || !slices.Equal(n.To, []string{admin}) {
 		t.Fatalf("offer notice: %+v", n)
 	}
-	if r := call(t, mux, chair, "POST", "/api/events/volunteer", map[string]any{"id": "E017", "email": parent, "position": PositionCoChair}); r.Code != http.StatusNoContent {
+	if r := call(t, mux, chair, "POST", "/api/team/volunteer", map[string]any{"id": "E017", "email": parent, "position": PositionCoChair}); r.Code != http.StatusNoContent {
 		t.Fatalf("promote: %d %s", r.Code, r.Body)
 	}
 	m := rec.next(t)
@@ -324,7 +324,7 @@ func TestMail(t *testing.T) {
 	// Now the crew has a lead, the next volunteer is told the crew's lead and
 	// the event's chairs each under their own heading, with both copied.
 	other := "sam.whitfield@heliosschool.org"
-	if r := call(t, mux, other, "POST", "/api/events/volunteer", map[string]any{"id": "E017", "position": PositionVolunteer}); r.Code != http.StatusNoContent {
+	if r := call(t, mux, other, "POST", "/api/team/volunteer", map[string]any{"id": "E017", "position": PositionVolunteer}); r.Code != http.StatusNoContent {
 		t.Fatalf("second sign up: %d %s", r.Code, r.Body)
 	}
 	for range 3 {
@@ -343,7 +343,7 @@ func TestMail(t *testing.T) {
 		}
 	}
 	// Removing the sign-up cancels the invite for the same people.
-	if r := call(t, mux, chair, "DELETE", "/api/events/volunteer", map[string]any{"id": "E017", "email": other}); r.Code != http.StatusNoContent {
+	if r := call(t, mux, chair, "DELETE", "/api/team/volunteer", map[string]any{"id": "E017", "email": other}); r.Code != http.StatusNoContent {
 		t.Fatalf("remove: %d %s", r.Code, r.Body)
 	}
 	m = rec.next(t)
@@ -374,23 +374,23 @@ func TestMoveSignUp(t *testing.T) {
 		}
 		return false
 	}
-	if rec := call(t, mux, parent, "POST", "/api/events/volunteer", map[string]any{"id": "E017", "position": PositionVolunteer, "note": "evenings"}); rec.Code != http.StatusNoContent {
+	if rec := call(t, mux, parent, "POST", "/api/team/volunteer", map[string]any{"id": "E017", "position": PositionVolunteer, "note": "evenings"}); rec.Code != http.StatusNoContent {
 		t.Fatalf("sign up: %d %s", rec.Code, rec.Body)
 	}
-	if rec := call(t, mux, "someone.else@heliosschool.org", "POST", "/api/events/volunteer", map[string]any{"id": "E018", "email": parent, "position": PositionVolunteer, "from": "E017"}); rec.Code != http.StatusForbidden {
+	if rec := call(t, mux, "someone.else@heliosschool.org", "POST", "/api/team/volunteer", map[string]any{"id": "E018", "email": parent, "position": PositionVolunteer, "from": "E017"}); rec.Code != http.StatusForbidden {
 		t.Fatalf("a stranger moved someone: %d", rec.Code)
 	}
-	if rec := call(t, mux, parent, "POST", "/api/events/volunteer", map[string]any{"id": "E018", "position": PositionVolunteer, "note": "evenings", "from": "E017"}); rec.Code != http.StatusNoContent {
+	if rec := call(t, mux, parent, "POST", "/api/team/volunteer", map[string]any{"id": "E018", "position": PositionVolunteer, "note": "evenings", "from": "E017"}); rec.Code != http.StatusNoContent {
 		t.Fatalf("move: %d %s", rec.Code, rec.Body)
 	}
 	if on("E017") || !on("E018") {
 		t.Fatalf("after the move: on E017 %v, on E018 %v", on("E017"), on("E018"))
 	}
-	if rec := call(t, mux, parent, "POST", "/api/events/volunteer", map[string]any{"id": "E019", "position": PositionVolunteer, "from": "E017"}); rec.Code != http.StatusBadRequest {
+	if rec := call(t, mux, parent, "POST", "/api/team/volunteer", map[string]any{"id": "E019", "position": PositionVolunteer, "from": "E017"}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("moved from a thing not signed up for: %d", rec.Code)
 	}
 	// Offering to co-chair needs a thing that wants one: Set Up Crew does not.
-	if rec := call(t, mux, parent, "POST", "/api/events/volunteer", map[string]any{"id": "E016", "position": PositionOpen}); rec.Code != http.StatusBadRequest {
+	if rec := call(t, mux, parent, "POST", "/api/team/volunteer", map[string]any{"id": "E016", "position": PositionOpen}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("offered to co-chair where none is wanted: %d", rec.Code)
 	}
 }
@@ -408,16 +408,16 @@ func TestReorderChildren(t *testing.T) {
 		t.Fatalf("row order to start: %v", got)
 	}
 	body := map[string]any{"parent": "E002", "ids": []string{"E025", "E023", "E024"}}
-	if rec := call(t, mux, parent, "POST", "/api/events/order", body); rec.Code != http.StatusForbidden {
+	if rec := call(t, mux, parent, "POST", "/api/team/order", body); rec.Code != http.StatusForbidden {
 		t.Fatalf("a parent reordered: %d", rec.Code)
 	}
-	if rec := call(t, mux, chair, "POST", "/api/events/order", body); rec.Code != http.StatusNoContent {
+	if rec := call(t, mux, chair, "POST", "/api/team/order", body); rec.Code != http.StatusNoContent {
 		t.Fatalf("the chair could not reorder: %d %s", rec.Code, rec.Body)
 	}
 	if got := titles(); !slices.Equal(got, []string{"Marketing", "Decor", "Childcare"}) {
 		t.Fatalf("order after: %v", got)
 	}
-	if rec := call(t, mux, chair, "POST", "/api/events/order", map[string]any{"parent": "E002", "ids": []string{"E025", "E001"}}); rec.Code != http.StatusBadRequest {
+	if rec := call(t, mux, chair, "POST", "/api/team/order", map[string]any{"parent": "E002", "ids": []string{"E025", "E001"}}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("a stranger's id was taken: %d", rec.Code)
 	}
 }
@@ -425,7 +425,7 @@ func TestReorderChildren(t *testing.T) {
 func TestSuggestApproveRenameDelete(t *testing.T) {
 	cache, mux := newServer(t)
 	suggestion := map[string]any{"year": "2026 - 2027", "title": "Kite Day", "category": "C06", "status": StatusOpen, "description": "Fly kites", "signUp": PositionOpen, "directSignUp": true}
-	if rec := call(t, mux, parent, "POST", "/api/events/activity", suggestion); rec.Code != http.StatusNoContent {
+	if rec := call(t, mux, parent, "POST", "/api/team/activity", suggestion); rec.Code != http.StatusNoContent {
 		t.Fatalf("suggest: %d %s", rec.Code, rec.Body)
 	}
 	kite := byTitle(cache.Model(), "2026 - 2027", "Kite Day")
@@ -433,10 +433,10 @@ func TestSuggestApproveRenameDelete(t *testing.T) {
 		t.Fatalf("suggestion landed as %+v", kite)
 	}
 	edit := map[string]any{"id": kite.ID, "year": "2026 - 2027", "title": "Kite Festival", "category": "C02", "status": StatusOpen, "directSignUp": true}
-	if rec := call(t, mux, parent, "POST", "/api/events/activity", edit); rec.Code != http.StatusForbidden {
+	if rec := call(t, mux, parent, "POST", "/api/team/activity", edit); rec.Code != http.StatusForbidden {
 		t.Fatalf("a non-chair edited an activity: %d", rec.Code)
 	}
-	if rec := call(t, mux, admin, "POST", "/api/events/activity", edit); rec.Code != http.StatusNoContent {
+	if rec := call(t, mux, admin, "POST", "/api/team/activity", edit); rec.Code != http.StatusNoContent {
 		t.Fatalf("approve and rename: %d %s", rec.Code, rec.Body)
 	}
 	if byTitle(cache.Model(), "2026 - 2027", "Kite Day") != nil {
@@ -446,13 +446,13 @@ func TestSuggestApproveRenameDelete(t *testing.T) {
 	if festival == nil || festival.Status != StatusOpen || len(festival.Volunteers) != 1 {
 		t.Fatalf("renamed activity: %+v", festival)
 	}
-	if rec := call(t, mux, admin, "DELETE", "/api/events/activity", map[string]string{"id": kite.ID}); rec.Code != http.StatusBadRequest {
+	if rec := call(t, mux, admin, "DELETE", "/api/team/activity", map[string]string{"id": kite.ID}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("delete with a volunteer on it: %d", rec.Code)
 	}
-	if rec := call(t, mux, admin, "DELETE", "/api/events/volunteer", map[string]any{"id": kite.ID, "email": parent}); rec.Code != http.StatusNoContent {
+	if rec := call(t, mux, admin, "DELETE", "/api/team/volunteer", map[string]any{"id": kite.ID, "email": parent}); rec.Code != http.StatusNoContent {
 		t.Fatalf("remove: %d %s", rec.Code, rec.Body)
 	}
-	if rec := call(t, mux, admin, "DELETE", "/api/events/activity", map[string]string{"id": kite.ID}); rec.Code != http.StatusNoContent {
+	if rec := call(t, mux, admin, "DELETE", "/api/team/activity", map[string]string{"id": kite.ID}); rec.Code != http.StatusNoContent {
 		t.Fatalf("delete: %d %s", rec.Code, rec.Body)
 	}
 	if cache.Model().Activity(kite.ID) != nil {
@@ -468,30 +468,30 @@ func TestRenameKeepsTheTree(t *testing.T) {
 		"id": "E020", "year": "2026 - 2027", "title": "India Booth", "parent": "E001",
 		"category": "C08", "status": StatusOpen, "coLeaderNeeded": true, "directSignUp": true,
 	}
-	if rec := call(t, mux, chair, "POST", "/api/events/activity", edit); rec.Code != http.StatusNoContent {
+	if rec := call(t, mux, chair, "POST", "/api/team/activity", edit); rec.Code != http.StatusNoContent {
 		t.Fatalf("rename: %d %s", rec.Code, rec.Body)
 	}
 	booth := cache.Model().Activity("E020")
 	if booth == nil || booth.Title != "India Booth" || len(booth.Volunteers) != 1 || len(booth.Links) != 1 || len(booth.Children) != 1 || booth.Children[0].Parent != "E020" {
 		t.Fatalf("renamed: %+v", booth)
 	}
-	if rec := call(t, mux, admin, "DELETE", "/api/events/activity", map[string]string{"id": "E020"}); rec.Code != http.StatusBadRequest {
+	if rec := call(t, mux, admin, "DELETE", "/api/team/activity", map[string]string{"id": "E020"}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("deleted something with children and volunteers: %d", rec.Code)
 	}
 	// Putting something inside its own descendant is refused before the loader
 	// would have to.
 	loop := map[string]any{"id": "E001", "year": "2026 - 2027", "title": "International Night", "parent": "E020", "category": "", "status": StatusOpen}
-	if rec := call(t, mux, admin, "POST", "/api/events/activity", loop); rec.Code != http.StatusBadRequest {
+	if rec := call(t, mux, admin, "POST", "/api/team/activity", loop); rec.Code != http.StatusBadRequest {
 		t.Fatalf("a parent loop was accepted: %d", rec.Code)
 	}
 }
 
 func TestCopyToNextYear(t *testing.T) {
 	cache, mux := newServer(t)
-	if rec := call(t, mux, chair, "POST", "/api/events/copy", map[string]string{"id": "E001"}); rec.Code != http.StatusForbidden {
+	if rec := call(t, mux, chair, "POST", "/api/team/copy", map[string]string{"id": "E001"}); rec.Code != http.StatusForbidden {
 		t.Fatalf("a co-chair copied: %d", rec.Code)
 	}
-	if rec := call(t, mux, admin, "POST", "/api/events/copy", map[string]string{"id": "E001"}); rec.Code != http.StatusNoContent {
+	if rec := call(t, mux, admin, "POST", "/api/team/copy", map[string]string{"id": "E001"}); rec.Code != http.StatusNoContent {
 		t.Fatalf("copy: %d %s", rec.Code, rec.Body)
 	}
 	next := byTitle(cache.Model(), "2027 - 2028", "International Night")
@@ -504,7 +504,7 @@ func TestCopyToNextYear(t *testing.T) {
 			t.Fatalf("copied child %q points at parent %q in the wrong year", c.Title, c.Parent)
 		}
 	}
-	if rec := call(t, mux, admin, "POST", "/api/events/copy", map[string]string{"id": "E001"}); rec.Code != http.StatusBadRequest {
+	if rec := call(t, mux, admin, "POST", "/api/team/copy", map[string]string{"id": "E001"}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("copied twice: %d", rec.Code)
 	}
 }
@@ -538,7 +538,7 @@ func TestEventCategories(t *testing.T) {
 		t.Fatalf("the page should see only the six headings, got %d", len(m.Categories))
 	}
 	propose := func(who, category string) int {
-		return call(t, mux, who, "POST", "/api/events/activity", map[string]any{
+		return call(t, mux, who, "POST", "/api/team/activity", map[string]any{
 			"year": "2026 - 2027", "title": "Sweden", "parent": "E001", "category": category, "status": StatusOpen, "directSignUp": true,
 		}).Code
 	}
@@ -550,7 +550,7 @@ func TestEventCategories(t *testing.T) {
 	if sweden := byTitle(cache.Model(), "2026 - 2027", "Sweden"); sweden == nil || sweden.Status != StatusOpen {
 		t.Fatalf("a booth added under a Yes category should be open: %+v", sweden)
 	}
-	if code := call(t, mux, parent, "POST", "/api/events/activity", map[string]any{
+	if code := call(t, mux, parent, "POST", "/api/team/activity", map[string]any{
 		"year": "2026 - 2027", "title": "Loose Booth", "parent": "E001", "category": "", "status": StatusOpen, "directSignUp": true,
 	}).Code; code != http.StatusNoContent {
 		t.Fatalf("an uncategorised proposal under an Approval Needed event was refused: %d", code)
@@ -569,13 +569,13 @@ func TestEventCategories(t *testing.T) {
 	}
 	// Only the event's own editors manage its categories; the page's need an admin.
 	own := map[string]any{"eventId": "E001", "title": "Performances", "allowAdding": AddingYes}
-	if rec := call(t, mux, parent, "POST", "/api/events/category", own); rec.Code != http.StatusForbidden {
+	if rec := call(t, mux, parent, "POST", "/api/team/category", own); rec.Code != http.StatusForbidden {
 		t.Fatalf("a parent made an event category: %d", rec.Code)
 	}
-	if rec := call(t, mux, chair, "POST", "/api/events/category", own); rec.Code != http.StatusNoContent {
+	if rec := call(t, mux, chair, "POST", "/api/team/category", own); rec.Code != http.StatusNoContent {
 		t.Fatalf("the co-chair could not add an event category: %d %s", rec.Code, rec.Body)
 	}
-	if rec := call(t, mux, chair, "POST", "/api/events/category", map[string]any{"title": "New Heading"}); rec.Code != http.StatusForbidden {
+	if rec := call(t, mux, chair, "POST", "/api/team/category", map[string]any{"title": "New Heading"}); rec.Code != http.StatusForbidden {
 		t.Fatalf("a co-chair made a page heading: %d", rec.Code)
 	}
 	if n := len(cache.Model().Activity("E001").Categories); n != 3 {
@@ -587,7 +587,7 @@ func TestEventCategories(t *testing.T) {
 		ids = append(ids, c.ID)
 	}
 	ids[0], ids[1] = ids[1], ids[0]
-	if rec := call(t, mux, chair, "POST", "/api/events/categories/order", map[string]any{"eventId": "E001", "ids": ids}); rec.Code != http.StatusNoContent {
+	if rec := call(t, mux, chair, "POST", "/api/team/categories/order", map[string]any{"eventId": "E001", "ids": ids}); rec.Code != http.StatusNoContent {
 		t.Fatalf("reorder: %d %s", rec.Code, rec.Body)
 	}
 	after := cache.Model()
@@ -595,7 +595,7 @@ func TestEventCategories(t *testing.T) {
 		t.Fatalf("reorder leaked out of its scope")
 	}
 	// Copying an event copies its categories under new ids and repoints the children.
-	if rec := call(t, mux, admin, "POST", "/api/events/copy", map[string]string{"id": "E001"}); rec.Code != http.StatusNoContent {
+	if rec := call(t, mux, admin, "POST", "/api/team/copy", map[string]string{"id": "E001"}); rec.Code != http.StatusNoContent {
 		t.Fatalf("copy: %d %s", rec.Code, rec.Body)
 	}
 	next := byTitle(cache.Model(), "2027 - 2028", "International Night")
@@ -643,20 +643,20 @@ func TestUncategorizedFallback(t *testing.T) {
 	// Saving a root as Uncategorized stores a blank, and only editors may do it;
 	// the heading itself cannot be edited or deleted.
 	add := map[string]any{"year": "2026 - 2027", "title": "Loose End", "category": UncategorizedID, "status": StatusOpen}
-	if rec := call(t, mux, parent, "POST", "/api/events/activity", add); rec.Code != http.StatusBadRequest {
+	if rec := call(t, mux, parent, "POST", "/api/team/activity", add); rec.Code != http.StatusBadRequest {
 		t.Fatalf("a proposal without a category went through: %d", rec.Code)
 	}
-	if rec := call(t, mux, admin, "POST", "/api/events/activity", add); rec.Code != http.StatusNoContent {
+	if rec := call(t, mux, admin, "POST", "/api/team/activity", add); rec.Code != http.StatusNoContent {
 		t.Fatalf("admin add: %d %s", rec.Code, rec.Body)
 	}
 	loose := byTitle(cache.Model(), "2026 - 2027", "Loose End")
 	if loose == nil || loose.Category != UncategorizedID || cache.Tables().count(activitiesTab, map[string]string{"Title": "Loose End", "Category": ""}) != 1 {
 		t.Fatalf("loose end: %+v", loose)
 	}
-	if rec := call(t, mux, admin, "POST", "/api/events/category", map[string]any{"id": UncategorizedID, "title": "Misc"}); rec.Code != http.StatusBadRequest {
+	if rec := call(t, mux, admin, "POST", "/api/team/category", map[string]any{"id": UncategorizedID, "title": "Misc"}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("edited the built-in heading: %d", rec.Code)
 	}
-	if rec := call(t, mux, admin, "DELETE", "/api/events/category", map[string]any{"id": UncategorizedID}); rec.Code != http.StatusBadRequest {
+	if rec := call(t, mux, admin, "DELETE", "/api/team/category", map[string]any{"id": UncategorizedID}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("deleted the built-in heading: %d", rec.Code)
 	}
 }
@@ -687,7 +687,7 @@ func TestBrokenSheetStallsThePortalOnly(t *testing.T) {
 	}
 	mux := http.NewServeMux()
 	Register(mux, cache, &data.Dir{Root: broken}, syncQueue{}, nil, fakeDirectory{}, func() []string { return nil }, ImageSearch{}, nil, testFrom)
-	rec := call(t, mux, parent, "GET", "/api/events/model", nil)
+	rec := call(t, mux, parent, "GET", "/api/team/model", nil)
 	if rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), `missing column "Event ID"`) {
 		t.Fatalf("before the sheet loads: %d %s", rec.Code, rec.Body)
 	}
@@ -698,7 +698,7 @@ func TestBrokenSheetStallsThePortalOnly(t *testing.T) {
 	if err := cache.refresh(); err != nil {
 		t.Fatal(err)
 	}
-	if rec := call(t, mux, parent, "GET", "/api/events/model", nil); rec.Code != http.StatusOK || cache.Err() != nil {
+	if rec := call(t, mux, parent, "GET", "/api/team/model", nil); rec.Code != http.StatusOK || cache.Err() != nil {
 		t.Fatalf("after the sheet loads: %d %v", rec.Code, cache.Err())
 	}
 }
@@ -779,7 +779,7 @@ func TestShowOnMainPage(t *testing.T) {
 	}
 	off := false
 	edit := map[string]any{"id": "C02", "title": "Activities", "allowAdding": AddingNo, "showOnMain": off}
-	if rec := call(t, mux, admin, "POST", "/api/events/category", edit); rec.Code != http.StatusNoContent {
+	if rec := call(t, mux, admin, "POST", "/api/team/category", edit); rec.Code != http.StatusNoContent {
 		t.Fatalf("edit: %d %s", rec.Code, rec.Body)
 	}
 	if cache.Model().Category("C02").ShowOnMain || cache.Tables().count(categoriesTab, map[string]string{"Category ID": "C02", "Show On Main Page": "No"}) != 1 {
@@ -787,7 +787,7 @@ func TestShowOnMainPage(t *testing.T) {
 	}
 	// The event's own categories never carry the flag in the sheet.
 	own := map[string]any{"eventId": "E001", "title": "Shifts", "allowAdding": "", "showOnMain": off}
-	if rec := call(t, mux, chair, "POST", "/api/events/category", own); rec.Code != http.StatusNoContent {
+	if rec := call(t, mux, chair, "POST", "/api/team/category", own); rec.Code != http.StatusNoContent {
 		t.Fatalf("add: %d %s", rec.Code, rec.Body)
 	}
 	if cache.Tables().count(categoriesTab, map[string]string{"Title": "Shifts", "Show On Main Page": ""}) != 1 {
@@ -803,7 +803,7 @@ func TestPrettyIDs(t *testing.T) {
 	}
 	edit := func(id, pretty string, takeOver bool) *httptest.ResponseRecorder {
 		act := cache.Model().Activity(id)
-		return call(t, mux, admin, "POST", "/api/events/activity", map[string]any{
+		return call(t, mux, admin, "POST", "/api/team/activity", map[string]any{
 			"id": id, "year": act.Year, "title": act.Title, "category": act.Category, "status": act.Status,
 			"directSignUp": true, "prettyId": pretty, "takeOver": takeOver,
 		})
@@ -867,7 +867,7 @@ func TestPrettyIDs(t *testing.T) {
 		t.Fatalf("child path %q", m.PathOf(norway))
 	}
 	child := func(node *Activity, pretty string) *httptest.ResponseRecorder {
-		return call(t, mux, admin, "POST", "/api/events/activity", map[string]any{
+		return call(t, mux, admin, "POST", "/api/team/activity", map[string]any{
 			"id": node.ID, "year": node.Year, "title": node.Title, "parent": node.Parent, "category": node.Category, "status": node.Status,
 			"directSignUp": true, "prettyId": pretty,
 		})
@@ -918,7 +918,7 @@ func TestSharePreview(t *testing.T) {
 	// description, and its card; a hidden one, and any other page, show nothing.
 	tags := head(httptest.NewRequest("GET", "https://team.heliosian.com/v/intl-night/", nil))
 	for _, want := range []string{`og:title" content="International Night"`, `og:url" content="https://team.heliosian.com/v/international-night"`,
-		`og:image" content="https://team.heliosian.com/share/E001.png"`, `Thursday, September 24 · 4:00–6:00 PM — We invite you`} {
+		`og:image" content="https://team.heliosian.com/open/share/E001.png"`, `Thursday, September 24 · 4:00–6:00 PM — We invite you`} {
 		if !strings.Contains(tags, want) {
 			t.Fatalf("preview lacks %s:\n%s", want, tags)
 		}
@@ -940,12 +940,12 @@ func TestSharePreview(t *testing.T) {
 	// The card is public - the mux is called without a session - and only for
 	// what previews.
 	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequest("GET", "/share/E001.png", nil))
+	mux.ServeHTTP(rec, httptest.NewRequest("GET", "/open/share/E001.png", nil))
 	if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "image/png" || rec.Body.Len() < 10000 {
 		t.Fatalf("card: %d %s %d bytes", rec.Code, rec.Header().Get("Content-Type"), rec.Body.Len())
 	}
 	rec = httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequest("GET", "/share/E006.png", nil))
+	mux.ServeHTTP(rec, httptest.NewRequest("GET", "/open/share/E006.png", nil))
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("a hidden thing has a card: %d", rec.Code)
 	}

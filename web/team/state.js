@@ -5,7 +5,7 @@ export const state = {model: null, showPrevious: false, showHidden: false, super
 
 function readSuperEdit() {
   try {
-    return localStorage.getItem('hca.superEdit') === '1';
+    return localStorage.getItem('team.superEdit') === '1';
   } catch (err) {
     return false;
   }
@@ -17,7 +17,7 @@ export function setSuperEdit(on) {
     state.showHidden = false;
   }
   try {
-    localStorage.setItem('hca.superEdit', on ? '1' : '0');
+    localStorage.setItem('team.superEdit', on ? '1' : '0');
   } catch (err) {
     // A browser that refuses storage just forgets the choice on reload.
   }
@@ -35,7 +35,7 @@ export function applyModel(model) {
   // A thing with no date or timing of its own happens when its parent does:
   // it takes the nearest ones above it for display, and remembers in `own`
   // what the sheet actually holds, which is what editing works on. The server
-  // does the same for share previews (internal/events/share.go).
+  // does the same for share previews (internal/team/share.go).
   const add = (list, parent) => {
     for (const a of list) {
       index.set(a.id, a);
@@ -86,7 +86,7 @@ export function activity(id) {
 // needs it, so pickers use headingChoices() to always offer it.
 export const UNCATEGORIZED = 'uncategorized';
 
-// Adding policies, as the sheet writes them (internal/events/load.go). A
+// Adding policies, as the sheet writes them (internal/team/load.go). A
 // thing's `allowAdding` is the resolved policy; `allowAddingOwn` the cell.
 export const ADDING = {yes: 'Yes', approval: 'Approval Needed', no: 'No'};
 
