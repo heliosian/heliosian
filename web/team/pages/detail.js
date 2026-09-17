@@ -1,4 +1,4 @@
-import {state, isAdmin, years, allYears, descendants, parentOf, rootOf, category, eventCategories, longDate, parseWhen, coChairs, mySignUp, canJoin, isFull, matches, activityPath, listedIn, sortByStart, shiftedEnd, headingChoices, shownVolunteers, listHidden, listRevealed, canAdd, addLabel, ADDING} from '../state.js';
+import {state, me, family, isAdmin, years, allYears, descendants, parentOf, rootOf, category, eventCategories, longDate, parseWhen, coChairs, mySignUp, canJoin, isFull, matches, activityPath, listedIn, sortByStart, shiftedEnd, headingChoices, shownVolunteers, listHidden, listRevealed, canAdd, addLabel, ADDING} from '../state.js';
 import {el, link, svg, thumb, avatar, badge, button, searchBox, copyText, whenEditor, toast} from '../dom.js';
 import {setTitle} from '../chrome.js';
 import {childRow, categoryClass, completeBadge} from '../cards.js';
@@ -373,11 +373,36 @@ function personTile(owner, v, editing, star, chair, option) {
     }
     face.append(grade);
   }
+  // A note left with the sign-up shows as a bubble on the other corner, for
+  // whoever runs the thing - it was written to them.
+  if (owner.canEdit && v.note) {
+    const bubble = el('span', 'note-badge');
+    bubble.setAttribute('aria-label', 'Left a note');
+    // A notepad, filled: a white page with a band across the top and three
+    // ruled lines in the badge's own colour - line icons are too thin here.
+    bubble.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2.5" fill="currentColor"/><path class="note-ink" d="M5 5.5A2.5 2.5 0 0 1 7.5 3h9A2.5 2.5 0 0 1 19 5.5V7.5H5z"/><rect class="note-ink" x="8" y="10.5" width="8" height="1.6" rx="0.8"/><rect class="note-ink" x="8" y="14" width="8" height="1.6" rx="0.8"/><rect class="note-ink" x="8" y="17.5" width="5" height="1.6" rx="0.8"/></svg>';
+    face.append(bubble);
+  }
   tile.append(face, el('div', 'side-chair-name', v.name + (star && v.position === 'Co-Chair' ? '*' : '')));
   if (chair) {
     tile.append(el('div', 'side-chair-role', 'Chair'));
   } else if (option) {
     tile.append(el('div', 'side-chair-role is-option', 'Chair opt'));
+  }
+  // Resting on the tile tells the story of the sign-up: the day, who did it
+  // when it was somebody else, and for whoever runs the thing the note.
+  const tip = el('div', 'tile-tip');
+  tip.setAttribute('role', 'tooltip');
+  if (v.added) {
+    tip.append(el('div', '', v.addedByName ? `Signed up by ${v.addedByName} on ${longDate(v.added)}` : `Signed up ${longDate(v.added)}`));
+  } else if (v.addedByName) {
+    tip.append(el('div', '', `Signed up by ${v.addedByName}`));
+  }
+  if (owner.canEdit && v.note) {
+    tip.append(el('div', 'tile-tip-note', `“${v.note}”`));
+  }
+  if (tip.childElementCount) {
+    tile.append(tip);
   }
   return tile;
 }
@@ -571,6 +596,45 @@ function treeFilter(node, below, onChange) {
   return {wrap: filter, sources, self};
 }
 
+// familyBox is the viewer's household on this thing and everything under it:
+// a row each - the face, the name, what they are on - with Edit at the right
+// into that sign-up (where Remove is), so a family's own sign-ups are found
+// and changed without hunting for each face in the lists. Nothing when none
+// of the household is on any.
+function familyBox(node) {
+  const mine = [me().email, ...family().map(c => c.email)];
+  const rows = [];
+  for (const n of [node, ...descendants(node)]) {
+    if (n.status === 'Hidden' || n.status === 'Pending') {
+      continue;
+    }
+    for (const v of n.volunteers) {
+      if (mine.includes(v.email)) {
+        rows.push({n, v});
+      }
+    }
+  }
+  if (!rows.length) {
+    return null;
+  }
+  const box = el('div', 'fam-box');
+  box.append(el('h2', 'section section-swoosh', "My Family's Roles"));
+  const list = el('div', 'fam-list');
+  for (const {n, v} of rows) {
+    const row = el('div', 'fam-row');
+    row.append(avatar(v));
+    const text = el('div', 'fam-text');
+    const where = n === node ? n.title : chainBelow(node, n);
+    const role = v.position === 'Co-Chair' ? 'Co-chair of ' : (v.position === 'Open to Co-Chair' ? 'Open to co-chairing ' : '');
+    text.append(el('div', 'fam-name', v.name), el('div', 'fam-where', role + where));
+    row.append(text);
+    row.append(button('Edit', 'edit', 'link-button fam-edit', () => openSignUp(n, v)));
+    list.append(row);
+  }
+  box.append(list);
+  return box;
+}
+
 // volunteersBox is the sign-up surface for this thing itself: who is on it, the
 // way to join, and - while editing - whether people may join it directly and
 // whether the list is private. Sign-ups for the things under it live on their
@@ -596,7 +660,7 @@ function volunteersBox(node, editing, save) {
       title.append(el('div', 'vol-quiet', 'Sign up for something below.'));
     }
   } else {
-    title.append(el('h2', 'section section-swoosh', count ? `Volunteers (${count})` : 'Volunteers'));
+    title.append(el('h2', 'section section-swoosh', count ? `Who's Involved (${count})` : "Who's Involved"));
   }
   if (editing) {
     // The cap on sign-ups sits by the count it caps: a small button, a prompt.
@@ -1360,6 +1424,10 @@ export function activityPage(node) {
   // The volunteers section always shows; what it holds follows the switches
   // (see volunteersBox): no buttons when volunteers are not allowed here, and
   // nobody listed when the list is secret, until editing or Show Hidden Things.
+  const familyRoles = familyBox(node);
+  if (familyRoles) {
+    main.append(familyRoles);
+  }
   main.append(volunteersBox(node, editing, save));
   if (!parent || under.length || node.canEdit) {
     const things = childrenSection(node, editing);

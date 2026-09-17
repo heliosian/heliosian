@@ -1661,6 +1661,30 @@ button.side-chair:hover { background: var(--input); }
    switches while editing. */
 /* The volunteers section sits on the page like Opportunities & Needs does: a
    swooshed heading with the actions beside it, no box. */
+/* My Family's Roles: the household's sign-ups as a list card, a face and
+   name over what they are on, Edit at the right. */
+.fam-box { margin: 18px 0 8px; }
+
+.fam-box h2.section.section-swoosh { margin: 8px 0 12px; font-size: 22px; }
+
+.fam-list { background: var(--card); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+
+.fam-row { display: flex; align-items: center; gap: 12px; padding: 10px 16px; }
+
+.fam-row + .fam-row { border-top: 1px solid var(--line); }
+
+.fam-row .avatar { width: 36px; height: 36px; font-size: 14px; flex-shrink: 0; }
+
+.fam-text { flex: 1; min-width: 0; }
+
+.fam-name { font-size: 14px; font-weight: 700; color: var(--ink); }
+
+.fam-where { font-size: 13px; color: var(--muted); margin-top: 1px; }
+
+.fam-edit { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; white-space: nowrap; padding: 6px 8px; }
+
+.fam-edit svg { width: 16px; height: 16px; }
+
 .vol-box { margin: 18px 0 26px; }
 
 /* The quiet form: one line, the hint left and the filter right. */
@@ -2954,13 +2978,79 @@ body.is-admin main { padding: 0; }
 
 .side-offered { color: var(--brand); font-weight: 600; margin-top: 6px; }
 
-/* Faces in the Volunteers list are square-cornered tiles, a little larger,
-   with a student's grade badged on the corner. */
-.vol-people .side-chair { width: 68px; }
+/* Faces in the Volunteers list are square-cornered tiles, larger, with a
+   student's grade badged on one corner and their note on the other. */
+.vol-people { gap: 18px 16px; }
 
-.vol-people .side-chair .avatar { width: 56px; height: 56px; border-radius: 12px; font-size: 20px; }
+.vol-people .side-chair { width: 84px; }
 
-.vol-people .side-chair .avatar img { border-radius: 12px; }
+.vol-people .side-chair .avatar { width: 72px; height: 72px; border-radius: 14px; font-size: 26px; }
+
+.vol-people .side-chair .avatar img { border-radius: 14px; }
+
+.vol-people .side-chair-name { font-size: 12.5px; }
+
+/* A note came with the sign-up: a speech bubble on the top-right corner,
+   the words themselves on hover. */
+.note-badge {
+  position: absolute;
+  right: -6px;
+  top: -6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 0 0 2px #fff;
+}
+
+.note-badge svg { width: 14px; height: 14px; display: block; }
+
+.note-badge .note-ink { fill: var(--accent); }
+
+/* Resting on a face tells the sign-up's story in a dark tip beneath it,
+   over whatever is beside the tile. */
+.side-chair { position: relative; }
+
+.tile-tip {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 5;
+  width: max-content;
+  max-width: 240px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: var(--brand-deep);
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.35;
+  text-align: left;
+  white-space: normal;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.12s;
+  pointer-events: none;
+}
+
+.tile-tip::before {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  left: 26px;
+  border: 5px solid transparent;
+  border-top: 0;
+  border-bottom-color: var(--brand-deep);
+}
+
+.tile-tip-note { margin-top: 3px; color: #d8ecea; font-style: italic; }
+
+.side-chair:hover .tile-tip, .side-chair:focus-visible .tile-tip { opacity: 1; visibility: visible; }
 
 .grade-badge {
   position: absolute;

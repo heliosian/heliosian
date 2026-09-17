@@ -192,6 +192,8 @@ func (v viewer) volunteers(list []Volunteer, hidden, editor bool) []Volunteer {
 		vol.Grade = v.directory.Grade(vol.Email)
 		if !editor {
 			vol.AddedBy = ""
+		} else if vol.AddedBy != "" && vol.AddedBy != vol.Email {
+			vol.AddedByName, _ = v.person(vol.AddedBy)
 		}
 		out = append(out, vol)
 	}

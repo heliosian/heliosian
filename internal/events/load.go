@@ -151,9 +151,12 @@ type Volunteer struct {
 	Position string `json:"position"`
 	Note     string `json:"note,omitempty"`
 	AddedBy  string `json:"addedBy,omitempty"`
-	Added    string `json:"added,omitempty"`
-	Name     string `json:"name,omitempty"`
-	PhotoURL string `json:"photoUrl,omitempty"`
+	// AddedByName is who signed them up, as the page names them - filled in
+	// for whoever runs the thing when it was somebody else.
+	AddedByName string `json:"addedByName,omitempty"`
+	Added       string `json:"added,omitempty"`
+	Name        string `json:"name,omitempty"`
+	PhotoURL    string `json:"photoUrl,omitempty"`
 	// Grade is filled in for the page from the directory: a student's grade,
 	// shown as a badge on their face.
 	Grade string `json:"grade,omitempty"`

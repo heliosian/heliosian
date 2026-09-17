@@ -1,4 +1,4 @@
-import {state, me, isAdmin, years, allYears, activityPath, activity, parentOf, canAdd, ADDING, descendants, rootOf, eventCategories, headingChoices, UNCATEGORIZED, isFamily} from './state.js';
+import {state, me, isAdmin, years, allYears, activityPath, activity, parentOf, canAdd, ADDING, category as categoryOf, descendants, rootOf, eventCategories, headingChoices, UNCATEGORIZED, isFamily} from './state.js';
 
 function* allNodes() {
   for (const root of state.model.activities) {
@@ -1164,8 +1164,13 @@ export function openActivity(act, options) {
   // year is this one and the category is where the button was pressed - the
   // Just an Idea heading, or the event's category - so neither is asked.
   if (suggesting) {
+    // What happens next is the policy of where it is added - the category's,
+    // or the parent's - unless the adder runs the event, whose additions are
+    // live at once whatever the policy says.
+    const policy = opts.category ? categoryOf(opts.category) : opts.parent;
+    const live = under && ((opts.parent && opts.parent.canEdit) || (policy && policy.allowAdding === ADDING.yes));
     const lead = el('p', 'field-lead suggest-lead', under
-      ? `Adding to ${root.title}. The organizers will take a look before it goes live.`
+      ? `Adding to ${root.title}. ${live ? 'It will go live right away.' : 'The organizers will take a look before it goes live.'}`
       : 'Have an idea for something the HCA could do? Tell us about it and an organizer will take a look.');
     fields.unshift(lead);
   } else {
