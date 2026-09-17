@@ -272,31 +272,29 @@ func TestMail(t *testing.T) {
 	if r := call(t, mux, parent, "POST", "/api/events/volunteer", map[string]any{"id": "E017", "position": PositionOpen, "note": "happy to help"}); r.Code != http.StatusNoContent {
 		t.Fatalf("sign up: %d %s", r.Code, r.Body)
 	}
-	// Four messages, in no fixed order: the thank-you with its invite, the
-	// chairs' copy without, the sign-up notice and the offer notice.
+	// Four messages, in no fixed order: the thank-you with the chairs
+	// copied, the invite to Robin alone, the sign-up notice and the offer
+	// notice.
 	bySubject := map[string]mail.Message{}
-	var thanks, copy mail.Message
 	for range 4 {
 		m := rec.next(t)
-		switch {
-		case m.Subject == "Thanks for volunteering for Clean Up Crew" && len(m.Attachments) > 0:
-			thanks = m
-		case m.Subject == "Thanks for volunteering for Clean Up Crew":
-			copy = m
-		default:
-			bySubject[m.Subject] = m
-		}
+		bySubject[m.Subject] = m
 	}
-	if !slices.Equal(thanks.To, []string{parent}) || len(thanks.CC) != 0 || !strings.Contains(thanks.HTML, "Hi Robin") || !strings.Contains(thanks.HTML, "/share/E017.png") || !strings.Contains(thanks.HTML, "Add to Calendar") {
+	thanks := bySubject["Thanks for volunteering for Clean Up Crew"]
+	if !slices.Equal(thanks.To, []string{parent}) || !slices.Equal(thanks.CC, []string{admin, chair}) || len(thanks.Attachments) != 0 || !strings.Contains(thanks.HTML, "Hi Robin") || !strings.Contains(thanks.HTML, "/share/E017.png") || !strings.Contains(thanks.HTML, "Add to Calendar") {
 		t.Fatalf("thank-you: %+v (subjects %v)", thanks, keys(bySubject))
 	}
 	if !slices.Equal(thanks.ReplyTo, []string{admin, chair}) {
 		t.Errorf("thank-you reply-to: %v", thanks.ReplyTo)
 	}
+	invite := bySubject["Calendar invite: Clean Up Crew"]
+	if !slices.Equal(invite.To, []string{parent}) || len(invite.CC) != 0 || !slices.Equal(invite.ReplyTo, []string{admin, chair}) || len(invite.Attachments) != 1 || !strings.Contains(invite.HTML, "Add it to your calendar") {
+		t.Fatalf("invite note: %+v (subjects %v)", invite, keys(bySubject))
+	}
 	// The invite is the crew's slot under International Night's date, since
 	// the crew has none of its own, Robin the one attendee, the portal the
 	// organizer.
-	ics := strings.ReplaceAll(string(thanks.Attachments[0].Content), "\r\n ", "")
+	ics := strings.ReplaceAll(string(invite.Attachments[0].Content), "\r\n ", "")
 	for _, want := range []string{"METHOD:REQUEST", "UID:team-E017-" + parent + "@heliosian.com", "SUMMARY:Clean Up Crew (International Night)", "DTSTART:20260924T230000Z", "DTEND:20260925T010000Z", "ORGANIZER;CN=HCA-Team:mailto:hca@example.org", "ATTENDEE;CN=Robin Whitfield;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;RSVP=FALSE:mailto:" + parent, "STATUS:CONFIRMED"} {
 		if !strings.Contains(ics, want) {
 			t.Errorf("invite lacks %q:\n%s", want, ics)
@@ -309,11 +307,6 @@ func TestMail(t *testing.T) {
 	// named - as the event's, not the crew's.
 	if !strings.Contains(thanks.Text, "Event Chairs: ") || strings.Contains(thanks.Text, "Leads") {
 		t.Fatalf("thank-you chairs: %q", thanks.Text)
-	}
-	// The chairs' copy: no invite, no calendar button, the volunteer to
-	// reply to, and the rows theirs rather than "your".
-	if !slices.Equal(copy.To, []string{admin, chair}) || len(copy.Attachments) != 0 || strings.Contains(copy.HTML, "Add to Calendar") || !slices.Equal(copy.ReplyTo, []string{parent}) || !strings.Contains(copy.Text, "Robin Whitfield signed up") || !strings.Contains(copy.Text, "Role: Volunteer") || strings.Contains(copy.Text, "Your role") {
-		t.Fatalf("chairs' copy: %+v", copy)
 	}
 	if n, ok := bySubject["New sign-up: Robin Whitfield for Clean Up Crew"]; !ok || !slices.Equal(n.To, []string{admin}) {
 		t.Fatalf("sign-up notice: %+v", n)
@@ -336,21 +329,17 @@ func TestMail(t *testing.T) {
 	}
 	for range 3 {
 		m := rec.next(t)
-		if !strings.HasPrefix(m.Subject, "Thanks for volunteering") {
-			continue
-		}
-		if !strings.Contains(m.Text, "Clean Up Crew Leads: Robin Whitfield\n") || !strings.Contains(m.Text, "Event Chairs: ") {
-			t.Fatalf("thank-you under a lead: %q", m.Text)
-		}
-		// Sam's note and invite are his (the fake directory knows no
-		// parents); the chairs' copy goes to the crew's lead and the
-		// event's chairs.
-		if len(m.Attachments) > 0 {
-			if !slices.Equal(m.To, []string{other}) || !strings.Contains(string(m.Attachments[0].Content), "mailto:"+other) {
-				t.Fatalf("a student's thank-you: to %v\n%s", m.To, m.Attachments[0].Content)
+		switch {
+		case strings.HasPrefix(m.Subject, "Thanks for volunteering"):
+			// The crew's lead and the event's chairs are copied.
+			if !strings.Contains(m.Text, "Clean Up Crew Leads: Robin Whitfield\n") || !strings.Contains(m.Text, "Event Chairs: ") || !slices.Equal(m.CC, []string{parent, admin, chair}) {
+				t.Fatalf("thank-you under a lead: %q cc %v", m.Text, m.CC)
 			}
-		} else if !slices.Equal(m.To, []string{parent, admin, chair}) {
-			t.Fatalf("chairs' copy under a lead: to %v", m.To)
+		case strings.HasPrefix(m.Subject, "Calendar invite"):
+			// Sam's alone (the fake directory knows no parents).
+			if !slices.Equal(m.To, []string{other}) || len(m.CC) != 0 || !strings.Contains(string(m.Attachments[0].Content), "mailto:"+other) {
+				t.Fatalf("a student's invite: to %v cc %v", m.To, m.CC)
+			}
 		}
 	}
 	// Removing the sign-up cancels the invite for the same people.

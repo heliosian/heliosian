@@ -17,11 +17,12 @@ import (
 
 // The portal's email. Three kinds go out:
 //
-//   - a thank-you to whoever signed up (or was signed up) - and a student's
-//     parents - with a calendar invite for the thing attached, the chairs
-//     getting their own copy without it, so a sign-up sheet never lands on
-//     a chair's calendar forty times; and a cancellation for that invite
-//     when the sign-up is removed;
+//   - a thank-you to whoever signed up (or was signed up), copied to the
+//     chairs of the event - and to a student's parents - followed by a
+//     second, short note to the volunteer alone carrying a calendar invite
+//     for the thing, so a sign-up sheet never lands on a chair's calendar
+//     forty times; and a cancellation for that invite when the sign-up is
+//     removed;
 //   - a note to someone made a co-chair, copied to the other chairs;
 //   - notices to the admins who asked for them: a new event, a new thing
 //     under one, a new sign-up, an offer to co-chair.
@@ -452,7 +453,7 @@ func (a app) mailSignUp(r *http.Request, act *Activity, email, position, note, a
 			by = fmt.Sprintf(" %s signed you up.", a.nameOf(actor))
 		}
 		l.Heading = "Thank you for volunteering!"
-		l.Intro = fmt.Sprintf("%s - you're signed up for %s.%s Just reply if you have a question - it goes to the chairs.", hi, act.Title, by)
+		l.Intro = fmt.Sprintf("%s - you're signed up for %s.%s The chairs are copied here, so just reply if you have a question.", hi, act.Title, by)
 		if position == PositionOpen {
 			l.Rows = append(l.Rows, [2]string{"Your role", "Volunteer, and open to co-chairing"})
 		} else {
@@ -465,31 +466,25 @@ func (a app) mailSignUp(r *http.Request, act *Activity, email, position, note, a
 		l.Button = "See the details"
 		l.Calendar = calendarLink(model, act, l.Path)
 		l.Footnote = "Need to change or cancel? Open the page and use Edit my sign-up."
-		// The volunteer's note - a student's parents on it too - carries the
-		// invite; the chairs get a copy of their own without it, with the
-		// volunteer to reply to.
+		// The thank-you goes to the volunteer - a student's parents too -
+		// with the chairs copied, so everyone concerned reads the same
+		// thing; then a second, short note to the volunteer alone carries
+		// the calendar invite, so nothing lands on a chair's calendar.
 		subject := fmt.Sprintf("Thanks for volunteering for %s", act.Title)
-		mine := a.compose(subject, append([]string{email}, a.directory.Parents(email)...), nil, l, without(chairs, email)...)
-		if inv, ok := a.invite(model, act, email, l.Path, mine.To, false); ok {
-			mine.Attachments = []mail.Attachment{inv}
-			l.Footnote = "The invite attached puts it on your calendar. " + l.Footnote
-			mine.HTML, mine.Text = l.render()
+		to := append([]string{email}, a.directory.Parents(email)...)
+		replyTo := without(chairs, email)
+		note := a.compose(subject, to, replyTo, l, replyTo...)
+		a.post(ctx, note)
+		if inv, ok := a.invite(model, act, email, l.Path, note.To, false); ok {
+			il := a.letterFor(base, act)
+			il.Heading = "Add it to your calendar"
+			il.Intro = fmt.Sprintf("Here's the calendar invite for %s - accept it and it's on your calendar. The details of your sign-up are in the note that came with it.", act.Title)
+			il.Button = "See the details"
+			il.Calendar = l.Calendar
+			invite := a.compose("Calendar invite: "+act.Title, note.To, nil, il, replyTo...)
+			invite.Attachments = []mail.Attachment{inv}
+			a.post(ctx, invite)
 		}
-		a.post(ctx, mine)
-		theirs := []string{}
-		for _, c := range chairs {
-			if !slices.Contains(mine.To, c) {
-				theirs = append(theirs, c)
-			}
-		}
-		l.Heading = fmt.Sprintf("%s signed up", name)
-		l.Intro = fmt.Sprintf("%s is signed up for %s.%s You're copied as a chair; a reply goes to them.", name, act.Title, by)
-		for i := range l.Rows {
-			l.Rows[i][0] = strings.TrimPrefix(l.Rows[i][0], "Your ")
-			l.Rows[i][0] = strings.ToUpper(l.Rows[i][0][:1]) + l.Rows[i][0][1:]
-		}
-		l.Calendar, l.Footnote = "", ""
-		a.post(ctx, a.compose(subject, theirs, nil, l, mine.To...))
 	}
 	// Admin notices: a fresh sign-up, and any offer to co-chair - whether it
 	// came with the sign-up or was added to one later.

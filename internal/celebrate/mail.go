@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -23,10 +22,10 @@ import (
 //     costs, and how invoicing works;
 //   - a note when a host offers a waitlisted family a ticket.
 //
-// A note that says someone is going carries a calendar invite for the
-// party, for the family alone. The hosts get their own copy of the note
-// without it, so a purchase never lands on a host's calendar - forty
-// tickets would be forty invites - and a host's reply goes to the family.
+// A note that says someone is going is followed by a second, short note
+// to the family alone carrying a calendar invite for the party, so the
+// hosts copied on the first never get an invite - forty tickets would be
+// forty invites on a host's calendar.
 //
 // Sending happens off the request, and a failure is logged rather than
 // shown: the tickets themselves already took.
@@ -293,23 +292,27 @@ func (a app) post(ctx context.Context, m mail.Message) {
 	}()
 }
 
-// sendGoing sends a note that says someone is going, twice: to the family
-// with the party's invite attached, the hosts on Reply-To; and, without the
-// invite, to the hosts and whoever else took the tickets for them, the
-// family on Reply-To. Someone on the family's note is never on the hosts'.
-func (a app) sendGoing(ctx context.Context, subject string, to []string, others []string, l letter, p *Party, purchaser string) {
-	family := a.compose(subject, to, nil, l, without(p.HostEmails, purchaser)...)
-	if inv, ok := a.invite(p, purchaser, l.Path, family.To); ok {
-		family.Attachments = []mail.Attachment{inv}
+// sendGoing sends a note that says someone is going, and then the invite:
+// the note to the family with the hosts copied (and whoever took the
+// tickets for them), so everyone concerned reads the same thing; then a
+// second, short note to the family alone carrying the party's calendar
+// invite, so nothing lands on a host's calendar. Both reply to the hosts.
+func (a app) sendGoing(ctx context.Context, subject string, to []string, cc []string, l letter, p *Party, purchaser string) {
+	replyTo := without(p.HostEmails, purchaser)
+	note := a.compose(subject, to, cc, l, replyTo...)
+	a.post(ctx, note)
+	inv, ok := a.invite(p, purchaser, l.Path, note.To)
+	if !ok {
+		return
 	}
-	a.post(ctx, family)
-	rest := []string{}
-	for _, e := range others {
-		if !slices.Contains(family.To, strings.ToLower(strings.TrimSpace(e))) {
-			rest = append(rest, e)
-		}
-	}
-	a.post(ctx, a.compose(subject, rest, nil, l, family.To...))
+	il := a.letterFor(l.Base, p)
+	il.Heading = "Add it to your calendar"
+	il.Intro = fmt.Sprintf("Here's the calendar invite for %s - accept it and the party is on your calendar. The details of your tickets are in the note that came with it.", p.Title)
+	il.Button = "See the party"
+	il.Calendar = l.Calendar
+	invite := a.compose("Calendar invite: "+p.Title, note.To, nil, il, replyTo...)
+	invite.Attachments = []mail.Attachment{inv}
+	a.post(ctx, invite)
 }
 
 func without(list []string, drop string) []string {
@@ -409,19 +412,19 @@ func (a app) mailTickets(r *http.Request, p *Party, purchaser string, taken []ma
 	switch {
 	case len(sold) > 0 && waiting > 0:
 		l.Heading = "Your tickets, and a place on the waitlist"
-		l.Intro = fmt.Sprintf("%s - %s. The party was full before everyone could get in, so your family is on the waitlist for %d more; the hosts will offer places as they open up. Just reply if you have a question - it goes to the hosts.", hi, ticketsWords(len(sold), p.Title), waiting) + by
+		l.Intro = fmt.Sprintf("%s - %s. The party was full before everyone could get in, so your family is on the waitlist for %d more; the hosts will offer places as they open up. The hosts are copied here, so just reply if you have a question.", hi, ticketsWords(len(sold), p.Title), waiting) + by
 		subject = "Your tickets to " + p.Title
 	case guestOf:
 		l.Heading = strings.Fields(holder)[0] + " is going!"
-		l.Intro = fmt.Sprintf("%s - %s has a ticket to %s as your guest; %s added them at no charge - a gift from the hosts. The ticket sits with your family, yours to pass on if plans change. Just reply if you have a question - it goes to the hosts.", hi, holder, p.Title, a.nameOf(actor))
+		l.Intro = fmt.Sprintf("%s - %s has a ticket to %s as your guest; %s added them at no charge - a gift from the hosts. The ticket sits with your family, yours to pass on if plans change. The hosts are copied here, so just reply if you have a question.", hi, holder, p.Title, a.nameOf(actor))
 		subject = holder + "'s ticket to " + p.Title
 	case holder != "":
 		l.Heading = strings.Fields(holder)[0] + ", you're going!"
-		l.Intro = fmt.Sprintf("%s - %s.%s Just reply if you have a question - it goes to the hosts.", hi, ticketsWords(1, p.Title), by)
+		l.Intro = fmt.Sprintf("%s - %s.%s The hosts are copied here, so just reply if you have a question.", hi, ticketsWords(1, p.Title), by)
 		subject = holder + "'s ticket to " + p.Title
 	case len(sold) > 0:
 		l.Heading = "You're going!"
-		l.Intro = fmt.Sprintf("%s - %s.%s Just reply if you have a question - it goes to the hosts.", hi, ticketsWords(len(sold), p.Title), by)
+		l.Intro = fmt.Sprintf("%s - %s.%s The hosts are copied here, so just reply if you have a question.", hi, ticketsWords(len(sold), p.Title), by)
 		subject = "Your tickets to " + p.Title
 	default:
 		l.Heading = "You're on the waitlist"
@@ -457,21 +460,16 @@ func (a app) mailTickets(r *http.Request, p *Party, purchaser string, taken []ma
 			l.Footnote = model.Settings.TicketNote
 		}
 	}
-	// A purchase goes to the hosts as well, on a copy of their own; a
-	// waitlist request sends them a note of their own instead
-	// (mailWaitlistHosts), whose reply goes to the family rather than back
-	// to themselves.
-	if len(sold) > 0 {
-		others := without(p.HostEmails, purchaser)
-		if actor != purchaser {
-			others = append([]string{actor}, others...)
-		}
-		a.sendGoing(r.Context(), subject, to, others, l, p, purchaser)
-		return
-	}
 	cc := []string{}
 	if actor != purchaser {
 		cc = append(cc, actor)
+	}
+	// A purchase copies the hosts in, and the invite follows; a waitlist
+	// request sends them a note of their own instead (mailWaitlistHosts),
+	// whose reply goes to the family rather than back to themselves.
+	if len(sold) > 0 {
+		a.sendGoing(r.Context(), subject, to, append(cc, without(p.HostEmails, purchaser)...), l, p, purchaser)
+		return
 	}
 	a.send(r.Context(), subject, to, cc, l, without(p.HostEmails, purchaser)...)
 	a.mailWaitlistHosts(r, p, purchaser, waiting, taken[0]["Note"], actor)
@@ -529,7 +527,7 @@ func (a app) mailOffered(r *http.Request, p *Party, purchaser string, tickets []
 		total += price
 	}
 	l.Heading = "A place opened up!"
-	l.Intro = fmt.Sprintf("%s - %s has offered your family %d %s to %s, off the waitlist. They're yours now. Just reply if you have a question - it goes to the hosts.", hi, a.nameOf(actor), n, plural(n, "ticket"), p.Title)
+	l.Intro = fmt.Sprintf("%s - %s has offered your family %d %s to %s, off the waitlist. They're yours now. The hosts are copied here, so just reply if you have a question.", hi, a.nameOf(actor), n, plural(n, "ticket"), p.Title)
 	l.Rows = [][2]string{{"Tickets", strings.Join(names, ", ")}, {"Total", fmt.Sprintf("$%s (%d × $%s)", PriceCell(total), n, PriceCell(total/float64(n)))}, {"Billed to", fmt.Sprintf("%s (%s)", a.nameOf(purchaser), purchaser)}}
 	if hosts := a.hostNames(p); hosts != "" {
 		l.Rows = append(l.Rows, [2]string{"Hosts", hosts})

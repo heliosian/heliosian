@@ -1149,12 +1149,17 @@ function openAddSomeone(p, editor, onAdd, opts = {}) {
       (v === 'directory' ? directoryPanel.querySelector('input') : name).focus();
     });
     guestPanel.hidden = true;
-    wrap.append(which.wrap, directoryPanel, guestPanel);
-  } else {
-    wrap.append(guestPanel);
+    wrap.append(which.wrap);
   }
+  // Anything else the occasion asks sits above the person, since picking
+  // one from the directory - or Add guest - is what sends the form.
   if (opts.extra) {
     wrap.append(opts.extra);
+  }
+  if (directoryPanel) {
+    wrap.append(directoryPanel, guestPanel);
+  } else {
+    wrap.append(guestPanel);
   }
   const shut = openSheet(opts.title || 'Add someone', [wrap]);
   const first = wrap.querySelector('input:not([hidden])');
