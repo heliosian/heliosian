@@ -24,11 +24,11 @@ func TestSampleSheetLoads(t *testing.T) {
 		t.Fatal(err)
 	}
 	g := model.Group("middle-school-parents")
-	if g == nil || len(g.Managers) != 2 || len(g.Rules) != 2 || len(g.Additions) != 0 || !g.Visible {
+	if g == nil || len(g.Managers) != 2 || len(g.Rules) != 2 || len(g.Additions) != 0 || g.Visibility != VisibilityEveryone {
 		t.Fatalf("middle-school-parents: %+v", g)
 	}
-	if model.Group("soccer-team").Visible || model.Group("hummingbird-families").Visible {
-		t.Fatal("a group with a blank Visible cell is visible")
+	if model.Group("soccer-team").Visibility != VisibilityHidden || model.Group("hummingbird-families").Visibility != VisibilityHidden {
+		t.Fatal("a group with a blank Visible cell is not hidden")
 	}
 	if g.Rules[1].Kind != KindExclude || g.Rules[1].Search != "haddad" {
 		t.Fatalf("exclude rule: %+v", g.Rules[1])
@@ -47,14 +47,37 @@ func TestLoadRefusesAnAdditionOnNoGroup(t *testing.T) {
 	}
 }
 
+func TestNamesTakeDots(t *testing.T) {
+	for _, name := range []string{"soccer.team", "grade.5-parents", "a.b"} {
+		if err := CheckName(name); err != nil {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	for _, name := range []string{"soccer..team", ".soccer", "soccer.", "a"} {
+		if err := CheckName(name); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+}
+
+func TestLoadRefusesAVisibilityItDoesNotKnow(t *testing.T) {
+	tables := sampleTables(t)
+	tables.Groups[0][visibleColumn] = "on"
+	if _, err := BuildModel(tables); err == nil {
+		t.Fatal("accepted a Visible cell reading on")
+	}
+}
+
 func TestChecksRefuseBadGroups(t *testing.T) {
-	good := Group{Name: "a-b", Title: "A", Managers: []string{"m@x.org"}, Rules: []Rule{{Kind: KindInclude, Roles: []string{"Staff"}, Owner: "m@x.org"}}}
+	good := Group{Name: "a-b", Title: "A", Visibility: VisibilityHidden, Managers: []string{"m@x.org"}, Rules: []Rule{{Kind: KindInclude, Roles: []string{"Staff"}, Owner: "m@x.org"}}}
 	if err := CheckGroup(good); err != nil {
 		t.Fatal(err)
 	}
 	cases := map[string]func(g *Group){
 		"name":          func(g *Group) { g.Name = "Bad Name" },
+		"two dots":      func(g *Group) { g.Name = "a..b" },
 		"reserved":      func(g *Group) { g.Name = "postmaster" },
+		"visibility":    func(g *Group) { g.Visibility = "on" },
 		"title":         func(g *Group) { g.Title = "" },
 		"managers":      func(g *Group) { g.Managers = nil },
 		"no include":    func(g *Group) { g.Rules[0].Kind = KindExclude },
@@ -86,7 +109,7 @@ func TestChecksRefuseBadGroups(t *testing.T) {
 
 func TestWithGroupRoundTrips(t *testing.T) {
 	tables := sampleTables(t)
-	g := Normalize(Group{Name: "chess-club", Title: " Chess Club ", Visible: true, Managers: []string{"M@X.org", "m@x.org"}, Rules: []Rule{{Kind: "Include", Search: "  Kim ", Owner: "M@X.org"}},
+	g := Normalize(Group{Name: "chess.club", Title: " Chess Club ", Visibility: " Members ", Managers: []string{"M@X.org", "m@x.org"}, Rules: []Rule{{Kind: "Include", Search: "  Kim ", Owner: "M@X.org"}},
 		Additions: []Addition{{Email: " Coach@Club.org ", Name: "  The  Coach "}, {Email: "coach@club.org", Name: "Again"}}})
 	next := tables.withGroup(g)
 	if len(tables.Groups) != 3 || len(next.Groups) != 4 {
@@ -96,8 +119,8 @@ func TestWithGroupRoundTrips(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := model.Group("chess-club")
-	if got.Title != "Chess Club" || !got.Visible || len(got.Managers) != 1 || got.Rules[0].Kind != KindInclude || got.Rules[0].Search != "kim" || got.Rules[0].Owner != "m@x.org" {
+	got := model.Group("chess.club")
+	if got.Title != "Chess Club" || got.Visibility != VisibilityMembers || len(got.Managers) != 1 || got.Rules[0].Kind != KindInclude || got.Rules[0].Search != "kim" || got.Rules[0].Owner != "m@x.org" {
 		t.Fatalf("%+v", got)
 	}
 	if len(got.Additions) != 1 || got.Additions[0] != (Addition{Email: "coach@club.org", Name: "The Coach"}) {
@@ -105,26 +128,26 @@ func TestWithGroupRoundTrips(t *testing.T) {
 	}
 	g.Rules = append(g.Rules, Rule{Kind: KindExclude, Roles: []string{"Staff"}, Owner: "m@x.org"})
 	g.Additions = nil
-	g.Visible = false
+	g.Visibility = ""
 	again := next.withGroup(g)
 	model, err = BuildModel(again)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(model.Group("chess-club").Rules) != 2 || len(again.Groups) != 4 || len(model.Group("chess-club").Additions) != 0 || model.Group("chess-club").Visible {
-		t.Fatalf("second save: %+v", model.Group("chess-club"))
+	if len(model.Group("chess.club").Rules) != 2 || len(again.Groups) != 4 || len(model.Group("chess.club").Additions) != 0 || model.Group("chess.club").Visibility != VisibilityHidden {
+		t.Fatalf("second save: %+v", model.Group("chess.club"))
 	}
 	if len(again.Additions) != len(tables.Additions) {
 		t.Fatalf("the additions rows were not replaced: %d", len(again.Additions))
 	}
-	model, err = BuildModel(again.withoutGroup("chess-club"))
+	model, err = BuildModel(again.withoutGroup("chess.club"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if model.Group("chess-club") != nil || len(model.Groups) != 3 {
+	if model.Group("chess.club") != nil || len(model.Groups) != 3 {
 		t.Fatal("the group was not removed")
 	}
-	if len(next.withoutGroup("chess-club").Additions) != len(tables.Additions) {
+	if len(next.withoutGroup("chess.club").Additions) != len(tables.Additions) {
 		t.Fatal("the additions rows were not removed")
 	}
 }

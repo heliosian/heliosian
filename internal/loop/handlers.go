@@ -298,7 +298,10 @@ func (a app) sharedRules(viewer string, existing []Rule, rules []Rule) error {
 }
 
 func (a app) sees(g Group, viewer string, admin bool) bool {
-	return admin || g.Visible || g.Manages(viewer)
+	if admin || g.Manages(viewer) || g.Visibility == VisibilityEveryone {
+		return true
+	}
+	return g.Visibility == VisibilityMembers && OnList(g, a.sources(), viewer)
 }
 
 func (a app) view(g Group, viewer string) groupView {
@@ -589,11 +592,11 @@ func (a app) saveGroup(w http.ResponseWriter, r *http.Request) {
 		if err := a.writer.AppendAll(appName, aliasesTab, aliases); err != nil {
 			return err
 		}
-		return a.logChange(email, action, g.Name, fmt.Sprintf("%s; %d aliases; %d managers; %d rules; %d added by hand; %d excluded; prefix %v; visible %v", g.Title, len(g.Aliases), len(g.Managers), len(g.Rules), len(g.Additions), len(g.Excluded), g.Prefix, g.Visible))
+		return a.logChange(email, action, g.Name, fmt.Sprintf("%s; %d aliases; %d managers; %d rules; %d added by hand; %d excluded; prefix %v; visibility %s", g.Title, len(g.Aliases), len(g.Managers), len(g.Rules), len(g.Additions), len(g.Excluded), g.Prefix, g.Visibility))
 	}) {
 		return
 	}
-	slog.InfoContext(r.Context(), "groups: saved group", "action", action, "group", g.Name, "aliases", len(g.Aliases), "rules", len(g.Rules), "managers", len(g.Managers), "additions", len(g.Additions), "excluded", len(g.Excluded), "prefix", g.Prefix, "visible", g.Visible)
+	slog.InfoContext(r.Context(), "groups: saved group", "action", action, "group", g.Name, "aliases", len(g.Aliases), "rules", len(g.Rules), "managers", len(g.Managers), "additions", len(g.Additions), "excluded", len(g.Excluded), "prefix", g.Prefix, "visibility", g.Visibility)
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(a.view(g, email)); err != nil {
 		slog.ErrorContext(r.Context(), "encode saved group", "error", err)

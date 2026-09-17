@@ -5,6 +5,13 @@ import {load, navigate} from '../app.js';
 import {createPersonPicker} from '/picker.js';
 import {tabStrip, tabParam, tabHref} from '/tabs.js';
 import {appOrigin} from '/toolbar.js';
+import {visibilityWords} from './groups.js';
+
+const visibilityNotes = {
+  hidden: 'Only the group\'s managers and the admins see it.',
+  members: 'Anyone the rules or the additions place on the group can see it, and take themselves off it or put themselves back; only managers can change it.',
+  everyone: 'Anyone in Loop can see it, and only managers can change it.',
+};
 
 function chipToggle(label, on, onChange) {
   const b = el('button', 'chip-toggle' + (on ? ' active' : ''), label);
@@ -183,7 +190,7 @@ function editor(g, isNew) {
   const draft = {
     name: g.name, aliases: [...(g.aliases || [])], title: g.title, description: g.description || '',
     prefix: isNew ? true : g.prefix,
-    visible: isNew ? false : g.visible,
+    visibility: isNew ? 'hidden' : g.visibility,
     managers: g.managers.map(m => m.email),
     rules: g.rules.map(r => ({kind: r.kind, roles: [...r.roles], search: r.search, classrooms: [...r.classrooms], grades: [...r.grades], tags: [...r.tags], family: [...r.family], owner: r.owner, tagLabels: r.tagLabels})),
     additions: (g.additions || []).map(a => ({email: a.email, name: a.name})),
@@ -315,23 +322,25 @@ function editor(g, isNew) {
   updatePrefixNote();
   prefixField.append(prefix, el('span', '', 'Put the title in front of every subject'));
   words.append(prefixField, prefixNote);
-  const visibleField = el('label', 'field check');
-  const visible = el('input');
-  visible.type = 'checkbox';
-  visible.checked = draft.visible;
-  visible.addEventListener('change', () => {
-    draft.visible = visible.checked;
-    updateVisibleNote();
-  });
-  const visibleNote = el('small');
-  const updateVisibleNote = () => {
-    visibleNote.textContent = draft.visible
-      ? 'Anyone in Loop can see it, and only managers can change it.'
-      : 'Only the group\'s managers and the admins see it.';
+  const visibilityField = el('label', 'field');
+  const visibility = el('select');
+  for (const [value, label] of Object.entries(visibilityWords)) {
+    const option = el('option', '', label);
+    option.value = value;
+    option.selected = value === draft.visibility;
+    visibility.append(option);
+  }
+  const visibilityNote = el('small');
+  const updateVisibilityNote = () => {
+    visibilityNote.textContent = visibilityNotes[draft.visibility];
   };
-  updateVisibleNote();
-  visibleField.append(visible, el('span', '', 'Visible to everyone in Loop'));
-  words.append(visibleField, visibleNote);
+  visibility.addEventListener('change', () => {
+    draft.visibility = visibility.value;
+    updateVisibilityNote();
+  });
+  updateVisibilityNote();
+  visibilityField.append(el('span', '', 'Who sees the group'), visibility, visibilityNote);
+  words.append(visibilityField);
   const overviewPanel = el('div');
   overviewPanel.append(words);
 
@@ -624,8 +633,8 @@ function editor(g, isNew) {
   renderExcluded();
   const tabs = [
     {key: 'overview', label: 'Overview', panel: overviewPanel},
-    {key: 'members', label: 'Members', panel: preview},
     {key: 'rules', label: 'Rules', panel: rulesPanel},
+    {key: 'members', label: 'Members', panel: preview},
     {key: 'excluded', label: 'Excluded', panel: excluded},
   ];
   if (!isNew) {
@@ -640,7 +649,7 @@ function editor(g, isNew) {
     status.textContent = 'Saving…';
     save.disabled = true;
     try {
-      const body = {original: isNew ? '' : draft.name, name: draft.name, aliases: draft.aliases, title: draft.title, description: draft.description, prefix: draft.prefix, visible: draft.visible, managers: draft.managers, rules: draft.rules.filter(ruleSaysSomething), additions: draft.additions, excluded: draft.excluded};
+      const body = {original: isNew ? '' : draft.name, name: draft.name, aliases: draft.aliases, title: draft.title, description: draft.description, prefix: draft.prefix, visibility: draft.visibility, managers: draft.managers, rules: draft.rules.filter(ruleSaysSomething), additions: draft.additions, excluded: draft.excluded};
       const saved = await send('POST', '/api/loop/group', body);
       await load();
       toast(isNew ? 'Group made' : 'Saved');
@@ -695,7 +704,7 @@ function excludedPerson(e) {
 }
 
 function slug(text) {
-  return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+  return text.toLowerCase().replace(/[^a-z0-9.]+/g, '-').replace(/\.{2,}/g, '.').replace(/^[-.]+|[-.]+$/g, '').slice(0, 40);
 }
 
 export function newGroupPage() {
@@ -821,8 +830,11 @@ export function groupPage(g) {
     overview.append(el('div', 'subject-note', 'Also reached as ' + g.aliases.map(a => `${a}@${state.model.domain}`).join(', ') + '.'));
   }
   overview.append(el('div', 'subject-note', g.prefix ? `Every message goes out with “[${g.title}]” at the front of its subject.` : 'Subjects go out as written.'));
-  if (g.visible) {
+  if (g.visibility === 'everyone') {
     overview.append(el('div', 'subject-note', 'Visible to everyone in Loop; only its managers can change it.'));
+  }
+  if (g.visibility === 'members') {
+    overview.append(el('div', 'subject-note', 'Visible to the people on it; only its managers can change it.'));
   }
   if (g.member && g.unsubscribed) {
     overview.append(el('div', 'subject-note', 'You are on this group\'s excluded list and get no mail from it. Resubscribe to get its mail again.'));

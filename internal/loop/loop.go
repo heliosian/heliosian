@@ -29,7 +29,10 @@ const (
 	prefixOff    = "off"
 
 	visibleColumn = "Visible"
-	visibleOn     = "on"
+
+	VisibilityHidden   = "hidden"
+	VisibilityMembers  = "members"
+	VisibilityEveryone = "everyone"
 
 	// Domain is where every group lives: a group named parents-k is
 	// parents-k@loop.heliosian.com.
@@ -66,11 +69,14 @@ var (
 	// does.
 	Roles     = []string{"Student", "Parent", "Staff"}
 	Relations = []string{"Parents", "Children", "Siblings"}
+
+	Visibilities = []string{VisibilityHidden, VisibilityMembers, VisibilityEveryone}
 )
 
 // nameForm is a group's name: the local part of its address, two to forty
-// characters of lowercase letters, digits and hyphens, neither end a hyphen.
-var nameForm = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,38}[a-z0-9]$`)
+// characters of lowercase letters, digits, dots and hyphens, neither end a
+// dot or a hyphen.
+var nameForm = regexp.MustCompile(`^[a-z0-9][a-z0-9.-]{0,38}[a-z0-9]$`)
 
 var reservedNames = []string{"abuse", "admin", "administrator", "hostmaster", "noreply", "no-reply", "postmaster", "root", "webmaster"}
 
@@ -118,7 +124,7 @@ type Group struct {
 	CreatedBy   string     `json:"createdBy,omitempty"`
 	Created     string     `json:"created,omitempty"`
 	Prefix      bool       `json:"prefix"`
-	Visible     bool       `json:"visible"`
+	Visibility  string     `json:"visibility"`
 	Managers    []string   `json:"managers"`
 	Rules       []Rule     `json:"rules"`
 	Additions   []Addition `json:"additions"`
@@ -261,8 +267,8 @@ func cleanEmails(raw []string) []string {
 // CheckName refuses a name that cannot be a group's: not the address form,
 // or one mail systems reserve.
 func CheckName(name string) error {
-	if !nameForm.MatchString(name) {
-		return fmt.Errorf("a group's name is two to forty lowercase letters, digits and hyphens, starting and ending with a letter or digit")
+	if !nameForm.MatchString(name) || strings.Contains(name, "..") {
+		return fmt.Errorf("a group's name is two to forty lowercase letters, digits, dots and hyphens, starting and ending with a letter or digit, with no two dots together")
 	}
 	if slices.Contains(reservedNames, name) {
 		return fmt.Errorf("%s is reserved", name)
@@ -326,6 +332,9 @@ func CheckGroup(g Group) error {
 	if len(g.Description) > maxDescriptionLength {
 		return fmt.Errorf("group %s: the description is too long", g.Name)
 	}
+	if !slices.Contains(Visibilities, g.Visibility) {
+		return fmt.Errorf("group %s: visibility %q is not one of %s", g.Name, g.Visibility, JoinList(Visibilities))
+	}
 	if len(g.Managers) == 0 {
 		return fmt.Errorf("group %s needs at least one manager", g.Name)
 	}
@@ -388,6 +397,10 @@ func Normalize(g Group) Group {
 	g.Aliases = aliases
 	g.Title = strings.TrimSpace(g.Title)
 	g.Description = strings.TrimSpace(g.Description)
+	g.Visibility = strings.ToLower(strings.TrimSpace(g.Visibility))
+	if g.Visibility == "" {
+		g.Visibility = VisibilityHidden
+	}
 	g.Managers = cleanEmails(g.Managers)
 	rules := make([]Rule, 0, len(g.Rules))
 	for _, r := range g.Rules {
@@ -470,15 +483,8 @@ func prefixCell(on bool) string {
 	return prefixOff
 }
 
-func visibleCell(on bool) string {
-	if on {
-		return visibleOn
-	}
-	return ""
-}
-
 func groupCells(g Group) map[string]string {
-	return map[string]string{"Name": g.Name, "Title": g.Title, "Description": g.Description, "Created By": g.CreatedBy, "Created": g.Created, prefixColumn: prefixCell(g.Prefix), visibleColumn: visibleCell(g.Visible)}
+	return map[string]string{"Name": g.Name, "Title": g.Title, "Description": g.Description, "Created By": g.CreatedBy, "Created": g.Created, prefixColumn: prefixCell(g.Prefix), visibleColumn: g.Visibility}
 }
 
 // BuildModel validates every row and refuses the whole set on the first
@@ -487,7 +493,7 @@ func groupCells(g Group) map[string]string {
 func BuildModel(tables *Tables) (*Model, error) {
 	model := &Model{Groups: []Group{}, byName: map[string]int{}}
 	for _, row := range tables.Groups {
-		g := Normalize(Group{Name: row["Name"], Title: row["Title"], Description: row["Description"], CreatedBy: row["Created By"], Created: row["Created"], Prefix: strings.ToLower(strings.TrimSpace(row[prefixColumn])) != prefixOff, Visible: strings.ToLower(strings.TrimSpace(row[visibleColumn])) == visibleOn})
+		g := Normalize(Group{Name: row["Name"], Title: row["Title"], Description: row["Description"], CreatedBy: row["Created By"], Created: row["Created"], Prefix: strings.ToLower(strings.TrimSpace(row[prefixColumn])) != prefixOff, Visibility: row[visibleColumn]})
 		if _, dup := model.byName[g.Name]; dup {
 			return nil, fmt.Errorf("%s has two rows named %q", groupsTab, g.Name)
 		}

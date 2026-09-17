@@ -53,7 +53,7 @@ func TestAMemberOfAVisibleGroupTakesThemselvesOffAndBack(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &model); err != nil {
 		t.Fatal(err)
 	}
-	if len(model.Groups) != 1 || model.Groups[0].Name != name || model.Groups[0].Mine || !model.Groups[0].Member || model.Groups[0].Unsubscribed || !model.Groups[0].Visible {
+	if len(model.Groups) != 1 || model.Groups[0].Name != name || model.Groups[0].Mine || !model.Groups[0].Member || model.Groups[0].Unsubscribed || model.Groups[0].Visibility != VisibilityEveryone {
 		t.Fatalf("a member sees %+v", model.Groups)
 	}
 
@@ -109,5 +109,70 @@ func TestAMemberOfAVisibleGroupTakesThemselvesOffAndBack(t *testing.T) {
 	}
 	if h.cache.Model().Group(name).HasExcluded("mia.torres@heliosschool.org") {
 		t.Fatal("someone not on the list was excluded")
+	}
+}
+
+func (h *harness) groupNames(email string) []string {
+	rec := h.as(email, http.MethodGet, "/api/loop/model", "")
+	if rec.Code != http.StatusOK {
+		h.t.Fatalf("model answered %d: %s", rec.Code, rec.Body)
+	}
+	var model struct {
+		Groups []groupView `json:"groups"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &model); err != nil {
+		h.t.Fatal(err)
+	}
+	names := []string{}
+	for _, g := range model.Groups {
+		names = append(names, g.Name)
+	}
+	return names
+}
+
+func TestAGroupOpenToItsMembersReachesThemAlone(t *testing.T) {
+	h := newHarness(t, &fakeStore{raw: []byte(post)})
+	const name = "middle-school-parents"
+	g := *h.cache.Model().Group(name)
+	member := ""
+	for _, m := range h.members(name) {
+		if !g.Manages(m) {
+			member = m
+			break
+		}
+	}
+	const outsider = "mia.torres@heliosschool.org"
+	if member == "" || slices.Contains(h.members(name), outsider) {
+		t.Fatal("no member who does not manage the group, or the outsider is on it")
+	}
+	g.Visibility = VisibilityMembers
+	model, err := BuildModel(h.cache.Tables().withGroup(g))
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.cache.set(h.cache.Tables().withGroup(g), model)
+	if !slices.Equal(h.groupNames(member), []string{name}) {
+		t.Fatalf("a member sees %v", h.groupNames(member))
+	}
+	if len(h.groupNames(outsider)) != 0 {
+		t.Fatalf("someone not on the group sees %v", h.groupNames(outsider))
+	}
+	if rec := h.as(outsider, http.MethodPost, "/api/loop/subscription", `{"name":"`+name+`","subscribed":false}`); rec.Code != http.StatusNotFound {
+		t.Fatalf("someone not on the group answered %d: %s", rec.Code, rec.Body)
+	}
+	if rec := h.as(member, http.MethodPost, "/api/loop/subscription", `{"name":"`+name+`","subscribed":false}`); rec.Code != http.StatusOK {
+		t.Fatalf("a member's unsubscribe answered %d: %s", rec.Code, rec.Body)
+	}
+	if !slices.Equal(h.groupNames(member), []string{name}) {
+		t.Fatalf("an unsubscribed member sees %v", h.groupNames(member))
+	}
+	g.Visibility = VisibilityHidden
+	model, err = BuildModel(h.cache.Tables().withGroup(g))
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.cache.set(h.cache.Tables().withGroup(g), model)
+	if len(h.groupNames(member)) != 0 {
+		t.Fatalf("a member sees a hidden group: %v", h.groupNames(member))
 	}
 }

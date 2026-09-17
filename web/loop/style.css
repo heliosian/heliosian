@@ -506,7 +506,7 @@ a.person-row-link:hover .person-name { text-decoration: underline; }
 
 .field > small { display: block; font-size: 12px; color: var(--muted); margin-top: 4px; }
 
-.field input, .field textarea { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; background: #fff; }
+.field input, .field textarea, .field select { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; background: #fff; }
 
 .field input:disabled { background: var(--input); color: var(--muted); }
 

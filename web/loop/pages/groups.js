@@ -3,6 +3,8 @@ import {el, svg, link, button, iconButton, copyText, pageHead} from '../dom.js';
 import {setTitle, setSearch} from '../chrome.js';
 import {navigate} from '../app.js';
 
+export const visibilityWords = {hidden: 'Hidden', members: 'Visible to members', everyone: 'Visible to everyone'};
+
 function groupCard(g) {
   const card = link(groupPath(g), 'group-card');
   const head = el('div', 'group-card-head');
@@ -14,9 +16,6 @@ function groupCard(g) {
   address.append(el('span', '', g.address));
   address.append(iconButton('copy', 'Copy the address', 'tiny', () => copyText(g.address, 'Address copied')));
   words.append(address);
-  for (const alias of g.aliases) {
-    words.append(el('div', 'group-address', `${alias}@${state.model.domain}`));
-  }
   head.append(icon, words);
   card.append(head);
   if (g.description) {
@@ -25,8 +24,8 @@ function groupCard(g) {
   const meta = el('div', 'group-meta');
   const count = g.members.length;
   meta.append(el('span', 'chip', `${count} ${count === 1 ? 'member' : 'members'}`));
-  if (g.visible) {
-    meta.append(el('span', 'chip', 'Visible to everyone'));
+  if (g.visibility !== 'hidden') {
+    meta.append(el('span', 'chip', visibilityWords[g.visibility]));
   }
   meta.append(el('span', 'group-managers', 'Managed by ' + g.managers.map(m => m.name).join(', ')));
   card.append(meta);
@@ -49,22 +48,22 @@ export function groupsPage() {
   const list = el('div', 'group-list');
   const empty = el('div', 'panel-empty');
   const others = el('div');
-  others.append(el('h2', 'section-title', 'Visible to everyone'));
-  others.append(el('p', 'page-lead', 'Groups their managers have opened to everyone in Loop. Open one to see who is on it; if you are, you can take yourself off it there, or put yourself back.'));
+  others.append(el('h2', 'section-title', 'Other groups'));
+  others.append(el('p', 'page-lead', 'Groups their managers have opened to everyone in Loop, and groups you are on whose managers have opened them to their members. Open one to see who is on it; if you are, you can take yourself off it there, or put yourself back.'));
   const othersList = el('div', 'group-list');
   others.append(othersList);
   const render = query => {
     list.replaceChildren();
     othersList.replaceChildren();
     const mine = state.model.groups.filter(g => managed(g) && matches(g, query));
-    const visible = state.model.groups.filter(g => !managed(g) && matches(g, query));
+    const theirs = state.model.groups.filter(g => !managed(g) && matches(g, query));
     if (!mine.length) {
       empty.textContent = query ? 'No group of yours matches that.' : 'You manage no groups yet. Make one, and its address is yours to hand out.';
       list.append(empty);
     }
     cards(list, mine);
-    others.hidden = !visible.length;
-    cards(othersList, visible);
+    others.hidden = !theirs.length;
+    cards(othersList, theirs);
   };
   render('');
   setSearch(render);
