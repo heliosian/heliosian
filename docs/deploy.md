@@ -125,6 +125,7 @@ Helios Loop keeps every message its groups receive in a second bucket, `gs://hel
 - Data access: content manager on the community shared drive, which covers editing the `Directory` sheet inside it (self-service edits write cells and append to the Change Log tab). Shared in Drive directly, never through project IAM.
 - Media: `roles/storage.objectAdmin` on `gs://heliosian-media`, granted on the bucket, and the same on `gs://heliosian-mail`.
 - Runtime: the Cloud Run service and the `periodicsync` job run as it, and it holds Secret Manager Secret Accessor on each secret individually.
+- School calendar: the import reads the school's public Google Calendar through the Google Calendar API (`calendar-json.googleapis.com`, enabled in the project) with the read-only calendar scope, which the client asks for by name since a token without it is refused; the calendar being public, no sharing to `directory@` is needed. Which APIs the project has on is `gcloud services list --enabled --project heliosian`.
 - Scheduling: it holds `roles/run.invoker` on the `periodicsync` job, which is how the Cloud Scheduler job starts an execution as it.
 - Humans: `roles/iam.serviceAccountTokenCreator` on this account enables the local impersonation that real-data development uses (`docs/dev.md`).
 

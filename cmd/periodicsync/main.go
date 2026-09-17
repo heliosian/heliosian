@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	gcal "google.golang.org/api/calendar/v3"
 	gapi "google.golang.org/api/option"
 	"google.golang.org/api/sheets/v4"
 
@@ -75,6 +76,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("[ERROR] create sheets client: %v", err)
 	}
+	cal, err := gcal.NewService(ctx, gapi.WithScopes(gcal.CalendarReadonlyScope))
+	if err != nil {
+		log.Fatalf("[ERROR] create calendar client: %v", err)
+	}
 	directory, err := who.LoadModel(source, nil, staticFiles{"web/who"})
 	if err != nil {
 		log.Fatalf("[ERROR] load directory model: %v", err)
@@ -83,7 +88,7 @@ func main() {
 	// and the run exits non-zero at the end naming every stage that failed.
 	failures := []string{}
 	log.Printf("stage: calendar import")
-	if err := calendarimport.Run(ctx, calendarimport.Options{Source: source, Sheets: svc, CalendarSheet: calendarSheet, Directory: directory, AnthropicKey: key, DryRun: *dryRun}); err != nil {
+	if err := calendarimport.Run(ctx, calendarimport.Options{Source: source, Sheets: svc, Calendar: cal, CalendarSheet: calendarSheet, Directory: directory, AnthropicKey: key, DryRun: *dryRun}); err != nil {
 		log.Printf("[ERROR] calendar import: %v", err)
 		failures = append(failures, "calendar import")
 	}

@@ -32,18 +32,18 @@ import (
 	"github.com/anthropics/anthropic-sdk-go/option"
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
+	gcal "google.golang.org/api/calendar/v3"
+	"google.golang.org/api/googleapi"
 	"google.golang.org/api/sheets/v4"
 
 	"heliosian/internal/app"
 	"heliosian/internal/calendar"
 	"heliosian/internal/data"
-	"heliosian/internal/ics"
 	"heliosian/internal/sheetsync"
 	"heliosian/internal/who"
 )
 
 const (
-	feedURL   = calendar.SchoolFeedURL
 	pageURL   = calendar.SchoolCalendarPage
 	modelName = "claude-fable-5-1"
 	actor     = "calendarimport"
@@ -55,11 +55,13 @@ const (
 var legendDayTypes = []string{"No School", "Early Dismissal"}
 
 // Options is what one run needs: the sheets it reads and writes, the
-// directory model already loaded for the audience vocabulary, the Claude key,
-// and whether to write anything.
+// Calendar API client the school's calendar is read through, the directory
+// model already loaded for the audience vocabulary, the Claude key, and
+// whether to write anything.
 type Options struct {
 	Source        *data.Sheet
 	Sheets        *sheets.Service
+	Calendar      *gcal.Service
 	CalendarSheet string
 	Directory     *who.Model
 	AnthropicKey  string
@@ -180,39 +182,108 @@ func window(now time.Time) (time.Time, time.Time) {
 	return from, from.AddDate(3, 0, 0)
 }
 
-func googleRows(events []ics.Event) ([]map[string]string, error) {
+const feedFields = googleapi.Field("nextPageToken,items(iCalUID,recurringEventId,originalStartTime,start,end,summary,location,description,updated,sequence,status)")
+
+// feedRows reads every event instance of the school's calendar starting
+// within [from, to) through the Calendar API, which expands repeating events
+// and applies their overrides itself.
+func feedRows(ctx context.Context, svc *gcal.Service, from, to time.Time) ([]map[string]string, error) {
 	rows := []map[string]string{}
-	for _, e := range events {
-		if e.Status == "CANCELLED" {
-			continue
-		}
-		description, err := flatten(e.Description)
+	call := svc.Events.List(calendar.SchoolCalendarID).Context(ctx).
+		SingleEvents(true).OrderBy("startTime").MaxResults(2500).
+		TimeMin(from.Format(time.RFC3339)).TimeMax(to.Format(time.RFC3339)).
+		Fields(feedFields)
+	for {
+		page, err := call.Do()
 		if err != nil {
-			return nil, fmt.Errorf("event %s description: %w", e.Key, err)
+			return nil, err
 		}
-		row := map[string]string{
-			"Key":         e.Key,
-			"Title":       collapse(e.Summary),
-			"Location":    collapse(e.Location),
-			"Description": description,
-			"Updated":     e.Modified.Format(calendar.DateTimeFormat),
-			"Sequence":    strconv.Itoa(e.Sequence),
-		}
-		if e.AllDay {
-			end := e.End.AddDate(0, 0, -1)
-			if end.Before(e.Start) {
-				end = e.Start
+		for _, e := range page.Items {
+			row, start, err := feedRow(e)
+			if err != nil {
+				return nil, err
 			}
-			row["Start"], row["End"] = e.Start.Format(calendar.DateFormat), end.Format(calendar.DateFormat)
-		} else {
-			row["Start"], row["End"] = e.Start.Format(calendar.DateTimeFormat), e.End.Format(calendar.DateTimeFormat)
+			if e.Status == "cancelled" || start.Before(from) || !start.Before(to) {
+				continue
+			}
+			rows = append(rows, row)
 		}
-		if row["Title"] == "" {
-			row["Title"] = "(untitled)"
+		if page.NextPageToken == "" {
+			return rows, nil
 		}
-		rows = append(rows, row)
+		call.PageToken(page.NextPageToken)
 	}
-	return rows, nil
+}
+
+// eventTime is a start or end as school wall-clock, and whether it is a date
+// alone. An all-day end arrives exclusive, as the feed always stated it.
+func eventTime(t *gcal.EventDateTime) (time.Time, bool, error) {
+	if t == nil {
+		return time.Time{}, false, fmt.Errorf("event with no time")
+	}
+	if t.Date != "" {
+		day, err := time.ParseInLocation(calendar.DateFormat, t.Date, calendar.Location)
+		return day, true, err
+	}
+	at, err := time.Parse(time.RFC3339, t.DateTime)
+	return at.In(calendar.Location), false, err
+}
+
+// instanceKey is the key a repeating event's instance has always had in the
+// sheet: the UID and the instance's original start as school wall-clock.
+func instanceKey(uid string, t time.Time, allDay bool) string {
+	if allDay {
+		return uid + "/" + t.Format("20060102")
+	}
+	return uid + "/" + t.Format("20060102T150405")
+}
+
+func feedRow(e *gcal.Event) (map[string]string, time.Time, error) {
+	key := e.ICalUID
+	if e.RecurringEventId != "" {
+		orig, origAllDay, err := eventTime(e.OriginalStartTime)
+		if err != nil {
+			return nil, time.Time{}, fmt.Errorf("event %s original start: %w", key, err)
+		}
+		key = instanceKey(key, orig, origAllDay)
+	}
+	start, allDay, err := eventTime(e.Start)
+	if err != nil {
+		return nil, time.Time{}, fmt.Errorf("event %s start: %w", key, err)
+	}
+	end, _, err := eventTime(e.End)
+	if err != nil {
+		return nil, time.Time{}, fmt.Errorf("event %s end: %w", key, err)
+	}
+	updated, err := time.Parse(time.RFC3339, e.Updated)
+	if err != nil {
+		return nil, time.Time{}, fmt.Errorf("event %s updated: %w", key, err)
+	}
+	description, err := flatten(e.Description)
+	if err != nil {
+		return nil, time.Time{}, fmt.Errorf("event %s description: %w", key, err)
+	}
+	row := map[string]string{
+		"Key":         key,
+		"Title":       collapse(e.Summary),
+		"Location":    collapse(e.Location),
+		"Description": description,
+		"Updated":     updated.In(calendar.Location).Format(calendar.DateTimeFormat),
+		"Sequence":    strconv.FormatInt(e.Sequence, 10),
+	}
+	if allDay {
+		end = end.AddDate(0, 0, -1)
+		if end.Before(start) {
+			end = start
+		}
+		row["Start"], row["End"] = start.Format(calendar.DateFormat), end.Format(calendar.DateFormat)
+	} else {
+		row["Start"], row["End"] = start.Format(calendar.DateTimeFormat), end.Format(calendar.DateTimeFormat)
+	}
+	if row["Title"] == "" {
+		row["Title"] = "(untitled)"
+	}
+	return row, start, nil
 }
 
 func digest(parts ...string) string {
@@ -1122,17 +1193,9 @@ func Run(ctx context.Context, opts Options) error {
 	client := anthropic.NewClient(option.WithAPIKey(opts.AnthropicKey))
 
 	from, to := window(time.Now().In(calendar.Location))
-	feed, err := fetch(feedURL)
+	google, err := feedRows(ctx, opts.Calendar, from, to)
 	if err != nil {
-		return fmt.Errorf("fetch the calendar feed: %w", err)
-	}
-	events, err := ics.Parse(bytes.NewReader(feed), calendar.Location, from, to)
-	if err != nil {
-		return fmt.Errorf("parse the calendar feed: %w", err)
-	}
-	google, err := googleRows(events)
-	if err != nil {
-		return err
+		return fmt.Errorf("read the school calendar: %w", err)
 	}
 	log.Printf("feed: %d events from %s on", len(google), from.Format(calendar.DateFormat))
 	// Only the window is imported and mirrored; rows outside it, whatever

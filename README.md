@@ -28,7 +28,6 @@ To run against real community data instead, see [docs/dev.md](docs/dev.md).
 - `internal/calendar` — Helios Calendar: the Calendar sheet's model, audience resolution, the day plan, handlers, and personal feeds
 - `internal/calendarimport` — the periodic sync's calendar stage: the school's feed and year calendar into the Calendar sheet, classified by Claude
 - `internal/groups` — Helios Loop: the Groups sheet's model, the rule evaluator, the mail received and forwarded, handlers, and admin edits
-- `internal/ics` — iCalendar feed parsing and recurrence expansion
 - `internal/feedback` — the toolbar's reports, queued and filed as issues in the private triage repository
 - `internal/blob` — media from Cloud Storage, held in memory with stored thumbnails
 - `internal/sharecard` — the 1200x630 picture a chat app shows for a shared link, drawn for HCA-Team and Helios Celebrate in each one's dress

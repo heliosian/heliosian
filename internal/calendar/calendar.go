@@ -219,6 +219,7 @@ type Year struct {
 // import mirrors and the page that links the year calendar's PDF - the
 // places an event's source line links to.
 const (
+	SchoolCalendarID   = "heliosns.org_cidjj9plktli1gdm2hrkj7gqks@group.calendar.google.com"
 	SchoolFeedURL      = "https://calendar.google.com/calendar/ical/heliosns.org_cidjj9plktli1gdm2hrkj7gqks%40group.calendar.google.com/public/basic.ics"
 	SchoolCalendarPage = "https://www.heliosschool.org/school-calendar"
 )
