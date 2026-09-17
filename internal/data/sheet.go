@@ -54,6 +54,11 @@ func NewSheet(spreadsheets map[string]string) (*Sheet, error) {
 	return &Sheet{service: service, spreadsheets: spreadsheets}, nil
 }
 
+// Service is the Sheets client itself, for the calendar import's cell-by-cell sync.
+func (s *Sheet) Service() *sheets.Service {
+	return s.service
+}
+
 func (s *Sheet) Table(app, name string) ([]string, []map[string]string, error) {
 	id, ok := s.spreadsheets[app]
 	if !ok {

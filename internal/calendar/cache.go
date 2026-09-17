@@ -41,12 +41,17 @@ func NewCache(source data.Source, roster func() Roster, images ImageChecker, sup
 
 func (c *Cache) refreshLoop() {
 	for range time.Tick(refreshInterval) {
-		c.queue.Add(func() {
-			if err := c.refresh(); err != nil {
-				slog.Error("calendar model refresh", "error", err)
-			}
-		})
+		c.Refresh()
 	}
+}
+
+// Refresh reloads the model from the sheet ahead of the next tick, behind whatever writes are queued.
+func (c *Cache) Refresh() {
+	c.queue.Add(func() {
+		if err := c.refresh(); err != nil {
+			slog.Error("calendar model refresh", "error", err)
+		}
+	})
 }
 
 func (c *Cache) refresh() error {

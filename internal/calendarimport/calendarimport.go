@@ -36,11 +36,9 @@ import (
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/sheets/v4"
 
-	"heliosian/internal/app"
 	"heliosian/internal/calendar"
 	"heliosian/internal/data"
 	"heliosian/internal/sheetsync"
-	"heliosian/internal/who"
 )
 
 const (
@@ -54,16 +52,13 @@ const (
 
 var legendDayTypes = []string{"No School", "Early Dismissal"}
 
-// Options is what one run needs: the sheets it reads and writes, the
-// Calendar API client the school's calendar is read through, the directory
-// model already loaded for the audience vocabulary, the Claude key, and
-// whether to write anything.
+// Options is what a stage needs: the sheet it reads and writes, the Calendar API client the Google stage reads through, the roster as it stands, the Claude key, and whether to write anything.
 type Options struct {
 	Source        *data.Sheet
 	Sheets        *sheets.Service
 	Calendar      *gcal.Service
 	CalendarSheet string
-	Directory     *who.Model
+	Roster        func() calendar.Roster
 	AnthropicKey  string
 	DryRun        bool
 }
@@ -1128,15 +1123,6 @@ func enrich(ctx context.Context, client anthropic.Client, inputs []enrichInput, 
 	return ordered, nil
 }
 
-func syncTab(svc *sheets.Service, sheet, tab string, header []string, rows []map[string]string, keyCol string, apply bool) (*sheetsync.Result, error) {
-	result, err := sheetsync.Sync(svc, sheet, tab, header, rows, keyCol, sheetsync.Mirror, apply)
-	if err != nil {
-		return nil, err
-	}
-	log.Printf("%s: %d cells updated, %d rows added, %d removed", tab, len(result.Edits), len(result.Added), len(result.Removed))
-	return result, nil
-}
-
 func changes(tab string, result *sheetsync.Result, titles map[string]string, stamp string) [][]string {
 	rows := [][]string{}
 	for _, key := range result.Added {
@@ -1159,20 +1145,25 @@ func titlesOf(rows []map[string]string, keyCol string) map[string]string {
 	return out
 }
 
-// Run is one import. A stage that fails leaves the rows it would have
-// replaced standing and the run carries on, so nothing another stage
-// completed is thrown away; everything that did complete is written, and
-// only then does the run report every failure as its error.
-func Run(ctx context.Context, opts Options) error {
-	source, svc, calendarSheet, dryRun := opts.Source, opts.Sheets, opts.CalendarSheet, opts.DryRun
-	if dryRun {
+type run struct {
+	opts     Options
+	roster   calendar.Roster
+	client   anthropic.Client
+	tables   *calendar.Tables
+	dayTypes []string
+	tags     []calendar.Tag
+	failures []string
+}
+
+func begin(opts Options) (*run, error) {
+	if opts.DryRun {
 		log.Printf("dry run: nothing will be written to the sheet")
 	}
-	roster := app.CalendarRoster(opts.Directory)
+	roster := opts.Roster()
 	log.Printf("roster: %d classrooms", len(roster.Classrooms))
-	tables, err := calendar.ReadTables(source)
+	tables, err := calendar.ReadTables(opts.Source)
 	if err != nil {
-		return fmt.Errorf("read calendar tables: %w", err)
+		return nil, fmt.Errorf("read calendar tables: %w", err)
 	}
 	dayTypes := []string{}
 	for _, row := range tables.DayTypes {
@@ -1183,15 +1174,22 @@ func Run(ctx context.Context, opts Options) error {
 		tags = append(tags, calendar.Tag{Name: row["Tag"], Description: row["Description"]})
 	}
 	if len(tags) == 0 {
-		return fmt.Errorf("%s needs rows before the import can run", calendar.TagsTab)
+		return nil, fmt.Errorf("%s needs rows before the import can run", calendar.TagsTab)
 	}
 	for _, name := range append([]string{calendar.RegularDayType}, legendDayTypes...) {
 		if !slices.Contains(dayTypes, name) {
-			return fmt.Errorf("%s needs a %q row before the import can run", calendar.DayTypesTab, name)
+			return nil, fmt.Errorf("%s needs a %q row before the import can run", calendar.DayTypesTab, name)
 		}
 	}
-	client := anthropic.NewClient(option.WithAPIKey(opts.AnthropicKey))
+	return &run{opts: opts, roster: roster, client: anthropic.NewClient(option.WithAPIKey(opts.AnthropicKey)), tables: tables, dayTypes: dayTypes, tags: tags}, nil
+}
 
+// RunGoogle is the Google stage: the school's calendar read through the API, its events classified, and the Google Import tab and its events' Enrichment rows brought into step.
+func RunGoogle(ctx context.Context, opts Options) error {
+	r, err := begin(opts)
+	if err != nil {
+		return err
+	}
 	from, to := window(time.Now().In(calendar.Location))
 	google, err := feedRows(ctx, opts.Calendar, from, to)
 	if err != nil {
@@ -1204,13 +1202,26 @@ func Run(ctx context.Context, opts Options) error {
 		start, err := time.ParseInLocation(calendar.DateFormat, row["Start"][:min(len(row["Start"]), len(calendar.DateFormat))], calendar.Location)
 		return err == nil && !start.Before(from) && start.Before(to)
 	}
-	googleRowsNow := slices.Clone(google)
-	for _, row := range tables.Google {
+	rows := slices.Clone(google)
+	for _, row := range r.tables.Google {
 		if !inWindow(row) {
-			googleRowsNow = append(googleRowsNow, row)
+			rows = append(rows, row)
 		}
 	}
+	enrichment := r.enrich(ctx, google, false)
+	log.Printf("rows: %d feed, %d enriched", len(rows), len(enrichment))
+	return r.write([]tabSync{
+		{calendar.GoogleTab, calendar.GoogleColumns, rows, r.tables.Google, "Key", sheetsync.Mirror},
+		{calendar.EnrichmentTab, calendar.EnrichmentColumns, enrichment, r.tables.Enrichment, "Event ID", sheetsync.Merge},
+	})
+}
 
+// RunPDF is the PDF stage: the school's published year calendar read when it changes, its entries classified, and the PDF Import tab and its events' Enrichment rows brought into step.
+func RunPDF(ctx context.Context, opts Options) error {
+	r, err := begin(opts)
+	if err != nil {
+		return err
+	}
 	page, err := fetch(pageURL)
 	if err != nil {
 		return fmt.Errorf("fetch the school calendar page: %w", err)
@@ -1225,73 +1236,67 @@ func Run(ctx context.Context, opts Options) error {
 	}
 	// The hash covers how the PDF is read as well as its bytes, so a change to
 	// the reading re-reads an unchanged document.
-	pdfHash := digest(string(pdf), legendSystem, entriesSystem(roster), monthSystem(""))[:12]
-	// A stage that fails leaves the rows it would have replaced standing and
-	// the run carries on, so nothing another stage completed is thrown away;
-	// the run reports every failure at the end and exits non-zero.
-	failures := []string{}
-	pdfRowsNow := tables.PDF
+	pdfHash := digest(string(pdf), legendSystem, entriesSystem(r.roster), monthSystem(""))[:12]
+	rows := r.tables.PDF
 	known := false
-	for _, row := range tables.PDF {
+	for _, row := range r.tables.PDF {
 		if row["PDF"] == pdfHash {
 			known = true
 		}
 	}
 	if known {
-		log.Printf("pdf: %s unchanged (%s), %d rows kept", pdfURL, pdfHash, len(tables.PDF))
+		log.Printf("pdf: %s unchanged (%s), %d rows kept", pdfURL, pdfHash, len(r.tables.PDF))
 	} else {
 		log.Printf("pdf: %s is new (%s), reading it", pdfURL, pdfHash)
-		fresh, year, err := readPDF(ctx, client, pdf, pdfHash, roster, dayTypes)
+		fresh, year, err := readPDF(ctx, r.client, pdf, pdfHash, r.roster, r.dayTypes)
 		if err != nil {
-			log.Printf("[ERROR] read the year calendar pdf: %v; keeping the %d rows already there", err, len(tables.PDF))
-			failures = append(failures, "the year calendar pdf")
+			log.Printf("[ERROR] read the year calendar pdf: %v; keeping the %d rows already there", err, len(r.tables.PDF))
+			r.failures = append(r.failures, "the year calendar pdf")
 		} else {
-			pdfRowsNow = []map[string]string{}
-			for _, row := range tables.PDF {
+			rows = []map[string]string{}
+			for _, row := range r.tables.PDF {
 				if row["Year"] != year {
-					pdfRowsNow = append(pdfRowsNow, row)
+					rows = append(rows, row)
 				}
 			}
-			pdfRowsNow = append(pdfRowsNow, fresh...)
+			rows = append(rows, fresh...)
 			log.Printf("pdf: %d entries for %s", len(fresh), year)
 		}
 	}
+	enrichment := r.enrich(ctx, rows, true)
+	log.Printf("rows: %d pdf, %d enriched", len(rows), len(enrichment))
+	return r.write([]tabSync{
+		{calendar.PDFTab, calendar.PDFColumns, rows, r.tables.PDF, "Key", sheetsync.Mirror},
+		{calendar.EnrichmentTab, calendar.EnrichmentColumns, enrichment, r.tables.Enrichment, "Event ID", sheetsync.Merge},
+	})
+}
 
-	// The classifier's whole prompt is in every event's input hash, so a change
-	// to the rules, the glossary, or a tag's description re-classifies
-	// everything, and nothing else does.
-	vocabulary := digest(classifierSystem(roster, tags), strings.Join(roster.Names(), ","), strings.Join(dayTypes, ","))
-	existing := map[string]map[string]string{}
-	for _, row := range tables.Enrichment {
-		existing[row["Event ID"]] = row
-	}
-	enrichment := []map[string]string{}
+func plan(existing map[string]map[string]string, rows []map[string]string, vocabulary string) ([]map[string]string, []enrichInput, map[string]string) {
+	kept := []map[string]string{}
 	pending := []enrichInput{}
-	pendingHash := map[string]string{}
-	isPDF := map[string]bool{}
-	considered := map[string]bool{}
-	consider := func(id string, row map[string]string, pdf bool) {
-		considered[id] = true
+	hashes := map[string]string{}
+	for _, row := range rows {
+		id := row["Key"]
 		hash := digest(row["Title"], row["Description"], row["Start"], row["End"], row["Location"], vocabulary)
-		if kept, ok := existing[id]; ok && kept["Input Hash"] == hash {
-			enrichment = append(enrichment, kept)
-			return
+		if have, ok := existing[id]; ok && have["Input Hash"] == hash {
+			kept = append(kept, have)
+			continue
 		}
 		pending = append(pending, enrichInput{ID: id, Title: row["Title"], Start: row["Start"], End: row["End"], Location: row["Location"], Description: row["Description"]})
-		pendingHash[id] = hash
-		isPDF[id] = pdf
+		hashes[id] = hash
 	}
-	for _, row := range google {
-		consider(row["Key"], row, false)
+	return kept, pending, hashes
+}
+
+// enrich is the Enrichment rows of this stage's events alone; the other stage's rows,
+// and those of events gone from the source, are left as they are by the Merge sync.
+func (r *run) enrich(ctx context.Context, rows []map[string]string, pdf bool) []map[string]string {
+	vocabulary := digest(classifierSystem(r.roster, r.tags), strings.Join(r.roster.Names(), ","), strings.Join(r.dayTypes, ","))
+	existing := map[string]map[string]string{}
+	for _, row := range r.tables.Enrichment {
+		existing[row["Event ID"]] = row
 	}
-	for _, row := range pdfRowsNow {
-		consider(row["Key"], row, true)
-	}
-	for _, row := range tables.Enrichment {
-		if !considered[row["Event ID"]] {
-			enrichment = append(enrichment, row)
-		}
-	}
+	enrichment, pending, hashes := plan(existing, rows, vocabulary)
 	log.Printf("enrichment: %d rows current, %d events to classify", len(enrichment), len(pending))
 	today := time.Now().In(calendar.Location).Format(calendar.DateFormat)
 	batches := [][]enrichInput{}
@@ -1303,28 +1308,23 @@ func Run(ctx context.Context, opts Options) error {
 	var wg sync.WaitGroup
 	for i, batch := range batches {
 		wg.Go(func() {
-			results[i], errs[i] = enrich(ctx, client, batch, roster, dayTypes, tags)
+			results[i], errs[i] = enrich(ctx, r.client, batch, r.roster, r.dayTypes, r.tags)
 		})
 	}
 	wg.Wait()
 	for i, batch := range batches {
 		if errs[i] != nil {
 			log.Printf("[ERROR] classify events, batch %d of %d: %v", i+1, len(batches), errs[i])
-			failures = append(failures, fmt.Sprintf("classification batch %d of %d", i+1, len(batches)))
-			for _, in := range batch {
-				if kept, ok := existing[in.ID]; ok {
-					enrichment = append(enrichment, kept)
-				}
-			}
+			r.failures = append(r.failures, fmt.Sprintf("classification batch %d of %d", i+1, len(batches)))
 			continue
 		}
 		for _, a := range results[i] {
-			if isPDF[a.ID] {
+			if pdf {
 				a.DayType = noDayType
 			}
 			row := map[string]string{
 				"Event ID": a.ID, "Tags": calendar.JoinList(a.Tags),
-				"Keywords": calendar.JoinList(a.Keywords), "Input Hash": pendingHash[a.ID], "Model": modelName, "Enriched": today,
+				"Keywords": calendar.JoinList(a.Keywords), "Input Hash": hashes[a.ID], "Model": modelName, "Enriched": today,
 			}
 			if a.DayType != noDayType {
 				row["Day Type"] = a.DayType
@@ -1333,56 +1333,56 @@ func Run(ctx context.Context, opts Options) error {
 		}
 		log.Printf("enrichment: batch %d of %d classified %d events", i+1, len(batches), len(batch))
 	}
-
 	byTag := map[string]int{}
 	for _, row := range enrichment {
 		for _, t := range calendar.SplitList(row["Tags"]) {
 			byTag[t]++
 		}
 	}
-	log.Printf("rows: %d feed, %d pdf, %d enriched", len(googleRowsNow), len(pdfRowsNow), len(enrichment))
-	for _, t := range tags {
+	for _, t := range r.tags {
 		if byTag[t.Name] > 0 {
 			log.Printf("  %s: %d", t.Name, byTag[t.Name])
 		}
 	}
+	return enrichment
+}
 
+type tabSync struct {
+	tab    string
+	header []string
+	rows   []map[string]string
+	before []map[string]string
+	keyCol string
+	policy sheetsync.Policy
+}
+
+func (r *run) write(tabs []tabSync) error {
 	stamp := time.Now().In(calendar.Location).Format(calendar.DateTimeFormat)
 	logRows := [][]string{}
-	for _, s := range []struct {
-		tab    string
-		header []string
-		rows   []map[string]string
-		before []map[string]string
-		keyCol string
-	}{
-		{calendar.PDFTab, calendar.PDFColumns, pdfRowsNow, tables.PDF, "Key"},
-		{calendar.GoogleTab, calendar.GoogleColumns, googleRowsNow, tables.Google, "Key"},
-		{calendar.EnrichmentTab, calendar.EnrichmentColumns, enrichment, tables.Enrichment, "Event ID"},
-	} {
-		result, err := syncTab(svc, calendarSheet, s.tab, s.header, s.rows, s.keyCol, !dryRun)
+	for _, s := range tabs {
+		result, err := sheetsync.Sync(r.opts.Sheets, r.opts.CalendarSheet, s.tab, s.header, s.rows, s.keyCol, s.policy, !r.opts.DryRun)
 		if err != nil {
 			return fmt.Errorf("sync %s: %w", s.tab, err)
 		}
+		log.Printf("%s: %d cells updated, %d rows added, %d removed", s.tab, len(result.Edits), len(result.Added), len(result.Removed))
 		titles := titlesOf(s.before, s.keyCol)
 		for k, v := range titlesOf(s.rows, s.keyCol) {
 			titles[k] = v
 		}
 		logRows = append(logRows, changes(s.tab, result, titles, stamp)...)
 	}
-	if dryRun {
+	if r.opts.DryRun {
 		log.Printf("dry run: %d change log rows not written", len(logRows))
-		if len(failures) > 0 {
-			return fmt.Errorf("%d stages failed: %s", len(failures), strings.Join(failures, "; "))
+	} else {
+		if len(logRows) > 0 {
+			if err := r.opts.Source.AppendAll("calendar", calendar.ChangeLogTab, logRows); err != nil {
+				return fmt.Errorf("append the change log: %w", err)
+			}
 		}
-		return nil
+		log.Printf("change log: %d rows appended", len(logRows))
 	}
-	if err := source.AppendAll("calendar", calendar.ChangeLogTab, logRows); err != nil {
-		return fmt.Errorf("append the change log: %w", err)
+	if len(r.failures) > 0 {
+		return fmt.Errorf("%d stages failed and will be retried next run: %s", len(r.failures), strings.Join(r.failures, "; "))
 	}
-	if len(failures) > 0 {
-		return fmt.Errorf("%d stages failed and will be retried next run: %s", len(failures), strings.Join(failures, "; "))
-	}
-	log.Printf("change log: %d rows appended", len(logRows))
 	return nil
 }

@@ -6,6 +6,9 @@ package app
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"log/slog"
 	"mime"
@@ -20,10 +23,14 @@ import (
 	"syscall"
 	"time"
 
+	gcal "google.golang.org/api/calendar/v3"
+	"google.golang.org/api/option"
+
 	"heliosian/internal/auth"
 	"heliosian/internal/birthday"
 	"heliosian/internal/blob"
 	"heliosian/internal/calendar"
+	"heliosian/internal/calendarimport"
 	"heliosian/internal/celebrate"
 	"heliosian/internal/config"
 	"heliosian/internal/data"
@@ -1264,7 +1271,7 @@ func Production(blobCache string) (*http.Server, *who.Queue) {
 	calendarAuth.Register(core.CalendarMux)
 	groupsAuth := newAuth("loop")
 	groupsAuth.Register(core.GroupsMux)
-	return Server(map[string]http.Handler{
+	server := Server(map[string]http.Handler{
 		"who":       Public("who", whoAuth.Wrap(Logged("who", Files("who", core.Gate)))),
 		"home":      Public("home", homeAuth.Wrap(Logged("home", Files("home", core.Home)))),
 		"team":      Public("team", teamAuth.Wrap(Logged("team", Files("team", core.Events)))),
@@ -1272,5 +1279,29 @@ func Production(blobCache string) (*http.Server, *who.Queue) {
 		"celebrate": Public("celebrate", celebrateAuth.Wrap(Logged("celebrate", Files("celebrate", core.Celebrate)))),
 		"calendar":  Public("calendar", calendarAuth.Wrap(Logged("calendar", Files("calendar", core.Calendar)))),
 		"loop":      Public("loop", groupsAuth.Wrap(Logged("loop", Files("loop", core.Groups)))),
-	}), core.Queue
+	})
+	// Cloud Run's own K_SERVICE marks the deployed service, the one process that
+	// keeps the school's calendar in step; a laptop's real-data server never does.
+	if os.Getenv("K_SERVICE") != "" {
+		watcher := calendarWatcher(sheet, spreadsheets["calendar"], core, sessionKey)
+		core.CalendarMux.Handle("POST "+calendarimport.HookPath, watcher)
+		watcher.Start()
+		server.RegisterOnShutdown(func() { core.Queue.Add(watcher.Stop) })
+	}
+	return server, core.Queue
+}
+
+func calendarWatcher(sheet *data.Sheet, calendarSheet string, core *Core, sessionKey string) *calendarimport.Watcher {
+	cal, err := gcal.NewService(context.Background(), option.WithScopes(gcal.CalendarReadonlyScope))
+	if err != nil {
+		logging.Fatal("calendar client", "error", err)
+	}
+	mac := hmac.New(sha256.New, []byte(sessionKey))
+	mac.Write([]byte("calendar watch"))
+	opts := calendarimport.Options{
+		Source: sheet, Sheets: sheet.Service(), Calendar: cal, CalendarSheet: calendarSheet,
+		Roster:       func() calendar.Roster { return CalendarRoster(core.Cache.Model()) },
+		AnthropicKey: mapsKey("ANTHROPIC_API_KEY", "creds/anthropic.key"),
+	}
+	return calendarimport.NewWatcher(opts, hex.EncodeToString(mac.Sum(nil)), core.CalendarCache.Refresh)
 }

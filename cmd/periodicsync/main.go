@@ -1,4 +1,4 @@
-// Command periodicsync runs every stage of the periodic sync in turn: the calendar import.
+// Command periodicsync runs every stage of the periodic sync in turn: the year calendar PDF.
 package main
 
 import (
@@ -9,10 +9,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	gcal "google.golang.org/api/calendar/v3"
 	gapi "google.golang.org/api/option"
 	"google.golang.org/api/sheets/v4"
 
+	"heliosian/internal/app"
+	"heliosian/internal/calendar"
 	"heliosian/internal/calendarimport"
 	"heliosian/internal/data"
 	"heliosian/internal/who"
@@ -76,10 +77,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("[ERROR] create sheets client: %v", err)
 	}
-	cal, err := gcal.NewService(ctx, gapi.WithScopes(gcal.CalendarReadonlyScope))
-	if err != nil {
-		log.Fatalf("[ERROR] create calendar client: %v", err)
-	}
 	directory, err := who.LoadModel(source, nil, staticFiles{"web/who"})
 	if err != nil {
 		log.Fatalf("[ERROR] load directory model: %v", err)
@@ -87,10 +84,11 @@ func main() {
 	// Each stage runs whatever the one before did: a failure is recorded
 	// and the run exits non-zero at the end naming every stage that failed.
 	failures := []string{}
-	log.Printf("stage: calendar import")
-	if err := calendarimport.Run(ctx, calendarimport.Options{Source: source, Sheets: svc, Calendar: cal, CalendarSheet: calendarSheet, Directory: directory, AnthropicKey: key, DryRun: *dryRun}); err != nil {
-		log.Printf("[ERROR] calendar import: %v", err)
-		failures = append(failures, "calendar import")
+	log.Printf("stage: year calendar pdf")
+	opts := calendarimport.Options{Source: source, Sheets: svc, CalendarSheet: calendarSheet, Roster: func() calendar.Roster { return app.CalendarRoster(directory) }, AnthropicKey: key, DryRun: *dryRun}
+	if err := calendarimport.RunPDF(ctx, opts); err != nil {
+		log.Printf("[ERROR] year calendar pdf: %v", err)
+		failures = append(failures, "year calendar pdf")
 	}
 	if len(failures) > 0 {
 		log.Fatalf("[ERROR] %d stages failed: %s", len(failures), strings.Join(failures, "; "))

@@ -50,7 +50,7 @@ Cloud Run injects `PORT`; the server honors it.
 
 ## The periodic sync job
 
-The Cloud Run Job `periodicsync` in the same region runs `cmd/periodicsync` from its own image: one binary running every scheduled stage in turn, the way the service runs every app - the calendar import (`docs/calendar/data.md`) is the one stage. A stage that fails is logged and the next runs; the run exits non-zero at the end naming every stage that failed. `cmd/deploy` writes the job's configuration beside the service's: the same runtime identity, the spreadsheet ids the stages read (`DIRECTORY_SHEET`, `PREFERENCES_SHEET`, `CALENDAR_SHEET`, `CONFIG_SHEET`), the Anthropic key as `ANTHROPIC_API_KEY` from the `heliosian-anthropic-key` secret, and the `--i-have-user-permission-to-spend-money` argument, since scheduling the job is that permission. A task gets 1 GiB, since the import rasterizes the year calendar at 300 dpi and works on it pixel by pixel, and 30 minutes, since reading a new PDF is dozens of Claude calls at maximum effort; a task that fails is not retried, because the import already carries what it completed to the sheet and asks about only what failed on the next run, so a retry would spend the same money on the same failure. What the job carries right now - image, identity, resources, timeout, retries, environment and secrets - is `gcloud run jobs describe periodicsync --region us-west1 --project heliosian`, and the service's counterpart is `gcloud run services describe heliosian --region us-west1 --project heliosian`.
+The Cloud Run Job `periodicsync` in the same region runs `cmd/periodicsync` from its own image: one binary running every scheduled stage in turn, the way the service runs every app - the calendar import's PDF stage, the school's published year calendar, is the one stage; the import's Google stage runs in the service as the school's calendar changes (`docs/calendar/data.md`, Keeping up). A stage that fails is logged and the next runs; the run exits non-zero at the end naming every stage that failed. `cmd/deploy` writes the job's configuration beside the service's: the same runtime identity, the spreadsheet ids the stages read (`DIRECTORY_SHEET`, `PREFERENCES_SHEET`, `CALENDAR_SHEET`, `CONFIG_SHEET`), the Anthropic key as `ANTHROPIC_API_KEY` from the `heliosian-anthropic-key` secret, and the `--i-have-user-permission-to-spend-money` argument, since scheduling the job is that permission. A task gets 1 GiB, since the import rasterizes the year calendar at 300 dpi and works on it pixel by pixel, and 30 minutes, since reading a new PDF is dozens of Claude calls at maximum effort; a task that fails is not retried, because the import already carries what it completed to the sheet and asks about only what failed on the next run, so a retry would spend the same money on the same failure. What the job carries right now - image, identity, resources, timeout, retries, environment and secrets - is `gcloud run jobs describe periodicsync --region us-west1 --project heliosian`, and the service's counterpart is `gcloud run services describe heliosian --region us-west1 --project heliosian`.
 
 Cloud Scheduler job `periodicsync` (location `us-west1`) starts an execution on a cron schedule, by posting to the Cloud Run Admin API's run method as `directory@`, which holds `run.invoker` on the job for that. The schedule lives only in that Scheduler job - nothing in the repository records or reconciles it - so read it there rather than assuming a cadence, along with when it last fired and when it fires next:
 
@@ -79,7 +79,17 @@ One execution's log, by the name that list gives:
 
     gcloud logging read 'resource.type="cloud_run_job" AND labels."run.googleapis.com/execution_name"="<execution name>"' --project heliosian --order asc --format "value(timestamp,severity,textPayload)"
 
-The same logs are under the job in the console, or in Logs Explorer with `resource.type="cloud_run_job"`. Each stage announces itself with a `stage:` line. A calendar run that changed nothing is a few fetches and no Claude calls; one that read a new PDF or classified new events says so. A run whose stage failed exits non-zero naming it and shows as a failed execution.
+The same logs are under the job in the console, or in Logs Explorer with `resource.type="cloud_run_job"`. Each stage announces itself with a `stage:` line. A run that changed nothing is two fetches and no Claude calls; one that read a new PDF says so. A run whose stage failed exits non-zero naming it and shows as a failed execution.
+
+## The school calendar watch
+
+The service keeps the calendar's Google Import in step with the school's calendar on its own, through a Calendar API watch channel posting to `https://when.heliosian.com/hooks/calendar` and an hourly sweep (`docs/calendar/data.md`, Keeping up). It starts only on Cloud Run, which it knows by Cloud Run's own `K_SERVICE` variable, and needs nothing beyond what the service already carries: `directory@`, the Calendar API's read-only scope, the Anthropic key. Google offers no way to list channels, so the service log is the record - the channel each revision opened and when it expires, every post from Google, and every run with how long it took:
+
+    jsonPayload.message:"calendar watch"
+    jsonPayload.message="calendar changed"
+    jsonPayload.message="calendar import"
+
+The run's own lines - the feed count, the cells updated, the change log rows - are plain text beside them, as the job writes them.
 
 ## Configuration values
 

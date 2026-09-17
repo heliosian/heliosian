@@ -26,7 +26,7 @@ To run against real community data instead, see [docs/dev.md](docs/dev.md).
 - `internal/birthday` — the birthday team: the Birthdays sheet's model, the derived dates and stages, handlers, and admin edits
 - `internal/celebrate` — Helios Celebrate: the Celebrate sheet's model, parties, tickets and the waitlist, handlers, and admin edits
 - `internal/calendar` — Helios Calendar: the Calendar sheet's model, audience resolution, the day plan, handlers, and personal feeds
-- `internal/calendarimport` — the periodic sync's calendar stage: the school's feed and year calendar into the Calendar sheet, classified by Claude
+- `internal/calendarimport` — the calendar import: the school's Google Calendar into the Calendar sheet as it changes, from the serving binary, and its year calendar PDF from the periodic sync, classified by Claude
 - `internal/groups` — Helios Loop: the Groups sheet's model, the rule evaluator, the mail received and forwarded, handlers, and admin edits
 - `internal/feedback` — the toolbar's reports, queued and filed as issues in the private triage repository
 - `internal/blob` — media from Cloud Storage, held in memory with stored thumbnails
@@ -37,7 +37,7 @@ To run against real community data instead, see [docs/dev.md](docs/dev.md).
 - `internal/devtls` — the in-memory self-signed certificate local HTTPS runs on
 - `web/` — one directory per app, named for its hostname, holding its pages and every file it serves behind sign-in, `web/common/` for what all apps share, and `web/public/<app>/` and `web/public/common/` for the few files served before sign-in (frameworkless JavaScript throughout)
 - `sampledata/` — the fictional community served by default
-- `cmd/` — dev tooling: screenshots, browser driving, sheet inspection; and `cmd/periodicsync`, the scheduled job that runs the calendar import
+- `cmd/` — dev tooling: screenshots, browser driving, sheet inspection; and `cmd/periodicsync`, the scheduled job that reads the school's year calendar PDF
 - `docs/` — everything below
 
 ## Docs
