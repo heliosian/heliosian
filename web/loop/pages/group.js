@@ -903,7 +903,7 @@ function tabbed(tabs) {
   const wanted = tabParam(fallback);
   let strip = null;
   const show = key => {
-    const next = tabStrip(tabs, key, 3, pick => {
+    const next = tabStrip(tabs, key, 2, pick => {
       history.replaceState(null, '', tabHref(pick));
       show(pick);
     });
