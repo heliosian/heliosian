@@ -2,6 +2,7 @@ package groups
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -121,6 +122,40 @@ func TestWithGroupRoundTrips(t *testing.T) {
 	}
 	if len(next.withoutGroup("chess-club").Additions) != len(tables.Additions) {
 		t.Fatal("the additions rows were not removed")
+	}
+}
+
+func TestAliasesReachTheirGroupAndStayUnique(t *testing.T) {
+	model, err := BuildModel(sampleTables(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := model.Group("hummingbird-families")
+	if !slices.Equal(g.Aliases, []string{"hummingbirds-families"}) || !slices.Equal(g.Names(), []string{"hummingbird-families", "hummingbirds-families"}) {
+		t.Fatalf("aliases %v", g.Aliases)
+	}
+	if model.Resolve("hummingbirds-families") != g || model.Resolve("hummingbird-families") != g || model.Resolve("nobody") != nil {
+		t.Fatal("an alias does not resolve to its group")
+	}
+	for _, bad := range []map[string]string{
+		{"Group": "soccer-team", "Alias": "hummingbirds-families"},
+		{"Group": "soccer-team", "Alias": "middle-school-parents"},
+		{"Group": "soccer-team", "Alias": "soccer-team"},
+		{"Group": "soccer-team", "Alias": "postmaster"},
+		{"Group": "soccer-team", "Alias": "Not An Address"},
+	} {
+		tables := sampleTables(t)
+		tables.Aliases = append(tables.Aliases, bad)
+		if _, err := BuildModel(tables); err == nil {
+			t.Errorf("accepted alias %v", bad)
+		}
+	}
+	tables := sampleTables(t)
+	tables.Groups = append(tables.Groups, map[string]string{"Name": "hummingbirds-families", "Title": "Clash"})
+	tables.Managers = append(tables.Managers, map[string]string{"Group": "hummingbirds-families", "Email": "m@x.org"})
+	tables.Rules = append(tables.Rules, map[string]string{"Group": "hummingbirds-families", "Kind": "include", "Roles": "Staff", "Owner": "m@x.org"})
+	if _, err := BuildModel(tables); err == nil {
+		t.Error("accepted a group named for another group's alias")
 	}
 }
 

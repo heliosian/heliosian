@@ -190,8 +190,8 @@ func Reasons(g Group, s Sources) map[string][]Reason {
 			in[a.Email] = []Reason{{Added: true}}
 		}
 	}
-	for _, u := range g.Unsubscribed {
-		delete(in, u.Email)
+	for _, e := range g.Excluded {
+		delete(in, e.Email)
 	}
 	return in
 }

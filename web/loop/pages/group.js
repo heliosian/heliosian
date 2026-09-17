@@ -180,12 +180,12 @@ async function send(method, url, body) {
 // out, asked of the server as it changes.
 function editor(g, isNew) {
   const draft = {
-    name: g.name, title: g.title, description: g.description || '',
+    name: g.name, aliases: [...(g.aliases || [])], title: g.title, description: g.description || '',
     prefix: isNew ? true : g.prefix,
     managers: g.managers.map(m => m.email),
     rules: g.rules.map(r => ({kind: r.kind, roles: [...r.roles], search: r.search, classrooms: [...r.classrooms], grades: [...r.grades], tags: [...r.tags], family: [...r.family], owner: r.owner, tagLabels: r.tagLabels})),
     additions: (g.additions || []).map(a => ({email: a.email, name: a.name})),
-    unsubscribed: (g.unsubscribed || []).map(u => ({email: u.email, when: u.when})),
+    excluded: (g.excluded || []).map(e => ({email: e.email, note: e.note || '', when: e.when || ''})),
   };
   if (isNew) {
     draft.rules.push(newRule('include'));
@@ -232,6 +232,60 @@ function editor(g, isNew) {
   nameField.append(el('span', '', 'Address'), name, addressNote);
   updateAddress();
   words.append(nameField);
+  // The aliases: other local parts that reach the group, each unique
+  // across every group's name and alias.
+  const aliasField = el('div', 'field');
+  aliasField.append(el('span', '', 'Also answers as'));
+  const aliasRows = el('div', 'alias-rows');
+  const renderAliases = () => {
+    aliasRows.replaceChildren();
+    if (!draft.aliases.length) {
+      aliasRows.append(el('div', 'rule-empty', 'No other addresses.'));
+    }
+    for (const alias of draft.aliases) {
+      const row = el('div', 'alias-row');
+      const remove = el('button', 'link-button danger', 'Remove');
+      remove.type = 'button';
+      remove.addEventListener('click', () => {
+        draft.aliases = draft.aliases.filter(x => x !== alias);
+        renderAliases();
+      });
+      row.append(el('span', 'alias-address', `${alias}@${state.model.domain}`), remove);
+      aliasRows.append(row);
+    }
+  };
+  const aliasInput = el('input');
+  aliasInput.type = 'text';
+  aliasInput.maxLength = 40;
+  aliasInput.placeholder = 'another-name';
+  const aliasStatus = el('span', 'save-status');
+  const addAlias = () => {
+    const alias = slug(aliasInput.value);
+    aliasStatus.classList.remove('error');
+    aliasStatus.textContent = '';
+    if (!alias) {
+      return;
+    }
+    if (alias === draft.name || draft.aliases.includes(alias)) {
+      aliasStatus.classList.add('error');
+      aliasStatus.textContent = 'Already this group\'s.';
+      return;
+    }
+    draft.aliases.push(alias);
+    aliasInput.value = '';
+    renderAliases();
+  };
+  aliasInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      addAlias();
+    }
+  });
+  const aliasAdd = el('div', 'add-row');
+  aliasAdd.append(aliasInput, button('Add', 'plus', 'button button-secondary', addAlias), aliasStatus);
+  aliasField.append(aliasRows, aliasAdd, el('small', '', `Mail to any of these reaches the group as mail to ${draft.name || '<name>'}@${state.model.domain} does. Each must be unused by every other group.`));
+  renderAliases();
+  words.append(aliasField);
   const descField = el('label', 'field');
   const desc = el('textarea');
   desc.rows = 2;
@@ -365,7 +419,7 @@ function editor(g, isNew) {
     previewStatus.textContent = 'Working out the members…';
     try {
       const rules = draft.rules.filter(ruleSaysSomething);
-      const {members} = await send('POST', '/api/groups/preview', {name: isNew ? '' : draft.name, rules, additions: draft.additions, unsubscribed: draft.unsubscribed});
+      const {members} = await send('POST', '/api/groups/preview', {name: isNew ? '' : draft.name, rules, additions: draft.additions, excluded: draft.excluded});
       previewHead.textContent = `${members.length} ${members.length === 1 ? 'member' : 'members'}`;
       renderChanges(members, rules);
       previewStatus.textContent = rules.length ? '' : 'Add a rule to pick people out.';
@@ -481,34 +535,73 @@ function editor(g, isNew) {
   renderAdditions();
   form.append(outside);
 
-  // The unsubscribed: people who asked, through their mail app, for no
-  // more of the group's mail. Off the group whatever the rules say, until
-  // a manager takes them off this list.
-  if (draft.unsubscribed.length) {
-    const unsubscribed = el('div', 'card');
-    unsubscribed.append(el('h2', '', 'Unsubscribed'));
-    unsubscribed.append(el('div', 'hint', 'People who used the Unsubscribe in their mail app on a message from this group. They get no mail from it, whatever the rules say, until removed from this list.'));
-    const rows = el('div');
-    const renderUnsubscribed = () => {
-      rows.replaceChildren();
-      if (!draft.unsubscribed.length) {
-        rows.append(el('div', 'rule-empty', 'Nobody is unsubscribed.'));
+  // The excluded: addresses kept off the group whatever the rules and the
+  // additions say - people who unsubscribed, and anyone a manager lists
+  // here with a note saying why.
+  const excluded = el('div', 'card');
+  excluded.append(el('h2', '', 'Excluded'));
+  excluded.append(el('div', 'hint', 'Addresses that get no mail from this group, whatever the rules say: people who unsubscribed through their mail app, and anyone listed here by hand, each with a note saying why. Remove one to put them back.'));
+  const excludedRows = el('div');
+  const renderExcluded = () => {
+    excludedRows.replaceChildren();
+    if (!draft.excluded.length) {
+      excludedRows.append(el('div', 'rule-empty', 'Nobody is excluded.'));
+    }
+    for (const e of draft.excluded) {
+      const remove = el('button', 'link-button danger', 'Remove');
+      remove.type = 'button';
+      remove.addEventListener('click', () => {
+        draft.excluded = draft.excluded.filter(x => x !== e);
+        renderExcluded();
+        rulesChanged();
+      });
+      excludedRows.append(personRow(excludedPerson(e), remove));
+    }
+  };
+  const excludedEmail = el('input');
+  excludedEmail.type = 'email';
+  excludedEmail.maxLength = 120;
+  excludedEmail.placeholder = 'name@example.org';
+  const excludedNote = el('input');
+  excludedNote.type = 'text';
+  excludedNote.maxLength = 120;
+  excludedNote.placeholder = 'Why';
+  const excludedStatus = el('span', 'save-status');
+  const addExcluded = () => {
+    const email = excludedEmail.value.trim().toLowerCase();
+    const note = excludedNote.value.trim();
+    excludedStatus.classList.remove('error');
+    excludedStatus.textContent = '';
+    if (!email.includes('@')) {
+      excludedStatus.classList.add('error');
+      excludedStatus.textContent = 'An email address is needed.';
+      return;
+    }
+    if (draft.excluded.some(e => e.email === email)) {
+      excludedStatus.classList.add('error');
+      excludedStatus.textContent = 'Already excluded.';
+      return;
+    }
+    draft.excluded.push({email, note, when: new Date().toISOString()});
+    excludedEmail.value = '';
+    excludedNote.value = '';
+    renderExcluded();
+    rulesChanged();
+    excludedEmail.focus();
+  };
+  for (const input of [excludedEmail, excludedNote]) {
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        addExcluded();
       }
-      for (const u of draft.unsubscribed) {
-        const remove = el('button', 'link-button danger', 'Remove');
-        remove.type = 'button';
-        remove.addEventListener('click', () => {
-          draft.unsubscribed = draft.unsubscribed.filter(x => x !== u);
-          renderUnsubscribed();
-          rulesChanged();
-        });
-        rows.append(personRow(unsubscribedPerson(u), remove));
-      }
-    };
-    renderUnsubscribed();
-    unsubscribed.append(rows);
-    form.append(unsubscribed);
+    });
   }
+  const excludedAdd = el('div', 'add-row');
+  excludedAdd.append(excludedEmail, excludedNote, button('Add', 'plus', 'button button-secondary', addExcluded), excludedStatus);
+  excluded.append(excludedRows, excludedAdd);
+  renderExcluded();
+  form.append(excluded);
   form.append(preview);
 
   const actions = el('div', 'editor-actions');
@@ -518,7 +611,7 @@ function editor(g, isNew) {
     status.textContent = 'Saving…';
     save.disabled = true;
     try {
-      const body = {original: isNew ? '' : draft.name, name: draft.name, title: draft.title, description: draft.description, prefix: draft.prefix, managers: draft.managers, rules: draft.rules.filter(ruleSaysSomething), additions: draft.additions, unsubscribed: draft.unsubscribed};
+      const body = {original: isNew ? '' : draft.name, name: draft.name, aliases: draft.aliases, title: draft.title, description: draft.description, prefix: draft.prefix, managers: draft.managers, rules: draft.rules.filter(ruleSaysSomething), additions: draft.additions, excluded: draft.excluded};
       const saved = await send('POST', '/api/groups/group', body);
       await load();
       toast(isNew ? 'Group made' : 'Saved');
@@ -562,12 +655,12 @@ function ruleSaysSomething(r) {
   return r.roles.length || r.search || r.classrooms.length || r.grades.length || r.tags.length;
 }
 
-// unsubscribedPerson is someone on the unsubscribed list as a row shows
-// them: by name when the directory holds them, and when they asked.
-function unsubscribedPerson(u) {
-  const person = state.model.people.find(p => p.email === u.email);
-  const when = u.when ? 'Unsubscribed ' + new Date(u.when).toLocaleDateString() : 'Unsubscribed';
-  return {email: u.email, name: person ? person.name : u.email, photoUrl: person ? person.photoUrl : '', words: when, outside: !person};
+// excludedPerson is someone on the excluded list as a row shows them: by
+// name when the directory holds them, with the note and when they went on.
+function excludedPerson(e) {
+  const person = state.model.people.find(p => p.email === e.email);
+  const words = [e.note, e.when ? new Date(e.when).toLocaleDateString() : ''].filter(Boolean).join(' · ');
+  return {email: e.email, name: person ? person.name : e.email, photoUrl: person ? person.photoUrl : '', words, outside: !person};
 }
 
 function slug(text) {
@@ -678,6 +771,9 @@ export function groupPage(g) {
   mail.append(svg('mail'), el('span', '', g.address));
   address.append(mail, iconButton('copy', 'Copy the address', '', () => copyText(g.address, 'Address copied')));
   page.append(address);
+  if (g.aliases.length) {
+    page.append(el('div', 'subject-note', 'Also reached as ' + g.aliases.map(a => `${a}@${state.model.domain}`).join(', ') + '.'));
+  }
   page.append(el('div', 'subject-note', g.prefix ? `Every message goes out with “[${g.title}]” at the front of its subject.` : 'Subjects go out as written.'));
   if (g.description) {
     page.append(el('p', 'page-lead', g.description));
@@ -730,14 +826,14 @@ export function groupPage(g) {
   members.append(list);
   page.append(members);
 
-  if (g.unsubscribed.length) {
-    const unsubscribed = el('div', 'card');
-    unsubscribed.append(el('h2', '', `${g.unsubscribed.length} unsubscribed`));
-    unsubscribed.append(el('div', 'hint', 'People who used the Unsubscribe in their mail app on a message from this group. They get no mail from it, whatever the rules say, until a manager removes them from this list in the editor.'));
-    for (const u of g.unsubscribed) {
-      unsubscribed.append(personRow(unsubscribedPerson(u)));
+  if (g.excluded.length) {
+    const excluded = el('div', 'card');
+    excluded.append(el('h2', '', `${g.excluded.length} excluded`));
+    excluded.append(el('div', 'hint', 'Addresses that get no mail from this group whatever the rules say: people who unsubscribed through their mail app, and anyone a manager listed, each with the note saying why. A manager removes one in the editor to put them back.'));
+    for (const e of g.excluded) {
+      excluded.append(personRow(excludedPerson(e)));
     }
-    page.append(unsubscribed);
+    page.append(excluded);
   }
 
   if (g.trouble.length) {

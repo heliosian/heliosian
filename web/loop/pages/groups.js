@@ -14,6 +14,9 @@ function groupCard(g) {
   address.append(el('span', '', g.address));
   address.append(iconButton('copy', 'Copy the address', 'tiny', () => copyText(g.address, 'Address copied')));
   words.append(address);
+  for (const alias of g.aliases) {
+    words.append(el('div', 'group-address', `${alias}@${state.model.domain}`));
+  }
   head.append(icon, words);
   card.append(head);
   if (g.description) {

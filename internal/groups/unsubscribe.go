@@ -97,7 +97,7 @@ func (a app) unsubscribePage(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if g.HasUnsubscribed(email) {
+	if g.HasExcluded(email) {
 		writePage(w, g.Title, "Already unsubscribed", fmt.Sprintf(`<p>%s gets no mail from %s.</p><p class="address">A manager of the group can put you back on it.</p>`, html.EscapeString(email), html.EscapeString(g.Title)))
 		return
 	}
@@ -107,12 +107,13 @@ func (a app) unsubscribePage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a app) unsubscribeAddress(ctx context.Context, g *Group, email, how string) error {
-	if g.HasUnsubscribed(email) {
+	if g.HasExcluded(email) {
 		return nil
 	}
 	when := time.Now().Format(time.RFC3339)
+	note := "Unsubscribed by " + how
 	next := *g
-	next.Unsubscribed = append(slices.Clone(g.Unsubscribed), Unsubscribed{Email: email, When: when})
+	next.Excluded = append(slices.Clone(g.Excluded), Excluded{Email: email, Note: note, When: when})
 	tables := a.cache.Tables().withGroup(next)
 	model, err := BuildModel(tables)
 	if err != nil {
@@ -122,7 +123,7 @@ func (a app) unsubscribeAddress(ctx context.Context, g *Group, email, how string
 	a.queue.Add(func() {
 		a.cache.set(tables, model)
 		close(applied)
-		if err := a.writer.Append(appName, unsubscribedTab, []string{g.Name, email, when}); err != nil {
+		if err := a.writer.Append(appName, excludedTab, []string{g.Name, email, note, when}); err != nil {
 			slog.ErrorContext(ctx, "groups: unsubscribe write", "error", err)
 			return
 		}

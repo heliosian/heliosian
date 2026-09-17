@@ -420,15 +420,15 @@ func sameRule(a, b Rule) bool {
 func (a app) preview(w http.ResponseWriter, r *http.Request) {
 	email, admin := a.who(r)
 	var body struct {
-		Name         string         `json:"name"`
-		Rules        []Rule         `json:"rules"`
-		Additions    []Addition     `json:"additions"`
-		Unsubscribed []Unsubscribed `json:"unsubscribed"`
+		Name      string     `json:"name"`
+		Rules     []Rule     `json:"rules"`
+		Additions []Addition `json:"additions"`
+		Excluded  []Excluded `json:"excluded"`
 	}
 	if !decode(w, r, &body) {
 		return
 	}
-	draft := Normalize(Group{Name: "preview", Title: "preview", Managers: []string{email}, Rules: body.Rules, Additions: body.Additions, Unsubscribed: body.Unsubscribed})
+	draft := Normalize(Group{Name: "preview", Title: "preview", Managers: []string{email}, Rules: body.Rules, Additions: body.Additions, Excluded: body.Excluded})
 	var existing []Rule
 	if g := a.cache.Model().Group(strings.ToLower(strings.TrimSpace(body.Name))); g != nil {
 		if !admin && !g.Manages(email) {
@@ -511,11 +511,13 @@ func (a app) saveGroup(w http.ResponseWriter, r *http.Request) {
 	original := strings.ToLower(strings.TrimSpace(body.Original))
 	var existing []Rule
 	action := "add"
-	if original == "" {
-		if a.cache.Model().Group(g.Name) != nil {
-			http.Error(w, fmt.Sprintf("%s is taken", g.Address()), http.StatusBadRequest)
+	for _, local := range g.Names() {
+		if other := a.cache.Model().Resolve(local); other != nil && other.Name != original {
+			http.Error(w, fmt.Sprintf("%s@%s is taken", local, Domain), http.StatusBadRequest)
 			return
 		}
+	}
+	if original == "" {
 		if !g.Manages(email) {
 			g.Managers = append([]string{email}, g.Managers...)
 		}
@@ -564,7 +566,7 @@ func (a app) saveGroup(w http.ResponseWriter, r *http.Request) {
 		} else if err := a.writer.Upsert(appName, groupsTab, "Name", g.Name, groupCells(g)); err != nil {
 			return err
 		}
-		for _, tab := range []string{managersTab, rulesTab, additionsTab, unsubscribedTab} {
+		for _, tab := range []string{managersTab, rulesTab, additionsTab, excludedTab, aliasesTab} {
 			if err := a.writer.Delete(appName, tab, map[string]string{"Group": g.Name}); err != nil {
 				return err
 			}
@@ -590,18 +592,25 @@ func (a app) saveGroup(w http.ResponseWriter, r *http.Request) {
 		if err := a.writer.AppendAll(appName, additionsTab, additions); err != nil {
 			return err
 		}
-		unsubscribed := [][]string{}
-		for _, u := range g.Unsubscribed {
-			unsubscribed = append(unsubscribed, rowOf(UnsubscribedColumns, unsubscribedCells(g.Name, u)))
+		excluded := [][]string{}
+		for _, e := range g.Excluded {
+			excluded = append(excluded, rowOf(ExcludedColumns, excludedCells(g.Name, e)))
 		}
-		if err := a.writer.AppendAll(appName, unsubscribedTab, unsubscribed); err != nil {
+		if err := a.writer.AppendAll(appName, excludedTab, excluded); err != nil {
 			return err
 		}
-		return a.logChange(email, action, g.Name, fmt.Sprintf("%s; %d managers; %d rules; %d added by hand; %d unsubscribed; prefix %v", g.Title, len(g.Managers), len(g.Rules), len(g.Additions), len(g.Unsubscribed), g.Prefix))
+		aliases := [][]string{}
+		for _, alias := range g.Aliases {
+			aliases = append(aliases, rowOf(AliasColumns, aliasCells(g.Name, alias)))
+		}
+		if err := a.writer.AppendAll(appName, aliasesTab, aliases); err != nil {
+			return err
+		}
+		return a.logChange(email, action, g.Name, fmt.Sprintf("%s; %d aliases; %d managers; %d rules; %d added by hand; %d excluded; prefix %v", g.Title, len(g.Aliases), len(g.Managers), len(g.Rules), len(g.Additions), len(g.Excluded), g.Prefix))
 	}) {
 		return
 	}
-	slog.InfoContext(r.Context(), "groups: saved group", "action", action, "group", g.Name, "rules", len(g.Rules), "managers", len(g.Managers), "additions", len(g.Additions), "unsubscribed", len(g.Unsubscribed), "prefix", g.Prefix)
+	slog.InfoContext(r.Context(), "groups: saved group", "action", action, "group", g.Name, "aliases", len(g.Aliases), "rules", len(g.Rules), "managers", len(g.Managers), "additions", len(g.Additions), "excluded", len(g.Excluded), "prefix", g.Prefix)
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(a.view(g, email)); err != nil {
 		slog.ErrorContext(r.Context(), "encode saved group", "error", err)
@@ -631,7 +640,7 @@ func (a app) deleteGroup(w http.ResponseWriter, r *http.Request) {
 		if err := a.writer.Delete(appName, groupsTab, map[string]string{"Name": name}); err != nil {
 			return err
 		}
-		for _, tab := range []string{managersTab, rulesTab, additionsTab, unsubscribedTab} {
+		for _, tab := range []string{managersTab, rulesTab, additionsTab, excludedTab, aliasesTab} {
 			if err := a.writer.Delete(appName, tab, map[string]string{"Group": name}); err != nil {
 				return err
 			}

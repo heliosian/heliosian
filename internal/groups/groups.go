@@ -18,7 +18,8 @@ const (
 	managersTab     = "Managers"
 	rulesTab        = "Rules"
 	additionsTab    = "Additions"
-	unsubscribedTab = "Unsubscribed"
+	excludedTab     = "Excluded"
+	aliasesTab      = "Aliases"
 	messagesTab     = "Messages"
 	deliveriesTab   = "Deliveries"
 	adminsTab       = "Admins"
@@ -40,14 +41,18 @@ const (
 	maxRules             = 40
 	maxAdditions         = 200
 	maxNameLength        = 80
+	maxExcluded          = 200
+	maxNoteLength        = 120
+	maxAliases           = 10
 )
 
 var (
-	GroupColumns        = []string{"Name", "Title", "Description", "Created By", "Created", prefixColumn}
-	ManagerColumns      = []string{"Group", "Email"}
-	RuleColumns         = []string{"Group", "Kind", "Roles", "Search", "Classrooms", "Grades", "Tags", "Family", "Owner"}
-	AdditionColumns     = []string{"Group", "Email", "Name"}
-	UnsubscribedColumns = []string{"Group", "Email", "Timestamp"}
+	GroupColumns    = []string{"Name", "Title", "Description", "Created By", "Created", prefixColumn}
+	ManagerColumns  = []string{"Group", "Email"}
+	RuleColumns     = []string{"Group", "Kind", "Roles", "Search", "Classrooms", "Grades", "Tags", "Family", "Owner"}
+	AdditionColumns = []string{"Group", "Email", "Name"}
+	ExcludedColumns = []string{"Group", "Email", "Note", "Timestamp"}
+	AliasColumns    = []string{"Group", "Alias"}
 	MessageColumns      = []string{"ID", "Group", "Received", "From", "Subject", "State", "Recipients", "Object", "Detail", "Source"}
 	DeliveryColumns     = []string{"Timestamp", "Group", "Email", "Event", "Message", "Detail"}
 	AdminColumns        = []string{"Email"}
@@ -92,29 +97,37 @@ type Addition struct {
 	Name  string `json:"name"`
 }
 
-type Unsubscribed struct {
+type Excluded struct {
 	Email string `json:"email"`
+	Note  string `json:"note"`
 	When  string `json:"when"`
 }
 
 // Group is one group: its name, which is its address's local part and never
-// changes, what it is called and for, who manages it, its rules, and the
-// people added by hand from outside the directory.
+// changes, the other local parts it answers as, what it is called and for,
+// who manages it, its rules, the people added by hand from outside the
+// directory, and the addresses kept off it whatever the rules say.
 type Group struct {
-	Name         string         `json:"name"`
-	Title        string         `json:"title"`
-	Description  string         `json:"description"`
-	CreatedBy    string         `json:"createdBy,omitempty"`
-	Created      string         `json:"created,omitempty"`
-	Prefix       bool           `json:"prefix"`
-	Managers     []string       `json:"managers"`
-	Rules        []Rule         `json:"rules"`
-	Additions    []Addition     `json:"additions"`
-	Unsubscribed []Unsubscribed `json:"unsubscribed"`
+	Name        string     `json:"name"`
+	Aliases     []string   `json:"aliases"`
+	Title       string     `json:"title"`
+	Description string     `json:"description"`
+	CreatedBy   string     `json:"createdBy,omitempty"`
+	Created     string     `json:"created,omitempty"`
+	Prefix      bool       `json:"prefix"`
+	Managers    []string   `json:"managers"`
+	Rules       []Rule     `json:"rules"`
+	Additions   []Addition `json:"additions"`
+	Excluded    []Excluded `json:"excluded"`
 }
 
-func (g Group) HasUnsubscribed(email string) bool {
-	return slices.ContainsFunc(g.Unsubscribed, func(u Unsubscribed) bool { return u.Email == email })
+func (g Group) HasExcluded(email string) bool {
+	return slices.ContainsFunc(g.Excluded, func(e Excluded) bool { return e.Email == email })
+}
+
+// Names is every local part the group answers as: its name, then its aliases.
+func (g Group) Names() []string {
+	return append([]string{g.Name}, g.Aliases...)
 }
 
 // Addition finds the group's addition at an address, nil for none.
@@ -137,10 +150,12 @@ func (g Group) Manages(email string) bool {
 	return slices.Contains(g.Managers, email)
 }
 
-// Model is the sheet organized: every group by name, in name order.
+// Model is the sheet organized: every group by name, in name order, and
+// every local part - name or alias - to the group it reaches.
 type Model struct {
-	Groups []Group
-	byName map[string]int
+	Groups    []Group
+	byName    map[string]int
+	byAddress map[string]int
 }
 
 // Group finds a group by name, nil for none.
@@ -152,15 +167,26 @@ func (m *Model) Group(name string) *Group {
 	return &m.Groups[i]
 }
 
+// Resolve finds the group a local part reaches, by its name or an alias,
+// nil for none.
+func (m *Model) Resolve(local string) *Group {
+	i, ok := m.byAddress[local]
+	if !ok {
+		return nil
+	}
+	return &m.Groups[i]
+}
+
 type Tables struct {
-	Groups       []map[string]string
-	Managers     []map[string]string
-	Rules        []map[string]string
-	Additions    []map[string]string
-	Unsubscribed []map[string]string
-	Messages     []map[string]string
-	Deliveries   []map[string]string
-	Admins       []map[string]string
+	Groups     []map[string]string
+	Managers   []map[string]string
+	Rules      []map[string]string
+	Additions  []map[string]string
+	Excluded   []map[string]string
+	Aliases    []map[string]string
+	Messages   []map[string]string
+	Deliveries []map[string]string
+	Admins     []map[string]string
 }
 
 func ReadTables(source data.Source) (*Tables, error) {
@@ -173,12 +199,13 @@ func ReadTables(source data.Source) (*Tables, error) {
 	managers := &table{name: managersTab, want: ManagerColumns}
 	rules := &table{name: rulesTab, want: RuleColumns}
 	additions := &table{name: additionsTab, want: AdditionColumns}
-	unsubscribed := &table{name: unsubscribedTab, want: UnsubscribedColumns}
+	excluded := &table{name: excludedTab, want: ExcludedColumns}
+	aliases := &table{name: aliasesTab, want: AliasColumns}
 	messages := &table{name: messagesTab, want: MessageColumns}
 	deliveries := &table{name: deliveriesTab, want: DeliveryColumns}
 	admins := &table{name: adminsTab, want: AdminColumns}
 	changeLog := &table{name: changeLogTab, want: ChangeLogColumns}
-	read := []*table{groups, managers, rules, additions, unsubscribed, messages, deliveries, admins}
+	read := []*table{groups, managers, rules, additions, excluded, aliases, messages, deliveries, admins}
 	names := []string{}
 	for _, t := range read {
 		names = append(names, t.name)
@@ -193,7 +220,7 @@ func ReadTables(source data.Source) (*Tables, error) {
 			return nil, err
 		}
 	}
-	return &Tables{Groups: groups.rows, Managers: managers.rows, Rules: rules.rows, Additions: additions.rows, Unsubscribed: unsubscribed.rows, Messages: messages.rows, Deliveries: deliveries.rows, Admins: admins.rows}, nil
+	return &Tables{Groups: groups.rows, Managers: managers.rows, Rules: rules.rows, Additions: additions.rows, Excluded: excluded.rows, Aliases: aliases.rows, Messages: messages.rows, Deliveries: deliveries.rows, Admins: admins.rows}, nil
 }
 
 // SplitList reads a list cell: comma-separated, trimmed, without repeats.
@@ -278,6 +305,17 @@ func CheckGroup(g Group) error {
 	if err := CheckName(g.Name); err != nil {
 		return err
 	}
+	if len(g.Aliases) > maxAliases {
+		return fmt.Errorf("group %s has too many aliases", g.Name)
+	}
+	for _, alias := range g.Aliases {
+		if err := CheckName(alias); err != nil {
+			return fmt.Errorf("group %s, alias %q: %w", g.Name, alias, err)
+		}
+		if alias == g.Name {
+			return fmt.Errorf("group %s: an alias cannot be the group's own name", g.Name)
+		}
+	}
 	if strings.TrimSpace(g.Title) == "" || len(g.Title) > maxTitleLength {
 		return fmt.Errorf("group %s needs a short title", g.Name)
 	}
@@ -318,9 +356,15 @@ func CheckGroup(g Group) error {
 			return fmt.Errorf("group %s: the name for %s is too long", g.Name, a.Email)
 		}
 	}
-	for _, u := range g.Unsubscribed {
-		if !emailForm.MatchString(u.Email) {
-			return fmt.Errorf("group %s: unsubscribed %q is not an email address", g.Name, u.Email)
+	if len(g.Excluded) > maxExcluded {
+		return fmt.Errorf("group %s has too many excluded addresses", g.Name)
+	}
+	for _, e := range g.Excluded {
+		if !emailForm.MatchString(e.Email) {
+			return fmt.Errorf("group %s: excluded %q is not an email address", g.Name, e.Email)
+		}
+		if len(e.Note) > maxNoteLength {
+			return fmt.Errorf("group %s: the note for %s is too long", g.Name, e.Email)
 		}
 	}
 	return nil
@@ -330,6 +374,14 @@ func CheckGroup(g Group) error {
 // spelled loosely, so every check and comparison sees one form.
 func Normalize(g Group) Group {
 	g.Name = strings.ToLower(strings.TrimSpace(g.Name))
+	aliases := []string{}
+	for _, alias := range g.Aliases {
+		alias = strings.ToLower(strings.TrimSpace(alias))
+		if alias != "" && !slices.Contains(aliases, alias) {
+			aliases = append(aliases, alias)
+		}
+	}
+	g.Aliases = aliases
 	g.Title = strings.TrimSpace(g.Title)
 	g.Description = strings.TrimSpace(g.Description)
 	g.Managers = cleanEmails(g.Managers)
@@ -355,15 +407,16 @@ func Normalize(g Group) Group {
 		}
 	}
 	g.Additions = additions
-	unsubscribed := make([]Unsubscribed, 0, len(g.Unsubscribed))
-	for _, u := range g.Unsubscribed {
-		u.Email = cleanEmail(u.Email)
-		u.When = strings.TrimSpace(u.When)
-		if u.Email != "" && !slices.ContainsFunc(unsubscribed, func(v Unsubscribed) bool { return v.Email == u.Email }) {
-			unsubscribed = append(unsubscribed, u)
+	excluded := make([]Excluded, 0, len(g.Excluded))
+	for _, e := range g.Excluded {
+		e.Email = cleanEmail(e.Email)
+		e.Note = strings.Join(strings.Fields(e.Note), " ")
+		e.When = strings.TrimSpace(e.When)
+		if e.Email != "" && !slices.ContainsFunc(excluded, func(v Excluded) bool { return v.Email == e.Email }) {
+			excluded = append(excluded, e)
 		}
 	}
-	g.Unsubscribed = unsubscribed
+	g.Excluded = excluded
 	return g
 }
 
@@ -398,8 +451,12 @@ func additionCells(name string, a Addition) map[string]string {
 	return map[string]string{"Group": name, "Email": a.Email, "Name": a.Name}
 }
 
-func unsubscribedCells(name string, u Unsubscribed) map[string]string {
-	return map[string]string{"Group": name, "Email": u.Email, "Timestamp": u.When}
+func excludedCells(name string, e Excluded) map[string]string {
+	return map[string]string{"Group": name, "Email": e.Email, "Note": e.Note, "Timestamp": e.When}
+}
+
+func aliasCells(name, alias string) map[string]string {
+	return map[string]string{"Group": name, "Alias": alias}
 }
 
 func prefixCell(on bool) string {
@@ -423,12 +480,21 @@ func BuildModel(tables *Tables) (*Model, error) {
 		if _, dup := model.byName[g.Name]; dup {
 			return nil, fmt.Errorf("%s has two rows named %q", groupsTab, g.Name)
 		}
+		g.Aliases = []string{}
 		g.Managers = []string{}
 		g.Rules = []Rule{}
 		g.Additions = []Addition{}
-		g.Unsubscribed = []Unsubscribed{}
+		g.Excluded = []Excluded{}
 		model.byName[g.Name] = len(model.Groups)
 		model.Groups = append(model.Groups, g)
+	}
+	for _, row := range tables.Aliases {
+		name := strings.ToLower(strings.TrimSpace(row["Group"]))
+		g := model.Group(name)
+		if g == nil {
+			return nil, fmt.Errorf("%s names %q, which %s does not have", aliasesTab, row["Group"], groupsTab)
+		}
+		g.Aliases = append(g.Aliases, row["Alias"])
 	}
 	for _, row := range tables.Managers {
 		name := strings.ToLower(strings.TrimSpace(row["Group"]))
@@ -457,13 +523,13 @@ func BuildModel(tables *Tables) (*Model, error) {
 		}
 		g.Additions = append(g.Additions, Addition{Email: row["Email"], Name: row["Name"]})
 	}
-	for _, row := range tables.Unsubscribed {
+	for _, row := range tables.Excluded {
 		name := strings.ToLower(strings.TrimSpace(row["Group"]))
 		g := model.Group(name)
 		if g == nil {
-			return nil, fmt.Errorf("%s names %q, which %s does not have", unsubscribedTab, row["Group"], groupsTab)
+			return nil, fmt.Errorf("%s names %q, which %s does not have", excludedTab, row["Group"], groupsTab)
 		}
-		g.Unsubscribed = append(g.Unsubscribed, Unsubscribed{Email: row["Email"], When: row["Timestamp"]})
+		g.Excluded = append(g.Excluded, Excluded{Email: row["Email"], Note: row["Note"], When: row["Timestamp"]})
 	}
 	for i, g := range model.Groups {
 		g = Normalize(g)
@@ -474,8 +540,15 @@ func BuildModel(tables *Tables) (*Model, error) {
 	}
 	sort.SliceStable(model.Groups, func(i, j int) bool { return model.Groups[i].Name < model.Groups[j].Name })
 	model.byName = map[string]int{}
+	model.byAddress = map[string]int{}
 	for i, g := range model.Groups {
 		model.byName[g.Name] = i
+		for _, local := range g.Names() {
+			if j, taken := model.byAddress[local]; taken {
+				return nil, fmt.Errorf("%s@%s reaches both %s and %s", local, Domain, model.Groups[j].Name, g.Name)
+			}
+			model.byAddress[local] = i
+		}
 	}
 	return model, nil
 }
@@ -531,9 +604,13 @@ func (t *Tables) withGroup(g Group) *Tables {
 	for _, a := range g.Additions {
 		out.Additions = append(out.Additions, additionCells(g.Name, a))
 	}
-	out.Unsubscribed = withoutGroupRows(t.Unsubscribed, "Group", g.Name)
-	for _, u := range g.Unsubscribed {
-		out.Unsubscribed = append(out.Unsubscribed, unsubscribedCells(g.Name, u))
+	out.Excluded = withoutGroupRows(t.Excluded, "Group", g.Name)
+	for _, e := range g.Excluded {
+		out.Excluded = append(out.Excluded, excludedCells(g.Name, e))
+	}
+	out.Aliases = withoutGroupRows(t.Aliases, "Group", g.Name)
+	for _, alias := range g.Aliases {
+		out.Aliases = append(out.Aliases, aliasCells(g.Name, alias))
 	}
 	return &out
 }
@@ -544,7 +621,8 @@ func (t *Tables) withoutGroup(name string) *Tables {
 	out.Managers = withoutGroupRows(t.Managers, "Group", name)
 	out.Rules = withoutGroupRows(t.Rules, "Group", name)
 	out.Additions = withoutGroupRows(t.Additions, "Group", name)
-	out.Unsubscribed = withoutGroupRows(t.Unsubscribed, "Group", name)
+	out.Excluded = withoutGroupRows(t.Excluded, "Group", name)
+	out.Aliases = withoutGroupRows(t.Aliases, "Group", name)
 	return &out
 }
 

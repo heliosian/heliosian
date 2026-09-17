@@ -267,20 +267,20 @@ func TestSampleGroupsLoadAndHaveMembers(t *testing.T) {
 	}
 }
 
-func TestUnsubscribedAreLeftOff(t *testing.T) {
+func TestExcludedAreLeftOff(t *testing.T) {
 	s, _ := sample(t)
 	mia := "mia.torres@heliosschool.org"
 	g := groups.Normalize(groups.Group{Name: "test", Title: "Test", Managers: []string{jordan},
-		Rules:        []groups.Rule{rule(groups.KindInclude, func(r *groups.Rule) { r.Search = "torres" })},
-		Additions:    []groups.Addition{{Email: "coach@club.example.org", Name: "Coach"}},
-		Unsubscribed: []groups.Unsubscribed{{Email: " Mia.Torres@heliosschool.org ", When: "2026-09-16T10:00:00Z"}, {Email: "coach@club.example.org"}},
+		Rules:     []groups.Rule{rule(groups.KindInclude, func(r *groups.Rule) { r.Search = "torres" })},
+		Additions: []groups.Addition{{Email: "coach@club.example.org", Name: "Coach"}},
+		Excluded:  []groups.Excluded{{Email: " Mia.Torres@heliosschool.org ", Note: "  Asked  to be left off ", When: "2026-09-16T10:00:00Z"}, {Email: "coach@club.example.org"}},
 	})
-	if len(g.Unsubscribed) != 2 || g.Unsubscribed[0].Email != mia || !g.HasUnsubscribed(mia) {
-		t.Fatalf("unsubscribed: %+v", g.Unsubscribed)
+	if len(g.Excluded) != 2 || g.Excluded[0].Email != mia || g.Excluded[0].Note != "Asked to be left off" || !g.HasExcluded(mia) {
+		t.Fatalf("excluded: %+v", g.Excluded)
 	}
 	members := groups.Members(g, s)
 	if slices.Contains(members, mia) || slices.Contains(members, "coach@club.example.org") {
-		t.Fatalf("an unsubscribed person is on the group: %v", members)
+		t.Fatalf("an excluded person is on the group: %v", members)
 	}
 	if !slices.Contains(members, "nico.torres@heliosschool.org") {
 		t.Fatalf("the rest of the family is gone too: %v", members)

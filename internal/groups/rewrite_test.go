@@ -131,8 +131,8 @@ func TestRewriteNeedsAFrom(t *testing.T) {
 	}
 }
 
-func TestGroupsInReadsTheDomainsAddresses(t *testing.T) {
-	got := groupsIn([]string{"Soccer <Soccer-Team@loop.heliosian.com>", "alice@gmail.com", "soccer-team@loop.heliosian.com", "pta@loop.heliosian.com"})
+func TestLocalsInReadsTheDomainsAddresses(t *testing.T) {
+	got := localsIn([]string{"Soccer <Soccer-Team@loop.heliosian.com>", "alice@gmail.com", "soccer-team@loop.heliosian.com", "pta@loop.heliosian.com"})
 	if len(got) != 2 || got[0] != "soccer-team" || got[1] != "pta" {
 		t.Fatalf("got %v", got)
 	}

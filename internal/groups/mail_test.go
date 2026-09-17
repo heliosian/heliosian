@@ -320,8 +320,8 @@ func TestOneClickUnsubscribeTakesThemOffTheGroup(t *testing.T) {
 		t.Fatalf("one-click answered %d: %s", rec.Code, rec.Body)
 	}
 	g := h.cache.Model().Group("soccer-team")
-	if !g.HasUnsubscribed(first.to[0]) {
-		t.Fatalf("not unsubscribed: %+v", g.Unsubscribed)
+	if !g.HasExcluded(first.to[0]) || g.Excluded[0].Note != "Unsubscribed by one-click" {
+		t.Fatalf("not excluded: %+v", g.Excluded)
 	}
 	for _, m := range h.members("soccer-team") {
 		if m == first.to[0] {
@@ -330,8 +330,8 @@ func TestOneClickUnsubscribeTakesThemOffTheGroup(t *testing.T) {
 	}
 	rowsFor := func() int {
 		n := 0
-		for _, row := range h.rows(unsubscribedTab) {
-			if row["Group"] == "soccer-team" && row["Email"] == first.to[0] && row["Timestamp"] != "" {
+		for _, row := range h.rows(excludedTab) {
+			if row["Group"] == "soccer-team" && row["Email"] == first.to[0] && row["Note"] == "Unsubscribed by one-click" && row["Timestamp"] != "" {
 				n++
 			}
 		}
@@ -369,12 +369,27 @@ func TestUnsubscribeByMailTakesThemOffTheGroup(t *testing.T) {
 	if rec := h.inbound(fields); rec.Code != http.StatusOK {
 		t.Fatalf("inbound answered %d: %s", rec.Code, rec.Body)
 	}
-	if !h.cache.Model().Group("soccer-team").HasUnsubscribed(first.to[0]) {
-		t.Fatal("the mail did not unsubscribe them")
+	g := h.cache.Model().Group("soccer-team")
+	if !g.HasExcluded(first.to[0]) || g.Excluded[0].Note != "Unsubscribed by mail from "+first.to[0] {
+		t.Fatalf("the mail did not exclude them: %+v", g.Excluded)
 	}
 	time.Sleep(100 * time.Millisecond)
 	if h.messageRow("u1", "soccer-team") != nil || h.messageRow("u1", "unsubscribe") != nil {
 		t.Fatal("the unsubscribe mail was taken as a post")
+	}
+}
+
+func TestAnAliasReachesItsGroup(t *testing.T) {
+	h := newHarness(t, &fakeStore{raw: []byte(post)})
+	if rec := h.inbound(notify("m9", "Hummingbirds-Families@loop.heliosian.com")); rec.Code != http.StatusOK {
+		t.Fatalf("inbound answered %d: %s", rec.Code, rec.Body)
+	}
+	h.waitFor("the forward", func() bool { return h.messageState("m9", "hummingbird-families") == stateSent })
+	if h.messageRow("m9", "hummingbirds-families") != nil {
+		t.Fatal("the alias got a row of its own")
+	}
+	if len(h.sender.all()) != len(h.members("hummingbird-families")) {
+		t.Fatalf("%d sends", len(h.sender.all()))
 	}
 }
 

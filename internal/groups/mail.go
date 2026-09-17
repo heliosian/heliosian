@@ -147,7 +147,7 @@ func (m *mailer) mark(j job, state string, cells map[string]string) {
 	})
 }
 
-func groupsIn(addresses []string) []string {
+func localsIn(addresses []string) []string {
 	out := []string{}
 	for _, address := range addresses {
 		local, domain, _ := strings.Cut(strings.ToLower(addressOf(address)), "@")
@@ -158,12 +158,24 @@ func groupsIn(addresses []string) []string {
 	return out
 }
 
-func (m *mailer) received(id, source, from, subject string, addresses []string) {
-	for _, name := range groupsIn(addresses) {
-		if m.cache.Model().Group(name) == nil {
-			slog.Warn("groups: mail for no group", "message", id, "group", name, "from", from)
+func (m *mailer) groupsIn(addresses []string) []string {
+	model := m.cache.Model()
+	out := []string{}
+	for _, local := range localsIn(addresses) {
+		g := model.Resolve(local)
+		if g == nil {
+			slog.Warn("groups: mail for no group", "local", local)
 			continue
 		}
+		if !slices.Contains(out, g.Name) {
+			out = append(out, g.Name)
+		}
+	}
+	return out
+}
+
+func (m *mailer) received(id, source, from, subject string, addresses []string) {
+	for _, name := range m.groupsIn(addresses) {
 		j := job{id: id, group: name, source: source}
 		if !m.take(j) {
 			continue
@@ -180,7 +192,7 @@ func (m *mailer) received(id, source, from, subject string, addresses []string) 
 }
 
 func (m *mailer) trouble(event, from, messageID, detail string, addresses []string) {
-	names := groupsIn([]string{from})
+	names := m.groupsIn([]string{from})
 	if len(names) == 0 {
 		return
 	}
