@@ -27,7 +27,6 @@ function groupCard(g) {
   if (managed(g) && g.visibility !== 'hidden') {
     meta.append(el('span', 'chip', visibilityWords[g.visibility]));
   }
-  meta.append(el('span', 'group-managers', 'Managed by ' + g.managers.map(m => m.name).join(', ')));
   card.append(meta);
   return card;
 }
