@@ -458,6 +458,11 @@ body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  /* The nav reaches the rail's edges through the rail's padding, so its
+     scrollbar hugs the rail's right edge instead of sitting 12px in; the
+     rows keep the rail's inset through the nav's own padding. */
+  margin: 0 -12px;
+  padding: 0 12px;
   /* The thin white thumb the shared sheet gives the rail, when the list
      is long enough to need one. */
   scrollbar-width: thin;

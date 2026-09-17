@@ -450,8 +450,9 @@ main {
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
 }
 
-/* The viewer's own parties wear a yellow Hosting chip, top left. */
-.card-chip-hosting { position: absolute; left: 12px; top: 12px; background: var(--yellow); color: var(--ink); }
+/* The viewer’s own parties wear a yellow Hosting chip, top left - dark words on
+   its yellow in both modes, so it reads at night too. */
+.card-chip-hosting { position: absolute; left: 12px; top: 12px; background: var(--yellow); color: #0d0d0d; }
 
 /* The date stamp is a page off a tear-off calendar, as HCA-Team's cards
    have it: the month as a red band across the top, the day large under it,
@@ -743,7 +744,7 @@ main {
 
 .audience-chip { background: var(--input); color: var(--brand); }
 
-.audience-chip.hosting-chip { background: var(--yellow); color: var(--ink); }
+.audience-chip.hosting-chip { background: var(--yellow); color: #0d0d0d; }
 
 .detail-title { font-size: 34px; font-weight: 700; margin: 0 0 6px; color: var(--title); line-height: 1.15; }
 

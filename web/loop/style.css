@@ -385,6 +385,8 @@ body.is-admin main { padding: 0; }
 .group-icon { width: 44px; height: 44px; border-radius: 12px; background: var(--input); color: var(--brand); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 
 .group-icon svg { width: 22px; height: 22px; }
+/* A suggestion wears the source app's mark in place of a kind icon. */
+.group-icon-app img { width: 26px; height: 26px; display: block; }
 
 .group-words { min-width: 0; flex: 1; }
 

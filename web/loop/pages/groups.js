@@ -36,11 +36,19 @@ const suggestionWords = {
   activity: 'Parents on the volunteer list, as the activity\'s Magic Tag lists them now.',
 };
 
+// A suggestion's icon is the mark of the app its Magic Tag is kept up in -
+// Celebrate's for a party, HCA-Team's for an activity - the coloured marks
+// the app switch wears, so the card says where the people would come from.
+const suggestionApp = {party: 'celebrate', activity: 'team'};
+
 function suggestionCard(s) {
   const card = el('div', 'group-card');
   const head = el('div', 'group-card-head');
-  const icon = el('div', 'group-icon');
-  icon.append(svg(s.kind));
+  const icon = el('div', 'group-icon group-icon-app');
+  const mark = el('img');
+  mark.src = `/brand/apps/${suggestionApp[s.kind]}.png`;
+  mark.alt = '';
+  icon.append(mark);
   const words = el('div', 'group-words');
   words.append(el('div', 'group-title', s.name));
   words.append(el('div', 'group-desc', suggestionWords[s.kind]));
