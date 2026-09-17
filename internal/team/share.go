@@ -4,11 +4,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"html"
 	"image/color"
 	"net/http"
 	"os"
 	"path"
+	"slices"
 	"strings"
 	"time"
 
@@ -20,9 +20,12 @@ import (
 // tags slipped into the sign-in page served at the event's address, and a card
 // image at /open/share/{id}.png drawn here - the brand, the title, when it is, and
 // the event's own image when it has one. Only what is open or done is
-// previewed; a hidden or pending thing shows the plain sign-in page. The tags
-// say the title, a sentence of the description and the date - the same things
-// a poster on the wall says - and nothing about who has signed up.
+// previewed that way; a link to anything else - the portal itself, a page, a
+// hidden or pending thing - previews what needs hands: the open things this
+// school year still short of volunteers, soonest first, at
+// /open/share/upcoming.png. The tags say the title, a sentence of the
+// description and the date - the same things a poster on the wall says - and
+// nothing about who has signed up.
 
 const (
 	cardWidth  = sharecard.Width
@@ -119,24 +122,25 @@ func blurb(a *Activity) string {
 	return text
 }
 
-// PreviewHead is the Open Graph markup for the thing at a request's path, or
-// nothing when there is nothing there to show a stranger. Wired into the
-// sign-in page, which is what an unauthenticated fetch of the address gets.
+// PreviewHead is the Open Graph markup for the thing at a request's path,
+// or the portal's own preview of what needs hands when there is nothing
+// there to show a stranger. Wired into the sign-in page, which is what an
+// unauthenticated fetch of the address gets.
 func PreviewHead(cache *Cache) func(r *http.Request) string {
 	return func(r *http.Request) string {
-		first := strings.Split(strings.Trim(r.URL.Path, "/"), "/")[0]
-		if first != "v" && first != "activities" {
-			return ""
-		}
 		model := cache.Model()
 		if model == nil {
 			return ""
 		}
-		a := model.Resolve(r.URL.Path)
-		if !previewable(a) {
-			return ""
-		}
 		origin := "https://" + r.Host
+		first := strings.Split(strings.Trim(r.URL.Path, "/"), "/")[0]
+		var a *Activity
+		if first == "v" || first == "activities" {
+			a = model.Resolve(r.URL.Path)
+		}
+		if !previewable(a) {
+			return upcomingHead(model, origin, time.Now().In(local))
+		}
 		desc := blurb(a)
 		if line := when(timed(model, a)); line != "" {
 			if desc != "" {
@@ -154,32 +158,98 @@ func PreviewHead(cache *Cache) func(r *http.Request) string {
 		if under := lineage(model, a); under != "" {
 			title = a.Title + " · " + under
 		}
-		tags := [][2]string{
-			{"og:type", "website"},
-			{"og:site_name", "HCA-Team"},
-			{"og:title", title},
-			{"og:description", desc},
-			{"og:url", origin + model.PathOf(a)},
-			{"og:image", origin + "/open/share/" + a.ID + ".png"},
-			{"og:image:width", fmt.Sprint(cardWidth)},
-			{"og:image:height", fmt.Sprint(cardHeight)},
-			{"twitter:card", "summary_large_image"},
-			{"twitter:title", title},
-			{"twitter:description", desc},
-			{"twitter:image", origin + "/open/share/" + a.ID + ".png"},
-		}
-		var b strings.Builder
-		b.WriteString("\n")
-		for _, t := range tags {
-			attr := "property"
-			if strings.HasPrefix(t[0], "twitter:") {
-				attr = "name"
-			}
-			fmt.Fprintf(&b, `<meta %s="%s" content="%s">`+"\n", attr, t[0], html.EscapeString(t[1]))
-		}
-		fmt.Fprintf(&b, `<meta name="description" content="%s">`+"\n", html.EscapeString(desc))
-		return b.String()
+		return previewTags(title, desc, origin+model.PathOf(a), origin+"/open/share/"+a.ID+".png")
 	}
+}
+
+// previewTags is the markup itself, as every app's sign-in page carries it.
+func previewTags(title, desc, url, image string) string {
+	return sharecard.PreviewTags("HCA-Team", title, desc, url, image)
+}
+
+// needs is what the portal's own preview lists: the open roots of the school
+// year that still want volunteers - not marked complete, and with a spot
+// left when they count spots - the dated ones still to come, soonest first,
+// then the ones with no date to sort by, in the page's order.
+func needs(m *Model, at time.Time) []*Activity {
+	year, today := SchoolYear(at), at.Format(DateFormat)
+	dated, undated := []*Activity{}, []*Activity{}
+	for _, a := range m.Activities {
+		if a.Year != year || a.Status != StatusOpen || a.VolunteersComplete || (a.Spots > 0 && len(a.Volunteers) >= a.Spots) {
+			continue
+		}
+		if a.Start == "" {
+			undated = append(undated, a)
+		} else if a.Start[:min(len(a.Start), len(DateFormat))] >= today {
+			dated = append(dated, a)
+		}
+	}
+	slices.SortStableFunc(dated, func(x, y *Activity) int { return strings.Compare(x.Start, y.Start) })
+	return append(dated, undated...)
+}
+
+// needsCount is how many the card lists.
+const needsCount = 4
+
+// needNote is the line under a need's title: its day, and what is still
+// wanted when it counts spots.
+func needNote(a *Activity) string {
+	parts := []string{}
+	if day, _ := whenLines(a); day != "" {
+		parts = append(parts, day)
+	}
+	if a.Spots > 0 {
+		left := a.Spots - len(a.Volunteers)
+		if left == 1 {
+			parts = append(parts, "1 spot left")
+		} else {
+			parts = append(parts, fmt.Sprintf("%d spots left", left))
+		}
+	} else if a.CoLeaderNeeded {
+		parts = append(parts, "co-chair wanted")
+	}
+	return strings.Join(parts, " · ")
+}
+
+// The portal's own card and tags: what it is, and the things still short of
+// hands.
+const (
+	upcomingTitle = "Lend a hand this year"
+	upcomingLead  = "Sign up for a shift, a booth or a committee."
+	upcomingEmpty = "Nothing needs hands just now - check back soon."
+)
+
+// upcomingHead is the portal's own preview: the things that still want
+// volunteers, in words, with the card that draws them.
+func upcomingHead(m *Model, origin string, at time.Time) string {
+	desc := cardStyle.TaglineText() + ". " + upcomingLead
+	if list := needs(m, at); len(list) > 0 {
+		names := []string{}
+		for _, a := range list[:min(len(list), needsCount)] {
+			name := a.Title
+			if note := needNote(a); note != "" {
+				name += " (" + note + ")"
+			}
+			names = append(names, name)
+		}
+		desc = "Volunteers needed: " + strings.Join(names, "; ") + ". " + upcomingLead
+	}
+	return previewTags(upcomingTitle, desc, origin+"/", origin+"/open/share/upcoming.png")
+}
+
+// shareUpcoming serves /open/share/upcoming.png: the card for the portal
+// itself, which lists what still wants volunteers. It changes as people sign
+// up and days pass, so its ETag hashes what it names.
+func (a app) shareUpcoming(w http.ResponseWriter, r *http.Request) {
+	listing := &sharecard.Listing{Heading: "Volunteers needed", Empty: upcomingEmpty}
+	for _, act := range needs(a.cache.Model(), time.Now().In(local)) {
+		if len(listing.Items) == needsCount {
+			break
+		}
+		listing.Items = append(listing.Items, sharecard.Item{Title: act.Title, Note: needNote(act)})
+	}
+	card := sharecard.Card{Title: upcomingTitle, Subtitle: upcomingLead, Button: "See what's open", Listing: listing}
+	cardStyle.Serve(w, r, card, sharecard.ETag(append(listing.Words(), cardStyle.TaglineText())...))
 }
 
 // shareCard serves /open/share/{id}.png: the card for one previewable thing. The

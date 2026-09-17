@@ -931,11 +931,40 @@ func TestSharePreview(t *testing.T) {
 			t.Fatalf("child preview lacks %s:\n%s", want, tags)
 		}
 	}
-	if head(httptest.NewRequest("GET", "https://team.heliosian.com/activities/E006", nil)) != "" {
-		t.Fatalf("a hidden thing was previewed")
+	// A hidden thing, and any other page, preview as the portal itself: what
+	// still wants volunteers, soonest first, never the hidden thing.
+	for _, path := range []string{"/activities/E006", "/my", "/"} {
+		tags = head(httptest.NewRequest("GET", "https://team.heliosian.com"+path, nil))
+		for _, want := range []string{`og:title" content="Lend a hand this year"`, `og:image" content="https://team.heliosian.com/open/share/upcoming.png"`, "Volunteers needed: "} {
+			if !strings.Contains(tags, want) {
+				t.Fatalf("%s preview lacks %s:\n%s", path, want, tags)
+			}
+		}
+		if strings.Contains(tags, "E006") {
+			t.Fatalf("%s preview names a hidden thing:\n%s", path, tags)
+		}
 	}
-	if head(httptest.NewRequest("GET", "https://team.heliosian.com/my", nil)) != "" {
-		t.Fatalf("a page with nothing to preview got tags")
+	// The needs are the year's open roots short of hands, dated ones first
+	// and soonest first, each noting its day and what is still wanted.
+	list := needs(cache.Model(), now())
+	if len(list) == 0 {
+		t.Fatalf("nothing needs hands in the sample")
+	}
+	last := ""
+	for _, a := range list {
+		if a.Status != StatusOpen || a.VolunteersComplete || (a.Spots > 0 && len(a.Volunteers) >= a.Spots) || a.Parent != "" {
+			t.Fatalf("%s (%s) is not a need", a.Title, a.ID)
+		}
+		if a.Start != "" && last != "" && a.Start < last {
+			t.Fatalf("%s comes after %s", a.Title, last)
+		}
+		if a.Start != "" && a.Start[:10] < "2026-09-09" {
+			t.Fatalf("%s is past", a.Title)
+		}
+		last = a.Start
+	}
+	if note := needNote(&Activity{Start: "2026-09-24", Spots: 3, Volunteers: []Volunteer{{}}}); note != "Thursday, September 24 · 2 spots left" {
+		t.Fatalf("note: %q", note)
 	}
 	// The card is public - the mux is called without a session - and only for
 	// what previews.
@@ -948,6 +977,11 @@ func TestSharePreview(t *testing.T) {
 	mux.ServeHTTP(rec, httptest.NewRequest("GET", "/open/share/E006.png", nil))
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("a hidden thing has a card: %d", rec.Code)
+	}
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest("GET", "/open/share/upcoming.png", nil))
+	if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "image/png" || rec.Body.Len() < 10000 {
+		t.Fatalf("portal card: %d %s %d bytes", rec.Code, rec.Header().Get("Content-Type"), rec.Body.Len())
 	}
 }
 

@@ -3,8 +3,6 @@ package celebrate
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
-	"html"
 	"image/color"
 	"net/http"
 	"os"
@@ -174,34 +172,9 @@ func upcomingHead(m *Model, origin string) string {
 	return previewTags("Upcoming Parties", desc, origin+"/", origin+"/open/share/upcoming.png")
 }
 
-// previewTags is the markup itself: the Open Graph and Twitter tags for a
-// title, a description, the page and its card.
+// previewTags is the markup itself, as every app's sign-in page carries it.
 func previewTags(title, desc, url, image string) string {
-	tags := [][2]string{
-		{"og:type", "website"},
-		{"og:site_name", "Helios Celebrate"},
-		{"og:title", title},
-		{"og:description", desc},
-		{"og:url", url},
-		{"og:image", image},
-		{"og:image:width", fmt.Sprint(sharecard.Width)},
-		{"og:image:height", fmt.Sprint(sharecard.Height)},
-		{"twitter:card", "summary_large_image"},
-		{"twitter:title", title},
-		{"twitter:description", desc},
-		{"twitter:image", image},
-	}
-	var b strings.Builder
-	b.WriteString("\n")
-	for _, t := range tags {
-		attr := "property"
-		if strings.HasPrefix(t[0], "twitter:") {
-			attr = "name"
-		}
-		fmt.Fprintf(&b, `<meta %s="%s" content="%s">`+"\n", attr, t[0], html.EscapeString(t[1]))
-	}
-	fmt.Fprintf(&b, `<meta name="description" content="%s">`+"\n", html.EscapeString(desc))
-	return b.String()
+	return sharecard.PreviewTags("Helios Celebrate", title, desc, url, image)
 }
 
 // shareUpcoming serves /open/share/upcoming.png: the card for the site itself,

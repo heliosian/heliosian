@@ -866,6 +866,9 @@ func NewCore(cfg Config) *Core {
 	team.ShareTagline(taglineOf("team"))
 	celebrate.ShareTagline(taglineOf("celebrate"))
 	calendar.ShareTagline(taglineOf("calendar"))
+	who.ShareTagline(taglineOf("who"))
+	birthday.ShareTagline(taglineOf("birthday"))
+	loop.ShareTagline(taglineOf("loop"))
 	appName := func(key string) func() string {
 		return func() string {
 			if key == "home" {
@@ -1272,6 +1275,9 @@ func Production(blobCache string) (*http.Server, *who.Queue) {
 		return a
 	}
 	whoAuth := newAuth("who")
+	// A shared link to the directory previews in chat apps: the sign-in page
+	// carries tags saying what it is - never who is in it - and a card.
+	whoAuth.Preview = who.PreviewHead()
 	whoAuth.Register(core.Mux)
 	homeAuth := newAuth("home")
 	// A shared link to the portal previews in chat apps: the sign-in page
@@ -1280,10 +1286,13 @@ func Production(blobCache string) (*http.Server, *who.Queue) {
 	homeAuth.Register(core.HomeMux)
 	teamAuth := newAuth("team")
 	// A shared link to an event previews in chat apps: the sign-in page it
-	// leads to carries the event's Open Graph tags.
+	// leads to carries the event's Open Graph tags, or the portal's own list
+	// of what still wants volunteers.
 	teamAuth.Preview = team.PreviewHead(core.TeamCache)
 	teamAuth.Register(core.TeamMux)
 	birthdayAuth := newAuth("birthday")
+	// A shared link previews as an ask to join the Birthday team.
+	birthdayAuth.Preview = birthday.PreviewHead()
 	birthdayAuth.Register(core.BirthdayMux)
 	celebrateAuth := newAuth("celebrate")
 	// A shared link to a party previews in chat apps: the sign-in page it
@@ -1296,6 +1305,8 @@ func Production(blobCache string) (*http.Server, *who.Queue) {
 	calendarAuth.Preview = calendar.PreviewHead(core.CalendarCache, core.CalendarLinked)
 	calendarAuth.Register(core.CalendarMux)
 	loopAuth := newAuth("loop")
+	// A shared link previews as what Loop is, never what a group holds.
+	loopAuth.Preview = loop.PreviewHead()
 	loopAuth.Register(core.LoopMux)
 	askAuth := newAuth("ask")
 	askAuth.Register(core.AskMux)

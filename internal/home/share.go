@@ -3,8 +3,6 @@ package home
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
-	"html"
 	"image"
 	"image/color"
 	"net/http"
@@ -105,34 +103,9 @@ func PreviewHead(cache *Cache) func(r *http.Request) string {
 	}
 }
 
-// previewTags is the markup itself: the Open Graph and Twitter tags for a
-// title, a description, the page and its card.
+// previewTags is the markup itself, as every app's sign-in page carries it.
 func previewTags(title, desc, url, image string) string {
-	tags := [][2]string{
-		{"og:type", "website"},
-		{"og:site_name", "Heliosian"},
-		{"og:title", title},
-		{"og:description", desc},
-		{"og:url", url},
-		{"og:image", image},
-		{"og:image:width", fmt.Sprint(sharecard.Width)},
-		{"og:image:height", fmt.Sprint(sharecard.Height)},
-		{"twitter:card", "summary_large_image"},
-		{"twitter:title", title},
-		{"twitter:description", desc},
-		{"twitter:image", image},
-	}
-	var b strings.Builder
-	b.WriteString("\n")
-	for _, t := range tags {
-		attr := "property"
-		if strings.HasPrefix(t[0], "twitter:") {
-			attr = "name"
-		}
-		fmt.Fprintf(&b, `<meta %s="%s" content="%s">`+"\n", attr, t[0], html.EscapeString(t[1]))
-	}
-	fmt.Fprintf(&b, `<meta name="description" content="%s">`+"\n", html.EscapeString(desc))
-	return b.String()
+	return sharecard.PreviewTags("Heliosian", title, desc, url, image)
 }
 
 // appMarks holds each app's mark, read once from the shared brand folder.

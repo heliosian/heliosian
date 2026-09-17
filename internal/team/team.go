@@ -82,6 +82,7 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	mux.HandleFunc("GET /api/team/images/search", a.ready(a.search.ServeSearch))
 	mux.HandleFunc("POST /api/team/images/import", a.ready(a.importImage))
 	// Public, past sign-in (auth.Public): the image a chat app shows for a link.
+	mux.HandleFunc("GET /open/share/upcoming.png", a.ready(a.shareUpcoming))
 	mux.HandleFunc("GET /open/share/{id}", a.ready(a.shareCard))
 	mux.HandleFunc("GET /api/team/people", a.ready(a.people))
 	mux.HandleFunc("POST /api/team/volunteer", a.ready(a.saveVolunteer))

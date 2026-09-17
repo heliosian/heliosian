@@ -74,6 +74,7 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	for _, page := range pages {
 		mux.HandleFunc("GET "+page, a.page)
 	}
+	mux.HandleFunc("GET /open/share/about.png", a.shareCard)
 	mux.HandleFunc("GET /api/birthday/model", a.model)
 	mux.HandleFunc("POST /api/birthday/assign", a.assign)
 	mux.HandleFunc("DELETE /api/birthday/assign", a.unassign)

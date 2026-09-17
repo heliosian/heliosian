@@ -81,6 +81,7 @@ func MemberGate(cache *Cache, next http.Handler) http.Handler {
 // it lives in the Config sheet, where an admin can change it between requests.
 func Register(mux *http.ServeMux, cache *Cache, mapsKey string, optIn func() string, lister Lister) {
 	a := app{cache: cache, mapsKey: mapsKey, optIn: optIn, lister: lister}
+	mux.HandleFunc("GET /open/share/about.png", a.shareCard)
 	for _, section := range sections {
 		mux.HandleFunc("GET /"+section, a.page)
 	}
