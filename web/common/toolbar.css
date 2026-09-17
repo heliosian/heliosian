@@ -959,3 +959,59 @@ body.is-super .user-avatar {
 .app-nav a.is-active .app-symbol, .app-nav a.active .app-symbol, .nav-heading-toggle.active .app-symbol { color: var(--lime, #c1e524); }
 
 .nav-heading-toggle .app-symbol { width: 26px; height: 20px; }
+
+/* The phone's drawer - the rail folded away behind the hamburger - is the
+   rail's own dark teal in every app, the watermark and all: white words,
+   a lit row for the page open, the account block ruled off in white. The
+   selectors carry body so they win over each app's own drawer rules,
+   whichever order the sheets load in. */
+body .drawer {
+  color: #fff;
+  background-color: #0f4e54;
+  background-image: url('/brand/symbol-watermark.png'), linear-gradient(180deg, #022427, #0f4e54);
+  background-size: 360px auto, auto;
+  background-position: right -120px bottom -100px, left top;
+  background-repeat: no-repeat, no-repeat;
+}
+
+body .drawer-head { color: #fff; }
+
+body .drawer-head .icon-button, body .drawer-close { color: rgba(255, 255, 255, 0.75); background: none; border: 0; }
+
+body .drawer-head .icon-button:hover, body .drawer-close:hover { color: #fff; background: rgba(255, 255, 255, 0.12); }
+
+body .drawer a { color: #fff; }
+
+body .drawer a:hover { background: rgba(255, 255, 255, 0.08); }
+
+body .drawer a.is-active, body .drawer a.active { background: rgba(255, 255, 255, 0.16); color: #fff; }
+
+body .drawer svg { color: inherit; }
+
+body .drawer-user { border-top: 1px solid rgba(255, 255, 255, 0.16); color: #fff; }
+
+body .drawer-user .email, body .drawer-user .muted { color: rgba(255, 255, 255, 0.62); }
+
+body .drawer-user .drawer-admin, body .drawer .user-menu-link { color: #fff; }
+
+body .drawer .button.button-secondary { background: rgba(255, 255, 255, 0.12); border-color: rgba(255, 255, 255, 0.3); color: #fff; }
+
+body .drawer .button.button-secondary:hover { background: rgba(255, 255, 255, 0.2); }
+
+/* Scrollbars, everywhere: thin, a rounded thumb in the brand tint, no
+   track; white on the dark rail and drawer. */
+html { scrollbar-width: thin; scrollbar-color: rgba(14, 77, 84, 0.28) transparent; }
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+
+::-webkit-scrollbar-track { background: transparent; }
+
+::-webkit-scrollbar-thumb { border-radius: 999px; background: rgba(14, 77, 84, 0.22); border: 2px solid transparent; background-clip: padding-box; }
+
+::-webkit-scrollbar-thumb:hover { background: rgba(14, 77, 84, 0.4); background-clip: padding-box; }
+
+.sidebar, .sidebar .app-nav, .sidebar-scroll, .drawer, body .drawer, .drawer .app-nav { scrollbar-color: rgba(255, 255, 255, 0.28) transparent; }
+
+.sidebar::-webkit-scrollbar-thumb, .sidebar .app-nav::-webkit-scrollbar-thumb, .sidebar-scroll::-webkit-scrollbar-thumb, .drawer::-webkit-scrollbar-thumb, .drawer .app-nav::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.22); background-clip: padding-box; }
+
+.sidebar::-webkit-scrollbar-thumb:hover, .sidebar .app-nav::-webkit-scrollbar-thumb:hover, .sidebar-scroll::-webkit-scrollbar-thumb:hover, .drawer::-webkit-scrollbar-thumb:hover, .drawer .app-nav::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.4); background-clip: padding-box; }

@@ -86,7 +86,7 @@ body {
   flex: 1;
   min-height: 0;
   overflow: hidden auto;
-  scrollbar-width: none;
+  scrollbar-width: thin;
   display: flex;
   flex-direction: column;
   gap: 20px;

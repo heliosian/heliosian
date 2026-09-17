@@ -458,7 +458,9 @@ body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  scrollbar-width: none;
+  /* The thin white thumb the shared sheet gives the rail, when the list
+     is long enough to need one. */
+  scrollbar-width: thin;
   /* The edges fade only while there is more to scroll to on that side; the
      scroll handler sets the two lengths (see navScrollFade). */
   mask-image: linear-gradient(to bottom, transparent, #000 var(--fade-top, 0px), #000 calc(100% - var(--fade-bottom, 0px)), transparent);

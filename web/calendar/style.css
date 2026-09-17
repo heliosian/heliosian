@@ -87,6 +87,46 @@ button { font: inherit; }
   overflow-y: auto;
 }
 
+/* In the rail the small month and the day card go dark with it: glass
+   over the teal, pale words, the day's plan and events the same. */
+.sidebar .mini-month, .sidebar .day-card { background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.14); }
+
+.sidebar .mini-label, .sidebar .mini-arrow, .sidebar .day-card-title, .sidebar .timeline-time { color: #fff; }
+
+.sidebar .mini-arrow:hover, .sidebar .mini-day:hover { background: rgba(255, 255, 255, 0.14); }
+
+.sidebar .mini-dow, .sidebar .day-card-date, .sidebar .timeline-place, .sidebar .mini-day.is-off { color: rgba(255, 255, 255, 0.62); }
+
+.sidebar .mini-day { color: #fff; }
+
+.sidebar .mini-day.is-outside { color: rgba(255, 255, 255, 0.35); }
+
+.sidebar .mini-day.is-on { background: #fff; color: var(--brand); }
+
+.sidebar .mini-day.is-on .mini-num { color: var(--brand); }
+
+.sidebar .mini-day.is-on .mini-dot { background: var(--brand); }
+
+.sidebar .timeline-title { color: #fff; }
+
+.sidebar .timeline-row::before { background: rgba(255, 255, 255, 0.2); }
+
+.sidebar .timeline-dot { box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.35); }
+
+.sidebar .timeline-row.is-hidden { opacity: 0.55; }
+
+.sidebar .day-card .plan-card.dt-regular { background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.14); }
+
+.sidebar .day-card .plan-card.dt-regular .plan-type, .sidebar .day-card .plan-card.dt-regular .plan-rooms { color: #fff; }
+
+.sidebar .day-card .plan-card.dt-regular .block { background: rgba(255, 255, 255, 0.1); }
+
+.sidebar .day-card .plan-card.dt-regular .block-name, .sidebar .day-card .plan-card.dt-regular .block-hours { color: #fff; }
+
+.sidebar .day-note, .sidebar .day-card .panel { background: rgba(255, 255, 255, 0.1); color: rgba(255, 255, 255, 0.8); }
+
+.sidebar .day-note svg { color: #fff; }
+
 /* The rail carries the long horizontal lockup, one line of name over the tagline. */
 .brand { display: flex; justify-content: center; padding: 18px 16px 8px; flex-shrink: 0; }
 
