@@ -459,9 +459,11 @@ type activityBody struct {
 	VolunteersHidden   bool       `json:"volunteersHidden"`
 	VolunteersComplete bool       `json:"volunteersComplete"`
 	DirectSignUp       bool       `json:"directSignUp"`
-	CoChair            bool       `json:"coChair"`
-	PrettyID           string     `json:"prettyId"`
-	AllowAdding        string     `json:"allowAdding"`
+	// SignUp is the adder's own place on a new thing: Volunteer, Open to
+	// Co-Chair, or "none" (or blank) for nothing.
+	SignUp      string `json:"signUp"`
+	PrettyID    string `json:"prettyId"`
+	AllowAdding string `json:"allowAdding"`
 	// TakeOver says the sender has agreed to rename a prior year's activity
 	// that holds the same Pretty ID - see prettyConflict.
 	TakeOver bool `json:"takeOver"`
@@ -621,6 +623,18 @@ func (a app) saveActivity(w http.ResponseWriter, r *http.Request) {
 	if adding {
 		id = newID()
 	}
+	// The adder's own sign-up on a new thing, if any.
+	signUp := ""
+	if adding {
+		switch strings.TrimSpace(body.SignUp) {
+		case PositionVolunteer, PositionOpen:
+			signUp = strings.TrimSpace(body.SignUp)
+		case "", "none":
+		default:
+			http.Error(w, "sign up as a volunteer, as one open to co-chairing, or not at all", http.StatusBadRequest)
+			return
+		}
+	}
 	// A root's Pretty ID is one address across every year. Another root holding
 	// it in this year or a later one is simply a clash; one in a prior year can
 	// be renamed out of the way, once the sender has agreed to that. A child's
@@ -727,9 +741,9 @@ func (a app) saveActivity(w http.ResponseWriter, r *http.Request) {
 		cells["Added By"] = actor
 		cells["Added"] = today()
 		tables = tables.with(activitiesTab, nil, cells)
-		if body.CoChair {
+		if signUp != "" {
 			tables = tables.with(volunteersTab, nil, map[string]string{
-				"Event ID": id, "Email": actor, "Position": PositionOpen, "Added By": actor, "Added": today(),
+				"Event ID": id, "Email": actor, "Position": signUp, "Added By": actor, "Added": today(),
 			})
 		}
 	} else {
@@ -746,9 +760,9 @@ func (a app) saveActivity(w http.ResponseWriter, r *http.Request) {
 			if err := a.writer.AppendCells(appName, activitiesTab, cells); err != nil {
 				return err
 			}
-			if body.CoChair {
+			if signUp != "" {
 				if err := a.writer.AppendCells(appName, volunteersTab, map[string]string{
-					"Event ID": id, "Email": actor, "Position": PositionOpen, "Added By": actor, "Added": today(),
+					"Event ID": id, "Email": actor, "Position": signUp, "Added By": actor, "Added": today(),
 				}); err != nil {
 					return err
 				}

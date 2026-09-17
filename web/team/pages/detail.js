@@ -373,9 +373,9 @@ function personTile(owner, v, editing, star, chair, option) {
     }
     face.append(grade);
   }
-  // A note left with the sign-up shows as a bubble on the other corner, for
-  // whoever runs the thing - it was written to them.
-  if (owner.canEdit && v.note) {
+  // A note left with the sign-up shows as a notepad on the other corner, to
+  // everyone who sees the face - "bringing a truck" is for the whole crew.
+  if (v.note) {
     const bubble = el('span', 'note-badge');
     bubble.setAttribute('aria-label', 'Left a note');
     // A notepad, filled: a white page with a band across the top and three
@@ -390,7 +390,8 @@ function personTile(owner, v, editing, star, chair, option) {
     tile.append(el('div', 'side-chair-role is-option', 'Chair opt'));
   }
   // Resting on the tile tells the story of the sign-up: the day, who did it
-  // when it was somebody else, and for whoever runs the thing the note.
+  // when it was somebody else (which only whoever runs the thing is told),
+  // and the note.
   const tip = el('div', 'tile-tip');
   tip.setAttribute('role', 'tooltip');
   if (v.added) {
@@ -398,7 +399,7 @@ function personTile(owner, v, editing, star, chair, option) {
   } else if (v.addedByName) {
     tip.append(el('div', '', `Signed up by ${v.addedByName}`));
   }
-  if (owner.canEdit && v.note) {
+  if (v.note) {
     tip.append(el('div', 'tile-tip-note', `“${v.note}”`));
   }
   if (tip.childElementCount) {

@@ -1120,7 +1120,17 @@ export function openActivity(act, options) {
     'Say the volunteers are all set, whatever the count; this shows a Volunteers Complete badge and stops sign-ups.');
   const direct = checkbox(under ? 'Allow volunteers for this itself' : 'Allow volunteers for the event itself', act ? act.directSignUp : true,
     under ? 'Unchecking this will allow volunteers for subcommittees, but not this itself.' : 'Unchecking this will allow volunteers for subcommittees, but not the event itself.');
-  const coChair = checkbox("I'd be open to co-chairing this", false);
+  // Whoever adds a thing says whether they are on it - as a volunteer, as
+  // one open to co-chairing, or not at all - and must say: the box starts
+  // blank and the form will not go without an answer.
+  const signMe = select([
+    {label: 'Choose one…', value: ''},
+    {label: 'Volunteer', value: 'Volunteer'},
+    {label: 'Volunteer, and offer to co-chair', value: 'Open to Co-Chair'},
+    {label: 'Nothing', value: 'none'},
+  ], '');
+  signMe.required = true;
+  const signMeRow = act ? null : settingRow('Sign me up as', 'Whether you are on this yourself.', signMe);
   // What people who do not run this may add under it - and the default for
   // the event's own categories. Blank takes the parent's; an event's blank is No.
   const inheritLabel = under ? 'Same as the parent' : 'No, unless a category says otherwise';
@@ -1242,6 +1252,11 @@ export function openActivity(act, options) {
         pretty, addressLine),
       ]},
     ])];
+    // The question sits under the tabs, in view whichever is open, so a
+    // blank answer is seen when the form refuses to go.
+    if (signMeRow) {
+      body.push(signMeRow);
+    }
   } else {
     description.rows = 4;
     description.placeholder = 'What is it, and what would volunteers do?';
@@ -1255,8 +1270,9 @@ export function openActivity(act, options) {
       fields.push(suggestImage.wrap);
     } else {
       timing.placeholder = 'Spring, a Friday in March, a few times a year…';
-      fields.push(field('When (optional)', timing, 'Roughly - the organizers will pin it down with you.'), coChair.wrap);
+      fields.push(field('When (optional)', timing, 'Roughly - the organizers will pin it down with you.'));
     }
+    fields.push(signMeRow);
     body = fields;
   }
   openModal(act ? 'Edit Activity' : (suggesting ? (under ? 'Add New Activity' : 'Suggest an Idea') : (opts.parent ? `Add under ${opts.parent.title}` : 'Add Activity')), body, {
@@ -1278,7 +1294,7 @@ export function openActivity(act, options) {
         // Location is no longer asked for or shown; a value already in the sheet is kept.
         start: scheduled.start, end: scheduled.end, location: act ? act.location || '' : '', spots: unlimited.input.checked ? 0 : Number(spots.value) || 0,
         coLeaderNeeded: coLeader.input.checked, volunteersHidden: hidden.input.checked, volunteersComplete: complete.input.checked, directSignUp: direct.input.checked,
-        coChair: coChair.input.checked, prettyId: pretty.value.trim().toLowerCase(), allowAdding: allowAdding.value,
+        signUp: act ? '' : signMe.value, prettyId: pretty.value.trim().toLowerCase(), allowAdding: allowAdding.value,
       };
       await saveActivity(body);
       if (!act) {

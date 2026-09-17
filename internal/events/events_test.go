@@ -435,7 +435,7 @@ func TestReorderChildren(t *testing.T) {
 
 func TestSuggestApproveRenameDelete(t *testing.T) {
 	cache, mux := newServer(t)
-	suggestion := map[string]any{"year": "2026 - 2027", "title": "Kite Day", "category": "C06", "status": StatusOpen, "description": "Fly kites", "coChair": true, "directSignUp": true}
+	suggestion := map[string]any{"year": "2026 - 2027", "title": "Kite Day", "category": "C06", "status": StatusOpen, "description": "Fly kites", "signUp": PositionOpen, "directSignUp": true}
 	if rec := call(t, mux, parent, "POST", "/api/events/activity", suggestion); rec.Code != http.StatusNoContent {
 		t.Fatalf("suggest: %d %s", rec.Code, rec.Body)
 	}
