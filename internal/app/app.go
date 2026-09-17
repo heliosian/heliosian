@@ -26,6 +26,7 @@ import (
 	gcal "google.golang.org/api/calendar/v3"
 	"google.golang.org/api/option"
 
+	"heliosian/internal/ask"
 	"heliosian/internal/auth"
 	"heliosian/internal/birthday"
 	"heliosian/internal/blob"
@@ -788,6 +789,8 @@ type Config struct {
 	// inbox and webhook secret the posts come in by, the key that signs its
 	// unsubscribe links, its address, and the archive every post is kept in.
 	Loop loop.Mail
+	// Asker answers Helios Ask's chat: Claude, or the sample fake.
+	Asker ask.Responder
 }
 
 // Core is the assembled shared skeleton: each app's mux (still open for the
@@ -812,8 +815,10 @@ type Core struct {
 	// LoopMux serves Helios Loop, the email groups drawn from the directory.
 	LoopMux   *http.ServeMux
 	LoopCache *loop.Cache
-	Cache     *who.Cache
-	Queue     *who.Queue
+	// AskMux serves Helios Ask, the chat over every app's data.
+	AskMux *http.ServeMux
+	Cache  *who.Cache
+	Queue  *who.Queue
 	// Spoof is Spoof Mode as every app's sign-in shares it: the super admins
 	// may view as anyone the directory lists.
 	Spoof     *auth.Spoof
@@ -824,6 +829,7 @@ type Core struct {
 	Celebrate http.Handler
 	Calendar  http.Handler
 	Loop      http.Handler
+	Ask       http.Handler
 }
 
 // NewCore wires everything every mode serves identically. Fatal on any failure.
@@ -936,27 +942,30 @@ func NewCore(cfg Config) *Core {
 	celebrate.Register(celebrateMux, celebrateCache, cfg.Writer, queue, cfg.Store, celebrateDirectory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.CelebrateMail, cfg.CelebrateFrom)
 	loopMux := http.NewServeMux()
 	loop.Register(loopMux, loopCache, cfg.Writer, queue, cfg.Store, loopDir, settings.SuperAdmins, cfg.Loop)
+	// The chat reads every app's model, so it is wired once they all are.
+	askMux := http.NewServeMux()
+	ask.Register(askMux, askSources(cache, settings, teamCache, celebrateCache, calendarCache, loopCache, homeCache, smartLists{cache, teamCache, celebrateCache, loopCache, loopDir}, loopDir, linked), cfg.Asker)
 	// Every app's toolbar asks its own origin what its switch lists and
 	// which rows to leave off; Heliosian's cache answers for all of them.
-	for _, m := range []*http.ServeMux{mux, teamMux, birthdayMux, celebrateMux, calendarMux, loopMux} {
+	for _, m := range []*http.ServeMux{mux, teamMux, birthdayMux, celebrateMux, calendarMux, loopMux, askMux} {
 		home.RegisterSwitch(m, homeCache)
 	}
 	feedbackQueue := feedback.NewQueue(cfg.Feedback)
-	for key, m := range map[string]*http.ServeMux{"who": mux, "home": homeMux, "team": teamMux, "birthday": birthdayMux, "celebrate": celebrateMux, "calendar": calendarMux, "loop": loopMux} {
+	for key, m := range map[string]*http.ServeMux{"who": mux, "home": homeMux, "team": teamMux, "birthday": birthdayMux, "celebrate": celebrateMux, "calendar": calendarMux, "loop": loopMux, "ask": askMux} {
 		feedback.Register(m, key, appName(key), superAdmin, feedbackQueue)
 	}
 	return &Core{
 		Mux: mux, HomeMux: homeMux, HomeCache: homeCache, TeamMux: teamMux, TeamCache: teamCache, BirthdayMux: birthdayMux, CelebrateMux: celebrateMux, CelebrateCache: celebrateCache,
-		CalendarMux: calendarMux, CalendarCache: calendarCache, CalendarLinked: linked, LoopMux: loopMux, LoopCache: loopCache, Cache: cache, Queue: queue,
+		CalendarMux: calendarMux, CalendarCache: calendarCache, CalendarLinked: linked, LoopMux: loopMux, LoopCache: loopCache, AskMux: askMux, Cache: cache, Queue: queue,
 		Spoof: &auth.Spoof{Allowed: superAdmin, Person: directory{cache, settings}.SpoofPerson, People: directory{cache, settings}.SpoofPeople},
-		Gate:  who.MemberGate(cache, mux), Home: homeMux, Team: teamMux, Birthday: birthdayMux, Celebrate: celebrateMux, Calendar: calendarMux, Loop: loopMux,
+		Gate:  who.MemberGate(cache, mux), Home: homeMux, Team: teamMux, Birthday: birthdayMux, Celebrate: celebrateMux, Calendar: calendarMux, Loop: loopMux, Ask: askMux,
 	}
 }
 
 // Muxes is every app's mux, keyed by the app, for what is wired on all of
 // them alike.
 func (c *Core) Muxes() map[string]*http.ServeMux {
-	return map[string]*http.ServeMux{"who": c.Mux, "home": c.HomeMux, "team": c.TeamMux, "birthday": c.BirthdayMux, "celebrate": c.CelebrateMux, "calendar": c.CalendarMux, "loop": c.LoopMux}
+	return map[string]*http.ServeMux{"who": c.Mux, "home": c.HomeMux, "team": c.TeamMux, "birthday": c.BirthdayMux, "celebrate": c.CelebrateMux, "calendar": c.CalendarMux, "loop": c.LoopMux, "ask": c.AskMux}
 }
 
 // Server dresses the apps, each fully wrapped and keyed by name, in the shared
@@ -1150,6 +1159,15 @@ func ClaudeDescriber() birthday.Describer {
 	return nil
 }
 
+// ClaudeAsker is Helios Ask's Claude when the same key is set, else nil,
+// for the sample server to fall back to its fake.
+func ClaudeAsker() ask.Responder {
+	if key := optionalKey("ANTHROPIC_API_KEY", "creds/anthropic.key"); key != "" {
+		return ask.NewClaude(key)
+	}
+	return nil
+}
+
 func ImageSearchKeys() imagesearch.Search {
 	return imagesearch.Search{
 		Key:      optionalKey("GOOGLE_SEARCH_KEY", "creds/search.key"),
@@ -1234,6 +1252,7 @@ func Production(blobCache string) (*http.Server, *who.Queue) {
 		BirthdayBase:  birthdayBase(),
 		Feedback:      &feedback.GitHub{Token: mapsKey("GITHUB_TOKEN", "creds/github.token")},
 		Loop:          loopMail(sessionKey),
+		Asker:         ask.NewClaude(mapsKey("ANTHROPIC_API_KEY", "creds/anthropic.key")),
 	})
 	blob.Register(core.Mux, store)
 	blob.RegisterHome(core.HomeMux, store)
@@ -1242,6 +1261,7 @@ func Production(blobCache string) (*http.Server, *who.Queue) {
 	blob.RegisterCelebrate(core.CelebrateMux, store)
 	blob.RegisterCalendar(core.CalendarMux, store)
 	blob.RegisterLoop(core.LoopMux, store)
+	blob.RegisterAsk(core.AskMux, store)
 	who.RegisterUpload(core.Mux, core.Cache, sheet, store, core.Queue)
 	client := clientID()
 	// Every app's sign-in shares the key, so one session - and one spoof -
@@ -1277,6 +1297,8 @@ func Production(blobCache string) (*http.Server, *who.Queue) {
 	calendarAuth.Register(core.CalendarMux)
 	loopAuth := newAuth("loop")
 	loopAuth.Register(core.LoopMux)
+	askAuth := newAuth("ask")
+	askAuth.Register(core.AskMux)
 	server := Server(map[string]http.Handler{
 		"who":       Public("who", whoAuth.Wrap(Logged("who", Files("who", core.Gate)))),
 		"home":      Public("home", homeAuth.Wrap(Logged("home", Files("home", core.Home)))),
@@ -1285,6 +1307,7 @@ func Production(blobCache string) (*http.Server, *who.Queue) {
 		"celebrate": Public("celebrate", celebrateAuth.Wrap(Logged("celebrate", Files("celebrate", core.Celebrate)))),
 		"calendar":  Public("calendar", calendarAuth.Wrap(Logged("calendar", Files("calendar", core.Calendar)))),
 		"loop":      Public("loop", loopAuth.Wrap(Logged("loop", Files("loop", core.Loop)))),
+		"ask":       Public("ask", askAuth.Wrap(Logged("ask", Files("ask", core.Ask)))),
 	})
 	// Cloud Run's own K_SERVICE marks the deployed service, the one process that
 	// keeps the school's calendar in step; a laptop's real-data server never does.

@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<script>try{var q=location.search.match(/[?&]mode=(light|dark|system)/);if(q){var h=location.hostname.split('.');document.cookie='heliosian-mode='+q[1]+'; path=/; max-age=31536000; SameSite=Lax'+(h.length>2?'; domain=.'+h.slice(1).join('.'):'')}var m=document.cookie.match(/(?:^|; )heliosian-mode=(light|dark|system)/);var d=m&&m[1]==='dark'||(!(m&&m[1]==='light')&&matchMedia('(prefers-color-scheme: dark)').matches);if(d)document.documentElement.dataset.theme='dark'}catch(e){}</script>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0f4e54">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Helios Ask</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="16x16" href="/brand/favicon-16.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/brand/favicon-32.png">
+<link rel="icon" href="/brand/icon-192.png">
+<link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
+<link rel="stylesheet" href="/fonts/fonts.css">
+<link rel="stylesheet" href="/toolbar.css">
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/dark.css">
+<link rel="modulepreload" href="/app.js">
+<link rel="modulepreload" href="/markdown.js">
+<link rel="modulepreload" href="/toolbar.js">
+</head>
+<body>
+<header class="mobile-top">
+<button type="button" class="mobile-menu" id="menu-button" aria-label="Your chats"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+<div class="mobile-title" id="mobile-title">Helios Ask</div>
+<button type="button" class="mobile-new new-chat">New chat</button>
+</header>
+<div class="app-shell">
+<aside class="sidebar">
+<div class="brand"><a href="/"><img src="/brand/logo-lockup-light.png" alt="Helios Ask"></a></div>
+<nav class="app-nav" id="nav">
+<button type="button" class="button nav-action new-chat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg><span>New chat</span></button>
+<div class="nav-heading">Your chats</div>
+<div class="chat-list"></div>
+<p class="nav-note">Answers come from the community's own apps and link to them. Nothing here signs you up or changes anything.</p>
+</nav>
+</aside>
+<div class="content-col">
+<header class="topbar">
+<div class="topbar-spacer"></div>
+<div class="topbar-user">
+<span class="topbar-alert-wrap"><a class="topbar-alert topbar-alert-count stale-alert" hidden><span class="stale-count"></span></a></span>
+<span class="topbar-alert-wrap"><a class="topbar-alert privacy-alert" hidden><svg viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg></a></span>
+<button type="button" class="user" id="user" aria-label="Account"><span class="user-avatar"></span></button>
+<div class="user-menu" id="user-menu" hidden>
+<div class="user-menu-email"></div>
+<a class="user-menu-profile">View Profile</a>
+<form method="post" action="/auth/logout"><button>Sign Out</button></form>
+</div>
+</div>
+<div class="app-switch">
+<a class="app-switch-button" aria-label="Heliosian" aria-haspopup="menu"><img src="/brand/heliosian-tile.png" alt=""><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></a>
+<div class="app-switch-menu" hidden></div>
+</div>
+</header>
+<main id="main">
+<div class="thread" id="thread"></div>
+</main>
+<form class="composer" id="composer">
+<textarea id="message" rows="1" placeholder="Ask about the school, your family, the calendar…" autocomplete="off"></textarea>
+<button type="submit" class="send" id="send" aria-label="Send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
+<div class="composer-note" id="composer-note"></div>
+</form>
+</div>
+</div>
+<div class="drawer-overlay" id="drawer-overlay" hidden>
+<aside class="drawer" id="drawer">
+<div class="drawer-head"><img src="/brand/logo-mark.png" alt=""><span>Your chats</span><button type="button" class="drawer-close" id="drawer-close" aria-label="Close">&times;</button></div>
+<div class="chat-list"></div>
+</aside>
+</div>
+<div class="toast" id="toast" hidden></div>
+<script type="module" src="/app.js"></script>
+</body>
+</html>

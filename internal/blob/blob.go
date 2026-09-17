@@ -254,6 +254,12 @@ func RegisterLoop(mux *http.ServeMux, s *Store) {
 	mux.HandleFunc("GET /photos/{name}", s.serve)
 }
 
+// RegisterAsk serves what Helios Ask shows: the directory's photo of the
+// viewer, in the toolbar.
+func RegisterAsk(mux *http.ServeMux, s *Store) {
+	mux.HandleFunc("GET /photos/{name}", s.serve)
+}
+
 func (s *Store) sweepLoop() {
 	for range time.Tick(sweepInterval) {
 		s.sweep(time.Now())

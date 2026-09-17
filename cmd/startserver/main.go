@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"heliosian/internal/app"
+	"heliosian/internal/ask"
 	"heliosian/internal/auth"
 	"heliosian/internal/birthday"
 	"heliosian/internal/calendar"
@@ -104,7 +105,8 @@ func sampleServer() (*http.Server, *who.Queue) {
 		Feedback:      printedFeedback{},
 		// Loop's forwards would land as .eml files beside the other sample
 		// mail and its archive under loop/ there; nothing receives for it.
-		Loop: loop.Mail{Sender: &mail.Files{Dir: mailDir(), From: "Helios Loop"}, Key: []byte("sample"), Base: "https://loop.local.heliosian.com:" + app.Port(), Archive: loop.DirArchive{Dir: mailDir()}},
+		Loop:  loop.Mail{Sender: &mail.Files{Dir: mailDir(), From: "Helios Loop"}, Key: []byte("sample"), Base: "https://loop.local.heliosian.com:" + app.Port(), Archive: loop.DirArchive{Dir: mailDir()}},
+		Asker: sampleAsker(),
 	})
 	// No Google sign-in here, but Spoof Mode still: a sign-in with a key of
 	// its own signs the spoof cookie and answers the toolbar's switch, and
@@ -125,7 +127,17 @@ func sampleServer() (*http.Server, *who.Queue) {
 		"celebrate": app.Public("celebrate", signIn.Fixed(sampleUser, app.Logged("celebrate", app.Files("celebrate", core.Celebrate)))),
 		"calendar":  app.Public("calendar", signIn.Fixed(sampleUser, app.Logged("calendar", app.Files("calendar", core.Calendar)))),
 		"loop":      app.Public("loop", signIn.Fixed(sampleUser, app.Logged("loop", app.Files("loop", core.Loop)))),
+		"ask":       app.Public("ask", signIn.Fixed(sampleUser, app.Logged("ask", app.Files("ask", core.Ask)))),
 	}), core.Queue)
+}
+
+// sampleAsker is Claude when a key is at hand, else the fake that streams
+// a canned answer, so the chat's flow can be tried either way.
+func sampleAsker() ask.Responder {
+	if c := app.ClaudeAsker(); c != nil {
+		return c
+	}
+	return ask.Fake{}
 }
 
 // sampleDescriber is Claude when a key is at hand, else the fake, so the

@@ -152,6 +152,18 @@ func (m *Model) viewOf(directory Directory, email string) (classrooms, tags []st
 	return m.myHeliosianView(directory, email)
 }
 
+// ViewOf is viewOf for another app reading the calendar as one person: the
+// classrooms and the categories their default view admits.
+func (m *Model) ViewOf(directory Directory, email string) (classrooms, tags []string) {
+	return m.viewOf(directory, email)
+}
+
+// EventsFor is eventsFor for another app: every event as one viewer stands
+// with them, the linked ones folded in.
+func (m *Model) EventsFor(email string, linked []Linked) []*Event {
+	return m.eventsFor(email, linked)
+}
+
 // viewUnder is the view one of the person's saved calendars gives, by
 // token - or My Heliosian by its token - and their default view (viewOf)
 // for a blank token or one that is not theirs.
