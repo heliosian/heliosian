@@ -76,7 +76,7 @@ func parties(directory *who.Model, model *celebrate.Model, email string, now tim
 		if p.Past(now) || !slices.ContainsFunc(p.HostEmails, func(h string) bool { return directory.Resolve(h) == email }) {
 			continue
 		}
-		list := who.List{Key: who.ListParty + ":" + p.ID, Name: p.Title, Kind: who.ListParty, Guests: []who.Guest{}}
+		list := who.List{Key: who.ListParty + ":" + p.ID, Name: p.Title, Kind: who.ListParty, Guests: []who.Guest{}, Hosts: resolved(directory, p.HostEmails)}
 		people := map[string]bool{}
 		for _, t := range p.Tickets {
 			if t.Status != celebrate.TicketSold {
@@ -113,6 +113,16 @@ func parties(directory *who.Model, model *celebrate.Model, email string, now tim
 	return out
 }
 
+func resolved(directory *who.Model, emails []string) []string {
+	out := []string{}
+	for _, e := range emails {
+		if r := directory.Resolve(e); !slices.Contains(out, r) {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
 func activities(directory *who.Model, model *team.Model, email string, now time.Time) []who.List {
 	out := []who.List{}
 	if model == nil {
@@ -144,7 +154,7 @@ func activities(directory *who.Model, model *team.Model, email string, now time.
 		}
 		mine := !under && chairs(a)
 		if mine {
-			list := who.List{Key: who.ListActivity + ":" + a.ID, Name: a.Title, Kind: who.ListActivity, Guests: []who.Guest{}}
+			list := who.List{Key: who.ListActivity + ":" + a.ID, Name: a.Title, Kind: who.ListActivity, Guests: []who.Guest{}, Hosts: resolved(directory, a.CoChairs())}
 			if a != root {
 				list.Name = root.Title + ": " + a.Title
 			}

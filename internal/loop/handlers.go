@@ -187,6 +187,45 @@ type sharedOption struct {
 	OwnerName string `json:"ownerName"`
 }
 
+type suggestion struct {
+	Key      string   `json:"key"`
+	Name     string   `json:"name"`
+	Kind     string   `json:"kind"`
+	Managers []Person `json:"managers"`
+}
+
+func Suggested(lists []who.List, groups []Group) []who.List {
+	named := map[string]bool{}
+	for _, g := range groups {
+		for _, r := range g.Rules {
+			for _, tag := range r.Tags {
+				named[tag] = true
+			}
+		}
+	}
+	out := []who.List{}
+	for _, l := range lists {
+		if (l.Kind == who.ListParty || l.Kind == who.ListActivity) && !named[l.Key] {
+			out = append(out, l)
+		}
+	}
+	return out
+}
+
+func (a app) suggestions(viewer string) []suggestion {
+	out := []suggestion{}
+	for _, l := range Suggested(a.directory.Lists(viewer), a.cache.Model().Groups) {
+		managers := []Person{a.person(viewer)}
+		for _, host := range l.Hosts {
+			if p, ok := a.directory.Person(host); ok && host != viewer {
+				managers = append(managers, p)
+			}
+		}
+		out = append(out, suggestion{Key: l.Key, Name: l.Name, Kind: l.Kind, Managers: managers})
+	}
+	return out
+}
+
 type options struct {
 	Classrooms []string       `json:"classrooms"`
 	Grades     []string       `json:"grades"`
@@ -354,18 +393,20 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 	email, admin := a.who(r)
 	me := a.person(email)
 	view := struct {
-		User    user        `json:"user"`
-		Domain  string      `json:"domain"`
-		Groups  []groupView `json:"groups"`
-		Options options     `json:"options"`
-		People  []Person    `json:"people"`
-		Alerts  alerts      `json:"alerts"`
+		User        user         `json:"user"`
+		Domain      string       `json:"domain"`
+		Groups      []groupView  `json:"groups"`
+		Suggestions []suggestion `json:"suggestions"`
+		Options     options      `json:"options"`
+		People      []Person     `json:"people"`
+		Alerts      alerts       `json:"alerts"`
 	}{
-		User:    user{Email: email, Name: me.Name, Initial: strings.ToUpper(me.Name[:1]), PhotoURL: me.PhotoURL, IsAdmin: admin, IsSuperAdmin: a.cache.IsSuperAdmin(email)},
-		Domain:  Domain,
-		Groups:  []groupView{},
-		Options: a.options(email),
-		People:  a.directory.People(),
+		User:        user{Email: email, Name: me.Name, Initial: strings.ToUpper(me.Name[:1]), PhotoURL: me.PhotoURL, IsAdmin: admin, IsSuperAdmin: a.cache.IsSuperAdmin(email)},
+		Domain:      Domain,
+		Groups:      []groupView{},
+		Suggestions: a.suggestions(email),
+		Options:     a.options(email),
+		People:      a.directory.People(),
 	}
 	for _, g := range a.cache.Model().Groups {
 		if a.sees(g, email, admin) {

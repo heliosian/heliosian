@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"heliosian/internal/data"
+	"heliosian/internal/who"
 )
 
 func sampleTables(t *testing.T) *Tables {
@@ -183,6 +184,25 @@ func TestAliasesReachTheirGroupAndStayUnique(t *testing.T) {
 	tables.Rules = append(tables.Rules, map[string]string{"Group": "hummingbirds-families", "Kind": "include", "Roles": "Staff", "Owner": "m@x.org"})
 	if _, err := BuildModel(tables); err == nil {
 		t.Error("accepted a group named for another group's alias")
+	}
+}
+
+func TestSuggestedIsEveryPartyAndActivityNoRuleNames(t *testing.T) {
+	groups := []Group{{Rules: []Rule{{Tags: []string{"party:p1"}}, {Tags: []string{"gardeners", "activity:e2"}}}}}
+	lists := []who.List{
+		{Key: "party:p1", Kind: who.ListParty},
+		{Key: "party:p2", Kind: who.ListParty},
+		{Key: "activity:e1", Kind: who.ListActivity},
+		{Key: "activity:e2", Kind: who.ListActivity},
+		{Key: "room:K", Kind: who.ListRoom},
+		{Key: "group:tech", Kind: who.ListGroup},
+	}
+	keys := []string{}
+	for _, l := range Suggested(lists, groups) {
+		keys = append(keys, l.Key)
+	}
+	if !slices.Equal(keys, []string{"party:p2", "activity:e1"}) {
+		t.Fatalf("suggested %v", keys)
 	}
 }
 

@@ -12,6 +12,7 @@ type List struct {
 	Kind   string   `json:"kind"`
 	People []string `json:"people"`
 	Guests []Guest  `json:"guests"`
+	Hosts  []string `json:"-"`
 }
 
 // Guest is someone on a list the directory does not hold: a party's ticket

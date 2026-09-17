@@ -196,7 +196,7 @@ function editor(g, isNew) {
     additions: (g.additions || []).map(a => ({email: a.email, name: a.name})),
     excluded: (g.excluded || []).map(e => ({email: e.email, note: e.note || '', when: e.when || ''})),
   };
-  if (isNew) {
+  if (isNew && !draft.rules.length) {
     draft.rules.push(newRule('include'));
   }
   const form = el('form', 'editor');
@@ -711,6 +711,13 @@ export function newGroupPage() {
   setTitle('New Group');
   const page = el('div', 'group-page');
   page.append(pageHead('New Group'));
+  const from = new URLSearchParams(location.search).get('from');
+  const suggestion = state.model.suggestions.find(s => s.key === from);
+  if (suggestion) {
+    const rule = {...newRule('include'), roles: ['Parent'], tags: [suggestion.key], tagLabels: [suggestion.name]};
+    page.append(editor({name: slug(suggestion.name), title: suggestion.name, description: '', managers: suggestion.managers, rules: [rule], additions: []}, true));
+    return page;
+  }
   page.append(editor({name: '', title: '', description: '', managers: [{email: me().email, name: me().name}], rules: [], additions: []}, true));
   return page;
 }

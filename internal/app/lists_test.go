@@ -3,9 +3,12 @@ package app
 import (
 	"slices"
 	"testing"
+	"time"
 
+	"heliosian/internal/celebrate"
 	"heliosian/internal/data"
 	"heliosian/internal/loop"
+	"heliosian/internal/team"
 	"heliosian/internal/who"
 )
 
@@ -58,5 +61,56 @@ func TestGroupListsCarryAdditionsAsGuests(t *testing.T) {
 		if directory.Person(p) == nil {
 			t.Errorf("%s is listed as a person but is not in the directory", p)
 		}
+	}
+}
+
+type anyImage struct{}
+
+func (anyImage) Has(string) (bool, error) { return true, nil }
+
+func (anyImage) Prefetch([]string) error { return nil }
+
+func TestMagicTagsCarryTheirHosts(t *testing.T) {
+	t.Chdir("../..")
+	dir := &data.Dir{Root: "sampledata"}
+	tables, err := who.ReadTables(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	directory, err := who.BuildModel(tables, nil, staticFiles{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	portalTables, err := team.ReadTables(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	portal, err := team.BuildModel(portalTables, anyImage{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	siteTables, err := celebrate.ReadTables(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	site, err := celebrate.BuildModel(siteTables, anyImage{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	jordan := "jordan.whitfield@heliosschool.org"
+	lists := SmartLists(directory, portal, site, jordan, time.Date(2026, 9, 17, 12, 0, 0, 0, time.UTC))
+	i := slices.IndexFunc(lists, func(l who.List) bool { return l.Key == "activity:E001" })
+	if i < 0 {
+		t.Fatalf("no International Night list: %+v", lists)
+	}
+	if !slices.Equal(lists[i].Hosts, []string{jordan, "mina.park@heliosschool.org"}) {
+		t.Fatalf("hosts: %v", lists[i].Hosts)
+	}
+	i = slices.IndexFunc(lists, func(l who.List) bool { return l.Key == "party:P001" })
+	if i < 0 {
+		t.Fatalf("no Fondue & Fort Night list: %+v", lists)
+	}
+	if !slices.Contains(lists[i].Hosts, jordan) {
+		t.Fatalf("hosts: %v", lists[i].Hosts)
 	}
 }

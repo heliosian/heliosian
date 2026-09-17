@@ -31,6 +31,28 @@ function groupCard(g) {
   return card;
 }
 
+const suggestionWords = {
+  party: 'Parents holding tickets, as the party\'s Magic Tag lists them now.',
+  activity: 'Parents on the volunteer list, as the activity\'s Magic Tag lists them now.',
+};
+
+function suggestionCard(s) {
+  const card = el('div', 'group-card');
+  const head = el('div', 'group-card-head');
+  const icon = el('div', 'group-icon');
+  icon.append(svg(s.kind));
+  const words = el('div', 'group-words');
+  words.append(el('div', 'group-title', s.name));
+  words.append(el('div', 'group-desc', suggestionWords[s.kind]));
+  head.append(icon, words);
+  card.append(head);
+  const meta = el('div', 'group-meta');
+  meta.append(button('Make this group', 'plus', 'button button-small', () => navigate('/new?from=' + encodeURIComponent(s.key))));
+  meta.append(el('span', '', 'Managed by ' + s.managers.map(m => m.name).join(', ')));
+  card.append(meta);
+  return card;
+}
+
 function cards(list, groups) {
   for (const g of groups) {
     const slot = el('div', 'card-slot');
@@ -46,6 +68,11 @@ export function groupsPage() {
   page.append(el('p', 'page-lead', 'Each group is an email address at ' + state.model.domain + ' whose members follow from its rules, drawn from the directory as it changes.'));
   const list = el('div', 'group-list');
   const empty = el('div', 'panel-empty');
+  const suggested = el('div');
+  suggested.append(el('h2', 'section-title', 'Suggested groups'));
+  suggested.append(el('p', 'page-lead', 'A party you host or an activity you co-chair with no group yet. Make one and it starts with the right rule and managers; change anything before you save.'));
+  const suggestedList = el('div', 'group-list');
+  suggested.append(suggestedList);
   const others = el('div');
   others.append(el('h2', 'section-title', 'Other groups'));
   others.append(el('p', 'page-lead', 'Groups their managers have opened to everyone in Loop, and groups you are on whose managers have opened them to their members. Open one to see who is on it; if you are, you can take yourself off it there, or put yourself back.'));
@@ -53,19 +80,27 @@ export function groupsPage() {
   others.append(othersList);
   const render = query => {
     list.replaceChildren();
+    suggestedList.replaceChildren();
     othersList.replaceChildren();
     const mine = state.model.groups.filter(g => managed(g) && matches(g, query));
+    const suggestions = state.model.suggestions.filter(s => !query || s.name.toLowerCase().includes(query));
     const theirs = state.model.groups.filter(g => !managed(g) && matches(g, query));
     if (!mine.length) {
       empty.textContent = query ? 'No group of yours matches that.' : 'You manage no groups yet. Make one, and its address is yours to hand out.';
       list.append(empty);
     }
     cards(list, mine);
+    suggested.hidden = !suggestions.length;
+    for (const s of suggestions) {
+      const slot = el('div', 'card-slot');
+      slot.append(suggestionCard(s));
+      suggestedList.append(slot);
+    }
     others.hidden = !theirs.length;
     cards(othersList, theirs);
   };
   render('');
   setSearch(render);
-  page.append(list, others);
+  page.append(list, suggested, others);
   return page;
 }
