@@ -146,10 +146,13 @@ export function canEditPerson(email) {
   if (email === meEmail || state.model.superEdit) {
     return true;
   }
+  // A student edits only themselves; an adult edits everyone in the household.
   const me = byEmail[meEmail];
+  if (!me || me.isStudent) {
+    return false;
+  }
   return familiesOf(me).some(family =>
-    (family.kidEmails || []).includes(email) ||
-    (!me.isStudent && (family.adultEmails || []).includes(email)));
+    [...(family.kidEmails || []), ...(family.adultEmails || [])].includes(email));
 }
 
 export function uploadIcon(iconName, title, accept, target, key, kind, status) {

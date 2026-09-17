@@ -1,5 +1,5 @@
 import {state, daysLine, timeLine, calendarLink, sourceWords, dayType, eventDates, dayTypeClass, linkURL, call, isParty, mineWords, eventImage, weekdayShort, parseDate, spansDays, monthLabel, monthOf, answerOf, answer, eventPath} from '../state.js';
-import {el, link, svg, paragraphs, button, toast, avatar, peopleLine, popup, copyText} from '../dom.js';
+import {el, link, svg, paragraphs, button, toast, avatar, peopleList, popup, copyText} from '../dom.js';
 import {eventForm} from '../eventform.js';
 import {uploadImage, openImageSearch} from '../images.js';
 import {appOrigin} from '/toolbar.js';
@@ -575,7 +575,7 @@ function linkedCard(e) {
   // The household's part on one line - each ticket, waitlist place or
   // role - or, before anyone is in, where the tickets or sign-ups stand.
   if (e.minePeople && e.minePeople.length) {
-    body.append(peopleLine(e.minePeople, kind === 'celebrate' ? 'ticket' : 'people'));
+    body.append(peopleList(e.minePeople, kind === 'celebrate' ? 'ticket' : 'people'));
   } else {
     body.append(el('div', 'side-line', e.mine ? `${mineWords(e)} · ${mineStanding[e.mine][kind]}` : standing[e.availability] || ''));
   }

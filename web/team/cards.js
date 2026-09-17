@@ -1,4 +1,4 @@
-import {state, me, whenParts, coChairs, shownVolunteers, descendants, canJoin, isFull, mySignUp, signUpOf, activityPath, rootOf, category, parseWhen, UNCATEGORIZED} from './state.js';
+import {state, me, family, whenParts, coChairs, shownVolunteers, descendants, canJoin, isFull, mySignUp, signUpOf, activityPath, rootOf, category, parseWhen, UNCATEGORIZED} from './state.js';
 import {el, link, svg, thumb, badge, button} from './dom.js';
 import {openSignUp, openActivity} from './edit.js';
 
@@ -345,6 +345,12 @@ function activityCardBody(act, opts) {
     }
     body.append(under);
   }
+  if (!opts.signUps) {
+    const roles = rolesLine(act);
+    if (roles) {
+      body.append(roles);
+    }
+  }
   card.append(body);
   if (opts.signUps) {
     return card;
@@ -358,6 +364,50 @@ function activityCardBody(act, opts) {
   }
   card.append(foot);
   return card;
+}
+
+// rolesLine is the household's part in an event, as Heliosian's calendar
+// tells it: the viewer's own roles named - "Co-Chair · Performance Tech" -
+// then, on a row of its own with the family's mark, the rest of the
+// household as a count of roles. Nothing when none of them is on it.
+function rolesLine(act) {
+  const mine = me().email;
+  const household = new Set(family().map(c => c.email));
+  const own = [];
+  let others = 0;
+  for (const node of [act, ...descendants(act)]) {
+    if (node.status === 'Hidden' || node.status === 'Pending') {
+      continue;
+    }
+    for (const v of node.volunteers) {
+      if (v.email === mine) {
+        own.push(v.position === 'Co-Chair' ? `Co-Chair · ${node.title}` : node.title);
+      } else if (household.has(v.email)) {
+        others++;
+      }
+    }
+  }
+  if (!own.length && !others) {
+    return null;
+  }
+  const line = el('div', 'card-roles');
+  const row = (icon, className, words) => {
+    const r = el('span', 'card-roles-row');
+    r.append(svg(icon), el('span', className, words));
+    line.append(r);
+  };
+  if (own.length) {
+    // One role a line: bulleted together they wrap mid-name in a card.
+    const list = el('span', 'card-role');
+    own.forEach(words => list.append(el('span', 'card-role-item', words)));
+    const r = el('span', 'card-roles-row');
+    r.append(svg('people'), list);
+    line.append(r);
+  }
+  if (others) {
+    row('family', 'card-role-family', `${others} role${others === 1 ? '' : 's'} in my family`);
+  }
+  return line;
 }
 
 // Categories come from the sheet, so the tint is picked by position rather than

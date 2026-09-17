@@ -819,12 +819,14 @@ func (u uploader) mayEdit(model *Model, me, target, key string) bool {
 	if key == me {
 		return true
 	}
+	// A student edits only themselves; an adult edits everyone in the
+	// household - the children and the other adults.
+	if mine.IsStudent {
+		return false
+	}
 	for _, familyKey := range model.FamilyKeysOf(mine.Email) {
 		family := model.Families[familyKey]
-		if slices.Contains(family.KidEmails, key) {
-			return true
-		}
-		if slices.Contains(family.AdultEmails, key) && !mine.IsStudent {
+		if slices.Contains(family.KidEmails, key) || slices.Contains(family.AdultEmails, key) {
 			return true
 		}
 	}

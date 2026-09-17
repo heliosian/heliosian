@@ -182,6 +182,38 @@ export function peopleLine(list, icon) {
   return line;
 }
 
+// peopleList is the household's part in an event as a list, one block per
+// person behind the icon - the name, and under it each of their roles, or
+// the ticket's note - for where there is room, as the event page's side
+// has. Someone with two roles is listed once, both roles under them.
+export function peopleList(list, icon) {
+  const byName = new Map();
+  for (const p of list) {
+    if (!byName.has(p.name)) {
+      byName.set(p.name, []);
+    }
+    if (p.note) {
+      byName.get(p.name).push(p.note);
+    }
+  }
+  const rows = el('ul', 'side-people-list');
+  for (const [name, notes] of byName) {
+    const row = el('li');
+    const words = el('span', 'side-person-words');
+    words.append(el('span', 'side-person', name));
+    if (notes.length) {
+      const roles = el('ul', 'side-person-roles');
+      for (const note of notes) {
+        roles.append(el('li', '', note));
+      }
+      words.append(roles);
+    }
+    row.append(svg(icon), words);
+    rows.append(row);
+  }
+  return rows;
+}
+
 // popup is a layer over the page with a titled box: closing on its cross,
 // Escape, or a click outside. It hands back the box and the closer.
 export function popup(title, node, {wide = false} = {}) {
