@@ -74,7 +74,7 @@ func (in *Inbox) Received(ctx context.Context, id string) (Received, error) {
 		return out, fmt.Errorf("mail: received %s has no raw message", id)
 	}
 	err := in.get(ctx, record.Raw.DownloadURL, false, func(body io.Reader) error {
-		raw, err := io.ReadAll(io.LimitReader(body, 4<<20))
+		raw, err := io.ReadAll(io.LimitReader(body, 40<<20))
 		out.Raw = raw
 		return err
 	})

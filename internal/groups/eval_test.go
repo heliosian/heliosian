@@ -237,7 +237,7 @@ func TestAdditionsJoinTheMembersOnce(t *testing.T) {
 	}
 }
 
-func TestSampleGroupsLoadAndPlan(t *testing.T) {
+func TestSampleGroupsLoadAndHaveMembers(t *testing.T) {
 	s, _ := sample(t)
 	tables, err := groups.ReadTables(&data.Dir{Root: "../../sampledata"})
 	if err != nil {
@@ -247,19 +247,42 @@ func TestSampleGroupsLoadAndPlan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	plan := groups.Plan(model, s)
-	if len(plan) != 3 {
-		t.Fatalf("%d groups planned", len(plan))
+	if len(model.Groups) != 3 {
+		t.Fatalf("%d groups loaded", len(model.Groups))
 	}
-	for _, d := range plan {
-		if len(d.Members) == 0 {
-			t.Errorf("%s has nobody", d.Address())
+	for _, g := range model.Groups {
+		members := groups.Members(g, s)
+		if len(members) == 0 {
+			t.Errorf("%s has nobody", g.Address())
 		}
-		if d.Address() != d.Name+"@loop.heliosian.com" {
-			t.Errorf("address %s", d.Address())
+		if g.Address() != g.Name+"@loop.heliosian.com" {
+			t.Errorf("address %s", g.Address())
 		}
-		if d.Name == "soccer-team" && !slices.Contains(d.Members, "coach.rivera@coastsidesoccer.example.org") {
-			t.Errorf("the coach is not on the soccer team: %v", d.Members)
+		if !g.Prefix {
+			t.Errorf("%s does not prefix its subjects", g.Name)
 		}
+		if g.Name == "soccer-team" && !slices.Contains(members, "coach.rivera@coastsidesoccer.example.org") {
+			t.Errorf("the coach is not on the soccer team: %v", members)
+		}
+	}
+}
+
+func TestUnsubscribedAreLeftOff(t *testing.T) {
+	s, _ := sample(t)
+	mia := "mia.torres@heliosschool.org"
+	g := groups.Normalize(groups.Group{Name: "test", Title: "Test", Managers: []string{jordan},
+		Rules:        []groups.Rule{rule(groups.KindInclude, func(r *groups.Rule) { r.Search = "torres" })},
+		Additions:    []groups.Addition{{Email: "coach@club.example.org", Name: "Coach"}},
+		Unsubscribed: []groups.Unsubscribed{{Email: " Mia.Torres@heliosschool.org ", When: "2026-09-16T10:00:00Z"}, {Email: "coach@club.example.org"}},
+	})
+	if len(g.Unsubscribed) != 2 || g.Unsubscribed[0].Email != mia || !g.HasUnsubscribed(mia) {
+		t.Fatalf("unsubscribed: %+v", g.Unsubscribed)
+	}
+	members := groups.Members(g, s)
+	if slices.Contains(members, mia) || slices.Contains(members, "coach@club.example.org") {
+		t.Fatalf("an unsubscribed person is on the group: %v", members)
+	}
+	if !slices.Contains(members, "nico.torres@heliosschool.org") {
+		t.Fatalf("the rest of the family is gone too: %v", members)
 	}
 }

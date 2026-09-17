@@ -45,26 +45,6 @@ type Cache struct {
 	// edit anyone's record rather than just their own family's. Deliberately
 	// in-memory only: it resets on every restart rather than staying on forever.
 	superEdit map[string]bool
-
-	listeners []func()
-}
-
-// OnChange registers a hook run after every change to the model or to the
-// tags: a rebuild from the sheet or from an edit, a tag set or dropped. Helios
-// Loop keeps its Google groups in step through it.
-func (c *Cache) OnChange(fn func()) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.listeners = append(c.listeners, fn)
-}
-
-func (c *Cache) changed() {
-	c.mu.RLock()
-	listeners := slices.Clone(c.listeners)
-	c.mu.RUnlock()
-	for _, fn := range listeners {
-		fn()
-	}
 }
 
 // store is the concrete blob store (nil in sample mode), needed to replace a classroom
@@ -542,7 +522,6 @@ func (c *Cache) rebuild(tables *Tables, start time.Time) error {
 	c.mu.Unlock()
 	slog.Info("loaded directory model", "people", len(model.People), "families", len(model.Families),
 		"classrooms", len(model.Classrooms), "crews", len(model.Crews), "took", time.Since(start).Round(time.Millisecond))
-	c.changed()
 	return nil
 }
 

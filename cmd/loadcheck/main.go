@@ -344,9 +344,8 @@ func main() {
 		},
 	}
 	fmt.Println("groups:")
-	for _, d := range groups.Plan(groupModel, sources) {
-		g := groupModel.Group(d.Name)
-		fmt.Printf("  %s %q: %d managers, %d rules, %d members\n", d.Address(), d.Title, len(g.Managers), len(g.Rules), len(d.Members))
+	for _, g := range groupModel.Groups {
+		fmt.Printf("  %s %q: %d managers, %d rules, %d members, %d unsubscribed, prefix %v\n", g.Address(), g.Title, len(g.Managers), len(g.Rules), len(groups.Members(g, sources)), len(g.Unsubscribed), g.Prefix)
 	}
 	fmt.Printf("groups admins: %d\n", len(groupTables.Admins))
 }

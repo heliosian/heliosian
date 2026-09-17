@@ -51,23 +51,29 @@ type app struct {
 	store       *blob.Store
 	directory   Directory
 	superAdmins func() []string
-	syncer      *Syncer
+	mail        Mail
+	mailer      *mailer
 }
 
 // Register wires the app: one shell for every page, the model, the preview,
-// the writes, and Admin Tools. Every route already sits behind sign-in.
-func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, directory Directory, superAdmins func() []string, syncer *Syncer) {
-	a := app{cache: cache, writer: writer, queue: queue, store: store, directory: directory, superAdmins: superAdmins, syncer: syncer}
+// the writes, and Admin Tools. Every route sits behind sign-in but the mail
+// provider's webhook and the unsubscribe links (auth.Public).
+func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, directory Directory, superAdmins func() []string, mailbox Mail) {
+	a := app{cache: cache, writer: writer, queue: queue, store: store, directory: directory, superAdmins: superAdmins, mail: mailbox}
+	a.mailer = newMailer(cache, writer, queue, directory, mailbox)
 	for _, page := range pages {
 		mux.HandleFunc("GET "+page, a.page)
 	}
 	mux.HandleFunc("GET /api/groups/model", a.model)
-	mux.HandleFunc("GET /api/groups/status", a.status)
 	mux.HandleFunc("POST /api/groups/preview", a.preview)
 	mux.HandleFunc("POST /api/groups/group", a.saveGroup)
 	mux.HandleFunc("DELETE /api/groups/group", a.deleteGroup)
 	mux.HandleFunc("GET /api/admin/state", a.adminState)
 	mux.HandleFunc("POST /api/admin/admins", a.setAdmins)
+	mux.HandleFunc("POST /api/loop/mail", a.webhook)
+	mux.HandleFunc("GET /unsubscribe/{token}", a.unsubscribePage)
+	mux.HandleFunc("POST /unsubscribe/{token}", a.unsubscribe)
+	a.mailer.recover()
 }
 
 func (a app) page(w http.ResponseWriter, r *http.Request) {
@@ -107,14 +113,6 @@ func SourcesOf(directory Directory) Sources {
 
 func (a app) sources() Sources {
 	return SourcesOf(a.directory)
-}
-
-// PlanFor is every group as Google should hold it, read against the models
-// as they stand when called; the syncer calls it on every change.
-func PlanFor(cache *Cache, directory Directory) func() []Desired {
-	return func() []Desired {
-		return Plan(cache.Model(), SourcesOf(directory))
-	}
 }
 
 func decode(w http.ResponseWriter, r *http.Request, into any) bool {
@@ -157,8 +155,8 @@ type Member struct {
 }
 
 // groupView is a group as its page shows it: the rules with their words,
-// the managers by name, the members and why each is there, and where it
-// stands with Google.
+// the managers by name, the members and why each is there, and the mail
+// that lately failed to reach someone.
 type groupView struct {
 	Group
 	Address  string     `json:"address"`
@@ -166,7 +164,31 @@ type groupView struct {
 	Managers []Person   `json:"managers"`
 	Members  []Member   `json:"members"`
 	Mine     bool       `json:"mine"`
-	Status   Status     `json:"status"`
+	Trouble  []Trouble  `json:"trouble"`
+}
+
+type Trouble struct {
+	When   string `json:"when"`
+	Email  string `json:"email"`
+	Name   string `json:"name"`
+	Event  string `json:"event"`
+	Detail string `json:"detail,omitempty"`
+}
+
+const maxTrouble = 20
+
+func (a app) trouble(name string) []Trouble {
+	rows := a.cache.Tables().Deliveries
+	out := []Trouble{}
+	for i := len(rows) - 1; i >= 0 && len(out) < maxTrouble; i-- {
+		row := rows[i]
+		if !strings.EqualFold(strings.TrimSpace(row["Group"]), name) {
+			continue
+		}
+		email := cleanEmail(row["Email"])
+		out = append(out, Trouble{When: row["Timestamp"], Email: email, Name: a.person(email).Name, Event: row["Event"], Detail: row["Detail"]})
+	}
+	return out
 }
 
 // listOption is one of the viewer's Magic Tags as the rule editor offers
@@ -296,7 +318,7 @@ func (a app) sharedRules(viewer string, existing []Rule, rules []Rule) error {
 }
 
 func (a app) view(g Group, viewer string) groupView {
-	v := groupView{Group: g, Address: g.Address(), Rules: []ruleView{}, Managers: a.people(g.Managers), Mine: g.Manages(viewer), Status: a.syncer.Status(g.Name)}
+	v := groupView{Group: g, Address: g.Address(), Rules: []ruleView{}, Managers: a.people(g.Managers), Mine: g.Manages(viewer), Trouble: a.trouble(g.Name)}
 	for _, r := range g.Rules {
 		v.Rules = append(v.Rules, ruleView{Rule: r, TagLabels: a.tagLabels(r)})
 	}
@@ -370,26 +392,6 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// status answers /api/groups/status?name=<group> with where the group
-// stands with Google, for a page polling after a change.
-func (a app) status(w http.ResponseWriter, r *http.Request) {
-	email, admin := a.who(r)
-	name := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("name")))
-	g := a.cache.Model().Group(name)
-	if g == nil {
-		http.Error(w, "no such group", http.StatusNotFound)
-		return
-	}
-	if !admin && !g.Manages(email) {
-		http.Error(w, "you do not manage this group", http.StatusForbidden)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(a.syncer.Status(name)); err != nil {
-		slog.ErrorContext(r.Context(), "encode group status", "error", err)
-	}
-}
-
 // ownRules refuses a rule read as anyone but the viewer unless the group
 // already holds it word for word: a rule carried over unchanged from
 // another manager keeps reading their tags, and no other way exists to
@@ -417,14 +419,15 @@ func sameRule(a, b Rule) bool {
 func (a app) preview(w http.ResponseWriter, r *http.Request) {
 	email, admin := a.who(r)
 	var body struct {
-		Name      string     `json:"name"`
-		Rules     []Rule     `json:"rules"`
-		Additions []Addition `json:"additions"`
+		Name         string         `json:"name"`
+		Rules        []Rule         `json:"rules"`
+		Additions    []Addition     `json:"additions"`
+		Unsubscribed []Unsubscribed `json:"unsubscribed"`
 	}
 	if !decode(w, r, &body) {
 		return
 	}
-	draft := Normalize(Group{Name: "preview", Title: "preview", Managers: []string{email}, Rules: body.Rules, Additions: body.Additions})
+	draft := Normalize(Group{Name: "preview", Title: "preview", Managers: []string{email}, Rules: body.Rules, Additions: body.Additions, Unsubscribed: body.Unsubscribed})
 	var existing []Rule
 	if g := a.cache.Model().Group(strings.ToLower(strings.TrimSpace(body.Name))); g != nil {
 		if !admin && !g.Manages(email) {
@@ -560,7 +563,7 @@ func (a app) saveGroup(w http.ResponseWriter, r *http.Request) {
 		} else if err := a.writer.Upsert(appName, groupsTab, "Name", g.Name, groupCells(g)); err != nil {
 			return err
 		}
-		for _, tab := range []string{managersTab, rulesTab, additionsTab} {
+		for _, tab := range []string{managersTab, rulesTab, additionsTab, unsubscribedTab} {
 			if err := a.writer.Delete(appName, tab, map[string]string{"Group": g.Name}); err != nil {
 				return err
 			}
@@ -586,11 +589,18 @@ func (a app) saveGroup(w http.ResponseWriter, r *http.Request) {
 		if err := a.writer.AppendAll(appName, additionsTab, additions); err != nil {
 			return err
 		}
-		return a.logChange(email, action, g.Name, fmt.Sprintf("%s; %d managers; %d rules; %d added by hand", g.Title, len(g.Managers), len(g.Rules), len(g.Additions)))
+		unsubscribed := [][]string{}
+		for _, u := range g.Unsubscribed {
+			unsubscribed = append(unsubscribed, rowOf(UnsubscribedColumns, unsubscribedCells(g.Name, u)))
+		}
+		if err := a.writer.AppendAll(appName, unsubscribedTab, unsubscribed); err != nil {
+			return err
+		}
+		return a.logChange(email, action, g.Name, fmt.Sprintf("%s; %d managers; %d rules; %d added by hand; %d unsubscribed; prefix %v", g.Title, len(g.Managers), len(g.Rules), len(g.Additions), len(g.Unsubscribed), g.Prefix))
 	}) {
 		return
 	}
-	slog.InfoContext(r.Context(), "groups: saved group", "action", action, "group", g.Name, "rules", len(g.Rules), "managers", len(g.Managers), "additions", len(g.Additions))
+	slog.InfoContext(r.Context(), "groups: saved group", "action", action, "group", g.Name, "rules", len(g.Rules), "managers", len(g.Managers), "additions", len(g.Additions), "unsubscribed", len(g.Unsubscribed), "prefix", g.Prefix)
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(a.view(g, email)); err != nil {
 		slog.ErrorContext(r.Context(), "encode saved group", "error", err)
@@ -620,7 +630,7 @@ func (a app) deleteGroup(w http.ResponseWriter, r *http.Request) {
 		if err := a.writer.Delete(appName, groupsTab, map[string]string{"Name": name}); err != nil {
 			return err
 		}
-		for _, tab := range []string{managersTab, rulesTab, additionsTab} {
+		for _, tab := range []string{managersTab, rulesTab, additionsTab, unsubscribedTab} {
 			if err := a.writer.Delete(appName, tab, map[string]string{"Group": name}); err != nil {
 				return err
 			}

@@ -2,7 +2,6 @@ package groups
 
 import (
 	"log/slog"
-	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -28,8 +27,7 @@ type Cache struct {
 	tables     *Tables
 	// edits counts every change applied from a request, so a refresh that
 	// read the sheet before one landed knows not to put the older sheet back.
-	edits     int
-	listeners []func()
+	edits int
 }
 
 func NewCache(source data.Source, superAdmin func(string) bool, queue Enqueuer) (*Cache, error) {
@@ -39,23 +37,6 @@ func NewCache(source data.Source, superAdmin func(string) bool, queue Enqueuer) 
 	}
 	go c.refreshLoop()
 	return c, nil
-}
-
-// OnChange registers a hook run after every change to the model, from the
-// sheet or from an edit.
-func (c *Cache) OnChange(fn func()) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.listeners = append(c.listeners, fn)
-}
-
-func (c *Cache) changed() {
-	c.mu.RLock()
-	listeners := slices.Clone(c.listeners)
-	c.mu.RUnlock()
-	for _, fn := range listeners {
-		fn()
-	}
 }
 
 func (c *Cache) refreshLoop() {
@@ -93,7 +74,6 @@ func (c *Cache) refresh() error {
 		rules += len(g.Rules)
 	}
 	slog.Info("loaded groups model", "groups", len(model.Groups), "rules", rules, "took", time.Since(start).Round(time.Millisecond))
-	c.changed()
 	return nil
 }
 
@@ -103,7 +83,6 @@ func (c *Cache) set(tables *Tables, model *Model) {
 	c.model = model
 	c.edits++
 	c.mu.Unlock()
-	c.changed()
 }
 
 func (c *Cache) Model() *Model {

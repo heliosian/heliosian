@@ -47,6 +47,7 @@ const (
 		"PIXABAY_KEY=heliosian-pixabay-key:latest," +
 		"RESEND_KEY=heliosian-resend-key:latest," +
 		"RESEND_WEBHOOK_SECRET=heliosian-resend-webhook-secret:latest," +
+		"LOOP_WEBHOOK_SECRET=heliosian-loop-webhook-secret:latest," +
 		"GITHUB_TOKEN=heliosian-github-token:latest," +
 		"ANTHROPIC_API_KEY=heliosian-anthropic-key:latest"
 )
@@ -98,11 +99,11 @@ func main() {
 	jobEnvVars := "DIRECTORY_SHEET=" + requiredEnv("DIRECTORY_SHEET") +
 		",PREFERENCES_SHEET=" + requiredEnv("PREFERENCES_SHEET") +
 		",CALENDAR_SHEET=" + requiredEnv("CALENDAR_SHEET") +
-		",CONFIG_SHEET=" + requiredEnv("CONFIG_SHEET") +
+		",CONFIG_SHEET=" + requiredEnv("CONFIG_SHEET")
+	envVars := jobEnvVars +
 		",EVENTS_SHEET=" + requiredEnv("EVENTS_SHEET") +
 		",CELEBRATE_SHEET=" + requiredEnv("CELEBRATE_SHEET") +
-		",GROUPS_SHEET=" + requiredEnv("GROUPS_SHEET")
-	envVars := jobEnvVars +
+		",GROUPS_SHEET=" + requiredEnv("GROUPS_SHEET") +
 		",INVITES_SHEET=" + requiredEnv("INVITES_SHEET") +
 		",APPS_SHEET=" + requiredEnv("APPS_SHEET") +
 		",BIRTHDAY_SHEET=" + requiredEnv("BIRTHDAY_SHEET") +

@@ -5,57 +5,6 @@ import {load, navigate} from '../app.js';
 import {createPersonPicker} from '/picker.js';
 import {appOrigin} from '/toolbar.js';
 
-// statusLine says where a group stands with Google: synced and when, not
-// yet, or what went wrong.
-export function statusLine(status) {
-  const line = el('div', 'status-line');
-  if (status.error) {
-    line.classList.add('is-error');
-    line.append(svg('warn'), el('span', '', 'Google sync failed: ' + status.error));
-  } else if (status.synced) {
-    line.append(svg('check'), el('span', '', 'Synced with Google ' + new Date(status.synced).toLocaleString()));
-  } else {
-    line.append(svg('sync'), el('span', '', 'Not synced with Google yet'));
-  }
-  return line;
-}
-
-// pendingSync is the group a save just changed, with the standing it had
-// before, so its page can watch for the sync that follows.
-let pendingSync = null;
-
-function sameStanding(a, b) {
-  return (a.synced || '') === (b.synced || '') && (a.error || '') === (b.error || '');
-}
-
-// watchSync asks after the group's standing every couple of seconds, for a
-// minute, until it moves on from `before`, and redraws the line in place.
-// It stops on its own once the line has left the page.
-function watchSync(g, line, before) {
-  let tries = 0;
-  const tick = async () => {
-    if (!line.isConnected || tries++ >= 30) {
-      return;
-    }
-    try {
-      const res = await fetch(`/api/groups/status?name=${encodeURIComponent(g.name)}`);
-      if (!res.ok) {
-        return;
-      }
-      const status = await res.json();
-      if (!sameStanding(status, before)) {
-        g.status = status;
-        line.replaceWith(statusLine(status));
-        return;
-      }
-    } catch {
-      return;
-    }
-    setTimeout(tick, 2000);
-  };
-  setTimeout(tick, 2000);
-}
-
 function chipToggle(label, on, onChange) {
   const b = el('button', 'chip-toggle' + (on ? ' active' : ''), label);
   b.type = 'button';
@@ -232,9 +181,11 @@ async function send(method, url, body) {
 function editor(g, isNew) {
   const draft = {
     name: g.name, title: g.title, description: g.description || '',
+    prefix: isNew ? true : g.prefix,
     managers: g.managers.map(m => m.email),
     rules: g.rules.map(r => ({kind: r.kind, roles: [...r.roles], search: r.search, classrooms: [...r.classrooms], grades: [...r.grades], tags: [...r.tags], family: [...r.family], owner: r.owner, tagLabels: r.tagLabels})),
     additions: (g.additions || []).map(a => ({email: a.email, name: a.name})),
+    unsubscribed: (g.unsubscribed || []).map(u => ({email: u.email, when: u.when})),
   };
   if (isNew) {
     draft.rules.push(newRule('include'));
@@ -292,6 +243,22 @@ function editor(g, isNew) {
   });
   descField.append(el('span', '', 'Description'), desc);
   words.append(descField);
+  const prefixField = el('label', 'field check');
+  const prefix = el('input');
+  prefix.type = 'checkbox';
+  prefix.checked = draft.prefix;
+  prefix.addEventListener('change', () => {
+    draft.prefix = prefix.checked;
+    updatePrefixNote();
+  });
+  const prefixNote = el('small');
+  const updatePrefixNote = () => {
+    prefixNote.textContent = draft.prefix ? `Every message goes out with “[${draft.title || 'Title'}]” at the front of its subject.` : 'Subjects go out as written.';
+  };
+  title.addEventListener('input', updatePrefixNote);
+  updatePrefixNote();
+  prefixField.append(prefix, el('span', '', 'Put the title in front of every subject'));
+  words.append(prefixField, prefixNote);
   form.append(words);
 
   const managers = el('div', 'card');
@@ -398,7 +365,7 @@ function editor(g, isNew) {
     previewStatus.textContent = 'Working out the members…';
     try {
       const rules = draft.rules.filter(ruleSaysSomething);
-      const {members} = await send('POST', '/api/groups/preview', {name: isNew ? '' : draft.name, rules, additions: draft.additions});
+      const {members} = await send('POST', '/api/groups/preview', {name: isNew ? '' : draft.name, rules, additions: draft.additions, unsubscribed: draft.unsubscribed});
       previewHead.textContent = `${members.length} ${members.length === 1 ? 'member' : 'members'}`;
       renderChanges(members, rules);
       previewStatus.textContent = rules.length ? '' : 'Add a rule to pick people out.';
@@ -513,6 +480,35 @@ function editor(g, isNew) {
   outside.append(additionRows, additionAdd);
   renderAdditions();
   form.append(outside);
+
+  // The unsubscribed: people who asked, through their mail app, for no
+  // more of the group's mail. Off the group whatever the rules say, until
+  // a manager takes them off this list.
+  if (draft.unsubscribed.length) {
+    const unsubscribed = el('div', 'card');
+    unsubscribed.append(el('h2', '', 'Unsubscribed'));
+    unsubscribed.append(el('div', 'hint', 'People who used the Unsubscribe in their mail app on a message from this group. They get no mail from it, whatever the rules say, until removed from this list.'));
+    const rows = el('div');
+    const renderUnsubscribed = () => {
+      rows.replaceChildren();
+      if (!draft.unsubscribed.length) {
+        rows.append(el('div', 'rule-empty', 'Nobody is unsubscribed.'));
+      }
+      for (const u of draft.unsubscribed) {
+        const remove = el('button', 'link-button danger', 'Remove');
+        remove.type = 'button';
+        remove.addEventListener('click', () => {
+          draft.unsubscribed = draft.unsubscribed.filter(x => x !== u);
+          renderUnsubscribed();
+          rulesChanged();
+        });
+        rows.append(personRow(unsubscribedPerson(u), remove));
+      }
+    };
+    renderUnsubscribed();
+    unsubscribed.append(rows);
+    form.append(unsubscribed);
+  }
   form.append(preview);
 
   const actions = el('div', 'editor-actions');
@@ -522,9 +518,8 @@ function editor(g, isNew) {
     status.textContent = 'Saving…';
     save.disabled = true;
     try {
-      const body = {original: isNew ? '' : draft.name, name: draft.name, title: draft.title, description: draft.description, managers: draft.managers, rules: draft.rules.filter(ruleSaysSomething), additions: draft.additions};
+      const body = {original: isNew ? '' : draft.name, name: draft.name, title: draft.title, description: draft.description, prefix: draft.prefix, managers: draft.managers, rules: draft.rules.filter(ruleSaysSomething), additions: draft.additions, unsubscribed: draft.unsubscribed};
       const saved = await send('POST', '/api/groups/group', body);
-      pendingSync = {name: saved.name, before: g.status || {}};
       await load();
       toast(isNew ? 'Group made' : 'Saved');
       navigate(groupPath(saved));
@@ -540,7 +535,7 @@ function editor(g, isNew) {
     const del = el('button', 'danger-button', 'Delete group');
     del.type = 'button';
     del.addEventListener('click', async () => {
-      if (!confirm(`Delete ${g.address}? Its Google group goes with it.`)) {
+      if (!confirm(`Delete ${g.address}? Mail sent to it will bounce.`)) {
         return;
       }
       try {
@@ -565,6 +560,14 @@ function editor(g, isNew) {
 
 function ruleSaysSomething(r) {
   return r.roles.length || r.search || r.classrooms.length || r.grades.length || r.tags.length;
+}
+
+// unsubscribedPerson is someone on the unsubscribed list as a row shows
+// them: by name when the directory holds them, and when they asked.
+function unsubscribedPerson(u) {
+  const person = state.model.people.find(p => p.email === u.email);
+  const when = u.when ? 'Unsubscribed ' + new Date(u.when).toLocaleDateString() : 'Unsubscribed';
+  return {email: u.email, name: person ? person.name : u.email, photoUrl: person ? person.photoUrl : '', words: when, outside: !person};
 }
 
 function slug(text) {
@@ -675,39 +678,21 @@ export function groupPage(g) {
   mail.append(svg('mail'), el('span', '', g.address));
   address.append(mail, iconButton('copy', 'Copy the address', '', () => copyText(g.address, 'Address copied')));
   page.append(address);
+  page.append(el('div', 'subject-note', g.prefix ? `Every message goes out with “[${g.title}]” at the front of its subject.` : 'Subjects go out as written.'));
   if (g.description) {
     page.append(el('p', 'page-lead', g.description));
   }
-  // The same people elsewhere: the group at Google, with its archive and
-  // settings, and its Magic Tag in Who?, where the members can be filtered,
-  // mapped and mailed one by one.
+  // The same people elsewhere: the group's Magic Tag in Who?, where the
+  // members can be filtered, mapped and mailed one by one.
   const elsewhere = el('div', 'elsewhere');
-  const google = el('a', 'elsewhere-link');
-  google.href = `https://groups.google.com/a/${state.model.domain}/g/${encodeURIComponent(g.name)}`;
-  google.target = '_blank';
-  google.rel = 'noopener';
-  google.append(svg('groups'), el('span', '', 'Open in Google Groups'));
   const who = el('a', 'elsewhere-link');
   who.href = appOrigin('who') + '/people?list=' + encodeURIComponent('group:' + g.name);
   const mark = el('img');
   mark.src = '/brand/apps/who.png';
   mark.alt = '';
   who.append(mark, el('span', '', 'See these people in Helios Who?'));
-  elsewhere.append(google, who);
+  elsewhere.append(who);
   page.append(elsewhere);
-  const line = statusLine(g.status);
-  page.append(line);
-  // The sync follows a change within seconds; a page arriving after one,
-  // or showing a failure a retry may clear, watches for it.
-  if (pendingSync && pendingSync.name === g.name) {
-    const before = pendingSync.before;
-    pendingSync = null;
-    if (sameStanding(g.status, before)) {
-      watchSync(g, line, before);
-    }
-  } else if (g.status.error || !g.status.synced) {
-    watchSync(g, line, g.status);
-  }
 
   const rules = el('div', 'card');
   rules.append(el('h2', '', 'Rules'));
@@ -734,7 +719,7 @@ export function groupPage(g) {
 
   const members = el('div', 'card');
   members.append(el('h2', '', `${g.members.length} ${g.members.length === 1 ? 'member' : 'members'}`));
-  members.append(el('div', 'hint', 'Who the rules pick out right now, and the rule that puts each of them here, then anyone added by hand from outside the directory. Google is kept in step as the directory changes.'));
+  members.append(el('div', 'hint', 'Who the rules pick out right now, and the rule that puts each of them here, then anyone added by hand from outside the directory. A message to the address goes to these people as they stand when it arrives.'));
   const list = el('div', 'member-list');
   for (const m of g.members) {
     list.append(personRow(m, null, reasonWords(m, g.rules)));
@@ -744,6 +729,28 @@ export function groupPage(g) {
   }
   members.append(list);
   page.append(members);
+
+  if (g.unsubscribed.length) {
+    const unsubscribed = el('div', 'card');
+    unsubscribed.append(el('h2', '', `${g.unsubscribed.length} unsubscribed`));
+    unsubscribed.append(el('div', 'hint', 'People who used the Unsubscribe in their mail app on a message from this group. They get no mail from it, whatever the rules say, until a manager removes them from this list in the editor.'));
+    for (const u of g.unsubscribed) {
+      unsubscribed.append(personRow(unsubscribedPerson(u)));
+    }
+    page.append(unsubscribed);
+  }
+
+  if (g.trouble.length) {
+    const trouble = el('div', 'card');
+    trouble.append(el('h2', '', 'Delivery trouble'));
+    trouble.append(el('div', 'hint', 'Mail the provider could not deliver lately, newest first. An address that keeps bouncing is one to fix in the directory or drop from the group.'));
+    for (const t of g.trouble) {
+      const person = state.model.people.find(p => p.email === t.email);
+      const words = [t.event, t.when ? new Date(t.when).toLocaleString() : ''].filter(Boolean).join(' · ');
+      trouble.append(personRow({email: t.email, name: t.name || t.email, photoUrl: person ? person.photoUrl : '', words, outside: !person}, el('span'), t.detail));
+    }
+    page.append(trouble);
+  }
   page.append(link('/', 'back-link', '← All groups'));
   return page;
 }

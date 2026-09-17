@@ -190,6 +190,9 @@ func Reasons(g Group, s Sources) map[string][]Reason {
 			in[a.Email] = []Reason{{Added: true}}
 		}
 	}
+	for _, u := range g.Unsubscribed {
+		delete(in, u.Email)
+	}
 	return in
 }
 
@@ -203,11 +206,11 @@ func Members(g Group, s Sources) []string {
 	return members
 }
 
-// Plan is every group as Google should hold it.
-func Plan(model *Model, s Sources) []Desired {
-	out := make([]Desired, 0, len(model.Groups))
-	for _, g := range model.Groups {
-		out = append(out, Desired{Name: g.Name, Title: g.Title, Description: g.Description, Members: Members(g, s)})
+func sortedKeys(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
 	}
+	sort.Strings(out)
 	return out
 }

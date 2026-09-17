@@ -13,6 +13,7 @@ import (
 	"mime/quotedprintable"
 	"net/http"
 	netmail "net/mail"
+	"slices"
 	"strings"
 
 	"heliosian/internal/mail"
@@ -70,12 +71,22 @@ func (a app) replies(w http.ResponseWriter, r *http.Request) {
 	var event struct {
 		Type string `json:"type"`
 		Data struct {
-			EmailID string `json:"email_id"`
-			From    string `json:"from"`
-			Subject string `json:"subject"`
+			EmailID     string   `json:"email_id"`
+			From        string   `json:"from"`
+			To          []string `json:"to"`
+			CC          []string `json:"cc"`
+			BCC         []string `json:"bcc"`
+			ReceivedFor []string `json:"received_for"`
+			Subject     string   `json:"subject"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(body, &event); err != nil || event.Type != "email.received" || event.Data.EmailID == "" {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	// Every receiving domain's mail reaches every webhook: only what was
+	// addressed to the reply address is fetched.
+	if !addressed(a.mail.ReplyTo, slices.Concat(event.Data.To, event.Data.CC, event.Data.BCC, event.Data.ReceivedFor)) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
@@ -95,6 +106,16 @@ func (a app) replies(w http.ResponseWriter, r *http.Request) {
 		slog.WarnContext(r.Context(), "calendar: reply not taken", "id", received.ID, "from", received.From, "uid", reply.UID, "attendee", reply.Email, "standing", reply.Standing, "error", err)
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func addressed(replyTo string, recipients []string) bool {
+	want := normalizeEmail(mailAddress(replyTo))
+	for _, r := range recipients {
+		if normalizeEmail(mailAddress(r)) == want {
+			return true
+		}
+	}
+	return false
 }
 
 // takeReply records a reply as the attendee's answer: accepted is a yes,

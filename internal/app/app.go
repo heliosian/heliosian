@@ -774,9 +774,10 @@ type Config struct {
 	// Describer writes Staff Birthdays' sentence about a charity; nil leaves
 	// that button saying it is not set up.
 	Describer birthday.Describer
-	// Groups is the Google Groups side Helios Loop keeps in step: the
-	// Cloud Identity API in production, a fake that logs in sample mode.
-	Groups groups.Google
+	// Loop is Helios Loop's mail: the relay its forwards go out through, the
+	// inbox and webhook secret the posts come in by, the key that signs its
+	// unsubscribe links, its address, and the archive every post is kept in.
+	Loop groups.Mail
 }
 
 // Core is the assembled shared skeleton: each app's mux (still open for the
@@ -800,10 +801,8 @@ type Core struct {
 	// GroupsMux serves Helios Loop, the email groups drawn from the directory.
 	GroupsMux   *http.ServeMux
 	GroupsCache *groups.Cache
-	// GroupsSyncer keeps the Google groups in step with every change.
-	GroupsSyncer *groups.Syncer
-	Cache        *who.Cache
-	Queue        *who.Queue
+	Cache       *who.Cache
+	Queue       *who.Queue
 	// Spoof is Spoof Mode as every app's sign-in shares it: the super admins
 	// may view as anyone the directory lists.
 	Spoof     *auth.Spoof
@@ -891,9 +890,8 @@ func NewCore(cfg Config) *Core {
 		logging.Fatal("load calendar data", "error", err)
 	}
 	// The groups read the directory, its tags and the other apps' Magic
-	// Tags, so every one of those caches tells the syncer when it changes,
-	// and the groups' own cache does too; the directory in turn lists the
-	// groups a person manages among their Magic Tags.
+	// Tags as they stand whenever a post comes in; the directory in turn
+	// lists the groups a person manages among their Magic Tags.
 	groupsCache, err := groups.NewCache(cfg.Source, superAdmin, queue)
 	if err != nil {
 		logging.Fatal("load groups data", "error", err)
@@ -925,14 +923,8 @@ func NewCore(cfg Config) *Core {
 	})
 	celebrateMux := http.NewServeMux()
 	celebrate.Register(celebrateMux, celebrateCache, cfg.Writer, queue, cfg.Store, celebrateDirectory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.CelebrateMail, cfg.CelebrateFrom)
-	syncer := groups.NewSyncer(cfg.Groups, groups.PlanFor(groupsCache, groupsDir))
-	cache.OnChange(syncer.Notify)
-	eventsCache.OnChange(syncer.Notify)
-	celebrateCache.OnChange(syncer.Notify)
-	groupsCache.OnChange(syncer.Notify)
 	groupsMux := http.NewServeMux()
-	groups.Register(groupsMux, groupsCache, cfg.Writer, queue, cfg.Store, groupsDir, settings.SuperAdmins, syncer)
-	syncer.Notify()
+	groups.Register(groupsMux, groupsCache, cfg.Writer, queue, cfg.Store, groupsDir, settings.SuperAdmins, cfg.Loop)
 	// Every app's toolbar asks its own origin what its switch lists and
 	// which rows to leave off; Heliosian's cache answers for all of them.
 	for _, m := range []*http.ServeMux{mux, eventsMux, birthdayMux, celebrateMux, calendarMux, groupsMux} {
@@ -944,7 +936,7 @@ func NewCore(cfg Config) *Core {
 	}
 	return &Core{
 		Mux: mux, HomeMux: homeMux, EventsMux: eventsMux, EventsCache: eventsCache, BirthdayMux: birthdayMux, CelebrateMux: celebrateMux, CelebrateCache: celebrateCache,
-		CalendarMux: calendarMux, CalendarCache: calendarCache, CalendarLinked: linked, GroupsMux: groupsMux, GroupsCache: groupsCache, GroupsSyncer: syncer, Cache: cache, Queue: queue,
+		CalendarMux: calendarMux, CalendarCache: calendarCache, CalendarLinked: linked, GroupsMux: groupsMux, GroupsCache: groupsCache, Cache: cache, Queue: queue,
 		Spoof: &auth.Spoof{Allowed: superAdmin, Person: directory{cache, settings}.SpoofPerson, People: directory{cache, settings}.SpoofPeople},
 		Gate:  who.MemberGate(cache, mux), Home: homeMux, Events: eventsMux, Birthday: birthdayMux, Celebrate: celebrateMux, Calendar: calendarMux, Groups: groupsMux,
 	}
@@ -1098,6 +1090,25 @@ func newMailer(from string) mail.Sender {
 		optionalKey("SMTP_USER", "creds/smtp.user"), optionalKey("SMTP_PASS", "creds/smtp.pass"), from, "")
 }
 
+// loopMail is Helios Loop's mail as the environment describes it: with a
+// Resend key, the relay its forwards go out through and the inbox its
+// posts are fetched from; with the webhook secret (LOOP_WEBHOOK_SECRET, or
+// creds/loop-webhook.secret locally), the route the posts arrive by; the
+// session key signing its unsubscribe links; and the mail bucket keeping
+// every post. Without the secret the route says it is not set up.
+func loopMail(sessionKey string) groups.Mail {
+	archive, err := blob.NewArchive(blob.MailBucket)
+	if err != nil {
+		logging.Fatal("mail archive", "error", err)
+	}
+	m := groups.Mail{Secret: optionalKey("LOOP_WEBHOOK_SECRET", "creds/loop-webhook.secret"), Key: []byte(sessionKey), Base: "https://loop.heliosian.com", Archive: archive}
+	if key := optionalKey("RESEND_KEY", "creds/resend.key"); key != "" {
+		m.Sender = mail.ResendRelay(key)
+		m.Inbox = mail.NewInbox(key)
+	}
+	return m
+}
+
 // ImageSearchKeys reads the picture search's keys the way every mode does:
 // each from its environment variable, else from its file under creds/, else
 // absent - Wikimedia Commons needs none. Sample mode uses it too, so a
@@ -1174,10 +1185,6 @@ func Production(blobCache string) (*http.Server, *who.Queue) {
 	if err != nil {
 		logging.Fatal("blob store", "error", err)
 	}
-	google, err := groups.NewCloudIdentity(context.Background())
-	if err != nil {
-		logging.Fatal("cloud identity client", "error", err)
-	}
 	core := NewCore(Config{
 		Source:      sheet,
 		Writer:      sheet,
@@ -1198,7 +1205,7 @@ func Production(blobCache string) (*http.Server, *who.Queue) {
 		BirthdayFrom:  birthdayMailFrom(),
 		BirthdayBase:  birthdayBase(),
 		Feedback:      &feedback.GitHub{Token: mapsKey("GITHUB_TOKEN", "creds/github.token")},
-		Groups:        google,
+		Loop:          loopMail(sessionKey),
 	})
 	blob.Register(core.Mux, store)
 	blob.RegisterHome(core.HomeMux, store)

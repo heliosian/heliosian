@@ -27,7 +27,7 @@ To run against real community data instead, see [docs/dev.md](docs/dev.md).
 - `internal/celebrate` — Helios Celebrate: the Celebrate sheet's model, parties, tickets and the waitlist, handlers, and admin edits
 - `internal/calendar` — Helios Calendar: the Calendar sheet's model, audience resolution, the day plan, handlers, and personal feeds
 - `internal/calendarimport` — the periodic sync's calendar stage: the school's feed and year calendar into the Calendar sheet, classified by Claude
-- `internal/groups` — Helios Loop: the Groups sheet's model, the rule evaluator, the Google Groups sync, handlers, and admin edits
+- `internal/groups` — Helios Loop: the Groups sheet's model, the rule evaluator, the mail received and forwarded, handlers, and admin edits
 - `internal/ics` — iCalendar feed parsing and recurrence expansion
 - `internal/feedback` — the toolbar's reports, queued and filed as issues in the private triage repository
 - `internal/blob` — media from Cloud Storage, held in memory with stored thumbnails
@@ -38,7 +38,7 @@ To run against real community data instead, see [docs/dev.md](docs/dev.md).
 - `internal/devtls` — the in-memory self-signed certificate local HTTPS runs on
 - `web/` — one directory per app, named for its hostname, holding its pages and every file it serves behind sign-in, `web/common/` for what all apps share, and `web/public/<app>/` and `web/public/common/` for the few files served before sign-in (frameworkless JavaScript throughout)
 - `sampledata/` — the fictional community served by default
-- `cmd/` — dev tooling: screenshots, browser driving, sheet inspection; and `cmd/periodicsync`, the scheduled job that runs the calendar import and the groups reconciliation in turn
+- `cmd/` — dev tooling: screenshots, browser driving, sheet inspection; and `cmd/periodicsync`, the scheduled job that runs the calendar import
 - `docs/` — everything below
 
 ## Docs
@@ -88,7 +88,7 @@ Helios Calendar, in `docs/calendar/`:
 
 Helios Loop, in `docs/groups/`:
 
-- [groups.md](docs/groups/groups.md) — the email groups app spec: groups, rules, managers, and how Google is kept in step
-- [data.md](docs/groups/data.md) — the Groups sheet, the membership evaluator, the Google side, and the periodic job
+- [groups.md](docs/groups/groups.md) — the email groups app spec: groups, rules, managers, and how mail to a group reaches its members
+- [data.md](docs/groups/data.md) — the Groups sheet, the membership evaluator, and the mail pipeline through Resend
 
 Each app keeps its own docs under `docs/<app>/`, named for the sheet it serves; the top level is only what every app shares.

@@ -1,4 +1,4 @@
-// Package groups serves Helios Loop: named email groups drawn from the directory by rules and manifested as Google Groups.
+// Package groups serves Helios Loop: named email groups drawn from the directory by rules, each an address mail is received for and forwarded from.
 package groups
 
 import (
@@ -13,13 +13,19 @@ import (
 )
 
 const (
-	appName      = "groups"
-	groupsTab    = "Groups"
-	managersTab  = "Managers"
-	rulesTab     = "Rules"
-	additionsTab = "Additions"
-	adminsTab    = "Admins"
-	changeLogTab = "Change Log"
+	appName         = "groups"
+	groupsTab       = "Groups"
+	managersTab     = "Managers"
+	rulesTab        = "Rules"
+	additionsTab    = "Additions"
+	unsubscribedTab = "Unsubscribed"
+	messagesTab     = "Messages"
+	deliveriesTab   = "Deliveries"
+	adminsTab       = "Admins"
+	changeLogTab    = "Change Log"
+
+	prefixColumn = "Subject Prefix"
+	prefixOff    = "off"
 
 	// Domain is where every group lives: a group named parents-k is
 	// parents-k@loop.heliosian.com.
@@ -37,12 +43,15 @@ const (
 )
 
 var (
-	GroupColumns     = []string{"Name", "Title", "Description", "Created By", "Created"}
-	ManagerColumns   = []string{"Group", "Email"}
-	RuleColumns      = []string{"Group", "Kind", "Roles", "Search", "Classrooms", "Grades", "Tags", "Family", "Owner"}
-	AdditionColumns  = []string{"Group", "Email", "Name"}
-	AdminColumns     = []string{"Email"}
-	ChangeLogColumns = []string{"Timestamp", "Actor", "Action", "Group", "Detail"}
+	GroupColumns        = []string{"Name", "Title", "Description", "Created By", "Created", prefixColumn}
+	ManagerColumns      = []string{"Group", "Email"}
+	RuleColumns         = []string{"Group", "Kind", "Roles", "Search", "Classrooms", "Grades", "Tags", "Family", "Owner"}
+	AdditionColumns     = []string{"Group", "Email", "Name"}
+	UnsubscribedColumns = []string{"Group", "Email", "Timestamp"}
+	MessageColumns      = []string{"ID", "Group", "Received", "From", "Subject", "State", "Recipients", "Object", "Detail"}
+	DeliveryColumns     = []string{"Timestamp", "Group", "Email", "Event", "Message", "Detail"}
+	AdminColumns        = []string{"Email"}
+	ChangeLogColumns    = []string{"Timestamp", "Actor", "Action", "Group", "Detail"}
 
 	// Roles are the role facet's values, and Relations the Family facet's:
 	// the relatives a rule's matches are widened by, as Who?'s Add family
@@ -83,18 +92,29 @@ type Addition struct {
 	Name  string `json:"name"`
 }
 
+type Unsubscribed struct {
+	Email string `json:"email"`
+	When  string `json:"when"`
+}
+
 // Group is one group: its name, which is its address's local part and never
 // changes, what it is called and for, who manages it, its rules, and the
 // people added by hand from outside the directory.
 type Group struct {
-	Name        string     `json:"name"`
-	Title       string     `json:"title"`
-	Description string     `json:"description"`
-	CreatedBy   string     `json:"createdBy,omitempty"`
-	Created     string     `json:"created,omitempty"`
-	Managers    []string   `json:"managers"`
-	Rules       []Rule     `json:"rules"`
-	Additions   []Addition `json:"additions"`
+	Name         string         `json:"name"`
+	Title        string         `json:"title"`
+	Description  string         `json:"description"`
+	CreatedBy    string         `json:"createdBy,omitempty"`
+	Created      string         `json:"created,omitempty"`
+	Prefix       bool           `json:"prefix"`
+	Managers     []string       `json:"managers"`
+	Rules        []Rule         `json:"rules"`
+	Additions    []Addition     `json:"additions"`
+	Unsubscribed []Unsubscribed `json:"unsubscribed"`
+}
+
+func (g Group) HasUnsubscribed(email string) bool {
+	return slices.ContainsFunc(g.Unsubscribed, func(u Unsubscribed) bool { return u.Email == email })
 }
 
 // Addition finds the group's addition at an address, nil for none.
@@ -133,11 +153,14 @@ func (m *Model) Group(name string) *Group {
 }
 
 type Tables struct {
-	Groups    []map[string]string
-	Managers  []map[string]string
-	Rules     []map[string]string
-	Additions []map[string]string
-	Admins    []map[string]string
+	Groups       []map[string]string
+	Managers     []map[string]string
+	Rules        []map[string]string
+	Additions    []map[string]string
+	Unsubscribed []map[string]string
+	Messages     []map[string]string
+	Deliveries   []map[string]string
+	Admins       []map[string]string
 }
 
 func ReadTables(source data.Source) (*Tables, error) {
@@ -150,9 +173,12 @@ func ReadTables(source data.Source) (*Tables, error) {
 	managers := &table{name: managersTab, want: ManagerColumns}
 	rules := &table{name: rulesTab, want: RuleColumns}
 	additions := &table{name: additionsTab, want: AdditionColumns}
+	unsubscribed := &table{name: unsubscribedTab, want: UnsubscribedColumns}
+	messages := &table{name: messagesTab, want: MessageColumns}
+	deliveries := &table{name: deliveriesTab, want: DeliveryColumns}
 	admins := &table{name: adminsTab, want: AdminColumns}
 	changeLog := &table{name: changeLogTab, want: ChangeLogColumns}
-	read := []*table{groups, managers, rules, additions, admins}
+	read := []*table{groups, managers, rules, additions, unsubscribed, messages, deliveries, admins}
 	names := []string{}
 	for _, t := range read {
 		names = append(names, t.name)
@@ -167,7 +193,7 @@ func ReadTables(source data.Source) (*Tables, error) {
 			return nil, err
 		}
 	}
-	return &Tables{Groups: groups.rows, Managers: managers.rows, Rules: rules.rows, Additions: additions.rows, Admins: admins.rows}, nil
+	return &Tables{Groups: groups.rows, Managers: managers.rows, Rules: rules.rows, Additions: additions.rows, Unsubscribed: unsubscribed.rows, Messages: messages.rows, Deliveries: deliveries.rows, Admins: admins.rows}, nil
 }
 
 // SplitList reads a list cell: comma-separated, trimmed, without repeats.
@@ -292,6 +318,11 @@ func CheckGroup(g Group) error {
 			return fmt.Errorf("group %s: the name for %s is too long", g.Name, a.Email)
 		}
 	}
+	for _, u := range g.Unsubscribed {
+		if !emailForm.MatchString(u.Email) {
+			return fmt.Errorf("group %s: unsubscribed %q is not an email address", g.Name, u.Email)
+		}
+	}
 	return nil
 }
 
@@ -324,6 +355,15 @@ func Normalize(g Group) Group {
 		}
 	}
 	g.Additions = additions
+	unsubscribed := make([]Unsubscribed, 0, len(g.Unsubscribed))
+	for _, u := range g.Unsubscribed {
+		u.Email = cleanEmail(u.Email)
+		u.When = strings.TrimSpace(u.When)
+		if u.Email != "" && !slices.ContainsFunc(unsubscribed, func(v Unsubscribed) bool { return v.Email == u.Email }) {
+			unsubscribed = append(unsubscribed, u)
+		}
+	}
+	g.Unsubscribed = unsubscribed
 	return g
 }
 
@@ -358,8 +398,19 @@ func additionCells(name string, a Addition) map[string]string {
 	return map[string]string{"Group": name, "Email": a.Email, "Name": a.Name}
 }
 
+func unsubscribedCells(name string, u Unsubscribed) map[string]string {
+	return map[string]string{"Group": name, "Email": u.Email, "Timestamp": u.When}
+}
+
+func prefixCell(on bool) string {
+	if on {
+		return ""
+	}
+	return prefixOff
+}
+
 func groupCells(g Group) map[string]string {
-	return map[string]string{"Name": g.Name, "Title": g.Title, "Description": g.Description, "Created By": g.CreatedBy, "Created": g.Created}
+	return map[string]string{"Name": g.Name, "Title": g.Title, "Description": g.Description, "Created By": g.CreatedBy, "Created": g.Created, prefixColumn: prefixCell(g.Prefix)}
 }
 
 // BuildModel validates every row and refuses the whole set on the first
@@ -368,13 +419,14 @@ func groupCells(g Group) map[string]string {
 func BuildModel(tables *Tables) (*Model, error) {
 	model := &Model{Groups: []Group{}, byName: map[string]int{}}
 	for _, row := range tables.Groups {
-		g := Normalize(Group{Name: row["Name"], Title: row["Title"], Description: row["Description"], CreatedBy: row["Created By"], Created: row["Created"]})
+		g := Normalize(Group{Name: row["Name"], Title: row["Title"], Description: row["Description"], CreatedBy: row["Created By"], Created: row["Created"], Prefix: strings.ToLower(strings.TrimSpace(row[prefixColumn])) != prefixOff})
 		if _, dup := model.byName[g.Name]; dup {
 			return nil, fmt.Errorf("%s has two rows named %q", groupsTab, g.Name)
 		}
 		g.Managers = []string{}
 		g.Rules = []Rule{}
 		g.Additions = []Addition{}
+		g.Unsubscribed = []Unsubscribed{}
 		model.byName[g.Name] = len(model.Groups)
 		model.Groups = append(model.Groups, g)
 	}
@@ -404,6 +456,14 @@ func BuildModel(tables *Tables) (*Model, error) {
 			return nil, fmt.Errorf("%s names %q, which %s does not have", additionsTab, row["Group"], groupsTab)
 		}
 		g.Additions = append(g.Additions, Addition{Email: row["Email"], Name: row["Name"]})
+	}
+	for _, row := range tables.Unsubscribed {
+		name := strings.ToLower(strings.TrimSpace(row["Group"]))
+		g := model.Group(name)
+		if g == nil {
+			return nil, fmt.Errorf("%s names %q, which %s does not have", unsubscribedTab, row["Group"], groupsTab)
+		}
+		g.Unsubscribed = append(g.Unsubscribed, Unsubscribed{Email: row["Email"], When: row["Timestamp"]})
 	}
 	for i, g := range model.Groups {
 		g = Normalize(g)
@@ -471,6 +531,10 @@ func (t *Tables) withGroup(g Group) *Tables {
 	for _, a := range g.Additions {
 		out.Additions = append(out.Additions, additionCells(g.Name, a))
 	}
+	out.Unsubscribed = withoutGroupRows(t.Unsubscribed, "Group", g.Name)
+	for _, u := range g.Unsubscribed {
+		out.Unsubscribed = append(out.Unsubscribed, unsubscribedCells(g.Name, u))
+	}
 	return &out
 }
 
@@ -480,6 +544,7 @@ func (t *Tables) withoutGroup(name string) *Tables {
 	out.Managers = withoutGroupRows(t.Managers, "Group", name)
 	out.Rules = withoutGroupRows(t.Rules, "Group", name)
 	out.Additions = withoutGroupRows(t.Additions, "Group", name)
+	out.Unsubscribed = withoutGroupRows(t.Unsubscribed, "Group", name)
 	return &out
 }
 

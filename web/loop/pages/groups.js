@@ -2,7 +2,6 @@ import {state, isAdmin, matches, groupPath} from '../state.js';
 import {el, svg, link, button, iconButton, copyText, pageHead} from '../dom.js';
 import {setTitle, setSearch} from '../chrome.js';
 import {navigate} from '../app.js';
-import {statusLine} from './group.js';
 
 function groupCard(g) {
   const card = link(groupPath(g), 'group-card');
@@ -25,7 +24,6 @@ function groupCard(g) {
   meta.append(el('span', 'chip', `${count} ${count === 1 ? 'member' : 'members'}`));
   meta.append(el('span', 'group-managers', 'Managed by ' + g.managers.map(m => m.name).join(', ')));
   card.append(meta);
-  card.append(statusLine(g.status));
   return card;
 }
 

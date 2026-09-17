@@ -102,9 +102,10 @@ func TestRepliesRecordAnswers(t *testing.T) {
 		"forged":   {ID: "forged", From: "x@example.org", Raw: []byte(replyMail(me, "a7@sample", "DECLINED"))},
 	}
 	mux := http.NewServeMux()
-	Register(mux, cache, dir, directQueue{}, nil, d, func() []string { return nil }, func(string) []Linked { return nil }, ImageSearch{}, Mail{Inbox: inbox, Secret: replySecret})
+	Register(mux, cache, dir, directQueue{}, nil, d, func() []string { return nil }, func(string) []Linked { return nil }, ImageSearch{}, Mail{Inbox: inbox, Secret: replySecret, ReplyTo: "Helios Calendar <rsvp@reply.heliosian.com>"})
+	to := "Helios Calendar <RSVP@reply.heliosian.com>"
 	post := func(id string, signed bool) int {
-		body, _ := json.Marshal(map[string]any{"type": "email.received", "data": map[string]any{"email_id": id}})
+		body, _ := json.Marshal(map[string]any{"type": "email.received", "data": map[string]any{"email_id": id, "to": []string{to}}})
 		req := httptest.NewRequest("POST", "https://when.local.heliosian.com:8080/api/calendar/replies", strings.NewReader(string(body)))
 		if signed {
 			req.Header = mail.SignWebhook(replySecret, "msg_"+id, now(), body)
@@ -128,5 +129,11 @@ func TestRepliesRecordAnswers(t *testing.T) {
 	post("yes", true)
 	if code := post("forged", true); code != 204 || cache.Model().AnswerOf(me, "a7@sample") != AnswerYes {
 		t.Errorf("a reply from another sender was taken")
+	}
+	// Every receiving domain's mail reaches the webhook; what was not sent
+	// to the reply address is left alone, unfetched.
+	to = "soccer-team@loop.heliosian.com"
+	if code := post("no", true); code != 204 || cache.Model().AnswerOf(me, "a7@sample") != AnswerYes {
+		t.Errorf("mail for another address was taken as a reply")
 	}
 }
