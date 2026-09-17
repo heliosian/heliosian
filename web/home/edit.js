@@ -1,5 +1,5 @@
 import {state, categoryTitles, linkCategoryTitles} from './state.js';
-import {el, svg} from './dom.js';
+import {el, svg, categoryIcons, iconOf} from './dom.js';
 import {load} from './app.js';
 import {openCropTool} from '/crop.js';
 
@@ -9,24 +9,10 @@ const categoryModal = document.querySelector('#category-modal');
 const categoryForm = document.querySelector('#category-form');
 const categoriesModal = document.querySelector('#categories-modal');
 const imageSearchModal = document.querySelector('#image-search-modal');
-const emojiLibraryModal = document.querySelector('#emoji-library-modal');
 
 let editingLink = null;
 let editingCategory = null;
 let pendingLinkImage = '';
-
-// The emoji on offer for a category, in groups a school community reaches
-// for; any other emoji can be pasted into the box above them.
-const emojiGroups = [
-  ['School', ['🏫', '📚', '🎒', '🧑‍🏫', '🍎', '🚌', '✏️', '📝', '📖', '🔬', '🧪', '🧮', '🖍️', '🎓', '🏛️', '🔔', '🗓️', '📅', '📋', '📎']],
-  ['Celebrations', ['🎉', '🎊', '🎂', '🎁', '🎈', '🥳', '🎃', '🎄', '🎆', '🎇', '🪅', '🎀', '🕯️', '🍀', '🐣', '❄️', '🌟', '✨', '🏮', '🎏']],
-  ['Sports & Play', ['⚽', '🏀', '🏈', '⚾', '🎾', '🏐', '🏊', '🚴', '🏃', '🤸', '🧗', '⛷️', '🏄', '🥋', '🏆', '🥇', '🎯', '🎲', '🧩', '🪁']],
-  ['Arts & Music', ['🎨', '🖌️', '🎭', '🎵', '🎶', '🎤', '🎸', '🎹', '🥁', '🎻', '📷', '🎬', '📽️', '🖼️', '✂️', '🧵', '🧶', '📻', '🎧', '🩰']],
-  ['Food', ['🍕', '🍔', '🌮', '🍜', '🍣', '🥗', '🍪', '🧁', '🍩', '🍦', '🍿', '☕', '🍵', '🧃', '🍫', '🍓', '🥐', '🍱', '🍲', '🥤']],
-  ['Outdoors', ['🏕️', '🌞', '🌱', '🌻', '🌳', '🌲', '🌈', '🌊', '🏔️', '🐦', '🦋', '🐝', '🐢', '🌸', '🍁', '🍂', '☀️', '🌙', '🔥', '🧭']],
-  ['Community', ['💬', '🤝', '❤️', '🫶', '👋', '👨‍👩‍👧‍👦', '🧑‍🤝‍🧑', '🙌', '👏', '🗳️', '📣', '📰', '💌', '🏠', '🏘️', '🚗', '🧡', '💛', '💚', '💙']],
-  ['Things', ['⭐', '🔗', '📌', '📍', '🛠️', '🔧', '💡', '🔑', '💰', '🧾', '📦', '🛒', '🎟️', '🗂️', '📊', '💻', '📱', '🖨️', '⏰', '🧭']],
-];
 
 function setStatus(selector, message, error) {
   const status = document.querySelector(selector);
@@ -163,85 +149,33 @@ export function openCategoryEditor(category) {
   document.querySelector('#category-title').focus();
 }
 
-// The emoji field: the box holds the choice, the big swatch shows it, and the
-// grid below marks it; setEmoji keeps the three agreeing.
+// The icon field: a grid of the marks a category can go by (categoryIcons
+// in dom.js), the one picked lit, None for none; the sheet's Emoji cell
+// keeps the choice as "icon:<name>".
 function setEmoji(value) {
   const input = document.querySelector('#category-emoji');
   input.value = value;
-  document.querySelector('#category-emoji-current').textContent = value;
   document.querySelector('#category-emoji-clear').hidden = !value;
   for (const button of document.querySelectorAll('#category-emoji-grid button')) {
-    button.classList.toggle('is-picked', button.textContent === value);
+    button.classList.toggle('is-picked', button.dataset.icon === value);
   }
 }
 
 function wireEmojiPicker() {
   const grid = document.querySelector('#category-emoji-grid');
-  for (const [name, choices] of emojiGroups) {
-    grid.append(el('div', 'emoji-group', name));
-    for (const emoji of choices) {
-      const button = el('button', '', emoji);
-      button.type = 'button';
-      button.setAttribute('aria-label', emoji);
-      button.addEventListener('click', () => setEmoji(emoji));
-      grid.append(button);
-    }
+  for (const [name, words] of categoryIcons) {
+    const button = el('button', 'icon-choice');
+    button.type = 'button';
+    button.dataset.icon = 'icon:' + name;
+    button.title = words;
+    button.setAttribute('aria-label', words);
+    button.append(svg(name), el('span', '', words));
+    button.addEventListener('click', () => setEmoji('icon:' + name));
+    grid.append(button);
   }
-  const input = document.querySelector('#category-emoji');
-  input.addEventListener('input', () => setEmoji(input.value.trim()));
   document.querySelector('#category-emoji-clear').addEventListener('click', () => setEmoji(''));
-  document.querySelector('#category-emoji-more').addEventListener('click', openEmojiLibrary);
-  document.querySelector('#emoji-library-search').addEventListener('input', paintEmojiLibrary);
 }
 
-// The whole library - every single-character emoji, by group, with its
-// Unicode name for the search box - loads from /emoji.json the first time it
-// is opened. A pick lands in the category editor and closes the sheet.
-let emojiLibrary = null;
-
-async function openEmojiLibrary() {
-  emojiLibraryModal.hidden = false;
-  const search = document.querySelector('#emoji-library-search');
-  search.value = '';
-  search.focus();
-  if (!emojiLibrary) {
-    document.querySelector('#emoji-library').textContent = 'Loading…';
-    const res = await fetch('/emoji.json');
-    emojiLibrary = res.ok ? await res.json() : [];
-  }
-  paintEmojiLibrary();
-}
-
-function paintEmojiLibrary() {
-  const root = document.querySelector('#emoji-library');
-  const needle = document.querySelector('#emoji-library-search').value.trim().toLowerCase();
-  root.replaceChildren();
-  let shown = 0;
-  for (const [group, entries] of emojiLibrary || []) {
-    const matches = entries.filter(([, name]) => !needle || name.includes(needle));
-    if (!matches.length) {
-      continue;
-    }
-    root.append(el('div', 'emoji-group', group));
-    const row = el('div', 'emoji-library-row');
-    for (const [emoji, name] of matches) {
-      const button = el('button', '', emoji);
-      button.type = 'button';
-      button.title = name;
-      button.setAttribute('aria-label', name);
-      button.addEventListener('click', () => {
-        setEmoji(emoji);
-        emojiLibraryModal.hidden = true;
-      });
-      row.append(button);
-    }
-    root.append(row);
-    shown += matches.length;
-  }
-  if (!shown) {
-    root.append(el('div', 'modal-hint', 'Nothing by that name.'));
-  }
-}
 
 function closeModals() {
   linkModal.hidden = true;
@@ -290,7 +224,9 @@ async function removeCategory(category) {
 
 function categoryRow(category, at, total) {
   const row = el('div', 'category-row');
-  row.append(el('div', 'category-row-image' + (category.emoji ? '' : ' is-blank'), category.emoji || category.title.slice(0, 1).toUpperCase()));
+  const mark = el('div', 'category-row-image');
+  mark.append(svg(iconOf(category)));
+  row.append(mark);
   const body = el('div', 'category-row-body');
   body.append(el('div', 'category-row-title', category.title));
   const limit = category.max ? ` \u00b7 shows ${category.max}` : '';
@@ -450,7 +386,7 @@ export function initEditing() {
       button.closest('.modal-overlay').hidden = true;
     });
   }
-  for (const overlay of [linkModal, categoryModal, categoriesModal, imageSearchModal, emojiLibraryModal]) {
+  for (const overlay of [linkModal, categoryModal, categoriesModal, imageSearchModal]) {
     overlay.addEventListener('click', e => {
       if (e.target === overlay) {
         overlay.hidden = true;

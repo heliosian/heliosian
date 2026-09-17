@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<script>try{var q=location.search.match(/[?&]mode=(light|dark|system)/);if(q){var h=location.hostname.split('.');document.cookie='heliosian-mode='+q[1]+'; path=/; max-age=31536000; SameSite=Lax'+(h.length>2?'; domain=.'+h.slice(1).join('.'):'')}var m=document.cookie.match(/(?:^|; )heliosian-mode=(light|dark|system)/);var d=m&&m[1]==='dark'||(!(m&&m[1]==='light')&&matchMedia('(prefers-color-scheme: dark)').matches);if(d)document.documentElement.dataset.theme='dark'}catch(e){}</script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="theme-color" content="#244d53">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -47,6 +48,7 @@
 <link rel="stylesheet" href="/fonts/fonts.css">
 <link rel="stylesheet" href="/toolbar.css">
 <link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/dark.css">
 <link rel="modulepreload" href="/toolbar.js">
 <link rel="modulepreload" href="/app.js">
 <link rel="modulepreload" href="/state.js">
@@ -61,11 +63,10 @@
 
 <div class="drawer-overlay" id="drawer-overlay" hidden></div>
 <aside class="sidebar" id="sidebar">
+<div class="sidebar-scroll">
 <a class="brand" href="/" aria-label="Heliosian home"><img class="brand-lockup" src="/brand/logo-lockup-light.png" alt=""></a>
 <nav class="app-nav" id="app-nav" aria-label="Sections"></nav>
 <section class="rail-calendar" id="rail-calendar" aria-label="Calendar"></section>
-<div class="sidebar-foot">
-<img class="sidebar-art" src="/brand/sidebar-bird.png" alt="">
 </div>
 </aside>
 
@@ -104,14 +105,13 @@
 <h1 class="hero-title">Tools and resources for&nbsp;the Helios Community</h1>
 <p class="hero-lead">Find what you need, stay connected, and get involved.</p>
 </div>
-<img class="hero-art" src="/brand/hero-art.png" alt="">
+<img class="hero-art hero-art-light" src="/brand/hero-art.png" alt=""><img class="hero-art hero-art-dark" src="/brand/hero-art-dark.png" alt="" hidden>
 </section>
 <div class="page-body">
 <div id="categories"></div>
 <p class="empty-search" id="empty-search" hidden>Nothing matches that search.</p>
 </div>
 <footer class="page-foot">
-<img class="page-art" src="/brand/foot-leaves.png" alt="">
 </footer>
 </main>
 
@@ -168,17 +168,12 @@
 <label class="field"><span>Title</span><input type="text" id="category-title" maxlength="80" required></label>
 <label class="field" id="category-style-field"><span>Style</span><select id="category-style"><option value="cards">Feature cards</option><option value="tiles">Compact tiles</option><option value="apps">Community apps</option></select></label>
 <label class="field field-max"><span>Show at most</span><input type="number" id="category-max" min="1" step="1" placeholder="All" inputmode="numeric"><small class="field-lead">Leave blank to show everything; with a number, the rest sit behind a See More button.</small></label>
-<p class="modal-hint" id="category-events-note" hidden>This section is filled by Helios When with the events coming up for each person. Give it any name and emoji, and move it where you like; it cannot hold links or be deleted.</p>
+<p class="modal-hint" id="category-events-note" hidden>This section is filled by Helios When with the events coming up for each person. Give it any name and icon, and move it where you like; it cannot hold links or be deleted.</p>
 <p class="modal-hint" id="category-apps-note" hidden>This section lists the community apps themselves - the ones in the toolbar's app switch, with their marks - each shown only to the people App Visibility in Admin allows. It holds no links of its own.</p>
 <div class="field field-emoji">
-<span>Emoji</span>
-<div class="emoji-row">
-<div class="emoji-current" id="category-emoji-current"></div>
-<input type="text" id="category-emoji" maxlength="10" placeholder="Pick one below, or paste any emoji" autocomplete="off" spellcheck="false">
-<button type="button" class="link-button" id="category-emoji-clear">None</button>
-</div>
-<div class="emoji-grid" id="category-emoji-grid"></div>
-<button type="button" class="button button-secondary button-small emoji-more" id="category-emoji-more">More emoji…</button>
+<span>Icon <button type="button" class="link-button" id="category-emoji-clear">None</button></span>
+<input type="hidden" id="category-emoji">
+<div class="icon-grid" id="category-emoji-grid"></div>
 </div>
 <div class="modal-actions">
 <button type="submit" class="button" id="category-save">Save</button>
@@ -187,12 +182,6 @@
 <span class="save-status" id="category-status"></span>
 </div>
 </form>
-</div>
-<div class="modal-overlay" id="emoji-library-modal" hidden>
-<div class="modal modal-wide">
-<div class="modal-header"><h2>All emoji</h2><button class="modal-close" type="button" data-close aria-label="Close">&times;</button></div>
-<input type="search" class="emoji-library-search" id="emoji-library-search" placeholder="Search by name - “cat”, “star”, “bus”…" autocomplete="off" spellcheck="false">
-<div class="emoji-library" id="emoji-library"></div>
 </div>
 </div>
 <div class="modal-overlay" id="image-search-modal" hidden>

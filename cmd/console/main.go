@@ -24,6 +24,8 @@ func main() {
 	dialog := flag.String("dialog", "dismiss", "how to answer an alert/confirm/prompt a click opens - accept or dismiss - printing what it asked either way")
 	answer := flag.String("answer", "", "what to type into a prompt() before accepting it, with -dialog accept")
 	hover := flag.String("hover", "", "css selector to rest the mouse on before the screenshot, for a tooltip")
+	scroll := flag.String("scroll", "", "scroll the page before the screenshot: bottom, or a number of pixels")
+	height := flag.Int("height", 800, "viewport height")
 	typed := flag.String("type", "", "text to type into whatever has focus once the clicks are done, for a search box a click opened")
 	after := flag.String("after", "", "css selector(s) to click after typing, | separated, for the result the typing brought up")
 	flag.Parse()
@@ -73,7 +75,7 @@ func main() {
 	})
 	// The same viewport cmd/screenshot captures at, so a click lands on the
 	// desktop layout rather than the phone one.
-	actions := []chromedp.Action{chromedp.EmulateViewport(1280, 800), chromedp.Navigate(*url), chromedp.Sleep(*wait / 2)}
+	actions := []chromedp.Action{chromedp.EmulateViewport(1280, int64(*height)), chromedp.Navigate(*url), chromedp.Sleep(*wait / 2)}
 	if *click != "" {
 		for _, sel := range strings.Split(*click, "|") {
 			sel = strings.TrimSpace(sel)
@@ -91,6 +93,13 @@ func main() {
 	}
 	// Headless Chrome has no pointer to rest anywhere, so the hover is the
 	// events a real one would raise on the element, in order.
+	if *scroll != "" {
+		to := "document.documentElement.scrollHeight"
+		if *scroll != "bottom" {
+			to = *scroll
+		}
+		actions = append(actions, chromedp.Evaluate("window.scrollTo(0, "+to+"), true", nil), chromedp.Sleep(300*time.Millisecond))
+	}
 	if *hover != "" {
 		script := fmt.Sprintf(`(() => { const e = document.querySelector(%q); for (const t of ['mouseover', 'mouseenter', 'pointerover', 'pointerenter']) { e.dispatchEvent(new (t.startsWith('pointer') ? PointerEvent : MouseEvent)(t, {bubbles: t.endsWith('over'), pointerType: 'mouse'})); } return true; })()`, *hover)
 		actions = append(actions, chromedp.WaitVisible(*hover, chromedp.ByQuery), chromedp.Evaluate(script, nil), chromedp.Sleep(300*time.Millisecond))

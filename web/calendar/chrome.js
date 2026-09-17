@@ -4,7 +4,7 @@ import {dayColumn} from './day.js';
 import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, initSpoof, alertMenu, alertCard} from '/toolbar.js';
 
 const primary = [
-  {href: '/', icon: 'today', label: 'Calendar'},
+  {href: '/', icon: 'app', label: 'Calendar'},
   {href: '/feeds', icon: 'feed', label: 'Feeds'},
 ];
 
@@ -16,9 +16,16 @@ function active(href) {
   return path === href || path.startsWith(href + '/');
 }
 
+// appSymbol is the app's own mark, worn by the rail's first item (toolbar.css).
+function appSymbol() {
+  const mark = el('span', 'app-symbol');
+  mark.setAttribute('aria-hidden', 'true');
+  return mark;
+}
+
 function navLink(item) {
   const a = link(item.href, active(item.href) ? 'is-active' : '');
-  a.append(svg(item.icon), el('span', '', item.label));
+  a.append(item.icon === 'app' ? appSymbol() : svg(item.icon), el('span', '', item.label));
   return a;
 }
 

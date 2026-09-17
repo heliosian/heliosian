@@ -587,7 +587,7 @@ export function homePage(date) {
     mark.type = 'button';
     mark.title = 'Change the name or emoji';
     mark.setAttribute('aria-label', 'Change the name or emoji');
-    mark.append(feedMark(shown));
+    mark.append(feedMark(shown, true));
     mark.addEventListener('click', () => editFeedPopup(shown));
     // The name drops a menu of every calendar, to switch without the rail.
     const pick = el('div', 'calendar-pick');

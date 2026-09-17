@@ -178,7 +178,8 @@ export function renderNav() {
       const heading = el('div', 'nav-heading nav-heading-toggle' + (open ? ' open' : ''));
       const chevron = el('span', 'nav-chevron');
       chevron.append(svg('chevron'));
-      const headingIcon = svg(icon);
+      // The top heading wears Who's own mark; the others their icon.
+      const headingIcon = icon === 'app' ? el('span', 'app-symbol') : svg(icon);
       headingIcon.classList.add('nav-heading-icon-' + icon);
       heading.append(chevron, headingIcon, el('span', 'nav-heading-title', title));
       if (indicator === 'alert') {
@@ -206,7 +207,7 @@ export function renderNav() {
       return body;
     }
 
-    const directoryBody = sectionHeading('directory', 'Directory', 'people', 0, false);
+    const directoryBody = sectionHeading('directory', 'Directory', 'app', 0, false);
     if (directoryBody) {
       for (const item of primaryNavItems) {
         renderItem(directoryBody, item);
@@ -338,9 +339,7 @@ export function finishRender() {
   const main = document.querySelector('#main');
   const contentWrap = el('div', 'page-content-wrap');
   contentWrap.append(...main.childNodes);
-  const footer = el('div', 'page-footer');
-  footer.append(el('div', 'page-footer-art'));
-  main.append(contentWrap, footer);
+  main.append(contentWrap);
 }
 
 const userMenu = document.querySelector('#user-menu');

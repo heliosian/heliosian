@@ -30,7 +30,51 @@ const paths = {
   chevron: 'm9 6 6 6-6 6',
   arrow: 'M5 12h14M13 6l6 6-6 6',
   family: 'M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM17 10a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM3 20v-1a5 5 0 0 1 5-5h2a5 5 0 0 1 5 5v1M15.5 14H16a4 4 0 0 1 4 4v2',
+  // The marks a category can go by (categoryIcons), drawn in one line
+  // like the rest: Heliosian's own petals and sun, a pushpin, a link, a
+  // map pin, and the everyday things a section holds.
+  heliosian: 'M6 3h3a3 3 0 0 1 3 3v3a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3zM15 3h3a3 3 0 0 1 3 3v3a3 3 0 0 1-3 3h-3a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3zM6 12h3a3 3 0 0 1 3 3v3a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3v-3a3 3 0 0 1 3-3zM15 12h3a3 3 0 0 1 3 3v3a3 3 0 0 1-3 3h-3a3 3 0 0 1-3-3v-3a3 3 0 0 1 3-3zM12 8.5a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7z',
+  pin: 'M9 3h6l-1 6 3 3v2H7v-2l3-3-1-6zM12 14v7',
+  link: 'M10 14a4.5 4.5 0 0 0 6.4 0l2.2-2.2a4.5 4.5 0 0 0-6.4-6.4l-1.1 1.1M14 10a4.5 4.5 0 0 0-6.4 0l-2.2 2.2a4.5 4.5 0 0 0 6.4 6.4l1.1-1.1',
+  map: 'M12 21s-6-5.3-6-11a6 6 0 0 1 12 0c0 5.7-6 11-6 11zM12 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z',
+  heart: 'M12 21s-8-5.5-8-11.5A4.5 4.5 0 0 1 12 7a4.5 4.5 0 0 1 8 2.5C20 15.5 12 21 12 21z',
+  book: 'M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2zM4 5v16M6 19h13',
+  music: 'M9 18V6l10-2v12M9 18a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0zM19 16a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0z',
+  sun: 'M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10zM12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4',
+  camera: 'M4 8h3l2-3h6l2 3h3v11H4zM12 17a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z',
+  gift: 'M3 9h18v3H3zM5 12v9h14v-9M12 9v12M12 9c-2-4-6-4-6-1s4 1 6 1zM12 9c2-4 6-4 6-1s-4 1-6 1z',
+  ball: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM3.5 10.5l5-1 2.5-4M20.5 10.5l-5-1-2.5-4M12 9.5l3.5 2.5-1.3 4h-4.4L8.5 12z',
+  bell: 'M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 21h4',
+  cart: 'M3 4h2l2.5 11h11L21 7H6.5M9 20a1 1 0 1 0 0-2 1 1 0 0 0 0 2zM17 20a1 1 0 1 0 0-2 1 1 0 0 0 0 2z',
+  bulb: 'M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.7.7 1 1.5 1 2.5h6c0-1 .3-1.8 1-2.5A6 6 0 0 0 12 3z',
+  megaphone: 'M3 10v4h3l7 4V6l-7 4H3zM17 9a4 4 0 0 1 0 6',
+  hand: 'M8 13V5a1.5 1.5 0 0 1 3 0v6M11 11V4a1.5 1.5 0 0 1 3 0v7M14 11V5.5a1.5 1.5 0 0 1 3 0V13M17 12a1.5 1.5 0 0 1 3 1v2a6 6 0 0 1-6 6h-2a6 6 0 0 1-5-2.7L4 14a1.5 1.5 0 0 1 2.4-1.8L8 14',
 };
+
+// maskedIcons are the marks drawn from a picture rather than a path
+// (web/home/brand/symbol-<name>.png, and style.css's .icon-<name>).
+const maskedIcons = ['heliosian', 'when'];
+
+// categoryIcons are the marks the category editor offers, in the order it
+// shows them, each with the words under it.
+export const categoryIcons = [
+  ['heliosian', 'Heliosian'], ['when', 'When'], ['pin', 'Pin'], ['link', 'Link'], ['calendar', 'Event'], ['chat', 'Chat'],
+  ['school', 'School'], ['volunteer', 'People'], ['family', 'Family'], ['star', 'Star'], ['heart', 'Heart'],
+  ['book', 'Book'], ['music', 'Music'], ['ball', 'Sports'], ['ticket', 'Ticket'], ['gift', 'Gift'],
+  ['camera', 'Photos'], ['sun', 'Sun'], ['map', 'Place'], ['bell', 'Bell'], ['cart', 'Shop'],
+  ['bulb', 'Idea'], ['megaphone', 'News'], ['hand', 'Help'], ['home', 'Home'], ['section', 'Grid'],
+];
+
+// iconOf reads a category's mark: "icon:<name>" in the sheet's Emoji cell
+// names one of the marks above; anything else (an emoji from before) is
+// read as none, and the mark comes off the title instead.
+export function iconOf(category) {
+  const value = category.emoji || '';
+  if (value.startsWith('icon:') && (paths[value.slice(5)] || maskedIcons.includes(value.slice(5)))) {
+    return value.slice(5);
+  }
+  return categoryIcon(category.title);
+}
 
 // The glyph a category goes by, in the rail and at the head of its section:
 // read off its title, since the sheet's image is a picture rather than an
@@ -50,6 +94,15 @@ export function categoryIcon(title) {
 }
 
 export function svg(name) {
+  // The apps' own marks are the designer's white outlines (each app's
+  // symbol_white export), drawn through a mask so they take the text
+  // colour like the rest.
+  if (maskedIcons.includes(name)) {
+    const node = document.createElement('span');
+    node.className = 'icon-mask icon-' + name;
+    node.setAttribute('aria-hidden', 'true');
+    return node;
+  }
   const node = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   node.setAttribute('viewBox', '0 0 24 24');
   node.setAttribute('fill', 'none');

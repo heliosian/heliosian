@@ -249,12 +249,22 @@ export function popup(title, node, {wide = false} = {}) {
 }
 
 // feedMark is a saved calendar's mark: the emoji its owner gave it, else
-// the calendar icon.
-export function feedMark(f) {
+// the calendar icon - or, where the calendar is the page's headline, When's
+// own symbol, the designer's white outline drawn through a mask so it takes
+// the colour of the words beside it. The rail's rows under Calendar and the
+// switch menu keep the plain icon, so only the top wears the symbol.
+export function feedMark(f, symbol) {
   if (f.emoji) {
     return el('span', 'feed-mark', f.emoji);
   }
-  return svg('calendar');
+  if (!symbol) {
+    const icon = svg('calendar');
+    icon.classList.add('feed-mark', 'feed-mark-icon');
+    return icon;
+  }
+  const mark = el('span', 'feed-mark feed-mark-symbol');
+  mark.setAttribute('aria-hidden', 'true');
+  return mark;
 }
 
 // feedEmoji are the usual marks for a saved calendar, offered beside the

@@ -1,5 +1,5 @@
 import {state, isAdmin} from './state.js';
-import {el, svg, categoryIcon, toast} from './dom.js';
+import {el, svg, iconOf, toast} from './dom.js';
 import {openLinkEditor, openCategoryEditor} from './edit.js';
 import {appOrigin} from '/toolbar.js';
 
@@ -22,20 +22,16 @@ function editPencil(link) {
   return pencil;
 }
 
-// The glyph a category goes by: its emoji when the sheet gives it one, else
-// an outline read off its title.
+// The glyph a category goes by: the mark the sheet names for it, else one
+// read off its title - an outline either way (iconOf).
 function categoryGlyph(category, className) {
-  if (category.emoji) {
-    return el('span', className + ' is-emoji', category.emoji);
-  }
   const wrap = el('span', className);
-  wrap.append(svg(categoryIcon(category.title)));
+  wrap.append(svg(iconOf(category)));
   return wrap;
 }
 
-// A link without its own image shows its category's emoji, which is how a
-// whole category of chats shares one mark; with neither, the title's initial
-// stands in.
+// A link without its own image shows its category's mark, which is how a
+// whole category of chats shares one.
 function artwork(link, category, imageClass, initialClass) {
   if (link.imageUrl) {
     const img = el('img', imageClass);
@@ -44,10 +40,9 @@ function artwork(link, category, imageClass, initialClass) {
     img.loading = 'lazy';
     return img;
   }
-  if (category.emoji) {
-    return el('div', initialClass + ' is-emoji', category.emoji);
-  }
-  return el('div', initialClass, link.title.slice(0, 1).toUpperCase());
+  const mark = el('div', initialClass + ' is-icon');
+  mark.append(svg(iconOf(category)));
+  return mark;
 }
 
 function openInNewTab(url) {
@@ -227,8 +222,8 @@ export function renderCategories(query = '') {
     // without the swoosh.
     const section = el('section', 'category' + (events ? ' upcoming' : '') + (category.style === 'tiles' ? ' is-compact' : ''));
     section.id = anchorFor(category.title);
-    // The heading is the title alone; the category's emoji marks it in the
-    // rail, not here.
+    // The heading is the title alone; the category's mark is in the rail,
+    // not here.
     const head = el('div', 'category-head');
     const title = el('h2', 'category-title', category.title);
     head.append(title);
@@ -710,17 +705,20 @@ function hasSomething(category) {
 export function renderNav() {
   const nav = document.querySelector('#app-nav');
   nav.replaceChildren();
-  const home = el('a', 'is-active');
-  home.href = '#';
-  home.append(svg('home'), el('span', '', 'Home'));
-  nav.append(home);
   // The rail lists the sections the page shows, so an empty one stays off
-  // it too.
+  // it too. The first wears Heliosian's own mark, as every app's top item
+  // wears its app's, and starts lit as the page's top.
+  let first = true;
   for (const category of state.model.categories.filter(hasSomething)) {
-    const item = el('a', '');
+    const item = el('a', first ? 'is-active' : '');
     item.href = '#' + anchorFor(category.title);
-    item.append(categoryGlyph(category, 'app-nav-glyph'), el('span', '', category.title));
+    const glyph = first ? el('span', 'app-nav-glyph') : categoryGlyph(category, 'app-nav-glyph');
+    if (first) {
+      glyph.append(el('span', 'app-symbol'));
+    }
+    item.append(glyph, el('span', '', category.title));
     nav.append(item);
+    first = false;
   }
 }
 

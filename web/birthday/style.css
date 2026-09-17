@@ -76,9 +76,10 @@ button { font: inherit; }
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  background-image: none, linear-gradient(180deg, #022427, #0f4e54);
-  background-size: 100% auto, auto;
-  background-position: left bottom, left top;
+  /* The app's own symbol, large and faint, slipping off the rail's bottom-right corner. */
+  background-image: url('/brand/symbol-watermark.png'), linear-gradient(180deg, #022427, #0f4e54);
+  background-size: 360px auto, auto;
+  background-position: right -120px bottom -100px, left top;
   background-repeat: no-repeat, no-repeat;
   border-right: 1px solid var(--line);
   z-index: 1;

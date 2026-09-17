@@ -59,9 +59,16 @@ function active(href) {
   return path === href || path.startsWith(href + '/');
 }
 
-function navLink(item) {
+// appSymbol is the app's own mark, worn by the rail's first item (toolbar.css).
+function appSymbol() {
+  const mark = el('span', 'app-symbol');
+  mark.setAttribute('aria-hidden', 'true');
+  return mark;
+}
+
+function navLink(item, first) {
   const a = link(item.href, active(item.href) ? 'is-active' : '');
-  a.append(svg(item.icon), el('span', '', item.label));
+  a.append(first ? appSymbol() : svg(item.icon), el('span', '', item.label));
   return a;
 }
 
@@ -72,8 +79,9 @@ function closeMenus() {
 }
 
 function fillNav(nav) {
-  for (const item of [...primary(), ...more()]) {
-    nav.append(navLink(item));
+  const items = [...primary(), ...more()];
+  for (const item of items) {
+    nav.append(navLink(item, item === items[0]));
   }
 }
 

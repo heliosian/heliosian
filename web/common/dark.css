@@ -1,0 +1,358 @@
+/* Dark mode, the same in every app (mode.js): the page's root carries
+   data-theme="dark", and these rules turn the palette every stylesheet
+   draws from - the page and its cards, the lines, the words - to the deep
+   teal the rails already wear, then catch the surfaces the apps paint
+   white by name. Linked after each app's style.css, so a rule here wins a
+   tie. The rails, the buttons and the alerts keep their colours: they were
+   drawn for a dark ground. */
+
+html[data-theme="dark"] {
+  /* When's day-type washes, deep enough for their coloured words. */
+  --no-school-wash: #3a1f1a;
+  --early-wash: #3a2c14;
+  --no-aftercare-wash: #2b2340;
+  --other-wash: #1a3336;
+  --page: #0b1c1e;
+  --hero: #0b1c1e;
+  --card: #132a2d;
+  --line: rgba(255, 255, 255, 0.12);
+  --ink: #e6eeee;
+  --muted: #9fb3b5;
+  --input: #1b3539;
+  /* The brand teal is a text colour as often as a fill; on a dark ground
+     it reads as its pale self. */
+  --brand: #8fd6d1;
+  --brand-dark: #b4e6e2;
+  --brand-ink: #8fd6d1;
+  --label: #8fd6d1;
+  --title: #cfe4e2;
+  --subtitle: #8fd6d1;
+  color-scheme: dark;
+}
+
+[data-theme="dark"] body,
+[data-theme="dark"] main,
+[data-theme="dark"] .infobanner-wrap,
+[data-theme="dark"] .content-col,
+[data-theme="dark"] .page-body,
+[data-theme="dark"] .page-header,
+[data-theme="dark"] .tabs,
+[data-theme="dark"] .roster-header { background: var(--page); color: var(--ink); }
+
+[data-theme="dark"] .view-switch,
+[data-theme="dark"] .detail-card,
+[data-theme="dark"] .gv-greeting-card { background: var(--card); border-color: var(--line); }
+
+[data-theme="dark"] .gsearch-result.active,
+[data-theme="dark"] .filter-option:hover,
+[data-theme="dark"] .family-option:hover,
+[data-theme="dark"] .tag-option:hover,
+[data-theme="dark"] .more-item:hover,
+[data-theme="dark"] .manage-item:hover,
+[data-theme="dark"] .photo-menu-item:hover,
+[data-theme="dark"] .share-result:hover,
+[data-theme="dark"] .roster-list.grid a.list-row:hover,
+[data-theme="dark"] .email-table tbody tr:nth-child(even),
+[data-theme="dark"] .email-table th { background: var(--input); }
+
+/* When's month: an off day and today keep a wash of their own. */
+[data-theme="dark"] .month-cell.is-off { background: #0f2427; }
+
+[data-theme="dark"] .month-cell.is-today { background: #2a2a12; }
+
+[data-theme="dark"] .month-cell.is-on { background: #0f3a3c; }
+
+[data-theme="dark"] .month-mark.dt-early { color: #f1b940; }
+
+[data-theme="dark"] .month-mark.dt-no-school { color: #f37766; }
+
+[data-theme="dark"] .month-mark.dt-no-aftercare { color: #c7b3f5; }
+
+[data-theme="dark"] .plan-type,
+[data-theme="dark"] .plan-rooms { color: var(--ink); }
+
+[data-theme="dark"] .day-type-words.dt-early,
+[data-theme="dark"] .up-row.dt-early .up-title { color: #f1b940; }
+
+[data-theme="dark"] .day-type-words.dt-no-school,
+[data-theme="dark"] .up-row.dt-no-school .up-title { color: #f37766; }
+
+/* The shared bar: a deeper wash, a dark search field, dark menus. */
+[data-theme="dark"] .topbar { --toolbar: #0f2427; }
+
+[data-theme="dark"] .topbar-search input { background: var(--input); color: var(--ink); border-color: rgba(255, 255, 255, 0.18); }
+
+[data-theme="dark"] .topbar-search input::placeholder { color: #8fa3a6; }
+
+[data-theme="dark"] .topbar-search > svg { stroke: #b7c7c9; }
+
+[data-theme="dark"] .topbar-key { background: var(--card); color: #b7c7c9; border-color: rgba(255, 255, 255, 0.18); }
+
+[data-theme="dark"] .user-menu,
+[data-theme="dark"] .app-switch-menu,
+[data-theme="dark"] .topbar-alert-menu > *:not(.alert-card),
+[data-theme="dark"] .spoof-menu { background: var(--card); border-color: var(--line); color: var(--ink); }
+
+[data-theme="dark"] .spoof-row.is-current { background: rgba(0, 166, 159, 0.22); }
+
+[data-theme="dark"] .spoof-search input { background: var(--input); color: var(--ink); border-color: var(--line); }
+
+/* The surfaces the apps paint white by name. */
+[data-theme="dark"] .card,
+[data-theme="dark"] .event-card,
+[data-theme="dark"] .tile,
+[data-theme="dark"] .group-card,
+[data-theme="dark"] .modal,
+[data-theme="dark"] .panel,
+[data-theme="dark"] .filter-panel,
+[data-theme="dark"] .category-calendar-menu,
+[data-theme="dark"] .calendar-pick-menu,
+[data-theme="dark"] .facet-panel,
+[data-theme="dark"] .stale-menu .todo-card ~ *,
+[data-theme="dark"] .event-list,
+[data-theme="dark"] .plan-card,
+[data-theme="dark"] .month,
+[data-theme="dark"] .day,
+[data-theme="dark"] .up-list,
+[data-theme="dark"] .person-card,
+[data-theme="dark"] .student-card,
+[data-theme="dark"] .gsearch-results,
+[data-theme="dark"] .staff-table,
+[data-theme="dark"] .card-panel,
+[data-theme="dark"] .urows,
+[data-theme="dark"] .pick-card,
+[data-theme="dark"] .calendar,
+[data-theme="dark"] .home-upcoming,
+[data-theme="dark"] .search-results,
+[data-theme="dark"] .calendar-menu,
+[data-theme="dark"] .split-menu,
+[data-theme="dark"] .hero-image-menu,
+[data-theme="dark"] .emoji-pick-menu,
+[data-theme="dark"] .side-filter-menu,
+[data-theme="dark"] .more-menu,
+[data-theme="dark"] .card-menu,
+[data-theme="dark"] .photo-menu,
+[data-theme="dark"] .row-menu,
+[data-theme="dark"] .chip-pop,
+[data-theme="dark"] .drawer,
+[data-theme="dark"] .install-prompt-card,
+[data-theme="dark"] .greeting-dialog-panel,
+[data-theme="dark"] .hint-box,
+[data-theme="dark"] .page-header-list,
+[data-theme="dark"] .roster-list.grid a.list-row,
+[data-theme="dark"] .email-table tbody tr,
+[data-theme="dark"] .person-picker-list,
+[data-theme="dark"] .facet-button:not(.open),
+[data-theme="dark"] .chip-toggle:not(.active),
+[data-theme="dark"] .gv-service-button,
+[data-theme="dark"] .gv-select,
+[data-theme="dark"] .filter-button,
+[data-theme="dark"] .filter-chip:not(.is-on),
+[data-theme="dark"] .filter-action,
+[data-theme="dark"] .segment.is-on,
+[data-theme="dark"] .icon-button,
+[data-theme="dark"] .person-chip,
+[data-theme="dark"] .day-card .plan-card.dt-regular,
+[data-theme="dark"] .day-peek .plan-card.dt-regular { background: var(--card); border-color: var(--line); color: var(--ink); }
+
+[data-theme="dark"] .home-upcoming::after { background: linear-gradient(rgba(19, 42, 45, 0), var(--card)); }
+
+[data-theme="dark"] .day-peek .block,
+[data-theme="dark"] .day-card .block,
+[data-theme="dark"] .block { background: var(--input); }
+
+/* The yellow cards - the banners, the badge's dropdown, Who?'s checklist -
+   turn to a deep amber wash with gold marks and light words, keeping their
+   gold buttons. */
+[data-theme="dark"] .alert-card,
+[data-theme="dark"] .infobanner-alert,
+[data-theme="dark"] .todo-card { background: #2c2310; border-color: #5a4418; color: var(--ink); }
+
+[data-theme="dark"] .alert-card::before,
+[data-theme="dark"] .infobanner-alert::before,
+[data-theme="dark"] .todo-card::before { background: #f1b940; }
+
+[data-theme="dark"] .alert-card-disc,
+[data-theme="dark"] .infobanner-alert .infobanner-icon { background: #4a3812; color: #f1b940; }
+
+[data-theme="dark"] .alert-card-title,
+[data-theme="dark"] .infobanner-alert .infobanner-title,
+[data-theme="dark"] .todo-card-title { color: #f1b940; }
+
+[data-theme="dark"] .alert-card-text,
+[data-theme="dark"] .infobanner-alert .infobanner-desc,
+[data-theme="dark"] .todo-row { color: #d9d2c0; }
+
+[data-theme="dark"] .infobanner-alert .infobanner-main::before { background: #f1b940; }
+
+[data-theme="dark"] .alert-card:hover { background: #352b13; }
+
+[data-theme="dark"] .alert-card-chevron,
+[data-theme="dark"] .todo-chevron { border-color: #f1b940; color: #f1b940; }
+
+[data-theme="dark"] .todo-row { border-top-color: rgba(241, 185, 64, 0.25); }
+
+[data-theme="dark"] .todo-mark { border-color: #f1b940; }
+
+[data-theme="dark"] .infobanner-close { color: #f1b940; }
+
+/* Heliosian's hero and the hours on its event cards. */
+[data-theme="dark"] .hero-kicker { color: #8fd6d1; }
+
+[data-theme="dark"] .hero-title { color: #e6eeee; }
+
+[data-theme="dark"] .hero-lead { color: #b7c7c9; }
+
+/* The landscape has a night drawn for the dark page (the rail's campsite
+   swaps in style.css, beside its day). */
+[data-theme="dark"] .hero-art-light { display: none; }
+
+[data-theme="dark"] .hero-art-dark { display: block !important; }
+
+/* When's Upcoming Events head. */
+[data-theme="dark"] .upcoming-head,
+[data-theme="dark"] .filters,
+[data-theme="dark"] .filters-head,
+[data-theme="dark"] .filters-fold,
+[data-theme="dark"] .filters-chevron { background: var(--card); border-color: var(--line); color: var(--ink); }
+
+[data-theme="dark"] .filters-title { color: var(--ink); }
+
+/* When's side cards on an event's page, and the month's hover card. */
+[data-theme="dark"] .side-card,
+[data-theme="dark"] .day-peek { background: var(--card); border-color: var(--line); color: var(--ink); }
+
+[data-theme="dark"] .side-card-help { background: #12393b; border-color: #1f5558; }
+
+[data-theme="dark"] .side-admin { border-top-color: var(--line); }
+
+[data-theme="dark"] .side-keyword { background: var(--input); border-color: var(--line); }
+
+[data-theme="dark"] .side-keywords-edit { background: var(--input); }
+
+[data-theme="dark"] .side-icon { background: var(--input); }
+
+[data-theme="dark"] .timeline-title { color: var(--ink); }
+
+[data-theme="dark"] .timeline-row.is-match .timeline-title,
+[data-theme="dark"] .up-row.is-match .up-title { background: #3a2c14; box-shadow: 0 0 0 3px #3a2c14; }
+
+[data-theme="dark"] .grade-badge { box-shadow: 0 0 0 2px var(--card); }
+
+[data-theme="dark"] .event-when { color: #b7c7c9; }
+
+/* The app switch: the row hovered and the app this is take a deeper wash. */
+[data-theme="dark"] .app-switch-menu a:hover { background: var(--input); }
+
+[data-theme="dark"] .app-switch-menu a.is-current { background: rgba(0, 166, 159, 0.22); }
+
+/* The source chip on an event card: dark words on its tint. */
+[data-theme="dark"] .event-source { color: #0b1c1e; }
+
+/* Who?'s title and its subtitles on the people. */
+[data-theme="dark"] .person-sub,
+[data-theme="dark"] .page-subtitle { color: var(--muted); }
+
+[data-theme="dark"] input,
+[data-theme="dark"] textarea,
+[data-theme="dark"] select { background: var(--input); color: var(--ink); border-color: var(--line); }
+
+[data-theme="dark"] .button-secondary { background: var(--card); color: var(--ink); border-color: var(--line); }
+
+[data-theme="dark"] .button-secondary:hover { background: var(--input); }
+
+/* Words the apps set to a dark grey by name. */
+[data-theme="dark"] .chip-description,
+[data-theme="dark"] .event-description,
+[data-theme="dark"] .card-desc,
+[data-theme="dark"] .hint { color: var(--muted); }
+
+/* Heliosian's chips: their pastel tints deepen, the peeks stay. */
+[data-theme="dark"] .chip-grid > :nth-child(5n+1) { --tint: #143a3c; }
+[data-theme="dark"] .chip-grid > :nth-child(5n+2) { --tint: #3b2320; }
+[data-theme="dark"] .chip-grid > :nth-child(5n+3) { --tint: #32351a; }
+[data-theme="dark"] .chip-grid > :nth-child(5n+4) { --tint: #12393b; }
+[data-theme="dark"] .chip-grid > :nth-child(5n+5) { --tint: #2d2540; }
+
+[data-theme="dark"] .chip { border-color: rgba(255, 255, 255, 0.14); }
+
+[data-theme="dark"] .chip-disc { background: #e9f1f0; }
+
+[data-theme="dark"] .chip-title { color: #e6eeee; }
+
+/* The tear-off date stamps keep their paper, with dark ink on it: on an
+   event card, a party or activity card, the hero band, and Birthday's
+   date leaf. */
+[data-theme="dark"] .event-stamp,
+[data-theme="dark"] .card-stamp,
+[data-theme="dark"] .hero-stamp,
+[data-theme="dark"] .date-leaf { background: #fff; }
+
+[data-theme="dark"] .event-stamp-day,
+[data-theme="dark"] .card-stamp-day,
+[data-theme="dark"] .hero-stamp-date,
+[data-theme="dark"] .hero-stamp-text,
+[data-theme="dark"] .date-leaf-day { color: #0f4e54; }
+
+[data-theme="dark"] .card-stamp-dow,
+[data-theme="dark"] .hero-stamp-weekday,
+[data-theme="dark"] .hero-stamp-time,
+[data-theme="dark"] .date-leaf-weekday { color: #647071; }
+
+/* The rail's month: the day picked sits on white, in dark ink. */
+[data-theme="dark"] .mini-day.is-selected .mini-number { color: #0f4e54; }
+
+/* Section rules and the swoosh's heading colour. */
+[data-theme="dark"] .category { border-top-color: var(--line); }
+
+[data-theme="dark"] .category-title,
+[data-theme="dark"] .page-title { color: #e6eeee; }
+
+/* The admin chrome (admin.css): its page, its rail of tabs, its cards. The
+   header keeps its teal, and the pale teal on it turns deep. */
+[data-theme="dark"] body.admin,
+[data-theme="dark"] .admin { background: var(--page); }
+
+[data-theme="dark"] .admin header { background: #0f2427; }
+
+[data-theme="dark"] .admin .sidebar { background: var(--card); border-color: var(--line); }
+
+[data-theme="dark"] .admin .tab.active { background: rgba(0, 166, 159, 0.22); color: #fff; }
+
+[data-theme="dark"] .admin .card,
+[data-theme="dark"] .admin .person-picker input,
+[data-theme="dark"] .admin .person-picker-list { background: var(--card); border-color: var(--line); color: var(--ink); }
+
+[data-theme="dark"] .admin .notice { background: #3b2a1c; color: #f5c7ad; }
+
+[data-theme="dark"] .admin h2 { color: var(--ink); }
+
+/* The pale washes the apps tint a row or band with, deepened. */
+[data-theme="dark"] .urow:hover,
+[data-theme="dark"] .issue:hover,
+[data-theme="dark"] .side-link:hover,
+[data-theme="dark"] .row.is-link:hover,
+[data-theme="dark"] .side-link,
+[data-theme="dark"] .resources-main,
+[data-theme="dark"] .compare,
+[data-theme="dark"] .next-panel,
+[data-theme="dark"] .highlight-card,
+[data-theme="dark"] .setting-card .image-placeholder,
+[data-theme="dark"] .image-drop,
+[data-theme="dark"] .rule,
+[data-theme="dark"] .who-foot { background: var(--input); color: var(--ink); }
+
+[data-theme="dark"] .urow.is-picked,
+[data-theme="dark"] .pick-card,
+[data-theme="dark"] .ask-band,
+[data-theme="dark"] .change-band,
+[data-theme="dark"] .host-band,
+[data-theme="dark"] .gala-band,
+[data-theme="dark"] .step-attention,
+[data-theme="dark"] .rule.is-theirs { background: #2f2515; color: var(--ink); }
+
+[data-theme="dark"] .ticket-band.avail-band-available { background: #14352a; }
+
+[data-theme="dark"] .ticket-band.avail-band-waitlist { background: #3a2c14; }
+
+[data-theme="dark"] .notice { background: #3b2a1c; color: #f5c7ad; }

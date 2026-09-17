@@ -6,7 +6,7 @@ import {openParty} from './edit.js';
 // The rail and the drawer show these; the phone's tab bar drops the admin one.
 // /admin is deliberately absent - Admin Tools is reached from the account menu.
 const primary = [
-  {href: '/', icon: 'party', label: 'Parties'},
+  {href: '/', icon: 'app', label: 'Parties'},
   {href: '/my', icon: 'home', label: "My Family's Parties"},
   {href: '/hosting', icon: 'star', label: 'Hosting', count: () => hostedParties().length},
   {href: '/approvals', icon: 'hourglass', label: 'Approval Needed', admin: true, count: () => pendingParties().length},
@@ -34,6 +34,13 @@ export function partiesPath() {
   return code === state.model.current ? '/' : `/celebrations/${encodeURIComponent(code)}`;
 }
 
+// appSymbol is the app's own mark, worn by the rail's first item (toolbar.css).
+function appSymbol() {
+  const mark = el('span', 'app-symbol');
+  mark.setAttribute('aria-hidden', 'true');
+  return mark;
+}
+
 function navLink(item) {
   let href = item.href === '/' ? partiesPath() : item.href;
   // Approval Needed is the Hosting page's admin tab.
@@ -48,7 +55,7 @@ function navLink(item) {
       state.hostingTab = 'mine';
     }
   });
-  a.append(svg(item.icon), el('span', '', item.label));
+  a.append(item.icon === 'app' ? appSymbol() : svg(item.icon), el('span', '', item.label));
   const n = item.count ? item.count() : 0;
   if (n) {
     a.append(el('span', item.admin ? 'nav-count is-alert' : 'nav-count', String(n)));

@@ -52,9 +52,9 @@ body {
   min-height: 100vh;
 }
 
-/* Sidebar: the brand teal, the lockup in white, the sections, and the bird
-   at the foot. It stays put while the page scrolls - pinned to the viewport's
-   height - so the bird always sits at the bottom of what is on screen. */
+/* Sidebar: the brand teal, the lockup in white, the sections, and the
+   campsite at the foot. It stays put while the page scrolls - pinned to the viewport's
+   height - so the campsite always sits at the bottom of what is on screen. */
 
 .sidebar {
   position: sticky;
@@ -62,17 +62,35 @@ body {
   align-self: start;
   height: 100vh;
   height: 100dvh;
-  /* The month and the day card make the rail taller than a short window;
-     it scrolls on its own then, the bird last. */
-  overflow: hidden auto;
-  scrollbar-width: none;
-  background: linear-gradient(180deg, var(--sidebar-top), var(--sidebar));
+  overflow: hidden;
+  /* The campsite - the scene Helios Who? used to wear - is the rail's own
+     background, drawn at the foot of what is on screen, edge to edge, and
+     the lockup, the sections and the month pass over it. */
+  background-image: url('/brand/sidebar-camp.png'), linear-gradient(180deg, var(--sidebar-top), var(--sidebar));
+  background-size: 100% auto, auto;
+  background-position: right bottom, left top;
+  background-repeat: no-repeat, no-repeat;
   color: #fff;
   padding: 22px 12px 0;
   display: flex;
   flex-direction: column;
-  gap: 20px;
   padding-top: calc(26px + env(safe-area-inset-top));
+}
+
+[data-theme="dark"] .sidebar { background-image: url('/brand/sidebar-camp-dark.png'), linear-gradient(180deg, var(--sidebar-top), var(--sidebar)); }
+
+/* The lockup, the sections and the month scroll on their own when they
+   are taller than a short window, with room at the end to clear the
+   campsite. */
+.sidebar-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden auto;
+  scrollbar-width: none;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding-bottom: 80px;
 }
 
 .brand {
@@ -107,7 +125,7 @@ body {
    its icon and the chevron at its end in lime, white words. */
 .app-nav a.is-active { background: rgba(0, 166, 159, 0.22); color: #fff; font-weight: 600; position: relative; border-radius: 0 10px 10px 0; overflow: hidden; }
 /* ...its icon and the chevron at its end in lime. */
-.app-nav a.is-active svg { color: var(--lime); }
+.app-nav a.is-active svg, .app-nav a.is-active .icon-mask { color: var(--lime); }
 
 .app-nav a.is-active::after {
   content: '';
@@ -351,21 +369,7 @@ body {
 
 /* The bird on its branch perches at the rail's foot, off the left edge a
    little, outside the rail's own padding. */
-.sidebar-foot {
-  margin: auto -12px 0;
-  padding: 28px 0 22px;
-}
 
-/* On a short window the bird gives way rather than pushing the nav. */
-.sidebar-art {
-  display: block;
-  width: 68%;
-  height: auto;
-  max-height: 32vh;
-  object-fit: contain;
-  object-position: left bottom;
-  pointer-events: none;
-}
 
 /* Top bar - the shared one (toolbar.css). The page scrolls as a whole here,
    unlike the apps whose main scrolls inside a fixed shell, so the bar sticks
@@ -396,7 +400,9 @@ main {
   position: relative;
   background: var(--hero);
   padding: 34px 32px 0;
-  min-height: 236px;
+  min-height: 250px;
+  aspect-ratio: 2142 / 627; /* the landscape's own shape */
+  max-height: 360px;
   overflow: hidden;
 }
 
@@ -431,14 +437,23 @@ main {
   color: #3f5558;
 }
 
+/* The landscape (icons/decorative/heliosian_top) runs across the whole of
+   the hero, its left fading into the page behind the words; there is one
+   drawn for each mode, and dark.css swaps them. */
 .hero-art {
   position: absolute;
+  left: 0;
   right: 0;
-  bottom: -2px;
-  width: max(100%, 760px);
-  height: auto;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  object-fit: cover;
+  object-position: right bottom;
   pointer-events: none;
 }
+
+.hero-text { position: relative; z-index: 1; }
 
 .page-body { padding: 26px 32px 0; }
 
@@ -1105,25 +1120,64 @@ a.event-people:hover .event-person { text-decoration: underline; }
 
 .link-edit svg { width: 15px; height: 15px; }
 
-/* The foot: a spray of leaves pinned to the window's bottom-right corner,
-   behind the page - the cards pass over it as the page scrolls, and it is
-   there however long the page is. The foot itself only keeps the last
-   section's text clear of it. Decorative only, so it carries an empty alt. */
+/* The foot: the lakeside scene repeating along the bottom edge, faded,
+   after the last section - main grows to fill, so on a short page it
+   still lands at the foot of the viewport. Helios Who? used to wear it. */
 .page-foot {
-  height: 120px;
+  /* 89px is the campsite's height on the rail - its 227px art at the
+     rail's 280px width - so the two scenes meet at one horizon. */
+  height: 89px;
   margin-top: auto;
-}
-
-.page-art {
-  position: fixed;
-  right: 0;
-  bottom: 0;
-  z-index: -1;
-  display: block;
-  width: min(300px, 45vw);
-  height: auto;
+  padding-top: 40px;
+  box-sizing: content-box;
+  background-image: url('/brand/foot-scene.png');
+  background-size: auto 89px;
+  background-repeat: repeat-x;
+  background-position: left bottom;
+  opacity: 0.5;
   pointer-events: none;
 }
+
+/* Heliosian's mark as an icon: the designer's white outline, masked so it
+   takes the colour of the words beside it, at each place's icon size. */
+.icon-mask { display: inline-block; flex-shrink: 0; background: currentColor; -webkit-mask: var(--mask) center / contain no-repeat; mask: var(--mask) center / contain no-repeat; }
+
+.icon-heliosian { --mask: url('/brand/symbol-white.png'); }
+
+.icon-when { --mask: url('/brand/symbol-when.png'); }
+
+.app-nav a .icon-mask { width: 20px; height: 20px; }
+
+.app-nav-glyph .icon-mask { width: 20px; height: 20px; }
+
+.icon-choice .icon-mask { width: 22px; height: 22px; color: var(--brand); }
+
+.chip-initial .icon-mask { width: 44px; height: 44px; color: var(--brand); }
+
+.tile-glyph .icon-mask, .tile-image-blank .icon-mask { width: 26px; height: 26px; opacity: 0.6; }
+
+.category-row-image .icon-mask { width: 20px; height: 20px; color: var(--brand); }
+
+/* The category's icon: the marks to pick from, in a grid, each an outline
+   with its word, the one picked lit. */
+.icon-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 6px; margin-top: 8px; }
+
+.icon-choice { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 4px 6px; border: 1.5px solid transparent; border-radius: 10px; background: var(--input); font: inherit; font-size: 11px; color: var(--muted); cursor: pointer; }
+
+.icon-choice svg { width: 22px; height: 22px; color: var(--brand); }
+
+.icon-choice:hover { border-color: var(--line); background: #fff; }
+
+.icon-choice.is-picked { border-color: var(--brand); background: #fff; color: var(--brand); font-weight: 600; }
+
+.field-emoji > span { display: flex; align-items: center; gap: 10px; }
+
+/* A link without a picture: its category's mark in the disc. */
+.chip-initial.is-icon svg { width: 44px; height: 44px; color: var(--brand); }
+
+.tile-glyph.is-icon svg, .tile-image-blank.is-icon svg { width: 26px; height: 26px; opacity: 0.6; }
+
+.category-row-image svg { width: 20px; height: 20px; color: var(--brand); }
 
 .modal-overlay {
   position: fixed;
@@ -1321,24 +1375,7 @@ a.event-people:hover .event-person { text-decoration: underline; }
 .crop-actions { display: flex; gap: 10px; }
 
 /* The category's emoji: the swatch, the box, and the grid of ones on offer. */
-.emoji-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
 
-.emoji-current {
-  flex-shrink: 0;
-  width: 56px;
-  height: 56px;
-  border-radius: 12px;
-  background: #e3f0ef;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 32px;
-  line-height: 1;
-}
 
 .emoji-row input {
   flex: 1;
@@ -1349,48 +1386,15 @@ a.event-people:hover .event-person { text-decoration: underline; }
   font: inherit;
 }
 
-.emoji-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 10px;
-  max-height: 260px;
-  overflow-y: auto;
-  padding-right: 4px;
-}
 
-.emoji-group {
-  flex-basis: 100%;
-  margin: 8px 0 2px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
 
 .emoji-group:first-child { margin-top: 0; }
 
-.emoji-more { margin-top: 10px; }
 
-.emoji-library-search {
-  width: 100%;
-  padding: 10px 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  font: inherit;
-  margin-bottom: 8px;
-}
 
-.emoji-library {
-  max-height: 60vh;
-  overflow-y: auto;
-  padding-right: 4px;
-}
 
 .emoji-library .emoji-group { margin: 12px 0 4px; }
 
-.emoji-library-row { display: flex; flex-wrap: wrap; gap: 2px; }
 
 .emoji-library-row button {
   width: 40px;
@@ -1405,20 +1409,8 @@ a.event-people:hover .event-person { text-decoration: underline; }
 
 .emoji-library-row button:hover { background: var(--input); border-color: var(--line); }
 
-.emoji-grid button {
-  width: 38px;
-  height: 38px;
-  border: 1px solid transparent;
-  border-radius: 9px;
-  background: none;
-  font-size: 22px;
-  line-height: 1;
-  cursor: pointer;
-}
 
-.emoji-grid button:hover { background: var(--input); }
 
-.emoji-grid button.is-picked { border-color: var(--brand); background: #e3f0ef; }
 
 /* The picture search sheet, as HCA-Team's: the libraries on a segmented
    switch, the box and its Search, the grid, and the licence note. */
@@ -1653,7 +1645,6 @@ a.event-people:hover .event-person { text-decoration: underline; }
 
   .hero { padding: 26px 18px 0; min-height: 0; }
   .hero-text { padding-bottom: 96px; }
-  .hero-art { width: max(100%, 620px); }
   .page-body { padding: 20px 18px 0; }
 }
 

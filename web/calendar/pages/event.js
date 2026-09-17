@@ -280,12 +280,14 @@ function rsvpCard(e) {
         buttons.append(add);
       }
     } else {
-      words.append(el('div', 'rsvp-title', word === 'yes' ? 'You\u2019re going' : word === 'no' ? 'Not going' : word === 'hidden' ? 'Hidden' : 'Are you going?'), el('div', 'rsvp-lead', word === 'yes' ? 'The invite is in your email.' : word === 'no' ? 'Thanks for letting us know.' : word === 'hidden' ? 'On the month in gray.' : 'Let us know so we can plan!'));
+      words.append(el('div', 'rsvp-title', word === 'yes' ? 'You\u2019re going' : word === 'no' ? 'Not going' : word === 'hidden' ? 'Hidden' : 'Are you going?'), el('div', 'rsvp-lead', word === 'yes' ? 'The invite is in your email.' : word === 'no' ? 'Thanks for letting us know.' : word === 'hidden' ? 'On the month in gray.' : 'Yes sends you a calendar invite.'));
       buttons.append(
         button('Yes', 'check', 'button rsvp-yes' + (word === 'yes' ? ' is-on' : ''), () => say(word === 'yes' ? '' : 'yes')),
         button('No', 'close', 'button rsvp-no' + (word === 'no' ? ' is-on' : ''), () => say(word === 'no' ? '' : 'no')),
       );
-      note = word === 'yes' || word === 'hidden' ? '' : 'Yes sends you a calendar invite.';
+      // Unanswered, the lead already says what Yes does; a No keeps the note
+      // under its thanks, so the way back is still spelled out.
+      note = word === 'no' ? 'Yes sends you a calendar invite.' : '';
     }
     if (note) {
       words.append(el('div', 'rsvp-note', note));

@@ -1,5 +1,6 @@
 import {createPersonPicker} from '/picker.js';
 import {appOrigin} from '/toolbar.js';
+import {svg, iconOf} from '../dom.js';
 
 
 // A list of addresses that saves itself: every add or remove posts at once, so
@@ -351,8 +352,8 @@ async function loadCategories() {
     const row = document.createElement('div');
     row.className = 'category-row';
     const emoji = document.createElement('div');
-    emoji.className = 'emoji' + (category.emoji ? '' : ' is-blank');
-    emoji.textContent = category.emoji || category.title.slice(0, 1).toUpperCase();
+    emoji.className = 'emoji';
+    emoji.append(svg(iconOf(category)));
     const body = document.createElement('div');
     const title = document.createElement('div');
     title.className = 'title';

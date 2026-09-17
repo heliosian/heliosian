@@ -71,13 +71,10 @@ button { font: inherit; }
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  /* Two layers, the way who's sidebar does it: the meadow sits flush at the
-     bottom scaled to the rail's width, over the pale green wash. It's a
-     background rather than an element so it never competes with the nav for
-     vertical space on a short viewport - the nav just scrolls over it. */
-  background-image: url('/toolbar_background.png'), linear-gradient(180deg, #022427, #0f4e54);
-  background-size: 100% auto, auto;
-  background-position: left bottom, left top;
+  /* The app's own symbol, large and faint, slipping off the rail's bottom-right corner. */
+  background-image: url('/brand/symbol-watermark.png'), linear-gradient(180deg, #022427, #0f4e54);
+  background-size: 360px auto, auto;
+  background-position: right -120px bottom -100px, left top;
   background-repeat: no-repeat, no-repeat;
   border-right: 1px solid var(--line);
   z-index: 1;

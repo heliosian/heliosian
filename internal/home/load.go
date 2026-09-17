@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -47,7 +48,7 @@ const (
 
 	// The events section as it stands until the sheet says otherwise.
 	EventsTitle = "Upcoming Events"
-	EventsEmoji = "📅"
+	EventsEmoji = "icon:when"
 )
 
 var (
@@ -267,11 +268,16 @@ func checkStyle(cell string) (string, error) {
 	return "", fmt.Errorf("%q is not %s, %s, %s or %s", cell, StyleCards, StyleTiles, StyleEvents, StyleApps)
 }
 
-// checkEmoji accepts a blank cell or one emoji - a short run of symbol runes,
-// joiners and variation selectors, so a flag or a skin-toned face passes and
-// a word does not.
+// iconValue names one of the outline marks the front page draws
+// (categoryIcons in web/home/dom.js): "icon:pin", "icon:chat".
+var iconValue = regexp.MustCompile(`^icon:[a-z]+$`)
+
+// checkEmoji accepts a blank cell, an icon's name (the marks the editor
+// offers), or one emoji from before the marks - a short run of symbol
+// runes, joiners and variation selectors, so a flag or a skin-toned face
+// passes and a word does not.
 func checkEmoji(cell string) error {
-	if cell == "" {
+	if cell == "" || iconValue.MatchString(cell) {
 		return nil
 	}
 	if utf8.RuneCountInString(cell) > 10 {

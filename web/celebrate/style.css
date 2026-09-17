@@ -73,18 +73,17 @@ button { font: inherit; }
    its own, so the toolbar stays put while the page moves. */
 .app-shell { display: flex; flex: 1; min-height: 0; }
 
-/* The rail: the pale wash, with the sprig of leaves growing out of its
-   bottom-left corner. The rail is the viewport's height and never scrolls,
-   so the sprig always sits at the bottom of what is visible; the nav scrolls
-   over it on a short screen. */
+/* The rail: the teal wash, with the app's symbol faint at its foot. The rail
+   is the viewport's height and never scrolls, so the symbol always sits at
+   the bottom of what is visible; the nav scrolls over it on a short screen. */
 .sidebar {
   width: 280px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  background-image: url('/rail_bottom_left.png'), linear-gradient(180deg, #022427, #0f4e54);
-  background-size: 67px auto, auto;
-  background-position: left bottom, left top;
+  background-image: url('/brand/symbol-watermark.png'), linear-gradient(180deg, #022427, #0f4e54);
+  background-size: 360px auto, auto;
+  background-position: right -120px bottom -100px, left top;
   background-repeat: no-repeat, no-repeat;
   border-right: 1px solid var(--line);
   z-index: 1;
@@ -214,7 +213,6 @@ main {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  background: url('/main_bottom_right.png') right bottom / 349px auto no-repeat;
 }
 
 #page { flex: 1; width: 100%; max-width: 1240px; margin: 0 auto; padding: 24px 24px 180px; }

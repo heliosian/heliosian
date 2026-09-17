@@ -6,7 +6,7 @@ import {openActivity} from './edit.js';
 // The rail and the drawer show these; the mobile tab bar drops the admin ones.
 // /admin is deliberately absent - Admin Tools is reached from the account menu.
 const primary = [
-  {href: '/', icon: 'signup', label: 'Opportunities'},
+  {href: '/', icon: 'app', label: 'Opportunities'},
   {href: '/my', icon: 'star', label: 'My Sign Ups'},
   {href: '/calendar', icon: 'calendar', label: 'Calendar'},
   {href: '/approvals', icon: 'join', label: 'Approval Needed', admin: true, count: () => pendingItems().length},
@@ -32,6 +32,13 @@ function yearPath() {
   return year === years().current ? '/' : `/years/${encodeURIComponent(year)}`;
 }
 
+// appSymbol is the app's own mark, worn by the rail's first item (toolbar.css).
+function appSymbol() {
+  const mark = el('span', 'app-symbol');
+  mark.setAttribute('aria-hidden', 'true');
+  return mark;
+}
+
 function navLink(item) {
   const href = item.href === '/' ? yearPath() : item.href;
   const a = link(href, active(item.href) ? 'is-active' : '');
@@ -42,7 +49,7 @@ function navLink(item) {
       state.category = '';
     });
   }
-  a.append(svg(item.icon), el('span', '', item.label));
+  a.append(item.icon === 'app' ? appSymbol() : svg(item.icon), el('span', '', item.label));
   const n = item.count ? item.count() : 0;
   if (n) {
     a.append(el('span', 'nav-count', String(n)));

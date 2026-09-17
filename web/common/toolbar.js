@@ -1,3 +1,4 @@
+import {modeRow} from '/mode.js';
 // The pieces of the shared toolbar (web/common/toolbar.css) that need script:
 // filling the avatar and opening its menu, the "/" shortcut into search, and
 // the switch to the other apps. What the search actually searches is each
@@ -110,6 +111,11 @@ export function hoverClick(e) {
 export function initUserMenu() {
   const button = document.querySelector('#user');
   const menu = document.querySelector('#user-menu');
+  // Dark mode's row goes in every app's menu, above Sign Out.
+  if (!menu.querySelector('.user-menu-mode')) {
+    const signOut = menu.querySelector('form');
+    menu.insertBefore(modeRow(), signOut || null);
+  }
   const open = () => {
     closeAppSwitches();
     menu.hidden = false;
