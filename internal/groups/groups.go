@@ -48,7 +48,7 @@ var (
 	RuleColumns         = []string{"Group", "Kind", "Roles", "Search", "Classrooms", "Grades", "Tags", "Family", "Owner"}
 	AdditionColumns     = []string{"Group", "Email", "Name"}
 	UnsubscribedColumns = []string{"Group", "Email", "Timestamp"}
-	MessageColumns      = []string{"ID", "Group", "Received", "From", "Subject", "State", "Recipients", "Object", "Detail"}
+	MessageColumns      = []string{"ID", "Group", "Received", "From", "Subject", "State", "Recipients", "Object", "Detail", "Source"}
 	DeliveryColumns     = []string{"Timestamp", "Group", "Email", "Event", "Message", "Detail"}
 	AdminColumns        = []string{"Email"}
 	ChangeLogColumns    = []string{"Timestamp", "Actor", "Action", "Group", "Detail"}

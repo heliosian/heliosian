@@ -1094,20 +1094,22 @@ func newMailer(from string) mail.Sender {
 }
 
 // loopMail is Helios Loop's mail as the environment describes it: with a
-// Resend key, the relay its forwards go out through and the inbox its
-// posts are fetched from; with the webhook secret (LOOP_WEBHOOK_SECRET, or
-// creds/loop-webhook.secret locally), the route the posts arrive by; the
-// session key signing its unsubscribe links; and the mail bucket keeping
-// every post. Without the secret the route says it is not set up.
+// Mailgun key (MAILGUN_KEY, or creds/mailgun.key locally), the API its
+// forwards go out through and its posts are fetched back from; with the
+// webhook signing key (MAILGUN_WEBHOOK_KEY, or creds/mailgun-webhook.key),
+// the routes the posts and the delivery events arrive by; the session key
+// signing its unsubscribe links; and the mail bucket keeping every post.
+// Without all of those the routes say they are not set up.
 func loopMail(sessionKey string) groups.Mail {
 	archive, err := blob.NewArchive(blob.MailBucket)
 	if err != nil {
 		logging.Fatal("mail archive", "error", err)
 	}
-	m := groups.Mail{Secret: optionalKey("LOOP_WEBHOOK_SECRET", "creds/loop-webhook.secret"), Key: []byte(sessionKey), Base: "https://loop.heliosian.com", Archive: archive}
-	if key := optionalKey("RESEND_KEY", "creds/resend.key"); key != "" {
-		m.Sender = mail.ResendRelay(key)
-		m.Inbox = mail.NewInbox(key)
+	m := groups.Mail{SigningKey: optionalKey("MAILGUN_WEBHOOK_KEY", "creds/mailgun-webhook.key"), Key: []byte(sessionKey), Base: "https://loop.heliosian.com", Archive: archive}
+	if key := optionalKey("MAILGUN_KEY", "creds/mailgun.key"); key != "" {
+		mailgun := mail.NewMailgun(key, groups.Domain)
+		m.Sender = mailgun
+		m.Store = mailgun
 	}
 	return m
 }

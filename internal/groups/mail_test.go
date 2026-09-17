@@ -2,6 +2,7 @@ package groups
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -52,13 +53,18 @@ func (d sampleDirectory) Person(email string) (Person, bool) {
 func (d sampleDirectory) People() []Person          { return nil }
 func (d sampleDirectory) Alerts(string) (int, bool) { return 0, false }
 
-type fakeInbox struct {
-	raw []byte
-	err error
+type fakeStore struct {
+	raw  []byte
+	err  error
+	mu   sync.Mutex
+	urls []string
 }
 
-func (f *fakeInbox) Received(_ context.Context, id string) (mail.Received, error) {
-	return mail.Received{ID: id, From: "alice@gmail.com", Subject: "Re: Saturday's game", Raw: f.raw}, f.err
+func (f *fakeStore) Stored(_ context.Context, url string) ([]byte, error) {
+	f.mu.Lock()
+	f.urls = append(f.urls, url)
+	f.mu.Unlock()
+	return f.raw, f.err
 }
 
 type sent struct {
@@ -106,7 +112,7 @@ func (f *fakeArchive) count() int {
 	return len(f.objects)
 }
 
-const secret = "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw"
+const signingKey = "mailgun-signing-key"
 
 type harness struct {
 	t         *testing.T
@@ -119,9 +125,8 @@ type harness struct {
 	mailbox   Mail
 }
 
-func newHarness(t *testing.T, inbox Inbox) *harness {
+func newHarness(t *testing.T, store Fetcher) *harness {
 	t.Helper()
-	sendInterval = 0
 	dir := &data.Dir{Root: "../../sampledata"}
 	whoTables, err := who.ReadTables(dir)
 	if err != nil {
@@ -137,7 +142,7 @@ func newHarness(t *testing.T, inbox Inbox) *harness {
 		t.Fatal(err)
 	}
 	h := &harness{t: t, mux: http.NewServeMux(), dir: dir, cache: cache, directory: sampleDirectory{model, whoTables}, sender: &fakeSender{}, archive: &fakeArchive{objects: map[string][]byte{}}}
-	h.mailbox = Mail{Sender: h.sender, Inbox: inbox, Secret: secret, Key: []byte("key"), Base: "https://loop.test", Archive: h.archive}
+	h.mailbox = Mail{Sender: h.sender, Store: store, SigningKey: signingKey, Key: []byte("key"), Base: "https://loop.test", Archive: h.archive}
 	Register(h.mux, cache, dir, queue, nil, h.directory, func() []string { return nil }, h.mailbox)
 	return h
 }
@@ -152,8 +157,39 @@ func (h *harness) post(path, body string, header http.Header) *httptest.Response
 	return rec
 }
 
-func (h *harness) webhook(body string) *httptest.ResponseRecorder {
-	return h.post("/api/loop/mail", body, mail.SignWebhook(secret, "msg_1", time.Now(), []byte(body)))
+var formHeader = http.Header{"Content-Type": {"application/x-www-form-urlencoded"}}
+
+var jsonHeader = http.Header{"Content-Type": {"application/json"}}
+
+func signed(fields map[string]string) map[string]string {
+	stamp, sig := mail.SignMailgun(signingKey, "token-"+fields["message-url"]+fields["recipient"], time.Now())
+	fields["timestamp"] = stamp
+	fields["token"] = "token-" + fields["message-url"] + fields["recipient"]
+	fields["signature"] = sig
+	return fields
+}
+
+func notify(id, recipient string) map[string]string {
+	return signed(map[string]string{
+		"recipient":   recipient,
+		"sender":      "alice@gmail.com",
+		"from":        "Alice Smith <alice@gmail.com>",
+		"subject":     "Re: Saturday's game",
+		"message-url": "https://sw.api.mailgun.net/v3/domains/loop.heliosian.com/messages/" + id,
+	})
+}
+
+func (h *harness) inbound(fields map[string]string) *httptest.ResponseRecorder {
+	body, _ := json.Marshal(fields)
+	return h.post("/api/loop/mail", string(body), jsonHeader)
+}
+
+func (h *harness) inboundForm(fields map[string]string) *httptest.ResponseRecorder {
+	form := url.Values{}
+	for k, v := range fields {
+		form.Set(k, v)
+	}
+	return h.post("/api/loop/mail", form.Encode(), formHeader)
 }
 
 func (h *harness) rows(tab string) []map[string]string {
@@ -176,29 +212,35 @@ func (h *harness) waitFor(what string, ok func() bool) {
 	h.t.Fatalf("waited in vain for %s", what)
 }
 
-func (h *harness) messageState(id, group string) string {
+func (h *harness) messageRow(id, group string) map[string]string {
 	for _, row := range h.rows(messagesTab) {
 		if row["ID"] == id && row["Group"] == group {
-			return row["State"]
+			return row
 		}
 	}
-	return ""
+	return nil
+}
+
+func (h *harness) messageState(id, group string) string {
+	return h.messageRow(id, group)["State"]
 }
 
 func (h *harness) members(name string) []string {
 	return Members(*h.cache.Model().Group(name), SourcesOf(h.directory))
 }
 
-const receivedEvent = `{"type":"email.received","created_at":"2026-09-16T10:00:00Z","data":{"email_id":"%s","from":"alice@gmail.com","to":["Soccer Team Families <soccer-team@loop.heliosian.com>"],"subject":"Re: Saturday's game","message_id":"<abc@gmail.com>"}}`
-
-var unsubscribeLink = regexp.MustCompile(`List-Unsubscribe: <https://loop.test/unsubscribe/([^>]+)>`)
+var unsubscribeLink = regexp.MustCompile(`List-Unsubscribe: <mailto:unsubscribe@loop\.heliosian\.com\?subject=([^>]+)>, <https://loop\.test/unsubscribe/([^>]+)>`)
 
 func TestAPostIsForwardedToEveryMemberOnce(t *testing.T) {
-	h := newHarness(t, &fakeInbox{raw: []byte(post)})
-	if rec := h.webhook(fmt.Sprintf(receivedEvent, "m1")); rec.Code != http.StatusNoContent {
-		t.Fatalf("webhook answered %d: %s", rec.Code, rec.Body)
+	store := &fakeStore{raw: []byte(post)}
+	h := newHarness(t, store)
+	if rec := h.inbound(notify("m1", "soccer-team@loop.heliosian.com")); rec.Code != http.StatusOK {
+		t.Fatalf("inbound answered %d: %s", rec.Code, rec.Body)
 	}
 	h.waitFor("the forward", func() bool { return h.messageState("m1", "soccer-team") == stateSent })
+	if len(store.urls) != 1 || store.urls[0] != "https://sw.api.mailgun.net/v3/domains/loop.heliosian.com/messages/m1" {
+		t.Fatalf("fetched %v", store.urls)
+	}
 	sends := h.sender.all()
 	want := h.members("soccer-team")
 	if len(want) < 3 || len(sends) != len(want) {
@@ -215,11 +257,14 @@ func TestAPostIsForwardedToEveryMemberOnce(t *testing.T) {
 		if m == nil {
 			t.Fatalf("no unsubscribe link in:\n%s", out)
 		}
-		name, email, ok := parseToken(h.mailbox.Key, m[1])
+		if m[1] != m[2] {
+			t.Fatalf("the mailto and https tokens differ: %s %s", m[1], m[2])
+		}
+		name, email, ok := parseToken(h.mailbox.Key, m[2])
 		if !ok || name != "soccer-team" || email != s.to[0] {
 			t.Fatalf("token for %s reads %q %q %v", s.to[0], name, email, ok)
 		}
-		if !strings.Contains(out, "List-Unsubscribe-Post: List-Unsubscribe=One-Click\r\n") || !strings.Contains(out, "Subject: Re: [Soccer Team Families] Saturday's game\r\n") || !strings.HasSuffix(out, "\r\n\r\nSee you at 9.\r\n") {
+		if !strings.Contains(out, "List-Unsubscribe-Post: List-Unsubscribe=One-Click\r\n") || !strings.Contains(out, "Subject: Re: [Soccer Team Families] Saturday's game\r\n") || !strings.Contains(out, "To: soccer-team@loop.heliosian.com\r\n") || !strings.HasSuffix(out, "\r\n\r\nSee you at 9.\r\n") {
 			t.Fatalf("headers:\n%s", out)
 		}
 	}
@@ -236,30 +281,33 @@ func TestAPostIsForwardedToEveryMemberOnce(t *testing.T) {
 			t.Fatalf("archived %s: %q", name, content)
 		}
 	}
-	var row map[string]string
-	for _, r := range h.rows(messagesTab) {
-		if r["ID"] == "m1" {
-			row = r
-		}
-	}
-	if row["Recipients"] != fmt.Sprint(len(want)) || row["From"] != "alice@gmail.com" || row["Subject"] != "Re: Saturday's game" || row["Object"] == "" || row["Detail"] != "" || row["Received"] == "" {
+	row := h.messageRow("m1", "soccer-team")
+	if row["Recipients"] != fmt.Sprint(len(want)) || row["From"] != "Alice Smith <alice@gmail.com>" || row["Subject"] != "Re: Saturday's game" || row["Object"] == "" || row["Detail"] != "" || row["Received"] == "" || row["Source"] != store.urls[0] {
 		t.Fatalf("row %+v", row)
 	}
-	if rec := h.webhook(fmt.Sprintf(receivedEvent, "m1")); rec.Code != http.StatusNoContent {
+	if rec := h.inbound(notify("m1", "soccer-team@loop.heliosian.com")); rec.Code != http.StatusOK {
 		t.Fatalf("replay answered %d", rec.Code)
 	}
 	time.Sleep(100 * time.Millisecond)
 	if len(h.sender.all()) != len(want) {
-		t.Fatal("a replayed webhook sent the post again")
+		t.Fatal("a replayed notification sent the post again")
 	}
 }
 
+func TestAFormNotificationIsTakenToo(t *testing.T) {
+	h := newHarness(t, &fakeStore{raw: []byte(post)})
+	if rec := h.inboundForm(notify("m7", "Soccer-Team@loop.heliosian.com")); rec.Code != http.StatusOK {
+		t.Fatalf("inbound answered %d: %s", rec.Code, rec.Body)
+	}
+	h.waitFor("the forward", func() bool { return h.messageState("m7", "soccer-team") == stateSent })
+}
+
 func TestOneClickUnsubscribeTakesThemOffTheGroup(t *testing.T) {
-	h := newHarness(t, &fakeInbox{raw: []byte(post)})
-	h.webhook(fmt.Sprintf(receivedEvent, "m2"))
+	h := newHarness(t, &fakeStore{raw: []byte(post)})
+	h.inbound(notify("m2", "soccer-team@loop.heliosian.com"))
 	h.waitFor("the forward", func() bool { return h.messageState("m2", "soccer-team") == stateSent })
 	first := h.sender.all()[0]
-	tok := unsubscribeLink.FindStringSubmatch(string(first.raw))[1]
+	tok := unsubscribeLink.FindStringSubmatch(string(first.raw))[2]
 	req := httptest.NewRequest(http.MethodGet, "/unsubscribe/"+tok, nil)
 	rec := httptest.NewRecorder()
 	h.mux.ServeHTTP(rec, req)
@@ -267,7 +315,6 @@ func TestOneClickUnsubscribeTakesThemOffTheGroup(t *testing.T) {
 		t.Fatalf("page %d: %s", rec.Code, rec.Body)
 	}
 	form := url.Values{"List-Unsubscribe": {"One-Click"}}.Encode()
-	formHeader := http.Header{"Content-Type": {"application/x-www-form-urlencoded"}}
 	rec = h.post("/unsubscribe/"+tok, form, formHeader)
 	if rec.Code != http.StatusOK || rec.Body.Len() != 0 {
 		t.Fatalf("one-click answered %d: %s", rec.Code, rec.Body)
@@ -306,9 +353,34 @@ func TestOneClickUnsubscribeTakesThemOffTheGroup(t *testing.T) {
 	}
 }
 
+func TestUnsubscribeByMailTakesThemOffTheGroup(t *testing.T) {
+	h := newHarness(t, &fakeStore{raw: []byte(post)})
+	h.inbound(notify("m8", "soccer-team@loop.heliosian.com"))
+	h.waitFor("the forward", func() bool { return h.messageState("m8", "soccer-team") == stateSent })
+	first := h.sender.all()[0]
+	tok := unsubscribeLink.FindStringSubmatch(string(first.raw))[1]
+	fields := signed(map[string]string{
+		"recipient":   "unsubscribe@loop.heliosian.com",
+		"sender":      first.to[0],
+		"from":        "Someone <" + first.to[0] + ">",
+		"subject":     "Re: " + tok,
+		"message-url": "https://sw.api.mailgun.net/v3/domains/loop.heliosian.com/messages/u1",
+	})
+	if rec := h.inbound(fields); rec.Code != http.StatusOK {
+		t.Fatalf("inbound answered %d: %s", rec.Code, rec.Body)
+	}
+	if !h.cache.Model().Group("soccer-team").HasUnsubscribed(first.to[0]) {
+		t.Fatal("the mail did not unsubscribe them")
+	}
+	time.Sleep(100 * time.Millisecond)
+	if h.messageRow("u1", "soccer-team") != nil || h.messageRow("u1", "unsubscribe") != nil {
+		t.Fatal("the unsubscribe mail was taken as a post")
+	}
+}
+
 func TestALoopedPostIsDropped(t *testing.T) {
-	h := newHarness(t, &fakeInbox{raw: []byte("From: a@x.org\r\nTo: soccer-team@loop.heliosian.com\r\nX-Helios-Loop: pta\r\n\r\nhi\r\n")})
-	h.webhook(fmt.Sprintf(receivedEvent, "m3"))
+	h := newHarness(t, &fakeStore{raw: []byte("From: a@x.org\r\nTo: soccer-team@loop.heliosian.com\r\nX-Helios-Loop: pta\r\n\r\nhi\r\n")})
+	h.inbound(notify("m3", "soccer-team@loop.heliosian.com"))
 	h.waitFor("the drop", func() bool { return h.messageState("m3", "soccer-team") == stateDropped })
 	if len(h.sender.all()) != 0 || h.archive.count() != 0 {
 		t.Fatal("a looped post went out")
@@ -316,12 +388,12 @@ func TestALoopedPostIsDropped(t *testing.T) {
 }
 
 func TestAFetchFailureIsRecordedAndRetriedOnReplay(t *testing.T) {
-	inbox := &fakeInbox{raw: []byte(post), err: fmt.Errorf("resend is down")}
-	h := newHarness(t, inbox)
-	h.webhook(fmt.Sprintf(receivedEvent, "m4"))
+	store := &fakeStore{raw: []byte(post), err: fmt.Errorf("mailgun is down")}
+	h := newHarness(t, store)
+	h.inbound(notify("m4", "soccer-team@loop.heliosian.com"))
 	h.waitFor("the failure", func() bool { return h.messageState("m4", "soccer-team") == stateFailed })
-	inbox.err = nil
-	h.webhook(fmt.Sprintf(receivedEvent, "m4"))
+	store.err = nil
+	h.inbound(notify("m4", "soccer-team@loop.heliosian.com"))
 	h.waitFor("the retry", func() bool { return h.messageState("m4", "soccer-team") == stateSent })
 	if len(h.sender.all()) == 0 {
 		t.Fatal("the retry sent nothing")
@@ -329,10 +401,9 @@ func TestAFetchFailureIsRecordedAndRetriedOnReplay(t *testing.T) {
 }
 
 func TestMailForNoGroupIsIgnored(t *testing.T) {
-	h := newHarness(t, &fakeInbox{raw: []byte(post)})
-	body := strings.Replace(fmt.Sprintf(receivedEvent, "m5"), "soccer-team@", "nobody@", 1)
-	if rec := h.webhook(body); rec.Code != http.StatusNoContent {
-		t.Fatalf("webhook answered %d", rec.Code)
+	h := newHarness(t, &fakeStore{raw: []byte(post)})
+	if rec := h.inbound(notify("m5", "nobody@loop.heliosian.com")); rec.Code != http.StatusOK {
+		t.Fatalf("inbound answered %d", rec.Code)
 	}
 	time.Sleep(100 * time.Millisecond)
 	if len(h.sender.all()) != 0 || len(h.rows(messagesTab)) != 0 {
@@ -340,39 +411,72 @@ func TestMailForNoGroupIsIgnored(t *testing.T) {
 	}
 }
 
+func event(kind, severity, from, recipient, detail string) string {
+	stamp, sig := mail.SignMailgun(signingKey, "token-"+kind+recipient, time.Now())
+	body, _ := json.Marshal(map[string]any{
+		"signature": map[string]string{"timestamp": stamp, "token": "token-" + kind + recipient, "signature": sig},
+		"event-data": map[string]any{
+			"event": kind, "severity": severity, "recipient": recipient, "reason": "bounce",
+			"message":         map[string]any{"headers": map[string]string{"message-id": "abc@gmail.com", "from": from}},
+			"delivery-status": map[string]any{"message": "", "description": detail, "code": 550},
+		},
+	})
+	return string(body)
+}
+
 func TestBouncesAreRecordedAgainstTheGroup(t *testing.T) {
-	h := newHarness(t, &fakeInbox{raw: []byte(post)})
+	h := newHarness(t, &fakeStore{raw: []byte(post)})
 	before := len(h.rows(deliveriesTab))
-	body := `{"type":"email.bounced","created_at":"2026-09-16T10:00:00Z","data":{"email_id":"s1","from":"Alice via Soccer Team Families <soccer-team@loop.heliosian.com>","to":["Gone@example.org"],"subject":"x","bounce":{"message":"550 no such user","type":"Permanent"}}}`
-	if rec := h.webhook(body); rec.Code != http.StatusNoContent {
-		t.Fatalf("webhook answered %d", rec.Code)
+	from := "Alice via Soccer Team Families <soccer-team@loop.heliosian.com>"
+	if rec := h.post("/api/loop/events", event("failed", "permanent", from, "Gone@example.org", "550 no such user"), jsonHeader); rec.Code != http.StatusOK {
+		t.Fatalf("events answered %d: %s", rec.Code, rec.Body)
 	}
 	h.waitFor("the delivery row", func() bool {
 		for _, row := range h.rows(deliveriesTab) {
-			if row["Group"] == "soccer-team" && row["Email"] == "gone@example.org" && row["Event"] == "bounced" && row["Message"] == "s1" && row["Detail"] == "550 no such user" {
+			if row["Group"] == "soccer-team" && row["Email"] == "gone@example.org" && row["Event"] == "bounced" && row["Message"] == "abc@gmail.com" && row["Detail"] == "550 no such user" {
 				return true
 			}
 		}
 		return false
 	})
-	other := strings.Replace(body, "soccer-team@loop.heliosian.com", "team@heliosian.com", 1)
-	h.webhook(other)
+	h.post("/api/loop/events", event("failed", "temporary", from, "slow@example.org", "greylisted"), jsonHeader)
+	h.post("/api/loop/events", event("complained", "", from, "cross@example.org", ""), jsonHeader)
+	h.post("/api/loop/events", event("delivered", "", from, "fine@example.org", ""), jsonHeader)
+	h.post("/api/loop/events", event("failed", "permanent", "HCA-Team <team@heliosian.com>", "other@example.org", "550"), jsonHeader)
+	h.waitFor("the other rows", func() bool { return len(h.rows(deliveriesTab)) == before+3 })
+	kinds := map[string]string{}
+	for _, row := range h.rows(deliveriesTab)[before:] {
+		kinds[row["Email"]] = row["Event"]
+	}
+	if kinds["slow@example.org"] != "delivery_delayed" || kinds["cross@example.org"] != "complained" {
+		t.Fatalf("kinds %v", kinds)
+	}
 	time.Sleep(100 * time.Millisecond)
-	if len(h.rows(deliveriesTab)) != before+1 {
-		t.Fatalf("another app's bounce was recorded: %+v", h.rows(deliveriesTab))
+	if len(h.rows(deliveriesTab)) != before+3 {
+		t.Fatalf("a delivery or another app's bounce was recorded: %+v", h.rows(deliveriesTab))
 	}
 }
 
-func TestWebhookRefusesTheUnsignedAndTheUnconfigured(t *testing.T) {
-	h := newHarness(t, &fakeInbox{raw: []byte(post)})
-	body := fmt.Sprintf(receivedEvent, "m6")
-	if rec := h.post("/api/loop/mail", body, http.Header{}); rec.Code != http.StatusUnauthorized {
-		t.Fatalf("unsigned call answered %d", rec.Code)
+func TestRoutesRefuseTheUnsignedAndTheUnconfigured(t *testing.T) {
+	h := newHarness(t, &fakeStore{raw: []byte(post)})
+	fields := notify("m6", "soccer-team@loop.heliosian.com")
+	fields["signature"] = "0000"
+	if rec := h.inbound(fields); rec.Code != http.StatusNotAcceptable {
+		t.Fatalf("a badly signed notification answered %d", rec.Code)
+	}
+	body := event("failed", "permanent", "x <soccer-team@loop.heliosian.com>", "a@example.org", "x")
+	if rec := h.post("/api/loop/events", strings.Replace(body, `"signature":"`, `"signature":"ff`, 1), jsonHeader); rec.Code != http.StatusNotAcceptable {
+		t.Fatalf("a badly signed event answered %d", rec.Code)
 	}
 	bare := app{cache: h.cache, mail: Mail{}}
 	rec := httptest.NewRecorder()
-	bare.webhook(rec, httptest.NewRequest(http.MethodPost, "/api/loop/mail", strings.NewReader(body)))
+	bare.inbound(rec, httptest.NewRequest(http.MethodPost, "/api/loop/mail", strings.NewReader("{}")))
 	if rec.Code != http.StatusNotFound {
-		t.Fatalf("unconfigured route answered %d", rec.Code)
+		t.Fatalf("the unconfigured inbound route answered %d", rec.Code)
+	}
+	rec = httptest.NewRecorder()
+	bare.events(rec, httptest.NewRequest(http.MethodPost, "/api/loop/events", strings.NewReader("{}")))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("the unconfigured events route answered %d", rec.Code)
 	}
 }

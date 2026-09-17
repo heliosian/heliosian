@@ -70,11 +70,11 @@ func (a *Auth) Fixed(email string, next http.Handler) http.Handler {
 // app's share cards - the images a chat app fetches to preview a link, which
 // no crawler could sign in for - the calendar's personal feeds, which a
 // calendar app fetches by their secret address, the calendar's reply
-// webhook and Loop's mail webhook, which the mail provider calls and signs,
-// and Loop's unsubscribe links, which a mail app follows by their signed
-// token.
+// webhook and Loop's mail and delivery-event routes, which the mail
+// providers call and sign, and Loop's unsubscribe links, which a mail app
+// follows by their signed token.
 func Public(path string) bool {
-	return path == "/auth/login" || path == "/auth/client" || path == "/api/calendar/replies" || path == "/api/loop/mail" ||
+	return path == "/auth/login" || path == "/auth/client" || path == "/api/calendar/replies" || path == "/api/loop/mail" || path == "/api/loop/events" ||
 		strings.HasPrefix(path, "/share/") || strings.HasPrefix(path, "/feed/") || strings.HasPrefix(path, "/unsubscribe/")
 }
 

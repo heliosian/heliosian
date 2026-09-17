@@ -47,7 +47,8 @@ const (
 		"PIXABAY_KEY=heliosian-pixabay-key:latest," +
 		"RESEND_KEY=heliosian-resend-key:latest," +
 		"RESEND_WEBHOOK_SECRET=heliosian-resend-webhook-secret:latest," +
-		"LOOP_WEBHOOK_SECRET=heliosian-loop-webhook-secret:latest," +
+		"MAILGUN_KEY=heliosian-mailgun-key:latest," +
+		"MAILGUN_WEBHOOK_KEY=heliosian-mailgun-webhook-key:latest," +
 		"GITHUB_TOKEN=heliosian-github-token:latest," +
 		"ANTHROPIC_API_KEY=heliosian-anthropic-key:latest"
 )

@@ -102,8 +102,8 @@ func sampleServer() (*http.Server, *who.Queue) {
 		BirthdayFrom:  "Helios Staff Birthdays <birthday@example.org>",
 		BirthdayBase:  "https://birthday.local.heliosian.com:" + app.Port(),
 		Feedback:      printedFeedback{},
-		// Loop's forwards land as .eml files beside the other sample mail and
-		// its archive under loop/ there; nothing receives for it.
+		// Loop's forwards would land as .eml files beside the other sample
+		// mail and its archive under loop/ there; nothing receives for it.
 		Loop: groups.Mail{Sender: &mail.Files{Dir: mailDir(), From: "Helios Loop"}, Key: []byte("sample"), Base: "https://loop.local.heliosian.com:" + app.Port(), Archive: groups.DirArchive{Dir: mailDir()}},
 	})
 	// No Google sign-in here, but Spoof Mode still: a sign-in with a key of

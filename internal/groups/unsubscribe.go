@@ -1,6 +1,7 @@
 package groups
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
@@ -105,6 +106,35 @@ func (a app) unsubscribePage(w http.ResponseWriter, r *http.Request) {
 	writePage(w, g.Title, "Unsubscribe", body)
 }
 
+func (a app) unsubscribeAddress(ctx context.Context, g *Group, email, how string) error {
+	if g.HasUnsubscribed(email) {
+		return nil
+	}
+	when := time.Now().Format(time.RFC3339)
+	next := *g
+	next.Unsubscribed = append(slices.Clone(g.Unsubscribed), Unsubscribed{Email: email, When: when})
+	tables := a.cache.Tables().withGroup(next)
+	model, err := BuildModel(tables)
+	if err != nil {
+		return err
+	}
+	applied := make(chan struct{})
+	a.queue.Add(func() {
+		a.cache.set(tables, model)
+		close(applied)
+		if err := a.writer.Append(appName, unsubscribedTab, []string{g.Name, email, when}); err != nil {
+			slog.ErrorContext(ctx, "groups: unsubscribe write", "error", err)
+			return
+		}
+		if err := a.logChange(email, "unsubscribe", g.Name, email+" by "+how); err != nil {
+			slog.ErrorContext(ctx, "groups: unsubscribe log", "error", err)
+		}
+	})
+	<-applied
+	slog.InfoContext(ctx, "groups: unsubscribed", "group", g.Name, "email", email, "how", how)
+	return nil
+}
+
 func (a app) unsubscribe(w http.ResponseWriter, r *http.Request) {
 	g, email, ok := a.unsubscribeGroup(w, r)
 	if !ok {
@@ -115,23 +145,39 @@ func (a app) unsubscribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	oneClick := r.PostForm.Get("List-Unsubscribe") == "One-Click"
-	if !g.HasUnsubscribed(email) {
-		when := time.Now().Format(time.RFC3339)
-		next := *g
-		next.Unsubscribed = append(slices.Clone(g.Unsubscribed), Unsubscribed{Email: email, When: when})
-		if !a.commit(r, w, a.cache.Tables().withGroup(next), func() error {
-			if err := a.writer.Append(appName, unsubscribedTab, []string{g.Name, email, when}); err != nil {
-				return err
-			}
-			return a.logChange(email, "unsubscribe", g.Name, email)
-		}) {
-			return
-		}
-		slog.InfoContext(r.Context(), "groups: unsubscribed", "group", g.Name, "email", email, "oneClick", oneClick)
+	how := "the page"
+	if oneClick {
+		how = "one-click"
+	}
+	if err := a.unsubscribeAddress(r.Context(), g, email, how); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 	if oneClick {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
 	writePage(w, g.Title, "Unsubscribed", fmt.Sprintf(`<p>%s gets no more mail from %s.</p><p class="address">A manager of the group can put you back on it.</p>`, html.EscapeString(email), html.EscapeString(g.Title)))
+}
+
+func (a app) unsubscribeByMail(ctx context.Context, subject, sender string) {
+	tok := strings.TrimSpace(subject)
+	for _, prefix := range []string{"re:", "fwd:", "fw:"} {
+		if strings.HasPrefix(strings.ToLower(tok), prefix) {
+			tok = strings.TrimSpace(tok[len(prefix):])
+		}
+	}
+	name, email, ok := parseToken(a.mail.Key, tok)
+	if !ok {
+		slog.WarnContext(ctx, "groups: unsubscribe mail with no token", "sender", sender, "subject", subject)
+		return
+	}
+	g := a.cache.Model().Group(name)
+	if g == nil {
+		slog.WarnContext(ctx, "groups: unsubscribe mail for no group", "group", name, "email", email)
+		return
+	}
+	if err := a.unsubscribeAddress(ctx, g, email, "mail from "+strings.ToLower(addressOf(sender))); err != nil {
+		slog.ErrorContext(ctx, "groups: unsubscribe by mail", "group", name, "email", email, "error", err)
+	}
 }
