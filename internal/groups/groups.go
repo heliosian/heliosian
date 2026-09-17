@@ -637,6 +637,32 @@ func (t *Tables) withoutGroup(name string) *Tables {
 	return &out
 }
 
+func (t *Tables) withMessage(id, group string, cells map[string]string) *Tables {
+	out := *t
+	out.Messages = cloneRows(t.Messages)
+	for _, row := range out.Messages {
+		if row["ID"] != id || !strings.EqualFold(row["Group"], group) {
+			continue
+		}
+		for column, value := range cells {
+			row[column] = value
+		}
+		return &out
+	}
+	row := map[string]string{"ID": id, "Group": group}
+	for column, value := range cells {
+		row[column] = value
+	}
+	out.Messages = append(out.Messages, row)
+	return &out
+}
+
+func (t *Tables) withDelivery(row map[string]string) *Tables {
+	out := *t
+	out.Deliveries = append(cloneRows(t.Deliveries), row)
+	return &out
+}
+
 func (t *Tables) withAdmins(emails []string) *Tables {
 	out := *t
 	out.Admins = make([]map[string]string, 0, len(emails))

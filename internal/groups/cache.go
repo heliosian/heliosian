@@ -85,6 +85,13 @@ func (c *Cache) set(tables *Tables, model *Model) {
 	c.mu.Unlock()
 }
 
+func (c *Cache) edit(fn func(*Tables) *Tables) {
+	c.mu.Lock()
+	c.tables = fn(c.tables)
+	c.edits++
+	c.mu.Unlock()
+}
+
 func (c *Cache) Model() *Model {
 	c.mu.RLock()
 	defer c.mu.RUnlock()

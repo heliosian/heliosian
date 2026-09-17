@@ -143,6 +143,7 @@ func (m *mailer) write(fn func() error) {
 func (m *mailer) mark(j job, state string, cells map[string]string) {
 	cells["State"] = state
 	m.write(func() error {
+		m.cache.edit(func(t *Tables) *Tables { return t.withMessage(j.id, j.group, cells) })
 		return m.writer.Set(appName, messagesTab, map[string]string{"ID": j.id, "Group": j.group}, cells)
 	})
 }
@@ -183,6 +184,7 @@ func (m *mailer) received(id, source, from, subject string, addresses []string) 
 		slog.Info("groups: mail received", "message", id, "group", name, "from", from, "subject", subject)
 		m.queue.Add(func() {
 			cells := map[string]string{"Received": time.Now().Format(time.RFC3339), "From": from, "Subject": subject, "State": stateReceived, "Recipients": "", "Object": "", "Detail": "", "Source": source}
+			m.cache.edit(func(t *Tables) *Tables { return t.withMessage(id, name, cells) })
 			if err := m.writer.Set(appName, messagesTab, map[string]string{"ID": id, "Group": name}, cells); err != nil {
 				slog.Error("groups: mail record", "error", err)
 			}
@@ -201,6 +203,9 @@ func (m *mailer) trouble(event, from, messageID, detail string, addresses []stri
 		email := strings.ToLower(addressOf(address))
 		slog.Warn("groups: delivery trouble", "event", event, "group", names[0], "email", email, "detail", detail)
 		m.queue.Add(func() {
+			m.cache.edit(func(t *Tables) *Tables {
+				return t.withDelivery(map[string]string{"Timestamp": when, "Group": names[0], "Email": email, "Event": event, "Message": messageID, "Detail": detail})
+			})
 			if err := m.writer.Append(appName, deliveriesTab, []string{when, names[0], email, event, messageID, detail}); err != nil {
 				slog.Error("groups: delivery record", "error", err)
 			}

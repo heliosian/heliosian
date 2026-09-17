@@ -490,9 +490,6 @@ func TestHistoryListsSentMessagesWithTheirBounces(t *testing.T) {
 		}
 		return false
 	})
-	if err := h.cache.refresh(); err != nil {
-		t.Fatal(err)
-	}
 	rec := h.as("jordan.whitfield@heliosschool.org", http.MethodGet, "/api/groups/messages?name=soccer-team", "")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("messages answered %d: %s", rec.Code, rec.Body)
