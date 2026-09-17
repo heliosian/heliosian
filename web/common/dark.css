@@ -356,3 +356,48 @@ html[data-theme="dark"] {
 [data-theme="dark"] .ticket-band.avail-band-waitlist { background: #3a2c14; }
 
 [data-theme="dark"] .notice { background: #3b2a1c; color: #f5c7ad; }
+
+/* The tab strip - Who?'s Everyone and Families, Celebrate's parties - is
+   the page's own dark rather than a white bar across it. */
+[data-theme="dark"] .tab-strip { background: var(--page); border-bottom-color: var(--line); }
+
+[data-theme="dark"] .tab-strip-item { color: var(--muted); }
+
+[data-theme="dark"] .tab-strip-item.active { background: rgba(255, 255, 255, 0.08); color: var(--brand); }
+
+[data-theme="dark"] .tab-strip-count { background: var(--input); color: var(--ink); }
+
+[data-theme="dark"] .tab-strip-menu { background: var(--card); }
+
+[data-theme="dark"] .tab-strip-menu-item:hover { background: var(--input); }
+
+/* When's rail day card: a day type's blocks on a dark wash rather than
+   grey glass, their words light. */
+[data-theme="dark"] .day-card .plan-card:not(.dt-regular) .block,
+[data-theme="dark"] .day-peek .plan-card:not(.dt-regular) .block { background: rgba(0, 0, 0, 0.28); }
+
+[data-theme="dark"] .day-card .block-name,
+[data-theme="dark"] .day-peek .block-name { color: var(--ink); }
+
+[data-theme="dark"] .day-card .block-hours,
+[data-theme="dark"] .day-peek .block-hours { color: var(--brand); }
+
+[data-theme="dark"] .day-card .plan-rooms { color: rgba(230, 238, 238, 0.75); }
+
+/* Heliosian's rail day card: a day type's pill with dark words on its
+   colour. */
+[data-theme="dark"] .rail-day-kind { color: #0a3236; }
+
+/* Celebrate's host band: the amber wash keeps gold marks but its hints
+   and buttons read light. */
+[data-theme="dark"] .host-band { border-color: #5a4518; }
+
+[data-theme="dark"] .host-band-head { color: #e6c46a; }
+
+[data-theme="dark"] .host-switch { border-bottom-color: rgba(230, 196, 106, 0.18); }
+
+[data-theme="dark"] .host-switch-hint { color: #cdb87a; }
+
+[data-theme="dark"] .host-actions .button { background: rgba(255, 255, 255, 0.08); border-color: rgba(230, 196, 106, 0.4); color: var(--ink); }
+
+[data-theme="dark"] .host-actions .button:hover { background: rgba(255, 255, 255, 0.14); }
