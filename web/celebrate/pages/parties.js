@@ -1,15 +1,9 @@
 import {state, parties, matches, celebration, whenParts, currentCelebration, celebrationCalendarLink} from '../state.js';
 import {el, selectPill, tabs, svg} from '../dom.js';
-import {setTitle, setSearch, inTab} from '../chrome.js';
+import {setTitle, setSearch, inTab, listTabs} from '../chrome.js';
 import {partyCard} from '../cards.js';
 
 let query = '';
-
-const listTabs = [
-  {key: 'available', label: 'Available'},
-  {key: 'waitlist', label: 'Waitlist'},
-  {key: 'all', label: 'All Parties'},
-];
 
 function shown(code) {
   return parties(code).filter(p => inTab(p, state.tab) && matches(p, query) && (!state.category || p.category === state.category));
@@ -60,29 +54,13 @@ function grid(code) {
   if (!items.length) {
     const panel = el('div', 'panel');
     const words = {
-      available: 'No parties have tickets right now - check the waitlist, or see all parties.',
+      available: 'No parties have tickets right now - check the waitlist, or see all upcoming parties.',
       waitlist: 'No party is taking a waitlist right now.',
-      all: 'No parties yet.',
+      upcoming: 'No parties coming up yet.',
+      past: 'No party has happened yet.',
     };
     panel.append(el('div', 'panel-empty', query || state.category ? 'Nothing matches.' : words[state.tab]));
     wrap.append(panel);
-    return wrap;
-  }
-  if (state.tab === 'all') {
-    // Everything, in two groups: what is still to come, then what has been.
-    const upcoming = items.filter(p => p.availability !== 'past');
-    const past = items.filter(p => p.availability === 'past');
-    for (const [heading, list] of [['Upcoming', upcoming], ['Past Parties', past]]) {
-      if (!list.length) {
-        continue;
-      }
-      wrap.append(el('h3', 'group-name', heading));
-      const g = el('div', 'card-grid');
-      for (const p of list) {
-        g.append(partyCard(p));
-      }
-      wrap.append(g);
-    }
     return wrap;
   }
   const g = el('div', 'card-grid');

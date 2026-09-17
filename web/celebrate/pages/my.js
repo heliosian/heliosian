@@ -1,4 +1,4 @@
-import {state, household, isFamily} from '../state.js';
+import {state, me, household, isFamily} from '../state.js';
 import {el, avatar, link} from '../dom.js';
 import {setTitle, setSearch} from '../chrome.js';
 import {partyCard} from '../cards.js';
@@ -12,14 +12,20 @@ let query = '';
 // the rail's links under My Family's Parties.
 export function myPage(email) {
   const only = email ? household().find(p => p.email === email) : null;
-  setTitle(only ? `${only.name}'s Parties` : "My Family's Parties");
+  // The viewer's own page is "My Parties"; another member's is theirs by
+  // name; with no address it is the whole family's.
+  const self = only && only.email === me().email;
+  const title = self ? 'My Parties' : only ? `${only.name}'s Parties` : "My Family's Parties";
+  setTitle(title);
   const page = el('div');
   const head = el('div', 'page-head');
   const main = el('div', 'page-head-main');
-  main.append(el('h1', 'page-title', only ? `${only.name}'s Parties` : "My Family's Parties"));
-  main.append(el('p', 'page-intro', only
-    ? `The parties ${only.name} holds a ticket to or waits for.`
-    : "The parties your family holds tickets to. Don't see one? Make sure you're signed in with the address the directory has for you."));
+  main.append(el('h1', 'page-title', title));
+  main.append(el('p', 'page-intro', self
+    ? 'The parties you hold a ticket to or wait for.'
+    : only
+      ? `The parties ${only.name} holds a ticket to or waits for.`
+      : "The parties your family holds tickets to. Don't see one? Make sure you're signed in with the address the directory has for you."));
   head.append(main);
   page.append(head);
   const body = el('div');

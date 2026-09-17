@@ -1,4 +1,4 @@
-import {state, me, isAdmin, isSystemAdmin, setSuperEdit, pendingParties, hostedParties, parties, household, familyMember, myPath, canHost} from './state.js';
+import {state, me, isAdmin, isSystemAdmin, setSuperEdit, pendingParties, hostedParties, parties, household, familyMember, myPath, myTickets, canHost} from './state.js';
 import {el, svg, link, button} from './dom.js';
 import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, initSpoof, markSuper} from '/toolbar.js';
 import {openParty} from './edit.js';
@@ -68,13 +68,16 @@ function hostButton() {
   return button('Host a Party', 'plus', 'button nav-action', () => openParty(null));
 }
 
-// The three tabs of the parties list sit under Parties in the rail, each
+// The four tabs of the parties list sit under Parties in the rail, each
 // with how many parties it holds for the chosen celebration - the same
 // numbers the tab bar shows, from the same filter (pages/parties.js).
-const listTabs = [
+// Available and Waitlist are what sells now; All Upcoming is everything
+// still to come, sold out and closed included; Past Parties what has been.
+export const listTabs = [
   {key: 'available', label: 'Available'},
   {key: 'waitlist', label: 'Waitlist'},
-  {key: 'all', label: 'All Parties'},
+  {key: 'upcoming', label: 'All Upcoming'},
+  {key: 'past', label: 'Past Parties'},
 ];
 
 export function inTab(p, tab) {
@@ -83,8 +86,10 @@ export function inTab(p, tab) {
       return p.availability === 'available' && p.status === 'Open';
     case 'waitlist':
       return p.availability === 'waitlist' && p.status === 'Open';
+    case 'past':
+      return p.availability === 'past';
   }
-  return true;
+  return p.availability !== 'past';
 }
 
 function tabLinks() {
@@ -106,9 +111,11 @@ function tabLinks() {
   return wrap;
 }
 
-// familyLinks sit under My Family's Parties: the viewer, then their partner
-// and children, each with how many parties they hold a ticket to or wait
-// for. Nobody with no household gets a list of one.
+// familyLinks sit under My Family's Parties: the whole family first - every
+// party anyone in the household is on, guests they brought included - then
+// the viewer, then their partner and children, each with how many parties
+// they hold a ticket to or wait for. Nobody with no household gets a list
+// of one.
 function familyLinks() {
   const people = household();
   if (people.length < 2) {
@@ -117,12 +124,15 @@ function familyLinks() {
   const wrap = el('div', 'nav-sub');
   const current = location.pathname.split('/').filter(Boolean).map(decodeURIComponent);
   const shown = current[0] === 'my' && current[1] ? familyMember(current[1]) : null;
+  const entry = (href, name, n, on) => {
+    const a = link(href, 'nav-sub-item nav-family-item' + (on ? ' is-on' : ''));
+    a.append(el('span', 'nav-sub-name', name), el('span', 'nav-sub-count', String(n)));
+    wrap.append(a);
+  };
+  entry('/my', 'My Family', state.model.parties.filter(p => myTickets(p).length).length, current[0] === 'my' && !current[1]);
   people.forEach((person, i) => {
     const n = state.model.parties.filter(p => [...p.attendees, ...p.waitlisted].some(a => a.email === person.email)).length;
-    const on = current[0] === 'my' && (i === 0 ? !current[1] : shown && shown.email === person.email);
-    const a = link(i === 0 ? '/my' : myPath(person), 'nav-sub-item nav-family-item' + (on ? ' is-on' : ''));
-    a.append(el('span', 'nav-sub-name', i === 0 ? 'Me' : person.name), el('span', 'nav-sub-count', String(n)));
-    wrap.append(a);
+    entry(myPath(person), i === 0 ? 'Me' : person.name, n, Boolean(shown && shown.email === person.email));
   });
   return wrap;
 }
