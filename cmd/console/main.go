@@ -27,6 +27,7 @@ func main() {
 	scroll := flag.String("scroll", "", "scroll the page before the screenshot: bottom, or a number of pixels")
 	height := flag.Int("height", 800, "viewport height")
 	typed := flag.String("type", "", "text to type into whatever has focus once the clicks are done, for a search box a click opened")
+	keys := flag.String("keys", "", "text to type at the page itself, with nothing focused, for a shortcut the page listens for")
 	after := flag.String("after", "", "css selector(s) to click after typing, | separated, for the result the typing brought up")
 	flag.Parse()
 	ctx, cancel := chromedp.NewExecAllocator(context.Background(), append(chromedp.DefaultExecAllocatorOptions[:], chromedp.Flag("ignore-certificate-errors", true))...)
@@ -84,6 +85,9 @@ func main() {
 	}
 	if *typed != "" {
 		actions = append(actions, chromedp.SendKeys(":focus", *typed, chromedp.ByQuery), chromedp.Sleep(500*time.Millisecond))
+	}
+	if *keys != "" {
+		actions = append(actions, chromedp.KeyEvent(*keys), chromedp.Sleep(500*time.Millisecond))
 	}
 	if *after != "" {
 		for _, sel := range strings.Split(*after, "|") {

@@ -79,6 +79,10 @@ body {
 
 [data-theme="dark"] .sidebar { background-image: url('/brand/sidebar-camp-dark.png'), linear-gradient(180deg, var(--sidebar-top), var(--sidebar)); }
 
+/* Quan mode (quan.css) keeps the campsite, over the pink; html[] outranks
+   the shared rule, which names the symbol the other rails wear. */
+html[data-theme="quan"] .sidebar { background-image: url('/brand/sidebar-camp.png'), linear-gradient(180deg, var(--sidebar-top), var(--sidebar)); }
+
 /* The lockup, the sections and the month scroll on their own when they
    are taller than a short window, with room at the end to clear the
    campsite. */

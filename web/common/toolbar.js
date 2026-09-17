@@ -1,4 +1,4 @@
-import {modeRow} from '/mode.js';
+import {modeRow, offerQuan} from '/mode.js';
 // The pieces of the shared toolbar (web/common/toolbar.css) that need script:
 // filling the avatar and opening its menu, the "/" shortcut into search, and
 // the switch to the other apps. What the search actually searches is each
@@ -537,6 +537,9 @@ export function initSpoof() {
     return;
   }
   fetch('/auth/spoof').then(res => res.ok ? res.json() : null).then(state => {
+    if (state && state.quan) {
+      offerQuan();
+    }
     if (state && state.canSpoof) {
       buildSpoof(user, state);
     }

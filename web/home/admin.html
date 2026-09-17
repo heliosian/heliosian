@@ -2,13 +2,14 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<script>try{var q=location.search.match(/[?&]mode=(light|dark|system)/);if(q){var h=location.hostname.split('.');document.cookie='heliosian-mode='+q[1]+'; path=/; max-age=31536000; SameSite=Lax'+(h.length>1?'; domain=.'+h.slice(-2).join('.'):'')}var m=document.cookie.match(/(?:^|; )heliosian-mode=(light|dark|system)/);var d=m&&m[1]==='dark'||(!(m&&m[1]==='light')&&matchMedia('(prefers-color-scheme: dark)').matches);if(d)document.documentElement.dataset.theme='dark'}catch(e){}</script>
+<script>try{var q=location.search.match(/[?&]mode=(light|dark|system|quan)/);if(q){var h=location.hostname.split('.');document.cookie='heliosian-mode='+q[1]+'; path=/; max-age=31536000; SameSite=Lax'+(h.length>1?'; domain=.'+h.slice(-2).join('.'):'')}var m=document.cookie.match(/(?:^|; )heliosian-mode=(light|dark|system|quan)/);var d=m&&m[1]==='dark'||(!(m&&(m[1]==='light'||m[1]==='quan'))&&matchMedia('(prefers-color-scheme: dark)').matches);if(m&&m[1]==='quan')document.documentElement.dataset.theme='quan';else if(d)document.documentElement.dataset.theme='dark'}catch(e){}</script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Heliosian Admin</title>
 <link rel="icon" href="/brand/favicon-192.png">
 <link rel="stylesheet" href="/fonts/fonts.css">
 <link rel="stylesheet" href="/admin.css">
 <link rel="stylesheet" href="/dark.css">
+<link rel="stylesheet" href="/quan.css">
 <style>
   /* The page's own palette; the chrome comes from admin.css. */
   :root {

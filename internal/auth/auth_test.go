@@ -186,3 +186,20 @@ func TestCookieDomain(t *testing.T) {
 		}
 	}
 }
+
+// Quan mode is offered to the super admins and to anyone with "quan" in
+// their address, and to nobody else.
+func TestQuanFor(t *testing.T) {
+	a := New("client", []byte("key"), "web/public/who/login.html")
+	a.Spoof = &Spoof{Allowed: func(email string) bool { return email == "admin@heliosschool.org" }}
+	for email, want := range map[string]bool{
+		"admin@heliosschool.org":            true,
+		"quan.tran@heliosschool.org":        true,
+		"Marquand@example.org":              true,
+		"jordan.whitfield@heliosschool.org": false,
+	} {
+		if got := a.QuanFor(email); got != want {
+			t.Errorf("QuanFor(%q) = %v, want %v", email, got, want)
+		}
+	}
+}

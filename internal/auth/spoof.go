@@ -159,16 +159,26 @@ func (a *Auth) person(email string) *Person {
 	return &p
 }
 
+// QuanFor says whether the signed-in address is offered Quan mode - the
+// pink-and-lime easter egg (web/common/quan.css) - as a choice in its own
+// right and gets it until it chooses otherwise: the super admins, and
+// anyone with "quan" in their address.
+func (a *Auth) QuanFor(email string) bool {
+	return (a.Spoof != nil && a.Spoof.Allowed(email)) || strings.Contains(strings.ToLower(email), "quan")
+}
+
 // spoofState is what the toolbar draws: whether the switch shows at all,
 // who is viewing as whom, and the last few viewed as - the ones the
-// community still lists, most recent first.
+// community still lists, most recent first - and, riding along, whether
+// the signed-in person is offered Quan mode.
 func (a *Auth) spoofState(w http.ResponseWriter, r *http.Request) {
 	view := struct {
 		CanSpoof bool     `json:"canSpoof"`
+		Quan     bool     `json:"quan"`
 		Real     *Person  `json:"real,omitempty"`
 		Spoofing *Person  `json:"spoofing,omitempty"`
 		Recent   []Person `json:"recent"`
-	}{Recent: []Person{}}
+	}{Recent: []Person{}, Quan: a.QuanFor(RealEmail(r))}
 	if a.canSpoof(r) {
 		view.CanSpoof = true
 		view.Real = a.person(RealEmail(r))

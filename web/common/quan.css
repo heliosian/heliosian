@@ -1,0 +1,96 @@
+/* Quan mode - the easter egg. Beside light and dark, a third choice the
+   user menu keeps quiet about until it is on: type "quan" on any page, or
+   open one with ?mode=quan, and the whole thing turns pink and lime green:
+   the rail pink, the page a blush, the teal every headline, label and
+   chip draws from turned pink, the green every button and bar draws from
+   turned lime, the amber alerts turned lime too. The root carries
+   data-theme="quan" (mode.js), and these rules reset the palette every
+   stylesheet reads, so most of it follows on its own. */
+
+html[data-theme="quan"] {
+  --quan-ink: #3a0f1f;
+  /* The pink as a fill, and deep enough to read as words on white. */
+  --accent: #eb4d80;
+  --brand: #d6386f;
+  --brand-dark: #8f1d47;
+  --brand-ink: #d6386f;
+  --label: #d6386f;
+  --title: #8f1d47;
+  --subtitle: #d6386f;
+  --teal-1: #eb4d80;
+  --teal-2: #c92e64;
+  --teal-3: #d6386f;
+  --teal-dark: #3a0f1f;
+  --sidebar-top: #b9265f;
+  --sidebar: #eb4d80;
+  --sidebar-active: #c92e64;
+  /* The lime, and the greens the buttons and bars are drawn in. */
+  --lime: #7bfc01;
+  --green: #5fc900;
+  --green-2: #7bfc01;
+  --green-3: #5fc900;
+  --green-dark: #2f6300;
+  /* The alerts' amber, gone lime. */
+  --yellow-pale: #efffd6;
+  --yellow-1: #7bfc01;
+  --gold-1: #5fc900;
+  --gold-2: #3f8f00;
+  /* The page, a blush; its lines and fields pink-tinted. */
+  --page: #fff5f8;
+  --hero: #fff5f8;
+  --card: #ffffff;
+  --line: #f3cfdb;
+  --input: #fde8ef;
+  --muted: #8a5a6b;
+}
+
+/* The top bar, a deeper blush than the page. */
+[data-theme="quan"] .topbar { --toolbar: #fde0e9; }
+
+/* The plum ink on a lime fill, wherever a button is drawn on the green. */
+[data-theme="quan"] .button { color: var(--quan-ink); }
+
+/* Every app's rail: its faint symbol over the pink, in place of the teal. */
+[data-theme="quan"] .sidebar { background-image: url('/brand/symbol-watermark.png'), linear-gradient(180deg, var(--sidebar-top), var(--sidebar)); }
+
+/* The lit row's wash, a deeper pink under the lime bar and icon. */
+[data-theme="quan"] .app-nav a.is-active,
+[data-theme="quan"] .app-nav a.nav-sub.is-active,
+[data-theme="quan"] .app-nav a.active,
+[data-theme="quan"] .nav-event-link.is-active,
+[data-theme="quan"] .nav-heading-toggle.active,
+[data-theme="quan"] .nav-sub-item.is-on { background: rgba(80, 8, 36, 0.32); }
+
+/* The rail's buttons wear the lime, with the plum ink the pink reads as. */
+[data-theme="quan"] .sidebar .button { background: var(--lime); border-color: var(--lime); color: var(--quan-ink); }
+
+[data-theme="quan"] .sidebar .button:hover { background: #8dff1f; border-color: #8dff1f; color: var(--quan-ink); }
+
+/* Who's red badges would vanish on pink; they go lime with plum numbers. */
+[data-theme="quan"] .sidebar .nav-badge, [data-theme="quan"] .sidebar .nav-count { background: var(--lime); color: var(--quan-ink); }
+
+/* The amber alerts - the menu's cards, the banners over pages, the to-do
+   cards - go lime: a pale lime wash, lime bar and disc, deep green words. */
+[data-theme="quan"] .alert-card,
+[data-theme="quan"] .infobanner-alert,
+[data-theme="quan"] .todo-card { background: #efffd6; border-color: #b9f27a; }
+
+[data-theme="quan"] .alert-card::before,
+[data-theme="quan"] .infobanner-alert::before,
+[data-theme="quan"] .todo-card::before,
+[data-theme="quan"] .infobanner-alert .infobanner-main::before { background: #7bfc01; }
+
+[data-theme="quan"] .alert-card-disc,
+[data-theme="quan"] .infobanner-alert .infobanner-icon { background: #d6ffa3; color: #2f6300; }
+
+[data-theme="quan"] .alert-card-title,
+[data-theme="quan"] .infobanner-alert .infobanner-title,
+[data-theme="quan"] .todo-card-title { color: #2f6300; }
+
+[data-theme="quan"] .alert-card:hover { background: #e4ffbf; }
+
+[data-theme="quan"] .infobanner-alert .button,
+[data-theme="quan"] .alert-card .button { background: #7bfc01; border-color: #7bfc01; color: var(--quan-ink); }
+
+/* Team's lit category chip wears a pink ring. */
+[data-theme="quan"] .chip.is-on { box-shadow: 0 0 0 2px #fff, 0 0 0 4px rgba(214, 56, 111, 0.45); }
