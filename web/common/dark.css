@@ -286,18 +286,23 @@ html[data-theme="dark"] {
 [data-theme="dark"] .event-stamp,
 [data-theme="dark"] .card-stamp,
 [data-theme="dark"] .hero-stamp,
+[data-theme="dark"] .hero-date,
 [data-theme="dark"] .date-leaf { background: #fff; }
 
 [data-theme="dark"] .event-stamp-day,
 [data-theme="dark"] .card-stamp-day,
 [data-theme="dark"] .hero-stamp-date,
 [data-theme="dark"] .hero-stamp-text,
+[data-theme="dark"] .hero-day,
 [data-theme="dark"] .date-leaf-day { color: #0f4e54; }
 
 [data-theme="dark"] .card-stamp-dow,
 [data-theme="dark"] .hero-stamp-weekday,
 [data-theme="dark"] .hero-stamp-time,
+[data-theme="dark"] .hero-dow,
 [data-theme="dark"] .date-leaf-weekday { color: #647071; }
+
+[data-theme="dark"] .hero-time { color: #1f2f31; }
 
 /* The rail's month: the day picked sits on white, in dark ink. */
 [data-theme="dark"] .mini-day.is-selected .mini-number { color: #0f4e54; }
@@ -401,3 +406,86 @@ html[data-theme="dark"] {
 [data-theme="dark"] .host-actions .button { background: rgba(255, 255, 255, 0.08); border-color: rgba(230, 196, 106, 0.4); color: var(--ink); }
 
 [data-theme="dark"] .host-actions .button:hover { background: rgba(255, 255, 255, 0.14); }
+
+/* Staff Birthdays: the stage tiles and the stage band keep their tints as
+   deep washes with their own ink for the words; the picked row's card,
+   the search box, the month's chips and today, and the issues' names. */
+[data-theme="dark"] .tint-grey { --tint-bg: #1f2b30; --tint-ink: #a9bcc5; --tint-ring: rgba(169, 188, 197, 0.25); }
+[data-theme="dark"] .tint-teal { --tint-bg: #12363a; --tint-ink: #6fd0d6; --tint-ring: rgba(111, 208, 214, 0.25); }
+[data-theme="dark"] .tint-yellow { --tint-bg: #3a3014; --tint-ink: #f0c34a; --tint-ring: rgba(240, 195, 74, 0.25); }
+[data-theme="dark"] .tint-orange { --tint-bg: #3d2617; --tint-ink: #f0a066; --tint-ring: rgba(240, 160, 102, 0.25); }
+[data-theme="dark"] .tint-purple { --tint-bg: #2c2340; --tint-ink: #b9a4ec; --tint-ring: rgba(185, 164, 236, 0.25); }
+[data-theme="dark"] .tint-green { --tint-bg: #16321f; --tint-ink: #7bd28f; --tint-ring: rgba(123, 210, 143, 0.25); }
+
+[data-theme="dark"] .pipeline-label { color: var(--ink); }
+
+[data-theme="dark"] .pipeline-count { color: var(--tint-ink); }
+
+[data-theme="dark"] .summary-icon { background: rgba(255, 255, 255, 0.08); }
+
+[data-theme="dark"] .summary-title { color: var(--ink); }
+
+[data-theme="dark"] .summary-note,
+[data-theme="dark"] .summary-next-label,
+[data-theme="dark"] .summary-next-who { color: var(--muted); }
+
+[data-theme="dark"] .summary-next { border-left-color: var(--line); }
+
+[data-theme="dark"] .filter-search { background: var(--input); border-color: var(--line); color: var(--ink); }
+
+[data-theme="dark"] .filter-search input { color: var(--ink); }
+
+[data-theme="dark"] .urow.is-picked,
+[data-theme="dark"] .pick-card { background: #133c43; }
+
+[data-theme="dark"] .pick-ask { color: #a5c8cc; }
+
+[data-theme="dark"] .status-pill.stage-wait { background: #12363a; color: #6fd0d6; }
+[data-theme="dark"] .status-pill.stage-awaiting-outreach { background: #3a3014; color: #f0c34a; }
+[data-theme="dark"] .status-pill.stage-awaiting-response { background: #3d2617; color: #f0a066; }
+[data-theme="dark"] .status-pill.stage-awaiting-newsletter { background: #2c2340; color: #b9a4ec; }
+[data-theme="dark"] .status-pill.stage-complete { background: #16321f; color: #7bd28f; }
+
+[data-theme="dark"] .chip.newsletter,
+[data-theme="dark"] .calendar.picker .chip.newsletter { background: #12363a; color: #8fd6d1; }
+
+[data-theme="dark"] .calendar .day.today { background: rgba(255, 255, 255, 0.07); box-shadow: inset 0 0 0 1px rgba(197, 224, 74, 0.55); }
+[data-theme="dark"] .calendar .day.today .num { color: #c5e04a; }
+
+[data-theme="dark"] .calendar .day.other .num { color: rgba(230, 238, 238, 0.35); }
+
+[data-theme="dark"] .calendar.picker .chip.stage-wait { background: #7a8f9a; color: #fff; }
+[data-theme="dark"] .calendar.picker .chip.stage-awaiting-outreach { background: #c46a1c; color: #fff; }
+[data-theme="dark"] .calendar.picker .chip.stage-awaiting-response { background: #8a7b1f; color: #fff; }
+[data-theme="dark"] .calendar.picker .chip.stage-awaiting-newsletter { background: #3d6a86; color: #fff; }
+[data-theme="dark"] .calendar.picker .chip.stage-complete { background: #5a7d3c; color: #fff; }
+[data-theme="dark"] .calendar.picker .day:has(.chip.is-picked) { background: #133c43; }
+
+[data-theme="dark"] .issue-people { color: var(--ink); }
+
+[data-theme="dark"] .card-panel { background: var(--card); border-color: var(--line); }
+
+[data-theme="dark"] .row.is-link:hover { background: var(--input); }
+
+/* The round tools on Celebrate's and Team's banners - edit, share, expand -
+   are dark glass on the picture rather than white discs. */
+[data-theme="dark"] .hero-action { background: rgba(12, 22, 24, 0.78); color: #e6eeee; border: 1px solid rgba(255, 255, 255, 0.18); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45); backdrop-filter: blur(6px); }
+[data-theme="dark"] .hero-action:hover { background: rgba(28, 44, 48, 0.92); }
+[data-theme="dark"] .hero-action.is-editing { background: var(--brand); color: #fff; border-color: transparent; }
+[data-theme="dark"] .hero-action.is-editing:hover { background: var(--brand-dark); }
+
+/* When's RSVP band: a deep green wash, the buttons dark glass until chosen. */
+[data-theme="dark"] .rsvp-band { border-color: rgba(47, 158, 106, 0.45); background: linear-gradient(90deg, #14352a, #122d27); }
+[data-theme="dark"] .rsvp-art { background: rgba(255, 255, 255, 0.08); color: #6fd39f; box-shadow: none; }
+[data-theme="dark"] .rsvp-title { color: #8fe0b6; }
+[data-theme="dark"] .rsvp-lead { color: var(--ink); }
+[data-theme="dark"] .rsvp-note { color: var(--muted); }
+[data-theme="dark"] .rsvp-yes { background: rgba(255, 255, 255, 0.06); border-color: #2f9e6a; color: #8fe0b6; }
+[data-theme="dark"] .rsvp-yes:hover { background: rgba(47, 158, 106, 0.2); color: #b6efd0; }
+[data-theme="dark"] .rsvp-yes.is-on, [data-theme="dark"] .rsvp-yes.is-on:hover { background: #2f9e6a; border-color: #2f9e6a; color: #fff; box-shadow: 0 0 0 4px rgba(47, 158, 106, 0.3); }
+[data-theme="dark"] .rsvp-yes.is-off { background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.22); color: rgba(230, 238, 238, 0.6); }
+[data-theme="dark"] .rsvp-no { background: rgba(255, 255, 255, 0.06); border-color: rgba(255, 255, 255, 0.35); color: var(--ink); }
+[data-theme="dark"] .rsvp-no:hover { background: rgba(255, 255, 255, 0.12); border-color: #fff; color: #fff; }
+[data-theme="dark"] .rsvp-no.is-on, [data-theme="dark"] .rsvp-no.is-on:hover { background: #e6eeee; border-color: #e6eeee; color: #0f1c1e; box-shadow: 0 0 0 4px rgba(230, 238, 238, 0.25); }
+[data-theme="dark"] .rsvp-clear { color: var(--muted); }
+[data-theme="dark"] .rsvp-clear:hover { color: var(--ink); }
