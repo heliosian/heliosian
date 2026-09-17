@@ -24,7 +24,7 @@ function groupCard(g) {
   const meta = el('div', 'group-meta');
   const count = g.members.length;
   meta.append(el('span', 'chip', `${count} ${count === 1 ? 'member' : 'members'}`));
-  if (g.visibility !== 'hidden') {
+  if (managed(g) && g.visibility !== 'hidden') {
     meta.append(el('span', 'chip', visibilityWords[g.visibility]));
   }
   meta.append(el('span', 'group-managers', 'Managed by ' + g.managers.map(m => m.name).join(', ')));

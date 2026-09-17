@@ -827,7 +827,13 @@ export function groupPage(g) {
   address.append(mail, iconButton('copy', 'Copy the address', '', () => copyText(g.address, 'Address copied')));
   overview.append(address);
   if (g.aliases.length) {
-    overview.append(el('div', 'subject-note', 'Also reached as ' + g.aliases.map(a => `${a}@${state.model.domain}`).join(', ') + '.'));
+    const also = el('div', 'subject-note', 'Also reached as');
+    const list = el('ul', 'rule-list');
+    for (const alias of [...g.aliases].sort()) {
+      list.append(el('li', '', `${alias}@${state.model.domain}`));
+    }
+    also.append(list);
+    overview.append(also);
   }
   overview.append(el('div', 'subject-note', g.prefix ? `Every message goes out with “[${g.title}]” at the front of its subject.` : 'Subjects go out as written.'));
   if (g.visibility === 'everyone') {
