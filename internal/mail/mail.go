@@ -251,7 +251,13 @@ func (f *Files) Send(ctx context.Context, m Message) error {
 	if err := os.MkdirAll(f.Dir, 0o755); err != nil {
 		return err
 	}
-	name := filepath.Join(f.Dir, fmt.Sprintf("%s-%s.html", time.Now().Format("20060102-150405.000"), slug(m.Subject)))
+	// The first recipient is in the name, since one occasion can send the
+	// same subject to two sets of people in the same instant.
+	to := ""
+	if len(m.To) > 0 {
+		to = "-" + slug(strings.SplitN(m.To[0], "@", 2)[0])
+	}
+	name := filepath.Join(f.Dir, fmt.Sprintf("%s-%s%s.html", time.Now().Format("20060102-150405.000"), slug(m.Subject), to))
 	extra := ""
 	for _, k := range slices.Sorted(maps.Keys(m.Headers)) {
 		extra += fmt.Sprintf("\n%s: %s", k, m.Headers[k])

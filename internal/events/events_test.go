@@ -22,8 +22,10 @@ const (
 	parent = "robin.whitfield@heliosschool.org"
 	admin  = "jordan.whitfield@heliosschool.org"
 	chair  = "mina.park@heliosschool.org"
-	spouse = "sam.whitfield@heliosschool.org"
-	kid    = "kit.whitfield@heliosschool.org"
+
+	testFrom = "HCA-Team <hca@example.org>"
+	spouse   = "sam.whitfield@heliosschool.org"
+	kid      = "kit.whitfield@heliosschool.org"
 )
 
 type syncQueue struct{}
@@ -74,7 +76,7 @@ func newServer(t *testing.T) (*Cache, *http.ServeMux) {
 		t.Fatal(err)
 	}
 	mux := http.NewServeMux()
-	Register(mux, cache, dir, syncQueue{}, nil, fakeDirectory{}, func() []string { return []string{admin} }, ImageSearch{}, nil)
+	Register(mux, cache, dir, syncQueue{}, nil, fakeDirectory{}, func() []string { return []string{admin} }, ImageSearch{}, nil, testFrom)
 	return cache, mux
 }
 
@@ -263,28 +265,55 @@ func TestMail(t *testing.T) {
 	}
 	mux := http.NewServeMux()
 	rec := recorder{got: make(chan mail.Message, 8)}
-	Register(mux, cache, dir, syncQueue{}, nil, fakeDirectory{}, func() []string { return []string{admin} }, ImageSearch{}, rec)
+	Register(mux, cache, dir, syncQueue{}, nil, fakeDirectory{}, func() []string { return []string{admin} }, ImageSearch{}, rec, testFrom)
 	if r := call(t, mux, admin, "POST", "/api/events/notify", map[string]any{"kinds": []string{"signups", "offers"}}); r.Code != http.StatusNoContent {
 		t.Fatalf("notify prefs: %d %s", r.Code, r.Body)
 	}
 	if r := call(t, mux, parent, "POST", "/api/events/volunteer", map[string]any{"id": "E017", "position": PositionOpen, "note": "happy to help"}); r.Code != http.StatusNoContent {
 		t.Fatalf("sign up: %d %s", r.Code, r.Body)
 	}
-	// Three messages, in no fixed order: the thank-you, the sign-up notice
-	// and the offer notice.
+	// Four messages, in no fixed order: the thank-you with its invite, the
+	// chairs' copy without, the sign-up notice and the offer notice.
 	bySubject := map[string]mail.Message{}
-	for range 3 {
+	var thanks, copy mail.Message
+	for range 4 {
 		m := rec.next(t)
-		bySubject[m.Subject] = m
+		switch {
+		case m.Subject == "Thanks for volunteering for Clean Up Crew" && len(m.Attachments) > 0:
+			thanks = m
+		case m.Subject == "Thanks for volunteering for Clean Up Crew":
+			copy = m
+		default:
+			bySubject[m.Subject] = m
+		}
 	}
-	thanks, ok := bySubject["Thanks for volunteering for Clean Up Crew"]
-	if !ok || !slices.Equal(thanks.To, []string{parent}) || !slices.Contains(thanks.CC, chair) || !strings.Contains(thanks.HTML, "Hi Robin") || !strings.Contains(thanks.HTML, "/share/E017.png") {
+	if !slices.Equal(thanks.To, []string{parent}) || len(thanks.CC) != 0 || !strings.Contains(thanks.HTML, "Hi Robin") || !strings.Contains(thanks.HTML, "/share/E017.png") || !strings.Contains(thanks.HTML, "Add to Calendar") {
 		t.Fatalf("thank-you: %+v (subjects %v)", thanks, keys(bySubject))
+	}
+	if !slices.Equal(thanks.ReplyTo, []string{admin, chair}) {
+		t.Errorf("thank-you reply-to: %v", thanks.ReplyTo)
+	}
+	// The invite is the crew's slot under International Night's date, since
+	// the crew has none of its own, Robin the one attendee, the portal the
+	// organizer.
+	ics := strings.ReplaceAll(string(thanks.Attachments[0].Content), "\r\n ", "")
+	for _, want := range []string{"METHOD:REQUEST", "UID:team-E017-" + parent + "@heliosian.com", "SUMMARY:Clean Up Crew (International Night)", "DTSTART:20260924T230000Z", "DTEND:20260925T010000Z", "ORGANIZER;CN=HCA-Team:mailto:hca@example.org", "ATTENDEE;CN=Robin Whitfield;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;RSVP=FALSE:mailto:" + parent, "STATUS:CONFIRMED"} {
+		if !strings.Contains(ics, want) {
+			t.Errorf("invite lacks %q:\n%s", want, ics)
+		}
+	}
+	if strings.Contains(ics, "mailto:"+chair) {
+		t.Errorf("a chair is on the volunteer's invite:\n%s", ics)
 	}
 	// Clean Up Crew has no leads of its own, so only the event's chairs are
 	// named - as the event's, not the crew's.
 	if !strings.Contains(thanks.Text, "Event Chairs: ") || strings.Contains(thanks.Text, "Leads") {
 		t.Fatalf("thank-you chairs: %q", thanks.Text)
+	}
+	// The chairs' copy: no invite, no calendar button, the volunteer to
+	// reply to, and the rows theirs rather than "your".
+	if !slices.Equal(copy.To, []string{admin, chair}) || len(copy.Attachments) != 0 || strings.Contains(copy.HTML, "Add to Calendar") || !slices.Equal(copy.ReplyTo, []string{parent}) || !strings.Contains(copy.Text, "Robin Whitfield signed up") || !strings.Contains(copy.Text, "Role: Volunteer") || strings.Contains(copy.Text, "Your role") {
+		t.Fatalf("chairs' copy: %+v", copy)
 	}
 	if n, ok := bySubject["New sign-up: Robin Whitfield for Clean Up Crew"]; !ok || !slices.Equal(n.To, []string{admin}) {
 		t.Fatalf("sign-up notice: %+v", n)
@@ -305,14 +334,33 @@ func TestMail(t *testing.T) {
 	if r := call(t, mux, other, "POST", "/api/events/volunteer", map[string]any{"id": "E017", "position": PositionVolunteer}); r.Code != http.StatusNoContent {
 		t.Fatalf("second sign up: %d %s", r.Code, r.Body)
 	}
-	for range 2 {
+	for range 3 {
 		m := rec.next(t)
 		if !strings.HasPrefix(m.Subject, "Thanks for volunteering") {
 			continue
 		}
-		if !strings.Contains(m.Text, "Clean Up Crew Leads: Robin Whitfield\n") || !strings.Contains(m.Text, "Event Chairs: ") || !slices.Contains(m.CC, parent) || !slices.Contains(m.CC, chair) {
-			t.Fatalf("thank-you under a lead: %q cc %v", m.Text, m.CC)
+		if !strings.Contains(m.Text, "Clean Up Crew Leads: Robin Whitfield\n") || !strings.Contains(m.Text, "Event Chairs: ") {
+			t.Fatalf("thank-you under a lead: %q", m.Text)
 		}
+		// Sam's note and invite are his (the fake directory knows no
+		// parents); the chairs' copy goes to the crew's lead and the
+		// event's chairs.
+		if len(m.Attachments) > 0 {
+			if !slices.Equal(m.To, []string{other}) || !strings.Contains(string(m.Attachments[0].Content), "mailto:"+other) {
+				t.Fatalf("a student's thank-you: to %v\n%s", m.To, m.Attachments[0].Content)
+			}
+		} else if !slices.Equal(m.To, []string{parent, admin, chair}) {
+			t.Fatalf("chairs' copy under a lead: to %v", m.To)
+		}
+	}
+	// Removing the sign-up cancels the invite for the same people.
+	if r := call(t, mux, chair, "DELETE", "/api/events/volunteer", map[string]any{"id": "E017", "email": other}); r.Code != http.StatusNoContent {
+		t.Fatalf("remove: %d %s", r.Code, r.Body)
+	}
+	m = rec.next(t)
+	cancel := strings.ReplaceAll(string(m.Attachments[0].Content), "\r\n ", "")
+	if m.Subject != "Removed: Clean Up Crew" || !slices.Equal(m.To, []string{other}) || !strings.HasPrefix(m.Attachments[0].ContentType, "text/calendar; method=CANCEL") || !strings.Contains(cancel, "METHOD:CANCEL") || !strings.Contains(cancel, "STATUS:CANCELLED") || !strings.Contains(cancel, "UID:team-E017-"+other+"@heliosian.com") {
+		t.Fatalf("cancellation: %+v\n%s", m, cancel)
 	}
 }
 
@@ -649,7 +697,7 @@ func TestBrokenSheetStallsThePortalOnly(t *testing.T) {
 		t.Fatalf("a broken sheet should give a cache without a model and an error, got %v %v", cache, err)
 	}
 	mux := http.NewServeMux()
-	Register(mux, cache, &data.Dir{Root: broken}, syncQueue{}, nil, fakeDirectory{}, func() []string { return nil }, ImageSearch{}, nil)
+	Register(mux, cache, &data.Dir{Root: broken}, syncQueue{}, nil, fakeDirectory{}, func() []string { return nil }, ImageSearch{}, nil, testFrom)
 	rec := call(t, mux, parent, "GET", "/api/events/model", nil)
 	if rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), `missing column "Event ID"`) {
 		t.Fatalf("before the sheet loads: %d %s", rec.Code, rec.Body)

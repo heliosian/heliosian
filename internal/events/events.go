@@ -54,7 +54,10 @@ type app struct {
 	directory   Directory
 	superAdmins func() []string
 	search      ImageSearch
-	mailer      mail.Sender
+	// mailer sends the portal's email, from the address in from; nil sends
+	// nothing.
+	mailer mail.Sender
+	from   string
 }
 
 // Register wires the portal: one shell for every page, the model, and the
@@ -67,11 +70,11 @@ func (a app) importImage(w http.ResponseWriter, r *http.Request) {
 }
 
 // writes. Every route already sits behind sign-in.
-func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, directory Directory, superAdmins func() []string, search ImageSearch, mailer mail.Sender) {
+func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, directory Directory, superAdmins func() []string, search ImageSearch, mailer mail.Sender, from string) {
 	if search.UserAgent == "" {
 		search.UserAgent = "HCA-Team image search (+https://team.heliosian.com)"
 	}
-	a := app{cache: cache, writer: writer, queue: queue, store: store, directory: directory, superAdmins: superAdmins, search: search, mailer: mailer}
+	a := app{cache: cache, writer: writer, queue: queue, store: store, directory: directory, superAdmins: superAdmins, search: search, mailer: mailer, from: from}
 	for _, page := range pages {
 		mux.HandleFunc("GET "+page, a.ready(a.page))
 	}
@@ -432,6 +435,7 @@ func (a app) removeVolunteer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.InfoContext(r.Context(), "events: removed volunteer", "actor", actor, "email", email, "activity", act.Title, "year", act.Year)
+	a.mailRemoved(r, act, email)
 	w.WriteHeader(http.StatusNoContent)
 }
 

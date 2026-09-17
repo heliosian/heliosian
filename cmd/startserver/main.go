@@ -93,6 +93,7 @@ func sampleServer() (*http.Server, *who.Queue) {
 		Describer:   sampleDescriber(),
 		// Sample mail lands as .html files to open in a browser, never sent.
 		Mail:          mail.New("", "", "", "", "", "HCA-Team <hca@example.org>", mailDir()),
+		MailFrom:      "HCA-Team <hca@example.org>",
 		WhoMail:       mail.New("", "", "", "", "", "Helios Who? <who@example.org>", mailDir()),
 		CelebrateMail: mail.New("", "", "", "", "", "Helios Celebrate <celebrate@example.org>", mailDir()),
 		CelebrateFrom: "Helios Celebrate <celebrate@example.org>",

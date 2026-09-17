@@ -753,7 +753,10 @@ type Config struct {
 	ImageSearch imagesearch.Search
 	// Mail sends the portal's email; nil drops it. CelebrateMail is the
 	// same for Helios Celebrate, from its own address.
-	Mail          mail.Sender
+	Mail mail.Sender
+	// MailFrom is the address the portal's mail comes from, which its
+	// calendar invites name as organizer.
+	MailFrom      string
 	CelebrateMail mail.Sender
 	// CelebrateFrom is the address Celebrate's mail comes from, which its
 	// calendar invites name as organizer.
@@ -916,7 +919,7 @@ func NewCore(cfg Config) *Core {
 	homeMux := http.NewServeMux()
 	home.Register(homeMux, homeCache, cfg.Writer, queue, cfg.Store, settings.SuperAdmins, cache.HeroPhoto, directory{cache, settings}.HomePeople, directory{cache, settings}.Alerts, frontEvents.list, frontEvents.month, cfg.ImageSearch, hooks.Answer, hooks.MakeDefault)
 	eventsMux := http.NewServeMux()
-	events.Register(eventsMux, eventsCache, cfg.Writer, queue, cfg.Store, directory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.Mail)
+	events.Register(eventsMux, eventsCache, cfg.Writer, queue, cfg.Store, directory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.Mail, cfg.MailFrom)
 	birthdayMux := http.NewServeMux()
 	birthday.Register(birthdayMux, birthdayCache, cfg.Writer, queue, cfg.Store, birthdayDirectory{cache, settings}, settings.SuperAdmins, cfg.Describer, cfg.BirthdayMail, cfg.BirthdayFrom, cfg.BirthdayBase, func(email string) error {
 		return home.Grant(homeCache, cfg.Writer, queue, "birthday", email)
@@ -1197,6 +1200,7 @@ func Production(blobCache string) (*http.Server, *who.Queue) {
 		// Mail goes through Resend when its key is set, else over SMTP when
 		// SMTP_HOST is; otherwise, in real-data mode, it is dropped and logged.
 		Mail:          newMailer(mailFrom()),
+		MailFrom:      mailFrom(),
 		WhoMail:       newMailer(whoMailFrom()),
 		CelebrateMail: newMailer(celebrateMailFrom()),
 		CelebrateFrom: celebrateMailFrom(),
