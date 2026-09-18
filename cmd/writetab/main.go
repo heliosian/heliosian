@@ -21,7 +21,7 @@ func main() {
 	appendRows := flag.Bool("append", false, "append below existing rows instead of requiring an empty tab")
 	flag.Parse()
 	if *sheet == "" || *tab == "" || *in == "" {
-		log.Fatal("[ERROR] -sheet, -tab, and -in are required")
+		log.Fatal("[ERROR] --sheet, --tab, and --in are required")
 	}
 	f, err := os.Open(*in)
 	if err != nil {

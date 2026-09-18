@@ -20,7 +20,7 @@ func main() {
 	out := flag.String("out", "", "output csv path")
 	flag.Parse()
 	if *sheet == "" || *tab == "" || *out == "" {
-		log.Fatal("[ERROR] -sheet, -tab, and -out are required")
+		log.Fatal("[ERROR] --sheet, --tab, and --out are required")
 	}
 	svc, err := sheets.NewService(context.Background(),
 		option.WithScopes(sheets.SpreadsheetsReadonlyScope))

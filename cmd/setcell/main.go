@@ -17,7 +17,7 @@ func main() {
 	value := flag.String("value", "", "value to write")
 	flag.Parse()
 	if *sheet == "" || *tab == "" || *key == "" || *col == "" {
-		log.Fatal("[ERROR] -sheet, -tab, -key, and -col are required")
+		log.Fatal("[ERROR] --sheet, --tab, --key, and --col are required")
 	}
 	source, err := data.NewSheet(map[string]string{"directory": *sheet})
 	if err != nil {
