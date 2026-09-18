@@ -512,7 +512,26 @@ html[data-theme="dark"] {
 
 [data-theme="dark"] .admin-group-name:not([readonly]) { background: var(--input); }
 
-[data-theme="dark"] .tabbar { background: var(--card); }
+[data-theme="dark"] .tabbar,
+[data-theme="dark"] .editor-actions,
+[data-theme="dark"] .member-menu,
+[data-theme="dark"] .chip-tag { background: var(--card); border-color: var(--line); }
+
+[data-theme="dark"] .rule.is-open.is-include,
+[data-theme="dark"] .rule.is-line.is-include { background: #14301f; border-color: #2c5a3a; }
+
+[data-theme="dark"] .rule.is-open.is-exclude,
+[data-theme="dark"] .rule.is-line.is-exclude { background: #3a1f1a; border-color: #6a3328; }
+
+[data-theme="dark"] .compact-row.is-outside { background: #2f2515; }
+
+[data-theme="dark"] .trouble-toggle { background: #3d2617; color: #f0a066; }
+
+[data-theme="dark"] .admin-filters input[type=date] { background: var(--input); color: var(--ink); }
+
+[data-theme="dark"] .cell-role { color: var(--muted); }
+
+[data-theme="dark"] .cell-assignee { color: var(--ink); }
 
 [data-theme="dark"] .day-note:not(.sidebar *),
 [data-theme="dark"] .admin-row-description:focus { background: var(--input); }
