@@ -6,8 +6,10 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
+	"encoding/xml"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -32,7 +34,7 @@ var personal = regexp.MustCompile(`(?i)lookbook|meet your classmates`)
 
 var (
 	publishedDoc    = regexp.MustCompile(`^https://docs\.google\.com/document/d/e/([\w-]+)/pub`)
-	publishedSlides = regexp.MustCompile(`^https://docs\.google\.com/presentation/d/e/`)
+	publishedSlides = regexp.MustCompile(`^https://docs\.google\.com/presentation/d/e/([\w-]+)`)
 	googleDoc       = regexp.MustCompile(`^https://docs\.google\.com/document/d/([\w-]+)`)
 	googleSlides    = regexp.MustCompile(`^https://docs\.google\.com/presentation/d/([\w-]+)`)
 	driveFile       = regexp.MustCompile(`^https://drive\.google\.com/file/d/([\w-]+)`)
@@ -165,14 +167,6 @@ func main() {
 	handled := map[string]bool{}
 	skipped := 0
 	for _, doc := range linked {
-		if publishedSlides.MatchString(doc.URL) {
-			if !handled[doc.URL] {
-				log.Printf("%s: a published deck carries its words only as pictures; skipped", doc.URL)
-				handled[doc.URL] = true
-				skipped++
-			}
-			continue
-		}
 		name, fetch := classify(doc.URL)
 		if fetch == nil || handled[name] {
 			continue
@@ -201,6 +195,12 @@ func main() {
 }
 
 func classify(address string) (string, func(context.Context, *downloader) (Doc, error)) {
+	if m := publishedSlides.FindStringSubmatch(address); m != nil {
+		source := "https://docs.google.com/presentation/d/e/" + m[1] + "/pub"
+		return "published-" + m[1], func(ctx context.Context, _ *downloader) (Doc, error) {
+			return publishedDeck(ctx, source)
+		}
+	}
 	if m := publishedDoc.FindStringSubmatch(address); m != nil {
 		source := "https://docs.google.com/document/d/e/" + m[1] + "/pub"
 		return "doc-" + m[1], func(ctx context.Context, _ *downloader) (Doc, error) {
@@ -342,6 +342,100 @@ func inBrowser(ctx context.Context, page, resource string) (string, string, erro
 		return "", "", fmt.Errorf("%s answered %d at %s (%q): not signed in, or not shared with this account", resource, r.Status, r.URL, r.Title)
 	}
 	return strings.TrimSpace(r.Title), r.Body, nil
+}
+
+var (
+	svgData  = regexp.MustCompile(`SK_svgData = '((?:[^'\\]|\\.)*)'`)
+	jsEscape = regexp.MustCompile(`\\(x[0-9a-fA-F]{2}|u[0-9a-fA-F]{4}|.)`)
+)
+
+func publishedDeck(ctx context.Context, source string) (Doc, error) {
+	page := struct {
+		Title   string `json:"title"`
+		Scripts string `json:"scripts"`
+	}{}
+	script := `({title: document.title, scripts: [...document.scripts].map(s => s.textContent).join("\n")})`
+	if err := chromedp.Run(ctx, chromedp.Navigate(source), chromedp.Evaluate(script, &page)); err != nil {
+		return Doc{}, err
+	}
+	slides := [][]string{}
+	for _, m := range svgData.FindAllStringSubmatch(page.Scripts, -1) {
+		boxes, err := slideText(unescapeJS(m[1]))
+		if err != nil {
+			return Doc{}, fmt.Errorf("%s: %w", source, err)
+		}
+		slides = append(slides, boxes)
+	}
+	if len(slides) == 0 {
+		return Doc{}, fmt.Errorf("%s (%q) has no slides: not signed in, or no longer published", source, page.Title)
+	}
+	onSlides := map[string]int{}
+	for _, boxes := range slides {
+		for _, box := range slices.Compact(slices.Sorted(slices.Values(boxes))) {
+			onSlides[box]++
+		}
+	}
+	text := []string{}
+	for _, boxes := range slides {
+		kept := []string{}
+		for _, box := range boxes {
+			if len(slides) > 2 && onSlides[box]*2 > len(slides) {
+				continue
+			}
+			kept = append(kept, box)
+		}
+		text = append(text, strings.Join(kept, "\n\n"))
+	}
+	return Doc{URL: source, Title: strings.TrimSuffix(page.Title, " - Google Slides"), Format: "text", Body: strings.Join(text, "\f")}, nil
+}
+
+func unescapeJS(literal string) string {
+	return jsEscape.ReplaceAllStringFunc(literal, func(escape string) string {
+		if len(escape) > 2 {
+			code, _ := strconv.ParseUint(escape[2:], 16, 32)
+			return string(rune(code))
+		}
+		if escape[1] == 'n' {
+			return "\n"
+		}
+		return escape[1:]
+	})
+}
+
+func slideText(svg string) ([]string, error) {
+	decoder := xml.NewDecoder(strings.NewReader(svg))
+	decoder.Strict = false
+	decoder.Entity = xml.HTMLEntity
+	boxes := []string{}
+	for {
+		token, err := decoder.Token()
+		if err == io.EOF {
+			return boxes, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		start, ok := token.(xml.StartElement)
+		if !ok {
+			continue
+		}
+		label := strings.TrimSpace(attr(start, "aria-label"))
+		switch {
+		case start.Name.Local == "g" && strings.HasPrefix(attr(start, "id"), "a11y-") && label != "":
+			boxes = append(boxes, label)
+		case start.Name.Local == "a" && len(boxes) > 0 && label == boxes[len(boxes)-1]:
+			boxes = boxes[:len(boxes)-1]
+		}
+	}
+}
+
+func attr(e xml.StartElement, name string) string {
+	for _, a := range e.Attr {
+		if a.Name.Local == name {
+			return a.Value
+		}
+	}
+	return ""
 }
 
 func write(out, name string, doc Doc) {
