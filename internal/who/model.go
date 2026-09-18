@@ -235,8 +235,14 @@ func FamilyPath(key string) string {
 	return "/families/" + url.PathEscape(key)
 }
 
+// ClassroomSlug is the page's slugify (web/who/dom.js), which its classroom
+// route looks a classroom up by.
+func ClassroomSlug(name string) string {
+	return strings.ReplaceAll(strings.ToLower(name), " ", "-")
+}
+
 func ClassroomPath(name string) string {
-	return "/classrooms/" + url.PathEscape(name)
+	return "/classrooms/" + url.PathEscape(ClassroomSlug(name))
 }
 
 func ListPath(key string) string {

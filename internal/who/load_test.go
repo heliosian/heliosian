@@ -312,6 +312,14 @@ func TestFamilyFieldsComeFromTheFamiliesTab(t *testing.T) {
 }
 
 // A kid in two households belongs to two families, and both list them.
+func TestClassroomPathIsThePagesSlug(t *testing.T) {
+	for name, want := range map[string]string{"Condors": "/classrooms/condors", "Blue Jays": "/classrooms/blue-jays"} {
+		if got := ClassroomPath(name); got != want {
+			t.Errorf("%s: %s, want %s", name, got, want)
+		}
+	}
+}
+
 func TestFamilyNameFoldsSurnamesIntoAHyphenatedOne(t *testing.T) {
 	people := map[string]*Person{
 		"ada@x.org":   {FullName: "Ada Mager-Ridgeway"},
