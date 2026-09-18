@@ -36,15 +36,11 @@ const (
 	turnTimeout      = 3 * time.Minute
 )
 
-// Sources is what the chat reads: each app's model as it stands when asked,
-// the directory's view of a person, and the lists the other apps give them.
 type Sources struct {
-	Directory func() *who.Model
-	Tags      func(owner string) map[string][]string
-	Lists     func(email string) []who.List
-	Calendar  func() *calendar.Model
-	// CalendarDirectory is the calendar's own view of the directory, for
-	// the default view it reads a person's events under.
+	Directory         func() *who.Model
+	Tags              func(owner string) map[string][]string
+	Lists             func(email string) []who.List
+	Calendar          func() *calendar.Model
 	CalendarDirectory calendar.Directory
 	Linked            func(email string) []calendar.Linked
 	Team              func() *team.Model
@@ -64,8 +60,6 @@ type app struct {
 	recent        *limiter
 }
 
-// Register wires the app: the one page, the model, and the chat itself.
-// Every route sits behind sign-in.
 func Register(mux *http.ServeMux, sources Sources, responder Responder) {
 	a := app{sources: sources, responder: responder, conversations: newStore(), recent: newLimiter()}
 	mux.HandleFunc("GET /{$}", a.page)
@@ -77,7 +71,6 @@ func (a app) page(w http.ResponseWriter, r *http.Request) {
 	serve.File(w, r, shell)
 }
 
-// who is the signed-in person as the directory keys them.
 func (a app) who(r *http.Request) string {
 	return a.sources.Directory().Resolve(strings.ToLower(auth.Email(r)))
 }
@@ -115,13 +108,6 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// chat takes one message on a conversation and streams the answer back as
-// server-sent events: start (the conversation's id), text (a piece of the
-// answer), tool (what is being looked up, in words), done (the usage) and
-// error. The browser holds every transcript and sends the conversation's
-// turns along, so an id the server no longer knows - after a restart, or
-// an hour's quiet - is rebuilt from them under a fresh id; a blank id with
-// no turns starts a new one.
 func (a app) chat(w http.ResponseWriter, r *http.Request) {
 	email := a.who(r)
 	var body struct {
@@ -200,18 +186,12 @@ func (a app) chat(w http.ResponseWriter, r *http.Request) {
 	emit("done", map[string]any{"conversation": conv.id, "turns": conv.asked, "text": reply.Text, "tools": reply.Tools, "usage": reply.Usage})
 }
 
-// A turn is one side of the exchange as the browser keeps it: who spoke,
-// what they said, and for an answer, what was looked up along the way.
 type turn struct {
 	Role  string   `json:"role"`
 	Text  string   `json:"text"`
 	Tools []string `json:"tools,omitempty"`
 }
 
-// A conversation is one person's chat as the API sees it: the system
-// blocks frozen when it began, so the cached prefix holds turn after turn,
-// and every message including the tool calls and their results. The
-// browser keeps the transcript; this is the working copy.
 type conversation struct {
 	id       string
 	email    string
@@ -222,11 +202,6 @@ type conversation struct {
 	busy     bool
 }
 
-// restore rebuilds the working copy from a transcript the browser kept:
-// each question and its answer as plain text, in pairs, so the model reads
-// what was said without the tool results and thinking that came with it -
-// it looks things up again when it needs them. A question without an
-// answer at the end is dropped, since the new message follows it.
 func (c *conversation) restore(turns []turn) {
 	for i := 0; i+1 < len(turns); i += 2 {
 		question, answer := strings.TrimSpace(turns[i].Text), strings.TrimSpace(turns[i+1].Text)
@@ -249,8 +224,6 @@ func newStore() *store {
 	return &store{byID: map[string]*conversation{}}
 }
 
-// get is the conversation an id names when it is this person's and has
-// been touched within the hour; idle conversations are dropped as it looks.
 func (s *store) get(id, email string, now time.Time) *conversation {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -278,8 +251,6 @@ func (s *store) start(email string, system []anthropic.BetaTextBlockParam, now t
 	return c
 }
 
-// claim marks a conversation as answering; a second message while it is
-// gets refused rather than interleaved.
 func (s *store) claim(c *conversation) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -296,7 +267,6 @@ func (s *store) release(c *conversation) {
 	c.busy = false
 }
 
-// limiter counts each person's messages over the last hour.
 type limiter struct {
 	mu     sync.Mutex
 	recent map[string][]time.Time

@@ -24,8 +24,6 @@ type renderer struct {
 	prefix  string
 }
 
-// Hrefs is every address the page links to, for a caller that wants to
-// resolve them all before the page is rendered.
 func Hrefs(source string) []string {
 	doc, err := html.Parse(strings.NewReader(source))
 	if err != nil {
@@ -160,11 +158,8 @@ func (r *renderer) space() {
 	r.line.WriteString(" ")
 }
 
-// capture renders a node's children and hands back what they wrote on the
-// line so far, for an inline element to wrap. A link or a bold that turns
-// out to hold whole blocks - mail templates put links around tables - has
-// written those blocks already and has nothing left to wrap, which inline
-// reports.
+// An inline element wrapping whole blocks (mail templates put links around
+// tables) has already written them, leaving nothing to wrap: inline is false.
 func (r *renderer) capture(n *html.Node) (core string, leading, trailing, inline bool) {
 	blocks := len(r.blocks)
 	before := r.line.String()
@@ -227,8 +222,6 @@ func (r *renderer) link(n *html.Node) {
 	if href != "" && !strings.HasPrefix(lower, "#") && !strings.HasPrefix(lower, "javascript:") {
 		target = r.resolve(href)
 	}
-	// A link whose address is a redirect nobody can follow any more keeps
-	// its words; an address that would only identify the reader is no use.
 	if target == "" {
 		r.line.WriteString(core)
 	} else {
@@ -255,8 +248,7 @@ func (r *renderer) flush() {
 	if len(lines) == 0 {
 		return
 	}
-	// A mail template sets its section banners in bold capitals rather than
-	// as headings, so a whole block that is nothing else is one.
+	// One mailer sets its section banners as bold capitals rather than headings.
 	if prefix == "" && len(lines) == 1 {
 		if banner, ok := sectionBanner(lines[0]); ok {
 			r.blocks = append(r.blocks, "# "+banner)
@@ -274,8 +266,6 @@ func (r *renderer) flush() {
 	r.blocks = append(r.blocks, strings.Join(lines, "\n"))
 }
 
-// sectionBanner is the words of a line that is one piece of bold text in
-// capitals and nothing else, which a template uses where a heading belongs.
 func sectionBanner(line string) (string, bool) {
 	inner, ok := strings.CutPrefix(line, "**")
 	if !ok {
@@ -285,7 +275,6 @@ func sectionBanner(line string) (string, bool) {
 	if !ok || strings.Contains(inner, "**") || len(inner) > 80 {
 		return "", false
 	}
-	// The banner is sometimes a link to the thing it names.
 	words := linkText.ReplaceAllString(inner, "$1")
 	if !capitals(words) {
 		return "", false

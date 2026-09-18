@@ -18,25 +18,14 @@ const (
 	veracrossHost = ".veracross.com"
 	benchmarkHost = "bmetrack.com"
 	trackingPath  = "/c/"
-	// benchmarkLink is the one Benchmark redirect that goes anywhere a
-	// reader would want: the others open the mail in a browser or
-	// unsubscribe whoever follows them, and neither may ever be offered.
 	benchmarkLink = "/c/l"
 	maxHops       = 4
 	workers       = 12
 )
 
-// benchmarkVanity is the mailer's redirect under the school's own name,
-// r560896.heliosschool.org, which looks like the school and is not.
+// Benchmark's redirect under the school's own name (r560896.heliosschool.org).
 var benchmarkVanity = regexp.MustCompile(`^r[0-9]+\.`)
 
-// Every link the school's two mailers put in a newsletter is a redirect
-// through the mailer, and carries the address of the person it was sent to.
-// None of them may be handed to a reader, so each is turned back into the
-// address it points at: Veracross writes that address into the link itself,
-// where it can be read with no request at all, and Benchmark keeps it, so
-// its links have to be followed. A link that cannot be turned back keeps its
-// words and loses its address.
 type Resolver struct {
 	client  *http.Client
 	mu      sync.Mutex
@@ -54,10 +43,6 @@ func NewResolver() *Resolver {
 	}
 }
 
-// tracking says whether a link is one of the mailers' redirects rather than
-// an address in its own right. Anything carrying an email parameter is one
-// however it is dressed: that parameter is the reader, and the whole reason
-// none of these may be written into a document.
 func tracking(address string) bool {
 	u, err := url.Parse(address)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
@@ -72,8 +57,6 @@ func tracking(address string) bool {
 	return strings.HasSuffix(u.Host, veracrossHost) || strings.HasSuffix(u.Host, benchmarkHost) || benchmarkVanity.MatchString(u.Host)
 }
 
-// dead says whether a redirect is one that leads nowhere worth following:
-// Benchmark's own view-in-browser and unsubscribe addresses.
 func dead(u *url.URL) bool {
 	if strings.HasSuffix(u.Host, veracrossHost) {
 		return false
@@ -81,8 +64,6 @@ func dead(u *url.URL) bool {
 	return strings.HasPrefix(u.Path, trackingPath) && u.Path != benchmarkLink
 }
 
-// Warm turns back every tracking link in a page at once, so a newsletter of
-// forty of them takes one round trip's time rather than forty.
 func (r *Resolver) Warm(addresses []string) {
 	pending := []string{}
 	seen := map[string]bool{}
@@ -112,10 +93,6 @@ func (r *Resolver) Warm(addresses []string) {
 	wg.Wait()
 }
 
-// Resolve is the address a link really points at: the link itself when it is
-// nobody's redirect, the address inside it when the mailer wrote one there,
-// and what following it answers when it did not. A tracking link that cannot
-// be turned back resolves to nothing, and the page keeps its words alone.
 func (r *Resolver) Resolve(address string) string {
 	if !tracking(address) {
 		return address
@@ -143,8 +120,7 @@ func (r *Resolver) Resolve(address string) string {
 	return target
 }
 
-// unwrap is the address a Veracross link carries inside it: its path is a
-// deflated query, and the query's l is where the link goes.
+// A Veracross link's path is a deflated query whose l is the destination.
 func unwrap(address string) string {
 	u, err := url.Parse(address)
 	if err != nil || !strings.HasSuffix(u.Host, veracrossHost) {
@@ -198,7 +174,6 @@ func (r *Resolver) follow(address string) string {
 	return ""
 }
 
-// clean is a destination without the marks the mailer added to count clicks.
 func clean(address string) string {
 	u, err := url.Parse(strings.TrimSpace(address))
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {

@@ -89,7 +89,6 @@ const maxFeedNameLength = 80
 
 var Blocks = []string{"Dropoff", "School", "Pickup", "Aftercare"}
 
-// Location is the school's clock: every date and time in the sheet is wall-clock there.
 var Location = mustLocation("America/Los_Angeles")
 
 func mustLocation(name string) *time.Location {

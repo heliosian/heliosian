@@ -1,4 +1,4 @@
-// Command importartifacts reads the messages saved under imports/mail into the artifacts folder of the media bucket and the Artifacts sheet: markdown, chunks and embeddings for Helios Ask.
+// Command importartifacts reads the messages saved under imports/mail and the pages under imports/site into the artifacts folder of the media bucket and the Artifacts sheet: markdown, chunks and embeddings for Helios Ask.
 package main
 
 import (
@@ -19,9 +19,6 @@ import (
 )
 
 const (
-	// batch is how many documents are embedded and written before their rows
-	// are appended, so a run that fails part way has recorded all but the
-	// last batch rather than nothing.
 	batch   = 200
 	workers = 8
 )
@@ -35,13 +32,13 @@ func requiredEnv(name string) string {
 }
 
 func main() {
-	dryRun := flag.Bool("dry-run", false, "report what each message would become, embedding and writing nothing")
-	permitted := flag.Bool("i-have-user-permission-to-spend-money", false, "embedding every message costs real money; pass this only when the person paying has said to run it")
-	limit := flag.Int("limit", 0, "import at most this many messages; 0 for all of them")
+	dryRun := flag.Bool("dry-run", false, "report what each file would become, embedding and writing nothing")
+	permitted := flag.Bool("i-have-user-permission-to-spend-money", false, "embedding every document costs real money; pass this only when the person paying has said to run it")
+	limit := flag.Int("limit", 0, "import at most this many documents; 0 for all of them")
 	flag.Parse()
 	files := flag.Args()
 	if len(files) == 0 {
-		log.Fatal("[ERROR] name the messages to import: go run ./cmd/importartifacts imports/mail/*.json")
+		log.Fatal("[ERROR] name the files to import: go run ./cmd/importartifacts imports/mail/*.json imports/site/*.json")
 	}
 	if !*dryRun && !*permitted {
 		log.Fatal("[ERROR] this run spends money embedding; pass --i-have-user-permission-to-spend-money only when the user has said to run it")
@@ -67,7 +64,7 @@ func main() {
 			issues[row["Title"]+"|"+row["Date"]] = row["Key"]
 		}
 	}
-	log.Printf("%d documents on file, %d messages to consider", len(rows), len(files))
+	log.Printf("%d documents on file, %d files to consider", len(rows), len(files))
 	embedder, err := artifacts.NewVertex()
 	if err != nil {
 		log.Fatalf("[ERROR] %v", err)
@@ -78,8 +75,6 @@ func main() {
 	}
 	resolver := artifacts.NewResolver()
 
-	// Every message is read and rendered first, so what has to be embedded
-	// is known before a penny is spent on any of it.
 	pending := []work{}
 	skipped, failed, empty, dropped, withheld, characters := 0, 0, 0, 0, 0, 0
 	for _, file := range files {
@@ -87,22 +82,20 @@ func main() {
 			log.Printf("stopping at the %d asked for", *limit)
 			break
 		}
-		message, err := artifacts.ReadMessage(file)
+		saved, err := artifacts.ReadSaved(file)
 		if err != nil {
 			log.Printf("[ERROR] %v", err)
 			failed++
 			continue
 		}
-		doc, err := artifacts.Build(message, resolver, embedder.Model())
-		if errors.Is(err, artifacts.ErrNotBroadcast) {
+		doc, err := saved.Build(resolver, embedder.Model())
+		if errors.Is(err, artifacts.ErrNotBroadcast) || errors.Is(err, artifacts.ErrExcluded) {
 			withheld++
 			continue
 		}
 		if errors.Is(err, artifacts.ErrNoWords) {
 			empty++
-			// A message that reads as nothing but a list's footer was once
-			// imported as that footer; it is no part of the corpus now.
-			key := artifacts.Key(message.MessageID)
+			key := saved.Key()
 			if object, known := objects[key]; known && !*dryRun {
 				if err := source.Delete("artifacts", "Documents", map[string]string{"Key": key}); err != nil {
 					log.Fatalf("[ERROR] drop the row for %s: %v", key, err)
@@ -128,10 +121,6 @@ func main() {
 			}
 			item.replacing = object
 		} else if other, dup := issues[doc.Title+"|"+doc.Date]; dup && doc.Kind == artifacts.KindNewsletter {
-			// The newsletter reaches each address as its own message, so the
-			// same issue arrives more than once. A list's replies share a
-			// subject and a day all the time and are each their own message,
-			// so only an issue is known by its title.
 			log.Printf("%s: %q on %s is already on file as %s; skipped", filepath.Base(file), doc.Title, doc.Date, other)
 			skipped++
 			continue
@@ -157,7 +146,7 @@ func main() {
 			again++
 		}
 	}
-	log.Printf("%d messages to import (%d already on file, rendered differently now): %d chunks, %d characters of markdown, %d with no words to index, %d not the community's, %d links dropped as unreadable redirects",
+	log.Printf("%d documents to import (%d already on file, rendered differently now): %d chunks, %d characters of markdown, %d with no words to index, %d withheld, %d links dropped as unreadable redirects",
 		len(pending), again, chunks, characters, empty, withheld, resolver.Dropped)
 	if *dryRun {
 		if len(pending) == 1 {
@@ -175,7 +164,7 @@ func main() {
 		}
 		report("by kind", kinds)
 		report("by channel", channels)
-		fmt.Printf("\n%d messages: %d would be imported, %d already on file, %d with no words, %d failed\n", len(files), len(pending), skipped, empty, failed)
+		fmt.Printf("\n%d files: %d would be imported, %d already on file, %d with no words, %d withheld, %d failed\n", len(files), len(pending), skipped, empty, withheld, failed)
 		return
 	}
 
@@ -192,8 +181,8 @@ func main() {
 		imported += len(group)
 		log.Printf("imported %d of %d (%.1fM characters embedded)", imported, len(pending), float64(artifacts.Billed)/1e6)
 	}
-	fmt.Printf("\n%d messages: %d imported, %d already on file, %d with no words (%d taken off the corpus), %d failed\n%d chunks, %.1fM characters embedded, %d links dropped\n",
-		len(files), imported, skipped, empty, dropped, failed, chunks, float64(artifacts.Billed)/1e6, resolver.Dropped)
+	fmt.Printf("\n%d files: %d imported, %d already on file, %d with no words (%d taken off the corpus), %d withheld, %d failed\n%d chunks, %.1fM characters embedded, %d links dropped\n",
+		len(files), imported, skipped, empty, dropped, withheld, failed, chunks, float64(artifacts.Billed)/1e6, resolver.Dropped)
 	report("by kind", kinds)
 	report("by channel", channels)
 	if failed > 0 {
@@ -201,16 +190,11 @@ func main() {
 	}
 }
 
-// A work is one document to import, and the object it supersedes when the
-// same message is already on file under an older rendering.
 type work struct {
 	doc       *artifacts.Document
 	replacing string
 }
 
-// record writes a batch to the sheet - the documents new to it appended
-// together, the ones already on it updated in place - and then drops the
-// objects they superseded, so nothing is left behind in the bucket.
 func record(source *data.Sheet, uploader *blob.Uploader, header []string, group []work) error {
 	fresh := []work{}
 	updates := map[string]map[string]string{}
@@ -242,9 +226,6 @@ func record(source *data.Sheet, uploader *blob.Uploader, header []string, group 
 	return nil
 }
 
-// embedAndStore embeds a batch of documents and writes each to the bucket,
-// several at a time: one at a time, a corpus of thousands would spend its
-// day waiting on round trips.
 func embedAndStore(embedder artifacts.Embedder, uploader *blob.Uploader, group []work) error {
 	var mu sync.Mutex
 	var first error
@@ -282,16 +263,12 @@ func store(embedder artifacts.Embedder, uploader *blob.Uploader, doc *artifacts.
 	if _, err := uploader.Put(artifacts.Folder, doc.ObjectFile(), "application/json", body); err != nil {
 		return err
 	}
-	// The vectors are the object's now; holding every one of them in memory
-	// would cost a gigabyte over a corpus this size for nothing.
 	for i := range doc.Chunks {
 		doc.Chunks[i].Vector = nil
 	}
 	return nil
 }
 
-// appendRows writes a batch of documents to the tab in one call, each cell
-// under the column of that name however the columns are ordered.
 func appendRows(source *data.Sheet, header []string, group []work) error {
 	rows := [][]string{}
 	for _, item := range group {

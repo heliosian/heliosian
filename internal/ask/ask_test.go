@@ -336,7 +336,7 @@ func TestSearchDocumentsFindsTheIssueAndReadsIt(t *testing.T) {
 	v := sampleViewer(t, jordan)
 	v.now = time.Date(2026, 9, 17, 9, 0, 0, 0, calendar.Location)
 	result := call(t, v, "search_documents", `{"query":"international night booths"}`)
-	if result["documents"].(float64) != 3 || result["newest"] != "2026-09-11" || result["oldest"] != "2026-08-30" {
+	if result["documents"].(float64) != 4 || result["newest"] != "2026-09-11" || result["oldest"] != "2026-08-30" {
 		t.Fatalf("documents: %v", result)
 	}
 	passages := result["passages"].([]any)
@@ -347,8 +347,13 @@ func TestSearchDocumentsFindsTheIssueAndReadsIt(t *testing.T) {
 	if first["section"] != "HCA NEWSLETTER" || !strings.Contains(first["text"].(string), "booth") {
 		t.Fatalf("first passage: %v", first)
 	}
-	if first["published"] != "past (6 days ago)" || first["channel"] != "newsletter" || first["kind"] != "newsletter" {
-		t.Fatalf("first passage's provenance: %v", first)
+	if first["published"] != "past (6 days ago)" {
+		t.Fatalf("first passage's date: %v", first)
+	}
+	for _, field := range []string{"url", "channel", "kind", "author"} {
+		if _, ok := first[field]; ok {
+			t.Fatalf("a mailed document's passage carries %s: %v", field, first)
+		}
 	}
 	issue := call(t, v, "read_document", `{"key":"`+first["key"].(string)+`"}`)
 	if !strings.Contains(issue["markdown"].(string), "# A NOTE FROM BEN") || issue["title"] != "Helios Weekly Newsletter 2026 Sep 11" {
@@ -359,25 +364,32 @@ func TestSearchDocumentsFindsTheIssueAndReadsIt(t *testing.T) {
 	}
 }
 
-// The search narrows to one channel and to a range of dates, and says so
-// rather than answering from everything when it cannot.
+func TestSearchDocumentsLinksAPage(t *testing.T) {
+	v := sampleViewer(t, jordan)
+	v.now = time.Date(2026, 9, 17, 9, 0, 0, 0, calendar.Location)
+	result := call(t, v, "search_documents", `{"query":"what to bring for family camping tents"}`)
+	first := result["passages"].([]any)[0].(map[string]any)
+	const url = "https://www.heliosschool.org/student-life/family-camping"
+	if first["title"] != "Family Camping" || first["url"] != url {
+		t.Fatalf("first passage: %v", first)
+	}
+	page := call(t, v, "read_document", `{"key":"`+first["key"].(string)+`"}`)
+	if page["url"] != url || !strings.Contains(page["markdown"].(string), "## What to Bring") {
+		t.Fatalf("page: %v", page)
+	}
+	for _, field := range []string{"channel", "kind", "author"} {
+		if _, ok := page[field]; ok {
+			t.Fatalf("the document carries %s: %v", field, page)
+		}
+	}
+}
+
 func TestSearchDocumentsNarrows(t *testing.T) {
 	v := sampleViewer(t, jordan)
 	v.now = time.Date(2026, 9, 17, 9, 0, 0, 0, calendar.Location)
-	result := call(t, v, "search_documents", `{"query":"nuts at the bake sale","channel":"chat"}`)
-	if result["searched"].(float64) != 1 {
-		t.Fatalf("chat: %v", result["searched"])
-	}
-	first := result["passages"].([]any)[0].(map[string]any)
-	if first["channel"] != "chat" || !strings.Contains(first["text"].(string), "nut free") {
-		t.Fatalf("chat passage: %v", first)
-	}
-	result = call(t, v, "search_documents", `{"query":"labor day","until":"2026-09-04"}`)
-	if result["searched"].(float64) != 2 {
+	result := call(t, v, "search_documents", `{"query":"labor day","until":"2026-09-04"}`)
+	if result["searched"].(float64) != 3 {
 		t.Fatalf("until: %v", result["searched"])
-	}
-	if _, err := v.run(context.Background(), "search_documents", json.RawMessage(`{"query":"x","channel":"boardoftrustees"}`)); err == nil {
-		t.Fatal("an unknown channel was searched")
 	}
 	if _, err := v.run(context.Background(), "search_documents", json.RawMessage(`{"query":"x","since":"2027-01-01"}`)); err == nil {
 		t.Fatal("a range with nothing in it was searched")

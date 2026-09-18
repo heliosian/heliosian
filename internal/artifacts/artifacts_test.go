@@ -2,6 +2,7 @@ package artifacts
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -26,7 +27,7 @@ func TestMessageBecomesMarkdown(t *testing.T) {
 	if doc.Title != "Helios Weekly Newsletter 2026 Sep 11" || doc.Date != "2026-09-11" || doc.Author != "Helios School" {
 		t.Fatalf("headers: %+v", doc)
 	}
-	if doc.Kind != KindNewsletter || doc.Channel != "newsletter" || doc.Source != "mail:sample-newsletter-2026-09-11@example.org" {
+	if doc.Kind != KindNewsletter || doc.Channel != "newsletter" || doc.Source != "mail:sample-newsletter-2026-09-11@example.org" || doc.URL() != "" {
 		t.Fatalf("provenance: %+v", doc)
 	}
 	for _, want := range []string{
@@ -50,8 +51,6 @@ func TestMessageBecomesMarkdown(t *testing.T) {
 	}
 }
 
-// A message with no HTML part is its plain text, with the hard wrapping a
-// mail client put in joined back into paragraphs.
 func TestPlainTextMessageKeepsItsParagraphs(t *testing.T) {
 	message, err := ReadMessage(samples + "/2026-08-30-chat-nut-free.json")
 	if err != nil {
@@ -70,6 +69,65 @@ func TestPlainTextMessageKeepsItsParagraphs(t *testing.T) {
 	} {
 		if !strings.Contains(doc.Markdown, want) {
 			t.Errorf("markdown lacks %q:\n%s", want, doc.Markdown)
+		}
+	}
+}
+
+func TestPageBecomesMarkdown(t *testing.T) {
+	saved, err := ReadSaved(samples + "/2026-09-01-page-family-camping.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := saved.(Page); !ok {
+		t.Fatalf("read as %T", saved)
+	}
+	doc, err := saved.Build(NewResolver(), Fake{}.Model())
+	if err != nil {
+		t.Fatal(err)
+	}
+	const url = "https://www.heliosschool.org/student-life/family-camping"
+	if doc.Title != "Family Camping" || doc.Date != "2026-09-01" || doc.Author != "Helios School" {
+		t.Fatalf("headers: %+v", doc)
+	}
+	if doc.Kind != KindPage || doc.Source != url || doc.URL() != url || doc.Key != Key(url) || saved.Key() != doc.Key {
+		t.Fatalf("provenance: %+v", doc)
+	}
+	for _, want := range []string{
+		"Every fall the whole school camps together at [Family Camping Weekend](https://www.heliosschool.org/fs/pages/749), two nights",
+		"## What to Bring\n\nA tent, sleeping bags",
+		"## Meals\n\nSaturday dinner is a potluck around the campfire, and the eighth graders run the s’mores.",
+	} {
+		if !strings.Contains(doc.Markdown, want) {
+			t.Errorf("markdown lacks %q:\n%s", want, doc.Markdown)
+		}
+	}
+	for _, unwanted := range []string{"# Family Camping", "About Helios", "Student Life", "In This Section", "Voice", "Sunnyvale", "#fs-panel"} {
+		if strings.Contains(doc.Markdown, unwanted) {
+			t.Errorf("markdown holds %q:\n%s", unwanted, doc.Markdown)
+		}
+	}
+	if n := strings.Count(doc.Markdown, "What to Bring"); n != 1 {
+		t.Errorf("the panel's title appears %d times:\n%s", n, doc.Markdown)
+	}
+}
+
+func TestExcludedPagesAreRefused(t *testing.T) {
+	for _, address := range []string{
+		"https://www.heliosschool.org/about/staff-and-faculty",
+		"https://www.heliosschool.org/school-calendar",
+		"https://www.heliosschool.org/website-instructions",
+		"https://www.heliosschool.org/login/",
+	} {
+		if !Excluded(address) {
+			t.Errorf("%s is not excluded", address)
+		}
+		if _, err := BuildPage(Page{URL: address, HTML: "<main><p>Words.</p></main>"}, Fake{}.Model()); !errors.Is(err, ErrExcluded) {
+			t.Errorf("%s: %v", address, err)
+		}
+	}
+	for _, address := range []string{"https://www.heliosschool.org/student-life/camping", "https://www.heliosschool.org"} {
+		if Excluded(address) {
+			t.Errorf("%s is excluded", address)
 		}
 	}
 }
@@ -129,8 +187,6 @@ func TestObjectNamesFollowTheRenderedDocument(t *testing.T) {
 	}
 }
 
-// A vector rides in the object as base64 float32, so a corpus of tens of
-// thousands of chunks is megabytes rather than gigabytes.
 func TestVectorsRoundTripAsBase64(t *testing.T) {
 	doc := sampleIssue(t)
 	if err := doc.Embed(context.Background(), Fake{}); err != nil {
@@ -162,7 +218,7 @@ func TestSearchRanksTheMatchingChunkFirst(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(m.Documents) != 3 || m.Documents[0].Date != "2026-09-11" {
+	if len(m.Documents) != 4 || m.Documents[0].Date != "2026-09-11" {
 		t.Fatalf("documents: %d, first %s", len(m.Documents), m.Documents[0].Date)
 	}
 	if oldest, newest := m.Span(); oldest != "2026-08-30" || newest != "2026-09-11" {
@@ -187,10 +243,11 @@ func TestSearchRanksTheMatchingChunkFirst(t *testing.T) {
 	if hit = first("are nuts allowed at the bake sale"); hit.Document.Channel != "chat" {
 		t.Fatalf("nuts: %s %q", hit.Document.Channel, hit.Document.Title)
 	}
+	if hit = first("what to bring for family camping tents"); hit.Document.Kind != KindPage {
+		t.Fatalf("camping: %s %q", hit.Document.Kind, hit.Document.Title)
+	}
 }
 
-// A reply carries the message it answers, so the same words are in the
-// corpus more than once and the search should offer them once.
 func TestAQuotedPassageIsReturnedOnce(t *testing.T) {
 	original := "The bake sale is on Friday in the courtyard and every plate needs its ingredients written on it so families with allergies can read them before their children choose."
 	model := Fake{}.Model()
@@ -221,21 +278,15 @@ func TestAQuotedPassageIsReturnedOnce(t *testing.T) {
 	}
 }
 
-func TestChannelsAndDatesNarrowTheSearch(t *testing.T) {
+func TestDatesNarrowTheSearch(t *testing.T) {
 	m, err := LoadDir(samples, Fake{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if names := m.ChannelNames(); strings.Join(names, ",") != "newsletter,chat" {
-		t.Fatalf("channels: %v", names)
-	}
-	if only := m.InChannel("chat"); len(only.Documents) != 1 || only.Documents[0].Kind != KindList {
-		t.Fatalf("chat: %d", len(only.Documents))
-	}
 	if since := m.Between("2026-09-05", ""); len(since.Documents) != 1 || since.Documents[0].Date != "2026-09-11" {
 		t.Fatalf("since: %d", len(since.Documents))
 	}
-	if until := m.Between("", "2026-09-04"); len(until.Documents) != 2 {
+	if until := m.Between("", "2026-09-04"); len(until.Documents) != 3 {
 		t.Fatalf("until: %d", len(until.Documents))
 	}
 	if none := m.Between("2027-01-01", ""); len(none.Documents) != 0 {
@@ -260,9 +311,6 @@ func TestTrackingLinksAreTheOnlyOnesTouched(t *testing.T) {
 	}
 }
 
-// A Veracross link carries where it goes inside itself, so it is turned back
-// with no request at all - and the address of the person it was sent to,
-// which is exactly why it must never be handed to a reader.
 func TestVeracrossLinksAreReadWithoutAsking(t *testing.T) {
 	const wrapped = "https://email.mail1.veracross.com/c/eJxMzT1u7SAQhuHVQGnB8F9Q3MbbOIIBH9DlGAscrz9CKZJynnmlL3lpLKfZc2Md11oIS4tPwiiUGuOhdIyodU7WhATKpuisi7R6YKCZ4xxAWGU3riCZw0UjxRGMQSLZJ9TGtyePgKPPuWH_0ObLfV-TiH8EdgJ7wbCV3GqfNZyrILDT4dfx_mqtPnkQyX6KiaX3tvXxpo8H-uALW83n7f--F-e1_Lr-eyucXnDlMfv56wCMgfgOAAD__5zzUBI"
 	r := NewResolver()
@@ -272,14 +320,11 @@ func TestVeracrossLinksAreReadWithoutAsking(t *testing.T) {
 	if r.Dropped != 0 {
 		t.Fatalf("dropped %d", r.Dropped)
 	}
-	// Nothing about the link survives into the answer.
 	if strings.Contains(r.Resolve(wrapped), "veracross") {
 		t.Fatal("the tracking address came back")
 	}
 }
 
-// A tracking link nobody can turn back keeps its words and loses its
-// address, rather than failing the whole message.
 func TestAnUnreadableTrackingLinkKeepsItsWords(t *testing.T) {
 	r := NewResolver()
 	markdown, err := Markdown(`<p>Please <a href="https://email.mail1.veracross.com/c/not-a-real-blob">sign up here</a> today.</p>`, r.Resolve)
@@ -294,8 +339,6 @@ func TestAnUnreadableTrackingLinkKeepsItsWords(t *testing.T) {
 	}
 }
 
-// Mail templates wrap links and bold around whole tables. The words inside
-// have to survive, laid out as the blocks they are.
 func TestInlineMarkupAroundBlocksKeepsItsWords(t *testing.T) {
 	r := NewResolver()
 	markdown, err := Markdown(`<a href="https://example.org/"><table><tr><td><p>Read the notice</p></td></tr><tr><td><p>Second row</p></td></tr></table></a><p>After.</p>`, r.Resolve)
@@ -316,9 +359,6 @@ func TestInlineMarkupAroundBlocksKeepsItsWords(t *testing.T) {
 	}
 }
 
-// The older mailer's redirects wear the school's own name and carry the
-// reader's address; its unsubscribe and view-in-browser links go nowhere a
-// reader should be sent at all.
 func TestTheMailersVanityRedirectsAreCaught(t *testing.T) {
 	for _, address := range []string{
 		"http://r560896.heliosschool.org/c/l?u=F6A18CC&e=163F978&email=ARXc6ueZ8",
@@ -341,8 +381,6 @@ func TestTheMailersVanityRedirectsAreCaught(t *testing.T) {
 	}
 }
 
-// A template that sets its sections in bold capitals gets headings, so the
-// chunker can cut the newsletter into its sections.
 func TestBoldCapitalsBecomeHeadings(t *testing.T) {
 	markdown, err := Markdown(`<p><strong>A NOTE FROM BEN</strong></p><p>Dear Helios Families,</p><p><b><a href="https://example.org/map">HELIOS WORLD COMMUNITY MAP</a></b></p><p>Instructions below.</p><p><strong>Ben</strong></p>`, NewResolver().Resolve)
 	if err != nil {
@@ -361,8 +399,6 @@ func TestBoldCapitalsBecomeHeadings(t *testing.T) {
 	}
 }
 
-// What a mailing list adds around a message is the machine's words, and
-// would otherwise be searched and shown like anybody's.
 func TestListFootersAndNoticesAreLeftOff(t *testing.T) {
 	markdown := trim(strings.Join([]string{
 		"Dear Friends,",
@@ -381,9 +417,6 @@ func TestListFootersAndNoticesAreLeftOff(t *testing.T) {
 	}
 }
 
-// A message names its own channel when one was recorded with it, and is
-// placed by what it carries when none was - which is how mail arriving
-// later is placed. Nothing a committee kept to itself is ever placed.
 func TestMessagesArePlacedByWhatTheyCarry(t *testing.T) {
 	for _, c := range []struct {
 		what          string

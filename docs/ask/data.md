@@ -1,6 +1,6 @@
 # How Helios Ask answers
 
-Helios Ask has no sheet. It reads every other app's model through `ask.Sources`, which `internal/app` builds from the caches the way the apps' own adapters are built (`internal/app/ask.go`), reads the community's mail on file through `internal/artifacts` (`artifacts.md`), and talks to Claude through the Anthropic API. This file carries what reading `internal/ask` cannot tell you.
+Helios Ask has no sheet. It reads every other app's model through `ask.Sources`, which `internal/app` builds from the caches the way the apps' own adapters are built (`internal/app/ask.go`), reads the community's documents through `internal/artifacts` (`artifacts.md`), and talks to Claude through the Anthropic API. This file carries what reading `internal/ask` cannot tell you.
 
 ## The call
 
@@ -35,8 +35,8 @@ Each tool is a `tool` in `internal/ask`: a name and description for the model, t
 | `my_groups` | The groups the viewer manages, the ones open to everyone, and the ones open to members they are on; members for the managed ones | Members of groups they do not manage |
 | `my_lists` | The viewer's tags and Magic Tags with their people | Anyone else's tags |
 | `community_links` | Heliosian's visible links by section | Hidden links |
-| `search_documents` | The community's mail on file: the passages nearest a question by its embedding and its words, narrowable to a channel or a range of dates, each with its message's title, date, age, channel, author and section, and how many messages there are and over what span (`artifacts.md`) | A passage another already quotes; anything a committee kept to itself, which is never imported |
-| `read_document` | One message whole, as markdown, by the key a passage carries | - |
+| `search_documents` | The community's documents: the passages nearest a question by its embedding and its words, narrowable to a range of dates, each with its document's title, date, age, section and, for a page, its address, and how many documents there are and over what span (`artifacts.md`) | Where a document came from - its kind, channel and author; a passage another already quotes; anything a committee kept to itself, which is never imported |
+| `read_document` | One document whole, as markdown, by the key a passage carries, with its address when it has one | Its kind, channel and author |
 
 Every event, party and volunteer thing carries `past` and `whenAgainstToday` ("past (8 days ago)", "today", "tomorrow", "in 12 days"), reckoned here so the model never does date arithmetic, and each of those tools says what today is; a document's `published` is the same words for its date. The words the page shows for a lookup are named once per turn however many times the tool ran. The document search is the one tool that calls out - one embedding request to Vertex AI for the question - and it does so on the turn's context, so a turn that times out ends it too.
 

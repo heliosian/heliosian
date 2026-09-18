@@ -1,4 +1,4 @@
-// Package artifacts keeps the documents the community has been sent - the school's newsletters and everything its lists carried - as markdown in chunks with embeddings, for Helios Ask to search.
+// Package artifacts keeps the documents the community has been sent - the school's newsletters, everything its lists carried and its website's pages - as markdown in chunks with embeddings, for Helios Ask to search.
 package artifacts
 
 import (
@@ -21,29 +21,22 @@ import (
 )
 
 const (
-	appName         = "artifacts"
-	documentsTab    = "Documents"
-	Folder          = "artifacts"
-	refreshInterval = 5 * time.Minute
-	lexicalWeight   = 0.15
-	// readers is how many objects are fetched at once, as the media store
-	// fetches what the sheets name.
-	readers = 32
-	// KindNewsletter is the school's own newsletter, KindList a message a
-	// list carried, KindAnnouncement one written to a whole school or class
-	// without a list.
+	appName          = "artifacts"
+	documentsTab     = "Documents"
+	Folder           = "artifacts"
+	refreshInterval  = 5 * time.Minute
+	lexicalWeight    = 0.15
+	readers          = 32
 	KindNewsletter   = "newsletter"
 	KindList         = "list"
 	KindAnnouncement = "announcement"
+	KindPage         = "page"
 )
 
 var DocumentColumns = []string{"Key", "Title", "Date", "Author", "Kind", "Channel", "Source", "Chunks", "Object"}
 
 var stopwords = map[string]bool{"the": true, "and": true, "for": true, "are": true, "was": true, "our": true, "you": true, "your": true, "with": true, "this": true, "that": true, "from": true, "what": true, "when": true, "where": true, "who": true, "how": true, "does": true, "did": true, "will": true, "about": true, "there": true, "have": true, "has": true, "any": true, "can": true, "is": true, "in": true, "on": true, "at": true, "to": true, "of": true, "an": true, "or": true, "be": true, "it": true, "my": true, "me": true, "we": true, "us": true, "do": true, "up": true, "so": true, "if": true, "as": true, "by": true, "its": true, "not": true, "tell": true, "know": true, "say": true, "said": true, "school": true, "helios": true}
 
-// A Document is one thing somebody wrote to the community: what it was
-// called, when it went out, who sent it, the channel it went out on, its
-// whole text as markdown, and that text in chunks with their embeddings.
 type Document struct {
 	Key      string  `json:"key"`
 	Title    string  `json:"title"`
@@ -63,9 +56,6 @@ type Chunk struct {
 	Vector  Vector `json:"vector,omitempty"`
 }
 
-// Key is a message's document key: its message id, which is the one name a
-// message carries wherever it was delivered, so the same message reaching
-// two accounts is one document.
 func Key(messageID string) string {
 	sum := sha256.Sum256([]byte(messageID))
 	return hex.EncodeToString(sum[:])
@@ -75,10 +65,6 @@ func (d *Document) Object() string {
 	return Folder + "/" + d.ObjectFile()
 }
 
-// ObjectFile is the document's name in the bucket: its key and a
-// fingerprint of the document as rendered, so a change to the converter, the
-// chunker or the embedding gives the same message a new object and the
-// import can tell what is stale.
 func (d *Document) ObjectFile() string {
 	return d.Key + "-" + d.fingerprint() + ".json"
 }
@@ -97,6 +83,13 @@ func (d *Document) fingerprint() string {
 	return hex.EncodeToString(sum[:8])
 }
 
+func (d *Document) URL() string {
+	if d.Kind != KindPage {
+		return ""
+	}
+	return d.Source
+}
+
 func (d *Document) Row() map[string]string {
 	return map[string]string{
 		"Key": d.Key, "Title": d.Title, "Date": d.Date, "Author": d.Author, "Kind": d.Kind,
@@ -104,9 +97,6 @@ func (d *Document) Row() map[string]string {
 	}
 }
 
-// embedText is what a chunk is embedded as: the document's title, its date
-// in words and the chunk's section over the chunk itself, so a passage
-// saying only "sign up here" is still found by what it is about.
 func (d *Document) embedText(c Chunk) string {
 	when := d.Date
 	if day, err := time.ParseInLocation(calendar.DateFormat, d.Date, calendar.Location); err == nil {
@@ -158,14 +148,9 @@ func (d *Document) normalize() error {
 
 type Model struct {
 	Documents []*Document
-	// Fetched is how many of the documents this load read from the bucket
-	// rather than keeping from the load before it.
-	Fetched int
+	Fetched   int
 }
 
-// Objects is the bucket the documents are kept in, read a name at a time
-// and never held: the documents are parsed into the model and the bytes
-// they came from are not worth a second copy.
 type Objects interface {
 	Get(name string) ([]byte, error)
 }
@@ -181,16 +166,6 @@ func ReadRows(source data.Source) ([]map[string]string, error) {
 	return rows, nil
 }
 
-// Load is every document the sheet indexes, read from the bucket. A row
-// whose object is missing, or whose document was embedded by another model,
-// refuses the load rather than being quietly left out of every answer.
-//
-// An object's name carries a fingerprint of the document inside it, so a
-// name the last load already read is the same document: given that model,
-// only what is new or has changed is fetched, and a refresh over thousands
-// of documents costs one read of the sheet. The rest are fetched many at a
-// time, since a corpus this size read one object after another would take
-// longer than the server is given to start.
 func Load(source data.Source, objects Objects, embedder Embedder, previous *Model) (*Model, error) {
 	rows, err := ReadRows(source)
 	if err != nil {
@@ -263,9 +238,6 @@ func read(objects Objects, row map[string]string, embedder Embedder) (*Document,
 	return doc, nil
 }
 
-// LoadDir is every message saved in a directory, built and embedded on the
-// spot: the sample community's corpus, with no sheet and no bucket. The
-// sample corpus is small and fixed, so it is read afresh each time.
 func LoadDir(dir string, embedder Embedder) (*Model, error) {
 	files, err := filepath.Glob(filepath.Join(dir, "*.json"))
 	if err != nil {
@@ -273,11 +245,11 @@ func LoadDir(dir string, embedder Embedder) (*Model, error) {
 	}
 	m := &Model{Documents: []*Document{}}
 	for _, file := range files {
-		message, err := ReadMessage(file)
+		saved, err := ReadSaved(file)
 		if err != nil {
 			return nil, err
 		}
-		doc, err := Build(message, NewResolver(), embedder.Model())
+		doc, err := saved.Build(NewResolver(), embedder.Model())
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", file, err)
 		}
@@ -319,8 +291,6 @@ func (m *Model) Chunks() int {
 	return n
 }
 
-// Channels is how many documents each channel carried, for the log line and
-// for the prompt to say what there is to search.
 func (m *Model) Channels() map[string]int {
 	out := map[string]int{}
 	for _, d := range m.Documents {
@@ -329,7 +299,6 @@ func (m *Model) Channels() map[string]int {
 	return out
 }
 
-// Span is the dates of the oldest and newest documents.
 func (m *Model) Span() (oldest, newest string) {
 	if len(m.Documents) == 0 {
 		return "", ""
@@ -337,35 +306,6 @@ func (m *Model) Span() (oldest, newest string) {
 	return m.Documents[len(m.Documents)-1].Date, m.Documents[0].Date
 }
 
-// ChannelNames is every channel there is, the busiest first.
-func (m *Model) ChannelNames() []string {
-	counts := m.Channels()
-	out := []string{}
-	for name := range counts {
-		out = append(out, name)
-	}
-	sort.Slice(out, func(i, j int) bool {
-		if counts[out[i]] != counts[out[j]] {
-			return counts[out[i]] > counts[out[j]]
-		}
-		return out[i] < out[j]
-	})
-	return out
-}
-
-// InChannel is the documents one channel carried, by its name or any part
-// of it.
-func (m *Model) InChannel(channel string) *Model {
-	out := &Model{Documents: []*Document{}}
-	for _, d := range m.Documents {
-		if strings.Contains(strings.ToLower(d.Channel), strings.ToLower(channel)) {
-			out.Documents = append(out.Documents, d)
-		}
-	}
-	return out
-}
-
-// Between is the documents from a range of dates, either end left open.
 func (m *Model) Between(since, until string) *Model {
 	if since == "" && until == "" {
 		return m
@@ -389,10 +329,6 @@ type Hit struct {
 	Score    float64
 }
 
-// Search is the chunks nearest a question: the dot product of the
-// normalized vectors, plus a small share for the words of the question the
-// chunk itself holds, since names, dates and numbers are where an embedding
-// alone is weakest. Ties go to the newer document.
 func (m *Model) Search(vector []float32, query string, limit int) []Hit {
 	Normalize(vector)
 	terms := []string{}
@@ -424,9 +360,6 @@ func (m *Model) Search(vector []float32, query string, limit int) []Hit {
 		}
 		return hits[i].Document.Date > hits[j].Document.Date
 	})
-	// A reply carries the message it answers, so the same words sit in the
-	// corpus several times over. The best-scoring of them is worth
-	// returning; the rest would spend the answer's room repeating it.
 	out := []Hit{}
 	taken := []string{}
 	for _, hit := range hits {
@@ -443,15 +376,10 @@ func (m *Model) Search(vector []float32, query string, limit int) []Hit {
 	return out
 }
 
-// plain is a passage's words alone, for comparing one against another
-// however each was spaced, capitalised or marked up.
 func plain(text string) string {
 	return strings.Join(tokens(text), " ")
 }
 
-// quotes says whether a passage is already covered by one taken: either it
-// sits inside one, which is a reply quoting it, or one sits inside it, which
-// is this passage quoting that. Too short to tell is not a quotation.
 func quotes(words string, taken []string) bool {
 	if len(words) < 80 {
 		return slices.Contains(taken, words)
