@@ -746,10 +746,55 @@ function editor(g, isNew, closeModal, startTab) {
     additionAdd.hidden = true;
   }), additionStatus, el('small', '', 'Someone the directory does not hold - a coach, a league office, a family friend - on the group whatever the rules say.'));
   previewHeadRow.after(additionAdd);
-  previewHeadRow.append(button('Add Non-Helios', 'plus', 'button button-small button-secondary', () => {
+
+  // Add Helios puts one person from the directory on the group: an include
+  // rule naming their address, which reads out as their name.
+  const personMount = el('div');
+  const personPicker = createPersonPicker(personMount);
+  personPicker.setPeople(state.model.people);
+  const personStatus = el('span', 'save-status');
+  const personAdd = el('div', 'add-row addition-add');
+  personAdd.hidden = true;
+  const addPerson = () => {
+    const email = personPicker.value;
+    personStatus.classList.remove('error');
+    personStatus.textContent = '';
+    if (!email) {
+      personStatus.classList.add('error');
+      personStatus.textContent = 'Pick someone from the list.';
+      return;
+    }
+    if (!draft.rules.some(r => r.kind === 'include' && r.search === email && !r.roles.length && !r.grades.length && !r.classrooms.length && !r.tags.length)) {
+      draft.rules.push({...newRule('include'), search: email});
+      renderRules();
+    }
+    personPicker.reset();
+    personAdd.hidden = true;
+    rulesChanged();
+  };
+  personMount.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      addPerson();
+    }
+  });
+  personAdd.append(personMount, button('Add', 'plus', 'button button-secondary', addPerson), iconButton('close', 'Never mind', '', () => {
+    personPicker.reset();
+    personStatus.textContent = '';
+    personAdd.hidden = true;
+  }), personStatus, el('small', '', 'Someone from the directory, on the group by a rule of their own.'));
+  previewHeadRow.after(personAdd);
+  const headButtons = el('div', 'head-buttons');
+  headButtons.append(button('Add Helios', 'plus', 'button button-small button-secondary', () => {
+    additionAdd.hidden = true;
+    personAdd.hidden = false;
+    personMount.querySelector('input').focus();
+  }), button('Add Non-Helios', 'plus', 'button button-small button-secondary', () => {
+    personAdd.hidden = true;
     additionAdd.hidden = false;
     additionName.focus();
   }));
+  previewHeadRow.append(headButtons);
 
   // Members is the rules, the additions and, at the foot, who they come to.
   rulesPanel.append(preview);
@@ -923,6 +968,10 @@ const singular = {Student: 'student', Parent: 'parent', Staff: 'staff member'};
 // personWords is a rule said of one person who matches it, lowercase, for
 // a member's reason: "parent in Grade 5 or Grade 6", "tagged in Tech Team".
 function personWords(r) {
+  // A rule that is one address and nothing else names them.
+  if (r.search && r.search.includes('@') && !r.roles.length && !r.grades.length && !r.classrooms.length && !r.tags.length && state.model.people.some(p => p.email === r.search)) {
+    return 'named in a rule';
+  }
   const parts = [];
   if (r.roles.length) {
     parts.push(r.roles.map(x => singular[x]).join(' or '));
