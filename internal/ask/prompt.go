@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
 
+	"heliosian/internal/artifacts"
 	"heliosian/internal/calendar"
 	"heliosian/internal/loop"
 	"heliosian/internal/who"
@@ -17,13 +19,56 @@ import (
 var school string
 
 // systemBlocks is the prompt in two cached pieces: the school, which
-// changes only when the sheets do, then the person, frozen for the
-// conversation.
-func systemBlocks(v *viewer) []anthropic.BetaTextBlockParam {
+// changes only when the sheets do, then the person and the recent
+// documents, frozen for the conversation.
+func systemBlocks(v *viewer, recent []*artifacts.Document) []anthropic.BetaTextBlockParam {
 	return []anthropic.BetaTextBlockParam{
 		{Text: school + "\n\n" + lingo(v), CacheControl: anthropic.NewBetaCacheControlEphemeralParam()},
-		{Text: viewerBlock(v), CacheControl: anthropic.NewBetaCacheControlEphemeralParam()},
+		{Text: viewerBlock(v) + "\n" + recentBlock(v, recent), CacheControl: anthropic.NewBetaCacheControlEphemeralParam()},
 	}
+}
+
+func recentDocuments(v *viewer) []*artifacts.Document {
+	since := v.now.AddDate(0, 0, -recentDays).Format(calendar.DateFormat)
+	out := []*artifacts.Document{}
+	for _, d := range v.artifacts.Documents {
+		if len(out) >= recentLimit || d.Date < since {
+			break
+		}
+		if d.Kind == artifacts.KindPortal {
+			continue
+		}
+		out = append(out, d)
+	}
+	return out
+}
+
+func recentBlock(v *viewer, recent []*artifacts.Document) string {
+	if len(recent) == 0 {
+		return fmt.Sprintf("## Recent documents\n\nNo documents have come in over the last %d days.\n", recentDays)
+	}
+	return fmt.Sprintf("## Recent documents\n\nThe newest documents of the last %d days, newest first, each with its key for read_document:\n", recentDays) + documentLines(v, recent)
+}
+
+func arrivals(v *viewer, fresh []*artifacts.Document) string {
+	return "New documents have come in since this conversation began, newest first, each with its key for read_document:\n" + documentLines(v, fresh) +
+		"\nA new document can change what the calendar or the other apps say; read one that bears on what is being asked."
+}
+
+func documentLines(v *viewer, docs []*artifacts.Document) string {
+	b := &strings.Builder{}
+	for _, d := range docs {
+		when := d.Date
+		if day, err := time.ParseInLocation(calendar.DateFormat, d.Date, calendar.Location); err == nil {
+			when = day.Format("Monday, January 2, 2006")
+		}
+		fmt.Fprintf(b, "- %s, %s: %s (key %s", when, v.timing(d.Date, ""), d.Title, d.Key)
+		if url := d.URL(); url != "" {
+			b.WriteString(", " + url)
+		}
+		b.WriteString(")\n")
+	}
+	return b.String()
 }
 
 // lingo is what the models say about the school right now: the grades and

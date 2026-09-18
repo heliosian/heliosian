@@ -20,7 +20,7 @@ type passage struct {
 
 var searchDocuments = tool{
 	name:        "search_documents",
-	description: "Search the community's documents for the passages that best answer a question: what was announced, asked for, explained, decided or celebrated, how the school describes itself and its program, and when. Each passage names its document, its date and how long ago that was, and the document's url when it has one. This is the community's memory, so it is the place to look for anything the apps do not hold: how something was done before, what a tradition is, what was said about a topic. A newer document supersedes an older one; prefer what the apps say for anything happening now.",
+	description: "Search the community's documents for the passages that best answer a question: what was announced, asked for, explained, decided or celebrated, how the school describes itself and its program, and when. Each passage names its document, its date and how long ago that was, and the document's url when it has one. This is the community's memory, so it is the place to look for anything the apps do not hold: how something was done before, what a tradition is, what was said about a topic. A newer document supersedes an older one. For anything happening now the apps are usually the better word, but a recent document can override them: a last-minute reminder, a changed time or place, a cancellation.",
 	words:       "Searching documents",
 	properties: map[string]any{
 		"query": str("What to look for, in plain words: a topic, an event, a name, a request."),

@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/anthropics/anthropic-sdk-go"
+
 	"heliosian/internal/artifacts"
 	"heliosian/internal/auth"
 	"heliosian/internal/calendar"
@@ -184,6 +186,81 @@ func TestLingoReadsTheModels(t *testing.T) {
 		if !strings.Contains(words, want) {
 			t.Errorf("lingo lacks %q:\n%s", want, words)
 		}
+	}
+}
+
+func TestRecentBlockListsTheNewestDocuments(t *testing.T) {
+	v := sampleViewer(t, jordan)
+	v.now = time.Date(2026, 9, 17, 9, 0, 0, 0, calendar.Location)
+	block := recentBlock(v, recentDocuments(v))
+	for _, want := range []string{"## Recent documents", "- Friday, September 11, 2026, past (6 days ago): Helios Weekly Newsletter 2026 Sep 11 (key ", "Helios Weekly Newsletter 2026 September 4"} {
+		if !strings.Contains(block, want) {
+			t.Errorf("recent block lacks %q:\n%s", want, block)
+		}
+	}
+	for _, unwanted := range []string{"Family Camping", "2026, past (18 days ago)"} {
+		if strings.Contains(block, unwanted) {
+			t.Errorf("recent block reaches back to %q:\n%s", unwanted, block)
+		}
+	}
+	v.now = time.Date(2027, 1, 4, 9, 0, 0, 0, calendar.Location)
+	if block := recentBlock(v, recentDocuments(v)); !strings.Contains(block, "No documents have come in") {
+		t.Fatalf("a quiet fortnight: %s", block)
+	}
+}
+
+type recording struct {
+	Fake
+	requests *[]Request
+}
+
+func (r recording) Respond(ctx context.Context, req Request, emit Emitter) (Reply, error) {
+	*r.requests = append(*r.requests, req)
+	return r.Fake.Respond(ctx, req, emit)
+}
+
+func systemMessages(messages []anthropic.BetaMessageParam) []string {
+	out := []string{}
+	for _, m := range messages {
+		if m.Role == anthropic.BetaMessageParamRoleSystem {
+			out = append(out, *m.Content[0].GetText())
+		}
+	}
+	return out
+}
+
+func TestChatTellsOfANewDocumentOnce(t *testing.T) {
+	sources := sampleSources(t)
+	documents := sources.Artifacts()
+	current := documents
+	sources.Artifacts = func() *artifacts.Model { return current }
+	requests := []Request{}
+	mux := http.NewServeMux()
+	Register(mux, sources, recording{requests: &requests})
+	handler := auth.Fixed(jordan, mux)
+	rec := post(t, handler, `{"message":"Anything new?"}`)
+	id := strings.SplitN(strings.SplitN(rec.Body.String(), `"conversation":"`, 2)[1], `"`, 2)[0]
+	arrived := &artifacts.Document{Key: "late-reminder", Title: "Picture Day moves to Friday", Date: time.Now().In(calendar.Location).Format(calendar.DateFormat), Kind: artifacts.KindList}
+	current = &artifacts.Model{Documents: append([]*artifacts.Document{arrived}, documents.Documents...)}
+	post(t, handler, `{"conversation":"`+id+`","message":"And now?"}`)
+	post(t, handler, `{"conversation":"`+id+`","message":"Still?"}`)
+	if len(requests) != 3 {
+		t.Fatalf("%d requests", len(requests))
+	}
+	if told := systemMessages(requests[0].Messages); len(told) != 0 {
+		t.Fatalf("the first turn was told of %v", told)
+	}
+	second := requests[1].Messages
+	if last := second[len(second)-1]; last.Role != anthropic.BetaMessageParamRoleSystem || second[len(second)-2].Role != anthropic.BetaMessageParamRoleUser {
+		t.Fatalf("the arrival does not follow the question: %v", second)
+	}
+	told := systemMessages(second)
+	if len(told) != 1 || !strings.Contains(told[0], "Picture Day moves to Friday (key late-reminder)") || strings.Contains(told[0], "Sep 11") {
+		t.Fatalf("second turn told: %v", told)
+	}
+	third := requests[2].Messages
+	if len(systemMessages(third)) != 1 || third[len(third)-1].Role != anthropic.BetaMessageParamRoleUser {
+		t.Fatalf("the arrival was told again: %v", systemMessages(third))
 	}
 }
 

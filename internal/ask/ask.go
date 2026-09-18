@@ -34,6 +34,8 @@ const (
 	idle             = time.Hour
 	maxMessageLength = 4000
 	turnTimeout      = 3 * time.Minute
+	recentDays       = 14
+	recentLimit      = 20
 )
 
 type Sources struct {
@@ -130,9 +132,10 @@ func (a app) chat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	v := a.viewer(email)
+	recent := recentDocuments(v)
 	conv := a.conversations.get(body.Conversation, email, now)
 	if conv == nil {
-		conv = a.conversations.start(email, systemBlocks(v), now)
+		conv = a.conversations.start(email, systemBlocks(v, recent), recent, now)
 		conv.restore(body.Turns)
 	}
 	if !a.conversations.claim(conv) {
@@ -164,9 +167,14 @@ func (a app) chat(w http.ResponseWriter, r *http.Request) {
 	emit("start", map[string]string{"conversation": conv.id})
 	ctx, cancel := context.WithTimeout(r.Context(), turnTimeout)
 	defer cancel()
+	messages := append(conv.messages[:len(conv.messages):len(conv.messages)], anthropic.NewBetaUserMessage(anthropic.NewBetaTextBlock(message)))
+	fresh := conv.unseen(recent)
+	if len(fresh) > 0 {
+		messages = append(messages, anthropic.BetaMessageParam{Role: anthropic.BetaMessageParamRoleSystem, Content: []anthropic.BetaContentBlockParamUnion{anthropic.NewBetaTextBlock(arrivals(v, fresh))}})
+	}
 	req := Request{
 		System:   conv.system,
-		Messages: append(conv.messages[:len(conv.messages):len(conv.messages)], anthropic.NewBetaUserMessage(anthropic.NewBetaTextBlock(message))),
+		Messages: messages,
 		Tools:    definitions(),
 		Run:      v.run,
 		Label:    label,
@@ -179,9 +187,10 @@ func (a app) chat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	conv.messages = reply.Messages
+	conv.see(fresh)
 	conv.asked++
 	conv.touched = time.Now()
-	slog.InfoContext(r.Context(), "ask: answered", "conversation", conv.id, "turn", conv.asked, "rounds", reply.Usage.Rounds, "tools", len(reply.Tools),
+	slog.InfoContext(r.Context(), "ask: answered", "conversation", conv.id, "turn", conv.asked, "rounds", reply.Usage.Rounds, "tools", len(reply.Tools), "new_documents", len(fresh),
 		"input_tokens", reply.Usage.Input, "cached_tokens", reply.Usage.Cached, "output_tokens", reply.Usage.Output, "took", time.Since(started).Round(time.Millisecond))
 	emit("done", map[string]any{"conversation": conv.id, "turns": conv.asked, "text": reply.Text, "tools": reply.Tools, "usage": reply.Usage})
 }
@@ -197,9 +206,26 @@ type conversation struct {
 	email    string
 	system   []anthropic.BetaTextBlockParam
 	messages []anthropic.BetaMessageParam
+	known    map[string]bool
 	asked    int
 	touched  time.Time
 	busy     bool
+}
+
+func (c *conversation) unseen(recent []*artifacts.Document) []*artifacts.Document {
+	out := []*artifacts.Document{}
+	for _, d := range recent {
+		if !c.known[d.Key] {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+func (c *conversation) see(docs []*artifacts.Document) {
+	for _, d := range docs {
+		c.known[d.Key] = true
+	}
 }
 
 func (c *conversation) restore(turns []turn) {
@@ -239,12 +265,13 @@ func (s *store) get(id, email string, now time.Time) *conversation {
 	return c
 }
 
-func (s *store) start(email string, system []anthropic.BetaTextBlockParam, now time.Time) *conversation {
+func (s *store) start(email string, system []anthropic.BetaTextBlockParam, recent []*artifacts.Document, now time.Time) *conversation {
 	raw := make([]byte, 16)
 	if _, err := rand.Read(raw); err != nil {
 		panic(err)
 	}
-	c := &conversation{id: hex.EncodeToString(raw), email: email, system: system, messages: []anthropic.BetaMessageParam{}, touched: now}
+	c := &conversation{id: hex.EncodeToString(raw), email: email, system: system, messages: []anthropic.BetaMessageParam{}, known: map[string]bool{}, touched: now}
+	c.see(recent)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.byID[c.id] = c
