@@ -4,7 +4,6 @@ import {setTitle} from '../chrome.js';
 import {load, navigate} from '../app.js';
 import {createPersonPicker} from '/picker.js';
 import {tabStrip, tabParam, tabHref} from '/tabs.js';
-import {appOrigin} from '/toolbar.js';
 import {visibilityWords} from './groups.js';
 
 const visibilityNotes = {
@@ -1145,7 +1144,6 @@ export function groupPage(g) {
   }
   members.append(grid, empty);
 
-  members.append(managersCard(g, canEdit));
 
   const rules = el('div', 'card');
   const rulesHead = el('div', 'card-head');
@@ -1173,26 +1171,18 @@ export function groupPage(g) {
   }
   members.append(rules);
 
-  if (canEdit) {
-    const elsewhere = el('div', 'elsewhere');
-    const who = el('a', 'elsewhere-link');
-    who.href = appOrigin('who') + '/people?list=' + encodeURIComponent('group:' + g.name);
-    const mark = el('img');
-    mark.src = '/brand/apps/who.png';
-    mark.alt = '';
-    who.append(mark, el('span', '', 'See these people in Helios Who?'));
-    elsewhere.append(who);
-    members.append(elsewhere);
-  }
 
+  // Managers has its own tab; the card redraws itself as it is changed.
+  const managersPanel = el('div');
+  managersPanel.append(managersCard(g, canEdit));
   const tabs = [
     {key: 'members', label: 'Members', count: g.members.length, panel: members},
+    {key: 'managers', label: 'Managers', count: g.managers.length, panel: managersPanel},
   ];
   if (canEdit) {
     tabs.push(historyTab(g));
   }
   page.append(tabbed(tabs));
-  page.append(link('/', 'back-link', '← All groups'));
   return page;
 }
 
@@ -1250,12 +1240,12 @@ let managersEditing = '';
 // once - the managers are the group's, not the editor's, so they are
 // changed here rather than in the editor.
 function managersCard(g, canEdit) {
-  const card = el('div', 'card');
+  const card = el('div', 'card managers-card');
   const head = el('div', 'card-head');
   head.append(el('h2', '', 'Managers'));
   const editing = canEdit && managersEditing === g.name;
   if (canEdit) {
-    head.append(iconButton(editing ? 'close' : 'edit', editing ? 'Done' : 'Change the managers', editing ? 'is-on' : '', () => {
+    head.append(iconButton(editing ? 'check' : 'edit', editing ? 'Done' : 'Edit managers', '', () => {
       managersEditing = editing ? '' : g.name;
       card.replaceWith(managersCard(g, canEdit));
     }));
@@ -1274,20 +1264,42 @@ function managersCard(g, canEdit) {
       status.textContent = err.message;
     }
   };
-  const grid = el('div', 'attendee-grid attendee-grid-small');
+  // Each manager a card across: the face, the name, and whether the group's
+  // mail reaches them - a manager gets it only when the rules place them on
+  // the group, so it is worth saying.
+  const row = el('div', 'manager-row');
   for (const m of g.managers) {
-    const tile = memberCard(m, g.rules, 'Manages the group');
-    if (editing) {
-      const wrap = el('div', 'attendee-wrap');
-      const remove = iconButton('close', `Remove ${m.name}`, 'attendee-remove', () => save(g.managers.map(x => x.email).filter(e => e !== m.email)));
-      remove.disabled = g.managers.length === 1;
-      wrap.append(tile, remove);
-      grid.append(wrap);
+    const tile = el('a', 'manager-tile');
+    tile.href = whoLink(m.email);
+    tile.title = `${m.name} in Helios Who?`;
+    const face = el('div', 'avatar manager-face');
+    if (m.photoUrl) {
+      const img = el('img');
+      img.src = m.photoUrl;
+      img.alt = '';
+      img.loading = 'lazy';
+      face.append(img);
     } else {
-      grid.append(tile);
+      face.textContent = (m.name || m.email || '?').slice(0, 1).toUpperCase();
     }
+    const words = el('div', 'manager-words');
+    words.append(el('div', 'manager-name', m.name));
+    const subscribed = g.members.some(x => x.email === m.email);
+    const reach = el('div', 'manager-state' + (subscribed ? ' is-subscribed' : ''));
+    reach.append(svg(subscribed ? 'check' : 'close'), el('span', '', subscribed ? 'Subscribed' : 'Not subscribed'));
+    reach.title = subscribed ? 'The rules place them on the group, so its mail reaches them.' : 'No rule places them on the group, so its mail does not reach them.';
+    words.append(reach);
+    tile.append(face, words);
+    if (editing) {
+      const remove = iconButton('close', `Remove ${m.name}`, 'manager-remove', () => {
+        save(g.managers.map(x => x.email).filter(email => email !== m.email));
+      });
+      remove.disabled = g.managers.length === 1;
+      tile.append(remove);
+    }
+    row.append(tile);
   }
-  card.append(grid);
+  card.append(row);
   if (editing) {
     const mount = el('div');
     const picker = createPersonPicker(mount);

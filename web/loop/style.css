@@ -494,19 +494,23 @@ a.attendee:hover { border-color: var(--accent); }
 .grade-badge { position: absolute; left: -6px; top: -6px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 999px; background: var(--brand); color: #fff; font-size: 11px; font-weight: 700; line-height: 20px; text-align: center; box-shadow: 0 0 0 2px #fff; }
 .attendee-face img { border-radius: 10px; }
 .attendee-name { font-weight: 700; font-size: 13.5px; line-height: 1.25; }
-/* The managers' tiles, the same shape smaller. */
-.attendee-grid-small { grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; margin-bottom: 0; }
-.attendee-grid-small .attendee { padding: 8px 6px 10px; }
-.attendee-grid-small .attendee-face { font-size: 24px; margin-bottom: 6px; }
-.attendee-grid-small .attendee-name { font-size: 12.5px; }
-.attendee-grid-small .attendee-line { font-size: 11px; }
-/* A tile with its remove while the managers are being changed. */
-.attendee-wrap { position: relative; display: flex; }
-.attendee-wrap > .attendee { flex: 1; min-width: 0; }
-.attendee-remove { position: absolute; right: 4px; top: 4px; width: 24px; height: 24px; padding: 0; border-radius: 50%; border: 1px solid var(--line); background: var(--card); color: var(--alert); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
-.attendee-remove svg { width: 14px; height: 14px; }
-.attendee-remove:disabled { opacity: 0.35; cursor: default; }
-.attendee-grid-small .grade-badge { min-width: 18px; height: 18px; line-height: 18px; font-size: 10px; }
+/* The managers: each a card across with the face, the name and whether
+   the group's mail reaches them. */
+.managers-card .card-head { margin-bottom: 12px; }
+.manager-row { display: flex; flex-wrap: wrap; gap: 12px; }
+.manager-tile { position: relative; display: flex; align-items: center; gap: 12px; min-width: 260px; padding: 8px 14px 8px 8px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: inherit; text-decoration: none; }
+.manager-tile:hover { border-color: var(--accent); }
+.manager-face { width: 64px; height: 64px; border-radius: 10px; font-size: 26px; }
+.manager-face img { border-radius: 10px; }
+.manager-words { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.manager-name { font-weight: 700; font-size: 15px; }
+.manager-state { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--brand); }
+.manager-state svg { width: 16px; height: 16px; padding: 3px; border-radius: 50%; background: var(--brand); color: #fff; stroke-width: 3; }
+.manager-state.is-subscribed { color: #24763c; }
+.manager-state.is-subscribed svg { background: #2f9e4a; }
+.manager-remove { position: absolute; right: -8px; top: -8px; width: 24px; height: 24px; padding: 0; border-radius: 50%; border: 1px solid var(--line); background: var(--card); color: var(--alert); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
+.manager-remove svg { width: 14px; height: 14px; }
+.manager-remove:disabled { opacity: 0.35; cursor: default; }
 .attendee-line { margin-top: 3px; font-size: 12px; line-height: 1.3; color: var(--muted); overflow-wrap: anywhere; }
 
 .person-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-top: 1px solid var(--line); }
@@ -525,17 +529,6 @@ a.person-row-link { color: inherit; text-decoration: none; border-radius: 8px; }
 a.person-row-link:hover { background: var(--input); }
 
 a.person-row-link:hover .person-name { text-decoration: underline; }
-
-/* The group elsewhere: at Google, and as a Magic Tag in Who?. */
-.elsewhere { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 0 0 12px; }
-
-.elsewhere-link { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; color: var(--brand); text-decoration: none; }
-
-.elsewhere-link:hover { text-decoration: underline; }
-
-.elsewhere-link svg { width: 18px; height: 18px; }
-
-.elsewhere-link img { width: 20px; height: 20px; border-radius: 5px; }
 
 .person-words { font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -622,8 +615,6 @@ a.compact-row:hover { background: var(--input); }
 
 /* Every member list runs its full length and the page scrolls; nothing on
    the page hides a scroll of its own. */
-
-.back-link { display: inline-block; margin-top: 8px; color: var(--muted); text-decoration: none; font-weight: 600; }
 
 /* The editor. */
 .field { display: block; margin: 14px 0; }
