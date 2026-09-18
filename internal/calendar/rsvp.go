@@ -108,7 +108,7 @@ func (a app) rsvp(w http.ResponseWriter, r *http.Request) {
 // (replies.go).
 func (a app) sendInvite(ctx context.Context, email string, e *Event) {
 	origin := "https://when.heliosian.com"
-	link := origin + "/e/" + e.ID
+	link := origin + EventPath(e)
 	day, hours := whenLines(e)
 	when := day
 	if hours != "" {

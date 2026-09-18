@@ -126,6 +126,44 @@ func TestSampleLoads(t *testing.T) {
 	}
 }
 
+func TestVisibleToIsWhatRenderShows(t *testing.T) {
+	cache, _ := newServer(t)
+	m := cache.Model()
+	all := []*Activity{}
+	for _, root := range m.Activities {
+		all = append(append(all, root), root.Descendants()...)
+	}
+	for _, c := range []struct {
+		email string
+		admin bool
+	}{{parent, false}, {"elena.torres@heliosschool.org", false}, {m.Activity("E001").CoChairs()[0], false}, {parent, true}} {
+		shown := map[string]bool{}
+		var walk func([]*ActivityView)
+		walk = func(list []*ActivityView) {
+			for _, a := range list {
+				shown[a.ID] = true
+				walk(a.Children)
+			}
+		}
+		for _, a := range Render(m, fakeDirectory{}, c.email, c.admin, now()).Activities {
+			shown[a.ID] = true
+			walk(a.Children)
+		}
+		hidden := 0
+		for _, a := range all {
+			if m.VisibleTo(a, c.email, c.admin) != shown[a.ID] {
+				t.Errorf("%s (admin %v): %q (%s) VisibleTo %v, rendered %v", c.email, c.admin, a.Title, a.Status, m.VisibleTo(a, c.email, c.admin), shown[a.ID])
+			}
+			if !shown[a.ID] {
+				hidden++
+			}
+		}
+		if !c.admin && hidden == 0 {
+			t.Errorf("%s: nothing is hidden, so the test proves nothing", c.email)
+		}
+	}
+}
+
 func TestRenderHidesWhatItShould(t *testing.T) {
 	cache, _ := newServer(t)
 	view := Render(cache.Model(), fakeDirectory{}, parent, false, now())

@@ -17,8 +17,8 @@ func TestLinksShortenAndExpand(t *testing.T) {
 	if got := l.expand("[Sam](L1) and [the form](L3), [x](L9)"); got != "[Sam](https://who.heliosian.com/people/sam) and [the form](https://docs.google.com/d/abc), [x](L9)" {
 		t.Fatalf("expand gave %s", got)
 	}
-	if got := l.expand(`[Sam](L1 "") and [the form](L3 'Sign up')`); got != "[Sam](https://who.heliosian.com/people/sam) and [the form](https://docs.google.com/d/abc)" {
-		t.Fatalf("expand of titled links gave %s", got)
+	if got := l.expand(`[Sam](L1 "") and [the form](L3 'Sign up'), [the reminder](L1 — see below)`); got != "[Sam](https://who.heliosian.com/people/sam) and [the form](https://docs.google.com/d/abc), [the reminder](https://who.heliosian.com/people/sam)" {
+		t.Fatalf("expand of links with words after the key gave %s", got)
 	}
 	if got := string(l.expandInput([]byte(`{"path":"L2","id":"L22"}`))); got != `{"path":"https://x.org/a?b=1`+"\\"+`u0026c=2","id":"L22"}` {
 		t.Fatalf("expandInput gave %s", got)
@@ -34,14 +34,14 @@ func TestExpanderHoldsATitledKey(t *testing.T) {
 			out.WriteString(data.(string))
 		}
 	}, cards: func(string) (linkCard, bool) { return linkCard{}, false }, sent: map[string]bool{}}
-	for _, piece := range []string{"The [Donhowe Family](L", "1 ", `"`, `"`, ") lives in Mountain View"} {
+	for _, piece := range []string{"The [Donhowe Family](L", "1 ", `"`, `"`, ") and [the ", "same](L1", " — see", " below) live in Mountain View"} {
 		e.send("text", piece)
 		if strings.Contains(out.String(), "L1") {
 			t.Fatalf("the key went out raw: %q", out.String())
 		}
 	}
 	e.flush()
-	if out.String() != "The [Donhowe Family](https://who.heliosian.com/families/donhowe) lives in Mountain View" {
+	if out.String() != "The [Donhowe Family](https://who.heliosian.com/families/donhowe) and [the same](https://who.heliosian.com/families/donhowe) live in Mountain View" {
 		t.Fatalf("streamed %q", out.String())
 	}
 }

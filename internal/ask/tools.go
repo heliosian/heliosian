@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/url"
 	"slices"
 	"sort"
 	"strings"
@@ -173,9 +172,10 @@ func (v *viewer) names(emails []string) []string {
 }
 
 func whoLink(email string) string {
-	local, _, _ := strings.Cut(email, "@")
-	return whoBase + "/people/" + url.PathEscape(local)
+	return whoBase + who.PersonPath(email)
 }
+
+var appBases = map[string]string{"calendar": whenBase, "team": teamBase, "celebrate": celebrateBase}
 
 // classroomTeachers is the staff who teach in a classroom, by name: the
 // crews' teachers, and any staff member placed in it.

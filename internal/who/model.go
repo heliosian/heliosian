@@ -1,5 +1,10 @@
 package who
 
+import (
+	"net/url"
+	"strings"
+)
+
 type OptStatus string
 
 const (
@@ -215,6 +220,27 @@ func (m *Model) HeroPhoto(email string) string {
 
 func (m *Model) Member(email string) bool {
 	return m.Person(email) != nil
+}
+
+func Slug(email string) string {
+	local, _, _ := strings.Cut(email, "@")
+	return local
+}
+
+func PersonPath(email string) string {
+	return "/people/" + url.PathEscape(Slug(email))
+}
+
+func FamilyPath(key string) string {
+	return "/families/" + url.PathEscape(key)
+}
+
+func ClassroomPath(name string) string {
+	return "/classrooms/" + url.PathEscape(name)
+}
+
+func ListPath(key string) string {
+	return "/people?list=" + url.QueryEscape(key)
 }
 
 func (m *Model) DisplayName(email string) string {

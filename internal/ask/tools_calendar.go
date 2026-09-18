@@ -3,7 +3,6 @@ package ask
 import (
 	"encoding/json"
 	"fmt"
-	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -47,17 +46,7 @@ func (v *viewer) eventCard(e *calendar.Event) eventCard {
 	if until, ok := v.daysAway(e.End); ok {
 		c.Past = until < 0
 	}
-	parts := strings.Split(e.ID, "/")
-	for i, p := range parts {
-		parts[i] = url.PathEscape(p)
-	}
-	c.Link = whenBase + "/e/" + strings.Join(parts, "/")
-	switch {
-	case e.Link != "" && e.Source == calendar.SourceCelebrate:
-		c.Link = celebrateBase + e.Link
-	case e.Link != "":
-		c.Link = teamBase + e.Link
-	}
+	c.Link = eventLink(e)
 	for _, s := range e.MinePeople {
 		words := s.Name
 		if s.Mine {
@@ -72,6 +61,11 @@ func (v *viewer) eventCard(e *calendar.Event) eventCard {
 		c.Household = []string{e.Mine}
 	}
 	return c
+}
+
+func eventLink(e *calendar.Event) string {
+	app, path := calendar.Page(e)
+	return appBases[app] + path
 }
 
 var calendarEvents = tool{

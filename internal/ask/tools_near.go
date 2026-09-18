@@ -43,7 +43,7 @@ func milesBetween(a, b who.Family) float64 {
 }
 
 func (v *viewer) nearbyCard(key string, family who.Family) nearbyCard {
-	c := nearbyCard{Name: family.Name, City: cityOf(family.Address), Adults: []string{}, Students: []string{}, Link: whoBase + "/families/" + key}
+	c := nearbyCard{Name: family.Name, City: cityOf(family.Address), Adults: []string{}, Students: []string{}, Link: whoBase + who.FamilyPath(key)}
 	for _, email := range family.AdultEmails {
 		if p := v.directory.Person(email); p != nil {
 			c.Adults = append(c.Adults, p.FullName)

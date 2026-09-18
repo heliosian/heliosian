@@ -8,6 +8,7 @@ import (
 
 	"heliosian/internal/home"
 	"heliosian/internal/loop"
+	"heliosian/internal/who"
 )
 
 // groupCard is one email group as the tools answer it: its address and
@@ -45,7 +46,7 @@ var myGroups = tool{
 			manages := g.Manages(v.email)
 			members := loop.Members(g, sources)
 			on := slices.Contains(members, v.email)
-			if !manages && g.Visibility != loop.VisibilityEveryone && !(g.Visibility == loop.VisibilityMembers && on) {
+			if !g.VisibleTo(v.email, false, sources) {
 				continue
 			}
 			if in.Query != "" && !contains(g.Title, in.Query) && !contains(g.Name, in.Query) && !contains(g.Description, in.Query) {
@@ -53,7 +54,7 @@ var myGroups = tool{
 			}
 			c := groupCard{
 				Title: g.Title, Address: g.Address(), Aliases: g.Aliases, Description: g.Description, Visibility: g.Visibility, Managers: v.names(g.Managers),
-				Manage: manages, OnIt: on, Members: len(members), Link: loopBase + "/groups/" + g.Name,
+				Manage: manages, OnIt: on, Members: len(members), Link: loopBase + g.Path(),
 			}
 			if manages {
 				for _, m := range members {
@@ -86,7 +87,7 @@ var myLists = tool{
 			for _, g := range l.Guests {
 				guests = append(guests, g.Name)
 			}
-			lists = append(lists, map[string]any{"name": l.Name, "kind": listKind(l.Kind), "people": v.names(l.People), "guests": guests, "link": whoBase + "/people?list=" + l.Key})
+			lists = append(lists, map[string]any{"name": l.Name, "kind": listKind(l.Kind), "people": v.names(l.People), "guests": guests, "link": whoBase + who.ListPath(l.Key)})
 		}
 		return map[string]any{"tags": tags, "magicTags": lists}, nil
 	},

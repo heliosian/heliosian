@@ -1,11 +1,9 @@
 package ask
 
 import (
-	"slices"
 	"sync"
 
 	"heliosian/internal/artifacts"
-	"heliosian/internal/loop"
 )
 
 type groupAccess struct {
@@ -18,14 +16,7 @@ func (v *viewer) readableGroups() map[string]bool {
 		v.access.names = map[string]bool{}
 		sources := v.sources.LoopSources()
 		for _, g := range v.loop.Groups {
-			if g.Manages(v.email) {
-				v.access.names[g.Name] = true
-				continue
-			}
-			if g.Visibility != loop.VisibilityEveryone && g.Visibility != loop.VisibilityMembers {
-				continue
-			}
-			if slices.Contains(loop.Members(g, sources), v.email) {
+			if g.MailReadableBy(v.email, sources) {
 				v.access.names[g.Name] = true
 			}
 		}

@@ -42,6 +42,10 @@ export function stable(text) {
   if (bolds % 2 === 1) {
     cut = Math.min(cut, text.lastIndexOf('**'));
   }
+  const singles = [...text.replace(/^\s*\*\s/gm, '  ').replace(/\*\*/g, '  ').matchAll(/\*/g)].map(m => m.index);
+  if (singles.length % 2 === 1) {
+    cut = Math.min(cut, singles[singles.length - 1]);
+  }
   const ticks = text.split('`').length - 1;
   if (ticks % 2 === 1) {
     cut = Math.min(cut, text.lastIndexOf('`'));
@@ -55,7 +59,7 @@ export function stable(text) {
 
 // inline fills a node with a line's text: bold (with a link inside it, when
 // there is one), code, links in brackets, and bare addresses.
-const inlinePattern = /(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\([^)\s]+\)|https?:\/\/[^\s<>)]+[^\s<>).,;:!?])/g;
+const inlinePattern = /(\*\*[^*]+\*\*|\*[^*\s](?:[^*]*[^*\s])?\*|`[^`]+`|\[[^\]]+\]\([^)\s]+\)|https?:\/\/[^\s<>)]+[^\s<>).,;:!?])/g;
 
 function inline(node, text, cards) {
   let last = 0;
@@ -68,6 +72,10 @@ function inline(node, text, cards) {
       const strong = el('strong');
       inline(strong, token.slice(2, -2), cards);
       node.append(strong);
+    } else if (token.startsWith('*')) {
+      const em = el('em');
+      inline(em, token.slice(1, -1), cards);
+      node.append(em);
     } else if (token.startsWith('`')) {
       node.append(el('code', '', token.slice(1, -1)));
     } else if (token.startsWith('[')) {
@@ -93,7 +101,11 @@ function anchor(href, label, cards) {
     return a;
   }
   a.className = 'chip-link chip-' + card.kind;
-  if (card.image) {
+  if (card.badge) {
+    a.append(el('span', 'chip-badge', card.badge));
+  } else if (card.kind === 'group') {
+    a.append(groupIcon());
+  } else if (card.image) {
     const img = el('img', 'chip-image');
     img.src = localizeLink(card.image);
     img.alt = '';
@@ -103,6 +115,22 @@ function anchor(href, label, cards) {
   }
   a.append(el('span', 'chip-label', label));
   return a;
+}
+
+function groupIcon() {
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('class', 'chip-image chip-icon');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '2');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  const path = document.createElementNS(ns, 'path');
+  path.setAttribute('d', 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75');
+  svg.append(path);
+  return svg;
 }
 
 const tableRule = /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?\s*$/;

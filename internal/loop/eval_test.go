@@ -298,6 +298,35 @@ func TestExcludedAreLeftOff(t *testing.T) {
 	}
 }
 
+func TestWhoSeesAGroupAndWhoReadsItsMail(t *testing.T) {
+	s, _ := sample(t)
+	mia, nico, outsider := "mia.torres@heliosschool.org", "nico.torres@heliosschool.org", "sam.whitfield@heliosschool.org"
+	for _, c := range []struct {
+		visibility  string
+		sees, reads map[string]bool
+	}{
+		{loop.VisibilityHidden, map[string]bool{jordan: true}, map[string]bool{jordan: true}},
+		{loop.VisibilityMembers, map[string]bool{jordan: true, nico: true, mia: true}, map[string]bool{jordan: true, nico: true}},
+		{loop.VisibilityEveryone, map[string]bool{jordan: true, nico: true, mia: true, outsider: true}, map[string]bool{jordan: true, nico: true}},
+	} {
+		g := loop.Normalize(loop.Group{Name: "test", Title: "Test", Managers: []string{jordan}, Visibility: c.visibility,
+			Rules:    []loop.Rule{rule(loop.KindInclude, func(r *loop.Rule) { r.Search = "torres" })},
+			Excluded: []loop.Excluded{{Email: mia}},
+		})
+		for _, email := range []string{jordan, nico, mia, outsider} {
+			if got := g.VisibleTo(email, false, s); got != c.sees[email] {
+				t.Errorf("%s: %s sees %v", c.visibility, email, got)
+			}
+			if got := g.MailReadableBy(email, s); got != c.reads[email] {
+				t.Errorf("%s: %s reads the mail %v", c.visibility, email, got)
+			}
+		}
+		if !g.VisibleTo(outsider, true, s) {
+			t.Errorf("%s: an admin does not see it", c.visibility)
+		}
+	}
+}
+
 // A suggested group starts with one rule, anyone tagged in the Magic Tag
 // plus their parents: everyone on the list is on the group whatever their
 // role, and a student on it brings their parents along.

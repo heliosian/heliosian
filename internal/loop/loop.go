@@ -137,6 +137,10 @@ func (g Group) Address() string {
 	return g.Name + "@" + Domain
 }
 
+func (g Group) Path() string {
+	return "/groups/" + g.Name
+}
+
 // Manages says whether email is one of the group's managers.
 func (g Group) Manages(email string) bool {
 	return slices.Contains(g.Managers, email)

@@ -681,7 +681,7 @@ func (a app) tellAdmins(ctx context.Context, host, by string, e *Event) {
 	if p, ok := a.directory.Person(by); ok && p.Name != "" {
 		who = p.Name + " (" + by + ")"
 	}
-	link := "https://" + host + "/e/" + e.ID
+	link := "https://" + host + EventPath(e)
 	day, hours := whenLines(e)
 	when := day
 	if hours != "" {

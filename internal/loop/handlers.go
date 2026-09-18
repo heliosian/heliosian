@@ -341,10 +341,7 @@ func (a app) sharedRules(viewer string, existing []Rule, rules []Rule) error {
 }
 
 func (a app) sees(g Group, viewer string, admin bool) bool {
-	if admin || g.Manages(viewer) || g.Visibility == VisibilityEveryone {
-		return true
-	}
-	return g.Visibility == VisibilityMembers && OnList(g, a.sources(), viewer)
+	return g.VisibleTo(viewer, admin, a.sources())
 }
 
 func (a app) view(g Group, viewer string) groupView {

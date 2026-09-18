@@ -147,7 +147,7 @@ func (a app) eventHead(e *Event, origin string) string {
 	if b := blurb(e); b != "" {
 		parts = append(parts, b)
 	}
-	return previewTags(e.Title, strings.Join(parts, " — "), origin+"/e/"+e.ID, origin+"/open/share/"+e.ID+".png")
+	return previewTags(e.Title, strings.Join(parts, " — "), origin+EventPath(e), origin+"/open/share/"+e.ID+".png")
 }
 
 // upcomingHead is the calendar's own preview: the next few events, in words,

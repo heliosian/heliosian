@@ -112,14 +112,23 @@ func linkedApp(e *Event) string {
 	return appTeam
 }
 
-// eventPath is the event's page here, each segment of a linked event's id
+// EventPath is the event's page here, each segment of a linked event's id
 // escaped on its own, as the page itself builds it.
-func eventPath(e *Event) string {
+func EventPath(e *Event) string {
 	parts := strings.Split(e.ID, "/")
 	for i, p := range parts {
 		parts[i] = url.PathEscape(p)
 	}
 	return "/e/" + strings.Join(parts, "/")
+}
+
+// Page is where an event is looked at: the app that runs a linked one and
+// its path there, else the calendar and the event's own page.
+func Page(e *Event) (app, path string) {
+	if e.Link != "" {
+		return linkedApp(e), e.Link
+	}
+	return appCalendar, EventPath(e)
 }
 
 // admits says whether the calendar page first shows an event to a viewer:
@@ -248,7 +257,7 @@ func (m *Model) DefaultCalendar(email string) *Feed {
 // card is one event as the front page takes it.
 func (m *Model) card(e *Event) Upcoming {
 	u := Upcoming{
-		ID: e.ID, Title: e.Title, Path: eventPath(e), Start: e.start.Format(DateFormat), When: when(e),
+		ID: e.ID, Title: e.Title, Path: EventPath(e), Start: e.start.Format(DateFormat), When: when(e),
 		StartAt: e.Start, EndAt: e.End, Location: e.Location, Description: blurb(e),
 		Image: "/" + m.pictureOf(e), ImageApp: appCalendar,
 	}

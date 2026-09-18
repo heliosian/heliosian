@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"os"
 	"strings"
 
@@ -103,7 +102,7 @@ func (a app) myFamily(w http.ResponseWriter, r *http.Request) {
 	model := a.cache.Model()
 	email := effectiveEmail(a.cache, r)
 	if keys := model.FamilyKeysOf(email); len(keys) > 0 {
-		http.Redirect(w, r, "/families/"+url.PathEscape(keys[0]), http.StatusFound)
+		http.Redirect(w, r, FamilyPath(keys[0]), http.StatusFound)
 		return
 	}
 	http.Error(w, "no family record for "+email, http.StatusNotFound)
@@ -141,7 +140,7 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	effective := effectiveEmail(a.cache, r)
 	name := a.cache.Model().DisplayName(effective)
-	slug, _, _ := strings.Cut(effective, "@")
+	slug := Slug(effective)
 	view := struct {
 		*Model
 		User    user                `json:"user"`

@@ -98,7 +98,7 @@ var parties = tool{
 		out := []partyCard{}
 		past := 0
 		for _, p := range v.celebrate.SortedParties("") {
-			if p.Status != celebrate.StatusOpen && !p.Hosted(v.email) {
+			if !p.VisibleTo(v.email, false) {
 				continue
 			}
 			if in.Query != "" && !contains(p.Title, in.Query) && !contains(p.Summary, in.Query) && !contains(p.Category, in.Query) && !contains(p.Subtitle, in.Query) {

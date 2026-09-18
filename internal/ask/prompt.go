@@ -12,6 +12,7 @@ import (
 	"heliosian/internal/artifacts"
 	"heliosian/internal/calendar"
 	"heliosian/internal/loop"
+	"heliosian/internal/team"
 	"heliosian/internal/who"
 )
 
@@ -25,7 +26,7 @@ var school string
 func systemBlocks(v *viewer, recent []*artifacts.Document, l *links) []anthropic.BetaTextBlockParam {
 	return []anthropic.BetaTextBlockParam{
 		{Text: l.shorten(school + "\n\n" + lingo(v)), CacheControl: anthropic.NewBetaCacheControlEphemeralParam()},
-		{Text: l.shorten(viewerBlock(v) + "\n" + recentBlock(v, recent)), CacheControl: anthropic.NewBetaCacheControlEphemeralParam()},
+		{Text: l.shorten(viewerBlock(v) + "\n" + recentBlock(v, recent) + "\n" + linkExamples(v)), CacheControl: anthropic.NewBetaCacheControlEphemeralParam()},
 	}
 }
 
@@ -40,6 +41,75 @@ func recentDocuments(v *viewer) []*artifacts.Document {
 			continue
 		}
 		out = append(out, d)
+	}
+	return out
+}
+
+func linkExamples(v *viewer) string {
+	b := &strings.Builder{}
+	b.WriteString("## How links look\n\nThe page draws these links, from this person's own data, as chips:\n")
+	for _, address := range v.exampleLinks() {
+		card, ok := v.linkCard(address)
+		if !ok {
+			continue
+		}
+		shown := "a small mark"
+		switch {
+		case card.Badge != "":
+			shown = fmt.Sprintf("a badge reading %q", card.Badge)
+		case card.Image != "":
+			shown = "a picture"
+		}
+		fmt.Fprintf(b, "- [%s](%s) shows %s, then the words %q.\n", card.Name, address, shown, card.Name)
+	}
+	return b.String()
+}
+
+func (v *viewer) exampleLinks() []string {
+	out := []string{}
+	keys := v.directory.FamilyKeysOf(v.email)
+	if len(keys) > 0 {
+		family := v.directory.Families[keys[0]]
+		out = append(out, whoBase+who.FamilyPath(keys[0]))
+		for _, email := range family.KidEmails {
+			if k := v.directory.Person(email); k != nil {
+				out = append(out, whoLink(k.Email))
+				if k.Classroom != "" {
+					out = append(out, whoBase+who.ClassroomPath(k.Classroom))
+				}
+				break
+			}
+		}
+	}
+	today := v.now.Format(calendar.DateFormat)
+	for _, e := range v.calendar.EventsFor(v.email, v.sources.Linked(v.email)) {
+		if app, _ := calendar.Page(e); app == "calendar" && e.Start >= today {
+			out = append(out, eventLink(e))
+			break
+		}
+	}
+	if v.team != nil {
+		for _, a := range v.team.Activities {
+			if a.Year == team.SchoolYear(v.now) && v.team.VisibleTo(a, v.email, false) {
+				out = append(out, teamBase+v.team.PathOf(a))
+				break
+			}
+		}
+	}
+	if v.celebrate != nil {
+		for _, p := range v.celebrate.SortedParties("") {
+			if p.VisibleTo(v.email, false) && !p.Past(v.now) {
+				out = append(out, celebrateBase+v.celebrate.PathOf(p))
+				break
+			}
+		}
+	}
+	sources := v.sources.LoopSources()
+	for _, g := range v.loop.Groups {
+		if g.VisibleTo(v.email, false, sources) {
+			out = append(out, loopBase+g.Path())
+			break
+		}
 	}
 	return out
 }

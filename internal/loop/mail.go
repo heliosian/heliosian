@@ -153,6 +153,13 @@ func (m *mailer) mark(j job, state string, cells map[string]string) {
 	})
 }
 
+func (m *mailer) recordSent(ctx context.Context, j job, raw []byte, cells map[string]string) {
+	m.mark(j, stateSent, cells)
+	if err := m.mail.Documents.Post(ctx, j.group, raw); err != nil {
+		slog.Error("[ERROR] groups: not filed for ask", "message", j.id, "group", j.group, "error", err)
+	}
+}
+
 func localsIn(addresses []string) []string {
 	out := []string{}
 	for _, address := range addresses {
@@ -272,12 +279,12 @@ func (m *mailer) forward(ctx context.Context, j job) string {
 		state = stateFailed
 	}
 	log.Info("groups: forwarded", "members", len(members), "sent", sent, "failed", len(failures))
-	m.mark(j, state, map[string]string{"Recipients": strconv.Itoa(sent), "Detail": strings.Join(failures, "; ")})
+	cells := map[string]string{"Recipients": strconv.Itoa(sent), "Detail": strings.Join(failures, "; ")}
 	if state == stateSent {
-		if err := m.mail.Documents.Post(ctx, g.Name, raw); err != nil {
-			log.Error("[ERROR] groups: not filed for ask", "error", err)
-		}
+		m.recordSent(ctx, j, raw, cells)
+		return state
 	}
+	m.mark(j, state, cells)
 	return state
 }
 

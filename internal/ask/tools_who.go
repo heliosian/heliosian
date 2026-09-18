@@ -66,7 +66,7 @@ type familyCard struct {
 
 func (v *viewer) familyCard(key string) familyCard {
 	family := v.directory.Families[key]
-	f := familyCard{Name: family.Name, Address: family.Address, Phone: family.Phone, Adults: []card{}, Kids: []card{}, Caption: family.PhotoCaption, Link: whoBase + "/families/" + key}
+	f := familyCard{Name: family.Name, Address: family.Address, Phone: family.Phone, Adults: []card{}, Kids: []card{}, Caption: family.PhotoCaption, Link: whoBase + who.FamilyPath(key)}
 	for _, email := range family.AdultEmails {
 		if p := v.directory.Person(email); p != nil {
 			f.Adults = append(f.Adults, v.card(p))
@@ -298,7 +298,7 @@ var getClassroom = tool{
 		if want == "" {
 			out := []map[string]any{}
 			for _, c := range v.calendar.Roster.Classrooms {
-				out = append(out, map[string]any{"name": c.Name, "band": c.Band, "grades": c.Grades, "teachers": v.classroomTeachers(c.Name), "students": v.count(c.Name), "link": whoBase + "/classrooms/" + c.Name})
+				out = append(out, map[string]any{"name": c.Name, "band": c.Band, "grades": c.Grades, "teachers": v.classroomTeachers(c.Name), "students": v.count(c.Name), "link": whoBase + who.ClassroomPath(c.Name)})
 			}
 			return map[string]any{"classrooms": out}, nil
 		}
@@ -341,7 +341,7 @@ var getClassroom = tool{
 		slices.Sort(roomParents)
 		return map[string]any{
 			"name": c.Name, "band": c.Band, "grades": c.Grades, "teachers": v.classroomTeachers(c.Name), "crews": crews, "students": others,
-			"roomParents": roomParents, "link": whoBase + "/classrooms/" + c.Name,
+			"roomParents": roomParents, "link": whoBase + who.ClassroomPath(c.Name),
 		}, nil
 	},
 }

@@ -203,12 +203,6 @@ type View struct {
 	Alerts       Alerts   `json:"alerts"`
 }
 
-// visible decides whether a party reaches this viewer: an open one reaches
-// everyone; a pending or hidden one only its hosts and admins.
-func (v viewer) visible(p *Party, editor bool) bool {
-	return p.Status == StatusOpen || editor
-}
-
 // line places an attendee under their name, the way the old site did: a
 // student's grade, a parent's children, a staff member's job, a guest's
 // purchaser.
@@ -328,8 +322,7 @@ func Render(model *Model, directory Directory, email string, admin bool, now tim
 	stale, privacy := directory.Alerts(email)
 	view.Alerts = Alerts{Stale: stale, Privacy: privacy}
 	for _, p := range model.SortedParties("") {
-		editor := admin || p.Hosted(email)
-		if !v.visible(p, editor) {
+		if !p.VisibleTo(email, admin) {
 			continue
 		}
 		view.Parties = append(view.Parties, v.party(p, now))

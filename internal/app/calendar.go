@@ -125,7 +125,7 @@ func (c calendarLinked) parties(now time.Time, family familyNames, full map[stri
 		return out
 	}
 	for _, p := range model.SortedParties("") {
-		if p.Status != celebrate.StatusOpen || p.Start == "" {
+		if !p.VisibleTo("", false) || p.Start == "" {
 			continue
 		}
 		// Whose the tickets are: the person named on each, else the buyer
@@ -191,7 +191,7 @@ func (c calendarLinked) activities(family familyNames, full map[string]string) [
 		return out
 	}
 	for _, a := range model.Activities {
-		if (a.Status != team.StatusOpen && a.Status != team.StatusDone) || a.Start == "" {
+		if !model.VisibleTo(a, "", false) || a.Start == "" {
 			continue
 		}
 		availability := "open"

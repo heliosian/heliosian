@@ -394,6 +394,12 @@ func (p *Party) Hosted(email string) bool {
 	return slices.Contains(p.HostEmails, email)
 }
 
+// VisibleTo is whether the party reaches someone: an open one reaches
+// everyone; a pending or hidden one only its hosts and admins.
+func (p *Party) VisibleTo(email string, admin bool) bool {
+	return p.Status == StatusOpen || admin || p.Hosted(email)
+}
+
 // Sold counts the tickets sold; Waiting counts the waitlist.
 func (p *Party) Sold() int {
 	n := 0

@@ -170,13 +170,31 @@ func (v viewer) canEdit(a *Activity) bool {
 // visible decides whether a pending or hidden item reaches this viewer: hidden
 // ones only reach editors, pending ones also reach whoever proposed them.
 func (v viewer) visible(status, addedBy string, editor bool) bool {
+	return visibleStatus(status, addedBy, v.email, editor)
+}
+
+func visibleStatus(status, addedBy, email string, editor bool) bool {
 	switch status {
 	case StatusHidden:
 		return editor
 	case StatusPending:
-		return editor || addedBy == v.email
+		return editor || addedBy == email
 	}
 	return true
+}
+
+// VisibleTo is whether the portal shows a thing to someone: it and every
+// thing above it, each judged with its editors - an admin, or whoever runs it.
+func (m *Model) VisibleTo(a *Activity, email string, admin bool) bool {
+	for node := a; node != nil; node = m.Activity(node.Parent) {
+		if !visibleStatus(node.Status, node.AddedBy, email, admin || m.Runs(node, email)) {
+			return false
+		}
+		if node.Parent == "" {
+			return true
+		}
+	}
+	return false
 }
 
 // volunteers lists who signed up, named and pictured, holding back a hidden

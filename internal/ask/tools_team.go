@@ -39,20 +39,6 @@ type activityCard struct {
 	Link        string   `json:"link"`
 }
 
-// visibleActivity is the portal's own rule: an open thing reaches
-// everyone, a pending one its proposer and whoever runs it, a hidden one
-// whoever runs it alone.
-func (v *viewer) visibleActivity(a *team.Activity) bool {
-	runs := v.team.Runs(a, v.email)
-	switch a.Status {
-	case team.StatusHidden:
-		return runs
-	case team.StatusPending:
-		return runs || strings.EqualFold(a.AddedBy, v.email)
-	}
-	return true
-}
-
 func (v *viewer) activityCard(a *team.Activity) activityCard {
 	runs := v.team.Runs(a, v.email)
 	start, end, from := v.dates(a)
@@ -163,7 +149,7 @@ var volunteerOpportunities = tool{
 		total := 0
 		var walk func(a *team.Activity)
 		walk = func(a *team.Activity) {
-			if !v.visibleActivity(a) {
+			if !v.team.VisibleTo(a, v.email, false) {
 				return
 			}
 			if (in.IncludePast || !v.over(a)) && (in.Query == "" || contains(a.Title, in.Query) || contains(a.Description, in.Query)) {
@@ -205,12 +191,12 @@ var getActivity = tool{
 		if a == nil && strings.TrimSpace(in.Path) != "" {
 			a = v.team.Resolve(strings.TrimPrefix(strings.TrimSpace(in.Path), teamBase))
 		}
-		if a == nil || !v.visibleActivity(a) {
+		if a == nil || !v.team.VisibleTo(a, v.email, false) {
 			return nil, fmt.Errorf("nothing on HCA-Team matches that")
 		}
 		under := []activityCard{}
 		for _, d := range a.Descendants() {
-			if v.visibleActivity(d) {
+			if v.team.VisibleTo(d, v.email, false) {
 				under = append(under, v.activityCard(d))
 			}
 		}

@@ -50,6 +50,18 @@ To capture authenticated real-data pages, launch the capture browser (`go run ./
 
 No direct writes, ever. Everything the server writes to a sheet or the bucket goes through the write-through of the cache that serves that data: the cache's in-memory model takes the change in the same step as the write, on the shared write queue, so the next request sees it. Nothing writes a backing store and leaves the change for the five-minute refresh to pick up; a cache with no write-through for some data gets one before anything writes that data. Each cache counts its edits, so a refresh that read the sheet before an edit landed does not put the older sheet back.
 
+A write that another store follows is one step in the owning package, not two a caller must remember: Loop records a post `sent` and files it into Helios Ask's documents in `recordSent`, the only place that writes the state.
+
+## The rules live with the thing
+
+Who may see a thing, what it is called, where its page is, and what else changes when it changes are written once, in the package that owns the thing and beside its model, and every app that shows or reads it - its own pages, the calendar folding it in, Helios Ask - calls that one function rather than restating it, since a restated rule drifts from the one the owner's own pages keep. So:
+
+- **Who sees it** - `team.Model.VisibleTo` (a thing and everything above it), `celebrate.Party.VisibleTo`, `loop.Group.VisibleTo` and `loop.Group.MailReadableBy`, `calendar.Model.EventsFor`, and the directory model itself, which holds only what members may see. A caller with no viewer - the calendar folding in what everyone sees, a signed-out link preview - asks with an empty address and no admin.
+- **What it is called** - the directory's `familyNameFor` for a family's `name` and `shortName`.
+- **Where its page is** - `who.PersonPath`, `who.FamilyPath`, `who.ClassroomPath` and `who.ListPath`; `calendar.EventPath` and `calendar.Page`, which says which app a linked event's page is on; `loop.Group.Path`; `team.Model.PathOf` and `celebrate.Model.PathOf`. Only the host is the caller's.
+
+A rule an app needs that its owner lacks is added to the owner, never kept by the app that needed it.
+
 ## Setup
 
 Development happens on macOS. Two Homebrew installs cover everything here and in `docs/screenshots.md`:

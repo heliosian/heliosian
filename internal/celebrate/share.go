@@ -43,7 +43,7 @@ func ShareTagline(now func() string) {
 
 // previewable is what may be shown to someone who has not signed in.
 func previewable(p *Party) bool {
-	return p != nil && p.Status == StatusOpen
+	return p != nil && p.VisibleTo("", false)
 }
 
 // whenLines is the card's day and time lines.
