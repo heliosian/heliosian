@@ -85,6 +85,7 @@ type Person struct {
 type Family struct {
 	Key              string   `json:"key"`
 	Name             string   `json:"name,omitempty"`
+	ShortName        string   `json:"shortName,omitempty"`
 	Address          string   `json:"address,omitempty"`
 	Phone            string   `json:"phone,omitempty"`
 	Lat              float64  `json:"lat,omitempty"`

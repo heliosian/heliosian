@@ -1576,7 +1576,7 @@ func (l *loader) removePeople(gone map[string]bool) {
 			delete(l.model.Families, key)
 			continue
 		}
-		family.Name = familyNameFor(family, l.people)
+		family.ShortName, family.Name = familyNameFor(family, l.people)
 		l.model.Families[key] = family
 	}
 	for _, p := range l.people {
@@ -1960,24 +1960,33 @@ func surname(fullName string) string {
 	return fields[len(fields)-1]
 }
 
-func familyNameFor(f Family, people map[string]*Person) string {
-	members := append(append([]string{}, f.KidEmails...), f.AdultEmails...)
-	seen := map[string]bool{}
+// A surname that is one part of another member's hyphenated surname is
+// already in it: Mager, Ridgeway and Mager-Ridgeway make Mager-Ridgeway.
+func familyNameFor(f Family, people map[string]*Person) (short, full string) {
 	names := []string{}
-	for _, email := range members {
+	for _, email := range append(append([]string{}, f.KidEmails...), f.AdultEmails...) {
 		p, ok := people[email]
 		if !ok {
 			continue
 		}
 		s := surname(p.FullName)
-		if s == "" || seen[s] {
+		if s == "" || slices.ContainsFunc(names, func(n string) bool { return strings.EqualFold(n, s) }) {
 			continue
 		}
-		seen[s] = true
 		names = append(names, s)
 	}
-	if len(names) == 0 {
-		return ""
+	kept := []string{}
+	for _, s := range names {
+		within := slices.ContainsFunc(names, func(other string) bool {
+			return !strings.EqualFold(other, s) && slices.ContainsFunc(strings.Split(other, "-"), func(part string) bool { return strings.EqualFold(part, s) })
+		})
+		if !within {
+			kept = append(kept, s)
+		}
 	}
-	return strings.Join(names, " & ") + " Family"
+	if len(kept) == 0 {
+		return "", ""
+	}
+	short = strings.Join(kept, " & ")
+	return short, short + " Family"
 }

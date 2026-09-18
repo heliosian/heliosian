@@ -312,6 +312,38 @@ func TestFamilyFieldsComeFromTheFamiliesTab(t *testing.T) {
 }
 
 // A kid in two households belongs to two families, and both list them.
+func TestFamilyNameFoldsSurnamesIntoAHyphenatedOne(t *testing.T) {
+	people := map[string]*Person{
+		"ada@x.org":   {FullName: "Ada Mager-Ridgeway"},
+		"mira@x.org":  {FullName: "Mira Mager-Ridgeway"},
+		"lena@x.org":  {FullName: "Lena Mager"},
+		"tom@x.org":   {FullName: "Tom Ridgeway"},
+		"avni@x.org":  {FullName: "Avni Bhat"},
+		"ravi@x.org":  {FullName: "Ravi Bhat"},
+		"asha@x.org":  {FullName: "Asha Shenoy"},
+		"kim@x.org":   {FullName: "Kim Lee"},
+		"sam@x.org":   {FullName: "Sam LEE"},
+		"noah@x.org":  {FullName: "Noah Park"},
+		"parks@x.org": {FullName: "Jo Park-Hill"},
+		"hill@x.org":  {FullName: "Al Hillman"},
+	}
+	for _, c := range []struct {
+		kids, adults []string
+		short, full  string
+	}{
+		{[]string{"ada@x.org", "mira@x.org"}, []string{"lena@x.org", "tom@x.org"}, "Mager-Ridgeway", "Mager-Ridgeway Family"},
+		{[]string{"avni@x.org"}, []string{"ravi@x.org", "asha@x.org"}, "Bhat & Shenoy", "Bhat & Shenoy Family"},
+		{[]string{"kim@x.org"}, []string{"sam@x.org"}, "Lee", "Lee Family"},
+		{[]string{"noah@x.org"}, []string{"parks@x.org", "hill@x.org"}, "Park-Hill & Hillman", "Park-Hill & Hillman Family"},
+		{nil, []string{"nobody@x.org"}, "", ""},
+	} {
+		short, full := familyNameFor(Family{KidEmails: c.kids, AdultEmails: c.adults}, people)
+		if short != c.short || full != c.full {
+			t.Errorf("%v %v: %q %q, want %q %q", c.kids, c.adults, short, full, c.short, c.full)
+		}
+	}
+}
+
 func TestTwoHouseholdKidBelongsToBothFamilies(t *testing.T) {
 	m := sampleModel(t)
 	keys := m.FamilyKeysOf("dev.chandra@heliosschool.org")

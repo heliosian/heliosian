@@ -123,8 +123,7 @@ export function familyCard(p, family) {
   }
   const seeChip = el('a', 'fcard-see-chip');
   seeChip.href = familyLink(family.key);
-  const shortName = (family.name || '').replace(/ Family$/, '');
-  seeChip.append(el('span', '', `See ${shortName} Family`), svg('chevron-right'));
+  seeChip.append(el('span', '', `See ${family.name || ''}`), svg('chevron-right'));
   right.append(seeChip);
   grid.append(right);
   card.append(grid);
@@ -142,7 +141,7 @@ export function renderFamilyDetail(key) {
   }
   const editable = key === myFamilyKey() || state.model.superEdit;
   const editing = editable && familyEdit === key;
-  const shortName = (family.name || '').replace(/ Family$/, '');
+  const shortName = family.shortName || '';
   let crumbs = [['People', '/people'], [shortName, null], ['Family', null]];
   const from = fromURL();
   if (key === myFamilyKey()) {

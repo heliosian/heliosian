@@ -8,7 +8,7 @@ The directory ("Helios Who?") is the community's who's-who: students, parents, a
   - *Students*: grade, classroom, and crew (displayed as a chain, e.g. grade ▶ classroom ▶ crew), optional free-text "about me" written by or about the kid.
   - *Parents*: their kids (shown as context wherever the parent appears), optional room-parent assignments.
   - *Staff*: job title, displayed prominently; staff may have no family record.
-- **Family** — the join between adults and kids: combined surname(s), family photo with a caption identifying everyone in it, an optional family-name pronunciation recording, member list split into adults and kids, address, phone. Lists show the city; the full address powers map actions. Families choose how much address to share (full postal address or just the city).
+- **Family** — the join between adults and kids: combined surname(s) - each member's surname once, the kids' first, joined with "&", less any that is one part of another member's hyphenated surname, so Mager, Ridgeway and Mager-Ridgeway make "Mager-Ridgeway"; the model carries it bare as `shortName` and with " Family" after it as `name`, both from `familyNameFor`, and nothing else builds or trims one - family photo with a caption identifying everyone in it, an optional family-name pronunciation recording, member list split into adults and kids, address, phone. Lists show the city; the full address powers map actions. Families choose how much address to share (full postal address or just the city).
 - **Classroom** — name and mascot artwork, the grade band it serves, and its students, staff, and parents. Classrooms nest crews that student rows reference.
 - **Grade** — K through 8, grouped into bands (K, 1st/2nd, 3rd/4th, ...) for browsing.
 

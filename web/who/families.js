@@ -30,7 +30,7 @@ export function familyEntries() {
       const kidGrades = [...new Set((f.kidEmails || []).map(e => byEmail[e]?.grade).filter(Boolean))];
       return {
         key: f.key,
-        name: (f.name || '').replace(/ Family$/, ''),
+        name: f.shortName || '',
         grades: kidGrades,
         members: members.map(e => byEmail[e] ? firstName(byEmail[e].fullName) : '').filter(Boolean),
         photoUrl: f.photoUrl,
