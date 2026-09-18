@@ -11,9 +11,9 @@ import (
 
 var (
 	address     = regexp.MustCompile(`https?://[^\s"\\<>()\[\]{}|^` + "`" + `]+`)
-	linkTarget  = regexp.MustCompile(`\]\(L(\d+)\)`)
+	linkTarget  = regexp.MustCompile(`\]\(L(\d+)(?:\s+(?:"[^"]*"|'[^']*'))?\)`)
 	quotedKey   = regexp.MustCompile(`"L(\d+)"`)
-	partialLink = regexp.MustCompile(`^\]\(?(L\d*)?$`)
+	partialLink = regexp.MustCompile(`^\]\(?(L\d*(\s+("[^"]*"?|'[^']*'?)?)?)?$`)
 )
 
 type links struct {

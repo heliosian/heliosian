@@ -17,8 +17,32 @@ func TestLinksShortenAndExpand(t *testing.T) {
 	if got := l.expand("[Sam](L1) and [the form](L3), [x](L9)"); got != "[Sam](https://who.heliosian.com/people/sam) and [the form](https://docs.google.com/d/abc), [x](L9)" {
 		t.Fatalf("expand gave %s", got)
 	}
+	if got := l.expand(`[Sam](L1 "") and [the form](L3 'Sign up')`); got != "[Sam](https://who.heliosian.com/people/sam) and [the form](https://docs.google.com/d/abc)" {
+		t.Fatalf("expand of titled links gave %s", got)
+	}
 	if got := string(l.expandInput([]byte(`{"path":"L2","id":"L22"}`))); got != `{"path":"https://x.org/a?b=1`+"\\"+`u0026c=2","id":"L22"}` {
 		t.Fatalf("expandInput gave %s", got)
+	}
+}
+
+func TestExpanderHoldsATitledKey(t *testing.T) {
+	l := newLinks()
+	l.shorten("https://who.heliosian.com/families/donhowe")
+	out := &strings.Builder{}
+	e := &expander{links: l, emit: func(kind string, data any) {
+		if kind == "text" {
+			out.WriteString(data.(string))
+		}
+	}, cards: func(string) (linkCard, bool) { return linkCard{}, false }, sent: map[string]bool{}}
+	for _, piece := range []string{"The [Donhowe Family](L", "1 ", `"`, `"`, ") lives in Mountain View"} {
+		e.send("text", piece)
+		if strings.Contains(out.String(), "L1") {
+			t.Fatalf("the key went out raw: %q", out.String())
+		}
+	}
+	e.flush()
+	if out.String() != "The [Donhowe Family](https://who.heliosian.com/families/donhowe) lives in Mountain View" {
+		t.Fatalf("streamed %q", out.String())
 	}
 }
 
