@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 var (
@@ -16,6 +17,7 @@ var (
 )
 
 type links struct {
+	mu   sync.Mutex
 	keys map[string]string
 	urls []string
 }
@@ -25,6 +27,8 @@ func newLinks() *links {
 }
 
 func (l *links) shorten(text string) string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
 	return address.ReplaceAllStringFunc(text, func(match string) string {
 		url := strings.TrimRight(match, ".,;:!?'*_")
 		key, ok := l.keys[url]
@@ -38,6 +42,8 @@ func (l *links) shorten(text string) string {
 }
 
 func (l *links) url(digits string) (string, bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
 	n, err := strconv.Atoi(digits)
 	if err != nil || n < 1 || n > len(l.urls) {
 		slog.Error("[ERROR] ask: unknown link key", "key", "L"+digits)

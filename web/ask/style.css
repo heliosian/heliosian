@@ -335,7 +335,9 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .send svg { width: 22px; height: 22px; }
 
-.send:disabled { opacity: 0.4; cursor: default; }
+.send .stop-icon, body.is-busy .send .send-icon { display: none; }
+
+body.is-busy .send .stop-icon { display: block; }
 
 .composer-note { grid-column: 1 / -1; min-height: 0; font-size: 13px; color: var(--muted); }
 

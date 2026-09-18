@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
@@ -50,6 +51,11 @@ func (u *Usage) add(usage anthropic.BetaUsage) {
 	u.Rounds++
 }
 
+type toolCall struct {
+	use    anthropic.BetaToolUseBlock
+	result anthropic.BetaContentBlockParamUnion
+}
+
 type Responder interface {
 	Respond(ctx context.Context, req Request, emit Emitter) (Reply, error)
 }
@@ -75,6 +81,7 @@ func (c *Claude) Respond(ctx context.Context, req Request, emit Emitter) (Reply,
 			Messages:     reply.Messages,
 			Tools:        req.Tools,
 			OutputConfig: anthropic.BetaOutputConfigParam{Effort: anthropic.BetaOutputConfigEffortMedium},
+			CacheControl: anthropic.NewBetaCacheControlEphemeralParam(),
 		}
 		// The last round allowed has to be the answer, so the tools are
 		// kept on offer for the history's sake but closed to use.
@@ -89,6 +96,7 @@ func (c *Claude) Respond(ctx context.Context, req Request, emit Emitter) (Reply,
 		for stream.Next() {
 			event := stream.Current()
 			if err := msg.Accumulate(event); err != nil {
+				reply.Text = text.String()
 				return reply, err
 			}
 			if delta, ok := event.AsAny().(anthropic.BetaRawContentBlockDeltaEvent); ok {
@@ -103,6 +111,7 @@ func (c *Claude) Respond(ctx context.Context, req Request, emit Emitter) (Reply,
 			}
 		}
 		if err := stream.Err(); err != nil {
+			reply.Text = text.String()
 			return reply, err
 		}
 		reply.Usage.add(msg.Usage)
@@ -116,7 +125,7 @@ func (c *Claude) Respond(ctx context.Context, req Request, emit Emitter) (Reply,
 		if msg.StopReason != anthropic.BetaStopReasonToolUse {
 			break
 		}
-		results := []anthropic.BetaContentBlockParamUnion{}
+		calls := []*toolCall{}
 		for _, block := range msg.Content {
 			use, ok := block.AsAny().(anthropic.BetaToolUseBlock)
 			if !ok {
@@ -127,12 +136,23 @@ func (c *Claude) Respond(ctx context.Context, req Request, emit Emitter) (Reply,
 				reply.Tools = append(reply.Tools, words)
 				emit("tool", words)
 			}
-			out, err := req.Run(ctx, use.Name, json.RawMessage(use.JSON.Input.Raw()))
-			if err != nil {
-				results = append(results, anthropic.NewBetaToolResultBlock(use.ID, err.Error(), true))
-				continue
-			}
-			results = append(results, anthropic.NewBetaToolResultBlock(use.ID, out, false))
+			calls = append(calls, &toolCall{use: use})
+		}
+		wg := sync.WaitGroup{}
+		for _, c := range calls {
+			wg.Go(func() {
+				out, err := req.Run(ctx, c.use.Name, json.RawMessage(c.use.JSON.Input.Raw()))
+				if err != nil {
+					c.result = anthropic.NewBetaToolResultBlock(c.use.ID, err.Error(), true)
+					return
+				}
+				c.result = anthropic.NewBetaToolResultBlock(c.use.ID, out, false)
+			})
+		}
+		wg.Wait()
+		results := []anthropic.BetaContentBlockParamUnion{}
+		for _, c := range calls {
+			results = append(results, c.result)
 		}
 		reply.Messages = append(reply.Messages, anthropic.NewBetaUserMessage(results...))
 	}
@@ -155,7 +175,7 @@ func (Fake) Respond(ctx context.Context, req Request, emit Emitter) (Reply, erro
 	for i, word := range strings.Fields(fakeAnswer) {
 		select {
 		case <-ctx.Done():
-			return Reply{}, ctx.Err()
+			return Reply{Text: text.String()}, ctx.Err()
 		case <-time.After(30 * time.Millisecond):
 		}
 		if i > 0 {

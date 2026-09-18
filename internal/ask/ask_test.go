@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -476,6 +477,26 @@ func TestSearchDocumentsNarrows(t *testing.T) {
 	}
 }
 
+func TestToolsRunTogether(t *testing.T) {
+	v := sampleViewer(t, jordan)
+	l := newLinks()
+	wg := sync.WaitGroup{}
+	for _, c := range []struct{ name, input string }{
+		{"day_plan", `{}`}, {"get_classroom", `{}`}, {"my_lists", `{}`}, {"community_links", `{}`},
+		{"get_person", `{"name":"Sam Whitfield"}`}, {"search_documents", `{"query":"camping"}`},
+	} {
+		wg.Go(func() {
+			out, err := v.run(context.Background(), c.name, json.RawMessage(c.input))
+			if err != nil {
+				t.Errorf("%s: %v", c.name, err)
+				return
+			}
+			l.shorten(out)
+		})
+	}
+	wg.Wait()
+}
+
 func TestTooMuchIsRefused(t *testing.T) {
 	v := sampleViewer(t, jordan)
 	if _, err := v.run(context.Background(), "get_classroom", json.RawMessage(`{}`)); err != nil {
@@ -545,6 +566,40 @@ func TestChatRestoresFromTheBrowsersTranscript(t *testing.T) {
 	}
 	if strings.Contains(rec.Body.String(), `"conversation":"gone"`) {
 		t.Fatal("the unknown id was kept")
+	}
+}
+
+type stopping struct {
+	cancel context.CancelFunc
+	calls  *int
+}
+
+func (s stopping) Respond(ctx context.Context, req Request, emit Emitter) (Reply, error) {
+	*s.calls++
+	if *s.calls > 1 {
+		return Fake{}.Respond(ctx, req, emit)
+	}
+	emit("text", "The first words")
+	s.cancel()
+	<-ctx.Done()
+	return Reply{Text: "The first words"}, ctx.Err()
+}
+
+func TestChatKeepsAStoppedAnswer(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	calls := 0
+	handler := serveApp(t, stopping{cancel: cancel, calls: &calls})
+	req := httptest.NewRequest(http.MethodPost, "/api/ask/chat", strings.NewReader(`{"message":"What kind of day is today?"}`)).WithContext(ctx)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	body := rec.Body.String()
+	if strings.Contains(body, "event: error") || strings.Contains(body, "event: done") {
+		t.Fatalf("a stopped answer was answered: %s", body)
+	}
+	id := strings.TrimSpace(strings.SplitN(strings.SplitN(body, `"conversation":"`, 2)[1], `"`, 2)[0])
+	rec = post(t, handler, `{"conversation":"`+id+`","message":"And tomorrow?"}`)
+	if !strings.Contains(rec.Body.String(), `"turns":2`) {
+		t.Fatalf("the stopped turn was not kept: %s", rec.Body.String())
 	}
 }
 

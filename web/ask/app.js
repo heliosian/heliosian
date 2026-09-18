@@ -8,7 +8,7 @@ import {render, stable} from '/markdown.js';
 // one from the turns sent along with the next message.
 const maxChats = 50;
 
-const state = {model: null, chats: [], current: null, busy: false};
+const state = {model: null, chats: [], current: null, busy: false, stopper: null};
 
 function chatsKey() {
   return 'ask-chats:' + state.model.user.email;
@@ -254,9 +254,40 @@ function composer() {
 
 function setBusy(busy) {
   state.busy = busy;
-  document.querySelector('#send').disabled = busy;
+  const button = document.querySelector('#send');
+  button.setAttribute('aria-label', busy ? 'Stop' : 'Send');
+  button.title = busy ? 'Stop' : '';
   composer().disabled = busy;
   document.body.classList.toggle('is-busy', busy);
+}
+
+function stop() {
+  if (state.stopper) {
+    state.stopper.abort();
+  }
+}
+
+function keepStopped(chat, message, mine, answer, segments, tools) {
+  const text = segments.filter(s => s.kind === 'text' && s.text.trim()).map(s => s.text).join('\n\n');
+  if (!text) {
+    answer.remove();
+    mine.remove();
+    composer().value = message;
+    autosize();
+    if (!chat.turns.length) {
+      state.chats = state.chats.filter(c => c !== chat);
+      state.current = null;
+      saveChats();
+      renderChats();
+      renderThread();
+    }
+    return;
+  }
+  showSegments(answer, segments, false);
+  chat.turns.push({role: 'user', text: message}, {role: 'assistant', text, tools, segments});
+  chat.updated = Date.now();
+  saveChats();
+  renderChats();
 }
 
 function note(text) {
@@ -341,8 +372,10 @@ async function send(message) {
   scrollDown();
   composer().value = '';
   autosize();
+  const stopper = new AbortController();
+  state.stopper = stopper;
   try {
-    const res = await fetch('/api/ask/chat', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({conversation: chat.id, message, turns: chat.turns})});
+    const res = await fetch('/api/ask/chat', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({conversation: chat.id, message, turns: chat.turns}), signal: stopper.signal});
     if (!res.ok) {
       const why = await res.text();
       answer.remove();
@@ -405,10 +438,15 @@ async function send(message) {
     }
   } catch (err) {
     cancelAnimationFrame(pending);
+    if (stopper.signal.aborted) {
+      keepStopped(chat, message, mine, answer, segments, tools);
+      return;
+    }
     segments.push({kind: 'text', text: 'The connection dropped; try again.'});
     showSegments(answer, segments, false);
   } finally {
     spin.stop();
+    state.stopper = null;
     setBusy(false);
     if (matchMedia('(hover: hover)').matches) {
       composer().focus();
@@ -471,6 +509,10 @@ function initChrome() {
   const form = document.querySelector('#composer');
   form.addEventListener('submit', e => {
     e.preventDefault();
+    if (state.busy) {
+      stop();
+      return;
+    }
     send(composer().value);
   });
   composer().addEventListener('input', autosize);

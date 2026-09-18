@@ -191,6 +191,11 @@ func (a app) chat(w http.ResponseWriter, r *http.Request) {
 	out := &expander{links: conv.links, emit: emit}
 	reply, err := a.responder.Respond(ctx, req, out.send)
 	out.flush()
+	if err != nil && r.Context().Err() != nil {
+		conv.stop(message, reply.Text)
+		slog.InfoContext(r.Context(), "ask: stopped", "conversation", conv.id, "turn", conv.asked, "took", time.Since(started).Round(time.Millisecond))
+		return
+	}
 	if err != nil {
 		slog.ErrorContext(r.Context(), "[ERROR] ask: answer failed", "conversation", conv.id, "error", err)
 		emit("error", map[string]string{"message": "Something went wrong answering that; try again in a moment."})
@@ -241,15 +246,27 @@ func (c *conversation) see(docs []*artifacts.Document) {
 
 func (c *conversation) restore(turns []turn) {
 	for i := 0; i+1 < len(turns); i += 2 {
-		question, answer := strings.TrimSpace(turns[i].Text), strings.TrimSpace(turns[i+1].Text)
-		if turns[i].Role != "user" || turns[i+1].Role != "assistant" || question == "" || answer == "" {
+		if turns[i].Role != "user" || turns[i+1].Role != "assistant" {
 			continue
 		}
-		c.messages = append(c.messages,
-			anthropic.NewBetaUserMessage(anthropic.NewBetaTextBlock(c.links.shorten(question))),
-			anthropic.BetaMessageParam{Role: anthropic.BetaMessageParamRoleAssistant, Content: []anthropic.BetaContentBlockParamUnion{anthropic.NewBetaTextBlock(c.links.shorten(answer))}})
-		c.asked++
+		c.exchange(c.links.shorten(turns[i].Text), c.links.shorten(turns[i+1].Text))
 	}
+}
+
+func (c *conversation) stop(question, partial string) {
+	c.exchange(question, partial)
+	c.touched = time.Now()
+}
+
+func (c *conversation) exchange(question, answer string) {
+	question, answer = strings.TrimSpace(question), strings.TrimSpace(answer)
+	if question == "" || answer == "" {
+		return
+	}
+	c.messages = append(c.messages,
+		anthropic.NewBetaUserMessage(anthropic.NewBetaTextBlock(question)),
+		anthropic.BetaMessageParam{Role: anthropic.BetaMessageParamRoleAssistant, Content: []anthropic.BetaContentBlockParamUnion{anthropic.NewBetaTextBlock(answer)}})
+	c.asked++
 }
 
 type store struct {
@@ -277,11 +294,11 @@ func (s *store) get(id, email string, now time.Time) *conversation {
 }
 
 func (s *store) start(email string, recent []*artifacts.Document, now time.Time) *conversation {
-	raw := make([]byte, 16)
-	if _, err := rand.Read(raw); err != nil {
+	raw := [16]byte{}
+	if _, err := rand.Read(raw[:]); err != nil {
 		panic(err)
 	}
-	c := &conversation{id: hex.EncodeToString(raw), email: email, messages: []anthropic.BetaMessageParam{}, links: newLinks(), known: map[string]bool{}, touched: now}
+	c := &conversation{id: hex.EncodeToString(raw[:]), email: email, messages: []anthropic.BetaMessageParam{}, links: newLinks(), known: map[string]bool{}, touched: now}
 	c.see(recent)
 	s.mu.Lock()
 	defer s.mu.Unlock()

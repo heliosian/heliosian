@@ -127,8 +127,9 @@ func (v *viewer) run(ctx context.Context, name string, input json.RawMessage) (s
 	if len(input) == 0 {
 		input = json.RawMessage(`{}`)
 	}
-	v.ctx = ctx
-	result, err := tools[i].run(v, input)
+	scoped := *v
+	scoped.ctx = ctx
+	result, err := tools[i].run(&scoped, input)
 	if err != nil {
 		return "", err
 	}
