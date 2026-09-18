@@ -286,3 +286,19 @@ func TestExcludedAreLeftOff(t *testing.T) {
 		t.Fatalf("the rest of the family is gone too: %v", members)
 	}
 }
+
+// A suggested group starts with one rule, anyone tagged in the Magic Tag
+// plus their parents: everyone on the list is on the group whatever their
+// role, and a student on it brings their parents along.
+func TestSuggestedGroupRuleIsTheListPlusStudentsParents(t *testing.T) {
+	s, _ := sample(t)
+	lists := s.Lists
+	s.Lists = func(owner string) []who.List {
+		return append(lists(owner), who.List{Key: "party:p2", Name: "Movie Night", Kind: who.ListParty, People: []string{"abena.osei@heliosschool.org", "harper.quinn@heliosschool.org"}})
+	}
+	got := members(t, s, rule(loop.KindInclude, func(r *loop.Rule) { r.Tags = []string{"party:p2"}; r.Family = []string{"Parents"} }))
+	want := []string{"abena.osei@heliosschool.org", "colin.quinn@heliosschool.org", "dana.hawkins@heliosschool.org", "harper.quinn@heliosschool.org"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("movie night: got %v, want %v", got, want)
+	}
+}

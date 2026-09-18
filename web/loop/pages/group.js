@@ -714,7 +714,9 @@ export function newGroupPage() {
   const from = new URLSearchParams(location.search).get('from');
   const suggestion = state.model.suggestions.find(s => s.key === from);
   if (suggestion) {
-    const rule = {...newRule('include'), roles: ['Parent'], tags: [suggestion.key], tagLabels: [suggestion.name]};
+    // Everyone on the Magic Tag, whatever their role, and the parents of
+    // any student on it.
+    const rule = {...newRule('include'), tags: [suggestion.key], tagLabels: [suggestion.name], family: ['Parents']};
     page.append(editor({name: slug(suggestion.name), title: suggestion.name, description: '', managers: suggestion.managers, rules: [rule], additions: []}, true));
     return page;
   }

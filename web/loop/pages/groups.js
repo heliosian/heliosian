@@ -32,8 +32,8 @@ function groupCard(g) {
 }
 
 const suggestionWords = {
-  party: 'Parents holding tickets, as the party\'s Magic Tag lists them now.',
-  activity: 'Parents on the volunteer list, as the activity\'s Magic Tag lists them now.',
+  party: 'Everyone holding tickets, and the parents of any student who does, as the party\'s Magic Tag lists them now.',
+  activity: 'Everyone on the volunteer list, and the parents of any student on it, as the activity\'s Magic Tag lists them now.',
 };
 
 // A suggestion's icon is the mark of the app its Magic Tag is kept up in -
