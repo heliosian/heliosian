@@ -460,6 +460,9 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 		// classrooms, grades, their tags and Magic Tags, the roles and
 		// relations (filter.OptionsFor); sent to admins alone.
 		Options *filter.Options `json:"options,omitempty"`
+		// TagLabels names the tags in every rule sent, by the rule's owner
+		// and then the tag, as that owner reads them; sent to admins alone.
+		TagLabels map[string]map[string]string `json:"tagLabels,omitempty"`
 	}{
 		Categories:   categories,
 		User:         user{Email: email, Initial: strings.ToUpper(email[:1]), PhotoURL: a.heroPhoto(email), IsAdmin: admin},
@@ -470,6 +473,7 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 	if admin {
 		options := filter.OptionsFor(a.directory.Sources(), email)
 		view.Options = &options
+		view.TagLabels = a.tagLabels(categories, view.Apps)
 	}
 	ahead := a.upcoming(email, "")
 	view.Upcoming = ahead.Events
@@ -481,6 +485,38 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(view); err != nil {
 		slog.ErrorContext(r.Context(), "encode apps model", "error", err)
 	}
+}
+
+// tagLabels names the tags of the rules on the sections, links and apps
+// sent, by each rule's owner (filter.Sources.TagLabels).
+func (a app) tagLabels(categories []Category, apps []appView) map[string]map[string]string {
+	sources := a.directory.Sources()
+	out := map[string]map[string]string{}
+	add := func(rules []filter.Rule) {
+		for _, r := range rules {
+			if len(r.Tags) == 0 {
+				continue
+			}
+			if out[r.Owner] == nil {
+				out[r.Owner] = map[string]string{}
+			}
+			for i, label := range sources.TagLabels(r) {
+				out[r.Owner][r.Tags[i]] = label
+			}
+		}
+	}
+	for _, category := range categories {
+		add(category.Rules)
+		for _, link := range category.Links {
+			add(link.Rules)
+		}
+	}
+	for _, app := range apps {
+		if app.Visibility != nil {
+			add(app.Visibility.Rules)
+		}
+	}
+	return out
 }
 
 // hiddenHosts is the set of hosts a link into one of the apps has on

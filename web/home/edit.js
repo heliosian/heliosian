@@ -1,4 +1,4 @@
-import {state, categoryTitles, linkCategoryTitles} from './state.js';
+import {state, categoryTitles, linkCategoryTitles, tagLabelsOf} from './state.js';
 import {el, svg, categoryIcons, iconOf, toast} from './dom.js';
 import {load} from './app.js';
 import {openCropTool} from '/crop.js';
@@ -135,7 +135,7 @@ const rules = rulesEditor({
 // sentences, an Add include rule and Add exclude rule, and the preview
 // line. It gives back the draft's rules on demand.
 function audienceCard(mount, initial, everyoneNote, withHead = true) {
-  const draft = (initial || []).map(r => ({...r, roles: [...(r.roles || [])], classrooms: [...(r.classrooms || [])], grades: [...(r.grades || [])], tags: [...(r.tags || [])], family: [...(r.family || [])]}));
+  const draft = (initial || []).map(r => ({...r, roles: [...(r.roles || [])], classrooms: [...(r.classrooms || [])], grades: [...(r.grades || [])], tags: [...(r.tags || [])], tagLabels: tagLabelsOf(r), family: [...(r.family || [])]}));
   let opened = null;
   let counts = [];
   let previewTimer = null;

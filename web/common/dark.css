@@ -165,6 +165,16 @@ html[data-theme="dark"] {
 
 [data-theme="dark"] .home-upcoming::after { background: linear-gradient(rgba(19, 42, 45, 0), var(--card)); }
 
+[data-theme="dark"] .facet-button.open { background: var(--card); color: var(--ink); }
+
+[data-theme="dark"] .edit-icon:not(.recording) { background: var(--input); color: var(--ink); }
+[data-theme="dark"] .edit-icon:not(.recording):hover { color: var(--brand); }
+
+[data-theme="dark"] .person-chip.is-on { background: rgba(0, 166, 159, 0.22); border-color: var(--brand); }
+
+[data-theme="dark"] .event-visibility-choice { background: var(--input); }
+[data-theme="dark"] .event-visibility-choice.is-on { background: rgba(0, 166, 159, 0.18); }
+
 [data-theme="dark"] .day-peek .block,
 [data-theme="dark"] .day-card .block,
 [data-theme="dark"] .block { background: var(--input); }
@@ -274,12 +284,19 @@ html[data-theme="dark"] {
 [data-theme="dark"] .field input[type=search],
 [data-theme="dark"] .field input[type=email],
 [data-theme="dark"] .field input[type=date],
+[data-theme="dark"] .setting-control input[type=text],
+[data-theme="dark"] .setting-control input[type=number],
+[data-theme="dark"] .setting-card > input[type=text],
+[data-theme="dark"] .admin-form .field textarea,
+[data-theme="dark"] .admin-form .field input[type=time],
 [data-theme="dark"] .rule-search { background: var(--input); color: var(--ink); border-color: var(--line); }
 
 [data-theme="dark"] .field input::placeholder,
 [data-theme="dark"] .rule-search::placeholder { color: #8fa3a6; }
 
-[data-theme="dark"] .button-secondary { background: var(--card); color: var(--ink); border-color: var(--line); }
+[data-theme="dark"] .button-secondary,
+[data-theme="dark"] .filter-clear,
+[data-theme="dark"] .media-button:not(.primary) { background: var(--card); color: var(--ink); border-color: var(--line); }
 
 [data-theme="dark"] .button-secondary:hover { background: var(--input); }
 
@@ -370,6 +387,18 @@ html[data-theme="dark"] {
 [data-theme="dark"] .rule,
 [data-theme="dark"] .who-foot { background: var(--input); color: var(--ink); }
 
+[data-theme="dark"] .callout-editor,
+[data-theme="dark"] .field-when.is-rows .field-when-same,
+[data-theme="dark"] .row-under-chip,
+[data-theme="dark"] .setting-card .address-text,
+[data-theme="dark"] .person-photo,
+[data-theme="dark"] .list-tile,
+[data-theme="dark"] .thumb.small,
+[data-theme="dark"] .fact-icon,
+[data-theme="dark"] .issue-badge { background: var(--input); }
+
+[data-theme="dark"] .row-under-chip:hover { background: rgba(255, 255, 255, 0.12); }
+
 [data-theme="dark"] .urow.is-picked,
 [data-theme="dark"] .pick-card,
 [data-theme="dark"] .ask-band,
@@ -399,6 +428,8 @@ html[data-theme="dark"] {
 
 /* The strip inside an editor window sits on the window's card, not the page. */
 [data-theme="dark"] .modal .tab-strip { background: var(--card); }
+
+[data-theme="dark"] .form-tabs .tabs.light button.is-active { background: rgba(255, 255, 255, 0.08); }
 
 [data-theme="dark"] .tab-strip-menu-item:hover { background: var(--input); }
 
@@ -457,6 +488,13 @@ html[data-theme="dark"] {
 
 [data-theme="dark"] .summary-next { border-left-color: var(--line); }
 
+[data-theme="dark"] .year-mint { background: #12302c; }
+[data-theme="dark"] .year-sky { background: #122c33; }
+
+[data-theme="dark"] .step::before { background: rgba(255, 255, 255, 0.14); }
+
+[data-theme="dark"] .issue-count:not(.is-empty):not(.next-panel *) { background: rgba(0, 166, 159, 0.18); color: var(--brand); }
+
 [data-theme="dark"] .filter-search { background: var(--input); border-color: var(--line); color: var(--ink); }
 
 [data-theme="dark"] .filter-search input { color: var(--ink); }
@@ -499,11 +537,16 @@ html[data-theme="dark"] {
 [data-theme="dark"] .hero-action:hover { background: rgba(28, 44, 48, 0.92); }
 [data-theme="dark"] .hero-action.is-editing { background: var(--brand-fill); color: #fff; border-color: transparent; }
 [data-theme="dark"] .hero-action.is-editing:hover { background: var(--brand-fill-dark); }
+[data-theme="dark"] .hero-image-action { background: rgba(12, 22, 24, 0.78); color: var(--brand); }
+[data-theme="dark"] .hero-image-action:hover { background: rgba(28, 44, 48, 0.92); }
+[data-theme="dark"] .hero-status { background: rgba(12, 22, 24, 0.78); color: var(--muted); }
 
 /* Heliosian's pencil in a link's corner, in Super Admin Mode: the same
    dark glass, its mark the pale brand. */
 [data-theme="dark"] .link-edit { background: rgba(12, 22, 24, 0.78); color: var(--brand); border: 1px solid rgba(255, 255, 255, 0.18); }
 [data-theme="dark"] .link-edit:hover { background: rgba(28, 44, 48, 0.92); }
+[data-theme="dark"] .event-hide { background: rgba(12, 22, 24, 0.78); color: var(--ink); }
+[data-theme="dark"] .event-hide:hover { background: rgba(28, 44, 48, 0.92); color: var(--brand); }
 
 /* Heliosian's Add card - a dashed outline among the links, its plus on a
    disc - keeps its outline over the page rather than a card's fill, the
@@ -558,6 +601,10 @@ html[data-theme="dark"] {
 [data-theme="dark"] .rule.is-line.is-exclude { background: #3a1f1a; border-color: #6a3328; }
 
 [data-theme="dark"] .compact-row.is-outside { background: #2f2515; }
+
+[data-theme="dark"] .manager-state.is-subscribed { color: #7bd28f; }
+
+[data-theme="dark"] .admin-tag.is-on { color: #0b1c1e; }
 
 [data-theme="dark"] .trouble-toggle { background: #3d2617; color: #f0a066; }
 

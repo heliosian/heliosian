@@ -1,4 +1,4 @@
-import {state, isAdmin} from './state.js';
+import {state, isAdmin, tagLabelsOf} from './state.js';
 import {el, svg, iconOf, toast} from './dom.js';
 import {openLinkEditor, openCategoryEditor, openAppEditor, moveApp, moveLink} from './edit.js';
 import {appOrigin} from '/toolbar.js';
@@ -225,7 +225,7 @@ function sectionListed(category) {
 // choices, the excludes marked, or how many rules when they run long.
 function audienceWords(rules) {
   const parts = (rules || []).map(r => {
-    const bits = [...(r.roles || []), ...(r.grades || []), ...(r.classrooms || []), ...(r.tagLabels || r.tags || [])];
+    const bits = [...(r.roles || []), ...(r.grades || []), ...(r.classrooms || []), ...tagLabelsOf(r)];
     if (r.search) {
       bits.push(`“${r.search}”`);
     }

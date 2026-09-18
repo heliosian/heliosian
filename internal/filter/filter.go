@@ -113,6 +113,41 @@ func (s Sources) Tagged(owner string) map[string][]string {
 	return out
 }
 
+// TagLabels is the words for a rule's tags, read as its owner: a tag's own
+// name, a Magic Tag's name, a shared tag's name with whose it is, and a
+// note for one the owner no longer has.
+func (s Sources) TagLabels(r Rule) []string {
+	names := map[string]string{}
+	if s.Lists != nil {
+		for _, list := range s.Lists(r.Owner) {
+			names[list.Key] = list.Name
+		}
+	}
+	if s.Shared != nil {
+		for _, shared := range s.Shared(r.Owner) {
+			names[SharedKey(shared.Owner, shared.Name)] = shared.Name + " (" + shared.OwnerName + "'s)"
+		}
+	}
+	tags := map[string][]string{}
+	if s.Tags != nil {
+		tags = s.Tags(r.Owner)
+	}
+	out := make([]string, 0, len(r.Tags))
+	for _, tag := range r.Tags {
+		switch {
+		case names[tag] != "":
+			out = append(out, names[tag])
+		case tags[tag] != nil:
+			out = append(out, tag)
+		case strings.HasPrefix(tag, SharedPrefix):
+			out = append(out, strings.TrimPrefix(tag, SharedPrefix)+" (no longer shared)")
+		default:
+			out = append(out, tag+" (no longer a tag)")
+		}
+	}
+	return out
+}
+
 func anyIn(have, want []string) bool {
 	for _, h := range have {
 		if slices.Contains(want, h) {

@@ -28,6 +28,11 @@ export function isAdmin() {
   return Boolean(state.model && state.model.user.isAdmin);
 }
 
+export function tagLabelsOf(rule) {
+  const named = (state.model.tagLabels || {})[rule.owner] || {};
+  return rule.tagLabels || (rule.tags || []).map(t => named[t] || t);
+}
+
 export function categoryTitles() {
   return state.model.categories.map(c => c.title);
 }

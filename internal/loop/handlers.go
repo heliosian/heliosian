@@ -320,34 +320,6 @@ func (a app) checkAdditions(additions []Addition) error {
 	return nil
 }
 
-// tagLabels is the words for a rule's tags, read as its owner: a tag's own
-// name, a Magic Tag's name, a shared tag's name with whose it is, and a
-// note for one the owner no longer has.
-func (a app) tagLabels(r Rule) []string {
-	names := map[string]string{}
-	for _, list := range a.directory.Lists(r.Owner) {
-		names[list.Key] = list.Name
-	}
-	for _, shared := range a.directory.Shared(r.Owner) {
-		names[SharedKey(shared.Owner, shared.Name)] = shared.Name + " (" + shared.OwnerName + "'s)"
-	}
-	tags := a.directory.Tags(r.Owner)
-	out := make([]string, 0, len(r.Tags))
-	for _, tag := range r.Tags {
-		switch {
-		case names[tag] != "":
-			out = append(out, names[tag])
-		case tags[tag] != nil:
-			out = append(out, tag)
-		case strings.HasPrefix(tag, filter.SharedPrefix):
-			out = append(out, strings.TrimPrefix(tag, filter.SharedPrefix)+" (no longer shared)")
-		default:
-			out = append(out, tag+" (no longer a tag)")
-		}
-	}
-	return out
-}
-
 // sharedRules refuses a rule of the viewer's naming a shared tag that is not
 // shared with them, unless the group already holds the rule word for word.
 func (a app) sharedRules(viewer string, existing []Rule, rules []Rule) error {
@@ -378,7 +350,7 @@ func (a app) sees(g Group, viewer string, admin bool) bool {
 func (a app) view(g Group, viewer string) groupView {
 	v := groupView{Group: g, Address: g.Address(), Rules: []ruleView{}, Managers: a.people(g.Managers), Mine: g.Manages(viewer), Member: OnList(g, a.sources(), viewer), Unsubscribed: g.HasExcluded(viewer), Archived: a.cache.Model().Archived(g.Name, viewer), Sent: a.sentCount(g.Name)}
 	for _, r := range g.Rules {
-		v.Rules = append(v.Rules, ruleView{Rule: r, TagLabels: a.tagLabels(r)})
+		v.Rules = append(v.Rules, ruleView{Rule: r, TagLabels: a.sources().TagLabels(r)})
 	}
 	v.Members = a.members(g)
 	return v
