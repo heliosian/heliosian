@@ -101,6 +101,33 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	mux.HandleFunc("POST /api/team/image", a.ready(a.uploadImage))
 	mux.HandleFunc("GET /api/admin/state", a.ready(a.adminState))
 	mux.HandleFunc("POST /api/admin/admins", a.ready(a.setAdmins))
+	mux.HandleFunc("POST /api/team/redirect", a.ready(a.saveRedirect))
+	mux.HandleFunc("DELETE /api/team/redirect", a.ready(a.deleteRedirect))
+}
+
+// Redirected sends an old address to where it now leads before anything else
+// answers for it - ahead of sign-in, so a link from the old volunteer site or
+// to a renamed event lands on its page's sign-in, with that page's preview,
+// rather than on a sign-in that leads to Not found. A path something live
+// sits at, or that no redirect names, goes through untouched, as does every
+// request that is not a plain fetch of a page; the query travels along. Until
+// the sheet has loaded there is nothing to consult, and the request goes
+// through to the 503 the routes give.
+func Redirected(cache *Cache, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet || r.Method == http.MethodHead {
+			if model := cache.Model(); model != nil {
+				if to := model.Destination(r.URL.Path); to != "" {
+					if r.URL.RawQuery != "" && !strings.Contains(to, "?") {
+						to += "?" + r.URL.RawQuery
+					}
+					http.Redirect(w, r, to, http.StatusFound)
+					return
+				}
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (a app) page(w http.ResponseWriter, r *http.Request) {
@@ -1519,6 +1546,125 @@ func (a app) setAdmins(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.InfoContext(r.Context(), "events: set the admin list", "actor", actor, "admins", admins)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// reservedPaths are the first segments of what the portal serves itself - its
+// pages, its API, sign-in, and the public prefixes - which no redirect may
+// take over. /v/ and /activities/ are not here: an address there may be
+// redirected so long as nothing live sits at it.
+var reservedPaths = map[string]bool{"": true, "my": true, "calendar": true, "approvals": true, "admin": true, "years": true, "api": true, "auth": true, "hooks": true, "open": true, "blob": true}
+
+// saveRedirect adds a redirect from Admin Tools, or changes the one whose Old
+// is original. Old is any path here - a whole link pasted in is cut down to
+// its path - short of the portal's own pages and anything live; New is a
+// path here or an address elsewhere, and never the same as Old or a step
+// back to it.
+func (a app) saveRedirect(w http.ResponseWriter, r *http.Request) {
+	actor, ok := a.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Original string `json:"original"`
+		Old      string `json:"old"`
+		New      string `json:"new"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	old, to := redirectPath(body.Old), redirectTo(body.New)
+	if old == "" {
+		http.Error(w, "say which address to redirect", http.StatusBadRequest)
+		return
+	}
+	if to == "" {
+		http.Error(w, "say where the address should go", http.StatusBadRequest)
+		return
+	}
+	first, _, _ := strings.Cut(strings.TrimPrefix(old, "/"), "/")
+	if reservedPaths[strings.ToLower(first)] {
+		http.Error(w, fmt.Sprintf("%s is one of the portal's own addresses and cannot be redirected", old), http.StatusBadRequest)
+		return
+	}
+	model := a.cache.Model()
+	if act := model.walk(old); act != nil {
+		http.Error(w, fmt.Sprintf("%s is the address of “%s” (%s); rename it from its page instead", old, act.Title, act.Year), http.StatusConflict)
+		return
+	}
+	if strings.EqualFold(old, to) {
+		http.Error(w, "an address cannot redirect to itself", http.StatusBadRequest)
+		return
+	}
+	var match map[string]string
+	kind := RedirectAdmin
+	if original := redirectPath(body.Original); original != "" {
+		row := a.cache.Tables().redirectRow(original)
+		if row == nil {
+			http.Error(w, fmt.Sprintf("no redirect from %s", original), http.StatusNotFound)
+			return
+		}
+		match = map[string]string{"Old": row["Old"]}
+		if t := strings.TrimSpace(row["Type"]); t != "" {
+			kind = t
+		}
+	} else if a.cache.Tables().redirectRow(old) != nil {
+		http.Error(w, fmt.Sprintf("%s is already redirected; edit that one", old), http.StatusConflict)
+		return
+	}
+	cells := map[string]string{"Type": kind, "Old": old, "New": to, "Date": today()}
+	tables := a.cache.Tables().with(redirectsTab, match, cells)
+	// A chain that comes back to where it started would send nobody anywhere.
+	if next, err := BuildModel(tables, a.cache.images); err == nil && !isURL(to) && next.Destination(old) == "" {
+		http.Error(w, fmt.Sprintf("%s leads back to %s", to, old), http.StatusBadRequest)
+		return
+	}
+	action := "add"
+	if match != nil {
+		action = "edit"
+	}
+	if !a.commit(r.Context(), w, tables, func() error {
+		if match == nil {
+			if err := a.writer.AppendCells(appName, redirectsTab, cells); err != nil {
+				return err
+			}
+		} else if err := a.writer.Set(appName, redirectsTab, match, cells); err != nil {
+			return err
+		}
+		return a.logChange(actor, action, "redirect", map[string]string{"Title": old, "Details": to})
+	}) {
+		return
+	}
+	slog.InfoContext(r.Context(), "events: saved redirect", "actor", actor, "action", action, "old", old, "new", to)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a app) deleteRedirect(w http.ResponseWriter, r *http.Request) {
+	actor, ok := a.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Old string `json:"old"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	row := a.cache.Tables().redirectRow(redirectPath(body.Old))
+	if row == nil {
+		http.Error(w, fmt.Sprintf("no redirect from %s", body.Old), http.StatusNotFound)
+		return
+	}
+	match := map[string]string{"Old": row["Old"]}
+	if !a.commit(r.Context(), w, a.cache.Tables().without(redirectsTab, match), func() error {
+		if err := a.writer.Delete(appName, redirectsTab, match); err != nil {
+			return err
+		}
+		return a.logChange(actor, "delete", "redirect", map[string]string{"Title": redirectPath(row["Old"])})
+	}) {
+		return
+	}
+	slog.InfoContext(r.Context(), "events: deleted redirect", "actor", actor, "old", redirectPath(row["Old"]))
 	w.WriteHeader(http.StatusNoContent)
 }
 

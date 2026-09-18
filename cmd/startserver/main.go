@@ -38,6 +38,7 @@ import (
 	"heliosian/internal/logging"
 	"heliosian/internal/loop"
 	"heliosian/internal/mail"
+	"heliosian/internal/team"
 	"heliosian/internal/who"
 )
 
@@ -130,7 +131,7 @@ func sampleServer() (*http.Server, *who.Queue) {
 	return localTLS(app.Server(map[string]http.Handler{
 		"who":       app.Public("who", signIn.Fixed(sampleUser, app.Logged("who", app.Files("who", core.Gate)))),
 		"home":      app.Public("home", signIn.Fixed(sampleUser, app.Logged("home", app.Files("home", core.Home)))),
-		"team":      app.Public("team", signIn.Fixed(sampleUser, app.Logged("team", app.Files("team", core.Team)))),
+		"team":      app.Public("team", team.Redirected(core.TeamCache, signIn.Fixed(sampleUser, app.Logged("team", app.Files("team", core.Team))))),
 		"birthday":  app.Public("birthday", signIn.Fixed(sampleUser, app.Logged("birthday", app.Files("birthday", core.Birthday)))),
 		"celebrate": app.Public("celebrate", signIn.Fixed(sampleUser, app.Logged("celebrate", app.Files("celebrate", core.Celebrate)))),
 		"calendar":  app.Public("calendar", signIn.Fixed(sampleUser, app.Logged("calendar", app.Files("calendar", core.Calendar)))),

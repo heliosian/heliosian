@@ -1378,10 +1378,12 @@ func Production(blobCache string) (*http.Server, *who.Queue) {
 	loopAuth.Register(core.LoopMux)
 	askAuth := newAuth("ask")
 	askAuth.Register(core.AskMux)
+	// The portal sends an old address - the volunteer site this one replaced,
+	// a renamed event - on ahead of sign-in, so it lands on its page.
 	server := Server(map[string]http.Handler{
 		"who":       Public("who", whoAuth.Wrap(Logged("who", Files("who", core.Gate)))),
 		"home":      Public("home", homeAuth.Wrap(Logged("home", Files("home", core.Home)))),
-		"team":      Public("team", teamAuth.Wrap(Logged("team", Files("team", core.Team)))),
+		"team":      Public("team", team.Redirected(core.TeamCache, teamAuth.Wrap(Logged("team", Files("team", core.Team))))),
 		"birthday":  Public("birthday", birthdayAuth.Wrap(Logged("birthday", Files("birthday", core.Birthday)))),
 		"celebrate": Public("celebrate", celebrateAuth.Wrap(Logged("celebrate", Files("celebrate", core.Celebrate)))),
 		"calendar":  Public("calendar", calendarAuth.Wrap(Logged("calendar", Files("calendar", core.Calendar)))),

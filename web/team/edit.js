@@ -1824,6 +1824,23 @@ export function openSettings() {
   });
 }
 
+// openRedirect adds a redirect from Admin Tools, or edits one: an old address
+// here - a link from the old volunteer site pasted whole, or a path - and
+// where it should go, a page here or an address elsewhere.
+export function openRedirect(item) {
+  const old = text(item ? item.old : '', {required: true, placeholder: 'https://hca.heliosian.com/dl/signup/... or /old/path'});
+  const to = text(item ? item.new : '', {required: true, placeholder: '/v/spring-celebration, or https://...'});
+  openModal(item ? 'Edit Redirect' : 'Add Redirect', [
+    field('Old address', old, 'The link people still hold: paste the whole link, or its path. A bare word is a friendly address, /v/word.'),
+    field('Send them to', to, 'A page here, as its path, or a whole address on another site. A link into what sits under the old address follows along.'),
+  ], {
+    submit: () => send('POST', '/api/team/redirect', {original: item ? item.old : '', old: old.value, new: to.value}),
+    onDelete: item ? () => send('DELETE', '/api/team/redirect', {old: item.old}) : null,
+    confirmDelete: item ? `Remove the redirect from ${item.old}? Anyone holding that link will get Not found.` : '',
+    deleteLabel: 'Remove',
+  });
+}
+
 export async function copyToNextYear(act) {
   if (!confirm(`Copy “${act.title}” and everything under it into ${years().next}?`)) {
     return;

@@ -1,4 +1,4 @@
-import {state, applyModel, resolvePath, activityPath, isFamily} from './state.js';
+import {state, applyModel, resolvePath, redirectTarget, activityPath, isFamily} from './state.js';
 import {el} from './dom.js';
 import {initChrome, renderChrome, setTitle, clearSearch} from './chrome.js';
 import {initModal} from './edit.js';
@@ -26,6 +26,14 @@ export function navigate(path) {
 }
 
 function notFound(what) {
+  // An address the Redirects tab sends on - to a page that is not an
+  // activity, or off the site - is followed by the browser, the way the
+  // server follows it ahead of sign-in.
+  const target = redirectTarget(location.pathname);
+  if (target) {
+    location.replace(target + (target.includes('?') ? '' : location.search));
+    return el('div', 'list-page');
+  }
   const page = el('div', 'list-page');
   page.append(el('h1', '', 'Not here'), el('p', 'row-text', `${what} is not in the portal, or is not something you can see.`));
   setTitle('Not here');

@@ -216,28 +216,79 @@ function walkPath(path) {
 // address that has since changed is followed through the chain of renames,
 // and a redirect of an event's own address carries the rest of the path along.
 export function resolvePath(path) {
-  let at = (path || '').replace(/\/+$/, '');
-  if (at && !at.startsWith('/')) {
-    at = '/v/' + at;
-  }
-  for (let hops = 0; hops < 20 && at; hops++) {
+  let at = normalizePath(path);
+  for (let hops = 0; hops < 20 && at && !isURL(at); hops++) {
     const live = walkPath(at);
     if (live) {
       return live;
     }
-    let moved = '';
-    const lower = at.toLowerCase();
-    for (const r of state.model.redirects || []) {
-      const old = r.old.toLowerCase();
-      if (old === lower) {
-        moved = r.new;
-      } else if (lower.startsWith(old + '/') && r.old.length > moved.length) {
-        moved = r.new + at.slice(r.old.length);
-      }
-    }
-    at = moved;
+    at = moved(at);
   }
   return null;
+}
+
+function isURL(s) {
+  return /^https?:\/\//i.test(s);
+}
+
+function normalizePath(path) {
+  let at = (path || '').replace(/\/+$/, '');
+  if (at && !at.startsWith('/')) {
+    at = '/v/' + at;
+  }
+  return at;
+}
+
+// moved is one step through the Redirects tab, mirroring Model.moved: the
+// redirect of that very address, else the longest redirect of a prefix of
+// it, with the rest of the path carried along.
+function moved(at) {
+  let to = '';
+  let matched = '';
+  const lower = at.toLowerCase();
+  for (const r of state.model.redirects || []) {
+    const old = r.old.toLowerCase();
+    if (old === lower) {
+      to = r.new;
+      matched = at;
+    } else if (lower.startsWith(old + '/') && r.old.length > matched.length) {
+      to = r.new + at.slice(r.old.length);
+      matched = r.old;
+    }
+  }
+  return to;
+}
+
+// redirectTarget mirrors Model.Destination for a path the page itself was
+// asked for: where the Redirects tab sends it - a page here, or an address on
+// another site - or '' when it is served as it is. The server does the same
+// ahead of sign-in; this covers a link followed inside the page.
+export function redirectTarget(path) {
+  const start = normalizePath(path);
+  if (!start || walkPath(start)) {
+    return '';
+  }
+  let at = start;
+  const seen = new Set([start.toLowerCase()]);
+  for (let hops = 0; hops < 20; hops++) {
+    const next = moved(at);
+    if (!next) {
+      break;
+    }
+    if (isURL(next)) {
+      return next;
+    }
+    const live = walkPath(next);
+    if (live) {
+      return activityPath(live);
+    }
+    if (seen.has(next.toLowerCase())) {
+      return '';
+    }
+    seen.add(next.toLowerCase());
+    at = next;
+  }
+  return at === start ? '' : at;
 }
 
 export function parseWhen(s) {

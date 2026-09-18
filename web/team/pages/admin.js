@@ -1,7 +1,7 @@
 import {state, isSystemAdmin, me} from '../state.js';
 import {el, button, svg} from '../dom.js';
 import {setTitle} from '../chrome.js';
-import {categoryList, openSettings, checkbox, send} from '../edit.js';
+import {categoryList, openSettings, openRedirect, checkbox, send} from '../edit.js';
 
 function denied() {
   const page = el('div', 'list-page');
@@ -164,6 +164,45 @@ function adminsCard() {
   return card;
 }
 
+// redirectsCard is the Redirects tab: every old address the portal sends on,
+// the ones renames wrote as well as the ones added here, each with where it
+// goes. A link from the old volunteer site is the usual reason to add one.
+function redirectsCard() {
+  const card = el('div', 'card');
+  card.append(el('h2', '', 'Redirects'));
+  card.append(el('div', 'hint', 'Old addresses on this site and where they now lead, followed before sign-in. Renaming an event adds one on its own; add one here for a link from the old volunteer site, or any address that should land somewhere else.'));
+  const rows = el('div');
+  const redirects = (state.model.redirects || []).slice().sort((a, b) => (b.date || '').localeCompare(a.date || '') || a.old.localeCompare(b.old));
+  if (!redirects.length) {
+    rows.append(el('div', 'hint', 'None yet.'));
+  }
+  for (const item of redirects) {
+    const row = el('div', 'admin-row redirect-row');
+    const body = el('div', 'grow');
+    const line = el('div', 'redirect-line');
+    line.append(el('code', 'redirect-old', item.old), el('span', 'redirect-arrow', '→'), el('code', 'redirect-new', item.new));
+    const sub = [];
+    if (item.type === 'Activity' || item.type === 'pretty') {
+      sub.push('From a rename');
+    } else if (item.type && item.type !== 'Admin') {
+      sub.push(item.type);
+    }
+    if (item.date) {
+      sub.push(item.date);
+    }
+    body.append(line);
+    if (sub.length) {
+      body.append(el('div', 'sub', sub.join(' · ')));
+    }
+    row.append(body, button('Edit', 'edit', 'button button-secondary button-small', () => openRedirect(item)));
+    rows.append(row);
+  }
+  const add = el('div', 'add-row');
+  add.append(button('Add Redirect', 'plus', 'button', () => openRedirect(null)));
+  card.append(rows, add);
+  return card;
+}
+
 // The admin chrome every app shares (web/common/admin.css): the teal header
 // with the mark, "Admin", the address and a close button; the rail of grouped
 // tabs; one panel showing at a time.
@@ -175,6 +214,9 @@ const sections = [
   {title: 'Editing & Control', tabs: [
     {key: 'notify', label: 'Email Notifications', card: notifyCard},
     {key: 'admins', label: 'Admins', card: adminsCard},
+  ]},
+  {title: 'Addresses', tabs: [
+    {key: 'redirects', label: 'Redirects', card: redirectsCard},
   ]},
 ];
 

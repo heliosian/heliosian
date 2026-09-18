@@ -1042,3 +1042,125 @@ func TestWhenSpansDays(t *testing.T) {
 		}
 	}
 }
+
+// Admin Tools manage the Redirects tab: a link from the old volunteer site, or
+// any address here, sent to a page here or an address elsewhere, ahead of
+// sign-in.
+func TestRedirects(t *testing.T) {
+	cache, mux := newServer(t)
+	// A whole link pasted in is kept as its path; a bare word is a friendly
+	// address; a destination elsewhere is kept whole.
+	for cell, want := range map[string]string{
+		"https://hca.heliosian.com/dl/signup/s/768d91/r/nsSPomxFcPrSfoRCAgzI": "/dl/signup/s/768d91/r/nsSPomxFcPrSfoRCAgzI",
+		" /dl/signup/s/768d91/ ": "/dl/signup/s/768d91", "intl-night": "/v/intl-night", "https://hca.heliosian.com": "/",
+	} {
+		if got := redirectPath(cell); got != want {
+			t.Errorf("redirectPath(%q) = %q, want %q", cell, got, want)
+		}
+	}
+	if got := redirectTo("https://celebrate.heliosian.com/parties/abc "); got != "https://celebrate.heliosian.com/parties/abc" {
+		t.Errorf("redirectTo kept %q", got)
+	}
+	if got := redirectTo("spring-celebration"); got != "/v/spring-celebration" {
+		t.Errorf("redirectTo path %q", got)
+	}
+	// Only an admin manages them.
+	oldLink := "https://hca.heliosian.com/dl/signup/s/768d91/r/nsSPomxFcPrSfoRCAgzI"
+	if rec := call(t, mux, chair, "POST", "/api/team/redirect", map[string]string{"old": oldLink, "new": "/v/international-night"}); rec.Code != http.StatusForbidden {
+		t.Fatalf("chair: %d %s", rec.Code, rec.Body)
+	}
+	if rec := call(t, mux, admin, "POST", "/api/team/redirect", map[string]string{"old": oldLink, "new": "/v/international-night"}); rec.Code != http.StatusNoContent {
+		t.Fatalf("add: %d %s", rec.Code, rec.Body)
+	}
+	m := cache.Model()
+	oldPath := "/dl/signup/s/768d91/r/nsSPomxFcPrSfoRCAgzI"
+	if n := cache.Tables().count(redirectsTab, map[string]string{"Type": RedirectAdmin, "Old": oldPath, "New": "/v/international-night"}); n != 1 {
+		t.Fatalf("row not written: %+v", cache.Tables().Redirects)
+	}
+	if m.Resolve(oldPath) != m.Activity("E001") || m.Destination(oldPath) != "/v/international-night" {
+		t.Fatalf("old link: %v %q", m.Resolve(oldPath), m.Destination(oldPath))
+	}
+	// The sample's rename redirect, a chain, a live address, and a page the
+	// portal serves itself.
+	if got := m.Destination("/v/intl-night"); got != "/v/international-night" {
+		t.Fatalf("rename redirect: %q", got)
+	}
+	if got := m.Destination("/v/intl-night/" + byTitle(m, "2026 - 2027", "India").ID); got != "/v/international-night/"+byTitle(m, "2026 - 2027", "India").ID {
+		t.Fatalf("under a renamed event: %q", got)
+	}
+	for _, live := range []string{"/v/international-night", "/", "/calendar", "/my", "/nowhere"} {
+		if got := m.Destination(live); got != "" {
+			t.Fatalf("%s should be served, not sent to %q", live, got)
+		}
+	}
+	// What is refused: the portal's own pages, a live address, an address
+	// sent to itself, a chain back to its start, a second redirect of one
+	// address.
+	for _, bad := range []map[string]string{
+		{"old": "/calendar", "new": "/v/international-night"}, {"old": "https://hca.heliosian.com/", "new": "/v/international-night"},
+		{"old": "/api/team/model", "new": "/v/international-night"}, {"old": "/v/international-night", "new": "/v/intl-night"},
+		{"old": "somewhere", "new": "/v/Somewhere"}, {"old": "/a", "new": "/b"}, {"old": oldPath, "new": "/elsewhere"}, {"old": "", "new": "/x"}, {"old": "/x", "new": ""},
+	} {
+		if bad["old"] == "/a" {
+			if rec := call(t, mux, admin, "POST", "/api/team/redirect", map[string]string{"old": "/b", "new": "/a"}); rec.Code != http.StatusNoContent {
+				t.Fatalf("b: %d %s", rec.Code, rec.Body)
+			}
+		}
+		if rec := call(t, mux, admin, "POST", "/api/team/redirect", bad); rec.Code < 400 {
+			t.Errorf("%v was accepted", bad)
+		}
+	}
+	// Editing changes the old address and where it goes, keeps the row's
+	// kind, and finds the row however its cell was written; deleting takes
+	// the row out. A destination elsewhere is followed whole, and the query
+	// travels along.
+	elsewhere := "https://celebrate.heliosian.com/parties/abc"
+	if rec := call(t, mux, admin, "POST", "/api/team/redirect", map[string]string{"original": oldLink, "old": "/dl/signup/s/768d91", "new": elsewhere}); rec.Code != http.StatusNoContent {
+		t.Fatalf("edit: %d %s", rec.Code, rec.Body)
+	}
+	m = cache.Model()
+	if n := cache.Tables().count(redirectsTab, map[string]string{"Old": oldPath}); n != 0 {
+		t.Fatalf("old row still there")
+	}
+	if got := m.Destination(oldPath); got != elsewhere+"/r/nsSPomxFcPrSfoRCAgzI" {
+		t.Fatalf("under the edited prefix: %q", got)
+	}
+	if m.Resolve(oldPath) != nil {
+		t.Fatalf("a chain that leaves the site names no activity")
+	}
+	if rec := call(t, mux, admin, "POST", "/api/team/redirect", map[string]string{"original": "intl-night", "old": "/v/intl-nite", "new": "/v/international-night"}); rec.Code != http.StatusNoContent {
+		t.Fatalf("edit the sample row: %d %s", rec.Code, rec.Body)
+	}
+	if n := cache.Tables().count(redirectsTab, map[string]string{"Type": "pretty", "Old": "/v/intl-nite"}); n != 1 {
+		t.Fatalf("the sample row's kind was not kept: %+v", cache.Tables().Redirects)
+	}
+	handler := Redirected(cache, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusTeapot) }))
+	for path, want := range map[string]string{
+		"/dl/signup/s/768d91/r/nsSPomxFcPrSfoRCAgzI?x=1": elsewhere + "/r/nsSPomxFcPrSfoRCAgzI?x=1",
+		"/v/intl-nite": "/v/international-night", "/v/international-night": "", "/calendar": "", "/nowhere": "",
+	} {
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, httptest.NewRequest("GET", path, nil))
+		if want == "" {
+			if rec.Code != http.StatusTeapot {
+				t.Errorf("%s: %d, want served", path, rec.Code)
+			}
+		} else if rec.Code != http.StatusFound || rec.Header().Get("Location") != want {
+			t.Errorf("%s: %d %q, want %q", path, rec.Code, rec.Header().Get("Location"), want)
+		}
+	}
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest("POST", "/v/intl-nite", nil))
+	if rec.Code != http.StatusTeapot {
+		t.Errorf("a POST is never redirected: %d", rec.Code)
+	}
+	if rec := call(t, mux, admin, "DELETE", "/api/team/redirect", map[string]string{"old": "/dl/signup/s/768d91"}); rec.Code != http.StatusNoContent {
+		t.Fatalf("delete: %d %s", rec.Code, rec.Body)
+	}
+	if got := cache.Model().Destination(oldPath); got != "" {
+		t.Fatalf("deleted redirect still sends to %q", got)
+	}
+	if rec := call(t, mux, admin, "DELETE", "/api/team/redirect", map[string]string{"old": "/dl/signup/s/768d91"}); rec.Code != http.StatusNotFound {
+		t.Fatalf("delete again: %d %s", rec.Code, rec.Body)
+	}
+}

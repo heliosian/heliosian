@@ -280,11 +280,15 @@ type Settings struct {
 
 // A Redirect keeps an old address working after it changed: someone holding
 // team.heliosian.com/v/inight/poland still lands on the booth after the event or
-// the booth was renamed. Old and New are paths as the site serves them -
-// /v/inight/poland, or /activities/{id}/... for a thing under an event with no
-// friendly address; a bare word is taken as /v/{word}. Type names the kind of
-// thing, "Activity". A live address always wins over a redirect of the same
-// name, a chain of renames is followed to its end, and a redirect of an event's
+// the booth was renamed, and a link from the volunteer site this one replaced
+// lands on the page that took over. Old is a path as the site serves it -
+// /v/inight/poland, /activities/{id}/... for a thing under an event with no
+// friendly address, or any path the old site used; a bare word is taken as
+// /v/{word}, and a whole link pasted into the sheet is taken as its path. New
+// is a path here the same way, or an address elsewhere, https://... whole.
+// Type names what wrote it: "Activity" for a rename, "Admin" for a row from
+// Admin Tools. A live address always wins over a redirect of the same name, a
+// chain of redirects is followed to its end, and a redirect of an event's
 // address carries everything under it along.
 type Redirect struct {
 	Type string `json:"type"`
@@ -293,19 +297,52 @@ type Redirect struct {
 	Date string `json:"date,omitempty"`
 }
 
-const RedirectActivity = "Activity"
+const (
+	RedirectActivity = "Activity"
+	RedirectAdmin    = "Admin"
+)
 
-// redirectPath is a redirect cell as a site path: trimmed, given the /v/ prefix
-// when it is a bare friendly address, and without a trailing slash.
+// redirectPath is a redirect's Old cell, or a request, as a site path: trimmed,
+// a whole link cut down to its path, a bare friendly address given the /v/
+// prefix, and without a trailing slash.
 func redirectPath(cell string) string {
 	path := strings.TrimSpace(cell)
 	if path == "" {
 		return ""
 	}
+	if isURL(path) {
+		u, err := url.Parse(path)
+		if err != nil {
+			return ""
+		}
+		path = u.Path
+		if path == "" {
+			path = "/"
+		}
+	}
 	if !strings.HasPrefix(path, "/") {
 		path = "/v/" + path
 	}
-	return strings.TrimRight(path, "/")
+	if path != "/" {
+		path = strings.TrimRight(path, "/")
+	}
+	return path
+}
+
+// redirectTo is a redirect's New cell: an address elsewhere kept whole, or a
+// path here as redirectPath reads one.
+func redirectTo(cell string) string {
+	to := strings.TrimSpace(cell)
+	if isURL(to) {
+		return to
+	}
+	return redirectPath(to)
+}
+
+// isURL says an address names another site: it has a scheme, where a path
+// here starts with a slash or a friendly name.
+func isURL(s string) bool {
+	return strings.HasPrefix(strings.ToLower(s), "http://") || strings.HasPrefix(strings.ToLower(s), "https://")
 }
 
 // Model is the sheet organized: categories in row order, then the root
@@ -388,24 +425,67 @@ func (m *Model) walk(path string) *Activity {
 // Resolve finds the thing at a path: the one there now, or the one an old
 // address has been redirected to, through any chain of renames. A redirect of
 // a prefix - the event's own address - carries the rest of the path along, so
-// renaming an event keeps every link into it working.
+// renaming an event keeps every link into it working. A chain that leaves the
+// site finds nothing.
 func (m *Model) Resolve(path string) *Activity {
 	at := redirectPath(path)
-	for hops := 0; hops < 20 && at != ""; hops++ {
+	for hops := 0; hops < 20 && at != "" && !isURL(at); hops++ {
 		if a := m.walk(at); a != nil {
 			return a
 		}
-		moved := ""
-		for _, r := range m.Redirects {
-			if strings.EqualFold(r.Old, at) {
-				moved = r.New
-			} else if strings.HasPrefix(strings.ToLower(at), strings.ToLower(r.Old)+"/") && len(r.Old) > len(moved) {
-				moved = r.New + at[len(r.Old):]
-			}
-		}
-		at = moved
+		at = m.moved(at)
 	}
 	return nil
+}
+
+// moved is where the Redirects tab sends one path in a single step, or "":
+// the redirect of that very address, else the longest redirect of a prefix
+// of it, with the rest of the path carried along.
+func (m *Model) moved(at string) string {
+	moved, matched := "", ""
+	for _, r := range m.Redirects {
+		if strings.EqualFold(r.Old, at) {
+			moved, matched = r.New, at
+		} else if strings.HasPrefix(strings.ToLower(at), strings.ToLower(r.Old)+"/") && len(r.Old) > len(matched) {
+			moved, matched = r.New+at[len(r.Old):], r.Old
+		}
+	}
+	return moved
+}
+
+// Destination is where a request for path should be sent instead of served,
+// or "" when the path is served as it is: the live address of the thing an
+// old address now names, another path on the site, or an address on another
+// site, through any chain of redirects. A path something live sits at is
+// never redirected, whatever the tab says.
+func (m *Model) Destination(path string) string {
+	start := redirectPath(path)
+	if start == "" || m.walk(start) != nil {
+		return ""
+	}
+	at, seen := start, map[string]bool{strings.ToLower(start): true}
+	for hops := 0; hops < 20; hops++ {
+		next := m.moved(at)
+		if next == "" {
+			break
+		}
+		if isURL(next) {
+			return next
+		}
+		if a := m.walk(next); a != nil {
+			return m.PathOf(a)
+		}
+		// A chain that comes back on itself sends nobody round it.
+		if seen[strings.ToLower(next)] {
+			return ""
+		}
+		seen[strings.ToLower(next)] = true
+		at = next
+	}
+	if at == start {
+		return ""
+	}
+	return at
 }
 
 // Skipped is what a load left out, by reason. A row with no Event ID is a
@@ -867,7 +947,7 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 		}
 	}
 	for _, row := range tables.Redirects {
-		from, to := redirectPath(row["Old"]), redirectPath(row["New"])
+		from, to := redirectPath(row["Old"]), redirectTo(row["New"])
 		if from == "" || to == "" {
 			continue
 		}
@@ -1252,6 +1332,22 @@ func (t *Tables) without(tab string, match map[string]string) *Tables {
 	}
 	out.setTab(tab, rows)
 	return &out
+}
+
+// redirectRow is the Redirects row for an old address as the site reads it,
+// or nil - the row's own cell may be a bare word or a whole link, so it is
+// matched through redirectPath rather than as written, and the row's cell
+// is what a write of it must match.
+func (t *Tables) redirectRow(old string) map[string]string {
+	if old == "" {
+		return nil
+	}
+	for _, row := range t.Redirects {
+		if strings.EqualFold(redirectPath(row["Old"]), old) {
+			return row
+		}
+	}
+	return nil
 }
 
 func (t *Tables) count(tab string, match map[string]string) int {

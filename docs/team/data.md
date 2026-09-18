@@ -11,6 +11,7 @@ The portal's data lives in one Google Sheet, `Events`, in the community shared d
 - `Volunteers` — Event ID, Email, Position, Note, Added By, Added.
 - `Links` — Event ID, Title, URL, Image, Description.
 
+- `Redirects` — Type, Old, New, Date. Old is a path here as the site serves it (`/v/inight/poland`, `/dl/signup/s/768d91/…` from the old volunteer site; a bare word is `/v/{word}`, a whole link is read as its path), New a path here the same way or a whole `https://` address elsewhere, Type what wrote the row - `Activity` for a rename, `Admin` for Admin Tools - and Date when. A row with a blank Old or New is skipped. Followed ahead of sign-in and by the shell (`docs/team/team.md`, Redirects); a live address always wins over a redirect of the same name.
 - `Settings` — Key, Value: `Expense Form URL` and `Intro`, both required.
 - `Change Log` — Timestamp, Actor, Action, Kind, Year, Activity, Title, Email, Details; appended on every change, never read back.
 
