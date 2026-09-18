@@ -136,18 +136,32 @@ func TestFamilyWidensAClassroom(t *testing.T) {
 			t.Fatalf("%s is not a student", email)
 		}
 	}
+	// Family widens, then the roles keep only their kind - as Who?'s tag
+	// page reads the same choices - so Students plus their parents and
+	// siblings is the siblings and never the parents...
 	widened := members(t, s, rule(loop.KindInclude, func(r *loop.Rule) { base(r); r.Family = []string{"Parents", "Siblings"} }))
 	if !slices.Contains(widened, "nico.torres@heliosschool.org") {
 		t.Fatalf("siblings: %v", widened)
 	}
-	parents := 0
 	for _, email := range widened {
-		if s.Directory.Person(email).IsParent {
-			parents++
+		if !s.Directory.Person(email).IsStudent {
+			t.Fatalf("%s is not a student, yet the rule keeps students", email)
 		}
 	}
-	if parents == 0 {
-		t.Fatal("no parent was added")
+	// ...and Parents in Hummingbirds plus their parents is the parents of
+	// the Hummingbirds children, none of the children.
+	parents := members(t, s, rule(loop.KindInclude, func(r *loop.Rule) {
+		r.Roles = []string{"Parent"}
+		r.Classrooms = []string{"Hummingbirds"}
+		r.Family = []string{"Parents"}
+	}))
+	if !slices.Contains(parents, "elena.torres@heliosschool.org") || slices.Contains(parents, "mia.torres@heliosschool.org") {
+		t.Fatalf("parents of hummingbirds: %v", parents)
+	}
+	// With no role picked, everyone reached stays.
+	all := members(t, s, rule(loop.KindInclude, func(r *loop.Rule) { r.Classrooms = []string{"Hummingbirds"}; r.Family = []string{"Parents"} }))
+	if !slices.Contains(all, "elena.torres@heliosschool.org") || !slices.Contains(all, "mia.torres@heliosschool.org") {
+		t.Fatalf("hummingbirds and parents: %v", all)
 	}
 }
 
@@ -170,11 +184,8 @@ func TestReasonsSayWhichRuleAndRelation(t *testing.T) {
 	if got := reasons["nico.torres@heliosschool.org"]; !slices.Equal(got, []loop.Reason{{Rule: 1, Through: "Siblings", Via: mia, ViaName: "Mia Torres"}, {Rule: 2}}) {
 		t.Fatalf("nico: %+v", got)
 	}
-	if got := reasons["elena.torres@heliosschool.org"]; !slices.Equal(got, []loop.Reason{{Rule: 1, Through: "Parents", Via: mia, ViaName: "Mia Torres"}}) {
-		t.Fatalf("elena: %+v", got)
-	}
-	if _, in := reasons["marco.torres@heliosschool.org"]; in {
-		t.Fatal("an excluded parent has reasons")
+	if _, in := reasons["elena.torres@heliosschool.org"]; in {
+		t.Fatal("a parent is in through a rule that keeps students")
 	}
 }
 

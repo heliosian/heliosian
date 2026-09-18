@@ -95,18 +95,24 @@ type Reason struct {
 	Added   bool   `json:"added,omitempty"`
 }
 
+// inRole reports whether a person is one of the roles a rule keeps.
+func inRole(p *who.Person, roles []string) bool {
+	return len(roles) == 0 || (p.IsStudent && slices.Contains(roles, "Student")) || (p.IsParent && slices.Contains(roles, "Parent")) || (p.IsStaff && slices.Contains(roles, "Staff"))
+}
+
 // matches is everyone one rule picks out, each with the relation it reached
-// them through: every facet set must hold, then Family adds the relatives
-// asked for. Someone the rule matches itself stays a direct match whatever
-// relations also reach them.
+// them through, as Who?'s tag page reads the same choices: the words, the
+// classrooms, the grades and the tags pick people out, Family adds the
+// relatives asked for, and the roles then keep only those of that kind -
+// so "Parents tagged in Carpool, plus their parents" is the parents of the
+// tagged children as well as the tagged parents, never the children.
+// Someone the rule matches itself stays a direct match whatever relations
+// also reach them.
 func matches(r Rule, s Sources, tagged map[string][]string) map[string]Reason {
 	model := s.Directory
 	out := map[string]Reason{}
 	for i := range model.People {
 		p := &model.People[i]
-		if len(r.Roles) > 0 && !((p.IsStudent && slices.Contains(r.Roles, "Student")) || (p.IsParent && slices.Contains(r.Roles, "Parent")) || (p.IsStaff && slices.Contains(r.Roles, "Staff"))) {
-			continue
-		}
 		if r.Search != "" && !strings.Contains(strings.ToLower(p.FullName), r.Search) && !strings.Contains(strings.ToLower(p.Email), r.Search) {
 			continue
 		}
@@ -149,6 +155,11 @@ func matches(r Rule, s Sources, tagged map[string][]string) map[string]Reason {
 					reach(kid, "Siblings", email)
 				}
 			}
+		}
+	}
+	for email := range out {
+		if !inRole(model.Person(email), r.Roles) {
+			delete(out, email)
 		}
 	}
 	return out

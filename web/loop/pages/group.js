@@ -519,7 +519,15 @@ function editor(g, isNew, closeModal, startTab) {
   previewChanges.hidden = true;
   const previewList = el('div', 'compact-list');
   const previewStatus = el('div', 'save-status');
-  preview.append(previewHeadRow, previewStatus, previewChanges, previewList);
+  // A box narrows the list by name, address or the word that places them;
+  // the list is drawn again from what the last preview said as it is typed.
+  const previewSearch = el('input', 'member-search');
+  previewSearch.type = 'search';
+  previewSearch.placeholder = 'Search the members…';
+  previewSearch.setAttribute('aria-label', 'Search the members');
+  const previewEmpty = el('div', 'rule-empty', 'Nobody matches that.');
+  previewEmpty.hidden = true;
+  preview.append(previewHeadRow, previewStatus, previewChanges, previewSearch, previewList, previewEmpty);
   const summary = el('span', 'change-summary');
   const current = isNew ? [] : g.members;
   const currentEmails = new Set(current.map(m => m.email));
@@ -587,21 +595,38 @@ function editor(g, isNew, closeModal, startTab) {
     // a joiner with a Joins chip, a leaver greyed at the end with Leaves.
     // The Non-Helios people first, where their rows stand out, then the
     // directory's.
+    lastPreview = {members, rules, leaving};
+    drawPreviewList();
+  };
+  let lastPreview = null;
+  const drawPreviewList = () => {
+    if (!lastPreview) {
+      return;
+    }
+    const {members, rules, leaving} = lastPreview;
+    const q = previewSearch.value.trim().toLowerCase();
+    const wanted = m => !q || m.name.toLowerCase().includes(q) || m.email.toLowerCase().includes(q) || (m.words || '').toLowerCase().includes(q);
     previewList.replaceChildren();
-    for (const m of [...members.filter(m => m.outside), ...members.filter(m => !m.outside)]) {
+    let shown = 0;
+    for (const m of [...members.filter(m => m.outside), ...members.filter(m => !m.outside)].filter(wanted)) {
       const chip = !isNew && !currentEmails.has(m.email) ? el('span', 'chip joins', 'Joins') : null;
       const row = compactRow(m, reasonWords(m, rules), chip, m.outside ? () => {
         draft.additions = draft.additions.filter(a => a.email !== m.email);
         rulesChanged();
       } : null, m.outside ? null : pickMember);
       previewList.append(row);
+      shown++;
     }
-    for (const m of leaving) {
+    for (const m of leaving.filter(wanted)) {
       const row = compactRow(m, 'No rule picks them out any more.', el('span', 'chip leaves', 'Leaves'));
       row.classList.add('is-leaving');
       previewList.append(row);
+      shown++;
     }
+    previewSearch.hidden = !members.length && !leaving.length;
+    previewEmpty.hidden = shown > 0 || (!members.length && !leaving.length);
   };
+  previewSearch.addEventListener('input', drawPreviewList);
 
   let previewTimer;
   let previewing = false;
@@ -1000,9 +1025,13 @@ function ruleWords(r) {
       return `${person.name} (${r.search})`;
     }
   }
+  // With Add family the roles keep their kind after the widening, as Who?
+  // reads the same choices, so they are said last: "Anyone tagged in
+  // Carpool, plus their parents, keeping parents only".
+  const roles = r.roles.map(x => x + 's').join(' or ');
   const parts = [];
-  if (r.roles.length) {
-    parts.push(r.roles.map(x => x + 's').join(' or '));
+  if (r.roles.length && !r.family.length) {
+    parts.push(roles);
   } else {
     parts.push('Anyone');
   }
@@ -1021,6 +1050,9 @@ function ruleWords(r) {
   let words = parts.join(' ');
   if (r.family.length) {
     words += ', plus their ' + r.family.map(f => f.toLowerCase()).join(' and ');
+    if (r.roles.length) {
+      words += `, keeping ${roles.toLowerCase()} only`;
+    }
   }
   return words;
 }

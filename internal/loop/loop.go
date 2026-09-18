@@ -85,9 +85,11 @@ var reservedNames = []string{"abuse", "admin", "administrator", "hostmaster", "n
 var emailForm = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
 
 // Rule is one line of a group's definition, a filter as Who? has them: every
-// facet set must match (a role, words in the name or address, a classroom,
-// a grade, a tag or Magic Tag of the owner's), and Family widens the matches
-// by their relatives. Include rules are unioned and exclude rules subtracted.
+// facet set must match (words in the name or address, a classroom, a
+// grade, a tag or Magic Tag of the owner's), Family widens the matches by
+// their relatives, and Roles then keeps only people of those kinds, as
+// Who?'s tag page reads the same choices. Include rules are unioned and
+// exclude rules subtracted.
 // Owner is whose tags the Tags facet names, since tags are private to one
 // person.
 type Rule struct {
