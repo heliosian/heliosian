@@ -402,6 +402,7 @@ type Cache struct {
 	queue Enqueuer
 	mu    sync.RWMutex
 	model *Model
+	edits int
 }
 
 func NewCache(load func(previous *Model) (*Model, error), queue Enqueuer) (*Cache, error) {
@@ -425,17 +426,36 @@ func (c *Cache) refreshLoop() {
 
 func (c *Cache) refresh() error {
 	start := time.Now()
+	c.mu.RLock()
+	before := c.edits
+	c.mu.RUnlock()
 	model, err := c.load(c.Model())
 	if err != nil {
 		return err
 	}
 	c.mu.Lock()
-	c.model = model
+	stale := c.edits != before
+	if !stale {
+		c.model = model
+	}
 	c.mu.Unlock()
+	if stale {
+		slog.Info("artifacts model refresh skipped: edited while reading")
+		return nil
+	}
 	oldest, newest := model.Span()
 	slog.Info("loaded artifacts model", "documents", len(model.Documents), "fetched", model.Fetched, "chunks", model.Chunks(),
 		"channels", len(model.Channels()), "oldest", oldest, "newest", newest, "took", time.Since(start).Round(time.Millisecond))
 	return nil
+}
+
+func (c *Cache) add(doc *Document) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	next := &Model{Documents: append(slices.Clone(c.model.Documents), doc), Fetched: c.model.Fetched}
+	next.sort()
+	c.model = next
+	c.edits++
 }
 
 func (c *Cache) Model() *Model {

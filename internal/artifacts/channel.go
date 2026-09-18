@@ -17,19 +17,13 @@ var broadcast = []string{
 	"hawksandfalcons", "jaysandravens", "condorsandospreys",
 }
 
-// Prefixes, so board-finance and boardoftrustees are both the board's.
-var withheld = []string{"board", "hca", "room.parents", "staff", "administrators", "leadership", "treasurer", "admissions", "registrar"}
-
 var mailers = []string{"veracross.com", "benchmarkemail.com", "bmetrack.com"}
 
 func Channel(listID, from string, recipients []string) (channel, kind string, ok bool) {
 	list := listName(listID)
-	if withheldList(list) {
-		return list, "", false
-	}
 	if list != "" {
 		for _, domain := range domains {
-			if name, cut := strings.CutSuffix(list, "."+domain); cut {
+			if name, cut := strings.CutSuffix(list, "."+domain); cut && slices.Contains(broadcast, name) {
 				return name, KindList, true
 			}
 		}
@@ -55,15 +49,6 @@ func listName(listID string) string {
 		listID = listID[i+1:]
 	}
 	return strings.ToLower(strings.Trim(strings.TrimSpace(listID), "<> "))
-}
-
-func withheldList(list string) bool {
-	for _, prefix := range withheld {
-		if strings.HasPrefix(list, prefix) {
-			return true
-		}
-	}
-	return false
 }
 
 func mailer(address string) bool {

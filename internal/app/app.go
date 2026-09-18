@@ -843,8 +843,9 @@ type Config struct {
 	Asker ask.Responder
 	// Artifacts loads the documents Helios Ask searches, given what the last
 	// load held so that a refresh reads only what has changed.
-	Artifacts func(previous *artifacts.Model) (*artifacts.Model, error)
-	Embedder  artifacts.Embedder
+	Artifacts     func(previous *artifacts.Model) (*artifacts.Model, error)
+	Embedder      artifacts.Embedder
+	ArtifactsMail artifacts.Inbox
 }
 
 // Core is the assembled shared skeleton: each app's mux (still open for the
@@ -1008,6 +1009,7 @@ func NewCore(cfg Config) *Core {
 	// The chat reads every app's model, so it is wired once they all are.
 	askMux := http.NewServeMux()
 	ask.Register(askMux, askSources(cache, settings, teamCache, celebrateCache, calendarCache, loopCache, homeCache, artifactsCache, cfg.Embedder, smartLists{cache, teamCache, celebrateCache, loopCache, loopDir}, loopDir, linked), cfg.Asker)
+	artifacts.Register(askMux, artifactsCache, cfg.Embedder, cfg.Writer, queue, cfg.ArtifactsMail)
 	// Every app's toolbar asks its own origin what its switch lists and
 	// which rows to leave off; Heliosian's cache answers for all of them.
 	for _, m := range []*http.ServeMux{mux, teamMux, birthdayMux, celebrateMux, calendarMux, loopMux, askMux} {
@@ -1208,6 +1210,14 @@ func loopMail(sessionKey string) loop.Mail {
 	return m
 }
 
+func artifactsMail(store *blob.Store) artifacts.Inbox {
+	m := artifacts.Inbox{SigningKey: mailgunSigningKey(), Bucket: store}
+	if key := mailgunKey(); key != "" {
+		m.Store = mail.NewMailgun(key, "")
+	}
+	return m
+}
+
 // ImageSearchKeys reads the picture search's keys the way every mode does:
 // each from its environment variable, else from its file under creds/, else
 // absent - Wikimedia Commons needs none. Sample mode uses it too, so a
@@ -1333,7 +1343,8 @@ func Production(blobCache string) (*http.Server, *who.Queue) {
 		Artifacts: func(previous *artifacts.Model) (*artifacts.Model, error) {
 			return artifacts.Load(sheet, store, embedder, previous)
 		},
-		Embedder: embedder,
+		Embedder:      embedder,
+		ArtifactsMail: artifactsMail(store),
 	})
 	blob.Register(core.Mux, store)
 	blob.RegisterHome(core.HomeMux, store)
