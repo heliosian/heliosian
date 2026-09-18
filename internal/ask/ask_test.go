@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"heliosian/internal/artifacts"
 	"heliosian/internal/auth"
 	"heliosian/internal/calendar"
 	"heliosian/internal/celebrate"
@@ -122,6 +123,10 @@ func sampleSources(t *testing.T) Sources {
 	if err != nil {
 		t.Fatal(err)
 	}
+	documents, err := artifacts.LoadDir("../../sampledata/artifacts", artifacts.Fake{})
+	if err != nil {
+		t.Fatal(err)
+	}
 	tags := func(owner string) map[string][]string { return who.TagsOf(tables.Tags, directory, owner) }
 	lists := directory.RoomParentLists
 	return Sources{
@@ -139,8 +144,10 @@ func sampleSources(t *testing.T) Sources {
 				return who.SharedTagsOf(tables.Tags, tables.Managers, directory, email)
 			}}
 		},
-		Links:  func() []home.Category { return homeModel.Categories },
-		Alerts: func(string) (int, bool) { return 0, false },
+		Links:     func() []home.Category { return homeModel.Categories },
+		Alerts:    func(string) (int, bool) { return 0, false },
+		Artifacts: func() *artifacts.Model { return documents },
+		Embedder:  artifacts.Fake{},
 	}
 }
 
@@ -322,6 +329,61 @@ func TestMyListsAreTheViewersOwn(t *testing.T) {
 	}
 	if !strings.Contains(strings.Join(names, ","), "3rd / 4th Parents") {
 		t.Fatalf("magic tags: %v", names)
+	}
+}
+
+func TestSearchDocumentsFindsTheIssueAndReadsIt(t *testing.T) {
+	v := sampleViewer(t, jordan)
+	v.now = time.Date(2026, 9, 17, 9, 0, 0, 0, calendar.Location)
+	result := call(t, v, "search_documents", `{"query":"international night booths"}`)
+	if result["documents"].(float64) != 3 || result["newest"] != "2026-09-11" || result["oldest"] != "2026-08-30" {
+		t.Fatalf("documents: %v", result)
+	}
+	passages := result["passages"].([]any)
+	if len(passages) == 0 {
+		t.Fatal("no passages")
+	}
+	first := passages[0].(map[string]any)
+	if first["section"] != "HCA NEWSLETTER" || !strings.Contains(first["text"].(string), "booth") {
+		t.Fatalf("first passage: %v", first)
+	}
+	if first["published"] != "past (6 days ago)" || first["channel"] != "newsletter" || first["kind"] != "newsletter" {
+		t.Fatalf("first passage's provenance: %v", first)
+	}
+	issue := call(t, v, "read_document", `{"key":"`+first["key"].(string)+`"}`)
+	if !strings.Contains(issue["markdown"].(string), "# A NOTE FROM BEN") || issue["title"] != "Helios Weekly Newsletter 2026 Sep 11" {
+		t.Fatalf("issue: %v", issue)
+	}
+	if _, err := v.run(context.Background(), "read_document", json.RawMessage(`{"key":"nope"}`)); err == nil {
+		t.Fatal("an unknown key was read")
+	}
+}
+
+// The search narrows to one channel and to a range of dates, and says so
+// rather than answering from everything when it cannot.
+func TestSearchDocumentsNarrows(t *testing.T) {
+	v := sampleViewer(t, jordan)
+	v.now = time.Date(2026, 9, 17, 9, 0, 0, 0, calendar.Location)
+	result := call(t, v, "search_documents", `{"query":"nuts at the bake sale","channel":"chat"}`)
+	if result["searched"].(float64) != 1 {
+		t.Fatalf("chat: %v", result["searched"])
+	}
+	first := result["passages"].([]any)[0].(map[string]any)
+	if first["channel"] != "chat" || !strings.Contains(first["text"].(string), "nut free") {
+		t.Fatalf("chat passage: %v", first)
+	}
+	result = call(t, v, "search_documents", `{"query":"labor day","until":"2026-09-04"}`)
+	if result["searched"].(float64) != 2 {
+		t.Fatalf("until: %v", result["searched"])
+	}
+	if _, err := v.run(context.Background(), "search_documents", json.RawMessage(`{"query":"x","channel":"boardoftrustees"}`)); err == nil {
+		t.Fatal("an unknown channel was searched")
+	}
+	if _, err := v.run(context.Background(), "search_documents", json.RawMessage(`{"query":"x","since":"2027-01-01"}`)); err == nil {
+		t.Fatal("a range with nothing in it was searched")
+	}
+	if _, err := v.run(context.Background(), "search_documents", json.RawMessage(`{"query":"x","since":"last summer"}`)); err == nil {
+		t.Fatal("a date that is not a date was taken")
 	}
 }
 

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"heliosian/internal/artifacts"
 	"heliosian/internal/ask"
 	"heliosian/internal/calendar"
 	"heliosian/internal/celebrate"
@@ -14,7 +15,7 @@ import (
 // askSources hands Helios Ask every app's model as it stands when asked,
 // the directory's view of a person as the calendar reads it, and the lists
 // the other apps give them - the same readings the apps themselves make.
-func askSources(cache *who.Cache, settings *config.Cache, teamCache *team.Cache, celebrateCache *celebrate.Cache, calendarCache *calendar.Cache, loopCache *loop.Cache, homeCache *home.Cache, lists smartLists, loopDir loopDirectory, linked func(email string) []calendar.Linked) ask.Sources {
+func askSources(cache *who.Cache, settings *config.Cache, teamCache *team.Cache, celebrateCache *celebrate.Cache, calendarCache *calendar.Cache, loopCache *loop.Cache, homeCache *home.Cache, artifactsCache *artifacts.Cache, embedder artifacts.Embedder, lists smartLists, loopDir loopDirectory, linked func(email string) []calendar.Linked) ask.Sources {
 	return ask.Sources{
 		Directory: cache.Model,
 		Tags:      cache.Tags,
@@ -30,5 +31,7 @@ func askSources(cache *who.Cache, settings *config.Cache, teamCache *team.Cache,
 		LoopSources:       func() loop.Sources { return loop.SourcesOf(loopDir) },
 		Links:             func() []home.Category { return homeCache.Model().Categories },
 		Alerts:            directory{cache, settings}.Alerts,
+		Artifacts:         artifactsCache.Model,
+		Embedder:          embedder,
 	}
 }

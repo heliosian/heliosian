@@ -106,6 +106,7 @@ func main() {
 		",INVITES_SHEET=" + requiredEnv("INVITES_SHEET") +
 		",APPS_SHEET=" + requiredEnv("APPS_SHEET") +
 		",BIRTHDAY_SHEET=" + requiredEnv("BIRTHDAY_SHEET") +
+		",ARTIFACTS_SHEET=" + requiredEnv("ARTIFACTS_SHEET") +
 		",GOOGLE_CLIENT_ID=" + clientID()
 	log.Printf("deploying %s to %s in %s", image, service, region)
 	gcloud("run", "deploy", service,

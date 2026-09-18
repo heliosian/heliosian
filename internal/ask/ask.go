@@ -16,6 +16,7 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 
+	"heliosian/internal/artifacts"
 	"heliosian/internal/auth"
 	"heliosian/internal/calendar"
 	"heliosian/internal/celebrate"
@@ -52,6 +53,8 @@ type Sources struct {
 	LoopSources       func() loop.Sources
 	Links             func() []home.Category
 	Alerts            func(email string) (stale int, privacy bool)
+	Artifacts         func() *artifacts.Model
+	Embedder          artifacts.Embedder
 }
 
 type app struct {

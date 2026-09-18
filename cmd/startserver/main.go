@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"heliosian/internal/app"
+	"heliosian/internal/artifacts"
 	"heliosian/internal/ask"
 	"heliosian/internal/auth"
 	"heliosian/internal/birthday"
@@ -107,6 +108,10 @@ func sampleServer() (*http.Server, *who.Queue) {
 		// mail and its archive under loop/ there; nothing receives for it.
 		Loop:  loop.Mail{Sender: &mail.Files{Dir: mailDir(), From: "Helios Loop"}, Key: []byte("sample"), Base: "https://loop.local.heliosian.com:" + app.Port(), Archive: loop.DirArchive{Dir: mailDir()}},
 		Asker: sampleAsker(),
+		Artifacts: func(*artifacts.Model) (*artifacts.Model, error) {
+			return artifacts.LoadDir("sampledata/artifacts", artifacts.Fake{})
+		},
+		Embedder: artifacts.Fake{},
 	})
 	// No Google sign-in here, but Spoof Mode still: a sign-in with a key of
 	// its own signs the spoof cookie and answers the toolbar's switch, and
@@ -167,7 +172,7 @@ func detachReal(email string) {
 	if key == "" {
 		logging.Fatal("SESSION_KEY is required (the server and the minted cookie must share it)")
 	}
-	for _, name := range []string{"DIRECTORY_SHEET", "PREFERENCES_SHEET", "INVITES_SHEET", "APPS_SHEET", "EVENTS_SHEET", "BIRTHDAY_SHEET", "CELEBRATE_SHEET", "CALENDAR_SHEET", "CONFIG_SHEET", "GROUPS_SHEET"} {
+	for _, name := range []string{"DIRECTORY_SHEET", "PREFERENCES_SHEET", "INVITES_SHEET", "APPS_SHEET", "EVENTS_SHEET", "BIRTHDAY_SHEET", "CELEBRATE_SHEET", "CALENDAR_SHEET", "CONFIG_SHEET", "GROUPS_SHEET", "ARTIFACTS_SHEET"} {
 		if os.Getenv(name) == "" {
 			logging.Fatal("environment variable is required", "name", name)
 		}

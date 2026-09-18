@@ -1,0 +1,10 @@
+{
+  "messageId": "sample-chat-2026-08-30@example.org",
+  "subject": "[Chat] Cookies and the nut free policy",
+  "date": "2026-08-30T09:12:00-07:00",
+  "from": "Robin Whitfield",
+  "to": ["chat@heliosschool.org"],
+  "channel": "chat",
+  "kind": "list",
+  "text": "Hi everyone,\n\nA reminder before the bake sale on Friday: Helios is a nut free\ncampus, which covers peanuts and tree nuts, and that includes\nanything baked in a kitchen where nuts are used that morning.\n\nPlease label every plate with what is in it. If you are not sure\nwhether something qualifies, bring it in its original packaging\nso we can read the label together at the table.\n\n- no nuts, and no \"may contain\" labels\n- write the ingredients on the plate\n- fruit is always welcome and always goes first\n\nThanks all,\nRobin\n"
+}

@@ -299,6 +299,19 @@ func (s *Store) touch(key string) (*entry, bool) {
 	return e, ok
 }
 
+// Get is one object's bytes, handed straight back rather than held: for what a
+// caller parses into a model of its own and has no use for twice
+// (`docs/ask/artifacts.md`). It reads through the disk cache like every other
+// fetch, so a tool or a dev server run over thousands of them pays for the
+// download once.
+func (s *Store) Get(name string) ([]byte, error) {
+	e, err := s.fetch(context.Background(), name)
+	if err != nil {
+		return nil, err
+	}
+	return e.data, nil
+}
+
 // Bytes is an object the store already holds, with its media type, for a
 // caller that composes rather than serves - the share card draws an event's
 // image into itself. Nothing is fetched: what the sheets name is prefetched.
@@ -456,6 +469,19 @@ func exists(ctx context.Context, service *storage.Service, name string) (bool, e
 // sheet records without downloading anything.
 func (u *Uploader) Has(name string) (bool, error) {
 	return exists(context.Background(), u.service, name)
+}
+
+// Remove deletes an object a tool has just replaced under another name, so a
+// re-import leaves nothing behind. An object already gone is not an error.
+func (u *Uploader) Remove(name string) error {
+	err := u.service.Objects.Delete(Bucket, name).Context(context.Background()).Do()
+	if notFound(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("delete %s: %w", name, err)
+	}
+	return nil
 }
 
 // Put writes a content-addressed object and its thumbnail, and reports whether it had

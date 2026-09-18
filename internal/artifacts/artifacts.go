@@ -1,0 +1,516 @@
+// Package artifacts keeps the documents the community has been sent - the school's newsletters and everything its lists carried - as markdown in chunks with embeddings, for Helios Ask to search.
+package artifacts
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"log/slog"
+	"path/filepath"
+	"slices"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"heliosian/internal/calendar"
+	"heliosian/internal/data"
+)
+
+const (
+	appName         = "artifacts"
+	documentsTab    = "Documents"
+	Folder          = "artifacts"
+	refreshInterval = 5 * time.Minute
+	lexicalWeight   = 0.15
+	// readers is how many objects are fetched at once, as the media store
+	// fetches what the sheets name.
+	readers = 32
+	// KindNewsletter is the school's own newsletter, KindList a message a
+	// list carried, KindAnnouncement one written to a whole school or class
+	// without a list.
+	KindNewsletter   = "newsletter"
+	KindList         = "list"
+	KindAnnouncement = "announcement"
+)
+
+var DocumentColumns = []string{"Key", "Title", "Date", "Author", "Kind", "Channel", "Source", "Chunks", "Object"}
+
+var stopwords = map[string]bool{"the": true, "and": true, "for": true, "are": true, "was": true, "our": true, "you": true, "your": true, "with": true, "this": true, "that": true, "from": true, "what": true, "when": true, "where": true, "who": true, "how": true, "does": true, "did": true, "will": true, "about": true, "there": true, "have": true, "has": true, "any": true, "can": true, "is": true, "in": true, "on": true, "at": true, "to": true, "of": true, "an": true, "or": true, "be": true, "it": true, "my": true, "me": true, "we": true, "us": true, "do": true, "up": true, "so": true, "if": true, "as": true, "by": true, "its": true, "not": true, "tell": true, "know": true, "say": true, "said": true, "school": true, "helios": true}
+
+// A Document is one thing somebody wrote to the community: what it was
+// called, when it went out, who sent it, the channel it went out on, its
+// whole text as markdown, and that text in chunks with their embeddings.
+type Document struct {
+	Key      string  `json:"key"`
+	Title    string  `json:"title"`
+	Date     string  `json:"date"`
+	Author   string  `json:"author"`
+	Kind     string  `json:"kind"`
+	Channel  string  `json:"channel"`
+	Source   string  `json:"source"`
+	Model    string  `json:"model"`
+	Markdown string  `json:"markdown"`
+	Chunks   []Chunk `json:"chunks"`
+}
+
+type Chunk struct {
+	Section string `json:"section"`
+	Text    string `json:"text"`
+	Vector  Vector `json:"vector,omitempty"`
+}
+
+// Key is a message's document key: its message id, which is the one name a
+// message carries wherever it was delivered, so the same message reaching
+// two accounts is one document.
+func Key(messageID string) string {
+	sum := sha256.Sum256([]byte(messageID))
+	return hex.EncodeToString(sum[:])
+}
+
+func (d *Document) Object() string {
+	return Folder + "/" + d.ObjectFile()
+}
+
+// ObjectFile is the document's name in the bucket: its key and a
+// fingerprint of the document as rendered, so a change to the converter, the
+// chunker or the embedding gives the same message a new object and the
+// import can tell what is stale.
+func (d *Document) ObjectFile() string {
+	return d.Key + "-" + d.fingerprint() + ".json"
+}
+
+func (d *Document) fingerprint() string {
+	bare := *d
+	bare.Chunks = []Chunk{}
+	for _, c := range d.Chunks {
+		bare.Chunks = append(bare.Chunks, Chunk{Section: c.Section, Text: c.Text})
+	}
+	encoded, err := json.Marshal(bare)
+	if err != nil {
+		panic(err)
+	}
+	sum := sha256.Sum256(encoded)
+	return hex.EncodeToString(sum[:8])
+}
+
+func (d *Document) Row() map[string]string {
+	return map[string]string{
+		"Key": d.Key, "Title": d.Title, "Date": d.Date, "Author": d.Author, "Kind": d.Kind,
+		"Channel": d.Channel, "Source": d.Source, "Chunks": strconv.Itoa(len(d.Chunks)), "Object": d.Object(),
+	}
+}
+
+// embedText is what a chunk is embedded as: the document's title, its date
+// in words and the chunk's section over the chunk itself, so a passage
+// saying only "sign up here" is still found by what it is about.
+func (d *Document) embedText(c Chunk) string {
+	when := d.Date
+	if day, err := time.ParseInLocation(calendar.DateFormat, d.Date, calendar.Location); err == nil {
+		when = day.Format("January 2, 2006")
+	}
+	head := d.Title + ", " + when
+	if d.Channel != "" {
+		head += " (" + d.Channel + ")"
+	}
+	if c.Section != "" {
+		head += pathSeparator + c.Section
+	}
+	return head + "\n\n" + c.Text
+}
+
+func (d *Document) Embed(ctx context.Context, embedder Embedder) error {
+	if embedder.Model() != d.Model {
+		return fmt.Errorf("the document is for %s, the embedder is %s", d.Model, embedder.Model())
+	}
+	texts := []string{}
+	for _, c := range d.Chunks {
+		texts = append(texts, d.embedText(c))
+	}
+	vectors, err := embedder.Embed(ctx, texts, false)
+	if err != nil {
+		return err
+	}
+	if len(vectors) != len(d.Chunks) {
+		return fmt.Errorf("%d chunks, %d vectors", len(d.Chunks), len(vectors))
+	}
+	for i := range d.Chunks {
+		d.Chunks[i].Vector = vectors[i]
+	}
+	return nil
+}
+
+func (d *Document) normalize() error {
+	if len(d.Chunks) == 0 {
+		return fmt.Errorf("document %s has no chunks", d.Key)
+	}
+	for i := range d.Chunks {
+		if len(d.Chunks[i].Vector) == 0 {
+			return fmt.Errorf("document %s chunk %d has no vector", d.Key, i)
+		}
+		Normalize(d.Chunks[i].Vector)
+	}
+	return nil
+}
+
+type Model struct {
+	Documents []*Document
+	// Fetched is how many of the documents this load read from the bucket
+	// rather than keeping from the load before it.
+	Fetched int
+}
+
+// Objects is the bucket the documents are kept in, read a name at a time
+// and never held: the documents are parsed into the model and the bytes
+// they came from are not worth a second copy.
+type Objects interface {
+	Get(name string) ([]byte, error)
+}
+
+func ReadRows(source data.Source) ([]map[string]string, error) {
+	header, rows, err := source.Table(appName, documentsTab)
+	if err != nil {
+		return nil, err
+	}
+	if err := data.CheckColumns(documentsTab, header, DocumentColumns); err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+// Load is every document the sheet indexes, read from the bucket. A row
+// whose object is missing, or whose document was embedded by another model,
+// refuses the load rather than being quietly left out of every answer.
+//
+// An object's name carries a fingerprint of the document inside it, so a
+// name the last load already read is the same document: given that model,
+// only what is new or has changed is fetched, and a refresh over thousands
+// of documents costs one read of the sheet. The rest are fetched many at a
+// time, since a corpus this size read one object after another would take
+// longer than the server is given to start.
+func Load(source data.Source, objects Objects, embedder Embedder, previous *Model) (*Model, error) {
+	rows, err := ReadRows(source)
+	if err != nil {
+		return nil, err
+	}
+	held := map[string]*Document{}
+	if previous != nil {
+		for _, doc := range previous.Documents {
+			held[doc.Object()] = doc
+		}
+	}
+	m := &Model{Documents: make([]*Document, len(rows))}
+	wanted := []int{}
+	for i, row := range rows {
+		if doc, ok := held[row["Object"]]; ok && doc.Key == row["Key"] {
+			m.Documents[i] = doc
+			continue
+		}
+		wanted = append(wanted, i)
+	}
+	var mu sync.Mutex
+	var first error
+	var wg sync.WaitGroup
+	slots := make(chan struct{}, readers)
+	for _, i := range wanted {
+		wg.Add(1)
+		slots <- struct{}{}
+		go func() {
+			defer wg.Done()
+			defer func() { <-slots }()
+			doc, err := read(objects, rows[i], embedder)
+			mu.Lock()
+			defer mu.Unlock()
+			if err != nil {
+				if first == nil {
+					first = err
+				}
+				return
+			}
+			m.Documents[i] = doc
+		}()
+	}
+	wg.Wait()
+	if first != nil {
+		return nil, first
+	}
+	m.Fetched = len(wanted)
+	m.sort()
+	return m, nil
+}
+
+func read(objects Objects, row map[string]string, embedder Embedder) (*Document, error) {
+	raw, err := objects.Get(row["Object"])
+	if err != nil {
+		return nil, fmt.Errorf("document %s: %w", row["Key"], err)
+	}
+	doc := &Document{}
+	if err := json.Unmarshal(raw, doc); err != nil {
+		return nil, fmt.Errorf("document %s: %w", row["Key"], err)
+	}
+	if doc.Key != row["Key"] {
+		return nil, fmt.Errorf("document %s: the object says it is %s", row["Key"], doc.Key)
+	}
+	if doc.Model != embedder.Model() {
+		return nil, fmt.Errorf("document %s was embedded with %s, not %s; import it again", doc.Key, doc.Model, embedder.Model())
+	}
+	if err := doc.normalize(); err != nil {
+		return nil, err
+	}
+	return doc, nil
+}
+
+// LoadDir is every message saved in a directory, built and embedded on the
+// spot: the sample community's corpus, with no sheet and no bucket. The
+// sample corpus is small and fixed, so it is read afresh each time.
+func LoadDir(dir string, embedder Embedder) (*Model, error) {
+	files, err := filepath.Glob(filepath.Join(dir, "*.json"))
+	if err != nil {
+		return nil, err
+	}
+	m := &Model{Documents: []*Document{}}
+	for _, file := range files {
+		message, err := ReadMessage(file)
+		if err != nil {
+			return nil, err
+		}
+		doc, err := Build(message, NewResolver(), embedder.Model())
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", file, err)
+		}
+		if err := doc.Embed(context.Background(), embedder); err != nil {
+			return nil, fmt.Errorf("%s: %w", file, err)
+		}
+		if err := doc.normalize(); err != nil {
+			return nil, err
+		}
+		m.Documents = append(m.Documents, doc)
+	}
+	m.sort()
+	return m, nil
+}
+
+func (m *Model) sort() {
+	sort.SliceStable(m.Documents, func(i, j int) bool {
+		if m.Documents[i].Date != m.Documents[j].Date {
+			return m.Documents[i].Date > m.Documents[j].Date
+		}
+		return m.Documents[i].Title < m.Documents[j].Title
+	})
+}
+
+func (m *Model) Document(key string) *Document {
+	for _, d := range m.Documents {
+		if d.Key == key {
+			return d
+		}
+	}
+	return nil
+}
+
+func (m *Model) Chunks() int {
+	n := 0
+	for _, d := range m.Documents {
+		n += len(d.Chunks)
+	}
+	return n
+}
+
+// Channels is how many documents each channel carried, for the log line and
+// for the prompt to say what there is to search.
+func (m *Model) Channels() map[string]int {
+	out := map[string]int{}
+	for _, d := range m.Documents {
+		out[d.Channel]++
+	}
+	return out
+}
+
+// Span is the dates of the oldest and newest documents.
+func (m *Model) Span() (oldest, newest string) {
+	if len(m.Documents) == 0 {
+		return "", ""
+	}
+	return m.Documents[len(m.Documents)-1].Date, m.Documents[0].Date
+}
+
+// ChannelNames is every channel there is, the busiest first.
+func (m *Model) ChannelNames() []string {
+	counts := m.Channels()
+	out := []string{}
+	for name := range counts {
+		out = append(out, name)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if counts[out[i]] != counts[out[j]] {
+			return counts[out[i]] > counts[out[j]]
+		}
+		return out[i] < out[j]
+	})
+	return out
+}
+
+// InChannel is the documents one channel carried, by its name or any part
+// of it.
+func (m *Model) InChannel(channel string) *Model {
+	out := &Model{Documents: []*Document{}}
+	for _, d := range m.Documents {
+		if strings.Contains(strings.ToLower(d.Channel), strings.ToLower(channel)) {
+			out.Documents = append(out.Documents, d)
+		}
+	}
+	return out
+}
+
+// Between is the documents from a range of dates, either end left open.
+func (m *Model) Between(since, until string) *Model {
+	if since == "" && until == "" {
+		return m
+	}
+	out := &Model{Documents: []*Document{}}
+	for _, d := range m.Documents {
+		if since != "" && d.Date < since {
+			continue
+		}
+		if until != "" && d.Date > until {
+			continue
+		}
+		out.Documents = append(out.Documents, d)
+	}
+	return out
+}
+
+type Hit struct {
+	Document *Document
+	Index    int
+	Score    float64
+}
+
+// Search is the chunks nearest a question: the dot product of the
+// normalized vectors, plus a small share for the words of the question the
+// chunk itself holds, since names, dates and numbers are where an embedding
+// alone is weakest. Ties go to the newer document.
+func (m *Model) Search(vector []float32, query string, limit int) []Hit {
+	Normalize(vector)
+	terms := []string{}
+	for _, t := range tokens(query) {
+		if !stopwords[t] && !slices.Contains(terms, t) {
+			terms = append(terms, t)
+		}
+	}
+	hits := []Hit{}
+	for _, d := range m.Documents {
+		for i, c := range d.Chunks {
+			score := dot(vector, c.Vector)
+			if len(terms) > 0 {
+				lower := strings.ToLower(c.Section + "\n" + c.Text)
+				found := 0
+				for _, t := range terms {
+					if strings.Contains(lower, t) {
+						found++
+					}
+				}
+				score += lexicalWeight * float64(found) / float64(len(terms))
+			}
+			hits = append(hits, Hit{Document: d, Index: i, Score: score})
+		}
+	}
+	sort.SliceStable(hits, func(i, j int) bool {
+		if hits[i].Score != hits[j].Score {
+			return hits[i].Score > hits[j].Score
+		}
+		return hits[i].Document.Date > hits[j].Document.Date
+	})
+	// A reply carries the message it answers, so the same words sit in the
+	// corpus several times over. The best-scoring of them is worth
+	// returning; the rest would spend the answer's room repeating it.
+	out := []Hit{}
+	taken := []string{}
+	for _, hit := range hits {
+		if len(out) >= limit {
+			break
+		}
+		words := plain(hit.Document.Chunks[hit.Index].Text)
+		if quotes(words, taken) {
+			continue
+		}
+		taken = append(taken, words)
+		out = append(out, hit)
+	}
+	return out
+}
+
+// plain is a passage's words alone, for comparing one against another
+// however each was spaced, capitalised or marked up.
+func plain(text string) string {
+	return strings.Join(tokens(text), " ")
+}
+
+// quotes says whether a passage is already covered by one taken: either it
+// sits inside one, which is a reply quoting it, or one sits inside it, which
+// is this passage quoting that. Too short to tell is not a quotation.
+func quotes(words string, taken []string) bool {
+	if len(words) < 80 {
+		return slices.Contains(taken, words)
+	}
+	for _, other := range taken {
+		if strings.Contains(other, words) || (len(other) >= 80 && strings.Contains(words, other)) {
+			return true
+		}
+	}
+	return false
+}
+
+type Enqueuer interface {
+	Add(func())
+}
+
+type Cache struct {
+	load  func(previous *Model) (*Model, error)
+	queue Enqueuer
+	mu    sync.RWMutex
+	model *Model
+}
+
+func NewCache(load func(previous *Model) (*Model, error), queue Enqueuer) (*Cache, error) {
+	c := &Cache{load: load, queue: queue}
+	if err := c.refresh(); err != nil {
+		return nil, err
+	}
+	go c.refreshLoop()
+	return c, nil
+}
+
+func (c *Cache) refreshLoop() {
+	for range time.Tick(refreshInterval) {
+		c.queue.Add(func() {
+			if err := c.refresh(); err != nil {
+				slog.Error("artifacts model refresh", "error", err)
+			}
+		})
+	}
+}
+
+func (c *Cache) refresh() error {
+	start := time.Now()
+	model, err := c.load(c.Model())
+	if err != nil {
+		return err
+	}
+	c.mu.Lock()
+	c.model = model
+	c.mu.Unlock()
+	oldest, newest := model.Span()
+	slog.Info("loaded artifacts model", "documents", len(model.Documents), "fetched", model.Fetched, "chunks", model.Chunks(),
+		"channels", len(model.Channels()), "oldest", oldest, "newest", newest, "took", time.Since(start).Round(time.Millisecond))
+	return nil
+}
+
+func (c *Cache) Model() *Model {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.model
+}

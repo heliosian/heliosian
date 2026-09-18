@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"heliosian/internal/app"
+	"heliosian/internal/artifacts"
 	"heliosian/internal/calendar"
 	"heliosian/internal/celebrate"
 	"heliosian/internal/config"
@@ -104,6 +105,7 @@ func main() {
 			"calendar":    requiredEnv("CALENDAR_SHEET"),
 			"config":      requiredEnv("CONFIG_SHEET"),
 			"groups":      requiredEnv("GROUPS_SHEET"),
+			"artifacts":   requiredEnv("ARTIFACTS_SHEET"),
 		})
 		if err != nil {
 			log.Fatalf("[ERROR] sheet source: %v", err)
@@ -348,4 +350,13 @@ func main() {
 		fmt.Printf("  %s %q: aliases %v, %d managers, %d rules, %d members, %d excluded, prefix %v, visibility %s\n", g.Address(), g.Title, g.Aliases, len(g.Managers), len(g.Rules), len(loop.Members(g, sources)), len(g.Excluded), g.Prefix, g.Visibility)
 	}
 	fmt.Printf("groups admins: %d\n", len(groupTables.Admins))
+
+	documents, err := artifacts.ReadRows(source)
+	if err != nil {
+		log.Fatalf("[ERROR] read artifacts rows: %v", err)
+	}
+	fmt.Printf("artifacts: %d documents\n", len(documents))
+	for _, row := range documents {
+		fmt.Printf("  %s %q by %s (%s, %s chunks)\n", row["Date"], row["Title"], row["Author"], row["Kind"], row["Chunks"])
+	}
 }

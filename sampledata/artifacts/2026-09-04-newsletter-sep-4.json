@@ -1,0 +1,10 @@
+{
+  "messageId": "sample-newsletter-2026-09-04@example.org",
+  "subject": "Helios Weekly Newsletter 2026 September 4",
+  "date": "2026-09-04T14:33:00-07:00",
+  "from": "Helios School",
+  "to": ["jordan.whitfield@heliosschool.org"],
+  "channel": "newsletter",
+  "kind": "newsletter",
+  "html": "<html>\n<body>\n<p>September 4, 2026</p>\n<p><em>Question of the Week:</em> What mathematical concepts did our Hummingbirds explore this morning? <strong>Scroll to the end for the answer!</strong></p>\n<h1>A NOTE FROM BEN</h1>\n<p>Dear Helios Families,</p>\n<p>Welcome back! The first week is behind us and the classrooms are humming. A reminder that Monday, September 7 is Labor Day and there is no school.</p>\n<p>Yours, <b>Ben</b></p>\n<h1>ANNOUNCEMENTS &amp; REMINDERS</h1>\n<h2>Back to School Nights</h2>\n<p>Lower School Back to School Night is Wednesday, 9/9 at 6:00pm; Middle School is Thursday, 9/10 at 6:00pm. Adults only, please.</p>\n<h2>Carline Reminders</h2>\n<p>Please pull all the way forward in carline and keep the crosswalk clear. Staff will open doors; there is no need to get out of the car.</p>\n<h1>HCA NEWSLETTER</h1>\n<p><b>Welcome from the HCA</b></p>\n<p>The Helios Community Association welcomes every family to the new year. The first HCA meeting is Tuesday, 9/15 at 8:30am in the library; coffee provided.</p>\n<p><b>Fondue &amp; Fort Night tickets are on sale</b></p>\n<p>Saturday, 9/19 at the Whitfields'. Tickets on <a href=\"https://celebrate.heliosian.com/\">Helios Celebrate</a>; a waitlist opens when they run out.</p>\n<h1>CLASSROOM WEBSITES</h1>\n<ul>\n<li><a href=\"https://example.org/classrooms/jays\">Jays</a></li>\n<li><a href=\"https://example.org/classrooms/ravens\">Ravens</a></li>\n</ul>\n<p><em>Answer of the week:</em> Symmetry, by folding paper.</p>\n</body>\n</html>\n"
+}

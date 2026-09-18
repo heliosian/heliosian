@@ -29,6 +29,7 @@ To run against real community data instead, see [docs/dev.md](docs/dev.md).
 - `internal/calendarimport` — the calendar import: the school's Google Calendar into the Calendar sheet as it changes, from the serving binary, and its year calendar PDF from the periodic sync, classified by Claude
 - `internal/loop` — Helios Loop: the Groups sheet's model, the rule evaluator, the mail received and forwarded, handlers, and admin edits
 - `internal/ask` — Helios Ask: the chat with Claude over every app's data - the prompt, the conversation, the streaming turn and the read-only tools
+- `internal/artifacts` — the community's mail Helios Ask searches: which mail belongs, messages to markdown, the chunks, their embeddings through Vertex AI, and the model that scans them
 - `internal/feedback` — the toolbar's reports, queued and filed as issues in the private triage repository
 - `internal/blob` — media from Cloud Storage, held in memory with stored thumbnails
 - `internal/sharecard` — the 1200x630 picture a chat app shows for a shared link, drawn for HCA-Team and Helios Celebrate in each one's dress
@@ -94,5 +95,6 @@ Helios Ask, in `docs/ask/`:
 
 - [ask.md](docs/ask/ask.md) — the chat app spec: the page, what Claude knows, what it can read
 - [data.md](docs/ask/data.md) — the call to Claude, the conversation, the tools and their limits
+- [artifacts.md](docs/ask/artifacts.md) — the community's mail on file: what is in it and what is withheld, how it becomes markdown, chunks and embeddings, and how it is searched
 
 Each app keeps its own docs under `docs/<app>/`, named for its hostname; the top level is only what every app shares.

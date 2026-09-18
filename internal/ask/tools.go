@@ -12,6 +12,7 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 
+	"heliosian/internal/artifacts"
 	"heliosian/internal/calendar"
 	"heliosian/internal/celebrate"
 	"heliosian/internal/loop"
@@ -89,16 +90,20 @@ type viewer struct {
 	team      *team.Model
 	celebrate *celebrate.Model
 	loop      *loop.Model
+	artifacts *artifacts.Model
+	embedder  artifacts.Embedder
 	sources   Sources
 	now       time.Time
 	// family is the viewer and everyone in their families, by address.
 	family map[string]bool
+	ctx    context.Context
 }
 
 func (a app) viewer(email string) *viewer {
 	v := &viewer{
 		email: email, directory: a.sources.Directory(), calendar: a.sources.Calendar(), team: a.sources.Team(), celebrate: a.sources.Celebrate(), loop: a.sources.Loop(),
-		sources: a.sources, now: time.Now().In(calendar.Location), family: map[string]bool{email: true},
+		artifacts: a.sources.Artifacts(), embedder: a.sources.Embedder,
+		sources: a.sources, now: time.Now().In(calendar.Location), family: map[string]bool{email: true}, ctx: context.Background(),
 	}
 	v.me = v.directory.Person(email)
 	for _, key := range v.directory.FamilyKeysOf(email) {
@@ -121,6 +126,7 @@ func (v *viewer) run(ctx context.Context, name string, input json.RawMessage) (s
 	if len(input) == 0 {
 		input = json.RawMessage(`{}`)
 	}
+	v.ctx = ctx
 	result, err := tools[i].run(v, input)
 	if err != nil {
 		return "", err
@@ -295,4 +301,4 @@ func sortedByName[T any](list []T, name func(T) string) {
 	sort.SliceStable(list, func(i, j int) bool { return strings.ToLower(name(list[i])) < strings.ToLower(name(list[j])) })
 }
 
-var tools = []tool{findPeople, getPerson, getFamily, getClassroom, calendarEvents, dayPlan, volunteerOpportunities, getActivity, parties, myGroups, myLists, communityLinks}
+var tools = []tool{findPeople, getPerson, getFamily, getClassroom, calendarEvents, dayPlan, volunteerOpportunities, getActivity, parties, myGroups, myLists, communityLinks, searchDocuments, readDocument}

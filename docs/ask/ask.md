@@ -1,6 +1,6 @@
 # Helios Ask
 
-Helios Ask is a chat with Claude for the Helios community: one signed-in member asks about the school, their family, the calendar, the people in the directory, the volunteer work, the parties or the email groups, and the answer streams in, drawn from the community's own apps and linking to them. It serves at ask.heliosian.com. The package is `internal/ask`, the API is `/api/ask/`, and it holds no sheet of its own: everything it knows it reads from the other apps' models as they stand.
+Helios Ask is a chat with Claude for the Helios community: one signed-in member asks about the school, their family, the calendar, the people in the directory, the volunteer work, the parties or the email groups, and the answer streams in, drawn from the community's own apps and linking to them. It serves at ask.heliosian.com. The package is `internal/ask`, the API is `/api/ask/`, and it holds no sheet of its own: everything it knows it reads from the other apps' models as they stand, and from the community's own mail on file - every newsletter and every announcement to all the families since 2018, and what each classroom's parent list carried (`artifacts.md`).
 
 ## The page
 
@@ -16,7 +16,9 @@ The prompt is two cached pieces. The first is the school: `internal/ask/prompt.m
 
 ## What Claude can read
 
-Twelve tools, every one read-only, every one reading as the person signed in and never as anyone else (`data.md`, The tools). The directory: find people by words and filters, one person in full with their families, a family, a classroom with its crews and room parents. The calendar: events in a date range with the other apps' folded in and the viewer's own standing on each, and the day plan for a date. HCA-Team: this year's things and who signed up, and one thing in full. Celebrate: the parties with their tickets and the household's own. Loop: the groups the viewer can see, with members for the ones they manage. Who?'s lists: the viewer's tags and Magic Tags. Heliosian: the front page's links.
+Fourteen tools, every one read-only, every one reading as the person signed in and never as anyone else (`data.md`, The tools). The directory: find people by words and filters, one person in full with their families, a family, a classroom with its crews and room parents. The calendar: events in a date range with the other apps' folded in and the viewer's own standing on each, and the day plan for a date. HCA-Team: this year's things and who signed up, and one thing in full. Celebrate: the parties with their tickets and the household's own. Loop: the groups the viewer can see, with members for the ones they manage. Who?'s lists: the viewer's tags and Magic Tags. Heliosian: the front page's links. The community's mail: the passages that answer a question, and one message whole (`artifacts.md`).
+
+The mail on file is what went to everyone or to a whole class. What a committee or a role kept to itself - the board and its committees, the HCA's teams, the room parents, the staff - is not on file at all, since Ask answers whoever asks it (`artifacts.md`, What is in it and what is not).
 
 What the apps keep from a reader, the tools keep too: a masked phone, address or email stays blank, an opted-out person is not there, another person's tags are never read, a hidden volunteer list shows only its co-chairs and the household, a party's attendees reach its hosts alone, a pending or hidden thing reaches whoever runs it. Nothing an admin sees - the super admin list, the admin tabs, provenance, overrides, invoicing - reaches a tool. Staff Birthdays is not read at all.
 

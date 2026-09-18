@@ -26,6 +26,7 @@ import (
 	gcal "google.golang.org/api/calendar/v3"
 	"google.golang.org/api/option"
 
+	"heliosian/internal/artifacts"
 	"heliosian/internal/ask"
 	"heliosian/internal/auth"
 	"heliosian/internal/birthday"
@@ -791,6 +792,10 @@ type Config struct {
 	Loop loop.Mail
 	// Asker answers Helios Ask's chat: Claude, or the sample fake.
 	Asker ask.Responder
+	// Artifacts loads the documents Helios Ask searches, given what the last
+	// load held so that a refresh reads only what has changed.
+	Artifacts func(previous *artifacts.Model) (*artifacts.Model, error)
+	Embedder  artifacts.Embedder
 }
 
 // Core is the assembled shared skeleton: each app's mux (still open for the
@@ -919,6 +924,10 @@ func NewCore(cfg Config) *Core {
 		logging.Fatal("load loop data", "error", err)
 	}
 	loopDir := loopDirectory{cache, settings, teamCache, celebrateCache}
+	artifactsCache, err := artifacts.NewCache(cfg.Artifacts, queue)
+	if err != nil {
+		logging.Fatal("load artifacts data", "error", err)
+	}
 	mux := http.NewServeMux()
 	config.Register(mux, settings, cfg.Writer, cache.IsAdmin)
 	who.Register(mux, cache, cfg.BrowserKey, func() string { return settings.Settings().PrivacyLinks.HeliosWhoOptIn }, smartLists{cache, teamCache, celebrateCache, loopCache, loopDir})
@@ -949,7 +958,7 @@ func NewCore(cfg Config) *Core {
 	loop.Register(loopMux, loopCache, cfg.Writer, queue, cfg.Store, loopDir, settings.SuperAdmins, cfg.Loop)
 	// The chat reads every app's model, so it is wired once they all are.
 	askMux := http.NewServeMux()
-	ask.Register(askMux, askSources(cache, settings, teamCache, celebrateCache, calendarCache, loopCache, homeCache, smartLists{cache, teamCache, celebrateCache, loopCache, loopDir}, loopDir, linked), cfg.Asker)
+	ask.Register(askMux, askSources(cache, settings, teamCache, celebrateCache, calendarCache, loopCache, homeCache, artifactsCache, cfg.Embedder, smartLists{cache, teamCache, celebrateCache, loopCache, loopDir}, loopDir, linked), cfg.Asker)
 	// Every app's toolbar asks its own origin what its switch lists and
 	// which rows to leave off; Heliosian's cache answers for all of them.
 	for _, m := range []*http.ServeMux{mux, teamMux, birthdayMux, celebrateMux, calendarMux, loopMux, askMux} {
@@ -1225,6 +1234,7 @@ func Production(blobCache string) (*http.Server, *who.Queue) {
 		"calendar":    requiredEnv("CALENDAR_SHEET"),
 		"config":      requiredEnv("CONFIG_SHEET"),
 		"groups":      requiredEnv("GROUPS_SHEET"),
+		"artifacts":   requiredEnv("ARTIFACTS_SHEET"),
 	}
 	sessionKey := requiredEnv("SESSION_KEY")
 	sheet, err := data.NewSheet(spreadsheets)
@@ -1234,6 +1244,10 @@ func Production(blobCache string) (*http.Server, *who.Queue) {
 	store, err := blob.New(blobCache)
 	if err != nil {
 		logging.Fatal("blob store", "error", err)
+	}
+	embedder, err := artifacts.NewVertex()
+	if err != nil {
+		logging.Fatal("vertex embedder", "error", err)
 	}
 	core := NewCore(Config{
 		Source:      sheet,
@@ -1258,6 +1272,10 @@ func Production(blobCache string) (*http.Server, *who.Queue) {
 		Feedback:      &feedback.GitHub{Token: mapsKey("GITHUB_TOKEN", "creds/github.token")},
 		Loop:          loopMail(sessionKey),
 		Asker:         ask.NewClaude(mapsKey("ANTHROPIC_API_KEY", "creds/anthropic.key")),
+		Artifacts: func(previous *artifacts.Model) (*artifacts.Model, error) {
+			return artifacts.Load(sheet, store, embedder, previous)
+		},
+		Embedder: embedder,
 	})
 	blob.Register(core.Mux, store)
 	blob.RegisterHome(core.HomeMux, store)

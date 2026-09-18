@@ -12,6 +12,7 @@ import (
 	"google.golang.org/api/option"
 	"google.golang.org/api/sheets/v4"
 
+	"heliosian/internal/artifacts"
 	"heliosian/internal/birthday"
 	"heliosian/internal/calendar"
 	"heliosian/internal/celebrate"
@@ -32,6 +33,7 @@ var spreadsheets = []struct{ env, layout string }{
 	{"CELEBRATE_SHEET", "Celebrate"},
 	{"CONFIG_SHEET", "Config"},
 	{"GROUPS_SHEET", "Groups"},
+	{"ARTIFACTS_SHEET", "Artifacts"},
 }
 
 type tab struct {
@@ -46,6 +48,9 @@ var seeds = map[string]map[string][]string{
 }
 
 var layouts = map[string][]tab{
+	"Artifacts": {
+		{"Documents", artifacts.DocumentColumns},
+	},
 	"Directory": {
 		// person_photo and person_department are spliced in by vcexport rather than
 		// exported by Veracross, so the tab needs the columns before an import can
