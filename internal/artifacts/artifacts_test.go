@@ -3,6 +3,7 @@ package artifacts
 import (
 	"context"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 )
@@ -129,6 +130,64 @@ func TestExcludedPagesAreRefused(t *testing.T) {
 		if Excluded(address) {
 			t.Errorf("%s is excluded", address)
 		}
+	}
+}
+
+func TestPortalResourceBecomesMarkdown(t *testing.T) {
+	r := Resource{
+		URL:     "https://portals.veracross.com/heliosschool/parent/pages/School-Lunch",
+		Title:   "School Lunch",
+		Fetched: "2026-09-17T19:00:00Z",
+		Format:  FormatHTML,
+		Body:    `<h2>Ordering</h2><p>Order by Thursday on <a href="https://www.google.com/url?q=https://www.choicelunch.com/&amp;sa=D&amp;usg=x">Choicelunch</a>, and see <a href="/heliosschool/parent/pages/Aftercare-Program">aftercare</a>.</p>`,
+	}
+	doc, err := r.Build(NewResolver(), Fake{}.Model())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if doc.Title != "School Lunch" || doc.Date != "2026-09-17" || doc.Kind != KindPortal || doc.URL() != r.URL || doc.Key != Key(r.URL) {
+		t.Fatalf("headers: %+v", doc)
+	}
+	want := "## Ordering\n\nOrder by Thursday on [Choicelunch](https://www.choicelunch.com/), and see [aftercare](https://portals.veracross.com/heliosschool/parent/pages/Aftercare-Program)."
+	if doc.Markdown != want {
+		t.Fatalf("markdown:\n%s", doc.Markdown)
+	}
+}
+
+func TestTextResourceKeepsItsLines(t *testing.T) {
+	r := Resource{URL: "https://docs.google.com/presentation/d/x/edit", Title: "SEL", Fetched: "2026-09-17T19:00:00Z", Format: FormatText,
+		Body: "Day in the Life\r\nSEL skills   matter.\n\n1\n\nEssential Skills\nAsk for help\n\fRespect others\n"}
+	doc, err := r.Build(NewResolver(), Fake{}.Model())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if doc.Markdown != "Day in the Life\nSEL skills matter.\n\nEssential Skills\nAsk for help\n\nRespect others" {
+		t.Fatalf("markdown:\n%q", doc.Markdown)
+	}
+	if _, err := (Resource{URL: r.URL, Title: "Empty", Fetched: r.Fetched, Format: FormatText, Body: "\f 2 \n"}).Build(NewResolver(), Fake{}.Model()); !errors.Is(err, ErrNoWords) {
+		t.Fatalf("an empty resource: %v", err)
+	}
+}
+
+func TestSavedFilesAreToldApart(t *testing.T) {
+	dir := t.TempDir()
+	resource := dir + "/resource.json"
+	if err := os.WriteFile(resource, []byte(`{"url":"https://example.org/a","title":"A","fetched":"2026-09-17T19:00:00Z","format":"text","body":"Words."}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := ReadSaved(resource)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := saved.(Resource); !ok {
+		t.Fatalf("read as %T", saved)
+	}
+	page, err := ReadSaved(samples + "/2026-09-01-page-family-camping.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := page.(Page); !ok {
+		t.Fatalf("read as %T", page)
 	}
 }
 

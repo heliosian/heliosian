@@ -53,10 +53,14 @@ func ReadSaved(path string) (Saved, error) {
 		return nil, err
 	}
 	var probe struct {
-		URL string `json:"url"`
+		URL    string `json:"url"`
+		Format string `json:"format"`
 	}
 	if err := json.Unmarshal(raw, &probe); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	if probe.Format != "" {
+		return ReadResource(path)
 	}
 	if probe.URL != "" {
 		return ReadPage(path)

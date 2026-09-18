@@ -31,6 +31,7 @@ const (
 	KindList         = "list"
 	KindAnnouncement = "announcement"
 	KindPage         = "page"
+	KindPortal       = "portal"
 )
 
 var DocumentColumns = []string{"Key", "Title", "Date", "Author", "Kind", "Channel", "Source", "Chunks", "Object"}
@@ -84,7 +85,7 @@ func (d *Document) fingerprint() string {
 }
 
 func (d *Document) URL() string {
-	if d.Kind != KindPage {
+	if d.Kind != KindPage && d.Kind != KindPortal {
 		return ""
 	}
 	return d.Source
