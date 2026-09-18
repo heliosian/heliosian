@@ -1,10 +1,12 @@
-// Command archiveportal saves the school-wide and classroom pages of the Veracross parent portal and of the HELP site, and the Google documents they link, under imports/portal, reading them through the signed-in capture browser.
+// Command archiveportal crawls a signed-in site through the capture browser and saves its pages, and the Google documents they link, for importartifacts.
 package main
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -22,12 +24,6 @@ import (
 	"github.com/chromedp/cdproto/runtime"
 	"github.com/chromedp/cdproto/target"
 	"github.com/chromedp/chromedp"
-)
-
-const (
-	portal = "https://portals.veracross.com/heliosschool/parent"
-	help   = "https://sites.google.com/heliosns.org/help/"
-	out    = "imports/portal"
 )
 
 var skippedPages = []string{"School-Year-Calendar"}
@@ -57,11 +53,11 @@ type link struct {
 }
 
 type rendered struct {
+	Title string `json:"title"`
 	HTML  string `json:"html"`
 	Links []link `json:"links"`
+	Nav   []link `json:"nav"`
 }
-
-const navScript = `[...document.querySelectorAll("a")].map(a => ({text: a.textContent.replace(/\s+/g, " ").trim(), href: a.href}))`
 
 // The portal draws most pages from data it loads after the page itself, so
 // the content is read once it has stopped changing.
@@ -90,12 +86,21 @@ const renderScript = `new Promise(resolve => {
 				links.push({text: e.textContent.replace(/\s+/g, " ").trim(), href: e.getAttribute("data-embed-open-url")});
 			}
 		}
-		resolve({html: parts.map(c => c.innerHTML).join("\n"), links});
+		const nav = [...document.querySelectorAll("a")].map(a => ({text: a.textContent.replace(/\s+/g, " ").trim(), href: a.href}));
+		resolve({title: document.title, html: parts.map(c => c.innerHTML).join("\n"), links, nav});
 	};
 	tick();
 })`
 
 func main() {
+	start := flag.String("start", "", "the page the crawl begins at")
+	prefix := flag.String("prefix", "", "the address every page of the site begins with; only these pages are followed and saved")
+	selector := flag.String("selector", "", "the CSS selector of a page's content")
+	out := flag.String("out", "", "the folder the pages and documents are saved in")
+	flag.Parse()
+	if *start == "" || *prefix == "" || *selector == "" || *out == "" {
+		log.Fatal("[ERROR] --start, --prefix, --selector and --out are all required")
+	}
 	id, err := newTab()
 	if err != nil {
 		log.Fatalf("[ERROR] %v", err)
@@ -105,49 +110,52 @@ func main() {
 	defer cancel()
 	ctx, cancelTimeout := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancelTimeout()
-	if err := os.MkdirAll(out, 0o755); err != nil {
+	if err := os.MkdirAll(*out, 0o755); err != nil {
 		log.Fatalf("[ERROR] %v", err)
 	}
 
+	script := strings.Replace(renderScript, "SELECTOR", strconv.Quote(*selector), 1)
+	titles := map[string]string{}
+	queued := map[string]bool{*start: true}
+	queue := []string{*start}
 	linked := []Doc{}
 	saved, failed := 0, 0
-	for _, site := range []struct{ start, pages, name, selector string }{
-		{portal, portal + "/pages/", "portal", ".app-container"},
-		{help + "welcome", help, "help", "section"},
-	} {
-		nav := []link{}
-		if err := chromedp.Run(ctx, chromedp.Navigate(site.start), chromedp.Evaluate(navScript, &nav)); err != nil {
-			log.Fatalf("[ERROR] %s: %v", site.start, err)
+	for len(queue) > 0 {
+		address := queue[0]
+		queue = queue[1:]
+		r := rendered{}
+		err := chromedp.Run(ctx, chromedp.Navigate(address), chromedp.Evaluate(script, &r, func(p *runtime.EvaluateParams) *runtime.EvaluateParams {
+			return p.WithAwaitPromise(true)
+		}))
+		if err != nil {
+			log.Printf("[ERROR] %s: %v", address, err)
+			failed++
+			continue
 		}
-		pages := []link{}
-		seen := map[string]bool{}
-		for _, l := range nav {
-			l.Href, _, _ = strings.Cut(l.Href, "?")
-			if !strings.HasPrefix(l.Href, site.pages) || l.Text == "" || seen[l.Href] || slices.Contains(skippedPages, path(l.Href)) {
+		for _, l := range r.Nav {
+			href := pageAddress(l.Href)
+			if !strings.HasPrefix(href, *prefix) || slices.Contains(skippedPages, path(href)) {
 				continue
 			}
-			seen[l.Href] = true
-			pages = append(pages, l)
+			if titles[href] == "" {
+				titles[href] = l.Text
+			}
+			if !queued[href] {
+				queued[href] = true
+				queue = append(queue, href)
+			}
 		}
-		log.Printf("%d %s pages", len(pages), site.name)
-		script := strings.Replace(renderScript, "SELECTOR", strconv.Quote(site.selector), 1)
-		for _, page := range pages {
-			r := rendered{}
-			err := chromedp.Run(ctx, chromedp.Navigate(page.Href), chromedp.Evaluate(script, &r, func(p *runtime.EvaluateParams) *runtime.EvaluateParams {
-				return p.WithAwaitPromise(true)
-			}))
-			if err != nil {
-				log.Printf("[ERROR] %s: %v", page.Href, err)
-				failed++
-				continue
-			}
-			write(site.name+"-"+slug(path(page.Href)), Doc{URL: page.Href, Title: page.Text, Format: "html", Body: r.HTML})
-			saved++
-			for _, l := range r.Links {
-				linked = append(linked, Doc{URL: l.Href, Title: l.Text, LinkedFrom: page.Href})
-			}
+		if !strings.HasPrefix(address, *prefix) {
+			continue
+		}
+		name := cmp.Or(slug(strings.ReplaceAll(strings.TrimPrefix(address, *prefix), "/", "-")), "home")
+		write(*out, name, Doc{URL: address, Title: cmp.Or(titles[address], r.Title), Format: "html", Body: r.HTML})
+		saved++
+		for _, l := range r.Links {
+			linked = append(linked, Doc{URL: l.Href, Title: l.Text, LinkedFrom: address})
 		}
 	}
+	log.Printf("%d pages saved", saved)
 
 	downloads, err := newDownloader(ctx)
 	if err != nil {
@@ -182,7 +190,7 @@ func main() {
 			continue
 		}
 		result.LinkedFrom = doc.LinkedFrom
-		write(name, result)
+		write(*out, name, result)
 		saved++
 	}
 	log.Printf("%d saved, %d skipped, %d failed", saved, skipped, failed)
@@ -249,7 +257,7 @@ type downloader struct {
 }
 
 func newDownloader(ctx context.Context) (*downloader, error) {
-	dir, err := os.MkdirTemp("", "archiveportal")
+	dir, err := os.MkdirTemp("", "archivebrowser")
 	if err != nil {
 		return nil, err
 	}
@@ -336,7 +344,7 @@ func inBrowser(ctx context.Context, page, resource string) (string, string, erro
 	return strings.TrimSpace(r.Title), r.Body, nil
 }
 
-func write(name string, doc Doc) {
+func write(out, name string, doc Doc) {
 	doc.Fetched = time.Now().UTC().Format(time.RFC3339)
 	encoded, err := json.MarshalIndent(doc, "", "  ")
 	if err != nil {
@@ -347,6 +355,12 @@ func write(name string, doc Doc) {
 		log.Fatalf("[ERROR] %v", err)
 	}
 	log.Printf("%q saved as %s", doc.Title, file)
+}
+
+func pageAddress(href string) string {
+	href, _, _ = strings.Cut(href, "#")
+	href, _, _ = strings.Cut(href, "?")
+	return href
 }
 
 func path(address string) string {
