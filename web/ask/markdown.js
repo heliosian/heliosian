@@ -32,15 +32,12 @@ function el(tag, className, text) {
   return node;
 }
 
-// stable is the part of a streaming answer safe to draw: everything up to
-// the last link, bold run, code span or bare address still being written,
-// so a half-typed link never shows raw and then jumps into shape.
+// stable is the part of a streaming answer safe to draw: a link still being
+// written shows as its words alone until it closes, and drawing stops short
+// of a bold run, code span or bare address still being written.
 export function stable(text) {
+  text = text.replace(/\[([^[\]\n]*)(\](\([^)\s]*)?)?$/, '$1');
   let cut = text.length;
-  const open = text.lastIndexOf('[');
-  if (open >= 0 && !/\]\([^)\s]+\)/.test(text.slice(open))) {
-    cut = Math.min(cut, open);
-  }
   const bolds = text.split('**').length - 1;
   if (bolds % 2 === 1) {
     cut = Math.min(cut, text.lastIndexOf('**'));

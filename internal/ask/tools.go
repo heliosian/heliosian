@@ -1,6 +1,7 @@
 package ask
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -131,14 +132,16 @@ func (v *viewer) run(ctx context.Context, name string, input json.RawMessage) (s
 	if err != nil {
 		return "", err
 	}
-	encoded, err := json.Marshal(result)
-	if err != nil {
+	encoded := &bytes.Buffer{}
+	encoder := json.NewEncoder(encoded)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(result); err != nil {
 		return "", err
 	}
-	if len(encoded) > maxToolOutput {
-		return "", fmt.Errorf("that is too much at once (%d characters); narrow it with a name, a date range, a classroom or a smaller limit", len(encoded))
+	if encoded.Len() > maxToolOutput {
+		return "", fmt.Errorf("that is too much at once (%d characters); narrow it with a name, a date range, a classroom or a smaller limit", encoded.Len())
 	}
-	return string(encoded), nil
+	return strings.TrimSpace(encoded.String()), nil
 }
 
 func decodeInput[T any](input json.RawMessage) (T, error) {

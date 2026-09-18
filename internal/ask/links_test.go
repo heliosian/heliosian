@@ -1,0 +1,64 @@
+package ask
+
+import (
+	"strings"
+	"testing"
+	"time"
+)
+
+func TestLinksShortenAndExpand(t *testing.T) {
+	l := newLinks()
+	got := l.shorten(`{"link":"https://who.heliosian.com/people/sam","more":"see https://x.org/a?b=1&c=2. and [form](https://docs.google.com/d/abc) or https://who.heliosian.com/people/sam"}`)
+	want := `{"link":"L1","more":"see L2. and [form](L3) or L1"}`
+	if got != want {
+		t.Fatalf("shorten gave %s", got)
+	}
+	if got := l.expand("[Sam](L1) and [the form](L3), [x](L9)"); got != "[Sam](https://who.heliosian.com/people/sam) and [the form](https://docs.google.com/d/abc), [x](L9)" {
+		t.Fatalf("expand gave %s", got)
+	}
+	if got := string(l.expandInput([]byte(`{"path":"L2","id":"L22"}`))); got != `{"path":"https://x.org/a?b=1`+"\\"+`u0026c=2","id":"L22"}` {
+		t.Fatalf("expandInput gave %s", got)
+	}
+}
+
+func TestRestoreShortensAddresses(t *testing.T) {
+	c := newStore().start("parent@example.com", nil, time.Now())
+	c.links.shorten("https://who.heliosian.com")
+	c.restore([]turn{
+		{Role: "user", Text: "Is https://when.heliosian.com/e/abc on?"},
+		{Role: "assistant", Text: "Yes: [the picnic](https://when.heliosian.com/e/abc), with [Sam](https://who.heliosian.com/people/sam)."},
+	})
+	question := c.messages[0].Content[0].OfText.Text
+	answer := c.messages[1].Content[0].OfText.Text
+	if question != "Is L2 on?" || answer != "Yes: [the picnic](L2), with [Sam](L3)." {
+		t.Fatalf("restored %q and %q", question, answer)
+	}
+	if got := c.links.expand(answer); got != "Yes: [the picnic](https://when.heliosian.com/e/abc), with [Sam](https://who.heliosian.com/people/sam)." {
+		t.Fatalf("expanded %q", got)
+	}
+}
+
+func TestExpanderHoldsSplitKeys(t *testing.T) {
+	l := newLinks()
+	l.shorten("https://who.heliosian.com/people/sam")
+	out := &strings.Builder{}
+	events := []string{}
+	e := &expander{links: l, emit: func(kind string, data any) {
+		events = append(events, kind)
+		if kind == "text" {
+			out.WriteString(data.(string))
+		}
+	}}
+	for _, piece := range []string{"Ask [Sam", " Lee]", "(L", "1", ") today [or] not", "]"} {
+		e.send("text", piece)
+	}
+	e.send("tool", "Searching")
+	e.send("text", "done")
+	e.flush()
+	if out.String() != "Ask [Sam Lee](https://who.heliosian.com/people/sam) today [or] not]done" {
+		t.Fatalf("streamed %q", out.String())
+	}
+	if events[len(events)-3] != "text" || events[len(events)-2] != "tool" {
+		t.Fatalf("held text did not go out before the tool: %v", events)
+	}
+}

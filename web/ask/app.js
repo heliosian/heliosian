@@ -113,6 +113,32 @@ function showSegments(row, segments, streaming) {
   });
 }
 
+const spinFrames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+
+function spinner() {
+  const node = el('span', 'spinner', spinFrames[0]);
+  node.setAttribute('aria-label', 'Still answering');
+  let frame = 0;
+  const timer = setInterval(() => {
+    frame = (frame + 1) % spinFrames.length;
+    node.textContent = spinFrames[frame];
+  }, 120);
+  return {node, stop: () => {
+    clearInterval(timer);
+    node.remove();
+  }};
+}
+
+const spinnerHosts = new Set(['DIV', 'P', 'UL', 'OL', 'LI', 'BLOCKQUOTE', 'H3']);
+
+function placeSpinner(row, node) {
+  let host = row.querySelector('.turn-body');
+  while (host.lastElementChild && spinnerHosts.has(host.lastElementChild.tagName)) {
+    host = host.lastElementChild;
+  }
+  host.append(node);
+}
+
 // The empty thread: a greeting and the starters the server drew from the
 // person's own circumstances, each a question to send as is.
 function renderEmpty() {
@@ -287,7 +313,8 @@ async function send(message) {
   const mine = addTurn('user');
   mine.querySelector('.turn-body').textContent = message;
   const answer = addTurn('assistant');
-  answer.classList.add('is-thinking');
+  const spin = spinner();
+  placeSpinner(answer, spin.node);
   const segments = [];
   const tools = [];
   let finished = null;
@@ -299,6 +326,7 @@ async function send(message) {
     pending = requestAnimationFrame(() => {
       pending = null;
       showSegments(answer, segments, true);
+      placeSpinner(answer, spin.node);
       scrollDown();
     });
   };
@@ -339,7 +367,6 @@ async function send(message) {
           chat.id = data.conversation;
           break;
         case 'text':
-          answer.classList.remove('is-thinking');
           addText(data);
           draw();
           break;
@@ -354,13 +381,12 @@ async function send(message) {
           finished = data;
           break;
         case 'error':
-          answer.classList.remove('is-thinking');
           segments.push({kind: 'text', text: data.message});
           draw();
           break;
       }
     });
-    answer.classList.remove('is-thinking');
+    cancelAnimationFrame(pending);
     showSegments(answer, segments, false);
     scrollDown();
     if (finished) {
@@ -378,10 +404,11 @@ async function send(message) {
       renderChats();
     }
   } catch (err) {
-    answer.classList.remove('is-thinking');
+    cancelAnimationFrame(pending);
     segments.push({kind: 'text', text: 'The connection dropped; try again.'});
     showSegments(answer, segments, false);
   } finally {
+    spin.stop();
     setBusy(false);
     if (matchMedia('(hover: hover)').matches) {
       composer().focus();

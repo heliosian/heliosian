@@ -276,20 +276,18 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .tool-chip { display: inline-block; border-radius: 999px; padding: 2px 10px; font-size: 12px; font-weight: 600; color: var(--brand); background: var(--input); }
 
-/* While the answer is still thinking, three dots pulse where it will be. */
-.turn-assistant.is-thinking .turn-body::before {
-  content: '';
+.spinner {
   display: inline-block;
-  width: 36px;
-  height: 10px;
-  background: radial-gradient(circle, var(--muted) 3px, transparent 3.5px) 0 50% / 12px 10px repeat-x;
-  animation: pulse 1s ease-in-out infinite;
+  width: 1ch;
+  margin-left: 0.35em;
+  align-self: center;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 700;
+  color: var(--accent);
+  text-align: center;
 }
 
-@keyframes pulse {
-  0%, 100% { opacity: 0.3; }
-  50% { opacity: 1; }
-}
+.turn-body > .spinner { margin-left: 0; }
 
 /* The composer, pinned under the thread: a growing box and a round send. */
 .composer {

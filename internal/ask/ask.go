@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -135,7 +136,8 @@ func (a app) chat(w http.ResponseWriter, r *http.Request) {
 	recent := recentDocuments(v)
 	conv := a.conversations.get(body.Conversation, email, now)
 	if conv == nil {
-		conv = a.conversations.start(email, systemBlocks(v, recent), recent, now)
+		conv = a.conversations.start(email, recent, now)
+		conv.system = systemBlocks(v, recent, conv.links)
 		conv.restore(body.Turns)
 	}
 	if !a.conversations.claim(conv) {
@@ -170,17 +172,25 @@ func (a app) chat(w http.ResponseWriter, r *http.Request) {
 	messages := append(conv.messages[:len(conv.messages):len(conv.messages)], anthropic.NewBetaUserMessage(anthropic.NewBetaTextBlock(message)))
 	fresh := conv.unseen(recent)
 	if len(fresh) > 0 {
-		messages = append(messages, anthropic.BetaMessageParam{Role: anthropic.BetaMessageParamRoleSystem, Content: []anthropic.BetaContentBlockParamUnion{anthropic.NewBetaTextBlock(arrivals(v, fresh))}})
+		messages = append(messages, anthropic.BetaMessageParam{Role: anthropic.BetaMessageParamRoleSystem, Content: []anthropic.BetaContentBlockParamUnion{anthropic.NewBetaTextBlock(conv.links.shorten(arrivals(v, fresh)))}})
 	}
 	req := Request{
 		System:   conv.system,
 		Messages: messages,
 		Tools:    definitions(),
-		Run:      v.run,
-		Label:    label,
+		Run: func(ctx context.Context, name string, input json.RawMessage) (string, error) {
+			out, err := v.run(ctx, name, conv.links.expandInput(input))
+			if err != nil {
+				return "", errors.New(conv.links.shorten(err.Error()))
+			}
+			return conv.links.shorten(out), nil
+		},
+		Label: label,
 	}
 	started := time.Now()
-	reply, err := a.responder.Respond(ctx, req, emit)
+	out := &expander{links: conv.links, emit: emit}
+	reply, err := a.responder.Respond(ctx, req, out.send)
+	out.flush()
 	if err != nil {
 		slog.ErrorContext(r.Context(), "[ERROR] ask: answer failed", "conversation", conv.id, "error", err)
 		emit("error", map[string]string{"message": "Something went wrong answering that; try again in a moment."})
@@ -192,7 +202,7 @@ func (a app) chat(w http.ResponseWriter, r *http.Request) {
 	conv.touched = time.Now()
 	slog.InfoContext(r.Context(), "ask: answered", "conversation", conv.id, "turn", conv.asked, "rounds", reply.Usage.Rounds, "tools", len(reply.Tools), "new_documents", len(fresh),
 		"input_tokens", reply.Usage.Input, "cached_tokens", reply.Usage.Cached, "output_tokens", reply.Usage.Output, "took", time.Since(started).Round(time.Millisecond))
-	emit("done", map[string]any{"conversation": conv.id, "turns": conv.asked, "text": reply.Text, "tools": reply.Tools, "usage": reply.Usage})
+	emit("done", map[string]any{"conversation": conv.id, "turns": conv.asked, "text": conv.links.expand(reply.Text), "tools": reply.Tools, "usage": reply.Usage})
 }
 
 type turn struct {
@@ -206,6 +216,7 @@ type conversation struct {
 	email    string
 	system   []anthropic.BetaTextBlockParam
 	messages []anthropic.BetaMessageParam
+	links    *links
 	known    map[string]bool
 	asked    int
 	touched  time.Time
@@ -235,8 +246,8 @@ func (c *conversation) restore(turns []turn) {
 			continue
 		}
 		c.messages = append(c.messages,
-			anthropic.NewBetaUserMessage(anthropic.NewBetaTextBlock(question)),
-			anthropic.BetaMessageParam{Role: anthropic.BetaMessageParamRoleAssistant, Content: []anthropic.BetaContentBlockParamUnion{anthropic.NewBetaTextBlock(answer)}})
+			anthropic.NewBetaUserMessage(anthropic.NewBetaTextBlock(c.links.shorten(question))),
+			anthropic.BetaMessageParam{Role: anthropic.BetaMessageParamRoleAssistant, Content: []anthropic.BetaContentBlockParamUnion{anthropic.NewBetaTextBlock(c.links.shorten(answer))}})
 		c.asked++
 	}
 }
@@ -265,12 +276,12 @@ func (s *store) get(id, email string, now time.Time) *conversation {
 	return c
 }
 
-func (s *store) start(email string, system []anthropic.BetaTextBlockParam, recent []*artifacts.Document, now time.Time) *conversation {
+func (s *store) start(email string, recent []*artifacts.Document, now time.Time) *conversation {
 	raw := make([]byte, 16)
 	if _, err := rand.Read(raw); err != nil {
 		panic(err)
 	}
-	c := &conversation{id: hex.EncodeToString(raw), email: email, system: system, messages: []anthropic.BetaMessageParam{}, known: map[string]bool{}, touched: now}
+	c := &conversation{id: hex.EncodeToString(raw), email: email, messages: []anthropic.BetaMessageParam{}, links: newLinks(), known: map[string]bool{}, touched: now}
 	c.see(recent)
 	s.mu.Lock()
 	defer s.mu.Unlock()

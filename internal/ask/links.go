@@ -1,0 +1,103 @@
+package ask
+
+import (
+	"encoding/json"
+	"log/slog"
+	"regexp"
+	"strconv"
+	"strings"
+)
+
+var (
+	address     = regexp.MustCompile(`https?://[^\s"\\<>()\[\]{}|^` + "`" + `]+`)
+	linkTarget  = regexp.MustCompile(`\]\(L(\d+)\)`)
+	quotedKey   = regexp.MustCompile(`"L(\d+)"`)
+	partialLink = regexp.MustCompile(`^\]\(?(L\d*)?$`)
+)
+
+type links struct {
+	keys map[string]string
+	urls []string
+}
+
+func newLinks() *links {
+	return &links{keys: map[string]string{}, urls: []string{}}
+}
+
+func (l *links) shorten(text string) string {
+	return address.ReplaceAllStringFunc(text, func(match string) string {
+		url := strings.TrimRight(match, ".,;:!?'*_")
+		key, ok := l.keys[url]
+		if !ok {
+			l.urls = append(l.urls, url)
+			key = "L" + strconv.Itoa(len(l.urls))
+			l.keys[url] = key
+		}
+		return key + match[len(url):]
+	})
+}
+
+func (l *links) url(digits string) (string, bool) {
+	n, err := strconv.Atoi(digits)
+	if err != nil || n < 1 || n > len(l.urls) {
+		slog.Error("[ERROR] ask: unknown link key", "key", "L"+digits)
+		return "", false
+	}
+	return l.urls[n-1], true
+}
+
+func (l *links) expand(text string) string {
+	return linkTarget.ReplaceAllStringFunc(text, func(match string) string {
+		url, ok := l.url(linkTarget.FindStringSubmatch(match)[1])
+		if !ok {
+			return match
+		}
+		return "](" + url + ")"
+	})
+}
+
+func (l *links) expandInput(input []byte) []byte {
+	return quotedKey.ReplaceAllFunc(input, func(match []byte) []byte {
+		url, ok := l.url(string(quotedKey.FindSubmatch(match)[1]))
+		if !ok {
+			return match
+		}
+		quoted, err := json.Marshal(url)
+		if err != nil {
+			return match
+		}
+		return quoted
+	})
+}
+
+type expander struct {
+	links *links
+	emit  Emitter
+	held  string
+}
+
+func (e *expander) send(kind string, data any) {
+	text, ok := data.(string)
+	if kind != "text" || !ok {
+		e.flush()
+		e.emit(kind, data)
+		return
+	}
+	text = e.held + text
+	cut := len(text)
+	if i := strings.LastIndex(text, "]"); i >= 0 && partialLink.MatchString(text[i:]) {
+		cut = i
+	}
+	e.held = text[cut:]
+	if cut > 0 {
+		e.emit("text", e.links.expand(text[:cut]))
+	}
+}
+
+func (e *expander) flush() {
+	if e.held == "" {
+		return
+	}
+	e.emit("text", e.links.expand(e.held))
+	e.held = ""
+}

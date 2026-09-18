@@ -187,11 +187,11 @@ var volunteerOpportunities = tool{
 
 var getActivity = tool{
 	name:        "get_activity",
-	description: "One thing on HCA-Team in full, by id or by its address path (like /v/international-night or /v/international-night/poland): the thing, its links, and everything under it.",
+	description: "One thing on HCA-Team in full, by id or by its HCA-Team link (like the link a calendar event gives, or a path like /v/international-night/poland): the thing, its links, and everything under it.",
 	words:       "Reading an HCA-Team page",
 	properties: map[string]any{
 		"id":   str("The thing's id, from volunteer_opportunities."),
-		"path": str("Its address on team.heliosian.com, without the host."),
+		"path": str("Its HCA-Team link as another tool gave it, or its path on the site."),
 	},
 	run: func(v *viewer, input json.RawMessage) (any, error) {
 		if v.team == nil {
@@ -203,7 +203,7 @@ var getActivity = tool{
 		}
 		a := v.team.Activity(strings.TrimSpace(in.ID))
 		if a == nil && strings.TrimSpace(in.Path) != "" {
-			a = v.team.Resolve(strings.TrimSpace(in.Path))
+			a = v.team.Resolve(strings.TrimPrefix(strings.TrimSpace(in.Path), teamBase))
 		}
 		if a == nil || !v.visibleActivity(a) {
 			return nil, fmt.Errorf("nothing on HCA-Team matches that")
