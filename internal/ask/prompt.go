@@ -146,7 +146,8 @@ func documentLines(v *viewer, docs []*artifacts.Document) string {
 }
 
 // lingo is what the models say about the school right now: the grades and
-// their bands, the classrooms with their teachers and crews, the
+// their bands, the bands with their classrooms, the classrooms with their
+// links, teachers and crews, the
 // departments, the calendar's categories and day types, and the school years.
 func lingo(v *viewer) string {
 	b := &strings.Builder{}
@@ -154,9 +155,27 @@ func lingo(v *viewer) string {
 	for _, g := range v.directory.Grades {
 		fmt.Fprintf(b, "- %s: %s\n", g.Name, g.Band)
 	}
-	b.WriteString("\nClassrooms (band; the grades of its students; its teachers; its crews):\n")
+	bands := []string{}
+	bandGrades := map[string][]string{}
+	bandClassrooms := map[string][]string{}
 	for _, c := range v.calendar.Roster.Classrooms {
-		line := fmt.Sprintf("- %s (%s; %s", c.Name, c.Band, strings.Join(c.Grades, ", "))
+		if !slices.Contains(bands, c.Band) {
+			bands = append(bands, c.Band)
+		}
+		for _, g := range c.Grades {
+			if !slices.Contains(bandGrades[c.Band], g) {
+				bandGrades[c.Band] = append(bandGrades[c.Band], g)
+			}
+		}
+		bandClassrooms[c.Band] = append(bandClassrooms[c.Band], c.Name)
+	}
+	b.WriteString("\nBands (the grades of its students; its classrooms):\n")
+	for _, band := range bands {
+		fmt.Fprintf(b, "- %s (%s; %s)\n", band, strings.Join(bandGrades[band], ", "), strings.Join(bandClassrooms[band], ", "))
+	}
+	b.WriteString("\nClassrooms (its link; band; the grades of its students; its teachers; its crews):\n")
+	for _, c := range v.calendar.Roster.Classrooms {
+		line := fmt.Sprintf("- %s (%s; %s; %s", c.Name, whoBase+who.ClassroomPath(c.Name), c.Band, strings.Join(c.Grades, ", "))
 		if teachers := v.classroomTeachers(c.Name); len(teachers) > 0 {
 			line += "; teachers " + strings.Join(teachers, ", ")
 		}

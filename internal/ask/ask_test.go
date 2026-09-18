@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -79,6 +80,12 @@ func sampleSources(t *testing.T) Sources {
 	roster := calendar.Roster{}
 	for _, c := range directory.Classrooms {
 		room := calendar.Classroom{Name: c.Name, Grades: []string{}}
+		for _, g := range directory.Grades {
+			if slices.ContainsFunc(directory.People, func(p who.Person) bool { return p.IsStudent && p.Classroom == c.Name && p.Grade == g.Name }) {
+				room.Grades = append(room.Grades, g.Name)
+				room.Band = g.Band
+			}
+		}
 		for _, crew := range directory.Crews {
 			if crew.Classroom == c.Name && crew.Name != "" {
 				room.Crews = append(room.Crews, crew.Name)
@@ -183,7 +190,7 @@ func TestViewerBlockNamesTheFamily(t *testing.T) {
 
 func TestLingoReadsTheModels(t *testing.T) {
 	words := lingo(sampleViewer(t, jordan))
-	for _, want := range []string{"Grade 3: Jayvens", "- Jays (", "Early Dismissal: dropoff 08:15-08:30", "Community:", "Schedule:"} {
+	for _, want := range []string{"Grade 3: Jayvens", "- Hegrets (Grade 7, Grade 8; Egrets, Herons)", "- Jays (https://who.heliosian.com/classrooms/jays; Jayvens; Grade 3", "Early Dismissal: dropoff 08:15-08:30", "Community:", "Schedule:"} {
 		if !strings.Contains(words, want) {
 			t.Errorf("lingo lacks %q:\n%s", want, words)
 		}
@@ -267,13 +274,14 @@ func TestChatTellsOfANewDocumentOnce(t *testing.T) {
 
 func TestFindPeopleReadsAParentThroughTheirChildren(t *testing.T) {
 	v := sampleViewer(t, jordan)
-	result := call(t, v, "find_people", `{"query":"whitfield"}`)
-	if result["matched"].(float64) != 4 {
+	result := call(t, v, "find_people", `{"queries":["whitfield","Sam Whit"]}`)
+	results := result["results"].([]any)
+	if len(results) != 2 || results[0].(map[string]any)["matched"].(float64) != 4 || results[1].(map[string]any)["matched"].(float64) != 1 {
 		t.Fatalf("whitfields: %v", result)
 	}
 	result = call(t, v, "find_people", `{"role":"parent","classroom":"Jays"}`)
 	names := []string{}
-	for _, p := range result["people"].([]any) {
+	for _, p := range result["results"].([]any)[0].(map[string]any)["people"].([]any) {
 		names = append(names, p.(map[string]any)["name"].(string))
 	}
 	if !strings.Contains(strings.Join(names, ","), "Jordan Whitfield") {

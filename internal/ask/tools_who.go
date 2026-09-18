@@ -123,10 +123,10 @@ func (v *viewer) findByEmailOrName(email, name string) []*who.Person {
 
 var findPeople = tool{
 	name:        "find_people",
-	description: "Search the school directory (Helios Who?) for people: students, parents and staff. Every filter narrows; a parent matches a grade or classroom through their children. Returns at most a page of people with what places them, their contact details as shared, and a link to each one's page.",
+	description: "Search the school directory (Helios Who?) for people: students, parents and staff. Each query is searched on its own, so every person a document names is found in one call. Every filter narrows every query; a parent matches a grade or classroom through their children. Returns, for each query, at most a page of people with what places them, their contact details as shared, and a link to each one's page.",
 	words:       "Looking in the directory",
 	properties: map[string]any{
-		"query":      str("Words to find in a name, an email or a job title."),
+		"queries":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Words to find in a name, an email or a job title, one entry per person or search. Leave it out to list everyone the filters pick."},
 		"role":       map[string]any{"type": "string", "enum": []string{"student", "parent", "staff"}, "description": "Only people with this role."},
 		"grade":      str("A grade as the school names it, such as Grade 3 or Kindergarten."),
 		"classroom":  str("A classroom name."),
@@ -135,27 +135,36 @@ var findPeople = tool{
 	},
 	run: func(v *viewer, input json.RawMessage) (any, error) {
 		in, err := decodeInput[struct {
-			Query, Role, Grade, Classroom, Department string
-			Limit                                     int
+			Queries                            []string
+			Role, Grade, Classroom, Department string
+			Limit                              int
 		}](input)
 		if err != nil {
 			return nil, err
 		}
 		limit := limitOf(in.Limit, 25, 50)
-		matches := []card{}
-		total := 0
-		for i := range v.directory.People {
-			p := &v.directory.People[i]
-			if !v.matches(p, in.Query, in.Role, in.Grade, in.Classroom, in.Department) {
-				continue
-			}
-			total++
-			if len(matches) < limit {
-				matches = append(matches, v.card(p))
-			}
+		queries := in.Queries
+		if len(queries) == 0 {
+			queries = []string{""}
 		}
-		sortedByName(matches, func(c card) string { return c.Name })
-		return map[string]any{"people": matches, "matched": total, "shown": len(matches)}, nil
+		results := []map[string]any{}
+		for _, query := range queries {
+			matches := []card{}
+			total := 0
+			for i := range v.directory.People {
+				p := &v.directory.People[i]
+				if !v.matches(p, strings.TrimSpace(query), in.Role, in.Grade, in.Classroom, in.Department) {
+					continue
+				}
+				total++
+				if len(matches) < limit {
+					matches = append(matches, v.card(p))
+				}
+			}
+			sortedByName(matches, func(c card) string { return c.Name })
+			results = append(results, map[string]any{"query": query, "people": matches, "matched": total, "shown": len(matches)})
+		}
+		return map[string]any{"results": results}, nil
 	},
 }
 

@@ -24,7 +24,7 @@ Each tool is a `tool` in `internal/ask`: a name and description for the model, t
 
 | Tool | Reads | Keeps back |
 | --- | --- | --- |
-| `find_people` | The directory by words, role, grade, classroom, department; a parent's grade and classroom are their children's, as Who?'s filters read them | A masked email; a blank phone stays blank |
+| `find_people` | The directory by words, role, grade, classroom, department, several searches for words at once, each answered on its own, so everyone a document names is one call; a parent's grade and classroom are their children's, as Who?'s filters read them | A masked email; a blank phone stays blank |
 | `get_person` | One person: card, About Me, families with address and phone as shared, room parent bands | The same masks |
 | `get_family` | A family through any member or its name | The same masks |
 | `nearby_families` | The families nearest the viewer's own, or a named family's, by straight-line miles between the addresses Who?'s map places, narrowable to a classroom, a grade or a distance, each with its adults, its students' places and its city; a family that shares only its city listed apart, without a distance, when it is in the same city | A family that keeps its address to itself, which has no address or place in the model at all; the family measured from; a distance to a city-only family, which would be a distance to the middle of town |
