@@ -281,6 +281,11 @@ main {
 
 .page-head-main { min-width: 0; }
 
+/* A switch in the head - Show past parties - sits on the title's baseline, without a form field's margins. */
+.page-head-switch { margin: 0 0 4px; align-items: center; font-size: 14px; white-space: nowrap; }
+
+.page-head-switch > span { font-weight: 600; }
+
 .page-title {
   position: relative;
   z-index: 0;
@@ -453,6 +458,12 @@ main {
 /* The viewer’s own parties wear a yellow Hosting chip, top left - dark words on
    its yellow in both modes, so it reads at night too. */
 .card-chip-hosting { position: absolute; left: 12px; top: 12px; background: var(--yellow); color: #0d0d0d; }
+
+/* A party that has been wears a grey Past chip, top right, and its stamp's
+   band goes grey with it: the red band is for a date still to come. */
+.card-chip-past { position: absolute; right: 12px; top: 12px; background: #5b6b6c; }
+
+.card.is-past .card-stamp-month { background: #8a9899; }
 
 /* The date stamp is a page off a tear-off calendar, as HCA-Team's cards
    have it: the month as a red band across the top, the day large under it,
@@ -664,15 +675,6 @@ main {
 }
 
 .avatar img { width: 100%; height: 100%; object-fit: cover; }
-
-/* My Family's Parties: a face and a name over each member's cards. */
-.family-head { display: flex; align-items: center; gap: 12px; margin: 26px 0 12px; }
-
-.family-head:first-child { margin-top: 4px; }
-
-.family-face { width: 40px; height: 40px; font-size: 16px; }
-
-.family-name { margin: 0; font-size: 19px; color: var(--brand); }
 
 /* The party page, laid out as HCA-Team lays out an event. */
 .detail-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }

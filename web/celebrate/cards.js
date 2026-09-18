@@ -42,16 +42,19 @@ const monthFormat = new Intl.DateTimeFormat('en-US', {month: 'short'});
 
 // dateStamp is the tear-off calendar page in the picture's corner, as the
 // volunteer portal draws it: the month as a red band, the day large, the
-// weekday under it. A party with no date yet gets no stamp.
+// weekday under it - or, once the party has been, the year, since a past
+// one may be a season or three back and the weekday no longer matters. A
+// party with no date yet gets no stamp.
 function dateStamp(p) {
   const start = parseWhen(p.start);
   if (!start) {
     return null;
   }
   const stamp = el('div', 'card-stamp');
+  const under = p.availability === 'past' ? String(start.date.getFullYear()) : start.date.toLocaleDateString('en-US', {weekday: 'short'}).toUpperCase();
   stamp.append(el('div', 'card-stamp-month', monthFormat.format(start.date).toUpperCase()),
     el('div', 'card-stamp-day', String(start.date.getDate())),
-    el('div', 'card-stamp-dow', start.date.toLocaleDateString('en-US', {weekday: 'short'}).toUpperCase()));
+    el('div', 'card-stamp-dow', under));
   return stamp;
 }
 
@@ -98,6 +101,13 @@ function partyCardBody(p) {
   // own stand out from the rest of the list.
   if (p.hosting) {
     media.append(el('span', 'card-chip card-chip-hosting', 'Hosting'));
+  }
+  // One that has been says so in the other top corner, and its stamp goes
+  // grey, so it reads as past wherever the card sits - a list in date
+  // order, the Past Parties tab.
+  if (p.availability === 'past') {
+    card.classList.add('is-past');
+    media.append(el('span', 'card-chip card-chip-past', 'Past'));
   }
   // Who the party is for, as a chip in the picture's other corner. The
   // category is a filter, not a tag: it stays off the card.

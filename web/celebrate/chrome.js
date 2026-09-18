@@ -1,4 +1,4 @@
-import {state, me, isAdmin, isSystemAdmin, setSuperEdit, pendingParties, hostedParties, parties, household, familyMember, myPath, myTickets, canHost} from './state.js';
+import {state, me, isAdmin, isSystemAdmin, setSuperEdit, pendingParties, hostedParties, parties, household, familyMember, myPath, myTickets, canHost, familyShown} from './state.js';
 import {el, svg, link, button} from './dom.js';
 import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, initSpoof, markSuper} from '/toolbar.js';
 import {openParty} from './edit.js';
@@ -136,9 +136,11 @@ function familyLinks() {
     a.append(el('span', 'nav-sub-name', name), el('span', 'nav-sub-count', String(n)));
     wrap.append(a);
   };
-  entry('/my', 'My Family', state.model.parties.filter(p => myTickets(p).length).length, current[0] === 'my' && !current[1]);
+  // The counts follow the page's past switch, so each says what its page lists.
+  const listed = state.model.parties.filter(familyShown);
+  entry('/my', 'My Family', listed.filter(p => myTickets(p).length).length, current[0] === 'my' && !current[1]);
   people.forEach((person, i) => {
-    const n = state.model.parties.filter(p => [...p.attendees, ...p.waitlisted].some(a => a.email === person.email)).length;
+    const n = listed.filter(p => [...p.attendees, ...p.waitlisted].some(a => a.email === person.email)).length;
     entry(myPath(person), i === 0 ? 'Me' : person.name, n, Boolean(shown && shown.email === person.email));
   });
   return wrap;

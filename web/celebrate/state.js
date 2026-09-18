@@ -6,7 +6,16 @@
 // control comes back. It is remembered per browser. The server keeps
 // enforcing by the admin list either way; the switch is about what the page
 // shows and offers.
-export const state = {model: null, celebration: '', tab: 'available', hostingTab: 'mine', category: '', superEdit: readSuperEdit()};
+// showPast is the switch on My Family's Parties and the pages under it: on,
+// as it starts, the parties that have been are listed after those to come;
+// off, only what is still ahead. It lasts the visit and comes back on.
+export const state = {model: null, celebration: '', tab: 'available', hostingTab: 'mine', category: '', superEdit: readSuperEdit(), showPast: true};
+
+// familyShown says whether a party belongs on the family's pages with the
+// past switch as it is.
+export function familyShown(p) {
+  return state.showPast || p.availability !== 'past';
+}
 
 function readSuperEdit() {
   try {
