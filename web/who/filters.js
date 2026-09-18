@@ -3,6 +3,11 @@ import {el, svg, segments} from './dom.js';
 import {familyOf, familiesOf} from './families.js';
 import {members, tagFacetOptions} from './tags.js';
 
+// A person's grade or classroom as every filter reads it: a student's own,
+// a parent's children's, and none for anyone else - a teacher is not in the
+// room they teach. The server reads the same way for Loop's rules and
+// Heliosian's audiences (who.Model.Facets in internal/who/facets.go); a
+// change here is a change there.
 function personFacets(p, field) {
   if (p.isStudent) {
     return p[field] ? [p[field]] : [];

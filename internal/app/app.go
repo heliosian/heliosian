@@ -279,38 +279,25 @@ func (d directory) Classrooms() []string {
 }
 
 // Audience is a person's roles and classrooms as the front page keeps a
-// link to them: a student's own classroom, a parent's children's, a staff
-// member's own.
+// link or a section to them: the classrooms as every filter reads them
+// (who.Model.ClassroomsOf) - a student's own, a parent's children's, none
+// for staff, who are not in the room they teach.
 func (d directory) Audience(email string) (roles, classrooms []string) {
 	model := d.cache.Model()
 	p := model.Person(email)
 	if p == nil {
 		return nil, nil
 	}
-	add := func(c string) {
-		if c != "" && !slices.Contains(classrooms, c) {
-			classrooms = append(classrooms, c)
-		}
-	}
 	if p.IsStudent {
 		roles = append(roles, home.RoleStudents)
-		add(p.Classroom)
-	}
-	if p.IsStaff {
-		roles = append(roles, home.RoleStaff)
-		add(p.Classroom)
 	}
 	if p.IsParent {
 		roles = append(roles, home.RoleParents)
-		for _, key := range model.FamilyKeysOf(p.Email) {
-			for _, kid := range model.Families[key].KidEmails {
-				if k := model.Person(kid); k != nil {
-					add(k.Classroom)
-				}
-			}
-		}
 	}
-	return roles, classrooms
+	if p.IsStaff {
+		roles = append(roles, home.RoleStaff)
+	}
+	return roles, model.ClassroomsOf(p)
 }
 
 func (d directory) Alerts(email string) (int, bool) {

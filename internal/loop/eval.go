@@ -45,35 +45,6 @@ func (s Sources) tagged(owner string) map[string][]string {
 	return out
 }
 
-// facets is a person's grade or classroom as Who?'s filters read it: a
-// student's own, a parent's children's, and none for anyone else.
-func facets(model *who.Model, p *who.Person, classroom bool) []string {
-	pick := func(q *who.Person) string {
-		if classroom {
-			return q.Classroom
-		}
-		return q.Grade
-	}
-	if p.IsStudent {
-		if v := pick(p); v != "" {
-			return []string{v}
-		}
-		return nil
-	}
-	if !p.IsParent {
-		return nil
-	}
-	out := []string{}
-	for _, key := range model.FamilyKeysOf(p.Email) {
-		for _, kid := range model.Families[key].KidEmails {
-			if k := model.Person(kid); k != nil && pick(k) != "" {
-				out = append(out, pick(k))
-			}
-		}
-	}
-	return out
-}
-
 func anyIn(have, want []string) bool {
 	for _, h := range have {
 		if slices.Contains(want, h) {
@@ -116,10 +87,12 @@ func matches(r Rule, s Sources, tagged map[string][]string) map[string]Reason {
 		if r.Search != "" && !strings.Contains(strings.ToLower(p.FullName), r.Search) && !strings.Contains(strings.ToLower(p.Email), r.Search) {
 			continue
 		}
-		if len(r.Grades) > 0 && !anyIn(facets(model, p, false), r.Grades) {
+		// A grade or classroom is read as the directory reads it for every
+		// filter (who.Model.Facets): a student's own, a parent's children's.
+		if len(r.Grades) > 0 && !anyIn(model.Facets(p, false), r.Grades) {
 			continue
 		}
-		if len(r.Classrooms) > 0 && !anyIn(facets(model, p, true), r.Classrooms) {
+		if len(r.Classrooms) > 0 && !anyIn(model.Facets(p, true), r.Classrooms) {
 			continue
 		}
 		if len(r.Tags) > 0 && !slices.ContainsFunc(r.Tags, func(tag string) bool { return slices.Contains(tagged[tag], p.Email) }) {
