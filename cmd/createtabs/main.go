@@ -121,11 +121,11 @@ var layouts = map[string][]tab{
 		{"Geocode", []string{"Address", "Lat", "Lng"}},
 	},
 	"Apps": {
-		{"Categories", []string{"Title", "Emoji", "Style", "Max"}},
-		{"Links", []string{"Title", "Description", "URL", "Image", "Category", "Visible", "Added By", "Added"}},
+		{"Categories", home.CategoryColumns},
+		{"Links", home.LinkColumns},
 		{"Admins", []string{"Email"}},
 		{"Visibility", []string{"App", "Visibility", "Emails", "Tagline", "Name", "Order"}},
-		{"Change Log", []string{"Timestamp", "Actor", "Action", "Kind", "Title", "Description", "URL", "Image", "Category", "Visible", "Style"}},
+		{"Change Log", home.ChangeLogColumns},
 	},
 	"Events": {
 		{"Categories", team.CategoryColumns},

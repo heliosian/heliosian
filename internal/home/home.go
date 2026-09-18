@@ -27,6 +27,17 @@ const (
 	maxImageSize = 8 << 20
 )
 
+// Directory is what the front page asks the directory about a link's
+// audience: the classrooms there are, for the editor, and a person's own
+// roles and classrooms, for what they are shown.
+type Directory interface {
+	Classrooms() []string
+	// Audience is the roles (Students, Parents, Staff) and classrooms a
+	// person is read as: a student's own classroom, a parent's children's,
+	// a staff member's own.
+	Audience(email string) (roles, classrooms []string)
+}
+
 type app struct {
 	cache       *Cache
 	writer      data.Writer
@@ -35,6 +46,7 @@ type app struct {
 	superAdmins func() []string
 	heroPhoto   func(string) string
 	people      func() []Person
+	directory   Directory
 	alerts      func(string) (int, bool)
 	upcoming    func(email, token string) Upcoming
 	makeDefault func(ctx context.Context, email, token string) error
@@ -144,11 +156,11 @@ type alerts struct {
 // upcoming is the calendar's list of what is ahead for a person and month
 // its reckoning of one month of theirs; people is the directory as the
 // admin page's pickers list it.
-func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, superAdmins func() []string, heroPhoto func(string) string, people func() []Person, alerts func(string) (int, bool), upcoming func(email, token string) Upcoming, month func(email, month, token string) Month, search imagesearch.Search, answer func(ctx context.Context, email, id, answer string) error, makeDefault func(ctx context.Context, email, token string) error) {
+func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, superAdmins func() []string, heroPhoto func(string) string, people func() []Person, directory Directory, alerts func(string) (int, bool), upcoming func(email, token string) Upcoming, month func(email, month, token string) Month, search imagesearch.Search, answer func(ctx context.Context, email, id, answer string) error, makeDefault func(ctx context.Context, email, token string) error) {
 	if search.UserAgent == "" {
 		search.UserAgent = "Heliosian image search (+https://heliosian.com)"
 	}
-	a := app{cache: cache, writer: writer, queue: queue, store: store, superAdmins: superAdmins, heroPhoto: heroPhoto, people: people, alerts: alerts, upcoming: upcoming, month: month, search: search, answer: answer, makeDefault: makeDefault}
+	a := app{cache: cache, writer: writer, queue: queue, store: store, superAdmins: superAdmins, heroPhoto: heroPhoto, people: people, directory: directory, alerts: alerts, upcoming: upcoming, month: month, search: search, answer: answer, makeDefault: makeDefault}
 	mux.HandleFunc("GET /{$}", a.page)
 	mux.HandleFunc("GET /admin", a.adminPage)
 	mux.HandleFunc("GET /dl/", func(w http.ResponseWriter, r *http.Request) {
@@ -366,11 +378,29 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 	admin := a.cache.IsAdmin(email)
 	hidden := hiddenHosts(r.Host, a.cache.HiddenApps(email))
 	full := a.cache.Model()
+	roles, classrooms := a.directory.Audience(email)
 	categories := make([]Category, 0, len(full.Categories))
 	for _, category := range full.Categories {
-		shown := Category{Title: category.Title, Emoji: category.Emoji, Style: category.Style, Max: category.Max, Links: []Link{}, Virtual: category.Virtual}
+		// A section kept to some people goes to them whole; an admin gets
+		// every section, the ones not theirs marked.
+		sectionMine := category.For(roles, classrooms)
+		if !sectionMine && !admin {
+			continue
+		}
+		shown := Category{Title: category.Title, Emoji: category.Emoji, Style: category.Style, Max: category.Max, Links: []Link{}, Virtual: category.Virtual, Roles: category.Roles, Classrooms: category.Classrooms}
+		if !sectionMine {
+			no := false
+			shown.ForMe = &no
+		}
 		for _, link := range category.Links {
-			if (link.Visible || admin) && !linksInto(hidden, link.URL) {
+			// A link kept to some people goes to them; an admin gets every
+			// link, the ones not theirs marked, the way hidden ones are.
+			mine := link.For(roles, classrooms)
+			if ((link.Visible && mine) || admin) && !linksInto(hidden, link.URL) {
+				if !mine {
+					no := false
+					link.ForMe = &no
+				}
 				shown.Links = append(shown.Links, link)
 			}
 		}
@@ -391,12 +421,18 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 		Calendar Month `json:"calendar"`
 		// Apps fills the apps section: the community apps this person sees.
 		Apps []App `json:"apps"`
+		// Classrooms is the directory's list, for the link editor's
+		// audience picker; sent to admins alone.
+		Classrooms []string `json:"classrooms,omitempty"`
 	}{
 		Categories:   categories,
 		User:         user{Email: email, Initial: strings.ToUpper(email[:1]), PhotoURL: a.heroPhoto(email), IsAdmin: admin},
 		ImageSources: a.search.Sources(),
 		Calendar:     a.month(email, "", ""),
 		Apps:         a.visibleApps(email),
+	}
+	if admin {
+		view.Classrooms = a.directory.Classrooms()
 	}
 	ahead := a.upcoming(email, "")
 	view.Upcoming = ahead.Events
@@ -482,12 +518,30 @@ func (a app) logChange(actor, action, kind string, cells map[string]string) erro
 	return a.writer.Append(appName, changeLogTab, []string{
 		time.Now().Format(time.RFC3339), actor, action, kind,
 		cells["Title"], cells["Description"], cells["URL"], cells["Image"], cells["Category"], cells["Visible"], cells["Style"],
+		cells[RolesColumn], cells[ClassroomsColumn],
 	})
 }
 
 // importImage stores a picked search result the way an upload is stored.
 func (a app) importImage(w http.ResponseWriter, r *http.Request) {
 	a.search.ServeImport(w, r, a.store, imageFolder, maxImageSize)
+}
+
+// checkAudience reads an editor's Who sees it: the roles, spelled as the
+// sheet spells them, and classrooms the directory has.
+func (a app) checkAudience(roles, classrooms []string) ([]string, []string, error) {
+	checked, err := checkRoles(strings.Join(roles, ", "))
+	if err != nil {
+		return nil, nil, err
+	}
+	known := a.directory.Classrooms()
+	rooms := splitList(strings.Join(classrooms, ", "))
+	for _, c := range rooms {
+		if !slices.Contains(known, c) {
+			return nil, nil, fmt.Errorf("the directory has no classroom %s", c)
+		}
+	}
+	return checked, rooms, nil
 }
 
 func (a app) saveLink(w http.ResponseWriter, r *http.Request) {
@@ -503,6 +557,10 @@ func (a app) saveLink(w http.ResponseWriter, r *http.Request) {
 		Image       string `json:"image"`
 		Category    string `json:"category"`
 		Visible     bool   `json:"visible"`
+		// Roles and Classrooms keep the link to some people; empty for
+		// everyone.
+		Roles      []string `json:"roles"`
+		Classrooms []string `json:"classrooms"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -512,9 +570,15 @@ func (a app) saveLink(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "title is required and fields must be short", http.StatusBadRequest)
 		return
 	}
+	roles, classrooms, err := a.checkAudience(body.Roles, body.Classrooms)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	cells := map[string]string{
 		"Title": title, "Description": strings.TrimSpace(body.Description), "URL": strings.TrimSpace(body.URL),
 		"Image": strings.TrimSpace(body.Image), "Category": strings.TrimSpace(body.Category), "Visible": visibleCell(body.Visible),
+		RolesColumn: strings.Join(roles, ", "), ClassroomsColumn: strings.Join(classrooms, ", "),
 	}
 	action := "edit"
 	if body.Original == "" {
@@ -525,7 +589,7 @@ func (a app) saveLink(w http.ResponseWriter, r *http.Request) {
 	tables := a.cache.Tables().withRow(linksTab, body.Original, cells)
 	if !a.commit(r.Context(), w, tables, func() error {
 		if body.Original == "" {
-			if err := a.writer.Append(appName, linksTab, []string{cells["Title"], cells["Description"], cells["URL"], cells["Image"], cells["Category"], cells["Visible"], cells["Added By"], cells["Added"]}); err != nil {
+			if err := a.writer.Append(appName, linksTab, []string{cells["Title"], cells["Description"], cells["URL"], cells["Image"], cells["Category"], cells["Visible"], cells["Added By"], cells["Added"], cells[RolesColumn], cells[ClassroomsColumn]}); err != nil {
 				return err
 			}
 		} else if err := a.writer.Upsert(appName, linksTab, "Title", body.Original, cells); err != nil {
@@ -576,6 +640,10 @@ func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 		// Max is a count, or blank for no limit; it arrives as text since that
 		// is what the sheet holds and what an empty field sends.
 		Max string `json:"max"`
+		// Roles and Classrooms keep the section to some people; empty for
+		// everyone.
+		Roles      []string `json:"roles"`
+		Classrooms []string `json:"classrooms"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -583,6 +651,11 @@ func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 	title := strings.TrimSpace(body.Title)
 	if title == "" || len(title) > maxTitleLength {
 		http.Error(w, "title is required and must be short", http.StatusBadRequest)
+		return
+	}
+	roles, classrooms, err := a.checkAudience(body.Roles, body.Classrooms)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	style, err := checkStyle(strings.TrimSpace(body.Style))
@@ -628,7 +701,7 @@ func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	cells := map[string]string{"Title": title, "Emoji": emoji, "Style": style, "Max": strings.TrimSpace(body.Max)}
+	cells := map[string]string{"Title": title, "Emoji": emoji, "Style": style, "Max": strings.TrimSpace(body.Max), RolesColumn: strings.Join(roles, ", "), ClassroomsColumn: strings.Join(classrooms, ", ")}
 	var tables *Tables
 	if virtual {
 		tables = a.cache.Tables().withRow(categoriesTab, "", cells)
@@ -652,7 +725,7 @@ func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 	}
 	if !a.commit(r.Context(), w, tables, func() error {
 		if body.Original == "" || virtual {
-			if err := a.writer.Append(appName, categoriesTab, []string{title, cells["Emoji"], cells["Style"], cells["Max"]}); err != nil {
+			if err := a.writer.Append(appName, categoriesTab, []string{title, cells["Emoji"], cells["Style"], cells["Max"], cells[RolesColumn], cells[ClassroomsColumn]}); err != nil {
 				return err
 			}
 			if virtual {

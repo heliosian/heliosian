@@ -112,6 +112,35 @@ function fillCategories(selected) {
   }
 }
 
+// The audience rows: the three roles, and every classroom the directory
+// lists, each a chip that toggles; none chosen in a row means everyone.
+const roleNames = ['Students', 'Parents', 'Staff'];
+
+function fillAudience(thing, prefix = 'link') {
+  const rows = [['#' + prefix + '-roles', roleNames, thing ? thing.roles || [] : []], ['#' + prefix + '-classrooms', state.model.classrooms || [], thing ? thing.classrooms || [] : []]];
+  for (const [selector, names, chosen] of rows) {
+    const row = document.querySelector(selector);
+    row.replaceChildren();
+    for (const name of names) {
+      const chip = el('button', 'audience-chip' + (chosen.includes(name) ? ' is-on' : ''), name);
+      chip.type = 'button';
+      chip.dataset.name = name;
+      chip.setAttribute('aria-pressed', chosen.includes(name) ? 'true' : 'false');
+      chip.addEventListener('click', () => {
+        const on = !chip.classList.contains('is-on');
+        chip.classList.toggle('is-on', on);
+        chip.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+      row.append(chip);
+    }
+  }
+}
+
+// chosenAudience reads a row's lit chips.
+function chosenAudience(selector) {
+  return [...document.querySelectorAll(selector + ' .audience-chip.is-on')].map(c => c.dataset.name);
+}
+
 // category is the one to start in for a new link (an add card names its own).
 export function openLinkEditor(link, category) {
   editingLink = link;
@@ -121,6 +150,7 @@ export function openLinkEditor(link, category) {
   document.querySelector('#link-description').value = link ? link.description || '' : '';
   document.querySelector('#link-url').value = link ? link.url : '';
   document.querySelector('#link-visible').checked = link ? link.visible : true;
+  fillAudience(link);
   document.querySelector('#link-delete').hidden = !link;
   fillCategories(link ? link.category : category || linkCategoryTitles()[0]);
   showImage('link', link && link.imageUrl ? link.imageUrl : '');
@@ -143,6 +173,7 @@ export function openCategoryEditor(category) {
   syncAppsNote();
   document.querySelector('#category-delete').hidden = !category || events;
   document.querySelector('#category-max').value = category && category.max ? String(category.max) : '';
+  fillAudience(category, 'category');
   setEmoji(category ? category.emoji || '' : '');
   setStatus('#category-status', '');
   categoryModal.hidden = false;
@@ -301,6 +332,8 @@ async function saveLink(e) {
       image: pendingLinkImage,
       category: document.querySelector('#link-category').value,
       visible: document.querySelector('#link-visible').checked,
+      roles: chosenAudience('#link-roles'),
+      classrooms: chosenAudience('#link-classrooms'),
     });
     closeModals();
     await load();
@@ -333,6 +366,8 @@ async function saveCategory(e) {
       style: editingCategory && editingCategory.style === 'events' ? 'events' : document.querySelector('#category-style').value,
       emoji: document.querySelector('#category-emoji').value.trim(),
       max: document.querySelector('#category-max').value.trim(),
+      roles: chosenAudience('#category-roles'),
+      classrooms: chosenAudience('#category-classrooms'),
     });
     closeModals();
     await load();

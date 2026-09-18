@@ -1089,6 +1089,20 @@ a.event-people:hover .event-person { text-decoration: underline; }
 
 .add-card-sub { font-size: 12px; }
 
+/* The editor's Who sees it: a row of role chips and a row of classroom
+   chips, each lit when chosen. */
+.audience > span { display: flex; align-items: baseline; gap: 8px; }
+
+.audience-note { font-weight: 400; color: var(--muted); font-size: 12px; }
+
+.audience-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+
+.audience-chip { padding: 5px 12px; border: 1.5px solid var(--line); border-radius: 999px; background: var(--card); font: inherit; font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer; }
+
+.audience-chip:hover { border-color: var(--brand); color: var(--brand); }
+
+.audience-chip.is-on { background: var(--brand); border-color: var(--brand); color: #fff; }
+
 .hidden-badge {
   background: var(--muted);
   color: #fff;
@@ -1099,6 +1113,11 @@ a.event-people:hover .event-person { text-decoration: underline; }
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
+
+/* Who a link or a section is kept to, after its title, in Super Admin Mode. */
+.hidden-badge.audience-badge { background: var(--teal-1); margin-left: 6px; text-transform: none; letter-spacing: 0; }
+
+.category-title .hidden-badge { position: relative; top: -6px; margin-left: 10px; font-size: 11px; vertical-align: middle; }
 
 .empty-search, .footnote {
   color: var(--muted);

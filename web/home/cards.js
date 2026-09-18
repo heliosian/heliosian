@@ -65,9 +65,7 @@ function featureCard(link, category) {
   disc.append(artwork(link, category, 'chip-image', 'chip-initial'));
   card.append(disc);
   const title = el('div', 'chip-title', link.title);
-  if (!link.visible) {
-    title.append(el('span', 'hidden-badge', 'Hidden'));
-  }
+  title.append(...badges(link));
   card.append(title);
   if (link.description) {
     card.append(el('div', 'chip-description', link.description));
@@ -99,9 +97,7 @@ function tile(link, category) {
   }
   const body = el('div', 'tile-body');
   const title = el('div', 'tile-title', link.title);
-  if (!link.visible) {
-    title.append(el('span', 'hidden-badge', 'Hidden'));
-  }
+  title.append(...badges(link));
   body.append(title);
   if (link.description) {
     body.append(el('div', 'tile-description', link.description));
@@ -192,11 +188,31 @@ function matches(link, query) {
   return `${link.title} ${link.description || ''} ${link.url}`.toLowerCase().includes(query);
 }
 
-// The server sends hidden links to admins only; the page shows them only while
-// the admin's Super Admin Mode switch is on, so what an admin looks at by
-// default is what everyone else gets.
+// The server sends hidden links, and links kept to other people, to admins
+// only; the page shows them only while the admin's Super Admin Mode switch is
+// on, so what an admin looks at by default is what everyone else gets.
 function listed(link) {
-  return link.visible || state.superAdmin;
+  return (link.visible && link.forMe !== false) || state.superAdmin;
+}
+
+// A section kept to other people reaches an admin alone, and shows only in
+// Super Admin Mode, as a link kept from them does.
+function sectionListed(category) {
+  return category.forMe !== false || state.superAdmin;
+}
+
+// badges are the marks after a title an admin sees in Super Admin Mode: that
+// the link is hidden, and who it - or its section - is kept to.
+function badges(link) {
+  const out = [];
+  if (link.visible === false) {
+    out.push(el('span', 'hidden-badge', 'Hidden'));
+  }
+  const who = [...(link.roles || []), ...(link.classrooms || [])];
+  if (who.length && state.superAdmin) {
+    out.push(el('span', 'hidden-badge audience-badge', who.join(' · ')));
+  }
+  return out;
 }
 
 export function renderCategories(query = '') {
@@ -205,6 +221,9 @@ export function renderCategories(query = '') {
   root.replaceChildren();
   let shown = 0;
   for (const category of state.model.categories) {
+    if (!sectionListed(category)) {
+      continue;
+    }
     // The events section is the portal's; its cards come from there rather
     // than from links, and its heading gets a way across to the portal. The
     // apps section is the community apps themselves, from the model.
@@ -226,6 +245,7 @@ export function renderCategories(query = '') {
     // not here.
     const head = el('div', 'category-head');
     const title = el('h2', 'category-title', category.title);
+    title.append(...badges(category));
     head.append(title);
     // Upcoming Events names the saved calendar it is read under beside
     // the heading, as a quiet dropdown of every saved calendar; one that
@@ -690,6 +710,9 @@ function appsPanel(category, needle) {
 // link, an event ahead, or an app to show - and, in Super Admin Mode,
 // anything at all.
 function hasSomething(category) {
+  if (!sectionListed(category)) {
+    return false;
+  }
   if (isAdmin() && state.superAdmin) {
     return true;
   }

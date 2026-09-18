@@ -267,6 +267,52 @@ func (d directory) HomePeople() []home.Person {
 	return out
 }
 
+// Classrooms is every classroom the directory lists, by name, for the front
+// page's link editor.
+func (d directory) Classrooms() []string {
+	model := d.cache.Model()
+	out := make([]string, 0, len(model.Classrooms))
+	for _, c := range model.Classrooms {
+		out = append(out, c.Name)
+	}
+	return out
+}
+
+// Audience is a person's roles and classrooms as the front page keeps a
+// link to them: a student's own classroom, a parent's children's, a staff
+// member's own.
+func (d directory) Audience(email string) (roles, classrooms []string) {
+	model := d.cache.Model()
+	p := model.Person(email)
+	if p == nil {
+		return nil, nil
+	}
+	add := func(c string) {
+		if c != "" && !slices.Contains(classrooms, c) {
+			classrooms = append(classrooms, c)
+		}
+	}
+	if p.IsStudent {
+		roles = append(roles, home.RoleStudents)
+		add(p.Classroom)
+	}
+	if p.IsStaff {
+		roles = append(roles, home.RoleStaff)
+		add(p.Classroom)
+	}
+	if p.IsParent {
+		roles = append(roles, home.RoleParents)
+		for _, key := range model.FamilyKeysOf(p.Email) {
+			for _, kid := range model.Families[key].KidEmails {
+				if k := model.Person(kid); k != nil {
+					add(k.Classroom)
+				}
+			}
+		}
+	}
+	return roles, classrooms
+}
+
 func (d directory) Alerts(email string) (int, bool) {
 	alerts := d.cache.Alerts(email, d.settings.Settings().StaleYears)
 	return alerts.Stale, alerts.Privacy
@@ -945,7 +991,7 @@ func NewCore(cfg Config) *Core {
 	calendarMux := http.NewServeMux()
 	hooks := calendar.Register(calendarMux, calendarCache, cfg.Writer, queue, cfg.Store, calendarDirectory{cache, settings}, settings.SuperAdmins, linked, cfg.ImageSearch, cfg.CalendarMail)
 	homeMux := http.NewServeMux()
-	home.Register(homeMux, homeCache, cfg.Writer, queue, cfg.Store, settings.SuperAdmins, cache.HeroPhoto, directory{cache, settings}.HomePeople, directory{cache, settings}.Alerts, frontEvents.list, frontEvents.month, cfg.ImageSearch, hooks.Answer, hooks.MakeDefault)
+	home.Register(homeMux, homeCache, cfg.Writer, queue, cfg.Store, settings.SuperAdmins, cache.HeroPhoto, directory{cache, settings}.HomePeople, directory{cache, settings}, directory{cache, settings}.Alerts, frontEvents.list, frontEvents.month, cfg.ImageSearch, hooks.Answer, hooks.MakeDefault)
 	teamMux := http.NewServeMux()
 	team.Register(teamMux, teamCache, cfg.Writer, queue, cfg.Store, directory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.Mail, cfg.MailFrom)
 	birthdayMux := http.NewServeMux()

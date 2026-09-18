@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -52,11 +53,22 @@ const (
 )
 
 var (
-	categoryColumns   = []string{"Title", "Emoji", "Style", "Max"}
-	linkColumns       = []string{"Title", "Description", "URL", "Image", "Category", "Visible", "Added By", "Added"}
+	categoryColumns = []string{"Title", "Emoji", "Style", "Max"}
+	linkColumns     = []string{"Title", "Description", "URL", "Image", "Category", "Visible", "Added By", "Added"}
+	// audienceColumns keep a link or a category to some people: Roles, some
+	// of Students, Parents and Staff, and Classrooms, some of the
+	// directory's, each a comma-separated list and blank for everyone.
+	// Optional on both tabs, so a sheet laid out before them still loads;
+	// cmd/createtabs adds them.
+	audienceColumns   = []string{RolesColumn, ClassroomsColumn}
 	adminColumns      = []string{"Email"}
 	visibilityColumns = []string{"App", "Visibility", "Emails", "Tagline", "Name", "Order"}
 	changeLogColumns  = []string{"Timestamp", "Actor", "Action", "Kind", "Title", "Description", "URL", "Image", "Category", "Visible", "Style"}
+	// CategoryColumns, LinkColumns and ChangeLogColumns are the tabs whole,
+	// for cmd/createtabs.
+	CategoryColumns  = append(append([]string{}, categoryColumns...), audienceColumns...)
+	LinkColumns      = append(append([]string{}, linkColumns...), audienceColumns...)
+	ChangeLogColumns = append(append([]string{}, changeLogColumns...), audienceColumns...)
 )
 
 // App is one of the community apps the shared toolbar switches between,
@@ -173,6 +185,67 @@ type Link struct {
 	Visible     bool   `json:"visible"`
 	AddedBy     string `json:"addedBy,omitempty"`
 	Added       string `json:"added,omitempty"`
+	// Roles and Classrooms keep the link to some people: someone sees it
+	// when they have one of the roles (or there are none) and are in one of
+	// the classrooms (or there are none) - a student by their own, a parent
+	// by their children's, a staff member by the one they teach.
+	Roles      []string `json:"roles,omitempty"`
+	Classrooms []string `json:"classrooms,omitempty"`
+	// ForMe is false on a link the viewer would not see but for being an
+	// admin, who is sent every link; absent otherwise.
+	ForMe *bool `json:"forMe,omitempty"`
+}
+
+// The audience columns and the roles they may name.
+const (
+	RolesColumn      = "Roles"
+	ClassroomsColumn = "Classrooms"
+	RoleStudents     = "Students"
+	RoleParents      = "Parents"
+	RoleStaff        = "Staff"
+)
+
+var Roles = []string{RoleStudents, RoleParents, RoleStaff}
+
+// splitList reads a comma-separated cell, trimmed, blanks and repeats
+// dropped, in the order written.
+func splitList(cell string) []string {
+	out := []string{}
+	for _, part := range strings.Split(cell, ",") {
+		if part = strings.TrimSpace(part); part != "" && !slices.Contains(out, part) {
+			out = append(out, part)
+		}
+	}
+	return out
+}
+
+// checkRoles reads a Roles cell: blank for everyone, else some of the
+// roles, spelled exactly.
+func checkRoles(cell string) ([]string, error) {
+	roles := splitList(cell)
+	for _, r := range roles {
+		if !slices.Contains(Roles, r) {
+			return nil, fmt.Errorf("role %q is not one of %s", r, strings.Join(Roles, ", "))
+		}
+	}
+	return roles, nil
+}
+
+// For says whether someone with these roles and classrooms sees the link.
+func (l Link) For(roles, classrooms []string) bool {
+	if len(l.Roles) > 0 && !overlap(l.Roles, roles) {
+		return false
+	}
+	return len(l.Classrooms) == 0 || overlap(l.Classrooms, classrooms)
+}
+
+func overlap(a, b []string) bool {
+	for _, x := range a {
+		if slices.Contains(b, x) {
+			return true
+		}
+	}
+	return false
 }
 
 // A category goes by an emoji rather than a picture: it heads the section,
@@ -188,6 +261,17 @@ type Category struct {
 	Max     int    `json:"max,omitempty"`
 	Links   []Link `json:"links"`
 	Virtual bool   `json:"virtual,omitempty"`
+	// Roles and Classrooms keep the whole section to some people, links
+	// and all, as a link's own do (Link); ForMe marks one an admin would
+	// not see but for being an admin.
+	Roles      []string `json:"roles,omitempty"`
+	Classrooms []string `json:"classrooms,omitempty"`
+	ForMe      *bool    `json:"forMe,omitempty"`
+}
+
+// For says whether someone with these roles and classrooms sees the section.
+func (c Category) For(roles, classrooms []string) bool {
+	return Link{Roles: c.Roles, Classrooms: c.Classrooms}.For(roles, classrooms)
 }
 
 // Model is the portal as the sheet orders it: categories in row order, each
@@ -375,8 +459,12 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 		if err != nil {
 			return nil, fmt.Errorf("category %q: %w", title, err)
 		}
+		roles, err := checkRoles(row[RolesColumn])
+		if err != nil {
+			return nil, fmt.Errorf("category %q: %w", title, err)
+		}
 		index[title] = len(model.Categories)
-		model.Categories = append(model.Categories, Category{Title: title, Emoji: emoji, Style: style, Max: max, Links: []Link{}})
+		model.Categories = append(model.Categories, Category{Title: title, Emoji: emoji, Style: style, Max: max, Links: []Link{}, Roles: roles, Classrooms: splitList(row[ClassroomsColumn])})
 	}
 	// The events section is always on the page: at the top, under its own
 	// name, until a row places and names it.
@@ -426,10 +514,15 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 		if err != nil {
 			return nil, fmt.Errorf("link %q: %w", title, err)
 		}
+		roles, err := checkRoles(row[RolesColumn])
+		if err != nil {
+			return nil, fmt.Errorf("link %q: %w", title, err)
+		}
 		model.Categories[at].Links = append(model.Categories[at].Links, Link{
 			Title: title, Description: row["Description"], URL: row["URL"],
 			Image: row["Image"], ImageURL: image, Category: row["Category"],
 			Visible: visible, AddedBy: row["Added By"], Added: row["Added"],
+			Roles: roles, Classrooms: splitList(row[ClassroomsColumn]),
 		})
 	}
 	visibility, err := buildVisibility(tables.Visibility)
