@@ -44,8 +44,15 @@ func PNG(opts Options) ([]byte, error) {
 		width, height = 1280, 800
 	}
 	actions := []chromedp.Action{chromedp.EmulateViewport(int64(width), int64(height))}
-	if opts.Cookie != "" {
-		name, value, ok := strings.Cut(opts.Cookie, "=")
+	// Cookies, name=value, several separated by semicolons as a Cookie
+	// header carries them - the mode cookies, say, to capture a page in
+	// dark mode.
+	for _, pair := range strings.Split(opts.Cookie, ";") {
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			continue
+		}
+		name, value, ok := strings.Cut(pair, "=")
 		if !ok {
 			return nil, fmt.Errorf("cookie must be name=value")
 		}

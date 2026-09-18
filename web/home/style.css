@@ -973,9 +973,12 @@ a.event-people:hover .event-person { text-decoration: underline; }
    line about it. */
 
 /* Tiles run along a line and wrap, each as wide as its words. */
+/* The tiles in equal columns, as many as fit at 300px and up, so a long
+   description no longer sets its own tile's width and the rows line up;
+   the description is cut with an ellipsis at the column's edge. */
 .tile-grid {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 8px 22px;
 }
 

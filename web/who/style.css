@@ -51,7 +51,7 @@ html {
 
 .infobanner-wrap {
   padding-top: 20px;
-  background: #fff;
+  background: var(--page, #fff);
 }
 
 .infobanner {
@@ -947,11 +947,14 @@ body {
   color: var(--muted);
 }
 
+/* The page and everything drawn across its top - the banners, a page's
+   header, the tab strip, a roster's header - share one ground, the
+   theme's page colour: white by day, and whatever dark and quan say. */
 main {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  background: #fff;
+  background: var(--page, #fff);
   display: flex;
   flex-direction: column;
 }
@@ -970,7 +973,7 @@ main {
 }
 
 .tab-strip {
-  background: #f8fcfd;
+  background: var(--page, #fff);
 }
 
 .content {
@@ -1002,11 +1005,7 @@ main {
   justify-content: space-between;
   gap: 16px;
   padding-top: 24px;
-  background: #f8fcfd;
-}
-
-.page-header-list {
-  background: #fff;
+  background: var(--page, #fff);
 }
 
 .view-switch {
@@ -3360,7 +3359,7 @@ a.list-row:hover {
 }
 
 .roster-header {
-  background: #f8fcfd;
+  background: var(--page, #fff);
 }
 
 .roster-tabs {
