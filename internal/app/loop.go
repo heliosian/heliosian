@@ -49,7 +49,32 @@ func (d loopDirectory) Shared(email string) []who.SharedTag {
 }
 
 func loopPerson(model *who.Model, p *who.Person) loop.Person {
-	return loop.Person{Email: p.Email, Name: p.FullName, PhotoURL: model.HeroPhoto(p.Email), Words: placeWords(*p)}
+	out := loop.Person{Email: p.Email, Name: p.FullName, PhotoURL: model.HeroPhoto(p.Email), Words: placeWords(*p)}
+	// The card's line, worded as Celebrate's tiles word theirs: a student's
+	// grade, a staff member's job, a parent's children with their grades.
+	switch {
+	case p.IsStudent:
+		out.Role, out.Grade, out.Context = "Student", p.Grade, placeWords(*p)
+	case p.IsStaff:
+		out.Role, out.Context = "Staff", placeWords(*p)
+	default:
+		out.Role = "Parent"
+		kids := []string{}
+		for _, key := range model.FamilyKeysOf(p.Email) {
+			for _, kid := range model.Families[key].KidEmails {
+				if k := model.Person(kid); k != nil && k.Grade != "" {
+					kids = append(kids, k.FullName+" ("+k.Grade+")")
+				} else if k != nil {
+					kids = append(kids, k.FullName)
+				}
+			}
+		}
+		out.Context = "Parent"
+		if len(kids) > 0 {
+			out.Context = "Parent to " + strings.Join(kids, ", ")
+		}
+	}
+	return out
 }
 
 func (d loopDirectory) Person(email string) (loop.Person, bool) {
@@ -72,6 +97,10 @@ func (d loopDirectory) People() []loop.Person {
 	}
 	sort.Slice(out, func(i, j int) bool { return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name) })
 	return out
+}
+
+func (d loopDirectory) GradeColors() map[string]string {
+	return d.settings.Settings().GradeColors
 }
 
 func (d loopDirectory) Alerts(email string) (int, bool) {

@@ -106,8 +106,9 @@ func sampleServer() (*http.Server, *who.Queue) {
 		Feedback:      printedFeedback{},
 		// Loop's forwards would land as .eml files beside the other sample
 		// mail and its archive under loop/ there; nothing receives for it.
-		Loop:  loop.Mail{Sender: &mail.Files{Dir: mailDir(), From: "Helios Loop"}, Key: []byte("sample"), Base: "https://loop.local.heliosian.com:" + app.Port(), Archive: loop.DirArchive{Dir: mailDir()}},
-		Asker: sampleAsker(),
+		Loop:          loop.Mail{Sender: &mail.Files{Dir: mailDir(), From: "Helios Loop"}, Key: []byte("sample"), Base: "https://loop.local.heliosian.com:" + app.Port(), Archive: loop.DirArchive{Dir: mailDir()}},
+		LoopDescriber: sampleGroupDescriber(),
+		Asker:         sampleAsker(),
 		Artifacts: func(*artifacts.Model) (*artifacts.Model, error) {
 			return artifacts.LoadDir("sampledata/artifacts", artifacts.Fake{})
 		},
@@ -149,6 +150,14 @@ func sampleAsker() ask.Responder {
 // charity form's flow can be tried either way.
 func sampleDescriber() birthday.Describer {
 	if d := app.ClaudeDescriber(); d != nil {
+		return d
+	}
+	return describe.Fake{}
+}
+
+// sampleGroupDescriber is Claude on the same key, else the fake.
+func sampleGroupDescriber() loop.Describer {
+	if d := app.ClaudeGroupDescriber(); d != nil {
 		return d
 	}
 	return describe.Fake{}

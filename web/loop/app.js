@@ -2,7 +2,7 @@ import {state, applyModel, group} from './state.js';
 import {el} from './dom.js';
 import {initChrome, renderChrome, setTitle, clearSearch} from './chrome.js';
 import {groupsPage} from './pages/groups.js';
-import {groupPage, newGroupPage} from './pages/group.js';
+import {groupPage, newGroupModal} from './pages/group.js';
 import {adminPage} from './pages/admin.js';
 
 export async function load() {
@@ -15,6 +15,10 @@ export async function load() {
 }
 
 export function navigate(path) {
+  // A window open over the page - the editor - goes with the page.
+  for (const overlay of document.querySelectorAll('.modal-overlay')) {
+    overlay.remove();
+  }
   history.pushState(null, '', path);
   render();
   document.querySelector('#main').scrollTo(0, 0);
@@ -33,8 +37,12 @@ function route() {
     return groupsPage();
   }
   switch (parts[0]) {
-    case 'new':
-      return newGroupPage();
+    case 'new': {
+      // The front page, with the new group's window opened over it once
+      // the page is in place.
+      setTimeout(newGroupModal);
+      return groupsPage();
+    }
     case 'groups': {
       const g = group(parts[1] || '');
       return g ? groupPage(g) : notFound(parts[1] || 'That group');
@@ -63,7 +71,12 @@ document.addEventListener('click', e => {
   navigate(a.getAttribute('href'));
 });
 
-window.addEventListener('popstate', render);
+window.addEventListener('popstate', () => {
+  for (const overlay of document.querySelectorAll('.modal-overlay')) {
+    overlay.remove();
+  }
+  render();
+});
 document.addEventListener('groups:refresh', render);
 
 initChrome();

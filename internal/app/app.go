@@ -836,6 +836,9 @@ type Config struct {
 	// inbox and webhook secret the posts come in by, the key that signs its
 	// unsubscribe links, its address, and the archive every post is kept in.
 	Loop loop.Mail
+	// LoopDescriber writes a Loop group's description from what it holds;
+	// nil leaves the editor's Generate with AI saying it is not set up.
+	LoopDescriber loop.Describer
 	// Asker answers Helios Ask's chat: Claude, or the sample fake.
 	Asker ask.Responder
 	// Artifacts loads the documents Helios Ask searches, given what the last
@@ -1001,7 +1004,7 @@ func NewCore(cfg Config) *Core {
 	celebrateMux := http.NewServeMux()
 	celebrate.Register(celebrateMux, celebrateCache, cfg.Writer, queue, cfg.Store, celebrateDirectory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.CelebrateMail, cfg.CelebrateFrom)
 	loopMux := http.NewServeMux()
-	loop.Register(loopMux, loopCache, cfg.Writer, queue, cfg.Store, loopDir, settings.SuperAdmins, cfg.Loop)
+	loop.Register(loopMux, loopCache, cfg.Writer, queue, cfg.Store, loopDir, settings.SuperAdmins, cfg.Loop, cfg.LoopDescriber)
 	// The chat reads every app's model, so it is wired once they all are.
 	askMux := http.NewServeMux()
 	ask.Register(askMux, askSources(cache, settings, teamCache, celebrateCache, calendarCache, loopCache, homeCache, artifactsCache, cfg.Embedder, smartLists{cache, teamCache, celebrateCache, loopCache, loopDir}, loopDir, linked), cfg.Asker)
@@ -1219,6 +1222,14 @@ func ClaudeDescriber() birthday.Describer {
 	return nil
 }
 
+// ClaudeGroupDescriber is Loop's group describer on the same key, else nil.
+func ClaudeGroupDescriber() loop.Describer {
+	if d := describe.New(optionalKey("ANTHROPIC_API_KEY", "creds/anthropic.key")); d != nil {
+		return d
+	}
+	return nil
+}
+
 // ClaudeAsker is Helios Ask's Claude when the same key is set, else nil,
 // for the sample server to fall back to its fake.
 func ClaudeAsker() ask.Responder {
@@ -1317,6 +1328,7 @@ func Production(blobCache string) (*http.Server, *who.Queue) {
 		BirthdayBase:  birthdayBase(),
 		Feedback:      &feedback.GitHub{Token: mapsKey("GITHUB_TOKEN", "creds/github.token")},
 		Loop:          loopMail(sessionKey),
+		LoopDescriber: ClaudeGroupDescriber(),
 		Asker:         ask.NewClaude(mapsKey("ANTHROPIC_API_KEY", "creds/anthropic.key")),
 		Artifacts: func(previous *artifacts.Model) (*artifacts.Model, error) {
 			return artifacts.Load(sheet, store, embedder, previous)

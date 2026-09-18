@@ -1,6 +1,7 @@
 package loop
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,6 +14,7 @@ import (
 	"heliosian/internal/auth"
 	"heliosian/internal/blob"
 	"heliosian/internal/data"
+	"heliosian/internal/describe"
 	"heliosian/internal/serve"
 	"heliosian/internal/who"
 )
@@ -21,18 +23,25 @@ const shell = "web/loop/index.html"
 
 var pages = []string{"/{$}", "/new", "/groups/{name}", "/admin"}
 
-// Person is someone as the pickers and the member lists show them.
+// Person is someone as the pages show them: Words is the word that places
+// them beside their name in a row or a picker, and Role, Grade and Context
+// are what a card in Who?'s shape wears - the role's chip, a student's
+// grade, and the line under the name: a student's classroom, a staff
+// member's job, a parent's children.
 type Person struct {
 	Email    string `json:"email"`
 	Name     string `json:"name"`
 	PhotoURL string `json:"photoUrl,omitempty"`
 	Words    string `json:"words,omitempty"`
+	Role     string `json:"role,omitempty"`
+	Grade    string `json:"grade,omitempty"`
+	Context  string `json:"context,omitempty"`
 }
 
 // Directory is what the app needs of Helios Who?: who an address resolves
 // to, the model the rules are read against, a person's tags, Magic Tags
-// and the tags shared with them, everyone for the pickers, and the
-// toolbar's badges.
+// and the tags shared with them, everyone for the pickers, the toolbar's
+// badges, and Who?'s colour for each grade.
 type Directory interface {
 	Resolve(email string) string
 	Model() *who.Model
@@ -42,6 +51,7 @@ type Directory interface {
 	Person(email string) (Person, bool)
 	People() []Person
 	Alerts(email string) (int, bool)
+	GradeColors() map[string]string
 }
 
 type app struct {
@@ -53,19 +63,27 @@ type app struct {
 	superAdmins func() []string
 	mail        Mail
 	mailer      *mailer
+	describer   Describer
+}
+
+// Describer writes a group's description from what the list holds; nil
+// leaves the editor's Generate with AI saying it is not set up.
+type Describer interface {
+	Group(ctx context.Context, facts describe.GroupFacts) (string, error)
 }
 
 // Register wires the app: one shell for every page, the model, the preview,
 // the writes, and Admin Tools. Every route sits behind sign-in but the mail
 // provider's webhooks under /hooks/ and the unsubscribe links (auth.Public).
-func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, directory Directory, superAdmins func() []string, mailbox Mail) {
-	a := app{cache: cache, writer: writer, queue: queue, store: store, directory: directory, superAdmins: superAdmins, mail: mailbox}
+func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, directory Directory, superAdmins func() []string, mailbox Mail, describer Describer) {
+	a := app{cache: cache, writer: writer, queue: queue, store: store, directory: directory, superAdmins: superAdmins, mail: mailbox, describer: describer}
 	a.mailer = newMailer(cache, writer, queue, directory, mailbox)
 	for _, page := range pages {
 		mux.HandleFunc("GET "+page, a.page)
 	}
 	mux.HandleFunc("GET /api/loop/model", a.model)
 	mux.HandleFunc("POST /api/loop/preview", a.preview)
+	mux.HandleFunc("POST /api/loop/describe", a.describe)
 	mux.HandleFunc("POST /api/loop/group", a.saveGroup)
 	mux.HandleFunc("DELETE /api/loop/group", a.deleteGroup)
 	mux.HandleFunc("GET /api/loop/messages", a.messages)
@@ -403,6 +421,8 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 		Options     options      `json:"options"`
 		People      []Person     `json:"people"`
 		Alerts      alerts       `json:"alerts"`
+		// GradeColors colours a student's grade on their tile as Who? does.
+		GradeColors map[string]string `json:"gradeColors,omitempty"`
 	}{
 		User:        user{Email: email, Name: me.Name, Initial: strings.ToUpper(me.Name[:1]), PhotoURL: me.PhotoURL, IsAdmin: admin, IsSuperAdmin: a.cache.IsSuperAdmin(email)},
 		Domain:      Domain,
@@ -410,6 +430,7 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 		Suggestions: a.suggestions(email),
 		Options:     a.options(email),
 		People:      a.directory.People(),
+		GradeColors: a.directory.GradeColors(),
 	}
 	for _, g := range a.cache.Model().Groups {
 		if a.sees(g, email, admin) {
@@ -447,47 +468,118 @@ func sameRule(a, b Rule) bool {
 
 // preview answers the editor with who a draft's rules pick out, before it
 // is saved.
-func (a app) preview(w http.ResponseWriter, r *http.Request) {
+// draftBody is a group as the editor holds it, for the preview and the
+// description: the group it is of, if any, and the draft's rules,
+// additions and excluded.
+type draftBody struct {
+	Name      string     `json:"name"`
+	Title     string     `json:"title"`
+	RuleWords []string   `json:"ruleWords"`
+	Rules     []Rule     `json:"rules"`
+	Additions []Addition `json:"additions"`
+	Excluded  []Excluded `json:"excluded"`
+}
+
+// draftMembers is who a draft picks out now, checked as a save would check
+// it, and how many people each of its rules touches; false once an error
+// has been written.
+func (a app) draftMembers(w http.ResponseWriter, r *http.Request, body draftBody) ([]Member, []int, bool) {
 	email, admin := a.who(r)
-	var body struct {
-		Name      string     `json:"name"`
-		Rules     []Rule     `json:"rules"`
-		Additions []Addition `json:"additions"`
-		Excluded  []Excluded `json:"excluded"`
-	}
-	if !decode(w, r, &body) {
-		return
-	}
 	draft := Normalize(Group{Name: "preview", Title: "preview", Managers: []string{email}, Rules: body.Rules, Additions: body.Additions, Excluded: body.Excluded})
 	var existing []Rule
 	if g := a.cache.Model().Group(strings.ToLower(strings.TrimSpace(body.Name))); g != nil {
 		if !admin && !g.Manages(email) {
 			http.Error(w, "you do not manage this group", http.StatusForbidden)
-			return
+			return nil, nil, false
 		}
 		existing = g.Rules
 	}
 	if err := ownRules(email, existing, draft.Rules); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+		return nil, nil, false
 	}
 	if err := a.sharedRules(email, existing, draft.Rules); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+		return nil, nil, false
 	}
 	for i, rule := range draft.Rules {
 		if err := CheckRule(rule); err != nil {
 			http.Error(w, fmt.Sprintf("rule %d: %v", i+1, err), http.StatusBadRequest)
-			return
+			return nil, nil, false
 		}
 	}
 	if err := a.checkAdditions(draft.Additions); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return nil, nil, false
+	}
+	return a.members(draft), RuleCounts(draft, a.sources()), true
+}
+
+func (a app) preview(w http.ResponseWriter, r *http.Request) {
+	var body draftBody
+	if !decode(w, r, &body) {
+		return
+	}
+	members, counts, ok := a.draftMembers(w, r, body)
+	if !ok {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]any{"members": a.members(draft)}); err != nil {
+	if err := json.NewEncoder(w).Encode(map[string]any{"members": members, "ruleCounts": counts}); err != nil {
 		slog.ErrorContext(r.Context(), "encode groups preview", "error", err)
+	}
+}
+
+// describe writes the draft's description with Claude from what the draft
+// holds: its title, its rules as the editor words them, and a tally of who
+// they pick out now - never their names.
+func (a app) describe(w http.ResponseWriter, r *http.Request) {
+	email, _ := a.who(r)
+	var body draftBody
+	if !decode(w, r, &body) {
+		return
+	}
+	if a.describer == nil {
+		http.Error(w, "writing a description is not set up on this server", http.StatusServiceUnavailable)
+		return
+	}
+	members, _, ok := a.draftMembers(w, r, body)
+	if !ok {
+		return
+	}
+	facts := describe.GroupFacts{Title: body.Title, Rules: body.RuleWords, Members: len(members), Roles: map[string]int{}, Grades: map[string]int{}, Classrooms: map[string]int{}}
+	model := a.directory.Model()
+	for _, m := range members {
+		p := model.Person(m.Email)
+		if p == nil {
+			facts.Roles["Guest"]++
+			continue
+		}
+		switch {
+		case p.IsStudent:
+			facts.Roles["Student"]++
+			if p.Grade != "" {
+				facts.Grades[p.Grade]++
+			}
+			if p.Classroom != "" {
+				facts.Classrooms[p.Classroom]++
+			}
+		case p.IsStaff:
+			facts.Roles["Staff"]++
+		case p.IsParent:
+			facts.Roles["Parent"]++
+		}
+	}
+	description, err := a.describer.Group(r.Context(), facts)
+	if err != nil {
+		slog.ErrorContext(r.Context(), "groups: describe", "actor", email, "title", body.Title, "error", err)
+		http.Error(w, "could not write a description right now", http.StatusBadGateway)
+		return
+	}
+	slog.InfoContext(r.Context(), "groups: described", "actor", email, "title", body.Title, "members", len(members))
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(map[string]string{"description": description}); err != nil {
+		slog.ErrorContext(r.Context(), "encode groups description", "error", err)
 	}
 }
 

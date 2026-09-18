@@ -53,6 +53,8 @@ func (d sampleDirectory) Person(email string) (Person, bool) {
 func (d sampleDirectory) People() []Person          { return nil }
 func (d sampleDirectory) Alerts(string) (int, bool) { return 0, false }
 
+func (d sampleDirectory) GradeColors() map[string]string { return nil }
+
 type fakeStore struct {
 	raw  []byte
 	err  error
@@ -143,7 +145,7 @@ func newHarness(t *testing.T, store Fetcher) *harness {
 	}
 	h := &harness{t: t, mux: http.NewServeMux(), dir: dir, cache: cache, directory: sampleDirectory{model, whoTables}, sender: &fakeSender{}, archive: &fakeArchive{objects: map[string][]byte{}}}
 	h.mailbox = Mail{Sender: h.sender, Store: store, SigningKey: signingKey, Key: []byte("key"), Base: "https://loop.test", Archive: h.archive}
-	Register(h.mux, cache, dir, queue, nil, h.directory, func() []string { return nil }, h.mailbox)
+	Register(h.mux, cache, dir, queue, nil, h.directory, func() []string { return nil }, h.mailbox, nil)
 	return h
 }
 

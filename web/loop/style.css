@@ -142,6 +142,31 @@ button { font: inherit; }
 
 .content-col { display: flex; flex-direction: column; flex: 1; min-width: 0; }
 
+/* The editor's window over a group's page (Edit): a box in the middle of
+   the screen, scrolling on its own, the editor's Save bar stuck to its
+   foot. The overlay sits over the drawer and the tab strip's menus. */
+.modal-overlay { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(13, 13, 13, 0.5); }
+.modal { width: 100%; max-width: 560px; max-height: calc(100vh - 40px); overflow-y: auto; padding: 20px 24px; border-radius: 14px; background: var(--card); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25); }
+.modal.modal-editor { max-width: 1000px; padding-bottom: 0; }
+.modal-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.modal-header h2 { margin: 0; font-family: Montserrat, Roboto, -apple-system, BlinkMacSystemFont, system-ui, sans-serif; font-size: 22px; font-weight: 400; color: var(--brand); }
+/* The modal's heading is the title itself, typed in place: the heading's
+   face on a box with no border until it is hovered or focused. */
+.modal-heading { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.modal-heading-hint { margin-left: 0; font-size: 11.5px; color: var(--muted); }
+.modal-title-input { width: 100%; min-width: 0; margin: -4px 0 0 -8px; padding: 4px 8px; border: 1px solid transparent; border-radius: 8px; background: none; font-family: Montserrat, Roboto, -apple-system, BlinkMacSystemFont, system-ui, sans-serif; font-size: 22px; font-weight: 400; color: var(--brand); }
+.modal-title-input:hover { border-color: var(--line); }
+.modal-title-input.is-wanted { border: 2px dashed var(--accent); }
+.modal-title-input:focus { outline: none; border-color: var(--accent); background: var(--card); }
+.modal-close { border: 0; background: none; font-size: 26px; line-height: 1; color: var(--muted); cursor: pointer; }
+.modal-close:hover { color: var(--ink); }
+.modal-editor .editor-actions { margin: 8px -24px 0; }
+@media (max-width: 600px) {
+  .modal-overlay { padding: 0; align-items: stretch; }
+  .modal { max-height: 100vh; border-radius: 0; padding: 16px; }
+  .modal-editor .editor-actions { margin: 8px -16px 0; padding: 10px 16px; }
+}
+
 main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
 
 #page { flex: 1; width: 100%; max-width: 960px; margin: 0 auto; padding: 24px 24px 120px; }
@@ -344,6 +369,16 @@ body.is-admin main { padding: 0; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px 24px; margin-bottom: 20px; }
 
 .card h2 { font-size: 17px; margin: 0 0 4px; }
+/* A card's heading with a pencil at its right. */
+.card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.card-head h2 { margin: 0; }
+/* The rules read out, each behind its sign: a green plus, a red minus. */
+.rule-lines { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.rule-line { display: flex; align-items: center; gap: 12px; font-size: 15px; }
+.rule-sign { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 26px; height: 26px; border-radius: 50%; color: #fff; }
+.rule-sign svg { width: 16px; height: 16px; stroke-width: 3; }
+.rule-sign-include { background: var(--green-3); }
+.rule-sign-exclude { background: var(--red-2); }
 
 .card h3 { font-size: 14px; margin: 16px 0 6px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
 
@@ -431,9 +466,48 @@ body.is-admin main { padding: 0; }
 
 .address-mail svg { width: 20px; height: 20px; flex-shrink: 0; }
 
+/* The aliases behind a quiet count at the band's right, shown on hover or focus. */
+.address-aliases { position: relative; margin-left: auto; flex-shrink: 0; }
+.address-aliases-count { border: 0; background: none; padding: 4px 6px; border-radius: 6px; font: inherit; font-size: 13px; font-weight: 600; color: var(--muted); cursor: default; }
+.address-aliases:hover .address-aliases-count, .address-aliases:focus-within .address-aliases-count { color: var(--brand); background: rgba(0, 0, 0, 0.05); }
+.address-aliases-tip { position: absolute; right: 0; top: calc(100% + 8px); z-index: 20; min-width: 240px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12); font-size: 13.5px; line-height: 1.7; white-space: nowrap; opacity: 0; visibility: hidden; transition: opacity 0.12s ease; }
+.address-aliases:hover .address-aliases-tip, .address-aliases:focus-within .address-aliases-tip { opacity: 1; visibility: visible; }
+.address-aliases-head { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin-bottom: 2px; }
+
 .rule-list { margin: 0; padding-left: 20px; }
 
 .rule-list li { margin: 4px 0; }
+
+/* The group's members as Celebrate's Who's Coming grid draws them: square
+   faces with the name and a line under each, the same sizes. */
+.group-overview { margin-bottom: 16px; }
+.member-search { display: block; width: 100%; max-width: 420px; margin: 0 0 16px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); color: var(--ink); font: inherit; font-size: 15px; }
+.member-search:focus { outline: none; border-color: var(--accent); }
+.attendee-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 10px; margin-bottom: 28px; }
+.attendee { display: flex; flex-direction: column; padding: 10px 8px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); text-align: left; font: inherit; color: inherit; text-decoration: none; }
+a.attendee { cursor: pointer; }
+a.attendee:hover { border-color: var(--accent); }
+.avatar { display: flex; align-items: center; justify-content: center; flex-shrink: 0; overflow: hidden; border-radius: 50%; background: var(--input); font-weight: 700; font-size: 22px; color: var(--brand); }
+.avatar img { width: 100%; height: 100%; object-fit: cover; }
+.attendee-face { position: relative; overflow: visible; width: 100%; height: auto; aspect-ratio: 1; margin-bottom: 8px; border-radius: 10px; font-size: 32px; }
+/* A student's grade on the corner of their face, as HCA-Team badges it. */
+.grade-badge { position: absolute; left: -6px; top: -6px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 999px; background: var(--brand); color: #fff; font-size: 11px; font-weight: 700; line-height: 20px; text-align: center; box-shadow: 0 0 0 2px #fff; }
+.attendee-face img { border-radius: 10px; }
+.attendee-name { font-weight: 700; font-size: 13.5px; line-height: 1.25; }
+/* The managers' tiles, the same shape smaller. */
+.attendee-grid-small { grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; margin-bottom: 0; }
+.attendee-grid-small .attendee { padding: 8px 6px 10px; }
+.attendee-grid-small .attendee-face { font-size: 24px; margin-bottom: 6px; }
+.attendee-grid-small .attendee-name { font-size: 12.5px; }
+.attendee-grid-small .attendee-line { font-size: 11px; }
+/* A tile with its remove while the managers are being changed. */
+.attendee-wrap { position: relative; display: flex; }
+.attendee-wrap > .attendee { flex: 1; min-width: 0; }
+.attendee-remove { position: absolute; right: 4px; top: 4px; width: 24px; height: 24px; padding: 0; border-radius: 50%; border: 1px solid var(--line); background: var(--card); color: var(--alert); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
+.attendee-remove svg { width: 14px; height: 14px; }
+.attendee-remove:disabled { opacity: 0.35; cursor: default; }
+.attendee-grid-small .grade-badge { min-width: 18px; height: 18px; line-height: 18px; font-size: 10px; }
+.attendee-line { margin-top: 3px; font-size: 12px; line-height: 1.3; color: var(--muted); overflow-wrap: anywhere; }
 
 .person-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-top: 1px solid var(--line); }
 
@@ -471,8 +545,6 @@ a.person-row-link:hover .person-name { text-decoration: underline; }
    above the list, and marks each in it. */
 .change-band { display: flex; flex-direction: column; gap: 6px; padding: 10px 14px; margin: 0 0 10px; border-radius: 10px; background: #f4f6f9; font-size: 14px; }
 
-.change-none { color: var(--muted); }
-
 .change-line { display: flex; align-items: baseline; gap: 10px; }
 
 .change-line .chip { flex-shrink: 0; }
@@ -482,6 +554,39 @@ a.person-row-link:hover .person-name { text-decoration: underline; }
 .chip.leaves { background: #fde8d7; color: #a4551a; }
 
 .person-row.is-leaving { opacity: 0.6; }
+/* The editor's member list: a compact row each, the face small. */
+.compact-list { display: flex; flex-direction: column; }
+/* Each row is its own grid, so the columns take no width from what a
+   row holds - or the rows would drift out of line with one another. */
+.compact-row { display: grid; grid-template-columns: 28px minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 0.8fr) minmax(0, 1.6fr) 84px; align-items: center; gap: 10px; padding: 6px; border-top: 1px solid var(--line); font-size: 13px; color: inherit; text-decoration: none; }
+.compact-row:first-child { border-top: 0; }
+a.compact-row:hover { background: var(--input); }
+.compact-row.is-leaving { opacity: 0.55; }
+/* Someone from outside the directory: an amber row with a Non-Helios chip. */
+.compact-row.is-outside { background: #fff7e6; border-radius: 8px; border-top-color: transparent; }
+.compact-row.is-outside + .compact-row { border-top-color: transparent; }
+.chip.outside { background: #ffe1a8; color: #7a4b00; }
+.compact-row.is-pickable { position: relative; cursor: pointer; }
+.compact-row.is-pickable:hover { background: var(--input); }
+/* The menu a click on a member opens, by the row. */
+.member-menu { position: absolute; z-index: 25; left: 44px; top: calc(100% - 4px); min-width: 260px; padding: 6px 0; background: #fff; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14); cursor: default; }
+.member-menu-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 14px; border: 0; background: none; font: inherit; font-size: 13.5px; font-weight: 600; color: var(--ink); text-align: left; text-decoration: none; cursor: pointer; }
+.member-menu-item:hover { background: var(--input); }
+.member-menu-item svg { width: 18px; height: 18px; color: var(--muted); }
+.compact-tail { display: flex; align-items: center; gap: 6px; justify-content: flex-end; }
+.compact-remove { width: 26px; height: 26px; padding: 0; color: var(--alert); }
+.compact-remove svg { width: 14px; height: 14px; }
+.addition-add { flex-wrap: wrap; margin: 0 0 12px; }
+.addition-add[hidden] { display: none; }
+.addition-add small { flex-basis: 100%; font-size: 12px; color: var(--muted); }
+.thumb.tiny { width: 28px; height: 28px; font-size: 12px; }
+.compact-name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.compact-email, .compact-words, .compact-why { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.compact-why { color: var(--brand); }
+@media (max-width: 700px) {
+  .compact-row { grid-template-columns: 28px 1fr auto; }
+  .compact-email, .compact-words, .compact-why { display: none; }
+}
 
 .person-row.is-leaving .person-note { color: var(--muted); }
 
@@ -522,6 +627,19 @@ a.person-row-link:hover .person-name { text-decoration: underline; }
 .field { display: block; margin: 14px 0; }
 
 .field > span { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+/* A label with a small action at its right: the address's Add alias. */
+.field > .field-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.field-head .button-small { padding: 4px 10px; font-size: 12.5px; }
+.field-head .button-small svg { width: 14px; height: 14px; }
+.alias-field { margin-top: -6px; }
+.alias-field[hidden], .alias-rows[hidden], .alias-add[hidden] { display: none; }
+.alias-add { flex-wrap: wrap; margin-top: 8px; }
+/* The alias box with its clear inside at the right. */
+.alias-box { position: relative; flex: 1; min-width: 200px; display: flex; }
+.alias-box input { flex: 1; padding-right: 38px; }
+.alias-clear { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 30px; height: 30px; padding: 0; color: var(--muted); }
+.alias-clear svg { width: 16px; height: 16px; }
+.alias-add small { flex-basis: 100%; font-size: 12px; color: var(--muted); }
 
 .field > small { display: block; font-size: 12px; color: var(--muted); margin-top: 4px; }
 
@@ -558,7 +676,29 @@ a.person-row-link:hover .person-name { text-decoration: underline; }
 
 .rule-controls { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 
-.rule-words { font-weight: 600; }
+.rule-words { font-weight: 600; font-size: 15px; }
+/* A rule read: a tinted band with the kind's label and mark, the sentence
+   and how many people it touches, green for an include, red for an
+   exclude. */
+.rule.is-line { padding: 8px 12px 8px 10px; border: 0; border-radius: 12px; align-items: center; }
+.rule.is-line.is-include { background: #eef7f0; }
+.rule.is-line.is-exclude { background: #fdeeec; }
+.rule.is-line .rule-controls { gap: 12px; }
+.rule.is-line .rule-line { flex: 1; min-width: 0; gap: 14px; }
+.rule.is-line .rule-line > svg { width: 24px; height: 24px; flex-shrink: 0; }
+.rule.is-line.is-include .rule-line > svg { color: #2f8f3f; }
+.rule.is-line.is-exclude .rule-line > svg { color: #c2442d; }
+.rule-kind { flex-shrink: 0; padding: 4px 10px; border-radius: 999px; font-size: 11.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+.is-include .rule-kind { background: #cfe9d4; color: #1f6f2e; }
+.is-exclude .rule-kind { background: #f8d0cb; color: #b2301d; }
+.rule-line-words { flex: 1; min-width: 0; }
+.rule-count { flex-shrink: 0; margin-left: auto; padding: 4px 10px; border-radius: 999px; background: #e8eaf6; color: #3b4a8c; font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+.rule-count[hidden] { display: none; }
+.rule.is-line .rule-note { flex-basis: 100%; padding-left: 38px; }
+/* A rule open for changes: the same tint as its band, on a border of the same. */
+.rule.is-open.is-include { background: #f4faf5; border-color: #b9dcc2; }
+.rule.is-open.is-exclude { background: #fef4f2; border-color: #f0c4bc; }
+.rule .rule-controls > .button-small { margin-left: auto; flex-shrink: 0; }
 
 .rule-note { flex-basis: 100%; font-size: 13px; color: var(--muted); }
 
@@ -567,10 +707,11 @@ a.person-row-link:hover .person-name { text-decoration: underline; }
 .rule-empty { color: var(--muted); font-size: 14px; padding: 6px 0; }
 
 .chip-row { display: flex; gap: 6px; flex-wrap: wrap; }
-
 .chip-toggle { border: 1px solid var(--line); background: #fff; color: var(--muted); border-radius: 999px; padding: 6px 12px; font-size: 13px; font-weight: 600; cursor: pointer; }
-
 .chip-toggle.active { background: var(--brand); border-color: var(--brand); color: #fff; }
+/* The rule read out under its controls. */
+.rule-said { flex: 1 1 60%; font-size: 13.5px; color: var(--brand); }
+.rule-said.is-empty { color: var(--muted); font-style: italic; }
 
 .rule-search { flex: 1 1 200px; min-width: 160px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 999px; font: inherit; background: #fff; }
 

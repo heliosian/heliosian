@@ -302,3 +302,21 @@ func TestSuggestedGroupRuleIsTheListPlusStudentsParents(t *testing.T) {
 		t.Fatalf("movie night: got %v, want %v", got, want)
 	}
 }
+
+// Each rule's count is who it touches: an include rule's matches, and the
+// people an exclude rule takes off the group - not those it would match
+// who were never on it.
+func TestRuleCountsSayWhoEachRuleTouches(t *testing.T) {
+	s, _ := sample(t)
+	g := loop.Normalize(loop.Group{Name: "test", Title: "Test", Managers: []string{jordan}, Rules: []loop.Rule{
+		rule(loop.KindInclude, func(r *loop.Rule) { r.Tags = []string{"party:p1"} }),
+		rule(loop.KindExclude, func(r *loop.Rule) { r.Search = "osei" }),
+		rule(loop.KindExclude, func(r *loop.Rule) { r.Search = "torres" }),
+	}})
+	counts := loop.RuleCounts(g, s)
+	// party:p1 holds Abena Osei and Colin Quinn; "osei" takes Abena off;
+	// "torres" matches people who were never on the group.
+	if !slices.Equal(counts, []int{2, 1, 0}) {
+		t.Fatalf("counts %v", counts)
+	}
+}

@@ -196,6 +196,48 @@ func Reasons(g Group, s Sources) map[string][]Reason {
 	return in
 }
 
+// RuleCounts is how many people each rule touches, by its place among the
+// group's rules: for an include rule, everyone it matches, relatives and
+// all; for an exclude rule, everyone it takes out - those it matches whom
+// an include rule had placed on the group. Placeholders and people the
+// directory does not hold count for neither.
+func RuleCounts(g Group, s Sources) []int {
+	tagged := map[string]map[string][]string{}
+	for _, r := range g.Rules {
+		if _, ok := tagged[r.Owner]; !ok && len(r.Tags) > 0 {
+			tagged[r.Owner] = s.tagged(r.Owner)
+		}
+	}
+	real := func(email string) bool {
+		p := s.Directory.Person(email)
+		return p != nil && !p.EmailMasked
+	}
+	in := map[string]bool{}
+	matched := make([]map[string]Reason, len(g.Rules))
+	for i, r := range g.Rules {
+		matched[i] = matches(r, s, tagged[r.Owner])
+		if r.Kind == KindInclude {
+			for email := range matched[i] {
+				if real(email) {
+					in[email] = true
+				}
+			}
+		}
+	}
+	counts := make([]int, len(g.Rules))
+	for i, r := range g.Rules {
+		for email := range matched[i] {
+			if !real(email) {
+				continue
+			}
+			if r.Kind == KindInclude || in[email] {
+				counts[i]++
+			}
+		}
+	}
+	return counts
+}
+
 // Members is Reasons' people alone, sorted.
 func Members(g Group, s Sources) []string {
 	members := []string{}
