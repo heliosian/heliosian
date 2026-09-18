@@ -74,6 +74,7 @@ Each runs as `go run ./cmd/<name>`. The sheet, drive, and bucket tools authentic
 - `findsheet` — print the spreadsheet ids the server needs as shell exports, found by the sheets' titles, with every other visible spreadsheet as a comment
 - `sheets` — dump a sheet's tabs, sizes, and header rows
 - `dumptab` / `writetab` — copy one tab to a local CSV / write a local CSV into a tab, header-checked
+- `dropcolumns` — delete named columns from one tab, header and cells, for a column an app has stopped reading; a dry run without `--apply` says how many cells each holds
 - `createtabs` — create the tabs of every spreadsheet that has a layout with their header rows, adding missing columns to tabs that exist (needs each of those spreadsheets' id variables, and refuses a spreadsheet whose title isn't the layout the variable promised)
 - `setcell` — set one cell in a tab by key column, appending the row if missing
 - `import` — run a fresh Veracross export and a fresh export of the school website's staff page, upload the portraits from both, sync the import tabs, and clear the overrides those imports have caught up with, or report what that would change with `--dry-run` (needs `DIRECTORY_SHEET`, `PREFERENCES_SHEET`, and `CONFIG_SHEET`, and a `vcexport` and a `webexport` checkout, found at `../vcexport` and `../webexport` or wherever `VCEXPORT` and `WEBEXPORT` point)
