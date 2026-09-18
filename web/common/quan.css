@@ -50,8 +50,12 @@ html[data-theme="quan"] {
 /* The plum ink on a lime fill, wherever a button is drawn on the green. */
 [data-theme="quan"] .button { color: var(--quan-ink); }
 
-/* Every app's rail: its faint symbol over the pink, in place of the teal. */
+/* Every app's rail, and the phone's drawer it folds into: its faint symbol
+   over the pink, in place of the teal. The drawer's rule in toolbar.css
+   reads the same tokens, so it follows on its own; the rail's is repeated
+   here since each app's own sheet paints it by number. */
 [data-theme="quan"] .sidebar { background-image: url('/brand/symbol-watermark.png'), linear-gradient(180deg, var(--sidebar-top), var(--sidebar)); }
+[data-theme="quan"] body .drawer { background-color: var(--sidebar); background-image: url('/brand/symbol-watermark.png'), linear-gradient(180deg, var(--sidebar-top), var(--sidebar)); }
 
 /* The lit row's wash, a deeper pink under the lime bar and icon. */
 [data-theme="quan"] .app-nav a.is-active,

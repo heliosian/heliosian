@@ -594,7 +594,6 @@ a.compact-row:hover { background: var(--input); }
 
 .change-summary { font-size: 14px; font-weight: 600; color: var(--muted); }
 
-.editor-danger { display: flex; justify-content: flex-end; margin: -4px 0 20px; }
 
 .message-row { padding: 10px 0; border-top: 1px solid var(--line); }
 

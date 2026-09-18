@@ -852,6 +852,7 @@ function editor(g, isNew, closeModal, startTab) {
     }
   });
   actions.append(save);
+  let deleteButton = null;
   if (!isNew) {
     actions.append(button('Cancel', null, 'button button-secondary', () => {
       if (closeModal) {
@@ -879,9 +880,7 @@ function editor(g, isNew, closeModal, startTab) {
         status.textContent = err.message;
       }
     });
-    const danger = el('div', 'editor-danger');
-    danger.append(del);
-    overviewPanel.append(danger);
+    deleteButton = del;
   } else {
     actions.append(button('Cancel', null, 'button button-secondary', () => {
       if (closeModal) {
@@ -891,6 +890,10 @@ function editor(g, isNew, closeModal, startTab) {
     }));
   }
   actions.append(status);
+  // Delete sits at the bar's far end, away from Save.
+  if (deleteButton) {
+    actions.append(deleteButton);
+  }
   form.append(actions);
   refreshPreview();
   return form;

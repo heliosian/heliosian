@@ -967,8 +967,8 @@ body.is-super .user-avatar {
    whichever order the sheets load in. */
 body .drawer {
   color: #fff;
-  background-color: #0f4e54;
-  background-image: url('/brand/symbol-watermark.png'), linear-gradient(180deg, #022427, #0f4e54);
+  background-color: var(--sidebar, #0f4e54);
+  background-image: url('/brand/symbol-watermark.png'), linear-gradient(180deg, var(--sidebar-top, #022427), var(--sidebar, #0f4e54));
   background-size: 360px auto, auto;
   background-position: right -120px bottom -100px, left top;
   background-repeat: no-repeat, no-repeat;
