@@ -32,6 +32,9 @@ type Saved interface {
 }
 
 func (m Message) Key() string {
+	if m.Kind == KindGroup {
+		return Key(m.Channel + "/" + m.MessageID)
+	}
 	return Key(m.MessageID)
 }
 
@@ -124,7 +127,7 @@ func Build(m Message, links *Resolver, model string) (*Document, error) {
 		title = "(no subject)"
 	}
 	doc := &Document{
-		Key:      Key(m.MessageID),
+		Key:      m.Key(),
 		Title:    title,
 		Date:     day.In(calendar.Location).Format(calendar.DateFormat),
 		Author:   strings.TrimSpace(m.From),

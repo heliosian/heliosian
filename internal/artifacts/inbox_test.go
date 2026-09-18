@@ -124,7 +124,7 @@ func (inline) Add(fn func()) {
 	fn()
 }
 
-func testInbox(t *testing.T) (*inbox, bucket, *data.Dir) {
+func testInbox(t *testing.T) (*Filer, bucket, *data.Dir) {
 	t.Helper()
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, appName), 0o755); err != nil {
@@ -139,7 +139,7 @@ func testInbox(t *testing.T) (*inbox, bucket, *data.Dir) {
 	}
 	objects := bucket{}
 	sheet := &data.Dir{Root: root}
-	in := &inbox{
+	in := &Filer{
 		Inbox:    Inbox{Store: storedMail{"class": classMail, "personal": personalMail}, SigningKey: "key", Bucket: objects},
 		cache:    cache,
 		embedder: Fake{},
@@ -176,6 +176,30 @@ func TestInboxImportsOnlyTheCommunitysMailOnce(t *testing.T) {
 	}
 	if hits := model.Search(query[0], "field trip to the library", 1); len(hits) != 1 || hits[0].Document.Key != rows[0]["Key"] {
 		t.Fatalf("search finds %+v", hits)
+	}
+}
+
+func TestGroupMailIsFiledUnderEachGroupOnce(t *testing.T) {
+	in, _, sheet := testInbox(t)
+	for _, group := range []string{"soccer-team", "soccer-team", "chess-club"} {
+		if err := in.Post(context.Background(), group, []byte(personalMail)); err != nil {
+			t.Fatalf("%s: %v", group, err)
+		}
+	}
+	_, rows, err := sheet.Table(appName, documentsTab)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("rows: %+v", rows)
+	}
+	for i, group := range []string{"soccer-team", "chess-club"} {
+		if rows[i]["Key"] != Key(group+"/personal-1@example.org") || rows[i]["Channel"] != group || rows[i]["Kind"] != KindGroup {
+			t.Errorf("row %d: %+v", i, rows[i])
+		}
+	}
+	if len(in.cache.Model().Documents) != 2 {
+		t.Fatalf("the model holds %d documents, not the two filed", len(in.cache.Model().Documents))
 	}
 }
 

@@ -188,7 +188,7 @@ func (a app) chat(w http.ResponseWriter, r *http.Request) {
 		Label: label,
 	}
 	started := time.Now()
-	out := &expander{links: conv.links, emit: emit}
+	out := &expander{links: conv.links, emit: emit, cards: v.linkCard, sent: map[string]bool{}}
 	reply, err := a.responder.Respond(ctx, req, out.send)
 	out.flush()
 	if err != nil && r.Context().Err() != nil {

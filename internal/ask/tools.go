@@ -97,6 +97,7 @@ type viewer struct {
 	now       time.Time
 	// family is the viewer and everyone in their families, by address.
 	family map[string]bool
+	access *groupAccess
 	ctx    context.Context
 }
 
@@ -104,7 +105,7 @@ func (a app) viewer(email string) *viewer {
 	v := &viewer{
 		email: email, directory: a.sources.Directory(), calendar: a.sources.Calendar(), team: a.sources.Team(), celebrate: a.sources.Celebrate(), loop: a.sources.Loop(),
 		artifacts: a.sources.Artifacts(), embedder: a.sources.Embedder,
-		sources: a.sources, now: time.Now().In(calendar.Location), family: map[string]bool{email: true}, ctx: context.Background(),
+		sources: a.sources, now: time.Now().In(calendar.Location), family: map[string]bool{email: true}, access: &groupAccess{}, ctx: context.Background(),
 	}
 	v.me = v.directory.Person(email)
 	for _, key := range v.directory.FamilyKeysOf(email) {
@@ -305,4 +306,4 @@ func sortedByName[T any](list []T, name func(T) string) {
 	sort.SliceStable(list, func(i, j int) bool { return strings.ToLower(name(list[i])) < strings.ToLower(name(list[j])) })
 }
 
-var tools = []tool{findPeople, getPerson, getFamily, getClassroom, calendarEvents, dayPlan, volunteerOpportunities, getActivity, parties, myGroups, myLists, communityLinks, searchDocuments, readDocument}
+var tools = []tool{findPeople, getPerson, getFamily, nearbyFamilies, getClassroom, calendarEvents, dayPlan, volunteerOpportunities, getActivity, parties, myGroups, myLists, communityLinks, searchDocuments, readDocument}

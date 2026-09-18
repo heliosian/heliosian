@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -114,6 +115,24 @@ func (f *fakeArchive) count() int {
 	return len(f.objects)
 }
 
+type fakeDocuments struct {
+	mu     sync.Mutex
+	groups []string
+}
+
+func (f *fakeDocuments) Post(_ context.Context, group string, raw []byte) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.groups = append(f.groups, group)
+	return nil
+}
+
+func (f *fakeDocuments) filed() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.groups)
+}
+
 const signingKey = "mailgun-signing-key"
 
 type harness struct {
@@ -124,6 +143,7 @@ type harness struct {
 	directory sampleDirectory
 	sender    *fakeSender
 	archive   *fakeArchive
+	documents *fakeDocuments
 	mailbox   Mail
 }
 
@@ -143,8 +163,8 @@ func newHarness(t *testing.T, store Fetcher) *harness {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := &harness{t: t, mux: http.NewServeMux(), dir: dir, cache: cache, directory: sampleDirectory{model, whoTables}, sender: &fakeSender{}, archive: &fakeArchive{objects: map[string][]byte{}}}
-	h.mailbox = Mail{Sender: h.sender, Store: store, SigningKey: signingKey, Key: []byte("key"), Base: "https://loop.test", Archive: h.archive}
+	h := &harness{t: t, mux: http.NewServeMux(), dir: dir, cache: cache, directory: sampleDirectory{model, whoTables}, sender: &fakeSender{}, archive: &fakeArchive{objects: map[string][]byte{}}, documents: &fakeDocuments{}}
+	h.mailbox = Mail{Sender: h.sender, Store: store, SigningKey: signingKey, Key: []byte("key"), Base: "https://loop.test", Archive: h.archive, Documents: h.documents}
 	Register(h.mux, cache, dir, queue, nil, h.directory, func() []string { return nil }, h.mailbox, nil)
 	return h
 }
@@ -242,6 +262,10 @@ func TestAPostIsForwardedToEveryMemberOnce(t *testing.T) {
 	h.waitFor("the forward", func() bool { return h.messageState("m1", "soccer-team") == stateSent })
 	if len(store.urls) != 1 || store.urls[0] != "https://sw.api.mailgun.net/v3/domains/loop.heliosian.com/messages/m1" {
 		t.Fatalf("fetched %v", store.urls)
+	}
+	h.waitFor("the filing for ask", func() bool { return len(h.documents.filed()) == 1 })
+	if filed := h.documents.filed(); filed[0] != "soccer-team" {
+		t.Fatalf("filed under %v", filed)
 	}
 	sends := h.sender.all()
 	want := h.members("soccer-team")
@@ -399,7 +423,7 @@ func TestALoopedPostIsDropped(t *testing.T) {
 	h := newHarness(t, &fakeStore{raw: []byte("From: a@x.org\r\nTo: soccer-team@loop.heliosian.com\r\nX-Helios-Loop: pta\r\n\r\nhi\r\n")})
 	h.inbound(notify("m3", "soccer-team@loop.heliosian.com"))
 	h.waitFor("the drop", func() bool { return h.messageState("m3", "soccer-team") == stateDropped })
-	if len(h.sender.all()) != 0 || h.archive.count() != 0 {
+	if len(h.sender.all()) != 0 || h.archive.count() != 0 || len(h.documents.filed()) != 0 {
 		t.Fatal("a looped post went out")
 	}
 }

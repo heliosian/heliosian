@@ -41,7 +41,7 @@ func (i Inbox) ready() bool {
 	return i.Store != nil && i.SigningKey != "" && i.Bucket != nil
 }
 
-type inbox struct {
+type Filer struct {
 	Inbox
 	cache    *Cache
 	embedder Embedder
@@ -50,13 +50,14 @@ type inbox struct {
 	work     chan string
 }
 
-func Register(mux *http.ServeMux, cache *Cache, embedder Embedder, writer data.Writer, queue Enqueuer, mailbox Inbox) {
-	in := &inbox{Inbox: mailbox, cache: cache, embedder: embedder, writer: writer, queue: queue, work: make(chan string, 256)}
+func Register(mux *http.ServeMux, cache *Cache, embedder Embedder, writer data.Writer, queue Enqueuer, mailbox Inbox) *Filer {
+	in := &Filer{Inbox: mailbox, cache: cache, embedder: embedder, writer: writer, queue: queue, work: make(chan string, 256)}
 	go in.run()
 	mux.HandleFunc("POST /hooks/mail", in.hook)
+	return in
 }
 
-func (in *inbox) hook(w http.ResponseWriter, r *http.Request) {
+func (in *Filer) hook(w http.ResponseWriter, r *http.Request) {
 	if !in.ready() {
 		http.Error(w, "mail is not set up", http.StatusNotFound)
 		return
@@ -81,7 +82,7 @@ func (in *inbox) hook(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func (in *inbox) run() {
+func (in *Filer) run() {
 	for source := range in.work {
 		if err := in.take(context.Background(), source); err != nil {
 			slog.Error("[ERROR] artifacts: mail not imported", "source", source, "error", err)
@@ -89,7 +90,7 @@ func (in *inbox) run() {
 	}
 }
 
-func (in *inbox) take(ctx context.Context, source string) error {
+func (in *Filer) take(ctx context.Context, source string) error {
 	raw, err := in.Store.Stored(ctx, source)
 	if err != nil {
 		return fmt.Errorf("fetch: %w", err)
@@ -98,6 +99,19 @@ func (in *inbox) take(ctx context.Context, source string) error {
 	if err != nil {
 		return err
 	}
+	return in.file(ctx, m)
+}
+
+func (in *Filer) Post(ctx context.Context, group string, raw []byte) error {
+	m, err := ParseMail(raw)
+	if err != nil {
+		return err
+	}
+	m.Channel, m.Kind = group, KindGroup
+	return in.file(ctx, m)
+}
+
+func (in *Filer) file(ctx context.Context, m Message) error {
 	doc, err := Build(m, NewResolver(), in.embedder.Model())
 	if errors.Is(err, ErrNotBroadcast) || errors.Is(err, ErrNoWords) {
 		slog.Info("artifacts: mail left out", "from", m.From, "subject", m.Subject, "reason", err)
@@ -146,7 +160,7 @@ func issue(doc *Document) string {
 	return doc.Title + "|" + doc.Date
 }
 
-func (in *inbox) known(doc *Document) bool {
+func (in *Filer) known(doc *Document) bool {
 	for _, d := range in.cache.Model().Documents {
 		if d.Key == doc.Key || (issue(doc) != "" && issue(d) == issue(doc)) {
 			return true

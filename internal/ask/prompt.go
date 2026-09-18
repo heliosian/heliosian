@@ -32,7 +32,7 @@ func systemBlocks(v *viewer, recent []*artifacts.Document, l *links) []anthropic
 func recentDocuments(v *viewer) []*artifacts.Document {
 	since := v.now.AddDate(0, 0, -recentDays).Format(calendar.DateFormat)
 	out := []*artifacts.Document{}
-	for _, d := range v.artifacts.Documents {
+	for _, d := range v.documents().Documents {
 		if len(out) >= recentLimit || d.Date < since {
 			break
 		}
@@ -66,6 +66,9 @@ func documentLines(v *viewer, docs []*artifacts.Document) string {
 		fmt.Fprintf(b, "- %s, %s: %s (key %s", when, v.timing(d.Date, ""), d.Title, d.Key)
 		if url := d.URL(); url != "" {
 			b.WriteString(", " + url)
+		}
+		if group := v.groupOf(d); group != "" {
+			b.WriteString(", mail to the group " + group)
 		}
 		b.WriteString(")\n")
 	}

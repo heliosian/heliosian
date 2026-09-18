@@ -96,7 +96,7 @@ function segmentsOf(turn) {
   return out;
 }
 
-function showSegments(row, segments, streaming) {
+function showSegments(row, segments, streaming, cards) {
   const body = row.querySelector('.turn-body');
   body.replaceChildren();
   segments.forEach((s, i) => {
@@ -108,7 +108,7 @@ function showSegments(row, segments, streaming) {
     }
     const last = streaming && i === segments.length - 1;
     const piece = el('div', 'turn-text');
-    piece.append(render(last ? stable(s.text) : s.text));
+    piece.append(render(last ? stable(s.text) : s.text, cards));
     body.append(piece);
   });
 }
@@ -168,7 +168,7 @@ function renderThread() {
     if (t.role === 'user') {
       row.querySelector('.turn-body').textContent = t.text;
     } else {
-      showSegments(row, segmentsOf(t), false);
+      showSegments(row, segmentsOf(t), false, t.cards || {});
     }
   }
   if (asked(state.current) >= state.model.maxTurns) {
@@ -267,7 +267,7 @@ function stop() {
   }
 }
 
-function keepStopped(chat, message, mine, answer, segments, tools) {
+function keepStopped(chat, message, mine, answer, segments, tools, cards) {
   const text = segments.filter(s => s.kind === 'text' && s.text.trim()).map(s => s.text).join('\n\n');
   if (!text) {
     answer.remove();
@@ -283,8 +283,8 @@ function keepStopped(chat, message, mine, answer, segments, tools) {
     }
     return;
   }
-  showSegments(answer, segments, false);
-  chat.turns.push({role: 'user', text: message}, {role: 'assistant', text, tools, segments});
+  showSegments(answer, segments, false, cards);
+  chat.turns.push({role: 'user', text: message}, {role: 'assistant', text, tools, segments, cards});
   chat.updated = Date.now();
   saveChats();
   renderChats();
@@ -348,6 +348,7 @@ async function send(message) {
   placeSpinner(answer, spin.node);
   const segments = [];
   const tools = [];
+  const cards = {};
   let finished = null;
   let pending = null;
   const draw = () => {
@@ -356,7 +357,7 @@ async function send(message) {
     }
     pending = requestAnimationFrame(() => {
       pending = null;
-      showSegments(answer, segments, true);
+      showSegments(answer, segments, true, cards);
       placeSpinner(answer, spin.node);
       scrollDown();
     });
@@ -410,6 +411,9 @@ async function send(message) {
             draw();
           }
           break;
+        case 'card':
+          cards[data.url] = data;
+          break;
         case 'done':
           finished = data;
           break;
@@ -420,10 +424,10 @@ async function send(message) {
       }
     });
     cancelAnimationFrame(pending);
-    showSegments(answer, segments, false);
+    showSegments(answer, segments, false, cards);
     scrollDown();
     if (finished) {
-      chat.turns.push({role: 'user', text: message}, {role: 'assistant', text: finished.text, tools: finished.tools || [], segments});
+      chat.turns.push({role: 'user', text: message}, {role: 'assistant', text: finished.text, tools: finished.tools || [], segments, cards});
       chat.updated = Date.now();
       saveChats();
       renderChats();
@@ -439,11 +443,11 @@ async function send(message) {
   } catch (err) {
     cancelAnimationFrame(pending);
     if (stopper.signal.aborted) {
-      keepStopped(chat, message, mine, answer, segments, tools);
+      keepStopped(chat, message, mine, answer, segments, tools, cards);
       return;
     }
     segments.push({kind: 'text', text: 'The connection dropped; try again.'});
-    showSegments(answer, segments, false);
+    showSegments(answer, segments, false, cards);
   } finally {
     spin.stop();
     state.stopper = null;

@@ -968,12 +968,15 @@ func NewCore(cfg Config) *Core {
 	})
 	celebrateMux := http.NewServeMux()
 	celebrate.Register(celebrateMux, celebrateCache, cfg.Writer, queue, cfg.Store, celebrateDirectory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.CelebrateMail, cfg.CelebrateFrom)
-	loopMux := http.NewServeMux()
-	loop.Register(loopMux, loopCache, cfg.Writer, queue, cfg.Store, loopDir, settings.SuperAdmins, cfg.Loop, cfg.LoopDescriber)
-	// The chat reads every app's model, so it is wired once they all are.
+	// A group's post goes into the documents as Loop records it sent, so the
+	// documents' filer is wired before Loop.
 	askMux := http.NewServeMux()
+	loopMail := cfg.Loop
+	loopMail.Documents = artifacts.Register(askMux, artifactsCache, cfg.Embedder, cfg.Writer, queue, cfg.ArtifactsMail)
+	loopMux := http.NewServeMux()
+	loop.Register(loopMux, loopCache, cfg.Writer, queue, cfg.Store, loopDir, settings.SuperAdmins, loopMail, cfg.LoopDescriber)
+	// The chat reads every app's model, so it is wired once they all are.
 	ask.Register(askMux, askSources(cache, settings, teamCache, celebrateCache, calendarCache, loopCache, homeCache, artifactsCache, cfg.Embedder, smartLists{cache, teamCache, celebrateCache, loopCache, loopDir}, loopDir, linked), cfg.Asker)
-	artifacts.Register(askMux, artifactsCache, cfg.Embedder, cfg.Writer, queue, cfg.ArtifactsMail)
 	// Every app's toolbar asks its own origin what its switch lists and
 	// which rows to leave off; Heliosian's cache answers for all of them.
 	for _, m := range []*http.ServeMux{mux, teamMux, birthdayMux, celebrateMux, calendarMux, loopMux, askMux} {

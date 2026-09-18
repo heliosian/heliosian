@@ -32,6 +32,7 @@ const (
 	KindAnnouncement = "announcement"
 	KindPage         = "page"
 	KindPortal       = "portal"
+	KindGroup        = "group"
 )
 
 var DocumentColumns = []string{"Key", "Title", "Date", "Author", "Kind", "Channel", "Source", "Chunks", "Object"}
@@ -305,6 +306,16 @@ func (m *Model) Span() (oldest, newest string) {
 		return "", ""
 	}
 	return m.Documents[len(m.Documents)-1].Date, m.Documents[0].Date
+}
+
+func (m *Model) Where(keep func(*Document) bool) *Model {
+	out := &Model{Documents: []*Document{}, Fetched: m.Fetched}
+	for _, d := range m.Documents {
+		if keep(d) {
+			out.Documents = append(out.Documents, d)
+		}
+	}
+	return out
 }
 
 func (m *Model) Between(since, until string) *Model {

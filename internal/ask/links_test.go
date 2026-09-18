@@ -1,6 +1,7 @@
 package ask
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -43,12 +44,18 @@ func TestExpanderHoldsSplitKeys(t *testing.T) {
 	l.shorten("https://who.heliosian.com/people/sam")
 	out := &strings.Builder{}
 	events := []string{}
+	cards := []string{}
 	e := &expander{links: l, emit: func(kind string, data any) {
 		events = append(events, kind)
-		if kind == "text" {
+		switch kind {
+		case "text":
 			out.WriteString(data.(string))
+		case "card":
+			cards = append(cards, data.(linkCard).Name)
 		}
-	}}
+	}, cards: func(address string) (linkCard, bool) {
+		return linkCard{URL: address, Kind: "person", Name: "Sam Lee"}, strings.Contains(address, "/people/")
+	}, sent: map[string]bool{}}
 	for _, piece := range []string{"Ask [Sam", " Lee]", "(L", "1", ") today [or] not", "]"} {
 		e.send("text", piece)
 	}
@@ -60,5 +67,9 @@ func TestExpanderHoldsSplitKeys(t *testing.T) {
 	}
 	if events[len(events)-3] != "text" || events[len(events)-2] != "tool" {
 		t.Fatalf("held text did not go out before the tool: %v", events)
+	}
+	at := slices.Index(events, "card")
+	if len(cards) != 1 || at < 0 || events[at+1] != "text" {
+		t.Fatalf("the card did not go out once, before its link: %v %v", cards, events)
 	}
 }

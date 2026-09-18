@@ -28,6 +28,10 @@ type Archive interface {
 	Put(ctx context.Context, name, mimeType string, content []byte) error
 }
 
+type Documents interface {
+	Post(ctx context.Context, group string, raw []byte) error
+}
+
 type Mail struct {
 	Sender     mail.RawSender
 	Store      Fetcher
@@ -35,6 +39,7 @@ type Mail struct {
 	Key        []byte
 	Base       string
 	Archive    Archive
+	Documents  Documents
 }
 
 func (m Mail) ready() bool {
@@ -268,6 +273,11 @@ func (m *mailer) forward(ctx context.Context, j job) string {
 	}
 	log.Info("groups: forwarded", "members", len(members), "sent", sent, "failed", len(failures))
 	m.mark(j, state, map[string]string{"Recipients": strconv.Itoa(sent), "Detail": strings.Join(failures, "; ")})
+	if state == stateSent {
+		if err := m.mail.Documents.Post(ctx, g.Name, raw); err != nil {
+			log.Error("[ERROR] groups: not filed for ask", "error", err)
+		}
+	}
 	return state
 }
 

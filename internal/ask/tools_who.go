@@ -80,6 +80,26 @@ func (v *viewer) familyCard(key string) familyCard {
 	return f
 }
 
+func (v *viewer) familyKeys(email, name string) []string {
+	keys := []string{}
+	for _, p := range v.findByEmailOrName(email, name) {
+		for _, key := range v.directory.FamilyKeysOf(p.Email) {
+			if !slices.Contains(keys, key) {
+				keys = append(keys, key)
+			}
+		}
+	}
+	if name = strings.TrimSpace(name); name != "" {
+		for key, family := range v.directory.Families {
+			if contains(family.Name, name) && !slices.Contains(keys, key) {
+				keys = append(keys, key)
+			}
+		}
+	}
+	slices.Sort(keys)
+	return keys
+}
+
 // findByEmailOrName is the people an email or a name picks out: the one
 // the address keys, else everyone whose name holds the words.
 func (v *viewer) findByEmailOrName(email, name string) []*who.Person {
@@ -250,25 +270,10 @@ var getFamily = tool{
 		if err != nil {
 			return nil, err
 		}
-		keys := []string{}
-		for _, p := range v.findByEmailOrName(in.Email, in.Name) {
-			for _, key := range v.directory.FamilyKeysOf(p.Email) {
-				if !slices.Contains(keys, key) {
-					keys = append(keys, key)
-				}
-			}
-		}
-		if name := strings.TrimSpace(in.Name); name != "" {
-			for key, family := range v.directory.Families {
-				if contains(family.Name, name) && !slices.Contains(keys, key) {
-					keys = append(keys, key)
-				}
-			}
-		}
+		keys := v.familyKeys(in.Email, in.Name)
 		if len(keys) == 0 {
 			return nil, fmt.Errorf("no family in the directory matches that")
 		}
-		slices.Sort(keys)
 		families := []familyCard{}
 		for _, key := range keys {
 			families = append(families, v.familyCard(key))

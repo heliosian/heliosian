@@ -76,10 +76,28 @@ func (l *links) expandInput(input []byte) []byte {
 	})
 }
 
+var expandedTarget = regexp.MustCompile(`\]\((https?://[^)\s]+)\)`)
+
 type expander struct {
 	links *links
 	emit  Emitter
+	cards func(address string) (linkCard, bool)
+	sent  map[string]bool
 	held  string
+}
+
+func (e *expander) out(text string) {
+	text = e.links.expand(text)
+	for _, m := range expandedTarget.FindAllStringSubmatch(text, -1) {
+		if e.sent[m[1]] {
+			continue
+		}
+		e.sent[m[1]] = true
+		if card, ok := e.cards(m[1]); ok {
+			e.emit("card", card)
+		}
+	}
+	e.emit("text", text)
 }
 
 func (e *expander) send(kind string, data any) {
@@ -96,7 +114,7 @@ func (e *expander) send(kind string, data any) {
 	}
 	e.held = text[cut:]
 	if cut > 0 {
-		e.emit("text", e.links.expand(text[:cut]))
+		e.out(text[:cut])
 	}
 }
 
@@ -104,6 +122,6 @@ func (e *expander) flush() {
 	if e.held == "" {
 		return
 	}
-	e.emit("text", e.links.expand(e.held))
+	e.out(e.held)
 	e.held = ""
 }

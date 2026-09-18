@@ -57,7 +57,7 @@ export function stable(text) {
 // there is one), code, links in brackets, and bare addresses.
 const inlinePattern = /(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\([^)\s]+\)|https?:\/\/[^\s<>)]+[^\s<>).,;:!?])/g;
 
-function inline(node, text) {
+function inline(node, text, cards) {
   let last = 0;
   for (const m of text.matchAll(inlinePattern)) {
     if (m.index > last) {
@@ -66,15 +66,15 @@ function inline(node, text) {
     const token = m[0];
     if (token.startsWith('**')) {
       const strong = el('strong');
-      inline(strong, token.slice(2, -2));
+      inline(strong, token.slice(2, -2), cards);
       node.append(strong);
     } else if (token.startsWith('`')) {
       node.append(el('code', '', token.slice(1, -1)));
     } else if (token.startsWith('[')) {
       const close = token.indexOf('](');
-      node.append(anchor(token.slice(close + 2, -1), token.slice(1, close)));
+      node.append(anchor(token.slice(close + 2, -1), token.slice(1, close), cards));
     } else {
-      node.append(anchor(token, token));
+      node.append(anchor(token, token, cards));
     }
     last = m.index + token.length;
   }
@@ -83,16 +83,70 @@ function inline(node, text) {
   }
 }
 
-function anchor(href, label) {
-  const a = el('a', '', label);
+function anchor(href, label, cards) {
+  const a = el('a');
   a.href = localizeLink(href);
   a.rel = 'noopener';
+  const card = cards[href];
+  if (!card) {
+    a.textContent = label;
+    return a;
+  }
+  a.className = 'chip-link chip-' + card.kind;
+  if (card.image) {
+    const img = el('img', 'chip-image');
+    img.src = localizeLink(card.image);
+    img.alt = '';
+    a.append(img);
+  } else {
+    a.append(el('span', 'chip-image chip-initial', (label.trim()[0] || '•').toUpperCase()));
+  }
+  a.append(el('span', 'chip-label', label));
   return a;
 }
 
+const tableRule = /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?\s*$/;
+
+function tableStart(lines, i) {
+  return lines[i].trim().startsWith('|') && i + 1 < lines.length && tableRule.test(lines[i + 1]);
+}
+
+function cells(line) {
+  return line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim());
+}
+
+function table(lines, i, cards) {
+  const wrap = el('div', 'table-wrap');
+  const t = el('table');
+  const head = el('tr');
+  for (const c of cells(lines[i])) {
+    const th = el('th');
+    inline(th, c, cards);
+    head.append(th);
+  }
+  const thead = el('thead');
+  thead.append(head);
+  const tbody = el('tbody');
+  i += 2;
+  while (i < lines.length && lines[i].trim().startsWith('|')) {
+    const row = el('tr');
+    for (const c of cells(lines[i])) {
+      const td = el('td');
+      inline(td, c, cards);
+      row.append(td);
+    }
+    tbody.append(row);
+    i++;
+  }
+  t.append(thead, tbody);
+  wrap.append(t);
+  return [wrap, i];
+}
+
 // render draws markdown text into a fresh fragment: blocks split on blank
-// lines, each a list, a heading, a quote, a fenced block, or a paragraph.
-export function render(text) {
+// lines, each a table, a list, a heading, a quote, a fenced block, or a
+// paragraph; a link with a card is drawn as a chip.
+export function render(text, cards = {}) {
   const out = document.createDocumentFragment();
   const lines = text.replace(/\r/g, '').split('\n');
   let i = 0;
@@ -100,6 +154,12 @@ export function render(text) {
     const line = lines[i];
     if (!line.trim()) {
       i++;
+      continue;
+    }
+    if (tableStart(lines, i)) {
+      const [node, next] = table(lines, i, cards);
+      out.append(node);
+      i = next;
       continue;
     }
     if (line.startsWith('```')) {
@@ -115,7 +175,7 @@ export function render(text) {
     const heading = line.match(/^(#{1,6})\s+(.*)$/);
     if (heading) {
       const h = el('h3');
-      inline(h, heading[2]);
+      inline(h, heading[2], cards);
       out.append(h);
       i++;
       continue;
@@ -133,7 +193,7 @@ export function render(text) {
           body += ' ' + lines[i].trim();
           i++;
         }
-        inline(item, body);
+        inline(item, body, cards);
         list.append(item);
       }
       out.append(list);
@@ -146,13 +206,13 @@ export function render(text) {
         body.push(lines[i].slice(2));
         i++;
       }
-      inline(quote, body.join(' '));
+      inline(quote, body.join(' '), cards);
       out.append(quote);
       continue;
     }
     const p = el('p');
     const body = [];
-    while (i < lines.length && lines[i].trim() && !lines[i].startsWith('```') && !/^(#{1,6})\s/.test(lines[i]) && !/^\s*[-*]\s+/.test(lines[i]) && !/^\s*\d+[.)]\s+/.test(lines[i]) && !lines[i].startsWith('> ')) {
+    while (i < lines.length && lines[i].trim() && !lines[i].startsWith('```') && !/^(#{1,6})\s/.test(lines[i]) && !/^\s*[-*]\s+/.test(lines[i]) && !/^\s*\d+[.)]\s+/.test(lines[i]) && !lines[i].startsWith('> ') && !tableStart(lines, i)) {
       body.push(lines[i]);
       i++;
     }
@@ -160,7 +220,7 @@ export function render(text) {
       if (index > 0) {
         p.append(el('br'));
       }
-      inline(p, l);
+      inline(p, l, cards);
     });
     out.append(p);
   }
