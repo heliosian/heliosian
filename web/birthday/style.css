@@ -154,9 +154,9 @@ main {
 
 .icon-button svg { width: 20px; height: 20px; }
 
-.icon-button.filled { background: var(--brand); color: #fff; border-radius: 10px; width: 40px; height: 40px; }
+.icon-button.filled { background: var(--brand-fill); color: #fff; border-radius: 10px; width: 40px; height: 40px; }
 
-.icon-button.filled:hover { background: var(--brand-dark); }
+.icon-button.filled:hover { background: var(--brand-fill-dark); }
 
 .icon-button.round { border-radius: 50%; background: rgba(255, 255, 255, 0.15); color: #fff; width: 40px; height: 40px; }
 
@@ -166,7 +166,7 @@ main {
 
 .detail-actions .icon-button { border: 1px solid var(--line); border-radius: 10px; width: 40px; height: 40px; background: #fff; }
 
-.detail-actions .icon-button.filled { border: 0; background: var(--brand); }
+.detail-actions .icon-button.filled { border: 0; background: var(--brand-fill); }
 
 /* A row's own menu (the three dots), hung off its actions. */
 .more-wrap { position: relative; }
@@ -305,7 +305,7 @@ main {
 
 .tab-count { min-width: 20px; padding: 0 6px; border-radius: 999px; background: var(--input); font-size: 11.5px; font-weight: 700; line-height: 18px; text-align: center; }
 
-.tabs button.is-active .tab-count { background: var(--brand); color: #fff; }
+.tabs button.is-active .tab-count { background: var(--brand-fill); color: #fff; }
 
 /* Admin Tools takes the window: the shell's rail and bars step aside and the
    shared admin chrome (admin.css) fills it. */
@@ -431,7 +431,7 @@ body.is-admin main { padding: 0; }
   font-size: 28px;
   font-weight: 700;
   color: #fff;
-  background: var(--brand);
+  background: var(--brand-fill);
 }
 
 .row-body { flex: 1; min-width: 0; }
@@ -478,7 +478,7 @@ body.is-admin main { padding: 0; }
   text-transform: none;
   font-weight: 600;
   color: #fff;
-  background: var(--muted);
+  background: var(--muted-fill);
 }
 
 .stage-wait { background: #7a8f9a; }
@@ -556,7 +556,7 @@ a.fact-value { color: var(--brand); }
    person stands, over the five steps threaded on a timeline. */
 .workflow { margin: 22px 0 0; background: var(--card); border-radius: 14px; box-shadow: 0 1px 3px rgba(10, 50, 54, 0.12); overflow: hidden; }
 
-.workflow-head { background: var(--brand); color: #fff; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 28px; }
+.workflow-head { background: var(--brand-fill); color: #fff; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 28px; }
 
 .workflow-head h2 { margin: 0; font-size: 22px; }
 
@@ -587,7 +587,7 @@ a.fact-value { color: var(--brand); }
 
 .step-num svg { width: 20px; height: 20px; stroke-width: 3; }
 
-.step-done .step-num, .step-current .step-num { background: var(--brand); color: #fff; }
+.step-done .step-num, .step-current .step-num { background: var(--brand-fill); color: #fff; }
 
 .step-attention .step-num { background: #f2b632; color: #fff; }
 
@@ -816,7 +816,7 @@ h2.section { font-size: 20px; margin: 24px 0 12px; }
     right: 0;
     height: 40px;
     padding: 0 12px;
-    background: var(--brand);
+    background: var(--brand-fill);
     color: #fff;
     z-index: 29;
   }
@@ -982,7 +982,7 @@ a.trow[data-stage="stage-complete"]::before { background: #3aaa5c; }
 
 .cell-status > svg { width: 18px; height: 18px; color: var(--muted); }
 
-.status-pill { display: inline-block; white-space: nowrap; padding: 5px 14px; border-radius: 999px; font-size: 13px; font-weight: 600; color: #fff; background: var(--muted); }
+.status-pill { display: inline-block; white-space: nowrap; padding: 5px 14px; border-radius: 999px; font-size: 13px; font-weight: 600; color: #fff; background: var(--muted-fill); }
 
 .status-pill.stage-wait { background: #dff0f3; color: #1f6d73; }
 .status-pill.stage-awaiting-outreach { background: #fdf3d9; color: #8a6800; }
@@ -1063,7 +1063,7 @@ a.trow[data-stage="stage-complete"]::before { background: #3aaa5c; }
 
 .issue-badge-day { font-size: 22px; font-weight: 700; }
 
-.issue.is-next .issue-badge { background: var(--brand); color: #fff; }
+.issue.is-next .issue-badge { background: var(--brand-fill); color: #fff; }
 
 .issue.is-next .issue-badge-month { color: rgba(255, 255, 255, 0.8); }
 
@@ -1185,7 +1185,7 @@ a.trow[data-stage="stage-complete"]::before { background: #3aaa5c; }
 .thumb.face-green { background: #3f8f5c; color: #fff; }
 .thumb.face-yellow { background: #e5b830; color: #fff; }
 .thumb.face-red { background: #d9583b; color: #fff; }
-.thumb.face-teal { background: var(--brand); color: #fff; }
+.thumb.face-teal { background: var(--brand-fill); color: #fff; }
 
 .calendar.compact .day { min-height: 64px; padding: 4px; font-size: 12px; }
 

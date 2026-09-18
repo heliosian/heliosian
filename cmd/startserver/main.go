@@ -1,7 +1,7 @@
 // Command startserver is the development server. By default it serves the
-// sample community in the foreground; -capture serves it just long enough to
-// screenshot one page and exits; -real serves the production assembly in the
-// foreground; -detach launches -real in the background with its output in a log
+// sample community in the foreground; --capture serves it just long enough to
+// screenshot one page and exits; --real serves the production assembly in the
+// foreground; --detach launches --real in the background with its output in a log
 // file and prints a minted session cookie plus the command to stop it. Every
 // mode serves every app, each on its own local hostname.
 //
@@ -45,18 +45,20 @@ const logPath = "/tmp/heliosian-server.log"
 
 const sampleUser = "jordan.whitfield@heliosschool.org"
 
-// blobCache is where -real keeps the media it fetches from the bucket, so a
+// blobCache is where --real keeps the media it fetches from the bucket, so a
 // restart reads photos from disk rather than fetching every one again;
 // gitignored, and deleted by hand to start clean.
 const blobCache = "cache/blobs"
 
 func main() {
-	email := flag.String("email", "ian.gulliver@heliosschool.org", "session email for -detach's minted cookie")
+	email := flag.String("email", "ian.gulliver@heliosschool.org", "session email for --detach's minted cookie")
 	real := flag.Bool("real", false, "serve the production assembly in the foreground")
-	detach := flag.Bool("detach", false, "launch -real in the background with a log file and a minted cookie")
+	detach := flag.Bool("detach", false, "launch --real in the background with a log file and a minted cookie")
 	capturePath := flag.String("capture", "", "serve sample data in-process, capture this url (on any app's local hostname) as a PNG, and exit")
-	out := flag.String("out", "screenshots/capture.png", "output png path for -capture")
-	wait := flag.String("wait", "body", "css selector that must be visible before capturing, for -capture")
+	out := flag.String("out", "screenshots/capture.png", "output png path for --capture")
+	wait := flag.String("wait", "body", "css selector that must be visible before capturing, for --capture")
+	width := flag.Int("width", 0, "viewport width for --capture (default 1280)")
+	height := flag.Int("height", 0, "viewport height for --capture (default 800)")
 	flag.Parse()
 	slog.SetDefault(logging.Console())
 
@@ -66,7 +68,7 @@ func main() {
 	case *detach:
 		detachReal(*email)
 	case *capturePath != "":
-		captureOnce(*capturePath, *out, *wait)
+		captureOnce(capture.Options{URL: *capturePath, Wait: *wait, Width: *width, Height: *height, Cookie: "heliosian-quan-shown=1"}, *out)
 	default:
 		app.Serve(sampleServer())
 	}
@@ -195,7 +197,7 @@ func detachReal(email string) {
 	if err != nil {
 		logging.Fatal("resolve own binary", "error", err)
 	}
-	cmd := exec.Command(self, "-real")
+	cmd := exec.Command(self, "--real")
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 	// Its own group, so the printed stop command reaps the server and nothing else.
@@ -210,7 +212,7 @@ func detachReal(email string) {
 	fmt.Printf("header: Cookie: session=%s\n", cookie)
 }
 
-func captureOnce(url, out, wait string) {
+func captureOnce(opts capture.Options, out string) {
 	server, queue := sampleServer()
 	served := make(chan error, 1)
 	go func() {
@@ -237,7 +239,7 @@ func captureOnce(url, out, wait string) {
 		logging.Fatal("server did not become ready", "base", base)
 	}
 
-	png, captureErr := capture.PNG(capture.Options{URL: url, Wait: wait})
+	png, captureErr := capture.PNG(opts)
 	if err := server.Shutdown(context.Background()); err != nil {
 		slog.Error("shutdown", "error", err)
 	}
@@ -252,5 +254,5 @@ func captureOnce(url, out, wait string) {
 	if err := os.WriteFile(out, png, 0o644); err != nil {
 		logging.Fatal("write capture", "out", out, "error", err)
 	}
-	slog.Info("captured", "url", url, "out", out)
+	slog.Info("captured", "url", opts.URL, "out", out)
 }

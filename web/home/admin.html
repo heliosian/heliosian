@@ -27,7 +27,7 @@
     padding: 9px 18px;
     border-radius: 999px;
     border: 0;
-    background: var(--brand);
+    background: var(--brand-fill);
     color: #fff;
     font: inherit;
     font-weight: 600;
@@ -84,9 +84,9 @@
     line-height: 1;
     flex-shrink: 0;
   }
-  .category-row .emoji.is-blank { font-size: 15px; font-weight: 700; color: #fff; background: var(--brand); }
-  .category-row .emoji svg { width: 22px; height: 22px; color: var(--brand); }
-  .category-row .emoji .icon-mask { display: inline-block; width: 22px; height: 22px; background: var(--brand); -webkit-mask: var(--mask) center / contain no-repeat; mask: var(--mask) center / contain no-repeat; }
+  .category-row .emoji.is-blank { font-size: 15px; font-weight: 700; color: #fff; background: var(--brand-fill); }
+  .category-row .emoji svg { width: 22px; height: 22px; color: var(--brand-fill); }
+  .category-row .emoji .icon-mask { display: inline-block; width: 22px; height: 22px; background: var(--brand-fill); -webkit-mask: var(--mask) center / contain no-repeat; mask: var(--mask) center / contain no-repeat; }
   .icon-heliosian { --mask: url('/brand/symbol-white.png'); }
   .icon-when { --mask: url('/brand/symbol-when.png'); }
   .category-row .title { font-weight: 600; }
@@ -111,7 +111,7 @@
   }
   .visibility-switch input { position: absolute; opacity: 0; width: 0; height: 0; }
   .visibility-switch input:checked + span { color: #fff; }
-  .visibility-switch label:has(input:checked) { background: var(--brand); color: #fff; }
+  .visibility-switch label:has(input:checked) { background: var(--brand-fill); color: #fff; }
   .visibility-switch label:has(input:focus-visible) { outline: 2px solid var(--brand); outline-offset: 2px; }
   .visibility-note { font-size: 13px; color: var(--muted); margin: 6px 0 10px; }
   .visibility-head { display: flex; align-items: center; gap: 14px; margin-bottom: 10px; }

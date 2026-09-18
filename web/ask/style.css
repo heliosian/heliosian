@@ -370,7 +370,7 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
     right: 0;
     height: 40px;
     padding: 0 12px;
-    background: var(--brand);
+    background: var(--brand-fill);
     color: #fff;
     z-index: 29;
   }

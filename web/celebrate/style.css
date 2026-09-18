@@ -323,7 +323,7 @@ main {
   padding: 22px 28px;
   margin-bottom: 22px;
   border-radius: 14px;
-  background: linear-gradient(100deg, var(--brand-deep), var(--brand) 60%, #2b6a70);
+  background: linear-gradient(100deg, var(--brand-deep), var(--brand-fill) 60%, #2b6a70);
   background-size: cover;
   background-position: center;
   color: #fff;
@@ -437,7 +437,7 @@ main {
   max-width: 100%;
   padding: 5px 12px;
   border-radius: 999px;
-  background: var(--brand);
+  background: var(--brand-fill);
   color: #fff;
   font-size: 11.5px;
   font-weight: 700;
@@ -524,7 +524,7 @@ main {
   text-transform: uppercase;
   font-weight: 700;
   color: #fff;
-  background: var(--muted);
+  background: var(--muted-fill);
 }
 
 .badge.pending { background: #a95f1b; }
@@ -631,7 +631,7 @@ main {
 
 .thumb { flex-shrink: 0; width: 80px; height: 80px; border-radius: 12px; object-fit: cover; background: var(--input); }
 
-.thumb.initial { display: flex; align-items: center; justify-content: center; font-size: 28px; font-weight: 700; color: #fff; background: var(--brand); }
+.thumb.initial { display: flex; align-items: center; justify-content: center; font-size: 28px; font-weight: 700; color: #fff; background: var(--brand-fill); }
 
 .row-body { flex: 1; min-width: 0; }
 
@@ -1525,9 +1525,9 @@ body.is-admin main { padding: 0; background-image: none; }
 /* Inline editing on the party page, as HCA-Team's event page has it: the
    hero pencil turns edit mode on, and each section grows a pencil that
    swaps it for a small editor with Save and Cancel. */
-.hero-action.is-editing { background: var(--brand); color: #fff; }
+.hero-action.is-editing { background: var(--brand-fill); color: #fff; }
 
-.hero-action.is-editing:hover { background: var(--brand-dark); }
+.hero-action.is-editing:hover { background: var(--brand-fill-dark); }
 
 .hero-image-bar {
   position: absolute;
@@ -1657,7 +1657,7 @@ body.is-admin main { padding: 0; background-image: none; }
     right: 0;
     height: 40px;
     padding: 0 12px;
-    background: var(--brand);
+    background: var(--brand-fill);
     color: #fff;
     z-index: 29;
   }

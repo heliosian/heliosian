@@ -6,7 +6,16 @@
    tie. The rails, the buttons and the alerts keep their colours: they were
    drawn for a dark ground. */
 
+:root {
+  --brand-fill: var(--brand);
+  --brand-fill-dark: var(--brand-dark);
+  --muted-fill: var(--muted);
+}
+
 html[data-theme="dark"] {
+  --brand-fill: #0f4e54;
+  --brand-fill-dark: #082b2e;
+  --muted-fill: #4f6466;
   /* When's day-type washes, deep enough for their coloured words. */
   --no-school-wash: #3a1f1a;
   --early-wash: #3a2c14;
@@ -471,8 +480,8 @@ html[data-theme="dark"] {
    are dark glass on the picture rather than white discs. */
 [data-theme="dark"] .hero-action { background: rgba(12, 22, 24, 0.78); color: #e6eeee; border: 1px solid rgba(255, 255, 255, 0.18); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45); backdrop-filter: blur(6px); }
 [data-theme="dark"] .hero-action:hover { background: rgba(28, 44, 48, 0.92); }
-[data-theme="dark"] .hero-action.is-editing { background: var(--brand); color: #fff; border-color: transparent; }
-[data-theme="dark"] .hero-action.is-editing:hover { background: var(--brand-dark); }
+[data-theme="dark"] .hero-action.is-editing { background: var(--brand-fill); color: #fff; border-color: transparent; }
+[data-theme="dark"] .hero-action.is-editing:hover { background: var(--brand-fill-dark); }
 
 /* When's RSVP band: a deep green wash, the buttons dark glass until chosen. */
 [data-theme="dark"] .rsvp-band { border-color: rgba(47, 158, 106, 0.45); background: linear-gradient(90deg, #14352a, #122d27); }
@@ -489,3 +498,26 @@ html[data-theme="dark"] {
 [data-theme="dark"] .rsvp-no.is-on, [data-theme="dark"] .rsvp-no.is-on:hover { background: #e6eeee; border-color: #e6eeee; color: #0f1c1e; box-shadow: 0 0 0 4px rgba(230, 238, 238, 0.25); }
 [data-theme="dark"] .rsvp-clear { color: var(--muted); }
 [data-theme="dark"] .rsvp-clear:hover { color: var(--ink); }
+
+[data-theme="dark"] .toast,
+[data-theme="dark"] .feedback-toast,
+[data-theme="dark"] .photo-slot-delete { color: var(--page); }
+
+[data-theme="dark"] .strip-arrow,
+[data-theme="dark"] .admin-mark { background: var(--card); border-color: var(--line); }
+
+[data-theme="dark"] .filter-action.is-on { background: rgba(0, 166, 159, 0.22); border-color: rgba(0, 166, 159, 0.45); color: var(--brand); }
+
+[data-theme="dark"] .pending-band.is-invite { background: #12393b; }
+
+[data-theme="dark"] .admin-group-name:not([readonly]) { background: var(--input); }
+
+[data-theme="dark"] .tabbar { background: var(--card); }
+
+[data-theme="dark"] .day-note:not(.sidebar *),
+[data-theme="dark"] .admin-row-description:focus { background: var(--input); }
+
+[data-theme="dark"] .feedback-modal { background: var(--card); }
+[data-theme="dark"] .feedback-kind:has(input:checked) span { background: rgba(0, 166, 159, 0.22); }
+[data-theme="dark"] .feedback-send { border-color: var(--brand-fill); }
+[data-theme="dark"] .feedback-cancel { background: var(--card); border-color: var(--line); color: var(--ink); }

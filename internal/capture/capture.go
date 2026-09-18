@@ -4,6 +4,7 @@ package capture
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -48,8 +49,12 @@ func PNG(opts Options) ([]byte, error) {
 		if !ok {
 			return nil, fmt.Errorf("cookie must be name=value")
 		}
+		u, err := url.Parse(opts.URL)
+		if err != nil {
+			return nil, fmt.Errorf("parse %s: %w", opts.URL, err)
+		}
 		actions = append(actions, chromedp.ActionFunc(func(ctx context.Context) error {
-			return network.SetCookie(name, value).WithDomain("who.local.heliosian.com").WithPath("/").Do(ctx)
+			return network.SetCookie(name, value).WithDomain(u.Hostname()).WithPath("/").Do(ctx)
 		}))
 	}
 	var png []byte

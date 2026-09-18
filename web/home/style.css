@@ -1101,10 +1101,10 @@ a.event-people:hover .event-person { text-decoration: underline; }
 
 .audience-chip:hover { border-color: var(--brand); color: var(--brand); }
 
-.audience-chip.is-on { background: var(--brand); border-color: var(--brand); color: #fff; }
+.audience-chip.is-on { background: var(--brand-fill); border-color: var(--brand-fill); color: #fff; }
 
 .hidden-badge {
-  background: var(--muted);
+  background: var(--muted-fill);
   color: #fff;
   border-radius: 999px;
   padding: 1px 8px;
@@ -1562,7 +1562,7 @@ a.event-people:hover .event-person { text-decoration: underline; }
   font-size: 16px;
   font-weight: 700;
   color: #fff;
-  background: var(--brand);
+  background: var(--brand-fill);
 }
 
 .category-row-body { flex: 1; min-width: 0; }

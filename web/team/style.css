@@ -477,7 +477,7 @@ main {
   font-weight: 600;
   cursor: pointer;
   color: #fff;
-  background: var(--brand);
+  background: var(--brand-fill);
   opacity: 0.85;
   transition: opacity 0.12s, box-shadow 0.12s;
 }
@@ -572,7 +572,7 @@ main {
   position: absolute;
   inset: 0;
   border-radius: 14px;
-  background: var(--peek, var(--brand));
+  background: var(--peek, var(--brand-fill));
   transform: rotate(1.5deg);
   transform-origin: bottom right;
   transition: transform 0.2s ease;
@@ -634,7 +634,7 @@ main {
   max-width: calc(100% - 84px);
   padding: 5px 11px;
   border-radius: 999px;
-  background: var(--brand);
+  background: var(--brand-fill);
   color: #fff;
   font-size: 11.5px;
   font-weight: 700;
@@ -818,12 +818,12 @@ main {
   transition: transform 0.15s;
 }
 
-.switch input:checked + span { background: var(--brand); }
+.switch input:checked + span { background: var(--brand-fill); }
 
 .switch input:checked + span::after { transform: translateX(18px); }
 
 .band {
-  background: var(--brand);
+  background: var(--brand-fill);
   color: #fff;
   margin: 12px -20px 0;
   padding: 16px 20px 40px;
@@ -960,7 +960,7 @@ main {
   font-size: 28px;
   font-weight: 700;
   color: #fff;
-  background: var(--brand);
+  background: var(--brand-fill);
 }
 
 .row-body { flex: 1; min-width: 0; }
@@ -1046,7 +1046,7 @@ main {
   text-transform: uppercase;
   font-weight: 700;
   color: #fff;
-  background: var(--muted);
+  background: var(--muted-fill);
 }
 
 .badge.pending { background: #a95f1b; }
@@ -1069,7 +1069,7 @@ main {
 
 .badge.complete svg { width: 13px; height: 13px; stroke-width: 2.5; }
 
-.badge.chair { background: var(--brand); }
+.badge.chair { background: var(--brand-fill); }
 
 .badge.open-chair { background: #00746f; }
 
@@ -1441,7 +1441,7 @@ button.side-chair:hover { background: var(--input); }
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: var(--brand) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z'/%3E%3C/svg%3E") center / 9px no-repeat;
+  background: var(--brand-fill) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z'/%3E%3C/svg%3E") center / 9px no-repeat;
   box-shadow: 0 0 0 2px #fff;
 }
 
@@ -1495,7 +1495,7 @@ button.side-chair:hover { background: var(--input); }
 
 .side-option .side-approve svg { width: 13px; height: 13px; }
 
-.side-option .side-approve:hover { background: var(--brand); }
+.side-option .side-approve:hover { background: var(--brand-fill); }
 
 /* The question whoever runs it is asked in place of the ask for a co-chair,
    with the way into editing at its right. */
@@ -1713,7 +1713,7 @@ button.side-chair:hover { background: var(--input); }
 .vol-roster { margin-top: 14px; }
 
 /* One control for the two ways to sign someone up: a label, then segments. */
-.split-button { display: inline-flex; align-items: stretch; border: 1px solid var(--brand); border-radius: 8px; overflow: hidden; background: var(--brand); }
+.split-button { display: inline-flex; align-items: stretch; border: 1px solid var(--brand-fill); border-radius: 8px; overflow: hidden; background: var(--brand-fill); }
 
 .split-label { display: inline-flex; align-items: center; padding: 6px 10px 6px 12px; color: #fff; font-size: 13px; font-weight: 600; }
 
@@ -2031,9 +2031,9 @@ button.side-chair:hover { background: var(--input); }
 
 .hero-action svg { width: 17px; height: 17px; }
 
-.hero-action.is-editing { background: var(--brand); color: #fff; }
+.hero-action.is-editing { background: var(--brand-fill); color: #fff; }
 
-.hero-action.is-editing:hover { background: var(--brand-dark); }
+.hero-action.is-editing:hover { background: var(--brand-fill-dark); }
 
 /* The status control, under the pencil while editing: a white pill with a
    native select inside, matching the date stamp opposite. */
@@ -2324,7 +2324,7 @@ button.side-chair:hover { background: var(--input); }
 .detail-meta { color: var(--muted); font-size: 14px; margin-top: 8px; }
 
 .links-band {
-  background: var(--brand);
+  background: var(--brand-fill);
   color: #fff;
   margin: 20px -20px 0;
   padding: 6px 20px;
@@ -2766,7 +2766,7 @@ body.is-admin main { padding: 0; }
     right: 0;
     height: 40px;
     padding: 0 12px;
-    background: var(--brand);
+    background: var(--brand-fill);
     color: #fff;
     z-index: 29;
   }
@@ -3069,7 +3069,7 @@ body.is-admin main { padding: 0; }
   height: 20px;
   padding: 0 5px;
   border-radius: 999px;
-  background: var(--brand);
+  background: var(--brand-fill);
   color: #fff;
   font-size: 11px;
   font-weight: 700;

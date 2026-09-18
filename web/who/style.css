@@ -284,7 +284,7 @@ html {
   padding: 12px 20px;
   border: none;
   border-radius: 10px;
-  background: var(--brand);
+  background: var(--brand-fill);
   color: #fff;
   font-size: 15px;
   font-weight: 700;
@@ -1041,7 +1041,7 @@ main {
 }
 
 .view-switch-btn.active {
-  background: var(--brand);
+  background: var(--brand-fill);
   color: #fff;
 }
 
@@ -1445,7 +1445,7 @@ main {
 }
 
 .filter-switch:checked {
-  background: var(--brand);
+  background: var(--brand-fill);
 }
 
 .filter-switch:checked::before {
@@ -1966,7 +1966,7 @@ main {
   width: 20px;
   height: 20px;
   border-radius: 999px;
-  background: var(--brand);
+  background: var(--brand-fill);
   color: #fff;
 }
 
@@ -3240,7 +3240,7 @@ div.detail-photo-empty {
 }
 
 .icon-button.copied {
-  background: var(--brand);
+  background: var(--brand-fill);
   color: #fff;
   transition: background-color 0.15s ease, color 0.15s ease;
 }
@@ -3419,7 +3419,7 @@ a.list-row:hover {
 }
 
 .chip-toggle.active {
-  background: var(--chip-color, var(--brand));
+  background: var(--chip-color, var(--brand-fill));
   color: #fff;
 }
 

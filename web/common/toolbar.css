@@ -462,7 +462,7 @@
   overflow: hidden;
   background: #fff;
   border: 1px solid var(--line);
-  color: var(--brand);
+  color: var(--brand-fill);
   font-size: 12px;
   font-weight: 700;
   flex-shrink: 0;
@@ -565,7 +565,7 @@ body.is-super .user-avatar {
   transition: left 0.15s;
 }
 
-.user-menu-toggle input:checked { background: var(--brand); }
+.user-menu-toggle input:checked { background: var(--brand-fill); }
 
 .user-menu-toggle input:checked::before { left: 16px; }
 
@@ -850,7 +850,7 @@ body.is-super .user-avatar {
 }
 
 .feedback-send {
-  background: var(--brand);
+  background: var(--brand-fill);
   color: #fff;
 }
 

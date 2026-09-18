@@ -101,11 +101,11 @@ button { font: inherit; }
 
 .sidebar .mini-day.is-outside { color: rgba(255, 255, 255, 0.35); }
 
-.sidebar .mini-day.is-on { background: #fff; color: var(--brand); }
+.sidebar .mini-day.is-on { background: #fff; color: var(--brand-fill); }
 
-.sidebar .mini-day.is-on .mini-num { color: var(--brand); }
+.sidebar .mini-day.is-on .mini-num { color: var(--brand-fill); }
 
-.sidebar .mini-day.is-on .mini-dot { background: var(--brand); }
+.sidebar .mini-day.is-on .mini-dot { background: var(--brand-fill); }
 
 .sidebar .timeline-title { color: #fff; }
 
@@ -262,7 +262,7 @@ button { font: inherit; }
 
 .mini-day.is-today .mini-num { color: var(--amber); }
 
-.mini-day.is-on { background: var(--brand); color: #fff; }
+.mini-day.is-on { background: var(--brand-fill); color: #fff; }
 
 .mini-day.is-on .mini-num { color: #fff; }
 
@@ -736,7 +736,7 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .up-place { font-size: 13px; color: var(--muted); }
 
-.up-body .event-pill { margin-top: 4px; padding: 4px 12px; background: var(--brand); color: #fff; }
+.up-body .event-pill { margin-top: 4px; padding: 4px 12px; background: var(--brand-fill); color: #fff; }
 
 .up-dot { width: 9px; height: 9px; flex-shrink: 0; margin-top: 4px; border-radius: 50%; background: var(--other); }
 
@@ -881,9 +881,9 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .event-pill { display: inline-block; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--brand); color: var(--brand); font-size: 11.5px; font-weight: 700; line-height: 1.4; white-space: nowrap; cursor: pointer; }
 
-.event-pill.is-open { background: var(--brand); color: #fff; }
+.event-pill.is-open { background: var(--brand-fill); color: #fff; }
 
-.event-pill:hover { background: var(--brand-dark); border-color: var(--brand-dark); color: #fff; }
+.event-pill:hover { background: var(--brand-fill-dark); border-color: var(--brand-fill-dark); color: #fff; }
 
 /* A linked event the household is already in: its standing, in the amber
    the page keeps for what is the viewer's own. */
@@ -1383,7 +1383,7 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .contact-name { font-size: 12px; color: var(--muted); line-height: 1.25; }
 
-.grade-badge { position: absolute; left: -6px; top: -6px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 999px; background: var(--brand); color: #fff; font-size: 11px; font-weight: 700; line-height: 20px; text-align: center; box-shadow: 0 0 0 2px #fff; }
+.grade-badge { position: absolute; left: -6px; top: -6px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 999px; background: var(--brand-fill); color: #fff; font-size: 11px; font-weight: 700; line-height: 20px; text-align: center; box-shadow: 0 0 0 2px #fff; }
 
 /* The admins' part of the source card, set off under a rule. */
 .side-admin { margin-top: 10px; padding-top: 10px; border-top: 1px dashed #c5dad7; }
@@ -1775,7 +1775,7 @@ body.is-admin main { padding: 0; }
     right: 0;
     height: 40px;
     padding: 0 12px;
-    background: var(--brand);
+    background: var(--brand-fill);
     color: #fff;
     z-index: 29;
   }

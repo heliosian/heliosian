@@ -8,6 +8,8 @@ For a sample-data page, one self-contained command serves, captures, and exits:
 
     go run ./cmd/startserver --capture https://who.local.heliosian.com:8080/people --out screenshots/directory.png --wait .sidebar
 
+It takes `--width` and `--height` too, so `--width 390 --height 844` is a phone; add `?mode=dark` to the URL to see the page in dark mode. It marks Quan mode as already shown, so the sample super admin is not switched onto it and the capture wears the mode the URL asks for.
+
 With a server already running, capture against it directly:
 
     go run ./cmd/screenshot --url https://who.local.heliosian.com:8080/people --out screenshots/directory.png --wait .sidebar
