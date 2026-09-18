@@ -120,11 +120,21 @@ func TestMagicTagsCarryTheirHosts(t *testing.T) {
 	if !slices.Equal(lists[i].Hosts, []string{jordan, "mina.park@heliosschool.org"}) {
 		t.Fatalf("hosts: %v", lists[i].Hosts)
 	}
+	// The hosts are on the list itself, the viewer among them, so a group
+	// made of it reaches whoever is running the event.
+	for _, host := range lists[i].Hosts {
+		if !slices.Contains(lists[i].People, host) {
+			t.Fatalf("International Night's list leaves off its co-chair %s: %v", host, lists[i].People)
+		}
+	}
 	i = slices.IndexFunc(lists, func(l who.List) bool { return l.Key == "party:P001" })
 	if i < 0 {
 		t.Fatalf("no Fondue & Fort Night list: %+v", lists)
 	}
 	if !slices.Contains(lists[i].Hosts, jordan) {
 		t.Fatalf("hosts: %v", lists[i].Hosts)
+	}
+	if !slices.Contains(lists[i].People, jordan) {
+		t.Fatalf("Fondue & Fort Night's list leaves off its host: %v", lists[i].People)
 	}
 }

@@ -99,11 +99,18 @@ func parties(directory *who.Model, model *celebrate.Model, email string, now tim
 					}
 				}
 				list.Guests = append(list.Guests, guest)
-			} else if holder != email {
+			} else {
 				people[holder] = true
 			}
-			if known && buyer != email {
+			if known {
 				people[buyer] = true
+			}
+		}
+		// The hosts are on their party's list, the viewer among them: a
+		// group made of the list reaches whoever is running it too.
+		for _, host := range list.Hosts {
+			if directory.Person(host) != nil {
+				people[host] = true
 			}
 		}
 		list.People = slices.Sorted(maps.Keys(people))
@@ -161,9 +168,15 @@ func activities(directory *who.Model, model *team.Model, email string, now time.
 			people := map[string]bool{}
 			for _, node := range append([]*team.Activity{a}, a.Descendants()...) {
 				for _, v := range node.Volunteers {
-					if person := directory.Resolve(v.Email); person != email && directory.Person(person) != nil {
+					if person := directory.Resolve(v.Email); directory.Person(person) != nil {
 						people[person] = true
 					}
+				}
+			}
+			// The co-chairs are on their event's list, the viewer among them.
+			for _, host := range list.Hosts {
+				if directory.Person(host) != nil {
+					people[host] = true
 				}
 			}
 			list.People = slices.Sorted(maps.Keys(people))
