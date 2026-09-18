@@ -62,6 +62,20 @@ func TestGroupListsCarryAdditionsAsGuests(t *testing.T) {
 			t.Errorf("%s is listed as a person but is not in the directory", p)
 		}
 	}
+	if list.Archived {
+		t.Fatal("a group nobody archived came marked archived")
+	}
+	// A group archived by its manager keeps its list, marked so, for them
+	// alone.
+	groupTables.Archived = append(groupTables.Archived, map[string]string{"Group": "soccer-team", "Email": jordan})
+	if model, err = loop.BuildModel(groupTables); err != nil {
+		t.Fatal(err)
+	}
+	lists = GroupLists(model, sources, jordan)
+	i = slices.IndexFunc(lists, func(l who.List) bool { return l.Key == "group:soccer-team" })
+	if i < 0 || !lists[i].Archived {
+		t.Fatalf("the archived group's list is missing or unmarked: %+v", lists)
+	}
 }
 
 type anyImage struct{}

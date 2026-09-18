@@ -59,6 +59,7 @@ html[data-theme="quan"] {
 [data-theme="quan"] .app-nav a.active,
 [data-theme="quan"] .nav-event-link.is-active,
 [data-theme="quan"] .nav-heading-toggle.active,
+[data-theme="quan"] .nav-heading-toggle.is-active,
 [data-theme="quan"] .nav-sub-item.is-on { background: rgba(80, 8, 36, 0.32); }
 
 /* The rail's buttons wear the lime, with the plum ink the pink reads as. */

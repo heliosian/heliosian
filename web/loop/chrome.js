@@ -9,10 +9,19 @@ const items = [
   {href: '/new', icon: 'plus', label: 'New Group'},
 ];
 
+// The group whose page is open, if any.
+function openGroup() {
+  const path = decodeURIComponent(location.pathname);
+  return state.model ? state.model.groups.find(g => path === decodeURIComponent(groupPath(g))) : null;
+}
+
+// My Groups is lit on the front page and on a group's page, unless the
+// group is one the viewer has archived: then Archived is lit instead.
 function active(href) {
   const path = location.pathname;
   if (href === '/') {
-    return path === '/' || path.startsWith('/groups/');
+    const g = openGroup();
+    return path === '/' || (path.startsWith('/groups/') && !(g && g.archived));
   }
   return path === href;
 }
@@ -41,7 +50,21 @@ function closeMenus() {
 
 // The rail lists the pages, and New Group is its action - the green
 // button every rail has - rather than a row. Under My Groups sit the
-// person's groups themselves, each opening its page, the one open lit.
+// person's groups themselves, each opening its page, the one open lit,
+// with the ones they have archived under their own heading below.
+function groupRows(groups) {
+  const sub = el('div', 'nav-sub');
+  for (const g of groups) {
+    const row = link(groupPath(g), 'nav-sub-item' + (decodeURIComponent(location.pathname) === decodeURIComponent(groupPath(g)) ? ' is-on' : ''));
+    row.append(el('span', 'nav-sub-name', g.title || g.name));
+    if (g.members) {
+      row.append(el('span', 'nav-sub-count', String(g.members.length)));
+    }
+    sub.append(row);
+  }
+  return sub;
+}
+
 function fillNav(nav) {
   for (const item of items) {
     if (item.href === '/new') {
@@ -52,18 +75,52 @@ function fillNav(nav) {
     }
     nav.append(navLink(item));
     const mine = state.model ? state.model.groups.filter(managed) : [];
-    if (item.href === '/' && mine.length) {
-      const sub = el('div', 'nav-sub');
-      for (const g of mine) {
-        const row = link(groupPath(g), 'nav-sub-item' + (decodeURIComponent(location.pathname) === decodeURIComponent(groupPath(g)) ? ' is-on' : ''));
-        row.append(el('span', 'nav-sub-name', g.title || g.name));
-        if (g.members) {
-          row.append(el('span', 'nav-sub-count', String(g.members.length)));
-        }
-        sub.append(row);
-      }
-      nav.append(sub);
+    const current = mine.filter(g => !g.archived);
+    const archived = mine.filter(g => g.archived);
+    if (item.href === '/' && current.length) {
+      nav.append(groupRows(current));
     }
+    // Archived comes folded, and opens on a click - remembered per browser -
+    // or while one of its groups is the page open.
+    if (item.href === '/' && archived.length) {
+      const g = openGroup();
+      const here = Boolean(g && g.archived);
+      const open = here || archivedOpen();
+      const heading = el('button', 'nav-heading-toggle' + (open ? ' open' : '') + (here ? ' is-active' : ''));
+      heading.type = 'button';
+      heading.setAttribute('aria-expanded', String(open));
+      const chevron = el('span', 'nav-chevron');
+      chevron.append(svg('chevron'));
+      heading.append(svg('archive'), el('span', 'nav-heading-title', 'Archived'), el('span', 'nav-sub-count', String(archived.length)), chevron);
+      heading.addEventListener('click', () => {
+        setArchivedOpen(!open);
+        // Rebuild whichever nav this is, the rail's or the drawer's.
+        nav.replaceChildren();
+        fillNav(nav);
+      });
+      nav.append(heading);
+      if (open) {
+        nav.append(groupRows(archived));
+      }
+    }
+  }
+}
+
+const archivedKey = 'loop.archivedOpen';
+
+function archivedOpen() {
+  try {
+    return localStorage.getItem(archivedKey) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function setArchivedOpen(open) {
+  try {
+    localStorage.setItem(archivedKey, open ? '1' : '0');
+  } catch {
+    // A browser with storage off simply forgets between pages.
   }
 }
 

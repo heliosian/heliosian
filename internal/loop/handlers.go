@@ -70,6 +70,7 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	mux.HandleFunc("DELETE /api/loop/group", a.deleteGroup)
 	mux.HandleFunc("GET /api/loop/messages", a.messages)
 	mux.HandleFunc("POST /api/loop/subscription", a.subscription)
+	mux.HandleFunc("POST /api/loop/archive", a.archive)
 	mux.HandleFunc("GET /api/admin/state", a.adminState)
 	mux.HandleFunc("POST /api/admin/admins", a.setAdmins)
 	mux.HandleFunc("POST /hooks/mail", a.inbound)
@@ -169,6 +170,7 @@ type groupView struct {
 	Mine         bool       `json:"mine"`
 	Member       bool       `json:"member"`
 	Unsubscribed bool       `json:"unsubscribed"`
+	Archived     bool       `json:"archived"`
 	Sent         int        `json:"sent"`
 }
 
@@ -345,7 +347,7 @@ func (a app) sees(g Group, viewer string, admin bool) bool {
 }
 
 func (a app) view(g Group, viewer string) groupView {
-	v := groupView{Group: g, Address: g.Address(), Rules: []ruleView{}, Managers: a.people(g.Managers), Mine: g.Manages(viewer), Member: OnList(g, a.sources(), viewer), Unsubscribed: g.HasExcluded(viewer), Sent: a.sentCount(g.Name)}
+	v := groupView{Group: g, Address: g.Address(), Rules: []ruleView{}, Managers: a.people(g.Managers), Mine: g.Manages(viewer), Member: OnList(g, a.sources(), viewer), Unsubscribed: g.HasExcluded(viewer), Archived: a.cache.Model().Archived(g.Name, viewer), Sent: a.sentCount(g.Name)}
 	for _, r := range g.Rules {
 		v.Rules = append(v.Rules, ruleView{Rule: r, TagLabels: a.tagLabels(r)})
 	}
@@ -594,7 +596,7 @@ func (a app) saveGroup(w http.ResponseWriter, r *http.Request) {
 		} else if err := a.writer.Upsert(appName, groupsTab, "Name", g.Name, groupCells(g)); err != nil {
 			return err
 		}
-		for _, tab := range []string{managersTab, rulesTab, additionsTab, excludedTab, aliasesTab} {
+		for _, tab := range []string{managersTab, rulesTab, additionsTab, excludedTab, aliasesTab, archivedTab} {
 			if err := a.writer.Delete(appName, tab, map[string]string{"Group": g.Name}); err != nil {
 				return err
 			}
@@ -712,6 +714,39 @@ func (a app) subscription(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(a.view(*a.cache.Model().Group(g.Name), email)); err != nil {
 		slog.ErrorContext(r.Context(), "encode subscription", "error", err)
+	}
+}
+
+// archive puts a group the viewer sees away for them alone, or brings it
+// back: nothing about the group changes, so anyone who sees it may, and the
+// change log is not told.
+func (a app) archive(w http.ResponseWriter, r *http.Request) {
+	email, admin := a.who(r)
+	var body struct {
+		Name     string `json:"name"`
+		Archived bool   `json:"archived"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	g := a.cache.Model().Group(strings.ToLower(strings.TrimSpace(body.Name)))
+	if g == nil || !a.sees(*g, email, admin) {
+		http.Error(w, "no such group", http.StatusNotFound)
+		return
+	}
+	tables := a.cache.Tables().withArchived(g.Name, email, body.Archived)
+	if !a.commit(r, w, tables, func() error {
+		if body.Archived {
+			return a.writer.Append(appName, archivedTab, []string{g.Name, email})
+		}
+		return a.writer.Delete(appName, archivedTab, map[string]string{"Group": g.Name, "Email": email})
+	}) {
+		return
+	}
+	slog.InfoContext(r.Context(), "groups: archived", "group", g.Name, "email", email, "archived", body.Archived)
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(a.view(*a.cache.Model().Group(g.Name), email)); err != nil {
+		slog.ErrorContext(r.Context(), "encode archive", "error", err)
 	}
 }
 

@@ -23,6 +23,7 @@ const (
 	messagesTab   = "Messages"
 	deliveriesTab = "Deliveries"
 	adminsTab     = "Admins"
+	archivedTab   = "Archived"
 	changeLogTab  = "Change Log"
 
 	prefixColumn = "Subject Prefix"
@@ -62,6 +63,7 @@ var (
 	MessageColumns   = []string{"ID", "Group", "Received", "From", "Subject", "State", "Recipients", "Object", "Detail", "Source", "Message ID"}
 	DeliveryColumns  = []string{"Timestamp", "Group", "Email", "Event", "Message", "Detail"}
 	AdminColumns     = []string{"Email"}
+	ArchivedColumns  = []string{"Group", "Email"}
 	ChangeLogColumns = []string{"Timestamp", "Actor", "Action", "Group", "Detail"}
 
 	// Roles are the role facet's values, and Relations the Family facet's:
@@ -166,6 +168,17 @@ type Model struct {
 	Groups    []Group
 	byName    map[string]int
 	byAddress map[string]int
+	// archived is who has put each group away for themselves, by the
+	// group's name: a personal tidy that changes nothing about the group.
+	archived map[string]map[string]bool
+}
+
+// Archived reports whether email has archived the named group: it then
+// sits under Archived in their rail rather than among their groups, and
+// its Magic Tag stays off Who?'s lists for them, though its pages in both
+// apps still open.
+func (m *Model) Archived(name, email string) bool {
+	return m.archived[name][email]
 }
 
 // Group finds a group by name, nil for none.
@@ -197,6 +210,7 @@ type Tables struct {
 	Messages   []map[string]string
 	Deliveries []map[string]string
 	Admins     []map[string]string
+	Archived   []map[string]string
 }
 
 func ReadTables(source data.Source) (*Tables, error) {
@@ -214,8 +228,9 @@ func ReadTables(source data.Source) (*Tables, error) {
 	messages := &table{name: messagesTab, want: MessageColumns}
 	deliveries := &table{name: deliveriesTab, want: DeliveryColumns}
 	admins := &table{name: adminsTab, want: AdminColumns}
+	archived := &table{name: archivedTab, want: ArchivedColumns}
 	changeLog := &table{name: changeLogTab, want: ChangeLogColumns}
-	read := []*table{groups, managers, rules, additions, excluded, aliases, messages, deliveries, admins}
+	read := []*table{groups, managers, rules, additions, excluded, aliases, messages, deliveries, admins, archived}
 	names := []string{}
 	for _, t := range read {
 		names = append(names, t.name)
@@ -230,7 +245,7 @@ func ReadTables(source data.Source) (*Tables, error) {
 			return nil, err
 		}
 	}
-	return &Tables{Groups: groups.rows, Managers: managers.rows, Rules: rules.rows, Additions: additions.rows, Excluded: excluded.rows, Aliases: aliases.rows, Messages: messages.rows, Deliveries: deliveries.rows, Admins: admins.rows}, nil
+	return &Tables{Groups: groups.rows, Managers: managers.rows, Rules: rules.rows, Additions: additions.rows, Excluded: excluded.rows, Aliases: aliases.rows, Messages: messages.rows, Deliveries: deliveries.rows, Admins: admins.rows, Archived: archived.rows}, nil
 }
 
 // SplitList reads a list cell: comma-separated, trimmed, without repeats.
@@ -491,7 +506,7 @@ func groupCells(g Group) map[string]string {
 // problem, the stance every app takes: a sheet edit that breaks a rule
 // surfaces as a refused load, never as a group quietly matching nobody.
 func BuildModel(tables *Tables) (*Model, error) {
-	model := &Model{Groups: []Group{}, byName: map[string]int{}}
+	model := &Model{Groups: []Group{}, byName: map[string]int{}, archived: map[string]map[string]bool{}}
 	for _, row := range tables.Groups {
 		g := Normalize(Group{Name: row["Name"], Title: row["Title"], Description: row["Description"], CreatedBy: row["Created By"], Created: row["Created"], Prefix: strings.ToLower(strings.TrimSpace(row[prefixColumn])) != prefixOff, Visibility: row[visibleColumn]})
 		if _, dup := model.byName[g.Name]; dup {
@@ -547,6 +562,16 @@ func BuildModel(tables *Tables) (*Model, error) {
 			return nil, fmt.Errorf("%s names %q, which %s does not have", excludedTab, row["Group"], groupsTab)
 		}
 		g.Excluded = append(g.Excluded, Excluded{Email: row["Email"], Note: row["Note"], When: row["Timestamp"]})
+	}
+	for _, row := range tables.Archived {
+		name := strings.ToLower(strings.TrimSpace(row["Group"]))
+		if model.Group(name) == nil {
+			return nil, fmt.Errorf("%s names %q, which %s does not have", archivedTab, row["Group"], groupsTab)
+		}
+		if model.archived[name] == nil {
+			model.archived[name] = map[string]bool{}
+		}
+		model.archived[name][cleanEmail(row["Email"])] = true
 	}
 	for i, g := range model.Groups {
 		g = Normalize(g)
@@ -640,6 +665,23 @@ func (t *Tables) withoutGroup(name string) *Tables {
 	out.Additions = withoutGroupRows(t.Additions, "Group", name)
 	out.Excluded = withoutGroupRows(t.Excluded, "Group", name)
 	out.Aliases = withoutGroupRows(t.Aliases, "Group", name)
+	out.Archived = withoutGroupRows(t.Archived, "Group", name)
+	return &out
+}
+
+// withArchived is the group put away for one person, or brought back: the
+// Archived row for the pair added or removed, once each.
+func (t *Tables) withArchived(name, email string, archived bool) *Tables {
+	out := *t
+	out.Archived = make([]map[string]string, 0, len(t.Archived)+1)
+	for _, row := range t.Archived {
+		if !strings.EqualFold(strings.TrimSpace(row["Group"]), name) || cleanEmail(row["Email"]) != email {
+			out.Archived = append(out.Archived, row)
+		}
+	}
+	if archived {
+		out.Archived = append(out.Archived, map[string]string{"Group": name, "Email": email})
+	}
 	return &out
 }
 

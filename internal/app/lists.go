@@ -54,7 +54,7 @@ func GroupLists(model *loop.Model, sources loop.Sources, email string) []who.Lis
 				guests = append(guests, who.Guest{ID: g.Name + ":" + member, Name: name, Email: member})
 			}
 		}
-		out = append(out, who.List{Key: who.ListGroup + ":" + g.Name, Name: g.Title, Kind: who.ListGroup, People: people, Guests: guests})
+		out = append(out, who.List{Key: who.ListGroup + ":" + g.Name, Name: g.Title, Kind: who.ListGroup, People: people, Guests: guests, Archived: model.Archived(g.Name, email)})
 	}
 	return out
 }

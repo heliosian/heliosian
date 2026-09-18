@@ -13,6 +13,9 @@ type List struct {
 	People []string `json:"people"`
 	Guests []Guest  `json:"guests"`
 	Hosts  []string `json:"-"`
+	// Archived is a group's list its manager has put away in Loop: kept
+	// off Who?'s rail and filters for them, though its page still opens.
+	Archived bool `json:"archived,omitempty"`
 }
 
 // Guest is someone on a list the directory does not hold: a party's ticket

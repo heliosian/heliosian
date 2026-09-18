@@ -194,6 +194,7 @@ var layouts = map[string][]tab{
 		{"Messages", loop.MessageColumns},
 		{"Deliveries", loop.DeliveryColumns},
 		{"Admins", loop.AdminColumns},
+		{"Archived", loop.ArchivedColumns},
 		{"Change Log", loop.ChangeLogColumns},
 	},
 }

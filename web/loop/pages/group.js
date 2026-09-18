@@ -827,6 +827,21 @@ export function groupPage(g) {
     });
     actions.push(toggle);
   }
+  // Archive is the viewer's own tidy: the group goes under Archived in the
+  // rail and its Magic Tag off Who?'s lists for them, and nothing about
+  // the group itself changes.
+  const archive = button(g.archived ? 'Unarchive' : 'Archive', 'archive', 'button button-secondary', async () => {
+    archive.disabled = true;
+    try {
+      await send('POST', '/api/loop/archive', {name: g.name, archived: !g.archived});
+      await load();
+      toast(g.archived ? 'Back among your groups' : 'Archived');
+    } catch (err) {
+      archive.disabled = false;
+      toast(err.message);
+    }
+  });
+  actions.push(archive);
   page.append(pageHead(g.title, actions));
   const overview = el('div');
   const address = el('div', 'address-band');
@@ -850,6 +865,9 @@ export function groupPage(g) {
   }
   if (g.visibility === 'members') {
     overview.append(el('div', 'subject-note', 'Visible to the people on it; only its managers can change it.'));
+  }
+  if (g.archived) {
+    overview.append(el('div', 'subject-note', 'Archived for you: it sits under Archived in the rail and its Magic Tag is off your lists in Helios Who?, and it works as it always did.'));
   }
   if (g.member && g.unsubscribed) {
     overview.append(el('div', 'subject-note', 'You are on this group\'s excluded list and get no mail from it. Resubscribe to get its mail again.'));

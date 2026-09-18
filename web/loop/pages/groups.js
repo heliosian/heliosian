@@ -86,13 +86,15 @@ export function groupsPage() {
   others.append(el('p', 'page-lead', 'Groups their managers have opened to everyone in Loop, and groups you are on whose managers have opened them to their members. Open one to see who is on it; if you are, you can take yourself off it there, or put yourself back.'));
   const othersList = el('div', 'group-list');
   others.append(othersList);
+  // A group the viewer has archived is off the page altogether; the rail's
+  // Archived is where it lives.
   const render = query => {
     list.replaceChildren();
     suggestedList.replaceChildren();
     othersList.replaceChildren();
-    const mine = state.model.groups.filter(g => managed(g) && matches(g, query));
+    const mine = state.model.groups.filter(g => managed(g) && !g.archived && matches(g, query));
     const suggestions = state.model.suggestions.filter(s => !query || s.name.toLowerCase().includes(query));
-    const theirs = state.model.groups.filter(g => !managed(g) && matches(g, query));
+    const theirs = state.model.groups.filter(g => !managed(g) && !g.archived && matches(g, query));
     if (!mine.length) {
       empty.textContent = query ? 'No group of yours matches that.' : 'You manage no groups yet. Make one, and its address is yours to hand out.';
       list.append(empty);

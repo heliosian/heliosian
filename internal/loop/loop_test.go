@@ -213,3 +213,33 @@ func TestLoadRefusesAGroupWithoutManagers(t *testing.T) {
 		t.Fatal("accepted a group with no managers")
 	}
 }
+
+func TestArchivedIsOnePersonsAndFollowsTheGroup(t *testing.T) {
+	tables := sampleTables(t).withArchived("soccer-team", "jordan.whitfield@heliosschool.org", true)
+	model, err := BuildModel(tables)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !model.Archived("soccer-team", "jordan.whitfield@heliosschool.org") {
+		t.Fatal("the archived row was not read")
+	}
+	if model.Archived("soccer-team", "abena.osei@heliosschool.org") || model.Archived("hummingbird-families", "jordan.whitfield@heliosschool.org") {
+		t.Fatal("an archive reached another person or another group")
+	}
+	again := tables.withArchived("soccer-team", "jordan.whitfield@heliosschool.org", true)
+	if len(again.Archived) != 1 {
+		t.Fatalf("archiving twice left %d rows", len(again.Archived))
+	}
+	back := again.withArchived("soccer-team", "jordan.whitfield@heliosschool.org", false)
+	if len(back.Archived) != 0 {
+		t.Fatalf("unarchiving left %d rows", len(back.Archived))
+	}
+	if len(again.withoutGroup("soccer-team").Archived) != 0 {
+		t.Fatal("deleting the group kept its archived row")
+	}
+	stray := sampleTables(t)
+	stray.Archived = append(stray.Archived, map[string]string{"Group": "nowhere", "Email": "jordan.whitfield@heliosschool.org"})
+	if _, err := BuildModel(stray); err == nil {
+		t.Fatal("accepted an archived row naming no group")
+	}
+}

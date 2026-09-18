@@ -95,6 +95,23 @@ button { font: inherit; }
 
 .nav-sub-item.is-on::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--lime); }
 
+/* Archived, under the person's groups in the rail: a row shaped like the
+   pages' rows that folds its groups away, as Who?'s section headings do -
+   the chevron at its end pointing sideways while it is folded, down once
+   it is open. */
+.nav-heading-toggle { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 44px; margin-top: 6px; padding: 0 14px; border: 0; border-radius: 10px; background: rgba(255, 255, 255, 0.05); color: #fff; font: inherit; font-size: 15px; font-weight: 600; line-height: 1.25; text-align: left; cursor: pointer; user-select: none; }
+.nav-heading-toggle:hover { background: rgba(255, 255, 255, 0.1); }
+.nav-heading-toggle > svg { width: 20px; height: 20px; flex-shrink: 0; }
+.nav-heading-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-chevron { display: flex; flex-shrink: 0; }
+.nav-chevron svg { width: 14px; height: 14px; stroke: rgba(255, 255, 255, 0.55); stroke-width: 2; transform: rotate(-90deg); transition: transform 0.15s ease; }
+.nav-heading-toggle.open .nav-chevron svg { transform: none; }
+/* Archived is lit as a page's row is while one of its groups is the page open. */
+.nav-heading-toggle.is-active { position: relative; background: rgba(0, 166, 159, 0.22); border-radius: 0 10px 10px 0; overflow: hidden; }
+.nav-heading-toggle.is-active > svg { color: var(--lime); }
+.nav-heading-toggle.is-active .nav-chevron svg { stroke: var(--lime); }
+.nav-heading-toggle.is-active::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--lime); }
+
 .nav-sub-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .nav-sub-count { flex-shrink: 0; min-width: 20px; padding: 0 6px; border-radius: 999px; background: rgba(255, 255, 255, 0.16); font-size: 11px; font-weight: 700; line-height: 17px; text-align: center; }

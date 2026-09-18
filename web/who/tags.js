@@ -54,8 +54,11 @@ export function tagHref(key) {
 
 const listIcons = {party: 'party', activity: 'activity', room: 'classrooms', group: 'people'};
 
+// The Magic Tags on offer, by name. A group's list its manager has
+// archived in Loop stays off the rail and the filters, though its page
+// still opens from a link, since the list itself is still here.
 export function listKeys() {
-  return Object.keys(lists).sort((a, b) => lists[a].name.localeCompare(lists[b].name));
+  return Object.keys(lists).filter(key => !lists[key].archived).sort((a, b) => lists[a].name.localeCompare(lists[b].name));
 }
 
 export function listLabel(key) {
