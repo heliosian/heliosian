@@ -37,12 +37,16 @@ func NewCache(source data.Source, queue Enqueuer) (*Cache, error) {
 
 func (c *Cache) refreshLoop() {
 	for range time.Tick(refreshInterval) {
-		c.queue.Add(func() {
-			if err := c.refresh(); err != nil {
-				slog.Error("config refresh", "error", err)
-			}
-		})
+		c.Refresh()
 	}
+}
+
+func (c *Cache) Refresh() {
+	c.queue.Add(func() {
+		if err := c.refresh(); err != nil {
+			slog.Error("config refresh", "error", err)
+		}
+	})
 }
 
 func (c *Cache) refresh() error {

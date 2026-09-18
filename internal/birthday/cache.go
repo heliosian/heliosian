@@ -38,12 +38,16 @@ func NewCache(source data.Source, superAdmin func(string) bool, queue Enqueuer) 
 
 func (c *Cache) refreshLoop() {
 	for range time.Tick(refreshInterval) {
-		c.queue.Add(func() {
-			if err := c.refresh(); err != nil {
-				slog.Error("birthday model refresh", "error", err)
-			}
-		})
+		c.Refresh()
 	}
+}
+
+func (c *Cache) Refresh() {
+	c.queue.Add(func() {
+		if err := c.refresh(); err != nil {
+			slog.Error("birthday model refresh", "error", err)
+		}
+	})
 }
 
 func (c *Cache) refresh() error {

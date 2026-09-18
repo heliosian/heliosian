@@ -491,12 +491,16 @@ func (c *Cache) currentTables() *Tables {
 
 func (c *Cache) refreshLoop() {
 	for range time.Tick(refreshInterval) {
-		c.queue.Add(func() {
-			if err := c.refresh(); err != nil {
-				slog.Error("directory model refresh", "error", err)
-			}
-		})
+		c.Refresh()
 	}
+}
+
+func (c *Cache) Refresh() {
+	c.queue.Add(func() {
+		if err := c.refresh(); err != nil {
+			slog.Error("directory model refresh", "error", err)
+		}
+	})
 }
 
 func (c *Cache) refresh() error {

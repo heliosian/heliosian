@@ -14,6 +14,7 @@ type linkCard struct {
 	Name  string `json:"name"`
 	Image string `json:"image,omitempty"`
 	Badge string `json:"badge,omitempty"`
+	Color string `json:"color,omitempty"`
 }
 
 func (v *viewer) linkCard(address string) (linkCard, bool) {
@@ -32,7 +33,7 @@ func (v *viewer) linkCard(address string) (linkCard, bool) {
 		}
 		for _, c := range v.directory.Classrooms {
 			if whoBase+who.ClassroomPath(c.Name) == address {
-				card := linkCard{URL: address, Kind: "classroom", Name: c.Name}
+				card := linkCard{URL: address, Kind: "classroom", Name: c.Name, Color: v.sources.CalendarDirectory.ClassroomColors()[c.Name]}
 				if c.ImageURL != "" {
 					card.Image = whoBase + c.ImageURL
 				}

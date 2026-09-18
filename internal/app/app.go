@@ -50,6 +50,10 @@ import (
 	"heliosian/internal/who"
 )
 
+// deployOverlap covers Cloud Run moving traffic to a new revision and the ten
+// seconds it gives the old one to finish after SIGTERM.
+const deployOverlap = 30 * time.Second
+
 // aliases are the other labels an app answers under: the volunteer portal,
 // team, as hca, and the calendar - whose address is when (canonicalHost) -
 // as calendar and cal.
@@ -986,6 +990,14 @@ func NewCore(cfg Config) *Core {
 	for key, m := range map[string]*http.ServeMux{"who": mux, "home": homeMux, "team": teamMux, "birthday": birthdayMux, "celebrate": celebrateMux, "calendar": calendarMux, "loop": loopMux, "ask": askMux} {
 		feedback.Register(m, key, appName(key), superAdmin, feedbackQueue)
 	}
+	// A deploy's old revision serves, and writes, until this one has loaded;
+	// once it has handed over and stopped, read again for what it wrote.
+	time.AfterFunc(deployOverlap, func() {
+		slog.Info("reading again for the previous revision's last writes")
+		for _, c := range []interface{ Refresh() }{settings, homeCache, teamCache, birthdayCache, celebrateCache, cache, calendarCache, loopCache, artifactsCache} {
+			c.Refresh()
+		}
+	})
 	return &Core{
 		Mux: mux, HomeMux: homeMux, HomeCache: homeCache, TeamMux: teamMux, TeamCache: teamCache, BirthdayMux: birthdayMux, CelebrateMux: celebrateMux, CelebrateCache: celebrateCache,
 		CalendarMux: calendarMux, CalendarCache: calendarCache, CalendarLinked: linked, LoopMux: loopMux, LoopCache: loopCache, AskMux: askMux, Cache: cache, Queue: queue,

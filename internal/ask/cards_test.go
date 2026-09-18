@@ -10,6 +10,26 @@ import (
 	"heliosian/internal/who"
 )
 
+type coloredDirectory struct {
+	calendar.Directory
+	colors map[string]string
+}
+
+func (d coloredDirectory) ClassroomColors() map[string]string { return d.colors }
+
+func TestClassroomChipsWearTheirColor(t *testing.T) {
+	sources := sampleSources(t)
+	sources.CalendarDirectory = coloredDirectory{sources.CalendarDirectory, map[string]string{"Jays": "#1f6fb2"}}
+	v := app{sources: sources}.viewer(jordan)
+	jays, _ := v.linkCard(whoBase + who.ClassroomPath("Jays"))
+	if jays.Color != "#1f6fb2" || jays.Image == "" {
+		t.Errorf("Jays: %+v", jays)
+	}
+	if hawks, _ := v.linkCard(whoBase + who.ClassroomPath("Hawks")); hawks.Color != "" {
+		t.Errorf("Hawks has no color set, but its chip has %q", hawks.Color)
+	}
+}
+
 func TestLinkExamplesShowWhatTheChipsShow(t *testing.T) {
 	v := sampleViewer(t, jordan)
 	v.now = time.Date(2026, 9, 18, 9, 0, 0, 0, calendar.Location)

@@ -8,6 +8,7 @@ type Queue struct {
 	mu       sync.Mutex
 	cond     *sync.Cond
 	pending  []func()
+	holds    int
 	draining bool
 	done     chan struct{}
 }
@@ -26,6 +27,21 @@ func (q *Queue) Add(task func()) {
 	q.cond.Signal()
 }
 
+// Hold is work under way that will add to the queue when it finishes, so a
+// drain waits for its Release as well as for what is already queued.
+func (q *Queue) Hold() {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.holds++
+}
+
+func (q *Queue) Release() {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.holds--
+	q.cond.Signal()
+}
+
 func (q *Queue) Drain() <-chan struct{} {
 	q.mu.Lock()
 	q.draining = true
@@ -37,7 +53,7 @@ func (q *Queue) Drain() <-chan struct{} {
 func (q *Queue) run() {
 	for {
 		q.mu.Lock()
-		for len(q.pending) == 0 && !q.draining {
+		for len(q.pending) == 0 && (!q.draining || q.holds > 0) {
 			q.cond.Wait()
 		}
 		// Emptiness is only rechecked between tasks, so a running task never reads as empty.

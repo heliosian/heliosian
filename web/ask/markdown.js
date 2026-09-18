@@ -101,6 +101,10 @@ function anchor(href, label, cards) {
     return a;
   }
   a.className = 'chip-link chip-' + card.kind;
+  if (card.color) {
+    a.classList.add('chip-tinted');
+    a.style.setProperty('--chip-tint', card.color);
+  }
   if (card.badge) {
     a.append(el('span', 'chip-badge', card.badge));
   } else if (card.kind === 'group') {

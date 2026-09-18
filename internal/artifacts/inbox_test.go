@@ -124,6 +124,10 @@ func (inline) Add(fn func()) {
 	fn()
 }
 
+func (inline) Hold() {}
+
+func (inline) Release() {}
+
 func testInbox(t *testing.T) (*Filer, bucket, *data.Dir) {
 	t.Helper()
 	root := t.TempDir()

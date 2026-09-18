@@ -41,16 +41,22 @@ func (i Inbox) ready() bool {
 	return i.Store != nil && i.SigningKey != "" && i.Bucket != nil
 }
 
+type Queue interface {
+	Enqueuer
+	Hold()
+	Release()
+}
+
 type Filer struct {
 	Inbox
 	cache    *Cache
 	embedder Embedder
 	writer   data.Writer
-	queue    Enqueuer
+	queue    Queue
 	work     chan string
 }
 
-func Register(mux *http.ServeMux, cache *Cache, embedder Embedder, writer data.Writer, queue Enqueuer, mailbox Inbox) *Filer {
+func Register(mux *http.ServeMux, cache *Cache, embedder Embedder, writer data.Writer, queue Queue, mailbox Inbox) *Filer {
 	in := &Filer{Inbox: mailbox, cache: cache, embedder: embedder, writer: writer, queue: queue, work: make(chan string, 256)}
 	go in.run()
 	mux.HandleFunc("POST /hooks/mail", in.hook)
@@ -78,6 +84,7 @@ func (in *Filer) hook(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
+	in.queue.Hold()
 	in.work <- source
 	w.WriteHeader(http.StatusOK)
 }
@@ -87,6 +94,7 @@ func (in *Filer) run() {
 		if err := in.take(context.Background(), source); err != nil {
 			slog.Error("[ERROR] artifacts: mail not imported", "source", source, "error", err)
 		}
+		in.queue.Release()
 	}
 }
 
@@ -103,6 +111,8 @@ func (in *Filer) take(ctx context.Context, source string) error {
 }
 
 func (in *Filer) Post(ctx context.Context, group string, raw []byte) error {
+	in.queue.Hold()
+	defer in.queue.Release()
 	m, err := ParseMail(raw)
 	if err != nil {
 		return err
