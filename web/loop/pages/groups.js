@@ -34,12 +34,13 @@ function groupCard(g) {
 const suggestionWords = {
   party: 'Everyone holding tickets, and the parents of any student who does, as the party\'s Magic Tag lists them now.',
   activity: 'Everyone on the volunteer list, and the parents of any student on it, as the activity\'s Magic Tag lists them now.',
+  tag: 'Everyone under this tag of yours in Helios Who?, and the parents of any student among them, as the tag stands now.',
 };
 
 // A suggestion's icon is the mark of the app its Magic Tag is kept up in -
 // Celebrate's for a party, HCA-Team's for an activity - the coloured marks
 // the app switch wears, so the card says where the people would come from.
-const suggestionApp = {party: 'celebrate', activity: 'team'};
+const suggestionApp = {party: 'celebrate', activity: 'team', tag: 'who'};
 
 function suggestionCard(s) {
   const card = el('div', 'group-card');
@@ -78,7 +79,7 @@ export function groupsPage() {
   const empty = el('div', 'panel-empty');
   const suggested = el('div');
   suggested.append(el('h2', 'section-title', 'Suggested groups'));
-  suggested.append(el('p', 'page-lead', 'A party you host or an activity you co-chair with no group yet. Make one and it starts with the right rule and managers; change anything before you save.'));
+  suggested.append(el('p', 'page-lead', 'A party you host, an activity you co-chair or a tag of yours in Helios Who? with no group yet. Make one and it starts with the right rule and managers; change anything before you save.'));
   const suggestedList = el('div', 'group-list');
   suggested.append(suggestedList);
   const others = el('div');

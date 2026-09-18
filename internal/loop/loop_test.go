@@ -243,3 +243,12 @@ func TestArchivedIsOnePersonsAndFollowsTheGroup(t *testing.T) {
 		t.Fatal("accepted an archived row naming no group")
 	}
 }
+
+func TestSuggestedTagsAreTheOwnersOwnNoRuleOfTheirsNames(t *testing.T) {
+	groups := []Group{{Rules: []Rule{{Tags: []string{"Carpool"}, Owner: "jordan@x"}, {Tags: []string{"Soccer Team"}, Owner: "someone.else@x"}}}}
+	tags := map[string][]string{"Carpool": {"a@x"}, "Soccer Team": {"b@x"}, "Book Club": {"c@x"}, "Empty": {}}
+	got := SuggestedTags(tags, groups, "jordan@x")
+	if !slices.Equal(got, []string{"Book Club", "Soccer Team"}) {
+		t.Fatalf("suggested %v", got)
+	}
+}

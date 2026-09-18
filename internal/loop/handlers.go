@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"slices"
+	"sort"
 	"strings"
 	"time"
 
@@ -233,8 +234,40 @@ func Suggested(lists []who.List, groups []Group) []who.List {
 	return out
 }
 
+// SuggestedTags is the person's own tags in Who? that no rule of theirs
+// names, sorted: a tag is private to its owner, so only their own rules
+// can name it, and another manager's tag of the same name is no reason to
+// leave theirs out.
+func SuggestedTags(tags map[string][]string, groups []Group, owner string) []string {
+	named := map[string]bool{}
+	for _, g := range groups {
+		for _, r := range g.Rules {
+			if r.Owner != owner {
+				continue
+			}
+			for _, tag := range r.Tags {
+				named[tag] = true
+			}
+		}
+	}
+	out := []string{}
+	for name, people := range tags {
+		if !named[name] && len(people) > 0 {
+			out = append(out, name)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// SuggestionTag marks a suggestion made from one of the viewer's own tags.
+const SuggestionTag = "tag"
+
 func (a app) suggestions(viewer string) []suggestion {
 	out := []suggestion{}
+	for _, name := range SuggestedTags(a.directory.Tags(viewer), a.cache.Model().Groups, viewer) {
+		out = append(out, suggestion{Key: name, Name: name, Kind: SuggestionTag, Managers: []Person{a.person(viewer)}})
+	}
 	for _, l := range Suggested(a.directory.Lists(viewer), a.cache.Model().Groups) {
 		managers := []Person{a.person(viewer)}
 		for _, host := range l.Hosts {
