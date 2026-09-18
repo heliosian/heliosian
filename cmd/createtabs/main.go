@@ -124,7 +124,8 @@ var layouts = map[string][]tab{
 		{"Categories", home.CategoryColumns},
 		{"Links", home.LinkColumns},
 		{"Admins", []string{"Email"}},
-		{"Visibility", []string{"App", "Visibility", "Emails", "Tagline", "Name", "Order"}},
+		{"Visibility", home.VisibilityColumns},
+		{"Audience", home.AudienceColumns},
 		{"Change Log", home.ChangeLogColumns},
 	},
 	"Events": {

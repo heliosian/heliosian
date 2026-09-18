@@ -161,8 +161,8 @@ func (a *Auth) person(email string) *Person {
 
 // QuanFor says whether the signed-in address is offered Quan mode - the
 // pink-and-lime easter egg (web/common/quan.css) - as a choice in its own
-// right and gets it until it chooses otherwise: the super admins, and
-// anyone with "quan" in their address.
+// right in the user menu: the super admins, and anyone with "quan" in
+// their address. Nobody starts on it.
 func (a *Auth) QuanFor(email string) bool {
 	return (a.Spoof != nil && a.Spoof.Allowed(email)) || strings.Contains(strings.ToLower(email), "quan")
 }

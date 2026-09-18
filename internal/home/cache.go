@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"heliosian/internal/data"
+	"heliosian/internal/filter"
 )
 
 const refreshInterval = 5 * time.Minute
@@ -24,9 +25,19 @@ type Cache struct {
 	images     ImageChecker
 	superAdmin func(email string) bool
 	queue      Enqueuer
-	mu         sync.RWMutex
-	model      *Model
-	tables     *Tables
+	// directory reads an app's audience against the directory (Register
+	// sets it); without one, an audience picks out nobody.
+	directory Directory
+	mu        sync.RWMutex
+	model     *Model
+	tables    *Tables
+}
+
+// includes says whether some rules, read as a list against the directory,
+// pick this person out; none pick out nobody, and so does having no
+// directory.
+func (c *Cache) includes(rules []filter.Rule, email string) bool {
+	return c.directory != nil && len(rules) > 0 && filter.OnList(filter.List{Rules: rules}, c.directory.Sources(), email)
 }
 
 func NewCache(source data.Source, images ImageChecker, superAdmin func(string) bool, queue Enqueuer) (*Cache, error) {
@@ -111,8 +122,9 @@ type Person struct {
 // tagline, its mode, and the list, whether or not the mode is using it.
 type AppVisibility struct {
 	App
-	Visibility string   `json:"visibility"`
-	Emails     []string `json:"emails"`
+	Visibility string        `json:"visibility"`
+	Emails     []string      `json:"emails"`
+	Rules      []filter.Rule `json:"rules"`
 }
 
 // visibilityOf is an app's row as the page reads it: the sheet's, or for an
@@ -156,7 +168,7 @@ func (c *Cache) AppVisibilities() []AppVisibility {
 	for _, app := range orderedApps(model) {
 		v := visibilityOf(model, app)
 		app.Name, app.Tagline, app.Mark = v.Name, v.Tagline, markVersion(app.Key)
-		out = append(out, AppVisibility{App: app, Visibility: v.Mode, Emails: v.Emails})
+		out = append(out, AppVisibility{App: app, Visibility: v.Mode, Emails: v.Emails, Rules: v.Rules})
 	}
 	return out
 }
@@ -175,15 +187,16 @@ func (c *Cache) AppList() []App {
 }
 
 // HiddenApps is which apps are narrowed to a list this person is not on -
-// the rows the toolbar leaves off their switch and the links the front page
-// leaves out. A new app, with no row yet, is on nobody's list.
+// neither named in it nor picked out by its audience - the rows the
+// toolbar leaves off their switch and the links the front page leaves out.
+// A new app, with no row yet, is on nobody's list.
 func (c *Cache) HiddenApps(email string) []string {
 	email = strings.ToLower(strings.TrimSpace(email))
 	hidden := []string{}
 	model := c.Model()
 	for _, app := range Apps {
 		v := visibilityOf(model, app)
-		if v.Mode == VisibleToList && !slices.Contains(v.Emails, email) {
+		if v.Mode == VisibleToList && !slices.Contains(v.Emails, email) && !c.includes(v.Rules, email) {
 			hidden = append(hidden, app.Key)
 		}
 	}

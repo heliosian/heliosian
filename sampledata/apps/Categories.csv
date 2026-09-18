@@ -1,6 +1,6 @@
-Title,Emoji,Style,Max,Roles,Classrooms
-Helios Community Apps,icon:heliosian,apps,,,
-Upcoming Events,icon:when,events,,,
-School,icon:school,cards,,,
-Events,icon:calendar,tiles,1,,
-Chats,icon:chat,tiles,,"Parents, Staff",
+Title,Emoji,Style,Max
+Helios Community Apps,icon:heliosian,apps,
+Upcoming Events,icon:when,events,
+School,icon:school,cards,
+Events,icon:calendar,tiles,1
+Chats,icon:chat,tiles,

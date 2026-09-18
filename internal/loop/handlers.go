@@ -16,6 +16,7 @@ import (
 	"heliosian/internal/blob"
 	"heliosian/internal/data"
 	"heliosian/internal/describe"
+	"heliosian/internal/filter"
 	"heliosian/internal/serve"
 	"heliosian/internal/who"
 )
@@ -193,22 +194,6 @@ type groupView struct {
 	Sent         int        `json:"sent"`
 }
 
-// listOption is one of the viewer's Magic Tags as the rule editor offers
-// them.
-type listOption struct {
-	Key  string `json:"key"`
-	Name string `json:"name"`
-	Kind string `json:"kind"`
-}
-
-// sharedOption is a tag shared with the viewer as the rule editor offers
-// it: its key, its name, and whose it is.
-type sharedOption struct {
-	Key       string `json:"key"`
-	Name      string `json:"name"`
-	OwnerName string `json:"ownerName"`
-}
-
 type suggestion struct {
 	Key      string   `json:"key"`
 	Name     string   `json:"name"`
@@ -280,15 +265,8 @@ func (a app) suggestions(viewer string) []suggestion {
 	return out
 }
 
-type options struct {
-	Classrooms []string       `json:"classrooms"`
-	Grades     []string       `json:"grades"`
-	Tags       []string       `json:"tags"`
-	Lists      []listOption   `json:"lists"`
-	Shared     []sharedOption `json:"shared"`
-	Roles      []string       `json:"roles"`
-	Relations  []string       `json:"relations"`
-}
+// options is what the editor offers, as the filter has it.
+type options = filter.Options
 
 func (a app) person(email string) Person {
 	if p, ok := a.directory.Person(email); ok {
@@ -311,7 +289,7 @@ func (a app) people(emails []string) []Person {
 func (a app) members(g Group) []Member {
 	reasons := Reasons(g, a.sources())
 	inside, outside := []Member{}, []Member{}
-	for _, email := range sortedKeys(func() map[string]bool {
+	for _, email := range filter.SortedKeys(func() map[string]bool {
 		emails := map[string]bool{}
 		for email := range reasons {
 			emails[email] = true
@@ -361,8 +339,8 @@ func (a app) tagLabels(r Rule) []string {
 			out = append(out, names[tag])
 		case tags[tag] != nil:
 			out = append(out, tag)
-		case strings.HasPrefix(tag, sharedPrefix):
-			out = append(out, strings.TrimPrefix(tag, sharedPrefix)+" (no longer shared)")
+		case strings.HasPrefix(tag, filter.SharedPrefix):
+			out = append(out, strings.TrimPrefix(tag, filter.SharedPrefix)+" (no longer shared)")
 		default:
 			out = append(out, tag+" (no longer a tag)")
 		}
@@ -382,7 +360,7 @@ func (a app) sharedRules(viewer string, existing []Rule, rules []Rule) error {
 			continue
 		}
 		for _, tag := range r.Tags {
-			if strings.HasPrefix(tag, sharedPrefix) && !mine[tag] {
+			if strings.HasPrefix(tag, filter.SharedPrefix) && !mine[tag] {
 				return fmt.Errorf("rule %d names a tag that is not shared with you", i+1)
 			}
 		}
@@ -407,38 +385,7 @@ func (a app) view(g Group, viewer string) groupView {
 }
 
 func (a app) options(viewer string) options {
-	model := a.directory.Model()
-	classrooms := []string{}
-	for _, c := range model.Classrooms {
-		classrooms = append(classrooms, c.Name)
-	}
-	present := map[string]bool{}
-	for _, p := range model.People {
-		if p.IsStudent && p.Grade != "" {
-			present[p.Grade] = true
-		}
-	}
-	grades := []string{}
-	for _, g := range model.Grades {
-		if present[g.Name] {
-			grades = append(grades, g.Name)
-		}
-	}
-	tags := []string{}
-	for name := range a.directory.Tags(viewer) {
-		tags = append(tags, name)
-	}
-	slices.Sort(tags)
-	lists := []listOption{}
-	for _, l := range a.directory.Lists(viewer) {
-		lists = append(lists, listOption{Key: l.Key, Name: l.Name, Kind: l.Kind})
-	}
-	slices.SortFunc(lists, func(x, y listOption) int { return strings.Compare(x.Name, y.Name) })
-	shared := []sharedOption{}
-	for _, s := range a.directory.Shared(viewer) {
-		shared = append(shared, sharedOption{Key: SharedKey(s.Owner, s.Name), Name: s.Name, OwnerName: s.OwnerName})
-	}
-	return options{Classrooms: classrooms, Grades: grades, Tags: tags, Lists: lists, Shared: shared, Roles: Roles, Relations: Relations}
+	return filter.OptionsFor(a.sources(), viewer)
 }
 
 // model serves the app: the groups the viewer manages - every group, for

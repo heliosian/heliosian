@@ -48,6 +48,8 @@
 <link rel="stylesheet" href="/fonts/fonts.css">
 <link rel="stylesheet" href="/toolbar.css">
 <link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/tabs.css">
+<link rel="stylesheet" href="/rules.css">
 <link rel="stylesheet" href="/dark.css">
 <link rel="stylesheet" href="/quan.css">
 <link rel="modulepreload" href="/toolbar.js">
@@ -134,6 +136,8 @@
 <div class="modal-overlay" id="link-modal" hidden>
 <form class="modal" id="link-form">
 <div class="modal-header"><h2 id="link-modal-title">Add Link</h2><button class="modal-close" type="button" data-close aria-label="Close">&times;</button></div>
+<div class="form-tabs" id="link-tabs"></div>
+<div class="form-tab-body" id="link-tab-details">
 <label class="field"><span>Title</span><input type="text" id="link-title" maxlength="80" required></label>
 <label class="field"><span>Description</span><textarea id="link-description" maxlength="300" rows="3"></textarea></label>
 <label class="field"><span>URL</span><input type="url" id="link-url" maxlength="1000" required placeholder="https://"></label>
@@ -153,11 +157,10 @@
 <button type="button" class="link-button" id="link-image-remove" hidden>Remove</button>
 </div>
 </div>
+</div>
+<div class="form-tab-body" id="link-tab-visibility" hidden>
 <label class="field field-toggle"><span>Visible</span><input type="checkbox" id="link-visible" checked></label>
-<div class="field audience">
-<span>Who sees it <small class="audience-note">Nothing chosen means everyone.</small></span>
-<div class="audience-row" id="link-roles"></div>
-<div class="audience-row audience-classrooms" id="link-classrooms"></div>
+<div class="field audience" id="link-audience"></div>
 </div>
 <div class="modal-actions">
 <button type="submit" class="button" id="link-save">Save</button>
@@ -168,23 +171,51 @@
 </form>
 </div>
 
+<div class="modal-overlay" id="app-modal" hidden>
+<form class="modal" id="app-form">
+<div class="modal-header"><h2 id="app-modal-title">Edit App</h2><button class="modal-close" type="button" data-close aria-label="Close">&times;</button></div>
+<div class="app-modal-brand"><img id="app-modal-mark" alt=""><span id="app-modal-host"></span></div>
+<div class="form-tabs" id="app-tabs"></div>
+<div class="form-tab-body" id="app-tab-details">
+<label class="field"><span>Name</span><input type="text" id="app-name" maxlength="80" required></label>
+<label class="field"><span>Tagline</span><input type="text" id="app-tagline" maxlength="300" required></label>
+</div>
+<div class="form-tab-body" id="app-tab-visibility" hidden>
+<div class="field audience">
+<div class="audience-row audience-mode" id="app-mode"></div>
+<div id="app-list" hidden>
+<div id="app-audience"></div>
+<small class="audience-note">And anyone named here, whatever the rules say:</small>
+<div class="app-people" id="app-people"></div>
+<div class="app-people-add"><div id="app-people-picker"></div><button type="button" class="button button-secondary button-small" id="app-people-button">Add</button></div>
+</div>
+</div>
+</div>
+<div class="modal-actions">
+<button type="submit" class="button" id="app-save">Save</button>
+<button type="button" class="button button-secondary" data-close>Cancel</button>
+<span class="save-status" id="app-status"></span>
+</div>
+</form>
+</div>
 <div class="modal-overlay" id="category-modal" hidden>
 <form class="modal" id="category-form">
 <div class="modal-header"><h2 id="category-modal-title">Add Category</h2><button class="modal-close" type="button" data-close aria-label="Close">&times;</button></div>
+<div class="form-tabs" id="category-tabs"></div>
+<div class="form-tab-body" id="category-tab-details">
 <label class="field"><span>Title</span><input type="text" id="category-title" maxlength="80" required></label>
 <label class="field" id="category-style-field"><span>Style</span><select id="category-style"><option value="cards">Feature cards</option><option value="tiles">Compact tiles</option><option value="apps">Community apps</option></select></label>
 <label class="field field-max"><span>Show at most</span><input type="number" id="category-max" min="1" step="1" placeholder="All" inputmode="numeric"><small class="field-lead">Leave blank to show everything; with a number, the rest sit behind a See More button.</small></label>
 <p class="modal-hint" id="category-events-note" hidden>This section is filled by Helios When with the events coming up for each person. Give it any name and icon, and move it where you like; it cannot hold links or be deleted.</p>
-<p class="modal-hint" id="category-apps-note" hidden>This section lists the community apps themselves - the ones in the toolbar's app switch, with their marks - each shown only to the people App Visibility in Admin allows. It holds no links of its own.</p>
+<p class="modal-hint" id="category-apps-note" hidden>This section lists the community apps themselves - the ones in the toolbar's app switch, with their marks - each shown only to the people its own editor allows - the pencil on its card, in Super Admin Mode. It holds no links of its own.</p>
 <div class="field field-emoji">
 <span>Icon <button type="button" class="link-button" id="category-emoji-clear">None</button></span>
 <input type="hidden" id="category-emoji">
 <div class="icon-grid" id="category-emoji-grid"></div>
 </div>
-<div class="field audience">
-<span>Who sees it <small class="audience-note">Nothing chosen means everyone; the whole section, links and all.</small></span>
-<div class="audience-row" id="category-roles"></div>
-<div class="audience-row audience-classrooms" id="category-classrooms"></div>
+</div>
+<div class="form-tab-body" id="category-tab-visibility" hidden>
+<div class="field audience" id="category-audience"></div>
 </div>
 <div class="modal-actions">
 <button type="submit" class="button" id="category-save">Save</button>

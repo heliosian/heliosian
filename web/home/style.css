@@ -900,6 +900,16 @@ a.event-people:hover .event-person { text-decoration: underline; }
 
 .chip-slot .link-edit { position: absolute; top: 12px; right: 12px; z-index: 2; }
 
+/* An app's tools in Super Admin Mode: the two arrows and the pencil, in
+   the card's corner. */
+.chip-slot .app-tools { position: absolute; top: 12px; right: 12px; z-index: 2; display: flex; gap: 4px; }
+
+.chip-slot .app-tools .link-edit { position: static; }
+
+.app-move { font-size: 20px; line-height: 1; padding-bottom: 3px; }
+
+.app-move:disabled { opacity: 0.35; cursor: default; }
+
 .chip {
   position: relative;
   display: flex;
@@ -1050,6 +1060,12 @@ a.event-people:hover .event-person { text-decoration: underline; }
 
 .tile .link-edit { position: absolute; top: 6px; right: 6px; z-index: 2; }
 
+.tile .app-tools { position: absolute; top: 6px; right: 6px; z-index: 2; display: flex; gap: 3px; }
+
+.tile .app-tools .link-edit { position: static; width: 26px; height: 26px; }
+
+.tile .app-tools .app-move { font-size: 17px; }
+
 /* The admin's dashed add card, at the end of every category. */
 .add-card {
   display: flex;
@@ -1092,11 +1108,22 @@ a.event-people:hover .event-person { text-decoration: underline; }
 
 .add-card-sub { font-size: 12px; }
 
-/* The editor's Who sees it: a row of role chips and a row of classroom
-   chips, each lit when chosen. */
+/* The link editor's tabs, the strip in the window's flow. */
+.form-tabs .tab-strip { position: static; padding-top: 0; margin: -4px 0 16px; }
+
+/* The editors' Visibility: the rules (rules.css), the two adders, and
+   the line saying who they pick out; the mode chips on an app's. */
 .audience > span { display: flex; align-items: baseline; gap: 8px; }
 
 .audience-note { font-weight: 400; color: var(--muted); font-size: 12px; }
+
+.audience .rules { margin-top: 8px; }
+
+.rule-adders { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+
+.audience-preview { margin-top: 8px; font-size: 13px; color: var(--muted); min-height: 1.2em; }
+
+#app-audience { margin-top: 6px; }
 
 .audience-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 
@@ -1119,6 +1146,26 @@ a.event-people:hover .event-person { text-decoration: underline; }
 
 /* Who a link or a section is kept to, after its title, in Super Admin Mode. */
 .hidden-badge.audience-badge { background: var(--teal-1); margin-left: 6px; text-transform: none; letter-spacing: 0; }
+
+/* The app editor: the mark and address at the top, which are the code's;
+   the mode chips; the people named on its list. */
+.app-modal-brand { display: flex; align-items: center; gap: 10px; margin: -4px 0 14px; font-size: 13px; color: var(--muted); }
+
+.app-modal-brand img { width: 36px; height: 36px; border-radius: 9px; }
+
+.audience-mode { margin-top: 8px; }
+
+.app-people { display: flex; flex-direction: column; margin-top: 10px; border-top: 1px solid var(--line); }
+
+.app-person { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+
+.app-person-name { font-weight: 600; }
+
+.app-person-email { flex: 1; color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.app-people-add { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+
+.app-people-add > div { flex: 1; }
 
 .category-title .hidden-badge { position: relative; top: -6px; margin-left: 10px; font-size: 11px; vertical-align: middle; }
 

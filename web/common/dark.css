@@ -265,6 +265,20 @@ html[data-theme="dark"] {
 [data-theme="dark"] textarea,
 [data-theme="dark"] select { background: var(--input); color: var(--ink); border-color: var(--line); }
 
+/* The editors' fields name their input types (.field input[type=text]),
+   which outranks the plain rule above; said the same way here, so a
+   title box is as dark as the textarea under it. */
+[data-theme="dark"] .field input[type=text],
+[data-theme="dark"] .field input[type=url],
+[data-theme="dark"] .field input[type=number],
+[data-theme="dark"] .field input[type=search],
+[data-theme="dark"] .field input[type=email],
+[data-theme="dark"] .field input[type=date],
+[data-theme="dark"] .rule-search { background: var(--input); color: var(--ink); border-color: var(--line); }
+
+[data-theme="dark"] .field input::placeholder,
+[data-theme="dark"] .rule-search::placeholder { color: #8fa3a6; }
+
 [data-theme="dark"] .button-secondary { background: var(--card); color: var(--ink); border-color: var(--line); }
 
 [data-theme="dark"] .button-secondary:hover { background: var(--input); }
@@ -299,6 +313,7 @@ html[data-theme="dark"] {
 
 [data-theme="dark"] .event-stamp-day,
 [data-theme="dark"] .card-stamp-day,
+[data-theme="dark"] .card-stamp-text,
 [data-theme="dark"] .hero-stamp-date,
 [data-theme="dark"] .hero-stamp-text,
 [data-theme="dark"] .hero-day,
@@ -381,6 +396,9 @@ html[data-theme="dark"] {
 [data-theme="dark"] .tab-strip-count { background: var(--input); color: var(--ink); }
 
 [data-theme="dark"] .tab-strip-menu { background: var(--card); }
+
+/* The strip inside an editor window sits on the window's card, not the page. */
+[data-theme="dark"] .modal .tab-strip { background: var(--card); }
 
 [data-theme="dark"] .tab-strip-menu-item:hover { background: var(--input); }
 
@@ -481,6 +499,23 @@ html[data-theme="dark"] {
 [data-theme="dark"] .hero-action:hover { background: rgba(28, 44, 48, 0.92); }
 [data-theme="dark"] .hero-action.is-editing { background: var(--brand-fill); color: #fff; border-color: transparent; }
 [data-theme="dark"] .hero-action.is-editing:hover { background: var(--brand-fill-dark); }
+
+/* Heliosian's pencil in a link's corner, in Super Admin Mode: the same
+   dark glass, its mark the pale brand. */
+[data-theme="dark"] .link-edit { background: rgba(12, 22, 24, 0.78); color: var(--brand); border: 1px solid rgba(255, 255, 255, 0.18); }
+[data-theme="dark"] .link-edit:hover { background: rgba(28, 44, 48, 0.92); }
+
+/* Heliosian's Add card - a dashed outline among the links, its plus on a
+   disc - keeps its outline over the page rather than a card's fill, the
+   disc a dark wash with the pale brand mark. */
+[data-theme="dark"] .add-card { background: none; border-color: rgba(255, 255, 255, 0.22); color: var(--muted); }
+[data-theme="dark"] .add-card:hover { background: rgba(255, 255, 255, 0.04); border-color: var(--brand); color: var(--brand); }
+[data-theme="dark"] .add-card-disc { background: var(--input); color: var(--brand); }
+
+/* The category editor's icon grid: the choice hovered or picked lifts to
+   the card with a brand ring, not to white. */
+[data-theme="dark"] .icon-choice:hover { background: var(--card); border-color: var(--line); }
+[data-theme="dark"] .icon-choice.is-picked { background: rgba(0, 166, 159, 0.18); border-color: var(--brand); color: var(--brand); }
 
 /* When's RSVP band: a deep green wash, the buttons dark glass until chosen. */
 [data-theme="dark"] .rsvp-band { border-color: rgba(47, 158, 106, 0.45); background: linear-gradient(90deg, #14352a, #122d27); }

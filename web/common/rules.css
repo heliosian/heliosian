@@ -1,0 +1,122 @@
+/* The rule editor every app shares (rules.js): a rule as a tinted band
+   with its sentence, or open as its controls - role chips, a search box,
+   the Classroom, Grade, Tags and Add family dropdowns - and the words it
+   makes under them. */
+
+.rules { display: flex; flex-direction: column; gap: 10px; }
+
+.rule { display: flex; align-items: flex-start; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: #fafbfd; }
+
+.rule.is-theirs { background: #fdf8ec; }
+
+.rule-controls { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+.rule-words { font-weight: 600; font-size: 15px; }
+
+.rule.is-line { padding: 8px 12px 8px 10px; border: 0; border-radius: 12px; align-items: center; }
+
+.rule.is-line.is-include { background: #eef7f0; }
+
+.rule.is-line.is-exclude { background: #fdeeec; }
+
+.rule.is-line .rule-controls { gap: 12px; }
+
+/* The band's line: the kind, the mark, the sentence, and the count at the
+   end, in a row. */
+.rule-line { display: flex; align-items: center; gap: 12px; min-width: 0; font-size: 15px; }
+
+.rule.is-line .rule-line { flex: 1; min-width: 0; gap: 14px; }
+
+.rule.is-line .rule-line > svg { width: 24px; height: 24px; flex-shrink: 0; }
+
+.rule.is-line.is-include .rule-line > svg { color: #2f8f3f; }
+
+.rule.is-line.is-exclude .rule-line > svg { color: #c2442d; }
+
+.is-include .rule-kind { background: #cfe9d4; color: #1f6f2e; }
+
+.is-exclude .rule-kind { background: #f8d0cb; color: #b2301d; }
+
+.rule-kind { flex-shrink: 0; padding: 4px 10px; border-radius: 999px; font-size: 11.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+
+.rule-line-words { flex: 1; min-width: 0; }
+
+.rule-count { flex-shrink: 0; margin-left: auto; padding: 4px 10px; border-radius: 999px; background: #e8eaf6; color: #3b4a8c; font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+
+.rule-count[hidden] { display: none; }
+
+.rule.is-line .rule-note { flex-basis: 100%; padding-left: 38px; }
+
+.rule.is-open.is-include { background: #f4faf5; border-color: #b9dcc2; }
+
+.rule.is-open.is-exclude { background: #fef4f2; border-color: #f0c4bc; }
+
+.rule .rule-controls > .button-small { margin-left: auto; flex-shrink: 0; }
+
+.rule-note { flex-basis: 100%; font-size: 13px; color: var(--muted); }
+
+.rule-remove { color: var(--muted); }
+
+.rule-empty { color: var(--muted); font-size: 14px; padding: 6px 0; }
+
+.chip-row { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.chip-toggle { border: 1px solid var(--line); background: #fff; color: var(--muted); border-radius: 999px; padding: 6px 12px; font-size: 13px; font-weight: 600; cursor: pointer; }
+
+.chip-toggle.active { background: var(--brand-fill, var(--brand)); border-color: var(--brand-fill, var(--brand)); color: #fff; }
+
+.rule-said { flex: 1 1 60%; font-size: 13.5px; color: var(--brand); }
+
+.rule-said.is-empty { color: var(--muted); font-style: italic; }
+
+.rule-search { flex: 1 1 200px; min-width: 160px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 999px; font: inherit; background: #fff; }
+
+.facet-wrap { position: relative; }
+
+.facet-button { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: #fff; color: var(--ink); border-radius: 999px; padding: 7px 12px; font-size: 13px; font-weight: 600; cursor: pointer; }
+
+.facet-button.open, .facet-button:hover { border-color: var(--accent, var(--brand)); }
+
+.facet-button svg { width: 15px; height: 15px; }
+
+.facet-panel {
+  position: absolute;
+  z-index: 25;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 240px;
+  max-height: 340px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+  padding: 6px 0;
+}
+
+.facet-option { display: flex; align-items: center; gap: 10px; padding: 8px 14px; cursor: pointer; font-size: 14px; }
+
+.facet-option:hover { background: var(--input); }
+
+.facet-option span { flex: 1; }
+
+.facet-option svg { width: 16px; height: 16px; color: var(--muted); }
+
+.facet-option input { accent-color: var(--brand); width: 18px; height: 18px; }
+
+.facet-empty { padding: 10px 14px; color: var(--muted); font-size: 13px; }
+
+.facet-foot { display: flex; justify-content: flex-end; padding: 8px 12px 4px; border-top: 1px solid var(--line); margin-top: 4px; }
+
+/* The editor's pencil and trash, for a page without an icon-button of its own. */
+.rule .icon-button { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border: 0; border-radius: 8px; background: none; color: var(--muted); cursor: pointer; }
+
+.rule .icon-button:hover { background: rgba(0, 0, 0, 0.06); color: var(--ink); }
+
+.rule .icon-button svg { width: 16px; height: 16px; }
+
+/* Inside a scrolling window - Heliosian's editors - a dropdown's panel
+   opens in the flow, under its button, rather than floating and clipped. */
+.modal .facet-panel { position: static; width: 100%; margin-top: 6px; box-shadow: none; }
+
+.modal .facet-wrap:has(.facet-panel:not([hidden])) { flex-basis: 100%; }

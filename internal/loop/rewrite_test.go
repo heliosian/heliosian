@@ -110,11 +110,11 @@ func TestRewriteEncodesWhatIsNotASCII(t *testing.T) {
 
 func TestHeldStopsLoopsAndAutomata(t *testing.T) {
 	cases := map[string]string{
-		"From: a@x.org\r\nX-Helios-Loop: other\r\n\r\n":            "already sent through Helios Loop",
-		"From: a@x.org\r\nAuto-Submitted: auto-replied\r\n\r\n":    "auto-submitted mail",
-		"From: a@x.org\r\nAuto-Submitted: no\r\n\r\n":              "",
+		"From: a@x.org\r\nX-Helios-Loop: other\r\n\r\n":              "already sent through Helios Loop",
+		"From: a@x.org\r\nAuto-Submitted: auto-replied\r\n\r\n":      "auto-submitted mail",
+		"From: a@x.org\r\nAuto-Submitted: no\r\n\r\n":                "",
 		"From: Mail Delivery <MAILER-DAEMON@mx.example.org>\r\n\r\n": "a mail system's notice",
-		"From: a@x.org\r\n\r\n": "",
+		"From: a@x.org\r\n\r\n":                                      "",
 	}
 	for raw, want := range cases {
 		lines, _ := splitMessage([]byte(raw))

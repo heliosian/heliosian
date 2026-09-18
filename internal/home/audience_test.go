@@ -1,63 +1,118 @@
 package home
 
 import (
+	"slices"
 	"testing"
+
+	"heliosian/internal/data"
+	"heliosian/internal/filter"
+	"heliosian/internal/who"
 )
 
-// A link kept to some roles or classrooms goes to the people in them and to
-// nobody else; one kept to neither goes to everyone. The sample sheet keeps
-// the Parent Portal to parents, the Staff Room to staff, one chat to a
-// classroom, one to the parents of two classrooms.
-func TestLinkAudience(t *testing.T) {
+type noFiles struct{}
+
+func (noFiles) Has(string) (bool, error) { return false, nil }
+
+func (noFiles) Prefetch([]string) error { return nil }
+
+// sampleDirectory is the sample community, read the way the server reads it
+// for every audience: the directory alone, no tags.
+type sampleDirectory struct{ model *who.Model }
+
+func (d sampleDirectory) Sources() filter.Sources {
+	return filter.Sources{Directory: d.model}
+}
+
+func directoryOf(t *testing.T) sampleDirectory {
+	t.Helper()
+	tables, err := who.ReadTables(&data.Dir{Root: "../../sampledata"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	model, err := who.BuildModel(tables, nil, noFiles{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return sampleDirectory{model}
+}
+
+// An audience is the Audience tab's rules for a thing, read as a group's
+// are: a link or a section with rules goes to the people they pick out and
+// to nobody else, one with none to everyone; an app narrowed to a list goes
+// to the people named and the ones its rules pick out. The sample sheet
+// keeps the Parent Portal to parents, the Staff Room to staff, one chat to
+// a classroom, one to the parents of two classrooms, the Chats section to
+// parents and staff, and the celebration to two people and the Jays parents.
+func TestAudienceIsAListOfRules(t *testing.T) {
 	c := sampleCache(t)
+	c.directory = directoryOf(t)
 	links := map[string]Link{}
-	for _, cat := range c.Model().Categories {
-		for _, l := range cat.Links {
-			links[l.Title] = l
-		}
-	}
-	if got := links["Hawks and Falcons Chat"]; len(got.Roles) != 1 || got.Roles[0] != RoleParents || len(got.Classrooms) != 2 || got.Classrooms[1] != "Falcons" {
-		t.Fatalf("the chat's audience = %v %v", got.Roles, got.Classrooms)
-	}
-	parent := func(rooms ...string) ([]string, []string) { return []string{RoleParents}, rooms }
-	for _, tc := range []struct {
-		link  string
-		roles []string
-		rooms []string
-		want  bool
-	}{
-		{"Directory", nil, nil, true},
-		{"Parent Portal", []string{RoleParents}, nil, true},
-		{"Parent Portal", []string{RoleStudents}, []string{"Jays"}, false},
-		{"Staff Room", []string{RoleStaff}, []string{"Jays"}, true},
-		{"Staff Room", []string{RoleParents}, []string{"Jays"}, false},
-		{"Hummingbirds Chat", []string{RoleStudents}, []string{"Hummingbirds"}, true},
-		{"Hummingbirds Chat", []string{RoleStaff}, []string{"Hummingbirds"}, true},
-		{"Hummingbirds Chat", []string{RoleParents}, []string{"Hawks"}, false},
-		{"Hawks and Falcons Chat", []string{RoleStudents}, []string{"Hawks"}, false},
-	} {
-		if got := links[tc.link].For(tc.roles, tc.rooms); got != tc.want {
-			t.Errorf("%s for %v %v = %v, want %v", tc.link, tc.roles, tc.rooms, got, tc.want)
-		}
-	}
-	roles, rooms := parent("Jays", "Ospreys")
-	if !links["Jays Chat"].For(roles, rooms) || links["Hawks and Falcons Chat"].For(roles, rooms) {
-		t.Errorf("a Jays and Ospreys parent should see the Jays chat and not the Hawks and Falcons one")
-	}
-	// A section kept to some people keeps its links with it: the sample
-	// Chats are for parents and staff.
 	var chats Category
 	for _, cat := range c.Model().Categories {
 		if cat.Title == "Chats" {
 			chats = cat
 		}
+		for _, l := range cat.Links {
+			links[l.Title] = l
+		}
 	}
-	if len(chats.Roles) != 2 || chats.For([]string{RoleStudents}, []string{"Jays"}) || !chats.For([]string{RoleStaff}, nil) {
-		t.Errorf("Chats = %v, want kept to parents and staff", chats.Roles)
+	if got := links["Hawks and Falcons Chat"].Rules; len(got) != 1 || got[0].Kind != filter.KindInclude || got[0].Roles[0] != "Parent" || len(got[0].Classrooms) != 2 || got[0].Owner == "" {
+		t.Fatalf("the chat's rules = %+v", got)
 	}
-	// A misspelled role refuses the load.
-	tables := c.Tables().withRow(linksTab, "Directory", map[string]string{RolesColumn: "Teachers"})
-	if _, err := BuildModel(tables, noImages{}); err == nil {
-		t.Fatalf("a role that is not one of the three loaded")
+	const (
+		jordan = "jordan.whitfield@heliosschool.org" // parent: Jays, Ospreys
+		sam    = "sam.whitfield@heliosschool.org"    // student: Jays
+		ruth   = "ruth.amari@heliosschool.org"       // staff, teaching the Hummingbirds
+	)
+	sees := func(rules []filter.Rule, email string) bool {
+		return len(rules) == 0 || c.includes(rules, email)
+	}
+	for _, tc := range []struct {
+		title string
+		email string
+		want  bool
+	}{
+		{"Directory", sam, true},
+		{"Parent Portal", jordan, true},
+		{"Parent Portal", sam, false},
+		{"Staff Room", ruth, true},
+		{"Staff Room", jordan, false},
+		{"Hummingbirds Chat", ruth, false},
+		{"Hawks and Falcons Chat", jordan, false},
+		{"Jays Chat", jordan, true},
+		{"Jays Chat", sam, false},
+	} {
+		if got := sees(links[tc.title].Rules, tc.email); got != tc.want {
+			t.Errorf("%s for %s = %v, want %v", tc.title, tc.email, got, tc.want)
+		}
+	}
+	if len(chats.Rules) != 1 || sees(chats.Rules, sam) || !sees(chats.Rules, ruth) || !sees(chats.Rules, jordan) {
+		t.Errorf("Chats = %+v, want kept to parents and staff", chats.Rules)
+	}
+	if hidden := c.HiddenApps(jordan); slices.Contains(hidden, "celebrate") {
+		t.Errorf("a Jays parent is kept from the celebration: %v", hidden)
+	}
+	if hidden := c.HiddenApps(sam); !slices.Contains(hidden, "celebrate") {
+		t.Errorf("a student sees the celebration: %v", hidden)
+	}
+	// Saving replaces a thing's rows whole, and a rule that says nothing,
+	// or names a role the filter has no such thing as, refuses the load.
+	tables := c.Tables().withAudience(thingLink+"Directory", []filter.Rule{{Kind: filter.KindExclude, Roles: []string{"Student"}, Owner: jordan}})
+	model, err := BuildModel(tables, noImages{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := model.Categories[2].Links[0].Rules; len(got) != 1 || got[0].Kind != filter.KindExclude {
+		t.Errorf("the Directory's rules after a save = %+v", got)
+	}
+	for _, bad := range []map[string]string{
+		{"Thing": "link:Directory", "Kind": "include", "Roles": "Teachers", "Owner": jordan},
+		{"Thing": "link:Directory", "Kind": "include", "Owner": jordan},
+	} {
+		tables := c.Tables().withAudience(thingLink+"Directory", nil)
+		tables.Audience = append(tables.Audience, bad)
+		if _, err := BuildModel(tables, noImages{}); err == nil {
+			t.Errorf("a bad rule %v loaded", bad)
+		}
 	}
 }

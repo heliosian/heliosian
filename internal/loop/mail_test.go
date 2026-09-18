@@ -35,7 +35,7 @@ type sampleDirectory struct {
 }
 
 func (d sampleDirectory) Resolve(email string) string { return d.model.Resolve(email) }
-func (d sampleDirectory) Model() *who.Model          { return d.model }
+func (d sampleDirectory) Model() *who.Model           { return d.model }
 func (d sampleDirectory) Tags(owner string) map[string][]string {
 	return who.TagsOf(d.tables.Tags, d.model, owner)
 }

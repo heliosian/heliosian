@@ -38,6 +38,7 @@ import (
 	"heliosian/internal/data"
 	"heliosian/internal/describe"
 	"heliosian/internal/feedback"
+	"heliosian/internal/filter"
 	"heliosian/internal/geocode"
 	"heliosian/internal/home"
 	"heliosian/internal/imagesearch"
@@ -267,37 +268,13 @@ func (d directory) HomePeople() []home.Person {
 	return out
 }
 
-// Classrooms is every classroom the directory lists, by name, for the front
-// page's link editor.
-func (d directory) Classrooms() []string {
-	model := d.cache.Model()
-	out := make([]string, 0, len(model.Classrooms))
-	for _, c := range model.Classrooms {
-		out = append(out, c.Name)
-	}
-	return out
-}
+// audienceSources is what the front page's audiences are read against:
+// the same directory, tags, Magic Tags and shared tags Loop's rules read,
+// so a rule means the same thing wherever it is written.
+type audienceSources struct{ loopDirectory }
 
-// Audience is a person's roles and classrooms as the front page keeps a
-// link or a section to them: the classrooms as every filter reads them
-// (who.Model.ClassroomsOf) - a student's own, a parent's children's, none
-// for staff, who are not in the room they teach.
-func (d directory) Audience(email string) (roles, classrooms []string) {
-	model := d.cache.Model()
-	p := model.Person(email)
-	if p == nil {
-		return nil, nil
-	}
-	if p.IsStudent {
-		roles = append(roles, home.RoleStudents)
-	}
-	if p.IsParent {
-		roles = append(roles, home.RoleParents)
-	}
-	if p.IsStaff {
-		roles = append(roles, home.RoleStaff)
-	}
-	return roles, model.ClassroomsOf(p)
+func (s audienceSources) Sources() filter.Sources {
+	return loop.SourcesOf(s.loopDirectory)
 }
 
 func (d directory) Alerts(email string) (int, bool) {
@@ -982,7 +959,7 @@ func NewCore(cfg Config) *Core {
 	calendarMux := http.NewServeMux()
 	hooks := calendar.Register(calendarMux, calendarCache, cfg.Writer, queue, cfg.Store, calendarDirectory{cache, settings}, settings.SuperAdmins, linked, cfg.ImageSearch, cfg.CalendarMail)
 	homeMux := http.NewServeMux()
-	home.Register(homeMux, homeCache, cfg.Writer, queue, cfg.Store, settings.SuperAdmins, cache.HeroPhoto, directory{cache, settings}.HomePeople, directory{cache, settings}, directory{cache, settings}.Alerts, frontEvents.list, frontEvents.month, cfg.ImageSearch, hooks.Answer, hooks.MakeDefault)
+	home.Register(homeMux, homeCache, cfg.Writer, queue, cfg.Store, settings.SuperAdmins, cache.HeroPhoto, directory{cache, settings}.HomePeople, audienceSources{loopDir}, directory{cache, settings}.Alerts, frontEvents.list, frontEvents.month, cfg.ImageSearch, hooks.Answer, hooks.MakeDefault)
 	teamMux := http.NewServeMux()
 	team.Register(teamMux, teamCache, cfg.Writer, queue, cfg.Store, directory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.Mail, cfg.MailFrom)
 	birthdayMux := http.NewServeMux()

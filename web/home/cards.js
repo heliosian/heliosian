@@ -1,13 +1,32 @@
 import {state, isAdmin} from './state.js';
 import {el, svg, iconOf, toast} from './dom.js';
-import {openLinkEditor, openCategoryEditor} from './edit.js';
+import {openLinkEditor, openCategoryEditor, openAppEditor, moveApp, moveLink} from './edit.js';
 import {appOrigin} from '/toolbar.js';
 
 // In Super Admin Mode every link wears a pencil in its corner, the way into
 // its editor; a card has no other menu.
-function editPencil(link) {
+// editPencil is a link's tools in Super Admin Mode: two arrows that move
+// it among its category's links, and the pencil that opens its editor.
+// category is the link's, for whether it is first or last.
+function editPencil(link, category) {
   if (!isAdmin() || !state.superAdmin) {
     return null;
+  }
+  const tools = el('div', 'app-tools');
+  const siblings = category ? category.links.filter(listed) : [];
+  const at = siblings.indexOf(link);
+  for (const [by, glyph, words] of [[-1, '\u2039', 'Move earlier'], [1, '\u203a', 'Move later']]) {
+    const b = el('button', 'link-edit app-move', glyph);
+    b.type = 'button';
+    b.title = words;
+    b.setAttribute('aria-label', `${words}: ${link.title}`);
+    b.disabled = by < 0 ? at <= 0 : at < 0 || at >= siblings.length - 1;
+    b.addEventListener('click', e => {
+      e.stopPropagation();
+      e.preventDefault();
+      moveLink(link.title, by);
+    });
+    tools.append(b);
   }
   const pencil = el('button', 'link-edit');
   pencil.type = 'button';
@@ -19,7 +38,8 @@ function editPencil(link) {
     e.preventDefault();
     openLinkEditor(link);
   });
-  return pencil;
+  tools.append(pencil);
+  return tools;
 }
 
 // The glyph a category goes by: the mark the sheet names for it, else one
@@ -74,7 +94,7 @@ function featureCard(link, category) {
   go.append(el('span', '', 'Open App'), svg('arrow'));
   card.append(go);
   slot.append(card);
-  const pencil = editPencil(link);
+  const pencil = editPencil(link, category);
   if (pencil) {
     slot.append(pencil);
   }
@@ -104,7 +124,7 @@ function tile(link, category) {
   }
   open.append(body);
   card.append(open);
-  const pencil = editPencil(link);
+  const pencil = editPencil(link, category);
   if (pencil) {
     card.append(pencil);
   }
@@ -201,6 +221,20 @@ function sectionListed(category) {
   return category.forMe !== false || state.superAdmin;
 }
 
+// audienceWords says who some rules keep a thing to, short: each rule's
+// choices, the excludes marked, or how many rules when they run long.
+function audienceWords(rules) {
+  const parts = (rules || []).map(r => {
+    const bits = [...(r.roles || []), ...(r.grades || []), ...(r.classrooms || []), ...(r.tagLabels || r.tags || [])];
+    if (r.search) {
+      bits.push(`“${r.search}”`);
+    }
+    return (r.kind === 'exclude' ? 'not ' : '') + bits.join(' · ');
+  });
+  const words = parts.join(' / ');
+  return words.length > 40 ? `${rules.length} ${rules.length === 1 ? 'rule' : 'rules'}` : words;
+}
+
 // badges are the marks after a title an admin sees in Super Admin Mode: that
 // the link is hidden, and who it - or its section - is kept to.
 function badges(link) {
@@ -208,9 +242,8 @@ function badges(link) {
   if (link.visible === false) {
     out.push(el('span', 'hidden-badge', 'Hidden'));
   }
-  const who = [...(link.roles || []), ...(link.classrooms || [])];
-  if (who.length && state.superAdmin) {
-    out.push(el('span', 'hidden-badge audience-badge', who.join(' · ')));
+  if ((link.rules || []).length && state.superAdmin) {
+    out.push(el('span', 'hidden-badge audience-badge', audienceWords(link.rules)));
   }
   return out;
 }
@@ -661,7 +694,25 @@ function eventsMatching(needle) {
 // on this tier in the same tab, the way the toolbar's switch does. The search
 // box filters them by name and tagline like the links.
 function appsMatching(needle) {
-  return (state.model.apps || []).filter(a => !needle || `${a.name} ${a.tagline}`.toLowerCase().includes(needle));
+  return (state.model.apps || []).filter(a => sectionListed(a) && (!needle || `${a.name} ${a.tagline}`.toLowerCase().includes(needle)));
+}
+
+// appBadge says, in Super Admin Mode, who an app narrowed to a list is
+// for: its rule's choices and how many people are named.
+function appBadge(app) {
+  const v = app.visibility;
+  if (!state.superAdmin || !v || v.visibility !== 'list') {
+    return null;
+  }
+  const who = [];
+  if ((v.rules || []).length) {
+    who.push(audienceWords(v.rules));
+  }
+  const named = (v.emails || []).length;
+  if (named) {
+    who.push(named === 1 ? '1 person' : named + ' people');
+  }
+  return el('span', 'hidden-badge audience-badge', who.length ? who.join(' · ') : 'Nobody');
 }
 
 // appCard is one community app as a chip: its mark on a white disc, its
@@ -679,12 +730,49 @@ function appCard(app) {
   icon.alt = '';
   disc.append(icon);
   card.append(disc);
-  card.append(el('div', 'chip-title', app.name));
+  const title = el('div', 'chip-title', app.name);
+  const badge = appBadge(app);
+  if (badge) {
+    title.append(badge);
+  }
+  card.append(title);
   card.append(el('div', 'chip-description', app.tagline));
   const go = el('span', 'button chip-open');
   go.append(el('span', '', 'Open App'), svg('arrow'));
   card.append(go);
   slot.append(card);
+  // In Super Admin Mode a pencil opens the app's editor - its words and
+  // who sees it - and two arrows move it in the switch's order.
+  if (isAdmin() && state.superAdmin && app.visibility) {
+    const tools = el('div', 'app-tools');
+    const keys = (state.model.apps || []).map(a => a.key);
+    const at = keys.indexOf(app.key);
+    for (const [by, glyph, words] of [[-1, '\u2039', 'Move earlier'], [1, '\u203a', 'Move later']]) {
+      const b = el('button', 'link-edit app-move', glyph);
+      b.type = 'button';
+      b.title = words;
+      b.setAttribute('aria-label', `${words}: ${app.name}`);
+      b.disabled = by < 0 ? at <= 0 : at >= keys.length - 1;
+      b.addEventListener('click', e => {
+        e.stopPropagation();
+        e.preventDefault();
+        moveApp(app.key, by);
+      });
+      tools.append(b);
+    }
+    const pencil = el('button', 'link-edit');
+    pencil.type = 'button';
+    pencil.title = 'Edit app';
+    pencil.setAttribute('aria-label', `Edit ${app.name}`);
+    pencil.append(svg('edit'));
+    pencil.addEventListener('click', e => {
+      e.stopPropagation();
+      e.preventDefault();
+      openAppEditor(app);
+    });
+    tools.append(pencil);
+    slot.append(tools);
+  }
   return slot;
 }
 

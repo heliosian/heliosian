@@ -7,14 +7,10 @@
 // easter egg beside them (quan.css): found by typing "quan" on a page or
 // opening one with ?mode=quan, and offered in the menu only while it is
 // on - except to the super admins and anyone with "quan" in their address,
-// who always see the choice and are switched onto it once, whatever they
-// had picked, so they know it is there; from then on their choice stands
-// (offerQuan, which the toolbar calls once sign-in says so).
+// who always see the choice (offerQuan, which the toolbar calls once
+// sign-in says so). Nobody starts on it: Auto is everyone's default.
 const cookie = 'heliosian-mode';
 const modes = 'light|dark|system|quan';
-// The second cookie, set the once Quan has been shown, so it is never
-// forced again.
-const shownCookie = 'heliosian-quan-shown';
 
 // The cookie sits on the root domain - heliosian.com - so heliosian.com,
 // who.heliosian.com and the local hosts under it all read one choice; a
@@ -68,15 +64,9 @@ export function applyMode() {
 let offered = false;
 
 // offerQuan is for the people Quan mode is meant for: the choice joins the
-// menu for good, and the first time it is offered it is switched on over
-// whatever they had, once - the menu is right there to change it back.
+// menu for good; what they are on stays as it is.
 export function offerQuan() {
   offered = true;
-  if (!new RegExp('(?:^|; )' + shownCookie + '=').test(document.cookie)) {
-    const d = domain();
-    document.cookie = `${shownCookie}=1; path=/; max-age=31536000; SameSite=Lax${d ? '; domain=' + d : ''}${location.protocol === 'https:' ? '; Secure' : ''}`;
-    setMode('quan');
-  }
   document.dispatchEvent(new CustomEvent('heliosian-mode'));
 }
 

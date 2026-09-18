@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"heliosian/internal/data"
+	"heliosian/internal/filter"
 )
 
 const (
@@ -39,9 +40,6 @@ const (
 	// parents-k@loop.heliosian.com.
 	Domain = "loop.heliosian.com"
 
-	KindInclude = "include"
-	KindExclude = "exclude"
-
 	maxTitleLength       = 80
 	maxDescriptionLength = 300
 	maxSearchLength      = 80
@@ -66,11 +64,10 @@ var (
 	ArchivedColumns  = []string{"Group", "Email"}
 	ChangeLogColumns = []string{"Timestamp", "Actor", "Action", "Group", "Detail"}
 
-	// Roles are the role facet's values, and Relations the Family facet's:
-	// the relatives a rule's matches are widened by, as Who?'s Add family
-	// does.
-	Roles     = []string{"Student", "Parent", "Staff"}
-	Relations = []string{"Parents", "Children", "Siblings"}
+	// Roles are the role facet's values, and Relations the Family facet's,
+	// as the filter has them.
+	Roles     = filter.Roles
+	Relations = filter.Relations
 
 	Visibilities = []string{VisibilityHidden, VisibilityMembers, VisibilityEveryone}
 )
@@ -83,25 +80,6 @@ var nameForm = regexp.MustCompile(`^[a-z0-9][a-z0-9.-]{0,38}[a-z0-9]$`)
 var reservedNames = []string{"abuse", "admin", "administrator", "hostmaster", "noreply", "no-reply", "postmaster", "root", "webmaster"}
 
 var emailForm = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
-
-// Rule is one line of a group's definition, a filter as Who? has them: every
-// facet set must match (words in the name or address, a classroom, a
-// grade, a tag or Magic Tag of the owner's), Family widens the matches by
-// their relatives, and Roles then keeps only people of those kinds, as
-// Who?'s tag page reads the same choices. Include rules are unioned and
-// exclude rules subtracted.
-// Owner is whose tags the Tags facet names, since tags are private to one
-// person.
-type Rule struct {
-	Kind       string   `json:"kind"`
-	Roles      []string `json:"roles"`
-	Search     string   `json:"search"`
-	Classrooms []string `json:"classrooms"`
-	Grades     []string `json:"grades"`
-	Tags       []string `json:"tags"`
-	Family     []string `json:"family"`
-	Owner      string   `json:"owner"`
-}
 
 // Addition is someone on a group by hand rather than by rule: an address
 // the directory does not hold, and the name a manager typed for it.
@@ -299,28 +277,16 @@ func CheckRule(r Rule) error {
 	if r.Kind != KindInclude && r.Kind != KindExclude {
 		return fmt.Errorf("kind %q is not %s or %s", r.Kind, KindInclude, KindExclude)
 	}
-	for _, role := range r.Roles {
-		if !slices.Contains(Roles, role) {
-			return fmt.Errorf("role %q is not one of %s", role, JoinList(Roles))
-		}
-	}
-	for _, relation := range r.Family {
-		if !slices.Contains(Relations, relation) {
-			return fmt.Errorf("family relation %q is not one of %s", relation, JoinList(Relations))
-		}
+	if err := filter.CheckFacets(r); err != nil {
+		return err
 	}
 	if len(r.Search) > maxSearchLength {
 		return fmt.Errorf("the search words are too long")
 	}
-	for _, tag := range r.Tags {
-		if strings.Contains(tag, ",") {
-			return fmt.Errorf("a tag with a comma in its name cannot be used in a rule")
-		}
-	}
 	if !emailForm.MatchString(r.Owner) {
 		return fmt.Errorf("a rule needs an owner")
 	}
-	if len(r.Roles)+len(r.Classrooms)+len(r.Grades)+len(r.Tags) == 0 && r.Search == "" {
+	if r.Empty() {
 		return fmt.Errorf("a rule needs a role, some words, a classroom, a grade or a tag")
 	}
 	return nil

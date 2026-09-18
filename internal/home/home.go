@@ -18,6 +18,7 @@ import (
 	"heliosian/internal/auth"
 	"heliosian/internal/blob"
 	"heliosian/internal/data"
+	"heliosian/internal/filter"
 	"heliosian/internal/imagesearch"
 	"heliosian/internal/serve"
 )
@@ -27,15 +28,11 @@ const (
 	maxImageSize = 8 << 20
 )
 
-// Directory is what the front page asks the directory about a link's
-// audience: the classrooms there are, for the editor, and a person's own
-// roles and classrooms, for what they are shown.
+// Directory is what an audience is read against: the directory and a
+// person's tags, as the filter takes them (filter.Sources) - the same
+// sources Loop's groups read.
 type Directory interface {
-	Classrooms() []string
-	// Audience is the roles (Students, Parents, Staff) and classrooms a
-	// person is read as: a student's own classroom, a parent's children's,
-	// a staff member's own.
-	Audience(email string) (roles, classrooms []string)
+	Sources() filter.Sources
 }
 
 type app struct {
@@ -161,6 +158,7 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 		search.UserAgent = "Heliosian image search (+https://heliosian.com)"
 	}
 	a := app{cache: cache, writer: writer, queue: queue, store: store, superAdmins: superAdmins, heroPhoto: heroPhoto, people: people, directory: directory, alerts: alerts, upcoming: upcoming, month: month, search: search, answer: answer, makeDefault: makeDefault}
+	cache.directory = directory
 	mux.HandleFunc("GET /{$}", a.page)
 	mux.HandleFunc("GET /admin", a.adminPage)
 	mux.HandleFunc("GET /dl/", func(w http.ResponseWriter, r *http.Request) {
@@ -172,8 +170,11 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	mux.HandleFunc("GET /api/apps/upcoming", a.upcomingUnder)
 	mux.HandleFunc("POST /api/apps/calendar/default", a.setDefault)
 	mux.HandleFunc("POST /api/apps/link", a.saveLink)
+	mux.HandleFunc("GET /api/apps/audience/options", a.audienceOptions)
+	mux.HandleFunc("POST /api/apps/audience/preview", a.audiencePreview)
 	mux.HandleFunc("POST /api/apps/rsvp", a.rsvp)
 	mux.HandleFunc("DELETE /api/apps/link", a.deleteLink)
+	mux.HandleFunc("POST /api/apps/link/move", a.moveLink)
 	mux.HandleFunc("POST /api/apps/category", a.saveCategory)
 	mux.HandleFunc("DELETE /api/apps/category", a.deleteCategory)
 	mux.HandleFunc("POST /api/apps/categories/order", a.reorderCategories)
@@ -245,13 +246,41 @@ func homeApp() App {
 
 // visibleApps is the community apps as the front page's apps section lists
 // them for a person: every app less those the Visibility tab keeps from them.
-func (a app) visibleApps(email string) []App {
+// appView is one community app as the front page lists it: the app, and
+// for an admin, whether they would see it as anyone else and its
+// visibility row, for the editor Super Admin Mode opens on it.
+type appView struct {
+	App
+	ForMe      *bool          `json:"forMe,omitempty"`
+	Visibility *AppVisibility `json:"visibility,omitempty"`
+}
+
+// appViews is the apps section's list: the apps this person sees, or for
+// an admin every app, the ones they would not see marked.
+func (a app) appViews(email string, admin bool) []appView {
 	hidden := a.cache.HiddenApps(email)
-	out := []App{}
-	for _, app := range a.cache.AppList() {
-		if !slices.Contains(hidden, app.Key) {
-			out = append(out, app)
+	out := []appView{}
+	rows := map[string]AppVisibility{}
+	if admin {
+		for _, v := range a.cache.AppVisibilities() {
+			rows[v.Key] = v
 		}
+	}
+	for _, app := range a.cache.AppList() {
+		mine := !slices.Contains(hidden, app.Key)
+		if !mine && !admin {
+			continue
+		}
+		view := appView{App: app}
+		if admin {
+			row := rows[app.Key]
+			view.Visibility = &row
+			if !mine {
+				no := false
+				view.ForMe = &no
+			}
+		}
+		out = append(out, view)
 	}
 	return out
 }
@@ -378,16 +407,20 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 	admin := a.cache.IsAdmin(email)
 	hidden := hiddenHosts(r.Host, a.cache.HiddenApps(email))
 	full := a.cache.Model()
-	roles, classrooms := a.directory.Audience(email)
+	// forMe says a thing's rules take this person in: none, or the list
+	// they make picks them out.
+	forMe := func(rules []filter.Rule) bool {
+		return len(rules) == 0 || a.cache.includes(rules, email)
+	}
 	categories := make([]Category, 0, len(full.Categories))
 	for _, category := range full.Categories {
 		// A section kept to some people goes to them whole; an admin gets
 		// every section, the ones not theirs marked.
-		sectionMine := category.For(roles, classrooms)
+		sectionMine := forMe(category.Rules)
 		if !sectionMine && !admin {
 			continue
 		}
-		shown := Category{Title: category.Title, Emoji: category.Emoji, Style: category.Style, Max: category.Max, Links: []Link{}, Virtual: category.Virtual, Roles: category.Roles, Classrooms: category.Classrooms}
+		shown := Category{Title: category.Title, Emoji: category.Emoji, Style: category.Style, Max: category.Max, Links: []Link{}, Virtual: category.Virtual, Rules: category.Rules}
 		if !sectionMine {
 			no := false
 			shown.ForMe = &no
@@ -395,7 +428,7 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 		for _, link := range category.Links {
 			// A link kept to some people goes to them; an admin gets every
 			// link, the ones not theirs marked, the way hidden ones are.
-			mine := link.For(roles, classrooms)
+			mine := forMe(link.Rules)
 			if ((link.Visible && mine) || admin) && !linksInto(hidden, link.URL) {
 				if !mine {
 					no := false
@@ -419,20 +452,24 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 		UpcomingCalendar *Upcoming `json:"upcomingCalendar,omitempty"`
 		// Calendar fills the rail's month and day card: the month now is in.
 		Calendar Month `json:"calendar"`
-		// Apps fills the apps section: the community apps this person sees.
-		Apps []App `json:"apps"`
-		// Classrooms is the directory's list, for the link editor's
-		// audience picker; sent to admins alone.
-		Classrooms []string `json:"classrooms,omitempty"`
+		// Apps fills the apps section: the community apps this person sees
+		// - and, for an admin, the rest, each marked not theirs and carrying
+		// its visibility for the editor.
+		Apps []appView `json:"apps"`
+		// Options is what the rule editors offer this admin: the
+		// classrooms, grades, their tags and Magic Tags, the roles and
+		// relations (filter.OptionsFor); sent to admins alone.
+		Options *filter.Options `json:"options,omitempty"`
 	}{
 		Categories:   categories,
 		User:         user{Email: email, Initial: strings.ToUpper(email[:1]), PhotoURL: a.heroPhoto(email), IsAdmin: admin},
 		ImageSources: a.search.Sources(),
 		Calendar:     a.month(email, "", ""),
-		Apps:         a.visibleApps(email),
+		Apps:         a.appViews(email, admin),
 	}
 	if admin {
-		view.Classrooms = a.directory.Classrooms()
+		options := filter.OptionsFor(a.directory.Sources(), email)
+		view.Options = &options
 	}
 	ahead := a.upcoming(email, "")
 	view.Upcoming = ahead.Events
@@ -518,7 +555,6 @@ func (a app) logChange(actor, action, kind string, cells map[string]string) erro
 	return a.writer.Append(appName, changeLogTab, []string{
 		time.Now().Format(time.RFC3339), actor, action, kind,
 		cells["Title"], cells["Description"], cells["URL"], cells["Image"], cells["Category"], cells["Visible"], cells["Style"],
-		cells[RolesColumn], cells[ClassroomsColumn],
 	})
 }
 
@@ -527,21 +563,96 @@ func (a app) importImage(w http.ResponseWriter, r *http.Request) {
 	a.search.ServeImport(w, r, a.store, imageFolder, maxImageSize)
 }
 
-// checkAudience reads an editor's Who sees it: the roles, spelled as the
-// sheet spells them, and classrooms the directory has.
-func (a app) checkAudience(roles, classrooms []string) ([]string, []string, error) {
-	checked, err := checkRoles(strings.Join(roles, ", "))
-	if err != nil {
-		return nil, nil, err
-	}
-	known := a.directory.Classrooms()
-	rooms := splitList(strings.Join(classrooms, ", "))
-	for _, c := range rooms {
-		if !slices.Contains(known, c) {
-			return nil, nil, fmt.Errorf("the directory has no classroom %s", c)
+// checkRules reads an editor's Who sees it: each rule tidied and checked
+// as a group's would be (filter.Check), its classrooms and grades the
+// directory's, and its owner - whose tags it reads - the admin saving it
+// when it has none. A rule another admin wrote keeps its owner.
+func (a app) checkRules(rules []filter.Rule, actor string) ([]filter.Rule, error) {
+	options := filter.OptionsFor(a.directory.Sources(), actor)
+	out := make([]filter.Rule, 0, len(rules))
+	for _, r := range rules {
+		r = filter.Clean(r)
+		if r.Owner == "" {
+			r.Owner = actor
 		}
+		if err := filter.Check(r); err != nil {
+			return nil, err
+		}
+		for _, g := range r.Grades {
+			if !slices.Contains(options.Grades, g) {
+				return nil, fmt.Errorf("the directory has no grade %s", g)
+			}
+		}
+		for _, c := range r.Classrooms {
+			if !slices.Contains(options.Classrooms, c) {
+				return nil, fmt.Errorf("the directory has no classroom %s", c)
+			}
+		}
+		out = append(out, r)
 	}
-	return checked, rooms, nil
+	return out, nil
+}
+
+// audienceOptions serves /api/apps/audience/options: what the rule
+// editors offer the admin asking.
+func (a app) audienceOptions(w http.ResponseWriter, r *http.Request) {
+	email, ok := a.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(filter.OptionsFor(a.directory.Sources(), email)); err != nil {
+		slog.ErrorContext(r.Context(), "encode audience options", "error", err)
+	}
+}
+
+// audiencePreview serves /api/apps/audience/preview: who some rules pick
+// out as the directory stands - how many, the first few by name, and how
+// many each rule touches - so an editor reads back what it is saying.
+func (a app) audiencePreview(w http.ResponseWriter, r *http.Request) {
+	email, ok := a.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Rules []filter.Rule `json:"rules"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	rules, err := a.checkRules(body.Rules, email)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	sources := a.directory.Sources()
+	list := filter.List{Rules: rules}
+	members := filter.Members(list, sources)
+	names := []string{}
+	for _, m := range members {
+		names = append(names, sources.Directory.DisplayName(m))
+	}
+	slices.Sort(names)
+	view := struct {
+		Count      int      `json:"count"`
+		Names      []string `json:"names"`
+		RuleCounts []int    `json:"ruleCounts"`
+	}{Count: len(members), Names: names[:min(len(names), 12)], RuleCounts: filter.RuleCounts(list, sources)}
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(view); err != nil {
+		slog.ErrorContext(r.Context(), "encode audience preview", "error", err)
+	}
+}
+
+// writeAudience replaces a thing's rows on the Audience tab.
+func (a app) writeAudience(key string, rules []filter.Rule) error {
+	if err := a.writer.Delete(appName, audienceTab, map[string]string{"Thing": key}); err != nil {
+		return err
+	}
+	if len(rules) == 0 {
+		return nil
+	}
+	return a.writer.AppendAll(appName, audienceTab, audienceRows(key, rules))
 }
 
 func (a app) saveLink(w http.ResponseWriter, r *http.Request) {
@@ -557,10 +668,8 @@ func (a app) saveLink(w http.ResponseWriter, r *http.Request) {
 		Image       string `json:"image"`
 		Category    string `json:"category"`
 		Visible     bool   `json:"visible"`
-		// Roles and Classrooms keep the link to some people; empty for
-		// everyone.
-		Roles      []string `json:"roles"`
-		Classrooms []string `json:"classrooms"`
+		// Rules keep the link to some people; none for everyone.
+		Rules []filter.Rule `json:"rules"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -570,7 +679,7 @@ func (a app) saveLink(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "title is required and fields must be short", http.StatusBadRequest)
 		return
 	}
-	roles, classrooms, err := a.checkAudience(body.Roles, body.Classrooms)
+	rules, err := a.checkRules(body.Rules, actor)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -578,7 +687,6 @@ func (a app) saveLink(w http.ResponseWriter, r *http.Request) {
 	cells := map[string]string{
 		"Title": title, "Description": strings.TrimSpace(body.Description), "URL": strings.TrimSpace(body.URL),
 		"Image": strings.TrimSpace(body.Image), "Category": strings.TrimSpace(body.Category), "Visible": visibleCell(body.Visible),
-		RolesColumn: strings.Join(roles, ", "), ClassroomsColumn: strings.Join(classrooms, ", "),
 	}
 	action := "edit"
 	if body.Original == "" {
@@ -586,13 +694,26 @@ func (a app) saveLink(w http.ResponseWriter, r *http.Request) {
 		cells["Added By"] = actor
 		cells["Added"] = time.Now().Format(addedFormat)
 	}
+	// The rules go under the title the link will have; a rename moves them.
 	tables := a.cache.Tables().withRow(linksTab, body.Original, cells)
+	if body.Original != "" && body.Original != title {
+		tables = tables.withAudience(thingLink+body.Original, nil)
+	}
+	tables = tables.withAudience(thingLink+title, rules)
 	if !a.commit(r.Context(), w, tables, func() error {
 		if body.Original == "" {
-			if err := a.writer.Append(appName, linksTab, []string{cells["Title"], cells["Description"], cells["URL"], cells["Image"], cells["Category"], cells["Visible"], cells["Added By"], cells["Added"], cells[RolesColumn], cells[ClassroomsColumn]}); err != nil {
+			if err := a.writer.Append(appName, linksTab, []string{cells["Title"], cells["Description"], cells["URL"], cells["Image"], cells["Category"], cells["Visible"], cells["Added By"], cells["Added"]}); err != nil {
 				return err
 			}
 		} else if err := a.writer.Upsert(appName, linksTab, "Title", body.Original, cells); err != nil {
+			return err
+		}
+		if body.Original != "" && body.Original != title {
+			if err := a.writeAudience(thingLink+body.Original, nil); err != nil {
+				return err
+			}
+		}
+		if err := a.writeAudience(thingLink+title, rules); err != nil {
 			return err
 		}
 		return a.logChange(actor, action, "link", cells)
@@ -614,9 +735,12 @@ func (a app) deleteLink(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	tables := a.cache.Tables().withoutRow(linksTab, body.Title)
+	tables := a.cache.Tables().withoutRow(linksTab, body.Title).withAudience(thingLink+body.Title, nil)
 	if !a.commit(r.Context(), w, tables, func() error {
 		if err := a.writer.Delete(appName, linksTab, map[string]string{"Title": body.Title}); err != nil {
+			return err
+		}
+		if err := a.writeAudience(thingLink+body.Title, nil); err != nil {
 			return err
 		}
 		return a.logChange(actor, "delete", "link", map[string]string{"Title": body.Title})
@@ -640,10 +764,8 @@ func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 		// Max is a count, or blank for no limit; it arrives as text since that
 		// is what the sheet holds and what an empty field sends.
 		Max string `json:"max"`
-		// Roles and Classrooms keep the section to some people; empty for
-		// everyone.
-		Roles      []string `json:"roles"`
-		Classrooms []string `json:"classrooms"`
+		// Rules keep the section to some people; none for everyone.
+		Rules []filter.Rule `json:"rules"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -653,7 +775,7 @@ func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "title is required and must be short", http.StatusBadRequest)
 		return
 	}
-	roles, classrooms, err := a.checkAudience(body.Roles, body.Classrooms)
+	rules, err := a.checkRules(body.Rules, actor)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -701,7 +823,7 @@ func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	cells := map[string]string{"Title": title, "Emoji": emoji, "Style": style, "Max": strings.TrimSpace(body.Max), RolesColumn: strings.Join(roles, ", "), ClassroomsColumn: strings.Join(classrooms, ", ")}
+	cells := map[string]string{"Title": title, "Emoji": emoji, "Style": style, "Max": strings.TrimSpace(body.Max)}
 	var tables *Tables
 	if virtual {
 		tables = a.cache.Tables().withRow(categoriesTab, "", cells)
@@ -719,13 +841,26 @@ func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 		}
 		tables.Links = links
 	}
+	// The rules go under the title the section will have; a rename moves them.
+	if body.Original != "" && body.Original != title {
+		tables = tables.withAudience(thingCategory+body.Original, nil)
+	}
+	tables = tables.withAudience(thingCategory+title, rules)
 	action := "edit"
 	if body.Original == "" {
 		action = "add"
 	}
 	if !a.commit(r.Context(), w, tables, func() error {
+		if body.Original != "" && body.Original != title {
+			if err := a.writeAudience(thingCategory+body.Original, nil); err != nil {
+				return err
+			}
+		}
+		if err := a.writeAudience(thingCategory+title, rules); err != nil {
+			return err
+		}
 		if body.Original == "" || virtual {
-			if err := a.writer.Append(appName, categoriesTab, []string{title, cells["Emoji"], cells["Style"], cells["Max"], cells[RolesColumn], cells[ClassroomsColumn]}); err != nil {
+			if err := a.writer.Append(appName, categoriesTab, []string{title, cells["Emoji"], cells["Style"], cells["Max"]}); err != nil {
 				return err
 			}
 			if virtual {
@@ -817,6 +952,60 @@ func (a app) reorderCategories(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// moveLink shifts a link one place among its category's links - the
+// arrows on its card in Super Admin Mode. The tab's row order is the
+// display order, so the link's row and its neighbour's in the same
+// category trade places, and the tab is rewritten in the new order.
+func (a app) moveLink(w http.ResponseWriter, r *http.Request) {
+	actor, ok := a.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Title string `json:"title"`
+		By    int    `json:"by"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	if body.By != 1 && body.By != -1 {
+		http.Error(w, "by must be 1 or -1", http.StatusBadRequest)
+		return
+	}
+	tables := a.cache.Tables()
+	rows := cloneRows(tables.Links)
+	at := slices.IndexFunc(rows, func(row map[string]string) bool { return row["Title"] == body.Title })
+	if at < 0 {
+		http.Error(w, "unknown link "+body.Title, http.StatusBadRequest)
+		return
+	}
+	// The neighbour is the next row of the same category in that direction.
+	to := -1
+	for i := at + body.By; i >= 0 && i < len(rows); i += body.By {
+		if rows[i]["Category"] == rows[at]["Category"] {
+			to = i
+			break
+		}
+	}
+	if to < 0 {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	rows[at], rows[to] = rows[to], rows[at]
+	next := *tables
+	next.Links = rows
+	if !a.commit(r.Context(), w, &next, func() error {
+		if err := a.writer.Reorder(appName, linksTab, "Title", rowTitles(rows)); err != nil {
+			return err
+		}
+		return a.logChange(actor, "reorder", "link", map[string]string{"Title": body.Title, "Category": rows[to]["Category"]})
+	}) {
+		return
+	}
+	slog.InfoContext(r.Context(), "apps: moved link", "title", body.Title, "by", body.By)
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (a app) deleteCategory(w http.ResponseWriter, r *http.Request) {
 	actor, ok := a.requireAdmin(w, r)
 	if !ok {
@@ -838,9 +1027,12 @@ func (a app) deleteCategory(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	tables := a.cache.Tables().withoutRow(categoriesTab, body.Title)
+	tables := a.cache.Tables().withoutRow(categoriesTab, body.Title).withAudience(thingCategory+body.Title, nil)
 	if !a.commit(r.Context(), w, tables, func() error {
 		if err := a.writer.Delete(appName, categoriesTab, map[string]string{"Title": body.Title}); err != nil {
+			return err
+		}
+		if err := a.writeAudience(thingCategory+body.Title, nil); err != nil {
 			return err
 		}
 		return a.logChange(actor, "delete", "category", map[string]string{"Title": body.Title})
@@ -1014,7 +1206,7 @@ func (a app) setAdmins(w http.ResponseWriter, r *http.Request) {
 // drawn up while the app is everyone's is there when the switch flips. The
 // row's place in the order is kept (setAppOrder moves it).
 func (a app) setVisibility(w http.ResponseWriter, r *http.Request) {
-	_, ok := a.requireAdmin(w, r)
+	actor, ok := a.requireAdmin(w, r)
 	if !ok {
 		return
 	}
@@ -1024,6 +1216,10 @@ func (a app) setVisibility(w http.ResponseWriter, r *http.Request) {
 		Emails     []string `json:"emails"`
 		Tagline    string   `json:"tagline"`
 		Name       string   `json:"name"`
+		// Rules are who sees the app besides the people named, while the
+		// mode is list; absent - the admin page's panel, which does not
+		// edit them - the app's stand.
+		Rules *[]filter.Rule `json:"rules"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -1048,10 +1244,29 @@ func (a app) setVisibility(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	app, _ := appByKey(key)
-	v := Visibility{Mode: body.Visibility, Emails: normalizeEmails(body.Emails), Tagline: tagline, Name: name, Order: visibilityOf(a.cache.Model(), app).Order}
+	was := visibilityOf(a.cache.Model(), app)
+	rules := was.Rules
+	if body.Rules != nil {
+		checked, err := a.checkRules(*body.Rules, actor)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		rules = checked
+	}
+	v := Visibility{Mode: body.Visibility, Emails: normalizeEmails(body.Emails), Tagline: tagline, Name: name, Order: was.Order, Rules: rules}
 	tables := a.cache.Tables().withVisibility(key, v)
+	if body.Rules != nil {
+		tables = tables.withAudience(thingApp+key, rules)
+	}
 	if !a.commit(r.Context(), w, tables, func() error {
-		return a.writer.Upsert(appName, visibilityTab, "App", key, v.cells())
+		if err := a.writer.Upsert(appName, visibilityTab, "App", key, v.cells()); err != nil {
+			return err
+		}
+		if body.Rules != nil {
+			return a.writeAudience(thingApp+key, rules)
+		}
+		return nil
 	}) {
 		return
 	}

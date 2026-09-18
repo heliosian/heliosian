@@ -19,6 +19,7 @@ import (
 	"unicode/utf8"
 
 	"heliosian/internal/data"
+	"heliosian/internal/filter"
 )
 
 const (
@@ -27,6 +28,7 @@ const (
 	linksTab       = "Links"
 	adminsTab      = "Admins"
 	visibilityTab  = "Visibility"
+	audienceTab    = "Audience"
 	changeLogTab   = "Change Log"
 	addedFormat    = "2006-01-02"
 	maxTitleLength = 80
@@ -55,20 +57,21 @@ const (
 var (
 	categoryColumns = []string{"Title", "Emoji", "Style", "Max"}
 	linkColumns     = []string{"Title", "Description", "URL", "Image", "Category", "Visible", "Added By", "Added"}
-	// audienceColumns keep a link or a category to some people: Roles, some
-	// of Students, Parents and Staff, and Classrooms, some of the
-	// directory's, each a comma-separated list and blank for everyone.
-	// Optional on both tabs, so a sheet laid out before them still loads;
-	// cmd/createtabs adds them.
-	audienceColumns   = []string{RolesColumn, ClassroomsColumn}
+	// AudienceColumns hold the rules that keep an app, a category or a link
+	// to some people: Thing names which - app:<key>, category:<title>,
+	// link:<title> - and the rest are a filter rule as Loop's Rules tab
+	// holds one (internal/filter). A thing with no rows is everyone's (an
+	// app's list: the people named alone); with rows, the include rules'
+	// people less the exclude rules', as a group's are.
+	AudienceColumns   = append([]string{"Thing"}, filter.RuleColumns...)
 	adminColumns      = []string{"Email"}
 	visibilityColumns = []string{"App", "Visibility", "Emails", "Tagline", "Name", "Order"}
 	changeLogColumns  = []string{"Timestamp", "Actor", "Action", "Kind", "Title", "Description", "URL", "Image", "Category", "Visible", "Style"}
-	// CategoryColumns, LinkColumns and ChangeLogColumns are the tabs whole,
-	// for cmd/createtabs.
-	CategoryColumns  = append(append([]string{}, categoryColumns...), audienceColumns...)
-	LinkColumns      = append(append([]string{}, linkColumns...), audienceColumns...)
-	ChangeLogColumns = append(append([]string{}, changeLogColumns...), audienceColumns...)
+	// The tabs whole, for cmd/createtabs.
+	CategoryColumns   = categoryColumns
+	LinkColumns       = linkColumns
+	VisibilityColumns = visibilityColumns
+	ChangeLogColumns  = changeLogColumns
 )
 
 // App is one of the community apps the shared toolbar switches between,
@@ -150,6 +153,9 @@ type Visibility struct {
 	Emails  []string
 	Tagline string
 	Name    string
+	// Rules are who sees the app besides the Emails, while Mode is list:
+	// the Audience tab's rows for it, none for nobody more.
+	Rules []filter.Rule
 	// Order is the app's place in the switch, counted from one; zero is a
 	// row that has none, which keeps the registry's place after every row
 	// that has one.
@@ -185,27 +191,13 @@ type Link struct {
 	Visible     bool   `json:"visible"`
 	AddedBy     string `json:"addedBy,omitempty"`
 	Added       string `json:"added,omitempty"`
-	// Roles and Classrooms keep the link to some people: someone sees it
-	// when they have one of the roles (or there are none) and are in one of
-	// the classrooms (or there are none) - a student by their own, a parent
-	// by their children's, a staff member by the one they teach.
-	Roles      []string `json:"roles,omitempty"`
-	Classrooms []string `json:"classrooms,omitempty"`
+	// Rules keep the link to some people (the Audience tab); none for
+	// everyone.
+	Rules []filter.Rule `json:"rules"`
 	// ForMe is false on a link the viewer would not see but for being an
 	// admin, who is sent every link; absent otherwise.
 	ForMe *bool `json:"forMe,omitempty"`
 }
-
-// The audience columns and the roles they may name.
-const (
-	RolesColumn      = "Roles"
-	ClassroomsColumn = "Classrooms"
-	RoleStudents     = "Students"
-	RoleParents      = "Parents"
-	RoleStaff        = "Staff"
-)
-
-var Roles = []string{RoleStudents, RoleParents, RoleStaff}
 
 // splitList reads a comma-separated cell, trimmed, blanks and repeats
 // dropped, in the order written.
@@ -217,35 +209,6 @@ func splitList(cell string) []string {
 		}
 	}
 	return out
-}
-
-// checkRoles reads a Roles cell: blank for everyone, else some of the
-// roles, spelled exactly.
-func checkRoles(cell string) ([]string, error) {
-	roles := splitList(cell)
-	for _, r := range roles {
-		if !slices.Contains(Roles, r) {
-			return nil, fmt.Errorf("role %q is not one of %s", r, strings.Join(Roles, ", "))
-		}
-	}
-	return roles, nil
-}
-
-// For says whether someone with these roles and classrooms sees the link.
-func (l Link) For(roles, classrooms []string) bool {
-	if len(l.Roles) > 0 && !overlap(l.Roles, roles) {
-		return false
-	}
-	return len(l.Classrooms) == 0 || overlap(l.Classrooms, classrooms)
-}
-
-func overlap(a, b []string) bool {
-	for _, x := range a {
-		if slices.Contains(b, x) {
-			return true
-		}
-	}
-	return false
 }
 
 // A category goes by an emoji rather than a picture: it heads the section,
@@ -261,17 +224,11 @@ type Category struct {
 	Max     int    `json:"max,omitempty"`
 	Links   []Link `json:"links"`
 	Virtual bool   `json:"virtual,omitempty"`
-	// Roles and Classrooms keep the whole section to some people, links
-	// and all, as a link's own do (Link); ForMe marks one an admin would
-	// not see but for being an admin.
-	Roles      []string `json:"roles,omitempty"`
-	Classrooms []string `json:"classrooms,omitempty"`
-	ForMe      *bool    `json:"forMe,omitempty"`
-}
-
-// For says whether someone with these roles and classrooms sees the section.
-func (c Category) For(roles, classrooms []string) bool {
-	return Link{Roles: c.Roles, Classrooms: c.Classrooms}.For(roles, classrooms)
+	// Rules keep the whole section to some people, links and all (the
+	// Audience tab); ForMe marks one an admin would not see but for being
+	// an admin.
+	Rules []filter.Rule `json:"rules"`
+	ForMe *bool         `json:"forMe,omitempty"`
 }
 
 // Model is the portal as the sheet orders it: categories in row order, each
@@ -287,6 +244,67 @@ type Tables struct {
 	Links      []map[string]string
 	Admins     []map[string]string
 	Visibility []map[string]string
+	Audience   []map[string]string
+}
+
+// Thing keys are how the Audience tab names what a rule is for.
+const (
+	thingApp      = "app:"
+	thingCategory = "category:"
+	thingLink     = "link:"
+)
+
+// rulesFor reads the Audience tab's rows for one thing, in row order,
+// refusing a rule a list cannot read (filter.Check).
+func rulesFor(rows []map[string]string, key string) ([]filter.Rule, error) {
+	out := []filter.Rule{}
+	for _, row := range rows {
+		if strings.TrimSpace(row["Thing"]) != key {
+			continue
+		}
+		r := filter.Clean(filter.RuleFromRow(row))
+		if err := filter.Check(r); err != nil {
+			return nil, fmt.Errorf("%s rule for %s: %w", audienceTab, key, err)
+		}
+		if r.Owner == "" {
+			return nil, fmt.Errorf("%s rule for %s has no owner", audienceTab, key)
+		}
+		out = append(out, r)
+	}
+	return out, nil
+}
+
+// withAudience is the tab with one thing's rules replaced - dropped, and
+// appended in their order - which is what saving a thing writes.
+func (t *Tables) withAudience(key string, rules []filter.Rule) *Tables {
+	out := *t
+	out.Audience = []map[string]string{}
+	for _, row := range t.Audience {
+		if strings.TrimSpace(row["Thing"]) != key {
+			out.Audience = append(out.Audience, row)
+		}
+	}
+	for _, r := range rules {
+		cells := filter.RuleCells(r)
+		cells["Thing"] = key
+		out.Audience = append(out.Audience, cells)
+	}
+	return &out
+}
+
+// audienceRows is a thing's rules as the tab's rows, for a write.
+func audienceRows(key string, rules []filter.Rule) [][]string {
+	rows := [][]string{}
+	for _, r := range rules {
+		cells := filter.RuleCells(r)
+		cells["Thing"] = key
+		row := make([]string, 0, len(AudienceColumns))
+		for _, c := range AudienceColumns {
+			row = append(row, cells[c])
+		}
+		rows = append(rows, row)
+	}
+	return rows
 }
 
 func ReadTables(source data.Source) (*Tables, error) {
@@ -300,8 +318,9 @@ func ReadTables(source data.Source) (*Tables, error) {
 	links := &table{name: linksTab, want: linkColumns}
 	admins := &table{name: adminsTab, want: adminColumns}
 	visibility := &table{name: visibilityTab, want: visibilityColumns}
+	audience := &table{name: audienceTab, want: AudienceColumns}
 	changeLog := &table{name: changeLogTab, want: changeLogColumns}
-	read := []*table{categories, links, admins, visibility}
+	read := []*table{categories, links, admins, visibility, audience}
 	names := []string{}
 	for _, t := range read {
 		names = append(names, t.name)
@@ -316,7 +335,7 @@ func ReadTables(source data.Source) (*Tables, error) {
 			return nil, err
 		}
 	}
-	return &Tables{Categories: categories.rows, Links: links.rows, Admins: admins.rows, Visibility: visibility.rows}, nil
+	return &Tables{Categories: categories.rows, Links: links.rows, Admins: admins.rows, Visibility: visibility.rows, Audience: audience.rows}, nil
 }
 
 func yesNo(cell string) (bool, error) {
@@ -459,12 +478,12 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 		if err != nil {
 			return nil, fmt.Errorf("category %q: %w", title, err)
 		}
-		roles, err := checkRoles(row[RolesColumn])
+		rules, err := rulesFor(tables.Audience, thingCategory+title)
 		if err != nil {
-			return nil, fmt.Errorf("category %q: %w", title, err)
+			return nil, err
 		}
 		index[title] = len(model.Categories)
-		model.Categories = append(model.Categories, Category{Title: title, Emoji: emoji, Style: style, Max: max, Links: []Link{}, Roles: roles, Classrooms: splitList(row[ClassroomsColumn])})
+		model.Categories = append(model.Categories, Category{Title: title, Emoji: emoji, Style: style, Max: max, Links: []Link{}, Rules: rules})
 	}
 	// The events section is always on the page: at the top, under its own
 	// name, until a row places and names it.
@@ -514,20 +533,28 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 		if err != nil {
 			return nil, fmt.Errorf("link %q: %w", title, err)
 		}
-		roles, err := checkRoles(row[RolesColumn])
+		rules, err := rulesFor(tables.Audience, thingLink+title)
 		if err != nil {
-			return nil, fmt.Errorf("link %q: %w", title, err)
+			return nil, err
 		}
 		model.Categories[at].Links = append(model.Categories[at].Links, Link{
 			Title: title, Description: row["Description"], URL: row["URL"],
 			Image: row["Image"], ImageURL: image, Category: row["Category"],
 			Visible: visible, AddedBy: row["Added By"], Added: row["Added"],
-			Roles: roles, Classrooms: splitList(row[ClassroomsColumn]),
+			Rules: rules,
 		})
 	}
 	visibility, err := buildVisibility(tables.Visibility)
 	if err != nil {
 		return nil, err
+	}
+	for key, v := range visibility {
+		rules, err := rulesFor(tables.Audience, thingApp+key)
+		if err != nil {
+			return nil, err
+		}
+		v.Rules = rules
+		visibility[key] = v
 	}
 	model.Visibility = visibility
 	return model, nil

@@ -1,11 +1,17 @@
 import {state, categoryTitles, linkCategoryTitles} from './state.js';
-import {el, svg, categoryIcons, iconOf} from './dom.js';
+import {el, svg, categoryIcons, iconOf, toast} from './dom.js';
 import {load} from './app.js';
 import {openCropTool} from '/crop.js';
+import {createPersonPicker} from '/picker.js';
+import {appOrigin} from '/toolbar.js';
+import {rulesEditor} from '/rules.js';
+import {tabStrip} from '/tabs.js';
 
 const linkModal = document.querySelector('#link-modal');
 const linkForm = document.querySelector('#link-form');
 const categoryModal = document.querySelector('#category-modal');
+const appModal = document.querySelector('#app-modal');
+const appForm = document.querySelector('#app-form');
 const categoryForm = document.querySelector('#category-form');
 const categoriesModal = document.querySelector('#categories-modal');
 const imageSearchModal = document.querySelector('#image-search-modal');
@@ -112,33 +118,121 @@ function fillCategories(selected) {
   }
 }
 
-// The audience rows: the three roles, and every classroom the directory
-// lists, each a chip that toggles; none chosen in a row means everyone.
-const roleNames = ['Students', 'Parents', 'Staff'];
+// Visibility: the rules that keep a link, a section or an app to some
+// people, written with the rule editor every app shares (rules.js) - the
+// same rules Loop's groups are made of, read by the same server code - and
+// read back as a sentence each, with who they pick out as the directory
+// stands, asked of the server as they change. No rules means everyone (or,
+// on an app's list, nobody more than the people named).
+const rules = rulesEditor({
+  el, svg,
+  options: () => state.model.options || {classrooms: [], grades: [], tags: [], lists: [], shared: [], roles: ['Student', 'Parent', 'Staff'], relations: ['Parents', 'Children', 'Siblings']},
+  me: () => ({email: state.model.user.email}),
+  personName: () => '',
+});
 
-function fillAudience(thing, prefix = 'link') {
-  const rows = [['#' + prefix + '-roles', roleNames, thing ? thing.roles || [] : []], ['#' + prefix + '-classrooms', state.model.classrooms || [], thing ? thing.classrooms || [] : []]];
-  for (const [selector, names, chosen] of rows) {
-    const row = document.querySelector(selector);
-    row.replaceChildren();
-    for (const name of names) {
-      const chip = el('button', 'audience-chip' + (chosen.includes(name) ? ' is-on' : ''), name);
-      chip.type = 'button';
-      chip.dataset.name = name;
-      chip.setAttribute('aria-pressed', chosen.includes(name) ? 'true' : 'false');
-      chip.addEventListener('click', () => {
-        const on = !chip.classList.contains('is-on');
-        chip.classList.toggle('is-on', on);
-        chip.setAttribute('aria-pressed', on ? 'true' : 'false');
-      });
-      row.append(chip);
+// audienceCard draws the rules into a mount and keeps the draft: the
+// sentences, an Add include rule and Add exclude rule, and the preview
+// line. It gives back the draft's rules on demand.
+function audienceCard(mount, initial, everyoneNote, withHead = true) {
+  const draft = (initial || []).map(r => ({...r, roles: [...(r.roles || [])], classrooms: [...(r.classrooms || [])], grades: [...(r.grades || [])], tags: [...(r.tags || [])], family: [...(r.family || [])]}));
+  let opened = null;
+  let counts = [];
+  let previewTimer = null;
+  mount.replaceChildren();
+  const head = el('span', '', withHead ? 'Visibility ' : '');
+  head.append(el('small', 'audience-note', everyoneNote));
+  const list = el('div', 'rules');
+  const adders = el('div', 'rule-adders');
+  const preview = el('div', 'audience-preview');
+  mount.append(head, list, adders, preview);
+  const countChip = rule => {
+    const i = draft.indexOf(rule);
+    const chip = el('span', 'rule-count');
+    const n = counts[i];
+    chip.hidden = n === undefined;
+    chip.textContent = n === undefined ? '' : rule.kind === 'exclude' ? `${n} excluded` : `${n} match`;
+    return chip;
+  };
+  const askPreview = () => {
+    clearTimeout(previewTimer);
+    previewTimer = setTimeout(async () => {
+      const said = draft.filter(rules.ruleSaysSomething);
+      if (!said.length) {
+        counts = [];
+        preview.textContent = '';
+        return;
+      }
+      try {
+        const res = await fetch('/api/apps/audience/preview', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({rules: said})});
+        if (!res.ok) {
+          throw new Error(await res.text());
+        }
+        const answer = await res.json();
+        counts = [];
+        said.forEach((r, i) => {
+          counts[draft.indexOf(r)] = answer.ruleCounts[i];
+        });
+        for (const row of list.children) {
+          if (row.refreshCount) {
+            row.refreshCount();
+          }
+        }
+        const names = answer.names.join(', ');
+        preview.textContent = answer.count ? `Picks out ${answer.count} ${answer.count === 1 ? 'person' : 'people'}: ${names}${answer.count > answer.names.length ? '…' : ''}` : 'Picks out nobody yet.';
+      } catch (err) {
+        preview.textContent = err.message;
+      }
+    }, 300);
+  };
+  const render = () => {
+    list.replaceChildren();
+    for (const rule of draft) {
+      list.append(rules.ruleRow(rule, askPreview, () => {
+        draft.splice(draft.indexOf(rule), 1);
+        if (opened === rule) {
+          opened = null;
+        }
+        render();
+        askPreview();
+      }, opened === rule, countChip));
     }
-  }
+    opened = null;
+    adders.replaceChildren();
+    for (const [kind, words] of [['include', 'Add include rule'], ['exclude', 'Add exclude rule']]) {
+      const b = el('button', 'button button-secondary button-small', '');
+      b.type = 'button';
+      b.append(svg('plus'), el('span', '', words));
+      b.addEventListener('click', () => {
+        opened = rules.newRule(kind);
+        draft.push(opened);
+        render();
+      });
+      adders.append(b);
+    }
+  };
+  render();
+  askPreview();
+  return {
+    get rules() {
+      return draft.filter(rules.ruleSaysSomething);
+    },
+  };
 }
 
-// chosenAudience reads a row's lit chips.
-function chosenAudience(selector) {
-  return [...document.querySelectorAll(selector + ' .audience-chip.is-on')].map(c => c.dataset.name);
+let linkAudience = null;
+let categoryAudience = null;
+let appAudience = null;
+
+// The link, category and app editors' tabs: the thing itself, and its
+// Visibility - Visible and the rules, the rules, or everyone and the list -
+// on a tab of its own, as Loop's group editor keeps its members apart from
+// its details.
+function showTab(prefix, key) {
+  const strip = tabStrip([{key: 'details', label: 'Details'}, {key: 'visibility', label: 'Visibility'}], key, 2, k => showTab(prefix, k));
+  document.querySelector(`#${prefix}-tabs`).replaceChildren(strip);
+  document.querySelector(`#${prefix}-tab-details`).hidden = key !== 'details';
+  document.querySelector(`#${prefix}-tab-visibility`).hidden = key !== 'visibility';
 }
 
 // category is the one to start in for a new link (an add card names its own).
@@ -150,11 +244,12 @@ export function openLinkEditor(link, category) {
   document.querySelector('#link-description').value = link ? link.description || '' : '';
   document.querySelector('#link-url').value = link ? link.url : '';
   document.querySelector('#link-visible').checked = link ? link.visible : true;
-  fillAudience(link);
+  linkAudience = audienceCard(document.querySelector('#link-audience'), link ? link.rules : [], 'No rules means everyone.');
   document.querySelector('#link-delete').hidden = !link;
   fillCategories(link ? link.category : category || linkCategoryTitles()[0]);
   showImage('link', link && link.imageUrl ? link.imageUrl : '');
   setStatus('#link-status', '');
+  showTab('link', 'details');
   linkModal.hidden = false;
   document.querySelector('#link-title').focus();
 }
@@ -173,9 +268,10 @@ export function openCategoryEditor(category) {
   syncAppsNote();
   document.querySelector('#category-delete').hidden = !category || events;
   document.querySelector('#category-max').value = category && category.max ? String(category.max) : '';
-  fillAudience(category, 'category');
+  categoryAudience = audienceCard(document.querySelector('#category-audience'), category ? category.rules : [], 'No rules means everyone; the whole section, links and all.');
   setEmoji(category ? category.emoji || '' : '');
   setStatus('#category-status', '');
+  showTab('category', 'details');
   categoryModal.hidden = false;
   document.querySelector('#category-title').focus();
 }
@@ -211,6 +307,154 @@ function wireEmojiPicker() {
 function closeModals() {
   linkModal.hidden = true;
   categoryModal.hidden = true;
+  appModal.hidden = true;
+}
+
+// moveLink shifts a link one place among its category's, by the arrows
+// on its card in Super Admin Mode; the server trades the rows.
+export async function moveLink(title, by) {
+  try {
+    await send('POST', '/api/apps/link/move', {title, by});
+    await load();
+  } catch (err) {
+    toast(err.message);
+  }
+}
+
+// moveApp shifts an app one place in the switch's order - the arrows on
+// its card in Super Admin Mode - and saves the whole order at once.
+export async function moveApp(key, by) {
+  const keys = (state.model.apps || []).map(a => a.key);
+  const i = keys.indexOf(key);
+  const j = i + by;
+  if (i < 0 || j < 0 || j >= keys.length) {
+    return;
+  }
+  [keys[i], keys[j]] = [keys[j], keys[i]];
+  try {
+    await send('POST', '/api/admin/visibility/order', {apps: keys});
+    await load();
+  } catch (err) {
+    toast(err.message);
+  }
+}
+
+// The app editor, which Super Admin Mode opens from an app's card: its
+// name and tagline as the switch shows them, and who sees it - everyone,
+// or a list: the rules and the people named, as the sheet's Visibility
+// and Audience tabs have them, saved through /api/admin/visibility. The
+// directory's people come from the admin state, fetched the first time.
+let editingApp = null;
+let appMode = 'everyone';
+let appEmails = [];
+let adminState = null;
+let appPicker = null;
+
+async function loadAdminState() {
+  if (!adminState) {
+    const res = await fetch('/api/admin/state');
+    if (!res.ok) {
+      throw new Error(await res.text());
+    }
+    adminState = await res.json();
+  }
+  return adminState;
+}
+
+export async function openAppEditor(app) {
+  editingApp = app;
+  const v = app.visibility || {visibility: 'list', emails: [], rules: []};
+  appMode = v.visibility;
+  appEmails = [...(v.emails || [])];
+  document.querySelector('#app-modal-title').textContent = 'Edit ' + app.name;
+  document.querySelector('#app-modal-mark').src = `/brand/apps/${app.key}.png` + (app.mark ? `?v=${app.mark}` : '');
+  document.querySelector('#app-modal-host').textContent = appOrigin(app.host || app.key).replace(/^https?:\/\//, '');
+  document.querySelector('#app-name').value = v.name || app.name;
+  document.querySelector('#app-tagline').value = v.tagline || app.tagline;
+  setStatus('#app-status', '');
+  showTab('app', 'details');
+  appModal.hidden = false;
+  appAudience = audienceCard(document.querySelector('#app-audience'), v.rules || [], 'The people these rules pick out. No rules and nobody named means nobody.', false);
+  let people = [];
+  try {
+    const admin = await loadAdminState();
+    people = admin.people || [];
+  } catch (err) {
+    setStatus('#app-status', err.message, true);
+  }
+  if (!appPicker) {
+    appPicker = createPersonPicker(document.querySelector('#app-people-picker'));
+  }
+  appPicker.setPeople(people);
+  appPicker.reset();
+  const modes = document.querySelector('#app-mode');
+  modes.replaceChildren();
+  for (const [value, words] of [['everyone', 'Everyone'], ['list', 'Only some people']]) {
+    const chip = el('button', 'audience-chip' + (appMode === value ? ' is-on' : ''), words);
+    chip.type = 'button';
+    chip.addEventListener('click', () => {
+      appMode = value;
+      for (const c of modes.children) {
+        c.classList.toggle('is-on', c === chip);
+      }
+      document.querySelector('#app-list').hidden = appMode !== 'list';
+    });
+    modes.append(chip);
+  }
+  document.querySelector('#app-list').hidden = appMode !== 'list';
+  renderAppPeople();
+}
+
+function renderAppPeople() {
+  const byEmail = new Map((adminState ? adminState.people : []).map(p => [p.email, p.name]));
+  const list = document.querySelector('#app-people');
+  list.replaceChildren();
+  for (const email of appEmails) {
+    const row = el('div', 'app-person');
+    row.append(el('span', 'app-person-name', byEmail.get(email) || email));
+    if (byEmail.has(email)) {
+      row.append(el('span', 'app-person-email', email));
+    }
+    const remove = el('button', 'link-button', 'Remove');
+    remove.type = 'button';
+    remove.addEventListener('click', () => {
+      appEmails = appEmails.filter(e => e !== email);
+      renderAppPeople();
+    });
+    row.append(remove);
+    list.append(row);
+  }
+}
+
+function addAppPerson() {
+  const email = (appPicker.value || appPicker.text).toLowerCase();
+  if (!email) {
+    return;
+  }
+  if (!appEmails.includes(email)) {
+    appEmails.push(email);
+  }
+  appPicker.reset();
+  renderAppPeople();
+}
+
+async function saveApp(e) {
+  e.preventDefault();
+  setStatus('#app-status', 'Saving…');
+  try {
+    await send('POST', '/api/admin/visibility', {
+      app: editingApp.key,
+      visibility: appMode,
+      emails: appEmails,
+      name: document.querySelector('#app-name').value,
+      tagline: document.querySelector('#app-tagline').value,
+      rules: appAudience.rules,
+    });
+    closeModals();
+    await load();
+  } catch (err) {
+    setStatus('#app-status', err.message, true);
+  }
 }
 
 // The manager hands off to the category editor and stays open behind it, so
@@ -332,8 +576,7 @@ async function saveLink(e) {
       image: pendingLinkImage,
       category: document.querySelector('#link-category').value,
       visible: document.querySelector('#link-visible').checked,
-      roles: chosenAudience('#link-roles'),
-      classrooms: chosenAudience('#link-classrooms'),
+      rules: linkAudience.rules,
     });
     closeModals();
     await load();
@@ -366,8 +609,7 @@ async function saveCategory(e) {
       style: editingCategory && editingCategory.style === 'events' ? 'events' : document.querySelector('#category-style').value,
       emoji: document.querySelector('#category-emoji').value.trim(),
       max: document.querySelector('#category-max').value.trim(),
-      roles: chosenAudience('#category-roles'),
-      classrooms: chosenAudience('#category-classrooms'),
+      rules: categoryAudience.rules,
     });
     closeModals();
     await load();
@@ -402,6 +644,14 @@ export function initEditing() {
   document.querySelector('#edit-categories').addEventListener('click', openCategoryManager);
   linkForm.addEventListener('submit', saveLink);
   categoryForm.addEventListener('submit', saveCategory);
+  appForm.addEventListener('submit', saveApp);
+  document.querySelector('#app-people-button').addEventListener('click', addAppPerson);
+  document.querySelector('#app-people-picker').addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      addAppPerson();
+    }
+  });
   document.querySelector('#link-delete').addEventListener('click', deleteLink);
   document.querySelector('#category-delete').addEventListener('click', deleteCategory);
   wireImagePicker('link', name => {
@@ -421,7 +671,7 @@ export function initEditing() {
       button.closest('.modal-overlay').hidden = true;
     });
   }
-  for (const overlay of [linkModal, categoryModal, categoriesModal, imageSearchModal]) {
+  for (const overlay of [linkModal, categoryModal, appModal, categoriesModal, imageSearchModal]) {
     overlay.addEventListener('click', e => {
       if (e.target === overlay) {
         overlay.hidden = true;

@@ -1,248 +1,62 @@
 package loop
 
-import (
-	"slices"
-	"sort"
-	"strings"
+import "heliosian/internal/filter"
 
-	"heliosian/internal/who"
+// The evaluator itself is internal/filter, shared with Heliosian's
+// audiences; what is here reads a group's list of rules through it.
+
+// The filter's types, as the sheet and the page have always named them.
+type (
+	Rule    = filter.Rule
+	Sources = filter.Sources
+	Reason  = filter.Reason
 )
 
-// Sources is what a rule is read against: the directory, and one person's
-// tags, Magic Tags and the tags shared with them, by owner, since all three
-// are that person's to see.
-type Sources struct {
-	Directory *who.Model
-	Tags      func(owner string) map[string][]string
-	Lists     func(owner string) []who.List
-	Shared    func(email string) []who.SharedTag
-}
-
-// sharedPrefix marks a shared tag in a rule's Tags: shared:<owner>:<name>,
-// the owner's address having no colon of its own. It reads as the tag's
-// owner's, and only while the rule's owner still manages it.
-const sharedPrefix = "shared:"
+const (
+	KindInclude = filter.KindInclude
+	KindExclude = filter.KindExclude
+)
 
 // SharedKey is how a rule names a tag shared with its owner.
 func SharedKey(owner, name string) string {
-	return sharedPrefix + owner + ":" + name
+	return filter.SharedKey(owner, name)
 }
 
-// tagged is everyone under one of the owner's tags, Magic Tags or shared
-// tags, by the name the rule holds: a tag's name, a Magic Tag's key, or a
-// shared tag's key.
-func (s Sources) tagged(owner string) map[string][]string {
-	out := map[string][]string{}
-	for name, people := range s.Tags(owner) {
-		out[name] = people
-	}
-	for _, list := range s.Lists(owner) {
-		out[list.Key] = list.People
-	}
-	for _, shared := range s.Shared(owner) {
-		out[SharedKey(shared.Owner, shared.Name)] = shared.People
-	}
-	return out
-}
-
-func anyIn(have, want []string) bool {
-	for _, h := range have {
-		if slices.Contains(want, h) {
-			return true
-		}
-	}
-	return false
-}
-
-// Reason is why a member is on a group: the rule, by its place among the
-// group's rules, and the relation it reached them through and whom - a
-// parent of Mia, say, when the rule matched Mia - or nothing for someone
-// it matched itself; or Added, for someone a manager put on by hand.
-type Reason struct {
-	Rule    int    `json:"rule"`
-	Through string `json:"through,omitempty"`
-	Via     string `json:"via,omitempty"`
-	ViaName string `json:"viaName,omitempty"`
-	Added   bool   `json:"added,omitempty"`
-}
-
-// inRole reports whether a person is one of the roles a rule keeps.
-func inRole(p *who.Person, roles []string) bool {
-	return len(roles) == 0 || (p.IsStudent && slices.Contains(roles, "Student")) || (p.IsParent && slices.Contains(roles, "Parent")) || (p.IsStaff && slices.Contains(roles, "Staff"))
-}
-
-// matches is everyone one rule picks out, each with the relation it reached
-// them through, as Who?'s tag page reads the same choices: the words, the
-// classrooms, the grades and the tags pick people out, Family adds the
-// relatives asked for, and the roles then keep only those of that kind -
-// so "Parents tagged in Carpool, plus their parents" is the parents of the
-// tagged children as well as the tagged parents, never the children.
-// Someone the rule matches itself stays a direct match whatever relations
-// also reach them.
-func matches(r Rule, s Sources, tagged map[string][]string) map[string]Reason {
-	model := s.Directory
-	out := map[string]Reason{}
-	for i := range model.People {
-		p := &model.People[i]
-		if r.Search != "" && !strings.Contains(strings.ToLower(p.FullName), r.Search) && !strings.Contains(strings.ToLower(p.Email), r.Search) {
-			continue
-		}
-		// A grade or classroom is read as the directory reads it for every
-		// filter (who.Model.Facets): a student's own, a parent's children's.
-		if len(r.Grades) > 0 && !anyIn(model.Facets(p, false), r.Grades) {
-			continue
-		}
-		if len(r.Classrooms) > 0 && !anyIn(model.Facets(p, true), r.Classrooms) {
-			continue
-		}
-		if len(r.Tags) > 0 && !slices.ContainsFunc(r.Tags, func(tag string) bool { return slices.Contains(tagged[tag], p.Email) }) {
-			continue
-		}
-		out[p.Email] = Reason{}
-	}
-	direct := map[string]bool{}
-	for email := range out {
-		direct[email] = true
-	}
-	reach := func(email, through, via string) {
-		if _, ok := out[email]; !ok && email != via {
-			out[email] = Reason{Through: through, Via: via, ViaName: model.DisplayName(via)}
-		}
-	}
-	for _, email := range sortedKeys(direct) {
-		p := model.Person(email)
-		for _, key := range model.FamilyKeysOf(email) {
-			family := model.Families[key]
-			if p.IsStudent && slices.Contains(r.Family, "Parents") {
-				for _, adult := range family.AdultEmails {
-					reach(adult, "Parents", email)
-				}
-			}
-			if p.IsParent && slices.Contains(r.Family, "Children") {
-				for _, kid := range family.KidEmails {
-					reach(kid, "Children", email)
-				}
-			}
-			if p.IsStudent && slices.Contains(r.Family, "Siblings") {
-				for _, kid := range family.KidEmails {
-					reach(kid, "Siblings", email)
-				}
-			}
-		}
-	}
-	for email := range out {
-		if !inRole(model.Person(email), r.Roles) {
-			delete(out, email)
-		}
-	}
-	return out
-}
-
-// Reasons is everyone on a group and why: the include rules' matches less
-// the exclude rules', as addresses the directory keys them by, leaving out
-// anyone whose address is a placeholder nothing can reach, each with every
-// include rule that reached them; then the additions, on by hand whatever
-// the rules say, once each.
-func Reasons(g Group, s Sources) map[string][]Reason {
-	tagged := map[string]map[string][]string{}
-	for _, r := range g.Rules {
-		if _, ok := tagged[r.Owner]; !ok && len(r.Tags) > 0 {
-			tagged[r.Owner] = s.tagged(r.Owner)
-		}
-	}
-	in, out := map[string][]Reason{}, map[string]bool{}
-	for i, r := range g.Rules {
-		for email, reason := range matches(r, s, tagged[r.Owner]) {
-			if r.Kind == KindExclude {
-				out[email] = true
-				continue
-			}
-			reason.Rule = i
-			in[email] = append(in[email], reason)
-		}
-	}
-	for _, reasons := range in {
-		slices.SortFunc(reasons, func(a, b Reason) int { return a.Rule - b.Rule })
-	}
-	for email := range in {
-		if p := s.Directory.Person(email); out[email] || p == nil || p.EmailMasked {
-			delete(in, email)
-		}
-	}
+// list is the group as the filter reads it: its rules, the additions on by
+// hand, and the excluded addresses.
+func list(g Group) filter.List {
+	l := filter.List{Rules: g.Rules}
 	for _, a := range g.Additions {
-		if _, ok := in[a.Email]; !ok {
-			in[a.Email] = []Reason{{Added: true}}
-		}
+		l.Additions = append(l.Additions, a.Email)
 	}
 	for _, e := range g.Excluded {
-		delete(in, e.Email)
+		l.Excluded = append(l.Excluded, e.Email)
 	}
-	return in
+	return l
 }
 
-// RuleCounts is how many people each rule touches, by its place among the
-// group's rules: for an include rule, everyone it matches, relatives and
-// all; for an exclude rule, everyone it takes out - those it matches whom
-// an include rule had placed on the group. Placeholders and people the
-// directory does not hold count for neither.
+// Reasons is everyone on a group and why (filter.Reasons).
+func Reasons(g Group, s Sources) map[string][]Reason {
+	return filter.Reasons(list(g), s)
+}
+
+// RuleCounts is how many people each of the group's rules touches
+// (filter.RuleCounts).
 func RuleCounts(g Group, s Sources) []int {
-	tagged := map[string]map[string][]string{}
-	for _, r := range g.Rules {
-		if _, ok := tagged[r.Owner]; !ok && len(r.Tags) > 0 {
-			tagged[r.Owner] = s.tagged(r.Owner)
-		}
-	}
-	real := func(email string) bool {
-		p := s.Directory.Person(email)
-		return p != nil && !p.EmailMasked
-	}
-	in := map[string]bool{}
-	matched := make([]map[string]Reason, len(g.Rules))
-	for i, r := range g.Rules {
-		matched[i] = matches(r, s, tagged[r.Owner])
-		if r.Kind == KindInclude {
-			for email := range matched[i] {
-				if real(email) {
-					in[email] = true
-				}
-			}
-		}
-	}
-	counts := make([]int, len(g.Rules))
-	for i, r := range g.Rules {
-		for email := range matched[i] {
-			if !real(email) {
-				continue
-			}
-			if r.Kind == KindInclude || in[email] {
-				counts[i]++
-			}
-		}
-	}
-	return counts
+	return filter.RuleCounts(list(g), s)
 }
 
 // Members is Reasons' people alone, sorted.
 func Members(g Group, s Sources) []string {
-	members := []string{}
-	for email := range Reasons(g, s) {
-		members = append(members, email)
-	}
-	sort.Strings(members)
-	return members
+	return filter.Members(list(g), s)
 }
 
+// OnList says whether the rules or the additions place this person on the
+// group, whatever the excluded list says - which is who sees a group
+// visible to members.
 func OnList(g Group, s Sources, email string) bool {
-	g.Excluded = nil
-	_, ok := Reasons(g, s)[email]
+	l := list(g)
+	l.Excluded = nil
+	_, ok := filter.Reasons(l, s)[email]
 	return ok
-}
-
-func sortedKeys(m map[string]bool) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
 }
