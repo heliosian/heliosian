@@ -1177,7 +1177,7 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 /* The ask under the event: a band in a green wash with a ticked calendar,
    the question large, and the buttons big at the right - Yes green, No
    white, the one that holds ringed. */
-.rsvp-band { margin: 28px 0 8px; padding: 16px 20px; border: 1.5px solid #bfe0cf; border-radius: 16px; background: linear-gradient(90deg, #e3f3ea, #eef7f2); }
+.rsvp-band { margin: 28px 0 8px; padding: 16px 20px; border: 1.5px solid #bfe0cf; border-radius: 16px; background: linear-gradient(90deg, #e3f3ea, #eef7f2); container-type: inline-size; }
 
 .rsvp-band-row { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
 
@@ -1194,6 +1194,12 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 .rsvp-note { font-size: 13px; color: #5b7a6b; margin-top: 2px; }
 
 .rsvp-side { display: flex; flex-direction: column; align-items: center; gap: 6px; flex-shrink: 0; }
+
+/* In a band too narrow for the buttons beside the words, they take a row
+   of their own, centred under the question rather than left in its wake. */
+@container (max-width: 580px) {
+  .rsvp-side { flex-basis: 100%; }
+}
 
 .rsvp-buttons { display: flex; gap: 12px; }
 

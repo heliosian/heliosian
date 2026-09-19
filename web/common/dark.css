@@ -267,6 +267,25 @@ html[data-theme="dark"] {
 /* The source chip on an event card: dark words on its tint. */
 [data-theme="dark"] .event-source { color: #0b1c1e; }
 
+/* Who?'s lists menu on a phone, over the tab bar: a card rather than a
+   white sheet, its headings muted, the list picked on a wash. */
+[data-theme="dark"] .mobile-lists-menu { background: var(--card); color: var(--ink); }
+[data-theme="dark"] .mobile-lists-head,
+[data-theme="dark"] .mobile-lists-subheading { color: var(--muted); }
+[data-theme="dark"] .mobile-lists-subheading { border-top-color: var(--line); }
+[data-theme="dark"] .mobile-lists-item:active,
+[data-theme="dark"] .mobile-lists-item.active { background: rgba(255, 255, 255, 0.08); }
+
+/* Who?'s grey chips - See family on a person's page, a tag, a field's
+   preset, a pronunciation, a toggle not yet on - lift to a light wash when
+   hovered rather than the pale grey they turn by day, which on a dark
+   ground swallows their words. */
+[data-theme="dark"] .fcard-see-chip:hover,
+[data-theme="dark"] .tag-chip:hover,
+[data-theme="dark"] .field-preset:hover,
+[data-theme="dark"] .pronounce-pill:hover,
+[data-theme="dark"] .chip-toggle:not(.active):hover { background: rgba(255, 255, 255, 0.14); }
+
 /* Who?'s title and its subtitles on the people. */
 [data-theme="dark"] .person-sub,
 [data-theme="dark"] .page-subtitle { color: var(--muted); }
@@ -385,7 +404,15 @@ html[data-theme="dark"] {
 [data-theme="dark"] .setting-card .image-placeholder,
 [data-theme="dark"] .image-drop,
 [data-theme="dark"] .rule,
-[data-theme="dark"] .who-foot { background: var(--input); color: var(--ink); }
+[data-theme="dark"] .who-foot { background: none; padding-left: 0; padding-right: 0; color: var(--ink); }
+
+/* Team's person card: the round Email and Copy info tools and the chips
+   naming a partner or child sit on the input wash, not the pale teal. */
+[data-theme="dark"] .who-action .icon-round,
+[data-theme="dark"] .who-card-chip { background: var(--input); color: var(--brand); }
+[data-theme="dark"] .who-action:hover .icon-round,
+[data-theme="dark"] .icon-round:hover,
+[data-theme="dark"] .who-card-chip:hover { background: rgba(255, 255, 255, 0.12); }
 
 [data-theme="dark"] .callout-editor,
 [data-theme="dark"] .field-when.is-rows .field-when-same,
@@ -430,6 +457,13 @@ html[data-theme="dark"] {
 [data-theme="dark"] .modal .tab-strip { background: var(--card); }
 
 [data-theme="dark"] .form-tabs .tabs.light button.is-active { background: rgba(255, 255, 255, 0.08); }
+
+/* Team's editor tabs sit on the window's card, not painted the page's
+   dark like Who?'s; and its co-chair band under a sign-up is the input
+   wash with the icon on the card. */
+[data-theme="dark"] .modal .tabs { background: none; }
+[data-theme="dark"] .appoint-card { background: var(--input); color: var(--ink); }
+[data-theme="dark"] .appoint-icon { background: var(--card); color: var(--brand); }
 
 [data-theme="dark"] .tab-strip-menu-item:hover { background: var(--input); }
 
