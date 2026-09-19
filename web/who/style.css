@@ -4474,21 +4474,7 @@ a.person-card:hover .photo-wrap-peek::before {
     stroke-linejoin: round;
     opacity: 0.7;
   }
-  .mobile-tabs a[href="/people"] svg {
-    color: #20a39e;
-  }
-  .mobile-tabs a[href="/classrooms"] svg {
-    color: #8ea604;
-  }
-  .mobile-tabs a[href="/staff"] svg {
-    color: #df604a;
-  }
-  .mobile-tabs a[href="/my-family"] svg {
-    color: #20a39e;
-  }
-  .mobile-tabs a[href="/email-list"] svg {
-    color: #f6e24c;
-  }
+  /* White icons, as the other apps' bars carry: the one this is, full. */
   .mobile-tabs a.active svg {
     opacity: 1;
   }

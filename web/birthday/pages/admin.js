@@ -251,8 +251,8 @@ export function adminPage() {
   const brand = el('a', 'brand-link');
   brand.href = '/';
   brand.setAttribute('data-link', '');
-  const mark = el('img');
-  mark.src = '/brand/logo-lockup-light-horizontal.png';
+  const mark = el('img', 'admin-tile');
+  mark.src = '/brand/icon-192.png';
   mark.alt = 'Helios Staff Birthdays';
   brand.append(mark, el('span', '', 'Admin'));
   const right = el('span', 'right');

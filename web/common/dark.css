@@ -214,6 +214,9 @@ html[data-theme="dark"] {
 
 [data-theme="dark"] .infobanner-close { color: #f1b940; }
 
+/* Heliosian's event card before its picture arrives, or without one. */
+[data-theme="dark"] .event-art { background: var(--input); }
+
 /* Heliosian's hero and the hours on its event cards. */
 [data-theme="dark"] .hero-kicker { color: #8fd6d1; }
 
@@ -285,6 +288,24 @@ html[data-theme="dark"] {
 [data-theme="dark"] .field-preset:hover,
 [data-theme="dark"] .pronounce-pill:hover,
 [data-theme="dark"] .chip-toggle:not(.active):hover { background: rgba(255, 255, 255, 0.14); }
+
+/* Team's and Celebrate's cards without a picture show a letter on a pastel
+   tint; the tint keeps its paper, so the letter keeps its deep teal too. */
+[data-theme="dark"] .card-media .thumb.card-image.initial { color: #0f4e54; }
+
+/* Words coloured by name for a light ground - the waitlist amber, the
+   Volunteers Complete green, Birthday's next-issue teal and a picked row's
+   label, the danger links - read as their paler selves on the dark one. */
+[data-theme="dark"] .card-under-wait,
+[data-theme="dark"] .avail-waitlist { color: #f0a066; }
+[data-theme="dark"] .badge.complete { color: #6fd39f; }
+[data-theme="dark"] .issue-badge-month,
+[data-theme="dark"] .urow.is-picked .label { color: var(--brand); }
+[data-theme="dark"] .link-button.danger,
+[data-theme="dark"] .danger-button,
+[data-theme="dark"] .row-button.is-danger,
+[data-theme="dark"] #category-emoji-clear { color: #f37766; }
+[data-theme="dark"] .ask-icon { background: #4a3812; }
 
 /* Who?'s title and its subtitles on the people. */
 [data-theme="dark"] .person-sub,
@@ -388,6 +409,9 @@ html[data-theme="dark"] {
 [data-theme="dark"] .admin .person-picker-list { background: var(--card); border-color: var(--line); color: var(--ink); }
 
 [data-theme="dark"] .admin .notice { background: #3b2a1c; color: #f5c7ad; }
+
+[data-theme="dark"] .admin .category-row .emoji { background: var(--input); }
+[data-theme="dark"] .admin .category-row .emoji svg { color: var(--brand); }
 
 [data-theme="dark"] .admin h2 { color: var(--ink); }
 
@@ -550,10 +574,10 @@ html[data-theme="dark"] {
 [data-theme="dark"] .calendar .day.today { background: rgba(255, 255, 255, 0.07); box-shadow: inset 0 0 0 1px rgba(197, 224, 74, 0.55); }
 [data-theme="dark"] .calendar .day.today .num { color: #c5e04a; }
 
-[data-theme="dark"] .calendar .day.other .num { color: rgba(230, 238, 238, 0.35); }
+[data-theme="dark"] .calendar .day.other .num { color: rgba(230, 238, 238, 0.55); }
 
 [data-theme="dark"] .calendar.picker .chip.stage-wait { background: #7a8f9a; color: #fff; }
-[data-theme="dark"] .calendar.picker .chip.stage-awaiting-outreach { background: #c46a1c; color: #fff; }
+[data-theme="dark"] .calendar.picker .chip.stage-awaiting-outreach { background: #b4601a; color: #fff; }
 [data-theme="dark"] .calendar.picker .chip.stage-awaiting-response { background: #8a7b1f; color: #fff; }
 [data-theme="dark"] .calendar.picker .chip.stage-awaiting-newsletter { background: #3d6a86; color: #fff; }
 [data-theme="dark"] .calendar.picker .chip.stage-complete { background: #5a7d3c; color: #fff; }

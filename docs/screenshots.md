@@ -20,10 +20,19 @@ Flags:
 - `--out` — output PNG path (default `screenshots/capture.png`); `screenshots/` is gitignored
 - `--wait` — CSS selector that must be visible before capture (default `body`); pass a selector the page's JavaScript renders (for example `.card`) to capture after data loads
 - `--width` / `--height` — the viewport, default 1280x800; `--width 390 --height 844` is a phone
-- `--cookie` — cookies to set before navigating, `name=value`, several separated by semicolons: `--cookie "heliosian-quan-shown=1; heliosian-mode=dark"` captures a page in dark mode (the first stops the sample super admin being switched onto Quan), `heliosian-mode=quan` in Quan
+- `--cookie` — cookies to set before navigating, `name=value`, several separated by semicolons: `--cookie heliosian-mode=dark` captures a page in dark mode, `heliosian-mode=quan` in Quan
 - `--click` — CSS selector(s) to click once `--wait` is visible, several separated by `|` and each waited for before its click (for example `.editor-band button|.tab-strip-item:nth-child(4)|.image-find` opens an editor, switches tab, opens the image search); `--settle 3s` waits that long after the last click before capturing
 
 The capture is a full-page screenshot at a 1280×800 viewport. "Full page" means the document's own scroll extent, so a page that sets `overflow: hidden` on `html` and scrolls an inner container yields only the viewport. Capture those with a tall `--size` viewport in `cmd/browse` instead.
+
+## Checking dark mode
+
+A surface painted white or pale by name in an app's stylesheet stays so in dark mode until `web/common/dark.css` catches it, and the words on it - light, now - vanish. `cmd/darkcheck` finds those without looking: it loads each page in dark mode, walks every visible element compositing its background up through its ancestors, and prints the words whose contrast falls short of what their size needs, any tab strip painted a different colour from what it sits on, and with `--light` every light opaque surface for reading by eye. `--compare` reads each page by day too and marks each finding `[dark only]` - dark.css's to fix - or `[by day too]`, a design choice to weigh on its own.
+
+    go run ./cmd/darkcheck --compare --url https://who.local.heliosian.com:8080/people,https://team.local.heliosian.com:8080/
+    go run ./cmd/darkcheck --compare --url https://home.local.heliosian.com:8080/ --click "#user|#super-admin-mode|#user|.tile .link-edit:not(.app-move)"
+
+`--click` walks into a window first, as `cmd/screenshot` does, and `--width 390 --height 844` reads the phone layout. It reports on the rendered page, so a hover state or a menu it has not opened is not read.
 
 ## Reading the console
 

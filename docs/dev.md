@@ -88,6 +88,7 @@ Each runs as `go run ./cmd/<name>`. The sheet, drive, and bucket tools authentic
 - `findsheet` — print the spreadsheet ids the server needs as shell exports, found by the sheets' titles, with every other visible spreadsheet as a comment
 - `sheets` — dump a sheet's tabs, sizes, and header rows
 - `dumptab` / `writetab` — copy one tab to a local CSV / write a local CSV into a tab, header-checked
+- `darkcheck` — load pages in dark mode (`--url a,b,c`, `--click` into a window first) and read the rendered page for what dark.css missed: words with too little contrast against the ground they sit on, a tab strip painted a different colour from what it sits on, and with `--light` every light surface; `--compare` reads each page by day too and marks each finding dark only or by day too
 - `dropcolumns` — delete named columns from one tab, header and cells, for a column an app has stopped reading; a dry run without `--apply` says how many cells each holds
 - `createtabs` — create the tabs of every spreadsheet that has a layout with their header rows, adding missing columns to tabs that exist (needs each of those spreadsheets' id variables, and refuses a spreadsheet whose title isn't the layout the variable promised)
 - `setcell` — set one cell in a tab by key column, appending the row if missing
