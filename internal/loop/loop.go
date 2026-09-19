@@ -118,7 +118,7 @@ type Group struct {
 	Visibility  string     `json:"visibility"`
 	Posting     string     `json:"posting"`
 	Replying    string     `json:"replying"`
-	Managers   []string   `json:"managers"`
+	Managers    []string   `json:"managers"`
 	Rules       []Rule     `json:"rules"`
 	Additions   []Addition `json:"additions"`
 	Excluded    []Excluded `json:"excluded"`

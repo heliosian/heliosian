@@ -6,6 +6,7 @@ import (
 	"mime"
 	"net/mail"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -81,6 +82,19 @@ func authenticated(lines []headerLine) string {
 		return "no authentication results from Mailgun"
 	}
 	_, from, _ := strings.Cut(strings.ToLower(addressOf(header(lines, "from"))), "@")
+	passed, arc := passes(results, from)
+	if passed {
+		return ""
+	}
+	if arc {
+		if forwarded, _ := passes(sealedResults(lines), from); forwarded {
+			return ""
+		}
+	}
+	return "the sender's address passed neither SPF nor DKIM"
+}
+
+func passes(results, from string) (passed, arc bool) {
 	for _, result := range strings.Split(results, ";") {
 		fields := strings.Fields(strings.ToLower(result))
 		if len(fields) == 0 {
@@ -96,15 +110,56 @@ func authenticated(lines []headerLine) string {
 			props[name] = value
 		}
 		switch {
+		case fields[0] == "arc=pass":
+			arc = true
 		case fields[0] == "dmarc=pass" && aligned(props["header.from"], from):
-			return ""
+			passed = true
 		case fields[0] == "dkim=pass" && aligned(props["header.d"], from):
-			return ""
+			passed = true
 		case fields[0] == "spf=pass" && aligned(props["smtp.mailfrom"], from):
-			return ""
+			passed = true
 		}
 	}
-	return "the sender's address passed neither SPF nor DKIM"
+	return passed, arc
+}
+
+// Mailgun's arc=pass vouches that every ARC set is its sealer's own, so the
+// newest set's results stand for the sender only when google.com sealed it.
+func sealedResults(lines []headerLine) string {
+	newest, sealer := 0, ""
+	for _, l := range lines {
+		if l.name != "arc-seal" {
+			continue
+		}
+		tags := arcTags(l.value())
+		if i, _ := strconv.Atoi(tags["i"]); i > newest {
+			newest, sealer = i, tags["d"]
+		}
+	}
+	if sealer != "google.com" {
+		return ""
+	}
+	for _, l := range lines {
+		if l.name != "arc-authentication-results" {
+			continue
+		}
+		instance, rest, _ := strings.Cut(uncommented(l.value()), ";")
+		if arcTags(instance)["i"] != strconv.Itoa(newest) {
+			continue
+		}
+		_, results, _ := strings.Cut(rest, ";")
+		return results
+	}
+	return ""
+}
+
+func arcTags(value string) map[string]string {
+	tags := map[string]string{}
+	for _, tag := range strings.Split(value, ";") {
+		name, v, _ := strings.Cut(tag, "=")
+		tags[strings.ToLower(strings.TrimSpace(name))] = strings.ToLower(strings.TrimSpace(v))
+	}
+	return tags
 }
 
 func aligned(domain, from string) bool {

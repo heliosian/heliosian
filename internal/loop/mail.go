@@ -433,8 +433,8 @@ func (a app) events(w http.ResponseWriter, r *http.Request) {
 			Event     string  `json:"event"`
 			Timestamp float64 `json:"timestamp"`
 			Severity  string  `json:"severity"`
-			Recipient string `json:"recipient"`
-			Reason    string `json:"reason"`
+			Recipient string  `json:"recipient"`
+			Reason    string  `json:"reason"`
 			Message   struct {
 				Headers struct {
 					MessageID string `json:"message-id"`
