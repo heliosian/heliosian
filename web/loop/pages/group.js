@@ -23,10 +23,34 @@ const visibilityNotes = {
 const postingWords = {everyone: 'Everyone', members: 'Members', managers: 'Managers'};
 
 const postingNotes = {
-  everyone: 'Mail from any address goes out to the group.',
-  members: 'Mail goes out only from the managers and the people the rules or the additions place on the group; anyone else\'s is dropped.',
-  managers: 'Mail goes out only from the group\'s managers; anyone else\'s is dropped.',
+  everyone: 'A new message from any address goes out to the group.',
+  members: 'A new message goes out only from the managers and the people the rules or the additions place on the group; anyone else gets a note saying so.',
+  managers: 'A new message goes out only from the group\'s managers; anyone else gets a note saying so.',
 };
+
+const replyingNotes = {
+  everyone: 'A reply to a message the group sent goes out from any address.',
+  members: 'A reply to a message the group sent goes out only from the managers and the people the rules or the additions place on the group; anyone else gets a note saying so.',
+  managers: 'A reply to a message the group sent goes out only from the group\'s managers; anyone else gets a note saying so.',
+};
+
+function audienceField(label, notes, value, onChange) {
+  const field = el('label', 'field');
+  const select = el('select');
+  for (const [option, words] of Object.entries(postingWords)) {
+    const o = el('option', '', words);
+    o.value = option;
+    o.selected = option === value;
+    select.append(o);
+  }
+  const note = el('small', '', notes[value]);
+  select.addEventListener('change', () => {
+    note.textContent = notes[select.value];
+    onChange(select.value);
+  });
+  field.append(el('span', '', label), select, note);
+  return field;
+}
 
 async function send(method, url, body) {
   const res = await fetch(url, {method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
@@ -51,6 +75,7 @@ function editor(g, isNew, closeModal, startTab) {
     prefix: isNew ? true : g.prefix,
     visibility: isNew ? 'hidden' : g.visibility,
     posting: isNew ? 'everyone' : g.posting,
+    replying: isNew ? 'everyone' : g.replying,
     managers: g.managers.map(m => m.email),
     rules: g.rules.map(r => ({kind: r.kind, roles: [...r.roles], search: r.search, classrooms: [...r.classrooms], grades: [...r.grades], tags: [...r.tags], family: [...r.family], owner: r.owner, tagLabels: r.tagLabels})),
     additions: (g.additions || []).map(a => ({email: a.email, name: a.name})),
@@ -262,25 +287,10 @@ function editor(g, isNew, closeModal, startTab) {
   updateVisibilityNote();
   visibilityField.append(el('span', '', 'Who sees the group'), visibility, visibilityNote);
   words.append(visibilityField);
-  const postingField = el('label', 'field');
-  const posting = el('select');
-  for (const [value, label] of Object.entries(postingWords)) {
-    const option = el('option', '', label);
-    option.value = value;
-    option.selected = value === draft.posting;
-    posting.append(option);
-  }
-  const postingNote = el('small');
-  const updatePostingNote = () => {
-    postingNote.textContent = postingNotes[draft.posting];
-  };
-  posting.addEventListener('change', () => {
-    draft.posting = posting.value;
-    updatePostingNote();
-  });
-  updatePostingNote();
-  postingField.append(el('span', '', 'Who can post'), posting, postingNote);
-  words.append(postingField);
+  words.append(
+    audienceField('Who can post', postingNotes, draft.posting, value => { draft.posting = value; }),
+    audienceField('Who can reply', replyingNotes, draft.replying, value => { draft.replying = value; }),
+  );
   const overviewPanel = el('div');
   overviewPanel.append(words);
 
@@ -654,7 +664,7 @@ function editor(g, isNew, closeModal, startTab) {
     status.textContent = 'Saving…';
     save.disabled = true;
     try {
-      const body = {original: isNew ? '' : draft.name, name: draft.name, aliases: draft.aliases, title: draft.title, description: draft.description, prefix: draft.prefix, visibility: draft.visibility, posting: draft.posting, managers: draft.managers, rules: draft.rules.filter(ruleSaysSomething), additions: draft.additions, excluded: draft.excluded};
+      const body = {original: isNew ? '' : draft.name, name: draft.name, aliases: draft.aliases, title: draft.title, description: draft.description, prefix: draft.prefix, visibility: draft.visibility, posting: draft.posting, replying: draft.replying, managers: draft.managers, rules: draft.rules.filter(ruleSaysSomething), additions: draft.additions, excluded: draft.excluded};
       const saved = await send('POST', '/api/loop/group', body);
       if (closeModal) {
         closeModal();
@@ -886,11 +896,12 @@ export function groupPage(g) {
   if (g.visibility === 'members') {
     overview.append(el('div', 'subject-note', 'Visible to the people on it; only its managers can change it.'));
   }
-  if (g.posting === 'members') {
-    overview.append(el('div', 'subject-note', 'Only its managers and the people on it can post.'));
+  const audienceNotes = {everyone: 'Anyone', members: 'Only its managers and the people on it', managers: 'Only its managers'};
+  if (g.posting !== 'everyone') {
+    overview.append(el('div', 'subject-note', `${audienceNotes[g.posting]} can post new messages.`));
   }
-  if (g.posting === 'managers') {
-    overview.append(el('div', 'subject-note', 'Only its managers can post.'));
+  if (g.replying !== g.posting) {
+    overview.append(el('div', 'subject-note', `${audienceNotes[g.replying]} can reply to its messages.`));
   }
   if (g.archived) {
     overview.append(el('div', 'subject-note', 'Archived for you: it sits under Archived in the rail and its Magic Tag is off your lists in Helios Who?, and it works as it always did.'));
@@ -1042,7 +1053,7 @@ function managersCard(g, canEdit) {
     status.classList.remove('error');
     status.textContent = 'Saving…';
     try {
-      await send('POST', '/api/loop/group', {original: g.name, name: g.name, aliases: g.aliases, title: g.title, description: g.description, prefix: g.prefix, visibility: g.visibility, posting: g.posting, managers, rules: g.rules, additions: g.additions, excluded: g.excluded});
+      await send('POST', '/api/loop/group', {original: g.name, name: g.name, aliases: g.aliases, title: g.title, description: g.description, prefix: g.prefix, visibility: g.visibility, posting: g.posting, replying: g.replying, managers, rules: g.rules, additions: g.additions, excluded: g.excluded});
       await load();
       toast('Managers saved');
     } catch (err) {

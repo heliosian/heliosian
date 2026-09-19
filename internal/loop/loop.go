@@ -36,7 +36,8 @@ const (
 	VisibilityMembers  = "members"
 	VisibilityEveryone = "everyone"
 
-	postingColumn = "Posting"
+	postingColumn  = "Posting"
+	replyingColumn = "Replying"
 
 	PostingEveryone = "everyone"
 	PostingMembers  = "members"
@@ -58,7 +59,7 @@ const (
 )
 
 var (
-	GroupColumns     = []string{"Name", "Title", "Description", "Created By", "Created", prefixColumn, visibleColumn, postingColumn}
+	GroupColumns     = []string{"Name", "Title", "Description", "Created By", "Created", prefixColumn, visibleColumn, postingColumn, replyingColumn}
 	ManagerColumns   = []string{"Group", "Email"}
 	RuleColumns      = []string{"Group", "Kind", "Roles", "Search", "Classrooms", "Grades", "Tags", "Family", "Owner"}
 	AdditionColumns  = []string{"Group", "Email", "Name"}
@@ -116,6 +117,7 @@ type Group struct {
 	Prefix      bool       `json:"prefix"`
 	Visibility  string     `json:"visibility"`
 	Posting     string     `json:"posting"`
+	Replying    string     `json:"replying"`
 	Managers   []string   `json:"managers"`
 	Rules       []Rule     `json:"rules"`
 	Additions   []Addition `json:"additions"`
@@ -334,6 +336,9 @@ func CheckGroup(g Group) error {
 	if !slices.Contains(Postings, g.Posting) {
 		return fmt.Errorf("group %s: posting %q is not one of %s", g.Name, g.Posting, JoinList(Postings))
 	}
+	if !slices.Contains(Postings, g.Replying) {
+		return fmt.Errorf("group %s: replying %q is not one of %s", g.Name, g.Replying, JoinList(Postings))
+	}
 	if len(g.Managers) == 0 {
 		return fmt.Errorf("group %s needs at least one manager", g.Name)
 	}
@@ -403,6 +408,10 @@ func Normalize(g Group) Group {
 	g.Posting = strings.ToLower(strings.TrimSpace(g.Posting))
 	if g.Posting == "" {
 		g.Posting = PostingEveryone
+	}
+	g.Replying = strings.ToLower(strings.TrimSpace(g.Replying))
+	if g.Replying == "" {
+		g.Replying = PostingEveryone
 	}
 	g.Managers = cleanEmails(g.Managers)
 	rules := make([]Rule, 0, len(g.Rules))
@@ -487,7 +496,7 @@ func prefixCell(on bool) string {
 }
 
 func groupCells(g Group) map[string]string {
-	return map[string]string{"Name": g.Name, "Title": g.Title, "Description": g.Description, "Created By": g.CreatedBy, "Created": g.Created, prefixColumn: prefixCell(g.Prefix), visibleColumn: g.Visibility, postingColumn: g.Posting}
+	return map[string]string{"Name": g.Name, "Title": g.Title, "Description": g.Description, "Created By": g.CreatedBy, "Created": g.Created, prefixColumn: prefixCell(g.Prefix), visibleColumn: g.Visibility, postingColumn: g.Posting, replyingColumn: g.Replying}
 }
 
 // BuildModel validates every row and refuses the whole set on the first
@@ -496,7 +505,7 @@ func groupCells(g Group) map[string]string {
 func BuildModel(tables *Tables) (*Model, error) {
 	model := &Model{Groups: []Group{}, byName: map[string]int{}, archived: map[string]map[string]bool{}}
 	for _, row := range tables.Groups {
-		g := Normalize(Group{Name: row["Name"], Title: row["Title"], Description: row["Description"], CreatedBy: row["Created By"], Created: row["Created"], Prefix: strings.ToLower(strings.TrimSpace(row[prefixColumn])) != prefixOff, Visibility: row[visibleColumn], Posting: row[postingColumn]})
+		g := Normalize(Group{Name: row["Name"], Title: row["Title"], Description: row["Description"], CreatedBy: row["Created By"], Created: row["Created"], Prefix: strings.ToLower(strings.TrimSpace(row[prefixColumn])) != prefixOff, Visibility: row[visibleColumn], Posting: row[postingColumn], Replying: row[replyingColumn]})
 		if _, dup := model.byName[g.Name]; dup {
 			return nil, fmt.Errorf("%s has two rows named %q", groupsTab, g.Name)
 		}

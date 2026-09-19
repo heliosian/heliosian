@@ -34,6 +34,9 @@ func TestSampleSheetLoads(t *testing.T) {
 	if g.Posting != PostingManagers || model.Group("soccer-team").Posting != PostingEveryone {
 		t.Fatal("a group's Posting cell is not read, or a blank one is not everyone")
 	}
+	if g.Replying != PostingMembers || model.Group("soccer-team").Replying != PostingEveryone {
+		t.Fatal("a group's Replying cell is not read, or a blank one is not everyone")
+	}
 	if g.Rules[1].Kind != KindExclude || g.Rules[1].Search != "haddad" {
 		t.Fatalf("exclude rule: %+v", g.Rules[1])
 	}
@@ -78,10 +81,15 @@ func TestLoadRefusesAPostingItDoesNotKnow(t *testing.T) {
 	if _, err := BuildModel(tables); err == nil {
 		t.Fatal("accepted a Posting cell reading staff")
 	}
+	tables = sampleTables(t)
+	tables.Groups[0][replyingColumn] = "staff"
+	if _, err := BuildModel(tables); err == nil {
+		t.Fatal("accepted a Replying cell reading staff")
+	}
 }
 
 func TestChecksRefuseBadGroups(t *testing.T) {
-	good := Group{Name: "a-b", Title: "A", Visibility: VisibilityHidden, Posting: PostingEveryone, Managers: []string{"m@x.org"}, Rules: []Rule{{Kind: KindInclude, Roles: []string{"Staff"}, Owner: "m@x.org"}}}
+	good := Group{Name: "a-b", Title: "A", Visibility: VisibilityHidden, Posting: PostingEveryone, Replying: PostingEveryone, Managers: []string{"m@x.org"}, Rules: []Rule{{Kind: KindInclude, Roles: []string{"Staff"}, Owner: "m@x.org"}}}
 	if err := CheckGroup(good); err != nil {
 		t.Fatal(err)
 	}
@@ -91,6 +99,7 @@ func TestChecksRefuseBadGroups(t *testing.T) {
 		"reserved":      func(g *Group) { g.Name = "postmaster" },
 		"visibility":    func(g *Group) { g.Visibility = "on" },
 		"posting":       func(g *Group) { g.Posting = "staff" },
+		"replying":      func(g *Group) { g.Replying = "staff" },
 		"title":         func(g *Group) { g.Title = "" },
 		"managers":      func(g *Group) { g.Managers = nil },
 		"no include":    func(g *Group) { g.Rules[0].Kind = KindExclude },

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"mime"
 	"net/mail"
+	"regexp"
 	"strings"
 )
 
@@ -143,6 +144,21 @@ func header(lines []headerLine, name string) string {
 		}
 	}
 	return ""
+}
+
+var bracketed = regexp.MustCompile(`<([^<>]+)>`)
+
+func referenced(lines []headerLine) []string {
+	out := []string{}
+	for _, l := range lines {
+		if l.name != "in-reply-to" && l.name != "references" {
+			continue
+		}
+		for _, m := range bracketed.FindAllStringSubmatch(l.value(), -1) {
+			out = append(out, messageKey(m[1]))
+		}
+	}
+	return out
 }
 
 func messageID(lines []headerLine) string {

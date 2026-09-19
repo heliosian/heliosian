@@ -242,6 +242,21 @@ func (m *mailer) flush() {
 	}
 }
 
+func (m *mailer) repliesTo(group string, lines []headerLine) bool {
+	sent := map[string]bool{}
+	for _, row := range m.cache.Tables().Messages {
+		if row["State"] == stateSent && strings.EqualFold(row["Group"], group) && row["Message ID"] != "" {
+			sent[messageKey(row["Message ID"])] = true
+		}
+	}
+	for _, id := range referenced(lines) {
+		if sent[id] {
+			return true
+		}
+	}
+	return false
+}
+
 func (m *mailer) sentAs(group, messageID string) bool {
 	key := messageKey(messageID)
 	if key == "" {
@@ -300,12 +315,17 @@ func (m *mailer) forward(ctx context.Context, j job) string {
 		return stateDropped
 	}
 	sender := m.directory.Resolve(strings.ToLower(addressOf(header(lines, "from"))))
-	if !g.PostableBy(sender, SourcesOf(m.directory)) {
-		log.Info("groups: post refused", "from", sender, "posting", g.Posting)
-		if err := m.bounce(ctx, *g, lines); err != nil {
+	reply := m.repliesTo(g.Name, lines)
+	if !g.PostableBy(sender, reply, SourcesOf(m.directory)) {
+		audience, verb := g.Posting, "post"
+		if reply {
+			audience, verb = g.Replying, "reply"
+		}
+		log.Info("groups: post refused", "from", sender, "reply", reply, "audience", audience)
+		if err := m.bounce(ctx, *g, lines, audience, verb); err != nil {
 			log.Error("[ERROR] groups: bounce failed", "to", sender, "error", err)
 		}
-		m.mark(j, stateDropped, map[string]string{"Detail": "only the group's " + g.Posting + " may post"})
+		m.mark(j, stateDropped, map[string]string{"Detail": "only the group's " + audience + " may " + verb})
 		return stateDropped
 	}
 	object := fmt.Sprintf("loop/%s/%s-%s.eml", g.Name, time.Now().UTC().Format("20060102T150405Z"), j.id)
@@ -348,10 +368,10 @@ func (m *mailer) forward(ctx context.Context, j job) string {
 
 var posters = map[string]string{PostingMembers: "the people on it and its managers", PostingManagers: "its managers"}
 
-func (m *mailer) bounce(ctx context.Context, g Group, lines []headerLine) error {
+func (m *mailer) bounce(ctx context.Context, g Group, lines []headerLine, audience, verb string) error {
 	to := addressOf(header(lines, "from"))
 	subject := decodeHeader(header(lines, "subject"))
-	text := fmt.Sprintf("Your message to %s, “%s”, was not sent to the group: only %s can post to it.", g.Address(), subject, posters[g.Posting])
+	text := fmt.Sprintf("Your message to %s, “%s”, was not sent to the group: only %s can %s to it.", g.Address(), subject, posters[audience], verb)
 	headers := map[string]string{"Auto-Submitted": "auto-replied", loopHeader: g.Name}
 	if id := header(lines, "message-id"); id != "" {
 		headers["In-Reply-To"] = id

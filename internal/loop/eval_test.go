@@ -338,13 +338,18 @@ func TestWhoMayPost(t *testing.T) {
 		{loop.PostingMembers, map[string]bool{jordan: true, nico: true, mia: true}},
 		{loop.PostingManagers, map[string]bool{jordan: true}},
 	} {
-		g := loop.Normalize(loop.Group{Name: "test", Title: "Test", Managers: []string{jordan}, Posting: c.posting,
+		posting := loop.Normalize(loop.Group{Name: "test", Title: "Test", Managers: []string{jordan}, Posting: c.posting, Replying: loop.PostingManagers,
 			Rules:    []loop.Rule{rule(loop.KindInclude, func(r *loop.Rule) { r.Search = "torres" })},
 			Excluded: []loop.Excluded{{Email: mia}},
 		})
+		replying := posting
+		replying.Posting, replying.Replying = loop.PostingManagers, c.posting
 		for _, email := range []string{jordan, nico, mia, outsider} {
-			if got := g.PostableBy(email, s); got != c.posts[email] {
+			if got := posting.PostableBy(email, false, s); got != c.posts[email] {
 				t.Errorf("%s: %s posts %v", c.posting, email, got)
+			}
+			if got := replying.PostableBy(email, true, s); got != c.posts[email] {
+				t.Errorf("%s: %s replies %v", c.posting, email, got)
 			}
 		}
 	}

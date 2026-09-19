@@ -152,6 +152,13 @@ func TestAuthenticatedTakesMailgunsAlignedResults(t *testing.T) {
 	}
 }
 
+func TestReferencedReadsBothThreadHeaders(t *testing.T) {
+	lines, _ := splitMessage([]byte("From: a@x.org\r\nMessage-ID: <self@x.org>\r\nIn-Reply-To: <b@y.org>\r\nReferences: <a@y.org>\r\n <b@y.org>\r\n\r\n"))
+	if got := referenced(lines); len(got) != 3 || got[0] != "b@y.org" || got[1] != "a@y.org" || got[2] != "b@y.org" {
+		t.Fatalf("got %v", got)
+	}
+}
+
 func TestRewriteNeedsAFrom(t *testing.T) {
 	lines, _ := splitMessage([]byte("Subject: hi\r\n\r\nbody\r\n"))
 	if _, err := rewrite(lines, team); err == nil {

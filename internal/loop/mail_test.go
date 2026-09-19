@@ -472,6 +472,52 @@ func TestAnUnauthenticatedPostIsDroppedWithoutABounce(t *testing.T) {
 	}
 }
 
+func testMessage(from, id, references string) string {
+	_, domain, _ := strings.Cut(from, "@")
+	raw := "Authentication-Results: mxa.mailgun.org; dmarc=pass header.from=" + domain + "\r\n" +
+		"From: " + from + "\r\nTo: middle-school-parents@loop.heliosian.com\r\nSubject: Picture day\r\nMessage-ID: <" + id + ">\r\n"
+	if references != "" {
+		raw += "In-Reply-To: " + references + "\r\nReferences: " + references + "\r\n"
+	}
+	return raw + "\r\nbody\r\n"
+}
+
+func TestRepliesToTheGroupsOwnMailAnswerToWhoCanReply(t *testing.T) {
+	store := &fakeStore{}
+	h := newHarness(t, store)
+	g := h.cache.Model().Group("middle-school-parents")
+	member := ""
+	for _, email := range h.members(g.Name) {
+		if !g.Manages(email) {
+			member = email
+			break
+		}
+	}
+	if member == "" {
+		t.Fatal("no member who is not a manager")
+	}
+	deliver := func(id, raw, want, detail string) {
+		t.Helper()
+		store.raw = []byte(raw)
+		h.inbound(notify(id, g.Address()))
+		h.waitFor(id, func() bool { return h.messageState(id, g.Name) == want })
+		if got := h.messageRow(id, g.Name)["Detail"]; want == stateDropped && got != detail {
+			t.Fatalf("%s: detail %q", id, got)
+		}
+	}
+	deliver("r1", testMessage("dana.hawkins@heliosschool.org", "p1@heliosschool.org", ""), stateSent, "")
+	deliver("r2", testMessage(member, "p2@heliosschool.org", "<p1@heliosschool.org>"), stateSent, "")
+	deliver("r3", testMessage(member, "p3@heliosschool.org", "<p2@heliosschool.org>"), stateSent, "")
+	deliver("r4", testMessage(member, "p4@heliosschool.org", ""), stateDropped, "only the group's managers may post")
+	deliver("r5", testMessage(member, "p5@heliosschool.org", "<CAF1x7qNw3pR@mail.gmail.com>"), stateDropped, "only the group's managers may post")
+	deliver("r6", testMessage("alice@gmail.com", "p6@gmail.com", "<other@x.org> <p1@heliosschool.org>"), stateDropped, "only the group's members may reply")
+	sends := h.sender.all()
+	last := sends[len(sends)-1]
+	if last.to[0] != "alice@gmail.com" || !strings.Contains(string(last.raw), "only the people on it and its managers can reply to it") {
+		t.Fatalf("the reply's bounce: %s", last.raw)
+	}
+}
+
 func TestAFetchFailureIsRecordedAndRetriedOnReplay(t *testing.T) {
 	store := &fakeStore{raw: []byte(post), err: fmt.Errorf("mailgun is down")}
 	h := newHarness(t, store)
