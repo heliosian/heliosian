@@ -149,6 +149,7 @@ type harness struct {
 
 func newHarness(t *testing.T, store Fetcher) *harness {
 	t.Helper()
+	deliveryBatch = 20 * time.Millisecond
 	dir := &data.Dir{Root: "../../sampledata"}
 	whoTables, err := who.ReadTables(dir)
 	if err != nil {
@@ -496,68 +497,100 @@ func TestMailForNoGroupIsIgnored(t *testing.T) {
 	}
 }
 
-func event(kind, severity, from, recipient, detail string) string {
+const eventStamp = 4102444800.25
+
+func event(kind, severity, from, messageID, recipient, detail string) string {
 	stamp, sig := mail.SignMailgun(signingKey, "token-"+kind+recipient, time.Now())
 	body, _ := json.Marshal(map[string]any{
 		"signature": map[string]string{"timestamp": stamp, "token": "token-" + kind + recipient, "signature": sig},
 		"event-data": map[string]any{
-			"event": kind, "severity": severity, "recipient": recipient, "reason": "bounce",
-			"message":         map[string]any{"headers": map[string]string{"message-id": "abc@gmail.com", "from": from}},
-			"delivery-status": map[string]any{"message": "", "description": detail, "code": 550},
+			"event": kind, "timestamp": eventStamp, "severity": severity, "recipient": recipient, "reason": "bounce",
+			"message":         map[string]any{"headers": map[string]string{"message-id": messageID, "from": from}},
+			"delivery-status": map[string]any{"message": "OK", "description": detail, "code": 550},
 		},
 	})
 	return string(body)
 }
 
-func TestBouncesAreRecordedAgainstTheGroup(t *testing.T) {
+func (h *harness) deliveryRows(messageID, event string) []map[string]string {
+	out := []map[string]string{}
+	for _, row := range h.rows(deliveriesTab) {
+		if row["Message"] == messageID && row["Event"] == event {
+			out = append(out, row)
+		}
+	}
+	return out
+}
+
+func TestDeliveryEventsAreRecordedAgainstTheGroup(t *testing.T) {
 	h := newHarness(t, &fakeStore{raw: []byte(post)})
-	before := len(h.rows(deliveriesTab))
+	h.inbound(notify("m14", "soccer-team@loop.heliosian.com"))
+	h.waitFor("the forward", func() bool { return h.messageState("m14", "soccer-team") == stateSent })
+	members := h.members("soccer-team")
+	h.waitFor("a sent row per copy", func() bool { return len(h.deliveryRows("abc@gmail.com", eventSent)) == len(members) })
+	for _, row := range h.deliveryRows("abc@gmail.com", eventSent) {
+		if row["Group"] != "soccer-team" || !slices.Contains(members, row["Email"]) || row["Timestamp"] == "" {
+			t.Fatalf("sent row %+v", row)
+		}
+	}
 	from := "Alice via Soccer Team Families <soccer-team@loop.heliosian.com>"
-	if rec := h.post("/hooks/events", event("failed", "permanent", from, "Gone@example.org", "550 no such user"), jsonHeader); rec.Code != http.StatusOK {
+	if rec := h.post("/hooks/events", event("failed", "permanent", from, "abc@gmail.com", "Gone@example.org", "550 no such user"), jsonHeader); rec.Code != http.StatusOK {
 		t.Fatalf("events answered %d: %s", rec.Code, rec.Body)
 	}
-	h.waitFor("the delivery row", func() bool {
+	h.post("/hooks/events", event("failed", "temporary", from, "abc@gmail.com", "slow@example.org", "greylisted"), jsonHeader)
+	h.post("/hooks/events", event("complained", "", from, "abc@gmail.com", "cross@example.org", ""), jsonHeader)
+	h.post("/hooks/events", event("delivered", "", from, "abc@gmail.com", "fine@example.org", ""), jsonHeader)
+	h.post("/hooks/events", event("failed", "permanent", "HCA-Team <team@heliosian.com>", "abc@gmail.com", "other@example.org", "550"), jsonHeader)
+	h.post("/hooks/events", event("delivered", "", "HCA-Team <team@loop.heliosian.com>", "portal@loop.heliosian.com", "else@example.org", ""), jsonHeader)
+	h.waitFor("the event rows", func() bool {
+		n := 0
 		for _, row := range h.rows(deliveriesTab) {
-			if row["Group"] == "soccer-team" && row["Email"] == "gone@example.org" && row["Event"] == "bounced" && row["Message"] == "abc@gmail.com" && row["Detail"] == "550 no such user" {
-				return true
+			if row["Message"] == "abc@gmail.com" && row["Event"] != eventSent {
+				n++
 			}
 		}
-		return false
+		return n == 4
 	})
-	h.post("/hooks/events", event("failed", "temporary", from, "slow@example.org", "greylisted"), jsonHeader)
-	h.post("/hooks/events", event("complained", "", from, "cross@example.org", ""), jsonHeader)
-	h.post("/hooks/events", event("delivered", "", from, "fine@example.org", ""), jsonHeader)
-	h.post("/hooks/events", event("failed", "permanent", "HCA-Team <team@heliosian.com>", "other@example.org", "550"), jsonHeader)
-	h.waitFor("the other rows", func() bool { return len(h.rows(deliveriesTab)) == before+3 })
-	kinds := map[string]string{}
-	for _, row := range h.rows(deliveriesTab)[before:] {
-		kinds[row["Email"]] = row["Event"]
+	rows := map[string]map[string]string{}
+	for _, row := range h.rows(deliveriesTab) {
+		if row["Message"] == "abc@gmail.com" && row["Event"] != eventSent {
+			rows[row["Email"]] = row
+		}
 	}
-	if kinds["slow@example.org"] != "delivery_delayed" || kinds["cross@example.org"] != "complained" {
-		t.Fatalf("kinds %v", kinds)
+	stamp := time.UnixMilli(eventStamp * 1000).Format(time.RFC3339)
+	if r := rows["gone@example.org"]; r["Event"] != eventBounced || r["Detail"] != "550 no such user" || r["Group"] != "soccer-team" || r["Timestamp"] != stamp {
+		t.Fatalf("bounce row %+v", r)
+	}
+	if rows["slow@example.org"]["Event"] != eventDelayed || rows["slow@example.org"]["Detail"] != "greylisted" || rows["cross@example.org"]["Event"] != eventComplaint {
+		t.Fatalf("rows %v", rows)
+	}
+	if r := rows["fine@example.org"]; r["Event"] != eventDelivered || r["Detail"] != "" || r["Timestamp"] != stamp {
+		t.Fatalf("delivered row %+v", r)
 	}
 	time.Sleep(100 * time.Millisecond)
-	if len(h.rows(deliveriesTab)) != before+3 {
-		t.Fatalf("a delivery or another app's bounce was recorded: %+v", h.rows(deliveriesTab))
+	for _, row := range h.rows(deliveriesTab) {
+		if row["Email"] == "other@example.org" || row["Email"] == "else@example.org" {
+			t.Fatalf("mail Loop did not send was recorded: %+v", row)
+		}
 	}
 }
 
-func TestHistoryListsSentMessagesWithTheirBounces(t *testing.T) {
+func TestHistoryListsSentMessagesWithEachCopy(t *testing.T) {
 	h := newHarness(t, &fakeStore{raw: []byte(post)})
 	h.inbound(notify("m10", "soccer-team@loop.heliosian.com"))
 	h.waitFor("the forward", func() bool { return h.messageState("m10", "soccer-team") == stateSent })
 	if id := h.messageRow("m10", "soccer-team")["Message ID"]; id != "abc@gmail.com" {
 		t.Fatalf("message id %q", id)
 	}
+	members := h.members("soccer-team")
+	h.waitFor("a sent row per copy", func() bool { return len(h.deliveryRows("abc@gmail.com", eventSent)) == len(members) })
 	from := "Alice via Soccer Team Families <soccer-team@loop.heliosian.com>"
-	h.post("/hooks/events", event("failed", "permanent", from, "gone@example.org", "550 no such user"), jsonHeader)
-	h.waitFor("the delivery row", func() bool {
-		for _, row := range h.rows(deliveriesTab) {
-			if row["Email"] == "gone@example.org" {
-				return true
-			}
-		}
-		return false
+	h.post("/hooks/events", event("failed", "permanent", from, "abc@gmail.com", members[0], "550 no such user"), jsonHeader)
+	h.post("/hooks/events", event("failed", "temporary", from, "abc@gmail.com", members[1], "4.3.0 Temporary System Problem"), jsonHeader)
+	h.post("/hooks/events", event("failed", "temporary", from, "abc@gmail.com", members[2], "greylisted"), jsonHeader)
+	h.post("/hooks/events", event("delivered", "", from, "abc@gmail.com", members[2], ""), jsonHeader)
+	h.waitFor("the event rows", func() bool {
+		return len(h.deliveryRows("abc@gmail.com", eventBounced))+len(h.deliveryRows("abc@gmail.com", eventDelayed))+len(h.deliveryRows("abc@gmail.com", eventDelivered)) == 4
 	})
 	rec := h.as("jordan.whitfield@heliosschool.org", http.MethodGet, "/api/loop/messages?name=soccer-team", "")
 	if rec.Code != http.StatusOK {
@@ -573,10 +606,26 @@ func TestHistoryListsSentMessagesWithTheirBounces(t *testing.T) {
 		t.Fatalf("messages %+v", body.Messages)
 	}
 	m := body.Messages[0]
-	if m.Subject != "Re: Saturday's game" || m.From.Email != "alice@gmail.com" || m.Recipients != len(h.members("soccer-team")) || len(m.Trouble) != 1 || m.Trouble[0].Email != "gone@example.org" || m.Trouble[0].Event != "bounced" {
+	if m.Subject != "Re: Saturday's game" || m.From.Email != "alice@gmail.com" || m.Recipients != len(members) || len(m.Copies) != len(members) || m.Delivered != 1 || m.Failed != 1 || m.Pending != len(members)-2 {
 		t.Fatalf("newest message %+v", m)
 	}
-	if sample := body.Messages[1]; sample.From.Name != "Jordan Whitfield" || len(sample.Trouble) != 1 || sample.Trouble[0].Email != "office@coastsidesoccer.example.org" {
+	copies := map[string]Copy{}
+	for _, c := range m.Copies {
+		copies[c.Email] = c
+	}
+	if c := copies[members[0]]; c.State != copyFailed || c.When == "" || m.Copies[0].Email != members[0] {
+		t.Fatalf("the bounced copy %+v, first %+v", c, m.Copies[0])
+	}
+	if c := copies[members[1]]; c.State != copyPending || c.When != "" || len(c.Attempts) != 2 || c.Attempts[1].Detail != "4.3.0 Temporary System Problem" {
+		t.Fatalf("the delayed copy %+v", c)
+	}
+	if c := copies[members[2]]; c.State != copyDelivered || c.When == "" || len(c.Attempts) != 3 {
+		t.Fatalf("the copy delivered after a delay %+v", c)
+	}
+	if c := copies[members[3]]; c.State != copyPending || len(c.Attempts) != 1 || c.Attempts[0].Event != eventSent {
+		t.Fatalf("a copy not yet heard of %+v", c)
+	}
+	if sample := body.Messages[1]; sample.From.Name != "Jordan Whitfield" || sample.Delivered != 3 || sample.Failed != 1 || sample.Pending != 1 || len(sample.Copies) != 5 {
 		t.Fatalf("sample message %+v", sample)
 	}
 	if (app{cache: h.cache}).sentCount("soccer-team") != 2 {
@@ -594,7 +643,7 @@ func TestRoutesRefuseTheUnsignedAndTheUnconfigured(t *testing.T) {
 	if rec := h.inbound(fields); rec.Code != http.StatusNotAcceptable {
 		t.Fatalf("a badly signed notification answered %d", rec.Code)
 	}
-	body := event("failed", "permanent", "x <soccer-team@loop.heliosian.com>", "a@example.org", "x")
+	body := event("failed", "permanent", "x <soccer-team@loop.heliosian.com>", "abc@gmail.com", "a@example.org", "x")
 	if rec := h.post("/hooks/events", strings.Replace(body, `"signature":"`, `"signature":"ff`, 1), jsonHeader); rec.Code != http.StatusNotAcceptable {
 		t.Fatalf("a badly signed event answered %d", rec.Code)
 	}

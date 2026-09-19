@@ -693,9 +693,9 @@ func (t *Tables) withMessage(id, group string, cells map[string]string) *Tables 
 	return &out
 }
 
-func (t *Tables) withDelivery(row map[string]string) *Tables {
+func (t *Tables) withDeliveries(rows []map[string]string) *Tables {
 	out := *t
-	out.Deliveries = append(cloneRows(t.Deliveries), row)
+	out.Deliveries = slices.Concat(t.Deliveries, rows)
 	return &out
 }
 

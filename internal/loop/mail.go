@@ -79,6 +79,8 @@ func (j job) key() string {
 	return j.id + "|" + j.group
 }
 
+var deliveryBatch = 5 * time.Second
+
 type mailer struct {
 	cache     *Cache
 	writer    data.Writer
@@ -89,6 +91,8 @@ type mailer struct {
 	busy      map[string]bool
 	done      map[string]bool
 	work      chan job
+	pending   []map[string]string
+	flushing  bool
 }
 
 func newMailer(cache *Cache, writer data.Writer, queue Enqueuer, directory Directory, mailbox Mail) *mailer {
@@ -207,24 +211,60 @@ func (m *mailer) received(id, source, from, subject string, addresses []string) 
 	}
 }
 
-func (m *mailer) trouble(event, from, messageID, detail string, addresses []string) {
+func (m *mailer) record(row map[string]string) {
+	m.mu.Lock()
+	m.pending = append(m.pending, row)
+	start := !m.flushing
+	m.flushing = true
+	m.mu.Unlock()
+	if start {
+		time.AfterFunc(deliveryBatch, func() { m.queue.Add(m.flush) })
+	}
+}
+
+func (m *mailer) flush() {
+	m.mu.Lock()
+	rows := m.pending
+	m.pending = nil
+	m.flushing = false
+	m.mu.Unlock()
+	m.cache.edit(func(t *Tables) *Tables { return t.withDeliveries(rows) })
+	cells := make([][]string, 0, len(rows))
+	for _, row := range rows {
+		line := make([]string, 0, len(DeliveryColumns))
+		for _, column := range DeliveryColumns {
+			line = append(line, row[column])
+		}
+		cells = append(cells, line)
+	}
+	if err := m.writer.AppendAll(appName, deliveriesTab, cells); err != nil {
+		slog.Error("[ERROR] groups: delivery record", "rows", len(rows), "error", err)
+	}
+}
+
+func (m *mailer) sentAs(group, messageID string) bool {
+	key := messageKey(messageID)
+	if key == "" {
+		return false
+	}
+	for _, row := range m.cache.Tables().Messages {
+		if strings.EqualFold(row["Group"], group) && messageKey(row["Message ID"]) == key {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *mailer) delivery(event, from, messageID, detail string, when time.Time, address string) {
 	names := m.groupsIn([]string{from})
-	if len(names) == 0 {
+	if len(names) == 0 || !m.sentAs(names[0], messageID) {
 		return
 	}
-	when := time.Now().Format(time.RFC3339)
-	for _, address := range addresses {
-		email := strings.ToLower(addressOf(address))
+	email := strings.ToLower(addressOf(address))
+	if event != eventDelivered {
 		slog.Warn("groups: delivery trouble", "event", event, "group", names[0], "email", email, "detail", detail)
-		m.queue.Add(func() {
-			m.cache.edit(func(t *Tables) *Tables {
-				return t.withDelivery(map[string]string{"Timestamp": when, "Group": names[0], "Email": email, "Event": event, "Message": messageID, "Detail": detail})
-			})
-			if err := m.writer.Append(appName, deliveriesTab, []string{when, names[0], email, event, messageID, detail}); err != nil {
-				slog.Error("groups: delivery record", "error", err)
-			}
-		})
 	}
+	m.record(map[string]string{"Timestamp": when.Format(time.RFC3339), "Group": names[0], "Email": email, "Event": event, "Message": messageID, "Detail": detail})
 }
 
 func (m *mailer) forward(ctx context.Context, j job) string {
@@ -272,7 +312,8 @@ func (m *mailer) forward(ctx context.Context, j job) string {
 	if err := m.mail.Archive.Put(ctx, object, mailType, raw); err != nil {
 		return fail("archive", err)
 	}
-	m.mark(j, stateStored, map[string]string{"Object": object, "Message ID": messageID(lines)})
+	id := messageID(lines)
+	m.mark(j, stateStored, map[string]string{"Object": object, "Message ID": id})
 	head, err := rewrite(lines, *g)
 	if err != nil {
 		return fail("rewrite", err)
@@ -288,6 +329,7 @@ func (m *mailer) forward(ctx context.Context, j job) string {
 			failures = append(failures, rcpt+": "+err.Error())
 			continue
 		}
+		m.record(map[string]string{"Timestamp": time.Now().Format(time.RFC3339), "Group": g.Name, "Email": rcpt, "Event": eventSent, "Message": id})
 		sent++
 	}
 	state := stateSent
@@ -368,8 +410,9 @@ func (a app) events(w http.ResponseWriter, r *http.Request) {
 			Signature string `json:"signature"`
 		} `json:"signature"`
 		Data struct {
-			Event     string `json:"event"`
-			Severity  string `json:"severity"`
+			Event     string  `json:"event"`
+			Timestamp float64 `json:"timestamp"`
+			Severity  string  `json:"severity"`
 			Recipient string `json:"recipient"`
 			Reason    string `json:"reason"`
 			Message   struct {
@@ -397,12 +440,14 @@ func (a app) events(w http.ResponseWriter, r *http.Request) {
 	kind := ""
 	switch d.Event {
 	case "failed":
-		kind = "delivery_delayed"
+		kind = eventDelayed
 		if d.Severity == "permanent" {
-			kind = "bounced"
+			kind = eventBounced
 		}
 	case "complained":
-		kind = "complained"
+		kind = eventComplaint
+	case "delivered":
+		kind = eventDelivered
 	}
 	if kind != "" {
 		detail := d.Status.Description
@@ -412,7 +457,11 @@ func (a app) events(w http.ResponseWriter, r *http.Request) {
 		if detail == "" {
 			detail = d.Reason
 		}
-		a.mailer.trouble(kind, d.Message.Headers.From, d.Message.Headers.MessageID, detail, []string{d.Recipient})
+		if kind == eventDelivered {
+			detail = ""
+		}
+		when := time.UnixMilli(int64(d.Timestamp * 1000))
+		a.mailer.delivery(kind, d.Message.Headers.From, d.Message.Headers.MessageID, detail, when, d.Recipient)
 	}
 	w.WriteHeader(http.StatusOK)
 }

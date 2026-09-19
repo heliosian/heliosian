@@ -1188,7 +1188,11 @@ function withTab(path) {
   return path + (path.includes('?') ? '&' : '?') + 'tab=' + encodeURIComponent(tab);
 }
 
-const troubleWords = {bounced: 'bounced', delivery_delayed: 'delayed', complained: 'marked it as spam'};
+const stateWords = {delivered: 'Delivered', failed: 'Failed', pending: 'Pending'};
+
+const attemptWords = {delivered: 'Delivered', bounced: 'Bounced', delivery_delayed: 'Delayed', complained: 'Marked as spam'};
+
+const stamp = when => when ? new Date(when).toLocaleString() : '';
 
 function historyTab(g) {
   const panel = el('div', 'card');
@@ -1228,32 +1232,49 @@ function messageRow(m) {
   head.append(thumb(person || m.from, 'small'));
   const body = el('div', 'person-body');
   body.append(el('div', 'message-subject', m.subject || '(no subject)'));
-  const when = m.received ? new Date(m.received).toLocaleString() : '';
-  body.append(el('div', 'person-words', [m.from.name, when, `${m.recipients} ${m.recipients === 1 ? 'copy' : 'copies'} sent`].filter(Boolean).join(' · ')));
+  body.append(el('div', 'person-words', [m.from.name, stamp(m.received)].filter(Boolean).join(' · ')));
   head.append(body);
-  row.append(head);
-  if (!m.trouble.length) {
-    return row;
-  }
-  const counts = {};
-  for (const t of m.trouble) {
-    counts[t.event] = (counts[t.event] || 0) + 1;
-  }
-  const toggle = el('button', 'trouble-toggle');
+  const toggle = el('button', 'delivery-toggle');
   toggle.type = 'button';
-  toggle.append(el('span', '', Object.entries(counts).map(([event, n]) => `${n} ${troubleWords[event] || event}`).join(' · ')), svg('chevron'));
-  const details = el('div', 'trouble-list');
+  for (const [key, n] of [['delivered', m.delivered], ['failed', m.failed], ['pending', m.pending]]) {
+    toggle.append(el('span', `delivery-count is-${key}${n ? '' : ' is-zero'}`, `${n} ${key}`));
+  }
+  toggle.append(svg('chevron'));
+  head.append(toggle);
+  row.append(head);
+  const details = el('div', 'delivery-list');
   details.hidden = true;
-  for (const t of m.trouble) {
-    const known = state.model.people.find(p => p.email === t.email);
-    const words = [troubleWords[t.event] || t.event, t.when ? new Date(t.when).toLocaleString() : ''].filter(Boolean).join(' · ');
-    details.append(personRow({email: t.email, name: t.name || t.email, photoUrl: known ? known.photoUrl : '', words, outside: !known}, el('span'), t.detail));
+  for (const c of m.copies) {
+    details.append(copyRow(c));
+  }
+  if (!m.copies.length) {
+    details.append(el('div', 'rule-empty', 'No delivery records for this message.'));
   }
   toggle.addEventListener('click', () => {
     details.hidden = !details.hidden;
     toggle.classList.toggle('open', !details.hidden);
   });
-  head.append(toggle);
   row.append(details);
+  return row;
+}
+
+function copyRow(c) {
+  const known = state.model.people.find(p => p.email === c.email);
+  const words = [stateWords[c.state], stamp(c.when)].filter(Boolean).join(' · ');
+  const row = personRow({email: c.email, name: c.name || c.email, photoUrl: known ? known.photoUrl : '', words, outside: !known}, el('span'));
+  const attempts = c.attempts.filter(a => a.event !== 'sent');
+  if (!attempts.some(a => a.event !== 'delivered')) {
+    return row;
+  }
+  const list = el('div', 'attempt-list');
+  for (const a of attempts) {
+    const line = el('div', 'attempt');
+    line.append(el('span', 'attempt-event', attemptWords[a.event] || a.event), el('span', 'attempt-when', stamp(a.when)));
+    if (a.detail) {
+      line.append(el('span', 'attempt-detail', a.detail));
+    }
+    list.append(line);
+  }
+  row.querySelector('.person-body').append(list);
   return row;
 }

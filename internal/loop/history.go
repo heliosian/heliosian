@@ -1,27 +1,51 @@
 package loop
 
 import (
+	"cmp"
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
+	"time"
 )
 
-type Trouble struct {
+const (
+	eventSent      = "sent"
+	eventDelivered = "delivered"
+	eventBounced   = "bounced"
+	eventDelayed   = "delivery_delayed"
+	eventComplaint = "complained"
+
+	copyDelivered = "delivered"
+	copyFailed    = "failed"
+	copyPending   = "pending"
+)
+
+type Attempt struct {
 	When   string `json:"when"`
-	Email  string `json:"email"`
-	Name   string `json:"name"`
 	Event  string `json:"event"`
 	Detail string `json:"detail,omitempty"`
 }
 
+type Copy struct {
+	Email    string    `json:"email"`
+	Name     string    `json:"name"`
+	State    string    `json:"state"`
+	When     string    `json:"when,omitempty"`
+	Attempts []Attempt `json:"attempts"`
+}
+
 type SentMessage struct {
-	Received   string    `json:"received"`
-	From       Person    `json:"from"`
-	Subject    string    `json:"subject"`
-	Recipients int       `json:"recipients"`
-	Trouble    []Trouble `json:"trouble"`
+	Received   string `json:"received"`
+	From       Person `json:"from"`
+	Subject    string `json:"subject"`
+	Recipients int    `json:"recipients"`
+	Delivered  int    `json:"delivered"`
+	Failed     int    `json:"failed"`
+	Pending    int    `json:"pending"`
+	Copies     []Copy `json:"copies"`
 }
 
 func messageKey(id string) string {
@@ -36,16 +60,41 @@ func (a app) sender(from string) Person {
 	return Person{Email: email, Name: senderName(from)}
 }
 
+func eventTime(when string) time.Time {
+	t, _ := time.Parse(time.RFC3339, when)
+	return t
+}
+
+func copyOf(email, name string, attempts []Attempt) Copy {
+	slices.SortStableFunc(attempts, func(x, y Attempt) int { return eventTime(x.When).Compare(eventTime(y.When)) })
+	c := Copy{Email: email, Name: name, State: copyPending, Attempts: attempts}
+	for _, at := range attempts {
+		switch at.Event {
+		case eventDelivered:
+			c.State, c.When = copyDelivered, at.When
+			return c
+		case eventBounced:
+			c.State, c.When = copyFailed, at.When
+		}
+	}
+	return c
+}
+
+var copyOrder = map[string]int{copyFailed: 0, copyPending: 1, copyDelivered: 2}
+
 func (a app) history(name string) []SentMessage {
 	tables := a.cache.Tables()
-	trouble := map[string][]Trouble{}
+	attempts := map[string]map[string][]Attempt{}
 	for _, row := range tables.Deliveries {
 		key := messageKey(row["Message"])
 		if key == "" || !strings.EqualFold(strings.TrimSpace(row["Group"]), name) {
 			continue
 		}
 		email := cleanEmail(row["Email"])
-		trouble[key] = append(trouble[key], Trouble{When: row["Timestamp"], Email: email, Name: a.person(email).Name, Event: row["Event"], Detail: row["Detail"]})
+		if attempts[key] == nil {
+			attempts[key] = map[string][]Attempt{}
+		}
+		attempts[key][email] = append(attempts[key][email], Attempt{When: row["Timestamp"], Event: row["Event"], Detail: row["Detail"]})
 	}
 	out := []SentMessage{}
 	for i := len(tables.Messages) - 1; i >= 0; i-- {
@@ -54,10 +103,22 @@ func (a app) history(name string) []SentMessage {
 			continue
 		}
 		recipients, _ := strconv.Atoi(row["Recipients"])
-		sent := SentMessage{Received: row["Received"], From: a.sender(row["From"]), Subject: row["Subject"], Recipients: recipients, Trouble: []Trouble{}}
-		if key := messageKey(row["Message ID"]); key != "" {
-			sent.Trouble = append(sent.Trouble, trouble[key]...)
+		sent := SentMessage{Received: row["Received"], From: a.sender(row["From"]), Subject: row["Subject"], Recipients: recipients, Copies: []Copy{}}
+		for email, list := range attempts[messageKey(row["Message ID"])] {
+			c := copyOf(email, a.person(email).Name, slices.Clone(list))
+			switch c.State {
+			case copyDelivered:
+				sent.Delivered++
+			case copyFailed:
+				sent.Failed++
+			default:
+				sent.Pending++
+			}
+			sent.Copies = append(sent.Copies, c)
 		}
+		slices.SortFunc(sent.Copies, func(x, y Copy) int {
+			return cmp.Or(cmp.Compare(copyOrder[x.State], copyOrder[y.State]), cmp.Compare(strings.ToLower(x.Name), strings.ToLower(y.Name)), cmp.Compare(x.Email, y.Email))
+		})
 		out = append(out, sent)
 	}
 	return out

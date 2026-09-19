@@ -1,2 +1,12 @@
 Timestamp,Group,Email,Event,Message,Detail
+2026-09-14T08:05:14-07:00,soccer-team,asha.chandra@heliosschool.org,sent,CAF1x7qNw3pR@mail.gmail.com,
+2026-09-14T08:05:14-07:00,soccer-team,colin.quinn@heliosschool.org,sent,CAF1x7qNw3pR@mail.gmail.com,
+2026-09-14T08:05:14-07:00,soccer-team,carmen.alvarez@heliosschool.org,sent,CAF1x7qNw3pR@mail.gmail.com,
+2026-09-14T08:05:14-07:00,soccer-team,coach.rivera@coastsidesoccer.example.org,sent,CAF1x7qNw3pR@mail.gmail.com,
+2026-09-14T08:05:14-07:00,soccer-team,office@coastsidesoccer.example.org,sent,CAF1x7qNw3pR@mail.gmail.com,
+2026-09-14T08:05:16-07:00,soccer-team,asha.chandra@heliosschool.org,delivered,CAF1x7qNw3pR@mail.gmail.com,
+2026-09-14T08:05:17-07:00,soccer-team,coach.rivera@coastsidesoccer.example.org,delivered,CAF1x7qNw3pR@mail.gmail.com,
+2026-09-14T08:05:19-07:00,soccer-team,colin.quinn@heliosschool.org,delivery_delayed,CAF1x7qNw3pR@mail.gmail.com,"452 4.2.2 The recipient's inbox is out of storage space. Please direct the recipient to https://support.google.com/mail/?p=OverQuotaTemp"
+2026-09-14T08:05:20-07:00,soccer-team,carmen.alvarez@heliosschool.org,delivery_delayed,CAF1x7qNw3pR@mail.gmail.com,4.3.0 Temporary System Problem. Try again later.
 2026-09-14T08:12:31-07:00,soccer-team,office@coastsidesoccer.example.org,bounced,CAF1x7qNw3pR@mail.gmail.com,550 5.1.1 The email account that you tried to reach does not exist.
+2026-09-14T08:21:40-07:00,soccer-team,carmen.alvarez@heliosschool.org,delivered,CAF1x7qNw3pR@mail.gmail.com,
