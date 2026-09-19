@@ -76,6 +76,16 @@ func (g Group) MailReadableBy(email string, s Sources) bool {
 	return g.Visibility != VisibilityHidden && slices.Contains(Members(g, s), email)
 }
 
+func (g Group) PostableBy(email string, s Sources) bool {
+	switch {
+	case g.Posting == PostingEveryone || g.Manages(email):
+		return true
+	case g.Posting == PostingMembers:
+		return OnList(g, s, email)
+	}
+	return false
+}
+
 func OnList(g Group, s Sources, email string) bool {
 	l := list(g)
 	l.Excluded = nil

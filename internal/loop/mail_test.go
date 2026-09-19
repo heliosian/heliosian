@@ -428,6 +428,49 @@ func TestALoopedPostIsDropped(t *testing.T) {
 	}
 }
 
+func TestAPostFromSomeoneTheGroupDoesNotLetPostIsDropped(t *testing.T) {
+	store := &fakeStore{raw: []byte(post)}
+	h := newHarness(t, store)
+	h.inbound(notify("m11", "middle-school-parents@loop.heliosian.com"))
+	h.waitFor("the drop", func() bool { return h.messageState("m11", "middle-school-parents") == stateDropped })
+	if detail := h.messageRow("m11", "middle-school-parents")["Detail"]; detail != "only the group's managers may post" {
+		t.Fatalf("detail %q", detail)
+	}
+	if h.archive.count() != 0 || len(h.documents.filed()) != 0 {
+		t.Fatal("a refused post went out")
+	}
+	sends := h.sender.all()
+	if len(sends) != 1 || sends[0].from != bounceFrom || len(sends[0].to) != 1 || sends[0].to[0] != "alice@gmail.com" {
+		t.Fatalf("the bounce: %+v", sends)
+	}
+	for _, want := range []string{"To: alice@gmail.com\r\n", "Subject: Not delivered: Re: Saturday's game\r\n", "Auto-Submitted: auto-replied\r\n", "X-Helios-Loop: middle-school-parents\r\n", "In-Reply-To: <abc@gmail.com>\r\n", "only its managers can post to it"} {
+		if !strings.Contains(string(sends[0].raw), want) {
+			t.Errorf("the bounce lacks %q:\n%s", want, sends[0].raw)
+		}
+	}
+	store.raw = []byte(strings.NewReplacer("alice@gmail.com", "Dana.Hawkins@heliosschool.org", "gmail.com", "heliosschool.org").Replace(post))
+	h.inbound(notify("m12", "middle-school-parents@loop.heliosian.com"))
+	h.waitFor("the forward", func() bool { return h.messageState("m12", "middle-school-parents") == stateSent })
+	if len(h.sender.all()) != 1+len(h.members("middle-school-parents")) {
+		t.Fatalf("%d sends", len(h.sender.all()))
+	}
+}
+
+func TestAnUnauthenticatedPostIsDroppedWithoutABounce(t *testing.T) {
+	forged := strings.Replace(post, "dkim=pass header.d=gmail.com", "dkim=fail header.d=gmail.com", 1)
+	forged = strings.Replace(forged, "spf=pass", "spf=softfail", 1)
+	forged = strings.Replace(forged, "dmarc=pass", "dmarc=fail", 1)
+	h := newHarness(t, &fakeStore{raw: []byte(forged)})
+	h.inbound(notify("m13", "middle-school-parents@loop.heliosian.com"))
+	h.waitFor("the drop", func() bool { return h.messageState("m13", "middle-school-parents") == stateDropped })
+	if detail := h.messageRow("m13", "middle-school-parents")["Detail"]; detail != "the sender's address passed neither SPF nor DKIM" {
+		t.Fatalf("detail %q", detail)
+	}
+	if len(h.sender.all()) != 0 || h.archive.count() != 0 || len(h.documents.filed()) != 0 {
+		t.Fatal("an unauthenticated post went out or was answered")
+	}
+}
+
 func TestAFetchFailureIsRecordedAndRetriedOnReplay(t *testing.T) {
 	store := &fakeStore{raw: []byte(post), err: fmt.Errorf("mailgun is down")}
 	h := newHarness(t, store)

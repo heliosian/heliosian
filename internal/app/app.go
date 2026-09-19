@@ -1085,7 +1085,7 @@ func mailFrom() string {
 	if from := os.Getenv("MAIL_FROM"); from != "" {
 		return from
 	}
-	return "HCA-Team <team@reply.heliosian.com>"
+	return "HCA-Team <team@loop.heliosian.com>"
 }
 
 func birthdayMailFrom() string {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"log/slog"
 	"net/http"
@@ -67,6 +68,7 @@ const (
 	maxEventBody     = 1 << 20
 	mailType         = "message/rfc822"
 	unsubscribeLocal = "unsubscribe"
+	bounceFrom       = "HCA-Team <team@" + Domain + ">"
 )
 
 type job struct {
@@ -252,6 +254,20 @@ func (m *mailer) forward(ctx context.Context, j job) string {
 		m.mark(j, stateDropped, map[string]string{"Detail": reason})
 		return stateDropped
 	}
+	if reason := authenticated(lines); reason != "" {
+		log.Info("groups: message not authenticated", "reason", reason, "from", header(lines, "from"))
+		m.mark(j, stateDropped, map[string]string{"Detail": reason})
+		return stateDropped
+	}
+	sender := m.directory.Resolve(strings.ToLower(addressOf(header(lines, "from"))))
+	if !g.PostableBy(sender, SourcesOf(m.directory)) {
+		log.Info("groups: post refused", "from", sender, "posting", g.Posting)
+		if err := m.bounce(ctx, *g, lines); err != nil {
+			log.Error("[ERROR] groups: bounce failed", "to", sender, "error", err)
+		}
+		m.mark(j, stateDropped, map[string]string{"Detail": "only the group's " + g.Posting + " may post"})
+		return stateDropped
+	}
 	object := fmt.Sprintf("loop/%s/%s-%s.eml", g.Name, time.Now().UTC().Format("20060102T150405Z"), j.id)
 	if err := m.mail.Archive.Put(ctx, object, mailType, raw); err != nil {
 		return fail("archive", err)
@@ -286,6 +302,21 @@ func (m *mailer) forward(ctx context.Context, j job) string {
 	}
 	m.mark(j, state, cells)
 	return state
+}
+
+var posters = map[string]string{PostingMembers: "the people on it and its managers", PostingManagers: "its managers"}
+
+func (m *mailer) bounce(ctx context.Context, g Group, lines []headerLine) error {
+	to := addressOf(header(lines, "from"))
+	subject := decodeHeader(header(lines, "subject"))
+	text := fmt.Sprintf("Your message to %s, “%s”, was not sent to the group: only %s can post to it.", g.Address(), subject, posters[g.Posting])
+	headers := map[string]string{"Auto-Submitted": "auto-replied", loopHeader: g.Name}
+	if id := header(lines, "message-id"); id != "" {
+		headers["In-Reply-To"] = id
+		headers["References"] = id
+	}
+	raw := mail.Compose(bounceFrom, mail.Message{To: []string{to}, Subject: "Not delivered: " + subject, Text: text, HTML: "<p>" + html.EscapeString(text) + "</p>", Headers: headers})
+	return m.mail.Sender.SendRaw(ctx, bounceFrom, []string{to}, []byte(raw))
 }
 
 func (a app) inbound(w http.ResponseWriter, r *http.Request) {

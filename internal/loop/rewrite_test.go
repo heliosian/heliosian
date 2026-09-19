@@ -6,6 +6,9 @@ import (
 )
 
 const post = "Received: from mx.example.org by inbound.resend.com\r\n" +
+	"Authentication-Results: mxa.mailgun.org;\r\n dkim=pass header.d=gmail.com header.s=20230601 header.b=abc;\r\n" +
+	" spf=pass (domain gmail.com designates 1.2.3.4 as permitted sender) smtp.mailfrom=\"alice@gmail.com\";\r\n" +
+	" dmarc=pass (dkim=pass domain=gmail.com; spf=pass domain=gmail.com) header.from=gmail.com\r\n" +
 	"DKIM-Signature: v=1; a=rsa-sha256; d=gmail.com; s=20230601;\r\n\tb=abc\r\n" +
 	"Return-Path: <alice@gmail.com>\r\n" +
 	"From: =?utf-8?q?Alice_Smith?= <alice@gmail.com>\r\n" +
@@ -121,6 +124,31 @@ func TestHeldStopsLoopsAndAutomata(t *testing.T) {
 		if got := held(lines); got != want {
 			t.Errorf("%q: got %q, want %q", raw, got, want)
 		}
+	}
+}
+
+func TestAuthenticatedTakesMailgunsAlignedResults(t *testing.T) {
+	const mailgun = "Authentication-Results: mxa.mailgun.org;\r\n "
+	cases := map[string]string{
+		mailgun + "dkim=pass header.d=x.org; spf=fail smtp.mailfrom=a@x.org; dmarc=pass (dkim=pass domain=x.org; spf=fail domain=x.org) header.from=x.org\r\nFrom: A <a@x.org>\r\n\r\n": "",
+		mailgun + "dkim=pass header.d=x.org; spf=none smtp.mailfrom=a@x.org; dmarc=none header.from=x.org\r\nFrom: a@x.org\r\n\r\n":                                           "",
+		mailgun + "dkim=none; spf=pass (x.org designates it) smtp.mailfrom=\"bounce@mail.x.org\"; dmarc=none header.from=x.org\r\nFrom: a@x.org\r\n\r\n":                     "",
+		mailgun + "dkim=pass header.d=x.org; spf=pass smtp.mailfrom=a@x.org; dmarc=pass header.from=x.org\r\nFrom: A <A@X.org>\r\n\r\n":                                     "",
+		mailgun + "dkim=pass header.d=spammer.example; spf=pass smtp.mailfrom=s@spammer.example; dmarc=fail header.from=x.org\r\nFrom: a@x.org\r\n\r\n":                     "the sender's address passed neither SPF nor DKIM",
+		mailgun + "dkim=pass header.d=notx.org; spf=softfail smtp.mailfrom=a@x.org; dmarc=fail header.from=x.org\r\nFrom: a@x.org\r\n\r\n":                                 "the sender's address passed neither SPF nor DKIM",
+		mailgun + "dkim=fail header.d=x.org; spf=fail smtp.mailfrom=a@x.org\r\nAuthentication-Results: mxa.mailgun.org; dmarc=pass header.from=x.org\r\nFrom: a@x.org\r\n\r\n": "the sender's address passed neither SPF nor DKIM",
+		"Authentication-Results: mx.forger.example; dmarc=pass header.from=x.org\r\nFrom: a@x.org\r\n\r\n":                                                                   "no authentication results from Mailgun",
+		"From: a@x.org\r\n\r\n": "no authentication results from Mailgun",
+	}
+	for raw, want := range cases {
+		lines, _ := splitMessage([]byte(raw))
+		if got := authenticated(lines); got != want {
+			t.Errorf("%q: got %q, want %q", raw, got, want)
+		}
+	}
+	lines, _ := splitMessage([]byte(post))
+	if got := authenticated(lines); got != "" {
+		t.Errorf("the sample post: %q", got)
 	}
 }
 

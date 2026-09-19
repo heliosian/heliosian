@@ -36,6 +36,12 @@ const (
 	VisibilityMembers  = "members"
 	VisibilityEveryone = "everyone"
 
+	postingColumn = "Posting"
+
+	PostingEveryone = "everyone"
+	PostingMembers  = "members"
+	PostingManagers = "managers"
+
 	// Domain is where every group lives: a group named parents-k is
 	// parents-k@loop.heliosian.com.
 	Domain = "loop.heliosian.com"
@@ -52,7 +58,7 @@ const (
 )
 
 var (
-	GroupColumns     = []string{"Name", "Title", "Description", "Created By", "Created", prefixColumn, visibleColumn}
+	GroupColumns     = []string{"Name", "Title", "Description", "Created By", "Created", prefixColumn, visibleColumn, postingColumn}
 	ManagerColumns   = []string{"Group", "Email"}
 	RuleColumns      = []string{"Group", "Kind", "Roles", "Search", "Classrooms", "Grades", "Tags", "Family", "Owner"}
 	AdditionColumns  = []string{"Group", "Email", "Name"}
@@ -70,6 +76,8 @@ var (
 	Relations = filter.Relations
 
 	Visibilities = []string{VisibilityHidden, VisibilityMembers, VisibilityEveryone}
+
+	Postings = []string{PostingEveryone, PostingMembers, PostingManagers}
 )
 
 // nameForm is a group's name: the local part of its address, two to forty
@@ -107,7 +115,8 @@ type Group struct {
 	Created     string     `json:"created,omitempty"`
 	Prefix      bool       `json:"prefix"`
 	Visibility  string     `json:"visibility"`
-	Managers    []string   `json:"managers"`
+	Posting     string     `json:"posting"`
+	Managers   []string   `json:"managers"`
 	Rules       []Rule     `json:"rules"`
 	Additions   []Addition `json:"additions"`
 	Excluded    []Excluded `json:"excluded"`
@@ -322,6 +331,9 @@ func CheckGroup(g Group) error {
 	if !slices.Contains(Visibilities, g.Visibility) {
 		return fmt.Errorf("group %s: visibility %q is not one of %s", g.Name, g.Visibility, JoinList(Visibilities))
 	}
+	if !slices.Contains(Postings, g.Posting) {
+		return fmt.Errorf("group %s: posting %q is not one of %s", g.Name, g.Posting, JoinList(Postings))
+	}
 	if len(g.Managers) == 0 {
 		return fmt.Errorf("group %s needs at least one manager", g.Name)
 	}
@@ -387,6 +399,10 @@ func Normalize(g Group) Group {
 	g.Visibility = strings.ToLower(strings.TrimSpace(g.Visibility))
 	if g.Visibility == "" {
 		g.Visibility = VisibilityHidden
+	}
+	g.Posting = strings.ToLower(strings.TrimSpace(g.Posting))
+	if g.Posting == "" {
+		g.Posting = PostingEveryone
 	}
 	g.Managers = cleanEmails(g.Managers)
 	rules := make([]Rule, 0, len(g.Rules))
@@ -471,7 +487,7 @@ func prefixCell(on bool) string {
 }
 
 func groupCells(g Group) map[string]string {
-	return map[string]string{"Name": g.Name, "Title": g.Title, "Description": g.Description, "Created By": g.CreatedBy, "Created": g.Created, prefixColumn: prefixCell(g.Prefix), visibleColumn: g.Visibility}
+	return map[string]string{"Name": g.Name, "Title": g.Title, "Description": g.Description, "Created By": g.CreatedBy, "Created": g.Created, prefixColumn: prefixCell(g.Prefix), visibleColumn: g.Visibility, postingColumn: g.Posting}
 }
 
 // BuildModel validates every row and refuses the whole set on the first
@@ -480,7 +496,7 @@ func groupCells(g Group) map[string]string {
 func BuildModel(tables *Tables) (*Model, error) {
 	model := &Model{Groups: []Group{}, byName: map[string]int{}, archived: map[string]map[string]bool{}}
 	for _, row := range tables.Groups {
-		g := Normalize(Group{Name: row["Name"], Title: row["Title"], Description: row["Description"], CreatedBy: row["Created By"], Created: row["Created"], Prefix: strings.ToLower(strings.TrimSpace(row[prefixColumn])) != prefixOff, Visibility: row[visibleColumn]})
+		g := Normalize(Group{Name: row["Name"], Title: row["Title"], Description: row["Description"], CreatedBy: row["Created By"], Created: row["Created"], Prefix: strings.ToLower(strings.TrimSpace(row[prefixColumn])) != prefixOff, Visibility: row[visibleColumn], Posting: row[postingColumn]})
 		if _, dup := model.byName[g.Name]; dup {
 			return nil, fmt.Errorf("%s has two rows named %q", groupsTab, g.Name)
 		}

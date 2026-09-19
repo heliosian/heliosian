@@ -72,11 +72,77 @@ func held(lines []headerLine) string {
 	return ""
 }
 
+// Mailgun prepends its own Authentication-Results, so only the topmost one
+// counts; any further down are the sender's to write.
+func authenticated(lines []headerLine) string {
+	id, results, _ := strings.Cut(uncommented(header(lines, "authentication-results")), ";")
+	if !strings.HasSuffix(strings.ToLower(strings.TrimSpace(id)), ".mailgun.org") {
+		return "no authentication results from Mailgun"
+	}
+	_, from, _ := strings.Cut(strings.ToLower(addressOf(header(lines, "from"))), "@")
+	for _, result := range strings.Split(results, ";") {
+		fields := strings.Fields(strings.ToLower(result))
+		if len(fields) == 0 {
+			continue
+		}
+		props := map[string]string{}
+		for _, field := range fields[1:] {
+			name, value, _ := strings.Cut(field, "=")
+			value = strings.Trim(value, `"`)
+			if _, domain, ok := strings.Cut(value, "@"); ok {
+				value = domain
+			}
+			props[name] = value
+		}
+		switch {
+		case fields[0] == "dmarc=pass" && aligned(props["header.from"], from):
+			return ""
+		case fields[0] == "dkim=pass" && aligned(props["header.d"], from):
+			return ""
+		case fields[0] == "spf=pass" && aligned(props["smtp.mailfrom"], from):
+			return ""
+		}
+	}
+	return "the sender's address passed neither SPF nor DKIM"
+}
+
+func aligned(domain, from string) bool {
+	if domain == "" || from == "" {
+		return false
+	}
+	return domain == from || strings.HasSuffix(from, "."+domain) || strings.HasSuffix(domain, "."+from)
+}
+
+func uncommented(s string) string {
+	var b strings.Builder
+	depth := 0
+	for _, r := range s {
+		switch {
+		case r == '(':
+			depth++
+		case r == ')' && depth > 0:
+			depth--
+		case depth == 0:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
 func addressOf(from string) string {
 	if a, err := mail.ParseAddress(from); err == nil {
 		return a.Address
 	}
 	return strings.Trim(strings.TrimSpace(from), "<>")
+}
+
+func header(lines []headerLine, name string) string {
+	for _, l := range lines {
+		if l.name == name {
+			return l.value()
+		}
+	}
+	return ""
 }
 
 func messageID(lines []headerLine) string {

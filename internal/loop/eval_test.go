@@ -327,6 +327,29 @@ func TestWhoSeesAGroupAndWhoReadsItsMail(t *testing.T) {
 	}
 }
 
+func TestWhoMayPost(t *testing.T) {
+	s, _ := sample(t)
+	mia, nico, outsider := "mia.torres@heliosschool.org", "nico.torres@heliosschool.org", "sam.whitfield@heliosschool.org"
+	for _, c := range []struct {
+		posting string
+		posts   map[string]bool
+	}{
+		{loop.PostingEveryone, map[string]bool{jordan: true, nico: true, mia: true, outsider: true}},
+		{loop.PostingMembers, map[string]bool{jordan: true, nico: true, mia: true}},
+		{loop.PostingManagers, map[string]bool{jordan: true}},
+	} {
+		g := loop.Normalize(loop.Group{Name: "test", Title: "Test", Managers: []string{jordan}, Posting: c.posting,
+			Rules:    []loop.Rule{rule(loop.KindInclude, func(r *loop.Rule) { r.Search = "torres" })},
+			Excluded: []loop.Excluded{{Email: mia}},
+		})
+		for _, email := range []string{jordan, nico, mia, outsider} {
+			if got := g.PostableBy(email, s); got != c.posts[email] {
+				t.Errorf("%s: %s posts %v", c.posting, email, got)
+			}
+		}
+	}
+}
+
 // A suggested group starts with one rule, anyone tagged in the Magic Tag
 // plus their parents: everyone on the list is on the group whatever their
 // role, and a student on it brings their parents along.
