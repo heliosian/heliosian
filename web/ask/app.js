@@ -101,9 +101,15 @@ function showSegments(row, segments, streaming, cards) {
   body.replaceChildren();
   segments.forEach((s, i) => {
     if (s.kind === 'tool') {
-      const line = el('div', 'turn-tools');
+      let line = body.lastElementChild;
+      if (!line || !line.classList.contains('turn-tools')) {
+        line = el('div', 'turn-tools');
+        body.append(line);
+      }
       line.append(el('span', 'tool-chip', s.words));
-      body.append(line);
+      return;
+    }
+    if (!s.text.trim()) {
       return;
     }
     const last = streaming && i === segments.length - 1;
