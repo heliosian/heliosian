@@ -60,8 +60,8 @@ const deployOverlap = 30 * time.Second
 var aliases = map[string]string{"hca": "team", "cal": "calendar", "when": "calendar"}
 
 // appFor reads the app out of a hostname: <app>.heliosian.com in production,
-// <app>.lab.heliosian.com hosted alongside it, <app>.local.heliosian.com on a
-// developer's machine. Home also answers as the bare and www apex.
+// <app>.local.heliosian.com on a developer's machine. Home also answers as the
+// bare and www apex.
 func appFor(host string) string {
 	switch host {
 	case "heliosian.com", "www.heliosian.com":
@@ -72,7 +72,7 @@ func appFor(host string) string {
 		return ""
 	}
 	app, tier, _ := strings.Cut(name, ".")
-	if tier != "" && tier != "lab" && tier != "local" {
+	if tier != "" && tier != "local" {
 		return ""
 	}
 	if canonical, ok := aliases[app]; ok {
@@ -81,9 +81,9 @@ func appFor(host string) string {
 	return app
 }
 
-// Hostnames is every hostname the router answers in production and on the
-// lab tier - each app of the registry under its key, every alias, and the
-// apex and www for home - for the domain mappings cmd/deploy keeps.
+// Hostnames is every hostname the router answers in production - each app of
+// the registry under its key, every alias, and the apex and www for home -
+// for the domain mappings cmd/deploy keeps.
 func Hostnames() []string {
 	labels := []string{"home"}
 	for _, a := range home.Apps {
@@ -95,7 +95,7 @@ func Hostnames() []string {
 	slices.Sort(labels)
 	out := []string{"heliosian.com", "www.heliosian.com"}
 	for _, label := range labels {
-		out = append(out, label+".heliosian.com", label+".lab.heliosian.com")
+		out = append(out, label+".heliosian.com")
 	}
 	return out
 }

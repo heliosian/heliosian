@@ -14,7 +14,7 @@ import (
 )
 
 // baseURL is the site as the request reached it, for the links and the
-// logo in a message - who.lab.heliosian.com today, who.heliosian.com later.
+// logo in a message - who.heliosian.com in production.
 func baseURL(r *http.Request) string {
 	scheme := "https"
 	if r.TLS == nil && !strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") && strings.HasPrefix(r.Host, "localhost") {

@@ -11,10 +11,10 @@ import {modeRow, offerQuan} from '/mode.js';
 const homeApp = {key: 'home', name: 'Heliosian', tagline: 'Helios Community Apps'};
 
 // Hostnames follow the tier of the page's own: beside who.heliosian.com sits
-// team.heliosian.com, beside who.lab.heliosian.com sits team.lab.heliosian.com,
-// and beside who.local.heliosian.com:8080 sits team.local...:8080. The link
-// portal is the apex in production (heliosian.com, also www) and home.<tier>
-// elsewhere. The app label comes off the front and the app's own goes on -
+// team.heliosian.com, and beside who.local.heliosian.com:8080 sits
+// team.local...:8080. The link portal is the apex in production
+// (heliosian.com, also www) and home.<tier> elsewhere. The app label comes
+// off the front and the app's own goes on -
 // hca.<tier> is the volunteer portal's older name, so it counts as team's.
 const appLabels = ['who', 'team', 'hca', 'celebrate', 'birthday', 'calendar', 'cal', 'when', 'loop', 'ask', 'home', 'www'];
 

@@ -190,10 +190,9 @@ func (a *Auth) login(w http.ResponseWriter, r *http.Request) {
 }
 
 // logoutDomains lists every domain a session cookie reaching this host could
-// have been set for: host-only, and each parent up to the apex. A production
-// sign-in's apex-domain cookie reaches the lab hosts too, and sessions issued
-// before the cookie was scoped to a tier were host-only; signing out has to
-// end all of them.
+// have been set for: host-only, and each parent up to the apex. Sessions
+// issued before the cookie was scoped to a tier were host-only; signing out
+// has to end all of them.
 func logoutDomains(host string) []string {
 	host, _, _ = strings.Cut(host, ":")
 	domains := []string{""}

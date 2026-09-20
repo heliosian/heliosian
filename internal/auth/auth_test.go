@@ -12,7 +12,7 @@ import (
 func TestLogoutDomains(t *testing.T) {
 	cases := map[string][]string{
 		"who.heliosian.com":            {"", "heliosian.com"},
-		"hca.lab.heliosian.com:443":    {"", "lab.heliosian.com", "heliosian.com"},
+		"hca.local.heliosian.com:443":  {"", "local.heliosian.com", "heliosian.com"},
 		"heliosian.com":                {"", "heliosian.com"},
 		"www.heliosian.com":            {"", "heliosian.com"},
 		"who.local.heliosian.com:8080": {"", "local.heliosian.com", "heliosian.com"},
@@ -35,7 +35,7 @@ func TestLogoutDomains(t *testing.T) {
 
 func TestLogoutClearsEveryDomain(t *testing.T) {
 	a := New("client", []byte("key"), "web/public/who/login.html")
-	req := httptest.NewRequest(http.MethodPost, "https://hca.lab.heliosian.com/auth/logout", nil)
+	req := httptest.NewRequest(http.MethodPost, "https://hca.local.heliosian.com/auth/logout", nil)
 	req.Header.Set("X-Forwarded-Proto", "https")
 	rec := httptest.NewRecorder()
 	a.logout(rec, req)
@@ -52,7 +52,7 @@ func TestLogoutClearsEveryDomain(t *testing.T) {
 		domains[c.Name][c.Domain] = true
 	}
 	for name, cleared := range domains {
-		if !cleared["heliosian.com"] || !cleared["lab.heliosian.com"] || !cleared[""] || len(cleared) != 3 {
+		if !cleared["heliosian.com"] || !cleared["local.heliosian.com"] || !cleared[""] || len(cleared) != 3 {
 			t.Errorf("%s: cleared domains %v, want host-only, the tier, and the apex", name, cleared)
 		}
 	}
@@ -127,7 +127,7 @@ func TestSetSpoofKeepsTheRecentFive(t *testing.T) {
 		},
 	}
 	post := func(as, body, recent string) *httptest.ResponseRecorder {
-		req := httptest.NewRequest(http.MethodPost, "https://who.lab.heliosian.com/auth/spoof", strings.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, "https://who.local.heliosian.com/auth/spoof", strings.NewReader(body))
 		req.Header.Set("X-Forwarded-Proto", "https")
 		req = req.WithContext(context.WithValue(req.Context(), contextKey{}, identity{real: as, effective: as}))
 		if recent != "" {
@@ -149,7 +149,7 @@ func TestSetSpoofKeepsTheRecentFive(t *testing.T) {
 		t.Fatalf("start: got %d %s", rec.Code, rec.Body)
 	}
 	set := cookies(rec)
-	if real, target, ok := a.spoofFields(set[spoofCookie].Value); !ok || real != "admin@heliosschool.org" || target != "p3@heliosschool.org" || set[spoofCookie].Domain != "lab.heliosian.com" {
+	if real, target, ok := a.spoofFields(set[spoofCookie].Value); !ok || real != "admin@heliosschool.org" || target != "p3@heliosschool.org" || set[spoofCookie].Domain != "local.heliosian.com" {
 		t.Errorf("spoof cookie %+v reads %q as %q %v", set[spoofCookie], real, target, ok)
 	}
 	if got := set[recentCookie].Value; got != "p3@heliosschool.org|p1@heliosschool.org|p2@heliosschool.org|p4@heliosschool.org|p5@heliosschool.org" {
@@ -174,7 +174,6 @@ func TestSetSpoofKeepsTheRecentFive(t *testing.T) {
 func TestCookieDomain(t *testing.T) {
 	cases := map[string]string{
 		"who.heliosian.com":            "heliosian.com",
-		"who.lab.heliosian.com":        "lab.heliosian.com",
 		"who.local.heliosian.com:8080": "local.heliosian.com",
 		"heliosian.com":                "heliosian.com",
 		"www.heliosian.com":            "heliosian.com",

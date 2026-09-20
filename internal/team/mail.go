@@ -111,7 +111,7 @@ func (a app) chairRows(m *Model, act *Activity) [][2]string {
 }
 
 // baseURL is the site as the request reached it, for the links and pictures
-// in a message - team.lab.heliosian.com today, team.heliosian.com later.
+// in a message - team.heliosian.com in production.
 func baseURL(r *http.Request) string {
 	scheme := "https"
 	if r.TLS == nil && !strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") && strings.HasPrefix(r.Host, "localhost") {

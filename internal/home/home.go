@@ -521,7 +521,7 @@ func (a app) tagLabels(categories []Category, apps []appView) map[string]map[str
 
 // hiddenHosts is the set of hosts a link into one of the apps has on
 // the requesting page's own tier, mirroring appOrigin in web/common/toolbar.js:
-// from home.lab.heliosian.com the directory is who.lab.heliosian.com, from
+// from home.local.heliosian.com the directory is who.local.heliosian.com, from
 // heliosian.com (or www) it is who.heliosian.com, and a local port carries
 // over. hca.<tier> is the volunteer portal's older name and counts as team's.
 func hiddenHosts(pageHost string, apps []string) map[string]bool {

@@ -57,7 +57,7 @@ func (c *Cache) sharedApps() []App {
 }
 
 // tierOf is the tier a page's host sits on - heliosian.com from heliosian.com
-// or www, lab.heliosian.com from home.lab.heliosian.com, with a local port
+// or www, local.heliosian.com from home.local.heliosian.com, with a local port
 // carried over - which is what an app's address is built on.
 func tierOf(pageHost string) string {
 	host, port, _ := strings.Cut(strings.ToLower(pageHost), ":")

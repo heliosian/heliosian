@@ -61,25 +61,21 @@ func TestPublic(t *testing.T) {
 func TestAppFor(t *testing.T) {
 	cases := map[string]string{
 		"who.heliosian.com":              "who",
-		"who.lab.heliosian.com":          "who",
 		"who.local.heliosian.com":        "who",
 		"home.heliosian.com":             "home",
-		"home.lab.heliosian.com":         "home",
 		"home.local.heliosian.com":       "home",
 		"team.heliosian.com":             "team",
-		"team.lab.heliosian.com":         "team",
 		"team.local.heliosian.com":       "team",
 		"hca.heliosian.com":              "team",
-		"hca.lab.heliosian.com":          "team",
 		"hca.local.heliosian.com":        "team",
 		"calendar.heliosian.com":         "calendar",
 		"cal.heliosian.com":              "calendar",
-		"cal.lab.heliosian.com":          "calendar",
 		"when.local.heliosian.com":       "calendar",
 		"heliosian.com":                  "home",
 		"www.heliosian.com":              "home",
 		"localhost":                      "",
-		"lab.heliosian.com":              "lab",
+		"who.lab.heliosian.com":          "",
+		"hca.lab.heliosian.com":          "",
 		"who.staging.heliosian.com":      "",
 		"who.lab.local.heliosian.com":    "",
 		"who.heliosian.com.evil.example": "",
@@ -93,7 +89,7 @@ func TestAppFor(t *testing.T) {
 
 // TestHostnamesCoverTheRouter pins the mapping list to what appFor answers:
 // every hostname listed routes to an app, and every app and alias the router
-// knows is listed on both tiers.
+// knows is listed in production.
 func TestHostnamesCoverTheRouter(t *testing.T) {
 	hosts := Hostnames()
 	for _, host := range hosts {
@@ -101,13 +97,15 @@ func TestHostnamesCoverTheRouter(t *testing.T) {
 			t.Errorf("%s is listed but routes nowhere", host)
 		}
 	}
-	for _, want := range []string{"heliosian.com", "www.heliosian.com", "home.heliosian.com", "who.lab.heliosian.com", "hca.heliosian.com", "when.lab.heliosian.com", "cal.heliosian.com", "loop.heliosian.com", "loop.lab.heliosian.com"} {
+	for _, want := range []string{"heliosian.com", "www.heliosian.com", "home.heliosian.com", "who.heliosian.com", "hca.heliosian.com", "when.heliosian.com", "cal.heliosian.com", "loop.heliosian.com"} {
 		if !slices.Contains(hosts, want) {
 			t.Errorf("%s is not listed", want)
 		}
 	}
-	if slices.Contains(hosts, "who.local.heliosian.com") {
-		t.Error("the local tier is listed")
+	for _, never := range []string{"who.local.heliosian.com", "who.lab.heliosian.com"} {
+		if slices.Contains(hosts, never) {
+			t.Errorf("%s is listed", never)
+		}
 	}
 }
 
@@ -115,12 +113,12 @@ func TestRoute(t *testing.T) {
 	handler := route(map[string]http.Handler{"who": http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusTeapot)
 	})})
-	for _, host := range []string{"who.local.heliosian.com:8080", "who.lab.heliosian.com", "who.heliosian.com"} {
+	for _, host := range []string{"who.local.heliosian.com:8080", "who.heliosian.com"} {
 		if rec := get(t, handler, host, "/people"); rec.Code != http.StatusTeapot {
 			t.Errorf("%s: got %d, want routed", host, rec.Code)
 		}
 	}
-	for _, host := range []string{"localhost:8080", "heliosian.com", "home.local.heliosian.com", "lab.heliosian.com"} {
+	for _, host := range []string{"localhost:8080", "heliosian.com", "home.local.heliosian.com", "who.lab.heliosian.com"} {
 		if rec := get(t, handler, host, "/people"); rec.Code != http.StatusNotFound {
 			t.Errorf("%s: got %d, want 404", host, rec.Code)
 		}
@@ -131,7 +129,6 @@ func TestCanonicalHost(t *testing.T) {
 	cases := map[string]string{
 		"calendar.heliosian.com":      "when.heliosian.com",
 		"cal.heliosian.com":           "when.heliosian.com",
-		"calendar.lab.heliosian.com":  "when.lab.heliosian.com",
 		"cal.local.heliosian.com":     "when.local.heliosian.com",
 		"when.heliosian.com":          "",
 		"who.heliosian.com":           "",
