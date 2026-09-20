@@ -1260,8 +1260,6 @@ func ClaudeAsker() ask.Responder {
 
 func ImageSearchKeys() imagesearch.Search {
 	return imagesearch.Search{
-		Key:      optionalKey("GOOGLE_SEARCH_KEY", "creds/search.key"),
-		CX:       optionalKey("GOOGLE_SEARCH_CX", "creds/search.cx"),
 		Unsplash: optionalKey("UNSPLASH_KEY", "creds/unsplash.key"),
 		Pexels:   optionalKey("PEXELS_KEY", "creds/pexels.key"),
 		Pixabay:  optionalKey("PIXABAY_KEY", "creds/pixabay.key"),
