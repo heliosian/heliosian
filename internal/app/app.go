@@ -1163,10 +1163,9 @@ func celebrateMailFrom() string {
 }
 
 // newMailer is the sender the environment describes - Mailgun when its key
-// is set, else SMTP when SMTP_HOST is, else nothing - from one address.
+// is set, else nothing - from one address.
 func newMailer(from string) mail.Sender {
-	return mail.New(mailgunKey(), os.Getenv("SMTP_HOST"), os.Getenv("SMTP_PORT"),
-		optionalKey("SMTP_USER", "creds/smtp.user"), optionalKey("SMTP_PASS", "creds/smtp.pass"), from, "")
+	return mail.New(mailgunKey(), from, "")
 }
 
 // loopMail is Helios Loop's mail as the environment describes it: with the
@@ -1304,8 +1303,8 @@ func Production(blobCache string) (*http.Server, *who.Queue) {
 		BrowserKey:  mapsKey("GOOGLE_MAPS_BROWSER_KEY", "creds/maps.key"),
 		ImageSearch: ImageSearchKeys(),
 		Describer:   ClaudeDescriber(),
-		// Mail goes through Mailgun when its key is set, else over SMTP when
-		// SMTP_HOST is; otherwise, in real-data mode, it is dropped and logged.
+		// Mail goes through Mailgun when its key is set; otherwise, in
+		// real-data mode, it is dropped and logged.
 		Mail:          newMailer(mailFrom()),
 		MailFrom:      mailFrom(),
 		WhoMail:       newMailer(whoMailFrom()),

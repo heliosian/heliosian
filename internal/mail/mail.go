@@ -1,19 +1,15 @@
-// Package mail sends the portal's email: one Sender interface, an SMTP
+// Package mail sends the portal's email: one Sender interface, a Mailgun
 // implementation for real mail, and a Files one for development that writes
 // each message to disk where it can be opened in a browser.
 package mail
 
 import (
 	"context"
-	"crypto/tls"
 	"encoding/base64"
 	"fmt"
 	"log/slog"
 	"maps"
 	"mime"
-	"net"
-	"net/mail"
-	"net/smtp"
 	"os"
 	"path/filepath"
 	"slices"
@@ -49,80 +45,19 @@ type Sender interface {
 }
 
 // New picks the sender the environment describes: Mailgun when it has a key,
-// SMTP when a host is set, else files in dir when one is given, else nil - no
-// mail, logged once - which callers treat as "not set up".
-func New(mailgunKey, host, port, user, pass, from, dir string) Sender {
+// else files in dir when one is given, else nil - no mail, logged once -
+// which callers treat as "not set up".
+func New(mailgunKey, from, dir string) Sender {
 	switch {
 	case mailgunKey != "":
 		slog.Info("mail: sending through Mailgun", "from", from)
 		return NewMailgun(mailgunKey, from)
-	case host != "":
-		if port == "" {
-			port = "587"
-		}
-		slog.Info("mail: sending over SMTP", "host", host, "from", from)
-		return &SMTP{Host: host, Port: port, User: user, Pass: pass, From: from}
 	case dir != "":
 		slog.Info("mail: writing messages to files", "dir", dir)
 		return &Files{Dir: dir, From: from}
 	}
 	slog.Warn("mail: not configured; messages are dropped")
 	return nil
-}
-
-// SMTP sends through a submission server with STARTTLS - Google Workspace's
-// smtp.gmail.com with an app password, or any provider's SMTP endpoint.
-type SMTP struct {
-	Host, Port, User, Pass, From string
-}
-
-func (s *SMTP) Send(ctx context.Context, m Message) error {
-	if len(m.To) == 0 {
-		return fmt.Errorf("mail: no recipient")
-	}
-	from, err := mail.ParseAddress(s.From)
-	if err != nil {
-		return fmt.Errorf("mail: bad From %q: %w", s.From, err)
-	}
-	dialer := net.Dialer{Timeout: 20 * time.Second}
-	conn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(s.Host, s.Port))
-	if err != nil {
-		return err
-	}
-	c, err := smtp.NewClient(conn, s.Host)
-	if err != nil {
-		return err
-	}
-	defer c.Close()
-	if ok, _ := c.Extension("STARTTLS"); ok {
-		if err := c.StartTLS(&tls.Config{ServerName: s.Host}); err != nil {
-			return err
-		}
-	}
-	if s.User != "" {
-		if err := c.Auth(smtp.PlainAuth("", s.User, s.Pass, s.Host)); err != nil {
-			return err
-		}
-	}
-	if err := c.Mail(from.Address); err != nil {
-		return err
-	}
-	for _, rcpt := range append(append([]string{}, m.To...), m.CC...) {
-		if err := c.Rcpt(rcpt); err != nil {
-			return err
-		}
-	}
-	w, err := c.Data()
-	if err != nil {
-		return err
-	}
-	if _, err := w.Write([]byte(Compose(s.From, m))); err != nil {
-		return err
-	}
-	if err := w.Close(); err != nil {
-		return err
-	}
-	return c.Quit()
 }
 
 // Compose is the message as bytes on the wire: headers, then a
