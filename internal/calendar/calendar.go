@@ -1379,9 +1379,30 @@ func (b *builder) merge(layer map[string]map[string]string) {
 	}
 }
 
+// stamps is the dates an all-day event lays its day type on. A span written
+// from one school day to another lands on the school days between them: a
+// conference week written across a weekend says nothing about the Saturday.
+// A single day, and a span that starts or ends on a day school is out, are
+// taken at their word and land on every date they name.
+func stamps(e *Event, school, closed map[string]bool) []string {
+	all := e.Dates()
+	first, last := all[0], all[len(all)-1]
+	if len(all) == 1 || !school[first] || closed[first] || !school[last] || closed[last] {
+		return all
+	}
+	out := []string{}
+	for _, date := range all {
+		if school[date] {
+			out = append(out, date)
+		}
+	}
+	return out
+}
+
 func (b *builder) days(dayOverrides []map[string]string) error {
 	m := b.model
 	everyone := m.Roster.Names()
+	school := map[string]bool{}
 	for _, y := range m.Years {
 		first, _ := parseDate(y.FirstDay)
 		last, _ := parseDate(y.LastDay)
@@ -1389,10 +1410,26 @@ func (b *builder) days(dayOverrides []map[string]string) error {
 			if d.Weekday() == time.Saturday || d.Weekday() == time.Sunday {
 				continue
 			}
-			m.Days[d.Format(DateFormat)] = map[string]string{}
+			date := d.Format(DateFormat)
+			school[date] = true
+			m.Days[date] = map[string]string{}
 			for _, c := range everyone {
-				m.Days[d.Format(DateFormat)][c] = RegularDayType
+				m.Days[date][c] = RegularDayType
 			}
+		}
+	}
+	closed := map[string]bool{}
+	for _, e := range m.Events {
+		if e.Hidden || !e.AllDay || e.DayType != NoSchoolDayType {
+			continue
+		}
+		for _, date := range e.Dates() {
+			closed[date] = true
+		}
+	}
+	for _, row := range dayOverrides {
+		if row["Day Type"] == NoSchoolDayType {
+			closed[row["Date"]] = true
 		}
 	}
 	for _, source := range []string{SourcePDF, SourceGoogle, SourceSheet} {
@@ -1401,7 +1438,7 @@ func (b *builder) days(dayOverrides []map[string]string) error {
 			if e.Source != source || e.Hidden || e.DayType == "" || !e.AllDay {
 				continue
 			}
-			for _, date := range e.Dates() {
+			for _, date := range stamps(e, school, closed) {
 				b.assign(layer, date, e.Classrooms, e.DayType, "the "+source+" events")
 			}
 		}

@@ -154,6 +154,48 @@ func TestNoSchoolWins(t *testing.T) {
 	}
 }
 
+// A conference span written from one school day to another leaves the
+// weekend inside it alone; a single day, or a span anchored on a weekend or
+// a holiday, is taken at its word.
+func TestWeekendInsideASpan(t *testing.T) {
+	tb := tables(t)
+	tb.Events = append(tb.Events,
+		map[string]string{"Event ID": "W1", "Start": "2026-09-11", "End": "2026-09-14", "Title": "Conferences", "Tags": "Jays, Conference", "Day Type": "Early Dismissal"},
+		map[string]string{"Event ID": "W2", "Start": "2026-10-10", "End": "2026-10-13", "Title": "Fall Retreat", "Tags": "Jays, Conference", "Day Type": "Early Dismissal"},
+		map[string]string{"Event ID": "W3", "Start": "2026-11-08", "Title": "Open House", "Tags": "Jays, Conference", "Day Type": "Early Dismissal"},
+		map[string]string{"Event ID": "W4", "Start": "2026-12-18", "End": "2026-12-22", "Title": "Break Conferences", "Tags": "Jays, Conference", "Day Type": "Early Dismissal"})
+	m, err := BuildModel(tb, roster)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct{ date, want string }{
+		{"2026-09-11", "Early Dismissal"},
+		{"2026-09-12", ""},
+		{"2026-09-13", ""},
+		{"2026-09-14", "Early Dismissal"},
+		{"2026-10-10", "Early Dismissal"},
+		{"2026-10-11", "Early Dismissal"},
+		{"2026-11-08", "Early Dismissal"},
+		{"2026-12-19", "Early Dismissal"},
+		{"2026-12-20", "Early Dismissal"},
+	}
+	for _, c := range cases {
+		got, ok := m.Plan(c.date, "Jays")
+		if c.want == "" {
+			if ok {
+				t.Errorf("%s: got %s, want nothing", c.date, got.Name)
+			}
+			continue
+		}
+		if !ok || got.Name != c.want {
+			t.Errorf("%s: got %q, want %q", c.date, got.Name, c.want)
+		}
+	}
+	if _, ok := m.Plan("2026-12-26", "Jays"); !ok {
+		t.Errorf("winter break lost the weekend it covers")
+	}
+}
+
 // A regular-day claim beside another day type's, in either order, yields
 // to it rather than refusing the load.
 func TestRegularYields(t *testing.T) {
