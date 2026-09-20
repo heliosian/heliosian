@@ -7,90 +7,41 @@ import (
 	"time"
 )
 
-// keyFor is the key a conversation minted for one address. Keys are random, so
-// a test asks for the one that was issued rather than assuming its shape.
-func keyFor(t *testing.T, l *links, url string) string {
-	t.Helper()
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	key, ok := l.keys[url]
-	if !ok {
-		t.Fatalf("no key was minted for %s", url)
-	}
-	return key
-}
-
 func TestLinksShortenAndExpand(t *testing.T) {
 	l := newLinks()
-	const (
-		sam  = "https://who.heliosian.com/people/sam"
-		x    = "https://x.org/a?b=1&c=2"
-		form = "https://docs.google.com/d/abc"
-	)
-	got := l.shorten(`{"link":"` + sam + `","more":"see ` + x + `. and [form](` + form + `) or ` + sam + `"}`)
-	samKey, xKey, formKey := keyFor(t, l, sam), keyFor(t, l, x), keyFor(t, l, form)
-	want := `{"link":"` + samKey + `","more":"see ` + xKey + `. and [form](` + formKey + `) or ` + samKey + `"}`
+	got := l.shorten(`{"link":"https://who.heliosian.com/people/sam","more":"see https://x.org/a?b=1&c=2. and [form](https://docs.google.com/d/abc) or https://who.heliosian.com/people/sam"}`)
+	want := `{"link":"L1","more":"see L2. and [form](L3) or L1"}`
 	if got != want {
-		t.Fatalf("shorten gave %s, want %s", got, want)
+		t.Fatalf("shorten gave %s", got)
 	}
-	// One url always takes the same key, and no two take the same one.
-	if samKey == xKey || samKey == formKey || xKey == formKey {
-		t.Fatalf("keys collided: %s %s %s", samKey, xKey, formKey)
-	}
-	if got := l.expand("[Sam](" + samKey + ") and [the form](" + formKey + "), [x](Lzzzz)"); got != "[Sam]("+sam+") and [the form]("+form+"), [x](Lzzzz)" {
+	if got := l.expand("[Sam](L1) and [the form](L3), [x](L9)"); got != "[Sam](https://who.heliosian.com/people/sam) and [the form](https://docs.google.com/d/abc), [x](L9)" {
 		t.Fatalf("expand gave %s", got)
 	}
-	if got := l.expand(`[Sam](` + samKey + ` "") and [the form](` + formKey + ` 'Sign up'), [the reminder](` + samKey + ` — see below)`); got != "[Sam]("+sam+") and [the form]("+form+"), [the reminder]("+sam+")" {
+	if got := l.expand(`[Sam](L1 "") and [the form](L3 'Sign up'), [the reminder](L1 — see below)`); got != "[Sam](https://who.heliosian.com/people/sam) and [the form](https://docs.google.com/d/abc), [the reminder](https://who.heliosian.com/people/sam)" {
 		t.Fatalf("expand of links with words after the key gave %s", got)
 	}
-	if got := string(l.expandInput([]byte(`{"path":"` + xKey + `","id":"Lzzzz"}`))); got != `{"path":"https://x.org/a?b=1`+"\\"+`u0026c=2","id":"Lzzzz"}` {
+	if got := string(l.expandInput([]byte(`{"path":"L2","id":"L22"}`))); got != `{"path":"https://x.org/a?b=1`+"\\"+`u0026c=2","id":"L22"}` {
 		t.Fatalf("expandInput gave %s", got)
-	}
-}
-
-// A key drawn at random cannot be guessed from the ones already issued, which
-// is what the model used to do when it wanted to link something it had no key
-// for.
-func TestLinkKeysAreNotSequential(t *testing.T) {
-	l := newLinks()
-	seen := map[string]bool{}
-	for _, url := range []string{"https://a.example/1", "https://a.example/2", "https://a.example/3", "https://a.example/4"} {
-		key := strings.TrimSpace(l.shorten(url))
-		if seen[key] {
-			t.Fatalf("key %s was issued twice", key)
-		}
-		seen[key] = true
-		if len(key) != keyLength+1 || !strings.HasPrefix(key, "L") {
-			t.Fatalf("key %q is not L plus %d characters", key, keyLength)
-		}
-		for _, c := range key[1:] {
-			if !strings.ContainsRune(keyChars, c) {
-				t.Fatalf("key %q uses %q, which is not in the alphabet", key, c)
-			}
-		}
 	}
 }
 
 func TestExpanderHoldsATitledKey(t *testing.T) {
 	l := newLinks()
-	const family = "https://who.heliosian.com/families/donhowe"
-	l.shorten(family)
-	key := keyFor(t, l, family)
+	l.shorten("https://who.heliosian.com/families/donhowe")
 	out := &strings.Builder{}
 	e := &expander{links: l, emit: func(kind string, data any) {
 		if kind == "text" {
 			out.WriteString(data.(string))
 		}
 	}, cards: func(string) (linkCard, bool) { return linkCard{}, false }, sent: map[string]bool{}}
-	// The key arrives split across chunks, with a title after it.
-	for _, piece := range []string{"The [Donhowe Family](" + key[:2], key[2:] + " ", `"`, `"`, ") and [the ", "same](" + key, " — see", " below) live in Mountain View"} {
+	for _, piece := range []string{"The [Donhowe Family](L", "1 ", `"`, `"`, ") and [the ", "same](L1", " — see", " below) live in Mountain View"} {
 		e.send("text", piece)
-		if strings.Contains(out.String(), key) {
+		if strings.Contains(out.String(), "L1") {
 			t.Fatalf("the key went out raw: %q", out.String())
 		}
 	}
 	e.flush()
-	if out.String() != "The [Donhowe Family]("+family+") and [the same]("+family+") live in Mountain View" {
+	if out.String() != "The [Donhowe Family](https://who.heliosian.com/families/donhowe) and [the same](https://who.heliosian.com/families/donhowe) live in Mountain View" {
 		t.Fatalf("streamed %q", out.String())
 	}
 }
@@ -102,11 +53,9 @@ func TestRestoreShortensAddresses(t *testing.T) {
 		{Role: "user", Text: "Is https://when.heliosian.com/e/abc on?"},
 		{Role: "assistant", Text: "Yes: [the picnic](https://when.heliosian.com/e/abc), with [Sam](https://who.heliosian.com/people/sam)."},
 	})
-	picnic := keyFor(t, c.links, "https://when.heliosian.com/e/abc")
-	sam := keyFor(t, c.links, "https://who.heliosian.com/people/sam")
 	question := c.messages[0].Content[0].OfText.Text
 	answer := c.messages[1].Content[0].OfText.Text
-	if question != "Is "+picnic+" on?" || answer != "Yes: [the picnic]("+picnic+"), with [Sam]("+sam+")." {
+	if question != "Is L2 on?" || answer != "Yes: [the picnic](L2), with [Sam](L3)." {
 		t.Fatalf("restored %q and %q", question, answer)
 	}
 	if got := c.links.expand(answer); got != "Yes: [the picnic](https://when.heliosian.com/e/abc), with [Sam](https://who.heliosian.com/people/sam)." {
@@ -116,9 +65,7 @@ func TestRestoreShortensAddresses(t *testing.T) {
 
 func TestExpanderHoldsSplitKeys(t *testing.T) {
 	l := newLinks()
-	const sam = "https://who.heliosian.com/people/sam"
-	l.shorten(sam)
-	key := keyFor(t, l, sam)
+	l.shorten("https://who.heliosian.com/people/sam")
 	out := &strings.Builder{}
 	events := []string{}
 	cards := []string{}
@@ -133,13 +80,13 @@ func TestExpanderHoldsSplitKeys(t *testing.T) {
 	}, cards: func(address string) (linkCard, bool) {
 		return linkCard{URL: address, Kind: "person", Name: "Sam Lee"}, strings.Contains(address, "/people/")
 	}, sent: map[string]bool{}}
-	for _, piece := range []string{"Ask [Sam", " Lee]", "(" + key[:1], key[1:], ") today [or] not", "]"} {
+	for _, piece := range []string{"Ask [Sam", " Lee]", "(L", "1", ") today [or] not", "]"} {
 		e.send("text", piece)
 	}
 	e.send("tool", "Searching")
 	e.send("text", "done")
 	e.flush()
-	if out.String() != "Ask [Sam Lee]("+sam+") today [or] not]done" {
+	if out.String() != "Ask [Sam Lee](https://who.heliosian.com/people/sam) today [or] not]done" {
 		t.Fatalf("streamed %q", out.String())
 	}
 	if events[len(events)-3] != "text" || events[len(events)-2] != "tool" {
