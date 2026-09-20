@@ -31,7 +31,7 @@ import (
 const (
 	shell            = "web/ask/index.html"
 	maxTurns         = 40
-	messagesPerHour  = 30
+	messagesPerHour  = 100
 	idle             = time.Hour
 	maxMessageLength = 4000
 	turnTimeout      = 3 * time.Minute

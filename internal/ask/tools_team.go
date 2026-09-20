@@ -10,6 +10,47 @@ import (
 	"heliosian/internal/team"
 )
 
+// allOfTheYear is the ceiling on what volunteer_opportunities returns: high
+// enough that a school year's portal comes back whole, since an answer about
+// what still needs people is wrong if it only saw part of it.
+const allOfTheYear = 500
+
+// bulkBudget is what the year's listing may take before its detail is thinned.
+// The output guard refuses anything past maxToolOutput outright, and a refusal
+// sends the model round again with a narrower question - so a year that would
+// not fit loses its descriptions and its name lists rather than losing rows,
+// and nothing on the portal becomes invisible.
+const bulkBudget = 30000
+
+// fits says whether a listing is inside the budget.
+func fits(cards []activityCard) bool {
+	raw, err := json.Marshal(cards)
+	return err != nil || len(raw) <= bulkBudget
+}
+
+// thin cuts a listing down to the budget in the order the answers can best
+// afford: first the descriptions, which a listing rarely needs in full, and
+// only then the volunteer names. The names go last because without them the
+// model asks get_activity for each thing in turn to get them back, which costs
+// more rounds than it saves.
+func thin(cards []activityCard) ([]activityCard, string) {
+	if fits(cards) {
+		return cards, ""
+	}
+	out := make([]activityCard, len(cards))
+	for i, c := range cards {
+		c.Description = clip(c.Description, 100)
+		out[i] = c
+	}
+	if fits(out) {
+		return out, "Descriptions are cut short here, since the whole year is listed; get_activity has any one of these in full."
+	}
+	for i := range out {
+		out[i].Volunteers = nil
+	}
+	return out, "Descriptions are cut short here and the volunteer names left out, since the whole year is listed; get_activity has any one of these in full."
+}
+
 // activityCard is one thing on HCA-Team as the tools answer it: the event,
 // committee, role or shift, when it is (the event's day when it has none
 // of its own), what it needs, who runs it and who signed up as the portal
@@ -126,7 +167,7 @@ var volunteerOpportunities = tool{
 		"query":        str("Words to find in a title or description."),
 		"year":         str("A school year like 2026 - 2027; the current one unless said."),
 		"include_past": boolean("Also what has already happened or is done."),
-		"limit":        integer("How many things to return, 40 unless said, 80 at most."),
+		"limit":        integer("How many things to return, the whole year unless said."),
 	},
 	run: func(v *viewer, input json.RawMessage) (any, error) {
 		if v.team == nil {
@@ -144,7 +185,11 @@ var volunteerOpportunities = tool{
 		if year == "" {
 			year = team.SchoolYear(v.now)
 		}
-		limit := limitOf(in.Limit, 40, 80)
+		// A school year's portal is a few hundred things at most, and a
+		// question about what still needs people is wrong if it answers from
+		// the first 80 of 113. Everything the year holds goes back, and the
+		// output guard refuses the rare result that is genuinely too big.
+		limit := limitOf(in.Limit, allOfTheYear, allOfTheYear)
 		out := []activityCard{}
 		total := 0
 		var walk func(a *team.Activity)
@@ -167,7 +212,12 @@ var volunteerOpportunities = tool{
 				walk(a)
 			}
 		}
-		return map[string]any{"today": v.now.Format(calendar.DateFormat), "year": year, "things": out, "matched": total, "shown": len(out), "expenseForm": v.team.Settings.ExpenseFormURL}, nil
+		things, thinned := thin(out)
+		answer := map[string]any{"today": v.now.Format(calendar.DateFormat), "year": year, "things": things, "matched": total, "shown": len(things), "expenseForm": v.team.Settings.ExpenseFormURL}
+		if thinned != "" {
+			answer["detail"] = thinned
+		}
+		return answer, nil
 	},
 }
 

@@ -1,29 +1,59 @@
 package ask
 
 import (
+	"crypto/rand"
 	"encoding/json"
 	"log/slog"
 	"regexp"
-	"strconv"
 	"strings"
 	"sync"
+
+	"heliosian/internal/logging"
 )
+
+// keyChars is the alphabet a key's tail is drawn from, less the letters and
+// digits that read alike in a proportional font.
+const keyChars = "abcdefghjkmnpqrstuvwxyz23456789"
+
+// keyLength is how many of those a key carries. Keys are random rather than
+// counted up, so there is no next one to guess: a model that wants to link
+// something it was given no key for cannot continue the sequence, which is
+// what it used to do - inventing L46 through L49 for four people whose names
+// it had and whose links it did not.
+const keyLength = 4
 
 var (
 	address     = regexp.MustCompile(`https?://[^\s"\\<>()\[\]{}|^` + "`" + `]+`)
-	linkTarget  = regexp.MustCompile(`\]\(L(\d+)(?:\s[^)\n]*)?\)`)
-	quotedKey   = regexp.MustCompile(`"L(\d+)"`)
-	partialLink = regexp.MustCompile(`^\]\(?(L\d*(\s[^)\n]{0,120})?)?$`)
+	linkTarget  = regexp.MustCompile(`\]\(L([a-z0-9]+)(?:\s[^)\n]*)?\)`)
+	quotedKey   = regexp.MustCompile(`"L([a-z0-9]+)"`)
+	partialLink = regexp.MustCompile(`^\]\(?(L[a-z0-9]*(\s[^)\n]{0,120})?)?$`)
 )
 
 type links struct {
 	mu   sync.Mutex
 	keys map[string]string
-	urls []string
+	urls map[string]string
 }
 
 func newLinks() *links {
-	return &links{keys: map[string]string{}, urls: []string{}}
+	return &links{keys: map[string]string{}, urls: map[string]string{}}
+}
+
+// mint draws a key no other url in this conversation holds.
+func (l *links) mint() string {
+	for {
+		b := make([]byte, keyLength)
+		if _, err := rand.Read(b); err != nil {
+			logging.Fatal("ask: read random bytes", "error", err)
+		}
+		key := "L"
+		for _, c := range b {
+			key += string(keyChars[int(c)%len(keyChars)])
+		}
+		if _, taken := l.urls[key]; !taken {
+			return key
+		}
+	}
 }
 
 func (l *links) shorten(text string) string {
@@ -33,23 +63,23 @@ func (l *links) shorten(text string) string {
 		url := strings.TrimRight(match, ".,;:!?'*_")
 		key, ok := l.keys[url]
 		if !ok {
-			l.urls = append(l.urls, url)
-			key = "L" + strconv.Itoa(len(l.urls))
+			key = l.mint()
 			l.keys[url] = key
+			l.urls[key] = url
 		}
 		return key + match[len(url):]
 	})
 }
 
-func (l *links) url(digits string) (string, bool) {
+func (l *links) url(tail string) (string, bool) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	n, err := strconv.Atoi(digits)
-	if err != nil || n < 1 || n > len(l.urls) {
-		slog.Error("[ERROR] ask: unknown link key", "key", "L"+digits)
+	url, ok := l.urls["L"+tail]
+	if !ok {
+		slog.Error("[ERROR] ask: unknown link key", "key", "L"+tail)
 		return "", false
 	}
-	return l.urls[n-1], true
+	return url, true
 }
 
 func (l *links) expand(text string) string {

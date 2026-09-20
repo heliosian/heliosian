@@ -141,9 +141,18 @@ func sampleServer() (*http.Server, *who.Queue) {
 	}), core.Queue)
 }
 
-// sampleAsker is Claude when a key is at hand, else the fake that streams
-// a canned answer, so the chat's flow can be tried either way.
+// sampleAsker is Gemini on Vertex AI, as the Google credentials at hand,
+// which is what the chat is being tried against; Claude when its key is at
+// hand and Gemini's credentials are not, else the fake that streams a canned
+// answer, so the chat's flow can be tried every way.
 func sampleAsker() ask.Responder {
+	g, err := ask.NewGemini()
+	if err != nil {
+		slog.Warn("gemini is not set up here", "error", err)
+	}
+	if g != nil {
+		return g
+	}
 	if c := app.ClaudeAsker(); c != nil {
 		return c
 	}
