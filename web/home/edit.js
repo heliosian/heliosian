@@ -246,6 +246,7 @@ export function openLinkEditor(link, category) {
   document.querySelector('#link-visible').checked = link ? link.visible : true;
   linkAudience = audienceCard(document.querySelector('#link-audience'), link ? link.rules : [], 'No rules means everyone.');
   document.querySelector('#link-delete').hidden = !link;
+  document.querySelector('#link-image-find').hidden = imageSources().length === 0;
   fillCategories(link ? link.category : category || linkCategoryTitles()[0]);
   showImage('link', link && link.imageUrl ? link.imageUrl : '');
   setStatus('#link-status', '');
@@ -692,16 +693,14 @@ export function initEditing() {
 }
 
 // The picture search, as HCA-Team's editors have it: a box, a grid of results
-// from whichever library is set up (Wikimedia Commons always; Unsplash,
-// Pexels, Pixabay and Google Images behind their keys), and a click on one
-// imports it through the server - which fetches and stores the picture like an
-// upload - and hands the stored name to onPicked. SafeSearch is on server-side.
+// from whichever library is set up (Unsplash, Pexels and Pixabay, each behind
+// its key), and a click on one imports it through the server - which fetches
+// and stores the picture like an upload - and hands the stored name to
+// onPicked. SafeSearch is on server-side.
 const sourceNotes = {
   'Unsplash': 'Free to use under the Unsplash License; the photographer is credited on each tile.',
   'Pexels': 'Free to use under the Pexels License; the photographer is credited on each tile.',
   'Pixabay': 'Photos, illustrations and vectors, free to use under the Pixabay Content License.',
-  'Wikimedia Commons': 'Everything here is free to use; the licence is on each tile, and CC BY ones ask to be credited.',
-  'Google Images': 'Pick a picture you have the right to use - a school photo, a poster, a flag, a public-domain image.',
 };
 
 let imageSource = '';
@@ -709,7 +708,7 @@ let onImagePicked = null;
 let imageSearchBusy = false;
 
 function imageSources() {
-  return (state.model && state.model.imageSources) || ['Wikimedia Commons'];
+  return (state.model && state.model.imageSources) || [];
 }
 
 function paintImageSources() {

@@ -188,10 +188,9 @@ func today() string {
 func (a app) model(w http.ResponseWriter, r *http.Request) {
 	email, admin := a.who(r)
 	view := Render(a.cache.Model(), a.directory, email, admin, time.Now().In(local))
-	// Image search is always on: Wikimedia Commons needs no key; Unsplash and
-	// Google join it when their keys are set.
-	view.ImageSearch = true
+	// Image search is on where a library's key is set, and off where none is.
 	view.ImageSources = a.search.Sources()
+	view.ImageSearch = len(view.ImageSources) > 0
 	view.User.IsSuperAdmin = a.cache.IsSuperAdmin(email)
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {

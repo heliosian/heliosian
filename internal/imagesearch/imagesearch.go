@@ -1,7 +1,6 @@
 // Package imagesearch finds pictures on the web for an app's editors - stock
-// libraries and Wikimedia Commons behind the server's own keys - and imports
-// a picked one into the media bucket the way an upload lands there. HCA-Team
-// and Heliosian share it.
+// libraries behind the server's own keys - and imports a picked one into the
+// media bucket the way an upload lands there. HCA-Team and Heliosian share it.
 package imagesearch
 
 import (
@@ -14,40 +13,26 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"path"
-	"regexp"
-	"sort"
 	"strings"
 	"time"
 
 	"heliosian/internal/blob"
 )
 
-// Search is an optional Google Programmable Search Engine to search
-// images with: an API key for the Custom Search JSON API and the engine's id.
-// Without one the portal searches Wikimedia Commons instead, which needs no
-// key and holds free-to-use pictures - flags, foods, places, holidays - which
-// suits a school better than the open web anyway. (Google has stopped
-// granting new projects access to the JSON API, so Commons is the usual path.)
+// Search is the free stock libraries the portal's picture picker looks in,
+// each behind the server's own key.
 type Search struct {
-	Key string
-	CX  string
 	// Unsplash is an Unsplash API access key: free stock photographs, which
-	// suit an event's card better than Commons' flags and clip art. Its terms
-	// ask for a credit line and a ping of the photo's download endpoint when
-	// one is taken, and both are kept here.
+	// suit an event's card. Its terms ask for a credit line and a ping of the
+	// photo's download endpoint when one is taken, and both are kept here.
 	Unsplash string
 	// Pexels and Pixabay are two more free stock libraries, each behind its
 	// own key; Pixabay also carries illustrations and vectors, which the
 	// photo libraries lack.
 	Pexels  string
 	Pixabay string
-	// UserAgent names the app to the sites it fetches from, as Commons asks.
+	// UserAgent names the app to the sites it fetches from.
 	UserAgent string
-}
-
-func (s Search) google() bool {
-	return s.Key != "" && s.CX != ""
 }
 
 // Sources lists where the portal can look, in the order the picker offers them.
@@ -62,10 +47,7 @@ func (s Search) Sources() []string {
 	if s.Pixabay != "" {
 		out = append(out, "Pixabay")
 	}
-	if s.google() {
-		out = append(out, "Google Images")
-	}
-	return append(out, "Wikimedia Commons")
+	return out
 }
 
 // Hit is one result as the picker shows it: a thumbnail to show, the
@@ -87,12 +69,8 @@ type Hit struct {
 
 var imageClient = &http.Client{Timeout: 20 * time.Second}
 
-// Commons names a rendering by its width - ".../1920px-Flag.svg.png" - so a
-// smaller one for the grid is the same address with the width swapped.
-var thumbWidth = regexp.MustCompile(`/\d+px-`)
-
 // ServeSearch answers one image search (?q= and ?source=) from whichever
-// source is set up, keeping any key on the server. SafeSearch is always on;
+// library is set up, keeping the key on the server. SafeSearch is always on;
 // this is a school.
 func (s Search) ServeSearch(w http.ResponseWriter, r *http.Request) {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
@@ -103,66 +81,13 @@ func (s Search) ServeSearch(w http.ResponseWriter, r *http.Request) {
 	switch source := r.URL.Query().Get("source"); {
 	case source == "Unsplash" && s.Unsplash != "":
 		s.searchUnsplash(w, r, q)
-		return
 	case source == "Pexels" && s.Pexels != "":
 		s.searchPexels(w, r, q)
-		return
 	case source == "Pixabay" && s.Pixabay != "":
 		s.searchPixabay(w, r, q)
-		return
-	case source == "Google Images" && s.google():
-	case source == "Wikimedia Commons" || !s.google():
-		s.searchCommons(w, r, q)
-		return
+	default:
+		http.Error(w, "there is nowhere to search for pictures", http.StatusBadRequest)
 	}
-	params := url.Values{
-		"key": {s.Key}, "cx": {s.CX}, "q": {q},
-		"searchType": {"image"}, "num": {"10"}, "safe": {"active"}, "imgSize": {"large"},
-	}
-	if start := r.URL.Query().Get("start"); start != "" {
-		params.Set("start", start)
-	}
-	req, _ := http.NewRequestWithContext(r.Context(), "GET", "https://www.googleapis.com/customsearch/v1?"+params.Encode(), nil)
-	resp, err := imageClient.Do(req)
-	if err != nil {
-		http.Error(w, "the search did not answer", http.StatusBadGateway)
-		return
-	}
-	defer resp.Body.Close()
-	var body struct {
-		Items []struct {
-			Title       string `json:"title"`
-			Link        string `json:"link"`
-			DisplayLink string `json:"displayLink"`
-			Image       struct {
-				ThumbnailLink string `json:"thumbnailLink"`
-				ContextLink   string `json:"contextLink"`
-				Width         int    `json:"width"`
-				Height        int    `json:"height"`
-			} `json:"image"`
-		} `json:"items"`
-		Error struct {
-			Message string `json:"message"`
-		} `json:"error"`
-	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&body); err != nil {
-		http.Error(w, "the search answered oddly", http.StatusBadGateway)
-		return
-	}
-	if resp.StatusCode != http.StatusOK {
-		slog.WarnContext(r.Context(), "image search refused", "status", resp.StatusCode, "message", body.Error.Message)
-		http.Error(w, "the search was refused: "+body.Error.Message, http.StatusBadGateway)
-		return
-	}
-	hits := []Hit{}
-	for _, it := range body.Items {
-		hits = append(hits, Hit{
-			Thumb: it.Image.ThumbnailLink, URL: it.Link, Width: it.Image.Width, Height: it.Image.Height,
-			Title: it.Title, Source: it.DisplayLink, Context: it.Image.ContextLink,
-		})
-	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(hits)
 }
 
 // searchUnsplash asks Unsplash for photographs matching the words: landscape
@@ -315,83 +240,6 @@ func (s Search) searchPixabay(w http.ResponseWriter, r *http.Request, q string) 
 			Title: h.Tags, Source: "Pixabay", Context: h.PageURL, License: "Pixabay Content License",
 			Credit: "Image by " + h.User + " on Pixabay",
 		})
-	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(hits)
-}
-
-// searchCommons asks Wikimedia Commons for files matching the words: the
-// MediaWiki search over the File namespace, with each file's size, licence
-// and a 1600px rendering - which is a PNG even for an SVG, so a flag imports
-// as a picture the site can show. The thumbnail is the same rendering at
-// 400px, which Commons names by width.
-func (s Search) searchCommons(w http.ResponseWriter, r *http.Request, q string) {
-	params := url.Values{
-		"action": {"query"}, "format": {"json"}, "generator": {"search"},
-		"gsrsearch": {q}, "gsrnamespace": {"6"}, "gsrlimit": {"24"},
-		"prop": {"imageinfo"}, "iiprop": {"url|size|mime|extmetadata"}, "iiurlwidth": {"1600"},
-		"iiextmetadatafilter": {"LicenseShortName"},
-	}
-	req, _ := http.NewRequestWithContext(r.Context(), "GET", "https://commons.wikimedia.org/w/api.php?"+params.Encode(), nil)
-	req.Header.Set("User-Agent", s.UserAgent)
-	resp, err := imageClient.Do(req)
-	if err != nil {
-		http.Error(w, "Wikimedia Commons did not answer", http.StatusBadGateway)
-		return
-	}
-	defer resp.Body.Close()
-	var body struct {
-		Query struct {
-			Pages map[string]struct {
-				Title     string `json:"title"`
-				Index     int    `json:"index"`
-				ImageInfo []struct {
-					URL            string `json:"url"`
-					DescriptionURL string `json:"descriptionurl"`
-					ThumbURL       string `json:"thumburl"`
-					Width          int    `json:"width"`
-					Height         int    `json:"height"`
-					Mime           string `json:"mime"`
-					ExtMetadata    map[string]struct {
-						Value string `json:"value"`
-					} `json:"extmetadata"`
-				} `json:"imageinfo"`
-			} `json:"pages"`
-		} `json:"query"`
-	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(&body); err != nil {
-		http.Error(w, "Wikimedia Commons answered oddly", http.StatusBadGateway)
-		return
-	}
-	type ranked struct {
-		index int
-		hit   Hit
-	}
-	found := []ranked{}
-	for _, page := range body.Query.Pages {
-		if len(page.ImageInfo) == 0 {
-			continue
-		}
-		ii := page.ImageInfo[0]
-		if !strings.HasPrefix(ii.Mime, "image/") || ii.ThumbURL == "" {
-			continue
-		}
-		// Only what the site can store: the rendering is a PNG or JPEG.
-		hit := Hit{
-			Thumb: thumbWidth.ReplaceAllString(ii.ThumbURL, "/400px-"), URL: ii.ThumbURL,
-			Width: ii.Width, Height: ii.Height,
-			Title:  strings.TrimSuffix(strings.TrimPrefix(page.Title, "File:"), path.Ext(page.Title)),
-			Source: "Wikimedia Commons", Context: ii.DescriptionURL,
-		}
-		if l, ok := ii.ExtMetadata["LicenseShortName"]; ok {
-			hit.License = l.Value
-		}
-		found = append(found, ranked{page.Index, hit})
-	}
-	sort.Slice(found, func(i, j int) bool { return found[i].index < found[j].index })
-	hits := make([]Hit, 0, len(found))
-	for _, f := range found {
-		hits = append(hits, f.hit)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(hits)

@@ -88,8 +88,9 @@ function heroImageBar(node, save) {
     bar.replaceChildren(el('span', 'hero-image-status', 'Uploading…'));
     await uploadAndSave(save, file.files[0]);
   });
-  // The image comes from a file or from Google Images; with search set up the
-  // button is a small menu of the two, otherwise it is the file picker itself.
+  // The image comes from a file or from a stock library; with search set up
+  // the button is a small menu of the two, otherwise it is the file picker
+  // itself.
   const label = node.image ? 'Replace image' : 'Add an image';
   if (imageSearchOn()) {
     const holder = el('div', 'hero-image-menu-holder');

@@ -1573,19 +1573,19 @@ export async function uploadAndSave(save, file) {
   }
 }
 
-// imageSearchOn says the server can search Google Images (it has a key).
+// imageSearchOn says the server has a picture library set up (it has a key).
 export function imageSearchOn() {
   return Boolean(state.model && state.model.imageSearch);
 }
 
-// openImageSearch is the Google Images picker: a search box, a grid of
-// results, and a click on one imports it through the server - which fetches
-// and stores the picture like an upload - and hands the stored name to
-// `onPicked`. SafeSearch is on server-side.
+// openImageSearch is the picture picker: a search box, a grid of results, and
+// a click on one imports it through the server - which fetches and stores the
+// picture like an upload - and hands the stored name to `onPicked`.
+// SafeSearch is on server-side.
 // imageSources is where the server can look, first first; imageSource the
 // one the picker leads with.
 export function imageSources() {
-  return (state.model && state.model.imageSources) || ['Wikimedia Commons'];
+  return (state.model && state.model.imageSources) || [];
 }
 
 export function imageSource() {
@@ -1596,8 +1596,6 @@ const notes = {
   'Unsplash': 'Free to use under the Unsplash License; the photographer is credited on each tile.',
   'Pexels': 'Free to use under the Pexels License; the photographer is credited on each tile.',
   'Pixabay': 'Photos, illustrations and vectors, free to use under the Pixabay Content License.',
-  'Wikimedia Commons': 'Everything here is free to use; the licence is on each tile, and CC BY ones ask to be credited.',
-  'Google Images': 'Pick a picture you have the right to use - a school photo, a poster, a flag, a public-domain image.',
 };
 
 export function openImageSearch(initial, onPicked) {

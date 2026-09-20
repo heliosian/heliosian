@@ -51,16 +51,14 @@ export function openSheet(title, node) {
   return shut;
 }
 
-function imageSources() {
-  return (state.model && state.model.imageSources) || ['Wikimedia Commons'];
+export function imageSources() {
+  return (state.model && state.model.imageSources) || [];
 }
 
 const sourceNotes = {
   'Unsplash': 'Free to use under the Unsplash License; the photographer is credited on each tile.',
   'Pexels': 'Free to use under the Pexels License; the photographer is credited on each tile.',
   'Pixabay': 'Photos, illustrations and vectors, free to use under the Pixabay Content License.',
-  'Wikimedia Commons': 'Everything here is free to use; the licence is on each tile, and CC BY ones ask to be credited.',
-  'Google Images': 'Pick a picture you have the right to use - a school photo, a poster, a public-domain image.',
 };
 
 // openImageSearch is the picture picker the other apps have: a search box,
@@ -204,7 +202,9 @@ export function imageControl(t, onChange) {
   }));
   find.setAttribute('aria-label', 'Find an image');
   find.title = 'Find an image';
-  wrap.append(find);
+  if (imageSources().length) {
+    wrap.append(find);
+  }
   if (t.imageUrl) {
     const remove = button('', 'close', 'icon-button admin-image-remove', () => {
       t.image = '';

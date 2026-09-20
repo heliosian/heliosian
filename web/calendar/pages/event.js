@@ -1,7 +1,7 @@
 import {state, daysLine, timeLine, calendarLink, sourceWords, dayType, eventDates, dayTypeClass, linkURL, call, isParty, mineWords, eventImage, weekdayShort, parseDate, spansDays, monthLabel, monthOf, answerOf, answer, eventPath} from '../state.js';
 import {el, link, svg, paragraphs, button, toast, avatar, peopleList, popup, copyText} from '../dom.js';
 import {eventForm} from '../eventform.js';
-import {uploadImage, openImageSearch} from '../images.js';
+import {uploadImage, openImageSearch, imageSources} from '../images.js';
 import {appOrigin} from '/toolbar.js';
 import {setTitle} from '../chrome.js';
 import {audienceChips, blocks} from '../events.js';
@@ -89,7 +89,9 @@ function heroImageBar(e) {
     menu.append(b);
   };
   item('image', 'Upload image', () => file.click());
-  item('search', 'Find an image', () => openImageSearch(e.title, name => save(name)));
+  if (imageSources().length) {
+    item('search', 'Find an image', () => openImageSearch(e.title, name => save(name)));
+  }
   toggle.addEventListener('click', ev => {
     ev.stopPropagation();
     menu.hidden = !menu.hidden;
