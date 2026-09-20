@@ -16,6 +16,7 @@ import (
 	"heliosian/internal/birthday"
 	"heliosian/internal/calendar"
 	"heliosian/internal/celebrate"
+	"heliosian/internal/feedback"
 	"heliosian/internal/home"
 	"heliosian/internal/loop"
 	"heliosian/internal/team"
@@ -34,6 +35,7 @@ var spreadsheets = []struct{ env, layout string }{
 	{"CONFIG_SHEET", "Config"},
 	{"GROUPS_SHEET", "Groups"},
 	{"ARTIFACTS_SHEET", "Artifacts"},
+	{"FEEDBACK_SHEET", "Feedback"},
 }
 
 type tab struct {
@@ -50,6 +52,9 @@ var seeds = map[string]map[string][]string{
 var layouts = map[string][]tab{
 	"Artifacts": {
 		{"Documents", artifacts.DocumentColumns},
+	},
+	"Feedback": {
+		{"Reports", feedback.ReportColumns},
 	},
 	"Directory": {
 		// person_photo and person_department are spliced in by vcexport rather than

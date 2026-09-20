@@ -1,14 +1,14 @@
-// Package feedback files what people report from any app's toolbar as issues in the private triage repository.
+// Package feedback takes what people report from any app's toolbar into the Reports tab, tells the super admins, and files the ones an admin keeps as issues on GitHub.
 package feedback
 
 import (
-	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -18,7 +18,6 @@ import (
 )
 
 const (
-	repo         = "heliosian/triage"
 	summaryLimit = 120
 	detailsLimit = 4000
 	errorLimit   = 5
@@ -38,9 +37,11 @@ func schoolZone() *time.Location {
 }
 
 type Report struct {
+	ID         string
 	App        string
 	AppName    string
 	Kind       string
+	Status     string
 	Summary    string
 	Details    string
 	Email      string
@@ -54,10 +55,16 @@ type Report struct {
 	UserAgent  string
 	Errors     []string
 	At         time.Time
+	// Issue is the address a filed report became; Handled and HandledBy are
+	// when an admin filed or dismissed it, and who.
+	Issue     string
+	Handled   time.Time
+	HandledBy string
 }
 
-type Filer interface {
-	File(ctx context.Context, r Report) error
+// Saver takes a submitted report, which in production is the Reports tab.
+type Saver interface {
+	Save(r Report) (Report, error)
 }
 
 type Queue struct {
@@ -66,20 +73,25 @@ type Queue struct {
 	recent  map[string][]time.Time
 }
 
-func NewQueue(filer Filer) *Queue {
+// NewQueue drains submissions off the request path: each is written to the
+// sheet and then announced to the super admins, neither of which anyone waits
+// on. notify may be nil, which sends nothing.
+func NewQueue(saver Saver, notify func(Report)) *Queue {
 	q := &Queue{reports: make(chan Report, 64), recent: map[string][]time.Time{}}
-	go q.run(filer)
+	go q.run(saver, notify)
 	return q
 }
 
-func (q *Queue) run(filer Filer) {
+func (q *Queue) run(saver Saver, notify func(Report)) {
 	for r := range q.reports {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		err := filer.File(ctx, r)
-		cancel()
+		saved, err := saver.Save(r)
 		if err != nil {
-			title, body, _ := Render(r)
-			slog.Error("feedback: filing failed", "error", err, "title", title, "body", body)
+			slog.Error("feedback: saving failed", "error", err, "app", r.App, "kind", r.Kind, "summary", r.Summary, "details", r.Details, "email", r.Email)
+			continue
+		}
+		slog.Info("feedback: saved", "id", saved.ID, "app", saved.App, "kind", saved.Kind)
+		if notify != nil {
+			notify(saved)
 		}
 	}
 }
@@ -209,13 +221,42 @@ func clipAll(errors []string) []string {
 	return out
 }
 
-func Render(r Report) (title, body string, labels []string) {
-	title = "[" + r.AppName + "] " + r.Summary
+// emailPattern finds an address written into a report's own words, which the
+// reporter may have typed - a colleague's, a parent's - and which has no place
+// in a public issue.
+var emailPattern = regexp.MustCompile(`[\w.+-]+@[\w-]+\.[\w.-]+`)
+
+// Redact removes what names a person: every address, wherever it is written.
+func Redact(s string) string {
+	return emailPattern.ReplaceAllString(s, "[email removed]")
+}
+
+// publicAddress is the page's address with its query and fragment cut off,
+// since a link a person followed may carry a token or their own address in it.
+func publicAddress(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	u.RawQuery, u.Fragment = "", ""
+	return u.String()
+}
+
+// Strip is the report as an issue anyone may read: the reporter's own words
+// and the context that makes a bug reproducible, with every address redacted,
+// the page's query string cut away, and no Reporter section at all. It is
+// where the admin page's editor starts; whatever the admin leaves is what
+// GitHub gets.
+func Strip(r Report) (title, body string, labels []string) {
+	title = Redact(r.Summary)
+	if r.AppName != "" {
+		title = "[" + r.AppName + "] " + title
+	}
 	var b strings.Builder
 	if r.Details == "" {
 		b.WriteString("_No details given._\n")
 	} else {
-		b.WriteString(r.Details + "\n")
+		b.WriteString(Redact(r.Details) + "\n")
 	}
 	b.WriteString("\n## Context\n\n| | |\n|---|---|\n")
 	row := func(name, value string) {
@@ -224,10 +265,9 @@ func Render(r Report) (title, body string, labels []string) {
 		}
 		fmt.Fprintf(&b, "| %s | %s |\n", name, cell(value))
 	}
-	row("App", r.AppName+" (`"+r.App+"`)")
+	row("App", appCell(r))
 	row("Page", r.Page)
-	row("Address", address(r.URL))
-	row("Role", role(r.SuperAdmin))
+	row("Address", address(publicAddress(r.URL)))
 	row("Browser", r.UserAgent)
 	row("Viewport", r.Viewport)
 	row("Screen", r.Screen)
@@ -235,10 +275,28 @@ func Render(r Report) (title, body string, labels []string) {
 	row("Time zone", r.Timezone)
 	row("Reported", r.At.In(school).Format("2006-01-02 15:04 MST"))
 	if len(r.Errors) > 0 {
-		fmt.Fprintf(&b, "\n<details>\n<summary>Recent errors (%d)</summary>\n\n```\n%s\n```\n\n</details>\n", len(r.Errors), strings.Join(r.Errors, "\n"))
+		fmt.Fprintf(&b, "\n<details>\n<summary>Recent errors (%d)</summary>\n\n```\n%s\n```\n\n</details>\n", len(r.Errors), Redact(strings.Join(r.Errors, "\n")))
 	}
-	b.WriteString("\n## Reporter\n\n> Remove this section before filing anything publicly.\n\n- Email: " + r.Email + "\n")
-	return title, b.String(), []string{r.Kind, "app:" + r.App, "untriaged"}
+	labels = []string{r.Kind}
+	if r.App != "" {
+		labels = append(labels, "app:"+r.App)
+	}
+	return title, b.String(), labels
+}
+
+// appCell names the app both ways where a report knows both, which one it
+// knows where it knows one, and nothing at all for a report carried over from
+// triage that was filed by hand and never named an app.
+func appCell(r Report) string {
+	switch {
+	case r.AppName != "" && r.App != "":
+		return r.AppName + " (`" + r.App + "`)"
+	case r.AppName != "":
+		return r.AppName
+	case r.App != "":
+		return "`" + r.App + "`"
+	}
+	return ""
 }
 
 func cell(s string) string {
@@ -263,46 +321,4 @@ func role(superAdmin bool) string {
 		return "super admin"
 	}
 	return "member"
-}
-
-type GitHub struct {
-	Token    string
-	Endpoint string
-}
-
-func (g *GitHub) File(ctx context.Context, r Report) error {
-	title, body, labels := Render(r)
-	payload, err := json.Marshal(map[string]any{"title": title, "body": body, "labels": labels})
-	if err != nil {
-		return err
-	}
-	endpoint := g.Endpoint
-	if endpoint == "" {
-		endpoint = "https://api.github.com"
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint+"/repos/"+repo+"/issues", bytes.NewReader(payload))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Authorization", "Bearer "+g.Token)
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusCreated {
-		reply, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
-		return fmt.Errorf("feedback: github %d: %s", resp.StatusCode, strings.TrimSpace(string(reply)))
-	}
-	var created struct {
-		URL string `json:"html_url"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&created); err != nil {
-		return err
-	}
-	slog.Info("feedback: filed", "issue", created.URL, "title", title)
-	return nil
 }

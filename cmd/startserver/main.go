@@ -19,7 +19,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"syscall"
 	"time"
 
@@ -33,7 +32,6 @@ import (
 	"heliosian/internal/data"
 	"heliosian/internal/describe"
 	"heliosian/internal/devtls"
-	"heliosian/internal/feedback"
 	"heliosian/internal/geocode"
 	"heliosian/internal/logging"
 	"heliosian/internal/loop"
@@ -106,7 +104,10 @@ func sampleServer() (*http.Server, *who.Queue) {
 		BirthdayMail:  mail.New("", "Helios Staff Birthdays <birthday@example.org>", mailDir()),
 		BirthdayFrom:  "Helios Staff Birthdays <birthday@example.org>",
 		BirthdayBase:  "https://birthday.local.heliosian.com:" + app.Port(),
-		Feedback:      printedFeedback{},
+		// Reports land in the sample Reports tab and the word of them beside
+		// the other sample mail; filing needs a GitHub App, which sample mode
+		// has none of, so the triage queue says so.
+		FeedbackBase: "https://home.local.heliosian.com:" + app.Port(),
 		// Loop's forwards would land as .eml files beside the other sample
 		// mail and its archive under loop/ there; nothing receives for it.
 		Loop:          loop.Mail{Sender: &mail.Files{Dir: mailDir(), From: "Helios Loop"}, Key: []byte("sample"), Base: "https://loop.local.heliosian.com:" + app.Port(), Archive: loop.DirArchive{Dir: mailDir()}},
@@ -166,14 +167,6 @@ func sampleGroupDescriber() loop.Describer {
 	return describe.Fake{}
 }
 
-type printedFeedback struct{}
-
-func (printedFeedback) File(ctx context.Context, r feedback.Report) error {
-	title, body, labels := feedback.Render(r)
-	fmt.Printf("\n--- feedback issue ---\n%s\nlabels: %s\n\n%s--- end ---\n\n", title, strings.Join(labels, ", "), body)
-	return nil
-}
-
 func localTLS(server *http.Server, queue *who.Queue) (*http.Server, *who.Queue) {
 	server.TLSConfig = &tls.Config{Certificates: []tls.Certificate{devtls.Certificate()}}
 	return server, queue
@@ -184,7 +177,7 @@ func detachReal(email string) {
 	if key == "" {
 		logging.Fatal("SESSION_KEY is required (the server and the minted cookie must share it)")
 	}
-	for _, name := range []string{"DIRECTORY_SHEET", "PREFERENCES_SHEET", "INVITES_SHEET", "APPS_SHEET", "EVENTS_SHEET", "BIRTHDAY_SHEET", "CELEBRATE_SHEET", "CALENDAR_SHEET", "CONFIG_SHEET", "GROUPS_SHEET", "ARTIFACTS_SHEET"} {
+	for _, name := range []string{"DIRECTORY_SHEET", "PREFERENCES_SHEET", "INVITES_SHEET", "APPS_SHEET", "EVENTS_SHEET", "BIRTHDAY_SHEET", "CELEBRATE_SHEET", "CALENDAR_SHEET", "CONFIG_SHEET", "GROUPS_SHEET", "ARTIFACTS_SHEET", "FEEDBACK_SHEET"} {
 		if os.Getenv(name) == "" {
 			logging.Fatal("environment variable is required", "name", name)
 		}

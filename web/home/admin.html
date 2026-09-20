@@ -38,6 +38,13 @@
     text-decoration: none;
   }
   .button:hover { background: #88a700; border-color: #88a700; }
+  .button:disabled {
+    background: var(--input);
+    border-color: var(--line);
+    color: var(--muted);
+    cursor: not-allowed;
+  }
+  .button:disabled:hover { background: var(--input); border-color: var(--line); }
   .link-button {
     background: none;
     border: 0;
@@ -96,6 +103,74 @@
   .category-row .meta { font-size: 13px; color: var(--muted); }
   .card-actions { margin-top: 16px; }
   .admin-row .name { font-weight: 600; }
+  .tab-count {
+    display: inline-block;
+    min-width: 18px;
+    padding: 0 6px;
+    border-radius: 9px;
+    background: var(--brand-fill);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 18px;
+    text-align: center;
+  }
+  .feedback-filters { display: flex; gap: 8px; margin: 16px 0 4px; flex-wrap: wrap; }
+  .chip {
+    padding: 6px 14px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: none;
+    color: var(--muted);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .chip.active { border-color: var(--brand-fill); background: var(--brand-fill); color: #fff; }
+  .report-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 0;
+    border-top: 1px solid var(--line);
+    cursor: pointer;
+  }
+  .report-row:first-of-type { border-top: none; }
+  .report-row .kind {
+    flex-shrink: 0;
+    width: 62px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+  }
+  .report-row .kind.bug { color: var(--alert); }
+  .report-row .body { flex: 1; min-width: 0; }
+  .report-row .summary { font-weight: 600; }
+  .report-row .meta { font-size: 13px; color: var(--muted); }
+  .report-row .state { font-size: 13px; color: var(--muted); flex-shrink: 0; }
+  .report-row.open { background: var(--input); }
+  .report-detail h3 { margin: 0 0 4px; font-size: 16px; }
+  .report-detail .said { white-space: pre-wrap; margin: 8px 0 16px; }
+  .report-detail dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 0 0 20px; font-size: 13px; }
+  .report-detail dt { color: var(--muted); }
+  .report-detail dd { margin: 0; overflow-wrap: anywhere; }
+  .report-detail label { display: block; margin-bottom: 12px; font-size: 13px; font-weight: 600; color: var(--muted); }
+  .report-detail input[type=text], .report-detail textarea {
+    display: block;
+    width: 100%;
+    margin-top: 6px;
+    padding: 9px 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    font: inherit;
+    font-weight: 400;
+    box-sizing: border-box;
+  }
+  .report-detail textarea { min-height: 260px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+  .report-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 </style>
 </head>
 <body class="admin admin-strip">
@@ -116,6 +191,7 @@
     <div class="sidebar-section">
       <div class="sidebar-section-title">Editing &amp; Control</div>
       <div class="tab" data-panel="admins">Admins</div>
+      <div class="tab" data-panel="feedback">Feedback <span class="tab-count" id="feedback-count" hidden></span></div>
     </div>
   </nav>
   <div class="container">
@@ -139,6 +215,20 @@
         <span class="save-status" id="admins-status"></span>
       </div>
     </div>
+  </div>
+  <div class="panel" id="panel-feedback" hidden>
+    <div class="card">
+      <h2>Feedback</h2>
+      <div class="hint">Everything reported through &ldquo;Report a problem or idea&rdquo;, newest first. Open one to read it, edit what it should say, and file it as an issue &mdash; the Heliosian bot opens it, so nobody&rsquo;s name is on it. The reporter&rsquo;s address and the page&rsquo;s query string never reach GitHub.</div>
+      <div class="feedback-filters">
+        <button class="chip active" type="button" data-status="New">New</button>
+        <button class="chip" type="button" data-status="Filed">Filed</button>
+        <button class="chip" type="button" data-status="Dismissed">Dismissed</button>
+        <button class="chip" type="button" data-status="">All</button>
+      </div>
+      <div id="feedback-rows"></div>
+    </div>
+    <div class="card" id="feedback-detail" hidden></div>
   </div>
   </div>
 </div>

@@ -47,7 +47,8 @@ const (
 		"PIXABAY_KEY=heliosian-pixabay-key:latest," +
 		"MAILGUN_KEY=heliosian-mailgun-key:latest," +
 		"MAILGUN_WEBHOOK_KEY=heliosian-mailgun-webhook-key:latest," +
-		"GITHUB_TOKEN=heliosian-github-token:latest," +
+		"GITHUB_APP_ID=heliosian-github-app-id:latest," +
+		"GITHUB_APP_KEY=heliosian-github-app-key:latest," +
 		"ANTHROPIC_API_KEY=heliosian-anthropic-key:latest"
 )
 
@@ -107,6 +108,7 @@ func main() {
 		",APPS_SHEET=" + requiredEnv("APPS_SHEET") +
 		",BIRTHDAY_SHEET=" + requiredEnv("BIRTHDAY_SHEET") +
 		",ARTIFACTS_SHEET=" + requiredEnv("ARTIFACTS_SHEET") +
+		",FEEDBACK_SHEET=" + requiredEnv("FEEDBACK_SHEET") +
 		",GOOGLE_CLIENT_ID=" + clientID()
 	log.Printf("deploying %s to %s in %s", image, service, region)
 	gcloud("run", "deploy", service,

@@ -32,7 +32,7 @@ Editing behaves as the directory's does: in place, for admins, with no separate 
 
 Every change is applied to the in-memory model first, then written to the sheet cell by cell through the shared write queue, and appended to the Change Log tab. A change the sheet rules reject (a duplicate title, a bad URL, an unknown category) is refused before anything is written.
 
-Who may edit is the Admins tab of the Apps sheet plus the platform super admins (`docs/config.md`). Admins manage the tab from `/admin` - Admin Tools in the shared admin chrome (`docs/toolbar.md`), with a Categories overview and the admin list.
+Who may edit is the Admins tab of the Apps sheet plus the platform super admins (`docs/config.md`). Admins manage the tab from `/admin` - Admin Tools in the shared admin chrome (`docs/toolbar.md`), with a Categories overview and the admin list. A super admin gets one panel more: Feedback, every app's reports and the queue that turns one into a GitHub issue (`docs/feedback.md`). It is the super admins' alone, since a report carries who wrote it and what page they were on, and an app admin does not see the tab.
 
 ## Sign-in
 

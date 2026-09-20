@@ -796,7 +796,12 @@ type Config struct {
 	// BirthdayBase is Staff Birthdays' address, for links in mail sent
 	// from its reminder loop, off any request.
 	BirthdayBase string
-	Feedback     feedback.Filer
+	// FeedbackFiler opens the GitHub issue an admin makes of a report; nil
+	// leaves the triage queue saying filing is not set up.
+	FeedbackFiler feedback.IssueFiler
+	// FeedbackBase is Heliosian's own address, which the word of a new report
+	// links back to, sent off any request.
+	FeedbackBase string
 	// Describer writes Staff Birthdays' sentence about a charity; nil leaves
 	// that button saying it is not set up.
 	Describer birthday.Describer
@@ -986,10 +991,16 @@ func NewCore(cfg Config) *Core {
 	for _, m := range []*http.ServeMux{mux, teamMux, birthdayMux, celebrateMux, calendarMux, loopMux, askMux} {
 		home.RegisterSwitch(m, homeCache)
 	}
-	feedbackQueue := feedback.NewQueue(cfg.Feedback)
+	feedbackStore, err := feedback.NewStore(cfg.Source, cfg.Writer, queue)
+	if err != nil {
+		logging.Fatal("load feedback model", "error", err)
+	}
+	notifier := feedback.Notifier{Sender: cfg.Mail, From: cfg.MailFrom, Base: cfg.FeedbackBase, SuperAdmins: settings.SuperAdmins}
+	feedbackQueue := feedback.NewQueue(feedbackStore, notifier.Notify)
 	for key, m := range map[string]*http.ServeMux{"who": mux, "home": homeMux, "team": teamMux, "birthday": birthdayMux, "celebrate": celebrateMux, "calendar": calendarMux, "loop": loopMux, "ask": askMux} {
 		feedback.Register(m, key, appName(key), superAdmin, feedbackQueue)
 	}
+	feedback.RegisterAdmin(homeMux, feedbackStore, cfg.FeedbackFiler, superAdmin)
 	// A deploy's old revision serves, and writes, until this one has loaded;
 	// once it has handed over and stopped, read again for what it wrote.
 	time.AfterFunc(deployOverlap, func() {
@@ -1101,6 +1112,26 @@ func birthdayBase() string {
 		return strings.TrimSuffix(base, "/")
 	}
 	return "https://birthday.heliosian.com"
+}
+
+// feedbackBase is Heliosian's own address, which the word of a new report
+// links back to; its admin is where the triage queue lives.
+func feedbackBase() string {
+	if base := os.Getenv("FEEDBACK_BASE_URL"); base != "" {
+		return strings.TrimSuffix(base, "/")
+	}
+	return "https://heliosian.com"
+}
+
+// githubApp is what a kept report is filed as - the app, so the issue's author
+// is plainly a bot and not the admin who pressed the button. Required, as the
+// triage token it replaced was.
+func githubApp() feedback.IssueFiler {
+	app, err := feedback.NewGitHubApp(mapsKey("GITHUB_APP_ID", "creds/github-app.id"), mapsKey("GITHUB_APP_KEY", "creds/github-app.pem"))
+	if err != nil {
+		logging.Fatal("read the github app key", "error", err)
+	}
+	return app
 }
 
 func calendarMailFrom() string {
@@ -1280,6 +1311,7 @@ func Production(blobCache string) (*http.Server, *who.Queue) {
 		"config":      requiredEnv("CONFIG_SHEET"),
 		"groups":      requiredEnv("GROUPS_SHEET"),
 		"artifacts":   requiredEnv("ARTIFACTS_SHEET"),
+		"feedback":    requiredEnv("FEEDBACK_SHEET"),
 	}
 	sessionKey := requiredEnv("SESSION_KEY")
 	sheet, err := data.NewSheet(spreadsheets)
@@ -1314,7 +1346,8 @@ func Production(blobCache string) (*http.Server, *who.Queue) {
 		BirthdayMail:  newMailer(birthdayMailFrom()),
 		BirthdayFrom:  birthdayMailFrom(),
 		BirthdayBase:  birthdayBase(),
-		Feedback:      &feedback.GitHub{Token: mapsKey("GITHUB_TOKEN", "creds/github.token")},
+		FeedbackFiler: githubApp(),
+		FeedbackBase:  feedbackBase(),
 		Loop:          loopMail(sessionKey),
 		LoopDescriber: ClaudeGroupDescriber(),
 		Asker:         ask.NewClaude(mapsKey("ANTHROPIC_API_KEY", "creds/anthropic.key")),

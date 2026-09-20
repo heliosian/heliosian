@@ -75,14 +75,16 @@ function listEditor({rows, status, input, button, url, body, empty, initial}) {
 // The tabs on the left show one panel at a time, as Who?'s admin does.
 function initTabs() {
   for (const tab of document.querySelectorAll('.tab')) {
-    tab.addEventListener('click', () => {
-      for (const other of document.querySelectorAll('.tab')) {
-        other.classList.toggle('active', other === tab);
-      }
-      for (const panel of document.querySelectorAll('.panel')) {
-        panel.hidden = panel.id !== 'panel-' + tab.dataset.panel;
-      }
-    });
+    tab.addEventListener('click', () => showPanel(tab.dataset.panel));
+  }
+}
+
+function showPanel(name) {
+  for (const tab of document.querySelectorAll('.tab')) {
+    tab.classList.toggle('active', tab.dataset.panel === name);
+  }
+  for (const panel of document.querySelectorAll('.panel')) {
+    panel.hidden = panel.id !== 'panel-' + name;
   }
 }
 
@@ -122,6 +124,247 @@ async function loadCategories() {
   }
 }
 
+// The triage queue: every report, and one opened for editing and filing.
+const feedback = {rows: [], filter: 'New', canFile: false, repo: '', open: null};
+
+function field(tag, label, value, attrs = {}) {
+  const wrap = document.createElement('label');
+  wrap.append(label);
+  const input = document.createElement(tag);
+  Object.assign(input, attrs);
+  input.value = value;
+  wrap.append(input);
+  return {wrap, input};
+}
+
+function describe(report) {
+  const parts = [report.appName || report.app, report.received].filter(Boolean);
+  if (report.status === 'Filed') {
+    parts.push(`filed by ${report.handledBy}`);
+  } else if (report.status === 'Dismissed') {
+    parts.push(`dismissed by ${report.handledBy}`);
+  }
+  return parts.join(' · ');
+}
+
+function renderReports() {
+  const list = document.querySelector('#feedback-rows');
+  list.replaceChildren();
+  const shown = feedback.rows.filter(r => !feedback.filter || r.status === feedback.filter);
+  if (!shown.length) {
+    const hint = document.createElement('div');
+    hint.className = 'hint';
+    hint.textContent = feedback.filter === 'New' ? 'Nothing waiting. Everything reported has been filed or dismissed.' : 'Nothing here.';
+    list.append(hint);
+    return;
+  }
+  for (const report of shown) {
+    const row = document.createElement('div');
+    row.className = 'report-row' + (feedback.open === report.id ? ' open' : '');
+    const kind = document.createElement('div');
+    kind.className = 'kind ' + report.kind;
+    kind.textContent = report.kind === 'bug' ? 'Problem' : 'Idea';
+    const body = document.createElement('div');
+    body.className = 'body';
+    const summary = document.createElement('div');
+    summary.className = 'summary';
+    summary.textContent = report.summary;
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    meta.textContent = describe(report);
+    body.append(summary, meta);
+    const state = document.createElement('div');
+    state.className = 'state';
+    if (report.issue) {
+      const link = document.createElement('a');
+      link.href = report.issue;
+      link.target = '_blank';
+      link.rel = 'noopener';
+      link.textContent = '#' + report.issue.split('/').pop();
+      state.append(link);
+    }
+    row.append(kind, body, state);
+    row.addEventListener('click', e => {
+      if (e.target.tagName !== 'A') {
+        openReport(report.id);
+      }
+    });
+    list.append(row);
+  }
+}
+
+function renderCount() {
+  const badge = document.querySelector('#feedback-count');
+  const waiting = feedback.rows.filter(r => r.status === 'New').length;
+  badge.textContent = waiting;
+  badge.hidden = !waiting;
+}
+
+async function loadFeedback() {
+  const res = await fetch('/api/admin/feedback');
+  if (!res.ok) {
+    document.querySelector('#feedback-rows').textContent = 'Could not load the reports.';
+    return;
+  }
+  const state = await res.json();
+  feedback.rows = state.reports;
+  feedback.canFile = state.canFile;
+  feedback.repo = state.repo;
+  renderCount();
+  renderReports();
+}
+
+async function openReport(id) {
+  feedback.open = id;
+  renderReports();
+  const card = document.querySelector('#feedback-detail');
+  card.hidden = false;
+  card.replaceChildren();
+  card.className = 'card report-detail';
+  const res = await fetch('/api/admin/feedback/' + encodeURIComponent(id));
+  if (!res.ok) {
+    card.textContent = 'Could not open that report.';
+    return;
+  }
+  const report = await res.json();
+  const heading = document.createElement('h3');
+  heading.textContent = report.summary;
+  const said = document.createElement('div');
+  said.className = 'said';
+  said.textContent = report.details || 'No details given.';
+  const facts = document.createElement('dl');
+  const rows = [
+    ['Reporter', `${report.email} (${report.role})`],
+    ['App', report.appName],
+    ['Page', report.page],
+    ['Address', report.url],
+    ['Browser', report.browser],
+    ['Viewport', [report.viewport, report.screen].filter(Boolean).join(' of ')],
+    ['Language', [report.language, report.timezone].filter(Boolean).join(' · ')],
+    ['Errors', (report.errors || []).join('\n')],
+  ];
+  for (const [name, value] of rows) {
+    if (!value) {
+      continue;
+    }
+    const dt = document.createElement('dt');
+    dt.textContent = name;
+    const dd = document.createElement('dd');
+    dd.textContent = value;
+    facts.append(dt, dd);
+  }
+  card.append(heading, said, facts);
+
+  if (report.status !== 'New') {
+    const done = document.createElement('div');
+    done.className = 'hint';
+    done.textContent = report.status === 'Filed'
+      ? `Filed by ${report.handledBy}.`
+      : `Dismissed by ${report.handledBy}.`;
+    card.append(done);
+    if (report.issue) {
+      const link = document.createElement('a');
+      link.className = 'button';
+      link.href = report.issue;
+      link.target = '_blank';
+      link.rel = 'noopener';
+      link.textContent = 'Open the issue';
+      const actions = document.createElement('div');
+      actions.className = 'card-actions';
+      actions.append(link);
+      card.append(actions);
+    }
+    return;
+  }
+
+  const hint = document.createElement('div');
+  hint.className = 'hint';
+  hint.textContent = feedback.canFile
+    ? `This is what ${feedback.repo} will get, with the reporter's address already taken out. Edit it into an issue worth keeping, then file it.`
+    : 'Filing on GitHub is not set up on this server, so this report can only be dismissed.';
+  const title = field('input', 'Title', report.draft.title, {type: 'text', maxLength: 200});
+  const body = field('textarea', 'Body', report.draft.body);
+  const labels = field('input', 'Labels', (report.draft.labels || []).join(', '), {type: 'text'});
+  const actions = document.createElement('div');
+  actions.className = 'report-actions';
+  const status = document.createElement('span');
+  status.className = 'save-status';
+  const fileButton = document.createElement('button');
+  fileButton.className = 'button';
+  fileButton.type = 'button';
+  fileButton.textContent = 'File on GitHub';
+  fileButton.disabled = !feedback.canFile;
+  const dismissButton = document.createElement('button');
+  dismissButton.className = 'link-button';
+  dismissButton.type = 'button';
+  dismissButton.textContent = 'Dismiss';
+
+  fileButton.addEventListener('click', async () => {
+    fileButton.disabled = true;
+    status.classList.remove('error');
+    status.textContent = 'Filing…';
+    const res = await fetch(`/api/admin/feedback/${encodeURIComponent(id)}/file`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        title: title.input.value,
+        body: body.input.value,
+        labels: labels.input.value.split(',').map(l => l.trim()).filter(Boolean),
+      }),
+    });
+    if (!res.ok) {
+      status.classList.add('error');
+      status.textContent = await res.text();
+      fileButton.disabled = false;
+      return;
+    }
+    await loadFeedback();
+    openReport(id);
+  });
+
+  dismissButton.addEventListener('click', async () => {
+    status.classList.remove('error');
+    status.textContent = 'Dismissing…';
+    const res = await fetch(`/api/admin/feedback/${encodeURIComponent(id)}/dismiss`, {method: 'POST'});
+    if (!res.ok) {
+      status.classList.add('error');
+      status.textContent = await res.text();
+      return;
+    }
+    await loadFeedback();
+    openReport(id);
+  });
+
+  actions.append(fileButton, dismissButton, status);
+  card.append(hint, title.wrap, body.wrap, labels.wrap, actions);
+}
+
+function initFeedback() {
+  for (const chip of document.querySelectorAll('.feedback-filters .chip')) {
+    chip.addEventListener('click', () => {
+      for (const other of document.querySelectorAll('.feedback-filters .chip')) {
+        other.classList.toggle('active', other === chip);
+      }
+      feedback.filter = chip.dataset.status;
+      renderReports();
+    });
+  }
+}
+
+// The word of a new report links straight to it.
+async function followLink() {
+  const params = new URLSearchParams(location.search);
+  if (params.get('panel') !== 'feedback') {
+    return;
+  }
+  showPanel('feedback');
+  const id = params.get('report');
+  if (id) {
+    await openReport(id);
+    document.querySelector('#feedback-detail').scrollIntoView({behavior: 'smooth', block: 'start'});
+  }
+}
+
 async function load() {
   const res = await fetch('/api/admin/state');
   if (!res.ok) {
@@ -150,7 +393,17 @@ async function load() {
     initial: state.admins,
   });
   loadCategories();
+  // The reports carry who reported them and what page they were on, so the
+  // queue is the super admins' alone; for anyone else the tab is not there.
+  if (!state.isSuperAdmin) {
+    document.querySelector('.tab[data-panel="feedback"]').remove();
+    document.querySelector('#panel-feedback').remove();
+    return;
+  }
+  await loadFeedback();
+  await followLink();
 }
 
 initTabs();
+initFeedback();
 load();

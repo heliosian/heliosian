@@ -30,7 +30,7 @@ To run against real community data instead, see [docs/dev.md](docs/dev.md).
 - `internal/loop` — Helios Loop: the Groups sheet's model, the rule evaluator, the mail received and forwarded, handlers, and admin edits
 - `internal/ask` — Helios Ask: the chat with Claude over every app's data - the prompt, the conversation, the streaming turn and the read-only tools
 - `internal/artifacts` — the community's documents Helios Ask searches: which mail, website pages and parent portal resources belong, each to markdown, the chunks, their embeddings through Vertex AI, and the model that scans them
-- `internal/feedback` — the toolbar's reports, queued and filed as issues in the private triage repository
+- `internal/feedback` — the toolbar's reports: the Reports sheet they land in, the word of them to the super admins, and the triage queue that edits one into a GitHub issue
 - `internal/blob` — media from Cloud Storage, held in memory with stored thumbnails
 - `internal/sharecard` — the 1200x630 picture a chat app shows for a shared link, drawn for HCA-Team and Helios Celebrate in each one's dress
 - `internal/imagesearch` — the editors' picture search (stock libraries and Wikimedia Commons) and import, shared by HCA-Team and Heliosian
@@ -52,7 +52,7 @@ Platform:
 - [deploy.md](docs/deploy.md) — production deployment
 - [config.md](docs/config.md) — the Config sheet: super admins and the platform settings
 - [toolbar.md](docs/toolbar.md) — the top bar every app shares: search with `/`, the account avatar, the switch between apps
-- [feedback.md](docs/feedback.md) — "Report a problem or idea": the form in every app and the private triage repository it files to
+- [feedback.md](docs/feedback.md) — "Report a problem or idea": the form in every app, the sheet it lands in, and the queue an admin files from
 
 Helios Who?, in `docs/who/`:
 
