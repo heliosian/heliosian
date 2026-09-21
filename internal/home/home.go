@@ -60,22 +60,27 @@ type app struct {
 // and for an event another app runs, Link is its page on LinkApp with Call
 // the way in as the calendar words it, Mine and Availability behind that.
 type Event struct {
-	ID           string `json:"id"`
-	Title        string `json:"title"`
-	Path         string `json:"path"`
-	Start        string `json:"start"`
-	When         string `json:"when"`
-	StartAt      string `json:"startAt"`
-	EndAt        string `json:"endAt,omitempty"`
-	Location     string `json:"location,omitempty"`
-	Description  string `json:"description,omitempty"`
-	Image        string `json:"image,omitempty"`
-	ImageApp     string `json:"imageApp,omitempty"`
-	Link         string `json:"link,omitempty"`
-	LinkApp      string `json:"linkApp,omitempty"`
-	Call         string `json:"call,omitempty"`
-	Mine         string `json:"mine,omitempty"`
-	Availability string `json:"availability,omitempty"`
+	ID      string `json:"id"`
+	Title   string `json:"title"`
+	Path    string `json:"path"`
+	Start   string `json:"start"`
+	When    string `json:"when"`
+	StartAt string `json:"startAt"`
+	EndAt   string `json:"endAt,omitempty"`
+	// Dates are the days the rail's month lists it under, which for a day
+	// type's span written across a weekend is not every day between StartAt
+	// and EndAt: the calendar settles them (`calendar.Event.Dates`) and the
+	// rail reads them rather than working the span out again.
+	Dates        []string `json:"dates"`
+	Location     string   `json:"location,omitempty"`
+	Description  string   `json:"description,omitempty"`
+	Image        string   `json:"image,omitempty"`
+	ImageApp     string   `json:"imageApp,omitempty"`
+	Link         string   `json:"link,omitempty"`
+	LinkApp      string   `json:"linkApp,omitempty"`
+	Call         string   `json:"call,omitempty"`
+	Mine         string   `json:"mine,omitempty"`
+	Availability string   `json:"availability,omitempty"`
 	// Answer is the viewer's word on it: yes, no, or nothing yet.
 	Answer string `json:"answer,omitempty"`
 	// People is everyone in the household with a part in it: a ticket, a

@@ -447,7 +447,7 @@ func homeEvents(list []calendar.Upcoming) []home.Event {
 	for _, e := range list {
 		out = append(out, home.Event{
 			ID: e.ID, Title: e.Title, Path: e.Path, Start: e.Start, When: e.When,
-			StartAt: e.StartAt, EndAt: e.EndAt, Location: e.Location, Description: e.Description,
+			StartAt: e.StartAt, EndAt: e.EndAt, Dates: e.Dates, Location: e.Location, Description: e.Description,
 			Image: e.Image, ImageApp: e.ImageApp, Link: e.Link, LinkApp: e.LinkApp, Call: e.Call, Mine: e.Mine, Availability: e.Availability, Answer: e.Answer, People: homeStandings(e.People),
 		})
 	}
