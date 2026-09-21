@@ -685,6 +685,8 @@ html[data-theme="dark"] {
 [data-theme="dark"] .guest-card-ticket.is-free { background: rgba(47, 158, 106, 0.2); color: #8fe0b6; }
 [data-theme="dark"] .guest-card-ticket.is-waitlist { background: rgba(232, 163, 61, 0.18); color: #f0c674; }
 [data-theme="dark"] .guest-card-ticket.is-none { background: rgba(255, 255, 255, 0.07); color: var(--muted); }
+[data-theme="dark"] .guests-chip.is-opened, [data-theme="dark"] .guests-stat.is-opened { background: rgba(0, 166, 159, 0.16); color: #7fd6d1; }
+[data-theme="dark"] .guests-stat.is-opened > svg, [data-theme="dark"] .guests-stat.is-opened strong { color: #7fd6d1; }
 [data-theme="dark"] .guests-chip.is-warning { background: rgba(194, 68, 45, 0.2); color: #f0a49a; }
 [data-theme="dark"] .guests-chip-edit { color: #f0a49a; border-left-color: rgba(240, 164, 154, 0.4); }
 [data-theme="dark"] .picker-search, [data-theme="dark"] .picker-email input { background: var(--input); color: var(--ink); border-color: rgba(255, 255, 255, 0.18); }

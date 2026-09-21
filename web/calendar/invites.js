@@ -1054,7 +1054,7 @@ function openGuestCard(e, p, view, refresh) {
   }
   if (view.host && p.invited) {
     links.append(button('Take off the list', 'trash', 'link-button danger', async () => {
-      if (!confirm(`Take ${p.name || p.email} off the list? Their answer goes with them.`)) {
+      if (!confirm(`Take ${p.name || p.email} off the list? Their answer goes with them${p.via && p.via.startsWith('group:') ? ', and the group will not add them back' : ''}.`)) {
         return;
       }
       try {
@@ -1295,6 +1295,10 @@ export function guestListSection(e, view, refresh) {
   if (pending) {
     counts.append(stat(pending, 'pending', 'clock', 'is-pending', () => openPending(e, view, refresh)));
   }
+  // Once the invites are out, how many have opened theirs.
+  if (view.sent) {
+    counts.append(stat(view.list.filter(r => r.opened).length, 'opened', 'eye', 'is-opened', () => openTable(e, view, refresh, {opened: 'yes'})));
+  }
   section.append(counts);
   if (!view.list.length) {
     section.append(el('p', 'guests-note', 'Add people from the directory, a classroom, one of your lists' + (view.party ? ', the ticket holders' : '') + ', or by email - then send the invitation.'));
@@ -1419,6 +1423,12 @@ export function guestListSection(e, view, refresh) {
       sent.append(svg(r.sent ? 'check' : 'clock'), el('span', '', r.sent ? 'Sent ' + stamp(r.sent) : 'Not sent'));
       marks.append(sent);
     }
+    if (r.opened) {
+      const opened = el('span', 'guests-chip is-opened');
+      opened.title = 'Opened the invitation ' + r.opened;
+      opened.append(svg('eye'), el('span', '', 'Opened ' + stamp(r.opened)));
+      marks.append(opened);
+    }
     if (r.warning) {
       marks.append(warningChip(e, r, refresh));
     }
@@ -1453,7 +1463,7 @@ export function guestListSection(e, view, refresh) {
       remove.title = 'Take off the list';
       remove.append(svg('trash'));
       remove.addEventListener('click', async () => {
-        if (!confirm(`Take ${r.name || r.email} off the list? Their answer goes with them.`)) {
+        if (!confirm(`Take ${r.name || r.email} off the list? Their answer goes with them${r.via && r.via.startsWith('group:') ? ', and the group will not add them back' : ''}.`)) {
           return;
         }
         try {
@@ -1507,7 +1517,7 @@ export function guestListSection(e, view, refresh) {
     row.append(face(r));
     const who = el('div', 'invite-who');
     who.append(el('div', 'invite-name', r.name || r.email));
-    const bits = [r.guestOf ? `Guest of ${r.guestOfName}` : r.line, r.invited && !r.sent ? 'Not sent' : ''].filter(Boolean);
+    const bits = [r.guestOf ? `Guest of ${r.guestOfName}` : r.line, r.invited && !r.sent ? 'Not sent' : r.opened ? 'Opened' : ''].filter(Boolean);
     if (bits.length) {
       who.append(el('div', 'invite-line', bits.join(' \u00b7 ')));
     }
@@ -1628,7 +1638,7 @@ function openCancel(e, view, refresh) {
 // widgets. It calls onChange with whoever the filters leave, as they
 // change; answer starts the RSVP filter on one answer, and rsvp false
 // leaves that dropdown out, where the list is grouped by answer already.
-function listFilters(all, view, onChange, {answer = '', rsvp = true} = {}) {
+function listFilters(all, view, onChange, {answer = '', opened = '', rsvp = true} = {}) {
   const {chipToggle, filterControl} = filterWidgets({el, svg, button});
   const bar = el('div', 'guest-table-bar');
   const search = el('input', 'rule-search');
@@ -1644,6 +1654,7 @@ function listFilters(all, view, onChange, {answer = '', rsvp = true} = {}) {
   const rooms = new Set();
   const roomValues = [...new Set(all.flatMap(r => r.classrooms || []))].sort();
   const tickets = new Set();
+  const opens = new Set(opened ? [opened] : []);
   const shown = () => {
     const q = search.value.trim().toLowerCase();
     return all.filter(r => (!q || (r.name || '').toLowerCase().includes(q) || (r.email || '').toLowerCase().includes(q))
@@ -1651,7 +1662,8 @@ function listFilters(all, view, onChange, {answer = '', rsvp = true} = {}) {
       && (!answers.size || answers.has(r.answer || 'none'))
       && (!grades.size || (r.grades || []).some(g => grades.has(g)))
       && (!rooms.size || (r.classrooms || []).some(c => rooms.has(c)))
-      && (!tickets.size || tickets.has(r.ticket || '')));
+      && (!tickets.size || tickets.has(r.ticket || ''))
+      && (!opens.size || opens.has(r.opened ? 'yes' : 'no')));
   };
   const changed = () => onChange(shown());
   const chips = el('div', 'chip-row');
@@ -1680,6 +1692,9 @@ function listFilters(all, view, onChange, {answer = '', rsvp = true} = {}) {
   if (view.party && view.host) {
     sections.push({label: 'Ticket', icon: 'ticket', values: [{value: 'ticket', label: 'Purchased ticket'}, {value: 'free', label: 'Free ticket'}, {value: 'waitlist', label: 'Waitlist'}, {value: '', label: 'No ticket'}], chosen: tickets});
   }
+  if (view.host && view.sent && rsvp) {
+    sections.push({label: 'Opened', icon: 'eye', values: [{value: 'yes', label: 'Opened the invitation'}, {value: 'no', label: 'Not yet'}], chosen: opens});
+  }
   search.addEventListener('input', changed);
   bar.append(search, chips);
   if (sections.length) {
@@ -1687,7 +1702,7 @@ function listFilters(all, view, onChange, {answer = '', rsvp = true} = {}) {
     facets.append(filterControl(sections, changed));
     bar.append(facets);
   }
-  if (answer) {
+  if (answer || opened) {
     onChange(shown());
   }
   return bar;
@@ -1700,13 +1715,13 @@ function listFilters(all, view, onChange, {answer = '', rsvp = true} = {}) {
 // change it. Copy table and Copy emails take whoever the filters leave,
 // the table as tab-separated lines for a spreadsheet and the addresses
 // for a mail.
-function openTable(e, view, refresh, {answer = ''} = {}) {
+function openTable(e, view, refresh, {answer = '', opened = ''} = {}) {
   const box = el('div');
   const rows = el('div', 'guest-table-wrap');
   const count = el('div', 'picker-note');
   let shownNow = view.list;
   const shown = () => shownNow;
-  const columns = ['Name', 'Email', 'Grade', 'RSVP', ...(view.party ? ['Ticket'] : [])];
+  const columns = ['Name', 'Email', 'Grade', 'RSVP', ...(view.party ? ['Ticket'] : []), ...(view.sent ? ['Opened'] : [])];
   // saidCell is a guest's answer: a word, or for a host a button that
   // opens Yes, Maybe and No in place.
   const saidCell = r => {
@@ -1762,6 +1777,9 @@ function openTable(e, view, refresh, {answer = ''} = {}) {
       if (view.party) {
         tr.append(el('td', '', r.ticket ? ticketWords(r.ticket) : ''));
       }
+      if (view.sent) {
+        tr.append(el('td', 'guest-table-opened', r.opened ? stamp(r.opened) : r.sent ? '\u2014' : ''));
+      }
       body.append(tr);
     }
     table.append(body);
@@ -1770,14 +1788,14 @@ function openTable(e, view, refresh, {answer = ''} = {}) {
   const bar = listFilters(view.list, view, list => {
     shownNow = list;
     paint();
-  }, {answer});
+  }, {answer, opened});
   box.append(bar, count, rows);
   paint();
   const actions = el('div', 'modal-actions guest-table-actions');
   actions.append(button('Copy table', 'copy', 'link-button', () => {
-    const lines = [['Name', 'Details', 'Email', 'Grade', 'Classroom', 'RSVP', 'Answered by', 'Answered how', 'Answered when', view.party ? 'Ticket' : 'Invited', 'Sent'].join('\t')];
+    const lines = [['Name', 'Details', 'Email', 'Grade', 'Classroom', 'RSVP', 'Answered by', 'Answered how', 'Answered when', view.party ? 'Ticket' : 'Invited', 'Sent', 'Opened'].join('\t')];
     for (const r of shown()) {
-      lines.push([r.name || '', r.guestOf ? `Guest of ${r.guestOfName}` : r.line || '', r.email || '', (r.grades || []).join(', '), (r.classrooms || []).join(', '), answerWords[r.answer] || '', r.answeredBy || '', r.answer ? (r.answeredVia === 'calendar' ? 'Calendar app' : 'Page') : '', r.answeredAt || '', view.party ? r.ticket || '' : r.invited ? 'Yes' : 'By link', stamp(r.sent)].join('\t'));
+      lines.push([r.name || '', r.guestOf ? `Guest of ${r.guestOfName}` : r.line || '', r.email || '', (r.grades || []).join(', '), (r.classrooms || []).join(', '), answerWords[r.answer] || '', r.answeredBy || '', r.answer ? (r.answeredVia === 'calendar' ? 'Calendar app' : 'Page') : '', r.answeredAt || '', view.party ? r.ticket || '' : r.invited ? 'Yes' : 'By link', stamp(r.sent), r.opened || ''].join('\t'));
     }
     copyText(lines.join('\n'), 'Table copied');
   }));

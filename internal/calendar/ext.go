@@ -106,6 +106,7 @@ func (a app) extView(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	a.noteOpened(r.Context(), e, inv.Email)
 	model := a.cache.Model()
 	day, hours := whenLines(e)
 	view := ExtView{Title: e.Title, Day: day, Hours: hours, Location: e.Location, Description: e.Description, Hosts: []string{}, Name: inv.Name, Answer: model.AnswerOf(inv.Email, e.ID), Guests: true, Brought: []ExtGuest{}, Family: []ExtGuest{}, Past: e.end.Before(now()), Banner: "/open/banner/" + e.ID}

@@ -1655,7 +1655,7 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .attendee-face { position: relative; display: flex; align-items: center; justify-content: center; width: 100%; aspect-ratio: 1; border-radius: 10px; background: var(--input); color: var(--brand); font-size: 32px; font-weight: 700; margin-bottom: 8px; }
 
-.attendee-face img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 10px; }
+.attendee-face img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 10px; }
 
 .attendee-face .grade-badge { left: -6px; top: -6px; }
 
@@ -1740,6 +1740,14 @@ button.guests-count:hover { filter: brightness(0.96); }
 .guests-chip.is-unsent { background: #fff; border: 1px dashed var(--line); }
 
 .email-edit-input { box-sizing: border-box; width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; }
+
+.guests-chip.is-opened { background: #eef6f5; color: var(--brand); }
+
+.guests-stat.is-opened { background: #eef6f5; }
+
+.guests-stat.is-opened > svg, .guests-stat.is-opened strong { color: var(--brand); }
+
+.guest-table-opened { white-space: nowrap; color: var(--muted); }
 
 .guests-chip.is-warning { background: #fbeeee; color: #b3261e; cursor: help; }
 

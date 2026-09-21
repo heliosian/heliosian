@@ -104,6 +104,11 @@ type Invite struct {
 	// any of them answers for all on their own page. Blank for anyone the
 	// directory holds, whose household is the directory's.
 	Household string `json:"household,omitempty"`
+	// Opened is when they first opened the invitation - the event's page
+	// here, or their own page from outside - blank until they have. Mail
+	// opens are not read: a tracking pixel says little, and less every
+	// year, while a page opened is a page opened.
+	Opened string `json:"opened,omitempty"`
 }
 
 // PartyPeople is a party as its guest list needs it: who hosts it, and who
@@ -179,7 +184,7 @@ func (b *builder) invitations(settings, rows []map[string]string) {
 		inv := Invite{
 			EventID: id, Email: email, Name: strings.TrimSpace(row["Name"]), GuestOf: normalizeEmail(row["Guest Of"]), Via: strings.TrimSpace(row["Via"]),
 			AddedBy: normalizeEmail(row["Added By"]), Added: strings.TrimSpace(row["Added"]), Sent: strings.TrimSpace(row["Sent"]), Token: strings.TrimSpace(row["Token"]),
-			Household: normalizeEmail(row["Household"]),
+			Household: normalizeEmail(row["Household"]), Opened: strings.TrimSpace(row["Opened"]),
 		}
 		b.model.Invites[id] = append(b.model.Invites[id], inv)
 		if inv.Token != "" {
@@ -420,6 +425,8 @@ type GuestRow struct {
 	AnsweredAt string `json:"answeredAt,omitempty"`
 	// AnsweredVia is how: page, or calendar for a calendar app's reply.
 	AnsweredVia string `json:"answeredVia,omitempty"`
+	// Opened is when they first opened the invitation, for a host.
+	Opened string `json:"opened,omitempty"`
 	// Ticket is a party's word on them: ticket (bought), free (the hosts'
 	// gift), waitlist, or nothing.
 	Ticket string `json:"ticket,omitempty"`
@@ -627,7 +634,7 @@ func (a app) rows(viewer string, admin bool, e *Event) []GuestRow {
 	host := a.isHost(viewer, admin, e)
 	for _, inv := range model.Invites[e.ID] {
 		g := row(inv.Email, inv.Name, true)
-		g.GuestOf, g.Via, g.Sent = inv.GuestOf, inv.Via, inv.Sent
+		g.GuestOf, g.Via, g.Sent, g.Opened = inv.GuestOf, inv.Via, inv.Sent, inv.Opened
 		if host && inv.Token != "" {
 			g.Link = extPath(inv.Token)
 		}
@@ -665,6 +672,8 @@ func (a app) invitesView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	host := a.isHost(viewer, admin, e)
+	// Someone invited opening the page has opened the invitation.
+	a.noteOpened(r.Context(), e, viewer)
 	// A host opening the list brings its auto groups up to date first.
 	if host {
 		a.sweepEvent(r.Context(), e)
@@ -733,7 +742,7 @@ func (a app) invitesView(w http.ResponseWriter, r *http.Request) {
 					// side: not the tickets, the sending, an address's
 					// trouble, nor who gave an answer for whom.
 					g.Ticket, g.Sent, g.Via, g.Warning, g.WarningWords = "", "", "", "", ""
-					g.AnsweredBy, g.AnsweredAt, g.AnsweredVia, g.Link = "", "", "", ""
+					g.AnsweredBy, g.AnsweredAt, g.AnsweredVia, g.Link, g.Opened = "", "", "", "", ""
 				}
 				view.Coming = append(view.Coming, g)
 			}
@@ -1142,15 +1151,32 @@ func (a app) removeInvite(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "only a host can take someone off the list", http.StatusForbidden)
 		return
 	}
-	if !a.commit(r.Context(), w, a.cache.Tables().WithoutInvite(e.ID, email), func() error {
+	// Someone a group put on is remembered on the group as removed, so
+	// the sweep that keeps the group up to date does not put them back.
+	tables := a.cache.Tables().WithoutInvite(e.ID, email)
+	var group *InviteGroup
+	removed := ""
+	if gid, ok := strings.CutPrefix(inv.Via, ViaGroup); ok {
+		if group = a.cache.Model().GroupOf(e.ID, gid); group != nil {
+			removed = strings.Join(append(append([]string{}, group.Removed...), email), ", ")
+			tables = tables.WithGroupCells(e.ID, gid, map[string]string{"Removed": removed})
+		}
+	}
+	if !a.commit(r.Context(), w, tables, func() error {
 		if err := a.writer.Delete(appName, InvitesTab, map[string]string{"Event ID": e.ID, "Email": email}); err != nil {
 			return err
 		}
-		return a.writer.Delete(appName, RSVPsTab, map[string]string{"Event ID": e.ID, "Email": email})
+		if err := a.writer.Delete(appName, RSVPsTab, map[string]string{"Event ID": e.ID, "Email": email}); err != nil {
+			return err
+		}
+		if group != nil {
+			return a.writer.Set(appName, InviteGroupsTab, map[string]string{"Event ID": e.ID, "Group ID": group.ID}, map[string]string{"Removed": removed})
+		}
+		return nil
 	}) {
 		return
 	}
-	slog.InfoContext(r.Context(), "calendar: guest removed", "actor", actor, "event", e.ID, "email", email)
+	slog.InfoContext(r.Context(), "calendar: guest removed", "actor", actor, "event", e.ID, "email", email, "from group", group != nil)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -1418,6 +1444,30 @@ func (a app) markSent(ctx context.Context, e *Event, emails []string) {
 			if err := a.writer.Set(appName, InviteGroupsTab, map[string]string{"Event ID": e.ID, "Group ID": gid}, map[string]string{"Sent": stamp}); err != nil {
 				slog.ErrorContext(ctx, "calendar write", "error", err)
 			}
+		}
+	})
+}
+
+// noteOpened marks, once, that someone on the list has opened the
+// invitation - the event's page, or their page from outside - the moment
+// kept on their row for the hosts.
+func (a app) noteOpened(ctx context.Context, e *Event, email string) {
+	model := a.cache.Model()
+	inv := model.InviteOf(e.ID, email)
+	if inv == nil || inv.Opened != "" || inv.Sent == "" {
+		return
+	}
+	stamp := now().Format(DateTimeFormat)
+	tables := a.cache.Tables().WithInviteCells(e.ID, []string{email}, map[string]string{"Opened": stamp})
+	built, err := BuildModel(tables, a.cache.roster())
+	if err != nil {
+		slog.ErrorContext(ctx, "calendar: note opened", "error", err)
+		return
+	}
+	a.cache.set(tables, built)
+	a.queue.Add(func() {
+		if err := a.writer.Set(appName, InvitesTab, map[string]string{"Event ID": e.ID, "Email": email}, map[string]string{"Opened": stamp}); err != nil {
+			slog.ErrorContext(ctx, "calendar write", "error", err)
 		}
 	})
 }

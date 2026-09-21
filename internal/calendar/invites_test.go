@@ -1122,9 +1122,29 @@ func TestOutsideFamily(t *testing.T) {
 	if len(mailTo(kept, "pat@example.org")) != 1 || invites != 2 {
 		t.Errorf("the family's invites: %d", invites)
 	}
-	// Pat's page shows the rest of the family, and answers for Kit.
+	// Pat's page shows the rest of the family, and answers for Kit -
+	// and opening it is opening the invitation, noted once for the host.
 	token := m.InviteOf("meetup", "pat@example.org").Token
 	rec = call(t, mux, "GET", "/open/ext/"+token, "")
+	if opened := cache.Model().InviteOf("meetup", "pat@example.org").Opened; opened == "" {
+		t.Errorf("pat's page opened, not noted")
+	}
+	if r := rowOf(inviteView(t, jordan, "meetup"), "pat@example.org"); r == nil || r.Opened == "" {
+		t.Errorf("the host does not see pat opened: %+v", r)
+	}
+	if r := rowOf(inviteView(t, jordan, "meetup"), coach); r == nil || r.Opened != "" {
+		t.Errorf("the coach, who has not opened: %+v", r)
+	}
+	// Someone from the directory opens theirs on the event's page here; a
+	// guest reads nobody's opening.
+	call(t, jordan, "POST", "/api/calendar/invites/people", `{"id":"meetup","people":[{"email":"`+robin+`"}]}`)
+	call(t, jordan, "POST", "/api/calendar/invites/send", `{"id":"meetup"}`)
+	if v := inviteView(t, as(robin, mux), "meetup"); slices.ContainsFunc(v.Coming, func(g GuestRow) bool { return g.Opened != "" }) {
+		t.Errorf("a guest reads who opened")
+	}
+	if r := rowOf(inviteView(t, jordan, "meetup"), robin); r == nil || r.Opened == "" {
+		t.Errorf("robin opened the page, not noted: %+v", r)
+	}
 	var ext ExtView
 	json.Unmarshal(rec.Body.Bytes(), &ext)
 	if len(ext.Family) != 2 || ext.Family[0].Key != coach || ext.Family[1].Key != kit {
@@ -1138,5 +1158,50 @@ func TestOutsideFamily(t *testing.T) {
 	}
 	if cache.Model().AnswerOf(kit, "meetup") != AnswerYes {
 		t.Errorf("kit's answer = %q", cache.Model().AnswerOf(kit, "meetup"))
+	}
+}
+
+// Someone a group put on and the host took off stays off: the sweep that
+// keeps the group up to date, on opening the list and on its own, does
+// not put them back, however well they still match - until the host adds
+// them by hand, when they are on the list again as anyone is.
+func TestRemovedStayRemoved(t *testing.T) {
+	mux, cache, _, _, _ := invitesAppWith(t)
+	jordan := as(host, mux)
+	call(t, jordan, "POST", "/api/calendar/events", `{"title":"Moms","start":"2026-10-10 15:00","tags":[],"inviteOnly":true,"id":"moms"}`)
+	rec := call(t, jordan, "POST", "/api/calendar/invites/group", `{"id":"moms","rule":{"tags":["Carpool"]},"auto":false}`)
+	var made struct {
+		Group string
+		Added int
+	}
+	json.Unmarshal(rec.Body.Bytes(), &made)
+	if rec.Code != 200 || made.Added != 2 {
+		t.Fatalf("group: %d %s", rec.Code, rec.Body)
+	}
+	dropped := "daniel.park@heliosschool.org"
+	if rec := call(t, jordan, "DELETE", "/api/calendar/invites/people", `{"id":"moms","email":"`+dropped+`"}`); rec.Code != 204 {
+		t.Fatalf("remove: %d %s", rec.Code, rec.Body)
+	}
+	if g := cache.Model().GroupOf("moms", made.Group); !slices.Contains(g.Removed, dropped) {
+		t.Errorf("the group does not remember the removal: %+v", g)
+	}
+	// The list opened again, and the sweep well past the grace: still off.
+	start := now()
+	now = func() time.Time { return start.Add(2*grace + time.Minute) }
+	inviteView(t, jordan, "moms")
+	inviteView(t, jordan, "moms")
+	now = func() time.Time { return time.Now().In(Location) }
+	if cache.Model().InviteOf("moms", dropped) != nil {
+		t.Errorf("the group put %s back", dropped)
+	}
+	// Auto-invite on takes everyone matching at once - except them.
+	call(t, jordan, "PUT", "/api/calendar/invites/group", `{"id":"moms","group":"`+made.Group+`","auto":true}`)
+	if cache.Model().InviteOf("moms", dropped) != nil {
+		t.Errorf("auto-invite put %s back", dropped)
+	}
+	// Added by hand, they are on again.
+	call(t, jordan, "POST", "/api/calendar/invites/people", `{"id":"moms","people":[{"email":"`+dropped+`"}]}`)
+	if cache.Model().InviteOf("moms", dropped) == nil {
+		t.Errorf("adding %s by hand did not take", dropped)
 	}
 }

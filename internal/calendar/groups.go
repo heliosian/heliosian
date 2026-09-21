@@ -91,6 +91,10 @@ type InviteGroup struct {
 	// until then a newcomer lands pending whatever Auto says, so a host
 	// sends each group its invites by hand the first time.
 	Sent string `json:"sent"`
+	// Removed is whoever a host took off the list after the group put
+	// them on: the group does not put them back, however well they still
+	// match, until the host adds them again by hand.
+	Removed []string `json:"removed,omitempty"`
 	// Count is how many people on the list the group put there, for the
 	// view.
 	Count int `json:"count"`
@@ -109,8 +113,20 @@ func (b *builder) groups(rows []map[string]string) {
 		b.model.Groups[id] = append(b.model.Groups[id], InviteGroup{
 			ID: gid, Rule: rule, Auto: !strings.EqualFold(strings.TrimSpace(row["Auto"]), "No"),
 			AddedBy: normalizeEmail(row["Added By"]), Added: strings.TrimSpace(row["Added"]), Sent: strings.TrimSpace(row["Sent"]),
+			Removed: splitEmails(row["Removed"]),
 		})
 	}
+}
+
+// splitEmails reads a cell of addresses, comma-separated.
+func splitEmails(cell string) []string {
+	out := []string{}
+	for _, part := range strings.Split(cell, ",") {
+		if email := normalizeEmail(part); email != "" && !slices.Contains(out, email) {
+			out = append(out, email)
+		}
+	}
+	return out
 }
 
 // GroupOf is one group on one event, or nil.
@@ -240,7 +256,7 @@ func (a app) addGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	g := InviteGroup{ID: strings.ToLower(newEventID()), Rule: rule, Auto: body.Auto == nil || *body.Auto, AddedBy: actor, Added: now().Format(DateTimeFormat)}
-	row := map[string]string{"Event ID": e.ID, "Group ID": g.ID, "Auto": yesNoWord(g.Auto), "Added By": actor, "Added": g.Added, "Sent": ""}
+	row := map[string]string{"Event ID": e.ID, "Group ID": g.ID, "Auto": yesNoWord(g.Auto), "Added By": actor, "Added": g.Added, "Sent": "", "Removed": ""}
 	for k, v := range filter.RuleCells(rule) {
 		row[k] = v
 	}
@@ -361,7 +377,7 @@ func (a app) fill(ctx context.Context, e *Event, g InviteGroup, wait bool) int {
 		a.clock.keep(e.ID, g.ID, matching)
 	}
 	for _, email := range matching {
-		if model.InviteOf(e.ID, email) != nil {
+		if model.InviteOf(e.ID, email) != nil || slices.Contains(g.Removed, email) {
 			continue
 		}
 		if wait && !a.clock.ripe(e.ID, g.ID, email, at) {
@@ -467,7 +483,7 @@ func (a app) startParty(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	g := InviteGroup{ID: strings.ToLower(newEventID()), Rule: filter.Rule{Kind: filter.KindInclude, Tags: []string{key}, Owner: actor}, Auto: true, AddedBy: actor, Added: now().Format(DateTimeFormat)}
-	row := map[string]string{"Event ID": e.ID, "Group ID": g.ID, "Auto": "Yes", "Added By": actor, "Added": g.Added, "Sent": ""}
+	row := map[string]string{"Event ID": e.ID, "Group ID": g.ID, "Auto": "Yes", "Added By": actor, "Added": g.Added, "Sent": "", "Removed": ""}
 	for k, v := range filter.RuleCells(g.Rule) {
 		row[k] = v
 	}
