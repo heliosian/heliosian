@@ -89,10 +89,19 @@ func testSources(t *testing.T) func() filter.Sources {
 type sampleSources struct {
 	tables *who.Tables
 	model  *who.Model
+	// extra is the other apps' lists as Magic Tags - a party's, say - by
+	// key, for every owner.
+	extra map[string][]string
 }
 
 func (s *sampleSources) sources() filter.Sources {
-	return filter.Sources{Directory: s.model, Tags: func(owner string) map[string][]string { return who.TagsOf(s.tables.Tags, s.model, owner) }}
+	return filter.Sources{Directory: s.model, Tags: func(owner string) map[string][]string {
+		tags := who.TagsOf(s.tables.Tags, s.model, owner)
+		for key, people := range s.extra {
+			tags[key] = people
+		}
+		return tags
+	}}
 }
 
 func newSampleSources(t *testing.T) *sampleSources {
@@ -880,6 +889,39 @@ func TestPartyStart(t *testing.T) {
 	}
 	if _, _, ok := cache.PartyRSVPs("nope"); ok {
 		t.Errorf("a party with no list has rsvps")
+	}
+}
+
+// A party's list on Who? carries whoever bought a ticket beside whoever
+// holds one; the guest list takes the holders and the hosts alone, so a
+// parent who bought their child's ticket hears with the child and answers
+// for them, without a place of their own.
+func TestPartyListIsTheHolders(t *testing.T) {
+	mux, cache, kept, _, sources := invitesAppWith(t)
+	sources.extra = map[string][]string{"party:p1": {mia, robin, sam, host}}
+	miaH := as(mia, mux)
+	rec := call(t, miaH, "POST", "/api/calendar/invites/start", `{"id":"`+partyA+`"}`)
+	var made struct{ Added int }
+	json.Unmarshal(rec.Body.Bytes(), &made)
+	if rec.Code != 200 || made.Added != 3 {
+		t.Fatalf("start: %d %s", rec.Code, rec.Body)
+	}
+	for _, email := range []string{mia, robin, sam} {
+		if cache.Model().InviteOf(partyA, email) == nil {
+			t.Errorf("%s is not on the list", email)
+		}
+	}
+	if cache.Model().InviteOf(partyA, host) != nil {
+		t.Errorf("the buyer of a ticket is on the list")
+	}
+	call(t, miaH, "POST", "/api/calendar/invites/send", `{"id":"`+partyA+`"}`)
+	to := []string{}
+	for _, m := range waitFor(kept, 3) {
+		to = append(to, m.To...)
+	}
+	slices.Sort(to)
+	if strings.Join(to, ",") != strings.Join([]string{mia, robin, sam}, ",") {
+		t.Errorf("sent to %v", to)
 	}
 }
 

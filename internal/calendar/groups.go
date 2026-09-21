@@ -180,6 +180,37 @@ func (a app) members(g InviteGroup) []string {
 			out = append(out, m)
 		}
 	}
+	return a.ticketHolders(g, out)
+}
+
+// ticketHolders trims a party's group to the party's own people. Who?'s
+// party list carries whoever bought a ticket beside whoever holds one, so
+// that a message about the party reaches the parents; the guest list is
+// the ticket holders' and the hosts' alone - a student's parents hear
+// with their child and answer for them, without a place of their own.
+func (a app) ticketHolders(g InviteGroup, members []string) []string {
+	if a.parties == nil || len(g.Rule.Tags) != 1 || !strings.HasPrefix(g.Rule.Tags[0], "party:") {
+		return members
+	}
+	p := a.parties(strings.TrimPrefix(g.Rule.Tags[0], "party:"))
+	if p == nil {
+		return members
+	}
+	keep := map[string]bool{}
+	for _, host := range p.Hosts {
+		keep[a.directory.Resolve(normalizeEmail(host))] = true
+	}
+	for _, t := range p.Attendees {
+		if t.Email != "" {
+			keep[a.directory.Resolve(normalizeEmail(t.Email))] = true
+		}
+	}
+	out := []string{}
+	for _, m := range members {
+		if keep[m] {
+			out = append(out, m)
+		}
+	}
 	return out
 }
 

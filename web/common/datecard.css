@@ -23,7 +23,9 @@
 
 .hero-sep { width: 1px; background: #d8e0e0; margin: 4px 0; }
 
-.hero-lines { display: flex; flex-direction: column; justify-content: center; gap: 7px; min-width: 0; padding: 2px 4px 2px 0; }
+/* The lines stop at a readable width, so a long address folds to a
+   second line instead of stretching the card across the banner. */
+.hero-lines { display: flex; flex-direction: column; justify-content: center; gap: 7px; min-width: 0; max-width: 420px; padding: 2px 4px 2px 0; }
 
 .hero-line { display: flex; align-items: center; gap: 9px; font-size: 13.5px; line-height: 1.3; color: #1f2f31; }
 

@@ -103,6 +103,18 @@ export function googleCalendarLink({title, start, end, allDay = false, location 
   return 'https://calendar.google.com/calendar/render?' + params.toString();
 }
 
+// placeLines is the place as the card's lines: a long place with a name
+// before its address - "Viet Steps Dance Studio, 2092 Concourse Drive,
+// ..." - breaks after the name, so the address reads whole on a line of
+// its own instead of folding wherever the width happens to fall.
+function placeLines(location) {
+  const comma = location.indexOf(',');
+  if (location.length <= 40 || comma < 1 || comma > 40) {
+    return [location];
+  }
+  return [location.slice(0, comma), location.slice(comma + 1).trim()];
+}
+
 // dateCard draws the card; add, when given, is the address behind Add at
 // the end of the hours line - a calendar with a plus, and the word - which
 // puts the event on the reader's Google Calendar.
@@ -160,7 +172,7 @@ export function dateCard(el, {start, end, allDay = false, location = '', add = '
     const hours = !timed ? 'All day' : to.hasTime && to.date > from.date ? timeRange(from.date, to.date) : clockFormat.format(from.date);
     lines.append(withAdd(line('clock', hours)));
     if (location) {
-      lines.append(line('pin', location));
+      lines.append(line('pin', ...placeLines(location)));
     }
   }
   card.append(el('span', 'hero-sep'), lines);
