@@ -22,13 +22,14 @@ import (
 	"heliosian/internal/auth"
 	"heliosian/internal/blob"
 	"heliosian/internal/data"
+	"heliosian/internal/filter"
 	"heliosian/internal/imagesearch"
 	"heliosian/internal/serve"
 )
 
 const shell = "web/calendar/index.html"
 
-var pages = []string{"/{$}", "/c/{token}", "/day/{date}", "/e/{id...}", "/events/{id...}", "/feeds", "/admin"}
+var pages = []string{"/{$}", "/c/{token}", "/day/{date}", "/e/{id...}", "/events/{id...}", "/feeds", "/mine", "/admin"}
 
 type app struct {
 	cache       *Cache
@@ -38,7 +39,16 @@ type app struct {
 	directory   Directory
 	superAdmins func() []string
 	linked      func(email string) []Linked
-	search      ImageSearch
+	// parties is a party on Helios Celebrate as its guest list needs it -
+	// its hosts and ticket holders - by id; nil when there is no such app.
+	parties func(id string) *PartyPeople
+	// sources is what an invite group's rule is read against - the
+	// directory, a person's tags and lists - as Loop's rules are; nil in
+	// a test without one, and groups are refused then.
+	sources func() filter.Sources
+	// clock is the grace's memory of who matched an auto group when.
+	clock  *matchClock
+	search ImageSearch
 	// mail sends the invites a yes brings and takes in the replies.
 	mail Mail
 }
@@ -53,11 +63,14 @@ const (
 	maxImageSize = 8 << 20
 )
 
-func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, directory Directory, superAdmins func() []string, linked func(email string) []Linked, search ImageSearch, mailbox Mail) Hooks {
+func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, directory Directory, superAdmins func() []string, linked func(email string) []Linked, parties func(id string) *PartyPeople, sources func() filter.Sources, search ImageSearch, mailbox Mail) Hooks {
 	if search.UserAgent == "" {
 		search.UserAgent = "Helios When image search (+https://when.heliosian.com)"
 	}
-	a := app{cache: cache, writer: writer, queue: queue, store: store, directory: directory, superAdmins: superAdmins, linked: linked, search: search, mail: mailbox}
+	a := app{cache: cache, writer: writer, queue: queue, store: store, directory: directory, superAdmins: superAdmins, linked: linked, parties: parties, sources: sources, clock: &matchClock{}, search: search, mail: mailbox}
+	if sources != nil {
+		go a.sweepLoop()
+	}
 	for _, page := range pages {
 		mux.HandleFunc("GET "+page, a.page)
 	}
@@ -68,6 +81,36 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	mux.HandleFunc("POST /api/calendar/default", a.setDefault)
 	mux.HandleFunc("DELETE /api/calendar/feeds", a.removeFeed)
 	mux.HandleFunc("POST /api/calendar/rsvp", a.rsvp)
+	// The guest lists (invites.go): read for anyone the event reaches,
+	// built and sent by its hosts, answered for a household by an adult
+	// in it.
+	mux.HandleFunc("GET /api/calendar/invites", a.invitesView)
+	mux.HandleFunc("GET /api/calendar/invites/people", a.invitePeople)
+	mux.HandleFunc("POST /api/calendar/invites/people", a.addInvites)
+	mux.HandleFunc("DELETE /api/calendar/invites/people", a.removeInvite)
+	mux.HandleFunc("PUT /api/calendar/invites/settings", a.inviteSettings)
+	mux.HandleFunc("POST /api/calendar/invites/guest", a.addGuest)
+	mux.HandleFunc("POST /api/calendar/invites/answer", a.answerFor)
+	mux.HandleFunc("POST /api/calendar/invites/send", a.sendInvites)
+	mux.HandleFunc("POST /api/calendar/invites/skip", a.skipInvites)
+	mux.HandleFunc("POST /api/calendar/invites/email", a.changeInviteEmail)
+	mux.HandleFunc("POST /api/calendar/invites/delete", a.deleteInvitation)
+	mux.HandleFunc("POST /api/calendar/events/cancel", a.cancelEvent)
+	mux.HandleFunc("POST /api/calendar/invites/message", a.messageInvites)
+	// The invite groups (groups.go): a rule whose matches go on the list.
+	mux.HandleFunc("GET /api/calendar/invites/options", a.groupOptions)
+	mux.HandleFunc("POST /api/calendar/invites/preview", a.groupPreview)
+	mux.HandleFunc("POST /api/calendar/invites/group", a.addGroup)
+	mux.HandleFunc("PUT /api/calendar/invites/group", a.setGroup)
+	mux.HandleFunc("DELETE /api/calendar/invites/group", a.removeGroup)
+	mux.HandleFunc("POST /api/calendar/invites/start", a.startParty)
+	// An outside person's own page and its routes, public by their token
+	// (ext.go).
+	mux.HandleFunc("GET /ext/{token}", a.extPage)
+	mux.HandleFunc("GET /open/ext/{token}", a.extView)
+	mux.HandleFunc("POST /open/ext/{token}", a.extAnswer)
+	mux.HandleFunc("POST /open/ext/{token}/guest", a.extGuest)
+	mux.HandleFunc("DELETE /open/ext/{token}/guest", a.extRemoveGuest)
 	mux.HandleFunc("POST /api/calendar/settings", a.saveSetting)
 	mux.HandleFunc("POST /api/calendar/keywords", a.admin(a.setKeywords))
 	mux.HandleFunc("POST /api/calendar/events", a.addEvents)
@@ -85,9 +128,13 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	// Public, past sign-in (auth.Public): the cards a chat app fetches.
 	mux.HandleFunc("GET /open/share/upcoming.png", a.shareUpcoming)
 	mux.HandleFunc("GET /open/share/{id...}", a.shareCard)
+	// An invitation's flyer, public, for the email and the outside page.
+	mux.HandleFunc("GET /open/flyer/{id...}", a.flyer)
 	// Public too, under /hooks/: the mail provider's call for each reply to
 	// an invite, signed with the webhook secret.
 	mux.HandleFunc("POST /hooks/replies", a.replies)
+	// And the provider's delivery events, for the bounces.
+	mux.HandleFunc("POST /hooks/events", a.deliveryEvents)
 	return Hooks{Answer: a.answer, MakeDefault: a.makeDefault}
 }
 
@@ -118,6 +165,15 @@ var now = func() time.Time {
 func (a app) model(w http.ResponseWriter, r *http.Request) {
 	email, admin := a.who(r)
 	view := Render(a.cache.Model(), a.directory, email, admin, now(), a.linked(email))
+	// The events the viewer runs wear a star: on a copy, as the view's
+	// events are the viewer's own already.
+	for i, e := range view.Events {
+		if (e.Source == SourceSheet || e.Source == SourceCelebrate) && a.isHost(email, false, e) {
+			c := *e
+			c.Hosted = true
+			view.Events[i] = &c
+		}
+	}
 	view.ImageSources = a.search.Sources()
 	view.User.IsSuperAdmin = a.cache.IsSuperAdmin(email)
 	w.Header().Set("Content-Type", "application/json")
@@ -598,7 +654,7 @@ func (a app) addEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	status := StatusPending
 	if body.InviteOnly {
-		status = StatusInviteOnly
+		status = StatusPrivate
 	}
 	pending := status == StatusPending
 	stamp := now().Format(DateFormat)
@@ -664,7 +720,7 @@ func (a app) oneEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(e)
+	json.NewEncoder(w).Encode(a.cache.Model().withInvitation(e))
 }
 
 // tellAdmins mails every calendar admin that someone shared an event: its
@@ -691,9 +747,9 @@ func (a app) tellAdmins(ctx context.Context, host, by string, e *Event) {
 	closing := "Approve and Decline are at the top of its page. Until then only the person who shared it and the admins see it."
 	subject := "Event to approve: "
 	if e.InviteOnly {
-		lead = who + " added a direct-link event on Helios When. It needs no approval: it is not on the calendar, only on the calendars of those they send the link to who answer it."
+		lead = who + " added a private event on Helios When. It needs no approval: it is not on the calendar, only on the calendars of the people they invite and of those they send the link to who answer it."
 		closing = "Nothing is needed from you; this is so the admins know what is being shared."
-		subject = "Direct-link event added: "
+		subject = "Private event added: "
 	}
 	var text strings.Builder
 	fmt.Fprintf(&text, "%s\n\n%s\n%s\n", lead, e.Title, when)
@@ -763,11 +819,11 @@ func (a app) editEvent(w http.ResponseWriter, r *http.Request) {
 		"Tags": JoinList(SplitList(JoinList(body.Tags))), "Keywords": JoinList(SplitList(JoinList(body.Keywords))),
 		"Source": strings.TrimSpace(body.Source), "Image": strings.Trim(strings.TrimSpace(body.Image), "/"),
 	}
-	// Direct link only switches on and off: off, the event waits for an
-	// admin's approval, an admin's own too - its link still working in
-	// the meantime.
+	// Private switches on and off: off, the event waits for an admin's
+	// approval, an admin's own too - its link still working in the
+	// meantime.
 	if body.InviteOnly != e.InviteOnly {
-		cells["Status"] = StatusInviteOnly
+		cells["Status"] = StatusPrivate
 		if !body.InviteOnly {
 			cells["Status"] = StatusPending
 		}

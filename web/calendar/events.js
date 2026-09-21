@@ -48,7 +48,15 @@ export function eventRow(e, opts = {}) {
   }
   row.append(el('span', 'event-time', opts.showDate ? whenLine(e) : timeColumn(e, opts.date)));
   const body = el('span', 'event-body');
-  body.append(el('span', 'event-title', e.title));
+  const title = el('span', 'event-title', e.title);
+  // A star on an event the viewer hosts.
+  if (e.hosted) {
+    const star = svg('star');
+    star.classList.add('host-star');
+    star.setAttribute('aria-label', 'You host this');
+    title.prepend(star);
+  }
+  body.append(title);
   if (e.location) {
     body.append(el('span', 'event-place', e.location));
   }

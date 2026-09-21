@@ -12,12 +12,13 @@ import (
 	"heliosian/internal/mail"
 )
 
-// An answer is a person's word on an event: yes, no, or hidden. Yes and no
-// are marks on the event wherever it is listed for them; hidden takes the
-// event out of their lists - Upcoming here and on Heliosian, their personal
-// feeds - while it stays on the month in gray and turns up in the search.
-// A yes also sends them a calendar invite, so the event lands on their own
-// calendar with one tap of Accept.
+// An answer is a person's word on an event: yes, no, maybe, or hidden. Yes,
+// no and maybe are marks on the event wherever it is listed for them;
+// hidden takes the event out of their lists - Upcoming here and on
+// Heliosian, their personal feeds - while it stays on the month in gray and
+// turns up in the search. A yes also sends them a calendar invite, so the
+// event lands on their own calendar with one tap of Accept - unless an
+// invitation already brought them one (invites.go).
 
 // Answerer records an answer for a person, for the calendar's own page and
 // for Heliosian's cards alike: Register hands one back.
@@ -28,20 +29,31 @@ func (a app) answer(ctx context.Context, email, id, answer string) error {
 	return a.record(ctx, email, id, answer, true)
 }
 
-// record keeps one answer, in the model at once and in the sheet behind
-// it, and sends the invite for a yes when asked - not for a yes that came
-// back as a reply to the invite itself.
+// record keeps one answer a person gives for themselves on a page.
 func (a app) record(ctx context.Context, email, id, answer string, invite bool) error {
+	return a.recordBy(ctx, email, email, id, answer, ViaPage, invite)
+}
+
+// recordBy keeps one answer, in the model at once and in the sheet behind
+// it, noting who gave it when it was not the person themselves - a parent
+// for a child, a host - and how, a page or a calendar app's reply, and
+// sends the invite for a yes when asked - not for a yes that came back
+// as a reply to the invite itself, nor to someone whose invitation
+// already carried one.
+func (a app) recordBy(ctx context.Context, actor, email, id, answer, via string, invite bool) error {
 	email = normalizeEmail(email)
 	answer = strings.ToLower(strings.TrimSpace(answer))
-	if answer != "" && answer != AnswerYes && answer != AnswerNo && answer != AnswerHidden {
-		return fmt.Errorf("an answer is yes, no, or hidden")
+	if answer != "" && !isAnswer(answer) {
+		return fmt.Errorf("an answer is yes, no, maybe, or hidden")
 	}
 	e := a.eventFor(email, id)
 	if e == nil {
 		return fmt.Errorf("that event is not on the calendar")
 	}
-	cells := map[string]string{"Email": email, "Event ID": e.ID, "Answer": answer, "Answered": now().Format(DateTimeFormat)}
+	cells := map[string]string{"Email": email, "Event ID": e.ID, "Answer": answer, "Answered": now().Format(DateTimeFormat), "Answered By": actor, "Via": via}
+	if inv := a.cache.Model().InviteOf(e.ID, email); inv != nil && inv.Sent != "" {
+		invite = false
+	}
 	tables := a.cache.Tables().WithAnswer(email, e.ID, answer, cells)
 	model, err := BuildModel(tables, a.cache.roster())
 	if err != nil {
@@ -59,7 +71,7 @@ func (a app) record(ctx context.Context, email, id, answer string, invite bool) 
 			slog.ErrorContext(ctx, "calendar write", "error", err)
 		}
 	})
-	if invite && answer == AnswerYes && a.mail.Sender != nil {
+	if invite && answer == AnswerYes && a.mail.Sender != nil && !isGuestKey(email) {
 		go a.sendInvite(context.WithoutCancel(ctx), email, e)
 	}
 	return nil
@@ -70,14 +82,14 @@ func (a app) eventFor(email, id string) *Event {
 	model := a.cache.Model()
 	for _, e := range withLinked(model.Events, a.linked(email)) {
 		if e.ID == id {
-			return e
+			return model.withInvitation(e)
 		}
 	}
 	// A direct-link event takes an answer from anyone with its link, and so
 	// does one waiting for approval - its link works in the meantime; a
 	// declined one, only from the person who shared it.
 	if e := model.Event(id); e != nil && (e.InviteOnly || e.Pending || normalizeEmail(e.AddedBy) == email) {
-		return e
+		return model.withInvitation(e)
 	}
 	return nil
 }
@@ -131,7 +143,7 @@ func (a app) sendInvite(ctx context.Context, email string, e *Event) {
 	htm.WriteString("<p style=\"font:13px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#647071\">The invite attached puts it on your calendar.</p>")
 	err := a.mail.Sender.Send(ctx, mail.Message{
 		To:      []string{email},
-		ReplyTo: []string{a.organizer()},
+		ReplyTo: a.replyTo(e),
 		Subject: "Invitation: " + e.Title + " · " + day,
 		Text:    text.String(),
 		HTML:    htm.String(),

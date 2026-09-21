@@ -127,12 +127,17 @@ export function dayColumn(date, paging) {
   card.append(head, plan, events);
   // Under the day: anyone can share an event with the community - it
   // waits for an admin's approval before the calendar carries it.
+  // Added, the event's own page opens - where its link, and its guest
+  // list, are.
   const share = button('Share Event', 'plus', 'button share-event', () => {
     let shut = null;
-    const form = eventForm({onDone: async () => {
+    const form = eventForm({onDone: async ids => {
       shut();
-      const {load} = await import('./app.js');
+      const {load, navigate} = await import('./app.js');
       await load();
+      if (ids && ids.length) {
+        navigate('/e/' + ids[0]);
+      }
     }});
     shut = popup('Share an event', form, {wide: true}).shut;
   });

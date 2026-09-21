@@ -1,10 +1,11 @@
-import {state, me, today, bands, tagGroups, defaultTags, savedView, searchResults, eventPath, dayLabel, eventTint, timeLine, weekdayShort, parseDate, selectedClassrooms, toggleClassroom, setClassrooms, classroomNames, myClassrooms, tagNames, selectedTags, toggleTag, setTags, resetFilters, filtersAreDefault, colorOf, hiddenMatches, hiddenClassroomMatches, feedClassrooms, feedTags, showsFeed, setActiveFeed, activeFeed, allCalendars, defaultFeed} from './state.js';
+import {state, me, today, bands, tagGroups, defaultTags, savedView, searchResults, eventPath, dayLabel, eventTint, timeLine, weekdayShort, parseDate, selectedClassrooms, toggleClassroom, setClassrooms, classroomNames, myClassrooms, tagNames, selectedTags, toggleTag, setTags, resetFilters, filtersAreDefault, colorOf, hiddenMatches, hiddenClassroomMatches, feedClassrooms, feedTags, showsFeed, setActiveFeed, activeFeed, allCalendars, defaultFeed, myEvents, eventDates} from './state.js';
 import {el, svg, link, button, toast, feedMark, popup, emojiPicker} from './dom.js';
 import {dayColumn} from './day.js';
 import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, initSpoof, alertMenu, alertCard} from '/toolbar.js';
 
 const primary = [
   {href: '/', icon: 'app', label: 'Calendar'},
+  {href: '/mine', icon: 'calcheck', label: 'My Events'},
   {href: '/feeds', icon: 'feed', label: 'Feeds'},
 ];
 
@@ -14,6 +15,32 @@ function active(href) {
     return path === '/' || path.startsWith('/c/') || path.startsWith('/day/') || path.startsWith('/e/') || path.startsWith('/events/');
   }
   return path === href || path.startsWith(href + '/');
+}
+
+// myEventRows lists the viewer's own events under My Events: the
+// invitations waiting for their reply first, then what they host, then
+// what they are going to, a few of each in date order, each to its page
+// with a mark at its end - a clock for a reply owed, a star for one they
+// host - and the count of what is left as a last row.
+function myEventRows(nav) {
+  const mine = myEvents();
+  const rows = [...mine.waiting.map(e => ({e, mark: 'clock', title: 'Waiting for your reply'})), ...mine.hosted.map(e => ({e, mark: 'star', title: 'You host this'})), ...mine.going.map(e => ({e, mark: 'check', title: 'You said yes'}))];
+  const shown = rows.slice(0, 6);
+  for (const {e, mark, title} of shown) {
+    const a = link(eventPath(e), 'nav-sub nav-sub-event' + (location.pathname === eventPath(e) ? ' is-active' : ''));
+    const first = eventDates(e)[0];
+    a.append(el('span', 'nav-sub-date', parseDate(first).toLocaleDateString('en-US', {month: 'short', day: 'numeric'})), el('span', '', e.title));
+    const marks = el('span', 'nav-sub-marks');
+    const m = el('span', 'nav-sub-' + (mark === 'star' ? 'star' : 'mark') + ' is-' + mark);
+    m.title = title;
+    m.append(svg(mark));
+    marks.append(m);
+    a.append(marks);
+    nav.append(a);
+  }
+  if (rows.length > shown.length) {
+    nav.append(link('/mine', 'nav-sub nav-sub-more', `and ${rows.length - shown.length} more`));
+  }
 }
 
 // appSymbol is the app's own mark, worn by the rail's first item (toolbar.css).
@@ -72,7 +99,7 @@ export function editFeedPopup(f) {
   // Make default moves it to the head of the rail: the calendar the page
   // opens to, and Heliosian reads.
   if (defaultFeed().token !== f.token) {
-    const first = button('Make default', 'star', 'button button-secondary modal-default', async () => {
+    const first = button('Make default', 'pushpin', 'button button-secondary modal-default', async () => {
       shut();
       await makeDefaultFeed(f);
     });
@@ -134,7 +161,7 @@ async function orderFeeds(tokens) {
 }
 
 // calendarMenu is a dropdown of the viewer's calendars - My Heliosian and
-// the saved ones, the default starred - each opening the calendar as it
+// the saved ones, the default pinned - each opening the calendar as it
 // sees it; the headline drops it, so a phone without the rail can switch.
 export function calendarMenu(onPick) {
   const menu = el('div', 'calendar-menu');
@@ -147,7 +174,7 @@ export function calendarMenu(onPick) {
     const tail = el('span', 'calendar-menu-tail');
     if (f.token === chosen.token) {
       const star = el('span', 'nav-sub-star');
-      star.append(svg('star'));
+      star.append(svg('pushpin'));
       tail.append(star);
     }
     if (f.locked) {
@@ -183,6 +210,9 @@ function fillNav(nav) {
   for (const item of primary) {
     const top = navLink(item);
     nav.append(top);
+    if (item.href === '/mine') {
+      myEventRows(nav);
+    }
     if (item.href !== '/') {
       continue;
     }
@@ -263,14 +293,14 @@ function fillNav(nav) {
       a.href = '/c/' + f.token;
       a.append(feedMark(f), el('span', '', f.name));
       a.title = f.locked ? 'The calendar\u2019s own view, for everyone' : 'Show the calendar as ' + f.name + ' sees it';
-      // The default calendar wears a star at its end, My Heliosian a
+      // The default calendar wears a pushpin at its end, My Heliosian a
       // lock - always, so its standing shows wherever it sits; while the
       // rail is being edited the lock is the tool where its cross would be.
       const marks = el('span', 'nav-sub-marks');
       if (f.token === chosen.token) {
         const star = el('span', 'nav-sub-star');
         star.title = 'Your default calendar';
-        star.append(svg('star'));
+        star.append(svg('pushpin'));
         marks.append(star);
       }
       if (f.locked && !editingNav) {

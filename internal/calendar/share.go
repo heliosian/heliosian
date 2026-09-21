@@ -230,7 +230,15 @@ func (a app) shareCard(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	// A party's card says what its invitation says, where that differs.
+	e = a.cache.Model().invitedEvent(e)
 	picture := a.cache.Model().pictureOf(e)
+	// An invitation's flyer is the card's picture, shown whole, when the
+	// event has one.
+	whole := false
+	if inv := a.cache.Model().Invitations[e.ID]; inv != nil && inv.Flyer != "" {
+		picture, whole = inv.Flyer, true
+	}
 	day, hours := whenLines(e)
 	kicker := a.cache.Model().category(e)
 	button := shareButton(e)
@@ -241,7 +249,7 @@ func (a app) shareCard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	card, err := cardStyle.Draw(sharecard.Card{
-		Kicker: kicker, Title: e.Title, Picture: a.readImage(picture),
+		Kicker: kicker, Title: e.Title, Picture: a.readImage(picture), Whole: whole,
 		Lines:  []sharecard.Line{{Icon: "calendar", Text: day}, {Icon: "clock", Text: hours}, {Icon: "pin", Text: e.Location}},
 		Button: button,
 	})

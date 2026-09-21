@@ -86,7 +86,8 @@ func (m *Model) MonthUnder(directory Directory, email string, linked []Linked, n
 	}
 	for _, e := range m.eventsFor(email, linked) {
 		answer := m.AnswerOf(email, e.ID)
-		if e.start.Format(DateFormat) > to || e.end.Format(DateFormat) < from || answer == AnswerHidden || !admits(m, e, classrooms, tags) {
+		// An invitation reaches across classrooms, as a yes does.
+		if e.start.Format(DateFormat) > to || e.end.Format(DateFormat) < from || answer == AnswerHidden || !(e.Invited || admits(m, e, classrooms, tags)) {
 			continue
 		}
 		u := m.card(e)

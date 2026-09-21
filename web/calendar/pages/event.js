@@ -1,10 +1,12 @@
-import {state, daysLine, timeLine, calendarLink, sourceWords, dayType, eventDates, dayTypeClass, linkURL, call, isParty, mineWords, eventImage, weekdayShort, parseDate, spansDays, monthLabel, monthOf, answerOf, answer, eventPath} from '../state.js';
-import {el, link, svg, paragraphs, button, toast, avatar, peopleList, popup, copyText} from '../dom.js';
+import {state, calendarLink, sourceWords, dayType, eventDates, dayTypeClass, linkURL, call, isParty, mineWords, eventImage, parseDate, monthLabel, monthOf, answerOf, answer, eventPath} from '../state.js';
+import {el, link, svg, paragraphs, button, toast, avatar, popup, copyText} from '../dom.js';
+import {dateCard} from '/datecard.js';
 import {eventForm} from '../eventform.js';
 import {uploadImage, openImageSearch, imageSources} from '../images.js';
 import {appOrigin} from '/toolbar.js';
 import {setTitle} from '../chrome.js';
 import {audienceChips, blocks} from '../events.js';
+import {fetchInvites, familyBand, familyAnswered, comingCard, guestListSection, inviteHostCall, startParty, flyerCard, openSettings, hostsRow, rsvpRow} from '../invites.js';
 
 // hero is the picture across the top of the page - the event's own, its
 // first tag's, or the calendar's - with the date on a card at its corner:
@@ -15,12 +17,12 @@ function hero(e) {
   img.src = eventImage(e);
   img.alt = '';
   wrap.append(img);
-  const first = eventDates(e)[0];
-  const date = el('div', 'hero-date');
-  date.append(el('span', 'hero-dow', weekdayShort(first)));
-  date.append(el('span', 'hero-day', parseDate(first).toLocaleDateString('en-US', {month: 'short', day: 'numeric'})));
-  date.append(el('span', 'hero-time', spansDays(e) ? daysLine(e) : timeLine(e)));
-  wrap.append(date);
+  wrap.append(dateCard(el, {start: e.start, end: e.end, allDay: e.allDay, location: e.location, add: calendarLink(e)}));
+  // A linked event says which app runs it on a card at the banner's foot,
+  // the way to its page there.
+  if (e.link) {
+    wrap.append(linkedBadge(e));
+  }
   // The poster's or an admin's hand-added event takes a picture from the
   // strip across the banner's foot, the way the other apps' pages do.
   if (e.source === 'sheet' && (state.model.user.isAdmin || e.addedBy === state.model.user.email)) {
@@ -118,6 +120,7 @@ export function eventPage(e) {
   setTitle(e.title);
   const page = el('div', 'event-page');
   const top = el('div', 'detail-top');
+  const tools = el('div', 'detail-tools');
   const back = el('a', 'detail-back');
   back.href = '/day/' + eventDates(e)[0];
   back.setAttribute('data-link', '');
@@ -135,10 +138,17 @@ export function eventPage(e) {
       }});
       shut = popup('Edit ' + e.title, form, {wide: true}).shut;
     });
-    top.append(edit);
+    tools.append(edit);
   }
+  top.append(tools);
   page.append(top, hero(e));
-  if (e.pending || e.declined) {
+  if (e.cancelled) {
+    const band = el('div', 'pending-band is-declined');
+    const words = el('div', 'pending-words');
+    words.append(el('div', 'pending-title', 'Cancelled'), el('div', 'pending-lead', 'The hosts called this event off. It is no longer on anyone\u2019s calendar.'));
+    band.append(svg('close'), words);
+    page.append(band);
+  } else if (e.pending || e.declined) {
     page.append(pendingBand(e));
   } else if (e.inviteOnly) {
     page.append(inviteBand(e));
@@ -150,11 +160,15 @@ export function eventPage(e) {
   if (e.dayType) {
     marks.append(el('span', 'chip chip-day ' + dayTypeClass(e.dayType), e.dayType));
   }
-  marks.append(audienceChips(e));
-  // A hand-added event says how it is shared: public, direct link only,
-  // waiting for approval, or declined.
+  // An event by invitation or link with no classrooms is for whoever is
+  // sent it, not Everyone.
+  if (!((e.inviteOnly || e.cancelled) && !e.classrooms.length)) {
+    marks.append(audienceChips(e));
+  }
+  // A hand-added event says how it is shared: public, private, waiting
+  // for approval, or declined.
   if (e.source === 'sheet') {
-    const status = e.declined ? ['Declined', 'chip-status-declined'] : e.pending ? ['Pending approval', 'chip-status-pending'] : e.inviteOnly ? ['Direct link only', 'chip-status-link'] : ['Public', 'chip-status-public'];
+    const status = e.cancelled ? ['Cancelled', 'chip-status-declined'] : e.declined ? ['Declined', 'chip-status-declined'] : e.pending ? ['Pending approval', 'chip-status-pending'] : e.inviteOnly ? ['Private', 'chip-status-link'] : ['Public', 'chip-status-public'];
     marks.append(el('span', 'chip chip-status ' + status[1], status[0]));
   }
   main.append(marks);
@@ -176,51 +190,126 @@ export function eventPage(e) {
     main.append(el('h2', 'section-title', 'The day for ' + (e.classrooms.length ? e.classrooms.join(', ') : 'everyone')));
     main.append(card);
   }
-  // The ask, under the event itself: are you going?
-  main.append(rsvpCard(e));
+  // The ask, under the event itself: are you going? - or, for someone
+  // invited, who in the household is - and, for a host, the guest list.
+  const ask = el('div', 'detail-ask');
+  if (!e.cancelled) {
+    ask.append(rsvpCard(e));
+  }
+  main.append(ask);
   cols.append(main);
 
   const side = el('div', 'detail-side');
-  const when = el('div', 'side-card');
-  const whenRow = el('div', 'side-row');
-  const whenIcon = el('div', 'side-icon');
-  whenIcon.append(svg('clock'));
-  const whenBody = el('div', 'side-row-body');
-  whenBody.append(el('div', 'side-title', daysLine(e)));
-  if (!e.allDay) {
-    whenBody.append(el('div', 'side-line', timeLine(e)));
-  }
-  const add = el('a', 'button button-secondary button-small side-button');
-  add.href = calendarLink(e);
-  add.target = '_blank';
-  add.rel = 'noopener';
-  add.append(svg('calendar'), el('span', '', 'Add to Google Calendar'));
-  whenBody.append(add);
-  whenRow.append(whenIcon, whenBody);
-  when.append(whenRow);
-  if (e.location) {
-    const whereRow = el('div', 'side-row');
-    const whereIcon = el('div', 'side-icon');
-    whereIcon.append(svg('pin'));
-    const whereBody = el('div', 'side-row-body');
-    whereBody.append(el('div', 'side-title', 'Where'), el('div', 'side-line', e.location));
-    whereRow.append(whereIcon, whereBody);
-    when.append(whereRow);
-  }
+  // The date, the hours and the place are on the banner's card; the
+  // rail's card holds the hosts and My RSVP, once a guest list gives it
+  // them (fillInvites), and hides while empty.
+  const when = el('div', 'side-card side-card-facts');
   side.append(when);
-  // The way into the app that runs a linked event, under when and where.
-  if (e.link) {
-    side.append(linkedCard(e));
+  // Who answered: for an admin, and for whoever shared the event - until
+  // a guest list takes its place.
+  const answered = el('div', 'detail-answered');
+  if (!e.cancelled && (state.model.user.isAdmin || (state.model.responses || {})[e.id] || e.addedBy === state.model.user.email)) {
+    answered.append(rsvpsCard(e));
   }
-
-  side.append(sourceCard(e));
-  // Who answered: for an admin, and for whoever shared the event.
-  if (state.model.user.isAdmin || (state.model.responses || {})[e.id] || e.addedBy === state.model.user.email) {
-    side.append(rsvpsCard(e));
+  side.append(answered);
+  // Where the event came from, last.
+  // Where the event came from - not for an event another app runs, whose
+  // badge on the banner says it, unless an admin's own lines are due.
+  const linked = e.source === 'celebrate' || e.source === 'team';
+  const source = !linked || state.model.user.isAdmin ? sourceCard(e, linked) : null;
+  if (source) {
+    side.append(source);
   }
   cols.append(side);
   page.append(cols);
+  fillInvites(e, ask, answered, {info: when, linkedLine: page.querySelector('.hero-linked-line span')});
   return page;
+}
+
+// mayHost says the viewer may start a guest list on an event that has
+// none: the poster of a hand-added event, an admin, or - the server
+// says which - a party's host.
+function mayHost(e) {
+  return (e.source === 'sheet' && (state.model.user.isAdmin || e.addedBy === state.model.user.email)) || isParty(e);
+}
+
+// fillInvites fetches the event's guest list and draws what the viewer
+// may see of it: the family band in place of the plain ask for someone
+// invited, the guest list section for a host, and who is coming in the
+// rail - or, for a host with no list yet, the way to start one.
+async function fillInvites(e, ask, answered, {info, linkedLine}) {
+  if (e.cancelled || (!e.invitation && !mayHost(e))) {
+    return;
+  }
+  let view = await fetchInvites(e);
+  if (!view || !ask.isConnected) {
+    return;
+  }
+  const refresh = async () => {
+    const {load} = await import('../app.js');
+    await load();
+  };
+  // Create Invite on Helios Celebrate sends a party's host here with
+  // ?invite=1: the list is started - the invitation, and a group for the
+  // ticket holders that follows the tickets - and the address tidied.
+  if (view.host && isParty(e) && new URLSearchParams(location.search).get('invite') && !view.settings) {
+    try {
+      const made = await startParty(e);
+      toast(made.added ? `Guest list started with ${made.added} ticket holders - it follows the tickets from here. Send the invites when it is ready.` : 'Guest list started - it follows the tickets from here.', 6000);
+    } catch (err) {
+      toast(err.message);
+    }
+    history.replaceState(null, '', location.pathname);
+    view = await fetchInvites(e);
+    if (!view || !ask.isConnected) {
+      return;
+    }
+  }
+  // The ask heads the page until the family has answered in full; My
+  // RSVP in the rail's card carries the answers throughout.
+  if (view.mine.length) {
+    ask.replaceChildren(familyAnswered(view) ? '' : familyBand(e, view, refresh));
+  }
+  // Edit invite joins the tools at the page's top for a host.
+  if (view.host && view.settings) {
+    const tools = ask.closest('.event-page')?.querySelector('.detail-tools');
+    if (tools) {
+      tools.append(button('Edit invite', 'calcheck', 'button button-secondary button-small detail-edit', () => openSettings(e, view, refresh)));
+    }
+  }
+  // Who's coming takes the page's width under the ask, as Celebrate lays
+  // out its party; a host's Guest list - the tools and every row - is
+  // the rail's, where who answered used to be.
+  if (view.coming) {
+    ask.append(comingCard(e, view, refresh));
+  }
+  if (view.host) {
+    if (view.settings || view.list.some(r => r.invited)) {
+      answered.replaceChildren(guestListSection(e, view, refresh));
+    } else {
+      ask.append(inviteHostCall(e, view, refresh));
+      answered.replaceChildren();
+    }
+  } else {
+    answered.replaceChildren();
+  }
+  // The rail's card gains Hosts, once a list exists, and My RSVP for
+  // anyone on the list; the flyer sits right under the linked app's card.
+  if (view.settings || view.hosts.length > 1) {
+    info.append(hostsRow(e, view, refresh));
+  }
+  if (view.mine.length) {
+    info.append(rsvpRow(e, view, refresh));
+  }
+  // The flyer follows the rail's card; the banner's badge names the hosts.
+  const flyer = flyerCard(e, view, refresh);
+  if (flyer) {
+    info.after(flyer);
+  }
+  const hosts = view.hosts.map(h => h.name).filter(Boolean);
+  if (linkedLine && hosts.length) {
+    linkedLine.textContent = 'Hosted by ' + (hosts.length > 1 ? hosts.slice(0, -1).join(', ') + ' and ' + hosts[hosts.length - 1] : hosts[0]);
+  }
 }
 
 const aboutWords = {
@@ -245,9 +334,10 @@ function outLink(href, words) {
 }
 
 // rsvpCard is the ask under the event, behind a ticked calendar: are you
-// going? Yes and No, the one given filled, and under them small links:
-// Clear my RSVP once one is given, and Hide event (Show event once hidden) - a yes brings a calendar invite by email. A party has
-// no yes or no: Send Invite with a ticket in the household, Add Ticket
+// going? Yes, Maybe and No, the one given filled, and under them small
+// links: Clear my RSVP once one is given, and Hide event (Show event once
+// hidden) - a yes brings a calendar invite by email. A party has no yes
+// or no: Add to my calendar with a ticket in the household, Add Ticket
 // without one. Hiding is the cross on Heliosian's cards.
 function rsvpCard(e) {
   const band = el('div', 'rsvp-band');
@@ -257,7 +347,7 @@ function rsvpCard(e) {
     const say = async next => {
       try {
         await answer(e, next);
-        toast(next === 'yes' ? 'A calendar invite is on its way to your email' : next === 'no' ? 'Marked as not going' : next === 'hidden' ? 'Hidden - it shows on the month in gray' : word === 'hidden' ? 'Shown again' : 'Answer cleared');
+        toast(next === 'yes' ? 'A calendar invite is on its way to your email' : next === 'no' ? 'Marked as not going' : next === 'maybe' ? 'Marked as maybe' : next === 'hidden' ? 'Hidden - it shows on the month in gray' : word === 'hidden' ? 'Shown again' : 'Answer cleared');
         paint();
       } catch (err) {
         toast(err.message);
@@ -272,8 +362,8 @@ function rsvpCard(e) {
       const held = (e.minePeople || []).some(p => p.note !== 'waitlisted');
       if (held) {
         words.append(el('div', 'rsvp-title', word === 'yes' ? 'On your calendar' : 'Your household has tickets'), el('div', 'rsvp-lead', word === 'yes' ? 'The invite is in your email.' : 'Want it on your own calendar?'));
-        buttons.append(button(word === 'yes' ? 'Invite sent' : 'Send Invite', word === 'yes' ? 'check' : 'calendar', 'button rsvp-yes' + (word === 'yes' ? ' is-on' : ''), () => say('yes')));
-        note = word === 'yes' ? 'Click again to send it once more.' : 'Send Invite emails you a calendar invite.';
+        buttons.append(button(word === 'yes' ? 'Invite sent' : 'Add to my calendar', word === 'yes' ? 'check' : 'calendar', 'button rsvp-yes' + (word === 'yes' ? ' is-on' : ''), () => say('yes')));
+        note = word === 'yes' ? 'Click again to send it once more.' : 'Add to my calendar emails you a calendar invite.';
       } else {
         words.append(el('div', 'rsvp-title', 'No tickets yet'), el('div', 'rsvp-lead', 'Tickets are on the party page.'));
         const add = el('a', 'button rsvp-yes' + (e.availability === 'available' ? ' is-on' : ' is-off'));
@@ -282,14 +372,16 @@ function rsvpCard(e) {
         buttons.append(add);
       }
     } else {
-      words.append(el('div', 'rsvp-title', word === 'yes' ? 'You\u2019re going' : word === 'no' ? 'Not going' : word === 'hidden' ? 'Hidden' : 'Are you going?'), el('div', 'rsvp-lead', word === 'yes' ? 'The invite is in your email.' : word === 'no' ? 'Thanks for letting us know.' : word === 'hidden' ? 'On the month in gray.' : 'Yes sends you a calendar invite.'));
+      words.append(el('div', 'rsvp-title', word === 'yes' ? 'You\u2019re going' : word === 'no' ? 'Not going' : word === 'maybe' ? 'Maybe' : word === 'hidden' ? 'Hidden' : 'Are you going?'), el('div', 'rsvp-lead', word === 'yes' ? 'The invite is in your email.' : word === 'no' ? 'Thanks for letting us know.' : word === 'maybe' ? 'Come back when you know.' : word === 'hidden' ? 'On the month in gray.' : 'Yes sends you a calendar invite.'));
       buttons.append(
         button('Yes', 'check', 'button rsvp-yes' + (word === 'yes' ? ' is-on' : ''), () => say(word === 'yes' ? '' : 'yes')),
+        button('Maybe', 'clock', 'button rsvp-maybe' + (word === 'maybe' ? ' is-on' : ''), () => say(word === 'maybe' ? '' : 'maybe')),
         button('No', 'close', 'button rsvp-no' + (word === 'no' ? ' is-on' : ''), () => say(word === 'no' ? '' : 'no')),
       );
-      // Unanswered, the lead already says what Yes does; a No keeps the note
-      // under its thanks, so the way back is still spelled out.
-      note = word === 'no' ? 'Yes sends you a calendar invite.' : '';
+      // Unanswered, the lead already says what Yes does; a No or a Maybe
+      // keeps the note under its words, so the way back is still spelled
+      // out.
+      note = word === 'no' || word === 'maybe' ? 'Yes sends you a calendar invite.' : '';
     }
     if (note) {
       words.append(el('div', 'rsvp-note', note));
@@ -305,7 +397,7 @@ function rsvpCard(e) {
       b.addEventListener('click', () => say(next));
       links.append(b);
     };
-    if (word === 'yes' || word === 'no') {
+    if (word === 'yes' || word === 'no' || word === 'maybe') {
       small('Clear my RSVP', '');
     }
     if (word === 'hidden') {
@@ -322,13 +414,14 @@ function rsvpCard(e) {
   return band;
 }
 
-// inviteBand says an event is found by its direct link alone, and offers
-// the link to copy: whoever answers it has it on their calendar.
+// inviteBand says an event is private - found by invitation or by its
+// link alone - and offers the link to copy: whoever answers it has it on
+// their calendar.
 function inviteBand(e) {
   const band = el('div', 'pending-band is-invite');
   const words = el('div', 'pending-words');
   const mine = e.addedBy === state.model.user.email;
-  words.append(el('div', 'pending-title', 'Direct link only'), el('div', 'pending-lead', mine ? 'Only people you send this link to can find it. Their yes or no puts it on their calendar.' : 'You were sent this link. Yes or No below puts it on your calendar.'));
+  words.append(el('div', 'pending-title', 'Private'), el('div', 'pending-lead', mine ? 'On the calendar of the people you invite, and of anyone you send this link to who answers.' : 'You were invited, or sent this link. Your answer below puts it on your calendar.'));
   band.append(svg('link'), words);
   const url = location.origin + eventPath(e);
   band.append(button('Copy link', 'copy', 'button button-small', () => copyText(url, 'Link copied')));
@@ -382,11 +475,12 @@ function rsvpsCard(e) {
   card.append(el('div', 'side-title', 'RSVPs'));
   const yes = r.yes || [];
   const no = r.no || [];
-  if (!yes.length && !no.length) {
+  if (!yes.length && !no.length && !(r.maybe || []).length) {
     card.append(el('div', 'side-line', 'Nobody has answered yet.'));
     return card;
   }
-  for (const [label, people] of [['Yes', yes], ['No', no]]) {
+  const maybe = r.maybe || [];
+  for (const [label, people] of [['Yes', yes], ['Maybe', maybe], ['No', no]]) {
     if (!people.length) {
       continue;
     }
@@ -464,18 +558,20 @@ function keywordsEditor(e) {
 
 // sourceCard says where the event's dates came from and links to the
 // original: the feed's event in Google Calendar, the school's calendar page
-// for a line of the year calendar, the page on the app that runs a party
-// or an HCA event, or who added it by hand and when. An HCA event the
-// school also lists says so, with the way to HCA-Team's page. An admin also
-// sees what the admins' tabs did: the classifier's filing and any
-// correction, with its note.
-function sourceCard(e) {
+// for a line of the year calendar, or who added it by hand and when. An HCA
+// event the school also lists says so, with the way to HCA-Team's page. An
+// admin also sees what the admins' tabs did: the classifier's filing and
+// any correction, with its note - and for an event another app runs, whose
+// badge on the banner says whose it is, that alone (adminOnly).
+function sourceCard(e, adminOnly = false) {
   const card = el('div', 'side-card side-card-help');
   const row = el('div', 'side-row');
   const icon = el('div', 'side-icon');
   icon.append(svg('info'));
   const body = el('div', 'side-row-body');
-  body.append(el('div', 'side-title', sourceWords(e)));
+  if (!adminOnly) {
+    body.append(el('div', 'side-title', sourceWords(e)));
+  }
   const lines = [];
   switch (e.source) {
     case 'pdf':
@@ -506,10 +602,12 @@ function sourceCard(e) {
     default:
       lines.push(aboutWords[e.source] || '');
   }
-  for (const words of lines.filter(Boolean)) {
+  for (const words of adminOnly ? [] : lines.filter(Boolean)) {
     body.append(el('div', 'side-line', words));
   }
-  if (e.source === 'pdf') {
+  if (adminOnly) {
+    // The badge on the banner has said whose the event is.
+  } else if (e.source === 'pdf') {
     body.append(outLink(e.sourceUrl, 'Open the school\u2019s calendar page'));
   } else if (e.source === 'google' && e.sourceUrl) {
     body.append(outLink(e.sourceUrl, 'Open in Google Calendar'));
@@ -525,12 +623,12 @@ function sourceCard(e) {
     body.append(outLink(linkURL(e), isParty(e) ? 'Open on Helios Celebrate' : 'Open on HCA-Team'));
   }
   // The school's listing of an HCA event carries HCA-Team's link too.
-  if (e.link && e.source !== 'celebrate' && e.source !== 'team') {
+  if (!adminOnly && e.link && e.source !== 'celebrate' && e.source !== 'team') {
     body.append(el('div', 'side-line', 'Also listed on HCA-Team, which runs it.'), outLink(linkURL(e), 'Open on HCA-Team'));
   }
   if (state.model.user.isAdmin) {
     const p = (state.model.provenance || {})[e.id] || {};
-    const admin = el('div', 'side-admin');
+    const admin = el('div', 'side-admin' + (adminOnly ? ' is-alone' : ''));
     admin.append(el('div', 'side-admin-title', 'For admins'));
     if (p.enriched) {
       admin.append(el('div', 'side-line', `Filed under its tags by Claude${p.model ? ' (' + p.model + ')' : ''} on ${stampWords(p.enriched)}.`));
@@ -540,6 +638,10 @@ function sourceCard(e) {
     }
     if (!e.link || e.source === 'google' || e.source === 'pdf' || e.source === 'sheet') {
       admin.append(keywordsEditor(e));
+    }
+    if (adminOnly && admin.childElementCount === 1) {
+      // Nothing to say beyond the title: no card.
+      return null;
     }
     body.append(admin);
   }
@@ -561,33 +663,37 @@ const mineStanding = {
 
 const linkedTitles = {celebrate: 'Fun(d)raiser party', team: 'HCA volunteer event'};
 
-const linkedIcons = {celebrate: 'sun', team: 'people'};
-
 const seeWords = {celebrate: 'See the party', team: 'See the event'};
 
-// linkedCard leads a linked event's rail: how signing up stands - the
-// household's own standing when it has one - and the way to its page on the
-// app that runs it, where the tickets or the sign-up are.
-function linkedCard(e) {
+// linkedBadge is the card at the banner's foot for an event another app
+// runs: that app's mark, what the event is there - a Fun(d)raiser party,
+// an HCA volunteer event - and a line under it: who hosts it once the
+// page knows (fillInvites fills it in), until then the household's own
+// standing or where the tickets or sign-ups stand. The whole card is the
+// way to the event's page on that app.
+function linkedBadge(e) {
   const kind = isParty(e) ? 'celebrate' : 'team';
-  const card = el('div', 'side-card side-card-linked' + (e.mine ? ' is-mine' : ''));
-  const row = el('div', 'side-row');
-  const icon = el('div', 'side-icon');
-  icon.append(svg(linkedIcons[kind]));
-  const body = el('div', 'side-row-body');
-  body.append(el('div', 'side-title', linkedTitles[kind]));
-  // The household's part on one line - each ticket, waitlist place or
-  // role - or, before anyone is in, where the tickets or sign-ups stand.
-  if (e.minePeople && e.minePeople.length) {
-    body.append(peopleList(e.minePeople, kind === 'celebrate' ? 'ticket' : 'people'));
-  } else {
-    body.append(el('div', 'side-line', e.mine ? `${mineWords(e)} · ${mineStanding[e.mine][kind]}` : standing[e.availability] || ''));
-  }
-  const go = el('a', 'button side-button');
-  go.href = linkURL(e);
-  go.append(svg('open'), el('span', '', e.mine ? seeWords[kind] : call(e) || seeWords[kind]));
-  body.append(go);
-  row.append(icon, body);
-  card.append(row);
+  const card = el('a', 'hero-linked' + (e.mine ? ' is-mine' : ''));
+  card.href = linkURL(e);
+  card.title = e.mine ? seeWords[kind] : call(e) || seeWords[kind];
+  const mark = el('img', 'hero-linked-mark');
+  mark.src = `/brand/apps/${kind}.png`;
+  mark.alt = '';
+  card.append(mark);
+  const body = el('div', 'hero-linked-body');
+  body.append(el('div', 'hero-linked-title', linkedTitles[kind]));
+  const line = el('div', 'hero-linked-line');
+  line.append(svg(kind === 'celebrate' ? 'ticket' : 'people'), el('span', '', linkedLineWords(e, kind)));
+  body.append(line);
+  card.append(body);
   return card;
+}
+
+// linkedLineWords is the badge's line before the hosts are known: the
+// household's part, each by name, or where the tickets or sign-ups stand.
+function linkedLineWords(e, kind) {
+  if (e.minePeople && e.minePeople.length) {
+    return [...new Set(e.minePeople.map(p => p.name))].join(', ');
+  }
+  return e.mine ? `${mineWords(e)} · ${mineStanding[e.mine][kind]}` : standing[e.availability] || (kind === 'celebrate' ? 'On Helios Celebrate' : 'On HCA-Team');
 }

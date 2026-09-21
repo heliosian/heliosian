@@ -12,9 +12,11 @@ function randomID() {
 }
 
 // eventForm is the form that adds an event, for an admin and for anyone
-// else: two tabs, the event itself and the tags it is filed under, every
-// field staying in the form so nothing typed is lost in switching. An
-// admin's event goes straight onto the calendar; anyone else's is shared,
+// else: the event itself and, for a public one, a second tab with the
+// classrooms and categories it is filed under - a private one needs none,
+// being for whoever is invited from its page once it exists - every field
+// staying in the form so nothing typed is lost in switching. An admin's
+// public event goes straight onto the calendar; anyone else's is shared,
 // and waits for an admin's approval. Filled from an event to clone when
 // there is one, its dates moved on by the weeks asked.
 export function eventForm({from = null, shift = 0, edit = null, onDone}) {
@@ -26,13 +28,15 @@ export function eventForm({from = null, shift = 0, edit = null, onDone}) {
   }
   const form = el('form', 'admin-form');
   form.append(el('p', 'hint', edit ? 'Change what you need to; the event keeps its place on the calendar.' : 'Shared under your name. You will see who answers it.'));
-  // Two tabs: the event itself, and the tags it is filed under. Every
-  // field stays in the form - only the panels hide - so nothing typed is
-  // lost in switching.
+  // Two tabs: the event itself, and who it is for - the second only for
+  // a public event. Every field stays in the form - only the panels hide
+  // - so nothing typed is lost in switching.
   const tabs = el('div', 'tabs');
   const eventPanel = el('div');
   const tagPanel = el('div');
   tagPanel.hidden = true;
+  const tagFields = el('div');
+  tagPanel.append(tagFields);
   // The first tab ends in Next, the second in the button that adds.
   let showPanel = null;
   const tabButton = (label, panel) => {
@@ -42,7 +46,7 @@ export function eventForm({from = null, shift = 0, edit = null, onDone}) {
     return b;
   };
   const eventTab = tabButton('Event', eventPanel);
-  const tagTab = tabButton('Tags', tagPanel);
+  const tagTab = tabButton('Who', tagPanel);
   showPanel = panel => {
     eventTab.classList.toggle('is-active', panel === eventPanel);
     tagTab.classList.toggle('is-active', panel === tagPanel);
@@ -72,29 +76,30 @@ export function eventForm({from = null, shift = 0, edit = null, onDone}) {
   title.maxLength = 200;
   eventPanel.append(field('Title', title));
 
-  // Who can find it: everyone, on the calendar (an admin approves it
-  // first, for anyone but an admin), or only those given its direct link,
-  // who answer it onto their own calendars.
-  // Direct link only to start; public is the choice to make.
-  let inviteOnly = edit ? Boolean(from && from.source === 'sheet' && from.inviteOnly) : true;
+  // Who can find it: private - the people the host invites from its page
+  // and anyone sent its link, who answer it onto their own calendars -
+  // or public, on the calendar for everyone (an admin approves it first,
+  // for anyone but an admin). Private to start.
+  let sharing = edit && from && from.source === 'sheet' && !from.inviteOnly ? 'public' : 'private';
   const whoField = el('div', 'field');
   whoField.append(el('span', '', 'Who can find it'));
   const choices = el('div', 'event-visibility');
   const choice = (label, note, value) => {
-    const b = el('button', 'event-visibility-choice' + (inviteOnly === value ? ' is-on' : ''));
+    const b = el('button', 'event-visibility-choice' + (sharing === value ? ' is-on' : ''));
     b.type = 'button';
     b.append(el('span', 'event-visibility-title', label), el('span', 'event-visibility-note', note));
     b.addEventListener('click', () => {
-      inviteOnly = value;
+      sharing = value;
       for (const c of choices.children) {
         c.classList.toggle('is-on', c === b);
       }
+      paintWho();
     });
     return b;
   };
   choices.append(
-    choice('Direct link only', 'Only people you send the link to. Their yes or no puts it on their calendar.', true),
-    choice('Public', 'On the calendar for everyone at Helios to discover. Public events require admin approval, but you can share the link right away directly.', false),
+    choice('Private', 'Only the people you invite, and anyone you send the link to. Once it is added, invite families, a classroom, your lists or anyone by email from its page, and see who answered.', 'private'),
+    choice('Public', 'On the calendar for everyone at Helios to discover, filed under classrooms and categories. Public events require admin approval, but you can share the link right away directly.', 'public'),
   );
   whoField.append(choices);
   eventPanel.append(whoField);
@@ -223,7 +228,7 @@ export function eventForm({from = null, shift = 0, edit = null, onDone}) {
     b.addEventListener('click', onClick);
     return b;
   };
-  tagPanel.append(el('p', 'hint', 'Everyone at Helios can see any event, but you can specify who the event is for.'));
+  tagFields.append(el('p', 'hint', 'Everyone at Helios can see any event, but you can specify who the event is for.'));
   const roomField = el('div', 'field');
   roomField.append(el('span', '', 'Classrooms'));
   const roomChips = el('div', 'filter-chips');
@@ -250,7 +255,7 @@ export function eventForm({from = null, shift = 0, edit = null, onDone}) {
   };
   paintRooms();
   roomField.append(roomChips, el('small', '', 'Who the event is for. Everyone is the whole school.'));
-  tagPanel.append(roomField);
+  tagFields.append(roomField);
   const catField = el('div', 'field');
   catField.append(el('span', '', 'Categories'));
   const catLines = el('div', 'form-tag-groups');
@@ -276,11 +281,24 @@ export function eventForm({from = null, shift = 0, edit = null, onDone}) {
   };
   paintCats();
   catField.append(catLines, el('small', '', 'What kind of thing it is. An event with none is filed under Misc.'));
-  tagPanel.append(catField);
+  tagFields.append(catField);
 
   const keywords = text(from ? (from.keywords || []).join(', ') : '', 'half day, kinder, short day');
-  tagPanel.append(field('Search words', keywords, 'Words a parent might type that are not in the title, separated by commas.'));
+  tagFields.append(field('Search words', keywords, 'Words a parent might type that are not in the title, separated by commas.'));
 
+  // Public or private decides the tabs: a public event's Who tab, and
+  // Next to reach it; a private one adds from the first tab.
+  const paintWho = () => {
+    const invite = sharing !== 'public';
+    tagTab.hidden = invite;
+    nextRow.hidden = invite;
+    if (invite) {
+      showPanel(eventPanel);
+      eventPanel.append(actions);
+    } else {
+      tagPanel.append(actions);
+    }
+  };
   // Next, under the first tab, checks what it holds and turns to the
   // second, whose own button adds the event.
   const nextRow = el('div', 'modal-actions');
@@ -302,10 +320,11 @@ export function eventForm({from = null, shift = 0, edit = null, onDone}) {
   submit.type = 'submit';
   submit.append(svg(edit ? 'check' : 'plus'), el('span', '', edit ? 'Save changes' : from ? 'Add the copy' : admin ? 'Add the event' : 'Share the event'));
   actions.append(submit, status);
-  tagPanel.append(actions);
+  paintWho();
   form.addEventListener('submit', async e => {
     e.preventDefault();
-    if (!rooms.size) {
+    const invite = sharing !== 'public';
+    if (!invite && !rooms.size) {
       status.textContent = 'Pick at least one classroom.';
       status.classList.add('error');
       return;
@@ -315,8 +334,10 @@ export function eventForm({from = null, shift = 0, edit = null, onDone}) {
     // takes it; an all-day end is its day.
     const body = {
       title: title.value.trim(), start: when(startDate.value, startTime.value), end: when(endDate.value || startDate.value, endTime.value || startTime.value),
-      location: place.value.trim(), description: description.value.trim(), source: source.value.trim(), image: picture.image, inviteOnly,
-      tags: [...classroomNames().filter(c => rooms.has(c)), ...cats], keywords: keywords.value.split(',').map(w => w.trim()).filter(Boolean),
+      location: place.value.trim(), description: description.value.trim(), source: source.value.trim(), image: picture.image, inviteOnly: invite,
+      // A private event is for whoever is invited: no classrooms, no
+      // categories.
+      tags: invite ? [] : [...classroomNames().filter(c => rooms.has(c)), ...cats], keywords: keywords.value.split(',').map(w => w.trim()).filter(Boolean),
     };
     submit.disabled = true;
     status.classList.remove('error');
@@ -340,7 +361,7 @@ export function eventForm({from = null, shift = 0, edit = null, onDone}) {
       return;
     }
     const {ids, pending} = await res.json();
-    toast(pending ? 'Shared - an admin will approve it onto the calendar. It is on yours now, and its link works right away.' : 'Added - send people the link from the event\u2019s page.', 6000);
+    toast(pending ? 'Shared - an admin will approve it onto the calendar. It is on yours now, and its link works right away.' : 'Added - invite people from the event\u2019s page, or send them its link.', 6000);
     await onDone(ids);
   });
   return form;

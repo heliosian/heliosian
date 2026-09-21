@@ -66,11 +66,13 @@ func (a *Auth) Fixed(email string, next http.Handler) http.Handler {
 
 // Public is what serves without a session: the sign-in exchange itself,
 // everything under /hooks/, the callbacks the service asked other services
-// for, and everything under /open/, the addresses it hands out - share cards,
+// for, everything under /open/, the addresses it hands out - share cards,
 // the calendar's personal feeds, Loop's unsubscribe links - that a crawler,
-// a calendar app or a mail client follows, each proving its caller its own way.
+// a calendar app or a mail client follows, each proving its caller its own
+// way, and everything under /ext/, the calendar's pages for people outside
+// the community it has invited, each found by its own secret.
 func Public(path string) bool {
-	return path == "/auth/login" || path == "/auth/client" || strings.HasPrefix(path, "/hooks/") || strings.HasPrefix(path, "/open/")
+	return path == "/auth/login" || path == "/auth/client" || strings.HasPrefix(path, "/hooks/") || strings.HasPrefix(path, "/open/") || strings.HasPrefix(path, "/ext/")
 }
 
 func Token(key []byte, email string, expiry time.Time) string {

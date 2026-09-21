@@ -106,10 +106,11 @@ func addressed(replyTo string, recipients []string) bool {
 }
 
 // takeReply records a reply as the attendee's answer: accepted is a yes,
-// declined a no, and a tentative or anything else leaves their word as it
-// stands. The attendee must be someone the directory knows, the message
-// must come from them - a calendar app replies from its owner's address -
-// and the event must be on the calendar.
+// declined a no, tentative a maybe, and anything else leaves their word
+// as it stands. The attendee must be someone the directory knows - or on
+// the event's guest list, for a guest from outside - the message must come
+// from them - a calendar app replies from its owner's address - and the
+// event must be on the calendar.
 func (a app) takeReply(ctx context.Context, reply Reply, from string) error {
 	answer := ""
 	switch reply.Standing {
@@ -117,18 +118,20 @@ func (a app) takeReply(ctx context.Context, reply Reply, from string) error {
 		answer = AnswerYes
 	case "DECLINED":
 		answer = AnswerNo
+	case "TENTATIVE":
+		answer = AnswerMaybe
 	default:
 		return fmt.Errorf("standing %q changes nothing", reply.Standing)
 	}
 	email := normalizeEmail(reply.Email)
-	if _, known := a.directory.Person(email); !known {
+	id := idOfUID(reply.UID)
+	if _, known := a.directory.Person(email); !known && a.cache.Model().InviteOf(id, email) == nil {
 		return fmt.Errorf("attendee is not in the directory")
 	}
 	if sender := normalizeEmail(mailAddress(from)); sender != email {
 		return fmt.Errorf("sent by %s, not the attendee", sender)
 	}
-	id := idOfUID(reply.UID)
-	if err := a.record(ctx, email, id, answer, false); err != nil {
+	if err := a.recordBy(ctx, email, email, id, answer, ViaCalendar, false); err != nil {
 		return err
 	}
 	slog.InfoContext(ctx, "calendar: answered by reply", "actor", email, "event", id, "answer", answer)

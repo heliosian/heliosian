@@ -33,7 +33,7 @@ func testApp(t *testing.T) (http.Handler, *Cache) {
 		kids:   map[string][]Person{},
 	}
 	mux := http.NewServeMux()
-	Register(mux, cache, dir, directQueue{}, nil, d, func() []string { return nil }, func(string) []Linked { return nil }, ImageSearch{}, Mail{})
+	Register(mux, cache, dir, directQueue{}, nil, d, func() []string { return nil }, func(string) []Linked { return nil }, nil, nil, ImageSearch{}, Mail{})
 	return mux, cache
 }
 
@@ -357,7 +357,7 @@ func TestAdminsToldOfSharedEvents(t *testing.T) {
 	d := fakeDirectory{people: map[string]Person{"jordan.whitfield@heliosschool.org": {Email: "jordan.whitfield@heliosschool.org", Name: "Jordan", IsParent: true}}, kids: map[string][]Person{}}
 	kept := &keptMail{}
 	mux := http.NewServeMux()
-	Register(mux, cache, dir, directQueue{}, nil, d, func() []string { return nil }, func(string) []Linked { return nil }, ImageSearch{}, Mail{Sender: kept, From: "Helios When <when@example.org>"})
+	Register(mux, cache, dir, directQueue{}, nil, d, func() []string { return nil }, func(string) []Linked { return nil }, nil, nil, ImageSearch{}, Mail{Sender: kept, From: "Helios When <when@example.org>"})
 	parent := as("jordan.whitfield@heliosschool.org", mux)
 	admin := as("dana.hawkins@heliosschool.org", mux)
 	wait := func(n int) []mail.Message {
@@ -373,7 +373,7 @@ func TestAdminsToldOfSharedEvents(t *testing.T) {
 	}
 	call(t, parent, "POST", "/api/calendar/events", `{"title":"Sam\u2019s party","start":"2026-10-03 14:00","tags":["Jays"],"inviteOnly":true}`)
 	sent = wait(2)
-	if len(sent) != 2 || !strings.HasPrefix(sent[1].Subject, "Direct-link event added: Sam") || !strings.Contains(sent[1].HTML, "See the event") || strings.Contains(sent[1].Text, "waiting for approval") {
+	if len(sent) != 2 || !strings.HasPrefix(sent[1].Subject, "Private event added: Sam") || !strings.Contains(sent[1].HTML, "See the event") || strings.Contains(sent[1].Text, "waiting for approval") {
 		t.Errorf("direct-link event mail = %+v", sent)
 	}
 	call(t, admin, "POST", "/api/calendar/events", `{"title":"Admin's own","start":"2026-10-05","tags":["Jays"]}`)
@@ -535,7 +535,7 @@ func TestAdminAddsAndCorrects(t *testing.T) {
 	if rec.Code != 200 || shared.Pending {
 		t.Fatalf("invite only: %d %s", rec.Code, rec.Body)
 	}
-	if e := cache.Model().Event(shared.IDs[0]); e == nil || !e.InviteOnly || e.Status != StatusInviteOnly {
+	if e := cache.Model().Event(shared.IDs[0]); e == nil || !e.InviteOnly || e.Status != StatusPrivate {
 		t.Errorf("invite-only event = %+v", e)
 	}
 	if sees(other) {
@@ -636,8 +636,12 @@ func TestAnswers(t *testing.T) {
 	handler, cache := testApp(t)
 	me := "jordan.whitfield@heliosschool.org"
 	viewer := as(me, handler)
-	if rec := call(t, viewer, "POST", "/api/calendar/rsvp", `{"id":"a7@sample","answer":"maybe"}`); rec.Code != 400 {
+	if rec := call(t, viewer, "POST", "/api/calendar/rsvp", `{"id":"a7@sample","answer":"perhaps"}`); rec.Code != 400 {
 		t.Errorf("nonsense answer: %d", rec.Code)
+	}
+	// Maybe is a word too: on the event, not under Going.
+	if rec := call(t, viewer, "POST", "/api/calendar/rsvp", `{"id":"a7@sample","answer":"maybe"}`); rec.Code != 204 || cache.Model().AnswerOf(me, "a7@sample") != AnswerMaybe {
+		t.Errorf("maybe: %d %s", rec.Code, rec.Body)
 	}
 	if rec := call(t, viewer, "POST", "/api/calendar/rsvp", `{"id":"a7@sample","answer":"hidden"}`); rec.Code != 204 {
 		t.Fatalf("hide: %d %s", rec.Code, rec.Body)

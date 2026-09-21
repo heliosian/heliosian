@@ -19,6 +19,9 @@ type Person struct {
 	// Line is the word under a name on a contact card: a student's grade
 	// and classroom, a parent's children, a staff member's place.
 	Line string `json:"line,omitempty"`
+	// EmailMasked marks a placeholder address nothing can reach, as the
+	// directory has it for some students: no mail goes there.
+	EmailMasked bool `json:"-"`
 }
 
 type Directory interface {
@@ -28,13 +31,19 @@ type Directory interface {
 	Alerts(email string) (stale int, privacy bool)
 	ClassroomColors() map[string]string
 	GradeColors() map[string]string
+	// People is everyone in the directory, and Lists one person's lists in
+	// Helios Who? - their tags and the lists the other apps give them - for
+	// a guest list's picker (invites.go).
+	People() []Person
+	Lists(email string) []List
 }
 
 // Responses are the people who answered an event, for an admin: each as
 // the directory knows them, with their photo, for a contact card.
 type Responses struct {
-	Yes []Person `json:"yes,omitempty"`
-	No  []Person `json:"no,omitempty"`
+	Yes   []Person `json:"yes,omitempty"`
+	Maybe []Person `json:"maybe,omitempty"`
+	No    []Person `json:"no,omitempty"`
 }
 
 // contactLine is the word under a name on a contact card, as Who? has it:
@@ -107,7 +116,7 @@ type User struct {
 	// default calendar.
 	Home Feed `json:"home"`
 	// Answers is this person's word on each event they have answered, by
-	// event id: yes, no, or hidden.
+	// event id: yes, no, maybe, or hidden.
 	Answers map[string]string `json:"answers,omitempty"`
 }
 
@@ -220,9 +229,10 @@ func Render(model *Model, directory Directory, email string, admin bool, now tim
 		carried[e.ID] = true
 	}
 	for _, e := range model.Pending {
-		// One the viewer answered is there already, under Going, as a copy.
-		if (admin || normalizeEmail(e.AddedBy) == normalizeEmail(email)) && !carried[e.ID] {
-			events = append(events, e)
+		// One the viewer answered is there already, under Going, as a copy;
+		// a cancelled one is on nobody's list, its page found by its link.
+		if !e.Cancelled && (admin || normalizeEmail(e.AddedBy) == normalizeEmail(email)) && !carried[e.ID] {
+			events = append(events, model.withInvitation(e))
 		}
 	}
 	// Who answered: every event for an admin, their own for whoever shared
@@ -259,6 +269,8 @@ func Render(model *Model, directory Directory, email string, admin bool, now tim
 				switch answer {
 				case AnswerYes:
 					r.Yes = append(r.Yes, person)
+				case AnswerMaybe:
+					r.Maybe = append(r.Maybe, person)
 				case AnswerNo:
 					r.No = append(r.No, person)
 				}
@@ -269,6 +281,7 @@ func Render(model *Model, directory Directory, email string, admin bool, now tim
 		}
 		for _, r := range responses {
 			byName(r.Yes)
+			byName(r.Maybe)
 			byName(r.No)
 		}
 	}

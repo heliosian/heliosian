@@ -11,6 +11,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"log/slog"
+	"maps"
 	"mime"
 	"net/http"
 	"os"
@@ -601,10 +602,48 @@ func (d celebrateDirectory) Alerts(email string) (int, bool) {
 
 // calendarDirectory hands the calendar the directory's view of people: who an
 // address resolves to, who someone is and which classroom they are in, a
-// parent's children, and the toolbar's badges.
+// parent's children, everyone at once and a person's lists for a guest
+// list's picker, and the toolbar's badges.
 type calendarDirectory struct {
 	cache    *who.Cache
 	settings *config.Cache
+	// lists is the person's Magic Tags and groups, the way Who?'s rail
+	// lists them; nil in a directory built without the other apps.
+	lists func(email string) []who.List
+}
+
+// People is everyone in the directory.
+func (d calendarDirectory) People() []calendar.Person {
+	model := d.cache.Model()
+	out := make([]calendar.Person, 0, len(model.People))
+	for i := range model.People {
+		out = append(out, calendarPerson(model, &model.People[i]))
+	}
+	return out
+}
+
+// Lists is one person's lists as the guest list picker offers them: their
+// own tags, the tags shared with them, and the lists their roles in the
+// other apps give them - a party they host, an activity they co-chair, a
+// grade band they are room parent for, a group they manage.
+func (d calendarDirectory) Lists(email string) []calendar.List {
+	out := []calendar.List{}
+	tags := d.cache.Tags(email)
+	for _, name := range slices.Sorted(maps.Keys(tags)) {
+		out = append(out, calendar.List{Key: "tag:" + name, Name: name, Kind: "tag", People: tags[name]})
+	}
+	for _, shared := range d.cache.SharedTags(email) {
+		out = append(out, calendar.List{Key: "shared:" + shared.Owner + ":" + shared.Name, Name: shared.Name + " (" + shared.OwnerName + "'s)", Kind: "tag", People: shared.People})
+	}
+	if d.lists != nil {
+		for _, list := range d.lists(email) {
+			if list.Archived {
+				continue
+			}
+			out = append(out, calendar.List{Key: list.Key, Name: list.Name, Kind: list.Kind, People: list.People})
+		}
+	}
+	return out
 }
 
 func (d calendarDirectory) Resolve(email string) string {
@@ -614,7 +653,7 @@ func (d calendarDirectory) Resolve(email string) string {
 func calendarPerson(model *who.Model, p *who.Person) calendar.Person {
 	return calendar.Person{
 		Email: p.Email, Name: p.FullName, PhotoURL: model.HeroPhoto(p.Email), IsStudent: p.IsStudent, IsParent: p.IsParent,
-		IsStaff: p.IsStaff, Grade: p.Grade, Classroom: p.Classroom,
+		IsStaff: p.IsStaff, Grade: p.Grade, Classroom: p.Classroom, EmailMasked: p.EmailMasked,
 	}
 }
 
@@ -963,10 +1002,11 @@ func NewCore(cfg Config) *Core {
 	// The front page's events come from the calendar, read for the viewer
 	// the way its own page is, so it is wired once the calendar's links are.
 	linked := calendarLinked{celebrateCache, teamCache, celebrateDirectory{cache, settings}}.list
-	frontEvents := upcomingEvents{calendarCache, calendarDirectory{cache, settings}, linked}
+	calendarDir := calendarDirectory{cache, settings, smartLists{cache, teamCache, celebrateCache, loopCache, loopDir}.Lists}
+	frontEvents := upcomingEvents{calendarCache, calendarDir, linked}
 	// The calendar goes first: the front page's cards answer through it.
 	calendarMux := http.NewServeMux()
-	hooks := calendar.Register(calendarMux, calendarCache, cfg.Writer, queue, cfg.Store, calendarDirectory{cache, settings}, settings.SuperAdmins, linked, cfg.ImageSearch, cfg.CalendarMail)
+	hooks := calendar.Register(calendarMux, calendarCache, cfg.Writer, queue, cfg.Store, calendarDir, settings.SuperAdmins, linked, partyPeople{celebrateCache}.people, audienceSources{loopDir}.Sources, cfg.ImageSearch, cfg.CalendarMail)
 	homeMux := http.NewServeMux()
 	home.Register(homeMux, homeCache, cfg.Writer, queue, cfg.Store, settings.SuperAdmins, cache.HeroPhoto, directory{cache, settings}.HomePeople, audienceSources{loopDir}, directory{cache, settings}.Alerts, frontEvents.list, frontEvents.month, cfg.ImageSearch, hooks.Answer, hooks.MakeDefault)
 	teamMux := http.NewServeMux()
@@ -976,7 +1016,16 @@ func NewCore(cfg Config) *Core {
 		return home.Grant(homeCache, cfg.Writer, queue, "birthday", email)
 	})
 	celebrateMux := http.NewServeMux()
-	celebrate.Register(celebrateMux, celebrateCache, cfg.Writer, queue, cfg.Store, celebrateDirectory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.CelebrateMail, cfg.CelebrateFrom)
+	// A party's hosts read its guest list's answers on Helios When from the
+	// party's own page.
+	partyRSVPs := func(partyID string) *celebrate.PartyRSVPs {
+		sent, answers, ok := calendarCache.PartyRSVPs(partyID)
+		if !ok {
+			return nil
+		}
+		return &celebrate.PartyRSVPs{Sent: sent, Answers: answers}
+	}
+	celebrate.Register(celebrateMux, celebrateCache, cfg.Writer, queue, cfg.Store, celebrateDirectory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.CelebrateMail, cfg.CelebrateFrom, partyRSVPs)
 	// A group's post goes into the documents as Loop records it sent, so the
 	// documents' filer is wired before Loop.
 	askMux := http.NewServeMux()

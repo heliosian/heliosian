@@ -68,6 +68,7 @@ type viewer struct {
 	email     string
 	admin     bool
 	directory Directory
+	rsvps     RSVPLookup
 	// family is the viewer's household by address: the tickets they may see
 	// the details of and take back.
 	family map[string]bool
@@ -139,7 +140,23 @@ type Attendee struct {
 	Price         float64 `json:"price,omitempty"`
 	Note          string  `json:"note,omitempty"`
 	AddedBy       string  `json:"addedBy,omitempty"`
+	// RSVP is their answer to the party's invitation on Helios When, for
+	// the hosts once the invites have gone out: yes, maybe, no, none for
+	// one still to answer, or blank for someone not invited.
+	RSVP string `json:"rsvp,omitempty"`
 }
+
+// PartyRSVPs is a party's guest list on Helios When as the hosts read it
+// here: whether the invites have gone out, and each invitee's answer by
+// address - yes, maybe, no, or none for one still to answer.
+type PartyRSVPs struct {
+	Sent    bool
+	Answers map[string]string
+}
+
+// RSVPLookup is Helios When's word on a party's guest list, or nil when
+// there is none.
+type RSVPLookup func(partyID string) *PartyRSVPs
 
 // PartyView is a party as one viewer sees it: the row, its counts and
 // availability, its attendees, and what the viewer may do with it.
@@ -160,6 +177,10 @@ type PartyView struct {
 	// says they are a host, admin or not.
 	CanEdit bool `json:"canEdit"`
 	Hosting bool `json:"hosting,omitempty"`
+	// Started says a guest list exists for it on Helios When, and Invited
+	// that the invites have gone out - each for whoever runs it.
+	Started bool `json:"started,omitempty"`
+	Invited bool `json:"invited,omitempty"`
 }
 
 type User struct {
@@ -270,8 +291,19 @@ func (v viewer) party(p *Party, now time.Time) PartyView {
 	for _, email := range p.HostEmails {
 		pv.HostPeople = append(pv.HostPeople, v.person(email))
 	}
+	// The hosts read each ticket holder's answer to the invitation on
+	// Helios When, once the invites have gone out.
+	var rsvps *PartyRSVPs
+	if editor && v.rsvps != nil {
+		rsvps = v.rsvps(p.ID)
+		pv.Started = rsvps != nil
+		pv.Invited = rsvps != nil && rsvps.Sent
+	}
 	for _, t := range p.Tickets {
 		a := v.attendee(t, editor)
+		if pv.Invited && t.Email != "" {
+			a.RSVP = rsvps.Answers[v.directory.Resolve(strings.ToLower(t.Email))]
+		}
 		if t.Status == TicketSold {
 			pv.Attendees = append(pv.Attendees, a)
 		} else {
@@ -285,7 +317,13 @@ func (v viewer) party(p *Party, now time.Time) PartyView {
 
 // Render is the model as one signed-in person sees it.
 func Render(model *Model, directory Directory, email string, admin bool, now time.Time) View {
-	v := viewer{email: email, admin: admin, directory: directory, family: map[string]bool{}}
+	return RenderWith(model, directory, nil, email, admin, now)
+}
+
+// RenderWith is Render with Helios When's word on each party's guest list
+// for its hosts.
+func RenderWith(model *Model, directory Directory, rsvps RSVPLookup, email string, admin bool, now time.Time) View {
+	v := viewer{email: email, admin: admin, directory: directory, rsvps: rsvps, family: map[string]bool{}}
 	me := v.person(email)
 	adults, kids := directory.Household(email)
 	for _, p := range append(append([]Person{}, adults...), kids...) {

@@ -208,11 +208,49 @@ button { font: inherit; }
 
 .app-nav a.nav-sub .nav-sub-star { display: inline-flex; color: var(--lime); }
 
-.app-nav a.nav-sub .nav-sub-star svg { width: 13px; height: 13px; fill: currentColor; }
+.app-nav a.nav-sub .nav-sub-star svg { width: 13px; height: 13px; }
+
+.app-nav a.nav-sub .nav-sub-star.is-star svg { fill: currentColor; }
 
 .app-nav a.nav-sub .nav-sub-locked { display: inline-flex; color: inherit; opacity: 0.7; }
 
 .app-nav a.nav-sub .nav-sub-locked svg { width: 13px; height: 13px; }
+
+/* The viewer's own events under My Events: the date small before the
+   title, and a mark at the end - a clock for a reply owed, a star for one
+   they host, a check for one they said yes to. */
+.app-nav a.nav-sub-event .nav-sub-date { flex-shrink: 0; width: 46px; font-size: 11.5px; font-weight: 600; color: rgba(255, 255, 255, 0.55); }
+
+.app-nav a.nav-sub .nav-sub-mark { display: inline-flex; color: inherit; opacity: 0.8; }
+
+.app-nav a.nav-sub .nav-sub-mark svg { width: 13px; height: 13px; }
+
+.app-nav a.nav-sub .nav-sub-mark.is-clock { color: #f2c46d; opacity: 1; }
+
+.app-nav a.nav-sub .nav-sub-mark.is-check { color: #8fe0b6; opacity: 1; }
+
+.app-nav a.nav-sub-more { font-size: 12.5px; color: rgba(255, 255, 255, 0.55); }
+
+/* My Events, the page: a group per standing, its rows as the lists have
+   them. */
+.mine-group { margin: 20px 0 8px; }
+
+.mine-group .rsvps-head { margin: 0 0 8px; font-size: 12px; }
+
+.mine-group .rsvps-head.is-waiting { color: #b8860b; }
+
+.mine-group .rsvps-head.is-hosted { color: var(--brand); }
+
+.mine-group .rsvps-head.is-going { color: #1d6b48; }
+
+.mine-empty { font-size: 14px; color: var(--muted); }
+
+.mine-group .event-time { width: auto; min-width: 128px; }
+
+@media (max-width: 640px) {
+  .mine-group .event-row { flex-wrap: wrap; }
+  .mine-group .event-time { width: 100%; }
+}
 
 .nav-sub-tool.nav-sub-lock { cursor: default; opacity: 0.7; }
 
@@ -280,6 +318,22 @@ button { font: inherit; }
 
 /* The day card wears the bird on its branch at the top right, with the
    sun behind, its words clear of the art. */
+/* The star on an event the viewer hosts, before its title in the rail's
+   RSVPs and in the lists. */
+.host-star { width: 13px; height: 13px; margin-right: 4px; vertical-align: -1px; color: var(--amber); fill: var(--amber); }
+
+.sidebar .rsvp-rail { background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.14); }
+
+.sidebar .rsvp-rail-title, .sidebar .rsvp-rail-name { color: #fff; }
+
+.sidebar .rsvp-rail-head, .sidebar .rsvp-rail-date, .sidebar .rsvp-rail-more { color: rgba(255, 255, 255, 0.62); }
+
+.sidebar .rsvp-rail-head.is-waiting { color: #f2c46d; }
+
+.sidebar .rsvp-rail-head.is-going { color: #8fe0b6; }
+
+.sidebar .rsvp-rail-row:hover { background: rgba(255, 255, 255, 0.14); }
+
 .day-card { position: relative; padding: 16px 16px 18px; border-radius: 14px; background: var(--card); border: 1px solid var(--line); overflow: hidden; }
 
 .day-card-art { position: absolute; top: 4px; right: 6px; width: 118px; height: auto; pointer-events: none; }
@@ -362,7 +416,7 @@ button { font: inherit; }
 
 .calendar-default { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; padding: 5px 12px; border-radius: 999px; background: #fff7e0; border: 1px solid #f2d78a; color: #8a5a00; font-size: 13px; font-weight: 700; white-space: nowrap; }
 
-.calendar-default svg { width: 15px; height: 15px; color: var(--amber); fill: currentColor; }
+.calendar-default svg { width: 15px; height: 15px; color: var(--amber); }
 
 .calendar-make-default { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; padding: 5px 12px; border-radius: 999px; border: 1px solid transparent; background: none; color: var(--muted); font: inherit; font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer; opacity: 0.7; }
 
@@ -370,7 +424,7 @@ button { font: inherit; }
 
 .calendar-make-default svg { width: 15px; height: 15px; }
 
-.calendar-make-default:hover svg { color: var(--amber); fill: currentColor; }
+.calendar-make-default:hover svg { color: var(--amber); }
 
 /* A calendar without an emoji goes by When's symbol, sized as the icon it
    stands in for would be wherever it appears. */
@@ -463,7 +517,7 @@ button { font: inherit; }
 
 .calendar-menu-tail .nav-sub-star { display: inline-flex; color: var(--amber); }
 
-.calendar-menu-tail .nav-sub-star svg { width: 13px; height: 13px; fill: currentColor; }
+.calendar-menu-tail .nav-sub-star svg { width: 13px; height: 13px; }
 
 .calendar-menu-lock { display: inline-flex; color: var(--muted); opacity: 0.7; }
 
@@ -1109,6 +1163,10 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 /* Public or direct link only, as two cards to pick between. */
 .event-visibility { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 
+@media (max-width: 640px) {
+  .event-visibility { grid-template-columns: minmax(0, 1fr); }
+}
+
 .event-visibility-choice { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; padding: 10px 12px; border: 1.5px solid var(--line); border-radius: 10px; background: #fff; text-align: left; font: inherit; cursor: pointer; }
 
 .event-visibility-choice.is-on { border-color: var(--accent); background: #eef6f5; }
@@ -1223,6 +1281,589 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .rsvp-no.is-on, .rsvp-no.is-on:hover { background: var(--ink); border-color: var(--ink); color: #fff; box-shadow: 0 0 0 4px rgba(13, 13, 13, 0.18); }
 
+.rsvp-maybe { background: #fff; border-color: #e0c27a; color: #7a5a00; }
+
+.rsvp-maybe:hover { background: #fff8e8; border-color: var(--amber); color: #6a4a00; }
+
+.rsvp-maybe.is-on, .rsvp-maybe.is-on:hover { background: var(--amber); border-color: var(--amber); color: #fff; box-shadow: 0 0 0 4px rgba(232, 163, 61, 0.3); }
+
+/* The invited household's ask, laid out as HCA-Team lays out My Family's
+   Roles: the heading over the swoosh, who by, a list card with a row per
+   person, and the links under it. */
+/* The ask for someone invited sits in a band of its own, tinted as the
+   plain ask's is, so it is not missed. */
+.invite-box { margin: 28px 0 8px; padding: 18px 20px 16px; border: 1.5px solid #bfe0cf; border-radius: 16px; background: linear-gradient(90deg, #e3f3ea, #eef7f2); }
+
+.invite-box .fam-list { background: #fff; }
+
+.invite-box h2.section-swoosh, .coming-section h2.section-swoosh { position: relative; z-index: 0; display: inline-block; padding-bottom: 10px; margin: 0 0 2px; font-family: Montserrat, Roboto, sans-serif; font-size: 22px; font-weight: 700; color: var(--brand); }
+
+.invite-box h2.section-swoosh::after, .coming-section h2.section-swoosh::after { content: ''; position: absolute; left: 2%; right: 2%; bottom: 2px; height: 12px; background-image: url('/swoosh.png'); background-repeat: no-repeat; background-size: 100% 100%; z-index: -1; }
+
+.invite-by { margin: 0 0 12px; font-size: 14.5px; color: var(--muted); }
+
+.fam-list { background: var(--card); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+
+.fam-row { display: flex; align-items: center; gap: 12px; padding: 10px 16px; }
+
+.fam-row + .fam-row { border-top: 1px solid var(--line); }
+
+.fam-row .avatar { position: relative; display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; flex-shrink: 0; border-radius: 50%; background: var(--input); color: var(--brand); font-size: 14px; font-weight: 700; }
+
+.fam-row .avatar img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 50%; }
+
+.fam-row .avatar .grade-badge { left: -5px; top: -5px; min-width: 18px; height: 18px; line-height: 18px; font-size: 10px; }
+
+.fam-row.is-guest { padding-left: 40px; }
+
+.fam-text { flex: 1; min-width: 0; }
+
+.fam-name { font-size: 14px; font-weight: 700; color: var(--ink); }
+
+.fam-where { font-size: 13px; color: var(--muted); margin-top: 1px; }
+
+.fam-edit { margin-top: 0; padding: 6px 8px; font-size: 14px; white-space: nowrap; }
+
+.invite-tools { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+
+.invite-said { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted); }
+
+.invite-said strong { color: var(--ink); }
+
+.invite-said-mark { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; background: #b3261e; color: #fff; flex-shrink: 0; }
+
+.invite-said-mark svg { width: 15px; height: 15px; stroke-width: 3; }
+
+.invite-said.is-yes .invite-said-mark { background: #2f9e6a; }
+
+.invite-said.is-yes strong { color: #1d6b48; }
+
+.invite-said.is-maybe .invite-said-mark { background: var(--amber); }
+
+.invite-said.is-maybe strong { color: #b8860b; }
+
+.invite-said.is-no strong { color: #b3261e; }
+
+.invite-remove { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: 0; border-radius: 50%; background: none; color: var(--muted); cursor: pointer; }
+
+.invite-remove:hover { background: rgba(0, 0, 0, 0.06); color: var(--ink); }
+
+.invite-remove svg { width: 16px; height: 16px; }
+
+.invite-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; flex-wrap: wrap; }
+
+.invite-foot .link-button { margin-top: 0; padding-left: 0; }
+
+.invite-face { position: relative; display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 40px; height: 40px; border-radius: 50%; background: var(--input); color: var(--brand); font-size: 15px; font-weight: 700; overflow: visible; }
+
+.invite-face img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 50%; }
+
+.invite-face .grade-badge { left: -5px; top: -5px; min-width: 18px; height: 18px; line-height: 18px; font-size: 10px; }
+
+.invite-who { flex: 1 1 auto; min-width: 0; }
+
+.invite-name { font-size: 14.5px; font-weight: 700; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.invite-line { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Yes, Maybe and No as one small set, the one given filled in its colour;
+   greyed for someone the viewer may not answer for. */
+.rsvp-mini { display: inline-flex; gap: 4px; }
+
+.rsvp-mini-choice { display: inline-flex; align-items: center; gap: 4px; padding: 5px 10px; border: 1.5px solid var(--line); border-radius: 999px; background: #fff; font: inherit; font-size: 12.5px; font-weight: 600; color: var(--muted); cursor: pointer; }
+
+.rsvp-mini-choice svg { width: 13px; height: 13px; }
+
+.rsvp-mini-choice:disabled { cursor: default; opacity: 0.55; }
+
+.rsvp-mini-choice:not(:disabled):hover { border-color: var(--ink); color: var(--ink); }
+
+.rsvp-mini-yes.is-on { background: #2f9e6a; border-color: #2f9e6a; color: #fff; }
+
+.rsvp-mini-maybe.is-on { background: var(--amber); border-color: var(--amber); color: #fff; }
+
+.rsvp-mini-no.is-on { background: var(--ink); border-color: var(--ink); color: #fff; }
+
+.rsvp-mini-choice.is-on:disabled { opacity: 0.85; }
+
+@media (max-width: 560px) {
+  .rsvp-mini-choice span { display: none; }
+  .rsvp-mini-choice { padding: 7px 9px; }
+  .rsvp-mini-choice svg { width: 15px; height: 15px; }
+}
+
+/* The invitation's flyer in the rail, as HCA-Team keeps an event's. */
+.flyer-card { margin-bottom: 14px; }
+
+.flyer-open { display: block; margin-top: 10px; border-radius: 10px; overflow: hidden; }
+
+.flyer-image { display: block; width: 100%; height: auto; border-radius: 10px; }
+
+.flyer-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+
+.flyer-actions label.button input { display: none; }
+
+.rsvps-visible { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--muted); }
+
+.rsvps-visible .rsvp-clear { color: var(--brand); }
+
+.rsvps-pending-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+
+.pending-tools { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex-shrink: 0; }
+
+.pending-skip { margin-top: 0; padding: 2px 4px; font-size: 12.5px; font-weight: 500; color: var(--muted); }
+
+.pending-skip:hover { color: var(--brand); }
+
+.rsvps-pending-row .link-button { margin-top: 0; padding: 2px 4px; font-size: 13px; }
+
+.rsvps-pending-delete { margin-left: auto; font-size: 12.5px; font-weight: 500; color: var(--muted); }
+
+.rsvps-pending-delete:hover { color: #b3261e; }
+
+.guests-cancel { display: flex; justify-content: flex-end; margin-top: 10px; }
+
+.guests-cancel .link-button { font-size: 13px; }
+
+.cancel-choices { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+
+.cancel-choices .button { justify-content: center; }
+
+.cancel-note { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--input); }
+
+.cancel-note label { font-size: 13px; font-weight: 600; }
+
+.cancel-note textarea { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; resize: vertical; }
+
+.cancel-note .button { align-self: flex-start; }
+
+.pending-row .button { flex-shrink: 0; }
+
+.guest-form .field input[type=email] { box-sizing: border-box; width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; background: #fff; }
+
+.guest-form-choices { display: flex; flex-direction: column; gap: 8px; margin: 12px 0 4px; }
+
+.message-to-choice.is-off { opacity: 0.5; }
+
+.guests-tools .hero-image-menu-holder { position: relative; }
+
+.guests-tools .hero-image-menu { right: 0; left: auto; top: calc(100% + 6px); bottom: auto; }
+
+/* A host's way in when there is no list yet. */
+.guests-start { display: flex; align-items: center; gap: 16px; margin: 20px 0 8px; padding: 16px 20px; border: 1.5px dashed var(--accent); border-radius: 16px; background: #eef6f5; flex-wrap: wrap; }
+
+.guests-start > svg { width: 30px; height: 30px; color: var(--accent); flex-shrink: 0; }
+
+.guests-start-words { flex: 1 1 240px; min-width: 0; }
+
+.guests-start-title { font-family: Montserrat, Roboto, sans-serif; font-size: 18px; font-weight: 700; color: var(--brand); }
+
+.guests-start-lead { font-size: 13.5px; color: var(--muted); margin-top: 2px; line-height: 1.4; }
+
+/* The hosts' guest list under the ask: the head with its tools, the
+   counts, and a row per person, households together. */
+/* The Guest list is the rail's card: a head with the mark, the title and
+   a word under it, Add people; the counts as tiles two to a row; then
+   Groups and Individuals, each with a heading and a word; and the way to
+   the Guest table at the foot. Everything stacks to the rail's width. */
+.guests-section { margin: 0; padding: 18px 16px 16px; }
+
+.guests-head { align-items: flex-start; }
+
+.guests-head-mark { display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; flex-shrink: 0; color: #2f8f3f; }
+
+.guests-head-mark svg { width: 30px; height: 30px; }
+
+.guests-head-words { flex: 1 1 60px; min-width: 0; }
+
+.guests-title { font-family: Montserrat, Roboto, sans-serif; font-size: 20px; font-weight: 700; color: var(--brand); line-height: 1.15; }
+
+.guests-subtitle { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+
+.guests-section .guests-tools { flex-basis: 100%; justify-content: flex-end; }
+
+.guests-section .guests-tools .button { padding: 7px 12px; font-size: 13px; }
+
+.guests-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 14px 0 4px; }
+
+.guests-stat { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid transparent; border-radius: 12px; background: var(--input); font: inherit; color: var(--ink); text-align: left; cursor: pointer; }
+
+.guests-stat:hover { filter: brightness(0.97); }
+
+.guests-stat > svg { width: 24px; height: 24px; flex-shrink: 0; color: var(--muted); }
+
+.guests-stat-words { display: flex; flex-direction: column; line-height: 1.15; }
+
+.guests-stat-words strong { font-size: 18px; font-weight: 700; }
+
+.guests-stat-words span { font-size: 12.5px; color: var(--muted); }
+
+.guests-stat.is-yes { background: #e3f3ea; }
+
+.guests-stat.is-yes > svg, .guests-stat.is-yes strong { color: #1d6b48; }
+
+.guests-stat.is-maybe { background: #fff8e8; }
+
+.guests-stat.is-maybe > svg, .guests-stat.is-maybe strong { color: #7a5a00; }
+
+.guests-stat.is-no { background: #f7eeee; }
+
+.guests-stat.is-waiting { background: #fff; border: 1px dashed var(--line); }
+
+.guests-stat.is-pending { background: #fff8e8; border: 1px dashed var(--amber); }
+
+.guests-stat.is-pending > svg, .guests-stat.is-pending strong { color: #7a5a00; }
+
+.guests-section .guests-note { font-size: 13px; margin-top: 10px; }
+
+.guests-section .guests-table { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+
+.guests-part-head { margin: 0 0 8px; }
+
+.guests-part-head + .guests-part-head, .guests-household + .guests-part-head { margin-top: 16px; }
+
+.guests-part-title { font-size: 16px; font-weight: 700; color: var(--brand); }
+
+.guests-part-sub { font-size: 12.5px; color: var(--muted); margin-top: 1px; }
+
+.guests-section .guests-group-block { margin-bottom: 8px; border-radius: 12px; overflow: hidden; }
+
+.guests-section .guests-group { flex-wrap: wrap; align-items: flex-start; gap: 10px; padding: 12px; background: #eaf5ec; }
+
+.guests-group-mark { display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; flex-shrink: 0; border-radius: 50%; background: rgba(47, 143, 63, 0.12); color: #2f8f3f; }
+
+.guests-group-mark svg { width: 22px; height: 22px; }
+
+.guests-section .guests-group .invite-who { flex: 1 1 100px; }
+
+.guests-section .guests-group .invite-line { white-space: normal; }
+
+.guests-section .guests-group-toggle { align-self: flex-start; }
+
+.guests-group-foot { display: flex; align-items: center; justify-content: space-between; flex-basis: 100%; padding-left: 50px; }
+
+.guests-group-info { display: inline-flex; color: var(--muted); }
+
+.guests-group-info svg { width: 15px; height: 15px; }
+
+.guests-section .guests-row { grid-template-columns: 36px minmax(0, 1fr) auto; grid-template-areas: "face who actions" "side side side"; padding: 8px 10px; }
+
+.guests-section .guests-row .invite-face { grid-area: face; }
+
+.guests-section .guests-row .invite-who { grid-area: who; }
+
+.guests-section .guests-row .guests-actions { grid-area: actions; align-self: start; }
+
+.guests-section .guests-row .guests-side { grid-area: side; align-items: flex-start; padding-left: 48px; }
+
+.guests-section .guests-row.is-guest .guests-side { padding-left: 62px; }
+
+.guests-section .guests-by { text-align: left; }
+
+.guests-section .guests-household:not(.guests-group-block) { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; margin-bottom: 8px; }
+
+.guests-table-row { display: flex; align-items: center; gap: 12px; width: 100%; margin-top: 14px; padding: 12px; border: 0; border-radius: 12px; background: var(--input); font: inherit; color: var(--ink); text-align: left; cursor: pointer; }
+
+.guests-table-row:hover { filter: brightness(0.97); }
+
+.guests-table-row > svg { width: 18px; height: 18px; color: var(--muted); }
+
+.guests-table-mark { display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; flex-shrink: 0; border-radius: 50%; background: #fff; color: var(--brand); }
+
+.guests-table-mark svg { width: 20px; height: 20px; }
+
+.guests-table-words { flex: 1; min-width: 0; }
+
+.guests-table-title { font-size: 15px; font-weight: 700; }
+
+.guests-table-sub { font-size: 12.5px; color: var(--muted); }
+
+/* Who's coming takes the page's width: a section of its own, the faces in
+   a roomier grid. */
+.coming-section { margin: 28px 0 8px; }
+
+.coming-section .rsvps-card-head { margin-bottom: 6px; }
+
+.coming-section .rsvps-head { margin: 14px 0 8px; }
+
+.coming-section .guest-table-bar { margin: 4px 0 8px; }
+
+.coming-section .guest-table-bar .rule-search { flex: 1 1 160px; max-width: 260px; }
+
+/* The faces as Celebrate lays out its Who's Coming. */
+.attendee-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 10px; }
+
+.attendee { display: flex; flex-direction: column; padding: 10px 8px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); text-align: left; font: inherit; color: inherit; cursor: pointer; }
+
+.attendee:hover { border-color: var(--accent); }
+
+.attendee-face { position: relative; display: flex; align-items: center; justify-content: center; width: 100%; aspect-ratio: 1; border-radius: 10px; background: var(--input); color: var(--brand); font-size: 32px; font-weight: 700; margin-bottom: 8px; }
+
+.attendee-face img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 10px; }
+
+.attendee-face .grade-badge { left: -6px; top: -6px; }
+
+.attendee-face .ticket-mark { right: -6px; bottom: -6px; width: 26px; height: 26px; }
+
+.attendee-face .ticket-mark svg { width: 15px; height: 15px; }
+
+.attendee-name { font-weight: 700; font-size: 13.5px; line-height: 1.25; }
+
+.attendee-line { font-size: 12px; color: var(--muted); margin-top: 3px; line-height: 1.3; }
+
+.attendee-mine { margin-top: 5px; font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); }
+
+.coming-section .rsvps-pending { margin: 0 0 14px; }
+
+.coming-section .rsvps-visible { margin-top: 18px; }
+
+.guests-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+
+.guests-head .section-title { margin: 0; }
+
+.guests-tools { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.guests-counts { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+
+.guests-count { display: inline-flex; align-items: baseline; gap: 2px; padding: 4px 10px; border: 0; border-radius: 999px; background: var(--input); font: inherit; font-size: 12.5px; color: var(--muted); }
+
+button.guests-count { cursor: pointer; }
+
+button.guests-count:hover { filter: brightness(0.96); }
+
+.guests-count strong { font-size: 14px; color: var(--ink); }
+
+.guests-count.is-yes { background: #e3f3ea; color: #1d6b48; }
+
+.guests-count.is-yes strong { color: #1d6b48; }
+
+.guests-count.is-maybe { background: #fff8e8; color: #7a5a00; }
+
+.guests-count.is-maybe strong { color: #7a5a00; }
+
+.guests-count.is-no { background: #f1f1f1; }
+
+.guests-count.is-waiting { background: #fff; border: 1px dashed var(--line); }
+
+.guests-count.is-pending { background: #fff8e8; border: 1px dashed var(--amber); color: #7a5a00; font: inherit; font-size: 12.5px; cursor: pointer; }
+
+.guests-count.is-pending strong { color: #7a5a00; }
+
+.guests-count.is-pending:hover { background: #fff1d1; }
+
+.guests-count.is-ticket { background: #eef6f5; color: var(--brand); }
+
+.guests-count.is-ticket strong { color: var(--brand); }
+
+.guests-note { font-size: 13.5px; color: var(--muted); margin: 0 0 12px; line-height: 1.45; }
+
+.guests-table { display: flex; flex-direction: column; gap: 10px; }
+
+.guests-household { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+
+.guests-row { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto auto; align-items: center; gap: 12px; padding: 8px 12px; background: var(--card); }
+
+.guests-row + .guests-row { border-top: 1px solid var(--line); }
+
+.guests-row.is-guest .invite-face { margin-left: 14px; }
+
+.guests-row.is-link { background: var(--page); }
+
+.guests-marks { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+
+.guests-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; background: var(--input); font-size: 11.5px; font-weight: 600; color: var(--muted); white-space: nowrap; }
+
+.guests-chip svg { width: 12px; height: 12px; }
+
+.guests-chip.is-ticket { background: #eef6f5; color: var(--brand); }
+
+.guests-chip.is-noticket { background: #fff8e8; color: #7a5a00; }
+
+.guests-chip.is-sent { background: #e3f3ea; color: #1d6b48; }
+
+.guests-chip.is-unsent { background: #fff; border: 1px dashed var(--line); }
+
+.email-edit-input { box-sizing: border-box; width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; }
+
+.guests-chip.is-warning { background: #fbeeee; color: #b3261e; cursor: help; }
+
+.guests-chip-edit { margin-left: 4px; padding: 0 0 0 6px; border: 0; border-left: 1px solid rgba(179, 38, 30, 0.35); background: none; font: inherit; font-size: 11.5px; font-weight: 700; color: #b3261e; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+
+.guests-side { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+
+.guests-by { font-size: 11px; color: var(--muted); text-align: right; max-width: 230px; line-height: 1.35; }
+
+.guests-actions { display: flex; gap: 2px; }
+
+.guests-action { display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; border: 0; border-radius: 50%; background: none; color: var(--muted); cursor: pointer; }
+
+.guests-action:hover { background: var(--input); color: var(--ink); }
+
+.guests-action.is-remove:hover { color: var(--alert); }
+
+.guests-action svg { width: 16px; height: 16px; }
+
+.guests-foot { display: flex; gap: 8px; margin-top: 6px; }
+
+@media (max-width: 720px) {
+  .guests-row { grid-template-columns: 40px minmax(0, 1fr) auto; }
+  .guests-actions { grid-column: 3; grid-row: 1; }
+  .guests-side { grid-column: 2 / span 2; align-items: flex-start; }
+}
+
+/* The way onto a list: a tab per kind of adding - a person from the
+   directory, a group by rule, someone from outside. */
+.picker-panel { min-height: 200px; }
+
+.picker-search { box-sizing: border-box; width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; background: #fff; margin-bottom: 8px; }
+
+.picker-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+
+.picker-roles { margin: 0; }
+
+.picker-bar .facet-wrap { margin-left: auto; }
+
+.invite-line.has-family { color: var(--accent); }
+
+.picker-note { font-size: 13px; color: var(--muted); margin: 4px 0 10px; line-height: 1.45; }
+
+.picker-results { display: flex; flex-direction: column; gap: 2px; max-height: 42vh; overflow-y: auto; padding-right: 4px; }
+
+.picker-person { display: flex; align-items: center; gap: 10px; width: 100%; padding: 6px 8px; border: 0; border-radius: 10px; background: none; font: inherit; text-align: left; cursor: pointer; color: inherit; }
+
+.picker-person:hover:not(:disabled) { background: var(--input); }
+
+.picker-person:disabled { cursor: default; opacity: 0.6; }
+
+.picker-check { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; flex-shrink: 0; border: 1.5px solid var(--line); border-radius: 6px; background: #fff; color: transparent; }
+
+.picker-check svg { width: 13px; height: 13px; stroke-width: 3; }
+
+.picker-person.is-picked .picker-check { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.picker-person.is-on .picker-check { border-style: dashed; }
+
+.picker-rule { margin-top: 6px; }
+
+.picker-preview { font-size: 13.5px; color: var(--brand); margin: 10px 0 4px; min-height: 1.2em; }
+
+.picker-auto { display: grid; grid-template-columns: auto 1fr; column-gap: 10px; align-items: center; margin: 12px 0 4px; font-size: 14px; font-weight: 600; }
+
+.picker-auto input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+
+.picker-auto small { grid-column: 2; font-size: 12.5px; font-weight: 400; color: var(--muted); line-height: 1.4; }
+
+.picker-email { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; align-items: center; }
+
+.picker-email input { box-sizing: border-box; width: 100%; padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; background: #fff; }
+
+/* The co-hosts in the settings: chips, and the shared person picker
+   (picker.js) with Add co-host beside it. */
+.hosts-row .rsvps-grid { margin-top: 10px; }
+
+.hosts-row .contact-card { position: relative; }
+
+.hosts-card-remove { position: absolute; top: -4px; right: 0; width: 20px; height: 20px; border: 0; border-radius: 50%; background: var(--input); color: var(--muted); font-size: 14px; line-height: 1; cursor: pointer; }
+
+.hosts-card-remove:hover { background: var(--alert); color: #fff; }
+
+.hosts-row .link-button { margin-top: 8px; padding-left: 0; }
+
+.rsvp-row-line { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+
+.rsvp-row-line.is-guest { padding-left: 14px; }
+
+.rsvp-row-name { color: var(--ink); font-weight: 600; }
+
+.rsvp-row-said { border: 0; background: none; padding: 0; font: inherit; font-size: 14px; text-align: left; }
+
+button.rsvp-row-said { cursor: pointer; }
+
+button.rsvp-row-said:hover strong { text-decoration: underline; text-underline-offset: 3px; }
+
+.rsvp-row-said .invite-said-mark { width: 24px; height: 24px; }
+
+.rsvp-row-said.is-none .invite-said-mark { background: var(--input); color: var(--muted); }
+
+.rsvp-row-word { font-size: 12.5px; color: var(--muted); }
+
+.rsvp-row-said.is-none .rsvp-row-word { display: none; }
+
+.rsvp-row-said.is-none strong { color: var(--muted); font-weight: 500; }
+
+.rsvp-row-remove { margin-left: auto; }
+
+.rsvp-row .invite-foot { margin-top: 10px; }
+
+.settings-flyer { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 4px 0 10px; }
+
+.settings-flyer .link-button { padding-left: 0; cursor: pointer; }
+
+.settings-flyer input { display: none; }
+
+.settings-flyer-note { font-size: 13px; color: var(--muted); }
+
+.cohost-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+
+.cohost-chips .picker-note { margin: 0; }
+
+.cohost-pick { display: flex; gap: 8px; align-items: flex-start; }
+
+.cohost-picker { position: relative; flex: 1; min-width: 0; }
+
+.cohost-picker input { box-sizing: border-box; width: 100%; padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; font-size: 14px; background: #fff; }
+
+.cohost-picker .person-picker-list { position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; right: 0; max-height: 220px; overflow-y: auto; background: #fff; border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1); }
+
+.cohost-picker .person-picker-option { padding: 8px 10px; font-size: 14px; cursor: pointer; }
+
+.cohost-picker .person-picker-option.active, .cohost-picker .person-picker-option:hover { background: var(--input); }
+
+.picker-chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 4px 3px 10px; border-radius: 999px; background: #eef6f5; color: var(--brand); font-size: 12.5px; font-weight: 600; }
+
+.picker-chip-x { display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; border: 0; border-radius: 50%; background: none; color: inherit; font-size: 15px; line-height: 1; cursor: pointer; }
+
+.picker-chip-x:hover { background: rgba(0, 0, 0, 0.08); }
+
+/* The invitation as it stands, under the counts: its message, its
+   settings in a line, and Edit invite. */
+.invite-details { padding: 0 0 6px; margin-bottom: 6px; border-bottom: 1px solid var(--line); }
+
+.invite-details .admin-when { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+
+.invite-details .field input[type=date], .invite-details .field input[type=time], .invite-details .field textarea { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; background: #fff; box-sizing: border-box; }
+
+/* The groups on a list: the sentence, the count, Auto-invite and a bin. */
+.guests-group { display: flex; align-items: center; gap: 12px; padding: 8px 12px; background: #eef7f0; }
+
+.guests-group .invite-who { cursor: pointer; }
+
+.guests-group-toggle { display: flex; align-items: center; justify-content: center; width: 26px; height: 26px; flex-shrink: 0; border: 0; border-radius: 50%; background: none; color: var(--muted); cursor: pointer; }
+
+.guests-group-toggle:hover { background: rgba(0, 0, 0, 0.06); color: var(--ink); }
+
+.guests-group-toggle svg { width: 16px; height: 16px; transition: transform 0.15s; }
+
+.guests-group-block.is-open .guests-group-toggle svg { transform: rotate(180deg); }
+
+.guests-group-members { display: none; }
+
+.guests-group-block.is-open .guests-group-members { display: block; }
+
+.guests-group-members .guests-row { border-top: 1px solid var(--line); }
+
+.guests-group > svg { width: 20px; height: 20px; flex-shrink: 0; color: #2f8f3f; }
+
+.guests-group .invite-name { white-space: normal; }
+
+.guests-group-auto { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; font-size: 12.5px; font-weight: 600; color: var(--muted); cursor: pointer; }
+
+.guests-group-auto input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
+
+@media (max-width: 640px) {
+  .picker-email { grid-template-columns: minmax(0, 1fr); }
+}
+
 .rsvp-links { display: flex; gap: 14px; }
 
 .rsvp-clear { font-size: 12.5px; color: #3b5a4b; background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; font-family: inherit; }
@@ -1311,10 +1952,12 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 /* The event page. */
 .detail-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 
+.detail-tools { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+
 /* The picture across the top of an event, the date on a card at its corner. */
 .detail-hero { position: relative; height: 300px; margin: 0 0 24px; border-radius: 16px; overflow: hidden; background: var(--input); }
 
-.detail-hero img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.detail-hero > img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
 /* The strip across the banner's foot that changes its picture. */
 .hero-image-bar { position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-radius: 0 0 16px 16px; background: linear-gradient(180deg, rgba(10, 50, 54, 0), rgba(10, 50, 54, 0.82)); }
@@ -1337,13 +1980,35 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .hero-image-menu-item svg { width: 16px; height: 16px; color: var(--brand); }
 
-.hero-date { position: absolute; top: 20px; right: 20px; display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 150px; padding: 12px 18px 14px; border-radius: 14px; background: rgba(255, 255, 255, 0.94); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18); text-align: center; }
+/* The badge at the banner's foot for an event another app runs: the
+   app's mark on a tile, what it is there, and a line - a link to its page. */
+.hero-linked { position: absolute; left: 16px; bottom: 16px; display: flex; align-items: center; gap: 14px; max-width: calc(100% - 32px); padding: 12px 20px 12px 12px; border-radius: 18px; background: rgba(252, 253, 251, 0.96); box-shadow: 0 8px 26px rgba(0, 0, 0, 0.2); color: #1f2f31; text-decoration: none; }
 
-.hero-dow { font-size: 12px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.hero-linked:hover { background: #fff; }
 
-.hero-day { font-family: Montserrat, Roboto, sans-serif; font-size: 28px; font-weight: 700; line-height: 1.1; text-transform: uppercase; color: var(--brand); }
+.hero-linked-mark { width: 52px; height: 52px; border-radius: 12px; flex-shrink: 0; object-fit: cover; }
 
-.hero-time { font-size: 13.5px; color: var(--ink); white-space: nowrap; }
+.hero-linked-body { min-width: 0; }
+
+.hero-linked-title { font-family: Montserrat, Roboto, sans-serif; font-size: 19px; font-weight: 700; color: #0f4e54; line-height: 1.2; }
+
+.hero-linked-line { display: flex; align-items: center; gap: 6px; margin-top: 3px; font-size: 14.5px; color: #4d6a6d; }
+
+.hero-linked-line svg { width: 18px; height: 18px; flex-shrink: 0; color: #1f8a7e; }
+
+.hero-linked-line span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.detail-hero .hero-image-bar { justify-content: flex-end; }
+
+@media (max-width: 640px) {
+  /* The card is too wide to sit on a phone's banner: the picture keeps
+     its strip, and the card follows under it. */
+  .detail-hero { display: flex; flex-direction: column; height: auto; background: none; overflow: visible; }
+  .detail-hero > img { height: 200px; border-radius: 16px; }
+  .hero-image-bar { top: 0; bottom: auto; height: 200px; align-items: flex-end; border-radius: 16px; pointer-events: none; }
+  .hero-image-bar > * { pointer-events: auto; }
+  .hero-linked { position: static; max-width: none; margin: 10px 0 0; border-radius: 14px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08); }
+}
 
 .detail-back { display: inline-flex; align-items: center; gap: 6px; color: var(--brand); text-decoration: none; font-weight: 600; font-size: 14px; }
 
@@ -1370,29 +2035,231 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .side-card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
 
+.side-card-facts:empty { display: none; }
+
 .side-card-help { background: #eaf4f3; border-color: #d3e7e5; }
 
 /* The RSVPs card, for admins: the yeses and the nos as face tiles, the
    way HCA-Team draws its volunteers - the face, a student's grade badged
    on its corner, the name under it. */
+/* The hosts' pending band at the head of Who's coming: the invites still
+   to go out, and the way to send them. */
+.rsvps-pending { display: flex; flex-direction: column; gap: 8px; margin: -4px -4px 14px; padding: 12px 14px; border: 1.5px dashed var(--amber); border-radius: 12px; background: #fff8e8; }
+
+.rsvps-pending-title { font-size: 13.5px; font-weight: 700; color: #8a5a00; }
+
+.rsvps-pending .button { align-self: flex-start; }
+
+/* One person on the list, in a popup: the head, their answer for a host,
+   and the ways on. */
+.guest-card-head { display: flex; align-items: center; gap: 14px; }
+
+.guest-card-face { width: 64px; height: 64px; font-size: 24px; margin: 0; }
+
+.guest-card-name { font-family: Montserrat, Roboto, sans-serif; font-size: 18px; font-weight: 700; color: var(--brand); }
+
+.guest-card-ask { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+
+.guest-card-ask .rsvps-head { margin: 0 0 8px; }
+
+.guest-card-ask .rsvp-mini { flex-wrap: wrap; }
+
+.guest-card-ask .rsvp-mini-choice { padding: 9px 16px; font-size: 14px; }
+
+.guest-card-open { margin-top: 4px; padding-left: 0; font-size: 13.5px; }
+
+.guest-card-links { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+
+.guest-card-links .link-button { margin-top: 0; padding-left: 0; }
+
+.contact-card { border: 0; background: none; padding: 0; font: inherit; cursor: pointer; }
+
+.rsvps-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+
+.rsvps-card-head .link-button { margin-top: 0; padding: 2px 4px; font-size: 13px; }
+
+/* The compose form: a head with a mark, Send to as tinted tiles, Pick &
+   Choose over the list, the subject behind the event's name, the words
+   with a count, and Cancel and Send at the foot. */
+.compose { padding-top: 4px; }
+
+.compose-head { display: flex; align-items: flex-start; gap: 16px; margin: -8px 0 18px; }
+
+.compose-mark { display: flex; align-items: center; justify-content: center; width: 52px; height: 52px; flex-shrink: 0; border-radius: 50%; background: #e3f3ea; color: #1d6b48; }
+
+.compose-mark svg { width: 24px; height: 24px; }
+
+.compose-title { font-family: Montserrat, Roboto, sans-serif; font-size: 22px; font-weight: 700; margin: 4px 0 4px; color: var(--ink); }
+
+.compose-lead { margin: 0; font-size: 14px; color: var(--muted); line-height: 1.45; }
+
+.compose-label { font-size: 15px; font-weight: 700; margin: 16px 0 8px; }
+
+.send-tiles { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+
+.send-tile { display: flex; align-items: center; gap: 10px; padding: 12px 12px; border: 2px solid transparent; border-radius: 12px; background: var(--input); cursor: pointer; }
+
+.send-tile input { width: 20px; height: 20px; margin: 0; flex-shrink: 0; accent-color: var(--accent); }
+
+button.send-tile { font: inherit; text-align: left; }
+
+.send-tile-icon { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; flex-shrink: 0; color: var(--muted); }
+
+.send-tile-icon svg { width: 18px; height: 18px; }
+
+.send-tile-words { display: flex; flex-direction: column; min-width: 0; }
+
+.send-tile-label { font-size: 14.5px; font-weight: 700; color: var(--ink); white-space: nowrap; }
+
+.send-tile-note { font-size: 13px; color: var(--muted); }
+
+.send-tile.is-yes { background: #e3f3ea; }
+
+.send-tile.is-maybe { background: #fff8e8; }
+
+.send-tile.is-no { background: #fbeeee; }
+
+.send-tile.is-waiting { background: #eef6f5; }
+
+.send-tile.is-pick { background: #eeeef8; }
+
+.send-tile.is-on { border-color: var(--accent); }
+
+.send-pick-rows { max-height: 50vh; margin-top: 8px; }
+
+.pick-said { flex-shrink: 0; margin-left: auto; font-size: 13px; }
+
+.pick-said.is-none .invite-said-mark { background: var(--input); color: var(--muted); }
+
+.pick-said.is-none strong { color: var(--muted); font-weight: 500; }
+
+.guest-table-bar { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; margin-bottom: 6px; }
+
+.guest-table-bar .rule-search { flex: 1 1 180px; }
+
+.guest-table-bar .chip-row { margin-left: auto; }
+
+.guest-table-facets { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.guest-table-facets .facet-panel { left: auto; right: 0; }
+
+.guest-table-answer { border: 0; background: none; padding: 0; font: inherit; font-weight: 600; color: inherit; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+
+.guest-table-said .rsvp-mini { margin: -4px 0; }
+
+.guest-table-wrap { max-height: 50vh; overflow: auto; border: 1px solid var(--line); border-radius: 10px; }
+
+.guest-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+
+.guest-table th { position: sticky; top: 0; background: #f4f7f7; text-align: left; font-size: 11.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); padding: 8px 10px; border-bottom: 1px solid var(--line); }
+
+.guest-table td { padding: 7px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+
+.guest-table tr:last-child td { border-bottom: 0; }
+
+.guest-table-name { font-weight: 600; }
+
+.guest-table-name .invite-line { font-weight: 400; white-space: normal; }
+
+.guest-table-email { color: var(--muted); word-break: break-all; }
+
+.guest-table-said { white-space: nowrap; font-weight: 600; }
+
+.guest-table-said.is-yes { color: #1d6b48; }
+
+.guest-table-said.is-maybe { color: #7a5a00; }
+
+.guest-table-said.is-no { color: #b3261e; }
+
+.guest-table-said.is-none { color: var(--muted); font-weight: 500; }
+
+.guest-table-actions { justify-content: flex-start; gap: 14px; }
+
+.pick-chip.is-on.is-yes { background: #e3f3ea; border-color: #2f9e6a; color: #1d6b48; }
+
+.pick-chip.is-on.is-maybe { background: #fff8e8; border-color: var(--amber); color: #7a5a00; }
+
+.pick-chip.is-on.is-no { background: #fbeeee; border-color: #b3261e; color: #b3261e; }
+
+.pick-chip.is-on.is-none { background: #eef6f5; border-color: var(--accent); color: var(--brand); }
+
+.compose-message-wrap { position: relative; }
+
+.compose-message { box-sizing: border-box; width: 100%; padding: 12px 14px 26px; border: 1px solid var(--line); border-radius: 10px; font: inherit; font-size: 15px; line-height: 1.5; background: #fff; }
+
+.compose-count { position: absolute; right: 12px; bottom: 10px; font-size: 12px; color: var(--muted); pointer-events: none; }
+
+.compose-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+
+.compose-actions .save-status { margin-right: auto; }
+
+@media (max-width: 860px) {
+  .send-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+.message-subject { display: flex; align-items: center; gap: 8px; }
+
+.message-subject-prefix { flex-shrink: 0; padding: 9px 10px; border-radius: 8px; background: var(--input); font-size: 13.5px; font-weight: 600; color: var(--brand); white-space: nowrap; max-width: 45%; overflow: hidden; text-overflow: ellipsis; }
+
+.message-subject input[type=text] { flex: 1; min-width: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; background: #fff; }
+
+.message-to { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+
+.message-to-choice { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 500; cursor: pointer; }
+
+.message-to-choice input { width: 17px; height: 17px; margin: 0; accent-color: var(--accent); }
+
+.rsvps-head.is-yes { color: #1d6b48; }
+
+.rsvps-head.is-maybe { color: #b8860b; }
+
+.rsvps-head.is-no { color: #b3261e; }
+
 .rsvps-head { margin: 10px 0 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
 
 .rsvps-grid { display: flex; flex-wrap: wrap; gap: 12px 10px; }
 
 .contact-card { width: 64px; display: flex; flex-direction: column; align-items: center; text-align: center; text-decoration: none; color: inherit; }
 
-.contact-photo { position: relative; display: flex; align-items: center; justify-content: center; width: 52px; height: 52px; border-radius: 50%; background: var(--input); color: var(--brand); font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+/* Square-cornered, as every face on HCA-Team is; a student's grade sits
+   in a bubble at the top-left corner. */
+.contact-photo { position: relative; display: flex; align-items: center; justify-content: center; width: 52px; height: 52px; border-radius: 12px; background: var(--input); color: var(--brand); font-size: 18px; font-weight: 700; margin-bottom: 4px; }
 
-.contact-photo img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 50%; }
+.contact-photo img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 12px; }
 
 .contact-card:hover .contact-photo { box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 25%, transparent); }
 
 .contact-name { font-size: 12px; color: var(--muted); line-height: 1.25; }
 
+/* A host's mark on a party guest's face: their ticket standing. */
+.ticket-mark { position: absolute; right: -6px; bottom: -6px; display: flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: var(--brand); color: #fff; box-shadow: 0 0 0 2px #fff; }
+
+.ticket-mark svg { width: 13px; height: 13px; }
+
+.ticket-mark.is-free { background: #2f9e6a; }
+
+.ticket-mark.is-waitlist { background: var(--amber); }
+
+.ticket-mark.is-none { background: #fff; color: #9aa7a8; box-shadow: 0 0 0 2px #fff, inset 0 0 0 1.5px #c9d3d4; }
+
+.guest-card-ticket { display: flex; align-items: center; gap: 12px; margin-top: 14px; padding: 10px 14px; border-radius: 12px; background: #eef6f5; color: var(--brand); font-size: 14px; }
+
+.guest-card-ticket > svg { width: 22px; height: 22px; flex-shrink: 0; }
+
+.guest-card-ticket .invite-line { white-space: normal; margin-top: 2px; }
+
+.guest-card-ticket.is-free { background: #e3f3ea; color: #1d6b48; }
+
+.guest-card-ticket.is-waitlist { background: #fff8e8; color: #7a5a00; }
+
+.guest-card-ticket.is-none { background: #f1f1f1; color: var(--muted); }
+
 .grade-badge { position: absolute; left: -6px; top: -6px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 999px; background: var(--brand-fill); color: #fff; font-size: 11px; font-weight: 700; line-height: 20px; text-align: center; box-shadow: 0 0 0 2px #fff; }
 
 /* The admins' part of the source card, set off under a rule. */
 .side-admin { margin-top: 10px; padding-top: 10px; border-top: 1px dashed #c5dad7; }
+
+.side-admin.is-alone { margin-top: 0; padding-top: 0; border-top: 0; }
 
 .side-admin-title { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
 

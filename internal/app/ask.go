@@ -23,7 +23,7 @@ func askSources(cache *who.Cache, settings *config.Cache, teamCache *team.Cache,
 			return append(cache.Model().RoomParentLists(email), lists.Lists(email)...)
 		},
 		Calendar:          calendarCache.Model,
-		CalendarDirectory: calendarDirectory{cache, settings},
+		CalendarDirectory: calendarDirectory{cache: cache, settings: settings},
 		Linked:            linked,
 		Team:              teamCache.Model,
 		Celebrate:         celebrateCache.Model,

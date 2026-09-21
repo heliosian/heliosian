@@ -15,39 +15,15 @@ function plural(role) {
   return role === 'Staff' ? 'Staff' : role + 's';
 }
 
-export function rulesEditor({el, svg, options, me, personName}) {
-  function button(label, icon, className, onClick) {
-    const node = el('button', className || 'button');
-    node.type = 'button';
-    if (icon) {
-      node.append(svg(icon));
-    }
-    node.append(el('span', '', label));
-    if (onClick) {
-      node.addEventListener('click', e => {
-        e.preventDefault();
-        onClick(e);
-      });
-    }
-    return node;
-  }
-
-  function iconButton(icon, label, className, onClick) {
-    const node = el('button', 'icon-button ' + (className || ''));
-    node.type = 'button';
-    node.setAttribute('aria-label', label);
-    node.title = label;
-    node.append(svg(icon));
-    node.addEventListener('click', e => {
-      e.preventDefault();
-      e.stopPropagation();
-      onClick(e);
-    });
-    return node;
-  }
-
-  function chipToggle(label, on, onChange) {
-    const b = el('button', 'chip-toggle' + (on ? ' active' : ''), label);
+// filterWidgets are the editor's controls on their own, for a page that
+// filters a list the way the editor does - a chip per role to keep or
+// drop, and a dropdown checklist per facet - given the app's el, svg and
+// a button helper.
+export function filterWidgets({el, svg, button}) {
+  // key names the kind for its colour when lit - student, parent, staff
+  // - as Who?'s directory colours its role chips.
+  function chipToggle(label, on, onChange, key) {
+    const b = el('button', 'chip-toggle' + (key ? ' chip-toggle-' + key : '') + (on ? ' active' : ''), label);
     b.type = 'button';
     b.addEventListener('click', () => {
       b.classList.toggle('active');
@@ -107,7 +83,16 @@ export function rulesEditor({el, svg, options, me, personName}) {
       row.append(el('span', '', text), box);
       panel.append(row);
     }
+    // Clear and Done, as Who?'s dropdowns close.
     const foot = el('div', 'facet-foot');
+    foot.append(button('Clear', null, 'button button-secondary button-small', () => {
+      chosen.clear();
+      for (const box of panel.querySelectorAll('input')) {
+        box.checked = false;
+      }
+      updateLabel();
+      onChange();
+    }));
     foot.append(button('Done', null, 'button button-small', () => {
       panel.hidden = true;
       b.classList.remove('open');
@@ -117,6 +102,132 @@ export function rulesEditor({el, svg, options, me, personName}) {
     wrap.append(b, panel);
     return wrap;
   }
+  // filterControl is every facet behind one Filter button, as Who?'s
+  // pages keep theirs on a tag's page: a panel of sections - each a head
+  // that opens its checklist, counting what is picked - with Clear all
+  // and Done at the foot. sections are {label, icon, values, chosen}.
+  function filterControl(sections, onChange) {
+    const wrap = el('div', 'facet-wrap');
+    const b = el('button', 'facet-button');
+    b.type = 'button';
+    const labelSpan = el('span', '', 'Filter');
+    b.append(svg('filter'), labelSpan, svg('chevron'));
+    const panel = el('div', 'facet-panel facet-panel-sections');
+    panel.hidden = true;
+    const heads = [];
+    const updateLabels = () => {
+      let total = 0;
+      for (const s of sections) {
+        total += s.chosen.size;
+        s.labelSpan.textContent = s.chosen.size ? `${s.label} (${s.chosen.size})` : s.label;
+      }
+      labelSpan.textContent = total ? `Filter (${total})` : 'Filter';
+    };
+    const changed = () => {
+      updateLabels();
+      onChange();
+    };
+    b.addEventListener('click', () => {
+      const opening = panel.hidden;
+      for (const other of document.querySelectorAll('.facet-panel')) {
+        other.hidden = true;
+      }
+      for (const open of document.querySelectorAll('.facet-button.open')) {
+        open.classList.remove('open');
+      }
+      panel.hidden = !opening;
+      b.classList.toggle('open', opening);
+    });
+    for (const s of sections) {
+      const head = el('button', 'facet-section');
+      head.type = 'button';
+      s.labelSpan = el('span', '', s.label);
+      if (s.icon) {
+        head.append(svg(s.icon));
+      }
+      head.append(s.labelSpan, svg('chevron'));
+      const body = el('div', 'facet-section-body');
+      body.hidden = !s.chosen.size;
+      head.classList.toggle('open', !body.hidden);
+      head.addEventListener('click', () => {
+        body.hidden = !body.hidden;
+        head.classList.toggle('open', !body.hidden);
+      });
+      for (const v of s.values) {
+        const {value, label: text} = typeof v === 'string' ? {value: v, label: v} : v;
+        const row = el('label', 'facet-option');
+        const box = el('input');
+        box.type = 'checkbox';
+        box.checked = s.chosen.has(value);
+        box.addEventListener('change', () => {
+          if (box.checked) {
+            s.chosen.add(value);
+          } else {
+            s.chosen.delete(value);
+          }
+          changed();
+        });
+        row.append(el('span', '', text), box);
+        body.append(row);
+      }
+      heads.push(head);
+      panel.append(head, body);
+    }
+    const foot = el('div', 'facet-foot');
+    foot.append(button('Clear all', null, 'button button-secondary button-small', () => {
+      for (const s of sections) {
+        s.chosen.clear();
+      }
+      for (const box of panel.querySelectorAll('input')) {
+        box.checked = false;
+      }
+      changed();
+    }));
+    foot.append(button('Done', null, 'button button-small', () => {
+      panel.hidden = true;
+      b.classList.remove('open');
+    }));
+    panel.append(foot);
+    updateLabels();
+    wrap.append(b, panel);
+    return wrap;
+  }
+
+  return {chipToggle, facetDropdown, filterControl};
+}
+
+export function rulesEditor({el, svg, options, me, personName}) {
+  function button(label, icon, className, onClick) {
+    const node = el('button', className || 'button');
+    node.type = 'button';
+    if (icon) {
+      node.append(svg(icon));
+    }
+    node.append(el('span', '', label));
+    if (onClick) {
+      node.addEventListener('click', e => {
+        e.preventDefault();
+        onClick(e);
+      });
+    }
+    return node;
+  }
+
+  function iconButton(icon, label, className, onClick) {
+    const node = el('button', 'icon-button ' + (className || ''));
+    node.type = 'button';
+    node.setAttribute('aria-label', label);
+    node.title = label;
+    node.append(svg(icon));
+    node.addEventListener('click', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      onClick(e);
+    });
+    return node;
+  }
+
+  const {chipToggle, facetDropdown} = filterWidgets({el, svg, button});
 
   const listIcons = {party: 'party', activity: 'activity', room: 'classrooms'};
 
@@ -212,7 +323,7 @@ export function rulesEditor({el, svg, options, me, personName}) {
       roles.append(chipToggle(plural(role), rule.roles.includes(role), on => {
         rule.roles = on ? [...rule.roles, role] : rule.roles.filter(r => r !== role);
         changed();
-      }));
+      }, role.toLowerCase()));
     }
     controls.append(roles);
     const search = el('input', 'rule-search');

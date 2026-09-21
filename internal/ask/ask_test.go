@@ -63,6 +63,8 @@ func (d sampleDirectory) Children(email string) []calendar.Person {
 func (sampleDirectory) Alerts(string) (int, bool)          { return 0, false }
 func (sampleDirectory) ClassroomColors() map[string]string { return map[string]string{} }
 func (sampleDirectory) GradeColors() map[string]string     { return map[string]string{} }
+func (sampleDirectory) People() []calendar.Person          { return nil }
+func (sampleDirectory) Lists(string) []calendar.List       { return nil }
 
 // sampleSources loads every sample sheet the way the server does, with the
 // calendar's roster the directory's classrooms and crews.

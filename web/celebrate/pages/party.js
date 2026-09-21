@@ -1,9 +1,11 @@
 import {isAdmin, isKid, whenParts, parseWhen, priceLine, money, googleCalendarLink, partyPath, myTickets, availabilityLabel} from '../state.js';
 import {el, link, svg, button, avatar, thumb, paragraphs, copyText, toast} from '../dom.js';
 import {setTitle, partiesPath} from '../chrome.js';
+import {appOrigin} from '/toolbar.js';
 import {openBuy, openParty, openFreeTicket, openTicket, openPerson, openReassign, removeTicket, offerTickets, setFlags, setPartyStatus, openContacts, savePartyFields, uploadImage, editable, editPencil, fieldEditor, textInput, textAreaInput, whenInputs, emojiPicker, uploadAndSave, imageSearchOn, openImageSearch} from '../edit.js';
 import {statusBadges} from '../cards.js';
 import {openPhotoLightbox, openCropTool} from '/crop.js';
+import {dateCard} from '/datecard.js';
 
 // The page is laid out the way HCA-Team lays out an event: the wide banner
 // with the date stamp and the tools floating over it, then the words beside a
@@ -19,26 +21,16 @@ let editingId = null;
 const phone = window.matchMedia('(max-width: 900px)');
 phone.addEventListener('change', () => document.dispatchEvent(new CustomEvent('celebrate:refresh')));
 
-const weekdayFormat = new Intl.DateTimeFormat('en-US', {weekday: 'short'});
-const monthShort = new Intl.DateTimeFormat('en-US', {month: 'short'});
-
-// heroStamp is the card floating over the banner: weekday, date, and the
-// hours. A party with no date yet says so instead.
+// heroStamp is the card floating over the banner - the date card every
+// app shares (datecard.js): the day's tile, the hours, the place, and
+// Add. A party with no date yet says so on a plain stamp instead.
 function heroStamp(p) {
-  const start = parseWhen(p.start);
-  const stamp = el('div', 'hero-stamp');
-  if (!start) {
-    stamp.classList.add('hero-stamp-text');
+  if (!parseWhen(p.start)) {
+    const stamp = el('div', 'hero-stamp hero-stamp-text');
     stamp.textContent = 'Date to come';
     return stamp;
   }
-  const when = whenParts(p);
-  stamp.append(el('div', 'hero-stamp-weekday', weekdayFormat.format(start.date).toUpperCase()),
-    el('div', 'hero-stamp-date', `${monthShort.format(start.date).toUpperCase()} ${start.date.getDate()}`));
-  if (when.time) {
-    stamp.append(el('div', 'hero-stamp-time', when.time));
-  }
-  return stamp;
+  return dateCard(el, {start: p.start, end: p.end, location: p.location || '', add: googleCalendarLink(p)});
 }
 
 // heroTools are the round buttons at the banner's top-left: the pencil for
@@ -306,8 +298,15 @@ function attendeeTile(p, a) {
   if (a.mine) {
     tile.append(el('div', 'attendee-mine', 'Your family'));
   }
+  // The hosts read each face's answer to the party's invitation on
+  // Helios When, once the invites have gone out.
+  if (a.rsvp) {
+    tile.append(el('div', 'attendee-rsvp is-' + a.rsvp, rsvpWords[a.rsvp] || a.rsvp));
+  }
   return tile;
 }
+
+const rsvpWords = {yes: 'RSVP: Yes', maybe: 'RSVP: Maybe', no: 'RSVP: No', none: 'No RSVP yet'};
 
 function attendeesSection(p) {
   const section = el('section', 'attendees');
@@ -315,7 +314,18 @@ function attendeesSection(p) {
   const n = p.attendees.length;
   head.append(swooshHeading(`Who's Coming (${n})`));
   if (p.canEdit) {
-    head.append(button('Attendee contact info', 'mail', 'button button-secondary button-small', () => openContacts(p)));
+    const tools = el('div', 'section-tools');
+    tools.append(button('Attendee contact info', 'mail', 'button button-secondary button-small', () => openContacts(p)));
+    // The invitation lives on Helios When: Create Invite starts the party's
+    // guest list there from the ticket holders; once the invites are out
+    // the same page is where the RSVPs are.
+    if (p.availability !== 'past') {
+      const invite = el('a', 'button button-small' + (p.started ? ' button-secondary' : ''));
+      invite.href = invitePath(p);
+      invite.append(svg('calendar'), el('span', '', p.invited ? 'RSVPs on Helios When' : p.started ? 'The invite on Helios When' : 'Create Invite'));
+      tools.append(invite);
+    }
+    head.append(tools);
   }
   section.append(head);
   if (!n) {
@@ -475,8 +485,9 @@ function sideRow(icon, title, ...lines) {
   return row;
 }
 
-// factsCard is when, where, what a ticket costs, and who hosts - with Add to
-// Calendar under the date.
+// factsCard is the rail's facts: the street address, what a ticket costs,
+// and who hosts - the date and the place in words being on the banner's
+// card, with Add.
 function factsCard(p, editing, save) {
   const card = sideCard('facts-card');
   const when = whenParts(p);
@@ -491,22 +502,19 @@ function factsCard(p, editing, save) {
     row.append(pencil);
     return row;
   };
-  const cal = googleCalendarLink(p);
-  let calButton = null;
-  if (cal) {
-    calButton = el('a', 'button button-secondary button-small side-button');
-    calButton.href = cal;
-    calButton.target = '_blank';
-    calButton.rel = 'noopener';
-    calButton.append(svg('calendar'), el('span', '', 'Add to Calendar'));
+  // The date and hours are on the banner's card, with Add; the row is
+  // here while editing, where the date editor lives, and for a party
+  // with no date yet.
+  if (editing || !when.longDay) {
+    card.append(pencilFor(sideRow('calendar', 'Date & Time', when.longDay || 'Date to come', when.time || ''), 'Edit the date and time', () => {
+      const w = whenInputs(p.start, p.end);
+      return {input: w.input, value: w.value, validate: w.validate};
+    }));
   }
-  card.append(pencilFor(sideRow('calendar', 'Date & Time', when.longDay || 'Date to come', when.time || '', calButton), 'Edit the date and time', () => {
-    const w = whenInputs(p.start, p.end);
-    return {input: w.input, value: w.value, validate: w.validate};
-  }));
-  // Where: the place in words for everyone, and under it the street address
-  // - which only signed-in members ever see - with a map link.
-  if (p.location || p.address) {
+  // Where: the place in words is on the banner's card; the row is here
+  // for the street address - which only signed-in members ever see - with
+  // its map link, and while editing, where the place editor lives.
+  if (p.address || (p.location && editing)) {
     let mapLink = null;
     let note = null;
     if (p.address) {
@@ -645,6 +653,35 @@ function flyerCard(p, editing) {
 }
 
 // helpCard is who to ask: a mail to the hosts.
+// invitePath is the party's page on Helios When - with ?invite=1, which
+// starts the guest list there, while none exists yet.
+function invitePath(p) {
+  return appOrigin('calendar') + '/e/celebrate/' + encodeURIComponent(p.id) + (p.started ? '' : '?invite=1');
+}
+
+// inviteCard is a host's own word in the rail, highlighted so it is not
+// missed: the invitation lives on Helios When. Before a guest list exists
+// it says how Create Invite starts one; with a list still to be sent, that
+// the invite is waiting there; once the invites are out, that the RSVPs
+// are there.
+function inviteCard(p) {
+  if (!p.canEdit || p.availability === 'past') {
+    return null;
+  }
+  const card = sideCard('side-card-invite');
+  const [title, words, label] = p.invited
+    ? ['RSVPs on Helios When', 'The invites are out. The guest list and the RSVPs are on the party\u2019s page on Helios When - who has a ticket, who has said they are coming, and the way to remind whoever has not.', 'See the RSVPs']
+    : p.started
+      ? ['Your invite is waiting', 'The guest list is started on Helios When, and nobody has been sent the invitation yet. Look it over there and send it when it is ready.', 'View the invite']
+      : ['Invite your guests', 'Create an invite on Helios When and start collecting RSVPs. If more people get tickets, the invite can be automatically updated.', 'Create Invite'];
+  card.append(el('div', 'side-title', title), el('div', 'side-line', words));
+  const a = el('a', 'button button-small side-button');
+  a.href = invitePath(p);
+  a.append(svg('calendar'), el('span', '', label));
+  card.append(a);
+  return card;
+}
+
 function helpCard(p) {
   const card = sideCard('side-card-help');
   card.append(el('div', 'side-title', 'Questions?'), el('div', 'side-line', `Have a question about ${p.title}? Ask whoever is hosting it.`));
@@ -761,7 +798,7 @@ export function partyPage(p) {
     main.append(hostBand(p));
   }
 
-  for (const card of [phone.matches ? null : factsCard(p, editing, save), flyerCard(p, editing), helpCard(p)]) {
+  for (const card of [inviteCard(p), phone.matches ? null : factsCard(p, editing, save), flyerCard(p, editing), helpCard(p)]) {
     if (card) {
       side.append(card);
     }

@@ -21,7 +21,15 @@ function upcomingRow(date, e, group) {
   if (e) {
     bar.style.background = eventTint(e);
     dot.style.background = eventTint(e);
-    body.append(el('span', 'up-title', e.title), el('span', 'up-time', timeLine(e, date)));
+    const title = el('span', 'up-title', e.title);
+    // A star on an event the viewer hosts.
+    if (e.hosted) {
+      const star = svg('star');
+      star.classList.add('host-star');
+      star.setAttribute('aria-label', 'You host this');
+      title.prepend(star);
+    }
+    body.append(title, el('span', 'up-time', timeLine(e, date)));
     if (e.location) {
       body.append(el('span', 'up-place', e.location));
     }
@@ -159,12 +167,12 @@ function fillEventPeek(node, date, e) {
       alert(err.message);
     }
   };
-  // A party has no yes or no: Send Invite with a ticket in the household,
-  // Add Ticket without one.
+  // A party has no yes or no: Add to my calendar with a ticket in the
+  // household, Add Ticket without one.
   if (e.source === 'celebrate') {
     const held = (e.minePeople || []).some(p => p.note !== 'waitlisted');
     if (held) {
-      buttons.append(button(word === 'yes' ? 'Invite sent' : 'Send Invite', word === 'yes' ? 'check' : 'calendar', 'button button-small' + (word === 'yes' ? ' button-secondary' : ''), () => say('yes')));
+      buttons.append(button(word === 'yes' ? 'Invite sent' : 'Add to my calendar', word === 'yes' ? 'check' : 'calendar', 'button button-small' + (word === 'yes' ? ' button-secondary' : ''), () => say('yes')));
     } else {
       const add = el('a', 'button button-small' + (e.availability === 'available' ? '' : ' button-secondary'));
       add.href = linkURL(e);
@@ -176,6 +184,7 @@ function fillEventPeek(node, date, e) {
   }
   buttons.append(
     button('Yes', 'check', 'button button-small' + (word === 'yes' ? '' : ' button-secondary'), () => say(word === 'yes' ? '' : 'yes')),
+    button('Maybe', 'clock', 'button button-small' + (word === 'maybe' ? '' : ' button-secondary'), () => say(word === 'maybe' ? '' : 'maybe')),
     button('No', 'close', 'button button-small' + (word === 'no' ? '' : ' button-secondary'), () => say(word === 'no' ? '' : 'no')),
   );
   node.append(buttons);
@@ -626,11 +635,11 @@ export function homePage(date) {
     // to become it, faintly.
     if (shown.token === defaultFeed().token) {
       const badge = el('span', 'calendar-default');
-      badge.append(svg('star'), el('span', '', 'Default Calendar'));
+      badge.append(svg('pushpin'), el('span', '', 'Default Calendar'));
       badge.title = 'The calendar this page opens to, and Heliosian reads';
       headline.append(badge);
     } else {
-      const make = button('Make Default', 'star', 'calendar-make-default', () => makeDefaultFeed(shown));
+      const make = button('Make Default', 'pushpin', 'calendar-make-default', () => makeDefaultFeed(shown));
       make.title = 'Open the calendar and Heliosian to ' + shown.name + ' from now on';
       headline.append(make);
     }

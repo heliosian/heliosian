@@ -119,6 +119,17 @@ func details(p *Party, page string) string {
 	return d + page
 }
 
+// attendeeName is what a calendar invite calls someone: the directory's
+// name, or the name on their ticket when they are from outside.
+func (a app) attendeeName(p *Party, email string) string {
+	for _, t := range p.Tickets {
+		if t.Email == email {
+			return a.ticketName(map[string]string{"Email": t.Email, "Name": t.Name})
+		}
+	}
+	return a.nameOf(email)
+}
+
 // invite is the calendar file on a note that says someone is going: the
 // party as one event, from the site to each person the note is for, all
 // marked as coming. Its UID is the party's and the family's, so a later
@@ -152,7 +163,7 @@ func (a app) invite(p *Party, purchaser, page string, to []string) (mail.Attachm
 		"ORGANIZER;CN=Helios Celebrate:mailto:"+mail.Address(a.from),
 	)
 	for _, email := range to {
-		lines = append(lines, fmt.Sprintf("ATTENDEE;CN=%s;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;RSVP=FALSE:mailto:%s", mail.ICSEscape(a.nameOf(email)), email))
+		lines = append(lines, fmt.Sprintf("ATTENDEE;CN=%s;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;RSVP=FALSE:mailto:%s", mail.ICSEscape(a.attendeeName(p, email)), email))
 	}
 	if w := where(p); w != "" {
 		lines = append(lines, "LOCATION:"+mail.ICSEscape(w))
@@ -353,10 +364,7 @@ func (a app) mailTickets(r *http.Request, p *Party, purchaser string, taken []ma
 	waiting := 0
 	total := 0.0
 	for _, t := range taken {
-		who := t["Name"]
-		if t["Email"] != "" {
-			who = a.nameOf(t["Email"])
-		}
+		who := a.ticketName(t)
 		if t["Status"] == TicketSold {
 			sold = append(sold, who)
 			price, _ := ParsePrice(t["Price"])
@@ -518,11 +526,7 @@ func (a app) mailOffered(r *http.Request, p *Party, purchaser string, tickets []
 	names := []string{}
 	total := 0.0
 	for _, t := range tickets {
-		if t["Email"] != "" {
-			names = append(names, a.nameOf(t["Email"]))
-		} else {
-			names = append(names, t["Name"])
-		}
+		names = append(names, a.ticketName(t))
 		price, _ := ParsePrice(t["Price"])
 		total += price
 	}

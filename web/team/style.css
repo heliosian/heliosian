@@ -1163,11 +1163,8 @@ main {
   text-align: center;
 }
 
-.hero-stamp-weekday { font-size: 11.5px; font-weight: 700; letter-spacing: 0.08em; color: var(--muted); }
 
-.hero-stamp-date { font-size: 24px; font-weight: 700; color: var(--brand); line-height: 1.15; }
 
-.hero-stamp-time { font-size: 12.5px; color: var(--muted); margin-top: 4px; }
 
 .hero-stamp-text { font-size: 13px; font-weight: 700; color: var(--brand); max-width: 40%; }
 
@@ -1715,7 +1712,9 @@ button.side-chair:hover { background: var(--input); }
 /* One control for the two ways to sign someone up: a label, then segments. */
 .split-button { display: inline-flex; align-items: stretch; border: 1px solid var(--brand-fill); border-radius: 8px; overflow: hidden; background: var(--brand-fill); }
 
-.split-label { display: inline-flex; align-items: center; padding: 6px 10px 6px 12px; color: #fff; font-size: 13px; font-weight: 600; }
+.split-label { display: inline-flex; align-items: center; padding: 6px 10px 6px 12px; border: 0; background: none; color: #fff; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+
+.split-label:hover { background: rgba(255, 255, 255, 0.16); }
 
 .split-segment { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: 0; border-left: 1px solid rgba(255, 255, 255, 0.35); background: rgba(255, 255, 255, 0.12); color: #fff; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
 
@@ -2838,7 +2837,6 @@ body.is-admin main { padding: 0; }
   .detail-hero .thumb.detail-hero-image { height: 190px; }
   .detail-title { font-size: 26px; }
   .hero-stamp { top: 10px; right: 10px; min-width: 88px; padding: 9px 12px; }
-  .hero-stamp-date { font-size: 19px; }
   .signup-band .button { min-width: 0; width: 100%; }
   .field-grid { grid-template-columns: 1fr; }
   .calendar .day { min-height: 72px; padding: 3px; }

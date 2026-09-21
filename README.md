@@ -25,7 +25,7 @@ To run against real community data instead, see [docs/dev.md](docs/dev.md).
 - `internal/team` — HCA-Team, the volunteer portal: the Events sheet's model, handlers, sign-ups, and admin edits
 - `internal/birthday` — the birthday team: the Birthdays sheet's model, the derived dates and stages, handlers, and admin edits
 - `internal/celebrate` — Helios Celebrate: the Celebrate sheet's model, parties, tickets and the waitlist, handlers, and admin edits
-- `internal/calendar` — Helios When: the Calendar sheet's model, audience resolution, the day plan, handlers, and personal feeds
+- `internal/calendar` — Helios When: the Calendar sheet's model, audience resolution, the day plan, handlers, guest lists and invitations, and personal feeds
 - `internal/calendarimport` — the calendar import: the school's Google Calendar into the Calendar sheet as it changes, from the serving binary, and its year calendar PDF from the periodic sync, classified by Claude
 - `internal/loop` — Helios Loop: the Groups sheet's model, the rule evaluator, the mail received and forwarded, handlers, and admin edits
 - `internal/ask` — Helios Ask: the chat with Claude over every app's data - the prompt, the conversation, the streaming turn and the read-only tools
@@ -83,7 +83,7 @@ Helios Celebrate, in `docs/celebrate/`:
 
 Helios When, in `docs/calendar/`:
 
-- [calendar.md](docs/calendar/calendar.md) — the school calendar app spec: the pages, the filters, and personal feeds
+- [calendar.md](docs/calendar/calendar.md) — the school calendar app spec: the pages, the filters, sharing and RSVP invitations, and personal feeds
 - [data.md](docs/calendar/data.md) — the Calendar sheet, the day plan, and the import
 
 Helios Loop, in `docs/loop/`:

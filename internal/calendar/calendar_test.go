@@ -447,6 +447,7 @@ func TestICS(t *testing.T) {
 type fakeDirectory struct {
 	people map[string]Person
 	kids   map[string][]Person
+	lists  []List
 }
 
 func (d fakeDirectory) Resolve(email string) string { return email }
@@ -457,6 +458,16 @@ func (d fakeDirectory) Person(email string) (Person, bool) {
 }
 
 func (d fakeDirectory) Children(email string) []Person { return d.kids[email] }
+
+func (d fakeDirectory) People() []Person {
+	out := []Person{}
+	for _, p := range d.people {
+		out = append(out, p)
+	}
+	return out
+}
+
+func (d fakeDirectory) Lists(string) []List { return d.lists }
 
 func (d fakeDirectory) Alerts(string) (int, bool) { return 2, true }
 
@@ -697,5 +708,20 @@ func TestGoogleEventURL(t *testing.T) {
 	}
 	if got := GoogleEventURL("a1@sample"); got != "" {
 		t.Errorf("sample key linked: %s", got)
+	}
+}
+
+// The two older words for a private event - Direct Link Only, RSVP Invite -
+// still read as one.
+func TestOlderPrivateWords(t *testing.T) {
+	for _, word := range []string{StatusPrivate, StatusInviteOnly, StatusRSVP} {
+		tables := tables(t).WithEvents([]map[string]string{{"Event ID": "old", "Start": "2026-10-01", "End": "2026-10-01", "Title": "Old", "Tags": "", "Status": word}})
+		m, err := BuildModel(tables, roster)
+		if err != nil {
+			t.Fatalf("%s: %v", word, err)
+		}
+		if e := m.Event("old"); e == nil || !e.InviteOnly {
+			t.Errorf("%s: %+v", word, e)
+		}
 	}
 }

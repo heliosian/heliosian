@@ -230,9 +230,39 @@ func (c calendarLinked) activities(family familyNames, full map[string]string) [
 	return out
 }
 
+// partyPeople hands the calendar a party as its guest list needs it: the
+// hosts, and every ticket holder and waitlist place, by address where the
+// ticket names one.
+type partyPeople struct {
+	celebrate *celebrate.Cache
+}
+
+func (p partyPeople) people(id string) *calendar.PartyPeople {
+	model := p.celebrate.Model()
+	if model == nil {
+		return nil
+	}
+	party := model.Party(id)
+	if party == nil {
+		return nil
+	}
+	out := &calendar.PartyPeople{Hosts: append([]string{}, party.HostEmails...), Attendees: []calendar.Attendee{}}
+	for _, t := range party.Tickets {
+		status := "ticket"
+		if t.Status == celebrate.TicketWaitlist {
+			status = "waitlist"
+		} else if t.Price <= 0 {
+			status = "free"
+		}
+		out.Attendees = append(out.Attendees, calendar.Attendee{Email: strings.ToLower(strings.TrimSpace(t.Email)), Name: t.Name, Status: status})
+	}
+	return out
+}
+
 // CalendarRoster is the directory's classrooms as the calendar resolves
 // audiences against them: each with its band, the grades its students are
-// in, and its crews.
+// in, and its crews - and the households, each address to the others in
+// its families, adults first.
 func CalendarRoster(m *who.Model) calendar.Roster {
 	bandOf := map[string]string{}
 	order := map[string]int{}
@@ -256,7 +286,20 @@ func CalendarRoster(m *who.Model) calendar.Roster {
 			crews[c.Classroom] = append(crews[c.Classroom], c.Name)
 		}
 	}
-	roster := calendar.Roster{Classrooms: []calendar.Classroom{}}
+	roster := calendar.Roster{Classrooms: []calendar.Classroom{}, Households: map[string][]string{}}
+	for i := range m.People {
+		email := m.People[i].Email
+		seen := map[string]bool{email: true}
+		for _, key := range m.FamilyKeysOf(email) {
+			family := m.Families[key]
+			for _, member := range append(append([]string{}, family.AdultEmails...), family.KidEmails...) {
+				if member = m.Resolve(member); !seen[member] && m.Person(member) != nil {
+					seen[member] = true
+					roster.Households[email] = append(roster.Households[email], member)
+				}
+			}
+		}
+	}
 	for _, c := range m.Classrooms {
 		names := []string{}
 		for g := range grades[c.Name] {

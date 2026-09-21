@@ -1,6 +1,7 @@
 import {state, me, family, isAdmin, years, allYears, descendants, parentOf, rootOf, category, eventCategories, longDate, parseWhen, coChairs, mySignUp, canJoin, isFull, matches, activityPath, listedIn, sortByStart, shiftedEnd, headingChoices, shownVolunteers, listHidden, listRevealed, canAdd, addLabel, ADDING} from '../state.js';
 import {el, link, svg, thumb, avatar, badge, button, searchBox, copyText, whenEditor, toast} from '../dom.js';
 import {setTitle} from '../chrome.js';
+import {dateCard, googleCalendarLink} from '/datecard.js';
 import {childRow, categoryClass, completeBadge} from '../cards.js';
 import {openCropTool, openPhotoLightbox} from '/crop.js';
 import {send, reload, openSignUp, openActivity, openLink, saveActivityFields, openPerson, openImageSearch, imageSearchOn, editable, fieldEditor, highlightInputs, textInput, textAreaInput, selectInput, uploadAndSave, openCategoryManager, openVolunteerGrid, editPencil} from '../edit.js';
@@ -18,7 +19,6 @@ const phone = window.matchMedia('(max-width: 900px)');
 phone.addEventListener('change', () => document.dispatchEvent(new CustomEvent('hca:refresh')));
 
 const weekdayFormat = new Intl.DateTimeFormat('en-US', {weekday: 'short'});
-const monthShort = new Intl.DateTimeFormat('en-US', {month: 'short'});
 const fullDate = new Intl.DateTimeFormat('en-US', {weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'});
 const clock = new Intl.DateTimeFormat('en-US', {hour: 'numeric', minute: '2-digit'});
 
@@ -46,30 +46,17 @@ function timeRange(node) {
   return end && end.hasTime ? `${clock.format(start.date)} – ${clock.format(end.date)}` : clock.format(start.date);
 }
 
-// heroStamp is the card floating over the hero image: weekday, date, and the
-// hours; a span of days reads "FRI – SUN" over "OCT 2 – 4" (or "OCT 30 –
-// NOV 1"). An activity with no parsed date shows its timing words instead.
+// heroStamp is the card floating over the hero image - the date card
+// every app shares (datecard.js): the day's tile, the hours, the place,
+// and Add to Google Calendar. An activity with no parsed date shows its
+// timing words instead.
 function heroStamp(act) {
   const start = parseWhen(act.start);
   if (act.timing || !start) {
     return act.timing ? el('div', 'hero-stamp hero-stamp-text', act.timing) : null;
   }
-  const stamp = el('div', 'hero-stamp');
-  const monthDay = d => `${monthShort.format(d).toUpperCase()} ${d.getDate()}`;
-  if (spansDays(act)) {
-    const end = parseWhen(act.end);
-    const sameMonth = end.date.getMonth() === start.date.getMonth() && end.date.getFullYear() === start.date.getFullYear();
-    stamp.append(el('div', 'hero-stamp-weekday', `${weekdayFormat.format(start.date)} – ${weekdayFormat.format(end.date)}`.toUpperCase()));
-    stamp.append(el('div', 'hero-stamp-date', sameMonth ? `${monthDay(start.date)} – ${end.date.getDate()}` : `${monthDay(start.date)} – ${monthDay(end.date)}`));
-  } else {
-    stamp.append(el('div', 'hero-stamp-weekday', weekdayFormat.format(start.date).toUpperCase()));
-    stamp.append(el('div', 'hero-stamp-date', monthDay(start.date)));
-  }
-  const hours = timeRange(act);
-  if (hours) {
-    stamp.append(el('div', 'hero-stamp-time', hours));
-  }
-  return stamp;
+  const details = [act.description, location.origin + activityPath(act)].filter(Boolean).join('\n\n');
+  return dateCard(el, {start: act.start, end: act.end, location: act.location || '', add: googleCalendarLink({title: act.title, start: act.start, end: act.end, location: act.location || '', details})});
 }
 
 // heroImageBar is the strip across the foot of the hero while editing: pick a
@@ -215,7 +202,10 @@ function factsCard(node, editing, save) {
   if (when.length && node.whenFrom) {
     when.push(`Same as ${node.whenFrom.title}`);
   }
-  if (when.length || editing) {
+  // A scheduled thing's date and hours are on the banner's card, with
+  // Add; the row stays for timing words, for nothing scheduled, and while
+  // editing, where the when editor lives.
+  if ((when.length && !start) || editing) {
     const row = sideRow('calendar', 'Date & Time', when.length ? when : ['Not scheduled']);
     const body = row.querySelector('.side-row-body');
     if (editing) {
@@ -233,10 +223,6 @@ function factsCard(node, editing, save) {
           return {input: when.wrap, value: when.value, validate: when.validate};
         },
         value => save(value)));
-    }
-    if (start) {
-      body.append(button('Add to Calendar', 'calendar', 'button button-secondary button-small side-button',
-        () => downloadCalendar(node)));
     }
     card.append(row);
     any = true;
@@ -710,7 +696,13 @@ function volunteersBox(node, editing, save) {
     const others = node.canEdit || (node.status === 'Open' && !isFull(node));
     if (others) {
       const split = el('div', 'split-button');
-      split.append(el('span', 'split-label', 'Sign up'));
+      // The label is a button too: it does what Me does, or with no Me
+      // to do, signs someone else up.
+      const label = el('button', 'split-label');
+      label.type = 'button';
+      label.textContent = 'Sign up';
+      label.addEventListener('click', () => (me ? me.onClick() : openSignUp(node, null)));
+      split.append(label);
       if (me) {
         split.append(button(mine ? 'Edit mine' : 'Me', me.icon, 'split-segment', me.onClick));
       }
@@ -987,52 +979,6 @@ function shareButton(node) {
     }
     copyText(url, 'Link copied');
   });
-}
-
-function pad(n) {
-  return String(n).padStart(2, '0');
-}
-
-function icsStamp(date, hasTime) {
-  const day = `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}`;
-  return hasTime ? `${day}T${pad(date.getHours())}${pad(date.getMinutes())}00` : day;
-}
-
-// downloadCalendar hands the browser a one-event calendar file with floating
-// local times, the same wall-clock the sheet holds.
-function downloadCalendar(node) {
-  const act = rootOf(node);
-  const start = parseWhen(node.start);
-  const end = parseWhen(node.end);
-  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//HCA//HCA-Team//EN', 'BEGIN:VEVENT',
-    `UID:${encodeURIComponent(act.year + act.title + node.title)}@hca.heliosian.com`,
-    `DTSTAMP:${icsStamp(new Date(), true)}Z`];
-  if (start.hasTime) {
-    lines.push(`DTSTART:${icsStamp(start.date, true)}`);
-    if (end) {
-      lines.push(`DTEND:${icsStamp(end.date, true)}`);
-    }
-  } else {
-    lines.push(`DTSTART;VALUE=DATE:${icsStamp(start.date, false)}`);
-    const last = new Date((end || start).date);
-    last.setDate(last.getDate() + 1);
-    lines.push(`DTEND;VALUE=DATE:${icsStamp(last, false)}`);
-  }
-  const escape = s => s.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/,/g, '\\,').replace(/;/g, '\\;');
-  lines.push(`SUMMARY:${escape(node === act ? act.title : `${act.title}: ${node.title}`)}`);
-  if (node.location || act.location) {
-    lines.push(`LOCATION:${escape(node.location || act.location)}`);
-  }
-  if (node.description) {
-    lines.push(`DESCRIPTION:${escape(node.description)}`);
-  }
-  lines.push(`URL:${location.origin + activityPath(node)}`, 'END:VEVENT', 'END:VCALENDAR');
-  const blob = new Blob([lines.join('\r\n')], {type: 'text/calendar'});
-  const a = el('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `${node.title}.ics`;
-  a.click();
-  URL.revokeObjectURL(a.href);
 }
 
 function childrenSection(node, editing) {

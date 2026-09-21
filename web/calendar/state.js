@@ -335,9 +335,10 @@ function tagsAdmit(e) {
 }
 
 // An event the viewer said yes to is on their calendar whatever its
-// classrooms, so long as Going is on: an invite reaches across rooms.
+// classrooms, so long as Going is on: an invite reaches across rooms -
+// and so does an invitation to the household, whatever is on.
 export function eventVisible(e) {
-  if (answerOf(e) === 'yes' && selectedTags().includes('Going')) {
+  if (e.invited || (answerOf(e) === 'yes' && selectedTags().includes('Going'))) {
     return true;
   }
   return classroomsAdmit(e) && tagsAdmit(e);
@@ -847,4 +848,18 @@ export function calendarLink(e) {
     location: e.location || '',
   });
   return `https://calendar.google.com/calendar/render?${params}`;
+}
+
+// myEvents is the viewer's own standing with what is coming up, in date
+// order: hosted, the events they run; waiting, the invitations sent to
+// their household they have not answered; going, the rest they said yes
+// to. The rail lists them under My Events, and the page of that name.
+export function myEvents() {
+  const day = today();
+  const upcoming = state.model.events.filter(e => eventDates(e)[eventDates(e).length - 1] >= day);
+  return {
+    hosted: upcoming.filter(e => e.hosted),
+    waiting: upcoming.filter(e => !e.hosted && e.invited && !answerOf(e)),
+    going: upcoming.filter(e => !e.hosted && answerOf(e) === 'yes'),
+  };
 }

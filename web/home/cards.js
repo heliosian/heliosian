@@ -398,7 +398,7 @@ function eventCard(event) {
     }
   });
   art.append(hide);
-  // One row: Yes and No (a party's Send Invite or Add Ticket), and beside
+  // One row: Yes and No (a party's Add to My Calendar or Add Ticket), and beside
   // them, when the event has a way in and nobody is in yet, a button
   // saying what When's pill says - teal while it is open, plain once it
   // is full.
@@ -423,10 +423,11 @@ function eventCard(event) {
 }
 
 // rsvpButtons is the event's answer as buttons: Yes and No, the one given
-// filled - a yes brings a calendar invite by email. A party has no yes or
-// no: with a ticket in the household, Send Invite puts it on this person's
-// calendar; without one, Add Ticket goes to the party page. The rail's
-// day card and the Upcoming cards share it.
+// filled - a yes brings a calendar invite by email; a maybe given on When
+// is said as such. A party has no yes or no: with a ticket in the
+// household, Add to My Calendar puts it on this person's calendar;
+// without one, Add Ticket goes to the party page. The rail's day card and
+// the Upcoming cards share it.
 export function rsvpButtons(event) {
   const rsvp = el('div', 'event-rsvp');
   if (event.linkApp === 'celebrate') {
@@ -437,7 +438,7 @@ export function rsvpButtons(event) {
       const send = el('button', 'event-invite');
       send.type = 'button';
       const label = () => {
-        send.replaceChildren(svg(event.answer === 'yes' ? 'check' : 'calendarAdd'), el('span', '', event.answer === 'yes' ? 'Invite sent' : 'Send Me Invite'));
+        send.replaceChildren(svg(event.answer === 'yes' ? 'check' : 'calendarAdd'), el('span', '', event.answer === 'yes' ? 'Invite sent' : 'Add to My Calendar'));
         send.classList.toggle('is-sent', event.answer === 'yes');
         send.title = event.answer === 'yes' ? 'Sent to your email - click to send it again' : 'Email me a calendar invite';
       };
@@ -464,9 +465,9 @@ export function rsvpButtons(event) {
   let changing = false;
   const render = () => {
     rsvp.replaceChildren();
-    if ((event.answer === 'yes' || event.answer === 'no') && !changing) {
+    if ((event.answer === 'yes' || event.answer === 'no' || event.answer === 'maybe') && !changing) {
       const said = el('div', 'event-said');
-      said.append(el('span', '', 'You said '), el('strong', '', event.answer === 'yes' ? 'Yes' : 'No'));
+      said.append(el('span', '', 'You said '), el('strong', '', event.answer === 'yes' ? 'Yes' : event.answer === 'no' ? 'No' : 'Maybe'));
       const change = el('button', 'event-said-change');
       change.type = 'button';
       change.textContent = 'Change';

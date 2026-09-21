@@ -182,6 +182,10 @@ var layouts = map[string][]tab{
 		{calendar.FeedsTab, calendar.FeedColumns},
 		{calendar.SettingsTab, calendar.SettingColumns},
 		{calendar.RSVPsTab, calendar.RSVPColumns},
+		{calendar.InvitationsTab, calendar.InvitationColumns},
+		{calendar.InvitesTab, calendar.InviteColumns},
+		{calendar.InviteGroupsTab, calendar.InviteGroupColumns},
+		{calendar.BouncesTab, calendar.BounceColumns},
 		{calendar.ChangeLogTab, calendar.ChangeLogColumns},
 	},
 	"Config": {

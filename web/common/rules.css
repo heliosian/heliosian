@@ -65,6 +65,13 @@
 
 .chip-toggle.active { background: var(--brand-fill, var(--brand)); border-color: var(--brand-fill, var(--brand)); color: #fff; }
 
+/* Lit, a role chip wears its role's colour, as Who?'s directory has them. */
+.chip-toggle-student.active { background: #177d79; border-color: #177d79; }
+
+.chip-toggle-parent.active { background: #667a00; border-color: #667a00; }
+
+.chip-toggle-staff.active { background: #c2452f; border-color: #c2452f; }
+
 .rule-said { flex: 1 1 60%; font-size: 13.5px; color: var(--brand); }
 
 .rule-said.is-empty { color: var(--muted); font-style: italic; }
@@ -106,7 +113,24 @@
 
 .facet-empty { padding: 10px 14px; color: var(--muted); font-size: 13px; }
 
-.facet-foot { display: flex; justify-content: flex-end; padding: 8px 12px 4px; border-top: 1px solid var(--line); margin-top: 4px; }
+/* One Filter button's panel: a head per facet that opens its checklist. */
+.facet-section { display: flex; align-items: center; gap: 8px; width: 100%; padding: 10px 14px; border: 0; border-top: 1px solid var(--line); background: none; font: inherit; font-size: 14px; font-weight: 600; color: var(--ink); text-align: left; cursor: pointer; }
+
+.facet-section:first-child { border-top: 0; }
+
+.facet-section > span { flex: 1; }
+
+.facet-section svg { width: 16px; height: 16px; color: var(--muted); transition: transform 0.15s; }
+
+.facet-section svg:last-child { transform: rotate(90deg); }
+
+.facet-section.open svg:last-child { transform: rotate(-90deg); }
+
+.facet-section-body { padding-bottom: 4px; background: rgba(0, 0, 0, 0.025); }
+
+.facet-section-body .facet-option { padding-left: 24px; }
+
+.facet-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 8px 12px 4px; border-top: 1px solid var(--line); margin-top: 4px; }
 
 /* The editor's pencil and trash, for a page without an icon-button of its own. */
 .rule .icon-button { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border: 0; border-radius: 8px; background: none; color: var(--muted); cursor: pointer; }

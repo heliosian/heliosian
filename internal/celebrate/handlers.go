@@ -65,16 +65,18 @@ type app struct {
 	// nothing.
 	mailer mail.Sender
 	from   string
+	// rsvps is Helios When's word on a party's guest list, for its hosts.
+	rsvps RSVPLookup
 }
 
 // Register wires the app: one shell for every page, the model, and the
 // writes. Every route already sits behind sign-in. A nil mailer sends
 // nothing.
-func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, directory Directory, superAdmins func() []string, search ImageSearch, mailer mail.Sender, from string) {
+func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, directory Directory, superAdmins func() []string, search ImageSearch, mailer mail.Sender, from string, rsvps RSVPLookup) {
 	if search.UserAgent == "" {
 		search.UserAgent = "Helios Celebrate image search (+https://celebrate.heliosian.com)"
 	}
-	a := app{cache: cache, writer: writer, queue: queue, store: store, directory: directory, superAdmins: superAdmins, search: search, mailer: mailer, from: from}
+	a := app{cache: cache, writer: writer, queue: queue, store: store, directory: directory, superAdmins: superAdmins, search: search, mailer: mailer, from: from, rsvps: rsvps}
 	for _, page := range pages {
 		mux.HandleFunc("GET "+page, a.ready(a.page))
 	}
@@ -170,7 +172,7 @@ func stamp() string {
 
 func (a app) model(w http.ResponseWriter, r *http.Request) {
 	email, admin := a.who(r)
-	view := Render(a.cache.Model(), a.directory, email, admin, now())
+	view := RenderWith(a.cache.Model(), a.directory, a.rsvps, email, admin, now())
 	view.ImageSources = a.search.Sources()
 	view.ImageSearch = len(view.ImageSources) > 0
 	view.User.IsSuperAdmin = a.cache.IsSuperAdmin(email)
@@ -233,13 +235,9 @@ func (a app) invoiceRow(p *Party, cells map[string]string) map[string]string {
 	if cells["Status"] != TicketSold || price <= 0 {
 		return nil
 	}
-	name := cells["Name"]
-	if cells["Email"] != "" {
-		name = a.nameOf(cells["Email"])
-	}
 	return map[string]string{
 		"Date": today(), "Party Title": p.Title, "Event Code": p.Celebration, "Purchaser Email": cells["Purchaser"],
-		"Guest Name": name, "Action": "ADD", "Quantity": "1", "Cost": PriceCell(price),
+		"Guest Name": a.ticketName(cells), "Action": "ADD", "Quantity": "1", "Cost": PriceCell(price),
 	}
 }
 
@@ -290,6 +288,22 @@ func (a app) nameOf(email string) string {
 		return p.Name
 	}
 	return DisplayName(email)
+}
+
+// ticketName is who a ticket row is for: the directory's name for someone
+// it knows, otherwise the name written on the ticket - a non-Helios guest
+// goes by what the host typed, not the front of their address - and the
+// address's own words only when there is no name at all.
+func (a app) ticketName(t map[string]string) string {
+	if t["Email"] != "" {
+		if p, ok := a.directory.Person(a.directory.Resolve(t["Email"])); ok && p.Name != "" {
+			return p.Name
+		}
+	}
+	if t["Name"] != "" {
+		return t["Name"]
+	}
+	return DisplayName(t["Email"])
 }
 
 // audienceWords is the party's audience rule in words, for a refusal.

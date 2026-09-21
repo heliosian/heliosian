@@ -104,7 +104,7 @@ func newServer(t *testing.T) (*Cache, *http.ServeMux) {
 		t.Fatal(err)
 	}
 	mux := http.NewServeMux()
-	Register(mux, cache, dir, syncQueue{}, nil, fakeDirectory{}, func() []string { return nil }, ImageSearch{}, nil, testFrom)
+	Register(mux, cache, dir, syncQueue{}, nil, fakeDirectory{}, func() []string { return nil }, ImageSearch{}, nil, testFrom, nil)
 	return cache, mux
 }
 
@@ -789,7 +789,7 @@ func TestMail(t *testing.T) {
 	}
 	mux := http.NewServeMux()
 	rec := recorder{got: make(chan mail.Message, 8)}
-	Register(mux, cache, dir, syncQueue{}, nil, fakeDirectory{}, func() []string { return nil }, ImageSearch{}, rec, testFrom)
+	Register(mux, cache, dir, syncQueue{}, nil, fakeDirectory{}, func() []string { return nil }, ImageSearch{}, rec, testFrom, nil)
 	buy := func(as, party, purchaser string, attendees ...map[string]string) *httptest.ResponseRecorder {
 		return call(t, mux, as, "POST", "/api/celebrate/tickets", map[string]any{"partyId": party, "purchaser": purchaser, "note": "We\u2019ll be a little late", "attendees": attendees})
 	}
@@ -871,6 +871,27 @@ func TestMail(t *testing.T) {
 	}
 	if !slices.Equal(m.CC, []string{"paolo.marchetti@heliosschool.org"}) || !slices.Equal(invite.To, []string{"sofia.marchetti@heliosschool.org"}) || len(invite.CC) != 0 {
 		t.Fatalf("free ticket note cc %v / invite to %v cc %v", m.CC, invite.To, invite.CC)
+	}
+	// A guest from outside, added by name with their address, is spoken to
+	// by that name - not by the front of their address - in the note and on
+	// the calendar invite.
+	if r := call(t, mux, "sofia.marchetti@heliosschool.org", "POST", "/api/celebrate/tickets", map[string]any{"partyId": "P004", "free": true, "attendees": []map[string]string{{"name": "Michael Bolin", "email": "mbolin@example.com"}}}); r.Code != http.StatusOK {
+		t.Fatalf("outside guest: %d %s", r.Code, r.Body)
+	}
+	m, invite = pair()
+	if m.Subject != "Michael Bolin's ticket to Wurst Helios Party" || !slices.Contains(m.To, "mbolin@example.com") {
+		t.Fatalf("outside guest's note: %+v", m)
+	}
+	for _, want := range []string{"Michael, you&#39;re going!", "Hi Michael - you have a ticket"} {
+		if !strings.Contains(m.HTML, want) {
+			t.Errorf("outside guest's note lacks %q", want)
+		}
+	}
+	if strings.Contains(m.HTML, "Mbolin") {
+		t.Errorf("outside guest's note goes by their address:\n%s", m.HTML)
+	}
+	if ics := strings.ReplaceAll(string(invite.Attachments[0].Content), "\r\n ", ""); !strings.Contains(ics, "ATTENDEE;CN=Michael Bolin;") {
+		t.Errorf("outside guest's invite goes by their address:\n%s", ics)
 	}
 	// A full party: joining the waitlist gets a note that says so, and that
 	// nothing is billed yet.

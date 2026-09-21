@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"heliosian/internal/data"
+	"heliosian/internal/filter"
 	"heliosian/internal/logging"
 )
 
@@ -31,6 +32,12 @@ const (
 	FeedsTab        = "Feeds"
 	SettingsTab     = "Settings"
 	RSVPsTab        = "RSVPs"
+	InvitationsTab  = "Invitations"
+	InvitesTab      = "Invites"
+	InviteGroupsTab = "Invite Groups"
+	// BouncesTab holds the addresses the mail provider could not deliver
+	// to, one row per bounce, so a host is warned before sending again.
+	BouncesTab = "Bounces"
 	// ThemeTab holds the admin's colouring of the page (internal/theme),
 	// Key/Value; Settings is each person's own, so it lives apart.
 	ThemeTab     = "Theme"
@@ -60,6 +67,7 @@ const (
 	// their lists - still on the month, in gray, and in the search.
 	AnswerYes      = "yes"
 	AnswerNo       = "no"
+	AnswerMaybe    = "maybe"
 	AnswerHidden   = "hidden"
 	MarkerFirstDay = "First Day"
 	MarkerLastDay  = "Last Day"
@@ -79,7 +87,11 @@ var (
 	AdminColumns       = []string{"Email"}
 	FeedColumns        = []string{"Token", "Email", "Name", "Classrooms", "Tags", "Created", "Emoji"}
 	SettingColumns     = []string{"Email", "Classrooms", "Categories", "Saved", "Home Name", "Home Emoji", "Home Position"}
-	RSVPColumns        = []string{"Email", "Event ID", "Answer", "Answered"}
+	RSVPColumns        = []string{"Email", "Event ID", "Answer", "Answered", "Answered By", "Via"}
+	InvitationColumns  = []string{"Event ID", "Hosts", "Audience", "Guests", "Guest List", "Message", "Created By", "Created", "Sent", "Title", "Start", "End", "Location", "Description", "Flyer"}
+	InviteColumns      = []string{"Event ID", "Email", "Name", "Guest Of", "Via", "Added By", "Added", "Sent", "Token"}
+	InviteGroupColumns = append([]string{"Event ID", "Group ID", "Auto", "Added By", "Added", "Sent"}, filter.RuleColumns...)
+	BounceColumns      = []string{"Email", "When", "Reason"}
 	ChangeLogColumns   = []string{"Timestamp", "Actor", "Action", "Tab", "Key", "Column", "From", "To"}
 )
 
@@ -108,8 +120,12 @@ type Classroom struct {
 	Crews  []string `json:"crews,omitempty"`
 }
 
+// A Roster also carries the households the directory lists, each address
+// to the others in its families, so an invitation sent to one member of a
+// household is on every member's calendar.
 type Roster struct {
 	Classrooms []Classroom
+	Households map[string][]string
 }
 
 // Names lists the classrooms in the directory's order.
@@ -173,15 +189,25 @@ type Event struct {
 	// Status is the Events tab's word on a hand-added event: Pending while
 	// someone other than an admin's waits for approval, Declined once an
 	// admin turned it away - either on the calendar for them and the
-	// admins alone - Direct Link Only for one found by its link alone, on the
-	// calendar of whoever has answered it, and Approved (or blank) for one
-	// that is on for everyone. Pending, Declined and InviteOnly say which,
-	// for the page.
+	// admins alone - Private for one found by its link or by invitation
+	// alone, on the calendar of whoever has answered or been invited to
+	// it, and Approved (or blank) for one that is on for everyone.
+	// Pending, Declined, InviteOnly and Cancelled say which, for the page.
 	Status     string `json:"status,omitempty"`
 	Pending    bool   `json:"pending,omitempty"`
 	Declined   bool   `json:"declined,omitempty"`
 	InviteOnly bool   `json:"inviteOnly,omitempty"`
-	Hidden     bool   `json:"-"`
+	Cancelled  bool   `json:"cancelled,omitempty"`
+	// Invitation says a guest list is kept for the event (invites.go), for
+	// the page to fetch it; Invited that the viewer's household is on it,
+	// sent - the event on their calendar whatever its classrooms.
+	Invitation bool `json:"invitation,omitempty"`
+	Invited    bool `json:"invited,omitempty"`
+	// Hosted marks an event the viewer runs: one they shared, a party they
+	// host, or one they co-host the guest list of - never by being an
+	// admin.
+	Hosted     bool `json:"hosted,omitempty"`
+	Hidden     bool `json:"-"`
 	duplicate  bool
 	start, end time.Time
 }
@@ -317,10 +343,16 @@ type Setting struct {
 
 // The Events tab's Status words for a hand-added event.
 const (
-	StatusPending    = "Pending"
-	StatusApproved   = "Approved"
-	StatusDeclined   = "Declined"
+	StatusPending  = "Pending"
+	StatusApproved = "Approved"
+	StatusDeclined = "Declined"
+	StatusPrivate  = "Private"
+	// Cancelled is a host's own word on an event they called off: it
+	// leaves everyone's calendar and lists, its page saying so.
+	StatusCancelled = "Cancelled"
+	// Two older words for Private, still read as it.
 	StatusInviteOnly = "Direct Link Only"
+	StatusRSVP       = "RSVP Invite"
 )
 
 // MyHeliosian is the calendar everyone has: the calendar's own defaults -
@@ -408,13 +440,28 @@ type Model struct {
 	// Upcoming Events are read under.
 	Settings map[string]Setting
 	// Answers is each person's word on each event, by address then event
-	// id: yes, no, or hidden.
-	Answers map[string]map[string]string
-	Days    map[string]map[string]string
-	Years   []Year
-	Roster  Roster
-	Feeds   []Feed
-	Hidden  int
+	// id: yes, no, maybe, or hidden; Answered is the same with who gave it
+	// and when.
+	Answers  map[string]map[string]string
+	Answered map[string]map[string]Answered
+	// Invitations is each event's guest list settings, by event id, and
+	// Invites its guest list in the sheet's order; invited is every
+	// address with a sent invite on an event, or in the household of one.
+	Invitations map[string]*Invitation
+	Invites     map[string][]Invite
+	// Groups is each event's invite groups (groups.go), by event id, in
+	// the sheet's order.
+	Groups map[string][]InviteGroup
+	// Bounced is every address the mail provider has reported undeliverable,
+	// with the latest reason.
+	Bounced  map[string]Bounce
+	invited  map[string]map[string]bool
+	byInvite map[string]Invite
+	Days     map[string]map[string]string
+	Years    []Year
+	Roster   Roster
+	Feeds    []Feed
+	Hidden   int
 	// Duplicates counts the events folded into another that says the same
 	// thing: the same days, day type, and tags from a second source.
 	Duplicates int
@@ -477,6 +524,10 @@ type Tables struct {
 	Feeds        []map[string]string
 	Settings     []map[string]string
 	RSVPs        []map[string]string
+	Invitations  []map[string]string
+	Invites      []map[string]string
+	InviteGroups []map[string]string
+	Bounces      []map[string]string
 }
 
 func ReadTables(source data.Source) (*Tables, error) {
@@ -498,8 +549,12 @@ func ReadTables(source data.Source) (*Tables, error) {
 	feeds := &table{name: FeedsTab, want: FeedColumns}
 	settings := &table{name: SettingsTab, want: SettingColumns}
 	rsvps := &table{name: RSVPsTab, want: RSVPColumns}
+	invitations := &table{name: InvitationsTab, want: InvitationColumns}
+	invites := &table{name: InvitesTab, want: InviteColumns}
+	groups := &table{name: InviteGroupsTab, want: InviteGroupColumns}
+	bounces := &table{name: BouncesTab, want: BounceColumns}
 	changeLog := &table{name: ChangeLogTab, want: ChangeLogColumns}
-	read := []*table{google, pdf, events, enrichment, overrides, dayTypes, dayOverrides, tags, admins, feeds, settings, rsvps}
+	read := []*table{google, pdf, events, enrichment, overrides, dayTypes, dayOverrides, tags, admins, feeds, settings, rsvps, invitations, invites, groups, bounces}
 	names := []string{}
 	for _, t := range read {
 		names = append(names, t.name)
@@ -517,6 +572,7 @@ func ReadTables(source data.Source) (*Tables, error) {
 	return &Tables{
 		Google: google.rows, PDF: pdf.rows, Events: events.rows, Enrichment: enrichment.rows,
 		Overrides: overrides.rows, DayTypes: dayTypes.rows, DayOverrides: dayOverrides.rows, Tags: tags.rows, Admins: admins.rows, Feeds: feeds.rows, Settings: settings.rows, RSVPs: rsvps.rows,
+		Invitations: invitations.rows, Invites: invites.rows, InviteGroups: groups.rows, Bounces: bounces.rows,
 	}, nil
 }
 
@@ -612,6 +668,24 @@ func (t *Tables) WithEventCells(id string, cells map[string]string) *Tables {
 	return &out
 }
 
+// WithoutInvitation is the tables with everything of one event's guest
+// list dropped: its Invitations row, its Invites, its groups and every
+// answer to it.
+func (t *Tables) WithoutInvitation(id string) *Tables {
+	out := *t
+	keep := func(rows []map[string]string) []map[string]string {
+		kept := []map[string]string{}
+		for _, row := range rows {
+			if row["Event ID"] != id {
+				kept = append(kept, maps.Clone(row))
+			}
+		}
+		return kept
+	}
+	out.Invitations, out.Invites, out.InviteGroups, out.RSVPs = keep(t.Invitations), keep(t.Invites), keep(t.InviteGroups), keep(t.RSVPs)
+	return &out
+}
+
 // WithoutEvent is the tables with one Events row dropped.
 func (t *Tables) WithoutEvent(id string) *Tables {
 	out := *t
@@ -637,6 +711,147 @@ func (t *Tables) WithAnswer(email, id, answer string, cells map[string]string) *
 	if answer != "" {
 		out.RSVPs = append(out.RSVPs, maps.Clone(cells))
 	}
+	return &out
+}
+
+// WithInvitation is the tables with one event's Invitations row given
+// cells - the row it has with those set, or a new one.
+func (t *Tables) WithInvitation(id string, cells map[string]string) *Tables {
+	out := *t
+	out.Invitations = cloneRows(t.Invitations)
+	for _, row := range out.Invitations {
+		if row["Event ID"] == id {
+			maps.Copy(row, cells)
+			return &out
+		}
+	}
+	row := map[string]string{"Event ID": id}
+	maps.Copy(row, cells)
+	out.Invitations = append(out.Invitations, row)
+	return &out
+}
+
+// WithInvites is the tables with rows added to the Invites tab.
+func (t *Tables) WithInvites(rows []map[string]string) *Tables {
+	out := *t
+	out.Invites = append(cloneRows(t.Invites), cloneRows(rows)...)
+	return &out
+}
+
+// WithInviteCells is the tables with cells set on the Invites rows of one
+// event whose addresses are named - every row when none are.
+func (t *Tables) WithInviteCells(id string, emails []string, cells map[string]string) *Tables {
+	out := *t
+	out.Invites = cloneRows(t.Invites)
+	for _, row := range out.Invites {
+		if row["Event ID"] == id && (emails == nil || slices.Contains(emails, normalizeEmail(row["Email"]))) {
+			maps.Copy(row, cells)
+		}
+	}
+	return &out
+}
+
+// WithGroup is the tables with a row added to the Invite Groups tab.
+func (t *Tables) WithGroup(row map[string]string) *Tables {
+	out := *t
+	out.InviteGroups = append(cloneRows(t.InviteGroups), maps.Clone(row))
+	return &out
+}
+
+// WithGroupCells is the tables with cells set on one group's row.
+func (t *Tables) WithGroupCells(id, group string, cells map[string]string) *Tables {
+	out := *t
+	out.InviteGroups = cloneRows(t.InviteGroups)
+	for _, row := range out.InviteGroups {
+		if row["Event ID"] == id && row["Group ID"] == group {
+			maps.Copy(row, cells)
+		}
+	}
+	return &out
+}
+
+// groupUnsent says whether anyone a group put on an event's list is still
+// to be sent their invite.
+func (t *Tables) groupUnsent(id, group string) bool {
+	for _, row := range t.Invites {
+		if row["Event ID"] == id && row["Via"] == ViaGroup+group && strings.TrimSpace(row["Sent"]) == "" {
+			return true
+		}
+	}
+	return false
+}
+
+// WithoutGroup is the tables with one group's row dropped, and with it
+// the Invites rows it added that have not been sent, their answers too.
+func (t *Tables) WithoutGroup(id, group string) *Tables {
+	out := *t
+	out.InviteGroups = []map[string]string{}
+	for _, row := range t.InviteGroups {
+		if row["Event ID"] != id || row["Group ID"] != group {
+			out.InviteGroups = append(out.InviteGroups, maps.Clone(row))
+		}
+	}
+	dropped := map[string]bool{}
+	out.Invites = []map[string]string{}
+	for _, row := range t.Invites {
+		if row["Event ID"] == id && row["Via"] == ViaGroup+group && strings.TrimSpace(row["Sent"]) == "" {
+			dropped[normalizeEmail(row["Email"])] = true
+			continue
+		}
+		out.Invites = append(out.Invites, maps.Clone(row))
+	}
+	out.RSVPs = []map[string]string{}
+	for _, row := range t.RSVPs {
+		if row["Event ID"] != id || !dropped[normalizeEmail(row["Email"])] {
+			out.RSVPs = append(out.RSVPs, maps.Clone(row))
+		}
+	}
+	return &out
+}
+
+// WithoutInvite is the tables with one person's Invites row on one event
+// dropped, and their answer to it with it.
+func (t *Tables) WithoutInvite(id, email string) *Tables {
+	out := *t
+	out.Invites = []map[string]string{}
+	for _, row := range t.Invites {
+		if row["Event ID"] != id || normalizeEmail(row["Email"]) != email {
+			out.Invites = append(out.Invites, maps.Clone(row))
+		}
+	}
+	out.RSVPs = []map[string]string{}
+	for _, row := range t.RSVPs {
+		if row["Event ID"] != id || normalizeEmail(row["Email"]) != email {
+			out.RSVPs = append(out.RSVPs, maps.Clone(row))
+		}
+	}
+	return &out
+}
+
+// WithInviteEmail is the tables with one person's Invites row on one event
+// keyed by a new address - the row kept whole, its token with it - and
+// their answer moved with it.
+func (t *Tables) WithInviteEmail(id, email, to string) *Tables {
+	out := *t
+	out.Invites = cloneRows(t.Invites)
+	for _, row := range out.Invites {
+		if row["Event ID"] == id && normalizeEmail(row["Email"]) == email {
+			row["Email"] = to
+		}
+	}
+	out.RSVPs = cloneRows(t.RSVPs)
+	for _, row := range out.RSVPs {
+		if row["Event ID"] == id && normalizeEmail(row["Email"]) == email {
+			row["Email"] = to
+		}
+	}
+	return &out
+}
+
+// WithBounce is the tables with a bounce noted.
+func (t *Tables) WithBounce(row map[string]string) *Tables {
+	out := *t
+	out.Bounces = append(cloneRows(t.Bounces), maps.Clone(row))
 	return &out
 }
 
@@ -1102,10 +1317,13 @@ func (b *builder) settle() {
 		if e.Hidden {
 			continue
 		}
-		if len(e.Tags) == 0 {
+		// An event found by its link or by invitation alone is for whoever
+		// is sent it, so it may carry no tags at all - and then no Misc;
+		// a cancelled one is for nobody.
+		if len(e.Tags) == 0 && !e.InviteOnly && !e.Cancelled {
 			b.refuse("%s %q (%s) has no tags, so it matches nobody", e.Source, e.Title, e.ID)
 		}
-		if len(e.Tags) == len(e.Classrooms) {
+		if len(e.Tags) == len(e.Classrooms) && len(e.Tags) > 0 {
 			e.Tags = append(e.Tags, TagMisc)
 		}
 		if e.DayType != "" && !e.AllDay {
@@ -1170,18 +1388,43 @@ func (b *builder) settings(rows []map[string]string) {
 	}
 }
 
+// An Answered is one person's word on one event with who gave it - the
+// person themselves, a parent for a child, a host - when, and how: on a
+// page here, or by the Accept or Decline in their calendar app.
+type Answered struct {
+	Answer string `json:"answer"`
+	By     string `json:"by,omitempty"`
+	At     string `json:"at,omitempty"`
+	Via    string `json:"via,omitempty"`
+}
+
+// How an answer came: ViaPage from a page - the event's here, an outside
+// person's own, Heliosian's cards - and ViaCalendar from the reply a
+// calendar app sent to the invite.
+const (
+	ViaPage     = "page"
+	ViaCalendar = "calendar"
+)
+
+// isAnswer says a word is one the app takes: yes, no, maybe, or hidden.
+func isAnswer(word string) bool {
+	return word == AnswerYes || word == AnswerNo || word == AnswerMaybe || word == AnswerHidden
+}
+
 // answers reads each person's word on each event; an answer the app does
 // not know is dropped, and the last row for a pair wins.
 func (b *builder) answers(rows []map[string]string) {
 	for _, row := range rows {
 		email, id, answer := normalizeEmail(row["Email"]), strings.TrimSpace(row["Event ID"]), strings.ToLower(strings.TrimSpace(row["Answer"]))
-		if email == "" || id == "" || (answer != AnswerYes && answer != AnswerNo && answer != AnswerHidden) {
+		if email == "" || id == "" || !isAnswer(answer) {
 			continue
 		}
 		if b.model.Answers[email] == nil {
 			b.model.Answers[email] = map[string]string{}
+			b.model.Answered[email] = map[string]Answered{}
 		}
 		b.model.Answers[email][id] = answer
+		b.model.Answered[email][id] = Answered{Answer: answer, By: normalizeEmail(row["Answered By"]), At: strings.TrimSpace(row["Answered"]), Via: strings.ToLower(strings.TrimSpace(row["Via"]))}
 	}
 }
 
@@ -1488,7 +1731,9 @@ func BuildModel(tables *Tables, roster Roster) (*Model, error) {
 	}
 	m := &Model{
 		Events: []*Event{}, DayTypes: dayTypes, Tags: tags, Days: map[string]map[string]string{}, Years: []Year{}, Provenance: map[string]*Provenance{},
-		Roster: roster, Feeds: []Feed{}, Settings: map[string]Setting{}, Answers: map[string]map[string]string{}, Skipped: map[string]int{}, byID: map[string]*Event{}, byToken: map[string]*Feed{}, tags: map[string]bool{},
+		Roster: roster, Feeds: []Feed{}, Settings: map[string]Setting{}, Answers: map[string]map[string]string{}, Answered: map[string]map[string]Answered{},
+		Invitations: map[string]*Invitation{}, Invites: map[string][]Invite{}, Groups: map[string][]InviteGroup{}, Bounced: map[string]Bounce{}, invited: map[string]map[string]bool{}, byInvite: map[string]Invite{},
+		Skipped: map[string]int{}, byID: map[string]*Event{}, byToken: map[string]*Feed{}, tags: map[string]bool{},
 	}
 	for _, t := range tags {
 		m.tags[t.Name] = true
@@ -1531,7 +1776,8 @@ func BuildModel(tables *Tables, roster Roster) (*Model, error) {
 		e.Status = strings.TrimSpace(row["Status"])
 		e.Pending = strings.EqualFold(e.Status, StatusPending)
 		e.Declined = strings.EqualFold(e.Status, StatusDeclined)
-		e.InviteOnly = strings.EqualFold(e.Status, StatusInviteOnly)
+		e.Cancelled = strings.EqualFold(e.Status, StatusCancelled)
+		e.InviteOnly = strings.EqualFold(e.Status, StatusPrivate) || strings.EqualFold(e.Status, StatusInviteOnly) || strings.EqualFold(e.Status, StatusRSVP)
 		// The Image cell names an upload in the shared blob store, the way
 		// a category's does; the page fetches it by that path.
 		if image := strings.Trim(strings.TrimSpace(row["Image"]), "/"); image != "" {
@@ -1575,6 +1821,9 @@ func BuildModel(tables *Tables, roster Roster) (*Model, error) {
 	}
 	b.settings(tables.Settings)
 	b.answers(tables.RSVPs)
+	b.invitations(tables.Invitations, tables.Invites)
+	b.groups(tables.InviteGroups)
+	b.bounces(tables.Bounces)
 	if err := b.feeds(tables.Feeds); err != nil {
 		return nil, err
 	}
@@ -1589,9 +1838,9 @@ func BuildModel(tables *Tables, roster Roster) (*Model, error) {
 			delete(m.byID, e.ID)
 			continue
 		}
-		// A pending, declined or invite-only event waits apart from the
-		// calendar, still found by id.
-		if e.Pending || e.Declined || e.InviteOnly {
+		// A pending, declined, invite-only or cancelled event waits apart
+		// from the calendar, still found by id.
+		if e.Pending || e.Declined || e.InviteOnly || e.Cancelled {
 			m.Pending = append(m.Pending, e)
 			continue
 		}

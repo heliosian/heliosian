@@ -1635,6 +1635,7 @@ export async function openContacts(p) {
     {name: 'Purchaser', value: ({a}) => a.purchaserName || '', cell: ({a}) => purchaserCell(a)},
     {name: 'Purchaser Email', value: ({a}) => a.purchaser || '', mail: true, hidden: true},
     {name: 'Status', value: ({a}) => statusOf(a)},
+    {name: 'RSVP', value: ({a}) => ({yes: 'Yes', maybe: 'Maybe', no: 'No', none: 'No RSVP yet'})[a.rsvp] || '', hidden: !p.invited},
     {name: 'Note', value: ({a}) => a.note || ''},
   ];
   const mailLink = e => {

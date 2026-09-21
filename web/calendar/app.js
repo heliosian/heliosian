@@ -5,6 +5,7 @@ import {homePage} from './pages/home.js';
 import {eventPage} from './pages/event.js';
 import {feedsPage} from './pages/feeds.js';
 import {adminPage} from './pages/admin.js';
+import {minePage} from './pages/mine.js';
 
 export async function load() {
   const res = await fetch('/api/calendar/model');
@@ -86,6 +87,8 @@ function route() {
     }
     case 'feeds':
       return feedsPage();
+    case 'mine':
+      return minePage();
     case 'admin':
       return me().isAdmin ? adminPage() : notFound('That page');
   }
