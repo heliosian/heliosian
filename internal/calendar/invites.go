@@ -1709,7 +1709,6 @@ func (a app) send(ctx context.Context, actor string, e *Event, emails []string, 
 	if inv != nil {
 		message = inv.Message
 	}
-	replyTo := a.replyTo(e)
 	for _, to := range order {
 		// Someone from outside gets the page of their own; everyone else
 		// the event's page here, behind sign-in.
@@ -1717,7 +1716,7 @@ func (a app) send(ctx context.Context, actor string, e *Event, emails []string, 
 		if row := model.InviteOf(e.ID, to); row != nil && row.Token != "" {
 			link = "https://when.heliosian.com" + extPath(row.Token)
 		}
-		go a.sendInvitation(context.WithoutCancel(ctx), to, cc[to], recipients[to], hostName, message, e, link, replyTo, kind)
+		go a.sendInvitation(context.WithoutCancel(ctx), to, cc[to], recipients[to], hostName, message, e, link, a.replyTo(e, to), kind)
 	}
 	return len(order)
 }
@@ -1731,16 +1730,13 @@ func andList(names []string) string {
 	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
 }
 
-// replyTo is where a reply to an invitation goes: every host, so a
-// person's reply reaches whoever is running it, with the calendar's own
-// reply address beside them, so a calendar app's Accept or Decline still
-// comes back here to be recorded whichever address it answers.
-func (a app) replyTo(e *Event) []string {
-	out := append([]string{}, a.hostsOf(e)...)
-	if organizer := a.organizer(); organizer != "" && !slices.Contains(out, mailAddress(organizer)) {
-		out = append(out, organizer)
-	}
-	return out
+// replyTo is where a reply to one person's invitation goes: every host, so
+// the person's reply reaches whoever is running it, with their invite's
+// organizer beside them, so a calendar app's Accept or Decline still comes
+// back here to be recorded when it answers the message rather than the
+// organizer.
+func (a app) replyTo(e *Event, to string) []string {
+	return append(append([]string{}, a.hostsOf(e)...), a.organizer(e.ID, to))
 }
 
 // firstWord is a person's first name: the first word of their name.
@@ -1873,7 +1869,7 @@ func (a app) sendInvitation(ctx context.Context, to string, cc, names []string, 
 		Attachments: []mail.Attachment{{
 			Name:        "invite.ics",
 			ContentType: "text/calendar; method=REQUEST; charset=utf-8",
-			Content:     []byte(invite(a.organizer(), to, e, link, now())),
+			Content:     []byte(invite(a.organizer(e.ID, to), to, e, link, now())),
 		}},
 	})
 	if err != nil {
@@ -2113,7 +2109,7 @@ func (a app) sendMessage(ctx context.Context, to string, replyTo []string, hostN
 		HTML:    htm.String(),
 	}
 	if attach {
-		msg.Attachments = []mail.Attachment{{Name: "invite.ics", ContentType: "text/calendar; method=REQUEST; charset=utf-8", Content: []byte(invite(a.organizer(), to, e, link, now()))}}
+		msg.Attachments = []mail.Attachment{{Name: "invite.ics", ContentType: "text/calendar; method=REQUEST; charset=utf-8", Content: []byte(invite(a.organizer(e.ID, to), to, e, link, now()))}}
 	}
 	err := a.mail.Sender.Send(ctx, msg)
 	if err != nil {

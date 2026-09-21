@@ -1177,10 +1177,9 @@ func calendarMailFrom() string {
 }
 
 // calendarReplyTo is the address the calendar's invites name as their
-// organizer, where a calendar app sends its Accept or Decline: the from
-// address, on a receiving domain on Mailgun (docs/deploy.md), so an app
-// answering the sender rather than the organizer lands there too;
-// CALENDAR_REPLY_TO to override.
+// organizer, each with a token of its own after a plus, where a calendar
+// app sends its Accept or Decline: the from address, on a receiving domain
+// on Mailgun (docs/deploy.md); CALENDAR_REPLY_TO to override.
 func calendarReplyTo() string {
 	if to := os.Getenv("CALENDAR_REPLY_TO"); to != "" {
 		return to
@@ -1192,9 +1191,10 @@ func calendarReplyTo() string {
 // sender every app shares, the from and reply addresses, and - with the
 // Mailgun key and its webhook signing key (mailgunKey, mailgunSigningKey) -
 // the fetcher the stored replies come back through. Without both the reply
-// route says it is not set up.
-func calendarMail() calendar.Mail {
-	m := calendar.Mail{Sender: newMailer(calendarMailFrom()), From: calendarMailFrom(), ReplyTo: calendarReplyTo(), SigningKey: mailgunSigningKey()}
+// route says it is not set up. The session key makes each invite's own
+// reply address.
+func calendarMail(sessionKey string) calendar.Mail {
+	m := calendar.Mail{Sender: newMailer(calendarMailFrom()), From: calendarMailFrom(), ReplyTo: calendarReplyTo(), SigningKey: mailgunSigningKey(), Key: []byte(sessionKey)}
 	if key := mailgunKey(); key != "" {
 		m.Store = mail.NewMailgun(key, "")
 	}
@@ -1375,7 +1375,7 @@ func Production(blobCache string) (*http.Server, *who.Queue) {
 		WhoMail:       newMailer(whoMailFrom()),
 		CelebrateMail: newMailer(celebrateMailFrom()),
 		CelebrateFrom: celebrateMailFrom(),
-		CalendarMail:  calendarMail(),
+		CalendarMail:  calendarMail(sessionKey),
 		BirthdayMail:  newMailer(birthdayMailFrom()),
 		BirthdayFrom:  birthdayMailFrom(),
 		BirthdayBase:  birthdayBase(),

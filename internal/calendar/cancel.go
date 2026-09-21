@@ -195,7 +195,7 @@ func (a app) sendCancellation(ctx context.Context, to string, replyTo []string, 
 		Attachments: []mail.Attachment{{
 			Name:        "cancel.ics",
 			ContentType: "text/calendar; method=CANCEL; charset=utf-8",
-			Content:     []byte(cancellation(a.organizer(), to, e, now())),
+			Content:     []byte(cancellation(a.organizer(e.ID, to), to, e, now())),
 		}},
 	})
 	if err != nil {

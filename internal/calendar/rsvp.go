@@ -199,14 +199,14 @@ func (a app) sendInvite(ctx context.Context, email string, e *Event) {
 	htm.WriteString("<p style=\"font:13px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#647071\">The invite attached puts it on your calendar.</p>")
 	err := a.mail.Sender.Send(ctx, mail.Message{
 		To:      []string{email},
-		ReplyTo: a.replyTo(e),
+		ReplyTo: a.replyTo(e, email),
 		Subject: "Invitation: " + e.Title + " · " + day,
 		Text:    text.String(),
 		HTML:    htm.String(),
 		Attachments: []mail.Attachment{{
 			Name:        "invite.ics",
 			ContentType: "text/calendar; method=REQUEST; charset=utf-8",
-			Content:     []byte(invite(a.organizer(), email, e, link, now())),
+			Content:     []byte(invite(a.organizer(e.ID, email), email, e, link, now())),
 		}},
 	})
 	if err != nil {
@@ -216,13 +216,14 @@ func (a app) sendInvite(ctx context.Context, email string, e *Event) {
 	slog.InfoContext(ctx, "calendar: invite sent", "to", email, "event", e.ID)
 }
 
-// organizer is the address the invites name as their organizer, where a
-// calendar app sends its reply: the reply address, else the from address.
-func (a app) organizer() string {
-	if a.mail.ReplyTo != "" {
-		return a.mail.ReplyTo
-	}
-	return a.mail.From
+// organizer is the address one person's invite for one event names as its
+// organizer, where a calendar app sends its reply: the reply address with
+// that person's token for the event after a plus, which a reply must come
+// back to (takeReply).
+func (a app) organizer(id, email string) string {
+	address := mailAddress(a.mail.ReplyTo)
+	local, domain, _ := strings.Cut(address, "@")
+	return strings.Replace(a.mail.ReplyTo, address, local+"+"+a.replyToken(id, email)+"@"+domain, 1)
 }
 
 // invite is the calendar file: the one event, from the calendar to the

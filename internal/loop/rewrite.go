@@ -4,47 +4,12 @@ import (
 	"bytes"
 	"fmt"
 	"mime"
-	"net/mail"
+	netmail "net/mail"
 	"regexp"
-	"strconv"
 	"strings"
+
+	"heliosian/internal/mail"
 )
-
-type headerLine struct {
-	name string
-	raw  string
-}
-
-func (h headerLine) value() string {
-	_, rest, _ := strings.Cut(h.raw, ":")
-	rest = strings.ReplaceAll(rest, "\r\n\t", " ")
-	rest = strings.ReplaceAll(rest, "\r\n ", " ")
-	return strings.TrimSpace(rest)
-}
-
-func splitMessage(raw []byte) ([]headerLine, []byte) {
-	lines := []headerLine{}
-	rest := raw
-	for len(rest) > 0 {
-		var line []byte
-		if i := bytes.IndexByte(rest, '\n'); i < 0 {
-			line, rest = rest, nil
-		} else {
-			line, rest = rest[:i], rest[i+1:]
-		}
-		line = bytes.TrimRight(line, "\r")
-		if len(line) == 0 {
-			break
-		}
-		if (line[0] == ' ' || line[0] == '\t') && len(lines) > 0 {
-			lines[len(lines)-1].raw += "\r\n" + string(line)
-			continue
-		}
-		name, _, _ := strings.Cut(string(line), ":")
-		lines = append(lines, headerLine{name: strings.ToLower(strings.TrimSpace(name)), raw: string(line)})
-	}
-	return lines, rest
-}
 
 var droppedHeaders = map[string]bool{
 	"return-path": true, "bcc": true, "sender": true, "reply-to": true, "dkim-signature": true,
@@ -55,17 +20,17 @@ var droppedHeaders = map[string]bool{
 
 const loopHeader = "X-Helios-Loop"
 
-func held(lines []headerLine) string {
+func held(lines []mail.HeaderLine) string {
 	for _, l := range lines {
-		switch l.name {
+		switch l.Name {
 		case strings.ToLower(loopHeader):
 			return "already sent through Helios Loop"
 		case "auto-submitted":
-			if !strings.EqualFold(l.value(), "no") {
+			if !strings.EqualFold(l.Value(), "no") {
 				return "auto-submitted mail"
 			}
 		case "from":
-			local, _, _ := strings.Cut(strings.ToLower(addressOf(l.value())), "@")
+			local, _, _ := strings.Cut(strings.ToLower(mail.AddressOf(l.Value())), "@")
 			if local == "mailer-daemon" || local == "postmaster" {
 				return "a mail system's notice"
 			}
@@ -74,161 +39,34 @@ func held(lines []headerLine) string {
 	return ""
 }
 
-// Mailgun prepends its own Authentication-Results, so only the topmost one
-// counts; any further down are the sender's to write.
-func authenticated(lines []headerLine) string {
-	id, results, _ := strings.Cut(uncommented(header(lines, "authentication-results")), ";")
-	if !strings.HasSuffix(strings.ToLower(strings.TrimSpace(id)), ".mailgun.org") {
-		return "no authentication results from Mailgun"
-	}
-	_, from, _ := strings.Cut(strings.ToLower(addressOf(header(lines, "from"))), "@")
-	passed, arc := passes(results, from)
-	if passed {
-		return ""
-	}
-	if arc {
-		if forwarded, _ := passes(sealedResults(lines), from); forwarded {
-			return ""
-		}
-	}
-	return "the sender's address passed neither SPF nor DKIM"
-}
-
-func passes(results, from string) (passed, arc bool) {
-	for _, result := range strings.Split(results, ";") {
-		fields := strings.Fields(strings.ToLower(result))
-		if len(fields) == 0 {
-			continue
-		}
-		props := map[string]string{}
-		for _, field := range fields[1:] {
-			name, value, _ := strings.Cut(field, "=")
-			value = strings.Trim(value, `"`)
-			if _, domain, ok := strings.Cut(value, "@"); ok {
-				value = domain
-			}
-			props[name] = value
-		}
-		switch {
-		case fields[0] == "arc=pass":
-			arc = true
-		case fields[0] == "dmarc=pass" && aligned(props["header.from"], from):
-			passed = true
-		case fields[0] == "dkim=pass" && aligned(props["header.d"], from):
-			passed = true
-		case fields[0] == "spf=pass" && aligned(props["smtp.mailfrom"], from):
-			passed = true
-		}
-	}
-	return passed, arc
-}
-
-// Mailgun's arc=pass vouches that every ARC set is its sealer's own, so the
-// newest set's results stand for the sender only when google.com sealed it.
-func sealedResults(lines []headerLine) string {
-	newest, sealer := 0, ""
-	for _, l := range lines {
-		if l.name != "arc-seal" {
-			continue
-		}
-		tags := arcTags(l.value())
-		if i, _ := strconv.Atoi(tags["i"]); i > newest {
-			newest, sealer = i, tags["d"]
-		}
-	}
-	if sealer != "google.com" {
-		return ""
-	}
-	for _, l := range lines {
-		if l.name != "arc-authentication-results" {
-			continue
-		}
-		instance, rest, _ := strings.Cut(uncommented(l.value()), ";")
-		if arcTags(instance)["i"] != strconv.Itoa(newest) {
-			continue
-		}
-		_, results, _ := strings.Cut(rest, ";")
-		return results
-	}
-	return ""
-}
-
-func arcTags(value string) map[string]string {
-	tags := map[string]string{}
-	for _, tag := range strings.Split(value, ";") {
-		name, v, _ := strings.Cut(tag, "=")
-		tags[strings.ToLower(strings.TrimSpace(name))] = strings.ToLower(strings.TrimSpace(v))
-	}
-	return tags
-}
-
-func aligned(domain, from string) bool {
-	if domain == "" || from == "" {
-		return false
-	}
-	return domain == from || strings.HasSuffix(from, "."+domain) || strings.HasSuffix(domain, "."+from)
-}
-
-func uncommented(s string) string {
-	var b strings.Builder
-	depth := 0
-	for _, r := range s {
-		switch {
-		case r == '(':
-			depth++
-		case r == ')' && depth > 0:
-			depth--
-		case depth == 0:
-			b.WriteRune(r)
-		}
-	}
-	return b.String()
-}
-
-func addressOf(from string) string {
-	if a, err := mail.ParseAddress(from); err == nil {
-		return a.Address
-	}
-	return strings.Trim(strings.TrimSpace(from), "<>")
-}
-
-func header(lines []headerLine, name string) string {
-	for _, l := range lines {
-		if l.name == name {
-			return l.value()
-		}
-	}
-	return ""
-}
-
 var bracketed = regexp.MustCompile(`<([^<>]+)>`)
 
-func referenced(lines []headerLine) []string {
+func referenced(lines []mail.HeaderLine) []string {
 	out := []string{}
 	for _, l := range lines {
-		if l.name != "in-reply-to" && l.name != "references" {
+		if l.Name != "in-reply-to" && l.Name != "references" {
 			continue
 		}
-		for _, m := range bracketed.FindAllStringSubmatch(l.value(), -1) {
+		for _, m := range bracketed.FindAllStringSubmatch(l.Value(), -1) {
 			out = append(out, messageKey(m[1]))
 		}
 	}
 	return out
 }
 
-func messageID(lines []headerLine) string {
+func messageID(lines []mail.HeaderLine) string {
 	for _, l := range lines {
-		if l.name == "message-id" {
-			return messageKey(l.value())
+		if l.Name == "message-id" {
+			return messageKey(l.Value())
 		}
 	}
 	return ""
 }
 
 func senderName(from string) string {
-	a, err := mail.ParseAddress(from)
+	a, err := netmail.ParseAddress(from)
 	if err != nil {
-		local, _, _ := strings.Cut(addressOf(from), "@")
+		local, _, _ := strings.Cut(mail.AddressOf(from), "@")
 		return local
 	}
 	if a.Name != "" {
@@ -271,17 +109,17 @@ func prefixed(subject, title string) string {
 	}
 }
 
-func rewrite(lines []headerLine, g Group) ([]byte, error) {
+func rewrite(lines []mail.HeaderLine, g Group) ([]byte, error) {
 	var from, replyTo, subject string
 	hasSubject := false
 	for _, l := range lines {
-		switch l.name {
+		switch l.Name {
 		case "from":
-			from = l.value()
+			from = l.Value()
 		case "reply-to":
-			replyTo = l.value()
+			replyTo = l.Value()
 		case "subject":
-			subject = l.value()
+			subject = l.Value()
 			hasSubject = true
 		}
 	}
@@ -291,18 +129,18 @@ func rewrite(lines []headerLine, g Group) ([]byte, error) {
 	if replyTo == "" {
 		replyTo = from
 	}
-	newFrom := (&mail.Address{Name: senderName(from) + " via " + g.Title, Address: g.Address()}).String()
+	newFrom := (&netmail.Address{Name: senderName(from) + " via " + g.Title, Address: g.Address()}).String()
 	newSubject := "Subject: " + mime.QEncoding.Encode("utf-8", prefixed(decodeHeader(subject), g.Title))
 	var b bytes.Buffer
 	for _, l := range lines {
 		switch {
-		case l.name == "from":
+		case l.Name == "from":
 			b.WriteString("From: " + newFrom + "\r\n")
-		case l.name == "subject" && g.Prefix:
+		case l.Name == "subject" && g.Prefix:
 			b.WriteString(newSubject + "\r\n")
-		case droppedHeaders[l.name]:
+		case droppedHeaders[l.Name]:
 		default:
-			b.WriteString(l.raw + "\r\n")
+			b.WriteString(l.Raw + "\r\n")
 		}
 	}
 	if !hasSubject && g.Prefix {

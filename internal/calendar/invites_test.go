@@ -73,7 +73,7 @@ func invitesAppWith(t *testing.T) (http.Handler, *Cache, *keptMail, fakeStore, *
 	}
 	mux := http.NewServeMux()
 	sources := newSampleSources(t)
-	Register(mux, cache, dir, directQueue{}, nil, d, func() []string { return nil }, linked, parties, sources.sources, ImageSearch{}, Mail{Sender: kept, From: "Helios When <when@example.org>", Store: store, SigningKey: replySecret, ReplyTo: "Helios When <rsvp@reply.heliosian.com>"})
+	Register(mux, cache, dir, directQueue{}, nil, d, func() []string { return nil }, linked, parties, sources.sources, ImageSearch{}, Mail{Sender: kept, From: "Helios When <when@example.org>", Store: store, SigningKey: replySecret, ReplyTo: replyTo, Key: replyKey})
 	return mux, cache, kept, store, sources
 }
 
@@ -259,7 +259,7 @@ func TestInvitationLifecycle(t *testing.T) {
 	if m, ok := byTo[sam]; !ok || !strings.Contains(m.Text, "Invited: Sam, Robin, Ella") {
 		t.Errorf("sam's own mail = %+v", m)
 	}
-	if m, ok := byTo[robin]; !ok || strings.Join(m.ReplyTo, ",") != host+","+mia+",Helios When <rsvp@reply.heliosian.com>" || m.Subject != "[Class meetup] You're invited!" || !strings.Contains(m.Text, "Hosted by Jordan Whitfield and Mia Torres") || !strings.Contains(m.HTML, "/open/share/meetup.png") || !strings.Contains(m.Text, "Invited: Robin, Sam, Ella") || !strings.Contains(m.HTML, "Bring a snack to share!") || !strings.Contains(m.HTML, "https://when.heliosian.com/e/meetup") || len(m.Attachments) != 1 || !strings.Contains(string(m.Attachments[0].Content), "ATTENDEE;CN="+robin) || !strings.Contains(string(m.Attachments[0].Content), "UID:meetup@calendar.heliosian.com") {
+	if m, ok := byTo[robin]; !ok || strings.Join(m.ReplyTo, ",") != host+","+mia+","+replyAddress("meetup", robin) || strings.Join(byTo[sam].ReplyTo, ",") == strings.Join(m.ReplyTo, ",") || m.Subject != "[Class meetup] You're invited!" || !strings.Contains(m.Text, "Hosted by Jordan Whitfield and Mia Torres") || !strings.Contains(m.HTML, "/open/share/meetup.png") || !strings.Contains(m.Text, "Invited: Robin, Sam, Ella") || !strings.Contains(m.HTML, "Bring a snack to share!") || !strings.Contains(m.HTML, "https://when.heliosian.com/e/meetup") || len(m.Attachments) != 1 || !strings.Contains(string(m.Attachments[0].Content), "ATTENDEE;CN="+robin) || !strings.Contains(string(m.Attachments[0].Content), "UID:meetup@calendar.heliosian.com") || !strings.Contains(strings.ReplaceAll(string(m.Attachments[0].Content), "\r\n ", ""), "ORGANIZER;CN=Helios When:mailto:"+mailAddress(replyAddress("meetup", robin))+"\r\n") {
 		t.Errorf("robin's mail = %+v\n%s", m, m.Text)
 	}
 	if m, ok := byTo[coach]; !ok || !strings.Contains(m.Text, "Invited: Coach") {
@@ -514,11 +514,11 @@ func TestRepliesFromGuests(t *testing.T) {
 	mux, cache, _, store := invitesApp(t)
 	jordan := as(host, mux)
 	call(t, jordan, "POST", "/api/calendar/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":["Jays"],"inviteOnly":true,"id":"meetup"}`)
-	store[stored("coach")] = []byte(replyMail(coach, "meetup", "ACCEPTED"))
-	store[stored("robin")] = []byte(replyMail(robin, "meetup", "TENTATIVE"))
+	store[stored("coach")] = []byte(replyMail(coach, coach, "meetup", "ACCEPTED", "dkim=pass header.d=example.org"))
+	store[stored("robin")] = []byte(replyMail(robin, robin, "meetup", "TENTATIVE", "spf=pass smtp.mailfrom=robin.whitfield@heliosschool.org"))
 	post := func(id, from string) int {
 		stamp, sig := mail.SignMailgun(replySecret, "token-"+id, now())
-		fields := map[string]string{"recipient": "rsvp@reply.heliosian.com", "from": from, "subject": "Accepted: Meetup", "message-url": stored(id), "timestamp": stamp, "token": "token-" + id, "signature": sig}
+		fields := map[string]string{"recipient": replyAddress("meetup", from), "from": from, "subject": "Accepted: Meetup", "message-url": stored(id), "timestamp": stamp, "token": "token-" + id, "signature": sig}
 		body, _ := json.Marshal(fields)
 		req := httptest.NewRequest("POST", "https://when.local.heliosian.com:8080/hooks/replies", strings.NewReader(string(body)))
 		req.Header.Set("Content-Type", "application/json")

@@ -75,6 +75,7 @@ func main() {
 		}
 		shown = append(shown, f)
 	}
+	order(shown, *revisit)
 	if *first {
 		shown = firstOpen(shown, *revisit)
 	}
@@ -86,17 +87,29 @@ func main() {
 	log.Printf("%d of %d findings", len(shown), len(paths))
 }
 
-func firstOpen(found []finding, revisit bool) []finding {
-	open := slices.DeleteFunc(slices.Clone(found), func(f finding) bool {
-		return f.status != "open" && !(revisit && f.status == "revisit")
+func isOpen(f finding, revisit bool) bool {
+	return f.status == "open" || (revisit && f.status == "revisit")
+}
+
+// order sorts the findings the way work on them goes: the open ones first,
+// the highest severity first among those, then by file name.
+func order(found []finding, revisit bool) {
+	slices.SortStableFunc(found, func(a, b finding) int {
+		open := func(f finding) int {
+			if isOpen(f, revisit) {
+				return 0
+			}
+			return 1
+		}
+		return cmp.Or(cmp.Compare(open(a), open(b)), cmp.Compare(slices.Index(severities, a.severity), slices.Index(severities, b.severity)), cmp.Compare(a.path, b.path))
 	})
-	if len(open) == 0 {
-		return open
+}
+
+func firstOpen(ordered []finding, revisit bool) []finding {
+	if len(ordered) == 0 || !isOpen(ordered[0], revisit) {
+		return nil
 	}
-	slices.SortStableFunc(open, func(a, b finding) int {
-		return cmp.Or(cmp.Compare(slices.Index(severities, a.severity), slices.Index(severities, b.severity)), cmp.Compare(a.path, b.path))
-	})
-	return open[:1]
+	return ordered[:1]
 }
 
 func list(found []finding) {

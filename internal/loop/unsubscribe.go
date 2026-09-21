@@ -12,6 +12,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"heliosian/internal/mail"
 )
 
 func token(key []byte, name, email string) string {
@@ -208,7 +210,7 @@ func (a app) unsubscribeByMail(ctx context.Context, subject, sender string) {
 		slog.WarnContext(ctx, "groups: unsubscribe mail for no group", "group", name, "email", email)
 		return
 	}
-	if err := a.unsubscribeAddress(ctx, g, email, "mail from "+strings.ToLower(addressOf(sender))); err != nil {
+	if err := a.unsubscribeAddress(ctx, g, email, "mail from "+strings.ToLower(mail.AddressOf(sender))); err != nil {
 		slog.ErrorContext(ctx, "groups: unsubscribe by mail", "group", name, "email", email, "error", err)
 	}
 }

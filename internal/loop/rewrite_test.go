@@ -3,6 +3,8 @@ package loop
 import (
 	"strings"
 	"testing"
+
+	"heliosian/internal/mail"
 )
 
 const post = "Received: from mx.example.org by inbound.resend.com\r\n" +
@@ -25,7 +27,7 @@ const post = "Received: from mx.example.org by inbound.resend.com\r\n" +
 var team = Group{Name: "soccer-team", Title: "Soccer Team Families", Prefix: true}
 
 func TestRewriteKeepsTheThreadAndTheBody(t *testing.T) {
-	lines, body := splitMessage([]byte(post))
+	lines, body := mail.SplitMessage([]byte(post))
 	if string(body) != "See you at 9.\r\n" {
 		t.Fatalf("body %q", body)
 	}
@@ -66,7 +68,7 @@ func TestRewriteKeepsTheThreadAndTheBody(t *testing.T) {
 }
 
 func TestRewriteLeavesTheSubjectWhenPrefixIsOff(t *testing.T) {
-	lines, _ := splitMessage([]byte(post))
+	lines, _ := mail.SplitMessage([]byte(post))
 	plain := team
 	plain.Prefix = false
 	head, err := rewrite(lines, plain)
@@ -97,7 +99,7 @@ func TestPrefixedNeverDoubles(t *testing.T) {
 
 func TestRewriteEncodesWhatIsNotASCII(t *testing.T) {
 	raw := "From: =?utf-8?q?Jos=C3=A9?= <jose@example.org>\r\nSubject: =?utf-8?q?Caf=C3=A9?=\r\n\r\nhi\r\n"
-	lines, _ := splitMessage([]byte(raw))
+	lines, _ := mail.SplitMessage([]byte(raw))
 	head, err := rewrite(lines, team)
 	if err != nil {
 		t.Fatal(err)
@@ -120,72 +122,22 @@ func TestHeldStopsLoopsAndAutomata(t *testing.T) {
 		"From: a@x.org\r\n\r\n":                                      "",
 	}
 	for raw, want := range cases {
-		lines, _ := splitMessage([]byte(raw))
+		lines, _ := mail.SplitMessage([]byte(raw))
 		if got := held(lines); got != want {
 			t.Errorf("%q: got %q, want %q", raw, got, want)
 		}
 	}
 }
 
-func TestAuthenticatedTakesMailgunsAlignedResults(t *testing.T) {
-	const mailgun = "Authentication-Results: mxa.mailgun.org;\r\n "
-	cases := map[string]string{
-		mailgun + "dkim=pass header.d=x.org; spf=fail smtp.mailfrom=a@x.org; dmarc=pass (dkim=pass domain=x.org; spf=fail domain=x.org) header.from=x.org\r\nFrom: A <a@x.org>\r\n\r\n": "",
-		mailgun + "dkim=pass header.d=x.org; spf=none smtp.mailfrom=a@x.org; dmarc=none header.from=x.org\r\nFrom: a@x.org\r\n\r\n":                                                     "",
-		mailgun + "dkim=none; spf=pass (x.org designates it) smtp.mailfrom=\"bounce@mail.x.org\"; dmarc=none header.from=x.org\r\nFrom: a@x.org\r\n\r\n":                                "",
-		mailgun + "dkim=pass header.d=x.org; spf=pass smtp.mailfrom=a@x.org; dmarc=pass header.from=x.org\r\nFrom: A <A@X.org>\r\n\r\n":                                                 "",
-		mailgun + "dkim=pass header.d=spammer.example; spf=pass smtp.mailfrom=s@spammer.example; dmarc=fail header.from=x.org\r\nFrom: a@x.org\r\n\r\n":                                 "the sender's address passed neither SPF nor DKIM",
-		mailgun + "dkim=pass header.d=notx.org; spf=softfail smtp.mailfrom=a@x.org; dmarc=fail header.from=x.org\r\nFrom: a@x.org\r\n\r\n":                                              "the sender's address passed neither SPF nor DKIM",
-		mailgun + "dkim=fail header.d=x.org; spf=fail smtp.mailfrom=a@x.org\r\nAuthentication-Results: mxa.mailgun.org; dmarc=pass header.from=x.org\r\nFrom: a@x.org\r\n\r\n":          "the sender's address passed neither SPF nor DKIM",
-		"Authentication-Results: mx.forger.example; dmarc=pass header.from=x.org\r\nFrom: a@x.org\r\n\r\n":                                                                              "no authentication results from Mailgun",
-		"From: a@x.org\r\n\r\n": "no authentication results from Mailgun",
-	}
-	for raw, want := range cases {
-		lines, _ := splitMessage([]byte(raw))
-		if got := authenticated(lines); got != want {
-			t.Errorf("%q: got %q, want %q", raw, got, want)
-		}
-	}
-	lines, _ := splitMessage([]byte(post))
-	if got := authenticated(lines); got != "" {
-		t.Errorf("the sample post: %q", got)
-	}
-}
-
-func TestAuthenticatedTakesGooglesSealedResults(t *testing.T) {
-	const relayed = "Authentication-Results: mxa.mailgun.org;\r\n dkim=pass header.d=heliosian.com; spf=pass smtp.mailfrom=\"team+b@heliosian.com\"; dmarc=fail (dkim=none) header.from=x.org; arc="
-	seal := func(i, d string) string {
-		return "ARC-Seal: i=" + i + "; a=rsa-sha256; t=1789839813; cv=pass;\r\n        d=" + d + "; s=arc-20260327;\r\n        b=f4CKeXa7\r\n         68qs==\r\n"
-	}
-	results := func(i, dmarc string) string {
-		return "ARC-Authentication-Results: i=" + i + "; mx.google.com;\r\n       dkim=pass header.i=@x.org header.s=fm2;\r\n       dmarc=" + dmarc + " (p=NONE sp=NONE dis=NONE) header.from=x.org\r\n"
-	}
-	const from = "From: \"A\" <a@x.org>\r\n\r\n"
-	cases := map[string]string{
-		relayed + "pass\r\n" + seal("2", "google.com") + results("2", "pass") + seal("1", "google.com") + results("1", "pass") + from:     "",
-		relayed + "fail\r\n" + seal("2", "google.com") + results("2", "pass") + seal("1", "google.com") + results("1", "pass") + from:     "the sender's address passed neither SPF nor DKIM",
-		relayed + "pass\r\n" + seal("2", "forger.example") + results("2", "pass") + seal("1", "google.com") + results("1", "pass") + from: "the sender's address passed neither SPF nor DKIM",
-		relayed + "pass\r\n" + seal("2", "google.com") + results("2", "fail") + seal("1", "google.com") + results("1", "pass") + from:     "the sender's address passed neither SPF nor DKIM",
-		relayed + "pass\r\n" + seal("1", "google.com") + results("1", "pass") + "From: b@y.org\r\n\r\n":                                   "the sender's address passed neither SPF nor DKIM",
-		relayed + "pass\r\n" + from: "the sender's address passed neither SPF nor DKIM",
-	}
-	for raw, want := range cases {
-		lines, _ := splitMessage([]byte(raw))
-		if got := authenticated(lines); got != want {
-			t.Errorf("%q: got %q, want %q", raw, got, want)
-		}
-	}
-}
-
 func TestReferencedReadsBothThreadHeaders(t *testing.T) {
-	lines, _ := splitMessage([]byte("From: a@x.org\r\nMessage-ID: <self@x.org>\r\nIn-Reply-To: <b@y.org>\r\nReferences: <a@y.org>\r\n <b@y.org>\r\n\r\n"))
+	lines, _ := mail.SplitMessage([]byte("From: a@x.org\r\nMessage-ID: <self@x.org>\r\nIn-Reply-To: <b@y.org>\r\nReferences: <a@y.org>\r\n <b@y.org>\r\n\r\n"))
 	if got := referenced(lines); len(got) != 3 || got[0] != "b@y.org" || got[1] != "a@y.org" || got[2] != "b@y.org" {
 		t.Fatalf("got %v", got)
 	}
 }
 
 func TestRewriteNeedsAFrom(t *testing.T) {
-	lines, _ := splitMessage([]byte("Subject: hi\r\n\r\nbody\r\n"))
+	lines, _ := mail.SplitMessage([]byte("Subject: hi\r\n\r\nbody\r\n"))
 	if _, err := rewrite(lines, team); err == nil {
 		t.Fatal("a message with no From was rewritten")
 	}

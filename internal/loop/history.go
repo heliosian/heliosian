@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"heliosian/internal/mail"
 )
 
 const (
@@ -53,7 +55,7 @@ func messageKey(id string) string {
 }
 
 func (a app) sender(from string) Person {
-	email := strings.ToLower(addressOf(from))
+	email := strings.ToLower(mail.AddressOf(from))
 	if p, ok := a.directory.Person(a.directory.Resolve(email)); ok {
 		return p
 	}

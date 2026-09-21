@@ -169,7 +169,7 @@ func (m *mailer) recordSent(ctx context.Context, j job, raw []byte, cells map[st
 func localsIn(addresses []string) []string {
 	out := []string{}
 	for _, address := range addresses {
-		local, domain, _ := strings.Cut(strings.ToLower(addressOf(address)), "@")
+		local, domain, _ := strings.Cut(strings.ToLower(mail.AddressOf(address)), "@")
 		if domain == Domain && !slices.Contains(out, local) {
 			out = append(out, local)
 		}
@@ -242,7 +242,7 @@ func (m *mailer) flush() {
 	}
 }
 
-func (m *mailer) repliesTo(group string, lines []headerLine) bool {
+func (m *mailer) repliesTo(group string, lines []mail.HeaderLine) bool {
 	sent := map[string]bool{}
 	for _, row := range m.cache.Tables().Messages {
 		if row["State"] == stateSent && strings.EqualFold(row["Group"], group) && row["Message ID"] != "" {
@@ -275,7 +275,7 @@ func (m *mailer) delivery(event, from, messageID, detail string, when time.Time,
 	if len(names) == 0 || !m.sentAs(names[0], messageID) {
 		return
 	}
-	email := strings.ToLower(addressOf(address))
+	email := strings.ToLower(mail.AddressOf(address))
 	if event != eventDelivered {
 		slog.Warn("groups: delivery trouble", "event", event, "group", names[0], "email", email, "detail", detail)
 	}
@@ -303,18 +303,18 @@ func (m *mailer) forward(ctx context.Context, j job) string {
 	if err != nil {
 		return fail("fetch", err)
 	}
-	lines, body := splitMessage(raw)
+	lines, body := mail.SplitMessage(raw)
 	if reason := held(lines); reason != "" {
 		log.Info("groups: message held", "reason", reason)
 		m.mark(j, stateDropped, map[string]string{"Detail": reason})
 		return stateDropped
 	}
-	if reason := authenticated(lines); reason != "" {
-		log.Info("groups: message not authenticated", "reason", reason, "from", header(lines, "from"))
+	if reason := mail.Authenticated(lines); reason != "" {
+		log.Info("groups: message not authenticated", "reason", reason, "from", mail.Header(lines, "from"))
 		m.mark(j, stateDropped, map[string]string{"Detail": reason})
 		return stateDropped
 	}
-	sender := m.directory.Resolve(strings.ToLower(addressOf(header(lines, "from"))))
+	sender := m.directory.Resolve(strings.ToLower(mail.AddressOf(mail.Header(lines, "from"))))
 	reply := m.repliesTo(g.Name, lines)
 	if !g.PostableBy(sender, reply, SourcesOf(m.directory)) {
 		audience, verb := g.Posting, "post"
@@ -368,12 +368,12 @@ func (m *mailer) forward(ctx context.Context, j job) string {
 
 var posters = map[string]string{PostingMembers: "the people on it and its managers", PostingManagers: "its managers"}
 
-func (m *mailer) bounce(ctx context.Context, g Group, lines []headerLine, audience, verb string) error {
-	to := addressOf(header(lines, "from"))
-	subject := decodeHeader(header(lines, "subject"))
+func (m *mailer) bounce(ctx context.Context, g Group, lines []mail.HeaderLine, audience, verb string) error {
+	to := mail.AddressOf(mail.Header(lines, "from"))
+	subject := decodeHeader(mail.Header(lines, "subject"))
 	text := fmt.Sprintf("Your message to %s, “%s”, was not sent to the group: only %s can %s to it.", g.Address(), subject, posters[audience], verb)
 	headers := map[string]string{"Auto-Submitted": "auto-replied", loopHeader: g.Name}
-	if id := header(lines, "message-id"); id != "" {
+	if id := mail.Header(lines, "message-id"); id != "" {
 		headers["In-Reply-To"] = id
 		headers["References"] = id
 	}
@@ -398,7 +398,7 @@ func (a app) inbound(w http.ResponseWriter, r *http.Request) {
 	}
 	recipients := strings.Split(fields["recipient"], ",")
 	for _, recipient := range recipients {
-		local, domain, _ := strings.Cut(strings.ToLower(addressOf(recipient)), "@")
+		local, domain, _ := strings.Cut(strings.ToLower(mail.AddressOf(recipient)), "@")
 		if domain == Domain && local == unsubscribeLocal {
 			a.unsubscribeByMail(r.Context(), fields["subject"], fields["sender"])
 		}
