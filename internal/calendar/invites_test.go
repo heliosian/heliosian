@@ -441,7 +441,7 @@ func TestInvitationLifecycle(t *testing.T) {
 	}
 	rec = call(t, jordan, "POST", "/api/calendar/invites/send", `{"id":"meetup","to":"unanswered"}`)
 	waitFor(kept, 10)
-	if m := mailTo(kept, mia); rec.Code != 200 || len(m) != 4 || m[3].Subject != "[Class meetup] Reminder: you're invited!" || !strings.Contains(m[3].Text, "is still hoping to hear from you") {
+	if m := mailTo(kept, mia); rec.Code != 200 || len(m) != 4 || m[3].Subject != "[Class meetup] Reminder: you're invited!" || !strings.Contains(m[3].Text, "is still hoping to hear from Mia about") {
 		t.Errorf("mia's reminder = %d %+v", rec.Code, m)
 	}
 	// A guest may be left to answer, and left uninvited for now; a host
@@ -892,20 +892,28 @@ func TestPartyStart(t *testing.T) {
 	}
 }
 
-// A parent hearing for their child gets the words and the RSVP link, not
-// the calendar invite: the place is the child's, and the invite is theirs
-// alone; the email says whom the RSVP is for, linked to the page.
-func TestParentHearsWithoutInvite(t *testing.T) {
+// A student's invitation goes to them with their parents on the Cc, so
+// the parents hear with the child and answer for them - one message, the
+// child's calendar invite on it, its lead naming whose it is - and the
+// bold line over the button says whom the RSVP is for, linked to the page.
+func TestStudentInviteCcsParents(t *testing.T) {
 	mux, _, kept, _ := invitesApp(t)
 	miaH := as(mia, mux)
 	call(t, miaH, "POST", "/api/calendar/invites/people", `{"id":"`+partyA+`","people":[{"email":"`+sam+`"},{"email":"`+ella+`"}]}`)
 	call(t, miaH, "POST", "/api/calendar/invites/send", `{"id":"`+partyA+`"}`)
-	waitFor(kept, 3)
-	if m := mailTo(kept, robin); len(m) != 1 || len(m[0].Attachments) != 0 || !strings.Contains(m[0].HTML, `<a href="https://when.heliosian.com/e/celebrate/p1" style="color:#1b2a2c;font-weight:700">RSVP for Sam and Ella here</a>`) || strings.Contains(m[0].HTML, "invite attached") || !strings.Contains(m[0].Text, "RSVP for Sam and Ella here") {
-		t.Errorf("robin's mail = %+v", m)
+	sent := waitFor(kept, 2)
+	if len(sent) != 2 || len(mailTo(kept, robin)) != 0 {
+		t.Fatalf("mail after sending: %+v", sent)
 	}
-	if m := mailTo(kept, sam); len(m) != 1 || len(m[0].Attachments) != 1 || !strings.Contains(m[0].HTML, "RSVP for Sam and Ella here") || !strings.Contains(m[0].HTML, "invite attached") {
-		t.Errorf("sam's mail = %+v", m)
+	m := mailTo(kept, sam)
+	if len(m) != 1 || strings.Join(m[0].CC, ",") != robin || len(m[0].Attachments) != 1 || !strings.Contains(string(m[0].Attachments[0].Content), "ATTENDEE;CN="+sam) {
+		t.Fatalf("sam's mail = %+v", m)
+	}
+	if !strings.Contains(m[0].HTML, "Mia Torres sent Sam an invitation for") || !strings.Contains(m[0].HTML, `<a href="https://when.heliosian.com/e/celebrate/p1" style="color:#1b2a2c;font-weight:700">RSVP for Sam and Ella here</a>`) || !strings.Contains(m[0].Text, "Mia Torres sent Sam an invitation for") || !strings.Contains(m[0].Text, "RSVP for Sam and Ella here") {
+		t.Errorf("sam's words:\n%s", m[0].Text)
+	}
+	if e := mailTo(kept, ella); len(e) != 1 || strings.Join(e[0].CC, ",") != robin || !strings.Contains(e[0].HTML, "sent Ella an invitation for") {
+		t.Errorf("ella's mail = %+v", e)
 	}
 	if got := andList([]string{"Sam", "Ella", "Robin", "Mia"}); got != "Sam, Ella, Robin and Mia" {
 		t.Errorf("andList = %q", got)
@@ -1211,7 +1219,7 @@ func TestOutsideFamily(t *testing.T) {
 	// The invitation names the family; Kit, with no address, is sent none.
 	call(t, jordan, "POST", "/api/calendar/invites/send", `{"id":"meetup"}`)
 	waitFor(kept, 3)
-	if msgs := mailTo(kept, coach); len(msgs) != 1 || !strings.Contains(msgs[0].HTML, "This email is for Coach, Pat, Kit.") || !strings.Contains(msgs[0].HTML, "Jordan Whitfield sent you an invitation for") || msgs[0].FromName != "Jordan Whitfield" {
+	if msgs := mailTo(kept, coach); len(msgs) != 1 || !strings.Contains(msgs[0].HTML, "This email is for Coach, Pat, Kit.") || !strings.Contains(msgs[0].HTML, "Jordan Whitfield sent Coach an invitation for") || msgs[0].FromName != "Jordan Whitfield" {
 		t.Errorf("the coach's invite: %+v", msgs)
 	}
 	invites := 0
@@ -1367,7 +1375,7 @@ func TestGuestsInvite(t *testing.T) {
 		t.Errorf("mia's row = %+v", inv)
 	}
 	waitFor(kept, 3)
-	if msgs := mailTo(kept, mia); len(msgs) != 1 || !strings.Contains(msgs[0].HTML, "Robin Whitfield sent you an invitation for") {
+	if msgs := mailTo(kept, mia); len(msgs) != 1 || !strings.Contains(msgs[0].HTML, "Robin Whitfield sent Mia an invitation for") {
 		t.Errorf("mia's invite: %+v", msgs)
 	}
 	if r := rowOf(inviteView(t, jordan, "meetup"), mia); r == nil || r.InvitedBy != "Robin Whitfield" {
