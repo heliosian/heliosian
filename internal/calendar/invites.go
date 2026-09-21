@@ -1712,9 +1712,22 @@ func (a app) send(ctx context.Context, actor string, e *Event, emails []string, 
 		if row := model.InviteOf(e.ID, to); row != nil && row.Token != "" {
 			link = "https://when.heliosian.com" + extPath(row.Token)
 		}
-		go a.sendInvitation(context.WithoutCancel(ctx), to, recipients[to], hostName, message, e, link, replyTo, kind)
+		// The calendar invite goes to whoever is on the list themselves; a
+		// parent hearing for their child gets the words alone, since the
+		// place is the child's, not theirs.
+		attach := model.InviteOf(e.ID, to) != nil
+		go a.sendInvitation(context.WithoutCancel(ctx), to, recipients[to], hostName, message, e, link, replyTo, kind, attach)
 	}
 	return len(order)
+}
+
+// andList is names as a sentence lists them: "Sam", "Sam and Ella",
+// "Sam, Ella and Robin".
+func andList(names []string) string {
+	if len(names) <= 1 {
+		return strings.Join(names, "")
+	}
+	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
 }
 
 // replyTo is where a reply to an invitation goes: every host, so a
@@ -1742,11 +1755,12 @@ func firstWord(name string) string {
 // its picture (the share card, public as every /open/share/ path is), the
 // hosts' message, the description, who in their household is invited, an
 // RSVP button to their page - the event's here, or an outside person's
-// own - and the calendar invite attached to accept into their own
-// calendar. A reminder says so in the subject and the lead; an update
-// says the details have changed, its calendar invite replacing the one
-// they have (the same UID, a later SEQUENCE).
-func (a app) sendInvitation(ctx context.Context, to string, names []string, host, message string, e *Event, link string, replyTo []string, kind string) {
+// own - and, when they are on the list themselves (attach), the calendar
+// invite to accept into their own calendar. A reminder says so in the
+// subject and the lead; an update says the details have changed, its
+// calendar invite replacing the one they have (the same UID, a later
+// SEQUENCE).
+func (a app) sendInvitation(ctx context.Context, to string, names []string, host, message string, e *Event, link string, replyTo []string, kind string, attach bool) {
 	origin := "https://when.heliosian.com"
 	outside := strings.Contains(link, "/ext/")
 	day, hours := whenLines(e)
@@ -1765,6 +1779,7 @@ func (a app) sendInvitation(ctx context.Context, to string, names []string, host
 	}
 	hosting := "Hosted by " + strings.Join(hosts, " and ")
 	invited := strings.Join(names, ", ")
+	rsvpFor := "RSVP for " + andList(names) + " here"
 	// The email as a card: who sent it over the title and the date, the
 	// hosts' words, Open invitation, the picture - the flyer, else the
 	// event's own - a word that the page is theirs, then the place with a
@@ -1792,11 +1807,14 @@ func (a app) sendInvitation(ctx context.Context, to string, names []string, host
 	if e.Description != "" {
 		fmt.Fprintf(&text, "\n%s\n", e.Description)
 	}
-	fmt.Fprintf(&text, "\nOpen the invitation: %s\n", link)
+	fmt.Fprintf(&text, "\n%s\nOpen the invitation: %s\n", rsvpFor, link)
 	if e.Location != "" {
 		fmt.Fprintf(&text, "\n%s\n", e.Location)
 	}
-	fmt.Fprintf(&text, "%s\n%s\n\nInvited: %s\n\nThe invite attached puts it on your calendar.\n", hosting, when, invited)
+	fmt.Fprintf(&text, "%s\n%s\n\nInvited: %s\n", hosting, when, invited)
+	if attach {
+		text.WriteString("\nThe invite attached puts it on your calendar.\n")
+	}
 	font := "-apple-system,Segoe UI,Roboto,sans-serif"
 	esc := html.EscapeString
 	var htm strings.Builder
@@ -1811,6 +1829,7 @@ func (a app) sendInvitation(ctx context.Context, to string, names []string, host
 	if e.Description != "" {
 		fmt.Fprintf(&htm, "<p style=\"margin:0 0 24px;font-size:15px;line-height:1.55;color:#444;white-space:pre-wrap\">%s</p>", esc(e.Description))
 	}
+	fmt.Fprintf(&htm, "<p style=\"margin:0 0 12px;font-size:15px;font-weight:700;text-align:center\"><a href=\"%s\" style=\"color:#1b2a2c;font-weight:700\">%s</a></p>", esc(link), esc(rsvpFor))
 	fmt.Fprintf(&htm, "<p style=\"margin:0 0 28px;text-align:center\"><a href=\"%s\" style=\"display:inline-block;padding:13px 26px;border-radius:4px;background:#9a9a9a;color:#fff;font-size:14px;font-weight:600;letter-spacing:0.06em;text-decoration:none\">OPEN INVITATION</a></p>", esc(link))
 	fmt.Fprintf(&htm, "<p style=\"margin:0 0 24px;text-align:center\"><a href=\"%s\"><img src=\"%s\" alt=\"%s\" width=\"480\" style=\"display:inline-block;width:100%%;max-width:480px;height:auto;border-radius:4px\"></a></p>", esc(link), esc(picture), esc(e.Title))
 	fmt.Fprintf(&htm, "<p style=\"margin:0 0 6px;font-size:13px;font-style:italic;text-align:center;color:#777\">This email is for %s. Please do not forward it.</p>", esc(invited))
@@ -1823,10 +1842,14 @@ func (a app) sendInvitation(ctx context.Context, to string, names []string, host
 	}
 	fmt.Fprintf(&htm, "<p style=\"margin:0\">%s</p>", esc(when))
 	fmt.Fprintf(&htm, "<p style=\"margin:10px 0 0\"><a href=\"%s\" style=\"color:#2f9e6a;text-decoration:none;margin:0 8px\">Add to Google</a> <a href=\"%s\" style=\"color:#2f9e6a;text-decoration:none;margin:0 8px\">RSVP</a></p>", esc(googleCalendarURL(e, link)), esc(link))
+	attached := ""
+	if attach {
+		attached = " The invite attached puts it on your calendar."
+	}
 	if outside {
-		htm.WriteString("<p style=\"margin:12px 0 0;font-size:12px;color:#777\">The page is yours alone - no account needed. The invite attached puts it on your calendar.</p>")
+		fmt.Fprintf(&htm, "<p style=\"margin:12px 0 0;font-size:12px;color:#777\">The page is yours alone - no account needed.%s</p>", attached)
 	} else {
-		htm.WriteString("<p style=\"margin:12px 0 0;font-size:12px;color:#777\">Yes, no or maybe on the page answers for everyone in your household who is invited. The invite attached puts it on your calendar.</p>")
+		fmt.Fprintf(&htm, "<p style=\"margin:12px 0 0;font-size:12px;color:#777\">Yes, no or maybe on the page answers for everyone in your household who is invited.%s</p>", attached)
 	}
 	htm.WriteString("</div></div>")
 	fmt.Fprintf(&htm, "<p style=\"margin:14px 0 0;font-size:11px;letter-spacing:0.08em;text-align:center;color:#999\">SENT WITH HELIOS WHEN</p>")
@@ -1838,19 +1861,22 @@ func (a app) sendInvitation(ctx context.Context, to string, names []string, host
 	case inviteUpdate:
 		subject = "[" + e.Title + "] Updated: the details have changed"
 	}
-	err := a.mail.Sender.Send(ctx, mail.Message{
+	msg := mail.Message{
 		To:       []string{to},
 		ReplyTo:  replyTo,
 		FromName: strings.Join(hosts, " and "),
 		Subject:  subject,
 		Text:     text.String(),
 		HTML:     htm.String(),
-		Attachments: []mail.Attachment{{
+	}
+	if attach {
+		msg.Attachments = []mail.Attachment{{
 			Name:        "invite.ics",
 			ContentType: "text/calendar; method=REQUEST; charset=utf-8",
 			Content:     []byte(invite(a.organizer(), to, e, link, now())),
-		}},
-	})
+		}}
+	}
+	err := a.mail.Sender.Send(ctx, msg)
 	if err != nil {
 		slog.ErrorContext(ctx, "calendar: send invitation", "to", to, "event", e.ID, "error", err)
 		return

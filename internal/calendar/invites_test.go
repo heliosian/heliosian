@@ -892,6 +892,26 @@ func TestPartyStart(t *testing.T) {
 	}
 }
 
+// A parent hearing for their child gets the words and the RSVP link, not
+// the calendar invite: the place is the child's, and the invite is theirs
+// alone; the email says whom the RSVP is for, linked to the page.
+func TestParentHearsWithoutInvite(t *testing.T) {
+	mux, _, kept, _ := invitesApp(t)
+	miaH := as(mia, mux)
+	call(t, miaH, "POST", "/api/calendar/invites/people", `{"id":"`+partyA+`","people":[{"email":"`+sam+`"},{"email":"`+ella+`"}]}`)
+	call(t, miaH, "POST", "/api/calendar/invites/send", `{"id":"`+partyA+`"}`)
+	waitFor(kept, 3)
+	if m := mailTo(kept, robin); len(m) != 1 || len(m[0].Attachments) != 0 || !strings.Contains(m[0].HTML, `<a href="https://when.heliosian.com/e/celebrate/p1" style="color:#1b2a2c;font-weight:700">RSVP for Sam and Ella here</a>`) || strings.Contains(m[0].HTML, "invite attached") || !strings.Contains(m[0].Text, "RSVP for Sam and Ella here") {
+		t.Errorf("robin's mail = %+v", m)
+	}
+	if m := mailTo(kept, sam); len(m) != 1 || len(m[0].Attachments) != 1 || !strings.Contains(m[0].HTML, "RSVP for Sam and Ella here") || !strings.Contains(m[0].HTML, "invite attached") {
+		t.Errorf("sam's mail = %+v", m)
+	}
+	if got := andList([]string{"Sam", "Ella", "Robin", "Mia"}); got != "Sam, Ella, Robin and Mia" {
+		t.Errorf("andList = %q", got)
+	}
+}
+
 // A party's list on Who? carries whoever bought a ticket beside whoever
 // holds one; the guest list takes the holders and the hosts alone, so a
 // parent who bought their child's ticket hears with the child and answers
