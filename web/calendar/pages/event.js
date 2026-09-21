@@ -6,7 +6,7 @@ import {uploadImage, openImageSearch, imageSources} from '../images.js';
 import {appOrigin} from '/toolbar.js';
 import {setTitle} from '../chrome.js';
 import {audienceChips, blocks} from '../events.js';
-import {fetchInvites, familyBand, familyAnswered, comingCard, guestListSection, inviteHostCall, startParty, flyerCard, openEditor, hostsRow, rsvpRow} from '../invites.js';
+import {fetchInvites, familyBand, familyAnswered, comingCard, guestListSection, inviteHostCall, startParty, flyerCard, addFlyerLink, openEditor, hostsRow, rsvpRow} from '../invites.js';
 
 // hero is the picture across the top of the page - the event's own, its
 // first tag's, or the calendar's - with the date on a card at its corner:
@@ -325,6 +325,11 @@ async function fillInvites(e, ask, answered, {info, linkedLine}) {
   const flyer = flyerCard(e, view, refresh);
   if (flyer) {
     info.after(flyer);
+  }
+  // Without one, a small Add a flyer at the rail's foot for a host.
+  const addFlyer = addFlyerLink(e, view, refresh);
+  if (addFlyer) {
+    info.closest('.detail-side').append(addFlyer);
   }
   const hosts = view.hosts.map(h => h.name).filter(Boolean);
   if (linkedLine && hosts.length) {

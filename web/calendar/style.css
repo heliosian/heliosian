@@ -1869,6 +1869,14 @@ button.rsvp-row-said:hover strong { text-decoration: underline; text-underline-o
 
 .settings-adders { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; margin: 4px 0 10px; }
 
+.side-add-flyer { display: inline-flex; align-items: center; gap: 4px; align-self: flex-end; font-size: 13px; color: var(--muted); cursor: pointer; }
+
+.side-add-flyer:hover { color: var(--brand); }
+
+.side-add-flyer svg { width: 14px; height: 14px; }
+
+.side-add-flyer input { display: none; }
+
 .settings-adders .link-button { margin-top: 0; padding: 4px 0; }
 
 .settings-flyer { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }

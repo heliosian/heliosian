@@ -1,7 +1,6 @@
 import {state, me, tagGroups, bands, classroomNames, eventDates, addDays, parseDate} from './state.js';
 import {addressSuggest} from '/address.js';
 import {el, svg, toast} from './dom.js';
-import {imageControl} from './images.js';
 
 // randomID is an event's address to start with, the shape the server
 // mints: eight letters and digits, the confusable ones left out.
@@ -197,24 +196,10 @@ export function eventForm({from = null, shift = 0, edit = null, onDone}) {
   description.value = from ? from.description || '' : '';
   eventPanel.append(field('Description', description));
 
-  // A picture across the top of the event's page, with the picker the
-  // categories use: an upload, a search of the picture libraries, or none
-  // for its first category's, or the calendar's own.
+  // The picture across the top of the event's page is set from the
+  // banner on the page itself - Add an image there - never here; the
+  // form keeps what the event has.
   const picture = {name: from ? from.title : '', image: from && from.source === 'sheet' && from.image ? from.image.replace(/^\//, '') : '', imageUrl: from && from.source === 'sheet' ? from.image || '' : ''};
-  // Not asked for when an event is first posted: the picture is set later,
-  // from the banner on its page or here while editing.
-  const imageField = el('div', 'field');
-  imageField.append(el('span', '', 'Picture'));
-  const imageRow = el('div', 'event-image-row');
-  const paintImage = () => {
-    imageRow.replaceChildren(imageControl(picture, paintImage));
-    picture.name = title.value.trim();
-  };
-  paintImage();
-  imageField.append(imageRow, el('small', '', 'Shown across the top of the event\u2019s page and on its share card. Without one, the first category\u2019s picture stands in.'));
-  if (edit) {
-    eventPanel.append(imageField);
-  }
 
   // Who and what: the classroom chips and the categories, as the filters
   // have them.

@@ -1011,6 +1011,36 @@ export function flyerCard(e, view, refresh) {
   return card;
 }
 
+// addFlyerLink is the way to give an invitation its first flyer, small,
+// at the rail's foot for a host: a file picked is uploaded and kept at
+// once. With a flyer, the Flyer card carries Replace and Remove instead.
+export function addFlyerLink(e, view, refresh) {
+  if (!view.host || view.flyer) {
+    return null;
+  }
+  const file = el('input');
+  file.type = 'file';
+  file.accept = 'image/*';
+  file.hidden = true;
+  file.addEventListener('change', async () => {
+    if (!file.files.length) {
+      return;
+    }
+    try {
+      const {uploadImage} = await import('./images.js');
+      const made = await uploadImage(file.files[0]);
+      await post('PUT', '/api/calendar/invites/settings', {id: e.id, flyer: made.name});
+      toast('Flyer saved');
+      refresh();
+    } catch (err) {
+      toast(err.message);
+    }
+  });
+  const link = el('label', 'side-add-flyer');
+  link.append(svg('plus'), el('span', '', 'Add a flyer'), file);
+  return link;
+}
+
 // openGuestCard is one person on the list in a popup: for a host, their
 // answer to correct - Yes, Maybe, No - and the way to take them off; for
 // anyone else the small card - face, name, their line - and the way to
@@ -1845,8 +1875,7 @@ export function openSettings(e, view, refresh) {
 
 // settingsForm is the invitation's own form, in two parts, each with a
 // Save that closes whatever holds it: invitation - its words for a linked
-// event, and who may see who is coming - and email - the email's text and
-// the flyer.
+// event - and email - the email's text and the flyer.
 export function settingsForm(e, view, refresh, shut, part = 'invitation') {
   const s = view.settings || {audience: 'both', guests: true, guestList: 'public', message: '', hosts: []};
   const form = el('form', 'admin-form');
@@ -1920,56 +1949,13 @@ export function settingsForm(e, view, refresh, shut, part = 'invitation') {
   message.rows = 4;
   message.value = s.message || '';
   message.placeholder = 'A few words on the invitation - what to bring, where to park\u2026';
-  const messageField = field('Email invitation text', message, 'Goes on the invitation email under the event, before its description.');
-  const addMessage = button('Add Email Invitation text', 'plus', 'link-button', () => {
-    addMessage.remove();
-    form.prepend(messageField);
-    message.focus();
-  });
-  // The two adders on one line; the box, once opened, takes its own.
-  const adders = el('div', 'settings-adders');
+  const messageField = field('Email invitation text', message, 'Your own words on the invitation email, under the event and before its description. Leave it blank and the email carries the event\u2019s title, date, place and description, with your name as the host.');
   if (!invitation) {
-    if (s.message) {
-      form.append(messageField);
-    } else {
-      adders.append(addMessage);
-    }
+    form.append(el('p', 'hint', 'Everyone invited gets the same email: who sent it, the event, its picture, and the way to RSVP. Edit the text below to add a note of your own.'));
+    form.append(messageField);
   }
-  // A flyer: chosen here, uploaded at once, and kept with Save.
-  let flyer = null;
-  const flyerRow = el('div', 'settings-flyer');
-  const flyerFile = el('input');
-  flyerFile.type = 'file';
-  flyerFile.accept = 'image/*';
-  flyerFile.hidden = true;
-  const flyerButton = el('label', 'link-button');
-  flyerButton.append(svg('plus'), el('span', '', view.flyer ? 'Replace flyer' : 'Add flyer'), flyerFile);
-  const flyerNote = el('span', 'settings-flyer-note');
-  flyerFile.addEventListener('change', async () => {
-    if (!flyerFile.files.length) {
-      return;
-    }
-    flyerNote.textContent = 'Uploading\u2026';
-    try {
-      const {uploadImage} = await import('./images.js');
-      const made = await uploadImage(flyerFile.files[0]);
-      flyer = made.name;
-      flyerNote.textContent = `${flyerFile.files[0].name} - saved with the invitation.`;
-    } catch (err) {
-      flyerNote.textContent = err.message;
-    }
-  });
-  flyerRow.append(flyerButton, flyerNote);
-  if (!invitation) {
-    adders.append(flyerRow);
-    form.append(adders);
-  }
-  let guestList = s.guestList;
-  if (invitation) {
-    form.append(field('Who can see who is coming', choice([{key: 'public', label: 'Helios guests'}, {key: 'private', label: 'Hosts only'}], guestList, key => {
-      guestList = key;
-    })));
-  }
+
+  // Who may see who is coming is the page's own line, under Who's coming.
   const actions = el('div', 'modal-actions');
   const status = el('span', 'save-status');
   const submit = el('button', 'button');
@@ -1982,7 +1968,7 @@ export function settingsForm(e, view, refresh, shut, part = 'invitation') {
     submit.disabled = true;
     try {
       const own = details ? details() : {};
-      await post('PUT', '/api/calendar/invites/settings', {id: e.id, ...(invitation ? {guestList} : {message: message.value}), ...(flyer ? {flyer} : {}), ...own});
+      await post('PUT', '/api/calendar/invites/settings', {id: e.id, ...(invitation ? {} : {message: message.value}), ...own});
       toast('Saved');
       shut();
       await refresh();
@@ -2024,7 +2010,9 @@ export async function openEditor(e, view, refresh, {tab = 'event'} = {}) {
     }});
   }
   if (view && (view.host || own)) {
-    panels.invitation = settingsForm(e, view, refresh, () => shut(), 'invitation');
+    if (view.linked) {
+      panels.invitation = settingsForm(e, view, refresh, () => shut(), 'invitation');
+    }
     panels.email = settingsForm(e, view, refresh, () => shut(), 'email');
   }
   const keys = Object.keys(panels);
@@ -2039,7 +2027,7 @@ export async function openEditor(e, view, refresh, {tab = 'event'} = {}) {
         b.classList.toggle('is-active', b.dataset.key === active);
       }
     };
-    for (const [key, label] of [['event', 'Event'], ['invitation', 'Invitation'], ['email', 'Email']]) {
+    for (const [key, label] of [['event', 'Event'], ['invitation', 'Invitation'], ['email', 'Email Invitation']]) {
       if (!panels[key]) {
         continue;
       }
