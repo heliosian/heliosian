@@ -150,7 +150,11 @@ type Volunteer struct {
 	Email    string `json:"email"`
 	Position string `json:"position"`
 	Note     string `json:"note,omitempty"`
-	AddedBy  string `json:"addedBy,omitempty"`
+	// RSVP is their answer to the event's invitation on Helios When - yes,
+	// maybe, no, or none for one still to answer - for whoever runs the
+	// event, once the invites are out (the view fills it).
+	RSVP    string `json:"rsvp,omitempty"`
+	AddedBy string `json:"addedBy,omitempty"`
 	// AddedByName is who signed them up, as the page names them - filled in
 	// for whoever runs the thing when it was somebody else.
 	AddedByName string `json:"addedByName,omitempty"`

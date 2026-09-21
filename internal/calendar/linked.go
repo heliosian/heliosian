@@ -32,6 +32,9 @@ type Linked struct {
 	Who    []string
 	People []Standing
 	Image  string
+	// Hosts are whoever runs it on the other app - an HCA event's chairs
+	// - who run its guest list here too.
+	Hosts []string
 }
 
 // A Standing is one household member's part in a linked event: a ticket
@@ -74,7 +77,7 @@ func linkedEvent(l Linked) *Event {
 		ID: l.Source + "/" + l.ID, Source: l.Source, Title: l.Title, Location: l.Location,
 		Description: strings.TrimSpace(l.Summary + "\n\n" + l.Description),
 		Start:       l.Start, End: l.End, AllDay: allDay, Tags: []string{tagBySource[l.Source]}, Classrooms: []string{},
-		Link: l.Path, Availability: l.Availability, Mine: l.Mine, MineWho: l.Who, MinePeople: l.People, Image: l.Image, start: start, end: end,
+		Link: l.Path, Availability: l.Availability, Mine: l.Mine, MineWho: l.Who, MinePeople: l.People, Image: l.Image, Hosts: l.Hosts, start: start, end: end,
 	}
 	if t := tagByMine[l.Mine]; t != "" {
 		e.Tags = append(e.Tags, t)
@@ -138,7 +141,8 @@ func folded(school, hca *Event) *Event {
 	if t := tagByMine[hca.Mine]; t != "" {
 		c.Tags = append(c.Tags, t)
 	}
-	c.Link, c.Availability, c.Mine, c.MineWho, c.MinePeople = hca.Link, hca.Availability, hca.Mine, hca.MineWho, hca.MinePeople
+	c.Link, c.Availability, c.Mine, c.MineWho, c.MinePeople, c.Hosts = hca.Link, hca.Availability, hca.Mine, hca.MineWho, hca.MinePeople, hca.Hosts
+	c.LinkedID = strings.TrimPrefix(hca.ID, SourceTeam+"/")
 	// The school's listing has no picture of its own, and a line of text at
 	// most: HCA-Team's picture stands in, the longer of the two descriptions
 	// is the one, and the school's place is kept only where it has one.
@@ -194,6 +198,20 @@ func (m *Model) eventsFor(email string, linked []Linked) []*Event {
 		out[i] = &c
 	}
 	return out
+}
+
+// linked says another app runs the event: a party on Helios Celebrate, an
+// HCA event on HCA-Team - or the school's listing of one, folded with it.
+func (e *Event) linked() bool {
+	return e.Link != ""
+}
+
+// linkedID is the id the other app knows the event by.
+func (e *Event) linkedID() string {
+	if e.LinkedID != "" {
+		return e.LinkedID
+	}
+	return strings.TrimPrefix(strings.TrimPrefix(e.ID, SourceCelebrate+"/"), SourceTeam+"/")
 }
 
 // withLinked is the sheet's events and the linked ones as one list in date

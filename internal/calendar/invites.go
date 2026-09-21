@@ -8,10 +8,12 @@ import (
 	"html"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"slices"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"heliosian/internal/auth"
 	"heliosian/internal/mail"
@@ -63,6 +65,9 @@ type Invitation struct {
 	Created   string `json:"created"`
 	// Sent is when invites first went out; blank while the list is a draft.
 	Sent string `json:"sent,omitempty"`
+	// Notify is the hosts who asked to hear by email as answers come in -
+	// each host's own choice.
+	Notify []string `json:"-"`
 	// A party's invitation may carry words of its own in place of the
 	// party's - a title, when, where, a description - each blank for the
 	// party's own: what the invitation email, the calendar invite, the
@@ -152,7 +157,7 @@ func (b *builder) invitations(settings, rows []map[string]string) {
 			CreatedBy: normalizeEmail(row["Created By"]), Created: strings.TrimSpace(row["Created"]), Sent: strings.TrimSpace(row["Sent"]),
 			Title: strings.TrimSpace(row["Title"]), Start: strings.TrimSpace(row["Start"]), End: strings.TrimSpace(row["End"]),
 			Location: strings.TrimSpace(row["Location"]), Description: strings.TrimSpace(row["Description"]),
-			Flyer: strings.Trim(strings.TrimSpace(row["Flyer"]), "/"),
+			Flyer: strings.Trim(strings.TrimSpace(row["Flyer"]), "/"), Notify: splitEmails(row["Notify"]),
 		}
 		// A start the sheet cannot read is dropped with a log line, never
 		// a refusal.
@@ -238,7 +243,7 @@ func (inv *Invitation) hasDetails() bool {
 // whose invitation says nothing of its own, is itself.
 func (m *Model) invitedEvent(e *Event) *Event {
 	inv := m.Invitations[e.ID]
-	if e == nil || e.Source != SourceCelebrate || !inv.hasDetails() {
+	if e == nil || !e.linked() || !inv.hasDetails() {
 		return e
 	}
 	c := *e
@@ -307,6 +312,10 @@ func (a app) hostsOf(e *Event) []string {
 			}
 		}
 	}
+	// A linked event's own hosts - an HCA event's chairs.
+	for _, h := range e.Hosts {
+		add(h)
+	}
 	if inv := a.cache.Model().Invitations[e.ID]; inv != nil {
 		for _, h := range inv.Hosts {
 			add(h)
@@ -330,6 +339,29 @@ func (a app) party(e *Event) *PartyPeople {
 	return a.parties(strings.TrimPrefix(e.ID, SourceCelebrate+"/"))
 }
 
+// inviterEvent is the event someone asking to invite people to it may:
+// a host's, or one on their own calendar - a public event, or a private
+// one they were invited to; a private event's link alone does not let
+// its bearer invite others. Whether they are a host comes back with it.
+func (a app) inviterEvent(w http.ResponseWriter, r *http.Request, id string) (string, *Event, bool, bool) {
+	actor, admin := a.who(r)
+	e := a.eventFor(actor, strings.TrimSpace(id))
+	if e == nil {
+		http.Error(w, "that event is not on the calendar", http.StatusNotFound)
+		return actor, nil, false, false
+	}
+	if e.Source != SourceSheet && !e.linked() {
+		http.Error(w, "only a hand-added event, a party or an HCA event keeps a guest list", http.StatusBadRequest)
+		return actor, nil, false, false
+	}
+	host := a.isHost(actor, admin, e)
+	if !host && e.InviteOnly && !a.cache.Model().Invited(actor, e.ID) {
+		http.Error(w, "only a host, or someone invited, may invite others", http.StatusForbidden)
+		return actor, nil, false, false
+	}
+	return actor, e, host, true
+}
+
 // hostedEvent is the event a host is asking about, as they see it, with
 // whether they may run its list: a hand-added event, or a party.
 func (a app) hostedEvent(w http.ResponseWriter, r *http.Request, id string) (string, *Event, bool) {
@@ -339,8 +371,8 @@ func (a app) hostedEvent(w http.ResponseWriter, r *http.Request, id string) (str
 		http.Error(w, "that event is not on the calendar", http.StatusNotFound)
 		return actor, nil, false
 	}
-	if e.Source != SourceSheet && e.Source != SourceCelebrate {
-		http.Error(w, "only a hand-added event or a party keeps a guest list", http.StatusBadRequest)
+	if e.Source != SourceSheet && !e.linked() {
+		http.Error(w, "only a hand-added event, a party or an HCA event keeps a guest list", http.StatusBadRequest)
 		return actor, nil, false
 	}
 	if !a.isHost(actor, admin, e) {
@@ -429,6 +461,8 @@ type GuestRow struct {
 	AnsweredVia string `json:"answeredVia,omitempty"`
 	// Opened is when they first opened the invitation, for a host.
 	Opened string `json:"opened,omitempty"`
+	// InvitedBy names who invited them when it was a guest, not a host.
+	InvitedBy string `json:"invitedBy,omitempty"`
 	// Ticket is a party's word on them: ticket (bought), free (the hosts'
 	// gift), waitlist, or nothing.
 	Ticket string `json:"ticket,omitempty"`
@@ -540,7 +574,16 @@ type Counts struct {
 // household's part for anyone invited, who is coming when the list is
 // open, and the whole list with its settings for a host.
 type InviteView struct {
-	Host      bool        `json:"host"`
+	Host bool `json:"host"`
+	// MayInvite says the viewer may invite people one at a time - a host,
+	// or anyone the event is on the calendar of, invited to a private one.
+	MayInvite bool `json:"mayInvite,omitempty"`
+	// NotifyMe says the viewer, a host, asked to hear as answers come in.
+	NotifyMe bool `json:"notifyMe,omitempty"`
+	// Linked says another app runs the event - a party on Celebrate, an
+	// HCA event on Team - whose hosts are that app's and whose invitation
+	// may say the event its own way; Party that it is the party.
+	Linked    bool        `json:"linked,omitempty"`
 	Party     bool        `json:"party,omitempty"`
 	Settings  *Invitation `json:"settings,omitempty"`
 	Guests    bool        `json:"guests"`
@@ -637,6 +680,9 @@ func (a app) rows(viewer string, admin bool, e *Event) []GuestRow {
 	for _, inv := range model.Invites[e.ID] {
 		g := row(inv.Email, inv.Name, true)
 		g.GuestOf, g.Via, g.Sent, g.Opened = inv.GuestOf, inv.Via, inv.Sent, inv.Opened
+		if inv.Via == ViaInvited {
+			g.InvitedBy = nameOf(inv.AddedBy)
+		}
 		if host && inv.Token != "" {
 			g.Link = extPath(inv.Token)
 		}
@@ -682,11 +728,11 @@ func (a app) invitesView(w http.ResponseWriter, r *http.Request) {
 	}
 	model := a.cache.Model()
 	inv := model.Invitations[e.ID]
-	view := InviteView{Host: host, Party: e.Source == SourceCelebrate, Guests: true, GuestList: GuestListPublic, Hosts: []Person{}, Mine: []GuestRow{}}
+	view := InviteView{Host: host, MayInvite: host || !e.InviteOnly || a.cache.Model().Invited(viewer, e.ID), Party: e.Source == SourceCelebrate, Linked: e.linked(), Guests: true, GuestList: GuestListPublic, Hosts: []Person{}, Mine: []GuestRow{}}
 	if inv != nil && inv.Flyer != "" {
 		view.Flyer = flyerPath(e.ID)
 	}
-	if host && e.Source == SourceCelebrate {
+	if host && e.linked() {
 		view.Original = &EventWords{Title: e.Title, Start: e.Start, End: e.End, Location: e.Location, Description: e.Description}
 	}
 	for _, h := range a.hostsOf(e) {
@@ -697,6 +743,7 @@ func (a app) invitesView(w http.ResponseWriter, r *http.Request) {
 		view.Guests, view.GuestList, view.Sent = inv.Guests, inv.GuestList, inv.Sent
 		if host {
 			view.Settings = inv
+			view.NotifyMe = slices.Contains(inv.Notify, viewer)
 		}
 	}
 	rows := a.rows(viewer, admin, e)
@@ -812,7 +859,7 @@ func (a app) invitePeople(w http.ResponseWriter, r *http.Request) {
 	actor, _ := a.who(r)
 	if id := strings.TrimSpace(r.URL.Query().Get("id")); id != "" {
 		var ok bool
-		if actor, e, ok = a.hostedEvent(w, r, id); !ok {
+		if actor, e, _, ok = a.inviterEvent(w, r, id); !ok {
 			return
 		}
 	}
@@ -892,6 +939,8 @@ func (a app) inviteSettings(w http.ResponseWriter, r *http.Request) {
 		Description *string `json:"description"`
 		// Flyer names an upload (POST /api/calendar/image), blank for none.
 		Flyer *string `json:"flyer"`
+		// NotifyMe is the host's own wish to hear as answers come in.
+		NotifyMe *bool `json:"notifyMe"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -901,6 +950,17 @@ func (a app) inviteSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cells := map[string]string{}
+	if body.NotifyMe != nil {
+		notify := []string{}
+		if inv := a.cache.Model().Invitations[e.ID]; inv != nil {
+			notify = append(notify, inv.Notify...)
+		}
+		notify = slices.DeleteFunc(notify, func(h string) bool { return h == actor })
+		if *body.NotifyMe {
+			notify = append(notify, actor)
+		}
+		cells["Notify"] = strings.Join(notify, ", ")
+	}
 	if body.Flyer != nil {
 		flyer := strings.Trim(strings.TrimSpace(*body.Flyer), "/")
 		if flyer != "" && a.store != nil && a.readImage(flyer) == nil {
@@ -909,7 +969,7 @@ func (a app) inviteSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		cells["Flyer"] = flyer
 	}
-	if e.Source == SourceCelebrate {
+	if e.linked() {
 		for col, v := range map[string]*string{"Title": body.Title, "Location": body.Location, "Description": body.Description} {
 			if v != nil {
 				if len(*v) > maxTextLength {
@@ -1067,8 +1127,14 @@ func (a app) addInvites(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	actor, e, ok := a.hostedEvent(w, r, body.ID)
+	// Anyone the event is on the calendar of may invite people one at a
+	// time; the groups, and everything else of the list, are the hosts'.
+	actor, e, host, ok := a.inviterEvent(w, r, body.ID)
 	if !ok {
+		return
+	}
+	if !host && len(body.People) > 20 {
+		http.Error(w, "invite up to twenty people at a time", http.StatusBadRequest)
 		return
 	}
 	if len(body.People) == 0 || len(body.People) > 500 {
@@ -1112,7 +1178,12 @@ func (a app) addInvites(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "a family is named by an address", http.StatusBadRequest)
 			return
 		}
-		rows = append(rows, map[string]string{"Event ID": e.ID, "Email": email, "Name": name, "Guest Of": "", "Via": strings.TrimSpace(p.Via), "Added By": actor, "Added": stamp, "Sent": "", "Token": token, "Household": household})
+		via := strings.TrimSpace(p.Via)
+		if !host {
+			// Someone other than a host invited them: the row says so.
+			via = ViaInvited
+		}
+		rows = append(rows, map[string]string{"Event ID": e.ID, "Email": email, "Name": name, "Guest Of": "", "Via": via, "Added By": actor, "Added": stamp, "Sent": "", "Token": token, "Household": household})
 	}
 	tables, first := a.ensured(a.cache.Tables(), e.ID, actor)
 	if !a.commit(r.Context(), w, tables.WithInvites(rows), func() error {
@@ -1128,9 +1199,21 @@ func (a app) addInvites(w http.ResponseWriter, r *http.Request) {
 	}) {
 		return
 	}
-	slog.InfoContext(r.Context(), "calendar: guests added", "actor", actor, "event", e.ID, "count", len(rows))
+	// Once the invitation is out, someone invited by a guest is sent it
+	// now - the guest's doing, not the host's to hold in Pending.
+	sent := 0
+	if !host {
+		if inv := a.cache.Model().Invitations[e.ID]; inv != nil && inv.Sent != "" {
+			emails := []string{}
+			for _, row := range rows {
+				emails = append(emails, row["Email"])
+			}
+			sent = a.send(r.Context(), actor, e, emails, "")
+		}
+	}
+	slog.InfoContext(r.Context(), "calendar: guests added", "actor", actor, "event", e.ID, "count", len(rows), "host", host, "sent", sent)
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]int{"added": len(rows)})
+	json.NewEncoder(w).Encode(map[string]int{"added": len(rows), "sent": sent})
 }
 
 // removeInvite is DELETE /api/calendar/invites/people: a host taking
@@ -1681,28 +1764,26 @@ func (a app) sendInvitation(ctx context.Context, to string, names []string, host
 	}
 	hosting := "Hosted by " + strings.Join(hosts, " and ")
 	invited := strings.Join(names, ", ")
-	// The words speak to the recipient by name, say who sent the
-	// invitation - the host who pressed Send - and who is hosting.
-	hi := "Hi"
-	if len(names) > 0 && names[0] != "" {
-		hi = "Hi " + names[0]
+	// The email as a card: who sent it over the title and the date, the
+	// hosts' words, Open invitation, the picture - the flyer, else the
+	// event's own - a word that the page is theirs, then the place with a
+	// map, the hours, and the calendar links, as a printed invitation reads.
+	picture := origin + "/open/share/" + e.ID + ".png"
+	if inv := a.cache.Model().Invitations[e.ID]; inv != nil && inv.Flyer != "" {
+		picture = origin + flyerPath(e.ID)
 	}
-	hostedBy := ""
-	if !(len(hosts) == 1 && hosts[0] == host) {
-		hostedBy = ", hosted by " + strings.Join(hosts, " and ")
-	}
-	lead := fmt.Sprintf("%s - %s has sent you an invitation for %s%s. Can you make it?", hi, host, e.Title, hostedBy)
+	sentBy := host + " sent you an invitation for"
 	switch kind {
 	case inviteReminder:
-		lead = fmt.Sprintf("%s - a reminder: %s invited you to %s%s, and the hosts have not heard from you yet. Can you make it?", hi, host, e.Title, hostedBy)
+		sentBy = host + " is still hoping to hear from you about"
 	case inviteUpdate:
-		lead = fmt.Sprintf("%s - %s has changed the details of %s%s. Here is the invitation again, with the new ones - can you still make it?", hi, host, e.Title, hostedBy)
+		sentBy = host + " has updated the details of"
 	}
-	card := origin + "/open/share/" + e.ID + ".png"
+	year := e.start.Format(", 2006")
 	var text strings.Builder
-	fmt.Fprintf(&text, "%s\n\n%s\n%s\n%s\n", lead, e.Title, when, hosting)
-	if e.Location != "" {
-		fmt.Fprintf(&text, "%s\n", e.Location)
+	fmt.Fprintf(&text, "%s\n\n%s\n%s%s\n", sentBy, e.Title, day, year)
+	if hours != "" {
+		fmt.Fprintf(&text, "%s\n", hours)
 	}
 	if message != "" {
 		fmt.Fprintf(&text, "\n%s\n", message)
@@ -1710,36 +1791,44 @@ func (a app) sendInvitation(ctx context.Context, to string, names []string, host
 	if e.Description != "" {
 		fmt.Fprintf(&text, "\n%s\n", e.Description)
 	}
-	fmt.Fprintf(&text, "\nInvited: %s\n", invited)
-	fmt.Fprintf(&text, "\nRSVP: %s\n\nThe invite attached puts it on your calendar.\n", link)
-	font := "-apple-system,Segoe UI,Roboto,sans-serif"
-	var htm strings.Builder
-	htm.WriteString("<div style=\"max-width:560px\">")
-	fmt.Fprintf(&htm, "<p style=\"font:700 22px/1.3 %s;color:#0e4d54;margin:0 0 6px\">%s</p>", font, html.EscapeString(lead))
-	fmt.Fprintf(&htm, "<p style=\"font:700 18px/1.3 %s;margin:0 0 4px\">%s</p>", font, html.EscapeString(e.Title))
-	fmt.Fprintf(&htm, "<p style=\"font:15px/1.5 %s;color:#0e4d54;margin:0 0 12px\">%s", font, html.EscapeString(when))
+	fmt.Fprintf(&text, "\nOpen the invitation: %s\n", link)
 	if e.Location != "" {
-		fmt.Fprintf(&htm, "<br>%s", html.EscapeString(e.Location))
+		fmt.Fprintf(&text, "\n%s\n", e.Location)
 	}
-	fmt.Fprintf(&htm, "<br><span style=\"color:#647071\">%s</span></p>", html.EscapeString(hosting))
-	fmt.Fprintf(&htm, "<p style=\"margin:0 0 14px\"><a href=\"%s\"><img src=\"%s\" alt=\"%s\" width=\"560\" style=\"display:block;width:100%%;max-width:560px;height:auto;border-radius:12px\"></a></p>", html.EscapeString(link), html.EscapeString(card), html.EscapeString(e.Title))
+	fmt.Fprintf(&text, "%s\n%s\n\nInvited: %s\n\nThe invite attached puts it on your calendar.\n", hosting, when, invited)
+	font := "-apple-system,Segoe UI,Roboto,sans-serif"
+	esc := html.EscapeString
+	var htm strings.Builder
+	fmt.Fprintf(&htm, "<div style=\"max-width:600px;margin:0 auto;padding:8px 0;font-family:%s;color:#1b2a2c\">", font)
+	htm.WriteString("<div style=\"background:#fff;border:1px solid #e6e6e6;border-radius:6px;padding:36px 32px 28px\">")
+	fmt.Fprintf(&htm, "<p style=\"margin:0 0 14px;font-size:16px;line-height:1.4;text-align:center;color:#1b2a2c\">%s</p>", esc(sentBy))
+	fmt.Fprintf(&htm, "<p style=\"margin:0 0 10px;font-size:26px;line-height:1.25;font-weight:400;text-align:center;color:#1b2a2c\">%s</p>", esc(e.Title))
+	fmt.Fprintf(&htm, "<p style=\"margin:0 0 28px;font-size:15px;text-align:center;color:#444\">%s%s</p>", esc(day), esc(year))
 	if message != "" {
-		fmt.Fprintf(&htm, "<blockquote style=\"margin:0 0 14px;padding:10px 16px;border-left:3px solid #0e4d54;font:15px/1.5 %s;white-space:pre-wrap\">%s</blockquote>", font, html.EscapeString(message))
+		fmt.Fprintf(&htm, "<p style=\"margin:0 0 20px;font-size:15px;line-height:1.55;color:#444;white-space:pre-wrap\">%s</p>", esc(message))
 	}
 	if e.Description != "" {
-		fmt.Fprintf(&htm, "<p style=\"font:14px/1.55 %s;color:#333;white-space:pre-wrap;margin:0 0 14px\">%s</p>", font, html.EscapeString(e.Description))
+		fmt.Fprintf(&htm, "<p style=\"margin:0 0 24px;font-size:15px;line-height:1.55;color:#444;white-space:pre-wrap\">%s</p>", esc(e.Description))
 	}
-	if inv := a.cache.Model().Invitations[e.ID]; inv != nil && inv.Flyer != "" {
-		fmt.Fprintf(&text, "\nThe flyer: %s\n", origin+flyerPath(e.ID))
-		fmt.Fprintf(&htm, "<p style=\"margin:0 0 14px\"><a href=\"%s\"><img src=\"%s\" alt=\"The flyer\" width=\"560\" style=\"display:block;width:100%%;max-width:560px;height:auto;border-radius:12px\"></a></p>", html.EscapeString(link), html.EscapeString(origin+flyerPath(e.ID)))
+	fmt.Fprintf(&htm, "<p style=\"margin:0 0 28px;text-align:center\"><a href=\"%s\" style=\"display:inline-block;padding:13px 26px;border-radius:4px;background:#9a9a9a;color:#fff;font-size:14px;font-weight:600;letter-spacing:0.06em;text-decoration:none\">OPEN INVITATION</a></p>", esc(link))
+	fmt.Fprintf(&htm, "<p style=\"margin:0 0 24px;text-align:center\"><a href=\"%s\"><img src=\"%s\" alt=\"%s\" width=\"480\" style=\"display:inline-block;width:100%%;max-width:480px;height:auto;border-radius:4px\"></a></p>", esc(link), esc(picture), esc(e.Title))
+	fmt.Fprintf(&htm, "<p style=\"margin:0 0 6px;font-size:13px;font-style:italic;text-align:center;color:#777\">This email is for %s. Please do not forward it.</p>", esc(invited))
+	htm.WriteString("<hr style=\"border:0;border-top:1px solid #e6e6e6;margin:22px 0\">")
+	htm.WriteString("<div style=\"text-align:center;font-size:14px;line-height:1.7;color:#333\">")
+	fmt.Fprintf(&htm, "<p style=\"margin:0;font-weight:700;color:#1b2a2c\">%s</p>", esc(hosting))
+	if e.Location != "" {
+		maps := "https://www.google.com/maps/search/?api=1&query=" + url.QueryEscape(e.Location)
+		fmt.Fprintf(&htm, "<p style=\"margin:0\"><a href=\"%s\" style=\"color:#1a73e8\">%s</a> <a href=\"%s\" style=\"color:#2f9e6a;text-decoration:none\">(View Map)</a></p>", esc(maps), esc(e.Location), esc(maps))
 	}
-	fmt.Fprintf(&htm, "<p style=\"font:14px/1.5 %s;color:#647071;margin:0 0 6px\">Invited: %s</p>", font, html.EscapeString(invited))
-	fmt.Fprintf(&htm, "<p style=\"margin:14px 0\"><a href=\"%s\" style=\"display:inline-block;padding:11px 20px;border-radius:8px;background:#0e4d54;color:#fff;font:700 15px %s;text-decoration:none\">RSVP</a></p>", html.EscapeString(link), font)
+	fmt.Fprintf(&htm, "<p style=\"margin:0\">%s</p>", esc(when))
+	fmt.Fprintf(&htm, "<p style=\"margin:10px 0 0\"><a href=\"%s\" style=\"color:#2f9e6a;text-decoration:none;margin:0 8px\">Add to Google</a> <a href=\"%s\" style=\"color:#2f9e6a;text-decoration:none;margin:0 8px\">RSVP</a></p>", esc(googleCalendarURL(e, link)), esc(link))
 	if outside {
-		fmt.Fprintf(&htm, "<p style=\"font:13px/1.5 %s;color:#647071\">The page is yours alone - no account needed. The invite attached puts it on your calendar.</p>", font)
+		htm.WriteString("<p style=\"margin:12px 0 0;font-size:12px;color:#777\">The page is yours alone - no account needed. The invite attached puts it on your calendar.</p>")
 	} else {
-		fmt.Fprintf(&htm, "<p style=\"font:13px/1.5 %s;color:#647071\">Yes, no or maybe on the page answers for everyone in your household who is invited. The invite attached puts it on your calendar.</p>", font)
+		htm.WriteString("<p style=\"margin:12px 0 0;font-size:12px;color:#777\">Yes, no or maybe on the page answers for everyone in your household who is invited. The invite attached puts it on your calendar.</p>")
 	}
+	htm.WriteString("</div></div>")
+	fmt.Fprintf(&htm, "<p style=\"margin:14px 0 0;font-size:11px;letter-spacing:0.08em;text-align:center;color:#999\">SENT WITH HELIOS WHEN</p>")
 	htm.WriteString("</div>")
 	subject := "[" + e.Title + "] You're invited!"
 	switch kind {
@@ -1751,7 +1840,7 @@ func (a app) sendInvitation(ctx context.Context, to string, names []string, host
 	err := a.mail.Sender.Send(ctx, mail.Message{
 		To:       []string{to},
 		ReplyTo:  replyTo,
-		FromName: strings.Join(hosts, " and ") + " via Helios When",
+		FromName: strings.Join(hosts, " and "),
 		Subject:  subject,
 		Text:     text.String(),
 		HTML:     htm.String(),
@@ -1766,6 +1855,30 @@ func (a app) sendInvitation(ctx context.Context, to string, names []string, host
 		return
 	}
 	slog.InfoContext(ctx, "calendar: invitation sent", "to", to, "event", e.ID, "kind", kind)
+}
+
+// googleCalendarURL is the event as a Google Calendar template link, the
+// page's address in its details.
+func googleCalendarURL(e *Event, link string) string {
+	stamp := func(t time.Time) string {
+		if e.AllDay {
+			return t.Format("20060102")
+		}
+		return t.UTC().Format("20060102T150405Z")
+	}
+	until := e.end
+	if e.AllDay {
+		until = e.end.AddDate(0, 0, 1)
+	} else if !e.end.After(e.start) {
+		until = e.start.Add(time.Hour)
+	}
+	q := url.Values{}
+	q.Set("action", "TEMPLATE")
+	q.Set("text", e.Title)
+	q.Set("dates", stamp(e.start)+"/"+stamp(until))
+	q.Set("details", strings.TrimSpace(e.Description+"\n\n"+link))
+	q.Set("location", e.Location)
+	return "https://calendar.google.com/calendar/render?" + q.Encode()
 }
 
 // answerWord is an answer as a message says it.
@@ -1989,8 +2102,24 @@ func (a app) sendMessage(ctx context.Context, to string, replyTo []string, hostN
 // answer - yes, maybe, no, or "none" for one still to answer - by the
 // address the directory keys them by. Nil for a party with no list.
 func (c *Cache) PartyRSVPs(partyID string) (sent bool, answers map[string]string, ok bool) {
+	return c.LinkedRSVPs(nil, SourceCelebrate, partyID)
+}
+
+// LinkedRSVPs is the same for any linked event - an HCA event's, as
+// HCA-Team shows its chairs - by the source and the id it has there,
+// given the linked events as the calendar sees them for nobody in
+// particular, since an HCA event the school also lists is folded into
+// the school's listing and keeps its guest list under the school's id.
+func (c *Cache) LinkedRSVPs(linked []Linked, source, id string) (sent bool, answers map[string]string, ok bool) {
 	model := c.Model()
-	id := SourceCelebrate + "/" + partyID
+	key := source + "/" + id
+	for _, e := range withLinked(model.Events, linked) {
+		if e.Link != "" && e.LinkedID == id && e.Source != SourceCelebrate {
+			key = e.ID
+			break
+		}
+	}
+	id = key
 	inv := model.Invitations[id]
 	if inv == nil {
 		return false, nil, false

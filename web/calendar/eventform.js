@@ -297,6 +297,8 @@ export function eventForm({from = null, shift = 0, edit = null, onDone}) {
   const paintWho = () => {
     const invite = sharing !== 'public';
     tagTab.hidden = invite;
+    // One tab is no tab bar.
+    tabs.hidden = invite;
     nextRow.hidden = invite;
     sourceField.hidden = invite;
     if (invite) {

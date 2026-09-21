@@ -1257,6 +1257,20 @@ a.card-chip.is-link:hover { filter: brightness(0.92); text-decoration: underline
 
 .side-card-help { background: #eaf4f3; border-color: #d3e7e5; }
 
+/* A chair's word on the invitation: the card's yellow, so it stands out. */
+.side-card-invite { background: #fff8e1; border: 1.5px solid #e8c84a; }
+
+.side-card-invite .side-line { color: #4d4a2e; }
+
+/* Whoever runs the event reads a volunteer's RSVP on Helios When. */
+.side-chair-rsvp { margin-top: 3px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+
+.side-chair-rsvp.is-yes { color: #2f9e6a; }
+
+.side-chair-rsvp.is-maybe { color: #b8860b; }
+
+.side-chair-rsvp.is-no { color: var(--alert, #c2452f); }
+
 .side-row { display: flex; gap: 12px; }
 
 .side-row + .side-row { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }

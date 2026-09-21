@@ -1407,6 +1407,10 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .rsvps-visible .rsvp-clear { color: var(--brand); }
 
+.rsvps-notify { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; cursor: pointer; }
+
+.rsvps-notify input { width: 15px; height: 15px; margin: 0; accent-color: var(--accent); }
+
 .rsvps-pending-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 
 .pending-tools { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex-shrink: 0; }
@@ -1475,6 +1479,10 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 .guests-head-mark svg { width: 30px; height: 30px; }
 
 .guests-head-words { flex: 1 1 60px; min-width: 0; }
+
+.editor > .tabs { margin-bottom: 14px; }
+
+.editor > form[hidden] { display: none; }
 
 .guests-title { font-family: Montserrat, Roboto, sans-serif; font-size: 20px; font-weight: 700; color: var(--brand); line-height: 1.15; }
 
@@ -1638,7 +1646,7 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
    a roomier grid. */
 .coming-section { margin: 28px 0 8px; }
 
-.coming-section .rsvps-card-head { margin-bottom: 6px; }
+.coming-section .rsvps-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 6px; }
 
 .coming-section .rsvps-head { margin: 14px 0 8px; }
 
@@ -1859,7 +1867,11 @@ button.rsvp-row-said:hover strong { text-decoration: underline; text-underline-o
 
 .rsvp-row .invite-foot { margin-top: 10px; }
 
-.settings-flyer { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 4px 0 10px; }
+.settings-adders { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; margin: 4px 0 10px; }
+
+.settings-adders .link-button { margin-top: 0; padding: 4px 0; }
+
+.settings-flyer { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 
 .settings-flyer .link-button { padding-left: 0; cursor: pointer; }
 

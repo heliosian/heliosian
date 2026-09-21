@@ -225,6 +225,7 @@ func (c calendarLinked) activities(family familyNames, full map[string]string) [
 		out = append(out, calendar.Linked{
 			Source: calendar.SourceTeam, ID: a.ID, Title: a.Title, Description: a.Description, Location: a.Location,
 			Start: a.Start, End: a.End, Path: model.PathOf(a), Availability: availability, Mine: mine, Who: who, People: people, Image: activityImage(model, a),
+			Hosts: a.CoChairs(),
 		})
 	}
 	return out

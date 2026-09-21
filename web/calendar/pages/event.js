@@ -2,12 +2,11 @@ import {state, calendarLink, sourceWords, dayType, eventDates, linkURL, isParty,
 import {dayTypeClass} from '/daytype.js';
 import {el, link, svg, paragraphs, button, toast, avatar, popup, copyText} from '../dom.js';
 import {dateCard} from '/datecard.js';
-import {eventForm} from '../eventform.js';
 import {uploadImage, openImageSearch, imageSources} from '../images.js';
 import {appOrigin} from '/toolbar.js';
 import {setTitle} from '../chrome.js';
 import {audienceChips, blocks} from '../events.js';
-import {fetchInvites, familyBand, familyAnswered, comingCard, guestListSection, inviteHostCall, startParty, flyerCard, openSettings, hostsRow, rsvpRow} from '../invites.js';
+import {fetchInvites, familyBand, familyAnswered, comingCard, guestListSection, inviteHostCall, startParty, flyerCard, openEditor, hostsRow, rsvpRow} from '../invites.js';
 
 // hero is the picture across the top of the page - the event's own, its
 // first tag's, or the calendar's - with the date on a card at its corner:
@@ -17,6 +16,12 @@ function hero(e) {
   const img = el('img');
   img.src = eventImage(e);
   img.alt = '';
+  // A picture another app serves may be gone; the calendar's own stands in.
+  img.addEventListener('error', () => {
+    if (!img.src.endsWith('/brand/default-header.jpg')) {
+      img.src = '/brand/default-header.jpg';
+    }
+  }, {once: true});
   wrap.append(img);
   wrap.append(dateCard(el, {start: e.start, end: e.end, allDay: e.allDay, location: e.location, add: calendarLink(e)}));
   // A linked event says which app runs it on a card at the banner's foot,
@@ -117,7 +122,12 @@ function heroImageBar(e) {
   return bar;
 }
 
+// editorView is the guest list's view, once fetched, for Edit's
+// Invitation tab.
+let editorView = null;
+
 export function eventPage(e) {
+  editorView = null;
   setTitle(e.title);
   const page = el('div', 'event-page');
   const top = el('div', 'detail-top');
@@ -129,23 +139,17 @@ export function eventPage(e) {
   back.append(svg('back'), el('span', '', monthLabel(monthOf(eventDates(e)[0]))));
   top.append(back);
   // A hand-added event is the poster's, or an admin's, to correct.
+  // One Edit for the event and its invitation, in tabs; the invitation's
+  // tab joins once the guest list is fetched (fillInvites), which also
+  // gives a linked event's host their Edit.
   if (e.source === 'sheet' && (state.model.user.isAdmin || e.addedBy === state.model.user.email)) {
-    const edit = button('Edit event', 'pencil', 'button button-secondary button-small detail-edit', () => {
-      let shut = null;
-      const form = eventForm({edit: e, onDone: async (ids, changed) => {
-        shut();
+    tools.append(button('Edit', 'pencil', 'button button-secondary button-small detail-edit', async () => {
+      const {openEditor} = await import('../invites.js');
+      openEditor(e, editorView, async () => {
         const {load} = await import('../app.js');
         await load();
-        // The details an invitation carries changed: offer to send it
-        // again to everyone who has it.
-        if (changed && changed.length && e.source === 'sheet') {
-          const {offerUpdate} = await import('../invites.js');
-          offerUpdate(e, changed);
-        }
-      }});
-      shut = popup('Edit ' + e.title, form, {wide: true}).shut;
-    });
-    tools.append(edit);
+      });
+    }));
   }
   top.append(tools);
   page.append(top, hero(e));
@@ -237,7 +241,7 @@ export function eventPage(e) {
 // none: the poster of a hand-added event, an admin, or - the server
 // says which - a party's host.
 function mayHost(e) {
-  return (e.source === 'sheet' && e.addedBy === state.model.user.email) || isParty(e);
+  return (e.source === 'sheet' && e.addedBy === state.model.user.email) || e.link;
 }
 
 // fillInvites fetches the event's guest list and draws what the viewer
@@ -256,13 +260,15 @@ async function fillInvites(e, ask, answered, {info, linkedLine}) {
     const {load} = await import('../app.js');
     await load();
   };
-  // Create Invite on Helios Celebrate sends a party's host here with
+  // Create Invite on Helios Celebrate or HCA-Team sends a host here with
   // ?invite=1: the list is started - the invitation, and a group for the
-  // ticket holders that follows the tickets - and the address tidied.
-  if (view.host && isParty(e) && new URLSearchParams(location.search).get('invite') && !view.settings) {
+  // ticket holders or the volunteers that follows them - and the address
+  // tidied.
+  if (view.host && e.link && new URLSearchParams(location.search).get('invite') && !view.settings) {
     try {
       const made = await startParty(e);
-      toast(made.added ? `Guest list started with ${made.added} ticket holders - it follows the tickets from here. Send the invites when it is ready.` : 'Guest list started - it follows the tickets from here.', 6000);
+      const who = isParty(e) ? ['ticket holders', 'the tickets'] : ['volunteers', 'the sign-ups'];
+      toast(made.added ? `Guest list started with ${made.added} ${who[0]} - it follows ${who[1]} from here. Send the invites when it is ready.` : `Guest list started - it follows ${who[1]} from here.`, 6000);
     } catch (err) {
       toast(err.message);
     }
@@ -277,11 +283,16 @@ async function fillInvites(e, ask, answered, {info, linkedLine}) {
   if (view.mine.length) {
     ask.replaceChildren(familyAnswered(view) ? '' : familyBand(e, view, refresh));
   }
-  // Edit invite joins the tools at the page's top for a host.
-  if (view.host && view.settings) {
+  // The invitation's tab joins Edit for a host; a linked event's host,
+  // with no event form of their own, gets Edit for the invitation alone.
+  editorView = view;
+  // A linked event's host - a party's, an HCA event's chair - edits the
+  // invitation from the start: its own words for the event, the email's
+  // text, the flyer, who may see who is coming.
+  if (view.host) {
     const tools = ask.closest('.event-page')?.querySelector('.detail-tools');
-    if (tools) {
-      tools.append(button('Edit invite', 'calcheck', 'button button-secondary button-small detail-edit', () => openSettings(e, view, refresh)));
+    if (tools && !tools.querySelector('.detail-edit')) {
+      tools.append(button('Edit', 'pencil', 'button button-secondary button-small detail-edit', () => openEditor(e, view, refresh, {tab: 'invitation'})));
     }
   }
   // Who's coming takes the page's width under the ask, as Celebrate lays
@@ -302,7 +313,9 @@ async function fillInvites(e, ask, answered, {info, linkedLine}) {
   }
   // The rail's card gains Hosts, once a list exists, and My RSVP for
   // anyone on the list; the flyer sits right under the linked app's card.
-  if (view.settings || view.hosts.length > 1) {
+  // Hosts: once a list exists, or when the event has hosts of its own -
+  // a party's, an HCA event's chairs - beyond the viewer alone.
+  if (view.settings || view.hosts.length > 1 || (e.link && view.hosts.length)) {
     info.append(hostsRow(e, view, refresh));
   }
   if (view.mine.length) {
@@ -315,7 +328,7 @@ async function fillInvites(e, ask, answered, {info, linkedLine}) {
   }
   const hosts = view.hosts.map(h => h.name).filter(Boolean);
   if (linkedLine && hosts.length) {
-    linkedLine.textContent = 'Hosted by ' + (hosts.length > 1 ? hosts.slice(0, -1).join(', ') + ' and ' + hosts[hosts.length - 1] : hosts[0]);
+    linkedLine.textContent = (isParty(e) ? 'Hosted by ' : 'Chaired by ') + (hosts.length > 1 ? hosts.slice(0, -1).join(', ') + ' and ' + hosts[hosts.length - 1] : hosts[0]);
   }
 }
 
@@ -668,7 +681,7 @@ const mineStanding = {
   waitlisted: {celebrate: 'Your household is on the waitlist'},
 };
 
-const linkedTitles = {celebrate: 'Fun(d)raiser party', team: 'HCA volunteer event'};
+const linkedTitles = {celebrate: 'Fun(d)raiser party', team: 'HCA Team event'};
 
 const seeWords = {celebrate: 'See the party', team: 'See the event'};
 
@@ -699,6 +712,10 @@ function linkedBadge(e) {
 // linkedLineWords is the badge's line before the hosts are known: the
 // household's part, each by name, or where the tickets or sign-ups stand.
 function linkedLineWords(e, kind) {
+  if (e.hostNames && e.hostNames.length) {
+    const names = e.hostNames;
+    return (kind === 'celebrate' ? 'Hosted by ' : 'Chaired by ') + (names.length > 1 ? names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1] : names[0]);
+  }
   if (e.minePeople && e.minePeople.length) {
     return [...new Set(e.minePeople.map(p => p.name))].join(', ');
   }

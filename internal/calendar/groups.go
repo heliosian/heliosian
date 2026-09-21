@@ -28,6 +28,9 @@ import (
 // ViaGroup begins the Via of someone a group put on the list.
 const ViaGroup = "group:"
 
+// ViaInvited is the Via of someone a guest, not a host, invited.
+const ViaInvited = "invited"
+
 // sweepEvery is how often the auto groups are read against the directory
 // on their own; grace is how long someone must have matched a group before
 // it puts them on the list - so a tag given by mistake can be taken back
@@ -448,12 +451,13 @@ func (a app) sweepLoop() {
 	}
 }
 
-// startParty is POST /api/calendar/invites/start: a party's host starting
-// its guest list from Helios Celebrate's Create Invite - the invitation
-// made, and a group for the party's ticket holders (its Magic Tag list in
-// Who?, which the host has as a host) with Auto-invite on, so the list
-// follows the tickets from here on. A list started already is left as it
-// is; the group is added once.
+// startParty is POST /api/calendar/invites/start: a party's host, or an
+// HCA event's chair, starting its guest list from the other app's Create
+// Invite - the invitation made, and a group for the party's ticket
+// holders or the event's volunteers (its list in Who?, which the host has
+// as a host) with Auto-invite on, so the list follows the tickets or the
+// sign-ups from here on. A list started already is left as it is; the
+// group is added once.
 func (a app) startParty(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		ID string `json:"id"`
@@ -465,15 +469,20 @@ func (a app) startParty(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if e.Source != SourceCelebrate {
-		http.Error(w, "only a party starts this way", http.StatusBadRequest)
+	if !e.linked() {
+		http.Error(w, "only a party or an HCA event starts this way", http.StatusBadRequest)
 		return
 	}
 	if a.sources == nil {
 		http.Error(w, "groups are not set up", http.StatusNotFound)
 		return
 	}
-	key := "party:" + strings.TrimPrefix(e.ID, SourceCelebrate+"/")
+	// The party's ticket holders, or the HCA event's volunteers: the list
+	// Who? gives its hosts.
+	key := "party:" + e.linkedID()
+	if e.Source != SourceCelebrate {
+		key = "activity:" + e.linkedID()
+	}
 	model := a.cache.Model()
 	for _, g := range model.Groups[e.ID] {
 		if slices.Contains(g.Rule.Tags, key) {

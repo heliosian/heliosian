@@ -2,6 +2,7 @@ import {state, me, family, isAdmin, years, allYears, descendants, parentOf, root
 import {el, link, svg, thumb, avatar, badge, button, searchBox, copyText, whenEditor, toast} from '../dom.js';
 import {setTitle} from '../chrome.js';
 import {dateCard, googleCalendarLink} from '/datecard.js';
+import {appOrigin} from '/toolbar.js';
 import {childRow, categoryClass, completeBadge} from '../cards.js';
 import {openCropTool, openPhotoLightbox} from '/crop.js';
 import {send, reload, openSignUp, openActivity, openLink, saveActivityFields, openPerson, openImageSearch, imageSearchOn, editable, fieldEditor, highlightInputs, textInput, textAreaInput, selectInput, uploadAndSave, openCategoryManager, openVolunteerGrid, editPencil} from '../edit.js';
@@ -376,6 +377,12 @@ function personTile(owner, v, editing, star, chair, option) {
   } else if (option) {
     tile.append(el('div', 'side-chair-role is-option', 'Chair opt'));
   }
+  // Whoever runs the event reads their RSVP to its invitation on Helios
+  // When, once the invites are out.
+  if (v.rsvp) {
+    const words = {yes: 'RSVP: Yes', maybe: 'RSVP: Maybe', no: 'RSVP: No', none: 'No RSVP yet'};
+    tile.append(el('div', 'side-chair-rsvp is-' + v.rsvp, words[v.rsvp] || ''));
+  }
   // Resting on the tile tells the story of the sign-up: the day, who did it
   // when it was somebody else (which only whoever runs the thing is told),
   // and the note.
@@ -712,6 +719,15 @@ function volunteersBox(node, editing, save) {
       actions.append(button(me.label, me.icon, 'button button-small', me.onClick));
     }
   }
+  // The invitation lives on Helios When: Create Invite starts the event's
+  // guest list there from the volunteers; once the invites are out the
+  // same page is where the RSVPs are.
+  if (node.canEdit && node === rootOf(node) && parseWhen(node.start)) {
+    const invite = el('a', 'button button-small' + (node.started ? ' button-secondary' : ''));
+    invite.href = invitePath(node);
+    invite.append(svg('calendar'), el('span', '', node.invited ? 'RSVPs on Helios When' : node.started ? 'The invite on Helios When' : 'Create Invite'));
+    actions.append(invite);
+  }
   head.append(actions);
   box.append(head);
   // The chairs lead the list whatever else it shows - they are public, and
@@ -939,6 +955,35 @@ function flyerCard(node, editing, save) {
 
 // helpCard points at the people who run the activity. Only shown when there is
 // somebody to point at - co-chairs are the ones with a published address here.
+// invitePath is the event's page on Helios When - with ?invite=1, which
+// starts the guest list there, while none exists yet.
+function invitePath(node) {
+  return appOrigin('calendar') + '/e/team/' + encodeURIComponent(node.id) + (node.started ? '' : '?invite=1');
+}
+
+// inviteCard is a chair's own word in the rail, highlighted so it is not
+// missed: the invitation lives on Helios When. Before a guest list exists
+// it says how Create Invite starts one; with a list still to be sent, that
+// the invite is waiting there; once the invites are out, that the RSVPs
+// are there. For the events at the top, with a date.
+function inviteCard(node) {
+  if (!node.canEdit || node !== rootOf(node) || !parseWhen(node.start)) {
+    return null;
+  }
+  const card = sideCard('side-card-invite');
+  const [title, words, label] = node.invited
+    ? ['RSVPs on Helios When', 'The invites are out. The guest list and the RSVPs are on the event\u2019s page on Helios When - who signed up, who has said they are coming, and the way to remind whoever has not.', 'See the RSVPs']
+    : node.started
+      ? ['Your invite is waiting', 'The guest list is started on Helios When, and nobody has been sent the invitation yet. Look it over there and send it when it is ready.', 'View the invite']
+      : ['Invite your volunteers', 'Create an invite on Helios When and start collecting RSVPs. If more people sign up, the invite can be automatically updated.', 'Create Invite'];
+  card.append(el('div', 'side-title', title), el('div', 'side-line', words));
+  const a = el('a', 'button button-small side-button');
+  a.href = invitePath(node);
+  a.append(svg('calendar'), el('span', '', label));
+  card.append(a);
+  return card;
+}
+
 function helpCard(node) {
   const chairs = coChairs(node).filter(v => v.email);
   if (!chairs.length) {
@@ -1392,7 +1437,7 @@ export function activityPage(node) {
   }
 
   const side = el('aside', 'detail-side');
-  for (const card of [phone.matches ? null : facts, flyerCard(node, editing, save), helpCard(node)]) {
+  for (const card of [inviteCard(node), phone.matches ? null : facts, flyerCard(node, editing, save), helpCard(node)]) {
     if (card) {
       side.append(card);
     }

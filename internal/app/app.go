@@ -982,7 +982,16 @@ func NewCore(cfg Config) *Core {
 	homeMux := http.NewServeMux()
 	home.Register(homeMux, homeCache, cfg.Writer, queue, cfg.Store, settings.SuperAdmins, cache.HeroPhoto, directory{cache, settings}.HomePeople, audienceSources{loopDir}, directory{cache, settings}.Alerts, frontEvents.list, frontEvents.month, cfg.ImageSearch, hooks.Answer, hooks.MakeDefault)
 	teamMux := http.NewServeMux()
-	team.Register(teamMux, teamCache, cfg.Writer, queue, cfg.Store, directory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.Mail, cfg.MailFrom)
+	// An event's chairs read its guest list's answers on Helios When from
+	// the event's own page.
+	eventRSVPs := func(id string) *team.EventRSVPs {
+		sent, answers, ok := calendarCache.LinkedRSVPs(linked(""), calendar.SourceTeam, id)
+		if !ok {
+			return nil
+		}
+		return &team.EventRSVPs{Sent: sent, Answers: answers}
+	}
+	team.Register(teamMux, teamCache, cfg.Writer, queue, cfg.Store, directory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.Mail, cfg.MailFrom, eventRSVPs)
 	birthdayMux := http.NewServeMux()
 	birthday.Register(birthdayMux, birthdayCache, cfg.Writer, queue, cfg.Store, birthdayDirectory{cache, settings}, settings.SuperAdmins, cfg.Describer, cfg.BirthdayMail, cfg.BirthdayFrom, cfg.BirthdayBase, func(email string) error {
 		return home.Grant(homeCache, cfg.Writer, queue, "birthday", email)

@@ -76,7 +76,7 @@ func newServer(t *testing.T) (*Cache, *http.ServeMux) {
 		t.Fatal(err)
 	}
 	mux := http.NewServeMux()
-	Register(mux, cache, dir, syncQueue{}, nil, fakeDirectory{}, func() []string { return []string{admin} }, ImageSearch{}, nil, testFrom)
+	Register(mux, cache, dir, syncQueue{}, nil, fakeDirectory{}, func() []string { return []string{admin} }, ImageSearch{}, nil, testFrom, nil)
 	return cache, mux
 }
 
@@ -303,7 +303,7 @@ func TestMail(t *testing.T) {
 	}
 	mux := http.NewServeMux()
 	rec := recorder{got: make(chan mail.Message, 8)}
-	Register(mux, cache, dir, syncQueue{}, nil, fakeDirectory{}, func() []string { return []string{admin} }, ImageSearch{}, rec, testFrom)
+	Register(mux, cache, dir, syncQueue{}, nil, fakeDirectory{}, func() []string { return []string{admin} }, ImageSearch{}, rec, testFrom, nil)
 	if r := call(t, mux, admin, "POST", "/api/team/notify", map[string]any{"kinds": []string{"signups", "offers"}}); r.Code != http.StatusNoContent {
 		t.Fatalf("notify prefs: %d %s", r.Code, r.Body)
 	}
@@ -724,7 +724,7 @@ func TestBrokenSheetStallsThePortalOnly(t *testing.T) {
 		t.Fatalf("a broken sheet should give a cache without a model and an error, got %v %v", cache, err)
 	}
 	mux := http.NewServeMux()
-	Register(mux, cache, &data.Dir{Root: broken}, syncQueue{}, nil, fakeDirectory{}, func() []string { return nil }, ImageSearch{}, nil, testFrom)
+	Register(mux, cache, &data.Dir{Root: broken}, syncQueue{}, nil, fakeDirectory{}, func() []string { return nil }, ImageSearch{}, nil, testFrom, nil)
 	rec := call(t, mux, parent, "GET", "/api/team/model", nil)
 	if rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), `missing column "Event ID"`) {
 		t.Fatalf("before the sheet loads: %d %s", rec.Code, rec.Body)

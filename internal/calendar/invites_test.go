@@ -55,7 +55,7 @@ func invitesAppWith(t *testing.T) (http.Handler, *Cache, *keptMail, fakeStore, *
 			mia:   {Email: mia, Name: "Mia Torres", IsParent: true},
 		},
 		kids:  map[string][]Person{robin: {samP, ellaP}},
-		lists: []List{{Key: "tag:Carpool", Name: "Carpool", Kind: "tag", People: []string{mia, robin}}},
+		lists: []List{{Key: "tag:Carpool", Name: "Carpool", Kind: "tag", People: []string{mia, robin}}, {Key: "activity:e1", Name: "Book Fair", Kind: "activity", People: []string{mia, robin, ella}}},
 	}
 	kept := &keptMail{}
 	store := fakeStore{}
@@ -66,7 +66,10 @@ func invitesAppWith(t *testing.T) (http.Handler, *Cache, *keptMail, fakeStore, *
 		return &PartyPeople{Hosts: []string{mia}, Attendees: []Attendee{{Email: robin, Name: "Robin Whitfield", Status: "ticket"}, {Email: sam, Name: "Sam Whitfield", Status: "ticket"}, {Name: "A cousin", Status: "waitlist"}}}
 	}
 	linked := func(email string) []Linked {
-		return []Linked{{Source: SourceCelebrate, ID: "p1", Title: "Fondue Night", Start: "2026-11-14 18:00", End: "2026-11-14 21:00", Path: "/parties/p1", Availability: "available"}}
+		return []Linked{
+			{Source: SourceCelebrate, ID: "p1", Title: "Fondue Night", Start: "2026-11-14 18:00", End: "2026-11-14 21:00", Path: "/parties/p1", Availability: "available"},
+			{Source: SourceTeam, ID: "e1", Title: "Book Fair", Start: "2026-11-20 08:00", End: "2026-11-20 15:00", Path: "/activities/e1", Availability: "open", Hosts: []string{mia}},
+		}
 	}
 	mux := http.NewServeMux()
 	sources := newSampleSources(t)
@@ -182,7 +185,7 @@ func TestInvitationLifecycle(t *testing.T) {
 	rec = call(t, jordan, "GET", "/api/calendar/invites/people?id=meetup", "")
 	var picker PickerView
 	json.Unmarshal(rec.Body.Bytes(), &picker)
-	if rec.Code != 200 || len(picker.People) != 5 || len(picker.Lists) != 1 || len(picker.Classrooms) != 9 || len(picker.OnList) != 0 {
+	if rec.Code != 200 || len(picker.People) != 5 || len(picker.Lists) != 2 || len(picker.Classrooms) != 9 || len(picker.OnList) != 0 {
 		t.Errorf("picker: %d people %d lists %d classrooms %d on list %d", rec.Code, len(picker.People), len(picker.Lists), len(picker.Classrooms), len(picker.OnList))
 	}
 	if p := picker.People[slices.IndexFunc(picker.People, func(p PickerPerson) bool { return p.Email == robin })]; strings.Join(p.Household, ",") != sam+","+ella || p.Line != "Parent to Sam (Grade 3), Ella (Grade 6)" {
@@ -193,7 +196,7 @@ func TestInvitationLifecycle(t *testing.T) {
 		t.Errorf("a bad address among them: %d", rec.Code)
 	}
 	rec = call(t, jordan, "POST", "/api/calendar/invites/people", `{"id":"meetup","people":[{"email":"`+robin+`","via":"family"},{"email":"`+sam+`","via":"family"},{"email":"`+coach+`","name":"Coach Lee","via":"outside"},{"email":"`+robin+`"}]}`)
-	if rec.Code != 200 || rec.Body.String() != "{\"added\":3}\n" {
+	if rec.Code != 200 || rec.Body.String() != "{\"added\":3,\"sent\":0}\n" {
 		t.Fatalf("add: %d %s", rec.Code, rec.Body)
 	}
 	if inv := cache.Model().Invitations["meetup"]; inv == nil || inv.CreatedBy != host || inv.Audience != AudienceBoth || inv.GuestList != GuestListPublic || inv.Sent != "" {
@@ -429,7 +432,7 @@ func TestInvitationLifecycle(t *testing.T) {
 	}
 	rec = call(t, jordan, "POST", "/api/calendar/invites/send", `{"id":"meetup","to":"unanswered"}`)
 	waitFor(kept, 10)
-	if m := mailTo(kept, mia); rec.Code != 200 || len(m) != 4 || m[3].Subject != "[Class meetup] Reminder: you're invited!" || !strings.Contains(m[3].Text, "have not heard from you yet") {
+	if m := mailTo(kept, mia); rec.Code != 200 || len(m) != 4 || m[3].Subject != "[Class meetup] Reminder: you're invited!" || !strings.Contains(m[3].Text, "is still hoping to hear from you") {
 		t.Errorf("mia's reminder = %d %+v", rec.Code, m)
 	}
 	// A guest may be left to answer, and left uninvited for now; a host
@@ -453,8 +456,10 @@ func TestPartyInvitation(t *testing.T) {
 	mux, cache, kept, _ := invitesApp(t)
 	miaH := as(mia, mux)
 	robinH := as(robin, mux)
-	if rec := call(t, robinH, "POST", "/api/calendar/invites/people", `{"id":"`+partyA+`","people":[{"email":"`+sam+`"}]}`); rec.Code != 403 {
-		t.Errorf("a ticket holder building the party's list: %d", rec.Code)
+	// A ticket holder may invite people to the party one at a time - as
+	// anyone may to any event on their calendar - never a group.
+	if rec := call(t, robinH, "POST", "/api/calendar/invites/group", `{"id":"`+partyA+`","rule":{"tags":["Carpool"]}}`); rec.Code != 403 {
+		t.Errorf("a ticket holder adding a group: %d", rec.Code)
 	}
 	rec := call(t, miaH, "GET", "/api/calendar/invites/people?id="+partyA, "")
 	var picker PickerView
@@ -1100,7 +1105,7 @@ func TestUpdatedInvitation(t *testing.T) {
 	waitFor(kept, before+1)
 	msgs := mailTo(kept, robin)
 	last := msgs[len(msgs)-1]
-	if len(msgs) != 2 || last.Subject != "[Meetup] Updated: the details have changed" || !strings.Contains(last.HTML, "has changed the details of Meetup") || !strings.Contains(last.HTML, "4:00 PM") || !strings.Contains(last.HTML, "The park") || !strings.Contains(string(last.Attachments[0].Content), "DTSTART:20261010T230000Z") {
+	if len(msgs) != 2 || last.Subject != "[Meetup] Updated: the details have changed" || !strings.Contains(last.HTML, "has updated the details of") || !strings.Contains(last.HTML, "4:00 PM") || !strings.Contains(last.HTML, "The park") || !strings.Contains(string(last.Attachments[0].Content), "DTSTART:20261010T230000Z") {
 		t.Errorf("robin's update: %+v", last)
 	}
 	if len(mailTo(kept, mia)) != 0 {
@@ -1117,7 +1122,7 @@ func TestOutsideFamily(t *testing.T) {
 	jordan := as(host, mux)
 	call(t, jordan, "POST", "/api/calendar/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"inviteOnly":true,"id":"meetup"}`)
 	rec := call(t, jordan, "POST", "/api/calendar/invites/people", `{"id":"meetup","people":[{"email":"`+coach+`","name":"Coach Lee","via":"outside","household":"`+coach+`"},{"email":"pat@example.org","name":"Pat Lee","via":"outside","household":"`+coach+`"},{"name":"Kit Lee","via":"outside","household":"`+coach+`"}]}`)
-	if rec.Code != 200 || rec.Body.String() != "{\"added\":3}\n" {
+	if rec.Code != 200 || rec.Body.String() != "{\"added\":3,\"sent\":0}\n" {
 		t.Fatalf("family: %d %s", rec.Code, rec.Body)
 	}
 	m := cache.Model()
@@ -1137,7 +1142,7 @@ func TestOutsideFamily(t *testing.T) {
 	// The invitation names the family; Kit, with no address, is sent none.
 	call(t, jordan, "POST", "/api/calendar/invites/send", `{"id":"meetup"}`)
 	waitFor(kept, 3)
-	if msgs := mailTo(kept, coach); len(msgs) != 1 || !strings.Contains(msgs[0].HTML, "Invited: Coach, Pat, Kit") || !strings.Contains(msgs[0].HTML, "Hi Coach - Jordan Whitfield has sent you an invitation for Meetup. Can you make it?") || msgs[0].FromName != "Jordan Whitfield via Helios When" {
+	if msgs := mailTo(kept, coach); len(msgs) != 1 || !strings.Contains(msgs[0].HTML, "This email is for Coach, Pat, Kit.") || !strings.Contains(msgs[0].HTML, "Jordan Whitfield sent you an invitation for") || msgs[0].FromName != "Jordan Whitfield" {
 		t.Errorf("the coach's invite: %+v", msgs)
 	}
 	invites := 0
@@ -1265,5 +1270,110 @@ func TestInvitationIsPersonal(t *testing.T) {
 	}
 	if v := inviteView(t, as(robin, mux), "kids"); len(v.Mine) != 1 || v.Mine[0].Email != sam || !v.Mine[0].Mine {
 		t.Errorf("robin's ask for sam's invitation: %+v", v.Mine)
+	}
+}
+
+// Anyone the event is on the calendar of invites people one at a time:
+// their rows say who invited them, and once the invitation is out they
+// are sent it at once. A group is a host's alone; on a private event the
+// link alone lets nobody invite.
+func TestGuestsInvite(t *testing.T) {
+	mux, cache, kept, _ := invitesApp(t)
+	jordan := as(host, mux)
+	call(t, jordan, "POST", "/api/calendar/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"inviteOnly":true,"id":"meetup"}`)
+	call(t, jordan, "POST", "/api/calendar/invites/people", `{"id":"meetup","people":[{"email":"`+robin+`"}]}`)
+	// Mia has the link but no invitation: not hers to invite to.
+	if rec := call(t, as(mia, mux), "POST", "/api/calendar/invites/people", `{"id":"meetup","people":[{"email":"`+coach+`","name":"Coach Lee","via":"outside"}]}`); rec.Code != 403 {
+		t.Errorf("an outsider inviting: %d", rec.Code)
+	}
+	call(t, jordan, "POST", "/api/calendar/invites/send", `{"id":"meetup"}`)
+	waitFor(kept, 2)
+	// Robin, invited, invites Mia: on the list as Robin's doing, sent now.
+	rec := call(t, as(robin, mux), "POST", "/api/calendar/invites/people", `{"id":"meetup","people":[{"email":"`+mia+`"}]}`)
+	if rec.Code != 200 || rec.Body.String() != "{\"added\":1,\"sent\":1}\n" {
+		t.Fatalf("robin inviting mia: %d %s", rec.Code, rec.Body)
+	}
+	inv := cache.Model().InviteOf("meetup", mia)
+	if inv == nil || inv.Via != ViaInvited || inv.AddedBy != robin || inv.Sent == "" {
+		t.Errorf("mia's row = %+v", inv)
+	}
+	waitFor(kept, 3)
+	if msgs := mailTo(kept, mia); len(msgs) != 1 || !strings.Contains(msgs[0].HTML, "Robin Whitfield sent you an invitation for") {
+		t.Errorf("mia's invite: %+v", msgs)
+	}
+	if r := rowOf(inviteView(t, jordan, "meetup"), mia); r == nil || r.InvitedBy != "Robin Whitfield" {
+		t.Errorf("the host's row for mia: %+v", r)
+	}
+	// A group is a host's alone.
+	if rec := call(t, as(robin, mux), "POST", "/api/calendar/invites/group", `{"id":"meetup","rule":{"tags":["Carpool"]}}`); rec.Code != 403 {
+		t.Errorf("a guest adding a group: %d", rec.Code)
+	}
+}
+
+// An HCA event's chair starts its guest list from HCA-Team's Create
+// Invite as a party's host does from Celebrate's: the invitation, and a
+// group for the event's volunteers - its list in Who? - with Auto-invite
+// on; Team reads the answers back.
+func TestTeamStart(t *testing.T) {
+	mux, cache, _, _ := invitesApp(t)
+	teamA := SourceTeam + "/e1"
+	miaH := as(mia, mux)
+	if rec := call(t, as(robin, mux), "POST", "/api/calendar/invites/start", `{"id":"`+teamA+`"}`); rec.Code != 403 {
+		t.Errorf("a volunteer starting: %d", rec.Code)
+	}
+	rec := call(t, miaH, "POST", "/api/calendar/invites/start", `{"id":"`+teamA+`"}`)
+	var made struct {
+		Group string
+		Added int
+	}
+	json.Unmarshal(rec.Body.Bytes(), &made)
+	if rec.Code != 200 || made.Group == "" {
+		t.Fatalf("start: %d %s", rec.Code, rec.Body)
+	}
+	g := cache.Model().GroupOf(teamA, made.Group)
+	if g == nil || !g.Auto || strings.Join(g.Rule.Tags, ",") != "activity:e1" || g.Rule.Owner != mia || cache.Model().Invitations[teamA] == nil {
+		t.Errorf("team group = %+v", g)
+	}
+	if sent, _, ok := cache.LinkedRSVPs(nil, SourceTeam, "e1"); !ok || sent {
+		t.Errorf("rsvps before sending: ok %v sent %v", ok, sent)
+	}
+	v := inviteView(t, miaH, teamA)
+	if !v.Host || !v.Linked || v.Party || v.Original == nil || len(v.Hosts) != 1 || v.Hosts[0].Email != mia {
+		t.Errorf("chair's view = host %v linked %v party %v original %v hosts %+v", v.Host, v.Linked, v.Party, v.Original, v.Hosts)
+	}
+}
+
+// A host who asks hears of each answer by email - their own choice, kept
+// on the invitation per host - and not of one they gave themselves.
+func TestNotifyHost(t *testing.T) {
+	mux, cache, kept, _ := invitesApp(t)
+	jordan := as(host, mux)
+	call(t, jordan, "POST", "/api/calendar/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"inviteOnly":true,"id":"meetup"}`)
+	call(t, jordan, "POST", "/api/calendar/invites/people", `{"id":"meetup","people":[{"email":"`+robin+`"}]}`)
+	call(t, jordan, "POST", "/api/calendar/invites/send", `{"id":"meetup"}`)
+	waitFor(kept, 2)
+	if inviteView(t, jordan, "meetup").NotifyMe {
+		t.Errorf("notify on to start")
+	}
+	if rec := call(t, jordan, "PUT", "/api/calendar/invites/settings", `{"id":"meetup","notifyMe":true}`); rec.Code != 204 {
+		t.Fatalf("notify me: %d %s", rec.Code, rec.Body)
+	}
+	if !inviteView(t, jordan, "meetup").NotifyMe || !slices.Contains(cache.Model().Invitations["meetup"].Notify, host) {
+		t.Errorf("notify not kept: %+v", cache.Model().Invitations["meetup"].Notify)
+	}
+	before := len(mailTo(kept, host))
+	call(t, as(robin, mux), "POST", "/api/calendar/rsvp", `{"id":"meetup","answer":"yes"}`)
+	waitFor(kept, len(kept.all())+1)
+	notes := mailTo(kept, host)
+	if len(notes) != before+1 || notes[len(notes)-1].Subject != "[Meetup] Robin Whitfield said Yes" || !strings.Contains(notes[len(notes)-1].Text, "1 yes, 0 maybe, 0 no, 0 still to answer") {
+		t.Errorf("the host's note: %+v", notes)
+	}
+	// The host's own answer for someone brings no note; off, nothing more.
+	before = len(mailTo(kept, host))
+	call(t, jordan, "POST", "/api/calendar/invites/answer", `{"id":"meetup","email":"`+robin+`","answer":"maybe"}`)
+	call(t, jordan, "PUT", "/api/calendar/invites/settings", `{"id":"meetup","notifyMe":false}`)
+	call(t, as(robin, mux), "POST", "/api/calendar/rsvp", `{"id":"meetup","answer":"no"}`)
+	if len(mailTo(kept, host)) != before {
+		t.Errorf("notes after: %d, before %d", len(mailTo(kept, host)), before)
 	}
 }

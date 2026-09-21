@@ -114,7 +114,23 @@ type ActivityView struct {
 	// CanEdit means for them without their admin hat, which the page can take
 	// off (Super Admin Mode).
 	Runs bool `json:"runs,omitempty"`
+	// Started says a guest list exists for the event on Helios When, and
+	// Invited that its invites have gone out - for whoever runs it, on the
+	// events at the top alone.
+	Started bool `json:"started,omitempty"`
+	Invited bool `json:"invited,omitempty"`
 }
+
+// EventRSVPs is Helios When's word on an event's guest list: whether the
+// invites went out, and each invitee's answer by address - yes, maybe,
+// no, or none. RSVPLookup answers for an activity's id, nil for one with
+// no list; the calendar's cache is behind it in the server.
+type EventRSVPs struct {
+	Sent    bool
+	Answers map[string]string
+}
+
+type RSVPLookup func(id string) *EventRSVPs
 
 type PersonView struct {
 	Email      string `json:"email"`
@@ -249,6 +265,12 @@ func (v viewer) children(list []*Activity, editor, runs bool) []*ActivityView {
 
 // Render is the model as one signed-in person sees it.
 func Render(model *Model, directory Directory, email string, admin bool, now time.Time) View {
+	return RenderWith(model, directory, nil, email, admin, now)
+}
+
+// RenderWith is Render with Helios When's word on each event's guest
+// list, for the chairs.
+func RenderWith(model *Model, directory Directory, rsvps RSVPLookup, email string, admin bool, now time.Time) View {
 	v := viewer{email: email, admin: admin, directory: directory, family: map[string]bool{}}
 	name, photo := v.person(email)
 	spouses, children := directory.Household(email)
@@ -273,14 +295,27 @@ func Render(model *Model, directory Directory, email string, admin bool, now tim
 			continue
 		}
 		chairs := a.IsCoChair(v.email)
-		view.Activities = append(view.Activities, ActivityView{
+		av := ActivityView{
 			Activity:   a,
 			Children:   v.children(a.Children, editor, chairs),
 			Volunteers: v.volunteers(a.Volunteers, a.VolunteersHidden, editor),
 			Taken:      len(a.Volunteers),
 			CanEdit:    editor,
 			Runs:       chairs,
-		})
+		}
+		// Whoever runs the event reads each volunteer's answer to its
+		// invitation on Helios When, once the invites are out.
+		if editor && rsvps != nil {
+			if r := rsvps(a.ID); r != nil {
+				av.Started, av.Invited = true, r.Sent
+				if r.Sent {
+					for i := range av.Volunteers {
+						av.Volunteers[i].RSVP = r.Answers[directory.Resolve(strings.ToLower(av.Volunteers[i].Email))]
+					}
+				}
+			}
+		}
+		view.Activities = append(view.Activities, av)
 	}
 	if admin {
 		view.People = v.people(model)

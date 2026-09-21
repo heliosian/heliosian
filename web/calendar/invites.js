@@ -426,7 +426,7 @@ export function comingCard(e, view, refresh) {
       // Before anyone has been sent the invitation, Delete takes it all
       // back - the guest list, and a hand-added event with it.
       if (!view.sent) {
-        row.append(button(view.party ? 'Delete invite' : 'Delete event', 'trash', 'link-button rsvps-pending-delete', () => deleteInvitation(e, view)));
+        row.append(button(view.linked ? 'Delete invite' : 'Delete event', 'trash', 'link-button rsvps-pending-delete', () => deleteInvitation(e, view)));
       }
       pending.append(row);
       card.append(pending);
@@ -437,6 +437,11 @@ export function comingCard(e, view, refresh) {
   const rows = (view.host ? view.list : view.coming).filter(r => r.answer === 'yes' || r.answer === 'maybe' || (view.host && r.answer === 'no') || (r.invited && !r.answer));
   const head = el('div', 'rsvps-card-head');
   head.append(el('h2', 'section section-swoosh', `Who\u2019s coming${rows.length ? ` (${rows.length})` : ''}`));
+  // Anyone invited may invite people one at a time - the hosts have the
+  // Guest list's tools for it, and everything else.
+  if (view.mayInvite && !view.host && view.sent) {
+    head.append(button('Invite people', 'plus', 'button button-secondary button-small', () => openPicker(e, view, refresh)));
+  }
   card.append(head);
   // The filters every list has - search, the kinds of people, RSVP, grade,
   // classroom - over the faces, which repaint as they change.
@@ -502,6 +507,22 @@ export function comingCard(e, view, refresh) {
     const open = view.guestList !== 'private';
     visible.append(el('span', '', open ? 'Guest list is visible to Helios guests.' : 'Guest list is visible to hosts only.'));
     visible.append(button('change', null, 'rsvp-clear', () => openVisibility(e, view, refresh)));
+    // Each host's own choice: hear by email as answers come in.
+    const notify = el('label', 'rsvps-notify');
+    const box = el('input');
+    box.type = 'checkbox';
+    box.checked = Boolean(view.notifyMe);
+    box.addEventListener('change', async () => {
+      try {
+        await post('PUT', '/api/calendar/invites/settings', {id: e.id, notifyMe: box.checked});
+        toast(box.checked ? 'You\u2019ll get an email as answers come in' : 'No more emails about answers');
+      } catch (err) {
+        toast(err.message);
+        box.checked = !box.checked;
+      }
+    });
+    notify.append(box, el('span', '', 'Notify me when people respond'));
+    visible.append(notify);
     card.append(visible);
   }
   return card;
@@ -1177,7 +1198,7 @@ async function sendInvites(e, to, words, refresh) {
 // across redraws.
 const openGroups = new Set();
 
-const viaWords = {family: 'Family', search: 'Search', classroom: 'Classroom', list: 'List', tickets: 'Tickets', outside: 'By email', guest: 'Guest', link: 'By link'};
+const viaWords = {family: 'Family', search: 'Search', classroom: 'Classroom', list: 'List', tickets: 'Tickets', outside: 'By email', guest: 'Guest', link: 'By link', invited: 'Invited'};
 
 // viaLabel is how someone came to be on the list, in a word: the way a
 // host found them, or the classroom or list by name; a host answering
@@ -1187,6 +1208,9 @@ function viaLabel(r, view) {
     return view.hosts.some(h => h.email === r.key) ? 'Host' : 'By link';
   }
   const [kind, rest] = (r.via || '').split(':');
+  if (kind === 'invited' && r.invitedBy) {
+    return 'Invited by ' + r.invitedBy;
+  }
   if (kind === 'group') {
     const g = (view.groups || []).find(x => x.id === rest);
     return g ? 'Group: ' + groupWords(g) : 'Group';
@@ -1558,7 +1582,7 @@ export function guestListSection(e, view, refresh) {
   // invitation may be deleted at any time; the party is Celebrate's.
   if (view.sent) {
     const foot = el('div', 'guests-cancel');
-    foot.append(view.party
+    foot.append(view.linked
       ? button('Delete invite', 'trash', 'link-button danger', () => deleteInvitation(e, view))
       : button('Cancel event', 'close', 'link-button danger', () => openCancel(e, view, refresh)));
     section.append(foot);
@@ -1571,7 +1595,9 @@ export function guestListSection(e, view, refresh) {
 async function deleteInvitation(e, view) {
   const words = view.party
     ? 'Delete the invitation? The guest list and every answer go; the party itself stays on Helios Celebrate.'
-    : 'Delete this event? It comes off the calendar with its guest list, as if it had never been made.';
+    : view.linked
+      ? 'Delete the invitation? The guest list and every answer go; the event itself stays on HCA-Team.'
+      : 'Delete this event? It comes off the calendar with its guest list, as if it had never been made.';
   if (!confirm(words)) {
     return;
   }
@@ -1812,8 +1838,19 @@ function openTable(e, view, refresh, {answer = '', opened = ''} = {}) {
 // the co-hosts. The event's own words - title, when, where - are edited
 // with Edit event at the page's top, or on Celebrate for a party.
 export function openSettings(e, view, refresh) {
+  let shut = null;
+  const form = settingsForm(e, view, refresh, () => shut());
+  shut = popup('Edit the invitation', form, {wide: Boolean(view.linked)}).shut;
+}
+
+// settingsForm is the invitation's own form, in two parts, each with a
+// Save that closes whatever holds it: invitation - its words for a linked
+// event, and who may see who is coming - and email - the email's text and
+// the flyer.
+export function settingsForm(e, view, refresh, shut, part = 'invitation') {
   const s = view.settings || {audience: 'both', guests: true, guestList: 'public', message: '', hosts: []};
   const form = el('form', 'admin-form');
+  const invitation = part === 'invitation';
   const field = (label, input, note) => {
     const wrap = el('div', 'field');
     wrap.append(el('span', '', label), input);
@@ -1825,7 +1862,7 @@ export function openSettings(e, view, refresh) {
   // A party's invitation may say the event its own way: a title, when,
   // where and a description, each blank for the party's own.
   let details = null;
-  if (view.party) {
+  if (view.linked && invitation) {
     const text = (value, placeholder) => {
       const input = el('input');
       input.type = 'text';
@@ -1885,10 +1922,19 @@ export function openSettings(e, view, refresh) {
   message.placeholder = 'A few words on the invitation - what to bring, where to park\u2026';
   const messageField = field('Email invitation text', message, 'Goes on the invitation email under the event, before its description.');
   const addMessage = button('Add Email Invitation text', 'plus', 'link-button', () => {
-    addMessage.replaceWith(messageField);
+    addMessage.remove();
+    form.prepend(messageField);
     message.focus();
   });
-  form.append(s.message ? messageField : addMessage);
+  // The two adders on one line; the box, once opened, takes its own.
+  const adders = el('div', 'settings-adders');
+  if (!invitation) {
+    if (s.message) {
+      form.append(messageField);
+    } else {
+      adders.append(addMessage);
+    }
+  }
   // A flyer: chosen here, uploaded at once, and kept with Save.
   let flyer = null;
   const flyerRow = el('div', 'settings-flyer');
@@ -1914,11 +1960,16 @@ export function openSettings(e, view, refresh) {
     }
   });
   flyerRow.append(flyerButton, flyerNote);
-  form.append(flyerRow);
+  if (!invitation) {
+    adders.append(flyerRow);
+    form.append(adders);
+  }
   let guestList = s.guestList;
-  form.append(field('Who can see who is coming', choice([{key: 'public', label: 'Helios guests'}, {key: 'private', label: 'Hosts only'}], guestList, key => {
-    guestList = key;
-  })));
+  if (invitation) {
+    form.append(field('Who can see who is coming', choice([{key: 'public', label: 'Helios guests'}, {key: 'private', label: 'Hosts only'}], guestList, key => {
+      guestList = key;
+    })));
+  }
   const actions = el('div', 'modal-actions');
   const status = el('span', 'save-status');
   const submit = el('button', 'button');
@@ -1926,13 +1977,12 @@ export function openSettings(e, view, refresh) {
   submit.append(svg('check'), el('span', '', 'Save'));
   actions.append(submit, status);
   form.append(actions);
-  let shut = null;
   form.addEventListener('submit', async ev => {
     ev.preventDefault();
     submit.disabled = true;
     try {
       const own = details ? details() : {};
-      await post('PUT', '/api/calendar/invites/settings', {id: e.id, guestList, message: message.value, ...(flyer ? {flyer} : {}), ...own});
+      await post('PUT', '/api/calendar/invites/settings', {id: e.id, ...(invitation ? {guestList} : {message: message.value}), ...(flyer ? {flyer} : {}), ...own});
       toast('Saved');
       shut();
       await refresh();
@@ -1951,7 +2001,66 @@ export function openSettings(e, view, refresh) {
       submit.disabled = false;
     }
   });
-  shut = popup('Edit the invitation', form, {wide: Boolean(view.party)}).shut;
+  return form;
+}
+
+// openEditor is one popup for everything a host edits: two tabs, Event -
+// the event's own form, for a hand-added event - and Invitation - the
+// settingsForm - each with its own Save; a linked event, whose details
+// are the other app's, has the Invitation alone.
+export async function openEditor(e, view, refresh, {tab = 'event'} = {}) {
+  const {eventForm} = await import('./eventform.js');
+  const own = e.source === 'sheet';
+  let shut = null;
+  const box = el('div', 'editor');
+  const panels = {};
+  if (own) {
+    panels.event = eventForm({edit: e, onDone: async (ids, changed) => {
+      shut();
+      await refresh();
+      if (changed && changed.length) {
+        offerUpdate(e, changed);
+      }
+    }});
+  }
+  if (view && (view.host || own)) {
+    panels.invitation = settingsForm(e, view, refresh, () => shut(), 'invitation');
+    panels.email = settingsForm(e, view, refresh, () => shut(), 'email');
+  }
+  const keys = Object.keys(panels);
+  if (keys.length > 1) {
+    const tabs = el('div', 'tabs');
+    let active = keys.includes(tab) ? tab : keys[0];
+    const paint = () => {
+      for (const [key, panel] of Object.entries(panels)) {
+        panel.hidden = key !== active;
+      }
+      for (const b of tabs.children) {
+        b.classList.toggle('is-active', b.dataset.key === active);
+      }
+    };
+    for (const [key, label] of [['event', 'Event'], ['invitation', 'Invitation'], ['email', 'Email']]) {
+      if (!panels[key]) {
+        continue;
+      }
+      const b = el('button', 'tab-button', label);
+      b.type = 'button';
+      b.dataset.key = key;
+      b.addEventListener('click', () => {
+        active = key;
+        paint();
+      });
+      tabs.append(b);
+    }
+    box.append(tabs);
+    for (const panel of Object.values(panels)) {
+      box.append(panel);
+    }
+    paint();
+  } else {
+    box.append(...Object.values(panels));
+  }
+  shut = popup(own ? 'Edit ' + e.title : 'Edit the invitation', box, {wide: true}).shut;
 }
 
 // offerUpdate asks, once the details an invitation carries have changed
@@ -2025,7 +2134,7 @@ export function groupWords(g) {
 async function openPicker(e, view, refresh) {
   let data = null;
   try {
-    [data, ruleOptions] = await Promise.all([fetchPickerData(e), fetch('/api/calendar/invites/options').then(r => (r.ok ? r.json() : null))]);
+    [data, ruleOptions] = await Promise.all([fetchPickerData(e), view.host ? fetch('/api/calendar/invites/options').then(r => (r.ok ? r.json() : null)) : ruleOptions]);
   } catch (err) {
     toast(err.message);
     return;
@@ -2034,7 +2143,9 @@ async function openPicker(e, view, refresh) {
   const box = el('div', 'picker');
   const tabs = el('div', 'tabs');
   const panel = el('div', 'picker-panel');
-  const kinds = [['person', 'Add Person'], ['group', 'Add Group'], ['outside', 'Add Non-Helios']];
+  // A group, with its Auto-invite, is a host's alone; anyone else invites
+  // people one at a time.
+  const kinds = view.host ? [['person', 'Add Person'], ['group', 'Add Group'], ['outside', 'Add Non-Helios']] : [['person', 'Add Person'], ['outside', 'Add Non-Helios']];
   let active = 'person';
   for (const [key, label] of kinds) {
     const b = el('button', 'tab-button' + (key === active ? ' is-active' : ''), label);
@@ -2201,7 +2312,7 @@ function personPanel(e, data, onList, done) {
     add.disabled = true;
     try {
       const made = await post('POST', '/api/calendar/invites/people', {id: e.id, people: [...everyone().values()]});
-      done(`${made.added} added to the list.`);
+      done(made.sent ? `${made.added} invited - the invitation is on its way.` : `${made.added} added to the list.`);
     } catch (err) {
       status.textContent = err.message;
       status.classList.add('error');
@@ -2411,7 +2522,7 @@ function outsidePanel(e, onList, done) {
     add.disabled = true;
     try {
       const made = await post('POST', '/api/calendar/invites/people', {id: e.id, people});
-      done(made.added === 1 ? `${people[0].name} added to the list.` : `${made.added} people added to the list.`);
+      done(made.sent ? (made.added === 1 ? `${people[0].name} invited - the invitation is on its way.` : `${made.added} people invited - the invitations are on their way.`) : made.added === 1 ? `${people[0].name} added to the list.` : `${made.added} people added to the list.`);
     } catch (err) {
       status.textContent = err.message;
       status.classList.add('error');
@@ -2431,13 +2542,15 @@ export function inviteHostCall(e, view, refresh) {
   const card = el('div', 'guests-start');
   card.append(svg('people'));
   const words = el('div', 'guests-start-words');
-  words.append(el('div', 'guests-start-title', isParty(e) ? 'Invite your guests' : 'Invite people'), el('div', 'guests-start-lead', isParty(e) ? 'Ask the ticket holders to confirm they are coming - or invite anyone else - and see who has answered beside who has a ticket.' : 'Build a guest list from the directory, a classroom, your lists or anyone by email, then send everyone the invitation with a calendar invite attached.'));
+  words.append(el('div', 'guests-start-title', e.link ? 'Invite your guests' : 'Invite people'), el('div', 'guests-start-lead', isParty(e) ? 'Ask the ticket holders to confirm they are coming - or invite anyone else - and see who has answered beside who has a ticket.' : e.link ? 'Ask the volunteers to confirm they are coming - or invite anyone else - and see who has answered beside the sign-ups on HCA-Team.' : 'Build a guest list from the directory, a classroom, your lists or anyone by email, then send everyone the invitation with a calendar invite attached.'));
   card.append(words);
-  if (isParty(e)) {
-    card.append(button('Invite the ticket holders', 'ticket', 'button', async () => {
+  if (e.link) {
+    const party = isParty(e);
+    card.append(button(party ? 'Invite the ticket holders' : 'Invite the volunteers', party ? 'ticket' : 'people', 'button', async () => {
       try {
         const made = await startParty(e);
-        toast(made.added ? `${made.added} ticket holders on the list - it follows the tickets from here.` : 'The list follows the tickets from here.', 5000);
+        const who = party ? ['ticket holders', 'the tickets'] : ['volunteers', 'the sign-ups'];
+        toast(made.added ? `${made.added} ${who[0]} on the list - it follows ${who[1]} from here.` : `The list follows ${who[1]} from here.`, 5000);
         refresh();
       } catch (err) {
         toast(err.message);

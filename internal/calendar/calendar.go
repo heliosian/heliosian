@@ -88,7 +88,7 @@ var (
 	FeedColumns        = []string{"Token", "Email", "Name", "Classrooms", "Tags", "Created", "Emoji"}
 	SettingColumns     = []string{"Email", "Classrooms", "Categories", "Saved", "Home Name", "Home Emoji", "Home Position"}
 	RSVPColumns        = []string{"Email", "Event ID", "Answer", "Answered", "Answered By", "Via"}
-	InvitationColumns  = []string{"Event ID", "Hosts", "Audience", "Guests", "Guest List", "Message", "Created By", "Created", "Sent", "Title", "Start", "End", "Location", "Description", "Flyer"}
+	InvitationColumns  = []string{"Event ID", "Hosts", "Audience", "Guests", "Guest List", "Message", "Created By", "Created", "Sent", "Title", "Start", "End", "Location", "Description", "Flyer", "Notify"}
 	InviteColumns      = []string{"Event ID", "Email", "Name", "Guest Of", "Via", "Added By", "Added", "Sent", "Token", "Household", "Opened"}
 	InviteGroupColumns = append([]string{"Event ID", "Group ID", "Auto", "Added By", "Added", "Sent", "Removed"}, filter.RuleColumns...)
 	BounceColumns      = []string{"Email", "When", "Reason"}
@@ -190,6 +190,15 @@ type Event struct {
 	Link         string `json:"link,omitempty"`
 	Availability string `json:"availability,omitempty"`
 	Mine         string `json:"mine,omitempty"`
+	// Hosts are whoever runs a linked event on its own app - an HCA
+	// event's chairs - by address; they run its guest list here.
+	Hosts []string `json:"-"`
+	// HostNames names them for the page, before any guest list exists.
+	HostNames []string `json:"hostNames,omitempty"`
+	// LinkedID is the id the other app knows the event by, when it is not
+	// the event's own here - a school listing folded with the HCA event
+	// keeps the school's id and carries the HCA event's here.
+	LinkedID string `json:"linkedId,omitempty"`
 	// MineWho names the household members the standing belongs to, when
 	// the viewer is not among them - "Sam is going" rather than "You're
 	// going".

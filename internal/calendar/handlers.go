@@ -169,11 +169,19 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 	// The events the viewer runs wear a star: on a copy, as the view's
 	// events are the viewer's own already.
 	for i, e := range view.Events {
-		if (e.Source == SourceSheet || e.Source == SourceCelebrate) && a.isHost(email, false, e) {
-			c := *e
-			c.Hosted = true
-			view.Events[i] = &c
+		hosted := (e.Source == SourceSheet || e.linked()) && a.isHost(email, false, e)
+		if !hosted && len(e.Hosts) == 0 {
+			continue
 		}
+		c := *e
+		c.Hosted = hosted
+		// A linked event names who runs it there, for its badge.
+		for _, h := range e.Hosts {
+			if p, known := a.directory.Person(a.directory.Resolve(normalizeEmail(h))); known && p.Name != "" {
+				c.HostNames = append(c.HostNames, p.Name)
+			}
+		}
+		view.Events[i] = &c
 	}
 	view.ImageSources = a.search.Sources()
 	view.User.IsSuperAdmin = a.cache.IsSuperAdmin(email)

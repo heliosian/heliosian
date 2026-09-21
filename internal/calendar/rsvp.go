@@ -74,7 +74,63 @@ func (a app) recordBy(ctx context.Context, actor, email, id, answer, via string,
 	if invite && answer == AnswerYes && a.mail.Sender != nil && !isGuestKey(email) {
 		go a.sendInvite(context.WithoutCancel(ctx), email, e)
 	}
+	// The hosts who asked hear of each answer - not of one they gave
+	// themselves, nor of a hiding, which is nobody's answer.
+	if inv := model.Invitations[e.ID]; inv != nil && a.mail.Sender != nil && answer != "" && answer != AnswerHidden {
+		for _, h := range inv.Notify {
+			if h != actor {
+				go a.sendAnswerNote(context.WithoutCancel(ctx), h, actor, email, answer, model.invitedEvent(e))
+			}
+		}
+	}
 	return nil
+}
+
+// sendAnswerNote tells a host one answer came in: who said what, by whom
+// when someone else answered for them, and where the count stands.
+func (a app) sendAnswerNote(ctx context.Context, to, actor, email, answer string, e *Event) {
+	model := a.cache.Model()
+	name := email
+	if p, known := a.directory.Person(email); known && p.Name != "" {
+		name = p.Name
+	} else if inv := model.InviteOf(e.ID, email); inv != nil && inv.Name != "" {
+		name = inv.Name
+	}
+	by := ""
+	if actor != email {
+		who := actor
+		if p, known := a.directory.Person(actor); known && p.Name != "" {
+			who = p.Name
+		}
+		by = " (answered by " + who + ")"
+	}
+	yes, maybe, no, waiting := 0, 0, 0, 0
+	for _, row := range model.Invites[e.ID] {
+		switch model.AnswerOf(row.Email, e.ID) {
+		case AnswerYes:
+			yes++
+		case AnswerMaybe:
+			maybe++
+		case AnswerNo:
+			no++
+		default:
+			waiting++
+		}
+	}
+	link := "https://when.heliosian.com" + EventPath(e)
+	line := fmt.Sprintf("%s said %s to %s%s.", name, answerWord(answer), e.Title, by)
+	standing := fmt.Sprintf("So far: %d yes, %d maybe, %d no, %d still to answer.", yes, maybe, no, waiting)
+	font := "-apple-system,Segoe UI,Roboto,sans-serif"
+	htm := fmt.Sprintf("<p style=\"font:16px/1.5 %s\">%s</p><p style=\"font:14px/1.5 %s;color:#647071\">%s</p><p style=\"margin:16px 0\"><a href=\"%s\" style=\"display:inline-block;padding:10px 18px;border-radius:8px;background:#0e4d54;color:#fff;font:700 15px %s;text-decoration:none\">See the guest list</a></p><p style=\"font:12px/1.5 %s;color:#647071\">You asked to hear as answers come in; turn it off under Who's coming on the event's page.</p>", font, html.EscapeString(line), font, html.EscapeString(standing), html.EscapeString(link), font, font)
+	err := a.mail.Sender.Send(ctx, mail.Message{
+		To:      []string{to},
+		Subject: "[" + e.Title + "] " + name + " said " + answerWord(answer),
+		Text:    line + "\n\n" + standing + "\n\n" + link + "\n",
+		HTML:    htm,
+	})
+	if err != nil {
+		slog.ErrorContext(ctx, "calendar: send answer note", "to", to, "event", e.ID, "error", err)
+	}
 }
 
 // eventFor is an event as this person sees it, the other apps' folded in.

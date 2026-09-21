@@ -69,7 +69,17 @@ export function me() {
 }
 
 export function event(id) {
-  return byId.get(id) || null;
+  if (byId.has(id)) {
+    return byId.get(id);
+  }
+  // An HCA event the school also lists is folded into the school's
+  // listing, under the school's id: HCA-Team's link, by the event's own,
+  // finds it there.
+  const [source, rest] = id.split('/', 2);
+  if (source === 'team' && rest) {
+    return state.model.events.find(e => e.linkedId === rest && e.link) || null;
+  }
+  return null;
 }
 
 // fetchEvent asks the server for an event the model does not carry - an

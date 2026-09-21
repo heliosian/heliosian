@@ -58,6 +58,7 @@ type app struct {
 	// nothing.
 	mailer mail.Sender
 	from   string
+	rsvps  RSVPLookup
 }
 
 // Register wires the portal: one shell for every page, the model, and the
@@ -70,11 +71,11 @@ func (a app) importImage(w http.ResponseWriter, r *http.Request) {
 }
 
 // writes. Every route already sits behind sign-in.
-func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, directory Directory, superAdmins func() []string, search ImageSearch, mailer mail.Sender, from string) {
+func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, directory Directory, superAdmins func() []string, search ImageSearch, mailer mail.Sender, from string, rsvps RSVPLookup) {
 	if search.UserAgent == "" {
 		search.UserAgent = "HCA-Team image search (+https://team.heliosian.com)"
 	}
-	a := app{cache: cache, writer: writer, queue: queue, store: store, directory: directory, superAdmins: superAdmins, search: search, mailer: mailer, from: from}
+	a := app{cache: cache, writer: writer, queue: queue, store: store, directory: directory, superAdmins: superAdmins, search: search, mailer: mailer, from: from, rsvps: rsvps}
 	for _, page := range pages {
 		mux.HandleFunc("GET "+page, a.ready(a.page))
 	}
@@ -187,7 +188,7 @@ func today() string {
 
 func (a app) model(w http.ResponseWriter, r *http.Request) {
 	email, admin := a.who(r)
-	view := Render(a.cache.Model(), a.directory, email, admin, time.Now().In(local))
+	view := RenderWith(a.cache.Model(), a.directory, a.rsvps, email, admin, time.Now().In(local))
 	// Image search is on where a library's key is set, and off where none is.
 	view.ImageSources = a.search.Sources()
 	view.ImageSearch = len(view.ImageSources) > 0
