@@ -1,4 +1,5 @@
 import {state, me, tagGroups, bands, classroomNames, eventDates, addDays, parseDate} from './state.js';
+import {addressSuggest} from '/address.js';
 import {el, svg, toast} from './dom.js';
 import {imageControl} from './images.js';
 
@@ -183,6 +184,8 @@ export function eventForm({from = null, shift = 0, edit = null, onDone}) {
   whenRow.append(field('Starts', startDate), field('At', startTime, 'Leave blank for all day'), field('Ends', endDate, 'Blank means the same day'), field('Until', endTime));
   eventPanel.append(whenRow);
   const place = text(from ? from.location : '');
+  place.classList.add('event-place');
+  addressSuggest(place);
   eventPanel.append(field('Location', place));
   const source = text(from ? from.sourceUrl || from.sourceNote || '' : '', 'https://…');
   // Where to read more is a public event's; a private one says it all on

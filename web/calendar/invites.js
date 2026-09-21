@@ -2,6 +2,7 @@ import {state, me, answer, isParty, eventDates, weekdayLong, parseDate, timeLine
 import {el, svg, button, toast, avatar, popup, copyText, segmented} from './dom.js';
 import {appOrigin} from '/toolbar.js';
 import {rulesEditor, filterWidgets} from '/rules.js';
+import {addressSuggest} from '/address.js';
 import {createPersonPicker} from '/picker.js';
 import {imageControl} from './images.js';
 
@@ -1854,6 +1855,7 @@ export function openSettings(e, view, refresh) {
       endTime.value = (end || '').slice(11, 16);
     }
     const location = text(s.location || o.location);
+    addressSuggest(location);
     const description = el('textarea');
     description.rows = 3;
     description.value = s.description || o.description;

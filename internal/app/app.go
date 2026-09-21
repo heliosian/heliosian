@@ -1048,6 +1048,11 @@ func NewCore(cfg Config) *Core {
 	feedbackQueue := feedback.NewQueue(feedbackStore, notifier.Notify)
 	for key, m := range map[string]*http.ServeMux{"who": mux, "home": homeMux, "team": teamMux, "birthday": birthdayMux, "celebrate": celebrateMux, "calendar": calendarMux, "loop": loopMux, "ask": askMux} {
 		feedback.Register(m, key, appName(key), superAdmin, feedbackQueue)
+		// Address suggestions for every app's address boxes, through the
+		// geocoder when it can suggest.
+		if s, ok := cfg.Geocoder.(geocode.Suggester); ok {
+			geocode.RegisterSuggest(m, s)
+		}
 	}
 	feedback.RegisterAdmin(homeMux, feedbackStore, cfg.FeedbackFiler, superAdmin)
 	// A deploy's old revision serves, and writes, until this one has loaded;

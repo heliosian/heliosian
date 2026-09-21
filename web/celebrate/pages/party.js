@@ -6,6 +6,7 @@ import {openBuy, openParty, openFreeTicket, openTicket, openPerson, openReassign
 import {statusBadges} from '../cards.js';
 import {openPhotoLightbox, openCropTool} from '/crop.js';
 import {dateCard} from '/datecard.js';
+import {addressSuggest} from '/address.js';
 
 // The page is laid out the way HCA-Team lays out an event: the wide banner
 // with the date stamp and the tools floating over it, then the words beside a
@@ -527,7 +528,7 @@ function factsCard(p, editing, save) {
     }
     card.append(pencilFor(sideRow('pin', 'Where', p.location || '', mapLink, note), 'Edit where', () => {
       const place = textInput(p.location || '', {placeholder: "The Parks' House in Los Altos", maxLength: 120});
-      const address = textInput(p.address || '', {placeholder: '1420 Alder Court, Los Altos, CA 94024', maxLength: 200});
+      const address = addressSuggest(textInput(p.address || '', {placeholder: '1420 Alder Court, Los Altos, CA 94024', maxLength: 200}));
       const stack = el('div', 'field-editor-stack');
       const l1 = el('label');
       l1.append('In words, for everyone', place);
@@ -539,7 +540,7 @@ function factsCard(p, editing, save) {
   } else if (editing) {
     card.append(pencilFor(sideRow('pin', 'Where', 'Not set yet'), 'Edit where', () => {
       const place = textInput('', {placeholder: "The Parks' House in Los Altos", maxLength: 120});
-      const address = textInput('', {placeholder: '1420 Alder Court, Los Altos, CA 94024', maxLength: 200});
+      const address = addressSuggest(textInput('', {placeholder: '1420 Alder Court, Los Altos, CA 94024', maxLength: 200}));
       const stack = el('div', 'field-editor-stack');
       const l1 = el('label');
       l1.append('In words, for everyone', place);

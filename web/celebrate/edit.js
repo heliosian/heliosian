@@ -1,4 +1,5 @@
 import {state, me, isAdmin, household, billable, admits, audienceWords, ticketFor, money, currentCelebration, partyPath, party} from './state.js';
+import {addressSuggest} from '/address.js';
 import {el, svg, toast, button, avatar} from './dom.js';
 import {openCropTool} from '/crop.js';
 import {tabStrip} from '/tabs.js';
@@ -1472,7 +1473,7 @@ export function openParty(p) {
   // Named place, not location: window.location is what the address hint
   // under the friendly-address field reads.
   const place = text(p ? p.location : '', {maxLength: 120, placeholder: "The Parks' House in Los Altos"});
-  const address = text(p ? p.address : '', {maxLength: 200, placeholder: '1420 Alder Court, Los Altos, CA 94024'});
+  const address = addressSuggest(text(p ? p.address : '', {maxLength: 200, placeholder: '1420 Alder Court, Los Altos, CA 94024'}));
   const when = [
     field('When', whenWrap),
     field('Where, in words', place, 'Shown to everyone: the neighborhood or the venue, not the street.'),
