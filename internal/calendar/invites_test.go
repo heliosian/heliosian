@@ -39,7 +39,8 @@ func invitesAppWith(t *testing.T) (http.Handler, *Cache, *keptMail, fakeStore, *
 	t.Chdir("../..")
 	dir := &data.Dir{Root: "sampledata"}
 	households := map[string][]string{robin: {sam, ella}, sam: {robin, ella}, ella: {robin, sam}}
-	cache, err := NewCache(dir, func() Roster { return Roster{Classrooms: roster.Classrooms, Households: households} }, nil, func(string) bool { return false }, directQueue{})
+	parents := map[string][]string{sam: {robin}, ella: {robin}}
+	cache, err := NewCache(dir, func() Roster { return Roster{Classrooms: roster.Classrooms, Households: households, Parents: parents} }, nil, func(string) bool { return false }, directQueue{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -282,14 +283,14 @@ func TestInvitationLifecycle(t *testing.T) {
 	if up := cache.Model().UpcomingUnder(elsewhere, mia, nil, now(), 0, ""); slices.ContainsFunc(up, func(u Upcoming) bool { return u.ID == "meetup" }) {
 		t.Errorf("the event is in Mia's Upcoming, uninvited")
 	}
-	// Robin's household on the list, with who Robin may answer for; Sam
-	// sees the same three and may answer for himself alone.
+	// Robin's own and her children's invitations are hers to answer; Sam
+	// is asked about his alone - not his mother's, nor his sister's.
 	v := inviteView(t, robinH, "meetup")
 	if v.Host || len(v.Mine) != 3 || v.Mine[0].Email != robin || !v.Mine[0].Mine || !v.Mine[1].Mine || !v.Mine[2].Mine || v.List != nil || v.Settings != nil || !v.Guests || len(v.Hosts) != 2 || v.Hosts[0].Name != "Jordan Whitfield" || v.Counts.Invited != 4 || v.Counts.Waiting != 4 {
 		t.Errorf("robin's view = %+v", v)
 	}
 	v = inviteView(t, samH, "meetup")
-	if len(v.Mine) != 3 || v.Mine[0].Email != sam || !v.Mine[0].Mine || v.Mine[1].Mine || v.Mine[2].Mine {
+	if len(v.Mine) != 1 || v.Mine[0].Email != sam || !v.Mine[0].Mine {
 		t.Errorf("sam's view = %+v", v.Mine)
 	}
 	// Robin answers for the household: a yes for Sam, a maybe for Ella,
@@ -1203,5 +1204,40 @@ func TestRemovedStayRemoved(t *testing.T) {
 	call(t, jordan, "POST", "/api/calendar/invites/people", `{"id":"moms","people":[{"email":"`+dropped+`"}]}`)
 	if cache.Model().InviteOf("moms", dropped) == nil {
 		t.Errorf("adding %s by hand did not take", dropped)
+	}
+}
+
+// An invitation is the invitee's own: a partner's alone puts nothing on
+// the other's calendar and asks them nothing; a child's is the parent's
+// too, who answers for them.
+func TestInvitationIsPersonal(t *testing.T) {
+	mux, cache, _, _, _ := invitesAppWith(t)
+	jordan := as(host, mux)
+	call(t, jordan, "POST", "/api/calendar/events", `{"title":"Moms","start":"2026-10-10 15:00","tags":[],"inviteOnly":true,"id":"moms"}`)
+	call(t, jordan, "POST", "/api/calendar/invites/people", `{"id":"moms","people":[{"email":"`+robin+`"}]}`)
+	call(t, jordan, "POST", "/api/calendar/invites/send", `{"id":"moms"}`)
+	m := cache.Model()
+	on := func(email string) bool {
+		return slices.ContainsFunc(m.eventsFor(email, nil), func(e *Event) bool { return e.ID == "moms" })
+	}
+	if !on(robin) || on(sam) || on(ella) {
+		t.Errorf("robin's invitation on the calendars: robin %v, sam %v, ella %v", on(robin), on(sam), on(ella))
+	}
+	if v := inviteView(t, as(sam, mux), "moms"); len(v.Mine) != 0 {
+		t.Errorf("sam asked about his mother's invitation: %+v", v.Mine)
+	}
+	// A child's reaches the parent.
+	call(t, jordan, "POST", "/api/calendar/events", `{"title":"Kids","start":"2026-10-11 15:00","tags":[],"inviteOnly":true,"id":"kids"}`)
+	call(t, jordan, "POST", "/api/calendar/invites/people", `{"id":"kids","people":[{"email":"`+sam+`"}]}`)
+	call(t, jordan, "POST", "/api/calendar/invites/send", `{"id":"kids"}`)
+	m = cache.Model()
+	kids := func(email string) bool {
+		return slices.ContainsFunc(m.eventsFor(email, nil), func(e *Event) bool { return e.ID == "kids" })
+	}
+	if !kids(sam) || !kids(robin) || kids(ella) {
+		t.Errorf("sam's invitation on the calendars: sam %v, robin %v, ella %v", kids(sam), kids(robin), kids(ella))
+	}
+	if v := inviteView(t, as(robin, mux), "kids"); len(v.Mine) != 1 || v.Mine[0].Email != sam || !v.Mine[0].Mine {
+		t.Errorf("robin's ask for sam's invitation: %+v", v.Mine)
 	}
 }

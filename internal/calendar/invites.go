@@ -193,7 +193,9 @@ func (b *builder) invitations(settings, rows []map[string]string) {
 		if inv.Sent == "" {
 			continue
 		}
-		for _, who := range append([]string{email}, b.model.Roster.Households[email]...) {
+		// The invitation is theirs alone - and a student's is their
+		// parents' too, who answer for them; a partner's is not.
+		for _, who := range append([]string{email}, b.model.Roster.Parents[email]...) {
 			if b.model.invited[who] == nil {
 				b.model.invited[who] = map[string]bool{}
 			}
@@ -219,7 +221,7 @@ func (m *Model) InviteByToken(token string) (Invite, bool) {
 }
 
 // Invited says an event is on a person's calendar by invitation: theirs,
-// or someone's in their household, sent.
+// sent - or, for a parent, a child's.
 func (m *Model) Invited(email, id string) bool {
 	return m.invited[normalizeEmail(email)][id]
 }
@@ -698,7 +700,14 @@ func (a app) invitesView(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	rows := a.rows(viewer, admin, e)
-	mine := a.household(viewer)
+	// The ask is for the viewer's own invitations: theirs, their
+	// children's - a partner's alone is the partner's to answer.
+	mine := []string{viewer}
+	for _, member := range a.household(viewer) {
+		if slices.Contains(a.cache.Model().Roster.Parents[member], viewer) {
+			mine = append(mine, member)
+		}
+	}
 	for _, g := range rows {
 		if g.Invited && (slices.Contains(mine, g.Email) || (g.GuestOf != "" && slices.Contains(mine, g.GuestOf))) {
 			view.Mine = append(view.Mine, g)

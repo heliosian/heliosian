@@ -126,6 +126,9 @@ type Classroom struct {
 type Roster struct {
 	Classrooms []Classroom
 	Households map[string][]string
+	// Parents are a student's parents, by the student's address: the
+	// adults an invitation to the student reaches as well.
+	Parents map[string][]string
 }
 
 // Names lists the classrooms in the directory's order.
