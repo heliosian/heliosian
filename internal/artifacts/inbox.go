@@ -107,7 +107,27 @@ func (in *Filer) take(ctx context.Context, source string) error {
 	if err != nil {
 		return err
 	}
+	logHeaders(raw, m)
 	return in.file(ctx, m)
+}
+
+// Temporary: gathers what real forwarded mail carries, to settle the fix for
+// security-audit/findings/ask-mail-hook-trusts-sender-headers.md. Remove with it.
+func logHeaders(raw []byte, m Message) {
+	msg, err := netmail.ReadMessage(bytes.NewReader(raw))
+	if err != nil {
+		return
+	}
+	h := msg.Header
+	channel, kind, ok := m.Broadcast()
+	slog.Info("artifacts: mail headers",
+		"id", m.MessageID, "subject", m.Subject, "from", m.From, "to", m.To, "cc", m.CC,
+		"channel", channel, "kind", kind, "broadcast", ok,
+		"list-id", h["List-Id"], "sender", h["Sender"], "return-path", h["Return-Path"],
+		"x-forwarded-for", h["X-Forwarded-For"], "x-forwarded-to", h["X-Forwarded-To"],
+		"authentication-results", h["Authentication-Results"],
+		"arc-authentication-results", h["Arc-Authentication-Results"],
+		"arc-seal", h["Arc-Seal"])
 }
 
 func (in *Filer) Post(ctx context.Context, group string, raw []byte) error {

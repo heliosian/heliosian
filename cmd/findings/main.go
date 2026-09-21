@@ -17,13 +17,13 @@ import (
 
 const dir = "security-audit/findings"
 
-var statuses = []string{"open", "fixed", "wontfix", "invalid"}
+var statuses = []string{"open", "revisit", "fixed", "wontfix", "invalid"}
 
 var severities = []string{"critical", "high", "medium", "low"}
 
 var severityColor = map[string]string{"critical": "1;97;41", "high": "1;31", "medium": "33", "low": "36"}
 
-var statusColor = map[string]string{"open": "1", "fixed": "32", "wontfix": "35", "invalid": "90"}
+var statusColor = map[string]string{"open": "1", "revisit": "34", "fixed": "32", "wontfix": "35", "invalid": "90"}
 
 type finding struct {
 	path        string
@@ -36,11 +36,12 @@ type finding struct {
 }
 
 func main() {
-	status := flag.String("status", "", "comma-separated statuses to keep: open, fixed, wontfix, invalid")
+	status := flag.String("status", "", "comma-separated statuses to keep: open, revisit, fixed, wontfix, invalid")
 	text := flag.String("text", "", "keep findings with these words anywhere in the file, case-insensitive")
 	since := flag.String("since", "", "keep findings changed on or after this day, as 2006-01-02")
 	stat := flag.Bool("stat", false, "print a grid of counts by severity and status instead of the list")
 	first := flag.Bool("first", false, "keep only the first open finding, by file name, at the highest severity any open finding has")
+	revisit := flag.Bool("revisit", false, "with --first, count findings to revisit as open")
 	flag.Parse()
 	keep := map[string]bool{}
 	if *status != "" {
@@ -75,7 +76,7 @@ func main() {
 		shown = append(shown, f)
 	}
 	if *first {
-		shown = firstOpen(shown)
+		shown = firstOpen(shown, *revisit)
 	}
 	if *stat {
 		grid(shown)
@@ -85,8 +86,10 @@ func main() {
 	log.Printf("%d of %d findings", len(shown), len(paths))
 }
 
-func firstOpen(found []finding) []finding {
-	open := slices.DeleteFunc(slices.Clone(found), func(f finding) bool { return f.status != "open" })
+func firstOpen(found []finding, revisit bool) []finding {
+	open := slices.DeleteFunc(slices.Clone(found), func(f finding) bool {
+		return f.status != "open" && !(revisit && f.status == "revisit")
+	})
 	if len(open) == 0 {
 		return open
 	}
