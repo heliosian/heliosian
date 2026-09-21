@@ -98,6 +98,12 @@ type Invite struct {
 	// community (ext.go): the whole of what lets them in, minted when they
 	// are put on the list; blank for anyone the directory holds.
 	Token string `json:"-"`
+	// Household groups people from outside into a family: the address of
+	// the one they were added with, the same on each of theirs, so they
+	// sit together on the list, are named together in the invitation, and
+	// any of them answers for all on their own page. Blank for anyone the
+	// directory holds, whose household is the directory's.
+	Household string `json:"household,omitempty"`
 }
 
 // PartyPeople is a party as its guest list needs it: who hosts it, and who
@@ -173,6 +179,7 @@ func (b *builder) invitations(settings, rows []map[string]string) {
 		inv := Invite{
 			EventID: id, Email: email, Name: strings.TrimSpace(row["Name"]), GuestOf: normalizeEmail(row["Guest Of"]), Via: strings.TrimSpace(row["Via"]),
 			AddedBy: normalizeEmail(row["Added By"]), Added: strings.TrimSpace(row["Added"]), Sent: strings.TrimSpace(row["Sent"]), Token: strings.TrimSpace(row["Token"]),
+			Household: normalizeEmail(row["Household"]),
 		}
 		b.model.Invites[id] = append(b.model.Invites[id], inv)
 		if inv.Token != "" {
@@ -301,10 +308,11 @@ func (a app) hostsOf(e *Event) []string {
 	return out
 }
 
-// isHost says a person runs an event's guest list: one of its hosts, or
-// an admin.
-func (a app) isHost(email string, admin bool, e *Event) bool {
-	return admin || slices.Contains(a.hostsOf(e), email)
+// isHost says a person runs an event's guest list: one of its hosts - a
+// calendar admin is not one, the list being the hosts' own business, and
+// reads the page as anyone else invited would.
+func (a app) isHost(email string, _ bool, e *Event) bool {
+	return slices.Contains(a.hostsOf(e), email)
 }
 
 // party is the party behind a linked event, or nil for any other event.
@@ -339,6 +347,28 @@ func (a app) hostedEvent(w http.ResponseWriter, r *http.Request, id string) (str
 // the person first.
 func (a app) household(email string) []string {
 	return append([]string{email}, a.cache.Model().Roster.Households[email]...)
+}
+
+// householdOn is a person's household as one event's list has it: the
+// directory's for anyone it holds, and for someone from outside the
+// family they were added with - everyone on the list sharing their
+// Household - themselves first.
+func (a app) householdOn(e *Event, email string) []string {
+	if _, known := a.directory.Person(email); known {
+		return a.household(email)
+	}
+	model := a.cache.Model()
+	inv := model.InviteOf(e.ID, email)
+	if inv == nil || inv.Household == "" {
+		return []string{email}
+	}
+	out := []string{email}
+	for _, other := range model.Invites[e.ID] {
+		if other.Household == inv.Household && other.Email != email && other.GuestOf == "" {
+			out = append(out, other.Email)
+		}
+	}
+	return out
 }
 
 // isAdult says a person may answer for their household: anyone the
@@ -571,7 +601,7 @@ func (a app) rows(viewer string, admin bool, e *Event) []GuestRow {
 		return displayName(email)
 	}
 	householdOf := func(email string) string {
-		members := a.household(email)
+		members := a.householdOn(e, email)
 		slices.Sort(members)
 		return members[0]
 	}
@@ -1010,6 +1040,10 @@ func (a app) addInvites(w http.ResponseWriter, r *http.Request) {
 			Email string `json:"email"`
 			Name  string `json:"name"`
 			Via   string `json:"via"`
+			// Household is, for someone from outside, the address of the
+			// one they were added with - their family on the list; someone
+			// named with no address of their own goes on under a key.
+			Household string `json:"household"`
 		} `json:"people"`
 	}
 	if !decode(w, r, &body) {
@@ -1028,27 +1062,39 @@ func (a app) addInvites(w http.ResponseWriter, r *http.Request) {
 	rows := []map[string]string{}
 	added := map[string]bool{}
 	for _, p := range body.People {
+		name := strings.TrimSpace(p.Name)
+		household := normalizeEmail(p.Household)
 		email := a.directory.Resolve(normalizeEmail(p.Email))
-		if !emailForm.MatchString(email) {
+		token := ""
+		switch {
+		case email == "" && household != "" && name != "":
+			// A family member from outside named with no address of their
+			// own: on the list under a key, answered for by their family.
+			email = newGuestKey()
+		case !emailForm.MatchString(email):
 			http.Error(w, fmt.Sprintf("%q is not an email address", p.Email), http.StatusBadRequest)
 			return
+		default:
+			// Someone the directory does not hold gets a page of their own,
+			// outside sign-in, found by a secret minted now.
+			token = NewToken()
+			if person, known := a.directory.Person(email); known {
+				name, token, household = person.Name, "", ""
+			}
 		}
 		if added[email] || model.InviteOf(e.ID, email) != nil {
 			continue
 		}
 		added[email] = true
-		name := strings.TrimSpace(p.Name)
-		// Someone the directory does not hold gets a page of their own,
-		// outside sign-in, found by a secret minted now.
-		token := NewToken()
-		if person, known := a.directory.Person(email); known {
-			name, token = person.Name, ""
-		}
 		if len(name) > maxTitleLength {
 			http.Error(w, "a name is too long", http.StatusBadRequest)
 			return
 		}
-		rows = append(rows, map[string]string{"Event ID": e.ID, "Email": email, "Name": name, "Guest Of": "", "Via": strings.TrimSpace(p.Via), "Added By": actor, "Added": stamp, "Sent": "", "Token": token})
+		if household != "" && !emailForm.MatchString(household) {
+			http.Error(w, "a family is named by an address", http.StatusBadRequest)
+			return
+		}
+		rows = append(rows, map[string]string{"Event ID": e.ID, "Email": email, "Name": name, "Guest Of": "", "Via": strings.TrimSpace(p.Via), "Added By": actor, "Added": stamp, "Sent": "", "Token": token, "Household": household})
 	}
 	tables, first := a.ensured(a.cache.Tables(), e.ID, actor)
 	if !a.commit(r.Context(), w, tables.WithInvites(rows), func() error {
@@ -1459,7 +1505,7 @@ func (a app) send(ctx context.Context, actor string, e *Event, emails []string, 
 	}
 	recipients := map[string][]string{}
 	for _, t := range order {
-		household := a.household(t)
+		household := a.householdOn(e, t)
 		names := []string{}
 		for _, row := range model.Invites[e.ID] {
 			if row.Email != t && !slices.Contains(household, row.Email) {
@@ -1551,9 +1597,19 @@ func (a app) sendInvitation(ctx context.Context, to string, names []string, host
 	}
 	hosting := "Hosted by " + strings.Join(hosts, " and ")
 	invited := strings.Join(names, ", ")
-	lead := "You're invited!"
+	// The words speak to the recipient by name, say who sent the
+	// invitation - the host who pressed Send - and who is hosting.
+	hi := "Hi"
+	if len(names) > 0 && names[0] != "" {
+		hi = "Hi " + names[0]
+	}
+	hostedBy := ""
+	if !(len(hosts) == 1 && hosts[0] == host) {
+		hostedBy = ", hosted by " + strings.Join(hosts, " and ")
+	}
+	lead := fmt.Sprintf("%s - %s has sent you an invitation for %s%s. Can you make it?", hi, host, e.Title, hostedBy)
 	if reminder {
-		lead = "A reminder: you're invited, and the hosts have not heard from you yet."
+		lead = fmt.Sprintf("%s - a reminder: %s invited you to %s%s, and the hosts have not heard from you yet. Can you make it?", hi, host, e.Title, hostedBy)
 	}
 	card := origin + "/open/share/" + e.ID + ".png"
 	var text strings.Builder
@@ -1603,11 +1659,12 @@ func (a app) sendInvitation(ctx context.Context, to string, names []string, host
 		subject = "[" + e.Title + "] Reminder: you're invited!"
 	}
 	err := a.mail.Sender.Send(ctx, mail.Message{
-		To:      []string{to},
-		ReplyTo: replyTo,
-		Subject: subject,
-		Text:    text.String(),
-		HTML:    htm.String(),
+		To:       []string{to},
+		ReplyTo:  replyTo,
+		FromName: strings.Join(hosts, " and ") + " via Helios When",
+		Subject:  subject,
+		Text:     text.String(),
+		HTML:     htm.String(),
 		Attachments: []mail.Attachment{{
 			Name:        "invite.ics",
 			ContentType: "text/calendar; method=REQUEST; charset=utf-8",
@@ -1752,7 +1809,7 @@ func (a app) sendMessage(ctx context.Context, to string, replyTo []string, hostN
 	}
 	// The household's rows: the recipient first, then the rest on the
 	// list, then the guests any of them brought.
-	household := a.household(to)
+	household := a.householdOn(e, to)
 	type line struct{ name, answer string }
 	lines := []line{}
 	waiting := false
@@ -1867,6 +1924,26 @@ func flyerPath(id string) string {
 }
 
 // flyer serves GET /open/flyer/{id}: the invitation's flyer as bytes.
+// banner is GET /open/banner/{id}: the picture an event's page wears -
+// its own, its first tag's, or the calendar's header - public, for an
+// outside person's page, which sits before sign-in. The share card
+// already shows the same picture to anyone with the link.
+func (a app) banner(w http.ResponseWriter, r *http.Request) {
+	e := a.event(strings.TrimSpace(r.PathValue("id")))
+	if e == nil {
+		http.NotFound(w, r)
+		return
+	}
+	data := a.readImage(a.cache.Model().pictureOf(e))
+	if data == nil {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", http.DetectContentType(data))
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+	w.Write(data)
+}
+
 func (a app) flyer(w http.ResponseWriter, r *http.Request) {
 	inv := a.cache.Model().Invitations[strings.TrimSpace(r.PathValue("id"))]
 	if inv == nil || inv.Flyer == "" {

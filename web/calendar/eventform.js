@@ -185,7 +185,10 @@ export function eventForm({from = null, shift = 0, edit = null, onDone}) {
   const place = text(from ? from.location : '');
   eventPanel.append(field('Location', place));
   const source = text(from ? from.sourceUrl || from.sourceNote || '' : '', 'https://…');
-  eventPanel.append(field('More Information or Source', source, admin ? 'Where this came from, or where to read more - a web address links from the event\u2019s page; any other words are shown as written.' : 'A web address with more about it, if there is one.'));
+  // Where to read more is a public event's; a private one says it all on
+  // its own page and in its invitation.
+  const sourceField = field('More Information or Source', source, admin ? 'Where this came from, or where to read more - a web address links from the event\u2019s page; any other words are shown as written.' : 'A web address with more about it, if there is one.');
+  eventPanel.append(sourceField);
   const description = el('textarea');
   description.rows = 4;
   description.value = from ? from.description || '' : '';
@@ -292,6 +295,7 @@ export function eventForm({from = null, shift = 0, edit = null, onDone}) {
     const invite = sharing !== 'public';
     tagTab.hidden = invite;
     nextRow.hidden = invite;
+    sourceField.hidden = invite;
     if (invite) {
       showPanel(eventPanel);
       eventPanel.append(actions);
@@ -334,7 +338,7 @@ export function eventForm({from = null, shift = 0, edit = null, onDone}) {
     // takes it; an all-day end is its day.
     const body = {
       title: title.value.trim(), start: when(startDate.value, startTime.value), end: when(endDate.value || startDate.value, endTime.value || startTime.value),
-      location: place.value.trim(), description: description.value.trim(), source: source.value.trim(), image: picture.image, inviteOnly: invite,
+      location: place.value.trim(), description: description.value.trim(), source: invite ? '' : source.value.trim(), image: picture.image, inviteOnly: invite,
       // A private event is for whoever is invited: no classrooms, no
       // categories.
       tags: invite ? [] : [...classroomNames().filter(c => rooms.has(c)), ...cats], keywords: keywords.value.split(',').map(w => w.trim()).filter(Boolean),

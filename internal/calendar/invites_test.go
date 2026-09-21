@@ -536,6 +536,10 @@ func TestOutsideInvitation(t *testing.T) {
 	}
 	call(t, jordan, "POST", "/api/calendar/invites/people", `{"id":"meetup","people":[{"email":"`+coach+`","name":"Coach Lee","via":"outside"},{"email":"`+robin+`"}]}`)
 	call(t, jordan, "PUT", "/api/calendar/invites/settings", `{"id":"meetup","message":"Bring cleats."}`)
+	// The outside page wears the event's banner, served public by id.
+	if rec := call(t, mux, "GET", "/open/banner/meetup", ""); rec.Code != 200 || !strings.HasPrefix(rec.Header().Get("Content-Type"), "image/") {
+		t.Errorf("banner: %d %s", rec.Code, rec.Header().Get("Content-Type"))
+	}
 	inv := cache.Model().InviteOf("meetup", coach)
 	if inv == nil || len(inv.Token) != 24 || cache.Model().InviteOf("meetup", robin).Token != "" {
 		t.Fatalf("tokens: coach %+v, robin %+v", inv, cache.Model().InviteOf("meetup", robin))
@@ -921,6 +925,9 @@ func TestInvitationDetails(t *testing.T) {
 	rec = call(t, mux, "GET", "/open/ext/"+token, "")
 	var ext ExtView
 	json.Unmarshal(rec.Body.Bytes(), &ext)
+	if ext.Banner != "/open/banner/"+partyA {
+		t.Errorf("outside banner = %q", ext.Banner)
+	}
 	if ext.Title != "Fondue: the early sitting" || ext.Location != "The Torres kitchen" || !strings.Contains(ext.Hours, "5:30") {
 		t.Errorf("outside view = %+v", ext)
 	}
@@ -1071,5 +1078,65 @@ func TestDeleteAndCancel(t *testing.T) {
 	// Cancelled again, nothing more happens; a party is Celebrate's.
 	if rec := call(t, jordan, "POST", "/api/calendar/events/cancel", `{"id":"meetup","notify":true}`); rec.Code != 204 {
 		t.Errorf("cancelling twice: %d", rec.Code)
+	}
+}
+
+// A family from outside goes on together: the one with the address, the
+// others under it, one named with no address of their own under a key;
+// they sit as one household on the list, are named together in the
+// invitation, and each answers for the rest on their own page.
+func TestOutsideFamily(t *testing.T) {
+	mux, cache, kept, _ := invitesApp(t)
+	jordan := as(host, mux)
+	call(t, jordan, "POST", "/api/calendar/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"inviteOnly":true,"id":"meetup"}`)
+	rec := call(t, jordan, "POST", "/api/calendar/invites/people", `{"id":"meetup","people":[{"email":"`+coach+`","name":"Coach Lee","via":"outside","household":"`+coach+`"},{"email":"pat@example.org","name":"Pat Lee","via":"outside","household":"`+coach+`"},{"name":"Kit Lee","via":"outside","household":"`+coach+`"}]}`)
+	if rec.Code != 200 || rec.Body.String() != "{\"added\":3}\n" {
+		t.Fatalf("family: %d %s", rec.Code, rec.Body)
+	}
+	m := cache.Model()
+	var kit string
+	for _, inv := range m.Invites["meetup"] {
+		if inv.Name == "Kit Lee" {
+			kit = inv.Email
+		}
+	}
+	if kit == "" || !isGuestKey(kit) || m.InviteOf("meetup", kit).Token != "" || m.InviteOf("meetup", kit).Household != coach || m.InviteOf("meetup", "pat@example.org").Token == "" {
+		t.Fatalf("family rows = %+v", m.Invites["meetup"])
+	}
+	v := inviteView(t, jordan, "meetup")
+	if rowOf(v, coach).Household != rowOf(v, "pat@example.org").Household || rowOf(v, kit).Household != rowOf(v, coach).Household {
+		t.Errorf("not one household: %q %q %q", rowOf(v, coach).Household, rowOf(v, "pat@example.org").Household, rowOf(v, kit).Household)
+	}
+	// The invitation names the family; Kit, with no address, is sent none.
+	call(t, jordan, "POST", "/api/calendar/invites/send", `{"id":"meetup"}`)
+	waitFor(kept, 3)
+	if msgs := mailTo(kept, coach); len(msgs) != 1 || !strings.Contains(msgs[0].HTML, "Invited: Coach, Pat, Kit") || !strings.Contains(msgs[0].HTML, "Hi Coach - Jordan Whitfield has sent you an invitation for Meetup. Can you make it?") || msgs[0].FromName != "Jordan Whitfield via Helios When" {
+		t.Errorf("the coach's invite: %+v", msgs)
+	}
+	invites := 0
+	for _, msg := range kept.all() {
+		if strings.Contains(msg.Subject, "You're invited!") {
+			invites++
+		}
+	}
+	if len(mailTo(kept, "pat@example.org")) != 1 || invites != 2 {
+		t.Errorf("the family's invites: %d", invites)
+	}
+	// Pat's page shows the rest of the family, and answers for Kit.
+	token := m.InviteOf("meetup", "pat@example.org").Token
+	rec = call(t, mux, "GET", "/open/ext/"+token, "")
+	var ext ExtView
+	json.Unmarshal(rec.Body.Bytes(), &ext)
+	if len(ext.Family) != 2 || ext.Family[0].Key != coach || ext.Family[1].Key != kit {
+		t.Errorf("pat's family = %+v", ext.Family)
+	}
+	if rec := call(t, mux, "POST", "/open/ext/"+token, `{"answer":"yes","key":"`+kit+`"}`); rec.Code != 204 {
+		t.Errorf("answering for kit: %d %s", rec.Code, rec.Body)
+	}
+	if rec := call(t, mux, "POST", "/open/ext/"+token, `{"answer":"yes","key":"`+robin+`"}`); rec.Code != 403 {
+		t.Errorf("answering for a stranger: %d", rec.Code)
+	}
+	if cache.Model().AnswerOf(kit, "meetup") != AnswerYes {
+		t.Errorf("kit's answer = %q", cache.Model().AnswerOf(kit, "meetup"))
 	}
 }

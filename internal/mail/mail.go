@@ -23,14 +23,28 @@ type Message struct {
 	To      []string
 	CC      []string
 	ReplyTo []string
-	Subject string
-	HTML    string
-	Text    string
+	// FromName, when set, is the name shown on the From line in place of
+	// the sender's own - the hosts of an invitation, say - over the
+	// sender's own address, which stays what the domain signs for.
+	FromName string
+	Subject  string
+	HTML     string
+	Text     string
 	// Attachments ride along, a calendar invite for one.
 	Attachments []Attachment
 	// Headers are extra ones on the wire - Message-ID, In-Reply-To and
 	// References, for the messages about one birthday to make one thread.
 	Headers map[string]string
+}
+
+// FromLine is the From a message goes out under: the sender's own, or
+// with the message's FromName in place of the sender's name, over the
+// same address.
+func FromLine(from string, m Message) string {
+	if m.FromName == "" {
+		return from
+	}
+	return fmt.Sprintf("%s <%s>", strings.ReplaceAll(m.FromName, "<", ""), Address(from))
 }
 
 // Attachment is one file on a message.
@@ -67,7 +81,7 @@ func Compose(from string, m Message) string {
 	boundary := fmt.Sprintf("hca-%d", time.Now().UnixNano())
 	outer := "mixed-" + boundary
 	var b strings.Builder
-	fmt.Fprintf(&b, "From: %s\r\n", from)
+	fmt.Fprintf(&b, "From: %s\r\n", FromLine(from, m))
 	fmt.Fprintf(&b, "To: %s\r\n", strings.Join(m.To, ", "))
 	if len(m.CC) > 0 {
 		fmt.Fprintf(&b, "Cc: %s\r\n", strings.Join(m.CC, ", "))
@@ -133,7 +147,7 @@ func (f *Files) Send(ctx context.Context, m Message) error {
 	for _, k := range slices.Sorted(maps.Keys(m.Headers)) {
 		extra += fmt.Sprintf("\n%s: %s", k, m.Headers[k])
 	}
-	head := fmt.Sprintf("<!-- From: %s\nTo: %s\nCc: %s\nReply-To: %s\nSubject: %s%s -->\n", f.From, strings.Join(m.To, ", "), strings.Join(m.CC, ", "), strings.Join(m.ReplyTo, ", "), m.Subject, extra)
+	head := fmt.Sprintf("<!-- From: %s\nTo: %s\nCc: %s\nReply-To: %s\nSubject: %s%s -->\n", FromLine(f.From, m), strings.Join(m.To, ", "), strings.Join(m.CC, ", "), strings.Join(m.ReplyTo, ", "), m.Subject, extra)
 	if err := os.WriteFile(name, []byte(head+m.HTML), 0o644); err != nil {
 		return err
 	}

@@ -188,7 +188,7 @@ button { font: inherit; }
 
 .nav-sub-remove:hover { color: #b3261e; }
 
-/* Share Event, under the day card. */
+/* Add Event, under the day card. */
 .share-event { width: 100%; justify-content: center; margin-top: 12px; padding: 10px 14px; border-radius: 12px; font-weight: 700; }
 
 .share-event svg { width: 16px; height: 16px; }
@@ -1561,6 +1561,62 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 .guests-section .guests-by { text-align: left; }
 
 .guests-section .guests-household:not(.guests-group-block) { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; margin-bottom: 8px; }
+
+/* Individuals: plain rows to the card. */
+.guests-plain { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border: 0; background: var(--card); font: inherit; color: inherit; text-align: left; cursor: pointer; }
+
+.guests-plain + .guests-plain { border-top: 1px solid var(--line); }
+
+.guests-plain:hover { background: var(--input); }
+
+.guests-plain.is-guest { padding-left: 24px; }
+
+.guests-plain .invite-face { width: 32px; height: 32px; font-size: 13px; }
+
+.guests-plain .invite-who { flex: 1; min-width: 0; }
+
+.guests-plain-mark { width: 22px; height: 22px; flex-shrink: 0; }
+
+.guests-plain-mark svg { width: 12px; height: 12px; }
+
+.guests-plain-mark.is-yes { background: #2f9e6a; }
+
+.guests-plain-mark.is-maybe { background: var(--amber); }
+
+.guests-plain-mark.is-no { background: #b3261e; }
+
+.guests-plain-mark.is-none { background: var(--input); color: var(--muted); }
+
+.guests-plain-warn { display: inline-flex; color: #b3261e; }
+
+.guests-plain-warn svg { width: 16px; height: 16px; }
+
+/* Add Non-Helios: a card per family. */
+.outside-families { display: flex; flex-direction: column; gap: 12px; margin-top: 10px; }
+
+.outside-family { padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
+
+.outside-members { margin-top: 12px; padding: 12px; border-radius: 10px; background: var(--input); }
+
+.outside-members-title { font-size: 14px; font-weight: 700; color: var(--brand); }
+
+.outside-members .picker-note { margin: 2px 0 10px; }
+
+.outside-member-list { display: flex; flex-direction: column; margin-bottom: 8px; border-radius: 8px; overflow: hidden; }
+
+.outside-member { display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: var(--card); font-size: 14px; }
+
+.outside-member + .outside-member { border-top: 1px solid var(--line); }
+
+.outside-member-face { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 30px; height: 30px; border-radius: 50%; background: #d6e9e3; color: var(--brand); font-size: 11px; font-weight: 700; }
+
+.outside-member-name { font-weight: 600; }
+
+.outside-member-email { flex: 1; min-width: 0; color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.picker-email.outside-adder { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; margin-top: 8px; }
+
+.picker-email.outside-adder .button { white-space: nowrap; }
 
 .guests-table-row { display: flex; align-items: center; gap: 12px; width: 100%; margin-top: 14px; padding: 12px; border: 0; border-radius: 12px; background: var(--input); font: inherit; color: var(--ink); text-align: left; cursor: pointer; }
 

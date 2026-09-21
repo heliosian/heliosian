@@ -19,7 +19,7 @@ export function minePage() {
   const mine = myEvents();
   const groups = [
     ['Waiting for your reply', mine.waiting, 'is-waiting', 'Nothing waiting on you.'],
-    ['Hosting', mine.hosted, 'is-hosted', 'Nothing you host is coming up. Share Event, under the day, starts one.'],
+    ['Hosting', mine.hosted, 'is-hosted', 'Nothing you host is coming up. Add Event, under the day, starts one.'],
     ['Going', mine.going, 'is-going', 'Nothing you said yes to is coming up.'],
   ];
   for (const [label, events, cls, empty] of groups) {

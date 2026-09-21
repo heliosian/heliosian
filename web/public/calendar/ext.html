@@ -51,6 +51,13 @@ h1 { font-family: Montserrat, Roboto, sans-serif; font-size: 28px; line-height: 
 .guest span { flex: 1; }
 .guest button { border: 0; background: none; color: var(--muted); font-size: 18px; line-height: 1; cursor: pointer; padding: 2px 6px; }
 .guest button:hover { color: var(--ink); }
+.family-row { flex-wrap: wrap; gap: 8px; }
+.family-picks { display: flex; gap: 6px; }
+.family-pick { display: inline-flex; align-items: center; gap: 4px; padding: 5px 10px; border-radius: 999px; border: 1.5px solid var(--line); background: #fff; font: inherit; font-size: 13px; font-weight: 700; color: var(--muted); cursor: pointer; }
+.family-pick svg { width: 13px; height: 13px; }
+.family-pick.choice-yes.is-on { background: var(--green); border-color: var(--green); color: #fff; }
+.family-pick.choice-maybe.is-on { background: var(--amber); border-color: var(--amber); color: #fff; }
+.family-pick.choice-no.is-on { background: var(--ink); border-color: var(--ink); color: #fff; }
 .add { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 8px; margin-top: 8px; }
 .add input { width: 100%; padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; font-size: 14px; }
 .add button { padding: 9px 14px; border: 0; border-radius: 8px; background: var(--brand); color: #fff; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; white-space: nowrap; }
@@ -101,7 +108,11 @@ h1 { font-family: Montserrat, Roboto, sans-serif; font-size: 28px; line-height: 
   function paint() {
     document.title = view.title + ' · You’re invited';
     card.replaceChildren();
-    card.append(el('div', 'banner'));
+    var banner = el('div', 'banner');
+    if (view.banner) {
+      banner.style.backgroundImage = 'url("' + view.banner + '")';
+    }
+    card.append(banner);
     var body = el('div', 'body');
     body.append(el('div', 'kicker', view.past ? 'This event has passed' : 'You’re invited'));
     body.append(el('h1', '', view.title));
@@ -140,6 +151,33 @@ h1 { font-family: Montserrat, Roboto, sans-serif; font-size: 28px; line-height: 
       buttons.append(b);
     });
     ask.append(buttons, status);
+    // The rest of their family on the list, each with an answer of their
+    // own to give here.
+    if (view.family && view.family.length) {
+      var fam = el('div', 'guests');
+      fam.append(el('div', 'guests-title', 'Your family'));
+      view.family.forEach(function (m) {
+        var row = el('div', 'guest family-row');
+        row.append(el('span', '', m.name));
+        var picks = el('div', 'family-picks');
+        [['yes', 'Yes'], ['maybe', 'Maybe'], ['no', 'No']].forEach(function (pair) {
+          var b = el('button', 'family-pick choice-' + pair[0] + (m.answer === pair[0] ? ' is-on' : ''));
+          b.type = 'button';
+          b.innerHTML = icons[pair[0]] + '<span>' + pair[1] + '</span>';
+          b.addEventListener('click', function () {
+            var next = m.answer === pair[0] ? '' : pair[0];
+            send('POST', api, {answer: next, key: m.key}).then(function () {
+              m.answer = next;
+              paint();
+            }).catch(function (err) { status.textContent = err.message; });
+          });
+          picks.append(b);
+        });
+        row.append(picks);
+        fam.append(row);
+      });
+      ask.append(fam);
+    }
     if (view.guests) {
       var guests = el('div', 'guests');
       guests.append(el('div', 'guests-title', view.brought.length ? 'Your guests' : 'Bringing someone?'));

@@ -129,7 +129,7 @@ export function dayColumn(date, paging) {
   // waits for an admin's approval before the calendar carries it.
   // Added, the event's own page opens - where its link, and its guest
   // list, are.
-  const share = button('Share Event', 'plus', 'button share-event', () => {
+  const share = button('Add Event', 'plus', 'button share-event', () => {
     let shut = null;
     const form = eventForm({onDone: async ids => {
       shut();
@@ -139,7 +139,7 @@ export function dayColumn(date, paging) {
         navigate('/e/' + ids[0]);
       }
     }});
-    shut = popup('Share an event', form, {wide: true}).shut;
+    shut = popup('Add an event', form, {wide: true}).shut;
   });
   share.title = 'Add an event for the community; an admin approves it onto the calendar';
   col.append(month, card, share);

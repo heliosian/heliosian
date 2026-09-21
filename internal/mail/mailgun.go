@@ -101,7 +101,7 @@ func (m *Mailgun) Send(ctx context.Context, msg Message) error {
 	}
 	var body bytes.Buffer
 	form := multipart.NewWriter(&body)
-	fields := [][2]string{{"from", m.From}, {"subject", msg.Subject}, {"html", msg.HTML}}
+	fields := [][2]string{{"from", FromLine(m.From, msg)}, {"subject", msg.Subject}, {"html", msg.HTML}}
 	if msg.Text != "" {
 		fields = append(fields, [2]string{"text", msg.Text})
 	}

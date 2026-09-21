@@ -130,6 +130,7 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	mux.HandleFunc("GET /open/share/{id...}", a.shareCard)
 	// An invitation's flyer, public, for the email and the outside page.
 	mux.HandleFunc("GET /open/flyer/{id...}", a.flyer)
+	mux.HandleFunc("GET /open/banner/{id...}", a.banner)
 	// Public too, under /hooks/: the mail provider's call for each reply to
 	// an invite, signed with the webhook secret.
 	mux.HandleFunc("POST /hooks/replies", a.replies)

@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 )
 
@@ -39,9 +40,14 @@ type ExtView struct {
 	Answer      string     `json:"answer,omitempty"`
 	Guests      bool       `json:"guests"`
 	Brought     []ExtGuest `json:"brought"`
-	Past        bool       `json:"past,omitempty"`
-	// Flyer is the invitation's flyer to show, when there is one.
-	Flyer string `json:"flyer,omitempty"`
+	// Family is the rest of their household on the list - the family they
+	// were added with - each with an answer of their own to give here.
+	Family []ExtGuest `json:"family"`
+	Past   bool       `json:"past,omitempty"`
+	// Flyer is the invitation's flyer to show, when there is one; Banner
+	// the picture the event's page wears, across the top.
+	Flyer  string `json:"flyer,omitempty"`
+	Banner string `json:"banner"`
 }
 
 // ExtGuest is one guest an outside person brought.
@@ -102,7 +108,16 @@ func (a app) extView(w http.ResponseWriter, r *http.Request) {
 	}
 	model := a.cache.Model()
 	day, hours := whenLines(e)
-	view := ExtView{Title: e.Title, Day: day, Hours: hours, Location: e.Location, Description: e.Description, Hosts: []string{}, Name: inv.Name, Answer: model.AnswerOf(inv.Email, e.ID), Guests: true, Brought: []ExtGuest{}, Past: e.end.Before(now())}
+	view := ExtView{Title: e.Title, Day: day, Hours: hours, Location: e.Location, Description: e.Description, Hosts: []string{}, Name: inv.Name, Answer: model.AnswerOf(inv.Email, e.ID), Guests: true, Brought: []ExtGuest{}, Family: []ExtGuest{}, Past: e.end.Before(now()), Banner: "/open/banner/" + e.ID}
+	for _, member := range a.householdOn(e, inv.Email)[1:] {
+		if row := model.InviteOf(e.ID, member); row != nil {
+			answer := model.AnswerOf(member, e.ID)
+			if answer == AnswerHidden {
+				answer = ""
+			}
+			view.Family = append(view.Family, ExtGuest{Key: member, Name: row.Name, Answer: answer})
+		}
+	}
 	if view.Answer == AnswerHidden {
 		view.Answer = ""
 	}
@@ -128,7 +143,8 @@ func (a app) extView(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// extAnswer is POST /open/ext/{token}: the outside person's own word.
+// extAnswer is POST /open/ext/{token}: the outside person's own word, or
+// - with a key - one for someone in their family on the list.
 func (a app) extAnswer(w http.ResponseWriter, r *http.Request) {
 	inv, e, ok := a.extInvite(w, r)
 	if !ok {
@@ -136,6 +152,7 @@ func (a app) extAnswer(w http.ResponseWriter, r *http.Request) {
 	}
 	var body struct {
 		Answer string `json:"answer"`
+		Key    string `json:"key"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -145,13 +162,21 @@ func (a app) extAnswer(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "an answer is yes, no, maybe, or blank", http.StatusBadRequest)
 		return
 	}
+	subject := inv.Email
+	if key := normalizeEmail(body.Key); key != "" && key != inv.Email {
+		if !slices.Contains(a.householdOn(e, inv.Email), key) {
+			http.Error(w, "that is not someone in your family", http.StatusForbidden)
+			return
+		}
+		subject = key
+	}
 	// The invitation carried their calendar invite already: none is sent
 	// back for a yes.
-	if err := a.recordBy(r.Context(), inv.Email, inv.Email, e.ID, answer, ViaPage, false); err != nil {
+	if err := a.recordBy(r.Context(), inv.Email, subject, e.ID, answer, ViaPage, false); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	slog.InfoContext(r.Context(), "calendar: answered from outside", "actor", inv.Email, "event", e.ID, "answer", answer)
+	slog.InfoContext(r.Context(), "calendar: answered from outside", "actor", inv.Email, "for", subject, "event", e.ID, "answer", answer)
 	w.WriteHeader(http.StatusNoContent)
 }
 

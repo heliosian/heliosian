@@ -230,7 +230,7 @@ export function eventPage(e) {
 // none: the poster of a hand-added event, an admin, or - the server
 // says which - a party's host.
 function mayHost(e) {
-  return (e.source === 'sheet' && (state.model.user.isAdmin || e.addedBy === state.model.user.email)) || isParty(e);
+  return (e.source === 'sheet' && e.addedBy === state.model.user.email) || isParty(e);
 }
 
 // fillInvites fetches the event's guest list and draws what the viewer

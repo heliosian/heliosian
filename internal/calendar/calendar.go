@@ -89,7 +89,7 @@ var (
 	SettingColumns     = []string{"Email", "Classrooms", "Categories", "Saved", "Home Name", "Home Emoji", "Home Position"}
 	RSVPColumns        = []string{"Email", "Event ID", "Answer", "Answered", "Answered By", "Via"}
 	InvitationColumns  = []string{"Event ID", "Hosts", "Audience", "Guests", "Guest List", "Message", "Created By", "Created", "Sent", "Title", "Start", "End", "Location", "Description", "Flyer"}
-	InviteColumns      = []string{"Event ID", "Email", "Name", "Guest Of", "Via", "Added By", "Added", "Sent", "Token"}
+	InviteColumns      = []string{"Event ID", "Email", "Name", "Guest Of", "Via", "Added By", "Added", "Sent", "Token", "Household"}
 	InviteGroupColumns = append([]string{"Event ID", "Group ID", "Auto", "Added By", "Added", "Sent"}, filter.RuleColumns...)
 	BounceColumns      = []string{"Email", "When", "Reason"}
 	ChangeLogColumns   = []string{"Timestamp", "Actor", "Action", "Tab", "Key", "Column", "From", "To"}
