@@ -45,7 +45,7 @@ function lastDay(event) {
 }
 
 function eventsOn(date) {
-  return (month.events || []).filter(e => e.start <= date && lastDay(e) >= date);
+  return (month.events || []).filter(e => e.dates.includes(date));
 }
 
 // hours are what a row says beside the title: the hours the event's when

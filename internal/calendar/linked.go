@@ -82,6 +82,9 @@ func linkedEvent(l Linked) *Event {
 	if e.End == "" {
 		e.End = e.Start
 	}
+	// Another app's event carries no day type, so it sits on every day it
+	// names, the way the builder settles one of the calendar's own.
+	e.Dates = e.written()
 	return e
 }
 

@@ -26,6 +26,10 @@ type Upcoming struct {
 	EndAt       string `json:"endAt,omitempty"`
 	Location    string `json:"location,omitempty"`
 	Description string `json:"description,omitempty"`
+	// Dates are the days the rail's month shows it under (Event.Dates), which
+	// for a day type's span written across a weekend is not every day between
+	// StartAt and EndAt.
+	Dates []string `json:"dates"`
 	// Image is the picture the event's page here wears, as a path on
 	// ImageApp's host: the calendar's own, or the app that runs a linked
 	// event, whose picture is fetched from there.
@@ -258,7 +262,7 @@ func (m *Model) DefaultCalendar(email string) *Feed {
 func (m *Model) card(e *Event) Upcoming {
 	u := Upcoming{
 		ID: e.ID, Title: e.Title, Path: EventPath(e), Start: e.start.Format(DateFormat), When: when(e),
-		StartAt: e.Start, EndAt: e.End, Location: e.Location, Description: blurb(e),
+		StartAt: e.Start, EndAt: e.End, Dates: e.Dates, Location: e.Location, Description: blurb(e),
 		Image: "/" + m.pictureOf(e), ImageApp: appCalendar,
 	}
 	if e.Link != "" {

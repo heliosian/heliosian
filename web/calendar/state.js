@@ -441,16 +441,12 @@ export function weekStart(date) {
   return addDays(date, -parseDate(date).getDay());
 }
 
-// eventDates lists every day an event touches, so a camp-out that runs from
-// Friday evening to Sunday noon sits on all three days, not just the first.
+// eventDates are the days an event sits on, as the model settles them
+// (Event.Dates): a camp-out that runs from Friday evening to Sunday noon is
+// on all three days, and a conference week written across a weekend is on
+// the school days alone.
 export function eventDates(e) {
-  const out = [];
-  const start = e.start.slice(0, 10);
-  const end = (e.end || e.start).slice(0, 10);
-  for (let d = start; d <= end; d = addDays(d, 1)) {
-    out.push(d);
-  }
-  return out;
+  return e.dates;
 }
 
 // spansDays says whether an event's end falls on a later day than its start.

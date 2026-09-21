@@ -147,12 +147,21 @@ func (r Roster) has(name string) bool {
 // Event carries every tag that applies, the classrooms among them being the
 // narrowest audience; Classrooms is just those, in the roster's order.
 type Event struct {
-	ID          string   `json:"id"`
-	Source      string   `json:"source"`
-	Title       string   `json:"title"`
-	Start       string   `json:"start"`
-	End         string   `json:"end"`
-	AllDay      bool     `json:"allDay"`
+	ID     string `json:"id"`
+	Source string `json:"source"`
+	Title  string `json:"title"`
+	Start  string `json:"start"`
+	End    string `json:"end"`
+	AllDay bool   `json:"allDay"`
+	// Dates are the days the event sits on: the days it is shown under, and
+	// the days its day type stamps. A day type describes school days, so an
+	// all-day event carrying one and written from one school day to another
+	// is the school days between them - a conference week written across a
+	// weekend says nothing about the Saturday and sits on nobody's. Anything
+	// else is taken at its word: a single day, a span that starts or ends on
+	// a day school is out, a trip or a book fair week with no day type. Start
+	// and End stay as written, so a span is still one entry in a calendar app.
+	Dates       []string `json:"dates"`
 	Location    string   `json:"location,omitempty"`
 	Description string   `json:"description,omitempty"`
 	Tags        []string `json:"tags"`
@@ -215,8 +224,9 @@ type Event struct {
 	start, end time.Time
 }
 
-// Dates lists every day the event touches, as sheet dates.
-func (e *Event) Dates() []string {
+// written is every date between the event's ends, the days it is written
+// across.
+func (e *Event) written() []string {
 	out := []string{}
 	for d := e.start; !d.After(e.end); d = d.AddDate(0, 0, 1) {
 		out = append(out, d.Format(DateFormat))
@@ -1084,7 +1094,10 @@ func parseTags(rows []map[string]string) ([]Tag, error) {
 
 type builder struct {
 	model *Model
-	err   error
+	// school is every weekday inside a school year, the days the day plan
+	// covers and the days a day type's span keeps to.
+	school map[string]bool
+	err    error
 }
 
 // refuse records the first rule broken; the build stops at the end of its
@@ -1469,7 +1482,7 @@ func preferred(e, other *Event) bool {
 	if sourceRank[e.Source] != sourceRank[other.Source] {
 		return sourceRank[e.Source] < sourceRank[other.Source]
 	}
-	return len(e.Dates()) > len(other.Dates())
+	return len(e.written()) > len(other.written())
 }
 
 func normalTitle(title string) string {
@@ -1489,7 +1502,7 @@ func claims(e *Event) []string {
 		what = "title:" + normalTitle(e.Title)
 	}
 	out := []string{}
-	for _, date := range e.Dates() {
+	for _, date := range e.written() {
 		if day, _ := parseDate(date); day.Weekday() == time.Saturday || day.Weekday() == time.Sunday {
 			continue
 		}
@@ -1625,51 +1638,27 @@ func (b *builder) merge(layer map[string]map[string]string) {
 	}
 }
 
-// stamps is the dates an all-day event lays its day type on. A span written
-// from one school day to another lands on the school days between them: a
-// conference week written across a weekend says nothing about the Saturday.
-// A single day, and a span that starts or ends on a day school is out, are
-// taken at their word and land on every date they name.
-func stamps(e *Event, school, closed map[string]bool) []string {
-	all := e.Dates()
-	first, last := all[0], all[len(all)-1]
-	if len(all) == 1 || !school[first] || closed[first] || !school[last] || closed[last] {
-		return all
-	}
-	out := []string{}
-	for _, date := range all {
-		if school[date] {
-			out = append(out, date)
-		}
-	}
-	return out
-}
-
-func (b *builder) days(dayOverrides []map[string]string) error {
-	m := b.model
-	everyone := m.Roster.Names()
-	school := map[string]bool{}
-	for _, y := range m.Years {
+// occupies settles the days every event sits on (Event.Dates) once the school
+// years are known, so the day plan, the pages, the front page's rail and
+// Helios Ask all read one answer.
+func (b *builder) occupies(dayOverrides []map[string]string) {
+	b.school = map[string]bool{}
+	for _, y := range b.model.Years {
 		first, _ := parseDate(y.FirstDay)
 		last, _ := parseDate(y.LastDay)
 		for d := first; !d.After(last); d = d.AddDate(0, 0, 1) {
 			if d.Weekday() == time.Saturday || d.Weekday() == time.Sunday {
 				continue
 			}
-			date := d.Format(DateFormat)
-			school[date] = true
-			m.Days[date] = map[string]string{}
-			for _, c := range everyone {
-				m.Days[date][c] = RegularDayType
-			}
+			b.school[d.Format(DateFormat)] = true
 		}
 	}
 	closed := map[string]bool{}
-	for _, e := range m.Events {
+	for _, e := range b.model.Events {
 		if e.Hidden || !e.AllDay || e.DayType != NoSchoolDayType {
 			continue
 		}
-		for _, date := range e.Dates() {
+		for _, date := range e.written() {
 			closed[date] = true
 		}
 	}
@@ -1678,13 +1667,41 @@ func (b *builder) days(dayOverrides []map[string]string) error {
 			closed[row["Date"]] = true
 		}
 	}
+	for _, e := range b.model.Events {
+		e.Dates = e.written()
+		if !e.AllDay || e.DayType == "" || len(e.Dates) == 1 {
+			continue
+		}
+		first, last := e.Dates[0], e.Dates[len(e.Dates)-1]
+		if !b.school[first] || closed[first] || !b.school[last] || closed[last] {
+			continue
+		}
+		days := []string{}
+		for _, date := range e.Dates {
+			if b.school[date] {
+				days = append(days, date)
+			}
+		}
+		e.Dates = days
+	}
+}
+
+func (b *builder) days(dayOverrides []map[string]string) error {
+	m := b.model
+	everyone := m.Roster.Names()
+	for date := range b.school {
+		m.Days[date] = map[string]string{}
+		for _, c := range everyone {
+			m.Days[date][c] = RegularDayType
+		}
+	}
 	for _, source := range []string{SourcePDF, SourceGoogle, SourceSheet} {
 		layer := map[string]map[string]string{}
 		for _, e := range m.Events {
 			if e.Source != source || e.Hidden || e.DayType == "" || !e.AllDay {
 				continue
 			}
-			for _, date := range stamps(e, school, closed) {
+			for _, date := range e.Dates {
 				b.assign(layer, date, e.Classrooms, e.DayType, "the "+source+" events")
 			}
 		}
@@ -1819,6 +1836,7 @@ func BuildModel(tables *Tables, roster Roster) (*Model, error) {
 	if err := b.years(tables.PDF); err != nil {
 		return nil, err
 	}
+	b.occupies(tables.DayOverrides)
 	if err := b.days(tables.DayOverrides); err != nil {
 		return nil, err
 	}

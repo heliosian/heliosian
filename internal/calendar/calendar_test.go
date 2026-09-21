@@ -155,18 +155,29 @@ func TestNoSchoolWins(t *testing.T) {
 }
 
 // A conference span written from one school day to another leaves the
-// weekend inside it alone; a single day, or a span anchored on a weekend or
-// a holiday, is taken at its word.
+// weekend inside it alone - in the day plan and on the days it is listed
+// under - while a single day, a span anchored on a weekend or a holiday, and
+// a span with no day type to make are taken at their word.
 func TestWeekendInsideASpan(t *testing.T) {
 	tb := tables(t)
 	tb.Events = append(tb.Events,
 		map[string]string{"Event ID": "W1", "Start": "2026-09-11", "End": "2026-09-14", "Title": "Conferences", "Tags": "Jays, Conference", "Day Type": "Early Dismissal"},
 		map[string]string{"Event ID": "W2", "Start": "2026-10-10", "End": "2026-10-13", "Title": "Fall Retreat", "Tags": "Jays, Conference", "Day Type": "Early Dismissal"},
 		map[string]string{"Event ID": "W3", "Start": "2026-11-08", "Title": "Open House", "Tags": "Jays, Conference", "Day Type": "Early Dismissal"},
-		map[string]string{"Event ID": "W4", "Start": "2026-12-18", "End": "2026-12-22", "Title": "Break Conferences", "Tags": "Jays, Conference", "Day Type": "Early Dismissal"})
+		map[string]string{"Event ID": "W4", "Start": "2026-12-18", "End": "2026-12-22", "Title": "Break Conferences", "Tags": "Jays, Conference", "Day Type": "Early Dismissal"},
+		map[string]string{"Event ID": "W5", "Start": "2026-09-11", "End": "2026-09-14", "Title": "Eighth Grade Trip", "Tags": "Jays, Trip"})
 	m, err := BuildModel(tb, roster)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if got := strings.Join(m.Event("W1").Dates, ","); got != "2026-09-11,2026-09-14" {
+		t.Errorf("conference span sits on %s", got)
+	}
+	if got := strings.Join(m.Event("W5").Dates, ","); got != "2026-09-11,2026-09-12,2026-09-13,2026-09-14" {
+		t.Errorf("trip across a weekend sits on %s", got)
+	}
+	if got := m.Event("W1"); got.Start != "2026-09-11" || got.End != "2026-09-14" {
+		t.Errorf("conference span was rewritten: %s to %s", got.Start, got.End)
 	}
 	cases := []struct{ date, want string }{
 		{"2026-09-11", "Early Dismissal"},
@@ -566,10 +577,10 @@ func TestRenderLinked(t *testing.T) {
 	if fondue.Source != SourceCelebrate || fondue.Link != "/p/fondue" || fondue.Availability != "available" || fondue.Mine != MineWaitlisted || fondue.AllDay || strings.Join(fondue.Tags, ",") != TagCelebrate+","+TagWaitlisted || len(fondue.Classrooms) != 0 {
 		t.Errorf("party = %+v", fondue)
 	}
-	if fondue.Description != "A cozy evening of fondue\n\nJoin us." || fondue.End != "2026-09-19 21:00" || strings.Join(fondue.Dates(), ",") != "2026-09-19" {
+	if fondue.Description != "A cozy evening of fondue\n\nJoin us." || fondue.End != "2026-09-19 21:00" || strings.Join(fondue.Dates, ",") != "2026-09-19" {
 		t.Errorf("party text or dates = %+v", fondue)
 	}
-	if !fair.AllDay || strings.Join(fair.Tags, ",") != TagHCA || fair.Link != "/activities/E006" || len(fair.Dates()) != 4 {
+	if !fair.AllDay || strings.Join(fair.Tags, ",") != TagHCA || fair.Link != "/activities/E006" || len(fair.Dates) != 4 {
 		t.Errorf("hca event = %+v", fair)
 	}
 	if len(m.Events) != 20 {

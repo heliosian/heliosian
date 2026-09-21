@@ -227,7 +227,7 @@ var dayPlan = tool{
 		}
 		setting := []eventCard{}
 		for _, e := range v.calendar.Events {
-			if e.AllDay && e.DayType != "" && slices.Contains(e.Dates(), key) {
+			if e.AllDay && e.DayType != "" && slices.Contains(e.Dates, key) {
 				setting = append(setting, v.eventCard(e))
 			}
 		}
