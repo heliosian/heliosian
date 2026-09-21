@@ -1467,8 +1467,9 @@ func (a app) sendInvites(w http.ResponseWriter, r *http.Request) {
 		switch body.To {
 		case "sent":
 			// Everyone the invitation has reached - for an update, when
-			// the details have changed.
-			if inv.Sent != "" {
+			// the details have changed - but not whoever said no, for whom
+			// the details no longer matter.
+			if inv.Sent != "" && model.AnswerOf(inv.Email, e.ID) != AnswerNo {
 				emails = append(emails, inv.Email)
 			}
 		case "these":

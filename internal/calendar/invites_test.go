@@ -1096,7 +1096,11 @@ func TestUpdatedInvitation(t *testing.T) {
 	call(t, jordan, "POST", "/api/calendar/invites/people", `{"id":"meetup","people":[{"email":"`+robin+`"}]}`)
 	call(t, jordan, "POST", "/api/calendar/invites/send", `{"id":"meetup"}`)
 	waitFor(kept, 2)
-	call(t, jordan, "POST", "/api/calendar/invites/people", `{"id":"meetup","people":[{"email":"`+mia+`"}]}`)
+	call(t, jordan, "POST", "/api/calendar/invites/people", `{"id":"meetup","people":[{"email":"`+mia+`"},{"email":"`+coach+`","name":"Coach Lee","via":"outside"}]}`)
+	// The coach is sent the invitation and says no: the update skips them.
+	call(t, jordan, "POST", "/api/calendar/invites/send", `{"id":"meetup","emails":["`+coach+`"]}`)
+	waitFor(kept, 3)
+	call(t, jordan, "POST", "/api/calendar/invites/answer", `{"id":"meetup","email":"`+coach+`","answer":"no"}`)
 	call(t, jordan, "PUT", "/api/calendar/events", `{"id":"meetup","title":"Meetup","start":"2026-10-10 16:00","end":"2026-10-10 16:00","location":"The park","tags":[],"inviteOnly":true}`)
 	before := len(kept.all())
 	if rec := call(t, jordan, "POST", "/api/calendar/invites/send", `{"id":"meetup","to":"sent","update":true}`); rec.Code != 200 || rec.Body.String() != "{\"invites\":1,\"messages\":1}\n" {
@@ -1110,6 +1114,9 @@ func TestUpdatedInvitation(t *testing.T) {
 	}
 	if len(mailTo(kept, mia)) != 0 {
 		t.Errorf("someone pending was sent the update")
+	}
+	if len(mailTo(kept, coach)) != 1 {
+		t.Errorf("someone who said no was sent the update: %d mails", len(mailTo(kept, coach)))
 	}
 }
 

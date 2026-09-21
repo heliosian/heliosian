@@ -2060,14 +2060,16 @@ export async function offerUpdate(e, changed) {
   if (!view || !view.host || !view.sent) {
     return;
   }
-  const people = view.list.filter(r => r.invited && r.sent && r.email);
+  // Whoever said no is left be: the details no longer matter to them.
+  const people = view.list.filter(r => r.invited && r.sent && r.email && r.answer !== 'no');
   if (!people.length) {
     return;
   }
+  const nos = view.list.filter(r => r.invited && r.sent && r.email && r.answer === 'no').length;
   const words = {title: 'the title', start: 'the date or time', end: 'the end time', location: 'the location'};
   const what = [...new Set(changed.map(k => words[k]).filter(Boolean))].join(', ').replace(/, ([^,]*)$/, ' and $1');
   const box = el('div');
-  box.append(el('p', 'hint', `You changed ${what}. ${people.length} ${people.length === 1 ? 'person has' : 'people have'} the invitation already - send it again with the new details? Their calendar invite is replaced with the new one.`));
+  box.append(el('p', 'hint', `You changed ${what}. ${people.length} ${people.length === 1 ? 'person has' : 'people have'} the invitation already - send it again with the new details? Their calendar invite is replaced with the new one.${nos ? ` The ${nos === 1 ? 'one who' : nos + ' who'} said no ${nos === 1 ? 'is' : 'are'} not sent it.` : ''}`));
   const actions = el('div', 'modal-actions');
   let shut = null;
   actions.append(button(`Send the update to ${people.length}`, 'mail', 'button', async () => {
