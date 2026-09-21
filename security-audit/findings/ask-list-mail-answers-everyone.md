@@ -1,9 +1,9 @@
 Description: Helios Ask opens every document that is not a Loop group's to every asker (`viewer.canRead`), so mail sent to one class's parents list or to `parentsonly` answers a parent of another class, a student, or anyone else signed in.
-Status: open
+Status: invalid
 Severity: high
 ---
-`canRead` (`internal/ask/access.go:27-32`) returns true for every kind but `group`. Documents of kind `list` and `announcement` carry the list they went to as `Channel` - `hummingbirds.parents`, `falcons.students`, `parentsonly`, `parentsandstaff` and the rest (`internal/artifacts/channel.go:10-18`) - and nothing compares it with the asker. The same filter feeds `search_documents`, `read_document` and the recent-documents block of the system prompt, so all three behave alike.
+`canRead` (`internal/ask/access.go:27-32`) returns true for every kind but `group`, and nothing compares a `list` or `announcement` document's `Channel` - `hummingbirds.parents`, `falcons.students`, `parentsonly` and the rest (`internal/artifacts/channel.go:10-18`) - with the asker. That is the design, not a gap in it.
 
-`docs/ask/artifacts.md` says this is deliberate ("Helios Ask answers whoever asks it"); `security-audit/README.md` says a document from a class list must not answer a parent of another class. One of the two has to give. As a student, asking what the parents-only list said about something is the demonstration.
+Ask holds two kinds of mail. A Helios Loop group's mail has a membership, rules and a visibility on file, and `canRead` holds a reader to them through `MailReadableBy`. The rest arrives through the forwarding hook, which has no membership to check against and does not need one: `artifacts.Channel` files a message only when it went to everyone or to a whole class, and that mail is not secret. What went to one class's parents may be read by another class's, and nothing on these lists is kept from students, so a parent, a student and a staff member are meant to read the same documents. The gate is what gets filed, not who reads it.
 
-Fix: in `canRead`, match `Channel` against who the asker is - parent, student, staff - and their own or their children's classrooms and bands, the way the lists themselves are made up; newsletters, website pages and portal documents stay open.
+`docs/ask/artifacts.md`, What is in it and what is not, and `security-audit/README.md`, What a non-admin can read, both say so.
