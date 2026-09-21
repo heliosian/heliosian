@@ -40,6 +40,7 @@ To run against real community data instead, see [docs/dev.md](docs/dev.md).
 - `web/` — one directory per app, named for its hostname, holding its pages and every file it serves behind sign-in, `web/common/` for what all apps share, and `web/public/<app>/` and `web/public/common/` for the few files served before sign-in (frameworkless JavaScript throughout)
 - `sampledata/` — the fictional community served by default
 - `cmd/` — dev tooling: screenshots, browser driving, sheet inspection; and `cmd/periodicsync`, the scheduled job that reads the school's year calendar PDF
+- `security-audit/` — what a security audit of this codebase looks for and leaves alone, the template for a finding, and the findings, one file each, listed by `cmd/findings`
 - `docs/` — everything below
 
 ## Docs

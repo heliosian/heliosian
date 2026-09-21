@@ -86,6 +86,7 @@ Each runs as `go run ./cmd/<name>`. The sheet, drive, and bucket tools authentic
 - `cookie` — print a signed session cookie for local API testing
 - `loadcheck` — run every app's load pipeline against the live sheets, the calendar's included, and print a model summary or the first thing a loader refuses
 - `findsheet` — print the spreadsheet ids the server needs as shell exports, found by the sheets' titles, with every other visible spreadsheet as a comment
+- `findings` — list the security audit's findings under `security-audit/findings/`, kept to `--status`, `--text` or `--since` (`security-audit/README.md`)
 - `sheets` — dump a sheet's tabs, sizes, and header rows
 - `dumptab` / `writetab` — copy one tab to a local CSV / write a local CSV into a tab, header-checked
 - `darkcheck` — load pages in dark mode (`--url a,b,c`, `--click` into a window first) and read the rendered page for what dark.css missed: words with too little contrast against the ground they sit on, a tab strip painted a different colour from what it sits on, and with `--light` every light surface; `--compare` reads each page by day too and marks each finding dark only or by day too

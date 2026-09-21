@@ -3,5 +3,6 @@
 .gitignore
 local/
 docs/
+security-audit/
 sampledata/
 LICENSE.md
