@@ -277,10 +277,10 @@ func TestInvitationLifecycle(t *testing.T) {
 	// the Jays', so it is read for a Robin whose only child is in Hawks.
 	hawk := Person{Email: "hawk@x.org", Name: "Hawk", IsStudent: true, Classroom: "Hawks"}
 	elsewhere := fakeDirectory{people: map[string]Person{robin: {Email: robin, Name: "Robin", IsParent: true}, "hawk@x.org": hawk}, kids: map[string][]Person{robin: {hawk}}}
-	if up := cache.Model().UpcomingUnder(elsewhere, robin, nil, now(), 0, ""); !slices.ContainsFunc(up, func(u Upcoming) bool { return u.ID == "meetup" }) {
+	if up := cache.Model().UpcomingUnder(elsewhere, robin, nil, now(), 0, ""); !slices.ContainsFunc(up, func(u Card) bool { return u.ID == "meetup" }) {
 		t.Errorf("an invitation is not in Robin's Upcoming")
 	}
-	if up := cache.Model().UpcomingUnder(elsewhere, mia, nil, now(), 0, ""); slices.ContainsFunc(up, func(u Upcoming) bool { return u.ID == "meetup" }) {
+	if up := cache.Model().UpcomingUnder(elsewhere, mia, nil, now(), 0, ""); slices.ContainsFunc(up, func(u Card) bool { return u.ID == "meetup" }) {
 		t.Errorf("the event is in Mia's Upcoming, uninvited")
 	}
 	// Robin's own and her children's invitations are hers to answer; Sam

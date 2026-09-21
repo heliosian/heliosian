@@ -7,10 +7,13 @@ import (
 	"time"
 )
 
-// Upcoming is an event as Heliosian's front page lists it: enough to show a
-// card, add it to a calendar, and send the reader across - to the event's
-// page here, and for an event another app runs, to that app.
-type Upcoming struct {
+// Card is an event as another app lists it - Heliosian's Upcoming Events,
+// the rail's month: enough to show a card, add it to a calendar, and send
+// the reader across, to the event's page here and, for an event another app
+// runs, to that app. It is the one card shape; Heliosian keeps no copy of
+// it, so a field added here reaches the front page without a second struct
+// learning about it.
+type Card struct {
 	// ID is the event's, for an answer to name it.
 	ID    string `json:"id"`
 	Title string `json:"title"`
@@ -58,10 +61,18 @@ const (
 	appTeam      = "team"
 )
 
-// callWords and mineWords are what a linked event's pill says on the
-// calendar's own rows (call in web/calendar/state.js), kept in step so the
-// front page's button says the same.
+// callWords is the way into a linked event, in words, for a household with
+// no standing of its own yet.
 var callWords = map[string]string{"available": "Get tickets", "waitlist": "Join the waitlist", "sold-out": "Sold out", "open": "Join", "full": "Full"}
+
+// standing writes what a linked event offers into the event itself, once, so
+// every reader says the same words (Event.MineWords, Event.Call).
+func standing(e *Event) {
+	e.MineWords = mineWords(e)
+	if e.Call = e.MineWords; e.Call == "" {
+		e.Call = callWords[e.Availability]
+	}
+}
 
 // mineWords is the household's standing in words: the viewer's own as
 // "you", another member's by name - "Sam is going", "Sam and Alex are
@@ -259,18 +270,15 @@ func (m *Model) DefaultCalendar(email string) *Feed {
 }
 
 // card is one event as the front page takes it.
-func (m *Model) card(e *Event) Upcoming {
-	u := Upcoming{
+func (m *Model) card(e *Event) Card {
+	u := Card{
 		ID: e.ID, Title: e.Title, Path: EventPath(e), Start: e.start.Format(DateFormat), When: when(e),
 		StartAt: e.Start, EndAt: e.End, Dates: e.Dates, Location: e.Location, Description: blurb(e),
 		Image: "/" + m.pictureOf(e), ImageApp: appCalendar,
 	}
 	if e.Link != "" {
 		u.Link, u.LinkApp = e.Link, linkedApp(e)
-		u.Mine, u.Availability, u.People = e.Mine, e.Availability, e.MinePeople
-		if u.Call = mineWords(e); u.Call == "" {
-			u.Call = callWords[e.Availability]
-		}
+		u.Mine, u.Availability, u.People, u.Call = e.Mine, e.Availability, e.MinePeople, e.Call
 		if e.Image != "" {
 			u.ImageApp = linkedApp(e)
 		}
@@ -281,17 +289,17 @@ func (m *Model) card(e *Event) Upcoming {
 // Upcoming lists what is ahead for one viewer, as the calendar page first
 // shows it (viewOf): every event from today on that the view admits, the
 // other apps' events folded in, soonest first, at most limit of them.
-func (m *Model) Upcoming(directory Directory, email string, linked []Linked, now time.Time, limit int) []Upcoming {
+func (m *Model) Upcoming(directory Directory, email string, linked []Linked, now time.Time, limit int) []Card {
 	return m.UpcomingUnder(directory, email, linked, now, limit, "")
 }
 
 // UpcomingUnder is Upcoming read under one of the person's saved calendars
 // by token, or My Heliosian by its token, rather than their default - the
 // front page's picker - or under the default for a blank or unknown token.
-func (m *Model) UpcomingUnder(directory Directory, email string, linked []Linked, now time.Time, limit int, token string) []Upcoming {
+func (m *Model) UpcomingUnder(directory Directory, email string, linked []Linked, now time.Time, limit int, token string) []Card {
 	classrooms, tags := m.viewUnder(directory, email, token)
 	today := now.Format(DateFormat)
-	out := []Upcoming{}
+	out := []Card{}
 	for _, e := range m.eventsFor(email, linked) {
 		answer := m.AnswerOf(email, e.ID)
 		// A yes reaches across classrooms, so long as Going is in view, and

@@ -1,4 +1,5 @@
-import {state, calendarLink, sourceWords, dayType, eventDates, dayTypeClass, linkURL, call, isParty, mineWords, eventImage, parseDate, monthLabel, monthOf, answerOf, answer, eventPath} from '../state.js';
+import {state, calendarLink, sourceWords, dayType, eventDates, linkURL, isParty, eventImage, parseDate, monthLabel, monthOf, answerOf, answer, eventPath} from '../state.js';
+import {dayTypeClass} from '/daytype.js';
 import {el, link, svg, paragraphs, button, toast, avatar, popup, copyText} from '../dom.js';
 import {dateCard} from '/datecard.js';
 import {eventForm} from '../eventform.js';
@@ -374,7 +375,7 @@ function rsvpCard(e) {
         words.append(el('div', 'rsvp-title', 'No tickets yet'), el('div', 'rsvp-lead', 'Tickets are on the party page.'));
         const add = el('a', 'button rsvp-yes' + (e.availability === 'available' ? ' is-on' : ' is-off'));
         add.href = linkURL(e);
-        add.append(svg('ticket'), el('span', '', e.availability === 'available' ? 'Add Ticket' : call(e) || 'See the party'));
+        add.append(svg('ticket'), el('span', '', e.availability === 'available' ? 'Add Ticket' : e.call || 'See the party'));
         buttons.append(add);
       }
     } else {
@@ -681,7 +682,7 @@ function linkedBadge(e) {
   const kind = isParty(e) ? 'celebrate' : 'team';
   const card = el('a', 'hero-linked' + (e.mine ? ' is-mine' : ''));
   card.href = linkURL(e);
-  card.title = e.mine ? seeWords[kind] : call(e) || seeWords[kind];
+  card.title = e.mine ? seeWords[kind] : e.call || seeWords[kind];
   const mark = el('img', 'hero-linked-mark');
   mark.src = `/brand/apps/${kind}.png`;
   mark.alt = '';
@@ -701,5 +702,5 @@ function linkedLineWords(e, kind) {
   if (e.minePeople && e.minePeople.length) {
     return [...new Set(e.minePeople.map(p => p.name))].join(', ');
   }
-  return e.mine ? `${mineWords(e)} · ${mineStanding[e.mine][kind]}` : standing[e.availability] || (kind === 'celebrate' ? 'On Helios Celebrate' : 'On HCA-Team');
+  return e.mine ? `${e.mineWords} · ${mineStanding[e.mine][kind]}` : standing[e.availability] || (kind === 'celebrate' ? 'On Helios Celebrate' : 'On HCA-Team');
 }

@@ -20,7 +20,7 @@ type Month struct {
 	// is not here is a weekend, a holiday the year calendar leaves out, or
 	// outside the school year.
 	Days   map[string]Day `json:"days"`
-	Events []Upcoming     `json:"events"`
+	Events []Card         `json:"events"`
 }
 
 // Day is one school day: the day types in force for the viewer's
@@ -57,7 +57,7 @@ func (m *Model) MonthUnder(directory Directory, email string, linked []Linked, n
 	last := first.AddDate(0, 1, -1)
 	from, to := first.Format(DateFormat), last.Format(DateFormat)
 	classrooms, tags := m.viewUnder(directory, email, token)
-	out := Month{Month: first.Format(MonthFormat), Today: now.Format(DateFormat), Days: map[string]Day{}, Events: []Upcoming{}}
+	out := Month{Month: first.Format(MonthFormat), Today: now.Format(DateFormat), Days: map[string]Day{}, Events: []Card{}}
 	for d := first; !d.After(last); d = d.AddDate(0, 0, 1) {
 		date := d.Format(DateFormat)
 		byClassroom, ok := m.Days[date]

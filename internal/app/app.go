@@ -396,7 +396,7 @@ type upcomingEvents struct {
 // of theirs for the front page's picker.
 func (u upcomingEvents) list(email, token string) home.Upcoming {
 	model := u.cache.Model()
-	out := home.Upcoming{Events: homeEvents(model.UpcomingUnder(u.directory, email, u.linked(email), time.Now().In(calendar.Location), 6, token))}
+	out := home.Upcoming{Events: model.UpcomingUnder(u.directory, email, u.linked(email), time.Now().In(calendar.Location), 6, token)}
 	out.Calendars, out.Default, out.Calendar = savedCalendars(model, email, token)
 	return out
 }
@@ -422,36 +422,8 @@ func savedCalendars(model *calendar.Model, email, token string) (list []home.Sav
 func (u upcomingEvents) month(email, month, token string) home.Month {
 	model := u.cache.Model()
 	m := model.MonthUnder(u.directory, email, u.linked(email), time.Now().In(calendar.Location), month, token)
-	days := map[string]home.Day{}
-	for date, d := range m.Days {
-		kinds := []home.Kind{}
-		for _, k := range d.Kinds {
-			kinds = append(kinds, home.Kind{Name: k.Name, Words: k.Words})
-		}
-		days[date] = home.Day{Kinds: kinds}
-	}
 	_, _, current := savedCalendars(model, email, token)
-	return home.Month{Month: m.Month, Today: m.Today, Days: days, Events: homeEvents(m.Events), Calendar: current}
-}
-
-func homeStandings(list []calendar.Standing) []home.Standing {
-	out := []home.Standing{}
-	for _, s := range list {
-		out = append(out, home.Standing{Name: s.Name, Note: s.Note, Mine: s.Mine})
-	}
-	return out
-}
-
-func homeEvents(list []calendar.Upcoming) []home.Event {
-	out := []home.Event{}
-	for _, e := range list {
-		out = append(out, home.Event{
-			ID: e.ID, Title: e.Title, Path: e.Path, Start: e.Start, When: e.When,
-			StartAt: e.StartAt, EndAt: e.EndAt, Dates: e.Dates, Location: e.Location, Description: e.Description,
-			Image: e.Image, ImageApp: e.ImageApp, Link: e.Link, LinkApp: e.LinkApp, Call: e.Call, Mine: e.Mine, Availability: e.Availability, Answer: e.Answer, People: homeStandings(e.People),
-		})
-	}
-	return out
+	return home.Month{Month: m.Month, Today: m.Today, Days: m.Days, Events: m.Events, Calendar: current}
 }
 
 // birthdayDirectory hands the birthday app the directory's view of people: who

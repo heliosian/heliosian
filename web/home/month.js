@@ -1,6 +1,7 @@
 import {state} from './state.js';
 import {el, svg} from './dom.js';
 import {whenOrigin, rsvpButtons, calendarMark, calendarMenu, dropdown} from './cards.js';
+import {dayTypeClass} from '/daytype.js';
 
 // The rail's calendar, from Helios When: a small month, paged on its own,
 // with a dot under each day in the colour of what is on it and today ringed
@@ -31,8 +32,6 @@ const pad = n => String(n).padStart(2, '0');
 function dateOf(d) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
-
-const dayTypeClass = {'No School': 'dt-no-school', 'Early Dismissal': 'dt-early', 'No Aftercare': 'dt-no-aftercare'};
 
 // tint is where an event comes from, as When colours it: a party pink, an
 // HCA event purple, the school's own blue.
@@ -159,7 +158,7 @@ function grid() {
     if (!day) {
       cell.classList.add('is-off');
     } else if (day.kinds.length) {
-      cell.classList.add(dayTypeClass[day.kinds[0].name] || 'dt-other');
+      cell.classList.add(dayTypeClass(day.kinds[0].name));
     }
     cell.append(el('span', 'mini-number', String(n)));
     const dots = el('span', 'mini-dots');
@@ -194,7 +193,7 @@ function dayCard() {
   if (day && day.kinds.length) {
     const kinds = el('div', 'rail-day-kinds');
     for (const kind of day.kinds) {
-      kinds.append(el('span', 'rail-day-kind ' + (dayTypeClass[kind.name] || 'dt-other'), kind.words));
+      kinds.append(el('span', 'rail-day-kind ' + dayTypeClass(kind.name), kind.words));
     }
     card.append(kinds);
   }

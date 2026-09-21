@@ -637,12 +637,6 @@ export function nextSpecials(from, n) {
   return out;
 }
 
-const knownTypes = {'Regular': 'dt-regular', 'No School': 'dt-no-school', 'Early Dismissal': 'dt-early', 'No Aftercare': 'dt-no-aftercare'};
-
-export function dayTypeClass(name) {
-  return knownTypes[name] || 'dt-other';
-}
-
 export function colorOf(classroom) {
   return state.model.colors[classroom] || '';
 }
@@ -791,40 +785,10 @@ export function eventImage(e) {
   return '/brand/default-header.jpg';
 }
 
-const callWords = {available: 'Get tickets', waitlist: 'Join the waitlist', 'sold-out': 'Sold out', open: 'Join', full: 'Full'};
-
 // isParty says which app runs a linked event: a Celebrate party, else an
 // HCA-Team event - the school's own event when one is folded into it.
 export function isParty(e) {
   return e.source === 'celebrate';
-}
-
-// mineWords is where the viewer's household stands with a linked event, as
-// the row and the page say it in place of the way in.
-// mineWords is the household's standing in words: the viewer's own as
-// "you", another member's by name - "Sam is going", "Sam and Alex are
-// waitlisted", "Sam signed up".
-export function mineWords(e) {
-  const who = e.mineWho || [];
-  const names = who.length > 1 ? who.slice(0, -1).join(', ') + ' and ' + who[who.length - 1] : who[0] || '';
-  const verb = who.length > 1 ? 'are' : 'is';
-  if (e.mine === 'waitlisted') {
-    return names ? `${names} ${verb} waitlisted` : 'Waitlisted';
-  }
-  if (e.mine === 'going') {
-    if (isParty(e)) {
-      return names ? `${names} ${verb} going` : "You're going";
-    }
-    return names ? `${names} signed up` : 'Signed up';
-  }
-  return '';
-}
-
-// call is what a linked event's row and page say about signing up: the
-// household's own standing first, else the way in, else nothing once it has
-// passed or is closed.
-export function call(e) {
-  return mineWords(e) || callWords[e.availability] || '';
 }
 
 export function calendarLink(e) {

@@ -17,6 +17,7 @@ import (
 
 	"heliosian/internal/auth"
 	"heliosian/internal/blob"
+	"heliosian/internal/calendar"
 	"heliosian/internal/data"
 	"heliosian/internal/filter"
 	"heliosian/internal/imagesearch"
@@ -54,52 +55,14 @@ type app struct {
 	answer func(ctx context.Context, email, id, answer string) error
 }
 
-// Event is a Helios When event as the front page's Upcoming Events lists
-// it: the calendar reckons which are ahead for this viewer, and the page
-// links across to it. Image is its picture as a path on ImageApp's host,
-// and for an event another app runs, Link is its page on LinkApp with Call
-// the way in as the calendar words it, Mine and Availability behind that.
-type Event struct {
-	ID      string `json:"id"`
-	Title   string `json:"title"`
-	Path    string `json:"path"`
-	Start   string `json:"start"`
-	When    string `json:"when"`
-	StartAt string `json:"startAt"`
-	EndAt   string `json:"endAt,omitempty"`
-	// Dates are the days the rail's month lists it under, which for a day
-	// type's span written across a weekend is not every day between StartAt
-	// and EndAt: the calendar settles them (`calendar.Event.Dates`) and the
-	// rail reads them rather than working the span out again.
-	Dates        []string `json:"dates"`
-	Location     string   `json:"location,omitempty"`
-	Description  string   `json:"description,omitempty"`
-	Image        string   `json:"image,omitempty"`
-	ImageApp     string   `json:"imageApp,omitempty"`
-	Link         string   `json:"link,omitempty"`
-	LinkApp      string   `json:"linkApp,omitempty"`
-	Call         string   `json:"call,omitempty"`
-	Mine         string   `json:"mine,omitempty"`
-	Availability string   `json:"availability,omitempty"`
-	// Answer is the viewer's word on it: yes, no, or nothing yet.
-	Answer string `json:"answer,omitempty"`
-	// People is everyone in the household with a part in it: a ticket, a
-	// waitlist place, a role.
-	People []Standing `json:"people,omitempty"`
-}
-
-type Standing struct {
-	Name string `json:"name"`
-	Note string `json:"note,omitempty"`
-	Mine bool   `json:"mine,omitempty"`
-}
-
-// Upcoming is the front page's Upcoming Events for a person: the events,
-// the saved calendar they are read under by token, and every saved
-// calendar of theirs - the first their default on Helios When - for
-// the picker beside the heading.
+// Upcoming is the front page's Upcoming Events for a person: the events as
+// Helios When words them (`calendar.Card` - the front page keeps no shape of
+// its own, so a field added there arrives here rather than being missed, as
+// the days an event sits on once were), the saved calendar they are read
+// under by token, and every saved calendar of theirs - the first their
+// default on Helios When - for the picker beside the heading.
 type Upcoming struct {
-	Events []Event `json:"events"`
+	Events []calendar.Card `json:"events"`
 	// Calendar is the one the events are read under; Default the one the
 	// person made their default (My Heliosian's token until they do).
 	Calendar  string          `json:"calendar,omitempty"`
@@ -118,27 +81,15 @@ type SavedCalendar struct {
 
 // Month is a month as the rail's calendar shows it, from Helios When:
 // today, the school days in it with what kind of day each is for the
-// viewer's classrooms, and the viewer's events that touch it.
+// viewer's classrooms, and the viewer's events that touch it - the
+// calendar's own shapes, with the saved calendar it was read under added
+// for the rail's picker.
 type Month struct {
-	Month  string         `json:"month"`
-	Today  string         `json:"today"`
-	Days   map[string]Day `json:"days"`
-	Events []Event        `json:"events"`
-	// Calendar is the saved calendar the month is read under, for the
-	// rail's picker; absent with none.
-	Calendar string `json:"calendar,omitempty"`
-}
-
-// Day is one school day: the day types in force other than Regular.
-type Day struct {
-	Kinds []Kind `json:"kinds"`
-}
-
-// Kind is one day type in force: its name, and the words for it - "Early
-// Dismissal · Hummingbirds" when it is only some classrooms' day.
-type Kind struct {
-	Name  string `json:"name"`
-	Words string `json:"words"`
+	Month    string                  `json:"month"`
+	Today    string                  `json:"today"`
+	Days     map[string]calendar.Day `json:"days"`
+	Events   []calendar.Card         `json:"events"`
+	Calendar string                  `json:"calendar,omitempty"`
 }
 
 // alerts is what the toolbar's badges say, reckoned by the directory: things
@@ -449,9 +400,9 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 		User       user       `json:"user"`
 		// ImageSources lists where the link editor's picture search can
 		// look, first first.
-		ImageSources []string `json:"imageSources"`
-		Alerts       alerts   `json:"alerts"`
-		Upcoming     []Event  `json:"upcoming"`
+		ImageSources []string        `json:"imageSources"`
+		Alerts       alerts          `json:"alerts"`
+		Upcoming     []calendar.Card `json:"upcoming"`
 		// UpcomingCalendar is the saved calendar Upcoming is read under, and
 		// every saved calendar of theirs for the picker; absent with none.
 		UpcomingCalendar *Upcoming `json:"upcomingCalendar,omitempty"`

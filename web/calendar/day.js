@@ -3,7 +3,8 @@
 // down a timeline. On a wide window it lives in the rail (chrome.js
 // draws it there for every page); on a phone the calendar page draws the
 // card at the top of the page.
-import {state, eventsOn, today, addDays, parseDate, formatDate, monthOf, shiftMonth, monthLabel, weekStart, weekdayLong, specials, isSchoolDay, dayTypeClass, eventTint, timeLine, eventPath, isMatch, isGray} from './state.js';
+import {state, eventsOn, today, addDays, parseDate, formatDate, monthOf, shiftMonth, monthLabel, weekStart, weekdayLong, specials, isSchoolDay, eventTint, timeLine, eventPath, isMatch, isGray} from './state.js';
+import {dayTypeClass} from '/daytype.js';
 import {el, link, svg, button, popup} from './dom.js';
 import {eventForm} from './eventform.js';
 import {planCards} from './events.js';

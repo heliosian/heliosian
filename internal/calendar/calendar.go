@@ -197,7 +197,14 @@ type Event struct {
 	// MinePeople is everyone in the household with a part in a linked
 	// event - a ticket, a waitlist place, a role - for the lists to name.
 	MinePeople []Standing `json:"minePeople,omitempty"`
-	Image      string     `json:"image,omitempty"`
+	// MineWords says the standing - "Sam and Alex are waitlisted" - and Call
+	// what the row and the page offer: that standing first, else the way in,
+	// nothing once the event has passed or closed. Written here rather than
+	// worked out again by each reader, so the calendar's rows and pages,
+	// Heliosian's cards and its rail all say the same words.
+	MineWords string `json:"mineWords,omitempty"`
+	Call      string `json:"call,omitempty"`
+	Image     string `json:"image,omitempty"`
 	// Status is the Events tab's word on a hand-added event: Pending while
 	// someone other than an admin's waits for approval, Declined once an
 	// admin turned it away - either on the calendar for them and the
@@ -1489,10 +1496,14 @@ func normalTitle(title string) string {
 	return strings.ToLower(strings.Join(strings.Fields(title), " "))
 }
 
-// claims is what an all-day event says, one claim per school day per
-// classroom: the day type it imposes, or its title when it imposes none.
-// Weekends are nobody's claim, so a span written across one is covered by
-// entries for its weekdays.
+// claims is what an all-day event says, one claim per weekday per classroom:
+// the day type it imposes, or its title when it imposes none. It reads the
+// days the event sits on (Event.Dates, settled by occupies) rather than
+// working them out again, and drops the weekends among them, since a weekend
+// carries nothing to say about school - which is why two feed weeks cover a
+// PDF span written across the weekend between them. The test is the weekday
+// and not the school year, because the feed carries years the PDF has never
+// named - last year, and the summer camps - and their entries fold too.
 func claims(e *Event) []string {
 	if !e.AllDay {
 		return nil
@@ -1502,7 +1513,7 @@ func claims(e *Event) []string {
 		what = "title:" + normalTitle(e.Title)
 	}
 	out := []string{}
-	for _, date := range e.written() {
+	for _, date := range e.Dates {
 		if day, _ := parseDate(date); day.Weekday() == time.Saturday || day.Weekday() == time.Sunday {
 			continue
 		}
@@ -1534,8 +1545,8 @@ func (b *builder) dedupe() {
 	seen := map[string]bool{}
 	claimed := map[string]bool{}
 	for _, e := range order {
-		claims := claims(e)
-		if len(claims) == 0 {
+		said := claims(e)
+		if len(said) == 0 {
 			tags := slices.Clone(e.Tags)
 			slices.Sort(tags)
 			key := e.Start + "|" + e.End + "|" + e.DayType + "|" + strings.Join(tags, ",") + "|" + normalTitle(e.Title)
@@ -1546,7 +1557,7 @@ func (b *builder) dedupe() {
 			continue
 		}
 		fresh := false
-		for _, claim := range claims {
+		for _, claim := range said {
 			if !claimed[claim] {
 				fresh = true
 			}
@@ -1555,7 +1566,7 @@ func (b *builder) dedupe() {
 			e.Hidden, e.duplicate = true, true
 			continue
 		}
-		for _, claim := range claims {
+		for _, claim := range said {
 			claimed[claim] = true
 		}
 	}
@@ -1737,7 +1748,9 @@ func (b *builder) days(dayOverrides []map[string]string) error {
 
 // BuildModel validates every row and refuses the whole set on the first
 // rule broken, the stance every app here takes. Events layer import, then
-// enrichment joining it, then overrides winning over both; the day plan is
+// enrichment joining it, then overrides winning over both; the school years
+// come from the PDF's markers, which settles the days each event sits on
+// (occupies) and so what each one claims for the folding; the day plan is
 // Regular across each school year, then every all-day event's day type by
 // source, then Day Overrides.
 func BuildModel(tables *Tables, roster Roster) (*Model, error) {
@@ -1832,11 +1845,11 @@ func BuildModel(tables *Tables, roster Roster) (*Model, error) {
 		return m.Events[i].ID < m.Events[j].ID
 	})
 	b.settle()
-	b.dedupe()
 	if err := b.years(tables.PDF); err != nil {
 		return nil, err
 	}
 	b.occupies(tables.DayOverrides)
+	b.dedupe()
 	if err := b.days(tables.DayOverrides); err != nil {
 		return nil, err
 	}

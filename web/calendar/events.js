@@ -1,4 +1,5 @@
-import {eventPath, timeColumn, whenLine, timeRange, audienceWords, categoryTags, eventColors, plan, specials, isSchoolDay, dayLabel, dayTypeClass, today, selectedClassrooms, classroomNames, linkURL, call} from './state.js';
+import {eventPath, timeColumn, whenLine, timeRange, audienceWords, categoryTags, eventColors, plan, specials, isSchoolDay, dayLabel, today, selectedClassrooms, classroomNames, linkURL} from './state.js';
+import {dayTypeClass} from '/daytype.js';
 import {el, link, svg} from './dom.js';
 
 // audienceChips are the event page's full account of who an event is for
@@ -60,7 +61,7 @@ export function eventRow(e, opts = {}) {
   if (e.location) {
     body.append(el('span', 'event-place', e.location));
   }
-  if (e.link && call(e)) {
+  if (e.link && e.call) {
     body.append(callPill(e));
   }
   row.append(body, roomDots(e));
@@ -73,7 +74,7 @@ export function eventRow(e, opts = {}) {
 // standing instead.
 export function callPill(e) {
   const open = e.availability === 'available' || e.availability === 'open';
-  const pill = el('span', 'event-pill' + (e.mine ? ' is-mine' : open ? ' is-open' : ''), call(e));
+  const pill = el('span', 'event-pill' + (e.mine ? ' is-mine' : open ? ' is-open' : ''), e.call);
   pill.addEventListener('click', ev => {
     ev.preventDefault();
     ev.stopPropagation();

@@ -85,6 +85,7 @@ func linkedEvent(l Linked) *Event {
 	// Another app's event carries no day type, so it sits on every day it
 	// names, the way the builder settles one of the calendar's own.
 	e.Dates = e.written()
+	standing(e)
 	return e
 }
 
@@ -150,6 +151,7 @@ func folded(school, hca *Event) *Event {
 	if c.Location == "" {
 		c.Location = hca.Location
 	}
+	standing(&c)
 	return &c
 }
 

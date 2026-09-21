@@ -1,4 +1,5 @@
-import {state, eventsOn, today, addDays, parseDate, formatDate, longDayLabel, dayLabel, monthLabel, monthOf, shiftMonth, weekStart, specials, scheduleOn, isSchoolDay, dayTypeClass, dayTypeMatches, selectedClassrooms, eventTint, timeLine, eventPath, weekdayShort, call, isMatch, isHidden, isGray} from '../state.js';
+import {state, eventsOn, today, addDays, parseDate, formatDate, longDayLabel, dayLabel, monthLabel, monthOf, shiftMonth, weekStart, specials, scheduleOn, isSchoolDay, dayTypeMatches, selectedClassrooms, eventTint, timeLine, eventPath, weekdayShort, isMatch, isHidden, isGray} from '../state.js';
+import {dayTypeClass} from '/daytype.js';
 import {el, link, svg, button, peopleLine, toast, popup, copyText, feedMark} from '../dom.js';
 import {setTitle, setSearch, fillFilters, renderRailDay, editFeedPopup, makeDefaultFeed, calendarMenu} from '../chrome.js';
 import {dayColumn} from '../day.js';
@@ -33,7 +34,7 @@ function upcomingRow(date, e, group) {
     if (e.location) {
       body.append(el('span', 'up-place', e.location));
     }
-    if (e.link && call(e)) {
+    if (e.link && e.call) {
       body.append(callPill(e));
     }
   } else {
@@ -176,7 +177,7 @@ function fillEventPeek(node, date, e) {
     } else {
       const add = el('a', 'button button-small' + (e.availability === 'available' ? '' : ' button-secondary'));
       add.href = linkURL(e);
-      add.append(svg('ticket'), el('span', '', e.availability === 'available' ? 'Add Ticket' : call(e) || 'See the party'));
+      add.append(svg('ticket'), el('span', '', e.availability === 'available' ? 'Add Ticket' : e.call || 'See the party'));
       buttons.append(add);
     }
     node.append(buttons);

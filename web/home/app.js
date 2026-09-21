@@ -26,10 +26,14 @@ export async function load() {
   }
   applyModel(await res.json());
   renderChrome();
-  renderMonth();
   renderNav();
   renderCategories(document.querySelector('#search').value);
   refreshCategoryManager();
+  // The rail's month is drawn last, after everything the page is for: it is
+  // the one part fed by another app's model, and drawing it first once cost
+  // the whole page - a field the calendar had stopped sending left the month
+  // throwing, and the links and every category never ran.
+  renderMonth();
 }
 
 function initSearch() {

@@ -44,6 +44,11 @@ func TestMonth(t *testing.T) {
 		if e.Start > "2026-09-30" || strings.Compare(e.EndAt[:10], "2026-09-01") < 0 {
 			t.Errorf("outside the month: %+v", e)
 		}
+		// The rail places an event by the days it sits on, so a card without
+		// them lands on no day at all.
+		if len(e.Dates) == 0 || e.Dates[0] != e.Start {
+			t.Errorf("card carries no days to sit on: %+v", e)
+		}
 	}
 	for _, want := range []string{"Labor Day - No School", "Jays and Ravens Camping", "Fondue & Fort Night", "Returning Grade ILP Conference, half days"} {
 		if !slices.Contains(titles, want) {
@@ -56,7 +61,7 @@ func TestMonth(t *testing.T) {
 	// The month before holds the social and the first days of school, whose
 	// early dismissal is the kindergarten's alone.
 	before := m.Month(d, "nobody@x.org", linked, at, "2026-08")
-	if !slices.ContainsFunc(before.Events, func(u Upcoming) bool { return u.Title == "Back to School Social" && u.LinkApp == "team" }) {
+	if !slices.ContainsFunc(before.Events, func(u Card) bool { return u.Title == "Back to School Social" && u.LinkApp == "team" }) {
 		t.Errorf("August lacks the social: %+v", before.Events)
 	}
 	if k := before.Days["2026-08-19"].Kinds; len(k) != 1 || k[0].Words != "Early Dismissal · Hummingbirds" {
