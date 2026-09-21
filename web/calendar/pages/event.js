@@ -131,10 +131,16 @@ export function eventPage(e) {
   if (e.source === 'sheet' && (state.model.user.isAdmin || e.addedBy === state.model.user.email)) {
     const edit = button('Edit event', 'pencil', 'button button-secondary button-small detail-edit', () => {
       let shut = null;
-      const form = eventForm({edit: e, onDone: async () => {
+      const form = eventForm({edit: e, onDone: async (ids, changed) => {
         shut();
         const {load} = await import('../app.js');
         await load();
+        // The details an invitation carries changed: offer to send it
+        // again to everyone who has it.
+        if (changed && changed.length && e.source === 'sheet') {
+          const {offerUpdate} = await import('../invites.js');
+          offerUpdate(e, changed);
+        }
       }});
       shut = popup('Edit ' + e.title, form, {wide: true}).shut;
     });

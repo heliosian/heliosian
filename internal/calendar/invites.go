@@ -1307,7 +1307,7 @@ func (a app) bringGuest(ctx context.Context, actor string, e *Event, of, name, e
 	slog.InfoContext(ctx, "calendar: guest brought", "actor", actor, "event", e.ID, "of", of, "guest", email, "answer", answer, "invite", invite)
 	// Their own invitation, when asked and they have somewhere to send it.
 	if invite && !isGuestKey(email) {
-		a.send(ctx, actor, e, []string{email}, false)
+		a.send(ctx, actor, e, []string{email}, "")
 	}
 	return email, nil
 }
@@ -1363,6 +1363,9 @@ func (a app) sendInvites(w http.ResponseWriter, r *http.Request) {
 		// Emails names particular people on the list to send to, in place
 		// of To.
 		Emails []string `json:"emails"`
+		// Update says the details changed: the invitation goes again as an
+		// update, its calendar invite replacing the one they have.
+		Update bool `json:"update"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -1379,6 +1382,12 @@ func (a app) sendInvites(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, inv := range model.Invites[e.ID] {
 		switch body.To {
+		case "sent":
+			// Everyone the invitation has reached - for an update, when
+			// the details have changed.
+			if inv.Sent != "" {
+				emails = append(emails, inv.Email)
+			}
 		case "these":
 			if slices.Contains(body.Emails, inv.Email) {
 				emails = append(emails, inv.Email)
@@ -1397,7 +1406,7 @@ func (a app) sendInvites(w http.ResponseWriter, r *http.Request) {
 			emails = append(emails, inv.Email)
 			reminder = reminder || inv.Sent != ""
 		default:
-			http.Error(w, "send to new, unanswered, or all", http.StatusBadRequest)
+			http.Error(w, "send to new, unanswered, sent, or all", http.StatusBadRequest)
 			return
 		}
 	}
@@ -1405,7 +1414,14 @@ func (a app) sendInvites(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "nobody to send to", http.StatusBadRequest)
 		return
 	}
-	sent := a.send(r.Context(), actor, e, emails, reminder)
+	kind := ""
+	switch {
+	case body.Update:
+		kind = inviteUpdate
+	case reminder:
+		kind = inviteReminder
+	}
+	sent := a.send(r.Context(), actor, e, emails, kind)
 	slog.InfoContext(r.Context(), "calendar: invites sent", "actor", actor, "event", e.ID, "invites", len(emails), "messages", sent)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]int{"invites": len(emails), "messages": sent})
@@ -1538,7 +1554,14 @@ func (a app) mailTargets(email string, p Person) []string {
 // everyone in the household who is invited - with the calendar invite
 // attached, the recipient its attendee. It hands back how many messages
 // went out.
-func (a app) send(ctx context.Context, actor string, e *Event, emails []string, reminder bool) int {
+// The kinds of invitation: the first, a reminder to whoever has not
+// answered, and an update once the details have changed.
+const (
+	inviteReminder = "reminder"
+	inviteUpdate   = "update"
+)
+
+func (a app) send(ctx context.Context, actor string, e *Event, emails []string, kind string) int {
 	model := a.cache.Model()
 	e = model.invitedEvent(e)
 	inv := model.Invitations[e.ID]
@@ -1605,7 +1628,7 @@ func (a app) send(ctx context.Context, actor string, e *Event, emails []string, 
 		if row := model.InviteOf(e.ID, to); row != nil && row.Token != "" {
 			link = "https://when.heliosian.com" + extPath(row.Token)
 		}
-		go a.sendInvitation(context.WithoutCancel(ctx), to, recipients[to], hostName, message, e, link, replyTo, reminder)
+		go a.sendInvitation(context.WithoutCancel(ctx), to, recipients[to], hostName, message, e, link, replyTo, kind)
 	}
 	return len(order)
 }
@@ -1636,8 +1659,10 @@ func firstWord(name string) string {
 // hosts' message, the description, who in their household is invited, an
 // RSVP button to their page - the event's here, or an outside person's
 // own - and the calendar invite attached to accept into their own
-// calendar. A reminder says so in the subject and the lead.
-func (a app) sendInvitation(ctx context.Context, to string, names []string, host, message string, e *Event, link string, replyTo []string, reminder bool) {
+// calendar. A reminder says so in the subject and the lead; an update
+// says the details have changed, its calendar invite replacing the one
+// they have (the same UID, a later SEQUENCE).
+func (a app) sendInvitation(ctx context.Context, to string, names []string, host, message string, e *Event, link string, replyTo []string, kind string) {
 	origin := "https://when.heliosian.com"
 	outside := strings.Contains(link, "/ext/")
 	day, hours := whenLines(e)
@@ -1667,8 +1692,11 @@ func (a app) sendInvitation(ctx context.Context, to string, names []string, host
 		hostedBy = ", hosted by " + strings.Join(hosts, " and ")
 	}
 	lead := fmt.Sprintf("%s - %s has sent you an invitation for %s%s. Can you make it?", hi, host, e.Title, hostedBy)
-	if reminder {
+	switch kind {
+	case inviteReminder:
 		lead = fmt.Sprintf("%s - a reminder: %s invited you to %s%s, and the hosts have not heard from you yet. Can you make it?", hi, host, e.Title, hostedBy)
+	case inviteUpdate:
+		lead = fmt.Sprintf("%s - %s has changed the details of %s%s. Here is the invitation again, with the new ones - can you still make it?", hi, host, e.Title, hostedBy)
 	}
 	card := origin + "/open/share/" + e.ID + ".png"
 	var text strings.Builder
@@ -1714,8 +1742,11 @@ func (a app) sendInvitation(ctx context.Context, to string, names []string, host
 	}
 	htm.WriteString("</div>")
 	subject := "[" + e.Title + "] You're invited!"
-	if reminder {
+	switch kind {
+	case inviteReminder:
 		subject = "[" + e.Title + "] Reminder: you're invited!"
+	case inviteUpdate:
+		subject = "[" + e.Title + "] Updated: the details have changed"
 	}
 	err := a.mail.Sender.Send(ctx, mail.Message{
 		To:       []string{to},
@@ -1734,7 +1765,7 @@ func (a app) sendInvitation(ctx context.Context, to string, names []string, host
 		slog.ErrorContext(ctx, "calendar: send invitation", "to", to, "event", e.ID, "error", err)
 		return
 	}
-	slog.InfoContext(ctx, "calendar: invitation sent", "to", to, "event", e.ID, "reminder", reminder)
+	slog.InfoContext(ctx, "calendar: invitation sent", "to", to, "event", e.ID, "kind", kind)
 }
 
 // answerWord is an answer as a message says it.

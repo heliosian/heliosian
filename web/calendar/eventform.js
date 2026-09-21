@@ -361,7 +361,10 @@ export function eventForm({from = null, shift = 0, edit = null, onDone}) {
     status.textContent = '';
     if (edit) {
       toast('Saved');
-      await onDone([edit.id]);
+      // What changed of the details an invitation carries, for whoever
+      // opened the form to ask about sending an update.
+      const changed = [['title', edit.title], ['start', edit.start], ['end', edit.end || edit.start], ['location', edit.location || '']].filter(([key, was]) => (body[key] || (key === 'end' ? body.start : '')) !== was).map(([key]) => key);
+      await onDone([edit.id], changed);
       return;
     }
     const {ids, pending} = await res.json();

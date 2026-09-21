@@ -1082,6 +1082,32 @@ func TestDeleteAndCancel(t *testing.T) {
 	}
 }
 
+// Once the details change, the invitation goes again to everyone who has
+// it as an update - and to nobody still pending.
+func TestUpdatedInvitation(t *testing.T) {
+	mux, _, kept, _ := invitesApp(t)
+	jordan := as(host, mux)
+	call(t, jordan, "POST", "/api/calendar/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"inviteOnly":true,"id":"meetup"}`)
+	call(t, jordan, "POST", "/api/calendar/invites/people", `{"id":"meetup","people":[{"email":"`+robin+`"}]}`)
+	call(t, jordan, "POST", "/api/calendar/invites/send", `{"id":"meetup"}`)
+	waitFor(kept, 2)
+	call(t, jordan, "POST", "/api/calendar/invites/people", `{"id":"meetup","people":[{"email":"`+mia+`"}]}`)
+	call(t, jordan, "PUT", "/api/calendar/events", `{"id":"meetup","title":"Meetup","start":"2026-10-10 16:00","end":"2026-10-10 16:00","location":"The park","tags":[],"inviteOnly":true}`)
+	before := len(kept.all())
+	if rec := call(t, jordan, "POST", "/api/calendar/invites/send", `{"id":"meetup","to":"sent","update":true}`); rec.Code != 200 || rec.Body.String() != "{\"invites\":1,\"messages\":1}\n" {
+		t.Fatalf("update: %d %s", rec.Code, rec.Body)
+	}
+	waitFor(kept, before+1)
+	msgs := mailTo(kept, robin)
+	last := msgs[len(msgs)-1]
+	if len(msgs) != 2 || last.Subject != "[Meetup] Updated: the details have changed" || !strings.Contains(last.HTML, "has changed the details of Meetup") || !strings.Contains(last.HTML, "4:00 PM") || !strings.Contains(last.HTML, "The park") || !strings.Contains(string(last.Attachments[0].Content), "DTSTART:20261010T230000Z") {
+		t.Errorf("robin's update: %+v", last)
+	}
+	if len(mailTo(kept, mia)) != 0 {
+		t.Errorf("someone pending was sent the update")
+	}
+}
+
 // A family from outside goes on together: the one with the address, the
 // others under it, one named with no address of their own under a key;
 // they sit as one household on the list, are named together in the

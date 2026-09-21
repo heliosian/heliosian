@@ -1929,10 +1929,20 @@ export function openSettings(e, view, refresh) {
     ev.preventDefault();
     submit.disabled = true;
     try {
-      await post('PUT', '/api/calendar/invites/settings', {id: e.id, guestList, message: message.value, ...(flyer ? {flyer} : {}), ...(details ? details() : {})});
+      const own = details ? details() : {};
+      await post('PUT', '/api/calendar/invites/settings', {id: e.id, guestList, message: message.value, ...(flyer ? {flyer} : {}), ...own});
       toast('Saved');
       shut();
-      refresh();
+      await refresh();
+      // The invitation's own details changed, and the invites are out:
+      // offer to send them again.
+      if (details) {
+        const before = {title: s.title || '', start: s.start || '', end: s.end || '', location: s.location || ''};
+        const changed = ['title', 'start', 'end', 'location'].filter(key => (own[key] || '') !== before[key]);
+        if (changed.length && view.sent) {
+          offerUpdate(e, changed);
+        }
+      }
     } catch (err) {
       status.textContent = err.message;
       status.classList.add('error');
@@ -1940,6 +1950,38 @@ export function openSettings(e, view, refresh) {
     }
   });
   shut = popup('Edit the invitation', form, {wide: Boolean(view.party)}).shut;
+}
+
+// offerUpdate asks, once the details an invitation carries have changed
+// on an event whose invites are out, whether to send everyone who has it
+// the invitation again as an update - its calendar invite replacing the
+// one they have.
+export async function offerUpdate(e, changed) {
+  const view = await fetchInvites(e);
+  if (!view || !view.host || !view.sent) {
+    return;
+  }
+  const people = view.list.filter(r => r.invited && r.sent && r.email);
+  if (!people.length) {
+    return;
+  }
+  const words = {title: 'the title', start: 'the date or time', end: 'the end time', location: 'the location'};
+  const what = [...new Set(changed.map(k => words[k]).filter(Boolean))].join(', ').replace(/, ([^,]*)$/, ' and $1');
+  const box = el('div');
+  box.append(el('p', 'hint', `You changed ${what}. ${people.length} ${people.length === 1 ? 'person has' : 'people have'} the invitation already - send it again with the new details? Their calendar invite is replaced with the new one.`));
+  const actions = el('div', 'modal-actions');
+  let shut = null;
+  actions.append(button(`Send the update to ${people.length}`, 'mail', 'button', async () => {
+    try {
+      const made = await post('POST', '/api/calendar/invites/send', {id: e.id, to: 'sent', update: true});
+      toast(made.messages === 1 ? 'The update is on its way' : `${made.messages} updates are on their way`, 4000);
+      shut();
+    } catch (err) {
+      toast(err.message);
+    }
+  }), button('Not now', null, 'button button-secondary', () => shut()));
+  box.append(actions);
+  shut = popup('Send an updated invitation?', box).shut;
 }
 
 // fetchPickerData is what the Add Person tab is built from: everyone in

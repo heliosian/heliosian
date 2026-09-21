@@ -409,7 +409,7 @@ func (a app) fill(ctx context.Context, e *Event, g InviteGroup, wait bool) int {
 		}
 	})
 	if g.Auto && g.Sent != "" {
-		a.send(ctx, g.AddedBy, e, emails, false)
+		a.send(ctx, g.AddedBy, e, emails, "")
 	}
 	return len(rows)
 }
