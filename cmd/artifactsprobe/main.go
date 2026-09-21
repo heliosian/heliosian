@@ -29,7 +29,7 @@ func main() {
 	}
 	// The same disk cache the dev server keeps, so a second run of this
 	// reads the corpus off the disk rather than out of the bucket.
-	reader, err := blob.New("cache/blobs")
+	reader, err := blob.New("local/cache/blobs")
 	if err != nil {
 		log.Fatalf("[ERROR] %v", err)
 	}

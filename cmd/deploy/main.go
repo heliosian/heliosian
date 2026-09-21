@@ -16,9 +16,9 @@ func clientID() string {
 	if id := os.Getenv("GOOGLE_CLIENT_ID"); id != "" {
 		return id
 	}
-	raw, err := os.ReadFile("creds/oauth-client.json")
+	raw, err := os.ReadFile("local/creds/oauth-client.json")
 	if err != nil {
-		log.Fatalf("[ERROR] read creds/oauth-client.json (or set GOOGLE_CLIENT_ID): %v", err)
+		log.Fatalf("[ERROR] read local/creds/oauth-client.json (or set GOOGLE_CLIENT_ID): %v", err)
 	}
 	var parsed struct {
 		Web struct {
@@ -26,7 +26,7 @@ func clientID() string {
 		} `json:"web"`
 	}
 	if err := json.Unmarshal(raw, &parsed); err != nil || parsed.Web.ClientID == "" {
-		log.Fatal("[ERROR] creds/oauth-client.json is not an oauth web client file")
+		log.Fatal("[ERROR] local/creds/oauth-client.json is not an oauth web client file")
 	}
 	return parsed.Web.ClientID
 }

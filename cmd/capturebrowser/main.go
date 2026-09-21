@@ -9,7 +9,10 @@ import (
 )
 
 func main() {
-	profile := filepath.Join(os.Getenv("HOME"), ".heliosian", "capture-profile")
+	profile, err := filepath.Abs("local/capture-profile")
+	if err != nil {
+		log.Fatalf("[ERROR] resolve profile dir: %v", err)
+	}
 	if err := os.MkdirAll(profile, 0o700); err != nil {
 		log.Fatalf("[ERROR] create profile dir: %v", err)
 	}

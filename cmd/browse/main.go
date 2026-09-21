@@ -127,7 +127,7 @@ func main() {
 	size := flag.String("size", "", "viewport size as WxH, overriding the desktop default")
 	dump := flag.Bool("dump", false, "print page html instead of writing a screenshot")
 	eval := flag.String("eval", "", "evaluate javascript in the page and print the json result instead of writing a screenshot")
-	out := flag.String("out", "screenshots/browse.png", "output png path")
+	out := flag.String("out", "local/screenshots/browse.png", "output png path")
 	flag.Parse()
 
 	id, err := currentTarget()

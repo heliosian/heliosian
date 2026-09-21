@@ -1,8 +1,6 @@
 .git
-cache/
-creds/
+local/
 docs/
 sampledata/
-screenshots/
 Dockerfile
 LICENSE.md

@@ -50,7 +50,7 @@ The GitHub App lives on the heliosian organization, under Settings › Developer
     gcloud secrets add-iam-policy-binding heliosian-github-app-id --project heliosian --member serviceAccount:directory@heliosian.iam.gserviceaccount.com --role roles/secretmanager.secretAccessor
     gcloud secrets add-iam-policy-binding heliosian-github-app-key --project heliosian --member serviceAccount:directory@heliosian.iam.gserviceaccount.com --role roles/secretmanager.secretAccessor
 
-They reach the service through `cmd/deploy`, which names them in `secrets`; a plain push deploys only the image, so both have to be in place, through a `cmd/deploy` run, before a build that carries this is deployed. Locally, real-data mode reads `creds/github-app.id` and `creds/github-app.pem`. Both are required: the server refuses to start without them.
+They reach the service through `cmd/deploy`, which names them in `secrets`; a plain push deploys only the image, so both have to be in place, through a `cmd/deploy` run, before a build that carries this is deployed. Locally, real-data mode reads `local/creds/github-app.id` and `local/creds/github-app.pem`. Both are required: the server refuses to start without them.
 
 The key has no expiry, so nothing has to be renewed on a schedule, which is the point of an app over the yearly token it replaced. Where the app is installed and what it may do is the app's own page on GitHub and nowhere else; that it still works is the first filing after a change, which either opens an issue or answers with GitHub's own refusal, logged in full.
 
@@ -58,4 +58,4 @@ The key has no expiry, so nothing has to be renewed on a schedule, which is the 
 
 Reports whose `ID` reads `triage-<number>` came from `heliosian/triage`, the private repository every report was filed to before the Reports tab existed. They carry what their old rendered issue still said, read back apart into the columns it came from: an issue open there is New here, a closed one Dismissed, and their `Issue` points back at the triage issue itself rather than at anything in the primary repository. The two of them filed on GitHub by hand rather than through the toolbar name no app and carry no reporter or browser context, since their bodies never held any.
 
-Nothing writes to `heliosian/triage` and nothing reads it. The tab holds everything it did, so the repository, the fine-grained personal access token in `creds/github.token` and the `heliosian-github-token` secret are all retired.
+Nothing writes to `heliosian/triage` and nothing reads it. The tab holds everything it did, so the repository, the fine-grained personal access token in `local/creds/github.token` and the `heliosian-github-token` secret are all retired.

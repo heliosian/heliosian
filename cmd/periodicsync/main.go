@@ -42,13 +42,13 @@ func apiKey() string {
 	if key := os.Getenv("ANTHROPIC_API_KEY"); key != "" {
 		return key
 	}
-	raw, err := os.ReadFile("creds/anthropic.key")
+	raw, err := os.ReadFile("local/creds/anthropic.key")
 	if err != nil {
-		log.Fatalf("[ERROR] read creds/anthropic.key (or set ANTHROPIC_API_KEY): %v", err)
+		log.Fatalf("[ERROR] read local/creds/anthropic.key (or set ANTHROPIC_API_KEY): %v", err)
 	}
 	key := strings.TrimSpace(string(raw))
 	if key == "" {
-		log.Fatal("[ERROR] creds/anthropic.key is empty")
+		log.Fatal("[ERROR] local/creds/anthropic.key is empty")
 	}
 	return key
 }

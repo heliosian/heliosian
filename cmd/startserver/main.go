@@ -40,21 +40,21 @@ import (
 	"heliosian/internal/who"
 )
 
-const logPath = "/tmp/heliosian-server.log"
+const logPath = "local/heliosian-server.log"
 
 const sampleUser = "jordan.whitfield@heliosschool.org"
 
 // blobCache is where --real keeps the media it fetches from the bucket, so a
 // restart reads photos from disk rather than fetching every one again;
 // gitignored, and deleted by hand to start clean.
-const blobCache = "cache/blobs"
+const blobCache = "local/cache/blobs"
 
 func main() {
 	email := flag.String("email", "ian.gulliver@heliosschool.org", "session email for --detach's minted cookie")
 	real := flag.Bool("real", false, "serve the production assembly in the foreground")
 	detach := flag.Bool("detach", false, "launch --real in the background with a log file and a minted cookie")
 	capturePath := flag.String("capture", "", "serve sample data in-process, capture this url (on any app's local hostname) as a PNG, and exit")
-	out := flag.String("out", "screenshots/capture.png", "output png path for --capture")
+	out := flag.String("out", "local/screenshots/capture.png", "output png path for --capture")
 	wait := flag.String("wait", "body", "css selector that must be visible before capturing, for --capture")
 	width := flag.Int("width", 0, "viewport width for --capture (default 1280)")
 	height := flag.Int("height", 0, "viewport height for --capture (default 800)")
@@ -183,6 +183,9 @@ func detachReal(email string) {
 		}
 	}
 
+	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
+		logging.Fatal("create local directory", "error", err)
+	}
 	logFile, err := os.Create(logPath)
 	if err != nil {
 		logging.Fatal("create server log", "error", err)

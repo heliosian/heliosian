@@ -1,7 +1,2 @@
-creds/
-cache/
-imports/
-screenshots/
-*.png
-!web/**/*.png
+local/
 .DS_Store

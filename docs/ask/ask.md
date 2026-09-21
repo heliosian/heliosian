@@ -28,7 +28,7 @@ Claude cannot act: no sign-ups, RSVPs, tickets, mail or edits. The prompt says s
 
 ## Sample data
 
-Sample mode signs in as the sample parent, who has two students in two classrooms, co-chairs International Night, manages the soccer team's group and is a room parent, so every tool has something to find. With an Anthropic key in `creds/anthropic.key` the sample server talks to Claude over the fictional community; without one it uses a fake that looks up today's day plan, so the page shows a tool at work, and streams a canned answer a word at a time.
+Sample mode signs in as the sample parent, who has two students in two classrooms, co-chairs International Night, manages the soccer team's group and is a room parent, so every tool has something to find. With an Anthropic key in `local/creds/anthropic.key` the sample server talks to Claude over the fictional community; without one it uses a fake that looks up today's day plan, so the page shows a tool at work, and streams a canned answer a word at a time.
 
 ## Brand
 

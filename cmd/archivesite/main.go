@@ -1,4 +1,4 @@
-// Command archivesite saves every page the school website's sitemap names under imports/site, for importartifacts to read into Helios Ask.
+// Command archivesite saves every page the school website's sitemap names under local/imports/site, for importartifacts to read into Helios Ask.
 package main
 
 import (
@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	out = "imports/site"
+	out = "local/imports/site"
 	// The site's robots.txt asks for Crawl-delay: 5.
 	crawlDelay = 5 * time.Second
 )

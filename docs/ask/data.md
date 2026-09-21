@@ -8,7 +8,7 @@ Each turn is one `Respond`: the two system blocks, the conversation so far with 
 
 The prompt's two blocks each carry a cache breakpoint, and the tool definitions sit in front of them, so the tools and the prompt are read from the cache from a conversation's second call on until the models change under it. The request's top-level cache control puts a third breakpoint on the last block of the messages, so each call writes the conversation as it stands and the next - the next round of the same turn, or the next question - reads everything before its own new tail from the cache, earlier tool results included, rather than paying for them again. What changes during a conversation reaches the model as a `role: "system"` message in the messages rather than as an edit to the prompt, so the prefix stays whole: when recent documents have come in that the conversation has not been told of, the turn's user message is followed by one system message naming them, which stays in the conversation from then on. The turn's log line records the input tokens, how many came from the cache, the output tokens, the rounds, the tools run and how long it took, under `ask: answered`, so the cost of a day's questions is a query away (`docs/deploy.md`, Logs).
 
-The key is the one the calendar import and Staff Birthdays already use: `ANTHROPIC_API_KEY`, mirrored locally as `creds/anthropic.key`, and required in real-data mode. It never reaches a browser.
+The key is the one the calendar import and Staff Birthdays already use: `ANTHROPIC_API_KEY`, mirrored locally as `local/creds/anthropic.key`, and required in real-data mode. It never reaches a browser.
 
 ## The conversation
 

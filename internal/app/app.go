@@ -1073,9 +1073,9 @@ func clientID() string {
 	if id := os.Getenv("GOOGLE_CLIENT_ID"); id != "" {
 		return id
 	}
-	raw, err := os.ReadFile("creds/oauth-client.json")
+	raw, err := os.ReadFile("local/creds/oauth-client.json")
 	if err != nil {
-		logging.Fatal("read creds/oauth-client.json (or set GOOGLE_CLIENT_ID)", "error", err)
+		logging.Fatal("read local/creds/oauth-client.json (or set GOOGLE_CLIENT_ID)", "error", err)
 	}
 	var parsed struct {
 		Web struct {
@@ -1083,7 +1083,7 @@ func clientID() string {
 		} `json:"web"`
 	}
 	if err := json.Unmarshal(raw, &parsed); err != nil || parsed.Web.ClientID == "" {
-		logging.Fatal("creds/oauth-client.json is not an oauth web client file")
+		logging.Fatal("local/creds/oauth-client.json is not an oauth web client file")
 	}
 	return parsed.Web.ClientID
 }
@@ -1127,7 +1127,7 @@ func feedbackBase() string {
 // is plainly a bot and not the admin who pressed the button. Required, as the
 // triage token it replaced was.
 func githubApp() feedback.IssueFiler {
-	app, err := feedback.NewGitHubApp(mapsKey("GITHUB_APP_ID", "creds/github-app.id"), mapsKey("GITHUB_APP_KEY", "creds/github-app.pem"))
+	app, err := feedback.NewGitHubApp(mapsKey("GITHUB_APP_ID", "local/creds/github-app.id"), mapsKey("GITHUB_APP_KEY", "local/creds/github-app.pem"))
 	if err != nil {
 		logging.Fatal("read the github app key", "error", err)
 	}
@@ -1167,16 +1167,16 @@ func calendarMail() calendar.Mail {
 }
 
 // mailgunKey is the Mailgun API key every app's mail goes out through:
-// MAILGUN_KEY, or creds/mailgun.key locally, else nothing.
+// MAILGUN_KEY, or local/creds/mailgun.key locally, else nothing.
 func mailgunKey() string {
-	return optionalKey("MAILGUN_KEY", "creds/mailgun.key")
+	return optionalKey("MAILGUN_KEY", "local/creds/mailgun.key")
 }
 
 // mailgunSigningKey is Mailgun's HTTP webhook signing key, which signs the
 // route notifications and the delivery events the calendar and Loop take
-// in: MAILGUN_WEBHOOK_KEY, or creds/mailgun-webhook.key locally.
+// in: MAILGUN_WEBHOOK_KEY, or local/creds/mailgun-webhook.key locally.
 func mailgunSigningKey() string {
-	return optionalKey("MAILGUN_WEBHOOK_KEY", "creds/mailgun-webhook.key")
+	return optionalKey("MAILGUN_WEBHOOK_KEY", "local/creds/mailgun-webhook.key")
 }
 
 func whoMailFrom() string {
@@ -1228,14 +1228,14 @@ func artifactsMail(store *blob.Store) artifacts.Inbox {
 }
 
 // ImageSearchKeys reads the picture search's keys the way every mode does:
-// each from its environment variable, else from its file under creds/, else
+// each from its environment variable, else from its file under local/creds/, else
 // absent - Wikimedia Commons needs none. Sample mode uses it too, so a
 // developer with keys on disk gets the same libraries as production.
 // ClaudeDescriber is Staff Birthdays' charity describer when an Anthropic
-// key is set (ANTHROPIC_API_KEY, or creds/anthropic.key locally), else nil.
+// key is set (ANTHROPIC_API_KEY, or local/creds/anthropic.key locally), else nil.
 // A nil *describe.Describer must stay a nil interface, or the app would call it.
 func ClaudeDescriber() birthday.Describer {
-	if d := describe.New(optionalKey("ANTHROPIC_API_KEY", "creds/anthropic.key")); d != nil {
+	if d := describe.New(optionalKey("ANTHROPIC_API_KEY", "local/creds/anthropic.key")); d != nil {
 		return d
 	}
 	return nil
@@ -1243,7 +1243,7 @@ func ClaudeDescriber() birthday.Describer {
 
 // ClaudeGroupDescriber is Loop's group describer on the same key, else nil.
 func ClaudeGroupDescriber() loop.Describer {
-	if d := describe.New(optionalKey("ANTHROPIC_API_KEY", "creds/anthropic.key")); d != nil {
+	if d := describe.New(optionalKey("ANTHROPIC_API_KEY", "local/creds/anthropic.key")); d != nil {
 		return d
 	}
 	return nil
@@ -1252,7 +1252,7 @@ func ClaudeGroupDescriber() loop.Describer {
 // ClaudeAsker is Helios Ask's Claude when the same key is set, else nil,
 // for the sample server to fall back to its fake.
 func ClaudeAsker() ask.Responder {
-	if key := optionalKey("ANTHROPIC_API_KEY", "creds/anthropic.key"); key != "" {
+	if key := optionalKey("ANTHROPIC_API_KEY", "local/creds/anthropic.key"); key != "" {
 		return ask.NewClaude(key)
 	}
 	return nil
@@ -1260,9 +1260,9 @@ func ClaudeAsker() ask.Responder {
 
 func ImageSearchKeys() imagesearch.Search {
 	return imagesearch.Search{
-		Unsplash: optionalKey("UNSPLASH_KEY", "creds/unsplash.key"),
-		Pexels:   optionalKey("PEXELS_KEY", "creds/pexels.key"),
-		Pixabay:  optionalKey("PIXABAY_KEY", "creds/pixabay.key"),
+		Unsplash: optionalKey("UNSPLASH_KEY", "local/creds/unsplash.key"),
+		Pexels:   optionalKey("PEXELS_KEY", "local/creds/pexels.key"),
+		Pixabay:  optionalKey("PIXABAY_KEY", "local/creds/pixabay.key"),
 	}
 }
 
@@ -1327,10 +1327,10 @@ func Production(blobCache string) (*http.Server, *who.Queue) {
 	core := NewCore(Config{
 		Source:      sheet,
 		Writer:      sheet,
-		Geocoder:    geocode.New(mapsKey("GOOGLE_MAPS_SERVER_KEY", "creds/geocoding.key")),
+		Geocoder:    geocode.New(mapsKey("GOOGLE_MAPS_SERVER_KEY", "local/creds/geocoding.key")),
 		Blobs:       store,
 		Store:       store,
-		BrowserKey:  mapsKey("GOOGLE_MAPS_BROWSER_KEY", "creds/maps.key"),
+		BrowserKey:  mapsKey("GOOGLE_MAPS_BROWSER_KEY", "local/creds/maps.key"),
 		ImageSearch: ImageSearchKeys(),
 		Describer:   ClaudeDescriber(),
 		// Mail goes through Mailgun when its key is set; otherwise, in
@@ -1348,7 +1348,7 @@ func Production(blobCache string) (*http.Server, *who.Queue) {
 		FeedbackBase:  feedbackBase(),
 		Loop:          loopMail(sessionKey),
 		LoopDescriber: ClaudeGroupDescriber(),
-		Asker:         ask.NewClaude(mapsKey("ANTHROPIC_API_KEY", "creds/anthropic.key")),
+		Asker:         ask.NewClaude(mapsKey("ANTHROPIC_API_KEY", "local/creds/anthropic.key")),
 		Artifacts: func(previous *artifacts.Model) (*artifacts.Model, error) {
 			return artifacts.Load(sheet, store, embedder, previous)
 		},
@@ -1441,7 +1441,7 @@ func calendarWatcher(sheet *data.Sheet, calendarSheet string, core *Core, sessio
 	opts := calendarimport.Options{
 		Source: sheet, Sheets: sheet.Service(), Calendar: cal, CalendarSheet: calendarSheet,
 		Roster:       func() calendar.Roster { return CalendarRoster(core.Cache.Model()) },
-		AnthropicKey: mapsKey("ANTHROPIC_API_KEY", "creds/anthropic.key"),
+		AnthropicKey: mapsKey("ANTHROPIC_API_KEY", "local/creds/anthropic.key"),
 	}
 	return calendarimport.NewWatcher(opts, hex.EncodeToString(mac.Sum(nil)), core.CalendarCache.Refresh)
 }

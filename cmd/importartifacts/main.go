@@ -1,4 +1,4 @@
-// Command importartifacts reads the messages saved under imports/mail and the pages under imports/site into the artifacts folder of the media bucket and the Artifacts sheet: markdown, chunks and embeddings for Helios Ask.
+// Command importartifacts reads the messages saved under local/imports/mail and the pages under local/imports/site into the artifacts folder of the media bucket and the Artifacts sheet: markdown, chunks and embeddings for Helios Ask.
 package main
 
 import (
@@ -38,7 +38,7 @@ func main() {
 	flag.Parse()
 	files := flag.Args()
 	if len(files) == 0 {
-		log.Fatal("[ERROR] name the files to import: go run ./cmd/importartifacts imports/mail/*.json imports/site/*.json")
+		log.Fatal("[ERROR] name the files to import: go run ./cmd/importartifacts local/imports/mail/*.json local/imports/site/*.json")
 	}
 	if !*dryRun && !*permitted {
 		log.Fatal("[ERROR] this run spends money embedding; pass --i-have-user-permission-to-spend-money only when the user has said to run it")

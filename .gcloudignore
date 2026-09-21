@@ -1,9 +1,7 @@
 .gcloudignore
 .git
 .gitignore
-cache/
-creds/
+local/
 docs/
 sampledata/
-screenshots/
 LICENSE.md

@@ -162,7 +162,7 @@ func (c *Claude) Respond(ctx context.Context, req Request, emit Emitter) (Reply,
 
 type Fake struct{}
 
-const fakeAnswer = "This is the sample server, so nothing is asking Claude. With an Anthropic key in creds/anthropic.key the real answer streams in here, drawn from the directory, the calendar, HCA-Team, Celebrate, Loop and Heliosian's links."
+const fakeAnswer = "This is the sample server, so nothing is asking Claude. With an Anthropic key in local/creds/anthropic.key the real answer streams in here, drawn from the directory, the calendar, HCA-Team, Celebrate, Loop and Heliosian's links."
 
 func (Fake) Respond(ctx context.Context, req Request, emit Emitter) (Reply, error) {
 	words := req.Label("day_plan")
