@@ -893,9 +893,10 @@ func TestPartyStart(t *testing.T) {
 }
 
 // A student's invitation goes to them with their parents on the Cc, so
-// the parents hear with the child and answer for them - one message, the
-// child's calendar invite on it, its lead naming whose it is - and the
-// bold line over the button says whom the RSVP is for, linked to the page.
+// the parents hear with the child and answer for them - one message, no
+// calendar invite on it, since with two readers whose place it holds is
+// ambiguous, its lead naming whose it is - and the bold line over the
+// button says whom the RSVP is for, linked to the page.
 func TestStudentInviteCcsParents(t *testing.T) {
 	mux, _, kept, _ := invitesApp(t)
 	miaH := as(mia, mux)
@@ -906,7 +907,7 @@ func TestStudentInviteCcsParents(t *testing.T) {
 		t.Fatalf("mail after sending: %+v", sent)
 	}
 	m := mailTo(kept, sam)
-	if len(m) != 1 || strings.Join(m[0].CC, ",") != robin || len(m[0].Attachments) != 1 || !strings.Contains(string(m[0].Attachments[0].Content), "ATTENDEE;CN="+sam) {
+	if len(m) != 1 || strings.Join(m[0].CC, ",") != robin || len(m[0].Attachments) != 0 || strings.Contains(m[0].Text, "invite attached") || strings.Contains(m[0].HTML, "invite attached") {
 		t.Fatalf("sam's mail = %+v", m)
 	}
 	if !strings.Contains(m[0].HTML, "Mia Torres sent Sam an invitation for") || !strings.Contains(m[0].HTML, `<a href="https://when.heliosian.com/e/celebrate/p1" style="color:#1b2a2c;font-weight:700">RSVP for Sam and Ella here</a>`) || !strings.Contains(m[0].Text, "Mia Torres sent Sam an invitation for") || !strings.Contains(m[0].Text, "RSVP for Sam and Ella here") {
@@ -917,6 +918,43 @@ func TestStudentInviteCcsParents(t *testing.T) {
 	}
 	if got := andList([]string{"Sam", "Ella", "Robin", "Mia"}); got != "Sam, Ella, Robin and Mia" {
 		t.Errorf("andList = %q", got)
+	}
+}
+
+// A host's message and the cancellation reach a student the same way as
+// the invitation: to them with their parents on the Cc and no calendar
+// file, while a parent on the list themselves gets theirs with the file.
+func TestStudentMessagesCcParentsWithoutCalendarFiles(t *testing.T) {
+	mux, _, kept, _ := invitesApp(t)
+	jordan := as(host, mux)
+	call(t, jordan, "POST", "/api/calendar/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":["Jays"],"inviteOnly":true,"id":"meetup"}`)
+	call(t, jordan, "POST", "/api/calendar/invites/people", `{"id":"meetup","people":[{"email":"`+sam+`"},{"email":"`+robin+`"}]}`)
+	call(t, jordan, "POST", "/api/calendar/invites/send", `{"id":"meetup"}`)
+	before := len(waitFor(kept, 2))
+	if rec := call(t, jordan, "POST", "/api/calendar/invites/message", `{"id":"meetup","subject":"Chairs","message":"Bring a chair!","to":["none"],"attach":true}`); rec.Code != 200 || rec.Body.String() != "{\"messages\":2}\n" {
+		t.Fatalf("message: %d %s", rec.Code, rec.Body)
+	}
+	waitFor(kept, before+2)
+	if rec := call(t, jordan, "POST", "/api/calendar/events/cancel", `{"id":"meetup","notify":true,"note":"Rain."}`); rec.Code != 200 || rec.Body.String() != "{\"told\":2}\n" {
+		t.Fatalf("cancel: %d %s", rec.Code, rec.Body)
+	}
+	waitFor(kept, before+4)
+	s, r := mailTo(kept, sam), mailTo(kept, robin)
+	if len(s) != 3 || len(r) != 3 {
+		t.Fatalf("sam's mail %d, robin's %d", len(s), len(r))
+	}
+	for i, m := range s {
+		if strings.Join(m.CC, ",") != robin || len(m.Attachments) != 0 || strings.Contains(m.Text, "attached") {
+			t.Errorf("sam's mail %d = %+v", i, m)
+		}
+	}
+	for i, name := range []string{"invite.ics", "invite.ics", "cancel.ics"} {
+		if len(r[i].CC) != 0 || len(r[i].Attachments) != 1 || r[i].Attachments[0].Name != name {
+			t.Errorf("robin's mail %d = %+v", i, r[i])
+		}
+	}
+	if !strings.Contains(r[0].Text, "invite attached") || !strings.Contains(r[2].Text, "cancellation attached") {
+		t.Errorf("robin's words: %q, %q", r[0].Text, r[2].Text)
 	}
 }
 

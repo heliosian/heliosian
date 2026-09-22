@@ -115,22 +115,20 @@ func (a app) cancelEvent(w http.ResponseWriter, r *http.Request) {
 	}
 	model := a.cache.Model()
 	// Who hears, before the event is marked: everyone sent the invitation,
-	// a student's parents with them.
+	// a student's parents on the Cc with them.
 	targets := []string{}
+	cc := map[string][]string{}
 	if body.Notify {
 		for _, inv := range model.Invites[e.ID] {
-			if inv.Sent == "" || isGuestKey(inv.Email) {
+			if inv.Sent == "" || isGuestKey(inv.Email) || slices.Contains(targets, inv.Email) {
 				continue
 			}
-			mailed := []string{inv.Email}
-			if p, known := a.directory.Person(inv.Email); known {
-				mailed = a.mailTargets(inv.Email, p)
+			with, reachable := a.ccFor(inv.Email)
+			if !reachable {
+				continue
 			}
-			for _, t := range mailed {
-				if !slices.Contains(targets, t) {
-					targets = append(targets, t)
-				}
-			}
+			cc[inv.Email] = with
+			targets = append(targets, inv.Email)
 		}
 	}
 	if !a.commit(r.Context(), w, a.cache.Tables().WithEventCells(e.ID, map[string]string{"Status": StatusCancelled}), func() error {
@@ -150,7 +148,7 @@ func (a app) cancelEvent(w http.ResponseWriter, r *http.Request) {
 		replyTo = append([]string{actor}, replyTo...)
 	}
 	for _, to := range targets {
-		go a.sendCancellation(context.WithoutCancel(r.Context()), to, replyTo, hostName, note, model.invitedEvent(e))
+		go a.sendCancellation(context.WithoutCancel(r.Context()), to, cc[to], replyTo, hostName, note, model.invitedEvent(e))
 	}
 	slog.InfoContext(r.Context(), "calendar: event cancelled", "actor", actor, "event", e.ID, "title", e.Title, "told", len(targets))
 	w.Header().Set("Content-Type", "application/json")
@@ -158,9 +156,11 @@ func (a app) cancelEvent(w http.ResponseWriter, r *http.Request) {
 }
 
 // sendCancellation mails one person that the event is off: the host's
-// word, the note when there is one, and a calendar cancellation for the
-// same invite, so their calendar app drops it.
-func (a app) sendCancellation(ctx context.Context, to string, replyTo []string, hostName, note string, e *Event) {
+// word, the note when there is one, and - when the message is theirs
+// alone, so their invitation carried a calendar invite - a calendar
+// cancellation for it, so their calendar app drops it. A student's goes
+// with their parents on the Cc (cc, ccFor).
+func (a app) sendCancellation(ctx context.Context, to string, cc, replyTo []string, hostName, note string, e *Event) {
 	if a.mail.Sender == nil {
 		return
 	}
@@ -170,12 +170,16 @@ func (a app) sendCancellation(ctx context.Context, to string, replyTo []string, 
 		when += ", " + hours
 	}
 	lead := fmt.Sprintf("%s has cancelled %s, which was on %s.", hostName, e.Title, when)
+	foot := "A reply reaches the hosts."
+	if len(cc) == 0 {
+		foot = "The cancellation attached takes it off your calendar. " + foot
+	}
 	var text strings.Builder
 	fmt.Fprintf(&text, "%s\n", lead)
 	if note != "" {
 		fmt.Fprintf(&text, "\n%s\n", note)
 	}
-	text.WriteString("\nThe cancellation attached takes it off your calendar. A reply reaches the hosts.\n")
+	fmt.Fprintf(&text, "\n%s\n", foot)
 	font := "-apple-system,Segoe UI,Roboto,sans-serif"
 	var htm strings.Builder
 	htm.WriteString("<div style=\"max-width:560px\">")
@@ -184,21 +188,24 @@ func (a app) sendCancellation(ctx context.Context, to string, replyTo []string, 
 	if note != "" {
 		fmt.Fprintf(&htm, "<blockquote style=\"margin:0 0 14px;padding:10px 16px;border-left:3px solid #0e4d54;font:15px/1.5 %s;white-space:pre-wrap\">%s</blockquote>", font, html.EscapeString(note))
 	}
-	fmt.Fprintf(&htm, "<p style=\"font:13px/1.5 %s;color:#647071\">The cancellation attached takes it off your calendar. A reply reaches the hosts.</p>", font)
+	fmt.Fprintf(&htm, "<p style=\"font:13px/1.5 %s;color:#647071\">%s</p>", font, html.EscapeString(foot))
 	htm.WriteString("</div>")
-	err := a.mail.Sender.Send(ctx, mail.Message{
+	msg := mail.Message{
 		To:      []string{to},
+		CC:      cc,
 		ReplyTo: replyTo,
 		Subject: "[" + e.Title + "] Cancelled",
 		Text:    text.String(),
 		HTML:    htm.String(),
-		Attachments: []mail.Attachment{{
+	}
+	if len(cc) == 0 {
+		msg.Attachments = []mail.Attachment{{
 			Name:        "cancel.ics",
 			ContentType: "text/calendar; method=CANCEL; charset=utf-8",
 			Content:     []byte(cancellation(a.organizer(e.ID, to), to, e, now())),
-		}},
-	})
-	if err != nil {
+		}}
+	}
+	if err := a.mail.Sender.Send(ctx, msg); err != nil {
 		slog.ErrorContext(ctx, "calendar: send cancellation", "to", to, "event", e.ID, "error", err)
 		return
 	}

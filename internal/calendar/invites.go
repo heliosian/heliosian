@@ -1615,22 +1615,29 @@ func (a app) skipInvites(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]int{"skipped": len(emails)})
 }
 
-// mailTargets is who hears for one person on the list: themselves, and
-// for a student their parents too - the student left out when their
-// address is a placeholder nothing can reach.
-func (a app) mailTargets(email string, p Person) []string {
-	targets := []string{}
-	if !p.EmailMasked {
-		targets = append(targets, email)
+// ccFor is who hears with one person on the list: for a student, their
+// parents, on the Cc of every message the student is sent, so they answer
+// for the child; for anyone else nobody. Its second answer is false when
+// the person's address is a placeholder nothing can reach, and nothing
+// is sent. A message with a Cc carries no calendar invite, since whose
+// place it holds would be ambiguous to the calendar apps reading it.
+func (a app) ccFor(email string) ([]string, bool) {
+	p, known := a.directory.Person(email)
+	if !known {
+		return nil, true
 	}
+	if p.EmailMasked {
+		return nil, false
+	}
+	cc := []string{}
 	if p.IsStudent && !p.IsParent && !p.IsStaff {
 		for _, member := range a.cache.Model().Roster.Households[email] {
-			if a.isAdult(member) && !slices.Contains(targets, member) {
-				targets = append(targets, member)
+			if a.isAdult(member) && !slices.Contains(cc, member) {
+				cc = append(cc, member)
 			}
 		}
 	}
-	return targets
+	return cc, true
 }
 
 // send mails the invites for the addresses given and marks them sent: one
@@ -1660,18 +1667,11 @@ func (a app) send(ctx context.Context, actor string, e *Event, emails []string, 
 		if row == nil || isGuestKey(email) || slices.Contains(order, email) {
 			continue
 		}
-		if p, known := a.directory.Person(email); known {
-			if p.EmailMasked {
-				continue
-			}
-			if p.IsStudent && !p.IsParent && !p.IsStaff {
-				for _, member := range model.Roster.Households[email] {
-					if a.isAdult(member) && !slices.Contains(cc[email], member) {
-						cc[email] = append(cc[email], member)
-					}
-				}
-			}
+		with, reachable := a.ccFor(email)
+		if !reachable {
+			continue
 		}
+		cc[email] = with
 		order = append(order, email)
 	}
 	recipients := map[string][]string{}
@@ -1752,12 +1752,14 @@ func firstWord(name string) string {
 // its picture (the share card, public as every /open/share/ path is), the
 // hosts' message, the description, who in their household is invited, an
 // RSVP button to their page - the event's here, or an outside person's
-// own - and the calendar invite to accept into their own calendar, the
-// recipient its attendee. A student's goes with their parents on the Cc
-// (cc); the lead names whose the invitation is - "sent Sam an
-// invitation for" - so a parent on the Cc reads it as the child's. A reminder says so in the subject and the lead; an
-// update says the details have changed, its calendar invite replacing
-// the one they have (the same UID, a later SEQUENCE).
+// own - and, when the message is theirs alone, the calendar invite to
+// accept into their own calendar, the recipient its attendee. A student's
+// goes with their parents on the Cc (cc) and no calendar invite (ccFor);
+// the lead names whose the invitation is - "sent Sam an invitation for" -
+// so a parent on the Cc reads it as the child's. A reminder says so in
+// the subject and the lead; an update says the details have changed, its
+// calendar invite replacing the one they have (the same UID, a later
+// SEQUENCE).
 func (a app) sendInvitation(ctx context.Context, to string, cc, names []string, host, message string, e *Event, link string, replyTo []string, kind string) {
 	origin := "https://when.heliosian.com"
 	outside := strings.Contains(link, "/ext/")
@@ -1815,7 +1817,12 @@ func (a app) sendInvitation(ctx context.Context, to string, cc, names []string, 
 	if e.Location != "" {
 		fmt.Fprintf(&text, "\n%s\n", e.Location)
 	}
-	fmt.Fprintf(&text, "%s\n%s\n\nInvited: %s\n\nThe invite attached puts it on your calendar.\n", hosting, when, invited)
+	fmt.Fprintf(&text, "%s\n%s\n\nInvited: %s\n", hosting, when, invited)
+	attached := ""
+	if len(cc) == 0 {
+		attached = " The invite attached puts it on your calendar."
+		text.WriteString("\nThe invite attached puts it on your calendar.\n")
+	}
 	font := "-apple-system,Segoe UI,Roboto,sans-serif"
 	esc := html.EscapeString
 	var htm strings.Builder
@@ -1844,9 +1851,9 @@ func (a app) sendInvitation(ctx context.Context, to string, cc, names []string, 
 	fmt.Fprintf(&htm, "<p style=\"margin:0\">%s</p>", esc(when))
 	fmt.Fprintf(&htm, "<p style=\"margin:10px 0 0\"><a href=\"%s\" style=\"color:#2f9e6a;text-decoration:none;margin:0 8px\">Add to Google</a> <a href=\"%s\" style=\"color:#2f9e6a;text-decoration:none;margin:0 8px\">RSVP</a></p>", esc(googleCalendarURL(e, link)), esc(link))
 	if outside {
-		htm.WriteString("<p style=\"margin:12px 0 0;font-size:12px;color:#777\">The page is yours alone - no account needed. The invite attached puts it on your calendar.</p>")
+		fmt.Fprintf(&htm, "<p style=\"margin:12px 0 0;font-size:12px;color:#777\">The page is yours alone - no account needed.%s</p>", attached)
 	} else {
-		htm.WriteString("<p style=\"margin:12px 0 0;font-size:12px;color:#777\">Yes, no or maybe on the page answers for everyone in your household who is invited. The invite attached puts it on your calendar.</p>")
+		fmt.Fprintf(&htm, "<p style=\"margin:12px 0 0;font-size:12px;color:#777\">Yes, no or maybe on the page answers for everyone in your household who is invited.%s</p>", attached)
 	}
 	htm.WriteString("</div></div>")
 	fmt.Fprintf(&htm, "<p style=\"margin:14px 0 0;font-size:11px;letter-spacing:0.08em;text-align:center;color:#999\">SENT WITH HELIOS WHEN</p>")
@@ -1858,7 +1865,7 @@ func (a app) sendInvitation(ctx context.Context, to string, cc, names []string, 
 	case inviteUpdate:
 		subject = "[" + e.Title + "] Updated: the details have changed"
 	}
-	err := a.mail.Sender.Send(ctx, mail.Message{
+	msg := mail.Message{
 		To:       []string{to},
 		CC:       cc,
 		ReplyTo:  replyTo,
@@ -1866,13 +1873,15 @@ func (a app) sendInvitation(ctx context.Context, to string, cc, names []string, 
 		Subject:  subject,
 		Text:     text.String(),
 		HTML:     htm.String(),
-		Attachments: []mail.Attachment{{
+	}
+	if len(cc) == 0 {
+		msg.Attachments = []mail.Attachment{{
 			Name:        "invite.ics",
 			ContentType: "text/calendar; method=REQUEST; charset=utf-8",
 			Content:     []byte(invite(a.organizer(e.ID, to), to, e, link, now())),
-		}},
-	})
-	if err != nil {
+		}}
+	}
+	if err := a.mail.Sender.Send(ctx, msg); err != nil {
 		slog.ErrorContext(ctx, "calendar: send invitation", "to", to, "event", e.ID, "error", err)
 		return
 	}
@@ -1976,22 +1985,20 @@ func (a app) messageInvites(w http.ResponseWriter, r *http.Request) {
 		}
 		return "none"
 	}
-	// Who hears: those whose standing is wanted, and the parents of the
-	// students among them.
+	// Who hears: those whose standing is wanted, a student's parents on the
+	// Cc with them.
 	targets := []string{}
+	cc := map[string][]string{}
 	for _, inv := range model.Invites[e.ID] {
-		if (!wanted[standing(inv.Email)] && !slices.Contains(body.Emails, inv.Email)) || isGuestKey(inv.Email) {
+		if (!wanted[standing(inv.Email)] && !slices.Contains(body.Emails, inv.Email)) || isGuestKey(inv.Email) || slices.Contains(targets, inv.Email) {
 			continue
 		}
-		mailed := []string{inv.Email}
-		if p, known := a.directory.Person(inv.Email); known {
-			mailed = a.mailTargets(inv.Email, p)
+		with, reachable := a.ccFor(inv.Email)
+		if !reachable {
+			continue
 		}
-		for _, t := range mailed {
-			if !slices.Contains(targets, t) {
-				targets = append(targets, t)
-			}
-		}
+		cc[inv.Email] = with
+		targets = append(targets, inv.Email)
 	}
 	if len(targets) == 0 {
 		http.Error(w, "nobody on the list stands where you chose", http.StatusBadRequest)
@@ -2007,7 +2014,7 @@ func (a app) messageInvites(w http.ResponseWriter, r *http.Request) {
 		replyTo = append([]string{actor}, replyTo...)
 	}
 	for _, to := range targets {
-		go a.sendMessage(context.WithoutCancel(r.Context()), to, replyTo, hostName, subject, message, e, body.Attach)
+		go a.sendMessage(context.WithoutCancel(r.Context()), to, cc[to], replyTo, hostName, subject, message, e, body.Attach)
 	}
 	slog.InfoContext(r.Context(), "calendar: message sent", "actor", actor, "event", e.ID, "to", len(targets))
 	w.Header().Set("Content-Type", "application/json")
@@ -2018,8 +2025,10 @@ func (a app) messageInvites(w http.ResponseWriter, r *http.Request) {
 // subject, the event's name before it in brackets - the words, the
 // event's line, then their own answer and their household's - each on
 // the list, the guests they brought too - and, for anyone among them
-// still to answer, the way to.
-func (a app) sendMessage(ctx context.Context, to string, replyTo []string, hostName, subject, message string, e *Event, attach bool) {
+// still to answer, the way to. A student's goes with their parents on the
+// Cc (cc), and the calendar invite the host may ask for (attach) rides
+// only on a message with no Cc (ccFor).
+func (a app) sendMessage(ctx context.Context, to string, cc, replyTo []string, hostName, subject, message string, e *Event, attach bool) {
 	model := a.cache.Model()
 	e = model.invitedEvent(e)
 	origin := "https://when.heliosian.com"
@@ -2103,12 +2112,13 @@ func (a app) sendMessage(ctx context.Context, to string, replyTo []string, hostN
 	}
 	msg := mail.Message{
 		To:      []string{to},
+		CC:      cc,
 		ReplyTo: replyTo,
 		Subject: "[" + e.Title + "] " + subject,
 		Text:    text.String(),
 		HTML:    htm.String(),
 	}
-	if attach {
+	if attach && len(cc) == 0 {
 		msg.Attachments = []mail.Attachment{{Name: "invite.ics", ContentType: "text/calendar; method=REQUEST; charset=utf-8", Content: []byte(invite(a.organizer(e.ID, to), to, e, link, now()))}}
 	}
 	err := a.mail.Sender.Send(ctx, msg)
