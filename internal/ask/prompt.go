@@ -20,9 +20,8 @@ import (
 var school string
 
 // systemBlocks is the prompt in two cached pieces: the school, which
-// changes only when the sheets do, then the person and the recent
-// documents, frozen for the conversation. The school is shortened first
-// into a fresh table, so its keys are the same in every conversation.
+// changes only when the sheets do, then the person and the documents
+// the conversation knows.
 func systemBlocks(v *viewer, recent []*artifacts.Document, l *links) []anthropic.BetaTextBlockParam {
 	return []anthropic.BetaTextBlockParam{
 		{Text: l.shorten(school + "\n\n" + lingo(v)), CacheControl: anthropic.NewBetaCacheControlEphemeralParam()},

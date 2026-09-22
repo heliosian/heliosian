@@ -2,15 +2,15 @@
 package ask
 
 import (
+	"bytes"
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -33,7 +33,6 @@ const (
 	shell                 = "web/ask/index.html"
 	maxTurns              = 40
 	messagesPerHour       = 30
-	idle                  = time.Hour
 	maxMessageLength      = 4000
 	maxConversationLength = 200000
 	turnTimeout           = 3 * time.Minute
@@ -59,14 +58,13 @@ type Sources struct {
 }
 
 type app struct {
-	sources       Sources
-	responder     Responder
-	conversations *store
-	recent        *limiter
+	sources   Sources
+	responder Responder
+	recent    *limiter
 }
 
 func Register(mux *http.ServeMux, sources Sources, responder Responder) {
-	a := app{sources: sources, responder: responder, conversations: newStore(), recent: newLimiter()}
+	a := app{sources: sources, responder: responder, recent: newLimiter()}
 	mux.HandleFunc("GET /{$}", a.page)
 	mux.HandleFunc("GET /api/ask/model", a.model)
 	mux.HandleFunc("POST /api/ask/chat", a.chat)
@@ -116,9 +114,10 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 func (a app) chat(w http.ResponseWriter, r *http.Request) {
 	email := a.who(r)
 	var body struct {
-		Conversation string `json:"conversation"`
-		Message      string `json:"message"`
-		Turns        []turn `json:"turns"`
+		Conversation string          `json:"conversation"`
+		Message      string          `json:"message"`
+		Context      json.RawMessage `json:"context"`
+		Known        []string        `json:"known"`
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, 2<<20)).Decode(&body); err != nil {
 		http.Error(w, "bad request body", http.StatusBadRequest)
@@ -129,27 +128,43 @@ func (a app) chat(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "say something, in fewer than four thousand characters", http.StatusBadRequest)
 		return
 	}
-	now := time.Now()
-	if !a.recent.allow(email, now) {
+	links := newLinks()
+	history, err := readContext(body.Context, links)
+	if err != nil {
+		http.Error(w, "bad request body", http.StatusBadRequest)
+		return
+	}
+	if asked(history) >= maxTurns || utf8.RuneCount(body.Context) >= maxConversationLength {
+		http.Error(w, "this chat has run long; start a new one", http.StatusBadRequest)
+		return
+	}
+	if !a.recent.allow(email, time.Now()) {
 		http.Error(w, "that's a lot of questions for one hour; try again a little later", http.StatusTooManyRequests)
 		return
 	}
 	v := a.viewer(email)
 	recent := recentDocuments(v)
-	conv := a.conversations.get(body.Conversation, email, now)
-	if conv == nil {
-		conv = a.conversations.start(email, recent, now)
-		conv.system = systemBlocks(v, recent, conv.links)
-		conv.restore(body.Turns)
+	known := map[string]bool{}
+	for _, key := range body.Known {
+		known[key] = true
 	}
-	if !a.conversations.claim(conv) {
-		http.Error(w, "that conversation is still answering", http.StatusConflict)
-		return
+	if len(history) == 0 {
+		for _, d := range recent {
+			known[d.Key] = true
+		}
 	}
-	defer a.conversations.release(conv)
-	if conv.asked >= maxTurns || conv.length() >= maxConversationLength {
-		http.Error(w, "this chat has run long; start a new one", http.StatusBadRequest)
-		return
+	fresh := []*artifacts.Document{}
+	for _, d := range recent {
+		if !known[d.Key] {
+			fresh = append(fresh, d)
+			known[d.Key] = true
+		}
+	}
+	listed := []*artifacts.Document{}
+	for _, d := range v.documents().Documents {
+		if known[d.Key] && !slices.Contains(fresh, d) {
+			listed = append(listed, d)
+		}
 	}
 	// The request logger wraps the writer; the controller reaches through
 	// it to the one that flushes.
@@ -168,168 +183,97 @@ func (a app) chat(w http.ResponseWriter, r *http.Request) {
 			slog.ErrorContext(r.Context(), "[ERROR] ask: flush", "error", err)
 		}
 	}
-	emit("start", map[string]string{"conversation": conv.id})
 	ctx, cancel := context.WithTimeout(r.Context(), turnTimeout)
 	defer cancel()
-	messages := append(conv.messages[:len(conv.messages):len(conv.messages)], anthropic.NewBetaUserMessage(anthropic.NewBetaTextBlock(message)))
-	fresh := conv.unseen(recent)
+	messages := append(history, anthropic.NewBetaUserMessage(anthropic.NewBetaTextBlock(links.shorten(message))))
 	if len(fresh) > 0 {
-		messages = append(messages, anthropic.BetaMessageParam{Role: anthropic.BetaMessageParamRoleSystem, Content: []anthropic.BetaContentBlockParamUnion{anthropic.NewBetaTextBlock(conv.links.shorten(arrivals(v, fresh)))}})
+		messages = append(messages, anthropic.BetaMessageParam{Role: anthropic.BetaMessageParamRoleSystem, Content: []anthropic.BetaContentBlockParamUnion{anthropic.NewBetaTextBlock(links.shorten(arrivals(v, fresh)))}})
 	}
 	req := Request{
-		System:   conv.system,
+		System:   systemBlocks(v, listed, links),
 		Messages: messages,
 		Tools:    definitions(),
 		Run: func(ctx context.Context, name string, input json.RawMessage) (string, error) {
-			out, err := v.run(ctx, name, conv.links.expandInput(input))
+			out, err := v.run(ctx, name, links.expandInput(input))
 			if err != nil {
-				return "", errors.New(conv.links.shorten(err.Error()))
+				return "", errors.New(links.shorten(err.Error()))
 			}
-			return conv.links.shorten(out), nil
+			return links.shorten(out), nil
 		},
 		Label: label,
 	}
 	started := time.Now()
-	out := &expander{links: conv.links, emit: emit, cards: v.linkCard, sent: map[string]bool{}}
+	out := &expander{links: links, emit: emit, cards: v.linkCard, sent: map[string]bool{}}
 	reply, err := a.responder.Respond(ctx, req, out.send)
 	out.flush()
 	if err != nil && r.Context().Err() != nil {
-		conv.stop(message, reply.Text)
-		slog.InfoContext(r.Context(), "ask: stopped", "conversation", conv.id, "turn", conv.asked, "took", time.Since(started).Round(time.Millisecond))
+		slog.InfoContext(r.Context(), "ask: stopped", "conversation", body.Conversation, "turn", asked(history)+1, "took", time.Since(started).Round(time.Millisecond))
 		return
 	}
 	if err != nil {
-		slog.ErrorContext(r.Context(), "[ERROR] ask: answer failed", "conversation", conv.id, "error", err)
+		slog.ErrorContext(r.Context(), "[ERROR] ask: answer failed", "conversation", body.Conversation, "error", err)
 		emit("error", map[string]string{"message": "Something went wrong answering that; try again in a moment."})
 		return
 	}
-	conv.messages = reply.Messages
-	conv.see(fresh)
-	conv.asked++
-	conv.touched = time.Now()
-	slog.InfoContext(r.Context(), "ask: answered", "conversation", conv.id, "turn", conv.asked, "rounds", reply.Usage.Rounds, "tools", len(reply.Tools), "new_documents", len(fresh),
-		"input_tokens", reply.Usage.Input, "cached_tokens", reply.Usage.Cached, "output_tokens", reply.Usage.Output, "took", time.Since(started).Round(time.Millisecond))
-	emit("done", map[string]any{"conversation": conv.id, "turns": conv.asked, "text": conv.links.expand(reply.Text), "tools": reply.Tools, "usage": reply.Usage})
-}
-
-type turn struct {
-	Role  string   `json:"role"`
-	Text  string   `json:"text"`
-	Tools []string `json:"tools,omitempty"`
-}
-
-type conversation struct {
-	id       string
-	email    string
-	system   []anthropic.BetaTextBlockParam
-	messages []anthropic.BetaMessageParam
-	links    *links
-	known    map[string]bool
-	asked    int
-	touched  time.Time
-	busy     bool
-}
-
-func (c *conversation) unseen(recent []*artifacts.Document) []*artifacts.Document {
-	out := []*artifacts.Document{}
-	for _, d := range recent {
-		if !c.known[d.Key] {
-			out = append(out, d)
+	turns := asked(history) + 1
+	keys := []string{}
+	for _, d := range v.documents().Documents {
+		if known[d.Key] {
+			keys = append(keys, d.Key)
 		}
 	}
-	return out
+	slog.InfoContext(r.Context(), "ask: answered", "conversation", body.Conversation, "turn", turns, "rounds", reply.Usage.Rounds, "tools", len(reply.Tools), "new_documents", len(fresh),
+		"input_tokens", reply.Usage.Input, "cached_tokens", reply.Usage.Cached, "output_tokens", reply.Usage.Output, "took", time.Since(started).Round(time.Millisecond))
+	emit("done", map[string]any{"messages": writeContext(reply.Messages[len(history):], links), "known": keys, "turns": turns, "text": links.expand(reply.Text), "tools": reply.Tools, "usage": reply.Usage})
 }
 
-func (c *conversation) length() int {
-	encoded, err := json.Marshal(c.messages)
+func readContext(raw json.RawMessage, links *links) ([]anthropic.BetaMessageParam, error) {
+	history := []anthropic.BetaMessageParam{}
+	if len(raw) == 0 {
+		return history, nil
+	}
+	var generic any
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	if err := decoder.Decode(&generic); err != nil {
+		return nil, err
+	}
+	shortened, err := json.Marshal(mapStrings(generic, links.shorten))
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(shortened, &history); err != nil {
+		return nil, err
+	}
+	return history, nil
+}
+
+func writeContext(messages []anthropic.BetaMessageParam, links *links) json.RawMessage {
+	encoded, err := json.Marshal(messages)
 	if err != nil {
 		panic(err)
 	}
-	return utf8.RuneCount(encoded)
-}
-
-func (c *conversation) see(docs []*artifacts.Document) {
-	for _, d := range docs {
-		c.known[d.Key] = true
-	}
-}
-
-func (c *conversation) restore(turns []turn) {
-	for i := 0; i+1 < len(turns); i += 2 {
-		if turns[i].Role != "user" || turns[i+1].Role != "assistant" {
-			continue
-		}
-		c.exchange(c.links.shorten(turns[i].Text), c.links.shorten(turns[i+1].Text))
-	}
-}
-
-func (c *conversation) stop(question, partial string) {
-	c.exchange(question, partial)
-	c.touched = time.Now()
-}
-
-func (c *conversation) exchange(question, answer string) {
-	question, answer = strings.TrimSpace(question), strings.TrimSpace(answer)
-	if question == "" || answer == "" {
-		return
-	}
-	c.messages = append(c.messages,
-		anthropic.NewBetaUserMessage(anthropic.NewBetaTextBlock(question)),
-		anthropic.BetaMessageParam{Role: anthropic.BetaMessageParamRoleAssistant, Content: []anthropic.BetaContentBlockParamUnion{anthropic.NewBetaTextBlock(answer)}})
-	c.asked++
-}
-
-type store struct {
-	mu   sync.Mutex
-	byID map[string]*conversation
-}
-
-func newStore() *store {
-	return &store{byID: map[string]*conversation{}}
-}
-
-func (s *store) get(id, email string, now time.Time) *conversation {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for key, c := range s.byID {
-		if !c.busy && now.Sub(c.touched) > idle {
-			delete(s.byID, key)
-		}
-	}
-	c := s.byID[id]
-	if c == nil || c.email != email {
-		return nil
-	}
-	return c
-}
-
-func (s *store) start(email string, recent []*artifacts.Document, now time.Time) *conversation {
-	raw := [16]byte{}
-	if _, err := rand.Read(raw[:]); err != nil {
+	var generic any
+	decoder := json.NewDecoder(bytes.NewReader(encoded))
+	decoder.UseNumber()
+	if err := decoder.Decode(&generic); err != nil {
 		panic(err)
 	}
-	c := &conversation{id: hex.EncodeToString(raw[:]), email: email, messages: []anthropic.BetaMessageParam{}, links: newLinks(), known: map[string]bool{}, touched: now}
-	c.see(recent)
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.byID[c.id] = c
-	return c
-}
-
-func (s *store) claim(c *conversation) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if c.busy {
-		return false
+	expanded, err := json.Marshal(mapStrings(generic, links.expandAll))
+	if err != nil {
+		panic(err)
 	}
-	c.busy = true
-	return true
+	return expanded
 }
 
-func (s *store) release(c *conversation) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	c.busy = false
+func asked(history []anthropic.BetaMessageParam) int {
+	n := 0
+	for _, m := range history {
+		if m.Role == anthropic.BetaMessageParamRoleUser && len(m.Content) > 0 && m.Content[0].OfText != nil {
+			n++
+		}
+	}
+	return n
 }
 
 type limiter struct {

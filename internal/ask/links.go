@@ -1,30 +1,36 @@
 package ask
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"log/slog"
 	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 )
 
 var (
 	address     = regexp.MustCompile(`https?://[^\s"\\<>()\[\]{}|^` + "`" + `]+`)
-	linkTarget  = regexp.MustCompile(`\]\(L(\d+)(?:\s[^)\n]*)?\)`)
-	quotedKey   = regexp.MustCompile(`"L(\d+)"`)
+	linkTarget  = regexp.MustCompile(`\]\(L([0-9a-f]{8})(?:\s[^)\n]*)?\)`)
+	quotedKey   = regexp.MustCompile(`"L([0-9a-f]{8})"`)
+	bareKey     = regexp.MustCompile(`\bL([0-9a-f]{8})([.,;:!?'*_]*(?:[\s"\\<>()\[\]{}|^` + "`" + `]|$))`)
 	partialLink = regexp.MustCompile(`^\[[^\]\n]{0,400}(\](\([^)\n]{0,200})?)?$|^https?://[^\s]{0,300}$`)
 	fullLink    = regexp.MustCompile(`\[([^\]\n]+)\]\(([^)\s]+)\)`)
 )
 
 type links struct {
 	mu   sync.Mutex
-	keys map[string]string
-	urls []string
+	urls map[string]string
 }
 
 func newLinks() *links {
-	return &links{keys: map[string]string{}, urls: []string{}}
+	return &links{urls: map[string]string{}}
+}
+
+func keyOf(url string) string {
+	sum := sha256.Sum256([]byte(url))
+	return "L" + hex.EncodeToString(sum[:4])
 }
 
 func (l *links) shorten(text string) string {
@@ -32,31 +38,26 @@ func (l *links) shorten(text string) string {
 	defer l.mu.Unlock()
 	return address.ReplaceAllStringFunc(text, func(match string) string {
 		url := strings.TrimRight(match, ".,;:!?'*_")
-		key, ok := l.keys[url]
-		if !ok {
-			l.urls = append(l.urls, url)
-			key = "L" + strconv.Itoa(len(l.urls))
-			l.keys[url] = key
-		}
+		key := keyOf(url)
+		l.urls[key] = url
 		return key + match[len(url):]
 	})
 }
 
-func (l *links) url(digits string) (string, bool) {
+func (l *links) url(key string) (string, bool) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	n, err := strconv.Atoi(digits)
-	if err != nil || n < 1 || n > len(l.urls) {
-		slog.Error("[ERROR] ask: unknown link key", "key", "L"+digits)
-		return "", false
+	url, ok := l.urls["L"+key]
+	if !ok {
+		slog.Error("[ERROR] ask: unknown link key", "key", "L"+key)
 	}
-	return l.urls[n-1], true
+	return url, ok
 }
 
 func (l *links) known(url string) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	_, ok := l.keys[url]
+	_, ok := l.urls[keyOf(url)]
 	return ok
 }
 
@@ -86,6 +87,21 @@ func (l *links) expand(text string) string {
 	})
 }
 
+// A key is expanded only where what follows would be trimmed off or end
+// an address, so shortening the result gives the same text back.
+func (l *links) expandAll(text string) string {
+	return bareKey.ReplaceAllStringFunc(text, func(match string) string {
+		m := bareKey.FindStringSubmatch(match)
+		l.mu.Lock()
+		url, ok := l.urls["L"+m[1]]
+		l.mu.Unlock()
+		if !ok {
+			return match
+		}
+		return url + m[2]
+	})
+}
+
 func (l *links) expandInput(input []byte) []byte {
 	return quotedKey.ReplaceAllFunc(input, func(match []byte) []byte {
 		url, ok := l.url(string(quotedKey.FindSubmatch(match)[1]))
@@ -98,6 +114,29 @@ func (l *links) expandInput(input []byte) []byte {
 		}
 		return quoted
 	})
+}
+
+// mapStrings applies f to every string in decoded JSON but those inside a
+// thinking block, which goes back to the model exactly as it came.
+func mapStrings(v any, f func(string) string) any {
+	switch v := v.(type) {
+	case string:
+		return f(v)
+	case []any:
+		for i := range v {
+			v[i] = mapStrings(v[i], f)
+		}
+		return v
+	case map[string]any:
+		if kind, _ := v["type"].(string); kind == "thinking" || kind == "redacted_thinking" {
+			return v
+		}
+		for k := range v {
+			v[k] = mapStrings(v[k], f)
+		}
+		return v
+	}
+	return v
 }
 
 var expandedTarget = regexp.MustCompile(`\]\((https?://[^)\s]+)\)`)

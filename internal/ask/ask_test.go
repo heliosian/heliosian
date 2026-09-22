@@ -239,6 +239,43 @@ func systemMessages(messages []anthropic.BetaMessageParam) []string {
 	return out
 }
 
+type transcript struct {
+	context []any
+	known   []string
+}
+
+func (c *transcript) body(t *testing.T, message string) string {
+	t.Helper()
+	encoded, err := json.Marshal(map[string]any{"conversation": "t1", "message": message, "context": c.context, "known": c.known})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(encoded)
+}
+
+func (c *transcript) keep(t *testing.T, rec *httptest.ResponseRecorder) map[string]any {
+	t.Helper()
+	d := done(t, rec)
+	c.context = append(c.context, d["messages"].([]any)...)
+	c.known = anyStrings(d["known"])
+	return d
+}
+
+func done(t *testing.T, rec *httptest.ResponseRecorder) map[string]any {
+	t.Helper()
+	for _, frame := range strings.Split(rec.Body.String(), "\n\n") {
+		if data, ok := strings.CutPrefix(frame, "event: done\ndata: "); ok {
+			out := map[string]any{}
+			if err := json.Unmarshal([]byte(data), &out); err != nil {
+				t.Fatal(err)
+			}
+			return out
+		}
+	}
+	t.Fatalf("no done event: %d %s", rec.Code, rec.Body.String())
+	return nil
+}
+
 func TestChatTellsOfANewDocumentOnce(t *testing.T) {
 	sources := sampleSources(t)
 	documents := sources.Artifacts()
@@ -248,25 +285,34 @@ func TestChatTellsOfANewDocumentOnce(t *testing.T) {
 	mux := http.NewServeMux()
 	Register(mux, sources, recording{requests: &requests})
 	handler := auth.Fixed(jordan, mux)
-	rec := post(t, handler, `{"message":"Anything new?"}`)
-	id := strings.SplitN(strings.SplitN(rec.Body.String(), `"conversation":"`, 2)[1], `"`, 2)[0]
+	chat := &transcript{}
+	first := chat.keep(t, post(t, handler, chat.body(t, "Anything new?")))
+	if known := anyStrings(first["known"]); len(known) == 0 || slices.Contains(known, "late-reminder") {
+		t.Fatalf("the first turn knew %v", known)
+	}
 	arrived := &artifacts.Document{Key: "late-reminder", Title: "Picture Day moves to Friday", Date: time.Now().In(calendar.Location).Format(calendar.DateFormat), Kind: artifacts.KindList}
 	current = &artifacts.Model{Documents: append([]*artifacts.Document{arrived}, documents.Documents...)}
-	post(t, handler, `{"conversation":"`+id+`","message":"And now?"}`)
-	post(t, handler, `{"conversation":"`+id+`","message":"Still?"}`)
+	second := chat.keep(t, post(t, handler, chat.body(t, "And now?")))
+	if !slices.Contains(anyStrings(second["known"]), "late-reminder") {
+		t.Fatalf("the arrival was not kept as known: %v", second["known"])
+	}
+	chat.keep(t, post(t, handler, chat.body(t, "Still?")))
 	if len(requests) != 3 {
 		t.Fatalf("%d requests", len(requests))
 	}
 	if told := systemMessages(requests[0].Messages); len(told) != 0 {
 		t.Fatalf("the first turn was told of %v", told)
 	}
-	second := requests[1].Messages
-	if last := second[len(second)-1]; last.Role != anthropic.BetaMessageParamRoleSystem || second[len(second)-2].Role != anthropic.BetaMessageParamRoleUser {
-		t.Fatalf("the arrival does not follow the question: %v", second)
+	messages := requests[1].Messages
+	if last := messages[len(messages)-1]; last.Role != anthropic.BetaMessageParamRoleSystem || messages[len(messages)-2].Role != anthropic.BetaMessageParamRoleUser {
+		t.Fatalf("the arrival does not follow the question: %v", messages)
 	}
-	told := systemMessages(second)
+	told := systemMessages(messages)
 	if len(told) != 1 || !strings.Contains(told[0], "Picture Day moves to Friday (key late-reminder)") || strings.Contains(told[0], "Sep 11") {
 		t.Fatalf("second turn told: %v", told)
+	}
+	if strings.Contains(requests[1].System[1].Text, "late-reminder") || !strings.Contains(requests[2].System[1].Text, "late-reminder") {
+		t.Fatal("the prompt lists the arrival only once it has been told")
 	}
 	third := requests[2].Messages
 	if len(systemMessages(third)) != 1 || third[len(third)-1].Role != anthropic.BetaMessageParamRoleUser {
@@ -544,47 +590,72 @@ func post(t *testing.T, handler http.Handler, body string) *httptest.ResponseRec
 }
 
 func TestChatStreamsAndKeepsTheConversation(t *testing.T) {
-	handler := serveApp(t, Fake{})
-	rec := post(t, handler, `{"message":"What kind of day is today?"}`)
+	requests := []Request{}
+	mux := http.NewServeMux()
+	Register(mux, sampleSources(t), recording{requests: &requests})
+	handler := auth.Fixed(jordan, mux)
+	chat := &transcript{}
+	rec := post(t, handler, chat.body(t, "What kind of day is today?"))
 	if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "text/event-stream" {
 		t.Fatalf("chat: %d %s", rec.Code, rec.Body.String())
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"event: start", "event: tool", "event: text", "event: done"} {
+	for _, want := range []string{"event: tool", "event: text", "event: done"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("stream lacks %s:\n%s", want, body)
 		}
 	}
-	id := strings.TrimSpace(strings.SplitN(strings.SplitN(body, `"conversation":"`, 2)[1], `"`, 2)[0])
-	rec = post(t, handler, `{"conversation":"`+id+`","message":"And tomorrow?"}`)
-	if !strings.Contains(rec.Body.String(), `"turns":2`) {
-		t.Fatalf("second turn: %s", rec.Body.String())
+	first := chat.keep(t, rec)
+	if first["turns"] != 1.0 || first["text"] == "" || !slices.Equal(anyStrings(first["tools"]), []string{"Checking the day plan"}) {
+		t.Fatalf("done lacks the answer for the browser to keep: %v", first)
 	}
-	if !strings.Contains(body, `"text":"`) || !strings.Contains(body, `"tools":["Checking the day plan"]`) {
-		t.Fatalf("done lacks the answer for the browser to keep: %s", body)
+	if len(chat.context) != 2 || len(chat.known) == 0 {
+		t.Fatalf("the browser was handed %d messages and %d known documents", len(chat.context), len(chat.known))
+	}
+	second := chat.keep(t, post(t, handler, chat.body(t, "And tomorrow?")))
+	if second["turns"] != 2.0 || len(requests) != 2 {
+		t.Fatalf("second turn: %v after %d requests", second, len(requests))
+	}
+	sent := requests[1].Messages
+	if len(sent) != 3 || sent[0].Role != anthropic.BetaMessageParamRoleUser || sent[1].Role != anthropic.BetaMessageParamRoleAssistant || sent[2].Content[0].OfText.Text != "And tomorrow?" {
+		t.Fatalf("the second turn was sent %v", sent)
+	}
+	if got := sent[1].Content[0].OfText.Text; !strings.HasPrefix(got, fakeAnswer) {
+		t.Fatalf("the model's own answer came back changed: %q", got)
 	}
 }
 
-// After a restart the server knows no ids; the browser's transcript
-// rebuilds the conversation, with the questions already asked counted.
-func TestChatRestoresFromTheBrowsersTranscript(t *testing.T) {
-	handler := serveApp(t, Fake{})
-	turns := `[{"role":"user","text":"One"},{"role":"assistant","text":"A"},{"role":"user","text":"Two"},{"role":"assistant","text":"B"},{"role":"user","text":"unanswered"}]`
-	rec := post(t, handler, `{"conversation":"gone","message":"Three","turns":`+turns+`}`)
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"turns":3`) {
-		t.Fatalf("restored: %d %s", rec.Code, rec.Body.String())
+func TestChatReadsTheBrowsersContextWithKeys(t *testing.T) {
+	requests := []Request{}
+	mux := http.NewServeMux()
+	Register(mux, sampleSources(t), recording{requests: &requests})
+	handler := auth.Fixed(jordan, mux)
+	chat := &transcript{}
+	if err := json.Unmarshal([]byte(`[{"role":"user","content":[{"type":"text","text":"Is `+samURL+` here?"}]},{"role":"assistant","content":[{"type":"text","text":"Yes, [Sam](`+samURL+`)."}]},{"role":"user","content":[{"type":"text","text":"Two"}]},{"role":"assistant","content":[{"type":"text","text":"B"}]}]`), &chat.context); err != nil {
+		t.Fatal(err)
 	}
-	if strings.Contains(rec.Body.String(), `"conversation":"gone"`) {
-		t.Fatal("the unknown id was kept")
+	d := chat.keep(t, post(t, handler, chat.body(t, "Three")))
+	if d["turns"] != 3.0 {
+		t.Fatalf("turns %v", d["turns"])
+	}
+	sent := requests[0].Messages
+	if got := sent[1].Content[0].OfText.Text; got != "Yes, [Sam]("+keyOf(samURL)+")." {
+		t.Fatalf("the model read %q", got)
+	}
+	if len(systemMessages(sent)) != 1 {
+		t.Fatalf("a chat with no known documents was not told of the recent ones: %v", systemMessages(sent))
 	}
 }
 
 func TestChatRefusesAConversationPastItsLength(t *testing.T) {
 	handler := serveApp(t, Fake{})
-	turns := `[{"role":"user","text":"One"},{"role":"assistant","text":"` + strings.Repeat("a", maxConversationLength) + `"}]`
-	rec := post(t, handler, `{"conversation":"gone","message":"Two","turns":`+turns+`}`)
+	chat := &transcript{context: []any{map[string]any{"role": "user", "content": []any{map[string]any{"type": "text", "text": "One"}}}, map[string]any{"role": "assistant", "content": []any{map[string]any{"type": "text", "text": strings.Repeat("a", maxConversationLength)}}}}}
+	rec := post(t, handler, chat.body(t, "Two"))
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "new one") {
-		t.Fatalf("oversized restore: %d %s", rec.Code, rec.Body.String())
+		t.Fatalf("oversized context: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := post(t, handler, `{"message":"Hello","context":{"not":"a list"}}`); rec.Code != http.StatusBadRequest {
+		t.Fatalf("a context that is not a list: %d", rec.Code)
 	}
 }
 
@@ -604,7 +675,7 @@ func (s stopping) Respond(ctx context.Context, req Request, emit Emitter) (Reply
 	return Reply{Text: "The first words"}, ctx.Err()
 }
 
-func TestChatKeepsAStoppedAnswer(t *testing.T) {
+func TestChatLeavesAStoppedAnswerToTheBrowser(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	calls := 0
 	handler := serveApp(t, stopping{cancel: cancel, calls: &calls})
@@ -612,13 +683,8 @@ func TestChatKeepsAStoppedAnswer(t *testing.T) {
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 	body := rec.Body.String()
-	if strings.Contains(body, "event: error") || strings.Contains(body, "event: done") {
+	if !strings.Contains(body, "The first words") || strings.Contains(body, "event: error") || strings.Contains(body, "event: done") {
 		t.Fatalf("a stopped answer was answered: %s", body)
-	}
-	id := strings.TrimSpace(strings.SplitN(strings.SplitN(body, `"conversation":"`, 2)[1], `"`, 2)[0])
-	rec = post(t, handler, `{"conversation":"`+id+`","message":"And tomorrow?"}`)
-	if !strings.Contains(rec.Body.String(), `"turns":2`) {
-		t.Fatalf("the stopped turn was not kept: %s", rec.Body.String())
 	}
 }
 
@@ -640,17 +706,6 @@ func TestChatStreamsThroughAWrappedWriter(t *testing.T) {
 	handler.ServeHTTP(wrapped{rec}, req)
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "event: done") || !rec.Flushed {
 		t.Fatalf("wrapped chat: %d flushed=%v %s", rec.Code, rec.Flushed, rec.Body.String())
-	}
-}
-
-func TestChatRefusesAnotherPersonsConversation(t *testing.T) {
-	mux := http.NewServeMux()
-	Register(mux, sampleSources(t), Fake{})
-	rec := post(t, auth.Fixed(jordan, mux), `{"message":"Hello"}`)
-	id := strings.SplitN(strings.SplitN(rec.Body.String(), `"conversation":"`, 2)[1], `"`, 2)[0]
-	rec = post(t, auth.Fixed("robin.whitfield@heliosschool.org", mux), `{"conversation":"`+id+`","message":"Hello"}`)
-	if strings.Contains(rec.Body.String(), `"conversation":"`+id+`"`) || !strings.Contains(rec.Body.String(), `"turns":1`) {
-		t.Fatalf("robin continued jordan's conversation: %s", rec.Body.String())
 	}
 }
 

@@ -1,11 +1,12 @@
 import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, initSpoof, markSuper} from '/toolbar.js';
 import {render, stable} from '/markdown.js';
 
-// The chats live in this browser, under the signed-in address: each its
-// id on the server (while the server still knows it), a title from its
-// first question, when it was last touched, and every turn. The server
-// keeps a working copy for an hour; after that, or a restart, it rebuilds
-// one from the turns sent along with the next message.
+// The chats live in this browser, under the signed-in address: each an
+// id, a title from its first question, when it was last touched, every
+// turn as drawn, and the conversation as the model saw it - context, the
+// messages the server hands back after each turn, and known, the documents
+// it has been told of - sent whole with the next message, since the server
+// keeps nothing.
 const maxChats = 50;
 
 const state = {model: null, chats: [], current: null, busy: false, stopper: null};
@@ -25,6 +26,12 @@ function loadChats() {
   } catch {
     state.chats = [];
   }
+  for (const chat of state.chats) {
+    if (!Array.isArray(chat.context)) {
+      chat.context = chat.turns.filter(t => (t.text || '').trim()).map(t => textMessage(t.role, t.text));
+      chat.known = [];
+    }
+  }
   state.chats.sort((a, b) => (b.updated || 0) - (a.updated || 0));
   const id = localStorage.getItem(currentKey());
   state.current = state.chats.find(c => c.id === id) || null;
@@ -33,12 +40,26 @@ function loadChats() {
 function saveChats() {
   state.chats.sort((a, b) => (b.updated || 0) - (a.updated || 0));
   state.chats = state.chats.slice(0, maxChats);
-  localStorage.setItem(chatsKey(), JSON.stringify(state.chats));
+  for (;;) {
+    try {
+      localStorage.setItem(chatsKey(), JSON.stringify(state.chats));
+      break;
+    } catch (err) {
+      if (err.name !== 'QuotaExceededError' || state.chats.length <= 1) {
+        throw err;
+      }
+      state.chats.pop();
+    }
+  }
   if (state.current) {
     localStorage.setItem(currentKey(), state.current.id);
   } else {
     localStorage.removeItem(currentKey());
   }
+}
+
+function textMessage(role, text) {
+  return {role, content: [{type: 'text', text}]};
 }
 
 function el(tag, className, text) {
@@ -291,6 +312,7 @@ function keepStopped(chat, message, mine, answer, segments, tools, cards) {
   }
   showSegments(answer, segments, false, cards);
   chat.turns.push({role: 'user', text: message}, {role: 'assistant', text, tools, segments, cards});
+  chat.context.push(textMessage('user', message), textMessage('assistant', text));
   chat.updated = Date.now();
   saveChats();
   renderChats();
@@ -336,7 +358,7 @@ async function send(message) {
     return;
   }
   if (!state.current) {
-    state.current = {id: '', title: message.slice(0, 80), updated: Date.now(), turns: []};
+    state.current = {id: crypto.randomUUID(), title: message.slice(0, 80), updated: Date.now(), turns: [], context: [], known: []};
     state.chats.unshift(state.current);
     thread().replaceChildren();
   }
@@ -382,7 +404,7 @@ async function send(message) {
   const stopper = new AbortController();
   state.stopper = stopper;
   try {
-    const res = await fetch('/api/ask/chat', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({conversation: chat.id, message, turns: chat.turns}), signal: stopper.signal});
+    const res = await fetch('/api/ask/chat', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({conversation: chat.id, message, context: chat.context, known: chat.known}), signal: stopper.signal});
     if (!res.ok) {
       const why = await res.text();
       answer.remove();
@@ -403,9 +425,6 @@ async function send(message) {
     }
     await readEvents(res, (kind, data) => {
       switch (kind) {
-        case 'start':
-          chat.id = data.conversation;
-          break;
         case 'text':
           addText(data);
           draw();
@@ -434,6 +453,8 @@ async function send(message) {
     scrollDown();
     if (finished) {
       chat.turns.push({role: 'user', text: message}, {role: 'assistant', text: finished.text, tools: finished.tools || [], segments, cards});
+      chat.context.push(...finished.messages);
+      chat.known = finished.known;
       chat.updated = Date.now();
       saveChats();
       renderChats();
