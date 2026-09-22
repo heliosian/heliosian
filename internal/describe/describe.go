@@ -7,6 +7,7 @@ package describe
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -15,9 +16,15 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
+
+	"heliosian/internal/claude"
 )
 
 const model = "claude-opus-5"
+
+const maxPrompt = 4 << 10
+
+var ErrTooLong = errors.New("that's more than Claude needs to go on; shorten it")
 
 // The style the list already uses: the charity's name, what it does, for whom.
 const system = `You look up charities for a school community newsletter that announces staff birthday donations, and return two things: where to donate, and a one-sentence description.
@@ -44,14 +51,15 @@ var schema = map[string]any{
 // runs without a key and the button says so.
 type Describer struct {
 	client anthropic.Client
+	limit  *claude.Limiter
 }
 
 // New returns nil without a key.
-func New(key string) *Describer {
+func New(key string, limit *claude.Limiter) *Describer {
 	if key == "" {
 		return nil
 	}
-	return &Describer{client: anthropic.NewClient(option.WithAPIKey(key))}
+	return &Describer{client: anthropic.NewClient(option.WithAPIKey(key)), limit: limit}
 }
 
 // Info is what Claude found: where to donate, and the sentence.
@@ -62,15 +70,21 @@ type Info struct {
 
 // Charity returns what Claude found about the charity, starting from link
 // when there is one; an empty sentence means it could not find out.
-func (d *Describer) Charity(ctx context.Context, name, link string) (Info, error) {
+func (d *Describer) Charity(ctx context.Context, actor, name, link string) (Info, error) {
 	if d == nil {
 		return Info{}, fmt.Errorf("describing charities is not set up: no Anthropic key")
+	}
+	if !d.limit.Allow(actor, time.Now()) {
+		return Info{}, claude.ErrTooMany
 	}
 	ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
 	defer cancel()
 	prompt := "Charity: " + strings.TrimSpace(name)
 	if link = strings.TrimSpace(link); link != "" {
 		prompt += "\nDonation link given: " + link
+	}
+	if len(prompt) > maxPrompt {
+		return Info{}, ErrTooLong
 	}
 	// The donation link is often a giving platform's page rather than the
 	// charity's own site, so the fetch is left free to follow a search there.
@@ -158,9 +172,12 @@ var groupSchema = map[string]any{
 }
 
 // Group returns Claude's description of a group from its facts.
-func (d *Describer) Group(ctx context.Context, facts GroupFacts) (string, error) {
+func (d *Describer) Group(ctx context.Context, actor string, facts GroupFacts) (string, error) {
 	if d == nil {
 		return "", fmt.Errorf("describing groups is not set up: no Anthropic key")
+	}
+	if !d.limit.Allow(actor, time.Now()) {
+		return "", claude.ErrTooMany
 	}
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
@@ -180,6 +197,9 @@ func (d *Describer) Group(ctx context.Context, facts GroupFacts) (string, error)
 	tally("By role", facts.Roles)
 	tally("Students' grades", facts.Grades)
 	tally("Students' classrooms", facts.Classrooms)
+	if prompt.Len() > maxPrompt {
+		return "", ErrTooLong
+	}
 	stream := d.client.Messages.NewStreaming(ctx, anthropic.MessageNewParams{
 		Model:        model,
 		MaxTokens:    4000,
@@ -242,7 +262,7 @@ func tallyWords(counts map[string]int) string {
 // without a key.
 type Fake struct{}
 
-func (Fake) Charity(ctx context.Context, name, link string) (Info, error) {
+func (Fake) Charity(ctx context.Context, actor, name, link string) (Info, error) {
 	select {
 	case <-ctx.Done():
 		return Info{}, ctx.Err()
@@ -256,7 +276,7 @@ func (Fake) Charity(ctx context.Context, name, link string) (Info, error) {
 }
 
 // Group in sample mode: the rules read back as a sentence, after a moment.
-func (Fake) Group(ctx context.Context, facts GroupFacts) (string, error) {
+func (Fake) Group(ctx context.Context, actor string, facts GroupFacts) (string, error) {
 	select {
 	case <-ctx.Done():
 		return "", ctx.Err()

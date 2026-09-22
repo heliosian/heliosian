@@ -3,6 +3,7 @@ package birthday
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"heliosian/internal/blob"
 	"io"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"heliosian/internal/auth"
+	"heliosian/internal/claude"
 	"heliosian/internal/data"
 	"heliosian/internal/describe"
 	"heliosian/internal/logging"
@@ -61,7 +63,7 @@ type app struct {
 // sentence about it; nil leaves the charity form's Generate Info saying it is
 // not set up.
 type Describer interface {
-	Charity(ctx context.Context, name, link string) (describe.Info, error)
+	Charity(ctx context.Context, actor, name, link string) (describe.Info, error)
 }
 
 // Register wires the app: one shell for every page, the model, and the writes.
@@ -852,7 +854,15 @@ func (a app) describeCharity(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "suggesting a sentence is not set up on this server", http.StatusServiceUnavailable)
 		return
 	}
-	info, err := a.describer.Charity(r.Context(), name, link)
+	info, err := a.describer.Charity(r.Context(), actor, name, link)
+	if errors.Is(err, claude.ErrTooMany) {
+		http.Error(w, err.Error(), http.StatusTooManyRequests)
+		return
+	}
+	if errors.Is(err, describe.ErrTooLong) {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	if err != nil {
 		slog.ErrorContext(r.Context(), "birthday: describe charity", "actor", actor, "name", name, "error", err)
 		http.Error(w, "could not look this charity up right now", http.StatusBadGateway)

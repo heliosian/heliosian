@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -22,6 +21,7 @@ import (
 	"heliosian/internal/auth"
 	"heliosian/internal/calendar"
 	"heliosian/internal/celebrate"
+	"heliosian/internal/claude"
 	"heliosian/internal/home"
 	"heliosian/internal/loop"
 	"heliosian/internal/serve"
@@ -32,7 +32,6 @@ import (
 const (
 	shell                 = "web/ask/index.html"
 	maxTurns              = 40
-	messagesPerHour       = 30
 	maxMessageLength      = 4000
 	maxConversationLength = 200000
 	turnTimeout           = 3 * time.Minute
@@ -60,11 +59,11 @@ type Sources struct {
 type app struct {
 	sources   Sources
 	responder Responder
-	recent    *limiter
+	recent    *claude.Limiter
 }
 
-func Register(mux *http.ServeMux, sources Sources, responder Responder) {
-	a := app{sources: sources, responder: responder, recent: newLimiter()}
+func Register(mux *http.ServeMux, sources Sources, responder Responder, recent *claude.Limiter) {
+	a := app{sources: sources, responder: responder, recent: recent}
 	mux.HandleFunc("GET /{$}", a.page)
 	mux.HandleFunc("GET /api/ask/model", a.model)
 	mux.HandleFunc("POST /api/ask/chat", a.chat)
@@ -138,7 +137,7 @@ func (a app) chat(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "this chat has run long; start a new one", http.StatusBadRequest)
 		return
 	}
-	if !a.recent.allow(email, time.Now()) {
+	if !a.recent.Allow(email, time.Now()) {
 		http.Error(w, "that's a lot of questions for one hour; try again a little later", http.StatusTooManyRequests)
 		return
 	}
@@ -274,30 +273,4 @@ func asked(history []anthropic.BetaMessageParam) int {
 		}
 	}
 	return n
-}
-
-type limiter struct {
-	mu     sync.Mutex
-	recent map[string][]time.Time
-}
-
-func newLimiter() *limiter {
-	return &limiter{recent: map[string][]time.Time{}}
-}
-
-func (l *limiter) allow(email string, now time.Time) bool {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	kept := []time.Time{}
-	for _, t := range l.recent[email] {
-		if now.Sub(t) < time.Hour {
-			kept = append(kept, t)
-		}
-	}
-	if len(kept) >= messagesPerHour {
-		l.recent[email] = kept
-		return false
-	}
-	l.recent[email] = append(kept, now)
-	return true
 }

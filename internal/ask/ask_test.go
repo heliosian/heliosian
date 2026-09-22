@@ -17,6 +17,7 @@ import (
 	"heliosian/internal/auth"
 	"heliosian/internal/calendar"
 	"heliosian/internal/celebrate"
+	"heliosian/internal/claude"
 	"heliosian/internal/data"
 	"heliosian/internal/home"
 	"heliosian/internal/loop"
@@ -283,7 +284,7 @@ func TestChatTellsOfANewDocumentOnce(t *testing.T) {
 	sources.Artifacts = func() *artifacts.Model { return current }
 	requests := []Request{}
 	mux := http.NewServeMux()
-	Register(mux, sources, recording{requests: &requests})
+	Register(mux, sources, recording{requests: &requests}, claude.NewLimiter())
 	handler := auth.Fixed(jordan, mux)
 	chat := &transcript{}
 	first := chat.keep(t, post(t, handler, chat.body(t, "Anything new?")))
@@ -577,7 +578,7 @@ func anyStrings(list any) []string {
 func serveApp(t *testing.T, responder Responder) http.Handler {
 	t.Helper()
 	mux := http.NewServeMux()
-	Register(mux, sampleSources(t), responder)
+	Register(mux, sampleSources(t), responder, claude.NewLimiter())
 	return auth.Fixed(jordan, mux)
 }
 
@@ -592,7 +593,7 @@ func post(t *testing.T, handler http.Handler, body string) *httptest.ResponseRec
 func TestChatStreamsAndKeepsTheConversation(t *testing.T) {
 	requests := []Request{}
 	mux := http.NewServeMux()
-	Register(mux, sampleSources(t), recording{requests: &requests})
+	Register(mux, sampleSources(t), recording{requests: &requests}, claude.NewLimiter())
 	handler := auth.Fixed(jordan, mux)
 	chat := &transcript{}
 	rec := post(t, handler, chat.body(t, "What kind of day is today?"))
@@ -628,7 +629,7 @@ func TestChatStreamsAndKeepsTheConversation(t *testing.T) {
 func TestChatReadsTheBrowsersContextWithKeys(t *testing.T) {
 	requests := []Request{}
 	mux := http.NewServeMux()
-	Register(mux, sampleSources(t), recording{requests: &requests})
+	Register(mux, sampleSources(t), recording{requests: &requests}, claude.NewLimiter())
 	handler := auth.Fixed(jordan, mux)
 	chat := &transcript{}
 	if err := json.Unmarshal([]byte(`[{"role":"user","content":[{"type":"text","text":"Is `+samURL+` here?"}]},{"role":"assistant","content":[{"type":"text","text":"Yes, [Sam](`+samURL+`)."}]},{"role":"user","content":[{"type":"text","text":"Two"}]},{"role":"assistant","content":[{"type":"text","text":"B"}]}]`), &chat.context); err != nil {
@@ -716,21 +717,5 @@ func TestChatRefusesEmptyAndOverlongMessages(t *testing.T) {
 	}
 	if rec := post(t, handler, `{"message":"`+strings.Repeat("a", 5000)+`"}`); rec.Code != http.StatusBadRequest {
 		t.Errorf("overlong: %d", rec.Code)
-	}
-}
-
-func TestLimiterCountsAnHour(t *testing.T) {
-	l := newLimiter()
-	now := time.Now()
-	for i := 0; i < messagesPerHour; i++ {
-		if !l.allow(jordan, now) {
-			t.Fatalf("message %d refused", i)
-		}
-	}
-	if l.allow(jordan, now) {
-		t.Fatal("the message past the limit was allowed")
-	}
-	if !l.allow(jordan, now.Add(time.Hour+time.Minute)) {
-		t.Fatal("an hour later was refused")
 	}
 }

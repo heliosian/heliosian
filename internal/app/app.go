@@ -35,6 +35,7 @@ import (
 	"heliosian/internal/calendar"
 	"heliosian/internal/calendarimport"
 	"heliosian/internal/celebrate"
+	"heliosian/internal/claude"
 	"heliosian/internal/config"
 	"heliosian/internal/data"
 	"heliosian/internal/describe"
@@ -67,6 +68,8 @@ const (
 // team, as hca, and the calendar - whose address is when (canonicalHost) -
 // as calendar and cal.
 var aliases = map[string]string{"hca": "team", "cal": "calendar", "when": "calendar"}
+
+var spend = claude.NewLimiter()
 
 // appFor reads the app out of a hostname under the domain this server
 // answers: <app>.<domain>, with home also as the bare and www domain.
@@ -1040,7 +1043,7 @@ func NewCore(cfg Config) *Core {
 	loopMux := http.NewServeMux()
 	loop.Register(loopMux, loopCache, cfg.Writer, queue, cfg.Store, loopDir, settings.SuperAdmins, loopMail, cfg.LoopDescriber)
 	// The chat reads every app's model, so it is wired once they all are.
-	ask.Register(askMux, askSources(cache, settings, teamCache, celebrateCache, calendarCache, loopCache, homeCache, artifactsCache, cfg.Embedder, smartLists{cache, teamCache, celebrateCache, loopCache, loopDir}, loopDir, linked), cfg.Asker)
+	ask.Register(askMux, askSources(cache, settings, teamCache, celebrateCache, calendarCache, loopCache, homeCache, artifactsCache, cfg.Embedder, smartLists{cache, teamCache, celebrateCache, loopCache, loopDir}, loopDir, linked), cfg.Asker, spend)
 	// Every app's toolbar asks its own origin what its switch lists and
 	// which rows to leave off; Heliosian's cache answers for all of them.
 	for _, m := range []*http.ServeMux{mux, teamMux, birthdayMux, celebrateMux, calendarMux, loopMux, askMux} {
@@ -1299,7 +1302,7 @@ func artifactsMail(store *blob.Store) artifacts.Inbox {
 // key is set (ANTHROPIC_API_KEY, or local/creds/anthropic.key locally), else nil.
 // A nil *describe.Describer must stay a nil interface, or the app would call it.
 func ClaudeDescriber() birthday.Describer {
-	if d := describe.New(optionalKey("ANTHROPIC_API_KEY", "local/creds/anthropic.key")); d != nil {
+	if d := describe.New(optionalKey("ANTHROPIC_API_KEY", "local/creds/anthropic.key"), spend); d != nil {
 		return d
 	}
 	return nil
@@ -1307,7 +1310,7 @@ func ClaudeDescriber() birthday.Describer {
 
 // ClaudeGroupDescriber is Loop's group describer on the same key, else nil.
 func ClaudeGroupDescriber() loop.Describer {
-	if d := describe.New(optionalKey("ANTHROPIC_API_KEY", "local/creds/anthropic.key")); d != nil {
+	if d := describe.New(optionalKey("ANTHROPIC_API_KEY", "local/creds/anthropic.key"), spend); d != nil {
 		return d
 	}
 	return nil

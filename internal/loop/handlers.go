@@ -3,6 +3,7 @@ package loop
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -14,6 +15,7 @@ import (
 
 	"heliosian/internal/auth"
 	"heliosian/internal/blob"
+	"heliosian/internal/claude"
 	"heliosian/internal/data"
 	"heliosian/internal/describe"
 	"heliosian/internal/filter"
@@ -71,7 +73,7 @@ type app struct {
 // Describer writes a group's description from what the list holds; nil
 // leaves the editor's Generate with AI saying it is not set up.
 type Describer interface {
-	Group(ctx context.Context, facts describe.GroupFacts) (string, error)
+	Group(ctx context.Context, actor string, facts describe.GroupFacts) (string, error)
 }
 
 // Register wires the app: one shell for every page, the model, the preview,
@@ -519,7 +521,15 @@ func (a app) describe(w http.ResponseWriter, r *http.Request) {
 			facts.Roles["Parent"]++
 		}
 	}
-	description, err := a.describer.Group(r.Context(), facts)
+	description, err := a.describer.Group(r.Context(), email, facts)
+	if errors.Is(err, claude.ErrTooMany) {
+		http.Error(w, err.Error(), http.StatusTooManyRequests)
+		return
+	}
+	if errors.Is(err, describe.ErrTooLong) {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	if err != nil {
 		slog.ErrorContext(r.Context(), "groups: describe", "actor", email, "title", body.Title, "error", err)
 		http.Error(w, "could not write a description right now", http.StatusBadGateway)
