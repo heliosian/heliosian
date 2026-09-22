@@ -637,7 +637,7 @@ func (a app) saveGroup(w http.ResponseWriter, r *http.Request) {
 		} else if err := a.writer.Upsert(appName, groupsTab, "Name", g.Name, groupCells(g)); err != nil {
 			return err
 		}
-		for _, tab := range []string{managersTab, rulesTab, additionsTab, excludedTab, aliasesTab, archivedTab} {
+		for _, tab := range []string{managersTab, rulesTab, additionsTab, excludedTab, aliasesTab} {
 			if err := a.writer.Delete(appName, tab, map[string]string{"Group": g.Name}); err != nil {
 				return err
 			}
@@ -711,7 +711,7 @@ func (a app) deleteGroup(w http.ResponseWriter, r *http.Request) {
 		if err := a.writer.Delete(appName, groupsTab, map[string]string{"Name": name}); err != nil {
 			return err
 		}
-		for _, tab := range []string{managersTab, rulesTab, additionsTab, excludedTab, aliasesTab} {
+		for _, tab := range []string{managersTab, rulesTab, additionsTab, excludedTab, aliasesTab, archivedTab} {
 			if err := a.writer.Delete(appName, tab, map[string]string{"Group": name}); err != nil {
 				return err
 			}
