@@ -136,6 +136,15 @@ func (a app) requireAdmin(w http.ResponseWriter, r *http.Request) (string, bool)
 	return email, true
 }
 
+func (a app) requireTeam(w http.ResponseWriter, r *http.Request) (string, bool, bool) {
+	email, admin := a.who(r)
+	if !admin && !a.cache.Model().OnTeam(email) {
+		http.Error(w, "team membership required", http.StatusForbidden)
+		return "", false, false
+	}
+	return email, admin, true
+}
+
 var now = func() time.Time {
 	return time.Now().In(local)
 }
@@ -227,7 +236,10 @@ func (a app) findStaff(w http.ResponseWriter, raw string) (string, bool) {
 }
 
 func (a app) assign(w http.ResponseWriter, r *http.Request) {
-	actor, _ := a.who(r)
+	actor, _, ok := a.requireTeam(w, r)
+	if !ok {
+		return
+	}
 	var body struct {
 		Email      string `json:"email"`
 		AssignedTo string `json:"assignedTo"`
@@ -273,7 +285,10 @@ func (a app) assign(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a app) unassign(w http.ResponseWriter, r *http.Request) {
-	actor, _ := a.who(r)
+	actor, _, ok := a.requireTeam(w, r)
+	if !ok {
+		return
+	}
 	var body struct {
 		Email string `json:"email"`
 	}
@@ -301,7 +316,10 @@ func (a app) unassign(w http.ResponseWriter, r *http.Request) {
 // outreach records that someone has been contacted this year, or takes that
 // back.
 func (a app) outreach(w http.ResponseWriter, r *http.Request) {
-	actor, _ := a.who(r)
+	actor, _, ok := a.requireTeam(w, r)
+	if !ok {
+		return
+	}
 	var body struct {
 		Email     string `json:"email"`
 		Contacted bool   `json:"contacted"`
@@ -343,7 +361,10 @@ func (a app) outreach(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a app) saveDonation(w http.ResponseWriter, r *http.Request) {
-	actor, _ := a.who(r)
+	actor, _, ok := a.requireTeam(w, r)
+	if !ok {
+		return
+	}
 	var body struct {
 		Email   string `json:"email"`
 		Charity string `json:"charity"`
@@ -390,7 +411,10 @@ func (a app) saveDonation(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a app) deleteDonation(w http.ResponseWriter, r *http.Request) {
-	actor, _ := a.who(r)
+	actor, _, ok := a.requireTeam(w, r)
+	if !ok {
+		return
+	}
 	var body struct {
 		Email string `json:"email"`
 	}
@@ -418,7 +442,10 @@ func (a app) deleteDonation(w http.ResponseWriter, r *http.Request) {
 // used marks this year's donation as carried in the newsletter, or takes that
 // back.
 func (a app) used(w http.ResponseWriter, r *http.Request) {
-	actor, _ := a.who(r)
+	actor, _, ok := a.requireTeam(w, r)
+	if !ok {
+		return
+	}
 	var body struct {
 		Email string `json:"email"`
 		Used  bool   `json:"used"`
@@ -457,7 +484,10 @@ func (a app) used(w http.ResponseWriter, r *http.Request) {
 // saveBirthday records or corrects a birthday, and the newsletter it should
 // land in when the usual pick is wrong.
 func (a app) saveBirthday(w http.ResponseWriter, r *http.Request) {
-	actor, _ := a.who(r)
+	actor, _, ok := a.requireTeam(w, r)
+	if !ok {
+		return
+	}
 	var body struct {
 		Email    string `json:"email"`
 		Birthday string `json:"birthday"`
@@ -531,7 +561,10 @@ func (a app) deleteBirthday(w http.ResponseWriter, r *http.Request) {
 // donated for but kept out of the newsletter, on their Birthdays row, adding
 // one without a birthday for someone opting out who has none on file.
 func (a app) saveParticipation(w http.ResponseWriter, r *http.Request) {
-	actor, _ := a.who(r)
+	actor, _, ok := a.requireTeam(w, r)
+	if !ok {
+		return
+	}
 	var body struct {
 		Email string `json:"email"`
 		Level string `json:"level"`
@@ -573,7 +606,10 @@ func (a app) saveParticipation(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a app) deleteParticipation(w http.ResponseWriter, r *http.Request) {
-	actor, _ := a.who(r)
+	actor, _, ok := a.requireTeam(w, r)
+	if !ok {
+		return
+	}
 	var body struct {
 		Email string `json:"email"`
 	}
@@ -613,7 +649,10 @@ func (a app) deleteParticipation(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a app) addNote(w http.ResponseWriter, r *http.Request) {
-	actor, _ := a.who(r)
+	actor, _, ok := a.requireTeam(w, r)
+	if !ok {
+		return
+	}
 	var body struct {
 		Email string `json:"email"`
 		Note  string `json:"note"`
@@ -645,7 +684,10 @@ func (a app) addNote(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a app) deleteNote(w http.ResponseWriter, r *http.Request) {
-	actor, admin := a.who(r)
+	actor, admin, ok := a.requireTeam(w, r)
+	if !ok {
+		return
+	}
 	var body struct {
 		Email   string `json:"email"`
 		Note    string `json:"note"`
@@ -676,7 +718,10 @@ func (a app) deleteNote(w http.ResponseWriter, r *http.Request) {
 // member's pick often is not on the list yet; only an admin decides whether it
 // is allowed.
 func (a app) saveCharity(w http.ResponseWriter, r *http.Request) {
-	actor, admin := a.who(r)
+	actor, admin, ok := a.requireTeam(w, r)
+	if !ok {
+		return
+	}
 	var body struct {
 		Original      string `json:"original"`
 		Name          string `json:"name"`
@@ -787,7 +832,10 @@ func (a app) flushCharityRename(oldName, name string) error {
 // describeCharity asks Claude for the newsletter's sentence about a charity,
 // for the form to offer; nothing is saved until the person saves the form.
 func (a app) describeCharity(w http.ResponseWriter, r *http.Request) {
-	actor, _ := a.who(r)
+	actor, _, ok := a.requireTeam(w, r)
+	if !ok {
+		return
+	}
 	var body struct {
 		Name         string `json:"name"`
 		DonationLink string `json:"donationLink"`

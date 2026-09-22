@@ -184,12 +184,11 @@ func Render(model *Model, directory Directory, email string, admin bool, now tim
 		User:            User{Email: email, Name: me.Name, Initial: strings.ToUpper(me.Name[:1]), PhotoURL: me.PhotoURL, IsAdmin: admin},
 		Year:            YearView{Current: year.Label, Last: ShiftYear(year.Label, -1), Start: dateCell(year.Start), End: dateCell(year.End.AddDate(0, 0, -1))},
 		Today:           dateCell(today),
-		Settings:        model.Settings,
 		Staff:           []StaffView{},
 		Skipped:         []StaffView{},
 		Missing:         []StaffView{},
-		Charities:       model.Charities,
-		NewsletterDates: model.NewsletterDates,
+		Charities:       []Charity{},
+		NewsletterDates: []string{},
 		Team:            []TeamView{},
 		Departments:     directory.Departments(),
 	}
@@ -199,6 +198,10 @@ func Render(model *Model, directory Directory, email string, admin bool, now tim
 	}
 	stale, privacy := directory.Alerts(email)
 	view.Alerts = Alerts{Stale: stale, Privacy: privacy}
+	if !admin && !model.OnTeam(email) {
+		return view
+	}
+	view.Settings, view.Charities, view.NewsletterDates = model.Settings, model.Charities, model.NewsletterDates
 	// Someone the directory no longer lists has left the school: their row
 	// keeps its history but they are nobody's job.
 	recorded := map[string]bool{}

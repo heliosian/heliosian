@@ -729,6 +729,38 @@ func TestJoinTeam(t *testing.T) {
 	}
 }
 
+func TestStrangerSeesOnlyTheJoinQuestion(t *testing.T) {
+	cache, mux := newServer(t)
+	stranger := "sam.whitfield@heliosschool.org"
+	rec := call(t, mux, stranger, "GET", "/api/birthday/model", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("model: %d %s", rec.Code, rec.Body)
+	}
+	var v View
+	if err := json.Unmarshal(rec.Body.Bytes(), &v); err != nil {
+		t.Fatal(err)
+	}
+	if v.User.Email != stranger || len(v.Team) != 3 || len(v.Staff)+len(v.Skipped)+len(v.Missing)+len(v.Charities)+len(v.NewsletterDates) != 0 || v.Settings.DefaultCharity != "" {
+		t.Fatalf("a stranger's model: %+v", v)
+	}
+	for _, c := range []struct{ method, path string }{
+		{"POST", "/api/birthday/assign"}, {"DELETE", "/api/birthday/assign"}, {"POST", "/api/birthday/outreach"},
+		{"POST", "/api/birthday/donation"}, {"DELETE", "/api/birthday/donation"}, {"POST", "/api/birthday/used"},
+		{"POST", "/api/birthday/birthday"}, {"POST", "/api/birthday/participation"}, {"DELETE", "/api/birthday/participation"},
+		{"POST", "/api/birthday/note"}, {"DELETE", "/api/birthday/note"}, {"POST", "/api/birthday/charity"}, {"POST", "/api/birthday/charity/describe"},
+	} {
+		if rec := call(t, mux, stranger, c.method, c.path, map[string]any{"email": "dana.hawkins@heliosschool.org", "assignedTo": stranger, "name": "X"}); rec.Code != http.StatusForbidden {
+			t.Errorf("%s %s by a stranger: %d %s", c.method, c.path, rec.Code, rec.Body)
+		}
+	}
+	if rec := call(t, mux, stranger, "POST", "/api/birthday/team/join", nil); rec.Code != http.StatusNoContent {
+		t.Fatalf("join: %d %s", rec.Code, rec.Body)
+	}
+	if v := view(t, cache, stranger); len(v.Staff) == 0 || len(v.Team) != 4 {
+		t.Fatalf("after joining: %d staff, %d on the team", len(v.Staff), len(v.Team))
+	}
+}
+
 func TestNewsletterDates(t *testing.T) {
 	cache, mux := newServer(t)
 	if rec := call(t, mux, parent, "POST", "/api/birthday/newsletter-date", map[string]any{"date": "2027-06-11"}); rec.Code != http.StatusForbidden {
