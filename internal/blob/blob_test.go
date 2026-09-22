@@ -2,10 +2,15 @@ package blob
 
 import (
 	"bytes"
+	"encoding/binary"
+	"hash/crc32"
+	"image"
+	"image/png"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -72,6 +77,43 @@ func TestDiskCacheRoundTrips(t *testing.T) {
 	}
 	if got, err = none.cached("photos/abc.jpg"); err != nil || got != nil {
 		t.Fatalf("no cache dir: %+v %v", got, err)
+	}
+}
+
+// headerPNG is a PNG that is nothing but its header: the dimensions a decoder
+// would allocate from, with no pixel data behind them.
+func headerPNG(w, h int) []byte {
+	ihdr := []byte("IHDR")
+	ihdr = binary.BigEndian.AppendUint32(ihdr, uint32(w))
+	ihdr = binary.BigEndian.AppendUint32(ihdr, uint32(h))
+	ihdr = append(ihdr, 8, 0, 0, 0, 0)
+	out := []byte("\x89PNG\r\n\x1a\n")
+	out = binary.BigEndian.AppendUint32(out, 13)
+	out = append(out, ihdr...)
+	return binary.BigEndian.AppendUint32(out, crc32.ChecksumIEEE(ihdr))
+}
+
+func TestDecodeRefusesOversizeHeader(t *testing.T) {
+	bomb := headerPNG(50000, 50000)
+	if len(bomb) > 64 {
+		t.Fatalf("the crafted file is %d bytes, which is not the point", len(bomb))
+	}
+	if _, err := Decode(bomb); err == nil || !strings.Contains(err.Error(), "over the limit") {
+		t.Errorf("a 50000x50000 header: %v, want the pixel limit", err)
+	}
+	if _, err := Thumbnail(bomb); err == nil {
+		t.Error("Thumbnail decoded a 50000x50000 header")
+	}
+
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, image.NewGray(image.Rect(0, 0, 8, 8))); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Decode(buf.Bytes()); err != nil {
+		t.Errorf("an 8x8 png was refused: %v", err)
+	}
+	if _, err := Thumbnail(buf.Bytes()); err != nil {
+		t.Errorf("Thumbnail refused an 8x8 png: %v", err)
 	}
 }
 

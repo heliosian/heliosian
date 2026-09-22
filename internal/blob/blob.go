@@ -42,6 +42,7 @@ const (
 	thumbMime     = "image/jpeg"
 	thumbVersion  = "1"
 	fetchWorkers  = 32
+	maxPixels     = 40_000_000
 )
 
 var folders = []string{"photos", "pronunciation", "classroom-images", "grade-images", "link-images", "activity-images", "category-images"}
@@ -491,6 +492,18 @@ func (u *Uploader) Remove(name string) error {
 func (u *Uploader) Put(folder, name, mimeType string, content []byte) (bool, error) {
 	ctx := context.Background()
 	full := folder + "/" + name
+	var thumb []byte
+	if strings.HasPrefix(mimeType, "image/") {
+		hasThumb, err := exists(ctx, u.service, thumbName(full))
+		if err != nil {
+			return false, err
+		}
+		if !hasThumb {
+			if thumb, err = Thumbnail(content); err != nil {
+				return false, fmt.Errorf("thumbnail %s: %w", full, err)
+			}
+		}
+	}
 	wrote := false
 	present, err := exists(ctx, u.service, full)
 	if err != nil {
@@ -502,14 +515,10 @@ func (u *Uploader) Put(folder, name, mimeType string, content []byte) (bool, err
 		}
 		wrote = true
 	}
-	if !strings.HasPrefix(mimeType, "image/") {
+	if thumb == nil {
 		return wrote, nil
 	}
-	hasThumb, err := exists(ctx, u.service, thumbName(full))
-	if err != nil || hasThumb {
-		return wrote, err
-	}
-	if err := writeThumbnail(ctx, u.service, full, content); err != nil {
+	if err := write(ctx, u.service, thumbName(full), thumbMime, thumb); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -541,22 +550,21 @@ func write(ctx context.Context, service *storage.Service, name, mimeType string,
 	return nil
 }
 
-func writeThumbnail(ctx context.Context, service *storage.Service, name string, content []byte) error {
+// writeWithThumbnail makes the thumbnail before it writes anything, so a picture
+// the decoder refuses - one declaring more pixels than Decode allows - is never
+// stored, and so never reaches the readers that decode it again.
+func writeWithThumbnail(ctx context.Context, service *storage.Service, name, mimeType string, content []byte) error {
+	if !strings.HasPrefix(mimeType, "image/") {
+		return write(ctx, service, name, mimeType, content)
+	}
 	thumb, err := Thumbnail(content)
 	if err != nil {
 		return fmt.Errorf("thumbnail %s: %w", name, err)
 	}
-	return write(ctx, service, thumbName(name), thumbMime, thumb)
-}
-
-func writeWithThumbnail(ctx context.Context, service *storage.Service, name, mimeType string, content []byte) error {
 	if err := write(ctx, service, name, mimeType, content); err != nil {
 		return err
 	}
-	if !strings.HasPrefix(mimeType, "image/") {
-		return nil
-	}
-	return writeThumbnail(ctx, service, name, content)
+	return write(ctx, service, thumbName(name), thumbMime, thumb)
 }
 
 // Put writes a content-addressed object and its thumbnail and takes it into memory. A
@@ -628,8 +636,23 @@ func (s *Store) serve(w http.ResponseWriter, r *http.Request) {
 	http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(e.data))
 }
 
-func Thumbnail(src []byte) ([]byte, error) {
+// Decode reads an image, refusing one whose header declares more pixels than a
+// decoder should be asked for. A decoder allocates the whole frame from the
+// header before it reads a pixel, so a few hundred bytes can ask for gigabytes.
+func Decode(src []byte) (image.Image, error) {
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(src))
+	if err != nil {
+		return nil, err
+	}
+	if cfg.Width < 1 || cfg.Height < 1 || cfg.Width > maxPixels/cfg.Height {
+		return nil, fmt.Errorf("image declares %dx%d pixels, over the limit of %d", cfg.Width, cfg.Height, maxPixels)
+	}
 	img, _, err := image.Decode(bytes.NewReader(src))
+	return img, err
+}
+
+func Thumbnail(src []byte) ([]byte, error) {
+	img, err := Decode(src)
 	if err != nil {
 		return nil, err
 	}

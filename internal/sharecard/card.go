@@ -20,6 +20,8 @@ import (
 	"golang.org/x/image/font/opentype"
 	"golang.org/x/image/math/fixed"
 	_ "image/jpeg"
+
+	"heliosian/internal/blob"
 )
 
 const (
@@ -194,7 +196,7 @@ func (s *Style) Draw(c Card) ([]byte, error) {
 			return nil, err
 		}
 		textRight = panel.Min.X - 48
-	} else if pic, _, err := image.Decode(bytes.NewReader(c.Picture)); err == nil && c.Picture != nil {
+	} else if pic, err := blob.Decode(c.Picture); err == nil && c.Picture != nil {
 		b := pic.Bounds()
 		panelW := 480
 		if c.Whole {
