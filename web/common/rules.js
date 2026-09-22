@@ -1,3 +1,4 @@
+import {appOrigin} from '/toolbar.js';
 // The rule editor every app shares: a filter rule as Helios Who?'s filters
 // have it - roles, words, classrooms, grades, tags, the relatives to add -
 // as a row that reads out as a sentence and opens to its controls, the
@@ -257,7 +258,9 @@ export function rulesEditor({el, svg, options, me, personName}) {
       const line = el('div', 'rule-line');
       line.append(el('span', 'rule-kind', rule.kind === 'include' ? 'Include' : 'Exclude'));
       line.append(svg(rule.kind === 'include' ? 'groups' : 'user-minus'));
-      line.append(el('span', 'rule-line-words', ruleWords(rule)));
+      const sentence = el('span', 'rule-line-words');
+      sentence.append(...ruleNodes(rule));
+      line.append(sentence);
       if (countChip) {
         count = countChip(rule);
         line.append(count);
@@ -405,14 +408,15 @@ export function rulesEditor({el, svg, options, me, personName}) {
     return parts.join(' ');
   }
 
-  // ruleWords is a rule as the group's page reads it out.
-  function ruleWords(r) {
+  // ruleSentence is a rule as the group's page reads it out, as a list of
+  // strings and whatever tag(key, label) makes of each tag named.
+  function ruleSentence(r, tag) {
     // A rule that is one address and nothing else - as excluding someone
     // from the member list makes - reads as the person.
     if (r.search && r.search.includes('@') && !r.roles.length && !r.grades.length && !r.classrooms.length && !r.tags.length) {
       const name = personName(r.search);
       if (name) {
-        return `${name} (${r.search})`;
+        return [`${name} (${r.search})`];
       }
     }
     // With Add family the roles keep their kind after the widening, as Who?
@@ -426,25 +430,48 @@ export function rulesEditor({el, svg, options, me, personName}) {
       parts.push('Anyone');
     }
     if (r.search) {
-      parts.push(`with “${r.search}” in their name or address`);
+      parts.push(` with “${r.search}” in their name or address`);
     }
     if (r.grades.length) {
-      parts.push('in ' + r.grades.join(' or '));
+      parts.push(' in ' + r.grades.join(' or '));
     }
     if (r.classrooms.length) {
-      parts.push('in ' + r.classrooms.join(' or '));
+      parts.push(' in ' + r.classrooms.join(' or '));
     }
     if (r.tags.length) {
-      parts.push('tagged in ' + (r.tagLabels || r.tags).join(' or '));
+      parts.push(' tagged in ');
+      const labels = r.tagLabels || r.tags;
+      r.tags.forEach((key, i) => {
+        if (i) {
+          parts.push(' or ');
+        }
+        parts.push(tag(key, labels[i]));
+      });
     }
-    let words = parts.join(' ');
     if (r.family.length) {
-      words += ', plus their ' + r.family.map(f => f.toLowerCase()).join(' and ');
+      parts.push(', plus their ' + r.family.map(f => f.toLowerCase()).join(' and '));
       if (r.roles.length) {
-        words += `, keeping ${roles.toLowerCase()} only`;
+        parts.push(`, keeping ${roles.toLowerCase()} only`);
       }
     }
-    return words;
+    return parts;
+  }
+
+  function ruleWords(r) {
+    return ruleSentence(r, (key, label) => label).join('');
+  }
+
+  // ruleNodes is the sentence for the band, a Loop group's name in it a
+  // link to the group's page there.
+  function ruleNodes(r) {
+    return ruleSentence(r, (key, label) => {
+      if (!key.startsWith('group:')) {
+        return label;
+      }
+      const a = el('a', 'rule-group-link', label);
+      a.href = `${appOrigin('loop')}/groups/${encodeURIComponent(key.slice('group:'.length))}`;
+      return a;
+    });
   }
 
   return {chipToggle, facetDropdown, ruleRow, ruleControls, newRule, ruleSaysSomething, personWords, ruleWords, listIcons};
