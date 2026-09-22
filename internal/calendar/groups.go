@@ -470,7 +470,7 @@ func (a app) sweep(ctx context.Context) {
 	}
 	for id, groups := range a.cache.Model().Groups {
 		if len(groups) > 0 {
-			a.sweepEvent(ctx, a.eventFor(groups[0].AddedBy, id))
+			a.sweepEvent(ctx, a.eventFor(groups[0].AddedBy, false, id))
 		}
 	}
 }

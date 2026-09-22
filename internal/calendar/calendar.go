@@ -78,7 +78,7 @@ const (
 var (
 	GoogleColumns      = []string{"Key", "Start", "End", "Title", "Location", "Description", "Updated", "Sequence"}
 	PDFColumns         = []string{"Key", "Year", "Start", "End", "Title", "Day Type", "Tags", "Marker", "PDF"}
-	EventColumns       = []string{"Event ID", "Start", "End", "Title", "Location", "Description", "Tags", "Day Type", "Keywords", "Added By", "Added", "Source", "Status", "Image"}
+	EventColumns       = []string{"Event ID", "Start", "End", "Title", "Location", "Description", "Tags", "Day Type", "Keywords", "Added By", "Added", "Source", "Sharing", "Status", "Image"}
 	EnrichmentColumns  = []string{"Event ID", "Tags", "Day Type", "Keywords", "Input Hash", "Model", "Enriched"}
 	OverrideColumns    = []string{"Event ID", "Title", "Start", "End", "Location", "Description", "Tags", "Day Type", "Keywords", "Hidden", "Note"}
 	DayTypeColumns     = []string{"Day Type", "Dropoff Start", "Dropoff End", "School Start", "School End", "Pickup Start", "Pickup End", "Aftercare Start", "Aftercare End"}
@@ -88,7 +88,7 @@ var (
 	FeedColumns        = []string{"Token", "Email", "Name", "Classrooms", "Tags", "Created", "Emoji"}
 	SettingColumns     = []string{"Email", "Classrooms", "Categories", "Saved", "Home Name", "Home Emoji", "Home Position"}
 	RSVPColumns        = []string{"Email", "Event ID", "Answer", "Answered", "Answered By", "Via"}
-	InvitationColumns  = []string{"Event ID", "Hosts", "Audience", "Guests", "Guest List", "Message", "Created By", "Created", "Sent", "Title", "Start", "End", "Location", "Description", "Flyer", "Notify"}
+	InvitationColumns  = []string{"Event ID", "Hosts", "Audience", "Guests", "Message", "Created By", "Created", "Sent", "Title", "Start", "End", "Location", "Description", "Flyer", "Notify"}
 	InviteColumns      = []string{"Event ID", "Email", "Name", "Guest Of", "Via", "Added By", "Added", "Sent", "Token", "Household", "Opened"}
 	InviteGroupColumns = append([]string{"Event ID", "Group ID", "Auto", "Added By", "Added", "Sent", "Removed"}, filter.RuleColumns...)
 	BounceColumns      = []string{"Email", "When", "Reason"}
@@ -214,18 +214,19 @@ type Event struct {
 	MineWords string `json:"mineWords,omitempty"`
 	Call      string `json:"call,omitempty"`
 	Image     string `json:"image,omitempty"`
-	// Status is the Events tab's word on a hand-added event: Pending while
-	// someone other than an admin's waits for approval, Declined once an
-	// admin turned it away - either on the calendar for them and the
-	// admins alone - Private for one found by its link or by invitation
-	// alone, on the calendar of whoever has answered or been invited to
-	// it, and Approved (or blank) for one that is on for everyone.
-	// Pending, Declined, InviteOnly and Cancelled say which, for the page.
-	Status     string `json:"status,omitempty"`
-	Pending    bool   `json:"pending,omitempty"`
-	Declined   bool   `json:"declined,omitempty"`
-	InviteOnly bool   `json:"inviteOnly,omitempty"`
-	Cancelled  bool   `json:"cancelled,omitempty"`
+	// Sharing is the Events tab's word on who can find a hand-added event:
+	// Public, on the calendar for everyone once approved; Link, for anyone
+	// with its link; Invite Only, for whoever is on its list. Status is the
+	// tab's word on its approval: Pending while a public one waits for an
+	// admin, Declined once an admin turned it away - either on the calendar
+	// for its host and the admins alone - Approved (or blank) once it is on
+	// for everyone, and Cancelled for one its host called off. Pending,
+	// Declined and Cancelled say which, for the page.
+	Sharing   string `json:"sharing,omitempty"`
+	Status    string `json:"status,omitempty"`
+	Pending   bool   `json:"pending,omitempty"`
+	Declined  bool   `json:"declined,omitempty"`
+	Cancelled bool   `json:"cancelled,omitempty"`
 	// Invitation says a guest list is kept for the event (invites.go), for
 	// the page to fetch it; Invited that the viewer's household is on it,
 	// sent - the event on their calendar whatever its classrooms.
@@ -370,18 +371,23 @@ type Setting struct {
 	HomePosition int    `json:"homePosition"`
 }
 
-// The Events tab's Status words for a hand-added event.
+// The Events tab's Sharing words for a hand-added event: who can find it.
+const (
+	SharingPublic  = "Public"
+	SharingLink    = "Link"
+	SharingInvited = "Invite Only"
+)
+
+var sharingWords = []string{SharingPublic, SharingLink, SharingInvited}
+
+// The Events tab's Status words for a hand-added event: its approval.
 const (
 	StatusPending  = "Pending"
 	StatusApproved = "Approved"
 	StatusDeclined = "Declined"
-	StatusPrivate  = "Private"
 	// Cancelled is a host's own word on an event they called off: it
 	// leaves everyone's calendar and lists, its page saying so.
 	StatusCancelled = "Cancelled"
-	// Two older words for Private, still read as it.
-	StatusInviteOnly = "Direct Link Only"
-	StatusRSVP       = "RSVP Invite"
 )
 
 // MyHeliosian is the calendar everyone has: the calendar's own defaults -
@@ -483,8 +489,11 @@ type Model struct {
 	Groups map[string][]InviteGroup
 	// Bounced is every address the mail provider has reported undeliverable,
 	// with the latest reason.
-	Bounced  map[string]Bounce
+	Bounced map[string]Bounce
+	// invited is who has an event by invitation, sent - a parent with
+	// their student - and listed the same for every row, sent or not.
 	invited  map[string]map[string]bool
+	listed   map[string]map[string]bool
 	byInvite map[string]Invite
 	Days     map[string]map[string]string
 	Years    []Year
@@ -1164,7 +1173,7 @@ func checkTitle(title string) error {
 }
 
 func (b *builder) event(source, id string, row map[string]string) (*Event, error) {
-	e := &Event{ID: id, Source: source, Title: row["Title"], SourceTitle: row["Title"], Location: row["Location"], Description: row["Description"]}
+	e := &Event{ID: id, Source: source, Title: row["Title"], SourceTitle: row["Title"], Location: row["Location"], Description: row["Description"], Sharing: SharingPublic}
 	fail := func(err error) (*Event, error) {
 		return nil, fmt.Errorf("%s row %q: %w", source, id, err)
 	}
@@ -1349,10 +1358,10 @@ func (b *builder) settle() {
 		if e.Hidden {
 			continue
 		}
-		// An event found by its link or by invitation alone is for whoever
-		// is sent it, so it may carry no tags at all - and then no Misc;
-		// a cancelled one is for nobody.
-		if len(e.Tags) == 0 && !e.InviteOnly && !e.Cancelled {
+		// An event shared by link or by invitation is for whoever is sent
+		// it, so it may carry no tags at all - and then no Misc; a
+		// cancelled one is for nobody.
+		if len(e.Tags) == 0 && e.Sharing == SharingPublic && !e.Cancelled {
 			b.refuse("%s %q (%s) has no tags, so it matches nobody", e.Source, e.Title, e.ID)
 		}
 		if len(e.Tags) == len(e.Classrooms) && len(e.Tags) > 0 {
@@ -1774,7 +1783,7 @@ func BuildModel(tables *Tables, roster Roster) (*Model, error) {
 	m := &Model{
 		Events: []*Event{}, DayTypes: dayTypes, Tags: tags, Days: map[string]map[string]string{}, Years: []Year{}, Provenance: map[string]*Provenance{},
 		Roster: roster, Feeds: []Feed{}, Settings: map[string]Setting{}, Answers: map[string]map[string]string{}, Answered: map[string]map[string]Answered{},
-		Invitations: map[string]*Invitation{}, Invites: map[string][]Invite{}, Groups: map[string][]InviteGroup{}, Bounced: map[string]Bounce{}, invited: map[string]map[string]bool{}, byInvite: map[string]Invite{},
+		Invitations: map[string]*Invitation{}, Invites: map[string][]Invite{}, Groups: map[string][]InviteGroup{}, Bounced: map[string]Bounce{}, invited: map[string]map[string]bool{}, listed: map[string]map[string]bool{}, byInvite: map[string]Invite{},
 		Skipped: map[string]int{}, byID: map[string]*Event{}, byToken: map[string]*Feed{}, tags: map[string]bool{},
 	}
 	for _, t := range tags {
@@ -1819,7 +1828,13 @@ func BuildModel(tables *Tables, roster Roster) (*Model, error) {
 		e.Pending = strings.EqualFold(e.Status, StatusPending)
 		e.Declined = strings.EqualFold(e.Status, StatusDeclined)
 		e.Cancelled = strings.EqualFold(e.Status, StatusCancelled)
-		e.InviteOnly = strings.EqualFold(e.Status, StatusPrivate) || strings.EqualFold(e.Status, StatusInviteOnly) || strings.EqualFold(e.Status, StatusRSVP)
+		if sharing := strings.TrimSpace(row["Sharing"]); sharing != "" {
+			i := slices.IndexFunc(sharingWords, func(w string) bool { return strings.EqualFold(w, sharing) })
+			if i < 0 {
+				return nil, fmt.Errorf("%s row %q: sharing %q is not %s", EventsTab, e.ID, sharing, strings.Join(sharingWords, ", "))
+			}
+			e.Sharing = sharingWords[i]
+		}
 		// The Image cell names an upload in the shared blob store, the way
 		// a category's does; the page fetches it by that path.
 		if image := strings.Trim(strings.TrimSpace(row["Image"]), "/"); image != "" {
@@ -1881,9 +1896,9 @@ func BuildModel(tables *Tables, roster Roster) (*Model, error) {
 			delete(m.byID, e.ID)
 			continue
 		}
-		// A pending, declined, invite-only or cancelled event waits apart
-		// from the calendar, still found by id.
-		if e.Pending || e.Declined || e.InviteOnly || e.Cancelled {
+		// A pending, declined or cancelled event, or one shared by link or
+		// by invitation, waits apart from the calendar, still found by id.
+		if e.Pending || e.Declined || e.Cancelled || e.Sharing != SharingPublic {
 			m.Pending = append(m.Pending, e)
 			continue
 		}

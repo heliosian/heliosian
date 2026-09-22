@@ -77,7 +77,7 @@ func linkedEvent(l Linked) *Event {
 		ID: l.Source + "/" + l.ID, Source: l.Source, Title: l.Title, Location: l.Location,
 		Description: strings.TrimSpace(l.Summary + "\n\n" + l.Description),
 		Start:       l.Start, End: l.End, AllDay: allDay, Tags: []string{tagBySource[l.Source]}, Classrooms: []string{},
-		Link: l.Path, Availability: l.Availability, Mine: l.Mine, MineWho: l.Who, MinePeople: l.People, Image: l.Image, Hosts: l.Hosts, start: start, end: end,
+		Link: l.Path, Availability: l.Availability, Mine: l.Mine, MineWho: l.Who, MinePeople: l.People, Image: l.Image, Hosts: l.Hosts, Sharing: SharingPublic, start: start, end: end,
 	}
 	if t := tagByMine[l.Mine]; t != "" {
 		e.Tags = append(e.Tags, t)
@@ -168,12 +168,12 @@ func folded(school, hca *Event) *Event {
 func (m *Model) eventsFor(email string, linked []Linked) []*Event {
 	email = normalizeEmail(email)
 	answers := m.Answers[email]
-	// A direct-link event the person has answered, or their household was
-	// invited to, is on their calendar - and one waiting for approval,
-	// whose link works in the meantime.
+	// An event shared by link or by invitation that the person has
+	// answered, or their household was invited to, is on their calendar -
+	// and one waiting for approval, whose link works in the meantime.
 	events := m.Events
 	for _, e := range m.Pending {
-		if (e.InviteOnly || e.Pending) && (answers[e.ID] != "" || m.invited[email][e.ID]) {
+		if !e.Declined && !e.Cancelled && (answers[e.ID] != "" || m.invited[email][e.ID]) {
 			events = append(events[:len(events):len(events)], e)
 		}
 	}

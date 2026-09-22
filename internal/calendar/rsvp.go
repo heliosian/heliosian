@@ -46,7 +46,7 @@ func (a app) recordBy(ctx context.Context, actor, email, id, answer, via string,
 	if answer != "" && !isAnswer(answer) {
 		return fmt.Errorf("an answer is yes, no, maybe, or hidden")
 	}
-	e := a.eventFor(email, id)
+	e := a.eventFor(email, false, id)
 	if e == nil {
 		return fmt.Errorf("that event is not on the calendar")
 	}
@@ -133,21 +133,40 @@ func (a app) sendAnswerNote(ctx context.Context, to, actor, email, answer string
 	}
 }
 
-// eventFor is an event as this person sees it, the other apps' folded in.
-func (a app) eventFor(email, id string) *Event {
+// eventFor is an event as this person sees it, the other apps' folded in:
+// one their calendar shows, or one off it that is theirs to open.
+func (a app) eventFor(email string, admin bool, id string) *Event {
 	model := a.cache.Model()
 	for _, e := range withLinked(model.Events, a.linked(email)) {
 		if e.ID == id {
 			return model.withInvitation(e)
 		}
 	}
-	// A direct-link event takes an answer from anyone with its link, and so
-	// does one waiting for approval - its link works in the meantime; a
-	// declined one, only from the person who shared it.
-	if e := model.Event(id); e != nil && (e.InviteOnly || e.Pending || normalizeEmail(e.AddedBy) == email) {
-		return model.withInvitation(e)
+	e := model.Event(id)
+	if e == nil || !a.sees(email, admin, e) {
+		return nil
 	}
-	return nil
+	return model.withInvitation(e)
+}
+
+// sees says an event off the calendar is this person's to open, and with
+// it everything on its page, the guest list included: the person who
+// shared it, a host and an admin always; anyone holding the link to one
+// shared by link, or to a public one waiting for approval or called off;
+// whoever is on the list of one shared by invitation, sent or not, and a
+// parent of a student on it. A declined event is its host's and the
+// admins' alone.
+func (a app) sees(email string, admin bool, e *Event) bool {
+	if admin || normalizeEmail(e.AddedBy) == email || a.isHost(email, admin, e) {
+		return true
+	}
+	switch e.Sharing {
+	case SharingLink:
+		return true
+	case SharingInvited:
+		return a.cache.Model().Listed(email, e.ID)
+	}
+	return !e.Declined
 }
 
 // rsvp is the calendar's own route: the viewer answering for themselves.

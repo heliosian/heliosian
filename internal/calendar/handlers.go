@@ -614,7 +614,8 @@ func shiftWhen(when string, weeks int) string {
 // addEvents adds an event to the Events tab, repeated every so many weeks
 // when an admin asks: a public one's Status is Pending until an admin
 // approves it - on the calendar for its host and the admins until then,
-// an admin's own included - a direct-link one's Direct Link Only.
+// an admin's own included - one shared by link or by invitation needs no
+// approval and has no Status.
 func (a app) addEvents(w http.ResponseWriter, r *http.Request) {
 	actor, admin := a.who(r)
 	var body struct {
@@ -628,12 +629,16 @@ func (a app) addEvents(w http.ResponseWriter, r *http.Request) {
 		Keywords    []string `json:"keywords"`
 		Source      string   `json:"source"`
 		Image       string   `json:"image"`
-		InviteOnly  bool     `json:"inviteOnly"`
+		Sharing     string   `json:"sharing"`
 		ID          string   `json:"id"`
 		RepeatWeeks int      `json:"repeatWeeks"`
 		RepeatTimes int      `json:"repeatTimes"`
 	}
 	if !decode(w, r, &body) {
+		return
+	}
+	if !slices.Contains(sharingWords, body.Sharing) {
+		http.Error(w, "sharing is "+strings.Join(sharingWords, ", "), http.StatusBadRequest)
 		return
 	}
 	if body.RepeatTimes < 0 || body.RepeatTimes > 52 || body.RepeatWeeks < 1 && body.RepeatTimes > 0 {
@@ -654,18 +659,18 @@ func (a app) addEvents(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	// A public event waits for an admin's approval, an admin's own too; a
-	// direct-link event needs none - it is not on the calendar, only on
-	// the calendars of those with the link who answer it. Repeats and a
-	// day type are an admin's alone.
+	// A public event waits for an admin's approval, an admin's own too; one
+	// shared by link or by invitation needs none - it is not on the
+	// calendar, only on the calendars of those who answer it or are
+	// invited. Repeats and a day type are an admin's alone.
 	if !admin {
 		body.RepeatTimes, body.DayType = 0, ""
 	}
-	status := StatusPending
-	if body.InviteOnly {
-		status = StatusPrivate
+	pending := body.Sharing == SharingPublic
+	status := ""
+	if pending {
+		status = StatusPending
 	}
-	pending := status == StatusPending
 	stamp := now().Format(DateFormat)
 	rows := []map[string]string{}
 	for i := 0; i <= body.RepeatTimes; i++ {
@@ -677,7 +682,7 @@ func (a app) addEvents(w http.ResponseWriter, r *http.Request) {
 			"Event ID": id, "Start": shiftWhen(strings.TrimSpace(body.Start), i*body.RepeatWeeks), "End": shiftWhen(strings.TrimSpace(body.End), i*body.RepeatWeeks),
 			"Title": strings.TrimSpace(body.Title), "Location": strings.TrimSpace(body.Location), "Description": strings.TrimSpace(body.Description),
 			"Tags": JoinList(SplitList(JoinList(body.Tags))), "Day Type": strings.TrimSpace(body.DayType), "Keywords": JoinList(SplitList(JoinList(body.Keywords))),
-			"Added By": actor, "Added": stamp, "Source": strings.TrimSpace(body.Source), "Status": status, "Image": strings.Trim(strings.TrimSpace(body.Image), "/"),
+			"Added By": actor, "Added": stamp, "Source": strings.TrimSpace(body.Source), "Sharing": body.Sharing, "Status": status, "Image": strings.Trim(strings.TrimSpace(body.Image), "/"),
 		})
 	}
 	if !a.commit(r.Context(), w, a.cache.Tables().WithEvents(rows), func() error {
@@ -706,8 +711,8 @@ func (a app) addEvents(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	// The admins hear of every event added - one waiting for them, an
-	// admin's own included, or a direct-link one they would not otherwise
-	// see.
+	// admin's own included, or one shared by link or by invitation they
+	// would not otherwise see.
 	if a.mail.Sender != nil {
 		if e := a.cache.Model().Event(ids[0]); e != nil {
 			go a.tellAdmins(context.WithoutCancel(r.Context()), r.Host, actor, e)
@@ -718,25 +723,23 @@ func (a app) addEvents(w http.ResponseWriter, r *http.Request) {
 }
 
 // oneEvent answers /api/calendar/event?id= with an event the view does
-// not carry: a direct-link one, or one waiting for approval, for anyone
-// with its link; a declined one, for the person who shared it and the
-// admins.
+// not carry, as far as it is the viewer's to open (sees).
 func (a app) oneEvent(w http.ResponseWriter, r *http.Request) {
 	actor, admin := a.who(r)
-	e := a.cache.Model().Event(strings.TrimSpace(r.URL.Query().Get("id")))
-	if e == nil || !(e.InviteOnly || e.Pending || admin || normalizeEmail(e.AddedBy) == actor) {
+	e := a.eventFor(actor, admin, strings.TrimSpace(r.URL.Query().Get("id")))
+	if e == nil {
 		http.NotFound(w, r)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(a.cache.Model().withInvitation(e))
+	json.NewEncoder(w).Encode(e)
 }
 
 // tellAdmins mails every calendar admin that someone shared an event: its
 // words and when, who shared it, and its page - where Approve and Decline
-// are for one waiting, or the event itself for a direct-link one, which
-// needs nothing of them. One message, every admin on it; nothing when
-// there are none.
+// are for one waiting, or the event itself for one shared by link or by
+// invitation, which needs nothing of them. One message, every admin on
+// it; nothing when there are none.
 func (a app) tellAdmins(ctx context.Context, host, by string, e *Event) {
 	admins := a.cache.Admins(a.superAdmins())
 	if len(admins) == 0 {
@@ -755,10 +758,15 @@ func (a app) tellAdmins(ctx context.Context, host, by string, e *Event) {
 	lead := who + " shared an event on Helios When that is waiting for approval."
 	closing := "Approve and Decline are at the top of its page. Until then only the person who shared it and the admins see it."
 	subject := "Event to approve: "
-	if e.InviteOnly {
-		lead = who + " added a private event on Helios When. It needs no approval: it is not on the calendar, only on the calendars of the people they invite and of those they send the link to who answer it."
+	if e.Sharing == SharingLink {
+		lead = who + " added an event shared by link on Helios When. It needs no approval: it is not on the calendar, only on the calendars of the people they invite and of those they send the link to who answer it."
 		closing = "Nothing is needed from you; this is so the admins know what is being shared."
-		subject = "Private event added: "
+		subject = "Link event added: "
+	}
+	if e.Sharing == SharingInvited {
+		lead = who + " added an invite-only event on Helios When. It needs no approval: it is not on the calendar, only on the calendars of the people they invite."
+		closing = "Nothing is needed from you; this is so the admins know what is being shared."
+		subject = "Invite-only event added: "
 	}
 	var text strings.Builder
 	fmt.Fprintf(&text, "%s\n\n%s\n%s\n", lead, e.Title, when)
@@ -779,7 +787,7 @@ func (a app) tellAdmins(ctx context.Context, host, by string, e *Event) {
 	if e.Description != "" {
 		fmt.Fprintf(&htm, "<p style=\"font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#333\">%s</p>", html.EscapeString(e.Description))
 	}
-	fmt.Fprintf(&htm, "<p style=\"margin:20px 0\"><a href=\"%s\" style=\"display:inline-block;padding:10px 18px;border-radius:8px;background:#0e4d54;color:#fff;font:700 15px -apple-system,Segoe UI,Roboto,sans-serif;text-decoration:none\">%s</a></p>", html.EscapeString(link), map[bool]string{true: "See the event", false: "Review the event"}[e.InviteOnly])
+	fmt.Fprintf(&htm, "<p style=\"margin:20px 0\"><a href=\"%s\" style=\"display:inline-block;padding:10px 18px;border-radius:8px;background:#0e4d54;color:#fff;font:700 15px -apple-system,Segoe UI,Roboto,sans-serif;text-decoration:none\">%s</a></p>", html.EscapeString(link), map[bool]string{true: "Review the event", false: "See the event"}[e.Sharing == SharingPublic])
 	fmt.Fprintf(&htm, "<p style=\"font:13px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#647071\">%s</p>", html.EscapeString(closing))
 	err := a.mail.Sender.Send(ctx, mail.Message{
 		To: admins, Subject: subject + e.Title + " · " + day,
@@ -808,9 +816,13 @@ func (a app) editEvent(w http.ResponseWriter, r *http.Request) {
 		Keywords    []string `json:"keywords"`
 		Source      string   `json:"source"`
 		Image       string   `json:"image"`
-		InviteOnly  bool     `json:"inviteOnly"`
+		Sharing     string   `json:"sharing"`
 	}
 	if !decode(w, r, &body) {
+		return
+	}
+	if !slices.Contains(sharingWords, body.Sharing) {
+		http.Error(w, "sharing is "+strings.Join(sharingWords, ", "), http.StatusBadRequest)
 		return
 	}
 	e := a.cache.Model().Event(strings.TrimSpace(body.ID))
@@ -828,12 +840,13 @@ func (a app) editEvent(w http.ResponseWriter, r *http.Request) {
 		"Tags": JoinList(SplitList(JoinList(body.Tags))), "Keywords": JoinList(SplitList(JoinList(body.Keywords))),
 		"Source": strings.TrimSpace(body.Source), "Image": strings.Trim(strings.TrimSpace(body.Image), "/"),
 	}
-	// Private switches on and off: off, the event waits for an admin's
+	// Sharing switches: turned public, the event waits for an admin's
 	// approval, an admin's own too - its link still working in the
-	// meantime.
-	if body.InviteOnly != e.InviteOnly {
-		cells["Status"] = StatusPrivate
-		if !body.InviteOnly {
+	// meantime; turned away from public, its approval is over.
+	if body.Sharing != e.Sharing {
+		cells["Sharing"] = body.Sharing
+		cells["Status"] = ""
+		if body.Sharing == SharingPublic {
 			cells["Status"] = StatusPending
 		}
 	}
@@ -847,7 +860,7 @@ func (a app) editEvent(w http.ResponseWriter, r *http.Request) {
 		if err := a.writer.Set(appName, EventsTab, map[string]string{"Event ID": e.ID}, cells); err != nil {
 			return err
 		}
-		for _, col := range []string{"Title", "Start", "End", "Location", "Description", "Tags", "Keywords", "Source", "Image", "Status"} {
+		for _, col := range []string{"Title", "Start", "End", "Location", "Description", "Tags", "Keywords", "Source", "Image", "Sharing", "Status"} {
 			if _, set := cells[col]; set && was[col] != cells[col] {
 				if err := a.logChange(actor, "changed", EventsTab, e.ID, col, was[col], cells[col]); err != nil {
 					return err

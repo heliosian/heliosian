@@ -1,5 +1,5 @@
 import {state, me, answer, isParty, eventDates, weekdayLong, parseDate, timeLine} from './state.js';
-import {el, svg, button, toast, avatar, popup, copyText, segmented} from './dom.js';
+import {el, svg, button, toast, avatar, popup, copyText} from './dom.js';
 import {appOrigin} from '/toolbar.js';
 import {rulesEditor, filterWidgets} from '/rules.js';
 import {addressSuggest} from '/address.js';
@@ -15,21 +15,6 @@ import {imageControl} from './images.js';
 // internal/calendar/invites.go.
 
 const answerWords = {yes: 'Yes', maybe: 'Maybe', no: 'No'};
-
-// choice is a segmented bar that repaints itself as it is picked, handing
-// each pick on.
-function choice(items, active, onPick) {
-  const wrap = el('div', 'choice');
-  const paint = () => {
-    wrap.replaceChildren(segmented(items, active, key => {
-      active = key;
-      paint();
-      onPick(key);
-    }));
-  };
-  paint();
-  return wrap;
-}
 
 async function post(method, path, body) {
   const res = await fetch(path, {method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
@@ -503,12 +488,10 @@ export function comingCard(e, view, refresh) {
   }
   paint(rows);
   card.append(grid);
-  // For a host, who may read the card, with the way to change it.
+  // For a host, who reads the card: everyone who can open the event.
   if (view.host) {
     const visible = el('div', 'rsvps-visible');
-    const open = view.guestList !== 'private';
-    visible.append(el('span', '', open ? 'Guest list is visible to Helios guests.' : 'Guest list is visible to hosts only.'));
-    visible.append(button('change', null, 'rsvp-clear', () => openVisibility(e, view, refresh)));
+    visible.append(el('span', '', 'Guest list is visible to everyone who can open the event.'));
     // Each host's own choice: hear by email as answers come in.
     const notify = el('label', 'rsvps-notify');
     const box = el('input');
@@ -528,40 +511,6 @@ export function comingCard(e, view, refresh) {
     card.append(visible);
   }
   return card;
-}
-
-// openVisibility is the choice of who may read who is coming, in a
-// popup: Helios guests - everyone invited - or the hosts only.
-function openVisibility(e, view, refresh) {
-  const form = el('form', 'admin-form');
-  form.append(el('p', 'hint', 'Who may see who is coming - the names under Yes, Maybe and No response on the event\u2019s page. The hosts always see everyone, the nos included.'));
-  let guestList = view.guestList === 'private' ? 'private' : 'public';
-  form.append(choice([{key: 'public', label: 'Helios guests'}, {key: 'private', label: 'Hosts only'}], guestList, key => {
-    guestList = key;
-  }));
-  const actions = el('div', 'modal-actions');
-  const status = el('span', 'save-status');
-  const submit = el('button', 'button');
-  submit.type = 'submit';
-  submit.append(svg('check'), el('span', '', 'Save'));
-  actions.append(submit, status);
-  form.append(actions);
-  let shut = null;
-  form.addEventListener('submit', async ev => {
-    ev.preventDefault();
-    submit.disabled = true;
-    try {
-      await post('PUT', '/api/calendar/invites/settings', {id: e.id, guestList});
-      toast(guestList === 'private' ? 'Now hosts only' : 'Now visible to Helios guests');
-      shut();
-      refresh();
-    } catch (err) {
-      status.textContent = err.message;
-      status.classList.add('error');
-      submit.disabled = false;
-    }
-  });
-  shut = popup('Who can see who is coming', form).shut;
 }
 
 // openMessage is a host's message to the list: who it goes to by where
@@ -1879,7 +1828,7 @@ export function openSettings(e, view, refresh) {
 // Save that closes whatever holds it: invitation - its words for a linked
 // event - and email - the email's text and the flyer.
 export function settingsForm(e, view, refresh, shut, part = 'invitation') {
-  const s = view.settings || {audience: 'both', guests: true, guestList: 'public', message: '', hosts: []};
+  const s = view.settings || {audience: 'both', guests: true, message: '', hosts: []};
   const form = el('form', 'admin-form');
   const invitation = part === 'invitation';
   const field = (label, input, note) => {

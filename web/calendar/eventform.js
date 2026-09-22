@@ -76,11 +76,10 @@ export function eventForm({from = null, shift = 0, edit = null, onDone}) {
   title.maxLength = 200;
   eventPanel.append(field('Title', title));
 
-  // Who can find it: private - the people the host invites from its page
-  // and anyone sent its link, who answer it onto their own calendars -
-  // or public, on the calendar for everyone (an admin approves it first,
-  // for anyone but an admin). Private to start.
-  let sharing = edit && from && from.source === 'sheet' && !from.inviteOnly ? 'public' : 'private';
+  // Who can find it: the people the host invites from its page; them and
+  // anyone sent its link; or everyone, on the calendar (an admin approves
+  // it first, an admin's own too). Invite only to start.
+  let sharing = edit && from && from.source === 'sheet' ? from.sharing : 'Invite Only';
   const whoField = el('div', 'field');
   whoField.append(el('span', '', 'Who can find it'));
   const choices = el('div', 'event-visibility');
@@ -98,8 +97,9 @@ export function eventForm({from = null, shift = 0, edit = null, onDone}) {
     return b;
   };
   choices.append(
-    choice('Private', 'Only the people you invite, and anyone you send the link to. Once it is added, invite families, a classroom, your lists or anyone by email from its page, and see who answered.', 'private'),
-    choice('Public', 'On the calendar for everyone at Helios to discover, filed under classrooms and categories. Public events require admin approval, but you can share the link right away directly.', 'public'),
+    choice('Invite only', 'Only the people you invite. Once it is added, invite families, a classroom, your lists or anyone by email from its page, and see who answered. Nobody else can open it, even with the link.', 'Invite Only'),
+    choice('Anyone with the link', 'The people you invite, and anyone you send the link to, who can pass it on. Invite people from its page once it is added.', 'Link'),
+    choice('Public', 'On the calendar for everyone at Helios to discover, filed under classrooms and categories. Public events require admin approval, but you can share the link right away directly.', 'Public'),
   );
   whoField.append(choices);
   eventPanel.append(whoField);
@@ -277,10 +277,10 @@ export function eventForm({from = null, shift = 0, edit = null, onDone}) {
   const keywords = text(from ? (from.keywords || []).join(', ') : '', 'half day, kinder, short day');
   tagFields.append(field('Search words', keywords, 'Words a parent might type that are not in the title, separated by commas.'));
 
-  // Public or private decides the tabs: a public event's Who tab, and
-  // Next to reach it; a private one adds from the first tab.
+  // Public or not decides the tabs: a public event's Who tab, and Next
+  // to reach it; any other adds from the first tab.
   const paintWho = () => {
-    const invite = sharing !== 'public';
+    const invite = sharing !== 'Public';
     tagTab.hidden = invite;
     // One tab is no tab bar.
     tabs.hidden = invite;
@@ -317,7 +317,7 @@ export function eventForm({from = null, shift = 0, edit = null, onDone}) {
   paintWho();
   form.addEventListener('submit', async e => {
     e.preventDefault();
-    const invite = sharing !== 'public';
+    const invite = sharing !== 'Public';
     if (!invite && !rooms.size) {
       status.textContent = 'Pick at least one classroom.';
       status.classList.add('error');
@@ -328,9 +328,9 @@ export function eventForm({from = null, shift = 0, edit = null, onDone}) {
     // takes it; an all-day end is its day.
     const body = {
       title: title.value.trim(), start: when(startDate.value, startTime.value), end: when(endDate.value || startDate.value, endTime.value || startTime.value),
-      location: place.value.trim(), description: description.value.trim(), source: invite ? '' : source.value.trim(), image: picture.image, inviteOnly: invite,
-      // A private event is for whoever is invited: no classrooms, no
-      // categories.
+      location: place.value.trim(), description: description.value.trim(), source: invite ? '' : source.value.trim(), image: picture.image, sharing,
+      // An event that is not public is for whoever is sent it: no
+      // classrooms, no categories.
       tags: invite ? [] : [...classroomNames().filter(c => rooms.has(c)), ...cats], keywords: keywords.value.split(',').map(w => w.trim()).filter(Boolean),
     };
     submit.disabled = true;

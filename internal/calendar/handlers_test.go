@@ -366,23 +366,23 @@ func TestAdminsToldOfSharedEvents(t *testing.T) {
 		}
 		return kept.all()
 	}
-	call(t, parent, "POST", "/api/calendar/events", `{"title":"Bake sale","start":"2026-10-01 15:00","tags":["Jays","Community"]}`)
+	call(t, parent, "POST", "/api/calendar/events", `{"title":"Bake sale","start":"2026-10-01 15:00","tags":["Jays","Community"],"sharing":"Public"}`)
 	sent := wait(1)
 	if len(sent) != 1 || !strings.HasPrefix(sent[0].Subject, "Event to approve: Bake sale") || !slices.Contains(sent[0].To, "dana.hawkins@heliosschool.org") || !strings.Contains(sent[0].Text, "Jordan") || !strings.Contains(sent[0].HTML, "Review the event") {
 		t.Errorf("public event mail = %+v", sent)
 	}
-	call(t, parent, "POST", "/api/calendar/events", `{"title":"Sam\u2019s party","start":"2026-10-03 14:00","tags":["Jays"],"inviteOnly":true}`)
+	call(t, parent, "POST", "/api/calendar/events", `{"title":"Sam\u2019s party","start":"2026-10-03 14:00","tags":["Jays"],"sharing":"Link"}`)
 	sent = wait(2)
-	if len(sent) != 2 || !strings.HasPrefix(sent[1].Subject, "Private event added: Sam") || !strings.Contains(sent[1].HTML, "See the event") || strings.Contains(sent[1].Text, "waiting for approval") {
-		t.Errorf("direct-link event mail = %+v", sent)
+	if len(sent) != 2 || !strings.HasPrefix(sent[1].Subject, "Link event added: Sam") || !strings.Contains(sent[1].HTML, "See the event") || strings.Contains(sent[1].Text, "waiting for approval") {
+		t.Errorf("link event mail = %+v", sent)
 	}
-	call(t, admin, "POST", "/api/calendar/events", `{"title":"Admin's own","start":"2026-10-05","tags":["Jays"]}`)
+	call(t, admin, "POST", "/api/calendar/events", `{"title":"Admin's own","start":"2026-10-05","tags":["Jays"],"sharing":"Public"}`)
 	sent = wait(3)
 	if len(sent) != 3 || !strings.HasPrefix(sent[2].Subject, "Event to approve: Admin's own") {
 		t.Errorf("an admin's own public event waits and is mailed about too: %+v", sent)
 	}
-	// The host turning the direct-link event public puts it up for
-	// approval - the admins told again - while its link keeps working.
+	// The host turning the link event public puts it up for approval -
+	// the admins told again - while its link keeps working.
 	var v View
 	rec := call(t, parent, "GET", "/api/calendar/model", "")
 	json.NewDecoder(rec.Body).Decode(&v)
@@ -395,7 +395,7 @@ func TestAdminsToldOfSharedEvents(t *testing.T) {
 	if party == nil {
 		t.Fatal("the party is not in the host's view")
 	}
-	if rec := call(t, parent, "PUT", "/api/calendar/events", `{"id":"`+party.ID+`","title":"`+party.Title+`","start":"2026-10-03 14:00","tags":["Jays"],"inviteOnly":false}`); rec.Code != 204 {
+	if rec := call(t, parent, "PUT", "/api/calendar/events", `{"id":"`+party.ID+`","title":"`+party.Title+`","start":"2026-10-03 14:00","tags":["Jays"],"sharing":"Public"}`); rec.Code != 204 {
 		t.Fatalf("switch to public: %d %s", rec.Code, rec.Body)
 	}
 	sent = wait(4)
@@ -417,7 +417,7 @@ func TestAdminsToldOfSharedEvents(t *testing.T) {
 func TestAdminAddsAndCorrects(t *testing.T) {
 	handler, cache := testApp(t)
 	admin := as("dana.hawkins@heliosschool.org", handler)
-	rec := call(t, admin, "POST", "/api/calendar/events", `{"title":"Chess Club","start":"2026-10-01 15:30","end":"2026-10-01 16:30","tags":["Jays","Clubs"],"repeatWeeks":4,"repeatTimes":2}`)
+	rec := call(t, admin, "POST", "/api/calendar/events", `{"title":"Chess Club","start":"2026-10-01 15:30","end":"2026-10-01 16:30","tags":["Jays","Clubs"],"sharing":"Public","repeatWeeks":4,"repeatTimes":2}`)
 	if rec.Code != 200 {
 		t.Fatalf("add: %d %s", rec.Code, rec.Body)
 	}
@@ -447,7 +447,7 @@ func TestAdminAddsAndCorrects(t *testing.T) {
 	if strings.Join(starts, " ") != "2026-10-01 15:30 2026-10-29 15:30 2026-11-26 15:30" {
 		t.Errorf("starts = %v", starts)
 	}
-	if rec := call(t, admin, "POST", "/api/calendar/events", `{"title":"Bad","start":"not a date","tags":["Clubs"]}`); rec.Code != 400 {
+	if rec := call(t, admin, "POST", "/api/calendar/events", `{"title":"Bad","start":"not a date","tags":["Clubs"],"sharing":"Public"}`); rec.Code != 400 {
 		t.Errorf("bad date accepted: %d", rec.Code)
 	}
 	rec = call(t, admin, "POST", "/api/calendar/keywords", `{"id":"`+made.IDs[0]+`","keywords":["chess","board games"]}`)
@@ -471,7 +471,7 @@ func TestAdminAddsAndCorrects(t *testing.T) {
 	// A parent's event waits for approval: theirs and the admins' to see,
 	// off the calendar for everyone else, no repeats; an admin approves it
 	// onto the calendar, or declines it away.
-	rec = call(t, parent, "POST", "/api/calendar/events", `{"title":"Bake sale","start":"2026-10-01 15:00","end":"2026-10-01 17:00","tags":["Jays","Community"],"repeatWeeks":1,"repeatTimes":3}`)
+	rec = call(t, parent, "POST", "/api/calendar/events", `{"title":"Bake sale","start":"2026-10-01 15:00","end":"2026-10-01 17:00","tags":["Jays","Community"],"sharing":"Public","repeatWeeks":1,"repeatTimes":3}`)
 	var shared struct {
 		IDs     []string `json:"ids"`
 		Pending bool     `json:"pending"`
@@ -518,40 +518,40 @@ func TestAdminAddsAndCorrects(t *testing.T) {
 		t.Errorf("approved event = %+v", e)
 	}
 	// The person who shared an event corrects it; another parent cannot.
-	if rec := call(t, parent, "PUT", "/api/calendar/events", `{"id":"`+shared.IDs[0]+`","title":"Bake sale!","start":"2026-10-01 15:30","end":"2026-10-01 17:30","location":"Gym","tags":["Jays","Community"],"image":"/category-images/cake.jpg"}`); rec.Code != 204 {
+	if rec := call(t, parent, "PUT", "/api/calendar/events", `{"id":"`+shared.IDs[0]+`","title":"Bake sale!","start":"2026-10-01 15:30","end":"2026-10-01 17:30","location":"Gym","tags":["Jays","Community"],"image":"/category-images/cake.jpg","sharing":"Public"}`); rec.Code != 204 {
 		t.Errorf("owner's edit: %d %s", rec.Code, rec.Body)
 	}
 	if e := cache.Model().Event(shared.IDs[0]); e == nil || e.Title != "Bake sale!" || e.Location != "Gym" || e.Image != "/category-images/cake.jpg" || e.Start != "2026-10-01 15:30" || e.Pending {
 		t.Errorf("edited event = %+v", e)
 	}
-	if rec := call(t, other, "PUT", "/api/calendar/events", `{"id":"`+shared.IDs[0]+`","title":"Mine now","start":"2026-10-01","tags":["Jays"]}`); rec.Code != 403 {
+	if rec := call(t, other, "PUT", "/api/calendar/events", `{"id":"`+shared.IDs[0]+`","title":"Mine now","start":"2026-10-01","tags":["Jays"],"sharing":"Public"}`); rec.Code != 403 {
 		t.Errorf("another parent's edit: %d", rec.Code)
 	}
-	// An invite-only event needs no approval and is nobody's until they
+	// An event shared by link needs no approval and is nobody's until they
 	// answer it by its link; a yes puts it on their calendar, across
 	// classrooms, under Going, and the admins were not asked.
-	rec = call(t, parent, "POST", "/api/calendar/events", `{"title":"Sam\u2019s birthday","start":"2026-10-03 14:00","end":"2026-10-03 16:00","tags":["Jays","Community"],"inviteOnly":true}`)
+	rec = call(t, parent, "POST", "/api/calendar/events", `{"title":"Sam\u2019s birthday","start":"2026-10-03 14:00","end":"2026-10-03 16:00","tags":["Jays","Community"],"sharing":"Link"}`)
 	json.Unmarshal(rec.Body.Bytes(), &shared)
 	if rec.Code != 200 || shared.Pending {
-		t.Fatalf("invite only: %d %s", rec.Code, rec.Body)
+		t.Fatalf("link: %d %s", rec.Code, rec.Body)
 	}
-	if e := cache.Model().Event(shared.IDs[0]); e == nil || !e.InviteOnly || e.Status != StatusPrivate {
-		t.Errorf("invite-only event = %+v", e)
+	if e := cache.Model().Event(shared.IDs[0]); e == nil || e.Sharing != SharingLink || e.Status != "" {
+		t.Errorf("link event = %+v", e)
 	}
 	if sees(other) {
-		t.Errorf("an invite-only event is on another's calendar before they answer")
+		t.Errorf("a link event is on another's calendar before they answer")
 	}
 	if rec := call(t, other, "GET", "/api/calendar/event?id="+shared.IDs[0], ""); rec.Code != 200 {
-		t.Errorf("an invite-only event by its link: %d", rec.Code)
+		t.Errorf("a link event by its link: %d", rec.Code)
 	}
 	if rec := call(t, other, "POST", "/api/calendar/rsvp", `{"id":"`+shared.IDs[0]+`","answer":"yes"}`); rec.Code != 204 {
-		t.Fatalf("yes to an invite-only event: %d %s", rec.Code, rec.Body)
+		t.Fatalf("yes to a link event: %d %s", rec.Code, rec.Body)
 	}
 	var otherView View
 	rec = call(t, other, "GET", "/api/calendar/model", "")
 	json.NewDecoder(rec.Body).Decode(&otherView)
 	if i := slices.IndexFunc(otherView.Events, func(e *Event) bool { return e.ID == shared.IDs[0] }); i < 0 || !slices.Contains(otherView.Events[i].Tags, TagGoing) {
-		t.Errorf("a yes did not put the invite-only event under Going on the other's calendar")
+		t.Errorf("a yes did not put the link event under Going on the other's calendar")
 	}
 	found := false
 	dir := fakeDirectory{people: map[string]Person{}, kids: map[string][]Person{}}
@@ -559,27 +559,34 @@ func TestAdminAddsAndCorrects(t *testing.T) {
 		found = found || u.ID == shared.IDs[0]
 	}
 	if !found {
-		t.Errorf("a yes did not put the invite-only event in the other's Upcoming")
+		t.Errorf("a yes did not put the link event in the other's Upcoming")
+	}
+	// Sharing is one of three words, always said.
+	if rec := call(t, parent, "POST", "/api/calendar/events", `{"title":"Unsaid","start":"2026-10-04","tags":["Jays"]}`); rec.Code != 400 {
+		t.Errorf("no sharing: %d", rec.Code)
+	}
+	if rec := call(t, parent, "POST", "/api/calendar/events", `{"title":"Unsaid","start":"2026-10-04","tags":["Jays"],"sharing":"Private"}`); rec.Code != 400 {
+		t.Errorf("an old sharing word: %d", rec.Code)
 	}
 	// A host may pick the event's own web address; a taken or ill-formed
 	// one is refused.
-	if rec := call(t, parent, "POST", "/api/calendar/events", `{"id":"Sams-Party","title":"Sam\u2019s party","start":"2026-10-04","tags":["Jays"],"inviteOnly":true}`); rec.Code != 200 || cache.Model().Event("sams-party") == nil {
+	if rec := call(t, parent, "POST", "/api/calendar/events", `{"id":"Sams-Party","title":"Sam\u2019s party","start":"2026-10-04","tags":["Jays"],"sharing":"Link"}`); rec.Code != 200 || cache.Model().Event("sams-party") == nil {
 		t.Errorf("chosen address: %d %s", rec.Code, rec.Body)
 	}
 	// Its page previews and its card draws, for a link sent anywhere.
 	if rec := call(t, handler, "GET", "/open/share/sams-party.png", ""); rec.Code != 200 || rec.Header().Get("Content-Type") != "image/png" {
-		t.Errorf("a direct-link event's card: %d", rec.Code)
+		t.Errorf("a link event's card: %d", rec.Code)
 	}
 	if head := PreviewHead(cache, func(string) []Linked { return nil })(httptest.NewRequest("GET", "https://when.heliosiandev.com:8080/e/sams-party", nil)); !strings.Contains(head, "Sam") || !strings.Contains(head, "/open/share/sams-party.png") {
-		t.Errorf("a direct-link event's preview:\n%s", head)
+		t.Errorf("a link event's preview:\n%s", head)
 	}
-	if rec := call(t, parent, "POST", "/api/calendar/events", `{"id":"sams-party","title":"Again","start":"2026-10-04","tags":["Jays"]}`); rec.Code != 400 {
+	if rec := call(t, parent, "POST", "/api/calendar/events", `{"id":"sams-party","title":"Again","start":"2026-10-04","tags":["Jays"],"sharing":"Public"}`); rec.Code != 400 {
 		t.Errorf("a taken address: %d", rec.Code)
 	}
-	if rec := call(t, parent, "POST", "/api/calendar/events", `{"id":"a/b","title":"Odd","start":"2026-10-04","tags":["Jays"]}`); rec.Code != 400 {
+	if rec := call(t, parent, "POST", "/api/calendar/events", `{"id":"a/b","title":"Odd","start":"2026-10-04","tags":["Jays"],"sharing":"Public"}`); rec.Code != 400 {
 		t.Errorf("an ill-formed address: %d", rec.Code)
 	}
-	rec = call(t, parent, "POST", "/api/calendar/events", `{"title":"Not this","start":"2026-10-02","tags":["Jays"]}`)
+	rec = call(t, parent, "POST", "/api/calendar/events", `{"title":"Not this","start":"2026-10-02","tags":["Jays"],"sharing":"Public"}`)
 	json.Unmarshal(rec.Body.Bytes(), &shared)
 	if rec := call(t, admin, "POST", "/api/calendar/events/decline", `{"id":"`+shared.IDs[0]+`"}`); rec.Code != 204 {
 		t.Errorf("decline: %d %s", rec.Code, rec.Body)

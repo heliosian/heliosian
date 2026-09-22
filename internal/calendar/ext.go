@@ -70,7 +70,7 @@ func (a app) extPage(w http.ResponseWriter, r *http.Request) {
 	}
 	head := ""
 	if inv, ok := a.cache.Model().InviteByToken(r.PathValue("token")); ok {
-		if e := a.cache.Model().invitedEvent(a.eventFor(inv.Email, inv.EventID)); e != nil {
+		if e := a.cache.Model().invitedEvent(a.eventFor(inv.Email, false, inv.EventID)); e != nil {
 			origin := "https://" + r.Host
 			parts := []string{when(e)}
 			if e.Location != "" {
@@ -92,7 +92,7 @@ func (a app) extInvite(w http.ResponseWriter, r *http.Request) (Invite, *Event, 
 		http.Error(w, "that invitation is not here", http.StatusNotFound)
 		return Invite{}, nil, false
 	}
-	e := a.eventFor(inv.Email, inv.EventID)
+	e := a.eventFor(inv.Email, false, inv.EventID)
 	if e == nil {
 		http.Error(w, "that event is not on the calendar", http.StatusNotFound)
 		return Invite{}, nil, false

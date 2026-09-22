@@ -52,7 +52,7 @@ function heroImageBar(e) {
   const save = async image => {
     const body = {
       id: e.id, title: e.title, start: e.start, end: e.end, location: e.location || '', description: e.description || '',
-      tags: sheetTags(e), keywords: e.keywords || [], source: e.sourceUrl || e.sourceNote || '', image, inviteOnly: Boolean(e.inviteOnly),
+      tags: sheetTags(e), keywords: e.keywords || [], source: e.sourceUrl || e.sourceNote || '', image, sharing: e.sharing,
     };
     const res = await fetch('/api/calendar/events', {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
     if (!res.ok) {
@@ -161,7 +161,7 @@ export function eventPage(e) {
     page.append(band);
   } else if (e.pending || e.declined) {
     page.append(pendingBand(e));
-  } else if (e.inviteOnly) {
+  } else if (e.sharing !== 'Public') {
     page.append(inviteBand(e));
   }
 
@@ -173,13 +173,13 @@ export function eventPage(e) {
   }
   // An event by invitation or link with no classrooms is for whoever is
   // sent it, not Everyone.
-  if (!((e.inviteOnly || e.cancelled) && !e.classrooms.length)) {
+  if (!((e.sharing !== 'Public' || e.cancelled) && !e.classrooms.length)) {
     marks.append(audienceChips(e));
   }
-  // A hand-added event says how it is shared: public, private, waiting
-  // for approval, or declined.
+  // A hand-added event says how it is shared: public, by link, invite
+  // only, waiting for approval, or declined.
   if (e.source === 'sheet') {
-    const status = e.cancelled ? ['Cancelled', 'chip-status-declined'] : e.declined ? ['Declined', 'chip-status-declined'] : e.pending ? ['Pending approval', 'chip-status-pending'] : e.inviteOnly ? ['Private', 'chip-status-link'] : ['Public', 'chip-status-public'];
+    const status = e.cancelled ? ['Cancelled', 'chip-status-declined'] : e.declined ? ['Declined', 'chip-status-declined'] : e.pending ? ['Pending approval', 'chip-status-pending'] : e.sharing === 'Link' ? ['Anyone with the link', 'chip-status-link'] : e.sharing === 'Invite Only' ? ['Invite only', 'chip-status-link'] : ['Public', 'chip-status-public'];
     marks.append(el('span', 'chip chip-status ' + status[1], status[0]));
   }
   main.append(marks);
@@ -446,7 +446,11 @@ function inviteBand(e) {
   const band = el('div', 'pending-band is-invite');
   const words = el('div', 'pending-words');
   const mine = e.addedBy === state.model.user.email;
-  words.append(el('div', 'pending-title', 'Private'), el('div', 'pending-lead', mine ? 'On the calendar of the people you invite, and of anyone you send this link to who answers.' : 'You were invited, or sent this link. Your answer below puts it on your calendar.'));
+  if (e.sharing === 'Invite Only') {
+    words.append(el('div', 'pending-title', 'Invite only'), el('div', 'pending-lead', mine ? 'Only the people you invite can open this event, and their answers put it on their calendars.' : 'You were invited. Your answer below puts it on your calendar.'));
+  } else {
+    words.append(el('div', 'pending-title', 'Anyone with the link'), el('div', 'pending-lead', mine ? 'On the calendar of the people you invite, and of anyone you send this link to who answers.' : 'You were invited, or sent this link. Your answer below puts it on your calendar.'));
+  }
   band.append(svg('link'), words);
   const url = location.origin + eventPath(e);
   band.append(button('Copy link', 'copy', 'button button-small', () => copyText(url, 'Link copied')));

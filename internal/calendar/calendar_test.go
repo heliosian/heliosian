@@ -722,17 +722,21 @@ func TestGoogleEventURL(t *testing.T) {
 	}
 }
 
-// The two older words for a private event - Direct Link Only, RSVP Invite -
-// still read as one.
-func TestOlderPrivateWords(t *testing.T) {
-	for _, word := range []string{StatusPrivate, StatusInviteOnly, StatusRSVP} {
-		tables := tables(t).WithEvents([]map[string]string{{"Event ID": "old", "Start": "2026-10-01", "End": "2026-10-01", "Title": "Old", "Tags": "", "Status": word}})
+// The Sharing cell reads in any case and blank as Public; a word that is
+// none of the three refuses the sheet.
+func TestSharingWords(t *testing.T) {
+	for cell, want := range map[string]string{"": SharingPublic, "public": SharingPublic, "LINK": SharingLink, "invite only": SharingInvited} {
+		tables := tables(t).WithEvents([]map[string]string{{"Event ID": "shared", "Start": "2026-10-01", "End": "2026-10-01", "Title": "Shared", "Tags": "Jays", "Sharing": cell}})
 		m, err := BuildModel(tables, roster)
 		if err != nil {
-			t.Fatalf("%s: %v", word, err)
+			t.Fatalf("%q: %v", cell, err)
 		}
-		if e := m.Event("old"); e == nil || !e.InviteOnly {
-			t.Errorf("%s: %+v", word, e)
+		if e := m.Event("shared"); e == nil || e.Sharing != want {
+			t.Errorf("%q: %+v", cell, e)
 		}
+	}
+	tables := tables(t).WithEvents([]map[string]string{{"Event ID": "shared", "Start": "2026-10-01", "End": "2026-10-01", "Title": "Shared", "Tags": "Jays", "Sharing": "Private"}})
+	if _, err := BuildModel(tables, roster); err == nil || !strings.Contains(err.Error(), `sharing "Private"`) {
+		t.Errorf("Private read: %v", err)
 	}
 }

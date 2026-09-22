@@ -13,7 +13,7 @@ let lastDate = '';
 // linked event the way to its tickets or sign-up. A day that is not regular
 // and has no event of its own is a row too, in its day type's color.
 function upcomingRow(date, e, group) {
-  const row = link(e ? eventPath(e) : '/day/' + date, 'up-row' + (e ? (isMatch(e) ? ' is-match' : '') + (e.pending ? ' is-pending' : '') + (e.declined ? ' is-declined' : '') + (e.inviteOnly ? ' is-invite' : '') : ' ' + dayTypeClass(group.name)));
+  const row = link(e ? eventPath(e) : '/day/' + date, 'up-row' + (e ? (isMatch(e) ? ' is-match' : '') + (e.pending ? ' is-pending' : '') + (e.declined ? ' is-declined' : '') + (e.sharing !== 'Public' ? ' is-invite' : '') : ' ' + dayTypeClass(group.name)));
   const when = el('span', 'up-date');
   when.append(el('span', 'up-dow', weekdayShort(date)), el('span', 'up-day', parseDate(date).toLocaleDateString('en-US', {month: 'short', day: 'numeric'})));
   const bar = el('span', 'up-bar');
@@ -313,7 +313,7 @@ function dayCell(date, month) {
   const room = Math.max(0, 3 - groups.length);
   for (const e of events.slice(0, room)) {
     // An event the viewer hid, or said no to, is plain gray words, not a pill.
-    const pip = link(eventPath(e), 'month-pip' + (isMatch(e) ? ' is-match' : '') + (isGray(e) ? ' is-hidden' : '') + (e.pending ? ' is-pending' : '') + (e.declined ? ' is-declined' : '') + (e.inviteOnly ? ' is-invite' : ''));
+    const pip = link(eventPath(e), 'month-pip' + (isMatch(e) ? ' is-match' : '') + (isGray(e) ? ' is-hidden' : '') + (e.pending ? ' is-pending' : '') + (e.declined ? ' is-declined' : '') + (e.sharing !== 'Public' ? ' is-invite' : ''));
     pip.style.setProperty('--c', eventTint(e));
     pip.append(el('span', 'month-pip-title', e.title));
     if (!e.allDay) {

@@ -69,7 +69,7 @@ function miniMonth(date, paging) {
 // timelineRow is one event down the day's timeline: a dot in its color on
 // the line, then its hours, its title and its place.
 function timelineRow(e, date) {
-  const row = link(eventPath(e), 'timeline-row' + (isMatch(e) ? ' is-match' : '') + (isGray(e) ? ' is-hidden' : '') + (e.pending ? ' is-pending' : '') + (e.declined ? ' is-declined' : '') + (e.inviteOnly ? ' is-invite' : ''));
+  const row = link(eventPath(e), 'timeline-row' + (isMatch(e) ? ' is-match' : '') + (isGray(e) ? ' is-hidden' : '') + (e.pending ? ' is-pending' : '') + (e.declined ? ' is-declined' : '') + (e.sharing !== 'Public' ? ' is-invite' : ''));
   const dot = el('span', 'timeline-dot');
   dot.style.background = eventTint(e);
   const body = el('span', 'timeline-body');
