@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
-	"os"
 	"strings"
 
 	"heliosian/internal/auth"
@@ -26,7 +25,6 @@ var legacy = map[string]string{
 type app struct {
 	cache   *Cache
 	mapsKey string
-	optIn   func() string
 	lister  Lister
 }
 
@@ -40,51 +38,27 @@ func effectiveEmail(cache *Cache, r *http.Request) string {
 	return cache.Model().Resolve(strings.ToLower(auth.Email(r)))
 }
 
-// noAccess is what someone the directory doesn't list gets instead of the app: the
-// consent form is the only way in, so the page hands them the link to it.
-const noAccess = "web/public/who/no-access.html"
-
-func denyAccess(w http.ResponseWriter, r *http.Request) {
-	page, err := os.ReadFile(noAccess)
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(http.StatusForbidden)
-	if _, err := w.Write(page); err != nil {
-		slog.ErrorContext(r.Context(), "write the no-access page", "error", err)
-	}
+// Member says whether the directory lists someone, by any of their
+// addresses; it is what sign-in admits every app's requests by.
+func Member(cache *Cache, email string) bool {
+	return cache.Model().Member(cache.Model().Resolve(strings.ToLower(strings.TrimSpace(email))))
 }
 
-func MemberGate(cache *Cache, next http.Handler) http.Handler {
+// OptInForm sends someone to the consent form, the only way into the
+// directory. It takes the form's address as a function because it lives in
+// the Config sheet, where an admin can change it between requests.
+func OptInForm(optIn func() string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Admin routes carry their own allowlist check; requiring directory membership
-		// too would lock out an admin who runs the school's tools but isn't a parent
-		// or staff member with their own Person row. /optin is what the no-access page
-		// itself sends someone to, so it has to answer the people the gate turns away.
-		if auth.Public(r.URL.Path) || r.URL.Path == "/auth/logout" || r.URL.Path == "/optin" ||
-			r.URL.Path == "/admin" || strings.HasPrefix(r.URL.Path, "/api/admin/") {
-			next.ServeHTTP(w, r)
-			return
-		}
-		if !cache.Model().Member(effectiveEmail(cache, r)) {
-			denyAccess(w, r)
-			return
-		}
-		next.ServeHTTP(w, r)
+		http.Redirect(w, r, optIn(), http.StatusFound)
 	})
 }
 
-// Register takes the opt-in form's address as a function rather than a value because
-// it lives in the Config sheet, where an admin can change it between requests.
-func Register(mux *http.ServeMux, cache *Cache, mapsKey string, optIn func() string, lister Lister) {
-	a := app{cache: cache, mapsKey: mapsKey, optIn: optIn, lister: lister}
+func Register(mux *http.ServeMux, cache *Cache, mapsKey string, lister Lister) {
+	a := app{cache: cache, mapsKey: mapsKey, lister: lister}
 	mux.HandleFunc("GET /open/share/about.png", a.shareCard)
 	for _, section := range sections {
 		mux.HandleFunc("GET /"+section, a.page)
 	}
-	mux.HandleFunc("GET /optin", a.optInForm)
 	mux.HandleFunc("GET /my-family", a.myFamily)
 	mux.HandleFunc("GET /people/{email}", a.page)
 	mux.HandleFunc("GET /families/{key}", a.page)
@@ -92,10 +66,6 @@ func Register(mux *http.ServeMux, cache *Cache, mapsKey string, optIn func() str
 	mux.HandleFunc("GET /grades/{name}", a.page)
 	mux.HandleFunc("GET /dl/", a.legacyRedirect)
 	mux.HandleFunc("GET /api/directory/model", a.model)
-}
-
-func (a app) optInForm(w http.ResponseWriter, r *http.Request) {
-	http.Redirect(w, r, a.optIn(), http.StatusFound)
 }
 
 func (a app) myFamily(w http.ResponseWriter, r *http.Request) {

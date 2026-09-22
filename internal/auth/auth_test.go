@@ -33,8 +33,10 @@ func TestLogoutDomains(t *testing.T) {
 	}
 }
 
+func everyone(string) bool { return true }
+
 func TestLogoutClearsEveryDomain(t *testing.T) {
-	a := New("client", []byte("key"), "web/public/who/login.html")
+	a := New("client", []byte("key"), "web/public/who/login.html", everyone)
 	req := httptest.NewRequest(http.MethodPost, "https://hca.local.heliosian.com/auth/logout", nil)
 	req.Header.Set("X-Forwarded-Proto", "https")
 	rec := httptest.NewRecorder()
@@ -64,7 +66,7 @@ func TestLogoutClearsEveryDomain(t *testing.T) {
 // no longer use is ignored, and Email stays the signed-in address.
 func TestSpoofResolvesTheTargetOnlyWhenItHolds(t *testing.T) {
 	key := []byte("key")
-	a := New("client", key, "web/public/who/login.html")
+	a := New("client", key, "web/public/who/login.html", everyone)
 	allowed := map[string]bool{"admin@heliosschool.org": true}
 	a.Spoof = &Spoof{
 		Allowed: func(email string) bool { return allowed[email] },
@@ -110,13 +112,90 @@ func TestSpoofResolvesTheTargetOnlyWhenItHolds(t *testing.T) {
 	}
 }
 
+// A session alone admits nothing: someone the directory does not list gets
+// the no-access page, or a bare 403 from a script's fetch, everywhere but
+// signing out and the way to the consent form, and an admin viewing as
+// someone the directory has dropped is refused as they would be. The
+// sample server's fixed sign-in admits by the same check.
+func TestWrapAdmitsOnlyMembers(t *testing.T) {
+	t.Chdir("../..")
+	key := []byte("key")
+	members := map[string]bool{"parent@heliosschool.org": true, "admin@heliosschool.org": true}
+	a := New("client", key, "web/public/who/login.html", func(email string) bool { return members[email] })
+	a.Spoof = &Spoof{
+		Allowed: func(email string) bool { return email == "admin@heliosschool.org" },
+		Person:  func(email string) (Person, bool) { return Person{Email: email}, true },
+	}
+	served := 0
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		served++
+		w.WriteHeader(http.StatusTeapot)
+	})
+	expiry := time.Now().Add(time.Hour)
+	call := func(handler http.Handler, session, spoof, path string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodGet, "https://who.heliosian.com"+path, nil)
+		if session != "" {
+			req.AddCookie(&http.Cookie{Name: cookieName, Value: Token(key, session, expiry)})
+		}
+		if spoof != "" {
+			req.AddCookie(&http.Cookie{Name: spoofCookie, Value: spoofToken(key, session, spoof, expiry)})
+		}
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		return rec
+	}
+	cases := []struct {
+		name     string
+		handler  http.Handler
+		session  string
+		spoof    string
+		path     string
+		wantCode int
+		wantPage bool
+	}{
+		{"a member's page", a.Wrap(next), "parent@heliosschool.org", "", "/people", http.StatusTeapot, false},
+		{"a member's api", a.Wrap(next), "parent@heliosschool.org", "", "/api/team/people", http.StatusTeapot, false},
+		{"an unlisted page", a.Wrap(next), "left@heliosschool.org", "", "/people", http.StatusForbidden, true},
+		{"an unlisted static file", a.Wrap(next), "left@heliosschool.org", "", "/app.js", http.StatusForbidden, true},
+		{"an unlisted api", a.Wrap(next), "left@heliosschool.org", "", "/api/team/people", http.StatusForbidden, false},
+		{"an unlisted blob", a.Wrap(next), "left@heliosschool.org", "", "/blob/photo", http.StatusForbidden, false},
+		{"an unlisted admin", a.Wrap(next), "left@heliosschool.org", "", "/api/admin/state", http.StatusForbidden, false},
+		{"an unlisted sign-out", a.Wrap(next), "left@heliosschool.org", "", "/auth/logout", http.StatusTeapot, false},
+		{"an unlisted opt-in", a.Wrap(next), "left@heliosschool.org", "", "/optin", http.StatusTeapot, false},
+		{"an unlisted public path", a.Wrap(next), "left@heliosschool.org", "", "/open/share/about.png", http.StatusTeapot, false},
+		{"an admin viewing as a member", a.Wrap(next), "admin@heliosschool.org", "parent@heliosschool.org", "/people", http.StatusTeapot, false},
+		{"an admin viewing as someone dropped", a.Wrap(next), "admin@heliosschool.org", "dropped@heliosschool.org", "/people", http.StatusForbidden, true},
+		{"a fixed member", a.Fixed("parent@heliosschool.org", next), "", "", "/people", http.StatusTeapot, false},
+		{"a fixed stranger", a.Fixed("left@heliosschool.org", next), "", "", "/people", http.StatusForbidden, true},
+		{"a fixed stranger's public path", a.Fixed("left@heliosschool.org", next), "", "", "/open/share/about.png", http.StatusTeapot, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			before := served
+			rec := call(c.handler, c.session, c.spoof, c.path)
+			if rec.Code != c.wantCode {
+				t.Errorf("got %d, want %d", rec.Code, c.wantCode)
+			}
+			if c.wantCode == http.StatusTeapot && served != before+1 {
+				t.Errorf("served %d, want the handler reached", served-before)
+			}
+			if c.wantCode != http.StatusTeapot && served != before {
+				t.Errorf("served %d, want the handler never reached", served-before)
+			}
+			if gotPage := strings.Contains(rec.Body.String(), "/optin"); gotPage != c.wantPage {
+				t.Errorf("no-access page in body = %v, want %v", gotPage, c.wantPage)
+			}
+		})
+	}
+}
+
 // Starting a spoof sets the signed cookie for the tier and notes the person
 // at the head of the recent list, five at most and never twice; stopping
 // clears the spoof and leaves the list; and someone who is not allowed gets
 // nothing.
 func TestSetSpoofKeepsTheRecentFive(t *testing.T) {
 	key := []byte("key")
-	a := New("client", key, "web/public/who/login.html")
+	a := New("client", key, "web/public/who/login.html", everyone)
 	a.Spoof = &Spoof{
 		Allowed: func(email string) bool { return email == "admin@heliosschool.org" },
 		Person: func(email string) (Person, bool) {
@@ -189,7 +268,7 @@ func TestCookieDomain(t *testing.T) {
 // Quan mode is offered to the super admins and to anyone with "quan" in
 // their address, and to nobody else.
 func TestQuanFor(t *testing.T) {
-	a := New("client", []byte("key"), "web/public/who/login.html")
+	a := New("client", []byte("key"), "web/public/who/login.html", everyone)
 	a.Spoof = &Spoof{Allowed: func(email string) bool { return email == "admin@heliosschool.org" }}
 	for email, want := range map[string]bool{
 		"admin@heliosschool.org":            true,

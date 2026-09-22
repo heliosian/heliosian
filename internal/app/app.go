@@ -860,8 +860,10 @@ type Core struct {
 	Queue  *who.Queue
 	// Spoof is Spoof Mode as every app's sign-in shares it: the super admins
 	// may view as anyone the directory lists.
-	Spoof     *auth.Spoof
-	Gate      http.Handler
+	Spoof *auth.Spoof
+	// Member is what every app's sign-in admits a request by: the directory
+	// lists who it acts as.
+	Member    func(email string) bool
 	Home      http.Handler
 	Team      http.Handler
 	Birthday  http.Handler
@@ -964,7 +966,7 @@ func NewCore(cfg Config) *Core {
 	}
 	mux := http.NewServeMux()
 	config.Register(mux, settings, cfg.Writer, cache.IsAdmin)
-	who.Register(mux, cache, cfg.BrowserKey, func() string { return settings.Settings().PrivacyLinks.HeliosWhoOptIn }, smartLists{cache, teamCache, celebrateCache, loopCache, loopDir})
+	who.Register(mux, cache, cfg.BrowserKey, smartLists{cache, teamCache, celebrateCache, loopCache, loopDir})
 	who.RegisterTags(mux, cache, cfg.Writer, queue, cfg.WhoMail)
 	who.RegisterAdmin(mux, cache, cfg.Writer, queue)
 	if err := who.RegisterInvites(mux, cache, cfg.Source, cfg.Writer); err != nil {
@@ -1027,7 +1029,10 @@ func NewCore(cfg Config) *Core {
 	}
 	notifier := feedback.Notifier{Sender: cfg.Mail, From: cfg.MailFrom, Base: cfg.FeedbackBase, SuperAdmins: settings.SuperAdmins}
 	feedbackQueue := feedback.NewQueue(feedbackStore, notifier.Notify)
+	optIn := who.OptInForm(func() string { return settings.Settings().PrivacyLinks.HeliosWhoOptIn })
 	for key, m := range map[string]*http.ServeMux{"who": mux, "home": homeMux, "team": teamMux, "birthday": birthdayMux, "celebrate": celebrateMux, "calendar": calendarMux, "loop": loopMux, "ask": askMux} {
+		// The no-access page on every host links here.
+		m.Handle("GET /optin", optIn)
 		feedback.Register(m, key, appName(key), superAdmin, feedbackQueue)
 		// Address suggestions for every app's address boxes, through the
 		// geocoder when it can suggest.
@@ -1047,8 +1052,8 @@ func NewCore(cfg Config) *Core {
 	return &Core{
 		Mux: mux, HomeMux: homeMux, HomeCache: homeCache, TeamMux: teamMux, TeamCache: teamCache, BirthdayMux: birthdayMux, CelebrateMux: celebrateMux, CelebrateCache: celebrateCache,
 		CalendarMux: calendarMux, CalendarCache: calendarCache, CalendarLinked: linked, LoopMux: loopMux, LoopCache: loopCache, AskMux: askMux, Cache: cache, Queue: queue,
-		Spoof: &auth.Spoof{Allowed: superAdmin, Person: directory{cache, settings}.SpoofPerson, People: directory{cache, settings}.SpoofPeople},
-		Gate:  who.MemberGate(cache, mux), Home: homeMux, Team: teamMux, Birthday: birthdayMux, Celebrate: celebrateMux, Calendar: calendarMux, Loop: loopMux, Ask: askMux,
+		Spoof:  &auth.Spoof{Allowed: superAdmin, Person: directory{cache, settings}.SpoofPerson, People: directory{cache, settings}.SpoofPeople},
+		Member: func(email string) bool { return who.Member(cache, email) }, Home: homeMux, Team: teamMux, Birthday: birthdayMux, Celebrate: celebrateMux, Calendar: calendarMux, Loop: loopMux, Ask: askMux,
 	}
 }
 
@@ -1401,9 +1406,9 @@ func Production(blobCache string) (*http.Server, *who.Queue) {
 	who.RegisterUpload(core.Mux, core.Cache, sheet, store, core.Queue)
 	client := clientID()
 	// Every app's sign-in shares the key, so one session - and one spoof -
-	// covers them all.
+	// covers them all, and the same membership check admits each request.
 	newAuth := func(app string) *auth.Auth {
-		a := auth.New(client, []byte(sessionKey), "web/public/"+app+"/login.html")
+		a := auth.New(client, []byte(sessionKey), "web/public/"+app+"/login.html", core.Member)
 		a.Spoof = core.Spoof
 		return a
 	}
@@ -1446,7 +1451,7 @@ func Production(blobCache string) (*http.Server, *who.Queue) {
 	// The portal sends an old address - the volunteer site this one replaced,
 	// a renamed event - on ahead of sign-in, so it lands on its page.
 	server := Server(map[string]http.Handler{
-		"who":       Public("who", whoAuth.Wrap(Logged("who", Files("who", core.Gate)))),
+		"who":       Public("who", whoAuth.Wrap(Logged("who", Files("who", core.Mux)))),
 		"home":      Public("home", homeAuth.Wrap(Logged("home", Files("home", core.Home)))),
 		"team":      Public("team", team.Redirected(core.TeamCache, teamAuth.Wrap(Logged("team", Files("team", core.Team))))),
 		"birthday":  Public("birthday", birthdayAuth.Wrap(Logged("birthday", Files("birthday", core.Birthday)))),

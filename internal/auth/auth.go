@@ -29,13 +29,15 @@ const (
 
 type contextKey struct{}
 
-// Auth gates one app behind Google sign-in. loginPage is the app's static
-// splash page under web/public, the one page anyone without a session sees;
-// it fetches clientID from /auth/client rather than carrying it.
+// Auth gates one app behind Google sign-in and directory membership.
+// loginPage is the app's static splash page under web/public, the one page
+// anyone without a session sees; it fetches clientID from /auth/client
+// rather than carrying it.
 type Auth struct {
 	clientID  string
 	key       []byte
 	loginPage string
+	member    func(email string) bool
 	// Preview, when set, supplies extra <head> markup for the login page served
 	// at a given path - the Open Graph tags a chat app reads to preview a link
 	// that leads to sign-in. Empty for a path with nothing to preview.
@@ -45,8 +47,8 @@ type Auth struct {
 	Spoof *Spoof
 }
 
-func New(clientID string, key []byte, loginPage string) *Auth {
-	return &Auth{clientID: clientID, key: key, loginPage: loginPage}
+func New(clientID string, key []byte, loginPage string, member func(email string) bool) *Auth {
+	return &Auth{clientID: clientID, key: key, loginPage: loginPage, member: member}
 }
 
 // Fixed signs every request in as email, with no session at all - for tests.
@@ -60,8 +62,48 @@ func Fixed(email string, next http.Handler) http.Handler {
 // server does, but still honours a spoof, so Spoof Mode can be tried there.
 func (a *Auth) Fixed(email string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), contextKey{}, a.resolve(r, email))))
+		if Public(r.URL.Path) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		a.admit(w, r, a.resolve(r, email), next)
 	})
+}
+
+const noAccessPage = "web/public/common/no-access.html"
+
+// The check is on the effective identity: an admin viewing as someone the
+// directory has dropped is refused as that person would be.
+func (a *Auth) admit(w http.ResponseWriter, r *http.Request, id identity, next http.Handler) {
+	if !a.member(id.effective) && r.URL.Path != "/auth/logout" && r.URL.Path != "/optin" {
+		a.deny(w, r)
+		return
+	}
+	next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), contextKey{}, id)))
+}
+
+// fetched is a request a page's script makes, which wants a status, not a page.
+func fetched(path string) bool {
+	return strings.Contains(path, "/api/") || strings.HasPrefix(path, "/blob/")
+}
+
+func (a *Auth) deny(w http.ResponseWriter, r *http.Request) {
+	if fetched(r.URL.Path) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	page, err := os.ReadFile(noAccessPage)
+	if err != nil {
+		slog.ErrorContext(r.Context(), "read the no-access page", "error", err)
+		http.Error(w, "no-access page unavailable", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusForbidden)
+	if _, err := w.Write(page); err != nil {
+		slog.ErrorContext(r.Context(), "write the no-access page", "error", err)
+	}
 }
 
 // Public is what serves without a session: the sign-in exchange itself,
@@ -108,14 +150,14 @@ func (a *Auth) Wrap(next http.Handler) http.Handler {
 		}
 		email := a.sessionEmail(r)
 		if email == "" {
-			if strings.Contains(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, "/blob/") {
+			if fetched(r.URL.Path) {
 				http.Error(w, "unauthenticated", http.StatusUnauthorized)
 				return
 			}
 			a.splash(w, r)
 			return
 		}
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), contextKey{}, a.resolve(r, email))))
+		a.admit(w, r, a.resolve(r, email), next)
 	})
 }
 

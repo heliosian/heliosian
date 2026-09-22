@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#014E54">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Helios Who?</title>
+<title>Helios</title>
 <link rel="icon" type="image/png" sizes="16x16" href="/brand/favicon-16.png">
 <link rel="icon" type="image/png" sizes="32x32" href="/brand/favicon-32.png">
 <link rel="icon" href="/brand/favicon-192.png">
@@ -67,22 +67,28 @@ body {
   text-decoration: none;
 }
 .signout {
-  display: inline-block;
-  margin-top: 1.25rem;
+  margin: 1.25rem 0 0;
+}
+.signout button {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
   font-size: 0.875rem;
   color: rgba(255, 255, 255, 0.75);
+  cursor: pointer;
 }
 </style>
 </head>
 <body>
 <div class="panel">
 <img src="/brand/icon-192.png" alt="">
-<h1>Helios Who?</h1>
+<h1>Helios</h1>
 <div class="divider"></div>
-<p>It looks like you haven't opted in to Helios Who yet. Helios Who only holds data from families who have opted in.</p>
+<p>It looks like you haven't opted in to Helios yet. Helios only holds data from families who have opted in.</p>
 <p>Opt in now, and you'll be able to sign in within a few minutes.</p>
 <a class="button" href="/optin">Open the opt-in form</a>
-<a class="signout" href="/auth/logout">Sign in with a different account</a>
+<form class="signout" method="post" action="/auth/logout"><button>Sign in with a different account</button></form>
 </div>
 </body>
 </html>

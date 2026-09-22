@@ -122,7 +122,7 @@ func sampleServer() (*http.Server, *who.Queue) {
 	// its own signs the spoof cookie and answers the toolbar's switch, and
 	// every request is the sample parent's unless they are viewing as
 	// someone else.
-	signIn := auth.New("", []byte("sample"), "")
+	signIn := auth.New("", []byte("sample"), "", core.Member)
 	signIn.Spoof = core.Spoof
 	for _, m := range core.Muxes() {
 		m.Handle("POST /auth/logout", http.RedirectHandler("/", http.StatusSeeOther))
@@ -130,7 +130,7 @@ func sampleServer() (*http.Server, *who.Queue) {
 	}
 	slog.Info("serving sample data", "as", sampleUser)
 	return localTLS(app.Server(map[string]http.Handler{
-		"who":       app.Public("who", signIn.Fixed(sampleUser, app.Logged("who", app.Files("who", core.Gate)))),
+		"who":       app.Public("who", signIn.Fixed(sampleUser, app.Logged("who", app.Files("who", core.Mux)))),
 		"home":      app.Public("home", signIn.Fixed(sampleUser, app.Logged("home", app.Files("home", core.Home)))),
 		"team":      app.Public("team", team.Redirected(core.TeamCache, signIn.Fixed(sampleUser, app.Logged("team", app.Files("team", core.Team))))),
 		"birthday":  app.Public("birthday", signIn.Fixed(sampleUser, app.Logged("birthday", app.Files("birthday", core.Birthday)))),
