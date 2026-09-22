@@ -461,15 +461,19 @@ export function rulesEditor({el, svg, options, me, personName}) {
     return ruleSentence(r, (key, label) => label).join('');
   }
 
-  // ruleNodes is the sentence for the band, a Loop group's name in it a
-  // link to the group's page there.
+  // ruleNodes is the sentence for the band, a Magic Tag's name in it a link
+  // to the group in Loop, the activity in HCA-Team or the party in Celebrate.
+  const listPages = {group: ['loop', '/groups/'], activity: ['team', '/activities/'], party: ['celebrate', '/parties/']};
+
   function ruleNodes(r) {
     return ruleSentence(r, (key, label) => {
-      if (!key.startsWith('group:')) {
+      const at = key.indexOf(':');
+      const page = at > 0 && listPages[key.slice(0, at)];
+      if (!page) {
         return label;
       }
       const a = el('a', 'rule-group-link', label);
-      a.href = `${appOrigin('loop')}/groups/${encodeURIComponent(key.slice('group:'.length))}`;
+      a.href = `${appOrigin(page[0])}${page[1]}${encodeURIComponent(key.slice(at + 1))}`;
       return a;
     });
   }

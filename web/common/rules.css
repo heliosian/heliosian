@@ -41,7 +41,7 @@
 
 .rule-line-words { flex: 1; min-width: 0; }
 
-/* A Loop group's name in the sentence opens the group there. */
+/* A Magic Tag's name in the sentence opens the group, activity or party in its app. */
 .rule-group-link { color: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
 
 .rule-group-link:hover { color: var(--brand); }
