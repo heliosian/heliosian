@@ -140,6 +140,34 @@ func TestRoute(t *testing.T) {
 	}
 }
 
+func TestSecureHeaders(t *testing.T) {
+	apps := map[string]http.Handler{"who": http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})}
+	for _, c := range []struct {
+		domain, host string
+		hsts         string
+	}{
+		{Domain, "who.heliosian.com", "max-age=31536000; includeSubDomains"},
+		{Domain, "localhost:8080", "max-age=31536000; includeSubDomains"},
+		{DevDomain, "who.heliosiandev.com", ""},
+	} {
+		rec := get(t, Server(c.domain, apps).Handler, c.host, "/people")
+		h := rec.Header()
+		if got := h.Get("Strict-Transport-Security"); got != c.hsts {
+			t.Errorf("%s %s: hsts %q, want %q", c.domain, c.host, got, c.hsts)
+		}
+		for name, want := range map[string]string{
+			"X-Content-Type-Options": "nosniff",
+			"X-Frame-Options":        "DENY",
+			"Referrer-Policy":        "strict-origin-when-cross-origin",
+			"Permissions-Policy":     "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+		} {
+			if got := h.Get(name); got != want {
+				t.Errorf("%s %s: %s %q, want %q", c.domain, c.host, name, got, want)
+			}
+		}
+	}
+}
+
 func TestCanonicalHost(t *testing.T) {
 	cases := map[string]string{
 		"calendar.heliosian.com":      "when.heliosian.com",

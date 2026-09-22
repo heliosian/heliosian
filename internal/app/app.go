@@ -670,6 +670,26 @@ func (d calendarDirectory) ClassroomColors() map[string]string {
 	return d.settings.Settings().ClassroomColors
 }
 
+// secure sets the headers every response carries: browsers keep to https for
+// the domain and everything under it for a year, never sniff a body into
+// another type, never frame a page, send only the origin as referrer
+// off-site, and never ask for the camera, microphone, location, payment or
+// USB, which no page here uses. HSTS is production's alone: a developer's
+// machine answers DevDomain and must not be pinned by it.
+func secure(domain string, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		if domain == Domain {
+			h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		}
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("X-Frame-Options", "DENY")
+		h.Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()")
+		next.ServeHTTP(w, r)
+	})
+}
+
 func cacheControl(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/fonts/") || strings.HasPrefix(r.URL.Path, "/brand/") {
@@ -1058,13 +1078,13 @@ func (c *Core) Muxes() map[string]*http.ServeMux {
 }
 
 // Server dresses the apps, each fully wrapped and keyed by name, in the shared
-// HTTP plumbing: host routing under the one domain it answers, and cache
-// headers.
+// HTTP plumbing: host routing under the one domain it answers, cache
+// headers, and the security headers.
 func Server(domain string, apps map[string]http.Handler) *http.Server {
 	protocols := new(http.Protocols)
 	protocols.SetHTTP1(true)
 	protocols.SetUnencryptedHTTP2(true)
-	return &http.Server{Addr: ":" + Port(), Handler: cacheControl(route(domain, apps)), Protocols: protocols}
+	return &http.Server{Addr: ":" + Port(), Handler: secure(domain, cacheControl(route(domain, apps))), Protocols: protocols}
 }
 
 // Serve runs a server until SIGTERM or interrupt, then shuts down gracefully
