@@ -1648,6 +1648,8 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .coming-section .rsvps-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 6px; }
 
+.coming-section .rsvps-head { margin: 14px 0 8px; }
+
 .coming-section .guest-table-bar { margin: 4px 0 8px; }
 
 .coming-section .guest-table-bar .rule-search { flex: 1 1 160px; max-width: 260px; }

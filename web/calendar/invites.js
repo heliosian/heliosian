@@ -432,12 +432,12 @@ export function comingCard(e, view, refresh) {
       card.append(pending);
     }
   }
-  // Who's coming is the yeses: whoever has said they are; the maybes, the
-  // nos and who has not answered are the hosts' to read in the Guest
-  // list and its table.
-  const rows = (view.host ? view.list : view.coming).filter(r => r.answer === 'yes');
+  // Who's coming is the yeses, the maybes and who has not answered, under
+  // a heading for each and no counts - the Guest list's tiles carry the
+  // numbers; the nos are the hosts' alone to see.
+  const rows = (view.host ? view.list : view.coming).filter(r => r.answer === 'yes' || r.answer === 'maybe' || (view.host && r.answer === 'no') || (r.invited && !r.answer));
   const head = el('div', 'rsvps-card-head');
-  head.append(el('h2', 'section section-swoosh', `Who\u2019s coming${rows.length ? ` (${rows.length})` : ''}`));
+  head.append(el('h2', 'section section-swoosh', 'Who\u2019s coming'));
   // Anyone invited may invite people one at a time - the hosts have the
   // Guest list's tools for it, and everything else.
   if (view.mayInvite && !view.host && view.sent) {
@@ -449,40 +449,54 @@ export function comingCard(e, view, refresh) {
   const grid = el('div', 'coming-grid');
   const paint = shown => {
     grid.replaceChildren();
-    if (!shown.length) {
-      grid.append(el('div', 'side-line', rows.length ? 'Nobody matches.' : 'Nobody has said yes yet.'));
+    const groups = [
+      ['Yes', shown.filter(r => r.answer === 'yes'), 'is-yes'],
+      ['Maybe', shown.filter(r => r.answer === 'maybe'), 'is-maybe'],
+    ];
+    if (view.host) {
+      groups.push(['No', shown.filter(r => r.answer === 'no'), 'is-no']);
+    }
+    groups.push(['No response', shown.filter(r => r.invited && !r.answer), 'is-waiting']);
+    if (!groups.some(([, people]) => people.length)) {
+      grid.append(el('div', 'side-line', rows.length ? 'Nobody matches.' : 'Nobody has answered yet.'));
       return;
     }
-    // The faces as Celebrate lays out its Who's Coming: a card each, the
-    // photo square across its width, the name, the line that places
-    // them, and Your family on the household's own.
-    const list = el('div', 'attendee-grid');
-    for (const p of shown) {
-      const tile = el('button', 'attendee');
-      tile.type = 'button';
-      tile.title = p.name || p.email;
-      const photo = face(p, 'attendee-face');
-      // On a party, a host sees a mark at the face's corner: a ticket
-      // for one bought, a gift for one the hosts gave, an hourglass for
-      // the waitlist, an empty ring for none.
-      if (view.party && view.host && p.invited) {
-        const mark = el('span', 'ticket-mark is-' + (p.ticket || 'none'));
-        mark.title = ticketWords(p.ticket);
-        mark.append(svg(p.ticket === 'ticket' ? 'ticket' : p.ticket === 'free' ? 'gift' : p.ticket === 'waitlist' ? 'clock' : 'close'));
-        photo.append(mark);
+    for (const [label, people, cls] of groups) {
+      if (!people.length) {
+        continue;
       }
-      tile.append(photo, el('div', 'attendee-name', p.name || p.email));
-      const line = p.guestOf ? `Guest of ${p.guestOfName}` : p.line;
-      if (line) {
-        tile.append(el('div', 'attendee-line', line));
+      grid.append(el('div', 'rsvps-head ' + cls, label));
+      // The faces as Celebrate lays out its Who's Coming: a card each, the
+      // photo square across its width, the name, the line that places
+      // them, and Your family on the household's own.
+      const list = el('div', 'attendee-grid');
+      for (const p of people) {
+        const tile = el('button', 'attendee');
+        tile.type = 'button';
+        tile.title = p.name || p.email;
+        const photo = face(p, 'attendee-face');
+        // On a party, a host sees a mark at the face's corner: a ticket
+        // for one bought, a gift for one the hosts gave, an hourglass for
+        // the waitlist, an empty ring for none.
+        if (view.party && view.host && p.invited) {
+          const mark = el('span', 'ticket-mark is-' + (p.ticket || 'none'));
+          mark.title = ticketWords(p.ticket);
+          mark.append(svg(p.ticket === 'ticket' ? 'ticket' : p.ticket === 'free' ? 'gift' : p.ticket === 'waitlist' ? 'clock' : 'close'));
+          photo.append(mark);
+        }
+        tile.append(photo, el('div', 'attendee-name', p.name || p.email));
+        const line = p.guestOf ? `Guest of ${p.guestOfName}` : p.line;
+        if (line) {
+          tile.append(el('div', 'attendee-line', line));
+        }
+        if (view.mine.some(m => m.key === p.key)) {
+          tile.append(el('div', 'attendee-mine', 'Your family'));
+        }
+        tile.addEventListener('click', () => openGuestCard(e, p, view, refresh));
+        list.append(tile);
       }
-      if (view.mine.some(m => m.key === p.key)) {
-        tile.append(el('div', 'attendee-mine', 'Your family'));
-      }
-      tile.addEventListener('click', () => openGuestCard(e, p, view, refresh));
-      list.append(tile);
+      grid.append(list);
     }
-    grid.append(list);
   };
   if (rows.length > 1) {
     card.append(listFilters(rows, view, paint, {rsvp: false}));
