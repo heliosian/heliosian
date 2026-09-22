@@ -82,10 +82,10 @@ func YearLabelled(label string, month time.Month, day int) Year {
 }
 
 // Occurrence places a birthday's month and day inside a year.
-func (y Year) Occurrence(birthday time.Time) time.Time {
-	t := dateIn(y.Start.Year(), birthday.Month(), birthday.Day())
+func (y Year) Occurrence(month time.Month, day int) time.Time {
+	t := dateIn(y.Start.Year(), month, day)
 	if t.Before(y.Start) {
-		t = dateIn(y.Start.Year()+1, birthday.Month(), birthday.Day())
+		t = dateIn(y.Start.Year()+1, month, day)
 	}
 	return t
 }

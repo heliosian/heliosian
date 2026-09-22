@@ -176,13 +176,13 @@ func TestYears(t *testing.T) {
 	if got := YearContaining(mustTime("2026-08-13"), time.August, 14).Label; got != "2025 - 2026" {
 		t.Errorf("the day before the turnover: %s", got)
 	}
-	if got := y.Occurrence(mustTime("1978-06-20")); got != mustTime("2027-06-20") {
+	if got := y.Occurrence(time.June, 20); got != mustTime("2027-06-20") {
 		t.Errorf("summer birthday: %s", got)
 	}
-	if got := y.Occurrence(mustTime("1988-02-29")); got != mustTime("2027-02-28") {
+	if got := y.Occurrence(time.February, 29); got != mustTime("2027-02-28") {
 		t.Errorf("leap day: %s", got)
 	}
-	if got := y.Occurrence(mustTime("1982-08-13")); got != mustTime("2027-08-13") {
+	if got := y.Occurrence(time.August, 13); got != mustTime("2027-08-13") {
 		t.Errorf("last day of the year: %s", got)
 	}
 	dates := []string{"2026-08-21", "2026-09-04", "2026-09-18", "2027-06-04", "2027-09-03"}
@@ -373,7 +373,7 @@ func TestPipeline(t *testing.T) {
 	if rec := call(t, mux, parent, "DELETE", "/api/birthday/participation", miguel); rec.Code != http.StatusNoContent {
 		t.Fatalf("unskip: %d %s", rec.Code, rec.Body)
 	}
-	if b := cache.Model().Birthday("miguel.santos@heliosschool.org"); b == nil || b.Level != "" || b.Birthday != "1985-09-14" {
+	if b := cache.Model().Birthday("miguel.santos@heliosschool.org"); b == nil || b.Level != "" || b.Birthday != "09-14" {
 		t.Fatalf("after unskipping: %+v", b)
 	}
 	sasha := map[string]any{"email": "sasha.pike@heliosschool.org", "level": LevelNoNewsletter, "note": "Asked by email"}
@@ -408,7 +408,7 @@ func TestPipeline(t *testing.T) {
 
 func TestBirthdays(t *testing.T) {
 	cache, mux := newServer(t)
-	sasha := map[string]any{"email": "sasha.pike@heliosschool.org", "birthday": "1995-09-12", "override": ""}
+	sasha := map[string]any{"email": "sasha.pike@heliosschool.org", "birthday": "09-12", "override": ""}
 	if rec := call(t, mux, parent, "POST", "/api/birthday/birthday", sasha); rec.Code != http.StatusNoContent {
 		t.Fatalf("add birthday: %d %s", rec.Code, rec.Body)
 	}
@@ -416,8 +416,13 @@ func TestBirthdays(t *testing.T) {
 	if sv := find(v.Staff, "sasha.pike@heliosschool.org"); sv == nil || sv.NewsletterDate != "2026-09-11" || len(v.Missing) != 0 {
 		t.Fatalf("after adding a birthday: %+v, missing %v", sv, v.Missing)
 	}
-	if rec := call(t, mux, parent, "POST", "/api/birthday/birthday", map[string]any{"email": "sasha.pike@heliosschool.org", "birthday": "September 12"}); rec.Code != http.StatusBadRequest {
-		t.Fatalf("a bad date was accepted: %d", rec.Code)
+	for _, bad := range []string{"September 12", "1995-09-12"} {
+		if rec := call(t, mux, parent, "POST", "/api/birthday/birthday", map[string]any{"email": "sasha.pike@heliosschool.org", "birthday": bad}); rec.Code != http.StatusBadRequest {
+			t.Fatalf("birthday %q was accepted: %d", bad, rec.Code)
+		}
+	}
+	if sv := find(view(t, cache, parent).Staff, "dana.hawkins@heliosschool.org"); sv == nil || sv.Birthday != "08-20" {
+		t.Fatalf("the model carries more than a month and day: %+v", sv)
 	}
 	if rec := call(t, mux, parent, "DELETE", "/api/birthday/birthday", sasha); rec.Code != http.StatusForbidden {
 		t.Fatalf("a non-admin removed a birthday: %d", rec.Code)

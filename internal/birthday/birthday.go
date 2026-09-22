@@ -108,9 +108,10 @@ var (
 
 var emailForm = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
 
-// Birthday is one staff member's row: their birthday, the newsletter that
-// should carry it when the usual pick is wrong, and their standing wish about
-// taking part. Someone who opted out entirely may have no birthday on file.
+// Birthday is one staff member's row: their birthday as a month and day,
+// 08-20, the newsletter that should carry it when the usual pick is wrong, and
+// their standing wish about taking part. Someone who opted out entirely may
+// have no birthday on file.
 type Birthday struct {
 	Email    string `json:"email"`
 	Birthday string `json:"birthday,omitempty"`
@@ -365,6 +366,16 @@ func checkDate(what, cell string) error {
 	return nil
 }
 
+func checkMonthDay(what, cell string) error {
+	if cell == "" {
+		return nil
+	}
+	if _, _, err := ParseMonthDay(cell); err != nil {
+		return fmt.Errorf("%s %w", what, err)
+	}
+	return nil
+}
+
 func checkName(kind, name string) error {
 	if name == "" {
 		return fmt.Errorf("%s has no name", kind)
@@ -512,7 +523,7 @@ func BuildModel(tables *Tables) (*Model, error) {
 		if row["Birthday"] == "" && level != LevelSkip {
 			return fail(fmt.Errorf("has no birthday; only someone who opted out may go without one"))
 		}
-		if err := checkDate("birthday", row["Birthday"]); err != nil {
+		if err := checkMonthDay("birthday", row["Birthday"]); err != nil {
 			return fail(err)
 		}
 		if err := checkDate("newsletter override", row["Newsletter Override"]); err != nil {

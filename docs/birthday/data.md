@@ -6,7 +6,7 @@ The app's data lives in one Google Sheet, `Birthdays`, in the community shared d
 
 ## Tabs
 
-- `Birthdays` — Email, Birthday, Newsletter Override, Participation, Note. One row per staff member. Participation is blank, `Skip`, or `No Newsletter`; Birthday may be blank only when Participation is `Skip`, so someone who opted out before their birthday was ever collected still has a row. Note is about the participation wish.
+- `Birthdays` — Email, Birthday (`08-20`), Newsletter Override, Participation, Note. One row per staff member. Participation is blank, `Skip`, or `No Newsletter`; Birthday may be blank only when Participation is `Skip`, so someone who opted out before their birthday was ever collected still has a row. Note is about the participation wish.
 - `Assignments` — Email, Year, Assigned To, Assigned On. One row per staff member per year; unassigning deletes it.
 - `Outreach` — Email, Year, Contacted On, Contacted By. One row per staff member per year; undoing deletes it.
 - `Donations` — Email, Year, Charity, Note, Recorded On, Recorded By, Used On, Used By. One row per staff member per year. Recorded By may be blank. Used On and Used By are set together once the newsletter has carried it and cleared together to take that back.
@@ -25,7 +25,7 @@ Nothing carries an opaque id. A staff member is their email, a charity is its na
 
 ## Years and dates
 
-Every date is a day, `2026-09-24`, at the school; nothing carries a time. Year is `2026 - 2027`, the birthday year starting on the `Year Start` day (`08-14`) of the first calendar year. A birthday's own year is whatever the source knew, and only its month and day are read.
+Every date is a day, `2026-09-24`, at the school; nothing carries a time. Year is `2026 - 2027`, the birthday year starting on the `Year Start` day (`08-14`) of the first calendar year. A birthday is a month and day in the same form, `08-20`, and the sheet refuses one with a year on it, so nobody's year of birth is kept.
 
 ## Yes and No
 

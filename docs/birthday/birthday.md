@@ -4,7 +4,7 @@ Helios Staff Birthdays is where the Helios Community Association's birthday team
 
 ## Entities
 
-- **Birthday** — a staff member's row: their email, birthday, a newsletter override (the issue that should announce it when the usual pick is wrong), and their participation, a standing wish about taking part. The birthday's year is kept when it is known and never shown, and the birthday itself may be blank only for someone who opted out.
+- **Birthday** — a staff member's row: their email, birthday, a newsletter override (the issue that should announce it when the usual pick is wrong), and their participation, a standing wish about taking part. A birthday is a month and day alone; no year of birth is kept anywhere, and the birthday itself may be blank only for someone who opted out.
 - **Assignment** — which team member is handling a staff member this year.
 - **Outreach** — that the staff member was contacted this year, when, and by whom.
 - **Donation** — the staff member's charity and note for the year, when it was recorded and by whom, and once the newsletter has carried it, when and by whom.

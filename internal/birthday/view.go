@@ -135,8 +135,8 @@ func (v viewer) staff(model *Model, b *Birthday, year Year, today time.Time) Sta
 	if b.Birthday == "" {
 		return sv
 	}
-	birthday, _ := ParseDate(b.Birthday)
-	occurrence := year.Occurrence(birthday)
+	month, day, _ := ParseMonthDay(b.Birthday)
+	occurrence := year.Occurrence(month, day)
 	sv.BirthdayThisYear = dateCell(occurrence)
 	newsletter, hasNewsletter := year.Newsletter(occurrence, model.NewsletterDates)
 	if b.Override != "" {

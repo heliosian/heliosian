@@ -763,6 +763,10 @@ h2.section { font-size: 20px; margin: 24px 0 12px; }
 
 .field textarea { resize: vertical; }
 
+.field-pair { display: flex; gap: 8px; }
+
+.field-pair select { flex: 1; }
+
 .field-toggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 
 .field-toggle > span { margin: 0; }

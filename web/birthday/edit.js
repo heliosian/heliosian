@@ -344,17 +344,25 @@ export function openDonation(sv) {
   });
 }
 
+const monthFormat = new Intl.DateTimeFormat('en-US', {month: 'long'});
+const months = Array.from({length: 12}, (_, i) => ({label: monthFormat.format(new Date(2000, i, 1)), value: String(i + 1).padStart(2, '0')}));
+const days = Array.from({length: 31}, (_, i) => String(i + 1).padStart(2, '0'));
+
 export function openBirthday(sv) {
   const email = text(sv.email, {type: 'email', required: true, placeholder: 'name@heliosschool.org'});
-  const birthday = text(sv.birthday || '', {type: 'date', required: true});
+  const [currentMonth, currentDay] = (sv.birthday || '').split('-');
+  const month = select(months, currentMonth || '01');
+  const day = select(days, currentDay || '01');
+  const birthday = el('div', 'field-pair');
+  birthday.append(month, day);
   const override = select([{label: 'The usual pick', value: ''}, ...state.model.newsletterDates.map(d => ({label: longDate(d), value: d}))], sv.override || '');
   const fields = [];
   if (!sv.birthday) {
     fields.push(field('Email', email));
   }
-  fields.push(field('Birthday', birthday, 'The year matters only when it is known'), field('Newsletter', override, 'Which issue carries the birthday, when the first one on or after it is wrong'));
+  fields.push(field('Birthday', birthday), field('Newsletter', override, 'Which issue carries the birthday, when the first one on or after it is wrong'));
   openModal(sv.birthday ? `Edit ${sv.name}'s birthday` : `Add ${sv.name ? `${sv.name}'s` : 'a'} birthday`, fields, {
-    submit: () => send('POST', '/api/birthday/birthday', {email: sv.birthday ? sv.email : email.value, birthday: birthday.value, override: override.value}),
+    submit: () => send('POST', '/api/birthday/birthday', {email: sv.birthday ? sv.email : email.value, birthday: `${month.value}-${day.value}`, override: override.value}),
     onDelete: sv.birthday && isAdmin() ? () => send('DELETE', '/api/birthday/birthday', {email: sv.email}) : null,
     deleteLabel: 'Remove birthday',
     confirmDelete: `Remove ${sv.name}'s birthday? Their assignments, outreach, donations, and notes must already be gone.`,
