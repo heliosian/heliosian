@@ -63,7 +63,7 @@ func main() {
 
 	switch {
 	case *real:
-		app.Serve(localTLS(app.Production(blobCache)))
+		app.Serve(localTLS(app.Production(app.DevDomain, blobCache)))
 	case *detach:
 		detachReal(*email)
 	case *capturePath != "":
@@ -103,14 +103,14 @@ func sampleServer() (*http.Server, *who.Queue) {
 		CalendarMail:  calendar.Mail{Sender: mail.New("", "Helios When <when@example.org>", mailDir()), From: "Helios When <when@example.org>", ReplyTo: "Helios When <rsvp@reply.example.org>", Key: []byte("sample")},
 		BirthdayMail:  mail.New("", "Helios Staff Birthdays <birthday@example.org>", mailDir()),
 		BirthdayFrom:  "Helios Staff Birthdays <birthday@example.org>",
-		BirthdayBase:  "https://birthday.local.heliosian.com:" + app.Port(),
+		BirthdayBase:  "https://birthday.heliosiandev.com:" + app.Port(),
 		// Reports land in the sample Reports tab and the word of them beside
 		// the other sample mail; filing needs a GitHub App, which sample mode
 		// has none of, so the triage queue says so.
-		FeedbackBase: "https://home.local.heliosian.com:" + app.Port(),
+		FeedbackBase: "https://home.heliosiandev.com:" + app.Port(),
 		// Loop's forwards would land as .eml files beside the other sample
 		// mail and its archive under loop/ there; nothing receives for it.
-		Loop:          loop.Mail{Sender: &mail.Files{Dir: mailDir(), From: "Helios Loop"}, Key: []byte("sample"), Base: "https://loop.local.heliosian.com:" + app.Port(), Archive: loop.DirArchive{Dir: mailDir()}},
+		Loop:          loop.Mail{Sender: &mail.Files{Dir: mailDir(), From: "Helios Loop"}, Key: []byte("sample"), Base: "https://loop.heliosiandev.com:" + app.Port(), Archive: loop.DirArchive{Dir: mailDir()}},
 		LoopDescriber: sampleGroupDescriber(),
 		Asker:         sampleAsker(),
 		Artifacts: func(*artifacts.Model) (*artifacts.Model, error) {
@@ -122,14 +122,14 @@ func sampleServer() (*http.Server, *who.Queue) {
 	// its own signs the spoof cookie and answers the toolbar's switch, and
 	// every request is the sample parent's unless they are viewing as
 	// someone else.
-	signIn := auth.New("", []byte("sample"), "", core.Member)
+	signIn := auth.New(app.DevDomain, "", []byte("sample"), "", core.Member)
 	signIn.Spoof = core.Spoof
 	for _, m := range core.Muxes() {
 		m.Handle("POST /auth/logout", http.RedirectHandler("/", http.StatusSeeOther))
 		signIn.RegisterSpoof(m)
 	}
 	slog.Info("serving sample data", "as", sampleUser)
-	return localTLS(app.Server(map[string]http.Handler{
+	return localTLS(app.Server(app.DevDomain, map[string]http.Handler{
 		"who":       app.Public("who", signIn.Fixed(sampleUser, app.Logged("who", app.Files("who", core.Mux)))),
 		"home":      app.Public("home", signIn.Fixed(sampleUser, app.Logged("home", app.Files("home", core.Home)))),
 		"team":      app.Public("team", team.Redirected(core.TeamCache, signIn.Fixed(sampleUser, app.Logged("team", app.Files("team", core.Team))))),
@@ -168,7 +168,7 @@ func sampleGroupDescriber() loop.Describer {
 }
 
 func localTLS(server *http.Server, queue *who.Queue) (*http.Server, *who.Queue) {
-	server.TLSConfig = &tls.Config{Certificates: []tls.Certificate{devtls.Certificate()}}
+	server.TLSConfig = &tls.Config{Certificates: []tls.Certificate{devtls.Certificate(app.DevDomain)}}
 	return server, queue
 }
 
@@ -215,7 +215,7 @@ func captureOnce(opts capture.Options, out string) {
 	go func() {
 		served <- app.ListenAndServe(server)
 	}()
-	base := "https://who.local.heliosian.com:" + app.Port()
+	base := "https://who.heliosiandev.com:" + app.Port()
 	probe := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}}
 	ready := false
 	for range 100 {

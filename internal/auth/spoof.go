@@ -239,7 +239,7 @@ func (a *Auth) setSpoof(w http.ResponseWriter, r *http.Request) {
 		target = p.Email
 	}
 	secure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
-	domain := cookieDomain(r.Host)
+	domain := a.cookieDomain(r.Host)
 	if target == "" || strings.EqualFold(target, real) {
 		http.SetCookie(w, &http.Cookie{
 			Name: spoofCookie, Value: "", Path: "/", Domain: domain,

@@ -419,12 +419,12 @@ func TestICS(t *testing.T) {
 	m := load(t)
 	f := m.Feed("sample7feedtoken4jordan2whitfield")
 	at, _ := time.ParseInLocation(DateTimeFormat, "2026-09-01 08:00", Location)
-	out := string(ICS(m, f, nil, "https://calendar.local.heliosian.com:8080", at))
+	out := string(ICS(m, f, nil, "https://calendar.heliosiandev.com:8080", at))
 	for _, want := range []string{
 		"BEGIN:VCALENDAR\r\n", "X-WR-CALNAME:Whitfield school days\r\n", "END:VCALENDAR\r\n",
 		"UID:a4@sample\r\n", "DTSTART;VALUE=DATE:20260907\r\n", "DTEND;VALUE=DATE:20260908\r\n",
 		"SUMMARY:Jays and Ravens Camping\r\n", "DTSTART;VALUE=DATE:20260909\r\n", "DTEND;VALUE=DATE:20260912\r\n",
-		"DTSTAMP:20260901T150000Z\r\n", "URL:https://calendar.local.heliosian.com:8080/e/a5@sample\r\n",
+		"DTSTAMP:20260901T150000Z\r\n", "URL:https://calendar.heliosiandev.com:8080/e/a5@sample\r\n",
 		"CATEGORIES:Jays\\, Ravens\\, Trip\r\n", "DESCRIPTION:No School\r\n",
 	} {
 		if !strings.Contains(out, want) {

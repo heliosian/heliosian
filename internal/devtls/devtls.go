@@ -14,9 +14,9 @@ import (
 	"heliosian/internal/logging"
 )
 
-const domain = "local.heliosian.com"
-
-func Certificate() tls.Certificate {
+// Certificate is a fresh self-signed certificate for the domain and every
+// name under it.
+func Certificate(domain string) tls.Certificate {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		logging.Fatal("generate dev key", "error", err)

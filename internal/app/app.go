@@ -55,25 +55,27 @@ import (
 // seconds it gives the old one to finish after SIGTERM.
 const deployOverlap = 30 * time.Second
 
+// Domain is production's, every app under it; DevDomain is a developer's
+// machine, every name under it resolving to loopback, with nothing of
+// production beneath it so production's cookies never reach it.
+const (
+	Domain    = "heliosian.com"
+	DevDomain = "heliosiandev.com"
+)
+
 // aliases are the other labels an app answers under: the volunteer portal,
 // team, as hca, and the calendar - whose address is when (canonicalHost) -
 // as calendar and cal.
 var aliases = map[string]string{"hca": "team", "cal": "calendar", "when": "calendar"}
 
-// appFor reads the app out of a hostname: <app>.heliosian.com in production,
-// <app>.local.heliosian.com on a developer's machine. Home also answers as the
-// bare and www apex.
-func appFor(host string) string {
-	switch host {
-	case "heliosian.com", "www.heliosian.com":
+// appFor reads the app out of a hostname under the domain this server
+// answers: <app>.<domain>, with home also as the bare and www domain.
+func appFor(domain, host string) string {
+	if host == domain || host == "www."+domain {
 		return "home"
 	}
-	name, ok := strings.CutSuffix(host, ".heliosian.com")
-	if !ok {
-		return ""
-	}
-	app, tier, _ := strings.Cut(name, ".")
-	if tier != "" && tier != "local" {
+	app, ok := strings.CutSuffix(host, "."+domain)
+	if !ok || strings.Contains(app, ".") {
 		return ""
 	}
 	if canonical, ok := aliases[app]; ok {
@@ -715,15 +717,15 @@ func Logged(app string, next http.Handler) http.Handler {
 	return logging.Requests(app, blob.Media, next)
 }
 
-func route(apps map[string]http.Handler) http.Handler {
+func route(domain string, apps map[string]http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		host, port, _ := strings.Cut(r.Host, ":")
-		app, ok := apps[appFor(host)]
+		app, ok := apps[appFor(domain, host)]
 		if !ok {
 			http.NotFound(w, r)
 			return
 		}
-		if canonical := canonicalHost(host); canonical != "" && redirectable(r) {
+		if canonical := canonicalHost(domain, host); canonical != "" && redirectable(r) {
 			if port != "" {
 				canonical += ":" + port
 			}
@@ -734,21 +736,13 @@ func route(apps map[string]http.Handler) http.Handler {
 	})
 }
 
-// canonicalHost is the address an alias sends the browser to, on the same
-// tier: the calendar lives at when.heliosian.com, and calendar. and cal.
-// are ways of typing it. Every other hostname is its own, and gets "".
-func canonicalHost(host string) string {
-	name, ok := strings.CutSuffix(host, ".heliosian.com")
-	if !ok {
-		return ""
-	}
-	app, tier, _ := strings.Cut(name, ".")
-	switch app {
-	case "calendar", "cal":
-		if tier != "" {
-			tier = "." + tier
-		}
-		return "when" + tier + ".heliosian.com"
+// canonicalHost is the address an alias sends the browser to, under the
+// same domain: the calendar lives at when.heliosian.com, and calendar. and
+// cal. are ways of typing it. Every other hostname is its own, and gets "".
+func canonicalHost(domain, host string) string {
+	switch host {
+	case "calendar." + domain, "cal." + domain:
+		return "when." + domain
 	}
 	return ""
 }
@@ -1064,12 +1058,13 @@ func (c *Core) Muxes() map[string]*http.ServeMux {
 }
 
 // Server dresses the apps, each fully wrapped and keyed by name, in the shared
-// HTTP plumbing: host routing and cache headers.
-func Server(apps map[string]http.Handler) *http.Server {
+// HTTP plumbing: host routing under the one domain it answers, and cache
+// headers.
+func Server(domain string, apps map[string]http.Handler) *http.Server {
 	protocols := new(http.Protocols)
 	protocols.SetHTTP1(true)
 	protocols.SetUnencryptedHTTP2(true)
-	return &http.Server{Addr: ":" + Port(), Handler: cacheControl(route(apps)), Protocols: protocols}
+	return &http.Server{Addr: ":" + Port(), Handler: cacheControl(route(domain, apps)), Protocols: protocols}
 }
 
 // Serve runs a server until SIGTERM or interrupt, then shuts down gracefully
@@ -1333,10 +1328,12 @@ func mapsKey(envName, file string) string {
 }
 
 // Production assembles the real service: the production spreadsheets, the media
-// bucket, real geocoding, and Google sign-in. Every input is required. With a
-// blobCache, the media fetched from the bucket is kept on disk there too and
-// read from there on the next start; the production binary passes none.
-func Production(blobCache string) (*http.Server, *who.Queue) {
+// bucket, real geocoding, and Google sign-in, answering under the one domain
+// given - Domain for the deployed service, DevDomain on a laptop. Every input
+// is required. With a blobCache, the media fetched from the bucket is kept on
+// disk there too and read from there on the next start; the production binary
+// passes none.
+func Production(domain, blobCache string) (*http.Server, *who.Queue) {
 	spreadsheets := map[string]string{
 		"directory":   requiredEnv("DIRECTORY_SHEET"),
 		"preferences": requiredEnv("PREFERENCES_SHEET"),
@@ -1408,7 +1405,7 @@ func Production(blobCache string) (*http.Server, *who.Queue) {
 	// Every app's sign-in shares the key, so one session - and one spoof -
 	// covers them all, and the same membership check admits each request.
 	newAuth := func(app string) *auth.Auth {
-		a := auth.New(client, []byte(sessionKey), "web/public/"+app+"/login.html", core.Member)
+		a := auth.New(domain, client, []byte(sessionKey), "web/public/"+app+"/login.html", core.Member)
 		a.Spoof = core.Spoof
 		return a
 	}
@@ -1450,7 +1447,7 @@ func Production(blobCache string) (*http.Server, *who.Queue) {
 	askAuth.Register(core.AskMux)
 	// The portal sends an old address - the volunteer site this one replaced,
 	// a renamed event - on ahead of sign-in, so it lands on its page.
-	server := Server(map[string]http.Handler{
+	server := Server(domain, map[string]http.Handler{
 		"who":       Public("who", whoAuth.Wrap(Logged("who", Files("who", core.Mux)))),
 		"home":      Public("home", homeAuth.Wrap(Logged("home", Files("home", core.Home)))),
 		"team":      Public("team", team.Redirected(core.TeamCache, teamAuth.Wrap(Logged("team", Files("team", core.Team))))),

@@ -15,9 +15,9 @@ import (
 func TestPortalPreview(t *testing.T) {
 	c := sampleCache(t)
 	t.Chdir("../..")
-	head := PreviewHead(c)(httptest.NewRequest("GET", "https://home.local.heliosian.com/", nil))
-	for _, want := range []string{`og:title" content="Tools and resources for the Helios Community"`, `og:url" content="https://home.local.heliosian.com/"`,
-		`og:image" content="https://home.local.heliosian.com/open/share/apps.png"`, "Helios Who? (A visual directory, who.local.heliosian.com)", "Helios Calendar (The school year, day by day, when.local.heliosian.com)"} {
+	head := PreviewHead(c)(httptest.NewRequest("GET", "https://home.heliosiandev.com/", nil))
+	for _, want := range []string{`og:title" content="Tools and resources for the Helios Community"`, `og:url" content="https://home.heliosiandev.com/"`,
+		`og:image" content="https://home.heliosiandev.com/open/share/apps.png"`, "Helios Who? (A visual directory, who.heliosiandev.com)", "Helios Calendar (The school year, day by day, when.heliosiandev.com)"} {
 		if !strings.Contains(head, want) {
 			t.Errorf("preview head lacks %s:\n%s", want, head)
 		}
@@ -30,7 +30,7 @@ func TestPortalPreview(t *testing.T) {
 	if got := tierOf("heliosian.com"); got != "heliosian.com" {
 		t.Errorf("tier of heliosian.com = %q", got)
 	}
-	if got := tierOf("home.local.heliosian.com:8080"); got != "local.heliosian.com:8080" {
+	if got := tierOf("home.heliosiandev.com:8080"); got != "heliosiandev.com:8080" {
 		t.Errorf("tier of the local host = %q", got)
 	}
 

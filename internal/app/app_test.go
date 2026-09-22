@@ -25,13 +25,13 @@ func TestFiles(t *testing.T) {
 	})
 	handler := Files("who", next)
 	for _, path := range []string{"/style.css", "/brand/logo-wordmark.png", "/brand/classrooms/grade-k.jpg"} {
-		if rec := get(t, handler, "who.local.heliosian.com", path); rec.Code != http.StatusOK {
+		if rec := get(t, handler, "who.heliosiandev.com", path); rec.Code != http.StatusOK {
 			t.Errorf("%s: got %d, want 200", path, rec.Code)
 		}
 	}
 	for _, path := range []string{"/", "/people", "/admin", "/../go.mod", "/missing.js", "/manifest.webmanifest", "/fonts/fonts.css"} {
 		before := fallthroughs
-		if rec := get(t, handler, "who.local.heliosian.com", path); rec.Code != http.StatusTeapot || fallthroughs != before+1 {
+		if rec := get(t, handler, "who.heliosiandev.com", path); rec.Code != http.StatusTeapot || fallthroughs != before+1 {
 			t.Errorf("%s: got %d, want fallthrough", path, rec.Code)
 		}
 	}
@@ -46,42 +46,57 @@ func TestPublic(t *testing.T) {
 	})
 	handler := Public("who", next)
 	for _, path := range []string{"/manifest.webmanifest", "/brand/icon-192.png", "/brand/login-art.jpg", "/brand/splash/splash-390x844-3x-portrait.png", "/fonts/fonts.css", "/fonts/Roboto-Regular.woff2"} {
-		if rec := get(t, handler, "who.local.heliosian.com", path); rec.Code != http.StatusOK {
+		if rec := get(t, handler, "who.heliosiandev.com", path); rec.Code != http.StatusOK {
 			t.Errorf("%s: got %d, want 200", path, rec.Code)
 		}
 	}
 	for _, path := range []string{"/", "/people", "/style.css", "/app.js", "/brand/logo-wordmark.png", "/brand/classrooms/grade-k.jpg"} {
 		before := fallthroughs
-		if rec := get(t, handler, "who.local.heliosian.com", path); rec.Code != http.StatusTeapot || fallthroughs != before+1 {
+		if rec := get(t, handler, "who.heliosiandev.com", path); rec.Code != http.StatusTeapot || fallthroughs != before+1 {
 			t.Errorf("%s: got %d, want fallthrough", path, rec.Code)
 		}
 	}
 }
 
+// A server answers its own domain's names and nothing else: production's
+// never a developer's, a developer's never production's.
 func TestAppFor(t *testing.T) {
 	cases := map[string]string{
 		"who.heliosian.com":              "who",
-		"who.local.heliosian.com":        "who",
 		"home.heliosian.com":             "home",
-		"home.local.heliosian.com":       "home",
 		"team.heliosian.com":             "team",
-		"team.local.heliosian.com":       "team",
 		"hca.heliosian.com":              "team",
-		"hca.local.heliosian.com":        "team",
 		"calendar.heliosian.com":         "calendar",
 		"cal.heliosian.com":              "calendar",
-		"when.local.heliosian.com":       "calendar",
+		"when.heliosian.com":             "calendar",
 		"heliosian.com":                  "home",
 		"www.heliosian.com":              "home",
 		"localhost":                      "",
+		"who.heliosiandev.com":           "",
+		"heliosiandev.com":               "",
 		"who.lab.heliosian.com":          "",
 		"hca.lab.heliosian.com":          "",
 		"who.staging.heliosian.com":      "",
-		"who.lab.local.heliosian.com":    "",
 		"who.heliosian.com.evil.example": "",
 	}
 	for host, want := range cases {
-		if got := appFor(host); got != want {
+		if got := appFor(Domain, host); got != want {
+			t.Errorf("%s: got %q, want %q", host, got, want)
+		}
+	}
+	dev := map[string]string{
+		"who.heliosiandev.com":      "who",
+		"hca.heliosiandev.com":      "team",
+		"when.heliosiandev.com":     "calendar",
+		"heliosiandev.com":          "home",
+		"www.heliosiandev.com":      "home",
+		"who.heliosian.com":         "",
+		"heliosian.com":             "",
+		"who.lab.heliosiandev.com":  "",
+		"who.heliosiandev.com.evil": "",
+	}
+	for host, want := range dev {
+		if got := appFor(DevDomain, host); got != want {
 			t.Errorf("%s: got %q, want %q", host, got, want)
 		}
 	}
@@ -93,7 +108,7 @@ func TestAppFor(t *testing.T) {
 func TestHostnamesCoverTheRouter(t *testing.T) {
 	hosts := Hostnames()
 	for _, host := range hosts {
-		if appFor(host) == "" {
+		if appFor(Domain, host) == "" {
 			t.Errorf("%s is listed but routes nowhere", host)
 		}
 	}
@@ -102,7 +117,7 @@ func TestHostnamesCoverTheRouter(t *testing.T) {
 			t.Errorf("%s is not listed", want)
 		}
 	}
-	for _, never := range []string{"who.local.heliosian.com", "who.lab.heliosian.com"} {
+	for _, never := range []string{"who.heliosiandev.com", "who.lab.heliosian.com"} {
 		if slices.Contains(hosts, never) {
 			t.Errorf("%s is listed", never)
 		}
@@ -110,15 +125,15 @@ func TestHostnamesCoverTheRouter(t *testing.T) {
 }
 
 func TestRoute(t *testing.T) {
-	handler := route(map[string]http.Handler{"who": http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := route(Domain, map[string]http.Handler{"who": http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusTeapot)
 	})})
-	for _, host := range []string{"who.local.heliosian.com:8080", "who.heliosian.com"} {
+	for _, host := range []string{"who.heliosian.com:8080", "who.heliosian.com"} {
 		if rec := get(t, handler, host, "/people"); rec.Code != http.StatusTeapot {
 			t.Errorf("%s: got %d, want routed", host, rec.Code)
 		}
 	}
-	for _, host := range []string{"localhost:8080", "heliosian.com", "home.local.heliosian.com", "who.lab.heliosian.com"} {
+	for _, host := range []string{"localhost:8080", "heliosian.com", "who.heliosiandev.com", "who.lab.heliosian.com"} {
 		if rec := get(t, handler, host, "/people"); rec.Code != http.StatusNotFound {
 			t.Errorf("%s: got %d, want 404", host, rec.Code)
 		}
@@ -129,7 +144,7 @@ func TestCanonicalHost(t *testing.T) {
 	cases := map[string]string{
 		"calendar.heliosian.com":      "when.heliosian.com",
 		"cal.heliosian.com":           "when.heliosian.com",
-		"cal.local.heliosian.com":     "when.local.heliosian.com",
+		"cal.heliosiandev.com":        "",
 		"when.heliosian.com":          "",
 		"who.heliosian.com":           "",
 		"hca.heliosian.com":           "",
@@ -137,23 +152,26 @@ func TestCanonicalHost(t *testing.T) {
 		"calendar.heliosian.com.evil": "",
 	}
 	for host, want := range cases {
-		if got := canonicalHost(host); got != want {
+		if got := canonicalHost(Domain, host); got != want {
 			t.Errorf("canonicalHost(%q) = %q, want %q", host, got, want)
 		}
+	}
+	if got := canonicalHost(DevDomain, "cal.heliosiandev.com"); got != "when.heliosiandev.com" {
+		t.Errorf("canonicalHost(dev, cal) = %q, want when.heliosiandev.com", got)
 	}
 }
 
 func TestRouteSendsAliasesToWhen(t *testing.T) {
 	served := false
 	apps := map[string]http.Handler{"calendar": http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { served = true })}
-	handler := route(apps)
+	handler := route(Domain, apps)
 	for _, c := range []struct {
 		method, host, path string
 		want               int
 		location           string
 	}{
 		{"GET", "calendar.heliosian.com", "/day/2026-09-13?x=1", 301, "https://when.heliosian.com/day/2026-09-13?x=1"},
-		{"GET", "cal.local.heliosian.com:8080", "/", 301, "https://when.local.heliosian.com:8080/"},
+		{"GET", "cal.heliosian.com:8080", "/", 301, "https://when.heliosian.com:8080/"},
 		{"GET", "calendar.heliosian.com", "/open/feed/abc.ics", 200, ""},
 		{"GET", "calendar.heliosian.com", "/api/calendar/model", 200, ""},
 		{"POST", "calendar.heliosian.com", "/api/calendar/x", 200, ""},

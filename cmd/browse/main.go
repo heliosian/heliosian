@@ -122,7 +122,7 @@ func main() {
 	typeText := flag.String("type", "", "insert text into the focused element")
 	key := flag.String("key", "", "press a key: enter, tab, escape, backspace, or a literal character")
 	wait := flag.String("wait", "", "css selector that must be visible before capturing")
-	cookie := flag.String("cookie", "", "set a name=value cookie on who.local.heliosian.com before acting")
+	cookie := flag.String("cookie", "", "set a name=value cookie on who.heliosiandev.com before acting")
 	mobile := flag.Bool("mobile", false, "emulate a phone viewport (390x844, touch) instead of desktop 1280x800")
 	size := flag.String("size", "", "viewport size as WxH, overriding the desktop default")
 	dump := flag.Bool("dump", false, "print page html instead of writing a screenshot")
@@ -164,7 +164,7 @@ func main() {
 		if !ok {
 			log.Fatalf("[ERROR] cookie must be name=value, got %q", *cookie)
 		}
-		actions = append(actions, network.SetCookie(name, value).WithDomain("who.local.heliosian.com").WithPath("/"))
+		actions = append(actions, network.SetCookie(name, value).WithDomain("who.heliosiandev.com").WithPath("/"))
 	}
 	if *nav != "" {
 		actions = append(actions, chromedp.Navigate(*nav))

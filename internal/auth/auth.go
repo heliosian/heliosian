@@ -22,7 +22,6 @@ import (
 
 const (
 	Domain        = "heliosschool.org"
-	apex          = "heliosian.com"
 	cookieName    = "session"
 	sessionLength = 30 * 24 * time.Hour
 )
@@ -30,10 +29,13 @@ const (
 type contextKey struct{}
 
 // Auth gates one app behind Google sign-in and directory membership.
-// loginPage is the app's static splash page under web/public, the one page
-// anyone without a session sees; it fetches clientID from /auth/client
-// rather than carrying it.
+// domain is the one the server answers under - its session and spoof
+// cookies are scoped to it, so one sign-in covers every app there and
+// reaches no other domain. loginPage is the app's static splash page under
+// web/public, the one page anyone without a session sees; it fetches
+// clientID from /auth/client rather than carrying it.
 type Auth struct {
+	domain    string
 	clientID  string
 	key       []byte
 	loginPage string
@@ -47,8 +49,8 @@ type Auth struct {
 	Spoof *Spoof
 }
 
-func New(clientID string, key []byte, loginPage string, member func(email string) bool) *Auth {
-	return &Auth{clientID: clientID, key: key, loginPage: loginPage, member: member}
+func New(domain, clientID string, key []byte, loginPage string, member func(email string) bool) *Auth {
+	return &Auth{domain: domain, clientID: clientID, key: key, loginPage: loginPage, member: member}
 }
 
 // Fixed signs every request in as email, with no session at all - for tests.
@@ -161,19 +163,19 @@ func (a *Auth) Wrap(next http.Handler) http.Handler {
 	})
 }
 
-// cookieDomain follows the hostname convention (<app>.<tier>.heliosian.com):
-// the session is scoped one label up, so one sign-in covers every app in the
-// same tier. A host outside the convention gets a host-only cookie.
-func cookieDomain(host string) string {
+// cookieDomain is the domain the session is scoped to, so one sign-in covers
+// every app under it: the server's own, for the domain itself or an app's
+// name one label under it. A host outside that shape gets a host-only cookie.
+func (a *Auth) cookieDomain(host string) string {
 	host, _, _ = strings.Cut(host, ":")
-	if host == apex || host == "www."+apex {
-		return apex
+	if host == a.domain {
+		return a.domain
 	}
-	if !strings.HasSuffix(host, "."+apex) {
+	label, ok := strings.CutSuffix(host, "."+a.domain)
+	if !ok || strings.Contains(label, ".") {
 		return ""
 	}
-	_, parent, _ := strings.Cut(host, ".")
-	return parent
+	return a.domain
 }
 
 // splash serves the login page at whatever URL was asked for, so signing in
@@ -224,7 +226,7 @@ func (a *Auth) login(w http.ResponseWriter, r *http.Request) {
 		Name:     cookieName,
 		Value:    Token(a.key, email, time.Now().Add(sessionLength)),
 		Path:     "/",
-		Domain:   cookieDomain(r.Host),
+		Domain:   a.cookieDomain(r.Host),
 		HttpOnly: true,
 		Secure:   r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https",
 		SameSite: http.SameSiteLaxMode,
@@ -234,21 +236,13 @@ func (a *Auth) login(w http.ResponseWriter, r *http.Request) {
 }
 
 // logoutDomains lists every domain a session cookie reaching this host could
-// have been set for: host-only, and each parent up to the apex. Sessions
-// issued before the cookie was scoped to a tier were host-only; signing out
-// has to end all of them.
-func logoutDomains(host string) []string {
-	host, _, _ = strings.Cut(host, ":")
+// have been set for: host-only, and the server's domain. Sessions issued
+// before the cookie was scoped to the domain were host-only; signing out has
+// to end all of them.
+func (a *Auth) logoutDomains(host string) []string {
 	domains := []string{""}
-	if host == apex {
-		return append(domains, apex)
-	}
-	if !strings.HasSuffix(host, "."+apex) {
-		return domains
-	}
-	for host != apex {
-		_, host, _ = strings.Cut(host, ".")
-		domains = append(domains, host)
+	if domain := a.cookieDomain(host); domain != "" {
+		domains = append(domains, domain)
 	}
 	return domains
 }
@@ -257,7 +251,7 @@ func logoutDomains(host string) []string {
 // in on this browser must not inherit a view as someone else.
 func (a *Auth) logout(w http.ResponseWriter, r *http.Request) {
 	secure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
-	for _, domain := range logoutDomains(r.Host) {
+	for _, domain := range a.logoutDomains(r.Host) {
 		for _, name := range []string{cookieName, spoofCookie} {
 			http.SetCookie(w, &http.Cookie{
 				Name: name, Value: "", Path: "/", Domain: domain,

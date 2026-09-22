@@ -520,7 +520,7 @@ func TestRepliesFromGuests(t *testing.T) {
 		stamp, sig := mail.SignMailgun(replySecret, "token-"+id, now())
 		fields := map[string]string{"recipient": replyAddress("meetup", from), "from": from, "subject": "Accepted: Meetup", "message-url": stored(id), "timestamp": stamp, "token": "token-" + id, "signature": sig}
 		body, _ := json.Marshal(fields)
-		req := httptest.NewRequest("POST", "https://when.local.heliosian.com:8080/hooks/replies", strings.NewReader(string(body)))
+		req := httptest.NewRequest("POST", "https://when.heliosiandev.com:8080/hooks/replies", strings.NewReader(string(body)))
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, req)

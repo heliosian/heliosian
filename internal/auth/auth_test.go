@@ -10,16 +10,17 @@ import (
 )
 
 func TestLogoutDomains(t *testing.T) {
+	a := New("heliosian.com", "client", []byte("key"), "web/public/who/login.html", everyone)
 	cases := map[string][]string{
-		"who.heliosian.com":            {"", "heliosian.com"},
-		"hca.local.heliosian.com:443":  {"", "local.heliosian.com", "heliosian.com"},
-		"heliosian.com":                {"", "heliosian.com"},
-		"www.heliosian.com":            {"", "heliosian.com"},
-		"who.local.heliosian.com:8080": {"", "local.heliosian.com", "heliosian.com"},
-		"localhost:8080":               {""},
+		"who.heliosian.com":         {"", "heliosian.com"},
+		"hca.heliosian.com:443":     {"", "heliosian.com"},
+		"heliosian.com":             {"", "heliosian.com"},
+		"www.heliosian.com":         {"", "heliosian.com"},
+		"who.heliosiandev.com:8080": {""},
+		"localhost:8080":            {""},
 	}
 	for host, want := range cases {
-		got := logoutDomains(host)
+		got := a.logoutDomains(host)
 		if len(got) != len(want) {
 			t.Errorf("%s: got %v, want %v", host, got, want)
 			continue
@@ -36,15 +37,16 @@ func TestLogoutDomains(t *testing.T) {
 func everyone(string) bool { return true }
 
 func TestLogoutClearsEveryDomain(t *testing.T) {
-	a := New("client", []byte("key"), "web/public/who/login.html", everyone)
-	req := httptest.NewRequest(http.MethodPost, "https://hca.local.heliosian.com/auth/logout", nil)
+	a := New("heliosiandev.com", "client", []byte("key"), "web/public/who/login.html", everyone)
+	req := httptest.NewRequest(http.MethodPost, "https://hca.heliosiandev.com/auth/logout", nil)
 	req.Header.Set("X-Forwarded-Proto", "https")
 	rec := httptest.NewRecorder()
 	a.logout(rec, req)
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("got %d, want redirect", rec.Code)
 	}
-	// The session and the spoof both end, on every domain.
+	// The session and the spoof both end, host-only and on the server's
+	// domain, and no other domain is touched.
 	domains := map[string]map[string]bool{cookieName: {}, spoofCookie: {}}
 	for _, c := range rec.Result().Cookies() {
 		if domains[c.Name] == nil || c.MaxAge != -1 || !c.Secure || c.SameSite != http.SameSiteLaxMode {
@@ -54,8 +56,8 @@ func TestLogoutClearsEveryDomain(t *testing.T) {
 		domains[c.Name][c.Domain] = true
 	}
 	for name, cleared := range domains {
-		if !cleared["heliosian.com"] || !cleared["local.heliosian.com"] || !cleared[""] || len(cleared) != 3 {
-			t.Errorf("%s: cleared domains %v, want host-only, the tier, and the apex", name, cleared)
+		if !cleared["heliosiandev.com"] || !cleared[""] || len(cleared) != 2 {
+			t.Errorf("%s: cleared domains %v, want host-only and the domain", name, cleared)
 		}
 	}
 }
@@ -66,7 +68,7 @@ func TestLogoutClearsEveryDomain(t *testing.T) {
 // no longer use is ignored, and Email stays the signed-in address.
 func TestSpoofResolvesTheTargetOnlyWhenItHolds(t *testing.T) {
 	key := []byte("key")
-	a := New("client", key, "web/public/who/login.html", everyone)
+	a := New("heliosian.com", "client", key, "web/public/who/login.html", everyone)
 	allowed := map[string]bool{"admin@heliosschool.org": true}
 	a.Spoof = &Spoof{
 		Allowed: func(email string) bool { return allowed[email] },
@@ -121,7 +123,7 @@ func TestWrapAdmitsOnlyMembers(t *testing.T) {
 	t.Chdir("../..")
 	key := []byte("key")
 	members := map[string]bool{"parent@heliosschool.org": true, "admin@heliosschool.org": true}
-	a := New("client", key, "web/public/who/login.html", func(email string) bool { return members[email] })
+	a := New("heliosian.com", "client", key, "web/public/who/login.html", func(email string) bool { return members[email] })
 	a.Spoof = &Spoof{
 		Allowed: func(email string) bool { return email == "admin@heliosschool.org" },
 		Person:  func(email string) (Person, bool) { return Person{Email: email}, true },
@@ -195,7 +197,7 @@ func TestWrapAdmitsOnlyMembers(t *testing.T) {
 // nothing.
 func TestSetSpoofKeepsTheRecentFive(t *testing.T) {
 	key := []byte("key")
-	a := New("client", key, "web/public/who/login.html", everyone)
+	a := New("heliosiandev.com", "client", key, "web/public/who/login.html", everyone)
 	a.Spoof = &Spoof{
 		Allowed: func(email string) bool { return email == "admin@heliosschool.org" },
 		Person: func(email string) (Person, bool) {
@@ -206,7 +208,7 @@ func TestSetSpoofKeepsTheRecentFive(t *testing.T) {
 		},
 	}
 	post := func(as, body, recent string) *httptest.ResponseRecorder {
-		req := httptest.NewRequest(http.MethodPost, "https://who.local.heliosian.com/auth/spoof", strings.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, "https://who.heliosiandev.com/auth/spoof", strings.NewReader(body))
 		req.Header.Set("X-Forwarded-Proto", "https")
 		req = req.WithContext(context.WithValue(req.Context(), contextKey{}, identity{real: as, effective: as}))
 		if recent != "" {
@@ -228,7 +230,7 @@ func TestSetSpoofKeepsTheRecentFive(t *testing.T) {
 		t.Fatalf("start: got %d %s", rec.Code, rec.Body)
 	}
 	set := cookies(rec)
-	if real, target, ok := a.spoofFields(set[spoofCookie].Value); !ok || real != "admin@heliosschool.org" || target != "p3@heliosschool.org" || set[spoofCookie].Domain != "local.heliosian.com" {
+	if real, target, ok := a.spoofFields(set[spoofCookie].Value); !ok || real != "admin@heliosschool.org" || target != "p3@heliosschool.org" || set[spoofCookie].Domain != "heliosiandev.com" {
 		t.Errorf("spoof cookie %+v reads %q as %q %v", set[spoofCookie], real, target, ok)
 	}
 	if got := set[recentCookie].Value; got != "p3@heliosschool.org|p1@heliosschool.org|p2@heliosschool.org|p4@heliosschool.org|p5@heliosschool.org" {
@@ -250,25 +252,38 @@ func TestSetSpoofKeepsTheRecentFive(t *testing.T) {
 	}
 }
 
+// The session is scoped to the server's own domain and never another: a
+// production sign-in never reaches a developer's names, nor the reverse.
 func TestCookieDomain(t *testing.T) {
+	production := New("heliosian.com", "client", []byte("key"), "web/public/who/login.html", everyone)
 	cases := map[string]string{
-		"who.heliosian.com":            "heliosian.com",
-		"who.local.heliosian.com:8080": "local.heliosian.com",
-		"heliosian.com":                "heliosian.com",
-		"www.heliosian.com":            "heliosian.com",
-		"localhost:8080":               "",
+		"who.heliosian.com":         "heliosian.com",
+		"who.heliosian.com:8080":    "heliosian.com",
+		"heliosian.com":             "heliosian.com",
+		"www.heliosian.com":         "heliosian.com",
+		"who.heliosiandev.com":      "",
+		"who.lab.heliosian.com":     "",
+		"who.heliosian.com.example": "",
+		"localhost:8080":            "",
 	}
 	for host, want := range cases {
-		if got := cookieDomain(host); got != want {
+		if got := production.cookieDomain(host); got != want {
 			t.Errorf("%s: got %q, want %q", host, got, want)
 		}
+	}
+	dev := New("heliosiandev.com", "client", []byte("key"), "web/public/who/login.html", everyone)
+	if got := dev.cookieDomain("who.heliosiandev.com:8080"); got != "heliosiandev.com" {
+		t.Errorf("dev: got %q, want heliosiandev.com", got)
+	}
+	if got := dev.cookieDomain("who.heliosian.com"); got != "" {
+		t.Errorf("dev on production's name: got %q, want host-only", got)
 	}
 }
 
 // Quan mode is offered to the super admins and to anyone with "quan" in
 // their address, and to nobody else.
 func TestQuanFor(t *testing.T) {
-	a := New("client", []byte("key"), "web/public/who/login.html", everyone)
+	a := New("heliosian.com", "client", []byte("key"), "web/public/who/login.html", everyone)
 	a.Spoof = &Spoof{Allowed: func(email string) bool { return email == "admin@heliosschool.org" }}
 	for email, want := range map[string]bool{
 		"admin@heliosschool.org":            true,

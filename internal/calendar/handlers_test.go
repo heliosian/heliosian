@@ -43,8 +43,8 @@ func as(email string, handler http.Handler) http.Handler {
 
 func call(t *testing.T, handler http.Handler, method, path, body string) *httptest.ResponseRecorder {
 	t.Helper()
-	req := httptest.NewRequest(method, "https://calendar.local.heliosian.com:8080"+path, strings.NewReader(body))
-	req.Host = "calendar.local.heliosian.com:8080"
+	req := httptest.NewRequest(method, "https://calendar.heliosiandev.com:8080"+path, strings.NewReader(body))
+	req.Host = "calendar.heliosiandev.com:8080"
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 	return rec
@@ -56,7 +56,7 @@ func TestFeedRoute(t *testing.T) {
 	if rec.Code != http.StatusOK || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/calendar") {
 		t.Fatalf("feed: %d %s", rec.Code, rec.Header().Get("Content-Type"))
 	}
-	if body := rec.Body.String(); !strings.Contains(body, "X-WR-CALNAME:Whitfield school days") || !strings.Contains(body, "URL:https://calendar.local.heliosian.com:8080/e/a5@sample") {
+	if body := rec.Body.String(); !strings.Contains(body, "X-WR-CALNAME:Whitfield school days") || !strings.Contains(body, "URL:https://calendar.heliosiandev.com:8080/e/a5@sample") {
 		t.Errorf("feed body: %s", body)
 	}
 	if rec := call(t, mux, http.MethodGet, "/open/feed/nosuchtoken.ics", ""); rec.Code != http.StatusNotFound {
@@ -73,7 +73,7 @@ func TestFeedLifecycle(t *testing.T) {
 		t.Fatalf("add: %d %s", rec.Code, rec.Body.String())
 	}
 	var made struct{ Token, URL string }
-	if err := json.Unmarshal(rec.Body.Bytes(), &made); err != nil || len(made.Token) != 24 || made.URL != "https://calendar.local.heliosian.com:8080/open/feed/"+made.Token+".ics" {
+	if err := json.Unmarshal(rec.Body.Bytes(), &made); err != nil || len(made.Token) != 24 || made.URL != "https://calendar.heliosiandev.com:8080/open/feed/"+made.Token+".ics" {
 		t.Fatalf("add answered %s", rec.Body.String())
 	}
 	if len(cache.Model().Feeds) != 2 || cache.Model().Feed(made.Token).Email != "jordan.whitfield@heliosschool.org" {
@@ -147,16 +147,16 @@ func TestModelRoute(t *testing.T) {
 func TestSharePreview(t *testing.T) {
 	handler, cache := testApp(t)
 	head := PreviewHead(cache, func(string) []Linked { return nil })
-	req := httptest.NewRequest("GET", "https://when.local.heliosian.com:8080/e/a7@sample", nil)
-	req.Host = "when.local.heliosian.com:8080"
+	req := httptest.NewRequest("GET", "https://when.heliosiandev.com:8080/e/a7@sample", nil)
+	req.Host = "when.heliosiandev.com:8080"
 	tags := head(req)
-	for _, want := range []string{`property="og:title" content="International Night"`, `Thursday, September 24 · 4:00 – 6:00 PM`, `content="https://when.local.heliosian.com:8080/open/share/a7@sample.png"`} {
+	for _, want := range []string{`property="og:title" content="International Night"`, `Thursday, September 24 · 4:00 – 6:00 PM`, `content="https://when.heliosiandev.com:8080/open/share/a7@sample.png"`} {
 		if !strings.Contains(tags, want) {
 			t.Errorf("event tags lack %s:\n%s", want, tags)
 		}
 	}
-	req = httptest.NewRequest("GET", "https://when.local.heliosian.com:8080/feeds", nil)
-	req.Host = "when.local.heliosian.com:8080"
+	req = httptest.NewRequest("GET", "https://when.heliosiandev.com:8080/feeds", nil)
+	req.Host = "when.heliosiandev.com:8080"
 	tags = head(req)
 	if !strings.Contains(tags, `og:title" content="Helios When"`) || !strings.Contains(tags, "One calendar") || !strings.Contains(tags, "/open/share/upcoming.png") {
 		t.Errorf("site tags:\n%s", tags)
@@ -570,7 +570,7 @@ func TestAdminAddsAndCorrects(t *testing.T) {
 	if rec := call(t, handler, "GET", "/open/share/sams-party.png", ""); rec.Code != 200 || rec.Header().Get("Content-Type") != "image/png" {
 		t.Errorf("a direct-link event's card: %d", rec.Code)
 	}
-	if head := PreviewHead(cache, func(string) []Linked { return nil })(httptest.NewRequest("GET", "https://when.local.heliosian.com:8080/e/sams-party", nil)); !strings.Contains(head, "Sam") || !strings.Contains(head, "/open/share/sams-party.png") {
+	if head := PreviewHead(cache, func(string) []Linked { return nil })(httptest.NewRequest("GET", "https://when.heliosiandev.com:8080/e/sams-party", nil)); !strings.Contains(head, "Sam") || !strings.Contains(head, "/open/share/sams-party.png") {
 		t.Errorf("a direct-link event's preview:\n%s", head)
 	}
 	if rec := call(t, parent, "POST", "/api/calendar/events", `{"id":"sams-party","title":"Again","start":"2026-10-04","tags":["Jays"]}`); rec.Code != 400 {
@@ -619,8 +619,8 @@ func TestFeedCarriesLinked(t *testing.T) {
 	handler, cache := testApp(t)
 	linked := []Linked{{Source: SourceCelebrate, ID: "P9", Title: "Fondue Night", Start: "2026-09-19 17:00", End: "2026-09-19 21:00", Path: "/p/fondue", Availability: "available", Mine: MineGoing}}
 	f := &Feed{Token: "t", Email: "jordan.whitfield@heliosschool.org", Name: "Mine", Tags: []string{TagGoing}}
-	out := string(ICS(cache.Model(), f, linked, "https://when.local.heliosian.com:8080", now()))
-	if !strings.Contains(out, "SUMMARY:Fondue Night") || !strings.Contains(out, "URL:https://when.local.heliosian.com:8080/e/celebrate/P9") {
+	out := string(ICS(cache.Model(), f, linked, "https://when.heliosiandev.com:8080", now()))
+	if !strings.Contains(out, "SUMMARY:Fondue Night") || !strings.Contains(out, "URL:https://when.heliosiandev.com:8080/e/celebrate/P9") {
 		t.Errorf("feed lacks the party:\n%s", out)
 	}
 	if strings.Contains(out, "SUMMARY:Halloween Parade") {
@@ -659,19 +659,19 @@ func TestAnswers(t *testing.T) {
 		}
 	}
 	f := &Feed{Token: "t", Email: me, Name: "Mine"}
-	if strings.Contains(string(ICS(cache.Model(), f, nil, "https://when.local.heliosian.com:8080", now())), "SUMMARY:International Night") {
+	if strings.Contains(string(ICS(cache.Model(), f, nil, "https://when.heliosiandev.com:8080", now())), "SUMMARY:International Night") {
 		t.Errorf("a hidden event is in the owner's feed")
 	}
 	if rec := call(t, viewer, "POST", "/api/calendar/rsvp", `{"id":"a7@sample","answer":"no"}`); rec.Code != 204 {
 		t.Fatalf("no: %d %s", rec.Code, rec.Body)
 	}
-	if strings.Contains(string(ICS(cache.Model(), f, nil, "https://when.local.heliosian.com:8080", now())), "SUMMARY:International Night") {
+	if strings.Contains(string(ICS(cache.Model(), f, nil, "https://when.heliosiandev.com:8080", now())), "SUMMARY:International Night") {
 		t.Errorf("an event the owner said no to is in their feed")
 	}
 	if rec := call(t, viewer, "POST", "/api/calendar/rsvp", `{"id":"a7@sample","answer":""}`); rec.Code != 204 {
 		t.Fatalf("clear: %d %s", rec.Code, rec.Body)
 	}
-	if !strings.Contains(string(ICS(cache.Model(), f, nil, "https://when.local.heliosian.com:8080", now())), "SUMMARY:International Night") {
+	if !strings.Contains(string(ICS(cache.Model(), f, nil, "https://when.heliosiandev.com:8080", now())), "SUMMARY:International Night") {
 		t.Errorf("a cleared answer left the event out of the feed")
 	}
 	if rec := call(t, viewer, "POST", "/api/calendar/rsvp", `{"id":"a7@sample","answer":"yes"}`); rec.Code != 204 {
@@ -704,7 +704,7 @@ func TestAnswers(t *testing.T) {
 		t.Errorf("a yes changed the model's own event")
 	}
 	going := &Feed{Token: "g", Email: me, Name: "Going", Tags: []string{TagGoing}}
-	if !strings.Contains(string(ICS(cache.Model(), going, nil, "https://when.local.heliosian.com:8080", now())), "SUMMARY:International Night") {
+	if !strings.Contains(string(ICS(cache.Model(), going, nil, "https://when.heliosiandev.com:8080", now())), "SUMMARY:International Night") {
 		t.Errorf("a yes is not in the owner's Going feed")
 	}
 	if got := invite("Helios When <when@reply.heliosian.com>", me, cache.Model().Event("a7@sample"), "https://when.heliosian.com/e/a7@sample", now()); !strings.Contains(got, "METHOD:REQUEST") || !strings.Contains(got, "ORGANIZER;CN=Helios When:mailto:when@reply.heliosian.com") || !strings.Contains(got, "ATTENDEE;CN="+me) {

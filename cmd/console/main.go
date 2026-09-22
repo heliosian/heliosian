@@ -17,12 +17,12 @@ import (
 )
 
 func main() {
-	url := flag.String("url", "https://who.local.heliosian.com:8080/people", "page to load")
+	url := flag.String("url", "https://who.heliosiandev.com:8080/people", "page to load")
 	wait := flag.Duration("wait", 4*time.Second, "how long to listen after the page loads")
 	click := flag.String("click", "", "css selector(s) to click once the page is up, several separated by |, so an error behind a button shows too")
 	out := flag.String("out", "", "also save a viewport screenshot here after the clicks, as the page then stands")
 	dialog := flag.String("dialog", "dismiss", "how to answer an alert/confirm/prompt a click opens - accept or dismiss - printing what it asked either way")
-	answer := flag.String("answer", "", "what to type into a prompt() before accepting it, with -dialog accept")
+	answer := flag.String("answer", "", "what to type into a prompt() before accepting it, with --dialog accept")
 	hover := flag.String("hover", "", "css selector to rest the mouse on before the screenshot, for a tooltip")
 	scroll := flag.String("scroll", "", "scroll the page before the screenshot: bottom, or a number of pixels")
 	height := flag.Int("height", 800, "viewport height")
