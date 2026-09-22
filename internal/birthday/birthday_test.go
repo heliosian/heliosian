@@ -347,6 +347,19 @@ func TestPipeline(t *testing.T) {
 	if rec := call(t, mux, parent, "POST", "/api/birthday/assign", map[string]any{"email": "sasha.pike@heliosschool.org"}); rec.Code != http.StatusNotFound {
 		t.Fatalf("assigned someone with no birthday: %d", rec.Code)
 	}
+	if rec := call(t, mux, parent, "POST", "/api/birthday/assign", map[string]any{"email": miguel["email"], "assignedTo": "x@elsewhere.example"}); rec.Code != http.StatusBadRequest {
+		t.Fatalf("assigned to an address off the team: %d", rec.Code)
+	}
+	if rec := call(t, mux, parent, "POST", "/api/birthday/assign", map[string]any{"email": miguel["email"], "assignedTo": admin}); rec.Code != http.StatusNoContent {
+		t.Fatalf("assign to an admin: %d %s", rec.Code, rec.Body)
+	}
+	if sv = find(view(t, cache, parent).Staff, "miguel.santos@heliosschool.org"); sv.AssignedTo != admin {
+		t.Fatalf("after assigning to an admin: %+v", sv)
+	}
+	sent.wait(t, 2)
+	if rec := call(t, mux, parent, "DELETE", "/api/birthday/assign", miguel); rec.Code != http.StatusNoContent {
+		t.Fatalf("unassign: %d %s", rec.Code, rec.Body)
+	}
 	if rec := call(t, mux, parent, "POST", "/api/birthday/participation", map[string]any{"email": miguel["email"], "level": LevelSkip, "note": "Asked in person"}); rec.Code != http.StatusNoContent {
 		t.Fatalf("skip: %d %s", rec.Code, rec.Body)
 	}

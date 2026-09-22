@@ -247,6 +247,10 @@ func (a app) assign(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	if to != actor && !a.cache.Model().OnTeam(to) && !a.cache.IsAdmin(to) {
+		http.Error(w, fmt.Sprintf("%s is not on the birthday team", to), http.StatusBadRequest)
+		return
+	}
 	year := a.year()
 	match := map[string]string{"Email": email, "Year": year}
 	cells := map[string]string{"Assigned To": to, "Assigned On": today()}

@@ -240,6 +240,16 @@ func (m *Model) InPipeline(email string) bool {
 	return b != nil && b.Birthday != "" && b.Level != LevelSkip
 }
 
+// OnTeam reports whether email holds any role on the Team tab.
+func (m *Model) OnTeam(email string) bool {
+	for _, t := range m.Team {
+		if t.Email == email {
+			return true
+		}
+	}
+	return false
+}
+
 type Tables struct {
 	Birthdays       []map[string]string
 	Assignments     []map[string]string
