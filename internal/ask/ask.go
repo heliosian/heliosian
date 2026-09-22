@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/anthropics/anthropic-sdk-go"
 
@@ -29,14 +30,15 @@ import (
 )
 
 const (
-	shell            = "web/ask/index.html"
-	maxTurns         = 40
-	messagesPerHour  = 30
-	idle             = time.Hour
-	maxMessageLength = 4000
-	turnTimeout      = 3 * time.Minute
-	recentDays       = 14
-	recentLimit      = 20
+	shell                 = "web/ask/index.html"
+	maxTurns              = 40
+	messagesPerHour       = 30
+	idle                  = time.Hour
+	maxMessageLength      = 4000
+	maxConversationLength = 200000
+	turnTimeout           = 3 * time.Minute
+	recentDays            = 14
+	recentLimit           = 20
 )
 
 type Sources struct {
@@ -145,7 +147,7 @@ func (a app) chat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer a.conversations.release(conv)
-	if conv.asked >= maxTurns {
+	if conv.asked >= maxTurns || conv.length() >= maxConversationLength {
 		http.Error(w, "this chat has run long; start a new one", http.StatusBadRequest)
 		return
 	}
@@ -236,6 +238,14 @@ func (c *conversation) unseen(recent []*artifacts.Document) []*artifacts.Documen
 		}
 	}
 	return out
+}
+
+func (c *conversation) length() int {
+	encoded, err := json.Marshal(c.messages)
+	if err != nil {
+		panic(err)
+	}
+	return utf8.RuneCount(encoded)
 }
 
 func (c *conversation) see(docs []*artifacts.Document) {

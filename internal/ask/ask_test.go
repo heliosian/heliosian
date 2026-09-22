@@ -579,6 +579,15 @@ func TestChatRestoresFromTheBrowsersTranscript(t *testing.T) {
 	}
 }
 
+func TestChatRefusesAConversationPastItsLength(t *testing.T) {
+	handler := serveApp(t, Fake{})
+	turns := `[{"role":"user","text":"One"},{"role":"assistant","text":"` + strings.Repeat("a", maxConversationLength) + `"}]`
+	rec := post(t, handler, `{"conversation":"gone","message":"Two","turns":`+turns+`}`)
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "new one") {
+		t.Fatalf("oversized restore: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
 type stopping struct {
 	cancel context.CancelFunc
 	calls  *int
