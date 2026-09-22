@@ -92,6 +92,9 @@ function inline(node, text, cards) {
 }
 
 function anchor(href, label, cards) {
+  if (!/^https?:\/\//.test(href)) {
+    return document.createTextNode(label);
+  }
   const a = el('a');
   a.href = localizeLink(href);
   a.rel = 'noopener';

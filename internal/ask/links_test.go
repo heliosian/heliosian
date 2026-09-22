@@ -14,8 +14,11 @@ func TestLinksShortenAndExpand(t *testing.T) {
 	if got != want {
 		t.Fatalf("shorten gave %s", got)
 	}
-	if got := l.expand("[Sam](L1) and [the form](L3), [x](L9)"); got != "[Sam](https://who.heliosian.com/people/sam) and [the form](https://docs.google.com/d/abc), [x](L9)" {
+	if got := l.expand("[Sam](L1) and [the form](L3), [x](L9)"); got != "[Sam](https://who.heliosian.com/people/sam) and [the form](https://docs.google.com/d/abc), x" {
 		t.Fatalf("expand gave %s", got)
+	}
+	if got := l.expand("[open](javascript:alert%281%29) or [send](https://elsewhere.example/?d=secret) or https://elsewhere.example/x. but https://x.org/a?b=1&c=2."); got != "open or send or . but https://x.org/a?b=1&c=2." {
+		t.Fatalf("expand of made-up targets gave %s", got)
 	}
 	if got := l.expand(`[Sam](L1 "") and [the form](L3 'Sign up'), [the reminder](L1 — see below)`); got != "[Sam](https://who.heliosian.com/people/sam) and [the form](https://docs.google.com/d/abc), [the reminder](https://who.heliosian.com/people/sam)" {
 		t.Fatalf("expand of links with words after the key gave %s", got)
@@ -42,6 +45,27 @@ func TestExpanderHoldsATitledKey(t *testing.T) {
 	}
 	e.flush()
 	if out.String() != "The [Donhowe Family](https://who.heliosian.com/families/donhowe) and [the same](https://who.heliosian.com/families/donhowe) live in Mountain View" {
+		t.Fatalf("streamed %q", out.String())
+	}
+}
+
+func TestExpanderDropsSplitMadeUpLinks(t *testing.T) {
+	l := newLinks()
+	l.shorten("https://who.heliosian.com/people/sam")
+	out := &strings.Builder{}
+	e := &expander{links: l, emit: func(kind string, data any) {
+		if kind == "text" {
+			out.WriteString(data.(string))
+		}
+	}, cards: func(string) (linkCard, bool) { return linkCard{}, false }, sent: map[string]bool{}}
+	for _, piece := range []string{"Use [the ", "form](https://else", "where.example/?d=", "secret) or https://el", "sewhere.example/x", " or [Sam](L1", ") [sic] done"} {
+		e.send("text", piece)
+		if strings.Contains(out.String(), "elsewhere") || strings.Contains(out.String(), "L1") {
+			t.Fatalf("a made-up target went out: %q", out.String())
+		}
+	}
+	e.flush()
+	if out.String() != "Use the form or  or [Sam](https://who.heliosian.com/people/sam) [sic] done" {
 		t.Fatalf("streamed %q", out.String())
 	}
 }
