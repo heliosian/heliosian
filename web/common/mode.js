@@ -1,8 +1,9 @@
 // Dark mode, the same across every app: the choice - light, dark, or the
 // device's setting - lives in a cookie on the parent domain, so it is one
 // choice for heliosian.com and every app under it, and each page applies
-// it before its stylesheet paints (the inline script in every index.html
-// repeats the read, since this module loads later). A dark page carries
+// it before its stylesheet paints (web/public/common/theme.js, a plain
+// script in every shell's head, repeats the read, since this module loads
+// later). A dark page carries
 // data-theme="dark" on its root; light carries nothing. Quan mode is the
 // easter egg beside them (quan.css): found by typing "quan" on a page or
 // opening one with ?mode=quan, and offered in the menu only while it is

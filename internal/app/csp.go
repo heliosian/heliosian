@@ -1,60 +1,19 @@
 package app
 
 import (
-	"crypto/sha256"
-	"encoding/base64"
 	"encoding/json"
 	"io"
-	"io/fs"
 	"log/slog"
 	"net/http"
-	"os"
-	"path/filepath"
-	"regexp"
 	"strings"
 )
 
 const reportPath = "/csp-report"
 
-var inlineScript = regexp.MustCompile(`(?s)<script>(.*?)</script>`)
-
-// inlineScriptHashes is a source expression for every inline script in the
-// shells under web/, read afresh at startup so an edit to one changes the
-// policy with it.
-func inlineScriptHashes() []string {
-	seen := map[string]bool{}
-	var hashes []string
-	err := filepath.WalkDir("web", func(name string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() || filepath.Ext(name) != ".html" {
-			return nil
-		}
-		page, err := os.ReadFile(name)
-		if err != nil {
-			return err
-		}
-		for _, m := range inlineScript.FindAllSubmatch(page, -1) {
-			sum := sha256.Sum256(m[1])
-			hash := "'sha256-" + base64.StdEncoding.EncodeToString(sum[:]) + "'"
-			if !seen[hash] {
-				seen[hash] = true
-				hashes = append(hashes, hash)
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		panic(err)
-	}
-	return hashes
-}
-
 // policy is the content security policy for a server answering domain: the
-// apps' own origins, the shells' inline scripts by hash, Google sign-in by
-// the sources Google documents, the Maps JavaScript API by the hosts a
-// rendered map is seen to reach - its modules, RPCs and tiles from
+// apps' own origins - every script is a file under web/, none inline - Google
+// sign-in by the sources Google documents, the Maps JavaScript API by the
+// hosts a rendered map is seen to reach - its modules, RPCs and tiles from
 // maps.googleapis.com, its cursors and logo from maps.gstatic.com, and
 // Google Sans for its info window and hints from Google Fonts - and the
 // image search providers' thumbnails, which the pickers show straight from
@@ -63,7 +22,7 @@ func policy(domain string) string {
 	apps := "https://*." + domain + ":*"
 	return strings.Join([]string{
 		"default-src 'self'",
-		"script-src 'self' " + strings.Join(inlineScriptHashes(), " ") + " https://accounts.google.com/gsi/client https://maps.googleapis.com",
+		"script-src 'self' https://accounts.google.com/gsi/client https://maps.googleapis.com",
 		"style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style https://fonts.googleapis.com",
 		"font-src 'self' https://fonts.gstatic.com",
 		"img-src 'self' data: blob: " + apps + " https://maps.googleapis.com https://maps.gstatic.com https://images.unsplash.com https://images.pexels.com https://pixabay.com",

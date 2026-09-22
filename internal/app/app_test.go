@@ -1,12 +1,11 @@
 package app
 
 import (
-	"crypto/sha256"
-	"encoding/base64"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -50,7 +49,7 @@ func TestPublic(t *testing.T) {
 		w.WriteHeader(http.StatusTeapot)
 	})
 	handler := Public("who", next)
-	for _, path := range []string{"/manifest.webmanifest", "/brand/icon-192.png", "/brand/login-art.jpg", "/brand/splash/splash-390x844-3x-portrait.png", "/fonts/fonts.css", "/fonts/Roboto-Regular.woff2"} {
+	for _, path := range []string{"/theme.js", "/manifest.webmanifest", "/brand/icon-192.png", "/brand/login-art.jpg", "/brand/splash/splash-390x844-3x-portrait.png", "/fonts/fonts.css", "/fonts/Roboto-Regular.woff2"} {
 		if rec := get(t, handler, "who.heliosiandev.com", path); rec.Code != http.StatusOK {
 			t.Errorf("%s: got %d, want 200", path, rec.Code)
 		}
@@ -177,7 +176,7 @@ func TestSecureHeaders(t *testing.T) {
 	}
 }
 
-func TestPolicyHashesEveryInlineScript(t *testing.T) {
+func TestNoInlineScripts(t *testing.T) {
 	t.Chdir("../..")
 	csp := policy(Domain)
 	pages, err := filepath.Glob("web/*/*.html")
@@ -198,16 +197,18 @@ func TestPolicyHashesEveryInlineScript(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, m := range inlineScript.FindAllSubmatch(page, -1) {
+		for _, tag := range regexp.MustCompile(`<script[^>]*>`).FindAllString(string(page), -1) {
 			scripts++
-			sum := sha256.Sum256(m[1])
-			if hash := "'sha256-" + base64.StdEncoding.EncodeToString(sum[:]) + "'"; !strings.Contains(csp, hash) {
-				t.Errorf("%s: inline script %s not in policy", name, hash)
+			if !strings.Contains(tag, " src=") {
+				t.Errorf("%s: inline script %s", name, tag)
 			}
 		}
 	}
 	if scripts == 0 {
-		t.Fatal("no inline scripts found")
+		t.Fatal("no scripts found")
+	}
+	if strings.Contains(csp, "'sha256-") || strings.Contains(csp, "'nonce-") {
+		t.Errorf("script hash or nonce in policy: %s", csp)
 	}
 	if strings.Contains(csp, "'unsafe-inline'") && !strings.Contains(csp, "style-src 'self' 'unsafe-inline'") {
 		t.Errorf("unsafe-inline outside style-src: %s", csp)
