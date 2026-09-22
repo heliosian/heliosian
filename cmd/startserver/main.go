@@ -91,6 +91,7 @@ func sampleServer() (*http.Server, *who.Queue) {
 		Source:      dir,
 		Writer:      dir,
 		Geocoder:    geocode.Fake{},
+		FamilyIDKey: []byte("sample"),
 		BrowserKey:  os.Getenv("GOOGLE_MAPS_BROWSER_KEY"),
 		ImageSearch: app.ImageSearchKeys(),
 		Describer:   sampleDescriber(),

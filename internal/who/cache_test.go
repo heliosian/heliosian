@@ -23,7 +23,7 @@ func (g *countingGeocoder) Lookup(address string) (geocode.Point, error) {
 func TestGeocodeTabAnswersTheSecondRebuild(t *testing.T) {
 	dir := &data.Dir{Root: "../../sampledata"}
 	geocoder := &countingGeocoder{}
-	cache, err := NewCache(dir, dir, geocoder, noBlobs{}, noBlobs{}, nil, NewQueue(), func() []string { return nil })
+	cache, err := NewCache(dir, dir, geocoder, noBlobs{}, noBlobs{}, nil, NewQueue(), testKey, func() []string { return nil })
 	if err != nil {
 		t.Fatal(err)
 	}

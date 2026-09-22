@@ -805,7 +805,7 @@ func (a admin) setParentFields(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if len(familyCells) > 0 {
-		if !applyFamilyWrite(a.cache, a.writer, a.queue, w, r, actor, family.Key, "parent family edit", familyCells, familyPrevious) {
+		if !applyFamilyWrite(a.cache, a.writer, a.queue, w, r, actor, family.email, "parent family edit", familyCells, familyPrevious) {
 			return
 		}
 	}

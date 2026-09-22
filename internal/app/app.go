@@ -802,12 +802,14 @@ func Port() string {
 // caller decides what backs each one; the core never inspects the environment
 // or branches on how it was built.
 type Config struct {
-	Source     data.Source
-	Writer     data.Writer
-	Geocoder   who.Geocoder
-	Blobs      who.BlobChecker
-	Store      *blob.Store
-	BrowserKey string
+	Source   data.Source
+	Writer   data.Writer
+	Geocoder who.Geocoder
+	Blobs    who.BlobChecker
+	Store    *blob.Store
+	// FamilyIDKey masks the directory's family keys (who.familyID).
+	FamilyIDKey []byte
+	BrowserKey  string
 	// ImageSearch is the picture search HCA-Team's and Heliosian's editors
 	// share; zero means the picker has nowhere to look.
 	ImageSearch imagesearch.Search
@@ -968,7 +970,7 @@ func NewCore(cfg Config) *Core {
 	if err != nil {
 		slog.Error("load celebrate data", "error", err)
 	}
-	cache, err := who.NewCache(cfg.Source, cfg.Writer, cfg.Geocoder, cfg.Blobs, staticFiles{}, cfg.Store, queue, settings.SuperAdmins)
+	cache, err := who.NewCache(cfg.Source, cfg.Writer, cfg.Geocoder, cfg.Blobs, staticFiles{}, cfg.Store, queue, cfg.FamilyIDKey, settings.SuperAdmins)
 	if err != nil {
 		logging.Fatal("load directory data", "error", err)
 	}
@@ -1393,12 +1395,15 @@ func Production(domain, blobCache string) (*http.Server, *who.Queue) {
 	if err != nil {
 		logging.Fatal("vertex embedder", "error", err)
 	}
+	familyIDKey := hmac.New(sha256.New, []byte(sessionKey))
+	familyIDKey.Write([]byte("family id"))
 	core := NewCore(Config{
 		Source:      sheet,
 		Writer:      sheet,
 		Geocoder:    geocode.New(mapsKey("GOOGLE_MAPS_SERVER_KEY", "local/creds/geocoding.key")),
 		Blobs:       store,
 		Store:       store,
+		FamilyIDKey: familyIDKey.Sum(nil),
 		BrowserKey:  mapsKey("GOOGLE_MAPS_BROWSER_KEY", "local/creds/maps.key"),
 		ImageSearch: ImageSearchKeys(),
 		Describer:   ClaudeDescriber(),

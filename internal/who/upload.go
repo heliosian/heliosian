@@ -312,7 +312,7 @@ func (u uploader) edit(w http.ResponseWriter, r *http.Request) {
 		// reads "-" as an explicit clear and "" as no cell at all.
 		cells := map[string]string{"Family Photo Caption": clearable(value)}
 		previous := map[string]string{"Family Photo Caption": family.PhotoCaption}
-		if !u.applyFamily(w, r, me, family.Key, field+" edit", cells, previous) {
+		if !u.applyFamily(w, r, me, family.email, field+" edit", cells, previous) {
 			return
 		}
 		slog.InfoContext(r.Context(), "edit: set field", "actor", me, "field", field, "key", key)
@@ -341,7 +341,7 @@ func (u uploader) edit(w http.ResponseWriter, r *http.Request) {
 		}
 		cells := map[string]string{"Family Pronunciation": ""}
 		previous := map[string]string{"Family Pronunciation": family.pronunciation}
-		if !u.applyFamily(w, r, me, family.Key, field+" edit", cells, previous) {
+		if !u.applyFamily(w, r, me, family.email, field+" edit", cells, previous) {
 			return
 		}
 		slog.InfoContext(r.Context(), "edit: set field", "actor", me, "field", field, "key", key)
@@ -554,7 +554,7 @@ func (u uploader) upload(w http.ResponseWriter, r *http.Request) {
 			cells["Family Pronunciation"] = name
 			previous["Family Pronunciation"] = family.pronunciation
 		}
-		if !u.applyFamily(w, r, me, family.Key, kind+" upload", cells, previous) {
+		if !u.applyFamily(w, r, me, family.email, kind+" upload", cells, previous) {
 			return
 		}
 		slog.InfoContext(r.Context(), "upload: set media", "actor", me, "target", target, "key", key, "kind", kind, "name", name)
@@ -748,7 +748,7 @@ func (u uploader) cropPhoto(w http.ResponseWriter, r *http.Request) {
 	if target == "family" {
 		cells := map[string]string{"Family Photo Crop": cropName, "Family Photo Updated": today()}
 		previous := map[string]string{"Family Photo Crop": family.photoCropName, "Family Photo Updated": family.PhotoUpdated}
-		if !u.applyFamily(w, r, me, family.Key, "family photo crop", cells, previous) {
+		if !u.applyFamily(w, r, me, family.email, "family photo crop", cells, previous) {
 			return
 		}
 		slog.InfoContext(r.Context(), "crop-photo: set a crop on the family photo", "actor", me, "family", key)

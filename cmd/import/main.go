@@ -455,7 +455,7 @@ func main() {
 	}
 
 	log.Printf("rebuilding the model to check the result")
-	model, err := who.LoadModel(source, nil, staticFiles{})
+	model, err := who.LoadModel(source, nil, staticFiles{}, []byte("import"))
 	if err != nil {
 		log.Fatalf("[ERROR] the sheet no longer loads: %v", err)
 	}

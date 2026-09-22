@@ -34,6 +34,7 @@ type Cache struct {
 	static   BlobChecker
 	store    *blob.Store
 	queue    *Queue
+	idKey    []byte
 	// superAdmins reads the platform list out of the Config sheet's own cache.
 	superAdmins func() []string
 
@@ -49,10 +50,10 @@ type Cache struct {
 
 // store is the concrete blob store (nil in sample mode), needed to replace a classroom
 // or grade image in place, which needs more than the existence check BlobChecker exposes.
-func NewCache(source data.Source, writer data.Writer, geocoder Geocoder, blobs, static BlobChecker, store *blob.Store, queue *Queue, superAdmins func() []string) (*Cache, error) {
+func NewCache(source data.Source, writer data.Writer, geocoder Geocoder, blobs, static BlobChecker, store *blob.Store, queue *Queue, idKey []byte, superAdmins func() []string) (*Cache, error) {
 	c := &Cache{
 		source: source, writer: writer, geocoder: geocoder, blobs: blobs, static: static, store: store, queue: queue,
-		superAdmins: superAdmins, superEdit: map[string]bool{},
+		idKey: idKey, superAdmins: superAdmins, superEdit: map[string]bool{},
 	}
 	start := time.Now()
 	tables, err := ReadTables(source)
@@ -513,7 +514,7 @@ func (c *Cache) refresh() error {
 }
 
 func (c *Cache) rebuild(tables *Tables, start time.Time) error {
-	model, err := BuildModel(tables, c.blobs, c.static)
+	model, err := BuildModel(tables, c.blobs, c.static, c.idKey)
 	if err != nil {
 		return err
 	}

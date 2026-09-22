@@ -30,7 +30,7 @@ func sample(t *testing.T) (loop.Sources, *who.Tables) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	model, err := who.BuildModel(tables, nil, staticFiles{})
+	model, err := who.BuildModel(tables, nil, staticFiles{}, []byte("test"))
 	if err != nil {
 		t.Fatal(err)
 	}

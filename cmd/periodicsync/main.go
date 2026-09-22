@@ -77,7 +77,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("[ERROR] create sheets client: %v", err)
 	}
-	directory, err := who.LoadModel(source, nil, staticFiles{"web/who"})
+	directory, err := who.LoadModel(source, nil, staticFiles{"web/who"}, []byte("periodicsync"))
 	if err != nil {
 		log.Fatalf("[ERROR] load directory model: %v", err)
 	}

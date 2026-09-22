@@ -19,7 +19,7 @@ func TestGroupListsCarryAdditionsAsGuests(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	directory, err := who.BuildModel(tables, nil, staticFiles{})
+	directory, err := who.BuildModel(tables, nil, staticFiles{}, []byte("test"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +91,7 @@ func TestMagicTagsCarryTheirHosts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	directory, err := who.BuildModel(tables, nil, staticFiles{})
+	directory, err := who.BuildModel(tables, nil, staticFiles{}, []byte("test"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,6 +1,9 @@
 package who
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -261,6 +264,7 @@ func gradeSlug(name string) string {
 type loader struct {
 	blobs  BlobChecker
 	static BlobChecker
+	idKey  []byte
 
 	aliasRows      []map[string]string
 	importRows     []map[string]string
@@ -495,18 +499,27 @@ func (t *Tables) withPhotos(email string, refs []photoRef) *Tables {
 	return &out
 }
 
-func LoadModel(source data.Source, blobs, static BlobChecker) (*Model, error) {
+func LoadModel(source data.Source, blobs, static BlobChecker, idKey []byte) (*Model, error) {
 	tables, err := ReadTables(source)
 	if err != nil {
 		return nil, err
 	}
-	return BuildModel(tables, blobs, static)
+	return BuildModel(tables, blobs, static, idKey)
 }
 
-func BuildModel(tables *Tables, blobs, static BlobChecker) (*Model, error) {
+// familyID masks the key email the model and the family page serve, since that adult
+// may since have been withheld; keyed, not hashed, so nobody can check a guess.
+func familyID(idKey []byte, email string) string {
+	mac := hmac.New(sha256.New, idKey)
+	mac.Write([]byte(email))
+	return hex.EncodeToString(mac.Sum(nil))[:16]
+}
+
+func BuildModel(tables *Tables, blobs, static BlobChecker, idKey []byte) (*Model, error) {
 	l := &loader{
 		blobs:            blobs,
 		static:           static,
+		idKey:            idKey,
 		aliasRows:        tables.Aliases,
 		importRows:       tables.Imports,
 		staffRows:        tables.Staff,
@@ -1246,14 +1259,18 @@ func (l *loader) hideStudentPhones() error {
 // buildFamilies keys each family by its alphabetically first adult email - a real
 // assertion, not a convenience: an adult belongs to at most one household
 // (transformImport enforces it), so the key is unique, and the Families tab is keyed
-// by exactly the same email (applyFamilies enforces that too).
+// by exactly the same email (applyFamilies enforces that too). The model carries the
+// family under familyID of that email, and the email itself only in the unexported
+// field the sheet writes read.
 func (l *loader) buildFamilies() error {
 	for _, setKey := range l.householdOrder {
 		hh := l.households[setKey]
-		key := slices.Min(hh.adults)
+		email := slices.Min(hh.adults)
+		key := familyID(l.idKey, email)
 		l.familyKeys[setKey] = key
 		l.model.Families[key] = Family{
 			Key:             key,
+			email:           email,
 			Address:         hh.address,
 			Phone:           hh.phone,
 			AdultEmails:     hh.adults,
@@ -1281,12 +1298,12 @@ func (l *loader) applyFamilies() error {
 			return fmt.Errorf("families row %s names a parent with no household", email)
 		}
 		key := l.familyKeys[sets[0]]
-		if email != key {
-			return fmt.Errorf("families row %s is not the family key %s", email, key)
-		}
 		family := l.model.Families[key]
+		if email != family.email {
+			return fmt.Errorf("families row %s is not the family key %s", email, family.email)
+		}
 		if family.sheetRow != nil {
-			return fmt.Errorf("families has duplicate rows for %s", key)
+			return fmt.Errorf("families has duplicate rows for %s", email)
 		}
 		family.sheetRow = row
 		if cell := row["Address"]; cell != "" {
@@ -1319,7 +1336,7 @@ func (l *loader) applyFamilies() error {
 }
 
 // indexFamilies runs after removeOptedOut so the index covers exactly the people the
-// model still carries; keys are visited in sorted order so a two-household kid's
+// model still carries; keys are visited in key email order so a two-household kid's
 // families list is deterministic everywhere it's read.
 func (l *loader) indexFamilies() error {
 	l.model.familyKeysByEmail = map[string][]string{}
@@ -1327,7 +1344,7 @@ func (l *loader) indexFamilies() error {
 	for key := range l.model.Families {
 		keys = append(keys, key)
 	}
-	sort.Strings(keys)
+	sort.Slice(keys, func(i, j int) bool { return l.model.Families[keys[i]].email < l.model.Families[keys[j]].email })
 	for _, key := range keys {
 		family := l.model.Families[key]
 		for _, email := range append(append([]string{}, family.AdultEmails...), family.KidEmails...) {
@@ -1697,11 +1714,11 @@ func (l *loader) attachBlobs() error {
 		p.HasOwnPronunciation = url != ""
 	}
 	for key, family := range l.model.Families {
-		photo, err := l.blobURL("photos", family.photo, key)
+		photo, err := l.blobURL("photos", family.photo, family.email)
 		if err != nil {
 			return err
 		}
-		pronunciation, err := l.blobURL("pronunciation", family.pronunciation, key)
+		pronunciation, err := l.blobURL("pronunciation", family.pronunciation, family.email)
 		if err != nil {
 			return err
 		}
@@ -1709,8 +1726,8 @@ func (l *loader) attachBlobs() error {
 		// Same graceful fallback as a person's photo crop above: a crop that fails
 		// to resolve just leaves the original in place rather than failing the load.
 		if family.photoCropName != "" {
-			if cropURL, err := l.blobURL("photos", family.photoCropName, key); err != nil {
-				slog.Warn("resolve family photo crop", "family", key, "error", err)
+			if cropURL, err := l.blobURL("photos", family.photoCropName, family.email); err != nil {
+				slog.Warn("resolve family photo crop", "family", family.email, "error", err)
 			} else {
 				family.PhotoURL = cropURL
 			}

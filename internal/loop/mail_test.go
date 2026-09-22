@@ -155,7 +155,7 @@ func newHarness(t *testing.T, store Fetcher) *harness {
 	if err != nil {
 		t.Fatal(err)
 	}
-	model, err := who.BuildModel(whoTables, nil, staticFiles{})
+	model, err := who.BuildModel(whoTables, nil, staticFiles{}, []byte("test"))
 	if err != nil {
 		t.Fatal(err)
 	}

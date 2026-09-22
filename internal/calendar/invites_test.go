@@ -111,7 +111,7 @@ func newSampleSources(t *testing.T) *sampleSources {
 	if err != nil {
 		t.Fatal(err)
 	}
-	model, err := who.BuildModel(tables, nil, noFiles{})
+	model, err := who.BuildModel(tables, nil, noFiles{}, []byte("test"))
 	if err != nil {
 		t.Fatal(err)
 	}

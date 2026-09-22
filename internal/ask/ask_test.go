@@ -76,7 +76,7 @@ func sampleSources(t *testing.T) Sources {
 	if err != nil {
 		t.Fatal(err)
 	}
-	directory, err := who.BuildModel(tables, anyImages{}, anyImages{})
+	directory, err := who.BuildModel(tables, anyImages{}, anyImages{}, []byte("test"))
 	if err != nil {
 		t.Fatal(err)
 	}

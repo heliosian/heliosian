@@ -112,7 +112,7 @@ func main() {
 		}
 		source = live
 	}
-	model, err := who.LoadModel(source, nil, staticFiles{"web/who"})
+	model, err := who.LoadModel(source, nil, staticFiles{"web/who"}, []byte("loadcheck"))
 	if err != nil {
 		log.Fatalf("[ERROR] load directory model: %v", err)
 	}

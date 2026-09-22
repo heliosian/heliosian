@@ -1,6 +1,8 @@
 package who
 
 import (
+	"bytes"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -14,9 +16,11 @@ func (noBlobs) Has(string) (bool, error) { return false, nil }
 
 func (noBlobs) Prefetch([]string) error { return nil }
 
+var testKey = []byte("test")
+
 func sampleModel(t *testing.T) *Model {
 	t.Helper()
-	model, err := LoadModel(&data.Dir{Root: "../../sampledata"}, noBlobs{}, noBlobs{})
+	model, err := LoadModel(&data.Dir{Root: "../../sampledata"}, noBlobs{}, noBlobs{}, testKey)
 	if err != nil {
 		t.Fatalf("load sample model: %v", err)
 	}
@@ -101,7 +105,7 @@ func TestFamilyThatNeverSubmittedIsAbsent(t *testing.T) {
 			t.Errorf("%s reached the directory with no consent form submission", p.Email)
 		}
 	}
-	if _, ok := m.Families["april.baxter@heliosschool.org"]; ok {
+	if _, ok := m.Families[familyID(testKey, "april.baxter@heliosschool.org")]; ok {
 		t.Error("a family with no submission still has a family record")
 	}
 }
@@ -134,7 +138,7 @@ func TestOneHouseholdsAnswerCoversTheOther(t *testing.T) {
 	}
 	next := *tables
 	next.Preferences = kept
-	m, err := BuildModel(&next, noBlobs{}, noBlobs{})
+	m, err := BuildModel(&next, noBlobs{}, noBlobs{}, testKey)
 	if err != nil {
 		t.Fatalf("build model with one household's submission dropped: %v", err)
 	}
@@ -143,7 +147,7 @@ func TestOneHouseholdsAnswerCoversTheOther(t *testing.T) {
 			t.Errorf("%s is not in the directory, though one of the kid's households opted in", email)
 		}
 	}
-	family := m.Families["rohan.chandra@heliosschool.org"]
+	family := m.Families[familyID(testKey, "rohan.chandra@heliosschool.org")]
 	if family.AddressMasked || family.Address == "" || family.PhoneMasked {
 		t.Errorf("the household that never submitted does not carry the other's permissions: %+v", family)
 	}
@@ -152,7 +156,7 @@ func TestOneHouseholdsAnswerCoversTheOther(t *testing.T) {
 func TestLatestAnswerInAFamilySpeaksForEveryHousehold(t *testing.T) {
 	m := sampleModel(t)
 	for _, key := range []string{"asha.chandra@heliosschool.org", "rohan.chandra@heliosschool.org"} {
-		family := m.Families[key]
+		family := m.Families[familyID(testKey, key)]
 		if !family.AddressMasked || family.Address != "" || family.PhoneMasked {
 			t.Errorf("family %s = %+v, want the later answer's grants, phone only, on both households", key, family)
 		}
@@ -188,7 +192,7 @@ func TestClearedFactsAreNotRefilledFromTheWebsite(t *testing.T) {
 		t.Fatalf("read sample tables: %v", err)
 	}
 	email := "bill.ryder@heliosschool.org"
-	m, err := BuildModel(tables.withOverride(email, map[string]string{"Facts": "-"}), noBlobs{}, noBlobs{})
+	m, err := BuildModel(tables.withOverride(email, map[string]string{"Facts": "-"}), noBlobs{}, noBlobs{}, testKey)
 	if err != nil {
 		t.Fatalf("build model with the facts cleared: %v", err)
 	}
@@ -244,7 +248,7 @@ func TestWebsiteEntryMatchingTwoStaffByNameIsFatal(t *testing.T) {
 		"person_full_name": "Hana Ito", "person_email": "hana.ito2@heliosschool.org",
 		"person_classifications": `{"faculty_type":"Specialist"}`,
 	})
-	if _, err := BuildModel(&next, noBlobs{}, noBlobs{}); err == nil {
+	if _, err := BuildModel(&next, noBlobs{}, noBlobs{}, testKey); err == nil {
 		t.Error("a website entry with no address whose name matches two staff should fail the load")
 	}
 }
@@ -289,20 +293,24 @@ func TestAliasMatchingNothingIsFatal(t *testing.T) {
 	next.Aliases = append(append([]map[string]string{}, tables.Aliases...), map[string]string{
 		AliasColumn: "nobody@heliosschool.org", AliasEmailColumn: "ruth.amari@heliosschool.org",
 	})
-	if _, err := BuildModel(&next, noBlobs{}, noBlobs{}); err == nil {
+	if _, err := BuildModel(&next, noBlobs{}, noBlobs{}, testKey); err == nil {
 		t.Error("an alias matching no import row should fail the load")
 	}
 }
 
 // A family is keyed by its alphabetically first adult email, and the Families tab -
-// keyed the same way - is the one home of its fields.
+// keyed the same way - is the one home of its fields; the model knows the family by
+// the masked form of that email.
 func TestFamilyFieldsComeFromTheFamiliesTab(t *testing.T) {
 	m := sampleModel(t)
 	keys := m.FamilyKeysOf("marco.torres@heliosschool.org")
-	if len(keys) != 1 || keys[0] != "elena.torres@heliosschool.org" {
-		t.Fatalf("family keys = %v, want the alphabetically first adult email", keys)
+	if len(keys) != 1 || keys[0] != familyID(testKey, "elena.torres@heliosschool.org") {
+		t.Fatalf("family keys = %v, want the masked alphabetically first adult email", keys)
 	}
 	family := m.Families[keys[0]]
+	if family.Key != keys[0] || family.email != "elena.torres@heliosschool.org" {
+		t.Fatalf("family key %q, email %q, want the masked key and the first adult's email", family.Key, family.email)
+	}
 	if family.PhotoUpdated != "2026-08-20" {
 		t.Errorf("family photo updated = %q, want the Families tab value", family.PhotoUpdated)
 	}
@@ -355,9 +363,9 @@ func TestFamilyNameFoldsSurnamesIntoAHyphenatedOne(t *testing.T) {
 func TestTwoHouseholdKidBelongsToBothFamilies(t *testing.T) {
 	m := sampleModel(t)
 	keys := m.FamilyKeysOf("dev.chandra@heliosschool.org")
-	want := []string{"asha.chandra@heliosschool.org", "rohan.chandra@heliosschool.org"}
+	want := []string{familyID(testKey, "asha.chandra@heliosschool.org"), familyID(testKey, "rohan.chandra@heliosschool.org")}
 	if len(keys) != 2 || keys[0] != want[0] || keys[1] != want[1] {
-		t.Fatalf("family keys = %v, want both households in sorted order %v", keys, want)
+		t.Fatalf("family keys = %v, want both households in key email order %v", keys, want)
 	}
 	for _, key := range keys {
 		found := false
@@ -381,8 +389,53 @@ func TestFamiliesRowKeyedByTheWrongParentIsFatal(t *testing.T) {
 		t.Fatalf("read sample tables: %v", err)
 	}
 	misKeyed := tables.withFamily("marco.torres@heliosschool.org", map[string]string{"Family Phone": "650-555-0000"})
-	if _, err := BuildModel(misKeyed, noBlobs{}, noBlobs{}); err == nil {
+	if _, err := BuildModel(misKeyed, noBlobs{}, noBlobs{}, testKey); err == nil {
 		t.Error("a Families row keyed by the non-first parent should fail the load")
+	}
+}
+
+// The family stays keyed by its first adult after that adult is withheld - by the
+// per-person Opted Out cell, or as the silent partner of a staff member listed by
+// default - and the model every member fetches must not carry the email anywhere.
+func TestWithheldFirstAdultIsNowhereInTheModel(t *testing.T) {
+	tables, err := ReadTables(&data.Dir{Root: "../../sampledata"})
+	if err != nil {
+		t.Fatalf("read sample tables: %v", err)
+	}
+	// Dana Hawkins is the sample's staff member who is a parent too.
+	silent := *tables
+	silent.Preferences = nil
+	for _, row := range tables.Preferences {
+		if row[preferenceEmail] != "dana.hawkins@heliosschool.org" {
+			silent.Preferences = append(silent.Preferences, row)
+		}
+	}
+	for _, c := range []struct {
+		name, first, partner string
+		tables               *Tables
+	}{
+		{"opted out", "elena.torres@heliosschool.org", "marco.torres@heliosschool.org",
+			tables.withOverride("elena.torres@heliosschool.org", map[string]string{"Opted Out": "TRUE"})},
+		{"silent staff partner", "colin.quinn@heliosschool.org", "dana.hawkins@heliosschool.org", &silent},
+	} {
+		m, err := BuildModel(c.tables, noBlobs{}, noBlobs{}, testKey)
+		if err != nil {
+			t.Fatalf("%s: build model: %v", c.name, err)
+		}
+		if m.Person(c.first) != nil {
+			t.Fatalf("%s: %s is still in the directory", c.name, c.first)
+		}
+		family, ok := m.Families[familyID(testKey, c.first)]
+		if !ok || len(family.AdultEmails) != 1 || family.AdultEmails[0] != c.partner {
+			t.Fatalf("%s: family = %+v, want it kept under the first adult's masked key with only the partner listed", c.name, family)
+		}
+		encoded, err := json.Marshal(m)
+		if err != nil {
+			t.Fatalf("%s: encode model: %v", c.name, err)
+		}
+		if bytes.Contains(encoded, []byte(c.first)) {
+			t.Errorf("%s: the model every member fetches names the withheld adult %s", c.name, c.first)
+		}
 	}
 }
 
@@ -408,15 +461,15 @@ func TestClearingLegacyPrimaryPhotoOverrideSucceeds(t *testing.T) {
 	}
 	email := "ruth.amari@heliosschool.org"
 	withPrimary := tables.withOverride(email, map[string]string{"Primary Photo": "somephoto.jpg"})
-	if _, err := BuildModel(withPrimary, noBlobs{}, noBlobs{}); err != nil {
+	if _, err := BuildModel(withPrimary, noBlobs{}, noBlobs{}, testKey); err != nil {
 		t.Fatalf("seed a legacy Primary Photo override: %v", err)
 	}
 
-	if _, err := BuildModel(withPrimary.withOverride(email, map[string]string{"Primary Photo": ""}), noBlobs{}, noBlobs{}); err != nil {
+	if _, err := BuildModel(withPrimary.withOverride(email, map[string]string{"Primary Photo": ""}), noBlobs{}, noBlobs{}, testKey); err != nil {
 		t.Errorf("clearing Primary Photo with an empty string should succeed, got: %v", err)
 	}
 
-	if _, err := BuildModel(withPrimary.withOverride(email, map[string]string{"Primary Photo": "-"}), noBlobs{}, noBlobs{}); err == nil {
+	if _, err := BuildModel(withPrimary.withOverride(email, map[string]string{"Primary Photo": "-"}), noBlobs{}, noBlobs{}, testKey); err == nil {
 		t.Errorf("clearing Primary Photo with \"-\" should still fail the useless-override check, documenting why \"\" is required")
 	}
 }
@@ -431,15 +484,15 @@ func TestClearingPronounsSucceeds(t *testing.T) {
 	}
 	email := "ruth.amari@heliosschool.org"
 	withPronouns := tables.withOverride(email, map[string]string{"Pronouns": "she/her"})
-	if _, err := BuildModel(withPronouns, noBlobs{}, noBlobs{}); err != nil {
+	if _, err := BuildModel(withPronouns, noBlobs{}, noBlobs{}, testKey); err != nil {
 		t.Fatalf("seed pronouns: %v", err)
 	}
 
-	if _, err := BuildModel(withPronouns.withOverride(email, map[string]string{"Pronouns": ""}), noBlobs{}, noBlobs{}); err != nil {
+	if _, err := BuildModel(withPronouns.withOverride(email, map[string]string{"Pronouns": ""}), noBlobs{}, noBlobs{}, testKey); err != nil {
 		t.Errorf("clearing Pronouns with an empty string should succeed, got: %v", err)
 	}
 
-	if _, err := BuildModel(withPronouns.withOverride(email, map[string]string{"Pronouns": "-"}), noBlobs{}, noBlobs{}); err == nil {
+	if _, err := BuildModel(withPronouns.withOverride(email, map[string]string{"Pronouns": "-"}), noBlobs{}, noBlobs{}, testKey); err == nil {
 		t.Errorf("clearing Pronouns with \"-\" should still fail the useless-override check, documenting why \"\" is required")
 	}
 }
@@ -455,19 +508,19 @@ func TestClearingFamilyPhotoCaptionSucceeds(t *testing.T) {
 	}
 	key := "carmen.alvarez@heliosschool.org"
 	withCaption := tables.withFamily(key, map[string]string{"Family Photo Caption": "Carmen at the beach."})
-	m, err := BuildModel(withCaption, noBlobs{}, noBlobs{})
+	m, err := BuildModel(withCaption, noBlobs{}, noBlobs{}, testKey)
 	if err != nil {
 		t.Fatalf("seed a family photo caption: %v", err)
 	}
-	if m.Families[key].PhotoCaption != "Carmen at the beach." {
-		t.Fatalf("caption did not seed correctly: %+v", m.Families[key])
+	if m.Families[familyID(testKey, key)].PhotoCaption != "Carmen at the beach." {
+		t.Fatalf("caption did not seed correctly: %+v", m.Families[familyID(testKey, key)])
 	}
 
-	cleared, err := BuildModel(withCaption.withFamily(key, map[string]string{"Family Photo Caption": "-"}), noBlobs{}, noBlobs{})
+	cleared, err := BuildModel(withCaption.withFamily(key, map[string]string{"Family Photo Caption": "-"}), noBlobs{}, noBlobs{}, testKey)
 	if err != nil {
 		t.Fatalf("clearing Family Photo Caption with \"-\" should succeed, got: %v", err)
 	}
-	if got := cleared.Families[key].PhotoCaption; got != "" {
+	if got := cleared.Families[familyID(testKey, key)].PhotoCaption; got != "" {
 		t.Errorf("caption = %q after clearing with \"-\", want empty", got)
 	}
 }
@@ -484,7 +537,7 @@ func TestClearingPronunciationSucceeds(t *testing.T) {
 	email := "ruth.amari@heliosschool.org"
 	blobs := fakeBlobs{"pronunciation/somefile.webm": true}
 	withPronunciation := tables.withOverride(email, map[string]string{"Pronunciation": "somefile.webm"})
-	seeded, err := BuildModel(withPronunciation, blobs, noBlobs{})
+	seeded, err := BuildModel(withPronunciation, blobs, noBlobs{}, testKey)
 	if err != nil {
 		t.Fatalf("seed a pronunciation: %v", err)
 	}
@@ -492,14 +545,14 @@ func TestClearingPronunciationSucceeds(t *testing.T) {
 		t.Fatalf("pronunciation did not seed correctly: %q", got)
 	}
 
-	cleared, err := BuildModel(withPronunciation.withOverride(email, map[string]string{"Pronunciation": ""}), blobs, noBlobs{})
+	cleared, err := BuildModel(withPronunciation.withOverride(email, map[string]string{"Pronunciation": ""}), blobs, noBlobs{}, testKey)
 	if err != nil {
 		t.Errorf("clearing Pronunciation with an empty string should succeed, got: %v", err)
 	} else if got := cleared.Person(email).pronunciation; got != "" {
 		t.Errorf("pronunciation = %q after clearing with \"\", want empty", got)
 	}
 
-	if _, err := BuildModel(withPronunciation.withOverride(email, map[string]string{"Pronunciation": "-"}), noBlobs{}, noBlobs{}); err == nil {
+	if _, err := BuildModel(withPronunciation.withOverride(email, map[string]string{"Pronunciation": "-"}), noBlobs{}, noBlobs{}, testKey); err == nil {
 		t.Errorf("clearing Pronunciation with \"-\" should still fail the useless-override check, documenting why \"\" is required")
 	}
 }
@@ -516,19 +569,19 @@ func TestClearingFamilyPronunciationSucceeds(t *testing.T) {
 	key := "carmen.alvarez@heliosschool.org"
 	blobs := fakeBlobs{"pronunciation/somefile.webm": true}
 	withPronunciation := tables.withFamily(key, map[string]string{"Family Pronunciation": "somefile.webm"})
-	seeded, err := BuildModel(withPronunciation, blobs, noBlobs{})
+	seeded, err := BuildModel(withPronunciation, blobs, noBlobs{}, testKey)
 	if err != nil {
 		t.Fatalf("seed a family pronunciation: %v", err)
 	}
-	if got := seeded.Families[key].pronunciation; got != "somefile.webm" {
+	if got := seeded.Families[familyID(testKey, key)].pronunciation; got != "somefile.webm" {
 		t.Fatalf("family pronunciation did not seed correctly: %q", got)
 	}
 
-	cleared, err := BuildModel(withPronunciation.withFamily(key, map[string]string{"Family Pronunciation": ""}), blobs, noBlobs{})
+	cleared, err := BuildModel(withPronunciation.withFamily(key, map[string]string{"Family Pronunciation": ""}), blobs, noBlobs{}, testKey)
 	if err != nil {
 		t.Fatalf("clearing Family Pronunciation with an empty string should succeed, got: %v", err)
 	}
-	if got := cleared.Families[key].pronunciation; got != "" {
+	if got := cleared.Families[familyID(testKey, key)].pronunciation; got != "" {
 		t.Errorf("family pronunciation = %q after clearing with \"\", want empty", got)
 	}
 }
@@ -552,7 +605,7 @@ func TestPhotoCropResolvesOverOriginal(t *testing.T) {
 	email := "elena.torres@heliosschool.org"
 	withCrop := tables.withPhotos(email, []photoRef{{Name: "orig.jpg", CropName: "crop.jpg"}})
 	blobs := fakeBlobs{"photos/orig.jpg": true, "photos/crop.jpg": true}
-	m, err := BuildModel(withCrop, blobs, noBlobs{})
+	m, err := BuildModel(withCrop, blobs, noBlobs{}, testKey)
 	if err != nil {
 		t.Fatalf("build model with a crop: %v", err)
 	}
@@ -580,7 +633,7 @@ func TestMissingCropFallsBackToOriginal(t *testing.T) {
 	email := "elena.torres@heliosschool.org"
 	withCrop := tables.withPhotos(email, []photoRef{{Name: "orig.jpg", CropName: "missing-crop.jpg"}})
 	blobs := fakeBlobs{"photos/orig.jpg": true}
-	m, err := BuildModel(withCrop, blobs, noBlobs{})
+	m, err := BuildModel(withCrop, blobs, noBlobs{}, testKey)
 	if err != nil {
 		t.Fatalf("a missing crop should not fail the model load: %v", err)
 	}
@@ -600,11 +653,11 @@ func TestPersonWithNoPhotosShowsNoFamilyPhoto(t *testing.T) {
 	key := "elena.torres@heliosschool.org"
 	withFamilyPhoto := tables.withFamily(key, map[string]string{"Family Photo": "family.jpg"})
 	blobs := fakeBlobs{"photos/family.jpg": true}
-	m, err := BuildModel(withFamilyPhoto, blobs, noBlobs{})
+	m, err := BuildModel(withFamilyPhoto, blobs, noBlobs{}, testKey)
 	if err != nil {
 		t.Fatalf("build model with a family photo: %v", err)
 	}
-	if got := m.Families[key].PhotoURL; got != "/photos/family.jpg" {
+	if got := m.Families[familyID(testKey, key)].PhotoURL; got != "/photos/family.jpg" {
 		t.Fatalf("family photo did not seed correctly: %q", got)
 	}
 	p := m.Person("mia.torres@heliosschool.org")
@@ -626,7 +679,7 @@ func TestPersonWithNoPronunciationFallsBackToFamilyPronunciation(t *testing.T) {
 	key := "elena.torres@heliosschool.org"
 	withFamilyPronunciation := tables.withFamily(key, map[string]string{"Family Pronunciation": "family.webm"})
 	blobs := fakeBlobs{"pronunciation/family.webm": true}
-	m, err := BuildModel(withFamilyPronunciation, blobs, noBlobs{})
+	m, err := BuildModel(withFamilyPronunciation, blobs, noBlobs{}, testKey)
 	if err != nil {
 		t.Fatalf("build model with a family pronunciation: %v", err)
 	}
@@ -654,7 +707,7 @@ func TestOwnPronunciationOverridesFamilyFallback(t *testing.T) {
 		withFamily("elena.torres@heliosschool.org", map[string]string{"Family Pronunciation": "family.webm"}).
 		withOverride("mia.torres@heliosschool.org", map[string]string{"Pronunciation": "mia.webm"})
 	blobs := fakeBlobs{"pronunciation/family.webm": true, "pronunciation/mia.webm": true}
-	m, err := BuildModel(withBoth, blobs, noBlobs{})
+	m, err := BuildModel(withBoth, blobs, noBlobs{}, testKey)
 	if err != nil {
 		t.Fatalf("build model with both a personal and family pronunciation: %v", err)
 	}
@@ -689,7 +742,8 @@ func (blobsWith) Prefetch([]string) error { return nil }
 // carries no photos at all, which is why these are built by hand.
 func TestHeroPhotoPrefersOwnPhotoThenFallsBackToTheFamily(t *testing.T) {
 	const email = "jordan.whitfield@heliosschool.org"
-	key := sampleModel(t).FamilyKeysOf(email)
+	sample := sampleModel(t)
+	key := sample.FamilyKeysOf(email)
 	if len(key) == 0 {
 		t.Fatalf("%s has no family in the sample", email)
 	}
@@ -699,8 +753,8 @@ func TestHeroPhotoPrefersOwnPhotoThenFallsBackToTheFamily(t *testing.T) {
 	}
 	blobs := blobsWith{"photos/own.jpg": true, "photos/fam.jpg": true}
 
-	family := tables.withFamily(key[0], map[string]string{"Family Photo": "fam.jpg"})
-	m, err := BuildModel(family, blobs, noBlobs{})
+	family := tables.withFamily(sample.Families[key[0]].email, map[string]string{"Family Photo": "fam.jpg"})
+	m, err := BuildModel(family, blobs, noBlobs{}, testKey)
 	if err != nil {
 		t.Fatalf("build model with a family photo: %v", err)
 	}
@@ -709,7 +763,7 @@ func TestHeroPhotoPrefersOwnPhotoThenFallsBackToTheFamily(t *testing.T) {
 	}
 
 	own := family.withPhotos(email, []photoRef{{Name: "own.jpg"}})
-	m, err = BuildModel(own, blobs, noBlobs{})
+	m, err = BuildModel(own, blobs, noBlobs{}, testKey)
 	if err != nil {
 		t.Fatalf("build model with an own photo: %v", err)
 	}

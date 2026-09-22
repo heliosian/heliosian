@@ -115,8 +115,9 @@ type Family struct {
 
 	// photoCropName is the object name of family's photo crop, if any - a family
 	// photo may be cropped to an arbitrary shape (unlike a person's, which is
-	// always square), same as Photo.cropName above.
-	photo, pronunciation, photoCropName string
+	// always square), same as Photo.cropName above. email is the key email the
+	// Families tab row is under, which Key masks (familyID in load.go).
+	photo, pronunciation, photoCropName, email string
 
 	// sheetRow is this family's raw Families sheet row, or nil if it doesn't have one -
 	// the same shape as Person.overrideRow, and read the same way: admin.go shows and
@@ -193,7 +194,7 @@ func (m *Model) Person(email string) *Person {
 	return &m.People[i]
 }
 
-// FamilyKeysOf lists every family this person belongs to, in sorted key order - one
+// FamilyKeysOf lists every family this person belongs to, in key email order - one
 // for a parent (an adult belongs to at most one household), one or more for a kid.
 func (m *Model) FamilyKeysOf(email string) []string {
 	return m.familyKeysByEmail[email]
