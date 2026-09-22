@@ -33,7 +33,7 @@ To run against real community data instead, see [docs/dev.md](docs/dev.md).
 - `internal/feedback` — the toolbar's reports: the Reports sheet they land in, the word of them to the super admins, and the triage queue that edits one into a GitHub issue
 - `internal/blob` — media from Cloud Storage, held in memory with stored thumbnails
 - `internal/sharecard` — the 1200x630 picture a chat app shows for a shared link, drawn for HCA-Team and Helios Celebrate in each one's dress
-- `internal/imagesearch` — the editors' picture search (stock libraries and Wikimedia Commons) and import, shared by HCA-Team and Heliosian
+- `internal/imagesearch` — the editors' picture search (Unsplash, Pexels and Pixabay) and import, shared by HCA-Team and Heliosian
 - `internal/geocode` — address → coordinates for the map
 - `internal/capture` — drive Chrome and screenshot a page, for the dev tools
 - `internal/devtls` — the in-memory self-signed certificate local HTTPS runs on

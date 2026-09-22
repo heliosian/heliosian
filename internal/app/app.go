@@ -673,19 +673,28 @@ func (d calendarDirectory) ClassroomColors() map[string]string {
 // secure sets the headers every response carries: browsers keep to https for
 // the domain and everything under it for a year, never sniff a body into
 // another type, never frame a page, send only the origin as referrer
-// off-site, and never ask for the camera, microphone, location, payment or
-// USB, which no page here uses. HSTS is production's alone: a developer's
-// machine answers DevDomain and must not be pinned by it.
+// off-site, and never ask for the camera, location, payment or USB, which no
+// page here uses, nor the microphone on behalf of anything but the page
+// itself, which records a name's pronunciation. HSTS is production's alone: a developer's
+// machine answers DevDomain and must not be pinned by it. What the content
+// security policy blocks is reported to reportPath on every host, ahead of
+// routing and sign-in.
 func secure(domain string, next http.Handler) http.Handler {
+	csp := policy(domain)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && r.URL.Path == reportPath {
+			report(w, r)
+			return
+		}
 		h := w.Header()
+		h.Set("Content-Security-Policy", csp)
 		if domain == Domain {
 			h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
 		}
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("Referrer-Policy", "strict-origin-when-cross-origin")
-		h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()")
+		h.Set("Permissions-Policy", "camera=(), microphone=(self), geolocation=(), payment=(), usb=()")
 		next.ServeHTTP(w, r)
 	})
 }
@@ -797,7 +806,7 @@ type Config struct {
 	Store      *blob.Store
 	BrowserKey string
 	// ImageSearch is the picture search HCA-Team's and Heliosian's editors
-	// share; zero means Wikimedia Commons alone.
+	// share; zero means the picker has nowhere to look.
 	ImageSearch imagesearch.Search
 	// Mail sends the portal's email; nil drops it. CelebrateMail is the
 	// same for Helios Celebrate, from its own address.
@@ -1284,7 +1293,7 @@ func artifactsMail(store *blob.Store) artifacts.Inbox {
 
 // ImageSearchKeys reads the picture search's keys the way every mode does:
 // each from its environment variable, else from its file under local/creds/, else
-// absent - Wikimedia Commons needs none. Sample mode uses it too, so a
+// absent. Sample mode uses it too, so a
 // developer with keys on disk gets the same libraries as production.
 // ClaudeDescriber is Staff Birthdays' charity describer when an Anthropic
 // key is set (ANTHROPIC_API_KEY, or local/creds/anthropic.key locally), else nil.

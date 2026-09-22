@@ -1,9 +1,14 @@
 package app
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -141,6 +146,7 @@ func TestRoute(t *testing.T) {
 }
 
 func TestSecureHeaders(t *testing.T) {
+	t.Chdir("../..")
 	apps := map[string]http.Handler{"who": http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})}
 	for _, c := range []struct {
 		domain, host string
@@ -159,12 +165,71 @@ func TestSecureHeaders(t *testing.T) {
 			"X-Content-Type-Options": "nosniff",
 			"X-Frame-Options":        "DENY",
 			"Referrer-Policy":        "strict-origin-when-cross-origin",
-			"Permissions-Policy":     "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+			"Permissions-Policy":     "camera=(), microphone=(self), geolocation=(), payment=(), usb=()",
 		} {
 			if got := h.Get(name); got != want {
 				t.Errorf("%s %s: %s %q, want %q", c.domain, c.host, name, got, want)
 			}
 		}
+		if got := h.Get("Content-Security-Policy"); !strings.Contains(got, "https://*."+c.domain+":*") || !strings.Contains(got, "report-uri /csp-report") {
+			t.Errorf("%s %s: csp %q", c.domain, c.host, got)
+		}
+	}
+}
+
+func TestPolicyHashesEveryInlineScript(t *testing.T) {
+	t.Chdir("../..")
+	csp := policy(Domain)
+	pages, err := filepath.Glob("web/*/*.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	public, err := filepath.Glob("web/public/*/*.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pages = append(pages, public...)
+	if len(pages) < 10 {
+		t.Fatalf("found only %d shells", len(pages))
+	}
+	scripts := 0
+	for _, name := range pages {
+		page, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, m := range inlineScript.FindAllSubmatch(page, -1) {
+			scripts++
+			sum := sha256.Sum256(m[1])
+			if hash := "'sha256-" + base64.StdEncoding.EncodeToString(sum[:]) + "'"; !strings.Contains(csp, hash) {
+				t.Errorf("%s: inline script %s not in policy", name, hash)
+			}
+		}
+	}
+	if scripts == 0 {
+		t.Fatal("no inline scripts found")
+	}
+	if strings.Contains(csp, "'unsafe-inline'") && !strings.Contains(csp, "style-src 'self' 'unsafe-inline'") {
+		t.Errorf("unsafe-inline outside style-src: %s", csp)
+	}
+	if strings.Contains(csp, "'unsafe-eval'") {
+		t.Errorf("unsafe-eval in policy: %s", csp)
+	}
+}
+
+func TestReportSink(t *testing.T) {
+	t.Chdir("../..")
+	handler := Server(Domain, map[string]http.Handler{}).Handler
+	req := httptest.NewRequest(http.MethodPost, "https://who.heliosian.com/csp-report", strings.NewReader(`{"csp-report":{"blocked-uri":"https://evil.example"}}`))
+	req.Host = "who.heliosian.com"
+	req.Header.Set("Content-Type", "application/csp-report")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNoContent {
+		t.Errorf("report: got %d, want 204", rec.Code)
+	}
+	if rec := get(t, handler, "who.heliosian.com", "/csp-report"); rec.Code != http.StatusNotFound {
+		t.Errorf("GET report path: got %d, want 404", rec.Code)
 	}
 }
 

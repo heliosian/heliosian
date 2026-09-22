@@ -6,4 +6,4 @@ Severity: medium
 
 `{"url":"http://169.254.169.254/"}` or any address inside the project's network is requested from the server. The answer tells the caller the upstream status ("that site answered 403") against "not a supported image", which makes it a probe, and anything that sniffs as an image is stored in the bucket and handed back by name.
 
-Fix: allow only the image hosts of Unsplash, Pexels, Pixabay and Wikimedia Commons, check the host again in `CheckRedirect`, and ask for an editor on the three open routes.
+Fix: allow only the image hosts of Unsplash, Pexels and Pixabay, check the host again in `CheckRedirect`, and ask for an editor on the three open routes.
