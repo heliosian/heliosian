@@ -18,5 +18,5 @@ func main() {
 	if key == "" || *email == "" {
 		log.Fatal("[ERROR] SESSION_KEY and -email are required")
 	}
-	fmt.Println(auth.Token([]byte(key), *email, time.Now().Add(24*time.Hour)))
+	fmt.Println(auth.Token([]byte(key), *email, time.Now()))
 }

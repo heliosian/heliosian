@@ -729,6 +729,7 @@ type Core struct {
 	Queue          *who.Queue
 	Spoof          *auth.Spoof
 	Member         func(email string) bool
+	Sessions       auth.Sessions
 	Home           http.Handler
 	Team           http.Handler
 	Birthday       http.Handler
@@ -744,7 +745,7 @@ func NewCore(cfg Config) *Core {
 	}
 	queue := who.NewQueue()
 	cfg.ImageSearch.Stock = imagesearch.NewStock(cfg.Store)
-	settings, err := config.NewCache(cfg.Source, queue)
+	settings, err := config.NewCache(cfg.Source, cfg.Writer, queue)
 	if err != nil {
 		logging.Fatal("load config", "error", err)
 	}
@@ -814,7 +815,7 @@ func NewCore(cfg Config) *Core {
 		logging.Fatal("load artifacts data", "error", err)
 	}
 	mux := http.NewServeMux()
-	config.Register(mux, settings, cfg.Writer, cache.IsAdmin)
+	config.Register(mux, settings, cache.IsAdmin)
 	who.Register(mux, cache, cfg.BrowserKey, smartLists{cache, teamCache, celebrateCache, loopCache, loopDir})
 	who.RegisterTags(mux, cache, cfg.Writer, queue, cfg.WhoMail)
 	who.RegisterAdmin(mux, cache, cfg.Writer, queue)
@@ -893,7 +894,7 @@ func NewCore(cfg Config) *Core {
 		Mux: mux, HomeMux: homeMux, HomeCache: homeCache, TeamMux: teamMux, TeamCache: teamCache, BirthdayMux: birthdayMux, CelebrateMux: celebrateMux, CelebrateCache: celebrateCache,
 		CalendarMux: calendarMux, CalendarCache: calendarCache, CalendarLinked: linked, LoopMux: loopMux, LoopCache: loopCache, AskMux: askMux, Cache: cache, Queue: queue,
 		Spoof:  &auth.Spoof{Allowed: superAdmin, Person: directory{cache, settings}.SpoofPerson, People: directory{cache, settings}.SpoofPeople},
-		Member: func(email string) bool { return who.Member(cache, email) }, Home: homeMux, Team: teamMux, Birthday: birthdayMux, Celebrate: celebrateMux, Calendar: calendarMux, Loop: loopMux, Ask: askMux,
+		Member: func(email string) bool { return who.Member(cache, email) }, Sessions: settings, Home: homeMux, Team: teamMux, Birthday: birthdayMux, Celebrate: celebrateMux, Calendar: calendarMux, Loop: loopMux, Ask: askMux,
 	}
 }
 
@@ -1175,7 +1176,7 @@ func Production(domain, blobCache string) (*http.Server, *who.Queue) {
 	who.RegisterUpload(core.Mux, core.Cache, sheet, store, core.Queue)
 	client := clientID()
 	newAuth := func(app string) *auth.Auth {
-		a := auth.New(domain, client, []byte(sessionKey), "web/public/"+app+"/login.html", core.Member)
+		a := auth.New(domain, client, []byte(sessionKey), "web/public/"+app+"/login.html", core.Member, core.Sessions)
 		a.Spoof = core.Spoof
 		return a
 	}

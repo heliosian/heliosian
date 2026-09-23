@@ -10,7 +10,7 @@ import (
 )
 
 func TestLogoutDomains(t *testing.T) {
-	a := New("heliosian.com", "client", []byte("key"), "web/public/who/login.html", everyone)
+	a := New("heliosian.com", "client", []byte("key"), "web/public/who/login.html", everyone, noSessions())
 	cases := map[string][]string{
 		"who.heliosian.com":         {"", "heliosian.com"},
 		"hca.heliosian.com:443":     {"", "heliosian.com"},
@@ -36,14 +36,43 @@ func TestLogoutDomains(t *testing.T) {
 
 func everyone(string) bool { return true }
 
+type sessions struct {
+	out    map[string]time.Time
+	ended  []string
+	refuse error
+}
+
+func noSessions() *sessions { return &sessions{out: map[string]time.Time{}} }
+
+func (s *sessions) SignedOut(email string) (time.Time, bool) {
+	at, ok := s.out[email]
+	return at, ok
+}
+
+func (s *sessions) SignOut(_ context.Context, email string) error {
+	if s.refuse != nil {
+		return s.refuse
+	}
+	s.ended = append(s.ended, email)
+	s.out[email] = time.Now()
+	return nil
+}
+
 func TestLogoutClearsEveryDomain(t *testing.T) {
-	a := New("heliosiandev.com", "client", []byte("key"), "web/public/who/login.html", everyone)
+	ended := noSessions()
+	a := New("heliosiandev.com", "client", []byte("key"), "web/public/who/login.html", everyone, ended)
 	req := httptest.NewRequest(http.MethodPost, "https://hca.heliosiandev.com/auth/logout", nil)
 	req.Header.Set("X-Forwarded-Proto", "https")
+	req = req.WithContext(context.WithValue(req.Context(), contextKey{}, identity{real: "admin@heliosschool.org", effective: "parent@heliosschool.org"}))
 	rec := httptest.NewRecorder()
 	a.logout(rec, req)
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("got %d, want redirect", rec.Code)
+	}
+	// The sign-out is recorded against the person really signed in, never
+	// the one they are viewing as.
+	if len(ended.ended) != 1 || ended.ended[0] != "admin@heliosschool.org" {
+		t.Errorf("signed out %v, want the admin alone", ended.ended)
 	}
 	// The session and the spoof both end, host-only and on the server's
 	// domain, and no other domain is touched.
@@ -62,13 +91,59 @@ func TestLogoutClearsEveryDomain(t *testing.T) {
 	}
 }
 
+// A session is the signed address and the moment it was issued, good for
+// sessionLength from then unless the address signs out later: a token
+// issued at or before the recorded sign-out is refused, one issued after
+// it holds, and a sign-out the record refuses is answered with a 500 and
+// no cleared cookie, so the browser's copy is not dropped while every
+// other copy still verifies.
+func TestSessionEndsAtSignOut(t *testing.T) {
+	key := []byte("key")
+	out := time.Now().Add(-10 * time.Minute).Truncate(time.Second)
+	s := noSessions()
+	s.out["parent@heliosschool.org"] = out
+	a := New("heliosian.com", "client", key, "web/public/who/login.html", everyone, s)
+	handler := a.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusTeapot) }))
+	cases := []struct {
+		name     string
+		token    string
+		wantCode int
+	}{
+		{"issued before the sign-out", Token(key, "parent@heliosschool.org", out.Add(-time.Second)), http.StatusUnauthorized},
+		{"issued at the sign-out", Token(key, "parent@heliosschool.org", out), http.StatusUnauthorized},
+		{"issued after the sign-out", Token(key, "parent@heliosschool.org", out.Add(time.Second)), http.StatusTeapot},
+		{"someone never signed out", Token(key, "other@heliosschool.org", out.Add(-time.Hour)), http.StatusTeapot},
+		{"run out", Token(key, "other@heliosschool.org", time.Now().Add(-sessionLength-time.Second)), http.StatusUnauthorized},
+		{"another key", Token([]byte("other"), "other@heliosschool.org", time.Now()), http.StatusUnauthorized},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "https://who.heliosian.com/api/people", nil)
+			req.AddCookie(&http.Cookie{Name: cookieName, Value: c.token})
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+			if rec.Code != c.wantCode {
+				t.Errorf("got %d, want %d", rec.Code, c.wantCode)
+			}
+		})
+	}
+	s.refuse = context.Canceled
+	req := httptest.NewRequest(http.MethodPost, "https://who.heliosian.com/auth/logout", nil)
+	req = req.WithContext(context.WithValue(req.Context(), contextKey{}, identity{real: "parent@heliosschool.org", effective: "parent@heliosschool.org"}))
+	rec := httptest.NewRecorder()
+	a.logout(rec, req)
+	if rec.Code != http.StatusInternalServerError || len(rec.Result().Cookies()) != 0 {
+		t.Errorf("refused sign-out: got %d with %d cookies, want 500 and none", rec.Code, len(rec.Result().Cookies()))
+	}
+}
+
 // A spoof cookie signed with the key, for the admin the session names,
 // makes Email the target and keeps RealEmail the admin; one for another
 // admin, one for someone the community does not list, or one the admin may
 // no longer use is ignored, and Email stays the signed-in address.
 func TestSpoofResolvesTheTargetOnlyWhenItHolds(t *testing.T) {
 	key := []byte("key")
-	a := New("heliosian.com", "client", key, "web/public/who/login.html", everyone)
+	a := New("heliosian.com", "client", key, "web/public/who/login.html", everyone, noSessions())
 	allowed := map[string]bool{"admin@heliosschool.org": true}
 	a.Spoof = &Spoof{
 		Allowed: func(email string) bool { return allowed[email] },
@@ -83,7 +158,8 @@ func TestSpoofResolvesTheTargetOnlyWhenItHolds(t *testing.T) {
 	handler := a.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		got = identity{real: RealEmail(r), effective: Email(r)}
 	}))
-	expiry := time.Now().Add(time.Hour)
+	issued := time.Now()
+	expiry := issued.Add(time.Hour)
 	cases := []struct {
 		name    string
 		session string
@@ -101,7 +177,7 @@ func TestSpoofResolvesTheTargetOnlyWhenItHolds(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, "https://who.heliosian.com/people", nil)
-			req.AddCookie(&http.Cookie{Name: cookieName, Value: Token(key, c.session, expiry)})
+			req.AddCookie(&http.Cookie{Name: cookieName, Value: Token(key, c.session, issued)})
 			if c.spoof != "" {
 				req.AddCookie(&http.Cookie{Name: spoofCookie, Value: c.spoof})
 			}
@@ -123,7 +199,7 @@ func TestWrapAdmitsOnlyMembers(t *testing.T) {
 	t.Chdir("../..")
 	key := []byte("key")
 	members := map[string]bool{"parent@heliosschool.org": true, "admin@heliosschool.org": true}
-	a := New("heliosian.com", "client", key, "web/public/who/login.html", func(email string) bool { return members[email] })
+	a := New("heliosian.com", "client", key, "web/public/who/login.html", func(email string) bool { return members[email] }, noSessions())
 	a.Spoof = &Spoof{
 		Allowed: func(email string) bool { return email == "admin@heliosschool.org" },
 		Person:  func(email string) (Person, bool) { return Person{Email: email}, true },
@@ -133,11 +209,12 @@ func TestWrapAdmitsOnlyMembers(t *testing.T) {
 		served++
 		w.WriteHeader(http.StatusTeapot)
 	})
-	expiry := time.Now().Add(time.Hour)
+	issued := time.Now()
+	expiry := issued.Add(time.Hour)
 	call := func(handler http.Handler, session, spoof, path string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodGet, "https://who.heliosian.com"+path, nil)
 		if session != "" {
-			req.AddCookie(&http.Cookie{Name: cookieName, Value: Token(key, session, expiry)})
+			req.AddCookie(&http.Cookie{Name: cookieName, Value: Token(key, session, issued)})
 		}
 		if spoof != "" {
 			req.AddCookie(&http.Cookie{Name: spoofCookie, Value: SpoofToken(key, session, spoof, expiry)})
@@ -197,7 +274,7 @@ func TestWrapAdmitsOnlyMembers(t *testing.T) {
 // nothing.
 func TestSetSpoofKeepsTheRecentFive(t *testing.T) {
 	key := []byte("key")
-	a := New("heliosiandev.com", "client", key, "web/public/who/login.html", everyone)
+	a := New("heliosiandev.com", "client", key, "web/public/who/login.html", everyone, noSessions())
 	a.Spoof = &Spoof{
 		Allowed: func(email string) bool { return email == "admin@heliosschool.org" },
 		Person: func(email string) (Person, bool) {
@@ -255,7 +332,7 @@ func TestSetSpoofKeepsTheRecentFive(t *testing.T) {
 // The session is scoped to the server's own domain and never another: a
 // production sign-in never reaches a developer's names, nor the reverse.
 func TestCookieDomain(t *testing.T) {
-	production := New("heliosian.com", "client", []byte("key"), "web/public/who/login.html", everyone)
+	production := New("heliosian.com", "client", []byte("key"), "web/public/who/login.html", everyone, noSessions())
 	cases := map[string]string{
 		"who.heliosian.com":         "heliosian.com",
 		"who.heliosian.com:8080":    "heliosian.com",
@@ -271,7 +348,7 @@ func TestCookieDomain(t *testing.T) {
 			t.Errorf("%s: got %q, want %q", host, got, want)
 		}
 	}
-	dev := New("heliosiandev.com", "client", []byte("key"), "web/public/who/login.html", everyone)
+	dev := New("heliosiandev.com", "client", []byte("key"), "web/public/who/login.html", everyone, noSessions())
 	if got := dev.cookieDomain("who.heliosiandev.com:8080"); got != "heliosiandev.com" {
 		t.Errorf("dev: got %q, want heliosiandev.com", got)
 	}
@@ -283,7 +360,7 @@ func TestCookieDomain(t *testing.T) {
 // Quan mode is offered to the super admins and to anyone with "quan" in
 // their address, and to nobody else.
 func TestQuanFor(t *testing.T) {
-	a := New("heliosian.com", "client", []byte("key"), "web/public/who/login.html", everyone)
+	a := New("heliosian.com", "client", []byte("key"), "web/public/who/login.html", everyone, noSessions())
 	a.Spoof = &Spoof{Allowed: func(email string) bool { return email == "admin@heliosschool.org" }}
 	for email, want := range map[string]bool{
 		"admin@heliosschool.org":            true,

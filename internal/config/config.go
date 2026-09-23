@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"heliosian/internal/data"
 )
@@ -18,6 +19,7 @@ const (
 	SuperAdminsTab     = "Super Admins"
 	GradeColorsTab     = "Grade Colors"
 	ClassroomColorsTab = "Classroom Colors"
+	SignedOutTab       = "Signed Out"
 )
 
 const (
@@ -27,6 +29,7 @@ const (
 	GradeColumn     = "Grade"
 	ClassroomColumn = "Classroom"
 	ColorColumn     = "Color"
+	TimeColumn      = "Time"
 )
 
 const (
@@ -48,6 +51,7 @@ var (
 	superAdminColumns     = []string{EmailColumn}
 	gradeColorColumns     = []string{GradeColumn, ColorColumn}
 	classroomColorColumns = []string{ClassroomColumn, ColorColumn}
+	signedOutColumns      = []string{EmailColumn, TimeColumn}
 )
 
 var HexColor = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
@@ -80,12 +84,13 @@ type PrivacyLinks struct {
 // SuperAdmins are never serialized: the config endpoint serves everyone, and who the
 // super admins are is only ever revealed to a super admin.
 type Settings struct {
-	SuperAdmins     []string          `json:"-"`
-	StaleYears      StaleYears        `json:"staleYears"`
-	PrivacyLinks    PrivacyLinks      `json:"privacyLinks"`
-	StaffColor      string            `json:"staffColor"`
-	GradeColors     map[string]string `json:"gradeColors"`
-	ClassroomColors map[string]string `json:"classroomColors"`
+	SuperAdmins     []string             `json:"-"`
+	SignedOut       map[string]time.Time `json:"-"`
+	StaleYears      StaleYears           `json:"staleYears"`
+	PrivacyLinks    PrivacyLinks         `json:"privacyLinks"`
+	StaffColor      string               `json:"staffColor"`
+	GradeColors     map[string]string    `json:"gradeColors"`
+	ClassroomColors map[string]string    `json:"classroomColors"`
 }
 
 // Tables are the sheet's tabs as read, before validation, kept so a write can be
@@ -95,6 +100,7 @@ type Tables struct {
 	SuperAdmins     []map[string]string
 	GradeColors     []map[string]string
 	ClassroomColors []map[string]string
+	SignedOut       []map[string]string
 }
 
 func ReadTables(source data.Source) (*Tables, error) {
@@ -108,7 +114,8 @@ func ReadTables(source data.Source) (*Tables, error) {
 	superAdmins := &table{name: SuperAdminsTab, want: superAdminColumns}
 	gradeColors := &table{name: GradeColorsTab, want: gradeColorColumns}
 	classroomColors := &table{name: ClassroomColorsTab, want: classroomColorColumns}
-	read := []*table{settings, superAdmins, gradeColors, classroomColors}
+	signedOut := &table{name: SignedOutTab, want: signedOutColumns}
+	read := []*table{settings, superAdmins, gradeColors, classroomColors, signedOut}
 	names := []string{}
 	for _, t := range read {
 		names = append(names, t.name)
@@ -128,6 +135,7 @@ func ReadTables(source data.Source) (*Tables, error) {
 		SuperAdmins:     superAdmins.rows,
 		GradeColors:     gradeColors.rows,
 		ClassroomColors: classroomColors.rows,
+		SignedOut:       signedOut.rows,
 	}, nil
 }
 
@@ -197,6 +205,25 @@ func parseColors(tab, keyColumn string, rows []map[string]string) (map[string]st
 	return colors, nil
 }
 
+func parseSignedOut(rows []map[string]string) (map[string]time.Time, error) {
+	out := map[string]time.Time{}
+	for _, row := range rows {
+		email := strings.ToLower(strings.TrimSpace(row[EmailColumn]))
+		if email == "" {
+			return nil, fmt.Errorf("%s row %v has no %s", SignedOutTab, row, EmailColumn)
+		}
+		if _, dup := out[email]; dup {
+			return nil, fmt.Errorf("%s has duplicate rows for %q", SignedOutTab, email)
+		}
+		at, err := time.Parse(time.RFC3339, row[TimeColumn])
+		if err != nil {
+			return nil, fmt.Errorf("%s time for %q must be RFC 3339, not %q", SignedOutTab, email, row[TimeColumn])
+		}
+		out[email] = at
+	}
+	return out, nil
+}
+
 // Parse validates every tab and refuses the whole sheet on the first problem, the
 // same stance every app's own sheet takes: an edit that breaks a rule surfaces as a
 // refused load, never as a setting quietly read as something else.
@@ -229,6 +256,9 @@ func Parse(t *Tables) (*Settings, error) {
 		return nil, err
 	}
 	if s.ClassroomColors, err = parseColors(ClassroomColorsTab, ClassroomColumn, t.ClassroomColors); err != nil {
+		return nil, err
+	}
+	if s.SignedOut, err = parseSignedOut(t.SignedOut); err != nil {
 		return nil, err
 	}
 	s.SuperAdmins = t.SuperAdminEmails()
@@ -305,6 +335,12 @@ func (t *Tables) WithClassroomColor(name, color string) *Tables {
 	return &out
 }
 
+func (t *Tables) WithSignedOut(email string, at time.Time) *Tables {
+	out := *t
+	out.SignedOut = upsertRow(t.SignedOut, EmailColumn, email, map[string]string{TimeColumn: at.Format(time.RFC3339)})
+	return &out
+}
+
 func (t *Tables) WithSuperAdmins(emails []string) *Tables {
 	out := *t
 	out.SuperAdmins = make([]map[string]string, 0, len(emails))
@@ -330,6 +366,10 @@ func WriteGradeColor(writer data.Writer, name, color string) error {
 
 func WriteClassroomColor(writer data.Writer, name, color string) error {
 	return writer.Upsert(App, ClassroomColorsTab, ClassroomColumn, name, map[string]string{ColorColumn: color})
+}
+
+func WriteSignedOut(writer data.Writer, email string, at time.Time) error {
+	return writer.Upsert(App, SignedOutTab, EmailColumn, email, map[string]string{TimeColumn: at.Format(time.RFC3339)})
 }
 
 // WriteSuperAdmins persists the difference between the tab as it is and as it should

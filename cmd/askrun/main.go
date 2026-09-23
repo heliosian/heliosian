@@ -116,7 +116,7 @@ func main() {
 	total := usage{}
 	for i, q := range questions {
 		viewer := strings.TrimSpace(viewers[i%len(viewers)])
-		cookie := "session=" + auth.Token([]byte(key), *email, time.Now().Add(24*time.Hour))
+		cookie := "session=" + auth.Token([]byte(key), *email, time.Now())
 		if viewer != "" {
 			cookie += "; spoof=" + auth.SpoofToken([]byte(key), *email, viewer, time.Now().Add(24*time.Hour))
 		}

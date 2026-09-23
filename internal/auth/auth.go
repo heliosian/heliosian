@@ -34,12 +34,18 @@ type contextKey struct{}
 // reaches no other domain. loginPage is the app's static splash page under
 // web/public, the one page anyone without a session sees; it fetches
 // clientID from /auth/client rather than carrying it.
+type Sessions interface {
+	SignedOut(email string) (time.Time, bool)
+	SignOut(ctx context.Context, email string) error
+}
+
 type Auth struct {
 	domain    string
 	clientID  string
 	key       []byte
 	loginPage string
 	member    func(email string) bool
+	sessions  Sessions
 	// Preview, when set, supplies extra <head> markup for the login page served
 	// at a given path - the Open Graph tags a chat app reads to preview a link
 	// that leads to sign-in. Empty for a path with nothing to preview.
@@ -49,8 +55,8 @@ type Auth struct {
 	Spoof *Spoof
 }
 
-func New(domain, clientID string, key []byte, loginPage string, member func(email string) bool) *Auth {
-	return &Auth{domain: domain, clientID: clientID, key: key, loginPage: loginPage, member: member}
+func New(domain, clientID string, key []byte, loginPage string, member func(email string) bool, sessions Sessions) *Auth {
+	return &Auth{domain: domain, clientID: clientID, key: key, loginPage: loginPage, member: member, sessions: sessions}
 }
 
 // Fixed signs every request in as email, with no session at all - for tests.
@@ -119,8 +125,8 @@ func Public(path string) bool {
 	return path == "/auth/login" || path == "/auth/client" || strings.HasPrefix(path, "/hooks/") || strings.HasPrefix(path, "/open/") || strings.HasPrefix(path, "/ext/")
 }
 
-func Token(key []byte, email string, expiry time.Time) string {
-	payload := fmt.Sprintf("%s|%d", email, expiry.Unix())
+func Token(key []byte, email string, issued time.Time) string {
+	payload := fmt.Sprintf("%s|%d", email, issued.Unix())
 	return base64.RawURLEncoding.EncodeToString([]byte(payload)) + "." + sign(key, payload)
 }
 
@@ -224,7 +230,7 @@ func (a *Auth) login(w http.ResponseWriter, r *http.Request) {
 	}
 	http.SetCookie(w, &http.Cookie{
 		Name:     cookieName,
-		Value:    Token(a.key, email, time.Now().Add(sessionLength)),
+		Value:    Token(a.key, email, time.Now()),
 		Path:     "/",
 		Domain:   a.cookieDomain(r.Host),
 		HttpOnly: true,
@@ -247,9 +253,15 @@ func (a *Auth) logoutDomains(host string) []string {
 	return domains
 }
 
-// logout ends the session, and any spoof with it: the next person to sign
-// in on this browser must not inherit a view as someone else.
+// logout ends every session of the signed-in address, this browser's copy
+// and any other, and any spoof with it: the next person to sign in on this
+// browser must not inherit a view as someone else.
 func (a *Auth) logout(w http.ResponseWriter, r *http.Request) {
+	if err := a.sessions.SignOut(r.Context(), RealEmail(r)); err != nil {
+		slog.ErrorContext(r.Context(), "record sign-out", "error", err)
+		http.Error(w, "sign-out not recorded", http.StatusInternalServerError)
+		return
+	}
 	secure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
 	for _, domain := range a.logoutDomains(r.Host) {
 		for _, name := range []string{cookieName, spoofCookie} {
@@ -283,11 +295,14 @@ func (a *Auth) sessionEmail(r *http.Request) string {
 	if len(fields) != 2 {
 		return ""
 	}
-	expiry, err := strconv.ParseInt(fields[1], 10, 64)
-	if err != nil || time.Now().Unix() > expiry {
+	issued, err := strconv.ParseInt(fields[1], 10, 64)
+	if err != nil || time.Now().Unix() > issued+int64(sessionLength.Seconds()) {
 		return ""
 	}
 	if !strings.HasSuffix(fields[0], "@"+Domain) {
+		return ""
+	}
+	if out, ok := a.sessions.SignedOut(fields[0]); ok && issued <= out.Unix() {
 		return ""
 	}
 	return fields[0]

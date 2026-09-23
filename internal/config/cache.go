@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -20,14 +21,15 @@ type Enqueuer interface {
 
 type Cache struct {
 	source   data.Source
+	writer   data.Writer
 	queue    Enqueuer
 	mu       sync.RWMutex
 	tables   *Tables
 	settings *Settings
 }
 
-func NewCache(source data.Source, queue Enqueuer) (*Cache, error) {
-	c := &Cache{source: source, queue: queue}
+func NewCache(source data.Source, writer data.Writer, queue Enqueuer) (*Cache, error) {
+	c := &Cache{source: source, writer: writer, queue: queue}
 	if err := c.refresh(); err != nil {
 		return nil, err
 	}
@@ -90,6 +92,19 @@ func (c *Cache) SuperAdmins() []string {
 
 func (c *Cache) IsSuperAdmin(email string) bool {
 	return slices.Contains(c.SuperAdmins(), email)
+}
+
+func (c *Cache) SignedOut(email string) (time.Time, bool) {
+	at, ok := c.Settings().SignedOut[strings.ToLower(strings.TrimSpace(email))]
+	return at, ok
+}
+
+func (c *Cache) SignOut(ctx context.Context, email string) error {
+	email = strings.ToLower(strings.TrimSpace(email))
+	at := time.Now().Truncate(time.Second)
+	return c.update(ctx, "sign out", func(t *Tables) *Tables { return t.WithSignedOut(email, at) }, func() error {
+		return WriteSignedOut(c.writer, email, at)
+	})
 }
 
 // update mirrors a write into the tables and parses the result first, so a change

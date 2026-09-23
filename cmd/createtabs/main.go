@@ -193,6 +193,7 @@ var layouts = map[string][]tab{
 		{"Super Admins", []string{"Email"}},
 		{"Grade Colors", []string{"Grade", "Color"}},
 		{"Classroom Colors", []string{"Classroom", "Color"}},
+		{"Signed Out", []string{"Email", "Time"}},
 	},
 	"Groups": {
 		{"Groups", loop.GroupColumns},

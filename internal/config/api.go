@@ -19,15 +19,17 @@ type api struct {
 
 // Register serves the settings to every signed-in user and takes edits from the
 // app's admins. isAdmin is the app's own admin check, either tier; managing the
-// super admins themselves is gated on that list alone.
-func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, isAdmin func(email string) bool) {
-	a := api{cache: cache, writer: writer, isAdmin: isAdmin}
+// super admins themselves, and ending anyone's sessions, is gated on that list
+// alone.
+func Register(mux *http.ServeMux, cache *Cache, isAdmin func(email string) bool) {
+	a := api{cache: cache, writer: cache.writer, isAdmin: isAdmin}
 	mux.HandleFunc("GET /api/config", a.settings)
 	mux.HandleFunc("GET /api/config/super-admins", a.superAdmins)
 	mux.HandleFunc("POST /api/config/stale-years", a.setStaleYears)
 	mux.HandleFunc("POST /api/config/privacy-links", a.setPrivacyLinks)
 	mux.HandleFunc("POST /api/config/color", a.setColor)
 	mux.HandleFunc("POST /api/config/super-admins", a.setSuperAdmins)
+	mux.HandleFunc("POST /api/config/sign-out", a.signOut)
 }
 
 func (a api) requireAdmin(w http.ResponseWriter, r *http.Request) (string, bool) {
@@ -212,5 +214,29 @@ func (a api) setSuperAdmins(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.InfoContext(r.Context(), "config: set the super admin list", "admins", admins)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a api) signOut(w http.ResponseWriter, r *http.Request) {
+	admin, ok := a.requireSuperAdmin(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Email string `json:"email"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	email := strings.ToLower(strings.TrimSpace(body.Email))
+	if !strings.Contains(email, "@") {
+		http.Error(w, "missing email", http.StatusBadRequest)
+		return
+	}
+	if err := a.cache.SignOut(r.Context(), email); err != nil {
+		serverError(w, r, err)
+		return
+	}
+	slog.InfoContext(r.Context(), "config: signed out every session", "email", email, "by", admin)
 	w.WriteHeader(http.StatusNoContent)
 }

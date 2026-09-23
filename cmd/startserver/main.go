@@ -133,7 +133,7 @@ func sampleServer() (*http.Server, *who.Queue) {
 	// its own signs the spoof cookie and answers the toolbar's switch, and
 	// every request is the sample parent's unless they are viewing as
 	// someone else.
-	signIn := auth.New(app.DevDomain, "", []byte("sample"), "", core.Member)
+	signIn := auth.New(app.DevDomain, "", []byte("sample"), "", core.Member, core.Sessions)
 	signIn.Spoof = core.Spoof
 	for _, m := range core.Muxes() {
 		m.Handle("POST /auth/logout", http.RedirectHandler("/", http.StatusSeeOther))
@@ -214,7 +214,7 @@ func detachReal(email string) {
 		logging.Fatal("start server", "error", err)
 	}
 
-	cookie := auth.Token([]byte(key), email, time.Now().Add(24*time.Hour))
+	cookie := auth.Token([]byte(key), email, time.Now())
 	fmt.Printf("log: %s\n", logPath)
 	fmt.Printf("stop with: kill -- -%d\n", cmd.Process.Pid)
 	fmt.Printf("header: Cookie: session=%s\n", cookie)
