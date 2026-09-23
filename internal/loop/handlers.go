@@ -618,10 +618,13 @@ func (a app) deleteGroup(w http.ResponseWriter, r *http.Request) {
 		if err := a.writer.Delete(appName, groupsTab, map[string]string{"Name": name}); err != nil {
 			return err
 		}
-		for _, tab := range []string{managersTab, rulesTab, additionsTab, excludedTab, aliasesTab, archivedTab} {
+		for _, tab := range []string{managersTab, rulesTab, additionsTab, excludedTab, aliasesTab, archivedTab, messagesTab, deliveriesTab} {
 			if err := a.writer.Delete(appName, tab, map[string]string{"Group": name}); err != nil {
 				return err
 			}
+		}
+		if err := a.mail.Documents.Remove(name); err != nil {
+			return err
 		}
 		return a.logChange(email, "delete", name, current.Title)
 	}) {

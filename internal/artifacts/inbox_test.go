@@ -207,6 +207,34 @@ func TestGroupMailIsFiledUnderEachGroupOnce(t *testing.T) {
 	}
 }
 
+func TestRemovingAGroupsMailTakesItsRowsAndDocumentsAndLeavesTheObjects(t *testing.T) {
+	in, objects, sheet := testInbox(t)
+	for _, group := range []string{"soccer-team", "chess-club"} {
+		if err := in.Post(context.Background(), group, []byte(personalMail)); err != nil {
+			t.Fatalf("%s: %v", group, err)
+		}
+	}
+	if err := in.Remove("soccer-team"); err != nil {
+		t.Fatal(err)
+	}
+	_, rows, err := sheet.Table(appName, documentsTab)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0]["Channel"] != "chess-club" {
+		t.Fatalf("rows: %+v", rows)
+	}
+	if _, ok := objects[rows[0]["Object"]]; !ok || len(objects) != 2 {
+		t.Fatalf("objects: %d, none named %s", len(objects), rows[0]["Object"])
+	}
+	if model := in.cache.Model(); len(model.Documents) != 1 || model.Documents[0].Channel != "chess-club" {
+		t.Fatalf("the model holds %+v", model.Documents)
+	}
+	if err := in.Remove("soccer-team"); err != nil {
+		t.Fatalf("removing a group with no mail: %v", err)
+	}
+}
+
 func TestCacheRefreshKeepsAnEditMadeWhileReading(t *testing.T) {
 	var cache *Cache
 	loads := 0

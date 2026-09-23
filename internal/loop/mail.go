@@ -31,6 +31,7 @@ type Archive interface {
 
 type Documents interface {
 	Post(ctx context.Context, group string, raw []byte) error
+	Remove(group string) error
 }
 
 type Mail struct {

@@ -141,6 +141,25 @@ func (in *Filer) Post(ctx context.Context, group string, raw []byte) error {
 	return in.file(ctx, m)
 }
 
+func (in *Filer) Remove(group string) error {
+	gone := func(d *Document) bool { return d.Kind == KindGroup && d.Channel == group }
+	n := 0
+	for _, d := range in.cache.Model().Documents {
+		if gone(d) {
+			n++
+		}
+	}
+	if n == 0 {
+		return nil
+	}
+	if err := in.writer.Delete(appName, documentsTab, map[string]string{"Kind": KindGroup, "Channel": group}); err != nil {
+		return fmt.Errorf("record: %w", err)
+	}
+	in.cache.remove(gone)
+	slog.Info("artifacts: a group's mail removed", "group", group, "documents", n)
+	return nil
+}
+
 func (in *Filer) file(ctx context.Context, m Message) error {
 	doc, err := Build(m, NewResolver(), in.embedder.Model())
 	if errors.Is(err, ErrNotBroadcast) || errors.Is(err, ErrNoWords) {

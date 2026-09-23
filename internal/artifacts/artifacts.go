@@ -473,6 +473,19 @@ func (c *Cache) add(doc *Document) {
 	c.edits++
 }
 
+func (c *Cache) remove(gone func(*Document) bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	kept := []*Document{}
+	for _, d := range c.model.Documents {
+		if !gone(d) {
+			kept = append(kept, d)
+		}
+	}
+	c.model = &Model{Documents: kept, Fetched: c.model.Fetched}
+	c.edits++
+}
+
 func (c *Cache) Model() *Model {
 	c.mu.RLock()
 	defer c.mu.RUnlock()

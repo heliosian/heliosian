@@ -116,8 +116,9 @@ func (f *fakeArchive) count() int {
 }
 
 type fakeDocuments struct {
-	mu     sync.Mutex
-	groups []string
+	mu      sync.Mutex
+	groups  []string
+	dropped []string
 }
 
 func (f *fakeDocuments) Post(_ context.Context, group string, raw []byte) error {
@@ -127,10 +128,23 @@ func (f *fakeDocuments) Post(_ context.Context, group string, raw []byte) error 
 	return nil
 }
 
+func (f *fakeDocuments) Remove(group string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.dropped = append(f.dropped, group)
+	return nil
+}
+
 func (f *fakeDocuments) filed() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return slices.Clone(f.groups)
+}
+
+func (f *fakeDocuments) removed() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.dropped)
 }
 
 const signingKey = "mailgun-signing-key"
@@ -679,6 +693,58 @@ func TestHistoryListsSentMessagesWithEachCopy(t *testing.T) {
 	}
 	if rec := h.as("ruth.amari@heliosschool.org", http.MethodGet, "/api/loop/messages?name=soccer-team", ""); rec.Code != http.StatusForbidden {
 		t.Fatalf("a non-manager got %d", rec.Code)
+	}
+}
+
+func (h *harness) groupRows(tab, name string) int {
+	n := 0
+	for _, row := range h.rows(tab) {
+		if row["Group"] == name {
+			n++
+		}
+	}
+	return n
+}
+
+func TestDeletingAGroupTakesItsMailRecordWithIt(t *testing.T) {
+	h := newHarness(t, &fakeStore{raw: []byte(post)})
+	h.inbound(notify("m20", "soccer-team@loop.heliosian.com"))
+	h.waitFor("the forward", func() bool { return h.messageState("m20", "soccer-team") == stateSent })
+	h.waitFor("a sent row per copy", func() bool { return len(h.deliveryRows("abc@gmail.com", eventSent)) == len(h.members("soccer-team")) })
+	if h.archive.count() != 1 || h.groupRows(messagesTab, "soccer-team") != 2 || h.groupRows(deliveriesTab, "soccer-team") < 2 {
+		t.Fatalf("before: %d archived, %d messages, %d deliveries", h.archive.count(), h.groupRows(messagesTab, "soccer-team"), h.groupRows(deliveriesTab, "soccer-team"))
+	}
+	if rec := h.as("jordan.whitfield@heliosschool.org", http.MethodDelete, "/api/loop/group", `{"name":"soccer-team"}`); rec.Code != http.StatusNoContent {
+		t.Fatalf("delete answered %d: %s", rec.Code, rec.Body)
+	}
+	h.waitFor("the record to go", func() bool {
+		return h.groupRows(messagesTab, "soccer-team") == 0 && h.groupRows(deliveriesTab, "soccer-team") == 0 && len(h.documents.removed()) == 1
+	})
+	if removed := h.documents.removed(); removed[0] != "soccer-team" {
+		t.Fatalf("documents removed for %v", removed)
+	}
+	if h.archive.count() != 1 {
+		t.Fatalf("the archive holds %d objects; it is written, never emptied", h.archive.count())
+	}
+	if tables := h.cache.Tables(); len(tables.Messages) != 0 || len(tables.Deliveries) != 0 {
+		t.Fatalf("memory keeps %d messages and %d deliveries", len(tables.Messages), len(tables.Deliveries))
+	}
+	rec := h.as("ruth.amari@heliosschool.org", http.MethodPost, "/api/loop/group", `{"original":"","name":"soccer-team","title":"Soccer again","managers":["ruth.amari@heliosschool.org"],"rules":[{"kind":"include","roles":["Staff"]}]}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("taking the name answered %d: %s", rec.Code, rec.Body)
+	}
+	rec = h.as("ruth.amari@heliosschool.org", http.MethodGet, "/api/loop/messages?name=soccer-team", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("messages answered %d: %s", rec.Code, rec.Body)
+	}
+	var body struct {
+		Messages []SentMessage `json:"messages"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Messages) != 0 {
+		t.Fatalf("the new group reads the old one's mail: %+v", body.Messages)
 	}
 }
 

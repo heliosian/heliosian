@@ -588,6 +588,8 @@ func (t *Tables) withoutGroup(name string) *Tables {
 	out.Excluded = withoutGroupRows(t.Excluded, "Group", name)
 	out.Aliases = withoutGroupRows(t.Aliases, "Group", name)
 	out.Archived = withoutGroupRows(t.Archived, "Group", name)
+	out.Messages = withoutGroupRows(t.Messages, "Group", name)
+	out.Deliveries = withoutGroupRows(t.Deliveries, "Group", name)
 	return &out
 }
 
