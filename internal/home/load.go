@@ -35,73 +35,38 @@ const (
 	maxDescLength  = 300
 	maxURLLength   = 1000
 
-	// StyleCards renders a category as large feature cards, StyleTiles as a
-	// row of compact tiles. Every category picks one; see docs/home/data.md.
-	// StyleEvents and StyleApps are the two sections that hold no links:
-	// Helios When's upcoming events, and the community apps themselves - the
-	// same list the toolbar switches between, each with its mark and
-	// tagline, less any the Visibility tab keeps from the viewer. The sheet
-	// may carry one events row, to name, mark and place the section; without
-	// one the page synthesizes it at the top (see BuildModel). The apps
-	// section is on the page only while a row carries its style.
 	StyleCards  = "cards"
 	StyleTiles  = "tiles"
 	StyleEvents = "events"
 	StyleApps   = "apps"
 
-	// The events section as it stands until the sheet says otherwise.
 	EventsTitle = "Upcoming Events"
 	EventsEmoji = "icon:when"
 )
 
 var (
-	categoryColumns = []string{"Title", "Emoji", "Style", "Max"}
-	linkColumns     = []string{"Title", "Description", "URL", "Image", "Category", "Visible", "Added By", "Added"}
-	// AudienceColumns hold the rules that keep an app, a category or a link
-	// to some people: Thing names which - app:<key>, category:<title>,
-	// link:<title> - and the rest are a filter rule as Loop's Rules tab
-	// holds one (internal/filter). A thing with no rows is everyone's (an
-	// app's list: the people named alone); with rows, the include rules'
-	// people less the exclude rules', as a group's are.
+	categoryColumns   = []string{"Title", "Emoji", "Style", "Max"}
+	linkColumns       = []string{"Title", "Description", "URL", "Image", "Category", "Visible", "Added By", "Added"}
 	AudienceColumns   = append([]string{"Thing"}, filter.RuleColumns...)
 	adminColumns      = []string{"Email"}
 	visibilityColumns = []string{"App", "Visibility", "Emails", "Tagline", "Name", "Order"}
 	changeLogColumns  = []string{"Timestamp", "Actor", "Action", "Kind", "Title", "Description", "URL", "Image", "Category", "Visible", "Style"}
-	// The tabs whole, for cmd/createtabs.
 	CategoryColumns   = categoryColumns
 	LinkColumns       = linkColumns
 	VisibilityColumns = visibilityColumns
 	ChangeLogColumns  = changeLogColumns
 )
 
-// App is one of the community apps the shared toolbar switches between,
-// keyed by its hostname's first label; its mark is served from
-// web/public/common/brand/apps/<key>.png. Apps is the registry: every app
-// the Visibility tab has a row for and the front page's apps section can
-// list, in the order the switch starts with. Key is the code's - each app is
-// a package here and a hostname routed in internal/app - and Name and
-// Tagline are the defaults the sheet's row starts with; the row's own win
-// once edited, and its Order cell moves the app in the switch and on the
-// front page (AppList). Heliosian itself, Home, heads the switch but is not
-// among them: it is the front page, and the switch's way home.
 type App struct {
 	Key     string `json:"key"`
 	Name    string `json:"name"`
 	Tagline string `json:"tagline"`
-	// Host is the hostname's first label the switch links to, when it is
-	// not the key: the calendar is the package and the sheet, when. the
-	// address (internal/app sends its other addresses there).
-	Host string `json:"host,omitempty"`
-	// Mark is a fingerprint of the app's mark file, for the switch and the
-	// front page to fetch the file by (?v=), so a redrawn mark reaches a
-	// browser that cached the old one under the day-long brand caching.
-	Mark string `json:"mark,omitempty"`
+	Host    string `json:"host,omitempty"`
+	Mark    string `json:"mark,omitempty"`
 }
 
 var marks sync.Map
 
-// markVersion fingerprints web/public/common/brand/apps/<key>.png, once per
-// process: the file is part of the build, so it changes only with a deploy.
 func markVersion(key string) string {
 	if v, ok := marks.Load(key); ok {
 		return v.(string)
@@ -136,13 +101,6 @@ func appByKey(key string) (App, bool) {
 	return App{}, false
 }
 
-// An app's Visibility is VisibleToEveryone or VisibleToList, when only the
-// people in its Emails cell see it, in the toolbar's switch and on the front
-// page. Never access: a direct link still opens the app. The list is kept
-// while the app is everyone's, so switching back to it finds the list as it
-// was. An app with no row is a new one, and starts as VisibleToList with
-// nobody on it - out of sight until an admin lets people in - and the
-// server writes it that row when it finds it (Register).
 const (
 	VisibleToEveryone = "everyone"
 	VisibleToList     = "list"
@@ -153,16 +111,10 @@ type Visibility struct {
 	Emails  []string
 	Tagline string
 	Name    string
-	// Rules are who sees the app besides the Emails, while Mode is list:
-	// the Audience tab's rows for it, none for nobody more.
-	Rules []filter.Rule
-	// Order is the app's place in the switch, counted from one; zero is a
-	// row that has none, which keeps the registry's place after every row
-	// that has one.
-	Order int
+	Rules   []filter.Rule
+	Order   int
 }
 
-// cells is the row as the sheet holds it.
 func (v Visibility) cells() map[string]string {
 	order := ""
 	if v.Order > 0 {
@@ -182,25 +134,19 @@ type ImageChecker interface {
 }
 
 type Link struct {
-	Title       string `json:"title"`
-	Description string `json:"description,omitempty"`
-	URL         string `json:"url"`
-	Image       string `json:"image,omitempty"`
-	ImageURL    string `json:"imageUrl,omitempty"`
-	Category    string `json:"category"`
-	Visible     bool   `json:"visible"`
-	AddedBy     string `json:"addedBy,omitempty"`
-	Added       string `json:"added,omitempty"`
-	// Rules keep the link to some people (the Audience tab); none for
-	// everyone.
-	Rules []filter.Rule `json:"rules"`
-	// ForMe is false on a link the viewer would not see but for being an
-	// admin, who is sent every link; absent otherwise.
-	ForMe *bool `json:"forMe,omitempty"`
+	Title       string        `json:"title"`
+	Description string        `json:"description,omitempty"`
+	URL         string        `json:"url"`
+	Image       string        `json:"image,omitempty"`
+	ImageURL    string        `json:"imageUrl,omitempty"`
+	Category    string        `json:"category"`
+	Visible     bool          `json:"visible"`
+	AddedBy     string        `json:"addedBy,omitempty"`
+	Added       string        `json:"added,omitempty"`
+	Rules       []filter.Rule `json:"rules"`
+	ForMe       *bool         `json:"forMe,omitempty"`
 }
 
-// splitList reads a comma-separated cell, trimmed, blanks and repeats
-// dropped, in the order written.
 func splitList(cell string) []string {
 	out := []string{}
 	for _, part := range strings.Split(cell, ",") {
@@ -211,29 +157,17 @@ func splitList(cell string) []string {
 	return out
 }
 
-// A category goes by an emoji rather than a picture: it heads the section,
-// marks the rail, and stands in for a link that has no image of its own.
-// Max is how many of its things the page shows before a See More; zero
-// shows them all. Virtual marks the events section when the sheet has no row
-// for it yet: it shows and edits like any other, and the first rename, emoji
-// or move writes its row.
 type Category struct {
-	Title   string `json:"title"`
-	Emoji   string `json:"emoji,omitempty"`
-	Style   string `json:"style"`
-	Max     int    `json:"max,omitempty"`
-	Links   []Link `json:"links"`
-	Virtual bool   `json:"virtual,omitempty"`
-	// Rules keep the whole section to some people, links and all (the
-	// Audience tab); ForMe marks one an admin would not see but for being
-	// an admin.
-	Rules []filter.Rule `json:"rules"`
-	ForMe *bool         `json:"forMe,omitempty"`
+	Title   string        `json:"title"`
+	Emoji   string        `json:"emoji,omitempty"`
+	Style   string        `json:"style"`
+	Max     int           `json:"max,omitempty"`
+	Links   []Link        `json:"links"`
+	Virtual bool          `json:"virtual,omitempty"`
+	Rules   []filter.Rule `json:"rules"`
+	ForMe   *bool         `json:"forMe,omitempty"`
 }
 
-// Model is the portal as the sheet orders it: categories in row order, each
-// holding its links in row order. Visibility is the Visibility tab by app,
-// absent for an app with no row.
 type Model struct {
 	Categories []Category            `json:"categories"`
 	Visibility map[string]Visibility `json:"-"`
@@ -247,15 +181,12 @@ type Tables struct {
 	Audience   []map[string]string
 }
 
-// Thing keys are how the Audience tab names what a rule is for.
 const (
 	thingApp      = "app:"
 	thingCategory = "category:"
 	thingLink     = "link:"
 )
 
-// rulesFor reads the Audience tab's rows for one thing, in row order,
-// refusing a rule a list cannot read (filter.Check).
 func rulesFor(rows []map[string]string, key string) ([]filter.Rule, error) {
 	out := []filter.Rule{}
 	for _, row := range rows {
@@ -266,16 +197,11 @@ func rulesFor(rows []map[string]string, key string) ([]filter.Rule, error) {
 		if err := filter.Check(r); err != nil {
 			return nil, fmt.Errorf("%s rule for %s: %w", audienceTab, key, err)
 		}
-		if r.Owner == "" {
-			return nil, fmt.Errorf("%s rule for %s has no owner", audienceTab, key)
-		}
 		out = append(out, r)
 	}
 	return out, nil
 }
 
-// withAudience is the tab with one thing's rules replaced - dropped, and
-// appended in their order - which is what saving a thing writes.
 func (t *Tables) withAudience(key string, rules []filter.Rule) *Tables {
 	out := *t
 	out.Audience = []map[string]string{}
@@ -292,7 +218,6 @@ func (t *Tables) withAudience(key string, rules []filter.Rule) *Tables {
 	return &out
 }
 
-// audienceRows is a thing's rules as the tab's rows, for a write.
 func audienceRows(key string, rules []filter.Rule) [][]string {
 	rows := [][]string{}
 	for _, r := range rules {
@@ -348,8 +273,6 @@ func yesNo(cell string) (bool, error) {
 	return false, fmt.Errorf("%q is not Yes or No", cell)
 }
 
-// checkMax reads a Max cell: blank for no limit, else a whole number of one
-// or more.
 func checkMax(cell string) (int, error) {
 	cell = strings.TrimSpace(cell)
 	if cell == "" {
@@ -362,8 +285,6 @@ func checkMax(cell string) (int, error) {
 	return n, nil
 }
 
-// checkStyle is spelled exactly, the same stance yesNo takes: a blank or
-// misspelled Style refuses the load rather than guessing a presentation.
 func checkStyle(cell string) (string, error) {
 	switch cell {
 	case StyleCards, StyleTiles, StyleEvents, StyleApps:
@@ -372,14 +293,8 @@ func checkStyle(cell string) (string, error) {
 	return "", fmt.Errorf("%q is not %s, %s, %s or %s", cell, StyleCards, StyleTiles, StyleEvents, StyleApps)
 }
 
-// iconValue names one of the outline marks the front page draws
-// (categoryIcons in web/home/dom.js): "icon:pin", "icon:chat".
 var iconValue = regexp.MustCompile(`^icon:[a-z]+$`)
 
-// checkEmoji accepts a blank cell, an icon's name (the marks the editor
-// offers), or one emoji from before the marks - a short run of symbol
-// runes, joiners and variation selectors, so a flag or a skin-toned face
-// passes and a word does not.
 func checkEmoji(cell string) error {
 	if cell == "" || iconValue.MatchString(cell) {
 		return nil
@@ -424,9 +339,6 @@ func imageURL(images ImageChecker, name string) (string, error) {
 	return "/" + name, nil
 }
 
-// BuildModel validates every row and refuses the whole set on the first
-// problem, the same stance the directory takes: a sheet edit that breaks a
-// rule surfaces as a refused load, never as a page quietly missing a link.
 func imageNames(rows ...[]map[string]string) []string {
 	names := []string{}
 	for _, table := range rows {
@@ -485,8 +397,6 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 		index[title] = len(model.Categories)
 		model.Categories = append(model.Categories, Category{Title: title, Emoji: emoji, Style: style, Max: max, Links: []Link{}, Rules: rules})
 	}
-	// The events section is always on the page: at the top, under its own
-	// name, until a row places and names it.
 	if !events {
 		if _, taken := index[EventsTitle]; taken {
 			return nil, fmt.Errorf("category %q is the events section's name; give it the %s style or another title", EventsTitle, StyleEvents)
@@ -560,12 +470,6 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 	return model, nil
 }
 
-// buildVisibility reads the Visibility tab: one row per app, spelling its
-// Visibility exactly, and listing in Emails whoever sees it when that is
-// list - separated by commas or line breaks, in the order written. A row for
-// an app this build does not know is logged and skipped: a newer build has
-// written it, and a partial deploy must not die over it. Anything else
-// refuses the load, since a misspelled mode would narrow nothing, silently.
 func buildVisibility(rows []map[string]string) (map[string]Visibility, error) {
 	visibility := map[string]Visibility{}
 	for _, row := range rows {
@@ -602,14 +506,12 @@ func buildVisibility(rows []map[string]string) (map[string]Visibility, error) {
 	return visibility, nil
 }
 
-// splitEmails reads an Emails cell, normalized and deduplicated, in order.
 func splitEmails(cell string) []string {
 	return normalizeEmails(strings.FieldsFunc(cell, func(r rune) bool {
 		return r == ',' || r == ';' || r == '\n' || r == '\r' || r == ' '
 	}))
 }
 
-// joinEmails writes an Emails cell the way the sheet is read back.
 func joinEmails(emails []string) string {
 	return strings.Join(emails, ", ")
 }
@@ -640,9 +542,6 @@ func applyCells(row, cells map[string]string) {
 	}
 }
 
-// withRow mirrors what data.Writer.Upsert (or Append, when key is "") is
-// about to write to one tab, so the model can be rebuilt and checked before
-// anything is persisted.
 func (t *Tables) withRow(tab, key string, cells map[string]string) *Tables {
 	out := *t
 	rows := cloneRows(t.tab(tab))
@@ -673,9 +572,6 @@ func (t *Tables) withoutRow(tab, key string) *Tables {
 	return &out
 }
 
-// withVisibility mirrors what setVisibility upserts: the app's row takes the
-// mode and the list, appended when the app had none. Its own tab is keyed
-// by App rather than Title, so withRow does not serve it.
 func (t *Tables) withVisibility(app string, v Visibility) *Tables {
 	out := *t
 	out.Visibility = cloneRows(t.Visibility)

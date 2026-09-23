@@ -1,8 +1,8 @@
-Thing,Kind,Roles,Search,Classrooms,Grades,Tags,Family,Owner
-link:Parent Portal,include,Parent,,,,,,jordan.whitfield@heliosschool.org
-link:Staff Room,include,Staff,,,,,,jordan.whitfield@heliosschool.org
-link:Hummingbirds Chat,include,,,Hummingbirds,,,,jordan.whitfield@heliosschool.org
-link:Hawks and Falcons Chat,include,Parent,,"Hawks, Falcons",,,,jordan.whitfield@heliosschool.org
-link:Jays Chat,include,Parent,,Jays,,,,jordan.whitfield@heliosschool.org
-"category:Chats",include,"Parent, Staff",,,,,,jordan.whitfield@heliosschool.org
-app:celebrate,include,Parent,,Jays,,,,jordan.whitfield@heliosschool.org
+Thing,Kind,Roles,Search,Classrooms,Grades,Tags,Family
+link:Parent Portal,include,Parent,,,,,
+link:Staff Room,include,Staff,,,,,
+link:Hummingbirds Chat,include,,,Hummingbirds,,,
+link:Hawks and Falcons Chat,include,Parent,,"Hawks, Falcons",,,
+link:Jays Chat,include,Parent,,Jays,,,
+"category:Chats",include,"Parent, Staff",,,,,
+app:celebrate,include,Parent,,Jays,,,

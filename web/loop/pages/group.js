@@ -7,10 +7,8 @@ import {tabStrip, tabParam, tabHref} from '/tabs.js';
 import {rulesEditor} from '/rules.js';
 import {visibilityWords} from './groups.js';
 
-// The rule editor is the one every app shares (rules.js), given Loop's
-// helpers, choices and people.
 const {ruleRow, newRule, ruleSaysSomething, personWords, ruleWords} = rulesEditor({
-  el, svg, options, me,
+  el, svg, options,
   personName: email => (state.model.people.find(p => p.email === email) || {}).name || '',
 });
 
@@ -60,15 +58,6 @@ async function send(method, url, body) {
   return res.status === 204 ? null : res.json();
 }
 
-// editor is the group form, for a new group and an existing one alike: the
-// words, the managers, the include and exclude rules, the people added by
-// hand from outside the directory, and a preview of who all that picks
-// out, asked of the server as it changes.
-// editor is the group form. Opened in the modal from a group's page
-// (Edit), `closeModal` is how it leaves - after saving, deleting or
-// cancelling - and its tabs keep to themselves rather than the address.
-// startTab is the tab the modal opens on - Rules from the rules card's
-// pencil, the first otherwise.
 function editor(g, isNew, closeModal, startTab) {
   const draft = {
     name: g.name, aliases: [...(g.aliases || [])], title: g.title, description: g.description || '',
@@ -77,11 +66,10 @@ function editor(g, isNew, closeModal, startTab) {
     posting: isNew ? 'everyone' : g.posting,
     replying: isNew ? 'everyone' : g.replying,
     managers: g.managers.map(m => m.email),
-    rules: g.rules.map(r => ({kind: r.kind, roles: [...r.roles], search: r.search, classrooms: [...r.classrooms], grades: [...r.grades], tags: [...r.tags], family: [...r.family], owner: r.owner, tagLabels: r.tagLabels})),
+    rules: g.rules.map(r => ({kind: r.kind, roles: [...r.roles], search: r.search, classrooms: [...r.classrooms], grades: [...r.grades], tags: [...r.tags], family: [...r.family], tagLabels: r.tagLabels})),
     additions: (g.additions || []).map(a => ({email: a.email, name: a.name})),
     excluded: (g.excluded || []).map(e => ({email: e.email, note: e.note || '', when: e.when || ''})),
   };
-  // A blank new group starts with one include rule, open to be filled in.
   const firstRule = isNew && !draft.rules.length ? newRule('include') : null;
   if (firstRule) {
     draft.rules.push(firstRule);
@@ -107,13 +95,9 @@ function editor(g, isNew, closeModal, startTab) {
     }
   });
   titleField.append(el('span', '', 'Group name'), title);
-  // In the modal the title is the window's own heading, typed in place;
-  // on the page it is the form's first field.
   if (closeModal) {
     title.className = 'modal-title-input';
     title.setAttribute('aria-label', 'Group name');
-    // A new group's heading wears a dotted ring until a name is typed, so
-    // the eye lands on the one thing the window needs first.
     const wanting = () => title.classList.toggle('is-wanted', isNew && !title.value.trim());
     title.addEventListener('input', wanting);
     wanting();
@@ -138,10 +122,6 @@ function editor(g, isNew, closeModal, startTab) {
     draft.name = slug(name.value);
     updateAddress();
   });
-  // The aliases - other local parts that reach the group, each unique
-  // across every group's name and alias - sit under the address: a small
-  // Add alias at the label's right opens a box for one, and each alias is
-  // a row with its Remove.
   const nameHead = el('span', 'field-head');
   const addAliasButton = button('Add alias', 'plus', 'button button-small button-secondary', () => {
     aliasAdd.hidden = false;
@@ -204,7 +184,6 @@ function editor(g, isNew, closeModal, startTab) {
   });
   const aliasAdd = el('div', 'add-row alias-add');
   aliasAdd.hidden = true;
-  // The box's clear: empties it and puts it away, as Escape does.
   const aliasClear = iconButton('close', 'Clear', 'alias-clear', () => {
     aliasInput.value = '';
     aliasStatus.textContent = '';
@@ -226,9 +205,6 @@ function editor(g, isNew, closeModal, startTab) {
   desc.addEventListener('input', () => {
     draft.description = desc.value;
   });
-  // Generate with AI writes the description from the draft: its name, its
-  // rules in words and a tally of who they pick out, asked of the server,
-  // which asks Claude; the words land in the box to change or keep.
   const descHead = el('span', 'field-head');
   const descStatus = el('small', 'save-status');
   const generate = button('Generate with AI', 'sparkle', 'button button-small button-secondary', async () => {
@@ -294,8 +270,6 @@ function editor(g, isNew, closeModal, startTab) {
   const overviewPanel = el('div');
   overviewPanel.append(words);
 
-  // A new group's managers are picked here; an existing group's are
-  // changed in the Managers box on its page.
   const managers = el('div', 'card');
   managers.append(el('h2', '', 'Managers'));
   managers.append(el('div', 'hint', 'Managers can edit or delete the group.'));
@@ -348,8 +322,6 @@ function editor(g, isNew, closeModal, startTab) {
   previewChanges.hidden = true;
   const previewList = el('div', 'compact-list');
   const previewStatus = el('div', 'save-status');
-  // A box narrows the list by name, address or the word that places them;
-  // the list is drawn again from what the last preview said as it is typed.
   const previewSearch = el('input', 'member-search');
   previewSearch.type = 'search';
   previewSearch.placeholder = 'Search the members…';
@@ -361,9 +333,6 @@ function editor(g, isNew, closeModal, startTab) {
   const current = isNew ? [] : g.members;
   const currentEmails = new Set(current.map(m => m.email));
 
-  // pickMember is a click on a directory member in the list: a small menu
-  // by the row offering to exclude them - which adds an exclude rule naming
-  // their address, read out as their name - or to open them in Who?.
   const pickMember = (row, m) => {
     for (const other of document.querySelectorAll('.member-menu')) {
       other.remove();
@@ -397,9 +366,6 @@ function editor(g, isNew, closeModal, startTab) {
     setTimeout(() => document.addEventListener('click', close, true));
   };
 
-  // renderChanges says what a save does to the membership: the people the
-  // draft adds and the people it drops, by name, and marks each in the
-  // list - a joiner with a chip, a leaver greyed at the end.
   const renderChanges = (members, rules) => {
     const memberEmails = new Set(members.map(m => m.email));
     const joining = isNew ? [] : members.filter(m => !currentEmails.has(m.email));
@@ -419,11 +385,6 @@ function editor(g, isNew, closeModal, startTab) {
         previewChanges.append(line);
       }
     }
-    // Everyone the draft picks out, a compact row each - the face, the
-    // name, the address, the word that places them and why they are on -
-    // a joiner with a Joins chip, a leaver greyed at the end with Leaves.
-    // The Non-Helios people first, where their rows stand out, then the
-    // directory's.
     lastPreview = {members, rules, leaving};
     drawPreviewList();
   };
@@ -490,17 +451,11 @@ function editor(g, isNew, closeModal, startTab) {
     previewTimer = setTimeout(refreshPreview, 250);
   };
 
-  // The include and exclude rules each in a section of their own, under
-  // the green plus or the red minus the page reads them out with.
-  // The rules in one card, each behind its sign - the includes then the
-  // excludes - with a button to add either kind under them.
   const rulesCard = el('div', 'card');
   rulesCard.append(el('h2', '', 'Rules'));
   rulesCard.append(el('div', 'hint', 'Someone is on the group if any include rule matches them and no exclude rule does; a rule matches only if every choice in it holds.'));
   const rows = el('div', 'rules');
   let opened = firstRule;
-  // ruleCounts is what the last preview said each rule touches, by the
-  // rule; the chips on the rows read from it and refill as it changes.
   const ruleCounts = new Map();
   const countChip = rule => {
     const chip = el('span', 'rule-count');
@@ -549,9 +504,6 @@ function editor(g, isNew, closeModal, startTab) {
   const rulesPanel = el('div');
   rulesPanel.append(rulesCard);
 
-  // The additions: people the directory does not hold, each a name and an
-  // address typed into the box Add Non-Helios opens at the members' head,
-  // on the group whatever the rules say until removed from the list.
   const additionName = el('input');
   additionName.type = 'text';
   additionName.maxLength = 80;
@@ -600,8 +552,6 @@ function editor(g, isNew, closeModal, startTab) {
   }), additionStatus, el('small', '', 'Someone the directory does not hold - a coach, a league office, a family friend - on the group whatever the rules say.'));
   previewHeadRow.after(additionAdd);
 
-  // Add Helios puts one person from the directory on the group: an include
-  // rule naming their address, which reads out as their name.
   const personMount = el('div');
   const personPicker = createPersonPicker(personMount);
   personPicker.setPeople(state.model.people);
@@ -649,7 +599,6 @@ function editor(g, isNew, closeModal, startTab) {
   }));
   previewHeadRow.append(headButtons);
 
-  // Members is the rules, the additions and, at the foot, who they come to.
   rulesPanel.append(preview);
   const tabs = [
     {key: 'members', label: 'Members', panel: rulesPanel},
@@ -719,7 +668,6 @@ function editor(g, isNew, closeModal, startTab) {
     }));
   }
   actions.append(status);
-  // Delete sits at the bar's far end, away from Save.
   if (deleteButton) {
     actions.append(deleteButton);
   }
@@ -728,10 +676,6 @@ function editor(g, isNew, closeModal, startTab) {
   return form;
 }
 
-// editModal opens the editor over the group's page, in a window of the
-// page's own: a box with the title and a close, the editor inside with
-// its Save bar stuck to the box's foot. Only the close, Cancel, Escape
-// and a save or delete shut it, so a stray click cannot lose an edit.
 function editModal(g, startTab, isNew) {
   const overlay = el('div', 'modal-overlay');
   const box = el('div', 'modal modal-editor');
@@ -776,10 +720,6 @@ function slug(text) {
   return text.toLowerCase().replace(/[^a-z0-9.]+/g, '-').replace(/\.{2,}/g, '.').replace(/^[-.]+|[-.]+$/g, '').slice(0, 40);
 }
 
-// newGroupModal opens the editor over the page for a group that does not
-// exist yet - the same window as Edit - blank, or filled in from a
-// suggestion (`?from=<Magic Tag key>`): everyone on the Magic Tag,
-// whatever their role, and the parents of any student on it.
 export function newGroupModal() {
   const from = new URLSearchParams(location.search).get('from');
   const suggestion = state.model.suggestions.find(s => s.key === from);
@@ -791,11 +731,6 @@ export function newGroupModal() {
   editModal({name: '', title: '', description: '', managers: [{email: me().email, name: me().name}], rules: [], additions: []}, null, true);
 }
 
-// reasonWords says why a member is on the group: each include rule that
-// reached them, said of one person - "Tagged in Tech Team", "Student in
-// Hummingbirds" - and, when Add family brought them in, whose relative they
-// are: "Parent of Mia, student in Hummingbirds"; or that a manager added
-// them by hand.
 const throughWords = {Parents: 'Parent', Children: 'Child', Siblings: 'Sibling'};
 
 function reasonWords(member, rules) {
@@ -826,8 +761,6 @@ export function groupPage(g) {
     return page;
   }
   const actions = [];
-  // Edit opens the editor in a window over the page, so the page stays
-  // where it is and reloads when the editor saves.
   if (canEdit) {
     actions.push(button('Edit', 'edit', 'button', () => editModal(g)));
   }
@@ -845,9 +778,6 @@ export function groupPage(g) {
     });
     actions.push(toggle);
   }
-  // Archive is the viewer's own tidy: the group goes under Archived in the
-  // rail and its Magic Tag off Who?'s lists for them, and nothing about
-  // the group itself changes.
   const archive = button(g.archived ? 'Unarchive' : 'Archive', 'archive', 'button button-secondary', async () => {
     archive.disabled = true;
     try {
@@ -865,16 +795,12 @@ export function groupPage(g) {
   actions.push(archive);
   page.append(pageHead(g.title, actions));
 
-  // What the group is, above the tabs: the address, the notes that apply,
-  // the description.
   const overview = el('div', 'group-overview');
   const address = el('div', 'address-band');
   const mail = el('a', 'address-mail');
   mail.href = 'mailto:' + g.address;
   mail.append(svg('mail'), el('span', '', g.address));
   address.append(mail, iconButton('copy', 'Copy the address', '', () => copyText(g.address, 'Address copied')));
-  // The aliases sit behind a quiet count at the band's right; resting on
-  // it, or focusing it, shows the addresses.
   if (g.aliases.length) {
     const aliases = el('div', 'address-aliases');
     const count = el('button', 'address-aliases-count', `${g.aliases.length} ${g.aliases.length === 1 ? 'alias' : 'aliases'}`);
@@ -914,9 +840,6 @@ export function groupPage(g) {
   }
   page.append(overview);
 
-  // Members: the people as Who? shows them, a card each, narrowed by the
-  // box above; then who manages the group, how its members are chosen,
-  // and the same people in Who? itself.
   const members = el('div');
   const grid = el('div', 'attendee-grid');
   const search = el('input', 'member-search');
@@ -941,35 +864,30 @@ export function groupPage(g) {
   }
   members.append(grid, empty);
 
-
-  const rules = el('div', 'card');
-  const rulesHead = el('div', 'card-head');
-  rulesHead.append(el('h2', '', 'How the members are chosen'));
   if (canEdit) {
+    const rules = el('div', 'card');
+    const rulesHead = el('div', 'card-head');
+    rulesHead.append(el('h2', '', 'How the members are chosen'));
     rulesHead.append(iconButton('edit', 'Edit the rules', '', () => editModal(g, 'members')));
-  }
-  rules.append(rulesHead);
-  // Each rule a line with its sign: a green plus for who is included, a
-  // red minus for who is taken out, the includes first.
-  const lines = el('div', 'rule-lines');
-  for (const kind of ['include', 'exclude']) {
-    for (const r of g.rules.filter(x => x.kind === kind)) {
-      const line = el('div', 'rule-line');
-      const sign = el('span', 'rule-sign rule-sign-' + kind);
-      sign.append(svg(kind === 'include' ? 'plus' : 'minus'));
-      sign.title = kind === 'include' ? 'Included' : 'Excluded';
-      line.append(sign, el('span', 'rule-line-words', ruleWords(r)));
-      lines.append(line);
+    rules.append(rulesHead);
+    const lines = el('div', 'rule-lines');
+    for (const kind of ['include', 'exclude']) {
+      for (const r of g.rules.filter(x => x.kind === kind)) {
+        const line = el('div', 'rule-line');
+        const sign = el('span', 'rule-sign rule-sign-' + kind);
+        sign.append(svg(kind === 'include' ? 'plus' : 'minus'));
+        sign.title = kind === 'include' ? 'Included' : 'Excluded';
+        line.append(sign, el('span', 'rule-line-words', ruleWords(r)));
+        lines.append(line);
+      }
     }
+    rules.append(lines);
+    if (g.excluded.length) {
+      rules.append(el('div', 'subject-note', `${g.excluded.length} ${g.excluded.length === 1 ? 'address is' : 'addresses are'} kept off the group whatever the rules say.`));
+    }
+    members.append(rules);
   }
-  rules.append(lines);
-  if (g.excluded.length) {
-    rules.append(el('div', 'subject-note', `${g.excluded.length} ${g.excluded.length === 1 ? 'address is' : 'addresses are'} kept off the group whatever the rules say.`));
-  }
-  members.append(rules);
 
-
-  // Managers has its own tab; the card redraws itself as it is changed.
   const managersPanel = el('div');
   managersPanel.append(managersCard(g, canEdit));
   const tabs = [
@@ -983,11 +901,6 @@ export function groupPage(g) {
   return page;
 }
 
-// compactRow is one person in the editor's member list: a small face, the
-// name, the address, the word that places them, why they are on the group,
-// and a chip when saving changes them.
-// Someone from outside the directory is marked plainly - a tinted row and
-// a Non-Helios chip - with a remove when the list is the editor's.
 function compactRow(m, why, chip, onRemove, onPick) {
   const row = el(m.outside || onPick ? 'div' : 'a', 'compact-row' + (m.outside ? ' is-outside' : '') + (onPick ? ' is-pickable' : ''));
   if (onPick) {
@@ -1027,15 +940,8 @@ function compactRow(m, why, chip, onRemove, onPick) {
   return row;
 }
 
-// managersEditing is the group whose Managers box is open for changes,
-// kept across the reload each change brings.
 let managersEditing = '';
 
-// managersCard is the managers as the members are drawn, smaller. Its
-// pencil, for a manager or an admin, opens it for changes: a remove on
-// each tile but the last, and a picker to add one, each change saved at
-// once - the managers are the group's, not the editor's, so they are
-// changed here rather than in the editor.
 function managersCard(g, canEdit) {
   const card = el('div', 'card managers-card');
   const head = el('div', 'card-head');
@@ -1061,9 +967,6 @@ function managersCard(g, canEdit) {
       status.textContent = err.message;
     }
   };
-  // Each manager a card across: the face, the name, and whether the group's
-  // mail reaches them - a manager gets it only when the rules place them on
-  // the group, so it is worth saying.
   const row = el('div', 'manager-row');
   for (const m of g.managers) {
     const tile = el('a', 'manager-tile');
@@ -1119,11 +1022,6 @@ function managersCard(g, canEdit) {
   return card;
 }
 
-// memberCard is one member as Celebrate's Who's Coming grid draws a face:
-// a square photo, or the first letter of the name, the name under it and a
-// line placing them - a student's grade, a staff member's job, a parent's
-// children, Guest for someone from outside the directory. The tile opens
-// their page in Who?, and its tooltip says why they are on the group.
 function memberCard(m, rules, title) {
   const tile = el(m.outside ? 'div' : 'a', 'attendee');
   if (!m.outside) {
@@ -1140,9 +1038,6 @@ function memberCard(m, rules, title) {
   } else {
     face.textContent = (m.name || m.email || '?').slice(0, 1).toUpperCase();
   }
-  // A student's grade rides on the corner of their face, short - "5",
-  // "K" - in Who?'s colour for the grade, darkened as HCA-Team darkens it
-  // so the white figure reads even on a yellow.
   if (m.grade) {
     const grade = el('span', 'grade-badge', /^kindergarten$/i.test(m.grade) ? 'K' : m.grade.replace(/^grade\s*/i, ''));
     grade.title = m.grade;
@@ -1160,9 +1055,6 @@ function memberCard(m, rules, title) {
   return tile;
 }
 
-// tabbed is a strip over its panels. With sync the chosen tab is kept in
-// the address's tab parameter; without, as in the editor's modal, it is
-// the strip's own, so the page's tab under it is left alone.
 function tabbed(tabs, sync = true, initial) {
   const wrap = el('div', 'group-tabs');
   const fallback = tabs[0].key;

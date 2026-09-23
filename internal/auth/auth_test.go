@@ -90,12 +90,12 @@ func TestSpoofResolvesTheTargetOnlyWhenItHolds(t *testing.T) {
 		spoof   string
 		wantAs  string
 	}{
-		{"a valid spoof", "admin@heliosschool.org", spoofToken(key, "admin@heliosschool.org", "parent@heliosschool.org", expiry), "parent@heliosschool.org"},
-		{"an alias resolves", "admin@heliosschool.org", spoofToken(key, "admin@heliosschool.org", "alias@heliosschool.org", expiry), "parent@heliosschool.org"},
-		{"another admin's spoof", "other@heliosschool.org", spoofToken(key, "admin@heliosschool.org", "parent@heliosschool.org", expiry), "other@heliosschool.org"},
-		{"an unlisted target", "admin@heliosschool.org", spoofToken(key, "admin@heliosschool.org", "nobody@heliosschool.org", expiry), "admin@heliosschool.org"},
-		{"a run-out spoof", "admin@heliosschool.org", spoofToken(key, "admin@heliosschool.org", "parent@heliosschool.org", time.Now().Add(-time.Minute)), "admin@heliosschool.org"},
-		{"a forged spoof", "admin@heliosschool.org", spoofToken([]byte("other"), "admin@heliosschool.org", "parent@heliosschool.org", expiry), "admin@heliosschool.org"},
+		{"a valid spoof", "admin@heliosschool.org", SpoofToken(key, "admin@heliosschool.org", "parent@heliosschool.org", expiry), "parent@heliosschool.org"},
+		{"an alias resolves", "admin@heliosschool.org", SpoofToken(key, "admin@heliosschool.org", "alias@heliosschool.org", expiry), "parent@heliosschool.org"},
+		{"another admin's spoof", "other@heliosschool.org", SpoofToken(key, "admin@heliosschool.org", "parent@heliosschool.org", expiry), "other@heliosschool.org"},
+		{"an unlisted target", "admin@heliosschool.org", SpoofToken(key, "admin@heliosschool.org", "nobody@heliosschool.org", expiry), "admin@heliosschool.org"},
+		{"a run-out spoof", "admin@heliosschool.org", SpoofToken(key, "admin@heliosschool.org", "parent@heliosschool.org", time.Now().Add(-time.Minute)), "admin@heliosschool.org"},
+		{"a forged spoof", "admin@heliosschool.org", SpoofToken([]byte("other"), "admin@heliosschool.org", "parent@heliosschool.org", expiry), "admin@heliosschool.org"},
 		{"no spoof", "admin@heliosschool.org", "", "admin@heliosschool.org"},
 	}
 	for _, c := range cases {
@@ -140,7 +140,7 @@ func TestWrapAdmitsOnlyMembers(t *testing.T) {
 			req.AddCookie(&http.Cookie{Name: cookieName, Value: Token(key, session, expiry)})
 		}
 		if spoof != "" {
-			req.AddCookie(&http.Cookie{Name: spoofCookie, Value: spoofToken(key, session, spoof, expiry)})
+			req.AddCookie(&http.Cookie{Name: spoofCookie, Value: SpoofToken(key, session, spoof, expiry)})
 		}
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, req)

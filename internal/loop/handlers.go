@@ -27,11 +27,6 @@ const shell = "web/loop/index.html"
 
 var pages = []string{"/{$}", "/new", "/groups/{name}", "/admin"}
 
-// Person is someone as the pages show them: Words is the word that places
-// them beside their name in a row or a picker, and Role, Grade and Context
-// are what a card in Who?'s shape wears - the role's chip, a student's
-// grade, and the line under the name: a student's classroom, a staff
-// member's job, a parent's children.
 type Person struct {
 	Email    string `json:"email"`
 	Name     string `json:"name"`
@@ -42,10 +37,6 @@ type Person struct {
 	Context  string `json:"context,omitempty"`
 }
 
-// Directory is what the app needs of Helios Who?: who an address resolves
-// to, the model the rules are read against, a person's tags, Magic Tags
-// and the tags shared with them, everyone for the pickers, the toolbar's
-// badges, and Who?'s colour for each grade.
 type Directory interface {
 	Resolve(email string) string
 	Model() *who.Model
@@ -70,15 +61,10 @@ type app struct {
 	describer   Describer
 }
 
-// Describer writes a group's description from what the list holds; nil
-// leaves the editor's Generate with AI saying it is not set up.
 type Describer interface {
 	Group(ctx context.Context, actor string, facts describe.GroupFacts) (string, error)
 }
 
-// Register wires the app: one shell for every page, the model, the preview,
-// the writes, and Admin Tools. Every route sits behind sign-in but the mail
-// provider's webhooks under /hooks/ and the unsubscribe links (auth.Public).
 func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, directory Directory, superAdmins func() []string, mailbox Mail, describer Describer) {
 	a := app{cache: cache, writer: writer, queue: queue, store: store, directory: directory, superAdmins: superAdmins, mail: mailbox, describer: describer}
 	a.mailer = newMailer(cache, writer, queue, directory, mailbox)
@@ -107,8 +93,6 @@ func (a app) page(w http.ResponseWriter, r *http.Request) {
 	serve.File(w, r, shell)
 }
 
-// who is the signed-in person as the app keys them: the address Google
-// vouched for, resolved through the directory's aliases.
 func (a app) who(r *http.Request) (string, bool) {
 	email := a.directory.Resolve(strings.ToLower(auth.Email(r)))
 	return email, a.cache.IsAdmin(email)
@@ -132,8 +116,6 @@ func (a app) requireSuperAdmin(w http.ResponseWriter, r *http.Request) (string, 
 	return email, true
 }
 
-// SourcesOf is what the rules are read against, as the directory stands
-// when called.
 func SourcesOf(directory Directory) Sources {
 	return Sources{Directory: directory.Model(), Tags: directory.Tags, Lists: directory.Lists, Shared: directory.Shared}
 }
@@ -164,25 +146,17 @@ type alerts struct {
 	Privacy bool `json:"privacy"`
 }
 
-// ruleView is a rule with the words for its tags: a tag's own name, a
-// Magic Tag's name resolved through its owner, and a note when a tag the
-// owner no longer has.
 type ruleView struct {
 	Rule
 	TagLabels []string `json:"tagLabels"`
 }
 
-// Member is someone on a group, with why: every include rule that reached
-// them, or that they were added by hand; Outside marks one the directory
-// does not hold.
 type Member struct {
 	Person
 	Reasons []Reason `json:"reasons"`
 	Outside bool     `json:"outside,omitempty"`
 }
 
-// groupView is a group as its page shows it: the rules with their words,
-// the managers by name, and the members and why each is there.
 type groupView struct {
 	Group
 	Address      string     `json:"address"`
@@ -221,17 +195,10 @@ func Suggested(lists []who.List, groups []Group) []who.List {
 	return out
 }
 
-// SuggestedTags is the person's own tags in Who? that no rule of theirs
-// names, sorted: a tag is private to its owner, so only their own rules
-// can name it, and another manager's tag of the same name is no reason to
-// leave theirs out.
 func SuggestedTags(tags map[string][]string, groups []Group, owner string) []string {
 	named := map[string]bool{}
 	for _, g := range groups {
 		for _, r := range g.Rules {
-			if r.Owner != owner {
-				continue
-			}
 			for _, tag := range r.Tags {
 				named[tag] = true
 			}
@@ -239,7 +206,7 @@ func SuggestedTags(tags map[string][]string, groups []Group, owner string) []str
 	}
 	out := []string{}
 	for name, people := range tags {
-		if !named[name] && len(people) > 0 {
+		if !named[filter.TagKey(owner, name)] && len(people) > 0 {
 			out = append(out, name)
 		}
 	}
@@ -247,13 +214,12 @@ func SuggestedTags(tags map[string][]string, groups []Group, owner string) []str
 	return out
 }
 
-// SuggestionTag marks a suggestion made from one of the viewer's own tags.
 const SuggestionTag = "tag"
 
 func (a app) suggestions(viewer string) []suggestion {
 	out := []suggestion{}
 	for _, name := range SuggestedTags(a.directory.Tags(viewer), a.cache.Model().Groups, viewer) {
-		out = append(out, suggestion{Key: name, Name: name, Kind: SuggestionTag, Managers: []Person{a.person(viewer)}})
+		out = append(out, suggestion{Key: filter.TagKey(viewer, name), Name: name, Kind: SuggestionTag, Managers: []Person{a.person(viewer)}})
 	}
 	for _, l := range Suggested(a.directory.Lists(viewer), a.cache.Model().Groups) {
 		managers := []Person{a.person(viewer)}
@@ -267,7 +233,6 @@ func (a app) suggestions(viewer string) []suggestion {
 	return out
 }
 
-// options is what the editor offers, as the filter has it.
 type options = filter.Options
 
 func (a app) person(email string) Person {
@@ -285,9 +250,6 @@ func (a app) people(emails []string) []Person {
 	return out
 }
 
-// members is a group's members by name, each with why they are on it: the
-// directory's people first, then the additions it does not hold, each
-// under the name the manager typed.
 func (a app) members(g Group) []Member {
 	reasons := Reasons(g, a.sources())
 	inside, outside := []Member{}, []Member{}
@@ -311,8 +273,6 @@ func (a app) members(g Group) []Member {
 	return append(inside, outside...)
 }
 
-// checkAdditions refuses an addition the directory already holds: those
-// people are on a group by rule.
 func (a app) checkAdditions(additions []Addition) error {
 	for _, added := range additions {
 		if p, ok := a.directory.Person(a.directory.Resolve(added.Email)); ok {
@@ -322,36 +282,23 @@ func (a app) checkAdditions(additions []Addition) error {
 	return nil
 }
 
-// sharedRules refuses a rule of the viewer's naming a shared tag that is not
-// shared with them, unless the group already holds the rule word for word.
-func (a app) sharedRules(viewer string, existing []Rule, rules []Rule) error {
-	mine := map[string]bool{}
-	for _, shared := range a.directory.Shared(viewer) {
-		mine[SharedKey(shared.Owner, shared.Name)] = true
-	}
-	for i, r := range rules {
-		if r.Owner != viewer || slices.ContainsFunc(existing, func(e Rule) bool { return sameRule(e, r) }) {
-			continue
-		}
-		for _, tag := range r.Tags {
-			if strings.HasPrefix(tag, filter.SharedPrefix) && !mine[tag] {
-				return fmt.Errorf("rule %d names a tag that is not shared with you", i+1)
-			}
-		}
-	}
-	return nil
-}
-
 func (a app) sees(g Group, viewer string, admin bool) bool {
 	return g.VisibleTo(viewer, admin, a.sources())
 }
 
-func (a app) view(g Group, viewer string) groupView {
+func (a app) view(g Group, viewer string, edit bool) groupView {
 	v := groupView{Group: g, Address: g.Address(), Rules: []ruleView{}, Managers: a.people(g.Managers), Mine: g.Manages(viewer), Member: OnList(g, a.sources(), viewer), Unsubscribed: g.HasExcluded(viewer), Archived: a.cache.Model().Archived(g.Name, viewer), Sent: a.sentCount(g.Name)}
-	for _, r := range g.Rules {
-		v.Rules = append(v.Rules, ruleView{Rule: r, TagLabels: a.sources().TagLabels(r)})
-	}
 	v.Members = a.members(g)
+	if !edit {
+		v.Group.Rules = []Rule{}
+		for i := range v.Members {
+			v.Members[i].Reasons = nil
+		}
+		return v
+	}
+	for _, r := range g.Rules {
+		v.Rules = append(v.Rules, ruleView{Rule: r, TagLabels: a.sources().TagLabels(r, g.Managers, viewer)})
+	}
 	return v
 }
 
@@ -359,20 +306,17 @@ func (a app) options(viewer string) options {
 	return filter.OptionsFor(a.sources(), viewer)
 }
 
-// model serves the app: the groups the viewer manages - every group, for
-// an admin - each with its members and standing, and what the editor offers.
 func (a app) model(w http.ResponseWriter, r *http.Request) {
 	email, admin := a.who(r)
 	me := a.person(email)
 	view := struct {
-		User        user         `json:"user"`
-		Domain      string       `json:"domain"`
-		Groups      []groupView  `json:"groups"`
-		Suggestions []suggestion `json:"suggestions"`
-		Options     options      `json:"options"`
-		People      []Person     `json:"people"`
-		Alerts      alerts       `json:"alerts"`
-		// GradeColors colours a student's grade on their tile as Who? does.
+		User        user              `json:"user"`
+		Domain      string            `json:"domain"`
+		Groups      []groupView       `json:"groups"`
+		Suggestions []suggestion      `json:"suggestions"`
+		Options     options           `json:"options"`
+		People      []Person          `json:"people"`
+		Alerts      alerts            `json:"alerts"`
 		GradeColors map[string]string `json:"gradeColors,omitempty"`
 	}{
 		User:        user{Email: email, Name: me.Name, Initial: strings.ToUpper(me.Name[:1]), PhotoURL: me.PhotoURL, IsAdmin: admin, IsSuperAdmin: a.cache.IsSuperAdmin(email)},
@@ -385,7 +329,7 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, g := range a.cache.Model().Groups {
 		if a.sees(g, email, admin) {
-			view.Groups = append(view.Groups, a.view(g, email))
+			view.Groups = append(view.Groups, a.view(g, email, admin || g.Manages(email)))
 		}
 	}
 	view.Alerts.Stale, view.Alerts.Privacy = a.directory.Alerts(email)
@@ -395,33 +339,6 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// ownRules refuses a rule read as anyone but the viewer unless the group
-// already holds it word for word: a rule carried over unchanged from
-// another manager keeps reading their tags, and no other way exists to
-// read them.
-func ownRules(viewer string, existing []Rule, rules []Rule) error {
-	for i, r := range rules {
-		if r.Owner == viewer {
-			continue
-		}
-		if !slices.ContainsFunc(existing, func(e Rule) bool { return sameRule(e, r) }) {
-			return fmt.Errorf("rule %d reads someone else's tags", i+1)
-		}
-	}
-	return nil
-}
-
-func sameRule(a, b Rule) bool {
-	return a.Kind == b.Kind && a.Search == b.Search && a.Owner == b.Owner &&
-		slices.Equal(a.Roles, b.Roles) && slices.Equal(a.Classrooms, b.Classrooms) &&
-		slices.Equal(a.Grades, b.Grades) && slices.Equal(a.Tags, b.Tags) && slices.Equal(a.Family, b.Family)
-}
-
-// preview answers the editor with who a draft's rules pick out, before it
-// is saved.
-// draftBody is a group as the editor holds it, for the preview and the
-// description: the group it is of, if any, and the draft's rules,
-// additions and excluded.
 type draftBody struct {
 	Name      string     `json:"name"`
 	Title     string     `json:"title"`
@@ -431,9 +348,6 @@ type draftBody struct {
 	Excluded  []Excluded `json:"excluded"`
 }
 
-// draftMembers is who a draft picks out now, checked as a save would check
-// it, and how many people each of its rules touches; false once an error
-// has been written.
 func (a app) draftMembers(w http.ResponseWriter, r *http.Request, body draftBody) ([]Member, []int, bool) {
 	email, admin := a.who(r)
 	draft := Normalize(Group{Name: "preview", Title: "preview", Managers: []string{email}, Rules: body.Rules, Additions: body.Additions, Excluded: body.Excluded})
@@ -443,13 +357,9 @@ func (a app) draftMembers(w http.ResponseWriter, r *http.Request, body draftBody
 			http.Error(w, "you do not manage this group", http.StatusForbidden)
 			return nil, nil, false
 		}
-		existing = g.Rules
+		existing, draft.Managers = g.Rules, g.Managers
 	}
-	if err := ownRules(email, existing, draft.Rules); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return nil, nil, false
-	}
-	if err := a.sharedRules(email, existing, draft.Rules); err != nil {
+	if err := filter.Writable(a.sources(), email, draft.Managers, existing, draft.Rules); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return nil, nil, false
 	}
@@ -481,9 +391,6 @@ func (a app) preview(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// describe writes the draft's description with Claude from what the draft
-// holds: its title, its rules as the editor words them, and a tally of who
-// they pick out now - never their names.
 func (a app) describe(w http.ResponseWriter, r *http.Request) {
 	email, _ := a.who(r)
 	var body draftBody
@@ -542,9 +449,6 @@ func (a app) describe(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// commit rebuilds the model over the proposed tables first, so a change the
-// sheet rules reject never reaches the sheet, then applies it in memory and
-// queues the writes behind every earlier one.
 func (a app) commit(r *http.Request, w http.ResponseWriter, tables *Tables, flush func() error) bool {
 	ctx := r.Context()
 	model, err := BuildModel(tables)
@@ -576,9 +480,6 @@ func rowOf(columns []string, cells map[string]string) []string {
 	return row
 }
 
-// saveGroup makes a group or changes one. Anyone may make one and becomes
-// its first manager; only its managers and the admins change it; its name
-// never changes, being its address.
 func (a app) saveGroup(w http.ResponseWriter, r *http.Request) {
 	email, admin := a.who(r)
 	var body struct {
@@ -622,11 +523,7 @@ func (a app) saveGroup(w http.ResponseWriter, r *http.Request) {
 		existing = current.Rules
 		action = "edit"
 	}
-	if err := ownRules(email, existing, g.Rules); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	if err := a.sharedRules(email, existing, g.Rules); err != nil {
+	if err := filter.Writable(a.sources(), email, g.Managers, existing, g.Rules); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -693,7 +590,7 @@ func (a app) saveGroup(w http.ResponseWriter, r *http.Request) {
 	}
 	slog.InfoContext(r.Context(), "groups: saved group", "action", action, "group", g.Name, "aliases", len(g.Aliases), "rules", len(g.Rules), "managers", len(g.Managers), "additions", len(g.Additions), "excluded", len(g.Excluded), "prefix", g.Prefix, "visibility", g.Visibility, "posting", g.Posting, "replying", g.Replying)
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(a.view(g, email)); err != nil {
+	if err := json.NewEncoder(w).Encode(a.view(g, email, true)); err != nil {
 		slog.ErrorContext(r.Context(), "encode saved group", "error", err)
 	}
 }
@@ -763,14 +660,11 @@ func (a app) subscription(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(a.view(*a.cache.Model().Group(g.Name), email)); err != nil {
+	if err := json.NewEncoder(w).Encode(a.view(*a.cache.Model().Group(g.Name), email, admin || g.Manages(email))); err != nil {
 		slog.ErrorContext(r.Context(), "encode subscription", "error", err)
 	}
 }
 
-// archive puts a group the viewer sees away for them alone, or brings it
-// back: nothing about the group changes, so anyone who sees it may, and the
-// change log is not told.
 func (a app) archive(w http.ResponseWriter, r *http.Request) {
 	email, admin := a.who(r)
 	var body struct {
@@ -796,7 +690,7 @@ func (a app) archive(w http.ResponseWriter, r *http.Request) {
 	}
 	slog.InfoContext(r.Context(), "groups: archived", "group", g.Name, "email", email, "archived", body.Archived)
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(a.view(*a.cache.Model().Group(g.Name), email)); err != nil {
+	if err := json.NewEncoder(w).Encode(a.view(*a.cache.Model().Group(g.Name), email, admin || g.Manages(email))); err != nil {
 		slog.ErrorContext(r.Context(), "encode archive", "error", err)
 	}
 }

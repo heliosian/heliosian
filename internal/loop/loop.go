@@ -1,4 +1,3 @@
-// Package loop serves Helios Loop: named email groups drawn from the directory by rules, each an address mail is received for and forwarded from.
 package loop
 
 import (
@@ -43,8 +42,6 @@ const (
 	PostingMembers  = "members"
 	PostingManagers = "managers"
 
-	// Domain is where every group lives: a group named parents-k is
-	// parents-k@loop.heliosian.com.
 	Domain = "loop.heliosian.com"
 
 	maxTitleLength       = 80
@@ -61,7 +58,7 @@ const (
 var (
 	GroupColumns     = []string{"Name", "Title", "Description", "Created By", "Created", prefixColumn, visibleColumn, postingColumn, replyingColumn}
 	ManagerColumns   = []string{"Group", "Email"}
-	RuleColumns      = []string{"Group", "Kind", "Roles", "Search", "Classrooms", "Grades", "Tags", "Family", "Owner"}
+	RuleColumns      = append([]string{"Group"}, filter.RuleColumns...)
 	AdditionColumns  = []string{"Group", "Email", "Name"}
 	ExcludedColumns  = []string{"Group", "Email", "Note", "Timestamp"}
 	AliasColumns     = []string{"Group", "Alias"}
@@ -71,8 +68,6 @@ var (
 	ArchivedColumns  = []string{"Group", "Email"}
 	ChangeLogColumns = []string{"Timestamp", "Actor", "Action", "Group", "Detail"}
 
-	// Roles are the role facet's values, and Relations the Family facet's,
-	// as the filter has them.
 	Roles     = filter.Roles
 	Relations = filter.Relations
 
@@ -81,17 +76,12 @@ var (
 	Postings = []string{PostingEveryone, PostingMembers, PostingManagers}
 )
 
-// nameForm is a group's name: the local part of its address, two to forty
-// characters of lowercase letters, digits, dots and hyphens, neither end a
-// dot or a hyphen.
 var nameForm = regexp.MustCompile(`^[a-z0-9][a-z0-9.-]{0,38}[a-z0-9]$`)
 
 var reservedNames = []string{"abuse", "admin", "administrator", "hostmaster", "noreply", "no-reply", "postmaster", "root", "webmaster"}
 
 var emailForm = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
 
-// Addition is someone on a group by hand rather than by rule: an address
-// the directory does not hold, and the name a manager typed for it.
 type Addition struct {
 	Email string `json:"email"`
 	Name  string `json:"name"`
@@ -103,10 +93,6 @@ type Excluded struct {
 	When  string `json:"when"`
 }
 
-// Group is one group: its name, which is its address's local part and never
-// changes, the other local parts it answers as, what it is called and for,
-// who manages it, its rules, the people added by hand from outside the
-// directory, and the addresses kept off it whatever the rules say.
 type Group struct {
 	Name        string     `json:"name"`
 	Aliases     []string   `json:"aliases"`
@@ -128,12 +114,10 @@ func (g Group) HasExcluded(email string) bool {
 	return slices.ContainsFunc(g.Excluded, func(e Excluded) bool { return e.Email == email })
 }
 
-// Names is every local part the group answers as: its name, then its aliases.
 func (g Group) Names() []string {
 	return append([]string{g.Name}, g.Aliases...)
 }
 
-// Addition finds the group's addition at an address, nil for none.
 func (g Group) Addition(email string) *Addition {
 	for i := range g.Additions {
 		if g.Additions[i].Email == email {
@@ -143,7 +127,6 @@ func (g Group) Addition(email string) *Addition {
 	return nil
 }
 
-// Address is the group's email address.
 func (g Group) Address() string {
 	return g.Name + "@" + Domain
 }
@@ -152,31 +135,21 @@ func (g Group) Path() string {
 	return "/groups/" + g.Name
 }
 
-// Manages says whether email is one of the group's managers.
 func (g Group) Manages(email string) bool {
 	return slices.Contains(g.Managers, email)
 }
 
-// Model is the sheet organized: every group by name, in name order, and
-// every local part - name or alias - to the group it reaches.
 type Model struct {
 	Groups    []Group
 	byName    map[string]int
 	byAddress map[string]int
-	// archived is who has put each group away for themselves, by the
-	// group's name: a personal tidy that changes nothing about the group.
-	archived map[string]map[string]bool
+	archived  map[string]map[string]bool
 }
 
-// Archived reports whether email has archived the named group: it then
-// sits under Archived in their rail rather than among their groups, and
-// its Magic Tag stays off Who?'s lists for them, though its pages in both
-// apps still open.
 func (m *Model) Archived(name, email string) bool {
 	return m.archived[name][email]
 }
 
-// Group finds a group by name, nil for none.
 func (m *Model) Group(name string) *Group {
 	i, ok := m.byName[name]
 	if !ok {
@@ -185,8 +158,6 @@ func (m *Model) Group(name string) *Group {
 	return &m.Groups[i]
 }
 
-// Resolve finds the group a local part reaches, by its name or an alias,
-// nil for none.
 func (m *Model) Resolve(local string) *Group {
 	i, ok := m.byAddress[local]
 	if !ok {
@@ -243,7 +214,6 @@ func ReadTables(source data.Source) (*Tables, error) {
 	return &Tables{Groups: groups.rows, Managers: managers.rows, Rules: rules.rows, Additions: additions.rows, Excluded: excluded.rows, Aliases: aliases.rows, Messages: messages.rows, Deliveries: deliveries.rows, Admins: admins.rows, Archived: archived.rows}, nil
 }
 
-// SplitList reads a list cell: comma-separated, trimmed, without repeats.
 func SplitList(cell string) []string {
 	out := []string{}
 	for _, item := range strings.Split(cell, ",") {
@@ -274,8 +244,6 @@ func cleanEmails(raw []string) []string {
 	return out
 }
 
-// CheckName refuses a name that cannot be a group's: not the address form,
-// or one mail systems reserve.
 func CheckName(name string) error {
 	if !nameForm.MatchString(name) || strings.Contains(name, "..") {
 		return fmt.Errorf("a group's name is two to forty lowercase letters, digits, dots and hyphens, starting and ending with a letter or digit, with no two dots together")
@@ -286,8 +254,6 @@ func CheckName(name string) error {
 	return nil
 }
 
-// CheckRule refuses a rule that says nothing, or says something the facets
-// cannot mean.
 func CheckRule(r Rule) error {
 	if r.Kind != KindInclude && r.Kind != KindExclude {
 		return fmt.Errorf("kind %q is not %s or %s", r.Kind, KindInclude, KindExclude)
@@ -298,17 +264,12 @@ func CheckRule(r Rule) error {
 	if len(r.Search) > maxSearchLength {
 		return fmt.Errorf("the search words are too long")
 	}
-	if !emailForm.MatchString(r.Owner) {
-		return fmt.Errorf("a rule needs an owner")
-	}
 	if r.Empty() {
 		return fmt.Errorf("a rule needs a role, some words, a classroom, a grade or a tag")
 	}
 	return nil
 }
 
-// CheckGroup refuses a group the sheet's rules do not allow, so one never
-// reaches the sheet and refuses the next load.
 func CheckGroup(g Group) error {
 	if err := CheckName(g.Name); err != nil {
 		return err
@@ -387,8 +348,6 @@ func CheckGroup(g Group) error {
 	return nil
 }
 
-// Normalize trims and lowercases what the sheet and the editor may have
-// spelled loosely, so every check and comparison sees one form.
 func Normalize(g Group) Group {
 	g.Name = strings.ToLower(strings.TrimSpace(g.Name))
 	aliases := []string{}
@@ -416,15 +375,7 @@ func Normalize(g Group) Group {
 	g.Managers = cleanEmails(g.Managers)
 	rules := make([]Rule, 0, len(g.Rules))
 	for _, r := range g.Rules {
-		r.Kind = strings.ToLower(strings.TrimSpace(r.Kind))
-		r.Roles = SplitList(JoinList(r.Roles))
-		r.Search = strings.Join(strings.Fields(strings.ToLower(r.Search)), " ")
-		r.Classrooms = SplitList(JoinList(r.Classrooms))
-		r.Grades = SplitList(JoinList(r.Grades))
-		r.Tags = trimmed(r.Tags)
-		r.Family = SplitList(JoinList(r.Family))
-		r.Owner = cleanEmail(r.Owner)
-		rules = append(rules, r)
+		rules = append(rules, filter.Clean(r))
 	}
 	g.Rules = rules
 	additions := make([]Addition, 0, len(g.Additions))
@@ -449,31 +400,10 @@ func Normalize(g Group) Group {
 	return g
 }
 
-func trimmed(items []string) []string {
-	out := []string{}
-	for _, item := range items {
-		item = strings.TrimSpace(item)
-		if item != "" && !slices.Contains(out, item) {
-			out = append(out, item)
-		}
-	}
-	return out
-}
-
-func ruleFromRow(row map[string]string) Rule {
-	return Rule{
-		Kind: row["Kind"], Roles: SplitList(row["Roles"]), Search: row["Search"],
-		Classrooms: SplitList(row["Classrooms"]), Grades: SplitList(row["Grades"]),
-		Tags: SplitList(row["Tags"]), Family: SplitList(row["Family"]), Owner: row["Owner"],
-	}
-}
-
 func ruleCells(name string, r Rule) map[string]string {
-	return map[string]string{
-		"Group": name, "Kind": r.Kind, "Roles": JoinList(r.Roles), "Search": r.Search,
-		"Classrooms": JoinList(r.Classrooms), "Grades": JoinList(r.Grades),
-		"Tags": JoinList(r.Tags), "Family": JoinList(r.Family), "Owner": r.Owner,
-	}
+	cells := filter.RuleCells(r)
+	cells["Group"] = name
+	return cells
 }
 
 func additionCells(name string, a Addition) map[string]string {
@@ -499,9 +429,6 @@ func groupCells(g Group) map[string]string {
 	return map[string]string{"Name": g.Name, "Title": g.Title, "Description": g.Description, "Created By": g.CreatedBy, "Created": g.Created, prefixColumn: prefixCell(g.Prefix), visibleColumn: g.Visibility, postingColumn: g.Posting, replyingColumn: g.Replying}
 }
 
-// BuildModel validates every row and refuses the whole set on the first
-// problem, the stance every app takes: a sheet edit that breaks a rule
-// surfaces as a refused load, never as a group quietly matching nobody.
 func BuildModel(tables *Tables) (*Model, error) {
 	model := &Model{Groups: []Group{}, byName: map[string]int{}, archived: map[string]map[string]bool{}}
 	for _, row := range tables.Groups {
@@ -542,7 +469,7 @@ func BuildModel(tables *Tables) (*Model, error) {
 		if g == nil {
 			return nil, fmt.Errorf("%s names %q, which %s does not have", rulesTab, row["Group"], groupsTab)
 		}
-		g.Rules = append(g.Rules, ruleFromRow(row))
+		g.Rules = append(g.Rules, filter.RuleFromRow(row))
 	}
 	for _, row := range tables.Additions {
 		name := strings.ToLower(strings.TrimSpace(row["Group"]))
@@ -610,8 +537,6 @@ func withoutGroupRows(rows []map[string]string, column, name string) []map[strin
 	return out
 }
 
-// withGroup mirrors what saving a group writes: its Groups row set or
-// added, and its Managers, Rules and Additions rows replaced whole.
 func (t *Tables) withGroup(g Group) *Tables {
 	out := *t
 	out.Groups = cloneRows(t.Groups)
@@ -666,8 +591,6 @@ func (t *Tables) withoutGroup(name string) *Tables {
 	return &out
 }
 
-// withArchived is the group put away for one person, or brought back: the
-// Archived row for the pair added or removed, once each.
 func (t *Tables) withArchived(name, email string, archived bool) *Tables {
 	out := *t
 	out.Archived = make([]map[string]string, 0, len(t.Archived)+1)

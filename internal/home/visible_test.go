@@ -17,15 +17,11 @@ func sampleCache(t *testing.T) *Cache {
 	if err != nil {
 		t.Fatalf("build sample model: %v", err)
 	}
-	c := &Cache{}
+	c := &Cache{superAdmins: func() []string { return nil }}
 	c.set(tables, model)
 	return c
 }
 
-// An app visible to everyone is everyone's; one narrowed to a list is hidden
-// from everyone not on it; one with no row yet - a new app - is hidden from
-// everyone. The sample sheet narrows the celebration to the sample parent
-// and one other, and has no row for the birthday team's app.
 func TestVisibilityNarrowsAnApp(t *testing.T) {
 	c := sampleCache(t)
 	if got := c.HiddenApps("jordan.whitfield@heliosschool.org"); len(got) != 1 || got[0] != "birthday" {
@@ -51,7 +47,6 @@ func TestVisibilityNarrowsAnApp(t *testing.T) {
 		t.Errorf("birthday = %+v, want the new-app default, a list with nobody", apps[3])
 	}
 
-	// The tagline is the row's where it has one, else the registry's.
 	list := c.AppList()
 	if list[0].Tagline != "A visual directory" || list[1].Tagline != "HCA Volunteer Portal" {
 		t.Errorf("taglines = %q %q, want the registry's for who and the sheet's for team", list[0].Tagline, list[1].Tagline)
@@ -61,7 +56,6 @@ func TestVisibilityNarrowsAnApp(t *testing.T) {
 		t.Errorf("who's tagline after an edit = %q", got)
 	}
 
-	// The list is kept while the app is everyone's, and hides nobody.
 	c.set(c.Tables(), mustBuild(t, c.Tables().withVisibility("celebrate", Visibility{Mode: VisibleToEveryone, Emails: []string{"mia.torres@heliosschool.org"}})))
 	if got := c.HiddenApps("sam.whitfield@heliosschool.org"); len(got) != 1 || got[0] != "birthday" {
 		t.Errorf("hidden from sam with the celebration everyone's = %v, want just birthday", got)
@@ -70,7 +64,6 @@ func TestVisibilityNarrowsAnApp(t *testing.T) {
 		t.Errorf("the celebration's list = %v, want kept while everyone's", got)
 	}
 
-	// A list with nobody on it hides the app from everyone.
 	c.set(c.Tables(), mustBuild(t, c.Tables().withVisibility("who", Visibility{Mode: VisibleToList})))
 	if got := c.HiddenApps("jordan.whitfield@heliosschool.org"); len(got) != 2 || got[0] != "who" {
 		t.Errorf("hidden from the sample parent with who's list empty = %v, want [who birthday]", got)
@@ -100,7 +93,6 @@ func TestVisibilityRowForAnUnknownAppIsSkipped(t *testing.T) {
 	}
 }
 
-// A misspelled mode or a second row for one app refuses the load.
 func TestVisibilityRowsAreChecked(t *testing.T) {
 	for _, c := range []struct {
 		rows []map[string]string
@@ -116,9 +108,6 @@ func TestVisibilityRowsAreChecked(t *testing.T) {
 	}
 }
 
-// The Emails cell takes commas, semicolons, spaces or line breaks between
-// addresses, forgives case, and folds duplicates; the mirror of a save
-// writes it back with commas and edits the app's own row alone.
 func TestVisibilityEmailsCell(t *testing.T) {
 	got := splitEmails("A@x.org, b@x.org;c@x.org\nd@x.org  a@x.org")
 	if strings.Join(got, " ") != "a@x.org b@x.org c@x.org d@x.org" {
@@ -138,7 +127,6 @@ func TestVisibilityEmailsCell(t *testing.T) {
 	}
 }
 
-// The apps section is one category at most and holds no links.
 func TestAppsSection(t *testing.T) {
 	tables := &Tables{Categories: []map[string]string{category("Helios Community Apps", "📌", StyleApps), category("School", "", StyleTiles)}}
 	m, err := BuildModel(tables, noImages{})

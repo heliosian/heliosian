@@ -1,10 +1,3 @@
-// Package filter is the one reading of "these people" every app shares: a
-// Rule as Helios Who?'s filters have it - roles, words, classrooms, grades,
-// tags, and the relatives to add - evaluated against the directory. Loop's
-// groups are lists of them, include and exclude; Heliosian's apps, sections
-// and links each carry one to say who sees them. Who?'s own page evaluates
-// the same choices in the browser (web/who/filters.js), and a grade or
-// classroom is read as the directory reads it everywhere (who.Model.Facets).
 package filter
 
 import (
@@ -21,17 +14,11 @@ const (
 	KindExclude = "exclude"
 )
 
-// Roles are the role facet's values, and Relations the Family facet's: the
-// relatives a rule's matches are widened by, as Who?'s Add family does.
 var (
 	Roles     = []string{"Student", "Parent", "Staff"}
 	Relations = []string{"Parents", "Children", "Siblings"}
 )
 
-// Rule is one line of a definition: within it every choice must hold, so
-// Parent and Grade 3 together are the parents of a Grade 3 student. Kind
-// is include or exclude where a list of rules is read (Loop); a thing that
-// carries one rule reads it as an include. Tags are read as Owner's.
 type Rule struct {
 	Kind       string   `json:"kind"`
 	Roles      []string `json:"roles"`
@@ -40,17 +27,30 @@ type Rule struct {
 	Grades     []string `json:"grades"`
 	Tags       []string `json:"tags"`
 	Family     []string `json:"family"`
-	Owner      string   `json:"owner"`
 }
 
-// Empty says the rule chooses nothing at all - which a list of rules
-// refuses, and a thing carrying one rule reads as everyone.
 func (r Rule) Empty() bool {
 	return len(r.Roles)+len(r.Classrooms)+len(r.Grades)+len(r.Tags) == 0 && r.Search == ""
 }
 
-// CheckFacets refuses a role or relation the facets cannot mean, and a tag
-// no rule could name.
+func (r Rule) Same(o Rule) bool {
+	return r.Kind == o.Kind && r.Search == o.Search &&
+		slices.Equal(r.Roles, o.Roles) && slices.Equal(r.Classrooms, o.Classrooms) &&
+		slices.Equal(r.Grades, o.Grades) && slices.Equal(r.Tags, o.Tags) && slices.Equal(r.Family, o.Family)
+}
+
+func TagKey(owner, name string) string {
+	return owner + ":" + name
+}
+
+func tagRef(tag string) (string, string, bool) {
+	at := strings.Index(tag, ":")
+	if at < 0 || !strings.Contains(tag[:at], "@") {
+		return "", tag, false
+	}
+	return strings.ToLower(tag[:at]), tag[at+1:], true
+}
+
 func CheckFacets(r Rule) error {
 	for _, role := range r.Roles {
 		if !slices.Contains(Roles, role) {
@@ -66,13 +66,13 @@ func CheckFacets(r Rule) error {
 		if strings.Contains(tag, ",") {
 			return fmt.Errorf("a tag with a comma in its name cannot be used in a rule")
 		}
+		if at := strings.Index(tag, ":"); at < 1 || at == len(tag)-1 {
+			return fmt.Errorf("tag %q is not an owner's address, a colon and a name, or a Magic Tag's key", tag)
+		}
 	}
 	return nil
 }
 
-// Sources is what a rule is read against: the directory, and one person's
-// tags, Magic Tags and the tags shared with them, by owner, since all three
-// are that person's to see. A rule with no tags needs the directory alone.
 type Sources struct {
 	Directory *who.Model
 	Tags      func(owner string) map[string][]string
@@ -80,72 +80,138 @@ type Sources struct {
 	Shared    func(email string) []who.SharedTag
 }
 
-// SharedPrefix marks a shared tag in a rule's Tags: shared:<owner>:<name>,
-// the owner's address having no colon of its own. It reads as the tag's
-// owner's, and only while the rule's owner still manages it.
-const SharedPrefix = "shared:"
-
-// SharedKey is how a rule names a tag shared with its owner.
-func SharedKey(owner, name string) string {
-	return SharedPrefix + owner + ":" + name
+type reader struct {
+	s      Sources
+	tags   map[string]map[string][]string
+	shared map[string][]who.SharedTag
+	lists  map[string][]who.List
 }
 
-// Tagged is everyone under one of the owner's tags, Magic Tags or shared
-// tags, by the name a rule holds: a tag's name, a Magic Tag's key, or a
-// shared tag's key.
-func (s Sources) Tagged(owner string) map[string][]string {
+func (s Sources) reader() *reader {
+	return &reader{s: s, tags: map[string]map[string][]string{}, shared: map[string][]who.SharedTag{}, lists: map[string][]who.List{}}
+}
+
+func (r *reader) tagsOf(owner string) map[string][]string {
+	if _, ok := r.tags[owner]; !ok {
+		if r.s.Tags != nil {
+			r.tags[owner] = r.s.Tags(owner)
+		} else {
+			r.tags[owner] = nil
+		}
+	}
+	return r.tags[owner]
+}
+
+func (r *reader) sharedWith(email string) []who.SharedTag {
+	if _, ok := r.shared[email]; !ok {
+		if r.s.Shared != nil {
+			r.shared[email] = r.s.Shared(email)
+		} else {
+			r.shared[email] = nil
+		}
+	}
+	return r.shared[email]
+}
+
+func (r *reader) listsOf(email string) []who.List {
+	if _, ok := r.lists[email]; !ok {
+		if r.s.Lists != nil {
+			r.lists[email] = r.s.Lists(email)
+		} else {
+			r.lists[email] = nil
+		}
+	}
+	return r.lists[email]
+}
+
+func (r *reader) manages(email, owner, name string) bool {
+	if email == owner {
+		return true
+	}
+	return slices.ContainsFunc(r.sharedWith(email), func(t who.SharedTag) bool { return t.Owner == owner && t.Name == name })
+}
+
+func (r *reader) people(tag string, editors []string) ([]string, bool) {
+	owner, name, isTag := tagRef(tag)
+	if isTag {
+		people, ok := r.tagsOf(owner)[name]
+		if !ok || !slices.ContainsFunc(editors, func(e string) bool { return r.manages(e, owner, name) }) {
+			return nil, false
+		}
+		return people, true
+	}
+	for _, e := range editors {
+		for _, l := range r.listsOf(e) {
+			if l.Key == tag {
+				return l.People, true
+			}
+		}
+	}
+	return nil, false
+}
+
+func (r *reader) tagged(rules []Rule, editors []string) map[string][]string {
 	out := map[string][]string{}
-	if s.Tags != nil {
-		for name, people := range s.Tags(owner) {
-			out[name] = people
-		}
-	}
-	if s.Lists != nil {
-		for _, list := range s.Lists(owner) {
-			out[list.Key] = list.People
-		}
-	}
-	if s.Shared != nil {
-		for _, shared := range s.Shared(owner) {
-			out[SharedKey(shared.Owner, shared.Name)] = shared.People
+	for _, rule := range rules {
+		for _, tag := range rule.Tags {
+			if _, done := out[tag]; done {
+				continue
+			}
+			if people, ok := r.people(tag, editors); ok {
+				out[tag] = people
+			}
 		}
 	}
 	return out
 }
 
-// TagLabels is the words for a rule's tags, read as its owner: a tag's own
-// name, a Magic Tag's name, a shared tag's name with whose it is, and a
-// note for one the owner no longer has.
-func (s Sources) TagLabels(r Rule) []string {
-	names := map[string]string{}
-	if s.Lists != nil {
-		for _, list := range s.Lists(r.Owner) {
-			names[list.Key] = list.Name
-		}
-	}
-	if s.Shared != nil {
-		for _, shared := range s.Shared(r.Owner) {
-			names[SharedKey(shared.Owner, shared.Name)] = shared.Name + " (" + shared.OwnerName + "'s)"
-		}
-	}
-	tags := map[string][]string{}
-	if s.Tags != nil {
-		tags = s.Tags(r.Owner)
-	}
+func (s Sources) TagLabels(r Rule, editors []string, viewer string) []string {
+	rd := s.reader()
 	out := make([]string, 0, len(r.Tags))
 	for _, tag := range r.Tags {
-		switch {
-		case names[tag] != "":
-			out = append(out, names[tag])
-		case tags[tag] != nil:
-			out = append(out, tag)
-		case strings.HasPrefix(tag, SharedPrefix):
-			out = append(out, strings.TrimPrefix(tag, SharedPrefix)+" (no longer shared)")
-		default:
-			out = append(out, tag+" (no longer a tag)")
+		owner, name, isTag := tagRef(tag)
+		if !isTag {
+			label := tag + " (no longer a tag)"
+			for _, e := range editors {
+				if i := slices.IndexFunc(rd.listsOf(e), func(l who.List) bool { return l.Key == tag }); i >= 0 {
+					label = rd.listsOf(e)[i].Name
+					break
+				}
+			}
+			out = append(out, label)
+			continue
 		}
+		label := name
+		if owner != viewer {
+			label += " (" + s.Directory.DisplayName(owner) + "'s)"
+		}
+		switch _, ok := rd.people(tag, editors); {
+		case rd.tagsOf(owner)[name] == nil:
+			label += " (no longer a tag)"
+		case !ok:
+			label += " (no longer shared)"
+		}
+		out = append(out, label)
 	}
 	return out
+}
+
+func Writable(s Sources, saver string, editors []string, existing, rules []Rule) error {
+	rd := s.reader()
+	for i, r := range rules {
+		if slices.ContainsFunc(existing, r.Same) {
+			continue
+		}
+		for _, tag := range r.Tags {
+			if _, ok := rd.people(tag, []string{saver}); !ok {
+				return fmt.Errorf("rule %d names a tag that is not yours", i+1)
+			}
+			if _, ok := rd.people(tag, editors); !ok {
+				return fmt.Errorf("rule %d names a tag none of the people who edit this can read", i+1)
+			}
+		}
+	}
+	return nil
 }
 
 func anyIn(have, want []string) bool {
@@ -157,11 +223,6 @@ func anyIn(have, want []string) bool {
 	return false
 }
 
-// Reason is why a rule reached someone: the relation it reached them
-// through and whom - a parent of Mia, say, when the rule matched Mia - or
-// nothing for someone it matched itself. Rule and Added are a list's to
-// fill: the rule's place among its rules, or that someone was put on by
-// hand.
 type Reason struct {
 	Rule    int    `json:"rule"`
 	Through string `json:"through,omitempty"`
@@ -170,20 +231,10 @@ type Reason struct {
 	Added   bool   `json:"added,omitempty"`
 }
 
-// InRole reports whether a person is one of the roles a rule keeps.
 func InRole(p *who.Person, roles []string) bool {
 	return len(roles) == 0 || (p.IsStudent && slices.Contains(roles, "Student")) || (p.IsParent && slices.Contains(roles, "Parent")) || (p.IsStaff && slices.Contains(roles, "Staff"))
 }
 
-// Matches is everyone one rule picks out, each with the relation it reached
-// them through, as Who?'s tag page reads the same choices: the words, the
-// classrooms, the grades and the tags pick people out, Family adds the
-// relatives asked for, and the roles then keep only those of that kind -
-// so "Parents tagged in Carpool, plus their parents" is the parents of the
-// tagged children as well as the tagged parents, never the children.
-// Someone the rule matches itself stays a direct match whatever relations
-// also reach them. tagged is Tagged for the rule's owner, or nil for a
-// rule with no tags.
 func Matches(r Rule, s Sources, tagged map[string][]string) map[string]Reason {
 	model := s.Directory
 	out := map[string]Reason{}
@@ -192,8 +243,6 @@ func Matches(r Rule, s Sources, tagged map[string][]string) map[string]Reason {
 		if r.Search != "" && !strings.Contains(strings.ToLower(p.FullName), r.Search) && !strings.Contains(strings.ToLower(p.Email), r.Search) {
 			continue
 		}
-		// A grade or classroom is read as the directory reads it for every
-		// filter (who.Model.Facets): a student's own, a parent's children's.
 		if len(r.Grades) > 0 && !anyIn(model.Facets(p, false), r.Grades) {
 			continue
 		}
@@ -243,21 +292,6 @@ func Matches(r Rule, s Sources, tagged map[string][]string) map[string]Reason {
 	return out
 }
 
-// Includes says whether one rule, read as an include, picks this person
-// out - the same answer Matches gives, asked of one address. An empty rule
-// picks out nobody; what an empty rule means is the caller's to say.
-func Includes(r Rule, s Sources, email string) bool {
-	if r.Empty() || s.Directory == nil {
-		return false
-	}
-	var tagged map[string][]string
-	if len(r.Tags) > 0 {
-		tagged = s.Tagged(r.Owner)
-	}
-	_, ok := Matches(r, s, tagged)[s.Directory.Resolve(email)]
-	return ok
-}
-
 func SortedKeys(m map[string]bool) []string {
 	keys := make([]string, 0, len(m))
 	for k := range m {
@@ -267,36 +301,18 @@ func SortedKeys(m map[string]bool) []string {
 	return keys
 }
 
-// List is several rules read together, as a group is: the include rules'
-// matches less the exclude rules', then Additions - addresses on by hand
-// whatever the rules say - and Excluded - addresses off whatever they say.
 type List struct {
 	Rules     []Rule
 	Additions []string
 	Excluded  []string
+	Editors   []string
 }
 
-// tagged is each owner's tags, fetched once, for the rules that name any.
-func (s Sources) taggedFor(rules []Rule) map[string]map[string][]string {
-	out := map[string]map[string][]string{}
-	for _, r := range rules {
-		if _, ok := out[r.Owner]; !ok && len(r.Tags) > 0 {
-			out[r.Owner] = s.Tagged(r.Owner)
-		}
-	}
-	return out
-}
-
-// Reasons is everyone a list picks out and why: the include rules' matches
-// less the exclude rules', as addresses the directory keys them by,
-// leaving out anyone whose address is a placeholder nothing can reach, each
-// with every include rule that reached them; then the additions, on by
-// hand whatever the rules say, once each; less the excluded.
 func Reasons(l List, s Sources) map[string][]Reason {
-	tagged := s.taggedFor(l.Rules)
+	tagged := s.reader().tagged(l.Rules, l.Editors)
 	in, out := map[string][]Reason{}, map[string]bool{}
 	for i, r := range l.Rules {
-		for email, reason := range Matches(r, s, tagged[r.Owner]) {
+		for email, reason := range Matches(r, s, tagged) {
 			if r.Kind == KindExclude {
 				out[email] = true
 				continue
@@ -324,13 +340,8 @@ func Reasons(l List, s Sources) map[string][]Reason {
 	return in
 }
 
-// RuleCounts is how many people each rule touches, by its place in the
-// list: for an include rule, everyone it matches, relatives and all; for
-// an exclude rule, everyone it takes out - those it matches whom an include
-// rule had placed on the list. Placeholders and people the directory does
-// not hold count for neither.
 func RuleCounts(l List, s Sources) []int {
-	tagged := s.taggedFor(l.Rules)
+	tagged := s.reader().tagged(l.Rules, l.Editors)
 	real := func(email string) bool {
 		p := s.Directory.Person(email)
 		return p != nil && !p.EmailMasked
@@ -338,7 +349,7 @@ func RuleCounts(l List, s Sources) []int {
 	in := map[string]bool{}
 	matched := make([]map[string]Reason, len(l.Rules))
 	for i, r := range l.Rules {
-		matched[i] = Matches(r, s, tagged[r.Owner])
+		matched[i] = Matches(r, s, tagged)
 		if r.Kind == KindInclude {
 			for email := range matched[i] {
 				if real(email) {
@@ -361,7 +372,6 @@ func RuleCounts(l List, s Sources) []int {
 	return counts
 }
 
-// Members is Reasons' people alone, sorted.
 func Members(l List, s Sources) []string {
 	members := []string{}
 	for email := range Reasons(l, s) {
@@ -371,41 +381,31 @@ func Members(l List, s Sources) []string {
 	return members
 }
 
-// OnList says whether a list picks this person out, by any address the
-// directory knows them by.
 func OnList(l List, s Sources, email string) bool {
 	_, ok := Reasons(l, s)[s.Directory.Resolve(email)]
 	return ok
 }
 
-// ListOption and SharedOption are a Magic Tag and a shared tag as an
-// editor's Tags dropdown offers them.
+type TagOption struct {
+	Key  string `json:"key"`
+	Name string `json:"name"`
+}
+
 type ListOption struct {
 	Key  string `json:"key"`
 	Name string `json:"name"`
 	Kind string `json:"kind"`
 }
 
-type SharedOption struct {
-	Key       string `json:"key"`
-	Name      string `json:"name"`
-	OwnerName string `json:"ownerName"`
-}
-
-// Options is what a rule editor offers a viewer: the classrooms, the grades
-// with a student in them, the viewer's own tags, their Magic Tags and the
-// tags shared with them, and the roles and relations.
 type Options struct {
-	Classrooms []string       `json:"classrooms"`
-	Grades     []string       `json:"grades"`
-	Tags       []string       `json:"tags"`
-	Lists      []ListOption   `json:"lists"`
-	Shared     []SharedOption `json:"shared"`
-	Roles      []string       `json:"roles"`
-	Relations  []string       `json:"relations"`
+	Classrooms []string     `json:"classrooms"`
+	Grades     []string     `json:"grades"`
+	Tags       []TagOption  `json:"tags"`
+	Lists      []ListOption `json:"lists"`
+	Roles      []string     `json:"roles"`
+	Relations  []string     `json:"relations"`
 }
 
-// OptionsFor is the choices a rule editor offers this viewer.
 func OptionsFor(s Sources, viewer string) Options {
 	model := s.Directory
 	classrooms := []string{}
@@ -424,13 +424,22 @@ func OptionsFor(s Sources, viewer string) Options {
 			grades = append(grades, g.Name)
 		}
 	}
-	tags := []string{}
+	own := []string{}
 	if s.Tags != nil {
 		for name := range s.Tags(viewer) {
-			tags = append(tags, name)
+			own = append(own, name)
 		}
 	}
-	slices.Sort(tags)
+	slices.Sort(own)
+	tags := []TagOption{}
+	for _, name := range own {
+		tags = append(tags, TagOption{Key: TagKey(viewer, name), Name: name})
+	}
+	if s.Shared != nil {
+		for _, t := range s.Shared(viewer) {
+			tags = append(tags, TagOption{Key: TagKey(t.Owner, t.Name), Name: t.Name + " (" + t.OwnerName + "'s)"})
+		}
+	}
 	lists := []ListOption{}
 	if s.Lists != nil {
 		for _, l := range s.Lists(viewer) {
@@ -438,20 +447,11 @@ func OptionsFor(s Sources, viewer string) Options {
 		}
 	}
 	slices.SortFunc(lists, func(x, y ListOption) int { return strings.Compare(x.Name, y.Name) })
-	shared := []SharedOption{}
-	if s.Shared != nil {
-		for _, t := range s.Shared(viewer) {
-			shared = append(shared, SharedOption{Key: SharedKey(t.Owner, t.Name), Name: t.Name, OwnerName: t.OwnerName})
-		}
-	}
-	return Options{Classrooms: classrooms, Grades: grades, Tags: tags, Lists: lists, Shared: shared, Roles: Roles, Relations: Relations}
+	return Options{Classrooms: classrooms, Grades: grades, Tags: tags, Lists: lists, Roles: Roles, Relations: Relations}
 }
 
-// RuleColumns are a rule's cells as a sheet holds one, whichever tab keys
-// it (a group's name, a thing's key) in a column of its own before them.
-var RuleColumns = []string{"Kind", "Roles", "Search", "Classrooms", "Grades", "Tags", "Family", "Owner"}
+var RuleColumns = []string{"Kind", "Roles", "Search", "Classrooms", "Grades", "Tags", "Family"}
 
-// SplitList reads a list cell: comma-separated, trimmed, without repeats.
 func SplitList(cell string) []string {
 	out := []string{}
 	for _, item := range strings.Split(cell, ",") {
@@ -467,31 +467,30 @@ func JoinList(items []string) string {
 	return strings.Join(items, ", ")
 }
 
-// RuleFromRow reads a rule's cells.
 func RuleFromRow(row map[string]string) Rule {
 	return Rule{
 		Kind: row["Kind"], Roles: SplitList(row["Roles"]), Search: row["Search"],
 		Classrooms: SplitList(row["Classrooms"]), Grades: SplitList(row["Grades"]),
-		Tags: SplitList(row["Tags"]), Family: SplitList(row["Family"]), Owner: row["Owner"],
+		Tags: SplitList(row["Tags"]), Family: SplitList(row["Family"]),
 	}
 }
 
-// RuleCells is a rule as a sheet holds it.
 func RuleCells(r Rule) map[string]string {
 	return map[string]string{
 		"Kind": r.Kind, "Roles": JoinList(r.Roles), "Search": r.Search,
 		"Classrooms": JoinList(r.Classrooms), "Grades": JoinList(r.Grades),
-		"Tags": JoinList(r.Tags), "Family": JoinList(r.Family), "Owner": r.Owner,
+		"Tags": JoinList(r.Tags), "Family": JoinList(r.Family),
 	}
 }
 
-// Clean is a rule as an editor sent it, tidied: the kind lowercased, the
-// lists trimmed and without repeats, the words lowercased and single-spaced,
-// the owner lowercased.
 func Clean(r Rule) Rule {
 	tags := []string{}
 	for _, t := range r.Tags {
-		if t = strings.TrimSpace(t); t != "" && !slices.Contains(tags, t) {
+		t = strings.TrimSpace(t)
+		if owner, name, isTag := tagRef(t); isTag {
+			t = TagKey(owner, name)
+		}
+		if t != "" && !slices.Contains(tags, t) {
 			tags = append(tags, t)
 		}
 	}
@@ -503,12 +502,9 @@ func Clean(r Rule) Rule {
 		Grades:     SplitList(JoinList(r.Grades)),
 		Tags:       tags,
 		Family:     SplitList(JoinList(r.Family)),
-		Owner:      strings.ToLower(strings.TrimSpace(r.Owner)),
 	}
 }
 
-// Check refuses a rule a list cannot read: a kind that is neither, a facet
-// the filter has no such thing as, or nothing chosen at all.
 func Check(r Rule) error {
 	if r.Kind != KindInclude && r.Kind != KindExclude {
 		return fmt.Errorf("kind %q is not %s or %s", r.Kind, KindInclude, KindExclude)

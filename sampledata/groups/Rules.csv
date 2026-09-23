@@ -1,5 +1,5 @@
-Group,Kind,Roles,Search,Classrooms,Grades,Tags,Family,Owner
-soccer-team,include,,,,,Soccer Team,Parents,jordan.whitfield@heliosschool.org
-middle-school-parents,include,Parent,,,"Grade 5, Grade 6, Grade 7, Grade 8",,,jordan.whitfield@heliosschool.org
-middle-school-parents,exclude,,haddad,,,,,jordan.whitfield@heliosschool.org
-hummingbird-families,include,,,Hummingbirds,,,"Parents, Siblings",ruth.amari@heliosschool.org
+Group,Kind,Roles,Search,Classrooms,Grades,Tags,Family
+soccer-team,include,,,,,jordan.whitfield@heliosschool.org:Soccer Team,Parents
+middle-school-parents,include,Parent,,,"Grade 5, Grade 6, Grade 7, Grade 8",,
+middle-school-parents,exclude,,haddad,,,,
+hummingbird-families,include,,,Hummingbirds,,,"Parents, Siblings"

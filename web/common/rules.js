@@ -1,28 +1,10 @@
 import {appOrigin} from '/toolbar.js';
-// The rule editor every app shares: a filter rule as Helios Who?'s filters
-// have it - roles, words, classrooms, grades, tags, the relatives to add -
-// as a row that reads out as a sentence and opens to its controls, the
-// same in Loop's group editor and Heliosian's Visibility. The server reads
-// the rules through internal/filter; this is the one way to write them.
-//
-// rulesEditor takes what differs by app: el and svg (its dom helpers, with
-// the icons groups, user-minus, edit, trash, check, chevron, tag, families,
-// party, activity and classrooms), options() (the choices, as
-// /api/<app>/…/options answers), me() (the signed-in person, whose tags a
-// new rule reads), and personName(email) (a name for an address the
-// directory holds, or nothing). It gives back the pieces.
-// plural is a role as a chip and a sentence say it: Students, Parents, Staff.
+
 function plural(role) {
   return role === 'Staff' ? 'Staff' : role + 's';
 }
 
-// filterWidgets are the editor's controls on their own, for a page that
-// filters a list the way the editor does - a chip per role to keep or
-// drop, and a dropdown checklist per facet - given the app's el, svg and
-// a button helper.
 export function filterWidgets({el, svg, button}) {
-  // key names the kind for its colour when lit - student, parent, staff
-  // - as Who?'s directory colours its role chips.
   function chipToggle(label, on, onChange, key) {
     const b = el('button', 'chip-toggle' + (key ? ' chip-toggle-' + key : '') + (on ? ' active' : ''), label);
     b.type = 'button';
@@ -33,8 +15,6 @@ export function filterWidgets({el, svg, button}) {
     return b;
   }
 
-  // facetDropdown is a button opening a checklist, as Who?'s Grade and
-  // Classroom dropdowns are: values are strings or {value, label, icon}.
   function facetDropdown(label, icon, values, chosen, onChange) {
     const wrap = el('div', 'facet-wrap');
     const b = el('button', 'facet-button');
@@ -84,7 +64,6 @@ export function filterWidgets({el, svg, button}) {
       row.append(el('span', '', text), box);
       panel.append(row);
     }
-    // Clear and Done, as Who?'s dropdowns close.
     const foot = el('div', 'facet-foot');
     foot.append(button('Clear', null, 'button button-secondary button-small', () => {
       chosen.clear();
@@ -103,10 +82,6 @@ export function filterWidgets({el, svg, button}) {
     wrap.append(b, panel);
     return wrap;
   }
-  // filterControl is every facet behind one Filter button, as Who?'s
-  // pages keep theirs on a tag's page: a panel of sections - each a head
-  // that opens its checklist, counting what is picked - with Clear all
-  // and Done at the foot. sections are {label, icon, values, chosen}.
   function filterControl(sections, onChange) {
     const wrap = el('div', 'facet-wrap');
     const b = el('button', 'facet-button');
@@ -197,7 +172,7 @@ export function filterWidgets({el, svg, button}) {
   return {chipToggle, facetDropdown, filterControl};
 }
 
-export function rulesEditor({el, svg, options, me, personName}) {
+export function rulesEditor({el, svg, options, personName}) {
   function button(label, icon, className, onClick) {
     const node = el('button', className || 'button');
     node.type = 'button';
@@ -232,16 +207,9 @@ export function rulesEditor({el, svg, options, me, personName}) {
 
   const listIcons = {party: 'party', activity: 'activity', room: 'classrooms'};
 
-  // ruleRow is one rule in the editor. Read, it is the sentence it makes -
-  // "Parents in Grade 4" - with a pencil and the way to drop it; opened, its
-  // facets as controls with Done to close it, which a new rule starts as. A
-  // rule another manager wrote is read and never opened: its tags are theirs.
   function ruleRow(rule, onChange, onRemove, open, countChip) {
     const row = el('div', 'rule');
-    const mine = rule.owner === me().email;
-    // Read: a tinted band with the kind's label and mark, the sentence, and
-    // how many people the rule touches once the preview has said - asked
-    // afresh each time the band is drawn, and again when the preview answers.
+    const mine = rule.tags.every(t => options().tags.some(o => o.key === t) || options().lists.some(l => l.key === t));
     let count = null;
     row.refreshCount = () => {
       if (count && countChip) {
@@ -268,7 +236,7 @@ export function rulesEditor({el, svg, options, me, personName}) {
       words.append(line);
       if (!mine) {
         row.classList.add('is-theirs');
-        words.append(el('div', 'rule-note', `Written by ${personName(rule.owner) || rule.owner}, reading their tags; it can be removed but not changed.`));
+        words.append(el('div', 'rule-note', 'Names a tag that is not yours to name; it can be removed but not changed.'));
       }
       row.append(words);
       if (mine) {
@@ -283,8 +251,6 @@ export function rulesEditor({el, svg, options, me, personName}) {
       row.replaceChildren();
       const controls = ruleControls(rule, onChange);
       row.append(controls);
-      // Done closes the rule to its sentence; a rule that still says nothing
-      // is dropped instead of kept empty.
       const done = button('Done', 'check', 'button button-small', () => {
         if (!ruleSaysSomething(rule)) {
           onRemove();
@@ -307,8 +273,6 @@ export function rulesEditor({el, svg, options, me, personName}) {
     return row;
   }
 
-  // ruleControls is a rule's facets as controls, with the rule read out under
-  // them as it stands, so a choice reads back as the sentence it makes.
   function ruleControls(rule, onChange) {
     const controls = el('div', 'rule-controls');
     const said = el('div', 'rule-said');
@@ -353,13 +317,12 @@ export function rulesEditor({el, svg, options, me, personName}) {
     }));
     const tags = new Set(rule.tags);
     const tagValues = [
-      ...options().tags,
-      ...options().shared.map(s => ({value: s.key, label: `${s.name} (${s.ownerName}'s)`, icon: 'tag'})),
+      ...options().tags.map(t => ({value: t.key, label: t.name, icon: 'tag'})),
       ...options().lists.map(l => ({value: l.key, label: l.name, icon: listIcons[l.kind]})),
     ];
     controls.append(facetDropdown('Tags', 'tag', tagValues, tags, () => {
       rule.tags = [...tags];
-      rule.tagLabels = rule.tags.map(t => (tagValues.find(v => (typeof v === 'string' ? v : v.value) === t) || {label: t}).label || t);
+      rule.tagLabels = rule.tags.map(t => (tagValues.find(v => v.value === t) || {label: t}).label);
       changed();
     }));
     const family = new Set(rule.family);
@@ -373,7 +336,7 @@ export function rulesEditor({el, svg, options, me, personName}) {
   }
 
   function newRule(kind) {
-    return {kind, roles: [], search: '', classrooms: [], grades: [], tags: [], family: [], owner: me().email};
+    return {kind, roles: [], search: '', classrooms: [], grades: [], tags: [], family: []};
   }
 
   function ruleSaysSomething(r) {
@@ -382,10 +345,7 @@ export function rulesEditor({el, svg, options, me, personName}) {
 
   const singular = {Student: 'student', Parent: 'parent', Staff: 'staff member'};
 
-  // personWords is a rule said of one person who matches it, lowercase, for
-  // a member's reason: "parent in Grade 5 or Grade 6", "tagged in Tech Team".
   function personWords(r) {
-    // A rule that is one address and nothing else names them.
     if (r.search && r.search.includes('@') && !r.roles.length && !r.grades.length && !r.classrooms.length && !r.tags.length && personName(r.search)) {
       return 'named in a rule';
     }
@@ -408,20 +368,13 @@ export function rulesEditor({el, svg, options, me, personName}) {
     return parts.join(' ');
   }
 
-  // ruleSentence is a rule as the group's page reads it out, as a list of
-  // strings and whatever tag(key, label) makes of each tag named.
   function ruleSentence(r, tag) {
-    // A rule that is one address and nothing else - as excluding someone
-    // from the member list makes - reads as the person.
     if (r.search && r.search.includes('@') && !r.roles.length && !r.grades.length && !r.classrooms.length && !r.tags.length) {
       const name = personName(r.search);
       if (name) {
         return [`${name} (${r.search})`];
       }
     }
-    // With Add family the roles keep their kind after the widening, as Who?
-    // reads the same choices, so they are said last: "Anyone tagged in
-    // Carpool, plus their parents, keeping parents only".
     const roles = r.roles.map(plural).join(' or ');
     const parts = [];
     if (r.roles.length && !r.family.length) {
@@ -461,8 +414,6 @@ export function rulesEditor({el, svg, options, me, personName}) {
     return ruleSentence(r, (key, label) => label).join('');
   }
 
-  // ruleNodes is the sentence for the band, a Magic Tag's name in it a link
-  // to the group in Loop, the activity in HCA-Team or the party in Celebrate.
   const listPages = {group: ['loop', '/groups/'], activity: ['team', '/activities/'], party: ['celebrate', '/parties/']};
 
   function ruleNodes(r) {

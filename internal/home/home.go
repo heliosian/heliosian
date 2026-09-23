@@ -1,4 +1,3 @@
-// Package home serves the community's link portal, Heliosian.
 package home
 
 import (
@@ -29,9 +28,6 @@ const (
 	maxImageSize = 8 << 20
 )
 
-// Directory is what an audience is read against: the directory and a
-// person's tags, as the filter takes them (filter.Sources) - the same
-// sources Loop's groups read.
 type Directory interface {
 	Sources() filter.Sources
 }
@@ -50,28 +46,16 @@ type app struct {
 	makeDefault func(ctx context.Context, email, token string) error
 	month       func(email, month, token string) Month
 	search      imagesearch.Search
-	// answer records a person's word on a calendar event - yes, no, hidden
-	// - with the calendar, whose lists follow it.
-	answer func(ctx context.Context, email, id, answer string) error
+	answer      func(ctx context.Context, email, id, answer string) error
 }
 
-// Upcoming is the front page's Upcoming Events for a person: the events as
-// Helios When words them (`calendar.Card` - the front page keeps no shape of
-// its own, so a field added there arrives here rather than being missed, as
-// the days an event sits on once were), the saved calendar they are read
-// under by token, and every saved calendar of theirs - the first their
-// default on Helios When - for the picker beside the heading.
 type Upcoming struct {
-	Events []calendar.Card `json:"events"`
-	// Calendar is the one the events are read under; Default the one the
-	// person made their default (My Heliosian's token until they do).
+	Events    []calendar.Card `json:"events"`
 	Calendar  string          `json:"calendar,omitempty"`
 	Default   string          `json:"default,omitempty"`
 	Calendars []SavedCalendar `json:"calendars,omitempty"`
 }
 
-// SavedCalendar is one of a person's saved calendars: its token, name and
-// mark - and Locked for My Heliosian, which nobody changes.
 type SavedCalendar struct {
 	Token  string `json:"token"`
 	Name   string `json:"name"`
@@ -79,11 +63,6 @@ type SavedCalendar struct {
 	Locked bool   `json:"locked,omitempty"`
 }
 
-// Month is a month as the rail's calendar shows it, from Helios When:
-// today, the school days in it with what kind of day each is for the
-// viewer's classrooms, and the viewer's events that touch it - the
-// calendar's own shapes, with the saved calendar it was read under added
-// for the rail's picker.
 type Month struct {
 	Month    string                  `json:"month"`
 	Today    string                  `json:"today"`
@@ -92,23 +71,11 @@ type Month struct {
 	Calendar string                  `json:"calendar,omitempty"`
 }
 
-// alerts is what the toolbar's badges say, reckoned by the directory: things
-// to update for the new year, and a privacy mismatch.
 type alerts struct {
 	Stale   int  `json:"stale"`
 	Privacy bool `json:"privacy"`
 }
 
-// Register wires the portal: the two pages, the model, and the admin writes.
-// Every route already sits behind sign-in; the writes additionally require an
-// admin. superAdmins reads the platform list out of the directory's settings.
-// heroPhoto resolves the signed-in person's own directory photo; it comes from
-// the directory cache, which this app does not otherwise depend on.
-// search finds pictures for links on the web, as HCA-Team's editors do.
-// alerts is the directory's reckoning of the toolbar badges for a person;
-// upcoming is the calendar's list of what is ahead for a person and month
-// its reckoning of one month of theirs; people is the directory as the
-// admin page's pickers list it.
 func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, superAdmins func() []string, heroPhoto func(string) string, people func() []Person, directory Directory, alerts func(string) (int, bool), upcoming func(email, token string) Upcoming, month func(email, month, token string) Month, search imagesearch.Search, answer func(ctx context.Context, email, id, answer string) error, makeDefault func(ctx context.Context, email, token string) error) {
 	if search.UserAgent == "" {
 		search.UserAgent = "Heliosian image search (+https://heliosian.com)"
@@ -145,10 +112,6 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	a.discoverApps()
 }
 
-// discoverApps writes the Visibility tab a row for every app of the registry
-// it has none for - a new app, at its first start - as a list with nobody on
-// it, so an app is out of sight until an admin lets people in, and the row
-// is there in the sheet to edit. Nothing is written when every app has one.
 func (a app) discoverApps() {
 	missing := a.cache.MissingVisibility()
 	if len(missing) == 0 {
@@ -175,11 +138,6 @@ func (a app) discoverApps() {
 	})
 }
 
-// RegisterSwitch serves the app switch: every app in the order the switch
-// lists them, Home first, and which of them the Visibility tab keeps off
-// the signed-in person's. The shared toolbar asks whichever app's origin it
-// is on, so every app's mux gets this route, and only the front page's the
-// rest of the portal.
 func RegisterSwitch(mux *http.ServeMux, cache *Cache) {
 	mux.HandleFunc("GET /api/apps/switch", func(w http.ResponseWriter, r *http.Request) {
 		view := struct {
@@ -193,26 +151,18 @@ func RegisterSwitch(mux *http.ServeMux, cache *Cache) {
 	})
 }
 
-// homeApp is Home with its mark's fingerprint on.
 func homeApp() App {
 	app := Home
 	app.Mark = markVersion(app.Key)
 	return app
 }
 
-// visibleApps is the community apps as the front page's apps section lists
-// them for a person: every app less those the Visibility tab keeps from them.
-// appView is one community app as the front page lists it: the app, and
-// for an admin, whether they would see it as anyone else and its
-// visibility row, for the editor Super Admin Mode opens on it.
 type appView struct {
 	App
 	ForMe      *bool          `json:"forMe,omitempty"`
 	Visibility *AppVisibility `json:"visibility,omitempty"`
 }
 
-// appViews is the apps section's list: the apps this person sees, or for
-// an admin every app, the ones they would not see marked.
 func (a app) appViews(email string, admin bool) []appView {
 	hidden := a.cache.HiddenApps(email)
 	out := []appView{}
@@ -261,9 +211,6 @@ func (a app) requireAdmin(w http.ResponseWriter, r *http.Request) (string, bool)
 	return email, true
 }
 
-// requireAdminFunc guards a handler that has no admin-only body of its own.
-// requireSuperAdmin is the platform's own tier: what colours the front page
-// is theirs alone, not any admin's.
 func (a app) requireSuperAdmin(w http.ResponseWriter, r *http.Request) (string, bool) {
 	email := strings.ToLower(auth.Email(r))
 	if !a.cache.IsSuperAdmin(email) {
@@ -288,13 +235,6 @@ type user struct {
 	IsAdmin  bool   `json:"isAdmin"`
 }
 
-// model serves the portal. Hidden links reach only admins, who see them
-// greyed out; everyone else gets the visible ones. A link into a community
-// app narrowed to a list this person is not on is left out altogether,
-// admin or not - the same rows the toolbar leaves off their app switch.
-// calendar serves another month for the rail's calendar as it pages, or
-// the month read under another of the person's saved calendars from its
-// picker: /api/apps/calendar?month=2026-10&calendar=<token>.
 func (a app) calendar(w http.ResponseWriter, r *http.Request) {
 	email := strings.ToLower(auth.Email(r))
 	w.Header().Set("Content-Type", "application/json")
@@ -303,8 +243,6 @@ func (a app) calendar(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// rsvp is the viewer's word on an event from a card: passed to the
-// calendar, which keeps it and sends the invite for a yes.
 func (a app) rsvp(w http.ResponseWriter, r *http.Request) {
 	email := strings.ToLower(auth.Email(r))
 	var body struct {
@@ -326,8 +264,6 @@ func (a app) rsvp(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// upcomingUnder answers /api/apps/upcoming?calendar=<token>: Upcoming
-// Events read under one of the person's saved calendars, for the picker.
 func (a app) upcomingUnder(w http.ResponseWriter, r *http.Request) {
 	email := strings.ToLower(auth.Email(r))
 	w.Header().Set("Content-Type", "application/json")
@@ -336,8 +272,6 @@ func (a app) upcomingUnder(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// setDefault makes one of the person's saved calendars their default on
-// Helios When - the one Upcoming Events and the rail's month read.
 func (a app) setDefault(w http.ResponseWriter, r *http.Request) {
 	email := strings.ToLower(auth.Email(r))
 	var body struct {
@@ -363,15 +297,11 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 	admin := a.cache.IsAdmin(email)
 	hidden := hiddenHosts(r.Host, a.cache.HiddenApps(email))
 	full := a.cache.Model()
-	// forMe says a thing's rules take this person in: none, or the list
-	// they make picks them out.
 	forMe := func(rules []filter.Rule) bool {
 		return len(rules) == 0 || a.cache.includes(rules, email)
 	}
 	categories := make([]Category, 0, len(full.Categories))
 	for _, category := range full.Categories {
-		// A section kept to some people goes to them whole; an admin gets
-		// every section, the ones not theirs marked.
 		sectionMine := forMe(category.Rules)
 		if !sectionMine && !admin {
 			continue
@@ -382,8 +312,6 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 			shown.ForMe = &no
 		}
 		for _, link := range category.Links {
-			// A link kept to some people goes to them; an admin gets every
-			// link, the ones not theirs marked, the way hidden ones are.
 			mine := forMe(link.Rules)
 			if ((link.Visible && mine) || admin) && !linksInto(hidden, link.URL) {
 				if !mine {
@@ -396,29 +324,16 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 		categories = append(categories, shown)
 	}
 	view := struct {
-		Categories []Category `json:"categories"`
-		User       user       `json:"user"`
-		// ImageSources lists where the link editor's picture search can
-		// look, first first.
-		ImageSources []string        `json:"imageSources"`
-		Alerts       alerts          `json:"alerts"`
-		Upcoming     []calendar.Card `json:"upcoming"`
-		// UpcomingCalendar is the saved calendar Upcoming is read under, and
-		// every saved calendar of theirs for the picker; absent with none.
-		UpcomingCalendar *Upcoming `json:"upcomingCalendar,omitempty"`
-		// Calendar fills the rail's month and day card: the month now is in.
-		Calendar Month `json:"calendar"`
-		// Apps fills the apps section: the community apps this person sees
-		// - and, for an admin, the rest, each marked not theirs and carrying
-		// its visibility for the editor.
-		Apps []appView `json:"apps"`
-		// Options is what the rule editors offer this admin: the
-		// classrooms, grades, their tags and Magic Tags, the roles and
-		// relations (filter.OptionsFor); sent to admins alone.
-		Options *filter.Options `json:"options,omitempty"`
-		// TagLabels names the tags in every rule sent, by the rule's owner
-		// and then the tag, as that owner reads them; sent to admins alone.
-		TagLabels map[string]map[string]string `json:"tagLabels,omitempty"`
+		Categories       []Category        `json:"categories"`
+		User             user              `json:"user"`
+		ImageSources     []string          `json:"imageSources"`
+		Alerts           alerts            `json:"alerts"`
+		Upcoming         []calendar.Card   `json:"upcoming"`
+		UpcomingCalendar *Upcoming         `json:"upcomingCalendar,omitempty"`
+		Calendar         Month             `json:"calendar"`
+		Apps             []appView         `json:"apps"`
+		Options          *filter.Options   `json:"options,omitempty"`
+		TagLabels        map[string]string `json:"tagLabels,omitempty"`
 	}{
 		Categories:   categories,
 		User:         user{Email: email, Initial: strings.ToUpper(email[:1]), PhotoURL: a.heroPhoto(email), IsAdmin: admin},
@@ -429,7 +344,7 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 	if admin {
 		options := filter.OptionsFor(a.directory.Sources(), email)
 		view.Options = &options
-		view.TagLabels = a.tagLabels(categories, view.Apps)
+		view.TagLabels = a.tagLabels(categories, view.Apps, email)
 	}
 	ahead := a.upcoming(email, "")
 	view.Upcoming = ahead.Events
@@ -443,21 +358,14 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// tagLabels names the tags of the rules on the sections, links and apps
-// sent, by each rule's owner (filter.Sources.TagLabels).
-func (a app) tagLabels(categories []Category, apps []appView) map[string]map[string]string {
+func (a app) tagLabels(categories []Category, apps []appView, viewer string) map[string]string {
 	sources := a.directory.Sources()
-	out := map[string]map[string]string{}
+	admins := a.cache.Admins()
+	out := map[string]string{}
 	add := func(rules []filter.Rule) {
 		for _, r := range rules {
-			if len(r.Tags) == 0 {
-				continue
-			}
-			if out[r.Owner] == nil {
-				out[r.Owner] = map[string]string{}
-			}
-			for i, label := range sources.TagLabels(r) {
-				out[r.Owner][r.Tags[i]] = label
+			for i, label := range sources.TagLabels(r, admins, viewer) {
+				out[r.Tags[i]] = label
 			}
 		}
 	}
@@ -475,11 +383,6 @@ func (a app) tagLabels(categories []Category, apps []appView) map[string]map[str
 	return out
 }
 
-// hiddenHosts is the set of hosts a link into one of the apps has on
-// the requesting page's own tier, mirroring appOrigin in web/common/toolbar.js:
-// from home.heliosiandev.com the directory is who.heliosiandev.com, from
-// heliosian.com (or www) it is who.heliosian.com, and a local port carries
-// over. hca.<tier> is the volunteer portal's older name and counts as team's.
 func hiddenHosts(pageHost string, apps []string) map[string]bool {
 	if len(apps) == 0 {
 		return nil
@@ -495,7 +398,6 @@ func hiddenHosts(pageHost string, apps []string) map[string]bool {
 	return hidden
 }
 
-// linksInto says whether a link's URL opens one of the hosts.
 func linksInto(hosts map[string]bool, link string) bool {
 	if len(hosts) == 0 {
 		return false
@@ -522,9 +424,6 @@ func visibleCell(visible bool) string {
 	return "No"
 }
 
-// commit rebuilds the model over the proposed tables first, so a change the
-// sheet rules reject never reaches the sheet, then applies it in memory and
-// queues the writes behind every earlier one.
 func (a app) commit(ctx context.Context, w http.ResponseWriter, tables *Tables, flush func() error) bool {
 	model, err := BuildModel(tables, a.cache.images)
 	if err != nil {
@@ -550,23 +449,29 @@ func (a app) logChange(actor, action, kind string, cells map[string]string) erro
 	})
 }
 
-// importImage stores a picked search result the way an upload is stored.
 func (a app) importImage(w http.ResponseWriter, r *http.Request) {
 	a.search.ServeImport(w, r, a.store, imageFolder, maxImageSize)
 }
 
-// checkRules reads an editor's Who sees it: each rule tidied and checked
-// as a group's would be (filter.Check), its classrooms and grades the
-// directory's, and its owner - whose tags it reads - the admin saving it
-// when it has none. A rule another admin wrote keeps its owner.
-func (a app) checkRules(rules []filter.Rule, actor string) ([]filter.Rule, error) {
+func rulesOf(model *Model, key string) []filter.Rule {
+	for _, c := range model.Categories {
+		if thingCategory+c.Title == key {
+			return c.Rules
+		}
+		for _, l := range c.Links {
+			if thingLink+l.Title == key {
+				return l.Rules
+			}
+		}
+	}
+	return model.Visibility[strings.TrimPrefix(key, thingApp)].Rules
+}
+
+func (a app) checkRules(existing, rules []filter.Rule, actor string) ([]filter.Rule, error) {
 	options := filter.OptionsFor(a.directory.Sources(), actor)
 	out := make([]filter.Rule, 0, len(rules))
 	for _, r := range rules {
 		r = filter.Clean(r)
-		if r.Owner == "" {
-			r.Owner = actor
-		}
 		if err := filter.Check(r); err != nil {
 			return nil, err
 		}
@@ -582,11 +487,12 @@ func (a app) checkRules(rules []filter.Rule, actor string) ([]filter.Rule, error
 		}
 		out = append(out, r)
 	}
+	if err := filter.Writable(a.directory.Sources(), actor, a.cache.Admins(), existing, out); err != nil {
+		return nil, err
+	}
 	return out, nil
 }
 
-// audienceOptions serves /api/apps/audience/options: what the rule
-// editors offer the admin asking.
 func (a app) audienceOptions(w http.ResponseWriter, r *http.Request) {
 	email, ok := a.requireAdmin(w, r)
 	if !ok {
@@ -598,27 +504,25 @@ func (a app) audienceOptions(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// audiencePreview serves /api/apps/audience/preview: who some rules pick
-// out as the directory stands - how many, the first few by name, and how
-// many each rule touches - so an editor reads back what it is saying.
 func (a app) audiencePreview(w http.ResponseWriter, r *http.Request) {
 	email, ok := a.requireAdmin(w, r)
 	if !ok {
 		return
 	}
 	var body struct {
+		Thing string        `json:"thing"`
 		Rules []filter.Rule `json:"rules"`
 	}
 	if !decode(w, r, &body) {
 		return
 	}
-	rules, err := a.checkRules(body.Rules, email)
+	rules, err := a.checkRules(rulesOf(a.cache.Model(), body.Thing), body.Rules, email)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	sources := a.directory.Sources()
-	list := filter.List{Rules: rules}
+	list := filter.List{Rules: rules, Editors: a.cache.Admins()}
 	members := filter.Members(list, sources)
 	names := []string{}
 	for _, m := range members {
@@ -636,7 +540,6 @@ func (a app) audiencePreview(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// writeAudience replaces a thing's rows on the Audience tab.
 func (a app) writeAudience(key string, rules []filter.Rule) error {
 	if err := a.writer.Delete(appName, audienceTab, map[string]string{"Thing": key}); err != nil {
 		return err
@@ -653,15 +556,14 @@ func (a app) saveLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Original    string `json:"original"`
-		Title       string `json:"title"`
-		Description string `json:"description"`
-		URL         string `json:"url"`
-		Image       string `json:"image"`
-		Category    string `json:"category"`
-		Visible     bool   `json:"visible"`
-		// Rules keep the link to some people; none for everyone.
-		Rules []filter.Rule `json:"rules"`
+		Original    string        `json:"original"`
+		Title       string        `json:"title"`
+		Description string        `json:"description"`
+		URL         string        `json:"url"`
+		Image       string        `json:"image"`
+		Category    string        `json:"category"`
+		Visible     bool          `json:"visible"`
+		Rules       []filter.Rule `json:"rules"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -671,7 +573,7 @@ func (a app) saveLink(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "title is required and fields must be short", http.StatusBadRequest)
 		return
 	}
-	rules, err := a.checkRules(body.Rules, actor)
+	rules, err := a.checkRules(rulesOf(a.cache.Model(), thingLink+body.Original), body.Rules, actor)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -686,7 +588,6 @@ func (a app) saveLink(w http.ResponseWriter, r *http.Request) {
 		cells["Added By"] = actor
 		cells["Added"] = time.Now().Format(addedFormat)
 	}
-	// The rules go under the title the link will have; a rename moves them.
 	tables := a.cache.Tables().withRow(linksTab, body.Original, cells)
 	if body.Original != "" && body.Original != title {
 		tables = tables.withAudience(thingLink+body.Original, nil)
@@ -749,15 +650,12 @@ func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Original string `json:"original"`
-		Title    string `json:"title"`
-		Emoji    string `json:"emoji"`
-		Style    string `json:"style"`
-		// Max is a count, or blank for no limit; it arrives as text since that
-		// is what the sheet holds and what an empty field sends.
-		Max string `json:"max"`
-		// Rules keep the section to some people; none for everyone.
-		Rules []filter.Rule `json:"rules"`
+		Original string        `json:"original"`
+		Title    string        `json:"title"`
+		Emoji    string        `json:"emoji"`
+		Style    string        `json:"style"`
+		Max      string        `json:"max"`
+		Rules    []filter.Rule `json:"rules"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -767,7 +665,7 @@ func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "title is required and must be short", http.StatusBadRequest)
 		return
 	}
-	rules, err := a.checkRules(body.Rules, actor)
+	rules, err := a.checkRules(rulesOf(a.cache.Model(), thingCategory+body.Original), body.Rules, actor)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -782,9 +680,6 @@ func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	// The events section keeps its style: it is the one section the portal
-	// fills, and can only be one thing. Edited while it is still synthesized,
-	// it gets its row now - first, where the page has been showing it.
 	virtual := a.virtualEvents(body.Original)
 	if virtual {
 		style = StyleEvents
@@ -794,9 +689,6 @@ func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "the events section is the one the page already has", http.StatusBadRequest)
 		return
 	}
-	// The apps section holds the community apps, not links, and there is
-	// only one: a category becomes it once its links are gone, and no other
-	// can while it stands.
 	if style == StyleApps {
 		if other := a.titleOf(StyleApps); other != "" && other != body.Original {
 			http.Error(w, fmt.Sprintf("%q is already the community apps section", other), http.StatusBadRequest)
@@ -823,7 +715,6 @@ func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 	} else {
 		tables = a.cache.Tables().withRow(categoriesTab, body.Original, cells)
 	}
-	// A rename carries every link along, since links name their category by title.
 	if body.Original != "" && body.Original != title {
 		links := cloneRows(tables.Links)
 		for _, row := range links {
@@ -833,7 +724,6 @@ func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 		}
 		tables.Links = links
 	}
-	// The rules go under the title the section will have; a rename moves them.
 	if body.Original != "" && body.Original != title {
 		tables = tables.withAudience(thingCategory+body.Original, nil)
 	}
@@ -883,8 +773,6 @@ func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// reorderCategories moves rows rather than rewriting them: the sheet's row
-// order is the display order, so this is the only way to reorder from the app.
 func (a app) reorderCategories(w http.ResponseWriter, r *http.Request) {
 	actor, ok := a.requireAdmin(w, r)
 	if !ok {
@@ -897,9 +785,6 @@ func (a app) reorderCategories(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tables := a.cache.Tables()
-	// Moving the events section while it is still synthesized is what writes
-	// its row: appended with its standing name and mark, then ordered with
-	// the rest.
 	var materialized []string
 	for _, title := range body.Titles {
 		if a.virtualEvents(title) {
@@ -944,10 +829,6 @@ func (a app) reorderCategories(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// moveLink shifts a link one place among its category's links - the
-// arrows on its card in Super Admin Mode. The tab's row order is the
-// display order, so the link's row and its neighbour's in the same
-// category trade places, and the tab is rewritten in the new order.
 func (a app) moveLink(w http.ResponseWriter, r *http.Request) {
 	actor, ok := a.requireAdmin(w, r)
 	if !ok {
@@ -971,7 +852,6 @@ func (a app) moveLink(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unknown link "+body.Title, http.StatusBadRequest)
 		return
 	}
-	// The neighbour is the next row of the same category in that direction.
 	to := -1
 	for i := at + body.By; i >= 0 && i < len(rows); i += body.By {
 		if rows[i]["Category"] == rows[at]["Category"] {
@@ -1035,8 +915,6 @@ func (a app) deleteCategory(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// styleOf is a category's style as the page has it, "" for no such category
-// - the synthesized events section included.
 func (a app) styleOf(title string) string {
 	for _, c := range a.cache.Model().Categories {
 		if c.Title == title {
@@ -1046,7 +924,6 @@ func (a app) styleOf(title string) string {
 	return ""
 }
 
-// titleOf is the title of the category with a style, "" for none.
 func (a app) titleOf(style string) string {
 	for _, c := range a.cache.Model().Categories {
 		if c.Style == style {
@@ -1056,8 +933,6 @@ func (a app) titleOf(style string) string {
 	return ""
 }
 
-// virtualEvents says whether title names the events section while it is
-// still synthesized, with no row of its own yet.
 func (a app) virtualEvents(title string) bool {
 	for _, c := range a.cache.Model().Categories {
 		if c.Title == title {
@@ -1075,8 +950,6 @@ func rowTitles(rows []map[string]string) []string {
 	return out
 }
 
-// uploadImage stores a content-addressed image and returns the name the sheet
-// should record; the link or category save that follows references it.
 func (a app) uploadImage(w http.ResponseWriter, r *http.Request) {
 	if _, ok := a.requireAdmin(w, r); !ok {
 		return
@@ -1122,15 +995,13 @@ func (a app) adminState(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	view := struct {
-		Email    string   `json:"email"`
-		HasStore bool     `json:"hasStore"`
-		Admins   []string `json:"admins"`
-		// Apps are the community apps the App Visibility panel has a card
-		// for, each with its mode and list; People is who its pickers offer.
+		Email        string          `json:"email"`
+		HasStore     bool            `json:"hasStore"`
+		Admins       []string        `json:"admins"`
 		Apps         []AppVisibility `json:"apps"`
 		People       []Person        `json:"people"`
 		IsSuperAdmin bool            `json:"isSuperAdmin"`
-	}{Email: email, HasStore: a.store != nil, Admins: a.cache.Admins(a.superAdmins()), Apps: a.cache.AppVisibilities(), People: a.people(), IsSuperAdmin: a.cache.IsSuperAdmin(email)}
+	}{Email: email, HasStore: a.store != nil, Admins: a.cache.Admins(), Apps: a.cache.AppVisibilities(), People: a.people(), IsSuperAdmin: a.cache.IsSuperAdmin(email)}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
 		slog.ErrorContext(r.Context(), "encode apps admin state", "error", err)
@@ -1148,7 +1019,6 @@ func (a app) setAdmins(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	// Super admins show in the merged list but never round-trip into the tab.
 	super := map[string]bool{}
 	for _, e := range a.superAdmins() {
 		super[e] = true
@@ -1192,26 +1062,18 @@ func (a app) setAdmins(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// setVisibility sets one app's name, tagline, mode and list together, the
-// way the admin page edits them: the switch, either field and every add or
-// remove save at once. The list is written whichever the mode, so a list
-// drawn up while the app is everyone's is there when the switch flips. The
-// row's place in the order is kept (setAppOrder moves it).
 func (a app) setVisibility(w http.ResponseWriter, r *http.Request) {
 	actor, ok := a.requireAdmin(w, r)
 	if !ok {
 		return
 	}
 	var body struct {
-		App        string   `json:"app"`
-		Visibility string   `json:"visibility"`
-		Emails     []string `json:"emails"`
-		Tagline    string   `json:"tagline"`
-		Name       string   `json:"name"`
-		// Rules are who sees the app besides the people named, while the
-		// mode is list; absent - the admin page's panel, which does not
-		// edit them - the app's stand.
-		Rules *[]filter.Rule `json:"rules"`
+		App        string         `json:"app"`
+		Visibility string         `json:"visibility"`
+		Emails     []string       `json:"emails"`
+		Tagline    string         `json:"tagline"`
+		Name       string         `json:"name"`
+		Rules      *[]filter.Rule `json:"rules"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -1239,7 +1101,7 @@ func (a app) setVisibility(w http.ResponseWriter, r *http.Request) {
 	was := visibilityOf(a.cache.Model(), app)
 	rules := was.Rules
 	if body.Rules != nil {
-		checked, err := a.checkRules(*body.Rules, actor)
+		checked, err := a.checkRules(was.Rules, *body.Rules, actor)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -1266,9 +1128,6 @@ func (a app) setVisibility(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// setAppOrder takes the whole order at once - every app's key, as the admin
-// page has them after a move - and numbers each row from one, so the switch
-// and the front page follow.
 func (a app) setAppOrder(w http.ResponseWriter, r *http.Request) {
 	_, ok := a.requireAdmin(w, r)
 	if !ok {

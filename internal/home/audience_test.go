@@ -15,8 +15,6 @@ func (noFiles) Has(string) (bool, error) { return false, nil }
 
 func (noFiles) Prefetch([]string) error { return nil }
 
-// sampleDirectory is the sample community, read the way the server reads it
-// for every audience: the directory alone, no tags.
 type sampleDirectory struct{ model *who.Model }
 
 func (d sampleDirectory) Sources() filter.Sources {
@@ -36,13 +34,6 @@ func directoryOf(t *testing.T) sampleDirectory {
 	return sampleDirectory{model}
 }
 
-// An audience is the Audience tab's rules for a thing, read as a group's
-// are: a link or a section with rules goes to the people they pick out and
-// to nobody else, one with none to everyone; an app narrowed to a list goes
-// to the people named and the ones its rules pick out. The sample sheet
-// keeps the Parent Portal to parents, the Staff Room to staff, one chat to
-// a classroom, one to the parents of two classrooms, the Chats section to
-// parents and staff, and the celebration to two people and the Jays parents.
 func TestAudienceIsAListOfRules(t *testing.T) {
 	c := sampleCache(t)
 	c.directory = directoryOf(t)
@@ -56,7 +47,7 @@ func TestAudienceIsAListOfRules(t *testing.T) {
 			links[l.Title] = l
 		}
 	}
-	if got := links["Hawks and Falcons Chat"].Rules; len(got) != 1 || got[0].Kind != filter.KindInclude || got[0].Roles[0] != "Parent" || len(got[0].Classrooms) != 2 || got[0].Owner == "" {
+	if got := links["Hawks and Falcons Chat"].Rules; len(got) != 1 || got[0].Kind != filter.KindInclude || got[0].Roles[0] != "Parent" || len(got[0].Classrooms) != 2 {
 		t.Fatalf("the chat's rules = %+v", got)
 	}
 	const (
@@ -95,9 +86,7 @@ func TestAudienceIsAListOfRules(t *testing.T) {
 	if hidden := c.HiddenApps(sam); !slices.Contains(hidden, "celebrate") {
 		t.Errorf("a student sees the celebration: %v", hidden)
 	}
-	// Saving replaces a thing's rows whole, and a rule that says nothing,
-	// or names a role the filter has no such thing as, refuses the load.
-	tables := c.Tables().withAudience(thingLink+"Directory", []filter.Rule{{Kind: filter.KindExclude, Roles: []string{"Student"}, Owner: jordan}})
+	tables := c.Tables().withAudience(thingLink+"Directory", []filter.Rule{{Kind: filter.KindExclude, Roles: []string{"Student"}}})
 	model, err := BuildModel(tables, noImages{})
 	if err != nil {
 		t.Fatal(err)
@@ -106,8 +95,9 @@ func TestAudienceIsAListOfRules(t *testing.T) {
 		t.Errorf("the Directory's rules after a save = %+v", got)
 	}
 	for _, bad := range []map[string]string{
-		{"Thing": "link:Directory", "Kind": "include", "Roles": "Teachers", "Owner": jordan},
-		{"Thing": "link:Directory", "Kind": "include", "Owner": jordan},
+		{"Thing": "link:Directory", "Kind": "include", "Roles": "Teachers"},
+		{"Thing": "link:Directory", "Kind": "include"},
+		{"Thing": "link:Directory", "Kind": "include", "Tags": "Carpool"},
 	} {
 		tables := c.Tables().withAudience(thingLink+"Directory", nil)
 		tables.Audience = append(tables.Audience, bad)

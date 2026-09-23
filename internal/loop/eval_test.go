@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"heliosian/internal/data"
+	"heliosian/internal/filter"
 	"heliosian/internal/loop"
 	"heliosian/internal/who"
 )
@@ -50,29 +51,34 @@ func sample(t *testing.T) (loop.Sources, *who.Tables) {
 	}, tables
 }
 
-func TestSharedTagsReadAsTheirManager(t *testing.T) {
+func TestSharedTagsReadForTheManagers(t *testing.T) {
 	s, tables := sample(t)
-	key := loop.SharedKey("abena.osei@heliosschool.org", "Book Club")
+	key := filter.TagKey("abena.osei@heliosschool.org", "Book Club")
 	got := members(t, s, rule(loop.KindInclude, func(r *loop.Rule) { r.Tags = []string{key} }))
 	want := who.TagsOf(tables.Tags, s.Directory, "abena.osei@heliosschool.org")["Book Club"]
 	if len(want) == 0 || !slices.Equal(got, want) {
 		t.Fatalf("book club: got %v, want %v", got, want)
 	}
-	unshared := members(t, s, rule(loop.KindInclude, func(r *loop.Rule) { r.Tags = []string{key}; r.Owner = "colin.quinn@heliosschool.org" }))
+	unshared := membersOf(t, s, []string{"colin.quinn@heliosschool.org"}, rule(loop.KindInclude, func(r *loop.Rule) { r.Tags = []string{key} }))
 	if len(unshared) != 0 {
-		t.Fatalf("someone the tag is not shared with read it: %v", unshared)
+		t.Fatalf("a group whose managers the tag is not shared with read it: %v", unshared)
 	}
 }
 
 func rule(kind string, edit func(r *loop.Rule)) loop.Rule {
-	r := loop.Rule{Kind: kind, Owner: jordan}
+	r := loop.Rule{Kind: kind}
 	edit(&r)
 	return r
 }
 
 func members(t *testing.T, s loop.Sources, rules ...loop.Rule) []string {
 	t.Helper()
-	g := loop.Normalize(loop.Group{Name: "test", Title: "Test", Managers: []string{jordan}, Rules: rules})
+	return membersOf(t, s, []string{jordan}, rules...)
+}
+
+func membersOf(t *testing.T, s loop.Sources, managers []string, rules ...loop.Rule) []string {
+	t.Helper()
+	g := loop.Normalize(loop.Group{Name: "test", Title: "Test", Managers: managers, Rules: rules})
 	if err := loop.CheckGroup(g); err != nil {
 		t.Fatal(err)
 	}
@@ -136,9 +142,6 @@ func TestFamilyWidensAClassroom(t *testing.T) {
 			t.Fatalf("%s is not a student", email)
 		}
 	}
-	// Family widens, then the roles keep only their kind - as Who?'s tag
-	// page reads the same choices - so Students plus their parents and
-	// siblings is the siblings and never the parents...
 	widened := members(t, s, rule(loop.KindInclude, func(r *loop.Rule) { base(r); r.Family = []string{"Parents", "Siblings"} }))
 	if !slices.Contains(widened, "nico.torres@heliosschool.org") {
 		t.Fatalf("siblings: %v", widened)
@@ -148,8 +151,6 @@ func TestFamilyWidensAClassroom(t *testing.T) {
 			t.Fatalf("%s is not a student, yet the rule keeps students", email)
 		}
 	}
-	// ...and Parents in Hummingbirds plus their parents is the parents of
-	// the Hummingbirds children, none of the children.
 	parents := members(t, s, rule(loop.KindInclude, func(r *loop.Rule) {
 		r.Roles = []string{"Parent"}
 		r.Classrooms = []string{"Hummingbirds"}
@@ -158,7 +159,6 @@ func TestFamilyWidensAClassroom(t *testing.T) {
 	if !slices.Contains(parents, "elena.torres@heliosschool.org") || slices.Contains(parents, "mia.torres@heliosschool.org") {
 		t.Fatalf("parents of hummingbirds: %v", parents)
 	}
-	// With no role picked, everyone reached stays.
 	all := members(t, s, rule(loop.KindInclude, func(r *loop.Rule) { r.Classrooms = []string{"Hummingbirds"}; r.Family = []string{"Parents"} }))
 	if !slices.Contains(all, "elena.torres@heliosschool.org") || !slices.Contains(all, "mia.torres@heliosschool.org") {
 		t.Fatalf("hummingbirds and parents: %v", all)
@@ -207,14 +207,14 @@ func TestExcludeRulesSubtract(t *testing.T) {
 
 func TestTagsReadTheOwnersOwn(t *testing.T) {
 	s, tables := sample(t)
-	got := members(t, s, rule(loop.KindInclude, func(r *loop.Rule) { r.Tags = []string{"Carpool"} }))
+	got := members(t, s, rule(loop.KindInclude, func(r *loop.Rule) { r.Tags = []string{filter.TagKey(jordan, "Carpool")} }))
 	want := who.TagsOf(tables.Tags, s.Directory, jordan)["Carpool"]
 	if !slices.Equal(got, want) {
 		t.Fatalf("carpool: got %v, want %v", got, want)
 	}
-	other := members(t, s, rule(loop.KindInclude, func(r *loop.Rule) { r.Tags = []string{"Carpool"}; r.Owner = "asha.chandra@heliosschool.org" }))
+	other := members(t, s, rule(loop.KindInclude, func(r *loop.Rule) { r.Tags = []string{filter.TagKey("asha.chandra@heliosschool.org", "Carpool")} }))
 	if len(other) != 0 {
-		t.Fatalf("another owner's reading of the tag found %v", other)
+		t.Fatalf("another owner's tag of the same name found %v", other)
 	}
 }
 
@@ -355,9 +355,6 @@ func TestWhoMayPost(t *testing.T) {
 	}
 }
 
-// A suggested group starts with one rule, anyone tagged in the Magic Tag
-// plus their parents: everyone on the list is on the group whatever their
-// role, and a student on it brings their parents along.
 func TestSuggestedGroupRuleIsTheListPlusStudentsParents(t *testing.T) {
 	s, _ := sample(t)
 	lists := s.Lists
@@ -371,9 +368,6 @@ func TestSuggestedGroupRuleIsTheListPlusStudentsParents(t *testing.T) {
 	}
 }
 
-// Each rule's count is who it touches: an include rule's matches, and the
-// people an exclude rule takes off the group - not those it would match
-// who were never on it.
 func TestRuleCountsSayWhoEachRuleTouches(t *testing.T) {
 	s, _ := sample(t)
 	g := loop.Normalize(loop.Group{Name: "test", Title: "Test", Managers: []string{jordan}, Rules: []loop.Rule{
@@ -382,8 +376,6 @@ func TestRuleCountsSayWhoEachRuleTouches(t *testing.T) {
 		rule(loop.KindExclude, func(r *loop.Rule) { r.Search = "torres" }),
 	}})
 	counts := loop.RuleCounts(g, s)
-	// party:p1 holds Abena Osei and Colin Quinn; "osei" takes Abena off;
-	// "torres" matches people who were never on the group.
 	if !slices.Equal(counts, []int{2, 1, 0}) {
 		t.Fatalf("counts %v", counts)
 	}

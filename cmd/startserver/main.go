@@ -58,6 +58,9 @@ func main() {
 	wait := flag.String("wait", "body", "css selector that must be visible before capturing, for --capture")
 	width := flag.Int("width", 0, "viewport width for --capture (default 1280)")
 	height := flag.Int("height", 0, "viewport height for --capture (default 800)")
+	click := flag.String("click", "", "css selectors to click once --wait is visible, separated by |, for --capture")
+	settle := flag.Duration("settle", 0, "how long to wait after the last click before capturing, for --capture")
+	as := flag.String("as", "", "view as this directory address through Spoof Mode, for --capture")
 	flag.Parse()
 	slog.SetDefault(logging.Console())
 
@@ -67,7 +70,11 @@ func main() {
 	case *detach:
 		detachReal(*email)
 	case *capturePath != "":
-		captureOnce(capture.Options{URL: *capturePath, Wait: *wait, Width: *width, Height: *height, Cookie: "heliosian-quan-shown=1"}, *out)
+		cookie := "heliosian-quan-shown=1"
+		if *as != "" {
+			cookie += "; spoof=" + auth.SpoofToken([]byte("sample"), sampleUser, *as, time.Now().Add(time.Hour))
+		}
+		captureOnce(capture.Options{URL: *capturePath, Wait: *wait, Width: *width, Height: *height, Cookie: cookie, Click: *click, Settle: *settle}, *out)
 	default:
 		app.Serve(sampleServer())
 	}

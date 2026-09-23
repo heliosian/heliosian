@@ -14,37 +14,15 @@ import (
 	"heliosian/internal/filter"
 )
 
-// An invite group is a rule on a guest list - a filter as Helios Who?'s
-// filters have it, the same rule Loop's groups and Heliosian's Visibility
-// are made of, read by internal/filter - whose matches go on the list
-// when it is added and whenever someone new comes to match it: a family
-// joining the classroom, a ticket sold on the party. A newcomer lands
-// pending, for the host to send, unless the group's Auto is on and its
-// invites have gone out, when they are sent theirs at once. The Invite
-// Groups tab holds them, one row per group, and the people it
-// adds carry `group:<id>` as their Via. The sweep runs when a host opens
-// the list and on its own every few minutes.
-
-// ViaGroup begins the Via of someone a group put on the list.
 const ViaGroup = "group:"
 
-// ViaInvited is the Via of someone a guest, not a host, invited.
 const ViaInvited = "invited"
 
-// sweepEvery is how often the auto groups are read against the directory
-// on their own; grace is how long someone must have matched a group before
-// it puts them on the list - so a tag given by mistake can be taken back
-// before anyone is invited on the strength of it.
 const (
 	sweepEvery = 5 * time.Minute
 	grace      = 5 * time.Minute
 )
 
-// A matchClock is when each person was first seen matching each auto
-// group, by event, group and address, for the grace: someone goes on
-// only once they have matched for the whole of it, and is forgotten the
-// moment they stop. It lives in memory, so a restart starts the clock
-// again - the safe way round.
 type matchClock struct {
 	mu    sync.Mutex
 	first map[string]time.Time
@@ -54,8 +32,6 @@ func (c *matchClock) key(event, group, email string) string {
 	return event + "\x00" + group + "\x00" + email
 }
 
-// ripe says whether a person has matched a group for the grace, noting
-// them now if they are new.
 func (c *matchClock) ripe(event, group, email string, at time.Time) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -71,7 +47,6 @@ func (c *matchClock) ripe(event, group, email string, at time.Time) bool {
 	return !at.Before(seen.Add(grace))
 }
 
-// keep forgets everyone on a group but those still matching.
 func (c *matchClock) keep(event, group string, matching []string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -83,24 +58,15 @@ func (c *matchClock) keep(event, group string, matching []string) {
 	}
 }
 
-// InviteGroup is one rule on an event's guest list.
 type InviteGroup struct {
 	ID      string      `json:"id"`
 	Rule    filter.Rule `json:"rule"`
 	Auto    bool        `json:"auto"`
 	AddedBy string      `json:"addedBy"`
 	Added   string      `json:"added"`
-	// Sent is when the group's people were first sent the invitation:
-	// until then a newcomer lands pending whatever Auto says, so a host
-	// sends each group its invites by hand the first time.
-	Sent string `json:"sent"`
-	// Removed is whoever a host took off the list after the group put
-	// them on: the group does not put them back, however well they still
-	// match, until the host adds them again by hand.
-	Removed []string `json:"removed,omitempty"`
-	// Count is how many people on the list the group put there, for the
-	// view.
-	Count int `json:"count"`
+	Sent    string      `json:"sent"`
+	Removed []string    `json:"removed,omitempty"`
+	Count   int         `json:"count"`
 }
 
 func (b *builder) groups(rows []map[string]string) {
@@ -121,7 +87,6 @@ func (b *builder) groups(rows []map[string]string) {
 	}
 }
 
-// splitEmails reads a cell of addresses, comma-separated.
 func splitEmails(cell string) []string {
 	out := []string{}
 	for _, part := range strings.Split(cell, ",") {
@@ -132,7 +97,6 @@ func splitEmails(cell string) []string {
 	return out
 }
 
-// GroupOf is one group on one event, or nil.
 func (m *Model) GroupOf(id, gid string) *InviteGroup {
 	for i := range m.Groups[id] {
 		if m.Groups[id][i].ID == gid {
@@ -142,15 +106,12 @@ func (m *Model) GroupOf(id, gid string) *InviteGroup {
 	return nil
 }
 
-// checkRule is a rule as a host sent it, cleaned and checked as Heliosian
-// checks its audiences: an include rule, its owner the host, its grades
-// and classrooms ones the directory has.
-func (a app) checkRule(r filter.Rule, actor string) (filter.Rule, error) {
+func (a app) checkRule(r filter.Rule, actor string, e *Event) (filter.Rule, error) {
 	if a.sources == nil {
 		return r, fmt.Errorf("groups are not set up")
 	}
 	r = filter.Clean(r)
-	r.Kind, r.Owner = filter.KindInclude, actor
+	r.Kind = filter.KindInclude
 	if err := filter.Check(r); err != nil {
 		return r, err
 	}
@@ -165,17 +126,18 @@ func (a app) checkRule(r filter.Rule, actor string) (filter.Rule, error) {
 			return r, fmt.Errorf("the directory has no classroom %s", c)
 		}
 	}
+	if err := filter.Writable(a.sources(), actor, a.hostsOf(e), nil, []filter.Rule{r}); err != nil {
+		return r, err
+	}
 	return r, nil
 }
 
-// members is everyone a group's rule picks out as the directory stands,
-// each resolved to the address the directory keys them by.
-func (a app) members(g InviteGroup) []string {
+func (a app) members(e *Event, g InviteGroup) []string {
 	if a.sources == nil {
 		return nil
 	}
 	out := []string{}
-	for _, m := range filter.Members(filter.List{Rules: []filter.Rule{g.Rule}}, a.sources()) {
+	for _, m := range filter.Members(filter.List{Rules: []filter.Rule{g.Rule}, Editors: a.hostsOf(e)}, a.sources()) {
 		if m = a.directory.Resolve(normalizeEmail(m)); m != "" && !slices.Contains(out, m) {
 			out = append(out, m)
 		}
@@ -183,11 +145,6 @@ func (a app) members(g InviteGroup) []string {
 	return a.ticketHolders(g, out)
 }
 
-// ticketHolders trims a party's group to the party's own people. Who?'s
-// party list carries whoever bought a ticket beside whoever holds one, so
-// that a message about the party reaches the parents; the guest list is
-// the ticket holders' and the hosts' alone - a student's parents hear
-// with their child and answer for them, without a place of their own.
 func (a app) ticketHolders(g InviteGroup, members []string) []string {
 	if a.parties == nil || len(g.Rule.Tags) != 1 || !strings.HasPrefix(g.Rule.Tags[0], "party:") {
 		return members
@@ -214,8 +171,6 @@ func (a app) ticketHolders(g InviteGroup, members []string) []string {
 	return out
 }
 
-// groupOptions is GET /api/calendar/invites/options: what the rule editor
-// offers this host - the classrooms, the grades, their own tags and lists.
 func (a app) groupOptions(w http.ResponseWriter, r *http.Request) {
 	if a.sources == nil {
 		http.Error(w, "groups are not set up", http.StatusNotFound)
@@ -228,23 +183,24 @@ func (a app) groupOptions(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// groupPreview is POST /api/calendar/invites/preview: who a rule picks
-// out as the directory stands - how many, and the first few by name - so
-// the editor reads back what it is saying.
 func (a app) groupPreview(w http.ResponseWriter, r *http.Request) {
-	actor, _ := a.who(r)
 	var body struct {
+		ID   string      `json:"id"`
 		Rule filter.Rule `json:"rule"`
 	}
 	if !decode(w, r, &body) {
 		return
 	}
-	rule, err := a.checkRule(body.Rule, actor)
+	actor, e, ok := a.hostedEvent(w, r, body.ID)
+	if !ok {
+		return
+	}
+	rule, err := a.checkRule(body.Rule, actor, e)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	members := a.members(InviteGroup{Rule: rule})
+	members := a.members(e, InviteGroup{Rule: rule})
 	names := []string{}
 	for _, m := range members {
 		if p, known := a.directory.Person(m); known && p.Name != "" {
@@ -264,9 +220,6 @@ func (a app) groupPreview(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// addGroup is POST /api/calendar/invites/group: a host putting a group
-// on the list - its rule kept, its matches added now, and added again as
-// they come.
 func (a app) addGroup(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		ID   string      `json:"id"`
@@ -280,7 +233,7 @@ func (a app) addGroup(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	rule, err := a.checkRule(body.Rule, actor)
+	rule, err := a.checkRule(body.Rule, actor, e)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -309,9 +262,6 @@ func (a app) addGroup(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]any{"group": g.ID, "added": added})
 }
 
-// setGroup is PUT /api/calendar/invites/group: a host turning a group's
-// Auto on or off. On takes whoever matches now without the grace; anyone
-// already pending under the group stays for the host to send.
 func (a app) setGroup(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		ID    string `json:"id"`
@@ -343,9 +293,6 @@ func (a app) setGroup(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// removeGroup is DELETE /api/calendar/invites/group: a host taking a
-// group off the list, and with it the people it added who have not been
-// sent their invite; those who have keep their place.
 func (a app) removeGroup(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		ID    string `json:"id"`
@@ -391,22 +338,13 @@ func (a app) removeGroup(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]int{"dropped": len(dropped)})
 }
 
-// fill puts a group's matches who are not on the list yet onto it, under
-// the group, and sends them their invites when the group's Auto is on and
-// its own have gone out - a group a host has just added, or started a
-// party's list with, puts its people on unsent, and the host sends them
-// from the Pending band; only after that does Auto send a newcomer theirs,
-// and with Auto off a newcomer waits pending for the host. A host's own doing - adding the group, turning Auto on - takes
-// everyone matching now; the sweep waits the grace for each newcomer,
-// so a tag given by mistake can be taken back first. It hands back how
-// many it added.
 func (a app) fill(ctx context.Context, e *Event, g InviteGroup, wait bool) int {
 	model := a.cache.Model()
 	at := now()
 	stamp := at.Format(DateTimeFormat)
 	rows := []map[string]string{}
 	emails := []string{}
-	matching := a.members(g)
+	matching := a.members(e, g)
 	if wait {
 		a.clock.keep(e.ID, g.ID, matching)
 	}
@@ -448,8 +386,6 @@ func (a app) fill(ctx context.Context, e *Event, g InviteGroup, wait bool) int {
 	return len(rows)
 }
 
-// sweepEvent reads one event's groups against the directory and fills in
-// whoever has newly matched for the grace.
 func (a app) sweepEvent(ctx context.Context, e *Event) {
 	if a.sources == nil || e == nil || e.end.Before(now()) {
 		return
@@ -461,9 +397,6 @@ func (a app) sweepEvent(ctx context.Context, e *Event) {
 	}
 }
 
-// sweep is sweepEvent over every event with groups, still to come. It
-// runs when a host opens a list (for that event alone), and on its own
-// every sweepEvery.
 func (a app) sweep(ctx context.Context) {
 	if a.sources == nil {
 		return
@@ -475,20 +408,12 @@ func (a app) sweep(ctx context.Context) {
 	}
 }
 
-// sweepLoop is the sweep on its own clock.
 func (a app) sweepLoop() {
 	for range time.Tick(sweepEvery) {
 		a.sweep(context.Background())
 	}
 }
 
-// startParty is POST /api/calendar/invites/start: a party's host, or an
-// HCA event's chair, starting its guest list from the other app's Create
-// Invite - the invitation made, and a group for the party's ticket
-// holders or the event's volunteers (its list in Who?, which the host has
-// as a host) with Auto-invite on, so the list follows the tickets or the
-// sign-ups from here on. A list started already is left as it is; the
-// group is added once.
 func (a app) startParty(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		ID string `json:"id"`
@@ -508,8 +433,6 @@ func (a app) startParty(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "groups are not set up", http.StatusNotFound)
 		return
 	}
-	// The party's ticket holders, or the HCA event's volunteers: the list
-	// Who? gives its hosts.
 	key := "party:" + e.linkedID()
 	if e.Source != SourceCelebrate {
 		key = "activity:" + e.linkedID()
@@ -522,7 +445,7 @@ func (a app) startParty(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	g := InviteGroup{ID: strings.ToLower(newEventID()), Rule: filter.Rule{Kind: filter.KindInclude, Tags: []string{key}, Owner: actor}, Auto: true, AddedBy: actor, Added: now().Format(DateTimeFormat)}
+	g := InviteGroup{ID: strings.ToLower(newEventID()), Rule: filter.Rule{Kind: filter.KindInclude, Tags: []string{key}}, Auto: true, AddedBy: actor, Added: now().Format(DateTimeFormat)}
 	row := map[string]string{"Event ID": e.ID, "Group ID": g.ID, "Auto": "Yes", "Added By": actor, "Added": g.Added, "Sent": "", "Removed": ""}
 	for k, v := range filter.RuleCells(g.Rule) {
 		row[k] = v

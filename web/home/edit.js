@@ -26,8 +26,6 @@ function setStatus(selector, message, error) {
   status.classList.toggle('error', Boolean(error));
 }
 
-// Image choices are uploaded on selection, so the save that follows only
-// needs to record the name the server handed back.
 async function uploadImage(file) {
   const body = new FormData();
   body.append('image', file);
@@ -51,9 +49,6 @@ function showImage(prefix, url) {
   }
 }
 
-// The link's picture, the way HCA-Team's editors pick one: a zone that takes a
-// drop or a click, a Choose and a Find an image button, and once there is a
-// picture, Crop (the freeform tool from web/common/crop.js) and Remove.
 function wireImagePicker(prefix, onChange) {
   const zone = document.querySelector(`#${prefix}-image-drop`);
   const file = document.querySelector(`#${prefix}-image-file`);
@@ -74,7 +69,6 @@ function wireImagePicker(prefix, onChange) {
     file.value = '';
   };
   file.addEventListener('change', () => upload(file.files[0]));
-  // The zone itself takes a click (anywhere but the buttons) and a drop.
   zone.addEventListener('click', e => {
     if (!e.target.closest('label, button')) {
       file.click();
@@ -118,23 +112,13 @@ function fillCategories(selected) {
   }
 }
 
-// Visibility: the rules that keep a link, a section or an app to some
-// people, written with the rule editor every app shares (rules.js) - the
-// same rules Loop's groups are made of, read by the same server code - and
-// read back as a sentence each, with who they pick out as the directory
-// stands, asked of the server as they change. No rules means everyone (or,
-// on an app's list, nobody more than the people named).
 const rules = rulesEditor({
   el, svg,
-  options: () => state.model.options || {classrooms: [], grades: [], tags: [], lists: [], shared: [], roles: ['Student', 'Parent', 'Staff'], relations: ['Parents', 'Children', 'Siblings']},
-  me: () => ({email: state.model.user.email}),
+  options: () => state.model.options || {classrooms: [], grades: [], tags: [], lists: [], roles: ['Student', 'Parent', 'Staff'], relations: ['Parents', 'Children', 'Siblings']},
   personName: () => '',
 });
 
-// audienceCard draws the rules into a mount and keeps the draft: the
-// sentences, an Add include rule and Add exclude rule, and the preview
-// line. It gives back the draft's rules on demand.
-function audienceCard(mount, initial, everyoneNote, withHead = true) {
+function audienceCard(mount, initial, everyoneNote, thing, withHead = true) {
   const draft = (initial || []).map(r => ({...r, roles: [...(r.roles || [])], classrooms: [...(r.classrooms || [])], grades: [...(r.grades || [])], tags: [...(r.tags || [])], tagLabels: tagLabelsOf(r), family: [...(r.family || [])]}));
   let opened = null;
   let counts = [];
@@ -164,7 +148,7 @@ function audienceCard(mount, initial, everyoneNote, withHead = true) {
         return;
       }
       try {
-        const res = await fetch('/api/apps/audience/preview', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({rules: said})});
+        const res = await fetch('/api/apps/audience/preview', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({thing, rules: said})});
         if (!res.ok) {
           throw new Error(await res.text());
         }
@@ -224,10 +208,6 @@ let linkAudience = null;
 let categoryAudience = null;
 let appAudience = null;
 
-// The link, category and app editors' tabs: the thing itself, and its
-// Visibility - Visible and the rules, the rules, or everyone and the list -
-// on a tab of its own, as Loop's group editor keeps its members apart from
-// its details.
 function showTab(prefix, key) {
   const strip = tabStrip([{key: 'details', label: 'Details'}, {key: 'visibility', label: 'Visibility'}], key, 2, k => showTab(prefix, k));
   document.querySelector(`#${prefix}-tabs`).replaceChildren(strip);
@@ -235,7 +215,6 @@ function showTab(prefix, key) {
   document.querySelector(`#${prefix}-tab-visibility`).hidden = key !== 'visibility';
 }
 
-// category is the one to start in for a new link (an add card names its own).
 export function openLinkEditor(link, category) {
   editingLink = link;
   pendingLinkImage = link ? link.image || '' : '';
@@ -244,7 +223,7 @@ export function openLinkEditor(link, category) {
   document.querySelector('#link-description').value = link ? link.description || '' : '';
   document.querySelector('#link-url').value = link ? link.url : '';
   document.querySelector('#link-visible').checked = link ? link.visible : true;
-  linkAudience = audienceCard(document.querySelector('#link-audience'), link ? link.rules : [], 'No rules means everyone.');
+  linkAudience = audienceCard(document.querySelector('#link-audience'), link ? link.rules : [], 'No rules means everyone.', 'link:' + (link ? link.title : ''));
   document.querySelector('#link-delete').hidden = !link;
   document.querySelector('#link-image-find').hidden = imageSources().length === 0;
   fillCategories(link ? link.category : category || linkCategoryTitles()[0]);
@@ -259,9 +238,6 @@ export function openCategoryEditor(category) {
   editingCategory = category;
   document.querySelector('#category-modal-title').textContent = category ? 'Edit Category' : 'Add Category';
   document.querySelector('#category-title').value = category ? category.title : '';
-  // The events section keeps its style and cannot be deleted; the rest of
-  // the editor - name and emoji - is its to use. The apps section is a
-  // style like any other, with a note on what it holds.
   const events = Boolean(category && category.style === 'events');
   document.querySelector('#category-style').value = category && !events ? category.style : 'tiles';
   document.querySelector('#category-style-field').hidden = events;
@@ -269,7 +245,7 @@ export function openCategoryEditor(category) {
   syncAppsNote();
   document.querySelector('#category-delete').hidden = !category || events;
   document.querySelector('#category-max').value = category && category.max ? String(category.max) : '';
-  categoryAudience = audienceCard(document.querySelector('#category-audience'), category ? category.rules : [], 'No rules means everyone; the whole section, links and all.');
+  categoryAudience = audienceCard(document.querySelector('#category-audience'), category ? category.rules : [], 'No rules means everyone; the whole section, links and all.', 'category:' + (category ? category.title : ''));
   setEmoji(category ? category.emoji || '' : '');
   setStatus('#category-status', '');
   showTab('category', 'details');
@@ -277,9 +253,6 @@ export function openCategoryEditor(category) {
   document.querySelector('#category-title').focus();
 }
 
-// The icon field: a grid of the marks a category can go by (categoryIcons
-// in dom.js), the one picked lit, None for none; the sheet's Emoji cell
-// keeps the choice as "icon:<name>".
 function setEmoji(value) {
   const input = document.querySelector('#category-emoji');
   input.value = value;
@@ -311,8 +284,6 @@ function closeModals() {
   appModal.hidden = true;
 }
 
-// moveLink shifts a link one place among its category's, by the arrows
-// on its card in Super Admin Mode; the server trades the rows.
 export async function moveLink(title, by) {
   try {
     await send('POST', '/api/apps/link/move', {title, by});
@@ -322,8 +293,6 @@ export async function moveLink(title, by) {
   }
 }
 
-// moveApp shifts an app one place in the switch's order - the arrows on
-// its card in Super Admin Mode - and saves the whole order at once.
 export async function moveApp(key, by) {
   const keys = (state.model.apps || []).map(a => a.key);
   const i = keys.indexOf(key);
@@ -340,11 +309,6 @@ export async function moveApp(key, by) {
   }
 }
 
-// The app editor, which Super Admin Mode opens from an app's card: its
-// name and tagline as the switch shows them, and who sees it - everyone,
-// or a list: the rules and the people named, as the sheet's Visibility
-// and Audience tabs have them, saved through /api/admin/visibility. The
-// directory's people come from the admin state, fetched the first time.
 let editingApp = null;
 let appMode = 'everyone';
 let appEmails = [];
@@ -375,7 +339,7 @@ export async function openAppEditor(app) {
   setStatus('#app-status', '');
   showTab('app', 'details');
   appModal.hidden = false;
-  appAudience = audienceCard(document.querySelector('#app-audience'), v.rules || [], 'The people these rules pick out. No rules and nobody named means nobody.', false);
+  appAudience = audienceCard(document.querySelector('#app-audience'), v.rules || [], 'The people these rules pick out. No rules and nobody named means nobody.', 'app:' + app.key, false);
   let people = [];
   try {
     const admin = await loadAdminState();
@@ -458,8 +422,6 @@ async function saveApp(e) {
   }
 }
 
-// The manager hands off to the category editor and stays open behind it, so
-// every save and delete re-renders this list rather than closing it.
 export function refreshCategoryManager() {
   if (!categoriesModal.hidden) {
     renderCategoryList();
@@ -633,7 +595,6 @@ async function deleteCategory() {
   }
 }
 
-// The apps note shows under the style menu while Community apps is chosen.
 function syncAppsNote() {
   const style = document.querySelector('#category-style');
   document.querySelector('#category-apps-note').hidden = style.closest('.field').hidden || style.value !== 'apps';
@@ -679,7 +640,6 @@ export function initEditing() {
       }
     });
   }
-  // Escape peels one layer: the editor first when it is over the manager.
   document.addEventListener('keydown', e => {
     if (e.key !== 'Escape') {
       return;
@@ -692,11 +652,6 @@ export function initEditing() {
   });
 }
 
-// The picture search, as HCA-Team's editors have it: a box, a grid of results
-// from whichever library is set up (Unsplash, Pexels and Pixabay, each behind
-// its key), and a click on one imports it through the server - which fetches
-// and stores the picture like an upload - and hands the stored name to
-// onPicked. SafeSearch is on server-side.
 const sourceNotes = {
   'Unsplash': 'Free to use under the Unsplash License; the photographer is credited on each tile.',
   'Pexels': 'Free to use under the Pexels License; the photographer is credited on each tile.',
@@ -718,7 +673,6 @@ function paintImageSources() {
   if (!sources.includes(imageSource)) {
     imageSource = sources[0];
   }
-  // With more than one place to look, a segmented switch picks between them.
   if (sources.length > 1) {
     for (const source of sources) {
       const button = el('button', 'segment' + (source === imageSource ? ' is-on' : ''), source);

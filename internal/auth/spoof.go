@@ -106,7 +106,7 @@ func (a *Auth) resolve(r *http.Request, real string) identity {
 	return id
 }
 
-func spoofToken(key []byte, real, target string, expiry time.Time) string {
+func SpoofToken(key []byte, real, target string, expiry time.Time) string {
 	payload := fmt.Sprintf("%s|%s|%d", real, target, expiry.Unix())
 	return base64.RawURLEncoding.EncodeToString([]byte(payload)) + "." + sign(key, payload)
 }
@@ -251,7 +251,7 @@ func (a *Auth) setSpoof(w http.ResponseWriter, r *http.Request) {
 	}
 	http.SetCookie(w, &http.Cookie{
 		Name:     spoofCookie,
-		Value:    spoofToken(a.key, real, target, time.Now().Add(spoofLength)),
+		Value:    SpoofToken(a.key, real, target, time.Now().Add(spoofLength)),
 		Path:     "/",
 		Domain:   domain,
 		HttpOnly: true,

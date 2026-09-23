@@ -1,7 +1,3 @@
-// Command dropcolumns deletes named columns from one tab of a sheet, header
-// and cells alike, for a column an app has stopped reading - so nobody takes
-// what is left in it for a setting still in force. Without -apply it only
-// says what it would delete.
 package main
 
 import (
@@ -23,7 +19,7 @@ func main() {
 	apply := flag.Bool("apply", false, "delete the columns; without it the run only reports them")
 	flag.Parse()
 	if *sheet == "" || *tab == "" || *columns == "" {
-		log.Fatal("[ERROR] -sheet, -tab, and -columns are required")
+		log.Fatal("[ERROR] --sheet, --tab, and --columns are required")
 	}
 	svc, err := sheets.NewService(context.Background(),
 		option.WithScopes(sheets.SpreadsheetsScope))
@@ -72,7 +68,7 @@ func main() {
 		indexes = append(indexes, i)
 	}
 	if !*apply {
-		log.Printf("dry run: pass -apply to delete %d columns from %q", len(indexes), *tab)
+		log.Printf("dry run: pass --apply to delete %d columns from %q", len(indexes), *tab)
 		return
 	}
 	// Descending, so deleting a column never shifts one still queued behind it.

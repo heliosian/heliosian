@@ -15,33 +15,27 @@ import (
 
 const refreshInterval = 5 * time.Minute
 
-// Enqueuer serializes sheet writes; the directory's write queue is shared here.
 type Enqueuer interface {
 	Add(func())
 }
 
 type Cache struct {
-	source     data.Source
-	images     ImageChecker
-	superAdmin func(email string) bool
-	queue      Enqueuer
-	// directory reads an app's audience against the directory (Register
-	// sets it); without one, an audience picks out nobody.
-	directory Directory
-	mu        sync.RWMutex
-	model     *Model
-	tables    *Tables
+	source      data.Source
+	images      ImageChecker
+	superAdmins func() []string
+	queue       Enqueuer
+	directory   Directory
+	mu          sync.RWMutex
+	model       *Model
+	tables      *Tables
 }
 
-// includes says whether some rules, read as a list against the directory,
-// pick this person out; none pick out nobody, and so does having no
-// directory.
 func (c *Cache) includes(rules []filter.Rule, email string) bool {
-	return c.directory != nil && len(rules) > 0 && filter.OnList(filter.List{Rules: rules}, c.directory.Sources(), email)
+	return c.directory != nil && len(rules) > 0 && filter.OnList(filter.List{Rules: rules, Editors: c.Admins()}, c.directory.Sources(), email)
 }
 
-func NewCache(source data.Source, images ImageChecker, superAdmin func(string) bool, queue Enqueuer) (*Cache, error) {
-	c := &Cache{source: source, images: images, superAdmin: superAdmin, queue: queue}
+func NewCache(source data.Source, images ImageChecker, superAdmins func() []string, queue Enqueuer) (*Cache, error) {
+	c := &Cache{source: source, images: images, superAdmins: superAdmins, queue: queue}
 	if err := c.refresh(); err != nil {
 		return nil, err
 	}
@@ -115,15 +109,11 @@ func normalizeEmails(emails []string) []string {
 	return out
 }
 
-// Person is someone the admin page can list an app for: the directory as a
-// picker sees it.
 type Person struct {
 	Name  string `json:"name"`
 	Email string `json:"email"`
 }
 
-// AppVisibility is one app as the admin page shows it: its name and
-// tagline, its mode, and the list, whether or not the mode is using it.
 type AppVisibility struct {
 	App
 	Visibility string        `json:"visibility"`
@@ -131,9 +121,6 @@ type AppVisibility struct {
 	Rules      []filter.Rule `json:"rules"`
 }
 
-// visibilityOf is an app's row as the page reads it: the sheet's, or for an
-// app the sheet has no row for yet, the new-app default - a list with nobody
-// on it, and the registry's name and tagline.
 func visibilityOf(model *Model, app App) Visibility {
 	v, ok := model.Visibility[app.Key]
 	if !ok {
@@ -151,8 +138,6 @@ func visibilityOf(model *Model, app App) Visibility {
 	return v
 }
 
-// orderedApps is the registry in the order the sheet gives it: every app
-// with an Order cell first, by it, then the rest in the registry's order.
 func orderedApps(model *Model) []App {
 	out := slices.Clone(Apps)
 	place := func(app App) int {
@@ -165,7 +150,6 @@ func orderedApps(model *Model) []App {
 	return out
 }
 
-// AppVisibilities is every app's visibility for the admin page.
 func (c *Cache) AppVisibilities() []AppVisibility {
 	model := c.Model()
 	out := make([]AppVisibility, 0, len(Apps))
@@ -177,8 +161,6 @@ func (c *Cache) AppVisibilities() []AppVisibility {
 	return out
 }
 
-// AppList is the registry as the switch and the front page show it: each
-// app with the name and tagline its row gives it, in the row's order.
 func (c *Cache) AppList() []App {
 	model := c.Model()
 	out := make([]App, 0, len(Apps))
@@ -190,10 +172,6 @@ func (c *Cache) AppList() []App {
 	return out
 }
 
-// HiddenApps is which apps are narrowed to a list this person is not on -
-// neither named in it nor picked out by its audience - the rows the
-// toolbar leaves off their switch and the links the front page leaves out.
-// A new app, with no row yet, is on nobody's list.
 func (c *Cache) HiddenApps(email string) []string {
 	email = strings.ToLower(strings.TrimSpace(email))
 	hidden := []string{}
@@ -207,7 +185,6 @@ func (c *Cache) HiddenApps(email string) []string {
 	return hidden
 }
 
-// MissingVisibility is the registry's apps the sheet has no row for yet.
 func (c *Cache) MissingVisibility() []App {
 	model := c.Model()
 	out := []App{}
@@ -228,36 +205,20 @@ func (c *Cache) tabAdmins() []string {
 	return normalizeEmails(emails)
 }
 
-// IsSuperAdmin reports whether email is one of the platform's super admins
-// (docs/config.md) - the tier that colours the app in Appearance.
 func (c *Cache) IsSuperAdmin(email string) bool {
-	return c.superAdmin(strings.ToLower(strings.TrimSpace(email)))
+	return slices.Contains(normalizeEmails(c.superAdmins()), strings.ToLower(strings.TrimSpace(email)))
 }
 
-// IsAdmin reports whether email may edit: a row in the Admins tab, or a
-// platform super admin.
 func (c *Cache) IsAdmin(email string) bool {
-	email = strings.ToLower(strings.TrimSpace(email))
-	for _, admin := range c.tabAdmins() {
-		if admin == email {
-			return true
-		}
-	}
-	return c.superAdmin(email)
+	return slices.Contains(c.Admins(), strings.ToLower(strings.TrimSpace(email)))
 }
 
-// Admins is every admin as the admin page lists them: the tab plus the super
-// admins, indistinguishable, sorted together.
-func (c *Cache) Admins(superAdmins []string) []string {
-	admins := normalizeEmails(append(c.tabAdmins(), superAdmins...))
+func (c *Cache) Admins() []string {
+	admins := normalizeEmails(append(c.tabAdmins(), c.superAdmins()...))
 	sort.Strings(admins)
 	return admins
 }
 
-// Grant puts someone on an app's list, so the app shows on their home when
-// the app is only its list's - for an app that takes people on itself, the
-// way Staff Birthdays takes a volunteer. The list is written whichever the
-// mode, as the admin page writes it; someone already on it is left be.
 func Grant(cache *Cache, writer data.Writer, queue Enqueuer, appKey, email string) error {
 	app, ok := appByKey(appKey)
 	if !ok {

@@ -1,7 +1,3 @@
-// Package app wires and serves the Helios community apps: a mode-free core every
-// server shares, the host routing that picks an app per request, and the
-// production assembly. Nothing here knows about sample data or any other dev
-// convenience - that composition lives under cmd/.
 package app
 
 import (
@@ -52,27 +48,17 @@ import (
 	"heliosian/internal/who"
 )
 
-// deployOverlap covers Cloud Run moving traffic to a new revision and the ten
-// seconds it gives the old one to finish after SIGTERM.
 const deployOverlap = 30 * time.Second
 
-// Domain is production's, every app under it; DevDomain is a developer's
-// machine, every name under it resolving to loopback, with nothing of
-// production beneath it so production's cookies never reach it.
 const (
 	Domain    = "heliosian.com"
 	DevDomain = "heliosiandev.com"
 )
 
-// aliases are the other labels an app answers under: the volunteer portal,
-// team, as hca, and the calendar - whose address is when (canonicalHost) -
-// as calendar and cal.
 var aliases = map[string]string{"hca": "team", "cal": "calendar", "when": "calendar"}
 
 var spend = claude.NewLimiter()
 
-// appFor reads the app out of a hostname under the domain this server
-// answers: <app>.<domain>, with home also as the bare and www domain.
 func appFor(domain, host string) string {
 	if host == domain || host == "www."+domain {
 		return "home"
@@ -87,9 +73,6 @@ func appFor(domain, host string) string {
 	return app
 }
 
-// Hostnames is every hostname the router answers in production - each app of
-// the registry under its key, every alias, and the apex and www for home -
-// for the domain mappings cmd/deploy keeps.
 func Hostnames() []string {
 	labels := []string{"home"}
 	for _, a := range home.Apps {
@@ -124,8 +107,6 @@ func bundled(roots []string, key string) bool {
 	return false
 }
 
-// uploaded asks the bucket for a name the sheet records; with no bucket, as in
-// sample mode, nothing uploaded exists.
 func uploaded(store *blob.Store, key string) (bool, error) {
 	if store == nil {
 		return false, nil
@@ -133,8 +114,6 @@ func uploaded(store *blob.Store, key string) (bool, error) {
 	return store.Has(key)
 }
 
-// prefetchUploaded hands the bucket every recorded name under its folder at
-// once, so the fetches run side by side; bundled names are left alone.
 func prefetchUploaded(store *blob.Store, folder string, names []string) error {
 	if store == nil {
 		return nil
@@ -148,8 +127,6 @@ func prefetchUploaded(store *blob.Store, folder string, names []string) error {
 	return store.Prefetch(keys)
 }
 
-// homeImages resolves the Image cells of the Apps sheet: an uploaded object in
-// the bucket, or a bundled file under home's own served trees.
 type homeImages struct {
 	store *blob.Store
 }
@@ -165,8 +142,6 @@ func (h homeImages) Prefetch(names []string) error {
 	return prefetchUploaded(h.store, "link-images/", names)
 }
 
-// teamImages resolves the Image cells of the Events sheet the same way: an
-// uploaded object in the bucket, or a bundled file under the portal's own trees.
 type teamImages struct {
 	store *blob.Store
 }
@@ -182,7 +157,6 @@ func (e teamImages) Prefetch(names []string) error {
 	return prefetchUploaded(e.store, "activity-images/", names)
 }
 
-// celebrateImages resolves the Image cells of the Celebrate sheet the same way.
 type celebrateImages struct {
 	store *blob.Store
 }
@@ -198,9 +172,6 @@ func (c celebrateImages) Prefetch(names []string) error {
 	return prefetchUploaded(c.store, "party-images/", names)
 }
 
-// calendarImages resolves the Image cells of the calendar's Tags tab the
-// same way: an uploaded object in the bucket, or a bundled file under the
-// calendar's own trees.
 type calendarImages struct {
 	store *blob.Store
 }
@@ -216,8 +187,6 @@ func (c calendarImages) Prefetch(names []string) error {
 	return prefetchUploaded(c.store, "category-images/", names)
 }
 
-// directory hands the volunteer portal the directory's view of a person: the
-// address they are keyed by, and their name and photo.
 type directory struct {
 	cache    *who.Cache
 	settings *config.Cache
@@ -227,9 +196,6 @@ func (d directory) Resolve(email string) string {
 	return d.cache.Model().Resolve(email)
 }
 
-// Person is a name and the face Who? shows for them - their own photo, or
-// the family's when they have none of their own - for the account avatar,
-// the volunteer tiles and the person window alike.
 func (d directory) Person(email string) (string, string, bool) {
 	model := d.cache.Model()
 	p := model.Person(email)
@@ -239,7 +205,6 @@ func (d directory) Person(email string) (string, string, bool) {
 	return p.FullName, model.HeroPhoto(p.Email), true
 }
 
-// Grade is a student's grade for the badge on their face; blank for grown-ups.
 func (d directory) Grade(email string) string {
 	p := d.cache.Model().Person(email)
 	if p == nil || !p.IsStudent {
@@ -248,7 +213,6 @@ func (d directory) Grade(email string) string {
 	return p.Grade
 }
 
-// Parents is a student's parent contact addresses, for copying on their mail.
 func (d directory) Parents(email string) []string {
 	p := d.cache.Model().Person(email)
 	if p == nil || !p.IsStudent {
@@ -257,15 +221,10 @@ func (d directory) Parents(email string) []string {
 	return p.ParentContactEmails
 }
 
-// GradeColors is the config sheet's colour per grade, as Who? paints them.
 func (d directory) GradeColors() map[string]string {
 	return d.settings.Settings().GradeColors
 }
 
-// Alerts is Who?'s reckoning of the toolbar badges, against the config
-// sheet's staleness thresholds.
-// HomePeople is the directory as Heliosian's admin pickers list it: everyone
-// with an address to sign in by, by name.
 func (d directory) HomePeople() []home.Person {
 	model := d.cache.Model()
 	out := make([]home.Person, 0, len(model.People))
@@ -278,9 +237,6 @@ func (d directory) HomePeople() []home.Person {
 	return out
 }
 
-// audienceSources is what the front page's audiences are read against:
-// the same directory, tags, Magic Tags and shared tags Loop's rules read,
-// so a rule means the same thing wherever it is written.
 type audienceSources struct{ loopDirectory }
 
 func (s audienceSources) Sources() filter.Sources {
@@ -292,8 +248,6 @@ func (d directory) Alerts(email string) (int, bool) {
 	return alerts.Stale, alerts.Privacy
 }
 
-// SpoofPerson is someone a super admin may view as, by any of their
-// addresses: the row for them under the one the directory keys them by.
 func (d directory) SpoofPerson(email string) (auth.Person, bool) {
 	model := d.cache.Model()
 	p := model.Person(model.Resolve(strings.ToLower(strings.TrimSpace(email))))
@@ -303,8 +257,6 @@ func (d directory) SpoofPerson(email string) (auth.Person, bool) {
 	return auth.Person{Email: p.Email, Name: p.FullName, Words: placeWords(*p)}, true
 }
 
-// SpoofPeople is everyone the switch's search lists, each with the word
-// that places them.
 func (d directory) SpoofPeople() []auth.Person {
 	model := d.cache.Model()
 	out := make([]auth.Person, 0, len(model.People))
@@ -315,8 +267,6 @@ func (d directory) SpoofPeople() []auth.Person {
 	return out
 }
 
-// placeWords is the one word (or few) that places a person beside their
-// name in a picker: a staff member's job, a student's grade, or Parent.
 func placeWords(p who.Person) string {
 	switch {
 	case p.IsStaff:
@@ -335,8 +285,6 @@ func placeWords(p who.Person) string {
 	return ""
 }
 
-// People is the directory as a picker sees it: everyone, with the one word that
-// places them - a staff member's job, a student's grade, or "Parent".
 func (d directory) People() []team.DirectoryPerson {
 	model := d.cache.Model()
 	out := make([]team.DirectoryPerson, 0, len(model.People))
@@ -348,8 +296,6 @@ func (d directory) People() []team.DirectoryPerson {
 			Pronouns: p.Pronouns, Phone: p.Phone, Grade: p.Grade, Classroom: p.Classroom,
 			JobTitle: p.JobTitle, Department: p.Department,
 		}
-		// A parent's children come through the household, as the directory
-		// itself lists them.
 		if p.IsParent {
 			person.Spouses, person.Children = household(model, p)
 		}
@@ -359,8 +305,6 @@ func (d directory) People() []team.DirectoryPerson {
 	return out
 }
 
-// household is a parent's family as the directory lists it: the other adults
-// in their families, then the children.
 func household(model *who.Model, p who.Person) (adults, kids []team.Child) {
 	for _, key := range model.FamilyKeysOf(p.Email) {
 		family := model.Families[key]
@@ -378,8 +322,6 @@ func household(model *who.Model, p who.Person) (adults, kids []team.Child) {
 	return adults, kids
 }
 
-// Household is the viewer's own family, for the sign-ups they may see and
-// change besides their own; nothing for anyone who is not a parent.
 func (d directory) Household(email string) (adults, kids []team.Child) {
 	p := d.cache.Model().Person(email)
 	if p == nil || !p.IsParent {
@@ -388,17 +330,12 @@ func (d directory) Household(email string) (adults, kids []team.Child) {
 	return household(d.cache.Model(), *p)
 }
 
-// upcomingEvents hands the front page the calendar's next few events for a
-// person, the other apps' folded in the way the calendar lists them.
 type upcomingEvents struct {
 	cache     *calendar.Cache
 	directory calendar.Directory
 	linked    func(email string) []calendar.Linked
 }
 
-// list is the next few events under the person's default calendar, or
-// under the saved calendar the token names - with every saved calendar
-// of theirs for the front page's picker.
 func (u upcomingEvents) list(email, token string) home.Upcoming {
 	model := u.cache.Model()
 	out := home.Upcoming{Events: model.UpcomingUnder(u.directory, email, u.linked(email), time.Now().In(calendar.Location), 6, token)}
@@ -406,9 +343,6 @@ func (u upcomingEvents) list(email, token string) home.Upcoming {
 	return out
 }
 
-// savedCalendars are a person's saved calendars in the rail's order, the
-// default's token - the first - and the one a token names among them,
-// else the default.
 func savedCalendars(model *calendar.Model, email, token string) (list []home.SavedCalendar, def, current string) {
 	for _, f := range model.MyCalendars(email) {
 		list = append(list, home.SavedCalendar{Token: f.Token, Name: f.Name, Emoji: f.Emoji, Locked: f.Locked})
@@ -421,9 +355,6 @@ func savedCalendars(model *calendar.Model, email, token string) (list []home.Sav
 	return list, def, current
 }
 
-// month hands the rail's calendar one month of the person's: the plan for
-// their classrooms day by day, and what is on - under their default
-// calendar, or the saved calendar the token names from the rail's picker.
 func (u upcomingEvents) month(email, month, token string) home.Month {
 	model := u.cache.Model()
 	m := model.MonthUnder(u.directory, email, u.linked(email), time.Now().In(calendar.Location), month, token)
@@ -431,10 +362,6 @@ func (u upcomingEvents) month(email, month, token string) home.Month {
 	return home.Month{Month: m.Month, Today: m.Today, Days: m.Days, Events: m.Events, Calendar: current}
 }
 
-// birthdayDirectory hands the birthday app the directory's view of people: who
-// an address resolves to, what is known about one person, and every staff
-// member, with departments in the order the directory lists them, and the
-// toolbar's badges.
 type birthdayDirectory struct {
 	cache    *who.Cache
 	settings *config.Cache
@@ -488,9 +415,6 @@ func (d birthdayDirectory) Alerts(email string) (int, bool) {
 	return alerts.Stale, alerts.Privacy
 }
 
-// celebrateDirectory hands Helios Celebrate the directory's view
-// of people: who an address resolves to, what places one person, their
-// household, everyone for the pickers, and the toolbar's badges.
 type celebrateDirectory struct {
 	cache    *who.Cache
 	settings *config.Cache
@@ -532,9 +456,6 @@ func (d celebrateDirectory) Person(email string) (celebrate.Person, bool) {
 	return celebratePerson(model, p), true
 }
 
-// Household is everyone else in a person's families, as the directory lists
-// them: the adults, then the children - a parent's partner and kids, a
-// student's parents and siblings.
 func (d celebrateDirectory) Household(email string) (adults, kids []celebrate.Person) {
 	model := d.cache.Model()
 	seen := map[string]bool{email: true}
@@ -556,8 +477,6 @@ func (d celebrateDirectory) Household(email string) (adults, kids []celebrate.Pe
 	return adults, kids
 }
 
-// People is the directory as the pickers and the person cards see it: everyone,
-// a parent with their household along, since the card lists it.
 func (d celebrateDirectory) People() []celebrate.Person {
 	model := d.cache.Model()
 	out := make([]celebrate.Person, 0, len(model.People))
@@ -577,19 +496,12 @@ func (d celebrateDirectory) Alerts(email string) (int, bool) {
 	return alerts.Stale, alerts.Privacy
 }
 
-// calendarDirectory hands the calendar the directory's view of people: who an
-// address resolves to, who someone is and which classroom they are in, a
-// parent's children, everyone at once and a person's lists for a guest
-// list's picker, and the toolbar's badges.
 type calendarDirectory struct {
 	cache    *who.Cache
 	settings *config.Cache
-	// lists is the person's Magic Tags and groups, the way Who?'s rail
-	// lists them; nil in a directory built without the other apps.
-	lists func(email string) []who.List
+	lists    func(email string) []who.List
 }
 
-// People is everyone in the directory.
 func (d calendarDirectory) People() []calendar.Person {
 	model := d.cache.Model()
 	out := make([]calendar.Person, 0, len(model.People))
@@ -599,10 +511,6 @@ func (d calendarDirectory) People() []calendar.Person {
 	return out
 }
 
-// Lists is one person's lists as the guest list picker offers them: their
-// own tags, the tags shared with them, and the lists their roles in the
-// other apps give them - a party they host, an activity they co-chair, a
-// grade band they are room parent for, a group they manage.
 func (d calendarDirectory) Lists(email string) []calendar.List {
 	out := []calendar.List{}
 	tags := d.cache.Tags(email)
@@ -673,15 +581,6 @@ func (d calendarDirectory) ClassroomColors() map[string]string {
 	return d.settings.Settings().ClassroomColors
 }
 
-// secure sets the headers every response carries: browsers keep to https for
-// the domain and everything under it for a year, never sniff a body into
-// another type, never frame a page, send only the origin as referrer
-// off-site, and never ask for the camera, location, payment or USB, which no
-// page here uses, nor the microphone on behalf of anything but the page
-// itself, which records a name's pronunciation. HSTS is production's alone: a developer's
-// machine answers DevDomain and must not be pinned by it. What the content
-// security policy blocks is reported to reportPath on every host, ahead of
-// routing and sign-in.
 func secure(domain string, next http.Handler) http.Handler {
 	csp := policy(domain)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -713,8 +612,6 @@ func cacheControl(next http.Handler) http.Handler {
 	})
 }
 
-// serveFrom answers a request from the first root holding a regular file at
-// its path, else hands it on.
 func serveFrom(roots []string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet || r.Method == http.MethodHead {
@@ -731,20 +628,14 @@ func serveFrom(roots []string, next http.Handler) http.Handler {
 	})
 }
 
-// Public serves web/public/<app>/ then web/public/common/ ahead of sign-in:
-// the manifest, icons, splash art, and fonts that browsers fetch without
-// credentials and the login page needs.
 func Public(app string, next http.Handler) http.Handler {
 	return serveFrom([]string{"web/public/" + app, "web/public/common"}, next)
 }
 
-// Files serves web/<app>/ then web/common/ and sits inside sign-in.
 func Files(app string, next http.Handler) http.Handler {
 	return serveFrom([]string{"web/" + app, "web/common"}, next)
 }
 
-// Logged sits inside sign-in too, so every record a request produces names
-// the app and the user, and every request past the media routes gets one.
 func Logged(app string, next http.Handler) http.Handler {
 	return logging.Requests(app, blob.Media, next)
 }
@@ -768,9 +659,6 @@ func route(domain string, apps map[string]http.Handler) http.Handler {
 	})
 }
 
-// canonicalHost is the address an alias sends the browser to, under the
-// same domain: the calendar lives at when.heliosian.com, and calendar. and
-// cal. are ways of typing it. Every other hostname is its own, and gets "".
 func canonicalHost(domain, host string) string {
 	switch host {
 	case "calendar." + domain, "cal." + domain:
@@ -779,9 +667,6 @@ func canonicalHost(domain, host string) string {
 	return ""
 }
 
-// redirectable is a page load: a GET or HEAD outside the API and the
-// calendar feeds, which a subscribed calendar app fetches by the address
-// it was given and should keep getting from it.
 func redirectable(r *http.Request) bool {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		return false
@@ -789,8 +674,6 @@ func redirectable(r *http.Request) bool {
 	return !strings.HasPrefix(r.URL.Path, "/api/") && !strings.HasPrefix(r.URL.Path, "/open/feed/")
 }
 
-// Port is the port the server listens on, shared with anything that needs to
-// reach it in-process (startserver's capture mode).
 func Port() string {
 	if port := os.Getenv("PORT"); port != "" {
 		return port
@@ -798,110 +681,63 @@ func Port() string {
 	return "8080"
 }
 
-// Config carries the mode-specific pieces the core is assembled from. The
-// caller decides what backs each one; the core never inspects the environment
-// or branches on how it was built.
 type Config struct {
-	Source   data.Source
-	Writer   data.Writer
-	Geocoder who.Geocoder
-	Blobs    who.BlobChecker
-	Store    *blob.Store
-	// FamilyIDKey masks the directory's family keys (who.familyID).
-	FamilyIDKey []byte
-	BrowserKey  string
-	// ImageSearch is the picture search HCA-Team's and Heliosian's editors
-	// share; zero means the picker has nowhere to look.
-	ImageSearch imagesearch.Search
-	// Mail sends the portal's email; nil drops it. CelebrateMail is the
-	// same for Helios Celebrate, from its own address.
-	Mail mail.Sender
-	// MailFrom is the address the portal's mail comes from, which its
-	// calendar invites name as organizer.
+	Source        data.Source
+	Writer        data.Writer
+	Geocoder      who.Geocoder
+	Blobs         who.BlobChecker
+	Store         *blob.Store
+	FamilyIDKey   []byte
+	BrowserKey    string
+	ImageSearch   imagesearch.Search
+	Mail          mail.Sender
 	MailFrom      string
 	CelebrateMail mail.Sender
-	// CelebrateFrom is the address Celebrate's mail comes from, which its
-	// calendar invites name as organizer.
 	CelebrateFrom string
-	// CalendarMail is the calendar's mail: the sender its invites go out
-	// through, the addresses they come from and reply to, and the inbox and
-	// webhook secret the replies come back through.
-	CalendarMail calendar.Mail
-	// WhoMail sends the directory's word of a tag shared, from its own address.
-	WhoMail mail.Sender
-	// BirthdayMail sends Staff Birthdays' calendar invites, from BirthdayFrom.
-	BirthdayMail mail.Sender
-	BirthdayFrom string
-	// BirthdayBase is Staff Birthdays' address, for links in mail sent
-	// from its reminder loop, off any request.
-	BirthdayBase string
-	// FeedbackFiler opens the GitHub issue an admin makes of a report; nil
-	// leaves the triage queue saying filing is not set up.
+	CalendarMail  calendar.Mail
+	WhoMail       mail.Sender
+	BirthdayMail  mail.Sender
+	BirthdayFrom  string
+	BirthdayBase  string
 	FeedbackFiler feedback.IssueFiler
-	// FeedbackBase is Heliosian's own address, which the word of a new report
-	// links back to, sent off any request.
-	FeedbackBase string
-	// Describer writes Staff Birthdays' sentence about a charity; nil leaves
-	// that button saying it is not set up.
-	Describer birthday.Describer
-	// Loop is Helios Loop's mail: the relay its forwards go out through, the
-	// inbox and webhook secret the posts come in by, the key that signs its
-	// unsubscribe links, its address, and the archive every post is kept in.
-	Loop loop.Mail
-	// LoopDescriber writes a Loop group's description from what it holds;
-	// nil leaves the editor's Generate with AI saying it is not set up.
+	FeedbackBase  string
+	Describer     birthday.Describer
+	Loop          loop.Mail
 	LoopDescriber loop.Describer
-	// Asker answers Helios Ask's chat: Claude, or the sample fake.
-	Asker ask.Responder
-	// Artifacts loads the documents Helios Ask searches, given what the last
-	// load held so that a refresh reads only what has changed.
+	Asker         ask.Responder
 	Artifacts     func(previous *artifacts.Model) (*artifacts.Model, error)
 	Embedder      artifacts.Embedder
 	ArtifactsMail artifacts.Inbox
 }
 
-// Core is the assembled shared skeleton: each app's mux (still open for the
-// caller's mode-specific routes), the directory model cache, the shared write
-// queue, and each app's handler for the caller to wrap with its authentication.
 type Core struct {
-	Mux         *http.ServeMux
-	HomeMux     *http.ServeMux
-	HomeCache   *home.Cache
-	TeamMux     *http.ServeMux
-	TeamCache   *team.Cache
-	BirthdayMux *http.ServeMux
-	// CelebrateMux serves Helios Celebrate, the fun(d)raiser parties site.
+	Mux            *http.ServeMux
+	HomeMux        *http.ServeMux
+	HomeCache      *home.Cache
+	TeamMux        *http.ServeMux
+	TeamCache      *team.Cache
+	BirthdayMux    *http.ServeMux
 	CelebrateMux   *http.ServeMux
 	CelebrateCache *celebrate.Cache
-	// CalendarMux serves Helios When, the school year day by day.
-	CalendarMux   *http.ServeMux
-	CalendarCache *calendar.Cache
-	// CalendarLinked is what the other apps put on the calendar for a viewer,
-	// for the share cards a stranger fetches.
+	CalendarMux    *http.ServeMux
+	CalendarCache  *calendar.Cache
 	CalendarLinked func(email string) []calendar.Linked
-	// LoopMux serves Helios Loop, the email groups drawn from the directory.
-	LoopMux   *http.ServeMux
-	LoopCache *loop.Cache
-	// AskMux serves Helios Ask, the chat over every app's data.
-	AskMux *http.ServeMux
-	Cache  *who.Cache
-	Queue  *who.Queue
-	// Spoof is Spoof Mode as every app's sign-in shares it: the super admins
-	// may view as anyone the directory lists.
-	Spoof *auth.Spoof
-	// Member is what every app's sign-in admits a request by: the directory
-	// lists who it acts as.
-	Member    func(email string) bool
-	Home      http.Handler
-	Team      http.Handler
-	Birthday  http.Handler
-	Celebrate http.Handler
-	Calendar  http.Handler
-	Loop      http.Handler
-	Ask       http.Handler
+	LoopMux        *http.ServeMux
+	LoopCache      *loop.Cache
+	AskMux         *http.ServeMux
+	Cache          *who.Cache
+	Queue          *who.Queue
+	Spoof          *auth.Spoof
+	Member         func(email string) bool
+	Home           http.Handler
+	Team           http.Handler
+	Birthday       http.Handler
+	Celebrate      http.Handler
+	Calendar       http.Handler
+	Loop           http.Handler
+	Ask            http.Handler
 }
 
-// NewCore wires everything every mode serves identically. Fatal on any failure.
 func NewCore(cfg Config) *Core {
 	if err := mime.AddExtensionType(".webmanifest", "application/manifest+json"); err != nil {
 		logging.Fatal("register manifest mime type", "error", err)
@@ -914,14 +750,10 @@ func NewCore(cfg Config) *Core {
 	superAdmin := func(email string) bool {
 		return slices.Contains(settings.SuperAdmins(), strings.ToLower(strings.TrimSpace(email)))
 	}
-	// The small sheets load first, so a bad column in any of them refuses the
-	// start in seconds rather than after the directory has fetched every photo.
-	homeCache, err := home.NewCache(cfg.Source, homeImages{cfg.Store}, superAdmin, queue)
+	homeCache, err := home.NewCache(cfg.Source, homeImages{cfg.Store}, settings.SuperAdmins, queue)
 	if err != nil {
 		logging.Fatal("load apps data", "error", err)
 	}
-	// The share cards say each app's tagline as the registry has it, so an
-	// admin's edit reaches the previews too.
 	taglineOf := func(key string) func() string {
 		return func() string {
 			for _, a := range homeCache.AppList() {
@@ -947,15 +779,10 @@ func NewCore(cfg Config) *Core {
 	}
 	celebrate.ShareTagline(taglineOf("celebrate"))
 	calendar.ShareTagline(taglineOf("calendar"))
-	// The apps whose own card is the app itself say its name and tagline as
-	// the registry has them.
 	team.ShareWords(appName("team"), taglineOf("team"))
 	who.ShareWords(appName("who"), taglineOf("who"))
 	birthday.ShareWords(appName("birthday"), taglineOf("birthday"))
 	loop.ShareWords(appName("loop"), taglineOf("loop"))
-	// The portal's sheet is edited by hand more than the others, so a load
-	// failure keeps only the portal down: it answers with the reason and comes
-	// back on its own once the sheet loads.
 	teamCache, err := team.NewCache(cfg.Source, teamImages{cfg.Store}, superAdmin, queue)
 	if err != nil {
 		slog.Error("load team data", "error", err)
@@ -964,8 +791,6 @@ func NewCore(cfg Config) *Core {
 	if err != nil {
 		logging.Fatal("load birthdays data", "error", err)
 	}
-	// The celebration's sheet is edited by hand too, so like the portal's a
-	// load failure keeps only that site down until the sheet is fixed.
 	celebrateCache, err := celebrate.NewCache(cfg.Source, celebrateImages{cfg.Store}, superAdmin, queue)
 	if err != nil {
 		slog.Error("load celebrate data", "error", err)
@@ -974,15 +799,10 @@ func NewCore(cfg Config) *Core {
 	if err != nil {
 		logging.Fatal("load directory data", "error", err)
 	}
-	// The calendar resolves audiences against the directory's live classrooms,
-	// so it loads after the directory and reads the roster on every refresh.
 	calendarCache, err := calendar.NewCache(cfg.Source, func() calendar.Roster { return CalendarRoster(cache.Model()) }, calendarImages{cfg.Store}, superAdmin, queue)
 	if err != nil {
 		logging.Fatal("load calendar data", "error", err)
 	}
-	// The groups read the directory, its tags and the other apps' Magic
-	// Tags as they stand whenever a post comes in; the directory in turn
-	// lists the groups a person manages among their Magic Tags.
 	loopCache, err := loop.NewCache(cfg.Source, superAdmin, queue)
 	if err != nil {
 		logging.Fatal("load loop data", "error", err)
@@ -1001,19 +821,14 @@ func NewCore(cfg Config) *Core {
 		logging.Fatal("load invites data", "error", err)
 	}
 	mux.Handle("GET /{$}", http.RedirectHandler("/people", http.StatusFound))
-	// The front page's events come from the calendar, read for the viewer
-	// the way its own page is, so it is wired once the calendar's links are.
 	linked := calendarLinked{celebrateCache, teamCache, celebrateDirectory{cache, settings}}.list
 	calendarDir := calendarDirectory{cache, settings, smartLists{cache, teamCache, celebrateCache, loopCache, loopDir}.Lists}
 	frontEvents := upcomingEvents{calendarCache, calendarDir, linked}
-	// The calendar goes first: the front page's cards answer through it.
 	calendarMux := http.NewServeMux()
 	hooks := calendar.Register(calendarMux, calendarCache, cfg.Writer, queue, cfg.Store, calendarDir, settings.SuperAdmins, linked, partyPeople{celebrateCache}.people, audienceSources{loopDir}.Sources, cfg.ImageSearch, cfg.CalendarMail)
 	homeMux := http.NewServeMux()
 	home.Register(homeMux, homeCache, cfg.Writer, queue, cfg.Store, settings.SuperAdmins, cache.HeroPhoto, directory{cache, settings}.HomePeople, audienceSources{loopDir}, directory{cache, settings}.Alerts, frontEvents.list, frontEvents.month, cfg.ImageSearch, hooks.Answer, hooks.MakeDefault)
 	teamMux := http.NewServeMux()
-	// An event's chairs read its guest list's answers on Helios When from
-	// the event's own page.
 	eventRSVPs := func(id string) *team.EventRSVPs {
 		sent, answers, ok := calendarCache.LinkedRSVPs(linked(""), calendar.SourceTeam, id)
 		if !ok {
@@ -1027,8 +842,6 @@ func NewCore(cfg Config) *Core {
 		return home.Grant(homeCache, cfg.Writer, queue, "birthday", email)
 	})
 	celebrateMux := http.NewServeMux()
-	// A party's hosts read its guest list's answers on Helios When from the
-	// party's own page.
 	partyRSVPs := func(partyID string) *celebrate.PartyRSVPs {
 		sent, answers, ok := calendarCache.PartyRSVPs(partyID)
 		if !ok {
@@ -1037,17 +850,12 @@ func NewCore(cfg Config) *Core {
 		return &celebrate.PartyRSVPs{Sent: sent, Answers: answers}
 	}
 	celebrate.Register(celebrateMux, celebrateCache, cfg.Writer, queue, cfg.Store, celebrateDirectory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.CelebrateMail, cfg.CelebrateFrom, partyRSVPs)
-	// A group's post goes into the documents as Loop records it sent, so the
-	// documents' filer is wired before Loop.
 	askMux := http.NewServeMux()
 	loopMail := cfg.Loop
 	loopMail.Documents = artifacts.Register(askMux, artifactsCache, cfg.Embedder, cfg.Writer, queue, cfg.ArtifactsMail)
 	loopMux := http.NewServeMux()
 	loop.Register(loopMux, loopCache, cfg.Writer, queue, cfg.Store, loopDir, settings.SuperAdmins, loopMail, cfg.LoopDescriber)
-	// The chat reads every app's model, so it is wired once they all are.
 	ask.Register(askMux, askSources(cache, settings, teamCache, celebrateCache, calendarCache, loopCache, homeCache, artifactsCache, cfg.Embedder, smartLists{cache, teamCache, celebrateCache, loopCache, loopDir}, loopDir, linked), cfg.Asker, spend)
-	// Every app's toolbar asks its own origin what its switch lists and
-	// which rows to leave off; Heliosian's cache answers for all of them.
 	for _, m := range []*http.ServeMux{mux, teamMux, birthdayMux, celebrateMux, calendarMux, loopMux, askMux} {
 		home.RegisterSwitch(m, homeCache)
 	}
@@ -1059,18 +867,13 @@ func NewCore(cfg Config) *Core {
 	feedbackQueue := feedback.NewQueue(feedbackStore, notifier.Notify)
 	optIn := who.OptInForm(func() string { return settings.Settings().PrivacyLinks.HeliosWhoOptIn })
 	for key, m := range map[string]*http.ServeMux{"who": mux, "home": homeMux, "team": teamMux, "birthday": birthdayMux, "celebrate": celebrateMux, "calendar": calendarMux, "loop": loopMux, "ask": askMux} {
-		// The no-access page on every host links here.
 		m.Handle("GET /optin", optIn)
 		feedback.Register(m, key, appName(key), superAdmin, feedbackQueue)
-		// Address suggestions for every app's address boxes, through the
-		// geocoder when it can suggest.
 		if s, ok := cfg.Geocoder.(geocode.Suggester); ok {
 			geocode.RegisterSuggest(m, s)
 		}
 	}
 	feedback.RegisterAdmin(homeMux, feedbackStore, cfg.FeedbackFiler, superAdmin)
-	// A deploy's old revision serves, and writes, until this one has loaded;
-	// once it has handed over and stopped, read again for what it wrote.
 	time.AfterFunc(deployOverlap, func() {
 		slog.Info("reading again for the previous revision's last writes")
 		for _, c := range []interface{ Refresh() }{settings, homeCache, teamCache, birthdayCache, celebrateCache, cache, calendarCache, loopCache, artifactsCache} {
@@ -1085,15 +888,10 @@ func NewCore(cfg Config) *Core {
 	}
 }
 
-// Muxes is every app's mux, keyed by the app, for what is wired on all of
-// them alike.
 func (c *Core) Muxes() map[string]*http.ServeMux {
 	return map[string]*http.ServeMux{"who": c.Mux, "home": c.HomeMux, "team": c.TeamMux, "birthday": c.BirthdayMux, "celebrate": c.CelebrateMux, "calendar": c.CalendarMux, "loop": c.LoopMux, "ask": c.AskMux}
 }
 
-// Server dresses the apps, each fully wrapped and keyed by name, in the shared
-// HTTP plumbing: host routing under the one domain it answers, cache
-// headers, and the security headers.
 func Server(domain string, apps map[string]http.Handler) *http.Server {
 	protocols := new(http.Protocols)
 	protocols.SetHTTP1(true)
@@ -1101,8 +899,6 @@ func Server(domain string, apps map[string]http.Handler) *http.Server {
 	return &http.Server{Addr: ":" + Port(), Handler: secure(domain, cacheControl(route(domain, apps))), Protocols: protocols}
 }
 
-// Serve runs a server until SIGTERM or interrupt, then shuts down gracefully
-// and drains the write queue.
 func Serve(server *http.Server, queue *who.Queue) {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGTERM, os.Interrupt)
@@ -1121,8 +917,6 @@ func Serve(server *http.Server, queue *who.Queue) {
 	slog.Info("queue drained")
 }
 
-// ListenAndServe speaks TLS only when the server carries a TLSConfig, which
-// local development sets; Cloud Run terminates TLS in front of production.
 func ListenAndServe(server *http.Server) error {
 	if server.TLSConfig != nil {
 		return server.ListenAndServeTLS("", "")
@@ -1157,10 +951,6 @@ func clientID() string {
 	return parsed.Web.ClientID
 }
 
-// optionalKey is mapsKey for something the server runs without: empty when
-// neither the variable nor the file is there.
-// mailFrom is the address the portal's mail comes from; celebrateMailFrom
-// the address Helios Celebrate's does.
 func mailFrom() string {
 	if from := os.Getenv("MAIL_FROM"); from != "" {
 		return from
@@ -1175,7 +965,6 @@ func birthdayMailFrom() string {
 	return "Helios Staff Birthdays <birthday@reply.heliosian.com>"
 }
 
-// birthdayBase is where Staff Birthdays lives, for the reminder loop's links.
 func birthdayBase() string {
 	if base := os.Getenv("BIRTHDAY_BASE_URL"); base != "" {
 		return strings.TrimSuffix(base, "/")
@@ -1183,8 +972,6 @@ func birthdayBase() string {
 	return "https://birthday.heliosian.com"
 }
 
-// feedbackBase is Heliosian's own address, which the word of a new report
-// links back to; its admin is where the triage queue lives.
 func feedbackBase() string {
 	if base := os.Getenv("FEEDBACK_BASE_URL"); base != "" {
 		return strings.TrimSuffix(base, "/")
@@ -1192,9 +979,6 @@ func feedbackBase() string {
 	return "https://heliosian.com"
 }
 
-// githubApp is what a kept report is filed as - the app, so the issue's author
-// is plainly a bot and not the admin who pressed the button. Required, as the
-// triage token it replaced was.
 func githubApp() feedback.IssueFiler {
 	app, err := feedback.NewGitHubApp(mapsKey("GITHUB_APP_ID", "local/creds/github-app.id"), mapsKey("GITHUB_APP_KEY", "local/creds/github-app.pem"))
 	if err != nil {
@@ -1210,10 +994,6 @@ func calendarMailFrom() string {
 	return "Helios When <when@reply.heliosian.com>"
 }
 
-// calendarReplyTo is the address the calendar's invites name as their
-// organizer, each with a token of its own after a plus, where a calendar
-// app sends its Accept or Decline: the from address, on a receiving domain
-// on Mailgun (docs/deploy.md); CALENDAR_REPLY_TO to override.
 func calendarReplyTo() string {
 	if to := os.Getenv("CALENDAR_REPLY_TO"); to != "" {
 		return to
@@ -1221,12 +1001,6 @@ func calendarReplyTo() string {
 	return "Helios When <when@reply.heliosian.com>"
 }
 
-// calendarMail is the calendar's mail as the environment describes it: the
-// sender every app shares, the from and reply addresses, and - with the
-// Mailgun key and its webhook signing key (mailgunKey, mailgunSigningKey) -
-// the fetcher the stored replies come back through. Without both the reply
-// route says it is not set up. The session key makes each invite's own
-// reply address.
 func calendarMail(sessionKey string) calendar.Mail {
 	m := calendar.Mail{Sender: newMailer(calendarMailFrom()), From: calendarMailFrom(), ReplyTo: calendarReplyTo(), SigningKey: mailgunSigningKey(), Key: []byte(sessionKey)}
 	if key := mailgunKey(); key != "" {
@@ -1235,15 +1009,10 @@ func calendarMail(sessionKey string) calendar.Mail {
 	return m
 }
 
-// mailgunKey is the Mailgun API key every app's mail goes out through:
-// MAILGUN_KEY, or local/creds/mailgun.key locally, else nothing.
 func mailgunKey() string {
 	return optionalKey("MAILGUN_KEY", "local/creds/mailgun.key")
 }
 
-// mailgunSigningKey is Mailgun's HTTP webhook signing key, which signs the
-// route notifications and the delivery events the calendar and Loop take
-// in: MAILGUN_WEBHOOK_KEY, or local/creds/mailgun-webhook.key locally.
 func mailgunSigningKey() string {
 	return optionalKey("MAILGUN_WEBHOOK_KEY", "local/creds/mailgun-webhook.key")
 }
@@ -1262,18 +1031,10 @@ func celebrateMailFrom() string {
 	return "Helios Celebrate <celebrate@reply.heliosian.com>"
 }
 
-// newMailer is the sender the environment describes - Mailgun when its key
-// is set, else nothing - from one address.
 func newMailer(from string) mail.Sender {
 	return mail.New(mailgunKey(), from, "")
 }
 
-// loopMail is Helios Loop's mail as the environment describes it: with the
-// Mailgun key, the API its forwards go out through and its posts are
-// fetched back from; with the webhook signing key, the routes the posts and
-// the delivery events arrive by; the session key signing its unsubscribe
-// links; and the mail bucket keeping every post. Without all of those the
-// routes say they are not set up.
 func loopMail(sessionKey string) loop.Mail {
 	archive, err := blob.NewArchive(blob.MailBucket)
 	if err != nil {
@@ -1296,12 +1057,6 @@ func artifactsMail(store *blob.Store) artifacts.Inbox {
 	return m
 }
 
-// ImageSearchKeys reads the picture search's keys the way every mode does:
-// each from its environment variable, else from its file under local/creds/, else
-// absent. Sample mode uses it too, so a
-// developer with keys on disk gets the same libraries as production.
-// ClaudeDescriber is Staff Birthdays' charity describer when an Anthropic
-// key is set (ANTHROPIC_API_KEY, or local/creds/anthropic.key locally), else nil.
 // A nil *describe.Describer must stay a nil interface, or the app would call it.
 func ClaudeDescriber() birthday.Describer {
 	if d := describe.New(optionalKey("ANTHROPIC_API_KEY", "local/creds/anthropic.key"), spend); d != nil {
@@ -1310,7 +1065,6 @@ func ClaudeDescriber() birthday.Describer {
 	return nil
 }
 
-// ClaudeGroupDescriber is Loop's group describer on the same key, else nil.
 func ClaudeGroupDescriber() loop.Describer {
 	if d := describe.New(optionalKey("ANTHROPIC_API_KEY", "local/creds/anthropic.key"), spend); d != nil {
 		return d
@@ -1318,8 +1072,6 @@ func ClaudeGroupDescriber() loop.Describer {
 	return nil
 }
 
-// ClaudeAsker is Helios Ask's Claude when the same key is set, else nil,
-// for the sample server to fall back to its fake.
 func ClaudeAsker() ask.Responder {
 	if key := optionalKey("ANTHROPIC_API_KEY", "local/creds/anthropic.key"); key != "" {
 		return ask.NewClaude(key)
@@ -1361,12 +1113,6 @@ func mapsKey(envName, file string) string {
 	return key
 }
 
-// Production assembles the real service: the production spreadsheets, the media
-// bucket, real geocoding, and Google sign-in, answering under the one domain
-// given - Domain for the deployed service, DevDomain on a laptop. Every input
-// is required. With a blobCache, the media fetched from the bucket is kept on
-// disk there too and read from there on the next start; the production binary
-// passes none.
 func Production(domain, blobCache string) (*http.Server, *who.Queue) {
 	spreadsheets := map[string]string{
 		"directory":   requiredEnv("DIRECTORY_SHEET"),
@@ -1398,17 +1144,15 @@ func Production(domain, blobCache string) (*http.Server, *who.Queue) {
 	familyIDKey := hmac.New(sha256.New, []byte(sessionKey))
 	familyIDKey.Write([]byte("family id"))
 	core := NewCore(Config{
-		Source:      sheet,
-		Writer:      sheet,
-		Geocoder:    geocode.New(mapsKey("GOOGLE_MAPS_SERVER_KEY", "local/creds/geocoding.key")),
-		Blobs:       store,
-		Store:       store,
-		FamilyIDKey: familyIDKey.Sum(nil),
-		BrowserKey:  mapsKey("GOOGLE_MAPS_BROWSER_KEY", "local/creds/maps.key"),
-		ImageSearch: ImageSearchKeys(),
-		Describer:   ClaudeDescriber(),
-		// Mail goes through Mailgun when its key is set; otherwise, in
-		// real-data mode, it is dropped and logged.
+		Source:        sheet,
+		Writer:        sheet,
+		Geocoder:      geocode.New(mapsKey("GOOGLE_MAPS_SERVER_KEY", "local/creds/geocoding.key")),
+		Blobs:         store,
+		Store:         store,
+		FamilyIDKey:   familyIDKey.Sum(nil),
+		BrowserKey:    mapsKey("GOOGLE_MAPS_BROWSER_KEY", "local/creds/maps.key"),
+		ImageSearch:   ImageSearchKeys(),
+		Describer:     ClaudeDescriber(),
 		Mail:          newMailer(mailFrom()),
 		MailFrom:      mailFrom(),
 		WhoMail:       newMailer(whoMailFrom()),
@@ -1439,51 +1183,34 @@ func Production(domain, blobCache string) (*http.Server, *who.Queue) {
 	blob.RegisterAsk(core.AskMux, store)
 	who.RegisterUpload(core.Mux, core.Cache, sheet, store, core.Queue)
 	client := clientID()
-	// Every app's sign-in shares the key, so one session - and one spoof -
-	// covers them all, and the same membership check admits each request.
 	newAuth := func(app string) *auth.Auth {
 		a := auth.New(domain, client, []byte(sessionKey), "web/public/"+app+"/login.html", core.Member)
 		a.Spoof = core.Spoof
 		return a
 	}
 	whoAuth := newAuth("who")
-	// A shared link to the directory previews in chat apps: the sign-in page
-	// carries tags saying what it is - never who is in it - and a card.
 	whoAuth.Preview = who.PreviewHead()
 	whoAuth.Register(core.Mux)
 	homeAuth := newAuth("home")
-	// A shared link to the portal previews in chat apps: the sign-in page
-	// carries tags naming the apps everyone has, and a card that draws them.
 	homeAuth.Preview = home.PreviewHead(core.HomeCache)
 	homeAuth.Register(core.HomeMux)
 	teamAuth := newAuth("team")
-	// A shared link to an event previews in chat apps: the sign-in page it
-	// leads to carries the event's Open Graph tags, or the portal's own list
-	// of what still wants volunteers.
 	teamAuth.Preview = team.PreviewHead(core.TeamCache)
 	teamAuth.Register(core.TeamMux)
 	birthdayAuth := newAuth("birthday")
-	// A shared link previews as an ask to join the Birthday team.
 	birthdayAuth.Preview = birthday.PreviewHead()
 	birthdayAuth.Register(core.BirthdayMux)
 	celebrateAuth := newAuth("celebrate")
-	// A shared link to a party previews in chat apps: the sign-in page it
-	// leads to carries the party's Open Graph tags.
 	celebrateAuth.Preview = celebrate.PreviewHead(core.CelebrateCache)
 	celebrateAuth.Register(core.CelebrateMux)
 	calendarAuth := newAuth("calendar")
-	// A shared link to an event previews in chat apps: the sign-in page it
-	// leads to carries the event's Open Graph tags.
 	calendarAuth.Preview = calendar.PreviewHead(core.CalendarCache, core.CalendarLinked)
 	calendarAuth.Register(core.CalendarMux)
 	loopAuth := newAuth("loop")
-	// A shared link previews as what Loop is, never what a group holds.
 	loopAuth.Preview = loop.PreviewHead()
 	loopAuth.Register(core.LoopMux)
 	askAuth := newAuth("ask")
 	askAuth.Register(core.AskMux)
-	// The portal sends an old address - the volunteer site this one replaced,
-	// a renamed event - on ahead of sign-in, so it lands on its page.
 	server := Server(domain, map[string]http.Handler{
 		"who":       Public("who", whoAuth.Wrap(Logged("who", Files("who", core.Mux)))),
 		"home":      Public("home", homeAuth.Wrap(Logged("home", Files("home", core.Home)))),
@@ -1494,8 +1221,6 @@ func Production(domain, blobCache string) (*http.Server, *who.Queue) {
 		"loop":      Public("loop", loopAuth.Wrap(Logged("loop", Files("loop", core.Loop)))),
 		"ask":       Public("ask", askAuth.Wrap(Logged("ask", Files("ask", core.Ask)))),
 	})
-	// Cloud Run's own K_SERVICE marks the deployed service, the one process that
-	// keeps the school's calendar in step; a laptop's real-data server never does.
 	if os.Getenv("K_SERVICE") != "" {
 		watcher := calendarWatcher(sheet, spreadsheets["calendar"], core, sessionKey)
 		core.CalendarMux.Handle("POST "+calendarimport.HookPath, watcher)

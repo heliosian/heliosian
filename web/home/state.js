@@ -1,6 +1,3 @@
-// superAdmin is the admin's Super Admin Mode switch in the account menu,
-// remembered per browser: on, the page shows hidden links and the add cards;
-// off, it reads as everyone else sees it.
 export const state = {model: null, superAdmin: readSuperAdmin()};
 
 function readSuperAdmin() {
@@ -16,7 +13,7 @@ export function setSuperAdmin(on) {
   try {
     localStorage.setItem('heliosian.superAdmin', on ? '1' : '0');
   } catch {
-    // A browser that refuses storage just forgets the switch on reload.
+    return;
   }
 }
 
@@ -29,7 +26,7 @@ export function isAdmin() {
 }
 
 export function tagLabelsOf(rule) {
-  const named = (state.model.tagLabels || {})[rule.owner] || {};
+  const named = state.model.tagLabels || {};
   return rule.tagLabels || (rule.tags || []).map(t => named[t] || t);
 }
 
@@ -37,7 +34,6 @@ export function categoryTitles() {
   return state.model.categories.map(c => c.title);
 }
 
-// The categories a link can sit in - every one but the events section.
 export function linkCategoryTitles() {
   return state.model.categories.filter(c => c.style !== 'events').map(c => c.title);
 }

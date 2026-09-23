@@ -89,7 +89,7 @@ func TestLoadRefusesAPostingItDoesNotKnow(t *testing.T) {
 }
 
 func TestChecksRefuseBadGroups(t *testing.T) {
-	good := Group{Name: "a-b", Title: "A", Visibility: VisibilityHidden, Posting: PostingEveryone, Replying: PostingEveryone, Managers: []string{"m@x.org"}, Rules: []Rule{{Kind: KindInclude, Roles: []string{"Staff"}, Owner: "m@x.org"}}}
+	good := Group{Name: "a-b", Title: "A", Visibility: VisibilityHidden, Posting: PostingEveryone, Replying: PostingEveryone, Managers: []string{"m@x.org"}, Rules: []Rule{{Kind: KindInclude, Roles: []string{"Staff"}}}}
 	if err := CheckGroup(good); err != nil {
 		t.Fatal(err)
 	}
@@ -106,8 +106,8 @@ func TestChecksRefuseBadGroups(t *testing.T) {
 		"empty rule":    func(g *Group) { g.Rules[0].Roles = nil },
 		"bad role":      func(g *Group) { g.Rules[0].Roles = []string{"Alumni"} },
 		"bad relation":  func(g *Group) { g.Rules[0].Family = []string{"Cousins"} },
-		"comma tag":     func(g *Group) { g.Rules[0].Tags = []string{"a, b"} },
-		"no owner":      func(g *Group) { g.Rules[0].Owner = "" },
+		"comma tag":     func(g *Group) { g.Rules[0].Tags = []string{"m@x.org:a, b"} },
+		"bare tag":      func(g *Group) { g.Rules[0].Tags = []string{"Carpool"} },
 		"long title":    func(g *Group) { g.Title = strings.Repeat("x", 81) },
 		"too many rule": func(g *Group) { g.Rules = append(g.Rules, make([]Rule, maxRules)...) },
 		"bad addition":  func(g *Group) { g.Additions = []Addition{{Email: "not an address", Name: "Nobody"}} },
@@ -131,7 +131,7 @@ func TestChecksRefuseBadGroups(t *testing.T) {
 
 func TestWithGroupRoundTrips(t *testing.T) {
 	tables := sampleTables(t)
-	g := Normalize(Group{Name: "chess.club", Title: " Chess Club ", Visibility: " Members ", Managers: []string{"M@X.org", "m@x.org"}, Rules: []Rule{{Kind: "Include", Search: "  Kim ", Owner: "M@X.org"}},
+	g := Normalize(Group{Name: "chess.club", Title: " Chess Club ", Visibility: " Members ", Managers: []string{"M@X.org", "m@x.org"}, Rules: []Rule{{Kind: "Include", Search: "  Kim ", Tags: []string{" M@X.org:Chess "}}},
 		Additions: []Addition{{Email: " Coach@Club.org ", Name: "  The  Coach "}, {Email: "coach@club.org", Name: "Again"}}})
 	next := tables.withGroup(g)
 	if len(tables.Groups) != 3 || len(next.Groups) != 4 {
@@ -142,13 +142,13 @@ func TestWithGroupRoundTrips(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := model.Group("chess.club")
-	if got.Title != "Chess Club" || got.Visibility != VisibilityMembers || len(got.Managers) != 1 || got.Rules[0].Kind != KindInclude || got.Rules[0].Search != "kim" || got.Rules[0].Owner != "m@x.org" {
+	if got.Title != "Chess Club" || got.Visibility != VisibilityMembers || len(got.Managers) != 1 || got.Rules[0].Kind != KindInclude || got.Rules[0].Search != "kim" || got.Rules[0].Tags[0] != "m@x.org:Chess" {
 		t.Fatalf("%+v", got)
 	}
 	if len(got.Additions) != 1 || got.Additions[0] != (Addition{Email: "coach@club.org", Name: "The Coach"}) {
 		t.Fatalf("additions: %+v", got.Additions)
 	}
-	g.Rules = append(g.Rules, Rule{Kind: KindExclude, Roles: []string{"Staff"}, Owner: "m@x.org"})
+	g.Rules = append(g.Rules, Rule{Kind: KindExclude, Roles: []string{"Staff"}})
 	g.Additions = nil
 	g.Visibility = ""
 	again := next.withGroup(g)
@@ -202,7 +202,7 @@ func TestAliasesReachTheirGroupAndStayUnique(t *testing.T) {
 	tables := sampleTables(t)
 	tables.Groups = append(tables.Groups, map[string]string{"Name": "hummingbirds-families", "Title": "Clash"})
 	tables.Managers = append(tables.Managers, map[string]string{"Group": "hummingbirds-families", "Email": "m@x.org"})
-	tables.Rules = append(tables.Rules, map[string]string{"Group": "hummingbirds-families", "Kind": "include", "Roles": "Staff", "Owner": "m@x.org"})
+	tables.Rules = append(tables.Rules, map[string]string{"Group": "hummingbirds-families", "Kind": "include", "Roles": "Staff"})
 	if _, err := BuildModel(tables); err == nil {
 		t.Error("accepted a group named for another group's alias")
 	}
@@ -266,7 +266,7 @@ func TestArchivedIsOnePersonsAndFollowsTheGroup(t *testing.T) {
 }
 
 func TestSuggestedTagsAreTheOwnersOwnNoRuleOfTheirsNames(t *testing.T) {
-	groups := []Group{{Rules: []Rule{{Tags: []string{"Carpool"}, Owner: "jordan@x"}, {Tags: []string{"Soccer Team"}, Owner: "someone.else@x"}}}}
+	groups := []Group{{Rules: []Rule{{Tags: []string{"jordan@x:Carpool"}}, {Tags: []string{"someone.else@x:Soccer Team"}}}}}
 	tags := map[string][]string{"Carpool": {"a@x"}, "Soccer Team": {"b@x"}, "Book Club": {"c@x"}, "Empty": {}}
 	got := SuggestedTags(tags, groups, "jordan@x")
 	if !slices.Equal(got, []string{"Book Club", "Soccer Team"}) {
