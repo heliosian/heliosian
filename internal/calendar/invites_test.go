@@ -693,8 +693,8 @@ func TestInviteGroups(t *testing.T) {
 	if r := rowOf(v, mia); r == nil || r.Via != ViaGroup+g.ID || r.Sent == "" || v.Groups[0].Count != 3 {
 		t.Errorf("mia after the grace = %+v, groups %+v", r, v.Groups)
 	}
-	now = func() time.Time { return time.Now().In(Location) }
 	waitFor(kept, 4)
+	now = func() time.Time { return time.Now().In(Location) }
 	if m := mailTo(kept, mia); len(m) != 1 || !strings.Contains(m[0].Subject, "You're invited!") {
 		t.Errorf("mia's auto invite = %+v", m)
 	}
