@@ -2,6 +2,7 @@ package calendar
 
 import (
 	"log/slog"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -26,7 +27,7 @@ type Cache struct {
 	model      *Model
 	tables     *Tables
 	edits      int
-	// images says which tag image names can be served; nil in a test.
+	// images says which image names can be served; nil in a test.
 	images ImageChecker
 }
 
@@ -80,9 +81,11 @@ func (c *Cache) refresh() error {
 	return nil
 }
 
-// resolveImages turns each tag's image name into the address the page
-// fetches it from, once per model rather than per request. A name that
-// resolves to nothing is logged and left blank: a missing picture is never
+// resolveImages asks the store for every picture the model names - each
+// tag's, each hand-added event's, each invitation's flyer - once per model
+// rather than per request, so the store holds them for serving, and turns
+// each tag's image name into the address the page fetches it from. A name
+// that resolves to nothing is logged and left: a missing picture is never
 // a reason to refuse the calendar.
 func (c *Cache) resolveImages(model *Model) {
 	if c.images == nil {
@@ -94,8 +97,22 @@ func (c *Cache) resolveImages(model *Model) {
 			names = append(names, t.Image)
 		}
 	}
+	pictures := map[string]string{}
+	for _, e := range slices.Concat(model.Events, model.Pending) {
+		if e.Source == SourceSheet && e.Image != "" {
+			pictures["event "+e.ID] = e.Image
+		}
+	}
+	for id, inv := range model.Invitations {
+		if inv.Flyer != "" {
+			pictures["flyer "+id] = inv.Flyer
+		}
+	}
+	for _, name := range pictures {
+		names = append(names, name)
+	}
 	if err := c.images.Prefetch(names); err != nil {
-		slog.Error("calendar: prefetch tag images", "error", err)
+		slog.Error("calendar: prefetch images", "error", err)
 	}
 	for i := range model.Tags {
 		t := &model.Tags[i]
@@ -109,6 +126,14 @@ func (c *Cache) resolveImages(model *Model) {
 			slog.Warn("calendar: tag image does not exist", "tag", t.Name, "image", t.Image)
 		} else {
 			t.ImageURL = "/" + t.Image
+		}
+	}
+	for what, name := range pictures {
+		found, err := c.images.Has(name)
+		if err != nil {
+			slog.Error("calendar: picture", "of", what, "image", name, "error", err)
+		} else if !found {
+			slog.Warn("calendar: picture does not exist", "of", what, "image", name)
 		}
 	}
 }
