@@ -2,6 +2,8 @@ package loop
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"html"
@@ -9,7 +11,6 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"path"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -21,12 +22,9 @@ import (
 	"heliosian/internal/mail"
 )
 
-type Fetcher interface {
-	Stored(ctx context.Context, url string) ([]byte, error)
-}
-
 type Archive interface {
 	Put(ctx context.Context, name, mimeType string, content []byte) error
+	Get(ctx context.Context, name string) ([]byte, error)
 }
 
 type Documents interface {
@@ -36,7 +34,6 @@ type Documents interface {
 
 type Mail struct {
 	Sender     mail.RawSender
-	Store      Fetcher
 	SigningKey string
 	Key        []byte
 	Base       string
@@ -45,7 +42,7 @@ type Mail struct {
 }
 
 func (m Mail) ready() bool {
-	return m.SigningKey != "" && m.Store != nil && m.Sender != nil
+	return m.SigningKey != "" && m.Sender != nil
 }
 
 type DirArchive struct {
@@ -60,9 +57,12 @@ func (d DirArchive) Put(_ context.Context, name, _ string, content []byte) error
 	return os.WriteFile(path, content, 0o644)
 }
 
+func (d DirArchive) Get(_ context.Context, name string) ([]byte, error) {
+	return os.ReadFile(filepath.Join(d.Dir, filepath.FromSlash(name)))
+}
+
 const (
 	stateReceived    = "received"
-	stateStored      = "stored"
 	stateSent        = "sent"
 	stateDropped     = "dropped"
 	stateFailed      = "failed"
@@ -73,7 +73,12 @@ const (
 )
 
 type job struct {
-	id, group, source string
+	id, group, object string
+}
+
+func idOf(raw []byte) string {
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:8])
 }
 
 func (j job) key() string {
@@ -129,35 +134,39 @@ func (m *mailer) take(j job) bool {
 	return true
 }
 
+func (m *mailer) release(j job) {
+	m.mu.Lock()
+	delete(m.busy, j.key())
+	m.mu.Unlock()
+}
+
 func (m *mailer) recover() {
 	for _, row := range m.cache.Tables().Messages {
-		if state := row["State"]; state == stateReceived || state == stateStored {
-			j := job{id: row["ID"], group: strings.ToLower(row["Group"]), source: row["Source"]}
+		if row["State"] == stateReceived {
+			j := job{id: row["ID"], group: strings.ToLower(row["Group"]), object: row["Object"]}
 			if m.take(j) {
-				slog.Info("groups: resuming a message", "message", j.id, "group", j.group, "state", state)
+				slog.Info("groups: resuming a message", "message", j.id, "group", j.group)
 				m.work <- j
 			}
 		}
 	}
 }
 
-func (m *mailer) write(fn func() error) {
-	done := make(chan struct{})
-	m.queue.Add(func() {
-		defer close(done)
-		if err := fn(); err != nil {
-			slog.Error("groups: mail record", "error", err)
-		}
-	})
-	<-done
+func (m *mailer) write(fn func() error) error {
+	done := make(chan error, 1)
+	m.queue.Add(func() { done <- fn() })
+	return <-done
 }
 
 func (m *mailer) mark(j job, state string, cells map[string]string) {
 	cells["State"] = state
-	m.write(func() error {
+	err := m.write(func() error {
 		m.cache.edit(func(t *Tables) *Tables { return t.withMessage(j.id, j.group, cells) })
 		return m.writer.Set(appName, messagesTab, map[string]string{"ID": j.id, "Group": j.group}, cells)
 	})
+	if err != nil {
+		slog.Error("groups: mail record", "error", err)
+	}
 }
 
 func (m *mailer) recordSent(ctx context.Context, j job, raw []byte, cells map[string]string) {
@@ -194,22 +203,33 @@ func (m *mailer) groupsIn(addresses []string) []string {
 	return out
 }
 
-func (m *mailer) received(id, source, from, subject string, addresses []string) {
+func (m *mailer) received(ctx context.Context, raw []byte, from, subject string, addresses []string) error {
+	id := idOf(raw)
+	lines, _ := mail.SplitMessage(raw)
+	messageID := messageID(lines)
 	for _, name := range m.groupsIn(addresses) {
-		j := job{id: id, group: name, source: source}
+		j := job{id: id, group: name}
 		if !m.take(j) {
 			continue
 		}
-		slog.Info("groups: mail received", "message", id, "group", name, "from", from, "subject", subject)
-		m.queue.Add(func() {
-			cells := map[string]string{"Received": time.Now().Format(time.RFC3339), "From": from, "Subject": subject, "State": stateReceived, "Recipients": "", "Object": "", "Detail": "", "Source": source}
+		j.object = fmt.Sprintf("loop/%s/%s-%s.eml", name, time.Now().UTC().Format("20060102T150405Z"), id)
+		if err := m.mail.Archive.Put(ctx, j.object, mailType, raw); err != nil {
+			m.release(j)
+			return fmt.Errorf("archive %s for %s: %w", id, name, err)
+		}
+		cells := map[string]string{"Received": time.Now().Format(time.RFC3339), "From": from, "Subject": subject, "State": stateReceived, "Recipients": "", "Object": j.object, "Detail": "", "Message ID": messageID}
+		err := m.write(func() error {
 			m.cache.edit(func(t *Tables) *Tables { return t.withMessage(id, name, cells) })
-			if err := m.writer.Set(appName, messagesTab, map[string]string{"ID": id, "Group": name}, cells); err != nil {
-				slog.Error("groups: mail record", "error", err)
-			}
+			return m.writer.Set(appName, messagesTab, map[string]string{"ID": id, "Group": name}, cells)
 		})
+		if err != nil {
+			m.release(j)
+			return fmt.Errorf("record %s for %s: %w", id, name, err)
+		}
+		slog.Info("groups: mail received", "message", id, "group", name, "from", from, "subject", subject)
 		m.work <- j
 	}
+	return nil
 }
 
 func (m *mailer) record(row map[string]string) {
@@ -297,12 +317,12 @@ func (m *mailer) forward(ctx context.Context, j job) string {
 	if !m.mail.ready() {
 		return fail("mail", fmt.Errorf("mail is not set up"))
 	}
-	if j.source == "" {
-		return fail("fetch", fmt.Errorf("the message has no source to fetch"))
+	if j.object == "" {
+		return fail("archive", fmt.Errorf("the message names no archive object"))
 	}
-	raw, err := m.mail.Store.Stored(ctx, j.source)
+	raw, err := m.mail.Archive.Get(ctx, j.object)
 	if err != nil {
-		return fail("fetch", err)
+		return fail("archive", err)
 	}
 	lines, body := mail.SplitMessage(raw)
 	if reason := held(lines); reason != "" {
@@ -329,12 +349,7 @@ func (m *mailer) forward(ctx context.Context, j job) string {
 		m.mark(j, stateDropped, map[string]string{"Detail": "only the group's " + audience + " may " + verb})
 		return stateDropped
 	}
-	object := fmt.Sprintf("loop/%s/%s-%s.eml", g.Name, time.Now().UTC().Format("20060102T150405Z"), j.id)
-	if err := m.mail.Archive.Put(ctx, object, mailType, raw); err != nil {
-		return fail("archive", err)
-	}
 	id := messageID(lines)
-	m.mark(j, stateStored, map[string]string{"Object": object, "Message ID": id})
 	head, err := rewrite(lines, *g)
 	if err != nil {
 		return fail("rewrite", err)
@@ -406,13 +421,17 @@ func (a app) inbound(w http.ResponseWriter, r *http.Request) {
 		}
 		posted = append(posted, recipient)
 	}
-	source := fields["message-url"]
-	if source == "" {
-		slog.WarnContext(r.Context(), "groups: inbound call carries no message-url", "recipient", fields["recipient"])
+	raw := []byte(fields["body-mime"])
+	if len(raw) == 0 {
+		slog.WarnContext(r.Context(), "groups: inbound call carries no body-mime", "recipient", fields["recipient"])
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	a.mailer.received(path.Base(source), source, fields["from"], fields["subject"], posted)
+	if err := a.mailer.received(r.Context(), raw, fields["from"], fields["subject"], posted); err != nil {
+		slog.ErrorContext(r.Context(), "[ERROR] groups: mail not recorded", "recipient", fields["recipient"], "error", err)
+		http.Error(w, "not recorded", http.StatusInternalServerError)
+		return
+	}
 	w.WriteHeader(http.StatusOK)
 }
 

@@ -62,7 +62,7 @@ var (
 	AdditionColumns  = []string{"Group", "Email", "Name"}
 	ExcludedColumns  = []string{"Group", "Email", "Note", "Timestamp"}
 	AliasColumns     = []string{"Group", "Alias"}
-	MessageColumns   = []string{"ID", "Group", "Received", "From", "Subject", "State", "Recipients", "Object", "Detail", "Source", "Message ID"}
+	MessageColumns   = []string{"ID", "Group", "Received", "From", "Subject", "State", "Recipients", "Object", "Detail", "Message ID"}
 	DeliveryColumns  = []string{"Timestamp", "Group", "Email", "Event", "Message", "Detail"}
 	AdminColumns     = []string{"Email"}
 	ArchivedColumns  = []string{"Group", "Email"}

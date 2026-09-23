@@ -20,30 +20,10 @@ import (
 	"heliosian/internal/mail"
 )
 
-// An invite names the calendar's reply address as its organizer, so the
-// Accept or Decline a person taps in their own calendar app comes back
-// here as a reply email with an iCalendar REPLY in it. Mailgun takes those
-// in, stores them and calls /hooks/replies; the reply's attendee and
-// standing become the person's answer, the same as a Yes or No on the site
-// - with no invite sent back, since they are answering the one they have.
-
-// Fetcher fetches a stored message back from the mail provider, raw, by
-// the address the notification gave for it.
-type Fetcher interface {
-	Stored(ctx context.Context, url string) ([]byte, error)
-}
-
-// Mail is the calendar's mail: the sender its invites go out through (nil
-// sends none), the address they come from, the address replies go to - the
-// invites' organizer, which the provider receives for - the fetcher the
-// stored replies come back through, the key the provider signs its
-// notifications with, and the key each invite's own reply address is made
-// from.
 type Mail struct {
 	Sender     mail.Sender
 	From       string
 	ReplyTo    string
-	Store      Fetcher
 	SigningKey string
 	Key        []byte
 }
@@ -54,11 +34,8 @@ type Reply struct {
 	UID, Email, Standing string
 }
 
-// replies is the route the mail provider notifies for each message the
-// reply address receives. It answers 200 to everything it can read and 406
-// to a call it cannot trust, which the provider does not retry.
 func (a app) replies(w http.ResponseWriter, r *http.Request) {
-	if a.mail.SigningKey == "" || a.mail.Store == nil || len(a.mail.Key) == 0 {
+	if a.mail.SigningKey == "" || len(a.mail.Key) == 0 {
 		http.Error(w, "replies are not set up", http.StatusNotFound)
 		return
 	}
@@ -77,33 +54,27 @@ func (a app) replies(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	source := fields["message-url"]
-	if source == "" {
-		slog.WarnContext(r.Context(), "calendar: reply notification carries no message-url", "from", fields["from"], "subject", fields["subject"])
+	raw := []byte(fields["body-mime"])
+	if len(raw) == 0 {
+		slog.WarnContext(r.Context(), "calendar: reply notification carries no body-mime", "from", fields["from"], "subject", fields["subject"])
 		w.WriteHeader(http.StatusOK)
-		return
-	}
-	raw, err := a.mail.Store.Stored(r.Context(), source)
-	if err != nil {
-		slog.ErrorContext(r.Context(), "calendar: fetch reply", "source", source, "error", err)
-		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
 	}
 	reply, err := ParseReply(raw)
 	if err != nil {
-		slog.InfoContext(r.Context(), "calendar: mail received is not a reply", "source", source, "from", fields["from"], "subject", fields["subject"], "error", err)
+		slog.InfoContext(r.Context(), "calendar: mail received is not a reply", "from", fields["from"], "subject", fields["subject"], "error", err)
 		w.WriteHeader(http.StatusOK)
 		return
 	}
 	lines, _ := mail.SplitMessage(raw)
 	from := mail.AddressOf(mail.Header(lines, "from"))
 	if reason := mail.Authenticated(lines); reason != "" {
-		slog.WarnContext(r.Context(), "calendar: reply not authenticated", "source", source, "from", from, "uid", reply.UID, "attendee", reply.Email, "reason", reason)
+		slog.WarnContext(r.Context(), "calendar: reply not authenticated", "from", from, "uid", reply.UID, "attendee", reply.Email, "reason", reason)
 		w.WriteHeader(http.StatusOK)
 		return
 	}
 	if err := a.takeReply(r.Context(), reply, from, tag); err != nil {
-		slog.WarnContext(r.Context(), "calendar: reply not taken", "source", source, "from", from, "uid", reply.UID, "attendee", reply.Email, "standing", reply.Standing, "error", err)
+		slog.WarnContext(r.Context(), "calendar: reply not taken", "from", from, "uid", reply.UID, "attendee", reply.Email, "standing", reply.Standing, "error", err)
 	}
 	w.WriteHeader(http.StatusOK)
 }

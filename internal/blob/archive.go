@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/option"
@@ -23,6 +24,19 @@ func NewArchive(bucket string) (*Archive, error) {
 		return nil, fmt.Errorf("storage client: %w", err)
 	}
 	return &Archive{service: service, bucket: bucket}, nil
+}
+
+func (a *Archive) Get(ctx context.Context, name string) ([]byte, error) {
+	resp, err := a.service.Objects.Get(a.bucket, name).Context(ctx).Download()
+	if err != nil {
+		return nil, fmt.Errorf("read %s from %s: %w", name, a.bucket, err)
+	}
+	defer resp.Body.Close()
+	content, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read %s from %s: %w", name, a.bucket, err)
+	}
+	return content, nil
 }
 
 func (a *Archive) Put(ctx context.Context, name, mimeType string, content []byte) error {

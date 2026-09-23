@@ -30,7 +30,7 @@ func (h *harness) excludedRows(name, email string) int {
 }
 
 func TestAMemberOfAVisibleGroupTakesThemselvesOffAndBack(t *testing.T) {
-	h := newHarness(t, &fakeStore{raw: []byte(post)})
+	h := newHarness(t)
 	const name = "middle-school-parents"
 	g := h.cache.Model().Group(name)
 	member := ""
@@ -113,7 +113,7 @@ func TestAMemberOfAVisibleGroupTakesThemselvesOffAndBack(t *testing.T) {
 }
 
 func TestTheExcludedListGoesToManagersAlone(t *testing.T) {
-	h := newHarness(t, &fakeStore{raw: []byte(post)})
+	h := newHarness(t)
 	const name = "middle-school-parents"
 	g := h.cache.Model().Group(name)
 	member := ""
@@ -187,7 +187,7 @@ func (h *harness) groupNames(email string) []string {
 }
 
 func TestAGroupOpenToItsMembersReachesThemAlone(t *testing.T) {
-	h := newHarness(t, &fakeStore{raw: []byte(post)})
+	h := newHarness(t)
 	const name = "middle-school-parents"
 	g := *h.cache.Model().Group(name)
 	member := ""

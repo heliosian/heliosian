@@ -134,7 +134,7 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	mux.HandleFunc("GET /open/banner/{id...}", a.banner)
 	// Public too, under /hooks/: the mail provider's call for each reply to
 	// an invite, signed with the webhook secret.
-	mux.HandleFunc("POST /hooks/replies", a.replies)
+	mux.HandleFunc("POST /hooks/replies/mime", a.replies)
 	// And the provider's delivery events, for the bounces.
 	mux.HandleFunc("POST /hooks/events", a.deliveryEvents)
 	return Hooks{Answer: a.answer, MakeDefault: a.makeDefault}

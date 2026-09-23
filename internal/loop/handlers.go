@@ -81,7 +81,7 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	mux.HandleFunc("POST /api/loop/archive", a.archive)
 	mux.HandleFunc("GET /api/admin/state", a.adminState)
 	mux.HandleFunc("POST /api/admin/admins", a.setAdmins)
-	mux.HandleFunc("POST /hooks/mail", a.inbound)
+	mux.HandleFunc("POST /hooks/mail/mime", a.inbound)
 	mux.HandleFunc("POST /hooks/events", a.events)
 	mux.HandleFunc("GET /open/share/about.png", a.shareCard)
 	mux.HandleFunc("GET /open/unsubscribe/{token}", a.unsubscribePage)

@@ -157,31 +157,6 @@ func (m *Mailgun) SendRaw(ctx context.Context, from string, to []string, raw []b
 	return m.post(ctx, domain, "messages.mime", &body, form.FormDataContentType())
 }
 
-func (m *Mailgun) Stored(ctx context.Context, url string) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
-	defer cancel()
-	req, err := http.NewRequest(http.MethodGet, url, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Accept", "message/rfc2822")
-	resp, err := m.do(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	var stored struct {
-		Raw string `json:"body-mime"`
-	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 64<<20)).Decode(&stored); err != nil {
-		return nil, fmt.Errorf("mail: read the stored message: %w", err)
-	}
-	if stored.Raw == "" {
-		return nil, fmt.Errorf("mail: the stored message at %s has no body-mime", url)
-	}
-	return []byte(stored.Raw), nil
-}
-
 const MaxNotification = 40 << 20
 
 func Notification(w http.ResponseWriter, r *http.Request) (map[string]string, error) {

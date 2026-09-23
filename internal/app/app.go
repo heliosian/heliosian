@@ -1011,11 +1011,7 @@ func calendarReplyTo() string {
 }
 
 func calendarMail(sessionKey string) calendar.Mail {
-	m := calendar.Mail{Sender: newMailer(calendarMailFrom()), From: calendarMailFrom(), ReplyTo: calendarReplyTo(), SigningKey: mailgunSigningKey(), Key: []byte(sessionKey)}
-	if key := mailgunKey(); key != "" {
-		m.Store = mail.NewMailgun(key, "")
-	}
-	return m
+	return calendar.Mail{Sender: newMailer(calendarMailFrom()), From: calendarMailFrom(), ReplyTo: calendarReplyTo(), SigningKey: mailgunSigningKey(), Key: []byte(sessionKey)}
 }
 
 func mailgunKey() string {
@@ -1051,19 +1047,13 @@ func loopMail(sessionKey string) loop.Mail {
 	}
 	m := loop.Mail{SigningKey: mailgunSigningKey(), Key: []byte(sessionKey), Base: "https://loop.heliosian.com", Archive: archive}
 	if key := mailgunKey(); key != "" {
-		mailgun := mail.NewMailgun(key, "")
-		m.Sender = mailgun
-		m.Store = mailgun
+		m.Sender = mail.NewMailgun(key, "")
 	}
 	return m
 }
 
 func artifactsMail(store *blob.Store) artifacts.Inbox {
-	m := artifacts.Inbox{SigningKey: mailgunSigningKey(), Bucket: store}
-	if key := mailgunKey(); key != "" {
-		m.Store = mail.NewMailgun(key, "")
-	}
-	return m
+	return artifacts.Inbox{SigningKey: mailgunSigningKey(), Bucket: store}
 }
 
 // A nil *describe.Describer must stay a nil interface, or the app would call it.

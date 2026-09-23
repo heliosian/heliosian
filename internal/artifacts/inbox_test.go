@@ -105,12 +105,6 @@ func TestChannelKeepsOnlyBroadcasts(t *testing.T) {
 	}
 }
 
-type storedMail map[string]string
-
-func (s storedMail) Stored(_ context.Context, url string) ([]byte, error) {
-	return []byte(s[url]), nil
-}
-
 type bucket map[string][]byte
 
 func (b bucket) Put(folder, name, _ string, content []byte) error {
@@ -144,7 +138,7 @@ func testInbox(t *testing.T) (*Filer, bucket, *data.Dir) {
 	objects := bucket{}
 	sheet := &data.Dir{Root: root}
 	in := &Filer{
-		Inbox:    Inbox{Store: storedMail{"class": classMail, "personal": personalMail}, SigningKey: "key", Bucket: objects},
+		Inbox:    Inbox{SigningKey: "key", Bucket: objects},
 		cache:    cache,
 		embedder: Fake{},
 		writer:   sheet,
@@ -153,11 +147,21 @@ func testInbox(t *testing.T) (*Filer, bucket, *data.Dir) {
 	return in, objects, sheet
 }
 
+func hook(in *Filer, key, raw string) int {
+	timestamp, signature := mail.SignMailgun(key, "token", time.Now())
+	form := url.Values{"timestamp": {timestamp}, "token": {"token"}, "signature": {signature}, "body-mime": {raw}}
+	req := httptest.NewRequest(http.MethodPost, "/hooks/mail/mime", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	in.hook(rec, req)
+	return rec.Code
+}
+
 func TestInboxImportsOnlyTheCommunitysMailOnce(t *testing.T) {
 	in, objects, sheet := testInbox(t)
-	for _, source := range []string{"personal", "class", "class"} {
-		if err := in.take(context.Background(), source); err != nil {
-			t.Fatalf("%s: %v", source, err)
+	for _, raw := range []string{personalMail, classMail, classMail} {
+		if code := hook(in, "key", raw); code != http.StatusOK {
+			t.Fatalf("the hook answered %d", code)
 		}
 	}
 	_, rows, err := sheet.Table(appName, documentsTab)
@@ -257,14 +261,11 @@ func TestCacheRefreshKeepsAnEditMadeWhileReading(t *testing.T) {
 }
 
 func TestInboxRefusesAnUnsignedCall(t *testing.T) {
-	in, _, _ := testInbox(t)
-	timestamp, signature := mail.SignMailgun("another key", "token", time.Now())
-	form := url.Values{"timestamp": {timestamp}, "token": {"token"}, "signature": {signature}, "message-url": {"class"}}
-	req := httptest.NewRequest(http.MethodPost, "/hooks/mail", strings.NewReader(form.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	rec := httptest.NewRecorder()
-	in.hook(rec, req)
-	if rec.Code != http.StatusNotAcceptable {
-		t.Fatalf("status %d", rec.Code)
+	in, objects, _ := testInbox(t)
+	if code := hook(in, "another key", classMail); code != http.StatusNotAcceptable {
+		t.Fatalf("status %d", code)
+	}
+	if len(objects) != 0 {
+		t.Fatal("an unsigned call was filed")
 	}
 }

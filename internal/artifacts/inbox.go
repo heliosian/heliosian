@@ -23,22 +23,17 @@ import (
 	"heliosian/internal/mail"
 )
 
-type Fetcher interface {
-	Stored(ctx context.Context, url string) ([]byte, error)
-}
-
 type Bucket interface {
 	Put(folder, name, mimeType string, content []byte) error
 }
 
 type Inbox struct {
-	Store      Fetcher
 	SigningKey string
 	Bucket     Bucket
 }
 
 func (i Inbox) ready() bool {
-	return i.Store != nil && i.SigningKey != "" && i.Bucket != nil
+	return i.SigningKey != "" && i.Bucket != nil
 }
 
 type Queue interface {
@@ -53,13 +48,11 @@ type Filer struct {
 	embedder Embedder
 	writer   data.Writer
 	queue    Queue
-	work     chan string
 }
 
 func Register(mux *http.ServeMux, cache *Cache, embedder Embedder, writer data.Writer, queue Queue, mailbox Inbox) *Filer {
-	in := &Filer{Inbox: mailbox, cache: cache, embedder: embedder, writer: writer, queue: queue, work: make(chan string, 256)}
-	go in.run()
-	mux.HandleFunc("POST /hooks/mail", in.hook)
+	in := &Filer{Inbox: mailbox, cache: cache, embedder: embedder, writer: writer, queue: queue}
+	mux.HandleFunc("POST /hooks/mail/mime", in.hook)
 	return in
 }
 
@@ -78,37 +71,27 @@ func (in *Filer) hook(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "signature", http.StatusNotAcceptable)
 		return
 	}
-	source := fields["message-url"]
-	if source == "" {
-		slog.WarnContext(r.Context(), "artifacts: inbound call carries no message-url", "from", fields["from"], "subject", fields["subject"])
+	raw := []byte(fields["body-mime"])
+	if len(raw) == 0 {
+		slog.WarnContext(r.Context(), "artifacts: inbound call carries no body-mime", "from", fields["from"], "subject", fields["subject"])
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	in.queue.Hold()
-	in.work <- source
-	w.WriteHeader(http.StatusOK)
-}
-
-func (in *Filer) run() {
-	for source := range in.work {
-		if err := in.take(context.Background(), source); err != nil {
-			slog.Error("[ERROR] artifacts: mail not imported", "source", source, "error", err)
-		}
-		in.queue.Release()
-	}
-}
-
-func (in *Filer) take(ctx context.Context, source string) error {
-	raw, err := in.Store.Stored(ctx, source)
-	if err != nil {
-		return fmt.Errorf("fetch: %w", err)
-	}
 	m, err := ParseMail(raw)
 	if err != nil {
-		return err
+		slog.WarnContext(r.Context(), "artifacts: mail not readable", "from", fields["from"], "subject", fields["subject"], "error", err)
+		w.WriteHeader(http.StatusOK)
+		return
 	}
 	logHeaders(raw, m)
-	return in.file(ctx, m)
+	in.queue.Hold()
+	defer in.queue.Release()
+	if err := in.file(r.Context(), m); err != nil {
+		slog.ErrorContext(r.Context(), "[ERROR] artifacts: mail not imported", "id", m.MessageID, "subject", m.Subject, "error", err)
+		http.Error(w, "not imported", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
 }
 
 // Temporary: gathers what real forwarded mail carries, to settle the fix for

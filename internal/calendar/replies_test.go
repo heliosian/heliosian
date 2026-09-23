@@ -1,10 +1,8 @@
 package calendar
 
 import (
-	"context"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -88,18 +86,19 @@ func TestParseReply(t *testing.T) {
 	}
 }
 
-type fakeStore map[string][]byte
-
-func (f fakeStore) Stored(ctx context.Context, url string) ([]byte, error) {
-	raw, ok := f[url]
-	if !ok {
-		return nil, fmt.Errorf("no message at %s", url)
+func postReply(mux http.Handler, to, from, raw string, signed bool) int {
+	fields := map[string]string{"recipient": to, "from": from, "subject": "Accepted: International Night", "body-mime": raw}
+	if signed {
+		token := "token-" + raw[:40]
+		stamp, sig := mail.SignMailgun(replySecret, token, now())
+		fields["timestamp"], fields["token"], fields["signature"] = stamp, token, sig
 	}
-	return raw, nil
-}
-
-func stored(id string) string {
-	return "https://sw.api.mailgun.net/v3/domains/reply.heliosian.com/messages/" + id
+	body, _ := json.Marshal(fields)
+	req := httptest.NewRequest("POST", "https://when.heliosiandev.com:8080/hooks/replies/mime", strings.NewReader(string(body)))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	return rec.Code
 }
 
 // A signed notification of a reply records the attendee's answer with no
@@ -117,14 +116,14 @@ func TestRepliesRecordAnswers(t *testing.T) {
 	me := "jordan.whitfield@heliosschool.org"
 	d := fakeDirectory{people: map[string]Person{me: {Email: me, Name: "Jordan", IsParent: true}}, kids: map[string][]Person{}}
 	const school, elsewhere = "dmarc=pass header.from=heliosschool.org", "dmarc=pass header.from=example.org"
-	store := fakeStore{
-		stored("yes"):      []byte(replyMail("Jordan <"+me+">", me, "a7@sample", "ACCEPTED", school)),
-		stored("no"):       []byte(replyMail(me, me, "a7@sample", "DECLINED", school)),
-		stored("stranger"): []byte(replyMail("x@example.org", "x@example.org", "a7@sample", "ACCEPTED", elsewhere)),
-		stored("forged"):   []byte(replyMail("x@example.org", me, "a7@sample", "DECLINED", elsewhere)),
-		stored("spoofed"):  []byte(replyMail(me, me, "a7@sample", "DECLINED", "dkim=pass header.d=example.org; spf=pass smtp.mailfrom=x@example.org; dmarc=fail header.from=heliosschool.org")),
+	replies := map[string]string{
+		"yes":      replyMail("Jordan <"+me+">", me, "a7@sample", "ACCEPTED", school),
+		"no":       replyMail(me, me, "a7@sample", "DECLINED", school),
+		"stranger": replyMail("x@example.org", "x@example.org", "a7@sample", "ACCEPTED", elsewhere),
+		"forged":   replyMail("x@example.org", me, "a7@sample", "DECLINED", elsewhere),
+		"spoofed":  replyMail(me, me, "a7@sample", "DECLINED", "dkim=pass header.d=example.org; spf=pass smtp.mailfrom=x@example.org; dmarc=fail header.from=heliosschool.org"),
 	}
-	m := Mail{Store: store, SigningKey: replySecret, ReplyTo: replyTo, Key: replyKey}
+	m := Mail{SigningKey: replySecret, ReplyTo: replyTo, Key: replyKey}
 	mux := http.NewServeMux()
 	Register(mux, cache, dir, directQueue{}, nil, d, func() []string { return nil }, func(string) []Linked { return nil }, nil, nil, ImageSearch{}, m)
 	own := replyAddress("a7@sample", me)
@@ -133,17 +132,7 @@ func TestRepliesRecordAnswers(t *testing.T) {
 	}
 	to := strings.ToUpper(own)
 	post := func(id string, signed bool) int {
-		fields := map[string]string{"recipient": to, "from": me, "subject": "Accepted: International Night", "message-url": stored(id)}
-		if signed {
-			stamp, sig := mail.SignMailgun(replySecret, "token-"+id, now())
-			fields["timestamp"], fields["token"], fields["signature"] = stamp, "token-"+id, sig
-		}
-		body, _ := json.Marshal(fields)
-		req := httptest.NewRequest("POST", "https://when.heliosiandev.com:8080/hooks/replies", strings.NewReader(string(body)))
-		req.Header.Set("Content-Type", "application/json")
-		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, req)
-		return rec.Code
+		return postReply(mux, to, me, replies[id], signed)
 	}
 	if code := post("yes", false); code != 406 {
 		t.Errorf("unsigned call: %d", code)

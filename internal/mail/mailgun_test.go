@@ -57,23 +57,6 @@ func TestMailgunReportsRefusal(t *testing.T) {
 	}
 }
 
-func TestMailgunFetchesTheStoredMessage(t *testing.T) {
-	var accept string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		accept = r.Header.Get("Accept")
-		w.Write([]byte(`{"recipient":"team@loop.example.org","Body-mime":"From: a@x.org\r\nSubject: hi\r\n\r\nhello\r\n"}`))
-	}))
-	defer srv.Close()
-	m := &Mailgun{Key: "key-test"}
-	raw, err := m.Stored(context.Background(), srv.URL+"/v3/domains/loop.example.org/messages/abc")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if accept != "message/rfc2822" || string(raw) != "From: a@x.org\r\nSubject: hi\r\n\r\nhello\r\n" {
-		t.Fatalf("accept %q raw %q", accept, raw)
-	}
-}
-
 func TestVerifyMailgun(t *testing.T) {
 	at := time.Date(2026, 9, 17, 10, 0, 0, 0, time.UTC)
 	stamp, sig := SignMailgun("signing-key", "token-1", at)
