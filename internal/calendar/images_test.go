@@ -26,8 +26,8 @@ func TestResolveImagesAsksForEveryPicture(t *testing.T) {
 	c := &Cache{images: rec}
 	model := &Model{
 		Tags:    []Tag{{Name: "Trip", Image: "sample/trip.jpg"}, {Name: "Plain"}},
-		Events:  []*Event{{ID: "shown", Source: SourceSheet, Image: "category-images/shown.jpg"}, {ID: "feed", Source: SourceGoogle}},
-		Pending: []*Event{{ID: "waiting", Source: SourceSheet, Image: "category-images/gone.jpg"}},
+		Events:  []*Event{{ID: "shown", Source: SourceSheet, Image: "/category-images/shown.jpg"}, {ID: "feed", Source: SourceGoogle}},
+		Pending: []*Event{{ID: "waiting", Source: SourceSheet, Image: "/category-images/gone.jpg"}},
 		Invitations: map[string]*Invitation{
 			"shown": {EventID: "shown", Flyer: "category-images/flyer.jpg"},
 			"bare":  {EventID: "bare"},
@@ -49,7 +49,7 @@ func TestResolveImagesAsksForEveryPicture(t *testing.T) {
 	if model.Tags[0].ImageURL != "/sample/trip.jpg" || model.Tags[1].ImageURL != "" {
 		t.Errorf("tag addresses: %q %q", model.Tags[0].ImageURL, model.Tags[1].ImageURL)
 	}
-	if model.Pending[0].Image != "category-images/gone.jpg" {
+	if model.Pending[0].Image != "/category-images/gone.jpg" {
 		t.Errorf("a missing picture's name was changed: %q", model.Pending[0].Image)
 	}
 }
