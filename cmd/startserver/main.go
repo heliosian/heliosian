@@ -27,6 +27,7 @@ import (
 	"heliosian/internal/ask"
 	"heliosian/internal/auth"
 	"heliosian/internal/birthday"
+	"heliosian/internal/blob"
 	"heliosian/internal/calendar"
 	"heliosian/internal/capture"
 	"heliosian/internal/data"
@@ -90,14 +91,16 @@ func mailDir() string {
 }
 
 // sampleServer assembles the fictional community: sample CSVs, fake geocoding,
-// no media bucket, every request signed in as the sample parent, whom the sample
-// Config sheet lists as a super admin so every admin tool is testable locally.
+// media in memory until exit, every request signed in as the sample parent,
+// whom the sample Config sheet lists as a super admin so every admin tool is
+// testable locally.
 func sampleServer() (*http.Server, *who.Queue) {
 	dir := &data.Dir{Root: "sampledata"}
 	core := app.NewCore(app.Config{
 		Source:      dir,
 		Writer:      dir,
 		Geocoder:    geocode.Fake{},
+		Store:       blob.NewMemory(),
 		FamilyIDKey: []byte("sample"),
 		BrowserKey:  os.Getenv("GOOGLE_MAPS_BROWSER_KEY"),
 		ImageSearch: app.ImageSearchKeys(),

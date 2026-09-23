@@ -313,10 +313,10 @@ function imagePicker(current, currentUrl, options) {
     return true;
   }));
   const plain = Boolean(options && options.plain);
-  const google = el('button', 'button button-secondary button-small image-find', 'Find an image');
-  google.type = 'button';
-  google.hidden = plain || !imageSearchOn();
-  google.addEventListener('click', e => {
+  const find = el('button', 'button button-secondary button-small image-find', 'Find an image');
+  find.type = 'button';
+  find.hidden = plain || !imageSearchOn();
+  find.addEventListener('click', e => {
     e.stopPropagation();
     openImageSearch(options && options.query ? options.query() : '', async picked => {
       name = picked;
@@ -341,10 +341,10 @@ function imagePicker(current, currentUrl, options) {
       upload(e.dataTransfer.files[0]);
     });
     const buttons = el('div', 'image-drop-buttons');
-    buttons.append(choose, google);
+    buttons.append(choose, find);
     row.append(preview, placeholder, buttons, el('small', 'image-drop-note', 'JPG, PNG or GIF (max 8 MB)'), crop, remove);
   } else {
-    row.append(preview, placeholder, choose, google, crop, remove);
+    row.append(preview, placeholder, choose, find, crop, remove);
   }
   wrap.append(row);
   return {wrap, value: () => name};
@@ -1582,47 +1582,18 @@ export function imageSearchOn() {
 // a click on one imports it through the server - which fetches and stores the
 // picture like an upload - and hands the stored name to `onPicked`.
 // SafeSearch is on server-side.
-// imageSources is where the server can look, first first; imageSource the
-// one the picker leads with.
-export function imageSources() {
-  return (state.model && state.model.imageSources) || [];
-}
-
-export function imageSource() {
-  return imageSources()[0];
-}
-
-const notes = {
-  'Unsplash': 'Free to use under the Unsplash License; the photographer is credited on each tile.',
-  'Pexels': 'Free to use under the Pexels License; the photographer is credited on each tile.',
-  'Pixabay': 'Photos, illustrations and vectors, free to use under the Pixabay Content License.',
-};
-
 export function openImageSearch(initial, onPicked) {
   const wrap = el('div', 'image-search');
   const bar = el('div', 'image-search-bar');
   const input = el('input');
   input.type = 'search';
   input.value = initial || '';
+  input.placeholder = 'Search for a picture…';
   const go = button('Search', 'search', 'button', () => run());
-  // With more than one place to look, a segmented switch picks between them.
-  let source = imageSource();
-  const sources = imageSources();
-  const picker = sources.length > 1 ? segmented(sources.map(s => ({label: s, value: s})), source, v => {
-    source = v;
-    input.placeholder = `Search ${source}…`;
-    note.textContent = notes[source] || '';
-    run();
-  }) : null;
   bar.append(input, go);
   const status = el('div', 'image-search-status');
   const grid = el('div', 'image-search-grid');
-  const note = el('div', 'hint', notes[source] || '');
-  input.placeholder = `Search ${source}…`;
-  if (picker) {
-    wrap.append(picker.wrap);
-  }
-  wrap.append(bar, status, grid, note);
+  wrap.append(bar, status, grid);
   let busy = false;
   const run = async () => {
     const q = input.value.trim();
@@ -1633,7 +1604,7 @@ export function openImageSearch(initial, onPicked) {
     status.textContent = 'Searching…';
     grid.replaceChildren();
     try {
-      const res = await fetch(`/api/team/images/search?q=${encodeURIComponent(q)}&source=${encodeURIComponent(source)}`);
+      const res = await fetch(`/api/team/images/search?q=${encodeURIComponent(q)}`);
       if (!res.ok) {
         throw new Error(await res.text());
       }
@@ -1647,8 +1618,8 @@ export function openImageSearch(initial, onPicked) {
         img.alt = hit.title;
         img.loading = 'lazy';
         img.addEventListener('load', () => img.classList.add('is-loaded'));
-        tile.append(img, el('span', 'image-search-source', hit.credit || (hit.license ? `${hit.license} · ${hit.source}` : hit.source)));
-        tile.title = `${hit.title} - ${hit.width}×${hit.height}${hit.license ? ` - ${hit.license}` : ''}`;
+        tile.append(img);
+        tile.title = `${hit.title} - ${hit.width}×${hit.height}`;
         tile.addEventListener('click', async () => {
           if (busy) {
             return;
@@ -1658,7 +1629,7 @@ export function openImageSearch(initial, onPicked) {
           tile.classList.add('is-picked');
           try {
             const imported = await fetch('/api/team/images/import', {
-              method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({url: hit.url, download: hit.download || ''}),
+              method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id: hit.id}),
             });
             if (!imported.ok) {
               throw new Error(await imported.text());

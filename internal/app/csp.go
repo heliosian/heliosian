@@ -15,9 +15,8 @@ const reportPath = "/csp-report"
 // sign-in by the sources Google documents, the Maps JavaScript API by the
 // hosts a rendered map is seen to reach - its modules, RPCs and tiles from
 // maps.googleapis.com, its cursors and logo from maps.gstatic.com, and
-// Google Sans for its info window and hints from Google Fonts - and the
-// image search providers' thumbnails, which the pickers show straight from
-// their CDNs. Styles allow inline because Maps and sign-in inject theirs.
+// Google Sans for its info window and hints from Google Fonts. Styles allow
+// inline because Maps and sign-in inject theirs.
 func policy(domain string) string {
 	apps := "https://*." + domain + ":*"
 	return strings.Join([]string{
@@ -25,7 +24,7 @@ func policy(domain string) string {
 		"script-src 'self' https://accounts.google.com/gsi/client https://maps.googleapis.com",
 		"style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style https://fonts.googleapis.com",
 		"font-src 'self' https://fonts.gstatic.com",
-		"img-src 'self' data: blob: " + apps + " https://maps.googleapis.com https://maps.gstatic.com https://images.unsplash.com https://images.pexels.com https://pixabay.com",
+		"img-src 'self' data: blob: " + apps + " https://maps.googleapis.com https://maps.gstatic.com",
 		"media-src 'self' blob: " + apps,
 		"connect-src 'self' " + apps + " https://accounts.google.com/gsi/ https://maps.googleapis.com",
 		"frame-src https://accounts.google.com/gsi/",

@@ -217,11 +217,9 @@ type View struct {
 	// Invoicing is the accounting ledger, for an admin alone; everyone else
 	// gets none of it.
 	Invoicing []InvoiceLine `json:"invoicing,omitempty"`
-	// ImageSearch says the server can search for a picture, and ImageSources
-	// lists where it can look, for the picker.
-	ImageSearch  bool     `json:"imageSearch"`
-	ImageSources []string `json:"imageSources,omitempty"`
-	Alerts       Alerts   `json:"alerts"`
+	// ImageSearch says the server can search for a picture.
+	ImageSearch bool   `json:"imageSearch"`
+	Alerts      Alerts `json:"alerts"`
 }
 
 // line places an attendee under their name, the way the old site did: a

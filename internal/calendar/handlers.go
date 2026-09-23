@@ -123,6 +123,7 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	mux.HandleFunc("POST /api/calendar/tags", a.setTags)
 	mux.HandleFunc("POST /api/calendar/image", a.uploadImage)
 	mux.HandleFunc("GET /api/calendar/images/search", a.search.ServeSearch)
+	mux.HandleFunc("GET /api/calendar/images/thumb", a.search.ServeThumb)
 	mux.HandleFunc("POST /api/calendar/images/import", a.importImage)
 	mux.HandleFunc("GET /open/feed/{file}", a.feed)
 	// Public, past sign-in (auth.Public): the cards a chat app fetches.
@@ -183,7 +184,7 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 		}
 		view.Events[i] = &c
 	}
-	view.ImageSources = a.search.Sources()
+	view.ImageSearch = a.search.On()
 	view.User.IsSuperAdmin = a.cache.IsSuperAdmin(email)
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
@@ -532,7 +533,7 @@ func (a app) admin(next http.HandlerFunc) http.HandlerFunc {
 // importImage stores a picture picked from the search the way an upload is
 // stored, under the calendar's own folder.
 func (a app) importImage(w http.ResponseWriter, r *http.Request) {
-	a.search.ServeImport(w, r, a.store, imageFolder, maxImageSize)
+	a.search.ServeImport(w, r, imageFolder, maxImageSize)
 }
 
 // setKeywords is an admin replacing an event's search words from its page:
@@ -1009,13 +1010,8 @@ func (a app) forgetSetting(w http.ResponseWriter, r *http.Request) {
 
 // uploadImage stores a picture - a category's from an admin, an event's
 // from whoever shares one - content addressed, and answers with the name
-// the sheet records; the save that follows references it. Sample mode has
-// no bucket to put it in.
+// the sheet records; the save that follows references it.
 func (a app) uploadImage(w http.ResponseWriter, r *http.Request) {
-	if a.store == nil {
-		http.Error(w, "image uploads require real-data mode", http.StatusBadRequest)
-		return
-	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxImageSize)
 	file, header, err := r.FormFile("image")
 	if err != nil {

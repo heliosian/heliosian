@@ -225,7 +225,7 @@ export function openLinkEditor(link, category) {
   document.querySelector('#link-visible').checked = link ? link.visible : true;
   linkAudience = audienceCard(document.querySelector('#link-audience'), link ? link.rules : [], 'No rules means everyone.', 'link:' + (link ? link.title : ''));
   document.querySelector('#link-delete').hidden = !link;
-  document.querySelector('#link-image-find').hidden = imageSources().length === 0;
+  document.querySelector('#link-image-find').hidden = !imageSearchOn();
   fillCategories(link ? link.category : category || linkCategoryTitles()[0]);
   showImage('link', link && link.imageUrl ? link.imageUrl : '');
   setStatus('#link-status', '');
@@ -652,41 +652,11 @@ export function initEditing() {
   });
 }
 
-const sourceNotes = {
-  'Unsplash': 'Free to use under the Unsplash License; the photographer is credited on each tile.',
-  'Pexels': 'Free to use under the Pexels License; the photographer is credited on each tile.',
-  'Pixabay': 'Photos, illustrations and vectors, free to use under the Pixabay Content License.',
-};
-
-let imageSource = '';
 let onImagePicked = null;
 let imageSearchBusy = false;
 
-function imageSources() {
-  return (state.model && state.model.imageSources) || [];
-}
-
-function paintImageSources() {
-  const wrap = document.querySelector('#image-search-sources');
-  wrap.replaceChildren();
-  const sources = imageSources();
-  if (!sources.includes(imageSource)) {
-    imageSource = sources[0];
-  }
-  if (sources.length > 1) {
-    for (const source of sources) {
-      const button = el('button', 'segment' + (source === imageSource ? ' is-on' : ''), source);
-      button.type = 'button';
-      button.addEventListener('click', () => {
-        imageSource = source;
-        paintImageSources();
-        runImageSearch();
-      });
-      wrap.append(button);
-    }
-  }
-  document.querySelector('#image-search-input').placeholder = `Search ${imageSource}…`;
-  document.querySelector('#image-search-note').textContent = sourceNotes[imageSource] || '';
+function imageSearchOn() {
+  return Boolean(state.model && state.model.imageSearch);
 }
 
 function openImageSearch(initial, onPicked) {
@@ -695,7 +665,6 @@ function openImageSearch(initial, onPicked) {
   input.value = initial || '';
   document.querySelector('#image-search-grid').replaceChildren();
   document.querySelector('#image-search-status').textContent = '';
-  paintImageSources();
   imageSearchModal.hidden = false;
   input.focus();
   if (input.value) {
@@ -714,7 +683,7 @@ async function runImageSearch() {
   status.textContent = 'Searching…';
   grid.replaceChildren();
   try {
-    const res = await fetch(`/api/apps/images/search?q=${encodeURIComponent(q)}&source=${encodeURIComponent(imageSource)}`);
+    const res = await fetch(`/api/apps/images/search?q=${encodeURIComponent(q)}`);
     if (!res.ok) {
       throw new Error(await res.text());
     }
@@ -728,8 +697,8 @@ async function runImageSearch() {
       img.alt = hit.title;
       img.loading = 'lazy';
       img.addEventListener('load', () => img.classList.add('is-loaded'));
-      tile.append(img, el('span', 'image-search-source', hit.credit || (hit.license ? `${hit.license} · ${hit.source}` : hit.source)));
-      tile.title = `${hit.title} - ${hit.width}×${hit.height}${hit.license ? ` - ${hit.license}` : ''}`;
+      tile.append(img);
+      tile.title = `${hit.title} - ${hit.width}×${hit.height}`;
       tile.addEventListener('click', () => importImage(hit, tile));
       grid.append(tile);
     }
@@ -749,7 +718,7 @@ async function importImage(hit, tile) {
   tile.classList.add('is-picked');
   try {
     const res = await fetch('/api/apps/images/import', {
-      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({url: hit.url, download: hit.download || ''}),
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id: hit.id}),
     });
     if (!res.ok) {
       throw new Error(await res.text());

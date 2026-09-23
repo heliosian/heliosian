@@ -37,14 +37,9 @@ export function renderImages(selector, items, kind, colors) {
     const label = document.createElement('label');
     label.className = 'upload-button';
     label.textContent = 'Replace';
-    if (!state.hasStore) {
-      label.style.opacity = '0.5';
-      label.style.cursor = 'default';
-    }
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/*';
-    input.disabled = !state.hasStore;
     input.addEventListener('change', () => uploadImage(kind, item.name, input, status));
     label.append(input);
     row.append(label);

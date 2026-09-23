@@ -83,6 +83,7 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	mux.HandleFunc("GET /api/celebrate/model", a.ready(a.model))
 	mux.HandleFunc("GET /api/celebrate/people", a.ready(a.people))
 	mux.HandleFunc("GET /api/celebrate/images/search", a.ready(a.search.ServeSearch))
+	mux.HandleFunc("GET /api/celebrate/images/thumb", a.ready(a.search.ServeThumb))
 	mux.HandleFunc("POST /api/celebrate/images/import", a.ready(a.importImage))
 	mux.HandleFunc("POST /api/celebrate/image", a.ready(a.uploadImage))
 	// Public, past sign-in (auth.Public): the image a chat app shows for a
@@ -173,8 +174,7 @@ func stamp() string {
 func (a app) model(w http.ResponseWriter, r *http.Request) {
 	email, admin := a.who(r)
 	view := RenderWith(a.cache.Model(), a.directory, a.rsvps, email, admin, now())
-	view.ImageSources = a.search.Sources()
-	view.ImageSearch = len(view.ImageSources) > 0
+	view.ImageSearch = a.search.On()
 	view.User.IsSuperAdmin = a.cache.IsSuperAdmin(email)
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
@@ -1663,16 +1663,12 @@ func (a app) saveSettings(w http.ResponseWriter, r *http.Request) {
 
 // importImage stores a picked search result under the app's own folder.
 func (a app) importImage(w http.ResponseWriter, r *http.Request) {
-	a.search.ServeImport(w, r, a.store, imageFolder, maxImageSize)
+	a.search.ServeImport(w, r, imageFolder, maxImageSize)
 }
 
 // uploadImage stores a content-addressed image and returns the name the sheet
 // should record; the save that follows references it.
 func (a app) uploadImage(w http.ResponseWriter, r *http.Request) {
-	if a.store == nil {
-		http.Error(w, "image uploads require real-data mode", http.StatusBadRequest)
-		return
-	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxImageSize)
 	file, header, err := r.FormFile("image")
 	if err != nil {

@@ -2,7 +2,7 @@ import {state, calendarLink, sourceWords, dayType, eventDates, linkURL, isParty,
 import {dayTypeClass} from '/daytype.js';
 import {el, link, svg, paragraphs, button, toast, avatar, popup, copyText} from '../dom.js';
 import {dateCard} from '/datecard.js';
-import {uploadImage, openImageSearch, imageSources} from '../images.js';
+import {uploadImage, openImageSearch, imageSearchOn} from '../images.js';
 import {appOrigin} from '/toolbar.js';
 import {setTitle} from '../chrome.js';
 import {audienceChips, blocks} from '../events.js';
@@ -97,7 +97,7 @@ function heroImageBar(e) {
     menu.append(b);
   };
   item('image', 'Upload image', () => file.click());
-  if (imageSources().length) {
+  if (imageSearchOn()) {
     item('search', 'Find an image', () => openImageSearch(e.title, name => save(name)));
   }
   toggle.addEventListener('click', ev => {

@@ -1,5 +1,5 @@
 import {state} from './state.js';
-import {el, svg, button, toast, segmented} from './dom.js';
+import {el, svg, button, toast} from './dom.js';
 
 // The picture tools the admins' category images and everyone's shared
 // events use: an upload, a search of the picture libraries, and the
@@ -51,46 +51,26 @@ export function openSheet(title, node) {
   return shut;
 }
 
-export function imageSources() {
-  return (state.model && state.model.imageSources) || [];
+export function imageSearchOn() {
+  return Boolean(state.model && state.model.imageSearch);
 }
 
-const sourceNotes = {
-  'Unsplash': 'Free to use under the Unsplash License; the photographer is credited on each tile.',
-  'Pexels': 'Free to use under the Pexels License; the photographer is credited on each tile.',
-  'Pixabay': 'Photos, illustrations and vectors, free to use under the Pixabay Content License.',
-};
-
 // openImageSearch is the picture picker the other apps have: a search box,
-// the sources the server is set up for, a grid of results, and a click on
-// one imports it through the server - fetched and stored like an upload -
-// handing the stored name and its address to onPicked.
+// a grid of results, and a click on one imports it through the server -
+// fetched and stored like an upload - handing the stored name and its
+// address to onPicked.
 export function openImageSearch(initial, onPicked) {
   const wrap = el('div', 'image-search');
   const bar = el('div', 'image-search-bar');
   const input = el('input');
   input.type = 'search';
   input.value = initial || '';
+  input.placeholder = 'Search for a picture…';
   const go = button('Search', 'search', 'button', () => run());
-  const sources = imageSources();
-  let source = sources[0];
   const status = el('div', 'image-search-status');
   const grid = el('div', 'image-search-grid');
-  const note = el('div', 'admin-note', sourceNotes[source] || '');
-  if (sources.length > 1) {
-    wrap.append(segmented(sources.map(name => ({key: name, label: name})), source, picked => {
-      source = picked;
-      input.placeholder = `Search ${source}…`;
-      note.textContent = sourceNotes[source] || '';
-      for (const b of wrap.querySelectorAll('.segment')) {
-        b.classList.toggle('is-on', b.textContent === source);
-      }
-      run();
-    }));
-  }
-  input.placeholder = `Search ${source}…`;
   bar.append(input, go);
-  wrap.append(bar, status, grid, note);
+  wrap.append(bar, status, grid);
   let busy = false;
   const run = async () => {
     const q = input.value.trim();
@@ -101,7 +81,7 @@ export function openImageSearch(initial, onPicked) {
     status.textContent = 'Searching…';
     grid.replaceChildren();
     try {
-      const res = await fetch(`/api/calendar/images/search?q=${encodeURIComponent(q)}&source=${encodeURIComponent(source)}`);
+      const res = await fetch(`/api/calendar/images/search?q=${encodeURIComponent(q)}`);
       if (!res.ok) {
         throw new Error(await res.text());
       }
@@ -115,8 +95,8 @@ export function openImageSearch(initial, onPicked) {
         img.alt = hit.title;
         img.loading = 'lazy';
         img.addEventListener('load', () => img.classList.add('is-loaded'));
-        tile.append(img, el('span', 'image-search-source', hit.credit || (hit.license ? `${hit.license} · ${hit.source}` : hit.source)));
-        tile.title = `${hit.title} - ${hit.width}×${hit.height}${hit.license ? ` - ${hit.license}` : ''}`;
+        tile.append(img);
+        tile.title = `${hit.title} - ${hit.width}×${hit.height}`;
         tile.addEventListener('click', async () => {
           if (busy) {
             return;
@@ -126,7 +106,7 @@ export function openImageSearch(initial, onPicked) {
           tile.classList.add('is-picked');
           try {
             const imported = await fetch('/api/calendar/images/import', {
-              method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({url: hit.url, download: hit.download || ''}),
+              method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id: hit.id}),
             });
             if (!imported.ok) {
               throw new Error(await imported.text());
@@ -202,7 +182,7 @@ export function imageControl(t, onChange) {
   }));
   find.setAttribute('aria-label', 'Find an image');
   find.title = 'Find an image';
-  if (imageSources().length) {
+  if (imageSearchOn()) {
     wrap.append(find);
   }
   if (t.imageUrl) {

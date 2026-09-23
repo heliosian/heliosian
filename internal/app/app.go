@@ -743,6 +743,7 @@ func NewCore(cfg Config) *Core {
 		logging.Fatal("register manifest mime type", "error", err)
 	}
 	queue := who.NewQueue()
+	cfg.ImageSearch.Store = cfg.Store
 	settings, err := config.NewCache(cfg.Source, queue)
 	if err != nil {
 		logging.Fatal("load config", "error", err)
@@ -874,6 +875,14 @@ func NewCore(cfg Config) *Core {
 		}
 	}
 	feedback.RegisterAdmin(homeMux, feedbackStore, cfg.FeedbackFiler, superAdmin)
+	blob.Register(mux, cfg.Store)
+	blob.RegisterHome(homeMux, cfg.Store)
+	blob.RegisterTeam(teamMux, cfg.Store)
+	blob.RegisterBirthday(birthdayMux, cfg.Store)
+	blob.RegisterCelebrate(celebrateMux, cfg.Store)
+	blob.RegisterCalendar(calendarMux, cfg.Store)
+	blob.RegisterLoop(loopMux, cfg.Store)
+	blob.RegisterAsk(askMux, cfg.Store)
 	time.AfterFunc(deployOverlap, func() {
 		slog.Info("reading again for the previous revision's last writes")
 		for _, c := range []interface{ Refresh() }{settings, homeCache, teamCache, birthdayCache, celebrateCache, cache, calendarCache, loopCache, artifactsCache} {
@@ -1173,14 +1182,6 @@ func Production(domain, blobCache string) (*http.Server, *who.Queue) {
 		Embedder:      embedder,
 		ArtifactsMail: artifactsMail(store),
 	})
-	blob.Register(core.Mux, store)
-	blob.RegisterHome(core.HomeMux, store)
-	blob.RegisterTeam(core.TeamMux, store)
-	blob.RegisterBirthday(core.BirthdayMux, store)
-	blob.RegisterCelebrate(core.CelebrateMux, store)
-	blob.RegisterCalendar(core.CalendarMux, store)
-	blob.RegisterLoop(core.LoopMux, store)
-	blob.RegisterAsk(core.AskMux, store)
 	who.RegisterUpload(core.Mux, core.Cache, sheet, store, core.Queue)
 	client := clientID()
 	newAuth := func(app string) *auth.Auth {

@@ -2148,8 +2148,6 @@ button.side-chair:hover { background: var(--input); }
 .hero-image-menu-item svg { width: 16px; height: 16px; color: var(--brand); }
 
 /* The picture picker. */
-.image-search > .segmented { margin-bottom: 12px; }
-
 .image-search-bar { display: flex; gap: 8px; }
 
 .image-search-bar input { flex: 1; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; }
@@ -2167,10 +2165,6 @@ button.side-chair:hover { background: var(--input); }
 .image-search-hit:hover { border-color: var(--accent); }
 
 .image-search-hit.is-picked { border-color: var(--brand); opacity: 0.6; }
-
-.image-search-source { position: absolute; left: 0; right: 0; bottom: 0; padding: 3px 6px; font-size: 11px; color: #fff; background: rgba(0, 0, 0, 0.55); text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-.image-search .hint { margin-top: 12px; font-size: 12.5px; color: var(--muted); }
 
 .image-drop-buttons { display: flex; gap: 8px; margin-top: 6px; }
 

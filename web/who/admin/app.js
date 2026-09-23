@@ -34,15 +34,6 @@ export async function load() {
 function render() {
   document.querySelector('#me').textContent = state.email;
 
-  const notice = document.querySelector('#store-notice');
-  notice.innerHTML = '';
-  if (!state.hasStore) {
-    const div = document.createElement('div');
-    div.className = 'notice';
-    div.textContent = 'Running in sample mode: image uploads are disabled because there is no media bucket configured.';
-    notice.append(div);
-  }
-
   document.querySelector('#staff-color').value = state.config.staffColor;
 
   renderImages('#classrooms', state.classrooms, 'classroom', state.config.classroomColors);

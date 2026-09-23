@@ -1,7 +1,6 @@
 package who
 
 import (
-	"errors"
 	"fmt"
 	"log/slog"
 	"maps"
@@ -19,8 +18,6 @@ import (
 )
 
 const refreshInterval = 5 * time.Minute
-
-var errNoStore = errors.New("image uploads require real-data mode")
 
 type Geocoder interface {
 	Lookup(address string) (geocode.Point, error)
@@ -48,8 +45,8 @@ type Cache struct {
 	superEdit map[string]bool
 }
 
-// store is the concrete blob store (nil in sample mode), needed to replace a classroom
-// or grade image in place, which needs more than the existence check BlobChecker exposes.
+// store is the concrete blob store, needed to replace a classroom or grade
+// image in place, which needs more than the existence check BlobChecker exposes.
 func NewCache(source data.Source, writer data.Writer, geocoder Geocoder, blobs, static BlobChecker, store *blob.Store, queue *Queue, idKey []byte, superAdmins func() []string) (*Cache, error) {
 	c := &Cache{
 		source: source, writer: writer, geocoder: geocoder, blobs: blobs, static: static, store: store, queue: queue,
@@ -110,12 +107,6 @@ func (c *Cache) applyPhotos(email string, refs []photoRef, cells map[string]stri
 		tables = tables.withOverride(email, cells)
 	}
 	return c.rebuild(tables, time.Now())
-}
-
-// HasStore reports whether a real blob store is configured, which the admin page uses
-// to explain why image uploads are unavailable in sample mode.
-func (c *Cache) HasStore() bool {
-	return c.store != nil
 }
 
 // IsAdmin reports whether email may use the admin tools at all — either tier:
@@ -199,11 +190,8 @@ func (c *Cache) SetSuperEdit(email string, enabled bool) {
 
 // PutImage replaces a classroom or grade image in the bucket and rebuilds the model so
 // the new URL (the object's generation changes, so its content isn't cached under the
-// old one) shows up right away. Real-data mode only: there is no bucket in sample mode.
+// old one) shows up right away.
 func (c *Cache) PutImage(folder, name, mimeType string, content []byte) error {
-	if c.store == nil {
-		return errNoStore
-	}
 	if err := c.store.PutNamed(folder, name, mimeType, content); err != nil {
 		return err
 	}

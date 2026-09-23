@@ -103,6 +103,7 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	mux.HandleFunc("POST /api/apps/categories/order", a.reorderCategories)
 	mux.HandleFunc("POST /api/apps/image", a.uploadImage)
 	mux.HandleFunc("GET /api/apps/images/search", a.requireAdminFunc(a.search.ServeSearch))
+	mux.HandleFunc("GET /api/apps/images/thumb", a.requireAdminFunc(a.search.ServeThumb))
 	mux.HandleFunc("POST /api/apps/images/import", a.requireAdminFunc(a.importImage))
 	mux.HandleFunc("GET /api/admin/state", a.adminState)
 	mux.HandleFunc("POST /api/admin/admins", a.setAdmins)
@@ -326,7 +327,7 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 	view := struct {
 		Categories       []Category        `json:"categories"`
 		User             user              `json:"user"`
-		ImageSources     []string          `json:"imageSources"`
+		ImageSearch      bool              `json:"imageSearch"`
 		Alerts           alerts            `json:"alerts"`
 		Upcoming         []calendar.Card   `json:"upcoming"`
 		UpcomingCalendar *Upcoming         `json:"upcomingCalendar,omitempty"`
@@ -335,11 +336,11 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 		Options          *filter.Options   `json:"options,omitempty"`
 		TagLabels        map[string]string `json:"tagLabels,omitempty"`
 	}{
-		Categories:   categories,
-		User:         user{Email: email, Initial: strings.ToUpper(email[:1]), PhotoURL: a.heroPhoto(email), IsAdmin: admin},
-		ImageSources: a.search.Sources(),
-		Calendar:     a.month(email, "", ""),
-		Apps:         a.appViews(email, admin),
+		Categories:  categories,
+		User:        user{Email: email, Initial: strings.ToUpper(email[:1]), PhotoURL: a.heroPhoto(email), IsAdmin: admin},
+		ImageSearch: a.search.On(),
+		Calendar:    a.month(email, "", ""),
+		Apps:        a.appViews(email, admin),
 	}
 	if admin {
 		options := filter.OptionsFor(a.directory.Sources(), email)
@@ -450,7 +451,7 @@ func (a app) logChange(actor, action, kind string, cells map[string]string) erro
 }
 
 func (a app) importImage(w http.ResponseWriter, r *http.Request) {
-	a.search.ServeImport(w, r, a.store, imageFolder, maxImageSize)
+	a.search.ServeImport(w, r, imageFolder, maxImageSize)
 }
 
 func rulesOf(model *Model, key string) []filter.Rule {
@@ -954,10 +955,6 @@ func (a app) uploadImage(w http.ResponseWriter, r *http.Request) {
 	if _, ok := a.requireAdmin(w, r); !ok {
 		return
 	}
-	if a.store == nil {
-		http.Error(w, "image uploads require real-data mode", http.StatusBadRequest)
-		return
-	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxImageSize)
 	file, header, err := r.FormFile("image")
 	if err != nil {
@@ -996,12 +993,11 @@ func (a app) adminState(w http.ResponseWriter, r *http.Request) {
 	}
 	view := struct {
 		Email        string          `json:"email"`
-		HasStore     bool            `json:"hasStore"`
 		Admins       []string        `json:"admins"`
 		Apps         []AppVisibility `json:"apps"`
 		People       []Person        `json:"people"`
 		IsSuperAdmin bool            `json:"isSuperAdmin"`
-	}{Email: email, HasStore: a.store != nil, Admins: a.cache.Admins(), Apps: a.cache.AppVisibilities(), People: a.people(), IsSuperAdmin: a.cache.IsSuperAdmin(email)}
+	}{Email: email, Admins: a.cache.Admins(), Apps: a.cache.AppVisibilities(), People: a.people(), IsSuperAdmin: a.cache.IsSuperAdmin(email)}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
 		slog.ErrorContext(r.Context(), "encode apps admin state", "error", err)

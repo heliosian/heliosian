@@ -1485,21 +1485,9 @@ a.event-people:hover .event-person { text-decoration: underline; }
 
 
 
-/* The picture search sheet, as HCA-Team's: the libraries on a segmented
-   switch, the box and its Search, the grid, and the licence note. */
+/* The picture search sheet, as HCA-Team's: the box and its Search, and
+   the grid. */
 .modal-wide { max-width: 900px; }
-
-.image-search-sources {
-  display: inline-flex;
-  flex-wrap: wrap;
-  padding: 3px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--input);
-  margin-bottom: 12px;
-}
-
-.image-search-sources:empty { display: none; }
 
 .segment {
   border: 0;
@@ -1556,21 +1544,6 @@ a.event-people:hover .event-person { text-decoration: underline; }
 .image-search-hit:hover { border-color: var(--brand); }
 
 .image-search-hit.is-picked { border-color: var(--brand); opacity: 0.6; }
-
-.image-search-source {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  padding: 3px 6px;
-  background: rgba(0, 0, 0, 0.55);
-  color: #fff;
-  font-size: 11px;
-  text-align: left;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 
 .modal-hint {
   margin: 0 0 14px;

@@ -1,9 +1,7 @@
-Description: The image import (`imagesearch.ServeImport`) fetches whatever URL the request names, redirects followed, so any signed-in account on the portal, Celebrate or When can make the server request internal or arbitrary addresses and read back what answers as an image.
-Status: open
+Description: The image import (`imagesearch.ServeImport`) fetched whatever URL the request named, redirects followed, so any signed-in account on the portal, Celebrate or When could make the server request internal or arbitrary addresses and read back what answered as an image.
+Status: fixed
 Severity: medium
 ---
-`internal/imagesearch/imagesearch.go:275-284` checks only that the URL is http or https with a host, then fetches it with `imageClient` (`:70`), a plain client that follows redirects. `docs/dev.md` says the three stock libraries are the whole of it and a search asked for anywhere else is refused; the import has no such list. The routes are `POST /api/team/images/import` (`internal/team/team.go:83`), Celebrate's (`internal/celebrate/handlers.go:86`) and When's (`internal/calendar/handlers.go:126`), none asking for a role; Heliosian's is admin-only.
+`ServeImport` (`internal/imagesearch/imagesearch.go`) no longer takes an address. Its body is an id, which must match `idPattern` (sixty-four hex digits), and anything else is answered 404 before any fetch. The address fetched is the one the server itself wrote into `stock/<id>.json` in the media bucket when a search returned that hit, so the only hosts the import reaches are the ones the three providers' APIs named. A body carrying a `url` field, or a provider's own id, is a 404 like any other unknown picture (`TestStockFetchedOnce`).
 
-`{"url":"http://169.254.169.254/"}` or any address inside the project's network is requested from the server. The answer tells the caller the upstream status ("that site answered 403") against "not a supported image", which makes it a probe, and anything that sniffs as an image is stored in the bucket and handed back by name.
-
-Fix: allow only the image hosts of Unsplash, Pexels and Pixabay, check the host again in `CheckRedirect`, and ask for an editor on the three open routes.
+The routes on HCA-Team, Celebrate and When still ask for no role beyond sign-in, as the search routes beside them do; what a member can do with them now is spend the providers' search quota and add a stock picture to the bucket, not reach an address of their choosing.

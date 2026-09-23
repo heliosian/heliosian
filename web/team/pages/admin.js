@@ -92,7 +92,6 @@ function adminsCard() {
   const card = el('div', 'card');
   card.append(el('h2', '', 'Admins'));
   card.append(el('div', 'hint', 'Whoever is on this list can approve suggestions, edit any activity, and reach this page. Co-chairs edit their own activities without being here.'));
-  const notice = el('div');
   const rows = el('div');
   const status = el('span', 'save-status');
   let admins = [];
@@ -147,7 +146,7 @@ function adminsCard() {
     }
   });
   add.append(input, button('Add', null, 'button', addOne), status);
-  card.append(notice, rows, add);
+  card.append(rows, add);
   fetch('/api/admin/state').then(async res => {
     if (!res.ok) {
       status.classList.add('error');
@@ -156,9 +155,6 @@ function adminsCard() {
     }
     const data = await res.json();
     admins = data.admins;
-    if (!data.hasStore) {
-      notice.append(el('div', 'notice', 'Running in sample mode: image uploads are disabled because there is no media bucket configured.'));
-    }
     render();
   });
   return card;

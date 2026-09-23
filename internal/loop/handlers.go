@@ -702,10 +702,9 @@ func (a app) adminState(w http.ResponseWriter, r *http.Request) {
 	}
 	view := struct {
 		Email        string   `json:"email"`
-		HasStore     bool     `json:"hasStore"`
 		Admins       []string `json:"admins"`
 		IsSuperAdmin bool     `json:"isSuperAdmin"`
-	}{Email: email, HasStore: a.store != nil, Admins: a.cache.Admins(a.superAdmins()), IsSuperAdmin: a.cache.IsSuperAdmin(email)}
+	}{Email: email, Admins: a.cache.Admins(a.superAdmins()), IsSuperAdmin: a.cache.IsSuperAdmin(email)}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
 		slog.ErrorContext(r.Context(), "encode groups admin state", "error", err)

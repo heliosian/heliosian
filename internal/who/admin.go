@@ -23,12 +23,8 @@ type admin struct {
 }
 
 // RegisterAdmin wires up the admin tools: image management and the admin list itself.
-// Routes are always registered — even in sample mode — so the page and settings are
-// reachable for testing; PutImage is the only operation that actually needs a store.
 // writer and queue back setPersonFields' writes to the Overrides sheet, the same
-// data.Writer + *Queue pairing RegisterTags already uses - unlike PutImage's blob
-// store, both are available in sample mode too (data.Dir satisfies data.Writer
-// in-memory), so that handler needs no hasStore-style guard.
+// data.Writer + *Queue pairing RegisterTags already uses.
 func RegisterAdmin(mux *http.ServeMux, cache *Cache, writer data.Writer, queue *Queue) {
 	a := admin{cache: cache, writer: writer, queue: queue}
 	mux.HandleFunc("GET /admin", a.page)
@@ -273,7 +269,6 @@ func (a admin) state(w http.ResponseWriter, r *http.Request) {
 	sort.Slice(people, func(i, j int) bool { return people[i].Name < people[j].Name })
 	view := struct {
 		Email        string         `json:"email"`
-		HasStore     bool           `json:"hasStore"`
 		Admins       []string       `json:"admins"`
 		Classrooms   []imageInfo    `json:"classrooms"`
 		Grades       []imageInfo    `json:"grades"`
@@ -284,7 +279,7 @@ func (a admin) state(w http.ResponseWriter, r *http.Request) {
 		HiddenEmails []string       `json:"hiddenEmails"`
 		IsSuperAdmin bool           `json:"isSuperAdmin"`
 	}{
-		Email: email, HasStore: a.cache.HasStore(), Admins: a.cache.Admins(),
+		Email: email, Admins: a.cache.Admins(),
 		Classrooms: classrooms, Grades: grades, Bands: bands, Crews: crews, Departments: model.Departments,
 		People: people, HiddenEmails: model.hiddenEmails,
 	}
@@ -1071,10 +1066,6 @@ var imageExtensions = map[string]string{
 func (a admin) setImage(w http.ResponseWriter, r *http.Request) {
 	email, ok := a.requireAdmin(w, r)
 	if !ok {
-		return
-	}
-	if !a.cache.HasStore() {
-		http.Error(w, "image uploads require real-data mode", http.StatusNotImplemented)
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 10<<20)

@@ -150,11 +150,9 @@ type View struct {
 	// Redirects let the client send an old friendly address to where the thing
 	// is now, without a round trip.
 	Redirects []Redirect `json:"redirects"`
-	// ImageSearch says the server can search for a picture, and ImageSources
-	// lists where it can look, first first, for the picker.
-	ImageSearch  bool     `json:"imageSearch"`
-	ImageSources []string `json:"imageSources,omitempty"`
-	Alerts       Alerts   `json:"alerts"`
+	// ImageSearch says the server can search for a picture.
+	ImageSearch bool   `json:"imageSearch"`
+	Alerts      Alerts `json:"alerts"`
 	// GradeColors colours the grade badges as Helios Who? does.
 	GradeColors map[string]string `json:"gradeColors,omitempty"`
 }

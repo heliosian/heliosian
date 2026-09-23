@@ -67,7 +67,7 @@ type ImageSearch = imagesearch.Search
 
 // importImage stores a picked search result under the portal's own folder.
 func (a app) importImage(w http.ResponseWriter, r *http.Request) {
-	a.search.ServeImport(w, r, a.store, imageFolder, maxImageSize)
+	a.search.ServeImport(w, r, imageFolder, maxImageSize)
 }
 
 // writes. Every route already sits behind sign-in.
@@ -81,6 +81,7 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	}
 	mux.HandleFunc("GET /api/team/model", a.ready(a.model))
 	mux.HandleFunc("GET /api/team/images/search", a.ready(a.search.ServeSearch))
+	mux.HandleFunc("GET /api/team/images/thumb", a.ready(a.search.ServeThumb))
 	mux.HandleFunc("POST /api/team/images/import", a.ready(a.importImage))
 	// Public, past sign-in (auth.Public): the image a chat app shows for a link.
 	mux.HandleFunc("GET /open/share/upcoming.png", a.ready(a.shareUpcoming))
@@ -189,9 +190,7 @@ func today() string {
 func (a app) model(w http.ResponseWriter, r *http.Request) {
 	email, admin := a.who(r)
 	view := RenderWith(a.cache.Model(), a.directory, a.rsvps, email, admin, time.Now().In(local))
-	// Image search is on where a library's key is set, and off where none is.
-	view.ImageSources = a.search.Sources()
-	view.ImageSearch = len(view.ImageSources) > 0
+	view.ImageSearch = a.search.On()
 	view.User.IsSuperAdmin = a.cache.IsSuperAdmin(email)
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
@@ -1435,10 +1434,6 @@ func (a app) saveNotify(w http.ResponseWriter, r *http.Request) {
 // uploadImage stores a content-addressed image and returns the name the sheet
 // should record; the save that follows references it.
 func (a app) uploadImage(w http.ResponseWriter, r *http.Request) {
-	if a.store == nil {
-		http.Error(w, "image uploads require real-data mode", http.StatusBadRequest)
-		return
-	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxImageSize)
 	file, header, err := r.FormFile("image")
 	if err != nil {
@@ -1483,12 +1478,11 @@ func (a app) adminState(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	view := struct {
-		Email    string   `json:"email"`
-		HasStore bool     `json:"hasStore"`
-		Admins   []string `json:"admins"`
-		Notify   []string `json:"notify"`
-		Mail     bool     `json:"mail"`
-	}{Email: email, HasStore: a.store != nil, Admins: a.cache.Admins(a.superAdmins()), Notify: notify, Mail: a.mailer != nil}
+		Email  string   `json:"email"`
+		Admins []string `json:"admins"`
+		Notify []string `json:"notify"`
+		Mail   bool     `json:"mail"`
+	}{Email: email, Admins: a.cache.Admins(a.superAdmins()), Notify: notify, Mail: a.mailer != nil}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
 		slog.ErrorContext(r.Context(), "encode events admin state", "error", err)

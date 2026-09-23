@@ -374,14 +374,6 @@ async function load() {
   }
   const state = await res.json();
   document.querySelector('#me').textContent = state.email;
-  const notice = document.querySelector('#store-notice');
-  notice.replaceChildren();
-  if (!state.hasStore) {
-    const div = document.createElement('div');
-    div.className = 'notice';
-    div.textContent = 'Running in sample mode: image uploads are disabled because there is no media bucket configured.';
-    notice.append(div);
-  }
   listEditor({
     rows: document.querySelector('#admins-rows'),
     status: document.querySelector('#admins-status'),

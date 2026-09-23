@@ -1355,8 +1355,6 @@ main {
 
 .image-search-hit img.is-loaded { opacity: 1; }
 
-.image-search-source { position: absolute; left: 0; right: 0; bottom: 0; padding: 3px 6px; background: rgba(0, 0, 0, 0.55); color: #fff; font-size: 10px; line-height: 1.3; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
 .hint { font-size: 13px; color: var(--muted); }
 
 /* Admin Tools takes the window: the shell's rail and bars step aside and the

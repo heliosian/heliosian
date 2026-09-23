@@ -122,18 +122,18 @@ type User struct {
 
 type View struct {
 	User User `json:"user"`
-	// ImageSources are the picture searches the picker can offer - for a
+	// ImageSearch says the server can search for a picture - for a
 	// category's picture in Admin Tools, and for an event anyone shares.
-	ImageSources []string                     `json:"imageSources,omitempty"`
-	Today        string                       `json:"today"`
-	Now          string                       `json:"now"`
-	Classrooms   []Classroom                  `json:"classrooms"`
-	Colors       map[string]string            `json:"colors"`
-	Tags         []Tag                        `json:"tags"`
-	DayTypes     []DayType                    `json:"dayTypes"`
-	Years        []Year                       `json:"years"`
-	Days         map[string]map[string]string `json:"days"`
-	Events       []*Event                     `json:"events"`
+	ImageSearch bool                         `json:"imageSearch"`
+	Today       string                       `json:"today"`
+	Now         string                       `json:"now"`
+	Classrooms  []Classroom                  `json:"classrooms"`
+	Colors      map[string]string            `json:"colors"`
+	Tags        []Tag                        `json:"tags"`
+	DayTypes    []DayType                    `json:"dayTypes"`
+	Years       []Year                       `json:"years"`
+	Days        map[string]map[string]string `json:"days"`
+	Events      []*Event                     `json:"events"`
 	// Provenance is each event's admin-side story, for an admin alone; Names
 	// puts a name to the addresses the events name.
 	Provenance map[string]*Provenance `json:"provenance,omitempty"`
