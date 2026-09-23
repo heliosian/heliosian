@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	model     = "claude-opus-5"
+	model     = "claude-opus-5-5"
 	maxTokens = 16000
 	maxRounds = 8
 	refused   = "I can't help with that one here."
