@@ -101,8 +101,10 @@ func (b bucket) get(ctx context.Context, name string) (object, error) {
 }
 
 func (b bucket) put(ctx context.Context, name, mimeType string, content []byte) error {
+	// A chunk size of zero sends the object in one request; the default of
+	// sixteen megabytes is allocated whole for every upload, however small.
 	_, err := b.service.Objects.Insert(Bucket, &storage.Object{Name: name, ContentType: mimeType}).
-		Media(bytes.NewReader(content), googleapi.ContentType(mimeType)).
+		Media(bytes.NewReader(content), googleapi.ContentType(mimeType), googleapi.ChunkSize(0)).
 		Context(ctx).Do()
 	if err != nil {
 		return fmt.Errorf("write %s: %w", name, err)
@@ -238,6 +240,10 @@ func (s *Store) Read(ctx context.Context, name string) ([]byte, string, error) {
 
 func (s *Store) Write(ctx context.Context, name, mimeType string, content []byte) error {
 	return s.objects.put(ctx, name, mimeType, content)
+}
+
+func (s *Store) Exists(ctx context.Context, name string) (bool, error) {
+	return s.objects.exists(ctx, name)
 }
 
 // cacheable is whether an object may be read from and written to the disk

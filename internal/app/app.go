@@ -743,7 +743,7 @@ func NewCore(cfg Config) *Core {
 		logging.Fatal("register manifest mime type", "error", err)
 	}
 	queue := who.NewQueue()
-	cfg.ImageSearch.Store = cfg.Store
+	cfg.ImageSearch.Stock = imagesearch.NewStock(cfg.Store)
 	settings, err := config.NewCache(cfg.Source, queue)
 	if err != nil {
 		logging.Fatal("load config", "error", err)

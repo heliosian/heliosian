@@ -9,30 +9,38 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"heliosian/internal/blob"
 )
 
-func TestStockFetchedOnce(t *testing.T) {
-	var picture bytes.Buffer
-	if err := png.Encode(&picture, image.NewGray(image.Rect(0, 0, 8, 8))); err != nil {
+func picture(t *testing.T) []byte {
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, image.NewGray(image.Rect(0, 0, 8, 8))); err != nil {
 		t.Fatal(err)
 	}
+	return buf.Bytes()
+}
+
+func TestStockFetchedOnce(t *testing.T) {
+	pic := picture(t)
 	fetches := map[string]int{}
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fetches[r.URL.Path]++
 		w.Header().Set("Content-Type", "image/png")
-		w.Write(picture.Bytes())
+		w.Write(pic)
 	}))
 	defer provider.Close()
-	s := Search{Pexels: "key", UserAgent: "test", Store: blob.NewMemory()}
+	s := Search{Pexels: "key", UserAgent: "test", Stock: NewStock(blob.NewMemory())}
 	id := key("Pexels", "42")
 	rec, err := json.Marshal(record{Source: "Pexels", SourceID: "42", Thumb: provider.URL + "/thumb", URL: provider.URL + "/full"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Store.Write(context.Background(), recordName(id), "application/json", rec); err != nil {
+	if err := s.Stock.store.Write(context.Background(), recordName(id), "application/json", rec); err != nil {
 		t.Fatal(err)
 	}
 
@@ -43,7 +51,7 @@ func TestStockFetchedOnce(t *testing.T) {
 	}
 	for range 2 {
 		w := thumb("id=" + id)
-		if w.Code != http.StatusOK || w.Header().Get("Content-Type") != "image/png" || !bytes.Equal(w.Body.Bytes(), picture.Bytes()) {
+		if w.Code != http.StatusOK || w.Header().Get("Content-Type") != "image/png" || !bytes.Equal(w.Body.Bytes(), pic) {
 			t.Fatalf("thumb: %d %q", w.Code, w.Header().Get("Content-Type"))
 		}
 		if w.Header().Get("Cache-Control") != "private, max-age=31536000, immutable" {
@@ -82,7 +90,7 @@ func TestStockFetchedOnce(t *testing.T) {
 	if fetches["/full"] != 1 {
 		t.Errorf("full image fetched %d times, want once", fetches["/full"])
 	}
-	if ok, err := s.Store.Has(first); err != nil || !ok {
+	if ok, err := s.Stock.store.Has(first); err != nil || !ok {
 		t.Errorf("imported image in the store: %v %v", ok, err)
 	}
 	if code, _ := imported(`{"id":"` + key("Pexels", "43") + `"}`); code != http.StatusNotFound {
@@ -96,10 +104,63 @@ func TestStockFetchedOnce(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	Search{Store: blob.NewMemory()}.ServeSearch(w, httptest.NewRequest(http.MethodGet, "/api/team/images/search?q=soccer", nil))
+	Search{Stock: NewStock(blob.NewMemory())}.ServeSearch(w, httptest.NewRequest(http.MethodGet, "/api/team/images/search?q=soccer", nil))
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("search with no library: %d, want 400", w.Code)
 	}
+}
+
+func TestThumbnailFetchedOnceUnderLoad(t *testing.T) {
+	pic := picture(t)
+	var fetches atomic.Int32
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fetches.Add(1)
+		time.Sleep(20 * time.Millisecond)
+		w.Header().Set("Content-Type", "image/png")
+		w.Write(pic)
+	}))
+	defer provider.Close()
+	s := Search{Pixabay: "key", UserAgent: "test", Stock: NewStock(blob.NewMemory())}
+	results := []result{}
+	for i := range 30 {
+		sourceID := letters(i)
+		results = append(results, result{hit: Hit{ID: key("Pixabay", sourceID)}, rec: record{Source: "Pixabay", SourceID: sourceID, Thumb: provider.URL + "/" + sourceID}})
+	}
+	s.Stock.remember(results)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		s.Stock.prefetch(results, "test")
+	}()
+	codes := make([]int, len(results)*3)
+	for i := range codes {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			w := httptest.NewRecorder()
+			s.ServeThumb(w, httptest.NewRequest(http.MethodGet, "/api/team/images/thumb?id="+results[i%len(results)].hit.ID, nil))
+			codes[i] = w.Code
+		}()
+	}
+	wg.Wait()
+	for i, code := range codes {
+		if code != http.StatusOK {
+			t.Errorf("request %d: %d, want 200", i, code)
+		}
+	}
+	if got := fetches.Load(); got != int32(len(results)) {
+		t.Errorf("fetched %d thumbnails from the library, want %d", got, len(results))
+	}
+	for _, res := range results {
+		if held, err := s.Stock.store.Exists(context.Background(), thumbName(res.hit.ID)); err != nil || !held {
+			t.Errorf("thumbnail of %s in the bucket: %v %v", res.rec.SourceID, held, err)
+		}
+	}
+}
+
+func letters(i int) string {
+	return string(rune('a'+i%26)) + string(rune('a'+i/26))
 }
 
 func TestInterleave(t *testing.T) {
