@@ -291,6 +291,7 @@ func (a app) view(g Group, viewer string, edit bool) groupView {
 	v.Members = a.members(g)
 	if !edit {
 		v.Group.Rules = []Rule{}
+		v.Group.Excluded = []Excluded{}
 		for i := range v.Members {
 			v.Members[i].Reasons = nil
 		}

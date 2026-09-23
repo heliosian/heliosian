@@ -1,9 +1,11 @@
-Description: Loop's model sends each visible group's whole `Excluded` list - addresses, the manager's notes, and "Unsubscribed by mail from <other address>" - to every member who can see the group, where the page shows a non-manager only a count.
-Status: open
+Description: Loop's model sends each visible group's whole `Excluded` list - addresses, the manager's notes, and "Unsubscribed by mail from <other address>" - to every member who can see the group, where the page shows a non-manager nothing of it.
+Status: fixed
 Severity: medium
 ---
-`groupView` embeds `Group` (`internal/loop/handlers.go:184-195`), whose `Excluded []Excluded` is `{email, note, when}` (`internal/loop/loop.go:100-104`, `:124`), and `view` (`handlers.go:347-354`) fills it the same for a manager and for anyone `VisibleTo` lets see the group. The notes hold a manager's hand-typed reasons and, for a mail unsubscribe, the address it came from (`internal/loop/unsubscribe.go:211`). The page gives a non-manager "N addresses are kept off" (`web/loop/pages/group.js:966-968`).
+`groupView` embeds `Group` (`internal/loop/handlers.go`, `type groupView`), whose `Excluded []Excluded` is `{email, note, when}` (`internal/loop/loop.go`, `type Excluded`). `view` in `handlers.go` trims a non-manager's copy - the rules and each member's reasons go - and the excluded list now goes with them: the branch sets it empty, so `GET /api/loop/model`, `POST /api/loop/subscription` and `POST /api/loop/archive` answer a viewer who neither manages the group nor is an admin with an empty list and their own `unsubscribed` flag, which is computed on the full group before the trim. The page's only reader of the list, the rule card and the editor, runs for managers alone, so it needs nothing.
 
-`GET /api/loop/model` as any member, then `groups[].excluded` on a group everyone sees.
+The notes were the weight of it: a manager's hand-typed reason, and for a mail unsubscribe the sending address (`internal/loop/unsubscribe.go`, `unsubscribeByMail`), which tied the excluded address to a second one.
 
-Fix: in `view`, for a viewer who neither manages the group nor is an admin, send the count and the viewer's own `unsubscribed` and leave the list empty.
+Helios Ask copies group fields by hand into its own card (`internal/ask/tools_loop.go`) and never carried the list, so the model endpoint was the one path.
+
+`TestTheExcludedListGoesToManagersAlone` in `internal/loop/subscription_test.go` holds it: a member who unsubscribes gets an empty list back and in the model, and the group's manager sees the entry with its note. `docs/loop/loop.md`, Visible, says what a non-manager sees.

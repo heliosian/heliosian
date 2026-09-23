@@ -112,6 +112,62 @@ func TestAMemberOfAVisibleGroupTakesThemselvesOffAndBack(t *testing.T) {
 	}
 }
 
+func TestTheExcludedListGoesToManagersAlone(t *testing.T) {
+	h := newHarness(t, &fakeStore{raw: []byte(post)})
+	const name = "middle-school-parents"
+	g := h.cache.Model().Group(name)
+	member := ""
+	for _, m := range h.members(name) {
+		if !g.Manages(m) {
+			member = m
+			break
+		}
+	}
+	if member == "" {
+		t.Fatal("every member manages the group")
+	}
+	rec := h.as(member, http.MethodPost, "/api/loop/subscription", `{"name":"`+name+`","subscribed":false}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unsubscribe answered %d: %s", rec.Code, rec.Body)
+	}
+	var view groupView
+	if err := json.Unmarshal(rec.Body.Bytes(), &view); err != nil {
+		t.Fatal(err)
+	}
+	if !view.Unsubscribed || len(view.Excluded) != 0 {
+		t.Fatalf("the member's own answer: unsubscribed %v, excluded %+v", view.Unsubscribed, view.Excluded)
+	}
+	rec = h.as(member, http.MethodGet, "/api/loop/model", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("model answered %d: %s", rec.Code, rec.Body)
+	}
+	var model struct {
+		Groups []groupView `json:"groups"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &model); err != nil {
+		t.Fatal(err)
+	}
+	if len(model.Groups) != 1 || !model.Groups[0].Unsubscribed || len(model.Groups[0].Excluded) != 0 {
+		t.Fatalf("a member sees %+v", model.Groups)
+	}
+	rec = h.as(g.Managers[0], http.MethodGet, "/api/loop/model", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("the manager's model answered %d: %s", rec.Code, rec.Body)
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &model); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, mg := range model.Groups {
+		if mg.Name == name {
+			found = len(mg.Excluded) == 1 && mg.Excluded[0].Email == member && mg.Excluded[0].Note == "Unsubscribed by "+loopPage
+		}
+	}
+	if !found {
+		t.Fatalf("the manager sees %+v", model.Groups)
+	}
+}
+
 func (h *harness) groupNames(email string) []string {
 	rec := h.as(email, http.MethodGet, "/api/loop/model", "")
 	if rec.Code != http.StatusOK {
