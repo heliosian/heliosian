@@ -97,6 +97,8 @@ func TestChecksRefuseBadGroups(t *testing.T) {
 		"name":          func(g *Group) { g.Name = "Bad Name" },
 		"two dots":      func(g *Group) { g.Name = "a..b" },
 		"reserved":      func(g *Group) { g.Name = "postmaster" },
+		"unsubscribe":   func(g *Group) { g.Name = "unsubscribe" },
+		"unsub alias":   func(g *Group) { g.Aliases = []string{"unsubscribe"} },
 		"visibility":    func(g *Group) { g.Visibility = "on" },
 		"posting":       func(g *Group) { g.Posting = "staff" },
 		"replying":      func(g *Group) { g.Replying = "staff" },

@@ -397,12 +397,14 @@ func (a app) inbound(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "signature", http.StatusNotAcceptable)
 		return
 	}
-	recipients := strings.Split(fields["recipient"], ",")
-	for _, recipient := range recipients {
+	posted := []string{}
+	for _, recipient := range strings.Split(fields["recipient"], ",") {
 		local, domain, _ := strings.Cut(strings.ToLower(mail.AddressOf(recipient)), "@")
 		if domain == Domain && local == unsubscribeLocal {
 			a.unsubscribeByMail(r.Context(), fields["subject"], fields["sender"])
+			continue
 		}
+		posted = append(posted, recipient)
 	}
 	source := fields["message-url"]
 	if source == "" {
@@ -410,7 +412,7 @@ func (a app) inbound(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	a.mailer.received(path.Base(source), source, fields["from"], fields["subject"], recipients)
+	a.mailer.received(path.Base(source), source, fields["from"], fields["subject"], posted)
 	w.WriteHeader(http.StatusOK)
 }
 
