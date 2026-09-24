@@ -1,6 +1,6 @@
-import {state, me, isAdmin, isSystemAdmin, setSuperEdit, isUnassigned, commsOnly} from './state.js';
+import {state, me, isSystemAdmin, setSuperEdit, isUnassigned, commsOnly} from './state.js';
 import {el, svg, link} from './dom.js';
-import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, initSpoof, markSuper} from '/toolbar.js';
+import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, initSpoof, renderSuperToggle} from '/toolbar.js';
 
 const appName = 'Helios Staff Birthdays';
 
@@ -146,15 +146,16 @@ function renderUser() {
   for (const line of document.querySelectorAll('.user-menu-email')) {
     line.textContent = user.email;
   }
-  // The switch and Admin Tools go with being on the admin list; what the
-  // pages offer comes and goes with the hat.
-  for (const row of document.querySelectorAll('.user-menu-super, .user-menu-admin')) {
+  // The pencil and Admin Tools go with being on the admin list; what the
+  // pages offer comes and goes with the hat. The pencil puts the hat on or
+  // takes it off, and the page repaints as the other kind of user.
+  for (const row of document.querySelectorAll('.user-menu-admin')) {
     row.hidden = !isSystemAdmin();
   }
-  for (const box of document.querySelectorAll('.super-edit-checkbox')) {
-    box.checked = state.superEdit;
-  }
-  markSuper(isAdmin());
+  renderSuperToggle({show: isSystemAdmin(), on: state.superEdit, onToggle: on => {
+    setSuperEdit(on);
+    document.dispatchEvent(new CustomEvent('birthday:refresh'));
+  }});
 }
 
 // One search box, in the top bar, and each page says what it filters. app.js
@@ -242,14 +243,6 @@ export function initChrome() {
   });
   initUserMenu();
   initSpoof();
-  // Super Admin Mode puts an admin's hat on or takes it off; the page
-  // repaints as the other kind of user.
-  for (const box of document.querySelectorAll('.super-edit-checkbox')) {
-    box.addEventListener('change', () => {
-      setSuperEdit(box.checked);
-      document.dispatchEvent(new CustomEvent('birthday:refresh'));
-    });
-  }
   window.addEventListener('resize', syncViewportHeight);
   window.addEventListener('orientationchange', syncViewportHeight);
   document.addEventListener('click', closeMenus);

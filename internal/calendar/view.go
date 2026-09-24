@@ -236,10 +236,10 @@ func Render(model *Model, directory Directory, email string, admin bool, now tim
 		}
 	}
 	// Who answered: every event for an admin, their own for whoever shared
-	// one.
+	// one and still hosts it.
 	mine := map[string]bool{}
 	for _, e := range append(append([]*Event{}, model.Events...), model.Pending...) {
-		if e.AddedBy != "" && normalizeEmail(e.AddedBy) == normalizeEmail(email) {
+		if e.AddedBy != "" && !e.PosterLeft && normalizeEmail(e.AddedBy) == normalizeEmail(email) {
 			mine[e.ID] = true
 		}
 	}

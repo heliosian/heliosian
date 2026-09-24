@@ -1372,3 +1372,75 @@ func TestNotifyHost(t *testing.T) {
 		t.Errorf("notes after: %d, before %d", len(mailTo(kept, host)), before)
 	}
 }
+
+// A host steps down: a co-host comes off the Hosts, the poster is written
+// into Stepped Down - still the one who shared it, no longer running it -
+// and the event may end with no host at all.
+func TestStepDown(t *testing.T) {
+	mux, cache, _ := invitesApp(t)
+	jordan, miaH := as(host, mux), as(mia, mux)
+	call(t, jordan, "POST", "/api/calendar/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","id":"meetup"}`)
+	call(t, jordan, "PUT", "/api/calendar/invites/settings", `{"id":"meetup","hosts":["`+mia+`"],"notifyMe":true}`)
+	if rec := call(t, as(robin, mux), "POST", "/api/calendar/invites/step-down", `{"id":"meetup"}`); rec.Code != 403 {
+		t.Errorf("someone not hosting stepping down: %d", rec.Code)
+	}
+	if rec := call(t, miaH, "POST", "/api/calendar/invites/step-down", `{"id":"meetup"}`); rec.Code != 204 {
+		t.Fatalf("the co-host stepping down: %d %s", rec.Code, rec.Body)
+	}
+	if inv := cache.Model().Invitations["meetup"]; len(inv.Hosts) != 0 || inv.SteppedDown != "" {
+		t.Errorf("after the co-host = %+v", inv)
+	}
+	if v := inviteView(t, miaH, "meetup"); v.Host {
+		t.Errorf("the co-host still hosts")
+	}
+	if rec := call(t, jordan, "POST", "/api/calendar/invites/step-down", `{"id":"meetup"}`); rec.Code != 204 {
+		t.Fatalf("the poster stepping down: %d %s", rec.Code, rec.Body)
+	}
+	inv := cache.Model().Invitations["meetup"]
+	if inv.SteppedDown != host || len(inv.Notify) != 0 {
+		t.Errorf("after the poster = %+v", inv)
+	}
+	e := cache.Model().Event("meetup")
+	if e == nil || !e.PosterLeft || e.AddedBy != host {
+		t.Fatalf("the event after = %+v", e)
+	}
+	if v := inviteView(t, jordan, "meetup"); v.Host || len(v.Hosts) != 0 {
+		t.Errorf("the poster still hosts: host %v hosts %+v", v.Host, v.Hosts)
+	}
+	if rec := call(t, jordan, "PUT", "/api/calendar/events", `{"id":"meetup","title":"Meetup!","start":"2026-10-10 15:00","tags":[],"sharing":"Link"}`); rec.Code != 403 {
+		t.Errorf("the poster editing after stepping down: %d", rec.Code)
+	}
+	if rec := call(t, jordan, "POST", "/api/calendar/invites/step-down", `{"id":"meetup"}`); rec.Code != 403 {
+		t.Errorf("stepping down twice: %d", rec.Code)
+	}
+}
+
+// Hidden hosts reach the hosts alone: anyone else's view of the list has
+// none, and says they are hidden.
+func TestHideHosts(t *testing.T) {
+	mux, cache, _ := invitesApp(t)
+	jordan := as(host, mux)
+	call(t, jordan, "POST", "/api/calendar/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","id":"meetup"}`)
+	if v := inviteView(t, as(robin, mux), "meetup"); v.HostsHidden || len(v.Hosts) != 1 {
+		t.Errorf("hosts before hiding: hidden %v hosts %+v", v.HostsHidden, v.Hosts)
+	}
+	if rec := call(t, as(robin, mux), "PUT", "/api/calendar/invites/settings", `{"id":"meetup","hideHosts":true}`); rec.Code != 403 {
+		t.Errorf("a guest hiding the hosts: %d", rec.Code)
+	}
+	if rec := call(t, jordan, "PUT", "/api/calendar/invites/settings", `{"id":"meetup","hideHosts":true}`); rec.Code != 204 {
+		t.Fatalf("hiding: %d %s", rec.Code, rec.Body)
+	}
+	if !cache.Model().Invitations["meetup"].HideHosts {
+		t.Errorf("not kept")
+	}
+	if v := inviteView(t, as(robin, mux), "meetup"); !v.HostsHidden || len(v.Hosts) != 0 {
+		t.Errorf("a guest's view when hidden: hidden %v hosts %+v", v.HostsHidden, v.Hosts)
+	}
+	if v := inviteView(t, jordan, "meetup"); !v.HostsHidden || len(v.Hosts) != 1 {
+		t.Errorf("the host's view when hidden: hidden %v hosts %+v", v.HostsHidden, v.Hosts)
+	}
+	call(t, jordan, "PUT", "/api/calendar/invites/settings", `{"id":"meetup","hideHosts":false}`)
+	if v := inviteView(t, as(robin, mux), "meetup"); v.HostsHidden || len(v.Hosts) != 1 {
+		t.Errorf("shown again: hidden %v hosts %+v", v.HostsHidden, v.Hosts)
+	}
+}

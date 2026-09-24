@@ -243,6 +243,45 @@
   transform: rotate(-45deg);
 }
 
+/* Super Admin Mode's switch, for the app's admins (renderSuperToggle in
+   toolbar.js): a pencil in the brand teal ahead of Spoof Mode's eye, white on
+   the red of the avatar's ring while the mode is on. */
+.super-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--brand);
+  cursor: pointer;
+}
+
+.super-toggle[hidden] { display: none; }
+
+.super-toggle svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.super-toggle:hover { background: rgba(36, 77, 83, 0.08); }
+
+.super-toggle.is-on {
+  background: #df604a;
+  color: #fff;
+}
+
+.super-toggle.is-on:hover { background: #c9523e; }
+
 /* Spoof Mode's switch, before the avatar, for super admins alone (initSpoof
    in toolbar.js): an eye in the brand teal, and while viewing as someone a
    red pill saying whom with a cross to stop. The menu under it is Stop, the

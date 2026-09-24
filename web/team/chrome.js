@@ -1,6 +1,6 @@
 import {state, me, isAdmin, pendingItems, selectedYear, listedIn, years, resolvePath, rootOf, eventCategories, descendants, activityPath, isSystemAdmin, setSuperEdit, family, myRows, isPrevious} from './state.js';
 import {el, svg, link, button} from './dom.js';
-import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, initSpoof, markSuper} from '/toolbar.js';
+import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, initSpoof, renderSuperToggle} from '/toolbar.js';
 import {openActivity} from './edit.js';
 
 // The rail and the drawer show these; the mobile tab bar drops the admin ones.
@@ -330,15 +330,16 @@ function renderUser() {
   for (const line of document.querySelectorAll('.user-menu-email')) {
     line.textContent = user.email;
   }
-  // The switch and Admin Tools go with being on the admin list; the rest of
-  // the admin rows come and go with the hat.
-  for (const row of document.querySelectorAll('.user-menu-super, .user-menu-system')) {
+  // The pencil and Admin Tools go with being on the admin list; the rest of
+  // the admin rows come and go with the hat. The pencil puts the hat on or
+  // takes it off, and the page repaints as the other kind of user.
+  for (const row of document.querySelectorAll('.user-menu-system')) {
     row.hidden = !isSystemAdmin();
   }
-  for (const box of document.querySelectorAll('.super-edit-checkbox')) {
-    box.checked = state.superEdit;
-  }
-  markSuper(state.superEdit);
+  renderSuperToggle({show: isSystemAdmin(), on: state.superEdit, onToggle: on => {
+    setSuperEdit(on);
+    document.dispatchEvent(new CustomEvent('hca:refresh'));
+  }});
   for (const admin of document.querySelectorAll('.user-menu-admin')) {
     admin.hidden = !isAdmin();
   }
@@ -457,14 +458,6 @@ export function initChrome() {
       for (const other of document.querySelectorAll('.show-hidden-checkbox')) {
         other.checked = box.checked;
       }
-      document.dispatchEvent(new CustomEvent('hca:refresh'));
-    });
-  }
-  // Super Admin Mode puts a system admin's hat on or takes it off; the page
-  // repaints as the other kind of user.
-  for (const box of document.querySelectorAll('.super-edit-checkbox')) {
-    box.addEventListener('change', () => {
-      setSuperEdit(box.checked);
       document.dispatchEvent(new CustomEvent('hca:refresh'));
     });
   }

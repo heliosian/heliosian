@@ -1,4 +1,4 @@
-import {state, calendarLink, sourceWords, dayType, eventDates, linkURL, isParty, eventImage, parseDate, monthLabel, monthOf, answerOf, answer, eventPath} from '../state.js';
+import {state, isAdmin, postedAndHosting, calendarLink, sourceWords, dayType, eventDates, linkURL, isParty, eventImage, parseDate, monthLabel, monthOf, answerOf, answer, eventPath} from '../state.js';
 import {dayTypeClass} from '/daytype.js';
 import {el, link, svg, paragraphs, button, toast, avatar, popup, copyText} from '../dom.js';
 import {dateCard} from '/datecard.js';
@@ -31,7 +31,7 @@ function hero(e) {
   }
   // The poster's or an admin's hand-added event takes a picture from the
   // strip across the banner's foot, the way the other apps' pages do.
-  if (e.source === 'sheet' && (state.model.user.isAdmin || e.addedBy === state.model.user.email)) {
+  if (e.source === 'sheet' && (isAdmin() || postedAndHosting(e))) {
     wrap.append(heroImageBar(e));
   }
   return wrap;
@@ -142,7 +142,7 @@ export function eventPage(e) {
   // One Edit for the event and its invitation, in tabs; the invitation's
   // tab joins once the guest list is fetched (fillInvites), which also
   // gives a linked event's host their Edit.
-  if (e.source === 'sheet' && (state.model.user.isAdmin || e.addedBy === state.model.user.email)) {
+  if (e.source === 'sheet' && (isAdmin() || postedAndHosting(e))) {
     tools.append(button('Edit', 'pencil', 'button button-secondary button-small detail-edit', async () => {
       const {openEditor} = await import('../invites.js');
       openEditor(e, editorView, async () => {
@@ -204,8 +204,11 @@ export function eventPage(e) {
   // The ask, under the event itself: are you going? - or, for someone
   // invited, who in the household is - and, for a host, the guest list.
   const ask = el('div', 'detail-ask');
+  // The rail's quieter card for an answer already given (rsvpCard).
+  const mineCard = el('div', 'side-card rsvp-compact');
+  mineCard.hidden = true;
   if (!e.cancelled) {
-    ask.append(rsvpCard(e));
+    ask.append(rsvpCard(e, mineCard));
   }
   main.append(ask);
   cols.append(main);
@@ -216,10 +219,12 @@ export function eventPage(e) {
   // them (fillInvites), and hides while empty.
   const when = el('div', 'side-card side-card-facts');
   side.append(when);
+  // The viewer's own answer, under the hosts.
+  side.append(mineCard);
   // Who answered: for an admin, and for whoever shared the event - until
   // a guest list takes its place.
   const answered = el('div', 'detail-answered');
-  if (!e.cancelled && (state.model.user.isAdmin || (state.model.responses || {})[e.id] || e.addedBy === state.model.user.email)) {
+  if (!e.cancelled && (isAdmin() || (state.model.responses || {})[e.id] || postedAndHosting(e))) {
     answered.append(rsvpsCard(e));
   }
   side.append(answered);
@@ -227,7 +232,7 @@ export function eventPage(e) {
   // Where the event came from - not for an event another app runs, whose
   // badge on the banner says it, unless an admin's own lines are due.
   const linked = e.source === 'celebrate' || e.source === 'team';
-  const source = !linked || state.model.user.isAdmin ? sourceCard(e, linked) : null;
+  const source = !linked || isAdmin() ? sourceCard(e, linked) : null;
   if (source) {
     side.append(source);
   }
@@ -237,19 +242,14 @@ export function eventPage(e) {
   return page;
 }
 
-// mayHost says the viewer may start a guest list on an event that has
-// none: the poster of a hand-added event, an admin, or - the server
-// says which - a party's host.
-function mayHost(e) {
-  return (e.source === 'sheet' && e.addedBy === state.model.user.email) || e.link;
-}
-
 // fillInvites fetches the event's guest list and draws what the viewer
 // may see of it: the family band in place of the plain ask for someone
 // invited, the guest list section for a host, and who is coming in the
 // rail - or, for a host with no list yet, the way to start one.
 async function fillInvites(e, ask, answered, {info, linkedLine}) {
-  if (e.cancelled || (!e.invitation && !mayHost(e))) {
+  // Every hand-added or linked event asks, whoever is viewing: its Hosts
+  // card is always drawn, even when nobody hosts it.
+  if (e.cancelled || (e.source !== 'sheet' && !e.link)) {
     return;
   }
   let view = await fetchInvites(e);
@@ -281,6 +281,9 @@ async function fillInvites(e, ask, answered, {info, linkedLine}) {
   // The ask heads the page until the family has answered in full; My
   // RSVP in the rail's card carries the answers throughout.
   if (view.mine.length) {
+    // My RSVP in the rail's card carries an invited household's answers,
+    // so the plain answer's card goes with the plain ask.
+    ask.closest('.event-page')?.querySelector('.rsvp-compact')?.remove();
     ask.replaceChildren(familyAnswered(view) ? '' : familyBand(e, view, refresh));
   }
   // The invitation's tab joins Edit for a host; a linked event's host,
@@ -308,14 +311,16 @@ async function fillInvites(e, ask, answered, {info, linkedLine}) {
       ask.append(inviteHostCall(e, view, refresh));
       answered.replaceChildren();
     }
-  } else {
+  } else if (e.invitation) {
+    // A guest list takes the place of who answered; with none, an
+    // admin's answers card stays.
     answered.replaceChildren();
   }
-  // The rail's card gains Hosts, once a list exists, and My RSVP for
-  // anyone on the list; the flyer sits right under the linked app's card.
-  // Hosts: once a list exists, or when the event has hosts of its own -
-  // a party's, an HCA event's chairs - beyond the viewer alone.
-  if (view.settings || view.hosts.length > 1 || (e.link && view.hosts.length)) {
+  // The rail's card gains Hosts, and My RSVP for anyone on the list; the
+  // flyer sits right under the linked app's card. Hosts show whenever
+  // anyone hosts - a host adds co-hosts and steps down there - unless the
+  // hosts hid them, when the card is theirs alone.
+  if (view.hosts.length && (view.host || !view.hostsHidden)) {
     info.append(hostsRow(e, view, refresh));
   }
   if (view.mine.length) {
@@ -364,20 +369,99 @@ function outLink(href, words) {
 // hidden) - a yes brings a calendar invite by email. A party has no yes
 // or no: Add to my calendar with a ticket in the household, Add Ticket
 // without one. Hiding is the cross on Heliosian's cards.
-function rsvpCard(e) {
+//
+// Once a yes, a maybe or a no is given the band steps aside for a quieter
+// card in the rail under the hosts, slot: My RSVP with the answer behind its
+// mark, and under it Change response - which opens the three answers
+// there, small, with Clear my RSVP - and Hide event; clearing the answer,
+// or hiding the event, brings the band back.
+function rsvpCard(e, slot) {
   const band = el('div', 'rsvp-band');
+  // changing opens the rail's card to the three answers.
+  let changing = false;
   const paint = () => {
     band.replaceChildren();
+    slot.replaceChildren();
     const word = answerOf(e);
+    const settled = !isParty(e) && (word === 'yes' || word === 'no' || word === 'maybe');
+    band.hidden = settled;
+    slot.hidden = !settled;
     const say = async next => {
       try {
         await answer(e, next);
+        changing = false;
         toast(next === 'yes' ? 'A calendar invite is on its way to your email' : next === 'no' ? 'Marked as not going' : next === 'maybe' ? 'Marked as maybe' : next === 'hidden' ? 'Hidden - it shows on the month in gray' : word === 'hidden' ? 'Shown again' : 'Answer cleared');
         paint();
       } catch (err) {
         toast(err.message);
       }
     };
+    // Under the buttons: an answer given can be taken back, and the event
+    // hidden from the viewer's lists - or shown again once it is.
+    const links = el('div', 'rsvp-links');
+    const small = (text, next) => {
+      const b = el('button', 'rsvp-clear', text);
+      b.type = 'button';
+      b.addEventListener('click', () => say(next));
+      links.append(b);
+    };
+    if (word === 'yes' || word === 'no' || word === 'maybe') {
+      small('Clear my RSVP', '');
+    }
+    if (word === 'hidden') {
+      small('Show event', '');
+    } else {
+      small('Hide event', 'hidden');
+    }
+    const answers = () => [
+      button('Yes', 'check', 'button rsvp-yes' + (word === 'yes' ? ' is-on' : ''), () => say(word === 'yes' ? '' : 'yes')),
+      button('Maybe', 'clock', 'button rsvp-maybe' + (word === 'maybe' ? ' is-on' : ''), () => say(word === 'maybe' ? '' : 'maybe')),
+      button('No', 'close', 'button rsvp-no' + (word === 'no' ? ' is-on' : ''), () => say(word === 'no' ? '' : 'no')),
+    ];
+    if (settled) {
+      const row = el('div', 'side-row');
+      const icon = el('div', 'side-icon');
+      icon.append(svg('calcheck'));
+      const body = el('div', 'side-row-body');
+      body.append(el('div', 'side-title', 'My RSVP'));
+      if (changing) {
+        // Changing: the three answers, small, the one given filled, with
+        // Clear and a way back to the answer as it stands.
+        const buttons = el('div', 'rsvp-compact-buttons');
+        buttons.append(...answers());
+        const back = el('button', 'rsvp-clear', 'Cancel');
+        back.type = 'button';
+        back.addEventListener('click', () => {
+          changing = false;
+          paint();
+        });
+        links.replaceChildren(links.firstChild, back);
+        body.append(buttons, links);
+      } else {
+        // The answer as it stands - a mark and the words, as an invited
+        // household's My RSVP reads - and quietly under it, Change
+        // response and Hide event.
+        const said = el('div', 'invite-said rsvp-compact-said is-' + word);
+        const mark = el('span', 'invite-said-mark');
+        mark.append(svg(word === 'yes' ? 'check' : word === 'maybe' ? 'clock' : 'close'));
+        said.append(mark, el('strong', '', word === 'yes' ? 'You\u2019re going' : word === 'maybe' ? 'Maybe' : 'Not going'));
+        body.append(said);
+        if (word === 'yes') {
+          body.append(el('div', 'side-line rsvp-compact-note', 'The invite is in your email.'));
+        }
+        const change = el('button', 'rsvp-clear', 'Change response');
+        change.type = 'button';
+        change.addEventListener('click', () => {
+          changing = true;
+          paint();
+        });
+        links.replaceChildren(change, links.lastChild);
+        body.append(links);
+      }
+      row.append(icon, body);
+      slot.append(row);
+      return;
+    }
     const art = el('div', 'rsvp-art');
     art.append(svg('calcheck'));
     const words = el('div', 'rsvp-words');
@@ -397,40 +481,16 @@ function rsvpCard(e) {
         buttons.append(add);
       }
     } else {
-      words.append(el('div', 'rsvp-title', word === 'yes' ? 'You\u2019re going' : word === 'no' ? 'Not going' : word === 'maybe' ? 'Maybe' : word === 'hidden' ? 'Hidden' : 'Are you going?'), el('div', 'rsvp-lead', word === 'yes' ? 'The invite is in your email.' : word === 'no' ? 'Thanks for letting us know.' : word === 'maybe' ? 'Come back when you know.' : word === 'hidden' ? 'On the month in gray.' : 'Yes sends you a calendar invite.'));
-      buttons.append(
-        button('Yes', 'check', 'button rsvp-yes' + (word === 'yes' ? ' is-on' : ''), () => say(word === 'yes' ? '' : 'yes')),
-        button('Maybe', 'clock', 'button rsvp-maybe' + (word === 'maybe' ? ' is-on' : ''), () => say(word === 'maybe' ? '' : 'maybe')),
-        button('No', 'close', 'button rsvp-no' + (word === 'no' ? ' is-on' : ''), () => say(word === 'no' ? '' : 'no')),
-      );
-      // Unanswered, the lead already says what Yes does; a No or a Maybe
-      // keeps the note under its words, so the way back is still spelled
-      // out.
-      note = word === 'no' || word === 'maybe' ? 'Yes sends you a calendar invite.' : '';
+      // A yes, a maybe or a no is the rail's card, above; here the event
+      // is unanswered or hidden.
+      words.append(el('div', 'rsvp-title', word === 'hidden' ? 'Hidden' : 'Are you going?'), el('div', 'rsvp-lead', word === 'hidden' ? 'On the month in gray.' : 'Yes sends you a calendar invite.'));
+      buttons.append(...answers());
     }
     if (note) {
       words.append(el('div', 'rsvp-note', note));
     }
-    // Under the buttons: an answer given can be taken back, and the event
-    // hidden from the viewer's lists - or shown again once it is.
     const side = el('div', 'rsvp-side');
-    side.append(buttons);
-    const links = el('div', 'rsvp-links');
-    const small = (text, next) => {
-      const b = el('button', 'rsvp-clear', text);
-      b.type = 'button';
-      b.addEventListener('click', () => say(next));
-      links.append(b);
-    };
-    if (word === 'yes' || word === 'no' || word === 'maybe') {
-      small('Clear my RSVP', '');
-    }
-    if (word === 'hidden') {
-      small('Show event', '');
-    } else {
-      small('Hide event', 'hidden');
-    }
-    side.append(links);
+    side.append(buttons, links);
     const row = el('div', 'rsvp-band-row');
     row.append(art, words, side);
     band.append(row);
@@ -445,7 +505,7 @@ function rsvpCard(e) {
 function inviteBand(e) {
   const band = el('div', 'pending-band is-invite');
   const words = el('div', 'pending-words');
-  const mine = e.addedBy === state.model.user.email;
+  const mine = postedAndHosting(e);
   if (e.sharing === 'Invite Only') {
     words.append(el('div', 'pending-title', 'Invite only'), el('div', 'pending-lead', mine ? 'Only the people you invite can open this event, and their answers put it on their calendars.' : 'You were invited. Your answer below puts it on your calendar.'));
   } else {
@@ -464,13 +524,16 @@ function pendingBand(e) {
   const words = el('div', 'pending-words');
   const who = state.model.names && state.model.names[e.addedBy] ? state.model.names[e.addedBy] : e.addedBy;
   const mine = e.addedBy === state.model.user.email;
+  // Only an admin with the hat on is asked to decide; anyone else reads
+  // where it stands.
+  const decides = isAdmin() && !mine;
   if (e.declined) {
-    words.append(el('div', 'pending-title', 'Declined'), el('div', 'pending-lead', mine ? 'An admin declined this event, so it is not on the calendar. You can still edit it; an admin can approve it later.' : `Shared by ${who} and declined. Approve it to put it on the calendar after all.`));
+    words.append(el('div', 'pending-title', 'Declined'), el('div', 'pending-lead', mine ? 'An admin declined this event, so it is not on the calendar. You can still edit it; an admin can approve it later.' : decides ? `Shared by ${who} and declined. Approve it to put it on the calendar after all.` : `Shared by ${who}. An admin declined it, so it is not on the calendar.`));
   } else {
-    words.append(el('div', 'pending-title', 'Waiting for approval'), el('div', 'pending-lead', mine ? 'You shared this event. An admin will approve it onto the calendar; until then only you and the admins see it.' : `Shared by ${who}. Approve it onto the calendar, or decline it.`));
+    words.append(el('div', 'pending-title', 'Waiting for approval'), el('div', 'pending-lead', mine ? 'You shared this event. An admin will approve it onto the calendar; until then only you and the admins see it.' : decides ? `Shared by ${who}. Approve it onto the calendar, or decline it.` : `Shared by ${who}. It goes on the calendar once an admin approves it.`));
   }
   band.append(svg(e.declined ? 'close' : 'clock'), words);
-  if (state.model.user.isAdmin) {
+  if (isAdmin()) {
     const actions = el('div', 'pending-actions');
     const decide = async (path, done) => {
       const res = await fetch('/api/calendar/events/' + path, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id: e.id})});
@@ -655,7 +718,7 @@ function sourceCard(e, adminOnly = false) {
   if (!adminOnly && e.link && e.source !== 'celebrate' && e.source !== 'team') {
     body.append(el('div', 'side-line', 'Also listed on HCA-Team, which runs it.'), outLink(linkURL(e), 'Open on HCA-Team'));
   }
-  if (state.model.user.isAdmin) {
+  if (isAdmin()) {
     const p = (state.model.provenance || {})[e.id] || {};
     const admin = el('div', 'side-admin' + (adminOnly ? ' is-alone' : ''));
     admin.append(el('div', 'side-admin-title', 'For admins'));

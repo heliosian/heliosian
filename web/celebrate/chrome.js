@@ -1,6 +1,6 @@
 import {state, me, isAdmin, isSystemAdmin, setSuperEdit, pendingParties, hostedParties, parties, household, familyMember, myPath, myTickets, canHost, familyShown} from './state.js';
 import {el, svg, link, button} from './dom.js';
-import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, initSpoof, markSuper} from '/toolbar.js';
+import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, initSpoof, renderSuperToggle} from '/toolbar.js';
 import {openParty} from './edit.js';
 
 // The rail and the drawer show these; the phone's tab bar drops the admin one.
@@ -225,15 +225,16 @@ function renderUser() {
   for (const line of document.querySelectorAll('.user-menu-email')) {
     line.textContent = user.email;
   }
-  // The switch and Admin Tools go with being on the admin list; the rest of
-  // the admin rows come and go with the hat.
-  for (const row of document.querySelectorAll('.user-menu-super, .user-menu-admin')) {
+  // The pencil and Admin Tools go with being on the admin list; the rest of
+  // the admin rows come and go with the hat. The pencil puts the hat on or
+  // takes it off, and the page repaints as the other kind of user.
+  for (const row of document.querySelectorAll('.user-menu-admin')) {
     row.hidden = !isSystemAdmin();
   }
-  for (const box of document.querySelectorAll('.super-edit-checkbox')) {
-    box.checked = state.superEdit;
-  }
-  markSuper(isSystemAdmin() && state.superEdit);
+  renderSuperToggle({show: isSystemAdmin(), on: state.superEdit, onToggle: on => {
+    setSuperEdit(on);
+    document.dispatchEvent(new CustomEvent('celebrate:refresh'));
+  }});
 }
 
 // One search box, in the top bar, and each page says what it filters. app.js
@@ -320,14 +321,6 @@ export function initChrome() {
   });
   initUserMenu();
   initSpoof();
-  // Super Admin Mode puts a system admin's hat on or takes it off; the page
-  // repaints as the other kind of user.
-  for (const box of document.querySelectorAll('.super-edit-checkbox')) {
-    box.addEventListener('change', () => {
-      setSuperEdit(box.checked);
-      document.dispatchEvent(new CustomEvent('celebrate:refresh'));
-    });
-  }
   window.addEventListener('resize', syncViewportHeight);
   window.addEventListener('orientationchange', syncViewportHeight);
   document.addEventListener('click', closeMenus);

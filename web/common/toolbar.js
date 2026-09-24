@@ -751,6 +751,47 @@ export function markSuper(on) {
   document.body.classList.toggle('is-super', Boolean(on));
 }
 
+// Super Admin Mode's switch, for whoever is on the app's admin list: a pencil
+// in the bar, before Spoof Mode's eye and the avatar - teal while the mode is
+// off, white on red while it is on - and the avatar's ring to match
+// (markSuper). Each app calls it whenever it draws the account, with whether
+// to offer it, whether it is on, and what a click does with the new state;
+// the button is made once and a click goes to the latest handler.
+let superButton = null;
+let superToggle = () => {};
+
+export function renderSuperToggle({show, on, onToggle}) {
+  const user = document.querySelector('#user');
+  if (!user) {
+    return;
+  }
+  if (!superButton) {
+    superButton = el('button', 'super-toggle');
+    superButton.type = 'button';
+    const pencil = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    pencil.setAttribute('viewBox', '0 0 24 24');
+    pencil.setAttribute('aria-hidden', 'true');
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', 'M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z');
+    const edge = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    edge.setAttribute('d', 'm15 5 4 4');
+    pencil.append(path, edge);
+    superButton.append(pencil);
+    superButton.addEventListener('click', () => superToggle(!superButton.classList.contains('is-on')));
+    // Spoof Mode's eye always lands right before the avatar, whenever its
+    // fetch comes back, so the pencil goes ahead of it either way.
+    (user.parentElement.querySelector('.spoof-wrap') || user).before(superButton);
+  }
+  superToggle = onToggle;
+  on = Boolean(show && on);
+  superButton.hidden = !show;
+  superButton.classList.toggle('is-on', on);
+  superButton.setAttribute('aria-pressed', String(on));
+  superButton.setAttribute('aria-label', 'Super Admin Mode');
+  superButton.title = on ? 'Super Admin Mode is on: click to turn it off' : 'Super Admin Mode: edit anything';
+  markSuper(on);
+}
+
 export function isEditableTarget(target) {
   return target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable;
 }

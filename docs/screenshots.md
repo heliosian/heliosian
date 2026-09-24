@@ -30,7 +30,7 @@ The capture is a full-page screenshot at a 1280×800 viewport. "Full page" means
 A surface painted white or pale by name in an app's stylesheet stays so in dark mode until `web/common/dark.css` catches it, and the words on it - light, now - vanish. `cmd/darkcheck` finds those without looking: it loads each page in dark mode, walks every visible element compositing its background up through its ancestors, and prints the words whose contrast falls short of what their size needs, any tab strip painted a different colour from what it sits on, and with `--light` every light opaque surface for reading by eye. `--compare` reads each page by day too and marks each finding `[dark only]` - dark.css's to fix - or `[by day too]`, a design choice to weigh on its own.
 
     go run ./cmd/darkcheck --compare --url https://who.heliosiandev.com:8080/people,https://team.heliosiandev.com:8080/
-    go run ./cmd/darkcheck --compare --url https://home.heliosiandev.com:8080/ --click "#user|#super-admin-mode|#user|.tile .link-edit:not(.app-move)"
+    go run ./cmd/darkcheck --compare --url https://home.heliosiandev.com:8080/ --click ".super-toggle|.tile .link-edit:not(.app-move)"
 
 `--click` walks into a window first, as `cmd/screenshot` does, and `--width 390 --height 844` reads the phone layout. It reports on the rendered page, so a hover state or a menu it has not opened is not read.
 

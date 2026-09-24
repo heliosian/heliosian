@@ -89,6 +89,7 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	mux.HandleFunc("POST /api/calendar/invites/people", a.addInvites)
 	mux.HandleFunc("DELETE /api/calendar/invites/people", a.removeInvite)
 	mux.HandleFunc("PUT /api/calendar/invites/settings", a.inviteSettings)
+	mux.HandleFunc("POST /api/calendar/invites/step-down", a.stepDown)
 	mux.HandleFunc("POST /api/calendar/invites/guest", a.addGuest)
 	mux.HandleFunc("POST /api/calendar/invites/answer", a.answerFor)
 	mux.HandleFunc("POST /api/calendar/invites/send", a.sendInvites)
@@ -831,8 +832,8 @@ func (a app) editEvent(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "that event is not one added by hand", http.StatusNotFound)
 		return
 	}
-	if normalizeEmail(e.AddedBy) != actor && !admin {
-		http.Error(w, "only the person who added an event, or an admin, can change it", http.StatusForbidden)
+	if (normalizeEmail(e.AddedBy) != actor || e.PosterLeft) && !admin {
+		http.Error(w, "only the person who added an event, while they host it, or an admin, can change it", http.StatusForbidden)
 		return
 	}
 	cells := map[string]string{

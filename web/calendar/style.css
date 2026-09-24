@@ -1047,6 +1047,11 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .link-button.danger { color: var(--alert); }
 
+/* The Hosts card's tools: Add co-host and Hide hosts on one line. */
+.hosts-tools { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+
+.hosts-hidden-note { font-style: italic; }
+
 /* The month grid. */
 .pager { display: flex; align-items: center; gap: 8px; margin: 4px 0 14px; }
 
@@ -1186,7 +1191,17 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .topbar-alert-wrap:has(.approve-alert) .alert-card-title { color: #8a5a00; }
 
-.approve-chips { display: flex; flex-direction: column; gap: 6px; margin: 10px 0 12px; }
+/* The card is a box, not a link - the chips inside are the links - so it
+   keeps its colour under the mouse, and the disc sits by the title. */
+.approve-card { align-items: flex-start; }
+
+.topbar-alert-wrap:has(.approve-alert) .approve-card:hover { background: #fff8e8; }
+
+.approve-chips { display: flex; flex-direction: column; gap: 6px; margin: 8px 0 4px; }
+
+.approve-admin { font-size: 13px; font-weight: 600; color: var(--brand); text-decoration: none; }
+
+.approve-admin:hover { text-decoration: underline; }
 
 .approve-chip { display: flex; flex-direction: column; gap: 1px; padding: 8px 12px; border: 1.5px dashed var(--amber); border-radius: 10px; background: #fff8e8; text-decoration: none; color: var(--ink); }
 
@@ -1949,6 +1964,30 @@ button.rsvp-row-said:hover strong { text-decoration: underline; text-underline-o
 }
 
 .rsvp-links { display: flex; gap: 14px; }
+
+/* The rail's quieter card once an answer is given (rsvpCard): the three
+   answers as small buttons under the words, the links under them. */
+.rsvp-compact[hidden] { display: none; }
+
+.rsvp-compact-buttons { display: flex; gap: 6px; margin: 10px 0 8px; }
+
+.rsvp-compact-said { margin: 8px 0 2px; font-size: 15px; }
+
+.rsvp-compact-said .invite-said-mark { width: 22px; height: 22px; }
+
+.rsvp-compact-said .invite-said-mark svg { width: 13px; height: 13px; }
+
+.rsvp-compact .rsvp-links { margin-top: 8px; }
+
+.rsvp-compact .rsvp-clear { color: var(--muted); text-decoration-color: var(--line); }
+
+.rsvp-compact .rsvp-clear:hover { color: var(--brand); }
+
+.rsvp-compact-buttons .button { flex: 1; justify-content: center; padding: 6px 8px; font-size: 13px; font-weight: 600; border-radius: 9px; border-width: 1.5px; border-style: solid; }
+
+.rsvp-compact-buttons .button.is-on { box-shadow: none; }
+
+.rsvp-compact-buttons .button svg { width: 14px; height: 14px; }
 
 .rsvp-clear { font-size: 12.5px; color: #3b5a4b; background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; font-family: inherit; }
 

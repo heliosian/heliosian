@@ -1,4 +1,4 @@
-import {state, me, answer, isParty, eventDates, weekdayLong, parseDate, timeLine} from './state.js';
+import {state, me, postedAndHosting, answer, isParty, eventDates, weekdayLong, parseDate, timeLine} from './state.js';
 import {el, svg, button, toast, avatar, popup, copyText} from './dom.js';
 import {appOrigin} from '/toolbar.js';
 import {rulesEditor, filterWidgets} from '/rules.js';
@@ -565,8 +565,12 @@ export function hostsRow(e, view, refresh) {
   if (names.length) {
     card.append(el('div', 'side-line', names.length > 1 ? names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1] : names[0]));
   }
+  if (view.hostsHidden) {
+    card.append(el('div', 'side-line hosts-hidden-note', 'Hidden - only the hosts see this.'));
+  }
   const s = view.settings || {};
   const cohosts = new Set(s.hosts || []);
+  const self = me().email;
   const list = el('div', 'rsvps-grid');
   for (const h of view.hosts) {
     const tile = el(h.email ? 'a' : 'div', 'contact-card');
@@ -575,18 +579,29 @@ export function hostsRow(e, view, refresh) {
     }
     tile.title = [h.name, h.line].filter(Boolean).join(' \u00b7 ');
     tile.append(face(h, 'contact-photo'), el('span', 'contact-name', h.name || h.email));
-    if (view.host && cohosts.has(h.email)) {
+    // An × on each co-host, for the hosts to take them off, and on the
+    // viewer's own picture, to step down - whoever added the event too. A
+    // party's hosts and an HCA event's chairs step down on their own app.
+    const own = h.email === self;
+    if (view.host && (own ? cohosts.has(self) || postedAndHosting(e) : cohosts.has(h.email))) {
       const x = el('button', 'hosts-card-remove');
       x.type = 'button';
-      x.title = `Take ${h.name} off as a co-host`;
+      x.title = own ? 'Step down as host' : `Take ${h.name} off as a co-host`;
       x.textContent = '\u00d7';
       x.addEventListener('click', async ev => {
         ev.preventDefault();
-        if (!confirm(`Take ${h.name} off as a co-host?`)) {
+        const lose = postedAndHosting(e) ? 'edit it or run its guest list' : 'run its guest list';
+        const alone = !view.hosts.some(o => o.email !== self);
+        if (!confirm(own ? `Step down as host of ${e.title}? You won't be able to ${lose} any more${alone ? ', and it will have no host - an admin can still change it' : ''}.` : `Take ${h.name} off as a co-host?`)) {
           return;
         }
         try {
-          await post('PUT', '/api/calendar/invites/settings', {id: e.id, hosts: [...cohosts].filter(x => x !== h.email)});
+          if (own) {
+            await post('POST', '/api/calendar/invites/step-down', {id: e.id});
+            toast('You no longer host this event.');
+          } else {
+            await post('PUT', '/api/calendar/invites/settings', {id: e.id, hosts: [...cohosts].filter(x => x !== h.email)});
+          }
           refresh();
         } catch (err) {
           toast(err.message);
@@ -597,8 +612,21 @@ export function hostsRow(e, view, refresh) {
     list.append(tile);
   }
   card.append(list);
+  // Add co-host, and beside it the switch that keeps this card to the hosts.
   if (view.host) {
-    card.append(button('Add co-host', 'plus', 'link-button', () => openAddHost(e, view, refresh)));
+    const tools = el('div', 'hosts-tools');
+    tools.append(button('Add co-host', 'plus', 'link-button', () => openAddHost(e, view, refresh)));
+    const hidden = Boolean(view.hostsHidden);
+    tools.append(button(hidden ? 'Show hosts' : 'Hide hosts', hidden ? 'eye' : 'eye-off', 'link-button', async () => {
+      try {
+        await post('PUT', '/api/calendar/invites/settings', {id: e.id, hideHosts: !hidden});
+        toast(hidden ? 'Everyone who opens the event sees its hosts again.' : 'Only the hosts see who hosts this event now.');
+        refresh();
+      } catch (err) {
+        toast(err.message);
+      }
+    }));
+    card.append(tools);
   }
   row.append(icon, card);
   return row;

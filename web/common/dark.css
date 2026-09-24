@@ -205,6 +205,14 @@ html[data-theme="dark"] {
 
 [data-theme="dark"] .alert-card:hover { background: #352b13; }
 
+/* When's approvals card and its chips, whose light amber by name in the
+   calendar's stylesheet outweighs the rules above. */
+[data-theme="dark"] .topbar-alert-wrap:has(.approve-alert) .alert-card,
+[data-theme="dark"] .topbar-alert-wrap:has(.approve-alert) .approve-card:hover { background: #2c2310; border-color: #5a4418; }
+[data-theme="dark"] .topbar-alert-wrap:has(.approve-alert) .alert-card-title { color: #f1b940; }
+[data-theme="dark"] .approve-chip { background: #352b13; border-color: #8a6a1f; }
+[data-theme="dark"] .approve-chip:hover { background: #40331a; }
+
 [data-theme="dark"] .alert-card-chevron,
 [data-theme="dark"] .todo-chevron { border-color: #f1b940; color: #f1b940; }
 
@@ -633,6 +641,7 @@ html[data-theme="dark"] {
 [data-theme="dark"] .rsvp-maybe { background: rgba(255, 255, 255, 0.06); border-color: #b98a2e; color: #f0c674; }
 [data-theme="dark"] .rsvp-maybe:hover { background: rgba(232, 163, 61, 0.2); color: #f6d896; }
 [data-theme="dark"] .rsvp-maybe.is-on, [data-theme="dark"] .rsvp-maybe.is-on:hover { background: #b98a2e; border-color: #b98a2e; color: #fff; }
+[data-theme="dark"] .rsvp-compact-buttons .button.is-on { box-shadow: none; }
 [data-theme="dark"] .invite-said.is-yes strong { color: #8fe0b6; }
 [data-theme="dark"] .invite-said.is-no strong { color: #f0a49a; }
 [data-theme="dark"] .invite-said-mark { background: #c2442d; }

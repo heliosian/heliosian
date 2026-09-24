@@ -1,7 +1,7 @@
-import {state, me, today, bands, tagGroups, defaultTags, savedView, searchResults, eventPath, dayLabel, eventTint, timeLine, weekdayShort, parseDate, selectedClassrooms, toggleClassroom, setClassrooms, classroomNames, myClassrooms, tagNames, selectedTags, toggleTag, setTags, resetFilters, filtersAreDefault, colorOf, hiddenMatches, hiddenClassroomMatches, feedClassrooms, feedTags, showsFeed, setActiveFeed, activeFeed, allCalendars, defaultFeed, myEvents, eventDates} from './state.js';
+import {state, me, isAdmin, isSystemAdmin, setSuperEdit, today, bands, tagGroups, defaultTags, savedView, searchResults, eventPath, dayLabel, eventTint, timeLine, weekdayShort, parseDate, selectedClassrooms, toggleClassroom, setClassrooms, classroomNames, myClassrooms, tagNames, selectedTags, toggleTag, setTags, resetFilters, filtersAreDefault, colorOf, hiddenMatches, hiddenClassroomMatches, feedClassrooms, feedTags, showsFeed, setActiveFeed, activeFeed, allCalendars, defaultFeed, myEvents, eventDates} from './state.js';
 import {el, svg, link, button, toast, feedMark, popup, emojiPicker} from './dom.js';
 import {dayColumn} from './day.js';
-import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, initSpoof, alertMenu, alertCard} from '/toolbar.js';
+import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, initSpoof, alertMenu, alertCard, renderSuperToggle} from '/toolbar.js';
 
 const primary = [
   {href: '/', icon: 'app', label: 'Calendar'},
@@ -689,14 +689,22 @@ function closeMenus() {
 // The amber badge in the top bar counts the events waiting for an admin's
 // approval, for the admins alone, and opens Admin Tools' Events list.
 function renderApprovals() {
-  const waiting = me().isAdmin ? state.model.events.filter(e => e.pending).length : 0;
+  const waiting = isAdmin() ? state.model.events.filter(e => e.pending).length : 0;
   for (const badge of document.querySelectorAll('.approve-alert')) {
     badge.hidden = !waiting;
-    badge.title = `${waiting} event${waiting === 1 ? '' : 's'} waiting for approval`;
-    // The card lists each waiting event as a chip that opens its page,
-    // where Approve and Decline are.
+    // A label and not a title: the card under it says the same, and a
+    // tooltip would sit on top of it.
+    const words = `${waiting} event${waiting === 1 ? '' : 's'} waiting for approval`;
+    badge.setAttribute('aria-label', words);
+    badge.removeAttribute('title');
+    // The card lists each waiting event under its title as a chip that opens
+    // its page, where Approve and Decline are, then a line to Admin Tools.
+    // The chips are links, so the card is not one: the toolbar's card is
+    // rebuilt as a plain box, its chevron dropped.
     alertMenu(badge, () => {
-      const card = alertCard(badge.title, '', 'Open Admin Tools', '/admin');
+      const made = alertCard(words, '', 'Open Admin Tools', '/admin');
+      const card = el('div', 'alert-card approve-card');
+      card.append(made.querySelector('.alert-card-disc'), made.querySelector('.alert-card-words'));
       const chips = el('div', 'approve-chips');
       for (const e of state.model.events.filter(e => e.pending).sort((a, b) => a.start.localeCompare(b.start))) {
         const chip = link(eventPath(e), 'approve-chip');
@@ -704,7 +712,7 @@ function renderApprovals() {
         chip.append(el('span', 'approve-chip-title', e.title), el('span', 'approve-chip-note', `${dayLabel(e.start.slice(0, 10))} \u00b7 ${who}`));
         chips.append(chip);
       }
-      card.insertBefore(chips, card.querySelector('.alert-card-link'));
+      card.querySelector('.alert-card-words').append(chips, link('/admin', 'approve-admin', 'Open Admin Tools'));
       return card;
     });
   }
@@ -722,10 +730,18 @@ function renderUser() {
   for (const line of document.querySelectorAll('.user-menu-email')) {
     line.textContent = user.email;
   }
-  // Admin Tools is in the account menu, for the calendar admins alone.
+  // Admin Tools is in the account menu, for the calendar admins alone,
+  // whatever the hat; the pencil puts the hat on or takes it off, and the
+  // page repaints as the other kind of user.
   for (const row of document.querySelectorAll('.user-menu-admin')) {
-    row.hidden = !user.isAdmin;
+    row.hidden = !isSystemAdmin();
   }
+  renderSuperToggle({show: isSystemAdmin(), on: state.superEdit, onToggle: async on => {
+    setSuperEdit(on);
+    const {render} = await import('./app.js');
+    renderChrome();
+    render();
+  }});
 }
 
 // The top bar's search box, as in the other apps. Typing opens a list of

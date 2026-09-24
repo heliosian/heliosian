@@ -9,7 +9,41 @@ import {appOrigin} from '/toolbar.js';
 // the rail (or that the filters matched on load): Save Calendar saves the
 // filters back onto it.
 const remembered = readFilters();
-export const state = {model: null, filters: {classrooms: remembered.classrooms, tags: remembered.tags}, query: '', day: '', month: '', activeFeed: remembered.active};
+// superEdit is an admin's hat, as HCA-Team has it: off, they see and can do
+// what any parent can (plus whatever they host); on, every admin control
+// comes back. It is remembered per browser.
+export const state = {model: null, filters: {classrooms: remembered.classrooms, tags: remembered.tags}, query: '', day: '', month: '', activeFeed: remembered.active, superEdit: readSuperEdit()};
+
+function readSuperEdit() {
+  try {
+    return localStorage.getItem('calendar.superEdit') === '1';
+  } catch (err) {
+    return false;
+  }
+}
+
+export function setSuperEdit(on) {
+  state.superEdit = on;
+  try {
+    localStorage.setItem('calendar.superEdit', on ? '1' : '0');
+  } catch (err) {
+    // A browser that refuses storage just forgets the choice on reload.
+  }
+  // Who sees whose waiting events turns on the hat, so the model is
+  // applied again.
+  applyModel(state.model);
+}
+
+// isSystemAdmin is the admin list itself, whatever the hat: what the
+// pencil, Admin Tools and the server go by.
+export function isSystemAdmin() {
+  return Boolean(state.model && state.model.user.isAdmin);
+}
+
+// isAdmin is an admin with the hat on - what the pages' admin controls go by.
+export function isAdmin() {
+  return isSystemAdmin() && state.superEdit;
+}
 
 // setActiveFeed marks the saved calendar the viewer is working from.
 export function setActiveFeed(token) {
@@ -41,6 +75,11 @@ const byDate = new Map();
 
 export function applyModel(model) {
   state.model = model;
+  // The server sends an admin everyone's waiting and declined events; with
+  // the hat off the page keeps only the viewer's own, as anyone else sees.
+  // allEvents holds the whole list so the hat can bring them back.
+  model.allEvents = model.allEvents || model.events;
+  model.events = isAdmin() || !isSystemAdmin() ? model.allEvents : model.allEvents.filter(e => !(e.pending || e.declined) || e.addedBy === model.user.email);
   byId.clear();
   byDate.clear();
   for (const e of model.events) {
@@ -66,6 +105,13 @@ export function applyModel(model) {
 
 export function me() {
   return state.model.user;
+}
+
+// postedAndHosting says the viewer added a hand-added event and still hosts
+// it - they may have stepped down, leaving it theirs only as the one who
+// shared it.
+export function postedAndHosting(e) {
+  return e.source === 'sheet' && e.addedBy === state.model.user.email && !e.posterLeft;
 }
 
 export function event(id) {

@@ -63,6 +63,13 @@ type Invitation struct {
 	// Notify is the hosts who asked to hear by email as answers come in -
 	// each host's own choice.
 	Notify []string `json:"-"`
+	// SteppedDown is the address of whoever added the event, once they
+	// stepped down as its host; an address and not a flag, so a hand
+	// change to the event's Added By puts the new poster in charge.
+	SteppedDown string `json:"-"`
+	// HideHosts keeps the Hosts card on the event's page to the hosts
+	// themselves.
+	HideHosts bool `json:"hideHosts"`
 	// A party's invitation may carry words of its own in place of the
 	// party's - a title, when, where, a description - each blank for the
 	// party's own: what the invitation email, the calendar invite, the
@@ -152,6 +159,8 @@ func (b *builder) invitations(settings, rows []map[string]string) {
 			Title: strings.TrimSpace(row["Title"]), Start: strings.TrimSpace(row["Start"]), End: strings.TrimSpace(row["End"]),
 			Location: strings.TrimSpace(row["Location"]), Description: strings.TrimSpace(row["Description"]),
 			Flyer: strings.Trim(strings.TrimSpace(row["Flyer"]), "/"), Notify: splitEmails(row["Notify"]),
+			SteppedDown: normalizeEmail(row["Stepped Down"]),
+			HideHosts:   strings.EqualFold(strings.TrimSpace(row["Hide Hosts"]), "Yes"),
 		}
 		// A start the sheet cannot read is dropped with a log line, never
 		// a refusal.
@@ -292,8 +301,10 @@ func newGuestKey() string {
 }
 
 // hostsOf is everyone who runs an event's guest list: who shared a
-// hand-added event, a party's hosts on Celebrate, and the invitation's own
-// co-hosts - each as the directory resolves them.
+// hand-added event, unless they stepped down, a party's hosts on Celebrate,
+// and the invitation's own co-hosts - each as the directory resolves them.
+// It may be nobody: an event whose hosts have all stepped down is the
+// admins' alone to change.
 func (a app) hostsOf(e *Event) []string {
 	out := []string{}
 	add := func(email string) {
@@ -303,7 +314,9 @@ func (a app) hostsOf(e *Event) []string {
 	}
 	switch e.Source {
 	case SourceSheet:
-		add(e.AddedBy)
+		if !e.PosterLeft {
+			add(e.AddedBy)
+		}
 	case SourceCelebrate:
 		if a.parties != nil {
 			if p := a.parties(strings.TrimPrefix(e.ID, SourceCelebrate+"/")); p != nil {
@@ -592,6 +605,9 @@ type InviteView struct {
 	Sent     string      `json:"sent,omitempty"`
 	// Flyer is the invitation's flyer as a path to fetch, when there is one.
 	Flyer string   `json:"flyer,omitempty"`
+	// HostsHidden says the hosts keep the Hosts card to themselves; Hosts
+	// is then empty for anyone else.
+	HostsHidden bool `json:"hostsHidden,omitempty"`
 	Hosts []Person `json:"hosts"`
 	// Original is a party's own words on Celebrate - title, when, where,
 	// description - for a host editing the invitation's own, so the form
@@ -736,7 +752,12 @@ func (a app) invitesView(w http.ResponseWriter, r *http.Request) {
 	if host && e.linked() {
 		view.Original = &EventWords{Title: e.Title, Start: e.Start, End: e.End, Location: e.Location, Description: e.Description}
 	}
+	// Hosts hidden by the hosts reach nobody else.
+	view.HostsHidden = inv != nil && inv.HideHosts
 	for _, h := range a.hostsOf(e) {
+		if view.HostsHidden && !host {
+			break
+		}
 		p, _ := a.personOf(h, "")
 		view.Hosts = append(view.Hosts, p)
 	}
@@ -939,6 +960,8 @@ func (a app) inviteSettings(w http.ResponseWriter, r *http.Request) {
 		Flyer *string `json:"flyer"`
 		// NotifyMe is the host's own wish to hear as answers come in.
 		NotifyMe *bool `json:"notifyMe"`
+		// HideHosts keeps the Hosts card to the hosts.
+		HideHosts *bool `json:"hideHosts"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -948,6 +971,12 @@ func (a app) inviteSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cells := map[string]string{}
+	if body.HideHosts != nil {
+		cells["Hide Hosts"] = ""
+		if *body.HideHosts {
+			cells["Hide Hosts"] = "Yes"
+		}
+	}
 	if body.NotifyMe != nil {
 		notify := []string{}
 		if inv := a.cache.Model().Invitations[e.ID]; inv != nil {
@@ -1049,6 +1078,55 @@ func (a app) inviteSettings(w http.ResponseWriter, r *http.Request) {
 			go a.sendCohostNote(context.WithoutCancel(r.Context()), h, actor, e)
 		}
 	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// stepDown is POST /api/calendar/invites/step-down: a host giving up
+// hosting an event. A co-host comes off the invitation's Hosts; whoever
+// added the event is written into Stepped Down, staying the one who shared
+// it. Either way they stop hearing of answers. An event may be left with
+// no host at all - the admins can still change it. A linked event's own
+// hosts - a party's, an HCA event's chairs - step down on that app.
+func (a app) stepDown(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		ID string `json:"id"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	actor, e, ok := a.hostedEvent(w, r, body.ID)
+	if !ok {
+		return
+	}
+	inv := a.cache.Model().Invitations[e.ID]
+	cohost := inv != nil && slices.Contains(inv.Hosts, actor)
+	poster := e.Source == SourceSheet && !e.PosterLeft && a.directory.Resolve(normalizeEmail(e.AddedBy)) == actor
+	if !cohost && !poster {
+		http.Error(w, "you host this event on the app that runs it - step down there", http.StatusBadRequest)
+		return
+	}
+	cells := map[string]string{}
+	if poster {
+		cells["Stepped Down"] = normalizeEmail(e.AddedBy)
+	}
+	if inv != nil {
+		if cohost {
+			cells["Hosts"] = JoinList(slices.DeleteFunc(slices.Clone(inv.Hosts), func(h string) bool { return h == actor }))
+		}
+		if slices.Contains(inv.Notify, actor) {
+			cells["Notify"] = strings.Join(slices.DeleteFunc(slices.Clone(inv.Notify), func(h string) bool { return h == actor }), ", ")
+		}
+	}
+	tables, first := a.ensured(a.cache.Tables(), e.ID, actor)
+	if !a.commit(r.Context(), w, tables.WithInvitation(e.ID, cells), func() error {
+		if err := first(); err != nil {
+			return err
+		}
+		return a.writer.Set(appName, InvitationsTab, map[string]string{"Event ID": e.ID}, cells)
+	}) {
+		return
+	}
+	slog.InfoContext(r.Context(), "calendar: host stepped down", "actor", actor, "event", e.ID, "poster", poster)
 	w.WriteHeader(http.StatusNoContent)
 }
 

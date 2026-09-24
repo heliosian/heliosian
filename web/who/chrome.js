@@ -9,7 +9,7 @@ import {staleItems, familyInfoBanner, todoChecklist, familyNavPeople, personTodo
 import {topbarSearchInput, topbarSearchResults} from './search.js';
 import {privacyMismatchCardDismissed, myPrivacyWarnings, privacyMismatchCard, privacyMismatchText} from './pages/privacy.js';
 import {load} from './app.js';
-import {renderAvatars, onSlash, isEditableTarget, initAppSwitch, initUserMenu, initSpoof, hoverMenu, hoverClick, alertMenu, alertCard, markSuper} from '/toolbar.js';
+import {renderAvatars, onSlash, isEditableTarget, initAppSwitch, initUserMenu, initSpoof, hoverMenu, hoverClick, alertMenu, alertCard, renderSuperToggle} from '/toolbar.js';
 
 const primaryNavItems = [
   {path: 'people', label: 'Directory'},
@@ -523,8 +523,8 @@ function updateBannerOffset() {
 }
 
 // setSuperEdit is the one place that actually flips the switch - shared by the
-// banner's "Turn off" link and the user menus' checkbox, both of which just
-// need to call it and let the reload (which calls syncSuperEditCheckboxes and
+// banner's "Turn off" link and the toolbar's pencil, both of which just need
+// to call it and let the reload (which calls syncSuperEditCheckboxes and
 // renderSuperEditBanner) bring every copy of the control back in sync.
 async function setSuperEdit(enabled) {
   await fetch('/api/admin/super-edit', {
@@ -535,11 +535,11 @@ async function setSuperEdit(enabled) {
   await load();
 }
 
+// syncSuperEditCheckboxes draws the toolbar's pencil, for admins alone, true
+// to the model after every reload - including one triggered by a different
+// tab or the admin page, which still has its own toggle too.
 export function syncSuperEditCheckboxes() {
-  markSuper(state.model.superEdit);
-  for (const box of document.querySelectorAll('.super-edit-checkbox')) {
-    box.checked = Boolean(state.model.superEdit);
-  }
+  renderSuperToggle({show: state.model.user.isAdmin, on: state.model.superEdit, onToggle: setSuperEdit});
 }
 
 export function renderSuperEditBanner() {
@@ -692,16 +692,6 @@ export function initChrome() {
   }
 
   mobileListsOverlay.addEventListener('click', () => setMobileListsMenu(false));
-
-  // Both the desktop and mobile user menus carry their own copy of this
-  // checkbox (shown to admins only) - a quicker way to flip Super Admin Mode
-  // than the full admin page, which still has its own toggle too. Wired once here
-  // since the checkboxes are static; syncSuperEditCheckboxes (called from load())
-  // keeps their checked state true to the model after every reload, including one
-  // triggered by a different tab or the admin page.
-  for (const box of document.querySelectorAll('.super-edit-checkbox')) {
-    box.addEventListener('change', () => setSuperEdit(box.checked));
-  }
 
   document.querySelector('#mobile-menu-btn').addEventListener('click', () => setDrawer(true));
   document.querySelector('#drawer-close').addEventListener('click', () => setDrawer(false));

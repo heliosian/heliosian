@@ -88,7 +88,7 @@ var (
 	FeedColumns        = []string{"Token", "Email", "Name", "Classrooms", "Tags", "Created", "Emoji"}
 	SettingColumns     = []string{"Email", "Classrooms", "Categories", "Saved", "Home Name", "Home Emoji", "Home Position"}
 	RSVPColumns        = []string{"Email", "Event ID", "Answer", "Answered", "Answered By", "Via"}
-	InvitationColumns  = []string{"Event ID", "Hosts", "Audience", "Guests", "Message", "Created By", "Created", "Sent", "Title", "Start", "End", "Location", "Description", "Flyer", "Notify"}
+	InvitationColumns  = []string{"Event ID", "Hosts", "Audience", "Guests", "Message", "Created By", "Created", "Sent", "Title", "Start", "End", "Location", "Description", "Flyer", "Notify", "Stepped Down", "Hide Hosts"}
 	InviteColumns      = []string{"Event ID", "Email", "Name", "Guest Of", "Via", "Added By", "Added", "Sent", "Token", "Household", "Opened"}
 	InviteGroupColumns = append([]string{"Event ID", "Group ID", "Auto", "Added By", "Added", "Sent", "Removed"}, filter.RuleColumns...)
 	BounceColumns      = []string{"Email", "When", "Reason"}
@@ -183,6 +183,10 @@ type Event struct {
 	Year       string `json:"year,omitempty"`
 	AddedBy    string `json:"addedBy,omitempty"`
 	Added      string `json:"added,omitempty"`
+	// PosterLeft says whoever added the event stepped down as its host: it
+	// is still theirs as the one who shared it, but no longer theirs to
+	// run (the Invitations tab's Stepped Down).
+	PosterLeft bool `json:"posterLeft,omitempty"`
 	// Link is the page of an event another app runs, as a path on that site;
 	// Availability is what a reader can do there now; Mine is where the
 	// viewer's household already stands with it; Image is its picture
@@ -1880,6 +1884,11 @@ func BuildModel(tables *Tables, roster Roster) (*Model, error) {
 	b.settings(tables.Settings)
 	b.answers(tables.RSVPs)
 	b.invitations(tables.Invitations, tables.Invites)
+	for _, e := range m.Events {
+		if inv := m.Invitations[e.ID]; inv != nil && e.AddedBy != "" && inv.SteppedDown == normalizeEmail(e.AddedBy) {
+			e.PosterLeft = true
+		}
+	}
 	b.groups(tables.InviteGroups)
 	b.bounces(tables.Bounces)
 	if err := b.feeds(tables.Feeds); err != nil {

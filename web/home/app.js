@@ -2,7 +2,7 @@ import {state, applyModel, setSuperAdmin} from './state.js';
 import {renderCategories, renderNav} from './cards.js';
 import {renderMonth} from './month.js';
 import {initEditing, refreshCategoryManager} from './edit.js';
-import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, initSpoof, markSuper} from '/toolbar.js';
+import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, initSpoof, renderSuperToggle} from '/toolbar.js';
 
 function renderChrome() {
   const user = state.model.user;
@@ -15,8 +15,13 @@ function renderChrome() {
   for (const item of document.querySelectorAll('.user-menu-admin')) {
     item.hidden = !user.isAdmin;
   }
-  document.querySelector('#super-admin-mode').checked = state.superAdmin;
-  markSuper(state.superAdmin);
+  // The pencil repaints the links in or out of Super Admin Mode.
+  renderSuperToggle({show: user.isAdmin, on: state.superAdmin, onToggle: on => {
+    setSuperAdmin(on);
+    renderChrome();
+    renderNav();
+    renderCategories(document.querySelector('#search').value);
+  }});
 }
 
 export async function load() {
@@ -79,16 +84,6 @@ function initChrome() {
   initUserMenu();
   initSpoof();
   const menu = document.querySelector('#user-menu');
-  // The switch is a row of the menu; flipping it repaints the links and
-  // leaves the menu open, so the effect is visible behind it.
-  const superAdmin = document.querySelector('#super-admin-mode');
-  superAdmin.addEventListener('change', () => {
-    setSuperAdmin(superAdmin.checked);
-    markSuper(superAdmin.checked);
-    renderNav();
-    renderCategories(document.querySelector('#search').value);
-  });
-  superAdmin.closest('label').addEventListener('click', e => e.stopPropagation());
   document.addEventListener('click', () => {
     menu.hidden = true;
   });
