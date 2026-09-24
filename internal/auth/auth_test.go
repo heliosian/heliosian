@@ -2,8 +2,10 @@ package auth
 
 import (
 	"context"
+	"encoding/base64"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -91,10 +93,19 @@ func TestLogoutClearsEveryDomain(t *testing.T) {
 	}
 }
 
+// bareToken is a session cookie as it was before the cookie was JSON: the
+// address, a pipe and an expiry, base64url, a dot, and their signature.
+func bareToken(key []byte, email string, expiry time.Time) string {
+	payload := email + "|" + strconv.FormatInt(expiry.Unix(), 10)
+	return base64.RawURLEncoding.EncodeToString([]byte(payload)) + "." + sign(key, payload)
+}
+
 // A session is the signed address and the moment it was issued, good for
 // sessionLength from then unless the address signs out later: a token
 // issued at or before the recorded sign-out is refused, one issued after
-// it holds, and a sign-out the record refuses is answered with a 500 and
+// it holds, one of the old shape - every cookie from before the cookie
+// was JSON, whose number is an expiry still ahead - is refused, and a
+// sign-out the record refuses is answered with a 500 and
 // no cleared cookie, so the browser's copy is not dropped while every
 // other copy still verifies.
 func TestSessionEndsAtSignOut(t *testing.T) {
@@ -115,6 +126,7 @@ func TestSessionEndsAtSignOut(t *testing.T) {
 		{"someone never signed out", Token(key, "other@heliosschool.org", out.Add(-time.Hour)), http.StatusTeapot},
 		{"run out", Token(key, "other@heliosschool.org", time.Now().Add(-sessionLength-time.Second)), http.StatusUnauthorized},
 		{"another key", Token([]byte("other"), "other@heliosschool.org", time.Now()), http.StatusUnauthorized},
+		{"the old shape", bareToken(key, "other@heliosschool.org", time.Now().Add(20*24*time.Hour)), http.StatusUnauthorized},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

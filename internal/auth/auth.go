@@ -7,11 +7,9 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -125,9 +123,26 @@ func Public(path string) bool {
 	return path == "/auth/login" || path == "/auth/client" || strings.HasPrefix(path, "/hooks/") || strings.HasPrefix(path, "/open/") || strings.HasPrefix(path, "/ext/")
 }
 
+type session struct {
+	Email  string `json:"email"`
+	Issued int64  `json:"issued"`
+}
+
+type token struct {
+	Session   json.RawMessage `json:"session"`
+	Signature string          `json:"signature"`
+}
+
 func Token(key []byte, email string, issued time.Time) string {
-	payload := fmt.Sprintf("%s|%d", email, issued.Unix())
-	return base64.RawURLEncoding.EncodeToString([]byte(payload)) + "." + sign(key, payload)
+	payload, err := json.Marshal(session{Email: email, Issued: issued.Unix()})
+	if err != nil {
+		panic(err)
+	}
+	value, err := json.Marshal(token{Session: payload, Signature: sign(key, string(payload))})
+	if err != nil {
+		panic(err)
+	}
+	return base64.RawURLEncoding.EncodeToString(value)
 }
 
 func sign(key []byte, payload string) string {
@@ -279,31 +294,29 @@ func (a *Auth) sessionEmail(r *http.Request) string {
 	if err != nil {
 		return ""
 	}
-	parts := strings.SplitN(cookie.Value, ".", 2)
-	if len(parts) != 2 {
-		return ""
-	}
-	decoded, err := base64.RawURLEncoding.DecodeString(parts[0])
+	decoded, err := base64.RawURLEncoding.DecodeString(cookie.Value)
 	if err != nil {
 		return ""
 	}
-	payload := string(decoded)
-	if !hmac.Equal([]byte(sign(a.key, payload)), []byte(parts[1])) {
+	var t token
+	if err := json.Unmarshal(decoded, &t); err != nil {
 		return ""
 	}
-	fields := strings.Split(payload, "|")
-	if len(fields) != 2 {
+	if !hmac.Equal([]byte(sign(a.key, string(t.Session))), []byte(t.Signature)) {
 		return ""
 	}
-	issued, err := strconv.ParseInt(fields[1], 10, 64)
-	if err != nil || time.Now().Unix() > issued+int64(sessionLength.Seconds()) {
+	var s session
+	if err := json.Unmarshal(t.Session, &s); err != nil {
 		return ""
 	}
-	if !strings.HasSuffix(fields[0], "@"+Domain) {
+	if time.Now().Unix() > s.Issued+int64(sessionLength.Seconds()) {
 		return ""
 	}
-	if out, ok := a.sessions.SignedOut(fields[0]); ok && issued <= out.Unix() {
+	if !strings.HasSuffix(s.Email, "@"+Domain) {
 		return ""
 	}
-	return fields[0]
+	if out, ok := a.sessions.SignedOut(s.Email); ok && s.Issued <= out.Unix() {
+		return ""
+	}
+	return s.Email
 }
