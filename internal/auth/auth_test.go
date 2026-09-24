@@ -93,11 +93,12 @@ func TestLogoutClearsEveryDomain(t *testing.T) {
 	}
 }
 
-// Signed out, a page load - or a fetcher naming no destination, as a chat
-// app reading a preview does - gets the login page at the address asked
-// for, and a stylesheet, script, image or API call gets a bare 401, so a
-// browser never keeps the login page under an asset's address; nothing
-// answered signed out may be stored.
+// Signed out, a stylesheet, script, image, worker or API call gets a bare
+// 401, so a browser never keeps the login page under an asset's address,
+// and anything else - a navigation, a chat app naming no destination, a
+// service worker fetching the page for its tab, a destination never seen -
+// gets the login page at the address asked for; nothing answered signed
+// out may be stored.
 func TestSignedOutGetsTheLoginPageOnlyForAPage(t *testing.T) {
 	t.Chdir("../..")
 	a := New("heliosian.com", "client", []byte("key"), "web/public/who/login.html", everyone, noSessions())
@@ -111,11 +112,17 @@ func TestSignedOutGetsTheLoginPageOnlyForAPage(t *testing.T) {
 	}{
 		{"/people", "document", true},
 		{"/people", "", true},
+		{"/", "empty", true},
+		{"/people", "made-up", true},
 		{"/style.css", "style", false},
 		{"/app.js", "script", false},
 		{"/swoosh.png", "image", false},
+		{"/fonts/missing.woff2", "font", false},
+		{"/manifest.webmanifest", "manifest", false},
+		{"/sw.js", "serviceworker", false},
 		{"/api/directory/model", "empty", false},
 		{"/api/directory/model", "document", false},
+		{"/blob/photo", "document", false},
 	}
 	for _, c := range cases {
 		req := httptest.NewRequest(http.MethodGet, "https://who.heliosian.com"+c.path, nil)

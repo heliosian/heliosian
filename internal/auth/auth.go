@@ -174,6 +174,8 @@ func (a *Auth) Wrap(next http.Handler) http.Handler {
 		email := a.sessionEmail(r)
 		if email == "" {
 			w.Header().Set("Cache-Control", "no-store")
+			slog.InfoContext(r.Context(), "signed out", "path", r.URL.Path, "page", page(r),
+				"dest", r.Header.Get("Sec-Fetch-Dest"), "mode", r.Header.Get("Sec-Fetch-Mode"), "site", r.Header.Get("Sec-Fetch-Site"))
 			if !page(r) {
 				http.Error(w, "unauthenticated", http.StatusUnauthorized)
 				return
@@ -185,17 +187,23 @@ func (a *Auth) Wrap(next http.Handler) http.Handler {
 	})
 }
 
-// page is a request for a page to show: a browser's navigation, or a fetcher
-// that names no destination - a chat app reading a link's preview. A
-// stylesheet, script or image asked for while signed out must never be
-// answered with the login page, which a browser would keep under that
-// address and use again once signed in.
+var assetDests = map[string]bool{
+	"style": true, "script": true, "image": true, "font": true,
+	"audio": true, "video": true, "track": true, "manifest": true,
+	"object": true, "embed": true,
+	"worker": true, "sharedworker": true, "serviceworker": true,
+}
+
+// page is a request the login page may answer: anything but an API or
+// media path and an asset a browser names as one. A stylesheet or script
+// answered with the login page is kept under that address and used again
+// once signed in; a page fetched by a service worker says "empty", as a
+// script's fetch does, and must still reach sign-in.
 func page(r *http.Request) bool {
 	if fetched(r.URL.Path) {
 		return false
 	}
-	dest := r.Header.Get("Sec-Fetch-Dest")
-	return dest == "" || dest == "document"
+	return !assetDests[r.Header.Get("Sec-Fetch-Dest")]
 }
 
 // cookieDomain is the domain the session is scoped to, so one sign-in covers

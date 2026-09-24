@@ -62,6 +62,22 @@ func TestPublic(t *testing.T) {
 	}
 }
 
+// The worker that replaces the previous host's service worker answers on
+// every app's host, without a session and whatever version its query names,
+// as a script a browser will install.
+func TestTheOldServiceWorkerIsReplacedEverywhere(t *testing.T) {
+	t.Chdir("../..")
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("%s fell through on %s", r.URL.Path, r.Host)
+	})
+	for _, app := range []string{"who", "home", "team", "birthday", "celebrate", "calendar", "loop", "ask"} {
+		rec := get(t, Public(app, next), app+".heliosiandev.com", "/sw-prod-v4.js?dv=6ee63b1f4a87c21b6f330bafecdc5b45a1655fb6")
+		if rec.Code != http.StatusOK || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/javascript") || !strings.Contains(rec.Body.String(), "unregister") {
+			t.Errorf("%s: got %d %q, want the replacement worker", app, rec.Code, rec.Header().Get("Content-Type"))
+		}
+	}
+}
+
 // A server answers its own domain's names and nothing else: production's
 // never a developer's, a developer's never production's.
 func TestAppFor(t *testing.T) {
