@@ -93,6 +93,50 @@ func TestLogoutClearsEveryDomain(t *testing.T) {
 	}
 }
 
+// Signing in sets the session for the domain and deletes the host-only
+// copy, so a stale one from before the cookie was scoped to the domain -
+// sent first by the browser, and read first by the server - cannot shadow
+// the session just set; a host outside the domain's shape gets the
+// host-only cookie alone and nothing deleted.
+func TestSignInDeletesTheHostOnlyCopy(t *testing.T) {
+	key := []byte("key")
+	a := New("heliosian.com", "client", key, "web/public/who/login.html", everyone, noSessions())
+	set := func(host string) map[string]*http.Cookie {
+		req := httptest.NewRequest(http.MethodPost, "https://"+host+"/auth/login", nil)
+		req.Header.Set("X-Forwarded-Proto", "https")
+		rec := httptest.NewRecorder()
+		a.setSession(rec, req, "parent@heliosschool.org")
+		out := map[string]*http.Cookie{}
+		for _, c := range rec.Result().Cookies() {
+			if c.Name != cookieName {
+				t.Errorf("%s: unexpected cookie %+v", host, c)
+				continue
+			}
+			out[c.Domain] = c
+		}
+		return out
+	}
+	got := set("who.heliosian.com")
+	if len(got) != 2 || got["heliosian.com"] == nil || got[""] == nil {
+		t.Fatalf("who: set cookies for domains %v, want the domain and a host-only deletion", got)
+	}
+	if c := got["heliosian.com"]; c.MaxAge != int(sessionLength.Seconds()) || !c.HttpOnly || !c.Secure || c.SameSite != http.SameSiteLaxMode {
+		t.Errorf("who: domain cookie %+v, want the session", c)
+	}
+	req := httptest.NewRequest(http.MethodGet, "https://who.heliosian.com/api/people", nil)
+	req.AddCookie(&http.Cookie{Name: cookieName, Value: got["heliosian.com"].Value})
+	if email := a.sessionEmail(req); email != "parent@heliosschool.org" {
+		t.Errorf("who: the set cookie reads as %q", email)
+	}
+	if c := got[""]; c.MaxAge != -1 || c.Value != "" {
+		t.Errorf("who: host-only cookie %+v, want a deletion", c)
+	}
+	got = set("who.heliosiandev.com:8080")
+	if len(got) != 1 || got[""] == nil || got[""].MaxAge != int(sessionLength.Seconds()) {
+		t.Errorf("dev host: set cookies for domains %v, want the host-only session alone", got)
+	}
+}
+
 // bareToken is a session cookie as it was before the cookie was JSON: the
 // address, a pipe and an expiry, base64url, a dot, and their signature.
 func bareToken(key []byte, email string, expiry time.Time) string {

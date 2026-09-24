@@ -243,17 +243,37 @@ func (a *Auth) login(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "account is not in the school domain", http.StatusForbidden)
 		return
 	}
+	a.setSession(w, r, email)
+	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+// setSession sets the session cookie for the domain and deletes the copy
+// under any other domain a cookie of the name could sit at for this host,
+// since the browser sends every copy and the server reads the first: a
+// stale one, host-only from before the cookie was scoped to the domain,
+// would otherwise shadow the one just set on every request.
+func (a *Auth) setSession(w http.ResponseWriter, r *http.Request, email string) {
+	secure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
+	domain := a.cookieDomain(r.Host)
 	http.SetCookie(w, &http.Cookie{
 		Name:     cookieName,
 		Value:    Token(a.key, email, time.Now()),
 		Path:     "/",
-		Domain:   a.cookieDomain(r.Host),
+		Domain:   domain,
 		HttpOnly: true,
-		Secure:   r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https",
+		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   int(sessionLength.Seconds()),
 	})
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	for _, other := range a.logoutDomains(r.Host) {
+		if other == domain {
+			continue
+		}
+		http.SetCookie(w, &http.Cookie{
+			Name: cookieName, Value: "", Path: "/", Domain: other,
+			HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode, MaxAge: -1,
+		})
+	}
 }
 
 // logoutDomains lists every domain a session cookie reaching this host could
