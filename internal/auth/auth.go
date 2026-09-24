@@ -1,4 +1,3 @@
-// Package auth gates the server behind google sign-in restricted to the school domain.
 package auth
 
 import (
@@ -243,7 +242,19 @@ func (a *Auth) splash(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(html))
 }
 
+func sameOrigin(w http.ResponseWriter, r *http.Request) bool {
+	site := r.Header.Get("Sec-Fetch-Site")
+	if site == "same-origin" || site == "none" {
+		return true
+	}
+	http.Error(w, "cross-site request refused", http.StatusForbidden)
+	return false
+}
+
 func (a *Auth) login(w http.ResponseWriter, r *http.Request) {
+	if !sameOrigin(w, r) {
+		return
+	}
 	csrf, err := r.Cookie("g_csrf_token")
 	if err != nil || csrf.Value == "" || csrf.Value != r.FormValue("g_csrf_token") {
 		http.Error(w, "csrf check failed", http.StatusBadRequest)
@@ -311,6 +322,9 @@ func (a *Auth) logoutDomains(host string) []string {
 // and any other, and any spoof with it: the next person to sign in on this
 // browser must not inherit a view as someone else.
 func (a *Auth) logout(w http.ResponseWriter, r *http.Request) {
+	if !sameOrigin(w, r) {
+		return
+	}
 	if err := a.sessions.SignOut(r.Context(), RealEmail(r)); err != nil {
 		slog.ErrorContext(r.Context(), "record sign-out", "error", err)
 		http.Error(w, "sign-out not recorded", http.StatusInternalServerError)

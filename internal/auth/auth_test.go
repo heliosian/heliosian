@@ -65,6 +65,7 @@ func TestLogoutClearsEveryDomain(t *testing.T) {
 	a := New("heliosiandev.com", "client", []byte("key"), "web/public/who/login.html", everyone, ended)
 	req := httptest.NewRequest(http.MethodPost, "https://hca.heliosiandev.com/auth/logout", nil)
 	req.Header.Set("X-Forwarded-Proto", "https")
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	req = req.WithContext(context.WithValue(req.Context(), contextKey{}, identity{real: "admin@heliosschool.org", effective: "parent@heliosschool.org"}))
 	rec := httptest.NewRecorder()
 	a.logout(rec, req)
@@ -90,6 +91,33 @@ func TestLogoutClearsEveryDomain(t *testing.T) {
 		if !cleared["heliosiandev.com"] || !cleared[""] || len(cleared) != 2 {
 			t.Errorf("%s: cleared domains %v, want host-only and the domain", name, cleared)
 		}
+	}
+}
+
+func TestSignInAndOutRefuseOtherSites(t *testing.T) {
+	s := noSessions()
+	a := New("heliosian.com", "client", []byte("key"), "web/public/who/login.html", everyone, s)
+	for _, site := range []string{"cross-site", "same-site", ""} {
+		for _, path := range []string{"/auth/login", "/auth/logout"} {
+			req := httptest.NewRequest(http.MethodPost, "https://who.heliosian.com"+path, nil)
+			if site != "" {
+				req.Header.Set("Sec-Fetch-Site", site)
+			}
+			req.AddCookie(&http.Cookie{Name: "g_csrf_token", Value: "t"})
+			req = req.WithContext(context.WithValue(req.Context(), contextKey{}, identity{real: "parent@heliosschool.org", effective: "parent@heliosschool.org"}))
+			rec := httptest.NewRecorder()
+			if path == "/auth/login" {
+				a.login(rec, req)
+			} else {
+				a.logout(rec, req)
+			}
+			if rec.Code != http.StatusForbidden || len(rec.Result().Cookies()) != 0 {
+				t.Errorf("%s from %q: got %d with %d cookies, want 403 and none", path, site, rec.Code, len(rec.Result().Cookies()))
+			}
+		}
+	}
+	if len(s.ended) != 0 {
+		t.Errorf("signed out %v, want no one", s.ended)
 	}
 }
 
@@ -233,6 +261,7 @@ func TestSessionEndsAtSignOut(t *testing.T) {
 	}
 	s.refuse = context.Canceled
 	req := httptest.NewRequest(http.MethodPost, "https://who.heliosian.com/auth/logout", nil)
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	req = req.WithContext(context.WithValue(req.Context(), contextKey{}, identity{real: "parent@heliosschool.org", effective: "parent@heliosschool.org"}))
 	rec := httptest.NewRecorder()
 	a.logout(rec, req)
