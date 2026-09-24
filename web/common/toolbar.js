@@ -35,6 +35,14 @@ export function currentApp() {
   return aliases[first] || 'home';
 }
 
+export function signedIn(res) {
+  if (res.status === 401) {
+    location.reload();
+    return new Promise(() => {});
+  }
+  return res;
+}
+
 export function appOrigin(key) {
   const tier = tierLabels();
   const host = key === 'home' && tier.length === 2 ? tier : [key, ...tier];

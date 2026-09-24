@@ -1,4 +1,4 @@
-import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, initSpoof, markSuper} from '/toolbar.js';
+import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, initSpoof, markSuper, signedIn} from '/toolbar.js';
 import {render, stable} from '/markdown.js';
 
 // The chats live in this browser, under the signed-in address: each an
@@ -404,7 +404,7 @@ async function send(message) {
   const stopper = new AbortController();
   state.stopper = stopper;
   try {
-    const res = await fetch('/api/ask/chat', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({conversation: chat.id, message, context: chat.context, known: chat.known}), signal: stopper.signal});
+    const res = await signedIn(await fetch('/api/ask/chat', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({conversation: chat.id, message, context: chat.context, known: chat.known}), signal: stopper.signal}));
     if (!res.ok) {
       const why = await res.text();
       answer.remove();
@@ -556,7 +556,7 @@ function initChrome() {
 }
 
 async function load() {
-  const res = await fetch('/api/ask/model');
+  const res = await signedIn(await fetch('/api/ask/model'));
   if (!res.ok) {
     throw new Error(`loading model failed: ${res.status}`);
   }

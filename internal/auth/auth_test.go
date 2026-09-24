@@ -93,6 +93,47 @@ func TestLogoutClearsEveryDomain(t *testing.T) {
 	}
 }
 
+// Signed out, a page load - or a fetcher naming no destination, as a chat
+// app reading a preview does - gets the login page at the address asked
+// for, and a stylesheet, script, image or API call gets a bare 401, so a
+// browser never keeps the login page under an asset's address; nothing
+// answered signed out may be stored.
+func TestSignedOutGetsTheLoginPageOnlyForAPage(t *testing.T) {
+	t.Chdir("../..")
+	a := New("heliosian.com", "client", []byte("key"), "web/public/who/login.html", everyone, noSessions())
+	handler := a.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("%s reached the app signed out", r.URL.Path)
+	}))
+	cases := []struct {
+		path     string
+		dest     string
+		wantPage bool
+	}{
+		{"/people", "document", true},
+		{"/people", "", true},
+		{"/style.css", "style", false},
+		{"/app.js", "script", false},
+		{"/swoosh.png", "image", false},
+		{"/api/directory/model", "empty", false},
+		{"/api/directory/model", "document", false},
+	}
+	for _, c := range cases {
+		req := httptest.NewRequest(http.MethodGet, "https://who.heliosian.com"+c.path, nil)
+		if c.dest != "" {
+			req.Header.Set("Sec-Fetch-Dest", c.dest)
+		}
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		gotPage := rec.Code == http.StatusOK && strings.Contains(rec.Body.String(), "/login.js")
+		if gotPage != c.wantPage || (!c.wantPage && rec.Code != http.StatusUnauthorized) {
+			t.Errorf("%s as %q: got %d, want the login page %v", c.path, c.dest, rec.Code, c.wantPage)
+		}
+		if got := rec.Header().Get("Cache-Control"); got != "no-store" {
+			t.Errorf("%s as %q: Cache-Control %q, want no-store", c.path, c.dest, got)
+		}
+	}
+}
+
 // Signing in sets the session for the domain and deletes the host-only
 // copy, so a stale one from before the cookie was scoped to the domain -
 // sent first by the browser, and read first by the server - cannot shadow

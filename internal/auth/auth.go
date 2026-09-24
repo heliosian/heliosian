@@ -173,7 +173,8 @@ func (a *Auth) Wrap(next http.Handler) http.Handler {
 		}
 		email := a.sessionEmail(r)
 		if email == "" {
-			if fetched(r.URL.Path) {
+			w.Header().Set("Cache-Control", "no-store")
+			if !page(r) {
 				http.Error(w, "unauthenticated", http.StatusUnauthorized)
 				return
 			}
@@ -182,6 +183,19 @@ func (a *Auth) Wrap(next http.Handler) http.Handler {
 		}
 		a.admit(w, r, a.resolve(r, email), next)
 	})
+}
+
+// page is a request for a page to show: a browser's navigation, or a fetcher
+// that names no destination - a chat app reading a link's preview. A
+// stylesheet, script or image asked for while signed out must never be
+// answered with the login page, which a browser would keep under that
+// address and use again once signed in.
+func page(r *http.Request) bool {
+	if fetched(r.URL.Path) {
+		return false
+	}
+	dest := r.Header.Get("Sec-Fetch-Dest")
+	return dest == "" || dest == "document"
 }
 
 // cookieDomain is the domain the session is scoped to, so one sign-in covers
@@ -210,17 +224,14 @@ func (a *Auth) splash(w http.ResponseWriter, r *http.Request) {
 		serve.File(w, r, a.loginPage)
 		return
 	}
-	// The same page, with the preview tags slipped into its head. Varies by
-	// path, so it is not cached the way the plain page is.
-	page, err := os.ReadFile(a.loginPage)
+	body, err := os.ReadFile(a.loginPage)
 	if err != nil {
 		slog.ErrorContext(r.Context(), "read login page", "error", err)
-		serve.File(w, r, a.loginPage)
+		http.Error(w, "login page unavailable", http.StatusInternalServerError)
 		return
 	}
-	html := strings.Replace(string(page), "</head>", extra+"</head>", 1)
+	html := strings.Replace(string(body), "</head>", extra+"</head>", 1)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-store")
 	w.Write([]byte(html))
 }
 
