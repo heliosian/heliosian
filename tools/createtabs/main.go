@@ -156,8 +156,8 @@ var layouts = map[string][]tab{
 		{"Settings", celebrate.SettingColumns},
 		{"Admins", celebrate.AdminColumns},
 		{"Redirects", celebrate.RedirectColumns},
-		{"Change Log", celebrate.ChangeLogColumns},
 		{"INVOICING", celebrate.InvoicingColumns},
+		{store.ChangeLogTab, store.ChangeLogColumns},
 	},
 	"Calendar": {
 		{calendar.GoogleTab, calendar.GoogleColumns},

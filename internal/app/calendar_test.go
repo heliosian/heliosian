@@ -43,7 +43,7 @@ func samplesLinked(t *testing.T) calendarLinked {
 	t.Helper()
 	t.Chdir("../..")
 	dir := &data.Dir{Root: "sampledata"}
-	parties, err := celebrate.NewCache(dir, sampleImages{}, func(string) bool { return false }, directQueue{})
+	parties, err := celebrate.NewCache(dir, dir, sampleImages{}, func(string) bool { return false }, directQueue{})
 	if err != nil {
 		t.Fatal(err)
 	}

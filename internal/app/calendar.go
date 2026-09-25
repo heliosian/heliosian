@@ -98,9 +98,6 @@ func (s standing) who() []string {
 func (c calendarLinked) parties(now time.Time, family familyNames, full map[string]string) []calendar.Linked {
 	out := []calendar.Linked{}
 	model := c.celebrate.Model()
-	if model == nil {
-		return out
-	}
 	for _, p := range model.SortedParties("") {
 		if !p.VisibleTo("", false) || p.Start == "" {
 			continue
@@ -199,11 +196,7 @@ type partyPeople struct {
 }
 
 func (p partyPeople) people(id string) *calendar.PartyPeople {
-	model := p.celebrate.Model()
-	if model == nil {
-		return nil
-	}
-	party := model.Party(id)
+	party := p.celebrate.Model().Party(id)
 	if party == nil {
 		return nil
 	}

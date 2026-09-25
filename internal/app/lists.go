@@ -57,9 +57,6 @@ func SmartLists(directory *who.Model, portal *team.Model, site *celebrate.Model,
 
 func parties(directory *who.Model, model *celebrate.Model, email string, now time.Time) []who.List {
 	out := []who.List{}
-	if model == nil {
-		return out
-	}
 	for _, p := range model.Parties {
 		if p.Past(now) || !slices.ContainsFunc(p.HostEmails, func(h string) bool { return directory.Resolve(h) == email }) {
 			continue

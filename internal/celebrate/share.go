@@ -13,40 +13,22 @@ import (
 	"heliosian/internal/sharecard"
 )
 
-// A shared link to a party is fetched by whatever chat app it lands in, with
-// no session, so the preview it shows comes from two public things: Open
-// Graph tags slipped into the sign-in page served at the party's address, and
-// a card image at /open/share/{id}.png drawn here - the brand, the title, when and
-// where (in words, never the street), and the party's flyer or picture. Only
-// an open party is previewed that way; a link to anything else - the site
-// itself, a page, a pending or hidden party - previews what is on sale: the
-// next party with tickets left on the left, and a list of the three after it
-// on the right, at /open/share/upcoming.png. The tags say what a poster on the
-// wall says and nothing about who is coming.
-
-// cardStyle is the site's dress for the card: the palette sampled from the
-// logo art and the logo itself; no corner art.
 var cardStyle = &sharecard.Style{
 	Page: color.RGBA{0xf4, 0xf8, 0xf8, 0xff}, Brand: color.RGBA{0x0f, 0x4e, 0x54, 0xff}, Accent: color.RGBA{0x1f, 0x83, 0x8a, 0xff},
 	Ink: color.RGBA{0x0a, 0x32, 0x36, 0xff}, Yellow: color.RGBA{0xfa, 0xe1, 0x05, 0xff}, Panel: color.RGBA{0xdc, 0xe9, 0xe8, 0xff},
 	Wordmark: "Helios Celebrate", Tagline: "FUN(D)RAISER PARTIES",
-	Mark: "web/public/celebrate/brand/logo-mark.png",
-	// The card wears the logo as drawn, not a lockup set here.
+	Mark:   "web/public/celebrate/brand/logo-mark.png",
 	Lockup: "web/public/celebrate/brand/logo-lockup.png",
 }
 
-// ShareTagline gives the card the app's tagline as the registry has it
-// now, in place of the one written here.
 func ShareTagline(now func() string) {
 	cardStyle.TaglineNow = now
 }
 
-// previewable is what may be shown to someone who has not signed in.
 func previewable(p *Party) bool {
 	return p != nil && p.VisibleTo("", false)
 }
 
-// whenLines is the card's day and time lines.
 func whenLines(p *Party) (string, string) {
 	start, err := time.ParseInLocation(DateTimeFormat, p.Start, local)
 	if err != nil {
@@ -62,7 +44,6 @@ func whenLines(p *Party) (string, string) {
 	return day, start.Format("3:04 PM")
 }
 
-// when is the one line the tags carry: the day and the hours together.
 func when(p *Party) string {
 	day, hours := whenLines(p)
 	if hours != "" {
@@ -71,9 +52,6 @@ func when(p *Party) string {
 	return day
 }
 
-// upcoming is every party someone could buy a ticket to right now - open,
-// selling, not full, not over - soonest first. Undated parties are left out;
-// they cannot be next.
 func upcoming(m *Model) []*Party {
 	at := now()
 	out := []*Party{}
@@ -85,16 +63,13 @@ func upcoming(m *Model) []*Party {
 	return out
 }
 
-// upcomingCount is how many parties the list beside the next one names.
 const upcomingCount = 3
 
-// shortDay is a party's day as the list gives it: "Saturday, September 26".
 func shortDay(p *Party) string {
 	day, _ := whenLines(p)
 	return day
 }
 
-// blurb is the summary, else the description cut to a sentence or two.
 func blurb(p *Party) string {
 	text := strings.Join(strings.Fields(p.Summary), " ")
 	if text == "" {
@@ -110,16 +85,9 @@ func blurb(p *Party) string {
 	return text
 }
 
-// PreviewHead is the Open Graph markup for a request's path: the party there
-// when it is one a stranger may see, else the site's own preview of what is
-// on sale. Wired into the sign-in page, which is what an unauthenticated
-// fetch of the address gets.
 func PreviewHead(cache *Cache) func(r *http.Request) string {
 	return func(r *http.Request) string {
 		model := cache.Model()
-		if model == nil {
-			return ""
-		}
 		origin := "https://" + r.Host
 		first := strings.Split(strings.Trim(r.URL.Path, "/"), "/")[0]
 		var p *Party
@@ -147,8 +115,6 @@ func PreviewHead(cache *Cache) func(r *http.Request) string {
 	}
 }
 
-// upcomingHead is the site's own preview: the next party with tickets and
-// the few after it, in words, with the card that draws them.
 func upcomingHead(m *Model, origin string) string {
 	parties := upcoming(m)
 	desc := "Fun(d)raiser parties for the Helios community. New parties are on the way."
@@ -172,15 +138,10 @@ func upcomingHead(m *Model, origin string) string {
 	return previewTags("Upcoming Parties", desc, origin+"/", origin+"/open/share/upcoming.png")
 }
 
-// previewTags is the markup itself, as every app's sign-in page carries it.
 func previewTags(title, desc, url, image string) string {
 	return sharecard.PreviewTags("Helios Celebrate", title, desc, url, image)
 }
 
-// shareUpcoming serves /open/share/upcoming.png: the card for the site itself,
-// which is the next party with tickets left, dressed as its own card would
-// be, beside a list of the three after it. It changes as parties sell out
-// and pass, so its ETag hashes what it names.
 func (a app) shareUpcoming(w http.ResponseWriter, r *http.Request) {
 	parties := upcoming(a.cache.Model())
 	card := sharecard.Card{
@@ -216,9 +177,6 @@ func (a app) shareUpcoming(w http.ResponseWriter, r *http.Request) {
 	w.Write(png)
 }
 
-// shareCard serves /open/share/{id}.png: the card for one previewable party. The
-// card depends only on the title, the subtitle, the lines and the picture,
-// so its ETag is a hash of those and a chat app that fetched it once need not again.
 func (a app) shareCard(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimSuffix(r.PathValue("id"), ".png")
 	p := a.cache.Model().Party(id)
@@ -226,8 +184,6 @@ func (a app) shareCard(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	// The flyer is what the card shows when there is one; otherwise the
-	// banner.
 	picture, whole := p.Flyer, true
 	if picture == "" {
 		picture, whole = p.Image, false
@@ -253,8 +209,6 @@ func (a app) shareCard(w http.ResponseWriter, r *http.Request) {
 	w.Write(card)
 }
 
-// readImage is a party's picture as bytes: an upload from the blob store, or
-// one of the bundled files. Nothing when there is none or it is not held.
 func (a app) readImage(key string) []byte {
 	if key == "" {
 		return nil

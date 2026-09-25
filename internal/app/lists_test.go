@@ -98,14 +98,11 @@ func TestMagicTagsCarryTheirHosts(t *testing.T) {
 		t.Fatal(err)
 	}
 	portal := portalCache.Model()
-	siteTables, err := celebrate.ReadTables(dir)
+	siteCache, err := celebrate.NewCache(dir, dir, anyImage{}, func(string) bool { return false }, who.NewQueue())
 	if err != nil {
 		t.Fatal(err)
 	}
-	site, err := celebrate.BuildModel(siteTables, anyImage{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	site := siteCache.Model()
 	jordan := "jordan.whitfield@heliosschool.org"
 	lists := SmartLists(directory, portal, site, jordan, time.Date(2026, 9, 17, 12, 0, 0, 0, time.UTC))
 	i := slices.IndexFunc(lists, func(l who.List) bool { return l.Key == "activity:E001" })

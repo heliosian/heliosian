@@ -103,14 +103,11 @@ func sampleSources(t *testing.T) Sources {
 		t.Fatal(err)
 	}
 	teamModel := teamCache.Model()
-	celebrateTables, err := celebrate.ReadTables(dir)
+	celebrateCache, err := celebrate.NewCache(dir, dir, anyImages{}, func(string) bool { return false }, who.NewQueue())
 	if err != nil {
 		t.Fatal(err)
 	}
-	celebrateModel, err := celebrate.BuildModel(celebrateTables, anyImages{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	celebrateModel := celebrateCache.Model()
 	loopTables, err := loop.ReadTables(dir)
 	if err != nil {
 		t.Fatal(err)

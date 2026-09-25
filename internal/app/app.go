@@ -793,9 +793,9 @@ func NewCore(cfg Config) *Core {
 	if err != nil {
 		logging.Fatal("load birthdays data", "error", err)
 	}
-	celebrateCache, err := celebrate.NewCache(cfg.Source, celebrateImages{cfg.Store}, superAdmin, queue)
+	celebrateCache, err := celebrate.NewCache(cfg.Source, cfg.Writer, celebrateImages{cfg.Store}, superAdmin, queue)
 	if err != nil {
-		slog.Error("load celebrate data", "error", err)
+		logging.Fatal("load celebrate data", "error", err)
 	}
 	cache, err := who.NewCache(cfg.Source, cfg.Writer, cfg.Geocoder, cfg.Blobs, staticFiles{}, cfg.Store, queue, cfg.FamilyIDKey, settings.SuperAdmins)
 	if err != nil {
@@ -851,7 +851,7 @@ func NewCore(cfg Config) *Core {
 		}
 		return &celebrate.PartyRSVPs{Sent: sent, Answers: answers}
 	}
-	celebrate.Register(celebrateMux, celebrateCache, cfg.Writer, queue, cfg.Store, celebrateDirectory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.CelebrateMail, cfg.CelebrateFrom, partyRSVPs)
+	celebrate.Register(celebrateMux, celebrateCache, cfg.Store, celebrateDirectory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.CelebrateMail, cfg.CelebrateFrom, partyRSVPs)
 	askMux := http.NewServeMux()
 	loopMail := cfg.Loop
 	loopMail.Documents = artifacts.Register(askMux, artifactsCache, cfg.Embedder, cfg.Writer, queue, cfg.ArtifactsMail)

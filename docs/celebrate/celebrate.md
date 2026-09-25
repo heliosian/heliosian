@@ -50,7 +50,7 @@ On phones the rail becomes a drawer behind the hamburger, a slim title strip sit
 
 ## Editing
 
-As in the other apps: in place, through modals and one-click switches, with every change applied to the in-memory model first and then written to the sheet through the shared write queue and appended to the Change Log. A change the rules reject is refused before anything is written. Party images are uploaded, found in the image libraries (`internal/imagesearch`), or cropped, like the volunteer portal's.
+As in the other apps: in place, through modals and one-click switches, every change a commit on the store (`docs/storage.md`) - applied to memory at once, written to the sheet and the Change Log behind it on the shared write queue. A change the rules reject is refused before anything is written. Party images are uploaded, found in the image libraries (`internal/imagesearch`), or cropped, like the volunteer portal's.
 
 ## Friendly addresses
 

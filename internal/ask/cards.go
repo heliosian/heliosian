@@ -60,7 +60,7 @@ func (v *viewer) linkCard(address string) (linkCard, bool) {
 				return linkCard{URL: address, Kind: "group", Name: g.Title}, true
 			}
 		}
-	case strings.HasPrefix(address, teamBase+"/") && v.team != nil:
+	case strings.HasPrefix(address, teamBase+"/"):
 		a := v.team.Resolve(strings.TrimPrefix(address, teamBase))
 		if a == nil || !v.team.VisibleTo(a, v.email, false) {
 			return linkCard{}, false
@@ -70,7 +70,7 @@ func (v *viewer) linkCard(address string) (linkCard, bool) {
 			c.Image = teamBase + a.ImageURL
 		}
 		return c, true
-	case strings.HasPrefix(address, celebrateBase+"/") && v.celebrate != nil:
+	case strings.HasPrefix(address, celebrateBase+"/"):
 		p := v.celebrate.Resolve(strings.TrimPrefix(address, celebrateBase))
 		if p == nil || !p.VisibleTo(v.email, false) {
 			return linkCard{}, false

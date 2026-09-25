@@ -8,9 +8,6 @@ import (
 	"heliosian/internal/celebrate"
 )
 
-// partyCard is one fun(d)raiser party as the tools answer it: what, when,
-// where, the tickets, the hosts, who may come, and the household's own
-// tickets - the attendee list only for a party the viewer hosts.
 type partyCard struct {
 	Title        string   `json:"title"`
 	Subtitle     string   `json:"subtitle,omitempty"`
@@ -81,9 +78,6 @@ var parties = tool{
 		"include_past": boolean("Also the parties that have already happened."),
 	},
 	run: func(v *viewer, input json.RawMessage) (any, error) {
-		if v.celebrate == nil {
-			return nil, fmt.Errorf("Helios Celebrate is not loaded right now")
-		}
 		in, err := decodeInput[struct {
 			Query       string
 			IncludePast bool `json:"include_past"`

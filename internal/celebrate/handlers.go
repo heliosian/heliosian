@@ -1,7 +1,6 @@
 package celebrate
 
 import (
-	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/csv"
@@ -18,19 +17,17 @@ import (
 
 	"heliosian/internal/auth"
 	"heliosian/internal/blob"
-	"heliosian/internal/data"
 	"heliosian/internal/imagesearch"
 	"heliosian/internal/logging"
 	"heliosian/internal/mail"
 	"heliosian/internal/serve"
+	"heliosian/internal/store"
 )
 
 const (
-	imageFolder  = "party-images"
-	maxImageSize = 8 << 20
-	shell        = "web/celebrate/index.html"
-	// maxTicketsPerPurchase bounds one form submission; a family buys a
-	// handful, a host adding a whole guest list does it in a few goes.
+	imageFolder           = "party-images"
+	maxImageSize          = 8 << 20
+	shell                 = "web/celebrate/index.html"
 	maxTicketsPerPurchase = 20
 )
 
@@ -38,8 +35,6 @@ var pages = []string{
 	"/{$}", "/parties/{id}", "/p/{pretty}", "/celebrations/{code}", "/my", "/my/{email}", "/hosting", "/admin",
 }
 
-// local is the school's clock: the sheet's dates are wall-clock there, and a
-// ticket taken late one evening is stamped that evening.
 var local = mustLocation("America/Los_Angeles")
 
 func mustLocation(name string) *time.Location {
@@ -50,97 +45,65 @@ func mustLocation(name string) *time.Location {
 	return loc
 }
 
-// ImageSearch is the picture search shared with HCA-Team and Heliosian.
 type ImageSearch = imagesearch.Search
 
 type app struct {
 	cache       *Cache
-	writer      data.Writer
-	queue       Enqueuer
 	store       *blob.Store
 	directory   Directory
 	superAdmins func() []string
 	search      ImageSearch
-	// mailer sends the site's email, from the address in from; nil sends
-	// nothing.
-	mailer mail.Sender
-	from   string
-	// rsvps is Helios When's word on a party's guest list, for its hosts.
-	rsvps RSVPLookup
+	mailer      mail.Sender
+	from        string
+	rsvps       RSVPLookup
 }
 
-// Register wires the app: one shell for every page, the model, and the
-// writes. Every route already sits behind sign-in. A nil mailer sends
-// nothing.
-func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, directory Directory, superAdmins func() []string, search ImageSearch, mailer mail.Sender, from string, rsvps RSVPLookup) {
+func Register(mux *http.ServeMux, cache *Cache, store *blob.Store, directory Directory, superAdmins func() []string, search ImageSearch, mailer mail.Sender, from string, rsvps RSVPLookup) {
 	if search.UserAgent == "" {
 		search.UserAgent = "Helios Celebrate image search (+https://celebrate.heliosian.com)"
 	}
-	a := app{cache: cache, writer: writer, queue: queue, store: store, directory: directory, superAdmins: superAdmins, search: search, mailer: mailer, from: from, rsvps: rsvps}
+	a := app{cache: cache, store: store, directory: directory, superAdmins: superAdmins, search: search, mailer: mailer, from: from, rsvps: rsvps}
 	for _, page := range pages {
-		mux.HandleFunc("GET "+page, a.ready(a.page))
+		mux.HandleFunc("GET "+page, a.page)
 	}
-	mux.HandleFunc("GET /api/celebrate/model", a.ready(a.model))
-	mux.HandleFunc("GET /api/celebrate/people", a.ready(a.people))
-	mux.HandleFunc("GET /api/celebrate/images/search", a.ready(a.search.ServeSearch))
-	mux.HandleFunc("GET /api/celebrate/images/thumb", a.ready(a.search.ServeThumb))
-	mux.HandleFunc("POST /api/celebrate/images/import", a.ready(a.importImage))
-	mux.HandleFunc("POST /api/celebrate/image", a.ready(a.uploadImage))
-	// Public, past sign-in (auth.Public): the image a chat app shows for a
-	// link - one party's, or the site's own.
-	mux.HandleFunc("GET /open/share/upcoming.png", a.ready(a.shareUpcoming))
-	mux.HandleFunc("GET /open/share/{id}", a.ready(a.shareCard))
-	mux.HandleFunc("POST /api/celebrate/tickets", a.ready(a.buyTickets))
-	mux.HandleFunc("POST /api/celebrate/waitlist", a.ready(a.joinWaitlist))
-	mux.HandleFunc("POST /api/celebrate/waitlist/offer", a.ready(a.offerTickets))
-	mux.HandleFunc("POST /api/celebrate/ticket", a.ready(a.editTicket))
-	mux.HandleFunc("DELETE /api/celebrate/ticket", a.ready(a.removeTicket))
-	mux.HandleFunc("POST /api/celebrate/ticket/reassign", a.ready(a.reassignTicket))
-	mux.HandleFunc("POST /api/celebrate/party", a.ready(a.saveParty))
-	mux.HandleFunc("DELETE /api/celebrate/party", a.ready(a.deleteParty))
-	mux.HandleFunc("POST /api/celebrate/party/flags", a.ready(a.setFlags))
-	mux.HandleFunc("POST /api/celebrate/party/status", a.ready(a.setStatus))
-	mux.HandleFunc("POST /api/celebrate/celebration", a.ready(a.saveCelebration))
-	mux.HandleFunc("DELETE /api/celebrate/celebration", a.ready(a.deleteCelebration))
-	mux.HandleFunc("POST /api/celebrate/category", a.ready(a.saveCategory))
-	mux.HandleFunc("DELETE /api/celebrate/category", a.ready(a.deleteCategory))
-	mux.HandleFunc("POST /api/celebrate/categories/order", a.ready(a.reorderCategories))
-	mux.HandleFunc("POST /api/celebrate/settings", a.ready(a.saveSettings))
-	mux.HandleFunc("GET /api/celebrate/invoices.csv", a.ready(a.invoicesCSV))
-	mux.HandleFunc("GET /api/admin/state", a.ready(a.adminState))
-	mux.HandleFunc("POST /api/admin/admins", a.ready(a.setAdmins))
+	mux.HandleFunc("GET /api/celebrate/model", a.model)
+	mux.HandleFunc("GET /api/celebrate/people", a.people)
+	mux.HandleFunc("GET /api/celebrate/images/search", a.search.ServeSearch)
+	mux.HandleFunc("GET /api/celebrate/images/thumb", a.search.ServeThumb)
+	mux.HandleFunc("POST /api/celebrate/images/import", a.importImage)
+	mux.HandleFunc("POST /api/celebrate/image", a.uploadImage)
+	mux.HandleFunc("GET /open/share/upcoming.png", a.shareUpcoming)
+	mux.HandleFunc("GET /open/share/{id}", a.shareCard)
+	mux.HandleFunc("POST /api/celebrate/tickets", a.buyTickets)
+	mux.HandleFunc("POST /api/celebrate/waitlist", a.joinWaitlist)
+	mux.HandleFunc("POST /api/celebrate/waitlist/offer", a.offerTickets)
+	mux.HandleFunc("POST /api/celebrate/ticket", a.editTicket)
+	mux.HandleFunc("DELETE /api/celebrate/ticket", a.removeTicket)
+	mux.HandleFunc("POST /api/celebrate/ticket/reassign", a.reassignTicket)
+	mux.HandleFunc("POST /api/celebrate/party", a.saveParty)
+	mux.HandleFunc("DELETE /api/celebrate/party", a.deleteParty)
+	mux.HandleFunc("POST /api/celebrate/party/flags", a.setFlags)
+	mux.HandleFunc("POST /api/celebrate/party/status", a.setStatus)
+	mux.HandleFunc("POST /api/celebrate/celebration", a.saveCelebration)
+	mux.HandleFunc("DELETE /api/celebrate/celebration", a.deleteCelebration)
+	mux.HandleFunc("POST /api/celebrate/category", a.saveCategory)
+	mux.HandleFunc("DELETE /api/celebrate/category", a.deleteCategory)
+	mux.HandleFunc("POST /api/celebrate/categories/order", a.reorderCategories)
+	mux.HandleFunc("POST /api/celebrate/settings", a.saveSettings)
+	mux.HandleFunc("GET /api/celebrate/invoices.csv", a.invoicesCSV)
+	mux.HandleFunc("GET /api/admin/state", a.adminState)
+	mux.HandleFunc("POST /api/admin/admins", a.setAdmins)
 }
 
 func (a app) page(w http.ResponseWriter, r *http.Request) {
 	serve.File(w, r, shell)
 }
 
-// ready holds every route until the sheet has loaded once. Before then the
-// app answers 503 with the reason, so a sheet that needs fixing says what is
-// wrong instead of taking the server down with the directory on it.
-func (a app) ready(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if a.cache.Model() == nil {
-			reason := "the Celebrate sheet has not loaded yet"
-			if err := a.cache.Err(); err != nil {
-				reason = err.Error()
-			}
-			http.Error(w, "Helios Celebrate cannot load its data: "+reason, http.StatusServiceUnavailable)
-			return
-		}
-		next(w, r)
-	}
-}
-
-// who is the signed-in person as the app keys them: the address Google
-// vouched for, resolved through the directory's aliases.
 func (a app) who(r *http.Request) (string, bool) {
 	email := a.directory.Resolve(strings.ToLower(auth.Email(r)))
 	return email, a.cache.IsAdmin(email)
 }
 
-// requireSuperAdmin is the platform's own tier: what colours the app is
-// theirs alone, not any admin's.
 func (a app) requireSuperAdmin(w http.ResponseWriter, r *http.Request) (string, bool) {
 	email, _ := a.who(r)
 	if !a.cache.IsSuperAdmin(email) {
@@ -182,8 +145,6 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// people is the directory for the pickers. Anyone signed in may see it - it
-// is the same list the school directory shows every member.
 func (a app) people(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(a.directory.People()); err != nil {
@@ -199,63 +160,40 @@ func decode(w http.ResponseWriter, r *http.Request, into any) bool {
 	return true
 }
 
-// commit rebuilds the model over the proposed tables first, so a change the
-// sheet rules reject never reaches the sheet, then applies it in memory at
-// once and queues the writes behind every earlier one. The page reads the
-// memory, so the change shows the moment the request returns, however long
-// the sheet takes.
-func (a app) commit(ctx context.Context, w http.ResponseWriter, tables *Tables, flush func() error) bool {
-	model, err := BuildModel(tables, a.cache.images)
-	if err != nil {
+func (a app) commit(w http.ResponseWriter, r *http.Request, actor string, ops ...store.Op) bool {
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return false
 	}
-	a.cache.commit(tables, model, func() {
-		if err := flush(); err != nil {
-			slog.ErrorContext(ctx, "celebrate write", "error", err)
-		}
-	})
 	return true
 }
 
-func (a app) logChange(r *http.Request, actor, action, kind string, cells map[string]string) error {
-	return a.writer.Insert(appName, changeLogTab, []map[string]string{{
-		"Timestamp": time.Now().Format(time.RFC3339), "Actor": actor, "Action": action, "Kind": kind,
-		"Celebration": cells["Celebration"], "Party": cells["Party"], "Title": cells["Title"], "Email": cells["Email"], "Details": cells["Details"],
-		"Real Actor": auth.RealEmail(r),
-	}})
-}
-
-// logInvoice writes a sold ticket to the INVOICING ledger for accounting:
-// the date, the party and its celebration's code, who is billed, who the
-// ticket is for, ADD, one, and the cost. A free ticket bills nobody and is
-// left out.
-func (a app) invoiceRow(p *Party, cells map[string]string) map[string]string {
+func (a app) invoiceRow(p *Party, cells store.Row) store.Row {
 	price, _ := ParsePrice(cells["Price"])
 	if cells["Status"] != TicketSold || price <= 0 {
 		return nil
 	}
-	return map[string]string{
+	return store.Row{
 		"Date": today(), "Party Title": p.Title, "Event Code": p.Celebration, "Purchaser Email": cells["Purchaser"],
 		"Guest Name": a.ticketName(cells), "Action": "ADD", "Quantity": "1", "Cost": PriceCell(price),
 	}
 }
 
-func (a app) logInvoice(p *Party, cells map[string]string) error {
-	row := a.invoiceRow(p, cells)
-	if row == nil {
-		return nil
+func (a app) ticketOps(p *Party, added []store.Row) []store.Op {
+	ops := []store.Op{}
+	for _, cells := range added {
+		ops = append(ops, store.Insert(ticketsTab, cells))
+		if row := a.invoiceRow(p, cells); row != nil {
+			ops = append(ops, store.Insert(invoicingTab, row))
+		}
 	}
-	return a.writer.Insert(appName, invoicingTab, []map[string]string{row})
+	return ops
 }
 
 func cleanEmail(raw string) string {
 	return strings.ToLower(strings.TrimSpace(raw))
 }
 
-// NewID mints a key for a row the app creates. Eight characters from a
-// 31-symbol alphabet is enough that collisions are not a practical concern
-// at this scale, and the load refuses a duplicate anyway.
 func NewID() string {
 	const alphabet = "abcdefghjkmnpqrstuvwxyz23456789"
 	var raw [8]byte
@@ -278,7 +216,6 @@ func (a app) findParty(w http.ResponseWriter, id string) (*Party, bool) {
 	return p, true
 }
 
-// editor says whether the actor runs the party: an admin, or one of its hosts.
 func (a app) editor(p *Party, actor string, admin bool) bool {
 	return admin || p.Hosted(actor)
 }
@@ -290,10 +227,6 @@ func (a app) nameOf(email string) string {
 	return DisplayName(email)
 }
 
-// ticketName is who a ticket row is for: the directory's name for someone
-// it knows, otherwise the name written on the ticket - a non-Helios guest
-// goes by what the host typed, not the front of their address - and the
-// address's own words only when there is no name at all.
 func (a app) ticketName(t map[string]string) string {
 	if t["Email"] != "" {
 		if p, ok := a.directory.Person(a.directory.Resolve(t["Email"])); ok && p.Name != "" {
@@ -306,7 +239,6 @@ func (a app) ticketName(t map[string]string) string {
 	return DisplayName(t["Email"])
 }
 
-// audienceWords is the party's audience rule in words, for a refusal.
 func audienceWords(p *Party) string {
 	words := []string{}
 	if p.Adults {
@@ -318,23 +250,14 @@ func audienceWords(p *Party) string {
 	return strings.Join(words, " and ")
 }
 
-// buyTickets takes tickets for one or more people at once: the viewer, their
-// household, or a guest by name - billed to an adult of the household. Each
-// ticket is sold while there is room, then goes to the waitlist when the
-// party takes one; a full party without a waitlist refuses. Whoever runs the
-// party may add anyone, billed to anyone, and is never refused for room.
 func (a app) buyTickets(w http.ResponseWriter, r *http.Request) {
 	actor, admin := a.who(r)
 	var body struct {
-		PartyID   string `json:"partyId"`
-		Purchaser string `json:"purchaser"`
-		Note      string `json:"note"`
-		// Free is a host's gift: the tickets are minted at $0, so nothing
-		// lands on an invoice. Only whoever runs the party may give one.
-		// RaiseCapacity grows the cap by as many, so the gift takes no
-		// paid place.
-		Free          bool `json:"free"`
-		RaiseCapacity bool `json:"raiseCapacity"`
+		PartyID       string `json:"partyId"`
+		Purchaser     string `json:"purchaser"`
+		Note          string `json:"note"`
+		Free          bool   `json:"free"`
+		RaiseCapacity bool   `json:"raiseCapacity"`
 		Attendees     []struct {
 			Email string `json:"email"`
 			Name  string `json:"name"`
@@ -385,10 +308,6 @@ func (a app) buyTickets(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	// Whoever is billed is an adult of the buyer's own family - hosts and
-	// admins included: nobody bills a stranger. When a host adds someone
-	// outside their family, that ticket is billed to the person themselves,
-	// or a student's parent.
 	purchaser := cleanEmail(body.Purchaser)
 	if purchaser == "" {
 		purchaser = actor
@@ -397,10 +316,6 @@ func (a app) buyTickets(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	// A host's gift may name whose guest the holder is: an adult in the
-	// directory, who holds the ticket for them - it sits with their family
-	// to pass on, and the note goes to them. Nothing is billed, so the
-	// family rule does not apply.
 	gift := body.Free && purchaser != actor
 	if gift {
 		if host, known := a.directory.Person(purchaser); !known || host.IsStudent {
@@ -440,8 +355,6 @@ func (a app) buyTickets(w http.ResponseWriter, r *http.Request) {
 		}
 		seen[email] = true
 		person, known := a.directory.Person(email)
-		// A name with an address the directory does not know is a guest with
-		// a way to reach them: anyone may bring one, billed to their family.
 		if !known && name != "" {
 			rows = append(rows, row{email, name, purchaser})
 			continue
@@ -452,8 +365,6 @@ func (a app) buyTickets(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "you can take tickets for yourself and your family; a friend goes in as a guest by name", http.StatusForbidden)
 				return
 			}
-			// Someone outside the host's family pays their own way: the
-			// person, or for a student the first parent the directory lists.
 			switch {
 			case known && person.IsStudent && len(person.ParentEmails) > 0:
 				bill = a.directory.Resolve(person.ParentEmails[0])
@@ -478,18 +389,13 @@ func (a app) buyTickets(w http.ResponseWriter, r *http.Request) {
 		}
 		rows = append(rows, row{email, "", bill})
 	}
-	// Everyone gets a ticket while there is room. Once the room runs out the
-	// rest of the family go on the waitlist as one request for that many
-	// tickets - the names are theirs to give once a host offers places - or
-	// the whole purchase is refused when the party takes no waitlist.
 	remaining := p.Remaining()
 	sold, waitlisted := 0, 0
 	price := PriceCell(p.Price)
 	if body.Free {
 		price = "0"
 	}
-	tables := a.cache.Tables()
-	added := []map[string]string{}
+	added := []store.Row{}
 	for _, rw := range rows {
 		switch {
 		case editor || remaining < 0:
@@ -503,62 +409,22 @@ func (a app) buyTickets(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		sold++
-		cells := map[string]string{
+		added = append(added, store.Row{
 			"Ticket ID": NewID(), "Party ID": p.ID, "Email": rw.email, "Name": rw.name, "Purchaser": rw.purchaser,
 			"Status": TicketSold, "Quantity": "1", "Price": price, "Note": strings.TrimSpace(body.Note), "Added By": actor, "Added": stamp(),
-		}
-		added = append(added, cells)
-		tables = tables.with(ticketsTab, nil, cells)
+		})
 	}
 	if waitlisted > 0 {
-		cells := waitlistRequest(p, purchaser, waitlisted, strings.TrimSpace(body.Note), actor)
-		added = append(added, cells)
-		tables = tables.with(ticketsTab, nil, cells)
+		added = append(added, waitlistRequest(p, purchaser, waitlisted, strings.TrimSpace(body.Note), actor))
 	}
-	for _, cells := range added {
-		if row := a.invoiceRow(p, cells); row != nil {
-			tables = tables.with(invoicingTab, nil, row)
-		}
-	}
-	capacity := map[string]string{}
+	ops := []store.Op{}
 	if body.Free && body.RaiseCapacity && p.Capacity > 0 && sold > 0 {
-		capacity["Capacity"] = countCell(p.Capacity + sold)
-		tables = tables.with(partiesTab, map[string]string{"Party ID": p.ID}, capacity)
+		ops = append(ops, store.Update(partiesTab, store.Row{"Party ID": p.ID}, store.Row{"Capacity": countCell(p.Capacity + sold)}))
 	}
-	if !a.commit(r.Context(), w, tables, func() error {
-		if len(capacity) > 0 {
-			if err := a.writer.Set(appName, partiesTab, map[string]string{"Party ID": p.ID}, capacity); err != nil {
-				return err
-			}
-			if err := a.logChange(r, actor, "edit", "party", map[string]string{"Celebration": p.Celebration, "Party": p.ID, "Title": p.Title, "Details": "Capacity " + capacity["Capacity"] + " (free ticket)"}); err != nil {
-				return err
-			}
-		}
-		for _, cells := range added {
-			if err := a.writer.Insert(appName, ticketsTab, []map[string]string{cells}); err != nil {
-				return err
-			}
-			if err := a.logInvoice(p, cells); err != nil {
-				return err
-			}
-			who := cells["Email"]
-			if who == "" {
-				who = cells["Name"]
-			}
-			if err := a.logChange(r, actor, "add", "ticket", map[string]string{
-				"Celebration": p.Celebration, "Party": p.ID, "Title": p.Title, "Email": who,
-				"Details": fmt.Sprintf("%s ×%s, billed to %s, $%s", cells["Status"], cells["Quantity"], cells["Purchaser"], cells["Price"]),
-			}); err != nil {
-				return err
-			}
-		}
-		return nil
-	}) {
+	if !a.commit(w, r, actor, append(ops, a.ticketOps(p, added)...)...) {
 		return
 	}
 	slog.InfoContext(r.Context(), "celebrate: tickets taken", "actor", actor, "party", p.Title, "purchaser", purchaser, "sold", sold, "waitlisted", waitlisted)
-	// One note per family billed: the buyer's own, and each family a host
-	// added someone from.
 	byPurchaser := map[string][]map[string]string{}
 	order := []string{}
 	for _, cells := range added {
@@ -581,20 +447,13 @@ func plural(n int, word string) string {
 	return word + "s"
 }
 
-// waitlistRequest is the row for a family asking for tickets when places
-// open up: held by whoever asked, for that many.
-func waitlistRequest(p *Party, purchaser string, quantity int, note, actor string) map[string]string {
-	return map[string]string{
+func waitlistRequest(p *Party, purchaser string, quantity int, note, actor string) store.Row {
+	return store.Row{
 		"Ticket ID": NewID(), "Party ID": p.ID, "Email": purchaser, "Name": "", "Purchaser": purchaser,
 		"Status": TicketWaitlist, "Quantity": strconv.Itoa(quantity), "Price": PriceCell(p.Price), "Note": note, "Added By": actor, "Added": stamp(),
 	}
 }
 
-// joinWaitlist puts a family on a full party's waitlist: how many tickets
-// they want, and a note. It is a request, not a purchase - nothing is billed
-// until a host offers the places - so it is for the family itself, billed
-// to an adult of it. A second request from the same family changes the
-// first rather than joining the line again.
 func (a app) joinWaitlist(w http.ResponseWriter, r *http.Request) {
 	actor, admin := a.who(r)
 	var body struct {
@@ -635,23 +494,13 @@ func (a app) joinWaitlist(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "the waitlist is for your own family, billed to an adult in it", http.StatusForbidden)
 		return
 	}
-	tables := a.cache.Tables()
 	for _, t := range p.Tickets {
 		if t.Status == TicketWaitlist && t.Purchaser == purchaser {
-			// Already in line: the request changes, the place in line stays.
-			match := map[string]string{"Ticket ID": t.ID}
-			cells := map[string]string{"Quantity": strconv.Itoa(body.Quantity), "Note": strings.TrimSpace(body.Note)}
-			if !a.commit(r.Context(), w, tables.with(ticketsTab, match, cells), func() error {
-				if err := a.writer.Set(appName, ticketsTab, match, cells); err != nil {
-					return err
-				}
-				return a.logChange(r, actor, "edit", "waitlist", map[string]string{"Celebration": p.Celebration, "Party": p.ID, "Title": p.Title, "Email": purchaser, "Details": fmt.Sprintf("×%d", body.Quantity)})
-			}) {
+			cells := store.Row{"Quantity": strconv.Itoa(body.Quantity), "Note": strings.TrimSpace(body.Note)}
+			if !a.commit(w, r, actor, store.Update(ticketsTab, store.Row{"Ticket ID": t.ID}, cells)) {
 				return
 			}
 			slog.InfoContext(r.Context(), "celebrate: waitlist request changed", "actor", actor, "party", p.Title, "purchaser", purchaser, "quantity", body.Quantity)
-			// A changed request is told the same way a new one is: the family
-			// hears where they stand, the hosts hear what is wanted now.
 			full := map[string]string{"Email": t.Email, "Purchaser": t.Purchaser, "Status": TicketWaitlist, "Quantity": cells["Quantity"], "Note": cells["Note"]}
 			a.mailTickets(r, p, purchaser, []map[string]string{full}, actor)
 			w.Header().Set("Content-Type", "application/json")
@@ -660,12 +509,7 @@ func (a app) joinWaitlist(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	cells := waitlistRequest(p, purchaser, body.Quantity, strings.TrimSpace(body.Note), actor)
-	if !a.commit(r.Context(), w, tables.with(ticketsTab, nil, cells), func() error {
-		if err := a.writer.Insert(appName, ticketsTab, []map[string]string{cells}); err != nil {
-			return err
-		}
-		return a.logChange(r, actor, "add", "waitlist", map[string]string{"Celebration": p.Celebration, "Party": p.ID, "Title": p.Title, "Email": purchaser, "Details": fmt.Sprintf("×%d", body.Quantity)})
-	}) {
+	if !a.commit(w, r, actor, store.Insert(ticketsTab, cells)) {
 		return
 	}
 	slog.InfoContext(r.Context(), "celebrate: joined waitlist", "actor", actor, "party", p.Title, "purchaser", purchaser, "quantity", body.Quantity)
@@ -674,11 +518,6 @@ func (a app) joinWaitlist(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]int{"sold": 0, "waitlisted": body.Quantity})
 }
 
-// offerTickets is a host's answer to a waitlist request: the family gets
-// that many tickets (or fewer, when the host says how many) at the price
-// they were asked for - the first for whoever asked, when the party admits
-// them, the rest as guests of theirs to be named with Reassign - and the
-// request comes off the list, or shrinks by what was offered.
 func (a app) offerTickets(w http.ResponseWriter, r *http.Request) {
 	actor, admin := a.who(r)
 	var body struct {
@@ -706,18 +545,15 @@ func (a app) offerTickets(w http.ResponseWriter, r *http.Request) {
 	}
 	holder, known := a.directory.Person(a.directory.Resolve(t.Purchaser))
 	holderName := a.nameOf(t.Purchaser)
-	// Whoever asked holds a ticket themselves only if the party admits them
-	// and they have none already.
 	selfTicket := known && p.Admits(holder, true)
 	for _, other := range p.Tickets {
 		if other.Status == TicketSold && other.Email == t.Purchaser {
 			selfTicket = false
 		}
 	}
-	tables := a.cache.Tables()
-	added := []map[string]string{}
+	added := []store.Row{}
 	for i := 0; i < n; i++ {
-		cells := map[string]string{
+		cells := store.Row{
 			"Ticket ID": NewID(), "Party ID": p.ID, "Purchaser": t.Purchaser, "Status": TicketSold, "Quantity": "1",
 			"Price": PriceCell(t.Price), "Note": t.Note, "Added By": actor, "Added": stamp(),
 		}
@@ -727,40 +563,16 @@ func (a app) offerTickets(w http.ResponseWriter, r *http.Request) {
 			cells["Name"] = holderName + "'s guest (to be named)"
 		}
 		added = append(added, cells)
-		tables = tables.with(ticketsTab, nil, cells)
 	}
-	match := map[string]string{"Ticket ID": t.ID}
+	match := store.Row{"Ticket ID": t.ID}
 	left := t.Quantity - n
+	ops := a.ticketOps(p, added)
 	if left > 0 {
-		tables = tables.with(ticketsTab, match, map[string]string{"Quantity": strconv.Itoa(left)})
+		ops = append(ops, store.Update(ticketsTab, match, store.Row{"Quantity": strconv.Itoa(left)}))
 	} else {
-		tables = tables.without(ticketsTab, match)
+		ops = append(ops, store.Delete(ticketsTab, match))
 	}
-	for _, cells := range added {
-		if row := a.invoiceRow(p, cells); row != nil {
-			tables = tables.with(invoicingTab, nil, row)
-		}
-	}
-	if !a.commit(r.Context(), w, tables, func() error {
-		for _, cells := range added {
-			if err := a.writer.Insert(appName, ticketsTab, []map[string]string{cells}); err != nil {
-				return err
-			}
-			if err := a.logInvoice(p, cells); err != nil {
-				return err
-			}
-		}
-		if left > 0 {
-			if err := a.writer.Set(appName, ticketsTab, match, map[string]string{"Quantity": strconv.Itoa(left)}); err != nil {
-				return err
-			}
-		} else if err := a.writer.Delete(appName, ticketsTab, match); err != nil {
-			return err
-		}
-		return a.logChange(r, actor, "offer", "waitlist", map[string]string{
-			"Celebration": p.Celebration, "Party": p.ID, "Title": p.Title, "Email": t.Purchaser, "Details": fmt.Sprintf("%d of %d, $%s", n, t.Quantity, PriceCell(t.Price)),
-		})
-	}) {
+	if !a.commit(w, r, actor, ops...) {
 		return
 	}
 	slog.InfoContext(r.Context(), "celebrate: offered tickets", "actor", actor, "party", p.Title, "purchaser", t.Purchaser, "offered", n, "left", left)
@@ -777,11 +589,6 @@ func (a app) findTicket(w http.ResponseWriter, id string) (*Ticket, *Party, bool
 	return t, p, true
 }
 
-// owns says whether the actor may act on a ticket as its holder: they bought
-// it, it is for them, or either is someone in their household.
-// kid says the actor is a student and nothing else: tickets are a family's
-// business, so a student neither takes them nor passes them on - a parent
-// does, and a host or admin may on anyone's behalf.
 func (a app) kid(actor string) bool {
 	person, known := a.directory.Person(actor)
 	return known && person.IsStudent && !person.IsParent && !person.IsStaff
@@ -791,10 +598,6 @@ func (a app) owns(t *Ticket, actor string) bool {
 	return InHousehold(a.directory, actor, t.Purchaser) || (t.Email != "" && InHousehold(a.directory, actor, t.Email))
 }
 
-// removeTicket takes a sold ticket off a party, or a name off the waitlist.
-// A sold ticket is the party's money: it is a fundraiser, so only whoever
-// runs the party gives one back. A place on the waitlist costs nothing, so
-// the family that took it may leave it.
 func (a app) removeTicket(w http.ResponseWriter, r *http.Request) {
 	actor, admin := a.who(r)
 	var body struct {
@@ -820,28 +623,18 @@ func (a app) removeTicket(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "this party has already happened", http.StatusBadRequest)
 		return
 	}
-	match := map[string]string{"Ticket ID": t.ID}
 	who := t.Email
 	if who == "" {
 		who = t.Name
 	}
 	status := t.Status
-	if !a.commit(r.Context(), w, a.cache.Tables().without(ticketsTab, match), func() error {
-		if err := a.writer.Delete(appName, ticketsTab, match); err != nil {
-			return err
-		}
-		return a.logChange(r, actor, "remove", "ticket", map[string]string{
-			"Celebration": p.Celebration, "Party": p.ID, "Title": p.Title, "Email": who, "Details": status,
-		})
-	}) {
+	if !a.commit(w, r, actor, store.Delete(ticketsTab, store.Row{"Ticket ID": t.ID})) {
 		return
 	}
 	slog.InfoContext(r.Context(), "celebrate: ticket removed", "actor", actor, "party", p.Title, "who", who, "was", status)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// editTicket changes a waitlist request's quantity (the family, a host or
-// an admin) or a ticket's note (the holder's household).
 func (a app) editTicket(w http.ResponseWriter, r *http.Request) {
 	actor, admin := a.who(r)
 	var body struct {
@@ -857,7 +650,7 @@ func (a app) editTicket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	editor := a.editor(p, actor, admin)
-	cells := map[string]string{}
+	cells := store.Row{}
 	details := []string{}
 	if body.Quantity != nil {
 		if !editor && !a.owns(t, actor) {
@@ -891,31 +684,17 @@ func (a app) editTicket(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "nothing to change", http.StatusBadRequest)
 		return
 	}
-	match := map[string]string{"Ticket ID": t.ID}
 	who := t.Email
 	if who == "" {
 		who = t.Name
 	}
-	if !a.commit(r.Context(), w, a.cache.Tables().with(ticketsTab, match, cells), func() error {
-		if err := a.writer.Set(appName, ticketsTab, match, cells); err != nil {
-			return err
-		}
-		return a.logChange(r, actor, "edit", "ticket", map[string]string{
-			"Celebration": p.Celebration, "Party": p.ID, "Title": p.Title, "Email": who, "Details": strings.Join(details, ", "),
-		})
-	}) {
+	if !a.commit(w, r, actor, store.Update(ticketsTab, store.Row{"Ticket ID": t.ID}, cells)) {
 		return
 	}
 	slog.InfoContext(r.Context(), "celebrate: ticket edited", "actor", actor, "party", p.Title, "who", who, "details", details)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// reassignTicket moves a sold ticket to someone else: the family passing it
-// to a sibling or reselling it to another family, or a host doing the same
-// for them. The row keeps its id, price, place in line and who is billed -
-// a resale is settled between the two families themselves; only who holds
-// the ticket changes, to a directory person the party admits, or a guest by
-// name.
 func (a app) reassignTicket(w http.ResponseWriter, r *http.Request) {
 	actor, admin := a.who(r)
 	var body struct {
@@ -964,7 +743,6 @@ func (a app) reassignTicket(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if known {
-			// Someone in the directory is named by their address alone.
 			name = ""
 		}
 		for _, other := range p.Tickets {
@@ -982,16 +760,7 @@ func (a app) reassignTicket(w http.ResponseWriter, r *http.Request) {
 	if who == "" {
 		who = name
 	}
-	match := map[string]string{"Ticket ID": t.ID}
-	cells := map[string]string{"Email": email, "Name": name}
-	if !a.commit(r.Context(), w, a.cache.Tables().with(ticketsTab, match, cells), func() error {
-		if err := a.writer.Set(appName, ticketsTab, match, cells); err != nil {
-			return err
-		}
-		return a.logChange(r, actor, "reassign", "ticket", map[string]string{
-			"Celebration": p.Celebration, "Party": p.ID, "Title": p.Title, "Email": who, "Details": "from " + was,
-		})
-	}) {
+	if !a.commit(w, r, actor, store.Update(ticketsTab, store.Row{"Ticket ID": t.ID}, store.Row{"Email": email, "Name": name})) {
 		return
 	}
 	slog.InfoContext(r.Context(), "celebrate: ticket reassigned", "actor", actor, "party", p.Title, "from", was, "to", who)
@@ -1039,9 +808,6 @@ func countCell(n int) string {
 	return strconv.Itoa(n)
 }
 
-// saveParty adds a party or edits one. Anyone may post one - it waits as
-// Pending for an admin, with the poster as its host - and a host edits their
-// own; only an admin sets the status or moves it to another celebration.
 func (a app) saveParty(w http.ResponseWriter, r *http.Request) {
 	actor, admin := a.who(r)
 	var body partyBody
@@ -1063,9 +829,6 @@ func (a app) saveParty(w http.ResponseWriter, r *http.Request) {
 	}
 	celebration := strings.TrimSpace(body.Celebration)
 	status := strings.TrimSpace(body.Status)
-	// The status, the celebration and the category are an admin's to set;
-	// a host's edit keeps them as they are, and a new party from a host
-	// starts pending, under the current celebration, with no category.
 	category := strings.TrimSpace(body.Category)
 	switch {
 	case adding && admin:
@@ -1115,9 +878,6 @@ func (a app) saveParty(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	// A host may not drop themselves from a party they are editing, so a
-	// party never ends up run by nobody while someone is in the middle of it;
-	// an admin may leave it hostless.
 	if !adding && !admin && !slices.Contains(hosts, actor) {
 		http.Error(w, "you can't remove yourself as a host; ask another host or an admin", http.StatusBadRequest)
 		return
@@ -1126,8 +886,6 @@ func (a app) saveParty(w http.ResponseWriter, r *http.Request) {
 	if adding {
 		id = NewID()
 	}
-	// The friendly address: lower-case letters, digits and hyphens, one party
-	// per address across every celebration.
 	pretty := NormalizePretty(body.PrettyID)
 	if err := CheckPretty(pretty); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -1137,19 +895,7 @@ func (a app) saveParty(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("%q is already the address of %s", pretty, other.Title), http.StatusBadRequest)
 		return
 	}
-	// Changing or dropping a friendly address leaves a redirect behind, so a
-	// link someone kept still works.
-	var redirect map[string]string
-	if current != nil {
-		was, now := model.PathOf(current), "/parties/"+id
-		if pretty != "" {
-			now = "/p/" + pretty
-		}
-		if was != now {
-			redirect = map[string]string{"Type": RedirectParty, "Old": was, "New": now, "Date": today()}
-		}
-	}
-	cells := map[string]string{
+	cells := store.Row{
 		"Celebration": celebration, "Title": strings.TrimSpace(body.Title), "Subtitle": strings.TrimSpace(body.Subtitle),
 		"Summary": strings.TrimSpace(body.Summary), "Description": strings.TrimSpace(body.Description), "Need To Know": strings.TrimSpace(body.NeedToKnow),
 		"Note Emoji": strings.TrimSpace(body.NoteEmoji), "Note Title": strings.TrimSpace(body.NoteTitle),
@@ -1160,65 +906,31 @@ func (a app) saveParty(w http.ResponseWriter, r *http.Request) {
 		"Waitlist": YesNo(body.Waitlist), "Adults": YesNo(body.Adults), "Students": YesNo(body.Students),
 		"Drop-Off": YesNo(body.DropOff), "Parent Ticket Required": YesNo(body.ParentTicket),
 	}
+	ops := []store.Op{}
+	was := []string{}
 	if adding {
 		cells["Party ID"] = id
 		cells["Added By"] = actor
 		cells["Added"] = today()
-	}
-	match := map[string]string{"Party ID": id}
-	tables := a.cache.Tables()
-	if adding {
-		tables = tables.with(partiesTab, nil, cells)
+		ops = append(ops, store.Insert(partiesTab, cells))
 	} else {
-		tables = tables.with(partiesTab, match, cells)
-	}
-	// The Hosts tab holds exactly the list given: rows gone are deleted, rows
-	// new are appended.
-	was := []string{}
-	if current != nil {
 		was = current.HostEmails
+		ops = append(ops, store.Update(partiesTab, store.Row{"Party ID": id}, cells))
 	}
-	tables = tables.without(hostsTab, match)
+	for _, h := range was {
+		if !slices.Contains(hosts, h) {
+			ops = append(ops, store.Delete(hostsTab, store.Row{"Party ID": id, "Email": h}))
+		}
+	}
 	for _, h := range hosts {
-		tables = tables.with(hostsTab, nil, map[string]string{"Party ID": id, "Email": h})
+		if !slices.Contains(was, h) {
+			ops = append(ops, store.Insert(hostsTab, store.Row{"Party ID": id, "Email": h}))
+		}
 	}
-	if redirect != nil {
-		tables = tables.with(redirectsTab, nil, redirect)
-	}
-	action := map[bool]string{true: "add", false: "edit"}[adding]
-	if !a.commit(r.Context(), w, tables, func() error {
-		if adding {
-			if err := a.writer.Insert(appName, partiesTab, []map[string]string{cells}); err != nil {
-				return err
-			}
-		} else if err := a.writer.Set(appName, partiesTab, match, cells); err != nil {
-			return err
-		}
-		for _, h := range was {
-			if !slices.Contains(hosts, h) {
-				if err := a.writer.Delete(appName, hostsTab, map[string]string{"Party ID": id, "Email": h}); err != nil {
-					return err
-				}
-			}
-		}
-		for _, h := range hosts {
-			if !slices.Contains(was, h) {
-				if err := a.writer.Insert(appName, hostsTab, []map[string]string{{"Party ID": id, "Email": h}}); err != nil {
-					return err
-				}
-			}
-		}
-		if redirect != nil {
-			if err := a.writer.Insert(appName, redirectsTab, []map[string]string{redirect}); err != nil {
-				return err
-			}
-		}
-		return a.logChange(r, actor, action, "party", map[string]string{
-			"Celebration": celebration, "Party": id, "Title": cells["Title"], "Details": status + ", hosts " + strings.Join(hosts, " "),
-		})
-	}) {
+	if !a.commit(w, r, actor, ops...) {
 		return
 	}
+	action := map[bool]string{true: "add", false: "edit"}[adding]
 	slog.InfoContext(r.Context(), "celebrate: saved party", "actor", actor, "action", action, "party", cells["Title"], "status", status)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"id": id})
@@ -1243,26 +955,13 @@ func (a app) deleteParty(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "remove its tickets and waitlist first, or hide it instead", http.StatusBadRequest)
 		return
 	}
-	match := map[string]string{"Party ID": p.ID}
-	tables := a.cache.Tables().without(partiesTab, match).without(hostsTab, match)
-	if !a.commit(r.Context(), w, tables, func() error {
-		if err := a.writer.Delete(appName, partiesTab, match); err != nil {
-			return err
-		}
-		if err := a.writer.Delete(appName, hostsTab, match); err != nil {
-			return err
-		}
-		return a.logChange(r, actor, "remove", "party", map[string]string{"Celebration": p.Celebration, "Party": p.ID, "Title": p.Title})
-	}) {
+	if !a.commit(w, r, actor, store.Delete(partiesTab, store.Row{"Party ID": p.ID})) {
 		return
 	}
 	slog.InfoContext(r.Context(), "celebrate: removed party", "actor", actor, "party", p.Title)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// setFlags is the party page's row of switches for whoever runs it: whether
-// tickets are on sale, whether a full party takes a waitlist, who may come,
-// drop-off, and whether a staying parent needs a ticket.
 func (a app) setFlags(w http.ResponseWriter, r *http.Request) {
 	actor, admin := a.who(r)
 	var body struct {
@@ -1289,28 +988,18 @@ func (a app) setFlags(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "let adults, students, or both hold a ticket", http.StatusBadRequest)
 		return
 	}
-	match := map[string]string{"Party ID": p.ID}
-	cells := map[string]string{
+	cells := store.Row{
 		"Tickets": map[bool]string{true: "Open", false: "Closed"}[body.TicketsOpen], "Waitlist": YesNo(body.Waitlist),
 		"Adults": YesNo(body.Adults), "Students": YesNo(body.Students),
 		"Drop-Off": YesNo(body.DropOff), "Parent Ticket Required": YesNo(body.ParentTicket),
 	}
-	if !a.commit(r.Context(), w, a.cache.Tables().with(partiesTab, match, cells), func() error {
-		if err := a.writer.Set(appName, partiesTab, match, cells); err != nil {
-			return err
-		}
-		return a.logChange(r, actor, "edit", "party", map[string]string{
-			"Celebration": p.Celebration, "Party": p.ID, "Title": p.Title, "Details": fmt.Sprintf("tickets %s, waitlist %s, adults %s, students %s, drop-off %s, parent ticket %s",
-				cells["Tickets"], cells["Waitlist"], cells["Adults"], cells["Students"], cells["Drop-Off"], cells["Parent Ticket Required"]),
-		})
-	}) {
+	if !a.commit(w, r, actor, store.Update(partiesTab, store.Row{"Party ID": p.ID}, cells)) {
 		return
 	}
 	slog.InfoContext(r.Context(), "celebrate: set party flags", "actor", actor, "party", p.Title, "tickets", cells["Tickets"])
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// setStatus is an admin's approve, hide, or unhide.
 func (a app) setStatus(w http.ResponseWriter, r *http.Request) {
 	actor, ok := a.requireAdmin(w, r)
 	if !ok {
@@ -1331,14 +1020,7 @@ func (a app) setStatus(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "status must be one of "+strings.Join(Statuses, ", "), http.StatusBadRequest)
 		return
 	}
-	match := map[string]string{"Party ID": p.ID}
-	cells := map[string]string{"Status": body.Status}
-	if !a.commit(r.Context(), w, a.cache.Tables().with(partiesTab, match, cells), func() error {
-		if err := a.writer.Set(appName, partiesTab, match, cells); err != nil {
-			return err
-		}
-		return a.logChange(r, actor, "status", "party", map[string]string{"Celebration": p.Celebration, "Party": p.ID, "Title": p.Title, "Details": body.Status})
-	}) {
+	if !a.commit(w, r, actor, store.Update(partiesTab, store.Row{"Party ID": p.ID}, store.Row{"Status": body.Status})) {
 		return
 	}
 	slog.InfoContext(r.Context(), "celebrate: set party status", "actor", actor, "party", p.Title, "status", body.Status)
@@ -1381,21 +1063,18 @@ func (a app) saveCelebration(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("%q is already a celebration", code), http.StatusBadRequest)
 		return
 	}
-	cells := map[string]string{
+	cells := store.Row{
 		"Code": code, "Title": strings.TrimSpace(body.Title), "Subtitle": strings.TrimSpace(body.Subtitle),
 		"Start": strings.TrimSpace(body.Start), "End": strings.TrimSpace(body.End), "Location": strings.TrimSpace(body.Location),
 		"Address": strings.TrimSpace(body.Address), "Description": strings.TrimSpace(body.Description), "Image": strings.TrimSpace(body.Image),
 		"Button Text": strings.TrimSpace(body.ButtonText), "Button URL": strings.TrimSpace(body.ButtonURL), "Current": YesNo(body.Current), "Banner": YesNo(body.Banner),
 	}
-	tables := a.cache.Tables()
-	// One celebration is current and one is the banner: marking this one
-	// unmarks the rest, flag by flag.
-	others := map[string]map[string]string{}
+	ops := []store.Op{}
 	for _, c := range model.Celebrations {
 		if c.Code == body.Original {
 			continue
 		}
-		unmark := map[string]string{}
+		unmark := store.Row{}
 		if body.Current && c.Current {
 			unmark["Current"] = "No"
 		}
@@ -1403,46 +1082,18 @@ func (a app) saveCelebration(w http.ResponseWriter, r *http.Request) {
 			unmark["Banner"] = "No"
 		}
 		if len(unmark) > 0 {
-			others[c.Code] = unmark
-			tables = tables.with(celebrationsTab, map[string]string{"Code": c.Code}, unmark)
+			ops = append(ops, store.Update(celebrationsTab, store.Row{"Code": c.Code}, unmark))
 		}
 	}
-	var match map[string]string
 	if adding {
-		tables = tables.with(celebrationsTab, nil, cells)
+		ops = append(ops, store.Insert(celebrationsTab, cells))
 	} else {
-		match = map[string]string{"Code": body.Original}
-		tables = tables.with(celebrationsTab, match, cells)
-		if renamed {
-			tables = tables.with(partiesTab, map[string]string{"Celebration": body.Original}, map[string]string{"Celebration": code})
-		}
+		ops = append(ops, store.Update(celebrationsTab, store.Row{"Code": body.Original}, cells))
 	}
-	hadParties := !adding && tables.count(partiesTab, map[string]string{"Celebration": code}) > 0
-	action := map[bool]string{true: "add", false: "edit"}[adding]
-	if !a.commit(r.Context(), w, tables, func() error {
-		for other, unmark := range others {
-			if err := a.writer.Set(appName, celebrationsTab, map[string]string{"Code": other}, unmark); err != nil {
-				return err
-			}
-		}
-		if adding {
-			if err := a.writer.Insert(appName, celebrationsTab, []map[string]string{cells}); err != nil {
-				return err
-			}
-		} else {
-			if err := a.writer.Set(appName, celebrationsTab, match, cells); err != nil {
-				return err
-			}
-			if renamed && hadParties {
-				if err := a.writer.Set(appName, partiesTab, map[string]string{"Celebration": body.Original}, map[string]string{"Celebration": code}); err != nil {
-					return err
-				}
-			}
-		}
-		return a.logChange(r, actor, action, "celebration", map[string]string{"Celebration": code, "Title": cells["Title"]})
-	}) {
+	if !a.commit(w, r, actor, ops...) {
 		return
 	}
+	action := map[bool]string{true: "add", false: "edit"}[adding]
 	slog.InfoContext(r.Context(), "celebrate: saved celebration", "actor", actor, "action", action, "code", code)
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -1458,31 +1109,21 @@ func (a app) deleteCelebration(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	model := a.cache.Model()
-	if model.Celebration(body.Code) == nil {
+	if a.cache.Model().Celebration(body.Code) == nil {
 		http.Error(w, "no such celebration", http.StatusNotFound)
 		return
 	}
-	tables := a.cache.Tables()
-	if tables.count(partiesTab, map[string]string{"Celebration": body.Code}) > 0 {
+	if a.cache.Count(partiesTab, store.Row{"Celebration": body.Code}) > 0 {
 		http.Error(w, "parties belong to this celebration; move or remove them first", http.StatusBadRequest)
 		return
 	}
-	match := map[string]string{"Code": body.Code}
-	if !a.commit(r.Context(), w, tables.without(celebrationsTab, match), func() error {
-		if err := a.writer.Delete(appName, celebrationsTab, match); err != nil {
-			return err
-		}
-		return a.logChange(r, actor, "remove", "celebration", map[string]string{"Celebration": body.Code})
-	}) {
+	if !a.commit(w, r, actor, store.Delete(celebrationsTab, store.Row{"Code": body.Code})) {
 		return
 	}
 	slog.InfoContext(r.Context(), "celebrate: removed celebration", "actor", actor, "code", body.Code)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// saveCategory adds or renames a category; a rename carries every party
-// naming it along.
 func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 	actor, ok := a.requireAdmin(w, r)
 	if !ok {
@@ -1511,39 +1152,14 @@ func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("%q is already a category", title), http.StatusBadRequest)
 		return
 	}
-	tables := a.cache.Tables()
-	cells := map[string]string{"Title": title}
-	var match map[string]string
-	if adding {
-		tables = tables.with(categoriesTab, nil, cells)
-	} else {
-		match = map[string]string{"Title": body.Original}
-		tables = tables.with(categoriesTab, match, cells)
-		if renamed {
-			tables = tables.with(partiesTab, map[string]string{"Category": body.Original}, map[string]string{"Category": title})
-		}
+	op := store.Insert(categoriesTab, store.Row{"Title": title})
+	if !adding {
+		op = store.Update(categoriesTab, store.Row{"Title": body.Original}, store.Row{"Title": title})
 	}
-	used := !adding && a.cache.Tables().count(partiesTab, map[string]string{"Category": body.Original}) > 0
-	action := map[bool]string{true: "add", false: "edit"}[adding]
-	if !a.commit(r.Context(), w, tables, func() error {
-		if adding {
-			if err := a.writer.Insert(appName, categoriesTab, []map[string]string{cells}); err != nil {
-				return err
-			}
-		} else {
-			if err := a.writer.Set(appName, categoriesTab, match, cells); err != nil {
-				return err
-			}
-			if renamed && used {
-				if err := a.writer.Set(appName, partiesTab, map[string]string{"Category": body.Original}, map[string]string{"Category": title}); err != nil {
-					return err
-				}
-			}
-		}
-		return a.logChange(r, actor, action, "category", map[string]string{"Title": title, "Details": body.Original})
-	}) {
+	if !a.commit(w, r, actor, op) {
 		return
 	}
+	action := map[bool]string{true: "add", false: "edit"}[adding]
 	slog.InfoContext(r.Context(), "celebrate: saved category", "actor", actor, "action", action, "category", title)
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -1563,18 +1179,11 @@ func (a app) deleteCategory(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no such category", http.StatusNotFound)
 		return
 	}
-	tables := a.cache.Tables()
-	if tables.count(partiesTab, map[string]string{"Category": body.Title}) > 0 {
+	if a.cache.Count(partiesTab, store.Row{"Category": body.Title}) > 0 {
 		http.Error(w, "parties are filed under this category; move them first", http.StatusBadRequest)
 		return
 	}
-	match := map[string]string{"Title": body.Title}
-	if !a.commit(r.Context(), w, tables.without(categoriesTab, match), func() error {
-		if err := a.writer.Delete(appName, categoriesTab, match); err != nil {
-			return err
-		}
-		return a.logChange(r, actor, "remove", "category", map[string]string{"Title": body.Title})
-	}) {
+	if !a.commit(w, r, actor, store.Delete(categoriesTab, store.Row{"Title": body.Title})) {
 		return
 	}
 	slog.InfoContext(r.Context(), "celebrate: removed category", "actor", actor, "category", body.Title)
@@ -1592,30 +1201,30 @@ func (a app) reorderCategories(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	current := a.cache.Model().Categories
-	if len(body.Titles) != len(current) {
+	model := a.cache.Model()
+	if len(body.Titles) != len(model.Categories) {
 		http.Error(w, "the order must name every category once", http.StatusBadRequest)
 		return
 	}
-	rows := []map[string]string{}
+	titles, current := []string{}, []string{}
 	for _, title := range body.Titles {
-		if !slices.Contains(current, title) || slices.ContainsFunc(rows, func(row map[string]string) bool { return row["Title"] == title }) {
+		if !slices.Contains(model.Categories, title) || slices.Contains(titles, title) {
 			http.Error(w, "the order must name every category once", http.StatusBadRequest)
 			return
 		}
-		rows = append(rows, map[string]string{"Title": title})
+		titles, current = append(titles, title), append(current, model.categoryOrder[title])
 	}
-	tables := *a.cache.Tables()
-	tables.Categories = rows
-	if !a.commit(r.Context(), w, &tables, func() error {
-		if err := a.writer.Reorder(appName, categoriesTab, "Title", body.Titles); err != nil {
-			return err
+	keys := store.Order(current)
+	ops := []store.Op{}
+	for i, title := range titles {
+		if keys[i] != current[i] {
+			ops = append(ops, store.Update(categoriesTab, store.Row{"Title": title}, store.Row{store.OrderColumn: keys[i]}))
 		}
-		return a.logChange(r, actor, "reorder", "category", map[string]string{"Details": strings.Join(body.Titles, ", ")})
-	}) {
+	}
+	if !a.commit(w, r, actor, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "celebrate: reordered categories", "actor", actor)
+	slog.InfoContext(r.Context(), "celebrate: reordered categories", "actor", actor, "changed", len(ops))
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -1629,45 +1238,21 @@ func (a app) saveSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	values := map[string]string{PartiesIntroKey: strings.TrimSpace(body.PartiesIntro), TicketNoteKey: strings.TrimSpace(body.TicketNote), HostingOpenKey: YesNo(body.HostingOpen)}
-	tables := a.cache.Tables()
-	// A key the tab has not got yet is appended rather than set, so a
-	// setting added after the sheet was made needs no hand edit.
-	present := map[string]bool{}
-	for _, row := range tables.Settings {
-		present[row["Key"]] = true
+	ops := []store.Op{}
+	for _, key := range settingKeys {
+		ops = append(ops, store.Set(settingsTab, store.Row{"Key": key}, store.Row{"Value": values[key]}))
 	}
-	for key, value := range values {
-		if present[key] {
-			tables = tables.with(settingsTab, map[string]string{"Key": key}, map[string]string{"Value": value})
-		} else {
-			tables = tables.with(settingsTab, nil, map[string]string{"Key": key, "Value": value})
-		}
-	}
-	if !a.commit(r.Context(), w, tables, func() error {
-		for key, value := range values {
-			if present[key] {
-				if err := a.writer.Set(appName, settingsTab, map[string]string{"Key": key}, map[string]string{"Value": value}); err != nil {
-					return err
-				}
-			} else if err := a.writer.Insert(appName, settingsTab, []map[string]string{{"Key": key, "Value": value}}); err != nil {
-				return err
-			}
-		}
-		return a.logChange(r, actor, "edit", "settings", nil)
-	}) {
+	if !a.commit(w, r, actor, ops...) {
 		return
 	}
 	slog.InfoContext(r.Context(), "celebrate: changed the settings", "actor", actor)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// importImage stores a picked search result under the app's own folder.
 func (a app) importImage(w http.ResponseWriter, r *http.Request) {
 	a.search.ServeImport(w, r, imageFolder, maxImageSize)
 }
 
-// uploadImage stores a content-addressed image and returns the name the sheet
-// should record; the save that follows references it.
 func (a app) uploadImage(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxImageSize)
 	file, header, err := r.FormFile("image")
@@ -1698,8 +1283,6 @@ func (a app) uploadImage(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"name": imageFolder + "/" + name})
 }
 
-// invoicesCSV is the INVOICING ledger for one celebration as a file, in the
-// ledger's own columns, for whoever wants it outside the sheet.
 func (a app) invoicesCSV(w http.ResponseWriter, r *http.Request) {
 	if _, ok := a.requireAdmin(w, r); !ok {
 		return
@@ -1745,7 +1328,6 @@ func (a app) setAdmins(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	// Super admins show in the merged list but never round-trip into the tab.
 	super := map[string]bool{}
 	for _, e := range a.superAdmins() {
 		super[e] = true
@@ -1756,32 +1338,19 @@ func (a app) setAdmins(w http.ResponseWriter, r *http.Request) {
 			admins = append(admins, e)
 		}
 	}
-	current := a.cache.tabAdmins()
-	was := map[string]bool{}
+	current := a.cache.Model().admins
+	ops := []store.Op{}
 	for _, e := range current {
-		was[e] = true
+		if !slices.Contains(admins, e) {
+			ops = append(ops, store.Delete(adminsTab, store.Row{"Email": e}))
+		}
 	}
-	is := map[string]bool{}
 	for _, e := range admins {
-		is[e] = true
+		if !slices.Contains(current, e) {
+			ops = append(ops, store.Insert(adminsTab, store.Row{"Email": e}))
+		}
 	}
-	if !a.commit(r.Context(), w, a.cache.Tables().withAdmins(admins), func() error {
-		for _, e := range current {
-			if !is[e] {
-				if err := a.writer.Delete(appName, adminsTab, map[string]string{"Email": e}); err != nil {
-					return err
-				}
-			}
-		}
-		for _, e := range admins {
-			if !was[e] {
-				if err := a.writer.Insert(appName, adminsTab, []map[string]string{{"Email": e}}); err != nil {
-					return err
-				}
-			}
-		}
-		return nil
-	}) {
+	if !a.commit(w, r, actor, ops...) {
 		return
 	}
 	slog.InfoContext(r.Context(), "celebrate: set the admin list", "actor", actor, "admins", admins)

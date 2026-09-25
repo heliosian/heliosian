@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -14,6 +16,7 @@ import (
 	"heliosian/internal/auth"
 	"heliosian/internal/data"
 	"heliosian/internal/mail"
+	"heliosian/internal/store"
 )
 
 const (
@@ -28,8 +31,6 @@ const (
 	testFrom = "Helios Celebrate <celebrate@example.org>"
 )
 
-// The tests run on a Saturday in September 2026, between the parties that
-// have happened and the ones still to come in the sample data.
 func testNow() time.Time {
 	t, _ := time.Parse(DateTimeFormat, "2026-09-12 12:00")
 	return t
@@ -39,8 +40,6 @@ type syncQueue struct{}
 
 func (syncQueue) Add(f func()) { f() }
 
-// fakeDirectory is the sample community's Whitfield family and a few others:
-// enough for the household, audience, and billing rules.
 type fakeDirectory struct{}
 
 var people = map[string]Person{
@@ -88,27 +87,50 @@ func (bundled) Has(key string) (bool, error) { return strings.HasPrefix(key, "sa
 
 func (bundled) Prefetch([]string) error { return nil }
 
-// lastDir is the store behind the most recent newServer, for a test that
-// wants to read what the server wrote.
-var lastDir *data.Dir
+var sheet *data.Dir
 
-func newServer(t *testing.T) (*Cache, *http.ServeMux) {
+func serveWith(t *testing.T, mailer mail.Sender) (*Cache, *http.ServeMux) {
 	t.Helper()
 	t.Chdir("../..")
 	now = testNow
-	dir := &data.Dir{Root: "sampledata"}
-	lastDir = dir
-	// Nobody is a super admin here; Dana is on the sample Admins tab.
-	cache, err := NewCache(dir, bundled{}, func(string) bool { return false }, syncQueue{})
+	sheet = &data.Dir{Root: "sampledata"}
+	cache, err := NewCache(sheet, sheet, bundled{}, func(string) bool { return false }, syncQueue{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	mux := http.NewServeMux()
-	Register(mux, cache, dir, syncQueue{}, nil, fakeDirectory{}, func() []string { return nil }, ImageSearch{}, nil, testFrom, nil)
+	Register(mux, cache, nil, fakeDirectory{}, func() []string { return nil }, ImageSearch{}, mailer, testFrom, nil)
 	return cache, mux
 }
 
-// recorder is a mail.Sender that hands each message to the test.
+func newServer(t *testing.T) (*Cache, *http.ServeMux) {
+	t.Helper()
+	return serveWith(t, nil)
+}
+
+func tables(t *testing.T) store.Tables {
+	t.Helper()
+	names := []string{celebrationsTab, categoriesTab, partiesTab, hostsTab, ticketsTab, settingsTab, adminsTab, redirectsTab, invoicingTab}
+	tabs, err := sheet.Tabs(appName, names, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := store.Tables{}
+	for _, name := range names {
+		out[name] = tabs[name].Rows
+	}
+	return out
+}
+
+func changeLog(t *testing.T) []store.Row {
+	t.Helper()
+	_, rows, err := sheet.Table(appName, store.ChangeLogTab)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return rows
+}
+
 type recorder struct{ got chan mail.Message }
 
 func (r recorder) Send(_ context.Context, m mail.Message) error {
@@ -152,9 +174,68 @@ func TestSampleLoads(t *testing.T) {
 			t.Errorf("%s availability %q, want %q", id, got, want)
 		}
 	}
-	// Three families wait on the bagels, one of them for two tickets.
 	if m.Party("P006").Waiting() != 4 || m.Party("P006").Full() != true {
 		t.Errorf("bagels waitlist %d full %v", m.Party("P006").Waiting(), m.Party("P006").Full())
+	}
+	if !cache.IsAdmin(admin) || cache.IsAdmin(other) {
+		t.Errorf("admins: %v", cache.Admins(nil))
+	}
+}
+
+func TestRowOrderIsNotTabOrder(t *testing.T) {
+	newServer(t)
+	rows := tables(t)
+	slices.Reverse(rows[celebrationsTab])
+	slices.Reverse(rows[categoriesTab])
+	slices.Reverse(rows[ticketsTab])
+	m, err := BuildModel(rows, bundled{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Celebrations[0].Code != "SC-2026" || m.Celebrations[1].Code != "SC-2025" {
+		t.Errorf("celebrations: %s, %s", m.Celebrations[0].Code, m.Celebrations[1].Code)
+	}
+	if !slices.Equal(m.Categories, []string{"Family Social", "Adult Social", "Children Social", "Athletic", "Educational"}) {
+		t.Errorf("categories: %v", m.Categories)
+	}
+	tickets := m.Party("P001").Tickets
+	for i := 1; i < len(tickets); i++ {
+		if tickets[i].Added < tickets[i-1].Added {
+			t.Fatalf("tickets out of order: %s before %s", tickets[i-1].Added, tickets[i].Added)
+		}
+	}
+	for _, tk := range tickets {
+		if got, _ := m.TicketByID(tk.ID); got == nil || got.ID != tk.ID {
+			t.Fatalf("ticket %s indexes %+v", tk.ID, got)
+		}
+	}
+}
+
+func TestBrokenSheetRefusesToLoad(t *testing.T) {
+	t.Chdir("../..")
+	broken := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(broken, appName), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := os.ReadDir(filepath.Join("sampledata", appName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		raw, err := os.ReadFile(filepath.Join("sampledata", appName, e.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(broken, appName, e.Name()), raw, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(broken, appName, "Categories.csv"), []byte("Title,Order\nFamily Social,10\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dir := &data.Dir{Root: broken}
+	if _, err := NewCache(dir, dir, bundled{}, func(string) bool { return false }, syncQueue{}); err == nil || !strings.Contains(err.Error(), "ends in 0") {
+		t.Fatalf("a broken sheet loaded: %v", err)
 	}
 }
 
@@ -169,7 +250,6 @@ func TestRenderHidesWhatItShould(t *testing.T) {
 			t.Errorf("%s is editable by someone who does not host it", p.Title)
 		}
 	}
-	// A host sees their own pending party; an admin sees everything.
 	host := Render(cache.Model(), fakeDirectory{}, "layla.haddad@heliosschool.org", false, testNow())
 	found := false
 	for _, p := range host.Parties {
@@ -214,7 +294,6 @@ func TestAttendeeLines(t *testing.T) {
 			t.Errorf("%s: line %q, want %q", name, lines[name], line)
 		}
 	}
-	// A purchaser's note is theirs and the hosts'; another parent sees none.
 	if notes["Zander Whitfield (cousin, age 8)"] != "" {
 		t.Errorf("a stranger saw a note: %q", notes["Zander Whitfield (cousin, age 8)"])
 	}
@@ -236,8 +315,6 @@ func TestBuyTicketsRules(t *testing.T) {
 	buy := func(as, party string, purchaser string, attendees ...map[string]string) *httptest.ResponseRecorder {
 		return call(t, mux, as, "POST", "/api/celebrate/tickets", map[string]any{"partyId": party, "purchaser": purchaser, "attendees": attendees})
 	}
-	// A student takes no tickets, joins no waitlist and passes none on;
-	// their parent does.
 	if rec := buy(kid, "P001", "", map[string]string{"email": kid}); rec.Code != http.StatusForbidden {
 		t.Fatalf("a student bought: %d %s", rec.Code, rec.Body)
 	}
@@ -253,8 +330,6 @@ func TestBuyTicketsRules(t *testing.T) {
 	if rec := call(t, mux, teen, "POST", "/api/celebrate/ticket/reassign", map[string]any{"ticketId": own, "email": kid}); rec.Code != http.StatusForbidden {
 		t.Fatalf("a student reassigned: %d %s", rec.Code, rec.Body)
 	}
-	// A parent takes tickets for the household; a student is refused where
-	// only adults may come.
 	if rec := buy(parent, "P002", "", map[string]string{"email": kid}); rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "for adults") {
 		t.Fatalf("a student got an adult ticket: %d %s", rec.Code, rec.Body)
 	}
@@ -264,32 +339,24 @@ func TestBuyTicketsRules(t *testing.T) {
 	if got := cache.Model().Party("P002").Sold(); got != 15 {
 		t.Fatalf("dink & clink sold %d", got)
 	}
-	// The same person cannot be sold twice.
 	if rec := buy(parent, "P002", "", map[string]string{"email": partner}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("a second ticket for the same person: %d %s", rec.Code, rec.Body)
 	}
-	// Someone outside the household is a guest by name, not by address.
 	if rec := buy(parent, "P002", "", map[string]string{"email": other}); rec.Code != http.StatusForbidden {
 		t.Fatalf("a parent bought for a stranger: %d %s", rec.Code, rec.Body)
 	}
-	// Tickets are billed to an adult in the family, nobody else.
 	if rec := buy(parent, "P002", other, map[string]string{"email": parent}); rec.Code != http.StatusForbidden {
 		t.Fatalf("billed a stranger: %d %s", rec.Code, rec.Body)
 	}
-	// A student's ticket is taken by a parent, and billed to one.
 	if rec := buy(partner, "P003", parent, map[string]string{"email": kid}); rec.Code != http.StatusOK {
 		t.Fatalf("a parent could not take a child's ticket: %d %s", rec.Code, rec.Body)
 	}
-	// The last ticket goes; the next person waits.
 	if rec := buy(parent, "P002", "", map[string]string{"name": "Aunt May"}); rec.Code != http.StatusOK {
 		t.Fatalf("a guest could not take the last ticket: %d %s", rec.Code, rec.Body)
 	}
 	if got := cache.Model().Party("P002").Availability(testNow()); got != Waitlist {
 		t.Fatalf("availability after filling: %q", got)
 	}
-	// A full party sells nothing more: the family joins the waitlist as a
-	// request for so many tickets, billed to an adult of its own; asking
-	// again changes the request rather than joining the line twice.
 	if rec := buy(teacher, "P002", "", map[string]string{"email": teacher}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("a full party sold a ticket: %d %s", rec.Code, rec.Body)
 	}
@@ -317,16 +384,12 @@ func TestBuyTicketsRules(t *testing.T) {
 	if requests != 1 || cache.Model().Party("P002").Waiting() != 3 {
 		t.Fatalf("%d requests, waiting %d", requests, cache.Model().Party("P002").Waiting())
 	}
-	// Sold out with no waitlist refuses; closed refuses; a host is never
-	// refused for room.
 	if rec := buy(parent, "P008", "", map[string]string{"email": parent}); rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "sold out") {
 		t.Fatalf("sold out: %d %s", rec.Code, rec.Body)
 	}
 	if rec := buy(other, "P011", "", map[string]string{"email": other}); rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "closed") {
 		t.Fatalf("closed: %d %s", rec.Code, rec.Body)
 	}
-	// A host adds anyone, but bills nobody outside their own family: the
-	// person added pays their own way, a student through a parent.
 	if rec := buy("abena.osei@heliosschool.org", "P008", teacher, map[string]string{"email": teacher}); rec.Code != http.StatusForbidden {
 		t.Fatalf("a host billed a stranger: %d %s", rec.Code, rec.Body)
 	}
@@ -351,8 +414,6 @@ func TestBuyTicketsRules(t *testing.T) {
 	}
 }
 
-// A host gives a free ticket: minted at $0, so the invoice list never sees
-// it; nobody else can.
 func TestFreeTicket(t *testing.T) {
 	cache, mux := newServer(t)
 	body := map[string]any{"partyId": "P002", "free": true, "attendees": []map[string]string{{"name": "Percy Jackson"}}}
@@ -376,7 +437,6 @@ func TestFreeTicket(t *testing.T) {
 	if p.Raised() != raised {
 		t.Fatalf("a free ticket raised money: %v then %v", raised, p.Raised())
 	}
-	// The gift can grow the cap by one, so it takes no paid place.
 	was := p.Capacity
 	body["attendees"] = []map[string]string{{"name": "Annabeth Chase"}}
 	body["raiseCapacity"] = true
@@ -386,8 +446,6 @@ func TestFreeTicket(t *testing.T) {
 	if got := cache.Model().Party("P002").Capacity; got != was+1 {
 		t.Fatalf("capacity %d, want %d", got, was+1)
 	}
-	// A gift can name whose guest the holder is: an adult in the directory
-	// holds it for them - a student cannot.
 	body = map[string]any{"partyId": "P002", "free": true, "purchaser": teen, "attendees": []map[string]string{{"name": "Grover Underwood"}}}
 	if rec := call(t, mux, other, "POST", "/api/celebrate/tickets", body); rec.Code != http.StatusBadRequest {
 		t.Fatalf("a student hosts a guest: %d %s", rec.Code, rec.Body)
@@ -401,10 +459,7 @@ func TestFreeTicket(t *testing.T) {
 			t.Fatalf("the guest's ticket: %+v", tk)
 		}
 	}
-	// The accounting ledger never sees a free ticket - and sees every paid
-	// one as ADD, one at its cost, with the invoice columns left blank.
-	dir := lastDir
-	_, ledger, _ := dir.Table(appName, "INVOICING")
+	ledger := tables(t)[invoicingTab]
 	before := len(ledger)
 	for _, l := range ledger {
 		if l["Guest Name"] == "Percy Jackson" || l["Guest Name"] == "Annabeth Chase" || l["Guest Name"] == "Grover Underwood" {
@@ -414,13 +469,11 @@ func TestFreeTicket(t *testing.T) {
 	if rec := call(t, mux, other, "POST", "/api/celebrate/tickets", map[string]any{"partyId": "P002", "attendees": []map[string]string{{"name": "Grover Underwood"}}}); rec.Code != http.StatusOK {
 		t.Fatalf("paid ticket: %d %s", rec.Code, rec.Body)
 	}
-	_, ledger, _ = dir.Table(appName, "INVOICING")
+	ledger = tables(t)[invoicingTab]
 	last := ledger[len(ledger)-1]
 	if len(ledger) != before+1 || last["Action"] != "ADD" || last["Quantity"] != "1" || last["Cost"] != "75" || last["Purchaser Email"] != other || last["Guest Name"] != "Grover Underwood" || last["Event Code"] != "SC-2026" || last["Invoice"] != "" {
 		t.Fatalf("ledger: %v", last)
 	}
-	// The model reads the ledger too, for Admin Tools, and only an admin
-	// is shown it.
 	if n := len(cache.Model().Invoicing); n != before+1 {
 		t.Fatalf("model ledger %d, want %d", n, before+1)
 	}
@@ -430,10 +483,17 @@ func TestFreeTicket(t *testing.T) {
 	if v := Render(cache.Model(), fakeDirectory{}, admin, true, testNow()); len(v.Invoicing) != before+1 {
 		t.Fatalf("the admin was not shown the ledger")
 	}
+	logged := 0
+	for _, row := range changeLog(t) {
+		if row["Tab"] == invoicingTab && row["Action"] == "insert" && row["Column"] == "Guest Name" && row["Previous"] == "" && strings.Contains(row["Key"], "Guest Name=Grover Underwood") {
+			logged++
+		}
+	}
+	if logged != 1 {
+		t.Fatalf("the ledger row was logged %d times: %v", logged, changeLog(t))
+	}
 }
 
-// Hosting Open off: a parent's new party is refused, an admin's is not,
-// and a host still edits what they have.
 func TestHostingClosed(t *testing.T) {
 	cache, mux := newServer(t)
 	if rec := call(t, mux, admin, "POST", "/api/celebrate/settings", map[string]any{"partiesIntro": "x", "ticketNote": "y", "hostingOpen": false}); rec.Code != http.StatusNoContent {
@@ -457,8 +517,6 @@ func TestHostingClosed(t *testing.T) {
 
 func TestRemoveAndPromote(t *testing.T) {
 	cache, mux := newServer(t)
-	// Jordan waits on the bagels; a stranger cannot take that place away, the
-	// family can, and a host can offer it.
 	var waiting string
 	for _, tk := range cache.Model().Party("P006").Tickets {
 		if tk.Email == parent {
@@ -471,9 +529,6 @@ func TestRemoveAndPromote(t *testing.T) {
 	if rec := call(t, mux, other, "POST", "/api/celebrate/waitlist/offer", map[string]any{"ticketId": waiting}); rec.Code != http.StatusForbidden {
 		t.Fatalf("a stranger offered tickets: %d", rec.Code)
 	}
-	// The host offers one of the two asked for: Jordan holds it, the request
-	// shrinks to one; then the other, as a guest to be named, and the request
-	// is gone.
 	if rec := call(t, mux, "freja.lindqvist@heliosschool.org", "POST", "/api/celebrate/waitlist/offer", map[string]any{"ticketId": waiting, "quantity": 1}); rec.Code != http.StatusNoContent {
 		t.Fatalf("a host could not offer: %d %s", rec.Code, rec.Body)
 	}
@@ -485,6 +540,15 @@ func TestRemoveAndPromote(t *testing.T) {
 	}
 	if tk, _ := cache.Model().TicketByID(waiting); tk != nil {
 		t.Fatal("the request is still there")
+	}
+	deleted := false
+	for _, row := range changeLog(t) {
+		if row["Tab"] == ticketsTab && row["Action"] == "delete" && row["Key"] == "Ticket ID="+waiting && row["Column"] == "Quantity" && row["Previous"] == "1" {
+			deleted = true
+		}
+	}
+	if !deleted {
+		t.Fatalf("the request's delete was not logged with its last quantity: %v", changeLog(t))
 	}
 	held, guests := 0, 0
 	for _, tk := range cache.Model().Party("P006").Tickets {
@@ -500,8 +564,6 @@ func TestRemoveAndPromote(t *testing.T) {
 	if held != 1 || guests != 1 || cache.Model().Party("P006").Sold() != 10 {
 		t.Fatalf("after the offers: held %d, guests %d, sold %d", held, guests, cache.Model().Party("P006").Sold())
 	}
-	// Once sold, a ticket is the fundraiser's: the family cannot give it back,
-	// though it may still leave a waitlist.
 	if rec := call(t, mux, partner, "DELETE", "/api/celebrate/ticket", map[string]string{"ticketId": waiting}); rec.Code != http.StatusForbidden {
 		t.Fatalf("the family gave a sold ticket back: %d %s", rec.Code, rec.Body)
 	}
@@ -535,11 +597,9 @@ func TestPostAndEditParty(t *testing.T) {
 	var made map[string]string
 	json.Unmarshal(rec.Body.Bytes(), &made)
 	p := cache.Model().Party(made["id"])
-	// A host's category is ignored: that is an admin's to file.
 	if p == nil || p.Status != StatusPending || !p.Hosted(other) || p.Celebration != "SC-2026" || p.Price != 40 || p.AddedBy != other || p.Category != "" {
 		t.Fatalf("posted party: %+v", p)
 	}
-	// The host edits it but cannot approve it; a stranger cannot touch it.
 	body["id"] = p.ID
 	body["status"] = StatusOpen
 	body["title"] = "Board Game Night!"
@@ -552,7 +612,6 @@ func TestPostAndEditParty(t *testing.T) {
 	if p.Status != StatusPending || p.Title != "Board Game Night!" || len(p.HostEmails) != 2 || p.NoteEmoji != "🎲" || p.NoteTitle != "House rules" {
 		t.Fatalf("after the host's edit: %+v", p)
 	}
-	// The callout's dress stays small.
 	body["noteTitle"] = strings.Repeat("x", 61)
 	if rec := call(t, mux, other, "POST", "/api/celebrate/party", body); rec.Code != http.StatusBadRequest {
 		t.Fatalf("a long note title was taken: %d", rec.Code)
@@ -567,7 +626,6 @@ func TestPostAndEditParty(t *testing.T) {
 	if rec := call(t, mux, admin, "POST", "/api/celebrate/party/status", map[string]string{"id": p.ID, "status": StatusOpen}); rec.Code != http.StatusNoContent {
 		t.Fatalf("an admin could not approve: %d %s", rec.Code, rec.Body)
 	}
-	// The switches: a host closes sales and the party stops selling.
 	flags := map[string]any{"id": p.ID, "ticketsOpen": false, "waitlist": true, "adults": true, "students": true}
 	if rec := call(t, mux, other, "POST", "/api/celebrate/party/flags", flags); rec.Code != http.StatusNoContent {
 		t.Fatalf("flags: %d %s", rec.Code, rec.Body)
@@ -575,12 +633,10 @@ func TestPostAndEditParty(t *testing.T) {
 	if got := cache.Model().Party(p.ID).Availability(testNow()); got != Closed {
 		t.Fatalf("after closing sales: %q", got)
 	}
-	// Nobody may be let in at all: refused.
 	flags["adults"], flags["students"] = false, false
 	if rec := call(t, mux, other, "POST", "/api/celebrate/party/flags", flags); rec.Code != http.StatusBadRequest {
 		t.Fatalf("a party for nobody: %d", rec.Code)
 	}
-	// Deleting needs an admin and an empty party.
 	if rec := call(t, mux, admin, "DELETE", "/api/celebrate/party", map[string]string{"id": "P001"}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("deleted a party with tickets: %d", rec.Code)
 	}
@@ -592,6 +648,40 @@ func TestPostAndEditParty(t *testing.T) {
 	}
 }
 
+func TestDeletingAPartyTakesItsHosts(t *testing.T) {
+	cache, mux := newServer(t)
+	body := map[string]any{"title": "Trivia Night", "price": 20, "adults": true, "ticketsOpen": true, "hostEmails": []string{other, teacher}}
+	rec := call(t, mux, admin, "POST", "/api/celebrate/party", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("post: %d %s", rec.Code, rec.Body)
+	}
+	var made map[string]string
+	json.Unmarshal(rec.Body.Bytes(), &made)
+	if n := cache.Count(hostsTab, store.Row{"Party ID": made["id"]}); n != 2 {
+		t.Fatalf("%d hosts after posting", n)
+	}
+	if rec := call(t, mux, admin, "DELETE", "/api/celebrate/party", map[string]string{"id": made["id"]}); rec.Code != http.StatusNoContent {
+		t.Fatalf("delete: %d %s", rec.Code, rec.Body)
+	}
+	if n := cache.Count(hostsTab, store.Row{"Party ID": made["id"]}); n != 0 {
+		t.Fatalf("%d hosts outlived their party in memory", n)
+	}
+	for _, row := range tables(t)[hostsTab] {
+		if row["Party ID"] == made["id"] {
+			t.Fatalf("the sheet kept %v", row)
+		}
+	}
+	gone := map[string]bool{}
+	for _, row := range changeLog(t) {
+		if row["Tab"] == hostsTab && row["Action"] == "delete" && row["Column"] == "Email" {
+			gone[row["Previous"]] = true
+		}
+	}
+	if !gone[other] || !gone[teacher] {
+		t.Fatalf("the hosts' delete was not logged: %v", changeLog(t))
+	}
+}
+
 func TestCategoriesAndCelebrations(t *testing.T) {
 	cache, mux := newServer(t)
 	if rec := call(t, mux, admin, "POST", "/api/celebrate/category", map[string]string{"original": "Adult Social", "title": "Grown-Ups"}); rec.Code != http.StatusNoContent {
@@ -599,6 +689,20 @@ func TestCategoriesAndCelebrations(t *testing.T) {
 	}
 	if cache.Model().Party("P002").Category != "Grown-Ups" {
 		t.Fatal("a rename did not carry the parties along")
+	}
+	for _, row := range tables(t)[partiesTab] {
+		if row["Category"] == "Adult Social" {
+			t.Fatalf("the sheet kept the old category on %s", row["Party ID"])
+		}
+	}
+	carried := 0
+	for _, row := range changeLog(t) {
+		if row["Tab"] == partiesTab && row["Column"] == "Category" && row["Previous"] == "Adult Social" && row["Actor"] == admin {
+			carried++
+		}
+	}
+	if carried == 0 || carried != cache.Count(partiesTab, store.Row{"Category": "Grown-Ups"}) {
+		t.Fatalf("logged %d carried parties", carried)
 	}
 	if rec := call(t, mux, admin, "DELETE", "/api/celebrate/category", map[string]string{"title": "Grown-Ups"}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("deleted a category in use: %d", rec.Code)
@@ -610,8 +714,6 @@ func TestCategoriesAndCelebrations(t *testing.T) {
 	if m.Current().Code != "SC-2027" || m.Celebration("SC-2026").Current {
 		t.Fatalf("current after adding: %s", m.Current().Code)
 	}
-	// The button is a link, or "calendar" for a Save the Date - which needs
-	// a date to save.
 	if rec := call(t, mux, admin, "POST", "/api/celebrate/celebration", map[string]any{"original": "SC-2027", "code": "SC-2027", "title": "Helios Spring Celebration 2027", "buttonText": "Save the Date", "buttonUrl": "calendar", "current": true}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("a calendar button with no date: %d %s", rec.Code, rec.Body)
 	}
@@ -621,8 +723,6 @@ func TestCategoriesAndCelebrations(t *testing.T) {
 	if m = cache.Model(); m.Celebration("SC-2027").ButtonURL != ButtonCalendar {
 		t.Fatalf("button: %q", m.Celebration("SC-2027").ButtonURL)
 	}
-	// The banner is its own flag: none marked, it follows the current one;
-	// marking one unmarks the rest and leaves Current alone.
 	if m.Banner().Code != "SC-2027" {
 		t.Fatalf("banner follows current: %s", m.Banner().Code)
 	}
@@ -643,12 +743,48 @@ func TestCategoriesAndCelebrations(t *testing.T) {
 	if rec := call(t, mux, admin, "DELETE", "/api/celebrate/celebration", map[string]string{"code": "SC-2026"}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("deleted a celebration with parties: %d", rec.Code)
 	}
+	parties := len(m.SortedParties("SC-2025"))
+	if rec := call(t, mux, admin, "POST", "/api/celebrate/celebration", map[string]any{"original": "SC-2025", "code": "SC-2025B", "title": "Helios Spring Celebration 2025", "start": "2025-03-01 17:30"}); rec.Code != http.StatusNoContent {
+		t.Fatalf("rename celebration: %d %s", rec.Code, rec.Body)
+	}
+	if m = cache.Model(); parties == 0 || len(m.SortedParties("SC-2025B")) != parties || cache.Count(partiesTab, store.Row{"Celebration": "SC-2025"}) != 0 {
+		t.Fatalf("a celebration rename left parties behind: %d of %d moved", len(m.SortedParties("SC-2025B")), parties)
+	}
 	rec := call(t, mux, admin, "GET", "/api/celebrate/invoices.csv?celebration=SC-2025", nil)
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "Wines of the Southern Hemisphere!") || strings.Contains(rec.Body.String(), "Fondue") {
 		t.Fatalf("invoices: %d %s", rec.Code, rec.Body)
 	}
 	if rec := call(t, mux, other, "GET", "/api/celebrate/invoices.csv", nil); rec.Code != http.StatusForbidden {
 		t.Fatalf("a parent read the invoices: %d", rec.Code)
+	}
+}
+
+func TestReorderCategoriesWritesOneKey(t *testing.T) {
+	cache, mux := newServer(t)
+	order := []string{"Educational", "Family Social", "Adult Social", "Children Social", "Athletic"}
+	if rec := call(t, mux, admin, "POST", "/api/celebrate/categories/order", map[string]any{"titles": order}); rec.Code != http.StatusNoContent {
+		t.Fatalf("reorder: %d %s", rec.Code, rec.Body)
+	}
+	if got := cache.Model().Categories; !slices.Equal(got, order) {
+		t.Fatalf("categories: %v", got)
+	}
+	moved := []store.Row{}
+	for _, row := range changeLog(t) {
+		if row["Tab"] == categoriesTab {
+			moved = append(moved, row)
+		}
+	}
+	if len(moved) != 1 || moved[0]["Key"] != "Title=Educational" || moved[0]["Column"] != store.OrderColumn || moved[0]["Previous"] != "9" || moved[0]["Action"] != "set" {
+		t.Fatalf("logged %v", moved)
+	}
+	if rec := call(t, mux, admin, "POST", "/api/celebrate/categories/order", map[string]any{"titles": order[1:]}); rec.Code != http.StatusBadRequest {
+		t.Fatalf("an order missing a category: %d", rec.Code)
+	}
+	if rec := call(t, mux, admin, "POST", "/api/celebrate/category", map[string]string{"title": "Musical"}); rec.Code != http.StatusNoContent {
+		t.Fatalf("add: %d %s", rec.Code, rec.Body)
+	}
+	if got := cache.Model().Categories; got[len(got)-1] != "Musical" {
+		t.Fatalf("a new category did not land last: %v", got)
 	}
 }
 
@@ -684,7 +820,6 @@ func TestFriendlyAddresses(t *testing.T) {
 	if m.PathOf(m.Party("P001")) != "/p/fondue" || m.PathOf(m.Party("P005")) != "/parties/P005" {
 		t.Fatalf("paths: %s %s", m.PathOf(m.Party("P001")), m.PathOf(m.Party("P005")))
 	}
-	// A live address, an old one through the Redirects tab, a bare word.
 	for path, want := range map[string]string{"/p/fondue": "P001", "/p/Fondue/": "P001", "/parties/P001": "P001", "/p/fondue-night": "P001", "pickleball": "P002", "/p/nothing": ""} {
 		got := ""
 		if p := m.Resolve(path); p != nil {
@@ -694,7 +829,6 @@ func TestFriendlyAddresses(t *testing.T) {
 			t.Errorf("Resolve(%q) = %q, want %q", path, got, want)
 		}
 	}
-	// Renaming an address leaves a redirect behind; a taken one is refused.
 	body := map[string]any{"id": "P003", "title": "K-Pop for a Cause!", "price": 50, "capacity": 20, "adults": true, "students": true, "ticketsOpen": true, "waitlist": true, "prettyId": "Fondue", "hostEmails": []string{"deepa.natarajan@heliosschool.org"}}
 	if rec := call(t, mux, "deepa.natarajan@heliosschool.org", "POST", "/api/celebrate/party", body); rec.Code != http.StatusBadRequest {
 		t.Fatalf("took another party's address: %d %s", rec.Code, rec.Body)
@@ -710,6 +844,32 @@ func TestFriendlyAddresses(t *testing.T) {
 	if m.PathOf(m.Party("P003")) != "/p/k-pop" {
 		t.Fatalf("path after rename: %s", m.PathOf(m.Party("P003")))
 	}
+	written := false
+	for _, row := range tables(t)[redirectsTab] {
+		if row["Old"] == "/p/kpop" && row["New"] == "/p/k-pop" && row["Type"] == RedirectParty && row["Date"] == "2026-09-12" {
+			written = true
+		}
+	}
+	if !written {
+		t.Fatalf("the redirect is not in the sheet: %v", tables(t)[redirectsTab])
+	}
+	logged := false
+	for _, row := range changeLog(t) {
+		if row["Tab"] == redirectsTab && row["Action"] == "insert" && row["Key"] == "Old=/p/kpop" && row["Actor"] == "deepa.natarajan@heliosschool.org" {
+			logged = true
+		}
+	}
+	if !logged {
+		t.Fatalf("the redirect was not logged: %v", changeLog(t))
+	}
+	body["title"] = "K-Pop for a Good Cause!"
+	before := len(tables(t)[redirectsTab])
+	if rec := call(t, mux, "deepa.natarajan@heliosschool.org", "POST", "/api/celebrate/party", body); rec.Code != http.StatusOK {
+		t.Fatalf("retitle: %d %s", rec.Code, rec.Body)
+	}
+	if after := len(tables(t)[redirectsTab]); after != before {
+		t.Fatalf("a retitle left a redirect: %d then %d", before, after)
+	}
 }
 
 func TestSharePreview(t *testing.T) {
@@ -724,10 +884,6 @@ func TestSharePreview(t *testing.T) {
 			t.Errorf("preview head lacks %s:\n%s", want, got)
 		}
 	}
-	// The street stays out of the tags. A pending party and any other page
-	// preview the site itself: the next party with tickets and the three
-	// after it - never one that is full (P006, today), sold out later
-	// (P007), closed to sales (P011), pending or hidden.
 	if strings.Contains(got, "Alder") {
 		t.Error("the street address leaked into the preview")
 	}
@@ -777,29 +933,15 @@ func TestSharePreview(t *testing.T) {
 	}
 }
 
-// A purchase mails whoever is billed with the hosts copied; a full party's
-// note says so; and a host's waitlist offer gets its own note.
 func TestMail(t *testing.T) {
-	t.Chdir("../..")
-	now = testNow
-	dir := &data.Dir{Root: "sampledata"}
-	cache, err := NewCache(dir, bundled{}, func(string) bool { return false }, syncQueue{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	mux := http.NewServeMux()
 	rec := recorder{got: make(chan mail.Message, 8)}
-	Register(mux, cache, dir, syncQueue{}, nil, fakeDirectory{}, func() []string { return nil }, ImageSearch{}, rec, testFrom, nil)
+	cache, mux := serveWith(t, rec)
 	buy := func(as, party, purchaser string, attendees ...map[string]string) *httptest.ResponseRecorder {
 		return call(t, mux, as, "POST", "/api/celebrate/tickets", map[string]any{"partyId": party, "purchaser": purchaser, "note": "We\u2019ll be a little late", "attendees": attendees})
 	}
-	// Robin takes two tickets to the Wurst party, billed to Jordan.
 	if r := buy(partner, "P004", parent, map[string]string{"email": partner}, map[string]string{"name": "Aunt May"}); r.Code != http.StatusOK {
 		t.Fatalf("buy: %d %s", r.Code, r.Body)
 	}
-	// Two notes: the confirmation, to the family with the hosts - and
-	// Robin, who took the tickets - copied; then the invite, to the family
-	// alone. Both reply to the hosts.
 	pair := func() (note, invite mail.Message) {
 		for range 2 {
 			m := rec.next(t)
@@ -826,7 +968,6 @@ func TestMail(t *testing.T) {
 	if invite.Subject != "Calendar invite: Wurst Helios Party" || !slices.Equal(invite.To, []string{parent}) || len(invite.CC) != 0 || !slices.Equal(invite.ReplyTo, m.ReplyTo) || !strings.Contains(invite.HTML, "Add it to your calendar") {
 		t.Fatalf("invite note: %+v", invite)
 	}
-	// Long lines are folded on the wire; unfold them to read.
 	ics := strings.ReplaceAll(string(invite.Attachments[0].Content), "\r\n ", "")
 	if invite.Attachments[0].Name != "invite.ics" || !strings.HasPrefix(invite.Attachments[0].ContentType, "text/calendar; method=REQUEST") {
 		t.Fatalf("invite: %+v", invite.Attachments[0])
@@ -839,9 +980,6 @@ func TestMail(t *testing.T) {
 	if strings.Contains(ics, "mailto:sofia.marchetti") {
 		t.Errorf("a host is on the family's invite:\n%s", ics)
 	}
-
-	// One ticket for a child is the child's note: it speaks to them by name
-	// and goes to both parents, the hosts copied.
 	if r := buy(parent, "P003", "", map[string]string{"email": kid}); r.Code != http.StatusOK {
 		t.Fatalf("buy for a child: %d %s", r.Code, r.Body)
 	}
@@ -854,17 +992,12 @@ func TestMail(t *testing.T) {
 			t.Errorf("a child's note lacks %q", want)
 		}
 	}
-	// Both parents get the invite, and nobody else.
 	if ics := string(invite.Attachments[0].Content); !slices.Equal(invite.To, []string{parent, partner}) || !strings.Contains(ics, "mailto:"+parent) || !strings.Contains(ics, "mailto:"+partner) {
 		t.Errorf("a child's invite: to %v\n%s", invite.To, ics)
 	}
-	// A free ticket's note says nothing about invoicing, and still offers
-	// the calendar.
 	if r := call(t, mux, "sofia.marchetti@heliosschool.org", "POST", "/api/celebrate/tickets", map[string]any{"partyId": "P004", "free": true, "attendees": []map[string]string{{"name": "Peter Parker"}}}); r.Code != http.StatusOK {
 		t.Fatalf("free: %d %s", r.Code, r.Body)
 	}
-	// Sofia hosts and gave it, so the note is hers with the other host,
-	// Paolo, copied; the invite is hers alone.
 	m, invite = pair()
 	if !strings.Contains(m.HTML, "no charge") || strings.Contains(m.HTML, "invoiced") || !strings.Contains(m.HTML, "Add to Calendar") {
 		t.Fatalf("free ticket note: %s", m.HTML)
@@ -872,9 +1005,6 @@ func TestMail(t *testing.T) {
 	if !slices.Equal(m.CC, []string{"paolo.marchetti@heliosschool.org"}) || !slices.Equal(invite.To, []string{"sofia.marchetti@heliosschool.org"}) || len(invite.CC) != 0 {
 		t.Fatalf("free ticket note cc %v / invite to %v cc %v", m.CC, invite.To, invite.CC)
 	}
-	// A guest from outside, added by name with their address, is spoken to
-	// by that name - not by the front of their address - in the note and on
-	// the calendar invite.
 	if r := call(t, mux, "sofia.marchetti@heliosschool.org", "POST", "/api/celebrate/tickets", map[string]any{"partyId": "P004", "free": true, "attendees": []map[string]string{{"name": "Michael Bolin", "email": "mbolin@example.com"}}}); r.Code != http.StatusOK {
 		t.Fatalf("outside guest: %d %s", r.Code, r.Body)
 	}
@@ -893,13 +1023,9 @@ func TestMail(t *testing.T) {
 	if ics := strings.ReplaceAll(string(invite.Attachments[0].Content), "\r\n ", ""); !strings.Contains(ics, "ATTENDEE;CN=Michael Bolin;") {
 		t.Errorf("outside guest's invite goes by their address:\n%s", ics)
 	}
-	// A full party: joining the waitlist gets a note that says so, and that
-	// nothing is billed yet.
 	if r := call(t, mux, teacher, "POST", "/api/celebrate/waitlist", map[string]any{"partyId": "P006", "quantity": 2, "note": "either day works"}); r.Code != http.StatusOK {
 		t.Fatalf("waitlist: %d %s", r.Code, r.Body)
 	}
-	// Two notes go out, in whatever order: the family's, with the hosts to
-	// reply to, and the hosts' own, with the family to reply to.
 	byTo := map[string]mail.Message{}
 	for range 2 {
 		m = rec.next(t)
@@ -916,7 +1042,6 @@ func TestMail(t *testing.T) {
 	if m.Subject != "Waitlist for Baegels and Meimosas: Grace Kim wants 2 tickets" || !slices.Equal(m.To, []string{"freja.lindqvist@heliosschool.org", "anders.lindqvist@heliosschool.org"}) || !slices.Equal(m.ReplyTo, []string{teacher}) || !strings.Contains(m.HTML, "either day works") {
 		t.Fatalf("hosts' waitlist note: %+v", m)
 	}
-	// The host offers Jordan the two bagels places: Jordan hears.
 	var waiting string
 	for _, tk := range cache.Model().Party("P006").Tickets {
 		if tk.Status == TicketWaitlist && tk.Purchaser == parent {
@@ -935,8 +1060,6 @@ func TestMail(t *testing.T) {
 	}
 }
 
-// A sold ticket moves to someone else - a sibling, a guest, another family
-// - and its billing always stays put.
 func TestReassign(t *testing.T) {
 	cache, mux := newServer(t)
 	var mine string
@@ -945,8 +1068,6 @@ func TestReassign(t *testing.T) {
 			mine = tk.ID
 		}
 	}
-	// A stranger cannot; the family can, to a guest; the ticket keeps its
-	// price and its purchaser, and Ella is off the list.
 	if rec := call(t, mux, other, "POST", "/api/celebrate/ticket/reassign", map[string]any{"ticketId": mine, "name": "Percy Jackson"}); rec.Code != http.StatusForbidden {
 		t.Fatalf("a stranger reassigned: %d", rec.Code)
 	}
@@ -962,8 +1083,15 @@ func TestReassign(t *testing.T) {
 			t.Fatal("Ella is still on the list")
 		}
 	}
-	// A host reassigns too - to someone in the directory - and the billing
-	// still stays put: a resale is the families' own business.
+	previous := map[string]string{}
+	for _, row := range changeLog(t) {
+		if row["Key"] == "Ticket ID="+mine {
+			previous[row["Column"]] = row["Previous"]
+		}
+	}
+	if len(previous) != 2 || previous["Email"] != teen || previous["Name"] != "" {
+		t.Fatalf("reassign logged %v", previous)
+	}
 	if rec := call(t, mux, "mina.park@heliosschool.org", "POST", "/api/celebrate/ticket/reassign", map[string]any{"ticketId": mine, "email": teacher}); rec.Code != http.StatusNoContent {
 		t.Fatalf("a host could not reassign: %d %s", rec.Code, rec.Body)
 	}
@@ -971,7 +1099,6 @@ func TestReassign(t *testing.T) {
 	if tk.Email != teacher || tk.Name != "" || tk.Purchaser != parent {
 		t.Fatalf("after the host's reassign: %+v", tk)
 	}
-	// Nobody who already holds a ticket, and nobody the party keeps out.
 	if rec := call(t, mux, "mina.park@heliosschool.org", "POST", "/api/celebrate/ticket/reassign", map[string]any{"ticketId": mine, "email": parent}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("reassigned to someone with a ticket: %d", rec.Code)
 	}

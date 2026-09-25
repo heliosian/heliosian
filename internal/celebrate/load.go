@@ -1,11 +1,7 @@
-// Package celebrate serves Helios Celebrate: the community's
-// fun(d)raiser parties, posted by their hosts, with tickets that families take
-// and are invoiced for later, and a waitlist once a party is full.
 package celebrate
 
 import (
 	"fmt"
-	"maps"
 	"math"
 	"regexp"
 	"slices"
@@ -15,7 +11,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"heliosian/internal/data"
+	"heliosian/internal/config"
+	"heliosian/internal/store"
 )
 
 const (
@@ -28,9 +25,7 @@ const (
 	settingsTab     = "Settings"
 	adminsTab       = "Admins"
 	redirectsTab    = "Redirects"
-	changeLogTab    = "Change Log"
-	// invoicingTab is the accounting ledger, in the bookkeeper's own layout.
-	invoicingTab = "INVOICING"
+	invoicingTab    = "INVOICING"
 )
 
 const (
@@ -42,8 +37,6 @@ const (
 	maxNameLength  = 120
 )
 
-// A party is Pending while it waits for an admin, Open once it is listed, and
-// Hidden when parked; whether it sells tickets is a separate switch.
 const (
 	StatusPending = "Pending"
 	StatusOpen    = "Open"
@@ -52,8 +45,6 @@ const (
 
 var Statuses = []string{StatusPending, StatusOpen, StatusHidden}
 
-// A ticket row is a sold ticket, or a request on the waitlist: a family
-// asking for some number of tickets when places open up.
 const (
 	TicketSold     = "Ticket"
 	TicketWaitlist = "Waitlist"
@@ -64,56 +55,36 @@ var TicketStatuses = []string{TicketSold, TicketWaitlist}
 const (
 	PartiesIntroKey = "Parties Intro"
 	TicketNoteKey   = "Ticket Note"
-	// ButtonCalendar in a celebration's Button URL makes the banner's
-	// button add the celebration to the reader's calendar instead of
-	// opening a page.
-	ButtonCalendar = "calendar"
-	// HostingOpenKey is Yes or No: whether anyone may post a party. Off,
-	// Host a Party goes away for everyone but an admin, and the server
-	// refuses a new party from anyone else. Blank means Yes.
-	HostingOpenKey = "Hosting Open"
+	ButtonCalendar  = "calendar"
+	HostingOpenKey  = "Hosting Open"
 )
 
 var settingKeys = []string{PartiesIntroKey, TicketNoteKey, HostingOpenKey}
 
-// legacyThemeKeys are rows the Appearance panel wrote while the apps could
-// be recoloured (2026-09-16); the tab may still carry them, and they are
-// passed over.
 var legacyThemeKeys = []string{"Sidebar Color", "Sidebar Color 2", "Sidebar Text Color", "Page Color", "Page Color 2", "Logo", "Sidebar Image"}
 
 var (
 	CelebrationColumns = []string{"Code", "Title", "Subtitle", "Start", "End", "Location", "Address", "Description", "Image", "Button Text", "Button URL", "Current", "Banner"}
-	CategoryColumns    = []string{"Title"}
+	CategoryColumns    = []string{"Title", store.OrderColumn}
 	PartyColumns       = []string{"Party ID", "Celebration", "Title", "Subtitle", "Summary", "Description", "Need To Know", "Note Emoji", "Note Title", "Hosts", "Category", "Audience", "Ticket Unit", "Price", "Capacity", "Minimum", "Start", "End", "Location", "Address", "Image", "Flyer Image", "Pretty ID", "Status", "Tickets", "Waitlist", "Adults", "Students", "Drop-Off", "Parent Ticket Required", "Added By", "Added"}
 	HostColumns        = []string{"Party ID", "Email"}
 	TicketColumns      = []string{"Ticket ID", "Party ID", "Email", "Name", "Purchaser", "Status", "Quantity", "Price", "Note", "Added By", "Added"}
 	SettingColumns     = []string{"Key", "Value"}
 	AdminColumns       = []string{"Email"}
 	RedirectColumns    = []string{"Type", "Old", "New", "Date"}
-	ChangeLogColumns   = []string{"Timestamp", "Actor", "Action", "Kind", "Celebration", "Party", "Title", "Email", "Details", "Real Actor"}
-	// InvoicingColumns is the accounting ledger's layout, as the bookkeeper
-	// asked for it: one row per sold ticket, Action always ADD, Invoice and
-	// Invoice To left for them to fill in. The app appends and reads it
-	// back for Admin Tools; it never edits a row.
-	InvoicingColumns = []string{"Date", "Party Title", "Event Code", "Purchaser Email", "Guest Name", "Action", "Quantity", "Cost", "Invoice", "Invoice To"}
+	InvoicingColumns   = []string{"Date", "Party Title", "Event Code", "Purchaser Email", "Guest Name", "Action", "Quantity", "Cost", "Invoice", "Invoice To"}
 )
 
 var emailForm = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
 
-// prettyForm is what a Pretty ID may look like: the tail of
-// celebrate.heliosian.com/p/..., lower case letters, digits and hyphens, so
-// it types easily and reads aloud.
 var prettyForm = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 
 const maxPrettyLength = 40
 
-// NormalizePretty is the Pretty ID as stored: trimmed and lower-cased, so
-// "Fondue" and "fondue" are the same address.
 func NormalizePretty(raw string) string {
 	return strings.ToLower(strings.TrimSpace(raw))
 }
 
-// CheckPretty refuses a Pretty ID that could not be a URL segment.
 func CheckPretty(pretty string) error {
 	if pretty == "" {
 		return nil
@@ -127,12 +98,6 @@ func CheckPretty(pretty string) error {
 	return nil
 }
 
-// A Redirect keeps an old address working after it changed: someone holding
-// celebrate.heliosian.com/p/fondue still lands on the party after it was
-// renamed. Old and New are paths as the site serves them - /p/fondue, or
-// /parties/{id}; a bare word is taken as /p/{word}. A live address always
-// wins over a redirect of the same name, and a chain of renames is followed
-// to its end.
 type Redirect struct {
 	Type string `json:"type"`
 	Old  string `json:"old"`
@@ -153,8 +118,6 @@ func redirectPath(cell string) string {
 	return strings.TrimRight(path, "/")
 }
 
-// codeForm is what a celebration's code may look like: SC-2026, the way the
-// old site named its editions - letters, digits and hyphens.
 var codeForm = regexp.MustCompile(`^[A-Za-z0-9]+(-[A-Za-z0-9]+)*$`)
 
 type ImageChecker interface {
@@ -162,8 +125,6 @@ type ImageChecker interface {
 	Prefetch(names []string) error
 }
 
-// Celebration is one year's Spring Celebration: the gala the parties raise
-// money around. The parties page leads with the current one.
 type Celebration struct {
 	Code        string `json:"code"`
 	Title       string `json:"title"`
@@ -175,65 +136,43 @@ type Celebration struct {
 	Description string `json:"description,omitempty"`
 	Image       string `json:"image,omitempty"`
 	ImageURL    string `json:"imageUrl,omitempty"`
-	// ButtonText and ButtonURL are the banner's button - "Learn More" to the
-	// celebration's own site, say. Both or neither.
-	ButtonText string `json:"buttonText,omitempty"`
-	// ButtonURL is a web address, or the word "calendar" for a Save the
-	// Date button that adds the celebration to the reader's calendar.
-	ButtonURL string `json:"buttonUrl,omitempty"`
-	Current   bool   `json:"current"`
-	// Banner marks the celebration the band across the top advertises,
-	// which need not be the one whose parties are listed - next year's gala
-	// over this season's parties, say. Blank everywhere means the current.
-	Banner bool `json:"banner"`
+	ButtonText  string `json:"buttonText,omitempty"`
+	ButtonURL   string `json:"buttonUrl,omitempty"`
+	Current     bool   `json:"current"`
+	Banner      bool   `json:"banner"`
 }
 
-// Party is one fun(d)raiser party: what it is, when and where, what a ticket
-// costs and covers, how many there are, who may come, and its switches.
 type Party struct {
-	ID          string `json:"id"`
-	Celebration string `json:"celebration"`
-	Title       string `json:"title"`
-	Subtitle    string `json:"subtitle,omitempty"`
-	Summary     string `json:"summary,omitempty"`
-	Description string `json:"description,omitempty"`
-	NeedToKnow  string `json:"needToKnow,omitempty"`
-	// NoteEmoji and NoteTitle dress the need-to-know callout: blank means
-	// the megaphone and "Good to know".
-	NoteEmoji string  `json:"noteEmoji,omitempty"`
-	NoteTitle string  `json:"noteTitle,omitempty"`
-	Hosts     string  `json:"hosts,omitempty"`
-	Category  string  `json:"category,omitempty"`
-	Audience  string  `json:"audience,omitempty"`
-	Unit      string  `json:"unit,omitempty"`
-	Price     float64 `json:"price"`
-	Capacity  int     `json:"capacity,omitempty"`
-	Minimum   int     `json:"minimum,omitempty"`
-	Start     string  `json:"start,omitempty"`
-	End       string  `json:"end,omitempty"`
-	// Location is the place in words for everyone - "The Parks' House in Los
-	// Altos"; Address is the street address, for signed-in members only, so
-	// it never travels in anything shown before sign-in.
-	Location string `json:"location,omitempty"`
-	Address  string `json:"address,omitempty"`
-	Image    string `json:"image,omitempty"`
-	ImageURL string `json:"imageUrl,omitempty"`
-	// Flyer is the party's poster, shown whole in the page's rail; Image is
-	// the wide banner across the page and the card.
-	Flyer    string `json:"flyer,omitempty"`
-	FlyerURL string `json:"flyerUrl,omitempty"`
-	// PrettyID is the party's friendly address: fondue puts it at /p/fondue.
-	PrettyID string `json:"prettyId,omitempty"`
-	Status   string `json:"status"`
-	// TicketsOpen is the host's switch: off, the party is listed but sells
-	// nothing. Waitlist says whether a full party takes a waitlist.
-	TicketsOpen bool `json:"ticketsOpen"`
-	Waitlist    bool `json:"waitlist"`
-	// Who a ticket may be for: adults (parents and staff alike), students.
-	Adults   bool `json:"adults"`
-	Students bool `json:"students"`
-	// DropOff says a child may come without a parent; ParentTicket says a
-	// parent who stays needs a ticket of their own.
+	ID           string   `json:"id"`
+	Celebration  string   `json:"celebration"`
+	Title        string   `json:"title"`
+	Subtitle     string   `json:"subtitle,omitempty"`
+	Summary      string   `json:"summary,omitempty"`
+	Description  string   `json:"description,omitempty"`
+	NeedToKnow   string   `json:"needToKnow,omitempty"`
+	NoteEmoji    string   `json:"noteEmoji,omitempty"`
+	NoteTitle    string   `json:"noteTitle,omitempty"`
+	Hosts        string   `json:"hosts,omitempty"`
+	Category     string   `json:"category,omitempty"`
+	Audience     string   `json:"audience,omitempty"`
+	Unit         string   `json:"unit,omitempty"`
+	Price        float64  `json:"price"`
+	Capacity     int      `json:"capacity,omitempty"`
+	Minimum      int      `json:"minimum,omitempty"`
+	Start        string   `json:"start,omitempty"`
+	End          string   `json:"end,omitempty"`
+	Location     string   `json:"location,omitempty"`
+	Address      string   `json:"address,omitempty"`
+	Image        string   `json:"image,omitempty"`
+	ImageURL     string   `json:"imageUrl,omitempty"`
+	Flyer        string   `json:"flyer,omitempty"`
+	FlyerURL     string   `json:"flyerUrl,omitempty"`
+	PrettyID     string   `json:"prettyId,omitempty"`
+	Status       string   `json:"status"`
+	TicketsOpen  bool     `json:"ticketsOpen"`
+	Waitlist     bool     `json:"waitlist"`
+	Adults       bool     `json:"adults"`
+	Students     bool     `json:"students"`
 	DropOff      bool     `json:"dropOff"`
 	ParentTicket bool     `json:"parentTicket"`
 	AddedBy      string   `json:"addedBy,omitempty"`
@@ -242,11 +181,6 @@ type Party struct {
 	Tickets      []Ticket `json:"-"`
 }
 
-// Ticket is one person on a party - a sold ticket - or, on the waitlist, a
-// family's request for Quantity tickets, held by whoever asked. Email names
-// someone in the directory; a guest who is not in it has a Name instead.
-// Purchaser is who is invoiced. Price is the party's price when the ticket
-// was taken, so a later change does not reprice it.
 type Ticket struct {
 	ID        string  `json:"ticketId"`
 	PartyID   string  `json:"partyId"`
@@ -267,19 +201,16 @@ type Settings struct {
 	HostingOpen  bool   `json:"hostingOpen"`
 }
 
-// Model is the sheet organized: celebrations and parties in row order, each
-// party carrying its hosts and its tickets in the order they were taken.
 type Model struct {
-	Celebrations []*Celebration
-	Categories   []string
-	Parties      []*Party
-	Settings     Settings
-	Redirects    []Redirect
-	// Invoicing is the ledger as accounting keeps it, oldest first.
-	Invoicing []InvoiceLine
-	// Skipped counts the rows a load left out and why, so a mistyped id shows
-	// up as a number in the log rather than a silently missing row.
+	Celebrations  []*Celebration
+	Categories    []string
+	Parties       []*Party
+	Settings      Settings
+	Redirects     []Redirect
+	Invoicing     []InvoiceLine
 	Skipped       map[string]int
+	admins        []string
+	categoryOrder map[string]string
 	byCode        map[string]*Celebration
 	byParty       map[string]*Party
 	byTicket      map[string]*Ticket
@@ -287,8 +218,6 @@ type Model struct {
 	pretty        map[string]*Party
 }
 
-// InvoiceLine is one row of the INVOICING ledger: what the app wrote when
-// the ticket sold, and what accounting filled in since.
 type InvoiceLine struct {
 	Date      string  `json:"date"`
 	Party     string  `json:"party"`
@@ -302,21 +231,21 @@ type InvoiceLine struct {
 	InvoiceTo string  `json:"invoiceTo"`
 }
 
-// ByPretty finds the party whose friendly address this is now.
 func (m *Model) ByPretty(pretty string) *Party {
 	return m.pretty[NormalizePretty(pretty)]
 }
 
-// PathOf is the address a party is served at: /p/{pretty} with a friendly
-// address, /parties/{id} without.
 func (m *Model) PathOf(p *Party) string {
-	if p.PrettyID != "" {
-		return "/p/" + p.PrettyID
-	}
-	return "/parties/" + p.ID
+	return partyPath(p.ID, p.PrettyID)
 }
 
-// walk follows one path to a party, or nil.
+func partyPath(id, pretty string) string {
+	if pretty != "" {
+		return "/p/" + pretty
+	}
+	return "/parties/" + id
+}
+
 func (m *Model) walk(path string) *Party {
 	segs := strings.Split(strings.Trim(path, "/"), "/")
 	if len(segs) != 2 {
@@ -331,8 +260,6 @@ func (m *Model) walk(path string) *Party {
 	return nil
 }
 
-// Resolve finds the party at a path: the one there now, or the one an old
-// address has been redirected to, through any chain of renames.
 func (m *Model) Resolve(path string) *Party {
 	at := redirectPath(path)
 	for hops := 0; hops < 20 && at != ""; hops++ {
@@ -354,8 +281,6 @@ func (m *Model) Celebration(code string) *Celebration {
 	return m.byCode[code]
 }
 
-// Current is the celebration whose parties the site lists first: the one
-// marked Current, else the latest by start.
 func (m *Model) Current() *Celebration {
 	var latest *Celebration
 	for _, c := range m.Celebrations {
@@ -369,8 +294,6 @@ func (m *Model) Current() *Celebration {
 	return latest
 }
 
-// Banner is the celebration the band across the top shows: the one marked
-// Banner, else the current one.
 func (m *Model) Banner() *Celebration {
 	for _, c := range m.Celebrations {
 		if c.Banner {
@@ -384,23 +307,18 @@ func (m *Model) Party(id string) *Party {
 	return m.byParty[id]
 }
 
-// TicketByID finds a ticket and the party it is on.
 func (m *Model) TicketByID(id string) (*Ticket, *Party) {
 	return m.byTicket[id], m.ticketParties[id]
 }
 
-// Hosted reports whether email runs the party.
 func (p *Party) Hosted(email string) bool {
 	return slices.Contains(p.HostEmails, email)
 }
 
-// VisibleTo is whether the party reaches someone: an open one reaches
-// everyone; a pending or hidden one only its hosts and admins.
 func (p *Party) VisibleTo(email string, admin bool) bool {
 	return p.Status == StatusOpen || admin || p.Hosted(email)
 }
 
-// Sold counts the tickets sold; Waiting counts the waitlist.
 func (p *Party) Sold() int {
 	n := 0
 	for _, t := range p.Tickets {
@@ -411,8 +329,6 @@ func (p *Party) Sold() int {
 	return n
 }
 
-// Raised is the sold tickets' prices added up, each at what it was taken
-// for.
 func (p *Party) Raised() float64 {
 	sum := 0.0
 	for _, t := range p.Tickets {
@@ -423,7 +339,6 @@ func (p *Party) Raised() float64 {
 	return sum
 }
 
-// Waiting counts the tickets asked for on the waitlist, over every request.
 func (p *Party) Waiting() int {
 	n := 0
 	for _, t := range p.Tickets {
@@ -434,7 +349,6 @@ func (p *Party) Waiting() int {
 	return n
 }
 
-// Remaining is how many tickets are left, or -1 for a party with no cap.
 func (p *Party) Remaining() int {
 	if p.Capacity == 0 {
 		return -1
@@ -442,19 +356,15 @@ func (p *Party) Remaining() int {
 	return max(0, p.Capacity-p.Sold())
 }
 
-// Full says every ticket is taken.
 func (p *Party) Full() bool {
 	return p.Capacity > 0 && p.Sold() >= p.Capacity
 }
 
-// StartTime is when the party begins, or the zero time for one with no date.
 func (p *Party) StartTime() time.Time {
 	t, _ := ParseWhen(p.Start)
 	return t
 }
 
-// Past says the party has happened: its end, or its start when it has no
-// end, is behind now (wall-clock at the school).
 func (p *Party) Past(now time.Time) bool {
 	cell := p.End
 	if cell == "" {
@@ -473,9 +383,6 @@ func (p *Party) Past(now time.Time) bool {
 	return !t.After(time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), now.Minute(), 0, 0, time.UTC))
 }
 
-// Availability is what the party's ticket button says: available, waitlist
-// (full, taking names), sold-out (full, no waitlist), closed (the host has
-// stopped sales, or the party is not open), or past.
 const (
 	Available = "available"
 	Waitlist  = "waitlist"
@@ -498,58 +405,6 @@ func (p *Party) Availability(now time.Time) string {
 	return SoldOut
 }
 
-type Tables struct {
-	Celebrations []map[string]string
-	Categories   []map[string]string
-	Parties      []map[string]string
-	Hosts        []map[string]string
-	Tickets      []map[string]string
-	Settings     []map[string]string
-	Admins       []map[string]string
-	Redirects    []map[string]string
-	Invoicing    []map[string]string
-}
-
-func ReadTables(source data.Source) (*Tables, error) {
-	type table struct {
-		name   string
-		want   []string
-		header []string
-		rows   []map[string]string
-	}
-	celebrations := &table{name: celebrationsTab, want: CelebrationColumns}
-	categories := &table{name: categoriesTab, want: CategoryColumns}
-	parties := &table{name: partiesTab, want: PartyColumns}
-	hosts := &table{name: hostsTab, want: HostColumns}
-	tickets := &table{name: ticketsTab, want: TicketColumns}
-	settings := &table{name: settingsTab, want: SettingColumns}
-	admins := &table{name: adminsTab, want: AdminColumns}
-	redirects := &table{name: redirectsTab, want: RedirectColumns}
-	invoicing := &table{name: invoicingTab, want: InvoicingColumns}
-	changeLog := &table{name: changeLogTab, want: ChangeLogColumns}
-	read := []*table{celebrations, categories, parties, hosts, tickets, settings, admins, redirects, invoicing}
-	names := []string{}
-	for _, t := range read {
-		names = append(names, t.name)
-	}
-	tabs, err := source.Tabs(appName, names, []string{changeLog.name})
-	if err != nil {
-		return nil, err
-	}
-	for _, t := range append(read, changeLog) {
-		t.header, t.rows = tabs[t.name].Header, tabs[t.name].Rows
-		if err := data.CheckColumns(t.name, t.header, t.want); err != nil {
-			return nil, err
-		}
-	}
-	return &Tables{
-		Celebrations: celebrations.rows, Categories: categories.rows, Parties: parties.rows,
-		Hosts: hosts.rows, Tickets: tickets.rows, Settings: settings.rows, Admins: admins.rows, Redirects: redirects.rows, Invoicing: invoicing.rows,
-	}, nil
-}
-
-// yesNo reads a Yes/No cell; a blank takes the column's default, which is what
-// a row someone typed by hand means by leaving it out.
 func yesNo(cell string, blank bool) (bool, error) {
 	switch strings.TrimSpace(cell) {
 	case "Yes":
@@ -569,7 +424,6 @@ func YesNo(b bool) string {
 	return "No"
 }
 
-// ParseWhen reads a Start or End cell: a day, or a day with a wall-clock time.
 func ParseWhen(cell string) (time.Time, error) {
 	if t, err := time.Parse(DateTimeFormat, cell); err == nil {
 		return t, nil
@@ -648,8 +502,6 @@ func checkTitle(kind, title string) error {
 	return nil
 }
 
-// checkNote keeps the callout's dress small: an emoji is a character or
-// few (a flag, a skin tone, a family), never a word; the title is a short headline.
 func checkNote(emoji, title string) error {
 	if n := utf8.RuneCountInString(strings.TrimSpace(emoji)); n > 8 {
 		return fmt.Errorf("note emoji %q is too long", emoji)
@@ -667,7 +519,6 @@ func checkText(what, text string) error {
 	return nil
 }
 
-// ParsePrice reads a dollar amount: 65, 65.00, or $65 as typed by hand.
 func ParsePrice(cell string) (float64, error) {
 	cell = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(cell), "$"))
 	if cell == "" {
@@ -680,7 +531,6 @@ func ParsePrice(cell string) (float64, error) {
 	return math.Round(n*100) / 100, nil
 }
 
-// PriceCell writes a price back the way people type it: 65, or 12.50.
 func PriceCell(n float64) string {
 	if n == math.Trunc(n) {
 		return strconv.Itoa(int(n))
@@ -693,7 +543,6 @@ func parseCount(what, cell string) (int, error) {
 	if cell == "" {
 		return 0, nil
 	}
-	// A hand-typed 70.0 from the old sheet is 70.
 	n, err := strconv.ParseFloat(cell, 64)
 	if err != nil || n <= 0 || n != math.Trunc(n) {
 		return 0, fmt.Errorf("%s %q must be a positive whole number or blank", what, cell)
@@ -715,7 +564,7 @@ func imageURL(images ImageChecker, name string) (string, error) {
 	return "/" + name, nil
 }
 
-func parseSettings(rows []map[string]string) (Settings, error) {
+func parseSettings(rows []store.Row) (Settings, error) {
 	values := map[string]string{}
 	for _, row := range rows {
 		key := row["Key"]
@@ -737,7 +586,7 @@ func parseSettings(rows []map[string]string) (Settings, error) {
 	return Settings{PartiesIntro: values[PartiesIntroKey], TicketNote: values[TicketNoteKey], HostingOpen: hosting}, nil
 }
 
-func imageNames(rows ...[]map[string]string) []string {
+func imageNames(rows ...[]store.Row) []string {
 	names := []string{}
 	for _, list := range rows {
 		for _, row := range list {
@@ -751,25 +600,37 @@ func imageNames(rows ...[]map[string]string) []string {
 	return names
 }
 
-// BuildModel validates every row and refuses the whole set on the first
-// problem, the stance every app here takes: a sheet edit that breaks a rule
-// surfaces as a refused load, never as a page quietly missing a party. A row
-// with a blank id is a deleted thing left in place and is skipped, as is a
-// ticket or host row naming a party no live row has.
-func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
-	settings, err := parseSettings(tables.Settings)
+func compareAdded(a, b Ticket) int {
+	switch {
+	case a.Added == b.Added:
+		return 0
+	case a.Added == "":
+		return 1
+	case b.Added == "":
+		return -1
+	}
+	return strings.Compare(a.Added, b.Added)
+}
+
+func BuildModel(tables store.Tables, images ImageChecker) (*Model, error) {
+	settings, err := parseSettings(tables[settingsTab])
 	if err != nil {
 		return nil, err
 	}
-	if err := images.Prefetch(imageNames(tables.Celebrations, tables.Parties)); err != nil {
+	if err := images.Prefetch(imageNames(tables[celebrationsTab], tables[partiesTab])); err != nil {
 		return nil, fmt.Errorf("prefetch images: %w", err)
 	}
 	model := &Model{
 		Celebrations: []*Celebration{}, Categories: []string{}, Parties: []*Party{}, Settings: settings,
-		Skipped: map[string]int{}, byCode: map[string]*Celebration{}, byParty: map[string]*Party{},
+		Skipped: map[string]int{}, categoryOrder: map[string]string{}, byCode: map[string]*Celebration{}, byParty: map[string]*Party{},
 		byTicket: map[string]*Ticket{}, ticketParties: map[string]*Party{}, pretty: map[string]*Party{}, Redirects: []Redirect{}, Invoicing: []InvoiceLine{},
 	}
-	for _, row := range tables.Celebrations {
+	admins := []string{}
+	for _, row := range tables[adminsTab] {
+		admins = append(admins, row["Email"])
+	}
+	model.admins = config.NormalizeEmails(admins)
+	for _, row := range tables[celebrationsTab] {
 		code := strings.TrimSpace(row["Code"])
 		if code == "" {
 			model.Skipped["celebrations without a code"]++
@@ -824,6 +685,7 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 		model.Celebrations = append(model.Celebrations, c)
 		model.byCode[code] = c
 	}
+	slices.SortStableFunc(model.Celebrations, func(a, b *Celebration) int { return strings.Compare(b.Start, a.Start) })
 	current, banner := 0, 0
 	for _, c := range model.Celebrations {
 		if c.Current {
@@ -840,7 +702,7 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 		return nil, fmt.Errorf("%d celebrations are marked Banner; only one may be", banner)
 	}
 
-	for _, row := range tables.Categories {
+	for _, row := range tables[categoriesTab] {
 		title := strings.TrimSpace(row["Title"])
 		if title == "" {
 			model.Skipped["categories without a title"]++
@@ -849,10 +711,18 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 		if slices.Contains(model.Categories, title) {
 			return nil, fmt.Errorf("category %q is listed twice", title)
 		}
+		order := strings.TrimSpace(row[store.OrderColumn])
+		if err := store.CheckKey(order); err != nil {
+			return nil, fmt.Errorf("category %q: %w", title, err)
+		}
 		model.Categories = append(model.Categories, title)
+		model.categoryOrder[title] = order
 	}
+	slices.SortStableFunc(model.Categories, func(a, b string) int {
+		return store.CompareKeys(model.categoryOrder[a], model.categoryOrder[b])
+	})
 
-	for _, row := range tables.Parties {
+	for _, row := range tables[partiesTab] {
 		id := strings.TrimSpace(row["Party ID"])
 		if id == "" {
 			model.Skipped["parties without an id"]++
@@ -875,7 +745,7 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 		model.byParty[id] = p
 	}
 
-	for _, row := range tables.Redirects {
+	for _, row := range tables[redirectsTab] {
 		old, to := redirectPath(row["Old"]), redirectPath(row["New"])
 		if old == "" || to == "" {
 			model.Skipped["redirects without both ends"]++
@@ -884,10 +754,7 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 		model.Redirects = append(model.Redirects, Redirect{Type: strings.TrimSpace(row["Type"]), Old: old, New: to, Date: row["Date"]})
 	}
 
-	// The ledger is read as accounting typed it: a row with no party or
-	// purchaser is not one of ours (the old sheet kept auction items there
-	// too) and is skipped; an unreadable cost or quantity reads as blank.
-	for _, row := range tables.Invoicing {
+	for _, row := range tables[invoicingTab] {
 		title, purchaser := strings.TrimSpace(row["Party Title"]), cleanEmail(row["Purchaser Email"])
 		if title == "" || purchaser == "" {
 			model.Skipped["invoicing rows naming no party or purchaser"]++
@@ -902,7 +769,7 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 		})
 	}
 
-	for _, row := range tables.Hosts {
+	for _, row := range tables[hostsTab] {
 		p := model.Party(strings.TrimSpace(row["Party ID"]))
 		if p == nil {
 			model.Skipped["hosts of no party"]++
@@ -917,7 +784,7 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 		}
 	}
 
-	for _, row := range tables.Tickets {
+	for _, row := range tables[ticketsTab] {
 		id := strings.TrimSpace(row["Ticket ID"])
 		if id == "" {
 			model.Skipped["tickets without an id"]++
@@ -936,12 +803,11 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 			return nil, fmt.Errorf("ticket id %s is used twice", id)
 		}
 		p.Tickets = append(p.Tickets, *t)
-		model.byTicket[id] = &p.Tickets[len(p.Tickets)-1]
+		model.byTicket[id] = t
 		model.ticketParties[id] = p
 	}
-	// Tickets were appended one at a time, which can move the slice; index
-	// the final addresses.
 	for _, p := range model.Parties {
+		slices.SortStableFunc(p.Tickets, compareAdded)
 		for i := range p.Tickets {
 			model.byTicket[p.Tickets[i].ID] = &p.Tickets[i]
 		}
@@ -949,7 +815,7 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 	return model, nil
 }
 
-func parseParty(row map[string]string, model *Model, images ImageChecker) (*Party, error) {
+func parseParty(row store.Row, model *Model, images ImageChecker) (*Party, error) {
 	celebration := strings.TrimSpace(row["Celebration"])
 	if model.Celebration(celebration) == nil {
 		return nil, fmt.Errorf("names celebration %q, which is not on the Celebrations tab", celebration)
@@ -1046,7 +912,7 @@ func parseParty(row map[string]string, model *Model, images ImageChecker) (*Part
 	}, nil
 }
 
-func parseTicket(row map[string]string, id string) (*Ticket, error) {
+func parseTicket(row store.Row, id string) (*Ticket, error) {
 	email := strings.ToLower(strings.TrimSpace(row["Email"]))
 	name := strings.TrimSpace(row["Name"])
 	if email == "" && name == "" {
@@ -1075,8 +941,6 @@ func parseTicket(row map[string]string, id string) (*Ticket, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Quantity is a waitlist request's; blank is one, and a sold ticket is
-	// always one.
 	quantity, err := parseCount("quantity", row["Quantity"])
 	if err != nil {
 		return nil, err
@@ -1102,8 +966,6 @@ func parseTicket(row map[string]string, id string) (*Ticket, error) {
 	}, nil
 }
 
-// SortedParties is the parties of one celebration in date order, undated ones
-// last, each group by title.
 func (m *Model) SortedParties(celebration string) []*Party {
 	out := []*Party{}
 	for _, p := range m.Parties {
@@ -1122,129 +984,4 @@ func (m *Model) SortedParties(celebration string) []*Party {
 		return a.Title < b.Title
 	})
 	return out
-}
-
-func cloneRows(rows []map[string]string) []map[string]string {
-	out := make([]map[string]string, len(rows))
-	for i, row := range rows {
-		out[i] = maps.Clone(row)
-	}
-	return out
-}
-
-func applyCells(row, cells map[string]string) {
-	for column, value := range cells {
-		if value == "" {
-			delete(row, column)
-			continue
-		}
-		row[column] = value
-	}
-}
-
-func rowMatches(row, match map[string]string) bool {
-	for column, value := range match {
-		if !strings.EqualFold(strings.TrimSpace(row[column]), value) {
-			return false
-		}
-	}
-	return true
-}
-
-func (t *Tables) tab(name string) []map[string]string {
-	switch name {
-	case celebrationsTab:
-		return t.Celebrations
-	case categoriesTab:
-		return t.Categories
-	case partiesTab:
-		return t.Parties
-	case hostsTab:
-		return t.Hosts
-	case ticketsTab:
-		return t.Tickets
-	case settingsTab:
-		return t.Settings
-	case redirectsTab:
-		return t.Redirects
-	case invoicingTab:
-		return t.Invoicing
-	}
-	return t.Admins
-}
-
-func (t *Tables) setTab(name string, rows []map[string]string) {
-	switch name {
-	case celebrationsTab:
-		t.Celebrations = rows
-	case categoriesTab:
-		t.Categories = rows
-	case partiesTab:
-		t.Parties = rows
-	case hostsTab:
-		t.Hosts = rows
-	case ticketsTab:
-		t.Tickets = rows
-	case settingsTab:
-		t.Settings = rows
-	case redirectsTab:
-		t.Redirects = rows
-	case invoicingTab:
-		t.Invoicing = rows
-	default:
-		t.Admins = rows
-	}
-}
-
-// with mirrors what data.Writer.Set is about to do to one tab, so the model
-// can be rebuilt and checked before anything is persisted. A nil match appends.
-func (t *Tables) with(tab string, match, cells map[string]string) *Tables {
-	out := *t
-	rows := cloneRows(t.tab(tab))
-	found := false
-	for _, row := range rows {
-		if match != nil && rowMatches(row, match) {
-			applyCells(row, cells)
-			found = true
-		}
-	}
-	if !found {
-		row := map[string]string{}
-		applyCells(row, match)
-		applyCells(row, cells)
-		rows = append(rows, row)
-	}
-	out.setTab(tab, rows)
-	return &out
-}
-
-func (t *Tables) without(tab string, match map[string]string) *Tables {
-	out := *t
-	rows := []map[string]string{}
-	for _, row := range t.tab(tab) {
-		if !rowMatches(row, match) {
-			rows = append(rows, row)
-		}
-	}
-	out.setTab(tab, rows)
-	return &out
-}
-
-func (t *Tables) count(tab string, match map[string]string) int {
-	n := 0
-	for _, row := range t.tab(tab) {
-		if rowMatches(row, match) {
-			n++
-		}
-	}
-	return n
-}
-
-func (t *Tables) withAdmins(emails []string) *Tables {
-	out := *t
-	out.Admins = make([]map[string]string, 0, len(emails))
-	for _, email := range emails {
-		out.Admins = append(out.Admins, map[string]string{"Email": email})
-	}
-	return &out
 }

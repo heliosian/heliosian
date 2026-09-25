@@ -233,14 +233,11 @@ func main() {
 	}
 	fmt.Printf("events admins: %d\n", len(eventsCache.Admins(nil)))
 
-	celebrateTables, err := celebrate.ReadTables(source)
+	celebrateCache, err := celebrate.NewCache(source, nil, celebrateImages{}, func(string) bool { return false }, who.NewQueue())
 	if err != nil {
-		log.Fatalf("[ERROR] read celebrate tables: %v", err)
+		log.Fatalf("[ERROR] load celebrate model: %v", err)
 	}
-	site, err := celebrate.BuildModel(celebrateTables, celebrateImages{})
-	if err != nil {
-		log.Fatalf("[ERROR] build celebrate model: %v", err)
-	}
+	site := celebrateCache.Model()
 	fmt.Println("celebrate:")
 	for _, c := range site.Celebrations {
 		sold, waiting, hosts := 0, 0, 0
@@ -260,7 +257,7 @@ func main() {
 	for reason, n := range site.Skipped {
 		fmt.Printf("  skipped %d: %s\n", n, reason)
 	}
-	fmt.Printf("celebrate admins: %d\n", len(celebrateTables.Admins))
+	fmt.Printf("celebrate admins: %d\n", len(celebrateCache.Admins(nil)))
 
 	configTables, err := config.ReadTables(source)
 	if err != nil {

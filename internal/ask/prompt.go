@@ -19,9 +19,6 @@ import (
 //go:embed prompt.md
 var school string
 
-// systemBlocks is the prompt in two cached pieces: the school, which
-// changes only when the sheets do, then the person and the documents
-// the conversation knows.
 func systemBlocks(v *viewer, recent []*artifacts.Document, l *links) []anthropic.BetaTextBlockParam {
 	return []anthropic.BetaTextBlockParam{
 		{Text: l.shorten(school + "\n\n" + lingo(v)), CacheControl: anthropic.NewBetaCacheControlEphemeralParam()},
@@ -87,20 +84,16 @@ func (v *viewer) exampleLinks() []string {
 			break
 		}
 	}
-	if v.team != nil {
-		for _, a := range v.team.Activities {
-			if a.Year == team.SchoolYear(v.now) && v.team.VisibleTo(a, v.email, false) {
-				out = append(out, teamBase+v.team.PathOf(a))
-				break
-			}
+	for _, a := range v.team.Activities {
+		if a.Year == team.SchoolYear(v.now) && v.team.VisibleTo(a, v.email, false) {
+			out = append(out, teamBase+v.team.PathOf(a))
+			break
 		}
 	}
-	if v.celebrate != nil {
-		for _, p := range v.celebrate.SortedParties("") {
-			if p.VisibleTo(v.email, false) && !p.Past(v.now) {
-				out = append(out, celebrateBase+v.celebrate.PathOf(p))
-				break
-			}
+	for _, p := range v.celebrate.SortedParties("") {
+		if p.VisibleTo(v.email, false) && !p.Past(v.now) {
+			out = append(out, celebrateBase+v.celebrate.PathOf(p))
+			break
 		}
 	}
 	sources := v.sources.LoopSources()
@@ -144,10 +137,6 @@ func documentLines(v *viewer, docs []*artifacts.Document) string {
 	return b.String()
 }
 
-// lingo is what the models say about the school right now: the grades and
-// their bands, the bands with their classrooms, the classrooms with their
-// links, teachers and crews, the
-// departments, the calendar's categories and day types, and the school years.
 func lingo(v *viewer) string {
 	b := &strings.Builder{}
 	b.WriteString("## The school as the data has it\n\nGrades and their bands:\n")
@@ -204,22 +193,17 @@ func lingo(v *viewer) string {
 	for _, y := range v.calendar.Years {
 		fmt.Fprintf(b, "- %s: first day %s, last day %s\n", y.Label, y.FirstDay, y.LastDay)
 	}
-	if v.celebrate != nil {
-		if c := v.celebrate.Current(); c != nil {
-			fmt.Fprintf(b, "\nThe current celebration on Helios Celebrate is %s", c.Title)
-			if c.Start != "" {
-				fmt.Fprintf(b, " on %s", c.Start)
-			}
-			b.WriteString(".\n")
+	if c := v.celebrate.Current(); c != nil {
+		fmt.Fprintf(b, "\nThe current celebration on Helios Celebrate is %s", c.Title)
+		if c.Start != "" {
+			fmt.Fprintf(b, " on %s", c.Start)
 		}
+		b.WriteString(".\n")
 	}
 	fmt.Fprintf(b, "\nHelios Loop's addresses end in @%s.\n", loop.Domain)
 	return b.String()
 }
 
-// viewerBlock is who is asking: their record, their families with each
-// student's classroom and teachers, the roles the other apps give them,
-// and the day.
 func viewerBlock(v *viewer) string {
 	b := &strings.Builder{}
 	fmt.Fprintf(b, "## Who is asking\n\nToday is %s. The school year is %s.\n\n", v.now.Format("Monday, January 2, 2006"), calendar.SchoolYear(v.now))
@@ -307,8 +291,6 @@ func roleWords(p *who.Person) string {
 	return strings.Join(roles, " and ")
 }
 
-// placeWords is a student's place: grade, classroom, crew, and the
-// classroom's teachers.
 func placeWords(v *viewer, p *who.Person) string {
 	parts := []string{}
 	if p.Grade != "" {
@@ -343,8 +325,6 @@ func listKind(kind string) string {
 	return kind
 }
 
-// starters are the questions the empty page offers, drawn from the
-// person's own circumstances.
 func (v *viewer) starters() []string {
 	out := []string{"What's happening at school this week?", "When is the next day off?"}
 	if v.me != nil {

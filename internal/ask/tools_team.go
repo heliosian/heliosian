@@ -10,10 +10,6 @@ import (
 	"heliosian/internal/team"
 )
 
-// activityCard is one thing on HCA-Team as the tools answer it: the event,
-// committee, role or shift, when it is (the event's day when it has none
-// of its own), what it needs, who runs it and who signed up as the portal
-// would show them to this viewer, and where the household stands.
 type activityCard struct {
 	ID          string   `json:"id"`
 	Title       string   `json:"title"`
@@ -77,10 +73,6 @@ func (v *viewer) activityCard(a *team.Activity) activityCard {
 	return c
 }
 
-// dates is when a thing happens: its own start and end, or the nearest
-// thing above it that has any - a role or a station under an event takes
-// the event's day - with the title the dates came from when they are not
-// its own.
 func (v *viewer) dates(a *team.Activity) (start, end, from string) {
 	for node := a; node != nil; node = v.team.Activity(node.Parent) {
 		if node.Start != "" || node.End != "" {
@@ -96,8 +88,6 @@ func (v *viewer) dates(a *team.Activity) (start, end, from string) {
 	return "", "", ""
 }
 
-// over says a thing has happened: marked done, or its last day is past,
-// its day being the event's for a thing with none of its own.
 func (v *viewer) over(a *team.Activity) bool {
 	if a.Status == team.StatusDone {
 		return true
@@ -129,9 +119,6 @@ var volunteerOpportunities = tool{
 		"limit":        integer("How many things to return, 40 unless said, 80 at most."),
 	},
 	run: func(v *viewer, input json.RawMessage) (any, error) {
-		if v.team == nil {
-			return nil, fmt.Errorf("HCA-Team is not loaded right now")
-		}
 		in, err := decodeInput[struct {
 			Query, Year string
 			IncludePast bool `json:"include_past"`
@@ -180,9 +167,6 @@ var getActivity = tool{
 		"path": str("Its HCA-Team link as another tool gave it, or its path on the site."),
 	},
 	run: func(v *viewer, input json.RawMessage) (any, error) {
-		if v.team == nil {
-			return nil, fmt.Errorf("HCA-Team is not loaded right now")
-		}
 		in, err := decodeInput[struct{ ID, Path string }](input)
 		if err != nil {
 			return nil, err
