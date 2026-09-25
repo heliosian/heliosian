@@ -18,9 +18,6 @@ import (
 	"heliosian/internal/team"
 )
 
-// spreadsheets pairs each layout with the variable naming the spreadsheet it belongs
-// to. Preferences is a Google Form's own response sheet and Invites is authored by
-// hand, so neither has a layout to apply.
 var spreadsheets = []struct{ env, layout string }{
 	{"DIRECTORY_SHEET", "Directory"},
 	{"APPS_SHEET", "Apps"},
@@ -40,8 +37,6 @@ type tab struct {
 	header []string
 }
 
-// seeds are the rows a fresh tab starts with, where the app expects a row to
-// exist: the Apps sheet's events section (see docs/home/data.md).
 var seeds = map[string]map[string]map[string]string{
 	"Apps": {"Categories": {"Title": home.EventsTitle, "Emoji": home.EventsEmoji, "Style": home.StyleEvents}},
 }
@@ -54,18 +49,12 @@ var layouts = map[string][]tab{
 		{"Reports", feedback.ReportColumns},
 	},
 	"Directory": {
-		// person_photo and person_department are spliced in by vcexport rather than
-		// exported by Veracross, so the tab needs the columns before an import can
-		// mirror it. Nothing reads the department; it is carried to be compared with
-		// the one the school files someone under, which lives in Overrides.
 		{"Veracross Staff Import", []string{
 			"entry_sort_name", "person_full_name", "person_job_title", "person_room",
 			"person_classifications", "person_biography",
 			"person_email", "person_email_2", "person_phone_business", "person_photo",
 			"person_department",
 		}},
-		// student_photo is spliced in by vcexport rather than exported by Veracross, so the
-		// tab needs the column before an import can mirror it.
 		{"Veracross Student Import", []string{
 			"entry_sort_name", "student_full_name", "student_classifications", "student_email",
 			"student_phone_mobile",
@@ -126,10 +115,10 @@ var layouts = map[string][]tab{
 	"Apps": {
 		{"Categories", home.CategoryColumns},
 		{"Links", home.LinkColumns},
-		{"Admins", []string{"Email"}},
+		{"Admins", home.AdminColumns},
 		{"Visibility", home.VisibilityColumns},
 		{"Audience", home.AudienceColumns},
-		{"Change Log", home.ChangeLogColumns},
+		{store.ChangeLogTab, store.ChangeLogColumns},
 	},
 	"Events": {
 		{"Categories", team.CategoryColumns},
@@ -155,8 +144,6 @@ var layouts = map[string][]tab{
 		{"Reminders", birthday.ReminderColumns},
 		{store.ChangeLogTab, store.ChangeLogColumns},
 	},
-	// The association's shared list: Birthday's weekly export writes the
-	// Newsletter tab; its Birthdays tab is the association's own.
 	"Staff Birthday List (Shared)": {
 		{"Newsletter", birthday.SharedNewsletterColumns},
 	},

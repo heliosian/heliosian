@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"maps"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -32,13 +33,16 @@ const (
 	set
 	update
 	remove
+	reorder
 )
 
 type Op struct {
-	kind  kind
-	tab   string
-	match Row
-	cells Row
+	kind   kind
+	tab    string
+	match  Row
+	cells  Row
+	column string
+	keys   []string
 }
 
 func Insert(tab string, cells Row) Op {
@@ -55,6 +59,10 @@ func Update(tab string, match, cells Row) Op {
 
 func Delete(tab string, match Row) Op {
 	return Op{kind: remove, tab: tab, match: match}
+}
+
+func Reorder(tab, column string, keys []string) Op {
+	return Op{kind: reorder, tab: tab, column: column, keys: keys}
 }
 
 type Tab struct {
@@ -190,6 +198,7 @@ func (s *Store[M]) refresh() error {
 
 type change struct {
 	before, after Row
+	from          int
 }
 
 func (s *Store[M]) Commit(ctx context.Context, actor string, ops ...Op) error {
@@ -209,15 +218,21 @@ func (s *Store[M]) Commit(ctx context.Context, actor string, ops ...Op) error {
 		if !ok {
 			return fmt.Errorf("%s has no tab %s", s.spec.App, op.tab)
 		}
-		rows, changes := apply(tables[op.tab], op)
+		rows, changes, err := apply(tables[op.tab], op)
+		if err != nil {
+			return err
+		}
 		if len(changes) == 0 {
 			continue
 		}
 		tables[op.tab] = rows
+		if op.kind == reorder {
+			op.keys = values(rows, op.column)
+		}
 		writes = append(writes, op)
 		for _, c := range changes {
 			log = append(log, entries(stamp, actor, real, tab, c)...)
-			if tab.Cascade != nil {
+			if tab.Cascade != nil && op.kind != reorder {
 				pending = append(pending, tab.Cascade(c.before, c.after)...)
 			}
 		}
@@ -255,6 +270,8 @@ func (s *Store[M]) write(writes []Op, log []Row) {
 			err = s.writer.Set(s.spec.App, op.tab, op.match, op.cells)
 		case remove:
 			err = s.writer.Delete(s.spec.App, op.tab, op.match)
+		case reorder:
+			err = s.writer.Reorder(s.spec.App, op.tab, op.column, op.keys)
 		}
 		if err != nil {
 			slog.Error("[ERROR] write", "app", s.spec.App, "tab", op.tab, "error", err)
@@ -271,15 +288,15 @@ func (s *Store[M]) write(writes []Op, log []Row) {
 	s.written()
 }
 
-func apply(rows []Row, op Op) ([]Row, []change) {
+func apply(rows []Row, op Op) ([]Row, []change, error) {
 	switch op.kind {
 	case insert:
 		row := Row{}
 		fill(row, op.cells)
 		if len(row) == 0 {
-			return rows, nil
+			return rows, nil, nil
 		}
-		return append(slices.Clone(rows), row), []change{{after: row}}
+		return append(slices.Clone(rows), row), []change{{after: row}}, nil
 	case remove:
 		kept := []Row{}
 		changes := []change{}
@@ -290,7 +307,9 @@ func apply(rows []Row, op Op) ([]Row, []change) {
 			}
 			kept = append(kept, row)
 		}
-		return kept, changes
+		return kept, changes, nil
+	case reorder:
+		return order(rows, op)
 	}
 	next := slices.Clone(rows)
 	changes := []change{}
@@ -315,7 +334,42 @@ func apply(rows []Row, op Op) ([]Row, []change) {
 		next = append(next, row)
 		changes = append(changes, change{after: row})
 	}
-	return next, changes
+	return next, changes, nil
+}
+
+func order(rows []Row, op Op) ([]Row, []change, error) {
+	if len(op.keys) != len(rows) {
+		return nil, nil, fmt.Errorf("%s has %d rows but %d were ordered", op.tab, len(rows), len(op.keys))
+	}
+	used := make([]bool, len(rows))
+	next := make([]Row, 0, len(rows))
+	changes := []change{}
+	for _, key := range op.keys {
+		at := -1
+		for i, row := range rows {
+			if !used[i] && matches(row, Row{op.column: key}) {
+				at = i
+				break
+			}
+		}
+		if at < 0 {
+			return nil, nil, fmt.Errorf("%s has no row with %s %q left to place", op.tab, op.column, key)
+		}
+		used[at] = true
+		if at != len(next) {
+			changes = append(changes, change{before: rows[at], after: rows[at], from: at + 1})
+		}
+		next = append(next, rows[at])
+	}
+	return next, changes, nil
+}
+
+func values(rows []Row, column string) []string {
+	out := make([]string, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, row[column])
+	}
+	return out
 }
 
 func fill(row, cells Row) {
@@ -350,6 +404,12 @@ func entries(stamp, actor, real string, tab Tab, c change) []Row {
 	key := make([]string, 0, len(tab.Key))
 	for _, column := range tab.Key {
 		key = append(key, column+"="+named[column])
+	}
+	if c.from > 0 {
+		return []Row{{
+			"Timestamp": stamp, "Actor": actor, "Real Actor": real, "Action": "reorder",
+			"Tab": tab.Name, "Key": strings.Join(key, "; "), "Previous": strconv.Itoa(c.from),
+		}}
 	}
 	columns := slices.Sorted(maps.Keys(c.before))
 	for column := range c.after {

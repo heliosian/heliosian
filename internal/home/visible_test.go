@@ -1,29 +1,37 @@
 package home
 
 import (
+	"context"
 	"strings"
 	"testing"
 
 	"heliosian/internal/data"
+	"heliosian/internal/store"
 )
 
-func sampleCache(t *testing.T) *Cache {
+type syncQueue struct{}
+
+func (syncQueue) Add(f func()) { f() }
+
+func sampleCache(t *testing.T) (*Cache, *data.Dir) {
 	t.Helper()
-	tables, err := ReadTables(&data.Dir{Root: "../../sampledata"})
+	dir := &data.Dir{Root: "../../sampledata"}
+	c, err := NewCache(dir, dir, noImages{}, func() []string { return nil }, syncQueue{})
 	if err != nil {
-		t.Fatalf("read sample apps sheet: %v", err)
+		t.Fatalf("load sample apps sheet: %v", err)
 	}
-	model, err := BuildModel(tables, noImages{})
-	if err != nil {
-		t.Fatalf("build sample model: %v", err)
+	return c, dir
+}
+
+func setVisibility(t *testing.T, c *Cache, app string, v Visibility) {
+	t.Helper()
+	if err := c.Commit(context.Background(), "test", store.Set(visibilityTab, store.Row{"App": app}, v.cells())); err != nil {
+		t.Fatalf("set %s: %v", app, err)
 	}
-	c := &Cache{superAdmins: func() []string { return nil }}
-	c.set(tables, model)
-	return c
 }
 
 func TestVisibilityNarrowsAnApp(t *testing.T) {
-	c := sampleCache(t)
+	c, _ := sampleCache(t)
 	if got := c.HiddenApps("jordan.whitfield@heliosschool.org"); len(got) != 1 || got[0] != "birthday" {
 		t.Errorf("hidden from the sample parent = %v, want just the app with no row", got)
 	}
@@ -51,12 +59,12 @@ func TestVisibilityNarrowsAnApp(t *testing.T) {
 	if list[0].Tagline != "A visual directory" || list[1].Tagline != "HCA Volunteer Portal" {
 		t.Errorf("taglines = %q %q, want the registry's for who and the sheet's for team", list[0].Tagline, list[1].Tagline)
 	}
-	c.set(c.Tables(), mustBuild(t, c.Tables().withVisibility("who", Visibility{Mode: VisibleToEveryone, Tagline: "Find anyone"})))
+	setVisibility(t, c, "who", Visibility{Mode: VisibleToEveryone, Tagline: "Find anyone"})
 	if got := c.AppList()[0].Tagline; got != "Find anyone" {
 		t.Errorf("who's tagline after an edit = %q", got)
 	}
 
-	c.set(c.Tables(), mustBuild(t, c.Tables().withVisibility("celebrate", Visibility{Mode: VisibleToEveryone, Emails: []string{"mia.torres@heliosschool.org"}})))
+	setVisibility(t, c, "celebrate", Visibility{Mode: VisibleToEveryone, Emails: []string{"mia.torres@heliosschool.org"}})
 	if got := c.HiddenApps("sam.whitfield@heliosschool.org"); len(got) != 1 || got[0] != "birthday" {
 		t.Errorf("hidden from sam with the celebration everyone's = %v, want just birthday", got)
 	}
@@ -64,24 +72,36 @@ func TestVisibilityNarrowsAnApp(t *testing.T) {
 		t.Errorf("the celebration's list = %v, want kept while everyone's", got)
 	}
 
-	c.set(c.Tables(), mustBuild(t, c.Tables().withVisibility("who", Visibility{Mode: VisibleToList})))
+	setVisibility(t, c, "who", Visibility{Mode: VisibleToList})
 	if got := c.HiddenApps("jordan.whitfield@heliosschool.org"); len(got) != 2 || got[0] != "who" {
 		t.Errorf("hidden from the sample parent with who's list empty = %v, want [who birthday]", got)
 	}
 }
 
-func mustBuild(t *testing.T, tables *Tables) *Model {
-	t.Helper()
-	model, err := BuildModel(tables, noImages{})
-	if err != nil {
-		t.Fatalf("build: %v", err)
+func TestGrantAddsToAnAppsList(t *testing.T) {
+	c, dir := sampleCache(t)
+	const email = "sam.whitfield@heliosschool.org"
+	if err := Grant(context.Background(), c, "celebrate", " Sam.Whitfield@heliosschool.org "); err != nil {
+		t.Fatal(err)
 	}
-	return model
+	if got := c.HiddenApps(email); len(got) != 1 || got[0] != "birthday" {
+		t.Errorf("hidden from sam after the grant = %v, want just birthday", got)
+	}
+	if err := Grant(context.Background(), c, "celebrate", email); err != nil {
+		t.Fatal(err)
+	}
+	_, log, err := dir.Table(appName, store.ChangeLogTab)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(log) != 1 || log[0]["Actor"] != email || log[0]["Tab"] != visibilityTab || log[0]["Column"] != "Emails" || log[0]["Previous"] != "jordan.whitfield@heliosschool.org, mia.torres@heliosschool.org" {
+		t.Errorf("change log = %v, want one row holding the list before", log)
+	}
 }
 
 func TestVisibilityRowForAnUnknownAppIsSkipped(t *testing.T) {
-	rows := []map[string]string{{"App": "bogus", "Visibility": "nonsense"}, {"App": "who", "Visibility": "everyone"}}
-	m, err := BuildModel(&Tables{Visibility: rows}, noImages{})
+	rows := []store.Row{{"App": "bogus", "Visibility": "nonsense"}, {"App": "who", "Visibility": "everyone"}}
+	m, err := BuildModel(store.Tables{visibilityTab: rows}, noImages{})
 	if err != nil {
 		t.Fatalf("a row for an app this build does not know refused the load: %v", err)
 	}
@@ -95,14 +115,14 @@ func TestVisibilityRowForAnUnknownAppIsSkipped(t *testing.T) {
 
 func TestVisibilityRowsAreChecked(t *testing.T) {
 	for _, c := range []struct {
-		rows []map[string]string
+		rows []store.Row
 		want string
 	}{
-		{[]map[string]string{{"App": "who", "Visibility": "List"}}, "is not everyone or list"},
-		{[]map[string]string{{"App": "who"}}, "is not everyone or list"},
-		{[]map[string]string{{"App": "who", "Visibility": "list"}, {"App": "who", "Visibility": "everyone"}}, "two rows"},
+		{[]store.Row{{"App": "who", "Visibility": "List"}}, "is not everyone or list"},
+		{[]store.Row{{"App": "who"}}, "is not everyone or list"},
+		{[]store.Row{{"App": "who", "Visibility": "list"}, {"App": "who", "Visibility": "everyone"}}, "two rows"},
 	} {
-		if _, err := BuildModel(&Tables{Visibility: c.rows}, noImages{}); err == nil || !strings.Contains(err.Error(), c.want) {
+		if _, err := BuildModel(store.Tables{visibilityTab: c.rows}, noImages{}); err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%v built: %v, want %q", c.rows, err, c.want)
 		}
 	}
@@ -113,22 +133,13 @@ func TestVisibilityEmailsCell(t *testing.T) {
 	if strings.Join(got, " ") != "a@x.org b@x.org c@x.org d@x.org" {
 		t.Errorf("split = %v", got)
 	}
-	tables := &Tables{Visibility: []map[string]string{{"App": "who", "Visibility": "list", "Emails": "a@x.org"}}}
-	next := tables.withVisibility("celebrate", Visibility{Mode: VisibleToList, Emails: []string{"b@x.org", "c@x.org"}})
-	if len(next.Visibility) != 2 || next.Visibility[1]["Emails"] != "b@x.org, c@x.org" || next.Visibility[0]["Emails"] != "a@x.org" {
-		t.Errorf("rows after adding celebrate = %v", next.Visibility)
-	}
-	next = next.withVisibility("who", Visibility{Mode: VisibleToEveryone, Emails: []string{"a@x.org"}})
-	if len(next.Visibility) != 2 || next.Visibility[0]["Visibility"] != "everyone" {
-		t.Errorf("rows after flipping who = %v", next.Visibility)
-	}
-	if len(tables.Visibility) != 1 || tables.Visibility[0]["Visibility"] != "list" {
-		t.Errorf("the tables mirrored into changed: %v", tables.Visibility)
+	if cells := (Visibility{Mode: VisibleToList, Emails: []string{"b@x.org", "c@x.org"}}).cells(); cells["Emails"] != "b@x.org, c@x.org" {
+		t.Errorf("cells = %v", cells)
 	}
 }
 
 func TestAppsSection(t *testing.T) {
-	tables := &Tables{Categories: []map[string]string{category("Helios Community Apps", "📌", StyleApps), category("School", "", StyleTiles)}}
+	tables := store.Tables{categoriesTab: {category("Helios Community Apps", "📌", StyleApps), category("School", "", StyleTiles)}}
 	m, err := BuildModel(tables, noImages{})
 	if err != nil {
 		t.Fatalf("build with an apps row: %v", err)
@@ -136,12 +147,12 @@ func TestAppsSection(t *testing.T) {
 	if len(m.Categories) != 3 || m.Categories[1].Style != StyleApps {
 		t.Errorf("categories = %+v, want the synthesized events section, then the apps section", m.Categories)
 	}
-	tables.Links = []map[string]string{{"Title": "Directory", "URL": "https://who.heliosian.com/", "Category": "Helios Community Apps", "Visible": "Yes"}}
+	tables[linksTab] = []store.Row{{"Title": "Directory", "URL": "https://who.heliosian.com/", "Category": "Helios Community Apps", "Visible": "Yes"}}
 	if _, err := BuildModel(tables, noImages{}); err == nil || !strings.Contains(err.Error(), "community apps") {
 		t.Errorf("a link under the apps section built: %v", err)
 	}
-	tables.Links = nil
-	tables.Categories = append(tables.Categories, category("More Apps", "", StyleApps))
+	tables[linksTab] = nil
+	tables[categoriesTab] = append(tables[categoriesTab], category("More Apps", "", StyleApps))
 	if _, err := BuildModel(tables, noImages{}); err == nil || !strings.Contains(err.Error(), "only one") {
 		t.Errorf("two apps rows built: %v", err)
 	}

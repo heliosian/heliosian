@@ -9,11 +9,8 @@ import (
 	"testing"
 )
 
-// A link to the portal previews the apps everyone has - never one narrowed
-// to a list or one with no row yet - each at its address on the link's own
-// tier, and the card draws them.
 func TestPortalPreview(t *testing.T) {
-	c := sampleCache(t)
+	c, _ := sampleCache(t)
 	t.Chdir("../..")
 	head := PreviewHead(c)(httptest.NewRequest("GET", "https://home.heliosiandev.com/", nil))
 	for _, want := range []string{`og:title" content="Tools and resources for the Helios Community"`, `og:url" content="https://home.heliosiandev.com/"`,

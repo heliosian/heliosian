@@ -28,7 +28,7 @@ Every request goes through one retry of a quota refusal (`call` in `internal/dat
 
 `internal/store` is the store. An app declares its spreadsheet in a `store.Spec`: each tab's name, the columns it must have, the columns that key a row (for the Change Log), and its cascade hook if it has one; the function that builds the model; and what to log when a model loads. `store.New` reads the spreadsheet, checks every tab's columns and the Change Log's, and builds the model, or refuses to start.
 
-A handler states a change as operations on rows - `store.Insert`, `store.Set` (every matching row, or a new one when none matches), `store.Update` (every matching row, and nothing when none does), `store.Delete` - and hands them to `Commit(ctx, actor, ops...)`. A commit has two halves that never wait on each other. Under the store's own lock, it:
+A handler states a change as operations on rows - `store.Insert`, `store.Set` (every matching row, or a new one when none matches), `store.Update` (every matching row, and nothing when none does), `store.Delete`, `store.Reorder` (the tab's rows into the order of their keys, every row named once) - and hands them to `Commit(ctx, actor, ops...)`. A commit has two halves that never wait on each other. Under the store's own lock, it:
 
 1. matches each operation against the tables as they stand, which gives the rows' previous values, and drops any that change nothing;
 2. runs the cascade hook of every tab a change touched, which adds operations of its own, until none adds more;
@@ -49,18 +49,18 @@ A store reads its sheet at startup, every five minutes after, and once more thir
 
 Every spreadsheet has one `Change Log` tab, written by the store and by nothing else: Timestamp, Actor, Real Actor, Action, Tab, Key, Column, Previous. One row per cell a commit changes, cascades included:
 
-- **Action** is `insert`, `set` or `delete`.
+- **Action** is `insert`, `set`, `delete` or `reorder`.
 - **Key** names the row: each of the tab's key columns and its value, `Email=…; Year=…`.
-- **Previous** is what the cell held before the change - empty for a row that did not exist.
+- **Previous** is what the cell held before the change - empty for a row that did not exist. A reorder logs one row for each row that moved, with no Column, and Previous its place before, counted from one.
 - **Actor** is who the change was made as, and **Real Actor** who was signed in, the two differing under Spoof Mode (`docs/toolbar.md`). Work nobody signed in does - the calendar import, the birthday reminders, Loop's mailer, the invite sweep - names itself as the actor, and Real Actor is empty.
 
 What a row holds now is the tab itself; the Change Log is how to get back to what it held before. Nothing reads it back.
 
 ## Moving there
 
-The IO layer and the store stand, and Staff Birthdays is on the store, its Change Log in this shape. Its one write past the store is the weekly copy into the association's own spreadsheet (`docs/birthday/data.md`), an outbound export of rows the app never reads back. The other apps still write through `internal/data` from their own commit helpers and log their own Change Log rows in the old shape; they move one at a time, each shipped and tested before the next, and each app's own commit, write and log helpers are deleted as it moves:
+The IO layer and the store stand, and Staff Birthdays and Heliosian are on the store, their Change Logs in this shape. Staff Birthdays' one write past the store is the weekly copy into the association's own spreadsheet (`docs/birthday/data.md`), an outbound export of rows the app never reads back; a birthday team joiner's place on the app's Heliosian list is a commit on Heliosian's store (`home.Grant`). The other apps still write through `internal/data` from their own commit helpers and log their own Change Log rows in the old shape; they move one at a time, each shipped and tested before the next, and each app's own commit, write and log helpers are deleted as it moves:
 
-1. **The other apps**: Heliosian, HCA-Team, Helios Celebrate, Helios Loop, Helios When with the calendar import, and Who?.
+1. **The other apps**: HCA-Team, Helios Celebrate, Helios Loop, Helios When with the calendar import, and Who?.
 2. **Feedback and Helios Ask's documents**, and the last per-app queue interfaces.
 
 Each app's `Change Log` tab in the old shape is renamed `Change Log (old)` with `cmd/renametab` when its app moves, before `cmd/createtabs` makes a new one in this shape and before the build that reads it deploys.

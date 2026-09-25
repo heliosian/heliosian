@@ -1,13 +1,22 @@
 package home
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"slices"
 	"testing"
 
+	"heliosian/internal/auth"
 	"heliosian/internal/data"
 	"heliosian/internal/filter"
+	"heliosian/internal/store"
 	"heliosian/internal/who"
 )
+
+const admin = "jordan.whitfield@heliosschool.org"
 
 type noFiles struct{}
 
@@ -34,8 +43,28 @@ func directoryOf(t *testing.T) sampleDirectory {
 	return sampleDirectory{model}
 }
 
+func call(t *testing.T, handler http.HandlerFunc, body any) *httptest.ResponseRecorder {
+	t.Helper()
+	raw, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	auth.Fixed(admin, handler).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(raw)))
+	return rec
+}
+
+func changeLog(t *testing.T, dir *data.Dir) []store.Row {
+	t.Helper()
+	_, rows, err := dir.Table(appName, store.ChangeLogTab)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return rows
+}
+
 func TestAudienceIsAListOfRules(t *testing.T) {
-	c := sampleCache(t)
+	c, _ := sampleCache(t)
 	c.directory = directoryOf(t)
 	links := map[string]Link{}
 	var chats Category
@@ -51,9 +80,9 @@ func TestAudienceIsAListOfRules(t *testing.T) {
 		t.Fatalf("the chat's rules = %+v", got)
 	}
 	const (
-		jordan = "jordan.whitfield@heliosschool.org" // parent: Jays, Ospreys
-		sam    = "sam.whitfield@heliosschool.org"    // student: Jays
-		ruth   = "ruth.amari@heliosschool.org"       // staff, teaching the Hummingbirds
+		jordan = "jordan.whitfield@heliosschool.org"
+		sam    = "sam.whitfield@heliosschool.org"
+		ruth   = "ruth.amari@heliosschool.org"
 	)
 	sees := func(rules []filter.Rule, email string) bool {
 		return len(rules) == 0 || c.includes(rules, email)
@@ -86,23 +115,83 @@ func TestAudienceIsAListOfRules(t *testing.T) {
 	if hidden := c.HiddenApps(sam); !slices.Contains(hidden, "celebrate") {
 		t.Errorf("a student sees the celebration: %v", hidden)
 	}
-	tables := c.Tables().withAudience(thingLink+"Directory", []filter.Rule{{Kind: filter.KindExclude, Roles: []string{"Student"}}})
-	model, err := BuildModel(tables, noImages{})
-	if err != nil {
+	if err := c.Commit(context.Background(), "test", audience(thingLink+"Directory", nil, []filter.Rule{{Kind: filter.KindExclude, Roles: []string{"Student"}}})...); err != nil {
 		t.Fatal(err)
 	}
-	if got := model.Categories[2].Links[0].Rules; len(got) != 1 || got[0].Kind != filter.KindExclude {
+	if got := c.Model().Categories[2].Links[0].Rules; len(got) != 1 || got[0].Kind != filter.KindExclude {
 		t.Errorf("the Directory's rules after a save = %+v", got)
 	}
-	for _, bad := range []map[string]string{
+	for _, bad := range []store.Row{
 		{"Thing": "link:Directory", "Kind": "include", "Roles": "Teachers"},
 		{"Thing": "link:Directory", "Kind": "include"},
 		{"Thing": "link:Directory", "Kind": "include", "Tags": "Carpool"},
 	} {
-		tables := c.Tables().withAudience(thingLink+"Directory", nil)
-		tables.Audience = append(tables.Audience, bad)
-		if _, err := BuildModel(tables, noImages{}); err == nil {
+		if err := c.Commit(context.Background(), "test", store.Insert(audienceTab, bad)); err == nil {
 			t.Errorf("a bad rule %v loaded", bad)
 		}
+	}
+}
+
+func TestCategoryRenameCarriesItsLinksAndAudience(t *testing.T) {
+	c, dir := sampleCache(t)
+	c.directory = directoryOf(t)
+	a := app{cache: c, directory: c.directory}
+	chats := a.category("Chats")
+	rec := call(t, a.saveCategory, map[string]any{"original": "Chats", "title": "Group Chats", "emoji": chats.Emoji, "style": chats.Style, "rules": chats.Rules})
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("rename: %d %s", rec.Code, rec.Body)
+	}
+	renamed := a.category("Group Chats")
+	if renamed == nil || len(renamed.Links) != len(chats.Links) || len(renamed.Rules) != 1 || a.category("Chats") != nil {
+		t.Fatalf("the links and the audience did not follow the rename in memory: %+v", renamed)
+	}
+	_, links, err := dir.Table(appName, linksTab)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range links {
+		if row["Category"] == "Chats" {
+			t.Fatalf("the sheet kept %v", row)
+		}
+	}
+	tabs := map[string]int{}
+	for _, row := range changeLog(t, dir) {
+		if row["Actor"] != admin || row["Action"] != "set" || (row["Previous"] != "Chats" && row["Previous"] != thingCategory+"Chats") {
+			t.Errorf("log row %v", row)
+		}
+		tabs[row["Tab"]+"/"+row["Column"]]++
+	}
+	if tabs[categoriesTab+"/Title"] != 1 || tabs[linksTab+"/Category"] != len(chats.Links) || tabs[audienceTab+"/Thing"] != 1 || len(tabs) != 3 {
+		t.Fatalf("logged %v", tabs)
+	}
+}
+
+func TestMoveLinkTradesPlacesWithinItsCategory(t *testing.T) {
+	c, dir := sampleCache(t)
+	c.directory = directoryOf(t)
+	a := app{cache: c, directory: c.directory}
+	if rec := call(t, a.moveLink, map[string]any{"title": "Parent Portal", "by": 1}); rec.Code != http.StatusNoContent {
+		t.Fatalf("move: %d %s", rec.Code, rec.Body)
+	}
+	var school []string
+	for _, l := range a.category("School").Links {
+		school = append(school, l.Title)
+	}
+	if want := []string{"Directory", "Calendar", "Staff Room", "Parent Portal"}; !slices.Equal(school, want) {
+		t.Fatalf("school = %v, want %v", school, want)
+	}
+	_, links, err := dir.Table(appName, linksTab)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if links[2]["Title"] != "Staff Room" || links[9]["Title"] != "Parent Portal" {
+		t.Fatalf("the sheet's order: %v", links)
+	}
+	got := []string{}
+	for _, row := range changeLog(t, dir) {
+		got = append(got, row["Action"]+" "+row["Key"]+" "+row["Previous"])
+	}
+	if want := []string{"reorder Title=Staff Room 10", "reorder Title=Parent Portal 3"}; !slices.Equal(got, want) {
+		t.Fatalf("change log = %v, want %v", got, want)
 	}
 }

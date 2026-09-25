@@ -18,8 +18,6 @@ import (
 	"heliosian/internal/store"
 )
 
-// sentMail keeps what the app sends, and waits for it, since sending
-// happens off the request.
 type sentMail struct {
 	mu       sync.Mutex
 	messages []mail.Message
@@ -48,11 +46,8 @@ func (s *sentMail) wait(t *testing.T, n int) []mail.Message {
 	return nil
 }
 
-// sent is the server's outbox, fresh per newServer so one test's late sends
-// never land in another's.
 var sent = &sentMail{}
 
-// joined is who the app put on its home list, per newServer.
 var joined []string
 
 var sheet *data.Dir
@@ -128,7 +123,7 @@ func newServer(t *testing.T) (*Cache, *http.ServeMux) {
 	mux := http.NewServeMux()
 	sent = &sentMail{}
 	joined = nil
-	Register(mux, cache, dir, nil, fakeDirectory{}, func() []string { return []string{admin} }, nil, sent, "Helios Staff Birthdays <birthday@example.org>", "https://birthday.example.org", func(email string) error {
+	Register(mux, cache, dir, nil, fakeDirectory{}, func() []string { return []string{admin} }, nil, sent, "Helios Staff Birthdays <birthday@example.org>", "https://birthday.example.org", func(_ context.Context, email string) error {
 		joined = append(joined, email)
 		return nil
 	})
@@ -287,7 +282,6 @@ func TestPipeline(t *testing.T) {
 	if sv.AssignedTo != parent || sv.AssignedOn != "2026-09-09" || sv.Stage != StageOutreach {
 		t.Fatalf("after assign: %+v", sv)
 	}
-	// The assignee gets the day to ask by as an invite, with the way to the page.
 	invites := sent.wait(t, 1)
 	m := invites[len(invites)-1]
 	if len(m.To) != 1 || m.To[0] != parent || m.Subject != "Ask Miguel Santos about their birthday charity" || !strings.Contains(m.HTML, "/staff/miguel.santos\"") || m.Headers["Message-ID"] == "" {
@@ -296,7 +290,6 @@ func TestPipeline(t *testing.T) {
 	if len(m.Attachments) != 1 || m.Attachments[0].Name != "invite.ics" {
 		t.Fatalf("invite attachment: %+v", m.Attachments)
 	}
-	// Unfolded, since the file wraps long lines at 75 octets.
 	ics := strings.ReplaceAll(string(m.Attachments[0].Content), "\r\n ", "")
 	for _, want := range []string{"METHOD:REQUEST", "DTSTART;VALUE=DATE:20260903", "DTEND;VALUE=DATE:20260904", "SUMMARY:Ask Miguel Santos about their birthday charity", "ATTENDEE;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;RSVP=FALSE:mailto:" + parent, "UID:birthday-miguel.santos@heliosschool.org-2026-2027@heliosian.com", "/staff/miguel.santos"} {
 		if !strings.Contains(ics, want) {
@@ -516,7 +509,6 @@ func TestTeam(t *testing.T) {
 		}
 		return out
 	}
-	// The sample already has Robin as a volunteer, so the repeat adds nothing and the comms role is one row.
 	if got := roles("robin.whitfield@heliosschool.org"); len(got) != 2 || got[0] != RoleVolunteer || got[1] != RoleComms {
 		t.Fatalf("roles after adding: %v", got)
 	}
@@ -545,8 +537,6 @@ func TestMovedNewsletterRefreshesInvite(t *testing.T) {
 		t.Fatalf("assign: %d %s", rec.Code, rec.Body)
 	}
 	sent.wait(t, 1)
-	// Miguel's issue moves a day, so his day to ask by does too - and Bill's
-	// and Ruth's, assigned in the same issue: three updates, one each.
 	if rec := call(t, mux, admin, "PUT", "/api/birthday/newsletter-date", map[string]any{"original": "2026-09-11", "date": "2026-09-12"}); rec.Code != http.StatusNoContent {
 		t.Fatalf("move: %d %s", rec.Code, rec.Body)
 	}
@@ -566,7 +556,6 @@ func TestMovedNewsletterRefreshesInvite(t *testing.T) {
 	if ics := string(m.Attachments[0].Content); !strings.Contains(ics, "DTSTART;VALUE=DATE:20260904") {
 		t.Fatalf("updated invite's day:\n%s", ics)
 	}
-	// A write that moves nothing sends nothing.
 	if rec := call(t, mux, parent, "POST", "/api/birthday/note", map[string]any{"email": "miguel.santos@heliosschool.org", "note": "Loves the Giants"}); rec.Code != http.StatusNoContent {
 		t.Fatalf("note: %d %s", rec.Code, rec.Body)
 	}
@@ -578,8 +567,6 @@ func TestMovedNewsletterRefreshesInvite(t *testing.T) {
 
 func TestReminders(t *testing.T) {
 	cache, mux := newServer(t)
-	// Bill and Ruth are assigned in the September 11 issue, so asked by the 3rd;
-	// Bill was contacted on the 8th, Ruth not; Miguel is unassigned.
 	app := app{cache: cache, directory: fakeDirectory{}, mailer: sent, from: "Helios Staff Birthdays <birthday@example.org>", base: "https://birthday.example.org"}
 	kinds := func(day string) []string {
 		out := []string{}
@@ -591,11 +578,9 @@ func TestReminders(t *testing.T) {
 	if got := kinds("2026-09-02"); len(got) != 0 {
 		t.Fatalf("the day before, due: %v", got)
 	}
-	// On the day, Ruth is due to be asked; Bill's outreach is recorded, so not.
 	if got := kinds("2026-09-03"); len(got) != 1 || got[0] != "Ruth Amari:ask" {
 		t.Fatalf("on the day, due: %v", got)
 	}
-	// Sending records it, so the next look finds nothing new; two days on it is late.
 	if n := app.sendDueReminders(context.Background(), mustTime("2026-09-03")); n != 1 {
 		t.Fatalf("sent %d", n)
 	}
@@ -622,8 +607,6 @@ func TestReminders(t *testing.T) {
 	if !strings.Contains(late.Text, "not marked done") || !strings.Contains(late.Text, "mailto:ruth.amari") {
 		t.Fatalf("late reminder: %s", late.Text)
 	}
-	// Two days before the newsletter, Bill (asked by then, no donation) and
-	// Ruth are nudged to record what came; Dana, complete, is not.
 	got := kinds("2026-09-09")
 	if len(got) != 2 || got[0] != "Bill Ryder:donation" || got[1] != "Ruth Amari:donation" {
 		t.Fatalf("before the newsletter, due: %v", got)
@@ -689,7 +672,6 @@ func TestCreateNewsletterDates(t *testing.T) {
 	if rec := call(t, mux, parent, "POST", "/api/birthday/newsletter-dates/create", map[string]any{"weekday": 4, "from": "2027-08-14", "to": "2027-09-30"}); rec.Code != http.StatusForbidden {
 		t.Fatalf("a non-admin created dates: %d", rec.Code)
 	}
-	// Thursdays from mid-August 2027: the 19th, 26th, and September 2, 9, 16, 23, 30 - seven.
 	rec := call(t, mux, admin, "POST", "/api/birthday/newsletter-dates/create", map[string]any{"weekday": 4, "from": "2027-08-14", "to": "2027-09-30"})
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"added":7`) {
 		t.Fatalf("create: %d %s", rec.Code, rec.Body)
@@ -713,7 +695,6 @@ func TestResendInvites(t *testing.T) {
 	if rec := call(t, mux, parent, "POST", "/api/admin/resend-invites", nil); rec.Code != http.StatusForbidden {
 		t.Fatalf("a non-admin resent invites: %d", rec.Code)
 	}
-	// The sample holds six assignments this year; Dana's is complete, Grace is not in the directory, so four go.
 	rec := call(t, mux, admin, "POST", "/api/admin/resend-invites", nil)
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"sent":4`) {
 		t.Fatalf("resend: %d %s", rec.Code, rec.Body)
@@ -735,7 +716,6 @@ func TestClearFutureNewsletterDates(t *testing.T) {
 	if rec := call(t, mux, admin, "POST", "/api/birthday/newsletter-dates/clear-future", nil); rec.Code != http.StatusNoContent {
 		t.Fatalf("clear: %d %s", rec.Code, rec.Body)
 	}
-	// Today is September 9: everything from then on is gone, the past stays.
 	left := cache.Model().NewsletterDates
 	if len(left) >= before || len(left) == 0 || left[len(left)-1] >= "2026-09-09" {
 		t.Fatalf("after clearing: %v", left)
@@ -747,7 +727,6 @@ func TestClearFutureNewsletterDates(t *testing.T) {
 
 func TestJoinTeam(t *testing.T) {
 	cache, mux := newServer(t)
-	// Robin is already a volunteer; joining again adds nothing but still opens the app to them.
 	if rec := call(t, mux, parent, "POST", "/api/birthday/team/join", nil); rec.Code != http.StatusNoContent {
 		t.Fatalf("join: %d %s", rec.Code, rec.Body)
 	}
@@ -760,7 +739,6 @@ func TestJoinTeam(t *testing.T) {
 	if n != 1 || len(joined) != 1 || joined[0] != parent {
 		t.Fatalf("after robin joined: %d rows, home %v", n, joined)
 	}
-	// Jordan is not on the team yet.
 	if rec := call(t, mux, admin, "POST", "/api/birthday/team/join", nil); rec.Code != http.StatusNoContent {
 		t.Fatalf("join: %d %s", rec.Code, rec.Body)
 	}
@@ -850,9 +828,6 @@ func TestNewsletterDates(t *testing.T) {
 	}
 }
 
-// The weekly export copies an issue's birthdays to the shared sheet and marks
-// them done: a recorded charity as it stands, the default for whoever has
-// none, No Newsletter with its preference; a second run finds nothing left.
 func TestShareIssue(t *testing.T) {
 	cache, mux := newServer(t)
 	if at := nextExport(mustTime("2026-09-09")); at.Format("2006-01-02 15:04 Mon") != "2026-09-10 23:59 Thu" {
@@ -867,8 +842,6 @@ func TestShareIssue(t *testing.T) {
 	if rec := call(t, mux, admin, "POST", "/api/birthday/newsletter/share", map[string]string{"date": "2026-09-12"}); rec.Code != 400 {
 		t.Fatalf("a day that is no issue: %d", rec.Code)
 	}
-	// The issue carries Bill (contacted, no charity yet) and Ruth (not yet
-	// asked) - and Miguel, unassigned; run as the Thursday night run would.
 	dir := &data.Dir{Root: "sampledata"}
 	a := app{cache: cache, shared: dir, directory: fakeDirectory{}}
 	n, err := a.exportIssue(context.Background(), "2026-09-11", exportActor)
@@ -901,8 +874,6 @@ func TestShareIssue(t *testing.T) {
 	if rec := call(t, mux, admin, "POST", "/api/birthday/newsletter/share", map[string]string{"date": "2026-09-11"}); rec.Code != 200 || rec.Body.String() != "{\"copied\":0}\n" {
 		t.Fatalf("the button after the run: %d %s", rec.Code, rec.Body)
 	}
-	// Omar asked to stay out of the newsletter and chose Wikipedia: he goes
-	// with his choice, his note, when he chose, and his preference.
 	omar := find(view(t, cache, admin).Staff, "omar.farouk@heliosschool.org")
 	if _, err := a.exportIssue(context.Background(), omar.NewsletterDate, exportActor); err != nil {
 		t.Fatal(err)

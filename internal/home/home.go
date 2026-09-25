@@ -8,19 +8,21 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
 	"heliosian/internal/auth"
 	"heliosian/internal/blob"
 	"heliosian/internal/calendar"
-	"heliosian/internal/data"
 	"heliosian/internal/filter"
 	"heliosian/internal/imagesearch"
 	"heliosian/internal/serve"
+	"heliosian/internal/store"
 )
 
 const (
@@ -34,8 +36,6 @@ type Directory interface {
 
 type app struct {
 	cache       *Cache
-	writer      data.Writer
-	queue       Enqueuer
 	store       *blob.Store
 	superAdmins func() []string
 	heroPhoto   func(string) string
@@ -76,11 +76,11 @@ type alerts struct {
 	Privacy bool `json:"privacy"`
 }
 
-func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, superAdmins func() []string, heroPhoto func(string) string, people func() []Person, directory Directory, alerts func(string) (int, bool), upcoming func(email, token string) Upcoming, month func(email, month, token string) Month, search imagesearch.Search, answer func(ctx context.Context, email, id, answer string) error, makeDefault func(ctx context.Context, email, token string) error) {
+func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, superAdmins func() []string, heroPhoto func(string) string, people func() []Person, directory Directory, alerts func(string) (int, bool), upcoming func(email, token string) Upcoming, month func(email, month, token string) Month, search imagesearch.Search, answer func(ctx context.Context, email, id, answer string) error, makeDefault func(ctx context.Context, email, token string) error) {
 	if search.UserAgent == "" {
 		search.UserAgent = "Heliosian image search (+https://heliosian.com)"
 	}
-	a := app{cache: cache, writer: writer, queue: queue, store: store, superAdmins: superAdmins, heroPhoto: heroPhoto, people: people, directory: directory, alerts: alerts, upcoming: upcoming, month: month, search: search, answer: answer, makeDefault: makeDefault}
+	a := app{cache: cache, store: media, superAdmins: superAdmins, heroPhoto: heroPhoto, people: people, directory: directory, alerts: alerts, upcoming: upcoming, month: month, search: search, answer: answer, makeDefault: makeDefault}
 	cache.directory = directory
 	mux.HandleFunc("GET /{$}", a.page)
 	mux.HandleFunc("GET /admin", a.adminPage)
@@ -114,29 +114,14 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 }
 
 func (a app) discoverApps() {
-	missing := a.cache.MissingVisibility()
-	if len(missing) == 0 {
-		return
+	ops := []store.Op{}
+	for _, app := range a.cache.MissingVisibility() {
+		ops = append(ops, store.Insert(visibilityTab, store.Row{"App": app.Key, "Visibility": VisibleToList, "Tagline": app.Tagline, "Name": app.Name}))
+		slog.Info("apps: found a new app, listed for nobody yet", "app", app.Key)
 	}
-	tables := a.cache.Tables()
-	for _, app := range missing {
-		tables = tables.withVisibility(app.Key, Visibility{Mode: VisibleToList, Tagline: app.Tagline, Name: app.Name})
+	if err := a.cache.Commit(context.Background(), "app discovery", ops...); err != nil {
+		slog.Error("[ERROR] apps: discover apps", "error", err)
 	}
-	model, err := BuildModel(tables, a.cache.images)
-	if err != nil {
-		slog.Error("apps: discover apps", "error", err)
-		return
-	}
-	a.queue.Add(func() {
-		a.cache.set(tables, model)
-		for _, app := range missing {
-			if err := a.writer.Insert(appName, visibilityTab, []map[string]string{{"App": app.Key, "Visibility": VisibleToList, "Tagline": app.Tagline, "Name": app.Name}}); err != nil {
-				slog.Error("apps: write a new app's visibility row", "app", app.Key, "error", err)
-				return
-			}
-			slog.Info("apps: found a new app, listed for nobody yet", "app", app.Key)
-		}
-	})
 }
 
 func RegisterSwitch(mux *http.ServeMux, cache *Cache) {
@@ -425,26 +410,12 @@ func visibleCell(visible bool) string {
 	return "No"
 }
 
-func (a app) commit(ctx context.Context, w http.ResponseWriter, tables *Tables, flush func() error) bool {
-	model, err := BuildModel(tables, a.cache.images)
-	if err != nil {
+func (a app) commit(w http.ResponseWriter, r *http.Request, actor string, ops ...store.Op) bool {
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return false
 	}
-	a.cache.commit(tables, model, func() {
-		if err := flush(); err != nil {
-			slog.ErrorContext(ctx, "apps write", "error", err)
-		}
-	})
 	return true
-}
-
-func (a app) logChange(r *http.Request, actor, action, kind string, cells map[string]string) error {
-	return a.writer.Insert(appName, changeLogTab, []map[string]string{{
-		"Timestamp": time.Now().Format(time.RFC3339), "Actor": actor, "Action": action, "Kind": kind,
-		"Title": cells["Title"], "Description": cells["Description"], "URL": cells["URL"], "Image": cells["Image"], "Category": cells["Category"], "Visible": cells["Visible"], "Style": cells["Style"],
-		"Real Actor": auth.RealEmail(r),
-	}})
 }
 
 func (a app) importImage(w http.ResponseWriter, r *http.Request) {
@@ -538,14 +509,30 @@ func (a app) audiencePreview(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (a app) writeAudience(key string, rules []filter.Rule) error {
-	if err := a.writer.Delete(appName, audienceTab, map[string]string{"Thing": key}); err != nil {
-		return err
-	}
-	if len(rules) == 0 {
+func audience(key string, was, rules []filter.Rule) []store.Op {
+	if slices.EqualFunc(was, rules, func(x, y filter.Rule) bool { return maps.Equal(filter.RuleCells(x), filter.RuleCells(y)) }) {
 		return nil
 	}
-	return a.writer.Insert(appName, audienceTab, audienceRows(key, rules))
+	ops := []store.Op{store.Delete(audienceTab, store.Row{"Thing": key})}
+	for _, r := range rules {
+		cells := filter.RuleCells(r)
+		cells["Thing"] = key
+		ops = append(ops, store.Insert(audienceTab, cells))
+	}
+	return ops
+}
+
+func (a app) linkExists(title string) bool {
+	return slices.ContainsFunc(a.cache.Model().linkOrder, func(t string) bool { return strings.EqualFold(t, strings.TrimSpace(title)) })
+}
+
+func (a app) category(title string) *Category {
+	for _, c := range a.cache.Model().Categories {
+		if c.Title == title {
+			return &c
+		}
+	}
+	return nil
 }
 
 func (a app) saveLink(w http.ResponseWriter, r *http.Request) {
@@ -571,44 +558,36 @@ func (a app) saveLink(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "title is required and fields must be short", http.StatusBadRequest)
 		return
 	}
-	rules, err := a.checkRules(rulesOf(a.cache.Model(), thingLink+body.Original), body.Rules, actor)
+	if body.Original != "" && !a.linkExists(body.Original) {
+		http.Error(w, "no such link", http.StatusNotFound)
+		return
+	}
+	was := rulesOf(a.cache.Model(), thingLink+body.Original)
+	rules, err := a.checkRules(was, body.Rules, actor)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	cells := map[string]string{
+	cells := store.Row{
 		"Title": title, "Description": strings.TrimSpace(body.Description), "URL": strings.TrimSpace(body.URL),
 		"Image": strings.TrimSpace(body.Image), "Category": strings.TrimSpace(body.Category), "Visible": visibleCell(body.Visible),
 	}
 	action := "edit"
+	op := store.Update(linksTab, store.Row{"Title": body.Original}, cells)
 	if body.Original == "" {
 		action = "add"
 		cells["Added By"] = actor
 		cells["Added"] = time.Now().Format(addedFormat)
+		op = store.Insert(linksTab, cells)
 	}
-	tables := a.cache.Tables().withRow(linksTab, body.Original, cells)
-	if body.Original != "" && body.Original != title {
-		tables = tables.withAudience(thingLink+body.Original, nil)
-	}
-	tables = tables.withAudience(thingLink+title, rules)
-	if !a.commit(r.Context(), w, tables, func() error {
-		if body.Original == "" {
-			if err := a.writer.Insert(appName, linksTab, []map[string]string{cells}); err != nil {
-				return err
-			}
-		} else if err := a.writer.Set(appName, linksTab, map[string]string{"Title": body.Original}, cells); err != nil {
-			return err
-		}
+	ops := []store.Op{op}
+	if changed := audience(thingLink+title, was, rules); changed != nil {
 		if body.Original != "" && body.Original != title {
-			if err := a.writeAudience(thingLink+body.Original, nil); err != nil {
-				return err
-			}
+			ops = append(ops, store.Delete(audienceTab, store.Row{"Thing": thingLink + body.Original}))
 		}
-		if err := a.writeAudience(thingLink+title, rules); err != nil {
-			return err
-		}
-		return a.logChange(r, actor, action, "link", cells)
-	}) {
+		ops = append(ops, changed...)
+	}
+	if !a.commit(w, r, actor, ops...) {
 		return
 	}
 	slog.InfoContext(r.Context(), "apps: saved link", "action", action, "title", title)
@@ -626,16 +605,7 @@ func (a app) deleteLink(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	tables := a.cache.Tables().withoutRow(linksTab, body.Title).withAudience(thingLink+body.Title, nil)
-	if !a.commit(r.Context(), w, tables, func() error {
-		if err := a.writer.Delete(appName, linksTab, map[string]string{"Title": body.Title}); err != nil {
-			return err
-		}
-		if err := a.writeAudience(thingLink+body.Title, nil); err != nil {
-			return err
-		}
-		return a.logChange(r, actor, "delete", "link", map[string]string{"Title": body.Title})
-	}) {
+	if !a.commit(w, r, actor, store.Delete(linksTab, store.Row{"Title": body.Title})) {
 		return
 	}
 	slog.InfoContext(r.Context(), "apps: deleted link", "title", body.Title)
@@ -663,7 +633,13 @@ func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "title is required and must be short", http.StatusBadRequest)
 		return
 	}
-	rules, err := a.checkRules(rulesOf(a.cache.Model(), thingCategory+body.Original), body.Rules, actor)
+	model := a.cache.Model()
+	if body.Original != "" && a.category(body.Original) == nil {
+		http.Error(w, "no such category", http.StatusNotFound)
+		return
+	}
+	was := rulesOf(model, thingCategory+body.Original)
+	rules, err := a.checkRules(was, body.Rules, actor)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -692,79 +668,34 @@ func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, fmt.Sprintf("%q is already the community apps section", other), http.StatusBadRequest)
 			return
 		}
-		if body.Original != "" && a.styleOf(body.Original) != StyleApps {
-			for _, row := range a.cache.Tables().Links {
-				if row["Category"] == body.Original {
-					http.Error(w, "move or delete its links first: the community apps section holds no links", http.StatusBadRequest)
-					return
-				}
-			}
+		if c := a.category(body.Original); c != nil && c.Style != StyleApps && len(c.Links) > 0 {
+			http.Error(w, "move or delete its links first: the community apps section holds no links", http.StatusBadRequest)
+			return
 		}
 	}
 	if _, err := checkMax(body.Max); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	cells := map[string]string{"Title": title, "Emoji": emoji, "Style": style, "Max": strings.TrimSpace(body.Max)}
-	var tables *Tables
-	if virtual {
-		tables = a.cache.Tables().withRow(categoriesTab, "", cells)
-		tables.Categories = append([]map[string]string{tables.Categories[len(tables.Categories)-1]}, tables.Categories[:len(tables.Categories)-1]...)
-	} else {
-		tables = a.cache.Tables().withRow(categoriesTab, body.Original, cells)
-	}
-	if body.Original != "" && body.Original != title {
-		links := cloneRows(tables.Links)
-		for _, row := range links {
-			if row["Category"] == body.Original {
-				row["Category"] = title
-			}
-		}
-		tables.Links = links
-	}
-	if body.Original != "" && body.Original != title {
-		tables = tables.withAudience(thingCategory+body.Original, nil)
-	}
-	tables = tables.withAudience(thingCategory+title, rules)
+	cells := store.Row{"Title": title, "Emoji": emoji, "Style": style, "Max": strings.TrimSpace(body.Max)}
 	action := "edit"
-	if body.Original == "" {
+	var ops []store.Op
+	switch {
+	case virtual:
+		ops = []store.Op{store.Insert(categoriesTab, cells), store.Reorder(categoriesTab, "Title", append([]string{title}, storedTitles(model)...))}
+	case body.Original == "":
 		action = "add"
+		ops = []store.Op{store.Insert(categoriesTab, cells)}
+	default:
+		ops = []store.Op{store.Update(categoriesTab, store.Row{"Title": body.Original}, cells)}
 	}
-	if !a.commit(r.Context(), w, tables, func() error {
+	if changed := audience(thingCategory+title, was, rules); changed != nil {
 		if body.Original != "" && body.Original != title {
-			if err := a.writeAudience(thingCategory+body.Original, nil); err != nil {
-				return err
-			}
+			ops = append(ops, store.Delete(audienceTab, store.Row{"Thing": thingCategory + body.Original}))
 		}
-		if err := a.writeAudience(thingCategory+title, rules); err != nil {
-			return err
-		}
-		if body.Original == "" || virtual {
-			if err := a.writer.Insert(appName, categoriesTab, []map[string]string{cells}); err != nil {
-				return err
-			}
-			if virtual {
-				if err := a.writer.Reorder(appName, categoriesTab, "Title", rowTitles(tables.Categories)); err != nil {
-					return err
-				}
-			}
-		} else {
-			if err := a.writer.Set(appName, categoriesTab, map[string]string{"Title": body.Original}, cells); err != nil {
-				return err
-			}
-			if body.Original != title {
-				for _, row := range tables.Links {
-					if row["Category"] != title {
-						continue
-					}
-					if err := a.writer.Set(appName, linksTab, map[string]string{"Title": row["Title"]}, map[string]string{"Category": title}); err != nil {
-						return err
-					}
-				}
-			}
-		}
-		return a.logChange(r, actor, action, "category", cells)
-	}) {
+		ops = append(ops, changed...)
+	}
+	if !a.commit(w, r, actor, ops...) {
 		return
 	}
 	slog.InfoContext(r.Context(), "apps: saved category", "action", action, "title", title)
@@ -782,45 +713,14 @@ func (a app) reorderCategories(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	tables := a.cache.Tables()
-	var materialized map[string]string
+	ops := []store.Op{}
 	for _, title := range body.Titles {
 		if a.virtualEvents(title) {
-			tables = tables.withRow(categoriesTab, "", map[string]string{"Title": title, "Emoji": EventsEmoji, "Style": StyleEvents})
-			materialized = map[string]string{"Title": title, "Emoji": EventsEmoji, "Style": StyleEvents}
+			ops = append(ops, store.Insert(categoriesTab, store.Row{"Title": title, "Emoji": EventsEmoji, "Style": StyleEvents}))
 		}
 	}
-	if len(body.Titles) != len(tables.Categories) {
-		http.Error(w, "the order must name every category exactly once", http.StatusBadRequest)
-		return
-	}
-	byTitle := map[string]map[string]string{}
-	for _, row := range tables.Categories {
-		byTitle[row["Title"]] = row
-	}
-	ordered := make([]map[string]string, 0, len(body.Titles))
-	for _, title := range body.Titles {
-		row, ok := byTitle[title]
-		if !ok {
-			http.Error(w, "unknown category "+title, http.StatusBadRequest)
-			return
-		}
-		delete(byTitle, title)
-		ordered = append(ordered, row)
-	}
-	next := *tables
-	next.Categories = ordered
-	if !a.commit(r.Context(), w, &next, func() error {
-		if materialized != nil {
-			if err := a.writer.Insert(appName, categoriesTab, []map[string]string{materialized}); err != nil {
-				return err
-			}
-		}
-		if err := a.writer.Reorder(appName, categoriesTab, "Title", body.Titles); err != nil {
-			return err
-		}
-		return a.logChange(r, actor, "reorder", "category", map[string]string{"Title": strings.Join(body.Titles, ", ")})
-	}) {
+	ops = append(ops, store.Reorder(categoriesTab, "Title", body.Titles))
+	if !a.commit(w, r, actor, ops...) {
 		return
 	}
 	slog.InfoContext(r.Context(), "apps: reordered categories", "count", len(body.Titles))
@@ -843,16 +743,22 @@ func (a app) moveLink(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "by must be 1 or -1", http.StatusBadRequest)
 		return
 	}
-	tables := a.cache.Tables()
-	rows := cloneRows(tables.Links)
-	at := slices.IndexFunc(rows, func(row map[string]string) bool { return row["Title"] == body.Title })
+	model := a.cache.Model()
+	categoryOf := map[string]string{}
+	for _, c := range model.Categories {
+		for _, l := range c.Links {
+			categoryOf[l.Title] = l.Category
+		}
+	}
+	order := slices.Clone(model.linkOrder)
+	at := slices.Index(order, body.Title)
 	if at < 0 {
 		http.Error(w, "unknown link "+body.Title, http.StatusBadRequest)
 		return
 	}
 	to := -1
-	for i := at + body.By; i >= 0 && i < len(rows); i += body.By {
-		if rows[i]["Category"] == rows[at]["Category"] {
+	for i := at + body.By; i >= 0 && i < len(order); i += body.By {
+		if categoryOf[order[i]] == categoryOf[order[at]] {
 			to = i
 			break
 		}
@@ -861,15 +767,8 @@ func (a app) moveLink(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	rows[at], rows[to] = rows[to], rows[at]
-	next := *tables
-	next.Links = rows
-	if !a.commit(r.Context(), w, &next, func() error {
-		if err := a.writer.Reorder(appName, linksTab, "Title", rowTitles(rows)); err != nil {
-			return err
-		}
-		return a.logChange(r, actor, "reorder", "link", map[string]string{"Title": body.Title, "Category": rows[to]["Category"]})
-	}) {
+	order[at], order[to] = order[to], order[at]
+	if !a.commit(w, r, actor, store.Reorder(linksTab, "Title", order)) {
 		return
 	}
 	slog.InfoContext(r.Context(), "apps: moved link", "title", body.Title, "by", body.By)
@@ -891,22 +790,11 @@ func (a app) deleteCategory(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "the events section can be renamed or moved, not deleted", http.StatusBadRequest)
 		return
 	}
-	for _, row := range a.cache.Tables().Links {
-		if row["Category"] == body.Title {
-			http.Error(w, "move or delete its links first", http.StatusBadRequest)
-			return
-		}
+	if c := a.category(body.Title); c != nil && len(c.Links) > 0 {
+		http.Error(w, "move or delete its links first", http.StatusBadRequest)
+		return
 	}
-	tables := a.cache.Tables().withoutRow(categoriesTab, body.Title).withAudience(thingCategory+body.Title, nil)
-	if !a.commit(r.Context(), w, tables, func() error {
-		if err := a.writer.Delete(appName, categoriesTab, map[string]string{"Title": body.Title}); err != nil {
-			return err
-		}
-		if err := a.writeAudience(thingCategory+body.Title, nil); err != nil {
-			return err
-		}
-		return a.logChange(r, actor, "delete", "category", map[string]string{"Title": body.Title})
-	}) {
+	if !a.commit(w, r, actor, store.Delete(categoriesTab, store.Row{"Title": body.Title})) {
 		return
 	}
 	slog.InfoContext(r.Context(), "apps: deleted category", "title", body.Title)
@@ -940,10 +828,12 @@ func (a app) virtualEvents(title string) bool {
 	return false
 }
 
-func rowTitles(rows []map[string]string) []string {
-	out := make([]string, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, row["Title"])
+func storedTitles(model *Model) []string {
+	out := []string{}
+	for _, c := range model.Categories {
+		if !c.Virtual {
+			out = append(out, c.Title)
+		}
 	}
 	return out
 }
@@ -1002,7 +892,7 @@ func (a app) adminState(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a app) setAdmins(w http.ResponseWriter, r *http.Request) {
-	_, ok := a.requireAdmin(w, r)
+	actor, ok := a.requireAdmin(w, r)
 	if !ok {
 		return
 	}
@@ -1022,33 +912,19 @@ func (a app) setAdmins(w http.ResponseWriter, r *http.Request) {
 			admins = append(admins, e)
 		}
 	}
-	current := a.cache.tabAdmins()
-	was := map[string]bool{}
+	current := a.cache.Model().admins
+	ops := []store.Op{}
 	for _, e := range current {
-		was[e] = true
+		if !slices.Contains(admins, e) {
+			ops = append(ops, store.Delete(adminsTab, store.Row{"Email": e}))
+		}
 	}
-	is := map[string]bool{}
 	for _, e := range admins {
-		is[e] = true
+		if !slices.Contains(current, e) {
+			ops = append(ops, store.Insert(adminsTab, store.Row{"Email": e}))
+		}
 	}
-	tables := a.cache.Tables().withAdmins(admins)
-	if !a.commit(r.Context(), w, tables, func() error {
-		for _, e := range current {
-			if !is[e] {
-				if err := a.writer.Delete(appName, adminsTab, map[string]string{"Email": e}); err != nil {
-					return err
-				}
-			}
-		}
-		for _, e := range admins {
-			if !was[e] {
-				if err := a.writer.Insert(appName, adminsTab, []map[string]string{{"Email": e}}); err != nil {
-					return err
-				}
-			}
-		}
-		return nil
-	}) {
+	if !a.commit(w, r, actor, ops...) {
 		return
 	}
 	slog.InfoContext(r.Context(), "apps: set the admin list", "admins", admins)
@@ -1102,19 +978,8 @@ func (a app) setVisibility(w http.ResponseWriter, r *http.Request) {
 		rules = checked
 	}
 	v := Visibility{Mode: body.Visibility, Emails: normalizeEmails(body.Emails), Tagline: tagline, Name: name, Order: was.Order, Rules: rules}
-	tables := a.cache.Tables().withVisibility(key, v)
-	if body.Rules != nil {
-		tables = tables.withAudience(thingApp+key, rules)
-	}
-	if !a.commit(r.Context(), w, tables, func() error {
-		if err := a.writer.Set(appName, visibilityTab, map[string]string{"App": key}, v.cells()); err != nil {
-			return err
-		}
-		if body.Rules != nil {
-			return a.writeAudience(thingApp+key, rules)
-		}
-		return nil
-	}) {
+	ops := append([]store.Op{store.Set(visibilityTab, store.Row{"App": key}, v.cells())}, audience(thingApp+key, was.Rules, rules)...)
+	if !a.commit(w, r, actor, ops...) {
 		return
 	}
 	slog.InfoContext(r.Context(), "apps: set an app's visibility", "app", key, "visibility", v.Mode, "emails", len(v.Emails), "name", v.Name, "tagline", v.Tagline)
@@ -1122,7 +987,7 @@ func (a app) setVisibility(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a app) setAppOrder(w http.ResponseWriter, r *http.Request) {
-	_, ok := a.requireAdmin(w, r)
+	actor, ok := a.requireAdmin(w, r)
 	if !ok {
 		return
 	}
@@ -1144,24 +1009,13 @@ func (a app) setAppOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	model := a.cache.Model()
-	tables := a.cache.Tables()
-	rows := map[string]Visibility{}
+	ops := []store.Op{}
 	for i, key := range body.Apps {
 		key = strings.ToLower(strings.TrimSpace(key))
 		app, _ := appByKey(key)
-		v := visibilityOf(model, app)
-		v.Order = i + 1
-		rows[key] = v
-		tables = tables.withVisibility(key, v)
+		ops = append(ops, store.Set(visibilityTab, store.Row{"App": key}, store.Row{"Visibility": visibilityOf(model, app).Mode, "Order": strconv.Itoa(i + 1)}))
 	}
-	if !a.commit(r.Context(), w, tables, func() error {
-		for key, v := range rows {
-			if err := a.writer.Set(appName, visibilityTab, map[string]string{"App": key}, v.cells()); err != nil {
-				return err
-			}
-		}
-		return nil
-	}) {
+	if !a.commit(w, r, actor, ops...) {
 		return
 	}
 	slog.InfoContext(r.Context(), "apps: set the apps' order", "apps", body.Apps)

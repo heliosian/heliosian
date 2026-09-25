@@ -182,6 +182,26 @@ func TestCascadeCarriesARename(t *testing.T) {
 	})
 }
 
+func TestReorderLogsEachMovedRowsPreviousPlace(t *testing.T) {
+	f := newFixture(t, syncQueue{})
+	if err := f.store.Commit(context.Background(), "ann", Reorder("Things", "Name", []string{"BOOT", "hat"})); err != nil {
+		t.Fatal(err)
+	}
+	things := f.rows(t, "Things")
+	if len(things) != 2 || things[0]["Name"] != "boot" || things[1]["Name"] != "hat" {
+		t.Fatalf("sheet %v", things)
+	}
+	equal(t, "change log", f.log(t), []string{"ann||reorder|Things|Name=boot||2", "ann||reorder|Things|Name=hat||1"})
+	if err := f.store.Commit(context.Background(), "ann", Reorder("Things", "Name", []string{"boot", "hat"})); err != nil || len(f.log(t)) != 2 {
+		t.Fatalf("an order that moves nothing: %v, log %v", err, f.log(t))
+	}
+	for _, keys := range [][]string{{"boot"}, {"boot", "boot"}, {"boot", "sock"}} {
+		if err := f.store.Commit(context.Background(), "ann", Reorder("Things", "Name", keys)); err == nil {
+			t.Errorf("%v was taken as an order", keys)
+		}
+	}
+}
+
 func TestRefusedChangeWritesNothing(t *testing.T) {
 	f := newFixture(t, syncQueue{})
 	if err := f.store.Commit(context.Background(), "ann", Update("Things", Row{"Name": "hat"}, Row{"Color": "plaid"})); err == nil {

@@ -11,11 +11,11 @@ Home's data lives in one Google Sheet, `Apps`, in the community shared drive, re
 - `Admins` — Email. Who may edit, beyond the platform super admins (`docs/config.md`).
 - `Visibility` — App, Visibility, Emails, Tagline, Name, Order. One row per community app in the registry (`internal/home.Apps`): whether everyone sees it or only its list - the people in its Emails cell and whoever its rules on `Audience` pick out - in the app switch of every app's toolbar, and on the front page's apps section - the name it goes by there and the line under it, and its place in the order. The server adds the row for an app that has none.
 - `Audience` — Thing, Kind, Roles, Search, Classrooms, Grades, Tags, Family. The rules that keep an app, a category or a link to some people (Rules, below): Thing says which - `app:<key>`, `category:<title>`, `link:<title>` - and the rest are one filter rule, the columns Helios Loop's `Rules` tab has after its Group. A thing with no rows has none. `cmd/createtabs` makes the tab; the load needs it to exist.
-- `Change Log` — Timestamp, Actor, Action, Kind, the link or category fields, and Real Actor. Appended on every change; never read back. Real Actor is who was signed in when Actor is who the change was made as, the two differing under Spoof Mode (`docs/toolbar.md`).
+- `Change Log` — the store's, one row per changed cell holding what it held before (`docs/storage.md`). Never read back.
 
 ## Rules
 
-**Title is the key.** Links and categories are edited by title, so a title must be unique within its tab. An edit that renames carries the new title in the same write, so the row keeps its place; a category rename rewrites the Category cell of every link in it.
+**Title is the key.** Links and categories are edited by title, so a title must be unique within its tab. An edit that renames carries the new title in the same write, so the row keeps its place; a category rename rewrites the Category cell of every link in it, and a rename or delete of either carries its `Audience` rows along - cascades on the store (`carryCategory` and `carryLink` in `internal/home/cache.go`).
 
 **Visible is Yes or No**, spelled exactly so. Any other value refuses the load.
 

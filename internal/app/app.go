@@ -752,7 +752,7 @@ func NewCore(cfg Config) *Core {
 	superAdmin := func(email string) bool {
 		return slices.Contains(settings.SuperAdmins(), strings.ToLower(strings.TrimSpace(email)))
 	}
-	homeCache, err := home.NewCache(cfg.Source, homeImages{cfg.Store}, settings.SuperAdmins, queue)
+	homeCache, err := home.NewCache(cfg.Source, cfg.Writer, homeImages{cfg.Store}, settings.SuperAdmins, queue)
 	if err != nil {
 		logging.Fatal("load apps data", "error", err)
 	}
@@ -829,7 +829,7 @@ func NewCore(cfg Config) *Core {
 	calendarMux := http.NewServeMux()
 	hooks := calendar.Register(calendarMux, calendarCache, cfg.Writer, queue, cfg.Store, calendarDir, settings.SuperAdmins, linked, partyPeople{celebrateCache}.people, audienceSources{loopDir}.Sources, cfg.ImageSearch, cfg.CalendarMail)
 	homeMux := http.NewServeMux()
-	home.Register(homeMux, homeCache, cfg.Writer, queue, cfg.Store, settings.SuperAdmins, cache.HeroPhoto, directory{cache, settings}.HomePeople, audienceSources{loopDir}, directory{cache, settings}.Alerts, frontEvents.list, frontEvents.month, cfg.ImageSearch, hooks.Answer, hooks.MakeDefault)
+	home.Register(homeMux, homeCache, cfg.Store, settings.SuperAdmins, cache.HeroPhoto, directory{cache, settings}.HomePeople, audienceSources{loopDir}, directory{cache, settings}.Alerts, frontEvents.list, frontEvents.month, cfg.ImageSearch, hooks.Answer, hooks.MakeDefault)
 	teamMux := http.NewServeMux()
 	eventRSVPs := func(id string) *team.EventRSVPs {
 		sent, answers, ok := calendarCache.LinkedRSVPs(linked(""), calendar.SourceTeam, id)
@@ -840,8 +840,8 @@ func NewCore(cfg Config) *Core {
 	}
 	team.Register(teamMux, teamCache, cfg.Writer, queue, cfg.Store, directory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.Mail, cfg.MailFrom, eventRSVPs)
 	birthdayMux := http.NewServeMux()
-	birthday.Register(birthdayMux, birthdayCache, cfg.Writer, cfg.Store, birthdayDirectory{cache, settings}, settings.SuperAdmins, cfg.Describer, cfg.BirthdayMail, cfg.BirthdayFrom, cfg.BirthdayBase, func(email string) error {
-		return home.Grant(homeCache, cfg.Writer, "birthday", email)
+	birthday.Register(birthdayMux, birthdayCache, cfg.Writer, cfg.Store, birthdayDirectory{cache, settings}, settings.SuperAdmins, cfg.Describer, cfg.BirthdayMail, cfg.BirthdayFrom, cfg.BirthdayBase, func(ctx context.Context, email string) error {
+		return home.Grant(ctx, homeCache, "birthday", email)
 	})
 	celebrateMux := http.NewServeMux()
 	partyRSVPs := func(partyID string) *celebrate.PartyRSVPs {
@@ -1115,14 +1115,12 @@ func mapsKey(envName, file string) string {
 
 func Production(domain, blobCache string) (*http.Server, *who.Queue) {
 	spreadsheets := map[string]string{
-		"directory":   requiredEnv("DIRECTORY_SHEET"),
-		"preferences": requiredEnv("PREFERENCES_SHEET"),
-		"invites":     requiredEnv("INVITES_SHEET"),
-		"apps":        requiredEnv("APPS_SHEET"),
-		"events":      requiredEnv("EVENTS_SHEET"),
-		"birthdays":   requiredEnv("BIRTHDAY_SHEET"),
-		// The Staff Birthday List (Shared), which Birthday's weekly export
-		// writes the newsletter's birthdays to.
+		"directory":      requiredEnv("DIRECTORY_SHEET"),
+		"preferences":    requiredEnv("PREFERENCES_SHEET"),
+		"invites":        requiredEnv("INVITES_SHEET"),
+		"apps":           requiredEnv("APPS_SHEET"),
+		"events":         requiredEnv("EVENTS_SHEET"),
+		"birthdays":      requiredEnv("BIRTHDAY_SHEET"),
 		"birthdayshared": requiredEnv("BIRTHDAY_SHARED_SHEET"),
 		"celebrate":      requiredEnv("CELEBRATE_SHEET"),
 		"calendar":       requiredEnv("CALENDAR_SHEET"),

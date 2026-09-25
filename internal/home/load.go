@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log/slog"
-	"maps"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -18,8 +17,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"heliosian/internal/data"
 	"heliosian/internal/filter"
+	"heliosian/internal/store"
 )
 
 const (
@@ -29,7 +28,6 @@ const (
 	adminsTab      = "Admins"
 	visibilityTab  = "Visibility"
 	audienceTab    = "Audience"
-	changeLogTab   = "Change Log"
 	addedFormat    = "2006-01-02"
 	maxTitleLength = 80
 	maxDescLength  = 300
@@ -50,11 +48,10 @@ var (
 	AudienceColumns   = append([]string{"Thing"}, filter.RuleColumns...)
 	adminColumns      = []string{"Email"}
 	visibilityColumns = []string{"App", "Visibility", "Emails", "Tagline", "Name", "Order"}
-	changeLogColumns  = []string{"Timestamp", "Actor", "Action", "Kind", "Title", "Description", "URL", "Image", "Category", "Visible", "Style", "Real Actor"}
 	CategoryColumns   = categoryColumns
 	LinkColumns       = linkColumns
+	AdminColumns      = adminColumns
 	VisibilityColumns = visibilityColumns
-	ChangeLogColumns  = changeLogColumns
 )
 
 type App struct {
@@ -115,12 +112,12 @@ type Visibility struct {
 	Order   int
 }
 
-func (v Visibility) cells() map[string]string {
+func (v Visibility) cells() store.Row {
 	order := ""
 	if v.Order > 0 {
 		order = strconv.Itoa(v.Order)
 	}
-	return map[string]string{"Visibility": v.Mode, "Emails": joinEmails(v.Emails), "Tagline": v.Tagline, "Name": v.Name, "Order": order}
+	return store.Row{"Visibility": v.Mode, "Emails": joinEmails(v.Emails), "Tagline": v.Tagline, "Name": v.Name, "Order": order}
 }
 
 func appKnown(key string) bool {
@@ -171,14 +168,8 @@ type Category struct {
 type Model struct {
 	Categories []Category            `json:"categories"`
 	Visibility map[string]Visibility `json:"-"`
-}
-
-type Tables struct {
-	Categories []map[string]string
-	Links      []map[string]string
-	Admins     []map[string]string
-	Visibility []map[string]string
-	Audience   []map[string]string
+	admins     []string
+	linkOrder  []string
 }
 
 const (
@@ -187,7 +178,7 @@ const (
 	thingLink     = "link:"
 )
 
-func rulesFor(rows []map[string]string, key string) ([]filter.Rule, error) {
+func rulesFor(rows []store.Row, key string) ([]filter.Rule, error) {
 	out := []filter.Rule{}
 	for _, row := range rows {
 		if strings.TrimSpace(row["Thing"]) != key {
@@ -200,63 +191,6 @@ func rulesFor(rows []map[string]string, key string) ([]filter.Rule, error) {
 		out = append(out, r)
 	}
 	return out, nil
-}
-
-func (t *Tables) withAudience(key string, rules []filter.Rule) *Tables {
-	out := *t
-	out.Audience = []map[string]string{}
-	for _, row := range t.Audience {
-		if strings.TrimSpace(row["Thing"]) != key {
-			out.Audience = append(out.Audience, row)
-		}
-	}
-	for _, r := range rules {
-		cells := filter.RuleCells(r)
-		cells["Thing"] = key
-		out.Audience = append(out.Audience, cells)
-	}
-	return &out
-}
-
-func audienceRows(key string, rules []filter.Rule) []map[string]string {
-	rows := []map[string]string{}
-	for _, r := range rules {
-		cells := filter.RuleCells(r)
-		cells["Thing"] = key
-		rows = append(rows, cells)
-	}
-	return rows
-}
-
-func ReadTables(source data.Source) (*Tables, error) {
-	type table struct {
-		name   string
-		want   []string
-		header []string
-		rows   []map[string]string
-	}
-	categories := &table{name: categoriesTab, want: categoryColumns}
-	links := &table{name: linksTab, want: linkColumns}
-	admins := &table{name: adminsTab, want: adminColumns}
-	visibility := &table{name: visibilityTab, want: visibilityColumns}
-	audience := &table{name: audienceTab, want: AudienceColumns}
-	changeLog := &table{name: changeLogTab, want: changeLogColumns}
-	read := []*table{categories, links, admins, visibility, audience}
-	names := []string{}
-	for _, t := range read {
-		names = append(names, t.name)
-	}
-	tabs, err := source.Tabs(appName, names, []string{changeLog.name})
-	if err != nil {
-		return nil, err
-	}
-	for _, t := range append(read, changeLog) {
-		t.header, t.rows = tabs[t.name].Header, tabs[t.name].Rows
-		if err := data.CheckColumns(t.name, t.header, t.want); err != nil {
-			return nil, err
-		}
-	}
-	return &Tables{Categories: categories.rows, Links: links.rows, Admins: admins.rows, Visibility: visibility.rows, Audience: audience.rows}, nil
 }
 
 func yesNo(cell string) (bool, error) {
@@ -335,26 +269,29 @@ func imageURL(images ImageChecker, name string) (string, error) {
 	return "/" + name, nil
 }
 
-func imageNames(rows ...[]map[string]string) []string {
+func imageNames(rows []store.Row) []string {
 	names := []string{}
-	for _, table := range rows {
-		for _, row := range table {
-			if row["Image"] != "" {
-				names = append(names, row["Image"])
-			}
+	for _, row := range rows {
+		if row["Image"] != "" {
+			names = append(names, row["Image"])
 		}
 	}
 	return names
 }
 
-func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
-	if err := images.Prefetch(imageNames(tables.Links)); err != nil {
+func BuildModel(tables store.Tables, images ImageChecker) (*Model, error) {
+	if err := images.Prefetch(imageNames(tables[linksTab])); err != nil {
 		return nil, err
 	}
-	model := &Model{Categories: []Category{}}
+	audience := tables[audienceTab]
+	model := &Model{Categories: []Category{}, linkOrder: []string{}}
+	for _, row := range tables[adminsTab] {
+		model.admins = append(model.admins, row["Email"])
+	}
+	model.admins = normalizeEmails(model.admins)
 	index := map[string]int{}
 	events, apps := false, false
-	for _, row := range tables.Categories {
+	for _, row := range tables[categoriesTab] {
 		title := strings.TrimSpace(row["Title"])
 		if title == "" {
 			return nil, fmt.Errorf("category row %v has no title", row)
@@ -386,7 +323,7 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 		if err != nil {
 			return nil, fmt.Errorf("category %q: %w", title, err)
 		}
-		rules, err := rulesFor(tables.Audience, thingCategory+title)
+		rules, err := rulesFor(audience, thingCategory+title)
 		if err != nil {
 			return nil, err
 		}
@@ -404,7 +341,7 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 		index[EventsTitle] = 0
 	}
 	titles := map[string]bool{}
-	for _, row := range tables.Links {
+	for _, row := range tables[linksTab] {
 		title := strings.TrimSpace(row["Title"])
 		if title == "" {
 			return nil, fmt.Errorf("link row %v has no title", row)
@@ -413,6 +350,7 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 			return nil, fmt.Errorf("duplicate link %q", title)
 		}
 		titles[title] = true
+		model.linkOrder = append(model.linkOrder, title)
 		if err := checkURL(row["URL"]); err != nil {
 			return nil, fmt.Errorf("link %q: %w", title, err)
 		}
@@ -439,7 +377,7 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 		if err != nil {
 			return nil, fmt.Errorf("link %q: %w", title, err)
 		}
-		rules, err := rulesFor(tables.Audience, thingLink+title)
+		rules, err := rulesFor(audience, thingLink+title)
 		if err != nil {
 			return nil, err
 		}
@@ -450,12 +388,12 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 			Rules: rules,
 		})
 	}
-	visibility, err := buildVisibility(tables.Visibility)
+	visibility, err := buildVisibility(tables[visibilityTab])
 	if err != nil {
 		return nil, err
 	}
 	for key, v := range visibility {
-		rules, err := rulesFor(tables.Audience, thingApp+key)
+		rules, err := rulesFor(audience, thingApp+key)
 		if err != nil {
 			return nil, err
 		}
@@ -466,7 +404,7 @@ func BuildModel(tables *Tables, images ImageChecker) (*Model, error) {
 	return model, nil
 }
 
-func buildVisibility(rows []map[string]string) (map[string]Visibility, error) {
+func buildVisibility(rows []store.Row) (map[string]Visibility, error) {
 	visibility := map[string]Visibility{}
 	for _, row := range rows {
 		app := strings.ToLower(strings.TrimSpace(row["App"]))
@@ -518,93 +456,4 @@ func appKeys() []string {
 		keys = append(keys, app.Key)
 	}
 	return keys
-}
-
-func cloneRows(rows []map[string]string) []map[string]string {
-	out := make([]map[string]string, len(rows))
-	for i, row := range rows {
-		out[i] = maps.Clone(row)
-	}
-	return out
-}
-
-func applyCells(row, cells map[string]string) {
-	for column, value := range cells {
-		if value == "" {
-			delete(row, column)
-			continue
-		}
-		row[column] = value
-	}
-}
-
-func (t *Tables) withRow(tab, key string, cells map[string]string) *Tables {
-	out := *t
-	rows := cloneRows(t.tab(tab))
-	if key != "" {
-		for _, row := range rows {
-			if row["Title"] == key {
-				applyCells(row, cells)
-				out.setTab(tab, rows)
-				return &out
-			}
-		}
-	}
-	row := map[string]string{}
-	applyCells(row, cells)
-	out.setTab(tab, append(rows, row))
-	return &out
-}
-
-func (t *Tables) withoutRow(tab, key string) *Tables {
-	out := *t
-	rows := []map[string]string{}
-	for _, row := range t.tab(tab) {
-		if row["Title"] != key {
-			rows = append(rows, row)
-		}
-	}
-	out.setTab(tab, rows)
-	return &out
-}
-
-func (t *Tables) withVisibility(app string, v Visibility) *Tables {
-	out := *t
-	out.Visibility = cloneRows(t.Visibility)
-	cells := v.cells()
-	cells["App"] = app
-	for _, row := range out.Visibility {
-		if strings.EqualFold(strings.TrimSpace(row["App"]), app) {
-			applyCells(row, cells)
-			return &out
-		}
-	}
-	row := map[string]string{}
-	applyCells(row, cells)
-	out.Visibility = append(out.Visibility, row)
-	return &out
-}
-
-func (t *Tables) withAdmins(emails []string) *Tables {
-	out := *t
-	out.Admins = make([]map[string]string, 0, len(emails))
-	for _, email := range emails {
-		out.Admins = append(out.Admins, map[string]string{"Email": email})
-	}
-	return &out
-}
-
-func (t *Tables) tab(name string) []map[string]string {
-	if name == categoriesTab {
-		return t.Categories
-	}
-	return t.Links
-}
-
-func (t *Tables) setTab(name string, rows []map[string]string) {
-	if name == categoriesTab {
-		t.Categories = rows
-		return
-	}
-	t.Links = rows
 }

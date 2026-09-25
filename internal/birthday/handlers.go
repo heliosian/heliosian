@@ -30,8 +30,6 @@ var pages = []string{
 	"/{$}", "/jobs", "/process", "/calendar", "/charities", "/charities/{name}", "/newsletters", "/newsletters/{date}", "/skipped", "/unassigned", "/admin", "/staff/{handle}",
 }
 
-// local is the school's clock: a birthday is a day there, and a step taken late
-// one evening is dated that evening.
 var local = mustLocation("America/Los_Angeles")
 
 func mustLocation(name string) *time.Location {
@@ -48,27 +46,17 @@ type app struct {
 	directory   Directory
 	superAdmins func() []string
 	describer   Describer
-	// mailer sends the assignee their invite; nil sends nothing. from is the
-	// address it comes from.
-	mailer mail.Sender
-	from   string
-	// base is the app's address for the links in mail sent off a request.
-	base string
-	// joinHome puts someone who joins the team on the app's list in
-	// Heliosian's settings, so the app shows on their home; nil does nothing.
-	joinHome func(email string) error
+	mailer      mail.Sender
+	from        string
+	base        string
+	joinHome    func(ctx context.Context, email string) error
 }
 
-// Describer finds where a charity takes donations and writes the newsletter's
-// sentence about it; nil leaves the charity form's Generate Info saying it is
-// not set up.
 type Describer interface {
 	Charity(ctx context.Context, actor, name, link string) (describe.Info, error)
 }
 
-// Register wires the app: one shell for every page, the model, and the writes.
-// Every route already sits behind sign-in.
-func Register(mux *http.ServeMux, cache *Cache, shared data.Writer, media *blob.Store, directory Directory, superAdmins func() []string, describer Describer, mailer mail.Sender, from, base string, joinHome func(email string) error) {
+func Register(mux *http.ServeMux, cache *Cache, shared data.Writer, media *blob.Store, directory Directory, superAdmins func() []string, describer Describer, mailer mail.Sender, from, base string, joinHome func(ctx context.Context, email string) error) {
 	a := app{cache: cache, shared: shared, directory: directory, superAdmins: superAdmins, describer: describer, mailer: mailer, from: from, base: base, joinHome: joinHome}
 	if mailer != nil {
 		go a.remindLoop()
@@ -113,15 +101,11 @@ func (a app) page(w http.ResponseWriter, r *http.Request) {
 	serve.File(w, r, shell)
 }
 
-// who is the signed-in person as the app keys them: the address Google
-// vouched for, resolved through the directory's aliases.
 func (a app) who(r *http.Request) (string, bool) {
 	email := a.directory.Resolve(strings.ToLower(auth.Email(r)))
 	return email, a.cache.IsAdmin(email)
 }
 
-// requireSuperAdmin is the platform's own tier: what colours the app is
-// theirs alone, not any admin's.
 func (a app) requireSuperAdmin(w http.ResponseWriter, r *http.Request) (string, bool) {
 	email, _ := a.who(r)
 	if !a.cache.IsSuperAdmin(email) {
@@ -157,7 +141,6 @@ func today() string {
 	return now().Format(DateFormat)
 }
 
-// year is the birthday year the app is working in right now.
 func (a app) year() string {
 	month, day, _ := ParseMonthDay(a.cache.Model().Settings.YearStart)
 	return YearContaining(now(), month, day).Label
@@ -195,8 +178,6 @@ func cleanEmail(raw string) string {
 	return strings.ToLower(strings.TrimSpace(raw))
 }
 
-// findStaff resolves a request's email to someone in the pipeline: they have a
-// birthday on file and have not asked to be left out.
 func (a app) findStaff(w http.ResponseWriter, raw string) (string, bool) {
 	email := cleanEmail(raw)
 	model := a.cache.Model()
@@ -271,8 +252,6 @@ func (a app) unassign(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// outreach records that someone has been contacted this year, or takes that
-// back.
 func (a app) outreach(w http.ResponseWriter, r *http.Request) {
 	actor, _, ok := a.requireTeam(w, r)
 	if !ok {
@@ -368,8 +347,6 @@ func (a app) deleteDonation(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// used marks this year's donation as carried in the newsletter, or takes that
-// back.
 func (a app) used(w http.ResponseWriter, r *http.Request) {
 	actor, _, ok := a.requireTeam(w, r)
 	if !ok {
@@ -402,8 +379,6 @@ func (a app) used(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// saveBirthday records or corrects a birthday, and the newsletter it should
-// land in when the usual pick is wrong.
 func (a app) saveBirthday(w http.ResponseWriter, r *http.Request) {
 	actor, _, ok := a.requireTeam(w, r)
 	if !ok {
@@ -460,9 +435,6 @@ func (a app) deleteBirthday(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// saveParticipation records that someone wants to be left out, or asked and
-// donated for but kept out of the newsletter, on their Birthdays row, adding
-// one without a birthday for someone opting out who has none on file.
 func (a app) saveParticipation(w http.ResponseWriter, r *http.Request) {
 	actor, _, ok := a.requireTeam(w, r)
 	if !ok {
@@ -514,7 +486,6 @@ func (a app) deleteParticipation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	match := store.Row{"Email": email}
-	// A row that held only the preference has nothing left to say.
 	op := store.Update(birthdaysTab, match, store.Row{"Participation": "", "Note": ""})
 	if b.Birthday == "" {
 		op = store.Delete(birthdaysTab, match)
@@ -581,9 +552,6 @@ func (a app) deleteNote(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// saveCharity adds or edits a charity. Anyone may add one, since a staff
-// member's pick often is not on the list yet; only an admin decides whether it
-// is allowed.
 func (a app) saveCharity(w http.ResponseWriter, r *http.Request) {
 	actor, admin, ok := a.requireTeam(w, r)
 	if !ok {
@@ -643,8 +611,6 @@ func (a app) saveCharity(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// describeCharity asks Claude for the newsletter's sentence about a charity,
-// for the form to offer; nothing is saved until the person saves the form.
 func (a app) describeCharity(w http.ResponseWriter, r *http.Request) {
 	actor, _, ok := a.requireTeam(w, r)
 	if !ok {
@@ -749,9 +715,6 @@ func (a app) addNewsletterDate(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// changeNewsletterDate moves one issue to another day. A birthday pinned to the
-// old day by its override moves with it, so nobody is left pointing at an issue
-// that no longer exists.
 func (a app) changeNewsletterDate(w http.ResponseWriter, r *http.Request) {
 	actor, ok := a.requireAdmin(w, r)
 	if !ok {
@@ -808,8 +771,6 @@ func (a app) deleteNewsletterDate(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// createNewsletterDates lays out a weekly run of issues: every given weekday
-// from one date to another, skipping any already on the list.
 func (a app) createNewsletterDates(w http.ResponseWriter, r *http.Request) {
 	actor, ok := a.requireAdmin(w, r)
 	if !ok {
@@ -845,7 +806,6 @@ func (a app) createNewsletterDates(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "at most a year at a time", http.StatusBadRequest)
 		return
 	}
-	// The first of the weekday on or after from, then every week to the end.
 	day := from.AddDate(0, 0, (body.Weekday-int(from.Weekday())+7)%7)
 	have := a.cache.Model().NewsletterDates
 	added := []string{}
@@ -872,8 +832,6 @@ func (a app) createNewsletterDates(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// clearFutureNewsletterDates removes every issue from today on, for starting
-// a year's list over; the ones already out stay, since birthdays landed in them.
 func (a app) clearFutureNewsletterDates(w http.ResponseWriter, r *http.Request) {
 	actor, ok := a.requireAdmin(w, r)
 	if !ok {
@@ -961,7 +919,6 @@ func (a app) setAdmins(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	// Super admins show in the merged list but never round-trip into the tab.
 	super := map[string]bool{}
 	for _, e := range a.superAdmins() {
 		super[e] = true
@@ -991,8 +948,6 @@ func (a app) setAdmins(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// resendInvites sends everyone holding a birthday its current invite again,
-// so calendars follow after the dates' rules change.
 func (a app) resendInvites(w http.ResponseWriter, r *http.Request) {
 	actor, ok := a.requireAdmin(w, r)
 	if !ok {
@@ -1019,9 +974,6 @@ func (a app) resendInvites(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// joinTeam takes the signed-in person onto the team as a volunteer, at their
-// own asking, and onto the app's list in Heliosian's settings so it shows on
-// their home.
 func (a app) joinTeam(w http.ResponseWriter, r *http.Request) {
 	actor, _ := a.who(r)
 	if err := checkEmail(actor); err != nil {
@@ -1033,7 +985,7 @@ func (a app) joinTeam(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if a.joinHome != nil {
-		if err := a.joinHome(actor); err != nil {
+		if err := a.joinHome(r.Context(), actor); err != nil {
 			slog.ErrorContext(r.Context(), "birthday: put a joiner on the app's list", "error", err, "email", actor)
 		}
 	}
@@ -1041,8 +993,6 @@ func (a app) joinTeam(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// teamRow reads the email and role an admin is adding or removing, refusing a
-// role the tab does not know.
 func teamRow(w http.ResponseWriter, r *http.Request) (map[string]string, bool) {
 	var body struct {
 		Email string `json:"email"`

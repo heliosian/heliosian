@@ -1,4 +1,3 @@
-// Command loadcheck runs every app's load pipeline against the production sheets and prints a summary.
 package main
 
 import (
@@ -43,8 +42,6 @@ func bundled(roots []string, key string) bool {
 	return false
 }
 
-// homeImages trusts bucket names, since this tool carries no bucket client,
-// and checks bundled files on disk.
 type homeImages struct{}
 
 func (homeImages) Has(key string) (bool, error) {
@@ -56,7 +53,6 @@ func (homeImages) Has(key string) (bool, error) {
 
 func (homeImages) Prefetch([]string) error { return nil }
 
-// teamImages trusts bucket names like homeImages does, and checks bundled files.
 type teamImages struct{}
 
 func (teamImages) Has(key string) (bool, error) {
@@ -68,7 +64,6 @@ func (teamImages) Has(key string) (bool, error) {
 
 func (teamImages) Prefetch([]string) error { return nil }
 
-// celebrateImages trusts bucket names like the others, and checks bundled files.
 type celebrateImages struct{}
 
 func (celebrateImages) Has(key string) (bool, error) {
@@ -192,14 +187,11 @@ func main() {
 		fmt.Printf("  %s -> %s (%s -> %s)\n", g.Name, g.NextName, g.Band, g.NextBand)
 	}
 
-	tables, err := home.ReadTables(source)
+	appsCache, err := home.NewCache(source, nil, homeImages{}, func() []string { return nil }, who.NewQueue())
 	if err != nil {
-		log.Fatalf("[ERROR] read apps tables: %v", err)
+		log.Fatalf("[ERROR] load apps model: %v", err)
 	}
-	apps, err := home.BuildModel(tables, homeImages{})
-	if err != nil {
-		log.Fatalf("[ERROR] build apps model: %v", err)
-	}
+	apps := appsCache.Model()
 	fmt.Println("apps:")
 	for _, c := range apps.Categories {
 		fmt.Printf("  %s %s: %d links\n", c.Title, c.Emoji, len(c.Links))
@@ -211,7 +203,7 @@ func main() {
 			fmt.Printf("    %s -> %s (%s, image %v)\n", l.Title, l.URL, visible, l.ImageURL != "")
 		}
 	}
-	fmt.Printf("apps admins: %d\n", len(tables.Admins))
+	fmt.Printf("apps admins: %d\n", len(appsCache.Admins()))
 
 	eventTables, err := team.ReadTables(source)
 	if err != nil {

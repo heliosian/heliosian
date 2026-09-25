@@ -2,9 +2,6 @@ package home
 
 import "testing"
 
-// A link into a hidden app is recognized by its host on the page's own tier,
-// with the apex and the portal's older name both understood; a link anywhere
-// else, or into an app that is not hidden, stays.
 func TestHiddenHosts(t *testing.T) {
 	cases := []struct {
 		page, link string

@@ -27,16 +27,12 @@ import (
 
 const jordan = "jordan.whitfield@heliosschool.org"
 
-// anyImages says every picture a sheet names is there, so the models load
-// without the bundled files the app serves.
 type anyImages struct{}
 
 func (anyImages) Has(string) (bool, error) { return true, nil }
 
 func (anyImages) Prefetch([]string) error { return nil }
 
-// sampleDirectory is the calendar's reading of the directory, over the
-// sample model.
 type sampleDirectory struct{ model *who.Model }
 
 func (d sampleDirectory) Resolve(email string) string { return d.model.Resolve(email) }
@@ -67,8 +63,6 @@ func (sampleDirectory) GradeColors() map[string]string     { return map[string]s
 func (sampleDirectory) People() []calendar.Person          { return nil }
 func (sampleDirectory) Lists(string) []calendar.List       { return nil }
 
-// sampleSources loads every sample sheet the way the server does, with the
-// calendar's roster the directory's classrooms and crews.
 func sampleSources(t *testing.T) Sources {
 	t.Helper()
 	dir := &data.Dir{Root: "../../sampledata"}
@@ -128,14 +122,11 @@ func sampleSources(t *testing.T) Sources {
 	if err != nil {
 		t.Fatal(err)
 	}
-	homeTables, err := home.ReadTables(dir)
+	homeCache, err := home.NewCache(dir, dir, anyImages{}, func() []string { return nil }, who.NewQueue())
 	if err != nil {
 		t.Fatal(err)
 	}
-	homeModel, err := home.BuildModel(homeTables, anyImages{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	homeModel := homeCache.Model()
 	documents, err := artifacts.LoadDir("../../sampledata/artifacts", artifacts.Fake{})
 	if err != nil {
 		t.Fatal(err)
@@ -383,8 +374,6 @@ func TestVolunteerOpportunitiesNameTheHouseholdsSignUps(t *testing.T) {
 	}
 }
 
-// A role under an event has the event's day: once the event has passed,
-// so has the role, and the list this year leaves it out.
 func TestRolesTakeTheirEventsDay(t *testing.T) {
 	v := sampleViewer(t, jordan)
 	v.now = time.Date(2026, 10, 1, 9, 0, 0, 0, calendar.Location)
@@ -689,8 +678,6 @@ func TestChatLeavesAStoppedAnswerToTheBrowser(t *testing.T) {
 	}
 }
 
-// wrapped hides the recorder's Flush behind an Unwrap, the way the request
-// logger's writer does, so the stream has to reach through it.
 type wrapped struct {
 	inner *httptest.ResponseRecorder
 }
