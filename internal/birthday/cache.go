@@ -25,6 +25,7 @@ type Cache struct {
 	mu         sync.RWMutex
 	model      *Model
 	tables     *Tables
+	edits      int
 }
 
 func NewCache(source data.Source, superAdmin func(string) bool, queue Enqueuer) (*Cache, error) {
@@ -52,6 +53,9 @@ func (c *Cache) Refresh() {
 
 func (c *Cache) refresh() error {
 	start := time.Now()
+	c.mu.RLock()
+	before := c.edits
+	c.mu.RUnlock()
 	tables, err := ReadTables(c.source)
 	if err != nil {
 		return err
@@ -60,7 +64,14 @@ func (c *Cache) refresh() error {
 	if err != nil {
 		return err
 	}
-	c.set(tables, model)
+	c.mu.Lock()
+	if c.edits != before {
+		c.mu.Unlock()
+		slog.Info("birthday model refresh skipped: edited while reading")
+		return nil
+	}
+	c.tables, c.model = tables, model
+	c.mu.Unlock()
 	slog.Info("loaded birthday model", "birthdays", len(model.Birthdays), "charities", len(model.Charities),
 		"donations", len(model.Donations), "newsletters", len(model.NewsletterDates), "took", time.Since(start).Round(time.Millisecond))
 	return nil
@@ -71,6 +82,7 @@ func (c *Cache) set(tables *Tables, model *Model) {
 	defer c.mu.Unlock()
 	c.tables = tables
 	c.model = model
+	c.edits++
 }
 
 func (c *Cache) Model() *Model {

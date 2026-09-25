@@ -125,6 +125,7 @@ type Store struct {
 	queue   Enqueuer
 	mu      sync.RWMutex
 	reports []Report
+	edits   int
 }
 
 func NewStore(source data.Source, writer data.Writer, queue Enqueuer) (*Store, error) {
@@ -152,6 +153,9 @@ func (s *Store) Refresh() {
 
 func (s *Store) refresh() error {
 	start := time.Now()
+	s.mu.RLock()
+	before := s.edits
+	s.mu.RUnlock()
 	header, rows, err := s.source.Table(appName, reportsTab)
 	if err != nil {
 		return err
@@ -166,15 +170,16 @@ func (s *Store) refresh() error {
 		}
 		reports = append(reports, reportFromRow(row))
 	}
-	s.set(reports)
+	s.mu.Lock()
+	if s.edits != before {
+		s.mu.Unlock()
+		slog.Info("feedback model refresh skipped: edited while reading")
+		return nil
+	}
+	s.reports = reports
+	s.mu.Unlock()
 	slog.Info("loaded feedback model", "reports", len(reports), "took", time.Since(start).Round(time.Millisecond))
 	return nil
-}
-
-func (s *Store) set(reports []Report) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.reports = reports
 }
 
 // Reports is every report, newest first.
@@ -205,6 +210,7 @@ func (s *Store) Save(r Report) (Report, error) {
 	s.queue.Add(func() {
 		s.mu.Lock()
 		s.reports = append(s.reports, r)
+		s.edits++
 		s.mu.Unlock()
 		done <- s.writer.Insert(appName, reportsTab, []map[string]string{r.cells()})
 	})
@@ -213,18 +219,20 @@ func (s *Store) Save(r Report) (Report, error) {
 
 // update writes one report's cells and keeps the loaded copy in step.
 func (s *Store) update(r Report) error {
-	done := make(chan error, 1)
-	s.queue.Add(func() {
-		s.mu.Lock()
-		for i, have := range s.reports {
-			if have.ID == r.ID {
-				s.reports[i] = r
-			}
+	s.mu.Lock()
+	for i, have := range s.reports {
+		if have.ID == r.ID {
+			s.reports[i] = r
 		}
-		s.mu.Unlock()
-		done <- s.writer.Set(appName, reportsTab, map[string]string{"ID": r.ID}, r.cells())
+	}
+	s.edits++
+	s.mu.Unlock()
+	s.queue.Add(func() {
+		if err := s.writer.Set(appName, reportsTab, map[string]string{"ID": r.ID}, r.cells()); err != nil {
+			slog.Error("feedback write", "id", r.ID, "error", err)
+		}
 	})
-	return <-done
+	return nil
 }
 
 // Filed marks a report filed, against the issue it became.

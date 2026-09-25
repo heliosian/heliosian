@@ -115,13 +115,11 @@ func (u uploader) applyFamily(w http.ResponseWriter, r *http.Request, actor, key
 // key (the alphabetically first parent email, which is the row's Email cell).
 func applyFamilyWrite(cache *Cache, writer data.Writer, queue *Queue, w http.ResponseWriter, r *http.Request, actor, key, action string, cells, previous map[string]string) bool {
 	logRow := changeLogRow(r, actor, key, previous)
-	applied := make(chan error, 1)
+	if err := cache.applyFamily(key, cells); err != nil {
+		serverError(w, r, fmt.Errorf("rebuild model after %s: %w", action, err))
+		return false
+	}
 	queue.Add(func() {
-		err := cache.applyFamily(key, cells)
-		applied <- err
-		if err != nil {
-			return
-		}
 		if err := writer.Set(appName, "Families", map[string]string{"Email": key}, cells); err != nil {
 			slog.ErrorContext(r.Context(), "set families row", "key", key, "error", err)
 			return
@@ -130,10 +128,6 @@ func applyFamilyWrite(cache *Cache, writer data.Writer, queue *Queue, w http.Res
 			logging.Fatal("append change log", "action", action, "key", key, "error", err)
 		}
 	})
-	if err := <-applied; err != nil {
-		serverError(w, r, fmt.Errorf("rebuild model after %s: %w", action, err))
-		return false
-	}
 	return true
 }
 
@@ -144,17 +138,15 @@ func applyFamilyWrite(cache *Cache, writer data.Writer, queue *Queue, w http.Res
 // reject-before-persist ordering - can't drift between the two.
 func applyOverrideWrite(cache *Cache, writer data.Writer, queue *Queue, w http.ResponseWriter, r *http.Request, actor, email, action string, cells, previous map[string]string) bool {
 	logRow := changeLogRow(r, actor, email, previous)
-	applied := make(chan error, 1)
+	// If the in-memory rebuild rejects this change, don't write it to the real
+	// sheet either - otherwise the sheet ends up holding a value the model can
+	// never load, and every future rebuild (including the next server start)
+	// fails the same way until someone finds and fixes the cell by hand.
+	if err := cache.applyOverride(email, cells); err != nil {
+		serverError(w, r, fmt.Errorf("rebuild model after %s: %w", action, err))
+		return false
+	}
 	queue.Add(func() {
-		// If the in-memory rebuild rejects this change, don't write it to the real
-		// sheet either - otherwise the sheet ends up holding a value the model can
-		// never load, and every future rebuild (including the next server start)
-		// fails the same way until someone finds and fixes the cell by hand.
-		err := cache.applyOverride(email, cells)
-		applied <- err
-		if err != nil {
-			return
-		}
 		if err := writer.Set(appName, "Overrides", map[string]string{"Email": email}, cells); err != nil {
 			slog.ErrorContext(r.Context(), "set overrides", "email", email, "error", err)
 			return
@@ -163,10 +155,6 @@ func applyOverrideWrite(cache *Cache, writer data.Writer, queue *Queue, w http.R
 			logging.Fatal("append change log", "action", action, "email", email, "error", err)
 		}
 	})
-	if err := <-applied; err != nil {
-		serverError(w, r, fmt.Errorf("rebuild model after %s: %w", action, err))
-		return false
-	}
 	return true
 }
 
@@ -185,24 +173,21 @@ func applyOverrideWrite(cache *Cache, writer data.Writer, queue *Queue, w http.R
 // each Set only ever fires when a real row is there to rename.
 func applyEmailRenameWrite(cache *Cache, writer data.Writer, queue *Queue, w http.ResponseWriter, r *http.Request, actor, oldEmail, newEmail string, cells map[string]string) bool {
 	logRow := changeLogRow(r, actor, newEmail, map[string]string{"Email": oldEmail})
-	applied := make(chan error, 1)
+	before, err := cache.applyEmailRename(oldEmail, newEmail, cells)
+	if err != nil {
+		serverError(w, r, fmt.Errorf("rebuild model after email rename: %w", err))
+		return false
+	}
+	hasTagOwner := slices.ContainsFunc(before.Tags, func(row map[string]string) bool {
+		return strings.EqualFold(row[tagOwner], oldEmail)
+	})
+	hasTagPerson := slices.ContainsFunc(before.Tags, func(row map[string]string) bool {
+		return strings.EqualFold(row[tagPerson], oldEmail)
+	})
+	hasPhotos := slices.ContainsFunc(before.Photos, func(row map[string]string) bool {
+		return strings.EqualFold(row["Email"], oldEmail)
+	})
 	queue.Add(func() {
-		before := cache.currentTables()
-		hasTagOwner := slices.ContainsFunc(before.Tags, func(row map[string]string) bool {
-			return strings.EqualFold(row[tagOwner], oldEmail)
-		})
-		hasTagPerson := slices.ContainsFunc(before.Tags, func(row map[string]string) bool {
-			return strings.EqualFold(row[tagPerson], oldEmail)
-		})
-		hasPhotos := slices.ContainsFunc(before.Photos, func(row map[string]string) bool {
-			return strings.EqualFold(row["Email"], oldEmail)
-		})
-
-		err := cache.applyEmailRename(oldEmail, newEmail, cells)
-		applied <- err
-		if err != nil {
-			return
-		}
 		overrideCells := map[string]string{"Email": newEmail}
 		for column, value := range cells {
 			overrideCells[column] = value
@@ -230,10 +215,6 @@ func applyEmailRenameWrite(cache *Cache, writer data.Writer, queue *Queue, w htt
 			logging.Fatal("append change log after email rename", "from", oldEmail, "to", newEmail, "error", err)
 		}
 	})
-	if err := <-applied; err != nil {
-		serverError(w, r, fmt.Errorf("rebuild model after email rename: %w", err))
-		return false
-	}
 	return true
 }
 
@@ -247,13 +228,11 @@ func applyEmailRenameWrite(cache *Cache, writer data.Writer, queue *Queue, w htt
 // rename does.
 func applyDeletePersonWrite(cache *Cache, writer data.Writer, queue *Queue, w http.ResponseWriter, r *http.Request, actor, email string, previous map[string]string) bool {
 	logRow := changeLogRow(r, actor, email, previous)
-	applied := make(chan error, 1)
+	if err := cache.applyDeletePerson(email); err != nil {
+		serverError(w, r, fmt.Errorf("rebuild model after delete: %w", err))
+		return false
+	}
 	queue.Add(func() {
-		err := cache.applyDeletePerson(email)
-		applied <- err
-		if err != nil {
-			return
-		}
 		if err := writer.Delete(appName, "Overrides", map[string]string{"Email": email}); err != nil {
 			slog.ErrorContext(r.Context(), "delete overrides row", "email", email, "error", err)
 			return
@@ -277,10 +256,6 @@ func applyDeletePersonWrite(cache *Cache, writer data.Writer, queue *Queue, w ht
 			logging.Fatal("append change log after deleting", "email", email, "error", err)
 		}
 	})
-	if err := <-applied; err != nil {
-		serverError(w, r, fmt.Errorf("rebuild model after delete: %w", err))
-		return false
-	}
 	return true
 }
 
@@ -579,34 +554,27 @@ func (u uploader) upload(w http.ResponseWriter, r *http.Request) {
 // Uploading (append), drag-reorder (permute), deleting (remove one), and cropping
 // (attach a crop to one) all funnel through this one path rather than four ad hoc
 // ones, since each is really just "this person's photo list is now exactly order" -
-// one place to get the sheet-write-then-rebuild interaction right instead of four.
+// one place to get the rebuild-then-write interaction right instead of four.
 func (u uploader) setPhotos(w http.ResponseWriter, r *http.Request, me, key string, order []photoRef, cells, previous map[string]string, changeAction string) bool {
 	rows := make([]map[string]string, len(order))
 	for i, ref := range order {
 		rows[i] = map[string]string{"Email": key, "Photo Name": ref.Name, "Crop Name": ref.CropName}
 	}
-	rewritten := make(chan error, 1)
-	u.queue.Add(func() {
-		if err := u.sheet.Delete(appName, "Photos", map[string]string{"Email": key}); err != nil {
-			rewritten <- err
-			return
-		}
-		rewritten <- u.sheet.Insert(appName, "Photos", rows)
-	})
-	if err := <-rewritten; err != nil {
-		serverError(w, r, fmt.Errorf("rewrite photo list for %s: %w", key, err))
+	if err := u.cache.applyPhotos(key, order, cells); err != nil {
+		serverError(w, r, fmt.Errorf("rebuild model after %s: %w", changeAction, err))
 		return false
 	}
 	logRow := changeLogRow(r, me, key, previous)
-	applied := make(chan error, 1)
 	u.queue.Add(func() {
-		// If the in-memory rebuild rejects this change, don't write it to the real
-		// sheet either - otherwise the sheet ends up holding a value the model can
-		// never load, and every future rebuild (including the next server start)
-		// fails the same way until someone finds and fixes the cell by hand.
-		err := u.cache.applyPhotos(key, order, cells)
-		applied <- err
-		if err != nil || len(cells) == 0 {
+		if err := u.sheet.Delete(appName, "Photos", map[string]string{"Email": key}); err != nil {
+			slog.ErrorContext(r.Context(), "clear photo list", "email", key, "error", err)
+			return
+		}
+		if err := u.sheet.Insert(appName, "Photos", rows); err != nil {
+			slog.ErrorContext(r.Context(), "write photo list", "email", key, "error", err)
+			return
+		}
+		if len(cells) == 0 {
 			return
 		}
 		if err := u.sheet.Set(appName, "Overrides", map[string]string{"Email": key}, cells); err != nil {
@@ -617,10 +585,6 @@ func (u uploader) setPhotos(w http.ResponseWriter, r *http.Request, me, key stri
 			logging.Fatal("append change log", "action", changeAction, "key", key, "error", err)
 		}
 	})
-	if err := <-applied; err != nil {
-		serverError(w, r, fmt.Errorf("rebuild model after %s: %w", changeAction, err))
-		return false
-	}
 	return true
 }
 

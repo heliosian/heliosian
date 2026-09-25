@@ -192,15 +192,12 @@ func (a app) commit(r *http.Request, w http.ResponseWriter, tables *Tables, flus
 		return false
 	}
 	before := a.askDays(a.cache.Model())
-	applied := make(chan struct{})
+	a.cache.set(tables, model)
 	a.queue.Add(func() {
-		a.cache.set(tables, model)
-		close(applied)
 		if err := flush(); err != nil {
 			slog.ErrorContext(ctx, "birthday write", "error", err)
 		}
 	})
-	<-applied
 	a.mailMovedAskDays(r, before, a.askDays(model))
 	return true
 }

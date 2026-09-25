@@ -70,11 +70,8 @@ func (t tagger) rename(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	hadManagers := len(t.cache.TagManagers(owner)[from]) > 0
-	applied := make(chan struct{})
-	var people int
+	people := t.cache.renameTag(owner, from, to)
 	t.queue.Add(func() {
-		people = t.cache.renameTag(owner, from, to)
-		close(applied)
 		if people == 0 {
 			return
 		}
@@ -90,7 +87,6 @@ func (t tagger) rename(w http.ResponseWriter, r *http.Request) {
 			slog.ErrorContext(r.Context(), "tag rename managers", "owner", owner, "from", from, "to", to, "error", err)
 		}
 	})
-	<-applied
 	slog.InfoContext(r.Context(), "tag: renamed", "owner", owner, "from", from, "to", to, "people", people)
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -126,11 +122,8 @@ func (t tagger) copy(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "you already have a tag called "+to, http.StatusConflict)
 		return
 	}
-	applied := make(chan struct{})
-	var rows []map[string]string
+	rows := t.cache.copyTag(fromOwner, from, owner, to)
 	t.queue.Add(func() {
-		rows = t.cache.copyTag(fromOwner, from, owner, to)
-		close(applied)
 		if len(rows) == 0 {
 			return
 		}
@@ -138,7 +131,6 @@ func (t tagger) copy(w http.ResponseWriter, r *http.Request) {
 			slog.ErrorContext(r.Context(), "tag copy", "owner", owner, "from", from, "to", to, "error", err)
 		}
 	})
-	<-applied
 	slog.InfoContext(r.Context(), "tag: copied", "owner", owner, "fromOwner", fromOwner, "from", from, "to", to, "people", len(rows))
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -167,15 +159,12 @@ func (t tagger) share(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no such tag", http.StatusBadRequest)
 		return
 	}
-	applied := make(chan struct{})
+	t.cache.applyManager(owner, tag, manager, on)
 	t.queue.Add(func() {
-		t.cache.applyManager(owner, tag, manager, on)
-		close(applied)
 		if err := t.flushManager(owner, tag, manager, on); err != nil {
 			slog.ErrorContext(r.Context(), "tag share write", "owner", owner, "tag", tag, "manager", manager, "error", err)
 		}
 	})
-	<-applied
 	slog.InfoContext(r.Context(), "tag: shared", "owner", owner, "on", on, "tag", tag, "manager", manager)
 	if on {
 		t.notifyShared(r, owner, tag, manager)
@@ -194,15 +183,12 @@ func (t tagger) leave(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad tag", http.StatusBadRequest)
 		return
 	}
-	applied := make(chan struct{})
+	t.cache.applyManager(owner, tag, manager, false)
 	t.queue.Add(func() {
-		t.cache.applyManager(owner, tag, manager, false)
-		close(applied)
 		if err := t.flushManager(owner, tag, manager, false); err != nil {
 			slog.ErrorContext(r.Context(), "tag leave write", "owner", owner, "tag", tag, "manager", manager, "error", err)
 		}
 	})
-	<-applied
 	slog.InfoContext(r.Context(), "tag: left", "owner", owner, "tag", tag, "manager", manager)
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -230,11 +216,8 @@ func (t tagger) drop(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad tag name", http.StatusBadRequest)
 		return
 	}
-	applied := make(chan struct{})
-	var people int
+	people := t.cache.dropTag(owner, tag)
 	t.queue.Add(func() {
-		people = t.cache.dropTag(owner, tag)
-		close(applied)
 		if people == 0 {
 			return
 		}
@@ -245,7 +228,6 @@ func (t tagger) drop(w http.ResponseWriter, r *http.Request) {
 			slog.ErrorContext(r.Context(), "tag delete managers", "owner", owner, "tag", tag, "error", err)
 		}
 	})
-	<-applied
 	slog.InfoContext(r.Context(), "tag: deleted", "owner", owner, "tag", tag, "people", people)
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -274,15 +256,12 @@ func (t tagger) set(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	applied := make(chan struct{})
+	t.cache.applyTag(owner, tag, person, on)
 	t.queue.Add(func() {
-		t.cache.applyTag(owner, tag, person, on)
-		close(applied)
 		if err := t.flush(owner, tag, person, on); err != nil {
 			slog.ErrorContext(r.Context(), "tag write", "owner", owner, "tag", tag, "person", person, "error", err)
 		}
 	})
-	<-applied
 	slog.InfoContext(r.Context(), "tag: changed", "owner", owner, "on", on, "tag", tag, "person", person)
 	w.WriteHeader(http.StatusNoContent)
 }

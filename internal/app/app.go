@@ -819,7 +819,7 @@ func NewCore(cfg Config) *Core {
 	who.Register(mux, cache, cfg.BrowserKey, smartLists{cache, teamCache, celebrateCache, loopCache, loopDir})
 	who.RegisterTags(mux, cache, cfg.Writer, queue, cfg.WhoMail)
 	who.RegisterAdmin(mux, cache, cfg.Writer, queue)
-	if err := who.RegisterInvites(mux, cache, cfg.Source, cfg.Writer); err != nil {
+	if err := who.RegisterInvites(mux, cache, cfg.Source, cfg.Writer, queue); err != nil {
 		logging.Fatal("load invites data", "error", err)
 	}
 	mux.Handle("GET /{$}", http.RedirectHandler("/people", http.StatusFound))

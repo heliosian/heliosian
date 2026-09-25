@@ -26,6 +26,8 @@ type Cache struct {
 	mu       sync.RWMutex
 	tables   *Tables
 	settings *Settings
+	edits    int
+	commits  sync.Mutex
 }
 
 func NewCache(source data.Source, writer data.Writer, queue Enqueuer) (*Cache, error) {
@@ -53,6 +55,9 @@ func (c *Cache) Refresh() {
 
 func (c *Cache) refresh() error {
 	start := time.Now()
+	c.mu.RLock()
+	before := c.edits
+	c.mu.RUnlock()
 	tables, err := ReadTables(c.source)
 	if err != nil {
 		return err
@@ -61,7 +66,14 @@ func (c *Cache) refresh() error {
 	if err != nil {
 		return err
 	}
-	c.set(tables, settings)
+	c.mu.Lock()
+	if c.edits != before {
+		c.mu.Unlock()
+		slog.Info("config refresh skipped: edited while reading")
+		return nil
+	}
+	c.tables, c.settings = tables, settings
+	c.mu.Unlock()
 	slog.Info("loaded config", "superAdmins", len(settings.SuperAdmins), "gradeColors", len(settings.GradeColors),
 		"classroomColors", len(settings.ClassroomColors), "took", time.Since(start).Round(time.Millisecond))
 	return nil
@@ -72,6 +84,7 @@ func (c *Cache) set(tables *Tables, settings *Settings) {
 	defer c.mu.Unlock()
 	c.tables = tables
 	c.settings = settings
+	c.edits++
 }
 
 func (c *Cache) Settings() *Settings {
@@ -112,21 +125,18 @@ func (c *Cache) SignOut(ctx context.Context, email string) error {
 // holding a value no future load can read, including the next server start - then
 // applies it in memory and persists it behind every earlier write.
 func (c *Cache) update(ctx context.Context, action string, mirror func(*Tables) *Tables, persist func() error) error {
-	applied := make(chan error, 1)
+	c.commits.Lock()
+	defer c.commits.Unlock()
+	tables := mirror(c.tablesNow())
+	settings, err := Parse(tables)
+	if err != nil {
+		return fmt.Errorf("%s: %w", action, err)
+	}
+	c.set(tables, settings)
 	c.queue.Add(func() {
-		tables := mirror(c.tablesNow())
-		settings, err := Parse(tables)
-		applied <- err
-		if err != nil {
-			return
-		}
-		c.set(tables, settings)
 		if err := persist(); err != nil {
 			slog.ErrorContext(ctx, "config write", "action", action, "error", err)
 		}
 	})
-	if err := <-applied; err != nil {
-		return fmt.Errorf("%s: %w", action, err)
-	}
 	return nil
 }

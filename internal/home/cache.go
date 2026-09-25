@@ -28,6 +28,7 @@ type Cache struct {
 	mu          sync.RWMutex
 	model       *Model
 	tables      *Tables
+	edits       int
 }
 
 func (c *Cache) includes(rules []filter.Rule, email string) bool {
@@ -59,6 +60,9 @@ func (c *Cache) Refresh() {
 
 func (c *Cache) refresh() error {
 	start := time.Now()
+	c.mu.RLock()
+	before := c.edits
+	c.mu.RUnlock()
 	tables, err := ReadTables(c.source)
 	if err != nil {
 		return err
@@ -67,7 +71,14 @@ func (c *Cache) refresh() error {
 	if err != nil {
 		return err
 	}
-	c.set(tables, model)
+	c.mu.Lock()
+	if c.edits != before {
+		c.mu.Unlock()
+		slog.Info("apps model refresh skipped: edited while reading")
+		return nil
+	}
+	c.tables, c.model = tables, model
+	c.mu.Unlock()
 	links := 0
 	for _, category := range model.Categories {
 		links += len(category.Links)
@@ -81,6 +92,7 @@ func (c *Cache) set(tables *Tables, model *Model) {
 	defer c.mu.Unlock()
 	c.tables = tables
 	c.model = model
+	c.edits++
 }
 
 func (c *Cache) Model() *Model {
@@ -235,10 +247,11 @@ func Grant(cache *Cache, writer data.Writer, queue Enqueuer, appKey, email strin
 	if err != nil {
 		return err
 	}
-	done := make(chan error, 1)
+	cache.set(tables, model)
 	queue.Add(func() {
-		cache.set(tables, model)
-		done <- writer.Set(appName, visibilityTab, map[string]string{"App": app.Key}, v.cells())
+		if err := writer.Set(appName, visibilityTab, map[string]string{"App": app.Key}, v.cells()); err != nil {
+			slog.Error("apps grant write", "app", app.Key, "email", email, "error", err)
+		}
 	})
-	return <-done
+	return nil
 }

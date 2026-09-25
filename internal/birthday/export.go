@@ -152,19 +152,16 @@ func (a app) exportIssue(ctx context.Context, issue, actor, real string) (int, e
 	if len(copied) == 0 {
 		return 0, failed
 	}
-	done := make(chan error, 1)
+	tables := a.cache.Tables()
+	for _, it := range copied {
+		tables = tables.with(donationsTab, map[string]string{"Email": it.email, "Year": it.year}, it.donation)
+	}
+	model, err := BuildModel(tables)
+	if err != nil {
+		return 0, fmt.Errorf("mark the copied birthdays done: %w", err)
+	}
+	a.cache.set(tables, model)
 	a.queue.Add(func() {
-		tables := a.cache.Tables()
-		for _, it := range copied {
-			tables = tables.with(donationsTab, map[string]string{"Email": it.email, "Year": it.year}, it.donation)
-		}
-		model, err := BuildModel(tables)
-		if err != nil {
-			done <- err
-			return
-		}
-		a.cache.set(tables, model)
-		done <- nil
 		for _, it := range copied {
 			if err := a.writer.Set(appName, donationsTab, map[string]string{"Email": it.email, "Year": it.year}, it.donation); err != nil {
 				slog.ErrorContext(ctx, "birthday: mark copied donation used", "email", it.email, "error", err)
@@ -177,9 +174,6 @@ func (a app) exportIssue(ctx context.Context, issue, actor, real string) (int, e
 			}
 		}
 	})
-	if err := <-done; err != nil {
-		return 0, fmt.Errorf("mark the copied birthdays done: %w", err)
-	}
 	return len(copied), failed
 }
 

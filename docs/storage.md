@@ -26,18 +26,17 @@ Every request goes through one retry of a quota refusal (`call` in `internal/dat
 
 ## Store
 
-`Commit(ctx, change)` takes a change - inserts, sets and deletes against the store's tabs - and, on the one write queue every store shares (`who.Queue`):
+A commit has two halves that never wait on each other. `Commit(ctx, change)` takes a change - inserts, sets and deletes against the store's tabs - and, under the store's own lock:
 
 1. matches each operation against the tables as they stand, which gives the rows' previous values;
 2. runs the cascade hooks of every tab touched, which add operations of their own, until none adds more;
 3. applies the whole change to a copy of the tables and builds the model from it - a model that refuses rejects the change, and nothing is written;
-4. swaps the tables and model in, and releases the request, which never waits on Sheets;
-5. queues the IO writes and the Change Log rows;
-6. runs the after-commit hooks.
+4. swaps the tables and model in, counts the commit, and queues the IO writes and the Change Log rows on the one write queue every store shares (`who.Queue`);
+5. releases the lock and the request, and runs the after-commit hooks.
 
-An IO write that fails is logged `[ERROR]` and the store refreshes from the sheet, so memory never stays ahead of the sheet for longer than the queue takes.
+The memory half takes milliseconds and waits only on another commit's memory half; the IO half runs on the queue in commit order, and no request waits on it. An IO write that fails is logged `[ERROR]` and the store refreshes from the sheet, so memory never stays ahead of the sheet for longer than the queue takes. A mail hook is the one caller that waits for its IO: it answers the mail provider only once what it took is in the sheet, so a failure is retried by the provider rather than lost.
 
-A store reads its sheet at startup, every five minutes after, and once more thirty seconds after a start (`deployOverlap` in `internal/app`): during a deploy the old revision keeps serving and writing while the new one reads, and that second read picks up what it wrote. The five-minute refresh is for what changes in the sheets by hand. Each store counts its commits, so a refresh that read the sheet before a commit landed does not put the older sheet back. Work accepted but not yet committed - a mail the documents' hook took, a group's post being filed - holds the queue (`Hold` and `Release` in `internal/who/queue.go`), so the shutdown drain waits for it.
+A store reads its sheet at startup, every five minutes after, and once more thirty seconds after a start (`deployOverlap` in `internal/app`): during a deploy the old revision keeps serving and writing while the new one reads, and that second read picks up what it wrote. The five-minute refresh is for what changes in the sheets by hand. A refresh reads on the write queue, behind every write already queued, and swaps its result in under the lock only if no commit has landed since it began, so it never puts an older sheet back over newer memory. Work accepted but not yet committed - a mail the documents' hook took, a group's post being filed - holds the queue (`Hold` and `Release` in `internal/who/queue.go`), so the shutdown drain waits for it.
 
 ## Hooks
 

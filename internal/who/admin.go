@@ -315,10 +315,8 @@ func (a admin) setAdmins(w http.ResponseWriter, r *http.Request) {
 	admins := withoutSuperAdmins(config.NormalizeEmails(body.Admins), a.cache.superAdmins())
 	current := a.cache.tabAdmins()
 	added, removed := listDiff(current, admins)
-	applied := make(chan struct{})
+	a.cache.applyAdmins(admins)
 	a.queue.Add(func() {
-		a.cache.applyAdmins(admins)
-		close(applied)
 		for _, e := range removed {
 			if err := a.writer.Delete(appName, adminsTable, map[string]string{"Email": e}); err != nil {
 				slog.ErrorContext(r.Context(), "remove admin", "email", e, "error", err)
@@ -330,7 +328,6 @@ func (a admin) setAdmins(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	})
-	<-applied
 	slog.InfoContext(r.Context(), "admin: set the admin list", "actor", email, "admins", admins)
 	w.WriteHeader(http.StatusNoContent)
 }

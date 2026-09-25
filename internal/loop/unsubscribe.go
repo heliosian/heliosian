@@ -122,10 +122,8 @@ func (a app) unsubscribeAddress(ctx context.Context, real string, g *Group, emai
 	if err != nil {
 		return err
 	}
-	applied := make(chan struct{})
+	a.cache.set(tables, model)
 	a.queue.Add(func() {
-		a.cache.set(tables, model)
-		close(applied)
 		if err := a.writer.Insert(appName, excludedTab, []map[string]string{{"Group": g.Name, "Email": email, "Note": note, "Timestamp": when}}); err != nil {
 			slog.ErrorContext(ctx, "groups: unsubscribe write", "error", err)
 			return
@@ -134,7 +132,6 @@ func (a app) unsubscribeAddress(ctx context.Context, real string, g *Group, emai
 			slog.ErrorContext(ctx, "groups: unsubscribe log", "error", err)
 		}
 	})
-	<-applied
 	slog.InfoContext(ctx, "groups: unsubscribed", "group", g.Name, "email", email, "how", how)
 	return nil
 }
@@ -152,10 +149,8 @@ func (a app) resubscribeAddress(ctx context.Context, real string, g *Group, emai
 	if err != nil {
 		return err
 	}
-	applied := make(chan struct{})
+	a.cache.set(tables, model)
 	a.queue.Add(func() {
-		a.cache.set(tables, model)
-		close(applied)
 		if err := a.writer.Delete(appName, excludedTab, map[string]string{"Group": g.Name, "Email": email}); err != nil {
 			slog.ErrorContext(ctx, "groups: resubscribe write", "error", err)
 			return
@@ -164,7 +159,6 @@ func (a app) resubscribeAddress(ctx context.Context, real string, g *Group, emai
 			slog.ErrorContext(ctx, "groups: resubscribe log", "error", err)
 		}
 	})
-	<-applied
 	slog.InfoContext(ctx, "groups: resubscribed", "group", g.Name, "email", email)
 	return nil
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -143,13 +144,15 @@ const invitesRefreshInterval = 5 * time.Minute
 // visible on the very next load instead of waiting for the next tick.
 type invitesCache struct {
 	source    data.Source
+	queue     *Queue
 	mu        sync.RWMutex
 	systems   []InviteTemplate
 	greetings []GreetingTemplate
 	err       string
+	edits     int
 }
 
-func newInvitesCache(source data.Source) (*invitesCache, error) {
+func newInvitesCache(source data.Source, queue *Queue) (*invitesCache, error) {
 	systems, err := loadInviteTemplates(source)
 	if err != nil {
 		return nil, fmt.Errorf("load invite templates: %w", err)
@@ -159,14 +162,14 @@ func newInvitesCache(source data.Source) (*invitesCache, error) {
 		return nil, fmt.Errorf("load greeting templates: %w", err)
 	}
 	slog.Info("loaded invite templates", "systems", len(systems), "greetings", len(greetings))
-	c := &invitesCache{source: source, systems: systems, greetings: greetings}
+	c := &invitesCache{source: source, queue: queue, systems: systems, greetings: greetings}
 	go c.refreshLoop()
 	return c, nil
 }
 
 func (c *invitesCache) refreshLoop() {
 	for range time.Tick(invitesRefreshInterval) {
-		c.refresh()
+		c.queue.Add(c.refresh)
 	}
 }
 
@@ -174,6 +177,9 @@ func (c *invitesCache) refreshLoop() {
 // failed as it was rather than blanking out working data - the error string
 // still surfaces so the client can explain it.
 func (c *invitesCache) refresh() {
+	c.mu.RLock()
+	before := c.edits
+	c.mu.RUnlock()
 	systems, sysErr := loadInviteTemplates(c.source)
 	greetings, greetErr := loadGreetingTemplates(c.source)
 	errStr := ""
@@ -191,26 +197,54 @@ func (c *invitesCache) refresh() {
 	if sysErr == nil {
 		c.systems = systems
 	}
-	if greetErr == nil {
+	if greetErr == nil && c.edits == before {
 		c.greetings = greetings
 	}
 	c.err = errStr
 	c.mu.Unlock()
 }
 
-// refreshGreetings reloads just _Greetings - one Sheets call instead of
-// refresh's seven-plus - so a write handler can call it directly without
-// making the person who just clicked Save wait for the whole template set to
-// reload too.
-func (c *invitesCache) refreshGreetings() {
-	greetings, err := loadGreetingTemplates(c.source)
-	if err != nil {
-		slog.Error("load greeting templates", "error", err)
-		return
-	}
+func (c *invitesCache) addGreeting(g GreetingTemplate) {
 	c.mu.Lock()
-	c.greetings = greetings
-	c.mu.Unlock()
+	defer c.mu.Unlock()
+	c.greetings = append(slices.Clone(c.greetings), g)
+	c.edits++
+}
+
+func (c *invitesCache) editGreeting(original string, g GreetingTemplate) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for i, have := range c.greetings {
+		if !strings.EqualFold(have.Name, original) {
+			continue
+		}
+		if have.CreatedBy != g.CreatedBy {
+			return false
+		}
+		next := slices.Clone(c.greetings)
+		next[i] = g
+		c.greetings = next
+		c.edits++
+		return true
+	}
+	return false
+}
+
+func (c *invitesCache) deleteGreeting(name, email string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for i, have := range c.greetings {
+		if !strings.EqualFold(have.Name, name) {
+			continue
+		}
+		if have.CreatedBy != email {
+			return false
+		}
+		c.greetings = slices.Delete(slices.Clone(c.greetings), i, i+1)
+		c.edits++
+		return true
+	}
+	return false
 }
 
 func (c *invitesCache) view() ([]InviteTemplate, []GreetingTemplate, string) {
@@ -225,8 +259,8 @@ func (c *invitesCache) view() ([]InviteTemplate, []GreetingTemplate, string) {
 // their own greeting to _Greetings. Source/writer are the same ones
 // directory/preferences read and write through. The templates load before
 // the server listens and a failure is fatal, the same as the directory model.
-func RegisterInvites(mux *http.ServeMux, cache *Cache, source data.Source, writer data.Writer) error {
-	invites, err := newInvitesCache(source)
+func RegisterInvites(mux *http.ServeMux, cache *Cache, source data.Source, writer data.Writer, queue *Queue) error {
+	invites, err := newInvitesCache(source, queue)
 	if err != nil {
 		return err
 	}
@@ -278,35 +312,31 @@ func RegisterInvites(mux *http.ServeMux, cache *Cache, source data.Source, write
 			"Individual": yesNo(r.FormValue("individual") == "1"),
 			"Email":      email,
 		}
+		greeting := GreetingTemplate{
+			Name: name, Format: format,
+			Grouped: cells["Grouped"] != "No", Individual: cells["Individual"] != "No",
+			CreatedBy: email,
+		}
 		if original != "" {
-			owned, err := ownsGreeting(source, original, email)
-			if err != nil {
-				slog.ErrorContext(r.Context(), "load greetings for edit", "error", err)
-				http.Error(w, "failed to save greeting", http.StatusInternalServerError)
-				return
-			}
-			if !owned {
+			if !invites.editGreeting(original, greeting) {
 				http.Error(w, "you can only edit greetings you created", http.StatusForbidden)
 				return
 			}
-			if err := writer.Set(invitesApp, "_Greetings", map[string]string{"Name": original}, cells); err != nil {
-				slog.ErrorContext(r.Context(), "update greeting", "name", name, "error", err)
-				http.Error(w, "failed to save greeting", http.StatusInternalServerError)
-				return
-			}
+			queue.Add(func() {
+				if err := writer.Set(invitesApp, "_Greetings", map[string]string{"Name": original}, cells); err != nil {
+					slog.ErrorContext(r.Context(), "update greeting", "name", name, "error", err)
+				}
+			})
 			slog.InfoContext(r.Context(), "greeting: edited", "actor", email, "from", original, "to", name)
 		} else {
-			row := map[string]string{"Name": name, "Format": format, "Grouped": cells["Grouped"], "Individual": cells["Individual"], "Email": email}
-			if err := writer.Insert(invitesApp, "_Greetings", []map[string]string{row}); err != nil {
-				slog.ErrorContext(r.Context(), "save greeting", "name", name, "error", err)
-				http.Error(w, "failed to save greeting", http.StatusInternalServerError)
-				return
-			}
+			invites.addGreeting(greeting)
+			queue.Add(func() {
+				if err := writer.Insert(invitesApp, "_Greetings", []map[string]string{cells}); err != nil {
+					slog.ErrorContext(r.Context(), "save greeting", "name", name, "error", err)
+				}
+			})
 			slog.InfoContext(r.Context(), "greeting: added", "actor", email, "name", name)
 		}
-		// So the change shows up on the very next page load rather than
-		// waiting for invitesCache's next timed refresh.
-		invites.refreshGreetings()
 		w.WriteHeader(http.StatusNoContent)
 	})
 
@@ -325,43 +355,19 @@ func RegisterInvites(mux *http.ServeMux, cache *Cache, source data.Source, write
 			return
 		}
 		email := effectiveEmail(cache, r)
-		owned, err := ownsGreeting(source, name, email)
-		if err != nil {
-			slog.ErrorContext(r.Context(), "load greetings for delete", "error", err)
-			http.Error(w, "failed to delete greeting", http.StatusInternalServerError)
-			return
-		}
-		if !owned {
+		if !invites.deleteGreeting(name, email) {
 			http.Error(w, "you can only delete greetings you created", http.StatusForbidden)
 			return
 		}
-		if err := writer.Delete(invitesApp, "_Greetings", map[string]string{"Name": name}); err != nil {
-			slog.ErrorContext(r.Context(), "delete greeting", "name", name, "error", err)
-			http.Error(w, "failed to delete greeting", http.StatusInternalServerError)
-			return
-		}
+		queue.Add(func() {
+			if err := writer.Delete(invitesApp, "_Greetings", map[string]string{"Name": name}); err != nil {
+				slog.ErrorContext(r.Context(), "delete greeting", "name", name, "error", err)
+			}
+		})
 		slog.InfoContext(r.Context(), "greeting: deleted", "actor", email, "name", name)
-		invites.refreshGreetings()
 		w.WriteHeader(http.StatusNoContent)
 	})
 	return nil
-}
-
-// ownsGreeting reports whether the named _Greetings row exists and was
-// created by email - the shared check behind both editing and deleting one,
-// so neither can be used to take over or remove someone else's greeting (or
-// a built-in row, which has no CreatedBy to match at all).
-func ownsGreeting(source data.Source, name, email string) (bool, error) {
-	greetings, err := loadGreetingTemplates(source)
-	if err != nil {
-		return false, err
-	}
-	for _, g := range greetings {
-		if strings.EqualFold(g.Name, name) {
-			return g.CreatedBy == email, nil
-		}
-	}
-	return false, nil
 }
 
 // visibleGreetings filters the full _Greetings list down to what one viewer

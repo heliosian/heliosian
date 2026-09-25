@@ -457,15 +457,12 @@ func (a app) commit(r *http.Request, w http.ResponseWriter, tables *Tables, flus
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return false
 	}
-	applied := make(chan struct{})
+	a.cache.set(tables, model)
 	a.queue.Add(func() {
-		a.cache.set(tables, model)
-		close(applied)
 		if err := flush(); err != nil {
 			slog.ErrorContext(ctx, "groups write", "error", err)
 		}
 	})
-	<-applied
 	return true
 }
 

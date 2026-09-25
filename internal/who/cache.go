@@ -35,9 +35,11 @@ type Cache struct {
 	// superAdmins reads the platform list out of the Config sheet's own cache.
 	superAdmins func() []string
 
-	mu     sync.RWMutex
-	model  *Model
-	tables *Tables
+	mu      sync.RWMutex
+	model   *Model
+	tables  *Tables
+	edits   int
+	commits sync.Mutex
 
 	// superEdit tracks, per admin, whether they've turned on the switch that lets them
 	// edit anyone's record rather than just their own family's. Deliberately
@@ -57,9 +59,12 @@ func NewCache(source data.Source, writer data.Writer, geocoder Geocoder, blobs, 
 	if err != nil {
 		return nil, err
 	}
-	if err := c.rebuild(tables, start); err != nil {
+	model, err := c.build(tables)
+	if err != nil {
 		return nil, err
 	}
+	c.model, c.tables = model, tables
+	c.loaded(model, start)
 	go c.refreshLoop()
 	return c, nil
 }
@@ -67,32 +72,43 @@ func NewCache(source data.Source, writer data.Writer, geocoder Geocoder, blobs, 
 // rebuildCurrent reruns the model over the tables already in memory, for changes
 // that alter no sheet cell.
 func (c *Cache) rebuildCurrent() error {
-	return c.rebuild(c.currentTables(), time.Now())
+	c.commits.Lock()
+	defer c.commits.Unlock()
+	return c.commit(c.currentTables())
 }
 
 // applyOverride folds an Overrides change into the cached tables and reruns the
 // model, so a write costs no sheet read.
 func (c *Cache) applyOverride(email string, cells map[string]string) error {
-	return c.rebuild(c.currentTables().withOverride(email, cells), time.Now())
+	c.commits.Lock()
+	defer c.commits.Unlock()
+	return c.commit(c.currentTables().withOverride(email, cells))
 }
 
 // applyFamily is applyOverride for the Families tab, keyed by the family key.
 func (c *Cache) applyFamily(key string, cells map[string]string) error {
-	return c.rebuild(c.currentTables().withFamily(key, cells), time.Now())
+	c.commits.Lock()
+	defer c.commits.Unlock()
+	return c.commit(c.currentTables().withFamily(key, cells))
 }
 
 // applyEmailRename folds an added-only person's email change (plus any other Overrides
 // cells changing in the same save) into the cached tables and reruns the model, the
 // same "reject before persist" trick as applyOverride - see Tables.withEmailRenamed.
-func (c *Cache) applyEmailRename(oldEmail, newEmail string, cells map[string]string) error {
-	return c.rebuild(c.currentTables().withEmailRenamed(oldEmail, newEmail, cells), time.Now())
+func (c *Cache) applyEmailRename(oldEmail, newEmail string, cells map[string]string) (*Tables, error) {
+	c.commits.Lock()
+	defer c.commits.Unlock()
+	before := c.currentTables()
+	return before, c.commit(before.withEmailRenamed(oldEmail, newEmail, cells))
 }
 
 // applyDeletePerson folds removing an added-only person's Overrides/Tags/Photos rows
 // into the cached tables and reruns the model, the same "reject before persist" trick
 // as applyOverride - see Tables.withoutPerson.
 func (c *Cache) applyDeletePerson(email string) error {
-	return c.rebuild(c.currentTables().withoutPerson(email), time.Now())
+	c.commits.Lock()
+	defer c.commits.Unlock()
+	return c.commit(c.currentTables().withoutPerson(email))
 }
 
 // applyPhotos folds a Photos-sheet rewrite for one person - an upload, a reorder, a
@@ -102,11 +118,27 @@ func (c *Cache) applyDeletePerson(email string) error {
 // read. cells, if non-nil, folds in an Overrides change (e.g. retiring the legacy
 // primary pointer) as part of the same rebuild.
 func (c *Cache) applyPhotos(email string, refs []photoRef, cells map[string]string) error {
+	c.commits.Lock()
+	defer c.commits.Unlock()
 	tables := c.currentTables().withPhotos(email, refs)
 	if len(cells) > 0 {
 		tables = tables.withOverride(email, cells)
 	}
-	return c.rebuild(tables, time.Now())
+	return c.commit(tables)
+}
+
+func (c *Cache) commit(tables *Tables) error {
+	start := time.Now()
+	model, err := c.build(tables)
+	if err != nil {
+		return err
+	}
+	c.mu.Lock()
+	c.model, c.tables = model, tables
+	c.edits++
+	c.mu.Unlock()
+	c.loaded(model, start)
+	return nil
 }
 
 // IsAdmin reports whether email may use the admin tools at all — either tier:
@@ -147,8 +179,11 @@ func (c *Cache) Admins() []string {
 }
 
 func (c *Cache) applyAdmins(emails []string) {
+	c.commits.Lock()
+	defer c.commits.Unlock()
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.edits++
 	rows := make([]map[string]string, 0, len(emails))
 	for _, email := range emails {
 		rows = append(rows, map[string]string{"Email": email})
@@ -337,8 +372,11 @@ func (c *Cache) canManage(email, owner, tag string) bool {
 }
 
 func (c *Cache) applyManager(owner, tag, manager string, on bool) {
+	c.commits.Lock()
+	defer c.commits.Unlock()
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.edits++
 	rows := []map[string]string{}
 	for _, row := range c.tables.Managers {
 		if strings.EqualFold(row[tagOwner], owner) && row[tagName] == tag && strings.EqualFold(row[managerEmail], manager) {
@@ -366,8 +404,11 @@ func (c *Cache) tagged(owner, tag, person string) bool {
 }
 
 func (c *Cache) applyTag(owner, tag, person string, on bool) {
+	c.commits.Lock()
+	defer c.commits.Unlock()
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.edits++
 	rows := []map[string]string{}
 	for _, row := range c.tables.Tags {
 		if strings.EqualFold(row[tagOwner], owner) && row[tagName] == tag && strings.EqualFold(row[tagPerson], person) {
@@ -387,8 +428,11 @@ func (c *Cache) applyTag(owner, tag, person string, on bool) {
 // managers', returning how many people it has - zero when there was no such
 // tag to rename.
 func (c *Cache) renameTag(owner, from, to string) int {
+	c.commits.Lock()
+	defer c.commits.Unlock()
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.edits++
 	rename := func(rows []map[string]string) ([]map[string]string, int) {
 		next := make([]map[string]string, len(rows))
 		n := 0
@@ -421,8 +465,11 @@ func (c *Cache) renameTag(owner, from, to string) int {
 // rows it added. The copy is theirs alone: the original's managers aren't
 // carried over.
 func (c *Cache) copyTag(fromOwner, from, owner, to string) []map[string]string {
+	c.commits.Lock()
+	defer c.commits.Unlock()
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.edits++
 	rows := slices.Clone(c.tables.Tags)
 	added := []map[string]string{}
 	for _, row := range c.tables.Tags {
@@ -444,8 +491,11 @@ func (c *Cache) copyTag(fromOwner, from, owner, to string) []map[string]string {
 // returning how many people it had - zero means the tag wasn't theirs to
 // begin with (or was already gone).
 func (c *Cache) dropTag(owner, tag string) int {
+	c.commits.Lock()
+	defer c.commits.Unlock()
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.edits++
 	rows := []map[string]string{}
 	dropped := 0
 	for _, row := range c.tables.Tags {
@@ -494,28 +544,43 @@ func (c *Cache) Refresh() {
 
 func (c *Cache) refresh() error {
 	start := time.Now()
+	c.mu.RLock()
+	before := c.edits
+	c.mu.RUnlock()
 	tables, err := ReadTables(c.source)
 	if err != nil {
 		return err
 	}
-	return c.rebuild(tables, start)
-}
-
-func (c *Cache) rebuild(tables *Tables, start time.Time) error {
-	model, err := BuildModel(tables, c.blobs, c.static, c.idKey)
+	model, err := c.build(tables)
 	if err != nil {
 		return err
 	}
-	if err := c.geocodeFamilies(model, tables); err != nil {
-		return err
-	}
 	c.mu.Lock()
-	c.model = model
-	c.tables = tables
+	if c.edits != before {
+		c.mu.Unlock()
+		slog.Info("directory model refresh skipped: edited while reading")
+		return nil
+	}
+	c.model, c.tables = model, tables
 	c.mu.Unlock()
+	c.loaded(model, start)
+	return nil
+}
+
+func (c *Cache) build(tables *Tables) (*Model, error) {
+	model, err := BuildModel(tables, c.blobs, c.static, c.idKey)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.geocodeFamilies(model, tables); err != nil {
+		return nil, err
+	}
+	return model, nil
+}
+
+func (c *Cache) loaded(model *Model, start time.Time) {
 	slog.Info("loaded directory model", "people", len(model.People), "families", len(model.Families),
 		"classrooms", len(model.Classrooms), "crews", len(model.Crews), "took", time.Since(start).Round(time.Millisecond))
-	return nil
 }
 
 func (c *Cache) geocodeFamilies(model *Model, tables *Tables) error {
@@ -591,11 +656,12 @@ func (c *Cache) geocodeFamilies(model *Model, tables *Tables) error {
 		folded = append(folded, map[string]string{geocodeAddress: address, geocodeLat: lat, geocodeLng: lng})
 	}
 	if len(rows) > 0 {
-		if err := c.writer.Insert(appName, geocodeTable, rows); err != nil {
-			slog.Error("[ERROR] geocode cache write", "error", err)
-		} else {
-			tables.Geocode = folded
-		}
+		tables.Geocode = folded
+		c.queue.Add(func() {
+			if err := c.writer.Insert(appName, geocodeTable, rows); err != nil {
+				slog.Error("[ERROR] geocode cache write", "error", err)
+			}
+		})
 	}
 
 	located, withAddress := 0, 0
