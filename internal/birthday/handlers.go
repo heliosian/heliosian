@@ -73,6 +73,7 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	if mailer != nil {
 		go a.remindLoop()
 	}
+	go a.exportLoop()
 	for _, page := range pages {
 		mux.HandleFunc("GET "+page, a.page)
 	}
@@ -98,6 +99,7 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	mux.HandleFunc("DELETE /api/birthday/newsletter-date", a.deleteNewsletterDate)
 	mux.HandleFunc("POST /api/birthday/newsletter-dates/clear-future", a.clearFutureNewsletterDates)
 	mux.HandleFunc("POST /api/birthday/newsletter-dates/create", a.createNewsletterDates)
+	mux.HandleFunc("POST /api/birthday/newsletter/share", a.shareIssue)
 	mux.HandleFunc("POST /api/birthday/settings", a.saveSettings)
 	mux.HandleFunc("GET /api/admin/state", a.adminState)
 	mux.HandleFunc("POST /api/admin/admins", a.setAdmins)

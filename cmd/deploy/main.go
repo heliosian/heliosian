@@ -107,6 +107,7 @@ func main() {
 		",INVITES_SHEET=" + requiredEnv("INVITES_SHEET") +
 		",APPS_SHEET=" + requiredEnv("APPS_SHEET") +
 		",BIRTHDAY_SHEET=" + requiredEnv("BIRTHDAY_SHEET") +
+		",BIRTHDAY_SHARED_SHEET=" + requiredEnv("BIRTHDAY_SHARED_SHEET") +
 		",ARTIFACTS_SHEET=" + requiredEnv("ARTIFACTS_SHEET") +
 		",FEEDBACK_SHEET=" + requiredEnv("FEEDBACK_SHEET") +
 		",GOOGLE_CLIENT_ID=" + clientID()

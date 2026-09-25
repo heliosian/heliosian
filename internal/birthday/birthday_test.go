@@ -803,3 +803,71 @@ func TestNewsletterDates(t *testing.T) {
 		t.Fatal("the date survived removal")
 	}
 }
+
+// The weekly export copies an issue's birthdays to the shared sheet and marks
+// them done: a recorded charity as it stands, the default for whoever has
+// none, No Newsletter with its preference; a second run finds nothing left.
+func TestShareIssue(t *testing.T) {
+	cache, mux := newServer(t)
+	if at := nextExport(mustTime("2026-09-09")); at.Format("2006-01-02 15:04 Mon") != "2026-09-10 23:59 Thu" {
+		t.Fatalf("next export = %v", at)
+	}
+	if at := nextExport(time.Date(2026, 9, 10, 23, 59, 30, 0, local)); at.Format(DateFormat) != "2026-09-17" {
+		t.Fatalf("the export after one just run = %v", at)
+	}
+	if issue := weekIssue(cache.Model(), time.Date(2026, 9, 10, 23, 59, 0, 0, local)); issue != "2026-09-11" {
+		t.Fatalf("the week's issue = %q", issue)
+	}
+	if rec := call(t, mux, admin, "POST", "/api/birthday/newsletter/share", map[string]string{"date": "2026-09-12"}); rec.Code != 400 {
+		t.Fatalf("a day that is no issue: %d", rec.Code)
+	}
+	// The issue carries Bill (contacted, no charity yet) and Ruth (not yet
+	// asked) - and Miguel, unassigned; run as the Thursday night run would.
+	dir := &data.Dir{Root: "sampledata"}
+	a := app{cache: cache, writer: dir, queue: syncQueue{}, directory: fakeDirectory{}}
+	n, err := a.exportIssue(context.Background(), "2026-09-11", exportActor, exportActor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tabs, err := dir.Tabs(sharedSheet, []string{sharedNewsletterTab}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := tabs[sharedNewsletterTab].Rows
+	if n != len(rows) || n == 0 {
+		t.Fatalf("copied %d, rows %d", n, len(rows))
+	}
+	model := cache.Model()
+	for _, row := range rows {
+		email := row["Staff Email"]
+		d, ok := model.Donation(email, "2026 - 2027")
+		if !ok || d.UsedOn != "2026-09-09" || d.UsedBy != exportActor || row["Target Newsletter Date"] != "2026-09-11" || row["Charity Name"] != d.Charity || row["Charity Link"] == "" || row["Charity Blurb"] == "" {
+			t.Errorf("%s: row %v, donation %+v", email, row, d)
+		}
+	}
+	bill := rows[slices.IndexFunc(rows, func(r map[string]string) bool { return r["Staff Email"] == "bill.ryder@heliosschool.org" })]
+	if d, _ := model.Donation("bill.ryder@heliosschool.org", "2026 - 2027"); bill["Staff Name"] != "Bill Ryder" || bill["Staff Birthday"] != "2026-09-15" || bill["Contacted On"] != "2026-09-08" || bill["Charity Selected On"] != "" || bill["Charity Name"] != model.Settings.DefaultCharity || d.RecordedBy != "" {
+		t.Errorf("Bill, defaulted: row %v, donation %+v", bill, d)
+	}
+	if n, err := a.exportIssue(context.Background(), "2026-09-11", exportActor, exportActor); n != 0 || err != nil {
+		t.Fatalf("a second run copied %d: %v", n, err)
+	}
+	if rec := call(t, mux, admin, "POST", "/api/birthday/newsletter/share", map[string]string{"date": "2026-09-11"}); rec.Code != 200 || rec.Body.String() != "{\"copied\":0}\n" {
+		t.Fatalf("the button after the run: %d %s", rec.Code, rec.Body)
+	}
+	// Omar asked to stay out of the newsletter and chose Wikipedia: he goes
+	// with his choice, his note, when he chose, and his preference.
+	omar := find(view(t, cache, admin).Staff, "omar.farouk@heliosschool.org")
+	if _, err := a.exportIssue(context.Background(), omar.NewsletterDate, exportActor, exportActor); err != nil {
+		t.Fatal(err)
+	}
+	tabs, _ = dir.Tabs(sharedSheet, []string{sharedNewsletterTab}, nil)
+	rows = tabs[sharedNewsletterTab].Rows
+	i := slices.IndexFunc(rows, func(r map[string]string) bool { return r["Staff Email"] == "omar.farouk@heliosschool.org" })
+	if i < 0 || rows[i]["Preference"] != LevelNoNewsletter || rows[i]["Charity Name"] != "Wikipedia" || rows[i]["Note"] != "Free knowledge for everyone." || rows[i]["Charity Selected On"] != "2026-09-03" || rows[i]["Contacted On"] != "2026-09-02" {
+		t.Errorf("Omar's row: %v", rows)
+	}
+	if d, _ := cache.Model().Donation("omar.farouk@heliosschool.org", "2026 - 2027"); d.UsedOn == "" || d.Charity != "Wikipedia" || d.RecordedBy != admin {
+		t.Errorf("Omar's donation after: %+v", d)
+	}
+}

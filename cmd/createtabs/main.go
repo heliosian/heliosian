@@ -30,6 +30,7 @@ var spreadsheets = []struct{ env, layout string }{
 	{"APPS_SHEET", "Apps"},
 	{"EVENTS_SHEET", "Events"},
 	{"BIRTHDAY_SHEET", "Birthdays"},
+	{"BIRTHDAY_SHARED_SHEET", "Staff Birthday List (Shared)"},
 	{"CALENDAR_SHEET", "Calendar"},
 	{"CELEBRATE_SHEET", "Celebrate"},
 	{"CONFIG_SHEET", "Config"},
@@ -157,6 +158,11 @@ var layouts = map[string][]tab{
 		{"Team", birthday.TeamColumns},
 		{"Reminders", birthday.ReminderColumns},
 		{"Change Log", birthday.ChangeLogColumns},
+	},
+	// The association's shared list: Birthday's weekly export writes the
+	// Newsletter tab; its Birthdays tab is the association's own.
+	"Staff Birthday List (Shared)": {
+		{"Newsletter", birthday.SharedNewsletterColumns},
 	},
 	"Celebrate": {
 		{"Celebrations", celebrate.CelebrationColumns},

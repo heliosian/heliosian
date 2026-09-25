@@ -278,6 +278,37 @@ export async function markAllUsed(list) {
   }
 }
 
+// toShare is who an issue would copy to the shared sheet: everyone it
+// carries, No Newsletter too, not yet marked done.
+export function toShare(date) {
+  return state.model.staff.filter(sv => sv.newsletterDate === date && sv.level !== 'Skip' && !(sv.donation && sv.donation.usedOn));
+}
+
+// shareIssue runs the Thursday night export by hand: the issue's birthdays to
+// the Staff Birthday List (Shared), each then marked done, the default
+// charity recorded for anyone without one.
+export async function shareIssue(date) {
+  const list = toShare(date);
+  const bare = list.filter(sv => !sv.donation).length;
+  const words = `Copy ${list.length} ${list.length === 1 ? 'birthday' : 'birthdays'} for ${longDate(date)} to the Staff Birthday List (Shared) and mark ${list.length === 1 ? 'it' : 'them'} done?` +
+    (bare ? ` ${bare} with no charity recorded ${bare === 1 ? 'gets' : 'get'} ${settings().defaultCharity}.` : '');
+  if (!confirm(words)) {
+    return;
+  }
+  try {
+    const res = await fetch('/api/birthday/newsletter/share', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({date})});
+    if (!res.ok) {
+      throw new Error(await res.text());
+    }
+    const {copied} = await res.json();
+    await reload();
+    toast(`Copied ${copied} to the shared sheet`);
+  } catch (err) {
+    await reload();
+    toast(err.message);
+  }
+}
+
 export function markUsed(sv, used) {
   return act('POST', '/api/birthday/used', {email: sv.email, used}, used ? 'Marked as used in the newsletter' : 'Marked as not yet used');
 }

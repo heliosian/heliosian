@@ -4,6 +4,8 @@ The tabs, columns, and validation rules are in `internal/birthday`; this file ca
 
 The app's data lives in one Google Sheet, `Birthdays`, in the community shared drive, reached through drive membership like the other sheets. `BIRTHDAY_SHEET` names it, and `cmd/createtabs` reads that variable to lay it out from an empty spreadsheet titled `Birthdays`.
 
+The weekly export (`birthday.md`) writes to a second spreadsheet, the association's `Staff Birthday List (Shared)`, which `BIRTHDAY_SHARED_SHEET` names: its Newsletter tab takes one row per birthday copied (`birthday.SharedNewsletterColumns`, laid out by `cmd/createtabs`), and the app never reads it back. Its Birthdays tab is the association's own and untouched. The spreadsheet is not in the shared drive; it is shared with `directory@` as an editor, and `cmd/findsheet` finds it by its title. Sample mode writes the rows into memory over `sampledata/birthdayshared/`.
+
 ## Tabs
 
 - `Birthdays` — Email, Birthday (`08-20`), Newsletter Override, Participation, Note. One row per staff member. Participation is blank, `Skip`, or `No Newsletter`; Birthday may be blank only when Participation is `Skip`, so someone who opted out before their birthday was ever collected still has a row. Note is about the participation wish.

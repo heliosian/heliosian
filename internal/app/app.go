@@ -1121,12 +1121,15 @@ func Production(domain, blobCache string) (*http.Server, *who.Queue) {
 		"apps":        requiredEnv("APPS_SHEET"),
 		"events":      requiredEnv("EVENTS_SHEET"),
 		"birthdays":   requiredEnv("BIRTHDAY_SHEET"),
-		"celebrate":   requiredEnv("CELEBRATE_SHEET"),
-		"calendar":    requiredEnv("CALENDAR_SHEET"),
-		"config":      requiredEnv("CONFIG_SHEET"),
-		"groups":      requiredEnv("GROUPS_SHEET"),
-		"artifacts":   requiredEnv("ARTIFACTS_SHEET"),
-		"feedback":    requiredEnv("FEEDBACK_SHEET"),
+		// The Staff Birthday List (Shared), which Birthday's weekly export
+		// writes the newsletter's birthdays to.
+		"birthdayshared": requiredEnv("BIRTHDAY_SHARED_SHEET"),
+		"celebrate":      requiredEnv("CELEBRATE_SHEET"),
+		"calendar":       requiredEnv("CALENDAR_SHEET"),
+		"config":         requiredEnv("CONFIG_SHEET"),
+		"groups":         requiredEnv("GROUPS_SHEET"),
+		"artifacts":      requiredEnv("ARTIFACTS_SHEET"),
+		"feedback":       requiredEnv("FEEDBACK_SHEET"),
 	}
 	sessionKey := requiredEnv("SESSION_KEY")
 	sheet, err := data.NewSheet(spreadsheets)

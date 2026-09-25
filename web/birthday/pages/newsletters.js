@@ -2,7 +2,7 @@ import {state, isAdmin, year, staffFor, charity, longDate, mediumDate, monthDay,
 import {el, link, svg, thumb, button, pageHead, menu, copyRich} from '../dom.js';
 import {setTitle, setSearch} from '../chrome.js';
 import {staffRow, emptyPanel} from '../cards.js';
-import {openNewsletterDate, openChangeNewsletterDate, addNextWeek, removeNewsletterDate, clearFutureNewsletterDates, openCreateNewsletterDates, markUsed, markAllUsed} from '../edit.js';
+import {openNewsletterDate, openChangeNewsletterDate, addNextWeek, removeNewsletterDate, clearFutureNewsletterDates, openCreateNewsletterDates, markUsed, markAllUsed, toShare, shareIssue} from '../edit.js';
 
 let query = '';
 
@@ -163,6 +163,13 @@ function nextCard() {
   wrap.append(el('div', 'section-title', 'Next issue'));
   const panel = el('div', 'panel issues next-panel');
   const actions = [];
+  // Copy to Shared Sheet does by hand what Thursday night does: the issue's
+  // birthdays to the Staff Birthday List (Shared), each marked done.
+  const waiting = toShare(next).length;
+  const share = button('Copy to Shared Sheet', 'send', 'button button-small', () => shareIssue(next));
+  share.disabled = !waiting;
+  share.title = waiting ? 'Thursday night at 11:59 does this on its own' : 'Everyone in this issue is copied and done';
+  actions.push(share);
   const dates = thisYear();
   if (isAdmin() && next === dates[dates.length - 1]) {
     actions.push(button('Add Next Week', 'bolt', 'button button-secondary button-small', () => addNextWeek(next)));

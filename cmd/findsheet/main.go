@@ -11,18 +11,19 @@ import (
 )
 
 var variables = map[string]string{
-	"Directory":           "DIRECTORY_SHEET",
-	"Preferences":         "PREFERENCES_SHEET",
-	"Invite List Builder": "INVITES_SHEET",
-	"Apps":                "APPS_SHEET",
-	"Events":              "EVENTS_SHEET",
-	"Birthdays":           "BIRTHDAY_SHEET",
-	"Calendar":            "CALENDAR_SHEET",
-	"Celebrate":           "CELEBRATE_SHEET",
-	"Config":              "CONFIG_SHEET",
-	"Groups":              "GROUPS_SHEET",
-	"Artifacts":           "ARTIFACTS_SHEET",
-	"Feedback":            "FEEDBACK_SHEET",
+	"Directory":                    "DIRECTORY_SHEET",
+	"Preferences":                  "PREFERENCES_SHEET",
+	"Invite List Builder":          "INVITES_SHEET",
+	"Apps":                         "APPS_SHEET",
+	"Events":                       "EVENTS_SHEET",
+	"Birthdays":                    "BIRTHDAY_SHEET",
+	"Staff Birthday List (Shared)": "BIRTHDAY_SHARED_SHEET",
+	"Calendar":                     "CALENDAR_SHEET",
+	"Celebrate":                    "CELEBRATE_SHEET",
+	"Config":                       "CONFIG_SHEET",
+	"Groups":                       "GROUPS_SHEET",
+	"Artifacts":                    "ARTIFACTS_SHEET",
+	"Feedback":                     "FEEDBACK_SHEET",
 }
 
 func main() {
@@ -53,7 +54,7 @@ func main() {
 		}
 		found[variable] = f.Id
 	}
-	for _, variable := range []string{"DIRECTORY_SHEET", "PREFERENCES_SHEET", "INVITES_SHEET", "APPS_SHEET", "EVENTS_SHEET", "BIRTHDAY_SHEET", "CALENDAR_SHEET", "CELEBRATE_SHEET", "CONFIG_SHEET", "GROUPS_SHEET", "ARTIFACTS_SHEET", "FEEDBACK_SHEET"} {
+	for _, variable := range []string{"DIRECTORY_SHEET", "PREFERENCES_SHEET", "INVITES_SHEET", "APPS_SHEET", "EVENTS_SHEET", "BIRTHDAY_SHEET", "BIRTHDAY_SHARED_SHEET", "CALENDAR_SHEET", "CELEBRATE_SHEET", "CONFIG_SHEET", "GROUPS_SHEET", "ARTIFACTS_SHEET", "FEEDBACK_SHEET"} {
 		id, ok := found[variable]
 		if !ok {
 			log.Fatalf("[ERROR] no spreadsheet found for %s", variable)
