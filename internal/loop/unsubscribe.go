@@ -126,7 +126,7 @@ func (a app) unsubscribeAddress(ctx context.Context, real string, g *Group, emai
 	a.queue.Add(func() {
 		a.cache.set(tables, model)
 		close(applied)
-		if err := a.writer.Append(appName, excludedTab, []string{g.Name, email, note, when}); err != nil {
+		if err := a.writer.Insert(appName, excludedTab, []map[string]string{{"Group": g.Name, "Email": email, "Note": note, "Timestamp": when}}); err != nil {
 			slog.ErrorContext(ctx, "groups: unsubscribe write", "error", err)
 			return
 		}

@@ -1,4 +1,3 @@
-// Package calendarimport is the periodic sync's calendar stage: it pulls the school's public calendar feed and its published year calendar into the Calendar sheet, and has Claude classify every event.
 package calendarimport
 
 import (
@@ -34,11 +33,9 @@ import (
 	"golang.org/x/net/html/atom"
 	gcal "google.golang.org/api/calendar/v3"
 	"google.golang.org/api/googleapi"
-	"google.golang.org/api/sheets/v4"
 
 	"heliosian/internal/calendar"
 	"heliosian/internal/data"
-	"heliosian/internal/sheetsync"
 )
 
 const (
@@ -54,13 +51,11 @@ var legendDayTypes = []string{"No School", "Early Dismissal"}
 
 // Options is what a stage needs: the sheet it reads and writes, the Calendar API client the Google stage reads through, the roster as it stands, the Claude key, and whether to write anything.
 type Options struct {
-	Source        *data.Sheet
-	Sheets        *sheets.Service
-	Calendar      *gcal.Service
-	CalendarSheet string
-	Roster        func() calendar.Roster
-	AnthropicKey  string
-	DryRun        bool
+	Source       *data.Sheet
+	Calendar     *gcal.Service
+	Roster       func() calendar.Roster
+	AnthropicKey string
+	DryRun       bool
 }
 
 var retryWaits = []time.Duration{time.Minute, 2 * time.Minute, 4 * time.Minute, 8 * time.Minute}
@@ -1123,16 +1118,16 @@ func enrich(ctx context.Context, client anthropic.Client, inputs []enrichInput, 
 	return ordered, nil
 }
 
-func changes(tab string, result *sheetsync.Result, titles map[string]string, stamp string) [][]string {
-	rows := [][]string{}
+func changes(tab string, result *data.SyncResult, titles map[string]string, stamp string) []map[string]string {
+	rows := []map[string]string{}
 	for _, key := range result.Added {
-		rows = append(rows, []string{stamp, actor, "added", tab, key, "Title", "", titles[key]})
+		rows = append(rows, map[string]string{"Timestamp": stamp, "Actor": actor, "Action": "added", "Tab": tab, "Key": key, "Column": "Title", "From": "", "To": titles[key]})
 	}
 	for _, edit := range result.Edits {
-		rows = append(rows, []string{stamp, actor, "changed", tab, edit.Key, edit.Column, edit.From, edit.To})
+		rows = append(rows, map[string]string{"Timestamp": stamp, "Actor": actor, "Action": "changed", "Tab": tab, "Key": edit.Key, "Column": edit.Column, "From": edit.From, "To": edit.To})
 	}
 	for _, key := range result.Removed {
-		rows = append(rows, []string{stamp, actor, "removed", tab, key, "Title", titles[key], ""})
+		rows = append(rows, map[string]string{"Timestamp": stamp, "Actor": actor, "Action": "removed", "Tab": tab, "Key": key, "Column": "Title", "From": titles[key], "To": ""})
 	}
 	return rows
 }
@@ -1211,8 +1206,8 @@ func RunGoogle(ctx context.Context, opts Options) error {
 	enrichment := r.enrich(ctx, google, false)
 	log.Printf("rows: %d feed, %d enriched", len(rows), len(enrichment))
 	return r.write([]tabSync{
-		{calendar.GoogleTab, calendar.GoogleColumns, rows, r.tables.Google, "Key", sheetsync.Mirror},
-		{calendar.EnrichmentTab, calendar.EnrichmentColumns, enrichment, r.tables.Enrichment, "Event ID", sheetsync.Merge},
+		{calendar.GoogleTab, calendar.GoogleColumns, rows, r.tables.Google, "Key", data.Mirror},
+		{calendar.EnrichmentTab, calendar.EnrichmentColumns, enrichment, r.tables.Enrichment, "Event ID", data.Merge},
 	})
 }
 
@@ -1266,8 +1261,8 @@ func RunPDF(ctx context.Context, opts Options) error {
 	enrichment := r.enrich(ctx, rows, true)
 	log.Printf("rows: %d pdf, %d enriched", len(rows), len(enrichment))
 	return r.write([]tabSync{
-		{calendar.PDFTab, calendar.PDFColumns, rows, r.tables.PDF, "Key", sheetsync.Mirror},
-		{calendar.EnrichmentTab, calendar.EnrichmentColumns, enrichment, r.tables.Enrichment, "Event ID", sheetsync.Merge},
+		{calendar.PDFTab, calendar.PDFColumns, rows, r.tables.PDF, "Key", data.Mirror},
+		{calendar.EnrichmentTab, calendar.EnrichmentColumns, enrichment, r.tables.Enrichment, "Event ID", data.Merge},
 	})
 }
 
@@ -1353,14 +1348,14 @@ type tabSync struct {
 	rows   []map[string]string
 	before []map[string]string
 	keyCol string
-	policy sheetsync.Policy
+	policy data.Policy
 }
 
 func (r *run) write(tabs []tabSync) error {
 	stamp := time.Now().In(calendar.Location).Format(calendar.DateTimeFormat)
-	logRows := [][]string{}
+	logRows := []map[string]string{}
 	for _, s := range tabs {
-		result, err := sheetsync.Sync(r.opts.Sheets, r.opts.CalendarSheet, s.tab, s.header, s.rows, s.keyCol, s.policy, !r.opts.DryRun)
+		result, err := r.opts.Source.Sync("calendar", s.tab, s.header, s.rows, s.keyCol, s.policy, !r.opts.DryRun)
 		if err != nil {
 			return fmt.Errorf("sync %s: %w", s.tab, err)
 		}
@@ -1375,7 +1370,7 @@ func (r *run) write(tabs []tabSync) error {
 		log.Printf("dry run: %d change log rows not written", len(logRows))
 	} else {
 		if len(logRows) > 0 {
-			if err := r.opts.Source.AppendAll("calendar", calendar.ChangeLogTab, logRows); err != nil {
+			if err := r.opts.Source.Insert("calendar", calendar.ChangeLogTab, logRows); err != nil {
 				return fmt.Errorf("append the change log: %w", err)
 			}
 		}

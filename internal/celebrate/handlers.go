@@ -220,11 +220,11 @@ func (a app) commit(ctx context.Context, w http.ResponseWriter, tables *Tables, 
 }
 
 func (a app) logChange(r *http.Request, actor, action, kind string, cells map[string]string) error {
-	return a.writer.AppendCells(appName, changeLogTab, map[string]string{
+	return a.writer.Insert(appName, changeLogTab, []map[string]string{{
 		"Timestamp": time.Now().Format(time.RFC3339), "Actor": actor, "Action": action, "Kind": kind,
 		"Celebration": cells["Celebration"], "Party": cells["Party"], "Title": cells["Title"], "Email": cells["Email"], "Details": cells["Details"],
 		"Real Actor": auth.RealEmail(r),
-	})
+	}})
 }
 
 // logInvoice writes a sold ticket to the INVOICING ledger for accounting:
@@ -247,7 +247,7 @@ func (a app) logInvoice(p *Party, cells map[string]string) error {
 	if row == nil {
 		return nil
 	}
-	return a.writer.AppendCells(appName, invoicingTab, row)
+	return a.writer.Insert(appName, invoicingTab, []map[string]string{row})
 }
 
 func cleanEmail(raw string) string {
@@ -536,7 +536,7 @@ func (a app) buyTickets(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		for _, cells := range added {
-			if err := a.writer.AppendCells(appName, ticketsTab, cells); err != nil {
+			if err := a.writer.Insert(appName, ticketsTab, []map[string]string{cells}); err != nil {
 				return err
 			}
 			if err := a.logInvoice(p, cells); err != nil {
@@ -662,7 +662,7 @@ func (a app) joinWaitlist(w http.ResponseWriter, r *http.Request) {
 	}
 	cells := waitlistRequest(p, purchaser, body.Quantity, strings.TrimSpace(body.Note), actor)
 	if !a.commit(r.Context(), w, tables.with(ticketsTab, nil, cells), func() error {
-		if err := a.writer.AppendCells(appName, ticketsTab, cells); err != nil {
+		if err := a.writer.Insert(appName, ticketsTab, []map[string]string{cells}); err != nil {
 			return err
 		}
 		return a.logChange(r, actor, "add", "waitlist", map[string]string{"Celebration": p.Celebration, "Party": p.ID, "Title": p.Title, "Email": purchaser, "Details": fmt.Sprintf("×%d", body.Quantity)})
@@ -744,7 +744,7 @@ func (a app) offerTickets(w http.ResponseWriter, r *http.Request) {
 	}
 	if !a.commit(r.Context(), w, tables, func() error {
 		for _, cells := range added {
-			if err := a.writer.AppendCells(appName, ticketsTab, cells); err != nil {
+			if err := a.writer.Insert(appName, ticketsTab, []map[string]string{cells}); err != nil {
 				return err
 			}
 			if err := a.logInvoice(p, cells); err != nil {
@@ -1189,7 +1189,7 @@ func (a app) saveParty(w http.ResponseWriter, r *http.Request) {
 	action := map[bool]string{true: "add", false: "edit"}[adding]
 	if !a.commit(r.Context(), w, tables, func() error {
 		if adding {
-			if err := a.writer.AppendCells(appName, partiesTab, cells); err != nil {
+			if err := a.writer.Insert(appName, partiesTab, []map[string]string{cells}); err != nil {
 				return err
 			}
 		} else if err := a.writer.Set(appName, partiesTab, match, cells); err != nil {
@@ -1204,13 +1204,13 @@ func (a app) saveParty(w http.ResponseWriter, r *http.Request) {
 		}
 		for _, h := range hosts {
 			if !slices.Contains(was, h) {
-				if err := a.writer.AppendCells(appName, hostsTab, map[string]string{"Party ID": id, "Email": h}); err != nil {
+				if err := a.writer.Insert(appName, hostsTab, []map[string]string{{"Party ID": id, "Email": h}}); err != nil {
 					return err
 				}
 			}
 		}
 		if redirect != nil {
-			if err := a.writer.AppendCells(appName, redirectsTab, redirect); err != nil {
+			if err := a.writer.Insert(appName, redirectsTab, []map[string]string{redirect}); err != nil {
 				return err
 			}
 		}
@@ -1427,7 +1427,7 @@ func (a app) saveCelebration(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if adding {
-			if err := a.writer.AppendCells(appName, celebrationsTab, cells); err != nil {
+			if err := a.writer.Insert(appName, celebrationsTab, []map[string]string{cells}); err != nil {
 				return err
 			}
 		} else {
@@ -1528,7 +1528,7 @@ func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 	action := map[bool]string{true: "add", false: "edit"}[adding]
 	if !a.commit(r.Context(), w, tables, func() error {
 		if adding {
-			if err := a.writer.AppendCells(appName, categoriesTab, cells); err != nil {
+			if err := a.writer.Insert(appName, categoriesTab, []map[string]string{cells}); err != nil {
 				return err
 			}
 		} else {
@@ -1650,7 +1650,7 @@ func (a app) saveSettings(w http.ResponseWriter, r *http.Request) {
 				if err := a.writer.Set(appName, settingsTab, map[string]string{"Key": key}, map[string]string{"Value": value}); err != nil {
 					return err
 				}
-			} else if err := a.writer.AppendCells(appName, settingsTab, map[string]string{"Key": key, "Value": value}); err != nil {
+			} else if err := a.writer.Insert(appName, settingsTab, []map[string]string{{"Key": key, "Value": value}}); err != nil {
 				return err
 			}
 		}
@@ -1776,7 +1776,7 @@ func (a app) setAdmins(w http.ResponseWriter, r *http.Request) {
 		}
 		for _, e := range admins {
 			if !was[e] {
-				if err := a.writer.Append(appName, adminsTab, []string{e}); err != nil {
+				if err := a.writer.Insert(appName, adminsTab, []map[string]string{{"Email": e}}); err != nil {
 					return err
 				}
 			}

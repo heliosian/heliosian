@@ -127,14 +127,14 @@ func (t tagger) copy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	applied := make(chan struct{})
-	var rows [][]string
+	var rows []map[string]string
 	t.queue.Add(func() {
 		rows = t.cache.copyTag(fromOwner, from, owner, to)
 		close(applied)
 		if len(rows) == 0 {
 			return
 		}
-		if err := t.writer.AppendAll(appName, tagsTable, rows); err != nil {
+		if err := t.writer.Insert(appName, tagsTable, rows); err != nil {
 			slog.ErrorContext(r.Context(), "tag copy", "owner", owner, "from", from, "to", to, "error", err)
 		}
 	})
@@ -209,7 +209,7 @@ func (t tagger) leave(w http.ResponseWriter, r *http.Request) {
 
 func (t tagger) flushManager(owner, tag, manager string, on bool) error {
 	if on {
-		return t.writer.Append(appName, managersTable, []string{owner, tag, manager})
+		return t.writer.Insert(appName, managersTable, []map[string]string{{tagOwner: owner, tagName: tag, managerEmail: manager}})
 	}
 	return t.writer.Delete(appName, managersTable, map[string]string{
 		tagOwner:     owner,
@@ -289,7 +289,7 @@ func (t tagger) set(w http.ResponseWriter, r *http.Request) {
 
 func (t tagger) flush(owner, tag, person string, on bool) error {
 	if on {
-		return t.writer.Append(appName, tagsTable, []string{owner, tag, person})
+		return t.writer.Insert(appName, tagsTable, []map[string]string{{tagOwner: owner, tagName: tag, tagPerson: person}})
 	}
 	return t.writer.Delete(appName, tagsTable, map[string]string{
 		tagOwner:  owner,

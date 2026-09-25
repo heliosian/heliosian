@@ -1217,7 +1217,7 @@ func Production(domain, blobCache string) (*http.Server, *who.Queue) {
 		"ask":       Public("ask", askAuth.Wrap(Logged("ask", Files("ask", core.Ask)))),
 	})
 	if os.Getenv("K_SERVICE") != "" {
-		watcher := calendarWatcher(sheet, spreadsheets["calendar"], core, sessionKey)
+		watcher := calendarWatcher(sheet, core, sessionKey)
 		core.CalendarMux.Handle("POST "+calendarimport.HookPath, watcher)
 		watcher.Start()
 		server.RegisterOnShutdown(func() { core.Queue.Add(watcher.Stop) })
@@ -1225,7 +1225,7 @@ func Production(domain, blobCache string) (*http.Server, *who.Queue) {
 	return server, core.Queue
 }
 
-func calendarWatcher(sheet *data.Sheet, calendarSheet string, core *Core, sessionKey string) *calendarimport.Watcher {
+func calendarWatcher(sheet *data.Sheet, core *Core, sessionKey string) *calendarimport.Watcher {
 	cal, err := gcal.NewService(context.Background(), option.WithScopes(gcal.CalendarReadonlyScope))
 	if err != nil {
 		logging.Fatal("calendar client", "error", err)
@@ -1233,7 +1233,7 @@ func calendarWatcher(sheet *data.Sheet, calendarSheet string, core *Core, sessio
 	mac := hmac.New(sha256.New, []byte(sessionKey))
 	mac.Write([]byte("calendar watch"))
 	opts := calendarimport.Options{
-		Source: sheet, Sheets: sheet.Service(), Calendar: cal, CalendarSheet: calendarSheet,
+		Source: sheet, Calendar: cal,
 		Roster:       func() calendar.Roster { return CalendarRoster(core.Cache.Model()) },
 		AnthropicKey: mapsKey("ANTHROPIC_API_KEY", "local/creds/anthropic.key"),
 	}

@@ -229,11 +229,11 @@ func (a app) commit(ctx context.Context, w http.ResponseWriter, tables *Tables, 
 }
 
 func (a app) logChange(r *http.Request, actor, action, kind string, cells map[string]string) error {
-	return a.writer.AppendCells(appName, changeLogTab, map[string]string{
+	return a.writer.Insert(appName, changeLogTab, []map[string]string{{
 		"Timestamp": time.Now().Format(time.RFC3339), "Actor": actor, "Action": action, "Kind": kind,
 		"Year": cells["Year"], "Activity": cells["Activity"], "Title": cells["Title"], "Email": cells["Email"], "Details": cells["Details"],
 		"Real Actor": auth.RealEmail(r),
-	})
+	}})
 }
 
 type activityRef struct {
@@ -785,13 +785,13 @@ func (a app) saveActivity(w http.ResponseWriter, r *http.Request) {
 	}
 	if !a.commit(r.Context(), w, tables, func() error {
 		if adding {
-			if err := a.writer.AppendCells(appName, activitiesTab, cells); err != nil {
+			if err := a.writer.Insert(appName, activitiesTab, []map[string]string{cells}); err != nil {
 				return err
 			}
 			if signUp != "" {
-				if err := a.writer.AppendCells(appName, volunteersTab, map[string]string{
+				if err := a.writer.Insert(appName, volunteersTab, []map[string]string{{
 					"Event ID": id, "Email": actor, "Position": signUp, "Added By": actor, "Added": today(),
-				}); err != nil {
+				}}); err != nil {
 					return err
 				}
 			}
@@ -806,7 +806,7 @@ func (a app) saveActivity(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if redirect != nil {
-			if err := a.writer.AppendCells(appName, redirectsTab, redirect); err != nil {
+			if err := a.writer.Insert(appName, redirectsTab, []map[string]string{redirect}); err != nil {
 				return err
 			}
 		}
@@ -911,7 +911,7 @@ func (a app) saveLink(w http.ResponseWriter, r *http.Request) {
 	}
 	if !a.commit(r.Context(), w, tables, func() error {
 		if body.Original == "" {
-			if err := a.writer.AppendCells(appName, linksTab, cells); err != nil {
+			if err := a.writer.Insert(appName, linksTab, []map[string]string{cells}); err != nil {
 				return err
 			}
 		} else if err := a.writer.Set(appName, linksTab, match, cells); err != nil {
@@ -1127,7 +1127,7 @@ func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 	}
 	if !a.commit(r.Context(), w, tables, func() error {
 		if adding {
-			if err := a.writer.AppendCells(appName, categoriesTab, cells); err != nil {
+			if err := a.writer.Insert(appName, categoriesTab, []map[string]string{cells}); err != nil {
 				return err
 			}
 		} else if err := a.writer.Set(appName, categoriesTab, match, cells); err != nil {
@@ -1349,17 +1349,17 @@ func (a app) copyActivity(w http.ResponseWriter, r *http.Request) {
 	}
 	if !a.commit(r.Context(), w, tables, func() error {
 		for _, row := range catRows {
-			if err := a.writer.AppendCells(appName, categoriesTab, row); err != nil {
+			if err := a.writer.Insert(appName, categoriesTab, []map[string]string{row}); err != nil {
 				return err
 			}
 		}
 		for _, row := range rows {
-			if err := a.writer.AppendCells(appName, activitiesTab, row); err != nil {
+			if err := a.writer.Insert(appName, activitiesTab, []map[string]string{row}); err != nil {
 				return err
 			}
 		}
 		for _, row := range links {
-			if err := a.writer.AppendCells(appName, linksTab, row); err != nil {
+			if err := a.writer.Insert(appName, linksTab, []map[string]string{row}); err != nil {
 				return err
 			}
 		}
@@ -1531,7 +1531,7 @@ func (a app) setAdmins(w http.ResponseWriter, r *http.Request) {
 		}
 		for _, e := range admins {
 			if !was[e] {
-				if err := a.writer.AppendCells(appName, adminsTab, map[string]string{"Email": e}); err != nil {
+				if err := a.writer.Insert(appName, adminsTab, []map[string]string{{"Email": e}}); err != nil {
 					return err
 				}
 			}
@@ -1620,7 +1620,7 @@ func (a app) saveRedirect(w http.ResponseWriter, r *http.Request) {
 	}
 	if !a.commit(r.Context(), w, tables, func() error {
 		if match == nil {
-			if err := a.writer.AppendCells(appName, redirectsTab, cells); err != nil {
+			if err := a.writer.Insert(appName, redirectsTab, []map[string]string{cells}); err != nil {
 				return err
 			}
 		} else if err := a.writer.Set(appName, redirectsTab, match, cells); err != nil {

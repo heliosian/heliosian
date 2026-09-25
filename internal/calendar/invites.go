@@ -604,11 +604,11 @@ type InviteView struct {
 	Guests   bool        `json:"guests"`
 	Sent     string      `json:"sent,omitempty"`
 	// Flyer is the invitation's flyer as a path to fetch, when there is one.
-	Flyer string   `json:"flyer,omitempty"`
+	Flyer string `json:"flyer,omitempty"`
 	// HostsHidden says the hosts keep the Hosts card to themselves; Hosts
 	// is then empty for anyone else.
-	HostsHidden bool `json:"hostsHidden,omitempty"`
-	Hosts []Person `json:"hosts"`
+	HostsHidden bool     `json:"hostsHidden,omitempty"`
+	Hosts       []Person `json:"hosts"`
 	// Original is a party's own words on Celebrate - title, when, where,
 	// description - for a host editing the invitation's own, so the form
 	// shows what stands and sends only what differs.
@@ -939,7 +939,7 @@ func (a app) ensured(tables *Tables, id, actor string) (*Tables, func() error) {
 		return tables, func() error { return nil }
 	}
 	cells := invitationCells(id, actor)
-	return tables.WithInvitation(id, cells), func() error { return a.writer.AppendCells(appName, InvitationsTab, cells) }
+	return tables.WithInvitation(id, cells), func() error { return a.writer.Insert(appName, InvitationsTab, []map[string]string{cells}) }
 }
 
 // inviteSettings is PUT /api/calendar/invites/settings: a host setting the
@@ -1257,7 +1257,7 @@ func (a app) addInvites(w http.ResponseWriter, r *http.Request) {
 			return err
 		}
 		for _, row := range rows {
-			if err := a.writer.AppendCells(appName, InvitesTab, row); err != nil {
+			if err := a.writer.Insert(appName, InvitesTab, []map[string]string{row}); err != nil {
 				return err
 			}
 		}
@@ -1444,7 +1444,7 @@ func (a app) bringGuest(ctx context.Context, actor string, e *Event, of, name, e
 		if err := first(); err != nil {
 			slog.ErrorContext(ctx, "calendar write", "error", err)
 		}
-		if err := a.writer.AppendCells(appName, InvitesTab, row); err != nil {
+		if err := a.writer.Insert(appName, InvitesTab, []map[string]string{row}); err != nil {
 			slog.ErrorContext(ctx, "calendar write", "error", err)
 		}
 		if answer != "" {

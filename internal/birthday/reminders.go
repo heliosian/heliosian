@@ -124,7 +124,7 @@ func (a app) recordReminder(ctx context.Context, sv StaffView, kind, to string, 
 			return
 		}
 		a.cache.set(tables, model)
-		if err := a.writer.Append(appName, remindersTab, rowOf(ReminderColumns, cells)); err != nil {
+		if err := a.writer.Insert(appName, remindersTab, []map[string]string{cells}); err != nil {
 			slog.ErrorContext(ctx, "birthday: write reminder", "error", err)
 		}
 	})

@@ -130,7 +130,7 @@ func (a app) discoverApps() {
 	a.queue.Add(func() {
 		a.cache.set(tables, model)
 		for _, app := range missing {
-			if err := a.writer.AppendCells(appName, visibilityTab, map[string]string{"App": app.Key, "Visibility": VisibleToList, "Tagline": app.Tagline, "Name": app.Name}); err != nil {
+			if err := a.writer.Insert(appName, visibilityTab, []map[string]string{{"App": app.Key, "Visibility": VisibleToList, "Tagline": app.Tagline, "Name": app.Name}}); err != nil {
 				slog.Error("apps: write a new app's visibility row", "app", app.Key, "error", err)
 				return
 			}
@@ -444,11 +444,11 @@ func (a app) commit(ctx context.Context, w http.ResponseWriter, tables *Tables, 
 }
 
 func (a app) logChange(r *http.Request, actor, action, kind string, cells map[string]string) error {
-	return a.writer.Append(appName, changeLogTab, []string{
-		time.Now().Format(time.RFC3339), actor, action, kind,
-		cells["Title"], cells["Description"], cells["URL"], cells["Image"], cells["Category"], cells["Visible"], cells["Style"],
-		auth.RealEmail(r),
-	})
+	return a.writer.Insert(appName, changeLogTab, []map[string]string{{
+		"Timestamp": time.Now().Format(time.RFC3339), "Actor": actor, "Action": action, "Kind": kind,
+		"Title": cells["Title"], "Description": cells["Description"], "URL": cells["URL"], "Image": cells["Image"], "Category": cells["Category"], "Visible": cells["Visible"], "Style": cells["Style"],
+		"Real Actor": auth.RealEmail(r),
+	}})
 }
 
 func (a app) importImage(w http.ResponseWriter, r *http.Request) {
@@ -549,7 +549,7 @@ func (a app) writeAudience(key string, rules []filter.Rule) error {
 	if len(rules) == 0 {
 		return nil
 	}
-	return a.writer.AppendAll(appName, audienceTab, audienceRows(key, rules))
+	return a.writer.Insert(appName, audienceTab, audienceRows(key, rules))
 }
 
 func (a app) saveLink(w http.ResponseWriter, r *http.Request) {
@@ -597,10 +597,10 @@ func (a app) saveLink(w http.ResponseWriter, r *http.Request) {
 	tables = tables.withAudience(thingLink+title, rules)
 	if !a.commit(r.Context(), w, tables, func() error {
 		if body.Original == "" {
-			if err := a.writer.Append(appName, linksTab, []string{cells["Title"], cells["Description"], cells["URL"], cells["Image"], cells["Category"], cells["Visible"], cells["Added By"], cells["Added"]}); err != nil {
+			if err := a.writer.Insert(appName, linksTab, []map[string]string{cells}); err != nil {
 				return err
 			}
-		} else if err := a.writer.Upsert(appName, linksTab, "Title", body.Original, cells); err != nil {
+		} else if err := a.writer.Set(appName, linksTab, map[string]string{"Title": body.Original}, cells); err != nil {
 			return err
 		}
 		if body.Original != "" && body.Original != title {
@@ -744,7 +744,7 @@ func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 			return err
 		}
 		if body.Original == "" || virtual {
-			if err := a.writer.Append(appName, categoriesTab, []string{title, cells["Emoji"], cells["Style"], cells["Max"]}); err != nil {
+			if err := a.writer.Insert(appName, categoriesTab, []map[string]string{cells}); err != nil {
 				return err
 			}
 			if virtual {
@@ -753,7 +753,7 @@ func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		} else {
-			if err := a.writer.Upsert(appName, categoriesTab, "Title", body.Original, cells); err != nil {
+			if err := a.writer.Set(appName, categoriesTab, map[string]string{"Title": body.Original}, cells); err != nil {
 				return err
 			}
 			if body.Original != title {
@@ -761,7 +761,7 @@ func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 					if row["Category"] != title {
 						continue
 					}
-					if err := a.writer.Upsert(appName, linksTab, "Title", row["Title"], map[string]string{"Category": title}); err != nil {
+					if err := a.writer.Set(appName, linksTab, map[string]string{"Title": row["Title"]}, map[string]string{"Category": title}); err != nil {
 						return err
 					}
 				}
@@ -787,11 +787,11 @@ func (a app) reorderCategories(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tables := a.cache.Tables()
-	var materialized []string
+	var materialized map[string]string
 	for _, title := range body.Titles {
 		if a.virtualEvents(title) {
 			tables = tables.withRow(categoriesTab, "", map[string]string{"Title": title, "Emoji": EventsEmoji, "Style": StyleEvents})
-			materialized = []string{title, EventsEmoji, StyleEvents}
+			materialized = map[string]string{"Title": title, "Emoji": EventsEmoji, "Style": StyleEvents}
 		}
 	}
 	if len(body.Titles) != len(tables.Categories) {
@@ -816,7 +816,7 @@ func (a app) reorderCategories(w http.ResponseWriter, r *http.Request) {
 	next.Categories = ordered
 	if !a.commit(r.Context(), w, &next, func() error {
 		if materialized != nil {
-			if err := a.writer.Append(appName, categoriesTab, materialized); err != nil {
+			if err := a.writer.Insert(appName, categoriesTab, []map[string]string{materialized}); err != nil {
 				return err
 			}
 		}
@@ -1046,7 +1046,7 @@ func (a app) setAdmins(w http.ResponseWriter, r *http.Request) {
 		}
 		for _, e := range admins {
 			if !was[e] {
-				if err := a.writer.Append(appName, adminsTab, []string{e}); err != nil {
+				if err := a.writer.Insert(appName, adminsTab, []map[string]string{{"Email": e}}); err != nil {
 					return err
 				}
 			}
@@ -1111,7 +1111,7 @@ func (a app) setVisibility(w http.ResponseWriter, r *http.Request) {
 		tables = tables.withAudience(thingApp+key, rules)
 	}
 	if !a.commit(r.Context(), w, tables, func() error {
-		if err := a.writer.Upsert(appName, visibilityTab, "App", key, v.cells()); err != nil {
+		if err := a.writer.Set(appName, visibilityTab, map[string]string{"App": key}, v.cells()); err != nil {
 			return err
 		}
 		if body.Rules != nil {
@@ -1160,7 +1160,7 @@ func (a app) setAppOrder(w http.ResponseWriter, r *http.Request) {
 	}
 	if !a.commit(r.Context(), w, tables, func() error {
 		for key, v := range rows {
-			if err := a.writer.Upsert(appName, visibilityTab, "App", key, v.cells()); err != nil {
+			if err := a.writer.Set(appName, visibilityTab, map[string]string{"App": key}, v.cells()); err != nil {
 				return err
 			}
 		}

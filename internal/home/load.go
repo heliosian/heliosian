@@ -218,16 +218,12 @@ func (t *Tables) withAudience(key string, rules []filter.Rule) *Tables {
 	return &out
 }
 
-func audienceRows(key string, rules []filter.Rule) [][]string {
-	rows := [][]string{}
+func audienceRows(key string, rules []filter.Rule) []map[string]string {
+	rows := []map[string]string{}
 	for _, r := range rules {
 		cells := filter.RuleCells(r)
 		cells["Thing"] = key
-		row := make([]string, 0, len(AudienceColumns))
-		for _, c := range AudienceColumns {
-			row = append(row, cells[c])
-		}
-		rows = append(rows, row)
+		rows = append(rows, cells)
 	}
 	return rows
 }

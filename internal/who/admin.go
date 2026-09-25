@@ -325,7 +325,7 @@ func (a admin) setAdmins(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		for _, e := range added {
-			if err := a.writer.Append(appName, adminsTable, []string{e}); err != nil {
+			if err := a.writer.Insert(appName, adminsTable, []map[string]string{{"Email": e}}); err != nil {
 				slog.ErrorContext(r.Context(), "add admin", "email", e, "error", err)
 			}
 		}

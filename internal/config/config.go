@@ -1,4 +1,3 @@
-// Package config reads the Config sheet: the platform settings every app shares.
 package config
 
 import (
@@ -286,7 +285,7 @@ func NormalizeEmails(emails []string) []string {
 	return out
 }
 
-// upsertRow mirrors what data.Writer.Upsert is about to write to a tab keyed by one
+// upsertRow mirrors what data.Writer.Set is about to write to a tab keyed by one
 // column, copying the rows it touches so the tables a current model was built from
 // stay intact. A blank cell is dropped, since parseTable never holds "".
 func upsertRow(rows []map[string]string, keyColumn, key string, cells map[string]string) []map[string]string {
@@ -353,7 +352,7 @@ func (t *Tables) WithSuperAdmins(emails []string) *Tables {
 // WriteSettings persists one Key/Value row per entry in values, matching WithSettings.
 func WriteSettings(writer data.Writer, values map[string]string) error {
 	for key, value := range values {
-		if err := writer.Upsert(App, SettingsTab, KeyColumn, key, map[string]string{ValueColumn: value}); err != nil {
+		if err := writer.Set(App, SettingsTab, map[string]string{KeyColumn: key}, map[string]string{ValueColumn: value}); err != nil {
 			return fmt.Errorf("set %s %q: %w", SettingsTab, key, err)
 		}
 	}
@@ -361,15 +360,15 @@ func WriteSettings(writer data.Writer, values map[string]string) error {
 }
 
 func WriteGradeColor(writer data.Writer, name, color string) error {
-	return writer.Upsert(App, GradeColorsTab, GradeColumn, name, map[string]string{ColorColumn: color})
+	return writer.Set(App, GradeColorsTab, map[string]string{GradeColumn: name}, map[string]string{ColorColumn: color})
 }
 
 func WriteClassroomColor(writer data.Writer, name, color string) error {
-	return writer.Upsert(App, ClassroomColorsTab, ClassroomColumn, name, map[string]string{ColorColumn: color})
+	return writer.Set(App, ClassroomColorsTab, map[string]string{ClassroomColumn: name}, map[string]string{ColorColumn: color})
 }
 
 func WriteSignedOut(writer data.Writer, email string, at time.Time) error {
-	return writer.Upsert(App, SignedOutTab, EmailColumn, email, map[string]string{TimeColumn: at.Format(time.RFC3339)})
+	return writer.Set(App, SignedOutTab, map[string]string{EmailColumn: email}, map[string]string{TimeColumn: at.Format(time.RFC3339)})
 }
 
 // WriteSuperAdmins persists the difference between the tab as it is and as it should
@@ -393,7 +392,7 @@ func WriteSuperAdmins(writer data.Writer, current, next []string) error {
 		if was[e] {
 			continue
 		}
-		if err := writer.Append(App, SuperAdminsTab, []string{e}); err != nil {
+		if err := writer.Insert(App, SuperAdminsTab, []map[string]string{{EmailColumn: e}}); err != nil {
 			return fmt.Errorf("add super admin %s: %w", e, err)
 		}
 	}

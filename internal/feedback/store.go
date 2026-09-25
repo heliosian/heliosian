@@ -206,7 +206,7 @@ func (s *Store) Save(r Report) (Report, error) {
 		s.mu.Lock()
 		s.reports = append(s.reports, r)
 		s.mu.Unlock()
-		done <- s.writer.AppendCells(appName, reportsTab, r.cells())
+		done <- s.writer.Insert(appName, reportsTab, []map[string]string{r.cells()})
 	})
 	return r, <-done
 }

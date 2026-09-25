@@ -470,15 +470,7 @@ func (a app) commit(r *http.Request, w http.ResponseWriter, tables *Tables, flus
 }
 
 func (a app) logChange(real, actor, action, group, detail string) error {
-	return a.writer.Append(appName, changeLogTab, []string{time.Now().Format(time.RFC3339), actor, action, group, detail, real})
-}
-
-func rowOf(columns []string, cells map[string]string) []string {
-	row := make([]string, len(columns))
-	for i, column := range columns {
-		row[i] = cells[column]
-	}
-	return row
+	return a.writer.Insert(appName, changeLogTab, []map[string]string{{"Timestamp": time.Now().Format(time.RFC3339), "Actor": actor, "Action": action, "Group": group, "Detail": detail, "Real Actor": real}})
 }
 
 func (a app) saveGroup(w http.ResponseWriter, r *http.Request) {
@@ -539,10 +531,10 @@ func (a app) saveGroup(w http.ResponseWriter, r *http.Request) {
 	tables := a.cache.Tables().withGroup(g)
 	if !a.commit(r, w, tables, func() error {
 		if action == "add" {
-			if err := a.writer.AppendCells(appName, groupsTab, groupCells(g)); err != nil {
+			if err := a.writer.Insert(appName, groupsTab, []map[string]string{groupCells(g)}); err != nil {
 				return err
 			}
-		} else if err := a.writer.Upsert(appName, groupsTab, "Name", g.Name, groupCells(g)); err != nil {
+		} else if err := a.writer.Set(appName, groupsTab, map[string]string{"Name": g.Name}, groupCells(g)); err != nil {
 			return err
 		}
 		for _, tab := range []string{managersTab, rulesTab, additionsTab, excludedTab, aliasesTab} {
@@ -550,39 +542,39 @@ func (a app) saveGroup(w http.ResponseWriter, r *http.Request) {
 				return err
 			}
 		}
-		managers := [][]string{}
+		managers := []map[string]string{}
 		for _, m := range g.Managers {
-			managers = append(managers, []string{g.Name, m})
+			managers = append(managers, map[string]string{"Group": g.Name, "Email": m})
 		}
-		if err := a.writer.AppendAll(appName, managersTab, managers); err != nil {
+		if err := a.writer.Insert(appName, managersTab, managers); err != nil {
 			return err
 		}
-		rules := [][]string{}
+		rules := []map[string]string{}
 		for _, rule := range g.Rules {
-			rules = append(rules, rowOf(RuleColumns, ruleCells(g.Name, rule)))
+			rules = append(rules, ruleCells(g.Name, rule))
 		}
-		if err := a.writer.AppendAll(appName, rulesTab, rules); err != nil {
+		if err := a.writer.Insert(appName, rulesTab, rules); err != nil {
 			return err
 		}
-		additions := [][]string{}
+		additions := []map[string]string{}
 		for _, added := range g.Additions {
-			additions = append(additions, rowOf(AdditionColumns, additionCells(g.Name, added)))
+			additions = append(additions, additionCells(g.Name, added))
 		}
-		if err := a.writer.AppendAll(appName, additionsTab, additions); err != nil {
+		if err := a.writer.Insert(appName, additionsTab, additions); err != nil {
 			return err
 		}
-		excluded := [][]string{}
+		excluded := []map[string]string{}
 		for _, e := range g.Excluded {
-			excluded = append(excluded, rowOf(ExcludedColumns, excludedCells(g.Name, e)))
+			excluded = append(excluded, excludedCells(g.Name, e))
 		}
-		if err := a.writer.AppendAll(appName, excludedTab, excluded); err != nil {
+		if err := a.writer.Insert(appName, excludedTab, excluded); err != nil {
 			return err
 		}
-		aliases := [][]string{}
+		aliases := []map[string]string{}
 		for _, alias := range g.Aliases {
-			aliases = append(aliases, rowOf(AliasColumns, aliasCells(g.Name, alias)))
+			aliases = append(aliases, aliasCells(g.Name, alias))
 		}
-		if err := a.writer.AppendAll(appName, aliasesTab, aliases); err != nil {
+		if err := a.writer.Insert(appName, aliasesTab, aliases); err != nil {
 			return err
 		}
 		return a.logChange(auth.RealEmail(r), email, action, g.Name, fmt.Sprintf("%s; %d aliases; %d managers; %d rules; %d added by hand; %d excluded; prefix %v; visibility %s; posting %s; replying %s", g.Title, len(g.Aliases), len(g.Managers), len(g.Rules), len(g.Additions), len(g.Excluded), g.Prefix, g.Visibility, g.Posting, g.Replying))
@@ -686,7 +678,7 @@ func (a app) archive(w http.ResponseWriter, r *http.Request) {
 	tables := a.cache.Tables().withArchived(g.Name, email, body.Archived)
 	if !a.commit(r, w, tables, func() error {
 		if body.Archived {
-			return a.writer.Append(appName, archivedTab, []string{g.Name, email})
+			return a.writer.Insert(appName, archivedTab, []map[string]string{{"Group": g.Name, "Email": email}})
 		}
 		return a.writer.Delete(appName, archivedTab, map[string]string{"Group": g.Name, "Email": email})
 	}) {
@@ -748,7 +740,7 @@ func (a app) setAdmins(w http.ResponseWriter, r *http.Request) {
 		}
 		for _, e := range admins {
 			if !slices.Contains(current, e) {
-				if err := a.writer.Append(appName, adminsTab, []string{e}); err != nil {
+				if err := a.writer.Insert(appName, adminsTab, []map[string]string{{"Email": e}}); err != nil {
 					return err
 				}
 			}

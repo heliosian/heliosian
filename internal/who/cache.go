@@ -420,15 +420,15 @@ func (c *Cache) renameTag(owner, from, to string) int {
 // tag of fromOwner's - their own, or one shared with them - returning the
 // rows it added. The copy is theirs alone: the original's managers aren't
 // carried over.
-func (c *Cache) copyTag(fromOwner, from, owner, to string) [][]string {
+func (c *Cache) copyTag(fromOwner, from, owner, to string) []map[string]string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	rows := slices.Clone(c.tables.Tags)
-	added := [][]string{}
+	added := []map[string]string{}
 	for _, row := range c.tables.Tags {
 		if strings.EqualFold(row[tagOwner], fromOwner) && row[tagName] == from {
 			rows = append(rows, map[string]string{tagOwner: owner, tagName: to, tagPerson: row[tagPerson]})
-			added = append(added, []string{owner, to, row[tagPerson]})
+			added = append(added, map[string]string{tagOwner: owner, tagName: to, tagPerson: row[tagPerson]})
 		}
 	}
 	if len(added) == 0 {
@@ -577,7 +577,7 @@ func (c *Cache) geocodeFamilies(model *Model, tables *Tables) error {
 	close(jobs)
 	wg.Wait()
 
-	rows := [][]string{}
+	rows := []map[string]string{}
 	folded := make([]map[string]string, 0, len(tables.Geocode)+len(found))
 	folded = append(folded, tables.Geocode...)
 	for _, address := range missing {
@@ -587,11 +587,11 @@ func (c *Cache) geocodeFamilies(model *Model, tables *Tables) error {
 		}
 		known[address] = point
 		lat, lng := strconv.FormatFloat(point.Lat, 'f', -1, 64), strconv.FormatFloat(point.Lng, 'f', -1, 64)
-		rows = append(rows, []string{address, lat, lng})
+		rows = append(rows, map[string]string{geocodeAddress: address, geocodeLat: lat, geocodeLng: lng})
 		folded = append(folded, map[string]string{geocodeAddress: address, geocodeLat: lat, geocodeLng: lng})
 	}
 	if len(rows) > 0 {
-		if err := c.writer.AppendAll(appName, geocodeTable, rows); err != nil {
+		if err := c.writer.Insert(appName, geocodeTable, rows); err != nil {
 			slog.Error("[ERROR] geocode cache write", "error", err)
 		} else {
 			tables.Geocode = folded

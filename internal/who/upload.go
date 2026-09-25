@@ -22,11 +22,9 @@ const changeLogTable = "Change Log"
 // as one of the slots like any other photo.
 const maxPhotos = 5
 
-// changeLogHeader is a fixed list rather than derived from overrideColumns: rows are
-// appended positionally, so it must match the Change Log tab's actual column order,
-// which still interleaves the family columns from when family fields lived on person
-// Overrides rows. One log covers both tabs - a family edit's row is keyed by the
-// family key, which is itself a parent email.
+// changeLogHeader is a fixed list rather than derived from overrideColumns: one log
+// covers the Overrides and Families tabs - a family edit's row is keyed by the family
+// key, which is itself a parent email.
 var changeLogHeader = []string{
 	"Timestamp", "Actor",
 	"Email", "Added", "Full Name", "Legal Name", "Preferred Name",
@@ -39,20 +37,21 @@ var changeLogHeader = []string{
 	"Real Actor",
 }
 
-func changeLogRow(r *http.Request, actor, email string, previous map[string]string) []string {
-	row := make([]string, len(changeLogHeader))
-	row[0] = time.Now().UTC().Format(time.RFC3339)
-	row[1] = actor
-	for i, column := range changeLogHeader {
+func changeLogRow(r *http.Request, actor, email string, previous map[string]string) map[string]string {
+	row := map[string]string{
+		"Timestamp": time.Now().UTC().Format(time.RFC3339),
+		"Actor":     actor,
+	}
+	for _, column := range changeLogHeader {
 		if column == "Email" {
-			row[i] = email
+			row[column] = email
 		} else if column == "Real Actor" {
-			row[i] = auth.RealEmail(r)
+			row[column] = auth.RealEmail(r)
 		} else if value, ok := previous[column]; ok {
 			if value == "" {
 				value = "-"
 			}
-			row[i] = value
+			row[column] = value
 		}
 	}
 	return row
@@ -123,11 +122,11 @@ func applyFamilyWrite(cache *Cache, writer data.Writer, queue *Queue, w http.Res
 		if err != nil {
 			return
 		}
-		if err := writer.Upsert(appName, "Families", "Email", key, cells); err != nil {
+		if err := writer.Set(appName, "Families", map[string]string{"Email": key}, cells); err != nil {
 			slog.ErrorContext(r.Context(), "set families row", "key", key, "error", err)
 			return
 		}
-		if err := writer.Append(appName, changeLogTable, logRow); err != nil {
+		if err := writer.Insert(appName, changeLogTable, []map[string]string{logRow}); err != nil {
 			logging.Fatal("append change log", "action", action, "key", key, "error", err)
 		}
 	})
@@ -156,11 +155,11 @@ func applyOverrideWrite(cache *Cache, writer data.Writer, queue *Queue, w http.R
 		if err != nil {
 			return
 		}
-		if err := writer.Upsert(appName, "Overrides", "Email", email, cells); err != nil {
+		if err := writer.Set(appName, "Overrides", map[string]string{"Email": email}, cells); err != nil {
 			slog.ErrorContext(r.Context(), "set overrides", "email", email, "error", err)
 			return
 		}
-		if err := writer.Append(appName, changeLogTable, logRow); err != nil {
+		if err := writer.Insert(appName, changeLogTable, []map[string]string{logRow}); err != nil {
 			logging.Fatal("append change log", "action", action, "email", email, "error", err)
 		}
 	})
@@ -177,13 +176,13 @@ func applyOverrideWrite(cache *Cache, writer data.Writer, queue *Queue, w http.R
 // Photos row that belongs to them (see Tables.withEmailRenamed), so the rename doesn't
 // silently strand their tags or photos under the old address.
 //
-// The existence checks before each Tags/Photos Upsert matter: data.Writer's Upsert
+// The existence checks before each Tags/Photos Set matter: data.Writer's Set
 // contract inserts a new row when nothing matches its key, which is exactly right for
 // "this person has exactly one Overrides row" but wrong here - a person with zero tags
 // or photos (the common case) would otherwise get a garbage row invented for them, one
 // with only the renamed column set and everything else blank. Checking first against
 // the tables snapshot from just before the rename (still keyed under oldEmail) means
-// each Upsert only ever fires when a real row is there to rename.
+// each Set only ever fires when a real row is there to rename.
 func applyEmailRenameWrite(cache *Cache, writer data.Writer, queue *Queue, w http.ResponseWriter, r *http.Request, actor, oldEmail, newEmail string, cells map[string]string) bool {
 	logRow := changeLogRow(r, actor, newEmail, map[string]string{"Email": oldEmail})
 	applied := make(chan error, 1)
@@ -208,26 +207,26 @@ func applyEmailRenameWrite(cache *Cache, writer data.Writer, queue *Queue, w htt
 		for column, value := range cells {
 			overrideCells[column] = value
 		}
-		if err := writer.Upsert(appName, "Overrides", "Email", oldEmail, overrideCells); err != nil {
+		if err := writer.Set(appName, "Overrides", map[string]string{"Email": oldEmail}, overrideCells); err != nil {
 			slog.ErrorContext(r.Context(), "rename overrides row", "from", oldEmail, "to", newEmail, "error", err)
 			return
 		}
 		if hasTagOwner {
-			if err := writer.Upsert(appName, tagsTable, tagOwner, oldEmail, map[string]string{tagOwner: newEmail}); err != nil {
+			if err := writer.Set(appName, tagsTable, map[string]string{tagOwner: oldEmail}, map[string]string{tagOwner: newEmail}); err != nil {
 				slog.ErrorContext(r.Context(), "rename tag owner", "from", oldEmail, "to", newEmail, "error", err)
 			}
 		}
 		if hasTagPerson {
-			if err := writer.Upsert(appName, tagsTable, tagPerson, oldEmail, map[string]string{tagPerson: newEmail}); err != nil {
+			if err := writer.Set(appName, tagsTable, map[string]string{tagPerson: oldEmail}, map[string]string{tagPerson: newEmail}); err != nil {
 				slog.ErrorContext(r.Context(), "rename tag person", "from", oldEmail, "to", newEmail, "error", err)
 			}
 		}
 		if hasPhotos {
-			if err := writer.Upsert(appName, "Photos", "Email", oldEmail, map[string]string{"Email": newEmail}); err != nil {
+			if err := writer.Set(appName, "Photos", map[string]string{"Email": oldEmail}, map[string]string{"Email": newEmail}); err != nil {
 				slog.ErrorContext(r.Context(), "rename photos", "from", oldEmail, "to", newEmail, "error", err)
 			}
 		}
-		if err := writer.Append(appName, changeLogTable, logRow); err != nil {
+		if err := writer.Insert(appName, changeLogTable, []map[string]string{logRow}); err != nil {
 			logging.Fatal("append change log after email rename", "from", oldEmail, "to", newEmail, "error", err)
 		}
 	})
@@ -274,7 +273,7 @@ func applyDeletePersonWrite(cache *Cache, writer data.Writer, queue *Queue, w ht
 		if err := writer.Delete(appName, "Photos", map[string]string{"Email": email}); err != nil {
 			slog.ErrorContext(r.Context(), "delete photos", "email", email, "error", err)
 		}
-		if err := writer.Append(appName, changeLogTable, logRow); err != nil {
+		if err := writer.Insert(appName, changeLogTable, []map[string]string{logRow}); err != nil {
 			logging.Fatal("append change log after deleting", "email", email, "error", err)
 		}
 	})
@@ -582,9 +581,9 @@ func (u uploader) upload(w http.ResponseWriter, r *http.Request) {
 // ones, since each is really just "this person's photo list is now exactly order" -
 // one place to get the sheet-write-then-rebuild interaction right instead of four.
 func (u uploader) setPhotos(w http.ResponseWriter, r *http.Request, me, key string, order []photoRef, cells, previous map[string]string, changeAction string) bool {
-	rows := make([][]string, len(order))
+	rows := make([]map[string]string, len(order))
 	for i, ref := range order {
-		rows[i] = []string{key, ref.Name, ref.CropName}
+		rows[i] = map[string]string{"Email": key, "Photo Name": ref.Name, "Crop Name": ref.CropName}
 	}
 	rewritten := make(chan error, 1)
 	u.queue.Add(func() {
@@ -592,7 +591,7 @@ func (u uploader) setPhotos(w http.ResponseWriter, r *http.Request, me, key stri
 			rewritten <- err
 			return
 		}
-		rewritten <- u.sheet.AppendAll(appName, "Photos", rows)
+		rewritten <- u.sheet.Insert(appName, "Photos", rows)
 	})
 	if err := <-rewritten; err != nil {
 		serverError(w, r, fmt.Errorf("rewrite photo list for %s: %w", key, err))
@@ -610,11 +609,11 @@ func (u uploader) setPhotos(w http.ResponseWriter, r *http.Request, me, key stri
 		if err != nil || len(cells) == 0 {
 			return
 		}
-		if err := u.sheet.Upsert(appName, "Overrides", "Email", key, cells); err != nil {
+		if err := u.sheet.Set(appName, "Overrides", map[string]string{"Email": key}, cells); err != nil {
 			slog.ErrorContext(r.Context(), "set overrides", "email", key, "error", err)
 			return
 		}
-		if err := u.sheet.Append(appName, changeLogTable, logRow); err != nil {
+		if err := u.sheet.Insert(appName, changeLogTable, []map[string]string{logRow}); err != nil {
 			logging.Fatal("append change log", "action", changeAction, "key", key, "error", err)
 		}
 	})

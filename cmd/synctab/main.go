@@ -1,18 +1,13 @@
-// Command synctab updates a sheet tab from a CSV cell by cell, matching rows by a key column.
 package main
 
 import (
-	"context"
 	"encoding/csv"
 	"flag"
 	"fmt"
 	"log"
 	"os"
 
-	"google.golang.org/api/option"
-	"google.golang.org/api/sheets/v4"
-
-	"heliosian/internal/sheetsync"
+	"heliosian/internal/data"
 )
 
 func readCSV(path string) ([]string, []map[string]string, error) {
@@ -49,18 +44,17 @@ func main() {
 	apply := flag.Bool("apply", false, "write the changes; without it the run only reports them")
 	flag.Parse()
 	if *sheet == "" || *tab == "" || *in == "" || *keyCol == "" {
-		log.Fatal("[ERROR] -sheet, -tab, -in, and -keycol are required")
+		log.Fatal("[ERROR] --sheet, --tab, --in, and --keycol are required")
 	}
 	header, rows, err := readCSV(*in)
 	if err != nil {
 		log.Fatalf("[ERROR] read %s: %v", *in, err)
 	}
-	svc, err := sheets.NewService(context.Background(), option.WithScopes(sheets.SpreadsheetsScope))
+	source, err := data.NewSheet(map[string]string{"sheet": *sheet})
 	if err != nil {
-		log.Fatalf("[ERROR] create sheets client: %v", err)
+		log.Fatalf("[ERROR] sheet source: %v", err)
 	}
-	// Reporting first, always, so the same call that would write shows its work.
-	result, err := sheetsync.Sync(svc, *sheet, *tab, header, rows, *keyCol, sheetsync.Merge, false)
+	result, err := source.Sync("sheet", *tab, header, rows, *keyCol, data.Merge, false)
 	if err != nil {
 		log.Fatalf("[ERROR] %v", err)
 	}
@@ -76,13 +70,13 @@ func main() {
 		log.Printf("%d tab rows are absent from the csv and are left alone", len(result.Detached))
 	}
 	if !*apply {
-		log.Printf("reporting only, pass -apply to write")
+		log.Printf("reporting only, pass --apply to write")
 		return
 	}
 	if len(result.Edits) == 0 {
 		return
 	}
-	if _, err := sheetsync.Sync(svc, *sheet, *tab, header, rows, *keyCol, sheetsync.Merge, true); err != nil {
+	if _, err := source.Sync("sheet", *tab, header, rows, *keyCol, data.Merge, true); err != nil {
 		log.Fatalf("[ERROR] %v", err)
 	}
 	log.Printf("wrote %d cells to %s", len(result.Edits), *tab)

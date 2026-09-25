@@ -220,10 +220,10 @@ func (a app) commit(ctx context.Context, w http.ResponseWriter, tables *Tables, 
 }
 
 func (a app) logChange(r *http.Request, actor, action, tab, key, column, from, to string) error {
-	return a.writer.AppendCells(appName, ChangeLogTab, map[string]string{
+	return a.writer.Insert(appName, ChangeLogTab, []map[string]string{{
 		"Timestamp": now().Format(DateTimeFormat), "Actor": actor, "Action": action, "Tab": tab, "Key": key, "Column": column, "From": from, "To": to,
 		"Real Actor": auth.RealEmail(r),
-	})
+	}})
 }
 
 func NewToken() string {
@@ -260,7 +260,7 @@ func (a app) addFeed(w http.ResponseWriter, r *http.Request) {
 		"Classrooms": JoinList(SplitList(JoinList(body.Classrooms))), "Tags": JoinList(SplitList(JoinList(body.Tags))), "Created": now().Format(DateTimeFormat),
 	}
 	if !a.commit(r.Context(), w, a.cache.Tables().WithFeed(cells), func() error {
-		if err := a.writer.AppendCells(appName, FeedsTab, cells); err != nil {
+		if err := a.writer.Insert(appName, FeedsTab, []map[string]string{cells}); err != nil {
 			return err
 		}
 		return a.logChange(r, actor, "added", FeedsTab, token, "Name", "", cells["Name"])
@@ -352,7 +352,7 @@ func (a app) saveHome(ctx context.Context, email string, cells map[string]string
 	}
 	a.cache.set(tables, built)
 	a.queue.Add(func() {
-		if err := a.writer.Upsert(appName, SettingsTab, "Email", email, cells); err != nil {
+		if err := a.writer.Set(appName, SettingsTab, map[string]string{"Email": email}, cells); err != nil {
 			slog.ErrorContext(ctx, "calendar write", "error", err)
 		}
 	})
@@ -690,7 +690,7 @@ func (a app) addEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	if !a.commit(r.Context(), w, a.cache.Tables().WithEvents(rows), func() error {
 		for _, row := range rows {
-			if err := a.writer.AppendCells(appName, EventsTab, row); err != nil {
+			if err := a.writer.Insert(appName, EventsTab, []map[string]string{row}); err != nil {
 				return err
 			}
 			if err := a.logChange(r, actor, "added", EventsTab, row["Event ID"], "Title", "", row["Title"]); err != nil {
@@ -950,7 +950,7 @@ func (a app) moveEvent(w http.ResponseWriter, r *http.Request) {
 	}
 	was := e.Start + " – " + e.End
 	if !a.commit(r.Context(), w, a.cache.Tables().WithEventWhen(e.ID, start, end), func() error {
-		if err := a.writer.Upsert(appName, EventsTab, "Event ID", e.ID, map[string]string{"Start": start, "End": end}); err != nil {
+		if err := a.writer.Set(appName, EventsTab, map[string]string{"Event ID": e.ID}, map[string]string{"Start": start, "End": end}); err != nil {
 			return err
 		}
 		return a.logChange(r, actor, "moved", EventsTab, e.ID, "Start", was, start+" – "+end)
@@ -977,7 +977,7 @@ func (a app) saveSetting(w http.ResponseWriter, r *http.Request) {
 		"Email": email, "Classrooms": JoinList(SplitList(JoinList(body.Classrooms))), "Categories": JoinList(SplitList(JoinList(body.Tags))), "Saved": now().Format(DateTimeFormat),
 	}
 	if !a.commit(r.Context(), w, a.cache.Tables().WithSetting(email, cells), func() error {
-		if err := a.writer.Upsert(appName, SettingsTab, "Email", email, cells); err != nil {
+		if err := a.writer.Set(appName, SettingsTab, map[string]string{"Email": email}, cells); err != nil {
 			return err
 		}
 		return a.logChange(r, email, "saved", SettingsTab, email, "Categories", "", cells["Categories"])
@@ -999,7 +999,7 @@ func (a app) forgetSetting(w http.ResponseWriter, r *http.Request) {
 	// The row stays for its default calendar; the view's cells empty.
 	cells := map[string]string{"Email": email, "Classrooms": "", "Categories": "", "Saved": ""}
 	if !a.commit(r.Context(), w, a.cache.Tables().WithSetting(email, cells), func() error {
-		if err := a.writer.Upsert(appName, SettingsTab, "Email", email, cells); err != nil {
+		if err := a.writer.Set(appName, SettingsTab, map[string]string{"Email": email}, cells); err != nil {
 			return err
 		}
 		return a.logChange(r, email, "forgot", SettingsTab, email, "Categories", "", "")
@@ -1159,7 +1159,7 @@ func (a app) setTags(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		for _, add := range added {
-			if err := a.writer.AppendCells(appName, TagsTab, newRows[add[0]]); err != nil {
+			if err := a.writer.Insert(appName, TagsTab, []map[string]string{newRows[add[0]]}); err != nil {
 				return err
 			}
 		}

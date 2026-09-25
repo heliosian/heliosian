@@ -1,4 +1,3 @@
-// Command importartifacts reads the messages saved under local/imports/mail and the pages under local/imports/site into the artifacts folder of the media bucket and the Artifacts sheet: markdown, chunks and embeddings for Helios Ask.
 package main
 
 import (
@@ -270,16 +269,16 @@ func store(embedder artifacts.Embedder, uploader *blob.Uploader, doc *artifacts.
 }
 
 func appendRows(source *data.Sheet, header []string, group []work) error {
-	rows := [][]string{}
+	rows := []map[string]string{}
 	for _, item := range group {
 		row := item.doc.Row()
-		cells := make([]string, len(header))
-		for i, column := range header {
-			cells[i] = row[column]
+		cells := map[string]string{}
+		for _, column := range header {
+			cells[column] = row[column]
 		}
 		rows = append(rows, cells)
 	}
-	return source.AppendAll("artifacts", "Documents", rows)
+	return source.Insert("artifacts", "Documents", rows)
 }
 
 func report(what string, counts map[string]int) {

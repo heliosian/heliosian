@@ -1,9 +1,3 @@
-// Invites reads the Invite List Builder sheet: a manifest tab (_Services) naming
-// one tab per destination system (Greenvelope, Evite, ...), each holding that
-// system's own column header plus a template row of {{ parameter }} tokens the
-// client fills in per family. Keeping the templates in the sheet - not in code -
-// means adding a new system, or fixing a system's own header quirk, is a sheet
-// edit, not a deploy.
 package who
 
 import (
@@ -295,15 +289,15 @@ func RegisterInvites(mux *http.ServeMux, cache *Cache, source data.Source, write
 				http.Error(w, "you can only edit greetings you created", http.StatusForbidden)
 				return
 			}
-			if err := writer.Upsert(invitesApp, "_Greetings", "Name", original, cells); err != nil {
+			if err := writer.Set(invitesApp, "_Greetings", map[string]string{"Name": original}, cells); err != nil {
 				slog.ErrorContext(r.Context(), "update greeting", "name", name, "error", err)
 				http.Error(w, "failed to save greeting", http.StatusInternalServerError)
 				return
 			}
 			slog.InfoContext(r.Context(), "greeting: edited", "actor", email, "from", original, "to", name)
 		} else {
-			row := []string{name, format, cells["Grouped"], cells["Individual"], email}
-			if err := writer.Append(invitesApp, "_Greetings", row); err != nil {
+			row := map[string]string{"Name": name, "Format": format, "Grouped": cells["Grouped"], "Individual": cells["Individual"], "Email": email}
+			if err := writer.Insert(invitesApp, "_Greetings", []map[string]string{row}); err != nil {
 				slog.ErrorContext(r.Context(), "save greeting", "name", name, "error", err)
 				http.Error(w, "failed to save greeting", http.StatusInternalServerError)
 				return

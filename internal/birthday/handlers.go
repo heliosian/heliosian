@@ -205,18 +205,10 @@ func (a app) commit(r *http.Request, w http.ResponseWriter, tables *Tables, flus
 	return true
 }
 
-func rowOf(columns []string, cells map[string]string) []string {
-	row := make([]string, len(columns))
-	for i, column := range columns {
-		row[i] = cells[column]
-	}
-	return row
-}
-
 func (a app) logChange(r *http.Request, actor, action, kind, email, year, details string) error {
-	return a.writer.Append(appName, changeLogTab, []string{
-		time.Now().Format(time.RFC3339), actor, action, kind, email, year, details, auth.RealEmail(r),
-	})
+	return a.writer.Insert(appName, changeLogTab, []map[string]string{{
+		"Timestamp": time.Now().Format(time.RFC3339), "Actor": actor, "Action": action, "Kind": kind, "Email": email, "Year": year, "Details": details, "Real Actor": auth.RealEmail(r),
+	}})
 }
 
 func cleanEmail(raw string) string {
@@ -676,7 +668,7 @@ func (a app) addNote(w http.ResponseWriter, r *http.Request) {
 	}
 	cells := map[string]string{"Email": email, "Note": note, "Added By": actor, "Added": today()}
 	if !a.commit(r, w, a.cache.Tables().with(notesTab, nil, cells), func() error {
-		if err := a.writer.Append(appName, notesTab, rowOf(NoteColumns, cells)); err != nil {
+		if err := a.writer.Insert(appName, notesTab, []map[string]string{cells}); err != nil {
 			return err
 		}
 		return a.logChange(r, actor, "add", "note", email, "", note)
@@ -784,7 +776,7 @@ func (a app) saveCharity(w http.ResponseWriter, r *http.Request) {
 	}
 	if !a.commit(r, w, tables, func() error {
 		if adding {
-			if err := a.writer.Append(appName, charitiesTab, rowOf(CharityColumns, cells)); err != nil {
+			if err := a.writer.Insert(appName, charitiesTab, []map[string]string{cells}); err != nil {
 				return err
 			}
 		} else {
@@ -941,7 +933,7 @@ func (a app) addNewsletterDate(w http.ResponseWriter, r *http.Request) {
 	}
 	cells := map[string]string{"Date": date}
 	if !a.commit(r, w, a.cache.Tables().with(newsletterDatesTab, nil, cells), func() error {
-		if err := a.writer.Append(appName, newsletterDatesTab, rowOf(NewsletterDateColumns, cells)); err != nil {
+		if err := a.writer.Insert(appName, newsletterDatesTab, []map[string]string{cells}); err != nil {
 			return err
 		}
 		return a.logChange(r, actor, "add", "newsletter date", "", "", date)
@@ -1088,11 +1080,11 @@ func (a app) createNewsletterDates(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !a.commit(r, w, tables, func() error {
-		rows := make([][]string, 0, len(added))
+		rows := make([]map[string]string, 0, len(added))
 		for _, cell := range added {
-			rows = append(rows, []string{cell})
+			rows = append(rows, map[string]string{"Date": cell})
 		}
-		if err := a.writer.AppendAll(appName, newsletterDatesTab, rows); err != nil {
+		if err := a.writer.Insert(appName, newsletterDatesTab, rows); err != nil {
 			return err
 		}
 		return a.logChange(r, actor, "add", "newsletter dates", "", "", fmt.Sprintf("%d, %s to %s", len(added), added[0], added[len(added)-1]))
@@ -1239,7 +1231,7 @@ func (a app) setAdmins(w http.ResponseWriter, r *http.Request) {
 		}
 		for _, e := range admins {
 			if !was[e] {
-				if err := a.writer.Append(appName, adminsTab, []string{e}); err != nil {
+				if err := a.writer.Insert(appName, adminsTab, []map[string]string{{"Email": e}}); err != nil {
 					return err
 				}
 			}
@@ -1292,7 +1284,7 @@ func (a app) joinTeam(w http.ResponseWriter, r *http.Request) {
 	row := map[string]string{"Email": actor, "Role": RoleVolunteer}
 	if a.cache.Tables().count(teamTab, row) == 0 {
 		if !a.commit(r, w, a.cache.Tables().with(teamTab, nil, row), func() error {
-			if err := a.writer.Append(appName, teamTab, rowOf(TeamColumns, row)); err != nil {
+			if err := a.writer.Insert(appName, teamTab, []map[string]string{row}); err != nil {
 				return err
 			}
 			return a.logChange(r, actor, "add", "team member", actor, "", RoleVolunteer+" (joined)")
@@ -1346,7 +1338,7 @@ func (a app) addTeamMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !a.commit(r, w, a.cache.Tables().with(teamTab, nil, row), func() error {
-		if err := a.writer.Append(appName, teamTab, rowOf(TeamColumns, row)); err != nil {
+		if err := a.writer.Insert(appName, teamTab, []map[string]string{row}); err != nil {
 			return err
 		}
 		return a.logChange(r, actor, "add", "team member", row["Email"], "", row["Role"])

@@ -101,7 +101,7 @@ func (a app) deliveryEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	a.cache.set(tables, built)
 	a.queue.Add(func() {
-		if err := a.writer.AppendCells(appName, BouncesTab, row); err != nil {
+		if err := a.writer.Insert(appName, BouncesTab, []map[string]string{row}); err != nil {
 			slog.ErrorContext(r.Context(), "calendar write", "error", err)
 		}
 	})

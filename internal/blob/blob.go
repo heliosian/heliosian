@@ -1,4 +1,3 @@
-// Package blob serves media from cloud storage: every object a sheet names, fetched by that name and held in memory with its stored thumbnail.
 package blob
 
 import (
@@ -69,19 +68,20 @@ type objects interface {
 
 type bucket struct {
 	service *storage.Service
+	name    string
 }
 
-func newBucket() (bucket, error) {
+func newBucket(name string) (bucket, error) {
 	service, err := storage.NewService(context.Background(),
 		option.WithScopes(storage.DevstorageReadWriteScope))
 	if err != nil {
 		return bucket{}, fmt.Errorf("storage client: %w", err)
 	}
-	return bucket{service: service}, nil
+	return bucket{service: service, name: name}, nil
 }
 
 func (b bucket) get(ctx context.Context, name string) (object, error) {
-	resp, err := b.service.Objects.Get(Bucket, name).Context(ctx).Download()
+	resp, err := b.service.Objects.Get(b.name, name).Context(ctx).Download()
 	if notFound(err) {
 		return object{}, ErrNotFound
 	}
@@ -103,7 +103,7 @@ func (b bucket) get(ctx context.Context, name string) (object, error) {
 func (b bucket) put(ctx context.Context, name, mimeType string, content []byte) error {
 	// A chunk size of zero sends the object in one request; the default of
 	// sixteen megabytes is allocated whole for every upload, however small.
-	_, err := b.service.Objects.Insert(Bucket, &storage.Object{Name: name, ContentType: mimeType}).
+	_, err := b.service.Objects.Insert(b.name, &storage.Object{Name: name, ContentType: mimeType}).
 		Media(bytes.NewReader(content), googleapi.ContentType(mimeType), googleapi.ChunkSize(0)).
 		Context(ctx).Do()
 	if err != nil {
@@ -113,7 +113,7 @@ func (b bucket) put(ctx context.Context, name, mimeType string, content []byte) 
 }
 
 func (b bucket) exists(ctx context.Context, name string) (bool, error) {
-	_, err := b.service.Objects.Get(Bucket, name).Fields("name").Context(ctx).Do()
+	_, err := b.service.Objects.Get(b.name, name).Fields("name").Context(ctx).Do()
 	if notFound(err) {
 		return false, nil
 	}
@@ -124,7 +124,7 @@ func (b bucket) exists(ctx context.Context, name string) (bool, error) {
 }
 
 func (b bucket) remove(ctx context.Context, name string) error {
-	err := b.service.Objects.Delete(Bucket, name).Context(ctx).Do()
+	err := b.service.Objects.Delete(b.name, name).Context(ctx).Do()
 	if notFound(err) {
 		return nil
 	}
@@ -212,7 +212,7 @@ type Store struct {
 // New is a store over the bucket, keeping a copy of what it fetches under
 // cacheDir when one is given; "" caches nothing.
 func New(cacheDir string) (*Store, error) {
-	b, err := newBucket()
+	b, err := newBucket(Bucket)
 	if err != nil {
 		return nil, err
 	}
@@ -573,7 +573,7 @@ type Uploader struct {
 }
 
 func NewUploader() (*Uploader, error) {
-	b, err := newBucket()
+	b, err := newBucket(Bucket)
 	if err != nil {
 		return nil, err
 	}
@@ -599,33 +599,20 @@ func (u *Uploader) Remove(name string) error {
 func (u *Uploader) Put(folder, name, mimeType string, content []byte) (bool, error) {
 	ctx := context.Background()
 	full := folder + "/" + name
-	var thumb []byte
-	if strings.HasPrefix(mimeType, "image/") {
-		hasThumb, err := u.objects.exists(ctx, thumbName(full))
-		if err != nil {
-			return false, err
-		}
-		if !hasThumb {
-			if thumb, err = Thumbnail(content); err != nil {
-				return false, fmt.Errorf("thumbnail %s: %w", full, err)
-			}
-		}
-	}
-	wrote := false
 	present, err := u.objects.exists(ctx, full)
 	if err != nil {
 		return false, err
 	}
-	if !present {
-		if err := u.objects.put(ctx, full, mimeType, content); err != nil {
+	if present && strings.HasPrefix(mimeType, "image/") {
+		present, err = u.objects.exists(ctx, thumbName(full))
+		if err != nil {
 			return false, err
 		}
-		wrote = true
 	}
-	if thumb == nil {
-		return wrote, nil
+	if present {
+		return false, nil
 	}
-	if err := u.objects.put(ctx, thumbName(full), thumbMime, thumb); err != nil {
+	if err := writeWithThumbnail(ctx, u.objects, full, mimeType, content); err != nil {
 		return false, err
 	}
 	return true, nil

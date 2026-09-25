@@ -1,4 +1,3 @@
-// Command periodicsync runs every stage of the periodic sync in turn: the year calendar PDF.
 package main
 
 import (
@@ -8,9 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
-	gapi "google.golang.org/api/option"
-	"google.golang.org/api/sheets/v4"
 
 	"heliosian/internal/app"
 	"heliosian/internal/calendar"
@@ -60,9 +56,8 @@ func main() {
 	if !*permitted {
 		log.Fatal("[ERROR] this run spends money on Claude; pass --i-have-user-permission-to-spend-money only when the user has said to run it")
 	}
-	calendarSheet := requiredEnv("CALENDAR_SHEET")
 	spreadsheets := map[string]string{
-		"calendar":    calendarSheet,
+		"calendar":    requiredEnv("CALENDAR_SHEET"),
 		"directory":   requiredEnv("DIRECTORY_SHEET"),
 		"preferences": requiredEnv("PREFERENCES_SHEET"),
 		"config":      requiredEnv("CONFIG_SHEET"),
@@ -73,10 +68,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("[ERROR] sheet source: %v", err)
 	}
-	svc, err := sheets.NewService(ctx, gapi.WithScopes(sheets.SpreadsheetsScope))
-	if err != nil {
-		log.Fatalf("[ERROR] create sheets client: %v", err)
-	}
 	directory, err := who.LoadModel(source, nil, staticFiles{"web/who"}, []byte("periodicsync"))
 	if err != nil {
 		log.Fatalf("[ERROR] load directory model: %v", err)
@@ -85,7 +76,7 @@ func main() {
 	// and the run exits non-zero at the end naming every stage that failed.
 	failures := []string{}
 	log.Printf("stage: year calendar pdf")
-	opts := calendarimport.Options{Source: source, Sheets: svc, CalendarSheet: calendarSheet, Roster: func() calendar.Roster { return app.CalendarRoster(directory) }, AnthropicKey: key, DryRun: *dryRun}
+	opts := calendarimport.Options{Source: source, Roster: func() calendar.Roster { return app.CalendarRoster(directory) }, AnthropicKey: key, DryRun: *dryRun}
 	if err := calendarimport.RunPDF(ctx, opts); err != nil {
 		log.Printf("[ERROR] year calendar pdf: %v", err)
 		failures = append(failures, "year calendar pdf")

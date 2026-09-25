@@ -54,11 +54,6 @@ func NewSheet(spreadsheets map[string]string) (*Sheet, error) {
 	return &Sheet{service: service, spreadsheets: spreadsheets}, nil
 }
 
-// Service is the Sheets client itself, for the calendar import's cell-by-cell sync.
-func (s *Sheet) Service() *sheets.Service {
-	return s.service
-}
-
 func (s *Sheet) Table(app, name string) ([]string, []map[string]string, error) {
 	id, ok := s.spreadsheets[app]
 	if !ok {
@@ -146,72 +141,6 @@ func (s *Sheet) Raw(app, name string) ([][]string, error) {
 		rows[i] = cells
 	}
 	return rows, nil
-}
-
-func (s *Sheet) Upsert(app, table, keyColumn, keyValue string, cells map[string]string) error {
-	id, ok := s.spreadsheets[app]
-	if !ok {
-		return fmt.Errorf("no spreadsheet configured for app %q", app)
-	}
-	quoted := quoteTab(table)
-	resp, err := call("get "+table, s.service.Spreadsheets.Values.Get(id, quoted).Do)
-	if err != nil {
-		return err
-	}
-	if len(resp.Values) == 0 {
-		return fmt.Errorf("table %s is empty", table)
-	}
-	keyIdx := -1
-	colIdx := map[string]int{}
-	for i, cell := range resp.Values[0] {
-		name := strings.TrimSpace(fmt.Sprint(cell))
-		if name == keyColumn {
-			keyIdx = i
-		}
-		if _, ok := cells[name]; ok {
-			colIdx[name] = i
-		}
-	}
-	if keyIdx < 0 {
-		return fmt.Errorf("table %s is missing column %q", table, keyColumn)
-	}
-	for column := range cells {
-		if _, ok := colIdx[column]; !ok {
-			return fmt.Errorf("table %s is missing column %q", table, column)
-		}
-	}
-	ranges := []*sheets.ValueRange{}
-	for i, row := range resp.Values[1:] {
-		if keyIdx >= len(row) || !strings.EqualFold(strings.TrimSpace(fmt.Sprint(row[keyIdx])), keyValue) {
-			continue
-		}
-		for column, value := range cells {
-			ranges = append(ranges, &sheets.ValueRange{
-				Range:  fmt.Sprintf("%s!%s%d", quoted, columnName(colIdx[column]), i+2),
-				Values: [][]interface{}{{value}},
-			})
-		}
-	}
-	if len(ranges) == 0 {
-		width := keyIdx + 1
-		for _, idx := range colIdx {
-			width = max(width, idx+1)
-		}
-		row := make([]interface{}, width)
-		for i := range row {
-			row[i] = ""
-		}
-		row[keyIdx] = keyValue
-		for column, value := range cells {
-			row[colIdx[column]] = value
-		}
-		return s.writeRows(id, table, len(resp.Values), [][]interface{}{row})
-	}
-	_, err = call("set "+table, s.service.Spreadsheets.Values.BatchUpdate(id, &sheets.BatchUpdateValuesRequest{
-		ValueInputOption: "RAW",
-		Data:             ranges,
-	}).Do)
-	return err
 }
 
 func (s *Sheet) Set(app, table string, match, cells map[string]string) error {
@@ -335,11 +264,7 @@ func (s *Sheet) SetMany(app, table, keyColumn string, cells map[string]map[strin
 	return err
 }
 
-func (s *Sheet) Append(app, table string, row []string) error {
-	return s.AppendAll(app, table, [][]string{row})
-}
-
-func (s *Sheet) AppendAll(app, table string, rows [][]string) error {
+func (s *Sheet) Insert(app, table string, rows []map[string]string) error {
 	id, ok := s.spreadsheets[app]
 	if !ok {
 		return fmt.Errorf("no spreadsheet configured for app %q", app)
@@ -347,29 +272,33 @@ func (s *Sheet) AppendAll(app, table string, rows [][]string) error {
 	if len(rows) == 0 {
 		return nil
 	}
-	values := make([][]interface{}, len(rows))
-	for i, row := range rows {
-		cells := make([]interface{}, len(row))
-		for j, cell := range row {
-			cells[j] = cell
-		}
-		values[i] = cells
-	}
-	used, err := s.rowCount(id, table)
+	resp, err := call("get "+table, s.service.Spreadsheets.Values.Get(id, quoteTab(table)).Do)
 	if err != nil {
 		return err
 	}
-	return s.writeRows(id, table, used, values)
-}
-
-// rowCount is how many rows of the tab hold anything, header included: the
-// next row is where an appended row goes.
-func (s *Sheet) rowCount(id, table string) (int, error) {
-	resp, err := call("get "+table, s.service.Spreadsheets.Values.Get(id, quoteTab(table)).Do)
-	if err != nil {
-		return 0, err
+	if len(resp.Values) == 0 {
+		return fmt.Errorf("table %s is empty", table)
 	}
-	return len(resp.Values), nil
+	index := map[string]int{}
+	for i, cell := range resp.Values[0] {
+		index[strings.TrimSpace(fmt.Sprint(cell))] = i
+	}
+	values := make([][]interface{}, len(rows))
+	for r, cells := range rows {
+		row := make([]interface{}, len(resp.Values[0]))
+		for i := range row {
+			row[i] = ""
+		}
+		for column, value := range cells {
+			i, ok := index[column]
+			if !ok {
+				return fmt.Errorf("table %s is missing column %q", table, column)
+			}
+			row[i] = value
+		}
+		values[r] = row
+	}
+	return s.writeRows(id, table, len(resp.Values), values)
 }
 
 // writeRows puts rows at an explicit address - the first row after the `used`
@@ -407,39 +336,6 @@ func (s *Sheet) writeRows(id, table string, used int, rows [][]interface{}) erro
 		Values: rows,
 	}).ValueInputOption("RAW").Do)
 	return err
-}
-
-func (s *Sheet) AppendCells(app, table string, cells map[string]string) error {
-	id, ok := s.spreadsheets[app]
-	if !ok {
-		return fmt.Errorf("no spreadsheet configured for app %q", app)
-	}
-	quoted := quoteTab(table)
-	// The whole tab is read: the header to place the cells, the row count to
-	// place the row.
-	resp, err := call("get "+table, s.service.Spreadsheets.Values.Get(id, quoted).Do)
-	if err != nil {
-		return err
-	}
-	if len(resp.Values) == 0 {
-		return fmt.Errorf("table %s is empty", table)
-	}
-	index := map[string]int{}
-	for i, cell := range resp.Values[0] {
-		index[strings.TrimSpace(fmt.Sprint(cell))] = i
-	}
-	row := make([]interface{}, len(resp.Values[0]))
-	for i := range row {
-		row[i] = ""
-	}
-	for column, value := range cells {
-		i, ok := index[column]
-		if !ok {
-			return fmt.Errorf("table %s is missing column %q", table, column)
-		}
-		row[i] = value
-	}
-	return s.writeRows(id, table, len(resp.Values), [][]interface{}{row})
 }
 
 func (s *Sheet) Delete(app, table string, match map[string]string) error {

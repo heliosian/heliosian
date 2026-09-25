@@ -238,7 +238,7 @@ func Grant(cache *Cache, writer data.Writer, queue Enqueuer, appKey, email strin
 	done := make(chan error, 1)
 	queue.Add(func() {
 		cache.set(tables, model)
-		done <- writer.Upsert(appName, visibilityTab, "App", app.Key, v.cells())
+		done <- writer.Set(appName, visibilityTab, map[string]string{"App": app.Key}, v.cells())
 	})
 	return <-done
 }

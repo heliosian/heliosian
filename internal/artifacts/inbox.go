@@ -171,7 +171,7 @@ func (in *Filer) file(ctx context.Context, m Message) error {
 	}
 	done := make(chan error, 1)
 	in.queue.Add(func() {
-		if err := in.writer.AppendCells(appName, documentsTab, doc.Row()); err != nil {
+		if err := in.writer.Insert(appName, documentsTab, []map[string]string{doc.Row()}); err != nil {
 			done <- err
 			return
 		}

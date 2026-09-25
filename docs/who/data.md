@@ -58,6 +58,10 @@ The form's answer is per family, and a kid's family is every household they belo
 
 Only an affirmative opt-in puts a family in the directory. A family none of whose adults answered is dropped from the model exactly as an opt-out is. Staff are the single exemption and only from silence: the form reaches them through being a parent, so a staff member nobody answered for stays listed, while one who opts out is removed like anyone else.
 
+## The invite templates live in a sheet
+
+The Invite List Builder's templates are data, not code: its own sheet holds a manifest tab, `_Services`, naming one tab per destination system (Greenvelope, Evite, ...), each carrying that system's own column header and a template row of `{{ parameter }}` tokens the client fills in per family. Adding a system, or matching a system's own header quirk, is a sheet edit rather than a deploy. That quirk - a header naming one column twice - is why those tabs are read as they stand (`Raw` in `internal/data`) rather than by column name.
+
 ## Privacy decisions
 
 **Student phone numbers are never shown, whatever any sheet says.** Not a preference, not a flag — not a family's choice to make.

@@ -250,15 +250,15 @@ func (m *mailer) flush() {
 	m.flushing = false
 	m.mu.Unlock()
 	m.cache.edit(func(t *Tables) *Tables { return t.withDeliveries(rows) })
-	cells := make([][]string, 0, len(rows))
+	cells := make([]map[string]string, 0, len(rows))
 	for _, row := range rows {
-		line := make([]string, 0, len(DeliveryColumns))
+		line := map[string]string{}
 		for _, column := range DeliveryColumns {
-			line = append(line, row[column])
+			line[column] = row[column]
 		}
 		cells = append(cells, line)
 	}
-	if err := m.writer.AppendAll(appName, deliveriesTab, cells); err != nil {
+	if err := m.writer.Insert(appName, deliveriesTab, cells); err != nil {
 		slog.Error("[ERROR] groups: delivery record", "rows", len(rows), "error", err)
 	}
 }

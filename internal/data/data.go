@@ -1,4 +1,3 @@
-// Package data provides tabular app data sources.
 package data
 
 import (
@@ -52,24 +51,18 @@ type Source interface {
 }
 
 type Writer interface {
-	Upsert(app, table, keyColumn, keyValue string, cells map[string]string) error
-	// Set is Upsert for a tab keyed by more than one column: every row matching all
-	// of match takes cells, and when none does a row holding match plus cells is
-	// appended.
+	// Insert adds rows after the tab's last used row, each cell under the column
+	// of its name wherever the tab keeps it, and rejects a column the tab does not
+	// have.
+	Insert(app, table string, rows []map[string]string) error
+	// Set gives every row matching all of match the cells, and when none does
+	// inserts a row holding match plus cells.
 	Set(app, table string, match, cells map[string]string) error
 	// SetMany is Set for several rows of one tab at once, keyed by one column:
 	// every row whose keyColumn is a key in cells takes that key's cells. One
 	// read and one write, however many rows - a row at a time, the same edit
 	// spends its Sheets quota many times over. A key no row carries is an error.
 	SetMany(app, table, keyColumn string, cells map[string]map[string]string) error
-	Append(app, table string, row []string) error
-	// AppendAll adds many rows in one call, which is the difference between a bulk
-	// load finishing and it spending minutes being throttled a row at a time.
-	AppendAll(app, table string, rows [][]string) error
-	// AppendCells adds a row placing each cell under the column of that name,
-	// wherever the tab keeps it, and rejects a column the tab does not have. It
-	// is Append for a tab whose column order people may have rearranged by hand.
-	AppendCells(app, table string, cells map[string]string) error
 	Delete(app, table string, match map[string]string) error
 	// Reorder rewrites a tab's data rows into the order the keys give. The keys
 	// must be exactly the tab's existing keyColumn values, each once, so rows
@@ -204,25 +197,13 @@ func (d *Dir) Tabs(app string, tables, headers []string) (map[string]Tab, error)
 	return out, nil
 }
 
-func (d *Dir) Upsert(app, name, keyColumn, keyValue string, cells map[string]string) error {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	t, err := d.load(app, name)
-	if err != nil {
-		return err
-	}
-	found := false
-	for _, row := range t.rows {
-		if !strings.EqualFold(row[keyColumn], keyValue) {
-			continue
+func (t *table) has(name string, columns ...map[string]string) error {
+	for _, cells := range columns {
+		for column := range cells {
+			if !slices.Contains(t.header, column) {
+				return fmt.Errorf("table %s is missing column %q", name, column)
+			}
 		}
-		setCells(row, cells)
-		found = true
-	}
-	if !found {
-		row := map[string]string{keyColumn: keyValue}
-		setCells(row, cells)
-		t.rows = append(t.rows, row)
 	}
 	return nil
 }
@@ -232,6 +213,9 @@ func (d *Dir) Set(app, name string, match, cells map[string]string) error {
 	defer d.mu.Unlock()
 	t, err := d.load(app, name)
 	if err != nil {
+		return err
+	}
+	if err := t.has(name, match, cells); err != nil {
 		return err
 	}
 	found := false
@@ -258,6 +242,14 @@ func (d *Dir) SetMany(app, name, keyColumn string, cells map[string]map[string]s
 	if err != nil {
 		return err
 	}
+	if err := t.has(name, map[string]string{keyColumn: ""}); err != nil {
+		return err
+	}
+	for _, c := range cells {
+		if err := t.has(name, c); err != nil {
+			return err
+		}
+	}
 	seen := map[string]bool{}
 	for _, row := range t.rows {
 		if c, ok := cells[row[keyColumn]]; ok {
@@ -273,51 +265,23 @@ func (d *Dir) SetMany(app, name, keyColumn string, cells map[string]map[string]s
 	return nil
 }
 
-func (d *Dir) Append(app, name string, row []string) error {
-	return d.AppendAll(app, name, [][]string{row})
-}
-
-func (d *Dir) AppendAll(app, name string, rows [][]string) error {
+func (d *Dir) Insert(app, name string, rows []map[string]string) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	t, err := d.load(app, name)
 	if err != nil {
 		return err
 	}
-	for _, row := range rows {
-		record := map[string]string{}
-		for i, cell := range row {
-			if i >= len(t.header) || t.header[i] == "" || cell == "" {
-				continue
-			}
-			record[t.header[i]] = cell
+	for _, cells := range rows {
+		if err := t.has(name, cells); err != nil {
+			return err
 		}
+	}
+	for _, cells := range rows {
+		record := map[string]string{}
+		setCells(record, cells)
 		t.rows = append(t.rows, record)
 	}
-	return nil
-}
-
-func (d *Dir) AppendCells(app, name string, cells map[string]string) error {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	t, err := d.load(app, name)
-	if err != nil {
-		return err
-	}
-	known := map[string]bool{}
-	for _, column := range t.header {
-		known[column] = true
-	}
-	record := map[string]string{}
-	for column, cell := range cells {
-		if !known[column] {
-			return fmt.Errorf("table %s is missing column %q", name, column)
-		}
-		if cell != "" {
-			record[column] = cell
-		}
-	}
-	t.rows = append(t.rows, record)
 	return nil
 }
 
@@ -326,6 +290,9 @@ func (d *Dir) Delete(app, name string, match map[string]string) error {
 	defer d.mu.Unlock()
 	t, err := d.load(app, name)
 	if err != nil {
+		return err
+	}
+	if err := t.has(name, match); err != nil {
 		return err
 	}
 	kept := []map[string]string{}

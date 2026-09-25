@@ -252,7 +252,7 @@ func (a app) addGroup(w http.ResponseWriter, r *http.Request) {
 		if err := first(); err != nil {
 			return err
 		}
-		return a.writer.AppendCells(appName, InviteGroupsTab, row)
+		return a.writer.Insert(appName, InviteGroupsTab, []map[string]string{row})
 	}) {
 		return
 	}
@@ -375,7 +375,7 @@ func (a app) fill(ctx context.Context, e *Event, g InviteGroup, wait bool) int {
 	a.cache.set(tables, built)
 	a.queue.Add(func() {
 		for _, row := range rows {
-			if err := a.writer.AppendCells(appName, InvitesTab, row); err != nil {
+			if err := a.writer.Insert(appName, InvitesTab, []map[string]string{row}); err != nil {
 				slog.ErrorContext(ctx, "calendar write", "error", err)
 			}
 		}
@@ -455,7 +455,7 @@ func (a app) startParty(w http.ResponseWriter, r *http.Request) {
 		if err := first(); err != nil {
 			return err
 		}
-		return a.writer.AppendCells(appName, InviteGroupsTab, row)
+		return a.writer.Insert(appName, InviteGroupsTab, []map[string]string{row})
 	}) {
 		return
 	}

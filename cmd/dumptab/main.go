@@ -1,17 +1,12 @@
-// Command dumptab writes one sheet tab to a local CSV file.
 package main
 
 import (
-	"context"
 	"encoding/csv"
 	"flag"
-	"fmt"
 	"log"
 	"os"
-	"strings"
 
-	"google.golang.org/api/option"
-	"google.golang.org/api/sheets/v4"
+	"heliosian/internal/data"
 )
 
 func main() {
@@ -22,12 +17,11 @@ func main() {
 	if *sheet == "" || *tab == "" || *out == "" {
 		log.Fatal("[ERROR] --sheet, --tab, and --out are required")
 	}
-	svc, err := sheets.NewService(context.Background(),
-		option.WithScopes(sheets.SpreadsheetsReadonlyScope))
+	source, err := data.NewSheet(map[string]string{"sheet": *sheet})
 	if err != nil {
-		log.Fatalf("[ERROR] create sheets client: %v", err)
+		log.Fatalf("[ERROR] sheet source: %v", err)
 	}
-	resp, err := svc.Spreadsheets.Values.Get(*sheet, "'"+strings.ReplaceAll(*tab, "'", "''")+"'").Do()
+	rows, err := source.Raw("sheet", *tab)
 	if err != nil {
 		log.Fatalf("[ERROR] read tab %s: %v", *tab, err)
 	}
@@ -36,21 +30,11 @@ func main() {
 		log.Fatalf("[ERROR] create %s: %v", *out, err)
 	}
 	w := csv.NewWriter(f)
-	for _, row := range resp.Values {
-		record := make([]string, len(row))
-		for i, cell := range row {
-			record[i] = fmt.Sprint(cell)
-		}
-		if err := w.Write(record); err != nil {
-			log.Fatalf("[ERROR] write row: %v", err)
-		}
-	}
-	w.Flush()
-	if err := w.Error(); err != nil {
-		log.Fatalf("[ERROR] flush csv: %v", err)
+	if err := w.WriteAll(rows); err != nil {
+		log.Fatalf("[ERROR] write csv: %v", err)
 	}
 	if err := f.Close(); err != nil {
 		log.Fatalf("[ERROR] close %s: %v", *out, err)
 	}
-	log.Printf("wrote %d rows to %s", len(resp.Values), *out)
+	log.Printf("wrote %d rows to %s", len(rows), *out)
 }

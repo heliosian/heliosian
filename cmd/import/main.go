@@ -1,8 +1,6 @@
-// Command import pulls a fresh Veracross export and applies it to the directory sheet.
 package main
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/csv"
 	"flag"
@@ -18,12 +16,9 @@ import (
 
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
-	"google.golang.org/api/option"
-	"google.golang.org/api/sheets/v4"
 
 	"heliosian/internal/blob"
 	"heliosian/internal/data"
-	"heliosian/internal/sheetsync"
 	"heliosian/internal/who"
 )
 
@@ -38,13 +33,13 @@ var sources = []struct {
 	tab    string
 	file   string
 	keyCol string
-	policy sheetsync.Policy
+	policy data.Policy
 }{
-	{studentsTab, "All Students Directory.csv", "entry_sort_name", sheetsync.Mirror},
-	{staffTab, "All Faculty & Staff Directory.csv", "entry_sort_name", sheetsync.Mirror},
+	{studentsTab, "All Students Directory.csv", "entry_sort_name", data.Mirror},
+	{staffTab, "All Faculty & Staff Directory.csv", "entry_sort_name", data.Mirror},
 	// Merged, not mirrored: this tab also holds addresses for staff and the blank
 	// rows recording who is deliberately left out, none of which the export knows.
-	{namesTab, "Name to Email.csv", "Name", sheetsync.Merge},
+	{namesTab, "Name to Email.csv", "Name", data.Merge},
 }
 
 // lineBreak stands in for a break the markup asks for, so it survives the pass that
@@ -251,7 +246,7 @@ func clearCaughtUpOverrides(out string, source *data.Sheet, bios []map[string]st
 			log.Printf("  would clear %v for %s, which the staff page has caught up with", slices.Sorted(maps.Keys(cells)), email)
 			continue
 		}
-		if err := source.Upsert("directory", "Overrides", "Email", email, cells); err != nil {
+		if err := source.Set("directory", "Overrides", map[string]string{"Email": email}, cells); err != nil {
 			return err
 		}
 		log.Printf("  cleared %v for %s, which the staff page has caught up with", slices.Sorted(maps.Keys(cells)), email)
@@ -351,8 +346,8 @@ func pruneNameToEmail(out string, source *data.Sheet, apply bool) error {
 	return nil
 }
 
-func syncTab(svc *sheets.Service, sheet, tab string, header []string, rows []map[string]string, keyCol string, policy sheetsync.Policy, apply bool) error {
-	result, err := sheetsync.Sync(svc, sheet, tab, header, rows, keyCol, policy, apply)
+func syncTab(source *data.Sheet, tab string, header []string, rows []map[string]string, keyCol string, policy data.Policy, apply bool) error {
+	result, err := source.Sync("directory", tab, header, rows, keyCol, policy, apply)
 	if err != nil {
 		return err
 	}
@@ -429,11 +424,7 @@ func main() {
 		log.Fatalf("[ERROR] upload photos: %v", err)
 	}
 
-	svc, err := sheets.NewService(context.Background(), option.WithScopes(sheets.SpreadsheetsScope))
-	if err != nil {
-		log.Fatalf("[ERROR] create sheets client: %v", err)
-	}
-	if err := syncTab(svc, sheet, who.WebsiteTable, who.WebsiteColumns, bios, who.WebsiteID, sheetsync.Mirror, !*dryRun); err != nil {
+	if err := syncTab(source, who.WebsiteTable, who.WebsiteColumns, bios, who.WebsiteID, data.Mirror, !*dryRun); err != nil {
 		log.Fatalf("[ERROR] sync %s: %v", who.WebsiteTable, err)
 	}
 	for _, s := range sources {
@@ -441,7 +432,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("[ERROR] read %s: %v", s.file, err)
 		}
-		if err := syncTab(svc, sheet, s.tab, header, rows, s.keyCol, s.policy, !*dryRun); err != nil {
+		if err := syncTab(source, s.tab, header, rows, s.keyCol, s.policy, !*dryRun); err != nil {
 			log.Fatalf("[ERROR] sync %s: %v", s.tab, err)
 		}
 	}

@@ -143,7 +143,7 @@ func (a app) exportIssue(ctx context.Context, issue, actor, real string) (int, e
 	var copied []exported
 	var failed error
 	for _, it := range items {
-		if err := a.writer.AppendCells(sharedSheet, sharedNewsletterTab, it.row); err != nil {
+		if err := a.writer.Insert(sharedSheet, sharedNewsletterTab, []map[string]string{it.row}); err != nil {
 			failed = fmt.Errorf("copy %s to the shared sheet: %w", it.email, err)
 			break
 		}
@@ -169,7 +169,10 @@ func (a app) exportIssue(ctx context.Context, issue, actor, real string) (int, e
 			if err := a.writer.Set(appName, donationsTab, map[string]string{"Email": it.email, "Year": it.year}, it.donation); err != nil {
 				slog.ErrorContext(ctx, "birthday: mark copied donation used", "email", it.email, "error", err)
 			}
-			if err := a.writer.Append(appName, changeLogTab, []string{time.Now().Format(time.RFC3339), actor, "used", "donation", it.email, it.year, "copied to the shared sheet for " + issue, real}); err != nil {
+			if err := a.writer.Insert(appName, changeLogTab, []map[string]string{{
+				"Timestamp": time.Now().Format(time.RFC3339), "Actor": actor, "Action": "used", "Kind": "donation",
+				"Email": it.email, "Year": it.year, "Details": "copied to the shared sheet for " + issue, "Real Actor": real,
+			}}); err != nil {
 				slog.ErrorContext(ctx, "birthday: log copied donation", "email", it.email, "error", err)
 			}
 		}
