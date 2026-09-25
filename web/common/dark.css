@@ -266,6 +266,7 @@ html[data-theme="dark"] {
 [data-theme="dark"] .timeline-title { color: var(--ink); }
 
 [data-theme="dark"] .timeline-row.is-match .timeline-title,
+[data-theme="dark"] .up-row + .up-row { border-top-color: var(--line); }
 [data-theme="dark"] .up-row.is-match .up-title { background: #3a2c14; box-shadow: 0 0 0 3px #3a2c14; }
 
 [data-theme="dark"] .grade-badge { box-shadow: 0 0 0 2px var(--card); }

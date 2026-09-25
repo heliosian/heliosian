@@ -8,48 +8,57 @@ import {answerOf, answer, linkURL, selectedTags, classroomNames, tagNames, defau
 
 let lastDate = '';
 
-// upcomingRow is one thing ahead: the date at the left, a bar and a dot in
-// its color, and between them the title, the hours, the place, and for a
-// linked event the way to its tickets or sign-up. A day that is not regular
-// and has no event of its own is a row too, in its day type's color.
+// upcomingDay is the band over one day's rows: the weekday and the date at
+// the left, how many things at the right, and the day itself behind it.
+function upcomingDay(date, count) {
+  const head = link('/day/' + date, 'up-dayhead');
+  const when = el('span', 'up-dayhead-date');
+  when.append(el('span', 'up-dayhead-dow', weekdayShort(date)), el('span', 'up-dayhead-sep', '\u00b7'), el('span', '', parseDate(date).toLocaleDateString('en-US', {month: 'short', day: 'numeric'})));
+  head.append(when, el('span', 'up-dayhead-count', `${count} ${count === 1 ? 'event' : 'events'}`));
+  return head;
+}
+
+// upcomingRow is one thing on the day: a dot on a line in its colour at the
+// left, the title - starred when the viewer hosts it - with, for an event
+// another app runs, the way to its tickets or sign-up or where the
+// household stands under it, the hours at the right, and a chevron. A day
+// that is not regular and has no event of its own is a row too, in its day
+// type's colour.
 function upcomingRow(date, e, group) {
   const row = link(e ? eventPath(e) : '/day/' + date, 'up-row' + (e ? (isMatch(e) ? ' is-match' : '') + (e.pending ? ' is-pending' : '') + (e.declined ? ' is-declined' : '') + (e.sharing !== 'Public' ? ' is-invite' : '') : ' ' + dayTypeClass(group.name)));
-  const when = el('span', 'up-date');
-  when.append(el('span', 'up-dow', weekdayShort(date)), el('span', 'up-day', parseDate(date).toLocaleDateString('en-US', {month: 'short', day: 'numeric'})));
-  const bar = el('span', 'up-bar');
+  const rail = el('span', 'up-rail');
+  rail.append(el('span', 'up-dot'));
   const body = el('span', 'up-body');
-  const dot = el('span', 'up-dot');
+  const when = el('span', 'up-time');
   if (e) {
-    bar.style.background = eventTint(e);
-    dot.style.background = eventTint(e);
+    row.style.setProperty('--c', eventTint(e));
     const title = el('span', 'up-title', e.title);
-    // A star on an event the viewer hosts.
     if (e.hosted) {
       const star = svg('star');
       star.classList.add('host-star');
       star.setAttribute('aria-label', 'You host this');
       title.prepend(star);
     }
-    body.append(title, el('span', 'up-time', timeLine(e, date)));
-    if (e.location) {
-      body.append(el('span', 'up-place', e.location));
-    }
+    body.append(title);
     if (e.link && e.call) {
       body.append(callPill(e));
     }
+    when.textContent = e.allDay ? 'All day' : timeLine(e, date);
   } else {
     const all = selectedClassrooms();
-    body.append(el('span', 'up-title', group.classrooms.length === all.length ? group.name : `${group.name} · ${group.classrooms.join(', ')}`));
+    body.append(el('span', 'up-title', group.classrooms.length === all.length ? group.name : `${group.name} \u00b7 ${group.classrooms.join(', ')}`));
   }
-  row.append(when, bar, body, dot);
+  const chevron = svg('chevron');
+  chevron.classList.add('up-chevron');
+  row.append(rail, body, when, chevron);
   return row;
 }
 
 // upcomingPanel scrolls on its own beside the month: every event from the
 // day shown on, and - while the Schedule tag is on - every day that is not
-// regular, through the end of the year, the first two weeks under Upcoming
-// and the rest under Later This Year; the search words light up the rows
-// they find.
+// regular, through the end of the year, day by day under a band for each,
+// the first two weeks under Upcoming and the rest under Later This Year;
+// the search words light up the rows they find.
 function upcomingPanel(date) {
   const panel = el('aside', 'home-upcoming');
   const head = el('div', 'upcoming-head', 'Upcoming Events');
@@ -74,12 +83,13 @@ function upcomingPanel(date) {
       }
       any = true;
       const shown = events.filter(e => !isHidden(e));
-      for (const e of shown) {
-        body.append(upcomingRow(d, e));
+      const rows = shown.length ? shown.map(e => upcomingRow(d, e)) : events.length ? [] : [upcomingRow(d, null, groups[0])];
+      if (!rows.length) {
+        continue;
       }
-      if (!shown.length && !events.length) {
-        body.append(upcomingRow(d, null, groups[0]));
-      }
+      const day = el('div', 'up-day');
+      day.append(upcomingDay(d, rows.length), ...rows);
+      body.append(day);
     }
     if (!any) {
       body.append(emptyNote('Nothing ahead for these classrooms and tags.'));
@@ -127,6 +137,10 @@ function peekNode() {
 function fillPeek(date, e) {
   const node = peekNode();
   node.replaceChildren();
+  if (e && e.more) {
+    fillMorePeek(node, date, e.more);
+    return;
+  }
   if (e) {
     fillEventPeek(node, date, e);
     return;
@@ -137,6 +151,24 @@ function fillPeek(date, e) {
     head.append(el('span', 'day-heading-today', 'Today'));
   }
   node.append(head, planCards(date));
+}
+
+// fillMorePeek is the card on a cell's "+N more": the events that did not
+// fit, each its hours and title in its colour, a link to its page, under
+// the day, which opens the day.
+function fillMorePeek(node, date, events) {
+  const head = link('/day/' + date, 'day-peek-head');
+  head.append(el('span', 'day-peek-date', dayLabel(date)));
+  node.append(head);
+  for (const e of events) {
+    const row = link(eventPath(e), 'day-peek-row day-peek-event day-peek-more');
+    row.style.setProperty('--c', eventTint(e));
+    const body = el('span', 'day-peek-body');
+    body.append(el('span', 'day-peek-time', e.allDay ? 'All day' : timeLine(e, date)), el('span', 'day-peek-title', e.title));
+    row.append(el('span', 'day-peek-bar'), body);
+    row.addEventListener('click', hidePeek);
+    node.append(row);
+  }
 }
 
 // fillEventPeek is the card for one event: its hours, title and place as a
@@ -253,7 +285,8 @@ function attachPeek(cell, date) {
   // passing through on its way to that card.
   cell.addEventListener('mouseover', ev => {
     const pip = ev.target.closest('.month-pip');
-    const e = pip ? pip.peekEvent : null;
+    const more = ev.target.closest('.month-more');
+    const e = pip ? pip.peekEvent : more ? {more: more.peekMore} : null;
     const open = peek && !peek.hidden;
     clearTimeout(peekGrace);
     clearTimeout(peekTimer);
@@ -309,9 +342,13 @@ function dayCell(date, month) {
     const mark = el('div', 'month-mark ' + dayTypeClass(g.name) + (state.query && dayTypeMatches(g.name, state.query) ? ' is-match' : ''), g.classrooms.length === all.length ? g.name : `${g.name} (${g.classrooms.length})`);
     cell.append(mark);
   }
+  // Every event is in the cell, in a list that shows what fits and, under
+  // the pointer, scrolls to the rest; "+N more" under it counts what is out
+  // of view, and hovered lists them in a card.
   const events = eventsOn(date);
-  const room = Math.max(0, 3 - groups.length);
-  for (const e of events.slice(0, room)) {
+  const room = Math.max(1, 3 - groups.length);
+  const pips = el('div', 'month-pips');
+  for (const e of events) {
     // An event the viewer hid, or said no to, is plain gray words, not a pill.
     const pip = link(eventPath(e), 'month-pip' + (isMatch(e) ? ' is-match' : '') + (isGray(e) ? ' is-hidden' : '') + (e.pending ? ' is-pending' : '') + (e.declined ? ' is-declined' : '') + (e.sharing !== 'Public' ? ' is-invite' : ''));
     pip.style.setProperty('--c', eventTint(e));
@@ -321,10 +358,34 @@ function dayCell(date, month) {
     }
     pip.addEventListener('click', hidePeek);
     pip.peekEvent = e;
-    cell.append(pip);
+    pips.append(pip);
   }
-  if (events.length > room) {
-    cell.append(el('div', 'month-more', `+${events.length - room} more`));
+  cell.append(pips);
+  if (events.length) {
+    const more = link('/day/' + date, 'month-more');
+    more.hidden = true;
+    more.addEventListener('click', hidePeek);
+    // What is out of view, counted from where the pills sit - which only
+    // the drawn page knows - on every resize and scroll of the list.
+    const count = () => {
+      // The list stands as tall as its first few pills, as many as the
+      // cell showed before it scrolled, so the month's rows keep their size.
+      if (!pips.style.maxHeight && pips.children.length > room && pips.offsetHeight) {
+        const top = pips.getBoundingClientRect().top;
+        pips.style.maxHeight = `${pips.children[room - 1].getBoundingClientRect().bottom - top}px`;
+      }
+      const box = pips.getBoundingClientRect();
+      const out = [...pips.children].filter(p => {
+        const r = p.getBoundingClientRect();
+        return r.bottom > box.bottom + 1 || r.top < box.top - 1;
+      });
+      more.hidden = !out.length;
+      more.textContent = `+${out.length} more`;
+      more.peekMore = out.map(p => p.peekEvent);
+    };
+    new ResizeObserver(count).observe(pips);
+    pips.addEventListener('scroll', count, {passive: true});
+    cell.append(more);
   }
   attachPeek(cell, date);
   return cell;
