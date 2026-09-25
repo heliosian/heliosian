@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"slices"
 	"strings"
 	"sync"
@@ -19,6 +20,17 @@ import (
 type directQueue struct{}
 
 func (directQueue) Add(f func()) { f() }
+
+var testNow = time.Date(2026, 9, 17, 12, 0, 0, 0, Location)
+
+func pinnedClock() time.Time {
+	return testNow
+}
+
+func TestMain(m *testing.M) {
+	now = pinnedClock
+	os.Exit(m.Run())
+}
 
 func testApp(t *testing.T) (http.Handler, *Cache) {
 	t.Helper()
@@ -82,7 +94,6 @@ func TestFeedLifecycle(t *testing.T) {
 	if rec := call(t, mux, http.MethodGet, "/open/feed/"+made.Token+".ics", ""); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "SUMMARY:Jays and Ravens Camping") || strings.Contains(rec.Body.String(), "Labor Day") {
 		t.Errorf("new feed: %d %s", rec.Code, rec.Body.String())
 	}
-	// A second feed under a name the owner already uses gets a number.
 	rec = call(t, owner, http.MethodPost, "/api/calendar/feeds", `{"name":"just TRIPS","classrooms":["Jays"],"tags":["Trip"]}`)
 	var twin struct{ Token string }
 	json.Unmarshal(rec.Body.Bytes(), &twin)
@@ -96,8 +107,6 @@ func TestFeedLifecycle(t *testing.T) {
 	if rec := call(t, owner, http.MethodPost, "/api/calendar/feeds", `{"name":""}`); rec.Code != http.StatusBadRequest {
 		t.Errorf("no name: %d", rec.Code)
 	}
-	// A change keeps the address and carries the new filter from the next
-	// fetch; someone else's change, or an empty name, is refused.
 	if rec := call(t, other, http.MethodPut, "/api/calendar/feeds", `{"token":"`+made.Token+`","name":"Theirs","classrooms":["Jays"],"tags":["Trip"]}`); rec.Code != http.StatusForbidden {
 		t.Errorf("someone else's change: %d", rec.Code)
 	}
@@ -142,8 +151,6 @@ func TestModelRoute(t *testing.T) {
 	}
 }
 
-// A shared link previews: the sign-in page's tags name the event at the
-// path, or the calendar itself elsewhere, and the cards behind them draw.
 func TestSharePreview(t *testing.T) {
 	handler, cache := testApp(t)
 	head := PreviewHead(cache, func(string) []Linked { return nil })
@@ -172,9 +179,6 @@ func TestSharePreview(t *testing.T) {
 	}
 }
 
-// Provenance - the classifier's filing and the admins' corrections - is in
-// the view for an admin and absent for anyone else; the source links and
-// who added an event are for everyone.
 func TestProvenanceForAdmins(t *testing.T) {
 	handler, _ := testApp(t)
 	var view View
@@ -191,7 +195,6 @@ func TestProvenanceForAdmins(t *testing.T) {
 			hand = e
 		}
 	}
-	// The fake directory knows no Dana, so no name comes with the address.
 	if hand == nil || hand.AddedBy != "dana.hawkins@heliosschool.org" || hand.Added == "" {
 		t.Errorf("hand-added event = %+v", hand)
 	}
@@ -205,8 +208,6 @@ func TestProvenanceForAdmins(t *testing.T) {
 	}
 }
 
-// A saved view is the person's defaults on every device - in the view as
-// user.saved and under Heliosian's Upcoming Events - until forgotten.
 func TestSavedView(t *testing.T) {
 	handler, cache := testApp(t)
 	me := "jordan.whitfield@heliosschool.org"
@@ -237,16 +238,11 @@ func TestSavedView(t *testing.T) {
 	}
 }
 
-// Everyone's default calendar is the first in their rail - My Heliosian,
-// the calendar's own defaults, to start; then whichever they make default
-// or drag to the top. The page opens to it and Upcoming is read under it.
 func TestDefaultCalendar(t *testing.T) {
 	handler, cache := testApp(t)
 	me := "jordan.whitfield@heliosschool.org"
 	viewer := as(me, handler)
 	dir := fakeDirectory{people: map[string]Person{}, kids: map[string][]Person{}}
-	// Under My Heliosian - every classroom for someone the directory does
-	// not know, the default categories - Community events are in.
 	found := false
 	for _, u := range cache.Model().Upcoming(dir, me, nil, now(), 0) {
 		found = found || u.Title == "International Night"
@@ -254,8 +250,6 @@ func TestDefaultCalendar(t *testing.T) {
 	if !found {
 		t.Errorf("under My Heliosian, upcoming leaves out International Night")
 	}
-	// The sample calendar carries Schedule, Trip and Celebration of Learning
-	// for Jays and Ospreys: no Community events once it is the default.
 	if rec := call(t, viewer, "POST", "/api/calendar/default", `{"token":"nonsense"}`); rec.Code != 400 {
 		t.Errorf("a stranger's token: %d", rec.Code)
 	}
@@ -273,8 +267,6 @@ func TestDefaultCalendar(t *testing.T) {
 			t.Errorf("under the saved calendar, upcoming lists %q", u.Title)
 		}
 	}
-	// Under My Heliosian by its token, the picker's way, the Community
-	// event is back; making it the default again puts it first.
 	found = false
 	for _, u := range cache.Model().UpcomingUnder(dir, me, nil, now(), 0, MyHeliosianToken) {
 		found = found || u.Title == "International Night"
@@ -282,8 +274,6 @@ func TestDefaultCalendar(t *testing.T) {
 	if !found {
 		t.Errorf("under My Heliosian by token, upcoming leaves out International Night")
 	}
-	// The rail's month reads the same way: the default leaves the event
-	// out of September, My Heliosian by token puts it back.
 	inMonth := func(token string) bool {
 		for _, u := range cache.Model().MonthUnder(dir, me, nil, now(), "2026-09", token).Events {
 			if u.Title == "International Night" {
@@ -298,16 +288,12 @@ func TestDefaultCalendar(t *testing.T) {
 	if rec := call(t, viewer, "POST", "/api/calendar/default", `{"token":"`+MyHeliosianToken+`"}`); rec.Code != 204 || cache.Model().DefaultCalendar(me) != nil {
 		t.Errorf("back to My Heliosian: %d, default %+v", rec.Code, cache.Model().DefaultCalendar(me))
 	}
-	// My Heliosian takes a name and a mark of the person's own; its filters
-	// stay the calendar's.
 	if rec := call(t, viewer, "PUT", "/api/calendar/feeds", `{"token":"`+MyHeliosianToken+`","name":"Home base","emoji":"🏠","classrooms":["Jays"],"tags":["Trip"]}`); rec.Code != 204 {
 		t.Errorf("rename My Heliosian: %d %s", rec.Code, rec.Body)
 	}
 	if home := cache.Model().MyHeliosian(me); home.Name != "Home base" || home.Emoji != "🏠" || !home.Locked || len(home.Classrooms) != 0 {
 		t.Errorf("My Heliosian = %+v", home)
 	}
-	// Dragging another to the top, as the order route says it, makes it
-	// the default; an order that is not each of theirs once is refused.
 	rec := call(t, viewer, "POST", "/api/calendar/feeds", `{"name":"Everything","classrooms":[],"tags":[]}`)
 	var made struct{ Token string }
 	json.Unmarshal(rec.Body.Bytes(), &made)
@@ -326,7 +312,6 @@ func TestDefaultCalendar(t *testing.T) {
 	}
 }
 
-// A sender that keeps what it is given.
 type keptMail struct {
 	mu   sync.Mutex
 	sent []mail.Message
@@ -345,8 +330,6 @@ func (k *keptMail) all() []mail.Message {
 	return slices.Clone(k.sent)
 }
 
-// The admins hear of every event added: one to approve - an admin's own
-// too - and a direct-link one to know of.
 func TestAdminsToldOfSharedEvents(t *testing.T) {
 	t.Chdir("../..")
 	dir := &data.Dir{Root: "sampledata"}
@@ -381,8 +364,6 @@ func TestAdminsToldOfSharedEvents(t *testing.T) {
 	if len(sent) != 3 || !strings.HasPrefix(sent[2].Subject, "Event to approve: Admin's own") {
 		t.Errorf("an admin's own public event waits and is mailed about too: %+v", sent)
 	}
-	// The host turning the link event public puts it up for approval -
-	// the admins told again - while its link keeps working.
 	var v View
 	rec := call(t, parent, "GET", "/api/calendar/model", "")
 	json.NewDecoder(rec.Body).Decode(&v)
@@ -411,9 +392,6 @@ func TestAdminsToldOfSharedEvents(t *testing.T) {
 	}
 }
 
-// An admin adds an event, repeated every so many weeks, and replaces an
-// event's search words; a parent shares an event, which waits for an
-// admin's approval, and can do nothing else.
 func TestAdminAddsAndCorrects(t *testing.T) {
 	handler, cache := testApp(t)
 	admin := as("dana.hawkins@heliosschool.org", handler)
@@ -423,8 +401,6 @@ func TestAdminAddsAndCorrects(t *testing.T) {
 	}
 	var made struct{ IDs []string }
 	json.NewDecoder(rec.Body).Decode(&made)
-	// An admin's public events wait for approval like anyone's; approved,
-	// they are on.
 	for _, id := range made.IDs {
 		if e := cache.Model().Event(id); e == nil || !e.Pending {
 			t.Errorf("an admin's event went straight on: %+v", e)
@@ -468,9 +444,6 @@ func TestAdminAddsAndCorrects(t *testing.T) {
 	if rec := call(t, parent, "POST", "/api/calendar/keywords", `{"id":"`+made.IDs[0]+`","keywords":["x"]}`); rec.Code != 403 {
 		t.Errorf("parent set keywords: %d", rec.Code)
 	}
-	// A parent's event waits for approval: theirs and the admins' to see,
-	// off the calendar for everyone else, no repeats; an admin approves it
-	// onto the calendar, or declines it away.
 	rec = call(t, parent, "POST", "/api/calendar/events", `{"title":"Bake sale","start":"2026-10-01 15:00","end":"2026-10-01 17:00","tags":["Jays","Community"],"sharing":"Public","repeatWeeks":1,"repeatTimes":3}`)
 	var shared struct {
 		IDs     []string `json:"ids"`
@@ -483,7 +456,6 @@ func TestAdminAddsAndCorrects(t *testing.T) {
 	if e := cache.Model().Event(shared.IDs[0]); e == nil || !e.Pending || cache.Model().Event(shared.IDs[0]) != cache.Model().Pending[len(cache.Model().Pending)-1] {
 		t.Errorf("shared event = %+v", e)
 	}
-	// The host is going to their own event, which their view carries once.
 	if cache.Model().AnswerOf("jordan.whitfield@heliosschool.org", shared.IDs[0]) != AnswerYes {
 		t.Errorf("the host is not going to their own event")
 	}
@@ -517,7 +489,6 @@ func TestAdminAddsAndCorrects(t *testing.T) {
 	if e := cache.Model().Event(shared.IDs[0]); e == nil || e.Pending || e.Status != StatusApproved || !slices.Contains(cache.Model().Events, e) {
 		t.Errorf("approved event = %+v", e)
 	}
-	// The person who shared an event corrects it; another parent cannot.
 	if rec := call(t, parent, "PUT", "/api/calendar/events", `{"id":"`+shared.IDs[0]+`","title":"Bake sale!","start":"2026-10-01 15:30","end":"2026-10-01 17:30","location":"Gym","tags":["Jays","Community"],"image":"/category-images/cake.jpg","sharing":"Public"}`); rec.Code != 204 {
 		t.Errorf("owner's edit: %d %s", rec.Code, rec.Body)
 	}
@@ -527,9 +498,6 @@ func TestAdminAddsAndCorrects(t *testing.T) {
 	if rec := call(t, other, "PUT", "/api/calendar/events", `{"id":"`+shared.IDs[0]+`","title":"Mine now","start":"2026-10-01","tags":["Jays"],"sharing":"Public"}`); rec.Code != 403 {
 		t.Errorf("another parent's edit: %d", rec.Code)
 	}
-	// An event shared by link needs no approval and is nobody's until they
-	// answer it by its link; a yes puts it on their calendar, across
-	// classrooms, under Going, and the admins were not asked.
 	rec = call(t, parent, "POST", "/api/calendar/events", `{"title":"Sam\u2019s birthday","start":"2026-10-03 14:00","end":"2026-10-03 16:00","tags":["Jays","Community"],"sharing":"Link"}`)
 	json.Unmarshal(rec.Body.Bytes(), &shared)
 	if rec.Code != 200 || shared.Pending {
@@ -561,19 +529,15 @@ func TestAdminAddsAndCorrects(t *testing.T) {
 	if !found {
 		t.Errorf("a yes did not put the link event in the other's Upcoming")
 	}
-	// Sharing is one of three words, always said.
 	if rec := call(t, parent, "POST", "/api/calendar/events", `{"title":"Unsaid","start":"2026-10-04","tags":["Jays"]}`); rec.Code != 400 {
 		t.Errorf("no sharing: %d", rec.Code)
 	}
 	if rec := call(t, parent, "POST", "/api/calendar/events", `{"title":"Unsaid","start":"2026-10-04","tags":["Jays"],"sharing":"Private"}`); rec.Code != 400 {
 		t.Errorf("an old sharing word: %d", rec.Code)
 	}
-	// A host may pick the event's own web address; a taken or ill-formed
-	// one is refused.
 	if rec := call(t, parent, "POST", "/api/calendar/events", `{"id":"Sams-Party","title":"Sam\u2019s party","start":"2026-10-04","tags":["Jays"],"sharing":"Link"}`); rec.Code != 200 || cache.Model().Event("sams-party") == nil {
 		t.Errorf("chosen address: %d %s", rec.Code, rec.Body)
 	}
-	// Its page previews and its card draws, for a link sent anywhere.
 	if rec := call(t, handler, "GET", "/open/share/sams-party.png", ""); rec.Code != 200 || rec.Header().Get("Content-Type") != "image/png" {
 		t.Errorf("a link event's card: %d", rec.Code)
 	}
@@ -597,14 +561,11 @@ func TestAdminAddsAndCorrects(t *testing.T) {
 	if !sees(parent) || sees(other) {
 		t.Errorf("declined event seen by parent %v, another %v", sees(parent), sees(other))
 	}
-	// A declined event can still be approved.
 	if rec := call(t, admin, "POST", "/api/calendar/events/approve", `{"id":"`+shared.IDs[0]+`"}`); rec.Code != 204 || cache.Model().Event(shared.IDs[0]).Status != StatusApproved {
 		t.Errorf("approve after decline: %d", rec.Code)
 	}
 }
 
-// A feed takes Misc, the one built-in tag a sheet event wears, and refuses
-// the built-ins no feed could carry.
 func TestFeedTags(t *testing.T) {
 	handler, _ := testApp(t)
 	me := as("jordan.whitfield@heliosschool.org", handler)
@@ -619,9 +580,6 @@ func TestFeedTags(t *testing.T) {
 	}
 }
 
-// A feed carries the other apps' events, read for its owner: a party the
-// owner is going to comes through under Celebrate, and a feed on Going
-// alone is the family's own calendar.
 func TestFeedCarriesLinked(t *testing.T) {
 	handler, cache := testApp(t)
 	linked := []Linked{{Source: SourceCelebrate, ID: "P9", Title: "Fondue Night", Start: "2026-09-19 17:00", End: "2026-09-19 21:00", Path: "/p/fondue", Availability: "available", Mine: MineGoing}}
@@ -636,9 +594,6 @@ func TestFeedCarriesLinked(t *testing.T) {
 	_ = handler
 }
 
-// An answer is the viewer's: yes and no mark the event and hidden takes
-// it out of Upcoming and the feeds while it stays on the calendar; a blank
-// answer clears it, and nonsense is refused.
 func TestAnswers(t *testing.T) {
 	handler, cache := testApp(t)
 	me := "jordan.whitfield@heliosschool.org"
@@ -646,7 +601,6 @@ func TestAnswers(t *testing.T) {
 	if rec := call(t, viewer, "POST", "/api/calendar/rsvp", `{"id":"a7@sample","answer":"perhaps"}`); rec.Code != 400 {
 		t.Errorf("nonsense answer: %d", rec.Code)
 	}
-	// Maybe is a word too: on the event, not under Going.
 	if rec := call(t, viewer, "POST", "/api/calendar/rsvp", `{"id":"a7@sample","answer":"maybe"}`); rec.Code != 204 || cache.Model().AnswerOf(me, "a7@sample") != AnswerMaybe {
 		t.Errorf("maybe: %d %s", rec.Code, rec.Body)
 	}
@@ -693,8 +647,6 @@ func TestAnswers(t *testing.T) {
 	if !found {
 		t.Errorf("a yes is not on the Upcoming card")
 	}
-	// A yes files the event under Going for this viewer - in the view, in
-	// their feed - and for nobody else; the model's own event stays as loaded.
 	var mine View
 	rec = call(t, viewer, "GET", "/api/calendar/model", "")
 	json.NewDecoder(rec.Body).Decode(&mine)
@@ -719,8 +671,6 @@ func TestAnswers(t *testing.T) {
 	}
 }
 
-// Admins see who said yes and no to an event, by name; nobody sees who
-// hid one, and a parent sees none of it.
 func TestResponsesForAdmins(t *testing.T) {
 	handler, _ := testApp(t)
 	call(t, as("jordan.whitfield@heliosschool.org", handler), "POST", "/api/calendar/rsvp", `{"id":"a7@sample","answer":"yes"}`)
@@ -741,9 +691,6 @@ func TestResponsesForAdmins(t *testing.T) {
 	}
 }
 
-// An admin corrects an imported event from its page: only what differs from
-// the school's own version is written, a field put back follows the school
-// again, and a row left empty goes.
 func TestOverrideFromThePage(t *testing.T) {
 	handler, cache := testApp(t)
 	admin := as("dana.hawkins@heliosschool.org", handler)
@@ -786,8 +733,6 @@ func TestOverrideFromThePage(t *testing.T) {
 	if rec := call(t, admin, "PUT", "/api/calendar/overrides", body("LS Back to School Night", e.Start, e.End, e.Location, "")); rec.Code != 204 || row() != nil {
 		t.Errorf("everything put back: %d, row %v", rec.Code, row())
 	}
-	// A friendly address finds the event and becomes its path; a second
-	// event cannot take it, nor can one that is not letters and dashes.
 	addressed := func(id, address string) string {
 		ev := cache.Model().Event(id)
 		raw, _ := json.Marshal(map[string]any{"id": id, "title": ev.Title, "start": ev.Start, "end": ev.End, "location": ev.Location, "description": ev.Description, "tags": slices.DeleteFunc(slices.Clone(ev.Tags), func(t string) bool { return builtIn[t] }), "keywords": ev.Keywords, "address": address})
@@ -808,8 +753,6 @@ func TestOverrideFromThePage(t *testing.T) {
 	if rec := call(t, admin, "PUT", "/api/calendar/overrides", addressed("a2@sample", "")); rec.Code != 204 || row() != nil || cache.Model().Event("back-to-school") != nil {
 		t.Errorf("the address taken away: %d, row %v", rec.Code, row())
 	}
-	// The admins host an event the school's calendars bring, with nobody
-	// listed: its picture, its flyer and its guest list are theirs.
 	var v InviteView
 	json.NewDecoder(call(t, admin, "GET", "/api/calendar/invites?id=a2@sample", "").Body).Decode(&v)
 	if !v.Host || !v.AdminHost || len(v.Hosts) != 0 {
@@ -820,8 +763,6 @@ func TestOverrideFromThePage(t *testing.T) {
 	if v.Host || v.AdminHost {
 		t.Errorf("a parent's view: host %v adminHost %v", v.Host, v.AdminHost)
 	}
-	// Who is coming starts as the hosts' alone on a school event; opened, a
-	// parent reads it too.
 	if !v.ListPrivate || v.Coming != nil {
 		t.Errorf("a parent's view of a closed list: private %v coming %v", v.ListPrivate, v.Coming)
 	}

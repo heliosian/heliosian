@@ -688,7 +688,7 @@ func TestInviteGroups(t *testing.T) {
 		t.Errorf("mia after the grace = %+v, groups %+v", r, v.Groups)
 	}
 	waitFor(kept, 4)
-	now = func() time.Time { return time.Now().In(Location) }
+	now = pinnedClock
 	if m := mailTo(kept, mia); len(m) != 1 || !strings.Contains(m[0].Subject, "You're invited!") {
 		t.Errorf("mia's auto invite = %+v", m)
 	}
@@ -735,7 +735,7 @@ func TestInviteGroups(t *testing.T) {
 	if r := rowOf(inviteView(t, jordan, "meetup"), robin); r == nil || r.Sent != "" || r.Via != ViaGroup+g.ID {
 		t.Errorf("a newcomer with auto off = %+v", r)
 	}
-	now = func() time.Time { return time.Now().In(Location) }
+	now = pinnedClock
 	if m := mailTo(kept, robin); slices.ContainsFunc(m, func(m mail.Message) bool { return strings.Contains(m.HTML, "Invited: Robin") }) {
 		t.Errorf("a newcomer was sent with auto off: %+v", m)
 	}
@@ -1237,7 +1237,7 @@ func TestRemovedStayRemoved(t *testing.T) {
 	now = func() time.Time { return start.Add(2*grace + time.Minute) }
 	inviteView(t, jordan, "moms")
 	inviteView(t, jordan, "moms")
-	now = func() time.Time { return time.Now().In(Location) }
+	now = pinnedClock
 	if cache.Model().InviteOf("moms", dropped) != nil {
 		t.Errorf("the group put %s back", dropped)
 	}
@@ -1373,9 +1373,6 @@ func TestNotifyHost(t *testing.T) {
 	}
 }
 
-// A host steps down: a co-host comes off the Hosts, the poster is written
-// into Stepped Down - still the one who shared it, no longer running it -
-// and the event may end with no host at all.
 func TestStepDown(t *testing.T) {
 	mux, cache, _ := invitesApp(t)
 	jordan, miaH := as(host, mux), as(mia, mux)
@@ -1415,8 +1412,6 @@ func TestStepDown(t *testing.T) {
 	}
 }
 
-// Hidden hosts reach the hosts alone: anyone else's view of the list has
-// none, and says they are hidden.
 func TestHideHosts(t *testing.T) {
 	mux, cache, _ := invitesApp(t)
 	jordan := as(host, mux)
