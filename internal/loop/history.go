@@ -85,28 +85,30 @@ func copyOf(email, name string, attempts []Attempt) Copy {
 var copyOrder = map[string]int{copyFailed: 0, copyPending: 1, copyDelivered: 2}
 
 func (a app) history(name string) []SentMessage {
-	tables := a.cache.Tables()
+	model := a.cache.Model()
 	attempts := map[string]map[string][]Attempt{}
-	for _, row := range tables.Deliveries {
-		key := messageKey(row["Message"])
-		if key == "" || !strings.EqualFold(strings.TrimSpace(row["Group"]), name) {
+	for _, d := range model.Deliveries {
+		key := messageKey(d.Message)
+		if key == "" || d.Group != name {
 			continue
 		}
-		email := cleanEmail(row["Email"])
 		if attempts[key] == nil {
 			attempts[key] = map[string][]Attempt{}
 		}
-		attempts[key][email] = append(attempts[key][email], Attempt{When: row["Timestamp"], Event: row["Event"], Detail: row["Detail"]})
+		attempts[key][d.Email] = append(attempts[key][d.Email], Attempt{When: d.Timestamp, Event: d.Event, Detail: d.Detail})
 	}
-	out := []SentMessage{}
-	for i := len(tables.Messages) - 1; i >= 0; i-- {
-		row := tables.Messages[i]
-		if row["State"] != stateSent || !strings.EqualFold(strings.TrimSpace(row["Group"]), name) {
-			continue
+	messages := []Message{}
+	for _, m := range model.Messages {
+		if m.State == stateSent && m.Group == name {
+			messages = append(messages, m)
 		}
-		recipients, _ := strconv.Atoi(row["Recipients"])
-		sent := SentMessage{Received: row["Received"], From: a.sender(row["From"]), Subject: row["Subject"], Recipients: recipients, Copies: []Copy{}}
-		for email, list := range attempts[messageKey(row["Message ID"])] {
+	}
+	slices.SortStableFunc(messages, func(x, y Message) int { return eventTime(y.Received).Compare(eventTime(x.Received)) })
+	out := []SentMessage{}
+	for _, m := range messages {
+		recipients, _ := strconv.Atoi(m.Recipients)
+		sent := SentMessage{Received: m.Received, From: a.sender(m.From), Subject: m.Subject, Recipients: recipients, Copies: []Copy{}}
+		for email, list := range attempts[messageKey(m.MessageID)] {
 			c := copyOf(email, a.person(email).Name, slices.Clone(list))
 			switch c.State {
 			case copyDelivered:
@@ -128,8 +130,8 @@ func (a app) history(name string) []SentMessage {
 
 func (a app) sentCount(name string) int {
 	n := 0
-	for _, row := range a.cache.Tables().Messages {
-		if row["State"] == stateSent && strings.EqualFold(strings.TrimSpace(row["Group"]), name) {
+	for _, m := range a.cache.Model().Messages {
+		if m.State == stateSent && m.Group == name {
 			n++
 		}
 	}

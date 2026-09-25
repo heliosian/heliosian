@@ -9,12 +9,11 @@ import (
 	"html"
 	"log/slog"
 	"net/http"
-	"slices"
 	"strings"
 	"time"
 
-	"heliosian/internal/auth"
 	"heliosian/internal/mail"
+	"heliosian/internal/store"
 )
 
 func token(key []byte, name, email string) string {
@@ -109,54 +108,27 @@ func (a app) unsubscribePage(w http.ResponseWriter, r *http.Request) {
 	writePage(w, g.Title, "Unsubscribe", body)
 }
 
-func (a app) unsubscribeAddress(ctx context.Context, real string, g *Group, email, how string) error {
+func (a app) unsubscribeAddress(ctx context.Context, g *Group, email, how string) error {
 	if g.HasExcluded(email) {
 		return nil
 	}
-	when := time.Now().Format(time.RFC3339)
-	note := "Unsubscribed by " + how
-	next := *g
-	next.Excluded = append(slices.Clone(g.Excluded), Excluded{Email: email, Note: note, When: when})
-	tables := a.cache.Tables().withGroup(next)
-	model, err := BuildModel(tables)
-	if err != nil {
+	cells := store.Row{"Group": g.Name, "Email": email, "Note": "Unsubscribed by " + how, "Timestamp": time.Now().Format(time.RFC3339)}
+	if err := a.cache.Commit(ctx, email, store.Insert(excludedTab, cells)); err != nil {
 		return err
 	}
-	a.cache.commit(tables, model, func() {
-		if err := a.writer.Insert(appName, excludedTab, []map[string]string{{"Group": g.Name, "Email": email, "Note": note, "Timestamp": when}}); err != nil {
-			slog.ErrorContext(ctx, "groups: unsubscribe write", "error", err)
-			return
-		}
-		if err := a.logChange(real, email, "unsubscribe", g.Name, email+" by "+how); err != nil {
-			slog.ErrorContext(ctx, "groups: unsubscribe log", "error", err)
-		}
-	})
 	slog.InfoContext(ctx, "groups: unsubscribed", "group", g.Name, "email", email, "how", how)
 	return nil
 }
 
 const loopPage = "the group's page in Loop"
 
-func (a app) resubscribeAddress(ctx context.Context, real string, g *Group, email string) error {
+func (a app) resubscribeAddress(ctx context.Context, g *Group, email string) error {
 	if !g.HasExcluded(email) {
 		return nil
 	}
-	next := *g
-	next.Excluded = slices.DeleteFunc(slices.Clone(g.Excluded), func(e Excluded) bool { return e.Email == email })
-	tables := a.cache.Tables().withGroup(next)
-	model, err := BuildModel(tables)
-	if err != nil {
+	if err := a.cache.Commit(ctx, email, store.Delete(excludedTab, store.Row{"Group": g.Name, "Email": email})); err != nil {
 		return err
 	}
-	a.cache.commit(tables, model, func() {
-		if err := a.writer.Delete(appName, excludedTab, map[string]string{"Group": g.Name, "Email": email}); err != nil {
-			slog.ErrorContext(ctx, "groups: resubscribe write", "error", err)
-			return
-		}
-		if err := a.logChange(real, email, "resubscribe", g.Name, email+" by "+loopPage); err != nil {
-			slog.ErrorContext(ctx, "groups: resubscribe log", "error", err)
-		}
-	})
 	slog.InfoContext(ctx, "groups: resubscribed", "group", g.Name, "email", email)
 	return nil
 }
@@ -175,7 +147,7 @@ func (a app) unsubscribe(w http.ResponseWriter, r *http.Request) {
 	if oneClick {
 		how = "one-click"
 	}
-	if err := a.unsubscribeAddress(r.Context(), auth.RealEmail(r), g, email, how); err != nil {
+	if err := a.unsubscribeAddress(r.Context(), g, email, how); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -203,7 +175,7 @@ func (a app) unsubscribeByMail(ctx context.Context, subject, sender string) {
 		slog.WarnContext(ctx, "groups: unsubscribe mail for no group", "group", name, "email", email)
 		return
 	}
-	if err := a.unsubscribeAddress(ctx, "", g, email, "mail from "+strings.ToLower(mail.AddressOf(sender))); err != nil {
+	if err := a.unsubscribeAddress(ctx, g, email, "mail from "+strings.ToLower(mail.AddressOf(sender))); err != nil {
 		slog.ErrorContext(ctx, "groups: unsubscribe by mail", "group", name, "email", email, "error", err)
 	}
 }

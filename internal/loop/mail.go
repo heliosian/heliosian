@@ -18,8 +18,8 @@ import (
 	"sync"
 	"time"
 
-	"heliosian/internal/data"
 	"heliosian/internal/mail"
+	"heliosian/internal/store"
 )
 
 type Archive interface {
@@ -87,22 +87,22 @@ func (j job) key() string {
 
 var deliveryBatch = 5 * time.Second
 
+const mailerActor = "loop mailer"
+
 type mailer struct {
 	cache     *Cache
-	writer    data.Writer
-	queue     Enqueuer
 	directory Directory
 	mail      Mail
 	mu        sync.Mutex
 	busy      map[string]bool
 	done      map[string]bool
 	work      chan job
-	pending   []map[string]string
+	pending   []store.Row
 	flushing  bool
 }
 
-func newMailer(cache *Cache, writer data.Writer, queue Enqueuer, directory Directory, mailbox Mail) *mailer {
-	m := &mailer{cache: cache, writer: writer, queue: queue, directory: directory, mail: mailbox, busy: map[string]bool{}, done: map[string]bool{}, work: make(chan job, 256)}
+func newMailer(cache *Cache, directory Directory, mailbox Mail) *mailer {
+	m := &mailer{cache: cache, directory: directory, mail: mailbox, busy: map[string]bool{}, done: map[string]bool{}, work: make(chan job, 256)}
 	go m.run()
 	return m
 }
@@ -125,8 +125,8 @@ func (m *mailer) take(j job) bool {
 	if m.busy[j.key()] || m.done[j.key()] {
 		return false
 	}
-	for _, row := range m.cache.Tables().Messages {
-		if row["ID"] == j.id && strings.EqualFold(row["Group"], j.group) && (row["State"] == stateSent || row["State"] == stateDropped) {
+	for _, msg := range m.cache.Model().Messages {
+		if msg.ID == j.id && msg.Group == j.group && (msg.State == stateSent || msg.State == stateDropped) {
 			return false
 		}
 	}
@@ -141,9 +141,9 @@ func (m *mailer) release(j job) {
 }
 
 func (m *mailer) recover() {
-	for _, row := range m.cache.Tables().Messages {
-		if row["State"] == stateReceived {
-			j := job{id: row["ID"], group: strings.ToLower(row["Group"]), object: row["Object"]}
+	for _, msg := range m.cache.Model().Messages {
+		if msg.State == stateReceived {
+			j := job{id: msg.ID, group: msg.Group, object: msg.Object}
 			if m.take(j) {
 				slog.Info("groups: resuming a message", "message", j.id, "group", j.group)
 				m.work <- j
@@ -152,20 +152,10 @@ func (m *mailer) recover() {
 	}
 }
 
-func (m *mailer) write(fn func() error) error {
-	done := make(chan error, 1)
-	m.queue.Add(func() { done <- fn() })
-	return <-done
-}
-
-func (m *mailer) mark(j job, state string, cells map[string]string) {
+func (m *mailer) mark(j job, state string, cells store.Row) {
 	cells["State"] = state
-	err := m.write(func() error {
-		m.cache.edit(func(t *Tables) *Tables { return t.withMessage(j.id, j.group, cells) })
-		return m.writer.Set(appName, messagesTab, map[string]string{"ID": j.id, "Group": j.group}, cells)
-	})
-	if err != nil {
-		slog.Error("groups: mail record", "error", err)
+	if err := m.cache.Commit(context.Background(), mailerActor, store.Update(messagesTab, store.Row{"ID": j.id, "Group": j.group}, cells)); err != nil {
+		slog.Error("[ERROR] groups: mail record", "message", j.id, "group", j.group, "error", err)
 	}
 }
 
@@ -217,12 +207,8 @@ func (m *mailer) received(ctx context.Context, raw []byte, from, subject string,
 			m.release(j)
 			return fmt.Errorf("archive %s for %s: %w", id, name, err)
 		}
-		cells := map[string]string{"Received": time.Now().Format(time.RFC3339), "From": from, "Subject": subject, "State": stateReceived, "Recipients": "", "Object": j.object, "Detail": "", "Message ID": messageID}
-		err := m.write(func() error {
-			m.cache.edit(func(t *Tables) *Tables { return t.withMessage(id, name, cells) })
-			return m.writer.Set(appName, messagesTab, map[string]string{"ID": id, "Group": name}, cells)
-		})
-		if err != nil {
+		cells := store.Row{"Received": time.Now().Format(time.RFC3339), "From": from, "Subject": subject, "State": stateReceived, "Recipients": "", "Object": j.object, "Detail": "", "Message ID": messageID}
+		if err := m.cache.CommitAndWait(ctx, mailerActor, store.Set(messagesTab, store.Row{"ID": id, "Group": name}, cells)); err != nil {
 			m.release(j)
 			return fmt.Errorf("record %s for %s: %w", id, name, err)
 		}
@@ -232,14 +218,14 @@ func (m *mailer) received(ctx context.Context, raw []byte, from, subject string,
 	return nil
 }
 
-func (m *mailer) record(row map[string]string) {
+func (m *mailer) record(row store.Row) {
 	m.mu.Lock()
 	m.pending = append(m.pending, row)
 	start := !m.flushing
 	m.flushing = true
 	m.mu.Unlock()
 	if start {
-		time.AfterFunc(deliveryBatch, func() { m.queue.Add(m.flush) })
+		time.AfterFunc(deliveryBatch, m.flush)
 	}
 }
 
@@ -249,25 +235,20 @@ func (m *mailer) flush() {
 	m.pending = nil
 	m.flushing = false
 	m.mu.Unlock()
-	m.cache.edit(func(t *Tables) *Tables { return t.withDeliveries(rows) })
-	cells := make([]map[string]string, 0, len(rows))
+	ops := make([]store.Op, 0, len(rows))
 	for _, row := range rows {
-		line := map[string]string{}
-		for _, column := range DeliveryColumns {
-			line[column] = row[column]
-		}
-		cells = append(cells, line)
+		ops = append(ops, store.Insert(deliveriesTab, row))
 	}
-	if err := m.writer.Insert(appName, deliveriesTab, cells); err != nil {
+	if err := m.cache.Commit(context.Background(), mailerActor, ops...); err != nil {
 		slog.Error("[ERROR] groups: delivery record", "rows", len(rows), "error", err)
 	}
 }
 
 func (m *mailer) repliesTo(group string, lines []mail.HeaderLine) bool {
 	sent := map[string]bool{}
-	for _, row := range m.cache.Tables().Messages {
-		if row["State"] == stateSent && strings.EqualFold(row["Group"], group) && row["Message ID"] != "" {
-			sent[messageKey(row["Message ID"])] = true
+	for _, msg := range m.cache.Model().Messages {
+		if msg.State == stateSent && msg.Group == group && msg.MessageID != "" {
+			sent[messageKey(msg.MessageID)] = true
 		}
 	}
 	for _, id := range referenced(lines) {
@@ -283,8 +264,8 @@ func (m *mailer) sentAs(group, messageID string) bool {
 	if key == "" {
 		return false
 	}
-	for _, row := range m.cache.Tables().Messages {
-		if strings.EqualFold(row["Group"], group) && messageKey(row["Message ID"]) == key {
+	for _, msg := range m.cache.Model().Messages {
+		if msg.Group == group && messageKey(msg.MessageID) == key {
 			return true
 		}
 	}

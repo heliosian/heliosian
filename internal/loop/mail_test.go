@@ -18,6 +18,7 @@ import (
 
 	"heliosian/internal/data"
 	"heliosian/internal/mail"
+	"heliosian/internal/store"
 	"heliosian/internal/who"
 )
 
@@ -165,7 +166,7 @@ type harness struct {
 	archive   *fakeArchive
 	documents *fakeDocuments
 	mailbox   Mail
-	queue     Enqueuer
+	queue     store.Enqueuer
 }
 
 func newHarness(t *testing.T) *harness {
@@ -181,13 +182,13 @@ func newHarness(t *testing.T) *harness {
 		t.Fatal(err)
 	}
 	queue := who.NewQueue()
-	cache, err := NewCache(dir, func(string) bool { return false }, queue)
+	cache, err := NewCache(dir, dir, func(string) bool { return false }, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
 	h := &harness{t: t, mux: http.NewServeMux(), dir: dir, cache: cache, directory: sampleDirectory{model, whoTables}, sender: &fakeSender{}, archive: &fakeArchive{objects: map[string][]byte{}}, documents: &fakeDocuments{}, queue: queue}
 	h.mailbox = Mail{Sender: h.sender, SigningKey: signingKey, Key: []byte("key"), Base: "https://loop.test", Archive: h.archive, Documents: h.documents}
-	Register(h.mux, cache, dir, queue, nil, h.directory, func() []string { return nil }, h.mailbox, nil)
+	Register(h.mux, cache, queue, nil, h.directory, func() []string { return nil }, h.mailbox, nil)
 	return h
 }
 
@@ -574,12 +575,11 @@ func TestARestartResumesAMessageFromItsArchivedCopy(t *testing.T) {
 	if err := h.archive.Put(context.Background(), object, mailType, []byte(post)); err != nil {
 		t.Fatal(err)
 	}
-	cells := map[string]string{"Received": time.Now().Format(time.RFC3339), "From": "Alice Smith <alice@gmail.com>", "Subject": "Re: Saturday's game", "State": stateReceived, "Object": object, "Message ID": "abc@gmail.com"}
-	h.cache.edit(func(t *Tables) *Tables { return t.withMessage(id(post), "soccer-team", cells) })
-	if err := h.dir.Set(appName, messagesTab, map[string]string{"ID": id(post), "Group": "soccer-team"}, cells); err != nil {
+	cells := store.Row{"Received": time.Now().Format(time.RFC3339), "From": "Alice Smith <alice@gmail.com>", "Subject": "Re: Saturday's game", "State": stateReceived, "Object": object, "Message ID": "abc@gmail.com"}
+	if err := h.cache.CommitAndWait(context.Background(), "test", store.Set(messagesTab, store.Row{"ID": id(post), "Group": "soccer-team"}, cells)); err != nil {
 		t.Fatal(err)
 	}
-	newMailer(h.cache, h.dir, h.queue, h.directory, h.mailbox).recover()
+	newMailer(h.cache, h.directory, h.mailbox).recover()
 	h.waitFor("the resumed forward", func() bool { return h.messageState(id(post), "soccer-team") == stateSent })
 	if len(h.sender.all()) != len(h.members("soccer-team")) || h.archive.count() != 1 {
 		t.Fatalf("%d sends, %d objects", len(h.sender.all()), h.archive.count())
@@ -767,8 +767,21 @@ func TestDeletingAGroupTakesItsMailRecordWithIt(t *testing.T) {
 	if h.archive.count() != 1 {
 		t.Fatalf("the archive holds %d objects; it is written, never emptied", h.archive.count())
 	}
-	if tables := h.cache.Tables(); len(tables.Messages) != 0 || len(tables.Deliveries) != 0 {
-		t.Fatalf("memory keeps %d messages and %d deliveries", len(tables.Messages), len(tables.Deliveries))
+	if model := h.cache.Model(); len(model.Messages) != 0 || len(model.Deliveries) != 0 {
+		t.Fatalf("memory keeps %d messages and %d deliveries", len(model.Messages), len(model.Deliveries))
+	}
+	deleted := map[string]int{}
+	h.waitFor("the delete's log", func() bool {
+		deleted = map[string]int{}
+		for _, row := range h.rows(store.ChangeLogTab) {
+			if row["Action"] == "delete" && strings.Contains(row["Key"], "Group=soccer-team") {
+				deleted[row["Tab"]]++
+			}
+		}
+		return deleted[messagesTab] > 0
+	})
+	if deleted[messagesTab] == 0 || deleted[managersTab] == 0 || deleted[deliveriesTab] != 0 {
+		t.Fatalf("the delete logged %v; the deliveries are append-only and unlogged", deleted)
 	}
 	rec := h.as("ruth.amari@heliosschool.org", http.MethodPost, "/api/loop/group", `{"original":"","name":"soccer-team","title":"Soccer again","managers":["ruth.amari@heliosschool.org"],"rules":[{"kind":"include","roles":["Staff"]}]}`)
 	if rec.Code != http.StatusOK {

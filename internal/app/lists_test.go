@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"slices"
 	"testing"
 	"time"
@@ -8,6 +9,7 @@ import (
 	"heliosian/internal/celebrate"
 	"heliosian/internal/data"
 	"heliosian/internal/loop"
+	"heliosian/internal/store"
 	"heliosian/internal/team"
 	"heliosian/internal/who"
 )
@@ -23,14 +25,11 @@ func TestGroupListsCarryAdditionsAsGuests(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	groupTables, err := loop.ReadTables(dir)
+	groups, err := loop.NewCache(dir, dir, func(string) bool { return false }, directQueue{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	model, err := loop.BuildModel(groupTables)
-	if err != nil {
-		t.Fatal(err)
-	}
+	model := groups.Model()
 	sources := loop.Sources{
 		Directory: directory,
 		Tags:      func(owner string) map[string][]string { return who.TagsOf(tables.Tags, directory, owner) },
@@ -65,11 +64,10 @@ func TestGroupListsCarryAdditionsAsGuests(t *testing.T) {
 	if list.Archived {
 		t.Fatal("a group nobody archived came marked archived")
 	}
-	groupTables.Archived = append(groupTables.Archived, map[string]string{"Group": "soccer-team", "Email": jordan})
-	if model, err = loop.BuildModel(groupTables); err != nil {
+	if err := groups.Commit(context.Background(), jordan, store.Set("Archived", store.Row{"Group": "soccer-team", "Email": jordan}, store.Row{})); err != nil {
 		t.Fatal(err)
 	}
-	lists = GroupLists(model, sources, jordan)
+	lists = GroupLists(groups.Model(), sources, jordan)
 	i = slices.IndexFunc(lists, func(l who.List) bool { return l.Key == "group:soccer-team" })
 	if i < 0 || !lists[i].Archived {
 		t.Fatalf("the archived group's list is missing or unmarked: %+v", lists)

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"slices"
 	"sort"
@@ -16,10 +17,10 @@ import (
 	"heliosian/internal/auth"
 	"heliosian/internal/blob"
 	"heliosian/internal/claude"
-	"heliosian/internal/data"
 	"heliosian/internal/describe"
 	"heliosian/internal/filter"
 	"heliosian/internal/serve"
+	"heliosian/internal/store"
 	"heliosian/internal/who"
 )
 
@@ -51,9 +52,8 @@ type Directory interface {
 
 type app struct {
 	cache       *Cache
-	writer      data.Writer
-	queue       Enqueuer
-	store       *blob.Store
+	queue       store.Enqueuer
+	media       *blob.Store
 	directory   Directory
 	superAdmins func() []string
 	mail        Mail
@@ -65,9 +65,9 @@ type Describer interface {
 	Group(ctx context.Context, actor string, facts describe.GroupFacts) (string, error)
 }
 
-func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, directory Directory, superAdmins func() []string, mailbox Mail, describer Describer) {
-	a := app{cache: cache, writer: writer, queue: queue, store: store, directory: directory, superAdmins: superAdmins, mail: mailbox, describer: describer}
-	a.mailer = newMailer(cache, writer, queue, directory, mailbox)
+func Register(mux *http.ServeMux, cache *Cache, queue store.Enqueuer, media *blob.Store, directory Directory, superAdmins func() []string, mailbox Mail, describer Describer) {
+	a := app{cache: cache, queue: queue, media: media, directory: directory, superAdmins: superAdmins, mail: mailbox, describer: describer}
+	a.mailer = newMailer(cache, directory, mailbox)
 	for _, page := range pages {
 		mux.HandleFunc("GET "+page, a.page)
 	}
@@ -450,23 +450,64 @@ func (a app) describe(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (a app) commit(r *http.Request, w http.ResponseWriter, tables *Tables, flush func() error) bool {
-	ctx := r.Context()
-	model, err := BuildModel(tables)
-	if err != nil {
+func (a app) commit(w http.ResponseWriter, r *http.Request, actor string, ops ...store.Op) bool {
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return false
 	}
-	a.cache.commit(tables, model, func() {
-		if err := flush(); err != nil {
-			slog.ErrorContext(ctx, "groups write", "error", err)
-		}
-	})
 	return true
 }
 
-func (a app) logChange(real, actor, action, group, detail string) error {
-	return a.writer.Insert(appName, changeLogTab, []map[string]string{{"Timestamp": time.Now().Format(time.RFC3339), "Actor": actor, "Action": action, "Group": group, "Detail": detail, "Real Actor": real}})
+func sameRule(x, y Rule) bool {
+	return maps.Equal(filter.RuleCells(x), filter.RuleCells(y))
+}
+
+func groupOps(was Group, g Group, adding bool) []store.Op {
+	ops := []store.Op{store.Update(groupsTab, store.Row{"Name": g.Name}, groupCells(g))}
+	if adding {
+		ops = []store.Op{store.Insert(groupsTab, groupCells(g))}
+	}
+	row := func(column, value string) store.Row {
+		return store.Row{"Group": g.Name, column: value}
+	}
+	for _, list := range []struct {
+		tab, column string
+		was, now    []string
+	}{{managersTab, "Email", was.Managers, g.Managers}, {aliasesTab, "Alias", was.Aliases, g.Aliases}} {
+		for _, v := range list.was {
+			if !slices.Contains(list.now, v) {
+				ops = append(ops, store.Delete(list.tab, row(list.column, v)))
+			}
+		}
+		for _, v := range list.now {
+			if !slices.Contains(list.was, v) {
+				ops = append(ops, store.Insert(list.tab, row(list.column, v)))
+			}
+		}
+	}
+	if !slices.EqualFunc(was.Rules, g.Rules, sameRule) {
+		ops = append(ops, store.Delete(rulesTab, store.Row{"Group": g.Name}))
+		for _, r := range g.Rules {
+			ops = append(ops, store.Insert(rulesTab, ruleCells(g.Name, r)))
+		}
+	}
+	for _, added := range was.Additions {
+		if g.Addition(added.Email) == nil {
+			ops = append(ops, store.Delete(additionsTab, row("Email", added.Email)))
+		}
+	}
+	for _, added := range g.Additions {
+		ops = append(ops, store.Set(additionsTab, row("Email", added.Email), store.Row{"Name": added.Name}))
+	}
+	for _, e := range was.Excluded {
+		if !g.HasExcluded(e.Email) {
+			ops = append(ops, store.Delete(excludedTab, row("Email", e.Email)))
+		}
+	}
+	for _, e := range g.Excluded {
+		ops = append(ops, store.Set(excludedTab, row("Email", e.Email), store.Row{"Note": e.Note, "Timestamp": e.When}))
+	}
+	return ops
 }
 
 func (a app) saveGroup(w http.ResponseWriter, r *http.Request) {
@@ -481,6 +522,7 @@ func (a app) saveGroup(w http.ResponseWriter, r *http.Request) {
 	g := Normalize(body.Group)
 	original := strings.ToLower(strings.TrimSpace(body.Original))
 	var existing []Rule
+	var was Group
 	action := "add"
 	for _, local := range g.Names() {
 		if other := a.cache.Model().Resolve(local); other != nil && other.Name != original {
@@ -510,6 +552,7 @@ func (a app) saveGroup(w http.ResponseWriter, r *http.Request) {
 		}
 		g.CreatedBy, g.Created = current.CreatedBy, current.Created
 		existing = current.Rules
+		was = *current
 		action = "edit"
 	}
 	if err := filter.Writable(a.sources(), email, g.Managers, existing, g.Rules); err != nil {
@@ -524,62 +567,12 @@ func (a app) saveGroup(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	tables := a.cache.Tables().withGroup(g)
-	if !a.commit(r, w, tables, func() error {
-		if action == "add" {
-			if err := a.writer.Insert(appName, groupsTab, []map[string]string{groupCells(g)}); err != nil {
-				return err
-			}
-		} else if err := a.writer.Set(appName, groupsTab, map[string]string{"Name": g.Name}, groupCells(g)); err != nil {
-			return err
-		}
-		for _, tab := range []string{managersTab, rulesTab, additionsTab, excludedTab, aliasesTab} {
-			if err := a.writer.Delete(appName, tab, map[string]string{"Group": g.Name}); err != nil {
-				return err
-			}
-		}
-		managers := []map[string]string{}
-		for _, m := range g.Managers {
-			managers = append(managers, map[string]string{"Group": g.Name, "Email": m})
-		}
-		if err := a.writer.Insert(appName, managersTab, managers); err != nil {
-			return err
-		}
-		rules := []map[string]string{}
-		for _, rule := range g.Rules {
-			rules = append(rules, ruleCells(g.Name, rule))
-		}
-		if err := a.writer.Insert(appName, rulesTab, rules); err != nil {
-			return err
-		}
-		additions := []map[string]string{}
-		for _, added := range g.Additions {
-			additions = append(additions, additionCells(g.Name, added))
-		}
-		if err := a.writer.Insert(appName, additionsTab, additions); err != nil {
-			return err
-		}
-		excluded := []map[string]string{}
-		for _, e := range g.Excluded {
-			excluded = append(excluded, excludedCells(g.Name, e))
-		}
-		if err := a.writer.Insert(appName, excludedTab, excluded); err != nil {
-			return err
-		}
-		aliases := []map[string]string{}
-		for _, alias := range g.Aliases {
-			aliases = append(aliases, aliasCells(g.Name, alias))
-		}
-		if err := a.writer.Insert(appName, aliasesTab, aliases); err != nil {
-			return err
-		}
-		return a.logChange(auth.RealEmail(r), email, action, g.Name, fmt.Sprintf("%s; %d aliases; %d managers; %d rules; %d added by hand; %d excluded; prefix %v; visibility %s; posting %s; replying %s", g.Title, len(g.Aliases), len(g.Managers), len(g.Rules), len(g.Additions), len(g.Excluded), g.Prefix, g.Visibility, g.Posting, g.Replying))
-	}) {
+	if !a.commit(w, r, email, groupOps(was, g, action == "add")...) {
 		return
 	}
 	slog.InfoContext(r.Context(), "groups: saved group", "action", action, "group", g.Name, "aliases", len(g.Aliases), "rules", len(g.Rules), "managers", len(g.Managers), "additions", len(g.Additions), "excluded", len(g.Excluded), "prefix", g.Prefix, "visibility", g.Visibility, "posting", g.Posting, "replying", g.Replying)
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(a.view(g, email, true)); err != nil {
+	if err := json.NewEncoder(w).Encode(a.view(*a.cache.Model().Group(g.Name), email, true)); err != nil {
 		slog.ErrorContext(r.Context(), "encode saved group", "error", err)
 	}
 }
@@ -602,23 +595,14 @@ func (a app) deleteGroup(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "you do not manage this group", http.StatusForbidden)
 		return
 	}
-	tables := a.cache.Tables().withoutGroup(name)
-	if !a.commit(r, w, tables, func() error {
-		if err := a.writer.Delete(appName, groupsTab, map[string]string{"Name": name}); err != nil {
-			return err
-		}
-		for _, tab := range []string{managersTab, rulesTab, additionsTab, excludedTab, aliasesTab, archivedTab, messagesTab, deliveriesTab} {
-			if err := a.writer.Delete(appName, tab, map[string]string{"Group": name}); err != nil {
-				return err
-			}
-		}
-		if err := a.mail.Documents.Remove(name); err != nil {
-			return err
-		}
-		return a.logChange(auth.RealEmail(r), email, "delete", name, current.Title)
-	}) {
+	if !a.commit(w, r, email, store.Delete(groupsTab, store.Row{"Name": name})) {
 		return
 	}
+	a.queue.Add(func() {
+		if err := a.mail.Documents.Remove(name); err != nil {
+			slog.Error("[ERROR] groups: filed mail not removed", "group", name, "error", err)
+		}
+	})
 	slog.InfoContext(r.Context(), "groups: deleted group", "group", name)
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -643,9 +627,9 @@ func (a app) subscription(w http.ResponseWriter, r *http.Request) {
 	}
 	var err error
 	if body.Subscribed {
-		err = a.resubscribeAddress(r.Context(), auth.RealEmail(r), g, email)
+		err = a.resubscribeAddress(r.Context(), g, email)
 	} else {
-		err = a.unsubscribeAddress(r.Context(), auth.RealEmail(r), g, email, loopPage)
+		err = a.unsubscribeAddress(r.Context(), g, email, loopPage)
 	}
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -671,13 +655,12 @@ func (a app) archive(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no such group", http.StatusNotFound)
 		return
 	}
-	tables := a.cache.Tables().withArchived(g.Name, email, body.Archived)
-	if !a.commit(r, w, tables, func() error {
-		if body.Archived {
-			return a.writer.Insert(appName, archivedTab, []map[string]string{{"Group": g.Name, "Email": email}})
-		}
-		return a.writer.Delete(appName, archivedTab, map[string]string{"Group": g.Name, "Email": email})
-	}) {
+	match := store.Row{"Group": g.Name, "Email": email}
+	op := store.Delete(archivedTab, match)
+	if body.Archived {
+		op = store.Set(archivedTab, match, store.Row{})
+	}
+	if !a.commit(w, r, email, op) {
 		return
 	}
 	slog.InfoContext(r.Context(), "groups: archived", "group", g.Name, "email", email, "archived", body.Archived)
@@ -704,7 +687,7 @@ func (a app) adminState(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a app) setAdmins(w http.ResponseWriter, r *http.Request) {
-	_, ok := a.requireAdmin(w, r)
+	actor, ok := a.requireAdmin(w, r)
 	if !ok {
 		return
 	}
@@ -724,25 +707,19 @@ func (a app) setAdmins(w http.ResponseWriter, r *http.Request) {
 			admins = append(admins, e)
 		}
 	}
-	current := a.cache.tabAdmins()
-	tables := a.cache.Tables().withAdmins(admins)
-	if !a.commit(r, w, tables, func() error {
-		for _, e := range current {
-			if !slices.Contains(admins, e) {
-				if err := a.writer.Delete(appName, adminsTab, map[string]string{"Email": e}); err != nil {
-					return err
-				}
-			}
+	current := a.cache.Model().admins
+	ops := []store.Op{}
+	for _, e := range current {
+		if !slices.Contains(admins, e) {
+			ops = append(ops, store.Delete(adminsTab, store.Row{"Email": e}))
 		}
-		for _, e := range admins {
-			if !slices.Contains(current, e) {
-				if err := a.writer.Insert(appName, adminsTab, []map[string]string{{"Email": e}}); err != nil {
-					return err
-				}
-			}
+	}
+	for _, e := range admins {
+		if !slices.Contains(current, e) {
+			ops = append(ops, store.Insert(adminsTab, store.Row{"Email": e}))
 		}
-		return nil
-	}) {
+	}
+	if !a.commit(w, r, actor, ops...) {
 		return
 	}
 	slog.InfoContext(r.Context(), "groups: set the admin list", "admins", admins)

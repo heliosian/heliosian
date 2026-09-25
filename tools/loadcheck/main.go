@@ -312,14 +312,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("[ERROR] read directory tables: %v", err)
 	}
-	groupTables, err := loop.ReadTables(source)
+	groupCache, err := loop.NewCache(source, nil, func(string) bool { return false }, who.NewQueue())
 	if err != nil {
-		log.Fatalf("[ERROR] read groups tables: %v", err)
+		log.Fatalf("[ERROR] load groups model: %v", err)
 	}
-	groupModel, err := loop.BuildModel(groupTables)
-	if err != nil {
-		log.Fatalf("[ERROR] build groups model: %v", err)
-	}
+	groupModel := groupCache.Model()
 	now := time.Now().In(calendar.Location)
 	sources := loop.Sources{
 		Directory: model,
@@ -335,7 +332,7 @@ func main() {
 	for _, g := range groupModel.Groups {
 		fmt.Printf("  %s %q: aliases %v, %d managers, %d rules, %d members, %d excluded, prefix %v, visibility %s, posting %s, replying %s\n", g.Address(), g.Title, g.Aliases, len(g.Managers), len(g.Rules), len(loop.Members(g, sources)), len(g.Excluded), g.Prefix, g.Visibility, g.Posting, g.Replying)
 	}
-	fmt.Printf("groups admins: %d\n", len(groupTables.Admins))
+	fmt.Printf("groups admins: %d\n", len(groupCache.Admins(nil)))
 
 	documents, err := artifacts.ReadRows(source)
 	if err != nil {

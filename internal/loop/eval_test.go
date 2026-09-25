@@ -250,14 +250,12 @@ func TestAdditionsJoinTheMembersOnce(t *testing.T) {
 
 func TestSampleGroupsLoadAndHaveMembers(t *testing.T) {
 	s, _ := sample(t)
-	tables, err := loop.ReadTables(&data.Dir{Root: "../../sampledata"})
+	dir := &data.Dir{Root: "../../sampledata"}
+	cache, err := loop.NewCache(dir, dir, func(string) bool { return false }, who.NewQueue())
 	if err != nil {
 		t.Fatal(err)
 	}
-	model, err := loop.BuildModel(tables)
-	if err != nil {
-		t.Fatal(err)
-	}
+	model := cache.Model()
 	if len(model.Groups) != 3 {
 		t.Fatalf("%d groups loaded", len(model.Groups))
 	}

@@ -196,7 +196,7 @@ var layouts = map[string][]tab{
 		{"Deliveries", loop.DeliveryColumns},
 		{"Admins", loop.AdminColumns},
 		{"Archived", loop.ArchivedColumns},
-		{"Change Log", loop.ChangeLogColumns},
+		{store.ChangeLogTab, store.ChangeLogColumns},
 	},
 }
 

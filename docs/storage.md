@@ -36,7 +36,9 @@ A handler states a change as operations on rows - `store.Insert`, `store.Set` (e
 4. swaps the tables and model in, and queues the IO writes and the Change Log rows on the one write queue every store shares (`who.Queue`);
 5. releases the lock and returns.
 
-The memory half takes milliseconds and waits only on another commit's memory half; the IO half runs on the queue in commit order, and no request waits on it. An IO write that fails is logged `[ERROR]` and the store refreshes from the sheet. A mail hook is the one caller that waits for its IO: it answers the mail provider only once what it took is in the sheet, so a failure is retried by the provider rather than lost.
+The memory half takes milliseconds and waits only on another commit's memory half; the IO half runs on the queue in commit order, and no request waits on it. An IO write that fails is logged `[ERROR]` and the store refreshes from the sheet. A mail hook is the one caller that waits for its IO: it commits with `CommitAndWait`, which takes the same place in the queue as `Commit` and then waits for that write to finish, never jumping ahead of what was queued before it, and returns the write's error. So the hook answers the mail provider only once what it took is in the sheet, and a failure is retried by the provider rather than lost.
+
+A tab declared `AppendOnly` is a record of events rather than state - Loop's Deliveries. Its rows are inserted and, through a cascade, deleted, never edited: the store refuses a Set or Update on one, and makes no Change Log rows for it, since no row ever held a value that another replaced.
 
 A store reads its sheet at startup, every five minutes after, and once more thirty seconds after a start (`deployOverlap` in `internal/app`): during a deploy the old revision keeps serving and writing while the new one reads, and that second read picks up what it wrote. The five-minute refresh is for what changes in the sheets by hand. A refresh reads on the write queue and swaps its result in only while no commit's writes are still queued: memory already holds those, and the sheet it just read does not. Work accepted but not yet committed - a mail the documents' hook took, a group's post being filed - holds the queue (`Hold` and `Release` in `internal/who/queue.go`), so the shutdown drain waits for it.
 
@@ -46,25 +48,25 @@ A row's place in a list the app lets people arrange is its `Order` cell, never i
 
 ## Hooks
 
-- **Cascade hooks** belong to a tab (`store.Tab.Cascade`) and turn a changed row into more operations, inside the same commit: renaming a Staff Birthdays charity renames it on every donation and in the default-charity setting, and moving a newsletter date moves every birthday pinned to it. Each sees the row before and after and returns operations; it writes nothing itself. The same hooks carry what the other apps do by hand today: deleting a Loop group's managers, rules and messages with it, renaming a person's address across Who?'s tags and photos, deleting a calendar invitation's invites, replies and groups.
+- **Cascade hooks** belong to a tab (`store.Tab.Cascade`) and turn a changed row into more operations, inside the same commit: renaming a Staff Birthdays charity renames it on every donation and in the default-charity setting, moving a newsletter date moves every birthday pinned to it, and deleting a Loop group deletes its managers, rules, messages and deliveries with it. Each sees the row before and after and returns operations; it writes nothing itself. The same hooks carry what the other apps do by hand today: renaming a person's address across Who?'s tags and photos, deleting a calendar invitation's invites, replies and groups.
 - **After-commit work** runs once the commit is in memory, off the store: mail a change sends, filing a sent Loop post into Helios Ask's documents, geocoding a new address. One that changes stored data does it through a commit of its own, on the store that owns that data - another app's included.
 
 ## Change Log
 
-Every spreadsheet has one `Change Log` tab, written by the store and by nothing else: Timestamp, Actor, Real Actor, Action, Tab, Key, Column, Previous. One row per cell a commit changes, cascades included:
+Every spreadsheet has one `Change Log` tab, written by the store and by nothing else: Timestamp, Actor, Real Actor, Action, Tab, Key, Column, Previous. One row per cell a commit sets or deletes, and one row per row it inserts, cascades included:
 
 - **Action** is `insert`, `set` or `delete`.
 - **Key** names the row: each of the tab's key columns and its value, `Email=…; Year=…`.
-- **Previous** is what the cell held before the change - empty for a row that did not exist.
+- **Column** and **Previous** are the cell and what it held before the change. An insert has neither: before it the row did not exist, and its values are in the tab.
 - **Actor** is who the change was made as, and **Real Actor** who was signed in, the two differing under Spoof Mode (`docs/toolbar.md`). Work nobody signed in does - the calendar import, the birthday reminders, Loop's mailer, the invite sweep - names itself as the actor, and Real Actor is empty.
 
 What a row holds now is the tab itself; the Change Log is how to get back to what it held before. Nothing reads it back.
 
 ## Moving there
 
-The IO layer and the store stand, and Staff Birthdays, Heliosian, HCA-Team and Helios Celebrate are on the store, their Change Logs in this shape. Staff Birthdays' one write past the store is the weekly copy into the association's own spreadsheet (`docs/birthday/data.md`), an outbound export of rows the app never reads back; a birthday team joiner's place on the app's Heliosian list is a commit on Heliosian's store (`home.Grant`). The other apps still write through `internal/data` from their own commit helpers and log their own Change Log rows in the old shape; they move one at a time, each shipped and tested before the next, and each app's own commit, write and log helpers are deleted as it moves:
+The IO layer and the store stand, and Staff Birthdays, Heliosian, HCA-Team, Helios Celebrate and Helios Loop are on the store, their Change Logs in this shape. Staff Birthdays' one write past the store is the weekly copy into the association's own spreadsheet (`docs/birthday/data.md`), an outbound export of rows the app never reads back; a birthday team joiner's place on the app's Heliosian list is a commit on Heliosian's store (`home.Grant`). The other apps still write through `internal/data` from their own commit helpers and log their own Change Log rows in the old shape; they move one at a time, each shipped and tested before the next, and each app's own commit, write and log helpers are deleted as it moves:
 
-1. **The other apps**: Helios Loop, Helios When with the calendar import, and Who?.
+1. **The other apps**: Helios When with the calendar import, and Who?.
 2. **Feedback and Helios Ask's documents**, and the last per-app queue interfaces.
 
 Each app's `Change Log` tab in the old shape is renamed `Change Log (old)` with `tools/renametab` when its app moves, before `tools/createtabs` makes a new one in this shape and before the build that reads it deploys.

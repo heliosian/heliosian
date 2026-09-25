@@ -2,14 +2,14 @@ package loop
 
 import (
 	"fmt"
-	"maps"
 	"regexp"
 	"slices"
 	"sort"
 	"strings"
 
-	"heliosian/internal/data"
+	"heliosian/internal/config"
 	"heliosian/internal/filter"
+	"heliosian/internal/store"
 )
 
 const (
@@ -24,7 +24,6 @@ const (
 	deliveriesTab = "Deliveries"
 	adminsTab     = "Admins"
 	archivedTab   = "Archived"
-	changeLogTab  = "Change Log"
 
 	prefixColumn = "Subject Prefix"
 	prefixOff    = "off"
@@ -56,17 +55,16 @@ const (
 )
 
 var (
-	GroupColumns     = []string{"Name", "Title", "Description", "Created By", "Created", prefixColumn, visibleColumn, postingColumn, replyingColumn}
-	ManagerColumns   = []string{"Group", "Email"}
-	RuleColumns      = append([]string{"Group"}, filter.RuleColumns...)
-	AdditionColumns  = []string{"Group", "Email", "Name"}
-	ExcludedColumns  = []string{"Group", "Email", "Note", "Timestamp"}
-	AliasColumns     = []string{"Group", "Alias"}
-	MessageColumns   = []string{"ID", "Group", "Received", "From", "Subject", "State", "Recipients", "Object", "Detail", "Message ID"}
-	DeliveryColumns  = []string{"Timestamp", "Group", "Email", "Event", "Message", "Detail"}
-	AdminColumns     = []string{"Email"}
-	ArchivedColumns  = []string{"Group", "Email"}
-	ChangeLogColumns = []string{"Timestamp", "Actor", "Action", "Group", "Detail", "Real Actor"}
+	GroupColumns    = []string{"Name", "Title", "Description", "Created By", "Created", prefixColumn, visibleColumn, postingColumn, replyingColumn}
+	ManagerColumns  = []string{"Group", "Email"}
+	RuleColumns     = append([]string{"Group"}, filter.RuleColumns...)
+	AdditionColumns = []string{"Group", "Email", "Name"}
+	ExcludedColumns = []string{"Group", "Email", "Note", "Timestamp"}
+	AliasColumns    = []string{"Group", "Alias"}
+	MessageColumns  = []string{"ID", "Group", "Received", "From", "Subject", "State", "Recipients", "Object", "Detail", "Message ID"}
+	DeliveryColumns = []string{"Timestamp", "Group", "Email", "Event", "Message", "Detail"}
+	AdminColumns    = []string{"Email"}
+	ArchivedColumns = []string{"Group", "Email"}
 
 	Roles     = filter.Roles
 	Relations = filter.Relations
@@ -139,11 +137,36 @@ func (g Group) Manages(email string) bool {
 	return slices.Contains(g.Managers, email)
 }
 
+type Message struct {
+	ID         string
+	Group      string
+	Received   string
+	From       string
+	Subject    string
+	State      string
+	Recipients string
+	Object     string
+	Detail     string
+	MessageID  string
+}
+
+type Delivery struct {
+	Timestamp string
+	Group     string
+	Email     string
+	Event     string
+	Message   string
+	Detail    string
+}
+
 type Model struct {
-	Groups    []Group
-	byName    map[string]int
-	byAddress map[string]int
-	archived  map[string]map[string]bool
+	Groups     []Group
+	Messages   []Message
+	Deliveries []Delivery
+	admins     []string
+	byName     map[string]int
+	byAddress  map[string]int
+	archived   map[string]map[string]bool
 }
 
 func (m *Model) Archived(name, email string) bool {
@@ -164,54 +187,6 @@ func (m *Model) Resolve(local string) *Group {
 		return nil
 	}
 	return &m.Groups[i]
-}
-
-type Tables struct {
-	Groups     []map[string]string
-	Managers   []map[string]string
-	Rules      []map[string]string
-	Additions  []map[string]string
-	Excluded   []map[string]string
-	Aliases    []map[string]string
-	Messages   []map[string]string
-	Deliveries []map[string]string
-	Admins     []map[string]string
-	Archived   []map[string]string
-}
-
-func ReadTables(source data.Source) (*Tables, error) {
-	type table struct {
-		name string
-		want []string
-		rows []map[string]string
-	}
-	groups := &table{name: groupsTab, want: GroupColumns}
-	managers := &table{name: managersTab, want: ManagerColumns}
-	rules := &table{name: rulesTab, want: RuleColumns}
-	additions := &table{name: additionsTab, want: AdditionColumns}
-	excluded := &table{name: excludedTab, want: ExcludedColumns}
-	aliases := &table{name: aliasesTab, want: AliasColumns}
-	messages := &table{name: messagesTab, want: MessageColumns}
-	deliveries := &table{name: deliveriesTab, want: DeliveryColumns}
-	admins := &table{name: adminsTab, want: AdminColumns}
-	archived := &table{name: archivedTab, want: ArchivedColumns}
-	changeLog := &table{name: changeLogTab, want: ChangeLogColumns}
-	read := []*table{groups, managers, rules, additions, excluded, aliases, messages, deliveries, admins, archived}
-	names := []string{}
-	for _, t := range read {
-		names = append(names, t.name)
-	}
-	tabs, err := source.Tabs(appName, names, []string{changeLog.name})
-	if err != nil {
-		return nil, err
-	}
-	for _, t := range append(read, changeLog) {
-		t.rows = tabs[t.name].Rows
-		if err := data.CheckColumns(t.name, tabs[t.name].Header, t.want); err != nil {
-			return nil, err
-		}
-	}
-	return &Tables{Groups: groups.rows, Managers: managers.rows, Rules: rules.rows, Additions: additions.rows, Excluded: excluded.rows, Aliases: aliases.rows, Messages: messages.rows, Deliveries: deliveries.rows, Admins: admins.rows, Archived: archived.rows}, nil
 }
 
 func SplitList(cell string) []string {
@@ -400,22 +375,22 @@ func Normalize(g Group) Group {
 	return g
 }
 
-func ruleCells(name string, r Rule) map[string]string {
+func compareWhen(x, y Excluded) int {
+	switch {
+	case x.When == y.When:
+		return 0
+	case x.When == "":
+		return 1
+	case y.When == "":
+		return -1
+	}
+	return strings.Compare(x.When, y.When)
+}
+
+func ruleCells(name string, r Rule) store.Row {
 	cells := filter.RuleCells(r)
 	cells["Group"] = name
 	return cells
-}
-
-func additionCells(name string, a Addition) map[string]string {
-	return map[string]string{"Group": name, "Email": a.Email, "Name": a.Name}
-}
-
-func excludedCells(name string, e Excluded) map[string]string {
-	return map[string]string{"Group": name, "Email": e.Email, "Note": e.Note, "Timestamp": e.When}
-}
-
-func aliasCells(name, alias string) map[string]string {
-	return map[string]string{"Group": name, "Alias": alias}
 }
 
 func prefixCell(on bool) string {
@@ -425,13 +400,18 @@ func prefixCell(on bool) string {
 	return prefixOff
 }
 
-func groupCells(g Group) map[string]string {
-	return map[string]string{"Name": g.Name, "Title": g.Title, "Description": g.Description, "Created By": g.CreatedBy, "Created": g.Created, prefixColumn: prefixCell(g.Prefix), visibleColumn: g.Visibility, postingColumn: g.Posting, replyingColumn: g.Replying}
+func groupCells(g Group) store.Row {
+	return store.Row{"Name": g.Name, "Title": g.Title, "Description": g.Description, "Created By": g.CreatedBy, "Created": g.Created, prefixColumn: prefixCell(g.Prefix), visibleColumn: g.Visibility, postingColumn: g.Posting, replyingColumn: g.Replying}
 }
 
-func BuildModel(tables *Tables) (*Model, error) {
-	model := &Model{Groups: []Group{}, byName: map[string]int{}, archived: map[string]map[string]bool{}}
-	for _, row := range tables.Groups {
+func BuildModel(tables store.Tables) (*Model, error) {
+	model := &Model{Groups: []Group{}, Messages: []Message{}, Deliveries: []Delivery{}, byName: map[string]int{}, archived: map[string]map[string]bool{}}
+	admins := []string{}
+	for _, row := range tables[adminsTab] {
+		admins = append(admins, row["Email"])
+	}
+	model.admins = config.NormalizeEmails(admins)
+	for _, row := range tables[groupsTab] {
 		g := Normalize(Group{Name: row["Name"], Title: row["Title"], Description: row["Description"], CreatedBy: row["Created By"], Created: row["Created"], Prefix: strings.ToLower(strings.TrimSpace(row[prefixColumn])) != prefixOff, Visibility: row[visibleColumn], Posting: row[postingColumn], Replying: row[replyingColumn]})
 		if _, dup := model.byName[g.Name]; dup {
 			return nil, fmt.Errorf("%s has two rows named %q", groupsTab, g.Name)
@@ -444,64 +424,79 @@ func BuildModel(tables *Tables) (*Model, error) {
 		model.byName[g.Name] = len(model.Groups)
 		model.Groups = append(model.Groups, g)
 	}
-	for _, row := range tables.Aliases {
-		name := strings.ToLower(strings.TrimSpace(row["Group"]))
-		g := model.Group(name)
+	owner := func(tab string, row store.Row) (*Group, error) {
+		g := model.Group(strings.ToLower(strings.TrimSpace(row["Group"])))
 		if g == nil {
-			return nil, fmt.Errorf("%s names %q, which %s does not have", aliasesTab, row["Group"], groupsTab)
+			return nil, fmt.Errorf("%s names %q, which %s does not have", tab, row["Group"], groupsTab)
+		}
+		return g, nil
+	}
+	for _, row := range tables[aliasesTab] {
+		g, err := owner(aliasesTab, row)
+		if err != nil {
+			return nil, err
 		}
 		g.Aliases = append(g.Aliases, row["Alias"])
 	}
-	for _, row := range tables.Managers {
-		name := strings.ToLower(strings.TrimSpace(row["Group"]))
-		g := model.Group(name)
-		if g == nil {
-			return nil, fmt.Errorf("%s names %q, which %s does not have", managersTab, row["Group"], groupsTab)
+	for _, row := range tables[managersTab] {
+		g, err := owner(managersTab, row)
+		if err != nil {
+			return nil, err
 		}
 		email := cleanEmail(row["Email"])
 		if !slices.Contains(g.Managers, email) {
 			g.Managers = append(g.Managers, email)
 		}
 	}
-	for _, row := range tables.Rules {
-		name := strings.ToLower(strings.TrimSpace(row["Group"]))
-		g := model.Group(name)
-		if g == nil {
-			return nil, fmt.Errorf("%s names %q, which %s does not have", rulesTab, row["Group"], groupsTab)
+	for _, row := range tables[rulesTab] {
+		g, err := owner(rulesTab, row)
+		if err != nil {
+			return nil, err
 		}
 		g.Rules = append(g.Rules, filter.RuleFromRow(row))
 	}
-	for _, row := range tables.Additions {
-		name := strings.ToLower(strings.TrimSpace(row["Group"]))
-		g := model.Group(name)
-		if g == nil {
-			return nil, fmt.Errorf("%s names %q, which %s does not have", additionsTab, row["Group"], groupsTab)
+	for _, row := range tables[additionsTab] {
+		g, err := owner(additionsTab, row)
+		if err != nil {
+			return nil, err
 		}
 		g.Additions = append(g.Additions, Addition{Email: row["Email"], Name: row["Name"]})
 	}
-	for _, row := range tables.Excluded {
-		name := strings.ToLower(strings.TrimSpace(row["Group"]))
-		g := model.Group(name)
-		if g == nil {
-			return nil, fmt.Errorf("%s names %q, which %s does not have", excludedTab, row["Group"], groupsTab)
+	for _, row := range tables[excludedTab] {
+		g, err := owner(excludedTab, row)
+		if err != nil {
+			return nil, err
 		}
 		g.Excluded = append(g.Excluded, Excluded{Email: row["Email"], Note: row["Note"], When: row["Timestamp"]})
 	}
-	for _, row := range tables.Archived {
-		name := strings.ToLower(strings.TrimSpace(row["Group"]))
-		if model.Group(name) == nil {
-			return nil, fmt.Errorf("%s names %q, which %s does not have", archivedTab, row["Group"], groupsTab)
+	for _, row := range tables[archivedTab] {
+		g, err := owner(archivedTab, row)
+		if err != nil {
+			return nil, err
 		}
-		if model.archived[name] == nil {
-			model.archived[name] = map[string]bool{}
+		if model.archived[g.Name] == nil {
+			model.archived[g.Name] = map[string]bool{}
 		}
-		model.archived[name][cleanEmail(row["Email"])] = true
+		model.archived[g.Name][cleanEmail(row["Email"])] = true
+	}
+	for _, row := range tables[messagesTab] {
+		model.Messages = append(model.Messages, Message{
+			ID: row["ID"], Group: strings.ToLower(strings.TrimSpace(row["Group"])), Received: row["Received"], From: row["From"], Subject: row["Subject"],
+			State: row["State"], Recipients: row["Recipients"], Object: row["Object"], Detail: row["Detail"], MessageID: row["Message ID"],
+		})
+	}
+	for _, row := range tables[deliveriesTab] {
+		model.Deliveries = append(model.Deliveries, Delivery{
+			Timestamp: row["Timestamp"], Group: strings.ToLower(strings.TrimSpace(row["Group"])), Email: cleanEmail(row["Email"]),
+			Event: row["Event"], Message: row["Message"], Detail: row["Detail"],
+		})
 	}
 	for i, g := range model.Groups {
 		g = Normalize(g)
 		if err := CheckGroup(g); err != nil {
 			return nil, err
 		}
+		slices.SortStableFunc(g.Excluded, compareWhen)
 		model.Groups[i] = g
 	}
 	sort.SliceStable(model.Groups, func(i, j int) bool { return model.Groups[i].Name < model.Groups[j].Name })
@@ -517,127 +512,4 @@ func BuildModel(tables *Tables) (*Model, error) {
 		}
 	}
 	return model, nil
-}
-
-func cloneRows(rows []map[string]string) []map[string]string {
-	out := make([]map[string]string, len(rows))
-	for i, row := range rows {
-		out[i] = maps.Clone(row)
-	}
-	return out
-}
-
-func withoutGroupRows(rows []map[string]string, column, name string) []map[string]string {
-	out := make([]map[string]string, 0, len(rows))
-	for _, row := range rows {
-		if !strings.EqualFold(strings.TrimSpace(row[column]), name) {
-			out = append(out, row)
-		}
-	}
-	return out
-}
-
-func (t *Tables) withGroup(g Group) *Tables {
-	out := *t
-	out.Groups = cloneRows(t.Groups)
-	found := false
-	for _, row := range out.Groups {
-		if strings.EqualFold(strings.TrimSpace(row["Name"]), g.Name) {
-			for column, value := range groupCells(g) {
-				if value == "" {
-					delete(row, column)
-				} else {
-					row[column] = value
-				}
-			}
-			found = true
-		}
-	}
-	if !found {
-		out.Groups = append(out.Groups, groupCells(g))
-	}
-	out.Managers = withoutGroupRows(t.Managers, "Group", g.Name)
-	for _, m := range g.Managers {
-		out.Managers = append(out.Managers, map[string]string{"Group": g.Name, "Email": m})
-	}
-	out.Rules = withoutGroupRows(t.Rules, "Group", g.Name)
-	for _, r := range g.Rules {
-		out.Rules = append(out.Rules, ruleCells(g.Name, r))
-	}
-	out.Additions = withoutGroupRows(t.Additions, "Group", g.Name)
-	for _, a := range g.Additions {
-		out.Additions = append(out.Additions, additionCells(g.Name, a))
-	}
-	out.Excluded = withoutGroupRows(t.Excluded, "Group", g.Name)
-	for _, e := range g.Excluded {
-		out.Excluded = append(out.Excluded, excludedCells(g.Name, e))
-	}
-	out.Aliases = withoutGroupRows(t.Aliases, "Group", g.Name)
-	for _, alias := range g.Aliases {
-		out.Aliases = append(out.Aliases, aliasCells(g.Name, alias))
-	}
-	return &out
-}
-
-func (t *Tables) withoutGroup(name string) *Tables {
-	out := *t
-	out.Groups = withoutGroupRows(t.Groups, "Name", name)
-	out.Managers = withoutGroupRows(t.Managers, "Group", name)
-	out.Rules = withoutGroupRows(t.Rules, "Group", name)
-	out.Additions = withoutGroupRows(t.Additions, "Group", name)
-	out.Excluded = withoutGroupRows(t.Excluded, "Group", name)
-	out.Aliases = withoutGroupRows(t.Aliases, "Group", name)
-	out.Archived = withoutGroupRows(t.Archived, "Group", name)
-	out.Messages = withoutGroupRows(t.Messages, "Group", name)
-	out.Deliveries = withoutGroupRows(t.Deliveries, "Group", name)
-	return &out
-}
-
-func (t *Tables) withArchived(name, email string, archived bool) *Tables {
-	out := *t
-	out.Archived = make([]map[string]string, 0, len(t.Archived)+1)
-	for _, row := range t.Archived {
-		if !strings.EqualFold(strings.TrimSpace(row["Group"]), name) || cleanEmail(row["Email"]) != email {
-			out.Archived = append(out.Archived, row)
-		}
-	}
-	if archived {
-		out.Archived = append(out.Archived, map[string]string{"Group": name, "Email": email})
-	}
-	return &out
-}
-
-func (t *Tables) withMessage(id, group string, cells map[string]string) *Tables {
-	out := *t
-	out.Messages = cloneRows(t.Messages)
-	for _, row := range out.Messages {
-		if row["ID"] != id || !strings.EqualFold(row["Group"], group) {
-			continue
-		}
-		for column, value := range cells {
-			row[column] = value
-		}
-		return &out
-	}
-	row := map[string]string{"ID": id, "Group": group}
-	for column, value := range cells {
-		row[column] = value
-	}
-	out.Messages = append(out.Messages, row)
-	return &out
-}
-
-func (t *Tables) withDeliveries(rows []map[string]string) *Tables {
-	out := *t
-	out.Deliveries = slices.Concat(t.Deliveries, rows)
-	return &out
-}
-
-func (t *Tables) withAdmins(emails []string) *Tables {
-	out := *t
-	out.Admins = make([]map[string]string, 0, len(emails))
-	for _, email := range emails {
-		out.Admins = append(out.Admins, map[string]string{"Email": email})
-	}
-	return &out
 }

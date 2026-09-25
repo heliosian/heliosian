@@ -108,14 +108,11 @@ func sampleSources(t *testing.T) Sources {
 		t.Fatal(err)
 	}
 	celebrateModel := celebrateCache.Model()
-	loopTables, err := loop.ReadTables(dir)
+	loopCache, err := loop.NewCache(dir, dir, func(string) bool { return false }, who.NewQueue())
 	if err != nil {
 		t.Fatal(err)
 	}
-	loopModel, err := loop.BuildModel(loopTables)
-	if err != nil {
-		t.Fatal(err)
-	}
+	loopModel := loopCache.Model()
 	homeCache, err := home.NewCache(dir, dir, anyImages{}, func() []string { return nil }, who.NewQueue())
 	if err != nil {
 		t.Fatal(err)

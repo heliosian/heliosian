@@ -1,6 +1,7 @@
 package loop
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"heliosian/internal/auth"
+	"heliosian/internal/store"
 )
 
 func (h *harness) as(email, method, path, body string) *httptest.ResponseRecorder {
@@ -170,8 +172,8 @@ func TestTheExcludedListGoesToManagersAlone(t *testing.T) {
 }
 
 func (h *harness) changeLogRow(action, name string) map[string]string {
-	for _, row := range h.rows(changeLogTab) {
-		if row["Action"] == action && row["Group"] == name {
+	for _, row := range h.rows(store.ChangeLogTab) {
+		if row["Tab"] == excludedTab && row["Action"] == action && strings.HasPrefix(row["Key"], "Group="+name+";") {
 			return row
 		}
 	}
@@ -207,16 +209,16 @@ func TestTheChangeLogNamesWhoIsReallySignedIn(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("the spoofed unsubscribe answered %d: %s", rec.Code, rec.Body)
 	}
-	h.waitFor("the unsubscribe's log row", func() bool { return h.changeLogRow("unsubscribe", name) != nil })
-	if row := h.changeLogRow("unsubscribe", name); row["Actor"] != member || row["Real Actor"] != admin {
+	h.waitFor("the unsubscribe's log row", func() bool { return h.changeLogRow("insert", name) != nil })
+	if row := h.changeLogRow("insert", name); row["Actor"] != member || row["Real Actor"] != admin {
 		t.Fatalf("the spoofed unsubscribe logged actor %q, real actor %q", row["Actor"], row["Real Actor"])
 	}
 
 	if rec = h.as(member, http.MethodPost, "/api/loop/subscription", `{"name":"`+name+`","subscribed":true}`); rec.Code != http.StatusOK {
 		t.Fatalf("the member's resubscribe answered %d: %s", rec.Code, rec.Body)
 	}
-	h.waitFor("the resubscribe's log row", func() bool { return h.changeLogRow("resubscribe", name) != nil })
-	if row := h.changeLogRow("resubscribe", name); row["Actor"] != member || row["Real Actor"] != member {
+	h.waitFor("the resubscribe's log row", func() bool { return h.changeLogRow("delete", name) != nil })
+	if row := h.changeLogRow("delete", name); row["Actor"] != member || row["Real Actor"] != member {
 		t.Fatalf("the member's own resubscribe logged actor %q, real actor %q", row["Actor"], row["Real Actor"])
 	}
 }
@@ -254,12 +256,13 @@ func TestAGroupOpenToItsMembersReachesThemAlone(t *testing.T) {
 	if member == "" || slices.Contains(h.members(name), outsider) {
 		t.Fatal("no member who does not manage the group, or the outsider is on it")
 	}
-	g.Visibility = VisibilityMembers
-	model, err := BuildModel(h.cache.Tables().withGroup(g))
-	if err != nil {
-		t.Fatal(err)
+	visible := func(to string) {
+		t.Helper()
+		if err := h.cache.Commit(context.Background(), "test", store.Update(groupsTab, store.Row{"Name": name}, store.Row{visibleColumn: to})); err != nil {
+			t.Fatal(err)
+		}
 	}
-	h.cache.set(h.cache.Tables().withGroup(g), model)
+	visible(VisibilityMembers)
 	if !slices.Equal(h.groupNames(member), []string{name}) {
 		t.Fatalf("a member sees %v", h.groupNames(member))
 	}
@@ -275,12 +278,7 @@ func TestAGroupOpenToItsMembersReachesThemAlone(t *testing.T) {
 	if !slices.Equal(h.groupNames(member), []string{name}) {
 		t.Fatalf("an unsubscribed member sees %v", h.groupNames(member))
 	}
-	g.Visibility = VisibilityHidden
-	model, err = BuildModel(h.cache.Tables().withGroup(g))
-	if err != nil {
-		t.Fatal(err)
-	}
-	h.cache.set(h.cache.Tables().withGroup(g), model)
+	visible(VisibilityHidden)
 	if len(h.groupNames(member)) != 0 {
 		t.Fatalf("a member sees a hidden group: %v", h.groupNames(member))
 	}

@@ -805,7 +805,7 @@ func NewCore(cfg Config) *Core {
 	if err != nil {
 		logging.Fatal("load calendar data", "error", err)
 	}
-	loopCache, err := loop.NewCache(cfg.Source, superAdmin, queue)
+	loopCache, err := loop.NewCache(cfg.Source, cfg.Writer, superAdmin, queue)
 	if err != nil {
 		logging.Fatal("load loop data", "error", err)
 	}
@@ -856,7 +856,7 @@ func NewCore(cfg Config) *Core {
 	loopMail := cfg.Loop
 	loopMail.Documents = artifacts.Register(askMux, artifactsCache, cfg.Embedder, cfg.Writer, queue, cfg.ArtifactsMail)
 	loopMux := http.NewServeMux()
-	loop.Register(loopMux, loopCache, cfg.Writer, queue, cfg.Store, loopDir, settings.SuperAdmins, loopMail, cfg.LoopDescriber)
+	loop.Register(loopMux, loopCache, queue, cfg.Store, loopDir, settings.SuperAdmins, loopMail, cfg.LoopDescriber)
 	ask.Register(askMux, askSources(cache, settings, teamCache, celebrateCache, calendarCache, loopCache, homeCache, artifactsCache, cfg.Embedder, smartLists{cache, teamCache, celebrateCache, loopCache, loopDir}, loopDir, linked), cfg.Asker, spend)
 	for _, m := range []*http.ServeMux{mux, teamMux, birthdayMux, celebrateMux, calendarMux, loopMux, askMux} {
 		home.RegisterSwitch(m, homeCache)
