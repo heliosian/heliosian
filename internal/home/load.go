@@ -141,16 +141,6 @@ type Link struct {
 	order       string
 }
 
-func splitList(cell string) []string {
-	out := []string{}
-	for _, part := range strings.Split(cell, ",") {
-		if part = strings.TrimSpace(part); part != "" && !slices.Contains(out, part) {
-			out = append(out, part)
-		}
-	}
-	return out
-}
-
 type Category struct {
 	Title   string        `json:"title"`
 	Emoji   string        `json:"emoji,omitempty"`

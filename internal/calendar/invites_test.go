@@ -74,11 +74,6 @@ func invitesAppWith(t *testing.T) (http.Handler, *Cache, *keptMail, *sampleSourc
 	return mux, cache, kept, sources
 }
 
-func testSources(t *testing.T) func() filter.Sources {
-	t.Helper()
-	return newSampleSources(t).sources
-}
-
 type sampleSources struct {
 	model  *who.Model
 	extra  map[string][]string

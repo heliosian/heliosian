@@ -106,15 +106,6 @@ func (a app) requireAdmin(w http.ResponseWriter, r *http.Request) (string, bool)
 	return email, true
 }
 
-func (a app) requireSuperAdmin(w http.ResponseWriter, r *http.Request) (string, bool) {
-	email, _ := a.who(r)
-	if !a.cache.IsSuperAdmin(email) {
-		http.Error(w, "super admin access required", http.StatusForbidden)
-		return "", false
-	}
-	return email, true
-}
-
 func SourcesOf(directory Directory) Sources {
 	return Sources{Directory: directory.Model(), Tags: directory.Tags, Lists: directory.Lists, Shared: directory.Shared}
 }

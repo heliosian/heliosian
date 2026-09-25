@@ -189,17 +189,6 @@ func (m *Model) Resolve(local string) *Group {
 	return &m.Groups[i]
 }
 
-func SplitList(cell string) []string {
-	out := []string{}
-	for _, item := range strings.Split(cell, ",") {
-		item = strings.TrimSpace(item)
-		if item != "" && !slices.Contains(out, item) {
-			out = append(out, item)
-		}
-	}
-	return out
-}
-
 func JoinList(items []string) string {
 	return strings.Join(items, ", ")
 }

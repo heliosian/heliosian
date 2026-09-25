@@ -73,14 +73,6 @@ func YearContaining(t time.Time, month time.Month, day int) Year {
 	return Year{Label: fmt.Sprintf("%d - %d", start.Year(), start.Year()+1), Start: start, End: start.AddDate(1, 0, 0)}
 }
 
-// YearLabelled is the birthday year with a given label.
-func YearLabelled(label string, month time.Month, day int) Year {
-	m := yearForm.FindStringSubmatch(label)
-	from, _ := strconv.Atoi(m[1])
-	start := dateIn(from, month, day)
-	return Year{Label: label, Start: start, End: start.AddDate(1, 0, 0)}
-}
-
 // Occurrence places a birthday's month and day inside a year.
 func (y Year) Occurrence(month time.Month, day int) time.Time {
 	t := dateIn(y.Start.Year(), month, day)
