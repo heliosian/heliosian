@@ -216,6 +216,18 @@ Local development installs the same records over a text handler on stderr, so th
 
 ## Verifying a deploy
 
+A push to main builds and deploys; the build appears a half minute or so after the push. Waiting for the build of one commit to finish, and its outcome:
+
+    timeout 540 bash -c 'f="substitutions.COMMIT_SHA:<sha>*"; until [ -n "$(gcloud builds list --region us-west1 --project heliosian --filter "$f AND status!=QUEUED AND status!=WORKING" --format "value(id)")" ]; do sleep 20; done; gcloud builds list --region us-west1 --project heliosian --filter "$f"'
+
+The revisions, newest first, with which one takes traffic:
+
+    gcloud run revisions list --service heliosian --region us-west1 --project heliosian --limit 3
+
+What one revision logged at error or worse - the new one, or the old one since the push, with `AND timestamp>="<push time>"`:
+
+    gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.revision_name="<revision>" AND severity>=ERROR' --project heliosian --limit 40 --format "value(timestamp,severity,jsonPayload.message,jsonPayload.error)"
+
 The startup log (Cloud Run → Logs, or `gcloud logging read`) shows the full boot sequence: `loaded config`, each app's `loaded … model`, the blob store's `prefetching` and `prefetched` lines around each (the directory's `loaded` line counts the addresses the `Geocode` tab has no row for as `unlocated`, and a `geocoded family addresses` line follows whenever there were any, off the startup path), then `listening`; the boot time is the span from the instance's first line to that one. The five-minute refreshes log the same `loaded` and `blob store` lines without a `listening`, so a boot is the run that ends in one. When the most recent boot happened:
 
     gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="heliosian" AND jsonPayload.message="listening"' --project heliosian --freshness 7d --limit 1 --format "value(timestamp)"

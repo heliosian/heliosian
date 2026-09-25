@@ -26,7 +26,7 @@ Every request goes through one retry of a quota refusal (`call` in `internal/dat
 
 ## Store
 
-`internal/store` is the store. An app declares its spreadsheet in a `store.Spec`: each tab's name, the columns it must have, the columns that key a row (for the Change Log), and its cascade hook if it has one; the function that builds the model; and what to log when a model loads. `store.New` reads the spreadsheet, checks every tab's columns and the Change Log's, and builds the model, or refuses to start. A tab may belong to another spreadsheet the app only reads - Who?'s consent-form responses - and is then read with the rest and never written: a commit naming it is refused, and it has no Change Log of its own.
+`internal/store` is the store. An app declares its spreadsheet in a `store.Spec`: each tab's name, the columns it must have, the columns that key a row (for the Change Log), and its cascade hook if it has one; the function that builds the model; and what to log when a model loads. `store.New` reads the spreadsheet, checks every tab's columns and the Change Log's, and builds the model, or refuses to start. No app has a degraded mode for a sheet that will not load, and nothing checks for a missing model: a new revision that cannot load never takes traffic, the running one keeps serving, and a refresh that fails keeps the model it has. A tab may belong to another spreadsheet the app only reads - Who?'s consent-form responses - and is then read with the rest and never written: a commit naming it is refused, and it has no Change Log of its own.
 
 A handler states a change as operations on rows - `store.Insert`, `store.Set` (every matching row, or a new one when none matches), `store.Update` (every matching row, and nothing when none does), `store.Delete` - and hands them to `Commit(ctx, actor, ops...)`. A commit has two halves that never wait on each other. Under the store's own lock, it:
 
@@ -45,6 +45,8 @@ A store reads its sheet at startup, every five minutes after, and once more thir
 ## Order
 
 A row's place in a list the app lets people arrange is its `Order` cell, never its place in the tab: people sort and rearrange the sheet freely. An order is a sort key - lowercase letters and digits, compared as text, never ending in 0 - so there is always a key between any two, one character longer when they sit side by side. Moving a row writes that row's key alone, an ordinary `set` in the Change Log with the key it had. `store.Order` gives keys for rows in the order wanted, keeping every key it can (the longest run already in order) and placing the rest between their neighbours. A blank key sorts after every key, blank rows in the tab's own order, so a row added by hand lands last; it gets a key the first time a move needs it. Anything else in the cell refuses the load.
+
+A list nobody arranges sorts by a real field of its rows instead - a celebration by its start, a ticket by when it was added, a Loop message by when it was received - blanks last. A list an editor saves whole, like a group's filter rules, is replaced whole in the editor's order whenever it changes.
 
 ## Hooks
 
