@@ -66,7 +66,7 @@ var (
 	DeliveryColumns  = []string{"Timestamp", "Group", "Email", "Event", "Message", "Detail"}
 	AdminColumns     = []string{"Email"}
 	ArchivedColumns  = []string{"Group", "Email"}
-	ChangeLogColumns = []string{"Timestamp", "Actor", "Action", "Group", "Detail"}
+	ChangeLogColumns = []string{"Timestamp", "Actor", "Action", "Group", "Detail", "Real Actor"}
 
 	Roles     = filter.Roles
 	Relations = filter.Relations

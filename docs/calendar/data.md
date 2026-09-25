@@ -22,7 +22,7 @@ The calendar's data lives in one Google Sheet, `Calendar`, in the community shar
 - `Day Overrides` — Date, Classrooms, Day Type, Note. Hand corrections to the day plan; blank Classrooms means every classroom.
 - `Admins` — Email.
 - `Feeds` — Token, Email, Name, Classrooms, Tags, Created, Emoji. The saved calendars people have kept from the calendar page or the Feeds page (`calendar.md`), one row each, each also a personal feed address: the token is the secret in the address, Email whose it is, Classrooms and Tags the filter, blank meaning every one, Emoji the mark the owner gave it for the rail (blank for the calendar icon). Written by the app; deleting a row is how an admin revokes a feed by hand.
-- `Change Log` — Timestamp, Actor, Action, Tab, Key, Column, From, To. Appended by the import with every cell it changes, so an event that moved or vanished can be traced, and shaped so a future notifier can read it; the app appends a row for every feed made or removed.
+- `Change Log` — Timestamp, Actor, Action, Tab, Key, Column, From, To, Real Actor. Real Actor is who was signed in when Actor is who the change was made as, the two differing under Spoof Mode (`docs/toolbar.md`), and blank for the import. Appended by the import with every cell it changes, so an event that moved or vanished can be traced, and shaped so a future notifier can read it; the app appends a row for every feed made or removed.
 
 ## Three layers, then two
 

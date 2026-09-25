@@ -82,7 +82,7 @@ var (
 	// without it can only fill up by count.
 	CompleteColumn   = "Volunteers Complete"
 	AdminColumns     = []string{"Email"}
-	ChangeLogColumns = []string{"Timestamp", "Actor", "Action", "Kind", "Year", "Activity", "Title", "Email", "Details"}
+	ChangeLogColumns = []string{"Timestamp", "Actor", "Action", "Kind", "Year", "Activity", "Title", "Email", "Details", "Real Actor"}
 )
 
 var yearForm = regexp.MustCompile(`^(\d{4}) - (\d{4})$`)

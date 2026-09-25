@@ -443,10 +443,11 @@ func (a app) commit(ctx context.Context, w http.ResponseWriter, tables *Tables, 
 	return true
 }
 
-func (a app) logChange(actor, action, kind string, cells map[string]string) error {
+func (a app) logChange(r *http.Request, actor, action, kind string, cells map[string]string) error {
 	return a.writer.Append(appName, changeLogTab, []string{
 		time.Now().Format(time.RFC3339), actor, action, kind,
 		cells["Title"], cells["Description"], cells["URL"], cells["Image"], cells["Category"], cells["Visible"], cells["Style"],
+		auth.RealEmail(r),
 	})
 }
 
@@ -610,7 +611,7 @@ func (a app) saveLink(w http.ResponseWriter, r *http.Request) {
 		if err := a.writeAudience(thingLink+title, rules); err != nil {
 			return err
 		}
-		return a.logChange(actor, action, "link", cells)
+		return a.logChange(r, actor, action, "link", cells)
 	}) {
 		return
 	}
@@ -637,7 +638,7 @@ func (a app) deleteLink(w http.ResponseWriter, r *http.Request) {
 		if err := a.writeAudience(thingLink+body.Title, nil); err != nil {
 			return err
 		}
-		return a.logChange(actor, "delete", "link", map[string]string{"Title": body.Title})
+		return a.logChange(r, actor, "delete", "link", map[string]string{"Title": body.Title})
 	}) {
 		return
 	}
@@ -766,7 +767,7 @@ func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
-		return a.logChange(actor, action, "category", cells)
+		return a.logChange(r, actor, action, "category", cells)
 	}) {
 		return
 	}
@@ -822,7 +823,7 @@ func (a app) reorderCategories(w http.ResponseWriter, r *http.Request) {
 		if err := a.writer.Reorder(appName, categoriesTab, "Title", body.Titles); err != nil {
 			return err
 		}
-		return a.logChange(actor, "reorder", "category", map[string]string{"Title": strings.Join(body.Titles, ", ")})
+		return a.logChange(r, actor, "reorder", "category", map[string]string{"Title": strings.Join(body.Titles, ", ")})
 	}) {
 		return
 	}
@@ -871,7 +872,7 @@ func (a app) moveLink(w http.ResponseWriter, r *http.Request) {
 		if err := a.writer.Reorder(appName, linksTab, "Title", rowTitles(rows)); err != nil {
 			return err
 		}
-		return a.logChange(actor, "reorder", "link", map[string]string{"Title": body.Title, "Category": rows[to]["Category"]})
+		return a.logChange(r, actor, "reorder", "link", map[string]string{"Title": body.Title, "Category": rows[to]["Category"]})
 	}) {
 		return
 	}
@@ -908,7 +909,7 @@ func (a app) deleteCategory(w http.ResponseWriter, r *http.Request) {
 		if err := a.writeAudience(thingCategory+body.Title, nil); err != nil {
 			return err
 		}
-		return a.logChange(actor, "delete", "category", map[string]string{"Title": body.Title})
+		return a.logChange(r, actor, "delete", "category", map[string]string{"Title": body.Title})
 	}) {
 		return
 	}

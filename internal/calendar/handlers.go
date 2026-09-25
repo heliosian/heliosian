@@ -219,9 +219,10 @@ func (a app) commit(ctx context.Context, w http.ResponseWriter, tables *Tables, 
 	return true
 }
 
-func (a app) logChange(actor, action, tab, key, column, from, to string) error {
+func (a app) logChange(r *http.Request, actor, action, tab, key, column, from, to string) error {
 	return a.writer.AppendCells(appName, ChangeLogTab, map[string]string{
 		"Timestamp": now().Format(DateTimeFormat), "Actor": actor, "Action": action, "Tab": tab, "Key": key, "Column": column, "From": from, "To": to,
+		"Real Actor": auth.RealEmail(r),
 	})
 }
 
@@ -262,7 +263,7 @@ func (a app) addFeed(w http.ResponseWriter, r *http.Request) {
 		if err := a.writer.AppendCells(appName, FeedsTab, cells); err != nil {
 			return err
 		}
-		return a.logChange(actor, "added", FeedsTab, token, "Name", "", cells["Name"])
+		return a.logChange(r, actor, "added", FeedsTab, token, "Name", "", cells["Name"])
 	}) {
 		return
 	}
@@ -319,7 +320,7 @@ func (a app) editFeed(w http.ResponseWriter, r *http.Request) {
 		}
 		for _, col := range []string{"Name", "Emoji", "Classrooms", "Tags"} {
 			if was[col] != cells[col] {
-				if err := a.logChange(actor, "changed", FeedsTab, token, col, was[col], cells[col]); err != nil {
+				if err := a.logChange(r, actor, "changed", FeedsTab, token, col, was[col], cells[col]); err != nil {
 					return err
 				}
 			}
@@ -505,7 +506,7 @@ func (a app) removeFeed(w http.ResponseWriter, r *http.Request) {
 		if err := a.writer.Delete(appName, FeedsTab, map[string]string{"Token": token}); err != nil {
 			return err
 		}
-		return a.logChange(actor, "removed", FeedsTab, token, "Name", name, "")
+		return a.logChange(r, actor, "removed", FeedsTab, token, "Name", name, "")
 	}) {
 		return
 	}
@@ -565,7 +566,7 @@ func (a app) setKeywords(w http.ResponseWriter, r *http.Request) {
 		if err := a.writer.Set(appName, OverridesTab, map[string]string{"Event ID": e.ID}, map[string]string{"Keywords": cell}); err != nil {
 			return err
 		}
-		return a.logChange(actor, "changed", OverridesTab, e.ID, "Keywords", was, cell)
+		return a.logChange(r, actor, "changed", OverridesTab, e.ID, "Keywords", was, cell)
 	}) {
 		return
 	}
@@ -692,7 +693,7 @@ func (a app) addEvents(w http.ResponseWriter, r *http.Request) {
 			if err := a.writer.AppendCells(appName, EventsTab, row); err != nil {
 				return err
 			}
-			if err := a.logChange(actor, "added", EventsTab, row["Event ID"], "Title", "", row["Title"]); err != nil {
+			if err := a.logChange(r, actor, "added", EventsTab, row["Event ID"], "Title", "", row["Title"]); err != nil {
 				return err
 			}
 		}
@@ -864,7 +865,7 @@ func (a app) editEvent(w http.ResponseWriter, r *http.Request) {
 		}
 		for _, col := range []string{"Title", "Start", "End", "Location", "Description", "Tags", "Keywords", "Source", "Image", "Sharing", "Status"} {
 			if _, set := cells[col]; set && was[col] != cells[col] {
-				if err := a.logChange(actor, "changed", EventsTab, e.ID, col, was[col], cells[col]); err != nil {
+				if err := a.logChange(r, actor, "changed", EventsTab, e.ID, col, was[col], cells[col]); err != nil {
 					return err
 				}
 			}
@@ -916,7 +917,7 @@ func (a app) setStatus(w http.ResponseWriter, r *http.Request, status, did strin
 		if err := a.writer.Set(appName, EventsTab, map[string]string{"Event ID": e.ID}, map[string]string{"Status": status}); err != nil {
 			return err
 		}
-		return a.logChange(actor, did, EventsTab, e.ID, "Status", e.Status, status)
+		return a.logChange(r, actor, did, EventsTab, e.ID, "Status", e.Status, status)
 	}) {
 		return
 	}
@@ -952,7 +953,7 @@ func (a app) moveEvent(w http.ResponseWriter, r *http.Request) {
 		if err := a.writer.Upsert(appName, EventsTab, "Event ID", e.ID, map[string]string{"Start": start, "End": end}); err != nil {
 			return err
 		}
-		return a.logChange(actor, "moved", EventsTab, e.ID, "Start", was, start+" – "+end)
+		return a.logChange(r, actor, "moved", EventsTab, e.ID, "Start", was, start+" – "+end)
 	}) {
 		return
 	}
@@ -979,7 +980,7 @@ func (a app) saveSetting(w http.ResponseWriter, r *http.Request) {
 		if err := a.writer.Upsert(appName, SettingsTab, "Email", email, cells); err != nil {
 			return err
 		}
-		return a.logChange(email, "saved", SettingsTab, email, "Categories", "", cells["Categories"])
+		return a.logChange(r, email, "saved", SettingsTab, email, "Categories", "", cells["Categories"])
 	}) {
 		return
 	}
@@ -1001,7 +1002,7 @@ func (a app) forgetSetting(w http.ResponseWriter, r *http.Request) {
 		if err := a.writer.Upsert(appName, SettingsTab, "Email", email, cells); err != nil {
 			return err
 		}
-		return a.logChange(email, "forgot", SettingsTab, email, "Categories", "", "")
+		return a.logChange(r, email, "forgot", SettingsTab, email, "Categories", "", "")
 	}) {
 		return
 	}
@@ -1168,7 +1169,7 @@ func (a app) setTags(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		for _, l := range logs {
-			if err := a.logChange(actor, l[0], TagsTab, l[1], l[2], l[3], l[4]); err != nil {
+			if err := a.logChange(r, actor, l[0], TagsTab, l[1], l[2], l[3], l[4]); err != nil {
 				return err
 			}
 		}

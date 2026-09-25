@@ -11,7 +11,7 @@ Home's data lives in one Google Sheet, `Apps`, in the community shared drive, re
 - `Admins` — Email. Who may edit, beyond the platform super admins (`docs/config.md`).
 - `Visibility` — App, Visibility, Emails, Tagline, Name, Order. One row per community app in the registry (`internal/home.Apps`): whether everyone sees it or only its list - the people in its Emails cell and whoever its rules on `Audience` pick out - in the app switch of every app's toolbar, and on the front page's apps section - the name it goes by there and the line under it, and its place in the order. The server adds the row for an app that has none.
 - `Audience` — Thing, Kind, Roles, Search, Classrooms, Grades, Tags, Family. The rules that keep an app, a category or a link to some people (Rules, below): Thing says which - `app:<key>`, `category:<title>`, `link:<title>` - and the rest are one filter rule, the columns Helios Loop's `Rules` tab has after its Group. A thing with no rows has none. `cmd/createtabs` makes the tab; the load needs it to exist.
-- `Change Log` — Timestamp, Actor, Action, Kind, and the link or category fields. Appended on every change; never read back.
+- `Change Log` — Timestamp, Actor, Action, Kind, the link or category fields, and Real Actor. Appended on every change; never read back. Real Actor is who was signed in when Actor is who the change was made as, the two differing under Spoof Mode (`docs/toolbar.md`).
 
 ## Rules
 

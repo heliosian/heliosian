@@ -90,7 +90,7 @@ var (
 	SettingColumns     = []string{"Key", "Value"}
 	AdminColumns       = []string{"Email"}
 	RedirectColumns    = []string{"Type", "Old", "New", "Date"}
-	ChangeLogColumns   = []string{"Timestamp", "Actor", "Action", "Kind", "Celebration", "Party", "Title", "Email", "Details"}
+	ChangeLogColumns   = []string{"Timestamp", "Actor", "Action", "Kind", "Celebration", "Party", "Title", "Email", "Details", "Real Actor"}
 	// InvoicingColumns is the accounting ledger's layout, as the bookkeeper
 	// asked for it: one row per sold ticket, Action always ADD, Invoice and
 	// Invoice To left for them to fill in. The app appends and reads it

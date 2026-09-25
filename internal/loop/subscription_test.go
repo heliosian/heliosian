@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"heliosian/internal/auth"
 )
@@ -165,6 +166,58 @@ func TestTheExcludedListGoesToManagersAlone(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("the manager sees %+v", model.Groups)
+	}
+}
+
+func (h *harness) changeLogRow(action, name string) map[string]string {
+	for _, row := range h.rows(changeLogTab) {
+		if row["Action"] == action && row["Group"] == name {
+			return row
+		}
+	}
+	return nil
+}
+
+func TestTheChangeLogNamesWhoIsReallySignedIn(t *testing.T) {
+	h := newHarness(t)
+	const name = "middle-school-parents"
+	const admin = "admin@heliosschool.org"
+	g := h.cache.Model().Group(name)
+	member := ""
+	for _, m := range h.members(name) {
+		if !g.Manages(m) {
+			member = m
+			break
+		}
+	}
+	if member == "" {
+		t.Fatal("every member manages the group")
+	}
+	key := []byte("key")
+	a := auth.New("heliosian.com", "client", key, "", func(string) bool { return true }, nil)
+	a.Spoof = &auth.Spoof{
+		Allowed: func(email string) bool { return email == admin },
+		Person:  func(email string) (auth.Person, bool) { return auth.Person{Email: email}, true },
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/loop/subscription", strings.NewReader(`{"name":"`+name+`","subscribed":false}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "spoof", Value: auth.SpoofToken(key, admin, member, time.Now().Add(time.Hour))})
+	rec := httptest.NewRecorder()
+	a.Fixed(admin, h.mux).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("the spoofed unsubscribe answered %d: %s", rec.Code, rec.Body)
+	}
+	h.waitFor("the unsubscribe's log row", func() bool { return h.changeLogRow("unsubscribe", name) != nil })
+	if row := h.changeLogRow("unsubscribe", name); row["Actor"] != member || row["Real Actor"] != admin {
+		t.Fatalf("the spoofed unsubscribe logged actor %q, real actor %q", row["Actor"], row["Real Actor"])
+	}
+
+	if rec = h.as(member, http.MethodPost, "/api/loop/subscription", `{"name":"`+name+`","subscribed":true}`); rec.Code != http.StatusOK {
+		t.Fatalf("the member's resubscribe answered %d: %s", rec.Code, rec.Body)
+	}
+	h.waitFor("the resubscribe's log row", func() bool { return h.changeLogRow("resubscribe", name) != nil })
+	if row := h.changeLogRow("resubscribe", name); row["Actor"] != member || row["Real Actor"] != member {
+		t.Fatalf("the member's own resubscribe logged actor %q, real actor %q", row["Actor"], row["Real Actor"])
 	}
 }
 

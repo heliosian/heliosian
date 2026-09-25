@@ -228,10 +228,11 @@ func (a app) commit(ctx context.Context, w http.ResponseWriter, tables *Tables, 
 	return true
 }
 
-func (a app) logChange(actor, action, kind string, cells map[string]string) error {
+func (a app) logChange(r *http.Request, actor, action, kind string, cells map[string]string) error {
 	return a.writer.AppendCells(appName, changeLogTab, map[string]string{
 		"Timestamp": time.Now().Format(time.RFC3339), "Actor": actor, "Action": action, "Kind": kind,
 		"Year": cells["Year"], "Activity": cells["Activity"], "Title": cells["Title"], "Email": cells["Email"], "Details": cells["Details"],
+		"Real Actor": auth.RealEmail(r),
 	})
 }
 
@@ -408,7 +409,7 @@ func (a app) saveVolunteer(w http.ResponseWriter, r *http.Request) {
 		if err := a.writer.Set(appName, volunteersTab, match, cells); err != nil {
 			return err
 		}
-		return a.logChange(actor, action, "volunteer", map[string]string{
+		return a.logChange(r, actor, action, "volunteer", map[string]string{
 			"Year": act.Year, "Activity": act.Title, "Email": email, "Details": details,
 		})
 	}) {
@@ -455,7 +456,7 @@ func (a app) removeVolunteer(w http.ResponseWriter, r *http.Request) {
 		if err := a.writer.Delete(appName, volunteersTab, match); err != nil {
 			return err
 		}
-		return a.logChange(actor, "remove", "volunteer", map[string]string{
+		return a.logChange(r, actor, "remove", "volunteer", map[string]string{
 			"Year": act.Year, "Activity": act.Title, "Email": email,
 		})
 	}) {
@@ -813,11 +814,11 @@ func (a app) saveActivity(w http.ResponseWriter, r *http.Request) {
 			if err := a.writer.Set(appName, activitiesTab, map[string]string{"Event ID": displaced.ID}, map[string]string{"Pretty ID": renamed}); err != nil {
 				return err
 			}
-			if err := a.logChange(actor, "rename", "activity", map[string]string{"Year": displaced.Year, "Activity": displaced.Title, "Details": "pretty id " + pretty + " -> " + renamed + " " + displaced.ID}); err != nil {
+			if err := a.logChange(r, actor, "rename", "activity", map[string]string{"Year": displaced.Year, "Activity": displaced.Title, "Details": "pretty id " + pretty + " -> " + renamed + " " + displaced.ID}); err != nil {
 				return err
 			}
 		}
-		return a.logChange(actor, action, "activity", map[string]string{"Year": year, "Activity": title, "Details": status + " " + id})
+		return a.logChange(r, actor, action, "activity", map[string]string{"Year": year, "Activity": title, "Details": status + " " + id})
 	}) {
 		return
 	}
@@ -863,7 +864,7 @@ func (a app) deleteActivity(w http.ResponseWriter, r *http.Request) {
 		if err := a.writer.Delete(appName, activitiesTab, match); err != nil {
 			return err
 		}
-		return a.logChange(actor, "delete", "activity", map[string]string{"Year": act.Year, "Activity": act.Title})
+		return a.logChange(r, actor, "delete", "activity", map[string]string{"Year": act.Year, "Activity": act.Title})
 	}) {
 		return
 	}
@@ -916,7 +917,7 @@ func (a app) saveLink(w http.ResponseWriter, r *http.Request) {
 		} else if err := a.writer.Set(appName, linksTab, match, cells); err != nil {
 			return err
 		}
-		return a.logChange(actor, action, "link", map[string]string{"Year": act.Year, "Activity": act.Title, "Title": title, "Details": cells["URL"]})
+		return a.logChange(r, actor, action, "link", map[string]string{"Year": act.Year, "Activity": act.Title, "Title": title, "Details": cells["URL"]})
 	}) {
 		return
 	}
@@ -982,7 +983,7 @@ func (a app) orderChildren(w http.ResponseWriter, r *http.Request) {
 		if err := a.writer.SetMany(appName, activitiesTab, "Event ID", cells); err != nil {
 			return err
 		}
-		return a.logChange(actor, "reorder", "activity", map[string]string{"Year": parent.Year, "Activity": parent.Title, "Title": parent.Title, "Details": fmt.Sprintf("%d things reordered", len(changes))})
+		return a.logChange(r, actor, "reorder", "activity", map[string]string{"Year": parent.Year, "Activity": parent.Title, "Title": parent.Title, "Details": fmt.Sprintf("%d things reordered", len(changes))})
 	}) {
 		return
 	}
@@ -1024,7 +1025,7 @@ func (a app) deleteLink(w http.ResponseWriter, r *http.Request) {
 		if err := a.writer.Delete(appName, linksTab, match); err != nil {
 			return err
 		}
-		return a.logChange(actor, "delete", "link", map[string]string{"Year": act.Year, "Activity": act.Title, "Title": body.Title})
+		return a.logChange(r, actor, "delete", "link", map[string]string{"Year": act.Year, "Activity": act.Title, "Title": body.Title})
 	}) {
 		return
 	}
@@ -1132,7 +1133,7 @@ func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 		} else if err := a.writer.Set(appName, categoriesTab, match, cells); err != nil {
 			return err
 		}
-		return a.logChange(actor, action, "category", map[string]string{"Title": title, "Details": id + " " + eventID})
+		return a.logChange(r, actor, action, "category", map[string]string{"Title": title, "Details": id + " " + eventID})
 	}) {
 		return
 	}
@@ -1196,7 +1197,7 @@ func (a app) reorderCategories(w http.ResponseWriter, r *http.Request) {
 		if err := a.writer.Reorder(appName, categoriesTab, "Category ID", keys); err != nil {
 			return err
 		}
-		return a.logChange(actor, "reorder", "category", map[string]string{"Details": eventID + ": " + strings.Join(body.IDs, ", ")})
+		return a.logChange(r, actor, "reorder", "category", map[string]string{"Details": eventID + ": " + strings.Join(body.IDs, ", ")})
 	}) {
 		return
 	}
@@ -1234,7 +1235,7 @@ func (a app) deleteCategory(w http.ResponseWriter, r *http.Request) {
 		if err := a.writer.Delete(appName, categoriesTab, match); err != nil {
 			return err
 		}
-		return a.logChange(actor, "delete", "category", map[string]string{"Title": cat.Title, "Details": cat.ID})
+		return a.logChange(r, actor, "delete", "category", map[string]string{"Title": cat.Title, "Details": cat.ID})
 	}) {
 		return
 	}
@@ -1362,7 +1363,7 @@ func (a app) copyActivity(w http.ResponseWriter, r *http.Request) {
 				return err
 			}
 		}
-		return a.logChange(actor, "copy", "activity", map[string]string{"Year": year, "Activity": act.Title, "Details": "from " + act.Year + " as " + fresh[act.ID]})
+		return a.logChange(r, actor, "copy", "activity", map[string]string{"Year": year, "Activity": act.Title, "Details": "from " + act.Year + " as " + fresh[act.ID]})
 	}) {
 		return
 	}
@@ -1393,7 +1394,7 @@ func (a app) saveSettings(w http.ResponseWriter, r *http.Request) {
 				return err
 			}
 		}
-		return a.logChange(actor, "edit", "settings", nil)
+		return a.logChange(r, actor, "edit", "settings", nil)
 	}) {
 		return
 	}
@@ -1625,7 +1626,7 @@ func (a app) saveRedirect(w http.ResponseWriter, r *http.Request) {
 		} else if err := a.writer.Set(appName, redirectsTab, match, cells); err != nil {
 			return err
 		}
-		return a.logChange(actor, action, "redirect", map[string]string{"Title": old, "Details": to})
+		return a.logChange(r, actor, action, "redirect", map[string]string{"Title": old, "Details": to})
 	}) {
 		return
 	}
@@ -1654,7 +1655,7 @@ func (a app) deleteRedirect(w http.ResponseWriter, r *http.Request) {
 		if err := a.writer.Delete(appName, redirectsTab, match); err != nil {
 			return err
 		}
-		return a.logChange(actor, "delete", "redirect", map[string]string{"Title": redirectPath(row["Old"])})
+		return a.logChange(r, actor, "delete", "redirect", map[string]string{"Title": redirectPath(row["Old"])})
 	}) {
 		return
 	}

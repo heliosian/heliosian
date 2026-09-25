@@ -73,7 +73,7 @@ func (a app) deleteInvitation(w http.ResponseWriter, r *http.Request) {
 			if err := a.writer.Delete(appName, EventsTab, map[string]string{"Event ID": e.ID}); err != nil {
 				return err
 			}
-			return a.logChange(actor, "deleted", EventsTab, e.ID, "Status", e.Status, "")
+			return a.logChange(r, actor, "deleted", EventsTab, e.ID, "Status", e.Status, "")
 		}
 		return nil
 	}) {
@@ -135,7 +135,7 @@ func (a app) cancelEvent(w http.ResponseWriter, r *http.Request) {
 		if err := a.writer.Set(appName, EventsTab, map[string]string{"Event ID": e.ID}, map[string]string{"Status": StatusCancelled}); err != nil {
 			return err
 		}
-		return a.logChange(actor, "cancelled", EventsTab, e.ID, "Status", e.Status, StatusCancelled)
+		return a.logChange(r, actor, "cancelled", EventsTab, e.ID, "Status", e.Status, StatusCancelled)
 	}) {
 		return
 	}

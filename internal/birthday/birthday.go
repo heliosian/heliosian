@@ -103,7 +103,7 @@ var (
 	AdminColumns          = []string{"Email"}
 	TeamColumns           = []string{"Email", "Role"}
 	ReminderColumns       = []string{"Email", "Year", "Kind", "Sent On", "Sent To"}
-	ChangeLogColumns      = []string{"Timestamp", "Actor", "Action", "Kind", "Email", "Year", "Details"}
+	ChangeLogColumns      = []string{"Timestamp", "Actor", "Action", "Kind", "Email", "Year", "Details", "Real Actor"}
 )
 
 var emailForm = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)

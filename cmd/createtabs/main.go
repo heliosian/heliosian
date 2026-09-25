@@ -116,6 +116,7 @@ var layouts = map[string][]tab{
 			"Photo Updated", "Facts Updated", "Family Photo Updated",
 			"Veracross Photo", "Primary Photo", "Pronunciation",
 			"Family Photo", "Family Pronunciation",
+			"Real Actor",
 		}},
 		{"Website Staff Import", []string{
 			"constituent_id", "full_name", "title", "departments", "email", "bio", "photo",

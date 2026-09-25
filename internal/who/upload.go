@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"heliosian/internal/auth"
 	"heliosian/internal/blob"
 	"heliosian/internal/data"
 	"heliosian/internal/logging"
@@ -35,15 +36,18 @@ var changeLogHeader = []string{
 	"Photo Updated", "Facts Updated", "Family Photo Updated",
 	"Veracross Photo", "Primary Photo", "Pronunciation",
 	"Family Photo", "Family Pronunciation",
+	"Real Actor",
 }
 
-func changeLogRow(actor, email string, previous map[string]string) []string {
+func changeLogRow(r *http.Request, actor, email string, previous map[string]string) []string {
 	row := make([]string, len(changeLogHeader))
 	row[0] = time.Now().UTC().Format(time.RFC3339)
 	row[1] = actor
 	for i, column := range changeLogHeader {
 		if column == "Email" {
 			row[i] = email
+		} else if column == "Real Actor" {
+			row[i] = auth.RealEmail(r)
 		} else if value, ok := previous[column]; ok {
 			if value == "" {
 				value = "-"
@@ -111,7 +115,7 @@ func (u uploader) applyFamily(w http.ResponseWriter, r *http.Request, actor, key
 // applyFamilyWrite is applyOverrideWrite for the Families tab, keyed by the family
 // key (the alphabetically first parent email, which is the row's Email cell).
 func applyFamilyWrite(cache *Cache, writer data.Writer, queue *Queue, w http.ResponseWriter, r *http.Request, actor, key, action string, cells, previous map[string]string) bool {
-	logRow := changeLogRow(actor, key, previous)
+	logRow := changeLogRow(r, actor, key, previous)
 	applied := make(chan error, 1)
 	queue.Add(func() {
 		err := cache.applyFamily(key, cells)
@@ -140,7 +144,7 @@ func applyFamilyWrite(cache *Cache, writer data.Writer, queue *Queue, w http.Res
 // field edits, keyed on the narrower data.Writer) so the write path - and its
 // reject-before-persist ordering - can't drift between the two.
 func applyOverrideWrite(cache *Cache, writer data.Writer, queue *Queue, w http.ResponseWriter, r *http.Request, actor, email, action string, cells, previous map[string]string) bool {
-	logRow := changeLogRow(actor, email, previous)
+	logRow := changeLogRow(r, actor, email, previous)
 	applied := make(chan error, 1)
 	queue.Add(func() {
 		// If the in-memory rebuild rejects this change, don't write it to the real
@@ -181,7 +185,7 @@ func applyOverrideWrite(cache *Cache, writer data.Writer, queue *Queue, w http.R
 // the tables snapshot from just before the rename (still keyed under oldEmail) means
 // each Upsert only ever fires when a real row is there to rename.
 func applyEmailRenameWrite(cache *Cache, writer data.Writer, queue *Queue, w http.ResponseWriter, r *http.Request, actor, oldEmail, newEmail string, cells map[string]string) bool {
-	logRow := changeLogRow(actor, newEmail, map[string]string{"Email": oldEmail})
+	logRow := changeLogRow(r, actor, newEmail, map[string]string{"Email": oldEmail})
 	applied := make(chan error, 1)
 	queue.Add(func() {
 		before := cache.currentTables()
@@ -243,7 +247,7 @@ func applyEmailRenameWrite(cache *Cache, writer data.Writer, queue *Queue, w htt
 // zero rows and return no error - so this doesn't need the existence checks that
 // rename does.
 func applyDeletePersonWrite(cache *Cache, writer data.Writer, queue *Queue, w http.ResponseWriter, r *http.Request, actor, email string, previous map[string]string) bool {
-	logRow := changeLogRow(actor, email, previous)
+	logRow := changeLogRow(r, actor, email, previous)
 	applied := make(chan error, 1)
 	queue.Add(func() {
 		err := cache.applyDeletePerson(email)
@@ -594,7 +598,7 @@ func (u uploader) setPhotos(w http.ResponseWriter, r *http.Request, me, key stri
 		serverError(w, r, fmt.Errorf("rewrite photo list for %s: %w", key, err))
 		return false
 	}
-	logRow := changeLogRow(me, key, previous)
+	logRow := changeLogRow(r, me, key, previous)
 	applied := make(chan error, 1)
 	u.queue.Add(func() {
 		// If the in-memory rebuild rejects this change, don't write it to the real

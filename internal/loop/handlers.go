@@ -469,8 +469,8 @@ func (a app) commit(r *http.Request, w http.ResponseWriter, tables *Tables, flus
 	return true
 }
 
-func (a app) logChange(actor, action, group, detail string) error {
-	return a.writer.Append(appName, changeLogTab, []string{time.Now().Format(time.RFC3339), actor, action, group, detail})
+func (a app) logChange(real, actor, action, group, detail string) error {
+	return a.writer.Append(appName, changeLogTab, []string{time.Now().Format(time.RFC3339), actor, action, group, detail, real})
 }
 
 func rowOf(columns []string, cells map[string]string) []string {
@@ -585,7 +585,7 @@ func (a app) saveGroup(w http.ResponseWriter, r *http.Request) {
 		if err := a.writer.AppendAll(appName, aliasesTab, aliases); err != nil {
 			return err
 		}
-		return a.logChange(email, action, g.Name, fmt.Sprintf("%s; %d aliases; %d managers; %d rules; %d added by hand; %d excluded; prefix %v; visibility %s; posting %s; replying %s", g.Title, len(g.Aliases), len(g.Managers), len(g.Rules), len(g.Additions), len(g.Excluded), g.Prefix, g.Visibility, g.Posting, g.Replying))
+		return a.logChange(auth.RealEmail(r), email, action, g.Name, fmt.Sprintf("%s; %d aliases; %d managers; %d rules; %d added by hand; %d excluded; prefix %v; visibility %s; posting %s; replying %s", g.Title, len(g.Aliases), len(g.Managers), len(g.Rules), len(g.Additions), len(g.Excluded), g.Prefix, g.Visibility, g.Posting, g.Replying))
 	}) {
 		return
 	}
@@ -627,7 +627,7 @@ func (a app) deleteGroup(w http.ResponseWriter, r *http.Request) {
 		if err := a.mail.Documents.Remove(name); err != nil {
 			return err
 		}
-		return a.logChange(email, "delete", name, current.Title)
+		return a.logChange(auth.RealEmail(r), email, "delete", name, current.Title)
 	}) {
 		return
 	}
@@ -655,9 +655,9 @@ func (a app) subscription(w http.ResponseWriter, r *http.Request) {
 	}
 	var err error
 	if body.Subscribed {
-		err = a.resubscribeAddress(r.Context(), g, email)
+		err = a.resubscribeAddress(r.Context(), auth.RealEmail(r), g, email)
 	} else {
-		err = a.unsubscribeAddress(r.Context(), g, email, loopPage)
+		err = a.unsubscribeAddress(r.Context(), auth.RealEmail(r), g, email, loopPage)
 	}
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)

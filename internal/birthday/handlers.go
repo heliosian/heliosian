@@ -211,9 +211,9 @@ func rowOf(columns []string, cells map[string]string) []string {
 	return row
 }
 
-func (a app) logChange(actor, action, kind, email, year, details string) error {
+func (a app) logChange(r *http.Request, actor, action, kind, email, year, details string) error {
 	return a.writer.Append(appName, changeLogTab, []string{
-		time.Now().Format(time.RFC3339), actor, action, kind, email, year, details,
+		time.Now().Format(time.RFC3339), actor, action, kind, email, year, details, auth.RealEmail(r),
 	})
 }
 
@@ -277,7 +277,7 @@ func (a app) assign(w http.ResponseWriter, r *http.Request) {
 		if err := a.writer.Set(appName, assignmentsTab, match, cells); err != nil {
 			return err
 		}
-		return a.logChange(actor, action, "assignment", email, year, to)
+		return a.logChange(r, actor, action, "assignment", email, year, to)
 	}) {
 		return
 	}
@@ -307,7 +307,7 @@ func (a app) unassign(w http.ResponseWriter, r *http.Request) {
 		if err := a.writer.Delete(appName, assignmentsTab, match); err != nil {
 			return err
 		}
-		return a.logChange(actor, "remove", "assignment", email, year, "")
+		return a.logChange(r, actor, "remove", "assignment", email, year, "")
 	}) {
 		return
 	}
@@ -341,7 +341,7 @@ func (a app) outreach(w http.ResponseWriter, r *http.Request) {
 			if err := a.writer.Delete(appName, outreachTab, match); err != nil {
 				return err
 			}
-			return a.logChange(actor, "remove", "outreach", email, year, "")
+			return a.logChange(r, actor, "remove", "outreach", email, year, "")
 		}) {
 			return
 		}
@@ -354,7 +354,7 @@ func (a app) outreach(w http.ResponseWriter, r *http.Request) {
 		if err := a.writer.Set(appName, outreachTab, match, cells); err != nil {
 			return err
 		}
-		return a.logChange(actor, "add", "outreach", email, year, "")
+		return a.logChange(r, actor, "add", "outreach", email, year, "")
 	}) {
 		return
 	}
@@ -404,7 +404,7 @@ func (a app) saveDonation(w http.ResponseWriter, r *http.Request) {
 		if err := a.writer.Set(appName, donationsTab, match, cells); err != nil {
 			return err
 		}
-		return a.logChange(actor, action, "donation", email, year, charity.Name)
+		return a.logChange(r, actor, action, "donation", email, year, charity.Name)
 	}) {
 		return
 	}
@@ -433,7 +433,7 @@ func (a app) deleteDonation(w http.ResponseWriter, r *http.Request) {
 		if err := a.writer.Delete(appName, donationsTab, match); err != nil {
 			return err
 		}
-		return a.logChange(actor, "remove", "donation", email, year, "")
+		return a.logChange(r, actor, "remove", "donation", email, year, "")
 	}) {
 		return
 	}
@@ -475,7 +475,7 @@ func (a app) used(w http.ResponseWriter, r *http.Request) {
 		if err := a.writer.Set(appName, donationsTab, match, cells); err != nil {
 			return err
 		}
-		return a.logChange(actor, action, "donation", email, year, "")
+		return a.logChange(r, actor, action, "donation", email, year, "")
 	}) {
 		return
 	}
@@ -515,7 +515,7 @@ func (a app) saveBirthday(w http.ResponseWriter, r *http.Request) {
 		if err := a.writer.Set(appName, birthdaysTab, match, cells); err != nil {
 			return err
 		}
-		return a.logChange(actor, action, "birthday", email, "", birthday+" "+override)
+		return a.logChange(r, actor, action, "birthday", email, "", birthday+" "+override)
 	}) {
 		return
 	}
@@ -551,7 +551,7 @@ func (a app) deleteBirthday(w http.ResponseWriter, r *http.Request) {
 		if err := a.writer.Delete(appName, birthdaysTab, match); err != nil {
 			return err
 		}
-		return a.logChange(actor, "remove", "birthday", email, "", "")
+		return a.logChange(r, actor, "remove", "birthday", email, "", "")
 	}) {
 		return
 	}
@@ -599,7 +599,7 @@ func (a app) saveParticipation(w http.ResponseWriter, r *http.Request) {
 		if err := a.writer.Set(appName, birthdaysTab, match, cells); err != nil {
 			return err
 		}
-		return a.logChange(actor, action, "participation", email, "", body.Level)
+		return a.logChange(r, actor, action, "participation", email, "", body.Level)
 	}) {
 		return
 	}
@@ -642,7 +642,7 @@ func (a app) deleteParticipation(w http.ResponseWriter, r *http.Request) {
 		} else if err := a.writer.Set(appName, birthdaysTab, match, cells); err != nil {
 			return err
 		}
-		return a.logChange(actor, "remove", "participation", email, "", "")
+		return a.logChange(r, actor, "remove", "participation", email, "", "")
 	}) {
 		return
 	}
@@ -677,7 +677,7 @@ func (a app) addNote(w http.ResponseWriter, r *http.Request) {
 		if err := a.writer.Append(appName, notesTab, rowOf(NoteColumns, cells)); err != nil {
 			return err
 		}
-		return a.logChange(actor, "add", "note", email, "", note)
+		return a.logChange(r, actor, "add", "note", email, "", note)
 	}) {
 		return
 	}
@@ -708,7 +708,7 @@ func (a app) deleteNote(w http.ResponseWriter, r *http.Request) {
 		if err := a.writer.Delete(appName, notesTab, match); err != nil {
 			return err
 		}
-		return a.logChange(actor, "remove", "note", match["Email"], "", body.Note)
+		return a.logChange(r, actor, "remove", "note", match["Email"], "", body.Note)
 	}) {
 		return
 	}
@@ -795,7 +795,7 @@ func (a app) saveCharity(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
-		return a.logChange(actor, action, "charity", "", "", name)
+		return a.logChange(r, actor, action, "charity", "", "", name)
 	}) {
 		return
 	}
@@ -909,7 +909,7 @@ func (a app) deleteCharity(w http.ResponseWriter, r *http.Request) {
 		if err := a.writer.Delete(appName, charitiesTab, match); err != nil {
 			return err
 		}
-		return a.logChange(actor, "remove", "charity", "", "", body.Name)
+		return a.logChange(r, actor, "remove", "charity", "", "", body.Name)
 	}) {
 		return
 	}
@@ -942,7 +942,7 @@ func (a app) addNewsletterDate(w http.ResponseWriter, r *http.Request) {
 		if err := a.writer.Append(appName, newsletterDatesTab, rowOf(NewsletterDateColumns, cells)); err != nil {
 			return err
 		}
-		return a.logChange(actor, "add", "newsletter date", "", "", date)
+		return a.logChange(r, actor, "add", "newsletter date", "", "", date)
 	}) {
 		return
 	}
@@ -999,7 +999,7 @@ func (a app) changeNewsletterDate(w http.ResponseWriter, r *http.Request) {
 				return err
 			}
 		}
-		return a.logChange(actor, "edit", "newsletter date", "", "", original+" to "+date)
+		return a.logChange(r, actor, "edit", "newsletter date", "", "", original+" to "+date)
 	}) {
 		return
 	}
@@ -1023,7 +1023,7 @@ func (a app) deleteNewsletterDate(w http.ResponseWriter, r *http.Request) {
 		if err := a.writer.Delete(appName, newsletterDatesTab, match); err != nil {
 			return err
 		}
-		return a.logChange(actor, "remove", "newsletter date", "", "", match["Date"])
+		return a.logChange(r, actor, "remove", "newsletter date", "", "", match["Date"])
 	}) {
 		return
 	}
@@ -1093,7 +1093,7 @@ func (a app) createNewsletterDates(w http.ResponseWriter, r *http.Request) {
 		if err := a.writer.AppendAll(appName, newsletterDatesTab, rows); err != nil {
 			return err
 		}
-		return a.logChange(actor, "add", "newsletter dates", "", "", fmt.Sprintf("%d, %s to %s", len(added), added[0], added[len(added)-1]))
+		return a.logChange(r, actor, "add", "newsletter dates", "", "", fmt.Sprintf("%d, %s to %s", len(added), added[0], added[len(added)-1]))
 	}) {
 		return
 	}
@@ -1130,7 +1130,7 @@ func (a app) clearFutureNewsletterDates(w http.ResponseWriter, r *http.Request) 
 				return err
 			}
 		}
-		return a.logChange(actor, "remove", "newsletter dates", "", "", fmt.Sprintf("%d from %s on", len(removed), day))
+		return a.logChange(r, actor, "remove", "newsletter dates", "", "", fmt.Sprintf("%d from %s on", len(removed), day))
 	}) {
 		return
 	}
@@ -1163,7 +1163,7 @@ func (a app) saveSettings(w http.ResponseWriter, r *http.Request) {
 				return err
 			}
 		}
-		return a.logChange(actor, "edit", "settings", "", "", "")
+		return a.logChange(r, actor, "edit", "settings", "", "", "")
 	}) {
 		return
 	}
@@ -1293,7 +1293,7 @@ func (a app) joinTeam(w http.ResponseWriter, r *http.Request) {
 			if err := a.writer.Append(appName, teamTab, rowOf(TeamColumns, row)); err != nil {
 				return err
 			}
-			return a.logChange(actor, "add", "team member", actor, "", RoleVolunteer+" (joined)")
+			return a.logChange(r, actor, "add", "team member", actor, "", RoleVolunteer+" (joined)")
 		}) {
 			return
 		}
@@ -1347,7 +1347,7 @@ func (a app) addTeamMember(w http.ResponseWriter, r *http.Request) {
 		if err := a.writer.Append(appName, teamTab, rowOf(TeamColumns, row)); err != nil {
 			return err
 		}
-		return a.logChange(actor, "add", "team member", row["Email"], "", row["Role"])
+		return a.logChange(r, actor, "add", "team member", row["Email"], "", row["Role"])
 	}) {
 		return
 	}
@@ -1368,7 +1368,7 @@ func (a app) removeTeamMember(w http.ResponseWriter, r *http.Request) {
 		if err := a.writer.Delete(appName, teamTab, row); err != nil {
 			return err
 		}
-		return a.logChange(actor, "remove", "team member", row["Email"], "", row["Role"])
+		return a.logChange(r, actor, "remove", "team member", row["Email"], "", row["Role"])
 	}) {
 		return
 	}
