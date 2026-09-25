@@ -1,10 +1,8 @@
-// Package calendar holds the school calendar: imported events, the day plan, and the rules that layer them.
 package calendar
 
 import (
 	"encoding/base64"
 	"fmt"
-	"maps"
 	"net/url"
 	"regexp"
 	"slices"
@@ -13,9 +11,10 @@ import (
 	"strings"
 	"time"
 
-	"heliosian/internal/data"
+	"heliosian/internal/config"
 	"heliosian/internal/filter"
 	"heliosian/internal/logging"
+	"heliosian/internal/store"
 )
 
 const (
@@ -35,13 +34,7 @@ const (
 	InvitationsTab  = "Invitations"
 	InvitesTab      = "Invites"
 	InviteGroupsTab = "Invite Groups"
-	// BouncesTab holds the addresses the mail provider could not deliver
-	// to, one row per bounce, so a host is warned before sending again.
-	BouncesTab = "Bounces"
-	// ThemeTab holds the admin's colouring of the page (internal/theme),
-	// Key/Value; Settings is each person's own, so it lives apart.
-	ThemeTab     = "Theme"
-	ChangeLogTab = "Change Log"
+	BouncesTab      = "Bounces"
 )
 
 const (
@@ -63,16 +56,14 @@ const (
 	TagWaitlisted   = "Waitlisted"
 	MineGoing       = "going"
 	MineWaitlisted  = "waitlisted"
-	// A person's answer to an event: going, not going, or hidden from
-	// their lists - still on the month, in gray, and in the search.
-	AnswerYes      = "yes"
-	AnswerNo       = "no"
-	AnswerMaybe    = "maybe"
-	AnswerHidden   = "hidden"
-	MarkerFirstDay = "First Day"
-	MarkerLastDay  = "Last Day"
-	maxTitleLength = 200
-	maxTextLength  = 6000
+	AnswerYes       = "yes"
+	AnswerNo        = "no"
+	AnswerMaybe     = "maybe"
+	AnswerHidden    = "hidden"
+	MarkerFirstDay  = "First Day"
+	MarkerLastDay   = "Last Day"
+	maxTitleLength  = 200
+	maxTextLength   = 6000
 )
 
 var (
@@ -83,16 +74,15 @@ var (
 	OverrideColumns    = []string{"Event ID", "Title", "Start", "End", "Location", "Description", "Tags", "Day Type", "Keywords", "Hidden", "Note", "Address", "Image"}
 	DayTypeColumns     = []string{"Day Type", "Dropoff Start", "Dropoff End", "School Start", "School End", "Pickup Start", "Pickup End", "Aftercare Start", "Aftercare End"}
 	DayOverrideColumns = []string{"Date", "Classrooms", "Day Type", "Note"}
-	TagColumns         = []string{"Tag", "Description", "Group", "Default", "Image"}
+	TagColumns         = []string{"Tag", "Description", "Group", "Default", "Image", store.OrderColumn}
 	AdminColumns       = []string{"Email"}
-	FeedColumns        = []string{"Token", "Email", "Name", "Classrooms", "Tags", "Created", "Emoji"}
+	FeedColumns        = []string{"Token", "Email", "Name", "Classrooms", "Tags", "Created", "Emoji", store.OrderColumn}
 	SettingColumns     = []string{"Email", "Classrooms", "Categories", "Saved", "Home Name", "Home Emoji", "Home Position"}
 	RSVPColumns        = []string{"Email", "Event ID", "Answer", "Answered", "Answered By", "Via"}
 	InvitationColumns  = []string{"Event ID", "Hosts", "Audience", "Guests", "Message", "Created By", "Created", "Sent", "Title", "Start", "End", "Location", "Description", "Flyer", "Notify", "Stepped Down", "Hide Hosts", "Public Guest List"}
 	InviteColumns      = []string{"Event ID", "Email", "Name", "Guest Of", "Via", "Added By", "Added", "Sent", "Token", "Household", "Opened"}
 	InviteGroupColumns = append([]string{"Event ID", "Group ID", "Auto", "Added By", "Added", "Sent", "Removed"}, filter.RuleColumns...)
 	BounceColumns      = []string{"Email", "When", "Reason"}
-	ChangeLogColumns   = []string{"Timestamp", "Actor", "Action", "Tab", "Key", "Column", "From", "To", "Real Actor"}
 )
 
 var emailForm = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
@@ -111,8 +101,6 @@ func mustLocation(name string) *time.Location {
 	return loc
 }
 
-// Classroom is one homeroom as the directory knows it: its band, the grades
-// its students are in, and its crews when it has them.
 type Classroom struct {
 	Name   string   `json:"name"`
 	Band   string   `json:"band,omitempty"`
@@ -120,18 +108,12 @@ type Classroom struct {
 	Crews  []string `json:"crews,omitempty"`
 }
 
-// A Roster also carries the households the directory lists, each address
-// to the others in its families, so an invitation sent to one member of a
-// household is on every member's calendar.
 type Roster struct {
 	Classrooms []Classroom
 	Households map[string][]string
-	// Parents are a student's parents, by the student's address: the
-	// adults an invitation to the student reaches as well.
-	Parents map[string][]string
+	Parents    map[string][]string
 }
 
-// Names lists the classrooms in the directory's order.
 func (r Roster) Names() []string {
 	out := make([]string, 0, len(r.Classrooms))
 	for _, c := range r.Classrooms {
@@ -144,113 +126,54 @@ func (r Roster) has(name string) bool {
 	return slices.Contains(r.Names(), name)
 }
 
-// Event carries every tag that applies, the classrooms among them being the
-// narrowest audience; Classrooms is just those, in the roster's order.
 type Event struct {
-	ID     string `json:"id"`
-	Source string `json:"source"`
-	Title  string `json:"title"`
-	Start  string `json:"start"`
-	End    string `json:"end"`
-	AllDay bool   `json:"allDay"`
-	// Dates are the days the event sits on: the days it is shown under, and
-	// the days its day type stamps. A day type describes school days, so an
-	// all-day event carrying one and written from one school day to another
-	// is the school days between them - a conference week written across a
-	// weekend says nothing about the Saturday and sits on nobody's. Anything
-	// else is taken at its word: a single day, a span that starts or ends on
-	// a day school is out, a trip or a book fair week with no day type. Start
-	// and End stay as written, so a span is still one entry in a calendar app.
-	Dates       []string `json:"dates"`
-	Location    string   `json:"location,omitempty"`
-	Description string   `json:"description,omitempty"`
-	Tags        []string `json:"tags"`
-	Classrooms  []string `json:"classrooms"`
-	DayType     string   `json:"dayType,omitempty"`
-	Keywords    []string `json:"keywords,omitempty"`
-	Marker      string   `json:"marker,omitempty"`
-	Updated     string   `json:"updated,omitempty"`
-	// Where the event's dates came from, for the page to say and link:
-	// SourceURL is the original - the feed's event in Google Calendar, the
-	// school's calendar page for the year calendar - SourceTitle the title
-	// as the source had it, Year the school year a year-calendar row was
-	// read from, and AddedBy and Added who put a hand-added event in and when.
-	SourceURL   string `json:"sourceUrl,omitempty"`
-	SourceTitle string `json:"sourceTitle,omitempty"`
-	// SourceNote is a hand-added event's proof when it is not an address:
-	// the Events tab's Source cell as written.
-	SourceNote string `json:"sourceNote,omitempty"`
-	Year       string `json:"year,omitempty"`
-	AddedBy    string `json:"addedBy,omitempty"`
-	Added      string `json:"added,omitempty"`
-	// Address is a friendly web address an admin gave an event the school's
-	// calendars bring, /e/{address} in place of its import key (the
-	// Overrides tab's Address); its key still finds it.
-	Address string `json:"address,omitempty"`
-	// PosterLeft says whoever added the event stepped down as its host: it
-	// is still theirs as the one who shared it, but no longer theirs to
-	// run (the Invitations tab's Stepped Down).
-	PosterLeft bool `json:"posterLeft,omitempty"`
-	// Link is the page of an event another app runs, as a path on that site;
-	// Availability is what a reader can do there now; Mine is where the
-	// viewer's household already stands with it; Image is its picture
-	// there, as a path on that site too.
-	Link         string `json:"link,omitempty"`
-	Availability string `json:"availability,omitempty"`
-	Mine         string `json:"mine,omitempty"`
-	// Hosts are whoever runs a linked event on its own app - an HCA
-	// event's chairs - by address; they run its guest list here.
-	Hosts []string `json:"-"`
-	// HostNames names them for the page, before any guest list exists.
-	HostNames []string `json:"hostNames,omitempty"`
-	// LinkedID is the id the other app knows the event by, when it is not
-	// the event's own here - a school listing folded with the HCA event
-	// keeps the school's id and carries the HCA event's here.
-	LinkedID string `json:"linkedId,omitempty"`
-	// MineWho names the household members the standing belongs to, when
-	// the viewer is not among them - "Sam is going" rather than "You're
-	// going".
-	MineWho []string `json:"mineWho,omitempty"`
-	// MinePeople is everyone in the household with a part in a linked
-	// event - a ticket, a waitlist place, a role - for the lists to name.
-	MinePeople []Standing `json:"minePeople,omitempty"`
-	// MineWords says the standing - "Sam and Alex are waitlisted" - and Call
-	// what the row and the page offer: that standing first, else the way in,
-	// nothing once the event has passed or closed. Written here rather than
-	// worked out again by each reader, so the calendar's rows and pages,
-	// Heliosian's cards and its rail all say the same words.
-	MineWords string `json:"mineWords,omitempty"`
-	Call      string `json:"call,omitempty"`
-	Image     string `json:"image,omitempty"`
-	// Sharing is the Events tab's word on who can find a hand-added event:
-	// Public, on the calendar for everyone once approved; Link, for anyone
-	// with its link; Invite Only, for whoever is on its list. Status is the
-	// tab's word on its approval: Pending while a public one waits for an
-	// admin, Declined once an admin turned it away - either on the calendar
-	// for its host and the admins alone - Approved (or blank) once it is on
-	// for everyone, and Cancelled for one its host called off. Pending,
-	// Declined and Cancelled say which, for the page.
-	Sharing   string `json:"sharing,omitempty"`
-	Status    string `json:"status,omitempty"`
-	Pending   bool   `json:"pending,omitempty"`
-	Declined  bool   `json:"declined,omitempty"`
-	Cancelled bool   `json:"cancelled,omitempty"`
-	// Invitation says a guest list is kept for the event (invites.go), for
-	// the page to fetch it; Invited that the viewer's household is on it,
-	// sent - the event on their calendar whatever its classrooms.
-	Invitation bool `json:"invitation,omitempty"`
-	Invited    bool `json:"invited,omitempty"`
-	// Hosted marks an event the viewer runs: one they shared, a party they
-	// host, or one they co-host the guest list of - never by being an
-	// admin.
-	Hosted     bool `json:"hosted,omitempty"`
-	Hidden     bool `json:"-"`
-	duplicate  bool
-	start, end time.Time
+	ID           string     `json:"id"`
+	Source       string     `json:"source"`
+	Title        string     `json:"title"`
+	Start        string     `json:"start"`
+	End          string     `json:"end"`
+	AllDay       bool       `json:"allDay"`
+	Dates        []string   `json:"dates"`
+	Location     string     `json:"location,omitempty"`
+	Description  string     `json:"description,omitempty"`
+	Tags         []string   `json:"tags"`
+	Classrooms   []string   `json:"classrooms"`
+	DayType      string     `json:"dayType,omitempty"`
+	Keywords     []string   `json:"keywords,omitempty"`
+	Marker       string     `json:"marker,omitempty"`
+	Updated      string     `json:"updated,omitempty"`
+	SourceURL    string     `json:"sourceUrl,omitempty"`
+	SourceTitle  string     `json:"sourceTitle,omitempty"`
+	SourceNote   string     `json:"sourceNote,omitempty"`
+	Year         string     `json:"year,omitempty"`
+	AddedBy      string     `json:"addedBy,omitempty"`
+	Added        string     `json:"added,omitempty"`
+	Address      string     `json:"address,omitempty"`
+	PosterLeft   bool       `json:"posterLeft,omitempty"`
+	Link         string     `json:"link,omitempty"`
+	Availability string     `json:"availability,omitempty"`
+	Mine         string     `json:"mine,omitempty"`
+	Hosts        []string   `json:"-"`
+	HostNames    []string   `json:"hostNames,omitempty"`
+	LinkedID     string     `json:"linkedId,omitempty"`
+	MineWho      []string   `json:"mineWho,omitempty"`
+	MinePeople   []Standing `json:"minePeople,omitempty"`
+	MineWords    string     `json:"mineWords,omitempty"`
+	Call         string     `json:"call,omitempty"`
+	Image        string     `json:"image,omitempty"`
+	Sharing      string     `json:"sharing,omitempty"`
+	Status       string     `json:"status,omitempty"`
+	Pending      bool       `json:"pending,omitempty"`
+	Declined     bool       `json:"declined,omitempty"`
+	Cancelled    bool       `json:"cancelled,omitempty"`
+	Invitation   bool       `json:"invitation,omitempty"`
+	Invited      bool       `json:"invited,omitempty"`
+	Hosted       bool       `json:"hosted,omitempty"`
+	Hidden       bool       `json:"-"`
+	duplicate    bool
+	start, end   time.Time
 }
 
-// written is every date between the event's ends, the days it is written
-// across.
 func (e *Event) written() []string {
 	out := []string{}
 	for d := e.start; !d.After(e.end); d = d.AddDate(0, 0, 1) {
@@ -276,46 +199,28 @@ type Year struct {
 	LastDay  string `json:"lastDay"`
 }
 
-// Tag is one word of the vocabulary events are filed under, with the
-// description the classifier is given for it.
-// Where the school's own calendar lives: the Google Calendar feed the
-// import mirrors and the page that links the year calendar's PDF - the
-// places an event's source line links to.
 const (
 	SchoolCalendarID   = "heliosns.org_cidjj9plktli1gdm2hrkj7gqks@group.calendar.google.com"
 	SchoolFeedURL      = "https://calendar.google.com/calendar/ical/heliosns.org_cidjj9plktli1gdm2hrkj7gqks%40group.calendar.google.com/public/basic.ics"
 	SchoolCalendarPage = "https://www.heliosschool.org/school-calendar"
 )
 
-// A Tag is one category events are filed under. Group is the line of the
-// filters it sits on, blank for the plain line at the end; Default is
-// whether it starts on for someone who has not chosen - on unless the
-// tab's Default column says No; BuiltIn marks the tags the app supplies
-// rather than the sheet, whose group is fixed.
 type Tag struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Group       string `json:"group"`
 	Default     bool   `json:"default"`
 	BuiltIn     bool   `json:"builtIn,omitempty"`
-	// Image is the picture an event under this tag wears when it has none
-	// of its own, as the sheet names it - an uploaded object or a bundled
-	// file - and ImageURL is where the page fetches it, blank when the name
-	// resolves to nothing.
-	Image    string `json:"image,omitempty"`
-	ImageURL string `json:"imageUrl,omitempty"`
+	Image       string `json:"image,omitempty"`
+	ImageURL    string `json:"imageUrl,omitempty"`
+	order       string
 }
 
-// ImageChecker says whether a name the sheet records is an image the app
-// can serve, and fetches many ahead of time.
 type ImageChecker interface {
 	Has(key string) (bool, error)
 	Prefetch(names []string) error
 }
 
-// Provenance is the admins' side of an event's story: the classifier's
-// filing (which model, when) and the correction the Overrides tab made -
-// the columns it touched and its note.
 type Provenance struct {
 	Model     string   `json:"model,omitempty"`
 	Enriched  string   `json:"enriched,omitempty"`
@@ -332,11 +237,6 @@ func (m *Model) provenance(id string) *Provenance {
 	return p
 }
 
-// GoogleEventURL is where a feed event opens in Google Calendar: the
-// feed's calendar and the event's id, as Google encodes the pair. A
-// repeating event's instance carries its start in UTC after an underscore,
-// which is how the import's key - the instance's wall-clock start - reads
-// once turned back. Anything that is not the school's feed gives nothing.
 func GoogleEventURL(key string) string {
 	uid, instance, _ := strings.Cut(key, "/")
 	eventID, ok := strings.CutSuffix(uid, "@google.com")
@@ -365,21 +265,14 @@ func GoogleEventURL(key string) string {
 	return "https://www.google.com/calendar/event?eid=" + eid
 }
 
-// A Setting is one person's saved view: the classrooms and the categories
-// they chose and kept, in place of the calendar's own defaults.
 type Setting struct {
-	Classrooms []string `json:"classrooms"`
-	Tags       []string `json:"tags"`
-	// HomeName and HomeEmoji are what the person calls My Heliosian and
-	// marks it with, blank for the given ones; HomePosition where it sits
-	// among their saved calendars, 0 first - the first being their default
-	// calendar.
-	HomeName     string `json:"homeName,omitempty"`
-	HomeEmoji    string `json:"homeEmoji,omitempty"`
-	HomePosition int    `json:"homePosition"`
+	Classrooms   []string `json:"classrooms"`
+	Tags         []string `json:"tags"`
+	HomeName     string   `json:"homeName,omitempty"`
+	HomeEmoji    string   `json:"homeEmoji,omitempty"`
+	HomePosition int      `json:"homePosition"`
 }
 
-// The Events tab's Sharing words for a hand-added event: who can find it.
 const (
 	SharingPublic  = "Public"
 	SharingLink    = "Link"
@@ -388,30 +281,19 @@ const (
 
 var sharingWords = []string{SharingPublic, SharingLink, SharingInvited}
 
-// The Events tab's Status words for a hand-added event: its approval.
 const (
-	StatusPending  = "Pending"
-	StatusApproved = "Approved"
-	StatusDeclined = "Declined"
-	// Cancelled is a host's own word on an event they called off: it
-	// leaves everyone's calendar and lists, its page saying so.
+	StatusPending   = "Pending"
+	StatusApproved  = "Approved"
+	StatusDeclined  = "Declined"
 	StatusCancelled = "Cancelled"
 )
 
-// MyHeliosian is the calendar everyone has: the calendar's own defaults -
-// the person's classrooms and the categories on by default - which nobody
-// changes or removes, though each person may rename it, mark it and place
-// it among their saved calendars - first to start, and whichever calendar
-// is first is the person's default. MyHeliosianToken names it where a
-// saved calendar's token would.
 const (
 	MyHeliosianToken = "my-heliosian"
 	MyHeliosianName  = "My Heliosian"
 	MyHeliosianEmoji = ""
 )
 
-// MyHeliosian is the calendar as one person has it: their name and mark
-// for it, else the given ones, Locked, at their position.
 func (m *Model) MyHeliosian(email string) Feed {
 	setting := m.Settings[normalizeEmail(email)]
 	f := Feed{Token: MyHeliosianToken, Email: normalizeEmail(email), Name: MyHeliosianName, Emoji: MyHeliosianEmoji, Classrooms: []string{}, Tags: []string{}, Locked: true, Position: setting.HomePosition}
@@ -424,14 +306,10 @@ func (m *Model) MyHeliosian(email string) Feed {
 	return f
 }
 
-// tagDefault reads the Default column: anything but No is on, so a column
-// left blank starts everything on.
 func tagDefault(cell string) bool {
 	return !strings.EqualFold(strings.TrimSpace(cell), "No")
 }
 
-// A feed with no Classrooms carries every classroom, and one with no Tags
-// carries every tag; the token is the whole secret.
 type Feed struct {
 	Token      string   `json:"token"`
 	Email      string   `json:"email"`
@@ -439,14 +317,10 @@ type Feed struct {
 	Classrooms []string `json:"classrooms"`
 	Tags       []string `json:"tags"`
 	Created    string   `json:"created"`
-	// Emoji is the mark the owner gave it, shown before its name in the
-	// rail; blank for the calendar icon.
-	Emoji string `json:"emoji,omitempty"`
-	// Locked marks My Heliosian: its filters are the calendar's own and it
-	// cannot be removed; Position is where it sits among the person's
-	// saved calendars.
-	Locked   bool `json:"locked,omitempty"`
-	Position int  `json:"position,omitempty"`
+	Emoji      string   `json:"emoji,omitempty"`
+	Locked     bool     `json:"locked,omitempty"`
+	Position   int      `json:"position,omitempty"`
+	order      string
 }
 
 func (f Feed) Carries(e *Event) bool {
@@ -465,72 +339,41 @@ func overlaps(a, b []string) bool {
 	return false
 }
 
-// Model is the sheet organized: visible events in date order, the day types,
-// the tags, the day plan as date then classroom, and the school years the
-// plan spans.
 type Model struct {
-	Events []*Event
-	// Pending are the hand-added events that are not on the calendar for
-	// everyone - waiting for an admin, declined, or invite only: off the
-	// feeds and the front page, on the page for the person who shared
-	// each and for the admins, and an invite-only one on the calendar of
-	// whoever has answered it.
-	Pending  []*Event
-	DayTypes []DayType
-	Tags     []Tag
-	// Settings is each person's saved view, by address: the classrooms and
-	// categories the calendar opens to for them, and what Heliosian's
-	// Upcoming Events are read under.
-	Settings map[string]Setting
-	// Answers is each person's word on each event, by address then event
-	// id: yes, no, maybe, or hidden; Answered is the same with who gave it
-	// and when.
-	Answers  map[string]map[string]string
-	Answered map[string]map[string]Answered
-	// Invitations is each event's guest list settings, by event id, and
-	// Invites its guest list in the sheet's order; invited is every
-	// address with a sent invite on an event, or in the household of one.
+	Events      []*Event
+	Pending     []*Event
+	DayTypes    []DayType
+	Tags        []Tag
+	Settings    map[string]Setting
+	Answers     map[string]map[string]string
+	Answered    map[string]map[string]Answered
 	Invitations map[string]*Invitation
 	Invites     map[string][]Invite
-	// Groups is each event's invite groups (groups.go), by event id, in
-	// the sheet's order.
-	Groups map[string][]InviteGroup
-	// Bounced is every address the mail provider has reported undeliverable,
-	// with the latest reason.
-	Bounced map[string]Bounce
-	// invited is who has an event by invitation, sent - a parent with
-	// their student - and listed the same for every row, sent or not.
-	invited  map[string]map[string]bool
-	listed   map[string]map[string]bool
-	byInvite map[string]Invite
-	Days     map[string]map[string]string
-	Years    []Year
-	Roster   Roster
-	Feeds    []Feed
-	Hidden   int
-	// Duplicates counts the events folded into another that says the same
-	// thing: the same days, day type, and tags from a second source.
-	Duplicates int
-	Skipped    map[string]int
-	// Provenance is what the admins' tabs did to each event - the
-	// classifier's filing and any correction - for the admins' eyes.
-	Provenance map[string]*Provenance
-	byID       map[string]*Event
-	// byAddress finds an event by the friendly address an admin gave it.
-	byAddress map[string]*Event
-	byToken   map[string]*Feed
-	tags      map[string]bool
+	Groups      map[string][]InviteGroup
+	Bounced     map[string]Bounce
+	invited     map[string]map[string]bool
+	listed      map[string]map[string]bool
+	byInvite    map[string]Invite
+	Days        map[string]map[string]string
+	Years       []Year
+	Roster      Roster
+	Feeds       []Feed
+	Hidden      int
+	Duplicates  int
+	Skipped     map[string]int
+	Provenance  map[string]*Provenance
+	admins      []string
+	imports     map[string]*Event
+	byID        map[string]*Event
+	byAddress   map[string]*Event
+	byToken     map[string]*Feed
+	tags        map[string]bool
 }
 
-// imported says an event comes from the school's calendars - the Google
-// feed or the year's PDF - rather than from a person or another app. Its
-// admins are its hosts, and correct it in the Overrides tab.
 func (e *Event) imported() bool {
 	return e.Source == SourceGoogle || e.Source == SourcePDF
 }
 
-// Event is the event an id names - its own, or the friendly address an
-// admin gave it.
 func (m *Model) Event(id string) *Event {
 	if e := m.byID[id]; e != nil {
 		return e
@@ -551,8 +394,6 @@ func (m *Model) DayType(name string) *DayType {
 	return nil
 }
 
-// Plan is the day type one classroom has on a date, or none when the date is
-// outside the school year and nothing says otherwise.
 func (m *Model) Plan(date, classroom string) (DayType, bool) {
 	name, ok := m.Days[date][classroom]
 	if !ok {
@@ -561,8 +402,6 @@ func (m *Model) Plan(date, classroom string) (DayType, bool) {
 	return *m.DayType(name), true
 }
 
-// SchoolYear labels the school year a date falls in, years turning over on
-// the first of July so the summer belongs to the year it precedes.
 func SchoolYear(t time.Time) string {
 	start := t.Year()
 	if t.Month() < time.July {
@@ -571,373 +410,6 @@ func SchoolYear(t time.Time) string {
 	return fmt.Sprintf("%d-%d", start, start+1)
 }
 
-type Tables struct {
-	Google       []map[string]string
-	PDF          []map[string]string
-	Events       []map[string]string
-	Enrichment   []map[string]string
-	Overrides    []map[string]string
-	DayTypes     []map[string]string
-	DayOverrides []map[string]string
-	Tags         []map[string]string
-	Admins       []map[string]string
-	Feeds        []map[string]string
-	Settings     []map[string]string
-	RSVPs        []map[string]string
-	Invitations  []map[string]string
-	Invites      []map[string]string
-	InviteGroups []map[string]string
-	Bounces      []map[string]string
-}
-
-func ReadTables(source data.Source) (*Tables, error) {
-	type table struct {
-		name   string
-		want   []string
-		header []string
-		rows   []map[string]string
-	}
-	google := &table{name: GoogleTab, want: GoogleColumns}
-	pdf := &table{name: PDFTab, want: PDFColumns}
-	events := &table{name: EventsTab, want: EventColumns}
-	enrichment := &table{name: EnrichmentTab, want: EnrichmentColumns}
-	overrides := &table{name: OverridesTab, want: OverrideColumns}
-	dayTypes := &table{name: DayTypesTab, want: DayTypeColumns}
-	dayOverrides := &table{name: DayOverridesTab, want: DayOverrideColumns}
-	tags := &table{name: TagsTab, want: TagColumns}
-	admins := &table{name: AdminsTab, want: AdminColumns}
-	feeds := &table{name: FeedsTab, want: FeedColumns}
-	settings := &table{name: SettingsTab, want: SettingColumns}
-	rsvps := &table{name: RSVPsTab, want: RSVPColumns}
-	invitations := &table{name: InvitationsTab, want: InvitationColumns}
-	invites := &table{name: InvitesTab, want: InviteColumns}
-	groups := &table{name: InviteGroupsTab, want: InviteGroupColumns}
-	bounces := &table{name: BouncesTab, want: BounceColumns}
-	changeLog := &table{name: ChangeLogTab, want: ChangeLogColumns}
-	read := []*table{google, pdf, events, enrichment, overrides, dayTypes, dayOverrides, tags, admins, feeds, settings, rsvps, invitations, invites, groups, bounces}
-	names := []string{}
-	for _, t := range read {
-		names = append(names, t.name)
-	}
-	tabs, err := source.Tabs(appName, names, []string{changeLog.name})
-	if err != nil {
-		return nil, err
-	}
-	for _, t := range append(read, changeLog) {
-		t.header, t.rows = tabs[t.name].Header, tabs[t.name].Rows
-		if err := data.CheckColumns(t.name, t.header, t.want); err != nil {
-			return nil, err
-		}
-	}
-	return &Tables{
-		Google: google.rows, PDF: pdf.rows, Events: events.rows, Enrichment: enrichment.rows,
-		Overrides: overrides.rows, DayTypes: dayTypes.rows, DayOverrides: dayOverrides.rows, Tags: tags.rows, Admins: admins.rows, Feeds: feeds.rows, Settings: settings.rows, RSVPs: rsvps.rows,
-		Invitations: invitations.rows, Invites: invites.rows, InviteGroups: groups.rows, Bounces: bounces.rows,
-	}, nil
-}
-
-func cloneRows(rows []map[string]string) []map[string]string {
-	out := make([]map[string]string, len(rows))
-	for i, row := range rows {
-		out[i] = maps.Clone(row)
-	}
-	return out
-}
-
-func (t *Tables) WithFeed(cells map[string]string) *Tables {
-	out := *t
-	out.Feeds = append(cloneRows(t.Feeds), maps.Clone(cells))
-	return &out
-}
-
-// WithTags is the tables with the Tags tab's rows replaced, in their order.
-func (t *Tables) WithTags(rows []map[string]string) *Tables {
-	out := *t
-	out.Tags = cloneRows(rows)
-	return &out
-}
-
-// WithSetting is the tables with one person's saved view set - their row
-// replaced, or added.
-func (t *Tables) WithSetting(email string, cells map[string]string) *Tables {
-	out := *t
-	out.Settings = []map[string]string{}
-	found := false
-	for _, row := range t.Settings {
-		if normalizeEmail(row["Email"]) != email {
-			out.Settings = append(out.Settings, maps.Clone(row))
-			continue
-		}
-		// The person's row keeps what the cells do not name.
-		merged := maps.Clone(row)
-		maps.Copy(merged, cells)
-		out.Settings = append(out.Settings, merged)
-		found = true
-	}
-	if !found {
-		out.Settings = append(out.Settings, maps.Clone(cells))
-	}
-	return &out
-}
-
-// WithOverride is the tables with an event's Overrides row given cells - the
-// row it has with those cells set, or a new one.
-func (t *Tables) WithOverride(id string, cells map[string]string) *Tables {
-	out := *t
-	out.Overrides = cloneRows(t.Overrides)
-	for _, row := range out.Overrides {
-		if row["Event ID"] == id {
-			maps.Copy(row, cells)
-			return &out
-		}
-	}
-	row := map[string]string{"Event ID": id}
-	maps.Copy(row, cells)
-	out.Overrides = append(out.Overrides, row)
-	return &out
-}
-
-// WithoutOverride is the tables with no Overrides row for an event.
-func (t *Tables) WithoutOverride(id string) *Tables {
-	out := *t
-	out.Overrides = slices.DeleteFunc(cloneRows(t.Overrides), func(row map[string]string) bool { return row["Event ID"] == id })
-	return &out
-}
-
-// WithEvents is the tables with rows added to the Events tab.
-func (t *Tables) WithEvents(rows []map[string]string) *Tables {
-	out := *t
-	out.Events = append(cloneRows(t.Events), cloneRows(rows)...)
-	return &out
-}
-
-// WithEventWhen is the tables with one Events tab row's Start and End set.
-func (t *Tables) WithEventWhen(id, start, end string) *Tables {
-	out := *t
-	out.Events = cloneRows(t.Events)
-	for _, row := range out.Events {
-		if row["Event ID"] == id {
-			row["Start"], row["End"] = start, end
-		}
-	}
-	return &out
-}
-
-// WithEventCells is the tables with cells set on one Events row.
-func (t *Tables) WithEventCells(id string, cells map[string]string) *Tables {
-	out := *t
-	out.Events = cloneRows(t.Events)
-	for _, row := range out.Events {
-		if row["Event ID"] == id {
-			maps.Copy(row, cells)
-		}
-	}
-	return &out
-}
-
-// WithoutInvitation is the tables with everything of one event's guest
-// list dropped: its Invitations row, its Invites, its groups and every
-// answer to it.
-func (t *Tables) WithoutInvitation(id string) *Tables {
-	out := *t
-	keep := func(rows []map[string]string) []map[string]string {
-		kept := []map[string]string{}
-		for _, row := range rows {
-			if row["Event ID"] != id {
-				kept = append(kept, maps.Clone(row))
-			}
-		}
-		return kept
-	}
-	out.Invitations, out.Invites, out.InviteGroups, out.RSVPs = keep(t.Invitations), keep(t.Invites), keep(t.InviteGroups), keep(t.RSVPs)
-	return &out
-}
-
-// WithoutEvent is the tables with one Events row dropped.
-func (t *Tables) WithoutEvent(id string) *Tables {
-	out := *t
-	out.Events = []map[string]string{}
-	for _, row := range t.Events {
-		if row["Event ID"] != id {
-			out.Events = append(out.Events, maps.Clone(row))
-		}
-	}
-	return &out
-}
-
-// WithAnswer is the tables with one person's answer to one event set - the
-// row for the pair replaced or added - or, for a blank answer, dropped.
-func (t *Tables) WithAnswer(email, id, answer string, cells map[string]string) *Tables {
-	out := *t
-	out.RSVPs = []map[string]string{}
-	for _, row := range t.RSVPs {
-		if normalizeEmail(row["Email"]) != email || row["Event ID"] != id {
-			out.RSVPs = append(out.RSVPs, maps.Clone(row))
-		}
-	}
-	if answer != "" {
-		out.RSVPs = append(out.RSVPs, maps.Clone(cells))
-	}
-	return &out
-}
-
-// WithInvitation is the tables with one event's Invitations row given
-// cells - the row it has with those set, or a new one.
-func (t *Tables) WithInvitation(id string, cells map[string]string) *Tables {
-	out := *t
-	out.Invitations = cloneRows(t.Invitations)
-	for _, row := range out.Invitations {
-		if row["Event ID"] == id {
-			maps.Copy(row, cells)
-			return &out
-		}
-	}
-	row := map[string]string{"Event ID": id}
-	maps.Copy(row, cells)
-	out.Invitations = append(out.Invitations, row)
-	return &out
-}
-
-// WithInvites is the tables with rows added to the Invites tab.
-func (t *Tables) WithInvites(rows []map[string]string) *Tables {
-	out := *t
-	out.Invites = append(cloneRows(t.Invites), cloneRows(rows)...)
-	return &out
-}
-
-// WithInviteCells is the tables with cells set on the Invites rows of one
-// event whose addresses are named - every row when none are.
-func (t *Tables) WithInviteCells(id string, emails []string, cells map[string]string) *Tables {
-	out := *t
-	out.Invites = cloneRows(t.Invites)
-	for _, row := range out.Invites {
-		if row["Event ID"] == id && (emails == nil || slices.Contains(emails, normalizeEmail(row["Email"]))) {
-			maps.Copy(row, cells)
-		}
-	}
-	return &out
-}
-
-// WithGroup is the tables with a row added to the Invite Groups tab.
-func (t *Tables) WithGroup(row map[string]string) *Tables {
-	out := *t
-	out.InviteGroups = append(cloneRows(t.InviteGroups), maps.Clone(row))
-	return &out
-}
-
-// WithGroupCells is the tables with cells set on one group's row.
-func (t *Tables) WithGroupCells(id, group string, cells map[string]string) *Tables {
-	out := *t
-	out.InviteGroups = cloneRows(t.InviteGroups)
-	for _, row := range out.InviteGroups {
-		if row["Event ID"] == id && row["Group ID"] == group {
-			maps.Copy(row, cells)
-		}
-	}
-	return &out
-}
-
-// groupUnsent says whether anyone a group put on an event's list is still
-// to be sent their invite.
-func (t *Tables) groupUnsent(id, group string) bool {
-	for _, row := range t.Invites {
-		if row["Event ID"] == id && row["Via"] == ViaGroup+group && strings.TrimSpace(row["Sent"]) == "" {
-			return true
-		}
-	}
-	return false
-}
-
-// WithoutGroup is the tables with one group's row dropped, and with it
-// the Invites rows it added that have not been sent, their answers too.
-func (t *Tables) WithoutGroup(id, group string) *Tables {
-	out := *t
-	out.InviteGroups = []map[string]string{}
-	for _, row := range t.InviteGroups {
-		if row["Event ID"] != id || row["Group ID"] != group {
-			out.InviteGroups = append(out.InviteGroups, maps.Clone(row))
-		}
-	}
-	dropped := map[string]bool{}
-	out.Invites = []map[string]string{}
-	for _, row := range t.Invites {
-		if row["Event ID"] == id && row["Via"] == ViaGroup+group && strings.TrimSpace(row["Sent"]) == "" {
-			dropped[normalizeEmail(row["Email"])] = true
-			continue
-		}
-		out.Invites = append(out.Invites, maps.Clone(row))
-	}
-	out.RSVPs = []map[string]string{}
-	for _, row := range t.RSVPs {
-		if row["Event ID"] != id || !dropped[normalizeEmail(row["Email"])] {
-			out.RSVPs = append(out.RSVPs, maps.Clone(row))
-		}
-	}
-	return &out
-}
-
-// WithoutInvite is the tables with one person's Invites row on one event
-// dropped, and their answer to it with it.
-func (t *Tables) WithoutInvite(id, email string) *Tables {
-	out := *t
-	out.Invites = []map[string]string{}
-	for _, row := range t.Invites {
-		if row["Event ID"] != id || normalizeEmail(row["Email"]) != email {
-			out.Invites = append(out.Invites, maps.Clone(row))
-		}
-	}
-	out.RSVPs = []map[string]string{}
-	for _, row := range t.RSVPs {
-		if row["Event ID"] != id || normalizeEmail(row["Email"]) != email {
-			out.RSVPs = append(out.RSVPs, maps.Clone(row))
-		}
-	}
-	return &out
-}
-
-// WithInviteEmail is the tables with one person's Invites row on one event
-// keyed by a new address - the row kept whole, its token with it - and
-// their answer moved with it.
-func (t *Tables) WithInviteEmail(id, email, to string) *Tables {
-	out := *t
-	out.Invites = cloneRows(t.Invites)
-	for _, row := range out.Invites {
-		if row["Event ID"] == id && normalizeEmail(row["Email"]) == email {
-			row["Email"] = to
-		}
-	}
-	out.RSVPs = cloneRows(t.RSVPs)
-	for _, row := range out.RSVPs {
-		if row["Event ID"] == id && normalizeEmail(row["Email"]) == email {
-			row["Email"] = to
-		}
-	}
-	return &out
-}
-
-// WithBounce is the tables with a bounce noted.
-func (t *Tables) WithBounce(row map[string]string) *Tables {
-	out := *t
-	out.Bounces = append(cloneRows(t.Bounces), maps.Clone(row))
-	return &out
-}
-
-// WithoutSetting is the tables with one person's saved view forgotten.
-func (t *Tables) WithoutSetting(email string) *Tables {
-	out := *t
-	out.Settings = []map[string]string{}
-	for _, row := range t.Settings {
-		if normalizeEmail(row["Email"]) != email {
-			out.Settings = append(out.Settings, maps.Clone(row))
-		}
-	}
-	return &out
-}
-
-// unusedFeedName is a name none of one person's feeds has: the one given,
-// or it with the first free number after it - "… 2", "… 3" - so two saved
-// calendars are told apart in the rail and in a calendar app. A blank
-// name stays blank for the check that refuses it.
 func (m *Model) unusedFeedName(email, name string) string {
 	if name == "" {
 		return name
@@ -959,48 +431,6 @@ func (m *Model) unusedFeedName(email, name string) string {
 	}
 }
 
-// WithFeedOrder is the tables with the Feeds rows in the order the tokens
-// give - every token once, as Reorder wants.
-func (t *Tables) WithFeedOrder(tokens []string) *Tables {
-	out := *t
-	byToken := map[string]map[string]string{}
-	for _, row := range t.Feeds {
-		byToken[row["Token"]] = maps.Clone(row)
-	}
-	out.Feeds = []map[string]string{}
-	for _, token := range tokens {
-		if row := byToken[token]; row != nil {
-			out.Feeds = append(out.Feeds, row)
-		}
-	}
-	return &out
-}
-
-// WithFeedChanged is the tables with one feed's cells changed - its name
-// and filter - on the row its token names.
-func (t *Tables) WithFeedChanged(token string, cells map[string]string) *Tables {
-	out := *t
-	out.Feeds = cloneRows(t.Feeds)
-	for _, row := range out.Feeds {
-		if row["Token"] == token {
-			maps.Copy(row, cells)
-		}
-	}
-	return &out
-}
-
-func (t *Tables) WithoutFeed(token string) *Tables {
-	out := *t
-	out.Feeds = []map[string]string{}
-	for _, row := range t.Feeds {
-		if row["Token"] != token {
-			out.Feeds = append(out.Feeds, row)
-		}
-	}
-	return &out
-}
-
-// SplitList reads a comma-separated cell.
 func SplitList(cell string) []string {
 	out := []string{}
 	for _, item := range strings.Split(cell, ",") {
@@ -1034,8 +464,6 @@ func parseDate(cell string) (time.Time, error) {
 	return t, nil
 }
 
-// parseWhen reads a start and end: both dates for an all-day event, both
-// date-times otherwise, and a blank end means the start.
 func parseWhen(start, end string) (time.Time, time.Time, bool, error) {
 	if start == "" {
 		return time.Time{}, time.Time{}, false, fmt.Errorf("has no start")
@@ -1075,7 +503,7 @@ func parseTime(what, cell string) (time.Time, error) {
 	return t, nil
 }
 
-func parseDayTypes(rows []map[string]string) ([]DayType, error) {
+func parseDayTypes(rows []store.Row) ([]DayType, error) {
 	out := []DayType{}
 	for _, row := range rows {
 		name := row["Day Type"]
@@ -1123,7 +551,7 @@ func parseDayTypes(rows []map[string]string) ([]DayType, error) {
 	return out, nil
 }
 
-func parseTags(rows []map[string]string) ([]Tag, error) {
+func parseTags(rows []store.Row) ([]Tag, error) {
 	out := []Tag{}
 	for _, row := range rows {
 		name := row["Tag"]
@@ -1138,24 +566,25 @@ func parseTags(rows []map[string]string) ([]Tag, error) {
 		if row["Description"] == "" {
 			return nil, fmt.Errorf("tag %q has no description", name)
 		}
-		out = append(out, Tag{Name: name, Description: row["Description"], Group: strings.TrimSpace(row["Group"]), Default: tagDefault(row["Default"]), Image: strings.TrimSpace(row["Image"])})
+		order := strings.TrimSpace(row[store.OrderColumn])
+		if err := store.CheckKey(order); err != nil {
+			return nil, fmt.Errorf("tag %q: %w", name, err)
+		}
+		out = append(out, Tag{Name: name, Description: row["Description"], Group: strings.TrimSpace(row["Group"]), Default: tagDefault(row["Default"]), Image: strings.TrimSpace(row["Image"]), order: order})
 	}
 	if len(out) == 0 {
 		return nil, fmt.Errorf("%s has no rows", TagsTab)
 	}
+	slices.SortStableFunc(out, func(a, b Tag) int { return store.CompareKeys(a.order, b.order) })
 	return out, nil
 }
 
 type builder struct {
-	model *Model
-	// school is every weekday inside a school year, the days the day plan
-	// covers and the days a day type's span keeps to.
+	model  *Model
 	school map[string]bool
 	err    error
 }
 
-// refuse records the first rule broken; the build stops at the end of its
-// pass and reports it.
 func (b *builder) refuse(format string, args ...any) {
 	if b.err == nil {
 		b.err = fmt.Errorf(format, args...)
@@ -1169,7 +598,6 @@ func (b *builder) checkDayType(name string) error {
 	return nil
 }
 
-// checkTags accepts a tag from the Tags tab or a classroom the directory has.
 func (b *builder) checkTags(tags []string) error {
 	for _, t := range tags {
 		if !b.model.tags[t] && !b.model.Roster.has(t) {
@@ -1201,7 +629,7 @@ func checkTitle(title string) error {
 	return nil
 }
 
-func (b *builder) event(source, id string, row map[string]string) (*Event, error) {
+func (b *builder) event(source, id string, row store.Row) (*Event, error) {
 	e := &Event{ID: id, Source: source, Title: row["Title"], SourceTitle: row["Title"], Location: row["Location"], Description: row["Description"], Sharing: SharingPublic}
 	fail := func(err error) (*Event, error) {
 		return nil, fmt.Errorf("%s row %q: %w", source, id, err)
@@ -1243,9 +671,7 @@ func union(a, b []string) []string {
 	return out
 }
 
-// applyEnrichment adds what the classifier concluded: its tags join the
-// import's, its day type fills a blank one, its keywords join.
-func (b *builder) applyEnrichment(rows []map[string]string) error {
+func (b *builder) applyEnrichment(rows []store.Row) error {
 	for _, row := range rows {
 		id := row["Event ID"]
 		e := b.model.byID[id]
@@ -1294,7 +720,18 @@ func overrideList(cell string, target *[]string) {
 	}
 }
 
-func (b *builder) applyOverrides(rows []map[string]string) error {
+func (b *builder) keepImports() {
+	for _, e := range b.model.Events {
+		if !e.imported() {
+			continue
+		}
+		c := *e
+		c.Tags, c.Keywords = slices.Clone(e.Tags), slices.Clone(e.Keywords)
+		b.model.imports[e.ID] = &c
+	}
+}
+
+func (b *builder) applyOverrides(rows []store.Row) error {
 	seen := map[string]bool{}
 	for _, row := range rows {
 		id := row["Event ID"]
@@ -1359,8 +796,6 @@ func (b *builder) applyOverrides(rows []map[string]string) error {
 			e.Address = address
 			b.model.byAddress[address] = e
 		}
-		// A picture an admin gave it, from the page's Add an image, names an
-		// upload the way the Events tab's Image cell does.
 		switch image := strings.Trim(strings.TrimSpace(row["Image"]), "/"); image {
 		case "":
 		case Clear:
@@ -1379,45 +814,43 @@ func (b *builder) applyOverrides(rows []map[string]string) error {
 	return nil
 }
 
-// settle derives what follows from the layered tags: the classrooms among
-// them and keywords that never repeat a tag, and refuses an event whose
-// tags or day type cannot be right.
+func (b *builder) settleEvent(e *Event) {
+	e.Classrooms = []string{}
+	for _, name := range b.model.Roster.Names() {
+		if slices.Contains(e.Tags, name) {
+			e.Classrooms = append(e.Classrooms, name)
+		}
+	}
+	keywords := []string{}
+	for _, k := range e.Keywords {
+		repeats := false
+		for _, t := range e.Tags {
+			if strings.EqualFold(k, t) {
+				repeats = true
+			}
+		}
+		if !repeats {
+			keywords = append(keywords, k)
+		}
+	}
+	e.Keywords = keywords
+	if !e.Hidden && len(e.Tags) == len(e.Classrooms) && len(e.Tags) > 0 {
+		e.Tags = append(e.Tags, TagMisc)
+	}
+}
+
 func (b *builder) settle() {
 	for _, e := range b.model.Events {
-		e.Classrooms = []string{}
-		for _, name := range b.model.Roster.Names() {
-			if slices.Contains(e.Tags, name) {
-				e.Classrooms = append(e.Classrooms, name)
-			}
-		}
-		keywords := []string{}
-		for _, k := range e.Keywords {
-			repeats := false
-			for _, t := range e.Tags {
-				if strings.EqualFold(k, t) {
-					repeats = true
-				}
-			}
-			if !repeats {
-				keywords = append(keywords, k)
-			}
-		}
-		e.Keywords = keywords
-		if e.Hidden {
-			continue
-		}
-		// An event shared by link or by invitation is for whoever is sent
-		// it, so it may carry no tags at all - and then no Misc; a
-		// cancelled one is for nobody.
-		if len(e.Tags) == 0 && e.Sharing == SharingPublic && !e.Cancelled {
+		if !e.Hidden && len(e.Tags) == 0 && e.Sharing == SharingPublic && !e.Cancelled {
 			b.refuse("%s %q (%s) has no tags, so it matches nobody", e.Source, e.Title, e.ID)
 		}
-		if len(e.Tags) == len(e.Classrooms) && len(e.Tags) > 0 {
-			e.Tags = append(e.Tags, TagMisc)
-		}
-		if e.DayType != "" && !e.AllDay {
+		b.settleEvent(e)
+		if !e.Hidden && e.DayType != "" && !e.AllDay {
 			b.refuse("%s %q (%s) is timed but carries the day type %q, which only an all-day event can", e.Source, e.Title, e.ID, e.DayType)
 		}
+	}
+	for _, e := range b.model.imports {
+		b.settleEvent(e)
 	}
 }
 
@@ -1436,8 +869,6 @@ func (b *builder) checkFeed(f Feed) error {
 			return fmt.Errorf("%q is not a classroom", c)
 		}
 	}
-	// A feed carries the other apps' events too, so the built-in tags are
-	// as good as the tab's.
 	for _, t := range f.Tags {
 		if !b.model.tags[t] && !slices.ContainsFunc(builtinTags, func(bt Tag) bool { return bt.Name == t }) {
 			return fmt.Errorf("%q is not in %s", t, TagsTab)
@@ -1450,10 +881,7 @@ func normalizeEmail(email string) string {
 	return strings.ToLower(strings.TrimSpace(email))
 }
 
-// settings reads each person's saved view, keeping the classrooms and
-// categories the sheet still has - a renamed one drops out rather than
-// hiding everything - and the last row for an address when there are two.
-func (b *builder) settings(rows []map[string]string) {
+func (b *builder) settings(rows []store.Row) {
 	for _, row := range rows {
 		email := normalizeEmail(row["Email"])
 		if email == "" {
@@ -1477,9 +905,6 @@ func (b *builder) settings(rows []map[string]string) {
 	}
 }
 
-// An Answered is one person's word on one event with who gave it - the
-// person themselves, a parent for a child, a host - when, and how: on a
-// page here, or by the Accept or Decline in their calendar app.
 type Answered struct {
 	Answer string `json:"answer"`
 	By     string `json:"by,omitempty"`
@@ -1487,22 +912,16 @@ type Answered struct {
 	Via    string `json:"via,omitempty"`
 }
 
-// How an answer came: ViaPage from a page - the event's here, an outside
-// person's own, Heliosian's cards - and ViaCalendar from the reply a
-// calendar app sent to the invite.
 const (
 	ViaPage     = "page"
 	ViaCalendar = "calendar"
 )
 
-// isAnswer says a word is one the app takes: yes, no, maybe, or hidden.
 func isAnswer(word string) bool {
 	return word == AnswerYes || word == AnswerNo || word == AnswerMaybe || word == AnswerHidden
 }
 
-// answers reads each person's word on each event; an answer the app does
-// not know is dropped, and the last row for a pair wins.
-func (b *builder) answers(rows []map[string]string) {
+func (b *builder) answers(rows []store.Row) {
 	for _, row := range rows {
 		email, id, answer := normalizeEmail(row["Email"]), strings.TrimSpace(row["Event ID"]), strings.ToLower(strings.TrimSpace(row["Answer"]))
 		if email == "" || id == "" || !isAnswer(answer) {
@@ -1517,29 +936,34 @@ func (b *builder) answers(rows []map[string]string) {
 	}
 }
 
-// AnswerOf is one person's word on one event, or nothing.
 func (m *Model) AnswerOf(email, id string) string {
 	return m.Answers[normalizeEmail(email)][id]
 }
 
-func (b *builder) feeds(rows []map[string]string) error {
+func (b *builder) feeds(rows []store.Row) error {
+	seen := map[string]bool{}
 	for _, row := range rows {
 		f := Feed{
 			Token: strings.TrimSpace(row["Token"]), Email: strings.TrimSpace(row["Email"]), Name: strings.TrimSpace(row["Name"]),
 			Classrooms: SplitList(row["Classrooms"]), Tags: SplitList(row["Tags"]), Created: row["Created"], Emoji: strings.TrimSpace(row["Emoji"]),
+			order: strings.TrimSpace(row[store.OrderColumn]),
 		}
 		if f.Token == "" {
 			return fmt.Errorf("%s has a row with no token", FeedsTab)
 		}
-		if b.model.byToken[f.Token] != nil {
+		if seen[f.Token] {
 			return fmt.Errorf("feed token %q is listed twice", f.Token)
+		}
+		seen[f.Token] = true
+		if err := store.CheckKey(f.order); err != nil {
+			return fmt.Errorf("feed %q: %w", f.Token, err)
 		}
 		if err := b.checkFeed(f); err != nil {
 			return fmt.Errorf("feed %q: %w", f.Token, err)
 		}
 		b.model.Feeds = append(b.model.Feeds, f)
-		b.model.byToken[f.Token] = &b.model.Feeds[len(b.model.Feeds)-1]
 	}
+	slices.SortStableFunc(b.model.Feeds, func(x, y Feed) int { return store.CompareKeys(x.order, y.order) })
 	for i := range b.model.Feeds {
 		b.model.byToken[b.model.Feeds[i].Token] = &b.model.Feeds[i]
 	}
@@ -1562,14 +986,6 @@ func normalTitle(title string) string {
 	return strings.ToLower(strings.Join(strings.Fields(title), " "))
 }
 
-// claims is what an all-day event says, one claim per weekday per classroom:
-// the day type it imposes, or its title when it imposes none. It reads the
-// days the event sits on (Event.Dates, settled by occupies) rather than
-// working them out again, and drops the weekends among them, since a weekend
-// carries nothing to say about school - which is why two feed weeks cover a
-// PDF span written across the weekend between them. The test is the weekday
-// and not the school year, because the feed carries years the PDF has never
-// named - last year, and the summer camps - and their entries fold too.
 func claims(e *Event) []string {
 	if !e.AllDay {
 		return nil
@@ -1590,16 +1006,6 @@ func claims(e *Event) []string {
 	return out
 }
 
-// dedupe folds events that say the same thing from two sources. Events are
-// taken in order of preference - one carrying a year marker first, then a
-// hand-added row over the feed over the PDF, then the longer span - and each
-// is kept unless it adds nothing. An all-day event is a set of claims, one
-// per school day per classroom, and adds nothing when events already kept
-// state every one of them: four one-day feed entries cover a four-day PDF
-// entry, and two feed weeks cover a PDF span written across the weekend
-// between them. A timed event adds nothing when one already kept has its
-// start, end, tags, and title. The rest are hidden and counted, so the day
-// plan, the lists, and the feeds all see one.
 func (b *builder) dedupe() {
 	order := []*Event{}
 	for _, e := range b.model.Events {
@@ -1638,7 +1044,7 @@ func (b *builder) dedupe() {
 	}
 }
 
-func (b *builder) years(pdfRows []map[string]string) error {
+func (b *builder) years(pdfRows []store.Row) error {
 	type marks struct{ first, last []string }
 	byYear := map[string]*marks{}
 	for _, row := range pdfRows {
@@ -1677,12 +1083,6 @@ func (b *builder) years(pdfRows []map[string]string) error {
 	return nil
 }
 
-// assign records a day type for classrooms on a date within one layer. Two
-// claims in one layer that differ are refused, unless one of them is No
-// School, which wins - a break the feed also marks as a no-aftercare day or
-// a half day is still a break - or one of them is Regular, which yields: a
-// first day of school the enricher files as a regular day is still the
-// half day the feed says it is for kindergarten.
 func (b *builder) assign(layer map[string]map[string]string, date string, classrooms []string, name, by string) {
 	if layer[date] == nil {
 		layer[date] = map[string]string{}
@@ -1715,10 +1115,7 @@ func (b *builder) merge(layer map[string]map[string]string) {
 	}
 }
 
-// occupies settles the days every event sits on (Event.Dates) once the school
-// years are known, so the day plan, the pages, the front page's rail and
-// Helios Ask all read one answer.
-func (b *builder) occupies(dayOverrides []map[string]string) {
+func (b *builder) occupies(dayOverrides []store.Row) {
 	b.school = map[string]bool{}
 	for _, y := range b.model.Years {
 		first, _ := parseDate(y.FirstDay)
@@ -1763,7 +1160,7 @@ func (b *builder) occupies(dayOverrides []map[string]string) {
 	}
 }
 
-func (b *builder) days(dayOverrides []map[string]string) error {
+func (b *builder) days(dayOverrides []store.Row) error {
 	m := b.model
 	everyone := m.Roster.Names()
 	for date := range b.school {
@@ -1812,19 +1209,12 @@ func (b *builder) days(dayOverrides []map[string]string) error {
 	return nil
 }
 
-// BuildModel validates every row and refuses the whole set on the first
-// rule broken, the stance every app here takes. Events layer import, then
-// enrichment joining it, then overrides winning over both; the school years
-// come from the PDF's markers, which settles the days each event sits on
-// (occupies) and so what each one claims for the folding; the day plan is
-// Regular across each school year, then every all-day event's day type by
-// source, then Day Overrides.
-func BuildModel(tables *Tables, roster Roster) (*Model, error) {
-	dayTypes, err := parseDayTypes(tables.DayTypes)
+func BuildModel(tables store.Tables, roster Roster) (*Model, error) {
+	dayTypes, err := parseDayTypes(tables[DayTypesTab])
 	if err != nil {
 		return nil, err
 	}
-	tags, err := parseTags(tables.Tags)
+	tags, err := parseTags(tables[TagsTab])
 	if err != nil {
 		return nil, err
 	}
@@ -1832,13 +1222,18 @@ func BuildModel(tables *Tables, roster Roster) (*Model, error) {
 		Events: []*Event{}, DayTypes: dayTypes, Tags: tags, Days: map[string]map[string]string{}, Years: []Year{}, Provenance: map[string]*Provenance{},
 		Roster: roster, Feeds: []Feed{}, Settings: map[string]Setting{}, Answers: map[string]map[string]string{}, Answered: map[string]map[string]Answered{},
 		Invitations: map[string]*Invitation{}, Invites: map[string][]Invite{}, Groups: map[string][]InviteGroup{}, Bounced: map[string]Bounce{}, invited: map[string]map[string]bool{}, listed: map[string]map[string]bool{}, byInvite: map[string]Invite{},
-		Skipped: map[string]int{}, byID: map[string]*Event{}, byAddress: map[string]*Event{}, byToken: map[string]*Feed{}, tags: map[string]bool{},
+		Skipped: map[string]int{}, imports: map[string]*Event{}, byID: map[string]*Event{}, byAddress: map[string]*Event{}, byToken: map[string]*Feed{}, tags: map[string]bool{},
 	}
 	for _, t := range tags {
 		m.tags[t.Name] = true
 	}
+	admins := []string{}
+	for _, row := range tables[AdminsTab] {
+		admins = append(admins, row["Email"])
+	}
+	m.admins = config.NormalizeEmails(admins)
 	b := &builder{model: m}
-	for _, row := range tables.Google {
+	for _, row := range tables[GoogleTab] {
 		e, err := b.event(SourceGoogle, row["Key"], row)
 		if err != nil {
 			return nil, err
@@ -1849,7 +1244,7 @@ func BuildModel(tables *Tables, roster Roster) (*Model, error) {
 			return nil, err
 		}
 	}
-	for _, row := range tables.PDF {
+	for _, row := range tables[PDFTab] {
 		e, err := b.event(SourcePDF, row["Key"], row)
 		if err != nil {
 			return nil, err
@@ -1866,7 +1261,7 @@ func BuildModel(tables *Tables, roster Roster) (*Model, error) {
 			return nil, err
 		}
 	}
-	for _, row := range tables.Events {
+	for _, row := range tables[EventsTab] {
 		e, err := b.event(SourceSheet, row["Event ID"], row)
 		if err != nil {
 			return nil, err
@@ -1883,13 +1278,9 @@ func BuildModel(tables *Tables, roster Roster) (*Model, error) {
 			}
 			e.Sharing = sharingWords[i]
 		}
-		// The Image cell names an upload in the shared blob store, the way
-		// a category's does; the page fetches it by that path.
 		if image := strings.Trim(strings.TrimSpace(row["Image"]), "/"); image != "" {
 			e.Image = "/" + image
 		}
-		// The Source cell is the row's proof: a web address links, anything
-		// else is said as written.
 		if proof := strings.TrimSpace(row["Source"]); proof != "" {
 			if u, err := url.Parse(proof); err == nil && (u.Scheme == "https" || u.Scheme == "http") && u.Host != "" {
 				e.SourceURL = proof
@@ -1901,10 +1292,11 @@ func BuildModel(tables *Tables, roster Roster) (*Model, error) {
 			return nil, err
 		}
 	}
-	if err := b.applyEnrichment(tables.Enrichment); err != nil {
+	if err := b.applyEnrichment(tables[EnrichmentTab]); err != nil {
 		return nil, err
 	}
-	if err := b.applyOverrides(tables.Overrides); err != nil {
+	b.keepImports()
+	if err := b.applyOverrides(tables[OverridesTab]); err != nil {
 		return nil, err
 	}
 	sort.SliceStable(m.Events, func(i, j int) bool {
@@ -1917,25 +1309,25 @@ func BuildModel(tables *Tables, roster Roster) (*Model, error) {
 		return m.Events[i].ID < m.Events[j].ID
 	})
 	b.settle()
-	if err := b.years(tables.PDF); err != nil {
+	if err := b.years(tables[PDFTab]); err != nil {
 		return nil, err
 	}
-	b.occupies(tables.DayOverrides)
+	b.occupies(tables[DayOverridesTab])
 	b.dedupe()
-	if err := b.days(tables.DayOverrides); err != nil {
+	if err := b.days(tables[DayOverridesTab]); err != nil {
 		return nil, err
 	}
-	b.settings(tables.Settings)
-	b.answers(tables.RSVPs)
-	b.invitations(tables.Invitations, tables.Invites)
+	b.settings(tables[SettingsTab])
+	b.answers(tables[RSVPsTab])
+	b.invitations(tables[InvitationsTab], tables[InvitesTab])
 	for _, e := range m.Events {
 		if inv := m.Invitations[e.ID]; inv != nil && e.AddedBy != "" && inv.SteppedDown == normalizeEmail(e.AddedBy) {
 			e.PosterLeft = true
 		}
 	}
-	b.groups(tables.InviteGroups)
-	b.bounces(tables.Bounces)
-	if err := b.feeds(tables.Feeds); err != nil {
+	b.groups(tables[InviteGroupsTab])
+	b.bounces(tables[BouncesTab])
+	if err := b.feeds(tables[FeedsTab]); err != nil {
 		return nil, err
 	}
 	visible := []*Event{}
@@ -1950,8 +1342,6 @@ func BuildModel(tables *Tables, roster Roster) (*Model, error) {
 			delete(m.byAddress, e.Address)
 			continue
 		}
-		// A pending, declined or cancelled event, or one shared by link or
-		// by invitation, waits apart from the calendar, still found by id.
 		if e.Pending || e.Declined || e.Cancelled || e.Sharing != SharingPublic {
 			m.Pending = append(m.Pending, e)
 			continue

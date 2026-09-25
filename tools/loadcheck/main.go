@@ -270,14 +270,11 @@ func main() {
 	fmt.Printf("config: %d super admins, stale years %+v, staff color %s, %d grade colors, %d classroom colors\n",
 		len(settings.SuperAdmins), settings.StaleYears, settings.StaffColor, len(settings.GradeColors), len(settings.ClassroomColors))
 
-	calendarTables, err := calendar.ReadTables(source)
+	calendarCache, err := calendar.NewCache(source, nil, func() calendar.Roster { return app.CalendarRoster(model) }, nil, func(string) bool { return false }, who.NewQueue())
 	if err != nil {
-		log.Fatalf("[ERROR] read calendar tables: %v", err)
+		log.Fatalf("[ERROR] load calendar model: %v", err)
 	}
-	plan, err := calendar.BuildModel(calendarTables, app.CalendarRoster(model))
-	if err != nil {
-		log.Fatalf("[ERROR] build calendar model: %v", err)
-	}
+	plan := calendarCache.Model()
 	bySource, byTag := map[string]int{}, map[string]int{}
 	for _, e := range plan.Events {
 		bySource[e.Source]++
@@ -306,7 +303,7 @@ func main() {
 	for _, d := range plan.DayTypes {
 		fmt.Printf("    %s: %d classroom-days\n", d.Name, byType[d.Name])
 	}
-	fmt.Printf("calendar admins: %d\n", len(calendarTables.Admins))
+	fmt.Printf("calendar admins: %d\n", len(calendarCache.Admins(nil)))
 
 	whoTables, err := who.ReadTables(source)
 	if err != nil {

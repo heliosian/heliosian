@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"heliosian/internal/data"
+	"heliosian/internal/store"
 )
 
 var roster = Roster{Classrooms: []Classroom{
@@ -23,13 +24,22 @@ var roster = Roster{Classrooms: []Classroom{
 	{Name: "Herons", Band: "Hegrets", Grades: []string{"Grade 8"}, Crews: []string{"Great Blue", "Green"}},
 }}
 
-func tables(t *testing.T) *Tables {
+func readTables(t *testing.T, dir *data.Dir) store.Tables {
 	t.Helper()
-	tb, err := ReadTables(&data.Dir{Root: "../../sampledata"})
-	if err != nil {
-		t.Fatal(err)
+	out := store.Tables{}
+	for _, tab := range spec(nil, nil).Tabs {
+		_, rows, err := dir.Table(appName, tab.Name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out[tab.Name] = rows
 	}
-	return tb
+	return out
+}
+
+func tables(t *testing.T) store.Tables {
+	t.Helper()
+	return readTables(t, &data.Dir{Root: "../../sampledata"})
 }
 
 func load(t *testing.T) *Model {
@@ -46,8 +56,6 @@ func TestSampleModel(t *testing.T) {
 	if m.Hidden != 1 || m.Duplicates != 2 || len(m.Events) != 20 {
 		t.Errorf("visible %d hidden %d duplicates %d", len(m.Events), m.Hidden, m.Duplicates)
 	}
-	// The feed's Labor Day and the PDF's say the same thing; the feed's is
-	// kept. The PDF's two kindergarten half days are inside the feed's four.
 	if m.Event("a4@sample") == nil || m.Event("pdf/2026-2027/2026-09-07/labor-day") != nil || m.Event("pdf/2026-2027/2026-08-18/12-30p-dismissals-k-only") != nil {
 		t.Errorf("dedupe kept the wrong one")
 	}
@@ -90,7 +98,7 @@ func TestSampleModel(t *testing.T) {
 
 func TestKeywordsNeverRepeatTags(t *testing.T) {
 	tb := tables(t)
-	tb.Overrides = append(tb.Overrides, map[string]string{"Event ID": "a7@sample", "Keywords": "Community, booths, hummingbirds, food"})
+	tb[OverridesTab] = append(tb[OverridesTab], store.Row{"Event ID": "a7@sample", "Keywords": "Community, booths, hummingbirds, food"})
 	m, err := BuildModel(tb, roster)
 	if err != nil {
 		t.Fatal(err)
@@ -142,9 +150,10 @@ func TestDays(t *testing.T) {
 
 func TestNoSchoolWins(t *testing.T) {
 	tb := tables(t)
-	tb.Events = append(tb.Events, map[string]string{"Event ID": "X1", "Start": "2026-09-08", "Title": "Short Day", "Tags": "Jays, Schedule", "Day Type": "Early Dismissal"})
-	tb.Events = append(tb.Events, map[string]string{"Event ID": "X2", "Start": "2026-09-08", "Title": "Closed", "Tags": "Jays, Schedule", "Day Type": "No School"})
-	tb.Events = append(tb.Events, map[string]string{"Event ID": "X3", "Start": "2026-09-08", "Title": "Still Short", "Tags": "Jays, Schedule", "Day Type": "Early Dismissal"})
+	tb[EventsTab] = append(tb[EventsTab],
+		store.Row{"Event ID": "X1", "Start": "2026-09-08", "Title": "Short Day", "Tags": "Jays, Schedule", "Day Type": "Early Dismissal"},
+		store.Row{"Event ID": "X2", "Start": "2026-09-08", "Title": "Closed", "Tags": "Jays, Schedule", "Day Type": "No School"},
+		store.Row{"Event ID": "X3", "Start": "2026-09-08", "Title": "Still Short", "Tags": "Jays, Schedule", "Day Type": "Early Dismissal"})
 	m, err := BuildModel(tb, roster)
 	if err != nil {
 		t.Fatal(err)
@@ -154,18 +163,14 @@ func TestNoSchoolWins(t *testing.T) {
 	}
 }
 
-// A conference span written from one school day to another leaves the
-// weekend inside it alone - in the day plan and on the days it is listed
-// under - while a single day, a span anchored on a weekend or a holiday, and
-// a span with no day type to make are taken at their word.
 func TestWeekendInsideASpan(t *testing.T) {
 	tb := tables(t)
-	tb.Events = append(tb.Events,
-		map[string]string{"Event ID": "W1", "Start": "2026-09-11", "End": "2026-09-14", "Title": "Conferences", "Tags": "Jays, Conference", "Day Type": "Early Dismissal"},
-		map[string]string{"Event ID": "W2", "Start": "2026-10-10", "End": "2026-10-13", "Title": "Fall Retreat", "Tags": "Jays, Conference", "Day Type": "Early Dismissal"},
-		map[string]string{"Event ID": "W3", "Start": "2026-11-08", "Title": "Open House", "Tags": "Jays, Conference", "Day Type": "Early Dismissal"},
-		map[string]string{"Event ID": "W4", "Start": "2026-12-18", "End": "2026-12-22", "Title": "Break Conferences", "Tags": "Jays, Conference", "Day Type": "Early Dismissal"},
-		map[string]string{"Event ID": "W5", "Start": "2026-09-11", "End": "2026-09-14", "Title": "Eighth Grade Trip", "Tags": "Jays, Trip"})
+	tb[EventsTab] = append(tb[EventsTab],
+		store.Row{"Event ID": "W1", "Start": "2026-09-11", "End": "2026-09-14", "Title": "Conferences", "Tags": "Jays, Conference", "Day Type": "Early Dismissal"},
+		store.Row{"Event ID": "W2", "Start": "2026-10-10", "End": "2026-10-13", "Title": "Fall Retreat", "Tags": "Jays, Conference", "Day Type": "Early Dismissal"},
+		store.Row{"Event ID": "W3", "Start": "2026-11-08", "Title": "Open House", "Tags": "Jays, Conference", "Day Type": "Early Dismissal"},
+		store.Row{"Event ID": "W4", "Start": "2026-12-18", "End": "2026-12-22", "Title": "Break Conferences", "Tags": "Jays, Conference", "Day Type": "Early Dismissal"},
+		store.Row{"Event ID": "W5", "Start": "2026-09-11", "End": "2026-09-14", "Title": "Eighth Grade Trip", "Tags": "Jays, Trip"})
 	m, err := BuildModel(tb, roster)
 	if err != nil {
 		t.Fatal(err)
@@ -207,13 +212,12 @@ func TestWeekendInsideASpan(t *testing.T) {
 	}
 }
 
-// A regular-day claim beside another day type's, in either order, yields
-// to it rather than refusing the load.
 func TestRegularYields(t *testing.T) {
 	tb := tables(t)
-	tb.Events = append(tb.Events, map[string]string{"Event ID": "X1", "Start": "2026-09-08", "Title": "First Day", "Tags": "Jays, Schedule", "Day Type": "Regular"})
-	tb.Events = append(tb.Events, map[string]string{"Event ID": "X2", "Start": "2026-09-08", "Title": "Short Day", "Tags": "Jays, Schedule", "Day Type": "Early Dismissal"})
-	tb.Events = append(tb.Events, map[string]string{"Event ID": "X3", "Start": "2026-09-08", "Title": "Still First Day", "Tags": "Jays, Schedule", "Day Type": "Regular"})
+	tb[EventsTab] = append(tb[EventsTab],
+		store.Row{"Event ID": "X1", "Start": "2026-09-08", "Title": "First Day", "Tags": "Jays, Schedule", "Day Type": "Regular"},
+		store.Row{"Event ID": "X2", "Start": "2026-09-08", "Title": "Short Day", "Tags": "Jays, Schedule", "Day Type": "Early Dismissal"},
+		store.Row{"Event ID": "X3", "Start": "2026-09-08", "Title": "Still First Day", "Tags": "Jays, Schedule", "Day Type": "Regular"})
 	m, err := BuildModel(tb, roster)
 	if err != nil {
 		t.Fatal(err)
@@ -225,15 +229,12 @@ func TestRegularYields(t *testing.T) {
 
 func TestDedupe(t *testing.T) {
 	tb := tables(t)
-	// A hand-added twin of a feed event wins over it; a differing span, tag,
-	// or title is not a twin, so two clubs sharing an hour and an audience
-	// both stand.
-	tb.Events = append(tb.Events,
-		map[string]string{"Event ID": "D1", "Start": "2026-09-24 16:00", "End": "2026-09-24 18:00", "Title": "international  night", "Tags": "Hummingbirds, Hawks, Falcons, Jays, Ravens, Condors, Ospreys, Egrets, Herons, Community"},
-		map[string]string{"Event ID": "D2", "Start": "2026-09-24 16:00", "End": "2026-09-24 19:00", "Title": "International Night", "Tags": "Hummingbirds, Hawks, Falcons, Jays, Ravens, Condors, Ospreys, Egrets, Herons, Community"},
-		map[string]string{"Event ID": "D3", "Start": "2026-09-24 16:00", "End": "2026-09-24 18:00", "Title": "International Night", "Tags": "Hummingbirds, Hawks, Falcons, Jays, Ravens, Condors, Ospreys, Egrets, Herons, Community, Parents"},
-		map[string]string{"Event ID": "D4", "Start": "2026-09-24 16:00", "End": "2026-09-24 18:00", "Title": "Cross Country", "Tags": "Condors, Ospreys, Egrets, Herons, Clubs"},
-		map[string]string{"Event ID": "D5", "Start": "2026-09-24 16:00", "End": "2026-09-24 18:00", "Title": "Science Olympiad", "Tags": "Condors, Ospreys, Egrets, Herons, Clubs"},
+	tb[EventsTab] = append(tb[EventsTab],
+		store.Row{"Event ID": "D1", "Start": "2026-09-24 16:00", "End": "2026-09-24 18:00", "Title": "international  night", "Tags": "Hummingbirds, Hawks, Falcons, Jays, Ravens, Condors, Ospreys, Egrets, Herons, Community"},
+		store.Row{"Event ID": "D2", "Start": "2026-09-24 16:00", "End": "2026-09-24 19:00", "Title": "International Night", "Tags": "Hummingbirds, Hawks, Falcons, Jays, Ravens, Condors, Ospreys, Egrets, Herons, Community"},
+		store.Row{"Event ID": "D3", "Start": "2026-09-24 16:00", "End": "2026-09-24 18:00", "Title": "International Night", "Tags": "Hummingbirds, Hawks, Falcons, Jays, Ravens, Condors, Ospreys, Egrets, Herons, Community, Parents"},
+		store.Row{"Event ID": "D4", "Start": "2026-09-24 16:00", "End": "2026-09-24 18:00", "Title": "Cross Country", "Tags": "Condors, Ospreys, Egrets, Herons, Clubs"},
+		store.Row{"Event ID": "D5", "Start": "2026-09-24 16:00", "End": "2026-09-24 18:00", "Title": "Science Olympiad", "Tags": "Condors, Ospreys, Egrets, Herons, Clubs"},
 	)
 	m, err := BuildModel(tb, roster)
 	if err != nil {
@@ -242,12 +243,10 @@ func TestDedupe(t *testing.T) {
 	if m.Duplicates != 3 || m.Event("a7@sample") != nil || m.Event("D1") == nil || m.Event("D2") == nil || m.Event("D3") == nil || m.Event("D4") == nil || m.Event("D5") == nil {
 		t.Errorf("duplicates %d, a7 %v, D1 %v, D2 %v, D3 %v, D4 %v, D5 %v", m.Duplicates, m.Event("a7@sample"), m.Event("D1"), m.Event("D2"), m.Event("D3"), m.Event("D4"), m.Event("D5"))
 	}
-	// Four one-day feed entries cover the PDF's four-day conference span;
-	// two do not.
 	everyone := "Hummingbirds, Hawks, Falcons, Jays, Ravens, Condors, Ospreys, Egrets, Herons, Schedule"
 	tb = tables(t)
 	for _, date := range []string{"2026-09-29", "2026-09-30", "2026-10-01", "2026-10-02"} {
-		tb.Events = append(tb.Events, map[string]string{"Event ID": "C" + date, "Start": date, "Title": "Conferences", "Tags": everyone, "Day Type": "Early Dismissal"})
+		tb[EventsTab] = append(tb[EventsTab], store.Row{"Event ID": "C" + date, "Start": date, "Title": "Conferences", "Tags": everyone, "Day Type": "Early Dismissal"})
 	}
 	m, err = BuildModel(tb, roster)
 	if err != nil {
@@ -258,7 +257,7 @@ func TestDedupe(t *testing.T) {
 	}
 	tb = tables(t)
 	for _, date := range []string{"2026-09-29", "2026-09-30"} {
-		tb.Events = append(tb.Events, map[string]string{"Event ID": "C" + date, "Start": date, "Title": "Conferences", "Tags": everyone, "Day Type": "Early Dismissal"})
+		tb[EventsTab] = append(tb[EventsTab], store.Row{"Event ID": "C" + date, "Start": date, "Title": "Conferences", "Tags": everyone, "Day Type": "Early Dismissal"})
 	}
 	m, err = BuildModel(tb, roster)
 	if err != nil {
@@ -267,17 +266,15 @@ func TestDedupe(t *testing.T) {
 	if m.Event("pdf/2026-2027/2026-09-29/returning-grade-ilp-conference-half-days") == nil {
 		t.Errorf("a half-covered span folded")
 	}
-	// Two feed weeks of a title-only span cover the PDF's one written across
-	// the weekend between them; the feed's pair is the living source.
 	assessment := "Hummingbirds, Hawks, Falcons, Jays, Ravens, Condors, Ospreys, Egrets, Herons, Assessment"
 	tb = tables(t)
-	tb.Google = append(tb.Google,
-		map[string]string{"Key": "m1", "Start": "2026-08-24", "End": "2026-08-28", "Title": "MAP Assessment", "Updated": "2026-08-01 09:00", "Sequence": "0"},
-		map[string]string{"Key": "m2", "Start": "2026-08-31", "End": "2026-09-02", "Title": "MAP Assessment", "Updated": "2026-08-01 09:00", "Sequence": "0"},
+	tb[GoogleTab] = append(tb[GoogleTab],
+		store.Row{"Key": "m1", "Start": "2026-08-24", "End": "2026-08-28", "Title": "MAP Assessment", "Updated": "2026-08-01 09:00", "Sequence": "0"},
+		store.Row{"Key": "m2", "Start": "2026-08-31", "End": "2026-09-02", "Title": "MAP Assessment", "Updated": "2026-08-01 09:00", "Sequence": "0"},
 	)
-	tb.PDF = append(tb.PDF, map[string]string{"Key": "pdf/2026-2027/2026-08-24/map-assessment", "Year": "2026-2027", "Start": "2026-08-24", "End": "2026-09-02", "Title": "MAP Assessment", "Tags": "Hummingbirds, Hawks, Falcons, Jays, Ravens, Condors, Ospreys, Egrets, Herons"})
+	tb[PDFTab] = append(tb[PDFTab], store.Row{"Key": "pdf/2026-2027/2026-08-24/map-assessment", "Year": "2026-2027", "Start": "2026-08-24", "End": "2026-09-02", "Title": "MAP Assessment", "Tags": "Hummingbirds, Hawks, Falcons, Jays, Ravens, Condors, Ospreys, Egrets, Herons"})
 	for _, id := range []string{"m1", "m2", "pdf/2026-2027/2026-08-24/map-assessment"} {
-		tb.Enrichment = append(tb.Enrichment, map[string]string{"Event ID": id, "Tags": assessment})
+		tb[EnrichmentTab] = append(tb[EnrichmentTab], store.Row{"Event ID": id, "Tags": assessment})
 	}
 	m, err = BuildModel(tb, roster)
 	if err != nil {
@@ -286,15 +283,12 @@ func TestDedupe(t *testing.T) {
 	if m.Event("pdf/2026-2027/2026-08-24/map-assessment") != nil || m.Event("m1") == nil || m.Event("m2") == nil {
 		t.Errorf("a span across a weekend stayed: pdf %v", m.Event("pdf/2026-2027/2026-08-24/map-assessment"))
 	}
-	// A weekend-only event has no claims: it folds against an exact twin,
-	// same dates, tags, and title, and stands beside one a day longer or
-	// named otherwise.
 	tb = tables(t)
-	tb.Events = append(tb.Events,
-		map[string]string{"Event ID": "W1", "Start": "2026-09-12", "End": "2026-09-13", "Title": "Family Camping", "Tags": "Jays, Ravens, Trip"},
-		map[string]string{"Event ID": "W2", "Start": "2026-09-12", "End": "2026-09-13", "Title": "family  camping", "Tags": "Jays, Ravens, Trip"},
-		map[string]string{"Event ID": "W3", "Start": "2026-09-12", "End": "2026-09-14", "Title": "Family Camping", "Tags": "Jays, Ravens, Trip"},
-		map[string]string{"Event ID": "W4", "Start": "2026-09-12", "End": "2026-09-13", "Title": "Camping Weekend", "Tags": "Jays, Ravens, Trip"},
+	tb[EventsTab] = append(tb[EventsTab],
+		store.Row{"Event ID": "W1", "Start": "2026-09-12", "End": "2026-09-13", "Title": "Family Camping", "Tags": "Jays, Ravens, Trip"},
+		store.Row{"Event ID": "W2", "Start": "2026-09-12", "End": "2026-09-13", "Title": "family  camping", "Tags": "Jays, Ravens, Trip"},
+		store.Row{"Event ID": "W3", "Start": "2026-09-12", "End": "2026-09-14", "Title": "Family Camping", "Tags": "Jays, Ravens, Trip"},
+		store.Row{"Event ID": "W4", "Start": "2026-09-12", "End": "2026-09-13", "Title": "Camping Weekend", "Tags": "Jays, Ravens, Trip"},
 	)
 	m, err = BuildModel(tb, roster)
 	if err != nil {
@@ -303,10 +297,9 @@ func TestDedupe(t *testing.T) {
 	if (m.Event("W1") == nil) == (m.Event("W2") == nil) || m.Event("W3") == nil || m.Event("W4") == nil {
 		t.Errorf("weekend twins: W1 %v, W2 %v, W3 %v, W4 %v", m.Event("W1"), m.Event("W2"), m.Event("W3"), m.Event("W4"))
 	}
-	// A PDF row carrying a year marker is kept over a feed twin without one.
 	tb = tables(t)
-	tb.Google = append(tb.Google, map[string]string{"Key": "g1", "Start": "2026-08-18", "End": "2026-08-18", "Title": "first  day of SCHOOL", "Updated": "2026-08-01 09:00", "Sequence": "0"})
-	tb.Enrichment = append(tb.Enrichment, map[string]string{"Event ID": "g1", "Tags": "Hummingbirds, Hawks, Falcons, Jays, Ravens, Condors, Ospreys, Egrets, Herons, Schedule"})
+	tb[GoogleTab] = append(tb[GoogleTab], store.Row{"Key": "g1", "Start": "2026-08-18", "End": "2026-08-18", "Title": "first  day of SCHOOL", "Updated": "2026-08-01 09:00", "Sequence": "0"})
+	tb[EnrichmentTab] = append(tb[EnrichmentTab], store.Row{"Event ID": "g1", "Tags": "Hummingbirds, Hawks, Falcons, Jays, Ravens, Condors, Ospreys, Egrets, Herons, Schedule"})
 	m, err = BuildModel(tb, roster)
 	if err != nil {
 		t.Fatal(err)
@@ -317,58 +310,65 @@ func TestDedupe(t *testing.T) {
 }
 
 func TestRefusals(t *testing.T) {
-	broken := map[string]func(*Tables){
-		"conflicting day types in one layer": func(tb *Tables) {
-			tb.Events = append(tb.Events, map[string]string{"Event ID": "X1", "Start": "2026-09-08", "Title": "Short Day", "Tags": "Jays, Schedule", "Day Type": "Early Dismissal"})
-			tb.Events = append(tb.Events, map[string]string{"Event ID": "X2", "Start": "2026-09-08", "Title": "No Care", "Tags": "Jays, Schedule", "Day Type": "No Aftercare"})
+	broken := map[string]func(store.Tables){
+		"conflicting day types in one layer": func(tb store.Tables) {
+			tb[EventsTab] = append(tb[EventsTab],
+				store.Row{"Event ID": "X1", "Start": "2026-09-08", "Title": "Short Day", "Tags": "Jays, Schedule", "Day Type": "Early Dismissal"},
+				store.Row{"Event ID": "X2", "Start": "2026-09-08", "Title": "No Care", "Tags": "Jays, Schedule", "Day Type": "No Aftercare"})
 		},
-		"timed event with a day type": func(tb *Tables) {
-			tb.Overrides = append(tb.Overrides, map[string]string{"Event ID": "a7@sample", "Day Type": "Early Dismissal"})
+		"timed event with a day type": func(tb store.Tables) {
+			tb[OverridesTab] = append(tb[OverridesTab], store.Row{"Event ID": "a7@sample", "Day Type": "Early Dismissal"})
 		},
-		"no tags": func(tb *Tables) {
-			tb.Overrides = append(tb.Overrides, map[string]string{"Event ID": "a7@sample", "Tags": Clear})
+		"no tags": func(tb store.Tables) {
+			tb[OverridesTab] = append(tb[OverridesTab], store.Row{"Event ID": "a7@sample", "Tags": Clear})
 		},
-		"no regular day type": func(tb *Tables) {
-			tb.DayTypes = tb.DayTypes[1:]
+		"no regular day type": func(tb store.Tables) {
+			tb[DayTypesTab] = tb[DayTypesTab][1:]
 		},
-		"no tags tab rows": func(tb *Tables) {
-			tb.Tags = nil
+		"no tags tab rows": func(tb store.Tables) {
+			tb[TagsTab] = nil
 		},
-		"unknown tag": func(tb *Tables) {
-			tb.Overrides = append(tb.Overrides, map[string]string{"Event ID": "a7@sample", "Tags": "Penguins"})
+		"a tag's order ending in 0": func(tb store.Tables) {
+			tb[TagsTab][0][store.OrderColumn] = "a0"
 		},
-		"unknown day type": func(tb *Tables) {
-			tb.DayOverrides = append(tb.DayOverrides, map[string]string{"Date": "2026-09-08", "Day Type": "Snow Day"})
+		"a feed's order in capitals": func(tb store.Tables) {
+			tb[FeedsTab][0][store.OrderColumn] = "B"
 		},
-		"unknown classroom in a day override": func(tb *Tables) {
-			tb.DayOverrides = append(tb.DayOverrides, map[string]string{"Date": "2026-09-08", "Classrooms": "Penguins", "Day Type": "No School"})
+		"unknown tag": func(tb store.Tables) {
+			tb[OverridesTab] = append(tb[OverridesTab], store.Row{"Event ID": "a7@sample", "Tags": "Penguins"})
 		},
-		"end before start": func(tb *Tables) {
-			tb.Overrides = append(tb.Overrides, map[string]string{"Event ID": "a7@sample", "End": "2026-09-24 15:00"})
+		"unknown day type": func(tb store.Tables) {
+			tb[DayOverridesTab] = append(tb[DayOverridesTab], store.Row{"Date": "2026-09-08", "Day Type": "Snow Day"})
 		},
-		"duplicate id": func(tb *Tables) {
-			tb.Events = append(tb.Events, map[string]string{"Event ID": "a7@sample", "Start": "2026-09-24", "Title": "Again"})
+		"unknown classroom in a day override": func(tb store.Tables) {
+			tb[DayOverridesTab] = append(tb[DayOverridesTab], store.Row{"Date": "2026-09-08", "Classrooms": "Penguins", "Day Type": "No School"})
 		},
-		"pdf year mismatch": func(tb *Tables) {
-			tb.PDF[0]["Year"] = "2025-2026"
+		"end before start": func(tb store.Tables) {
+			tb[OverridesTab] = append(tb[OverridesTab], store.Row{"Event ID": "a7@sample", "End": "2026-09-24 15:00"})
 		},
-		"two first days": func(tb *Tables) {
-			tb.PDF = append(tb.PDF, map[string]string{"Key": "pdf/x", "Year": "2026-2027", "Start": "2026-08-19", "Title": "Another first day", "Marker": MarkerFirstDay})
+		"duplicate id": func(tb store.Tables) {
+			tb[EventsTab] = append(tb[EventsTab], store.Row{"Event ID": "a7@sample", "Start": "2026-09-24", "Title": "Again"})
 		},
-		"feed naming an unknown classroom": func(tb *Tables) {
-			tb.Feeds = append(tb.Feeds, map[string]string{"Token": "t2", "Email": "a@x.org", "Name": "Mine", "Classrooms": "Penguins"})
+		"pdf year mismatch": func(tb store.Tables) {
+			tb[PDFTab][0]["Year"] = "2025-2026"
 		},
-		"feed naming an unknown tag": func(tb *Tables) {
-			tb.Feeds = append(tb.Feeds, map[string]string{"Token": "t2", "Email": "a@x.org", "Name": "Mine", "Tags": "Bake Sales"})
+		"two first days": func(tb store.Tables) {
+			tb[PDFTab] = append(tb[PDFTab], store.Row{"Key": "pdf/x", "Year": "2026-2027", "Start": "2026-08-19", "Title": "Another first day", "Marker": MarkerFirstDay})
 		},
-		"feed with no name": func(tb *Tables) {
-			tb.Feeds = append(tb.Feeds, map[string]string{"Token": "t2", "Email": "a@x.org"})
+		"feed naming an unknown classroom": func(tb store.Tables) {
+			tb[FeedsTab] = append(tb[FeedsTab], store.Row{"Token": "t2", "Email": "a@x.org", "Name": "Mine", "Classrooms": "Penguins"})
 		},
-		"feed with no token": func(tb *Tables) {
-			tb.Feeds = append(tb.Feeds, map[string]string{"Email": "a@x.org", "Name": "Mine"})
+		"feed naming an unknown tag": func(tb store.Tables) {
+			tb[FeedsTab] = append(tb[FeedsTab], store.Row{"Token": "t2", "Email": "a@x.org", "Name": "Mine", "Tags": "Bake Sales"})
 		},
-		"two feeds with one token": func(tb *Tables) {
-			tb.Feeds = append(tb.Feeds, map[string]string{"Token": tb.Feeds[0]["Token"], "Email": "a@x.org", "Name": "Mine"})
+		"feed with no name": func(tb store.Tables) {
+			tb[FeedsTab] = append(tb[FeedsTab], store.Row{"Token": "t2", "Email": "a@x.org"})
+		},
+		"feed with no token": func(tb store.Tables) {
+			tb[FeedsTab] = append(tb[FeedsTab], store.Row{"Email": "a@x.org", "Name": "Mine"})
+		},
+		"two feeds with one token": func(tb store.Tables) {
+			tb[FeedsTab] = append(tb[FeedsTab], store.Row{"Token": tb[FeedsTab][0]["Token"], "Email": "a@x.org", "Name": "Mine"})
 		},
 	}
 	for name, breaker := range broken {
@@ -402,16 +402,19 @@ func TestFeeds(t *testing.T) {
 	if !everything.Carries(m.Event("a6@sample")) || !everything.Carries(m.Event("a7@sample")) {
 		t.Errorf("a feed with no filter left something out")
 	}
-	tables := tables(t)
-	next := tables.WithFeed(map[string]string{"Token": "t2", "Email": "a@x.org", "Name": "Mine"})
-	if len(next.Feeds) != 2 || len(tables.Feeds) != 1 {
-		t.Errorf("with feed: %d then %d rows", len(tables.Feeds), len(next.Feeds))
+	next := tables(t)
+	next[FeedsTab] = append(next[FeedsTab], store.Row{"Token": "t2", "Email": "a@x.org", "Name": "Mine", store.OrderColumn: "a"}, store.Row{"Token": "t3", "Email": "a@x.org", "Name": "Yours"})
+	next[FeedsTab][0][store.OrderColumn] = "m"
+	m2, err := BuildModel(next, roster)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if gone := next.WithoutFeed("t2"); len(gone.Feeds) != 1 || len(next.Feeds) != 2 {
-		t.Errorf("without feed: %d rows", len(gone.Feeds))
+	order := []string{}
+	for _, f := range m2.Feeds {
+		order = append(order, f.Token)
 	}
-	if m2, err := BuildModel(next, roster); err != nil || len(m2.Feeds) != 2 {
-		t.Errorf("model over the added feed: %v, %d feeds", err, len(m2.Feeds))
+	if strings.Join(order, ",") != "t2,sample7feedtoken4jordan2whitfield,t3" || m2.Feed("t3").Name != "Yours" {
+		t.Errorf("feeds by order: %v", order)
 	}
 }
 
@@ -588,9 +591,6 @@ func TestRenderLinked(t *testing.T) {
 	}
 }
 
-// The front page's Upcoming Events: what the calendar page first shows a
-// viewer, from today on - their own classrooms, the default categories, the
-// other apps' events folded in with their way in - soonest first.
 func TestUpcoming(t *testing.T) {
 	m := load(t)
 	sam := Person{Email: "sam@x.org", Name: "Sam", IsStudent: true, Grade: "Grade 3", Classroom: "Jays"}
@@ -623,7 +623,6 @@ func TestUpcoming(t *testing.T) {
 	if slices.Contains(titles, "Hummingbird CAFE") || slices.Contains(titles, "Hawks and Falcons CAFE") || !slices.Contains(titles, "Condors and Ospreys CAFE") || slices.Contains(titles, "Back to School Social") {
 		t.Errorf("a parent in Jays and Ospreys sees %v", titles)
 	}
-	// The camping trip is underway on the tenth, so it is still ahead.
 	if len(got) == 0 || got[0].Title != "Jays and Ravens Camping" || got[0].Path != "/e/a5@sample" || got[0].Image != "/brand/default-header.jpg" || got[0].ImageApp != "calendar" || got[0].Link != "" || got[0].Call != "" {
 		t.Errorf("first = %+v", got[0])
 	}
@@ -676,7 +675,7 @@ func TestSameEvent(t *testing.T) {
 
 func TestMiscTag(t *testing.T) {
 	tb := tables(t)
-	tb.Events = append(cloneRows(tb.Events), map[string]string{
+	tb[EventsTab] = append(tb[EventsTab], store.Row{
 		"Event ID": "MISC0001", "Start": "2026-10-14 08:30", "End": "2026-10-14 10:00", "Title": "Vision Screening",
 		"Tags": "Hummingbirds, Hawks", "Added By": "office@x.org", "Added": "2026-09-01",
 	})
@@ -702,9 +701,6 @@ func TestSchoolYear(t *testing.T) {
 	}
 }
 
-// GoogleEventURL encodes the feed's calendar and the event the way Google
-// links an event: a plain event, an all-day instance, a timed instance in
-// UTC, and nothing for a key that is not the feed's.
 func TestGoogleEventURL(t *testing.T) {
 	cases := map[string]string{
 		"abc123@google.com":                 "abc123 heliosns.org_cidjj9plktli1gdm2hrkj7gqks@group.calendar.google.com",
@@ -722,12 +718,11 @@ func TestGoogleEventURL(t *testing.T) {
 	}
 }
 
-// The Sharing cell reads in any case and blank as Public; a word that is
-// none of the three refuses the sheet.
 func TestSharingWords(t *testing.T) {
 	for cell, want := range map[string]string{"": SharingPublic, "public": SharingPublic, "LINK": SharingLink, "invite only": SharingInvited} {
-		tables := tables(t).WithEvents([]map[string]string{{"Event ID": "shared", "Start": "2026-10-01", "End": "2026-10-01", "Title": "Shared", "Tags": "Jays", "Sharing": cell}})
-		m, err := BuildModel(tables, roster)
+		tb := tables(t)
+		tb[EventsTab] = append(tb[EventsTab], store.Row{"Event ID": "shared", "Start": "2026-10-01", "End": "2026-10-01", "Title": "Shared", "Tags": "Jays", "Sharing": cell})
+		m, err := BuildModel(tb, roster)
 		if err != nil {
 			t.Fatalf("%q: %v", cell, err)
 		}
@@ -735,8 +730,9 @@ func TestSharingWords(t *testing.T) {
 			t.Errorf("%q: %+v", cell, e)
 		}
 	}
-	tables := tables(t).WithEvents([]map[string]string{{"Event ID": "shared", "Start": "2026-10-01", "End": "2026-10-01", "Title": "Shared", "Tags": "Jays", "Sharing": "Private"}})
-	if _, err := BuildModel(tables, roster); err == nil || !strings.Contains(err.Error(), `sharing "Private"`) {
+	tb := tables(t)
+	tb[EventsTab] = append(tb[EventsTab], store.Row{"Event ID": "shared", "Start": "2026-10-01", "End": "2026-10-01", "Title": "Shared", "Tags": "Jays", "Sharing": "Private"})
+	if _, err := BuildModel(tb, roster); err == nil || !strings.Contains(err.Error(), `sharing "Private"`) {
 		t.Errorf("Private read: %v", err)
 	}
 }

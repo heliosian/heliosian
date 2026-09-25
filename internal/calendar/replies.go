@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -28,8 +29,6 @@ type Mail struct {
 	Key        []byte
 }
 
-// Reply is what an iCalendar REPLY says: which event, who, and their
-// standing on it.
 type Reply struct {
 	UID, Email, Standing string
 }
@@ -74,6 +73,11 @@ func (a app) replies(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := a.takeReply(r.Context(), reply, from, tag); err != nil {
+		if errors.Is(err, errNotRecorded) {
+			slog.ErrorContext(r.Context(), "[ERROR] calendar: reply not recorded", "from", from, "uid", reply.UID, "attendee", reply.Email, "error", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 		slog.WarnContext(r.Context(), "calendar: reply not taken", "from", from, "uid", reply.UID, "attendee", reply.Email, "standing", reply.Standing, "error", err)
 	}
 	w.WriteHeader(http.StatusOK)
@@ -97,13 +101,6 @@ func (a app) replyToken(id, email string) string {
 	return hex.EncodeToString(mac.Sum(nil)[:16])
 }
 
-// takeReply records a reply as the attendee's answer: accepted is a yes,
-// declined a no, tentative a maybe, and anything else leaves their word
-// as it stands. The attendee must be someone the directory knows - or on
-// the event's guest list, for a guest from outside - the message must come
-// from them - a calendar app replies from its owner's address, which the
-// caller has authenticated - to the reply address their own invite for this
-// event named, and the event must be on the calendar.
 func (a app) takeReply(ctx context.Context, reply Reply, from, tag string) error {
 	answer := ""
 	switch reply.Standing {
@@ -127,21 +124,17 @@ func (a app) takeReply(ctx context.Context, reply Reply, from, tag string) error
 	if !hmac.Equal([]byte(tag), []byte(a.replyToken(id, email))) {
 		return fmt.Errorf("sent to an address that is not this attendee's for this event")
 	}
-	if err := a.recordBy(ctx, email, email, id, answer, ViaCalendar, false); err != nil {
+	if err := a.recordBy(ctx, email, email, id, answer, ViaCalendar, false, true); err != nil {
 		return err
 	}
 	slog.InfoContext(ctx, "calendar: answered by reply", "actor", email, "event", id, "answer", answer)
 	return nil
 }
 
-// idOfUID is the event id an invite's UID was made from (uidOf).
 func idOfUID(uid string) string {
 	return strings.TrimSuffix(strings.TrimSpace(uid), "@calendar.heliosian.com")
 }
 
-// ParseReply finds the iCalendar REPLY in a raw email - a text/calendar
-// part, or a .ics attachment - and reads the event's UID and the attendee
-// with their PARTSTAT out of it. It is an error when there is none.
 func ParseReply(raw []byte) (Reply, error) {
 	msg, err := netmail.ReadMessage(bytes.NewReader(raw))
 	if err != nil {
@@ -154,9 +147,6 @@ func ParseReply(raw []byte) (Reply, error) {
 	return readReply(ics)
 }
 
-// findCalendar walks a message's parts for the calendar: a text/calendar
-// part, or an application/ics one, or a part whose file is a .ics, with
-// its transfer encoding undone.
 func findCalendar(contentType, encoding, disposition string, body io.Reader) []byte {
 	mediaType, params, err := mime.ParseMediaType(contentType)
 	if err != nil {
@@ -193,9 +183,6 @@ func findCalendar(contentType, encoding, disposition string, body io.Reader) []b
 	return out
 }
 
-// readReply reads the METHOD, UID and ATTENDEE lines out of a calendar,
-// its folded lines joined first: a reply names one attendee, with their
-// standing in its PARTSTAT parameter and their address after the colon.
 func readReply(ics []byte) (Reply, error) {
 	text := strings.ReplaceAll(string(ics), "\r\n", "\n")
 	text = strings.ReplaceAll(text, "\n ", "")

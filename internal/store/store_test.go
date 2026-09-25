@@ -258,6 +258,58 @@ func TestRefusedChangeWritesNothing(t *testing.T) {
 	}
 }
 
+type countingWriter struct {
+	*data.Dir
+	calls []string
+}
+
+func (w *countingWriter) Insert(app, table string, rows []map[string]string) error {
+	w.calls = append(w.calls, "insert "+table)
+	return w.Dir.Insert(app, table, rows)
+}
+
+func (w *countingWriter) Set(app, table string, match, cells map[string]string) error {
+	w.calls = append(w.calls, "set "+table)
+	return w.Dir.Set(app, table, match, cells)
+}
+
+func (w *countingWriter) SetMany(app, table, keyColumn string, cells map[string]map[string]string) error {
+	w.calls = append(w.calls, "setmany "+table)
+	return w.Dir.SetMany(app, table, keyColumn, cells)
+}
+
+func (w *countingWriter) Delete(app, table string, match map[string]string) error {
+	w.calls = append(w.calls, "delete "+table)
+	return w.Dir.Delete(app, table, match)
+}
+
+func TestWritesToOneTabAreBatched(t *testing.T) {
+	f := newFixture(t, syncQueue{})
+	writer := &countingWriter{Dir: f.dir}
+	s, err := New(spec(), f.dir, writer, syncQueue{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = s.Commit(context.Background(), "job",
+		Insert("Things", Row{"Name": "cap"}),
+		Insert("Things", Row{"Name": "sock"}),
+		Update("Things", Row{"Name": "hat"}, Row{"Color": "green"}),
+		Set("Things", Row{"Name": "boot"}, Row{"Size": "small"}),
+		Set("Things", Row{"Name": "HAT"}, Row{"Size": "large"}),
+		Update("Things", Row{"Name": "cap"}, Row{"Name": "beret"}),
+		Delete("Uses", Row{"Thing": "boot"}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	equal(t, "calls", writer.calls, []string{"insert Things", "setmany Things", "set Things", "delete Uses", "insert Change Log"})
+	got := []string{}
+	for _, row := range f.rows(t, "Things") {
+		got = append(got, row["Name"]+"|"+row["Color"]+"|"+row["Size"])
+	}
+	equal(t, "sheet", got, []string{"hat|green|large", "boot|black|small", "beret||", "sock||"})
+}
+
 func TestRefreshKeepsANewerCommit(t *testing.T) {
 	queue := &heldQueue{}
 	f := newFixture(t, queue)

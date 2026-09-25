@@ -36,6 +36,7 @@ import (
 
 	"heliosian/internal/calendar"
 	"heliosian/internal/data"
+	"heliosian/internal/store"
 )
 
 const (
@@ -49,9 +50,9 @@ const (
 
 var legendDayTypes = []string{"No School", "Early Dismissal"}
 
-// Options is what a stage needs: the sheet it reads and writes, the Calendar API client the Google stage reads through, the roster as it stands, the Claude key, and whether to write anything.
 type Options struct {
-	Source       *data.Sheet
+	Source       data.Source
+	Cache        *calendar.Cache
 	Calendar     *gcal.Service
 	Roster       func() calendar.Roster
 	AnthropicKey string
@@ -112,8 +113,6 @@ var blockTags = map[string]bool{
 	"h1": true, "h2": true, "h3": true, "h4": true, "h5": true, "h6": true,
 }
 
-// flatten turns a description into plain text, keeping paragraph breaks and
-// the address behind every link, since a Zoom link is the point of some.
 func flatten(text string) (string, error) {
 	if strings.Contains(text, "<") {
 		parent := &html.Node{Type: html.ElementNode, Data: "div", DataAtom: atom.Div}
@@ -161,8 +160,6 @@ func flatten(text string) (string, error) {
 	return strings.TrimSpace(flat), nil
 }
 
-// window is the stretch of the feed worth carrying: from the start of the
-// previous school year, three years on.
 func window(now time.Time) (time.Time, time.Time) {
 	start := now.Year() - 1
 	if now.Month() < time.July {
@@ -174,9 +171,6 @@ func window(now time.Time) (time.Time, time.Time) {
 
 const feedFields = googleapi.Field("nextPageToken,items(iCalUID,recurringEventId,originalStartTime,start,end,summary,location,description,updated,sequence,status)")
 
-// feedRows reads every event instance of the school's calendar starting
-// within [from, to) through the Calendar API, which expands repeating events
-// and applies their overrides itself.
 func feedRows(ctx context.Context, svc *gcal.Service, from, to time.Time) ([]map[string]string, error) {
 	rows := []map[string]string{}
 	call := svc.Events.List(calendar.SchoolCalendarID).Context(ctx).
@@ -205,8 +199,6 @@ func feedRows(ctx context.Context, svc *gcal.Service, from, to time.Time) ([]map
 	}
 }
 
-// eventTime is a start or end as school wall-clock, and whether it is a date
-// alone. An all-day end arrives exclusive, as the feed always stated it.
 func eventTime(t *gcal.EventDateTime) (time.Time, bool, error) {
 	if t == nil {
 		return time.Time{}, false, fmt.Errorf("event with no time")
@@ -219,8 +211,6 @@ func eventTime(t *gcal.EventDateTime) (time.Time, bool, error) {
 	return at.In(calendar.Location), false, err
 }
 
-// instanceKey is the key a repeating event's instance has always had in the
-// sheet: the UID and the instance's original start as school wall-clock.
 func instanceKey(uid string, t time.Time, allDay bool) string {
 	if allDay {
 		return uid + "/" + t.Format("20060102")
@@ -291,8 +281,6 @@ func slug(s string) string {
 	return s
 }
 
-// ask sends one structured request and decodes the answer into out, returning
-// the answer's text as well.
 func ask(ctx context.Context, client anthropic.Client, system string, content []anthropic.ContentBlockParamUnion, schema map[string]any, effort anthropic.OutputConfigEffort, out any) (string, error) {
 	stream := client.Messages.NewStreaming(ctx, anthropic.MessageNewParams{
 		Model:     modelName,
@@ -336,8 +324,6 @@ func enumOf(values []string) map[string]any {
 	return map[string]any{"type": "string", "enum": values}
 }
 
-// glossary explains the school's names to the model, built from the roster
-// so a renamed classroom needs no code change.
 func glossary(roster calendar.Roster) string {
 	b := &strings.Builder{}
 	b.WriteString("Helios School is a K-8 school. Students belong to a homeroom classroom named for a bird. Two classrooms make a grade band whose name is a portmanteau of the two classroom names. Lower School is Kindergarten through Grade 4 and Middle School is Grade 5 through Grade 8.\n\nBands and their classrooms:\n")
@@ -402,10 +388,6 @@ type pdfExtraction struct {
 	Shaded  []shadedDay
 }
 
-// legendEntry is one swatch of the calendar's legend as the model read it:
-// the wording beside it, the color it estimated, and the day type the
-// wording means. The school changes the colors and the wording from year to
-// year, so nothing about the legend is fixed in code.
 type legendEntry struct {
 	Label   string `json:"label"`
 	Color   string `json:"color"`
@@ -421,10 +403,6 @@ func pdfDocument(pdf []byte) anthropic.ContentBlockParamUnion {
 	return anthropic.NewDocumentBlock(anthropic.Base64PDFSourceParam{Data: base64.StdEncoding.EncodeToString(pdf)})
 }
 
-// renderPage rasterizes the calendar's page with poppler at 300 dpi. The
-// model reads a month grid reliably only when its cells arrive large, and
-// the API scales any page it is handed down to about 1500 pixels, so the
-// page is rendered here and cut up before it is sent.
 func renderPage(pdf []byte) (image.Image, error) {
 	dir, err := os.MkdirTemp("", "calendarimport")
 	if err != nil {
@@ -494,12 +472,6 @@ func rgb(h, s, l float64) (float64, float64, float64) {
 	return r + m, g + m, b + m
 }
 
-// enhance makes every filled cell unmistakable before the model sees it. The
-// legend's fills are pale tints, pastel enough that the model reads pink as
-// white now and then; every pixel with any color in it is pushed to full
-// saturation at middle lightness, so a fill becomes a strong flat hue while
-// white cells, black text, and gray rules, which carry no color, stay as
-// they are.
 func enhance(src image.Image) *image.RGBA {
 	bounds := src.Bounds()
 	out := image.NewRGBA(bounds)
@@ -525,20 +497,12 @@ func imageBlock(img image.Image) (anthropic.ContentBlockParamUnion, error) {
 	return anthropic.NewImageBlockBase64("image/png", base64.StdEncoding.EncodeToString(buf.Bytes())), nil
 }
 
-// titleBlue is the enhanced page's month title bar: a saturated blue at the
-// middle lightness enhance puts every fill at.
 func titleBlue(c color.Color) bool {
 	r, g, b, _ := c.RGBA()
 	h, s, l := hsl(float64(r)/65535, float64(g)/65535, float64(b)/65535)
 	return s > 0.8 && h > 195 && h < 235 && l > 0.4 && l < 0.7
 }
 
-// titleBars finds the month title bars on the enhanced page: horizontal bands
-// of the title blue at least a tenth of the page wide and taller than a
-// drawn outline, which no day cell or box is.
-// Each band anchors one grid. The count and layout are checked by the
-// caller, and every month read checks the title in its crop, so a page laid
-// out differently fails loudly rather than reading the wrong month.
 func titleBars(page *image.RGBA) []image.Rectangle {
 	bounds := page.Bounds()
 	minRun := bounds.Dx() / 10
@@ -576,10 +540,6 @@ func titleBars(page *image.RGBA) []image.Rectangle {
 	return tall
 }
 
-// monthCrops cuts the twelve grids out of the enhanced page, July to
-// December down the first column and January to June down the second: each
-// from its title bar to the next bar in its column, the last in a column as
-// tall as the one above it.
 func monthCrops(page *image.RGBA) ([]anthropic.ContentBlockParamUnion, []image.Rectangle, error) {
 	bars := titleBars(page)
 	if len(bars) != 12 {
@@ -677,9 +637,6 @@ func monthSystem(described string) string {
 Report the month named in the grid's title. Then go through the grid row by row; each row is one week. For every day number printed, report its cell's background: "` + unfilled + `" for a white cell; the legend wording whose color the fill matches when it is one of the legend's colors; "` + otherFill + `" for a fill in a color the legend does not name, such as orange or yellow. Some cells have a thick colored border drawn around them; a border is a box on top of the cell, not its fill, so report the color inside the border: a cell that is outlined, bolded, or circled but white inside is "` + unfilled + `", and a cell with a legend color inside an orange or black border is that legend color.`
 }
 
-// extractMonth reads one month's grid with the legend in hand, naming every
-// day cell's fill, read twice and compared, with a third read to settle a
-// disagreement.
 func extractMonth(ctx context.Context, client anthropic.Client, document anthropic.ContentBlockParamUnion, month time.Time, legend []legendEntry) ([]shadedDay, error) {
 	name := month.Format("January 2006")
 	labels := []string{unfilled, otherFill}
@@ -690,8 +647,6 @@ func extractMonth(ctx context.Context, client anthropic.Client, document anthrop
 	}
 	system := monthSystem(described.String())
 	last := month.AddDate(0, 1, -1).Day()
-	// Every day of the month is a required property, so the answer cannot end
-	// before every cell has been read.
 	monthNames := []string{}
 	for m := time.January; m <= time.December; m++ {
 		monthNames = append(monthNames, m.String())
@@ -714,10 +669,6 @@ func extractMonth(ctx context.Context, client anthropic.Client, document anthrop
 	for _, e := range legend {
 		dayType[e.Label] = e.DayType
 	}
-	// meaning is what a fill does to the day: a day type, or nothing for a
-	// white cell, a color the legend does not name, or a legend entry that
-	// means no day type. Readings are compared on this, since two legend
-	// colors that both mean No School disagreeing is no disagreement.
 	meaning := func(fill string) string {
 		for label, t := range dayType {
 			if strings.EqualFold(label, fill) && t != noDayType {
@@ -726,7 +677,6 @@ func extractMonth(ctx context.Context, client anthropic.Client, document anthrop
 		}
 		return ""
 	}
-	// read is one independent pass over the grid: the fill of every day.
 	read := func() (map[int]string, error) {
 		out := map[string]string{}
 		if _, err := ask(ctx, client, system, content, schema, anthropic.OutputConfigEffort("max"), &out); err != nil {
@@ -799,9 +749,6 @@ func extractMonth(ctx context.Context, client anthropic.Client, document anthrop
 	return days, nil
 }
 
-// extractEntries reads the Important Dates list. The list's colors are
-// categories rather than day types, so the read takes a day type only from
-// the wording; the grid supplies the rest afterwards.
 func entriesSystem(roster calendar.Roster) string {
 	return glossary(roster) + `
 You are reading the school's one-page year calendar PDF: twelve month grids, a legend, and an Important Dates list. Read the Important Dates list into entries.
@@ -908,8 +855,6 @@ func extractPDF(ctx context.Context, client anthropic.Client, pdf []byte, roster
 	return out, nil
 }
 
-// readPDF is the whole PDF stage: the rows for the school year the document
-// covers, and that year's label.
 func readPDF(ctx context.Context, client anthropic.Client, pdf []byte, hash string, roster calendar.Roster, dayTypes []string) ([]map[string]string, string, error) {
 	extraction, err := extractPDF(ctx, client, pdf, roster, dayTypes)
 	if err != nil {
@@ -936,9 +881,6 @@ func pdfRows(extraction pdfExtraction, hash string, roster calendar.Roster) ([]m
 	rows := []map[string]string{}
 	keys := map[string]bool{}
 	firstDays, lastDays := 0, 0
-	// The list's entries and the grid's shaded cells are two sets of facts and
-	// become two sets of rows: an entry says what happens and to whom, a cell
-	// says what kind of day it is for the whole school.
 	entries := slices.Clone(extraction.Entries)
 	for _, s := range extraction.Shaded {
 		if s.DayType == noDayType {
@@ -1033,9 +975,6 @@ func enrich(ctx context.Context, client anthropic.Client, inputs []enrichInput, 
 		names = append(names, t.Name)
 	}
 	system := classifierSystem(roster, tags)
-	// Events that read the same are asked once: repeats of one event and a
-	// break split across weeks would otherwise sit in the batch as near-twins
-	// the model conflates.
 	sameAs := map[string]string{}
 	representatives := []enrichInput{}
 	for _, in := range inputs {
@@ -1048,9 +987,6 @@ func enrich(ctx context.Context, client anthropic.Client, inputs []enrichInput, 
 		sameAs[in.ID] = in.ID
 		representatives = append(representatives, in)
 	}
-	// The answer is an object with one required property per event, so a
-	// skipped event, a doubled one, or one nobody asked about is impossible
-	// by construction rather than something to check for.
 	answer := map[string]any{
 		"type": "object", "additionalProperties": false,
 		"required": []string{"title", "tags", "dayType", "keywords"},
@@ -1118,33 +1054,11 @@ func enrich(ctx context.Context, client anthropic.Client, inputs []enrichInput, 
 	return ordered, nil
 }
 
-func changes(tab string, result *data.SyncResult, titles map[string]string, stamp string) []map[string]string {
-	rows := []map[string]string{}
-	for _, key := range result.Added {
-		rows = append(rows, map[string]string{"Timestamp": stamp, "Actor": actor, "Action": "added", "Tab": tab, "Key": key, "Column": "Title", "From": "", "To": titles[key]})
-	}
-	for _, edit := range result.Edits {
-		rows = append(rows, map[string]string{"Timestamp": stamp, "Actor": actor, "Action": "changed", "Tab": tab, "Key": edit.Key, "Column": edit.Column, "From": edit.From, "To": edit.To})
-	}
-	for _, key := range result.Removed {
-		rows = append(rows, map[string]string{"Timestamp": stamp, "Actor": actor, "Action": "removed", "Tab": tab, "Key": key, "Column": "Title", "From": titles[key], "To": ""})
-	}
-	return rows
-}
-
-func titlesOf(rows []map[string]string, keyCol string) map[string]string {
-	out := map[string]string{}
-	for _, row := range rows {
-		out[row[keyCol]] = row["Title"]
-	}
-	return out
-}
-
 type run struct {
 	opts     Options
 	roster   calendar.Roster
 	client   anthropic.Client
-	tables   *calendar.Tables
+	tables   store.Tables
 	dayTypes []string
 	tags     []calendar.Tag
 	failures []string
@@ -1156,16 +1070,21 @@ func begin(opts Options) (*run, error) {
 	}
 	roster := opts.Roster()
 	log.Printf("roster: %d classrooms", len(roster.Classrooms))
-	tables, err := calendar.ReadTables(opts.Source)
+	names := []string{calendar.GoogleTab, calendar.PDFTab, calendar.EnrichmentTab, calendar.DayTypesTab, calendar.TagsTab}
+	tabs, err := opts.Source.Tabs("calendar", names, nil)
 	if err != nil {
 		return nil, fmt.Errorf("read calendar tables: %w", err)
 	}
+	tables := store.Tables{}
+	for _, name := range names {
+		tables[name] = tabs[name].Rows
+	}
 	dayTypes := []string{}
-	for _, row := range tables.DayTypes {
+	for _, row := range tables[calendar.DayTypesTab] {
 		dayTypes = append(dayTypes, row["Day Type"])
 	}
 	tags := []calendar.Tag{}
-	for _, row := range tables.Tags {
+	for _, row := range tables[calendar.TagsTab] {
 		tags = append(tags, calendar.Tag{Name: row["Tag"], Description: row["Description"]})
 	}
 	if len(tags) == 0 {
@@ -1179,7 +1098,6 @@ func begin(opts Options) (*run, error) {
 	return &run{opts: opts, roster: roster, client: anthropic.NewClient(option.WithAPIKey(opts.AnthropicKey)), tables: tables, dayTypes: dayTypes, tags: tags}, nil
 }
 
-// RunGoogle is the Google stage: the school's calendar read through the API, its events classified, and the Google Import tab and its events' Enrichment rows brought into step.
 func RunGoogle(ctx context.Context, opts Options) error {
 	r, err := begin(opts)
 	if err != nil {
@@ -1191,14 +1109,12 @@ func RunGoogle(ctx context.Context, opts Options) error {
 		return fmt.Errorf("read the school calendar: %w", err)
 	}
 	log.Printf("feed: %d events from %s on", len(google), from.Format(calendar.DateFormat))
-	// Only the window is imported and mirrored; rows outside it, whatever
-	// their year, are carried as they are and never removed.
 	inWindow := func(row map[string]string) bool {
 		start, err := time.ParseInLocation(calendar.DateFormat, row["Start"][:min(len(row["Start"]), len(calendar.DateFormat))], calendar.Location)
 		return err == nil && !start.Before(from) && start.Before(to)
 	}
 	rows := slices.Clone(google)
-	for _, row := range r.tables.Google {
+	for _, row := range r.tables[calendar.GoogleTab] {
 		if !inWindow(row) {
 			rows = append(rows, row)
 		}
@@ -1206,12 +1122,11 @@ func RunGoogle(ctx context.Context, opts Options) error {
 	enrichment := r.enrich(ctx, google, false)
 	log.Printf("rows: %d feed, %d enriched", len(rows), len(enrichment))
 	return r.write([]tabSync{
-		{calendar.GoogleTab, calendar.GoogleColumns, rows, r.tables.Google, "Key", data.Mirror},
-		{calendar.EnrichmentTab, calendar.EnrichmentColumns, enrichment, r.tables.Enrichment, "Event ID", data.Merge},
+		{calendar.GoogleTab, calendar.GoogleColumns, rows, r.tables[calendar.GoogleTab], "Key", true},
+		{calendar.EnrichmentTab, calendar.EnrichmentColumns, enrichment, r.tables[calendar.EnrichmentTab], "Event ID", false},
 	})
 }
 
-// RunPDF is the PDF stage: the school's published year calendar read when it changes, its entries classified, and the PDF Import tab and its events' Enrichment rows brought into step.
 func RunPDF(ctx context.Context, opts Options) error {
 	r, err := begin(opts)
 	if err != nil {
@@ -1229,27 +1144,25 @@ func RunPDF(ctx context.Context, opts Options) error {
 	if err != nil {
 		return fmt.Errorf("fetch the year calendar pdf: %w", err)
 	}
-	// The hash covers how the PDF is read as well as its bytes, so a change to
-	// the reading re-reads an unchanged document.
 	pdfHash := digest(string(pdf), legendSystem, entriesSystem(r.roster), monthSystem(""))[:12]
-	rows := r.tables.PDF
+	rows := r.tables[calendar.PDFTab]
 	known := false
-	for _, row := range r.tables.PDF {
+	for _, row := range r.tables[calendar.PDFTab] {
 		if row["PDF"] == pdfHash {
 			known = true
 		}
 	}
 	if known {
-		log.Printf("pdf: %s unchanged (%s), %d rows kept", pdfURL, pdfHash, len(r.tables.PDF))
+		log.Printf("pdf: %s unchanged (%s), %d rows kept", pdfURL, pdfHash, len(r.tables[calendar.PDFTab]))
 	} else {
 		log.Printf("pdf: %s is new (%s), reading it", pdfURL, pdfHash)
 		fresh, year, err := readPDF(ctx, r.client, pdf, pdfHash, r.roster, r.dayTypes)
 		if err != nil {
-			log.Printf("[ERROR] read the year calendar pdf: %v; keeping the %d rows already there", err, len(r.tables.PDF))
+			log.Printf("[ERROR] read the year calendar pdf: %v; keeping the %d rows already there", err, len(r.tables[calendar.PDFTab]))
 			r.failures = append(r.failures, "the year calendar pdf")
 		} else {
 			rows = []map[string]string{}
-			for _, row := range r.tables.PDF {
+			for _, row := range r.tables[calendar.PDFTab] {
 				if row["Year"] != year {
 					rows = append(rows, row)
 				}
@@ -1261,8 +1174,8 @@ func RunPDF(ctx context.Context, opts Options) error {
 	enrichment := r.enrich(ctx, rows, true)
 	log.Printf("rows: %d pdf, %d enriched", len(rows), len(enrichment))
 	return r.write([]tabSync{
-		{calendar.PDFTab, calendar.PDFColumns, rows, r.tables.PDF, "Key", data.Mirror},
-		{calendar.EnrichmentTab, calendar.EnrichmentColumns, enrichment, r.tables.Enrichment, "Event ID", data.Merge},
+		{calendar.PDFTab, calendar.PDFColumns, rows, r.tables[calendar.PDFTab], "Key", true},
+		{calendar.EnrichmentTab, calendar.EnrichmentColumns, enrichment, r.tables[calendar.EnrichmentTab], "Event ID", false},
 	})
 }
 
@@ -1283,12 +1196,10 @@ func plan(existing map[string]map[string]string, rows []map[string]string, vocab
 	return kept, pending, hashes
 }
 
-// enrich is the Enrichment rows of this stage's events alone; the other stage's rows,
-// and those of events gone from the source, are left as they are by the Merge sync.
 func (r *run) enrich(ctx context.Context, rows []map[string]string, pdf bool) []map[string]string {
 	vocabulary := digest(classifierSystem(r.roster, r.tags), strings.Join(r.roster.Names(), ","), strings.Join(r.dayTypes, ","))
 	existing := map[string]map[string]string{}
-	for _, row := range r.tables.Enrichment {
+	for _, row := range r.tables[calendar.EnrichmentTab] {
 		existing[row["Event ID"]] = row
 	}
 	enrichment, pending, hashes := plan(existing, rows, vocabulary)
@@ -1348,33 +1259,65 @@ type tabSync struct {
 	rows   []map[string]string
 	before []map[string]string
 	keyCol string
-	policy data.Policy
+	mirror bool
+}
+
+func (s tabSync) ops() (ops []store.Op, added, changed, removed int) {
+	had := map[string]map[string]string{}
+	for _, row := range s.before {
+		had[row[s.keyCol]] = row
+	}
+	want := map[string]bool{}
+	for _, row := range s.rows {
+		key := row[s.keyCol]
+		want[key] = true
+		old, ok := had[key]
+		if !ok {
+			cells := store.Row{}
+			for _, column := range s.header {
+				if row[column] != "" {
+					cells[column] = row[column]
+				}
+			}
+			ops = append(ops, store.Insert(s.tab, cells))
+			added++
+			continue
+		}
+		cells := store.Row{}
+		for _, column := range s.header {
+			if column != s.keyCol && row[column] != old[column] {
+				cells[column] = row[column]
+			}
+		}
+		if len(cells) > 0 {
+			ops = append(ops, store.Update(s.tab, store.Row{s.keyCol: key}, cells))
+			changed++
+		}
+	}
+	if !s.mirror {
+		return ops, added, changed, removed
+	}
+	for _, row := range s.before {
+		if key := row[s.keyCol]; !want[key] {
+			want[key] = true
+			ops = append(ops, store.Delete(s.tab, store.Row{s.keyCol: key}))
+			removed++
+		}
+	}
+	return ops, added, changed, removed
 }
 
 func (r *run) write(tabs []tabSync) error {
-	stamp := time.Now().In(calendar.Location).Format(calendar.DateTimeFormat)
-	logRows := []map[string]string{}
+	ops := []store.Op{}
 	for _, s := range tabs {
-		result, err := r.opts.Source.Sync("calendar", s.tab, s.header, s.rows, s.keyCol, s.policy, !r.opts.DryRun)
-		if err != nil {
-			return fmt.Errorf("sync %s: %w", s.tab, err)
-		}
-		log.Printf("%s: %d cells updated, %d rows added, %d removed", s.tab, len(result.Edits), len(result.Added), len(result.Removed))
-		titles := titlesOf(s.before, s.keyCol)
-		for k, v := range titlesOf(s.rows, s.keyCol) {
-			titles[k] = v
-		}
-		logRows = append(logRows, changes(s.tab, result, titles, stamp)...)
+		tabOps, added, changed, removed := s.ops()
+		log.Printf("%s: %d rows added, %d changed, %d removed", s.tab, added, changed, removed)
+		ops = append(ops, tabOps...)
 	}
 	if r.opts.DryRun {
-		log.Printf("dry run: %d change log rows not written", len(logRows))
-	} else {
-		if len(logRows) > 0 {
-			if err := r.opts.Source.Insert("calendar", calendar.ChangeLogTab, logRows); err != nil {
-				return fmt.Errorf("append the change log: %w", err)
-			}
-		}
-		log.Printf("change log: %d rows appended", len(logRows))
+		log.Printf("dry run: %d row changes not committed", len(ops))
+	} else if err := r.opts.Cache.CommitAndWait(context.Background(), actor, ops...); err != nil {
+		return fmt.Errorf("commit the import: %w", err)
 	}
 	if len(r.failures) > 0 {
 		return fmt.Errorf("%d stages failed and will be retried next run: %s", len(r.failures), strings.Join(r.failures, "; "))

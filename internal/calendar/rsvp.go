@@ -2,6 +2,7 @@ package calendar
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"html"
 	"log/slog"
@@ -10,37 +11,22 @@ import (
 	"time"
 
 	"heliosian/internal/mail"
+	"heliosian/internal/store"
 )
 
-// An answer is a person's word on an event: yes, no, maybe, or hidden. Yes,
-// no and maybe are marks on the event wherever it is listed for them;
-// hidden takes the event out of their lists - Upcoming here and on
-// Heliosian, their personal feeds - while it stays on the month in gray and
-// turns up in the search. A yes also sends them a calendar invite, so the
-// event lands on their own calendar with one tap of Accept - unless an
-// invitation already brought them one (invites.go).
-
-// Answerer records an answer for a person, for the calendar's own page and
-// for Heliosian's cards alike: Register hands one back.
 type Answerer func(ctx context.Context, email, id, answer string) error
 
-// answer validates and records one, and sends the invite for a yes.
+var errNotRecorded = errors.New("the answer was not recorded")
+
 func (a app) answer(ctx context.Context, email, id, answer string) error {
 	return a.record(ctx, email, id, answer, true)
 }
 
-// record keeps one answer a person gives for themselves on a page.
 func (a app) record(ctx context.Context, email, id, answer string, invite bool) error {
-	return a.recordBy(ctx, email, email, id, answer, ViaPage, invite)
+	return a.recordBy(ctx, email, email, id, answer, ViaPage, invite, false)
 }
 
-// recordBy keeps one answer, in the model at once and in the sheet behind
-// it, noting who gave it when it was not the person themselves - a parent
-// for a child, a host - and how, a page or a calendar app's reply, and
-// sends the invite for a yes when asked - not for a yes that came back
-// as a reply to the invite itself, nor to someone whose invitation
-// already carried one.
-func (a app) recordBy(ctx context.Context, actor, email, id, answer, via string, invite bool) error {
+func (a app) recordBy(ctx context.Context, actor, email, id, answer, via string, invite, wait bool) error {
 	email = normalizeEmail(email)
 	answer = strings.ToLower(strings.TrimSpace(answer))
 	if answer != "" && !isAnswer(answer) {
@@ -50,31 +36,25 @@ func (a app) recordBy(ctx context.Context, actor, email, id, answer, via string,
 	if e == nil {
 		return fmt.Errorf("that event is not on the calendar")
 	}
-	cells := map[string]string{"Email": email, "Event ID": e.ID, "Answer": answer, "Answered": now().Format(DateTimeFormat), "Answered By": actor, "Via": via}
 	if inv := a.cache.Model().InviteOf(e.ID, email); inv != nil && inv.Sent != "" {
 		invite = false
 	}
-	tables := a.cache.Tables().WithAnswer(email, e.ID, answer, cells)
-	model, err := BuildModel(tables, a.cache.roster())
-	if err != nil {
-		return err
+	key := store.Row{"Event ID": e.ID, "Email": email}
+	op := store.Delete(RSVPsTab, key)
+	if answer != "" {
+		op = store.Set(RSVPsTab, key, store.Row{"Answer": answer, "Answered": now().Format(DateTimeFormat), "Answered By": actor, "Via": via})
 	}
-	a.cache.commit(tables, model, func() {
-		var err error
-		if answer == "" {
-			err = a.writer.Delete(appName, RSVPsTab, map[string]string{"Email": email, "Event ID": e.ID})
-		} else {
-			err = a.writer.Set(appName, RSVPsTab, map[string]string{"Email": email, "Event ID": e.ID}, cells)
-		}
-		if err != nil {
-			slog.ErrorContext(ctx, "calendar write", "error", err)
-		}
-	})
+	commit := a.cache.Commit
+	if wait {
+		commit = a.cache.CommitAndWait
+	}
+	if err := commit(ctx, actor, op); err != nil {
+		return fmt.Errorf("%w: %w", errNotRecorded, err)
+	}
+	model := a.cache.Model()
 	if invite && answer == AnswerYes && a.mail.Sender != nil && !isGuestKey(email) {
 		go a.sendInvite(context.WithoutCancel(ctx), email, e)
 	}
-	// The hosts who asked hear of each answer - not of one they gave
-	// themselves, nor of a hiding, which is nobody's answer.
 	if inv := model.Invitations[e.ID]; inv != nil && a.mail.Sender != nil && answer != "" && answer != AnswerHidden {
 		for _, h := range inv.Notify {
 			if h != actor {
@@ -85,8 +65,6 @@ func (a app) recordBy(ctx context.Context, actor, email, id, answer, via string,
 	return nil
 }
 
-// sendAnswerNote tells a host one answer came in: who said what, by whom
-// when someone else answered for them, and where the count stands.
 func (a app) sendAnswerNote(ctx context.Context, to, actor, email, answer string, e *Event) {
 	model := a.cache.Model()
 	name := email
@@ -128,12 +106,10 @@ func (a app) sendAnswerNote(ctx context.Context, to, actor, email, answer string
 		HTML:    htm,
 	})
 	if err != nil {
-		slog.ErrorContext(ctx, "calendar: send answer note", "to", to, "event", e.ID, "error", err)
+		slog.ErrorContext(ctx, "[ERROR] calendar: send answer note", "to", to, "event", e.ID, "error", err)
 	}
 }
 
-// eventFor is an event as this person sees it, the other apps' folded in:
-// one their calendar shows, or one off it that is theirs to open.
 func (a app) eventFor(email string, admin bool, id string) *Event {
 	model := a.cache.Model()
 	for _, e := range withLinked(model.Events, a.linked(email)) {
@@ -148,13 +124,6 @@ func (a app) eventFor(email string, admin bool, id string) *Event {
 	return model.withInvitation(e)
 }
 
-// sees says an event off the calendar is this person's to open, and with
-// it everything on its page, the guest list included: the person who
-// shared it, a host and an admin always; anyone holding the link to one
-// shared by link, or to a public one waiting for approval or called off;
-// whoever is on the list of one shared by invitation, sent or not, and a
-// parent of a student on it. A declined event is its host's and the
-// admins' alone.
 func (a app) sees(email string, admin bool, e *Event) bool {
 	if admin || normalizeEmail(e.AddedBy) == email || a.isHost(email, admin, e) {
 		return true
@@ -168,7 +137,6 @@ func (a app) sees(email string, admin bool, e *Event) bool {
 	return !e.Declined
 }
 
-// rsvp is the calendar's own route: the viewer answering for themselves.
 func (a app) rsvp(w http.ResponseWriter, r *http.Request) {
 	email, _ := a.who(r)
 	var body struct {
@@ -186,12 +154,6 @@ func (a app) rsvp(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// sendInvite mails the person a calendar invite for the event: a message
-// with the event's words and its page, and an .ics they accept into their
-// own calendar. The invite's UID is the feed's for the event, so an event
-// they also take by feed is one entry, not two; its organizer is the reply
-// address, so an Accept or Decline in their calendar app comes back here
-// (replies.go).
 func (a app) sendInvite(ctx context.Context, email string, e *Event) {
 	origin := "https://when.heliosian.com"
 	link := origin + EventPath(e)
@@ -228,25 +190,18 @@ func (a app) sendInvite(ctx context.Context, email string, e *Event) {
 		}},
 	})
 	if err != nil {
-		slog.ErrorContext(ctx, "calendar: send invite", "to", email, "event", e.ID, "error", err)
+		slog.ErrorContext(ctx, "[ERROR] calendar: send invite", "to", email, "event", e.ID, "error", err)
 		return
 	}
 	slog.InfoContext(ctx, "calendar: invite sent", "to", email, "event", e.ID)
 }
 
-// organizer is the address one person's invite for one event names as its
-// organizer, where a calendar app sends its reply: the reply address with
-// that person's token for the event after a plus, which a reply must come
-// back to (takeReply).
 func (a app) organizer(id, email string) string {
 	address := mailAddress(a.mail.ReplyTo)
 	local, domain, _ := strings.Cut(address, "@")
 	return strings.Replace(a.mail.ReplyTo, address, local+"+"+a.replyToken(id, email)+"@"+domain, 1)
 }
 
-// invite is the calendar file: the one event, from the calendar to the
-// person, as a request they accept - the organizer being where their
-// calendar app sends the answer.
 func invite(from, to string, e *Event, link string, at time.Time) string {
 	stamp := at.UTC().Format(icsStamp)
 	lines := []string{
@@ -290,8 +245,6 @@ func invite(from, to string, e *Event, link string, at time.Time) string {
 	return out.String()
 }
 
-// mailAddress is the address inside "Helios When <when@reply.heliosian.com>",
-// or the string itself when it is bare.
 func mailAddress(from string) string {
 	if i := strings.LastIndex(from, "<"); i >= 0 {
 		return strings.TrimSuffix(from[i+1:], ">")

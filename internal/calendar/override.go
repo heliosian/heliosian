@@ -2,23 +2,14 @@ package calendar
 
 import (
 	"log/slog"
+	"maps"
 	"net/http"
 	"slices"
 	"strings"
+
+	"heliosian/internal/store"
 )
 
-// overrideColumns are the Overrides cells the Edit form on an imported
-// event writes; Day Type and Hidden it leaves as the row has them.
-var overrideColumns = []string{"Title", "Start", "End", "Location", "Description", "Tags", "Keywords", "Note", "Address"}
-
-// setOverride is PUT /api/calendar/overrides: an admin correcting an event
-// the school's calendars bring, from its page's Edit. The form sends the
-// event as the admin wants it; each field is set against the school's own
-// version - the event as the load makes it with no Overrides row - and only
-// what differs is written, a field put back to the school's value going
-// blank so it follows the school again, and one emptied the clearing mark.
-// The Note is the admin's reason, shown to the admins on the page. A row
-// left with nothing in it is removed.
 func (a app) setOverride(w http.ResponseWriter, r *http.Request) {
 	actor, _ := a.who(r)
 	var body struct {
@@ -31,32 +22,20 @@ func (a app) setOverride(w http.ResponseWriter, r *http.Request) {
 		Tags        []string `json:"tags"`
 		Keywords    []string `json:"keywords"`
 		Note        string   `json:"note"`
-		// Address is a friendly web address, /e/{address}, blank for none.
-		Address string `json:"address"`
+		Address     string   `json:"address"`
 	}
 	if !decode(w, r, &body) {
 		return
 	}
-	id := strings.TrimSpace(body.ID)
-	e := a.cache.Model().Event(id)
+	model := a.cache.Model()
+	e := model.Event(strings.TrimSpace(body.ID))
 	if e == nil || !e.imported() {
 		http.Error(w, "only an event the school's calendars bring is corrected here", http.StatusNotFound)
 		return
 	}
-	tables := a.cache.Tables()
-	bare, err := BuildModel(tables.WithoutOverride(id), a.cache.roster())
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	school := bare.Event(id)
-	if school == nil {
-		http.Error(w, "the school's version of the event is not there", http.StatusInternalServerError)
-		return
-	}
-	cells := map[string]string{}
-	// A browser's text box hands back its lines broken by \n alone, where
-	// the school's calendar may have \r\n; that is no change of anyone's.
+	id := e.ID
+	school := model.imports[id]
+	cells := store.Row{}
 	plain := func(s string) string {
 		return strings.TrimSpace(strings.ReplaceAll(strings.ReplaceAll(s, "\r\n", "\n"), "\r", "\n"))
 	}
@@ -83,10 +62,8 @@ func (a app) setOverride(w http.ResponseWriter, r *http.Request) {
 	}
 	set("Location", body.Location, school.Location)
 	set("Description", body.Description, school.Description)
-	// Lists compare as sets; the tags the app supplies are never the
-	// sheet's to name.
 	builtIn := map[string]bool{}
-	for _, t := range bare.Tags {
+	for _, t := range model.Tags {
 		builtIn[t.Name] = t.BuiltIn
 	}
 	list := func(column string, want, was []string) {
@@ -105,61 +82,26 @@ func (a app) setOverride(w http.ResponseWriter, r *http.Request) {
 	list("Tags", body.Tags, school.Tags)
 	list("Keywords", body.Keywords, school.Keywords)
 	cells["Note"] = strings.TrimSpace(body.Note)
-	// The address is the admin's alone - the school's calendar has none - so
-	// it is written as given; one taken already refuses the load, below.
 	cells["Address"] = strings.ToLower(strings.TrimSpace(body.Address))
 	if cells["Address"] != "" && !eventIDForm.MatchString(cells["Address"]) {
 		http.Error(w, "an address is letters, digits and dashes, 3 to 40 of them", http.StatusBadRequest)
 		return
 	}
-
-	var before map[string]string
-	for _, row := range tables.Overrides {
-		if row["Event ID"] == id {
-			before = row
-		}
+	empty := !slices.ContainsFunc(slices.Collect(maps.Values(cells)), func(v string) bool { return v != "" })
+	if p := model.Provenance[id]; p != nil && slices.ContainsFunc(p.Corrected, func(c string) bool { return c == "Day Type" || c == "Hidden" || c == "Image" }) {
+		empty = false
 	}
-	after := map[string]string{}
-	for _, c := range OverrideColumns[1:] {
-		after[c] = before[c]
-	}
-	for c, v := range cells {
-		after[c] = v
-	}
-	empty := !slices.ContainsFunc(OverrideColumns[1:], func(c string) bool { return strings.TrimSpace(after[c]) != "" })
-	next := tables.WithOverride(id, cells)
+	op := store.Set(OverridesTab, store.Row{"Event ID": id}, cells)
 	if empty {
-		next = tables.WithoutOverride(id)
+		op = store.Delete(OverridesTab, store.Row{"Event ID": id})
 	}
-	if !a.commit(r.Context(), w, next, func() error {
-		switch {
-		case empty && before != nil:
-			if err := a.writer.Delete(appName, OverridesTab, map[string]string{"Event ID": id}); err != nil {
-				return err
-			}
-		case !empty:
-			if err := a.writer.Set(appName, OverridesTab, map[string]string{"Event ID": id}, cells); err != nil {
-				return err
-			}
-		}
-		for _, c := range overrideColumns {
-			if before[c] != after[c] {
-				if err := a.logChange(r, actor, "changed", OverridesTab, id, c, before[c], after[c]); err != nil {
-					return err
-				}
-			}
-		}
-		return nil
-	}) {
+	if !a.commit(w, r, actor, op) {
 		return
 	}
 	slog.InfoContext(r.Context(), "calendar: override set", "actor", actor, "event", id, "cleared", empty)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// setOverrideImage is PUT /api/calendar/overrides/image: an admin giving an
-// event the school's calendars bring a picture, from the page's Add an
-// image - the Image cell of its Overrides row, blank to take it away.
 func (a app) setOverrideImage(w http.ResponseWriter, r *http.Request) {
 	actor, _ := a.who(r)
 	var body struct {
@@ -169,24 +111,15 @@ func (a app) setOverrideImage(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	id := strings.TrimSpace(body.ID)
-	e := a.cache.Model().Event(id)
+	e := a.cache.Model().Event(strings.TrimSpace(body.ID))
 	if e == nil || !e.imported() {
 		http.Error(w, "only an event the school's calendars bring takes its picture here", http.StatusNotFound)
 		return
 	}
-	id = e.ID
 	image := strings.Trim(strings.TrimSpace(body.Image), "/")
-	cells := map[string]string{"Image": image}
-	was := strings.TrimPrefix(e.Image, "/")
-	if !a.commit(r.Context(), w, a.cache.Tables().WithOverride(id, cells), func() error {
-		if err := a.writer.Set(appName, OverridesTab, map[string]string{"Event ID": id}, cells); err != nil {
-			return err
-		}
-		return a.logChange(r, actor, "changed", OverridesTab, id, "Image", was, image)
-	}) {
+	if !a.commit(w, r, actor, store.Set(OverridesTab, store.Row{"Event ID": e.ID}, store.Row{"Image": image})) {
 		return
 	}
-	slog.InfoContext(r.Context(), "calendar: override image", "actor", actor, "event", id, "image", image)
+	slog.InfoContext(r.Context(), "calendar: override image", "actor", actor, "event", e.ID, "image", image)
 	w.WriteHeader(http.StatusNoContent)
 }

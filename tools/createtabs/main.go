@@ -176,7 +176,7 @@ var layouts = map[string][]tab{
 		{calendar.InvitesTab, calendar.InviteColumns},
 		{calendar.InviteGroupsTab, calendar.InviteGroupColumns},
 		{calendar.BouncesTab, calendar.BounceColumns},
-		{calendar.ChangeLogTab, calendar.ChangeLogColumns},
+		{store.ChangeLogTab, store.ChangeLogColumns},
 	},
 	"Config": {
 		{"Settings", []string{"Key", "Value"}},

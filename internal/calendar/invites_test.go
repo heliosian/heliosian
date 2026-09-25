@@ -13,6 +13,7 @@ import (
 	"heliosian/internal/data"
 	"heliosian/internal/filter"
 	"heliosian/internal/mail"
+	"heliosian/internal/store"
 	"heliosian/internal/who"
 )
 
@@ -34,10 +35,10 @@ func invitesApp(t *testing.T) (http.Handler, *Cache, *keptMail) {
 func invitesAppWith(t *testing.T) (http.Handler, *Cache, *keptMail, *sampleSources) {
 	t.Helper()
 	t.Chdir("../..")
-	dir := &data.Dir{Root: "sampledata"}
+	sheet = &data.Dir{Root: "sampledata"}
 	households := map[string][]string{robin: {sam, ella}, sam: {robin, ella}, ella: {robin, sam}}
 	parents := map[string][]string{sam: {robin}, ella: {robin}}
-	cache, err := NewCache(dir, func() Roster { return Roster{Classrooms: roster.Classrooms, Households: households, Parents: parents} }, nil, func(string) bool { return false }, directQueue{})
+	cache, err := NewCache(sheet, sheet, func() Roster { return Roster{Classrooms: roster.Classrooms, Households: households, Parents: parents} }, nil, func(string) bool { return false }, directQueue{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +70,7 @@ func invitesAppWith(t *testing.T) (http.Handler, *Cache, *keptMail, *sampleSourc
 	}
 	mux := http.NewServeMux()
 	sources := newSampleSources(t)
-	Register(mux, cache, dir, directQueue{}, nil, d, func() []string { return nil }, linked, parties, sources.sources, ImageSearch{}, Mail{Sender: kept, From: "Helios When <when@example.org>", SigningKey: replySecret, ReplyTo: replyTo, Key: replyKey})
+	Register(mux, cache, nil, d, func() []string { return nil }, linked, parties, sources.sources, ImageSearch{}, Mail{Sender: kept, From: "Helios When <when@example.org>", SigningKey: replySecret, ReplyTo: replyTo, Key: replyKey})
 	return mux, cache, kept, sources
 }
 
@@ -1409,6 +1410,116 @@ func TestStepDown(t *testing.T) {
 	}
 	if rec := call(t, jordan, "POST", "/api/calendar/invites/step-down", `{"id":"meetup"}`); rec.Code != 403 {
 		t.Errorf("stepping down twice: %d", rec.Code)
+	}
+}
+
+func TestCascadesReachTheSheet(t *testing.T) {
+	mux, cache, _ := invitesApp(t)
+	jordan := as(host, mux)
+	call(t, jordan, "POST", "/api/calendar/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","id":"meetup"}`)
+	call(t, jordan, "POST", "/api/calendar/invites/people", `{"id":"meetup","people":[{"email":"`+robin+`"},{"email":"`+coach+`","name":"Coach Lee","via":"outside"}]}`)
+	call(t, jordan, "POST", "/api/calendar/invites/answer", `{"id":"meetup","email":"`+coach+`","answer":"yes"}`)
+	if rec := call(t, jordan, "POST", "/api/calendar/invites/email", `{"id":"meetup","email":"`+coach+`","to":"coach.lee@example.org"}`); rec.Code != 204 {
+		t.Fatalf("change address: %d %s", rec.Code, rec.Body)
+	}
+	answers := func() []string {
+		out := []string{}
+		for _, row := range readTables(t, sheet)[RSVPsTab] {
+			if row["Event ID"] == "meetup" {
+				out = append(out, row["Email"]+"="+row["Answer"])
+			}
+		}
+		slices.Sort(out)
+		return out
+	}
+	if got := strings.Join(answers(), ","); got != "coach.lee@example.org=yes,"+host+"=yes" {
+		t.Errorf("answers in the sheet after the address change: %s", got)
+	}
+	if !slices.Contains(changeLog(t), host+"|set|RSVPs|Event ID=meetup; Email=coach.lee@example.org|Email|"+coach) {
+		t.Errorf("the carried answer is not logged: %v", changeLog(t))
+	}
+	if rec := call(t, jordan, "POST", "/api/calendar/invites/delete", `{"id":"meetup"}`); rec.Code != 200 {
+		t.Fatalf("delete: %d %s", rec.Code, rec.Body)
+	}
+	m := cache.Model()
+	if m.Event("meetup") != nil || m.Invitations["meetup"] != nil || len(m.Invites["meetup"]) != 0 || m.AnswerOf(host, "meetup") != "" || m.AnswerOf("coach.lee@example.org", "meetup") != "" {
+		t.Errorf("memory after the delete: event %v, invitation %v, invites %d", m.Event("meetup"), m.Invitations["meetup"], len(m.Invites["meetup"]))
+	}
+	for _, tab := range []string{EventsTab, InvitationsTab, InvitesTab, RSVPsTab} {
+		for _, row := range readTables(t, sheet)[tab] {
+			if row["Event ID"] == "meetup" {
+				t.Errorf("%s kept %v", tab, row)
+			}
+		}
+	}
+	deleted := map[string]bool{}
+	for _, line := range changeLog(t) {
+		if parts := strings.Split(line, "|"); parts[1] == "delete" && strings.Contains(parts[3], "Event ID=meetup") {
+			deleted[parts[2]+" "+parts[3]] = true
+		}
+	}
+	for _, want := range []string{"Events Event ID=meetup", "Invitations Event ID=meetup", "Invites Event ID=meetup; Email=" + robin, "Invites Event ID=meetup; Email=coach.lee@example.org", "RSVPs Event ID=meetup; Email=" + host, "RSVPs Event ID=meetup; Email=coach.lee@example.org"} {
+		if !deleted[want] {
+			t.Errorf("the change log lacks the delete of %s: %v", want, deleted)
+		}
+	}
+}
+
+func TestBouncesAreAppendOnly(t *testing.T) {
+	mux, cache, _ := invitesApp(t)
+	stamp, sig := mail.SignMailgun(replySecret, "token-bounce", time.Now())
+	body, _ := json.Marshal(map[string]any{
+		"signature":  map[string]string{"timestamp": stamp, "token": "token-bounce", "signature": sig},
+		"event-data": map[string]any{"event": "failed", "severity": "permanent", "recipient": coach, "delivery-status": map[string]any{"description": "No such user here"}},
+	})
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest("POST", "/hooks/events", strings.NewReader(string(body))))
+	if rec.Code != 200 || cache.Model().Bounced[coach].Reason != "No such user here" {
+		t.Fatalf("bounce: %d %s", rec.Code, rec.Body)
+	}
+	if rows := readTables(t, sheet)[BouncesTab]; len(rows) != 1 || rows[0]["Email"] != coach {
+		t.Errorf("the sheet's bounces: %v", rows)
+	}
+	if log := changeLog(t); len(log) != 0 {
+		t.Errorf("a bounce was logged: %v", log)
+	}
+}
+
+func TestCategoryOrder(t *testing.T) {
+	mux, cache, _ := invitesApp(t)
+	admin := as("dana.hawkins@heliosschool.org", mux)
+	tags := []map[string]any{}
+	for _, tag := range cache.Model().Tags {
+		tags = append(tags, map[string]any{"name": tag.Name, "description": tag.Description, "group": tag.Group, "default": tag.Default, "image": tag.Image})
+	}
+	tags[0], tags[1] = tags[1], tags[0]
+	tags = append(tags, map[string]any{"name": "Fundraiser", "description": "Raising money.", "group": "Community", "default": false})
+	raw, _ := json.Marshal(map[string]any{"tags": tags})
+	if rec := call(t, admin, "POST", "/api/calendar/tags", string(raw)); rec.Code != 204 {
+		t.Fatalf("save: %d %s", rec.Code, rec.Body)
+	}
+	names := []string{}
+	for _, tag := range cache.Model().Tags {
+		names = append(names, tag.Name)
+	}
+	if len(names) != 16 || names[0] != "Conference" || names[1] != "Schedule" || names[15] != "Fundraiser" || cache.Model().Tags[15].Default {
+		t.Errorf("categories after the save: %v", names)
+	}
+	orders := []string{}
+	for _, row := range readTables(t, sheet)[TagsTab] {
+		orders = append(orders, row[store.OrderColumn])
+	}
+	if len(orders) != 16 || slices.Contains(orders, "") || !slices.IsSorted(append([]string{orders[1], orders[0]}, orders[2:]...)) {
+		t.Errorf("the sheet's order keys: %v", orders)
+	}
+	for _, line := range changeLog(t) {
+		if strings.Contains(line, "|Default|") || strings.Contains(line, "|Description|") {
+			t.Errorf("an unchanged cell was logged: %s", line)
+		}
+	}
+	unchanged := len(changeLog(t))
+	if rec := call(t, admin, "POST", "/api/calendar/tags", string(raw)); rec.Code != 204 || len(changeLog(t)) != unchanged {
+		t.Errorf("saving again: %d, log %d then %d", rec.Code, unchanged, len(changeLog(t)))
 	}
 }
 

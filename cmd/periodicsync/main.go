@@ -72,11 +72,14 @@ func main() {
 	if err != nil {
 		log.Fatalf("[ERROR] load directory model: %v", err)
 	}
-	// Each stage runs whatever the one before did: a failure is recorded
-	// and the run exits non-zero at the end naming every stage that failed.
+	roster := func() calendar.Roster { return app.CalendarRoster(directory) }
+	cache, err := calendar.NewCache(source, source, roster, nil, func(string) bool { return false }, who.NewQueue())
+	if err != nil {
+		log.Fatalf("[ERROR] load calendar model: %v", err)
+	}
 	failures := []string{}
 	log.Printf("stage: year calendar pdf")
-	opts := calendarimport.Options{Source: source, Roster: func() calendar.Roster { return app.CalendarRoster(directory) }, AnthropicKey: key, DryRun: *dryRun}
+	opts := calendarimport.Options{Source: source, Cache: cache, Roster: roster, AnthropicKey: key, DryRun: *dryRun}
 	if err := calendarimport.RunPDF(ctx, opts); err != nil {
 		log.Printf("[ERROR] year calendar pdf: %v", err)
 		failures = append(failures, "year calendar pdf")

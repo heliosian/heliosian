@@ -32,6 +32,7 @@ const (
 	set
 	update
 	remove
+	keyed
 )
 
 type Op struct {
@@ -231,7 +232,7 @@ func (s *Store[M]) commit(ctx context.Context, actor string, ops []Op) (<-chan e
 			continue
 		}
 		tables[op.tab] = rows
-		writes = append(writes, op)
+		writes = append(writes, planned(op, changes)...)
 		for _, c := range changes {
 			if !tab.AppendOnly {
 				log = append(log, entries(stamp, actor, real, tab, c)...)
@@ -266,23 +267,16 @@ func (s *Store[M]) written() {
 }
 
 func (s *Store[M]) write(writes []Op, log []Row) error {
-	for _, op := range writes {
-		var err error
-		switch op.kind {
-		case insert:
-			err = s.writer.Insert(s.spec.App, op.tab, []Row{op.cells})
-		case set, update:
-			err = s.writer.Set(s.spec.App, op.tab, op.match, op.cells)
-		case remove:
-			err = s.writer.Delete(s.spec.App, op.tab, op.match)
-		}
-		if err != nil {
-			slog.Error("[ERROR] write", "app", s.spec.App, "tab", op.tab, "error", err)
+	for len(writes) > 0 {
+		run := batch(writes)
+		writes = writes[len(run):]
+		if err := s.put(run); err != nil {
+			slog.Error("[ERROR] write", "app", s.spec.App, "tab", run[0].tab, "error", err)
 			s.written()
 			if err := s.refresh(); err != nil {
 				slog.Error("[ERROR] refresh after a failed write", "app", s.spec.App, "error", err)
 			}
-			return fmt.Errorf("write %s: %w", op.tab, err)
+			return fmt.Errorf("write %s: %w", run[0].tab, err)
 		}
 	}
 	if len(log) > 0 {
@@ -292,6 +286,63 @@ func (s *Store[M]) write(writes []Op, log []Row) error {
 	}
 	s.written()
 	return nil
+}
+
+func planned(op Op, changes []change) []Op {
+	if (op.kind != set && op.kind != update) || len(op.match) != 1 {
+		return []Op{op}
+	}
+	column := slices.Collect(maps.Keys(op.match))[0]
+	if _, renames := op.cells[column]; renames {
+		return []Op{op}
+	}
+	out := []Op{}
+	for _, c := range changes {
+		key := c.before[column]
+		if c.before == nil || key == "" || key != strings.TrimSpace(key) {
+			return []Op{op}
+		}
+		out = append(out, Op{kind: keyed, tab: op.tab, match: Row{column: key}, cells: op.cells})
+	}
+	return out
+}
+
+func batch(writes []Op) []Op {
+	first := writes[0]
+	if first.kind != insert && first.kind != keyed {
+		return writes[:1]
+	}
+	n := 1
+	for n < len(writes) && writes[n].kind == first.kind && writes[n].tab == first.tab && slices.Equal(slices.Sorted(maps.Keys(writes[n].match)), slices.Sorted(maps.Keys(first.match))) {
+		n++
+	}
+	return writes[:n]
+}
+
+func (s *Store[M]) put(run []Op) error {
+	op := run[0]
+	switch op.kind {
+	case insert:
+		rows := []Row{}
+		for _, w := range run {
+			rows = append(rows, w.cells)
+		}
+		return s.writer.Insert(s.spec.App, op.tab, rows)
+	case keyed:
+		column := slices.Collect(maps.Keys(op.match))[0]
+		cells := map[string]map[string]string{}
+		for _, w := range run {
+			key := w.match[column]
+			if cells[key] == nil {
+				cells[key] = Row{}
+			}
+			maps.Copy(cells[key], w.cells)
+		}
+		return s.writer.SetMany(s.spec.App, op.tab, column, cells)
+	case remove:
+		return s.writer.Delete(s.spec.App, op.tab, op.match)
+	}
+	return s.writer.Set(s.spec.App, op.tab, op.match, op.cells)
 }
 
 func apply(rows []Row, op Op) ([]Row, []change) {

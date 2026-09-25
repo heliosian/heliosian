@@ -15,6 +15,7 @@ import (
 	"heliosian/internal/auth"
 	"heliosian/internal/data"
 	"heliosian/internal/mail"
+	"heliosian/internal/store"
 )
 
 type directQueue struct{}
@@ -32,21 +33,42 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func testApp(t *testing.T) (http.Handler, *Cache) {
+var sheet *data.Dir
+
+func sampleCache(t *testing.T) *Cache {
 	t.Helper()
 	t.Chdir("../..")
-	dir := &data.Dir{Root: "sampledata"}
-	cache, err := NewCache(dir, func() Roster { return roster }, nil, func(string) bool { return false }, directQueue{})
+	sheet = &data.Dir{Root: "sampledata"}
+	cache, err := NewCache(sheet, sheet, func() Roster { return roster }, nil, func(string) bool { return false }, directQueue{})
 	if err != nil {
 		t.Fatal(err)
 	}
+	return cache
+}
+
+func testApp(t *testing.T) (http.Handler, *Cache) {
+	t.Helper()
+	cache := sampleCache(t)
 	d := fakeDirectory{
 		people: map[string]Person{"jordan.whitfield@heliosschool.org": {Email: "jordan.whitfield@heliosschool.org", Name: "Jordan", IsParent: true}},
 		kids:   map[string][]Person{},
 	}
 	mux := http.NewServeMux()
-	Register(mux, cache, dir, directQueue{}, nil, d, func() []string { return nil }, func(string) []Linked { return nil }, nil, nil, ImageSearch{}, Mail{})
+	Register(mux, cache, nil, d, func() []string { return nil }, func(string) []Linked { return nil }, nil, nil, ImageSearch{}, Mail{})
 	return mux, cache
+}
+
+func changeLog(t *testing.T) []string {
+	t.Helper()
+	_, rows, err := sheet.Table(appName, store.ChangeLogTab)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := []string{}
+	for _, row := range rows {
+		out = append(out, row["Actor"]+"|"+row["Action"]+"|"+row["Tab"]+"|"+row["Key"]+"|"+row["Column"]+"|"+row["Previous"])
+	}
+	return out
 }
 
 func as(email string, handler http.Handler) http.Handler {
@@ -331,16 +353,11 @@ func (k *keptMail) all() []mail.Message {
 }
 
 func TestAdminsToldOfSharedEvents(t *testing.T) {
-	t.Chdir("../..")
-	dir := &data.Dir{Root: "sampledata"}
-	cache, err := NewCache(dir, func() Roster { return roster }, nil, func(string) bool { return false }, directQueue{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	cache := sampleCache(t)
 	d := fakeDirectory{people: map[string]Person{"jordan.whitfield@heliosschool.org": {Email: "jordan.whitfield@heliosschool.org", Name: "Jordan", IsParent: true}}, kids: map[string][]Person{}}
 	kept := &keptMail{}
 	mux := http.NewServeMux()
-	Register(mux, cache, dir, directQueue{}, nil, d, func() []string { return nil }, func(string) []Linked { return nil }, nil, nil, ImageSearch{}, Mail{Sender: kept, From: "Helios When <when@example.org>"})
+	Register(mux, cache, nil, d, func() []string { return nil }, func(string) []Linked { return nil }, nil, nil, ImageSearch{}, Mail{Sender: kept, From: "Helios When <when@example.org>"})
 	parent := as("jordan.whitfield@heliosschool.org", mux)
 	admin := as("dana.hawkins@heliosschool.org", mux)
 	wait := func(n int) []mail.Message {
@@ -705,7 +722,7 @@ func TestOverrideFromThePage(t *testing.T) {
 		return string(raw)
 	}
 	row := func() map[string]string {
-		for _, r := range cache.Tables().Overrides {
+		for _, r := range readTables(t, sheet)[OverridesTab] {
 			if r["Event ID"] == "a2@sample" {
 				return r
 			}

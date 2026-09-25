@@ -5,87 +5,102 @@ import (
 	"slices"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"heliosian/internal/config"
 	"heliosian/internal/data"
+	"heliosian/internal/store"
 )
 
-const refreshInterval = 5 * time.Minute
-
-type Enqueuer interface {
-	Add(func())
-}
-
 type Cache struct {
-	source     data.Source
-	roster     func() Roster
+	*store.Store[*Model]
 	superAdmin func(email string) bool
-	queue      Enqueuer
-	mu         sync.RWMutex
-	model      *Model
-	tables     *Tables
-	pending    int
-	// images says which image names can be served; nil in a test.
-	images ImageChecker
 }
 
-func NewCache(source data.Source, roster func() Roster, images ImageChecker, superAdmin func(string) bool, queue Enqueuer) (*Cache, error) {
-	c := &Cache{source: source, roster: roster, images: images, superAdmin: superAdmin, queue: queue}
-	if err := c.refresh(); err != nil {
+var guestListTabs = []string{InvitesTab, InviteGroupsTab, RSVPsTab}
+
+func spec(roster func() Roster, images ImageChecker) store.Spec[*Model] {
+	return store.Spec[*Model]{
+		App: appName,
+		Tabs: []store.Tab{
+			{Name: GoogleTab, Columns: GoogleColumns, Key: []string{"Key"}},
+			{Name: PDFTab, Columns: PDFColumns, Key: []string{"Key"}},
+			{Name: EventsTab, Columns: EventColumns, Key: []string{"Event ID"}, Cascade: carryEvent},
+			{Name: EnrichmentTab, Columns: EnrichmentColumns, Key: []string{"Event ID"}},
+			{Name: OverridesTab, Columns: OverrideColumns, Key: []string{"Event ID"}},
+			{Name: DayTypesTab, Columns: DayTypeColumns, Key: []string{"Day Type"}},
+			{Name: DayOverridesTab, Columns: DayOverrideColumns, Key: []string{"Date", "Classrooms"}},
+			{Name: TagsTab, Columns: TagColumns, Key: []string{"Tag"}},
+			{Name: AdminsTab, Columns: AdminColumns, Key: []string{"Email"}},
+			{Name: FeedsTab, Columns: FeedColumns, Key: []string{"Token"}},
+			{Name: SettingsTab, Columns: SettingColumns, Key: []string{"Email"}},
+			{Name: RSVPsTab, Columns: RSVPColumns, Key: []string{"Event ID", "Email"}},
+			{Name: InvitationsTab, Columns: InvitationColumns, Key: []string{"Event ID"}, Cascade: carryInvitation},
+			{Name: InvitesTab, Columns: InviteColumns, Key: []string{"Event ID", "Email"}, Cascade: carryInvite},
+			{Name: InviteGroupsTab, Columns: InviteGroupColumns, Key: []string{"Event ID", "Group ID"}},
+			{Name: BouncesTab, Columns: BounceColumns, Key: []string{"Email", "When"}, AppendOnly: true},
+		},
+		Build: func(tables store.Tables) (*Model, error) {
+			model, err := BuildModel(tables, roster())
+			if err != nil {
+				return nil, err
+			}
+			resolveImages(images, model)
+			return model, nil
+		},
+		Loaded: func(model *Model, took time.Duration) {
+			slog.Info("loaded calendar model", "events", len(model.Events), "hidden", model.Hidden, "days", len(model.Days),
+				"feeds", len(model.Feeds), "skipped", model.Skipped, "took", took.Round(time.Millisecond))
+		},
+	}
+}
+
+func carryEvent(before, after store.Row) []store.Op {
+	if before == nil || after != nil || before["Event ID"] == "" {
+		return nil
+	}
+	return append(dropGuestList(before["Event ID"]), store.Delete(InvitationsTab, store.Row{"Event ID": before["Event ID"]}))
+}
+
+func carryInvitation(before, after store.Row) []store.Op {
+	if before == nil || after != nil || before["Event ID"] == "" {
+		return nil
+	}
+	return dropGuestList(before["Event ID"])
+}
+
+func dropGuestList(id string) []store.Op {
+	ops := []store.Op{}
+	for _, tab := range guestListTabs {
+		ops = append(ops, store.Delete(tab, store.Row{"Event ID": id}))
+	}
+	return ops
+}
+
+func carryInvite(before, after store.Row) []store.Op {
+	if before == nil || before["Email"] == "" {
+		return nil
+	}
+	was := store.Row{"Event ID": before["Event ID"], "Email": before["Email"]}
+	if after == nil {
+		return []store.Op{store.Delete(RSVPsTab, was)}
+	}
+	if normalizeEmail(after["Email"]) == normalizeEmail(before["Email"]) {
+		return nil
+	}
+	return []store.Op{store.Update(RSVPsTab, was, store.Row{"Email": after["Email"]})}
+}
+
+func NewCache(source data.Source, writer data.Writer, roster func() Roster, images ImageChecker, superAdmin func(string) bool, queue store.Enqueuer) (*Cache, error) {
+	s, err := store.New(spec(roster, images), source, writer, queue)
+	if err != nil {
 		return nil, err
 	}
-	go c.refreshLoop()
-	return c, nil
+	return &Cache{Store: s, superAdmin: superAdmin}, nil
 }
 
-func (c *Cache) refreshLoop() {
-	for range time.Tick(refreshInterval) {
-		c.Refresh()
-	}
-}
-
-// Refresh reloads the model from the sheet ahead of the next tick, behind whatever writes are queued.
-func (c *Cache) Refresh() {
-	c.queue.Add(func() {
-		if err := c.refresh(); err != nil {
-			slog.Error("calendar model refresh", "error", err)
-		}
-	})
-}
-
-func (c *Cache) refresh() error {
-	start := time.Now()
-	tables, err := ReadTables(c.source)
-	if err != nil {
-		return err
-	}
-	model, err := BuildModel(tables, c.roster())
-	if err != nil {
-		return err
-	}
-	c.resolveImages(model)
-	c.mu.Lock()
-	if c.pending == 0 {
-		c.tables, c.model = tables, model
-	} else {
-		slog.Info("calendar model refresh skipped: writes still queued")
-	}
-	c.mu.Unlock()
-	slog.Info("loaded calendar model", "events", len(model.Events), "hidden", model.Hidden, "days", len(model.Days),
-		"feeds", len(model.Feeds), "skipped", model.Skipped, "took", time.Since(start).Round(time.Millisecond))
-	return nil
-}
-
-// resolveImages asks the store for every picture the model names - each
-// tag's, each hand-added event's, each invitation's flyer - once per model
-// rather than per request, so the store holds them for serving, and turns
-// each tag's image name into the address the page fetches it from. A name
-// that resolves to nothing is logged and left: a missing picture is never
-// a reason to refuse the calendar.
-func (c *Cache) resolveImages(model *Model) {
-	if c.images == nil {
+func resolveImages(images ImageChecker, model *Model) {
+	if images == nil {
 		return
 	}
 	names := []string{}
@@ -108,17 +123,17 @@ func (c *Cache) resolveImages(model *Model) {
 	for _, name := range pictures {
 		names = append(names, name)
 	}
-	if err := c.images.Prefetch(names); err != nil {
-		slog.Error("calendar: prefetch images", "error", err)
+	if err := images.Prefetch(names); err != nil {
+		slog.Error("[ERROR] calendar: prefetch images", "error", err)
 	}
 	for i := range model.Tags {
 		t := &model.Tags[i]
 		if t.Image == "" {
 			continue
 		}
-		found, err := c.images.Has(t.Image)
+		found, err := images.Has(t.Image)
 		if err != nil {
-			slog.Error("calendar: tag image", "tag", t.Name, "image", t.Image, "error", err)
+			slog.Error("[ERROR] calendar: tag image", "tag", t.Name, "image", t.Image, "error", err)
 		} else if !found {
 			slog.Warn("calendar: tag image does not exist", "tag", t.Name, "image", t.Image)
 		} else {
@@ -126,68 +141,26 @@ func (c *Cache) resolveImages(model *Model) {
 		}
 	}
 	for what, name := range pictures {
-		found, err := c.images.Has(name)
+		found, err := images.Has(name)
 		if err != nil {
-			slog.Error("calendar: picture", "of", what, "image", name, "error", err)
+			slog.Error("[ERROR] calendar: picture", "of", what, "image", name, "error", err)
 		} else if !found {
 			slog.Warn("calendar: picture does not exist", "of", what, "image", name)
 		}
 	}
 }
 
-func (c *Cache) commit(tables *Tables, model *Model, write func()) {
-	c.resolveImages(model)
-	c.mu.Lock()
-	c.tables, c.model = tables, model
-	c.pending++
-	c.mu.Unlock()
-	c.queue.Add(func() {
-		write()
-		c.mu.Lock()
-		c.pending--
-		c.mu.Unlock()
-	})
-}
-
-func (c *Cache) Model() *Model {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.model
-}
-
-func (c *Cache) Tables() *Tables {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.tables
-}
-
-func (c *Cache) tabAdmins() []string {
-	tables := c.Tables()
-	emails := make([]string, 0, len(tables.Admins))
-	for _, row := range tables.Admins {
-		emails = append(emails, row["Email"])
-	}
-	return config.NormalizeEmails(emails)
-}
-
-// IsSuperAdmin reports whether email is one of the platform's super admins
-// (docs/config.md) - the tier that colours the app in Appearance.
 func (c *Cache) IsSuperAdmin(email string) bool {
 	return c.superAdmin(strings.ToLower(strings.TrimSpace(email)))
 }
 
 func (c *Cache) IsAdmin(email string) bool {
 	email = strings.ToLower(strings.TrimSpace(email))
-	for _, admin := range c.tabAdmins() {
-		if admin == email {
-			return true
-		}
-	}
-	return c.superAdmin(email)
+	return slices.Contains(c.Model().admins, email) || c.superAdmin(email)
 }
 
 func (c *Cache) Admins(superAdmins []string) []string {
-	admins := config.NormalizeEmails(append(c.tabAdmins(), superAdmins...))
+	admins := config.NormalizeEmails(append(slices.Clone(c.Model().admins), superAdmins...))
 	sort.Strings(admins)
 	return admins
 }

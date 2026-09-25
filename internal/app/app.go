@@ -801,7 +801,7 @@ func NewCore(cfg Config) *Core {
 	if err != nil {
 		logging.Fatal("load directory data", "error", err)
 	}
-	calendarCache, err := calendar.NewCache(cfg.Source, func() calendar.Roster { return CalendarRoster(cache.Model()) }, calendarImages{cfg.Store}, superAdmin, queue)
+	calendarCache, err := calendar.NewCache(cfg.Source, cfg.Writer, func() calendar.Roster { return CalendarRoster(cache.Model()) }, calendarImages{cfg.Store}, superAdmin, queue)
 	if err != nil {
 		logging.Fatal("load calendar data", "error", err)
 	}
@@ -827,7 +827,7 @@ func NewCore(cfg Config) *Core {
 	calendarDir := calendarDirectory{cache, settings, smartLists{cache, teamCache, celebrateCache, loopCache, loopDir}.Lists}
 	frontEvents := upcomingEvents{calendarCache, calendarDir, linked}
 	calendarMux := http.NewServeMux()
-	hooks := calendar.Register(calendarMux, calendarCache, cfg.Writer, queue, cfg.Store, calendarDir, settings.SuperAdmins, linked, partyPeople{celebrateCache}.people, audienceSources{loopDir}.Sources, cfg.ImageSearch, cfg.CalendarMail)
+	hooks := calendar.Register(calendarMux, calendarCache, cfg.Store, calendarDir, settings.SuperAdmins, linked, partyPeople{celebrateCache}.people, audienceSources{loopDir}.Sources, cfg.ImageSearch, cfg.CalendarMail)
 	homeMux := http.NewServeMux()
 	home.Register(homeMux, homeCache, cfg.Store, settings.SuperAdmins, cache.HeroPhoto, directory{cache, settings}.HomePeople, audienceSources{loopDir}, directory{cache, settings}.Alerts, frontEvents.list, frontEvents.month, cfg.ImageSearch, hooks.Answer, hooks.MakeDefault)
 	teamMux := http.NewServeMux()
@@ -1231,9 +1231,9 @@ func calendarWatcher(sheet *data.Sheet, core *Core, sessionKey string) *calendar
 	mac := hmac.New(sha256.New, []byte(sessionKey))
 	mac.Write([]byte("calendar watch"))
 	opts := calendarimport.Options{
-		Source: sheet, Calendar: cal,
+		Source: sheet, Cache: core.CalendarCache, Calendar: cal,
 		Roster:       func() calendar.Roster { return CalendarRoster(core.Cache.Model()) },
 		AnthropicKey: mapsKey("ANTHROPIC_API_KEY", "local/creds/anthropic.key"),
 	}
-	return calendarimport.NewWatcher(opts, hex.EncodeToString(mac.Sum(nil)), core.CalendarCache.Refresh)
+	return calendarimport.NewWatcher(opts, hex.EncodeToString(mac.Sum(nil)))
 }

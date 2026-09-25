@@ -23,7 +23,6 @@ func (r *recordingImages) Prefetch(names []string) error {
 
 func TestResolveImagesAsksForEveryPicture(t *testing.T) {
 	rec := &recordingImages{missing: map[string]bool{"category-images/gone.jpg": true}}
-	c := &Cache{images: rec}
 	model := &Model{
 		Tags:    []Tag{{Name: "Trip", Image: "sample/trip.jpg"}, {Name: "Plain"}},
 		Events:  []*Event{{ID: "shown", Source: SourceSheet, Image: "/category-images/shown.jpg"}, {ID: "feed", Source: SourceGoogle}},
@@ -33,7 +32,7 @@ func TestResolveImagesAsksForEveryPicture(t *testing.T) {
 			"bare":  {EventID: "bare"},
 		},
 	}
-	c.resolveImages(model)
+	resolveImages(rec, model)
 	want := []string{"sample/trip.jpg", "category-images/shown.jpg", "category-images/gone.jpg", "category-images/flyer.jpg"}
 	slices.Sort(want)
 	prefetched := slices.Clone(rec.prefetched)

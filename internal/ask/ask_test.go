@@ -90,14 +90,11 @@ func sampleSources(t *testing.T) Sources {
 		}
 		roster.Classrooms = append(roster.Classrooms, room)
 	}
-	calendarTables, err := calendar.ReadTables(dir)
+	calendarCache, err := calendar.NewCache(dir, dir, func() calendar.Roster { return roster }, nil, func(string) bool { return false }, who.NewQueue())
 	if err != nil {
 		t.Fatal(err)
 	}
-	calendarModel, err := calendar.BuildModel(calendarTables, roster)
-	if err != nil {
-		t.Fatal(err)
-	}
+	calendarModel := calendarCache.Model()
 	teamCache, err := team.NewCache(dir, dir, anyImages{}, func(string) bool { return false }, who.NewQueue())
 	if err != nil {
 		t.Fatal(err)

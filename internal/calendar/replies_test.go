@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"heliosian/internal/data"
 	"heliosian/internal/mail"
 )
 
@@ -23,9 +22,6 @@ func replyAddress(id, email string) string {
 	return app{mail: Mail{ReplyTo: replyTo, Key: replyKey}}.organizer(id, email)
 }
 
-// replyMail is a reply the way Google Calendar sends one: alternatives of
-// text, HTML and a base64 calendar, and the same calendar again as a .ics
-// attachment, under the results Mailgun found for the sender's domain.
 func replyMail(from, attendee, uid, standing, results string) string {
 	ics := strings.Join([]string{
 		"BEGIN:VCALENDAR", "PRODID:-//Google Inc//Google Calendar 70.9054//EN", "VERSION:2.0", "METHOD:REPLY",
@@ -75,8 +71,6 @@ func TestParseReply(t *testing.T) {
 	if got.UID != "a7@sample" || got.Email != "jordan.whitfield@heliosschool.org" || got.Standing != "ACCEPTED" {
 		t.Errorf("reply = %+v", got)
 	}
-	// A sheet event's UID gives its id back; a folded attendee line reads
-	// the same as a whole one.
 	folded := "BEGIN:VCALENDAR\r\nMETHOD:REPLY\r\nBEGIN:VEVENT\r\nUID:7QK2M4XN@calendar.heliosian.com\r\nATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=DECLINED;CN=jordan.whitfield@h\r\n eliosschool.org:mailto:jordan.whitfield@h\r\n eliosschool.org\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
 	if got, err := readReply([]byte(folded)); err != nil || got.Standing != "DECLINED" || got.Email != "jordan.whitfield@heliosschool.org" || idOfUID(got.UID) != "7QK2M4XN" {
 		t.Errorf("declined reply = %+v, %v", got, err)
@@ -101,18 +95,8 @@ func postReply(mux http.Handler, to, from, raw string, signed bool) int {
 	return rec.Code
 }
 
-// A signed notification of a reply records the attendee's answer with no
-// invite sent; an unsigned one is refused; a reply for someone the
-// directory does not know, from another sender, from a sender Mailgun did
-// not authenticate, or to any address but the attendee's own for the event
-// changes nothing.
 func TestRepliesRecordAnswers(t *testing.T) {
-	t.Chdir("../..")
-	dir := &data.Dir{Root: "sampledata"}
-	cache, err := NewCache(dir, func() Roster { return roster }, nil, func(string) bool { return false }, directQueue{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	cache := sampleCache(t)
 	me := "jordan.whitfield@heliosschool.org"
 	d := fakeDirectory{people: map[string]Person{me: {Email: me, Name: "Jordan", IsParent: true}}, kids: map[string][]Person{}}
 	const school, elsewhere = "dmarc=pass header.from=heliosschool.org", "dmarc=pass header.from=example.org"
@@ -125,7 +109,7 @@ func TestRepliesRecordAnswers(t *testing.T) {
 	}
 	m := Mail{SigningKey: replySecret, ReplyTo: replyTo, Key: replyKey}
 	mux := http.NewServeMux()
-	Register(mux, cache, dir, directQueue{}, nil, d, func() []string { return nil }, func(string) []Linked { return nil }, nil, nil, ImageSearch{}, m)
+	Register(mux, cache, nil, d, func() []string { return nil }, func(string) []Linked { return nil }, nil, nil, ImageSearch{}, m)
 	own := replyAddress("a7@sample", me)
 	if own != "Helios When <rsvp+"+(app{mail: m}).replyToken("a7@sample", me)+"@reply.heliosian.com>" {
 		t.Fatalf("organizer = %q", own)
@@ -159,8 +143,6 @@ func TestRepliesRecordAnswers(t *testing.T) {
 			t.Errorf("a reply to %s was taken", other)
 		}
 	}
-	// A notification for another address under the domain is left alone,
-	// unfetched.
 	to = "someone-else@reply.heliosian.com"
 	if code := post("no", true); code != 200 || cache.Model().AnswerOf(me, "a7@sample") != AnswerYes {
 		t.Errorf("mail for another address was taken as a reply")

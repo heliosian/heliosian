@@ -12,20 +12,9 @@ import (
 	"time"
 
 	"heliosian/internal/mail"
+	"heliosian/internal/store"
 )
 
-// A host may undo an event they made: before anyone has been sent the
-// invitation, Delete takes it back whole - the guest list, and for a
-// hand-added event the event itself - as if it had never been; once the
-// invites are out, Cancel calls it off - the event marked Cancelled, so it
-// leaves everyone's calendar and lists while its page says so - with a
-// word to everyone invited if the host wants, carrying a calendar
-// cancellation so their apps drop it too. A party is Celebrate's to
-// cancel; here its invitation alone is deleted, before or after sending.
-
-// deleteInvitation is POST /api/calendar/invites/delete: everything of
-// the guest list dropped, and a hand-added event with it, while nobody
-// has been sent the invitation (a party's invitation goes whenever).
 func (a app) deleteInvitation(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		ID string `json:"id"`
@@ -37,46 +26,17 @@ func (a app) deleteInvitation(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	model := a.cache.Model()
-	inv := model.Invitations[e.ID]
+	inv := a.cache.Model().Invitations[e.ID]
 	own := e.Source == SourceSheet
 	if own && inv != nil && inv.Sent != "" {
 		http.Error(w, "the invites are out: cancel the event instead", http.StatusBadRequest)
 		return
 	}
-	tables := a.cache.Tables().WithoutInvitation(e.ID)
+	op := store.Delete(InvitationsTab, store.Row{"Event ID": e.ID})
 	if own {
-		tables = tables.WithoutEvent(e.ID)
+		op = store.Delete(EventsTab, store.Row{"Event ID": e.ID})
 	}
-	invites := model.Invites[e.ID]
-	groups := model.Groups[e.ID]
-	if !a.commit(r.Context(), w, tables, func() error {
-		for _, row := range invites {
-			if err := a.writer.Delete(appName, InvitesTab, map[string]string{"Event ID": e.ID, "Email": row.Email}); err != nil {
-				return err
-			}
-			if err := a.writer.Delete(appName, RSVPsTab, map[string]string{"Event ID": e.ID, "Email": row.Email}); err != nil {
-				return err
-			}
-		}
-		for _, g := range groups {
-			if err := a.writer.Delete(appName, InviteGroupsTab, map[string]string{"Event ID": e.ID, "Group ID": g.ID}); err != nil {
-				return err
-			}
-		}
-		if inv != nil {
-			if err := a.writer.Delete(appName, InvitationsTab, map[string]string{"Event ID": e.ID}); err != nil {
-				return err
-			}
-		}
-		if own {
-			if err := a.writer.Delete(appName, EventsTab, map[string]string{"Event ID": e.ID}); err != nil {
-				return err
-			}
-			return a.logChange(r, actor, "deleted", EventsTab, e.ID, "Status", e.Status, "")
-		}
-		return nil
-	}) {
+	if !a.commit(w, r, actor, op) {
 		return
 	}
 	slog.InfoContext(r.Context(), "calendar: invitation deleted", "actor", actor, "event", e.ID, "title", e.Title, "event too", own)
@@ -84,9 +44,6 @@ func (a app) deleteInvitation(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]bool{"event": own})
 }
 
-// cancelEvent is POST /api/calendar/events/cancel: a host calling off a
-// hand-added event - its Status Cancelled - and, when asked, telling
-// everyone who was sent the invitation, with the host's note.
 func (a app) cancelEvent(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		ID     string `json:"id"`
@@ -114,8 +71,6 @@ func (a app) cancelEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	model := a.cache.Model()
-	// Who hears, before the event is marked: everyone sent the invitation,
-	// a student's parents on the Cc with them.
 	targets := []string{}
 	cc := map[string][]string{}
 	if body.Notify {
@@ -131,12 +86,7 @@ func (a app) cancelEvent(w http.ResponseWriter, r *http.Request) {
 			targets = append(targets, inv.Email)
 		}
 	}
-	if !a.commit(r.Context(), w, a.cache.Tables().WithEventCells(e.ID, map[string]string{"Status": StatusCancelled}), func() error {
-		if err := a.writer.Set(appName, EventsTab, map[string]string{"Event ID": e.ID}, map[string]string{"Status": StatusCancelled}); err != nil {
-			return err
-		}
-		return a.logChange(r, actor, "cancelled", EventsTab, e.ID, "Status", e.Status, StatusCancelled)
-	}) {
+	if !a.commit(w, r, actor, store.Update(EventsTab, store.Row{"Event ID": e.ID}, store.Row{"Status": StatusCancelled})) {
 		return
 	}
 	hostName := actor
@@ -155,11 +105,6 @@ func (a app) cancelEvent(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]int{"told": len(targets)})
 }
 
-// sendCancellation mails one person that the event is off: the host's
-// word, the note when there is one, and - when the message is theirs
-// alone, so their invitation carried a calendar invite - a calendar
-// cancellation for it, so their calendar app drops it. A student's goes
-// with their parents on the Cc (cc, ccFor).
 func (a app) sendCancellation(ctx context.Context, to string, cc, replyTo []string, hostName, note string, e *Event) {
 	if a.mail.Sender == nil {
 		return
@@ -206,14 +151,12 @@ func (a app) sendCancellation(ctx context.Context, to string, cc, replyTo []stri
 		}}
 	}
 	if err := a.mail.Sender.Send(ctx, msg); err != nil {
-		slog.ErrorContext(ctx, "calendar: send cancellation", "to", to, "event", e.ID, "error", err)
+		slog.ErrorContext(ctx, "[ERROR] calendar: send cancellation", "to", to, "event", e.ID, "error", err)
 		return
 	}
 	slog.InfoContext(ctx, "calendar: cancellation sent", "to", to, "event", e.ID)
 }
 
-// cancellation is the calendar file that takes the invite back: the same
-// UID as the invite, METHOD:CANCEL, the event marked cancelled.
 func cancellation(from, to string, e *Event, at time.Time) string {
 	stamp := at.UTC().Format(icsStamp)
 	lines := []string{

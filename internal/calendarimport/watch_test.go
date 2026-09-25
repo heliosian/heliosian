@@ -13,13 +13,14 @@ func TestKicksDuringARunCollapseIntoOneMore(t *testing.T) {
 	release := make(chan struct{})
 	finished := make(chan struct{}, 10)
 	runs := 0
-	w := &Watcher{kick: make(chan struct{}, 1), refresh: func() { finished <- struct{}{} }}
+	w := &Watcher{kick: make(chan struct{}, 1)}
 	w.run = func(context.Context) error {
 		runs++
 		if runs == 1 {
 			started <- struct{}{}
 			<-release
 		}
+		finished <- struct{}{}
 		return nil
 	}
 	go w.work()

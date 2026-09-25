@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"html"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/url"
 	"slices"
@@ -17,130 +18,63 @@ import (
 
 	"heliosian/internal/auth"
 	"heliosian/internal/mail"
+	"heliosian/internal/store"
 )
 
-// An invitation is a guest list kept for one event - a party on Helios
-// Celebrate, or an event shared here, private or public - built by its
-// hosts in one step and sent in another. Whoever is
-// on a sent list has the event on their calendar, their household with
-// them, and answers for everyone in their household who is on it; a host
-// reads and corrects every answer. The Invitations tab holds the list's
-// settings, the Invites tab its people, and the RSVPs tab the answers, the
-// same rows a yes or no anywhere else writes.
-
-// The words an invitation's settings take: who a family or a classroom
-// adds to the list.
 const (
 	AudienceAdults   = "adults"
 	AudienceStudents = "students"
 	AudienceBoth     = "both"
-	// ViaGuest marks someone brought along by an invitee rather than put
-	// on the list by a host; the other Via words say how a host added them.
-	ViaGuest = "guest"
-	// guestPrefix begins the key of a guest named without an address, in
-	// place of the address the Invites and RSVPs tabs are keyed by.
-	guestPrefix = "guest-"
+	ViaGuest         = "guest"
+	guestPrefix      = "guest-"
 )
 
-// Invitation is one event's guest list settings.
 type Invitation struct {
-	EventID string `json:"eventId"`
-	// Hosts are co-hosts by address, beyond the event's own - the person
-	// who shared it, a party's hosts on Celebrate - and the admins.
-	Hosts []string `json:"hosts"`
-	// Audience is who adding a family or a classroom puts on the list:
-	// its adults, its students, or both.
-	Audience string `json:"audience"`
-	// Guests is always on: invitees may bring guests by name. The tab's
-	// column is kept for the rows that have it, and no longer read.
-	Guests bool `json:"guests"`
-	// Message is the hosts' own words on the invitation.
-	Message   string `json:"message"`
-	CreatedBy string `json:"createdBy"`
-	Created   string `json:"created"`
-	// Sent is when invites first went out; blank while the list is a draft.
-	Sent string `json:"sent,omitempty"`
-	// Notify is the hosts who asked to hear by email as answers come in -
-	// each host's own choice.
-	Notify []string `json:"-"`
-	// SteppedDown is the address of whoever added the event, once they
-	// stepped down as its host; an address and not a flag, so a hand
-	// change to the event's Added By puts the new poster in charge.
-	SteppedDown string `json:"-"`
-	// HideHosts keeps the Hosts card on the event's page to the hosts
-	// themselves.
-	HideHosts bool `json:"hideHosts"`
-	// PublicList opens Who's coming to everyone who can see an event the
-	// school's calendars bring; off, as it starts, the list is its hosts'
-	// alone. Every other event's list is everyone's.
-	PublicList bool `json:"publicList"`
-	// A party's invitation may carry words of its own in place of the
-	// party's - a title, when, where, a description - each blank for the
-	// party's own: what the invitation email, the calendar invite, the
-	// outside person's page and everyone invited see.
-	Title       string `json:"title,omitempty"`
-	Start       string `json:"start,omitempty"`
-	End         string `json:"end,omitempty"`
-	Location    string `json:"location,omitempty"`
-	Description string `json:"description,omitempty"`
-	// Flyer is a picture the hosts put on the invitation, shown whole - an
-	// upload into the shared store, named as the Events tab names one - on
-	// the event's page, the outside person's page and the invitation email,
-	// where it is fetched from /open/flyer/{event id}, public.
-	Flyer string `json:"flyer,omitempty"`
+	EventID     string   `json:"eventId"`
+	Hosts       []string `json:"hosts"`
+	Audience    string   `json:"audience"`
+	Guests      bool     `json:"guests"`
+	Message     string   `json:"message"`
+	CreatedBy   string   `json:"createdBy"`
+	Created     string   `json:"created"`
+	Sent        string   `json:"sent,omitempty"`
+	Notify      []string `json:"-"`
+	SteppedDown string   `json:"-"`
+	HideHosts   bool     `json:"hideHosts"`
+	PublicList  bool     `json:"publicList"`
+	Title       string   `json:"title,omitempty"`
+	Start       string   `json:"start,omitempty"`
+	End         string   `json:"end,omitempty"`
+	Location    string   `json:"location,omitempty"`
+	Description string   `json:"description,omitempty"`
+	Flyer       string   `json:"flyer,omitempty"`
 }
 
-// Invite is one person on one event's guest list. Email is the address the
-// list keys them by - a guest named without one gets a key instead.
 type Invite struct {
-	EventID string `json:"-"`
-	Email   string `json:"email"`
-	Name    string `json:"name"`
-	// GuestOf is the invitee who brought them, for a guest.
-	GuestOf string `json:"guestOf,omitempty"`
-	// Via is how they came to be on the list: a search, a family, a
-	// classroom, a list, the party's tickets, or as someone's guest.
-	Via     string `json:"via,omitempty"`
-	AddedBy string `json:"addedBy"`
-	Added   string `json:"added"`
-	// Sent is when their invite went out; blank until it has.
-	Sent string `json:"sent,omitempty"`
-	// Token is the secret in the page of someone from outside the
-	// community (ext.go): the whole of what lets them in, minted when they
-	// are put on the list; blank for anyone the directory holds.
-	Token string `json:"-"`
-	// Household groups people from outside into a family: the address of
-	// the one they were added with, the same on each of theirs, so they
-	// sit together on the list, are named together in the invitation, and
-	// any of them answers for all on their own page. Blank for anyone the
-	// directory holds, whose household is the directory's.
+	EventID   string `json:"-"`
+	Email     string `json:"email"`
+	Name      string `json:"name"`
+	GuestOf   string `json:"guestOf,omitempty"`
+	Via       string `json:"via,omitempty"`
+	AddedBy   string `json:"addedBy"`
+	Added     string `json:"added"`
+	Sent      string `json:"sent,omitempty"`
+	Token     string `json:"-"`
 	Household string `json:"household,omitempty"`
-	// Opened is when they first opened the invitation - the event's page
-	// here, or their own page from outside - blank until they have. Mail
-	// opens are not read: a tracking pixel says little, and less every
-	// year, while a page opened is a page opened.
-	Opened string `json:"opened,omitempty"`
+	Opened    string `json:"opened,omitempty"`
 }
 
-// PartyPeople is a party as its guest list needs it: who hosts it, and who
-// holds a ticket or a waitlist place.
 type PartyPeople struct {
 	Hosts     []string
 	Attendees []Attendee
 }
 
-// An Attendee is one ticket on a party: whose, by address where the ticket
-// names one, and the name on it.
 type Attendee struct {
-	Email string `json:"email,omitempty"`
-	Name  string `json:"name"`
-	// Status is ticket for one bought, free for one the hosts gave, or
-	// waitlist.
+	Email  string `json:"email,omitempty"`
+	Name   string `json:"name"`
 	Status string `json:"status"`
 }
 
-// A List is one of a person's lists in Helios Who? - a tag of their own,
-// or one the other apps give them - as the guest list picker offers it.
 type List struct {
 	Key    string   `json:"key"`
 	Name   string   `json:"name"`
@@ -148,10 +82,7 @@ type List struct {
 	People []string `json:"people"`
 }
 
-// invitations reads the two tabs: each event's settings, and its list in
-// the sheet's order, one row per address on it, the first kept. A sent
-// invite puts the event on the calendar of its household.
-func (b *builder) invitations(settings, rows []map[string]string) {
+func (b *builder) invitations(settings, rows []store.Row) {
 	for _, row := range settings {
 		id := strings.TrimSpace(row["Event ID"])
 		if id == "" {
@@ -167,8 +98,6 @@ func (b *builder) invitations(settings, rows []map[string]string) {
 			HideHosts:   strings.EqualFold(strings.TrimSpace(row["Hide Hosts"]), "Yes"),
 			PublicList:  strings.EqualFold(strings.TrimSpace(row["Public Guest List"]), "Yes"),
 		}
-		// A start the sheet cannot read is dropped with a log line, never
-		// a refusal.
 		if inv.Start != "" {
 			if _, _, _, err := parseWhen(inv.Start, inv.End); err != nil {
 				slog.Warn("calendar: invitation's own time skipped", "event", id, "error", err)
@@ -200,8 +129,6 @@ func (b *builder) invitations(settings, rows []map[string]string) {
 		if inv.Token != "" {
 			b.model.byInvite[inv.Token] = inv
 		}
-		// The invitation is theirs alone - and a student's is their
-		// parents' too, who answer for them; a partner's is not.
 		for _, who := range append([]string{email}, b.model.Roster.Parents[email]...) {
 			if b.model.listed[who] == nil {
 				b.model.listed[who] = map[string]bool{}
@@ -218,13 +145,10 @@ func (b *builder) invitations(settings, rows []map[string]string) {
 	}
 }
 
-// Listed says a person is on an event's list, sent their invitation or
-// not - or, for a parent, that their student is.
 func (m *Model) Listed(email, id string) bool {
 	return m.listed[normalizeEmail(email)][id]
 }
 
-// InviteOf is one person's row on one event's list, or nil.
 func (m *Model) InviteOf(id, email string) *Invite {
 	for i := range m.Invites[id] {
 		if m.Invites[id][i].Email == normalizeEmail(email) {
@@ -234,28 +158,19 @@ func (m *Model) InviteOf(id, email string) *Invite {
 	return nil
 }
 
-// InviteByToken is the row an outside person's secret names, or nothing.
 func (m *Model) InviteByToken(token string) (Invite, bool) {
 	inv, ok := m.byInvite[strings.TrimSpace(token)]
 	return inv, ok
 }
 
-// Invited says an event is on a person's calendar by invitation: theirs,
-// sent - or, for a parent, a child's.
 func (m *Model) Invited(email, id string) bool {
 	return m.invited[normalizeEmail(email)][id]
 }
 
-// hasDetails says an invitation carries words of its own.
 func (inv *Invitation) hasDetails() bool {
 	return inv != nil && (inv.Title != "" || inv.Start != "" || inv.Location != "" || inv.Description != "")
 }
 
-// invitedEvent is an event as its invitation says it: the invitation's
-// own title, when, where and description over the party's where it has
-// them, on a copy - for the invitation email, the calendar invite, the
-// outside person's page, and everyone invited. Any other event, or one
-// whose invitation says nothing of its own, is itself.
 func (m *Model) invitedEvent(e *Event) *Event {
 	inv := m.Invitations[e.ID]
 	if e == nil || !e.linked() || !inv.hasDetails() {
@@ -283,8 +198,6 @@ func (m *Model) invitedEvent(e *Event) *Event {
 	return &c
 }
 
-// withInvitation is an event flagged as carrying a guest list, on a copy
-// when it does, so the page knows to fetch it.
 func (m *Model) withInvitation(e *Event) *Event {
 	if e == nil || e.Invitation || m.Invitations[e.ID] == nil {
 		return e
@@ -294,22 +207,14 @@ func (m *Model) withInvitation(e *Event) *Event {
 	return &c
 }
 
-// isGuestKey says an address is the key of a guest named without one.
 func isGuestKey(email string) bool {
 	return strings.HasPrefix(email, guestPrefix) || !strings.Contains(email, "@")
 }
 
-// newGuestKey mints the key for a guest named without an address, in
-// lower case as the tabs' addresses are read.
 func newGuestKey() string {
 	return guestPrefix + strings.ToLower(newEventID())
 }
 
-// hostsOf is everyone who runs an event's guest list: who shared a
-// hand-added event, unless they stepped down, a party's hosts on Celebrate,
-// and the invitation's own co-hosts - each as the directory resolves them.
-// It may be nobody: an event whose hosts have all stepped down is the
-// admins' alone to change.
 func (a app) hostsOf(e *Event) []string {
 	out := []string{}
 	add := func(email string) {
@@ -331,7 +236,6 @@ func (a app) hostsOf(e *Event) []string {
 			}
 		}
 	}
-	// A linked event's own hosts - an HCA event's chairs.
 	for _, h := range e.Hosts {
 		add(h)
 	}
@@ -343,15 +247,10 @@ func (a app) hostsOf(e *Event) []string {
 	return out
 }
 
-// isHost says a person runs an event's guest list: one of its hosts, or a
-// calendar admin, who may do whatever a host may on any event without
-// being listed as one - the page offers it with Super Admin Mode on
-// (InviteView.AdminHost).
 func (a app) isHost(email string, admin bool, e *Event) bool {
 	return slices.Contains(a.hostsOf(e), email) || (admin && (e.Source == SourceSheet || e.linked() || e.imported()))
 }
 
-// party is the party behind a linked event, or nil for any other event.
 func (a app) party(e *Event) *PartyPeople {
 	if e == nil || e.Source != SourceCelebrate || a.parties == nil {
 		return nil
@@ -359,11 +258,6 @@ func (a app) party(e *Event) *PartyPeople {
 	return a.parties(strings.TrimPrefix(e.ID, SourceCelebrate+"/"))
 }
 
-// inviterEvent is the event someone asking to invite people to it may:
-// a host's, a public event, or one they were invited to; the link to one
-// shared by link lets its bearer see it and answer, not invite others in
-// the hosts' name - they pass the link on instead. Whether they are a
-// host comes back with it.
 func (a app) inviterEvent(w http.ResponseWriter, r *http.Request, id string) (string, *Event, bool, bool) {
 	actor, admin := a.who(r)
 	e := a.eventFor(actor, admin, strings.TrimSpace(id))
@@ -383,8 +277,6 @@ func (a app) inviterEvent(w http.ResponseWriter, r *http.Request, id string) (st
 	return actor, e, host, true
 }
 
-// hostedEvent is the event a host is asking about, as they see it, with
-// whether they may run its list: a hand-added event, or a party.
 func (a app) hostedEvent(w http.ResponseWriter, r *http.Request, id string) (string, *Event, bool) {
 	actor, admin := a.who(r)
 	e := a.eventFor(actor, admin, strings.TrimSpace(id))
@@ -403,16 +295,10 @@ func (a app) hostedEvent(w http.ResponseWriter, r *http.Request, id string) (str
 	return actor, e, true
 }
 
-// household is everyone in a person's families, as the roster lists them,
-// the person first.
 func (a app) household(email string) []string {
 	return append([]string{email}, a.cache.Model().Roster.Households[email]...)
 }
 
-// householdOn is a person's household as one event's list has it: the
-// directory's for anyone it holds, and for someone from outside the
-// family they were added with - everyone on the list sharing their
-// Household - themselves first.
 func (a app) householdOn(e *Event, email string) []string {
 	if _, known := a.directory.Person(email); known {
 		return a.household(email)
@@ -431,16 +317,11 @@ func (a app) householdOn(e *Event, email string) []string {
 	return out
 }
 
-// isAdult says a person may answer for their household: anyone the
-// directory does not list as a student alone.
 func (a app) isAdult(email string) bool {
 	p, known := a.directory.Person(email)
 	return !known || !p.IsStudent || p.IsParent || p.IsStaff
 }
 
-// mayAnswerFor says who an actor may answer for on an event: themselves,
-// anyone in their household when they are an adult, and anyone at all when
-// they host it.
 func (a app) mayAnswerFor(actor, subject string, admin bool, e *Event) bool {
 	if actor == subject || a.isHost(actor, admin, e) {
 		return true
@@ -451,65 +332,37 @@ func (a app) mayAnswerFor(actor, subject string, admin bool, e *Event) bool {
 	if slices.Contains(a.household(actor), subject) {
 		return true
 	}
-	// A guest the household brought is theirs to answer for too.
 	if inv := a.cache.Model().InviteOf(e.ID, subject); inv != nil && inv.GuestOf != "" && slices.Contains(a.household(actor), inv.GuestOf) {
 		return true
 	}
 	return false
 }
 
-// GuestRow is one person on a guest list as the page shows them: who they
-// are, how they came to be on it, and where they stand.
 type GuestRow struct {
 	Person
-	// Key is what the list keys them by - their address, or a guest's
-	// key - for answering and removing; Email is blank for a guest named
-	// without one.
-	Key         string `json:"key"`
-	GuestOf     string `json:"guestOf,omitempty"`
-	GuestOfName string `json:"guestOfName,omitempty"`
-	Via         string `json:"via,omitempty"`
-	// Invited says they are on the list, rather than someone who answered
-	// by the event's link.
-	Invited bool   `json:"invited"`
-	Sent    string `json:"sent,omitempty"`
-	Answer  string `json:"answer,omitempty"`
-	// AnsweredBy names who gave the answer when it was not the person
-	// themselves - a parent, a host.
-	AnsweredBy string `json:"answeredBy,omitempty"`
-	AnsweredAt string `json:"answeredAt,omitempty"`
-	// AnsweredVia is how: page, or calendar for a calendar app's reply.
-	AnsweredVia string `json:"answeredVia,omitempty"`
-	// Opened is when they first opened the invitation, for a host.
-	Opened string `json:"opened,omitempty"`
-	// InvitedBy names who invited them when it was a guest, not a host.
-	InvitedBy string `json:"invitedBy,omitempty"`
-	// Ticket is a party's word on them: ticket (bought), free (the hosts'
-	// gift), waitlist, or nothing.
-	Ticket string `json:"ticket,omitempty"`
-	// Outside marks someone the directory does not hold.
-	Outside bool `json:"outside,omitempty"`
-	// Mine marks someone the viewer may answer for.
-	Mine bool `json:"mine,omitempty"`
-	// Household groups the rows of one household, by its first address.
-	Household string `json:"household,omitempty"`
-	// Link is an outside person's own page, for a host to pass on.
-	Link string `json:"link,omitempty"`
-	// Warning says the address may not reach them: "bounced" when the
-	// mail provider has reported it undeliverable, "unknown" for a school
-	// address the directory does not hold - an alum's, a typo - each with
-	// its words. A host is told, and may change the address or send anyway.
-	Warning      string `json:"warning,omitempty"`
-	WarningWords string `json:"warningWords,omitempty"`
-	// Grades and Classrooms are a student's own, or a parent's children's,
-	// as Who?'s filters read a person - the grades youngest first - for
-	// the guest table.
-	Grades     []string `json:"grades,omitempty"`
-	Classrooms []string `json:"classrooms,omitempty"`
+	Key          string   `json:"key"`
+	GuestOf      string   `json:"guestOf,omitempty"`
+	GuestOfName  string   `json:"guestOfName,omitempty"`
+	Via          string   `json:"via,omitempty"`
+	Invited      bool     `json:"invited"`
+	Sent         string   `json:"sent,omitempty"`
+	Answer       string   `json:"answer,omitempty"`
+	AnsweredBy   string   `json:"answeredBy,omitempty"`
+	AnsweredAt   string   `json:"answeredAt,omitempty"`
+	AnsweredVia  string   `json:"answeredVia,omitempty"`
+	Opened       string   `json:"opened,omitempty"`
+	InvitedBy    string   `json:"invitedBy,omitempty"`
+	Ticket       string   `json:"ticket,omitempty"`
+	Outside      bool     `json:"outside,omitempty"`
+	Mine         bool     `json:"mine,omitempty"`
+	Household    string   `json:"household,omitempty"`
+	Link         string   `json:"link,omitempty"`
+	Warning      string   `json:"warning,omitempty"`
+	WarningWords string   `json:"warningWords,omitempty"`
+	Grades       []string `json:"grades,omitempty"`
+	Classrooms   []string `json:"classrooms,omitempty"`
 }
 
-// facetsOf is a student's own grade and classroom, or a parent's
-// children's, each once, the grades kindergarten first.
 func (a app) facetsOf(p Person) (grades, classrooms []string) {
 	add := func(k Person) {
 		if k.Grade != "" && !slices.Contains(grades, k.Grade) {
@@ -532,10 +385,6 @@ func (a app) facetsOf(p Person) (grades, classrooms []string) {
 	return grades, classrooms
 }
 
-// addressWarning is a word of caution on an address on the list: bounced,
-// when the provider has reported it undeliverable; unknown, when it is a
-// school address the directory does not hold, which an alum's or a typo
-// would be; else nothing.
 func (a app) addressWarning(model *Model, email string, known bool) (string, string) {
 	if isGuestKey(email) {
 		return "", ""
@@ -556,8 +405,6 @@ func (a app) addressWarning(model *Model, email string, known bool) (string, str
 	return "", ""
 }
 
-// gradeRank orders grades as a school does: kindergarten, then the
-// numbered grades, anything else after by name.
 func gradeRank(grade string) int {
 	if strings.HasPrefix(strings.ToLower(grade), "k") {
 		return 0
@@ -568,7 +415,6 @@ func gradeRank(grade string) int {
 	return 100
 }
 
-// EventWords are an event's own words, for a form to start from.
 type EventWords struct {
 	Title       string `json:"title"`
 	Start       string `json:"start"`
@@ -577,71 +423,40 @@ type EventWords struct {
 	Description string `json:"description"`
 }
 
-// Counts sums a guest list up.
 type Counts struct {
-	Invited int `json:"invited"`
-	Yes     int `json:"yes"`
-	Maybe   int `json:"maybe"`
-	No      int `json:"no"`
-	Waiting int `json:"waiting"`
-	Guests  int `json:"guests"`
-	// Tickets counts, on a party, the ticket holders on the list, and
-	// TicketsWaiting those of them who have not answered.
+	Invited        int `json:"invited"`
+	Yes            int `json:"yes"`
+	Maybe          int `json:"maybe"`
+	No             int `json:"no"`
+	Waiting        int `json:"waiting"`
+	Guests         int `json:"guests"`
 	Tickets        int `json:"tickets,omitempty"`
 	TicketsWaiting int `json:"ticketsWaiting,omitempty"`
 }
 
-// InviteView is a guest list as one viewer may see it: their own
-// household's part for anyone invited, who is coming when the list is
-// open, and the whole list with its settings for a host.
 type InviteView struct {
-	Host bool `json:"host"`
-	// AdminHost says the viewer hosts only as an admin, of an event the
-	// school's calendars bring: the page offers it with Super Admin Mode on.
-	AdminHost bool `json:"adminHost,omitempty"`
-	// Poster is whoever added a hand-added event while they still host it,
-	// by the address Hosts lists them under, so an admin can step them down.
-	Poster string `json:"poster,omitempty"`
-	// MayInvite says the viewer may invite people one at a time - a host,
-	// anyone on a public event, whoever was invited to any other.
-	MayInvite bool `json:"mayInvite,omitempty"`
-	// NotifyMe says the viewer, a host, asked to hear as answers come in.
-	NotifyMe bool `json:"notifyMe,omitempty"`
-	// Linked says another app runs the event - a party on Celebrate, an
-	// HCA event on Team - whose hosts are that app's and whose invitation
-	// may say the event its own way; Party that it is the party.
-	Linked   bool        `json:"linked,omitempty"`
-	Party    bool        `json:"party,omitempty"`
-	Settings *Invitation `json:"settings,omitempty"`
-	Guests   bool        `json:"guests"`
-	Sent     string      `json:"sent,omitempty"`
-	// Flyer is the invitation's flyer as a path to fetch, when there is one.
-	Flyer string `json:"flyer,omitempty"`
-	// HostsHidden says the hosts keep the Hosts card to themselves; Hosts
-	// is then empty for anyone else.
-	HostsHidden bool `json:"hostsHidden,omitempty"`
-	// ListPrivate says Who's coming is the hosts' alone - an event the
-	// school's calendars bring whose hosts have not opened it to everyone
-	// - and Coming is then null for anyone else.
-	ListPrivate bool     `json:"listPrivate,omitempty"`
-	Hosts       []Person `json:"hosts"`
-	// Original is a party's own words on Celebrate - title, when, where,
-	// description - for a host editing the invitation's own, so the form
-	// shows what stands and sends only what differs.
-	Original *EventWords `json:"original,omitempty"`
-	Mine     []GuestRow  `json:"mine"`
-	// Coming is every row but the nos - the yeses, the maybes and those
-	// still to answer - for everyone who can see the event; List is
-	// everyone, the nos among them, for a host, null for anyone else.
-	Coming []GuestRow `json:"coming"`
-	List   []GuestRow `json:"list"`
-	// Groups are the list's invite groups, for a host.
-	Groups []InviteGroup `json:"groups,omitempty"`
-	Counts Counts        `json:"counts"`
+	Host        bool          `json:"host"`
+	AdminHost   bool          `json:"adminHost,omitempty"`
+	Poster      string        `json:"poster,omitempty"`
+	MayInvite   bool          `json:"mayInvite,omitempty"`
+	NotifyMe    bool          `json:"notifyMe,omitempty"`
+	Linked      bool          `json:"linked,omitempty"`
+	Party       bool          `json:"party,omitempty"`
+	Settings    *Invitation   `json:"settings,omitempty"`
+	Guests      bool          `json:"guests"`
+	Sent        string        `json:"sent,omitempty"`
+	Flyer       string        `json:"flyer,omitempty"`
+	HostsHidden bool          `json:"hostsHidden,omitempty"`
+	ListPrivate bool          `json:"listPrivate,omitempty"`
+	Hosts       []Person      `json:"hosts"`
+	Original    *EventWords   `json:"original,omitempty"`
+	Mine        []GuestRow    `json:"mine"`
+	Coming      []GuestRow    `json:"coming"`
+	List        []GuestRow    `json:"list"`
+	Groups      []InviteGroup `json:"groups,omitempty"`
+	Counts      Counts        `json:"counts"`
 }
 
-// personOf is someone as a guest list names them: the directory's person,
-// else the name the list holds over their address.
 func (a app) personOf(email, name string) (Person, bool) {
 	p, known := a.directory.Person(email)
 	if known {
@@ -659,9 +474,6 @@ func (a app) personOf(email, name string) (Person, bool) {
 	return p, false
 }
 
-// rows is an event's guest list as rows: everyone on it, then anyone who
-// answered by the link, each with their answer and, on a party, their
-// ticket.
 func (a app) rows(viewer string, admin bool, e *Event) []GuestRow {
 	model := a.cache.Model()
 	tickets := map[string]string{}
@@ -731,7 +543,6 @@ func (a app) rows(viewer string, admin bool, e *Event) []GuestRow {
 		seen[inv.Email] = true
 		out = append(out, g)
 	}
-	// Whoever answered without being on the list came by the link.
 	linked := []GuestRow{}
 	for email, answers := range model.Answered {
 		if ans, ok := answers[e.ID]; ok && !seen[email] && ans.Answer != AnswerHidden {
@@ -742,8 +553,6 @@ func (a app) rows(viewer string, admin bool, e *Event) []GuestRow {
 	return append(out, linked...)
 }
 
-// invitesView answers /api/calendar/invites?id= with the guest list as
-// the viewer may see it.
 func (a app) invitesView(w http.ResponseWriter, r *http.Request) {
 	viewer, admin := a.who(r)
 	id := strings.TrimSpace(r.URL.Query().Get("id"))
@@ -753,9 +562,7 @@ func (a app) invitesView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	host := a.isHost(viewer, admin, e)
-	// Someone invited opening the page has opened the invitation.
 	a.noteOpened(r.Context(), e, viewer)
-	// A host opening the list brings its auto groups up to date first.
 	if host {
 		a.sweepEvent(r.Context(), e)
 	}
@@ -766,14 +573,13 @@ func (a app) invitesView(w http.ResponseWriter, r *http.Request) {
 	if e.Source == SourceSheet && !e.PosterLeft {
 		poster = a.directory.Resolve(normalizeEmail(e.AddedBy))
 	}
-	view := InviteView{Host: host, AdminHost: adminHost, Poster: poster, MayInvite: host || e.Sharing == SharingPublic || a.cache.Model().Invited(viewer, e.ID), Party: e.Source == SourceCelebrate, Linked: e.linked(), Guests: true, Hosts: []Person{}, Mine: []GuestRow{}}
+	view := InviteView{Host: host, AdminHost: adminHost, Poster: poster, MayInvite: host || e.Sharing == SharingPublic || model.Invited(viewer, e.ID), Party: e.Source == SourceCelebrate, Linked: e.linked(), Guests: true, Hosts: []Person{}, Mine: []GuestRow{}}
 	if inv != nil && inv.Flyer != "" {
 		view.Flyer = flyerPath(e.ID)
 	}
 	if host && e.linked() {
 		view.Original = &EventWords{Title: e.Title, Start: e.Start, End: e.End, Location: e.Location, Description: e.Description}
 	}
-	// Hosts hidden by the hosts reach nobody else.
 	view.HostsHidden = inv != nil && inv.HideHosts
 	for _, h := range a.hostsOf(e) {
 		if view.HostsHidden && !host {
@@ -790,11 +596,9 @@ func (a app) invitesView(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	rows := a.rows(viewer, admin, e)
-	// The ask is for the viewer's own invitations: theirs, their
-	// children's - a partner's alone is the partner's to answer.
 	mine := []string{viewer}
 	for _, member := range a.household(viewer) {
-		if slices.Contains(a.cache.Model().Roster.Parents[member], viewer) {
+		if slices.Contains(model.Roster.Parents[member], viewer) {
 			mine = append(mine, member)
 		}
 	}
@@ -827,11 +631,7 @@ func (a app) invitesView(w http.ResponseWriter, r *http.Request) {
 			view.Counts.TicketsWaiting += b2i(g.Answer == "")
 		}
 	}
-	// The viewer's own row leads their household's.
 	sort.SliceStable(view.Mine, func(i, j int) bool { return view.Mine[i].Email == viewer && view.Mine[j].Email != viewer })
-	// Who is coming, for everyone who can see the event: the yeses, the
-	// maybes, and who has not answered yet - never the nos, which are the
-	// hosts' alone.
 	view.Coming = []GuestRow{}
 	view.ListPrivate = e.imported() && !(inv != nil && inv.PublicList)
 	for _, g := range rows {
@@ -840,9 +640,6 @@ func (a app) invitesView(w http.ResponseWriter, r *http.Request) {
 		}
 		if g.Answer == AnswerYes || g.Answer == AnswerMaybe || (g.Invited && g.Answer == "") {
 			if !host {
-				// A guest reads who is coming and nothing of the hosts'
-				// side: not the tickets, the sending, an address's
-				// trouble, nor who gave an answer for whom.
 				g.Ticket, g.Sent, g.Via, g.Warning, g.WarningWords = "", "", "", "", ""
 				g.AnsweredBy, g.AnsweredAt, g.AnsweredVia, g.Link, g.Opened = "", "", "", "", ""
 			}
@@ -866,7 +663,7 @@ func (a app) invitesView(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
-		slog.ErrorContext(r.Context(), "encode guest list", "error", err)
+		slog.ErrorContext(r.Context(), "[ERROR] encode guest list", "error", err)
 	}
 }
 
@@ -877,9 +674,6 @@ func b2i(b bool) int {
 	return 0
 }
 
-// PickerPerson is one person as the guest list picker offers them: who
-// they are, the rest of their household by address, and among them their
-// parents, children and siblings, for Add family.
 type PickerPerson struct {
 	Person
 	Household []string `json:"household,omitempty"`
@@ -888,9 +682,6 @@ type PickerPerson struct {
 	Siblings  []string `json:"siblings,omitempty"`
 }
 
-// PickerView is what a host builds a guest list from: everyone in the
-// directory, the classrooms, the host's own lists, a party's ticket
-// holders, and who is on the list already.
 type PickerView struct {
 	People     []PickerPerson `json:"people"`
 	Classrooms []Classroom    `json:"classrooms"`
@@ -899,9 +690,6 @@ type PickerView struct {
 	OnList     []string       `json:"onList"`
 }
 
-// invitePeople answers /api/calendar/invites/people?id= for a host - or,
-// with no id, for anyone about to share an event, whose list is built
-// with the form before the event exists.
 func (a app) invitePeople(w http.ResponseWriter, r *http.Request) {
 	var e *Event
 	actor, _ := a.who(r)
@@ -917,9 +705,6 @@ func (a app) invitePeople(w http.ResponseWriter, r *http.Request) {
 		p.PhotoURL = thumb(p.PhotoURL)
 		p.Line = contactLine(a.directory, p)
 		pp := PickerPerson{Person: p, Household: model.Roster.Households[p.Email]}
-		// The relations as the directory has them: a student's parents are
-		// the household's parents and their siblings its other students; a
-		// parent's children are its students.
 		for _, other := range pp.Household {
 			o, known := a.directory.Person(other)
 			if !known {
@@ -950,48 +735,37 @@ func (a app) invitePeople(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(view); err != nil {
-		slog.ErrorContext(r.Context(), "encode guest picker", "error", err)
+		slog.ErrorContext(r.Context(), "[ERROR] encode guest picker", "error", err)
 	}
 }
 
-// invitationCells is a fresh Invitations row for an event, under the host
-// who started its list.
-func invitationCells(id, actor string) map[string]string {
-	return map[string]string{"Event ID": id, "Hosts": "", "Audience": "Both", "Guests": "Yes", "Message": "", "Created By": actor, "Created": now().Format(DateTimeFormat), "Sent": ""}
-}
-
-// ensured is the tables with an Invitations row for the event, made now
-// under the actor when there was none, and the flush that writes it.
-func (a app) ensured(tables *Tables, id, actor string) (*Tables, func() error) {
-	if slices.ContainsFunc(tables.Invitations, func(row map[string]string) bool { return row["Event ID"] == id }) {
-		return tables, func() error { return nil }
+func (a app) invitationOps(id, actor string, cells store.Row) []store.Op {
+	if a.cache.Model().Invitations[id] != nil {
+		if len(cells) == 0 {
+			return nil
+		}
+		return []store.Op{store.Update(InvitationsTab, store.Row{"Event ID": id}, cells)}
 	}
-	cells := invitationCells(id, actor)
-	return tables.WithInvitation(id, cells), func() error { return a.writer.Insert(appName, InvitationsTab, []map[string]string{cells}) }
+	row := store.Row{"Event ID": id, "Audience": "Both", "Guests": "Yes", "Created By": actor, "Created": now().Format(DateTimeFormat)}
+	maps.Copy(row, cells)
+	return []store.Op{store.Insert(InvitationsTab, row)}
 }
 
-// inviteSettings is PUT /api/calendar/invites/settings: a host setting the
-// list's audience, the message, and the co-hosts.
 func (a app) inviteSettings(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		ID       string   `json:"id"`
-		Audience string   `json:"audience"`
-		Message  *string  `json:"message"`
-		Hosts    []string `json:"hosts"`
-		// A party's invitation's own words, each blank for the party's.
-		Title       *string `json:"title"`
-		Start       *string `json:"start"`
-		End         *string `json:"end"`
-		Location    *string `json:"location"`
-		Description *string `json:"description"`
-		// Flyer names an upload (POST /api/calendar/image), blank for none.
-		Flyer *string `json:"flyer"`
-		// NotifyMe is the host's own wish to hear as answers come in.
-		NotifyMe *bool `json:"notifyMe"`
-		// HideHosts keeps the Hosts card to the hosts.
-		HideHosts *bool `json:"hideHosts"`
-		// PublicList opens an imported event's Who's coming to everyone.
-		PublicList *bool `json:"publicList"`
+		ID          string   `json:"id"`
+		Audience    string   `json:"audience"`
+		Message     *string  `json:"message"`
+		Hosts       []string `json:"hosts"`
+		Title       *string  `json:"title"`
+		Start       *string  `json:"start"`
+		End         *string  `json:"end"`
+		Location    *string  `json:"location"`
+		Description *string  `json:"description"`
+		Flyer       *string  `json:"flyer"`
+		NotifyMe    *bool    `json:"notifyMe"`
+		HideHosts   *bool    `json:"hideHosts"`
+		PublicList  *bool    `json:"publicList"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -1000,7 +774,7 @@ func (a app) inviteSettings(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	cells := map[string]string{}
+	cells := store.Row{}
 	if body.HideHosts != nil {
 		cells["Hide Hosts"] = ""
 		if *body.HideHosts {
@@ -1077,7 +851,6 @@ func (a app) inviteSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		cells["Message"] = strings.TrimSpace(*body.Message)
 	}
-	// A new co-host hears of it by email.
 	newHosts := []string{}
 	if body.Hosts != nil {
 		hosts := []string{}
@@ -1096,16 +869,7 @@ func (a app) inviteSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		cells["Hosts"] = JoinList(hosts)
 	}
-	tables, first := a.ensured(a.cache.Tables(), e.ID, actor)
-	if !a.commit(r.Context(), w, tables.WithInvitation(e.ID, cells), func() error {
-		if err := first(); err != nil {
-			return err
-		}
-		if len(cells) == 0 {
-			return nil
-		}
-		return a.writer.Set(appName, InvitationsTab, map[string]string{"Event ID": e.ID}, cells)
-	}) {
+	if !a.commit(w, r, actor, a.invitationOps(e.ID, actor, cells)...) {
 		return
 	}
 	slog.InfoContext(r.Context(), "calendar: guest list settings", "actor", actor, "event", e.ID)
@@ -1117,17 +881,9 @@ func (a app) inviteSettings(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// stepDown is POST /api/calendar/invites/step-down: a host giving up
-// hosting an event. A co-host comes off the invitation's Hosts; whoever
-// added the event is written into Stepped Down, staying the one who shared
-// it. Either way they stop hearing of answers. An event may be left with
-// no host at all - the admins can still change it. A linked event's own
-// hosts - a party's, an HCA event's chairs - step down on that app.
 func (a app) stepDown(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		ID string `json:"id"`
-		// Email is whom a calendar admin steps down - whoever added the
-		// event, or a co-host; blank is the person asking.
+		ID    string `json:"id"`
 		Email string `json:"email"`
 	}
 	if !decode(w, r, &body) {
@@ -1152,7 +908,7 @@ func (a app) stepDown(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "that person hosts this event on the app that runs it, or not at all - step down there", http.StatusBadRequest)
 		return
 	}
-	cells := map[string]string{}
+	cells := store.Row{}
 	if poster {
 		cells["Stepped Down"] = normalizeEmail(e.AddedBy)
 	}
@@ -1164,21 +920,13 @@ func (a app) stepDown(w http.ResponseWriter, r *http.Request) {
 			cells["Notify"] = strings.Join(slices.DeleteFunc(slices.Clone(inv.Notify), func(h string) bool { return h == who }), ", ")
 		}
 	}
-	tables, first := a.ensured(a.cache.Tables(), e.ID, actor)
-	if !a.commit(r.Context(), w, tables.WithInvitation(e.ID, cells), func() error {
-		if err := first(); err != nil {
-			return err
-		}
-		return a.writer.Set(appName, InvitationsTab, map[string]string{"Event ID": e.ID}, cells)
-	}) {
+	if !a.commit(w, r, actor, a.invitationOps(e.ID, actor, cells)...) {
 		return
 	}
 	slog.InfoContext(r.Context(), "calendar: host stepped down", "actor", actor, "who", who, "event", e.ID, "poster", poster)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// sendCohostNote mails someone that they have been made a co-host: who
-// did it, the event, what a co-host may do, and the way to its page.
 func (a app) sendCohostNote(ctx context.Context, to, actor string, e *Event) {
 	e = a.cache.Model().invitedEvent(e)
 	who := actor
@@ -1214,34 +962,25 @@ func (a app) sendCohostNote(ctx context.Context, to, actor string, e *Event) {
 		HTML:    htm.String(),
 	})
 	if err != nil {
-		slog.ErrorContext(ctx, "calendar: send co-host note", "to", to, "event", e.ID, "error", err)
+		slog.ErrorContext(ctx, "[ERROR] calendar: send co-host note", "to", to, "event", e.ID, "error", err)
 		return
 	}
 	slog.InfoContext(ctx, "calendar: co-host told", "to", to, "event", e.ID)
 }
 
-// addInvites is POST /api/calendar/invites/people: a host putting people
-// on the list - by address, with a name for anyone the directory does not
-// hold, and a word on how they were found. Someone on it already stays as
-// they were.
 func (a app) addInvites(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		ID     string `json:"id"`
 		People []struct {
-			Email string `json:"email"`
-			Name  string `json:"name"`
-			Via   string `json:"via"`
-			// Household is, for someone from outside, the address of the
-			// one they were added with - their family on the list; someone
-			// named with no address of their own goes on under a key.
+			Email     string `json:"email"`
+			Name      string `json:"name"`
+			Via       string `json:"via"`
 			Household string `json:"household"`
 		} `json:"people"`
 	}
 	if !decode(w, r, &body) {
 		return
 	}
-	// Anyone the event is on the calendar of may invite people one at a
-	// time; the groups, and everything else of the list, are the hosts'.
 	actor, e, host, ok := a.inviterEvent(w, r, body.ID)
 	if !ok {
 		return
@@ -1256,8 +995,8 @@ func (a app) addInvites(w http.ResponseWriter, r *http.Request) {
 	}
 	model := a.cache.Model()
 	stamp := now().Format(DateTimeFormat)
-	rows := []map[string]string{}
-	added := map[string]bool{}
+	ops := a.invitationOps(e.ID, actor, nil)
+	emails := []string{}
 	for _, p := range body.People {
 		name := strings.TrimSpace(p.Name)
 		household := normalizeEmail(p.Household)
@@ -1265,24 +1004,20 @@ func (a app) addInvites(w http.ResponseWriter, r *http.Request) {
 		token := ""
 		switch {
 		case email == "" && household != "" && name != "":
-			// A family member from outside named with no address of their
-			// own: on the list under a key, answered for by their family.
 			email = newGuestKey()
 		case !emailForm.MatchString(email):
 			http.Error(w, fmt.Sprintf("%q is not an email address", p.Email), http.StatusBadRequest)
 			return
 		default:
-			// Someone the directory does not hold gets a page of their own,
-			// outside sign-in, found by a secret minted now.
 			token = NewToken()
 			if person, known := a.directory.Person(email); known {
 				name, token, household = person.Name, "", ""
 			}
 		}
-		if added[email] || model.InviteOf(e.ID, email) != nil {
+		if slices.Contains(emails, email) || model.InviteOf(e.ID, email) != nil {
 			continue
 		}
-		added[email] = true
+		emails = append(emails, email)
 		if len(name) > maxTitleLength {
 			http.Error(w, "a name is too long", http.StatusBadRequest)
 			return
@@ -1293,45 +1028,24 @@ func (a app) addInvites(w http.ResponseWriter, r *http.Request) {
 		}
 		via := strings.TrimSpace(p.Via)
 		if !host {
-			// Someone other than a host invited them: the row says so.
 			via = ViaInvited
 		}
-		rows = append(rows, map[string]string{"Event ID": e.ID, "Email": email, "Name": name, "Guest Of": "", "Via": via, "Added By": actor, "Added": stamp, "Sent": "", "Token": token, "Household": household})
+		ops = append(ops, store.Insert(InvitesTab, store.Row{"Event ID": e.ID, "Email": email, "Name": name, "Via": via, "Added By": actor, "Added": stamp, "Token": token, "Household": household}))
 	}
-	tables, first := a.ensured(a.cache.Tables(), e.ID, actor)
-	if !a.commit(r.Context(), w, tables.WithInvites(rows), func() error {
-		if err := first(); err != nil {
-			return err
-		}
-		for _, row := range rows {
-			if err := a.writer.Insert(appName, InvitesTab, []map[string]string{row}); err != nil {
-				return err
-			}
-		}
-		return nil
-	}) {
+	if !a.commit(w, r, actor, ops...) {
 		return
 	}
-	// Once the invitation is out, someone invited by a guest is sent it
-	// now - the guest's doing, not the host's to hold in Pending.
 	sent := 0
 	if !host {
 		if inv := a.cache.Model().Invitations[e.ID]; inv != nil && inv.Sent != "" {
-			emails := []string{}
-			for _, row := range rows {
-				emails = append(emails, row["Email"])
-			}
-			sent = a.send(r.Context(), actor, e, emails, "")
+			sent = a.send(r.Context(), actor, actor, e, emails, "")
 		}
 	}
-	slog.InfoContext(r.Context(), "calendar: guests added", "actor", actor, "event", e.ID, "count", len(rows), "host", host, "sent", sent)
+	slog.InfoContext(r.Context(), "calendar: guests added", "actor", actor, "event", e.ID, "count", len(emails), "host", host, "sent", sent)
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]int{"added": len(rows), "sent": sent})
+	json.NewEncoder(w).Encode(map[string]int{"added": len(emails), "sent": sent})
 }
 
-// removeInvite is DELETE /api/calendar/invites/people: a host taking
-// someone off the list, or an invitee taking back a guest their household
-// brought - their answer going with them.
 func (a app) removeInvite(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		ID    string `json:"id"`
@@ -1356,47 +1070,26 @@ func (a app) removeInvite(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "only a host can take someone off the list", http.StatusForbidden)
 		return
 	}
-	// Someone a group put on is remembered on the group as removed, so
-	// the sweep that keeps the group up to date does not put them back.
-	tables := a.cache.Tables().WithoutInvite(e.ID, email)
+	ops := []store.Op{store.Delete(InvitesTab, store.Row{"Event ID": e.ID, "Email": email})}
 	var group *InviteGroup
-	removed := ""
 	if gid, ok := strings.CutPrefix(inv.Via, ViaGroup); ok {
 		if group = a.cache.Model().GroupOf(e.ID, gid); group != nil {
-			removed = strings.Join(append(append([]string{}, group.Removed...), email), ", ")
-			tables = tables.WithGroupCells(e.ID, gid, map[string]string{"Removed": removed})
+			ops = append(ops, store.Update(InviteGroupsTab, store.Row{"Event ID": e.ID, "Group ID": gid}, store.Row{"Removed": strings.Join(append(slices.Clone(group.Removed), email), ", ")}))
 		}
 	}
-	if !a.commit(r.Context(), w, tables, func() error {
-		if err := a.writer.Delete(appName, InvitesTab, map[string]string{"Event ID": e.ID, "Email": email}); err != nil {
-			return err
-		}
-		if err := a.writer.Delete(appName, RSVPsTab, map[string]string{"Event ID": e.ID, "Email": email}); err != nil {
-			return err
-		}
-		if group != nil {
-			return a.writer.Set(appName, InviteGroupsTab, map[string]string{"Event ID": e.ID, "Group ID": group.ID}, map[string]string{"Removed": removed})
-		}
-		return nil
-	}) {
+	if !a.commit(w, r, actor, ops...) {
 		return
 	}
 	slog.InfoContext(r.Context(), "calendar: guest removed", "actor", actor, "event", e.ID, "email", email, "from group", group != nil)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// addGuest is POST /api/calendar/invites/guest: someone invited bringing a
-// guest by name - with an address, if they have one - or a host adding one
-// for them.
 func (a app) addGuest(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		ID    string `json:"id"`
-		Name  string `json:"name"`
-		Email string `json:"email"`
-		Of    string `json:"of"`
-		// Answer is the guest's word to record - yes, or nothing to leave
-		// them to answer - and Invite whether to send them their own
-		// invitation now; both on unless said otherwise.
+		ID     string  `json:"id"`
+		Name   string  `json:"name"`
+		Email  string  `json:"email"`
+		Of     string  `json:"of"`
 		Answer *string `json:"answer"`
 		Invite *bool   `json:"invite"`
 	}
@@ -1445,13 +1138,6 @@ func (a app) addGuest(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"email": key})
 }
 
-// bringGuest puts a guest on the list under whoever brought them - as a
-// yes, or left to answer - and hands back the key the list holds them
-// by. With invite, one with an address is sent their own invitation now. A guest with an
-// address the directory does not hold gets a page of their own, as any
-// outside person does, and their invite at once when the invites have
-// gone out; one named without an address has nothing to be sent, so their
-// row counts as sent from the start.
 func (a app) bringGuest(ctx context.Context, actor string, e *Event, of, name, email, answer string, invite bool) (string, error) {
 	model := a.cache.Model()
 	name = strings.TrimSpace(name)
@@ -1460,7 +1146,7 @@ func (a app) bringGuest(ctx context.Context, actor string, e *Event, of, name, e
 	}
 	email = normalizeEmail(email)
 	stamp := now().Format(DateTimeFormat)
-	row := map[string]string{"Event ID": e.ID, "Email": email, "Name": name, "Guest Of": of, "Via": ViaGuest, "Added By": actor, "Added": stamp, "Sent": "", "Token": ""}
+	row := store.Row{"Event ID": e.ID, "Name": name, "Guest Of": of, "Via": ViaGuest, "Added By": actor, "Added": stamp}
 	if email != "" {
 		if !emailForm.MatchString(email) {
 			return "", fmt.Errorf("that is not an email address")
@@ -1474,42 +1160,25 @@ func (a app) bringGuest(ctx context.Context, actor string, e *Event, of, name, e
 		} else {
 			row["Token"] = NewToken()
 		}
-		row["Email"] = email
 	} else {
 		email = newGuestKey()
-		row["Email"], row["Sent"] = email, stamp
+		row["Sent"] = stamp
 	}
-	cells := map[string]string{"Email": email, "Event ID": e.ID, "Answer": answer, "Answered": stamp, "Answered By": actor, "Via": ViaPage}
-	tables, first := a.ensured(a.cache.Tables(), e.ID, actor)
-	tables = tables.WithInvites([]map[string]string{row}).WithAnswer(email, e.ID, answer, cells)
-	built, err := BuildModel(tables, a.cache.roster())
-	if err != nil {
+	row["Email"] = email
+	ops := append(a.invitationOps(e.ID, actor, nil), store.Insert(InvitesTab, row))
+	if answer != "" {
+		ops = append(ops, store.Set(RSVPsTab, store.Row{"Event ID": e.ID, "Email": email}, store.Row{"Answer": answer, "Answered": stamp, "Answered By": actor, "Via": ViaPage}))
+	}
+	if err := a.cache.Commit(ctx, actor, ops...); err != nil {
 		return "", err
 	}
-	a.cache.commit(tables, built, func() {
-		if err := first(); err != nil {
-			slog.ErrorContext(ctx, "calendar write", "error", err)
-		}
-		if err := a.writer.Insert(appName, InvitesTab, []map[string]string{row}); err != nil {
-			slog.ErrorContext(ctx, "calendar write", "error", err)
-		}
-		if answer != "" {
-			if err := a.writer.Set(appName, RSVPsTab, map[string]string{"Email": email, "Event ID": e.ID}, cells); err != nil {
-				slog.ErrorContext(ctx, "calendar write", "error", err)
-			}
-		}
-	})
 	slog.InfoContext(ctx, "calendar: guest brought", "actor", actor, "event", e.ID, "of", of, "guest", email, "answer", answer, "invite", invite)
-	// Their own invitation, when asked and they have somewhere to send it.
 	if invite && !isGuestKey(email) {
-		a.send(ctx, actor, e, []string{email}, "")
+		a.send(ctx, actor, actor, e, []string{email}, "")
 	}
 	return email, nil
 }
 
-// answerFor is POST /api/calendar/invites/answer: an answer given for
-// someone else - a parent's for a child, or anyone's in their household,
-// a host's for anyone on the list.
 func (a app) answerFor(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		ID     string `json:"id"`
@@ -1538,9 +1207,7 @@ func (a app) answerFor(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "hiding is a person's own", http.StatusBadRequest)
 		return
 	}
-	// A yes for someone else sends them no invite: their household's, or
-	// the invitation itself, is theirs already.
-	if err := a.recordBy(r.Context(), actor, subject, e.ID, answer, ViaPage, subject == actor); err != nil {
+	if err := a.recordBy(r.Context(), actor, subject, e.ID, answer, ViaPage, subject == actor, false); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -1548,19 +1215,12 @@ func (a app) answerFor(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// sendInvites is POST /api/calendar/invites/send: a host sending the
-// invites - to everyone not yet sent one, to everyone who has not
-// answered (a reminder), or to everyone.
 func (a app) sendInvites(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		ID string `json:"id"`
-		To string `json:"to"`
-		// Emails names particular people on the list to send to, in place
-		// of To.
+		ID     string   `json:"id"`
+		To     string   `json:"to"`
 		Emails []string `json:"emails"`
-		// Update says the details changed: the invitation goes again as an
-		// update, its calendar invite replacing the one they have.
-		Update bool `json:"update"`
+		Update bool     `json:"update"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -1578,9 +1238,6 @@ func (a app) sendInvites(w http.ResponseWriter, r *http.Request) {
 	for _, inv := range model.Invites[e.ID] {
 		switch body.To {
 		case "sent":
-			// Everyone the invitation has reached - for an update, when
-			// the details have changed - but not whoever said no, for whom
-			// the details no longer matter.
 			if inv.Sent != "" && model.AnswerOf(inv.Email, e.ID) != AnswerNo {
 				emails = append(emails, inv.Email)
 			}
@@ -1617,84 +1274,45 @@ func (a app) sendInvites(w http.ResponseWriter, r *http.Request) {
 	case reminder:
 		kind = inviteReminder
 	}
-	sent := a.send(r.Context(), actor, e, emails, kind)
+	sent := a.send(r.Context(), actor, actor, e, emails, kind)
 	slog.InfoContext(r.Context(), "calendar: invites sent", "actor", actor, "event", e.ID, "invites", len(emails), "messages", sent)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]int{"invites": len(emails), "messages": sent})
 }
 
-// markSent stamps Sent on the rows named - the invitation's too, the
-// first time - and marks live any group whose people have now all been
-// sent: from here on Auto-invite sends a newcomer theirs, rather than
-// only putting them on the list. Sending and skipping both come here.
-func (a app) markSent(ctx context.Context, e *Event, emails []string) {
+func (a app) markSent(ctx context.Context, actor string, e *Event, emails []string) {
 	model := a.cache.Model()
-	inv := model.Invitations[e.ID]
 	stamp := now().Format(DateTimeFormat)
-	tables := a.cache.Tables().WithInviteCells(e.ID, emails, map[string]string{"Sent": stamp})
-	cells := map[string]string{}
-	if inv != nil && inv.Sent == "" {
-		cells["Sent"] = stamp
-		tables = tables.WithInvitation(e.ID, cells)
+	ops := []store.Op{}
+	for _, email := range emails {
+		ops = append(ops, store.Update(InvitesTab, store.Row{"Event ID": e.ID, "Email": email}, store.Row{"Sent": stamp}))
 	}
-	live := []string{}
+	if inv := model.Invitations[e.ID]; inv != nil && inv.Sent == "" {
+		ops = append(ops, store.Update(InvitationsTab, store.Row{"Event ID": e.ID}, store.Row{"Sent": stamp}))
+	}
 	for _, g := range model.Groups[e.ID] {
-		if g.Sent == "" && !tables.groupUnsent(e.ID, g.ID) {
-			live = append(live, g.ID)
-			tables = tables.WithGroupCells(e.ID, g.ID, map[string]string{"Sent": stamp})
+		unsent := slices.ContainsFunc(model.Invites[e.ID], func(inv Invite) bool {
+			return inv.Via == ViaGroup+g.ID && inv.Sent == "" && !slices.Contains(emails, inv.Email)
+		})
+		if g.Sent == "" && !unsent {
+			ops = append(ops, store.Update(InviteGroupsTab, store.Row{"Event ID": e.ID, "Group ID": g.ID}, store.Row{"Sent": stamp}))
 		}
 	}
-	built, err := BuildModel(tables, a.cache.roster())
-	if err != nil {
-		slog.ErrorContext(ctx, "calendar: mark invites sent", "error", err)
-		return
+	if err := a.cache.Commit(ctx, actor, ops...); err != nil {
+		slog.ErrorContext(ctx, "[ERROR] calendar: mark invites sent", "event", e.ID, "error", err)
 	}
-	a.cache.commit(tables, built, func() {
-		for _, email := range emails {
-			if err := a.writer.Set(appName, InvitesTab, map[string]string{"Event ID": e.ID, "Email": email}, map[string]string{"Sent": stamp}); err != nil {
-				slog.ErrorContext(ctx, "calendar write", "error", err)
-			}
-		}
-		if len(cells) > 0 {
-			if err := a.writer.Set(appName, InvitationsTab, map[string]string{"Event ID": e.ID}, cells); err != nil {
-				slog.ErrorContext(ctx, "calendar write", "error", err)
-			}
-		}
-		for _, gid := range live {
-			if err := a.writer.Set(appName, InviteGroupsTab, map[string]string{"Event ID": e.ID, "Group ID": gid}, map[string]string{"Sent": stamp}); err != nil {
-				slog.ErrorContext(ctx, "calendar write", "error", err)
-			}
-		}
-	})
 }
 
-// noteOpened marks, once, that someone on the list has opened the
-// invitation - the event's page, or their page from outside - the moment
-// kept on their row for the hosts.
 func (a app) noteOpened(ctx context.Context, e *Event, email string) {
-	model := a.cache.Model()
-	inv := model.InviteOf(e.ID, email)
+	inv := a.cache.Model().InviteOf(e.ID, email)
 	if inv == nil || inv.Opened != "" || inv.Sent == "" {
 		return
 	}
-	stamp := now().Format(DateTimeFormat)
-	tables := a.cache.Tables().WithInviteCells(e.ID, []string{email}, map[string]string{"Opened": stamp})
-	built, err := BuildModel(tables, a.cache.roster())
-	if err != nil {
-		slog.ErrorContext(ctx, "calendar: note opened", "error", err)
-		return
+	if err := a.cache.Commit(ctx, email, store.Update(InvitesTab, store.Row{"Event ID": e.ID, "Email": email}, store.Row{"Opened": now().Format(DateTimeFormat)})); err != nil {
+		slog.ErrorContext(ctx, "[ERROR] calendar: note opened", "event", e.ID, "error", err)
 	}
-	a.cache.commit(tables, built, func() {
-		if err := a.writer.Set(appName, InvitesTab, map[string]string{"Event ID": e.ID, "Email": email}, map[string]string{"Opened": stamp}); err != nil {
-			slog.ErrorContext(ctx, "calendar write", "error", err)
-		}
-	})
 }
 
-// skipInvites is POST /api/calendar/invites/skip: a host passing over
-// someone still to be sent their invite - marked sent without an email,
-// so they leave Pending and stand among those with no reply yet; a
-// reminder from then on reaches them like anyone else.
 func (a app) skipInvites(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		ID     string   `json:"id"`
@@ -1719,18 +1337,12 @@ func (a app) skipInvites(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "nobody pending to skip", http.StatusBadRequest)
 		return
 	}
-	a.markSent(r.Context(), e, emails)
+	a.markSent(r.Context(), actor, e, emails)
 	slog.InfoContext(r.Context(), "calendar: invites skipped", "actor", actor, "event", e.ID, "skipped", len(emails))
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]int{"skipped": len(emails)})
 }
 
-// ccFor is who hears with one person on the list: for a student, their
-// parents, on the Cc of every message the student is sent, so they answer
-// for the child; for anyone else nobody. Its second answer is false when
-// the person's address is a placeholder nothing can reach, and nothing
-// is sent. A message with a Cc carries no calendar invite, since whose
-// place it holds would be ambiguous to the calendar apps reading it.
 func (a app) ccFor(email string) ([]string, bool) {
 	p, known := a.directory.Person(email)
 	if !known {
@@ -1750,26 +1362,15 @@ func (a app) ccFor(email string) ([]string, bool) {
 	return cc, true
 }
 
-// send mails the invites for the addresses given and marks them sent: one
-// message per person - a student's to them and their parents, naming
-// everyone in the household who is invited - with the calendar invite
-// attached, the recipient its attendee. It hands back how many messages
-// went out.
-// The kinds of invitation: the first, a reminder to whoever has not
-// answered, and an update once the details have changed.
 const (
 	inviteReminder = "reminder"
 	inviteUpdate   = "update"
 )
 
-func (a app) send(ctx context.Context, actor string, e *Event, emails []string, kind string) int {
+func (a app) send(ctx context.Context, actor, host string, e *Event, emails []string, kind string) int {
 	model := a.cache.Model()
 	e = model.invitedEvent(e)
 	inv := model.Invitations[e.ID]
-	// Who hears, and who they hear about: one message per person in the
-	// batch - a student's to them with their parents on the Cc, so the
-	// parents hear with the child and answer for them - naming everyone in
-	// their household on the list, sent or not, themselves first.
 	order := []string{}
 	cc := map[string][]string{}
 	for _, email := range emails {
@@ -1807,12 +1408,12 @@ func (a app) send(ctx context.Context, actor string, e *Event, emails []string, 
 		}
 		recipients[t] = names
 	}
-	a.markSent(ctx, e, emails)
+	a.markSent(ctx, actor, e, emails)
 	if a.mail.Sender == nil {
 		return 0
 	}
-	hostName := actor
-	if p, known := a.directory.Person(actor); known && p.Name != "" {
+	hostName := host
+	if p, known := a.directory.Person(host); known && p.Name != "" {
 		hostName = p.Name
 	}
 	message := ""
@@ -1820,8 +1421,6 @@ func (a app) send(ctx context.Context, actor string, e *Event, emails []string, 
 		message = inv.Message
 	}
 	for _, to := range order {
-		// Someone from outside gets the page of their own; everyone else
-		// the event's page here, behind sign-in.
 		link := "https://when.heliosian.com" + EventPath(e)
 		if row := model.InviteOf(e.ID, to); row != nil && row.Token != "" {
 			link = "https://when.heliosian.com" + extPath(row.Token)
@@ -1831,8 +1430,6 @@ func (a app) send(ctx context.Context, actor string, e *Event, emails []string, 
 	return len(order)
 }
 
-// andList is names as a sentence lists them: "Sam", "Sam and Ella",
-// "Sam, Ella and Robin".
 func andList(names []string) string {
 	if len(names) <= 1 {
 		return strings.Join(names, "")
@@ -1840,16 +1437,10 @@ func andList(names []string) string {
 	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
 }
 
-// replyTo is where a reply to one person's invitation goes: every host, so
-// the person's reply reaches whoever is running it, with their invite's
-// organizer beside them, so a calendar app's Accept or Decline still comes
-// back here to be recorded when it answers the message rather than the
-// organizer.
 func (a app) replyTo(e *Event, to string) []string {
 	return append(append([]string{}, a.hostsOf(e)...), a.organizer(e.ID, to))
 }
 
-// firstWord is a person's first name: the first word of their name.
 func firstWord(name string) string {
 	if words := strings.Fields(name); len(words) > 0 {
 		return words[0]
@@ -1857,19 +1448,6 @@ func firstWord(name string) string {
 	return name
 }
 
-// sendInvitation mails one person their invitation, under "[the event]
-// You're invited!": who is hosting, the event's title, when and where,
-// its picture (the share card, public as every /open/share/ path is), the
-// hosts' message, the description, who in their household is invited, an
-// RSVP button to their page - the event's here, or an outside person's
-// own - and, when the message is theirs alone, the calendar invite to
-// accept into their own calendar, the recipient its attendee. A student's
-// goes with their parents on the Cc (cc) and no calendar invite (ccFor);
-// the lead names whose the invitation is - "sent Sam an invitation for" -
-// so a parent on the Cc reads it as the child's. A reminder says so in
-// the subject and the lead; an update says the details have changed, its
-// calendar invite replacing the one they have (the same UID, a later
-// SEQUENCE).
 func (a app) sendInvitation(ctx context.Context, to string, cc, names []string, host, message string, e *Event, link string, replyTo []string, kind string) {
 	origin := "https://when.heliosian.com"
 	outside := strings.Contains(link, "/ext/")
@@ -1890,16 +1468,10 @@ func (a app) sendInvitation(ctx context.Context, to string, cc, names []string, 
 	hosting := "Hosted by " + strings.Join(hosts, " and ")
 	invited := strings.Join(names, ", ")
 	rsvpFor := "RSVP for " + andList(names) + " here"
-	// The email as a card: who sent it over the title and the date, the
-	// hosts' words, Open invitation, the picture - the flyer, else the
-	// event's own - a word that the page is theirs, then the place with a
-	// map, the hours, and the calendar links, as a printed invitation reads.
 	picture := origin + "/open/share/" + e.ID + ".png"
 	if inv := a.cache.Model().Invitations[e.ID]; inv != nil && inv.Flyer != "" {
 		picture = origin + flyerPath(e.ID)
 	}
-	// The one invited, by name - "sent Sam an invitation for" - so the
-	// parents on a student's Cc read whose it is, and everyone else theirs.
 	whom := firstWord(displayName(to))
 	if len(names) > 0 {
 		whom = names[0]
@@ -1992,14 +1564,12 @@ func (a app) sendInvitation(ctx context.Context, to string, cc, names []string, 
 		}}
 	}
 	if err := a.mail.Sender.Send(ctx, msg); err != nil {
-		slog.ErrorContext(ctx, "calendar: send invitation", "to", to, "event", e.ID, "error", err)
+		slog.ErrorContext(ctx, "[ERROR] calendar: send invitation", "to", to, "event", e.ID, "error", err)
 		return
 	}
 	slog.InfoContext(ctx, "calendar: invitation sent", "to", to, "event", e.ID, "kind", kind)
 }
 
-// googleCalendarURL is the event as a Google Calendar template link, the
-// page's address in its details.
 func googleCalendarURL(e *Event, link string) string {
 	stamp := func(t time.Time) string {
 		if e.AllDay {
@@ -2022,7 +1592,6 @@ func googleCalendarURL(e *Event, link string) string {
 	return "https://calendar.google.com/calendar/render?" + q.Encode()
 }
 
-// answerWord is an answer as a message says it.
 func answerWord(answer string) string {
 	switch answer {
 	case AnswerYes:
@@ -2035,23 +1604,14 @@ func answerWord(answer string) string {
 	return "No response yet"
 }
 
-// messageInvites is POST /api/calendar/invites/message: a host writing
-// to the people on the list by where they stand - the yeses, the maybes,
-// the nos, those with no response - one email per person, a student's to
-// them and their parents, each carrying the host's words, then the recipient's own
-// answer and their household's, and a nudge to answer for anyone who has
-// not. Replies go to the host.
 func (a app) messageInvites(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		ID      string   `json:"id"`
 		Subject string   `json:"subject"`
 		Message string   `json:"message"`
 		To      []string `json:"to"`
-		// Emails names particular people on the list to write to, beside
-		// or instead of To.
-		Emails []string `json:"emails"`
-		// Attach sends the calendar invite with it, as a reminder does.
-		Attach bool `json:"attach"`
+		Emails  []string `json:"emails"`
+		Attach  bool     `json:"attach"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -2095,8 +1655,6 @@ func (a app) messageInvites(w http.ResponseWriter, r *http.Request) {
 		}
 		return "none"
 	}
-	// Who hears: those whose standing is wanted, a student's parents on the
-	// Cc with them.
 	targets := []string{}
 	cc := map[string][]string{}
 	for _, inv := range model.Invites[e.ID] {
@@ -2118,7 +1676,6 @@ func (a app) messageInvites(w http.ResponseWriter, r *http.Request) {
 	if p, known := a.directory.Person(actor); known && p.Name != "" {
 		hostName = p.Name
 	}
-	// A reply reaches every host, the writer among them.
 	replyTo := a.hostsOf(e)
 	if !slices.Contains(replyTo, actor) {
 		replyTo = append([]string{actor}, replyTo...)
@@ -2131,13 +1688,6 @@ func (a app) messageInvites(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]int{"messages": len(targets)})
 }
 
-// sendMessage mails one person a host's message - under the host's
-// subject, the event's name before it in brackets - the words, the
-// event's line, then their own answer and their household's - each on
-// the list, the guests they brought too - and, for anyone among them
-// still to answer, the way to. A student's goes with their parents on the
-// Cc (cc), and the calendar invite the host may ask for (attach) rides
-// only on a message with no Cc (ccFor).
 func (a app) sendMessage(ctx context.Context, to string, cc, replyTo []string, hostName, subject, message string, e *Event, attach bool) {
 	model := a.cache.Model()
 	e = model.invitedEvent(e)
@@ -2151,8 +1701,6 @@ func (a app) sendMessage(ctx context.Context, to string, cc, replyTo []string, h
 	if hours != "" {
 		when += " \u00b7 " + hours
 	}
-	// The household's rows: the recipient first, then the rest on the
-	// list, then the guests any of them brought.
 	household := a.householdOn(e, to)
 	type line struct{ name, answer string }
 	lines := []line{}
@@ -2233,25 +1781,16 @@ func (a app) sendMessage(ctx context.Context, to string, cc, replyTo []string, h
 	}
 	err := a.mail.Sender.Send(ctx, msg)
 	if err != nil {
-		slog.ErrorContext(ctx, "calendar: send message", "to", to, "event", e.ID, "error", err)
+		slog.ErrorContext(ctx, "[ERROR] calendar: send message", "to", to, "event", e.ID, "error", err)
 		return
 	}
 	slog.InfoContext(ctx, "calendar: message sent", "to", to, "event", e.ID)
 }
 
-// PartyRSVPs is a party's guest list as Helios Celebrate shows it to the
-// party's hosts: whether the invites have gone out, and each invitee's
-// answer - yes, maybe, no, or "none" for one still to answer - by the
-// address the directory keys them by. Nil for a party with no list.
 func (c *Cache) PartyRSVPs(partyID string) (sent bool, answers map[string]string, ok bool) {
 	return c.LinkedRSVPs(nil, SourceCelebrate, partyID)
 }
 
-// LinkedRSVPs is the same for any linked event - an HCA event's, as
-// HCA-Team shows its chairs - by the source and the id it has there,
-// given the linked events as the calendar sees them for nobody in
-// particular, since an HCA event the school also lists is folded into
-// the school's listing and keeps its guest list under the school's id.
 func (c *Cache) LinkedRSVPs(linked []Linked, source, id string) (sent bool, answers map[string]string, ok bool) {
 	model := c.Model()
 	key := source + "/" + id
@@ -2277,18 +1816,10 @@ func (c *Cache) LinkedRSVPs(linked []Linked, source, id string) (sent bool, answ
 	return inv.Sent != "", answers, true
 }
 
-// flyerPath is where an event's invitation flyer is fetched, public as
-// every /open/ path is, so a mail client and an outside person's page
-// can show it.
 func flyerPath(id string) string {
 	return "/open/flyer/" + id
 }
 
-// flyer serves GET /open/flyer/{id}: the invitation's flyer as bytes.
-// banner is GET /open/banner/{id}: the picture an event's page wears -
-// its own, its first tag's, or the calendar's header - public, for an
-// outside person's page, which sits before sign-in. The share card
-// already shows the same picture to anyone with the link.
 func (a app) banner(w http.ResponseWriter, r *http.Request) {
 	e := a.event(strings.TrimSpace(r.PathValue("id")))
 	if e == nil {

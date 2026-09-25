@@ -9,23 +9,20 @@ import (
 	"time"
 
 	"heliosian/internal/mail"
+	"heliosian/internal/store"
 )
 
-// A bounce is the mail provider's word that an address could not be
-// reached. The provider calls /hooks/events for each delivery event on the
-// calendar's sending domain; a permanent failure is kept on the Bounces
-// tab, and from then on the address wears a warning on every guest list
-// it is on, until a host changes it. A host may still send to it.
-
-// Bounce is the latest word on one address.
 type Bounce struct {
 	When   string `json:"when"`
 	Reason string `json:"reason,omitempty"`
 }
 
-const maxEventBody = 1 << 20
+const (
+	maxEventBody  = 1 << 20
+	deliveryActor = "mail events"
+)
 
-func (b *builder) bounces(rows []map[string]string) {
+func (b *builder) bounces(rows []store.Row) {
 	for _, row := range rows {
 		email := normalizeEmail(row["Email"])
 		if email == "" {
@@ -35,9 +32,6 @@ func (b *builder) bounces(rows []map[string]string) {
 	}
 }
 
-// deliveryEvents is POST /hooks/events: the provider's delivery events, as Mailgun
-// sends them, signed. A permanent failure is a bounce; anything else is
-// read and let go.
 func (a app) deliveryEvents(w http.ResponseWriter, r *http.Request) {
 	if a.mail.SigningKey == "" {
 		http.Error(w, "events are not set up", http.StatusNotFound)
@@ -91,28 +85,16 @@ func (a app) deliveryEvents(w http.ResponseWriter, r *http.Request) {
 	if reason == "" {
 		reason = d.Reason
 	}
-	row := map[string]string{"Email": email, "When": now().Format(DateTimeFormat), "Reason": reason}
-	tables := a.cache.Tables().WithBounce(row)
-	built, err := BuildModel(tables, a.cache.roster())
-	if err != nil {
-		slog.ErrorContext(r.Context(), "calendar: note bounce", "error", err)
+	row := store.Row{"Email": email, "When": now().Format(DateTimeFormat), "Reason": reason}
+	if err := a.cache.CommitAndWait(r.Context(), deliveryActor, store.Insert(BouncesTab, row)); err != nil {
+		slog.ErrorContext(r.Context(), "[ERROR] calendar: note bounce", "email", email, "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	a.cache.commit(tables, built, func() {
-		if err := a.writer.Insert(appName, BouncesTab, []map[string]string{row}); err != nil {
-			slog.ErrorContext(r.Context(), "calendar write", "error", err)
-		}
-	})
 	slog.InfoContext(r.Context(), "calendar: bounce noted", "email", email, "reason", reason)
 	w.WriteHeader(http.StatusOK)
 }
 
-// changeInviteEmail is POST /api/calendar/invites/email: a host giving
-// someone on the list a different address - one the directory does not
-// hold, since a directory person's address is theirs there. The row
-// keeps everything else, their answer and their outside page's token
-// with it.
 func (a app) changeInviteEmail(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		ID    string `json:"id"`
@@ -151,15 +133,7 @@ func (a app) changeInviteEmail(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "their address is the directory's to change", http.StatusBadRequest)
 		return
 	}
-	if !a.commit(r.Context(), w, a.cache.Tables().WithInviteEmail(e.ID, email, to), func() error {
-		if err := a.writer.Set(appName, InvitesTab, map[string]string{"Event ID": e.ID, "Email": inv.Email}, map[string]string{"Email": to}); err != nil {
-			return err
-		}
-		if _, answered := model.Answered[email][e.ID]; answered {
-			return a.writer.Set(appName, RSVPsTab, map[string]string{"Event ID": e.ID, "Email": email}, map[string]string{"Email": to})
-		}
-		return nil
-	}) {
+	if !a.commit(w, r, actor, store.Update(InvitesTab, store.Row{"Event ID": e.ID, "Email": email}, store.Row{"Email": to})) {
 		return
 	}
 	slog.InfoContext(r.Context(), "calendar: invite address changed", "actor", actor, "event", e.ID, "from", email, "to", to)
