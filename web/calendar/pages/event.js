@@ -1,4 +1,4 @@
-import {state, isAdmin, postedAndHosting, calendarLink, sourceWords, dayType, eventDates, linkURL, isParty, eventImage, parseDate, monthLabel, monthOf, answerOf, answer, eventPath} from '../state.js';
+import {state, isAdmin, isSystemAdmin, postedAndHosting, calendarLink, sourceWords, dayType, eventDates, linkURL, isParty, eventImage, parseDate, monthLabel, monthOf, answerOf, answer, eventPath} from '../state.js';
 import {dayTypeClass} from '/daytype.js';
 import {el, link, svg, paragraphs, button, toast, avatar, popup, copyText} from '../dom.js';
 import {dateCard} from '/datecard.js';
@@ -196,7 +196,7 @@ export function eventPage(e) {
   main.append(marks);
   main.append(el('h1', 'detail-title', e.title));
   if (e.description) {
-    main.append(paragraphs(e.description, 'prose detail-text'));
+    main.append(paragraphs(e.description, 'prose detail-text', {lines: true}));
   }
   const type = e.dayType ? dayType(e.dayType) : null;
   if (type && e.allDay) {
@@ -235,7 +235,7 @@ export function eventPage(e) {
   // Who answered: for an admin, and for whoever shared the event - until
   // a guest list takes its place.
   const answered = el('div', 'detail-answered');
-  if (!e.cancelled && (isAdmin() || (state.model.responses || {})[e.id] || postedAndHosting(e))) {
+  if (!e.cancelled && (isAdmin() || postedAndHosting(e))) {
     answered.append(rsvpsCard(e));
   }
   side.append(answered);
@@ -312,7 +312,11 @@ async function fillInvites(e, ask, answered, {info, linkedLine}) {
   // Who's coming takes the page's width under the ask, as Celebrate lays
   // out its party; a host's Guest list - the tools and every row - is
   // the rail's, where who answered used to be.
-  if (view.coming) {
+  // An event another app runs - a party, an HCA event - has nobody coming
+  // here until someone is invited from its page, so it says nothing of it
+  // until then.
+  const invited = (view.host ? view.list : view.coming || []).some(r => r.invited);
+  if (view.coming && (!e.link || invited)) {
     ask.append(comingCard(e, view, refresh));
   }
   if (view.host) {
@@ -539,14 +543,16 @@ function pendingBand(e) {
   const mine = e.addedBy === state.model.user.email;
   // Only an admin with the hat on is asked to decide; anyone else reads
   // where it stands.
-  const decides = isAdmin() && !mine;
+  // Deciding on a waiting event is any admin's, hat or not - an alert
+  // for them; bringing back a declined one wants the hat.
+  const decides = (e.pending && !e.declined ? isSystemAdmin() : isAdmin()) && !mine;
   if (e.declined) {
     words.append(el('div', 'pending-title', 'Declined'), el('div', 'pending-lead', mine ? 'An admin declined this event, so it is not on the calendar. You can still edit it; an admin can approve it later.' : decides ? `Shared by ${who} and declined. Approve it to put it on the calendar after all.` : `Shared by ${who}. An admin declined it, so it is not on the calendar.`));
   } else {
     words.append(el('div', 'pending-title', 'Waiting for approval'), el('div', 'pending-lead', mine ? 'You shared this event. An admin will approve it onto the calendar; until then only you and the admins see it.' : decides ? `Shared by ${who}. Approve it onto the calendar, or decline it.` : `Shared by ${who}. It goes on the calendar once an admin approves it.`));
   }
   band.append(svg(e.declined ? 'close' : 'clock'), words);
-  if (isAdmin()) {
+  if (e.pending && !e.declined ? isSystemAdmin() : isAdmin()) {
     const actions = el('div', 'pending-actions');
     const decide = async (path, done) => {
       const res = await fetch('/api/calendar/events/' + path, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id: e.id})});

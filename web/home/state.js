@@ -25,6 +25,13 @@ export function isAdmin() {
   return Boolean(state.model && state.model.user.isAdmin);
 }
 
+// superOn is Super Admin Mode as the page acts on it: the switch is kept per
+// browser, so it outlives losing admin, a spoofed standard user or another
+// person on the same device, and counts only while the model says admin.
+export function superOn() {
+  return isAdmin() && state.superAdmin;
+}
+
 export function tagLabelsOf(rule) {
   const named = state.model.tagLabels || {};
   return rule.tagLabels || (rule.tags || []).map(t => named[t] || t);

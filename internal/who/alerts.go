@@ -1,6 +1,7 @@
 package who
 
 import (
+	"slices"
 	"time"
 
 	"heliosian/internal/config"
@@ -61,7 +62,8 @@ func (m *Model) Alerts(email string, years config.StaleYears, now time.Time) Ale
 				alerts.Stale++
 			}
 		}
-		if family != nil && (family.PhotoURL == "" || agedPast(family.PhotoUpdated, years.FamilyPhoto, now)) {
+		// The family photo is its adults' to keep, not a student's.
+		if family != nil && slices.Contains(family.AdultEmails, email) && (family.PhotoURL == "" || agedPast(family.PhotoUpdated, years.FamilyPhoto, now)) {
 			alerts.Stale++
 		}
 	}

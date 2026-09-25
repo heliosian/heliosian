@@ -420,7 +420,7 @@ export function listHidden(node) {
 // people get. A system admin sees a private list only with the hat on: off,
 // they are a parent like any other, and the list is not theirs to see.
 export function listRevealed(node, editing) {
-  return !listHidden(node) || editing || state.showHidden || isAdmin();
+  return !listHidden(node) || editing || isAdmin() || (state.showHidden && Boolean(node.canEdit));
 }
 
 export function shownVolunteers(node, editing) {
@@ -502,6 +502,26 @@ export function isUnlisted(node) {
   return node.status === 'Hidden' || node.status === 'Pending';
 }
 
+// revealed is whether a thing shows where hidden and pending ones are kept
+// off: always when it is listed, and otherwise with Show Hidden Things on to
+// whoever may edit it - an admin with the hat on, or whoever runs it or
+// something above it. The server sends a system admin everything whatever the
+// hat, so the switch must not show a co-chair what they do not run.
+export function revealed(node) {
+  return !isUnlisted(node) || (state.showHidden && Boolean(node.canEdit));
+}
+
+// runsAnything says the viewer co-chairs something, anywhere in the tree -
+// who, with the admin hat, is offered Show Hidden Things.
+export function runsAnything() {
+  for (const node of index.values()) {
+    if (node.runs) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // selectedYear is the school year the opportunities page is showing, falling
 // back to the current one when nothing is chosen or the choice went stale.
 export function selectedYear() {
@@ -514,7 +534,7 @@ export function selectedYear() {
 // itself both go through here, so the numbers cannot drift from the cards.
 export function listedIn(year) {
   return activitiesIn(year).filter(a =>
-    (state.showPrevious || !isPrevious(a)) && (state.showHidden || !isUnlisted(a)));
+    (state.showPrevious || !isPrevious(a)) && revealed(a));
 }
 
 export function matches(node, query) {

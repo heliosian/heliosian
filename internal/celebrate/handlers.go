@@ -887,8 +887,8 @@ func (a app) saveParty(w http.ResponseWriter, r *http.Request) {
 		id = NewID()
 	}
 	pretty := NormalizePretty(body.PrettyID)
-	if err := CheckPretty(pretty); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	if CheckPretty(pretty) != nil {
+		http.Error(w, fmt.Sprintf("the friendly address can be only lower-case letters, digits and hyphens, at most %d", maxPrettyLength), http.StatusBadRequest)
 		return
 	}
 	if other := model.ByPretty(pretty); pretty != "" && other != nil && other.ID != id {

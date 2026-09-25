@@ -283,3 +283,28 @@ func TestAGroupOpenToItsMembersReachesThemAlone(t *testing.T) {
 		t.Fatalf("a member sees a hidden group: %v", h.groupNames(member))
 	}
 }
+
+// Open says whether the viewer would see the group were they not an admin,
+// so the page can list an admin with the hat off only those: their own
+// hidden group is, as it is to any manager, and an everyone group is.
+func TestOpenIsWhatANonAdminSees(t *testing.T) {
+	h := newHarness(t)
+	manager := h.cache.Model().Group("soccer-team").Managers[0]
+	rec := h.as(manager, http.MethodGet, "/api/loop/model", "")
+	var model struct {
+		Groups []groupView `json:"groups"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &model); err != nil {
+		t.Fatal(err)
+	}
+	open := map[string]bool{}
+	for _, g := range model.Groups {
+		open[g.Name] = g.Open
+	}
+	if own, ok := open["soccer-team"]; !ok || !own {
+		t.Errorf("the manager's own hidden group: listed %v open %v", ok, own)
+	}
+	if everyone, ok := open["middle-school-parents"]; ok && !everyone {
+		t.Errorf("a group open to everyone is not open")
+	}
+}

@@ -1,4 +1,4 @@
-import {state, me, isAdmin} from '../state.js';
+import {state, me, isSystemAdmin} from '../state.js';
 import {el, svg, button} from '../dom.js';
 import {setTitle} from '../chrome.js';
 
@@ -90,7 +90,7 @@ const sections = [
 // tabs; one panel showing at a time.
 export function adminPage() {
   setTitle('Admin Tools');
-  if (!isAdmin()) {
+  if (!isSystemAdmin()) {
     return denied();
   }
   const page = el('div', 'admin admin-strip');

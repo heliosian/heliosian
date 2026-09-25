@@ -1,4 +1,4 @@
-import {state, descendants, parseWhen, activityPath, mySignUp, rootOf, parentOf} from '../state.js';
+import {state, descendants, parseWhen, activityPath, mySignUp, rootOf, parentOf, revealed} from '../state.js';
 import {el, link, svg, button} from '../dom.js';
 import {setTitle} from '../chrome.js';
 import {categoryClass} from '../cards.js';
@@ -11,9 +11,9 @@ let filter = '';
 const monthFormat = new Intl.DateTimeFormat('en-US', {month: 'long', year: 'numeric'});
 
 // shown follows the account menu's Show Hidden Things: open and done things
-// always, pending and hidden ones for an admin who has it on.
-function shown(status) {
-  return status === 'Open' || status === 'Done' || state.showHidden;
+// always, pending and hidden ones with it on to whoever may edit them.
+function shown(node) {
+  return revealed(node);
 }
 
 // mine is a thing the viewer is on, as a volunteer or a chair.
@@ -29,7 +29,7 @@ function entries() {
   const out = [];
   const add = (node, isChild) => {
     const start = parseWhen(node.start);
-    if (!start || !shown(node.status)) {
+    if (!start || !shown(node)) {
       return;
     }
     const own = mine(node);
@@ -53,7 +53,7 @@ function entries() {
   };
   for (const act of state.model.activities) {
     add(act, false);
-    if (shown(act.status)) {
+    if (shown(act)) {
       for (const child of descendants(act)) {
         add(child, true);
       }
@@ -81,7 +81,7 @@ function chipRow(onChange) {
     };
     add('', 'All', 'chip-all');
     add('mine', '⭐ Mine', 'chip-mine');
-    const present = new Set(state.model.activities.filter(a => parseWhen(a.start) && shown(a.status)).map(a => a.category || ''));
+    const present = new Set(state.model.activities.filter(a => parseWhen(a.start) && shown(a)).map(a => a.category || ''));
     for (const c of state.model.categories) {
       if (present.has(c.id)) {
         add(c.id, c.title, categoryClass(c.id));

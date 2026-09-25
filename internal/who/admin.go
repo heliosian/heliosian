@@ -371,6 +371,24 @@ func listDiff(before, after []string) (added, removed []string) {
 	return added, removed
 }
 
+// The toolbar's pencil is the browser's choice, as it is in the other apps: a
+// cookie, so it outlasts a restart and reads the same on every instance. It
+// counts only for an admin, checked afresh on each request, so the cookie of a
+// super admin viewing as a parent in Spoof Mode grants the parent nothing.
+const (
+	superEditCookie = "who-super-edit"
+	superEditLength = 400 * 24 * 60 * 60
+)
+
+// superEdit says whether email is an admin with the pencil on in this browser.
+func superEdit(cache *Cache, r *http.Request, email string) bool {
+	if !cache.IsAdmin(email) {
+		return false
+	}
+	cookie, err := r.Cookie(superEditCookie)
+	return err == nil && cookie.Value == "1"
+}
+
 func (a admin) setSuperEdit(w http.ResponseWriter, r *http.Request) {
 	email, ok := a.requireAdmin(w, r)
 	if !ok {
@@ -383,7 +401,18 @@ func (a admin) setSuperEdit(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad request body", http.StatusBadRequest)
 		return
 	}
-	a.cache.SetSuperEdit(email, body.Enabled)
+	cookie := &http.Cookie{
+		Name:     superEditCookie,
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https",
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   -1,
+	}
+	if body.Enabled {
+		cookie.Value, cookie.MaxAge = "1", superEditLength
+	}
+	http.SetCookie(w, cookie)
 	slog.InfoContext(r.Context(), "admin: set super edit mode", "actor", email, "enabled", body.Enabled)
 	w.WriteHeader(http.StatusNoContent)
 }

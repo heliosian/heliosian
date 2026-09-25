@@ -13,6 +13,13 @@ export function familyOf(p) {
   return familiesOf(p)[0];
 }
 
+// A family page is its adults' to edit - not a kid's, so not the other
+// household of a kid who has two - or anyone's with the pencil on, as the
+// server's mayEdit has it.
+export function canEditFamily(family) {
+  return state.model.superEdit || (family.adultEmails || []).includes(document.body.dataset.userEmail);
+}
+
 export function myFamilyKey() {
   const family = familyOf(byEmail[document.body.dataset.userEmail]);
   return (family && family.key) || '';

@@ -1,4 +1,4 @@
-import {state, isAdmin, hostedParties, pendingParties, partyPath, whenLine, money, canHost} from '../state.js';
+import {state, isAdmin, isSystemAdmin, canApprove, hostedParties, pendingParties, partyPath, whenLine, money, canHost} from '../state.js';
 import {el, link, button, thumb, svg} from '../dom.js';
 import {tabStrip} from '/tabs.js';
 import {setTitle, setSearch} from '../chrome.js';
@@ -30,10 +30,12 @@ function hostRow(p) {
   row.append(body);
   const actions = el('div', 'row-actions');
   actions.append(availabilityBadge(p));
-  if (isAdmin() && p.status === 'Pending') {
+  if (canApprove(p)) {
     actions.append(button('Approve', 'check', 'button button-small', () => setPartyStatus(p, 'Open')));
   }
-  actions.append(button('', 'edit', 'edit-icon', () => openParty(p)));
+  if (p.canEdit) {
+    actions.append(button('', 'edit', 'edit-icon', () => openParty(p)));
+  }
   const chevron = svg('chevron');
   chevron.classList.add('chevron');
   actions.append(chevron);
@@ -57,8 +59,12 @@ export function hostingPage() {
   const bar = el('div', 'list-bar');
   page.append(bar, body);
   const items = [{key: 'mine', label: 'My Parties', count: hostedParties().length}];
-  if (isAdmin()) {
+  // Approval Needed goes with the admin list, hat or no hat; All Parties
+  // with the hat.
+  if (isSystemAdmin()) {
     items.push({key: 'approvals', label: 'Approval Needed', count: pendingParties().length});
+  }
+  if (isAdmin()) {
     items.push({key: 'all', label: 'All Parties', count: state.model.parties.length});
   }
   if (!items.some(i => i.key === state.hostingTab)) {

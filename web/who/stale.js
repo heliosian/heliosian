@@ -1,6 +1,6 @@
 import {byEmail, staleYears} from './state.js';
 import {el, svg, withFrom, firstName, infoBanner} from './dom.js';
-import {familyOf} from './families.js';
+import {familyOf, canEditFamily} from './families.js';
 import {personSlug} from './people.js';
 import {submitMedia} from './edit.js';
 
@@ -51,7 +51,7 @@ export function staleItems() {
       items.push({type: 'facts', target: 'person', key: p.email, text: `Update ${whose} facts for new year`, label: `${shortWhose} facts`, person: p});
     }
   }
-  if (family && familyPhotoNeedsUpdate(family)) {
+  if (family && canEditFamily(family) && familyPhotoNeedsUpdate(family)) {
     items.push({type: 'photo', target: 'family', key: family.key, text: 'Update your family photo for new year', label: 'your family photo'});
   }
   return items;

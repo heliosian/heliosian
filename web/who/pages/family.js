@@ -1,6 +1,6 @@
 import {state, byEmail, colors} from '../state.js';
 import {el, svg, thumbUrl, firstName, iconButton, copyButton, pronouncePill, contactRow, withFrom, slugify} from '../dom.js';
-import {myFamilyKey, familyLink} from '../families.js';
+import {myFamilyKey, familyLink, canEditFamily} from '../families.js';
 import {personByKey, personLink, photoOrInitials, personPhotoUrl, roleWithPronouns, gradeChain} from '../people.js';
 import {familyPhotoNeedsUpdate, staleItems, todoChecklist} from '../stale.js';
 import {submitField, editPencil, fieldEditor, uploadIcon, pronounceEditor} from '../edit.js';
@@ -62,7 +62,7 @@ export function familyCard(p, family) {
 
   const grid = el('div', 'fcard-grid');
   const left = el('div');
-  const familyEditable = family.key === myFamilyKey() || state.model.superEdit;
+  const familyEditable = canEditFamily(family);
   const showFamilyPhotoEdit = familyEditable && familyPhotoNeedsUpdate(family);
   // The "update for the new year" nagging (dashed outline + reminder text) is meant
   // for students, same as personal photos/facts - an adult visiting their own page
@@ -139,7 +139,7 @@ export function renderFamilyDetail(key) {
     main.append(el('div', 'empty', 'Not found.'));
     return;
   }
-  const editable = key === myFamilyKey() || state.model.superEdit;
+  const editable = canEditFamily(family);
   const editing = editable && familyEdit === key;
   const shortName = family.shortName || '';
   let crumbs = [['People', '/people'], [shortName, null], ['Family', null]];
@@ -163,7 +163,9 @@ export function renderFamilyDetail(key) {
   }
   main.append(breadcrumbs(crumbs));
 
-  if (editable) {
+  // The to-do list is the viewer's own, so it shows on their own family page
+  // alone, not on every family the pencil opens.
+  if (key === myFamilyKey()) {
     const items = staleItems();
     if (items.length) {
       const wrap = el('div', 'container');

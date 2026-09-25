@@ -1439,3 +1439,34 @@ func TestHideHosts(t *testing.T) {
 		t.Errorf("shown again: hidden %v hosts %+v", v.HostsHidden, v.Hosts)
 	}
 }
+
+// A calendar admin may do whatever a host may on any event without being
+// listed as one, and may step down whoever added it; nobody else may step
+// someone else down.
+func TestAdminActsAsHost(t *testing.T) {
+	mux, cache, _ := invitesApp(t)
+	jordan, dana := as(host, mux), as("dana.hawkins@heliosschool.org", mux)
+	call(t, jordan, "POST", "/api/calendar/events", `{"title":"Meetup","start":"2026-10-10 15:00","tags":[],"sharing":"Link","id":"meetup"}`)
+	v := inviteView(t, dana, "meetup")
+	if !v.Host || !v.AdminHost || v.Poster != host || slices.ContainsFunc(v.Hosts, func(p Person) bool { return p.Email == "dana.hawkins@heliosschool.org" }) {
+		t.Errorf("the admin's view: host %v adminHost %v poster %q hosts %v", v.Host, v.AdminHost, v.Poster, v.Hosts)
+	}
+	if rec := call(t, dana, "PUT", "/api/calendar/invites/settings", `{"id":"meetup","hideHosts":true}`); rec.Code != 204 {
+		t.Errorf("the admin hiding the hosts: %d %s", rec.Code, rec.Body)
+	}
+	if rec := call(t, as(robin, mux), "POST", "/api/calendar/invites/step-down", `{"id":"meetup","email":"`+host+`"}`); rec.Code != 403 {
+		t.Errorf("a guest stepping the poster down: %d", rec.Code)
+	}
+	if rec := call(t, dana, "POST", "/api/calendar/invites/step-down", `{"id":"meetup","email":"`+host+`"}`); rec.Code != 204 {
+		t.Fatalf("the admin stepping the poster down: %d %s", rec.Code, rec.Body)
+	}
+	if e := cache.Model().Event("meetup"); !e.PosterLeft {
+		t.Errorf("the poster still hosts")
+	}
+	if v := inviteView(t, jordan, "meetup"); v.Host {
+		t.Errorf("the poster after: host %v", v.Host)
+	}
+	if v := inviteView(t, dana, "meetup"); !v.Host || v.Poster != "" {
+		t.Errorf("the admin after: host %v poster %q", v.Host, v.Poster)
+	}
+}

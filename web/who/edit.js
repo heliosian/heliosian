@@ -146,12 +146,10 @@ export function canEditPerson(email) {
   if (email === meEmail || state.model.superEdit) {
     return true;
   }
-  // A student edits only themselves; an adult edits everyone in the household.
-  const me = byEmail[meEmail];
-  if (!me || me.isStudent) {
-    return false;
-  }
-  return familiesOf(me).some(family =>
+  // An adult edits everyone in the household they are an adult of - its kids
+  // and its other adult, never the other household of a kid who has two. A
+  // student is an adult of none, so edits only themselves.
+  return familiesOf(byEmail[meEmail]).some(family => (family.adultEmails || []).includes(meEmail) &&
     [...(family.kidEmails || []), ...(family.adultEmails || [])].includes(email));
 }
 

@@ -1,4 +1,4 @@
-import {state, isAdmin, tagLabelsOf} from './state.js';
+import {state, superOn, tagLabelsOf} from './state.js';
 import {el, svg, iconOf, toast} from './dom.js';
 import {openLinkEditor, openCategoryEditor, openAppEditor, moveApp, moveLink} from './edit.js';
 import {appOrigin} from '/toolbar.js';
@@ -9,7 +9,7 @@ import {appOrigin} from '/toolbar.js';
 // it among its category's links, and the pencil that opens its editor.
 // category is the link's, for whether it is first or last.
 function editPencil(link, category) {
-  if (!isAdmin() || !state.superAdmin) {
+  if (!superOn()) {
     return null;
   }
   const tools = el('div', 'app-tools');
@@ -187,7 +187,7 @@ function panel(category, links, needle) {
   for (const link of shown) {
     grid.append(cards ? featureCard(link, category) : tile(link, category));
   }
-  if (isAdmin() && state.superAdmin) {
+  if (superOn()) {
     grid.append(addCard(category, cards));
   }
   wrap.append(grid);
@@ -212,13 +212,13 @@ function matches(link, query) {
 // only; the page shows them only while the admin's Super Admin Mode switch is
 // on, so what an admin looks at by default is what everyone else gets.
 function listed(link) {
-  return (link.visible && link.forMe !== false) || state.superAdmin;
+  return (link.visible && link.forMe !== false) || superOn();
 }
 
 // A section kept to other people reaches an admin alone, and shows only in
 // Super Admin Mode, as a link kept from them does.
 function sectionListed(category) {
-  return category.forMe !== false || state.superAdmin;
+  return category.forMe !== false || superOn();
 }
 
 // audienceWords says who some rules keep a thing to, short: each rule's
@@ -242,7 +242,7 @@ function badges(link) {
   if (link.visible === false) {
     out.push(el('span', 'hidden-badge', 'Hidden'));
   }
-  if ((link.rules || []).length && state.superAdmin) {
+  if ((link.rules || []).length && superOn()) {
     out.push(el('span', 'hidden-badge audience-badge', audienceWords(link.rules)));
   }
   return out;
@@ -266,7 +266,7 @@ export function renderCategories(query = '') {
     const count = events ? eventsMatching(needle) : apps ? appsMatching(needle).length : links.length;
     // A section with nothing to show stays off the page - except in Super
     // Admin Mode, where it appears empty so it can be filled or edited.
-    if (!count && (needle || !isAdmin() || !state.superAdmin)) {
+    if (!count && (needle || !superOn())) {
       continue;
     }
     shown += count;
@@ -292,7 +292,7 @@ export function renderCategories(query = '') {
       all.append(el('span', '', 'See all in Helios When'), svg('chevron'));
       head.append(all);
     }
-    if (isAdmin() && state.superAdmin) {
+    if (superOn()) {
       const edit = el('button', 'category-edit');
       edit.type = 'button';
       edit.title = 'Edit category';
@@ -702,7 +702,7 @@ function appsMatching(needle) {
 // for: its rule's choices and how many people are named.
 function appBadge(app) {
   const v = app.visibility;
-  if (!state.superAdmin || !v || v.visibility !== 'list') {
+  if (!superOn() || !v || v.visibility !== 'list') {
     return null;
   }
   const who = [];
@@ -744,7 +744,7 @@ function appCard(app) {
   slot.append(card);
   // In Super Admin Mode a pencil opens the app's editor - its words and
   // who sees it - and two arrows move it in the switch's order.
-  if (isAdmin() && state.superAdmin && app.visibility) {
+  if (superOn() && app.visibility) {
     const tools = el('div', 'app-tools');
     const keys = (state.model.apps || []).map(a => a.key);
     const at = keys.indexOf(app.key);
@@ -802,7 +802,7 @@ function hasSomething(category) {
   if (!sectionListed(category)) {
     return false;
   }
-  if (isAdmin() && state.superAdmin) {
+  if (superOn()) {
     return true;
   }
   if (category.style === 'events') {

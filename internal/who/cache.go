@@ -40,11 +40,6 @@ type Cache struct {
 	tables  *Tables
 	pending int
 	commits sync.Mutex
-
-	// superEdit tracks, per admin, whether they've turned on the switch that lets them
-	// edit anyone's record rather than just their own family's. Deliberately
-	// in-memory only: it resets on every restart rather than staying on forever.
-	superEdit map[string]bool
 }
 
 // store is the concrete blob store, needed to replace a classroom or grade
@@ -52,7 +47,7 @@ type Cache struct {
 func NewCache(source data.Source, writer data.Writer, geocoder Geocoder, blobs, static BlobChecker, store *blob.Store, queue *Queue, idKey []byte, superAdmins func() []string) (*Cache, error) {
 	c := &Cache{
 		source: source, writer: writer, geocoder: geocoder, blobs: blobs, static: static, store: store, queue: queue,
-		idKey: idKey, superAdmins: superAdmins, superEdit: map[string]bool{},
+		idKey: idKey, superAdmins: superAdmins,
 	}
 	start := time.Now()
 	tables, err := ReadTables(source)
@@ -219,26 +214,6 @@ func (c *Cache) HeroPhoto(email string) string { return c.Model().HeroPhoto(emai
 func (c *Cache) IsSuperAdmin(email string) bool {
 	email = strings.ToLower(strings.TrimSpace(email))
 	return slices.Contains(c.superAdmins(), email)
-}
-
-// SuperEditEnabled reports whether this admin has switched on editing anyone's
-// record. Meaningless (and never checked) for a non-admin.
-func (c *Cache) SuperEditEnabled(email string) bool {
-	email = strings.ToLower(strings.TrimSpace(email))
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.superEdit[email]
-}
-
-func (c *Cache) SetSuperEdit(email string, enabled bool) {
-	email = strings.ToLower(strings.TrimSpace(email))
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if enabled {
-		c.superEdit[email] = true
-	} else {
-		delete(c.superEdit, email)
-	}
 }
 
 // PutImage replaces a classroom or grade image in the bucket and rebuilds the model so

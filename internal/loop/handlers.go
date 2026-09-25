@@ -159,15 +159,19 @@ type Member struct {
 
 type groupView struct {
 	Group
-	Address      string     `json:"address"`
-	Rules        []ruleView `json:"rules"`
-	Managers     []Person   `json:"managers"`
-	Members      []Member   `json:"members"`
-	Mine         bool       `json:"mine"`
-	Member       bool       `json:"member"`
-	Unsubscribed bool       `json:"unsubscribed"`
-	Archived     bool       `json:"archived"`
-	Sent         int        `json:"sent"`
+	Address  string     `json:"address"`
+	Rules    []ruleView `json:"rules"`
+	Managers []Person   `json:"managers"`
+	Members  []Member   `json:"members"`
+	Mine     bool       `json:"mine"`
+	Member   bool       `json:"member"`
+	// Open says the viewer would see the group were they not an admin -
+	// they manage it, or its visibility reaches them: the page lists only
+	// these to an admin with Super Admin Mode off.
+	Open         bool `json:"open"`
+	Unsubscribed bool `json:"unsubscribed"`
+	Archived     bool `json:"archived"`
+	Sent         int  `json:"sent"`
 }
 
 type suggestion struct {
@@ -287,7 +291,7 @@ func (a app) sees(g Group, viewer string, admin bool) bool {
 }
 
 func (a app) view(g Group, viewer string, edit bool) groupView {
-	v := groupView{Group: g, Address: g.Address(), Rules: []ruleView{}, Managers: a.people(g.Managers), Mine: g.Manages(viewer), Member: OnList(g, a.sources(), viewer), Unsubscribed: g.HasExcluded(viewer), Archived: a.cache.Model().Archived(g.Name, viewer), Sent: a.sentCount(g.Name)}
+	v := groupView{Group: g, Address: g.Address(), Rules: []ruleView{}, Managers: a.people(g.Managers), Mine: g.Manages(viewer), Member: OnList(g, a.sources(), viewer), Open: a.sees(g, viewer, false), Unsubscribed: g.HasExcluded(viewer), Archived: a.cache.Model().Archived(g.Name, viewer), Sent: a.sentCount(g.Name)}
 	v.Members = a.members(g)
 	if !edit {
 		v.Group.Rules = []Rule{}

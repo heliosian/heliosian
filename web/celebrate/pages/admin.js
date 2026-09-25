@@ -176,9 +176,10 @@ function invoicesCard() {
   const table = el('div');
   card.append(totals, table);
   const ledger = () => (state.model.invoicing || []).filter(l => l.code === code);
-  // The ledger holds addresses; the parties' tickets know the names.
+  // The ledger holds addresses; the parties' tickets know the names, the
+  // hidden parties' too.
   const names = new Map();
-  for (const p of state.model.parties) {
+  for (const p of state.model.allParties) {
     for (const a of [...p.attendees, ...p.waitlisted]) {
       if (a.purchaser && a.purchaserName) {
         names.set(a.purchaser, a.purchaserName);

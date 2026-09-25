@@ -153,9 +153,29 @@ const urlForm = /https?:\/\/[^\s<>"']+/g;
 
 // paragraphs renders sheet text with its blank-line breaks kept and every
 // web address made a link, since a Zoom link is the point of some.
-export function paragraphs(text, className) {
+// With lines, every line is a paragraph of its own - the way the school's
+// calendar writes an event's description, a paragraph to a line with no
+// blank line between - save a list item (a line starting -, •, * or 1.),
+// which stays tight under the line before it.
+const listItem = /^\s*([-•*]|\d+[.)])\s/;
+
+export function paragraphs(text, className, {lines = false} = {}) {
   const wrap = el('div', className || 'prose');
+  const chunks = [];
   for (const chunk of (text || '').split(/\n\s*\n/)) {
+    if (!lines) {
+      chunks.push(chunk);
+      continue;
+    }
+    for (const line of chunk.split('\n')) {
+      if (listItem.test(line) && chunks.length) {
+        chunks[chunks.length - 1] += '\n' + line;
+      } else {
+        chunks.push(line);
+      }
+    }
+  }
+  for (const chunk of chunks) {
     if (!chunk.trim()) {
       continue;
     }

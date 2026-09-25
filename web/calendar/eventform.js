@@ -1,4 +1,4 @@
-import {state, me, tagGroups, bands, classroomNames, eventDates, eventPath, addDays, parseDate} from './state.js';
+import {state, me, isAdmin, tagGroups, bands, classroomNames, eventDates, eventPath, addDays, parseDate} from './state.js';
 import {addressSuggest} from '/address.js';
 import {el, svg, toast} from './dom.js';
 
@@ -25,7 +25,8 @@ function randomID() {
 // no sharing, address or source, a Note saying why, and a save that the
 // server sets against the school's own values, keeping only what differs.
 export function eventForm({from = null, shift = 0, edit = null, override = false, onDone}) {
-  const admin = me().isAdmin;
+  // An admin's form with Super Admin Mode on; off, anyone's.
+  const admin = isAdmin();
   // Editing fills from the event itself, dates as they are.
   if (edit) {
     from = edit;

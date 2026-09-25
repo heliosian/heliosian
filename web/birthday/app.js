@@ -1,4 +1,4 @@
-import {state, applyModel, staff, charity, isUnassigned, isSystemAdmin, commsOnly} from './state.js';
+import {state, applyModel, staff, charity, isUnassigned, isAdmin, commsOnly} from './state.js';
 import {el} from './dom.js';
 import {initChrome, renderChrome, setTitle, clearSearch} from './chrome.js';
 import {initModal, offerTeam} from './edit.js';
@@ -68,7 +68,7 @@ function route() {
     case 'newsletters':
       return parts[1] && state.model.newsletterDates.includes(parts[1]) ? newsletterPage(parts[1]) : parts[1] ? notFound(parts[1]) : newslettersPage();
     case 'skipped':
-      return isSystemAdmin() ? skippedPage() : notFound('That page');
+      return isAdmin() ? skippedPage() : notFound('That page');
     case 'unassigned':
       return unassignedPage();
     case 'admin':

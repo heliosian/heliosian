@@ -277,7 +277,7 @@ func (u uploader) edit(w http.ResponseWriter, r *http.Request) {
 	// This one is keyed on a family instead, since it's reachable from
 	// super-edit mode editing a family that isn't the caller's own.
 	if field == "family-photo-caption" {
-		if !u.mayEdit(model, me, "family", key) {
+		if !u.mayEdit(r, model, me, "family", key) {
 			http.Error(w, "not allowed to edit this record", http.StatusForbidden)
 			return
 		}
@@ -308,7 +308,7 @@ func (u uploader) edit(w http.ResponseWriter, r *http.Request) {
 	// Photo Caption above, is keyed on a family rather than the caller's own email,
 	// for the same super-edit reason.
 	if field == "family-pronunciation" {
-		if !u.mayEdit(model, me, "family", key) {
+		if !u.mayEdit(r, model, me, "family", key) {
 			http.Error(w, "not allowed to edit this record", http.StatusForbidden)
 			return
 		}
@@ -341,7 +341,7 @@ func (u uploader) edit(w http.ResponseWriter, r *http.Request) {
 	previous := map[string]string{}
 	switch field {
 	case "preferred-name":
-		if !u.mayEdit(model, me, "person", key) {
+		if !u.mayEdit(r, model, me, "person", key) {
 			http.Error(w, "not allowed to edit this record", http.StatusForbidden)
 			return
 		}
@@ -358,7 +358,7 @@ func (u uploader) edit(w http.ResponseWriter, r *http.Request) {
 		previous["Preferred Name"] = person.PreferredName
 		previous["Full Name"] = person.FullName
 	case "pronouns":
-		if !u.mayEdit(model, me, "person", key) {
+		if !u.mayEdit(r, model, me, "person", key) {
 			http.Error(w, "not allowed to edit this record", http.StatusForbidden)
 			return
 		}
@@ -376,7 +376,7 @@ func (u uploader) edit(w http.ResponseWriter, r *http.Request) {
 		cells["Pronouns"] = strings.ToLower(value)
 		previous["Pronouns"] = person.Pronouns
 	case "pronunciation":
-		if !u.mayEdit(model, me, "person", key) {
+		if !u.mayEdit(r, model, me, "person", key) {
 			http.Error(w, "not allowed to edit this record", http.StatusForbidden)
 			return
 		}
@@ -409,7 +409,7 @@ func (u uploader) optOut(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad opt out request", http.StatusBadRequest)
 		return
 	}
-	if !u.mayEdit(u.cache.Model(), me, "person", key) {
+	if !u.mayEdit(r, u.cache.Model(), me, "person", key) {
 		http.Error(w, "not allowed to edit this record", http.StatusForbidden)
 		return
 	}
@@ -430,7 +430,7 @@ func (u uploader) facts(w http.ResponseWriter, r *http.Request) {
 	}
 	me := effectiveEmail(u.cache, r)
 	model := u.cache.Model()
-	if !u.mayEdit(model, me, "person", key) {
+	if !u.mayEdit(r, model, me, "person", key) {
 		http.Error(w, "not allowed to edit this record", http.StatusForbidden)
 		return
 	}
@@ -463,7 +463,7 @@ func (u uploader) upload(w http.ResponseWriter, r *http.Request) {
 
 	me := effectiveEmail(u.cache, r)
 	model := u.cache.Model()
-	if !u.mayEdit(model, me, target, key) {
+	if !u.mayEdit(r, model, me, target, key) {
 		http.Error(w, "not allowed to edit this record", http.StatusForbidden)
 		return
 	}
@@ -605,7 +605,7 @@ func (u uploader) reorderPhotos(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no such person", http.StatusBadRequest)
 		return
 	}
-	if !u.mayEdit(model, me, "person", key) {
+	if !u.mayEdit(r, model, me, "person", key) {
 		http.Error(w, "not allowed to edit this record", http.StatusForbidden)
 		return
 	}
@@ -682,7 +682,7 @@ func (u uploader) cropPhoto(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad crop request", http.StatusBadRequest)
 		return
 	}
-	if !u.mayEdit(model, me, target, key) {
+	if !u.mayEdit(r, model, me, target, key) {
 		http.Error(w, "not allowed to edit this record", http.StatusForbidden)
 		return
 	}
@@ -776,29 +776,30 @@ func isPhotoSubset(order []string, photos []Photo) bool {
 	return true
 }
 
-func (u uploader) mayEdit(model *Model, me, target, key string) bool {
-	admin := strings.ToLower(strings.TrimSpace(me))
-	if u.cache.IsAdmin(admin) && u.cache.SuperEditEnabled(admin) {
+func (u uploader) mayEdit(r *http.Request, model *Model, me, target, key string) bool {
+	return superEdit(u.cache, r, me) || mayEdit(model, me, target, key)
+}
+
+// mayEdit is what a member may edit on their own: a family page when they are
+// one of its adults, and a person when it is themselves or someone in the
+// household they are an adult of - its children and its other adult. A kid of
+// two households is in both, so either parent edits the kid, but a parent's
+// household is only ever their own, so never the other parent's page or
+// person. A student edits only themselves, not either family page.
+func mayEdit(model *Model, me, target, key string) bool {
+	if target == "person" && key == me && model.Member(me) {
 		return true
 	}
-	mine := model.Person(me)
-	if mine == nil {
-		return false
-	}
-	if target == "family" {
-		return slices.Contains(model.FamilyKeysOf(mine.Email), key)
-	}
-	if key == me {
-		return true
-	}
-	// A student edits only themselves; an adult edits everyone in the
-	// household - the children and the other adults.
-	if mine.IsStudent {
-		return false
-	}
-	for _, familyKey := range model.FamilyKeysOf(mine.Email) {
+	for _, familyKey := range model.FamilyKeysOf(me) {
 		family := model.Families[familyKey]
-		if slices.Contains(family.KidEmails, key) || slices.Contains(family.AdultEmails, key) {
+		if !slices.Contains(family.AdultEmails, me) {
+			continue
+		}
+		if target == "family" {
+			if familyKey == key {
+				return true
+			}
+		} else if slices.Contains(family.KidEmails, key) || slices.Contains(family.AdultEmails, key) {
 			return true
 		}
 	}

@@ -572,6 +572,62 @@ func TestRenameKeepsTheTree(t *testing.T) {
 	}
 }
 
+// A co-chair approves what was suggested under their event by opening or
+// finishing it; hiding stays an admin's, and a pending event of its own
+// waits for an admin whoever chairs it.
+func TestCoChairApproves(t *testing.T) {
+	cache, mux := newServer(t)
+	save := func(who, id, parentID, category, status string) int {
+		act := cache.Model().Activity(id)
+		return call(t, mux, who, "POST", "/api/team/activity", map[string]any{
+			"id": id, "year": act.Year, "title": act.Title, "parent": parentID, "category": category, "status": status, "directSignUp": act.DirectSignUp,
+		}).Code
+	}
+	status := func(id string) string { return cache.Model().Activity(id).Status }
+	if code := save(chair, "E022", "E001", "C08", StatusHidden); code != http.StatusBadRequest {
+		t.Fatalf("a co-chair hid a suggestion: %d", code)
+	}
+	if code := save(chair, "E022", "E001", "C08", StatusPending); code != http.StatusNoContent || status("E022") != StatusPending {
+		t.Fatalf("a co-chair's save that leaves it pending: %d, %s", code, status("E022"))
+	}
+	if code := save(chair, "E022", "E001", "C08", StatusOpen); code != http.StatusNoContent || status("E022") != StatusOpen {
+		t.Fatalf("the event's co-chair could not approve a suggestion: %d, %s", code, status("E022"))
+	}
+	if code := call(t, mux, admin, "POST", "/api/team/volunteer", map[string]any{"id": "E012", "email": chair, "position": PositionCoChair}).Code; code != http.StatusNoContent {
+		t.Fatalf("make a co-chair: %d", code)
+	}
+	if code := save(chair, "E012", "", "C01", StatusOpen); code != http.StatusNoContent || status("E012") != StatusPending {
+		t.Fatalf("a co-chair approved their own pending event: %d, %s", code, status("E012"))
+	}
+}
+
+// A co-chair moves a thing only under something else they run.
+func TestCoChairMovesOnlyUnderTheirOwn(t *testing.T) {
+	cache, mux := newServer(t)
+	const india = "deepa.natarajan@heliosschool.org"
+	move := func(who, id, parentID string) int {
+		act := cache.Model().Activity(id)
+		return call(t, mux, who, "POST", "/api/team/activity", map[string]any{
+			"id": id, "year": act.Year, "title": act.Title, "parent": parentID, "category": "", "status": act.Status, "directSignUp": act.DirectSignUp,
+		}).Code
+	}
+	if code := move(india, "E020", "E002"); code != http.StatusForbidden {
+		t.Fatalf("a co-chair moved their booth under an event they do not run: %d", code)
+	}
+	if code := move(india, "E020", ""); code != http.StatusForbidden {
+		t.Fatalf("a co-chair made their booth an event of its own: %d", code)
+	}
+	if code := move(chair, "E016", "E003"); code != http.StatusForbidden {
+		t.Fatalf("a co-chair moved a crew under an event they do not run: %d", code)
+	}
+	if code := move(chair, "E019", "E002"); code != http.StatusNoContent || cache.Model().Activity("E019").Parent != "E002" {
+		t.Fatalf("a co-chair could not move a booth between their own events: %d", code)
+	}
+	if code := move(admin, "E016", "E003"); code != http.StatusNoContent {
+		t.Fatalf("an admin could not move a crew: %d", code)
+	}
+}
+
 func TestCopyToNextYear(t *testing.T) {
 	cache, mux := newServer(t)
 	if rec := call(t, mux, chair, "POST", "/api/team/copy", map[string]string{"id": "E001"}); rec.Code != http.StatusForbidden {

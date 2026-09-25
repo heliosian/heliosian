@@ -1,4 +1,4 @@
-import {state, categoryTitles, linkCategoryTitles, tagLabelsOf} from './state.js';
+import {state, superOn, categoryTitles, linkCategoryTitles, tagLabelsOf} from './state.js';
 import {el, svg, categoryIcons, iconOf, toast} from './dom.js';
 import {load} from './app.js';
 import {openCropTool} from '/crop.js';
@@ -522,6 +522,9 @@ function renderCategoryList() {
 }
 
 export function openCategoryManager() {
+  if (!superOn()) {
+    return;
+  }
   setStatus('#categories-status', '');
   renderCategoryList();
   categoriesModal.hidden = false;

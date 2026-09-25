@@ -611,22 +611,34 @@ export function hostsRow(e, view, refresh) {
     // viewer's own picture, to step down - whoever added the event too. A
     // party's hosts and an HCA event's chairs step down on their own app.
     const own = h.email === self;
-    if (view.host && (own ? cohosts.has(self) || postedAndHosting(e) : cohosts.has(h.email))) {
+    // An admin, with Super Admin Mode on, steps down whoever added the
+    // event, as they could themselves.
+    const poster = !own && isAdmin() && h.email === view.poster;
+    if (view.host && (own ? cohosts.has(self) || postedAndHosting(e) : cohosts.has(h.email) || poster)) {
       const x = el('button', 'hosts-card-remove');
       x.type = 'button';
-      x.title = own ? 'Step down as host' : `Take ${h.name} off as a co-host`;
+      x.title = own ? 'Step down as host' : poster ? `Step ${h.name} down as host` : `Take ${h.name} off as a co-host`;
       x.textContent = '\u00d7';
       x.addEventListener('click', async ev => {
         ev.preventDefault();
         const lose = postedAndHosting(e) ? 'edit it or run its guest list' : 'run its guest list';
         const alone = !view.hosts.some(o => o.email !== self);
-        if (!confirm(own ? `Step down as host of ${e.title}? You won't be able to ${lose} any more${alone ? ', and it will have no host - an admin can still change it' : ''}.` : `Take ${h.name} off as a co-host?`)) {
+        const others = view.hosts.filter(o => o.email !== h.email).length;
+        const ask = own
+          ? `Step down as host of ${e.title}? You won't be able to ${lose} any more${alone ? ', and it will have no host - an admin can still change it' : ''}.`
+          : poster
+            ? `Step ${h.name} down as host of ${e.title}? They added it and stay named as the one who shared it, but can no longer edit it or run its guest list${others ? '' : ', and it will have no host'}.`
+            : `Take ${h.name} off as a co-host?`;
+        if (!confirm(ask)) {
           return;
         }
         try {
           if (own) {
             await post('POST', '/api/calendar/invites/step-down', {id: e.id});
             toast('You no longer host this event.');
+          } else if (poster) {
+            await post('POST', '/api/calendar/invites/step-down', {id: e.id, email: h.email});
+            toast(`${h.name} no longer hosts this event.`);
           } else {
             await post('PUT', '/api/calendar/invites/settings', {id: e.id, hosts: [...cohosts].filter(x => x !== h.email)});
           }
@@ -1790,7 +1802,10 @@ export function settingsForm(e, view, refresh, shut, part = 'invitation') {
 
 export async function openEditor(e, view, refresh, {tab = 'event'} = {}) {
   const {eventForm} = await import('./eventform.js');
-  const own = e.source === 'sheet';
+  // A hand-added event's details are its poster's while they host it, and
+  // an admin's; a co-host has the invitation's tabs alone, as the server
+  // has it.
+  const own = e.source === 'sheet' && (postedAndHosting(e) || isAdmin());
   // An event the school's calendars bring is an admin's to correct, over
   // the school's version, in the Overrides tab.
   const imported = (e.source === 'google' || e.source === 'pdf') && isAdmin();
@@ -1806,7 +1821,7 @@ export async function openEditor(e, view, refresh, {tab = 'event'} = {}) {
       }
     }});
   }
-  if (view && (view.host || own)) {
+  if (view && view.host) {
     if (view.linked) {
       panels.invitation = settingsForm(e, view, refresh, () => shut(), 'invitation');
     }
@@ -1844,6 +1859,21 @@ export async function openEditor(e, view, refresh, {tab = 'event'} = {}) {
     paint();
   } else {
     box.append(...Object.values(panels));
+  }
+  // A hand-added event's hosts delete it before anyone is sent the
+  // invitation, and cancel it after - here, whatever its guest list holds.
+  if (view && view.host && e.source === 'sheet' && !e.cancelled) {
+    const foot = el('div', 'editor-danger');
+    foot.append(view.sent
+      ? button('Cancel event', 'close', 'link-button danger', () => {
+        shut();
+        openCancel(e, view, refresh);
+      })
+      : button('Delete event', 'trash', 'link-button danger', () => deleteInvitation(e, view)));
+    box.append(foot);
+  }
+  if (!Object.keys(panels).length && !box.childElementCount) {
+    return;
   }
   shut = popup(own || imported ? 'Edit ' + e.title : 'Edit the invitation', box, {wide: true}).shut;
 }

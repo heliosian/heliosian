@@ -1,4 +1,4 @@
-import {isAdmin, isKid, whenParts, parseWhen, priceLine, money, googleCalendarLink, partyPath, myTickets, availabilityLabel} from '../state.js';
+import {isAdmin, canApprove, isKid, whenParts, parseWhen, priceLine, money, googleCalendarLink, partyPath, myTickets, availabilityLabel} from '../state.js';
 import {el, link, svg, button, avatar, thumb, paragraphs, copyText, toast} from '../dom.js';
 import {setTitle, partiesPath} from '../chrome.js';
 import {appOrigin} from '/toolbar.js';
@@ -300,8 +300,9 @@ function attendeeTile(p, a) {
     tile.append(el('div', 'attendee-mine', 'Your family'));
   }
   // The hosts read each face's answer to the party's invitation on
-  // Helios When, once the invites have gone out.
-  if (a.rsvp) {
+  // Helios When, once the invites have gone out; an admin reads them only
+  // with the hat on.
+  if (a.rsvp && p.canEdit) {
     tile.append(el('div', 'attendee-rsvp is-' + a.rsvp, rsvpWords[a.rsvp] || a.rsvp));
   }
   return tile;
@@ -448,16 +449,36 @@ function hostBand(p) {
   if (p.availability !== 'past') {
     actions.append(button('Add Free Ticket', 'ticket', 'button button-secondary', () => openFreeTicket(p)));
   }
-  if (isAdmin()) {
-    if (p.status === 'Pending') {
-      actions.append(button('Approve', 'check', 'button', () => setPartyStatus(p, 'Open')));
-    }
+  if (canApprove(p)) {
+    approvalButtons(actions, p);
+  } else if (isAdmin()) {
     if (p.status !== 'Hidden') {
       actions.append(button('Hide', 'eye', 'button button-secondary', () => setPartyStatus(p, 'Hidden')));
     } else {
       actions.append(button('Unhide', 'eye', 'button button-secondary', () => setPartyStatus(p, 'Open')));
     }
   }
+  band.append(actions);
+  return band;
+}
+
+// approvalButtons are Approve and Hide, the answer to a Pending party.
+function approvalButtons(actions, p) {
+  actions.append(
+    button('Approve', 'check', 'button', () => setPartyStatus(p, 'Open')),
+    button('Hide', 'eye', 'button button-secondary', () => setPartyStatus(p, 'Hidden')),
+  );
+}
+
+// approvalBand is what an admin with the hat off gets on someone else's
+// Pending party: the approval alone. Editing it still takes the hat.
+function approvalBand(p) {
+  const band = el('div', 'host-band');
+  const head = el('div', 'host-band-head');
+  head.append(svg('hourglass'), el('span', '', 'Waiting for approval'));
+  band.append(head);
+  const actions = el('div', 'host-actions');
+  approvalButtons(actions, p);
   band.append(actions);
   return band;
 }
@@ -797,6 +818,8 @@ export function partyPage(p) {
   }
   if (p.canEdit) {
     main.append(hostBand(p));
+  } else if (canApprove(p)) {
+    main.append(approvalBand(p));
   }
 
   for (const card of [inviteCard(p), phone.matches ? null : factsCard(p, editing, save), flyerCard(p, editing), helpCard(p)]) {

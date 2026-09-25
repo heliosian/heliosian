@@ -1438,9 +1438,11 @@ export function openParty(p) {
   paintPretty();
   const prettyField = field('Friendly address', pretty);
   prettyField.append(prettyHint);
+  // The friendly address is the hosts' to choose, as a co-chair's is on
+  // HCA-Team; a taken or malformed one is refused on Save.
   const basics = [
     field('Title', title, '', true), field('Subtitle', subtitle), field('Summary', summary, 'Shown on the party card.'),
-    field('Description', description), callout,
+    field('Description', description), callout, prettyField,
   ];
   const design = [image.wrap, flyer.wrap];
 
@@ -1490,8 +1492,8 @@ export function openParty(p) {
     {label: 'Tickets', icon: 'ticket', fields: tickets},
     {label: 'Hosts', icon: 'people', fields: hosts},
   ];
-  // Status, celebration, category and the friendly address are an admin's
-  // to set; the server keeps a host's as they are.
+  // Status, celebration and category are an admin's to set; the server
+  // keeps a host's as they are.
   let status = null;
   let celebrationPick = null;
   let category = null;
@@ -1503,7 +1505,6 @@ export function openParty(p) {
       field('Status', status, 'Open is listed for everyone; Pending waits for approval; Hidden is parked.'),
       field('Celebration', celebrationPick, 'Which year the party belongs to.'),
       field('Category', category, 'For the filter on the parties page.'),
-      prettyField,
     ]});
   }
   const intro = adding && !isAdmin() ? [el('p', 'form-lead', 'Thank you for hosting! Fill this in and the celebration committee will review it and open it for tickets.')] : [];
@@ -1516,7 +1517,7 @@ export function openParty(p) {
       noteEmoji: noteEmoji.value.trim(), noteTitle: noteTitle.value.trim(),
       hosts: hostsText.value, hostEmails: hostEmails.value(), category: category ? category.value : (p ? p.category || '' : ''), audience: audience.value, unit: unit.value,
       price: Number(price.value || 0), capacity: Number(capacity.value || 0), minimum: Number(minimum.value || 0),
-      start: start.value(), end: end.value(), location: place.value, address: address.value, image: image.value(), flyer: flyer.value(), prettyId: isAdmin() ? pretty.value : (p ? p.prettyId || '' : ''), status: status ? status.value : '',
+      start: start.value(), end: end.value(), location: place.value, address: address.value, image: image.value(), flyer: flyer.value(), prettyId: pretty.value, status: status ? status.value : '',
       ticketsOpen: ticketsOpen.input.checked, waitlist: waitlist.input.checked, adults: adults.input.checked,
       students: students.input.checked, dropOff: dropOff.input.checked, parentTicket: parentTicket.input.checked,
     }),

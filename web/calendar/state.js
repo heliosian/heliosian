@@ -76,12 +76,20 @@ const byDate = new Map();
 export function applyModel(model) {
   state.model = model;
   // The server sends an admin everyone's waiting and declined events; with
-  // the hat off the page keeps only the viewer's own, as anyone else sees.
+  // the hat off the page keeps only the viewer's own - shared or hosted -
+  // as anyone else sees.
   // allEvents holds the whole list so the hat can bring them back.
   model.allEvents = model.allEvents || model.events;
-  model.events = isAdmin() || !isSystemAdmin() ? model.allEvents : model.allEvents.filter(e => !(e.pending || e.declined) || e.addedBy === model.user.email);
+  model.events = isAdmin() || !isSystemAdmin() ? model.allEvents : model.allEvents.filter(e => !(e.pending || e.declined) || e.addedBy === model.user.email || e.hosted);
   byId.clear();
   byDate.clear();
+  // An event waiting for approval is an admin's alert: its page opens from
+  // the approvals badge with the hat off too, though the lists leave it out.
+  for (const e of model.allEvents) {
+    if (e.pending && !e.declined) {
+      byId.set(e.id, e);
+    }
+  }
   for (const e of model.events) {
     byId.set(e.id, e);
     // A friendly address an admin gave it finds it too.
@@ -120,7 +128,10 @@ export function postedAndHosting(e) {
 
 export function event(id) {
   if (byId.has(id)) {
-    return byId.get(id);
+    const e = byId.get(id);
+    // One the viewer may open only as an admin is not there for them
+    // with Super Admin Mode off.
+    return e.adminOnly && !isAdmin() ? null : e;
   }
   // An HCA event the school also lists is folded into the school's
   // listing, under the school's id: HCA-Team's link, by the event's own,

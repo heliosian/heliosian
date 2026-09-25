@@ -1,4 +1,4 @@
-import {state, me, isAdmin, pendingItems, selectedYear, listedIn, years, resolvePath, rootOf, eventCategories, descendants, activityPath, isSystemAdmin, setSuperEdit, family, myRows, isPrevious} from './state.js';
+import {state, me, isAdmin, pendingItems, selectedYear, listedIn, years, resolvePath, rootOf, eventCategories, descendants, activityPath, isSystemAdmin, setSuperEdit, family, myRows, isPrevious, revealed, runsAnything} from './state.js';
 import {el, svg, link, button} from './dom.js';
 import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, initSpoof, renderSuperToggle} from '/toolbar.js';
 import {openActivity} from './edit.js';
@@ -12,8 +12,10 @@ const primary = [
   {href: '/approvals', icon: 'join', label: 'Approval Needed', admin: true, count: () => pendingItems().length},
 ];
 
+// Approval Needed is an alert for whoever is on the admin list, so it shows
+// whatever the hat.
 function navItems() {
-  return primary.filter(item => !item.admin || isAdmin());
+  return primary.filter(item => !item.admin || isSystemAdmin());
 }
 
 function active(href) {
@@ -164,14 +166,15 @@ function countLabel(node) {
 // itself, then its committees grouped by the event's categories. Every group,
 // and every committee with things under it, starts closed - the counts say
 // what is inside - and stays as it was toggled while moving around the event.
-// Hidden and pending things appear only with Show Hidden Things on.
+// Hidden and pending things appear only with Show Hidden Things on, and only
+// to whoever may edit them.
 function eventTree(current) {
   const root = rootOf(current);
   const wrap = el('div', 'nav-event');
   const head = link(activityPath(root), 'nav-event-link' + (current === root ? ' is-active' : ''));
   head.append(svg('join'), el('span', '', root.title));
   wrap.append(head);
-  const shown = n => state.showHidden || (n.status !== 'Hidden' && n.status !== 'Pending');
+  const shown = revealed;
   const list = el('div', 'nav-sub nav-tree');
   const grouped = eventCategories(root).length > 0;
   const flip = key => {
@@ -330,9 +333,9 @@ function renderUser() {
   for (const line of document.querySelectorAll('.user-menu-email')) {
     line.textContent = user.email;
   }
-  // The pencil and Admin Tools go with being on the admin list; the rest of
-  // the admin rows come and go with the hat. The pencil puts the hat on or
-  // takes it off, and the page repaints as the other kind of user.
+  // The pencil and Admin Tools go with being on the admin list. The pencil
+  // puts the hat on or takes it off, and the page repaints as the other kind
+  // of user.
   for (const row of document.querySelectorAll('.user-menu-system')) {
     row.hidden = !isSystemAdmin();
   }
@@ -340,8 +343,10 @@ function renderUser() {
     setSuperEdit(on);
     document.dispatchEvent(new CustomEvent('hca:refresh'));
   }});
-  for (const admin of document.querySelectorAll('.user-menu-admin')) {
-    admin.hidden = !isAdmin();
+  // Show Hidden Things is for whoever has hidden things to see: the hat, or
+  // co-chairing something.
+  for (const row of document.querySelectorAll('.user-menu-hidden')) {
+    row.hidden = !isAdmin() && !runsAnything();
   }
   for (const box of document.querySelectorAll('.show-hidden-checkbox')) {
     box.checked = state.showHidden;

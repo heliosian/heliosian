@@ -16,7 +16,7 @@ The avatar is the hero photo the directory leads with for the viewer - their own
 
 ## Super Admin Mode
 
-Before the avatar - and before Spoof Mode's eye, where there is one - for whoever is on the app's admin list (site admins and the platform's super admins alike), a pencil in the brand teal: the switch in and out of Super Admin Mode, the same pencil under the same name in every app that has the mode (Who?, HCA-Team, Heliosian, Helios When, Helios Birthday, Helios Celebrate). A click flips it; while it is on the pencil is white on red and the avatar wears its ring. `renderSuperToggle` in `toolbar.js` draws it: each app calls it whenever it draws the account, with whether to offer it, whether the mode is on, and what a click does - Who? posts the choice to the server and reloads, the others keep it per browser and repaint.
+Before the avatar - and before Spoof Mode's eye, where there is one - for whoever is on the app's admin list (site admins and the platform's super admins alike), a pencil in the brand teal: the switch in and out of Super Admin Mode, the same pencil under the same name in every app that has the mode (Who?, HCA-Team, Heliosian, Helios When, Helios Birthday, Helios Celebrate, Helios Loop). A click flips it; while it is on the pencil is white on red and the avatar wears its ring. `renderSuperToggle` in `toolbar.js` draws it: each app calls it whenever it draws the account, with whether to offer it, whether the mode is on, and what a click does - Who? posts the choice to the server and reloads, the others keep it per browser and repaint.
 
 ## Spoof Mode
 

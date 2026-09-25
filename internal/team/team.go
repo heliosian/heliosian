@@ -429,9 +429,16 @@ func (a app) saveActivity(w http.ResponseWriter, r *http.Request) {
 	case adding && status == "":
 		status = StatusOpen
 	case !adding && !admin:
-		if current.Status == StatusPending {
+		// A co-chair opens or finishes a thing, or leaves its status be;
+		// hiding is an admin's. A pending thing stays pending unless whoever
+		// runs what it was suggested under opens or finishes it, which is
+		// approving it.
+		approver := current.Parent != "" && model.Runs(model.Activity(current.Parent), actor)
+		switch {
+		case status == current.Status:
+		case current.Status == StatusPending && !approver:
 			status = StatusPending
-		} else if status != StatusOpen && status != StatusDone {
+		case status != StatusOpen && status != StatusDone:
 			http.Error(w, "a co-chair may only mark this open or done", http.StatusBadRequest)
 			return
 		}
@@ -456,6 +463,12 @@ func (a app) saveActivity(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
+	}
+	// A co-chair moves a thing only under something else they run; making it
+	// stand on its own, or putting it under someone else's, is an admin's.
+	if current != nil && !admin && parent != current.Parent && (parent == "" || !model.Runs(model.Activity(parent), actor)) {
+		http.Error(w, "only an admin can move this there", http.StatusForbidden)
+		return
 	}
 	category := strings.TrimSpace(body.Category)
 	if category == UncategorizedID {

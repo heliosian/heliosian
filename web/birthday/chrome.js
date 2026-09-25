@@ -1,4 +1,4 @@
-import {state, me, isSystemAdmin, setSuperEdit, isUnassigned, commsOnly} from './state.js';
+import {state, me, isSystemAdmin, isAdmin, setSuperEdit, isUnassigned, commsOnly} from './state.js';
 import {el, svg, link} from './dom.js';
 import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, initUserMenu, initSpoof, renderSuperToggle} from '/toolbar.js';
 
@@ -26,21 +26,19 @@ function primary() {
   return state.model && state.model.staff.some(isUnassigned) ? [unassignedItem, ...primaryItems] : primaryItems;
 }
 
-const moreItems = [newslettersItem];
+// Charities is the team's: anyone on it adds and edits them, and only the
+// allow and remove controls inside wait for an admin's hat.
+const moreItems = [newslettersItem, {href: '/charities', icon: 'gift', label: 'Charities'}];
 
-// Charities and Skipped - the charity list, and who is missing a birthday
-// or opted out - are the admins' tabs; a charity's page still opens for
-// anyone from a donation.
-const adminItems = [
-  {href: '/charities', icon: 'gift', label: 'Charities'},
-  {href: '/skipped', icon: 'skipped', label: 'Skipped'},
-];
+// Skipped - who is missing a birthday or opted out - is an admin's tab, and
+// shows only with the hat on.
+const skippedItem = {href: '/skipped', icon: 'skipped', label: 'Skipped'};
 
 function more() {
   if (commsOnly()) {
     return [];
   }
-  return isSystemAdmin() ? [...moreItems, ...adminItems] : moreItems;
+  return isAdmin() ? [...moreItems, skippedItem] : moreItems;
 }
 
 function active(href) {

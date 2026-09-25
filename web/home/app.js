@@ -1,4 +1,4 @@
-import {state, applyModel, setSuperAdmin} from './state.js';
+import {state, applyModel, setSuperAdmin, superOn} from './state.js';
 import {renderCategories, renderNav} from './cards.js';
 import {renderMonth} from './month.js';
 import {initEditing, refreshCategoryManager} from './edit.js';
@@ -14,6 +14,11 @@ function renderChrome() {
   document.querySelector('.user-menu-email').textContent = user.email;
   for (const item of document.querySelectorAll('.user-menu-admin')) {
     item.hidden = !user.isAdmin;
+  }
+  // Edit Categories is an edit, so it waits for the pencil; Admin Tools
+  // above does not.
+  for (const item of document.querySelectorAll('.user-menu-super')) {
+    item.hidden = !superOn();
   }
   // The pencil repaints the links in or out of Super Admin Mode.
   renderSuperToggle({show: user.isAdmin, on: state.superAdmin, onToggle: on => {

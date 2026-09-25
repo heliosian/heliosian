@@ -1444,6 +1444,12 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .guests-cancel .link-button { font-size: 13px; }
 
+/* Edit's foot for a hand-added event's hosts: Delete before anyone is
+   sent the invitation, Cancel after. */
+.editor-danger { display: flex; justify-content: flex-end; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+
+.editor-danger .link-button { font-size: 13px; }
+
 .cancel-choices { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
 
 .cancel-choices .button { justify-content: center; }

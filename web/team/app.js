@@ -1,4 +1,4 @@
-import {state, applyModel, resolvePath, redirectTarget, activityPath, isFamily} from './state.js';
+import {state, applyModel, resolvePath, redirectTarget, activityPath, isFamily, isSystemAdmin} from './state.js';
 import {el} from './dom.js';
 import {initChrome, renderChrome, setTitle, clearSearch} from './chrome.js';
 import {initModal} from './edit.js';
@@ -60,6 +60,11 @@ function route() {
     case 'admin':
       return adminPage();
     case 'approvals':
+      // The queue is the admin list's, hat or not: waiting suggestions reach
+      // an admin like an alert would. For anyone else there is no such page.
+      if (!isSystemAdmin()) {
+        return notFound('That page');
+      }
       return approvalsPage();
     case 'activities':
     case 'v': {

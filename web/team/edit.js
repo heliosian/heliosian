@@ -1005,7 +1005,9 @@ function whenFields(act, parent) {
 export function openActivity(act, options) {
   const opts = options || {};
   const admin = isAdmin();
-  const suggesting = !act && !admin;
+  // Whoever runs the thing it goes under gets the full form: what they add
+  // is live at once, so there is nothing to suggest.
+  const suggesting = !act && !admin && !(opts.parent && opts.parent.canEdit);
   const yearOptions = allYears().map(y => ({label: y, value: y}));
   const known = new Set(yearOptions.map(y => y.value));
   for (const y of [years().current, years().next]) {
@@ -1027,10 +1029,13 @@ export function openActivity(act, options) {
   const currentParent = under ? activity(under) : null;
   const grandparent = currentParent ? parentOf(currentParent) : null;
   const level = currentParent ? (grandparent ? grandparent.children : roots) : roots;
+  // Without the admin hat a thing moves only under something the viewer runs,
+  // and standing on its own is an admin's to decide - the server refuses the
+  // rest. Where it sits now is always offered, so the select can show it.
   const mine = new Set(act ? [act.id, ...descendants(act).map(d => d.id)] : []);
-  const parents = [{label: 'Nothing - this stands on its own', value: ''}];
+  const parents = admin || !under ? [{label: 'Nothing - this stands on its own', value: ''}] : [];
   for (const n of level) {
-    if (!mine.has(n.id)) {
+    if (!mine.has(n.id) && (admin || n.canEdit || n.id === under)) {
       parents.push({label: n.title, value: n.id});
     }
   }
@@ -1047,8 +1052,10 @@ export function openActivity(act, options) {
   const underField = field('Parent Event', parentSelect, 'What this is part of, if anything');
   // The category select follows where the row sits: a root picks one of the
   // page's headings, a child picks one of its root event's own, or none. Someone
-  // proposing rather than running the event only sees categories that allow it.
-  const editor = admin || (root ? root.canEdit : false);
+  // proposing rather than running the event only sees categories that allow it;
+  // running what it goes under is running it, as the server reckons.
+  const runsHere = currentParent || root;
+  const editor = admin || Boolean(runsHere && runsHere.canEdit);
   // Uncategorized is only for editors: it is where things land without a
   // heading, not a heading people propose into.
   const headings = headingChoices(c => editor || canAdd(c)).filter(c => editor || c.value !== UNCATEGORIZED);
@@ -1202,10 +1209,19 @@ export function openActivity(act, options) {
     slot.append(moveLink);
     fields.push(slot, underField);
   }
+  // Without the hat, status is open or done: a hidden thing may stay hidden,
+  // and a pending one is approved - opened or finished - only by whoever runs
+  // what it was suggested under; to anyone else it stays pending, unasked.
   let statusSelect = null;
   if (admin && act) {
     statusSelect = status;
-  } else if (act && act.status !== 'Pending') {
+  } else if (act && act.status === 'Pending') {
+    if (currentParent && currentParent.canEdit) {
+      statusSelect = select(['Pending', 'Open', 'Done'], 'Pending');
+    }
+  } else if (act && act.status === 'Hidden') {
+    statusSelect = select(['Hidden', 'Open', 'Done'], 'Hidden');
+  } else if (act) {
     statusSelect = select(['Open', 'Done'], act.status === 'Done' ? 'Done' : 'Open');
   }
   // Status lives on the Sign-ups tab as a settings row; the short Suggest form

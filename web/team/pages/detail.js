@@ -1,6 +1,7 @@
-import {state, me, family, isAdmin, years, allYears, descendants, parentOf, rootOf, category, eventCategories, longDate, parseWhen, coChairs, mySignUp, canJoin, isFull, matches, activityPath, listedIn, sortByStart, shiftedEnd, headingChoices, shownVolunteers, listHidden, listRevealed, canAdd, addLabel, ADDING} from '../state.js';
+import {state, me, family, isAdmin, isSystemAdmin, years, allYears, descendants, parentOf, rootOf, category, eventCategories, longDate, parseWhen, coChairs, mySignUp, canJoin, isFull, matches, activityPath, listedIn, sortByStart, shiftedEnd, headingChoices, shownVolunteers, listHidden, listRevealed, canAdd, addLabel, ADDING} from '../state.js';
 import {el, link, svg, thumb, avatar, badge, button, searchBox, copyText, whenEditor, toast} from '../dom.js';
 import {setTitle} from '../chrome.js';
+import {approvalButtons} from './approvals.js';
 import {dateCard, googleCalendarLink} from '/datecard.js';
 import {appOrigin} from '/toolbar.js';
 import {childRow, categoryClass, completeBadge} from '../cards.js';
@@ -378,8 +379,9 @@ function personTile(owner, v, editing, star, chair, option) {
     tile.append(el('div', 'side-chair-role is-option', 'Chair opt'));
   }
   // Whoever runs the event reads their RSVP to its invitation on Helios
-  // When, once the invites are out.
-  if (v.rsvp) {
+  // When, once the invites are out. The server sends it to a system admin
+  // whatever the hat; the page shows it only to whoever may edit the thing.
+  if (v.rsvp && owner.canEdit) {
     const words = {yes: 'RSVP: Yes', maybe: 'RSVP: Maybe', no: 'RSVP: No', none: 'No RSVP yet'};
     tile.append(el('div', 'side-chair-rsvp is-' + v.rsvp, words[v.rsvp] || ''));
   }
@@ -388,10 +390,11 @@ function personTile(owner, v, editing, star, chair, option) {
   // and the note.
   const tip = el('div', 'tile-tip');
   tip.setAttribute('role', 'tooltip');
+  const by = owner.canEdit ? v.addedByName : '';
   if (v.added) {
-    tip.append(el('div', '', v.addedByName ? `Signed up by ${v.addedByName} on ${longDate(v.added)}` : `Signed up ${longDate(v.added)}`));
-  } else if (v.addedByName) {
-    tip.append(el('div', '', `Signed up by ${v.addedByName}`));
+    tip.append(el('div', '', by ? `Signed up by ${by} on ${longDate(v.added)}` : `Signed up ${longDate(v.added)}`));
+  } else if (by) {
+    tip.append(el('div', '', `Signed up by ${by}`));
   }
   if (v.note) {
     tip.append(el('div', 'tile-tip-note', `“${v.note}”`));
@@ -1034,8 +1037,11 @@ function childrenSection(node, editing) {
   const actions = el('div', 'row-actions');
   let query = '';
   const list = el('div');
+  // Hidden and pending rows join the list, muted, for whoever runs the thing
+  // while editing or with Show Hidden Things on - and a pending one always,
+  // since approving it is theirs to do (its page's status control).
   const unlisted = r => r.status === 'Hidden' || r.status === 'Pending';
-  const roles = node.children.filter(r => !unlisted(r) || (node.canEdit && (editing || state.showHidden)));
+  const roles = node.children.filter(r => !unlisted(r) || (node.canEdit && (editing || state.showHidden || r.status === 'Pending')));
   // Nothing under it yet, and no categories to lay out: the whole section is
   // one button for whoever runs it, and nothing at all for anyone else.
   if (!roles.length && (node.parent || !eventCategories(root).length)) {
@@ -1300,10 +1306,21 @@ export function activityPage(node) {
   if (editing) {
     // Status sits right under the pencil that revealed it: a co-chair may only
     // open or finish a thing; an admin can also park it as pending or hidden.
-    const statuses = isAdmin() || parent ? ['Pending', 'Open', 'Done', 'Hidden'] : ['Open', 'Done'];
-    const status = el('label', 'hero-status');
-    status.append(el('span', '', 'Status'), statusSelect(node.status, statuses, value => save({status: value})));
-    hero.append(status);
+    // A pending thing is approved - opened or finished - by an admin or by
+    // whoever runs what it was suggested under; to anyone else it stays
+    // pending, so there is nothing to pick.
+    // One an admin hid stays hidden until it is opened.
+    let statuses = node.status === 'Hidden' ? ['Hidden', 'Open', 'Done'] : ['Open', 'Done'];
+    if (isAdmin()) {
+      statuses = ['Pending', 'Open', 'Done', 'Hidden'];
+    } else if (node.status === 'Pending') {
+      statuses = parent && parent.canEdit ? ['Pending', 'Open', 'Done'] : [];
+    }
+    if (statuses.length) {
+      const status = el('label', 'hero-status');
+      status.append(el('span', '', 'Status'), statusSelect(node.status, statuses, value => save({status: value})));
+      hero.append(status);
+    }
     hero.append(heroImageBar(node, save));
   }
   page.append(hero);
@@ -1325,6 +1342,11 @@ export function activityPage(node) {
   }
   if (node.status !== 'Open') {
     marks.append(badge(node.status === 'Pending' ? 'Needs approval' : node.status, node.status.toLowerCase()));
+    // A suggestion reaches the admin list hat or not, so its page answers it
+    // as the Approval Needed page does - and that alone, without the hat.
+    if (node.status === 'Pending' && isSystemAdmin() && !editing) {
+      marks.append(...approvalButtons(node));
+    }
   } else if (isFull(node)) {
     marks.append(completeBadge());
   }

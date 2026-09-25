@@ -12,8 +12,10 @@ const primary = [
   {href: '/approvals', icon: 'hourglass', label: 'Approval Needed', admin: true, count: () => pendingParties().length},
 ];
 
+// Approval Needed is the one admin item that stays with the hat off: what
+// waits on the admin list reaches it either way.
 function navItems() {
-  return primary.filter(item => !item.admin || isAdmin());
+  return primary.filter(item => !item.admin || isSystemAdmin());
 }
 
 function active(href) {

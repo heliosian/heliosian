@@ -282,3 +282,59 @@ func TestAppOrderIsAKey(t *testing.T) {
 		t.Fatalf("apps = %v, want %v", got, order)
 	}
 }
+
+// TestOnlyAdminsGetTheRules holds that the model tells nobody but an admin
+// who a section or link is kept to.
+func TestOnlyAdminsGetTheRules(t *testing.T) {
+	c, _ := sampleCache(t)
+	c.directory = directoryOf(t)
+	a := app{
+		cache: c, directory: c.directory,
+		heroPhoto: func(string) string { return "" },
+		alerts:    func(string) (int, bool) { return 0, false },
+		upcoming:  func(string, string) Upcoming { return Upcoming{} },
+		month:     func(string, string, string) Month { return Month{} },
+	}
+	modelOf := func(email string) (view struct {
+		Categories []Category `json:"categories"`
+		User       user       `json:"user"`
+	}) {
+		rec := httptest.NewRecorder()
+		auth.Fixed(email, http.HandlerFunc(a.model)).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/apps/model", nil))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("model for %s: %d %s", email, rec.Code, rec.Body)
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &view); err != nil {
+			t.Fatal(err)
+		}
+		return view
+	}
+	rules := func(categories []Category) (sections, links int) {
+		for _, cat := range categories {
+			sections += len(cat.Rules)
+			for _, l := range cat.Links {
+				links += len(l.Rules)
+			}
+		}
+		return
+	}
+	staff := modelOf("ruth.amari@heliosschool.org")
+	if staff.User.IsAdmin {
+		t.Fatal("ruth is an admin in the sample data")
+	}
+	titles := []string{}
+	for _, cat := range staff.Categories {
+		for _, l := range cat.Links {
+			titles = append(titles, l.Title)
+		}
+	}
+	if !slices.Contains(titles, "Staff Room") {
+		t.Errorf("ruth's links %v leave out the Staff Room kept to staff", titles)
+	}
+	if sections, links := rules(staff.Categories); sections != 0 || links != 0 {
+		t.Errorf("a non-admin's model has %d section and %d link rules", sections, links)
+	}
+	if sections, links := rules(modelOf(admin).Categories); sections == 0 || links == 0 {
+		t.Errorf("an admin's model has %d section and %d link rules", sections, links)
+	}
+}

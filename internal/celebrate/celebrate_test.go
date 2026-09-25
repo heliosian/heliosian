@@ -830,8 +830,12 @@ func TestFriendlyAddresses(t *testing.T) {
 		}
 	}
 	body := map[string]any{"id": "P003", "title": "K-Pop for a Cause!", "price": 50, "capacity": 20, "adults": true, "students": true, "ticketsOpen": true, "waitlist": true, "prettyId": "Fondue", "hostEmails": []string{"deepa.natarajan@heliosschool.org"}}
-	if rec := call(t, mux, "deepa.natarajan@heliosschool.org", "POST", "/api/celebrate/party", body); rec.Code != http.StatusBadRequest {
+	if rec := call(t, mux, "deepa.natarajan@heliosschool.org", "POST", "/api/celebrate/party", body); rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "is already the address of") {
 		t.Fatalf("took another party's address: %d %s", rec.Code, rec.Body)
+	}
+	body["prettyId"] = "k pop!"
+	if rec := call(t, mux, "deepa.natarajan@heliosschool.org", "POST", "/api/celebrate/party", body); rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "friendly address") {
+		t.Fatalf("took a malformed address: %d %s", rec.Code, rec.Body)
 	}
 	body["prettyId"] = "k-pop"
 	if rec := call(t, mux, "deepa.natarajan@heliosschool.org", "POST", "/api/celebrate/party", body); rec.Code != http.StatusOK {

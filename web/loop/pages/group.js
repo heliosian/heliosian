@@ -852,7 +852,9 @@ export function groupPage(g) {
     grid.replaceChildren();
     const shown = g.members.filter(m => !q || m.name.toLowerCase().includes(q) || m.email.toLowerCase().includes(q) || (m.context || '').toLowerCase().includes(q));
     for (const m of shown) {
-      grid.append(memberCard(m, g.rules));
+      // Why each is on it is the group's managers' - and an admin's with
+      // the hat on - to read.
+      grid.append(memberCard(canEdit ? m : {...m, reasons: []}, g.rules));
     }
     empty.textContent = g.members.length ? 'Nobody matches that.' : 'Nobody matches the rules yet.';
     empty.hidden = shown.length > 0;

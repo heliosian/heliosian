@@ -291,7 +291,12 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 		if !sectionMine && !admin {
 			continue
 		}
-		shown := Category{Title: category.Title, Emoji: category.Emoji, Style: category.Style, Max: category.Max, Links: []Link{}, Virtual: category.Virtual, Rules: category.Rules}
+		// Who a section or link is kept to is the admins' business: everyone
+		// else gets what reaches them without the rules that chose it.
+		shown := Category{Title: category.Title, Emoji: category.Emoji, Style: category.Style, Max: category.Max, Links: []Link{}, Virtual: category.Virtual, Rules: []filter.Rule{}}
+		if admin {
+			shown.Rules = category.Rules
+		}
 		if !sectionMine {
 			no := false
 			shown.ForMe = &no
@@ -302,6 +307,9 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 				if !mine {
 					no := false
 					link.ForMe = &no
+				}
+				if !admin {
+					link.Rules = []filter.Rule{}
 				}
 				shown.Links = append(shown.Links, link)
 			}

@@ -733,8 +733,14 @@ func (a app) oneEvent(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	// AdminOnly says the viewer may open it only as an admin - someone
+	// else's invite-only or declined event - so the page shows it with
+	// Super Admin Mode on, and is not found to them otherwise.
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(e)
+	json.NewEncoder(w).Encode(struct {
+		*Event
+		AdminOnly bool `json:"adminOnly,omitempty"`
+	}{e, admin && a.eventFor(actor, false, e.ID) == nil})
 }
 
 // tellAdmins mails every calendar admin that someone shared an event: its

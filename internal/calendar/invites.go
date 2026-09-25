@@ -343,13 +343,12 @@ func (a app) hostsOf(e *Event) []string {
 	return out
 }
 
-// isHost says a person runs an event's guest list: one of its hosts - a
-// calendar admin is not one, the list being the hosts' own business, and
-// reads the page as anyone else invited would - but for an event the
-// school's calendars bring, which nobody else hosts: its admins are its
-// hosts.
+// isHost says a person runs an event's guest list: one of its hosts, or a
+// calendar admin, who may do whatever a host may on any event without
+// being listed as one - the page offers it with Super Admin Mode on
+// (InviteView.AdminHost).
 func (a app) isHost(email string, admin bool, e *Event) bool {
-	return slices.Contains(a.hostsOf(e), email) || (admin && e.imported())
+	return slices.Contains(a.hostsOf(e), email) || (admin && (e.Source == SourceSheet || e.linked() || e.imported()))
 }
 
 // party is the party behind a linked event, or nil for any other event.
@@ -600,6 +599,9 @@ type InviteView struct {
 	// AdminHost says the viewer hosts only as an admin, of an event the
 	// school's calendars bring: the page offers it with Super Admin Mode on.
 	AdminHost bool `json:"adminHost,omitempty"`
+	// Poster is whoever added a hand-added event while they still host it,
+	// by the address Hosts lists them under, so an admin can step them down.
+	Poster string `json:"poster,omitempty"`
 	// MayInvite says the viewer may invite people one at a time - a host,
 	// anyone on a public event, whoever was invited to any other.
 	MayInvite bool `json:"mayInvite,omitempty"`
@@ -760,7 +762,11 @@ func (a app) invitesView(w http.ResponseWriter, r *http.Request) {
 	model := a.cache.Model()
 	inv := model.Invitations[e.ID]
 	adminHost := host && !slices.Contains(a.hostsOf(e), viewer)
-	view := InviteView{Host: host, AdminHost: adminHost, MayInvite: host || e.Sharing == SharingPublic || a.cache.Model().Invited(viewer, e.ID), Party: e.Source == SourceCelebrate, Linked: e.linked(), Guests: true, Hosts: []Person{}, Mine: []GuestRow{}}
+	poster := ""
+	if e.Source == SourceSheet && !e.PosterLeft {
+		poster = a.directory.Resolve(normalizeEmail(e.AddedBy))
+	}
+	view := InviteView{Host: host, AdminHost: adminHost, Poster: poster, MayInvite: host || e.Sharing == SharingPublic || a.cache.Model().Invited(viewer, e.ID), Party: e.Source == SourceCelebrate, Linked: e.linked(), Guests: true, Hosts: []Person{}, Mine: []GuestRow{}}
 	if inv != nil && inv.Flyer != "" {
 		view.Flyer = flyerPath(e.ID)
 	}
@@ -1120,6 +1126,9 @@ func (a app) inviteSettings(w http.ResponseWriter, r *http.Request) {
 func (a app) stepDown(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		ID string `json:"id"`
+		// Email is whom a calendar admin steps down - whoever added the
+		// event, or a co-host; blank is the person asking.
+		Email string `json:"email"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -1128,11 +1137,19 @@ func (a app) stepDown(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	who := actor
+	if email := a.directory.Resolve(normalizeEmail(body.Email)); email != "" && email != actor {
+		if _, admin := a.who(r); !admin {
+			http.Error(w, "only a calendar admin can step someone else down", http.StatusForbidden)
+			return
+		}
+		who = email
+	}
 	inv := a.cache.Model().Invitations[e.ID]
-	cohost := inv != nil && slices.Contains(inv.Hosts, actor)
-	poster := e.Source == SourceSheet && !e.PosterLeft && a.directory.Resolve(normalizeEmail(e.AddedBy)) == actor
+	cohost := inv != nil && slices.Contains(inv.Hosts, who)
+	poster := e.Source == SourceSheet && !e.PosterLeft && a.directory.Resolve(normalizeEmail(e.AddedBy)) == who
 	if !cohost && !poster {
-		http.Error(w, "you host this event on the app that runs it - step down there", http.StatusBadRequest)
+		http.Error(w, "that person hosts this event on the app that runs it, or not at all - step down there", http.StatusBadRequest)
 		return
 	}
 	cells := map[string]string{}
@@ -1141,10 +1158,10 @@ func (a app) stepDown(w http.ResponseWriter, r *http.Request) {
 	}
 	if inv != nil {
 		if cohost {
-			cells["Hosts"] = JoinList(slices.DeleteFunc(slices.Clone(inv.Hosts), func(h string) bool { return h == actor }))
+			cells["Hosts"] = JoinList(slices.DeleteFunc(slices.Clone(inv.Hosts), func(h string) bool { return h == who }))
 		}
-		if slices.Contains(inv.Notify, actor) {
-			cells["Notify"] = strings.Join(slices.DeleteFunc(slices.Clone(inv.Notify), func(h string) bool { return h == actor }), ", ")
+		if slices.Contains(inv.Notify, who) {
+			cells["Notify"] = strings.Join(slices.DeleteFunc(slices.Clone(inv.Notify), func(h string) bool { return h == who }), ", ")
 		}
 	}
 	tables, first := a.ensured(a.cache.Tables(), e.ID, actor)
@@ -1156,7 +1173,7 @@ func (a app) stepDown(w http.ResponseWriter, r *http.Request) {
 	}) {
 		return
 	}
-	slog.InfoContext(r.Context(), "calendar: host stepped down", "actor", actor, "event", e.ID, "poster", poster)
+	slog.InfoContext(r.Context(), "calendar: host stepped down", "actor", actor, "who", who, "event", e.ID, "poster", poster)
 	w.WriteHeader(http.StatusNoContent)
 }
 

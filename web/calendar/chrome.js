@@ -688,8 +688,15 @@ function closeMenus() {
 
 // The amber badge in the top bar counts the events waiting for an admin's
 // approval, for the admins alone, and opens Admin Tools' Events list.
+// Approvals are an admin's alert, like the directory's badges: they reach
+// everyone on the admin list whether Super Admin Mode is on or off, drawn
+// from every event the server sent, not only those the hat leaves listed.
+function waitingEvents() {
+  return isSystemAdmin() ? (state.model.allEvents || state.model.events).filter(e => e.pending) : [];
+}
+
 function renderApprovals() {
-  const waiting = isAdmin() ? state.model.events.filter(e => e.pending).length : 0;
+  const waiting = waitingEvents().length;
   for (const badge of document.querySelectorAll('.approve-alert')) {
     badge.hidden = !waiting;
     // A label and not a title: the card under it says the same, and a
@@ -706,7 +713,7 @@ function renderApprovals() {
       const card = el('div', 'alert-card approve-card');
       card.append(made.querySelector('.alert-card-disc'), made.querySelector('.alert-card-words'));
       const chips = el('div', 'approve-chips');
-      for (const e of state.model.events.filter(e => e.pending).sort((a, b) => a.start.localeCompare(b.start))) {
+      for (const e of waitingEvents().sort((a, b) => a.start.localeCompare(b.start))) {
         const chip = link(eventPath(e), 'approve-chip');
         const who = (state.model.names || {})[e.addedBy] || e.addedBy;
         chip.append(el('span', 'approve-chip-title', e.title), el('span', 'approve-chip-note', `${dayLabel(e.start.slice(0, 10))} \u00b7 ${who}`));

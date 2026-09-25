@@ -42,10 +42,19 @@ export function isSystemAdmin() {
 
 const byId = new Map();
 
+// applyModel keeps the server's parties as allParties and lists in parties
+// what the viewer sees with the hat as it is: the server sends an admin
+// every party, but with the hat off one that is Pending or Hidden shows
+// only to its hosts, as it would to any parent - off the lists and counts.
+// Approvals are the exception: a Pending party waits on whoever is on the
+// admin list, so it is still found by its address, hat or no hat. A Hidden
+// one is not.
 export function applyModel(model) {
   state.model = model;
+  model.allParties = model.allParties || model.parties;
+  model.parties = model.allParties.filter(p => p.status === 'Open' || p.hosting || isAdmin());
   byId.clear();
-  for (const p of model.parties) {
+  for (const p of findable()) {
     byId.set(p.id, p);
     // The server's canEdit counts the admin hat; here it counts only when
     // the hat is on. A host edits their own party either way.
@@ -98,7 +107,7 @@ function walkPath(path) {
   }
   if (segs[0] === 'p') {
     const want = segs[1].toLowerCase();
-    return state.model.parties.find(p => p.prettyId === want) || null;
+    return findable().find(p => p.prettyId === want) || null;
   }
   if (segs[0] === 'parties') {
     return party(segs[1]);
@@ -208,8 +217,27 @@ export function isHosting(p) {
   return Boolean(p.hosting);
 }
 
+// findable is what the viewer can reach by address: the listed parties,
+// and for anyone on the admin list every Pending one too.
+function findable() {
+  const model = state.model;
+  if (!isSystemAdmin() || isAdmin()) {
+    return model.parties;
+  }
+  return model.parties.concat(model.allParties.filter(p => p.status === 'Pending' && !p.hosting));
+}
+
+// pendingParties is what waits for approval: every Pending party for anyone
+// on the admin list, hat or no hat, and otherwise the viewer's own.
 export function pendingParties() {
-  return state.model.parties.filter(p => p.status === 'Pending');
+  const list = isSystemAdmin() ? state.model.allParties : state.model.parties;
+  return list.filter(p => p.status === 'Pending');
+}
+
+// canApprove says the viewer can approve or turn down this party: anyone on
+// the admin list, hat or no hat, while it is Pending.
+export function canApprove(p) {
+  return isSystemAdmin() && p.status === 'Pending';
 }
 
 export function hostedParties() {

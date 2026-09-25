@@ -134,7 +134,7 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 		// Both computed from the effective identity, so a spoofed view shows exactly
 		// what that person sees — a regular parent's simulated view never carries the
 		// real admin's super-edit powers along with it.
-		SuperEdit: a.cache.IsAdmin(effective) && a.cache.SuperEditEnabled(effective),
+		SuperEdit: superEdit(a.cache, r, effective),
 	}
 	if err := json.NewEncoder(w).Encode(view); err != nil {
 		slog.ErrorContext(r.Context(), "encode model", "error", err)
