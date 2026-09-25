@@ -142,6 +142,20 @@ export function eventPage(e) {
   // One Edit for the event and its invitation, in tabs; the invitation's
   // tab joins once the guest list is fetched (fillInvites), which also
   // gives a linked event's host their Edit.
+  // An event the school's calendars bring is an admin's to correct, over
+  // the school's version, in the Overrides tab.
+  if ((e.source === 'google' || e.source === 'pdf') && isAdmin()) {
+    tools.append(button('Edit', 'pencil', 'button button-secondary button-small detail-edit', async () => {
+      const {eventForm} = await import('../eventform.js');
+      let shut = null;
+      const form = eventForm({edit: e, override: true, onDone: async () => {
+        shut();
+        const {load} = await import('../app.js');
+        await load();
+      }});
+      shut = popup('Edit ' + e.title, form, {wide: true}).shut;
+    }));
+  }
   if (e.source === 'sheet' && (isAdmin() || postedAndHosting(e))) {
     tools.append(button('Edit', 'pencil', 'button button-secondary button-small detail-edit', async () => {
       const {openEditor} = await import('../invites.js');

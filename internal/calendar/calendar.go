@@ -679,6 +679,13 @@ func (t *Tables) WithOverride(id string, cells map[string]string) *Tables {
 	return &out
 }
 
+// WithoutOverride is the tables with no Overrides row for an event.
+func (t *Tables) WithoutOverride(id string) *Tables {
+	out := *t
+	out.Overrides = slices.DeleteFunc(cloneRows(t.Overrides), func(row map[string]string) bool { return row["Event ID"] == id })
+	return &out
+}
+
 // WithEvents is the tables with rows added to the Events tab.
 func (t *Tables) WithEvents(rows []map[string]string) *Tables {
 	out := *t

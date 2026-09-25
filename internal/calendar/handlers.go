@@ -114,6 +114,7 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	mux.HandleFunc("DELETE /open/ext/{token}/guest", a.extRemoveGuest)
 	mux.HandleFunc("POST /api/calendar/settings", a.saveSetting)
 	mux.HandleFunc("POST /api/calendar/keywords", a.admin(a.setKeywords))
+	mux.HandleFunc("PUT /api/calendar/overrides", a.admin(a.setOverride))
 	mux.HandleFunc("POST /api/calendar/events", a.addEvents)
 	mux.HandleFunc("PUT /api/calendar/events", a.editEvent)
 	mux.HandleFunc("GET /api/calendar/event", a.oneEvent)

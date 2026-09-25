@@ -19,7 +19,12 @@ function randomID() {
 // public event goes straight onto the calendar; anyone else's is shared,
 // and waits for an admin's approval. Filled from an event to clone when
 // there is one, its dates moved on by the weeks asked.
-export function eventForm({from = null, shift = 0, edit = null, onDone}) {
+//
+// With override, the form is an admin's correction of an event the school's
+// calendars bring, saved to the Overrides tab over the school's version:
+// no sharing, address or source, a Note saying why, and a save that the
+// server sets against the school's own values, keeping only what differs.
+export function eventForm({from = null, shift = 0, edit = null, override = false, onDone}) {
   const admin = me().isAdmin;
   // Editing fills from the event itself, dates as they are.
   if (edit) {
@@ -27,7 +32,7 @@ export function eventForm({from = null, shift = 0, edit = null, onDone}) {
     shift = 0;
   }
   const form = el('form', 'admin-form');
-  form.append(el('p', 'hint', edit ? 'Change what you need to; the event keeps its place on the calendar.' : 'Shared under your name. You will see who answers it.'));
+  form.append(el('p', 'hint', override ? 'This event comes from the school\u2019s calendar. What you change here is kept over the school\u2019s version through every sync; anything put back the way the school has it follows the school again.' : edit ? 'Change what you need to; the event keeps its place on the calendar.' : 'Shared under your name. You will see who answers it.'));
   // Two tabs: the event itself, and who it is for - the second only for
   // a public event. Every field stays in the form - only the panels hide
   // - so nothing typed is lost in switching.
@@ -79,7 +84,7 @@ export function eventForm({from = null, shift = 0, edit = null, onDone}) {
   // Who can find it: the people the host invites from its page; them and
   // anyone sent its link; or everyone, on the calendar (an admin approves
   // it first, an admin's own too). Invite only to start.
-  let sharing = edit && from && from.source === 'sheet' ? from.sharing : 'Invite Only';
+  let sharing = override ? 'Public' : edit && from && from.source === 'sheet' ? from.sharing : 'Invite Only';
   const whoField = el('div', 'field');
   whoField.append(el('span', '', 'Who can find it'));
   const choices = el('div', 'event-visibility');
@@ -102,7 +107,9 @@ export function eventForm({from = null, shift = 0, edit = null, onDone}) {
     choice('Public', 'On the calendar for everyone at Helios to discover, filed under classrooms and categories. Public events require admin approval, but you can share the link right away directly.', 'Public'),
   );
   whoField.append(choices);
-  eventPanel.append(whoField);
+  if (!override) {
+    eventPanel.append(whoField);
+  }
 
   // The event's web address: a random one to start, or one the host
   // types - letters, digits and dashes - for a link worth sending. Set
@@ -195,6 +202,11 @@ export function eventForm({from = null, shift = 0, edit = null, onDone}) {
   description.rows = 4;
   description.value = from ? from.description || '' : '';
   eventPanel.append(field('Description', description));
+  // A correction's reason, for the admins who read the page after.
+  const note = text(override ? (state.model.provenance || {})[edit.id]?.note || '' : '', 'Why it was corrected');
+  if (override) {
+    eventPanel.append(field('Note', note, 'Shown to the admins on the event\u2019s page, beside what was corrected.'));
+  }
 
   // The picture across the top of the event's page is set from the
   // banner on the page itself - Add an image there - never here; the
@@ -285,7 +297,7 @@ export function eventForm({from = null, shift = 0, edit = null, onDone}) {
     // One tab is no tab bar.
     tabs.hidden = invite;
     nextRow.hidden = invite;
-    sourceField.hidden = invite;
+    sourceField.hidden = invite || override;
     if (invite) {
       showPanel(eventPanel);
       eventPanel.append(actions);
@@ -318,7 +330,7 @@ export function eventForm({from = null, shift = 0, edit = null, onDone}) {
   form.addEventListener('submit', async e => {
     e.preventDefault();
     const invite = sharing !== 'Public';
-    if (!invite && !rooms.size) {
+    if (!invite && !rooms.size && !override) {
       status.textContent = 'Pick at least one classroom.';
       status.classList.add('error');
       return;
@@ -341,7 +353,10 @@ export function eventForm({from = null, shift = 0, edit = null, onDone}) {
     } else if (slug && slug.value.trim()) {
       body.id = slug.value.trim();
     }
-    const res = await fetch('/api/calendar/events', {method: edit ? 'PUT' : 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+    if (override) {
+      body.note = note.value.trim();
+    }
+    const res = await fetch(override ? '/api/calendar/overrides' : '/api/calendar/events', {method: edit ? 'PUT' : 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
     submit.disabled = false;
     if (!res.ok) {
       status.textContent = await res.text();
@@ -349,6 +364,11 @@ export function eventForm({from = null, shift = 0, edit = null, onDone}) {
       return;
     }
     status.textContent = '';
+    if (override) {
+      toast('Saved over the school\u2019s version');
+      await onDone([edit.id], []);
+      return;
+    }
     if (edit) {
       toast('Saved');
       // What changed of the details an invitation carries, for whoever

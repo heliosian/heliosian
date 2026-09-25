@@ -740,3 +740,56 @@ func TestResponsesForAdmins(t *testing.T) {
 		t.Errorf("a parent sees responses: %v", parent.Responses)
 	}
 }
+
+// An admin corrects an imported event from its page: only what differs from
+// the school's own version is written, a field put back follows the school
+// again, and a row left empty goes.
+func TestOverrideFromThePage(t *testing.T) {
+	handler, cache := testApp(t)
+	admin := as("dana.hawkins@heliosschool.org", handler)
+	e := cache.Model().Event("a2@sample")
+	builtIn := map[string]bool{}
+	for _, tag := range cache.Model().Tags {
+		builtIn[tag.Name] = tag.BuiltIn
+	}
+	tags := slices.DeleteFunc(slices.Clone(e.Tags), func(t string) bool { return builtIn[t] })
+	body := func(title, start, end, location, note string) string {
+		raw, _ := json.Marshal(map[string]any{"id": "a2@sample", "title": title, "start": start, "end": end, "location": location, "description": e.Description, "tags": tags, "keywords": e.Keywords, "note": note})
+		return string(raw)
+	}
+	row := func() map[string]string {
+		for _, r := range cache.Tables().Overrides {
+			if r["Event ID"] == "a2@sample" {
+				return r
+			}
+		}
+		return nil
+	}
+	if rec := call(t, admin, "PUT", "/api/calendar/overrides", body("Back to School Night", e.Start, e.End, e.Location, "Shorter")); rec.Code != 204 {
+		t.Fatalf("override: %d %s", rec.Code, rec.Body)
+	}
+	if r := row(); r == nil || r["Title"] != "Back to School Night" || r["Start"] != "" || r["Location"] != "" || r["Tags"] != "" || r["Keywords"] != "" || r["Note"] != "Shorter" {
+		t.Errorf("row after the title: %v", r)
+	}
+	if got := cache.Model().Event("a2@sample"); got.Title != "Back to School Night" || strings.Join(cache.Model().Provenance["a2@sample"].Corrected, ",") != "Title" {
+		t.Errorf("event after: %q corrected %v", got.Title, cache.Model().Provenance["a2@sample"].Corrected)
+	}
+	if rec := call(t, admin, "PUT", "/api/calendar/overrides", body("LS Back to School Night", "2026-08-27 18:30", "2026-08-27 20:00", "", "")); rec.Code != 204 {
+		t.Fatalf("second override: %d %s", rec.Code, rec.Body)
+	}
+	if r := row(); r["Title"] != "" || r["Start"] != "2026-08-27 18:30" || r["End"] != "2026-08-27 20:00" || r["Location"] != Clear || r["Note"] != "" {
+		t.Errorf("row after moving and clearing: %v", r)
+	}
+	if got := cache.Model().Event("a2@sample"); got.Location != "" || got.Start != "2026-08-27 18:30" {
+		t.Errorf("event after moving: %+v", got)
+	}
+	if rec := call(t, admin, "PUT", "/api/calendar/overrides", body("LS Back to School Night", e.Start, e.End, e.Location, "")); rec.Code != 204 || row() != nil {
+		t.Errorf("everything put back: %d, row %v", rec.Code, row())
+	}
+	if rec := call(t, as("jordan.whitfield@heliosschool.org", handler), "PUT", "/api/calendar/overrides", body("x", e.Start, e.End, "", "")); rec.Code != 403 {
+		t.Errorf("a parent: %d", rec.Code)
+	}
+	if rec := call(t, admin, "PUT", "/api/calendar/overrides", `{"id":"a2@sample","title":"x","start":"not a date"}`); rec.Code != 400 {
+		t.Errorf("a bad date: %d", rec.Code)
+	}
+}
