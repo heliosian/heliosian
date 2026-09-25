@@ -1,4 +1,4 @@
-import {state, me, tagGroups, bands, classroomNames, myClassrooms, event, eventDates, addDays, parseDate, dayLabel} from '../state.js';
+import {state, me, tagGroups, bands, classroomNames, myClassrooms, event, eventDates, eventPath, addDays, parseDate, dayLabel} from '../state.js';
 import {el, link, svg, button, toast} from '../dom.js';
 import {setTitle} from '../chrome.js';
 import {eventForm} from '../eventform.js';
@@ -468,7 +468,7 @@ function eventsTool() {
       for (const e of waiting) {
         const row = el('div', 'admin-row admin-event' + (e.declined ? ' is-declined' : ' is-pending'));
         const words = el('div', 'admin-row-words');
-        const title = link('/e/' + encodeURIComponent(e.id), 'admin-row-name');
+        const title = link(eventPath(e), 'admin-row-name');
         title.textContent = e.title;
         const who = (state.model.names || {})[e.addedBy] || e.addedBy;
         words.append(title, el('div', 'admin-row-note', [dayLabel(e.start.slice(0, 10)) + (e.allDay ? '' : ' ' + e.start.slice(11)), e.location, 'shared by ' + who].filter(Boolean).join(' \u00b7 ')));
@@ -503,7 +503,7 @@ function eventsTool() {
     for (const e of mine) {
       const row = el('div', 'admin-row admin-event' + (e.end.slice(0, 10) < today ? ' is-past' : ''));
       const words = el('div', 'admin-row-words');
-      const title = link('/e/' + encodeURIComponent(e.id), 'admin-row-name');
+      const title = link(eventPath(e), 'admin-row-name');
       title.textContent = e.title;
       words.append(title, el('div', 'admin-row-note', [e.location, e.tags.filter(t => !classroomNames().includes(t)).join(', ')].filter(Boolean).join(' · ')));
       const start = whenPicker(e.start);

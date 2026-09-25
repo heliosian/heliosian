@@ -80,7 +80,7 @@ var (
 	PDFColumns         = []string{"Key", "Year", "Start", "End", "Title", "Day Type", "Tags", "Marker", "PDF"}
 	EventColumns       = []string{"Event ID", "Start", "End", "Title", "Location", "Description", "Tags", "Day Type", "Keywords", "Added By", "Added", "Source", "Sharing", "Status", "Image"}
 	EnrichmentColumns  = []string{"Event ID", "Tags", "Day Type", "Keywords", "Input Hash", "Model", "Enriched"}
-	OverrideColumns    = []string{"Event ID", "Title", "Start", "End", "Location", "Description", "Tags", "Day Type", "Keywords", "Hidden", "Note"}
+	OverrideColumns    = []string{"Event ID", "Title", "Start", "End", "Location", "Description", "Tags", "Day Type", "Keywords", "Hidden", "Note", "Address", "Image"}
 	DayTypeColumns     = []string{"Day Type", "Dropoff Start", "Dropoff End", "School Start", "School End", "Pickup Start", "Pickup End", "Aftercare Start", "Aftercare End"}
 	DayOverrideColumns = []string{"Date", "Classrooms", "Day Type", "Note"}
 	TagColumns         = []string{"Tag", "Description", "Group", "Default", "Image"}
@@ -88,7 +88,7 @@ var (
 	FeedColumns        = []string{"Token", "Email", "Name", "Classrooms", "Tags", "Created", "Emoji"}
 	SettingColumns     = []string{"Email", "Classrooms", "Categories", "Saved", "Home Name", "Home Emoji", "Home Position"}
 	RSVPColumns        = []string{"Email", "Event ID", "Answer", "Answered", "Answered By", "Via"}
-	InvitationColumns  = []string{"Event ID", "Hosts", "Audience", "Guests", "Message", "Created By", "Created", "Sent", "Title", "Start", "End", "Location", "Description", "Flyer", "Notify", "Stepped Down", "Hide Hosts"}
+	InvitationColumns  = []string{"Event ID", "Hosts", "Audience", "Guests", "Message", "Created By", "Created", "Sent", "Title", "Start", "End", "Location", "Description", "Flyer", "Notify", "Stepped Down", "Hide Hosts", "Public Guest List"}
 	InviteColumns      = []string{"Event ID", "Email", "Name", "Guest Of", "Via", "Added By", "Added", "Sent", "Token", "Household", "Opened"}
 	InviteGroupColumns = append([]string{"Event ID", "Group ID", "Auto", "Added By", "Added", "Sent", "Removed"}, filter.RuleColumns...)
 	BounceColumns      = []string{"Email", "When", "Reason"}
@@ -183,6 +183,10 @@ type Event struct {
 	Year       string `json:"year,omitempty"`
 	AddedBy    string `json:"addedBy,omitempty"`
 	Added      string `json:"added,omitempty"`
+	// Address is a friendly web address an admin gave an event the school's
+	// calendars bring, /e/{address} in place of its import key (the
+	// Overrides tab's Address); its key still finds it.
+	Address string `json:"address,omitempty"`
 	// PosterLeft says whoever added the event stepped down as its host: it
 	// is still theirs as the one who shared it, but no longer theirs to
 	// run (the Invitations tab's Stepped Down).
@@ -512,12 +516,26 @@ type Model struct {
 	// classifier's filing and any correction - for the admins' eyes.
 	Provenance map[string]*Provenance
 	byID       map[string]*Event
-	byToken    map[string]*Feed
-	tags       map[string]bool
+	// byAddress finds an event by the friendly address an admin gave it.
+	byAddress map[string]*Event
+	byToken   map[string]*Feed
+	tags      map[string]bool
 }
 
+// imported says an event comes from the school's calendars - the Google
+// feed or the year's PDF - rather than from a person or another app. Its
+// admins are its hosts, and correct it in the Overrides tab.
+func (e *Event) imported() bool {
+	return e.Source == SourceGoogle || e.Source == SourcePDF
+}
+
+// Event is the event an id names - its own, or the friendly address an
+// admin gave it.
 func (m *Model) Event(id string) *Event {
-	return m.byID[id]
+	if e := m.byID[id]; e != nil {
+		return e
+	}
+	return m.byAddress[id]
 }
 
 func (m *Model) Feed(token string) *Feed {
@@ -1331,8 +1349,27 @@ func (b *builder) applyOverrides(rows []map[string]string) error {
 			return fail(fmt.Errorf("hidden %w", err))
 		}
 		e.Hidden = hidden
+		if address := strings.ToLower(strings.TrimSpace(row["Address"])); address != "" && address != Clear {
+			if !eventIDForm.MatchString(address) {
+				return fail(fmt.Errorf("the address %q is not letters, digits and dashes, 3 to 40 of them", address))
+			}
+			if other := b.model.byID[address]; other != nil || b.model.byAddress[address] != nil {
+				return fail(fmt.Errorf("the address %q is already another event's", address))
+			}
+			e.Address = address
+			b.model.byAddress[address] = e
+		}
+		// A picture an admin gave it, from the page's Add an image, names an
+		// upload the way the Events tab's Image cell does.
+		switch image := strings.Trim(strings.TrimSpace(row["Image"]), "/"); image {
+		case "":
+		case Clear:
+			e.Image = ""
+		default:
+			e.Image = "/" + image
+		}
 		p := b.model.provenance(id)
-		for _, column := range []string{"Title", "Start", "End", "Location", "Description", "Tags", "Day Type", "Keywords", "Hidden"} {
+		for _, column := range []string{"Title", "Start", "End", "Location", "Description", "Tags", "Day Type", "Keywords", "Hidden", "Address", "Image"} {
 			if strings.TrimSpace(row[column]) != "" {
 				p.Corrected = append(p.Corrected, column)
 			}
@@ -1795,7 +1832,7 @@ func BuildModel(tables *Tables, roster Roster) (*Model, error) {
 		Events: []*Event{}, DayTypes: dayTypes, Tags: tags, Days: map[string]map[string]string{}, Years: []Year{}, Provenance: map[string]*Provenance{},
 		Roster: roster, Feeds: []Feed{}, Settings: map[string]Setting{}, Answers: map[string]map[string]string{}, Answered: map[string]map[string]Answered{},
 		Invitations: map[string]*Invitation{}, Invites: map[string][]Invite{}, Groups: map[string][]InviteGroup{}, Bounced: map[string]Bounce{}, invited: map[string]map[string]bool{}, listed: map[string]map[string]bool{}, byInvite: map[string]Invite{},
-		Skipped: map[string]int{}, byID: map[string]*Event{}, byToken: map[string]*Feed{}, tags: map[string]bool{},
+		Skipped: map[string]int{}, byID: map[string]*Event{}, byAddress: map[string]*Event{}, byToken: map[string]*Feed{}, tags: map[string]bool{},
 	}
 	for _, t := range tags {
 		m.tags[t.Name] = true
@@ -1910,6 +1947,7 @@ func BuildModel(tables *Tables, roster Roster) (*Model, error) {
 				m.Hidden++
 			}
 			delete(m.byID, e.ID)
+			delete(m.byAddress, e.Address)
 			continue
 		}
 		// A pending, declined or cancelled event, or one shared by link or

@@ -1,4 +1,4 @@
-import {state, me, tagGroups, bands, classroomNames, eventDates, addDays, parseDate} from './state.js';
+import {state, me, tagGroups, bands, classroomNames, eventDates, eventPath, addDays, parseDate} from './state.js';
 import {addressSuggest} from '/address.js';
 import {el, svg, toast} from './dom.js';
 
@@ -204,7 +204,23 @@ export function eventForm({from = null, shift = 0, edit = null, override = false
   eventPanel.append(field('Description', description));
   // A correction's reason, for the admins who read the page after.
   const note = text(override ? (state.model.provenance || {})[edit.id]?.note || '' : '', 'Why it was corrected');
+  // A friendly web address in place of the import key, /e/{address}; the
+  // old link keeps working.
+  const address = el('input', 'event-slug');
+  address.type = 'text';
+  address.maxLength = 40;
+  address.spellcheck = false;
+  address.placeholder = 'stanford-dish-hike';
+  address.value = override ? edit.address || '' : '';
+  address.addEventListener('input', () => {
+    address.value = address.value.toLowerCase().replace(/[^a-z0-9-]/g, '');
+  });
   if (override) {
+    const row = el('div', 'event-slug-row');
+    row.append(el('span', 'event-slug-prefix', location.host + '/e/'), address);
+    const addressField = el('div', 'field');
+    addressField.append(el('span', '', 'Web address'), row, el('small', '', 'A friendly address for sharing - letters, digits and dashes. Blank for none; the event\u2019s old link keeps working either way.'));
+    eventPanel.append(addressField);
     eventPanel.append(field('Note', note, 'Shown to the admins on the event\u2019s page, beside what was corrected.'));
   }
 
@@ -355,6 +371,7 @@ export function eventForm({from = null, shift = 0, edit = null, override = false
     }
     if (override) {
       body.note = note.value.trim();
+      body.address = address.value.trim();
     }
     const res = await fetch(override ? '/api/calendar/overrides' : '/api/calendar/events', {method: edit ? 'PUT' : 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
     submit.disabled = false;
@@ -366,6 +383,11 @@ export function eventForm({from = null, shift = 0, edit = null, override = false
     status.textContent = '';
     if (override) {
       toast('Saved over the school\u2019s version');
+      // A new address takes the page's place in the address bar.
+      const now = address.value.trim();
+      if (now !== (edit.address || '')) {
+        history.replaceState(null, '', eventPath(now ? {address: now} : {id: edit.id}));
+      }
       await onDone([edit.id], []);
       return;
     }

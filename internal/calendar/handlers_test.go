@@ -786,6 +786,65 @@ func TestOverrideFromThePage(t *testing.T) {
 	if rec := call(t, admin, "PUT", "/api/calendar/overrides", body("LS Back to School Night", e.Start, e.End, e.Location, "")); rec.Code != 204 || row() != nil {
 		t.Errorf("everything put back: %d, row %v", rec.Code, row())
 	}
+	// A friendly address finds the event and becomes its path; a second
+	// event cannot take it, nor can one that is not letters and dashes.
+	addressed := func(id, address string) string {
+		ev := cache.Model().Event(id)
+		raw, _ := json.Marshal(map[string]any{"id": id, "title": ev.Title, "start": ev.Start, "end": ev.End, "location": ev.Location, "description": ev.Description, "tags": slices.DeleteFunc(slices.Clone(ev.Tags), func(t string) bool { return builtIn[t] }), "keywords": ev.Keywords, "address": address})
+		return string(raw)
+	}
+	if rec := call(t, admin, "PUT", "/api/calendar/overrides", addressed("a2@sample", "Back-To-School")); rec.Code != 204 {
+		t.Fatalf("an address: %d %s", rec.Code, rec.Body)
+	}
+	if got := cache.Model().Event("back-to-school"); got == nil || got.ID != "a2@sample" || EventPath(got) != "/e/back-to-school" || row()["Address"] != "back-to-school" || row()["Title"] != "" {
+		t.Errorf("by its address: %+v, row %v", got, row())
+	}
+	if rec := call(t, admin, "PUT", "/api/calendar/overrides", addressed("a5@sample", "back-to-school")); rec.Code != 400 || !strings.Contains(rec.Body.String(), "already another event's") {
+		t.Errorf("a taken address: %d %s", rec.Code, rec.Body)
+	}
+	if rec := call(t, admin, "PUT", "/api/calendar/overrides", addressed("a5@sample", "camping trip!")); rec.Code != 400 {
+		t.Errorf("a bad address: %d %s", rec.Code, rec.Body)
+	}
+	if rec := call(t, admin, "PUT", "/api/calendar/overrides", addressed("a2@sample", "")); rec.Code != 204 || row() != nil || cache.Model().Event("back-to-school") != nil {
+		t.Errorf("the address taken away: %d, row %v", rec.Code, row())
+	}
+	// The admins host an event the school's calendars bring, with nobody
+	// listed: its picture, its flyer and its guest list are theirs.
+	var v InviteView
+	json.NewDecoder(call(t, admin, "GET", "/api/calendar/invites?id=a2@sample", "").Body).Decode(&v)
+	if !v.Host || !v.AdminHost || len(v.Hosts) != 0 {
+		t.Errorf("the admin's view: host %v adminHost %v hosts %v", v.Host, v.AdminHost, v.Hosts)
+	}
+	v = InviteView{}
+	json.NewDecoder(call(t, as("jordan.whitfield@heliosschool.org", handler), "GET", "/api/calendar/invites?id=a2@sample", "").Body).Decode(&v)
+	if v.Host || v.AdminHost {
+		t.Errorf("a parent's view: host %v adminHost %v", v.Host, v.AdminHost)
+	}
+	// Who is coming starts as the hosts' alone on a school event; opened, a
+	// parent reads it too.
+	if !v.ListPrivate || v.Coming != nil {
+		t.Errorf("a parent's view of a closed list: private %v coming %v", v.ListPrivate, v.Coming)
+	}
+	if rec := call(t, admin, "PUT", "/api/calendar/invites/settings", `{"id":"a2@sample","publicList":true}`); rec.Code != 204 {
+		t.Fatalf("opening the list: %d %s", rec.Code, rec.Body)
+	}
+	v = InviteView{}
+	json.NewDecoder(call(t, as("jordan.whitfield@heliosschool.org", handler), "GET", "/api/calendar/invites?id=a2@sample", "").Body).Decode(&v)
+	if v.ListPrivate || v.Coming == nil {
+		t.Errorf("a parent's view of an open list: private %v coming %v", v.ListPrivate, v.Coming)
+	}
+	if rec := call(t, admin, "PUT", "/api/calendar/overrides/image", `{"id":"a2@sample","image":"/category-images/night.jpg"}`); rec.Code != 204 || cache.Model().Event("a2@sample").Image != "/category-images/night.jpg" || row()["Image"] != "category-images/night.jpg" {
+		t.Errorf("a picture: %d %+v", rec.Code, row())
+	}
+	if rec := call(t, admin, "PUT", "/api/calendar/invites/settings", `{"id":"a2@sample","flyer":"sample/flyer.jpg"}`); rec.Code != 204 || cache.Model().Invitations["a2@sample"] == nil || cache.Model().Invitations["a2@sample"].Flyer != "sample/flyer.jpg" || len(cache.Model().Invitations["a2@sample"].Hosts) != 0 {
+		t.Errorf("a flyer: %d %s", rec.Code, rec.Body)
+	}
+	if rec := call(t, admin, "PUT", "/api/calendar/overrides/image", `{"id":"a2@sample","image":""}`); rec.Code != 204 || cache.Model().Event("a2@sample").Image != "" {
+		t.Errorf("the picture taken away: %d", rec.Code)
+	}
+	if rec := call(t, as("jordan.whitfield@heliosschool.org", handler), "PUT", "/api/calendar/overrides/image", `{"id":"a2@sample","image":"x.jpg"}`); rec.Code != 403 {
+		t.Errorf("a parent's picture: %d", rec.Code)
+	}
 	if rec := call(t, as("jordan.whitfield@heliosschool.org", handler), "PUT", "/api/calendar/overrides", body("x", e.Start, e.End, "", "")); rec.Code != 403 {
 		t.Errorf("a parent: %d", rec.Code)
 	}

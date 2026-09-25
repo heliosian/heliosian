@@ -1,4 +1,4 @@
-import {applyModel, event, fetchEvent, today, parseDate, me, state, eventDates, allCalendars, setActiveFeed, setClassrooms, setTags, feedClassrooms, feedTags} from './state.js';
+import {applyModel, event, eventPath, fetchEvent, today, parseDate, me, state, eventDates, allCalendars, setActiveFeed, setClassrooms, setTags, feedClassrooms, feedTags} from './state.js';
 import {el} from './dom.js';
 import {initChrome, renderChrome, setTitle, clearSearch} from './chrome.js';
 import {homePage} from './pages/home.js';
@@ -79,6 +79,11 @@ function route() {
           return el('div', 'list-page', 'Looking\u2026');
         }
         return notFound('That event');
+      }
+      // Reached by its import key, an event with a friendly address wears
+      // that in the address bar instead.
+      if (e.address && id !== e.address) {
+        history.replaceState(null, '', eventPath(e) + location.search);
       }
       // The rail's day jumps to the event's, so its month and its plan
       // and events are the ones beside the page.

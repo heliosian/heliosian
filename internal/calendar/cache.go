@@ -96,7 +96,7 @@ func (c *Cache) resolveImages(model *Model) {
 	}
 	pictures := map[string]string{}
 	for _, e := range slices.Concat(model.Events, model.Pending) {
-		if e.Source == SourceSheet && e.Image != "" {
+		if (e.Source == SourceSheet || e.imported()) && e.Image != "" {
 			pictures["event "+e.ID] = strings.TrimPrefix(e.Image, "/")
 		}
 	}

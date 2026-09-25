@@ -130,6 +130,10 @@ func linkedApp(e *Event) string {
 // EventPath is the event's page here, each segment of a linked event's id
 // escaped on its own, as the page itself builds it.
 func EventPath(e *Event) string {
+	// A friendly address an admin gave it wins over the import key.
+	if e.Address != "" {
+		return "/e/" + url.PathEscape(e.Address)
+	}
 	parts := strings.Split(e.ID, "/")
 	for i, p := range parts {
 		parts[i] = url.PathEscape(p)

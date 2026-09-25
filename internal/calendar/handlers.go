@@ -115,6 +115,7 @@ func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueu
 	mux.HandleFunc("POST /api/calendar/settings", a.saveSetting)
 	mux.HandleFunc("POST /api/calendar/keywords", a.admin(a.setKeywords))
 	mux.HandleFunc("PUT /api/calendar/overrides", a.admin(a.setOverride))
+	mux.HandleFunc("PUT /api/calendar/overrides/image", a.admin(a.setOverrideImage))
 	mux.HandleFunc("POST /api/calendar/events", a.addEvents)
 	mux.HandleFunc("PUT /api/calendar/events", a.editEvent)
 	mux.HandleFunc("GET /api/calendar/event", a.oneEvent)
@@ -172,7 +173,7 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 	// The events the viewer runs wear a star: on a copy, as the view's
 	// events are the viewer's own already.
 	for i, e := range view.Events {
-		hosted := (e.Source == SourceSheet || e.linked()) && a.isHost(email, false, e)
+		hosted := (e.Source == SourceSheet || e.linked() || e.imported()) && a.isHost(email, false, e)
 		if !hosted && len(e.Hosts) == 0 {
 			continue
 		}

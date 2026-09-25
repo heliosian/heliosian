@@ -1,4 +1,4 @@
-import {state, me, postedAndHosting, answer, isParty, eventDates, weekdayLong, parseDate, timeLine} from './state.js';
+import {state, me, isAdmin, postedAndHosting, answer, isParty, eventDates, weekdayLong, parseDate, timeLine} from './state.js';
 import {el, svg, button, toast, avatar, popup, copyText} from './dom.js';
 import {appOrigin} from '/toolbar.js';
 import {rulesEditor, filterWidgets} from '/rules.js';
@@ -26,7 +26,17 @@ export async function fetchInvites(e) {
     if (!res.ok) {
       return null;
     }
-    return await res.json();
+    const view = await res.json();
+    // An admin hosts an event the school's calendars bring only with Super
+    // Admin Mode on; off, the page is theirs as any guest's.
+    if (view.adminHost && !isAdmin()) {
+      view.host = false;
+      // A list kept to the hosts is not a guest's to read either.
+      if (view.listPrivate) {
+        view.coming = null;
+      }
+    }
+    return view;
   } catch (err) {
     return null;
   }
@@ -370,7 +380,25 @@ export function comingCard(e, view, refresh) {
   if (view.mayInvite && !view.host && view.sent) {
     head.append(button('Invite people', 'plus', 'button button-secondary button-small', () => openPicker(e, view, refresh)));
   }
+  // An event the school's calendars bring keeps who is coming to its hosts
+  // until they open it to everyone; every other event's list is public.
+  const imported = e.source === 'google' || e.source === 'pdf';
+  if (view.host && imported) {
+    const open = !view.listPrivate;
+    head.append(button(open ? 'Keep to hosts' : 'Show to everyone', open ? 'eye-off' : 'eye', 'link-button', async () => {
+      try {
+        await post('PUT', '/api/calendar/invites/settings', {id: e.id, publicList: !open});
+        toast(open ? 'Only the hosts see who is coming now.' : 'Everyone who opens the event sees who is coming now.');
+        refresh();
+      } catch (err) {
+        toast(err.message);
+      }
+    }));
+  }
   card.append(head);
+  if (view.host && imported) {
+    card.append(el('div', 'side-line coming-privacy', view.listPrivate ? 'Only the hosts see this list.' : 'Everyone who opens the event sees this list.'));
+  }
   const grid = el('div', 'coming-grid');
   const paint = shown => {
     grid.replaceChildren();
@@ -1763,11 +1791,14 @@ export function settingsForm(e, view, refresh, shut, part = 'invitation') {
 export async function openEditor(e, view, refresh, {tab = 'event'} = {}) {
   const {eventForm} = await import('./eventform.js');
   const own = e.source === 'sheet';
+  // An event the school's calendars bring is an admin's to correct, over
+  // the school's version, in the Overrides tab.
+  const imported = (e.source === 'google' || e.source === 'pdf') && isAdmin();
   let shut = null;
   const box = el('div', 'editor');
   const panels = {};
-  if (own) {
-    panels.event = eventForm({edit: e, onDone: async (ids, changed) => {
+  if (own || imported) {
+    panels.event = eventForm({edit: e, override: imported, onDone: async (ids, changed) => {
       shut();
       await refresh();
       if (changed && changed.length) {
@@ -1814,7 +1845,7 @@ export async function openEditor(e, view, refresh, {tab = 'event'} = {}) {
   } else {
     box.append(...Object.values(panels));
   }
-  shut = popup(own ? 'Edit ' + e.title : 'Edit the invitation', box, {wide: true}).shut;
+  shut = popup(own || imported ? 'Edit ' + e.title : 'Edit the invitation', box, {wide: true}).shut;
 }
 
 export async function offerUpdate(e, changed) {

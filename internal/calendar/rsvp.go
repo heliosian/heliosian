@@ -137,7 +137,7 @@ func (a app) sendAnswerNote(ctx context.Context, to, actor, email, answer string
 func (a app) eventFor(email string, admin bool, id string) *Event {
 	model := a.cache.Model()
 	for _, e := range withLinked(model.Events, a.linked(email)) {
-		if e.ID == id {
+		if e.ID == id || (e.Address != "" && e.Address == id) {
 			return model.withInvitation(e)
 		}
 	}

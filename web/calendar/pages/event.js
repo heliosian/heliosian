@@ -31,10 +31,16 @@ function hero(e) {
   }
   // The poster's or an admin's hand-added event takes a picture from the
   // strip across the banner's foot, the way the other apps' pages do.
-  if (e.source === 'sheet' && (isAdmin() || postedAndHosting(e))) {
+  if ((e.source === 'sheet' && (isAdmin() || postedAndHosting(e))) || (imported(e) && isAdmin())) {
     wrap.append(heroImageBar(e));
   }
   return wrap;
+}
+
+// imported says an event comes from the school's calendars, which its
+// admins host and correct.
+function imported(e) {
+  return e.source === 'google' || e.source === 'pdf';
 }
 
 // sheetTags are an event's tags as its sheet row holds them: without the
@@ -50,11 +56,14 @@ function sheetTags(e) {
 function heroImageBar(e) {
   const bar = el('div', 'hero-image-bar');
   const save = async image => {
-    const body = {
+    // An event the school's calendars bring keeps its picture in the
+    // Overrides tab, over the school's version.
+    const override = imported(e);
+    const body = override ? {id: e.id, image} : {
       id: e.id, title: e.title, start: e.start, end: e.end, location: e.location || '', description: e.description || '',
       tags: sheetTags(e), keywords: e.keywords || [], source: e.sourceUrl || e.sourceNote || '', image, sharing: e.sharing,
     };
-    const res = await fetch('/api/calendar/events', {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+    const res = await fetch(override ? '/api/calendar/overrides/image' : '/api/calendar/events', {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
     if (!res.ok) {
       toast(await res.text());
       return;
@@ -144,19 +153,7 @@ export function eventPage(e) {
   // gives a linked event's host their Edit.
   // An event the school's calendars bring is an admin's to correct, over
   // the school's version, in the Overrides tab.
-  if ((e.source === 'google' || e.source === 'pdf') && isAdmin()) {
-    tools.append(button('Edit', 'pencil', 'button button-secondary button-small detail-edit', async () => {
-      const {eventForm} = await import('../eventform.js');
-      let shut = null;
-      const form = eventForm({edit: e, override: true, onDone: async () => {
-        shut();
-        const {load} = await import('../app.js');
-        await load();
-      }});
-      shut = popup('Edit ' + e.title, form, {wide: true}).shut;
-    }));
-  }
-  if (e.source === 'sheet' && (isAdmin() || postedAndHosting(e))) {
+  if ((imported(e) && isAdmin()) || (e.source === 'sheet' && (isAdmin() || postedAndHosting(e)))) {
     tools.append(button('Edit', 'pencil', 'button button-secondary button-small detail-edit', async () => {
       const {openEditor} = await import('../invites.js');
       openEditor(e, editorView, async () => {
@@ -263,7 +260,7 @@ export function eventPage(e) {
 async function fillInvites(e, ask, answered, {info, linkedLine}) {
   // Every hand-added or linked event asks, whoever is viewing: its Hosts
   // card is always drawn, even when nobody hosts it.
-  if (e.cancelled || (e.source !== 'sheet' && !e.link)) {
+  if (e.cancelled || (e.source !== 'sheet' && !e.link && !imported(e))) {
     return;
   }
   let view = await fetchInvites(e);
@@ -334,7 +331,9 @@ async function fillInvites(e, ask, answered, {info, linkedLine}) {
   // flyer sits right under the linked app's card. Hosts show whenever
   // anyone hosts - a host adds co-hosts and steps down there - unless the
   // hosts hid them, when the card is theirs alone.
-  if (view.hosts.length && (view.host || !view.hostsHidden)) {
+  // A host - an admin on a school event among them - sees it even with
+  // nobody listed, to add co-hosts.
+  if ((view.hosts.length || view.host) && (view.host || !view.hostsHidden)) {
     info.append(hostsRow(e, view, refresh));
   }
   if (view.mine.length) {

@@ -70,6 +70,10 @@ type Invitation struct {
 	// HideHosts keeps the Hosts card on the event's page to the hosts
 	// themselves.
 	HideHosts bool `json:"hideHosts"`
+	// PublicList opens Who's coming to everyone who can see an event the
+	// school's calendars bring; off, as it starts, the list is its hosts'
+	// alone. Every other event's list is everyone's.
+	PublicList bool `json:"publicList"`
 	// A party's invitation may carry words of its own in place of the
 	// party's - a title, when, where, a description - each blank for the
 	// party's own: what the invitation email, the calendar invite, the
@@ -161,6 +165,7 @@ func (b *builder) invitations(settings, rows []map[string]string) {
 			Flyer: strings.Trim(strings.TrimSpace(row["Flyer"]), "/"), Notify: splitEmails(row["Notify"]),
 			SteppedDown: normalizeEmail(row["Stepped Down"]),
 			HideHosts:   strings.EqualFold(strings.TrimSpace(row["Hide Hosts"]), "Yes"),
+			PublicList:  strings.EqualFold(strings.TrimSpace(row["Public Guest List"]), "Yes"),
 		}
 		// A start the sheet cannot read is dropped with a log line, never
 		// a refusal.
@@ -340,9 +345,11 @@ func (a app) hostsOf(e *Event) []string {
 
 // isHost says a person runs an event's guest list: one of its hosts - a
 // calendar admin is not one, the list being the hosts' own business, and
-// reads the page as anyone else invited would.
-func (a app) isHost(email string, _ bool, e *Event) bool {
-	return slices.Contains(a.hostsOf(e), email)
+// reads the page as anyone else invited would - but for an event the
+// school's calendars bring, which nobody else hosts: its admins are its
+// hosts.
+func (a app) isHost(email string, admin bool, e *Event) bool {
+	return slices.Contains(a.hostsOf(e), email) || (admin && e.imported())
 }
 
 // party is the party behind a linked event, or nil for any other event.
@@ -365,8 +372,8 @@ func (a app) inviterEvent(w http.ResponseWriter, r *http.Request, id string) (st
 		http.Error(w, "that event is not on the calendar", http.StatusNotFound)
 		return actor, nil, false, false
 	}
-	if e.Source != SourceSheet && !e.linked() {
-		http.Error(w, "only a hand-added event, a party or an HCA event keeps a guest list", http.StatusBadRequest)
+	if e.Source != SourceSheet && !e.linked() && !e.imported() {
+		http.Error(w, "that event keeps no guest list", http.StatusBadRequest)
 		return actor, nil, false, false
 	}
 	host := a.isHost(actor, admin, e)
@@ -386,8 +393,8 @@ func (a app) hostedEvent(w http.ResponseWriter, r *http.Request, id string) (str
 		http.Error(w, "that event is not on the calendar", http.StatusNotFound)
 		return actor, nil, false
 	}
-	if e.Source != SourceSheet && !e.linked() {
-		http.Error(w, "only a hand-added event, a party or an HCA event keeps a guest list", http.StatusBadRequest)
+	if e.Source != SourceSheet && !e.linked() && !e.imported() {
+		http.Error(w, "that event keeps no guest list", http.StatusBadRequest)
 		return actor, nil, false
 	}
 	if !a.isHost(actor, admin, e) {
@@ -590,6 +597,9 @@ type Counts struct {
 // open, and the whole list with its settings for a host.
 type InviteView struct {
 	Host bool `json:"host"`
+	// AdminHost says the viewer hosts only as an admin, of an event the
+	// school's calendars bring: the page offers it with Super Admin Mode on.
+	AdminHost bool `json:"adminHost,omitempty"`
 	// MayInvite says the viewer may invite people one at a time - a host,
 	// anyone on a public event, whoever was invited to any other.
 	MayInvite bool `json:"mayInvite,omitempty"`
@@ -607,7 +617,11 @@ type InviteView struct {
 	Flyer string `json:"flyer,omitempty"`
 	// HostsHidden says the hosts keep the Hosts card to themselves; Hosts
 	// is then empty for anyone else.
-	HostsHidden bool     `json:"hostsHidden,omitempty"`
+	HostsHidden bool `json:"hostsHidden,omitempty"`
+	// ListPrivate says Who's coming is the hosts' alone - an event the
+	// school's calendars bring whose hosts have not opened it to everyone
+	// - and Coming is then null for anyone else.
+	ListPrivate bool     `json:"listPrivate,omitempty"`
 	Hosts       []Person `json:"hosts"`
 	// Original is a party's own words on Celebrate - title, when, where,
 	// description - for a host editing the invitation's own, so the form
@@ -745,7 +759,8 @@ func (a app) invitesView(w http.ResponseWriter, r *http.Request) {
 	}
 	model := a.cache.Model()
 	inv := model.Invitations[e.ID]
-	view := InviteView{Host: host, MayInvite: host || e.Sharing == SharingPublic || a.cache.Model().Invited(viewer, e.ID), Party: e.Source == SourceCelebrate, Linked: e.linked(), Guests: true, Hosts: []Person{}, Mine: []GuestRow{}}
+	adminHost := host && !slices.Contains(a.hostsOf(e), viewer)
+	view := InviteView{Host: host, AdminHost: adminHost, MayInvite: host || e.Sharing == SharingPublic || a.cache.Model().Invited(viewer, e.ID), Party: e.Source == SourceCelebrate, Linked: e.linked(), Guests: true, Hosts: []Person{}, Mine: []GuestRow{}}
 	if inv != nil && inv.Flyer != "" {
 		view.Flyer = flyerPath(e.ID)
 	}
@@ -812,7 +827,11 @@ func (a app) invitesView(w http.ResponseWriter, r *http.Request) {
 	// maybes, and who has not answered yet - never the nos, which are the
 	// hosts' alone.
 	view.Coming = []GuestRow{}
+	view.ListPrivate = e.imported() && !(inv != nil && inv.PublicList)
 	for _, g := range rows {
+		if view.ListPrivate && !host {
+			break
+		}
 		if g.Answer == AnswerYes || g.Answer == AnswerMaybe || (g.Invited && g.Answer == "") {
 			if !host {
 				// A guest reads who is coming and nothing of the hosts'
@@ -823,6 +842,9 @@ func (a app) invitesView(w http.ResponseWriter, r *http.Request) {
 			}
 			view.Coming = append(view.Coming, g)
 		}
+	}
+	if view.ListPrivate && !host {
+		view.Coming = nil
 	}
 	if host {
 		view.List = rows
@@ -962,6 +984,8 @@ func (a app) inviteSettings(w http.ResponseWriter, r *http.Request) {
 		NotifyMe *bool `json:"notifyMe"`
 		// HideHosts keeps the Hosts card to the hosts.
 		HideHosts *bool `json:"hideHosts"`
+		// PublicList opens an imported event's Who's coming to everyone.
+		PublicList *bool `json:"publicList"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -975,6 +999,12 @@ func (a app) inviteSettings(w http.ResponseWriter, r *http.Request) {
 		cells["Hide Hosts"] = ""
 		if *body.HideHosts {
 			cells["Hide Hosts"] = "Yes"
+		}
+	}
+	if body.PublicList != nil {
+		cells["Public Guest List"] = ""
+		if *body.PublicList {
+			cells["Public Guest List"] = "Yes"
 		}
 	}
 	if body.NotifyMe != nil {

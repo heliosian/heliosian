@@ -84,6 +84,10 @@ export function applyModel(model) {
   byDate.clear();
   for (const e of model.events) {
     byId.set(e.id, e);
+    // A friendly address an admin gave it finds it too.
+    if (e.address) {
+      byId.set(e.address, e);
+    }
     for (const date of eventDates(e)) {
       if (!byDate.has(date)) {
         byDate.set(date, []);
@@ -139,6 +143,9 @@ export async function fetchEvent(id) {
     }
     const e = await res.json();
     byId.set(e.id, e);
+    if (e.address) {
+      byId.set(e.address, e);
+    }
     return e;
   } catch (err) {
     return null;
@@ -627,7 +634,12 @@ export function timeColumn(e, date) {
   return timeRange(e.start.slice(11), e.end.slice(11));
 }
 
+// eventPath is an event's page: its friendly address when an admin gave it
+// one, else its id.
 export function eventPath(e) {
+  if (e.address) {
+    return '/e/' + encodeURIComponent(e.address);
+  }
   return '/e/' + e.id.split('/').map(encodeURIComponent).join('/');
 }
 
