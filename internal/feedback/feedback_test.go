@@ -269,20 +269,20 @@ func TestHandler(t *testing.T) {
 }
 
 func TestThrottle(t *testing.T) {
-	q := &Intake{recent: map[string][]time.Time{}}
+	q := NewIntake(nil, nil).recent
 	now := time.Now()
 	for i := range perWindow {
-		if !q.allow("a@example.org", now.Add(time.Duration(i)*time.Second)) {
+		if !q.Allow("a@example.org", now.Add(time.Duration(i)*time.Second)) {
 			t.Fatalf("report %d refused", i)
 		}
 	}
-	if q.allow("a@example.org", now.Add(time.Minute)) {
+	if q.Allow("a@example.org", now.Add(time.Minute)) {
 		t.Error("sixth report allowed")
 	}
-	if !q.allow("b@example.org", now) {
+	if !q.Allow("b@example.org", now) {
 		t.Error("another person refused")
 	}
-	if !q.allow("a@example.org", now.Add(window+time.Minute)) {
+	if !q.Allow("a@example.org", now.Add(window+time.Minute)) {
 		t.Error("report after the window refused")
 	}
 }

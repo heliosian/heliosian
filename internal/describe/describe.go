@@ -1,7 +1,3 @@
-// Package describe asks Claude for what the charity list needs about a
-// charity - where to donate and the one sentence the birthday newsletter
-// carries - read from the charity's own site so a small local organization is
-// described from what it says rather than guessed at.
 package describe
 
 import (
@@ -18,6 +14,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go/option"
 
 	"heliosian/internal/claude"
+	"heliosian/internal/ratelimit"
 )
 
 const model = "claude-opus-5"
@@ -26,7 +23,6 @@ const maxPrompt = 4 << 10
 
 var ErrTooLong = errors.New("that's more than Claude needs to go on; shorten it")
 
-// The style the list already uses: the charity's name, what it does, for whom.
 const system = `You look up charities for a school community newsletter that announces staff birthday donations, and return two things: where to donate, and a one-sentence description.
 
 Find the charity's own website (search the web by its name; when a donation link is given, start there) and fetch it. Return the URL of the page where a donation is made - the site's donate page, or the giving-platform page the site itself links to, or the homepage when neither can be found - as a URL you actually saw, never one you made up. Then write exactly one sentence that starts with the charity's name and says plainly what it does and for whom, in the same register as these:
@@ -47,29 +43,23 @@ var schema = map[string]any{
 	"additionalProperties": false,
 }
 
-// Describer holds the client; a nil Describer describes nothing, so the app
-// runs without a key and the button says so.
 type Describer struct {
 	client anthropic.Client
-	limit  *claude.Limiter
+	limit  *ratelimit.Limiter
 }
 
-// New returns nil without a key.
-func New(key string, limit *claude.Limiter) *Describer {
+func New(key string, limit *ratelimit.Limiter) *Describer {
 	if key == "" {
 		return nil
 	}
 	return &Describer{client: anthropic.NewClient(option.WithAPIKey(key)), limit: limit}
 }
 
-// Info is what Claude found: where to donate, and the sentence.
 type Info struct {
 	DonationLink string `json:"donationLink"`
 	Sentence     string `json:"sentence"`
 }
 
-// Charity returns what Claude found about the charity, starting from link
-// when there is one; an empty sentence means it could not find out.
 func (d *Describer) Charity(ctx context.Context, actor, name, link string) (Info, error) {
 	if d == nil {
 		return Info{}, fmt.Errorf("describing charities is not set up: no Anthropic key")
@@ -86,8 +76,6 @@ func (d *Describer) Charity(ctx context.Context, actor, name, link string) (Info
 	if len(prompt) > maxPrompt {
 		return Info{}, ErrTooLong
 	}
-	// The donation link is often a giving platform's page rather than the
-	// charity's own site, so the fetch is left free to follow a search there.
 	fetch := anthropic.WebFetchTool20260209Param{MaxUses: anthropic.Int(4)}
 	stream := d.client.Messages.NewStreaming(ctx, anthropic.MessageNewParams{
 		Model:     model,
@@ -139,9 +127,6 @@ func (d *Describer) Charity(ctx context.Context, actor, name, link string) (Info
 	return out, nil
 }
 
-// GroupFacts is what Loop knows about a group for its description: the
-// title, the rules read out in words, and who the rules pick out now - the
-// count, and how they fall by role, grade and classroom - never names.
 type GroupFacts struct {
 	Title      string
 	Rules      []string
@@ -171,7 +156,6 @@ var groupSchema = map[string]any{
 	"additionalProperties": false,
 }
 
-// Group returns Claude's description of a group from its facts.
 func (d *Describer) Group(ctx context.Context, actor string, facts GroupFacts) (string, error) {
 	if d == nil {
 		return "", fmt.Errorf("describing groups is not set up: no Anthropic key")
@@ -238,9 +222,8 @@ func (d *Describer) Group(ctx context.Context, actor string, facts GroupFacts) (
 	return strings.TrimSpace(out.Description), nil
 }
 
-// tallyWords is a count map as words, largest first: "Parent 12, Staff 2".
 func tallyWords(counts map[string]int) string {
-	keys := make([]string, 0, len(counts))
+	keys := []string{}
 	for k := range counts {
 		keys = append(keys, k)
 	}
@@ -250,16 +233,13 @@ func tallyWords(counts map[string]int) string {
 		}
 		return keys[i] < keys[j]
 	})
-	parts := make([]string, 0, len(keys))
+	parts := []string{}
 	for _, k := range keys {
 		parts = append(parts, fmt.Sprintf("%s %d", k, counts[k]))
 	}
 	return strings.Join(parts, ", ")
 }
 
-// Fake stands in for Claude in sample mode: a sentence in the right shape
-// and a made-up donate page, after a moment, so the form's flow can be tried
-// without a key.
 type Fake struct{}
 
 func (Fake) Charity(ctx context.Context, actor, name, link string) (Info, error) {
@@ -275,7 +255,6 @@ func (Fake) Charity(ctx context.Context, actor, name, link string) (Info, error)
 	return Info{DonationLink: link, Sentence: name + " provides sample support to the sample community by doing sample things, as the sample server says."}, nil
 }
 
-// Group in sample mode: the rules read back as a sentence, after a moment.
 func (Fake) Group(ctx context.Context, actor string, facts GroupFacts) (string, error) {
 	select {
 	case <-ctx.Done():

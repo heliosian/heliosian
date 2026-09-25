@@ -1,4 +1,3 @@
-// Package ask serves Helios Ask: a chat with Claude that knows the school, the signed-in person and their family, and reads the other apps' data through tools.
 package ask
 
 import (
@@ -21,9 +20,9 @@ import (
 	"heliosian/internal/auth"
 	"heliosian/internal/calendar"
 	"heliosian/internal/celebrate"
-	"heliosian/internal/claude"
 	"heliosian/internal/home"
 	"heliosian/internal/loop"
+	"heliosian/internal/ratelimit"
 	"heliosian/internal/serve"
 	"heliosian/internal/team"
 	"heliosian/internal/who"
@@ -59,10 +58,10 @@ type Sources struct {
 type app struct {
 	sources   Sources
 	responder Responder
-	recent    *claude.Limiter
+	recent    *ratelimit.Limiter
 }
 
-func Register(mux *http.ServeMux, sources Sources, responder Responder, recent *claude.Limiter) {
+func Register(mux *http.ServeMux, sources Sources, responder Responder, recent *ratelimit.Limiter) {
 	a := app{sources: sources, responder: responder, recent: recent}
 	mux.HandleFunc("GET /{$}", a.page)
 	mux.HandleFunc("GET /api/ask/model", a.model)
@@ -165,8 +164,6 @@ func (a app) chat(w http.ResponseWriter, r *http.Request) {
 			listed = append(listed, d)
 		}
 	}
-	// The request logger wraps the writer; the controller reaches through
-	// it to the one that flushes.
 	controller := http.NewResponseController(w)
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-store")

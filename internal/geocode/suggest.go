@@ -5,18 +5,22 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
+
+	"heliosian/internal/auth"
+	"heliosian/internal/lru"
+	"heliosian/internal/ratelimit"
 )
 
-// Suggester offers whole addresses for a few typed characters: Google's
-// Places behind the real client, a handful of made-up ones behind the
-// fake, so the sample server's boxes suggest too.
+const (
+	suggestPerMinute = 60
+	suggestCached    = 2000
+)
+
 type Suggester interface {
 	Suggest(input string) ([]Suggestion, error)
 }
 
-// Suggest on the fake is a few Bay Area addresses that contain what was
-// typed, or the first few when nothing does, so a sample page shows the
-// picker at work.
 func (Fake) Suggest(input string) ([]Suggestion, error) {
 	all := []string{
 		"865 Waverley St, Palo Alto, CA 94301, USA",
@@ -41,28 +45,47 @@ func (Fake) Suggest(input string) ([]Suggestion, error) {
 	return out, nil
 }
 
-// RegisterSuggest serves GET /api/address/suggest?q= on an app: the
-// suggestions for what was typed, five at most, an empty list for fewer
-// than three characters or when the service is not set up. Behind
-// sign-in, as every app's API is.
-func RegisterSuggest(mux *http.ServeMux, s Suggester) {
-	mux.HandleFunc("GET /api/address/suggest", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Cache-Control", "no-store")
-		q := strings.TrimSpace(r.URL.Query().Get("q"))
-		if s == nil || len(q) < 3 || len(q) > 200 {
-			w.Write([]byte("[]"))
-			return
-		}
-		out, err := s.Suggest(q)
-		if err != nil {
-			slog.WarnContext(r.Context(), "address suggestions", "error", err)
-			w.Write([]byte("[]"))
-			return
-		}
-		if len(out) > 5 {
-			out = out[:5]
-		}
+type Suggestions struct {
+	suggester Suggester
+	recent    *ratelimit.Limiter
+	cache     *lru.Cache[string, []Suggestion]
+}
+
+func NewSuggestions(s Suggester) *Suggestions {
+	return &Suggestions{suggester: s, recent: ratelimit.New(suggestPerMinute, time.Minute), cache: lru.New[string, []Suggestion](suggestCached)}
+}
+
+func (s *Suggestions) Register(mux *http.ServeMux) {
+	mux.HandleFunc("GET /api/address/suggest", s.serve)
+}
+
+func (s *Suggestions) serve(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	q := strings.ToLower(strings.Join(strings.Fields(r.URL.Query().Get("q")), " "))
+	if len(q) < 3 || len(q) > 200 {
+		w.Write([]byte("[]"))
+		return
+	}
+	if out, ok := s.cache.Get(q); ok {
 		json.NewEncoder(w).Encode(out)
-	})
+		return
+	}
+	email := strings.ToLower(auth.RealEmail(r))
+	if !s.recent.Allow(email, time.Now()) {
+		slog.WarnContext(r.Context(), "address suggestions: over the limit", "email", email)
+		w.Write([]byte("[]"))
+		return
+	}
+	out, err := s.suggester.Suggest(q)
+	if err != nil {
+		slog.WarnContext(r.Context(), "address suggestions", "error", err)
+		w.Write([]byte("[]"))
+		return
+	}
+	if len(out) > 5 {
+		out = out[:5]
+	}
+	s.cache.Put(q, out)
+	json.NewEncoder(w).Encode(out)
 }

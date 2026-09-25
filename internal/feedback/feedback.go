@@ -9,11 +9,11 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
-	"sync"
 	"time"
 
 	"heliosian/internal/auth"
 	"heliosian/internal/logging"
+	"heliosian/internal/ratelimit"
 )
 
 const (
@@ -62,29 +62,11 @@ type Report struct {
 type Intake struct {
 	cache  *Cache
 	notify func(Report)
-	mu     sync.Mutex
-	recent map[string][]time.Time
+	recent *ratelimit.Limiter
 }
 
 func NewIntake(cache *Cache, notify func(Report)) *Intake {
-	return &Intake{cache: cache, notify: notify, recent: map[string][]time.Time{}}
-}
-
-func (in *Intake) allow(email string, now time.Time) bool {
-	in.mu.Lock()
-	defer in.mu.Unlock()
-	kept := []time.Time{}
-	for _, t := range in.recent[email] {
-		if now.Sub(t) < window {
-			kept = append(kept, t)
-		}
-	}
-	if len(kept) >= perWindow {
-		in.recent[email] = kept
-		return false
-	}
-	in.recent[email] = append(kept, now)
-	return true
+	return &Intake{cache: cache, notify: notify, recent: ratelimit.New(perWindow, window)}
 }
 
 type api struct {
@@ -133,7 +115,7 @@ func (a api) file(w http.ResponseWriter, r *http.Request) {
 	}
 	email := strings.ToLower(auth.Email(r))
 	now := time.Now()
-	if !a.intake.allow(email, now) {
+	if !a.intake.recent.Allow(email, now) {
 		http.Error(w, "that's a lot of reports in a few minutes; please wait a little and try again", http.StatusTooManyRequests)
 		return
 	}

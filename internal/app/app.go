@@ -873,11 +873,15 @@ func NewCore(cfg Config) *Core {
 	notifier := feedback.Notifier{Sender: cfg.Mail, From: cfg.MailFrom, Base: cfg.FeedbackBase, SuperAdmins: settings.SuperAdmins}
 	feedbackIntake := feedback.NewIntake(feedbackCache, notifier.Notify)
 	optIn := who.OptInForm(func() string { return settings.Settings().PrivacyLinks.HeliosWhoOptIn })
+	var suggestions *geocode.Suggestions
+	if s, ok := cfg.Geocoder.(geocode.Suggester); ok {
+		suggestions = geocode.NewSuggestions(s)
+	}
 	for key, m := range map[string]*http.ServeMux{"who": mux, "home": homeMux, "team": teamMux, "birthday": birthdayMux, "celebrate": celebrateMux, "calendar": calendarMux, "loop": loopMux, "ask": askMux} {
 		m.Handle("GET /optin", optIn)
 		feedback.Register(m, key, appName(key), superAdmin, feedbackIntake)
-		if s, ok := cfg.Geocoder.(geocode.Suggester); ok {
-			geocode.RegisterSuggest(m, s)
+		if suggestions != nil {
+			suggestions.Register(m)
 		}
 	}
 	feedback.RegisterAdmin(homeMux, feedbackCache, cfg.FeedbackFiler, superAdmin)

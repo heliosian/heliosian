@@ -1,4 +1,3 @@
-// Package geocode resolves street addresses to coordinates via the google geocoding api.
 package geocode
 
 import (
@@ -7,7 +6,10 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"time"
 )
+
+var client = &http.Client{Timeout: 5 * time.Second}
 
 type Point struct {
 	Lat float64
@@ -23,7 +25,7 @@ func New(key string) *Client {
 }
 
 func (c *Client) Lookup(address string) (Point, error) {
-	resp, err := http.Get("https://maps.googleapis.com/maps/api/geocode/json?address=" +
+	resp, err := client.Get("https://maps.googleapis.com/maps/api/geocode/json?address=" +
 		url.QueryEscape(address) + "&key=" + url.QueryEscape(c.key))
 	if err != nil {
 		return Point{}, err
@@ -49,17 +51,10 @@ func (c *Client) Lookup(address string) (Point, error) {
 	return Point{Lat: parsed.Results[0].Geometry.Location.Lat, Lng: parsed.Results[0].Geometry.Location.Lng}, nil
 }
 
-// Suggestion is one address Google offers for what someone has typed so
-// far - the whole line to put in the box.
 type Suggestion struct {
 	Text string `json:"text"`
 }
 
-// Suggest is Google's Places Autocomplete (New) for a few characters of
-// an address, kept to the United States and leaning to the Bay Area, so
-// a host typing a venue or a street gets whole addresses to pick from.
-// The key is the server's, never the page's, so the page is given the
-// suggestions through the app's own route.
 func (c *Client) Suggest(input string) ([]Suggestion, error) {
 	body, _ := json.Marshal(map[string]any{
 		"input":               input,
@@ -72,7 +67,7 @@ func (c *Client) Suggest(input string) ([]Suggestion, error) {
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Goog-Api-Key", c.key)
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
