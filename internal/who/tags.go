@@ -71,10 +71,12 @@ func (t tagger) rename(w http.ResponseWriter, r *http.Request) {
 	}
 	hadManagers := len(t.cache.TagManagers(owner)[from]) > 0
 	people := t.cache.renameTag(owner, from, to)
+	if people == 0 {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	t.queue.Add(func() {
-		if people == 0 {
-			return
-		}
+		defer t.cache.written()
 		if err := t.writer.Set(appName, tagsTable, map[string]string{tagOwner: owner, tagName: from}, map[string]string{tagName: to}); err != nil {
 			slog.ErrorContext(r.Context(), "tag rename", "owner", owner, "from", from, "to", to, "error", err)
 		}
@@ -123,10 +125,12 @@ func (t tagger) copy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows := t.cache.copyTag(fromOwner, from, owner, to)
+	if len(rows) == 0 {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	t.queue.Add(func() {
-		if len(rows) == 0 {
-			return
-		}
+		defer t.cache.written()
 		if err := t.writer.Insert(appName, tagsTable, rows); err != nil {
 			slog.ErrorContext(r.Context(), "tag copy", "owner", owner, "from", from, "to", to, "error", err)
 		}
@@ -161,6 +165,7 @@ func (t tagger) share(w http.ResponseWriter, r *http.Request) {
 	}
 	t.cache.applyManager(owner, tag, manager, on)
 	t.queue.Add(func() {
+		defer t.cache.written()
 		if err := t.flushManager(owner, tag, manager, on); err != nil {
 			slog.ErrorContext(r.Context(), "tag share write", "owner", owner, "tag", tag, "manager", manager, "error", err)
 		}
@@ -185,6 +190,7 @@ func (t tagger) leave(w http.ResponseWriter, r *http.Request) {
 	}
 	t.cache.applyManager(owner, tag, manager, false)
 	t.queue.Add(func() {
+		defer t.cache.written()
 		if err := t.flushManager(owner, tag, manager, false); err != nil {
 			slog.ErrorContext(r.Context(), "tag leave write", "owner", owner, "tag", tag, "manager", manager, "error", err)
 		}
@@ -217,10 +223,12 @@ func (t tagger) drop(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	people := t.cache.dropTag(owner, tag)
+	if people == 0 {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	t.queue.Add(func() {
-		if people == 0 {
-			return
-		}
+		defer t.cache.written()
 		if err := t.writer.Delete(appName, tagsTable, map[string]string{tagOwner: owner, tagName: tag}); err != nil {
 			slog.ErrorContext(r.Context(), "tag delete", "owner", owner, "tag", tag, "error", err)
 		}
@@ -258,6 +266,7 @@ func (t tagger) set(w http.ResponseWriter, r *http.Request) {
 	}
 	t.cache.applyTag(owner, tag, person, on)
 	t.queue.Add(func() {
+		defer t.cache.written()
 		if err := t.flush(owner, tag, person, on); err != nil {
 			slog.ErrorContext(r.Context(), "tag write", "owner", owner, "tag", tag, "person", person, "error", err)
 		}

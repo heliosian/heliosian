@@ -14,6 +14,7 @@ import (
 	"heliosian/internal/feedback"
 	"heliosian/internal/home"
 	"heliosian/internal/loop"
+	"heliosian/internal/store"
 	"heliosian/internal/team"
 )
 
@@ -152,7 +153,7 @@ var layouts = map[string][]tab{
 		{"Admins", birthday.AdminColumns},
 		{"Team", birthday.TeamColumns},
 		{"Reminders", birthday.ReminderColumns},
-		{"Change Log", birthday.ChangeLogColumns},
+		{store.ChangeLogTab, store.ChangeLogColumns},
 	},
 	// The association's shared list: Birthday's weekly export writes the
 	// Newsletter tab; its Birthdays tab is the association's own.

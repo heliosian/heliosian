@@ -27,9 +27,7 @@ type Cache struct {
 	model      *Model
 	tables     *Tables
 	err        error
-	// edits counts every change applied from a request, so a refresh that
-	// read the sheet before one landed knows not to put the older sheet back.
-	edits int
+	pending    int
 }
 
 // NewCache loads the sheet and keeps reloading it. A sheet that will not load
@@ -61,21 +59,17 @@ func (c *Cache) Refresh() {
 
 func (c *Cache) refresh() error {
 	start := time.Now()
-	c.mu.RLock()
-	before := c.edits
-	c.mu.RUnlock()
 	tables, err := ReadTables(c.source)
 	if err == nil {
 		var model *Model
 		if model, err = BuildModel(tables, c.images); err == nil {
-			// A request's change applied while the sheet was being read is newer
-			// than what was read, and its write is still queued behind this
-			// refresh; keep it, and let the next refresh pick the sheet up.
+			// A change whose write is still queued is in memory and not yet in the
+			// sheet just read; keep it, and let the next refresh pick the sheet up.
 			c.mu.Lock()
-			if c.edits == before {
+			if c.pending == 0 {
 				c.tables, c.model = tables, model
 			} else {
-				slog.Info("events model refresh skipped: edited while reading")
+				slog.Info("events model refresh skipped: writes still queued")
 			}
 			c.mu.Unlock()
 		}
@@ -96,14 +90,17 @@ func (c *Cache) refresh() error {
 	return nil
 }
 
-// set applies a request's change. It counts as an edit, which a refresh in
-// flight defers to.
-func (c *Cache) set(tables *Tables, model *Model) {
+func (c *Cache) commit(tables *Tables, model *Model, write func()) {
 	c.mu.Lock()
-	c.tables = tables
-	c.model = model
-	c.edits++
+	c.tables, c.model = tables, model
+	c.pending++
 	c.mu.Unlock()
+	c.queue.Add(func() {
+		write()
+		c.mu.Lock()
+		c.pending--
+		c.mu.Unlock()
+	})
 }
 
 func (c *Cache) Model() *Model {

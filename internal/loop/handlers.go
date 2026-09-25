@@ -457,8 +457,7 @@ func (a app) commit(r *http.Request, w http.ResponseWriter, tables *Tables, flus
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return false
 	}
-	a.cache.set(tables, model)
-	a.queue.Add(func() {
+	a.cache.commit(tables, model, func() {
 		if err := flush(); err != nil {
 			slog.ErrorContext(ctx, "groups write", "error", err)
 		}

@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"heliosian/internal/data"
 	"heliosian/internal/mail"
+	"heliosian/internal/store"
 )
 
 // Reminders go to the assignee of a birthday as its days come: on the day to
@@ -110,25 +110,12 @@ func (a app) sendDueReminders(ctx context.Context, today time.Time) int {
 	return n
 }
 
-// recordReminder writes the row that keeps a reminder from going twice, the
-// way a request's commit would, off any request.
+// recordReminder writes the row that keeps a reminder from going twice.
 func (a app) recordReminder(ctx context.Context, sv StaffView, kind, to string, today time.Time) {
-	cells := map[string]string{"Email": sv.Email, "Year": sv.Year, "Kind": kind, "Sent On": today.Format(DateFormat), "Sent To": to}
-	done := make(chan struct{})
-	a.queue.Add(func() {
-		defer close(done)
-		tables := a.cache.Tables().with(remindersTab, nil, cells)
-		model, err := BuildModel(tables)
-		if err != nil {
-			slog.ErrorContext(ctx, "birthday: record reminder", "error", err)
-			return
-		}
-		a.cache.set(tables, model)
-		if err := a.writer.Insert(appName, remindersTab, []map[string]string{cells}); err != nil {
-			slog.ErrorContext(ctx, "birthday: write reminder", "error", err)
-		}
-	})
-	<-done
+	cells := store.Row{"Email": sv.Email, "Year": sv.Year, "Kind": kind, "Sent On": today.Format(DateFormat), "Sent To": to}
+	if err := a.cache.Commit(ctx, "reminders", store.Insert(remindersTab, cells)); err != nil {
+		slog.ErrorContext(ctx, "[ERROR] birthday: record reminder", "error", err)
+	}
 }
 
 // reminderMessage is the email for one reminder.
@@ -200,11 +187,4 @@ func threadHeaders(sv StaffView, first bool) map[string]string {
 		return map[string]string{"Message-ID": id}
 	}
 	return map[string]string{"In-Reply-To": id, "References": id}
-}
-
-// RunReminders runs one pass of the reminder loop as of a day, for a command
-// that wants to see the mail, and says how many went.
-func RunReminders(cache *Cache, writer data.Writer, queue Enqueuer, directory Directory, mailer mail.Sender, base string, today time.Time) int {
-	a := app{cache: cache, writer: writer, queue: queue, directory: directory, mailer: mailer, base: base}
-	return a.sendDueReminders(context.Background(), today)
 }

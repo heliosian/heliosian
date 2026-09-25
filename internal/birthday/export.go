@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"heliosian/internal/auth"
+	"heliosian/internal/store"
 )
 
 // The weekly export copies the birthdays an issue of the newsletter carries
@@ -81,7 +81,7 @@ func (a app) exportLoop() {
 			slog.InfoContext(ctx, "birthday: no issue this week to copy to the shared sheet")
 			continue
 		}
-		n, err := a.exportIssue(ctx, issue, exportActor, exportActor)
+		n, err := a.exportIssue(ctx, issue, exportActor)
 		if err != nil {
 			slog.ErrorContext(ctx, "birthday: weekly copy to the shared sheet", "issue", issue, "copied", n, "error", err)
 			continue
@@ -137,44 +137,24 @@ func (a app) toExport(model *Model, issue, actor string) []exported {
 // shared sheet, then marks each done, and says how many went. A row is
 // marked only once it is on the shared sheet, so a failure part way leaves
 // the rest to go on the next try, never a birthday marked and not copied.
-// real is who is really acting, for the Change Log.
-func (a app) exportIssue(ctx context.Context, issue, actor, real string) (int, error) {
+func (a app) exportIssue(ctx context.Context, issue, actor string) (int, error) {
 	items := a.toExport(a.cache.Model(), issue, actor)
-	var copied []exported
+	ops := []store.Op{}
 	var failed error
 	for _, it := range items {
-		if err := a.writer.Insert(sharedSheet, sharedNewsletterTab, []map[string]string{it.row}); err != nil {
+		if err := a.shared.Insert(sharedSheet, sharedNewsletterTab, []map[string]string{it.row}); err != nil {
 			failed = fmt.Errorf("copy %s to the shared sheet: %w", it.email, err)
 			break
 		}
-		copied = append(copied, it)
+		ops = append(ops, store.Set(donationsTab, store.Row{"Email": it.email, "Year": it.year}, it.donation))
 	}
-	if len(copied) == 0 {
+	if len(ops) == 0 {
 		return 0, failed
 	}
-	tables := a.cache.Tables()
-	for _, it := range copied {
-		tables = tables.with(donationsTab, map[string]string{"Email": it.email, "Year": it.year}, it.donation)
-	}
-	model, err := BuildModel(tables)
-	if err != nil {
+	if err := a.cache.Commit(ctx, actor, ops...); err != nil {
 		return 0, fmt.Errorf("mark the copied birthdays done: %w", err)
 	}
-	a.cache.set(tables, model)
-	a.queue.Add(func() {
-		for _, it := range copied {
-			if err := a.writer.Set(appName, donationsTab, map[string]string{"Email": it.email, "Year": it.year}, it.donation); err != nil {
-				slog.ErrorContext(ctx, "birthday: mark copied donation used", "email", it.email, "error", err)
-			}
-			if err := a.writer.Insert(appName, changeLogTab, []map[string]string{{
-				"Timestamp": time.Now().Format(time.RFC3339), "Actor": actor, "Action": "used", "Kind": "donation",
-				"Email": it.email, "Year": it.year, "Details": "copied to the shared sheet for " + issue, "Real Actor": real,
-			}}); err != nil {
-				slog.ErrorContext(ctx, "birthday: log copied donation", "email", it.email, "error", err)
-			}
-		}
-	})
-	return len(copied), failed
+	return len(ops), failed
 }
 
 // shareIssue is POST /api/birthday/newsletter/share: anyone on the team
@@ -196,7 +176,7 @@ func (a app) shareIssue(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "that is not a newsletter date", http.StatusBadRequest)
 		return
 	}
-	n, err := a.exportIssue(r.Context(), issue, actor, auth.RealEmail(r))
+	n, err := a.exportIssue(r.Context(), issue, actor)
 	if err != nil {
 		slog.ErrorContext(r.Context(), "birthday: copy to the shared sheet", "actor", actor, "issue", issue, "copied", n, "error", err)
 		http.Error(w, fmt.Sprintf("copied %d, then: %v", n, err), http.StatusBadGateway)

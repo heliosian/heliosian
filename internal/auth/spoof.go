@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -68,7 +69,11 @@ func Email(r *http.Request) string {
 
 // RealEmail is who is actually signed in, whatever Email says.
 func RealEmail(r *http.Request) string {
-	id, _ := r.Context().Value(contextKey{}).(identity)
+	return RealEmailFrom(r.Context())
+}
+
+func RealEmailFrom(ctx context.Context) string {
+	id, _ := ctx.Value(contextKey{}).(identity)
 	return id.real
 }
 

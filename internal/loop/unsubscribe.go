@@ -122,8 +122,7 @@ func (a app) unsubscribeAddress(ctx context.Context, real string, g *Group, emai
 	if err != nil {
 		return err
 	}
-	a.cache.set(tables, model)
-	a.queue.Add(func() {
+	a.cache.commit(tables, model, func() {
 		if err := a.writer.Insert(appName, excludedTab, []map[string]string{{"Group": g.Name, "Email": email, "Note": note, "Timestamp": when}}); err != nil {
 			slog.ErrorContext(ctx, "groups: unsubscribe write", "error", err)
 			return
@@ -149,8 +148,7 @@ func (a app) resubscribeAddress(ctx context.Context, real string, g *Group, emai
 	if err != nil {
 		return err
 	}
-	a.cache.set(tables, model)
-	a.queue.Add(func() {
+	a.cache.commit(tables, model, func() {
 		if err := a.writer.Delete(appName, excludedTab, map[string]string{"Group": g.Name, "Email": email}); err != nil {
 			slog.ErrorContext(ctx, "groups: resubscribe write", "error", err)
 			return

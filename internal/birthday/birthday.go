@@ -1,10 +1,7 @@
-// Package birthday serves the Helios Birthday Team app: every staff member's
-// birthday walked through outreach, a charity choice, and the newsletter.
 package birthday
 
 import (
 	"fmt"
-	"maps"
 	"net/url"
 	"regexp"
 	"slices"
@@ -13,7 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"heliosian/internal/data"
+	"heliosian/internal/config"
+	"heliosian/internal/store"
 )
 
 const (
@@ -29,7 +27,6 @@ const (
 	adminsTab          = "Admins"
 	teamTab            = "Team"
 	remindersTab       = "Reminders"
-	changeLogTab       = "Change Log"
 )
 
 const (
@@ -103,7 +100,6 @@ var (
 	AdminColumns          = []string{"Email"}
 	TeamColumns           = []string{"Email", "Role"}
 	ReminderColumns       = []string{"Email", "Year", "Kind", "Sent On", "Sent To"}
-	ChangeLogColumns      = []string{"Timestamp", "Actor", "Action", "Kind", "Email", "Year", "Details", "Real Actor"}
 )
 
 var emailForm = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
@@ -194,6 +190,7 @@ type Model struct {
 	// none goes twice.
 	Reminders map[string]bool
 	Settings  Settings
+	Admins    []string
 	byEmail   map[string]*Birthday
 	byCharity map[string]*Charity
 }
@@ -249,61 +246,6 @@ func (m *Model) OnTeam(email string) bool {
 		}
 	}
 	return false
-}
-
-type Tables struct {
-	Birthdays       []map[string]string
-	Assignments     []map[string]string
-	Outreach        []map[string]string
-	Donations       []map[string]string
-	Notes           []map[string]string
-	Charities       []map[string]string
-	NewsletterDates []map[string]string
-	Settings        []map[string]string
-	Admins          []map[string]string
-	Team            []map[string]string
-	Reminders       []map[string]string
-}
-
-func ReadTables(source data.Source) (*Tables, error) {
-	type table struct {
-		name   string
-		want   []string
-		header []string
-		rows   []map[string]string
-	}
-	birthdays := &table{name: birthdaysTab, want: BirthdayColumns}
-	assignments := &table{name: assignmentsTab, want: AssignmentColumns}
-	outreach := &table{name: outreachTab, want: OutreachColumns}
-	donations := &table{name: donationsTab, want: DonationColumns}
-	notes := &table{name: notesTab, want: NoteColumns}
-	charities := &table{name: charitiesTab, want: CharityColumns}
-	dates := &table{name: newsletterDatesTab, want: NewsletterDateColumns}
-	settings := &table{name: settingsTab, want: SettingColumns}
-	admins := &table{name: adminsTab, want: AdminColumns}
-	team := &table{name: teamTab, want: TeamColumns}
-	reminders := &table{name: remindersTab, want: ReminderColumns}
-	changeLog := &table{name: changeLogTab, want: ChangeLogColumns}
-	read := []*table{birthdays, assignments, outreach, donations, notes, charities, dates, settings, admins, team, reminders}
-	names := []string{}
-	for _, t := range read {
-		names = append(names, t.name)
-	}
-	tabs, err := source.Tabs(appName, names, []string{changeLog.name})
-	if err != nil {
-		return nil, err
-	}
-	for _, t := range append(read, changeLog) {
-		t.header, t.rows = tabs[t.name].Header, tabs[t.name].Rows
-		if err := data.CheckColumns(t.name, t.header, t.want); err != nil {
-			return nil, err
-		}
-	}
-	return &Tables{
-		Birthdays: birthdays.rows, Assignments: assignments.rows,
-		Outreach: outreach.rows, Donations: donations.rows, Notes: notes.rows, Charities: charities.rows,
-		NewsletterDates: dates.rows, Settings: settings.rows, Admins: admins.rows, Team: team.rows, Reminders: reminders.rows,
-	}, nil
 }
 
 func yesNo(cell string) (bool, error) {
@@ -430,8 +372,8 @@ func parseSettings(rows []map[string]string) (Settings, error) {
 // BuildModel validates every row and refuses the whole set on the first problem,
 // the stance every app here takes: a sheet edit that breaks a rule surfaces as a
 // refused load, never as a page quietly missing a birthday.
-func BuildModel(tables *Tables) (*Model, error) {
-	settings, err := parseSettings(tables.Settings)
+func BuildModel(tables store.Tables) (*Model, error) {
+	settings, err := parseSettings(tables[settingsTab])
 	if err != nil {
 		return nil, err
 	}
@@ -440,11 +382,16 @@ func BuildModel(tables *Tables) (*Model, error) {
 		Outreach: map[string]Outreach{}, Donations: map[string]Donation{}, Notes: []Note{}, Charities: []Charity{},
 		NewsletterDates: []string{}, Team: []TeamMember{}, Reminders: map[string]bool{}, Settings: settings, byEmail: map[string]*Birthday{}, byCharity: map[string]*Charity{},
 	}
-	for _, row := range tables.Reminders {
+	admins := []string{}
+	for _, row := range tables[adminsTab] {
+		admins = append(admins, row["Email"])
+	}
+	model.Admins = config.NormalizeEmails(admins)
+	for _, row := range tables[remindersTab] {
 		model.Reminders[reminderKey(row["Email"], row["Year"], row["Kind"])] = true
 	}
 	seenRoles := map[string]bool{}
-	for _, row := range tables.Team {
+	for _, row := range tables[teamTab] {
 		email, role := strings.ToLower(strings.TrimSpace(row["Email"])), strings.TrimSpace(row["Role"])
 		if err := checkEmail(email); err != nil {
 			return nil, fmt.Errorf("team member %q: %w", row["Email"], err)
@@ -458,7 +405,7 @@ func BuildModel(tables *Tables) (*Model, error) {
 		seenRoles[email+"\x00"+role] = true
 		model.Team = append(model.Team, TeamMember{Email: email, Role: role})
 	}
-	for _, row := range tables.Charities {
+	for _, row := range tables[charitiesTab] {
 		name := row["Name"]
 		if err := checkName("charity", name); err != nil {
 			return nil, err
@@ -494,7 +441,7 @@ func BuildModel(tables *Tables) (*Model, error) {
 		return nil, fmt.Errorf("setting %q names %q, which is not an allowed charity", DefaultCharityKey, settings.DefaultCharity)
 	}
 
-	for _, row := range tables.NewsletterDates {
+	for _, row := range tables[newsletterDatesTab] {
 		if _, err := ParseDate(row["Date"]); err != nil {
 			return nil, fmt.Errorf("newsletter date %w", err)
 		}
@@ -505,7 +452,7 @@ func BuildModel(tables *Tables) (*Model, error) {
 	}
 	sort.Strings(model.NewsletterDates)
 
-	for _, row := range tables.Birthdays {
+	for _, row := range tables[birthdaysTab] {
 		email := row["Email"]
 		if err := checkEmail(email); err != nil {
 			return nil, fmt.Errorf("birthday row: %w", err)
@@ -538,7 +485,7 @@ func BuildModel(tables *Tables) (*Model, error) {
 		model.byEmail[model.Birthdays[i].Email] = &model.Birthdays[i]
 	}
 
-	for _, row := range tables.Assignments {
+	for _, row := range tables[assignmentsTab] {
 		email, year := row["Email"], row["Year"]
 		fail := func(err error) (*Model, error) {
 			return nil, fmt.Errorf("assignment of %s in %s: %w", email, year, err)
@@ -561,7 +508,7 @@ func BuildModel(tables *Tables) (*Model, error) {
 		model.Assignments[yearKey(email, year)] = Assignment{Email: email, Year: year, AssignedTo: row["Assigned To"], AssignedOn: row["Assigned On"]}
 	}
 
-	for _, row := range tables.Outreach {
+	for _, row := range tables[outreachTab] {
 		email, year := row["Email"], row["Year"]
 		fail := func(err error) (*Model, error) {
 			return nil, fmt.Errorf("outreach to %s in %s: %w", email, year, err)
@@ -584,7 +531,7 @@ func BuildModel(tables *Tables) (*Model, error) {
 		model.Outreach[yearKey(email, year)] = Outreach{Email: email, Year: year, ContactedOn: row["Contacted On"], ContactedBy: row["Contacted By"]}
 	}
 
-	for _, row := range tables.Donations {
+	for _, row := range tables[donationsTab] {
 		email, year := row["Email"], row["Year"]
 		fail := func(err error) (*Model, error) {
 			return nil, fmt.Errorf("donation of %s in %s: %w", email, year, err)
@@ -629,7 +576,7 @@ func BuildModel(tables *Tables) (*Model, error) {
 		}
 	}
 
-	for _, row := range tables.Notes {
+	for _, row := range tables[notesTab] {
 		email := row["Email"]
 		if model.Birthday(email) == nil {
 			return nil, fmt.Errorf("note on %s names someone with no birthday", email)
@@ -646,137 +593,4 @@ func BuildModel(tables *Tables) (*Model, error) {
 		model.Notes = append(model.Notes, Note{Email: email, Note: row["Note"], AddedBy: row["Added By"], Added: row["Added"]})
 	}
 	return model, nil
-}
-
-func cloneRows(rows []map[string]string) []map[string]string {
-	out := make([]map[string]string, len(rows))
-	for i, row := range rows {
-		out[i] = maps.Clone(row)
-	}
-	return out
-}
-
-func applyCells(row, cells map[string]string) {
-	for column, value := range cells {
-		if value == "" {
-			delete(row, column)
-			continue
-		}
-		row[column] = value
-	}
-}
-
-func rowMatches(row, match map[string]string) bool {
-	for column, value := range match {
-		if !strings.EqualFold(strings.TrimSpace(row[column]), value) {
-			return false
-		}
-	}
-	return true
-}
-
-func (t *Tables) tab(name string) []map[string]string {
-	switch name {
-	case birthdaysTab:
-		return t.Birthdays
-	case assignmentsTab:
-		return t.Assignments
-	case outreachTab:
-		return t.Outreach
-	case donationsTab:
-		return t.Donations
-	case notesTab:
-		return t.Notes
-	case charitiesTab:
-		return t.Charities
-	case newsletterDatesTab:
-		return t.NewsletterDates
-	case settingsTab:
-		return t.Settings
-	case teamTab:
-		return t.Team
-	case remindersTab:
-		return t.Reminders
-	}
-	return t.Admins
-}
-
-func (t *Tables) setTab(name string, rows []map[string]string) {
-	switch name {
-	case birthdaysTab:
-		t.Birthdays = rows
-	case assignmentsTab:
-		t.Assignments = rows
-	case outreachTab:
-		t.Outreach = rows
-	case donationsTab:
-		t.Donations = rows
-	case notesTab:
-		t.Notes = rows
-	case charitiesTab:
-		t.Charities = rows
-	case newsletterDatesTab:
-		t.NewsletterDates = rows
-	case settingsTab:
-		t.Settings = rows
-	case teamTab:
-		t.Team = rows
-	case remindersTab:
-		t.Reminders = rows
-	default:
-		t.Admins = rows
-	}
-}
-
-// with mirrors what data.Writer.Set is about to do to one tab, so the model can be
-// rebuilt and checked before anything is persisted. A nil match appends.
-func (t *Tables) with(tab string, match, cells map[string]string) *Tables {
-	out := *t
-	rows := cloneRows(t.tab(tab))
-	found := false
-	for _, row := range rows {
-		if match != nil && rowMatches(row, match) {
-			applyCells(row, cells)
-			found = true
-		}
-	}
-	if !found {
-		row := map[string]string{}
-		applyCells(row, match)
-		applyCells(row, cells)
-		rows = append(rows, row)
-	}
-	out.setTab(tab, rows)
-	return &out
-}
-
-func (t *Tables) without(tab string, match map[string]string) *Tables {
-	out := *t
-	rows := []map[string]string{}
-	for _, row := range t.tab(tab) {
-		if !rowMatches(row, match) {
-			rows = append(rows, row)
-		}
-	}
-	out.setTab(tab, rows)
-	return &out
-}
-
-func (t *Tables) count(tab string, match map[string]string) int {
-	n := 0
-	for _, row := range t.tab(tab) {
-		if rowMatches(row, match) {
-			n++
-		}
-	}
-	return n
-}
-
-func (t *Tables) withAdmins(emails []string) *Tables {
-	out := *t
-	out.Admins = make([]map[string]string, 0, len(emails))
-	for _, email := range emails {
-		out.Admins = append(out.Admins, map[string]string{"Email": email})
-	}
-	return &out
 }

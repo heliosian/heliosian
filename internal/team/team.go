@@ -211,16 +211,15 @@ func decode(w http.ResponseWriter, r *http.Request, into any) bool {
 // once and queues the writes behind every earlier one. The page reads the
 // memory, so the change shows the moment the request returns, however long
 // the sheet takes - a throttled Sheets call can hold the queue for most of a
-// minute, which must not hold the next click. The periodic refresh waits in
-// the same queue, so it cannot read the sheet back over an unflushed change.
+// minute, which must not hold the next click. A refresh keeps its reading only
+// while no write is still queued, so it cannot read the sheet back over one.
 func (a app) commit(ctx context.Context, w http.ResponseWriter, tables *Tables, flush func() error) bool {
 	model, err := BuildModel(tables, a.cache.images)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return false
 	}
-	a.cache.set(tables, model)
-	a.queue.Add(func() {
+	a.cache.commit(tables, model, func() {
 		if err := flush(); err != nil {
 			slog.ErrorContext(ctx, "events write", "error", err)
 		}

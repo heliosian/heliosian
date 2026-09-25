@@ -317,6 +317,7 @@ func (a admin) setAdmins(w http.ResponseWriter, r *http.Request) {
 	added, removed := listDiff(current, admins)
 	a.cache.applyAdmins(admins)
 	a.queue.Add(func() {
+		defer a.cache.written()
 		for _, e := range removed {
 			if err := a.writer.Delete(appName, adminsTable, map[string]string{"Email": e}); err != nil {
 				slog.ErrorContext(r.Context(), "remove admin", "email", e, "error", err)

@@ -120,6 +120,7 @@ func applyFamilyWrite(cache *Cache, writer data.Writer, queue *Queue, w http.Res
 		return false
 	}
 	queue.Add(func() {
+		defer cache.written()
 		if err := writer.Set(appName, "Families", map[string]string{"Email": key}, cells); err != nil {
 			slog.ErrorContext(r.Context(), "set families row", "key", key, "error", err)
 			return
@@ -147,6 +148,7 @@ func applyOverrideWrite(cache *Cache, writer data.Writer, queue *Queue, w http.R
 		return false
 	}
 	queue.Add(func() {
+		defer cache.written()
 		if err := writer.Set(appName, "Overrides", map[string]string{"Email": email}, cells); err != nil {
 			slog.ErrorContext(r.Context(), "set overrides", "email", email, "error", err)
 			return
@@ -188,6 +190,7 @@ func applyEmailRenameWrite(cache *Cache, writer data.Writer, queue *Queue, w htt
 		return strings.EqualFold(row["Email"], oldEmail)
 	})
 	queue.Add(func() {
+		defer cache.written()
 		overrideCells := map[string]string{"Email": newEmail}
 		for column, value := range cells {
 			overrideCells[column] = value
@@ -233,6 +236,7 @@ func applyDeletePersonWrite(cache *Cache, writer data.Writer, queue *Queue, w ht
 		return false
 	}
 	queue.Add(func() {
+		defer cache.written()
 		if err := writer.Delete(appName, "Overrides", map[string]string{"Email": email}); err != nil {
 			slog.ErrorContext(r.Context(), "delete overrides row", "email", email, "error", err)
 			return
@@ -566,6 +570,7 @@ func (u uploader) setPhotos(w http.ResponseWriter, r *http.Request, me, key stri
 	}
 	logRow := changeLogRow(r, me, key, previous)
 	u.queue.Add(func() {
+		defer u.cache.written()
 		if err := u.sheet.Delete(appName, "Photos", map[string]string{"Email": key}); err != nil {
 			slog.ErrorContext(r.Context(), "clear photo list", "email", key, "error", err)
 			return

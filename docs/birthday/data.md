@@ -19,7 +19,7 @@ The weekly export (`birthday.md`) writes to a second spreadsheet, the associatio
 - `Admins` — Email.
 - `Reminders` — Email, Year, Kind, Sent On, Sent To. One row per reminder the app has sent (`ask`, `late`, `donation`), written by the app alone.
 - `Team` — Email, Role. One row per person per role: `Volunteer` (offered when a birthday is assigned) or `Comms Team` (carries the donations into the newsletter). Anyone, in the directory or not, by address.
-- `Change Log` — appended on every change; never read back.
+- `Change Log` — written by the store for every cell a change touches, with what the cell held before (`docs/storage.md`, Change Log); never read back. The Change Log from before the app moved onto the store is `Change Log (old)`.
 
 ## Keys are names
 

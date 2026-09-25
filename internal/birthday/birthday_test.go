@@ -15,6 +15,7 @@ import (
 	"heliosian/internal/auth"
 	"heliosian/internal/data"
 	"heliosian/internal/mail"
+	"heliosian/internal/store"
 )
 
 // sentMail keeps what the app sends, and waits for it, since sending
@@ -53,6 +54,8 @@ var sent = &sentMail{}
 
 // joined is who the app put on its home list, per newServer.
 var joined []string
+
+var sheet *data.Dir
 
 const (
 	parent = "robin.whitfield@heliosschool.org"
@@ -117,14 +120,15 @@ func newServer(t *testing.T) (*Cache, *http.ServeMux) {
 	t.Chdir("../..")
 	now = func() time.Time { return mustTime("2026-09-09") }
 	dir := &data.Dir{Root: "sampledata"}
-	cache, err := NewCache(dir, func(e string) bool { return e == admin }, syncQueue{})
+	sheet = dir
+	cache, err := NewCache(dir, dir, func(e string) bool { return e == admin }, syncQueue{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	mux := http.NewServeMux()
 	sent = &sentMail{}
 	joined = nil
-	Register(mux, cache, dir, syncQueue{}, nil, fakeDirectory{}, func() []string { return []string{admin} }, nil, sent, "Helios Staff Birthdays <birthday@example.org>", "https://birthday.example.org", func(email string) error {
+	Register(mux, cache, dir, nil, fakeDirectory{}, func() []string { return []string{admin} }, nil, sent, "Helios Staff Birthdays <birthday@example.org>", "https://birthday.example.org", func(email string) error {
 		joined = append(joined, email)
 		return nil
 	})
@@ -163,7 +167,7 @@ func TestSampleLoads(t *testing.T) {
 	if !m.Skipped("hank.morrow@heliosschool.org") || m.InPipeline("hank.morrow@heliosschool.org") || m.Skipped("omar.farouk@heliosschool.org") || !m.InPipeline("omar.farouk@heliosschool.org") {
 		t.Fatal("participation levels did not load")
 	}
-	if _, err := BuildModel(&Tables{Birthdays: []map[string]string{{"Email": "x@heliosschool.org", "Participation": LevelNoNewsletter}}, Charities: m.charityRows(), Settings: m.settingRows()}); err == nil {
+	if _, err := BuildModel(store.Tables{birthdaysTab: {{"Email": "x@heliosschool.org", "Participation": LevelNoNewsletter}}, charitiesTab: m.charityRows(), settingsTab: m.settingRows()}); err == nil {
 		t.Fatal("a blank birthday without a skip loaded")
 	}
 }
@@ -576,7 +580,7 @@ func TestReminders(t *testing.T) {
 	cache, mux := newServer(t)
 	// Bill and Ruth are assigned in the September 11 issue, so asked by the 3rd;
 	// Bill was contacted on the 8th, Ruth not; Miguel is unassigned.
-	app := app{cache: cache, writer: &data.Dir{Root: "sampledata"}, queue: syncQueue{}, directory: fakeDirectory{}, mailer: sent, from: "Helios Staff Birthdays <birthday@example.org>", base: "https://birthday.example.org"}
+	app := app{cache: cache, directory: fakeDirectory{}, mailer: sent, from: "Helios Staff Birthdays <birthday@example.org>", base: "https://birthday.example.org"}
 	kinds := func(day string) []string {
 		out := []string{}
 		for _, r := range app.dueReminders(cache.Model(), mustTime(day)) {
@@ -632,10 +636,52 @@ func TestReminders(t *testing.T) {
 	if got := kinds("2026-09-10"); len(got) != 0 {
 		t.Fatalf("the next day, due again: %v", got)
 	}
-	if rows := cache.Tables().Reminders; len(rows) != 4 {
-		t.Fatalf("reminder rows: %v", rows)
+	if n := cache.Count(remindersTab, nil); n != 4 {
+		t.Fatalf("reminder rows: %d", n)
 	}
 	_ = mux
+}
+
+func TestCharityRenameCarriesItsNameAndLogsWhatWasThere(t *testing.T) {
+	cache, mux := newServer(t)
+	const old, name = "Second Harvest of Silicon Valley", "Second Harvest"
+	donations := cache.Count(donationsTab, store.Row{"Charity": old})
+	if donations == 0 {
+		t.Fatal("the sample has no donation to carry")
+	}
+	c := cache.Model().Charity(old)
+	rec := call(t, mux, admin, "POST", "/api/birthday/charity", map[string]any{
+		"original": old, "name": name, "donationLink": c.DonationLink, "about": c.About, "ein": c.EIN, "allowed": true,
+	})
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("rename: %d %s", rec.Code, rec.Body)
+	}
+	if cache.Count(donationsTab, store.Row{"Charity": name}) != donations || cache.Count(donationsTab, store.Row{"Charity": old}) != 0 || cache.Model().Settings.DefaultCharity != name {
+		t.Fatal("the donations and the default did not follow the rename in memory")
+	}
+	_, rows, err := sheet.Table(appName, donationsTab)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range rows {
+		if row["Charity"] == old {
+			t.Fatalf("the sheet kept %v", row)
+		}
+	}
+	_, log, err := sheet.Table(appName, store.ChangeLogTab)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tabs := map[string]int{}
+	for _, row := range log {
+		if row["Actor"] != admin || row["Action"] != "set" || row["Previous"] != old {
+			t.Errorf("log row %v", row)
+		}
+		tabs[row["Tab"]+"/"+row["Column"]]++
+	}
+	if tabs[charitiesTab+"/Name"] != 1 || tabs[donationsTab+"/Charity"] != donations || tabs[settingsTab+"/Value"] != 1 || len(tabs) != 3 {
+		t.Fatalf("logged %v", tabs)
+	}
 }
 
 func TestCreateNewsletterDates(t *testing.T) {
@@ -824,8 +870,8 @@ func TestShareIssue(t *testing.T) {
 	// The issue carries Bill (contacted, no charity yet) and Ruth (not yet
 	// asked) - and Miguel, unassigned; run as the Thursday night run would.
 	dir := &data.Dir{Root: "sampledata"}
-	a := app{cache: cache, writer: dir, queue: syncQueue{}, directory: fakeDirectory{}}
-	n, err := a.exportIssue(context.Background(), "2026-09-11", exportActor, exportActor)
+	a := app{cache: cache, shared: dir, directory: fakeDirectory{}}
+	n, err := a.exportIssue(context.Background(), "2026-09-11", exportActor)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -849,7 +895,7 @@ func TestShareIssue(t *testing.T) {
 	if d, _ := model.Donation("bill.ryder@heliosschool.org", "2026 - 2027"); bill["Staff Name"] != "Bill Ryder" || bill["Staff Birthday"] != "2026-09-15" || bill["Contacted On"] != "2026-09-08" || bill["Charity Selected On"] != "" || bill["Charity Name"] != model.Settings.DefaultCharity || d.RecordedBy != "" {
 		t.Errorf("Bill, defaulted: row %v, donation %+v", bill, d)
 	}
-	if n, err := a.exportIssue(context.Background(), "2026-09-11", exportActor, exportActor); n != 0 || err != nil {
+	if n, err := a.exportIssue(context.Background(), "2026-09-11", exportActor); n != 0 || err != nil {
 		t.Fatalf("a second run copied %d: %v", n, err)
 	}
 	if rec := call(t, mux, admin, "POST", "/api/birthday/newsletter/share", map[string]string{"date": "2026-09-11"}); rec.Code != 200 || rec.Body.String() != "{\"copied\":0}\n" {
@@ -858,7 +904,7 @@ func TestShareIssue(t *testing.T) {
 	// Omar asked to stay out of the newsletter and chose Wikipedia: he goes
 	// with his choice, his note, when he chose, and his preference.
 	omar := find(view(t, cache, admin).Staff, "omar.farouk@heliosschool.org")
-	if _, err := a.exportIssue(context.Background(), omar.NewsletterDate, exportActor, exportActor); err != nil {
+	if _, err := a.exportIssue(context.Background(), omar.NewsletterDate, exportActor); err != nil {
 		t.Fatal(err)
 	}
 	tabs, _ = dir.Tabs(sharedSheet, []string{sharedNewsletterTab}, nil)

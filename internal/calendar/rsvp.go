@@ -59,8 +59,7 @@ func (a app) recordBy(ctx context.Context, actor, email, id, answer, via string,
 	if err != nil {
 		return err
 	}
-	a.cache.set(tables, model)
-	a.queue.Add(func() {
+	a.cache.commit(tables, model, func() {
 		var err error
 		if answer == "" {
 			err = a.writer.Delete(appName, RSVPsTab, map[string]string{"Email": email, "Event ID": e.ID})

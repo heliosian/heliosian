@@ -210,8 +210,7 @@ func (a app) commit(ctx context.Context, w http.ResponseWriter, tables *Tables, 
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return false
 	}
-	a.cache.set(tables, model)
-	a.queue.Add(func() {
+	a.cache.commit(tables, model, func() {
 		if err := flush(); err != nil {
 			slog.ErrorContext(ctx, "calendar write", "error", err)
 		}
@@ -350,8 +349,7 @@ func (a app) saveHome(ctx context.Context, email string, cells map[string]string
 	if err != nil {
 		return err
 	}
-	a.cache.set(tables, built)
-	a.queue.Add(func() {
+	a.cache.commit(tables, built, func() {
 		if err := a.writer.Set(appName, SettingsTab, map[string]string{"Email": email}, cells); err != nil {
 			slog.ErrorContext(ctx, "calendar write", "error", err)
 		}
@@ -445,8 +443,7 @@ func (a app) reorder(ctx context.Context, email string, tokens []string) error {
 	if err != nil {
 		return err
 	}
-	a.cache.set(tables, built)
-	a.queue.Add(func() {
+	a.cache.commit(tables, built, func() {
 		if err := a.writer.Reorder(appName, FeedsTab, "Token", order); err != nil {
 			slog.ErrorContext(ctx, "calendar write", "error", err)
 		}

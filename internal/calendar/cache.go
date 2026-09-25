@@ -26,7 +26,7 @@ type Cache struct {
 	mu         sync.RWMutex
 	model      *Model
 	tables     *Tables
-	edits      int
+	pending    int
 	// images says which image names can be served; nil in a test.
 	images ImageChecker
 }
@@ -57,9 +57,6 @@ func (c *Cache) Refresh() {
 
 func (c *Cache) refresh() error {
 	start := time.Now()
-	c.mu.RLock()
-	before := c.edits
-	c.mu.RUnlock()
 	tables, err := ReadTables(c.source)
 	if err != nil {
 		return err
@@ -70,10 +67,10 @@ func (c *Cache) refresh() error {
 	}
 	c.resolveImages(model)
 	c.mu.Lock()
-	if c.edits == before {
+	if c.pending == 0 {
 		c.tables, c.model = tables, model
 	} else {
-		slog.Info("calendar model refresh skipped: edited while reading")
+		slog.Info("calendar model refresh skipped: writes still queued")
 	}
 	c.mu.Unlock()
 	slog.Info("loaded calendar model", "events", len(model.Events), "hidden", model.Hidden, "days", len(model.Days),
@@ -138,13 +135,18 @@ func (c *Cache) resolveImages(model *Model) {
 	}
 }
 
-func (c *Cache) set(tables *Tables, model *Model) {
+func (c *Cache) commit(tables *Tables, model *Model, write func()) {
 	c.resolveImages(model)
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.tables = tables
-	c.model = model
-	c.edits++
+	c.tables, c.model = tables, model
+	c.pending++
+	c.mu.Unlock()
+	c.queue.Add(func() {
+		write()
+		c.mu.Lock()
+		c.pending--
+		c.mu.Unlock()
+	})
 }
 
 func (c *Cache) Model() *Model {

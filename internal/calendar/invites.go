@@ -1439,8 +1439,7 @@ func (a app) bringGuest(ctx context.Context, actor string, e *Event, of, name, e
 	if err != nil {
 		return "", err
 	}
-	a.cache.set(tables, built)
-	a.queue.Add(func() {
+	a.cache.commit(tables, built, func() {
 		if err := first(); err != nil {
 			slog.ErrorContext(ctx, "calendar write", "error", err)
 		}
@@ -1603,8 +1602,7 @@ func (a app) markSent(ctx context.Context, e *Event, emails []string) {
 		slog.ErrorContext(ctx, "calendar: mark invites sent", "error", err)
 		return
 	}
-	a.cache.set(tables, built)
-	a.queue.Add(func() {
+	a.cache.commit(tables, built, func() {
 		for _, email := range emails {
 			if err := a.writer.Set(appName, InvitesTab, map[string]string{"Event ID": e.ID, "Email": email}, map[string]string{"Sent": stamp}); err != nil {
 				slog.ErrorContext(ctx, "calendar write", "error", err)
@@ -1639,8 +1637,7 @@ func (a app) noteOpened(ctx context.Context, e *Event, email string) {
 		slog.ErrorContext(ctx, "calendar: note opened", "error", err)
 		return
 	}
-	a.cache.set(tables, built)
-	a.queue.Add(func() {
+	a.cache.commit(tables, built, func() {
 		if err := a.writer.Set(appName, InvitesTab, map[string]string{"Event ID": e.ID, "Email": email}, map[string]string{"Opened": stamp}); err != nil {
 			slog.ErrorContext(ctx, "calendar write", "error", err)
 		}

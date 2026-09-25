@@ -38,7 +38,7 @@ type Cache struct {
 	mu      sync.RWMutex
 	model   *Model
 	tables  *Tables
-	edits   int
+	pending int
 	commits sync.Mutex
 
 	// superEdit tracks, per admin, whether they've turned on the switch that lets them
@@ -74,7 +74,17 @@ func NewCache(source data.Source, writer data.Writer, geocoder Geocoder, blobs, 
 func (c *Cache) rebuildCurrent() error {
 	c.commits.Lock()
 	defer c.commits.Unlock()
-	return c.commit(c.currentTables())
+	start := time.Now()
+	tables := c.currentTables()
+	model, err := c.build(tables)
+	if err != nil {
+		return err
+	}
+	c.mu.Lock()
+	c.model, c.tables = model, tables
+	c.mu.Unlock()
+	c.loaded(model, start)
+	return nil
 }
 
 // applyOverride folds an Overrides change into the cached tables and reruns the
@@ -135,10 +145,18 @@ func (c *Cache) commit(tables *Tables) error {
 	}
 	c.mu.Lock()
 	c.model, c.tables = model, tables
-	c.edits++
+	c.pending++
 	c.mu.Unlock()
 	c.loaded(model, start)
 	return nil
+}
+
+// written releases a change counted when memory took it, once its queued
+// write has run.
+func (c *Cache) written() {
+	c.mu.Lock()
+	c.pending--
+	c.mu.Unlock()
 }
 
 // IsAdmin reports whether email may use the admin tools at all — either tier:
@@ -183,7 +201,7 @@ func (c *Cache) applyAdmins(emails []string) {
 	defer c.commits.Unlock()
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.edits++
+	c.pending++
 	rows := make([]map[string]string, 0, len(emails))
 	for _, email := range emails {
 		rows = append(rows, map[string]string{"Email": email})
@@ -376,7 +394,7 @@ func (c *Cache) applyManager(owner, tag, manager string, on bool) {
 	defer c.commits.Unlock()
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.edits++
+	c.pending++
 	rows := []map[string]string{}
 	for _, row := range c.tables.Managers {
 		if strings.EqualFold(row[tagOwner], owner) && row[tagName] == tag && strings.EqualFold(row[managerEmail], manager) {
@@ -408,7 +426,7 @@ func (c *Cache) applyTag(owner, tag, person string, on bool) {
 	defer c.commits.Unlock()
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.edits++
+	c.pending++
 	rows := []map[string]string{}
 	for _, row := range c.tables.Tags {
 		if strings.EqualFold(row[tagOwner], owner) && row[tagName] == tag && strings.EqualFold(row[tagPerson], person) {
@@ -432,7 +450,6 @@ func (c *Cache) renameTag(owner, from, to string) int {
 	defer c.commits.Unlock()
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.edits++
 	rename := func(rows []map[string]string) ([]map[string]string, int) {
 		next := make([]map[string]string, len(rows))
 		n := 0
@@ -457,6 +474,7 @@ func (c *Cache) renameTag(owner, from, to string) int {
 	next.Tags = tags
 	next.Managers = managers
 	c.tables = &next
+	c.pending++
 	return people
 }
 
@@ -469,7 +487,6 @@ func (c *Cache) copyTag(fromOwner, from, owner, to string) []map[string]string {
 	defer c.commits.Unlock()
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.edits++
 	rows := slices.Clone(c.tables.Tags)
 	added := []map[string]string{}
 	for _, row := range c.tables.Tags {
@@ -484,6 +501,7 @@ func (c *Cache) copyTag(fromOwner, from, owner, to string) []map[string]string {
 	next := *c.tables
 	next.Tags = rows
 	c.tables = &next
+	c.pending++
 	return added
 }
 
@@ -495,7 +513,6 @@ func (c *Cache) dropTag(owner, tag string) int {
 	defer c.commits.Unlock()
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.edits++
 	rows := []map[string]string{}
 	dropped := 0
 	for _, row := range c.tables.Tags {
@@ -519,6 +536,7 @@ func (c *Cache) dropTag(owner, tag string) int {
 	next.Tags = rows
 	next.Managers = managers
 	c.tables = &next
+	c.pending++
 	return dropped
 }
 
@@ -544,9 +562,6 @@ func (c *Cache) Refresh() {
 
 func (c *Cache) refresh() error {
 	start := time.Now()
-	c.mu.RLock()
-	before := c.edits
-	c.mu.RUnlock()
 	tables, err := ReadTables(c.source)
 	if err != nil {
 		return err
@@ -555,10 +570,12 @@ func (c *Cache) refresh() error {
 	if err != nil {
 		return err
 	}
+	c.commits.Lock()
+	defer c.commits.Unlock()
 	c.mu.Lock()
-	if c.edits != before {
+	if c.pending > 0 {
 		c.mu.Unlock()
-		slog.Info("directory model refresh skipped: edited while reading")
+		slog.Info("directory model refresh skipped: writes still queued")
 		return nil
 	}
 	c.model, c.tables = model, tables

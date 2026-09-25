@@ -789,7 +789,7 @@ func NewCore(cfg Config) *Core {
 	if err != nil {
 		slog.Error("load team data", "error", err)
 	}
-	birthdayCache, err := birthday.NewCache(cfg.Source, superAdmin, queue)
+	birthdayCache, err := birthday.NewCache(cfg.Source, cfg.Writer, superAdmin, queue)
 	if err != nil {
 		logging.Fatal("load birthdays data", "error", err)
 	}
@@ -840,8 +840,8 @@ func NewCore(cfg Config) *Core {
 	}
 	team.Register(teamMux, teamCache, cfg.Writer, queue, cfg.Store, directory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.Mail, cfg.MailFrom, eventRSVPs)
 	birthdayMux := http.NewServeMux()
-	birthday.Register(birthdayMux, birthdayCache, cfg.Writer, queue, cfg.Store, birthdayDirectory{cache, settings}, settings.SuperAdmins, cfg.Describer, cfg.BirthdayMail, cfg.BirthdayFrom, cfg.BirthdayBase, func(email string) error {
-		return home.Grant(homeCache, cfg.Writer, queue, "birthday", email)
+	birthday.Register(birthdayMux, birthdayCache, cfg.Writer, cfg.Store, birthdayDirectory{cache, settings}, settings.SuperAdmins, cfg.Describer, cfg.BirthdayMail, cfg.BirthdayFrom, cfg.BirthdayBase, func(email string) error {
+		return home.Grant(homeCache, cfg.Writer, "birthday", email)
 	})
 	celebrateMux := http.NewServeMux()
 	partyRSVPs := func(partyID string) *celebrate.PartyRSVPs {

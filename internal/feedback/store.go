@@ -125,7 +125,7 @@ type Store struct {
 	queue   Enqueuer
 	mu      sync.RWMutex
 	reports []Report
-	edits   int
+	pending int
 }
 
 func NewStore(source data.Source, writer data.Writer, queue Enqueuer) (*Store, error) {
@@ -153,9 +153,6 @@ func (s *Store) Refresh() {
 
 func (s *Store) refresh() error {
 	start := time.Now()
-	s.mu.RLock()
-	before := s.edits
-	s.mu.RUnlock()
 	header, rows, err := s.source.Table(appName, reportsTab)
 	if err != nil {
 		return err
@@ -171,9 +168,9 @@ func (s *Store) refresh() error {
 		reports = append(reports, reportFromRow(row))
 	}
 	s.mu.Lock()
-	if s.edits != before {
+	if s.pending > 0 {
 		s.mu.Unlock()
-		slog.Info("feedback model refresh skipped: edited while reading")
+		slog.Info("feedback model refresh skipped: writes still queued")
 		return nil
 	}
 	s.reports = reports
@@ -210,7 +207,6 @@ func (s *Store) Save(r Report) (Report, error) {
 	s.queue.Add(func() {
 		s.mu.Lock()
 		s.reports = append(s.reports, r)
-		s.edits++
 		s.mu.Unlock()
 		done <- s.writer.Insert(appName, reportsTab, []map[string]string{r.cells()})
 	})
@@ -225,12 +221,15 @@ func (s *Store) update(r Report) error {
 			s.reports[i] = r
 		}
 	}
-	s.edits++
+	s.pending++
 	s.mu.Unlock()
 	s.queue.Add(func() {
 		if err := s.writer.Set(appName, reportsTab, map[string]string{"ID": r.ID}, r.cells()); err != nil {
 			slog.Error("feedback write", "id", r.ID, "error", err)
 		}
+		s.mu.Lock()
+		s.pending--
+		s.mu.Unlock()
 	})
 	return nil
 }

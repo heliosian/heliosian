@@ -149,7 +149,7 @@ type invitesCache struct {
 	systems   []InviteTemplate
 	greetings []GreetingTemplate
 	err       string
-	edits     int
+	pending   int
 }
 
 func newInvitesCache(source data.Source, queue *Queue) (*invitesCache, error) {
@@ -177,9 +177,6 @@ func (c *invitesCache) refreshLoop() {
 // failed as it was rather than blanking out working data - the error string
 // still surfaces so the client can explain it.
 func (c *invitesCache) refresh() {
-	c.mu.RLock()
-	before := c.edits
-	c.mu.RUnlock()
 	systems, sysErr := loadInviteTemplates(c.source)
 	greetings, greetErr := loadGreetingTemplates(c.source)
 	errStr := ""
@@ -197,7 +194,7 @@ func (c *invitesCache) refresh() {
 	if sysErr == nil {
 		c.systems = systems
 	}
-	if greetErr == nil && c.edits == before {
+	if greetErr == nil && c.pending == 0 {
 		c.greetings = greetings
 	}
 	c.err = errStr
@@ -208,7 +205,13 @@ func (c *invitesCache) addGreeting(g GreetingTemplate) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.greetings = append(slices.Clone(c.greetings), g)
-	c.edits++
+	c.pending++
+}
+
+func (c *invitesCache) written() {
+	c.mu.Lock()
+	c.pending--
+	c.mu.Unlock()
 }
 
 func (c *invitesCache) editGreeting(original string, g GreetingTemplate) bool {
@@ -224,7 +227,7 @@ func (c *invitesCache) editGreeting(original string, g GreetingTemplate) bool {
 		next := slices.Clone(c.greetings)
 		next[i] = g
 		c.greetings = next
-		c.edits++
+		c.pending++
 		return true
 	}
 	return false
@@ -241,7 +244,7 @@ func (c *invitesCache) deleteGreeting(name, email string) bool {
 			return false
 		}
 		c.greetings = slices.Delete(slices.Clone(c.greetings), i, i+1)
-		c.edits++
+		c.pending++
 		return true
 	}
 	return false
@@ -323,6 +326,7 @@ func RegisterInvites(mux *http.ServeMux, cache *Cache, source data.Source, write
 				return
 			}
 			queue.Add(func() {
+				defer invites.written()
 				if err := writer.Set(invitesApp, "_Greetings", map[string]string{"Name": original}, cells); err != nil {
 					slog.ErrorContext(r.Context(), "update greeting", "name", name, "error", err)
 				}
@@ -331,6 +335,7 @@ func RegisterInvites(mux *http.ServeMux, cache *Cache, source data.Source, write
 		} else {
 			invites.addGreeting(greeting)
 			queue.Add(func() {
+				defer invites.written()
 				if err := writer.Insert(invitesApp, "_Greetings", []map[string]string{cells}); err != nil {
 					slog.ErrorContext(r.Context(), "save greeting", "name", name, "error", err)
 				}
@@ -360,6 +365,7 @@ func RegisterInvites(mux *http.ServeMux, cache *Cache, source data.Source, write
 			return
 		}
 		queue.Add(func() {
+			defer invites.written()
 			if err := writer.Delete(invitesApp, "_Greetings", map[string]string{"Name": name}); err != nil {
 				slog.ErrorContext(r.Context(), "delete greeting", "name", name, "error", err)
 			}

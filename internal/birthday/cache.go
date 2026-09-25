@@ -2,108 +2,66 @@ package birthday
 
 import (
 	"log/slog"
+	"slices"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"heliosian/internal/config"
 	"heliosian/internal/data"
+	"heliosian/internal/store"
 )
 
-const refreshInterval = 5 * time.Minute
-
-// Enqueuer serializes sheet writes; the directory's write queue is shared here.
-type Enqueuer interface {
-	Add(func())
-}
-
 type Cache struct {
-	source     data.Source
+	*store.Store[*Model]
 	superAdmin func(email string) bool
-	queue      Enqueuer
-	mu         sync.RWMutex
-	model      *Model
-	tables     *Tables
-	edits      int
 }
 
-func NewCache(source data.Source, superAdmin func(string) bool, queue Enqueuer) (*Cache, error) {
-	c := &Cache{source: source, superAdmin: superAdmin, queue: queue}
-	if err := c.refresh(); err != nil {
-		return nil, err
-	}
-	go c.refreshLoop()
-	return c, nil
+var spec = store.Spec[*Model]{
+	App: appName,
+	Tabs: []store.Tab{
+		{Name: birthdaysTab, Columns: BirthdayColumns, Key: []string{"Email"}},
+		{Name: assignmentsTab, Columns: AssignmentColumns, Key: []string{"Email", "Year"}},
+		{Name: outreachTab, Columns: OutreachColumns, Key: []string{"Email", "Year"}},
+		{Name: donationsTab, Columns: DonationColumns, Key: []string{"Email", "Year"}},
+		{Name: notesTab, Columns: NoteColumns, Key: []string{"Email", "Added By", "Added"}},
+		{Name: charitiesTab, Columns: CharityColumns, Key: []string{"Name"}, Cascade: renameCharity},
+		{Name: newsletterDatesTab, Columns: NewsletterDateColumns, Key: []string{"Date"}, Cascade: moveNewsletterDate},
+		{Name: settingsTab, Columns: SettingColumns, Key: []string{"Key"}},
+		{Name: adminsTab, Columns: AdminColumns, Key: []string{"Email"}},
+		{Name: teamTab, Columns: TeamColumns, Key: []string{"Email", "Role"}},
+		{Name: remindersTab, Columns: ReminderColumns, Key: []string{"Email", "Year", "Kind"}},
+	},
+	Build: BuildModel,
+	Loaded: func(model *Model, took time.Duration) {
+		slog.Info("loaded birthday model", "birthdays", len(model.Birthdays), "charities", len(model.Charities),
+			"donations", len(model.Donations), "newsletters", len(model.NewsletterDates), "took", took.Round(time.Millisecond))
+	},
 }
 
-func (c *Cache) refreshLoop() {
-	for range time.Tick(refreshInterval) {
-		c.Refresh()
-	}
-}
-
-func (c *Cache) Refresh() {
-	c.queue.Add(func() {
-		if err := c.refresh(); err != nil {
-			slog.Error("birthday model refresh", "error", err)
-		}
-	})
-}
-
-func (c *Cache) refresh() error {
-	start := time.Now()
-	c.mu.RLock()
-	before := c.edits
-	c.mu.RUnlock()
-	tables, err := ReadTables(c.source)
-	if err != nil {
-		return err
-	}
-	model, err := BuildModel(tables)
-	if err != nil {
-		return err
-	}
-	c.mu.Lock()
-	if c.edits != before {
-		c.mu.Unlock()
-		slog.Info("birthday model refresh skipped: edited while reading")
+func renameCharity(before, after store.Row) []store.Op {
+	if before == nil || after == nil || before["Name"] == after["Name"] {
 		return nil
 	}
-	c.tables, c.model = tables, model
-	c.mu.Unlock()
-	slog.Info("loaded birthday model", "birthdays", len(model.Birthdays), "charities", len(model.Charities),
-		"donations", len(model.Donations), "newsletters", len(model.NewsletterDates), "took", time.Since(start).Round(time.Millisecond))
-	return nil
-}
-
-func (c *Cache) set(tables *Tables, model *Model) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.tables = tables
-	c.model = model
-	c.edits++
-}
-
-func (c *Cache) Model() *Model {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.model
-}
-
-func (c *Cache) Tables() *Tables {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.tables
-}
-
-func (c *Cache) tabAdmins() []string {
-	tables := c.Tables()
-	emails := make([]string, 0, len(tables.Admins))
-	for _, row := range tables.Admins {
-		emails = append(emails, row["Email"])
+	return []store.Op{
+		store.Update(donationsTab, store.Row{"Charity": before["Name"]}, store.Row{"Charity": after["Name"]}),
+		store.Update(settingsTab, store.Row{"Key": DefaultCharityKey, "Value": before["Name"]}, store.Row{"Value": after["Name"]}),
 	}
-	return config.NormalizeEmails(emails)
+}
+
+func moveNewsletterDate(before, after store.Row) []store.Op {
+	if before == nil || after == nil || before["Date"] == after["Date"] {
+		return nil
+	}
+	return []store.Op{store.Update(birthdaysTab, store.Row{"Newsletter Override": before["Date"]}, store.Row{"Newsletter Override": after["Date"]})}
+}
+
+func NewCache(source data.Source, writer data.Writer, superAdmin func(string) bool, queue store.Enqueuer) (*Cache, error) {
+	s, err := store.New(spec, source, writer, queue)
+	if err != nil {
+		return nil, err
+	}
+	return &Cache{Store: s, superAdmin: superAdmin}, nil
 }
 
 // IsSuperAdmin reports whether email is one of the platform's super admins
@@ -116,18 +74,13 @@ func (c *Cache) IsSuperAdmin(email string) bool {
 // platform super admin.
 func (c *Cache) IsAdmin(email string) bool {
 	email = strings.ToLower(strings.TrimSpace(email))
-	for _, admin := range c.tabAdmins() {
-		if admin == email {
-			return true
-		}
-	}
-	return c.superAdmin(email)
+	return slices.Contains(c.Model().Admins, email) || c.superAdmin(email)
 }
 
 // Admins is every admin as the admin page lists them: the tab plus the super
 // admins, indistinguishable, sorted together.
 func (c *Cache) Admins(superAdmins []string) []string {
-	admins := config.NormalizeEmails(append(c.tabAdmins(), superAdmins...))
+	admins := config.NormalizeEmails(append(slices.Clone(c.Model().Admins), superAdmins...))
 	sort.Strings(admins)
 	return admins
 }

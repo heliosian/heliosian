@@ -21,6 +21,7 @@ import (
 	"heliosian/internal/logging"
 	"heliosian/internal/mail"
 	"heliosian/internal/serve"
+	"heliosian/internal/store"
 )
 
 const shell = "web/birthday/index.html"
@@ -43,8 +44,7 @@ func mustLocation(name string) *time.Location {
 
 type app struct {
 	cache       *Cache
-	writer      data.Writer
-	queue       Enqueuer
+	shared      data.Writer
 	directory   Directory
 	superAdmins func() []string
 	describer   Describer
@@ -68,8 +68,8 @@ type Describer interface {
 
 // Register wires the app: one shell for every page, the model, and the writes.
 // Every route already sits behind sign-in.
-func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, directory Directory, superAdmins func() []string, describer Describer, mailer mail.Sender, from, base string, joinHome func(email string) error) {
-	a := app{cache: cache, writer: writer, queue: queue, directory: directory, superAdmins: superAdmins, describer: describer, mailer: mailer, from: from, base: base, joinHome: joinHome}
+func Register(mux *http.ServeMux, cache *Cache, shared data.Writer, media *blob.Store, directory Directory, superAdmins func() []string, describer Describer, mailer mail.Sender, from, base string, joinHome func(email string) error) {
+	a := app{cache: cache, shared: shared, directory: directory, superAdmins: superAdmins, describer: describer, mailer: mailer, from: from, base: base, joinHome: joinHome}
 	if mailer != nil {
 		go a.remindLoop()
 	}
@@ -181,31 +181,14 @@ func decode(w http.ResponseWriter, r *http.Request, into any) bool {
 	return true
 }
 
-// commit rebuilds the model over the proposed tables first, so a change the
-// sheet rules reject never reaches the sheet, then applies it in memory and
-// queues the writes behind every earlier one.
-func (a app) commit(r *http.Request, w http.ResponseWriter, tables *Tables, flush func() error) bool {
-	ctx := r.Context()
-	model, err := BuildModel(tables)
-	if err != nil {
+func (a app) commit(w http.ResponseWriter, r *http.Request, actor string, ops ...store.Op) bool {
+	before := a.askDays(a.cache.Model())
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return false
 	}
-	before := a.askDays(a.cache.Model())
-	a.cache.set(tables, model)
-	a.queue.Add(func() {
-		if err := flush(); err != nil {
-			slog.ErrorContext(ctx, "birthday write", "error", err)
-		}
-	})
-	a.mailMovedAskDays(r, before, a.askDays(model))
+	a.mailMovedAskDays(r, before, a.askDays(a.cache.Model()))
 	return true
-}
-
-func (a app) logChange(r *http.Request, actor, action, kind, email, year, details string) error {
-	return a.writer.Insert(appName, changeLogTab, []map[string]string{{
-		"Timestamp": time.Now().Format(time.RFC3339), "Actor": actor, "Action": action, "Kind": kind, "Email": email, "Year": year, "Details": details, "Real Actor": auth.RealEmail(r),
-	}})
 }
 
 func cleanEmail(raw string) string {
@@ -257,19 +240,7 @@ func (a app) assign(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	year := a.year()
-	match := map[string]string{"Email": email, "Year": year}
-	cells := map[string]string{"Assigned To": to, "Assigned On": today()}
-	tables := a.cache.Tables()
-	action := "edit"
-	if tables.count(assignmentsTab, match) == 0 {
-		action = "add"
-	}
-	if !a.commit(r, w, tables.with(assignmentsTab, match, cells), func() error {
-		if err := a.writer.Set(appName, assignmentsTab, match, cells); err != nil {
-			return err
-		}
-		return a.logChange(r, actor, action, "assignment", email, year, to)
-	}) {
+	if !a.commit(w, r, actor, store.Set(assignmentsTab, store.Row{"Email": email, "Year": year}, store.Row{"Assigned To": to, "Assigned On": today()})) {
 		return
 	}
 	slog.InfoContext(r.Context(), "birthday: assigned", "actor", actor, "email", email, "to", to, "year", year)
@@ -293,13 +264,7 @@ func (a app) unassign(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	year := a.year()
-	match := map[string]string{"Email": email, "Year": year}
-	if !a.commit(r, w, a.cache.Tables().without(assignmentsTab, match), func() error {
-		if err := a.writer.Delete(appName, assignmentsTab, match); err != nil {
-			return err
-		}
-		return a.logChange(r, actor, "remove", "assignment", email, year, "")
-	}) {
+	if !a.commit(w, r, actor, store.Delete(assignmentsTab, store.Row{"Email": email, "Year": year})) {
 		return
 	}
 	slog.InfoContext(r.Context(), "birthday: unassigned", "actor", actor, "email", email, "year", year)
@@ -325,28 +290,16 @@ func (a app) outreach(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	year := a.year()
-	match := map[string]string{"Email": email, "Year": year}
-	tables := a.cache.Tables()
+	match := store.Row{"Email": email, "Year": year}
 	if !body.Contacted {
-		if !a.commit(r, w, tables.without(outreachTab, match), func() error {
-			if err := a.writer.Delete(appName, outreachTab, match); err != nil {
-				return err
-			}
-			return a.logChange(r, actor, "remove", "outreach", email, year, "")
-		}) {
+		if !a.commit(w, r, actor, store.Delete(outreachTab, match)) {
 			return
 		}
 		slog.InfoContext(r.Context(), "birthday: outreach undone", "actor", actor, "email", email, "year", year)
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	cells := map[string]string{"Contacted On": today(), "Contacted By": actor}
-	if !a.commit(r, w, tables.with(outreachTab, match, cells), func() error {
-		if err := a.writer.Set(appName, outreachTab, match, cells); err != nil {
-			return err
-		}
-		return a.logChange(r, actor, "add", "outreach", email, year, "")
-	}) {
+	if !a.commit(w, r, actor, store.Set(outreachTab, match, store.Row{"Contacted On": today(), "Contacted By": actor})) {
 		return
 	}
 	slog.InfoContext(r.Context(), "birthday: contacted", "actor", actor, "email", email, "year", year)
@@ -384,22 +337,11 @@ func (a app) saveDonation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	year := a.year()
-	match := map[string]string{"Email": email, "Year": year}
-	cells := map[string]string{"Charity": charity.Name, "Note": strings.TrimSpace(body.Note), "Recorded On": today(), "Recorded By": actor}
-	tables := a.cache.Tables()
-	action := "edit"
-	if tables.count(donationsTab, match) == 0 {
-		action = "add"
-	}
-	if !a.commit(r, w, tables.with(donationsTab, match, cells), func() error {
-		if err := a.writer.Set(appName, donationsTab, match, cells); err != nil {
-			return err
-		}
-		return a.logChange(r, actor, action, "donation", email, year, charity.Name)
-	}) {
+	cells := store.Row{"Charity": charity.Name, "Note": strings.TrimSpace(body.Note), "Recorded On": today(), "Recorded By": actor}
+	if !a.commit(w, r, actor, store.Set(donationsTab, store.Row{"Email": email, "Year": year}, cells)) {
 		return
 	}
-	slog.InfoContext(r.Context(), "birthday: saved donation", "actor", actor, "action", action, "email", email, "charity", charity.Name, "year", year)
+	slog.InfoContext(r.Context(), "birthday: saved donation", "actor", actor, "email", email, "charity", charity.Name, "year", year)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -419,13 +361,7 @@ func (a app) deleteDonation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	year := a.year()
-	match := map[string]string{"Email": email, "Year": year}
-	if !a.commit(r, w, a.cache.Tables().without(donationsTab, match), func() error {
-		if err := a.writer.Delete(appName, donationsTab, match); err != nil {
-			return err
-		}
-		return a.logChange(r, actor, "remove", "donation", email, year, "")
-	}) {
+	if !a.commit(w, r, actor, store.Delete(donationsTab, store.Row{"Email": email, "Year": year})) {
 		return
 	}
 	slog.InfoContext(r.Context(), "birthday: removed donation", "actor", actor, "email", email, "year", year)
@@ -455,22 +391,14 @@ func (a app) used(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "record a donation first", http.StatusBadRequest)
 		return
 	}
-	match := map[string]string{"Email": email, "Year": year}
-	cells := map[string]string{"Used On": "", "Used By": ""}
-	action := "unused"
+	cells := store.Row{"Used On": "", "Used By": ""}
 	if body.Used {
-		cells = map[string]string{"Used On": today(), "Used By": actor}
-		action = "used"
+		cells = store.Row{"Used On": today(), "Used By": actor}
 	}
-	if !a.commit(r, w, a.cache.Tables().with(donationsTab, match, cells), func() error {
-		if err := a.writer.Set(appName, donationsTab, match, cells); err != nil {
-			return err
-		}
-		return a.logChange(r, actor, action, "donation", email, year, "")
-	}) {
+	if !a.commit(w, r, actor, store.Update(donationsTab, store.Row{"Email": email, "Year": year}, cells)) {
 		return
 	}
-	slog.InfoContext(r.Context(), "birthday: marked donation", "actor", actor, "action", action, "email", email, "year", year)
+	slog.InfoContext(r.Context(), "birthday: marked donation", "actor", actor, "used", body.Used, "email", email, "year", year)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -495,22 +423,10 @@ func (a app) saveBirthday(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	birthday, override := strings.TrimSpace(body.Birthday), strings.TrimSpace(body.Override)
-	match := map[string]string{"Email": email}
-	cells := map[string]string{"Birthday": birthday, "Newsletter Override": override}
-	tables := a.cache.Tables()
-	action := "edit"
-	if tables.count(birthdaysTab, match) == 0 {
-		action = "add"
-	}
-	if !a.commit(r, w, tables.with(birthdaysTab, match, cells), func() error {
-		if err := a.writer.Set(appName, birthdaysTab, match, cells); err != nil {
-			return err
-		}
-		return a.logChange(r, actor, action, "birthday", email, "", birthday+" "+override)
-	}) {
+	if !a.commit(w, r, actor, store.Set(birthdaysTab, store.Row{"Email": email}, store.Row{"Birthday": birthday, "Newsletter Override": override})) {
 		return
 	}
-	slog.InfoContext(r.Context(), "birthday: saved birthday", "actor", actor, "action", action, "email", email, "birthday", birthday, "override", override)
+	slog.InfoContext(r.Context(), "birthday: saved birthday", "actor", actor, "email", email, "birthday", birthday, "override", override)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -526,24 +442,18 @@ func (a app) deleteBirthday(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	email := cleanEmail(body.Email)
-	match := map[string]string{"Email": email}
-	tables := a.cache.Tables()
-	if tables.count(birthdaysTab, match) == 0 {
+	match := store.Row{"Email": email}
+	if a.cache.Count(birthdaysTab, match) == 0 {
 		http.Error(w, "no such birthday", http.StatusNotFound)
 		return
 	}
 	for _, tab := range []string{assignmentsTab, outreachTab, donationsTab, notesTab} {
-		if tables.count(tab, match) > 0 {
+		if a.cache.Count(tab, match) > 0 {
 			http.Error(w, "remove their assignments, outreach, donations, and notes first", http.StatusBadRequest)
 			return
 		}
 	}
-	if !a.commit(r, w, tables.without(birthdaysTab, match), func() error {
-		if err := a.writer.Delete(appName, birthdaysTab, match); err != nil {
-			return err
-		}
-		return a.logChange(r, actor, "remove", "birthday", email, "", "")
-	}) {
+	if !a.commit(w, r, actor, store.Delete(birthdaysTab, match)) {
 		return
 	}
 	slog.InfoContext(r.Context(), "birthday: removed birthday", "actor", actor, "email", email)
@@ -579,22 +489,10 @@ func (a app) saveParticipation(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "the note is too long", http.StatusBadRequest)
 		return
 	}
-	match := map[string]string{"Email": email}
-	cells := map[string]string{"Participation": body.Level, "Note": strings.TrimSpace(body.Note)}
-	tables := a.cache.Tables()
-	action := "edit"
-	if tables.count(birthdaysTab, match) == 0 {
-		action = "add"
-	}
-	if !a.commit(r, w, tables.with(birthdaysTab, match, cells), func() error {
-		if err := a.writer.Set(appName, birthdaysTab, match, cells); err != nil {
-			return err
-		}
-		return a.logChange(r, actor, action, "participation", email, "", body.Level)
-	}) {
+	if !a.commit(w, r, actor, store.Set(birthdaysTab, store.Row{"Email": email}, store.Row{"Participation": body.Level, "Note": strings.TrimSpace(body.Note)})) {
 		return
 	}
-	slog.InfoContext(r.Context(), "birthday: saved participation", "actor", actor, "action", action, "email", email, "level", body.Level)
+	slog.InfoContext(r.Context(), "birthday: saved participation", "actor", actor, "email", email, "level", body.Level)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -615,26 +513,13 @@ func (a app) deleteParticipation(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no preference is recorded", http.StatusNotFound)
 		return
 	}
-	match := map[string]string{"Email": email}
-	cells := map[string]string{"Participation": "", "Note": ""}
-	tables := a.cache.Tables()
+	match := store.Row{"Email": email}
 	// A row that held only the preference has nothing left to say.
-	dropRow := b.Birthday == ""
-	if dropRow {
-		tables = tables.without(birthdaysTab, match)
-	} else {
-		tables = tables.with(birthdaysTab, match, cells)
+	op := store.Update(birthdaysTab, match, store.Row{"Participation": "", "Note": ""})
+	if b.Birthday == "" {
+		op = store.Delete(birthdaysTab, match)
 	}
-	if !a.commit(r, w, tables, func() error {
-		if dropRow {
-			if err := a.writer.Delete(appName, birthdaysTab, match); err != nil {
-				return err
-			}
-		} else if err := a.writer.Set(appName, birthdaysTab, match, cells); err != nil {
-			return err
-		}
-		return a.logChange(r, actor, "remove", "participation", email, "", "")
-	}) {
+	if !a.commit(w, r, actor, op) {
 		return
 	}
 	slog.InfoContext(r.Context(), "birthday: removed participation", "actor", actor, "email", email)
@@ -663,13 +548,7 @@ func (a app) addNote(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "the note is empty or too long", http.StatusBadRequest)
 		return
 	}
-	cells := map[string]string{"Email": email, "Note": note, "Added By": actor, "Added": today()}
-	if !a.commit(r, w, a.cache.Tables().with(notesTab, nil, cells), func() error {
-		if err := a.writer.Insert(appName, notesTab, []map[string]string{cells}); err != nil {
-			return err
-		}
-		return a.logChange(r, actor, "add", "note", email, "", note)
-	}) {
+	if !a.commit(w, r, actor, store.Insert(notesTab, store.Row{"Email": email, "Note": note, "Added By": actor, "Added": today()})) {
 		return
 	}
 	slog.InfoContext(r.Context(), "birthday: added note", "actor", actor, "email", email)
@@ -694,13 +573,8 @@ func (a app) deleteNote(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "only the note's author or an admin can remove it", http.StatusForbidden)
 		return
 	}
-	match := map[string]string{"Email": cleanEmail(body.Email), "Note": body.Note, "Added By": cleanEmail(body.AddedBy), "Added": body.Added}
-	if !a.commit(r, w, a.cache.Tables().without(notesTab, match), func() error {
-		if err := a.writer.Delete(appName, notesTab, match); err != nil {
-			return err
-		}
-		return a.logChange(r, actor, "remove", "note", match["Email"], "", body.Note)
-	}) {
+	match := store.Row{"Email": cleanEmail(body.Email), "Note": body.Note, "Added By": cleanEmail(body.AddedBy), "Added": body.Added}
+	if !a.commit(w, r, actor, store.Delete(notesTab, match)) {
 		return
 	}
 	slog.InfoContext(r.Context(), "birthday: removed note", "actor", actor, "email", match["Email"])
@@ -748,78 +622,25 @@ func (a app) saveCharity(w http.ResponseWriter, r *http.Request) {
 	if allowed {
 		why = ""
 	}
-	cells := map[string]string{
+	cells := store.Row{
 		"Name": name, "Donation Link": strings.TrimSpace(body.DonationLink), "About": strings.TrimSpace(body.About),
 		"EIN": strings.TrimSpace(body.EIN), "Allowed": YesNo(allowed), "Why Not Allowed": why,
 	}
-	tables := a.cache.Tables()
-	action := "edit"
-	var match map[string]string
 	renamed := !adding && body.Original != name
 	if (adding || renamed) && model.Charity(name) != nil {
 		http.Error(w, fmt.Sprintf("%q is already on the list", name), http.StatusBadRequest)
 		return
 	}
+	op := store.Update(charitiesTab, store.Row{"Name": body.Original}, cells)
 	if adding {
-		action = "add"
 		cells["Added On"] = today()
-		tables = tables.with(charitiesTab, nil, cells)
-	} else {
-		match = map[string]string{"Name": body.Original}
-		tables = tables.with(charitiesTab, match, cells)
-		if renamed {
-			tables = tables.renameCharity(body.Original, name)
-		}
+		op = store.Insert(charitiesTab, cells)
 	}
-	if !a.commit(r, w, tables, func() error {
-		if adding {
-			if err := a.writer.Insert(appName, charitiesTab, []map[string]string{cells}); err != nil {
-				return err
-			}
-		} else {
-			if err := a.writer.Set(appName, charitiesTab, match, cells); err != nil {
-				return err
-			}
-			if renamed {
-				if err := a.flushCharityRename(body.Original, name); err != nil {
-					return err
-				}
-			}
-		}
-		return a.logChange(r, actor, action, "charity", "", "", name)
-	}) {
+	if !a.commit(w, r, actor, op) {
 		return
 	}
-	slog.InfoContext(r.Context(), "birthday: saved charity", "actor", actor, "action", action, "charity", name, "allowed", allowed)
+	slog.InfoContext(r.Context(), "birthday: saved charity", "actor", actor, "adding", adding, "charity", name, "allowed", allowed)
 	w.WriteHeader(http.StatusNoContent)
-}
-
-// renameCharity carries every donation and the default-charity setting along
-// with a renamed charity, since they name it by name.
-func (t *Tables) renameCharity(oldName, name string) *Tables {
-	out := t
-	if out.count(donationsTab, map[string]string{"Charity": oldName}) > 0 {
-		out = out.with(donationsTab, map[string]string{"Charity": oldName}, map[string]string{"Charity": name})
-	}
-	if out.count(settingsTab, map[string]string{"Key": DefaultCharityKey, "Value": oldName}) > 0 {
-		out = out.with(settingsTab, map[string]string{"Key": DefaultCharityKey}, map[string]string{"Value": name})
-	}
-	return out
-}
-
-func (a app) flushCharityRename(oldName, name string) error {
-	tables := a.cache.Tables()
-	if tables.count(donationsTab, map[string]string{"Charity": name}) > 0 {
-		if err := a.writer.Set(appName, donationsTab, map[string]string{"Charity": oldName}, map[string]string{"Charity": name}); err != nil {
-			return err
-		}
-	}
-	if tables.count(settingsTab, map[string]string{"Key": DefaultCharityKey, "Value": name}) > 0 {
-		if err := a.writer.Set(appName, settingsTab, map[string]string{"Key": DefaultCharityKey}, map[string]string{"Value": name}); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 // describeCharity asks Claude for the newsletter's sentence about a charity,
@@ -890,18 +711,11 @@ func (a app) deleteCharity(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "pick another default charity first", http.StatusBadRequest)
 		return
 	}
-	tables := a.cache.Tables()
-	if tables.count(donationsTab, map[string]string{"Charity": body.Name}) > 0 {
+	if a.cache.Count(donationsTab, store.Row{"Charity": body.Name}) > 0 {
 		http.Error(w, "donations name this charity; it can be marked not allowed instead", http.StatusBadRequest)
 		return
 	}
-	match := map[string]string{"Name": body.Name}
-	if !a.commit(r, w, tables.without(charitiesTab, match), func() error {
-		if err := a.writer.Delete(appName, charitiesTab, match); err != nil {
-			return err
-		}
-		return a.logChange(r, actor, "remove", "charity", "", "", body.Name)
-	}) {
+	if !a.commit(w, r, actor, store.Delete(charitiesTab, store.Row{"Name": body.Name})) {
 		return
 	}
 	slog.InfoContext(r.Context(), "birthday: removed charity", "actor", actor, "charity", body.Name)
@@ -928,13 +742,7 @@ func (a app) addNewsletterDate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "that date is already on the list", http.StatusBadRequest)
 		return
 	}
-	cells := map[string]string{"Date": date}
-	if !a.commit(r, w, a.cache.Tables().with(newsletterDatesTab, nil, cells), func() error {
-		if err := a.writer.Insert(appName, newsletterDatesTab, []map[string]string{cells}); err != nil {
-			return err
-		}
-		return a.logChange(r, actor, "add", "newsletter date", "", "", date)
-	}) {
+	if !a.commit(w, r, actor, store.Insert(newsletterDatesTab, store.Row{"Date": date})) {
 		return
 	}
 	slog.InfoContext(r.Context(), "birthday: added newsletter date", "actor", actor, "date", date)
@@ -974,27 +782,10 @@ func (a app) changeNewsletterDate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "that date is already on the list", http.StatusBadRequest)
 		return
 	}
-	match, cells := map[string]string{"Date": original}, map[string]string{"Date": date}
-	pinned, moved := map[string]string{"Newsletter Override": original}, map[string]string{"Newsletter Override": date}
-	tables := a.cache.Tables().with(newsletterDatesTab, match, cells)
-	overrides := tables.count(birthdaysTab, pinned)
-	if overrides > 0 {
-		tables = tables.with(birthdaysTab, pinned, moved)
-	}
-	if !a.commit(r, w, tables, func() error {
-		if err := a.writer.Set(appName, newsletterDatesTab, match, cells); err != nil {
-			return err
-		}
-		if overrides > 0 {
-			if err := a.writer.Set(appName, birthdaysTab, pinned, moved); err != nil {
-				return err
-			}
-		}
-		return a.logChange(r, actor, "edit", "newsletter date", "", "", original+" to "+date)
-	}) {
+	if !a.commit(w, r, actor, store.Update(newsletterDatesTab, store.Row{"Date": original}, store.Row{"Date": date})) {
 		return
 	}
-	slog.InfoContext(r.Context(), "birthday: moved newsletter date", "actor", actor, "from", original, "to", date, "overrides", overrides)
+	slog.InfoContext(r.Context(), "birthday: moved newsletter date", "actor", actor, "from", original, "to", date)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -1009,13 +800,8 @@ func (a app) deleteNewsletterDate(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	match := map[string]string{"Date": strings.TrimSpace(body.Date)}
-	if !a.commit(r, w, a.cache.Tables().without(newsletterDatesTab, match), func() error {
-		if err := a.writer.Delete(appName, newsletterDatesTab, match); err != nil {
-			return err
-		}
-		return a.logChange(r, actor, "remove", "newsletter date", "", "", match["Date"])
-	}) {
+	match := store.Row{"Date": strings.TrimSpace(body.Date)}
+	if !a.commit(w, r, actor, store.Delete(newsletterDatesTab, match)) {
 		return
 	}
 	slog.InfoContext(r.Context(), "birthday: removed newsletter date", "actor", actor, "date", match["Date"])
@@ -1063,29 +849,20 @@ func (a app) createNewsletterDates(w http.ResponseWriter, r *http.Request) {
 	day := from.AddDate(0, 0, (body.Weekday-int(from.Weekday())+7)%7)
 	have := a.cache.Model().NewsletterDates
 	added := []string{}
-	tables := a.cache.Tables()
+	ops := []store.Op{}
 	for ; !day.After(to); day = day.AddDate(0, 0, 7) {
 		cell := day.Format(DateFormat)
 		if slices.Contains(have, cell) {
 			continue
 		}
 		added = append(added, cell)
-		tables = tables.with(newsletterDatesTab, nil, map[string]string{"Date": cell})
+		ops = append(ops, store.Insert(newsletterDatesTab, store.Row{"Date": cell}))
 	}
 	if len(added) == 0 {
 		http.Error(w, "every one of those dates is already on the list", http.StatusBadRequest)
 		return
 	}
-	if !a.commit(r, w, tables, func() error {
-		rows := make([]map[string]string, 0, len(added))
-		for _, cell := range added {
-			rows = append(rows, map[string]string{"Date": cell})
-		}
-		if err := a.writer.Insert(appName, newsletterDatesTab, rows); err != nil {
-			return err
-		}
-		return a.logChange(r, actor, "add", "newsletter dates", "", "", fmt.Sprintf("%d, %s to %s", len(added), added[0], added[len(added)-1]))
-	}) {
+	if !a.commit(w, r, actor, ops...) {
 		return
 	}
 	slog.InfoContext(r.Context(), "birthday: created newsletter dates", "actor", actor, "count", len(added), "from", added[0], "to", added[len(added)-1])
@@ -1103,26 +880,19 @@ func (a app) clearFutureNewsletterDates(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	day := today()
-	tables := a.cache.Tables()
 	removed := []string{}
+	ops := []store.Op{}
 	for _, date := range a.cache.Model().NewsletterDates {
 		if date >= day {
 			removed = append(removed, date)
-			tables = tables.without(newsletterDatesTab, map[string]string{"Date": date})
+			ops = append(ops, store.Delete(newsletterDatesTab, store.Row{"Date": date}))
 		}
 	}
 	if len(removed) == 0 {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	if !a.commit(r, w, tables, func() error {
-		for _, date := range removed {
-			if err := a.writer.Delete(appName, newsletterDatesTab, map[string]string{"Date": date}); err != nil {
-				return err
-			}
-		}
-		return a.logChange(r, actor, "remove", "newsletter dates", "", "", fmt.Sprintf("%d from %s on", len(removed), day))
-	}) {
+	if !a.commit(w, r, actor, ops...) {
 		return
 	}
 	slog.InfoContext(r.Context(), "birthday: cleared future newsletter dates", "actor", actor, "count", len(removed), "from", day)
@@ -1144,18 +914,11 @@ func (a app) saveSettings(w http.ResponseWriter, r *http.Request) {
 		NoNewsletterNoteKey: strings.TrimSpace(body.NoNewsletterNote), OutreachCCKey: strings.TrimSpace(body.OutreachCC),
 		RequestLeadKey: strconv.Itoa(body.RequestLeadDays),
 	}
-	tables := a.cache.Tables()
-	for key, value := range values {
-		tables = tables.with(settingsTab, map[string]string{"Key": key}, map[string]string{"Value": value})
+	ops := []store.Op{}
+	for _, key := range settingKeys {
+		ops = append(ops, store.Set(settingsTab, store.Row{"Key": key}, store.Row{"Value": values[key]}))
 	}
-	if !a.commit(r, w, tables, func() error {
-		for key, value := range values {
-			if err := a.writer.Set(appName, settingsTab, map[string]string{"Key": key}, map[string]string{"Value": value}); err != nil {
-				return err
-			}
-		}
-		return a.logChange(r, actor, "edit", "settings", "", "", "")
-	}) {
+	if !a.commit(w, r, actor, ops...) {
 		return
 	}
 	slog.InfoContext(r.Context(), "birthday: changed the settings", "actor", actor)
@@ -1209,32 +972,19 @@ func (a app) setAdmins(w http.ResponseWriter, r *http.Request) {
 			admins = append(admins, e)
 		}
 	}
-	current := a.cache.tabAdmins()
-	was := map[string]bool{}
+	current := a.cache.Model().Admins
+	ops := []store.Op{}
 	for _, e := range current {
-		was[e] = true
+		if !slices.Contains(admins, e) {
+			ops = append(ops, store.Delete(adminsTab, store.Row{"Email": e}))
+		}
 	}
-	is := map[string]bool{}
 	for _, e := range admins {
-		is[e] = true
+		if !slices.Contains(current, e) {
+			ops = append(ops, store.Insert(adminsTab, store.Row{"Email": e}))
+		}
 	}
-	if !a.commit(r, w, a.cache.Tables().withAdmins(admins), func() error {
-		for _, e := range current {
-			if !is[e] {
-				if err := a.writer.Delete(appName, adminsTab, map[string]string{"Email": e}); err != nil {
-					return err
-				}
-			}
-		}
-		for _, e := range admins {
-			if !was[e] {
-				if err := a.writer.Insert(appName, adminsTab, []map[string]string{{"Email": e}}); err != nil {
-					return err
-				}
-			}
-		}
-		return nil
-	}) {
+	if !a.commit(w, r, actor, ops...) {
 		return
 	}
 	slog.InfoContext(r.Context(), "birthday: set the admin list", "actor", actor, "admins", admins)
@@ -1278,16 +1028,9 @@ func (a app) joinTeam(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	row := map[string]string{"Email": actor, "Role": RoleVolunteer}
-	if a.cache.Tables().count(teamTab, row) == 0 {
-		if !a.commit(r, w, a.cache.Tables().with(teamTab, nil, row), func() error {
-			if err := a.writer.Insert(appName, teamTab, []map[string]string{row}); err != nil {
-				return err
-			}
-			return a.logChange(r, actor, "add", "team member", actor, "", RoleVolunteer+" (joined)")
-		}) {
-			return
-		}
+	row := store.Row{"Email": actor, "Role": RoleVolunteer}
+	if a.cache.Count(teamTab, row) == 0 && !a.commit(w, r, actor, store.Insert(teamTab, row)) {
+		return
 	}
 	if a.joinHome != nil {
 		if err := a.joinHome(actor); err != nil {
@@ -1330,16 +1073,11 @@ func (a app) addTeamMember(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if a.cache.Tables().count(teamTab, row) > 0 {
+	if a.cache.Count(teamTab, row) > 0 {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	if !a.commit(r, w, a.cache.Tables().with(teamTab, nil, row), func() error {
-		if err := a.writer.Insert(appName, teamTab, []map[string]string{row}); err != nil {
-			return err
-		}
-		return a.logChange(r, actor, "add", "team member", row["Email"], "", row["Role"])
-	}) {
+	if !a.commit(w, r, actor, store.Insert(teamTab, row)) {
 		return
 	}
 	slog.InfoContext(r.Context(), "birthday: added team member", "actor", actor, "email", row["Email"], "role", row["Role"])
@@ -1355,12 +1093,7 @@ func (a app) removeTeamMember(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !a.commit(r, w, a.cache.Tables().without(teamTab, row), func() error {
-		if err := a.writer.Delete(appName, teamTab, row); err != nil {
-			return err
-		}
-		return a.logChange(r, actor, "remove", "team member", row["Email"], "", row["Role"])
-	}) {
+	if !a.commit(w, r, actor, store.Delete(teamTab, row)) {
 		return
 	}
 	slog.InfoContext(r.Context(), "birthday: removed team member", "actor", actor, "email", row["Email"], "role", row["Role"])

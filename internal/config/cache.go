@@ -26,7 +26,7 @@ type Cache struct {
 	mu       sync.RWMutex
 	tables   *Tables
 	settings *Settings
-	edits    int
+	pending  int
 	commits  sync.Mutex
 }
 
@@ -55,9 +55,6 @@ func (c *Cache) Refresh() {
 
 func (c *Cache) refresh() error {
 	start := time.Now()
-	c.mu.RLock()
-	before := c.edits
-	c.mu.RUnlock()
 	tables, err := ReadTables(c.source)
 	if err != nil {
 		return err
@@ -66,10 +63,12 @@ func (c *Cache) refresh() error {
 	if err != nil {
 		return err
 	}
+	c.commits.Lock()
+	defer c.commits.Unlock()
 	c.mu.Lock()
-	if c.edits != before {
+	if c.pending > 0 {
 		c.mu.Unlock()
-		slog.Info("config refresh skipped: edited while reading")
+		slog.Info("config refresh skipped: writes still queued")
 		return nil
 	}
 	c.tables, c.settings = tables, settings
@@ -79,12 +78,17 @@ func (c *Cache) refresh() error {
 	return nil
 }
 
-func (c *Cache) set(tables *Tables, settings *Settings) {
+func (c *Cache) commit(tables *Tables, settings *Settings, write func()) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.tables = tables
-	c.settings = settings
-	c.edits++
+	c.tables, c.settings = tables, settings
+	c.pending++
+	c.mu.Unlock()
+	c.queue.Add(func() {
+		write()
+		c.mu.Lock()
+		c.pending--
+		c.mu.Unlock()
+	})
 }
 
 func (c *Cache) Settings() *Settings {
@@ -132,8 +136,7 @@ func (c *Cache) update(ctx context.Context, action string, mirror func(*Tables) 
 	if err != nil {
 		return fmt.Errorf("%s: %w", action, err)
 	}
-	c.set(tables, settings)
-	c.queue.Add(func() {
+	c.commit(tables, settings, func() {
 		if err := persist(); err != nil {
 			slog.ErrorContext(ctx, "config write", "action", action, "error", err)
 		}

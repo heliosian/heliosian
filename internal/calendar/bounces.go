@@ -99,8 +99,7 @@ func (a app) deliveryEvents(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	a.cache.set(tables, built)
-	a.queue.Add(func() {
+	a.cache.commit(tables, built, func() {
 		if err := a.writer.Insert(appName, BouncesTab, []map[string]string{row}); err != nil {
 			slog.ErrorContext(r.Context(), "calendar write", "error", err)
 		}

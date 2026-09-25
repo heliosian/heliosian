@@ -25,9 +25,7 @@ type Cache struct {
 	mu         sync.RWMutex
 	model      *Model
 	tables     *Tables
-	// edits counts every change applied from a request, so a refresh that
-	// read the sheet before one landed knows not to put the older sheet back.
-	edits int
+	pending    int
 }
 
 func NewCache(source data.Source, superAdmin func(string) bool, queue Enqueuer) (*Cache, error) {
@@ -55,9 +53,6 @@ func (c *Cache) Refresh() {
 
 func (c *Cache) refresh() error {
 	start := time.Now()
-	c.mu.RLock()
-	before := c.edits
-	c.mu.RUnlock()
 	tables, err := ReadTables(c.source)
 	if err != nil {
 		return err
@@ -67,10 +62,10 @@ func (c *Cache) refresh() error {
 		return err
 	}
 	c.mu.Lock()
-	if c.edits == before {
+	if c.pending == 0 {
 		c.tables, c.model = tables, model
 	} else {
-		slog.Info("groups model refresh skipped: edited while reading")
+		slog.Info("groups model refresh skipped: writes still queued")
 	}
 	c.mu.Unlock()
 	rules := 0
@@ -85,14 +80,25 @@ func (c *Cache) set(tables *Tables, model *Model) {
 	c.mu.Lock()
 	c.tables = tables
 	c.model = model
-	c.edits++
 	c.mu.Unlock()
+}
+
+func (c *Cache) commit(tables *Tables, model *Model, write func()) {
+	c.mu.Lock()
+	c.tables, c.model = tables, model
+	c.pending++
+	c.mu.Unlock()
+	c.queue.Add(func() {
+		write()
+		c.mu.Lock()
+		c.pending--
+		c.mu.Unlock()
+	})
 }
 
 func (c *Cache) edit(fn func(*Tables) *Tables) {
 	c.mu.Lock()
 	c.tables = fn(c.tables)
-	c.edits++
 	c.mu.Unlock()
 }
 

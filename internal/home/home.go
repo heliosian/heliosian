@@ -431,8 +431,7 @@ func (a app) commit(ctx context.Context, w http.ResponseWriter, tables *Tables, 
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return false
 	}
-	a.cache.set(tables, model)
-	a.queue.Add(func() {
+	a.cache.commit(tables, model, func() {
 		if err := flush(); err != nil {
 			slog.ErrorContext(ctx, "apps write", "error", err)
 		}

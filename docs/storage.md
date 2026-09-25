@@ -26,29 +26,31 @@ Every request goes through one retry of a quota refusal (`call` in `internal/dat
 
 ## Store
 
-A commit has two halves that never wait on each other. `Commit(ctx, change)` takes a change - inserts, sets and deletes against the store's tabs - and, under the store's own lock:
+`internal/store` is the store. An app declares its spreadsheet in a `store.Spec`: each tab's name, the columns it must have, the columns that key a row (for the Change Log), and its cascade hook if it has one; the function that builds the model; and what to log when a model loads. `store.New` reads the spreadsheet, checks every tab's columns and the Change Log's, and builds the model, or refuses to start.
 
-1. matches each operation against the tables as they stand, which gives the rows' previous values;
-2. runs the cascade hooks of every tab touched, which add operations of their own, until none adds more;
-3. applies the whole change to a copy of the tables and builds the model from it - a model that refuses rejects the change, and nothing is written;
-4. swaps the tables and model in, counts the commit, and queues the IO writes and the Change Log rows on the one write queue every store shares (`who.Queue`);
-5. releases the lock and the request, and runs the after-commit hooks.
+A handler states a change as operations on rows - `store.Insert`, `store.Set` (every matching row, or a new one when none matches), `store.Update` (every matching row, and nothing when none does), `store.Delete` - and hands them to `Commit(ctx, actor, ops...)`. A commit has two halves that never wait on each other. Under the store's own lock, it:
 
-The memory half takes milliseconds and waits only on another commit's memory half; the IO half runs on the queue in commit order, and no request waits on it. An IO write that fails is logged `[ERROR]` and the store refreshes from the sheet, so memory never stays ahead of the sheet for longer than the queue takes. A mail hook is the one caller that waits for its IO: it answers the mail provider only once what it took is in the sheet, so a failure is retried by the provider rather than lost.
+1. matches each operation against the tables as they stand, which gives the rows' previous values, and drops any that change nothing;
+2. runs the cascade hook of every tab a change touched, which adds operations of its own, until none adds more;
+3. builds the model from the changed tables - a model that refuses rejects the whole change, and nothing is written;
+4. swaps the tables and model in, and queues the IO writes and the Change Log rows on the one write queue every store shares (`who.Queue`);
+5. releases the lock and returns.
 
-A store reads its sheet at startup, every five minutes after, and once more thirty seconds after a start (`deployOverlap` in `internal/app`): during a deploy the old revision keeps serving and writing while the new one reads, and that second read picks up what it wrote. The five-minute refresh is for what changes in the sheets by hand. A refresh reads on the write queue, behind every write already queued, and swaps its result in under the lock only if no commit has landed since it began, so it never puts an older sheet back over newer memory. Work accepted but not yet committed - a mail the documents' hook took, a group's post being filed - holds the queue (`Hold` and `Release` in `internal/who/queue.go`), so the shutdown drain waits for it.
+The memory half takes milliseconds and waits only on another commit's memory half; the IO half runs on the queue in commit order, and no request waits on it. An IO write that fails is logged `[ERROR]` and the store refreshes from the sheet. A mail hook is the one caller that waits for its IO: it answers the mail provider only once what it took is in the sheet, so a failure is retried by the provider rather than lost.
+
+A store reads its sheet at startup, every five minutes after, and once more thirty seconds after a start (`deployOverlap` in `internal/app`): during a deploy the old revision keeps serving and writing while the new one reads, and that second read picks up what it wrote. The five-minute refresh is for what changes in the sheets by hand. A refresh reads on the write queue and swaps its result in only while no commit's writes are still queued: memory already holds those, and the sheet it just read does not. Work accepted but not yet committed - a mail the documents' hook took, a group's post being filed - holds the queue (`Hold` and `Release` in `internal/who/queue.go`), so the shutdown drain waits for it.
 
 ## Hooks
 
-- **Cascade hooks** belong to a tab and turn one operation into more, inside the same commit: deleting a Loop group deletes its managers, rules, additions, exclusions, aliases, archived marks, messages and deliveries; renaming a person's address in Who? renames their tags and photos; deleting a calendar invitation deletes its invites, replies and groups. They see the previous rows and return operations; they write nothing themselves.
-- **After-commit hooks** run once the commit is in memory: filing a sent Loop post into Helios Ask's documents, mail a change sends, geocoding a new address. One that changes stored data does it through a commit of its own, on the store that owns that data - another app's included.
+- **Cascade hooks** belong to a tab (`store.Tab.Cascade`) and turn a changed row into more operations, inside the same commit: renaming a Staff Birthdays charity renames it on every donation and in the default-charity setting, and moving a newsletter date moves every birthday pinned to it. Each sees the row before and after and returns operations; it writes nothing itself. The same hooks carry what the other apps do by hand today: deleting a Loop group's managers, rules and messages with it, renaming a person's address across Who?'s tags and photos, deleting a calendar invitation's invites, replies and groups.
+- **After-commit work** runs once the commit is in memory, off the store: mail a change sends, filing a sent Loop post into Helios Ask's documents, geocoding a new address. One that changes stored data does it through a commit of its own, on the store that owns that data - another app's included.
 
 ## Change Log
 
 Every spreadsheet has one `Change Log` tab, written by the store and by nothing else: Timestamp, Actor, Real Actor, Action, Tab, Key, Column, Previous. One row per cell a commit changes, cascades included:
 
 - **Action** is `insert`, `set` or `delete`.
-- **Key** names the row: the tab's key column and its value.
+- **Key** names the row: each of the tab's key columns and its value, `Email=…; Year=…`.
 - **Previous** is what the cell held before the change - empty for a row that did not exist.
 - **Actor** is who the change was made as, and **Real Actor** who was signed in, the two differing under Spoof Mode (`docs/toolbar.md`). Work nobody signed in does - the calendar import, the birthday reminders, Loop's mailer, the invite sweep - names itself as the actor, and Real Actor is empty.
 
@@ -56,10 +58,9 @@ What a row holds now is the tab itself; the Change Log is how to get back to wha
 
 ## Moving there
 
-The IO layer above stands. The store, hooks and Change Log are the design the apps reach in steps, each shipped and tested before the next; until an app moves, it writes through `internal/data` from its own commit helpers and logs its own Change Log rows in its old shape:
+The IO layer and the store stand, and Staff Birthdays is on the store, its Change Log in this shape. Its one write past the store is the weekly copy into the association's own spreadsheet (`docs/birthday/data.md`), an outbound export of rows the app never reads back. The other apps still write through `internal/data` from their own commit helpers and log their own Change Log rows in the old shape; they move one at a time, each shipped and tested before the next, and each app's own commit, write and log helpers are deleted as it moves:
 
-1. **The store**, with one app on it - Staff Birthdays - and its Change Log in the new shape.
-2. **The other apps**, one at a time: Heliosian, HCA-Team, Helios Celebrate, Helios Loop, Helios When with the calendar import, and Who?, each app's own commit, write and log helpers deleted as it moves.
-3. **Feedback and Helios Ask's documents**, and the last per-app queue interfaces.
+1. **The other apps**: Heliosian, HCA-Team, Helios Celebrate, Helios Loop, Helios When with the calendar import, and Who?.
+2. **Feedback and Helios Ask's documents**, and the last per-app queue interfaces.
 
-Each app's `Change Log` tab in the old shape is renamed `Change Log (old)` when its app moves, and a new one is made in this shape.
+Each app's `Change Log` tab in the old shape is renamed `Change Log (old)` with `cmd/renametab` when its app moves, before `cmd/createtabs` makes a new one in this shape and before the build that reads it deploys.

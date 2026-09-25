@@ -28,7 +28,7 @@ type Cache struct {
 	mu          sync.RWMutex
 	model       *Model
 	tables      *Tables
-	edits       int
+	pending     int
 }
 
 func (c *Cache) includes(rules []filter.Rule, email string) bool {
@@ -60,9 +60,6 @@ func (c *Cache) Refresh() {
 
 func (c *Cache) refresh() error {
 	start := time.Now()
-	c.mu.RLock()
-	before := c.edits
-	c.mu.RUnlock()
 	tables, err := ReadTables(c.source)
 	if err != nil {
 		return err
@@ -72,9 +69,9 @@ func (c *Cache) refresh() error {
 		return err
 	}
 	c.mu.Lock()
-	if c.edits != before {
+	if c.pending > 0 {
 		c.mu.Unlock()
-		slog.Info("apps model refresh skipped: edited while reading")
+		slog.Info("apps model refresh skipped: writes still queued")
 		return nil
 	}
 	c.tables, c.model = tables, model
@@ -92,7 +89,19 @@ func (c *Cache) set(tables *Tables, model *Model) {
 	defer c.mu.Unlock()
 	c.tables = tables
 	c.model = model
-	c.edits++
+}
+
+func (c *Cache) commit(tables *Tables, model *Model, write func()) {
+	c.mu.Lock()
+	c.tables, c.model = tables, model
+	c.pending++
+	c.mu.Unlock()
+	c.queue.Add(func() {
+		write()
+		c.mu.Lock()
+		c.pending--
+		c.mu.Unlock()
+	})
 }
 
 func (c *Cache) Model() *Model {
@@ -231,7 +240,7 @@ func (c *Cache) Admins() []string {
 	return admins
 }
 
-func Grant(cache *Cache, writer data.Writer, queue Enqueuer, appKey, email string) error {
+func Grant(cache *Cache, writer data.Writer, appKey, email string) error {
 	app, ok := appByKey(appKey)
 	if !ok {
 		return fmt.Errorf("no app %q", appKey)
@@ -247,8 +256,7 @@ func Grant(cache *Cache, writer data.Writer, queue Enqueuer, appKey, email strin
 	if err != nil {
 		return err
 	}
-	cache.set(tables, model)
-	queue.Add(func() {
+	cache.commit(tables, model, func() {
 		if err := writer.Set(appName, visibilityTab, map[string]string{"App": app.Key}, v.cells()); err != nil {
 			slog.Error("apps grant write", "app", app.Key, "email", email, "error", err)
 		}

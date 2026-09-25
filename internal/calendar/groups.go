@@ -372,8 +372,7 @@ func (a app) fill(ctx context.Context, e *Event, g InviteGroup, wait bool) int {
 		slog.ErrorContext(ctx, "calendar: fill group", "event", e.ID, "group", g.ID, "error", err)
 		return 0
 	}
-	a.cache.set(tables, built)
-	a.queue.Add(func() {
+	a.cache.commit(tables, built, func() {
 		for _, row := range rows {
 			if err := a.writer.Insert(appName, InvitesTab, []map[string]string{row}); err != nil {
 				slog.ErrorContext(ctx, "calendar write", "error", err)
