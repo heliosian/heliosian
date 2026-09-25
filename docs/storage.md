@@ -62,9 +62,9 @@ What a row holds now is the tab itself; the Change Log is how to get back to wha
 
 ## Moving there
 
-The IO layer and the store stand, and Staff Birthdays and Heliosian are on the store, their Change Logs in this shape. Staff Birthdays' one write past the store is the weekly copy into the association's own spreadsheet (`docs/birthday/data.md`), an outbound export of rows the app never reads back; a birthday team joiner's place on the app's Heliosian list is a commit on Heliosian's store (`home.Grant`). The other apps still write through `internal/data` from their own commit helpers and log their own Change Log rows in the old shape; they move one at a time, each shipped and tested before the next, and each app's own commit, write and log helpers are deleted as it moves:
+The IO layer and the store stand, and Staff Birthdays, Heliosian and HCA-Team are on the store, their Change Logs in this shape. Staff Birthdays' one write past the store is the weekly copy into the association's own spreadsheet (`docs/birthday/data.md`), an outbound export of rows the app never reads back; a birthday team joiner's place on the app's Heliosian list is a commit on Heliosian's store (`home.Grant`). The other apps still write through `internal/data` from their own commit helpers and log their own Change Log rows in the old shape; they move one at a time, each shipped and tested before the next, and each app's own commit, write and log helpers are deleted as it moves:
 
-1. **The other apps**: HCA-Team, Helios Celebrate, Helios Loop, Helios When with the calendar import, and Who?.
+1. **The other apps**: Helios Celebrate, Helios Loop, Helios When with the calendar import, and Who?.
 2. **Feedback and Helios Ask's documents**, and the last per-app queue interfaces.
 
 Each app's `Change Log` tab in the old shape is renamed `Change Log (old)` with `tools/renametab` when its app moves, before `tools/createtabs` makes a new one in this shape and before the build that reads it deploys.

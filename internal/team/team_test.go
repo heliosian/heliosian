@@ -16,6 +16,7 @@ import (
 	"heliosian/internal/auth"
 	"heliosian/internal/data"
 	"heliosian/internal/mail"
+	"heliosian/internal/store"
 )
 
 const (
@@ -28,6 +29,8 @@ const (
 	kid      = "kit.whitfield@heliosschool.org"
 )
 
+var sheet *data.Dir
+
 type syncQueue struct{}
 
 func (syncQueue) Add(f func()) { f() }
@@ -38,7 +41,6 @@ func (fakeDirectory) Resolve(email string) string { return email }
 
 func (fakeDirectory) People() []DirectoryPerson { return nil }
 
-// The parent's household is a partner and a child; nobody else has one.
 func (fakeDirectory) Household(email string) (adults, kids []Child) {
 	if email == parent {
 		return []Child{{Email: spouse, Name: "Sam Whitfield"}}, []Child{{Email: kid, Name: "Kit Whitfield", Grade: "3"}}
@@ -67,17 +69,45 @@ func (bundled) Has(key string) (bool, error) { return strings.HasPrefix(key, "br
 
 func (bundled) Prefetch([]string) error { return nil }
 
-func newServer(t *testing.T) (*Cache, *http.ServeMux) {
+func serveWith(t *testing.T, mailer mail.Sender) (*Cache, *http.ServeMux) {
 	t.Helper()
 	t.Chdir("../..")
-	dir := &data.Dir{Root: "sampledata"}
-	cache, err := NewCache(dir, bundled{}, func(e string) bool { return e == admin }, syncQueue{})
+	sheet = &data.Dir{Root: "sampledata"}
+	cache, err := NewCache(sheet, sheet, bundled{}, func(e string) bool { return e == admin }, syncQueue{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	mux := http.NewServeMux()
-	Register(mux, cache, dir, syncQueue{}, nil, fakeDirectory{}, func() []string { return []string{admin} }, ImageSearch{}, nil, testFrom, nil)
+	Register(mux, cache, nil, fakeDirectory{}, func() []string { return []string{admin} }, ImageSearch{}, mailer, testFrom, nil)
 	return cache, mux
+}
+
+func newServer(t *testing.T) (*Cache, *http.ServeMux) {
+	t.Helper()
+	return serveWith(t, nil)
+}
+
+func tables(t *testing.T) store.Tables {
+	t.Helper()
+	names := []string{categoriesTab, activitiesTab, volunteersTab, linksTab, settingsTab, adminsTab, redirectsTab}
+	tabs, err := sheet.Tabs(appName, names, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := store.Tables{}
+	for _, name := range names {
+		out[name] = tabs[name].Rows
+	}
+	return out
+}
+
+func changeLog(t *testing.T) []store.Row {
+	t.Helper()
+	_, rows, err := sheet.Table(appName, store.ChangeLogTab)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return rows
 }
 
 func call(t *testing.T, mux *http.ServeMux, as, method, path string, body any) *httptest.ResponseRecorder {
@@ -89,8 +119,6 @@ func call(t *testing.T, mux *http.ServeMux, as, method, path string, body any) *
 	return rec
 }
 
-// byTitle finds the one activity of that title in a year - tests read better by
-// name, and ids are minted at save time so a freshly added row has no known id.
 func byTitle(m *Model, year, title string) *Activity {
 	for _, root := range m.Activities {
 		for _, node := range append([]*Activity{root}, root.Descendants()...) {
@@ -109,8 +137,6 @@ func TestSampleLoads(t *testing.T) {
 		t.Fatalf("got %d categories, %d root activities", len(m.Categories), len(m.Activities))
 	}
 	night := m.Activity("E001")
-	// Everything under an activity is an activity too, keyed by its own id, so a
-	// grandchild resolves without walking the tree.
 	perf := byTitle(m, "2026 - 2027", "India Performance")
 	if night == nil || len(night.Children) != 6 || perf == nil || perf.Parent != "E020" {
 		t.Fatalf("international night did not load as expected: %+v", night)
@@ -182,7 +208,6 @@ func TestRenderHidesWhatItShould(t *testing.T) {
 			}
 		}
 	}
-	// The toolbar avatar is the face the directory leads with for the viewer.
 	if view.User.Name != "Robin Whitfield" || view.User.PhotoURL != "/photos/robin.jpg" || view.People != nil {
 		t.Errorf("user %+v, people %v", view.User, view.People)
 	}
@@ -215,10 +240,6 @@ func TestSignUpAndRemove(t *testing.T) {
 	if rec := call(t, mux, parent, "POST", "/api/team/volunteer", body); rec.Code != http.StatusForbidden {
 		t.Fatalf("a parent named themselves co-chair: %d", rec.Code)
 	}
-	// Co-chair is an appointment by whoever runs the event: a co-chair or an
-	// admin makes one, and the new co-chair may then edit their own note
-	// without losing it, or step down - after which they are a volunteer again
-	// and cannot name themselves back.
 	if rec := call(t, mux, chair, "POST", "/api/team/volunteer", map[string]any{"id": "E017", "email": parent, "position": PositionCoChair}); rec.Code != http.StatusNoContent {
 		t.Fatalf("a co-chair could not promote: %d %s", rec.Code, rec.Body)
 	}
@@ -245,10 +266,6 @@ func TestSignUpAndRemove(t *testing.T) {
 	if rec := call(t, mux, "someone.else@heliosschool.org", "DELETE", "/api/team/volunteer", map[string]any{"id": "E017", "email": parent}); rec.Code != http.StatusForbidden {
 		t.Fatalf("a stranger removed someone: %d", rec.Code)
 	}
-	// A household's sign-ups are each other's to change and remove: the
-	// parent signs the child up, edits the note, and takes them off again -
-	// and the child, with no household of their own, cannot touch the
-	// parent's.
 	if rec := call(t, mux, parent, "POST", "/api/team/volunteer", map[string]any{"id": "E017", "email": kid, "position": PositionVolunteer}); rec.Code != http.StatusNoContent {
 		t.Fatalf("a parent could not sign their child up: %d %s", rec.Code, rec.Body)
 	}
@@ -269,10 +286,6 @@ func TestSignUpAndRemove(t *testing.T) {
 	}
 }
 
-// TestReorderChildren puts Spring Celebration's committees in a new order: a
-// parent may not, the co-chair may, the order sticks, and a stranger's id is
-// refused.
-// recorder is a mail.Sender that hands each message to a channel.
 type recorder struct{ got chan mail.Message }
 
 func (r recorder) Send(_ context.Context, m mail.Message) error {
@@ -291,28 +304,15 @@ func (r recorder) next(t *testing.T) mail.Message {
 	}
 }
 
-// TestMail signs a parent up under International Night and makes them a
-// co-chair: the thank-you goes to them with the event's chairs copied, the
-// admin who asked hears of the sign-up, and the appointment gets its own note.
 func TestMail(t *testing.T) {
-	t.Chdir("../..")
-	dir := &data.Dir{Root: "sampledata"}
-	cache, err := NewCache(dir, bundled{}, func(e string) bool { return e == admin }, syncQueue{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	mux := http.NewServeMux()
 	rec := recorder{got: make(chan mail.Message, 8)}
-	Register(mux, cache, dir, syncQueue{}, nil, fakeDirectory{}, func() []string { return []string{admin} }, ImageSearch{}, rec, testFrom, nil)
+	_, mux := serveWith(t, rec)
 	if r := call(t, mux, admin, "POST", "/api/team/notify", map[string]any{"kinds": []string{"signups", "offers"}}); r.Code != http.StatusNoContent {
 		t.Fatalf("notify prefs: %d %s", r.Code, r.Body)
 	}
 	if r := call(t, mux, parent, "POST", "/api/team/volunteer", map[string]any{"id": "E017", "position": PositionOpen, "note": "happy to help"}); r.Code != http.StatusNoContent {
 		t.Fatalf("sign up: %d %s", r.Code, r.Body)
 	}
-	// Four messages, in no fixed order: the thank-you with the chairs
-	// copied, the invite to Robin alone, the sign-up notice and the offer
-	// notice.
 	bySubject := map[string]mail.Message{}
 	for range 4 {
 		m := rec.next(t)
@@ -329,9 +329,6 @@ func TestMail(t *testing.T) {
 	if !slices.Equal(invite.To, []string{parent}) || len(invite.CC) != 0 || !slices.Equal(invite.ReplyTo, []string{admin, chair}) || len(invite.Attachments) != 1 || !strings.Contains(invite.HTML, "Add it to your calendar") {
 		t.Fatalf("invite note: %+v (subjects %v)", invite, keys(bySubject))
 	}
-	// The invite is the crew's slot under International Night's date, since
-	// the crew has none of its own, Robin the one attendee, the portal the
-	// organizer.
 	ics := strings.ReplaceAll(string(invite.Attachments[0].Content), "\r\n ", "")
 	for _, want := range []string{"METHOD:REQUEST", "UID:team-E017-" + parent + "@heliosian.com", "SUMMARY:Clean Up Crew (International Night)", "DTSTART:20260924T230000Z", "DTEND:20260925T010000Z", "ORGANIZER;CN=HCA-Team:mailto:hca@example.org", "ATTENDEE;CN=Robin Whitfield;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;RSVP=FALSE:mailto:" + parent, "STATUS:CONFIRMED"} {
 		if !strings.Contains(ics, want) {
@@ -341,8 +338,6 @@ func TestMail(t *testing.T) {
 	if strings.Contains(ics, "mailto:"+chair) {
 		t.Errorf("a chair is on the volunteer's invite:\n%s", ics)
 	}
-	// Clean Up Crew has no leads of its own, so only the event's chairs are
-	// named - as the event's, not the crew's.
 	if !strings.Contains(thanks.Text, "Event Chairs: ") || strings.Contains(thanks.Text, "Leads") {
 		t.Fatalf("thank-you chairs: %q", thanks.Text)
 	}
@@ -359,8 +354,6 @@ func TestMail(t *testing.T) {
 	if m.Subject != "You're a co-chair of Clean Up Crew" || !slices.Equal(m.To, []string{parent}) || !slices.Contains(m.CC, chair) {
 		t.Fatalf("co-chair note: %+v", m)
 	}
-	// Now the crew has a lead, the next volunteer is told the crew's lead and
-	// the event's chairs each under their own heading, with both copied.
 	other := "sam.whitfield@heliosschool.org"
 	if r := call(t, mux, other, "POST", "/api/team/volunteer", map[string]any{"id": "E017", "position": PositionVolunteer}); r.Code != http.StatusNoContent {
 		t.Fatalf("second sign up: %d %s", r.Code, r.Body)
@@ -369,18 +362,15 @@ func TestMail(t *testing.T) {
 		m := rec.next(t)
 		switch {
 		case strings.HasPrefix(m.Subject, "Thanks for volunteering"):
-			// The crew's lead and the event's chairs are copied.
 			if !strings.Contains(m.Text, "Clean Up Crew Leads: Robin Whitfield\n") || !strings.Contains(m.Text, "Event Chairs: ") || !slices.Equal(m.CC, []string{parent, admin, chair}) {
 				t.Fatalf("thank-you under a lead: %q cc %v", m.Text, m.CC)
 			}
 		case strings.HasPrefix(m.Subject, "Calendar invite"):
-			// Sam's alone (the fake directory knows no parents).
 			if !slices.Equal(m.To, []string{other}) || len(m.CC) != 0 || !strings.Contains(string(m.Attachments[0].Content), "mailto:"+other) {
 				t.Fatalf("a student's invite: to %v cc %v", m.To, m.CC)
 			}
 		}
 	}
-	// Removing the sign-up cancels the invite for the same people.
 	if r := call(t, mux, chair, "DELETE", "/api/team/volunteer", map[string]any{"id": "E017", "email": other}); r.Code != http.StatusNoContent {
 		t.Fatalf("remove: %d %s", r.Code, r.Body)
 	}
@@ -399,9 +389,6 @@ func keys(m map[string]mail.Message) []string {
 	return out
 }
 
-// TestMoveSignUp moves a sign-up from one thing to its sibling in one change:
-// the old row goes as the new one lands, a stranger may not, and moving onto a
-// thing you are already on simply leaves the old one.
 func TestMoveSignUp(t *testing.T) {
 	cache, mux := newServer(t)
 	on := func(id string) bool {
@@ -427,7 +414,6 @@ func TestMoveSignUp(t *testing.T) {
 	if rec := call(t, mux, parent, "POST", "/api/team/volunteer", map[string]any{"id": "E019", "position": PositionVolunteer, "from": "E017"}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("moved from a thing not signed up for: %d", rec.Code)
 	}
-	// Offering to co-chair needs a thing that wants one: Set Up Crew does not.
 	if rec := call(t, mux, parent, "POST", "/api/team/volunteer", map[string]any{"id": "E016", "position": PositionOpen}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("offered to co-chair where none is wanted: %d", rec.Code)
 	}
@@ -454,6 +440,13 @@ func TestReorderChildren(t *testing.T) {
 	}
 	if got := titles(); !slices.Equal(got, []string{"Marketing", "Decor", "Childcare"}) {
 		t.Fatalf("order after: %v", got)
+	}
+	before := len(changeLog(t))
+	if rec := call(t, mux, chair, "POST", "/api/team/order", map[string]any{"parent": "E002", "ids": []string{"E023", "E025", "E024"}}); rec.Code != http.StatusNoContent {
+		t.Fatalf("second reorder: %d %s", rec.Code, rec.Body)
+	}
+	if got := titles(); !slices.Equal(got, []string{"Decor", "Marketing", "Childcare"}) || len(changeLog(t))-before != 1 {
+		t.Fatalf("order after one move: %v, %d log rows", got, len(changeLog(t))-before)
 	}
 	if rec := call(t, mux, chair, "POST", "/api/team/order", map[string]any{"parent": "E002", "ids": []string{"E025", "E001"}}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("a stranger's id was taken: %d", rec.Code)
@@ -498,8 +491,65 @@ func TestSuggestApproveRenameDelete(t *testing.T) {
 	}
 }
 
-// A title is not a key, so renaming touches one row and everything that hung
-// off the old name is still there under the new one.
+func TestYearMoveCarriesTheTreeAndDeleteTakesTheLinks(t *testing.T) {
+	cache, mux := newServer(t)
+	spring := cache.Model().Activity("E002")
+	edit := map[string]any{"id": "E002", "year": "2027 - 2028", "title": spring.Title, "category": spring.Category, "status": spring.Status, "directSignUp": true, "prettyId": spring.PrettyID}
+	if rec := call(t, mux, admin, "POST", "/api/team/activity", edit); rec.Code != http.StatusNoContent {
+		t.Fatalf("move year: %d %s", rec.Code, rec.Body)
+	}
+	for _, c := range cache.Model().Activity("E002").Children {
+		if c.Year != "2027 - 2028" {
+			t.Fatalf("%s stayed in %s", c.Title, c.Year)
+		}
+	}
+	moved := 0
+	for _, row := range tables(t)[activitiesTab] {
+		if row["Parent"] == "E002" && row["Year"] == "2027 - 2028" {
+			moved++
+		}
+	}
+	years := map[string]int{}
+	for _, row := range changeLog(t) {
+		if row["Column"] == "Year" {
+			years[row["Key"]+" "+row["Previous"]]++
+			if row["Actor"] != admin || row["Action"] != "set" {
+				t.Errorf("log row %v", row)
+			}
+		}
+	}
+	if moved != 3 || len(years) != 4 || years["Event ID=E023 2026 - 2027"] != 1 {
+		t.Fatalf("sheet moved %d children, logged %v", moved, years)
+	}
+	if rec := call(t, mux, admin, "POST", "/api/team/activity", map[string]any{"year": "2026 - 2027", "title": "Bake Sale", "category": "C02", "status": StatusOpen, "directSignUp": true}); rec.Code != http.StatusNoContent {
+		t.Fatalf("add: %d %s", rec.Code, rec.Body)
+	}
+	sale := byTitle(cache.Model(), "2026 - 2027", "Bake Sale")
+	if rec := call(t, mux, admin, "POST", "/api/team/link", map[string]any{"id": sale.ID, "title": "Menu", "url": "https://example.org/menu"}); rec.Code != http.StatusNoContent {
+		t.Fatalf("link: %d %s", rec.Code, rec.Body)
+	}
+	if rec := call(t, mux, admin, "DELETE", "/api/team/activity", map[string]string{"id": sale.ID}); rec.Code != http.StatusNoContent {
+		t.Fatalf("delete: %d %s", rec.Code, rec.Body)
+	}
+	if cache.Count(linksTab, store.Row{"Event ID": sale.ID}) != 0 {
+		t.Fatal("the link outlived its activity in memory")
+	}
+	for _, row := range tables(t)[linksTab] {
+		if row["Event ID"] == sale.ID {
+			t.Fatalf("the sheet kept %v", row)
+		}
+	}
+	gone := 0
+	for _, row := range changeLog(t) {
+		if row["Action"] == "delete" && row["Tab"] == linksTab && row["Column"] == "URL" && row["Previous"] == "https://example.org/menu" {
+			gone++
+		}
+	}
+	if gone != 1 {
+		t.Fatalf("the link's delete was not logged: %v", changeLog(t))
+	}
+}
+
 func TestRenameKeepsTheTree(t *testing.T) {
 	cache, mux := newServer(t)
 	edit := map[string]any{
@@ -516,8 +566,6 @@ func TestRenameKeepsTheTree(t *testing.T) {
 	if rec := call(t, mux, admin, "DELETE", "/api/team/activity", map[string]string{"id": "E020"}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("deleted something with children and volunteers: %d", rec.Code)
 	}
-	// Putting something inside its own descendant is refused before the loader
-	// would have to.
 	loop := map[string]any{"id": "E001", "year": "2026 - 2027", "title": "International Night", "parent": "E020", "category": "", "status": StatusOpen}
 	if rec := call(t, mux, admin, "POST", "/api/team/activity", loop); rec.Code != http.StatusBadRequest {
 		t.Fatalf("a parent loop was accepted: %d", rec.Code)
@@ -536,7 +584,6 @@ func TestCopyToNextYear(t *testing.T) {
 	if next == nil || next.ID == "E001" || next.Status != StatusOpen || next.Start != "" || len(next.Volunteers) != 0 || len(next.Descendants()) != 6 || byTitle(cache.Model(), "2027 - 2028", "Cybertron") != nil || len(next.Links) != 2 {
 		t.Fatalf("copied activity: %+v", next)
 	}
-	// Each copied child hangs off its copied parent, not the original.
 	for _, c := range next.Descendants() {
 		if p := cache.Model().Activity(c.Parent); p == nil || p.Year != "2027 - 2028" {
 			t.Fatalf("copied child %q points at parent %q in the wrong year", c.Title, c.Parent)
@@ -562,9 +609,6 @@ func TestYears(t *testing.T) {
 	}
 }
 
-// An event's categories are its own: a child may only name one of its root's, a
-// root may only name a page heading, and Allow Adding gates proposals from
-// people who do not run the event.
 func TestEventCategories(t *testing.T) {
 	cache, mux := newServer(t)
 	m := cache.Model()
@@ -583,8 +627,6 @@ func TestEventCategories(t *testing.T) {
 	if code := propose(parent, "C08"); code != http.StatusNoContent {
 		t.Fatalf("a booth under an open category was refused: %d", code)
 	}
-	// "Yes" means live at once; the event's own "Approval Needed" applies to a
-	// booth added with no category at all.
 	if sweden := byTitle(cache.Model(), "2026 - 2027", "Sweden"); sweden == nil || sweden.Status != StatusOpen {
 		t.Fatalf("a booth added under a Yes category should be open: %+v", sweden)
 	}
@@ -605,7 +647,6 @@ func TestEventCategories(t *testing.T) {
 	if code := propose(chair, "C01"); code != http.StatusBadRequest {
 		t.Fatalf("a child took a page heading as its category: %d", code)
 	}
-	// Only the event's own editors manage its categories; the page's need an admin.
 	own := map[string]any{"eventId": "E001", "title": "Performances", "allowAdding": AddingYes}
 	if rec := call(t, mux, parent, "POST", "/api/team/category", own); rec.Code != http.StatusForbidden {
 		t.Fatalf("a parent made an event category: %d", rec.Code)
@@ -619,7 +660,6 @@ func TestEventCategories(t *testing.T) {
 	if n := len(cache.Model().Activity("E001").Categories); n != 3 {
 		t.Fatalf("event categories after adding: %d", n)
 	}
-	// Reordering one event's categories leaves the page's and other events' alone.
 	ids := []string{}
 	for _, c := range cache.Model().Activity("E001").Categories {
 		ids = append(ids, c.ID)
@@ -629,15 +669,21 @@ func TestEventCategories(t *testing.T) {
 		t.Fatalf("reorder: %d %s", rec.Code, rec.Body)
 	}
 	after := cache.Model()
-	if after.Activity("E001").Categories[0].ID != ids[0] || after.Categories[0].ID != "C01" || after.Activity("E013").Categories[0].ID != "C09" {
-		t.Fatalf("reorder leaked out of its scope")
+	got := []string{}
+	for _, c := range after.Activity("E001").Categories {
+		got = append(got, c.ID)
 	}
-	// Copying an event copies its categories under new ids and repoints the children.
+	if !slices.Equal(got, ids) || after.Categories[0].ID != "C01" || after.Activity("E013").Categories[0].ID != "C09" {
+		t.Fatalf("reorder: %v, or it leaked out of its scope", got)
+	}
+	if rec := call(t, mux, admin, "POST", "/api/team/categories/order", map[string]any{"eventId": "E001", "ids": ids[1:]}); rec.Code != http.StatusBadRequest {
+		t.Fatalf("an order missing one was taken: %d", rec.Code)
+	}
 	if rec := call(t, mux, admin, "POST", "/api/team/copy", map[string]string{"id": "E001"}); rec.Code != http.StatusNoContent {
 		t.Fatalf("copy: %d %s", rec.Code, rec.Body)
 	}
 	next := byTitle(cache.Model(), "2027 - 2028", "International Night")
-	if next == nil || len(next.Categories) != 3 || next.Categories[0].ID == ids[0] {
+	if next == nil || len(next.Categories) != 3 || next.Categories[0].ID == ids[0] || next.Categories[0].Title != after.Activity("E001").Categories[0].Title {
 		t.Fatalf("copied categories: %+v", next.Categories)
 	}
 	norway := byTitle(cache.Model(), "2027 - 2028", "Norway")
@@ -648,20 +694,20 @@ func TestEventCategories(t *testing.T) {
 
 func TestUncategorizedFallback(t *testing.T) {
 	cache, mux := newServer(t)
-	tables := cache.Tables()
-	next := *tables
-	next.Activities = append([]map[string]string{}, tables.Activities...)
-	blank := map[string]string{"Event ID": "E900", "Year": "2026 - 2027", "Title": "Blank", "Status": StatusOpen}
-	unknown := map[string]string{"Event ID": "E901", "Year": "2026 - 2027", "Title": "Unknown", "Category": "nope", "Status": StatusOpen}
-	borrowed := map[string]string{"Event ID": "E902", "Year": "2026 - 2027", "Title": "Borrowed", "Category": "C07", "Status": StatusOpen}
-	child := map[string]string{"Event ID": "E903", "Year": "2026 - 2027", "Title": "Child", "Parent": "E001", "Category": "C09", "Status": StatusOpen}
-	next.Activities = append(next.Activities, blank, unknown, borrowed, child)
-	m, err := BuildModel(&next, bundled{})
+	if len(cache.Model().Categories) != 6 {
+		t.Fatalf("the heading appeared without anything in it")
+	}
+	next := tables(t)
+	next[activitiesTab] = append(next[activitiesTab],
+		store.Row{"Event ID": "E900", "Year": "2026 - 2027", "Title": "Blank", "Status": StatusOpen},
+		store.Row{"Event ID": "E901", "Year": "2026 - 2027", "Title": "Unknown", "Category": "nope", "Status": StatusOpen},
+		store.Row{"Event ID": "E902", "Year": "2026 - 2027", "Title": "Borrowed", "Category": "C07", "Status": StatusOpen},
+		store.Row{"Event ID": "E903", "Year": "2026 - 2027", "Title": "Child", "Parent": "E001", "Category": "C09", "Status": StatusOpen},
+	)
+	m, err := BuildModel(next, bundled{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	// A root with a blank, unknown or another event's category lands under the
-	// built-in Uncategorized heading, which then appears last on the page.
 	for _, id := range []string{"E900", "E901", "E902"} {
 		if got := m.Activity(id).Category; got != UncategorizedID {
 			t.Fatalf("%s: category %q", id, got)
@@ -670,16 +716,9 @@ func TestUncategorizedFallback(t *testing.T) {
 	if last := m.Categories[len(m.Categories)-1]; last.ID != UncategorizedID || !last.BuiltIn || len(m.Categories) != 7 {
 		t.Fatalf("categories: %+v", m.Categories)
 	}
-	// A child naming a category of some other event simply has none.
 	if got := m.Activity("E903").Category; got != "" {
 		t.Fatalf("child category %q", got)
 	}
-	// Nothing needs the heading in the sample data, so it is not there.
-	if len(cache.Model().Categories) != 6 {
-		t.Fatalf("the heading appeared without anything in it")
-	}
-	// Saving a root as Uncategorized stores a blank, and only editors may do it;
-	// the heading itself cannot be edited or deleted.
 	add := map[string]any{"year": "2026 - 2027", "title": "Loose End", "category": UncategorizedID, "status": StatusOpen}
 	if rec := call(t, mux, parent, "POST", "/api/team/activity", add); rec.Code != http.StatusBadRequest {
 		t.Fatalf("a proposal without a category went through: %d", rec.Code)
@@ -688,7 +727,7 @@ func TestUncategorizedFallback(t *testing.T) {
 		t.Fatalf("admin add: %d %s", rec.Code, rec.Body)
 	}
 	loose := byTitle(cache.Model(), "2026 - 2027", "Loose End")
-	if loose == nil || loose.Category != UncategorizedID || cache.Tables().count(activitiesTab, map[string]string{"Title": "Loose End", "Category": ""}) != 1 {
+	if loose == nil || loose.Category != UncategorizedID || cache.Count(activitiesTab, store.Row{"Title": "Loose End", "Category": ""}) != 1 {
 		t.Fatalf("loose end: %+v", loose)
 	}
 	if rec := call(t, mux, admin, "POST", "/api/team/category", map[string]any{"id": UncategorizedID, "title": "Misc"}); rec.Code != http.StatusBadRequest {
@@ -699,10 +738,8 @@ func TestUncategorizedFallback(t *testing.T) {
 	}
 }
 
-func TestBrokenSheetStallsThePortalOnly(t *testing.T) {
+func TestBrokenSheetRefusesToLoad(t *testing.T) {
 	t.Chdir("../..")
-	// A Volunteers tab still in the old shape: the load fails, but the cache
-	// exists, every route says why, and the first good refresh brings it back.
 	broken := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(broken, "events"), 0o755); err != nil {
 		t.Fatal(err)
@@ -719,42 +756,22 @@ func TestBrokenSheetStallsThePortalOnly(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(broken, "events", "Volunteers.csv"), []byte("Year,Activity,Role,Email,Position,Note,Added By,Added\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cache, err := NewCache(&data.Dir{Root: broken}, bundled{}, func(string) bool { return false }, syncQueue{})
-	if err == nil || cache == nil || cache.Model() != nil {
-		t.Fatalf("a broken sheet should give a cache without a model and an error, got %v %v", cache, err)
-	}
-	mux := http.NewServeMux()
-	Register(mux, cache, &data.Dir{Root: broken}, syncQueue{}, nil, fakeDirectory{}, func() []string { return nil }, ImageSearch{}, nil, testFrom, nil)
-	rec := call(t, mux, parent, "GET", "/api/team/model", nil)
-	if rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), `missing column "Event ID"`) {
-		t.Fatalf("before the sheet loads: %d %s", rec.Code, rec.Body)
-	}
-	if cache.IsAdmin(admin) {
-		t.Fatalf("nobody is a tab admin before the tab has loaded")
-	}
-	cache.source = &data.Dir{Root: "sampledata"}
-	if err := cache.refresh(); err != nil {
-		t.Fatal(err)
-	}
-	if rec := call(t, mux, parent, "GET", "/api/team/model", nil); rec.Code != http.StatusOK || cache.Err() != nil {
-		t.Fatalf("after the sheet loads: %d %v", rec.Code, cache.Err())
+	dir := &data.Dir{Root: broken}
+	if _, err := NewCache(dir, dir, bundled{}, func(string) bool { return false }, syncQueue{}); err == nil || !strings.Contains(err.Error(), `missing column "Event ID"`) {
+		t.Fatalf("a broken sheet loaded: %v", err)
 	}
 }
 
 func TestHandWrittenRows(t *testing.T) {
 	cache, _ := newServer(t)
-	tables := cache.Tables()
-	next := *tables
-	next.Activities = append(cloneRows(tables.Activities),
-		// A child may leave Year blank and takes its root's; blank switches
-		// default to co-leader wanted, direct sign-up on, volunteers shown.
-		map[string]string{"Event ID": "E900", "Title": "Bare Child", "Parent": "E020", "Status": StatusOpen},
-		// No Event ID is a deleted row: not loaded, however broken the rest is.
-		map[string]string{"Event ID": "", "Title": "Gone", "Year": "nonsense", "Status": "Active", "Parent": "nope"},
+	next := tables(t)
+	next[activitiesTab] = append(next[activitiesTab],
+		store.Row{"Event ID": "E900", "Title": "Bare Child", "Parent": "E020", "Status": StatusOpen},
+		store.Row{"Event ID": "", "Title": "Gone", "Year": "nonsense", "Status": "Active", "Parent": "nope"},
 	)
-	next.Volunteers = append(cloneRows(tables.Volunteers), map[string]string{"Event ID": "", "Email": "not an email", "Position": "Boss"})
-	next.Links = append(cloneRows(tables.Links), map[string]string{"Event ID": "", "Title": "Old", "URL": "https://example.com"})
-	m, err := BuildModel(&next, bundled{})
+	next[volunteersTab] = append(next[volunteersTab], store.Row{"Event ID": "", "Email": "not an email", "Position": "Boss"})
+	next[linksTab] = append(next[linksTab], store.Row{"Event ID": "", "Title": "Old", "URL": "https://example.com"})
+	m, err := BuildModel(next, bundled{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -765,18 +782,16 @@ func TestHandWrittenRows(t *testing.T) {
 	if byTitle(m, "2026 - 2027", "Gone") != nil {
 		t.Fatalf("a row without an id was loaded")
 	}
-	// Whatever pointed at a deleted row is deleted with it, all the way down;
-	// a person listed twice on one thing counts once.
-	next.Activities = append(next.Activities,
-		map[string]string{"Event ID": "E910", "Title": "Orphan", "Parent": "gone-id", "Status": StatusOpen},
-		map[string]string{"Event ID": "E911", "Title": "Orphan's Child", "Parent": "E910", "Status": StatusOpen},
+	next[activitiesTab] = append(next[activitiesTab],
+		store.Row{"Event ID": "E910", "Title": "Orphan", "Parent": "gone-id", "Status": StatusOpen},
+		store.Row{"Event ID": "E911", "Title": "Orphan's Child", "Parent": "E910", "Status": StatusOpen},
 	)
-	next.Volunteers = append(next.Volunteers,
-		map[string]string{"Event ID": "gone-id", "Email": parent, "Position": PositionVolunteer},
-		map[string]string{"Event ID": "E001", "Email": chair, "Position": PositionVolunteer},
+	next[volunteersTab] = append(next[volunteersTab],
+		store.Row{"Event ID": "gone-id", "Email": parent, "Position": PositionVolunteer},
+		store.Row{"Event ID": "E001", "Email": chair, "Position": PositionVolunteer},
 	)
-	next.Links = append(next.Links, map[string]string{"Event ID": "E910", "Title": "Lost", "URL": "https://example.com"})
-	m, err = BuildModel(&next, bundled{})
+	next[linksTab] = append(next[linksTab], store.Row{"Event ID": "E910", "Title": "Lost", "URL": "https://example.com"})
+	m, err = BuildModel(next, bundled{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -790,10 +805,14 @@ func TestHandWrittenRows(t *testing.T) {
 	if n := len(m.Activity("E001").Volunteers); n != len(cache.Model().Activity("E001").Volunteers) {
 		t.Fatalf("the duplicate sign-up was added: %d volunteers", n)
 	}
-	// A child whose Year disagrees with its root is still refused.
-	next.Activities = append(next.Activities, map[string]string{"Event ID": "E901", "Title": "Lost", "Year": "2025 - 2026", "Parent": "E020", "Status": StatusOpen})
-	if _, err := BuildModel(&next, bundled{}); err == nil || !strings.Contains(err.Error(), "has its parent") {
+	next[activitiesTab] = append(next[activitiesTab], store.Row{"Event ID": "E901", "Title": "Lost", "Year": "2025 - 2026", "Parent": "E020", "Status": StatusOpen})
+	if _, err := BuildModel(next, bundled{}); err == nil || !strings.Contains(err.Error(), "has its parent") {
 		t.Fatalf("a child in another year loaded: %v", err)
+	}
+	next = tables(t)
+	next[activitiesTab][20][store.OrderColumn] = "10"
+	if _, err := BuildModel(next, bundled{}); err == nil || !strings.Contains(err.Error(), "ends in 0") {
+		t.Fatalf("an order ending in 0 loaded: %v", err)
 	}
 }
 
@@ -802,13 +821,10 @@ func TestShowOnMainPage(t *testing.T) {
 	if c := cache.Model().Category("C01"); !c.ShowOnMain {
 		t.Fatalf("a heading defaults to being shown: %+v", c)
 	}
-	// A blank cell means shown; an event's own category is always shown.
-	tables := cache.Tables()
-	next := *tables
-	next.Categories = cloneRows(tables.Categories)
-	next.Categories[0]["Show On Main Page"] = ""
-	next.Categories[6]["Show On Main Page"] = "No"
-	m, err := BuildModel(&next, bundled{})
+	next := tables(t)
+	next[categoriesTab][0]["Show On Main Page"] = ""
+	next[categoriesTab][6]["Show On Main Page"] = "No"
+	m, err := BuildModel(next, bundled{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -820,15 +836,14 @@ func TestShowOnMainPage(t *testing.T) {
 	if rec := call(t, mux, admin, "POST", "/api/team/category", edit); rec.Code != http.StatusNoContent {
 		t.Fatalf("edit: %d %s", rec.Code, rec.Body)
 	}
-	if cache.Model().Category("C02").ShowOnMain || cache.Tables().count(categoriesTab, map[string]string{"Category ID": "C02", "Show On Main Page": "No"}) != 1 {
+	if cache.Model().Category("C02").ShowOnMain || cache.Count(categoriesTab, store.Row{"Category ID": "C02", "Show On Main Page": "No"}) != 1 {
 		t.Fatalf("the heading was not taken off the page")
 	}
-	// The event's own categories never carry the flag in the sheet.
 	own := map[string]any{"eventId": "E001", "title": "Shifts", "allowAdding": "", "showOnMain": off}
 	if rec := call(t, mux, chair, "POST", "/api/team/category", own); rec.Code != http.StatusNoContent {
 		t.Fatalf("add: %d %s", rec.Code, rec.Body)
 	}
-	if cache.Tables().count(categoriesTab, map[string]string{"Title": "Shifts", "Show On Main Page": ""}) != 1 {
+	if cache.Count(categoriesTab, store.Row{"Title": "Shifts", "Show On Main Page": ""}) != 1 {
 		t.Fatalf("an event category carried the page flag")
 	}
 }
@@ -849,7 +864,6 @@ func TestPrettyIDs(t *testing.T) {
 	if rec := edit("E002", "Bad Address!", false); rec.Code != http.StatusBadRequest {
 		t.Fatalf("a pretty id with spaces went through: %d", rec.Code)
 	}
-	// The same year's address is a plain clash.
 	rec := edit("E002", "international-night", false)
 	var conflict prettyConflict
 	if rec.Code != http.StatusConflict || json.Unmarshal(rec.Body.Bytes(), &conflict) != nil || conflict.Prior || conflict.ID != "E001" {
@@ -858,7 +872,6 @@ func TestPrettyIDs(t *testing.T) {
 	if rec := edit("E002", "international-night", true); rec.Code != http.StatusConflict {
 		t.Fatalf("take-over of a current address went through: %d", rec.Code)
 	}
-	// A prior year's address is offered for renaming, and taken once agreed.
 	last := byTitle(cache.Model(), "2025 - 2026", "International Night")
 	rec = edit("E002", "international-night-2025", false)
 	if rec.Code != http.StatusConflict || json.Unmarshal(rec.Body.Bytes(), &conflict) != nil || !conflict.Prior || conflict.ID != last.ID || conflict.Renamed != "international-night-2025-2025" {
@@ -871,10 +884,6 @@ func TestPrettyIDs(t *testing.T) {
 	if m.Activity("E002").PrettyID != "international-night-2025" || m.Activity(last.ID).PrettyID != "international-night-2025-2025" {
 		t.Fatalf("after take-over: %q %q", m.Activity("E002").PrettyID, m.Activity(last.ID).PrettyID)
 	}
-	// Every change of address leaves a redirect from the old path to the new:
-	// the old address still finds the thing, through a chain of renames, and
-	// a removed address sends people to the row's plain path. A bare word in
-	// the sheet means /v/{word}. The sample sheet starts with one redirect.
 	if m.Resolve("intl-night") != m.Activity("E001") || m.Resolve("/v/intl-night") != m.Activity("E001") || m.Resolve("nope") != nil {
 		t.Fatalf("sample redirect")
 	}
@@ -890,15 +899,12 @@ func TestPrettyIDs(t *testing.T) {
 			t.Fatalf("%s did not reach the event: %+v", old, m.Redirects)
 		}
 	}
-	if n := cache.Tables().count(redirectsTab, map[string]string{"Type": RedirectActivity, "Old": "/v/spring-party", "New": "/activities/E002"}); n != 1 {
+	if n := cache.Count(redirectsTab, store.Row{"Type": RedirectActivity, "Old": "/v/spring-party", "New": "/activities/E002"}); n != 1 {
 		t.Fatalf("a removed address should redirect to the row: %+v", m.Redirects)
 	}
 	if rec := edit("E002", "international-night-2025", false); rec.Code != http.StatusNoContent {
 		t.Fatalf("restore: %d %s", rec.Code, rec.Body)
 	}
-	// A child is addressed under its parent, by friendly name or id, and its
-	// friendly name only has to be unique among its siblings. Renaming the
-	// event carries every path under it along.
 	m = cache.Model()
 	norway, india := byTitle(m, "2026 - 2027", "Norway"), byTitle(m, "2026 - 2027", "India")
 	if m.PathOf(norway) != "/v/international-night/"+norway.ID {
@@ -927,20 +933,16 @@ func TestPrettyIDs(t *testing.T) {
 	if m.PathOf(m.Activity(norway.ID)) != "/v/inight/norway" || m.Resolve("/v/international-night/norway") != m.Activity(norway.ID) || m.Resolve("/v/intl-night/norway") != m.Activity(norway.ID) {
 		t.Fatalf("event rename did not carry the booth: %q", m.PathOf(m.Activity(norway.ID)))
 	}
-	// Keeping one's own address is not a clash; a hand-edited duplicate loads
-	// with the latest year keeping it.
 	if rec := edit("E002", "International-Night-2025", false); rec.Code != http.StatusNoContent {
 		t.Fatalf("re-saving own address: %d %s", rec.Code, rec.Body)
 	}
-	tables := cache.Tables()
-	next := *tables
-	next.Activities = cloneRows(tables.Activities)
-	for _, row := range next.Activities {
+	next := tables(t)
+	for _, row := range next[activitiesTab] {
 		if row["Event ID"] == last.ID {
 			row["Pretty ID"] = "inight"
 		}
 	}
-	dup, err := BuildModel(&next, bundled{})
+	dup, err := BuildModel(next, bundled{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -952,8 +954,6 @@ func TestPrettyIDs(t *testing.T) {
 func TestSharePreview(t *testing.T) {
 	cache, mux := newServer(t)
 	head := PreviewHead(cache)
-	// An open event previews with its title, its date and a line of its
-	// description, and its card; a hidden one, and any other page, show nothing.
 	tags := head(httptest.NewRequest("GET", "https://team.heliosian.com/v/intl-night/", nil))
 	for _, want := range []string{`og:title" content="International Night"`, `og:url" content="https://team.heliosian.com/v/international-night"`,
 		`og:image" content="https://team.heliosian.com/open/share/E001.png"`, `Thursday, September 24 · 4:00–6:00 PM — We invite you`} {
@@ -961,16 +961,12 @@ func TestSharePreview(t *testing.T) {
 			t.Fatalf("preview lacks %s:\n%s", want, tags)
 		}
 	}
-	// A thing under an event is titled with the event and, having no date of
-	// its own, previews with the event's.
 	tags = head(httptest.NewRequest("GET", "https://team.heliosian.com/v/international-night/E020", nil))
 	for _, want := range []string{`og:title" content="India · International Night"`, `Thursday, September 24 · 4:00–6:00 PM`} {
 		if !strings.Contains(tags, want) {
 			t.Fatalf("child preview lacks %s:\n%s", want, tags)
 		}
 	}
-	// A hidden thing, and any other page, preview as the portal itself: what
-	// still wants volunteers, soonest first, never the hidden thing.
 	for _, path := range []string{"/activities/E006", "/my", "/"} {
 		tags = head(httptest.NewRequest("GET", "https://team.heliosian.com"+path, nil))
 		for _, want := range []string{`og:title" content="HCA-Team"`, `og:image" content="https://team.heliosian.com/open/share/upcoming.png"`, "Volunteers needed: "} {
@@ -982,8 +978,6 @@ func TestSharePreview(t *testing.T) {
 			t.Fatalf("%s preview names a hidden thing:\n%s", path, tags)
 		}
 	}
-	// The needs are the year's open roots short of hands, dated ones first
-	// and soonest first, each noting its day and what is still wanted.
 	list := needs(cache.Model(), now())
 	if len(list) == 0 {
 		t.Fatalf("nothing needs hands in the sample")
@@ -1004,8 +998,6 @@ func TestSharePreview(t *testing.T) {
 	if note := needNote(&Activity{Start: "2026-09-24", Spots: 3, Volunteers: []Volunteer{{}}}); note != "Thursday, September 24 · 2 spots left" {
 		t.Fatalf("note: %q", note)
 	}
-	// The card is public - the mux is called without a session - and only for
-	// what previews.
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest("GET", "/open/share/E001.png", nil))
 	if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "image/png" || rec.Body.Len() < 10000 {
@@ -1043,13 +1035,8 @@ func TestWhenSpansDays(t *testing.T) {
 	}
 }
 
-// Admin Tools manage the Redirects tab: a link from the old volunteer site, or
-// any address here, sent to a page here or an address elsewhere, ahead of
-// sign-in.
 func TestRedirects(t *testing.T) {
 	cache, mux := newServer(t)
-	// A whole link pasted in is kept as its path; a bare word is a friendly
-	// address; a destination elsewhere is kept whole.
 	for cell, want := range map[string]string{
 		"https://hca.heliosian.com/dl/signup/s/768d91/r/nsSPomxFcPrSfoRCAgzI": "/dl/signup/s/768d91/r/nsSPomxFcPrSfoRCAgzI",
 		" /dl/signup/s/768d91/ ": "/dl/signup/s/768d91", "intl-night": "/v/intl-night", "https://hca.heliosian.com": "/",
@@ -1064,7 +1051,6 @@ func TestRedirects(t *testing.T) {
 	if got := redirectTo("spring-celebration"); got != "/v/spring-celebration" {
 		t.Errorf("redirectTo path %q", got)
 	}
-	// Only an admin manages them.
 	oldLink := "https://hca.heliosian.com/dl/signup/s/768d91/r/nsSPomxFcPrSfoRCAgzI"
 	if rec := call(t, mux, chair, "POST", "/api/team/redirect", map[string]string{"old": oldLink, "new": "/v/international-night"}); rec.Code != http.StatusForbidden {
 		t.Fatalf("chair: %d %s", rec.Code, rec.Body)
@@ -1074,14 +1060,12 @@ func TestRedirects(t *testing.T) {
 	}
 	m := cache.Model()
 	oldPath := "/dl/signup/s/768d91/r/nsSPomxFcPrSfoRCAgzI"
-	if n := cache.Tables().count(redirectsTab, map[string]string{"Type": RedirectAdmin, "Old": oldPath, "New": "/v/international-night"}); n != 1 {
-		t.Fatalf("row not written: %+v", cache.Tables().Redirects)
+	if n := cache.Count(redirectsTab, store.Row{"Type": RedirectAdmin, "Old": oldPath, "New": "/v/international-night"}); n != 1 {
+		t.Fatalf("row not written: %+v", m.Redirects)
 	}
 	if m.Resolve(oldPath) != m.Activity("E001") || m.Destination(oldPath) != "/v/international-night" {
 		t.Fatalf("old link: %v %q", m.Resolve(oldPath), m.Destination(oldPath))
 	}
-	// The sample's rename redirect, a chain, a live address, and a page the
-	// portal serves itself.
 	if got := m.Destination("/v/intl-night"); got != "/v/international-night" {
 		t.Fatalf("rename redirect: %q", got)
 	}
@@ -1093,9 +1077,6 @@ func TestRedirects(t *testing.T) {
 			t.Fatalf("%s should be served, not sent to %q", live, got)
 		}
 	}
-	// What is refused: the portal's own pages, a live address, an address
-	// sent to itself, a chain back to its start, a second redirect of one
-	// address.
 	for _, bad := range []map[string]string{
 		{"old": "/calendar", "new": "/v/international-night"}, {"old": "https://hca.heliosian.com/", "new": "/v/international-night"},
 		{"old": "/api/team/model", "new": "/v/international-night"}, {"old": "/v/international-night", "new": "/v/intl-night"},
@@ -1110,16 +1091,12 @@ func TestRedirects(t *testing.T) {
 			t.Errorf("%v was accepted", bad)
 		}
 	}
-	// Editing changes the old address and where it goes, keeps the row's
-	// kind, and finds the row however its cell was written; deleting takes
-	// the row out. A destination elsewhere is followed whole, and the query
-	// travels along.
 	elsewhere := "https://celebrate.heliosian.com/parties/abc"
 	if rec := call(t, mux, admin, "POST", "/api/team/redirect", map[string]string{"original": oldLink, "old": "/dl/signup/s/768d91", "new": elsewhere}); rec.Code != http.StatusNoContent {
 		t.Fatalf("edit: %d %s", rec.Code, rec.Body)
 	}
 	m = cache.Model()
-	if n := cache.Tables().count(redirectsTab, map[string]string{"Old": oldPath}); n != 0 {
+	if n := cache.Count(redirectsTab, store.Row{"Old": oldPath}); n != 0 {
 		t.Fatalf("old row still there")
 	}
 	if got := m.Destination(oldPath); got != elsewhere+"/r/nsSPomxFcPrSfoRCAgzI" {
@@ -1131,8 +1108,8 @@ func TestRedirects(t *testing.T) {
 	if rec := call(t, mux, admin, "POST", "/api/team/redirect", map[string]string{"original": "intl-night", "old": "/v/intl-nite", "new": "/v/international-night"}); rec.Code != http.StatusNoContent {
 		t.Fatalf("edit the sample row: %d %s", rec.Code, rec.Body)
 	}
-	if n := cache.Tables().count(redirectsTab, map[string]string{"Type": "pretty", "Old": "/v/intl-nite"}); n != 1 {
-		t.Fatalf("the sample row's kind was not kept: %+v", cache.Tables().Redirects)
+	if n := cache.Count(redirectsTab, store.Row{"Type": "pretty", "Old": "/v/intl-nite"}); n != 1 {
+		t.Fatalf("the sample row's kind was not kept: %+v", cache.Model().Redirects)
 	}
 	handler := Redirected(cache, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusTeapot) }))
 	for path, want := range map[string]string{

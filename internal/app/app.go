@@ -785,9 +785,9 @@ func NewCore(cfg Config) *Core {
 	who.ShareWords(appName("who"), taglineOf("who"))
 	birthday.ShareWords(appName("birthday"), taglineOf("birthday"))
 	loop.ShareWords(appName("loop"), taglineOf("loop"))
-	teamCache, err := team.NewCache(cfg.Source, teamImages{cfg.Store}, superAdmin, queue)
+	teamCache, err := team.NewCache(cfg.Source, cfg.Writer, teamImages{cfg.Store}, superAdmin, queue)
 	if err != nil {
-		slog.Error("load team data", "error", err)
+		logging.Fatal("load team data", "error", err)
 	}
 	birthdayCache, err := birthday.NewCache(cfg.Source, cfg.Writer, superAdmin, queue)
 	if err != nil {
@@ -838,7 +838,7 @@ func NewCore(cfg Config) *Core {
 		}
 		return &team.EventRSVPs{Sent: sent, Answers: answers}
 	}
-	team.Register(teamMux, teamCache, cfg.Writer, queue, cfg.Store, directory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.Mail, cfg.MailFrom, eventRSVPs)
+	team.Register(teamMux, teamCache, cfg.Store, directory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.Mail, cfg.MailFrom, eventRSVPs)
 	birthdayMux := http.NewServeMux()
 	birthday.Register(birthdayMux, birthdayCache, cfg.Writer, cfg.Store, birthdayDirectory{cache, settings}, settings.SuperAdmins, cfg.Describer, cfg.BirthdayMail, cfg.BirthdayFrom, cfg.BirthdayBase, func(ctx context.Context, email string) error {
 		return home.Grant(ctx, homeCache, "birthday", email)

@@ -2,161 +2,81 @@ package team
 
 import (
 	"log/slog"
+	"slices"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"heliosian/internal/config"
 	"heliosian/internal/data"
+	"heliosian/internal/store"
 )
 
-const refreshInterval = 5 * time.Minute
-
-// Enqueuer serializes sheet writes; the directory's write queue is shared here.
-type Enqueuer interface {
-	Add(func())
-}
-
 type Cache struct {
-	source     data.Source
-	images     ImageChecker
+	*store.Store[*Model]
 	superAdmin func(email string) bool
-	queue      Enqueuer
-	mu         sync.RWMutex
-	model      *Model
-	tables     *Tables
-	err        error
-	pending    int
 }
 
-// NewCache loads the sheet and keeps reloading it. A sheet that will not load
-// is returned as the error, but the cache is still usable and keeps trying on
-// the refresh interval: Model and Tables are nil until a load succeeds, and Err
-// says why. That way a broken Events sheet stalls the portal rather than the
-// server it shares with the directory, and comes back once the sheet is fixed
-// without a restart.
-func NewCache(source data.Source, images ImageChecker, superAdmin func(string) bool, queue Enqueuer) (*Cache, error) {
-	c := &Cache{source: source, images: images, superAdmin: superAdmin, queue: queue}
-	err := c.refresh()
-	go c.refreshLoop()
-	return c, err
-}
-
-func (c *Cache) refreshLoop() {
-	for range time.Tick(refreshInterval) {
-		c.Refresh()
-	}
-}
-
-func (c *Cache) Refresh() {
-	c.queue.Add(func() {
-		if err := c.refresh(); err != nil {
-			slog.Error("events model refresh", "error", err)
-		}
-	})
-}
-
-func (c *Cache) refresh() error {
-	start := time.Now()
-	tables, err := ReadTables(c.source)
-	if err == nil {
-		var model *Model
-		if model, err = BuildModel(tables, c.images); err == nil {
-			// A change whose write is still queued is in memory and not yet in the
-			// sheet just read; keep it, and let the next refresh pick the sheet up.
-			c.mu.Lock()
-			if c.pending == 0 {
-				c.tables, c.model = tables, model
-			} else {
-				slog.Info("events model refresh skipped: writes still queued")
+func spec(images ImageChecker) store.Spec[*Model] {
+	return store.Spec[*Model]{
+		App: appName,
+		Tabs: []store.Tab{
+			{Name: categoriesTab, Columns: CategoryColumns, Key: []string{"Category ID"}},
+			{Name: activitiesTab, Columns: ActivityColumns, Key: []string{"Event ID"}, Cascade: carryActivity},
+			{Name: volunteersTab, Columns: VolunteerColumns, Key: []string{"Event ID", "Email"}},
+			{Name: linksTab, Columns: LinkColumns, Key: []string{"Event ID", "Title"}},
+			{Name: settingsTab, Columns: SettingColumns, Key: []string{"Key"}},
+			{Name: adminsTab, Columns: AdminColumns, Key: []string{"Email"}},
+			{Name: redirectsTab, Columns: RedirectColumns, Key: []string{"Old"}},
+		},
+		Build: func(tables store.Tables) (*Model, error) {
+			return BuildModel(tables, images)
+		},
+		Loaded: func(model *Model, took time.Duration) {
+			children, volunteers := 0, 0
+			for _, a := range model.Activities {
+				children += len(a.Descendants())
+				for _, n := range append([]*Activity{a}, a.Descendants()...) {
+					volunteers += len(n.Volunteers)
+				}
 			}
-			c.mu.Unlock()
-		}
+			slog.Info("loaded events model", "categories", len(model.Categories), "roots", len(model.Activities),
+				"children", children, "volunteers", volunteers, "skipped", model.Skipped, "took", took.Round(time.Millisecond))
+		},
 	}
-	c.mu.Lock()
-	c.err = err
-	c.mu.Unlock()
-	if err != nil {
-		return err
+}
+
+func carryActivity(before, after store.Row) []store.Op {
+	switch {
+	case before == nil || before["Event ID"] == "":
+		return nil
+	case after == nil:
+		return []store.Op{store.Delete(linksTab, store.Row{"Event ID": before["Event ID"]})}
+	case before["Year"] != after["Year"]:
+		return []store.Op{store.Update(activitiesTab, store.Row{"Parent": after["Event ID"]}, store.Row{"Year": after["Year"]})}
 	}
-	model := c.Model()
-	children, volunteers := 0, len(tables.Volunteers)
-	for _, a := range model.Activities {
-		children += len(a.Descendants())
-	}
-	slog.Info("loaded events model", "categories", len(model.Categories), "roots", len(model.Activities),
-		"children", children, "volunteers", volunteers, "skipped", model.Skipped, "took", time.Since(start).Round(time.Millisecond))
 	return nil
 }
 
-func (c *Cache) commit(tables *Tables, model *Model, write func()) {
-	c.mu.Lock()
-	c.tables, c.model = tables, model
-	c.pending++
-	c.mu.Unlock()
-	c.queue.Add(func() {
-		write()
-		c.mu.Lock()
-		c.pending--
-		c.mu.Unlock()
-	})
-}
-
-func (c *Cache) Model() *Model {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.model
-}
-
-func (c *Cache) Tables() *Tables {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.tables
-}
-
-// Err is why the last load failed, or nil. A failed refresh keeps the previous
-// model serving, so Err can be set while Model is still usable.
-func (c *Cache) Err() error {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.err
-}
-
-func (c *Cache) tabAdmins() []string {
-	tables := c.Tables()
-	if tables == nil {
-		return nil
+func NewCache(source data.Source, writer data.Writer, images ImageChecker, superAdmin func(string) bool, queue store.Enqueuer) (*Cache, error) {
+	s, err := store.New(spec(images), source, writer, queue)
+	if err != nil {
+		return nil, err
 	}
-	emails := make([]string, 0, len(tables.Admins))
-	for _, row := range tables.Admins {
-		emails = append(emails, row["Email"])
-	}
-	return config.NormalizeEmails(emails)
+	return &Cache{Store: s, superAdmin: superAdmin}, nil
 }
 
-// IsSuperAdmin reports whether email is one of the platform's super admins
-// (docs/config.md) - the tier that colours the app in Appearance.
 func (c *Cache) IsSuperAdmin(email string) bool {
 	return c.superAdmin(strings.ToLower(strings.TrimSpace(email)))
 }
 
-// IsAdmin reports whether email runs the portal: a row in the Admins tab, or a
-// platform super admin.
 func (c *Cache) IsAdmin(email string) bool {
 	email = strings.ToLower(strings.TrimSpace(email))
-	for _, admin := range c.tabAdmins() {
-		if admin == email {
-			return true
-		}
-	}
-	return c.superAdmin(email)
+	return slices.Contains(c.Model().admins, email) || c.superAdmin(email)
 }
 
-// Admins is every admin as the admin page lists them: the tab plus the super
-// admins, indistinguishable, sorted together.
 func (c *Cache) Admins(superAdmins []string) []string {
-	admins := config.NormalizeEmails(append(c.tabAdmins(), superAdmins...))
+	admins := config.NormalizeEmails(append(slices.Clone(c.Model().admins), superAdmins...))
 	sort.Strings(admins)
 	return admins
 }

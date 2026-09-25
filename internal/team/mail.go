@@ -15,64 +15,24 @@ import (
 	"heliosian/internal/mail"
 )
 
-// The portal's email. Three kinds go out:
-//
-//   - a thank-you to whoever signed up (or was signed up), copied to the
-//     chairs of the event - and to a student's parents - followed by a
-//     second, short note to the volunteer alone carrying a calendar invite
-//     for the thing, so a sign-up sheet never lands on a chair's calendar
-//     forty times; and a cancellation for that invite when the sign-up is
-//     removed;
-//   - a note to someone made a co-chair, copied to the other chairs;
-//   - notices to the admins who asked for them: a new event, a new thing
-//     under one, a new sign-up, an offer to co-chair.
-//
-// Each admin's preferences live in the Settings tab as one row,
-// notify:<email> = events,activities,signups,offers - whichever of those
-// they turned on. Sending happens off the request, and a failure is logged
-// rather than shown: the sign-up itself already took.
-
 const notifyPrefix = "notify:"
 
-// NotifyKinds are the admin notices, in the order the Admin Tools card
-// lists them.
 var NotifyKinds = []string{"events", "activities", "signups", "offers"}
 
-// notifyPrefs is one admin's choices, by kind.
-func (t *Tables) notifyPrefs(email string) map[string]bool {
-	prefs := map[string]bool{}
-	key := notifyPrefix + strings.ToLower(strings.TrimSpace(email))
-	for _, row := range t.Settings {
-		if strings.ToLower(strings.TrimSpace(row["Key"])) != key {
-			continue
-		}
-		for _, k := range strings.Split(row["Value"], ",") {
-			if k = strings.TrimSpace(k); k != "" {
-				prefs[k] = true
-			}
-		}
-	}
-	return prefs
-}
-
-// adminsWanting is every admin who turned a kind of notice on, minus the
-// person the notice is about or from - nobody needs telling what they did.
 func (a app) adminsWanting(kind string, except ...string) []string {
-	tables := a.cache.Tables()
+	model := a.cache.Model()
 	out := []string{}
 	for _, admin := range a.cache.Admins(a.superAdmins()) {
 		if slices.Contains(except, admin) {
 			continue
 		}
-		if tables.notifyPrefs(admin)[kind] {
+		if model.notifyPrefs(admin)[kind] {
 			out = append(out, admin)
 		}
 	}
 	return out
 }
 
-// chairsAround is who runs a thing: its co-chairs, and those of everything
-// above it, nearest first, each once - the people to copy on its mail.
 func chairsAround(m *Model, act *Activity) []string {
 	out := []string{}
 	for n := act; n != nil; n = m.byID[n.Parent] {
@@ -85,10 +45,6 @@ func chairsAround(m *Model, act *Activity) []string {
 	return out
 }
 
-// chairRows names who runs a thing, a row for each level from the thing
-// itself up to the event, so a volunteer on something within an event sees
-// its leads apart from the event's chairs: "Sealand Leads", then "Event
-// Chairs". A level with nobody is left out; a thing on its own has "Chairs".
 func (a app) chairRows(m *Model, act *Activity) [][2]string {
 	rows := [][2]string{}
 	for n := act; n != nil; n = m.byID[n.Parent] {
@@ -110,8 +66,6 @@ func (a app) chairRows(m *Model, act *Activity) [][2]string {
 	return rows
 }
 
-// baseURL is the site as the request reached it, for the links and pictures
-// in a message - team.heliosian.com in production.
 func baseURL(r *http.Request) string {
 	scheme := "https"
 	if r.TLS == nil && !strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") && strings.HasPrefix(r.Host, "localhost") {
@@ -120,22 +74,18 @@ func baseURL(r *http.Request) string {
 	return scheme + "://" + r.Host
 }
 
-// letter is what every message is built from: the thing it is about, laid
-// out with its picture and details, and the words for this occasion.
 type letter struct {
-	Base    string
-	Title   string
-	Under   string
-	When    string
-	Where   string
-	Path    string
-	Picture string
-	Heading string
-	Intro   string
-	Rows    [][2]string
-	Button  string
-	// Calendar is an "add to calendar" address for the thing, shown as a
-	// second button when set - on a note that says someone is signed up.
+	Base     string
+	Title    string
+	Under    string
+	When     string
+	Where    string
+	Path     string
+	Picture  string
+	Heading  string
+	Intro    string
+	Rows     [][2]string
+	Button   string
 	Calendar string
 	Footnote string
 }
@@ -150,9 +100,6 @@ func (a app) letterFor(base string, act *Activity) letter {
 		Where: act.Location,
 		Path:  base + model.PathOf(act),
 	}
-	// The share card is the one picture of a thing a mail client can fetch
-	// without signing in; it carries the banner or flyer with the title and
-	// date. A pending or hidden thing has none.
 	for n := act; n != nil; n = model.byID[n.Parent] {
 		if previewable(n) {
 			l.Picture = base + "/open/share/" + n.ID + ".png"
@@ -232,13 +179,10 @@ func (l letter) render() (string, string) {
 	return html.String(), text.String()
 }
 
-// send posts a message off the request; the outcome is logged.
 func (a app) send(ctx context.Context, subject string, to []string, cc []string, l letter, replyTo ...string) {
 	a.post(ctx, a.compose(subject, to, cc, l, replyTo...))
 }
 
-// compose is the message: recipients deduplicated, nobody copied on their
-// own message, the letter rendered.
 func (a app) compose(subject string, to []string, cc []string, l letter, replyTo ...string) mail.Message {
 	seen := map[string]bool{}
 	clean := func(list []string) []string {
@@ -254,8 +198,6 @@ func (a app) compose(subject string, to []string, cc []string, l letter, replyTo
 		return out
 	}
 	m := mail.Message{To: clean(to), CC: clean(cc), Subject: subject}
-	// Reply-To goes to whoever should hear back - the chairs - so a reply to
-	// the portal's address reaches a person.
 	seen = map[string]bool{}
 	m.ReplyTo = clean(replyTo)
 	m.HTML, m.Text = l.render()
@@ -273,11 +215,6 @@ func (a app) post(ctx context.Context, m mail.Message) {
 	}()
 }
 
-// window is a thing's hours on a calendar: those of the thing itself or the
-// nearest thing above it with a date, the start and end as written, two
-// hours from the start when there is no end, the whole day when there is
-// no time; ok is false when nothing above it is dated either. A thing with
-// only a Timing in words ("two hours before doors") counts as undated.
 func window(m *Model, act *Activity) (start, until time.Time, timed, ok bool) {
 	dated := act
 	for dated != nil && dated.Start == "" {
@@ -305,9 +242,6 @@ func window(m *Model, act *Activity) (start, until time.Time, timed, ok bool) {
 	return start, until, timed, true
 }
 
-// calendarLink is the Google Calendar "add this" address for a thing: the
-// title, its hours, the location, and its page in the notes. Empty for a
-// thing with no date.
 func calendarLink(m *Model, act *Activity, page string) string {
 	start, until, timed, ok := window(m, act)
 	if !ok {
@@ -325,12 +259,6 @@ func calendarLink(m *Model, act *Activity, page string) string {
 	return "https://calendar.google.com/calendar/render?" + q.Encode()
 }
 
-// invite is the calendar file on a note that says someone is signed up -
-// or, cancelled, that they no longer are: the thing as one event, from the
-// portal to each person the note is for, all marked as coming. Its UID is
-// the thing's and the volunteer's, so a later note for the same sign-up
-// replaces the entry rather than adding a twin, and a cancellation finds
-// it. Nothing for a thing with no date.
 func (a app) invite(m *Model, act *Activity, email, page string, to []string, cancel bool) (mail.Attachment, bool) {
 	start, until, timed, ok := window(m, act)
 	if !ok {
@@ -380,10 +308,6 @@ func (a app) invite(m *Model, act *Activity, email, page string, to []string, ca
 	return mail.Attachment{Name: "invite.ics", ContentType: "text/calendar; method=" + method + "; charset=utf-8", Content: []byte(b.String())}, true
 }
 
-// mailRemoved follows a sign-up's removal: whoever held it (a student's
-// parents too) gets a cancellation for the invite, so the thing comes off
-// their calendar. Nothing goes to anyone else, and nothing for a thing
-// with no date - there was no invite.
 func (a app) mailRemoved(r *http.Request, act *Activity, email string) {
 	m := a.cache.Model()
 	l := a.letterFor(baseURL(r), act)
@@ -399,7 +323,6 @@ func (a app) mailRemoved(r *http.Request, act *Activity, email string) {
 	a.post(r.Context(), msg)
 }
 
-// nameOf is someone's name as the directory has it, or their address.
 func (a app) nameOf(email string) string {
 	name, _, _ := a.directory.Person(email)
 	if name == "" {
@@ -408,13 +331,9 @@ func (a app) nameOf(email string) string {
 	return name
 }
 
-// mailSignUp follows a saved sign-up: a new volunteer is thanked (copying the
-// chairs, and a student's parents), a new co-chair is told, and the admins
-// who asked hear of a new sign-up or an offer to co-chair.
 func (a app) mailSignUp(r *http.Request, act *Activity, email, position, note, actor string, existed bool, was string) {
 	base := baseURL(r)
 	ctx := r.Context()
-	// The model as it stands after the save, so a fresh co-chair counts.
 	model := a.cache.Model()
 	if now := model.Activity(act.ID); now != nil {
 		act = now
@@ -466,10 +385,6 @@ func (a app) mailSignUp(r *http.Request, act *Activity, email, position, note, a
 		l.Button = "See the details"
 		l.Calendar = calendarLink(model, act, l.Path)
 		l.Footnote = "Need to change or cancel? Open the page and use Edit my sign-up."
-		// The thank-you goes to the volunteer - a student's parents too -
-		// with the chairs copied, so everyone concerned reads the same
-		// thing; then a second, short note to the volunteer alone carries
-		// the calendar invite, so nothing lands on a chair's calendar.
 		subject := fmt.Sprintf("Thanks for volunteering for %s", act.Title)
 		to := append([]string{email}, a.directory.Parents(email)...)
 		replyTo := without(chairs, email)
@@ -486,8 +401,6 @@ func (a app) mailSignUp(r *http.Request, act *Activity, email, position, note, a
 			a.post(ctx, invite)
 		}
 	}
-	// Admin notices: a fresh sign-up, and any offer to co-chair - whether it
-	// came with the sign-up or was added to one later.
 	if !existed {
 		if admins := a.adminsWanting("signups", actor, email); len(admins) > 0 {
 			n := a.letterFor(base, act)
@@ -519,8 +432,6 @@ func (a app) mailSignUp(r *http.Request, act *Activity, email, position, note, a
 	}
 }
 
-// mailNewActivity tells the admins who asked that something was added: an
-// event on the page, or a thing under one.
 func (a app) mailNewActivity(r *http.Request, act *Activity, actor string) {
 	kind, what := "events", "A new event was added"
 	if act.Parent != "" {

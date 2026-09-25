@@ -122,13 +122,13 @@ var layouts = map[string][]tab{
 	},
 	"Events": {
 		{"Categories", team.CategoryColumns},
-		{"Activities", append(team.ActivityColumns, team.OrderColumn, team.CompleteColumn)},
+		{"Activities", team.ActivityColumns},
 		{"Volunteers", team.VolunteerColumns},
 		{"Links", team.LinkColumns},
 		{"Settings", team.SettingColumns},
 		{"Admins", team.AdminColumns},
 		{"Redirects", team.RedirectColumns},
-		{"Change Log", team.ChangeLogColumns},
+		{store.ChangeLogTab, store.ChangeLogColumns},
 	},
 	"Birthdays": {
 		{"Birthdays", birthday.BirthdayColumns},

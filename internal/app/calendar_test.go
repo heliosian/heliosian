@@ -23,8 +23,6 @@ type directQueue struct{}
 
 func (directQueue) Add(f func()) { f() }
 
-// sampleHousehold is the Whitfields as the directory would list them for
-// Jordan, and nobody for anyone else.
 type sampleHousehold struct{}
 
 func (sampleHousehold) Household(email string) (adults, kids []celebrate.Person) {
@@ -49,7 +47,7 @@ func samplesLinked(t *testing.T) calendarLinked {
 	if err != nil {
 		t.Fatal(err)
 	}
-	activities, err := team.NewCache(dir, sampleImages{}, func(string) bool { return false }, directQueue{})
+	activities, err := team.NewCache(dir, dir, sampleImages{}, func(string) bool { return false }, directQueue{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,9 +59,6 @@ func linkedFromSamples(t *testing.T) []calendar.Linked {
 	return samplesLinked(t).list("nobody@x.org")
 }
 
-// The viewer's standing: a ticket bought or held by anyone in the household
-// is Going, a waitlist request alone is Waitlisted, a sign-up on an HCA event
-// is Going, and a stranger stands nowhere.
 func TestCalendarLinkedMine(t *testing.T) {
 	linked := samplesLinked(t)
 	byID := map[string]calendar.Linked{}
@@ -143,9 +138,6 @@ func TestCalendarLinkedActivities(t *testing.T) {
 	}
 }
 
-// The roster carries each person's household - the adults, then the kids
-// of every family they are in, themselves left out - so an invitation
-// sent to one of them is on the calendar of all of them.
 func TestCalendarRosterHouseholds(t *testing.T) {
 	t.Chdir("../..")
 	dir := &data.Dir{Root: "sampledata"}

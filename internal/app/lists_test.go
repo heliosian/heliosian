@@ -65,8 +65,6 @@ func TestGroupListsCarryAdditionsAsGuests(t *testing.T) {
 	if list.Archived {
 		t.Fatal("a group nobody archived came marked archived")
 	}
-	// A group archived by its manager keeps its list, marked so, for them
-	// alone.
 	groupTables.Archived = append(groupTables.Archived, map[string]string{"Group": "soccer-team", "Email": jordan})
 	if model, err = loop.BuildModel(groupTables); err != nil {
 		t.Fatal(err)
@@ -95,14 +93,11 @@ func TestMagicTagsCarryTheirHosts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	portalTables, err := team.ReadTables(dir)
+	portalCache, err := team.NewCache(dir, dir, anyImage{}, func(string) bool { return false }, who.NewQueue())
 	if err != nil {
 		t.Fatal(err)
 	}
-	portal, err := team.BuildModel(portalTables, anyImage{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	portal := portalCache.Model()
 	siteTables, err := celebrate.ReadTables(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -120,8 +115,6 @@ func TestMagicTagsCarryTheirHosts(t *testing.T) {
 	if !slices.Equal(lists[i].Hosts, []string{jordan, "mina.park@heliosschool.org"}) {
 		t.Fatalf("hosts: %v", lists[i].Hosts)
 	}
-	// The hosts are on the list itself, the viewer among them, so a group
-	// made of it reaches whoever is running the event.
 	for _, host := range lists[i].Hosts {
 		if !slices.Contains(lists[i].People, host) {
 			t.Fatalf("International Night's list leaves off its co-chair %s: %v", host, lists[i].People)

@@ -205,14 +205,11 @@ func main() {
 	}
 	fmt.Printf("apps admins: %d\n", len(appsCache.Admins()))
 
-	eventTables, err := team.ReadTables(source)
+	eventsCache, err := team.NewCache(source, nil, teamImages{}, func(string) bool { return false }, who.NewQueue())
 	if err != nil {
-		log.Fatalf("[ERROR] read events tables: %v", err)
+		log.Fatalf("[ERROR] load events model: %v", err)
 	}
-	portal, err := team.BuildModel(eventTables, teamImages{})
-	if err != nil {
-		log.Fatalf("[ERROR] build events model: %v", err)
-	}
+	portal := eventsCache.Model()
 	fmt.Println("events:")
 	byYear := map[string][]*team.Activity{}
 	years := []string{}
@@ -234,7 +231,7 @@ func main() {
 				a.Title, a.Category, a.Status, len(a.Descendants()), len(a.Links), volunteers, a.ImageURL != "")
 		}
 	}
-	fmt.Printf("events admins: %d\n", len(eventTables.Admins))
+	fmt.Printf("events admins: %d\n", len(eventsCache.Admins(nil)))
 
 	celebrateTables, err := celebrate.ReadTables(source)
 	if err != nil {

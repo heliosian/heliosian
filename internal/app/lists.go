@@ -13,8 +13,6 @@ import (
 	"heliosian/internal/who"
 )
 
-// smartLists is Who?'s lister: the Magic Tags a person has from the other
-// apps, and the groups they manage on Helios Loop.
 type smartLists struct {
 	cache     *who.Cache
 	team      *team.Cache
@@ -28,12 +26,6 @@ func (s smartLists) Lists(email string) []who.List {
 	return append(lists, GroupLists(s.loop.Model(), loop.SourcesOf(s.directory), email)...)
 }
 
-// GroupLists is one Magic Tag per group the person manages: its members as
-// the rules pick them out now, less the person themselves, as every Magic
-// Tag leaves the viewer off, and the people added by hand as guests, since
-// the directory does not hold them. Groups are not read against group
-// rules - a group's rule cannot name another group - so these never feed
-// the evaluator, only Who?.
 func GroupLists(model *loop.Model, sources loop.Sources, email string) []who.List {
 	out := []who.List{}
 	for _, g := range model.Groups {
@@ -59,10 +51,6 @@ func GroupLists(model *loop.Model, sources loop.Sources, email string) []who.Lis
 	return out
 }
 
-// SmartLists is the Magic Tags a person has from the other apps, over
-// models rather than caches: the parties they host on Helios Celebrate that
-// have not happened yet and the activities they co-chair on HCA-Team this
-// school year. An app whose model is nil contributes nothing.
 func SmartLists(directory *who.Model, portal *team.Model, site *celebrate.Model, email string, now time.Time) []who.List {
 	return append(parties(directory, site, email, now), activities(directory, portal, email, now)...)
 }
@@ -106,8 +94,6 @@ func parties(directory *who.Model, model *celebrate.Model, email string, now tim
 				people[buyer] = true
 			}
 		}
-		// The hosts are on their party's list, the viewer among them: a
-		// group made of the list reaches whoever is running it too.
 		for _, host := range list.Hosts {
 			if directory.Person(host) != nil {
 				people[host] = true
@@ -132,9 +118,6 @@ func resolved(directory *who.Model, emails []string) []string {
 
 func activities(directory *who.Model, model *team.Model, email string, now time.Time) []who.List {
 	out := []who.List{}
-	if model == nil {
-		return out
-	}
 	chairs := func(a *team.Activity) bool {
 		return slices.ContainsFunc(a.CoChairs(), func(c string) bool { return directory.Resolve(c) == email })
 	}
@@ -173,7 +156,6 @@ func activities(directory *who.Model, model *team.Model, email string, now time.
 					}
 				}
 			}
-			// The co-chairs are on their event's list, the viewer among them.
 			for _, host := range list.Hosts {
 				if directory.Person(host) != nil {
 					people[host] = true

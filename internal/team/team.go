@@ -1,7 +1,6 @@
 package team
 
 import (
-	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -17,11 +16,11 @@ import (
 
 	"heliosian/internal/auth"
 	"heliosian/internal/blob"
-	"heliosian/internal/data"
 	"heliosian/internal/imagesearch"
 	"heliosian/internal/logging"
 	"heliosian/internal/mail"
 	"heliosian/internal/serve"
+	"heliosian/internal/store"
 )
 
 const (
@@ -34,8 +33,6 @@ var pages = []string{
 	"/{$}", "/my", "/my/{email}", "/calendar", "/approvals", "/admin", "/years/{year}", "/activities/{path...}", "/v/{path...}",
 }
 
-// local is the school's clock: the sheet's dates are wall-clock there, and a
-// sign-up made late one evening is dated that evening.
 var local = mustLocation("America/Los_Angeles")
 
 func mustLocation(name string) *time.Location {
@@ -48,84 +45,65 @@ func mustLocation(name string) *time.Location {
 
 type app struct {
 	cache       *Cache
-	writer      data.Writer
-	queue       Enqueuer
-	store       *blob.Store
+	media       *blob.Store
 	directory   Directory
 	superAdmins func() []string
 	search      ImageSearch
-	// mailer sends the portal's email, from the address in from; nil sends
-	// nothing.
-	mailer mail.Sender
-	from   string
-	rsvps  RSVPLookup
+	mailer      mail.Sender
+	from        string
+	rsvps       RSVPLookup
 }
 
-// Register wires the portal: one shell for every page, the model, and the
-// ImageSearch is the portal's picture search, shared with Heliosian.
 type ImageSearch = imagesearch.Search
 
-// importImage stores a picked search result under the portal's own folder.
 func (a app) importImage(w http.ResponseWriter, r *http.Request) {
 	a.search.ServeImport(w, r, imageFolder, maxImageSize)
 }
 
-// writes. Every route already sits behind sign-in.
-func Register(mux *http.ServeMux, cache *Cache, writer data.Writer, queue Enqueuer, store *blob.Store, directory Directory, superAdmins func() []string, search ImageSearch, mailer mail.Sender, from string, rsvps RSVPLookup) {
+func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, directory Directory, superAdmins func() []string, search ImageSearch, mailer mail.Sender, from string, rsvps RSVPLookup) {
 	if search.UserAgent == "" {
 		search.UserAgent = "HCA-Team image search (+https://team.heliosian.com)"
 	}
-	a := app{cache: cache, writer: writer, queue: queue, store: store, directory: directory, superAdmins: superAdmins, search: search, mailer: mailer, from: from, rsvps: rsvps}
+	a := app{cache: cache, media: media, directory: directory, superAdmins: superAdmins, search: search, mailer: mailer, from: from, rsvps: rsvps}
 	for _, page := range pages {
-		mux.HandleFunc("GET "+page, a.ready(a.page))
+		mux.HandleFunc("GET "+page, a.page)
 	}
-	mux.HandleFunc("GET /api/team/model", a.ready(a.model))
-	mux.HandleFunc("GET /api/team/images/search", a.ready(a.search.ServeSearch))
-	mux.HandleFunc("GET /api/team/images/thumb", a.ready(a.search.ServeThumb))
-	mux.HandleFunc("POST /api/team/images/import", a.ready(a.importImage))
-	// Public, past sign-in (auth.Public): the image a chat app shows for a link.
-	mux.HandleFunc("GET /open/share/upcoming.png", a.ready(a.shareUpcoming))
-	mux.HandleFunc("GET /open/share/{id}", a.ready(a.shareCard))
-	mux.HandleFunc("GET /api/team/people", a.ready(a.people))
-	mux.HandleFunc("POST /api/team/volunteer", a.ready(a.saveVolunteer))
-	mux.HandleFunc("DELETE /api/team/volunteer", a.ready(a.removeVolunteer))
-	mux.HandleFunc("POST /api/team/activity", a.ready(a.saveActivity))
-	mux.HandleFunc("POST /api/team/order", a.ready(a.orderChildren))
-	mux.HandleFunc("DELETE /api/team/activity", a.ready(a.deleteActivity))
-	mux.HandleFunc("POST /api/team/link", a.ready(a.saveLink))
-	mux.HandleFunc("DELETE /api/team/link", a.ready(a.deleteLink))
-	mux.HandleFunc("POST /api/team/category", a.ready(a.saveCategory))
-	mux.HandleFunc("DELETE /api/team/category", a.ready(a.deleteCategory))
-	mux.HandleFunc("POST /api/team/categories/order", a.ready(a.reorderCategories))
-	mux.HandleFunc("POST /api/team/copy", a.ready(a.copyActivity))
-	mux.HandleFunc("POST /api/team/settings", a.ready(a.saveSettings))
-	mux.HandleFunc("POST /api/team/notify", a.ready(a.saveNotify))
-	mux.HandleFunc("POST /api/team/image", a.ready(a.uploadImage))
-	mux.HandleFunc("GET /api/admin/state", a.ready(a.adminState))
-	mux.HandleFunc("POST /api/admin/admins", a.ready(a.setAdmins))
-	mux.HandleFunc("POST /api/team/redirect", a.ready(a.saveRedirect))
-	mux.HandleFunc("DELETE /api/team/redirect", a.ready(a.deleteRedirect))
+	mux.HandleFunc("GET /api/team/model", a.model)
+	mux.HandleFunc("GET /api/team/images/search", a.search.ServeSearch)
+	mux.HandleFunc("GET /api/team/images/thumb", a.search.ServeThumb)
+	mux.HandleFunc("POST /api/team/images/import", a.importImage)
+	mux.HandleFunc("GET /open/share/upcoming.png", a.shareUpcoming)
+	mux.HandleFunc("GET /open/share/{id}", a.shareCard)
+	mux.HandleFunc("GET /api/team/people", a.people)
+	mux.HandleFunc("POST /api/team/volunteer", a.saveVolunteer)
+	mux.HandleFunc("DELETE /api/team/volunteer", a.removeVolunteer)
+	mux.HandleFunc("POST /api/team/activity", a.saveActivity)
+	mux.HandleFunc("POST /api/team/order", a.orderChildren)
+	mux.HandleFunc("DELETE /api/team/activity", a.deleteActivity)
+	mux.HandleFunc("POST /api/team/link", a.saveLink)
+	mux.HandleFunc("DELETE /api/team/link", a.deleteLink)
+	mux.HandleFunc("POST /api/team/category", a.saveCategory)
+	mux.HandleFunc("DELETE /api/team/category", a.deleteCategory)
+	mux.HandleFunc("POST /api/team/categories/order", a.reorderCategories)
+	mux.HandleFunc("POST /api/team/copy", a.copyActivity)
+	mux.HandleFunc("POST /api/team/settings", a.saveSettings)
+	mux.HandleFunc("POST /api/team/notify", a.saveNotify)
+	mux.HandleFunc("POST /api/team/image", a.uploadImage)
+	mux.HandleFunc("GET /api/admin/state", a.adminState)
+	mux.HandleFunc("POST /api/admin/admins", a.setAdmins)
+	mux.HandleFunc("POST /api/team/redirect", a.saveRedirect)
+	mux.HandleFunc("DELETE /api/team/redirect", a.deleteRedirect)
 }
 
-// Redirected sends an old address to where it now leads before anything else
-// answers for it - ahead of sign-in, so a link from the old volunteer site or
-// to a renamed event lands on its page's sign-in, with that page's preview,
-// rather than on a sign-in that leads to Not found. A path something live
-// sits at, or that no redirect names, goes through untouched, as does every
-// request that is not a plain fetch of a page; the query travels along. Until
-// the sheet has loaded there is nothing to consult, and the request goes
-// through to the 503 the routes give.
 func Redirected(cache *Cache, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet || r.Method == http.MethodHead {
-			if model := cache.Model(); model != nil {
-				if to := model.Destination(r.URL.Path); to != "" {
-					if r.URL.RawQuery != "" && !strings.Contains(to, "?") {
-						to += "?" + r.URL.RawQuery
-					}
-					http.Redirect(w, r, to, http.StatusFound)
-					return
+			if to := cache.Model().Destination(r.URL.Path); to != "" {
+				if r.URL.RawQuery != "" && !strings.Contains(to, "?") {
+					to += "?" + r.URL.RawQuery
 				}
+				http.Redirect(w, r, to, http.StatusFound)
+				return
 			}
 		}
 		next.ServeHTTP(w, r)
@@ -136,28 +114,6 @@ func (a app) page(w http.ResponseWriter, r *http.Request) {
 	serve.File(w, r, shell)
 }
 
-// ready holds every route until the sheet has loaded once. Before then the
-// portal answers 503 with the reason, so a sheet that needs fixing says what is
-// wrong instead of taking the server down with the directory on it.
-func (a app) ready(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if a.cache.Model() == nil {
-			reason := "the Events sheet has not loaded yet"
-			if err := a.cache.Err(); err != nil {
-				reason = err.Error()
-			}
-			http.Error(w, "HCA-Team cannot load its data: "+reason, http.StatusServiceUnavailable)
-			return
-		}
-		next(w, r)
-	}
-}
-
-// who is the person the portal acts as, and whether they are an admin: the
-// address sign-in gives - the signed-in person, or whoever a super admin is
-// viewing as in Spoof Mode (internal/auth), when everything, reads and
-// writes alike, runs as that person - resolved through the directory's
-// aliases.
 func (a app) who(r *http.Request) (string, bool) {
 	email := a.directory.Resolve(strings.ToLower(auth.Email(r)))
 	return email, a.cache.IsAdmin(email)
@@ -172,8 +128,6 @@ func (a app) requireAdmin(w http.ResponseWriter, r *http.Request) (string, bool)
 	return email, true
 }
 
-// requireSuperAdmin is the platform's own tier: what colours the app is
-// theirs alone, not any admin's.
 func (a app) requireSuperAdmin(w http.ResponseWriter, r *http.Request) (string, bool) {
 	email, _ := a.who(r)
 	if !a.cache.IsSuperAdmin(email) {
@@ -206,33 +160,12 @@ func decode(w http.ResponseWriter, r *http.Request, into any) bool {
 	return true
 }
 
-// commit rebuilds the model over the proposed tables first, so a change the
-// sheet rules reject never reaches the sheet, then applies it in memory at
-// once and queues the writes behind every earlier one. The page reads the
-// memory, so the change shows the moment the request returns, however long
-// the sheet takes - a throttled Sheets call can hold the queue for most of a
-// minute, which must not hold the next click. A refresh keeps its reading only
-// while no write is still queued, so it cannot read the sheet back over one.
-func (a app) commit(ctx context.Context, w http.ResponseWriter, tables *Tables, flush func() error) bool {
-	model, err := BuildModel(tables, a.cache.images)
-	if err != nil {
+func (a app) commit(w http.ResponseWriter, r *http.Request, actor string, ops ...store.Op) bool {
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return false
 	}
-	a.cache.commit(tables, model, func() {
-		if err := flush(); err != nil {
-			slog.ErrorContext(ctx, "events write", "error", err)
-		}
-	})
 	return true
-}
-
-func (a app) logChange(r *http.Request, actor, action, kind string, cells map[string]string) error {
-	return a.writer.Insert(appName, changeLogTab, []map[string]string{{
-		"Timestamp": time.Now().Format(time.RFC3339), "Actor": actor, "Action": action, "Kind": kind,
-		"Year": cells["Year"], "Activity": cells["Activity"], "Title": cells["Title"], "Email": cells["Email"], "Details": cells["Details"],
-		"Real Actor": auth.RealEmail(r),
-	}})
 }
 
 type activityRef struct {
@@ -248,9 +181,6 @@ func (a app) findActivity(w http.ResponseWriter, id string) (*Activity, bool) {
 	return act, true
 }
 
-// newID mints a key for a row the app creates. Eight characters from a 32-symbol
-// alphabet is 40 bits - collisions are not a practical concern at this scale,
-// and the load refuses a duplicate anyway rather than letting one through.
 func newID() string {
 	const alphabet = "abcdefghjkmnpqrstuvwxyz23456789"
 	var raw [8]byte
@@ -264,8 +194,6 @@ func newID() string {
 	return string(out)
 }
 
-// people is the directory for the sign-up picker. Anyone signed in may see it -
-// it is the same list the school directory shows every member.
 func (a app) people(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(a.directory.People()); err != nil {
@@ -280,9 +208,7 @@ func (a app) saveVolunteer(w http.ResponseWriter, r *http.Request) {
 		Email    string `json:"email"`
 		Position string `json:"position"`
 		Note     string `json:"note"`
-		// From moves a sign-up: the thing it is on now, whose row goes as the
-		// new one lands - one change, so it is never on both or neither.
-		From string `json:"from"`
+		From     string `json:"from"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -291,7 +217,8 @@ func (a app) saveVolunteer(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	editor := admin || a.cache.Model().Runs(act, actor)
+	model := a.cache.Model()
+	editor := admin || model.Runs(act, actor)
 	var from *Activity
 	if strings.TrimSpace(body.From) != "" && strings.TrimSpace(body.From) != act.ID {
 		if from, ok = a.findActivity(w, body.From); !ok {
@@ -306,17 +233,12 @@ func (a app) saveVolunteer(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "that is not an email address", http.StatusBadRequest)
 		return
 	}
-	status, spots := act.Status, act.Spots
-	// A thing with direct sign-up off takes people only through what sits
-	// under it - at any level of the tree; whoever runs it may still place
-	// someone, and an offer to co-chair is about the thing itself, so it is
-	// taken wherever a co-chair is wanted.
 	offering := body.Position == PositionOpen && act.CoLeaderNeeded
 	if !act.DirectSignUp && !editor && !offering {
 		http.Error(w, "sign up for one of the things under it instead", http.StatusBadRequest)
 		return
 	}
-	if !editor && status != StatusOpen {
+	if !editor && act.Status != StatusOpen {
 		http.Error(w, "this is not open for sign-ups", http.StatusBadRequest)
 		return
 	}
@@ -328,49 +250,33 @@ func (a app) saveVolunteer(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "the note is too long", http.StatusBadRequest)
 		return
 	}
-	match := map[string]string{"Event ID": act.ID, "Email": email}
-	tables := a.cache.Tables()
-	// Moving: taking the row off the old thing is a removal there, allowed
-	// to whoever could remove it - themselves, their household, its editors.
-	var fromMatch map[string]string
+	ops := []store.Op{}
+	current := act.volunteer(email)
+	was := ""
+	if current != nil {
+		was = current.Position
+	}
 	if from != nil {
-		fromMatch = map[string]string{"Event ID": from.ID, "Email": email}
-		if tables.count(volunteersTab, fromMatch) == 0 {
+		moving := from.volunteer(email)
+		if moving == nil {
 			http.Error(w, fmt.Sprintf("%s is not signed up for %s", email, from.Title), http.StatusBadRequest)
 			return
 		}
-		if email != actor && !admin && !a.cache.Model().Runs(from, actor) && !a.household(actor, email) {
+		if email != actor && !admin && !model.Runs(from, actor) && !a.household(actor, email) {
 			http.Error(w, "only a co-chair or admin can move someone else's sign-up", http.StatusForbidden)
 			return
 		}
-		tables = tables.without(volunteersTab, fromMatch)
-	}
-	existing := tables.count(volunteersTab, match) > 0
-	// Co-chair is an appointment, not a choice: whoever runs the event - an
-	// admin or one of its co-chairs - makes one, and unmakes one. Anyone else
-	// editing a co-chair's row - the co-chair changing their own note, say -
-	// keeps the position as it is.
-	was := ""
-	for _, row := range tables.Volunteers {
-		if row["Event ID"] == act.ID && strings.EqualFold(strings.TrimSpace(row["Email"]), email) {
-			was = row["Position"]
+		if was == "" {
+			was = moving.Position
 		}
+		ops = append(ops, store.Delete(volunteersTab, store.Row{"Event ID": from.ID, "Email": email}))
 	}
-	if from != nil && was == "" {
-		// A moved row keeps its standing where it came from.
-		for _, row := range a.cache.Tables().Volunteers {
-			if row["Event ID"] == from.ID && strings.EqualFold(strings.TrimSpace(row["Email"]), email) {
-				was = row["Position"]
-			}
-		}
-	}
+	existing := current != nil
 	if !editor {
 		if (body.Position == PositionCoChair) != (was == PositionCoChair) {
 			http.Error(w, "only a co-chair or admin can make or unmake a co-chair", http.StatusForbidden)
 			return
 		}
-		// An offer to co-chair is only made where one is wanted; an offer
-		// already standing stays as it is.
 		if body.Position == PositionOpen && was != PositionOpen && !act.CoLeaderNeeded {
 			http.Error(w, "this is not looking for a co-chair", http.StatusBadRequest)
 			return
@@ -380,48 +286,29 @@ func (a app) saveVolunteer(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "only a co-chair or admin can change someone else's sign-up", http.StatusForbidden)
 		return
 	}
-	if !existing && !editor && spots > 0 {
-		taken := tables.count(volunteersTab, map[string]string{"Event ID": act.ID})
-		if taken >= spots {
-			http.Error(w, "every spot is taken", http.StatusBadRequest)
-			return
-		}
+	if !existing && !editor && act.Spots > 0 && len(act.Volunteers) >= act.Spots {
+		http.Error(w, "every spot is taken", http.StatusBadRequest)
+		return
 	}
-	cells := map[string]string{"Position": body.Position, "Note": strings.TrimSpace(body.Note)}
+	cells := store.Row{"Position": body.Position, "Note": strings.TrimSpace(body.Note)}
 	action := "edit"
 	if !existing {
 		action = "add"
 		cells["Added By"] = actor
 		cells["Added"] = today()
 	}
-	details := body.Position
 	if from != nil {
 		action = "move"
-		details = fmt.Sprintf("%s, from %s", body.Position, from.Title)
 	}
-	if !a.commit(r.Context(), w, tables.with(volunteersTab, match, cells), func() error {
-		if fromMatch != nil {
-			if err := a.writer.Delete(appName, volunteersTab, fromMatch); err != nil {
-				return err
-			}
-		}
-		if err := a.writer.Set(appName, volunteersTab, match, cells); err != nil {
-			return err
-		}
-		return a.logChange(r, actor, action, "volunteer", map[string]string{
-			"Year": act.Year, "Activity": act.Title, "Email": email, "Details": details,
-		})
-	}) {
+	ops = append(ops, store.Set(volunteersTab, store.Row{"Event ID": act.ID, "Email": email}, cells))
+	if !a.commit(w, r, actor, ops...) {
 		return
 	}
 	slog.InfoContext(r.Context(), "events: saved volunteer", "actor", actor, "action", action, "email", email, "activity", act.Title, "year", act.Year)
-	// A move is a change to a sign-up, not a new one: no thank-you goes out.
 	a.mailSignUp(r, act, email, body.Position, strings.TrimSpace(body.Note), actor, existing || from != nil, was)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// household says whether email is in the actor's family - a partner or a
-// child - whose sign-ups the actor may change and remove as their own.
 func (a app) household(actor, email string) bool {
 	adults, kids := a.directory.Household(actor)
 	for _, c := range append(adults, kids...) {
@@ -450,15 +337,7 @@ func (a app) removeVolunteer(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "only a co-chair or admin can remove someone else", http.StatusForbidden)
 		return
 	}
-	match := map[string]string{"Event ID": act.ID, "Email": email}
-	if !a.commit(r.Context(), w, a.cache.Tables().without(volunteersTab, match), func() error {
-		if err := a.writer.Delete(appName, volunteersTab, match); err != nil {
-			return err
-		}
-		return a.logChange(r, actor, "remove", "volunteer", map[string]string{
-			"Year": act.Year, "Activity": act.Title, "Email": email,
-		})
-	}) {
+	if !a.commit(w, r, actor, store.Delete(volunteersTab, store.Row{"Event ID": act.ID, "Email": email})) {
 		return
 	}
 	slog.InfoContext(r.Context(), "events: removed volunteer", "actor", actor, "email", email, "activity", act.Title, "year", act.Year)
@@ -486,19 +365,12 @@ type activityBody struct {
 	VolunteersHidden   bool       `json:"volunteersHidden"`
 	VolunteersComplete bool       `json:"volunteersComplete"`
 	DirectSignUp       bool       `json:"directSignUp"`
-	// SignUp is the adder's own place on a new thing: Volunteer, Open to
-	// Co-Chair, or "none" (or blank) for nothing.
-	SignUp      string `json:"signUp"`
-	PrettyID    string `json:"prettyId"`
-	AllowAdding string `json:"allowAdding"`
-	// TakeOver says the sender has agreed to rename a prior year's activity
-	// that holds the same Pretty ID - see prettyConflict.
-	TakeOver bool `json:"takeOver"`
+	SignUp             string     `json:"signUp"`
+	PrettyID           string     `json:"prettyId"`
+	AllowAdding        string     `json:"allowAdding"`
+	TakeOver           bool       `json:"takeOver"`
 }
 
-// prettyConflict is the answer when a Pretty ID is already someone else's: who
-// has it, and whether they are in a prior year - in which case the sender may
-// ask again with takeOver, and the old one is renamed to Renamed.
 type prettyConflict struct {
 	Error   string `json:"error"`
 	ID      string `json:"id"`
@@ -508,9 +380,6 @@ type prettyConflict struct {
 	Renamed string `json:"renamed,omitempty"`
 }
 
-// renamedPretty is the address a prior year's activity moves to when a newer
-// one takes its Pretty ID: the same word with the year it belonged to, or the
-// first free numbered variant of that.
 func renamedPretty(model *Model, pretty, year string) string {
 	base := pretty
 	if m := yearForm.FindStringSubmatch(year); m != nil {
@@ -531,10 +400,6 @@ func spotsCell(n int) string {
 	return strconv.Itoa(n)
 }
 
-// saveActivity adds or edits an activity. Anyone may propose one, which lands
-// as Pending until an admin opens it; only an admin or one of its co-chairs may
-// change an existing one, and only an admin may approve, hide, or move it
-// between years.
 func (a app) saveActivity(w http.ResponseWriter, r *http.Request) {
 	actor, admin := a.who(r)
 	var body activityBody
@@ -560,7 +425,6 @@ func (a app) saveActivity(w http.ResponseWriter, r *http.Request) {
 	status := body.Status
 	switch {
 	case adding && !admin:
-		// Refined below by the adding policy; a co-chair's addition is live.
 		status = StatusOpen
 	case adding && status == "":
 		status = StatusOpen
@@ -573,8 +437,6 @@ func (a app) saveActivity(w http.ResponseWriter, r *http.Request) {
 		}
 		year = current.Year
 	}
-	// A parent is an id in the same year, and not the row itself or anything
-	// under it - the loader would refuse the loop, so refuse it here first.
 	parent := strings.TrimSpace(body.Parent)
 	if parent != "" {
 		p := model.Activity(parent)
@@ -595,8 +457,6 @@ func (a app) saveActivity(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	// Uncategorized is the model's name for a root with no category; the sheet
-	// stores that as a blank.
 	category := strings.TrimSpace(body.Category)
 	if category == UncategorizedID {
 		category = ""
@@ -605,9 +465,6 @@ func (a app) saveActivity(w http.ResponseWriter, r *http.Request) {
 	if parent != "" {
 		editor = editor || model.Runs(model.Activity(parent), actor)
 	}
-	// What someone who does not run the thing may add is the policy of the
-	// category they add into, or of the parent when there is no category; a
-	// new event with no category has nowhere to take a policy from.
 	policy := AddingNo
 	if parent != "" {
 		policy = model.Activity(parent).Adding
@@ -632,9 +489,6 @@ func (a app) saveActivity(w http.ResponseWriter, r *http.Request) {
 		}
 		policy = c.Adding
 	}
-	// Allow Adding gates additions from people who do not run the thing, and
-	// says whether what they add waits for approval; whoever runs it adds
-	// freely and their additions are live at once.
 	if adding && !editor {
 		switch policy {
 		case AddingYes:
@@ -650,7 +504,6 @@ func (a app) saveActivity(w http.ResponseWriter, r *http.Request) {
 	if adding {
 		id = newID()
 	}
-	// The adder's own sign-up on a new thing, if any.
 	signUp := ""
 	if adding {
 		switch strings.TrimSpace(body.SignUp) {
@@ -662,17 +515,11 @@ func (a app) saveActivity(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	// A root's Pretty ID is one address across every year. Another root holding
-	// it in this year or a later one is simply a clash; one in a prior year can
-	// be renamed out of the way, once the sender has agreed to that. A child's
-	// is one address among its siblings, under the parent's path.
 	pretty := NormalizePretty(body.PrettyID)
 	if err := CheckPretty(pretty); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	// Only whoever runs it sets what others may add under it; a proposal
-	// leaves the cell blank to inherit.
 	allowAdding, err := checkAdding(body.AllowAdding)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -716,31 +563,23 @@ func (a app) saveActivity(w http.ResponseWriter, r *http.Request) {
 		}
 		displaced, renamed = other, conflict.Renamed
 	}
-	cells := map[string]string{
+	cells := store.Row{
 		"Event ID": id, "Year": year, "Title": title, "Parent": parent,
 		"Category": category, "Status": status,
 		"Description": strings.TrimSpace(body.Description), "Image": strings.TrimSpace(body.Image), "Flyer Image": strings.TrimSpace(body.Flyer),
 		"Timing": strings.TrimSpace(body.Timing), "Start": strings.TrimSpace(body.Start), "End": strings.TrimSpace(body.End),
 		"Location": strings.TrimSpace(body.Location), "Spots": spotsCell(body.Spots),
 		"Co-Leader Needed": YesNo(body.CoLeaderNeeded), "Volunteers Hidden": YesNo(body.VolunteersHidden),
+		CompleteColumn:   YesNo(body.VolunteersComplete),
 		"Direct Sign-Up": YesNo(body.DirectSignUp), "Pretty ID": pretty, "Allow Adding": allowAdding,
 	}
 	for k, v := range highlightCells(body.Highlight) {
 		cells[k] = v
 	}
-	tables := a.cache.Tables()
-	// The column is optional; a sheet without it cannot hold the switch.
-	if tables.HasComplete() {
-		cells[CompleteColumn] = YesNo(body.VolunteersComplete)
-	}
+	ops := []store.Op{}
 	if displaced != nil {
-		tables = tables.with(activitiesTab, map[string]string{"Event ID": displaced.ID}, map[string]string{"Pretty ID": renamed})
+		ops = append(ops, store.Update(activitiesTab, store.Row{"Event ID": displaced.ID}, store.Row{"Pretty ID": renamed}))
 	}
-	// An address that changes - a new or removed friendly name, or a move under
-	// another parent - leaves a redirect from the old path to the new, so a
-	// link someone kept still lands here. A root's redirect carries everything
-	// under it along, so its children need none of their own.
-	var redirect map[string]string
 	if current != nil {
 		was := model.PathOf(current)
 		now := "/activities/" + id
@@ -754,78 +593,30 @@ func (a app) saveActivity(w http.ResponseWriter, r *http.Request) {
 			now = "/v/" + pretty
 		}
 		if was != now {
-			redirect = map[string]string{"Type": RedirectActivity, "Old": was, "New": now, "Date": today()}
-			tables = tables.with(redirectsTab, nil, redirect)
+			ops = append(ops, store.Insert(redirectsTab, store.Row{"Type": RedirectActivity, "Old": was, "New": now, "Date": today()}))
 		}
 	}
 	action := "edit"
-	match := map[string]string{"Event ID": id}
-	// Moving a root to another year takes its whole tree along, since a parent
-	// and child in different years is something the loader refuses.
-	var moved []*Activity
 	if adding {
 		action = "add"
 		cells["Added By"] = actor
 		cells["Added"] = today()
-		tables = tables.with(activitiesTab, nil, cells)
+		ops = append(ops, store.Insert(activitiesTab, cells))
 		if signUp != "" {
-			tables = tables.with(volunteersTab, nil, map[string]string{
-				"Event ID": id, "Email": actor, "Position": signUp, "Added By": actor, "Added": today(),
-			})
+			ops = append(ops, store.Insert(volunteersTab, store.Row{"Event ID": id, "Email": actor, "Position": signUp, "Added By": actor, "Added": today()}))
 		}
 	} else {
-		tables = tables.with(activitiesTab, match, cells)
-		if current.Year != year {
-			moved = current.Descendants()
-			for _, d := range moved {
-				tables = tables.with(activitiesTab, map[string]string{"Event ID": d.ID}, map[string]string{"Year": year})
-			}
+		if current.Parent != parent {
+			cells[store.OrderColumn] = ""
 		}
+		ops = append(ops, store.Update(activitiesTab, store.Row{"Event ID": id}, cells))
 	}
-	if !a.commit(r.Context(), w, tables, func() error {
-		if adding {
-			if err := a.writer.Insert(appName, activitiesTab, []map[string]string{cells}); err != nil {
-				return err
-			}
-			if signUp != "" {
-				if err := a.writer.Insert(appName, volunteersTab, []map[string]string{{
-					"Event ID": id, "Email": actor, "Position": signUp, "Added By": actor, "Added": today(),
-				}}); err != nil {
-					return err
-				}
-			}
-		} else {
-			if err := a.writer.Set(appName, activitiesTab, match, cells); err != nil {
-				return err
-			}
-			for _, d := range moved {
-				if err := a.writer.Set(appName, activitiesTab, map[string]string{"Event ID": d.ID}, map[string]string{"Year": year}); err != nil {
-					return err
-				}
-			}
-		}
-		if redirect != nil {
-			if err := a.writer.Insert(appName, redirectsTab, []map[string]string{redirect}); err != nil {
-				return err
-			}
-		}
-		if displaced != nil {
-			if err := a.writer.Set(appName, activitiesTab, map[string]string{"Event ID": displaced.ID}, map[string]string{"Pretty ID": renamed}); err != nil {
-				return err
-			}
-			if err := a.logChange(r, actor, "rename", "activity", map[string]string{"Year": displaced.Year, "Activity": displaced.Title, "Details": "pretty id " + pretty + " -> " + renamed + " " + displaced.ID}); err != nil {
-				return err
-			}
-		}
-		return a.logChange(r, actor, action, "activity", map[string]string{"Year": year, "Activity": title, "Details": status + " " + id})
-	}) {
+	if !a.commit(w, r, actor, ops...) {
 		return
 	}
 	slog.InfoContext(r.Context(), "events: saved activity", "actor", actor, "action", action, "activity", title, "id", id, "year", year, "status", status)
-	if action == "add" {
-		if made := a.cache.Model().Activity(id); made != nil {
-			a.mailNewActivity(r, made, actor)
-		}
+	if adding {
+		a.mailNewActivity(r, a.cache.Model().Activity(id), actor)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -843,28 +634,15 @@ func (a app) deleteActivity(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	match := map[string]string{"Event ID": act.ID}
-	tables := a.cache.Tables()
-	if tables.count(volunteersTab, match) > 0 {
+	if len(act.Volunteers) > 0 {
 		http.Error(w, "remove its volunteers first", http.StatusBadRequest)
 		return
 	}
-	// Deleting a parent would orphan whatever hangs off it, and the next load
-	// would refuse the whole sheet over the dangling Parent.
 	if len(act.Children) > 0 {
 		http.Error(w, "delete the things under it first", http.StatusBadRequest)
 		return
 	}
-	tables = tables.without(linksTab, match).without(activitiesTab, match)
-	if !a.commit(r.Context(), w, tables, func() error {
-		if err := a.writer.Delete(appName, linksTab, match); err != nil {
-			return err
-		}
-		if err := a.writer.Delete(appName, activitiesTab, match); err != nil {
-			return err
-		}
-		return a.logChange(r, actor, "delete", "activity", map[string]string{"Year": act.Year, "Activity": act.Title})
-	}) {
+	if !a.commit(w, r, actor, store.Delete(activitiesTab, store.Row{"Event ID": act.ID})) {
 		return
 	}
 	slog.InfoContext(r.Context(), "events: deleted activity", "actor", actor, "activity", act.Title, "year", act.Year)
@@ -893,41 +671,39 @@ func (a app) saveLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	title := strings.TrimSpace(body.Title)
-	cells := map[string]string{
+	cells := store.Row{
 		"Event ID": act.ID, "Title": title,
 		"URL": strings.TrimSpace(body.URL), "Image": strings.TrimSpace(body.Image),
 		"Description": strings.TrimSpace(body.Description),
 	}
-	tables := a.cache.Tables()
-	action := "edit"
-	var match map[string]string
-	if body.Original == "" {
-		action = "add"
-		tables = tables.with(linksTab, nil, cells)
-	} else {
-		match = map[string]string{"Event ID": act.ID, "Title": body.Original}
-		tables = tables.with(linksTab, match, cells)
-	}
-	if !a.commit(r.Context(), w, tables, func() error {
-		if body.Original == "" {
-			if err := a.writer.Insert(appName, linksTab, []map[string]string{cells}); err != nil {
-				return err
-			}
-		} else if err := a.writer.Set(appName, linksTab, match, cells); err != nil {
-			return err
+	action := "add"
+	op := store.Insert(linksTab, cells)
+	if body.Original != "" {
+		if !slices.ContainsFunc(act.Links, func(l Link) bool { return l.Title == body.Original }) {
+			http.Error(w, fmt.Sprintf("%s has no link %q", act.Title, body.Original), http.StatusNotFound)
+			return
 		}
-		return a.logChange(r, actor, action, "link", map[string]string{"Year": act.Year, "Activity": act.Title, "Title": title, "Details": cells["URL"]})
-	}) {
+		action = "edit"
+		op = store.Update(linksTab, store.Row{"Event ID": act.ID, "Title": body.Original}, cells)
+	}
+	if !a.commit(w, r, actor, op) {
 		return
 	}
 	slog.InfoContext(r.Context(), "events: saved link", "actor", actor, "action", action, "link", title, "activity", act.Title, "year", act.Year)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// orderChildren writes the order an organizer put a thing's children in: the
-// ids as they should read, top to bottom, each given its place as a number in
-// the optional Order column. Only whoever runs the parent may, and only the
-// parent's own children may be named; a tab without the column says so.
+func orderOps(tab, keyColumn string, ids, current []string) []store.Op {
+	keys := store.Order(current)
+	ops := []store.Op{}
+	for i, id := range ids {
+		if keys[i] != current[i] {
+			ops = append(ops, store.Update(tab, store.Row{keyColumn: id}, store.Row{store.OrderColumn: keys[i]}))
+		}
+	}
+	return ops
+}
+
 func (a app) orderChildren(w http.ResponseWriter, r *http.Request) {
 	actor, admin := a.who(r)
 	var body struct {
@@ -945,55 +721,34 @@ func (a app) orderChildren(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "only a co-chair or admin can reorder these", http.StatusForbidden)
 		return
 	}
-	tables := a.cache.Tables()
-	if !tables.HasOrder() {
-		http.Error(w, "the Activities tab needs an Order column before things can be reordered", http.StatusBadRequest)
-		return
-	}
 	children := map[string]*Activity{}
 	for _, c := range parent.Children {
 		children[c.ID] = c
 	}
-	changes := map[string]string{}
-	seen := map[string]bool{}
-	for i, id := range body.IDs {
+	if len(body.IDs) != len(children) {
+		http.Error(w, fmt.Sprintf("the order must name every thing under %s exactly once", parent.Title), http.StatusBadRequest)
+		return
+	}
+	ids, current := []string{}, []string{}
+	for _, id := range body.IDs {
 		c := children[strings.TrimSpace(id)]
-		if c == nil || seen[c.ID] {
+		if c == nil {
 			http.Error(w, fmt.Sprintf("%q is not one of the things under %s", id, parent.Title), http.StatusBadRequest)
 			return
 		}
-		seen[c.ID] = true
-		if c.Order != i+1 {
-			changes[c.ID] = strconv.Itoa(i + 1)
-		}
-		tables = tables.with(activitiesTab, map[string]string{"Event ID": c.ID}, map[string]string{OrderColumn: strconv.Itoa(i + 1)})
+		delete(children, c.ID)
+		ids, current = append(ids, c.ID), append(current, c.Order)
 	}
-	if len(changes) == 0 {
-		w.WriteHeader(http.StatusNoContent)
+	ops := orderOps(activitiesTab, "Event ID", ids, current)
+	if !a.commit(w, r, actor, ops...) {
 		return
 	}
-	cells := map[string]map[string]string{}
-	for id, n := range changes {
-		cells[id] = map[string]string{OrderColumn: n}
-	}
-	if !a.commit(r.Context(), w, tables, func() error {
-		// One read and one write for the lot: row by row, a few clicks of the
-		// arrows would spend the Sheets quota and leave the next ones waiting.
-		if err := a.writer.SetMany(appName, activitiesTab, "Event ID", cells); err != nil {
-			return err
-		}
-		return a.logChange(r, actor, "reorder", "activity", map[string]string{"Year": parent.Year, "Activity": parent.Title, "Title": parent.Title, "Details": fmt.Sprintf("%d things reordered", len(changes))})
-	}) {
-		return
-	}
-	slog.InfoContext(r.Context(), "events: reordered", "actor", actor, "parent", parent.Title, "year", parent.Year, "changed", len(changes))
+	slog.InfoContext(r.Context(), "events: reordered", "actor", actor, "parent", parent.Title, "year", parent.Year, "changed", len(ops))
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// highlightCells is the three Highlight columns for a highlight, blank cells
-// for none - so removing one clears the row.
-func highlightCells(h *Highlight) map[string]string {
-	cells := map[string]string{"Highlight Headline": "", "Highlight Body": "", "Highlight Icon": ""}
+func highlightCells(h *Highlight) store.Row {
+	cells := store.Row{"Highlight Headline": "", "Highlight Body": "", "Highlight Icon": ""}
 	if h != nil && (strings.TrimSpace(h.Headline) != "" || strings.TrimSpace(h.Body) != "") {
 		cells["Highlight Headline"] = strings.TrimSpace(h.Headline)
 		cells["Highlight Body"] = strings.TrimSpace(h.Body)
@@ -1019,21 +774,13 @@ func (a app) deleteLink(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "only a co-chair or admin can remove links", http.StatusForbidden)
 		return
 	}
-	match := map[string]string{"Event ID": act.ID, "Title": body.Title}
-	if !a.commit(r.Context(), w, a.cache.Tables().without(linksTab, match), func() error {
-		if err := a.writer.Delete(appName, linksTab, match); err != nil {
-			return err
-		}
-		return a.logChange(r, actor, "delete", "link", map[string]string{"Year": act.Year, "Activity": act.Title, "Title": body.Title})
-	}) {
+	if !a.commit(w, r, actor, store.Delete(linksTab, store.Row{"Event ID": act.ID, "Title": body.Title})) {
 		return
 	}
 	slog.InfoContext(r.Context(), "events: deleted link", "actor", actor, "link", body.Title, "activity", act.Title, "year", act.Year)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// categoryEditor decides who may change a category: an admin for a page
-// heading, and for an event's own category, anyone who runs that event.
 func (a app) categoryEditor(w http.ResponseWriter, r *http.Request, eventID string) (string, bool) {
 	actor, admin := a.who(r)
 	if admin {
@@ -1079,8 +826,6 @@ func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Uncategorized is built in and cannot be changed", http.StatusBadRequest)
 			return
 		}
-		// A category stays where it was made: moving one between events, or
-		// between an event and the page, would strand whatever names it.
 		eventID = current.EventID
 	} else if eventID != "" {
 		event := model.Activity(eventID)
@@ -1101,49 +846,31 @@ func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 	if adding {
 		id = newID()
 	}
-	cells := map[string]string{
-		"Category ID":  id,
-		"Event ID":     eventID,
-		"Title":        title,
-		"Description":  strings.TrimSpace(body.Description),
-		"Image":        strings.TrimSpace(body.Image),
-		"Allow Adding": allowAdding,
-		// Only a page heading can be kept off the page; an event's own
-		// categories are always shown on the event, and left blank here.
+	cells := store.Row{
+		"Category ID":       id,
+		"Event ID":          eventID,
+		"Title":             title,
+		"Description":       strings.TrimSpace(body.Description),
+		"Image":             strings.TrimSpace(body.Image),
+		"Allow Adding":      allowAdding,
 		"Show On Main Page": "",
 	}
 	if eventID == "" {
 		cells["Show On Main Page"] = YesNo(body.ShowOnMain == nil || *body.ShowOnMain)
 	}
-	tables := a.cache.Tables()
-	action := "edit"
-	match := map[string]string{"Category ID": id}
-	if adding {
-		action = "add"
-		tables = tables.with(categoriesTab, nil, cells)
-	} else {
-		tables = tables.with(categoriesTab, match, cells)
+	action := "add"
+	op := store.Insert(categoriesTab, cells)
+	if !adding {
+		action = "edit"
+		op = store.Update(categoriesTab, store.Row{"Category ID": id}, cells)
 	}
-	if !a.commit(r.Context(), w, tables, func() error {
-		if adding {
-			if err := a.writer.Insert(appName, categoriesTab, []map[string]string{cells}); err != nil {
-				return err
-			}
-		} else if err := a.writer.Set(appName, categoriesTab, match, cells); err != nil {
-			return err
-		}
-		return a.logChange(r, actor, action, "category", map[string]string{"Title": title, "Details": id + " " + eventID})
-	}) {
+	if !a.commit(w, r, actor, op) {
 		return
 	}
 	slog.InfoContext(r.Context(), "events: saved category", "actor", actor, "action", action, "category", title, "id", id, "event", eventID)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// reorderCategories puts one scope's categories - the page's, or one event's -
-// into the given order. The writer's Reorder wants every row of the tab exactly
-// once, so the other scopes' rows are threaded through untouched, each in the
-// slot it already had.
 func (a app) reorderCategories(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		EventID string   `json:"eventId"`
@@ -1157,47 +884,37 @@ func (a app) reorderCategories(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	tables := a.cache.Tables()
-	inScope := map[string]map[string]string{}
-	for _, row := range tables.Categories {
-		if strings.TrimSpace(row["Event ID"]) == eventID {
-			inScope[row["Category ID"]] = row
+	model := a.cache.Model()
+	list := model.Categories
+	if eventID != "" {
+		event := model.Activity(eventID)
+		if event == nil {
+			http.Error(w, fmt.Sprintf("no activity with id %q", eventID), http.StatusNotFound)
+			return
+		}
+		list = event.Categories
+	}
+	inScope := map[string]Category{}
+	for _, c := range list {
+		if !c.BuiltIn {
+			inScope[c.ID] = c
 		}
 	}
 	if len(body.IDs) != len(inScope) {
 		http.Error(w, "the order must name every category exactly once", http.StatusBadRequest)
 		return
 	}
+	ids, current := []string{}, []string{}
 	for _, id := range body.IDs {
-		if _, ok := inScope[id]; !ok {
+		c, ok := inScope[id]
+		if !ok {
 			http.Error(w, "the order must name every category exactly once", http.StatusBadRequest)
 			return
 		}
 		delete(inScope, id)
+		ids, current = append(ids, c.ID), append(current, c.Order)
 	}
-	ordered := make([]map[string]string, 0, len(tables.Categories))
-	keys := make([]string, 0, len(tables.Categories))
-	next := 0
-	byID := map[string]map[string]string{}
-	for _, row := range tables.Categories {
-		byID[row["Category ID"]] = row
-	}
-	for _, row := range tables.Categories {
-		if strings.TrimSpace(row["Event ID"]) == eventID {
-			row = byID[body.IDs[next]]
-			next++
-		}
-		ordered = append(ordered, row)
-		keys = append(keys, row["Category ID"])
-	}
-	nextTables := *tables
-	nextTables.Categories = ordered
-	if !a.commit(r.Context(), w, &nextTables, func() error {
-		if err := a.writer.Reorder(appName, categoriesTab, "Category ID", keys); err != nil {
-			return err
-		}
-		return a.logChange(r, actor, "reorder", "category", map[string]string{"Details": eventID + ": " + strings.Join(body.IDs, ", ")})
-	}) {
+	if !a.commit(w, r, actor, orderOps(categoriesTab, "Category ID", ids, current)...) {
 		return
 	}
 	slog.InfoContext(r.Context(), "events: reordered categories", "actor", actor, "event", eventID, "count", len(body.IDs))
@@ -1224,28 +941,17 @@ func (a app) deleteCategory(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	tables := a.cache.Tables()
-	if tables.count(activitiesTab, map[string]string{"Category": cat.ID}) > 0 {
+	if a.cache.Count(activitiesTab, store.Row{"Category": cat.ID}) > 0 {
 		http.Error(w, "move or delete its activities first", http.StatusBadRequest)
 		return
 	}
-	match := map[string]string{"Category ID": cat.ID}
-	if !a.commit(r.Context(), w, tables.without(categoriesTab, match), func() error {
-		if err := a.writer.Delete(appName, categoriesTab, match); err != nil {
-			return err
-		}
-		return a.logChange(r, actor, "delete", "category", map[string]string{"Title": cat.Title, "Details": cat.ID})
-	}) {
+	if !a.commit(w, r, actor, store.Delete(categoriesTab, store.Row{"Category ID": cat.ID})) {
 		return
 	}
 	slog.InfoContext(r.Context(), "events: deleted category", "actor", actor, "category", cat.Title, "id", cat.ID)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// copyActivity carries an activity, its roles, and its links into the next
-// school year, open and undated, so a recurring event starts from last year's
-// shape rather than from nothing. Volunteers are not copied: sign-ups are the
-// point of the new year.
 func (a app) copyActivity(w http.ResponseWriter, r *http.Request) {
 	actor, ok := a.requireAdmin(w, r)
 	if !ok {
@@ -1264,27 +970,20 @@ func (a app) copyActivity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	year := ShiftYear(act.Year, 1)
-	// Titles are not keys, so "already copied" has to be judged the way a person
-	// would: something of the same name already sits at the top of next year.
 	for _, other := range a.cache.Model().Activities {
 		if other.Year == year && other.Title == act.Title {
 			http.Error(w, fmt.Sprintf("%q already exists in %s", act.Title, year), http.StatusBadRequest)
 			return
 		}
 	}
-	// Every copied row gets a fresh id, and the old-to-new map rewires each
-	// child's Parent onto its copied parent. A pending one is somebody's
-	// unapproved suggestion for the old year, so it does not travel.
 	fresh := map[string]string{act.ID: newID()}
-	// The event's own categories come along under new ids, so the copied
-	// children can name them; page headings are shared and keep their id.
-	catRows := []map[string]string{}
+	ops := []store.Op{}
 	for _, c := range act.Categories {
 		fresh[c.ID] = newID()
-		catRows = append(catRows, map[string]string{
+		ops = append(ops, store.Insert(categoriesTab, store.Row{
 			"Category ID": fresh[c.ID], "Event ID": fresh[act.ID], "Title": c.Title, "Description": c.Description,
-			"Image": c.Image, "Allow Adding": c.AllowAdding, "Show On Main Page": "",
-		})
+			"Image": c.Image, "Allow Adding": c.AllowAdding, store.OrderColumn: c.Order,
+		}))
 	}
 	remap := func(id string) string {
 		if to, ok := fresh[id]; ok {
@@ -1295,75 +994,41 @@ func (a app) copyActivity(w http.ResponseWriter, r *http.Request) {
 		}
 		return id
 	}
-	rowFor := func(c *Activity, parent string) map[string]string {
-		row := map[string]string{
+	rowFor := func(c *Activity, parent string) store.Row {
+		row := store.Row{
 			"Event ID": fresh[c.ID], "Year": year, "Title": c.Title, "Parent": parent, "Category": remap(c.Category),
 			"Status": c.Status, "Description": c.Description, "Image": c.Image, "Flyer Image": c.Flyer, "Timing": c.Timing,
 			"Location": c.Location, "Spots": spotsCell(c.Spots),
 			"Co-Leader Needed": YesNo(c.CoLeaderNeeded), "Volunteers Hidden": YesNo(c.VolunteersHidden),
-			// The address stays with the original: two years cannot share one.
-			"Direct Sign-Up": YesNo(c.DirectSignUp), "Pretty ID": "", "Allow Adding": c.AllowAdding, "Added By": actor, "Added": today(),
+			"Direct Sign-Up": YesNo(c.DirectSignUp), "Allow Adding": c.AllowAdding, "Added By": actor, "Added": today(),
+			store.OrderColumn: c.Order, CompleteColumn: YesNo(false),
 		}
 		for k, v := range highlightCells(c.Highlight) {
 			row[k] = v
 		}
-		if c.Order > 0 && a.cache.Tables().HasOrder() {
-			row[OrderColumn] = strconv.Itoa(c.Order)
-		}
-		// A copy for next year starts unstaffed.
-		if a.cache.Tables().HasComplete() {
-			row[CompleteColumn] = YesNo(false)
-		}
 		return row
 	}
-	rows := []map[string]string{rowFor(act, "")}
-	rows[0]["Status"] = StatusOpen
+	root := rowFor(act, "")
+	root["Status"] = StatusOpen
+	ops = append(ops, store.Insert(activitiesTab, root))
 	copied := []*Activity{act}
 	for _, c := range act.Descendants() {
 		if c.Status == StatusPending {
 			continue
 		}
 		if _, ok := fresh[c.Parent]; !ok {
-			continue // under a pending one that did not travel
+			continue
 		}
 		fresh[c.ID] = newID()
-		rows = append(rows, rowFor(c, fresh[c.Parent]))
+		ops = append(ops, store.Insert(activitiesTab, rowFor(c, fresh[c.Parent])))
 		copied = append(copied, c)
 	}
-	links := []map[string]string{}
 	for _, node := range copied {
 		for _, l := range node.Links {
-			links = append(links, map[string]string{"Event ID": fresh[node.ID], "Title": l.Title, "URL": l.URL, "Image": l.Image, "Description": l.Description})
+			ops = append(ops, store.Insert(linksTab, store.Row{"Event ID": fresh[node.ID], "Title": l.Title, "URL": l.URL, "Image": l.Image, "Description": l.Description}))
 		}
 	}
-	tables := a.cache.Tables()
-	for _, row := range catRows {
-		tables = tables.with(categoriesTab, nil, row)
-	}
-	for _, row := range rows {
-		tables = tables.with(activitiesTab, nil, row)
-	}
-	for _, row := range links {
-		tables = tables.with(linksTab, nil, row)
-	}
-	if !a.commit(r.Context(), w, tables, func() error {
-		for _, row := range catRows {
-			if err := a.writer.Insert(appName, categoriesTab, []map[string]string{row}); err != nil {
-				return err
-			}
-		}
-		for _, row := range rows {
-			if err := a.writer.Insert(appName, activitiesTab, []map[string]string{row}); err != nil {
-				return err
-			}
-		}
-		for _, row := range links {
-			if err := a.writer.Insert(appName, linksTab, []map[string]string{row}); err != nil {
-				return err
-			}
-		}
-		return a.logChange(r, actor, "copy", "activity", map[string]string{"Year": year, "Activity": act.Title, "Details": "from " + act.Year + " as " + fresh[act.ID]})
-	}) {
+	if !a.commit(w, r, actor, ops...) {
 		return
 	}
 	slog.InfoContext(r.Context(), "events: copied activity", "actor", actor, "activity", act.Title, "from", act.Year, "to", year, "id", fresh[act.ID])
@@ -1383,26 +1048,17 @@ func (a app) saveSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	values := map[string]string{ExpenseFormKey: strings.TrimSpace(body.ExpenseFormURL), IntroKey: strings.TrimSpace(body.Intro)}
-	tables := a.cache.Tables()
-	for key, value := range values {
-		tables = tables.with(settingsTab, map[string]string{"Key": key}, map[string]string{"Value": value})
+	ops := []store.Op{}
+	for _, key := range settingKeys {
+		ops = append(ops, store.Set(settingsTab, store.Row{"Key": key}, store.Row{"Value": values[key]}))
 	}
-	if !a.commit(r.Context(), w, tables, func() error {
-		for key, value := range values {
-			if err := a.writer.Set(appName, settingsTab, map[string]string{"Key": key}, map[string]string{"Value": value}); err != nil {
-				return err
-			}
-		}
-		return a.logChange(r, actor, "edit", "settings", nil)
-	}) {
+	if !a.commit(w, r, actor, ops...) {
 		return
 	}
 	slog.InfoContext(r.Context(), "events: changed the settings", "actor", actor)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// saveNotify records which notices the signed-in admin wants, as one Settings
-// row: notify:<email> = the kinds turned on, comma-separated.
 func (a app) saveNotify(w http.ResponseWriter, r *http.Request) {
 	actor, ok := a.requireAdmin(w, r)
 	if !ok {
@@ -1420,19 +1076,14 @@ func (a app) saveNotify(w http.ResponseWriter, r *http.Request) {
 			kinds = append(kinds, k)
 		}
 	}
-	key, value := notifyPrefix+actor, strings.Join(kinds, ",")
-	tables := a.cache.Tables().with(settingsTab, map[string]string{"Key": key}, map[string]string{"Value": value})
-	if !a.commit(r.Context(), w, tables, func() error {
-		return a.writer.Set(appName, settingsTab, map[string]string{"Key": key}, map[string]string{"Value": value})
-	}) {
+	value := strings.Join(kinds, ",")
+	if !a.commit(w, r, actor, store.Set(settingsTab, store.Row{"Key": notifyPrefix + actor}, store.Row{"Value": value})) {
 		return
 	}
 	slog.InfoContext(r.Context(), "events: set notifications", "actor", actor, "kinds", value)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// uploadImage stores a content-addressed image and returns the name the sheet
-// should record; the save that follows references it.
 func (a app) uploadImage(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxImageSize)
 	file, header, err := r.FormFile("image")
@@ -1454,7 +1105,7 @@ func (a app) uploadImage(w http.ResponseWriter, r *http.Request) {
 	}
 	sum := sha256.Sum256(content)
 	name := hex.EncodeToString(sum[:]) + ext
-	if err := a.store.Put(imageFolder, name, mimeType, content); err != nil {
+	if err := a.media.Put(imageFolder, name, mimeType, content); err != nil {
 		slog.ErrorContext(r.Context(), "store activity image", "error", err)
 		http.Error(w, "could not store the image", http.StatusInternalServerError)
 		return
@@ -1470,7 +1121,7 @@ func (a app) adminState(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	prefs := a.cache.Tables().notifyPrefs(email)
+	prefs := a.cache.Model().notifyPrefs(email)
 	notify := []string{}
 	for _, k := range NotifyKinds {
 		if prefs[k] {
@@ -1500,7 +1151,6 @@ func (a app) setAdmins(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	// Super admins show in the merged list but never round-trip into the tab.
 	super := map[string]bool{}
 	for _, e := range a.superAdmins() {
 		super[e] = true
@@ -1511,49 +1161,27 @@ func (a app) setAdmins(w http.ResponseWriter, r *http.Request) {
 			admins = append(admins, e)
 		}
 	}
-	current := a.cache.tabAdmins()
-	was := map[string]bool{}
+	current := a.cache.Model().admins
+	ops := []store.Op{}
 	for _, e := range current {
-		was[e] = true
+		if !slices.Contains(admins, e) {
+			ops = append(ops, store.Delete(adminsTab, store.Row{"Email": e}))
+		}
 	}
-	is := map[string]bool{}
 	for _, e := range admins {
-		is[e] = true
+		if !slices.Contains(current, e) {
+			ops = append(ops, store.Insert(adminsTab, store.Row{"Email": e}))
+		}
 	}
-	if !a.commit(r.Context(), w, a.cache.Tables().withAdmins(admins), func() error {
-		for _, e := range current {
-			if !is[e] {
-				if err := a.writer.Delete(appName, adminsTab, map[string]string{"Email": e}); err != nil {
-					return err
-				}
-			}
-		}
-		for _, e := range admins {
-			if !was[e] {
-				if err := a.writer.Insert(appName, adminsTab, []map[string]string{{"Email": e}}); err != nil {
-					return err
-				}
-			}
-		}
-		return nil
-	}) {
+	if !a.commit(w, r, actor, ops...) {
 		return
 	}
 	slog.InfoContext(r.Context(), "events: set the admin list", "actor", actor, "admins", admins)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// reservedPaths are the first segments of what the portal serves itself - its
-// pages, its API, sign-in, and the public prefixes - which no redirect may
-// take over. /v/ and /activities/ are not here: an address there may be
-// redirected so long as nothing live sits at it.
 var reservedPaths = map[string]bool{"": true, "my": true, "calendar": true, "approvals": true, "admin": true, "years": true, "api": true, "auth": true, "hooks": true, "open": true, "blob": true}
 
-// saveRedirect adds a redirect from Admin Tools, or changes the one whose Old
-// is original. Old is any path here - a whole link pasted in is cut down to
-// its path - short of the portal's own pages and anything live; New is a
-// path here or an address elsewhere, and never the same as Old or a step
-// back to it.
 func (a app) saveRedirect(w http.ResponseWriter, r *http.Request) {
 	actor, ok := a.requireAdmin(w, r)
 	if !ok {
@@ -1590,43 +1218,33 @@ func (a app) saveRedirect(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "an address cannot redirect to itself", http.StatusBadRequest)
 		return
 	}
-	var match map[string]string
+	var replacing *Redirect
 	kind := RedirectAdmin
 	if original := redirectPath(body.Original); original != "" {
-		row := a.cache.Tables().redirectRow(original)
-		if row == nil {
+		replacing = model.redirect(original)
+		if replacing == nil {
 			http.Error(w, fmt.Sprintf("no redirect from %s", original), http.StatusNotFound)
 			return
 		}
-		match = map[string]string{"Old": row["Old"]}
-		if t := strings.TrimSpace(row["Type"]); t != "" {
-			kind = t
+		if replacing.Type != "" {
+			kind = replacing.Type
 		}
-	} else if a.cache.Tables().redirectRow(old) != nil {
+	} else if model.redirect(old) != nil {
 		http.Error(w, fmt.Sprintf("%s is already redirected; edit that one", old), http.StatusConflict)
 		return
 	}
-	cells := map[string]string{"Type": kind, "Old": old, "New": to, "Date": today()}
-	tables := a.cache.Tables().with(redirectsTab, match, cells)
-	// A chain that comes back to where it started would send nobody anywhere.
-	if next, err := BuildModel(tables, a.cache.images); err == nil && !isURL(to) && next.Destination(old) == "" {
+	if !isURL(to) && model.withRedirect(Redirect{Type: kind, Old: old, New: to}, replacing).Destination(old) == "" {
 		http.Error(w, fmt.Sprintf("%s leads back to %s", to, old), http.StatusBadRequest)
 		return
 	}
+	cells := store.Row{"Type": kind, "Old": old, "New": to, "Date": today()}
 	action := "add"
-	if match != nil {
+	op := store.Insert(redirectsTab, cells)
+	if replacing != nil {
 		action = "edit"
+		op = store.Update(redirectsTab, store.Row{"Old": replacing.cell}, cells)
 	}
-	if !a.commit(r.Context(), w, tables, func() error {
-		if match == nil {
-			if err := a.writer.Insert(appName, redirectsTab, []map[string]string{cells}); err != nil {
-				return err
-			}
-		} else if err := a.writer.Set(appName, redirectsTab, match, cells); err != nil {
-			return err
-		}
-		return a.logChange(r, actor, action, "redirect", map[string]string{"Title": old, "Details": to})
-	}) {
+	if !a.commit(w, r, actor, op) {
 		return
 	}
 	slog.InfoContext(r.Context(), "events: saved redirect", "actor", actor, "action", action, "old", old, "new", to)
@@ -1644,21 +1262,15 @@ func (a app) deleteRedirect(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	row := a.cache.Tables().redirectRow(redirectPath(body.Old))
-	if row == nil {
+	redirect := a.cache.Model().redirect(redirectPath(body.Old))
+	if redirect == nil {
 		http.Error(w, fmt.Sprintf("no redirect from %s", body.Old), http.StatusNotFound)
 		return
 	}
-	match := map[string]string{"Old": row["Old"]}
-	if !a.commit(r.Context(), w, a.cache.Tables().without(redirectsTab, match), func() error {
-		if err := a.writer.Delete(appName, redirectsTab, match); err != nil {
-			return err
-		}
-		return a.logChange(r, actor, "delete", "redirect", map[string]string{"Title": redirectPath(row["Old"])})
-	}) {
+	if !a.commit(w, r, actor, store.Delete(redirectsTab, store.Row{"Old": redirect.cell})) {
 		return
 	}
-	slog.InfoContext(r.Context(), "events: deleted redirect", "actor", actor, "old", redirectPath(row["Old"]))
+	slog.InfoContext(r.Context(), "events: deleted redirect", "actor", actor, "old", redirect.Old)
 	w.WriteHeader(http.StatusNoContent)
 }
 
