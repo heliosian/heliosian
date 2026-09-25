@@ -41,9 +41,18 @@ func main() {
 	since := flag.String("since", "", "keep findings changed on or after this day, as 2006-01-02")
 	stat := flag.Bool("stat", false, "print a grid of counts by severity and status instead of the list")
 	first := flag.Bool("first", false, "keep only the first open finding, by file name, at the highest severity any open finding has")
-	revisit := flag.Bool("revisit", false, "with --first, count findings to revisit as open")
+	revisit := flag.Bool("with-revisit", false, "with --first, count findings to revisit as open")
+	only := map[string]*bool{}
+	for _, s := range statuses {
+		only[s] = flag.Bool(s, false, "keep "+s+" findings, beside any other status named")
+	}
 	flag.Parse()
 	keep := map[string]bool{}
+	for s, on := range only {
+		if *on {
+			keep[s] = true
+		}
+	}
 	if *status != "" {
 		for _, s := range strings.Split(*status, ",") {
 			if !slices.Contains(statuses, s) {

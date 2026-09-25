@@ -48,7 +48,7 @@ Asked to fix a finding, or the next one, without being told which, take the one 
 
     go run ./cmd/findings --first
 
-It answers with one open finding - the first by file name at the highest severity any open finding has - and with the same one every time until that finding's status changes, so two sessions asked the same thing start on the same file and nobody weighs thirty findings against each other to begin. Read its details with the Read tool, fix what it describes, then set its status to `fixed` with the details naming the change; `--first` then moves on to the next. A `revisit` finding is passed over, since it cannot be worked on yet; `--first --revisit` counts those as open, for when the person asks what is waiting or says the wait is over. Narrow it with the filters when the work is kept to one area: `--first --text loop`. When the person names a finding, or a severity or an app to start from, that is the pick and `--first` is not asked.
+It answers with one open finding - the first by file name at the highest severity any open finding has - and with the same one every time until that finding's status changes, so two sessions asked the same thing start on the same file and nobody weighs thirty findings against each other to begin. Read its details with the Read tool, fix what it describes, then set its status to `fixed` with the details naming the change; `--first` then moves on to the next. A `revisit` finding is passed over, since it cannot be worked on yet; `--first --with-revisit` counts those as open, for when the person asks what is waiting or says the wait is over. Narrow it with the filters when the work is kept to one area: `--first --text loop`. When the person names a finding, or a severity or an app to start from, that is the pick and `--first` is not asked.
 
 ## Search and list findings
 
@@ -56,11 +56,11 @@ It answers with one open finding - the first by file name at the highest severit
 
 prints each finding's status, severity, path, the days git says it was created and last changed (`uncommitted` before its first commit) and its description, then a count. Filters combine:
 
-- `--status open` or `--status open,wontfix` - only those statuses.
+- `--status open` or `--status open,wontfix` - only those statuses. Each status is a flag of its own too: `--open --wontfix` is the same, and either form adds to the other.
 - `--text cookie` - only findings with those words anywhere in the file, in any case.
 - `--since 2026-01-31` - only findings changed on or after that day; an uncommitted finding always passes.
 
-`--first` keeps one of what the filters left: the open finding first by file name among those at the highest severity any open one has, `revisit` findings counted as open only with `--revisit` (Pick a finding to work on, above).
+`--first` keeps one of what the filters left: the open finding first by file name among those at the highest severity any open one has, `revisit` findings counted as open only with `--with-revisit` (Pick a finding to work on, above).
 
 `--stat` prints, in place of the list, a coloured grid counting the kept findings by severity and status, with totals: `go run ./cmd/findings --stat`, or `--stat --since 2026-01-31` for what has moved lately.
 
