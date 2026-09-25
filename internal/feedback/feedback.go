@@ -1,4 +1,3 @@
-// Package feedback takes what people report from any app's toolbar into the Reports tab, tells the super admins, and files the ones an admin keeps as issues on GitHub.
 package feedback
 
 import (
@@ -55,82 +54,48 @@ type Report struct {
 	UserAgent  string
 	Errors     []string
 	At         time.Time
-	// Issue is the address a filed report became; Handled and HandledBy are
-	// when an admin filed or dismissed it, and who.
-	Issue     string
-	Handled   time.Time
-	HandledBy string
+	Issue      string
+	Handled    time.Time
+	HandledBy  string
 }
 
-// Saver takes a submitted report, which in production is the Reports tab.
-type Saver interface {
-	Save(r Report) (Report, error)
+type Intake struct {
+	cache  *Cache
+	notify func(Report)
+	mu     sync.Mutex
+	recent map[string][]time.Time
 }
 
-type Queue struct {
-	reports chan Report
-	mu      sync.Mutex
-	recent  map[string][]time.Time
+func NewIntake(cache *Cache, notify func(Report)) *Intake {
+	return &Intake{cache: cache, notify: notify, recent: map[string][]time.Time{}}
 }
 
-// NewQueue drains submissions off the request path: each is written to the
-// sheet and then announced to the super admins, neither of which anyone waits
-// on. notify may be nil, which sends nothing.
-func NewQueue(saver Saver, notify func(Report)) *Queue {
-	q := &Queue{reports: make(chan Report, 64), recent: map[string][]time.Time{}}
-	go q.run(saver, notify)
-	return q
-}
-
-func (q *Queue) run(saver Saver, notify func(Report)) {
-	for r := range q.reports {
-		saved, err := saver.Save(r)
-		if err != nil {
-			slog.Error("feedback: saving failed", "error", err, "app", r.App, "kind", r.Kind, "summary", r.Summary, "details", r.Details, "email", r.Email)
-			continue
-		}
-		slog.Info("feedback: saved", "id", saved.ID, "app", saved.App, "kind", saved.Kind)
-		if notify != nil {
-			notify(saved)
-		}
-	}
-}
-
-func (q *Queue) allow(email string, now time.Time) bool {
-	q.mu.Lock()
-	defer q.mu.Unlock()
+func (in *Intake) allow(email string, now time.Time) bool {
+	in.mu.Lock()
+	defer in.mu.Unlock()
 	kept := []time.Time{}
-	for _, t := range q.recent[email] {
+	for _, t := range in.recent[email] {
 		if now.Sub(t) < window {
 			kept = append(kept, t)
 		}
 	}
 	if len(kept) >= perWindow {
-		q.recent[email] = kept
+		in.recent[email] = kept
 		return false
 	}
-	q.recent[email] = append(kept, now)
+	in.recent[email] = append(kept, now)
 	return true
-}
-
-func (q *Queue) add(r Report) bool {
-	select {
-	case q.reports <- r:
-		return true
-	default:
-		return false
-	}
 }
 
 type api struct {
 	app        string
 	name       func() string
 	superAdmin func(string) bool
-	queue      *Queue
+	intake     *Intake
 }
 
-func Register(mux *http.ServeMux, app string, name func() string, superAdmin func(string) bool, queue *Queue) {
-	a := api{app: app, name: name, superAdmin: superAdmin, queue: queue}
+func Register(mux *http.ServeMux, app string, name func() string, superAdmin func(string) bool, intake *Intake) {
+	a := api{app: app, name: name, superAdmin: superAdmin, intake: intake}
 	mux.HandleFunc("POST /api/feedback", a.file)
 }
 
@@ -168,11 +133,11 @@ func (a api) file(w http.ResponseWriter, r *http.Request) {
 	}
 	email := strings.ToLower(auth.Email(r))
 	now := time.Now()
-	if !a.queue.allow(email, now) {
+	if !a.intake.allow(email, now) {
 		http.Error(w, "that's a lot of reports in a few minutes; please wait a little and try again", http.StatusTooManyRequests)
 		return
 	}
-	report := Report{
+	saved, err := a.intake.cache.save(r.Context(), Report{
 		App:        a.app,
 		AppName:    a.name(),
 		Kind:       in.Kind,
@@ -189,12 +154,14 @@ func (a api) file(w http.ResponseWriter, r *http.Request) {
 		UserAgent:  clip(r.UserAgent(), 400),
 		Errors:     clipAll(in.Errors),
 		At:         now,
-	}
-	if !a.queue.add(report) {
+	})
+	if err != nil {
+		slog.ErrorContext(r.Context(), "[ERROR] feedback: saving failed", "error", err, "kind", in.Kind, "summary", summary, "details", in.Details)
 		http.Error(w, "we couldn't take the report just now; please try again in a moment", http.StatusServiceUnavailable)
 		return
 	}
-	slog.InfoContext(r.Context(), "feedback: queued", "kind", in.Kind, "summary", summary)
+	slog.InfoContext(r.Context(), "feedback: saved", "id", saved.ID, "kind", saved.Kind, "summary", summary)
+	go a.intake.notify(saved)
 	w.WriteHeader(http.StatusAccepted)
 }
 
@@ -221,18 +188,12 @@ func clipAll(errors []string) []string {
 	return out
 }
 
-// emailPattern finds an address written into a report's own words, which the
-// reporter may have typed - a colleague's, a parent's - and which has no place
-// in a public issue.
 var emailPattern = regexp.MustCompile(`[\w.+-]+@[\w-]+\.[\w.-]+`)
 
-// Redact removes what names a person: every address, wherever it is written.
 func Redact(s string) string {
 	return emailPattern.ReplaceAllString(s, "[email removed]")
 }
 
-// publicAddress is the page's address with its query and fragment cut off,
-// since a link a person followed may carry a token or their own address in it.
 func publicAddress(raw string) string {
 	u, err := url.Parse(raw)
 	if err != nil {
@@ -242,11 +203,6 @@ func publicAddress(raw string) string {
 	return u.String()
 }
 
-// Strip is the report as an issue anyone may read: the reporter's own words
-// and the context that makes a bug reproducible, with every address redacted,
-// the page's query string cut away, and no Reporter section at all. It is
-// where the admin page's editor starts; whatever the admin leaves is what
-// GitHub gets.
 func Strip(r Report) (title, body string, labels []string) {
 	title = Redact(r.Summary)
 	if r.AppName != "" {
@@ -284,9 +240,6 @@ func Strip(r Report) (title, body string, labels []string) {
 	return title, b.String(), labels
 }
 
-// appCell names the app both ways where a report knows both, which one it
-// knows where it knows one, and nothing at all for a report carried over from
-// triage that was filed by hand and never named an app.
 func appCell(r Report) string {
 	switch {
 	case r.AppName != "" && r.App != "":

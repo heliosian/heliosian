@@ -1,4 +1,4 @@
-package who
+package store
 
 import (
 	"testing"

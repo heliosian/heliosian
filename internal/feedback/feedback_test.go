@@ -16,6 +16,7 @@ import (
 	"heliosian/internal/auth"
 	"heliosian/internal/data"
 	"heliosian/internal/mail"
+	"heliosian/internal/store"
 )
 
 func sample() Report {
@@ -63,8 +64,6 @@ func TestStripLeavesNothingPersonal(t *testing.T) {
 	}
 }
 
-// A report carried over from triage may name no app at all, having been filed
-// on GitHub by hand rather than through the toolbar.
 func TestStripWithNoApp(t *testing.T) {
 	r := sample()
 	r.App, r.AppName = "", ""
@@ -104,8 +103,6 @@ func TestStripRedactsAnAddressInTheSummary(t *testing.T) {
 	}
 }
 
-// appServer is a stand-in GitHub: it mints an installation token for the app's
-// JWT and takes one issue.
 func appServer(t *testing.T, issue string) (*httptest.Server, *map[string]any, *string) {
 	t.Helper()
 	var created map[string]any
@@ -135,7 +132,6 @@ func appServer(t *testing.T, issue string) (*httptest.Server, *map[string]any, *
 	return server, &created, &issueAuth
 }
 
-// testKey is a throwaway RSA key generated per run; nothing signs anything real.
 func testApp(t *testing.T, endpoint string) *GitHubApp {
 	t.Helper()
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -214,31 +210,12 @@ type syncQueue struct{}
 
 func (syncQueue) Add(f func()) { f() }
 
-type recorded struct {
-	mu      sync.Mutex
-	reports []Report
-}
-
-func (f *recorded) Save(r Report) (Report, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	r.ID = "id"
-	f.reports = append(f.reports, r)
-	return r, nil
-}
-
-func (f *recorded) count() int {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return len(f.reports)
-}
-
 func TestHandler(t *testing.T) {
-	saver := &recorded{}
+	dir, cache := testCache(t)
 	told := make(chan Report, 4)
 	mux := http.NewServeMux()
 	Register(mux, "calendar", func() string { return "Helios When" }, func(string) bool { return true },
-		NewQueue(saver, func(r Report) { told <- r }))
+		NewIntake(cache, func(r Report) { told <- r }))
 	h := auth.Fixed("Jordan.Whitfield@example.org", mux)
 	post := func(body string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodPost, "/api/feedback", strings.NewReader(body))
@@ -260,18 +237,29 @@ func TestHandler(t *testing.T) {
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("report: %d %s", rec.Code, rec.Body.String())
 	}
+	var got Report
 	select {
-	case got := <-told:
-		if got.ID != "id" {
-			t.Errorf("announced before it was saved: %+v", got)
-		}
+	case got = <-told:
 	case <-time.After(2 * time.Second):
 		t.Fatal("nobody was told")
 	}
-	if saver.count() != 1 {
-		t.Fatalf("saved %d reports", saver.count())
+	if saved, ok := cache.Report(got.ID); !ok || saved.Summary != got.Summary {
+		t.Fatalf("announced %+v, which is not in memory", got)
 	}
-	got := saver.reports[0]
+	_, rows, err := dir.Table(appName, reportsTab)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 5 || rows[4]["ID"] != got.ID {
+		t.Fatalf("the sheet holds %d reports, the last %v", len(rows), rows[len(rows)-1])
+	}
+	_, log, err := dir.Table(appName, store.ChangeLogTab)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(log) != 1 || log[0]["Action"] != "insert" || log[0]["Actor"] != "jordan.whitfield@example.org" || log[0]["Key"] != "ID="+got.ID {
+		t.Errorf("change log %v", log)
+	}
 	if got.Email != "jordan.whitfield@example.org" || !got.SuperAdmin || got.AppName != "Helios When" || got.App != "calendar" {
 		t.Errorf("identity = %+v", got)
 	}
@@ -281,7 +269,7 @@ func TestHandler(t *testing.T) {
 }
 
 func TestThrottle(t *testing.T) {
-	q := &Queue{recent: map[string][]time.Time{}}
+	q := &Intake{recent: map[string][]time.Time{}}
 	now := time.Now()
 	for i := range perWindow {
 		if !q.allow("a@example.org", now.Add(time.Duration(i)*time.Second)) {
@@ -299,19 +287,19 @@ func TestThrottle(t *testing.T) {
 	}
 }
 
-func testStore(t *testing.T) *Store {
+func testCache(t *testing.T) (*data.Dir, *Cache) {
 	t.Helper()
 	dir := &data.Dir{Root: "../../sampledata"}
-	store, err := NewStore(dir, dir, syncQueue{})
+	cache, err := NewCache(dir, dir, syncQueue{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return store
+	return dir, cache
 }
 
-func TestStoreReadsNewestFirst(t *testing.T) {
-	store := testStore(t)
-	reports := store.Reports()
+func TestCacheReadsNewestFirst(t *testing.T) {
+	_, cache := testCache(t)
+	reports := cache.Reports()
 	if len(reports) != 4 {
 		t.Fatalf("read %d reports", len(reports))
 	}
@@ -321,7 +309,7 @@ func TestStoreReadsNewestFirst(t *testing.T) {
 	if reports[0].Kind != "idea" || !reports[0].SuperAdmin || reports[0].Status != StatusNew {
 		t.Errorf("newest = %+v", reports[0])
 	}
-	filed, ok := store.Report("c3d4e5f6a1b2")
+	filed, ok := cache.Report("c3d4e5f6a1b2")
 	if !ok || filed.Status != StatusFiled || filed.Issue == "" || filed.HandledBy == "" {
 		t.Errorf("filed = %+v ok = %v", filed, ok)
 	}
@@ -330,42 +318,62 @@ func TestStoreReadsNewestFirst(t *testing.T) {
 	}
 }
 
-func TestStoreSavesAndHandles(t *testing.T) {
-	store := testStore(t)
-	saved, err := store.Save(sample())
+func TestCacheSavesAndHandles(t *testing.T) {
+	dir, cache := testCache(t)
+	ctx := context.Background()
+	saved, err := cache.save(ctx, sample())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if saved.ID == "abc123" || saved.ID == "" || saved.Status != StatusNew {
 		t.Errorf("saved = %+v", saved)
 	}
-	if got, ok := store.Report(saved.ID); !ok || got.Summary != saved.Summary {
+	if got, ok := cache.Report(saved.ID); !ok || got.Summary != saved.Summary {
 		t.Errorf("not readable back: %+v %v", got, ok)
 	}
 	now := time.Date(2026, 9, 20, 0, 0, 0, 0, time.UTC)
-	if err := store.Filed(saved.ID, "https://github.com/x/y/issues/3", "admin@example.org", now); err != nil {
+	if err := cache.Filed(ctx, saved.ID, "https://github.com/x/y/issues/3", "admin@example.org", now); err != nil {
 		t.Fatal(err)
 	}
-	got, _ := store.Report(saved.ID)
+	got, _ := cache.Report(saved.ID)
 	if got.Status != StatusFiled || got.Issue != "https://github.com/x/y/issues/3" || got.HandledBy != "admin@example.org" {
 		t.Errorf("filed = %+v", got)
 	}
-	if err := store.Dismissed("a1b2c3d4e5f6", "admin@example.org", now); err != nil {
+	if err := cache.Dismissed(ctx, "a1b2c3d4e5f6", "admin@example.org", now); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := store.Report("a1b2c3d4e5f6"); got.Status != StatusDismissed {
+	if got, _ := cache.Report("a1b2c3d4e5f6"); got.Status != StatusDismissed {
 		t.Errorf("dismissed = %+v", got)
 	}
-	if err := store.Filed("nope", "x", "y", now); err == nil {
+	if err := cache.Filed(ctx, "nope", "x", "y", now); err == nil {
 		t.Error("filed a report that does not exist")
+	}
+	_, log, err := dir.Table(appName, store.ChangeLogTab)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dismissed := false
+	for _, row := range log {
+		if row["Actor"] == "admin@example.org" && row["Action"] == "set" && row["Key"] == "ID=a1b2c3d4e5f6" && row["Column"] == "Status" && row["Previous"] == StatusNew {
+			dismissed = true
+		}
+	}
+	if !dismissed {
+		t.Errorf("the dismissal's previous status is not in the change log: %v", log)
 	}
 }
 
-func adminServer(t *testing.T, store *Store, filer IssueFiler, who string) http.Handler {
+func adminServer(t *testing.T, cache *Cache, filer IssueFiler, who string) http.Handler {
 	t.Helper()
 	mux := http.NewServeMux()
-	RegisterAdmin(mux, store, filer, func(email string) bool { return email == "admin@example.org" })
+	RegisterAdmin(mux, cache, filer, func(email string) bool { return email == "admin@example.org" })
 	return auth.Fixed(who, mux)
+}
+
+func testAdmin(t *testing.T, filer IssueFiler, who string) (*Cache, http.Handler) {
+	t.Helper()
+	_, cache := testCache(t)
+	return cache, adminServer(t, cache, filer, who)
 }
 
 type fakeFiler struct {
@@ -379,7 +387,7 @@ func (f *fakeFiler) File(ctx context.Context, title, body string, labels []strin
 }
 
 func TestAdminNeedsASuperAdmin(t *testing.T) {
-	h := adminServer(t, testStore(t), nil, "member@example.org")
+	_, h := testAdmin(t, nil, "member@example.org")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/admin/feedback", nil))
 	if rec.Code != http.StatusForbidden {
@@ -388,7 +396,7 @@ func TestAdminNeedsASuperAdmin(t *testing.T) {
 }
 
 func TestAdminListsAndOpens(t *testing.T) {
-	h := adminServer(t, testStore(t), &fakeFiler{}, "admin@example.org")
+	_, h := testAdmin(t, &fakeFiler{}, "admin@example.org")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/admin/feedback", nil))
 	if rec.Code != http.StatusOK {
@@ -425,9 +433,8 @@ func TestAdminListsAndOpens(t *testing.T) {
 }
 
 func TestAdminFilesAndDismisses(t *testing.T) {
-	store := testStore(t)
 	filer := &fakeFiler{}
-	h := adminServer(t, store, filer, "admin@example.org")
+	cache, h := testAdmin(t, filer, "admin@example.org")
 	post := func(path, body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, path, strings.NewReader(body)))
@@ -447,7 +454,7 @@ func TestAdminFilesAndDismisses(t *testing.T) {
 	if filer.title != "Blank grid" || strings.Join(filer.labels, ",") != "bug,app:calendar" {
 		t.Errorf("filed %q with %v", filer.title, filer.labels)
 	}
-	got, _ := store.Report("a1b2c3d4e5f6")
+	got, _ := cache.Report("a1b2c3d4e5f6")
 	if got.Status != StatusFiled || got.Issue != "https://github.com/heliosian/heliosian/issues/77" || got.HandledBy != "admin@example.org" {
 		t.Errorf("report after filing = %+v", got)
 	}
@@ -457,7 +464,7 @@ func TestAdminFilesAndDismisses(t *testing.T) {
 	if rec := post("/api/admin/feedback/b2c3d4e5f6a1/dismiss", ""); rec.Code != http.StatusNoContent {
 		t.Errorf("dismiss: %d %s", rec.Code, rec.Body.String())
 	}
-	if got, _ := store.Report("b2c3d4e5f6a1"); got.Status != StatusDismissed {
+	if got, _ := cache.Report("b2c3d4e5f6a1"); got.Status != StatusDismissed {
 		t.Errorf("dismissed = %+v", got)
 	}
 	if rec := post("/api/admin/feedback/nope/dismiss", ""); rec.Code != http.StatusNotFound {
@@ -466,7 +473,7 @@ func TestAdminFilesAndDismisses(t *testing.T) {
 }
 
 func TestAdminWithoutAGitHubApp(t *testing.T) {
-	h := adminServer(t, testStore(t), nil, "admin@example.org")
+	_, h := testAdmin(t, nil, "admin@example.org")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/admin/feedback/a1b2c3d4e5f6/file", strings.NewReader(`{"title":"t","body":"b"}`)))
 	if rec.Code != http.StatusServiceUnavailable {

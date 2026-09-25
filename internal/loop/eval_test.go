@@ -10,6 +10,7 @@ import (
 	"heliosian/internal/data"
 	"heliosian/internal/filter"
 	"heliosian/internal/loop"
+	"heliosian/internal/store"
 	"heliosian/internal/who"
 )
 
@@ -244,7 +245,7 @@ func TestAdditionsJoinTheMembersOnce(t *testing.T) {
 func TestSampleGroupsLoadAndHaveMembers(t *testing.T) {
 	s, _ := sample(t)
 	dir := &data.Dir{Root: "../../sampledata"}
-	cache, err := loop.NewCache(dir, dir, func(string) bool { return false }, who.NewQueue())
+	cache, err := loop.NewCache(dir, dir, func(string) bool { return false }, store.NewQueue())
 	if err != nil {
 		t.Fatal(err)
 	}

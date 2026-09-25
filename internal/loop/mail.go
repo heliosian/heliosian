@@ -28,8 +28,8 @@ type Archive interface {
 }
 
 type Documents interface {
-	Post(ctx context.Context, group string, raw []byte) error
-	Remove(group string) error
+	Post(ctx context.Context, actor, group string, raw []byte) error
+	Remove(ctx context.Context, actor, group string) error
 }
 
 type Mail struct {
@@ -161,7 +161,7 @@ func (m *mailer) mark(j job, state string, cells store.Row) {
 
 func (m *mailer) recordSent(ctx context.Context, j job, raw []byte, cells map[string]string) {
 	m.mark(j, stateSent, cells)
-	if err := m.mail.Documents.Post(ctx, j.group, raw); err != nil {
+	if err := m.mail.Documents.Post(ctx, mailerActor, j.group, raw); err != nil {
 		slog.Error("[ERROR] groups: not filed for ask", "message", j.id, "group", j.group, "error", err)
 	}
 }

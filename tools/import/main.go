@@ -437,7 +437,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("[ERROR] sheet source: %v", err)
 	}
-	directoryStore, err := who.Open(source, source, nil, staticFiles{}, []byte(actor), who.NewQueue())
+	directoryStore, err := who.Open(source, source, nil, staticFiles{}, []byte(actor), store.NewQueue())
 	if err != nil {
 		log.Fatalf("[ERROR] the directory does not load: %v", err)
 	}

@@ -52,7 +52,6 @@ type Directory interface {
 
 type app struct {
 	cache       *Cache
-	queue       store.Enqueuer
 	media       *blob.Store
 	directory   Directory
 	superAdmins func() []string
@@ -65,8 +64,8 @@ type Describer interface {
 	Group(ctx context.Context, actor string, facts describe.GroupFacts) (string, error)
 }
 
-func Register(mux *http.ServeMux, cache *Cache, queue store.Enqueuer, media *blob.Store, directory Directory, superAdmins func() []string, mailbox Mail, describer Describer) {
-	a := app{cache: cache, queue: queue, media: media, directory: directory, superAdmins: superAdmins, mail: mailbox, describer: describer}
+func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, directory Directory, superAdmins func() []string, mailbox Mail, describer Describer) {
+	a := app{cache: cache, media: media, directory: directory, superAdmins: superAdmins, mail: mailbox, describer: describer}
 	a.mailer = newMailer(cache, directory, mailbox)
 	for _, page := range pages {
 		mux.HandleFunc("GET "+page, a.page)
@@ -159,19 +158,16 @@ type Member struct {
 
 type groupView struct {
 	Group
-	Address  string     `json:"address"`
-	Rules    []ruleView `json:"rules"`
-	Managers []Person   `json:"managers"`
-	Members  []Member   `json:"members"`
-	Mine     bool       `json:"mine"`
-	Member   bool       `json:"member"`
-	// Open says the viewer would see the group were they not an admin -
-	// they manage it, or its visibility reaches them: the page lists only
-	// these to an admin with Super Admin Mode off.
-	Open         bool `json:"open"`
-	Unsubscribed bool `json:"unsubscribed"`
-	Archived     bool `json:"archived"`
-	Sent         int  `json:"sent"`
+	Address      string     `json:"address"`
+	Rules        []ruleView `json:"rules"`
+	Managers     []Person   `json:"managers"`
+	Members      []Member   `json:"members"`
+	Mine         bool       `json:"mine"`
+	Member       bool       `json:"member"`
+	Open         bool       `json:"open"`
+	Unsubscribed bool       `json:"unsubscribed"`
+	Archived     bool       `json:"archived"`
+	Sent         int        `json:"sent"`
 }
 
 type suggestion struct {
@@ -602,11 +598,9 @@ func (a app) deleteGroup(w http.ResponseWriter, r *http.Request) {
 	if !a.commit(w, r, email, store.Delete(groupsTab, store.Row{"Name": name})) {
 		return
 	}
-	a.queue.Add(func() {
-		if err := a.mail.Documents.Remove(name); err != nil {
-			slog.Error("[ERROR] groups: filed mail not removed", "group", name, "error", err)
-		}
-	})
+	if err := a.mail.Documents.Remove(r.Context(), email, name); err != nil {
+		slog.ErrorContext(r.Context(), "[ERROR] groups: filed mail not removed", "group", name, "error", err)
+	}
 	slog.InfoContext(r.Context(), "groups: deleted group", "group", name)
 	w.WriteHeader(http.StatusNoContent)
 }

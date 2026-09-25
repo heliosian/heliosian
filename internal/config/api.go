@@ -5,24 +5,20 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 
 	"heliosian/internal/auth"
-	"heliosian/internal/data"
+	"heliosian/internal/store"
 )
 
 type api struct {
 	cache   *Cache
-	writer  data.Writer
 	isAdmin func(email string) bool
 }
 
-// Register serves the settings to every signed-in user and takes edits from the
-// app's admins. isAdmin is the app's own admin check, either tier; managing the
-// super admins themselves, and ending anyone's sessions, is gated on that list
-// alone.
 func Register(mux *http.ServeMux, cache *Cache, isAdmin func(email string) bool) {
-	a := api{cache: cache, writer: cache.writer, isAdmin: isAdmin}
+	a := api{cache: cache, isAdmin: isAdmin}
 	mux.HandleFunc("GET /api/config", a.settings)
 	mux.HandleFunc("GET /api/config/super-admins", a.superAdmins)
 	mux.HandleFunc("POST /api/config/stale-years", a.setStaleYears)
@@ -41,8 +37,6 @@ func (a api) requireAdmin(w http.ResponseWriter, r *http.Request) (string, bool)
 	return email, true
 }
 
-// requireSuperAdmin answers a regular admin with the same 403 a non-admin gets,
-// revealing nothing about a tier above them.
 func (a api) requireSuperAdmin(w http.ResponseWriter, r *http.Request) (string, bool) {
 	email := strings.ToLower(auth.Email(r))
 	if !a.cache.IsSuperAdmin(email) {
@@ -67,9 +61,12 @@ func encode(w http.ResponseWriter, r *http.Request, view any) {
 	}
 }
 
-func serverError(w http.ResponseWriter, r *http.Request, err error) {
-	slog.ErrorContext(r.Context(), "config request failed", "error", err)
-	http.Error(w, "internal error", http.StatusInternalServerError)
+func (a api) commit(w http.ResponseWriter, r *http.Request, actor string, ops ...store.Op) bool {
+	if err := a.cache.Commit(r.Context(), actor, ops...); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return false
+	}
+	return true
 }
 
 func (a api) settings(w http.ResponseWriter, r *http.Request) {
@@ -84,7 +81,7 @@ func (a api) superAdmins(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a api) setStaleYears(w http.ResponseWriter, r *http.Request) {
-	_, ok := a.requireAdmin(w, r)
+	actor, ok := a.requireAdmin(w, r)
 	if !ok {
 		return
 	}
@@ -96,15 +93,11 @@ func (a api) setStaleYears(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "thresholds must be positive numbers of years", http.StatusBadRequest)
 		return
 	}
-	values := map[string]string{
+	if !a.commit(w, r, actor, setSettings(map[string]string{
 		PhotoStaleYears:       FormatYears(years.Photo),
 		FactsStaleYears:       FormatYears(years.Facts),
 		FamilyPhotoStaleYears: FormatYears(years.FamilyPhoto),
-	}
-	if err := a.cache.update(r.Context(), "stale years edit", func(t *Tables) *Tables { return t.WithSettings(values) }, func() error {
-		return WriteSettings(a.writer, values)
-	}); err != nil {
-		serverError(w, r, err)
+	})...) {
 		return
 	}
 	slog.InfoContext(r.Context(), "config: set stale-years thresholds", "photo", years.Photo, "facts", years.Facts, "familyPhoto", years.FamilyPhoto)
@@ -112,7 +105,7 @@ func (a api) setStaleYears(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a api) setPrivacyLinks(w http.ResponseWriter, r *http.Request) {
-	_, ok := a.requireAdmin(w, r)
+	actor, ok := a.requireAdmin(w, r)
 	if !ok {
 		return
 	}
@@ -126,25 +119,18 @@ func (a api) setPrivacyLinks(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "both links must be full https:// URLs", http.StatusBadRequest)
 		return
 	}
-	values := map[string]string{
+	if !a.commit(w, r, actor, setSettings(map[string]string{
 		VeracrossPreferences: links.VeracrossPreferences,
 		HeliosWhoOptIn:       links.HeliosWhoOptIn,
-	}
-	if err := a.cache.update(r.Context(), "privacy links edit", func(t *Tables) *Tables { return t.WithSettings(values) }, func() error {
-		return WriteSettings(a.writer, values)
-	}); err != nil {
-		serverError(w, r, err)
+	})...) {
 		return
 	}
 	slog.InfoContext(r.Context(), "config: set privacy links", "veracrossPreferences", links.VeracrossPreferences, "heliosWhoOptIn", links.HeliosWhoOptIn)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// setColor upserts one grade, classroom, or the single staff color - per item
-// rather than a bulk replace-all, since classrooms are recomputed from the
-// directory's data on every load and have no id to key a merge on beyond the name.
 func (a api) setColor(w http.ResponseWriter, r *http.Request) {
-	_, ok := a.requireAdmin(w, r)
+	actor, ok := a.requireAdmin(w, r)
 	if !ok {
 		return
 	}
@@ -161,29 +147,23 @@ func (a api) setColor(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name := strings.TrimSpace(body.Name)
-	var mirror func(*Tables) *Tables
-	var persist func() error
-	switch body.Kind {
-	case "classroom":
-		mirror = func(t *Tables) *Tables { return t.WithClassroomColor(name, body.Color) }
-		persist = func() error { return WriteClassroomColor(a.writer, name, body.Color) }
-	case "grade":
-		mirror = func(t *Tables) *Tables { return t.WithGradeColor(name, body.Color) }
-		persist = func() error { return WriteGradeColor(a.writer, name, body.Color) }
-	case "staff":
-		values := map[string]string{StaffColor: body.Color}
-		mirror = func(t *Tables) *Tables { return t.WithSettings(values) }
-		persist = func() error { return WriteSettings(a.writer, values) }
-	default:
-		http.Error(w, "bad kind: must be classroom, grade, or staff", http.StatusBadRequest)
-		return
-	}
 	if body.Kind != "staff" && name == "" {
 		http.Error(w, "missing name", http.StatusBadRequest)
 		return
 	}
-	if err := a.cache.update(r.Context(), body.Kind+" color edit", mirror, persist); err != nil {
-		serverError(w, r, err)
+	var ops []store.Op
+	switch body.Kind {
+	case "classroom":
+		ops = []store.Op{store.Set(ClassroomColorsTab, store.Row{ClassroomColumn: name}, store.Row{ColorColumn: body.Color})}
+	case "grade":
+		ops = []store.Op{store.Set(GradeColorsTab, store.Row{GradeColumn: name}, store.Row{ColorColumn: body.Color})}
+	case "staff":
+		ops = setSettings(map[string]string{StaffColor: body.Color})
+	default:
+		http.Error(w, "bad kind: must be classroom, grade, or staff", http.StatusBadRequest)
+		return
+	}
+	if !a.commit(w, r, actor, ops...) {
 		return
 	}
 	slog.InfoContext(r.Context(), "config: set color", "kind", body.Kind, "name", name, "color", body.Color)
@@ -191,7 +171,7 @@ func (a api) setColor(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a api) setSuperAdmins(w http.ResponseWriter, r *http.Request) {
-	_, ok := a.requireSuperAdmin(w, r)
+	actor, ok := a.requireSuperAdmin(w, r)
 	if !ok {
 		return
 	}
@@ -207,10 +187,18 @@ func (a api) setSuperAdmins(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	current := a.cache.SuperAdmins()
-	if err := a.cache.update(r.Context(), "super admins edit", func(t *Tables) *Tables { return t.WithSuperAdmins(admins) }, func() error {
-		return WriteSuperAdmins(a.writer, current, admins)
-	}); err != nil {
-		serverError(w, r, err)
+	ops := []store.Op{}
+	for _, e := range current {
+		if !slices.Contains(admins, e) {
+			ops = append(ops, store.Delete(SuperAdminsTab, store.Row{EmailColumn: e}))
+		}
+	}
+	for _, e := range admins {
+		if !slices.Contains(current, e) {
+			ops = append(ops, store.Insert(SuperAdminsTab, store.Row{EmailColumn: e}))
+		}
+	}
+	if !a.commit(w, r, actor, ops...) {
 		return
 	}
 	slog.InfoContext(r.Context(), "config: set the super admin list", "admins", admins)
@@ -233,8 +221,8 @@ func (a api) signOut(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing email", http.StatusBadRequest)
 		return
 	}
-	if err := a.cache.SignOut(r.Context(), email); err != nil {
-		serverError(w, r, err)
+	if err := a.cache.signOut(r.Context(), admin, email); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	slog.InfoContext(r.Context(), "config: signed out every session", "email", email, "by", admin)

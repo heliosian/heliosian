@@ -1,4 +1,4 @@
-package who
+package store
 
 import (
 	"sync"
@@ -27,8 +27,6 @@ func (q *Queue) Add(task func()) {
 	q.cond.Signal()
 }
 
-// Hold is work under way that will add to the queue when it finishes, so a
-// drain waits for its Release as well as for what is already queued.
 func (q *Queue) Hold() {
 	q.mu.Lock()
 	defer q.mu.Unlock()

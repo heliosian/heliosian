@@ -81,12 +81,12 @@ func TestMagicTagsCarryTheirHosts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	portalCache, err := team.NewCache(dir, dir, anyImage{}, func(string) bool { return false }, who.NewQueue())
+	portalCache, err := team.NewCache(dir, dir, anyImage{}, func(string) bool { return false }, store.NewQueue())
 	if err != nil {
 		t.Fatal(err)
 	}
 	portal := portalCache.Model()
-	siteCache, err := celebrate.NewCache(dir, dir, anyImage{}, func(string) bool { return false }, who.NewQueue())
+	siteCache, err := celebrate.NewCache(dir, dir, anyImage{}, func(string) bool { return false }, store.NewQueue())
 	if err != nil {
 		t.Fatal(err)
 	}

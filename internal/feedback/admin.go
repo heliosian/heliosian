@@ -17,24 +17,18 @@ const (
 	bodyLimit  = 60000
 )
 
-// IssueFiler opens an issue and answers with its address. In production it is
-// the GitHub App; without one the admin page says filing is not set up.
 type IssueFiler interface {
 	File(ctx context.Context, title, body string, labels []string) (string, error)
 }
 
 type admin struct {
-	store      *Store
+	cache      *Cache
 	filer      IssueFiler
 	superAdmin func(string) bool
 }
 
-// RegisterAdmin wires the triage queue onto Heliosian's own admin, the one
-// place every app's reports are read: the reports themselves carry the
-// reporter's address and their page, so this is the super admins' tier alone,
-// not every app admin's.
-func RegisterAdmin(mux *http.ServeMux, store *Store, filer IssueFiler, superAdmin func(string) bool) {
-	a := admin{store: store, filer: filer, superAdmin: superAdmin}
+func RegisterAdmin(mux *http.ServeMux, cache *Cache, filer IssueFiler, superAdmin func(string) bool) {
+	a := admin{cache: cache, filer: filer, superAdmin: superAdmin}
 	mux.HandleFunc("GET /api/admin/feedback", a.list)
 	mux.HandleFunc("GET /api/admin/feedback/{id}", a.one)
 	mux.HandleFunc("POST /api/admin/feedback/{id}/file", a.file)
@@ -50,8 +44,6 @@ func (a admin) require(w http.ResponseWriter, r *http.Request) (string, bool) {
 	return email, true
 }
 
-// summary is one report as the queue lists it - enough to sort and pick by,
-// without the details or the context.
 type summary struct {
 	ID        string `json:"id"`
 	Received  string `json:"received"`
@@ -64,8 +56,6 @@ type summary struct {
 	HandledBy string `json:"handledBy,omitempty"`
 }
 
-// detail is one report opened: everything it carries, and the draft issue the
-// editor starts from.
 type detail struct {
 	summary
 	Details  string   `json:"details"`
@@ -82,7 +72,6 @@ type detail struct {
 	Draft    draft    `json:"draft"`
 }
 
-// draft is the issue as Strip writes it, which the admin edits before filing.
 type draft struct {
 	Title  string   `json:"title"`
 	Body   string   `json:"body"`
@@ -108,7 +97,7 @@ func (a admin) list(w http.ResponseWriter, r *http.Request) {
 	if _, ok := a.require(w, r); !ok {
 		return
 	}
-	reports := a.store.Reports()
+	reports := a.cache.Reports()
 	out := make([]summary, 0, len(reports))
 	for _, report := range reports {
 		out = append(out, summaryOf(report))
@@ -125,7 +114,7 @@ func (a admin) one(w http.ResponseWriter, r *http.Request) {
 	if _, ok := a.require(w, r); !ok {
 		return
 	}
-	report, ok := a.store.Report(r.PathValue("id"))
+	report, ok := a.cache.Report(r.PathValue("id"))
 	if !ok {
 		http.Error(w, "no such report", http.StatusNotFound)
 		return
@@ -157,7 +146,7 @@ func (a admin) file(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "filing on GitHub is not set up on this server", http.StatusServiceUnavailable)
 		return
 	}
-	report, ok := a.store.Report(r.PathValue("id"))
+	report, ok := a.cache.Report(r.PathValue("id"))
 	if !ok {
 		http.Error(w, "no such report", http.StatusNotFound)
 		return
@@ -193,7 +182,7 @@ func (a admin) file(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "GitHub would not take the issue: "+err.Error(), http.StatusBadGateway)
 		return
 	}
-	if err := a.store.Filed(report.ID, issue, actor, time.Now()); err != nil {
+	if err := a.cache.Filed(r.Context(), report.ID, issue, actor, time.Now()); err != nil {
 		slog.ErrorContext(r.Context(), "feedback: mark filed", "error", err, "id", report.ID, "issue", issue)
 		http.Error(w, "the issue is filed at "+issue+" but the report could not be marked: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -206,12 +195,12 @@ func (a admin) dismiss(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	report, ok := a.store.Report(r.PathValue("id"))
+	report, ok := a.cache.Report(r.PathValue("id"))
 	if !ok {
 		http.Error(w, "no such report", http.StatusNotFound)
 		return
 	}
-	if err := a.store.Dismissed(report.ID, actor, time.Now()); err != nil {
+	if err := a.cache.Dismissed(r.Context(), report.ID, actor, time.Now()); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

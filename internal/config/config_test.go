@@ -2,19 +2,64 @@ package config
 
 import (
 	"context"
+	"maps"
+	"net/http"
+	"net/http/httptest"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
+	"heliosian/internal/auth"
 	"heliosian/internal/data"
+	"heliosian/internal/store"
 )
 
-func sampleTables(t *testing.T) *Tables {
+type inline struct{}
+
+func (inline) Add(f func()) { f() }
+
+func sample(t *testing.T) (*data.Dir, *Cache) {
 	t.Helper()
-	tables, err := ReadTables(&data.Dir{Root: "../../sampledata"})
+	dir := &data.Dir{Root: "../../sampledata"}
+	cache, err := NewCache(dir, dir, inline{})
 	if err != nil {
-		t.Fatalf("read sample config: %v", err)
+		t.Fatalf("load sample config: %v", err)
+	}
+	return dir, cache
+}
+
+func sampleTables(t *testing.T) store.Tables {
+	t.Helper()
+	dir := &data.Dir{Root: "../../sampledata"}
+	tables := store.Tables{}
+	for _, tab := range []string{SettingsTab, SuperAdminsTab, GradeColorsTab, ClassroomColorsTab, SignedOutTab} {
+		_, rows, err := dir.Table(App, tab)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tables[tab] = rows
 	}
 	return tables
+}
+
+func with(tables store.Tables, tab string, rows ...store.Row) store.Tables {
+	out := maps.Clone(tables)
+	out[tab] = append(slices.Clone(tables[tab]), rows...)
+	return out
+}
+
+func changeLog(t *testing.T, dir *data.Dir) []string {
+	t.Helper()
+	_, rows, err := dir.Table(App, store.ChangeLogTab)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := []string{}
+	for _, row := range rows {
+		out = append(out, row["Actor"]+"|"+row["Action"]+"|"+row["Tab"]+"|"+row["Key"]+"|"+row["Column"]+"|"+row["Previous"])
+	}
+	return out
 }
 
 func TestSampleConfigParses(t *testing.T) {
@@ -39,42 +84,23 @@ func TestSampleConfigParses(t *testing.T) {
 	}
 }
 
-// A key the app does not know, a malformed value, or an empty super admin list
-// refuses the load rather than being read as a default.
 func TestBadConfigIsFatal(t *testing.T) {
 	tables := sampleTables(t)
-	if _, err := Parse(tables.WithSettings(map[string]string{"Bogus": "x"})); err == nil {
-		t.Error("an unknown Settings key should fail the load")
-	}
-	if _, err := Parse(tables.WithSettings(map[string]string{StaffColor: "teal"})); err == nil {
-		t.Error("a non-hex Staff Color should fail the load")
-	}
-	if _, err := Parse(tables.WithGradeColor("Grade 1", "red")); err == nil {
-		t.Error("a non-hex grade color should fail the load")
-	}
-	if _, err := Parse(tables.WithSuperAdmins(nil)); err == nil {
-		t.Error("an empty Super Admins tab should fail the load")
-	}
-	bad := *tables
-	bad.SignedOut = append(bad.SignedOut, map[string]string{EmailColumn: "parent@heliosschool.org", TimeColumn: "yesterday"})
-	if _, err := Parse(&bad); err == nil {
-		t.Error("a Signed Out time that is not RFC 3339 should fail the load")
+	for name, bad := range map[string]store.Tables{
+		"unknown key":      with(tables, SettingsTab, store.Row{KeyColumn: "Bogus", ValueColumn: "x"}),
+		"grade color":      with(tables, GradeColorsTab, store.Row{GradeColumn: "Grade 9", ColorColumn: "red"}),
+		"no super admins":  func() store.Tables { t := maps.Clone(tables); t[SuperAdminsTab] = nil; return t }(),
+		"sign-out time":    with(tables, SignedOutTab, store.Row{EmailColumn: "parent@heliosschool.org", TimeColumn: "yesterday"}),
+		"duplicate colour": with(tables, ClassroomColorsTab, store.Row{ClassroomColumn: "Hummingbirds", ColorColumn: "#000000"}),
+	} {
+		if _, err := Parse(bad); err == nil {
+			t.Errorf("%s: the load was not refused", name)
+		}
 	}
 }
 
-type inline struct{}
-
-func (inline) Add(f func()) { f() }
-
-// Signing an address out records the moment in memory and in the tab, one
-// row per address, overwritten by a later sign-out; a lookup reads it
-// whatever the address's case.
 func TestSignOutIsRecordedOncePerAddress(t *testing.T) {
-	dir := &data.Dir{Root: "../../sampledata"}
-	cache, err := NewCache(dir, dir, inline{})
-	if err != nil {
-		t.Fatalf("load sample config: %v", err)
-	}
+	dir, cache := sample(t)
 	if _, ok := cache.SignedOut("parent@heliosschool.org"); ok {
 		t.Fatal("the sample tab should hold no sign-out")
 	}
@@ -86,12 +112,13 @@ func TestSignOutIsRecordedOncePerAddress(t *testing.T) {
 	if !ok || first.Before(before.Truncate(time.Second)) || first.After(time.Now()) {
 		t.Errorf("signed out at %v %v, want about now", first, ok)
 	}
+	time.Sleep(1100 * time.Millisecond)
 	if err := cache.SignOut(context.Background(), "parent@heliosschool.org"); err != nil {
 		t.Fatalf("sign out again: %v", err)
 	}
 	second, _ := cache.SignedOut("parent@heliosschool.org")
-	if second.Before(first) {
-		t.Errorf("second sign-out at %v, want no earlier than the first at %v", second, first)
+	if !second.After(first) {
+		t.Errorf("second sign-out at %v, want after the first at %v", second, first)
 	}
 	_, rows, err := dir.Table(App, SignedOutTab)
 	if err != nil {
@@ -100,19 +127,47 @@ func TestSignOutIsRecordedOncePerAddress(t *testing.T) {
 	if len(rows) != 1 || rows[0][EmailColumn] != "parent@heliosschool.org" || rows[0][TimeColumn] != second.Format(time.RFC3339) {
 		t.Errorf("tab holds %v, want one row for the address at the second sign-out", rows)
 	}
-	if tables, err := ReadTables(dir); err != nil {
-		t.Errorf("re-read: %v", err)
-	} else if s, err := Parse(tables); err != nil || !s.SignedOut["parent@heliosschool.org"].Equal(second) {
-		t.Errorf("re-read sign-out = %v %v, want %v", s.SignedOut, err, second)
+	log := changeLog(t, dir)
+	want := []string{
+		"parent@heliosschool.org|insert|Signed Out|Email=parent@heliosschool.org||",
+		"parent@heliosschool.org|set|Signed Out|Email=parent@heliosschool.org|Time|" + first.Format(time.RFC3339),
+	}
+	if !slices.Equal(log, want) {
+		t.Errorf("change log %q, want %q", log, want)
 	}
 }
 
-// A mirrored write leaves the tables it was mirrored into untouched.
-func TestMirrorsCopy(t *testing.T) {
-	tables := sampleTables(t)
-	before := tables.Settings[0][ValueColumn]
-	tables.WithSettings(map[string]string{tables.Settings[0][KeyColumn]: "changed"})
-	if tables.Settings[0][ValueColumn] != before {
-		t.Error("WithSettings changed the original rows")
+func TestAdminEditsAreCommits(t *testing.T) {
+	dir, cache := sample(t)
+	const jordan = "jordan.whitfield@heliosschool.org"
+	mux := http.NewServeMux()
+	Register(mux, cache, func(email string) bool { return email == jordan })
+	post := func(path, body string, want int) {
+		t.Helper()
+		rec := httptest.NewRecorder()
+		auth.Fixed(jordan, mux).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, path, strings.NewReader(body)))
+		if rec.Code != want {
+			t.Fatalf("%s: %d %s", path, rec.Code, rec.Body)
+		}
+	}
+	post("/api/config/stale-years", `{"photo":1,"facts":0.6,"familyPhoto":1.5}`, http.StatusNoContent)
+	post("/api/config/color", `{"kind":"grade","name":"Kindergarten","color":"#000000"}`, http.StatusNoContent)
+	post("/api/config/super-admins", `{"superAdmins":["`+jordan+`","asha.chandra@heliosschool.org"]}`, http.StatusNoContent)
+	s := cache.Settings()
+	if s.StaleYears.Photo != 1 || s.GradeColors["Kindergarten"] != "#000000" || !cache.IsSuperAdmin("asha.chandra@heliosschool.org") {
+		t.Fatalf("settings after the edits: %+v", s)
+	}
+	log := changeLog(t, dir)
+	for _, line := range []string{
+		jordan + "|set|Settings|Key=Photo Stale Years|Value|0.75",
+		jordan + "|set|Grade Colors|Grade=Kindergarten|Color|#d20210",
+		jordan + "|insert|Super Admins|Email=asha.chandra@heliosschool.org||",
+	} {
+		if !slices.Contains(log, line) {
+			t.Errorf("the change log lacks %q:\n%s", line, strings.Join(log, "\n"))
+		}
+	}
+	if slices.ContainsFunc(log, func(line string) bool { return strings.Contains(line, "Facts Stale Years") }) {
+		t.Errorf("an unchanged setting was logged:\n%s", strings.Join(log, "\n"))
 	}
 }

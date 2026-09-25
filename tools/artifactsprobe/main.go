@@ -1,4 +1,3 @@
-// Command artifactsprobe loads the documents on file the way the server does and runs one search against them.
 package main
 
 import (
@@ -12,6 +11,7 @@ import (
 	"heliosian/internal/artifacts"
 	"heliosian/internal/blob"
 	"heliosian/internal/data"
+	"heliosian/internal/store"
 )
 
 func main() {
@@ -27,8 +27,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("[ERROR] sheet source: %v", err)
 	}
-	// The same disk cache the dev server keeps, so a second run of this
-	// reads the corpus off the disk rather than out of the bucket.
 	reader, err := blob.New("local/cache/blobs")
 	if err != nil {
 		log.Fatalf("[ERROR] %v", err)
@@ -38,10 +36,11 @@ func main() {
 		log.Fatalf("[ERROR] %v", err)
 	}
 	start := time.Now()
-	model, err := artifacts.Load(source, reader, embedder, nil)
+	cache, err := artifacts.NewCache(source, nil, reader, embedder, store.NewQueue())
 	if err != nil {
 		log.Fatalf("[ERROR] load: %v", err)
 	}
+	model := cache.Model()
 	oldest, newest := model.Span()
 	fmt.Printf("%d documents, %d chunks, %s to %s, loaded in %s\n",
 		len(model.Documents), model.Chunks(), oldest, newest, time.Since(start).Round(time.Millisecond))

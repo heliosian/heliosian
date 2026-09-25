@@ -13,6 +13,7 @@ import (
 
 	"heliosian/internal/data"
 	"heliosian/internal/mail"
+	"heliosian/internal/store"
 )
 
 const classMail = "Received: by mxa.mailgun.org with SMTP id 1; Wed, 16 Sep 2026 07:05:00 +0000\r\n" +
@@ -112,6 +113,14 @@ func (b bucket) Put(folder, name, _ string, content []byte) error {
 	return nil
 }
 
+func (b bucket) Get(name string) ([]byte, error) {
+	content, ok := b[name]
+	if !ok {
+		return nil, os.ErrNotExist
+	}
+	return content, nil
+}
+
 type inline struct{}
 
 func (inline) Add(fn func()) {
@@ -128,23 +137,54 @@ func testInbox(t *testing.T) (*Filer, bucket, *data.Dir) {
 	if err := os.MkdirAll(filepath.Join(root, appName), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, appName, documentsTab+".csv"), []byte(strings.Join(DocumentColumns, ",")+"\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	cache, err := NewCache(func(*Model) (*Model, error) { return &Model{Documents: []*Document{}}, nil }, inline{})
-	if err != nil {
-		t.Fatal(err)
+	for tab, columns := range map[string][]string{documentsTab: DocumentColumns, store.ChangeLogTab: store.ChangeLogColumns} {
+		if err := os.WriteFile(filepath.Join(root, appName, tab+".csv"), []byte(strings.Join(columns, ",")+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
 	objects := bucket{}
 	sheet := &data.Dir{Root: root}
-	in := &Filer{
-		Inbox:    Inbox{SigningKey: "key", Bucket: objects},
-		cache:    cache,
-		embedder: Fake{},
-		writer:   sheet,
-		queue:    inline{},
+	cache, err := NewCache(sheet, sheet, objects, Fake{}, inline{})
+	if err != nil {
+		t.Fatal(err)
 	}
-	return in, objects, sheet
+	return &Filer{Inbox: Inbox{SigningKey: "key", Bucket: objects}, cache: cache, embedder: Fake{}, holder: inline{}}, objects, sheet
+}
+
+func sampleModel(t *testing.T) *Model {
+	t.Helper()
+	in, _, _ := testInbox(t)
+	files, err := filepath.Glob(filepath.Join(samples, "*.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range files {
+		if err := in.FileSaved(context.Background(), "test", file); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return in.cache.Model()
+}
+
+func TestAFreshStoreReadsWhatWasFiled(t *testing.T) {
+	in, objects, sheet := testInbox(t)
+	if err := in.FileSaved(context.Background(), "test", samples+"/2026-09-11-newsletter-sep-11.json"); err != nil {
+		t.Fatal(err)
+	}
+	again, err := NewCache(sheet, sheet, objects, Fake{}, inline{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if model := again.Model(); len(model.Documents) != 1 || model.Fetched != 1 || model.Documents[0].Title != "Helios Weekly Newsletter 2026 Sep 11" {
+		t.Fatalf("a fresh load read %+v", model)
+	}
+	_, log, err := sheet.Table(appName, store.ChangeLogTab)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(log) != 1 || log[0]["Action"] != "insert" || log[0]["Actor"] != "test" {
+		t.Fatalf("change log %v", log)
+	}
 }
 
 func hook(in *Filer, key, raw string) int {
@@ -190,7 +230,7 @@ func TestInboxImportsOnlyTheCommunitysMailOnce(t *testing.T) {
 func TestGroupMailIsFiledUnderEachGroupOnce(t *testing.T) {
 	in, _, sheet := testInbox(t)
 	for _, group := range []string{"soccer-team", "soccer-team", "chess-club"} {
-		if err := in.Post(context.Background(), group, []byte(personalMail)); err != nil {
+		if err := in.Post(context.Background(), "loop mailer", group, []byte(personalMail)); err != nil {
 			t.Fatalf("%s: %v", group, err)
 		}
 	}
@@ -214,11 +254,11 @@ func TestGroupMailIsFiledUnderEachGroupOnce(t *testing.T) {
 func TestRemovingAGroupsMailTakesItsRowsAndDocumentsAndLeavesTheObjects(t *testing.T) {
 	in, objects, sheet := testInbox(t)
 	for _, group := range []string{"soccer-team", "chess-club"} {
-		if err := in.Post(context.Background(), group, []byte(personalMail)); err != nil {
+		if err := in.Post(context.Background(), "loop mailer", group, []byte(personalMail)); err != nil {
 			t.Fatalf("%s: %v", group, err)
 		}
 	}
-	if err := in.Remove("soccer-team"); err != nil {
+	if err := in.Remove(context.Background(), "owner@example.org", "soccer-team"); err != nil {
 		t.Fatal(err)
 	}
 	_, rows, err := sheet.Table(appName, documentsTab)
@@ -234,29 +274,21 @@ func TestRemovingAGroupsMailTakesItsRowsAndDocumentsAndLeavesTheObjects(t *testi
 	if model := in.cache.Model(); len(model.Documents) != 1 || model.Documents[0].Channel != "chess-club" {
 		t.Fatalf("the model holds %+v", model.Documents)
 	}
-	if err := in.Remove("soccer-team"); err != nil {
+	if err := in.Remove(context.Background(), "owner@example.org", "soccer-team"); err != nil {
 		t.Fatalf("removing a group with no mail: %v", err)
 	}
-}
-
-func TestCacheRefreshKeepsAnEditMadeWhileReading(t *testing.T) {
-	var cache *Cache
-	loads := 0
-	cache, err := NewCache(func(*Model) (*Model, error) {
-		loads++
-		if loads == 2 {
-			cache.add(&Document{Key: "added"})
-		}
-		return &Model{Documents: []*Document{}}, nil
-	}, inline{})
+	_, log, err := sheet.Table(appName, store.ChangeLogTab)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := cache.refresh(); err != nil {
-		t.Fatal(err)
+	removed := false
+	for _, row := range log {
+		if row["Action"] == "delete" && row["Actor"] == "owner@example.org" && row["Column"] == "Channel" && row["Previous"] == "soccer-team" {
+			removed = true
+		}
 	}
-	if model := cache.Model(); len(model.Documents) != 1 || model.Documents[0].Key != "added" {
-		t.Fatalf("the refresh put back the older sheet: %+v", model.Documents)
+	if !removed {
+		t.Errorf("the removal is not in the change log: %v", log)
 	}
 }
 

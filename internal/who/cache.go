@@ -89,7 +89,7 @@ func Open(source data.Source, writer data.Writer, blobs, static BlobChecker, idK
 }
 
 func LoadModel(source data.Source, blobs, static BlobChecker, idKey []byte) (*Model, error) {
-	s, err := Open(source, nil, blobs, static, idKey, NewQueue())
+	s, err := Open(source, nil, blobs, static, idKey, store.NewQueue())
 	if err != nil {
 		return nil, err
 	}

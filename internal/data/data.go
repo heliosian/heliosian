@@ -11,8 +11,6 @@ import (
 	"sync"
 )
 
-// CheckColumns refuses a tab missing a column the caller reads. A column it does
-// not read is somebody else's business.
 func CheckColumns(table string, header, wanted []string) error {
 	present := map[string]bool{}
 	for _, h := range header {
@@ -26,8 +24,6 @@ func CheckColumns(table string, header, wanted []string) error {
 	return nil
 }
 
-// Tab is one tab as Tabs returns it: the header, and the rows unless only the
-// header was asked for.
 type Tab struct {
 	Header []string
 	Rows   []map[string]string
@@ -36,62 +32,15 @@ type Tab struct {
 type Source interface {
 	Table(app, name string) ([]string, []map[string]string, error)
 	Header(app, name string) ([]string, error)
-	// Tabs reads many tabs of one app's spreadsheet at once - the tables whole,
-	// the headers first row only - in a single request against the Sheets
-	// read quota, which a startup reading every tab of every sheet one by one
-	// would otherwise exhaust on its own.
 	Tabs(app string, tables, headers []string) (map[string]Tab, error)
-	// Raw returns every row, header included, exactly as the tab holds it - no
-	// dedup check, no name-keyed records. Table/Header assume one row is one
-	// record and reject a tab whose columns repeat; a few tabs (the Invite List
-	// Builder's per-system templates) are read positionally instead and may
-	// deliberately repeat a column name to match a destination system's own
-	// quirky template, so they need the columns exactly as entered instead.
 	Raw(app, name string) ([][]string, error)
 }
 
 type Writer interface {
-	// Insert adds rows after the tab's last used row, each cell under the column
-	// of its name wherever the tab keeps it, and rejects a column the tab does not
-	// have.
 	Insert(app, table string, rows []map[string]string) error
-	// Set gives every row matching all of match the cells, and when none does
-	// inserts a row holding match plus cells.
 	Set(app, table string, match, cells map[string]string) error
-	// SetMany is Set for several rows of one tab at once, keyed by one column:
-	// every row whose keyColumn is a key in cells takes that key's cells. One
-	// read and one write, however many rows - a row at a time, the same edit
-	// spends its Sheets quota many times over. A key no row carries is an error.
 	SetMany(app, table, keyColumn string, cells map[string]map[string]string) error
 	Delete(app, table string, match map[string]string) error
-	// Reorder rewrites a tab's data rows into the order the keys give. The keys
-	// must be exactly the tab's existing keyColumn values, each once, so rows
-	// only ever move - nothing is created, dropped, or edited, and columns the
-	// caller does not model travel with their row.
-	Reorder(app, table, keyColumn string, keys []string) error
-}
-
-// orderRows returns rows sorted into the order keys gives, or an error when
-// keys is not a permutation of the rows' keyColumn values. Shared by every
-// Writer so the two backends refuse identically.
-func orderRows(table, keyColumn string, keys []string, rows []map[string]string, keyOf func(map[string]string) string) ([]map[string]string, error) {
-	if len(keys) != len(rows) {
-		return nil, fmt.Errorf("table %s has %d rows but %d were ordered", table, len(rows), len(keys))
-	}
-	byKey := make(map[string]map[string]string, len(rows))
-	for _, row := range rows {
-		byKey[keyOf(row)] = row
-	}
-	ordered := make([]map[string]string, 0, len(rows))
-	for _, key := range keys {
-		row, ok := byKey[key]
-		if !ok {
-			return nil, fmt.Errorf("table %s has no row with %s %q", table, keyColumn, key)
-		}
-		delete(byKey, key)
-		ordered = append(ordered, row)
-	}
-	return ordered, nil
 }
 
 type table struct {
@@ -99,8 +48,6 @@ type table struct {
 	rows   []map[string]string
 }
 
-// Dir is a fake spreadsheet over a directory of CSVs: tabs load on first read and
-// every write lands in memory, so the files on disk stay as fixtures.
 type Dir struct {
 	Root   string
 	mu     sync.Mutex
@@ -141,8 +88,6 @@ func (d *Dir) load(app, name string) (*table, error) {
 	return t, nil
 }
 
-// Header reads the whole CSV, since a local file costs nothing to parse and the
-// cached table serves every later read.
 func (d *Dir) Header(app, name string) ([]string, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -153,8 +98,6 @@ func (d *Dir) Header(app, name string) ([]string, error) {
 	return slices.Clone(t.header), nil
 }
 
-// Raw re-reads the CSV fresh rather than going through the header-deduped cache,
-// so it stays correct even for a tab whose columns repeat.
 func (d *Dir) Raw(app, name string) ([][]string, error) {
 	f, err := os.Open(filepath.Join(d.Root, app, name+".csv"))
 	if err != nil {
@@ -302,23 +245,6 @@ func (d *Dir) Delete(app, name string, match map[string]string) error {
 		}
 	}
 	t.rows = kept
-	return nil
-}
-
-func (d *Dir) Reorder(app, name, keyColumn string, keys []string) error {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	t, err := d.load(app, name)
-	if err != nil {
-		return err
-	}
-	ordered, err := orderRows(name, keyColumn, keys, t.rows, func(row map[string]string) string {
-		return row[keyColumn]
-	})
-	if err != nil {
-		return err
-	}
-	t.rows = ordered
 	return nil
 }
 

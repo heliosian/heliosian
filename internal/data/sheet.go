@@ -14,16 +14,8 @@ import (
 	"google.golang.org/api/sheets/v4"
 )
 
-// retryWaits paces a call the Sheets API has refused for quota: its read and
-// write quotas are per minute per user, and a server starting up reads every
-// sheet at once, beside a deploy's previous revision still refreshing, or a
-// burst of local tools, so a burst runs into them. Waiting out the minute
-// and asking again is the whole fix; giving up would drop a write or refuse
-// to start.
 var retryWaits = []time.Duration{5 * time.Second, 10 * time.Second, 20 * time.Second, 40 * time.Second}
 
-// call runs one Sheets API request - its Do method - retrying only a quota
-// refusal (429).
 func call[T any](what string, do func(...googleapi.CallOption) (T, error)) (T, error) {
 	var out T
 	var err error
@@ -66,9 +58,6 @@ func (s *Sheet) Table(app, name string) ([]string, []map[string]string, error) {
 	return parseTable(name, resp.Values)
 }
 
-// Header reads only the first row. The change log grows without bound and is never
-// read into the model, so validating its columns must not drag every audit row over
-// the wire on each reload.
 func (s *Sheet) Header(app, name string) ([]string, error) {
 	id, ok := s.spreadsheets[app]
 	if !ok {
@@ -81,9 +70,6 @@ func (s *Sheet) Header(app, name string) ([]string, error) {
 	return parseHeader(name, resp.Values)
 }
 
-// Tabs is one values.batchGet for the whole spreadsheet: one request against
-// the read quota however many tabs, where a request per tab spends it in the
-// first seconds of a start.
 func (s *Sheet) Tabs(app string, tables, headers []string) (map[string]Tab, error) {
 	id, ok := s.spreadsheets[app]
 	if !ok {
@@ -121,8 +107,6 @@ func (s *Sheet) Tabs(app string, tables, headers []string) (map[string]Tab, erro
 	return out, nil
 }
 
-// Raw returns every row, header included, with no dedup check and no
-// name-keyed record conversion - see Source.Raw.
 func (s *Sheet) Raw(app, name string) ([][]string, error) {
 	id, ok := s.spreadsheets[app]
 	if !ok {
@@ -301,12 +285,8 @@ func (s *Sheet) Insert(app, table string, rows []map[string]string) error {
 	return s.writeRows(id, table, len(resp.Values), values)
 }
 
-// writeRows puts rows at an explicit address - the first row after the `used`
-// rows the tab already has, starting in column A - growing the grid first when
-// it is too short. The Sheets append call is not used: it "detects a table"
-// from the range it is given, and a blank row, or a column that is empty for a
-// stretch, makes it pick a different table and start the row in that table's
-// first column, which lands cells under the wrong headers.
+// An explicit address, not the append call: append's table detection starts a
+// row in the wrong column past a blank row.
 func (s *Sheet) writeRows(id, table string, used int, rows [][]interface{}) error {
 	quoted := quoteTab(table)
 	tab, err := s.tabID(id, table)
@@ -384,75 +364,6 @@ func (s *Sheet) Delete(app, table string, match map[string]string) error {
 	_, err = call("delete "+table, s.service.Spreadsheets.BatchUpdate(id, &sheets.BatchUpdateSpreadsheetRequest{
 		Requests: requests,
 	}).Do)
-	return err
-}
-
-// Reorder rewrites the tab's data block in one Values.Update. It permutes the
-// raw rows rather than the parsed ones, so cells in columns this app never
-// models - and any trailing columns - move with their row untouched.
-func (s *Sheet) Reorder(app, table, keyColumn string, keys []string) error {
-	id, ok := s.spreadsheets[app]
-	if !ok {
-		return fmt.Errorf("no spreadsheet configured for app %q", app)
-	}
-	quoted := quoteTab(table)
-	resp, err := call("get "+table, s.service.Spreadsheets.Values.Get(id, quoted).Do)
-	if err != nil {
-		return err
-	}
-	if len(resp.Values) == 0 {
-		return fmt.Errorf("table %s is empty", table)
-	}
-	key := -1
-	for i, cell := range resp.Values[0] {
-		if strings.TrimSpace(fmt.Sprint(cell)) == keyColumn {
-			key = i
-			break
-		}
-	}
-	if key < 0 {
-		return fmt.Errorf("table %s is missing column %q", table, keyColumn)
-	}
-	width := len(resp.Values[0])
-	rows := make([]map[string]string, 0, len(resp.Values)-1)
-	raw := map[string][]interface{}{}
-	for _, row := range resp.Values[1:] {
-		name := ""
-		if key < len(row) {
-			name = strings.TrimSpace(fmt.Sprint(row[key]))
-		}
-		rows = append(rows, map[string]string{keyColumn: name})
-		raw[name] = row
-		if len(row) > width {
-			width = len(row)
-		}
-	}
-	ordered, err := orderRows(table, keyColumn, keys, rows, func(row map[string]string) string {
-		return row[keyColumn]
-	})
-	if err != nil {
-		return err
-	}
-	values := make([][]interface{}, 0, len(ordered))
-	for _, row := range ordered {
-		cells := raw[row[keyColumn]]
-		// Pad, so a short row cannot leave the row it displaced showing through.
-		padded := make([]interface{}, width)
-		for i := range padded {
-			if i < len(cells) {
-				padded[i] = cells[i]
-				continue
-			}
-			padded[i] = ""
-		}
-		values = append(values, padded)
-	}
-	if len(values) == 0 {
-		return nil
-	}
-	rng := fmt.Sprintf("%s!A2:%s%d", quoted, columnName(width-1), len(values)+1)
-	_, err = call("reorder "+table, s.service.Spreadsheets.Values.Update(id, rng, &sheets.ValueRange{Values: values}).
-		ValueInputOption("RAW").Do)
 	return err
 }
 

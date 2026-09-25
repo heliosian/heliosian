@@ -46,9 +46,11 @@ var seeds = map[string]map[string]map[string]string{
 var layouts = map[string][]tab{
 	"Artifacts": {
 		{"Documents", artifacts.DocumentColumns},
+		{store.ChangeLogTab, store.ChangeLogColumns},
 	},
 	"Feedback": {
 		{"Reports", feedback.ReportColumns},
+		{store.ChangeLogTab, store.ChangeLogColumns},
 	},
 	"Directory": {
 		{"Veracross Staff Import", []string{
@@ -179,6 +181,7 @@ var layouts = map[string][]tab{
 		{"Grade Colors", []string{"Grade", "Color"}},
 		{"Classroom Colors", []string{"Classroom", "Color"}},
 		{"Signed Out", []string{"Email", "Time"}},
+		{store.ChangeLogTab, store.ChangeLogColumns},
 	},
 	"Groups": {
 		{"Groups", loop.GroupColumns},

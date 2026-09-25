@@ -15,12 +15,16 @@ import (
 	"heliosian/internal/artifacts"
 	"heliosian/internal/blob"
 	"heliosian/internal/data"
+	"heliosian/internal/store"
 )
 
 const (
 	batch   = 200
 	workers = 8
+	actor   = "importartifacts"
 )
+
+const documentsTab = "Documents"
 
 func requiredEnv(name string) string {
 	value := os.Getenv(name)
@@ -47,35 +51,37 @@ func main() {
 	if err != nil {
 		log.Fatalf("[ERROR] sheet source: %v", err)
 	}
-	header, err := source.Header("artifacts", "Documents")
-	if err != nil {
-		log.Fatalf("[ERROR] read the Documents header: %v", err)
-	}
-	rows, err := artifacts.ReadRows(source)
-	if err != nil {
-		log.Fatalf("[ERROR] read the Documents tab: %v", err)
-	}
-	objects := map[string]string{}
-	issues := map[string]string{}
-	for _, row := range rows {
-		objects[row["Key"]] = row["Object"]
-		if row["Kind"] == artifacts.KindNewsletter {
-			issues[row["Title"]+"|"+row["Date"]] = row["Key"]
-		}
-	}
-	log.Printf("%d documents on file, %d files to consider", len(rows), len(files))
 	embedder, err := artifacts.NewVertex()
 	if err != nil {
 		log.Fatalf("[ERROR] %v", err)
+	}
+	reader, err := blob.New("local/cache/blobs")
+	if err != nil {
+		log.Fatalf("[ERROR] %v", err)
+	}
+	cache, err := artifacts.NewCache(source, source, reader, embedder, store.NewQueue())
+	if err != nil {
+		log.Fatalf("[ERROR] load the documents on file: %v", err)
 	}
 	uploader, err := blob.NewUploader()
 	if err != nil {
 		log.Fatalf("[ERROR] %v", err)
 	}
+	objects := map[string]string{}
+	issues := map[string]string{}
+	for _, doc := range cache.Model().Documents {
+		objects[doc.Key] = doc.Object()
+		if doc.Kind == artifacts.KindNewsletter {
+			issues[doc.Title+"|"+doc.Date] = doc.Key
+		}
+	}
+	log.Printf("%d documents on file, %d files to consider", len(objects), len(files))
 	resolver := artifacts.NewResolver()
 
 	pending := []work{}
-	skipped, failed, empty, dropped, withheld, characters := 0, 0, 0, 0, 0, 0
+	drops := []store.Op{}
+	dropped := []string{}
+	skipped, failed, empty, withheld, characters := 0, 0, 0, 0, 0
 	for _, file := range files {
 		if *limit > 0 && len(pending) >= *limit {
 			log.Printf("stopping at the %d asked for", *limit)
@@ -95,15 +101,10 @@ func main() {
 		if errors.Is(err, artifacts.ErrNoWords) {
 			empty++
 			key := saved.Key()
-			if object, known := objects[key]; known && !*dryRun {
-				if err := source.Delete("artifacts", "Documents", map[string]string{"Key": key}); err != nil {
-					log.Fatalf("[ERROR] drop the row for %s: %v", key, err)
-				}
-				if err := uploader.Remove(object); err != nil {
-					log.Fatalf("[ERROR] drop the object for %s: %v", key, err)
-				}
+			if object, known := objects[key]; known {
+				drops = append(drops, store.Delete(documentsTab, store.Row{"Key": key}))
+				dropped = append(dropped, object)
 				delete(objects, key)
-				dropped++
 			}
 			continue
 		}
@@ -145,8 +146,8 @@ func main() {
 			again++
 		}
 	}
-	log.Printf("%d documents to import (%d already on file, rendered differently now): %d chunks, %d characters of markdown, %d with no words to index, %d withheld, %d links dropped as unreadable redirects",
-		len(pending), again, chunks, characters, empty, withheld, resolver.Dropped)
+	log.Printf("%d documents to import (%d already on file, rendered differently now): %d chunks, %d characters of markdown, %d with no words to index (%d on file to drop), %d withheld, %d links dropped as unreadable redirects",
+		len(pending), again, chunks, characters, empty, len(dropped), withheld, resolver.Dropped)
 	if *dryRun {
 		if len(pending) == 1 {
 			doc := pending[0].doc
@@ -167,21 +168,32 @@ func main() {
 		return
 	}
 
+	ctx := context.Background()
+	if len(drops) > 0 {
+		if err := cache.CommitAndWait(ctx, actor, drops...); err != nil {
+			log.Fatalf("[ERROR] drop the documents with no words: %v", err)
+		}
+		for _, object := range dropped {
+			if err := uploader.Remove(object); err != nil {
+				log.Fatalf("[ERROR] drop %s: %v", object, err)
+			}
+		}
+	}
 	imported := 0
 	for start := 0; start < len(pending); start += batch {
 		end := min(start+batch, len(pending))
 		group := pending[start:end]
-		if err := embedAndStore(embedder, uploader, group); err != nil {
+		if err := embedAndStore(cache, embedder, uploader, group); err != nil {
 			log.Fatalf("[ERROR] %v", err)
 		}
-		if err := record(source, uploader, header, group); err != nil {
+		if err := record(ctx, cache, uploader, group); err != nil {
 			log.Fatalf("[ERROR] %v", err)
 		}
 		imported += len(group)
 		log.Printf("imported %d of %d (%.1fM characters embedded)", imported, len(pending), float64(artifacts.Billed)/1e6)
 	}
 	fmt.Printf("\n%d files: %d imported, %d already on file, %d with no words (%d taken off the corpus), %d withheld, %d failed\n%d chunks, %.1fM characters embedded, %d links dropped\n",
-		len(files), imported, skipped, empty, dropped, withheld, failed, chunks, float64(artifacts.Billed)/1e6, resolver.Dropped)
+		len(files), imported, skipped, empty, len(dropped), withheld, failed, chunks, float64(artifacts.Billed)/1e6, resolver.Dropped)
 	report("by kind", kinds)
 	report("by channel", channels)
 	if failed > 0 {
@@ -194,25 +206,17 @@ type work struct {
 	replacing string
 }
 
-func record(source *data.Sheet, uploader *blob.Uploader, header []string, group []work) error {
-	fresh := []work{}
-	updates := map[string]map[string]string{}
+func record(ctx context.Context, cache *artifacts.Cache, uploader *blob.Uploader, group []work) error {
+	ops := []store.Op{}
 	for _, item := range group {
 		if item.replacing == "" {
-			fresh = append(fresh, item)
+			ops = append(ops, store.Insert(documentsTab, item.doc.Row()))
 			continue
 		}
-		updates[item.doc.Key] = item.doc.Row()
+		ops = append(ops, store.Update(documentsTab, store.Row{"Key": item.doc.Key}, item.doc.Row()))
 	}
-	if len(fresh) > 0 {
-		if err := appendRows(source, header, fresh); err != nil {
-			return fmt.Errorf("write the Documents rows: %w", err)
-		}
-	}
-	if len(updates) > 0 {
-		if err := source.SetMany("artifacts", "Documents", "Key", updates); err != nil {
-			return fmt.Errorf("update the Documents rows: %w", err)
-		}
+	if err := cache.CommitAndWait(ctx, actor, ops...); err != nil {
+		return fmt.Errorf("record the documents: %w", err)
 	}
 	for _, item := range group {
 		if item.replacing == "" {
@@ -225,7 +229,7 @@ func record(source *data.Sheet, uploader *blob.Uploader, header []string, group 
 	return nil
 }
 
-func embedAndStore(embedder artifacts.Embedder, uploader *blob.Uploader, group []work) error {
+func embedAndStore(cache *artifacts.Cache, embedder artifacts.Embedder, uploader *blob.Uploader, group []work) error {
 	var mu sync.Mutex
 	var first error
 	var wg sync.WaitGroup
@@ -236,7 +240,7 @@ func embedAndStore(embedder artifacts.Embedder, uploader *blob.Uploader, group [
 		go func() {
 			defer wg.Done()
 			defer func() { <-slots }()
-			err := store(embedder, uploader, item.doc)
+			err := put(cache, embedder, uploader, item.doc)
 			if err == nil {
 				return
 			}
@@ -251,7 +255,7 @@ func embedAndStore(embedder artifacts.Embedder, uploader *blob.Uploader, group [
 	return first
 }
 
-func store(embedder artifacts.Embedder, uploader *blob.Uploader, doc *artifacts.Document) error {
+func put(cache *artifacts.Cache, embedder artifacts.Embedder, uploader *blob.Uploader, doc *artifacts.Document) error {
 	if err := doc.Embed(context.Background(), embedder); err != nil {
 		return err
 	}
@@ -262,23 +266,7 @@ func store(embedder artifacts.Embedder, uploader *blob.Uploader, doc *artifacts.
 	if _, err := uploader.Put(artifacts.Folder, doc.ObjectFile(), "application/json", body); err != nil {
 		return err
 	}
-	for i := range doc.Chunks {
-		doc.Chunks[i].Vector = nil
-	}
-	return nil
-}
-
-func appendRows(source *data.Sheet, header []string, group []work) error {
-	rows := []map[string]string{}
-	for _, item := range group {
-		row := item.doc.Row()
-		cells := map[string]string{}
-		for _, column := range header {
-			cells[column] = row[column]
-		}
-		rows = append(rows, cells)
-	}
-	return source.Insert("artifacts", "Documents", rows)
+	return cache.Hold(doc)
 }
 
 func report(what string, counts map[string]int) {

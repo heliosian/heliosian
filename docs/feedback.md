@@ -8,13 +8,13 @@ A report goes to a spreadsheet, not to GitHub. The super admins hear about it by
 
 `POST /api/feedback` is registered on every app's mux (`internal/feedback`, wired in `internal/app.NewCore` beside the app switch's route). The body is JSON: `kind` (`bug` or `idea`), `summary` (120 characters at most), `details` (4000), and the page's context - `url`, `page` (the document title), `viewport`, `screen`, `language`, `timezone`, and `errors`. Everything that says who and where comes from the server, never the client: the reporter's email from the session, the app from the mux the route is on, whether they are a super admin from the Config sheet, the browser from the request's user agent, and the time from the server's clock. Every client-supplied field is trimmed and clipped.
 
-The handler validates, hands the report to a queue, and answers `202 Accepted` at once; one goroutine drains the queue, writes each report to the Reports tab and then mails the super admins, neither of which anyone waits on. A save that fails is logged at error level with the whole report, so nothing is lost. A person may send five reports in ten minutes; a sixth gets a 429 asking them to wait. A queue that is full (64 reports waiting) answers 503.
+The handler validates, commits the report as a new row of the Reports tab, made as the reporter, and answers `202 Accepted`; the commit takes the report into memory at once and writes the row behind the request (`docs/storage.md`), and the mail to the super admins goes out after it, neither of which the reporter waits on. A commit that is refused answers 503 and logs the whole report at error level, so nothing is lost. A person may send five reports in ten minutes; a sixth gets a 429 asking them to wait.
 
 ## The Reports tab
 
 One spreadsheet, `FEEDBACK_SHEET`, one tab, `Reports`, one row per report, appended as it arrives and never deleted. Its columns are in `feedback.ReportColumns`, which `tools/createtabs` writes: the `ID` that names the row, `Received`, the `App` key and `App Name`, `Kind`, `Status`, the reporter's `Summary` and `Details`, their `Email` and `Role`, the page's `URL`, `Page`, `Browser`, `Viewport`, `Screen`, `Language` and `Time Zone`, the `Errors` the page had raised, and - once an admin has dealt with it - the `Issue` it became, when it was `Handled` and by whom.
 
-`Status` is the whole of the workflow: `New` until an admin acts, then `Filed` against an issue or `Dismissed` without one. The tab loads at startup, refreshes on the same five minutes as every other model, and is written through the shared sheet queue, so the page shows a filing the instant it happens rather than on the next refresh.
+`Status` is the whole of the workflow: `New` until an admin acts, then `Filed` against an issue or `Dismissed` without one. The Feedback sheet is a store like every app's (`docs/storage.md`): it loads at startup and refreshes on the same five minutes, every change is a commit, and its Change Log holds what a changed cell held before, so the page shows a filing the instant it happens and the status it replaced is on record.
 
 ## Telling the super admins
 

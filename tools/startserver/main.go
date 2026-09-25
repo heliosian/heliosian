@@ -1,12 +1,3 @@
-// Command startserver is the development server. By default it serves the
-// sample community in the foreground; --capture serves it just long enough to
-// screenshot one page and exits; --real serves the production assembly in the
-// foreground; --detach launches --real in the background with its output in a log
-// file and prints a minted session cookie plus the command to stop it. Every
-// mode serves every app, each on its own local hostname.
-//
-// All sample-mode composition lives here: the production binary (main.go) and
-// the shared wiring in internal/app carry no dev or sample behavior at all.
 package main
 
 import (
@@ -37,17 +28,14 @@ import (
 	"heliosian/internal/logging"
 	"heliosian/internal/loop"
 	"heliosian/internal/mail"
+	"heliosian/internal/store"
 	"heliosian/internal/team"
-	"heliosian/internal/who"
 )
 
 const logPath = "local/heliosian-server.log"
 
 const sampleUser = "jordan.whitfield@heliosschool.org"
 
-// blobCache is where --real keeps the media it fetches from the bucket, so a
-// restart reads photos from disk rather than fetching every one again;
-// gitignored, and deleted by hand to start clean.
 const blobCache = "local/cache/blobs"
 
 func main() {
@@ -81,8 +69,6 @@ func main() {
 	}
 }
 
-// mailDir is where sample mode writes its mail: MAIL_DIR, or hca-mail under
-// the system temp directory.
 func mailDir() string {
 	if dir := os.Getenv("MAIL_DIR"); dir != "" {
 		return dir
@@ -90,22 +76,18 @@ func mailDir() string {
 	return filepath.Join(os.TempDir(), "hca-mail")
 }
 
-// sampleServer assembles the fictional community: sample CSVs, fake geocoding,
-// media in memory until exit, every request signed in as the sample parent,
-// whom the sample Config sheet lists as a super admin so every admin tool is
-// testable locally.
-func sampleServer() (*http.Server, *who.Queue) {
+func sampleServer() (*http.Server, *store.Queue) {
 	dir := &data.Dir{Root: "sampledata"}
+	media := blob.NewMemory()
 	core := app.NewCore(app.Config{
-		Source:      dir,
-		Writer:      dir,
-		Geocoder:    geocode.Fake{},
-		Store:       blob.NewMemory(),
-		FamilyIDKey: []byte("sample"),
-		BrowserKey:  os.Getenv("GOOGLE_MAPS_BROWSER_KEY"),
-		ImageSearch: app.ImageSearchKeys(),
-		Describer:   sampleDescriber(),
-		// Sample mail lands as .html files to open in a browser, never sent.
+		Source:        dir,
+		Writer:        dir,
+		Geocoder:      geocode.Fake{},
+		Store:         media,
+		FamilyIDKey:   []byte("sample"),
+		BrowserKey:    os.Getenv("GOOGLE_MAPS_BROWSER_KEY"),
+		ImageSearch:   app.ImageSearchKeys(),
+		Describer:     sampleDescriber(),
 		Mail:          mail.New("", "HCA-Team <hca@example.org>", mailDir()),
 		MailFrom:      "HCA-Team <hca@example.org>",
 		WhoMail:       mail.New("", "Helios Who? <who@example.org>", mailDir()),
@@ -115,24 +97,22 @@ func sampleServer() (*http.Server, *who.Queue) {
 		BirthdayMail:  mail.New("", "Helios Staff Birthdays <birthday@example.org>", mailDir()),
 		BirthdayFrom:  "Helios Staff Birthdays <birthday@example.org>",
 		BirthdayBase:  "https://birthday.heliosiandev.com:" + app.Port(),
-		// Reports land in the sample Reports tab and the word of them beside
-		// the other sample mail; filing needs a GitHub App, which sample mode
-		// has none of, so the triage queue says so.
-		FeedbackBase: "https://home.heliosiandev.com:" + app.Port(),
-		// Loop's forwards would land as .eml files beside the other sample
-		// mail and its archive under loop/ there; nothing receives for it.
+		FeedbackBase:  "https://home.heliosiandev.com:" + app.Port(),
 		Loop:          loop.Mail{Sender: &mail.Files{Dir: mailDir(), From: "Helios Loop"}, Key: []byte("sample"), Base: "https://loop.heliosiandev.com:" + app.Port(), Archive: loop.DirArchive{Dir: mailDir()}},
 		LoopDescriber: sampleGroupDescriber(),
 		Asker:         sampleAsker(),
-		Artifacts: func(*artifacts.Model) (*artifacts.Model, error) {
-			return artifacts.LoadDir("sampledata/artifacts", artifacts.Fake{})
-		},
-		Embedder: artifacts.Fake{},
+		Embedder:      artifacts.Fake{},
+		ArtifactsMail: artifacts.Inbox{Bucket: media},
 	})
-	// No Google sign-in here, but Spoof Mode still: a sign-in with a key of
-	// its own signs the spoof cookie and answers the toolbar's switch, and
-	// every request is the sample parent's unless they are viewing as
-	// someone else.
+	saved, err := filepath.Glob("sampledata/artifacts/*.json")
+	if err != nil {
+		logging.Fatal("list the sample documents", "error", err)
+	}
+	for _, path := range saved {
+		if err := core.Documents.FileSaved(context.Background(), "sample", path); err != nil {
+			logging.Fatal("file a sample document", "path", path, "error", err)
+		}
+	}
 	signIn := auth.New(app.DevDomain, "", []byte("sample"), "", core.Member, core.Sessions)
 	signIn.Spoof = core.Spoof
 	for _, m := range core.Muxes() {
@@ -152,8 +132,6 @@ func sampleServer() (*http.Server, *who.Queue) {
 	}), core.Queue)
 }
 
-// sampleAsker is Claude when a key is at hand, else the fake that streams
-// a canned answer, so the chat's flow can be tried either way.
 func sampleAsker() ask.Responder {
 	if c := app.ClaudeAsker(); c != nil {
 		return c
@@ -161,8 +139,6 @@ func sampleAsker() ask.Responder {
 	return ask.Fake{}
 }
 
-// sampleDescriber is Claude when a key is at hand, else the fake, so the
-// charity form's flow can be tried either way.
 func sampleDescriber() birthday.Describer {
 	if d := app.ClaudeDescriber(); d != nil {
 		return d
@@ -170,7 +146,6 @@ func sampleDescriber() birthday.Describer {
 	return describe.Fake{}
 }
 
-// sampleGroupDescriber is Claude on the same key, else the fake.
 func sampleGroupDescriber() loop.Describer {
 	if d := app.ClaudeGroupDescriber(); d != nil {
 		return d
@@ -178,7 +153,7 @@ func sampleGroupDescriber() loop.Describer {
 	return describe.Fake{}
 }
 
-func localTLS(server *http.Server, queue *who.Queue) (*http.Server, *who.Queue) {
+func localTLS(server *http.Server, queue *store.Queue) (*http.Server, *store.Queue) {
 	server.TLSConfig = &tls.Config{Certificates: []tls.Certificate{devtls.Certificate(app.DevDomain)}}
 	return server, queue
 }

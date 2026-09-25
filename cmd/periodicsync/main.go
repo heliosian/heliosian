@@ -12,6 +12,7 @@ import (
 	"heliosian/internal/calendar"
 	"heliosian/internal/calendarimport"
 	"heliosian/internal/data"
+	"heliosian/internal/store"
 	"heliosian/internal/who"
 )
 
@@ -73,7 +74,7 @@ func main() {
 		log.Fatalf("[ERROR] load directory model: %v", err)
 	}
 	roster := func() calendar.Roster { return app.CalendarRoster(directory) }
-	cache, err := calendar.NewCache(source, source, roster, nil, func(string) bool { return false }, who.NewQueue())
+	cache, err := calendar.NewCache(source, source, roster, nil, func(string) bool { return false }, store.NewQueue())
 	if err != nil {
 		log.Fatalf("[ERROR] load calendar model: %v", err)
 	}

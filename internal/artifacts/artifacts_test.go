@@ -273,10 +273,7 @@ func TestVectorsRoundTripAsBase64(t *testing.T) {
 }
 
 func TestSearchRanksTheMatchingChunkFirst(t *testing.T) {
-	m, err := LoadDir(samples, Fake{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	m := sampleModel(t)
 	if len(m.Documents) != 4 || m.Documents[0].Date != "2026-09-11" {
 		t.Fatalf("documents: %d, first %s", len(m.Documents), m.Documents[0].Date)
 	}
@@ -338,10 +335,7 @@ func TestAQuotedPassageIsReturnedOnce(t *testing.T) {
 }
 
 func TestDatesNarrowTheSearch(t *testing.T) {
-	m, err := LoadDir(samples, Fake{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	m := sampleModel(t)
 	if since := m.Between("2026-09-05", ""); len(since.Documents) != 1 || since.Documents[0].Date != "2026-09-11" {
 		t.Fatalf("since: %d", len(since.Documents))
 	}

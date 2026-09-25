@@ -19,8 +19,8 @@ import (
 
 	"golang.org/x/net/html/charset"
 
-	"heliosian/internal/data"
 	"heliosian/internal/mail"
+	"heliosian/internal/store"
 )
 
 type Bucket interface {
@@ -36,8 +36,9 @@ func (i Inbox) ready() bool {
 	return i.SigningKey != "" && i.Bucket != nil
 }
 
-type Queue interface {
-	Enqueuer
+const mailActor = "ask mail"
+
+type Holder interface {
 	Hold()
 	Release()
 }
@@ -46,12 +47,11 @@ type Filer struct {
 	Inbox
 	cache    *Cache
 	embedder Embedder
-	writer   data.Writer
-	queue    Queue
+	holder   Holder
 }
 
-func Register(mux *http.ServeMux, cache *Cache, embedder Embedder, writer data.Writer, queue Queue, mailbox Inbox) *Filer {
-	in := &Filer{Inbox: mailbox, cache: cache, embedder: embedder, writer: writer, queue: queue}
+func Register(mux *http.ServeMux, cache *Cache, embedder Embedder, holder Holder, mailbox Inbox) *Filer {
+	in := &Filer{Inbox: mailbox, cache: cache, embedder: embedder, holder: holder}
 	mux.HandleFunc("POST /hooks/mail/mime", in.hook)
 	return in
 }
@@ -84,9 +84,9 @@ func (in *Filer) hook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	logHeaders(raw, m)
-	in.queue.Hold()
-	defer in.queue.Release()
-	if err := in.file(r.Context(), m); err != nil {
+	in.holder.Hold()
+	defer in.holder.Release()
+	if err := in.file(r.Context(), mailActor, m); err != nil {
 		slog.ErrorContext(r.Context(), "[ERROR] artifacts: mail not imported", "id", m.MessageID, "subject", m.Subject, "error", err)
 		http.Error(w, "not imported", http.StatusInternalServerError)
 		return
@@ -113,37 +113,38 @@ func logHeaders(raw []byte, m Message) {
 		"arc-seal", h["Arc-Seal"])
 }
 
-func (in *Filer) Post(ctx context.Context, group string, raw []byte) error {
-	in.queue.Hold()
-	defer in.queue.Release()
+func (in *Filer) Post(ctx context.Context, actor, group string, raw []byte) error {
+	in.holder.Hold()
+	defer in.holder.Release()
 	m, err := ParseMail(raw)
 	if err != nil {
 		return err
 	}
 	m.Channel, m.Kind = group, KindGroup
-	return in.file(ctx, m)
+	return in.file(ctx, actor, m)
 }
 
-func (in *Filer) Remove(group string) error {
-	gone := func(d *Document) bool { return d.Kind == KindGroup && d.Channel == group }
-	n := 0
-	for _, d := range in.cache.Model().Documents {
-		if gone(d) {
-			n++
-		}
+func (in *Filer) Remove(ctx context.Context, actor, group string) error {
+	if err := in.cache.Commit(ctx, actor, store.Delete(documentsTab, store.Row{"Kind": KindGroup, "Channel": group})); err != nil {
+		return err
 	}
-	if n == 0 {
-		return nil
-	}
-	if err := in.writer.Delete(appName, documentsTab, map[string]string{"Kind": KindGroup, "Channel": group}); err != nil {
-		return fmt.Errorf("record: %w", err)
-	}
-	in.cache.remove(gone)
-	slog.Info("artifacts: a group's mail removed", "group", group, "documents", n)
+	slog.Info("artifacts: a group's mail removed", "group", group)
 	return nil
 }
 
-func (in *Filer) file(ctx context.Context, m Message) error {
+func (in *Filer) FileSaved(ctx context.Context, actor, path string) error {
+	saved, err := ReadSaved(path)
+	if err != nil {
+		return err
+	}
+	doc, err := saved.Build(NewResolver(), in.embedder.Model())
+	if err != nil {
+		return fmt.Errorf("%s: %w", path, err)
+	}
+	return in.record(ctx, actor, doc)
+}
+
+func (in *Filer) file(ctx context.Context, actor string, m Message) error {
 	doc, err := Build(m, NewResolver(), in.embedder.Model())
 	if errors.Is(err, ErrNotBroadcast) || errors.Is(err, ErrNoWords) {
 		slog.Info("artifacts: mail left out", "from", m.From, "subject", m.Subject, "reason", err)
@@ -152,8 +153,12 @@ func (in *Filer) file(ctx context.Context, m Message) error {
 	if err != nil {
 		return err
 	}
+	return in.record(ctx, actor, doc)
+}
+
+func (in *Filer) record(ctx context.Context, actor string, doc *Document) error {
 	if in.known(doc) {
-		slog.Info("artifacts: mail already on file", "key", doc.Key, "subject", doc.Title, "date", doc.Date)
+		slog.Info("artifacts: already on file", "key", doc.Key, "subject", doc.Title, "date", doc.Date)
 		return nil
 	}
 	if err := doc.Embed(ctx, in.embedder); err != nil {
@@ -166,22 +171,13 @@ func (in *Filer) file(ctx context.Context, m Message) error {
 	if err := in.Bucket.Put(Folder, doc.ObjectFile(), "application/json", body); err != nil {
 		return err
 	}
-	if err := doc.normalize(); err != nil {
+	if err := in.cache.Hold(doc); err != nil {
 		return err
 	}
-	done := make(chan error, 1)
-	in.queue.Add(func() {
-		if err := in.writer.Insert(appName, documentsTab, []map[string]string{doc.Row()}); err != nil {
-			done <- err
-			return
-		}
-		in.cache.add(doc)
-		done <- nil
-	})
-	if err := <-done; err != nil {
+	if err := in.cache.CommitAndWait(ctx, actor, store.Insert(documentsTab, doc.Row())); err != nil {
 		return fmt.Errorf("record: %w", err)
 	}
-	slog.Info("artifacts: mail imported", "key", doc.Key, "subject", doc.Title, "date", doc.Date, "channel", doc.Channel, "chunks", len(doc.Chunks))
+	slog.Info("artifacts: filed", "key", doc.Key, "subject", doc.Title, "date", doc.Date, "channel", doc.Channel, "chunks", len(doc.Chunks))
 	return nil
 }
 

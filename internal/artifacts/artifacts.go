@@ -1,4 +1,3 @@
-// Package artifacts keeps the documents the community has been sent - the school's newsletters, everything its lists carried and its website's pages - as markdown in chunks with embeddings, for Helios Ask to search.
 package artifacts
 
 import (
@@ -8,7 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"path/filepath"
+	"maps"
 	"slices"
 	"sort"
 	"strconv"
@@ -18,13 +17,13 @@ import (
 
 	"heliosian/internal/calendar"
 	"heliosian/internal/data"
+	"heliosian/internal/store"
 )
 
 const (
 	appName          = "artifacts"
 	documentsTab     = "Documents"
 	Folder           = "artifacts"
-	refreshInterval  = 5 * time.Minute
 	lexicalWeight    = 0.15
 	readers          = 32
 	KindNewsletter   = "newsletter"
@@ -157,28 +156,24 @@ type Objects interface {
 	Get(name string) ([]byte, error)
 }
 
-func ReadRows(source data.Source) ([]map[string]string, error) {
-	header, rows, err := source.Table(appName, documentsTab)
-	if err != nil {
-		return nil, err
-	}
-	if err := data.CheckColumns(documentsTab, header, DocumentColumns); err != nil {
-		return nil, err
-	}
-	return rows, nil
+type documents struct {
+	objects  Objects
+	embedder Embedder
+	mu       sync.Mutex
+	held     map[string]*Document
 }
 
-func Load(source data.Source, objects Objects, embedder Embedder, previous *Model) (*Model, error) {
-	rows, err := ReadRows(source)
-	if err != nil {
-		return nil, err
-	}
-	held := map[string]*Document{}
-	if previous != nil {
-		for _, doc := range previous.Documents {
-			held[doc.Object()] = doc
-		}
-	}
+func (d *documents) hold(doc *Document) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.held[doc.Object()] = doc
+}
+
+func (d *documents) build(tables store.Tables) (*Model, error) {
+	rows := tables[documentsTab]
+	d.mu.Lock()
+	held := maps.Clone(d.held)
+	d.mu.Unlock()
 	m := &Model{Documents: make([]*Document, len(rows))}
 	wanted := []int{}
 	for i, row := range rows {
@@ -198,7 +193,7 @@ func Load(source data.Source, objects Objects, embedder Embedder, previous *Mode
 		go func() {
 			defer wg.Done()
 			defer func() { <-slots }()
-			doc, err := read(objects, rows[i], embedder)
+			doc, err := read(d.objects, rows[i], d.embedder)
 			mu.Lock()
 			defer mu.Unlock()
 			if err != nil {
@@ -214,6 +209,11 @@ func Load(source data.Source, objects Objects, embedder Embedder, previous *Mode
 	if first != nil {
 		return nil, first
 	}
+	d.mu.Lock()
+	for _, i := range wanted {
+		d.held[rows[i]["Object"]] = m.Documents[i]
+	}
+	d.mu.Unlock()
 	m.Fetched = len(wanted)
 	m.sort()
 	return m, nil
@@ -238,33 +238,6 @@ func read(objects Objects, row map[string]string, embedder Embedder) (*Document,
 		return nil, err
 	}
 	return doc, nil
-}
-
-func LoadDir(dir string, embedder Embedder) (*Model, error) {
-	files, err := filepath.Glob(filepath.Join(dir, "*.json"))
-	if err != nil {
-		return nil, err
-	}
-	m := &Model{Documents: []*Document{}}
-	for _, file := range files {
-		saved, err := ReadSaved(file)
-		if err != nil {
-			return nil, err
-		}
-		doc, err := saved.Build(NewResolver(), embedder.Model())
-		if err != nil {
-			return nil, fmt.Errorf("%s: %w", file, err)
-		}
-		if err := doc.Embed(context.Background(), embedder); err != nil {
-			return nil, fmt.Errorf("%s: %w", file, err)
-		}
-		if err := doc.normalize(); err != nil {
-			return nil, err
-		}
-		m.Documents = append(m.Documents, doc)
-	}
-	m.sort()
-	return m, nil
 }
 
 func (m *Model) sort() {
@@ -404,90 +377,33 @@ func quotes(words string, taken []string) bool {
 	return false
 }
 
-type Enqueuer interface {
-	Add(func())
-}
-
 type Cache struct {
-	load  func(previous *Model) (*Model, error)
-	queue Enqueuer
-	mu    sync.RWMutex
-	model *Model
-	edits int
+	*store.Store[*Model]
+	documents *documents
 }
 
-func NewCache(load func(previous *Model) (*Model, error), queue Enqueuer) (*Cache, error) {
-	c := &Cache{load: load, queue: queue}
-	if err := c.refresh(); err != nil {
+func NewCache(source data.Source, writer data.Writer, objects Objects, embedder Embedder, queue store.Enqueuer) (*Cache, error) {
+	d := &documents{objects: objects, embedder: embedder, held: map[string]*Document{}}
+	s, err := store.New(store.Spec[*Model]{
+		App:   appName,
+		Tabs:  []store.Tab{{Name: documentsTab, Columns: DocumentColumns, Key: []string{"Key"}}},
+		Build: d.build,
+		Loaded: func(model *Model, took time.Duration) {
+			oldest, newest := model.Span()
+			slog.Info("loaded artifacts model", "documents", len(model.Documents), "fetched", model.Fetched, "chunks", model.Chunks(),
+				"channels", len(model.Channels()), "oldest", oldest, "newest", newest, "took", took.Round(time.Millisecond))
+		},
+	}, source, writer, queue)
+	if err != nil {
 		return nil, err
 	}
-	go c.refreshLoop()
-	return c, nil
+	return &Cache{Store: s, documents: d}, nil
 }
 
-func (c *Cache) refreshLoop() {
-	for range time.Tick(refreshInterval) {
-		c.Refresh()
-	}
-}
-
-func (c *Cache) Refresh() {
-	c.queue.Add(func() {
-		if err := c.refresh(); err != nil {
-			slog.Error("artifacts model refresh", "error", err)
-		}
-	})
-}
-
-func (c *Cache) refresh() error {
-	start := time.Now()
-	c.mu.RLock()
-	before := c.edits
-	c.mu.RUnlock()
-	model, err := c.load(c.Model())
-	if err != nil {
+func (c *Cache) Hold(doc *Document) error {
+	if err := doc.normalize(); err != nil {
 		return err
 	}
-	c.mu.Lock()
-	stale := c.edits != before
-	if !stale {
-		c.model = model
-	}
-	c.mu.Unlock()
-	if stale {
-		slog.Info("artifacts model refresh skipped: edited while reading")
-		return nil
-	}
-	oldest, newest := model.Span()
-	slog.Info("loaded artifacts model", "documents", len(model.Documents), "fetched", model.Fetched, "chunks", model.Chunks(),
-		"channels", len(model.Channels()), "oldest", oldest, "newest", newest, "took", time.Since(start).Round(time.Millisecond))
+	c.documents.hold(doc)
 	return nil
-}
-
-func (c *Cache) add(doc *Document) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	next := &Model{Documents: append(slices.Clone(c.model.Documents), doc), Fetched: c.model.Fetched}
-	next.sort()
-	c.model = next
-	c.edits++
-}
-
-func (c *Cache) remove(gone func(*Document) bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	kept := []*Document{}
-	for _, d := range c.model.Documents {
-		if !gone(d) {
-			kept = append(kept, d)
-		}
-	}
-	c.model = &Model{Documents: kept, Fetched: c.model.Fetched}
-	c.edits++
-}
-
-func (c *Cache) Model() *Model {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.model
 }

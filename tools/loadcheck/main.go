@@ -12,12 +12,14 @@ import (
 
 	"heliosian/internal/app"
 	"heliosian/internal/artifacts"
+	"heliosian/internal/blob"
 	"heliosian/internal/calendar"
 	"heliosian/internal/celebrate"
 	"heliosian/internal/config"
 	"heliosian/internal/data"
 	"heliosian/internal/home"
 	"heliosian/internal/loop"
+	"heliosian/internal/store"
 	"heliosian/internal/team"
 	"heliosian/internal/who"
 )
@@ -182,7 +184,7 @@ func main() {
 		fmt.Printf("  %s: %d\n", band, len(model.RoomParents[band]))
 	}
 	fmt.Println("departments:", model.Departments)
-	invites, err := who.NewInvites(source, nil, who.NewQueue())
+	invites, err := who.NewInvites(source, nil, store.NewQueue())
 	if err != nil {
 		log.Fatalf("[ERROR] load invites: %v", err)
 	}
@@ -192,7 +194,7 @@ func main() {
 		fmt.Printf("  %s -> %s (%s -> %s)\n", g.Name, g.NextName, g.Band, g.NextBand)
 	}
 
-	appsCache, err := home.NewCache(source, nil, homeImages{}, func() []string { return nil }, who.NewQueue())
+	appsCache, err := home.NewCache(source, nil, homeImages{}, func() []string { return nil }, store.NewQueue())
 	if err != nil {
 		log.Fatalf("[ERROR] load apps model: %v", err)
 	}
@@ -210,7 +212,7 @@ func main() {
 	}
 	fmt.Printf("apps admins: %d\n", len(appsCache.Admins()))
 
-	eventsCache, err := team.NewCache(source, nil, teamImages{}, func(string) bool { return false }, who.NewQueue())
+	eventsCache, err := team.NewCache(source, nil, teamImages{}, func(string) bool { return false }, store.NewQueue())
 	if err != nil {
 		log.Fatalf("[ERROR] load events model: %v", err)
 	}
@@ -238,7 +240,7 @@ func main() {
 	}
 	fmt.Printf("events admins: %d\n", len(eventsCache.Admins(nil)))
 
-	celebrateCache, err := celebrate.NewCache(source, nil, celebrateImages{}, func(string) bool { return false }, who.NewQueue())
+	celebrateCache, err := celebrate.NewCache(source, nil, celebrateImages{}, func(string) bool { return false }, store.NewQueue())
 	if err != nil {
 		log.Fatalf("[ERROR] load celebrate model: %v", err)
 	}
@@ -264,18 +266,15 @@ func main() {
 	}
 	fmt.Printf("celebrate admins: %d\n", len(celebrateCache.Admins(nil)))
 
-	configTables, err := config.ReadTables(source)
+	configCache, err := config.NewCache(source, nil, store.NewQueue())
 	if err != nil {
-		log.Fatalf("[ERROR] read config tables: %v", err)
+		log.Fatalf("[ERROR] load config: %v", err)
 	}
-	settings, err := config.Parse(configTables)
-	if err != nil {
-		log.Fatalf("[ERROR] parse config: %v", err)
-	}
+	settings := configCache.Settings()
 	fmt.Printf("config: %d super admins, stale years %+v, staff color %s, %d grade colors, %d classroom colors\n",
 		len(settings.SuperAdmins), settings.StaleYears, settings.StaffColor, len(settings.GradeColors), len(settings.ClassroomColors))
 
-	calendarCache, err := calendar.NewCache(source, nil, func() calendar.Roster { return app.CalendarRoster(model) }, nil, func(string) bool { return false }, who.NewQueue())
+	calendarCache, err := calendar.NewCache(source, nil, func() calendar.Roster { return app.CalendarRoster(model) }, nil, func(string) bool { return false }, store.NewQueue())
 	if err != nil {
 		log.Fatalf("[ERROR] load calendar model: %v", err)
 	}
@@ -310,7 +309,7 @@ func main() {
 	}
 	fmt.Printf("calendar admins: %d\n", len(calendarCache.Admins(nil)))
 
-	groupCache, err := loop.NewCache(source, nil, func(string) bool { return false }, who.NewQueue())
+	groupCache, err := loop.NewCache(source, nil, func(string) bool { return false }, store.NewQueue())
 	if err != nil {
 		log.Fatalf("[ERROR] load groups model: %v", err)
 	}
@@ -330,12 +329,21 @@ func main() {
 	}
 	fmt.Printf("groups admins: %d\n", len(groupCache.Admins(nil)))
 
-	documents, err := artifacts.ReadRows(source)
+	objects, err := blob.New("local/cache/blobs")
 	if err != nil {
-		log.Fatalf("[ERROR] read artifacts rows: %v", err)
+		log.Fatalf("[ERROR] blob store: %v", err)
 	}
+	embedder, err := artifacts.NewVertex()
+	if err != nil {
+		log.Fatalf("[ERROR] embedder: %v", err)
+	}
+	artifactsCache, err := artifacts.NewCache(source, nil, objects, embedder, store.NewQueue())
+	if err != nil {
+		log.Fatalf("[ERROR] load artifacts: %v", err)
+	}
+	documents := artifactsCache.Model().Documents
 	fmt.Printf("artifacts: %d documents\n", len(documents))
-	for _, row := range documents {
-		fmt.Printf("  %s %q by %s (%s, %s chunks)\n", row["Date"], row["Title"], row["Author"], row["Kind"], row["Chunks"])
+	for _, doc := range documents {
+		fmt.Printf("  %s %q by %s (%s, %d chunks)\n", doc.Date, doc.Title, doc.Author, doc.Kind, len(doc.Chunks))
 	}
 }

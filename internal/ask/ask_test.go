@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -15,12 +16,14 @@ import (
 
 	"heliosian/internal/artifacts"
 	"heliosian/internal/auth"
+	"heliosian/internal/blob"
 	"heliosian/internal/calendar"
 	"heliosian/internal/celebrate"
 	"heliosian/internal/claude"
 	"heliosian/internal/data"
 	"heliosian/internal/home"
 	"heliosian/internal/loop"
+	"heliosian/internal/store"
 	"heliosian/internal/team"
 	"heliosian/internal/who"
 )
@@ -86,35 +89,48 @@ func sampleSources(t *testing.T) Sources {
 		}
 		roster.Classrooms = append(roster.Classrooms, room)
 	}
-	calendarCache, err := calendar.NewCache(dir, dir, func() calendar.Roster { return roster }, nil, func(string) bool { return false }, who.NewQueue())
+	calendarCache, err := calendar.NewCache(dir, dir, func() calendar.Roster { return roster }, nil, func(string) bool { return false }, store.NewQueue())
 	if err != nil {
 		t.Fatal(err)
 	}
 	calendarModel := calendarCache.Model()
-	teamCache, err := team.NewCache(dir, dir, anyImages{}, func(string) bool { return false }, who.NewQueue())
+	teamCache, err := team.NewCache(dir, dir, anyImages{}, func(string) bool { return false }, store.NewQueue())
 	if err != nil {
 		t.Fatal(err)
 	}
 	teamModel := teamCache.Model()
-	celebrateCache, err := celebrate.NewCache(dir, dir, anyImages{}, func(string) bool { return false }, who.NewQueue())
+	celebrateCache, err := celebrate.NewCache(dir, dir, anyImages{}, func(string) bool { return false }, store.NewQueue())
 	if err != nil {
 		t.Fatal(err)
 	}
 	celebrateModel := celebrateCache.Model()
-	loopCache, err := loop.NewCache(dir, dir, func(string) bool { return false }, who.NewQueue())
+	loopCache, err := loop.NewCache(dir, dir, func(string) bool { return false }, store.NewQueue())
 	if err != nil {
 		t.Fatal(err)
 	}
 	loopModel := loopCache.Model()
-	homeCache, err := home.NewCache(dir, dir, anyImages{}, func() []string { return nil }, who.NewQueue())
+	homeCache, err := home.NewCache(dir, dir, anyImages{}, func() []string { return nil }, store.NewQueue())
 	if err != nil {
 		t.Fatal(err)
 	}
 	homeModel := homeCache.Model()
-	documents, err := artifacts.LoadDir("../../sampledata/artifacts", artifacts.Fake{})
+	media := blob.NewMemory()
+	queue := store.NewQueue()
+	artifactsCache, err := artifacts.NewCache(dir, dir, media, artifacts.Fake{}, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
+	filer := artifacts.Register(http.NewServeMux(), artifactsCache, artifacts.Fake{}, queue, artifacts.Inbox{Bucket: media})
+	saved, err := filepath.Glob("../../sampledata/artifacts/*.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range saved {
+		if err := filer.FileSaved(context.Background(), "test", path); err != nil {
+			t.Fatal(err)
+		}
+	}
+	documents := artifactsCache.Model()
 	tags := directory.Tags
 	lists := directory.RoomParentLists
 	return Sources{

@@ -123,14 +123,14 @@ type fakeDocuments struct {
 	dropped []string
 }
 
-func (f *fakeDocuments) Post(_ context.Context, group string, raw []byte) error {
+func (f *fakeDocuments) Post(_ context.Context, _, group string, raw []byte) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.groups = append(f.groups, group)
 	return nil
 }
 
-func (f *fakeDocuments) Remove(group string) error {
+func (f *fakeDocuments) Remove(_ context.Context, _, group string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.dropped = append(f.dropped, group)
@@ -172,14 +172,14 @@ func newHarness(t *testing.T) *harness {
 	if err != nil {
 		t.Fatal(err)
 	}
-	queue := who.NewQueue()
+	queue := store.NewQueue()
 	cache, err := NewCache(dir, dir, func(string) bool { return false }, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
 	h := &harness{t: t, mux: http.NewServeMux(), dir: dir, cache: cache, directory: sampleDirectory{model}, sender: &fakeSender{}, archive: &fakeArchive{objects: map[string][]byte{}}, documents: &fakeDocuments{}, queue: queue}
 	h.mailbox = Mail{Sender: h.sender, SigningKey: signingKey, Key: []byte("key"), Base: "https://loop.test", Archive: h.archive, Documents: h.documents}
-	Register(h.mux, cache, queue, nil, h.directory, func() []string { return nil }, h.mailbox, nil)
+	Register(h.mux, cache, nil, h.directory, func() []string { return nil }, h.mailbox, nil)
 	return h
 }
 

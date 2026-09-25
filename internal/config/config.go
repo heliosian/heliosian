@@ -2,14 +2,13 @@ package config
 
 import (
 	"fmt"
-	"maps"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
 
-	"heliosian/internal/data"
+	"heliosian/internal/store"
 )
 
 const (
@@ -46,42 +45,26 @@ var Keys = []string{
 }
 
 var (
-	settingsColumns       = []string{KeyColumn, ValueColumn}
-	superAdminColumns     = []string{EmailColumn}
-	gradeColorColumns     = []string{GradeColumn, ColorColumn}
-	classroomColorColumns = []string{ClassroomColumn, ColorColumn}
-	signedOutColumns      = []string{EmailColumn, TimeColumn}
+	SettingsColumns       = []string{KeyColumn, ValueColumn}
+	SuperAdminColumns     = []string{EmailColumn}
+	GradeColorColumns     = []string{GradeColumn, ColorColumn}
+	ClassroomColorColumns = []string{ClassroomColumn, ColorColumn}
+	SignedOutColumns      = []string{EmailColumn, TimeColumn}
 )
 
 var HexColor = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
 
-// StaleYears is how old a photo or facts entry can get before the directory asks
-// someone to refresh it. Admin-editable so the school can loosen or tighten the nag
-// without a deploy.
 type StaleYears struct {
 	Photo       float64 `json:"photo"`
 	Facts       float64 `json:"facts"`
 	FamilyPhoto float64 `json:"familyPhoto"`
 }
 
-// PrivacyLinks are the two external URLs My Privacy sends someone to fix a mismatch
-// between Veracross and their Helios Who opt-in. Admin-editable, since both belong to
-// other systems (Veracross's own portal, the consent Google Form) this app doesn't
-// control and can't guarantee will stay put.
 type PrivacyLinks struct {
 	VeracrossPreferences string `json:"veracrossPreferences"`
 	HeliosWhoOptIn       string `json:"heliosWhoOptIn"`
 }
 
-// Settings is the sheet parsed and validated. SuperAdmins are platform-wide;
-// regular admins are per app, in each app's own Admins tab. The two are deliberately
-// separate, disjoint lists rather than one list with a role flag: a regular admin's
-// view of an admin page is built from an API response that a super admin's request
-// never shares a code path with, so there's no field to trim or hide — a regular
-// admin's client simply never receives anything about super admins to begin with.
-//
-// SuperAdmins are never serialized: the config endpoint serves everyone, and who the
-// super admins are is only ever revealed to a super admin.
 type Settings struct {
 	SuperAdmins     []string             `json:"-"`
 	SignedOut       map[string]time.Time `json:"-"`
@@ -92,62 +75,7 @@ type Settings struct {
 	ClassroomColors map[string]string    `json:"classroomColors"`
 }
 
-// Tables are the sheet's tabs as read, before validation, kept so a write can be
-// mirrored into them and the result parsed before anything is persisted.
-type Tables struct {
-	Settings        []map[string]string
-	SuperAdmins     []map[string]string
-	GradeColors     []map[string]string
-	ClassroomColors []map[string]string
-	SignedOut       []map[string]string
-}
-
-func ReadTables(source data.Source) (*Tables, error) {
-	type table struct {
-		name   string
-		want   []string
-		header []string
-		rows   []map[string]string
-	}
-	settings := &table{name: SettingsTab, want: settingsColumns}
-	superAdmins := &table{name: SuperAdminsTab, want: superAdminColumns}
-	gradeColors := &table{name: GradeColorsTab, want: gradeColorColumns}
-	classroomColors := &table{name: ClassroomColorsTab, want: classroomColorColumns}
-	signedOut := &table{name: SignedOutTab, want: signedOutColumns}
-	read := []*table{settings, superAdmins, gradeColors, classroomColors, signedOut}
-	names := []string{}
-	for _, t := range read {
-		names = append(names, t.name)
-	}
-	tabs, err := source.Tabs(App, names, nil)
-	if err != nil {
-		return nil, err
-	}
-	for _, t := range read {
-		t.header, t.rows = tabs[t.name].Header, tabs[t.name].Rows
-		if err := data.CheckColumns(t.name, t.header, t.want); err != nil {
-			return nil, err
-		}
-	}
-	return &Tables{
-		Settings:        settings.rows,
-		SuperAdmins:     superAdmins.rows,
-		GradeColors:     gradeColors.rows,
-		ClassroomColors: classroomColors.rows,
-		SignedOut:       signedOut.rows,
-	}, nil
-}
-
-// SuperAdminEmails is the Super Admins tab as written, normalized.
-func (t *Tables) SuperAdminEmails() []string {
-	emails := make([]string, 0, len(t.SuperAdmins))
-	for _, row := range t.SuperAdmins {
-		emails = append(emails, row[EmailColumn])
-	}
-	return NormalizeEmails(emails)
-}
-
-func parseSettings(rows []map[string]string) (map[string]string, error) {
+func parseSettings(rows []store.Row) (map[string]string, error) {
 	values := map[string]string{}
 	for _, row := range rows {
 		key := row[KeyColumn]
@@ -186,7 +114,7 @@ func parseLink(values map[string]string, key string) (string, error) {
 	return link, nil
 }
 
-func parseColors(tab, keyColumn string, rows []map[string]string) (map[string]string, error) {
+func parseColors(tab, keyColumn string, rows []store.Row) (map[string]string, error) {
 	colors := map[string]string{}
 	for _, row := range rows {
 		name := row[keyColumn]
@@ -204,7 +132,7 @@ func parseColors(tab, keyColumn string, rows []map[string]string) (map[string]st
 	return colors, nil
 }
 
-func parseSignedOut(rows []map[string]string) (map[string]time.Time, error) {
+func parseSignedOut(rows []store.Row) (map[string]time.Time, error) {
 	out := map[string]time.Time{}
 	for _, row := range rows {
 		email := strings.ToLower(strings.TrimSpace(row[EmailColumn]))
@@ -223,11 +151,8 @@ func parseSignedOut(rows []map[string]string) (map[string]time.Time, error) {
 	return out, nil
 }
 
-// Parse validates every tab and refuses the whole sheet on the first problem, the
-// same stance every app's own sheet takes: an edit that breaks a rule surfaces as a
-// refused load, never as a setting quietly read as something else.
-func Parse(t *Tables) (*Settings, error) {
-	values, err := parseSettings(t.Settings)
+func Parse(tables store.Tables) (*Settings, error) {
+	values, err := parseSettings(tables[SettingsTab])
 	if err != nil {
 		return nil, err
 	}
@@ -251,16 +176,20 @@ func Parse(t *Tables) (*Settings, error) {
 		return nil, fmt.Errorf("setting %q must be a #rrggbb hex value, not %q", StaffColor, values[StaffColor])
 	}
 	s.StaffColor = values[StaffColor]
-	if s.GradeColors, err = parseColors(GradeColorsTab, GradeColumn, t.GradeColors); err != nil {
+	if s.GradeColors, err = parseColors(GradeColorsTab, GradeColumn, tables[GradeColorsTab]); err != nil {
 		return nil, err
 	}
-	if s.ClassroomColors, err = parseColors(ClassroomColorsTab, ClassroomColumn, t.ClassroomColors); err != nil {
+	if s.ClassroomColors, err = parseColors(ClassroomColorsTab, ClassroomColumn, tables[ClassroomColorsTab]); err != nil {
 		return nil, err
 	}
-	if s.SignedOut, err = parseSignedOut(t.SignedOut); err != nil {
+	if s.SignedOut, err = parseSignedOut(tables[SignedOutTab]); err != nil {
 		return nil, err
 	}
-	s.SuperAdmins = t.SuperAdminEmails()
+	emails := []string{}
+	for _, row := range tables[SuperAdminsTab] {
+		emails = append(emails, row[EmailColumn])
+	}
+	s.SuperAdmins = NormalizeEmails(emails)
 	if len(s.SuperAdmins) == 0 {
 		return nil, fmt.Errorf("%s has no super admins", SuperAdminsTab)
 	}
@@ -285,116 +214,12 @@ func NormalizeEmails(emails []string) []string {
 	return out
 }
 
-// upsertRow mirrors what data.Writer.Set is about to write to a tab keyed by one
-// column, copying the rows it touches so the tables a current model was built from
-// stay intact. A blank cell is dropped, since parseTable never holds "".
-func upsertRow(rows []map[string]string, keyColumn, key string, cells map[string]string) []map[string]string {
-	apply := func(row map[string]string) {
-		for column, value := range cells {
-			if value == "" {
-				delete(row, column)
-				continue
-			}
-			row[column] = value
+func setSettings(values map[string]string) []store.Op {
+	ops := []store.Op{}
+	for _, key := range Keys {
+		if value, ok := values[key]; ok {
+			ops = append(ops, store.Set(SettingsTab, store.Row{KeyColumn: key}, store.Row{ValueColumn: value}))
 		}
 	}
-	next := make([]map[string]string, len(rows))
-	copy(next, rows)
-	for i, row := range next {
-		if row[keyColumn] != key {
-			continue
-		}
-		clone := maps.Clone(row)
-		apply(clone)
-		next[i] = clone
-		return next
-	}
-	row := map[string]string{keyColumn: key}
-	apply(row)
-	return append(next, row)
-}
-
-func (t *Tables) WithSettings(values map[string]string) *Tables {
-	out := *t
-	for key, value := range values {
-		out.Settings = upsertRow(out.Settings, KeyColumn, key, map[string]string{ValueColumn: value})
-	}
-	return &out
-}
-
-func (t *Tables) WithGradeColor(name, color string) *Tables {
-	out := *t
-	out.GradeColors = upsertRow(t.GradeColors, GradeColumn, name, map[string]string{ColorColumn: color})
-	return &out
-}
-
-func (t *Tables) WithClassroomColor(name, color string) *Tables {
-	out := *t
-	out.ClassroomColors = upsertRow(t.ClassroomColors, ClassroomColumn, name, map[string]string{ColorColumn: color})
-	return &out
-}
-
-func (t *Tables) WithSignedOut(email string, at time.Time) *Tables {
-	out := *t
-	out.SignedOut = upsertRow(t.SignedOut, EmailColumn, email, map[string]string{TimeColumn: at.Format(time.RFC3339)})
-	return &out
-}
-
-func (t *Tables) WithSuperAdmins(emails []string) *Tables {
-	out := *t
-	out.SuperAdmins = make([]map[string]string, 0, len(emails))
-	for _, email := range emails {
-		out.SuperAdmins = append(out.SuperAdmins, map[string]string{EmailColumn: email})
-	}
-	return &out
-}
-
-// WriteSettings persists one Key/Value row per entry in values, matching WithSettings.
-func WriteSettings(writer data.Writer, values map[string]string) error {
-	for key, value := range values {
-		if err := writer.Set(App, SettingsTab, map[string]string{KeyColumn: key}, map[string]string{ValueColumn: value}); err != nil {
-			return fmt.Errorf("set %s %q: %w", SettingsTab, key, err)
-		}
-	}
-	return nil
-}
-
-func WriteGradeColor(writer data.Writer, name, color string) error {
-	return writer.Set(App, GradeColorsTab, map[string]string{GradeColumn: name}, map[string]string{ColorColumn: color})
-}
-
-func WriteClassroomColor(writer data.Writer, name, color string) error {
-	return writer.Set(App, ClassroomColorsTab, map[string]string{ClassroomColumn: name}, map[string]string{ColorColumn: color})
-}
-
-func WriteSignedOut(writer data.Writer, email string, at time.Time) error {
-	return writer.Set(App, SignedOutTab, map[string]string{EmailColumn: email}, map[string]string{TimeColumn: at.Format(time.RFC3339)})
-}
-
-// WriteSuperAdmins persists the difference between the tab as it is and as it should
-// be, row by row, matching WithSuperAdmins.
-func WriteSuperAdmins(writer data.Writer, current, next []string) error {
-	is := map[string]bool{}
-	for _, e := range next {
-		is[e] = true
-	}
-	was := map[string]bool{}
-	for _, e := range current {
-		was[e] = true
-		if is[e] {
-			continue
-		}
-		if err := writer.Delete(App, SuperAdminsTab, map[string]string{EmailColumn: e}); err != nil {
-			return fmt.Errorf("remove super admin %s: %w", e, err)
-		}
-	}
-	for _, e := range next {
-		if was[e] {
-			continue
-		}
-		if err := writer.Insert(App, SuperAdminsTab, []map[string]string{{EmailColumn: e}}); err != nil {
-			return fmt.Errorf("add super admin %s: %w", e, err)
-		}
-	}
-	return nil
+	return ops
 }

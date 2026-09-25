@@ -44,6 +44,7 @@ import (
 	"heliosian/internal/loop"
 	"heliosian/internal/mail"
 	"heliosian/internal/serve"
+	"heliosian/internal/store"
 	"heliosian/internal/team"
 	"heliosian/internal/who"
 )
@@ -705,7 +706,6 @@ type Config struct {
 	Loop          loop.Mail
 	LoopDescriber loop.Describer
 	Asker         ask.Responder
-	Artifacts     func(previous *artifacts.Model) (*artifacts.Model, error)
 	Embedder      artifacts.Embedder
 	ArtifactsMail artifacts.Inbox
 }
@@ -726,7 +726,8 @@ type Core struct {
 	LoopCache      *loop.Cache
 	AskMux         *http.ServeMux
 	Cache          *who.Cache
-	Queue          *who.Queue
+	Documents      *artifacts.Filer
+	Queue          *store.Queue
 	Spoof          *auth.Spoof
 	Member         func(email string) bool
 	Sessions       auth.Sessions
@@ -743,7 +744,7 @@ func NewCore(cfg Config) *Core {
 	if err := mime.AddExtensionType(".webmanifest", "application/manifest+json"); err != nil {
 		logging.Fatal("register manifest mime type", "error", err)
 	}
-	queue := who.NewQueue()
+	queue := store.NewQueue()
 	cfg.ImageSearch.Stock = imagesearch.NewStock(cfg.Store)
 	settings, err := config.NewCache(cfg.Source, cfg.Writer, queue)
 	if err != nil {
@@ -815,7 +816,7 @@ func NewCore(cfg Config) *Core {
 		logging.Fatal("load loop data", "error", err)
 	}
 	loopDir := loopDirectory{cache, settings, teamCache, celebrateCache}
-	artifactsCache, err := artifacts.NewCache(cfg.Artifacts, queue)
+	artifactsCache, err := artifacts.NewCache(cfg.Source, cfg.Writer, cfg.Store, cfg.Embedder, queue)
 	if err != nil {
 		logging.Fatal("load artifacts data", "error", err)
 	}
@@ -857,28 +858,29 @@ func NewCore(cfg Config) *Core {
 	celebrate.Register(celebrateMux, celebrateCache, cfg.Store, celebrateDirectory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.CelebrateMail, cfg.CelebrateFrom, partyRSVPs)
 	askMux := http.NewServeMux()
 	loopMail := cfg.Loop
-	loopMail.Documents = artifacts.Register(askMux, artifactsCache, cfg.Embedder, cfg.Writer, queue, cfg.ArtifactsMail)
+	documents := artifacts.Register(askMux, artifactsCache, cfg.Embedder, queue, cfg.ArtifactsMail)
+	loopMail.Documents = documents
 	loopMux := http.NewServeMux()
-	loop.Register(loopMux, loopCache, queue, cfg.Store, loopDir, settings.SuperAdmins, loopMail, cfg.LoopDescriber)
+	loop.Register(loopMux, loopCache, cfg.Store, loopDir, settings.SuperAdmins, loopMail, cfg.LoopDescriber)
 	ask.Register(askMux, askSources(cache, settings, teamCache, celebrateCache, calendarCache, loopCache, homeCache, artifactsCache, cfg.Embedder, smartLists{cache, teamCache, celebrateCache, loopCache, loopDir}, loopDir, linked), cfg.Asker, spend)
 	for _, m := range []*http.ServeMux{mux, teamMux, birthdayMux, celebrateMux, calendarMux, loopMux, askMux} {
 		home.RegisterSwitch(m, homeCache)
 	}
-	feedbackStore, err := feedback.NewStore(cfg.Source, cfg.Writer, queue)
+	feedbackCache, err := feedback.NewCache(cfg.Source, cfg.Writer, queue)
 	if err != nil {
 		logging.Fatal("load feedback model", "error", err)
 	}
 	notifier := feedback.Notifier{Sender: cfg.Mail, From: cfg.MailFrom, Base: cfg.FeedbackBase, SuperAdmins: settings.SuperAdmins}
-	feedbackQueue := feedback.NewQueue(feedbackStore, notifier.Notify)
+	feedbackIntake := feedback.NewIntake(feedbackCache, notifier.Notify)
 	optIn := who.OptInForm(func() string { return settings.Settings().PrivacyLinks.HeliosWhoOptIn })
 	for key, m := range map[string]*http.ServeMux{"who": mux, "home": homeMux, "team": teamMux, "birthday": birthdayMux, "celebrate": celebrateMux, "calendar": calendarMux, "loop": loopMux, "ask": askMux} {
 		m.Handle("GET /optin", optIn)
-		feedback.Register(m, key, appName(key), superAdmin, feedbackQueue)
+		feedback.Register(m, key, appName(key), superAdmin, feedbackIntake)
 		if s, ok := cfg.Geocoder.(geocode.Suggester); ok {
 			geocode.RegisterSuggest(m, s)
 		}
 	}
-	feedback.RegisterAdmin(homeMux, feedbackStore, cfg.FeedbackFiler, superAdmin)
+	feedback.RegisterAdmin(homeMux, feedbackCache, cfg.FeedbackFiler, superAdmin)
 	blob.Register(mux, cfg.Store)
 	blob.RegisterHome(homeMux, cfg.Store)
 	blob.RegisterTeam(teamMux, cfg.Store)
@@ -889,13 +891,13 @@ func NewCore(cfg Config) *Core {
 	blob.RegisterAsk(askMux, cfg.Store)
 	time.AfterFunc(deployOverlap, func() {
 		slog.Info("reading again for the previous revision's last writes")
-		for _, c := range []interface{ Refresh() }{settings, homeCache, teamCache, birthdayCache, celebrateCache, cache, invites, calendarCache, loopCache, artifactsCache} {
+		for _, c := range []interface{ Refresh() }{settings, homeCache, teamCache, birthdayCache, celebrateCache, cache, invites, calendarCache, loopCache, artifactsCache, feedbackCache} {
 			c.Refresh()
 		}
 	})
 	return &Core{
 		Mux: mux, HomeMux: homeMux, HomeCache: homeCache, TeamMux: teamMux, TeamCache: teamCache, BirthdayMux: birthdayMux, CelebrateMux: celebrateMux, CelebrateCache: celebrateCache,
-		CalendarMux: calendarMux, CalendarCache: calendarCache, CalendarLinked: linked, LoopMux: loopMux, LoopCache: loopCache, AskMux: askMux, Cache: cache, Queue: queue,
+		CalendarMux: calendarMux, CalendarCache: calendarCache, CalendarLinked: linked, LoopMux: loopMux, LoopCache: loopCache, AskMux: askMux, Cache: cache, Documents: documents, Queue: queue,
 		Spoof:  &auth.Spoof{Allowed: superAdmin, Person: directory{cache, settings}.SpoofPerson, People: directory{cache, settings}.SpoofPeople},
 		Member: func(email string) bool { return who.Member(cache, email) }, Sessions: settings, Home: homeMux, Team: teamMux, Birthday: birthdayMux, Celebrate: celebrateMux, Calendar: calendarMux, Loop: loopMux, Ask: askMux,
 	}
@@ -912,7 +914,7 @@ func Server(domain string, apps map[string]http.Handler) *http.Server {
 	return &http.Server{Addr: ":" + Port(), Handler: secure(domain, cacheControl(route(domain, apps))), Protocols: protocols}
 }
 
-func Serve(server *http.Server, queue *who.Queue) {
+func Serve(server *http.Server, queue *store.Queue) {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGTERM, os.Interrupt)
 	go func() {
@@ -1116,7 +1118,7 @@ func mapsKey(envName, file string) string {
 	return key
 }
 
-func Production(domain, blobCache string) (*http.Server, *who.Queue) {
+func Production(domain, blobCache string) (*http.Server, *store.Queue) {
 	spreadsheets := map[string]string{
 		"directory":      requiredEnv("DIRECTORY_SHEET"),
 		"preferences":    requiredEnv("PREFERENCES_SHEET"),
@@ -1171,9 +1173,6 @@ func Production(domain, blobCache string) (*http.Server, *who.Queue) {
 		Loop:          loopMail(sessionKey),
 		LoopDescriber: ClaudeGroupDescriber(),
 		Asker:         ask.NewClaude(mapsKey("ANTHROPIC_API_KEY", "local/creds/anthropic.key")),
-		Artifacts: func(previous *artifacts.Model) (*artifacts.Model, error) {
-			return artifacts.Load(sheet, store, embedder, previous)
-		},
 		Embedder:      embedder,
 		ArtifactsMail: artifactsMail(store),
 	})
