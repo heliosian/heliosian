@@ -56,6 +56,7 @@ func spec() Spec[map[string]int] {
 				return []Op{Update("Uses", Row{"Thing": before["Name"]}, Row{"Thing": after["Name"]})}
 			}},
 			{Name: "Uses", Columns: []string{"Thing", "By"}, Key: []string{"Thing", "By"}},
+			{Name: "Events", Columns: []string{"When", "What"}, Key: []string{"When"}, AppendOnly: true},
 		},
 		Build: func(tables Tables) (map[string]int, error) {
 			for _, row := range tables["Things"] {
@@ -77,6 +78,7 @@ func newFixture(t *testing.T, queue Enqueuer) fixture {
 	}
 	write(t, root, "Things", "Name,Color,Size\nhat,red,small\nboot,black,large\n")
 	write(t, root, "Uses", "Thing,By\nhat,ann\nhat,bo\nboot,ann\n")
+	write(t, root, "Events", "When,What\n1,made\n")
 	write(t, root, ChangeLogTab, strings.Join(ChangeLogColumns, ",")+"\n")
 	dir := &data.Dir{Root: root}
 	s, err := New(spec(), dir, dir, queue)
@@ -132,8 +134,7 @@ func TestCommitKeepsPreviousValuesOnly(t *testing.T) {
 		t.Fatalf("model %v", m)
 	}
 	equal(t, "change log", f.log(t), []string{
-		"ann@example.org|admin@example.org|insert|Things|Name=cap|Color|",
-		"ann@example.org|admin@example.org|insert|Things|Name=cap|Name|",
+		"ann@example.org|admin@example.org|insert|Things|Name=cap||",
 		"ann@example.org|admin@example.org|set|Things|Name=boot|Color|black",
 		"ann@example.org|admin@example.org|set|Things|Name=boot|Size|large",
 		"ann@example.org|admin@example.org|delete|Uses|Thing=boot; By=ann|By|ann",
@@ -159,7 +160,72 @@ func TestSetInsertsAndUpdateDoesNot(t *testing.T) {
 	if len(f.rows(t, "Things")) != 3 || f.store.Count("Things", Row{"Name": "SOCK"}) != 1 {
 		t.Fatal("a set matching nothing did not insert")
 	}
-	equal(t, "change log", f.log(t), []string{"job||insert|Things|Name=sock|Color|", "job||insert|Things|Name=sock|Name|"})
+	equal(t, "change log", f.log(t), []string{"job||insert|Things|Name=sock||"})
+}
+
+func TestAppendOnlyIsWrittenNotLogged(t *testing.T) {
+	f := newFixture(t, syncQueue{})
+	if err := f.store.Commit(context.Background(), "job", Insert("Events", Row{"When": "2", "What": "sent"})); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.Commit(context.Background(), "job", Delete("Events", Row{"When": "1"})); err != nil {
+		t.Fatal(err)
+	}
+	if events := f.rows(t, "Events"); len(events) != 1 || events[0]["What"] != "sent" {
+		t.Fatalf("sheet %v", events)
+	}
+	if len(f.log(t)) != 0 {
+		t.Fatalf("an append-only tab was logged: %v", f.log(t))
+	}
+	for _, op := range []Op{Update("Events", Row{"When": "2"}, Row{"What": "bounced"}), Set("Events", Row{"When": "3"}, Row{"What": "sent"})} {
+		if err := f.store.Commit(context.Background(), "job", op); err == nil || !strings.Contains(err.Error(), "append-only") {
+			t.Fatalf("an edit of an append-only tab was taken: %v", err)
+		}
+	}
+}
+
+type lineQueue chan func()
+
+func newLineQueue(t *testing.T) lineQueue {
+	q := make(lineQueue, 16)
+	go func() {
+		for f := range q {
+			f()
+		}
+	}()
+	t.Cleanup(func() { close(q) })
+	return q
+}
+
+func (q lineQueue) Add(f func()) { q <- f }
+
+func TestCommitAndWaitWaitsItsTurn(t *testing.T) {
+	queue := newLineQueue(t)
+	f := newFixture(t, queue)
+	release := make(chan struct{})
+	queue.Add(func() { <-release })
+	done := make(chan error, 1)
+	go func() {
+		done <- f.store.CommitAndWait(context.Background(), "job", Insert("Things", Row{"Name": "cap"}))
+	}()
+	select {
+	case err := <-done:
+		t.Fatalf("returned ahead of earlier queued work: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	if f.store.Count("Things", Row{"Name": "cap"}) != 1 {
+		t.Fatal("the memory half waited on the queue")
+	}
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if things := f.rows(t, "Things"); len(things) != 3 || things[2]["Name"] != "cap" {
+		t.Fatalf("returned before the row was written: %v", things)
+	}
+	if err := f.store.CommitAndWait(context.Background(), "job", Insert("Things", Row{"Name": "sock", "Weight": "1"})); err == nil {
+		t.Fatal("a failed write was not reported")
+	}
 }
 
 func TestCascadeCarriesARename(t *testing.T) {

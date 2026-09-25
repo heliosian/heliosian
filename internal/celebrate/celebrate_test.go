@@ -485,7 +485,7 @@ func TestFreeTicket(t *testing.T) {
 	}
 	logged := 0
 	for _, row := range changeLog(t) {
-		if row["Tab"] == invoicingTab && row["Action"] == "insert" && row["Column"] == "Guest Name" && row["Previous"] == "" && strings.Contains(row["Key"], "Guest Name=Grover Underwood") {
+		if row["Tab"] == invoicingTab && row["Action"] == "insert" && row["Column"] == "" && row["Previous"] == "" && strings.Contains(row["Key"], "Guest Name=Grover Underwood") {
 			logged++
 		}
 	}

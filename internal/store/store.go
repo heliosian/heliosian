@@ -58,10 +58,11 @@ func Delete(tab string, match Row) Op {
 }
 
 type Tab struct {
-	Name    string
-	Columns []string
-	Key     []string
-	Cascade func(before, after Row) []Op
+	Name       string
+	Columns    []string
+	Key        []string
+	Cascade    func(before, after Row) []Op
+	AppendOnly bool
 }
 
 type Spec[M any] struct {
@@ -193,6 +194,19 @@ type change struct {
 }
 
 func (s *Store[M]) Commit(ctx context.Context, actor string, ops ...Op) error {
+	_, err := s.commit(ctx, actor, ops)
+	return err
+}
+
+func (s *Store[M]) CommitAndWait(ctx context.Context, actor string, ops ...Op) error {
+	done, err := s.commit(ctx, actor, ops)
+	if err != nil || done == nil {
+		return err
+	}
+	return <-done
+}
+
+func (s *Store[M]) commit(ctx context.Context, actor string, ops []Op) (<-chan error, error) {
 	s.commits.Lock()
 	defer s.commits.Unlock()
 	s.mu.RLock()
@@ -207,7 +221,10 @@ func (s *Store[M]) Commit(ctx context.Context, actor string, ops ...Op) error {
 		pending = pending[1:]
 		tab, ok := s.tabs[op.tab]
 		if !ok {
-			return fmt.Errorf("%s has no tab %s", s.spec.App, op.tab)
+			return nil, fmt.Errorf("%s has no tab %s", s.spec.App, op.tab)
+		}
+		if tab.AppendOnly && (op.kind == set || op.kind == update) {
+			return nil, fmt.Errorf("%s: tab %s is append-only", s.spec.App, op.tab)
 		}
 		rows, changes := apply(tables[op.tab], op)
 		if len(changes) == 0 {
@@ -216,27 +233,30 @@ func (s *Store[M]) Commit(ctx context.Context, actor string, ops ...Op) error {
 		tables[op.tab] = rows
 		writes = append(writes, op)
 		for _, c := range changes {
-			log = append(log, entries(stamp, actor, real, tab, c)...)
+			if !tab.AppendOnly {
+				log = append(log, entries(stamp, actor, real, tab, c)...)
+			}
 			if tab.Cascade != nil {
 				pending = append(pending, tab.Cascade(c.before, c.after)...)
 			}
 		}
 	}
 	if len(writes) == 0 {
-		return nil
+		return nil, nil
 	}
 	model, err := s.spec.Build(tables)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	s.mu.Lock()
 	s.tables, s.model = tables, model
 	s.pending++
 	s.mu.Unlock()
+	done := make(chan error, 1)
 	s.queue.Add(func() {
-		s.write(writes, log)
+		done <- s.write(writes, log)
 	})
-	return nil
+	return done, nil
 }
 
 func (s *Store[M]) written() {
@@ -245,7 +265,7 @@ func (s *Store[M]) written() {
 	s.mu.Unlock()
 }
 
-func (s *Store[M]) write(writes []Op, log []Row) {
+func (s *Store[M]) write(writes []Op, log []Row) error {
 	for _, op := range writes {
 		var err error
 		switch op.kind {
@@ -262,13 +282,16 @@ func (s *Store[M]) write(writes []Op, log []Row) {
 			if err := s.refresh(); err != nil {
 				slog.Error("[ERROR] refresh after a failed write", "app", s.spec.App, "error", err)
 			}
-			return
+			return fmt.Errorf("write %s: %w", op.tab, err)
 		}
 	}
-	if err := s.writer.Insert(s.spec.App, ChangeLogTab, log); err != nil {
-		slog.Error("[ERROR] write the change log", "app", s.spec.App, "error", err)
+	if len(log) > 0 {
+		if err := s.writer.Insert(s.spec.App, ChangeLogTab, log); err != nil {
+			slog.Error("[ERROR] write the change log", "app", s.spec.App, "error", err)
+		}
 	}
 	s.written()
+	return nil
 }
 
 func apply(rows []Row, op Op) ([]Row, []change) {
@@ -350,6 +373,9 @@ func entries(stamp, actor, real string, tab Tab, c change) []Row {
 	key := make([]string, 0, len(tab.Key))
 	for _, column := range tab.Key {
 		key = append(key, column+"="+named[column])
+	}
+	if c.before == nil {
+		return []Row{{"Timestamp": stamp, "Actor": actor, "Real Actor": real, "Action": action, "Tab": tab.Name, "Key": strings.Join(key, "; ")}}
 	}
 	columns := slices.Sorted(maps.Keys(c.before))
 	for column := range c.after {
