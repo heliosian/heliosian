@@ -68,11 +68,6 @@ func BuildResource(r Resource, links *Resolver, model string) (*Document, error)
 			}
 			return unwrapGoogle(target).String()
 		}
-		hrefs := []string{}
-		for _, href := range Hrefs(r.Body) {
-			hrefs = append(hrefs, absolute(href))
-		}
-		links.Warm(hrefs)
 		if markdown, err = Markdown(r.Body, func(href string) string { return links.Resolve(absolute(href)) }); err != nil {
 			return nil, fmt.Errorf("%s: %w", r.URL, err)
 		}

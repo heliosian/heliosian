@@ -112,7 +112,6 @@ func Build(m Message, links *Resolver, model string) (*Document, error) {
 	}
 	markdown := ""
 	if page := strings.TrimSpace(m.HTML); page != "" {
-		links.Warm(Hrefs(page))
 		if markdown, err = Markdown(page, links.Resolve); err != nil {
 			return nil, fmt.Errorf("%s: %w", m.MessageID, err)
 		}

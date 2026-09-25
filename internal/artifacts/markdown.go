@@ -24,29 +24,6 @@ type renderer struct {
 	prefix  string
 }
 
-func Hrefs(source string) []string {
-	doc, err := html.Parse(strings.NewReader(source))
-	if err != nil {
-		return nil
-	}
-	out := []string{}
-	var walk func(*html.Node)
-	walk = func(n *html.Node) {
-		if n.Type == html.ElementNode && n.Data == "a" {
-			for _, attr := range n.Attr {
-				if attr.Key == "href" {
-					out = append(out, strings.TrimSpace(attr.Val))
-				}
-			}
-		}
-		for c := n.FirstChild; c != nil; c = c.NextSibling {
-			walk(c)
-		}
-	}
-	walk(doc)
-	return out
-}
-
 func Markdown(source string, resolve func(string) string) (string, error) {
 	doc, err := html.Parse(strings.NewReader(source))
 	if err != nil {

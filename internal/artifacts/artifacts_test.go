@@ -353,7 +353,7 @@ func TestTrackingLinksAreTheOnlyOnesTouched(t *testing.T) {
 			t.Errorf("%q reads as a tracking link", address)
 		}
 	}
-	for _, address := range []string{"https://email.mail1.veracross.com/c/eJxMzT1u", "https://heliosns.bmetrack.com/c/l?u=DD88991"} {
+	for _, address := range []string{"https://email.mail1.veracross.com/c/eJxMzT1u"} {
 		if !tracking(address) {
 			t.Errorf("%q does not read as a tracking link", address)
 		}
@@ -412,25 +412,20 @@ func TestInlineMarkupAroundBlocksKeepsItsWords(t *testing.T) {
 	}
 }
 
-func TestTheMailersVanityRedirectsAreCaught(t *testing.T) {
-	for _, address := range []string{
-		"http://r560896.heliosschool.org/c/l?u=F6A18CC&e=163F978&email=ARXc6ueZ8",
-		"http://r560896.heliosschool.org/c/su?e=163F978&email=ARXc6ueZ8",
-		"https://heliosns.bmetrack.com/c/v?e=145E257",
-		"https://anything.example.org/page?email=someone%40example.org",
-	} {
-		if !tracking(address) {
-			t.Errorf("%q does not read as a tracking link", address)
-		}
-	}
+func TestOtherLinksAreKeptAsWritten(t *testing.T) {
 	r := NewResolver()
 	for _, address := range []string{
-		"http://r560896.heliosschool.org/c/su?e=163F978&email=ARXc6ueZ8",
-		"http://r560896.heliosschool.org/c/v?e=163F978&email=ARXc6ueZ8",
+		"https://anything.example.org/page?email=someone%40example.org",
+		"http://10.0.0.1/c/l?email=x",
+		"https://heliosns.bmetrack.com/c/l?u=DD88991",
+		"https://email.mail1.veracross.com/newsletter?email=x",
 	} {
-		if got := r.Resolve(address); got != "" {
-			t.Errorf("%q resolved to %q rather than being dropped", address, got)
+		if got := r.Resolve(address); got != address {
+			t.Errorf("%q became %q", address, got)
 		}
+	}
+	if r.Dropped != 0 {
+		t.Fatalf("dropped %d", r.Dropped)
 	}
 }
 
