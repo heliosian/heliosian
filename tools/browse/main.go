@@ -43,7 +43,7 @@ type pageTarget struct {
 func currentTarget() (string, error) {
 	resp, err := http.Get("http://localhost:9222/json/list")
 	if err != nil {
-		return "", fmt.Errorf("capture browser not reachable on localhost:9222, run cmd/capturebrowser first: %w", err)
+		return "", fmt.Errorf("capture browser not reachable on localhost:9222, run tools/capturebrowser first: %w", err)
 	}
 	defer resp.Body.Close()
 	targets := []pageTarget{}

@@ -74,7 +74,7 @@ func main() {
 			fmt.Printf("exception%s: %s\n", where, text)
 		}
 	})
-	// The same viewport cmd/screenshot captures at, so a click lands on the
+	// The same viewport tools/screenshot captures at, so a click lands on the
 	// desktop layout rather than the phone one.
 	actions := []chromedp.Action{chromedp.EmulateViewport(1280, int64(*height)), chromedp.Navigate(*url), chromedp.Sleep(*wait / 2)}
 	if *click != "" {

@@ -476,7 +476,7 @@ func newTab() (string, error) {
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("capture browser not reachable on localhost:9222, run cmd/capturebrowser first: %w", err)
+		return "", fmt.Errorf("capture browser not reachable on localhost:9222, run tools/capturebrowser first: %w", err)
 	}
 	defer resp.Body.Close()
 	t := struct {

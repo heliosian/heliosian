@@ -5,7 +5,7 @@ Web apps for the Helios school community (K-8), served as one static Go binary o
 ## Quick start
 
     brew install go
-    go run ./cmd/startserver
+    go run ./tools/startserver
 
 Open https://who.heliosiandev.com:8080 and click past the browser's warning about the self-signed certificate (the server picks the app by hostname; that name resolves to your own machine). That's the whole setup: the dev server loads the fictional community in `sampledata/`, signs every request in as a sample parent, and fakes geocoding — no credentials, no cloud project. Templates, static assets, and sample data are read from disk on every request, so edit a file and refresh; nothing needs restarting.
 
@@ -15,7 +15,7 @@ To run against real community data instead, see [docs/dev.md](docs/dev.md).
 
 ## Layout
 
-- `main.go` — the production entry point; dev serving lives in `cmd/startserver`
+- `main.go` — the production entry point; dev serving lives in `tools/startserver`
 - `internal/app` — server wiring shared by production and the dev server: host routing, file serving, and the production assembly
 - `internal/auth` — Google sign-in and session cookies
 - `internal/data` — tabular data sources: sample CSVs and Google Sheets
@@ -39,8 +39,9 @@ To run against real community data instead, see [docs/dev.md](docs/dev.md).
 - `internal/devtls` — the in-memory self-signed certificate local HTTPS runs on
 - `web/` — one directory per app, named for its hostname, holding its pages and every file it serves behind sign-in, `web/common/` for what all apps share, and `web/public/<app>/` and `web/public/common/` for the few files served before sign-in (frameworkless JavaScript throughout)
 - `sampledata/` — the fictional community served by default
-- `cmd/` — dev tooling: screenshots, browser driving, sheet inspection; and `cmd/periodicsync`, the scheduled job that reads the school's year calendar PDF
-- `security-audit/` — what a security audit of this codebase looks for and leaves alone, the template for a finding, and the findings, one file each, listed by `cmd/findings`
+- `cmd/` — the binaries production runs besides `main.go`: `cmd/periodicsync`, the scheduled job that reads the school's year calendar PDF
+- `tools/` — dev tooling, never deployed: the dev server, screenshots, browser driving, sheet inspection, imports, deploy
+- `security-audit/` — what a security audit of this codebase looks for and leaves alone, the template for a finding, and the findings, one file each, listed by `tools/findings`
 - `docs/` — everything below
 
 ## Docs

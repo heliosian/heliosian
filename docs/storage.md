@@ -67,4 +67,4 @@ The IO layer and the store stand, and Staff Birthdays and Heliosian are on the s
 1. **The other apps**: HCA-Team, Helios Celebrate, Helios Loop, Helios When with the calendar import, and Who?.
 2. **Feedback and Helios Ask's documents**, and the last per-app queue interfaces.
 
-Each app's `Change Log` tab in the old shape is renamed `Change Log (old)` with `cmd/renametab` when its app moves, before `cmd/createtabs` makes a new one in this shape and before the build that reads it deploys.
+Each app's `Change Log` tab in the old shape is renamed `Change Log (old)` with `tools/renametab` when its app moves, before `tools/createtabs` makes a new one in this shape and before the build that reads it deploys.

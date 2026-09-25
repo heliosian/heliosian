@@ -42,11 +42,11 @@ The id is what a document is keyed by, so a message that arrives twice is one do
 
 A group's post comes in from Loop itself. When Loop's mailer records a post `sent` in its `Messages` tab, it hands the message as it arrived - the bytes it archived - to `Filer.Post` with the group's name, which reads it with `ParseMail`, keeps the group as the channel and `group` as the kind in place of `Channel`'s judgement, and files it through the same `Build`, embedding and write-through as the hook (`docs/loop/data.md`, Mail). Its key is the SHA-256 of the group's name, a slash and the message id, so the same post filed twice under one group is one document and under two groups is two. A post that fails to file is logged against the group and does not change how Loop records it. A group's documents go with the group: Loop's delete hands the name to `Filer.Remove` in its own write step on the queue, which deletes the `Documents` rows of kind `group` under that channel and drops the documents from the model; their objects stay in the bucket, named by no row and so loaded by nothing. Nothing reads a group's mail but the group that holds the name, so a group made later under it starts with none.
 
-`cmd/importartifacts` turns saved messages into documents:
+`tools/importartifacts` turns saved messages into documents:
 
-    eval "$(go run ./cmd/findsheet)"
-    go run ./cmd/importartifacts --dry-run local/imports/mail/*.json
-    go run ./cmd/importartifacts --i-have-user-permission-to-spend-money local/imports/mail/*.json
+    eval "$(go run ./tools/findsheet)"
+    go run ./tools/importartifacts --dry-run local/imports/mail/*.json
+    go run ./tools/importartifacts --i-have-user-permission-to-spend-money local/imports/mail/*.json
 
 Every message is read and rendered before anything is embedded, so what a run would spend is known before it spends it; `--dry-run` reports that and writes nothing, and printing one message's markdown is what naming a single file does. Embedding costs real money, so a run that writes refuses to start without `--i-have-user-permission-to-spend-money`, as the periodic sync does.
 
@@ -56,25 +56,25 @@ Every link a newsletter carries is one of the mailers' redirects and carries the
 
 ## From a page to a document
 
-`cmd/archivesite` reads the sitemap Finalsite publishes at `/fs/pages/sitemap` and saves each page it names under `local/imports/site/` as a `Page`: the address the request ended at and the whole HTML. A page that redirects off the site (the parent portal, the inquiry form, social media) is not saved. Several sitemap entries can redirect to the same page, which is saved once under its own address. The archiver waits five seconds between requests, as the site's robots.txt asks, and sends an Accept header, since without one the site answers 406.
+`tools/archivesite` reads the sitemap Finalsite publishes at `/fs/pages/sitemap` and saves each page it names under `local/imports/site/` as a `Page`: the address the request ended at and the whole HTML. A page that redirects off the site (the parent portal, the inquiry form, social media) is not saved. Several sitemap entries can redirect to the same page, which is saved once under its own address. The archiver waits five seconds between requests, as the site's robots.txt asks, and sends an Accept header, since without one the site answers 406.
 
-    go run ./cmd/archivesite
-    eval "$(go run ./cmd/findsheet)"
-    go run ./cmd/importartifacts --dry-run local/imports/site/*.json
+    go run ./tools/archivesite
+    eval "$(go run ./tools/findsheet)"
+    go run ./tools/importartifacts --dry-run local/imports/site/*.json
 
-`cmd/importartifacts` takes saved pages and saved messages alike; a file with a `url` is a page. A page's document is its `<main>` content without what the site repeats around it. The page title is dropped from the text because it is the document's title (the `<title>` less the site's name). The section menus and forms are dropped. So is the row of tabs over a set of panels, since each panel's title appears again as its heading. Relative links become absolute against the page's address. The document is dated by the day the site last published the page (`page-published`), its author is Helios School, and its source is its address, which the tools give the model as the document's url.
+`tools/importartifacts` takes saved pages and saved messages alike; a file with a `url` is a page. A page's document is its `<main>` content without what the site repeats around it. The page title is dropped from the text because it is the document's title (the `<title>` less the site's name). The section menus and forms are dropped. So is the row of tabs over a set of panels, since each panel's title appears again as its heading. Relative links become absolute against the page's address. The document is dated by the day the site last published the page (`page-published`), its author is Helios School, and its source is its address, which the tools give the model as the document's url.
 
 ## From the portal to a document
 
-The portal and the HELP site sit behind the school's sign-in and draw most of their pages in the browser, so `cmd/archivebrowser` reads them through the capture browser (`docs/screenshots.md`) with a parent signed in, in a tab of its own. It knows nothing of either site: it begins at `--start` and follows every link to an address under `--prefix`, waits for each page's `--selector` content to stop changing, and saves that content as a `Resource` under `--out`: the address, the words of the first link found to it (or the page's own title when none has any), the page that linked it, when it was fetched, and the body as HTML or as text. The start page is saved only if it is itself under the prefix, so the portal's home page gives the crawl its menus and is not kept. A Google Doc is exported as HTML from a page on the document's own origin, since Google answers the signed-in export only to the browser holding the session. A deck is exported as text and a Drive PDF as its text through `pdftotext`, both downloaded by the browser into a temporary folder it is pointed at for the run and pointed away from after. A HELP page embeds most of its decks by their real addresses, which are what it exports. A deck linked only by its published address draws its slides as pictures, but the page carries each slide's SVG in its scripts, where every text box holds its words as an accessibility label; those labels are the deck's text, slide by slide. A text box that is nothing but a link, such as a slide's way back to HELP or on to another grade band, is left out, and so is any text on more than half of a deck's slides, which is its running title and footer. Words drawn only inside an image are not read. The site notices a reader who comes through too often, so the archive is run rarely and the import works from what it saved.
+The portal and the HELP site sit behind the school's sign-in and draw most of their pages in the browser, so `tools/archivebrowser` reads them through the capture browser (`docs/screenshots.md`) with a parent signed in, in a tab of its own. It knows nothing of either site: it begins at `--start` and follows every link to an address under `--prefix`, waits for each page's `--selector` content to stop changing, and saves that content as a `Resource` under `--out`: the address, the words of the first link found to it (or the page's own title when none has any), the page that linked it, when it was fetched, and the body as HTML or as text. The start page is saved only if it is itself under the prefix, so the portal's home page gives the crawl its menus and is not kept. A Google Doc is exported as HTML from a page on the document's own origin, since Google answers the signed-in export only to the browser holding the session. A deck is exported as text and a Drive PDF as its text through `pdftotext`, both downloaded by the browser into a temporary folder it is pointed at for the run and pointed away from after. A HELP page embeds most of its decks by their real addresses, which are what it exports. A deck linked only by its published address draws its slides as pictures, but the page carries each slide's SVG in its scripts, where every text box holds its words as an accessibility label; those labels are the deck's text, slide by slide. A text box that is nothing but a link, such as a slide's way back to HELP or on to another grade band, is left out, and so is any text on more than half of a deck's slides, which is its running title and footer. Words drawn only inside an image are not read. The site notices a reader who comes through too often, so the archive is run rarely and the import works from what it saved.
 
-    go run ./cmd/capturebrowser
-    go run ./cmd/archivebrowser --start https://portals.veracross.com/heliosschool/parent --prefix https://portals.veracross.com/heliosschool/parent/pages/ --selector .app-container --out local/imports/portal
-    go run ./cmd/archivebrowser --start https://sites.google.com/heliosns.org/help/welcome --prefix https://sites.google.com/heliosns.org/help/ --selector section --out local/imports/help
-    eval "$(go run ./cmd/findsheet)"
-    go run ./cmd/importartifacts --dry-run local/imports/portal/*.json local/imports/help/*.json
+    go run ./tools/capturebrowser
+    go run ./tools/archivebrowser --start https://portals.veracross.com/heliosschool/parent --prefix https://portals.veracross.com/heliosschool/parent/pages/ --selector .app-container --out local/imports/portal
+    go run ./tools/archivebrowser --start https://sites.google.com/heliosns.org/help/welcome --prefix https://sites.google.com/heliosns.org/help/ --selector section --out local/imports/help
+    eval "$(go run ./tools/findsheet)"
+    go run ./tools/importartifacts --dry-run local/imports/portal/*.json local/imports/help/*.json
 
-`cmd/importartifacts` knows a resource by its `format`. HTML is rendered by the same walker as mail, with relative links made whole against the resource's address and Google's `google.com/url?q=` wrappers turned back into the address they carry. Text keeps its lines, a page break becomes a paragraph break, and a line that is only a number, a deck's slide number, is dropped. A resource is dated by the day it was fetched, since the portal says nothing of when a page last changed, its author is Helios School, and its source is its address, which the tools give the model as the document's url.
+`tools/importartifacts` knows a resource by its `format`. HTML is rendered by the same walker as mail, with relative links made whole against the resource's address and Google's `google.com/url?q=` wrappers turned back into the address they carry. Text keeps its lines, a page break becomes a paragraph break, and a line that is only a number, a deck's slide number, is dropped. A resource is dated by the day it was fetched, since the portal says nothing of when a page last changed, its author is Helios School, and its source is its address, which the tools give the model as the document's url.
 
 ## Chunks
 
@@ -86,7 +86,7 @@ The chunks go to Gemini's embedding model on Vertex AI, twenty-five to a request
 
 `search_documents` embeds the question and scores every chunk: the dot product of the normalised vectors, plus a small share for the words of the question the chunk itself holds, since names, dates and numbers are where an embedding alone is weakest. The newer document wins a tie. A reply quotes the message it answers, so the same words are in the corpus many times over; a passage already covered by a better-scoring one - inside it, or holding it - is left out, so the answer's room goes on different things rather than the same thing said again. The search narrows to a range of dates, and says what dates are on file rather than answering from everything when it cannot narrow as asked. Each passage carries its document's title, date, age against today in the same words the calendar tools use, its section, and for a page its address. Nothing else about where a document came from reaches the model. The kind, the channel and the author stay on file for the import and the probe, so the model calls everything a document and links the ones it can. `read_document` is one document whole, by the key a passage carries, with its address when it has one.
 
-`cmd/artifactsprobe` runs the same load and the same search from a laptop, printing the top passages with their scores, so a question's retrieval can be read before Claude sees it.
+`tools/artifactsprobe` runs the same load and the same search from a laptop, printing the top passages with their scores, so a question's retrieval can be read before Claude sees it.
 
 ## Loading it
 
@@ -94,7 +94,7 @@ The server reads the sheet every five minutes like every other model. An object'
 
 ## What it needs
 
-- The `Artifacts` spreadsheet in the shared drive with its `Documents` tab (`cmd/createsheet --title Artifacts`, then `cmd/createtabs`), named by `ARTIFACTS_SHEET` wherever the server runs (`docs/deploy.md`, Configuration values).
+- The `Artifacts` spreadsheet in the shared drive with its `Documents` tab (`tools/createsheet --title Artifacts`, then `tools/createtabs`), named by `ARTIFACTS_SHEET` wherever the server runs (`docs/deploy.md`, Configuration values).
 - The media bucket, which the server reads and the importer writes and deletes in as `directory@`.
 - Vertex AI: the Vertex AI API on in the project, and `roles/aiplatform.user` on it for `directory@` (`docs/deploy.md`, IAM). Local runs act as `directory@` through the impersonated application-default credentials every tool here uses, so nothing more is set up on a laptop.
 
@@ -106,7 +106,7 @@ Sample mode has no bucket and no sheet: `sampledata/artifacts/` holds a few fict
 
 A `sent` post in Loop's mail archive with no document under its group is not in the corpus; reading those in means taking each such row's archived object through `Filer.Post`, once.
 
-The website's pages are as fresh as the last archive: a page the school edits changes in the corpus only when `cmd/archivesite` and the import are run again, and a page the school takes down stays until its row is removed. The portal's documents are the same, and are dated by when they were fetched rather than when they changed.
+The website's pages are as fresh as the last archive: a page the school edits changes in the corpus only when `tools/archivesite` and the import are run again, and a page the school takes down stays until its row is removed. The portal's documents are the same, and are dated by when they were fetched rather than when they changed.
 
 A published deck's words that sit only inside its images - a title drawn as a graphic, a photographed poster - are not in the corpus. Reading those slides' images with a vision model would bring them in.
 

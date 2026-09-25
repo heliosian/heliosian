@@ -5,7 +5,7 @@
 // visible element, compositing each one's background up through its
 // ancestors, so a pale fill painted by name shows up whatever stylesheet
 // put it there. One url per -url, or several separated by commas; -click
-// clicks its way into a window first, as cmd/screenshot does.
+// clicks its way into a window first, as tools/screenshot does.
 package main
 
 import (

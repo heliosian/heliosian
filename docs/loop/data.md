@@ -2,7 +2,7 @@
 
 The tabs, columns, and validation rules are in `internal/loop`; this file carries only what reading that code cannot tell you.
 
-The groups live in one Google Sheet, `Groups`, in the community shared drive, reached through drive membership like the other sheets. `GROUPS_SHEET` names it, and `cmd/createtabs` reads that variable to lay it out from an empty spreadsheet titled `Groups`, or to add the tabs and columns an older one lacks.
+The groups live in one Google Sheet, `Groups`, in the community shared drive, reached through drive membership like the other sheets. `GROUPS_SHEET` names it, and `tools/createtabs` reads that variable to lay it out from an empty spreadsheet titled `Groups`, or to add the tabs and columns an older one lacks.
 
 ## Tabs
 
@@ -24,7 +24,7 @@ The groups live in one Google Sheet, `Groups`, in the community shared drive, re
 
 ## The membership
 
-A group's members are never stored. They are computed from the directory model, the tags the rules name (`Cache.Tags`, or `who.TagsOf` over the tab for a tool), each read while one of the group's managers owns it or is among its managers (`Cache.SharedTags`, or `who.SharedTagsOf`), and the managers' Magic Tags (`app.SmartLists` plus the directory's room-parent lists) whenever anything asks: the group's page, the editor's preview (which also asks it how many people each rule touches, `RuleCounts`), every forward and `cmd/loadcheck` all call the one evaluator, `internal/filter` - Heliosian's audiences read through it too - which `internal/loop/eval.go` reads a group's list of rules through, reading a person's grade and classroom as every filter does - `who.Model.Facets`, the server's counterpart of Who?'s client-side `personFacets`: a student's own, a parent's children's, none for staff, and the same order: the roles keep their kind after Add family has widened the matches. The rules' result is then unioned with the group's additions, each on once by address whatever the exclude rules say, with `Added` as its reason, and the excluded addresses taken away last. The tests pin it to the sample community.
+A group's members are never stored. They are computed from the directory model, the tags the rules name (`Cache.Tags`, or `who.TagsOf` over the tab for a tool), each read while one of the group's managers owns it or is among its managers (`Cache.SharedTags`, or `who.SharedTagsOf`), and the managers' Magic Tags (`app.SmartLists` plus the directory's room-parent lists) whenever anything asks: the group's page, the editor's preview (which also asks it how many people each rule touches, `RuleCounts`), every forward and `tools/loadcheck` all call the one evaluator, `internal/filter` - Heliosian's audiences read through it too - which `internal/loop/eval.go` reads a group's list of rules through, reading a person's grade and classroom as every filter does - `who.Model.Facets`, the server's counterpart of Who?'s client-side `personFacets`: a student's own, a parent's children's, none for staff, and the same order: the roles keep their kind after Add family has widened the matches. The rules' result is then unioned with the group's additions, each on once by address whatever the exclude rules say, with `Added` as its reason, and the excluded addresses taken away last. The tests pin it to the sample community.
 
 The group's Magic Tag in Who? (`GroupLists` in `internal/app/lists.go`) sorts the same members by whether the directory holds them: the directory's people are the list's People, and the rest are its Guests under the name the manager typed, keyed `<group name>:<address>` - the one `who.Guest` shape a party's ticket holders outside the directory use, keyed by the ticket there.
 
@@ -44,4 +44,4 @@ The group's Magic Tag in Who? (`GroupLists` in `internal/app/lists.go`) sorts th
 
 **Every other app** sends through Mailgun too, by its JSON endpoint (`mail.Mailgun.Send`), and the calendar's replies come in through a Mailgun route at `reply.heliosian.com` the same way Loop's posts do; Resend is gone (`docs/deploy.md`).
 
-`cmd/loadcheck` prints every group with its member count, its unsubscribed count, its subject switch, its visibility, its posting and its replying.
+`tools/loadcheck` prints every group with its member count, its unsubscribed count, its subject switch, its visibility, its posting and its replying.

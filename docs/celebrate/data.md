@@ -2,7 +2,7 @@
 
 The tabs, columns, and validation rules are in `internal/celebrate`; this file carries only what reading that code cannot tell you.
 
-The site's data lives in one Google Sheet, `Celebrate`, in the community shared drive, reached through drive membership like the other sheets. `CELEBRATE_SHEET` names it, and `cmd/createtabs` reads that variable to lay it out from an empty spreadsheet titled `Celebrate`.
+The site's data lives in one Google Sheet, `Celebrate`, in the community shared drive, reached through drive membership like the other sheets. `CELEBRATE_SHEET` names it, and `tools/createtabs` reads that variable to lay it out from an empty spreadsheet titled `Celebrate`.
 
 ## Tabs
 

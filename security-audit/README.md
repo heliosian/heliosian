@@ -45,7 +45,7 @@ The lists below say where to look, not what is wrong. None of their lines is a c
 - `/open/` and `/ext/` tokens: how long, how random, from which source, what each one opens, whether it can be revoked or re-issued, whether it outlives what it was for, whether it is logged, and whether one kind of token is accepted where another is expected.
 - Admin and super admin: how each is decided, that every handler that needs one asks on the server, that an app's admin is not an admin elsewhere, and that a regular admin cannot make themselves more (`docs/config.md`).
 - Spoof Mode (`internal/auth/spoof.go`, `docs/toolbar.md`): who can start one, that a spoofed request can never reach more than the person viewed as, that writes made while spoofing are recorded against the admin, that mail and invitations sent while spoofing say who really sent them, and that the spoof cookie cannot be minted or kept by someone who is no longer a super admin.
-- The sample server's sign-in (`auth.Fixed`, `cmd/startserver`, `cmd/cookie`): that nothing of it is reachable in the production binary, by a flag, an environment variable or a hostname.
+- The sample server's sign-in (`auth.Fixed`, `tools/startserver`, `tools/cookie`): that nothing of it is reachable in the production binary, by a flag, an environment variable or a hostname.
 - Host routing: the `Host` header as the app selector, and anything built from it - links in mail, redirect targets, the login URI.
 
 ### Server data handling
@@ -64,7 +64,7 @@ The lists below say where to look, not what is wrong. None of their lines is a c
 
 ### Storage and integrations
 
-- How each secret reaches the process and where else it ends up: pages, logs, the image, the build's uploaded source, the repository, `local/`, the log file and the minted cookie `cmd/startserver --detach` leaves behind, the capture browser's profile holding a real session, Chrome's debugging port while it runs.
+- How each secret reaches the process and where else it ends up: pages, logs, the image, the build's uploaded source, the repository, `local/`, the log file and the minted cookie `tools/startserver --detach` leaves behind, the capture browser's profile holding a real session, Chrome's debugging port while it runs.
 - Keys rendered into pages (the Maps browser key) and how each is restricted; server keys that would work from anywhere if they leaked.
 - One key doing every job: the Mailgun key across all domains, the GitHub App's installed permissions against what filing an issue needs, the Anthropic key shared by the service and the job.
 - Buckets and sheets: that nothing is readable by address alone, what `directory@` can do beyond what the server needs, who can act as it (`serviceAccountTokenCreator`), and who is in the shared drive - since whoever can edit an `Admins` or `Super Admins` tab by hand is an admin.
@@ -110,7 +110,7 @@ A second check that costs a few lines where one check stands alone today. The te
 - **The directory being a directory** - a member looking up another family is the product. Scraping by a member is in scope only where the server hands over more than the pages need.
 - **Volume** - flooding a single-instance service with requests. In scope instead: one cheap request that costs a great deal of memory, money or mail.
 - **The platforms underneath** - bugs in Google sign-in, Cloud Run, Sheets, Mailgun, Anthropic, the browser, Go or its standard library. How this code uses them is in scope; they are not.
-- **Dev tooling for its own sake** - `cmd/` tools and the sample server run by one developer on their own machine, except where one leaves real data or a credential behind, or where sample-mode behaviour could be reached in production.
+- **Dev tooling for its own sake** - `tools/` tools and the sample server run by one developer on their own machine, except where one leaves real data or a credential behind, or where sample-mode behaviour could be reached in production.
 - **Theory without a path** - a primitive that is unfashionable but unbroken as used here, a timing difference nobody could measure through Cloud Run's front end, version strings, anything that ends in "could potentially".
 - **Bugs that are only bugs** - wrong behaviour with no security consequence goes to the ordinary issue tracker.
 
@@ -131,4 +131,4 @@ One file per finding under `security-audit/findings/`, copied from `security-aud
 
 When a finding was written and when it last changed come from git, so a file carries no dates. A finding that stops being true is edited, not deleted, so the record of what was looked at stays.
 
-`go run ./cmd/findings` lists them: `--status open,wontfix` keeps those statuses, as do `--open --wontfix`, each status being a flag of its own, `--text token` keeps findings with those words anywhere in the file, `--since 2026-01-31` keeps what changed on or after that day. Filters combine. `--first` keeps one of what is left, the next to work on: the open finding first by file name among those at the highest severity any open one has, so the answer holds still until that finding's status changes; a `revisit` finding is passed over unless `--with-revisit` is given, which counts it as open. `--stat` prints, in place of the list, a coloured grid of how many of the kept findings stand at each severity and status, with totals.
+`go run ./tools/findings` lists them: `--status open,wontfix` keeps those statuses, as do `--open --wontfix`, each status being a flag of its own, `--text token` keeps findings with those words anywhere in the file, `--since 2026-01-31` keeps what changed on or after that day. Filters combine. `--first` keeps one of what is left, the next to work on: the open finding first by file name among those at the highest severity any open one has, so the answer holds still until that finding's status changes; a `revisit` finding is passed over unless `--with-revisit` is given, which counts it as open. `--stat` prints, in place of the list, a coloured grid of how many of the kept findings stand at each severity and status, with totals.

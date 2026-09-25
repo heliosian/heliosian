@@ -12,7 +12,7 @@ The handler validates, hands the report to a queue, and answers `202 Accepted` a
 
 ## The Reports tab
 
-One spreadsheet, `FEEDBACK_SHEET`, one tab, `Reports`, one row per report, appended as it arrives and never deleted. Its columns are in `feedback.ReportColumns`, which `cmd/createtabs` writes: the `ID` that names the row, `Received`, the `App` key and `App Name`, `Kind`, `Status`, the reporter's `Summary` and `Details`, their `Email` and `Role`, the page's `URL`, `Page`, `Browser`, `Viewport`, `Screen`, `Language` and `Time Zone`, the `Errors` the page had raised, and - once an admin has dealt with it - the `Issue` it became, when it was `Handled` and by whom.
+One spreadsheet, `FEEDBACK_SHEET`, one tab, `Reports`, one row per report, appended as it arrives and never deleted. Its columns are in `feedback.ReportColumns`, which `tools/createtabs` writes: the `ID` that names the row, `Received`, the `App` key and `App Name`, `Kind`, `Status`, the reporter's `Summary` and `Details`, their `Email` and `Role`, the page's `URL`, `Page`, `Browser`, `Viewport`, `Screen`, `Language` and `Time Zone`, the `Errors` the page had raised, and - once an admin has dealt with it - the `Issue` it became, when it was `Handled` and by whom.
 
 `Status` is the whole of the workflow: `New` until an admin acts, then `Filed` against an issue or `Dismissed` without one. The tab loads at startup, refreshes on the same five minutes as every other model, and is written through the shared sheet queue, so the page shows a filing the instant it happens rather than on the next refresh.
 
@@ -50,7 +50,7 @@ The GitHub App lives on the heliosian organization, under Settings › Developer
     gcloud secrets add-iam-policy-binding heliosian-github-app-id --project heliosian --member serviceAccount:directory@heliosian.iam.gserviceaccount.com --role roles/secretmanager.secretAccessor
     gcloud secrets add-iam-policy-binding heliosian-github-app-key --project heliosian --member serviceAccount:directory@heliosian.iam.gserviceaccount.com --role roles/secretmanager.secretAccessor
 
-They reach the service through `cmd/deploy`, which names them in `secrets`; a plain push deploys only the image, so both have to be in place, through a `cmd/deploy` run, before a build that carries this is deployed. Locally, real-data mode reads `local/creds/github-app.id` and `local/creds/github-app.pem`. Both are required: the server refuses to start without them.
+They reach the service through `tools/deploy`, which names them in `secrets`; a plain push deploys only the image, so both have to be in place, through a `tools/deploy` run, before a build that carries this is deployed. Locally, real-data mode reads `local/creds/github-app.id` and `local/creds/github-app.pem`. Both are required: the server refuses to start without them.
 
 The key has no expiry, so nothing has to be renewed on a schedule, which is the point of an app over the yearly token it replaced. Where the app is installed and what it may do is the app's own page on GitHub and nowhere else; that it still works is the first filing after a change, which either opens an issue or answers with GitHub's own refusal, logged in full.
 

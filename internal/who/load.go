@@ -24,7 +24,7 @@ const (
 	preferencesTab = "Sheet1"
 )
 
-// The school's public staff page, as webexport writes it and cmd/import syncs it: the
+// The school's public staff page, as webexport writes it and tools/import syncs it: the
 // bio the school publishes, flattened to text on the way in, plus the title and
 // portrait that go with it. Departments are carried for reference and never read -
 // the school's own filing lives in Overrides. Exported so the import writes the tab

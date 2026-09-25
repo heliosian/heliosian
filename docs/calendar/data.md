@@ -2,7 +2,7 @@
 
 The tabs, columns, and validation rules are in `internal/calendar`; this file carries only what reading that code cannot tell you.
 
-The calendar's data lives in one Google Sheet, `Calendar`, in the community shared drive, reached through drive membership like the other sheets. `CALENDAR_SHEET` names it, and `cmd/createtabs` reads that variable to lay it out from an empty spreadsheet titled `Calendar`.
+The calendar's data lives in one Google Sheet, `Calendar`, in the community shared drive, reached through drive membership like the other sheets. `CALENDAR_SHEET` names it, and `tools/createtabs` reads that variable to lay it out from an empty spreadsheet titled `Calendar`.
 
 ## Tabs
 
@@ -36,7 +36,7 @@ The feed and the PDF describe the same days in their own words, so the load fold
 
 ## A load either succeeds whole or refuses
 
-A rule broken refuses the load: a tag no row names, a date that does not parse, two events in one layer giving one classroom two different day types on the same date, an event with no tags, a timed event carrying a day type, which only a whole day can, a feed naming a classroom or tag the sheet does not have. The one disagreement that is not refused is with `No School`, which wins: a holiday the feed also marks as a no-aftercare day, or a conference range that runs across one, is still a holiday. A load error is fatal to the server at startup, as the directory's is; a refresh that fails logs the reason and keeps the last model serving. The import never builds the model: it pulls, writes, and warns about what it itself saw, and `go run ./cmd/loadcheck` is how an operator checks a sheet after an import, as for every other app.
+A rule broken refuses the load: a tag no row names, a date that does not parse, two events in one layer giving one classroom two different day types on the same date, an event with no tags, a timed event carrying a day type, which only a whole day can, a feed naming a classroom or tag the sheet does not have. The one disagreement that is not refused is with `No School`, which wins: a holiday the feed also marks as a no-aftercare day, or a conference range that runs across one, is still a holiday. A load error is fatal to the server at startup, as the directory's is; a refresh that fails logs the reason and keeps the last model serving. The import never builds the model: it pulls, writes, and warns about what it itself saw, and `go run ./tools/loadcheck` is how an operator checks a sheet after an import, as for every other app.
 
 ## The day plan
 
