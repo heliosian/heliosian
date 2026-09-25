@@ -180,18 +180,105 @@ func TestMoveLinkTradesPlacesWithinItsCategory(t *testing.T) {
 	if want := []string{"Directory", "Calendar", "Staff Room", "Parent Portal"}; !slices.Equal(school, want) {
 		t.Fatalf("school = %v, want %v", school, want)
 	}
-	_, links, err := dir.Table(appName, linksTab)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if links[2]["Title"] != "Staff Room" || links[9]["Title"] != "Parent Portal" {
-		t.Fatalf("the sheet's order: %v", links)
-	}
 	got := []string{}
 	for _, row := range changeLog(t, dir) {
-		got = append(got, row["Action"]+" "+row["Key"]+" "+row["Previous"])
+		got = append(got, row["Action"]+" "+row["Key"]+" "+row["Column"]+" "+row["Previous"])
 	}
-	if want := []string{"reorder Title=Staff Room 10", "reorder Title=Parent Portal 3"}; !slices.Equal(got, want) {
+	if want := []string{"set Title=Parent Portal Order 6"}; !slices.Equal(got, want) {
 		t.Fatalf("change log = %v, want %v", got, want)
+	}
+	if rec := call(t, a.moveLink, map[string]any{"title": "Parent Portal", "by": 1}); rec.Code != http.StatusNoContent || len(changeLog(t, dir)) != 1 {
+		t.Fatalf("a move past the end: %d, log %v", rec.Code, changeLog(t, dir))
+	}
+}
+
+func TestARowWithNoOrderSortsLast(t *testing.T) {
+	c, dir := sampleCache(t)
+	c.directory = directoryOf(t)
+	a := app{cache: c, directory: c.directory}
+	if err := c.Commit(context.Background(), "test", store.Insert(linksTab, store.Row{"Title": "Lunch Menu", "URL": "https://lunch.example.org/", "Category": "School", "Visible": "Yes"}), store.Update(linksTab, store.Row{"Title": "Directory"}, store.Row{store.OrderColumn: ""})); err != nil {
+		t.Fatal(err)
+	}
+	school := func() []string {
+		out := []string{}
+		for _, l := range a.category("School").Links {
+			out = append(out, l.Title)
+		}
+		return out
+	}
+	if want := []string{"Calendar", "Parent Portal", "Staff Room", "Directory", "Lunch Menu"}; !slices.Equal(school(), want) {
+		t.Fatalf("school = %v, want %v", school(), want)
+	}
+	before := len(changeLog(t, dir))
+	if rec := call(t, a.moveLink, map[string]any{"title": "Lunch Menu", "by": -1}); rec.Code != http.StatusNoContent {
+		t.Fatalf("move: %d %s", rec.Code, rec.Body)
+	}
+	if want := []string{"Calendar", "Parent Portal", "Staff Room", "Lunch Menu", "Directory"}; !slices.Equal(school(), want) {
+		t.Fatalf("school after the move = %v, want %v", school(), want)
+	}
+	if got := len(changeLog(t, dir)) - before; got != 2 {
+		t.Fatalf("the move keyed %d rows, want the two without one", got)
+	}
+}
+
+func TestCategoryOrderKeysOnlyWhatMoved(t *testing.T) {
+	c, dir := sampleCache(t)
+	c.directory = directoryOf(t)
+	a := app{cache: c, directory: c.directory}
+	titles := []string{"Helios Community Apps", "Upcoming Events", "Events", "School", "Chats"}
+	if rec := call(t, a.reorderCategories, map[string]any{"titles": titles}); rec.Code != http.StatusNoContent {
+		t.Fatalf("reorder: %d %s", rec.Code, rec.Body)
+	}
+	got := []string{}
+	for _, category := range c.Model().Categories {
+		got = append(got, category.Title)
+	}
+	if !slices.Equal(got, titles) || len(changeLog(t, dir)) != 1 {
+		t.Fatalf("categories = %v, log %v", got, changeLog(t, dir))
+	}
+	for _, bad := range [][]string{titles[1:], append(slices.Clone(titles[1:]), "Events"), append(slices.Clone(titles[1:]), "Nowhere")} {
+		if rec := call(t, a.reorderCategories, map[string]any{"titles": bad}); rec.Code != http.StatusBadRequest {
+			t.Errorf("%v was taken as an order: %d", bad, rec.Code)
+		}
+	}
+}
+
+func TestTheEventsSectionIsWrittenWhereItStands(t *testing.T) {
+	c, _ := sampleCache(t)
+	c.directory = directoryOf(t)
+	if err := c.Commit(context.Background(), "test", store.Delete(categoriesTab, store.Row{"Title": EventsTitle})); err != nil {
+		t.Fatal(err)
+	}
+	a := app{cache: c, directory: c.directory}
+	if !a.virtualEvents(EventsTitle) {
+		t.Fatal("no synthesized events section")
+	}
+	titles := []string{"Helios Community Apps", EventsTitle, "School", "Events", "Chats"}
+	if rec := call(t, a.reorderCategories, map[string]any{"titles": titles}); rec.Code != http.StatusNoContent {
+		t.Fatalf("reorder: %d %s", rec.Code, rec.Body)
+	}
+	got := []string{}
+	for _, category := range c.Model().Categories {
+		got = append(got, category.Title)
+	}
+	if !slices.Equal(got, titles) || a.virtualEvents(EventsTitle) {
+		t.Fatalf("categories = %v, want %v with the events row written", got, titles)
+	}
+}
+
+func TestAppOrderIsAKey(t *testing.T) {
+	c, _ := sampleCache(t)
+	c.directory = directoryOf(t)
+	a := app{cache: c, directory: c.directory}
+	order := []string{"ask", "who", "team", "celebrate", "birthday", "calendar", "loop"}
+	if rec := call(t, a.setAppOrder, map[string]any{"apps": order}); rec.Code != http.StatusNoContent {
+		t.Fatalf("order: %d %s", rec.Code, rec.Body)
+	}
+	got := []string{}
+	for _, app := range c.AppList() {
+		got = append(got, app.Key)
+	}
+	if !slices.Equal(got, order) {
+		t.Fatalf("apps = %v, want %v", got, order)
 	}
 }

@@ -43,11 +43,11 @@ const (
 )
 
 var (
-	categoryColumns   = []string{"Title", "Emoji", "Style", "Max"}
-	linkColumns       = []string{"Title", "Description", "URL", "Image", "Category", "Visible", "Added By", "Added"}
+	categoryColumns   = []string{"Title", "Emoji", "Style", "Max", store.OrderColumn}
+	linkColumns       = []string{"Title", "Description", "URL", "Image", "Category", "Visible", "Added By", "Added", store.OrderColumn}
 	AudienceColumns   = append([]string{"Thing"}, filter.RuleColumns...)
 	adminColumns      = []string{"Email"}
-	visibilityColumns = []string{"App", "Visibility", "Emails", "Tagline", "Name", "Order"}
+	visibilityColumns = []string{"App", "Visibility", "Emails", "Tagline", "Name", store.OrderColumn}
 	CategoryColumns   = categoryColumns
 	LinkColumns       = linkColumns
 	AdminColumns      = adminColumns
@@ -109,15 +109,11 @@ type Visibility struct {
 	Tagline string
 	Name    string
 	Rules   []filter.Rule
-	Order   int
+	Order   string
 }
 
 func (v Visibility) cells() store.Row {
-	order := ""
-	if v.Order > 0 {
-		order = strconv.Itoa(v.Order)
-	}
-	return store.Row{"Visibility": v.Mode, "Emails": joinEmails(v.Emails), "Tagline": v.Tagline, "Name": v.Name, "Order": order}
+	return store.Row{"Visibility": v.Mode, "Emails": joinEmails(v.Emails), "Tagline": v.Tagline, "Name": v.Name, store.OrderColumn: v.Order}
 }
 
 func appKnown(key string) bool {
@@ -142,6 +138,7 @@ type Link struct {
 	Added       string        `json:"added,omitempty"`
 	Rules       []filter.Rule `json:"rules"`
 	ForMe       *bool         `json:"forMe,omitempty"`
+	order       string
 }
 
 func splitList(cell string) []string {
@@ -163,13 +160,20 @@ type Category struct {
 	Virtual bool          `json:"virtual,omitempty"`
 	Rules   []filter.Rule `json:"rules"`
 	ForMe   *bool         `json:"forMe,omitempty"`
+	order   string
 }
 
 type Model struct {
 	Categories []Category            `json:"categories"`
 	Visibility map[string]Visibility `json:"-"`
 	admins     []string
-	linkOrder  []string
+}
+
+func compareOrder(a, b, aTitle, bTitle string) int {
+	if c := store.CompareKeys(a, b); c != 0 || a == "" {
+		return c
+	}
+	return strings.Compare(aTitle, bTitle)
 }
 
 const (
@@ -284,7 +288,7 @@ func BuildModel(tables store.Tables, images ImageChecker) (*Model, error) {
 		return nil, err
 	}
 	audience := tables[audienceTab]
-	model := &Model{Categories: []Category{}, linkOrder: []string{}}
+	model := &Model{Categories: []Category{}}
 	for _, row := range tables[adminsTab] {
 		model.admins = append(model.admins, row["Email"])
 	}
@@ -323,12 +327,16 @@ func BuildModel(tables store.Tables, images ImageChecker) (*Model, error) {
 		if err != nil {
 			return nil, fmt.Errorf("category %q: %w", title, err)
 		}
+		order := strings.TrimSpace(row[store.OrderColumn])
+		if err := store.CheckKey(order); err != nil {
+			return nil, fmt.Errorf("category %q: %w", title, err)
+		}
 		rules, err := rulesFor(audience, thingCategory+title)
 		if err != nil {
 			return nil, err
 		}
 		index[title] = len(model.Categories)
-		model.Categories = append(model.Categories, Category{Title: title, Emoji: emoji, Style: style, Max: max, Links: []Link{}, Rules: rules})
+		model.Categories = append(model.Categories, Category{Title: title, Emoji: emoji, Style: style, Max: max, Links: []Link{}, Rules: rules, order: order})
 	}
 	if !events {
 		if _, taken := index[EventsTitle]; taken {
@@ -350,7 +358,10 @@ func BuildModel(tables store.Tables, images ImageChecker) (*Model, error) {
 			return nil, fmt.Errorf("duplicate link %q", title)
 		}
 		titles[title] = true
-		model.linkOrder = append(model.linkOrder, title)
+		order := strings.TrimSpace(row[store.OrderColumn])
+		if err := store.CheckKey(order); err != nil {
+			return nil, fmt.Errorf("link %q: %w", title, err)
+		}
 		if err := checkURL(row["URL"]); err != nil {
 			return nil, fmt.Errorf("link %q: %w", title, err)
 		}
@@ -385,9 +396,17 @@ func BuildModel(tables store.Tables, images ImageChecker) (*Model, error) {
 			Title: title, Description: row["Description"], URL: row["URL"],
 			Image: row["Image"], ImageURL: image, Category: row["Category"],
 			Visible: visible, AddedBy: row["Added By"], Added: row["Added"],
-			Rules: rules,
+			Rules: rules, order: order,
 		})
 	}
+	for i := range model.Categories {
+		slices.SortStableFunc(model.Categories[i].Links, func(a, b Link) int { return compareOrder(a.order, b.order, a.Title, b.Title) })
+	}
+	stored := model.Categories
+	if !events {
+		stored = model.Categories[1:]
+	}
+	slices.SortStableFunc(stored, func(a, b Category) int { return compareOrder(a.order, b.order, a.Title, b.Title) })
 	visibility, err := buildVisibility(tables[visibilityTab])
 	if err != nil {
 		return nil, err
@@ -427,13 +446,9 @@ func buildVisibility(rows []store.Row) (map[string]Visibility, error) {
 		if len(name) > maxTitleLength {
 			return nil, fmt.Errorf("%s row for %q: name is too long", visibilityTab, app)
 		}
-		order := 0
-		if cell := strings.TrimSpace(row["Order"]); cell != "" {
-			n, err := strconv.Atoi(cell)
-			if err != nil || n < 1 {
-				return nil, fmt.Errorf("%s row for %q: order %q is not a whole number of one or more", visibilityTab, app, cell)
-			}
-			order = n
+		order := strings.TrimSpace(row[store.OrderColumn])
+		if err := store.CheckKey(order); err != nil {
+			return nil, fmt.Errorf("%s row for %q: %w", visibilityTab, app, err)
 		}
 		visibility[app] = Visibility{Mode: mode, Emails: splitEmails(row["Emails"]), Tagline: tagline, Name: name, Order: order}
 	}

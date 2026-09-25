@@ -1,11 +1,11 @@
-Title,Description,URL,Image,Category,Visible,Added By,Added
-Directory,Find families and staff,https://who.heliosiandev.com:8080/,brand/icon-192.png,School,Yes,jordan.whitfield@heliosschool.org,2026-08-20
-Calendar,School calendar,https://calendar.example.org/,,School,Yes,jordan.whitfield@heliosschool.org,2026-08-20
-Parent Portal,Grades and attendance,https://portal.example.org/,,School,Yes,jordan.whitfield@heliosschool.org,2026-08-20
-Spring Celebration,Tickets and RSVP,https://celebrate.example.org/,,Events,Yes,jordan.whitfield@heliosschool.org,2026-08-21
-Family Camping,Book your campsite,https://camp.example.org/,,Events,Yes,jordan.whitfield@heliosschool.org,2026-08-21
-Talent Show Signups,Not open yet,https://talent.example.org/,,Events,No,jordan.whitfield@heliosschool.org,2026-08-22
-Hummingbirds Chat,,https://chat.example.org/hummingbirds,,Chats,Yes,jordan.whitfield@heliosschool.org,2026-08-22
-Hawks and Falcons Chat,,https://chat.example.org/hawks-falcons,,Chats,Yes,jordan.whitfield@heliosschool.org,2026-08-22
-Jays Chat,,https://chat.example.org/jays,,Chats,Yes,jordan.whitfield@heliosschool.org,2026-09-17
-Staff Room,Lounge sign-ups and the copier queue,https://staff.example.org/,,School,Yes,jordan.whitfield@heliosschool.org,2026-09-17
+Title,Description,URL,Image,Category,Visible,Added By,Added,Order
+Directory,Find families and staff,https://who.heliosiandev.com:8080/,brand/icon-192.png,School,Yes,jordan.whitfield@heliosschool.org,2026-08-20,2
+Calendar,School calendar,https://calendar.example.org/,,School,Yes,jordan.whitfield@heliosschool.org,2026-08-20,4
+Parent Portal,Grades and attendance,https://portal.example.org/,,School,Yes,jordan.whitfield@heliosschool.org,2026-08-20,6
+Spring Celebration,Tickets and RSVP,https://celebrate.example.org/,,Events,Yes,jordan.whitfield@heliosschool.org,2026-08-21,8
+Family Camping,Book your campsite,https://camp.example.org/,,Events,Yes,jordan.whitfield@heliosschool.org,2026-08-21,a
+Talent Show Signups,Not open yet,https://talent.example.org/,,Events,No,jordan.whitfield@heliosschool.org,2026-08-22,c
+Hummingbirds Chat,,https://chat.example.org/hummingbirds,,Chats,Yes,jordan.whitfield@heliosschool.org,2026-08-22,e
+Hawks and Falcons Chat,,https://chat.example.org/hawks-falcons,,Chats,Yes,jordan.whitfield@heliosschool.org,2026-08-22,g
+Jays Chat,,https://chat.example.org/jays,,Chats,Yes,jordan.whitfield@heliosschool.org,2026-09-17,i
+Staff Room,Lounge sign-ups and the copier queue,https://staff.example.org/,,School,Yes,jordan.whitfield@heliosschool.org,2026-09-17,k

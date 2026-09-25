@@ -28,7 +28,7 @@ Every request goes through one retry of a quota refusal (`call` in `internal/dat
 
 `internal/store` is the store. An app declares its spreadsheet in a `store.Spec`: each tab's name, the columns it must have, the columns that key a row (for the Change Log), and its cascade hook if it has one; the function that builds the model; and what to log when a model loads. `store.New` reads the spreadsheet, checks every tab's columns and the Change Log's, and builds the model, or refuses to start.
 
-A handler states a change as operations on rows - `store.Insert`, `store.Set` (every matching row, or a new one when none matches), `store.Update` (every matching row, and nothing when none does), `store.Delete`, `store.Reorder` (the tab's rows into the order of their keys, every row named once) - and hands them to `Commit(ctx, actor, ops...)`. A commit has two halves that never wait on each other. Under the store's own lock, it:
+A handler states a change as operations on rows - `store.Insert`, `store.Set` (every matching row, or a new one when none matches), `store.Update` (every matching row, and nothing when none does), `store.Delete` - and hands them to `Commit(ctx, actor, ops...)`. A commit has two halves that never wait on each other. Under the store's own lock, it:
 
 1. matches each operation against the tables as they stand, which gives the rows' previous values, and drops any that change nothing;
 2. runs the cascade hook of every tab a change touched, which adds operations of its own, until none adds more;
@@ -40,6 +40,10 @@ The memory half takes milliseconds and waits only on another commit's memory hal
 
 A store reads its sheet at startup, every five minutes after, and once more thirty seconds after a start (`deployOverlap` in `internal/app`): during a deploy the old revision keeps serving and writing while the new one reads, and that second read picks up what it wrote. The five-minute refresh is for what changes in the sheets by hand. A refresh reads on the write queue and swaps its result in only while no commit's writes are still queued: memory already holds those, and the sheet it just read does not. Work accepted but not yet committed - a mail the documents' hook took, a group's post being filed - holds the queue (`Hold` and `Release` in `internal/who/queue.go`), so the shutdown drain waits for it.
 
+## Order
+
+A row's place in a list the app lets people arrange is its `Order` cell, never its place in the tab: people sort and rearrange the sheet freely. An order is a sort key - lowercase letters and digits, compared as text, never ending in 0 - so there is always a key between any two, one character longer when they sit side by side. Moving a row writes that row's key alone, an ordinary `set` in the Change Log with the key it had. `store.Order` gives keys for rows in the order wanted, keeping every key it can (the longest run already in order) and placing the rest between their neighbours. A blank key sorts after every key, blank rows in the tab's own order, so a row added by hand lands last; it gets a key the first time a move needs it. Anything else in the cell refuses the load.
+
 ## Hooks
 
 - **Cascade hooks** belong to a tab (`store.Tab.Cascade`) and turn a changed row into more operations, inside the same commit: renaming a Staff Birthdays charity renames it on every donation and in the default-charity setting, and moving a newsletter date moves every birthday pinned to it. Each sees the row before and after and returns operations; it writes nothing itself. The same hooks carry what the other apps do by hand today: deleting a Loop group's managers, rules and messages with it, renaming a person's address across Who?'s tags and photos, deleting a calendar invitation's invites, replies and groups.
@@ -49,9 +53,9 @@ A store reads its sheet at startup, every five minutes after, and once more thir
 
 Every spreadsheet has one `Change Log` tab, written by the store and by nothing else: Timestamp, Actor, Real Actor, Action, Tab, Key, Column, Previous. One row per cell a commit changes, cascades included:
 
-- **Action** is `insert`, `set`, `delete` or `reorder`.
+- **Action** is `insert`, `set` or `delete`.
 - **Key** names the row: each of the tab's key columns and its value, `Email=…; Year=…`.
-- **Previous** is what the cell held before the change - empty for a row that did not exist. A reorder logs one row for each row that moved, with no Column, and Previous its place before, counted from one.
+- **Previous** is what the cell held before the change - empty for a row that did not exist.
 - **Actor** is who the change was made as, and **Real Actor** who was signed in, the two differing under Spoof Mode (`docs/toolbar.md`). Work nobody signed in does - the calendar import, the birthday reminders, Loop's mailer, the invite sweep - names itself as the actor, and Real Actor is empty.
 
 What a row holds now is the tab itself; the Change Log is how to get back to what it held before. Nothing reads it back.

@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -522,8 +521,48 @@ func audience(key string, was, rules []filter.Rule) []store.Op {
 	return ops
 }
 
-func (a app) linkExists(title string) bool {
-	return slices.ContainsFunc(a.cache.Model().linkOrder, func(t string) bool { return strings.EqualFold(t, strings.TrimSpace(title)) })
+func (a app) link(title string) *Link {
+	for _, c := range a.cache.Model().Categories {
+		for _, l := range c.Links {
+			if strings.EqualFold(l.Title, strings.TrimSpace(title)) {
+				return &l
+			}
+		}
+	}
+	return nil
+}
+
+func categoryOrder(model *Model, titles []string, events store.Row) ([]store.Op, error) {
+	byTitle := map[string]Category{}
+	for _, c := range model.Categories {
+		byTitle[c.Title] = c
+	}
+	if len(titles) != len(byTitle) {
+		return nil, fmt.Errorf("the order must name every category exactly once")
+	}
+	current := make([]string, len(titles))
+	virtual := make([]bool, len(titles))
+	for i, title := range titles {
+		c, ok := byTitle[title]
+		if !ok {
+			return nil, fmt.Errorf("unknown category %s", title)
+		}
+		delete(byTitle, title)
+		current[i], virtual[i] = c.order, c.Virtual
+	}
+	keys := store.Order(current)
+	ops := []store.Op{}
+	for i, title := range titles {
+		switch {
+		case virtual[i]:
+			row := maps.Clone(events)
+			row[store.OrderColumn] = keys[i]
+			ops = append(ops, store.Insert(categoriesTab, row))
+		case keys[i] != current[i]:
+			ops = append(ops, store.Update(categoriesTab, store.Row{"Title": title}, store.Row{store.OrderColumn: keys[i]}))
+		}
+	}
+	return ops, nil
 }
 
 func (a app) category(title string) *Category {
@@ -558,7 +597,8 @@ func (a app) saveLink(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "title is required and fields must be short", http.StatusBadRequest)
 		return
 	}
-	if body.Original != "" && !a.linkExists(body.Original) {
+	existing := a.link(body.Original)
+	if body.Original != "" && existing == nil {
 		http.Error(w, "no such link", http.StatusNotFound)
 		return
 	}
@@ -571,6 +611,9 @@ func (a app) saveLink(w http.ResponseWriter, r *http.Request) {
 	cells := store.Row{
 		"Title": title, "Description": strings.TrimSpace(body.Description), "URL": strings.TrimSpace(body.URL),
 		"Image": strings.TrimSpace(body.Image), "Category": strings.TrimSpace(body.Category), "Visible": visibleCell(body.Visible),
+	}
+	if existing != nil && existing.Category != cells["Category"] {
+		cells[store.OrderColumn] = ""
 	}
 	action := "edit"
 	op := store.Update(linksTab, store.Row{"Title": body.Original}, cells)
@@ -682,7 +725,14 @@ func (a app) saveCategory(w http.ResponseWriter, r *http.Request) {
 	var ops []store.Op
 	switch {
 	case virtual:
-		ops = []store.Op{store.Insert(categoriesTab, cells), store.Reorder(categoriesTab, "Title", append([]string{title}, storedTitles(model)...))}
+		titles := []string{}
+		for _, c := range model.Categories {
+			titles = append(titles, c.Title)
+		}
+		if ops, err = categoryOrder(model, titles, cells); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 	case body.Original == "":
 		action = "add"
 		ops = []store.Op{store.Insert(categoriesTab, cells)}
@@ -713,13 +763,11 @@ func (a app) reorderCategories(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	ops := []store.Op{}
-	for _, title := range body.Titles {
-		if a.virtualEvents(title) {
-			ops = append(ops, store.Insert(categoriesTab, store.Row{"Title": title, "Emoji": EventsEmoji, "Style": StyleEvents}))
-		}
+	ops, err := categoryOrder(a.cache.Model(), body.Titles, store.Row{"Title": EventsTitle, "Emoji": EventsEmoji, "Style": StyleEvents})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
-	ops = append(ops, store.Reorder(categoriesTab, "Title", body.Titles))
 	if !a.commit(w, r, actor, ops...) {
 		return
 	}
@@ -743,32 +791,40 @@ func (a app) moveLink(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "by must be 1 or -1", http.StatusBadRequest)
 		return
 	}
-	model := a.cache.Model()
-	categoryOf := map[string]string{}
-	for _, c := range model.Categories {
-		for _, l := range c.Links {
-			categoryOf[l.Title] = l.Category
+	var titles, current []string
+	at := -1
+	for _, c := range a.cache.Model().Categories {
+		for i, l := range c.Links {
+			if l.Title == body.Title {
+				at = i
+			}
+		}
+		if at >= 0 {
+			for _, l := range c.Links {
+				titles, current = append(titles, l.Title), append(current, l.order)
+			}
+			break
 		}
 	}
-	order := slices.Clone(model.linkOrder)
-	at := slices.Index(order, body.Title)
 	if at < 0 {
 		http.Error(w, "unknown link "+body.Title, http.StatusBadRequest)
 		return
 	}
-	to := -1
-	for i := at + body.By; i >= 0 && i < len(order); i += body.By {
-		if categoryOf[order[i]] == categoryOf[order[at]] {
-			to = i
-			break
-		}
-	}
-	if to < 0 {
+	to := at + body.By
+	if to < 0 || to >= len(titles) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	order[at], order[to] = order[to], order[at]
-	if !a.commit(w, r, actor, store.Reorder(linksTab, "Title", order)) {
+	titles[at], titles[to] = titles[to], titles[at]
+	current[at], current[to] = current[to], current[at]
+	keys := store.Order(current)
+	ops := []store.Op{}
+	for i, title := range titles {
+		if keys[i] != current[i] {
+			ops = append(ops, store.Update(linksTab, store.Row{"Title": title}, store.Row{store.OrderColumn: keys[i]}))
+		}
+	}
+	if !a.commit(w, r, actor, ops...) {
 		return
 	}
 	slog.InfoContext(r.Context(), "apps: moved link", "title", body.Title, "by", body.By)
@@ -826,16 +882,6 @@ func (a app) virtualEvents(title string) bool {
 		}
 	}
 	return false
-}
-
-func storedTitles(model *Model) []string {
-	out := []string{}
-	for _, c := range model.Categories {
-		if !c.Virtual {
-			out = append(out, c.Title)
-		}
-	}
-	return out
 }
 
 func (a app) uploadImage(w http.ResponseWriter, r *http.Request) {
@@ -1009,11 +1055,18 @@ func (a app) setAppOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	model := a.cache.Model()
+	apps := make([]App, 0, len(body.Apps))
+	current := make([]string, 0, len(body.Apps))
+	for _, key := range body.Apps {
+		app, _ := appByKey(strings.ToLower(strings.TrimSpace(key)))
+		apps, current = append(apps, app), append(current, visibilityOf(model, app).Order)
+	}
+	next := store.Order(current)
 	ops := []store.Op{}
-	for i, key := range body.Apps {
-		key = strings.ToLower(strings.TrimSpace(key))
-		app, _ := appByKey(key)
-		ops = append(ops, store.Set(visibilityTab, store.Row{"App": key}, store.Row{"Visibility": visibilityOf(model, app).Mode, "Order": strconv.Itoa(i + 1)}))
+	for i, app := range apps {
+		if next[i] != current[i] {
+			ops = append(ops, store.Set(visibilityTab, store.Row{"App": app.Key}, store.Row{"Visibility": visibilityOf(model, app).Mode, store.OrderColumn: next[i]}))
+		}
 	}
 	if !a.commit(w, r, actor, ops...) {
 		return

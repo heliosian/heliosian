@@ -124,13 +124,9 @@ func visibilityOf(model *Model, app App) Visibility {
 
 func orderedApps(model *Model) []App {
 	out := slices.Clone(Apps)
-	place := func(app App) int {
-		if v, ok := model.Visibility[app.Key]; ok && v.Order > 0 {
-			return v.Order
-		}
-		return len(Apps) + 1 + slices.Index(Apps, app)
-	}
-	slices.SortStableFunc(out, func(a, b App) int { return place(a) - place(b) })
+	slices.SortStableFunc(out, func(a, b App) int {
+		return store.CompareKeys(model.Visibility[a.Key].Order, model.Visibility[b.Key].Order)
+	})
 	return out
 }
 
