@@ -32,19 +32,14 @@ func (staticFiles) Has(key string) (bool, error) {
 func (staticFiles) Prefetch([]string) error { return nil }
 
 type sampleDirectory struct {
-	model  *who.Model
-	tables *who.Tables
+	model *who.Model
 }
 
-func (d sampleDirectory) Resolve(email string) string { return d.model.Resolve(email) }
-func (d sampleDirectory) Model() *who.Model           { return d.model }
-func (d sampleDirectory) Tags(owner string) map[string][]string {
-	return who.TagsOf(d.tables.Tags, d.model, owner)
-}
-func (d sampleDirectory) Lists(owner string) []who.List { return d.model.RoomParentLists(owner) }
-func (d sampleDirectory) Shared(email string) []who.SharedTag {
-	return who.SharedTagsOf(d.tables.Tags, d.tables.Managers, d.model, email)
-}
+func (d sampleDirectory) Resolve(email string) string           { return d.model.Resolve(email) }
+func (d sampleDirectory) Model() *who.Model                     { return d.model }
+func (d sampleDirectory) Tags(owner string) map[string][]string { return d.model.Tags(owner) }
+func (d sampleDirectory) Lists(owner string) []who.List         { return d.model.RoomParentLists(owner) }
+func (d sampleDirectory) Shared(email string) []who.SharedTag   { return d.model.SharedTags(email) }
 func (d sampleDirectory) Person(email string) (Person, bool) {
 	p := d.model.Person(email)
 	if p == nil {
@@ -173,11 +168,7 @@ func newHarness(t *testing.T) *harness {
 	t.Helper()
 	deliveryBatch = 20 * time.Millisecond
 	dir := &data.Dir{Root: "../../sampledata"}
-	whoTables, err := who.ReadTables(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	model, err := who.BuildModel(whoTables, nil, staticFiles{}, []byte("test"))
+	model, err := who.LoadModel(dir, nil, staticFiles{}, []byte("test"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -186,7 +177,7 @@ func newHarness(t *testing.T) *harness {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := &harness{t: t, mux: http.NewServeMux(), dir: dir, cache: cache, directory: sampleDirectory{model, whoTables}, sender: &fakeSender{}, archive: &fakeArchive{objects: map[string][]byte{}}, documents: &fakeDocuments{}, queue: queue}
+	h := &harness{t: t, mux: http.NewServeMux(), dir: dir, cache: cache, directory: sampleDirectory{model}, sender: &fakeSender{}, archive: &fakeArchive{objects: map[string][]byte{}}, documents: &fakeDocuments{}, queue: queue}
 	h.mailbox = Mail{Sender: h.sender, SigningKey: signingKey, Key: []byte("key"), Base: "https://loop.test", Archive: h.archive, Documents: h.documents}
 	Register(h.mux, cache, queue, nil, h.directory, func() []string { return nil }, h.mailbox, nil)
 	return h

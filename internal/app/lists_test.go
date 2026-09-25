@@ -17,11 +17,7 @@ import (
 func TestGroupListsCarryAdditionsAsGuests(t *testing.T) {
 	t.Chdir("../..")
 	dir := &data.Dir{Root: "sampledata"}
-	tables, err := who.ReadTables(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	directory, err := who.BuildModel(tables, nil, staticFiles{}, []byte("test"))
+	directory, err := who.LoadModel(dir, nil, staticFiles{}, []byte("test"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,11 +28,9 @@ func TestGroupListsCarryAdditionsAsGuests(t *testing.T) {
 	model := groups.Model()
 	sources := loop.Sources{
 		Directory: directory,
-		Tags:      func(owner string) map[string][]string { return who.TagsOf(tables.Tags, directory, owner) },
+		Tags:      directory.Tags,
 		Lists:     directory.RoomParentLists,
-		Shared: func(email string) []who.SharedTag {
-			return who.SharedTagsOf(tables.Tags, tables.Managers, directory, email)
-		},
+		Shared:    directory.SharedTags,
 	}
 	jordan := "jordan.whitfield@heliosschool.org"
 	lists := GroupLists(model, sources, jordan)
@@ -83,11 +77,7 @@ func (anyImage) Prefetch([]string) error { return nil }
 func TestMagicTagsCarryTheirHosts(t *testing.T) {
 	t.Chdir("../..")
 	dir := &data.Dir{Root: "sampledata"}
-	tables, err := who.ReadTables(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	directory, err := who.BuildModel(tables, nil, staticFiles{}, []byte("test"))
+	directory, err := who.LoadModel(dir, nil, staticFiles{}, []byte("test"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -182,6 +182,11 @@ func main() {
 		fmt.Printf("  %s: %d\n", band, len(model.RoomParents[band]))
 	}
 	fmt.Println("departments:", model.Departments)
+	invites, err := who.NewInvites(source, nil, who.NewQueue())
+	if err != nil {
+		log.Fatalf("[ERROR] load invites: %v", err)
+	}
+	fmt.Printf("invites: %d systems, %d greetings\n", len(invites.Systems()), len(invites.Model()))
 	fmt.Println("grades:")
 	for _, g := range model.Grades {
 		fmt.Printf("  %s -> %s (%s -> %s)\n", g.Name, g.NextName, g.Band, g.NextBand)
@@ -305,10 +310,6 @@ func main() {
 	}
 	fmt.Printf("calendar admins: %d\n", len(calendarCache.Admins(nil)))
 
-	whoTables, err := who.ReadTables(source)
-	if err != nil {
-		log.Fatalf("[ERROR] read directory tables: %v", err)
-	}
 	groupCache, err := loop.NewCache(source, nil, func(string) bool { return false }, who.NewQueue())
 	if err != nil {
 		log.Fatalf("[ERROR] load groups model: %v", err)
@@ -317,13 +318,11 @@ func main() {
 	now := time.Now().In(calendar.Location)
 	sources := loop.Sources{
 		Directory: model,
-		Tags:      func(owner string) map[string][]string { return who.TagsOf(whoTables.Tags, model, owner) },
+		Tags:      model.Tags,
 		Lists: func(owner string) []who.List {
 			return append(model.RoomParentLists(owner), app.SmartLists(model, portal, site, owner, now)...)
 		},
-		Shared: func(email string) []who.SharedTag {
-			return who.SharedTagsOf(whoTables.Tags, whoTables.Managers, model, email)
-		},
+		Shared: model.SharedTags,
 	}
 	fmt.Println("groups:")
 	for _, g := range groupModel.Groups {

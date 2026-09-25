@@ -32,11 +32,7 @@ func (d sampleDirectory) Sources() filter.Sources {
 
 func directoryOf(t *testing.T) sampleDirectory {
 	t.Helper()
-	tables, err := who.ReadTables(&data.Dir{Root: "../../sampledata"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	model, err := who.BuildModel(tables, nil, noFiles{}, []byte("test"))
+	model, err := who.LoadModel(&data.Dir{Root: "../../sampledata"}, nil, noFiles{}, []byte("test"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -283,8 +279,6 @@ func TestAppOrderIsAKey(t *testing.T) {
 	}
 }
 
-// TestOnlyAdminsGetTheRules holds that the model tells nobody but an admin
-// who a section or link is kept to.
 func TestOnlyAdminsGetTheRules(t *testing.T) {
 	c, _ := sampleCache(t)
 	c.directory = directoryOf(t)

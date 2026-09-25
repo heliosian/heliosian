@@ -28,29 +28,23 @@ const (
 	colin  = "colin.quinn@heliosschool.org"
 )
 
-func sample(t *testing.T) (filter.Sources, *who.Tables) {
+func sample(t *testing.T) (filter.Sources, *who.Model) {
 	t.Helper()
-	tables, err := who.ReadTables(&data.Dir{Root: "../../sampledata"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	model, err := who.BuildModel(tables, nil, staticFiles{}, []byte("test"))
+	model, err := who.LoadModel(&data.Dir{Root: "../../sampledata"}, nil, staticFiles{}, []byte("test"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	return filter.Sources{
 		Directory: model,
-		Tags:      func(owner string) map[string][]string { return who.TagsOf(tables.Tags, model, owner) },
+		Tags:      model.Tags,
 		Lists: func(owner string) []who.List {
 			if owner != jordan {
 				return nil
 			}
 			return []who.List{{Key: "party:p1", Name: "Pizza Night", Kind: who.ListParty, People: []string{abena, colin}}}
 		},
-		Shared: func(email string) []who.SharedTag {
-			return who.SharedTagsOf(tables.Tags, tables.Managers, model, email)
-		},
-	}, tables
+		Shared: model.SharedTags,
+	}, model
 }
 
 func include(tags ...string) filter.Rule {
@@ -62,19 +56,19 @@ func members(s filter.Sources, editors []string, rules ...filter.Rule) []string 
 }
 
 func TestTagsReadForTheEditors(t *testing.T) {
-	s, tables := sample(t)
-	carpool := who.TagsOf(tables.Tags, s.Directory, jordan)["Carpool"]
+	s, model := sample(t)
+	carpool := model.Tags(jordan)["Carpool"]
 	if got := members(s, []string{jordan}, include(filter.TagKey(jordan, "Carpool"))); !slices.Equal(got, carpool) {
 		t.Errorf("the owner among the editors: got %v, want %v", got, carpool)
 	}
 	if got := members(s, []string{colin}, include(filter.TagKey(jordan, "Carpool"))); len(got) != 0 {
 		t.Errorf("nobody among the editors may read it, yet: %v", got)
 	}
-	soccer := who.TagsOf(tables.Tags, s.Directory, jordan)["Soccer Team"]
+	soccer := model.Tags(jordan)["Soccer Team"]
 	if got := members(s, []string{asha}, include(filter.TagKey(jordan, "Soccer Team"))); !slices.Equal(got, soccer) {
 		t.Errorf("a manager among the editors: got %v, want %v", got, soccer)
 	}
-	bookClub := who.TagsOf(tables.Tags, s.Directory, abena)["Book Club"]
+	bookClub := model.Tags(abena)["Book Club"]
 	if got := members(s, []string{colin, jordan}, include(filter.TagKey(abena, "Book Club"))); !slices.Equal(got, bookClub) {
 		t.Errorf("a manager among several editors: got %v, want %v", got, bookClub)
 	}

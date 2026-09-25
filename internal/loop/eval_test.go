@@ -24,20 +24,15 @@ func (staticFiles) Prefetch([]string) error { return nil }
 
 const jordan = "jordan.whitfield@heliosschool.org"
 
-func sample(t *testing.T) (loop.Sources, *who.Tables) {
+func sample(t *testing.T) (loop.Sources, *who.Model) {
 	t.Helper()
-	dir := &data.Dir{Root: "../../sampledata"}
-	tables, err := who.ReadTables(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	model, err := who.BuildModel(tables, nil, staticFiles{}, []byte("test"))
+	model, err := who.LoadModel(&data.Dir{Root: "../../sampledata"}, nil, staticFiles{}, []byte("test"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	return loop.Sources{
 		Directory: model,
-		Tags:      func(owner string) map[string][]string { return who.TagsOf(tables.Tags, model, owner) },
+		Tags:      model.Tags,
 		Lists: func(owner string) []who.List {
 			lists := model.RoomParentLists(owner)
 			if owner == jordan {
@@ -45,17 +40,15 @@ func sample(t *testing.T) (loop.Sources, *who.Tables) {
 			}
 			return lists
 		},
-		Shared: func(email string) []who.SharedTag {
-			return who.SharedTagsOf(tables.Tags, tables.Managers, model, email)
-		},
-	}, tables
+		Shared: model.SharedTags,
+	}, model
 }
 
 func TestSharedTagsReadForTheManagers(t *testing.T) {
-	s, tables := sample(t)
+	s, model := sample(t)
 	key := filter.TagKey("abena.osei@heliosschool.org", "Book Club")
 	got := members(t, s, rule(loop.KindInclude, func(r *loop.Rule) { r.Tags = []string{key} }))
-	want := who.TagsOf(tables.Tags, s.Directory, "abena.osei@heliosschool.org")["Book Club"]
+	want := model.Tags("abena.osei@heliosschool.org")["Book Club"]
 	if len(want) == 0 || !slices.Equal(got, want) {
 		t.Fatalf("book club: got %v, want %v", got, want)
 	}
@@ -206,9 +199,9 @@ func TestExcludeRulesSubtract(t *testing.T) {
 }
 
 func TestTagsReadTheOwnersOwn(t *testing.T) {
-	s, tables := sample(t)
+	s, model := sample(t)
 	got := members(t, s, rule(loop.KindInclude, func(r *loop.Rule) { r.Tags = []string{filter.TagKey(jordan, "Carpool")} }))
-	want := who.TagsOf(tables.Tags, s.Directory, jordan)["Carpool"]
+	want := model.Tags(jordan)["Carpool"]
 	if !slices.Equal(got, want) {
 		t.Fatalf("carpool: got %v, want %v", got, want)
 	}

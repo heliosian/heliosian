@@ -184,6 +184,41 @@ func TestAppendOnlyIsWrittenNotLogged(t *testing.T) {
 	}
 }
 
+func TestAnotherSheetsTabIsReadNotWritten(t *testing.T) {
+	f := newFixture(t, syncQueue{})
+	root := f.dir.Root
+	if err := os.Mkdir(filepath.Join(root, "other"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "other", "Answers.csv"), []byte("Who,Said\nann,yes\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	withAnswers := spec()
+	withAnswers.Tabs = append(withAnswers.Tabs, Tab{App: "other", Name: "Answers", Columns: []string{"Who", "Said"}, Key: []string{"Who"}})
+	build := withAnswers.Build
+	withAnswers.Build = func(tables Tables) (map[string]int, error) {
+		m, err := build(tables)
+		if err != nil {
+			return nil, err
+		}
+		m["answers"] = len(tables["Answers"])
+		return m, nil
+	}
+	s, err := New(withAnswers, f.dir, f.dir, syncQueue{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Model()["answers"] != 1 {
+		t.Fatalf("model %v", s.Model())
+	}
+	if err := s.Commit(context.Background(), "job", Insert("Answers", Row{"Who": "bo", "Said": "no"})); err == nil {
+		t.Fatal("a write to another sheet's tab was taken")
+	}
+	if _, rows, _ := f.dir.Table("other", "Answers"); len(rows) != 1 {
+		t.Fatalf("the other sheet holds %v", rows)
+	}
+}
+
 type lineQueue chan func()
 
 func newLineQueue(t *testing.T) lineQueue {

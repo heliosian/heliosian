@@ -16,10 +16,12 @@ import (
 	"heliosian/internal/loop"
 	"heliosian/internal/store"
 	"heliosian/internal/team"
+	"heliosian/internal/who"
 )
 
 var spreadsheets = []struct{ env, layout string }{
 	{"DIRECTORY_SHEET", "Directory"},
+	{"INVITES_SHEET", "Invite List Builder"},
 	{"APPS_SHEET", "Apps"},
 	{"EVENTS_SHEET", "Events"},
 	{"BIRTHDAY_SHEET", "Birthdays"},
@@ -90,27 +92,20 @@ var layouts = map[string][]tab{
 			"Email", "Address", "Family Phone", "Family Photo Caption",
 			"Family Photo Updated", "Family Photo", "Family Photo Crop", "Family Pronunciation",
 		}},
-		{"Change Log", []string{
-			"Timestamp", "Actor",
-			"Email", "Added",
-			"Full Name", "Legal Name", "Preferred Name",
-			"Is Student", "Is Parent", "Is Staff",
-			"New to Helios", "Pronouns", "Facts",
-			"Grade", "Classroom", "Crew",
-			"Phone", "Job Title", "Department", "Grade Band", "Room Parent",
-			"Address", "Family Phone", "Family Photo Caption", "Opted Out",
-			"Photo Updated", "Facts Updated", "Family Photo Updated",
-			"Veracross Photo", "Primary Photo", "Pronunciation",
-			"Family Photo", "Family Pronunciation",
-			"Real Actor",
-		}},
+		{store.ChangeLogTab, store.ChangeLogColumns},
 		{"Website Staff Import", []string{
 			"constituent_id", "full_name", "title", "departments", "email", "bio", "photo",
 		}},
 		{"Tags", []string{"Owner Email", "Tag", "Person Email"}},
-		{"Photos", []string{"Email", "Photo Name"}},
+		{"Tag Managers", []string{"Owner Email", "Tag", "Manager Email"}},
+		{"Photos", []string{"Email", "Photo Name", "Crop Name", store.OrderColumn}},
+		{"Images", []string{"Kind", "Name", "Image"}},
 		{"Admins", []string{"Email"}},
 		{"Geocode", []string{"Address", "Lat", "Lng"}},
+	},
+	"Invite List Builder": {
+		{"_Greetings", who.GreetingColumns},
+		{store.ChangeLogTab, store.ChangeLogColumns},
 	},
 	"Apps": {
 		{"Categories", home.CategoryColumns},

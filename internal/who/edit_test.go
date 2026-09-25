@@ -9,11 +9,8 @@ import (
 	"time"
 
 	"heliosian/internal/auth"
-	"heliosian/internal/data"
 )
 
-// The sample's Dev Chandra lives in two households, Asha's and Rohan's, one
-// parent each; the Torreses are one household with two.
 const (
 	asha   = "asha.chandra@heliosschool.org"
 	rohan  = "rohan.chandra@heliosschool.org"
@@ -55,14 +52,9 @@ func TestAParentEditsTheirHouseholdAndKidButNotTheOtherParents(t *testing.T) {
 
 func sampleCache(t *testing.T) *Cache {
 	t.Helper()
-	tables, err := ReadTables(&data.Dir{Root: "../../sampledata"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return &Cache{model: sampleModel(t), tables: tables, superAdmins: func() []string { return []string{jordan} }}
+	return newServer(t).cache
 }
 
-// The pencil is the browser's cookie, and counts only for an admin.
 func TestSuperEditIsAnAdminsCookie(t *testing.T) {
 	cache := sampleCache(t)
 	u := uploader{cache: cache}
@@ -106,8 +98,6 @@ func TestSettingSuperEditWritesTheCookie(t *testing.T) {
 	}
 }
 
-// A super admin viewing as a parent keeps their pencil cookie, but the
-// parent's view carries no super edit.
 func TestSpoofedParentGetsNoSuperEdit(t *testing.T) {
 	cache := sampleCache(t)
 	key := []byte("spoof")

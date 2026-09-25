@@ -3,24 +3,131 @@ package who
 import (
 	"log/slog"
 	"net/http"
+	"sort"
 	"strings"
 
-	"heliosian/internal/data"
 	"heliosian/internal/mail"
+	"heliosian/internal/store"
 )
 
 const maxTagLength = 40
 
+type SharedTag struct {
+	Owner     string   `json:"owner"`
+	OwnerName string   `json:"ownerName"`
+	Name      string   `json:"name"`
+	People    []string `json:"people"`
+	Managers  []string `json:"managers"`
+}
+
+func (m *Model) Tags(owner string) map[string][]string {
+	tags := map[string][]string{}
+	for _, row := range m.tags {
+		if !strings.EqualFold(row[tagOwner], owner) {
+			continue
+		}
+		person := strings.ToLower(row[tagPerson])
+		if m.Person(person) == nil {
+			continue
+		}
+		tags[row[tagName]] = append(tags[row[tagName]], person)
+	}
+	for _, people := range tags {
+		sort.Strings(people)
+	}
+	return tags
+}
+
+func (m *Model) TagManagers(owner string) map[string][]string {
+	out := map[string][]string{}
+	for _, row := range m.managers {
+		if !strings.EqualFold(row[tagOwner], owner) {
+			continue
+		}
+		manager := strings.ToLower(row[managerEmail])
+		if m.Person(manager) == nil {
+			continue
+		}
+		out[row[tagName]] = append(out[row[tagName]], manager)
+	}
+	for _, managers := range out {
+		sort.Strings(managers)
+	}
+	return out
+}
+
+func (m *Model) SharedTags(email string) []SharedTag {
+	out := []SharedTag{}
+	for _, row := range m.managers {
+		if !strings.EqualFold(row[managerEmail], email) {
+			continue
+		}
+		owner := strings.ToLower(row[tagOwner])
+		if m.Person(owner) == nil {
+			continue
+		}
+		tag := row[tagName]
+		shared := SharedTag{Owner: owner, OwnerName: m.DisplayName(owner), Name: tag, People: []string{}, Managers: []string{}}
+		for _, t := range m.tags {
+			if strings.EqualFold(t[tagOwner], owner) && t[tagName] == tag {
+				person := strings.ToLower(t[tagPerson])
+				if m.Person(person) != nil {
+					shared.People = append(shared.People, person)
+				}
+			}
+		}
+		if len(shared.People) == 0 {
+			continue
+		}
+		for _, other := range m.managers {
+			if strings.EqualFold(other[tagOwner], owner) && other[tagName] == tag {
+				manager := strings.ToLower(other[managerEmail])
+				if m.Person(manager) != nil {
+					shared.Managers = append(shared.Managers, manager)
+				}
+			}
+		}
+		sort.Strings(shared.People)
+		sort.Strings(shared.Managers)
+		out = append(out, shared)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Name != out[j].Name {
+			return out[i].Name < out[j].Name
+		}
+		return out[i].Owner < out[j].Owner
+	})
+	return out
+}
+
+func (m *Model) canManage(email, owner, tag string) bool {
+	if strings.EqualFold(email, owner) {
+		return true
+	}
+	for _, row := range m.managers {
+		if strings.EqualFold(row[tagOwner], owner) && row[tagName] == tag && strings.EqualFold(row[managerEmail], email) {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *Model) tagged(owner, tag, person string) bool {
+	for _, row := range m.tags {
+		if strings.EqualFold(row[tagOwner], owner) && row[tagName] == tag && strings.EqualFold(row[tagPerson], person) {
+			return true
+		}
+	}
+	return false
+}
+
 type tagger struct {
 	cache  *Cache
-	writer data.Writer
-	queue  *Queue
-	// mailer sends word of a tag shared; nil sends nothing.
 	mailer mail.Sender
 }
 
-func RegisterTags(mux *http.ServeMux, cache *Cache, writer data.Writer, queue *Queue, mailer mail.Sender) {
-	t := tagger{cache: cache, writer: writer, queue: queue, mailer: mailer}
+func RegisterTags(mux *http.ServeMux, cache *Cache, mailer mail.Sender) {
+	t := tagger{cache: cache, mailer: mailer}
 	mux.HandleFunc("POST /api/directory/tag", t.set)
 	mux.HandleFunc("POST /api/directory/tag-delete", t.drop)
 	mux.HandleFunc("POST /api/directory/tag-rename", t.rename)
@@ -29,24 +136,18 @@ func RegisterTags(mux *http.ServeMux, cache *Cache, writer data.Writer, queue *Q
 	mux.HandleFunc("POST /api/directory/tag-leave", t.leave)
 }
 
-// tagOwnerOf is whose tag a request means: the caller's own unless it names
-// an owner, which is a manager working on a tag shared with them - allowed
-// only while the owner still lists them. The empty string refuses.
 func (t tagger) tagOwnerOf(r *http.Request, tag string) string {
 	caller := effectiveEmail(t.cache, r)
 	owner := strings.ToLower(strings.TrimSpace(r.FormValue("owner")))
 	if owner == "" || owner == caller {
 		return caller
 	}
-	if !t.cache.canManage(caller, owner, tag) {
+	if !t.cache.Model().canManage(caller, owner, tag) {
 		return ""
 	}
 	return owner
 }
 
-// rename gives one of the caller's tags a new name, its managers following
-// - the owner's alone, as delete is. A name the caller already uses for
-// another tag is refused rather than the two silently merged.
 func (t tagger) rename(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 	owner := effectiveEmail(t.cache, r)
@@ -69,35 +170,17 @@ func (t tagger) rename(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "you already have a tag called "+to, http.StatusConflict)
 		return
 	}
-	hadManagers := len(t.cache.TagManagers(owner)[from]) > 0
-	people := t.cache.renameTag(owner, from, to)
-	if people == 0 {
-		w.WriteHeader(http.StatusNoContent)
+	named := store.Row{tagOwner: owner, tagName: from}
+	if !t.cache.commit(w, r, owner,
+		store.Update(tagsTable, named, store.Row{tagName: to}),
+		store.Update(managersTable, named, store.Row{tagName: to}),
+	) {
 		return
 	}
-	t.queue.Add(func() {
-		defer t.cache.written()
-		if err := t.writer.Set(appName, tagsTable, map[string]string{tagOwner: owner, tagName: from}, map[string]string{tagName: to}); err != nil {
-			slog.ErrorContext(r.Context(), "tag rename", "owner", owner, "from", from, "to", to, "error", err)
-		}
-		// Set appends a row when nothing matches, so the managers' tab is
-		// only touched when there are managers to follow.
-		if !hadManagers {
-			return
-		}
-		if err := t.writer.Set(appName, managersTable, map[string]string{tagOwner: owner, tagName: from}, map[string]string{tagName: to}); err != nil {
-			slog.ErrorContext(r.Context(), "tag rename managers", "owner", owner, "from", from, "to", to, "error", err)
-		}
-	})
-	slog.InfoContext(r.Context(), "tag: renamed", "owner", owner, "from", from, "to", to, "people", people)
+	slog.InfoContext(r.Context(), "tag: renamed", "owner", owner, "from", from, "to", to, "people", len(own[from]))
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// copy makes the caller a new tag of their own with the same people as one
-// of theirs or - with an owner named - one shared with them, a starting
-// point to change as they like; the copy theirs alone, without the
-// original's managers. A name already in use is refused, as rename refuses
-// it.
 func (t tagger) copy(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 	owner := effectiveEmail(t.cache, r)
@@ -116,7 +199,8 @@ func (t tagger) copy(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad tag name", http.StatusBadRequest)
 		return
 	}
-	if len(t.cache.Tags(fromOwner)[from]) == 0 {
+	people := t.cache.Tags(fromOwner)[from]
+	if len(people) == 0 {
 		http.Error(w, "no such tag", http.StatusBadRequest)
 		return
 	}
@@ -124,27 +208,17 @@ func (t tagger) copy(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "you already have a tag called "+to, http.StatusConflict)
 		return
 	}
-	rows := t.cache.copyTag(fromOwner, from, owner, to)
-	if len(rows) == 0 {
-		w.WriteHeader(http.StatusNoContent)
+	ops := []store.Op{}
+	for _, person := range people {
+		ops = append(ops, store.Insert(tagsTable, store.Row{tagOwner: owner, tagName: to, tagPerson: person}))
+	}
+	if !t.cache.commit(w, r, owner, ops...) {
 		return
 	}
-	t.queue.Add(func() {
-		defer t.cache.written()
-		if err := t.writer.Insert(appName, tagsTable, rows); err != nil {
-			slog.ErrorContext(r.Context(), "tag copy", "owner", owner, "from", from, "to", to, "error", err)
-		}
-	})
-	slog.InfoContext(r.Context(), "tag: copied", "owner", owner, "fromOwner", fromOwner, "from", from, "to", to, "people", len(rows))
+	slog.InfoContext(r.Context(), "tag: copied", "owner", owner, "fromOwner", fromOwner, "from", from, "to", to, "people", len(people))
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// share lets the owner of a tag add or remove a manager of it - anyone in
-// the directory, a student included, other than themselves, who then sees
-// the tag under "Shared Tags" and can tag and untag through it as the owner
-// can. Only a tag
-// with people in it can be shared: a tag is nothing but its rows, so an
-// empty one isn't there to share.
 func (t tagger) share(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 	owner := effectiveEmail(t.cache, r)
@@ -163,13 +237,9 @@ func (t tagger) share(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no such tag", http.StatusBadRequest)
 		return
 	}
-	t.cache.applyManager(owner, tag, manager, on)
-	t.queue.Add(func() {
-		defer t.cache.written()
-		if err := t.flushManager(owner, tag, manager, on); err != nil {
-			slog.ErrorContext(r.Context(), "tag share write", "owner", owner, "tag", tag, "manager", manager, "error", err)
-		}
-	})
+	if !t.cache.commit(w, r, owner, managerOp(owner, tag, manager, on)) {
+		return
+	}
 	slog.InfoContext(r.Context(), "tag: shared", "owner", owner, "on", on, "tag", tag, "manager", manager)
 	if on {
 		t.notifyShared(r, owner, tag, manager)
@@ -177,8 +247,6 @@ func (t tagger) share(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// leave takes the caller off a tag shared with them - their own choice, as
-// against the owner's through share - the tag itself untouched.
 func (t tagger) leave(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 	manager := effectiveEmail(t.cache, r)
@@ -188,32 +256,21 @@ func (t tagger) leave(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad tag", http.StatusBadRequest)
 		return
 	}
-	t.cache.applyManager(owner, tag, manager, false)
-	t.queue.Add(func() {
-		defer t.cache.written()
-		if err := t.flushManager(owner, tag, manager, false); err != nil {
-			slog.ErrorContext(r.Context(), "tag leave write", "owner", owner, "tag", tag, "manager", manager, "error", err)
-		}
-	})
+	if !t.cache.commit(w, r, manager, managerOp(owner, tag, manager, false)) {
+		return
+	}
 	slog.InfoContext(r.Context(), "tag: left", "owner", owner, "tag", tag, "manager", manager)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (t tagger) flushManager(owner, tag, manager string, on bool) error {
+func managerOp(owner, tag, manager string, on bool) store.Op {
+	row := store.Row{tagOwner: owner, tagName: tag, managerEmail: manager}
 	if on {
-		return t.writer.Insert(appName, managersTable, []map[string]string{{tagOwner: owner, tagName: tag, managerEmail: manager}})
+		return store.Set(managersTable, row, store.Row{})
 	}
-	return t.writer.Delete(appName, managersTable, map[string]string{
-		tagOwner:     owner,
-		tagName:      tag,
-		managerEmail: manager,
-	})
+	return store.Delete(managersTable, row)
 }
 
-// drop removes one of the caller's tags outright - every person in it at
-// once, and whoever managed it - the way the list page's Delete tag button
-// asks, rather than untagging them one by one through set. The owner's
-// alone: a manager leaves instead.
 func (t tagger) drop(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 	owner := effectiveEmail(t.cache, r)
@@ -222,26 +279,15 @@ func (t tagger) drop(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad tag name", http.StatusBadRequest)
 		return
 	}
-	people := t.cache.dropTag(owner, tag)
-	if people == 0 {
-		w.WriteHeader(http.StatusNoContent)
+	people := len(t.cache.Tags(owner)[tag])
+	named := store.Row{tagOwner: owner, tagName: tag}
+	if !t.cache.commit(w, r, owner, store.Delete(tagsTable, named), store.Delete(managersTable, named)) {
 		return
 	}
-	t.queue.Add(func() {
-		defer t.cache.written()
-		if err := t.writer.Delete(appName, tagsTable, map[string]string{tagOwner: owner, tagName: tag}); err != nil {
-			slog.ErrorContext(r.Context(), "tag delete", "owner", owner, "tag", tag, "error", err)
-		}
-		if err := t.writer.Delete(appName, managersTable, map[string]string{tagOwner: owner, tagName: tag}); err != nil {
-			slog.ErrorContext(r.Context(), "tag delete managers", "owner", owner, "tag", tag, "error", err)
-		}
-	})
 	slog.InfoContext(r.Context(), "tag: deleted", "owner", owner, "tag", tag, "people", people)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// set tags or untags one person, on the caller's own tag or - with an owner
-// named - one shared with them.
 func (t tagger) set(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 	person := strings.ToLower(strings.TrimSpace(r.FormValue("person")))
@@ -260,28 +306,18 @@ func (t tagger) set(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no such person", http.StatusBadRequest)
 		return
 	}
-	if t.cache.tagged(owner, tag, person) == on {
+	if t.cache.Model().tagged(owner, tag, person) == on {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	t.cache.applyTag(owner, tag, person, on)
-	t.queue.Add(func() {
-		defer t.cache.written()
-		if err := t.flush(owner, tag, person, on); err != nil {
-			slog.ErrorContext(r.Context(), "tag write", "owner", owner, "tag", tag, "person", person, "error", err)
-		}
-	})
+	row := store.Row{tagOwner: owner, tagName: tag, tagPerson: person}
+	op := store.Delete(tagsTable, row)
+	if on {
+		op = store.Insert(tagsTable, row)
+	}
+	if !t.cache.commit(w, r, effectiveEmail(t.cache, r), op) {
+		return
+	}
 	slog.InfoContext(r.Context(), "tag: changed", "owner", owner, "on", on, "tag", tag, "person", person)
 	w.WriteHeader(http.StatusNoContent)
-}
-
-func (t tagger) flush(owner, tag, person string, on bool) error {
-	if on {
-		return t.writer.Insert(appName, tagsTable, []map[string]string{{tagOwner: owner, tagName: tag, tagPerson: person}})
-	}
-	return t.writer.Delete(appName, tagsTable, map[string]string{
-		tagOwner:  owner,
-		tagName:   tag,
-		tagPerson: person,
-	})
 }

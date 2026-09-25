@@ -3,11 +3,14 @@ package who
 import (
 	"bytes"
 	"encoding/json"
+	"maps"
+	"strings"
 	"testing"
 	"time"
 
 	"heliosian/internal/config"
 	"heliosian/internal/data"
+	"heliosian/internal/store"
 )
 
 type noBlobs struct{}
@@ -27,14 +30,96 @@ func sampleModel(t *testing.T) *Model {
 	return model
 }
 
+func sampleTables(t *testing.T) store.Tables {
+	t.Helper()
+	dir := &data.Dir{Root: "../../sampledata"}
+	tables := store.Tables{}
+	for _, tab := range spec(nil, nil, nil, func() {}).Tabs {
+		app := tab.App
+		if app == "" {
+			app = appName
+		}
+		_, rows, err := dir.Table(app, tab.Name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tables[tab.Name] = rows
+	}
+	return tables
+}
+
+func fill(row, cells store.Row) {
+	for column, value := range cells {
+		if value == "" {
+			delete(row, column)
+			continue
+		}
+		row[column] = value
+	}
+}
+
+func with(tables store.Tables, tab string, match, cells store.Row) store.Tables {
+	out := maps.Clone(tables)
+	rows := []store.Row{}
+	found := false
+	for _, row := range tables[tab] {
+		matched := true
+		for column, value := range match {
+			if !strings.EqualFold(row[column], value) {
+				matched = false
+			}
+		}
+		if !matched {
+			rows = append(rows, row)
+			continue
+		}
+		next := maps.Clone(row)
+		fill(next, cells)
+		rows = append(rows, next)
+		found = true
+	}
+	if !found {
+		row := maps.Clone(match)
+		fill(row, cells)
+		rows = append(rows, row)
+	}
+	out[tab] = rows
+	return out
+}
+
+func withOverride(tables store.Tables, email string, cells store.Row) store.Tables {
+	return with(tables, overridesTab, store.Row{"Email": email}, cells)
+}
+
+func withFamily(tables store.Tables, key string, cells store.Row) store.Tables {
+	return with(tables, familiesTab, store.Row{"Email": key}, cells)
+}
+
+func withPhotos(tables store.Tables, email string, refs []photoRef) store.Tables {
+	out := maps.Clone(tables)
+	rows := []store.Row{}
+	for _, row := range tables[photosTab] {
+		if !strings.EqualFold(row["Email"], email) {
+			rows = append(rows, row)
+		}
+	}
+	for _, ref := range refs {
+		row := store.Row{"Email": email, "Photo Name": ref.Name}
+		if ref.CropName != "" {
+			row["Crop Name"] = ref.CropName
+		}
+		rows = append(rows, row)
+	}
+	out[photosTab] = rows
+	return out
+}
+
 func TestStaffImportExcludesVendors(t *testing.T) {
 	if p := sampleModel(t).Person("sasha.pike@heliosschool.org"); p != nil {
 		t.Errorf("vendor %s reached the directory", p.Email)
 	}
 }
 
-// Veracross has no address for several real staff. The Name to Email tab covers them
-// the same way it covers students, so they are in the directory rather than dropped.
 func TestStaffWithNoVeracrossEmailComeFromTheMapping(t *testing.T) {
 	p := model(t, "luis.ortega@heliosschool.org")
 	if !p.IsStaff || p.FullName != "Luis Ortega" || p.JobTitle != "Janitorial" {
@@ -42,8 +127,6 @@ func TestStaffWithNoVeracrossEmailComeFromTheMapping(t *testing.T) {
 	}
 }
 
-// A name with no address is how somebody records that a person Veracross carries is
-// deliberately not in the directory, as opposed to nobody having decided yet.
 func TestNameWithNoEmailExcludesThePerson(t *testing.T) {
 	for _, p := range sampleModel(t).People {
 		if p.FullName == "Rosa Delgado" {
@@ -63,7 +146,6 @@ func TestStaffImportSuppliesNameAndJobTitle(t *testing.T) {
 	if p.JobTitle != "Kindergarten Teacher" {
 		t.Errorf("job title = %q, want the imported title", p.JobTitle)
 	}
-	// Overrides keeps what the export cannot know.
 	if p.Department != "Classroom Teachers" || p.Classroom != "Hummingbirds" {
 		t.Errorf("department %q classroom %q, want the override values", p.Department, p.Classroom)
 	}
@@ -75,9 +157,6 @@ func TestStaffImportTakesBusinessPhone(t *testing.T) {
 	}
 }
 
-// A staff member who is also a parent arrives from both imports. The household copy of
-// the name carries a redundant parenthetical the staff export omits, which must merge
-// rather than read as a conflict.
 func TestStaffWhoIsAlsoAParentMerges(t *testing.T) {
 	p := model(t, "dana.hawkins@heliosschool.org")
 	if !p.IsStaff || !p.IsParent {
@@ -89,15 +168,11 @@ func TestStaffWhoIsAlsoAParentMerges(t *testing.T) {
 	if p.PreferredName != "Dana" {
 		t.Errorf("preferred name = %q, want the household form to survive", p.PreferredName)
 	}
-	// Her family shared neither field on the consent form, which masks the household
-	// phone. The staff merge must not resurrect it by filling from the export.
 	if p.Phone != "" || !p.PhoneMasked {
 		t.Errorf("phone = %q masked = %t, want it cleared by preference", p.Phone, p.PhoneMasked)
 	}
 }
 
-// The consent form is what puts a family in the directory at all: a household that
-// never answered it is gone, not listed with its fields masked.
 func TestFamilyThatNeverSubmittedIsAbsent(t *testing.T) {
 	m := sampleModel(t)
 	for _, email := range []string{"april.baxter@heliosschool.org", "leo.baxter@heliosschool.org"} {
@@ -110,15 +185,12 @@ func TestFamilyThatNeverSubmittedIsAbsent(t *testing.T) {
 	}
 }
 
-// Staff reach the family consent form only by being a parent too, so silence leaves
-// them listed - the exemption covers non-submission and nothing else.
 func TestStaffWhoNeverSubmittedStayListed(t *testing.T) {
 	if p := model(t, "ruth.amari@heliosschool.org"); !p.IsStaff {
 		t.Errorf("staff %t, want a staff member with no submission to stay listed", p.IsStaff)
 	}
 }
 
-// An opt-out is an answer rather than silence, so it removes a staff member too.
 func TestConsentOptOutRemovesStaff(t *testing.T) {
 	if p := sampleModel(t).Person("grace.kim@heliosschool.org"); p != nil {
 		t.Errorf("%s opted out on the form and is still in the directory", p.Email)
@@ -126,19 +198,15 @@ func TestConsentOptOutRemovesStaff(t *testing.T) {
 }
 
 func TestOneHouseholdsAnswerCoversTheOther(t *testing.T) {
-	tables, err := ReadTables(&data.Dir{Root: "../../sampledata"})
-	if err != nil {
-		t.Fatalf("read sample tables: %v", err)
-	}
-	kept := make([]map[string]string, 0, len(tables.Preferences))
-	for _, row := range tables.Preferences {
+	tables := sampleTables(t)
+	kept := []store.Row{}
+	for _, row := range tables[preferencesTab] {
 		if row[preferenceEmail] != "rohan.chandra@heliosschool.org" {
 			kept = append(kept, row)
 		}
 	}
-	next := *tables
-	next.Preferences = kept
-	m, err := BuildModel(&next, noBlobs{}, noBlobs{}, testKey)
+	tables[preferencesTab] = kept
+	m, err := BuildModel(tables, noBlobs{}, noBlobs{}, testKey)
 	if err != nil {
 		t.Fatalf("build model with one household's submission dropped: %v", err)
 	}
@@ -163,8 +231,6 @@ func TestLatestAnswerInAFamilySpeaksForEveryHousehold(t *testing.T) {
 	}
 }
 
-// The school's staff page is the only source of a bio, and it fills a title only
-// where Veracross has none.
 func TestWebsiteImportSuppliesTheBioAndNotTheTitle(t *testing.T) {
 	p := model(t, "bill.ryder@heliosschool.org")
 	if p.Facts != "Bill runs the front office and knows where everything in the building is." {
@@ -175,8 +241,6 @@ func TestWebsiteImportSuppliesTheBioAndNotTheTitle(t *testing.T) {
 	}
 }
 
-// Overrides outrank the website like they outrank Veracross, which is why the layer
-// runs off the override row rather than the value it resolved to.
 func TestOverriddenFactsBeatTheWebsiteBio(t *testing.T) {
 	p := model(t, "ruth.amari@heliosschool.org")
 	if p.Facts != "Twelve years teaching kindergarten, keeper of the class worm farm." {
@@ -184,15 +248,9 @@ func TestOverriddenFactsBeatTheWebsiteBio(t *testing.T) {
 	}
 }
 
-// An override that clears a field with "-" has to stay cleared: the website filling
-// it back in would quietly undo a deliberate removal.
 func TestClearedFactsAreNotRefilledFromTheWebsite(t *testing.T) {
-	tables, err := ReadTables(&data.Dir{Root: "../../sampledata"})
-	if err != nil {
-		t.Fatalf("read sample tables: %v", err)
-	}
 	email := "bill.ryder@heliosschool.org"
-	m, err := BuildModel(tables.withOverride(email, map[string]string{"Facts": "-"}), noBlobs{}, noBlobs{}, testKey)
+	m, err := BuildModel(withOverride(sampleTables(t), email, store.Row{"Facts": "-"}), noBlobs{}, noBlobs{}, testKey)
 	if err != nil {
 		t.Fatalf("build model with the facts cleared: %v", err)
 	}
@@ -201,9 +259,6 @@ func TestClearedFactsAreNotRefilledFromTheWebsite(t *testing.T) {
 	}
 }
 
-// Staff added by hand don't exist until applyOverrides, which runs after the website
-// layer, so the page reaches nobody Veracross doesn't carry. Reaching them means
-// creating added people before the layer rather than moving the layer.
 func TestAddedStaffAreOutOfTheWebsiteLayersReach(t *testing.T) {
 	p := model(t, "noa.adler@heliosschool.org")
 	if p.Facts != "" {
@@ -211,15 +266,12 @@ func TestAddedStaffAreOutOfTheWebsiteLayersReach(t *testing.T) {
 	}
 }
 
-// The website lists people the directory drops - vendors, and anyone who has left.
 func TestWebsiteEntryMatchingNobodyIsSkipped(t *testing.T) {
 	if p := sampleModel(t).Person("sasha.pike@heliosschool.org"); p != nil {
 		t.Errorf("%s is on the staff page but not in the directory, and should stay out", p.Email)
 	}
 }
 
-// A staff member the site publishes no address for is matched by name, the same way
-// the Veracross imports reach the people it has no address for.
 func TestWebsiteEntryWithNoEmailMatchesByName(t *testing.T) {
 	p := model(t, "luis.ortega@heliosschool.org")
 	if p.Facts == "" {
@@ -227,9 +279,6 @@ func TestWebsiteEntryWithNoEmailMatchesByName(t *testing.T) {
 	}
 }
 
-// A staff member the site publishes no address for, but Veracross has one for, is
-// reached by name through the staff import itself: Name to Email cannot carry them,
-// since it refuses to restate an address Veracross exports.
 func TestWebsiteEntryWithNoEmailMatchesVeracrossStaffByName(t *testing.T) {
 	p := model(t, "hana.ito@heliosschool.org")
 	if p.Facts != "Hana came to teaching from marine research and still takes her class tide-pooling every spring." {
@@ -237,25 +286,17 @@ func TestWebsiteEntryWithNoEmailMatchesVeracrossStaffByName(t *testing.T) {
 	}
 }
 
-// A name two staff share is refused rather than guessed at.
 func TestWebsiteEntryMatchingTwoStaffByNameIsFatal(t *testing.T) {
-	tables, err := ReadTables(&data.Dir{Root: "../../sampledata"})
-	if err != nil {
-		t.Fatalf("read sample tables: %v", err)
-	}
-	next := *tables
-	next.Staff = append(append([]map[string]string{}, tables.Staff...), map[string]string{
+	tables := sampleTables(t)
+	tables[staffTab] = append(append([]store.Row{}, tables[staffTab]...), store.Row{
 		"person_full_name": "Hana Ito", "person_email": "hana.ito2@heliosschool.org",
 		"person_classifications": `{"faculty_type":"Specialist"}`,
 	})
-	if _, err := BuildModel(&next, noBlobs{}, noBlobs{}, testKey); err == nil {
+	if _, err := BuildModel(tables, noBlobs{}, noBlobs{}, testKey); err == nil {
 		t.Error("a website entry with no address whose name matches two staff should fail the load")
 	}
 }
 
-// A staff member the site publishes under a second address is reached through the
-// Email Aliases tab, which resolves it to the address Veracross exports before the
-// layer matches on it.
 func TestWebsiteEntryUnderAnAliasMatchesByEmail(t *testing.T) {
 	p := model(t, "hank.morrow@heliosschool.org")
 	if p.Facts != "Hank has kept the boilers running through nine winters and knows every valve by name." {
@@ -266,8 +307,6 @@ func TestWebsiteEntryUnderAnAliasMatchesByEmail(t *testing.T) {
 	}
 }
 
-// Which of a person's addresses their Workspace account calls primary is nobody's
-// deliberate choice, so signing in under an alias has to reach the same record.
 func TestSignInUnderAnAliasResolvesToThePerson(t *testing.T) {
 	m := sampleModel(t)
 	if got := m.Resolve("facilities@heliosschool.org"); got != "hank.morrow@heliosschool.org" {
@@ -281,26 +320,16 @@ func TestSignInUnderAnAliasResolvesToThePerson(t *testing.T) {
 	}
 }
 
-// An alias nothing publishes any more is stale, and stale entries are refused rather
-// than carried: a match key that quietly stops working looks exactly like a page
-// nobody has updated.
 func TestAliasMatchingNothingIsFatal(t *testing.T) {
-	tables, err := ReadTables(&data.Dir{Root: "../../sampledata"})
-	if err != nil {
-		t.Fatalf("read sample tables: %v", err)
-	}
-	next := *tables
-	next.Aliases = append(append([]map[string]string{}, tables.Aliases...), map[string]string{
+	tables := sampleTables(t)
+	tables[AliasesTable] = append(append([]store.Row{}, tables[AliasesTable]...), store.Row{
 		AliasColumn: "nobody@heliosschool.org", AliasEmailColumn: "ruth.amari@heliosschool.org",
 	})
-	if _, err := BuildModel(&next, noBlobs{}, noBlobs{}, testKey); err == nil {
+	if _, err := BuildModel(tables, noBlobs{}, noBlobs{}, testKey); err == nil {
 		t.Error("an alias matching no import row should fail the load")
 	}
 }
 
-// A family is keyed by its alphabetically first adult email, and the Families tab -
-// keyed the same way - is the one home of its fields; the model knows the family by
-// the masked form of that email.
 func TestFamilyFieldsComeFromTheFamiliesTab(t *testing.T) {
 	m := sampleModel(t)
 	keys := m.FamilyKeysOf("marco.torres@heliosschool.org")
@@ -319,7 +348,6 @@ func TestFamilyFieldsComeFromTheFamiliesTab(t *testing.T) {
 	}
 }
 
-// A kid in two households belongs to two families, and both list them.
 func TestClassroomPathIsThePagesSlug(t *testing.T) {
 	for name, want := range map[string]string{"Condors": "/classrooms/condors", "Blue Jays": "/classrooms/blue-jays"} {
 		if got := ClassroomPath(name); got != want {
@@ -380,43 +408,29 @@ func TestTwoHouseholdKidBelongsToBothFamilies(t *testing.T) {
 	}
 }
 
-// The Families tab is keyed by the family key itself, so a row keyed by any other
-// parent of the household refuses to load rather than silently starting a second
-// place for the same family's fields to live.
 func TestFamiliesRowKeyedByTheWrongParentIsFatal(t *testing.T) {
-	tables, err := ReadTables(&data.Dir{Root: "../../sampledata"})
-	if err != nil {
-		t.Fatalf("read sample tables: %v", err)
-	}
-	misKeyed := tables.withFamily("marco.torres@heliosschool.org", map[string]string{"Family Phone": "650-555-0000"})
+	misKeyed := withFamily(sampleTables(t), "marco.torres@heliosschool.org", store.Row{"Family Phone": "650-555-0000"})
 	if _, err := BuildModel(misKeyed, noBlobs{}, noBlobs{}, testKey); err == nil {
 		t.Error("a Families row keyed by the non-first parent should fail the load")
 	}
 }
 
-// The family stays keyed by its first adult after that adult is withheld - by the
-// per-person Opted Out cell, or as the silent partner of a staff member listed by
-// default - and the model every member fetches must not carry the email anywhere.
 func TestWithheldFirstAdultIsNowhereInTheModel(t *testing.T) {
-	tables, err := ReadTables(&data.Dir{Root: "../../sampledata"})
-	if err != nil {
-		t.Fatalf("read sample tables: %v", err)
-	}
-	// Dana Hawkins is the sample's staff member who is a parent too.
-	silent := *tables
-	silent.Preferences = nil
-	for _, row := range tables.Preferences {
+	tables := sampleTables(t)
+	silent := maps.Clone(tables)
+	silent[preferencesTab] = nil
+	for _, row := range tables[preferencesTab] {
 		if row[preferenceEmail] != "dana.hawkins@heliosschool.org" {
-			silent.Preferences = append(silent.Preferences, row)
+			silent[preferencesTab] = append(silent[preferencesTab], row)
 		}
 	}
 	for _, c := range []struct {
 		name, first, partner string
-		tables               *Tables
+		tables               store.Tables
 	}{
 		{"opted out", "elena.torres@heliosschool.org", "marco.torres@heliosschool.org",
-			tables.withOverride("elena.torres@heliosschool.org", map[string]string{"Opted Out": "TRUE"})},
-		{"silent staff partner", "colin.quinn@heliosschool.org", "dana.hawkins@heliosschool.org", &silent},
+			withOverride(tables, "elena.torres@heliosschool.org", store.Row{"Opted Out": "TRUE"})},
+		{"silent staff partner", "colin.quinn@heliosschool.org", "dana.hawkins@heliosschool.org", silent},
 	} {
 		m, err := BuildModel(c.tables, noBlobs{}, noBlobs{}, testKey)
 		if err != nil {
@@ -439,7 +453,6 @@ func TestWithheldFirstAdultIsNowhereInTheModel(t *testing.T) {
 	}
 }
 
-// Staff Veracross does not carry still enter through a flagged Overrides row.
 func TestStaffNotInVeracrossStillLoad(t *testing.T) {
 	p := model(t, "noa.adler@heliosschool.org")
 	if !p.IsStaff || p.FullName != "Noa Adler" || p.JobTitle != "Music Teacher" {
@@ -447,67 +460,37 @@ func TestStaffNotInVeracrossStillLoad(t *testing.T) {
 	}
 }
 
-// Regression for the reorder-photos handler failing to retire a legacy Primary
-// Photo override: unlike Phone or Address, Primary Photo has no import-provided
-// baseline, so applyOverrides always starts it at "" and writing "-" to clear it
-// (the convention for fields that do have a baseline) is always flagged as
-// clearing an already-empty value, failing the whole model load. Clearing with an
-// empty string instead - which deletes the cell rather than marking it explicitly
-// blank - is the fix, and this test would have caught the bug reintroduced.
 func TestClearingLegacyPrimaryPhotoOverrideSucceeds(t *testing.T) {
-	tables, err := ReadTables(&data.Dir{Root: "../../sampledata"})
-	if err != nil {
-		t.Fatalf("read sample tables: %v", err)
-	}
 	email := "ruth.amari@heliosschool.org"
-	withPrimary := tables.withOverride(email, map[string]string{"Primary Photo": "somephoto.jpg"})
+	withPrimary := withOverride(sampleTables(t), email, store.Row{"Primary Photo": "somephoto.jpg"})
 	if _, err := BuildModel(withPrimary, noBlobs{}, noBlobs{}, testKey); err != nil {
 		t.Fatalf("seed a legacy Primary Photo override: %v", err)
 	}
-
-	if _, err := BuildModel(withPrimary.withOverride(email, map[string]string{"Primary Photo": ""}), noBlobs{}, noBlobs{}, testKey); err != nil {
+	if _, err := BuildModel(withOverride(withPrimary, email, store.Row{"Primary Photo": ""}), noBlobs{}, noBlobs{}, testKey); err != nil {
 		t.Errorf("clearing Primary Photo with an empty string should succeed, got: %v", err)
 	}
-
-	if _, err := BuildModel(withPrimary.withOverride(email, map[string]string{"Primary Photo": "-"}), noBlobs{}, noBlobs{}, testKey); err == nil {
+	if _, err := BuildModel(withOverride(withPrimary, email, store.Row{"Primary Photo": "-"}), noBlobs{}, noBlobs{}, testKey); err == nil {
 		t.Errorf("clearing Primary Photo with \"-\" should still fail the useless-override check, documenting why \"\" is required")
 	}
 }
 
-// Same class of bug as the Primary Photo regression above: Pronouns has no
-// import baseline either (see edit's "pronouns" case, upload.go), so clearing
-// it must also write "" rather than clearable's "-".
 func TestClearingPronounsSucceeds(t *testing.T) {
-	tables, err := ReadTables(&data.Dir{Root: "../../sampledata"})
-	if err != nil {
-		t.Fatalf("read sample tables: %v", err)
-	}
 	email := "ruth.amari@heliosschool.org"
-	withPronouns := tables.withOverride(email, map[string]string{"Pronouns": "she/her"})
+	withPronouns := withOverride(sampleTables(t), email, store.Row{"Pronouns": "she/her"})
 	if _, err := BuildModel(withPronouns, noBlobs{}, noBlobs{}, testKey); err != nil {
 		t.Fatalf("seed pronouns: %v", err)
 	}
-
-	if _, err := BuildModel(withPronouns.withOverride(email, map[string]string{"Pronouns": ""}), noBlobs{}, noBlobs{}, testKey); err != nil {
+	if _, err := BuildModel(withOverride(withPronouns, email, store.Row{"Pronouns": ""}), noBlobs{}, noBlobs{}, testKey); err != nil {
 		t.Errorf("clearing Pronouns with an empty string should succeed, got: %v", err)
 	}
-
-	if _, err := BuildModel(withPronouns.withOverride(email, map[string]string{"Pronouns": "-"}), noBlobs{}, noBlobs{}, testKey); err == nil {
+	if _, err := BuildModel(withOverride(withPronouns, email, store.Row{"Pronouns": "-"}), noBlobs{}, noBlobs{}, testKey); err == nil {
 		t.Errorf("clearing Pronouns with \"-\" should still fail the useless-override check, documenting why \"\" is required")
 	}
 }
 
-// Family Photo Caption is a Families-tab column, cleared with clearable's "-"
-// convention like every other column there: applyFamilies reads "-" as an explicit
-// clear and "" as no cell at all. This is a sanity check that a real caption clears
-// successfully with "-", the opposite regression from the two tests above.
 func TestClearingFamilyPhotoCaptionSucceeds(t *testing.T) {
-	tables, err := ReadTables(&data.Dir{Root: "../../sampledata"})
-	if err != nil {
-		t.Fatalf("read sample tables: %v", err)
-	}
 	key := "carmen.alvarez@heliosschool.org"
-	withCaption := tables.withFamily(key, map[string]string{"Family Photo Caption": "Carmen at the beach."})
+	withCaption := withFamily(sampleTables(t), key, store.Row{"Family Photo Caption": "Carmen at the beach."})
 	m, err := BuildModel(withCaption, noBlobs{}, noBlobs{}, testKey)
 	if err != nil {
 		t.Fatalf("seed a family photo caption: %v", err)
@@ -515,8 +498,7 @@ func TestClearingFamilyPhotoCaptionSucceeds(t *testing.T) {
 	if m.Families[familyID(testKey, key)].PhotoCaption != "Carmen at the beach." {
 		t.Fatalf("caption did not seed correctly: %+v", m.Families[familyID(testKey, key)])
 	}
-
-	cleared, err := BuildModel(withCaption.withFamily(key, map[string]string{"Family Photo Caption": "-"}), noBlobs{}, noBlobs{}, testKey)
+	cleared, err := BuildModel(withFamily(withCaption, key, store.Row{"Family Photo Caption": "-"}), noBlobs{}, noBlobs{}, testKey)
 	if err != nil {
 		t.Fatalf("clearing Family Photo Caption with \"-\" should succeed, got: %v", err)
 	}
@@ -525,18 +507,10 @@ func TestClearingFamilyPhotoCaptionSucceeds(t *testing.T) {
 	}
 }
 
-// Pronunciation is only ever set via the upload endpoint (edit's "pronunciation"
-// case rejects a non-empty value) - it has no import baseline, same class as
-// Pronouns/Primary Photo above, so clearing it must write "" rather than
-// clearable's "-".
 func TestClearingPronunciationSucceeds(t *testing.T) {
-	tables, err := ReadTables(&data.Dir{Root: "../../sampledata"})
-	if err != nil {
-		t.Fatalf("read sample tables: %v", err)
-	}
 	email := "ruth.amari@heliosschool.org"
 	blobs := fakeBlobs{"pronunciation/somefile.webm": true}
-	withPronunciation := tables.withOverride(email, map[string]string{"Pronunciation": "somefile.webm"})
+	withPronunciation := withOverride(sampleTables(t), email, store.Row{"Pronunciation": "somefile.webm"})
 	seeded, err := BuildModel(withPronunciation, blobs, noBlobs{}, testKey)
 	if err != nil {
 		t.Fatalf("seed a pronunciation: %v", err)
@@ -544,31 +518,21 @@ func TestClearingPronunciationSucceeds(t *testing.T) {
 	if got := seeded.Person(email).pronunciation; got != "somefile.webm" {
 		t.Fatalf("pronunciation did not seed correctly: %q", got)
 	}
-
-	cleared, err := BuildModel(withPronunciation.withOverride(email, map[string]string{"Pronunciation": ""}), blobs, noBlobs{}, testKey)
+	cleared, err := BuildModel(withOverride(withPronunciation, email, store.Row{"Pronunciation": ""}), blobs, noBlobs{}, testKey)
 	if err != nil {
 		t.Errorf("clearing Pronunciation with an empty string should succeed, got: %v", err)
 	} else if got := cleared.Person(email).pronunciation; got != "" {
 		t.Errorf("pronunciation = %q after clearing with \"\", want empty", got)
 	}
-
-	if _, err := BuildModel(withPronunciation.withOverride(email, map[string]string{"Pronunciation": "-"}), noBlobs{}, noBlobs{}, testKey); err == nil {
+	if _, err := BuildModel(withOverride(withPronunciation, email, store.Row{"Pronunciation": "-"}), noBlobs{}, noBlobs{}, testKey); err == nil {
 		t.Errorf("clearing Pronunciation with \"-\" should still fail the useless-override check, documenting why \"\" is required")
 	}
 }
 
-// Family Pronunciation is a raw Families-tab read (applyFamilies), not routed
-// through apply()'s useless-override check - so unlike person Pronunciation
-// above, clearing it with "" works with no "-" fallback to document, since
-// there's no useless-override check to trip either way.
 func TestClearingFamilyPronunciationSucceeds(t *testing.T) {
-	tables, err := ReadTables(&data.Dir{Root: "../../sampledata"})
-	if err != nil {
-		t.Fatalf("read sample tables: %v", err)
-	}
 	key := "carmen.alvarez@heliosschool.org"
 	blobs := fakeBlobs{"pronunciation/somefile.webm": true}
-	withPronunciation := tables.withFamily(key, map[string]string{"Family Pronunciation": "somefile.webm"})
+	withPronunciation := withFamily(sampleTables(t), key, store.Row{"Family Pronunciation": "somefile.webm"})
 	seeded, err := BuildModel(withPronunciation, blobs, noBlobs{}, testKey)
 	if err != nil {
 		t.Fatalf("seed a family pronunciation: %v", err)
@@ -576,8 +540,7 @@ func TestClearingFamilyPronunciationSucceeds(t *testing.T) {
 	if got := seeded.Families[familyID(testKey, key)].pronunciation; got != "somefile.webm" {
 		t.Fatalf("family pronunciation did not seed correctly: %q", got)
 	}
-
-	cleared, err := BuildModel(withPronunciation.withFamily(key, map[string]string{"Family Pronunciation": ""}), blobs, noBlobs{}, testKey)
+	cleared, err := BuildModel(withFamily(withPronunciation, key, store.Row{"Family Pronunciation": ""}), blobs, noBlobs{}, testKey)
 	if err != nil {
 		t.Fatalf("clearing Family Pronunciation with an empty string should succeed, got: %v", err)
 	}
@@ -586,24 +549,15 @@ func TestClearingFamilyPronunciationSucceeds(t *testing.T) {
 	}
 }
 
-// fakeBlobs simulates specific objects existing in the bucket, unlike noBlobs
-// (which simulates none existing) - needed to exercise real photo/crop URL
-// resolution rather than the empty-name early return every other test relies on.
 type fakeBlobs map[string]bool
 
 func (f fakeBlobs) Has(key string) (bool, error) { return f[key], nil }
 
 func (fakeBlobs) Prefetch([]string) error { return nil }
 
-// A photo with a linked crop shows the crop wherever it's the effective, square
-// display URL, while the original stays available separately for "View photo".
 func TestPhotoCropResolvesOverOriginal(t *testing.T) {
-	tables, err := ReadTables(&data.Dir{Root: "../../sampledata"})
-	if err != nil {
-		t.Fatalf("read sample tables: %v", err)
-	}
 	email := "elena.torres@heliosschool.org"
-	withCrop := tables.withPhotos(email, []photoRef{{Name: "orig.jpg", CropName: "crop.jpg"}})
+	withCrop := withPhotos(sampleTables(t), email, []photoRef{{Name: "orig.jpg", CropName: "crop.jpg"}})
 	blobs := fakeBlobs{"photos/orig.jpg": true, "photos/crop.jpg": true}
 	m, err := BuildModel(withCrop, blobs, noBlobs{}, testKey)
 	if err != nil {
@@ -622,16 +576,9 @@ func TestPhotoCropResolvesOverOriginal(t *testing.T) {
 	}
 }
 
-// A crop naming an object that isn't actually in the bucket - the object went
-// missing, or the sheet row is stale - falls back to the original rather than
-// failing the whole model load, unlike an unresolvable original name.
 func TestMissingCropFallsBackToOriginal(t *testing.T) {
-	tables, err := ReadTables(&data.Dir{Root: "../../sampledata"})
-	if err != nil {
-		t.Fatalf("read sample tables: %v", err)
-	}
 	email := "elena.torres@heliosschool.org"
-	withCrop := tables.withPhotos(email, []photoRef{{Name: "orig.jpg", CropName: "missing-crop.jpg"}})
+	withCrop := withPhotos(sampleTables(t), email, []photoRef{{Name: "orig.jpg", CropName: "missing-crop.jpg"}})
 	blobs := fakeBlobs{"photos/orig.jpg": true}
 	m, err := BuildModel(withCrop, blobs, noBlobs{}, testKey)
 	if err != nil {
@@ -643,15 +590,34 @@ func TestMissingCropFallsBackToOriginal(t *testing.T) {
 	}
 }
 
-// Someone with no photos of their own shows the initials placeholder - never the
-// family photo standing in for them, however present it is.
-func TestPersonWithNoPhotosShowsNoFamilyPhoto(t *testing.T) {
-	tables, err := ReadTables(&data.Dir{Root: "../../sampledata"})
-	if err != nil {
-		t.Fatalf("read sample tables: %v", err)
+func TestPhotoOrderIsNotRowOrder(t *testing.T) {
+	email := "elena.torres@heliosschool.org"
+	tables := sampleTables(t)
+	tables[photosTab] = []store.Row{
+		{"Email": email, "Photo Name": "late.jpg"},
+		{"Email": email, "Photo Name": "second.jpg", store.OrderColumn: "m"},
+		{"Email": email, "Photo Name": "first.jpg", store.OrderColumn: "b"},
 	}
+	m, err := BuildModel(tables, allBlobs{}, noBlobs{}, testKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := []string{}
+	for _, photo := range m.Person(email).Photos {
+		got = append(got, photo.Name)
+	}
+	if strings.Join(got, ",") != "first.jpg,second.jpg,late.jpg" {
+		t.Errorf("photos %v, want keyed ones in key order and the blank one last", got)
+	}
+	tables[photosTab][0][store.OrderColumn] = "B"
+	if _, err := BuildModel(tables, allBlobs{}, noBlobs{}, testKey); err == nil {
+		t.Error("a photo order that is not a sort key loaded")
+	}
+}
+
+func TestPersonWithNoPhotosShowsNoFamilyPhoto(t *testing.T) {
 	key := "elena.torres@heliosschool.org"
-	withFamilyPhoto := tables.withFamily(key, map[string]string{"Family Photo": "family.jpg"})
+	withFamilyPhoto := withFamily(sampleTables(t), key, store.Row{"Family Photo": "family.jpg"})
 	blobs := fakeBlobs{"photos/family.jpg": true}
 	m, err := BuildModel(withFamilyPhoto, blobs, noBlobs{}, testKey)
 	if err != nil {
@@ -669,15 +635,9 @@ func TestPersonWithNoPhotosShowsNoFamilyPhoto(t *testing.T) {
 	}
 }
 
-// Unlike the photo case above, pronunciation does fall back: a family member with
-// no recording of their own hears the family's instead of nothing.
 func TestPersonWithNoPronunciationFallsBackToFamilyPronunciation(t *testing.T) {
-	tables, err := ReadTables(&data.Dir{Root: "../../sampledata"})
-	if err != nil {
-		t.Fatalf("read sample tables: %v", err)
-	}
 	key := "elena.torres@heliosschool.org"
-	withFamilyPronunciation := tables.withFamily(key, map[string]string{"Family Pronunciation": "family.webm"})
+	withFamilyPronunciation := withFamily(sampleTables(t), key, store.Row{"Family Pronunciation": "family.webm"})
 	blobs := fakeBlobs{"pronunciation/family.webm": true}
 	m, err := BuildModel(withFamilyPronunciation, blobs, noBlobs{}, testKey)
 	if err != nil {
@@ -695,17 +655,10 @@ func TestPersonWithNoPronunciationFallsBackToFamilyPronunciation(t *testing.T) {
 	}
 }
 
-// A personal recording overrides the family's fallback rather than being masked
-// by it - HasOwnPronunciation is what the frontend uses to decide whether the
-// delete button (which clears only the personal recording) should show.
 func TestOwnPronunciationOverridesFamilyFallback(t *testing.T) {
-	tables, err := ReadTables(&data.Dir{Root: "../../sampledata"})
-	if err != nil {
-		t.Fatalf("read sample tables: %v", err)
-	}
-	withBoth := tables.
-		withFamily("elena.torres@heliosschool.org", map[string]string{"Family Pronunciation": "family.webm"}).
-		withOverride("mia.torres@heliosschool.org", map[string]string{"Pronunciation": "mia.webm"})
+	withBoth := withOverride(
+		withFamily(sampleTables(t), "elena.torres@heliosschool.org", store.Row{"Family Pronunciation": "family.webm"}),
+		"mia.torres@heliosschool.org", store.Row{"Pronunciation": "mia.webm"})
 	blobs := fakeBlobs{"pronunciation/family.webm": true, "pronunciation/mia.webm": true}
 	m, err := BuildModel(withBoth, blobs, noBlobs{}, testKey)
 	if err != nil {
@@ -729,17 +682,12 @@ func model(t *testing.T, email string) *Person {
 	return p
 }
 
-// blobsWith reports every named object as present, so a photo name in the
-// sheet resolves to a URL the way it does against the real bucket.
 type blobsWith map[string]bool
 
 func (b blobsWith) Has(name string) (bool, error) { return b[name], nil }
 
 func (blobsWith) Prefetch([]string) error { return nil }
 
-// The topbar avatar on both the directory and the link portal leads with this,
-// so the own-photo-then-family fallback is worth pinning down. The sample
-// carries no photos at all, which is why these are built by hand.
 func TestHeroPhotoPrefersOwnPhotoThenFallsBackToTheFamily(t *testing.T) {
 	const email = "jordan.whitfield@heliosschool.org"
 	sample := sampleModel(t)
@@ -747,13 +695,9 @@ func TestHeroPhotoPrefersOwnPhotoThenFallsBackToTheFamily(t *testing.T) {
 	if len(key) == 0 {
 		t.Fatalf("%s has no family in the sample", email)
 	}
-	tables, err := ReadTables(&data.Dir{Root: "../../sampledata"})
-	if err != nil {
-		t.Fatalf("read sample tables: %v", err)
-	}
 	blobs := blobsWith{"photos/own.jpg": true, "photos/fam.jpg": true}
 
-	family := tables.withFamily(sample.Families[key[0]].email, map[string]string{"Family Photo": "fam.jpg"})
+	family := withFamily(sampleTables(t), sample.Families[key[0]].email, store.Row{"Family Photo": "fam.jpg"})
 	m, err := BuildModel(family, blobs, noBlobs{}, testKey)
 	if err != nil {
 		t.Fatalf("build model with a family photo: %v", err)
@@ -762,7 +706,7 @@ func TestHeroPhotoPrefersOwnPhotoThenFallsBackToTheFamily(t *testing.T) {
 		t.Errorf("with only a family photo: got %q, want the family's", got)
 	}
 
-	own := family.withPhotos(email, []photoRef{{Name: "own.jpg"}})
+	own := withPhotos(family, email, []photoRef{{Name: "own.jpg"}})
 	m, err = BuildModel(own, blobs, noBlobs{}, testKey)
 	if err != nil {
 		t.Fatalf("build model with an own photo: %v", err)
@@ -782,12 +726,9 @@ func TestHeroPhotoIsEmptyForNonMembersAndForNoPhoto(t *testing.T) {
 	}
 }
 
-// The sample parent's badges match what the directory's own page shows them:
-// four things to update (the client's stale.js reckoning) and a privacy
-// mismatch - and a stranger gets nothing.
 func TestAlertsMatchTheDirectoryPage(t *testing.T) {
 	m := sampleModel(t)
-	years := config.StaleYears{Photo: 0.75, Facts: 0.6, FamilyPhoto: 1.5} // the sample Settings
+	years := config.StaleYears{Photo: 0.75, Facts: 0.6, FamilyPhoto: 1.5}
 	got := m.Alerts("jordan.whitfield@heliosschool.org", years, time.Now())
 	if got.Stale != 4 || !got.Privacy {
 		t.Errorf("alerts for the sample parent = %+v, want 4 stale and a privacy mismatch", got)

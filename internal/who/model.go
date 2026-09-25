@@ -3,6 +3,8 @@ package who
 import (
 	"net/url"
 	"strings"
+
+	"heliosian/internal/store"
 )
 
 type OptStatus string
@@ -13,19 +15,14 @@ const (
 	OptOut     OptStatus = "out"
 )
 
-// Every photo is one content-addressed object; where a person's photos came from is
-// recorded in the sheet, not in the object name. Source is "veracross" for the school
-// portrait, "website" for the headshot the school publishes on its staff page, or
-// "upload". A photo may also have a linked square crop, another content-addressed
-// object recorded alongside it - cropName carries that object's name for reuse when
-// a caller needs to rewrite a person's full photo list without dropping it (it isn't
-// exported to JSON; the frontend only ever needs the two resolved URLs below).
 type Photo struct {
 	Name        string `json:"name"`
 	Source      string `json:"source"`
-	URL         string `json:"url"`         // the crop, if one exists, else the original
-	OriginalURL string `json:"originalUrl"` // always the original, uncropped image
+	URL         string `json:"url"`
+	OriginalURL string `json:"originalUrl"`
 	cropName    string
+	order       string
+	stored      bool
 }
 
 type Person struct {
@@ -48,43 +45,22 @@ type Person struct {
 	veracrossPhoto       string
 	websitePhoto         string
 	pronunciation        string
-	// overrideRow is this person's raw Overrides sheet row, or nil if they don't have
-	// one. Internal only: admin.go reads it (via overrideStringValue/overrideBoolValue)
-	// to show and edit exactly what Overrides currently holds for a column, distinct
-	// from the resolved value below - a plain nil-map lookup safely returns "" for
-	// someone with no row at all, meaning "no override".
-	overrideRow map[string]string
-	// imported snapshots this person's Veracross-import-derived field values, captured
-	// in applyOverrides (load.go) before overrideRow's cells could change any of them.
-	// Internal only: nil for a person with no override row - their live field values
-	// above already ARE the import values, since nothing here ever changed them, so
-	// admin.go falls back to those directly in that case. Only holds columns an import
-	// can genuinely supply: Full Name, Legal Name, Preferred Name, Grade, Classroom,
-	// Crew, Phone, Job Title and Is Staff from Veracross, and Facts from the school's
-	// staff page; Department, Grade Band, Pronouns and Room Parent have no import
-	// source for anyone.
-	imported            map[string]string
-	PhotoUpdated        string   `json:"photoUpdated,omitempty"`
-	Grade               string   `json:"grade,omitempty"`
-	Classroom           string   `json:"classroom,omitempty"`
-	Crew                string   `json:"crew,omitempty"`
-	Phone               string   `json:"phone,omitempty"`
-	ParentContactEmails []string `json:"parentContactEmails,omitempty"`
-	JobTitle            string   `json:"jobTitle,omitempty"`
-	Department          string   `json:"department,omitempty"`
-	GradeBand           string   `json:"gradeBand,omitempty"`
+	overrideRow          map[string]string
+	imported             map[string]string
+	PhotoUpdated         string   `json:"photoUpdated,omitempty"`
+	Grade                string   `json:"grade,omitempty"`
+	Classroom            string   `json:"classroom,omitempty"`
+	Crew                 string   `json:"crew,omitempty"`
+	Phone                string   `json:"phone,omitempty"`
+	ParentContactEmails  []string `json:"parentContactEmails,omitempty"`
+	JobTitle             string   `json:"jobTitle,omitempty"`
+	Department           string   `json:"department,omitempty"`
+	GradeBand            string   `json:"gradeBand,omitempty"`
 
 	OptStatus     OptStatus `json:"optStatus"`
 	AddressMasked bool      `json:"addressMasked,omitempty"`
 	PhoneMasked   bool      `json:"phoneMasked,omitempty"`
-	// EmailMasked marks a Veracross-generated placeholder address (see noEmailMarker in
-	// load.go) - unlike AddressMasked/PhoneMasked, which blank the field they mask
-	// because the underlying data is sensitive, Email itself is left completely
-	// untouched here: it's still this person's real identity/key everywhere in the app
-	// (routing, Overrides, Tags, Photos). This only tells a viewer's client not to
-	// render it - no visible address, no mailto: link, no copy button - since nobody
-	// can actually reach the fake one.
-	EmailMasked bool `json:"emailMasked,omitempty"`
+	EmailMasked   bool      `json:"emailMasked,omitempty"`
 }
 
 type Family struct {
@@ -95,8 +71,8 @@ type Family struct {
 	Phone            string   `json:"phone,omitempty"`
 	Lat              float64  `json:"lat,omitempty"`
 	Lng              float64  `json:"lng,omitempty"`
-	PhotoURL         string   `json:"photoUrl,omitempty"`         // the crop, if one exists, else the original
-	OriginalPhotoURL string   `json:"originalPhotoUrl,omitempty"` // always the original, uncropped image
+	PhotoURL         string   `json:"photoUrl,omitempty"`
+	OriginalPhotoURL string   `json:"originalPhotoUrl,omitempty"`
 	PhotoCaption     string   `json:"photoCaption,omitempty"`
 	PhotoUpdated     string   `json:"photoUpdated,omitempty"`
 	PronunciationURL string   `json:"pronunciationUrl,omitempty"`
@@ -105,31 +81,13 @@ type Family struct {
 	AddressMasked    bool     `json:"addressMasked,omitempty"`
 	PhoneMasked      bool     `json:"phoneMasked,omitempty"`
 
-	// VeracrossAddress and VeracrossPhone record what Veracross itself shows for this
-	// family - "full"/"partial"/"hidden" and "visible"/"mixed"/"hidden" respectively -
-	// captured before AddressMasked/PhoneMasked (the Helios Who opt-in override) can
-	// blank the fields above. My Privacy uses them to warn a family whose Helios Who
-	// override hides something Veracross still shows to the wider community.
 	VeracrossAddress string `json:"veracrossAddress"`
 	VeracrossPhone   string `json:"veracrossPhone"`
 
-	// photoCropName is the object name of family's photo crop, if any - a family
-	// photo may be cropped to an arbitrary shape (unlike a person's, which is
-	// always square), same as Photo.cropName above. email is the key email the
-	// Families tab row is under, which Key masks (familyID in load.go).
 	photo, pronunciation, photoCropName, email string
 
-	// sheetRow is this family's raw Families sheet row, or nil if it doesn't have one -
-	// the same shape as Person.overrideRow, and read the same way: admin.go shows and
-	// edits exactly what the tab currently holds for a column, distinct from the
-	// resolved values above.
 	sheetRow map[string]string
 
-	// importedAddress snapshots the household's Veracross-import address, captured in
-	// buildFamilies (load.go) before any adult's familyOverrides cells could change
-	// Address above. Internal only: admin.go's Parent Overrides tab shows this as the
-	// "Veracross" reference next to the (possibly different) value actually in
-	// Overrides.
 	importedAddress string
 }
 
@@ -155,30 +113,23 @@ type Grade struct {
 }
 
 type Model struct {
-	People      []Person            `json:"people"`
-	Families    map[string]Family   `json:"families"`
-	Classrooms  []Classroom         `json:"classrooms"`
-	Crews       []Crew              `json:"crews"`
-	Grades      []Grade             `json:"grades"`
-	RoomParents map[string][]string `json:"roomParents"`
-	Departments []string            `json:"departments"`
-	byEmail     map[string]int
-	// familyKeysByEmail is internal only: the client derives the same index from
-	// Families' own member lists, so serializing it would just duplicate them.
+	People            []Person            `json:"people"`
+	Families          map[string]Family   `json:"families"`
+	Classrooms        []Classroom         `json:"classrooms"`
+	Crews             []Crew              `json:"crews"`
+	Grades            []Grade             `json:"grades"`
+	RoomParents       map[string][]string `json:"roomParents"`
+	Departments       []string            `json:"departments"`
+	byEmail           map[string]int
 	familyKeysByEmail map[string][]string
-	// hiddenEmails lists everyone removeOptedOut (load.go) just deleted from People -
-	// captured there because that's the last point any of their data (even just their
-	// email) is still reachable. Internal only, deliberately never serialized: this
-	// app's one public API (the directory model JSON) must never reveal who opted out,
-	// which is the whole point of opting out. admin.go's Hidden Overrides tab is the
-	// only reader, and only for a caller already confirmed to be an admin.
-	hiddenEmails []string
-	aliases      Aliases
+	hiddenEmails      []string
+	aliases           Aliases
+	tags              []store.Row
+	managers          []store.Row
+	admins            []string
+	unlocated         []string
 }
 
-// Resolve maps an address someone signs in with onto the one the directory keys
-// them by, so a Workspace account whose primary address is an alias still reaches
-// its own record.
 func (m *Model) Resolve(email string) string {
 	if resolved, ok := m.aliases[email]; ok {
 		return resolved
@@ -194,15 +145,10 @@ func (m *Model) Person(email string) *Person {
 	return &m.People[i]
 }
 
-// FamilyKeysOf lists every family this person belongs to, in key email order - one
-// for a parent (an adult belongs to at most one household), one or more for a kid.
 func (m *Model) FamilyKeysOf(email string) []string {
 	return m.familyKeysByEmail[email]
 }
 
-// HeroPhoto is the photo the directory leads with for a person: their own,
-// else their family's - the same fallback the profile page and the topbar
-// avatar make. Empty when there is neither, or when the email is not a member.
 func (m *Model) HeroPhoto(email string) string {
 	person := m.Person(email)
 	if person == nil {
@@ -236,8 +182,6 @@ func FamilyPath(key string) string {
 	return "/families/" + url.PathEscape(key)
 }
 
-// ClassroomSlug is the page's slugify (web/who/dom.js), which its classroom
-// route looks a classroom up by.
 func ClassroomSlug(name string) string {
 	return strings.ReplaceAll(strings.ToLower(name), " ", "-")
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/csv"
 	"flag"
@@ -19,35 +20,32 @@ import (
 
 	"heliosian/internal/blob"
 	"heliosian/internal/data"
+	"heliosian/internal/store"
 	"heliosian/internal/who"
 )
 
 const (
+	directory   = "directory"
 	studentsTab = "Veracross Student Import"
 	staffTab    = "Veracross Staff Import"
 	namesTab    = "Name to Email"
 	websiteFile = "Staff Bios.csv"
+	actor       = "import"
 )
 
 var sources = []struct {
 	tab    string
 	file   string
 	keyCol string
-	policy data.Policy
+	mirror bool
 }{
-	{studentsTab, "All Students Directory.csv", "entry_sort_name", data.Mirror},
-	{staffTab, "All Faculty & Staff Directory.csv", "entry_sort_name", data.Mirror},
-	// Merged, not mirrored: this tab also holds addresses for staff and the blank
-	// rows recording who is deliberately left out, none of which the export knows.
-	{namesTab, "Name to Email.csv", "Name", data.Merge},
+	{studentsTab, "All Students Directory.csv", "entry_sort_name", true},
+	{staffTab, "All Faculty & Staff Directory.csv", "entry_sort_name", true},
+	{namesTab, "Name to Email.csv", "Name", false},
 }
 
-// lineBreak stands in for a break the markup asks for, so it survives the pass that
-// collapses the newlines and runs of spaces the markup merely happens to contain.
 const lineBreak = "\x00"
 
-// blockTags close a run of text: the bios are paragraphs, and a bio flattened
-// without them runs sentences together.
 var blockTags = map[string]bool{
 	"p": true, "div": true, "li": true, "blockquote": true,
 	"h1": true, "h2": true, "h3": true, "h4": true, "h5": true, "h6": true,
@@ -79,10 +77,6 @@ func readCSV(path string) ([]string, []map[string]string, error) {
 	return records[0], rows, nil
 }
 
-// flattenBio turns the school website's own markup into the text the About Me card
-// renders: paragraphs separated by a blank line, entities decoded, everything else
-// dropped. A link keeps its words and loses its address, since nothing downstream
-// renders markup.
 func flattenBio(fragment string) (string, error) {
 	parent := &html.Node{Type: html.ElementNode, Data: "div", DataAtom: atom.Div}
 	nodes, err := html.ParseFragment(strings.NewReader(fragment), parent)
@@ -119,8 +113,6 @@ func flattenBio(fragment string) (string, error) {
 	return strings.TrimSpace(flat), nil
 }
 
-// websiteRows reads webexport's export and flattens each bio, which is the whole of
-// what this import does to it: everything else is carried through as exported.
 func websiteRows(out string) ([]map[string]string, error) {
 	_, rows, err := readCSV(filepath.Join(out, websiteFile))
 	if err != nil {
@@ -148,58 +140,47 @@ func websiteRows(out string) ([]map[string]string, error) {
 	return flattened, nil
 }
 
-// straighten replaces the punctuation a web page renders with the punctuation a
-// person types, so a bio and a hand-written override that say the same thing compare
-// equal.
 var straighten = strings.NewReplacer(
 	"’", "'", "‘", "'", "“", `"`, "”", `"`,
-	"–", "-", "—", "-", "…", "...", " ", " ",
+	"–", "-", "—", "-", "…", "...", " ", " ",
 )
 
 func comparable(s string) string {
 	return strings.ToLower(strings.Join(strings.Fields(straighten.Replace(s)), " "))
 }
 
-// caughtUp reports whether the published text has overtaken the override: they say
-// the same thing, or the override is an older, shorter version the bio now contains.
-// Anything else is a person's own words and is left alone.
 func caughtUp(override, published string) bool {
 	a, b := comparable(override), comparable(published)
 	return a == b || strings.Contains(b, a)
 }
 
-// clearCaughtUpOverrides deletes the Facts and Job Title overrides the staff page has
-// caught up with. The directory refuses to load over an override that only restates
-// what an import supplies, so the run that starts publishing bios is the run that has
-// to clear them - the same bargain pruneNameToEmail strikes for addresses. An
-// override that still says something of its own survives and keeps winning.
-func clearCaughtUpOverrides(out string, source *data.Sheet, bios []map[string]string, apply bool) error {
-	_, aliasRows, err := source.Table("directory", who.AliasesTable)
+func clearCaughtUpOverrides(out string, source *data.Sheet, bios []map[string]string) ([]store.Op, error) {
+	_, aliasRows, err := source.Table(directory, who.AliasesTable)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	aliases, err := who.ParseAliases(aliasRows)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	bios, _ = aliases.Rewrite(bios, who.WebsiteEmailColumn)
 	_, staffRows, err := readCSV(filepath.Join(out, "All Faculty & Staff Directory.csv"))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	staffRows, _ = aliases.Rewrite(staffRows, "person_email")
 	staffByName := who.StaffByName(staffRows)
-	_, nameRows, err := source.Table("directory", namesTab)
+	_, nameRows, err := source.Table(directory, namesTab)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	nameToEmail := map[string]string{}
 	for _, row := range nameRows {
 		nameToEmail[who.NormName(row["Name"])] = strings.ToLower(row["Email"])
 	}
-	_, overrideRows, err := source.Table("directory", "Overrides")
+	_, overrideRows, err := source.Table(directory, "Overrides")
 	if err != nil {
-		return err
+		return nil, err
 	}
 	overrides := map[string]map[string]string{}
 	for _, row := range overrideRows {
@@ -210,17 +191,18 @@ func clearCaughtUpOverrides(out string, source *data.Sheet, bios []map[string]st
 		{"Facts", who.WebsiteBio},
 		{"Job Title", who.WebsiteTitle},
 	}
-	cleared, kept := 0, 0
+	ops := []store.Op{}
+	kept := 0
 	for _, bio := range bios {
 		email, err := who.WebsiteEmail(bio, nameToEmail, staffByName)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		row, ok := overrides[email]
 		if !ok {
 			continue
 		}
-		cells := map[string]string{}
+		cells := store.Row{}
 		for _, column := range columns {
 			current, published := row[column.override], bio[column.published]
 			if current == "" || current == "-" || published == "" {
@@ -232,8 +214,6 @@ func clearCaughtUpOverrides(out string, source *data.Sheet, bios []map[string]st
 				continue
 			}
 			cells[column.override] = ""
-			// The date is what the About Me card posts the facts under, so it goes with
-			// the text it describes rather than outliving it above the school's copy.
 			if column.override == "Facts" && row["Facts Updated"] != "" {
 				cells["Facts Updated"] = ""
 			}
@@ -241,24 +221,13 @@ func clearCaughtUpOverrides(out string, source *data.Sheet, bios []map[string]st
 		if len(cells) == 0 {
 			continue
 		}
-		cleared++
-		if !apply {
-			log.Printf("  would clear %v for %s, which the staff page has caught up with", slices.Sorted(maps.Keys(cells)), email)
-			continue
-		}
-		if err := source.Set("directory", "Overrides", map[string]string{"Email": email}, cells); err != nil {
-			return err
-		}
-		log.Printf("  cleared %v for %s, which the staff page has caught up with", slices.Sorted(maps.Keys(cells)), email)
+		log.Printf("  clearing %v for %s, which the staff page has caught up with", slices.Sorted(maps.Keys(cells)), email)
+		ops = append(ops, store.Update("Overrides", store.Row{"Email": email}, cells))
 	}
-	log.Printf("Overrides: %d rows the staff page has caught up with, %d left alone", cleared, kept)
-	return nil
+	log.Printf("Overrides: %d rows the staff page has caught up with, %d left alone", len(ops), kept)
+	return ops, nil
 }
 
-// uploadPhotos puts the export's portraits in the bucket before any tab names one,
-// so the sheet never indexes an object that is not there yet. The filename is the
-// hash of the bytes, and checking that here is what keeps the two repositories from
-// drifting into a directory full of broken photos.
 func uploadPhotos(dir string, apply bool) error {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -303,11 +272,7 @@ func uploadPhotos(dir string, apply bool) error {
 	return nil
 }
 
-// pruneNameToEmail drops the entries the export has caught up with. The tab supplies
-// what Veracross omits and never overrides it, so an entry naming somebody the export
-// now carries an address for is one the model refuses to load: the import that learns
-// the new address is the run that has to remove the row.
-func pruneNameToEmail(out string, source *data.Sheet, apply bool) error {
+func pruneNameToEmail(out string, source *data.Sheet, exported []map[string]string) ([]store.Op, error) {
 	hasEmail := map[string]bool{}
 	for _, s := range []struct{ file, name, email string }{
 		{"All Students Directory.csv", "student_full_name", "student_email"},
@@ -315,7 +280,7 @@ func pruneNameToEmail(out string, source *data.Sheet, apply bool) error {
 	} {
 		_, rows, err := readCSV(filepath.Join(out, s.file))
 		if err != nil {
-			return err
+			return nil, err
 		}
 		for _, row := range rows {
 			if row[s.email] != "" {
@@ -323,46 +288,106 @@ func pruneNameToEmail(out string, source *data.Sheet, apply bool) error {
 			}
 		}
 	}
-	_, rows, err := source.Table("directory", namesTab)
+	_, rows, err := source.Table(directory, namesTab)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	dropped := 0
-	for _, row := range rows {
-		if row["Email"] == "" || !hasEmail[who.NormName(row["Name"])] {
+	ops := []store.Op{}
+	dropped := map[string]bool{}
+	for _, row := range slices.Concat(rows, exported) {
+		name := strings.TrimSpace(row["Name"])
+		if row["Email"] == "" || !hasEmail[who.NormName(name)] || dropped[who.NormName(name)] {
 			continue
 		}
-		dropped++
-		if !apply {
-			log.Printf("  would drop %s, veracross now has an address for them", row["Name"])
-			continue
-		}
-		if err := source.Delete("directory", namesTab, map[string]string{"Name": row["Name"]}); err != nil {
-			return err
-		}
-		log.Printf("  dropped %s, veracross now has an address for them", row["Name"])
+		dropped[who.NormName(name)] = true
+		log.Printf("  dropping %s, veracross now has an address for them", name)
+		ops = append(ops, store.Delete(namesTab, store.Row{"Name": name}))
 	}
-	log.Printf("%s: %d entries the export has caught up with", namesTab, dropped)
-	return nil
+	log.Printf("%s: %d entries the export has caught up with", namesTab, len(ops))
+	return ops, nil
 }
 
-func syncTab(source *data.Sheet, tab string, header []string, rows []map[string]string, keyCol string, policy data.Policy, apply bool) error {
-	result, err := source.Sync("directory", tab, header, rows, keyCol, policy, apply)
+type tabSync struct {
+	tab    string
+	header []string
+	rows   []map[string]string
+	keyCol string
+	mirror bool
+}
+
+func (s tabSync) ops(source *data.Sheet) ([]store.Op, error) {
+	header, before, err := source.Table(directory, s.tab)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	log.Printf("%s: %d cells updated, %d rows added, %d removed",
-		tab, len(result.Edits), len(result.Added), len(result.Removed))
-	for _, key := range result.Added {
-		log.Printf("  added %s", key)
+	for _, column := range append(slices.Clone(s.header), s.keyCol) {
+		if !slices.Contains(header, column) {
+			return nil, fmt.Errorf("table %s is missing column %q", s.tab, column)
+		}
 	}
-	for _, key := range result.Removed {
+	had := map[string]map[string]string{}
+	for _, row := range before {
+		key := strings.TrimSpace(row[s.keyCol])
+		if key == "" {
+			continue
+		}
+		if _, dup := had[key]; dup {
+			return nil, fmt.Errorf("table %s has duplicate key %q", s.tab, key)
+		}
+		had[key] = row
+	}
+	ops := []store.Op{}
+	seen := map[string]bool{}
+	added, changed := 0, 0
+	for _, row := range s.rows {
+		key := strings.TrimSpace(row[s.keyCol])
+		if key == "" {
+			return nil, fmt.Errorf("row %v has no key", row)
+		}
+		if seen[key] {
+			return nil, fmt.Errorf("rows have duplicate key %q", key)
+		}
+		seen[key] = true
+		old, ok := had[key]
+		cells := store.Row{}
+		for _, column := range s.header {
+			want := strings.TrimSpace(row[column])
+			if !ok {
+				if want != "" {
+					cells[column] = want
+				}
+				continue
+			}
+			if column != s.keyCol && want != strings.TrimSpace(old[column]) {
+				cells[column] = want
+			}
+		}
+		if !ok {
+			log.Printf("  added %s", key)
+			ops = append(ops, store.Insert(s.tab, cells))
+			added++
+			continue
+		}
+		if len(cells) > 0 {
+			ops = append(ops, store.Update(s.tab, store.Row{s.keyCol: key}, cells))
+			changed++
+		}
+	}
+	removed := 0
+	for _, key := range slices.Sorted(maps.Keys(had)) {
+		if seen[key] {
+			continue
+		}
+		if !s.mirror {
+			log.Printf("  kept, and not in the export: %s", key)
+			continue
+		}
 		log.Printf("  removed %s", key)
+		ops = append(ops, store.Delete(s.tab, store.Row{s.keyCol: key}))
+		removed++
 	}
-	for _, key := range result.Detached {
-		log.Printf("  kept, and not in the export: %s", key)
-	}
-	return nil
+	log.Printf("%s: %d rows added, %d changed, %d removed", s.tab, added, changed, removed)
+	return ops, nil
 }
 
 func run(dir string, args ...string) error {
@@ -400,20 +425,21 @@ func main() {
 		log.Printf("dry run: nothing will be written to the sheet or the bucket")
 	}
 	log.Printf("exporting from Veracross into %s", out)
-	if err := run(exporter, "go", "run", ".", "-out", out); err != nil {
+	if err := run(exporter, "go", "run", ".", "--out", out); err != nil {
 		log.Fatalf("[ERROR] export: %v", err)
 	}
-	// Both exports write their portraits into the same photos directory, so one
-	// upload pass covers them: every name is the hash of its own bytes, which is
-	// what makes merging them safe.
 	log.Printf("exporting from the school website into %s", out)
 	if err := run(website, "go", "run", ".", "--out", out); err != nil {
 		log.Fatalf("[ERROR] website export: %v", err)
 	}
 
-	source, err := data.NewSheet(map[string]string{"directory": sheet, "preferences": preferences, "config": config})
+	source, err := data.NewSheet(map[string]string{directory: sheet, "preferences": preferences, "config": config})
 	if err != nil {
 		log.Fatalf("[ERROR] sheet source: %v", err)
+	}
+	directoryStore, err := who.Open(source, source, nil, staticFiles{}, []byte(actor), who.NewQueue())
+	if err != nil {
+		log.Fatalf("[ERROR] the directory does not load: %v", err)
 	}
 	bios, err := websiteRows(out)
 	if err != nil {
@@ -424,32 +450,44 @@ func main() {
 		log.Fatalf("[ERROR] upload photos: %v", err)
 	}
 
-	if err := syncTab(source, who.WebsiteTable, who.WebsiteColumns, bios, who.WebsiteID, data.Mirror, !*dryRun); err != nil {
-		log.Fatalf("[ERROR] sync %s: %v", who.WebsiteTable, err)
+	ops, err := tabSync{tab: who.WebsiteTable, header: who.WebsiteColumns, rows: bios, keyCol: who.WebsiteID, mirror: true}.ops(source)
+	if err != nil {
+		log.Fatalf("[ERROR] plan %s: %v", who.WebsiteTable, err)
 	}
+	exportedNames := []map[string]string{}
 	for _, s := range sources {
 		header, rows, err := readCSV(filepath.Join(out, s.file))
 		if err != nil {
 			log.Fatalf("[ERROR] read %s: %v", s.file, err)
 		}
-		if err := syncTab(source, s.tab, header, rows, s.keyCol, s.policy, !*dryRun); err != nil {
-			log.Fatalf("[ERROR] sync %s: %v", s.tab, err)
+		if s.tab == namesTab {
+			exportedNames = rows
 		}
+		tabOps, err := tabSync{tab: s.tab, header: header, rows: rows, keyCol: s.keyCol, mirror: s.mirror}.ops(source)
+		if err != nil {
+			log.Fatalf("[ERROR] plan %s: %v", s.tab, err)
+		}
+		ops = append(ops, tabOps...)
 	}
 
-	if err := clearCaughtUpOverrides(out, source, bios, !*dryRun); err != nil {
-		log.Fatalf("[ERROR] clear the overrides the staff page has caught up with: %v", err)
-	}
-
-	if err := pruneNameToEmail(out, source, !*dryRun); err != nil {
-		log.Fatalf("[ERROR] prune %s: %v", namesTab, err)
-	}
-
-	log.Printf("rebuilding the model to check the result")
-	model, err := who.LoadModel(source, nil, staticFiles{}, []byte("import"))
+	cleared, err := clearCaughtUpOverrides(out, source, bios)
 	if err != nil {
-		log.Fatalf("[ERROR] the sheet no longer loads: %v", err)
+		log.Fatalf("[ERROR] plan clearing the overrides the staff page has caught up with: %v", err)
 	}
+	pruned, err := pruneNameToEmail(out, source, exportedNames)
+	if err != nil {
+		log.Fatalf("[ERROR] plan pruning %s: %v", namesTab, err)
+	}
+	ops = slices.Concat(ops, cleared, pruned)
+
+	if *dryRun {
+		log.Printf("dry run: %d row changes not committed", len(ops))
+		return
+	}
+	if err := directoryStore.CommitAndWait(context.Background(), actor, ops...); err != nil {
+		log.Fatalf("[ERROR] commit the import: %v", err)
+	}
+	model := directoryStore.Model()
 	students, parents, staff := 0, 0, 0
 	for _, p := range model.People {
 		if p.IsStudent {

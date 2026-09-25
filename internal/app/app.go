@@ -797,9 +797,14 @@ func NewCore(cfg Config) *Core {
 	if err != nil {
 		logging.Fatal("load celebrate data", "error", err)
 	}
-	cache, err := who.NewCache(cfg.Source, cfg.Writer, cfg.Geocoder, cfg.Blobs, staticFiles{}, cfg.Store, queue, cfg.FamilyIDKey, settings.SuperAdmins)
+	cache, err := who.NewCache(cfg.Source, cfg.Writer, cfg.Blobs, staticFiles{}, queue, cfg.FamilyIDKey, settings.SuperAdmins)
 	if err != nil {
 		logging.Fatal("load directory data", "error", err)
+	}
+	go cache.Locate(cfg.Geocoder)
+	invites, err := who.NewInvites(cfg.Source, cfg.Writer, queue)
+	if err != nil {
+		logging.Fatal("load invites data", "error", err)
 	}
 	calendarCache, err := calendar.NewCache(cfg.Source, cfg.Writer, func() calendar.Roster { return CalendarRoster(cache.Model()) }, calendarImages{cfg.Store}, superAdmin, queue)
 	if err != nil {
@@ -817,11 +822,9 @@ func NewCore(cfg Config) *Core {
 	mux := http.NewServeMux()
 	config.Register(mux, settings, cache.IsAdmin)
 	who.Register(mux, cache, cfg.BrowserKey, smartLists{cache, teamCache, celebrateCache, loopCache, loopDir})
-	who.RegisterTags(mux, cache, cfg.Writer, queue, cfg.WhoMail)
-	who.RegisterAdmin(mux, cache, cfg.Writer, queue)
-	if err := who.RegisterInvites(mux, cache, cfg.Source, cfg.Writer, queue); err != nil {
-		logging.Fatal("load invites data", "error", err)
-	}
+	who.RegisterTags(mux, cache, cfg.WhoMail)
+	who.RegisterAdmin(mux, cache, cfg.Store)
+	who.RegisterInvites(mux, cache, invites)
 	mux.Handle("GET /{$}", http.RedirectHandler("/people", http.StatusFound))
 	linked := calendarLinked{celebrateCache, teamCache, celebrateDirectory{cache, settings}}.list
 	calendarDir := calendarDirectory{cache, settings, smartLists{cache, teamCache, celebrateCache, loopCache, loopDir}.Lists}
@@ -886,7 +889,7 @@ func NewCore(cfg Config) *Core {
 	blob.RegisterAsk(askMux, cfg.Store)
 	time.AfterFunc(deployOverlap, func() {
 		slog.Info("reading again for the previous revision's last writes")
-		for _, c := range []interface{ Refresh() }{settings, homeCache, teamCache, birthdayCache, celebrateCache, cache, calendarCache, loopCache, artifactsCache} {
+		for _, c := range []interface{ Refresh() }{settings, homeCache, teamCache, birthdayCache, celebrateCache, cache, invites, calendarCache, loopCache, artifactsCache} {
 			c.Refresh()
 		}
 	})
@@ -1174,7 +1177,7 @@ func Production(domain, blobCache string) (*http.Server, *who.Queue) {
 		Embedder:      embedder,
 		ArtifactsMail: artifactsMail(store),
 	})
-	who.RegisterUpload(core.Mux, core.Cache, sheet, store, core.Queue)
+	who.RegisterUpload(core.Mux, core.Cache, store)
 	client := clientID()
 	newAuth := func(app string) *auth.Auth {
 		a := auth.New(domain, client, []byte(sessionKey), "web/public/"+app+"/login.html", core.Member, core.Sessions)

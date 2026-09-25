@@ -44,12 +44,7 @@ const (
 	maxPixels     = 40_000_000
 )
 
-var folders = []string{"photos", "pronunciation", "classroom-images", "grade-images", "link-images", "activity-images", "category-images"}
-
-// named folders hold objects replaced in place under a fixed name with no
-// extension; every other folder is content addressed, so its URLs never change
-// meaning.
-var named = map[string]bool{"classroom-images": true, "grade-images": true}
+var folders = []string{"photos", "pronunciation", "link-images", "activity-images", "category-images"}
 
 var ErrNotFound = errors.New("no such object")
 
@@ -172,14 +167,11 @@ func (m *memory) remove(_ context.Context, name string) error {
 	return nil
 }
 
-// Media reports whether a request path is one of the media routes served here.
 func Media(path string) bool {
 	folder, _, _ := strings.Cut(strings.TrimPrefix(path, "/"), "/")
 	return slices.Contains(folders, folder)
 }
 
-// Recorded names carry an extension and entries are keyed without one, so an object
-// and its thumbnail share a key.
 func trimExt(name string) string {
 	return strings.TrimSuffix(name, path.Ext(name))
 }
@@ -197,11 +189,6 @@ type entry struct {
 	used       time.Time
 }
 
-// Store holds what the sheets name. Nothing here ever lists the bucket: an
-// object enters memory when a loader asks for it by name, stays while
-// something keeps asking, and leaves once nothing has for a while. With a
-// cache directory, every content-addressed object fetched is kept on disk
-// too, and read from there ahead of the bucket on the next start.
 type Store struct {
 	objects  objects
 	cacheDir string
@@ -209,8 +196,6 @@ type Store struct {
 	entries  map[string]*entry
 }
 
-// New is a store over the bucket, keeping a copy of what it fetches under
-// cacheDir when one is given; "" caches nothing.
 func New(cacheDir string) (*Store, error) {
 	b, err := newBucket(Bucket)
 	if err != nil {
@@ -246,25 +231,12 @@ func (s *Store) Exists(ctx context.Context, name string) (bool, error) {
 	return s.objects.exists(ctx, name)
 }
 
-// cacheable is whether an object may be read from and written to the disk
-// cache: only content-addressed folders, whose bytes never change under a
-// name. The named folders are replaced in place, so those always go to the
-// bucket.
-func (s *Store) cacheable(name string) bool {
-	folder, _, _ := strings.Cut(name, "/")
-	return s.cacheDir != "" && !named[folder]
-}
-
 func (s *Store) cachePath(name string) string {
 	return filepath.Join(s.cacheDir, filepath.FromSlash(name))
 }
 
-// cached is an object from the disk cache: its bytes, its thumbnail when it
-// is an image, and its generation and type from the meta file beside it.
-// An object with no meta file is not cached; anything else wrong with the
-// files is an error, since every write lands whole or not at all.
 func (s *Store) cached(name string) (*entry, error) {
-	if !s.cacheable(name) {
+	if s.cacheDir == "" {
 		return nil, nil
 	}
 	meta, err := os.ReadFile(s.cachePath(name) + ".meta")
@@ -295,10 +267,8 @@ func (s *Store) cached(name string) (*entry, error) {
 	return e, nil
 }
 
-// cache writes an entry to the disk cache, the meta file last, so a reader
-// that finds the meta file finds the whole object.
 func (s *Store) cache(e *entry) error {
-	if !s.cacheable(e.name) {
+	if s.cacheDir == "" {
 		return nil
 	}
 	if err := os.MkdirAll(filepath.Dir(s.cachePath(e.name)), 0o755); err != nil {
@@ -318,9 +288,6 @@ func (s *Store) cache(e *entry) error {
 	return nil
 }
 
-// writeFile lands a file whole: written to a temp file of its own beside its
-// name, then renamed over it. Two writers of the same object - a prefetch
-// asks for a name once per row that carries it - each land the same bytes.
 func writeFile(name string, data []byte) error {
 	tmp, err := os.CreateTemp(filepath.Dir(name), filepath.Base(name)+".*.tmp")
 	if err != nil {
@@ -343,59 +310,38 @@ func writeFile(name string, data []byte) error {
 }
 
 func Register(mux *http.ServeMux, s *Store) {
-	// One route per kind, and the object name is a content hash, so nothing about
-	// where a blob is stored or who it belongs to reaches the client.
 	mux.HandleFunc("GET /photos/{name}", s.serve)
 	mux.HandleFunc("GET /pronunciation/{name}", s.serve)
-	// Classroom and grade images are named for what they depict, not their bytes, since
-	// an admin replaces one in place rather than adding a new one alongside it.
-	mux.HandleFunc("GET /classroom-images/{name}", s.serve)
-	mux.HandleFunc("GET /grade-images/{name}", s.serve)
 }
 
-// RegisterHome serves what the link portal shows: its link and category
-// images, content addressed, and the directory's photos, for the signed-in
-// person's own avatar - the same pair of needs RegisterTeam covers.
 func RegisterHome(mux *http.ServeMux, s *Store) {
 	mux.HandleFunc("GET /link-images/{name}", s.serve)
 	mux.HandleFunc("GET /photos/{name}", s.serve)
 }
 
-// RegisterTeam serves what the volunteer portal shows: the activity and role
-// images, content addressed, and the directory's photos of the volunteers.
 func RegisterTeam(mux *http.ServeMux, s *Store) {
 	mux.HandleFunc("GET /photos/{name}", s.serve)
 	mux.HandleFunc("GET /activity-images/{name}", s.serve)
 }
 
-// RegisterBirthday serves what the birthday team shows: the directory's photos
-// of the staff and of the team.
 func RegisterBirthday(mux *http.ServeMux, s *Store) {
 	mux.HandleFunc("GET /photos/{name}", s.serve)
 }
 
-// RegisterCelebrate serves what Helios Celebrate shows: the party
-// images, content addressed, and the directory's photos of who is coming.
 func RegisterCelebrate(mux *http.ServeMux, s *Store) {
 	mux.HandleFunc("GET /photos/{name}", s.serve)
 	mux.HandleFunc("GET /party-images/{name}", s.serve)
 }
 
-// RegisterCalendar serves what Helios When shows: the directory's photo
-// of the viewer, in the toolbar, and the category images, content addressed.
 func RegisterCalendar(mux *http.ServeMux, s *Store) {
 	mux.HandleFunc("GET /photos/{name}", s.serve)
 	mux.HandleFunc("GET /category-images/{name}", s.serve)
 }
 
-// RegisterLoop serves what Helios Loop shows: the directory's photos of
-// the viewer, the managers and the members.
 func RegisterLoop(mux *http.ServeMux, s *Store) {
 	mux.HandleFunc("GET /photos/{name}", s.serve)
 }
 
-// RegisterAsk serves what Helios Ask shows: the directory's photo of the
-// viewer, in the toolbar.
 func RegisterAsk(mux *http.ServeMux, s *Store) {
 	mux.HandleFunc("GET /photos/{name}", s.serve)
 }
@@ -406,9 +352,6 @@ func (s *Store) sweepLoop() {
 	}
 }
 
-// sweep drops what nothing has asked for lately. Every loader re-asks for
-// every name it holds on its own refresh, so an object a sheet stopped naming
-// is exactly one nobody asks for.
 func (s *Store) sweep(now time.Time) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -439,11 +382,6 @@ func (s *Store) touch(key string) (*entry, bool) {
 	return e, ok
 }
 
-// Get is one object's bytes, handed straight back rather than held: for what a
-// caller parses into a model of its own and has no use for twice
-// (`docs/ask/artifacts.md`). It reads through the disk cache like every other
-// fetch, so a tool or a dev server run over thousands of them pays for the
-// download once.
 func (s *Store) Get(name string) ([]byte, error) {
 	e, err := s.fetch(context.Background(), name)
 	if err != nil {
@@ -452,9 +390,6 @@ func (s *Store) Get(name string) ([]byte, error) {
 	return e.data, nil
 }
 
-// Bytes is an object the store already holds, with its media type, for a
-// caller that composes rather than serves - the share card draws an event's
-// image into itself. Nothing is fetched: what the sheets name is prefetched.
 func (s *Store) Bytes(name string) ([]byte, string, bool) {
 	e, ok := s.touch(trimExt(name))
 	if !ok {
@@ -463,9 +398,6 @@ func (s *Store) Bytes(name string) ([]byte, string, bool) {
 	return e.data, e.mimeType, true
 }
 
-// Has fetches the named object into memory on first sight and reports whether
-// the bucket holds it. Any trouble other than the object not existing is an
-// error, so a network fault never reads as a missing photo.
 func (s *Store) Has(name string) (bool, error) {
 	if _, ok := s.touch(trimExt(name)); ok {
 		return true, nil
@@ -486,8 +418,6 @@ func (s *Store) Has(name string) (bool, error) {
 	return true, nil
 }
 
-// Prefetch fetches many names at once, for a loader that is about to ask for
-// each of them; a name the bucket lacks is left for Has to report.
 func (s *Store) Prefetch(names []string) error {
 	start := time.Now()
 	pending := []string{}
@@ -530,8 +460,6 @@ func (s *Store) count() int {
 	return len(s.entries)
 }
 
-// fetch is an object and its thumbnail from the disk cache, else downloaded
-// and cached.
 func (s *Store) fetch(ctx context.Context, name string) (*entry, error) {
 	if e, err := s.cached(name); err != nil || e != nil {
 		return e, err
@@ -566,8 +494,6 @@ func (s *Store) download(ctx context.Context, name string) (*entry, error) {
 	return e, nil
 }
 
-// Uploader fills the bucket for the tools that load media in bulk, checking each
-// name on its own rather than holding anything in memory.
 type Uploader struct {
 	objects objects
 }
@@ -580,22 +506,14 @@ func NewUploader() (*Uploader, error) {
 	return &Uploader{objects: b}, nil
 }
 
-// Has reports whether the bucket holds an object, so a tool can resolve the names the
-// sheet records without downloading anything.
 func (u *Uploader) Has(name string) (bool, error) {
 	return u.objects.exists(context.Background(), name)
 }
 
-// Remove deletes an object a tool has just replaced under another name, so a
-// re-import leaves nothing behind. An object already gone is not an error.
 func (u *Uploader) Remove(name string) error {
 	return u.objects.remove(context.Background(), name)
 }
 
-// Put writes a content-addressed object and its thumbnail, and reports whether it had
-// to. The name already being present means the same bytes by construction, but the
-// thumbnail is checked separately: a primary written without one is an object the
-// serving store refuses to load, and skipping on the primary alone leaves it that way.
 func (u *Uploader) Put(folder, name, mimeType string, content []byte) (bool, error) {
 	ctx := context.Background()
 	full := folder + "/" + name
@@ -618,9 +536,6 @@ func (u *Uploader) Put(folder, name, mimeType string, content []byte) (bool, err
 	return true, nil
 }
 
-// writeWithThumbnail makes the thumbnail before it writes anything, so a picture
-// the decoder refuses - one declaring more pixels than Decode allows - is never
-// stored, and so never reaches the readers that decode it again.
 func writeWithThumbnail(ctx context.Context, into objects, name, mimeType string, content []byte) error {
 	if !strings.HasPrefix(mimeType, "image/") {
 		return into.put(ctx, name, mimeType, content)
@@ -635,8 +550,6 @@ func writeWithThumbnail(ctx context.Context, into objects, name, mimeType string
 	return into.put(ctx, thumbName(name), thumbMime, thumb)
 }
 
-// Put writes a content-addressed object and its thumbnail and takes it into memory. A
-// name already held is byte-identical by construction, so the write is skipped.
 func (s *Store) Put(folder, name, mimeType string, content []byte) error {
 	full := folder + "/" + name
 	if _, ok := s.touch(trimExt(full)); ok {
@@ -648,24 +561,6 @@ func (s *Store) Put(folder, name, mimeType string, content []byte) error {
 	return s.take(full)
 }
 
-// PutNamed writes an object at a fixed, human-chosen name with no extension,
-// replacing whatever was there before — the opposite assumption from Put, for the
-// handful of slots (a classroom's logo, a grade's tile) that are named for what they
-// are rather than their bytes. Object versioning on the bucket keeps the replaced
-// generation recoverable.
-func (s *Store) PutNamed(folder, name, mimeType string, content []byte) error {
-	full := folder + "/" + name
-	if err := writeWithThumbnail(context.Background(), s.objects, full, mimeType, content); err != nil {
-		return err
-	}
-	s.mu.Lock()
-	delete(s.entries, full)
-	s.mu.Unlock()
-	return s.take(full)
-}
-
-// take reads a just-written object back, so what is served is exactly what the
-// bucket holds, generation included.
 func (s *Store) take(name string) error {
 	found, err := s.Has(name)
 	if err != nil {
@@ -684,13 +579,8 @@ func (s *Store) serve(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	folder, _, _ := strings.Cut(key, "/")
 	w.Header().Set("ETag", fmt.Sprintf(`"%d"`, e.generation))
-	if named[folder] {
-		w.Header().Set("Cache-Control", "no-cache")
-	} else {
-		w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
-	}
+	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
 	if thumb := r.URL.Query().Get("thumb"); thumb != "" {
 		if thumb != thumbVersion || e.thumb == nil {
 			http.NotFound(w, r)
@@ -704,9 +594,6 @@ func (s *Store) serve(w http.ResponseWriter, r *http.Request) {
 	http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(e.data))
 }
 
-// Decode reads an image, refusing one whose header declares more pixels than a
-// decoder should be asked for. A decoder allocates the whole frame from the
-// header before it reads a pixel, so a few hundred bytes can ask for gigabytes.
 func Decode(src []byte) (image.Image, error) {
 	cfg, _, err := image.DecodeConfig(bytes.NewReader(src))
 	if err != nil {

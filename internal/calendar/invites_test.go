@@ -80,15 +80,24 @@ func testSources(t *testing.T) func() filter.Sources {
 }
 
 type sampleSources struct {
-	tables *who.Tables
 	model  *who.Model
 	extra  map[string][]string
+	tagged map[string][]string
 }
 
 func (s *sampleSources) sources() filter.Sources {
 	return filter.Sources{
 		Directory: s.model,
-		Tags:      func(owner string) map[string][]string { return who.TagsOf(s.tables.Tags, s.model, owner) },
+		Tags: func(owner string) map[string][]string {
+			tags := s.model.Tags(owner)
+			for tag, people := range s.tagged {
+				if strings.HasPrefix(tag, owner+"\n") {
+					name := strings.TrimPrefix(tag, owner+"\n")
+					tags[name] = append(tags[name], people...)
+				}
+			}
+			return tags
+		},
 		Lists: func(string) []who.List {
 			out := []who.List{}
 			for key, people := range s.extra {
@@ -102,15 +111,11 @@ func (s *sampleSources) sources() filter.Sources {
 func newSampleSources(t *testing.T) *sampleSources {
 	t.Helper()
 	dir := &data.Dir{Root: "sampledata"}
-	tables, err := who.ReadTables(dir)
+	model, err := who.LoadModel(dir, nil, noFiles{}, []byte("test"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	model, err := who.BuildModel(tables, nil, noFiles{}, []byte("test"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return &sampleSources{tables: tables, model: model}
+	return &sampleSources{model: model, tagged: map[string][]string{}}
 }
 
 type noFiles struct{}
@@ -667,7 +672,7 @@ func TestInviteGroups(t *testing.T) {
 	}
 	call(t, jordan, "POST", "/api/calendar/invites/send", `{"id":"meetup"}`)
 	waitFor(kept, 3)
-	sources.tables.Tags = append(sources.tables.Tags, map[string]string{"Owner Email": host, "Tag": "Carpool", "Person Email": mia})
+	sources.tagged[host+"\nCarpool"] = []string{mia}
 	if v := inviteView(t, jordan, "meetup"); rowOf(v, mia) != nil {
 		t.Errorf("a newcomer came on inside the grace")
 	}
@@ -676,9 +681,9 @@ func TestInviteGroups(t *testing.T) {
 	if v := inviteView(t, jordan, "meetup"); rowOf(v, mia) != nil {
 		t.Errorf("a newcomer came on a minute short of the grace")
 	}
-	sources.tables.Tags = sources.tables.Tags[:len(sources.tables.Tags)-1]
+	delete(sources.tagged, host+"\nCarpool")
 	inviteView(t, jordan, "meetup")
-	sources.tables.Tags = append(sources.tables.Tags, map[string]string{"Owner Email": host, "Tag": "Carpool", "Person Email": mia})
+	sources.tagged[host+"\nCarpool"] = []string{mia}
 	now = func() time.Time { return start.Add(grace + time.Minute) }
 	if v := inviteView(t, jordan, "meetup"); rowOf(v, mia) != nil {
 		t.Errorf("a newcomer came on with the clock restarted")
@@ -727,7 +732,7 @@ func TestInviteGroups(t *testing.T) {
 	if rec := call(t, jordan, "PUT", "/api/calendar/invites/group", `{"id":"meetup","group":"`+g.ID+`","auto":false}`); rec.Code != 204 {
 		t.Errorf("auto off: %d %s", rec.Code, rec.Body)
 	}
-	sources.tables.Tags = append(sources.tables.Tags, map[string]string{"Owner Email": host, "Tag": "Carpool", "Person Email": robin})
+	sources.tagged[host+"\nCarpool"] = append(sources.tagged[host+"\nCarpool"], robin)
 	start = now()
 	if v := inviteView(t, jordan, "meetup"); rowOf(v, robin) != nil {
 		t.Errorf("a newcomer came on inside the grace with auto off")
@@ -1551,9 +1556,6 @@ func TestHideHosts(t *testing.T) {
 	}
 }
 
-// A calendar admin may do whatever a host may on any event without being
-// listed as one, and may step down whoever added it; nobody else may step
-// someone else down.
 func TestAdminActsAsHost(t *testing.T) {
 	mux, cache, _ := invitesApp(t)
 	jordan, dana := as(host, mux), as("dana.hawkins@heliosschool.org", mux)

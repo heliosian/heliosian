@@ -10,52 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"heliosian/internal/auth"
 	"heliosian/internal/blob"
-	"heliosian/internal/data"
-	"heliosian/internal/logging"
+	"heliosian/internal/store"
 )
 
-const changeLogTable = "Change Log"
-
-// maxPhotos caps a person's photo gallery, the Veracross school portrait counting
-// as one of the slots like any other photo.
 const maxPhotos = 5
-
-// changeLogHeader is a fixed list rather than derived from overrideColumns: one log
-// covers the Overrides and Families tabs - a family edit's row is keyed by the family
-// key, which is itself a parent email.
-var changeLogHeader = []string{
-	"Timestamp", "Actor",
-	"Email", "Added", "Full Name", "Legal Name", "Preferred Name",
-	"Is Student", "Is Parent", "Is Staff", "New to Helios", "Pronouns", "Facts",
-	"Grade", "Classroom", "Crew", "Phone", "Job Title", "Department", "Grade Band", "Room Parent",
-	"Address", "Family Phone", "Family Photo Caption", "Opted Out",
-	"Photo Updated", "Facts Updated", "Family Photo Updated",
-	"Veracross Photo", "Primary Photo", "Pronunciation",
-	"Family Photo", "Family Pronunciation",
-	"Real Actor",
-}
-
-func changeLogRow(r *http.Request, actor, email string, previous map[string]string) map[string]string {
-	row := map[string]string{
-		"Timestamp": time.Now().UTC().Format(time.RFC3339),
-		"Actor":     actor,
-	}
-	for _, column := range changeLogHeader {
-		if column == "Email" {
-			row[column] = email
-		} else if column == "Real Actor" {
-			row[column] = auth.RealEmail(r)
-		} else if value, ok := previous[column]; ok {
-			if value == "" {
-				value = "-"
-			}
-			row[column] = value
-		}
-	}
-	return row
-}
 
 var photoExtensions = map[string]string{
 	"image/jpeg": "jpg",
@@ -77,13 +36,11 @@ var audioExtensions = map[string]string{
 
 type uploader struct {
 	cache *Cache
-	sheet *data.Sheet
 	store *blob.Store
-	queue *Queue
 }
 
-func RegisterUpload(mux *http.ServeMux, cache *Cache, sheet *data.Sheet, store *blob.Store, queue *Queue) {
-	u := uploader{cache: cache, sheet: sheet, store: store, queue: queue}
+func RegisterUpload(mux *http.ServeMux, cache *Cache, store *blob.Store) {
+	u := uploader{cache: cache, store: store}
 	mux.HandleFunc("POST /api/directory/upload", u.upload)
 	mux.HandleFunc("POST /api/directory/facts", u.facts)
 	mux.HandleFunc("POST /api/directory/optout", u.optOut)
@@ -103,164 +60,44 @@ func clearable(value string) string {
 	return value
 }
 
-func (u uploader) applyOverride(w http.ResponseWriter, r *http.Request, actor, email, action string, cells, previous map[string]string) bool {
-	return applyOverrideWrite(u.cache, u.sheet, u.queue, w, r, actor, email, action, cells, previous)
+func setOverride(email string, cells store.Row) store.Op {
+	return store.Set(overridesTab, store.Row{"Email": email}, cells)
 }
 
-func (u uploader) applyFamily(w http.ResponseWriter, r *http.Request, actor, key, action string, cells, previous map[string]string) bool {
-	return applyFamilyWrite(u.cache, u.sheet, u.queue, w, r, actor, key, action, cells, previous)
+func setFamily(key string, cells store.Row) store.Op {
+	return store.Set(familiesTab, store.Row{"Email": key}, cells)
 }
 
-// applyFamilyWrite is applyOverrideWrite for the Families tab, keyed by the family
-// key (the alphabetically first parent email, which is the row's Email cell).
-func applyFamilyWrite(cache *Cache, writer data.Writer, queue *Queue, w http.ResponseWriter, r *http.Request, actor, key, action string, cells, previous map[string]string) bool {
-	logRow := changeLogRow(r, actor, key, previous)
-	if err := cache.applyFamily(key, cells); err != nil {
-		serverError(w, r, fmt.Errorf("rebuild model after %s: %w", action, err))
-		return false
+func refsOf(person *Person) []photoRef {
+	refs := make([]photoRef, len(person.Photos))
+	for i, photo := range person.Photos {
+		refs[i] = photoRef{Name: photo.Name, CropName: photo.cropName, order: photo.order, stored: photo.stored}
 	}
-	queue.Add(func() {
-		defer cache.written()
-		if err := writer.Set(appName, "Families", map[string]string{"Email": key}, cells); err != nil {
-			slog.ErrorContext(r.Context(), "set families row", "key", key, "error", err)
-			return
-		}
-		if err := writer.Insert(appName, changeLogTable, []map[string]string{logRow}); err != nil {
-			logging.Fatal("append change log", "action", action, "key", key, "error", err)
-		}
-	})
-	return true
+	return refs
 }
 
-// applyOverrideWrite folds an Overrides change into the cache and, once the rebuild
-// accepts it, persists the same cells to the real sheet plus a change log row. Shared
-// by uploader (self-service field edits, keyed on *data.Sheet) and admin (structural
-// field edits, keyed on the narrower data.Writer) so the write path - and its
-// reject-before-persist ordering - can't drift between the two.
-func applyOverrideWrite(cache *Cache, writer data.Writer, queue *Queue, w http.ResponseWriter, r *http.Request, actor, email, action string, cells, previous map[string]string) bool {
-	logRow := changeLogRow(r, actor, email, previous)
-	// If the in-memory rebuild rejects this change, don't write it to the real
-	// sheet either - otherwise the sheet ends up holding a value the model can
-	// never load, and every future rebuild (including the next server start)
-	// fails the same way until someone finds and fixes the cell by hand.
-	if err := cache.applyOverride(email, cells); err != nil {
-		serverError(w, r, fmt.Errorf("rebuild model after %s: %w", action, err))
-		return false
+func photoOps(email string, before []photoRef, after []photoRef) []store.Op {
+	keys := make([]string, len(after))
+	for i, ref := range after {
+		keys[i] = ref.order
 	}
-	queue.Add(func() {
-		defer cache.written()
-		if err := writer.Set(appName, "Overrides", map[string]string{"Email": email}, cells); err != nil {
-			slog.ErrorContext(r.Context(), "set overrides", "email", email, "error", err)
-			return
+	keys = store.Order(keys)
+	ops := []store.Op{}
+	kept := map[string]bool{}
+	for i, ref := range after {
+		kept[ref.Name] = true
+		if ref.stored {
+			ops = append(ops, store.Update(photosTab, store.Row{"Email": email, "Photo Name": ref.Name}, store.Row{store.OrderColumn: keys[i], "Crop Name": ref.CropName}))
+			continue
 		}
-		if err := writer.Insert(appName, changeLogTable, []map[string]string{logRow}); err != nil {
-			logging.Fatal("append change log", "action", action, "email", email, "error", err)
-		}
-	})
-	return true
-}
-
-// applyEmailRenameWrite is applyOverrideWrite for an added-only person's email change
-// (admin.go's setAddedFields is the only caller): besides the Overrides row itself, it
-// renames every Tags row where they're the owner or the tagged person, and every
-// Photos row that belongs to them (see Tables.withEmailRenamed), so the rename doesn't
-// silently strand their tags or photos under the old address.
-//
-// The existence checks before each Tags/Photos Set matter: data.Writer's Set
-// contract inserts a new row when nothing matches its key, which is exactly right for
-// "this person has exactly one Overrides row" but wrong here - a person with zero tags
-// or photos (the common case) would otherwise get a garbage row invented for them, one
-// with only the renamed column set and everything else blank. Checking first against
-// the tables snapshot from just before the rename (still keyed under oldEmail) means
-// each Set only ever fires when a real row is there to rename.
-func applyEmailRenameWrite(cache *Cache, writer data.Writer, queue *Queue, w http.ResponseWriter, r *http.Request, actor, oldEmail, newEmail string, cells map[string]string) bool {
-	logRow := changeLogRow(r, actor, newEmail, map[string]string{"Email": oldEmail})
-	before, err := cache.applyEmailRename(oldEmail, newEmail, cells)
-	if err != nil {
-		serverError(w, r, fmt.Errorf("rebuild model after email rename: %w", err))
-		return false
+		ops = append(ops, store.Insert(photosTab, store.Row{"Email": email, "Photo Name": ref.Name, store.OrderColumn: keys[i], "Crop Name": ref.CropName}))
 	}
-	hasTagOwner := slices.ContainsFunc(before.Tags, func(row map[string]string) bool {
-		return strings.EqualFold(row[tagOwner], oldEmail)
-	})
-	hasTagPerson := slices.ContainsFunc(before.Tags, func(row map[string]string) bool {
-		return strings.EqualFold(row[tagPerson], oldEmail)
-	})
-	hasPhotos := slices.ContainsFunc(before.Photos, func(row map[string]string) bool {
-		return strings.EqualFold(row["Email"], oldEmail)
-	})
-	queue.Add(func() {
-		defer cache.written()
-		overrideCells := map[string]string{"Email": newEmail}
-		for column, value := range cells {
-			overrideCells[column] = value
+	for _, ref := range before {
+		if ref.stored && !kept[ref.Name] {
+			ops = append(ops, store.Delete(photosTab, store.Row{"Email": email, "Photo Name": ref.Name}))
 		}
-		if err := writer.Set(appName, "Overrides", map[string]string{"Email": oldEmail}, overrideCells); err != nil {
-			slog.ErrorContext(r.Context(), "rename overrides row", "from", oldEmail, "to", newEmail, "error", err)
-			return
-		}
-		if hasTagOwner {
-			if err := writer.Set(appName, tagsTable, map[string]string{tagOwner: oldEmail}, map[string]string{tagOwner: newEmail}); err != nil {
-				slog.ErrorContext(r.Context(), "rename tag owner", "from", oldEmail, "to", newEmail, "error", err)
-			}
-		}
-		if hasTagPerson {
-			if err := writer.Set(appName, tagsTable, map[string]string{tagPerson: oldEmail}, map[string]string{tagPerson: newEmail}); err != nil {
-				slog.ErrorContext(r.Context(), "rename tag person", "from", oldEmail, "to", newEmail, "error", err)
-			}
-		}
-		if hasPhotos {
-			if err := writer.Set(appName, "Photos", map[string]string{"Email": oldEmail}, map[string]string{"Email": newEmail}); err != nil {
-				slog.ErrorContext(r.Context(), "rename photos", "from", oldEmail, "to", newEmail, "error", err)
-			}
-		}
-		if err := writer.Insert(appName, changeLogTable, []map[string]string{logRow}); err != nil {
-			logging.Fatal("append change log after email rename", "from", oldEmail, "to", newEmail, "error", err)
-		}
-	})
-	return true
-}
-
-// applyDeletePersonWrite is applyOverrideWrite for permanently removing an added-only
-// person (admin.go's setAddedFields, the Added Overrides tab's delete, is the only
-// caller): besides their Overrides row, it deletes every Tags row where they're the
-// owner or the tagged person, and every Photos row that belongs to them (see
-// Tables.withoutPerson). Unlike applyEmailRenameWrite's Upsert calls, data.Writer's
-// Delete is safe to call even when nothing matches - both implementations just delete
-// zero rows and return no error - so this doesn't need the existence checks that
-// rename does.
-func applyDeletePersonWrite(cache *Cache, writer data.Writer, queue *Queue, w http.ResponseWriter, r *http.Request, actor, email string, previous map[string]string) bool {
-	logRow := changeLogRow(r, actor, email, previous)
-	if err := cache.applyDeletePerson(email); err != nil {
-		serverError(w, r, fmt.Errorf("rebuild model after delete: %w", err))
-		return false
 	}
-	queue.Add(func() {
-		defer cache.written()
-		if err := writer.Delete(appName, "Overrides", map[string]string{"Email": email}); err != nil {
-			slog.ErrorContext(r.Context(), "delete overrides row", "email", email, "error", err)
-			return
-		}
-		if err := writer.Delete(appName, tagsTable, map[string]string{tagOwner: email}); err != nil {
-			slog.ErrorContext(r.Context(), "delete tags owned", "email", email, "error", err)
-		}
-		if err := writer.Delete(appName, tagsTable, map[string]string{tagPerson: email}); err != nil {
-			slog.ErrorContext(r.Context(), "delete tags naming", "email", email, "error", err)
-		}
-		if err := writer.Delete(appName, managersTable, map[string]string{tagOwner: email}); err != nil {
-			slog.ErrorContext(r.Context(), "delete tag managers owned", "email", email, "error", err)
-		}
-		if err := writer.Delete(appName, managersTable, map[string]string{managerEmail: email}); err != nil {
-			slog.ErrorContext(r.Context(), "delete tag managers naming", "email", email, "error", err)
-		}
-		if err := writer.Delete(appName, "Photos", map[string]string{"Email": email}); err != nil {
-			slog.ErrorContext(r.Context(), "delete photos", "email", email, "error", err)
-		}
-		if err := writer.Insert(appName, changeLogTable, []map[string]string{logRow}); err != nil {
-			logging.Fatal("append change log after deleting", "email", email, "error", err)
-		}
-	})
-	return true
+	return ops
 }
 
 func (u uploader) edit(w http.ResponseWriter, r *http.Request) {
@@ -271,11 +108,6 @@ func (u uploader) edit(w http.ResponseWriter, r *http.Request) {
 	me := effectiveEmail(u.cache, r)
 	model := u.cache.Model()
 
-	// Every other field below is keyed on a person - key is that person's own
-	// email, even for the family-level "address" case (self-service only, so the
-	// caller and the family member being written to are always the same person).
-	// This one is keyed on a family instead, since it's reachable from
-	// super-edit mode editing a family that isn't the caller's own.
 	if field == "family-photo-caption" {
 		if !u.mayEdit(r, model, me, "family", key) {
 			http.Error(w, "not allowed to edit this record", http.StatusForbidden)
@@ -290,11 +122,7 @@ func (u uploader) edit(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "bad caption", http.StatusBadRequest)
 			return
 		}
-		// clearable's "-" convention, same as every Families-tab column: applyFamilies
-		// reads "-" as an explicit clear and "" as no cell at all.
-		cells := map[string]string{"Family Photo Caption": clearable(value)}
-		previous := map[string]string{"Family Photo Caption": family.PhotoCaption}
-		if !u.applyFamily(w, r, me, family.email, field+" edit", cells, previous) {
+		if !u.cache.commit(w, r, me, setFamily(family.email, store.Row{"Family Photo Caption": clearable(value)})) {
 			return
 		}
 		slog.InfoContext(r.Context(), "edit: set field", "actor", me, "field", field, "key", key)
@@ -302,11 +130,6 @@ func (u uploader) edit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// A pronunciation recording can only be set through the upload endpoint (it's a
-	// file), but there was no way to clear one once set. This is that: the value is
-	// always empty, since it only ever deletes. Family Pronunciation, like Family
-	// Photo Caption above, is keyed on a family rather than the caller's own email,
-	// for the same super-edit reason.
 	if field == "family-pronunciation" {
 		if !u.mayEdit(r, model, me, "family", key) {
 			http.Error(w, "not allowed to edit this record", http.StatusForbidden)
@@ -321,9 +144,7 @@ func (u uploader) edit(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "no such family", http.StatusBadRequest)
 			return
 		}
-		cells := map[string]string{"Family Pronunciation": ""}
-		previous := map[string]string{"Family Pronunciation": family.pronunciation}
-		if !u.applyFamily(w, r, me, family.email, field+" edit", cells, previous) {
+		if !u.cache.commit(w, r, me, setFamily(family.email, store.Row{"Family Pronunciation": ""})) {
 			return
 		}
 		slog.InfoContext(r.Context(), "edit: set field", "actor", me, "field", field, "key", key)
@@ -337,8 +158,7 @@ func (u uploader) edit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cells := map[string]string{}
-	previous := map[string]string{}
+	cells := store.Row{}
 	switch field {
 	case "preferred-name":
 		if !u.mayEdit(r, model, me, "person", key) {
@@ -355,8 +175,6 @@ func (u uploader) edit(w http.ResponseWriter, r *http.Request) {
 		}
 		cells["Preferred Name"] = value
 		cells["Full Name"] = value + " " + surname(base)
-		previous["Preferred Name"] = person.PreferredName
-		previous["Full Name"] = person.FullName
 	case "pronouns":
 		if !u.mayEdit(r, model, me, "person", key) {
 			http.Error(w, "not allowed to edit this record", http.StatusForbidden)
@@ -366,15 +184,7 @@ func (u uploader) edit(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "bad pronouns", http.StatusBadRequest)
 			return
 		}
-		// Unlike Phone/Address, Pronouns has no import baseline (nothing ever sets
-		// it outside Overrides), so it's cleared with a plain "" - the same reason
-		// Primary Photo needed "" instead of "-" before it was retired - not
-		// clearable(value): applyOverrides always starts it at "" and would flag a
-		// literal "-" as clearing an already-empty value, failing the whole load.
-		// Lowercased so the Pronouns filter (case-sensitive on stored values) stays
-		// one option per pronoun set instead of splitting on casing.
 		cells["Pronouns"] = strings.ToLower(value)
-		previous["Pronouns"] = person.Pronouns
 	case "pronunciation":
 		if !u.mayEdit(r, model, me, "person", key) {
 			http.Error(w, "not allowed to edit this record", http.StatusForbidden)
@@ -384,17 +194,13 @@ func (u uploader) edit(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "pronunciation can only be cleared through this field", http.StatusBadRequest)
 			return
 		}
-		// Same no-baseline "" convention as Pronouns above, not clearable()'s "-" -
-		// Pronunciation is only ever set by the upload endpoint, so there's nothing
-		// for apply() to see as a pre-existing baseline value.
 		cells["Pronunciation"] = ""
-		previous["Pronunciation"] = person.pronunciation
 	default:
 		http.Error(w, "bad field", http.StatusBadRequest)
 		return
 	}
 
-	if !u.applyOverride(w, r, me, key, field+" edit", cells, previous) {
+	if !u.cache.commit(w, r, me, setOverride(key, cells)) {
 		return
 	}
 	slog.InfoContext(r.Context(), "edit: set field", "actor", me, "field", field, "key", key)
@@ -413,7 +219,7 @@ func (u uploader) optOut(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "not allowed to edit this record", http.StatusForbidden)
 		return
 	}
-	if !u.applyOverride(w, r, me, key, "opt out", map[string]string{"Opted Out": "TRUE"}, map[string]string{"Opted Out": ""}) {
+	if !u.cache.commit(w, r, me, setOverride(key, store.Row{"Opted Out": "TRUE"})) {
 		return
 	}
 	slog.InfoContext(r.Context(), "optout: removed from the directory", "actor", me, "key", key)
@@ -429,18 +235,11 @@ func (u uploader) facts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	me := effectiveEmail(u.cache, r)
-	model := u.cache.Model()
-	if !u.mayEdit(r, model, me, "person", key) {
+	if !u.mayEdit(r, u.cache.Model(), me, "person", key) {
 		http.Error(w, "not allowed to edit this record", http.StatusForbidden)
 		return
 	}
-	old, oldUpdated := "", ""
-	if p := model.Person(key); p != nil {
-		old, oldUpdated = p.Facts, p.FactsUpdated
-	}
-	cells := map[string]string{"Facts": facts, "Facts Updated": today()}
-	previous := map[string]string{"Facts": old, "Facts Updated": oldUpdated}
-	if !u.applyOverride(w, r, me, key, "facts update", cells, previous) {
+	if !u.cache.commit(w, r, me, setOverride(key, store.Row{"Facts": facts, "Facts Updated": today()})) {
 		return
 	}
 	slog.InfoContext(r.Context(), "facts: set", "actor", me, "key", key, "chars", len(facts))
@@ -486,34 +285,30 @@ func (u uploader) upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Content-addressed: the same image uploaded twice is one object, and an object is
-	// never overwritten, so nobody's photo can be destroyed by somebody else's upload.
 	folder := "photos"
 	if kind != "photo" {
 		folder = "pronunciation"
 	}
 	name := fmt.Sprintf("%x.%s", sha256.Sum256(content), ext)
-	if err := u.store.Put(folder, name, mimeType, content); err != nil {
-		serverError(w, r, err)
-		return
-	}
 
-	// A person's photos are a list; every other kind is a single slot, named on the
-	// owner's Overrides or Families row.
 	if kind == "photo" && target == "person" {
 		person := model.Person(key)
 		if len(person.Photos) >= maxPhotos {
 			http.Error(w, fmt.Sprintf("already has the maximum of %d photos", maxPhotos), http.StatusBadRequest)
 			return
 		}
-		order := make([]photoRef, len(person.Photos), len(person.Photos)+1)
-		for i, photo := range person.Photos {
-			order[i] = photoRef{Name: photo.Name, CropName: photo.cropName}
+		if isPhotoSubset([]string{name}, person.Photos) {
+			http.Error(w, "already has this photo", http.StatusBadRequest)
+			return
 		}
-		order = append(order, photoRef{Name: name})
-		cells := map[string]string{"Photo Updated": today()}
-		previous := map[string]string{"Photo Updated": person.PhotoUpdated}
-		if !u.setPhotos(w, r, me, key, order, cells, previous, "photo upload") {
+		if err := u.store.Put(folder, name, mimeType, content); err != nil {
+			serverError(w, r, err)
+			return
+		}
+		before := refsOf(person)
+		after := append(slices.Clone(before), photoRef{Name: name})
+		ops := append(photoOps(key, before, after), setOverride(key, store.Row{"Photo Updated": today()}))
+		if !u.cache.commit(w, r, me, ops...) {
 			return
 		}
 		slog.InfoContext(r.Context(), "upload: added photo", "actor", me, "name", name, "key", key)
@@ -527,16 +322,15 @@ func (u uploader) upload(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "no such family", http.StatusBadRequest)
 			return
 		}
-		cells, previous := map[string]string{}, map[string]string{}
-		if kind == "photo" {
-			cells["Family Photo"], cells["Family Photo Updated"] = name, today()
-			previous["Family Photo"] = family.photo
-			previous["Family Photo Updated"] = family.PhotoUpdated
-		} else {
-			cells["Family Pronunciation"] = name
-			previous["Family Pronunciation"] = family.pronunciation
+		if err := u.store.Put(folder, name, mimeType, content); err != nil {
+			serverError(w, r, err)
+			return
 		}
-		if !u.applyFamily(w, r, me, family.email, kind+" upload", cells, previous) {
+		cells := store.Row{"Family Pronunciation": name}
+		if kind == "photo" {
+			cells = store.Row{"Family Photo": name, "Family Photo Updated": today()}
+		}
+		if !u.cache.commit(w, r, me, setFamily(family.email, cells)) {
 			return
 		}
 		slog.InfoContext(r.Context(), "upload: set media", "actor", me, "target", target, "key", key, "kind", kind, "name", name)
@@ -544,57 +338,21 @@ func (u uploader) upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cells := map[string]string{"Pronunciation": name}
-	previous := map[string]string{"Pronunciation": model.Person(key).pronunciation}
-	if !u.applyOverride(w, r, me, key, kind+" upload", cells, previous) {
+	if model.Person(key) == nil {
+		http.Error(w, "no such person", http.StatusBadRequest)
+		return
+	}
+	if err := u.store.Put(folder, name, mimeType, content); err != nil {
+		serverError(w, r, err)
+		return
+	}
+	if !u.cache.commit(w, r, me, setOverride(key, store.Row{"Pronunciation": name})) {
 		return
 	}
 	slog.InfoContext(r.Context(), "upload: set media", "actor", me, "target", target, "key", key, "kind", kind, "name", name)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// setPhotos replaces a person's complete photo list and folds the change into the
-// running model before responding, so the caller's very next model fetch sees it.
-// Uploading (append), drag-reorder (permute), deleting (remove one), and cropping
-// (attach a crop to one) all funnel through this one path rather than four ad hoc
-// ones, since each is really just "this person's photo list is now exactly order" -
-// one place to get the rebuild-then-write interaction right instead of four.
-func (u uploader) setPhotos(w http.ResponseWriter, r *http.Request, me, key string, order []photoRef, cells, previous map[string]string, changeAction string) bool {
-	rows := make([]map[string]string, len(order))
-	for i, ref := range order {
-		rows[i] = map[string]string{"Email": key, "Photo Name": ref.Name, "Crop Name": ref.CropName}
-	}
-	if err := u.cache.applyPhotos(key, order, cells); err != nil {
-		serverError(w, r, fmt.Errorf("rebuild model after %s: %w", changeAction, err))
-		return false
-	}
-	logRow := changeLogRow(r, me, key, previous)
-	u.queue.Add(func() {
-		defer u.cache.written()
-		if err := u.sheet.Delete(appName, "Photos", map[string]string{"Email": key}); err != nil {
-			slog.ErrorContext(r.Context(), "clear photo list", "email", key, "error", err)
-			return
-		}
-		if err := u.sheet.Insert(appName, "Photos", rows); err != nil {
-			slog.ErrorContext(r.Context(), "write photo list", "email", key, "error", err)
-			return
-		}
-		if len(cells) == 0 {
-			return
-		}
-		if err := u.sheet.Set(appName, "Overrides", map[string]string{"Email": key}, cells); err != nil {
-			slog.ErrorContext(r.Context(), "set overrides", "email", key, "error", err)
-			return
-		}
-		if err := u.sheet.Insert(appName, changeLogTable, []map[string]string{logRow}); err != nil {
-			logging.Fatal("append change log", "action", changeAction, "key", key, "error", err)
-		}
-	})
-	return true
-}
-
-// reorderPhotos handles both dragging photos into a new order and deleting one: a
-// delete is just "the same list minus one name," so both are the same request.
 func (u uploader) reorderPhotos(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
 	key := strings.ToLower(strings.TrimSpace(r.FormValue("key")))
@@ -614,39 +372,22 @@ func (u uploader) reorderPhotos(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "order must name only this person's current photos, with no duplicates", http.StatusBadRequest)
 		return
 	}
-	// A reorder or delete must carry each photo's existing crop link forward - the
-	// client only ever sends names, never crops, so those are looked up here rather
-	// than trusted from the request.
-	cropOf := map[string]string{}
-	for _, photo := range person.Photos {
-		cropOf[photo.Name] = photo.cropName
-	}
-	order := make([]photoRef, len(names))
+	before := refsOf(person)
+	after := make([]photoRef, len(names))
 	for i, name := range names {
-		order[i] = photoRef{Name: name, CropName: cropOf[name]}
+		after[i] = before[slices.IndexFunc(before, func(ref photoRef) bool { return ref.Name == name })]
 	}
-	cells, previous := map[string]string{}, map[string]string{}
+	ops := photoOps(key, before, after)
 	if person.primaryPhotoOverride != "" {
-		// Retire the legacy pointer now that order alone decides primary - otherwise
-		// it would resurface and override this reorder on the next model load. An
-		// empty string, not "-": unlike Phone/Address, Primary Photo has no import
-		// baseline to distinguish "no override" from "overridden to blank", so
-		// applyOverrides always starts it at "" and a literal "-" here would just be
-		// flagged as clearing an already-empty value.
-		cells["Primary Photo"] = ""
-		previous["Primary Photo"] = person.primaryPhotoOverride
+		ops = append(ops, setOverride(key, store.Row{"Primary Photo": ""}))
 	}
-	if !u.setPhotos(w, r, me, key, order, cells, previous, "photo reorder") {
+	if !u.cache.commit(w, r, me, ops...) {
 		return
 	}
-	slog.InfoContext(r.Context(), "reorder-photos: set photo list", "actor", me, "photos", len(order), "key", key)
+	slog.InfoContext(r.Context(), "reorder-photos: set photo list", "actor", me, "photos", len(after), "key", key)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// cropPhoto attaches a crop to an existing photo - a square crop for one of a
-// person's photos (name identifies which one), or an arbitrary-shape crop for
-// a family's single photo (families only ever have one, so name is unused) -
-// replacing any crop it already had.
 func (u uploader) cropPhoto(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 30<<20)
 	if err := r.ParseMultipartForm(30 << 20); err != nil {
@@ -718,9 +459,7 @@ func (u uploader) cropPhoto(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if target == "family" {
-		cells := map[string]string{"Family Photo Crop": cropName, "Family Photo Updated": today()}
-		previous := map[string]string{"Family Photo Crop": family.photoCropName, "Family Photo Updated": family.PhotoUpdated}
-		if !u.applyFamily(w, r, me, family.email, "family photo crop", cells, previous) {
+		if !u.cache.commit(w, r, me, setFamily(family.email, store.Row{"Family Photo Crop": cropName, "Family Photo Updated": today()})) {
 			return
 		}
 		slog.InfoContext(r.Context(), "crop-photo: set a crop on the family photo", "actor", me, "family", key)
@@ -728,19 +467,15 @@ func (u uploader) cropPhoto(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	order := make([]photoRef, len(person.Photos))
-	for i, photo := range person.Photos {
-		order[i] = photoRef{Name: photo.Name, CropName: photo.cropName}
-	}
-	for i := range order {
-		if order[i].Name == name {
-			order[i].CropName = cropName
+	before := refsOf(person)
+	after := slices.Clone(before)
+	for i := range after {
+		if after[i].Name == name {
+			after[i].CropName = cropName
 		}
 	}
-
-	cells := map[string]string{"Photo Updated": today()}
-	previous := map[string]string{"Photo Updated": person.PhotoUpdated}
-	if !u.setPhotos(w, r, me, key, order, cells, previous, "photo crop") {
+	ops := append(photoOps(key, before, after), setOverride(key, store.Row{"Photo Updated": today()}))
+	if !u.cache.commit(w, r, me, ops...) {
 		return
 	}
 	slog.InfoContext(r.Context(), "crop-photo: set a crop on a photo", "actor", me, "key", key, "photo", name)
@@ -757,10 +492,6 @@ func splitNonEmpty(s, sep string) []string {
 	return out
 }
 
-// isPhotoSubset reports whether order names only photos this person actually has,
-// each at most once - a full permutation for a reorder, one name short for a
-// delete. Anything else (an unknown name, a duplicate) is rejected outright rather
-// than silently ignored, since order is about to become the sheet's source of truth.
 func isPhotoSubset(order []string, photos []Photo) bool {
 	remaining := map[string]int{}
 	for _, photo := range photos {
@@ -780,12 +511,6 @@ func (u uploader) mayEdit(r *http.Request, model *Model, me, target, key string)
 	return superEdit(u.cache, r, me) || mayEdit(model, me, target, key)
 }
 
-// mayEdit is what a member may edit on their own: a family page when they are
-// one of its adults, and a person when it is themselves or someone in the
-// household they are an adult of - its children and its other adult. A kid of
-// two households is in both, so either parent edits the kid, but a parent's
-// household is only ever their own, so never the other parent's page or
-// person. A student edits only themselves, not either family page.
 func mayEdit(model *Model, me, target, key string) bool {
 	if target == "person" && key == me && model.Member(me) {
 		return true

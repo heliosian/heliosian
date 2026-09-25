@@ -216,7 +216,7 @@ Local development installs the same records over a text handler on stderr, so th
 
 ## Verifying a deploy
 
-The startup log (Cloud Run → Logs, or `gcloud logging read`) shows the full boot sequence: `loaded config`, each app's `loaded … model`, the blob store's `prefetching` and `prefetched` lines around each, the geocoding line (how many addresses came from the `Geocode` tab and how many went to the API), then `listening`; the boot time is the span from the instance's first line to that one. The five-minute refreshes log the same `loaded` and `blob store` lines without a `listening`, so a boot is the run that ends in one. When the most recent boot happened:
+The startup log (Cloud Run → Logs, or `gcloud logging read`) shows the full boot sequence: `loaded config`, each app's `loaded … model`, the blob store's `prefetching` and `prefetched` lines around each (the directory's `loaded` line counts the addresses the `Geocode` tab has no row for as `unlocated`, and a `geocoded family addresses` line follows whenever there were any, off the startup path), then `listening`; the boot time is the span from the instance's first line to that one. The five-minute refreshes log the same `loaded` and `blob store` lines without a `listening`, so a boot is the run that ends in one. When the most recent boot happened:
 
     gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="heliosian" AND jsonPayload.message="listening"' --project heliosian --freshness 7d --limit 1 --format "value(timestamp)"
 

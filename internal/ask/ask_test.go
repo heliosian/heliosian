@@ -66,11 +66,7 @@ func (sampleDirectory) Lists(string) []calendar.List       { return nil }
 func sampleSources(t *testing.T) Sources {
 	t.Helper()
 	dir := &data.Dir{Root: "../../sampledata"}
-	tables, err := who.ReadTables(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	directory, err := who.BuildModel(tables, anyImages{}, anyImages{}, []byte("test"))
+	directory, err := who.LoadModel(dir, anyImages{}, anyImages{}, []byte("test"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +115,7 @@ func sampleSources(t *testing.T) Sources {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tags := func(owner string) map[string][]string { return who.TagsOf(tables.Tags, directory, owner) }
+	tags := directory.Tags
 	lists := directory.RoomParentLists
 	return Sources{
 		Directory:         func() *who.Model { return directory },
@@ -132,9 +128,7 @@ func sampleSources(t *testing.T) Sources {
 		Celebrate:         func() *celebrate.Model { return celebrateModel },
 		Loop:              func() *loop.Model { return loopModel },
 		LoopSources: func() loop.Sources {
-			return loop.Sources{Directory: directory, Tags: tags, Lists: lists, Shared: func(email string) []who.SharedTag {
-				return who.SharedTagsOf(tables.Tags, tables.Managers, directory, email)
-			}}
+			return loop.Sources{Directory: directory, Tags: tags, Lists: lists, Shared: directory.SharedTags}
 		},
 		Links:     func() []home.Category { return homeModel.Categories },
 		Alerts:    func(string) (int, bool) { return 0, false },

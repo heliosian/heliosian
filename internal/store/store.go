@@ -59,6 +59,7 @@ func Delete(tab string, match Row) Op {
 }
 
 type Tab struct {
+	App        string
 	Name       string
 	Columns    []string
 	Key        []string
@@ -111,22 +112,31 @@ func New[M any](spec Spec[M], source data.Source, writer data.Writer, queue Enqu
 
 func (s *Store[M]) read() (Tables, M, error) {
 	var none M
-	names := make([]string, 0, len(s.spec.Tabs))
+	names := map[string][]string{s.spec.App: {}}
 	for _, t := range s.spec.Tabs {
-		names = append(names, t.Name)
+		names[s.appOf(t)] = append(names[s.appOf(t)], t.Name)
 	}
-	tabs, err := s.source.Tabs(s.spec.App, names, []string{ChangeLogTab})
-	if err != nil {
-		return nil, none, err
+	read := map[string]map[string]data.Tab{}
+	for app, tabs := range names {
+		headers := []string{}
+		if app == s.spec.App {
+			headers = []string{ChangeLogTab}
+		}
+		got, err := s.source.Tabs(app, tabs, headers)
+		if err != nil {
+			return nil, none, err
+		}
+		read[app] = got
 	}
 	tables := Tables{}
 	for _, t := range s.spec.Tabs {
-		if err := data.CheckColumns(t.Name, tabs[t.Name].Header, t.Columns); err != nil {
+		tab := read[s.appOf(t)][t.Name]
+		if err := data.CheckColumns(t.Name, tab.Header, t.Columns); err != nil {
 			return nil, none, err
 		}
-		tables[t.Name] = tabs[t.Name].Rows
+		tables[t.Name] = tab.Rows
 	}
-	if err := data.CheckColumns(ChangeLogTab, tabs[ChangeLogTab].Header, ChangeLogColumns); err != nil {
+	if err := data.CheckColumns(ChangeLogTab, read[s.spec.App][ChangeLogTab].Header, ChangeLogColumns); err != nil {
 		return nil, none, err
 	}
 	model, err := s.spec.Build(tables)
@@ -134,6 +144,13 @@ func (s *Store[M]) read() (Tables, M, error) {
 		return nil, none, err
 	}
 	return tables, model, nil
+}
+
+func (s *Store[M]) appOf(t Tab) string {
+	if t.App == "" {
+		return s.spec.App
+	}
+	return t.App
 }
 
 func (s *Store[M]) Model() M {
@@ -223,6 +240,9 @@ func (s *Store[M]) commit(ctx context.Context, actor string, ops []Op) (<-chan e
 		tab, ok := s.tabs[op.tab]
 		if !ok {
 			return nil, fmt.Errorf("%s has no tab %s", s.spec.App, op.tab)
+		}
+		if s.appOf(tab) != s.spec.App {
+			return nil, fmt.Errorf("%s: tab %s is %s's", s.spec.App, op.tab, tab.App)
 		}
 		if tab.AppendOnly && (op.kind == set || op.kind == update) {
 			return nil, fmt.Errorf("%s: tab %s is append-only", s.spec.App, op.tab)

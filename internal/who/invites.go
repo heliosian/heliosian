@@ -5,79 +5,43 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"slices"
 	"strings"
 	"sync"
 	"time"
 
 	"heliosian/internal/data"
+	"heliosian/internal/store"
 )
 
-// InviteTemplate is one row of _Services plus the header and template row(s) read
-// out of the tab it points to, exactly as that tab holds them - including any
-// quirk (a duplicate column name, a blank cell) the destination system itself
-// requires, since these are meant to be filled in and re-uploaded unchanged.
-//
-// Description and Notes serve different readers: Description is the one-line,
-// no-jargon summary (does this group families into one invite or list everyone
-// separately, does a kid get emailed) the Invites page shows next to the
-// system's name so a non-technical person can pick the right one. Notes is the
-// deeper documentation for whoever edits this sheet later - source links,
-// column quirks, why a template is shaped the way it is - and isn't rendered in
-// the app.
 type InviteTemplate struct {
-	Name        string `json:"name"`
-	Sheet       string `json:"sheet"`
-	Description string `json:"description,omitempty"`
-	Notes       string `json:"notes,omitempty"`
-	HeaderRow   bool   `json:"headerRow"`
-	// SupportsGroups is sourced from the destination system's own docs, not
-	// inferred from the template - whether it has any real way to address a
-	// couple/family/group as one invitee (a dedicated field, or a documented
-	// convention for cramming several names into one) versus being built for
-	// one individual contact per row. The client uses it both to decide which
-	// greeting styles to offer and whether the Group by family switch (one row
-	// per family vs. one row per person) is offered at all - a system that
-	// can't really address a group doesn't get presented as one, even if its
-	// docs describe a workaround for cramming names into one field.
+	Name           string     `json:"name"`
+	Sheet          string     `json:"sheet"`
+	Description    string     `json:"description,omitempty"`
+	Notes          string     `json:"notes,omitempty"`
+	HeaderRow      bool       `json:"headerRow"`
 	SupportsGroups bool       `json:"supportsGroups"`
 	Header         []string   `json:"header"`
 	Rows           [][]string `json:"rows"`
 }
 
-// GreetingTemplate is one row of _Greetings: a named greeting style (shown to
-// the person exporting, in the picker embedded in the CSV preview's greeting
-// column) plus its Format - not a {{ token }} template but a worked example
-// written against one made-up family (parents Pat and Quinn, kids Ali and Bo,
-// surname Ender), so editing or adding a greeting means writing out what it
-// would look like for that family rather than learning template syntax. The
-// client recognizes fixed phrases from that example ("Ali & Bo Ender" for the
-// joined kids, "Pat & Quinn Ender" for the joined adults, and so on) and
-// substitutes the real family's names wherever they appear - see
-// buildGreeting in app.js, the one place that mapping is defined.
 type GreetingTemplate struct {
-	Name   string `json:"name"`
-	Format string `json:"format"`
-	// Grouped and Individual are independent, not two ends of one flag - a
-	// greeting that doesn't reference the family/kid example phrases at all
-	// (a fixed line with no names in it) can genuinely apply to both a whole
-	// family's invite and a single person's, so a row can check either box,
-	// both, or (someone forgot to fill it in) default to both.
-	Grouped    bool `json:"grouped"`
-	Individual bool `json:"individual"`
-	// CreatedBy is who added this greeting - recorded for anyone editing the
-	// sheet later to see at a glance, not currently shown in the app itself.
-	// Blank for one of the built-in rows nobody "added" through the app.
-	CreatedBy string `json:"createdBy,omitempty"`
+	Name       string `json:"name"`
+	Format     string `json:"format"`
+	Grouped    bool   `json:"grouped"`
+	Individual bool   `json:"individual"`
+	CreatedBy  string `json:"createdBy,omitempty"`
 }
 
-const invitesApp = "invites"
+const (
+	invitesApp   = "invites"
+	servicesTab  = "_Services"
+	greetingsTab = "_Greetings"
+)
 
-func loadGreetingTemplates(source data.Source) ([]GreetingTemplate, error) {
-	_, rows, err := source.Table(invitesApp, "_Greetings")
-	if err != nil {
-		return nil, err
-	}
+var GreetingColumns = []string{"Name", "Format", "Grouped", "Individual", "Email"}
+
+func buildGreetings(tables store.Tables) ([]GreetingTemplate, error) {
+	rows := tables[greetingsTab]
 	greetings := make([]GreetingTemplate, 0, len(rows))
 	for _, row := range rows {
 		name, format := row["Name"], row["Format"]
@@ -96,7 +60,7 @@ func loadGreetingTemplates(source data.Source) ([]GreetingTemplate, error) {
 }
 
 func loadInviteTemplates(source data.Source) ([]InviteTemplate, error) {
-	_, systems, err := source.Table(invitesApp, "_Services")
+	_, systems, err := source.Table(invitesApp, servicesTab)
 	if err != nil {
 		return nil, err
 	}
@@ -114,14 +78,10 @@ func loadInviteTemplates(source data.Source) ([]InviteTemplate, error) {
 			continue
 		}
 		templates = append(templates, InviteTemplate{
-			Name:        name,
-			Sheet:       tab,
-			Description: sys["Description"],
-			Notes:       sys["Notes"],
-			// A blank/missing cell defaults each of these to "yes" - the common
-			// case for both columns (every system but Evite wants its header
-			// included; most systems support naming a group) - so a manifest row
-			// added before a column existed still behaves sensibly.
+			Name:           name,
+			Sheet:          tab,
+			Description:    sys["Description"],
+			Notes:          sys["Notes"],
 			HeaderRow:      sys["Header Row"] != "No",
 			SupportsGroups: sys["Supports Groups"] != "No",
 			Header:         raw[0],
@@ -133,159 +93,80 @@ func loadInviteTemplates(source data.Source) ([]InviteTemplate, error) {
 
 const invitesRefreshInterval = 5 * time.Minute
 
-// invitesCache holds the parsed Invite List Builder templates in memory,
-// refreshed on a timer rather than loaded fresh per request. GET
-// /invite-templates sits on the critical path of every visit to the Invites
-// page - a plain page navigation, not an SPA route, so this runs on every
-// single click into it - and loading straight from Sheets there means one
-// API round trip per destination system plus two more for
-// _Services/_Greetings, several seconds of dead time on every visit. A
-// save/edit/delete calls refreshGreetings directly afterward, so a change is
-// visible on the very next load instead of waiting for the next tick.
-type invitesCache struct {
-	source    data.Source
-	queue     *Queue
-	mu        sync.RWMutex
-	systems   []InviteTemplate
-	greetings []GreetingTemplate
-	err       string
-	pending   int
+type Invites struct {
+	*store.Store[[]GreetingTemplate]
+	source  data.Source
+	queue   store.Enqueuer
+	mu      sync.RWMutex
+	systems []InviteTemplate
 }
 
-func newInvitesCache(source data.Source, queue *Queue) (*invitesCache, error) {
+func NewInvites(source data.Source, writer data.Writer, queue store.Enqueuer) (*Invites, error) {
+	s, err := store.New(store.Spec[[]GreetingTemplate]{
+		App:   invitesApp,
+		Tabs:  []store.Tab{{Name: greetingsTab, Columns: GreetingColumns, Key: []string{"Name"}}},
+		Build: buildGreetings,
+		Loaded: func(greetings []GreetingTemplate, took time.Duration) {
+			slog.Info("loaded greetings", "greetings", len(greetings), "took", took.Round(time.Millisecond))
+		},
+	}, source, writer, queue)
+	if err != nil {
+		return nil, err
+	}
 	systems, err := loadInviteTemplates(source)
 	if err != nil {
 		return nil, fmt.Errorf("load invite templates: %w", err)
 	}
-	greetings, err := loadGreetingTemplates(source)
-	if err != nil {
-		return nil, fmt.Errorf("load greeting templates: %w", err)
-	}
-	slog.Info("loaded invite templates", "systems", len(systems), "greetings", len(greetings))
-	c := &invitesCache{source: source, queue: queue, systems: systems, greetings: greetings}
-	go c.refreshLoop()
-	return c, nil
+	slog.Info("loaded invite templates", "systems", len(systems))
+	i := &Invites{Store: s, source: source, queue: queue, systems: systems}
+	go i.refreshLoop()
+	return i, nil
 }
 
-func (c *invitesCache) refreshLoop() {
+func (i *Invites) refreshLoop() {
 	for range time.Tick(invitesRefreshInterval) {
-		c.queue.Add(c.refresh)
+		i.queue.Add(i.refreshSystems)
 	}
 }
 
-// refresh reloads both halves. A transient load failure leaves whichever half
-// failed as it was rather than blanking out working data - the error string
-// still surfaces so the client can explain it.
-func (c *invitesCache) refresh() {
-	systems, sysErr := loadInviteTemplates(c.source)
-	greetings, greetErr := loadGreetingTemplates(c.source)
-	errStr := ""
-	if sysErr != nil {
-		slog.Error("load invite templates", "error", sysErr)
-		errStr = sysErr.Error()
-	}
-	if greetErr != nil {
-		slog.Error("load greeting templates", "error", greetErr)
-		if errStr == "" {
-			errStr = greetErr.Error()
-		}
-	}
-	c.mu.Lock()
-	if sysErr == nil {
-		c.systems = systems
-	}
-	if greetErr == nil && c.pending == 0 {
-		c.greetings = greetings
-	}
-	c.err = errStr
-	c.mu.Unlock()
-}
-
-func (c *invitesCache) addGreeting(g GreetingTemplate) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.greetings = append(slices.Clone(c.greetings), g)
-	c.pending++
-}
-
-func (c *invitesCache) written() {
-	c.mu.Lock()
-	c.pending--
-	c.mu.Unlock()
-}
-
-func (c *invitesCache) editGreeting(original string, g GreetingTemplate) bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	for i, have := range c.greetings {
-		if !strings.EqualFold(have.Name, original) {
-			continue
-		}
-		if have.CreatedBy != g.CreatedBy {
-			return false
-		}
-		next := slices.Clone(c.greetings)
-		next[i] = g
-		c.greetings = next
-		c.pending++
-		return true
-	}
-	return false
-}
-
-func (c *invitesCache) deleteGreeting(name, email string) bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	for i, have := range c.greetings {
-		if !strings.EqualFold(have.Name, name) {
-			continue
-		}
-		if have.CreatedBy != email {
-			return false
-		}
-		c.greetings = slices.Delete(slices.Clone(c.greetings), i, i+1)
-		c.pending++
-		return true
-	}
-	return false
-}
-
-func (c *invitesCache) view() ([]InviteTemplate, []GreetingTemplate, string) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.systems, c.greetings, c.err
-}
-
-// RegisterInvites serves the parsed Invite List Builder templates to the
-// client, which runs the actual per-family substitution (it already has the
-// filtered, formatted family data the templates draw on), and lets anyone add
-// their own greeting to _Greetings. Source/writer are the same ones
-// directory/preferences read and write through. The templates load before
-// the server listens and a failure is fatal, the same as the directory model.
-func RegisterInvites(mux *http.ServeMux, cache *Cache, source data.Source, writer data.Writer, queue *Queue) error {
-	invites, err := newInvitesCache(source, queue)
+func (i *Invites) refreshSystems() {
+	systems, err := loadInviteTemplates(i.source)
 	if err != nil {
-		return err
+		slog.Error("[ERROR] load invite templates", "error", err)
+		return
 	}
+	i.mu.Lock()
+	i.systems = systems
+	i.mu.Unlock()
+}
 
+func (i *Invites) Systems() []InviteTemplate {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+	return i.systems
+}
+
+func (i *Invites) greeting(name string) (GreetingTemplate, bool) {
+	for _, g := range i.Model() {
+		if strings.EqualFold(g.Name, name) {
+			return g, true
+		}
+	}
+	return GreetingTemplate{}, false
+}
+
+func RegisterInvites(mux *http.ServeMux, cache *Cache, invites *Invites) {
 	mux.HandleFunc("GET /api/directory/invite-templates", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		systems, greetings, errStr := invites.view()
 		view := struct {
 			Systems   []InviteTemplate   `json:"systems"`
 			Greetings []GreetingTemplate `json:"greetings"`
-			Error     string             `json:"error,omitempty"`
-		}{Systems: systems, Greetings: visibleGreetings(greetings, effectiveEmail(cache, r)), Error: errStr}
+		}{Systems: invites.Systems(), Greetings: visibleGreetings(invites.Model(), effectiveEmail(cache, r))}
 		if err := json.NewEncoder(w).Encode(view); err != nil {
 			slog.ErrorContext(r.Context(), "encode invite templates", "error", err)
 		}
 	})
 
-	// original, when present, names an existing _Greetings row to update in
-	// place (Upsert keyed on Name) instead of appending a new one - how the
-	// client asks to edit rather than create. Only the row's own creator may
-	// do that; anyone editing someone else's (or a built-in row's, which has
-	// no CreatedBy to match) is rejected rather than silently taking it over.
 	mux.HandleFunc("POST /api/directory/greetings", func(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, 8<<10)
 		if err := r.ParseForm(); err != nil {
@@ -302,52 +183,31 @@ func RegisterInvites(mux *http.ServeMux, cache *Cache, source data.Source, write
 			http.Error(w, "format is too long", http.StatusBadRequest)
 			return
 		}
-		// No separate name to author - the greeting's Format text doubles as
-		// its Name (what the picker shows), same as every built-in row where
-		// the two happen to read almost the same. Editable later via a
-		// sheet-side rename if it ever needs to differ.
-		name := format
 		email := effectiveEmail(cache, r)
-		cells := map[string]string{
-			"Name":       name,
+		cells := store.Row{
+			"Name":       format,
 			"Format":     format,
 			"Grouped":    yesNo(r.FormValue("grouped") == "1"),
 			"Individual": yesNo(r.FormValue("individual") == "1"),
 			"Email":      email,
 		}
-		greeting := GreetingTemplate{
-			Name: name, Format: format,
-			Grouped: cells["Grouped"] != "No", Individual: cells["Individual"] != "No",
-			CreatedBy: email,
-		}
+		op := store.Insert(greetingsTab, cells)
 		if original != "" {
-			if !invites.editGreeting(original, greeting) {
+			have, ok := invites.greeting(original)
+			if !ok || have.CreatedBy != email {
 				http.Error(w, "you can only edit greetings you created", http.StatusForbidden)
 				return
 			}
-			queue.Add(func() {
-				defer invites.written()
-				if err := writer.Set(invitesApp, "_Greetings", map[string]string{"Name": original}, cells); err != nil {
-					slog.ErrorContext(r.Context(), "update greeting", "name", name, "error", err)
-				}
-			})
-			slog.InfoContext(r.Context(), "greeting: edited", "actor", email, "from", original, "to", name)
-		} else {
-			invites.addGreeting(greeting)
-			queue.Add(func() {
-				defer invites.written()
-				if err := writer.Insert(invitesApp, "_Greetings", []map[string]string{cells}); err != nil {
-					slog.ErrorContext(r.Context(), "save greeting", "name", name, "error", err)
-				}
-			})
-			slog.InfoContext(r.Context(), "greeting: added", "actor", email, "name", name)
+			op = store.Update(greetingsTab, store.Row{"Name": original}, cells)
 		}
+		if err := invites.Commit(r.Context(), email, op); err != nil {
+			serverError(w, r, err)
+			return
+		}
+		slog.InfoContext(r.Context(), "greeting: saved", "actor", email, "from", original, "name", format)
 		w.WriteHeader(http.StatusNoContent)
 	})
 
-	// Same ownership rule as editing - only the greeting's own creator can
-	// remove it, so this can't be used to make someone else's (or a built-in
-	// row's) greeting disappear out from under them.
 	mux.HandleFunc("DELETE /api/directory/greetings", func(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, 8<<10)
 		if err := r.ParseForm(); err != nil {
@@ -360,27 +220,20 @@ func RegisterInvites(mux *http.ServeMux, cache *Cache, source data.Source, write
 			return
 		}
 		email := effectiveEmail(cache, r)
-		if !invites.deleteGreeting(name, email) {
+		have, ok := invites.greeting(name)
+		if !ok || have.CreatedBy != email {
 			http.Error(w, "you can only delete greetings you created", http.StatusForbidden)
 			return
 		}
-		queue.Add(func() {
-			defer invites.written()
-			if err := writer.Delete(invitesApp, "_Greetings", map[string]string{"Name": name}); err != nil {
-				slog.ErrorContext(r.Context(), "delete greeting", "name", name, "error", err)
-			}
-		})
+		if err := invites.Commit(r.Context(), email, store.Delete(greetingsTab, store.Row{"Name": name})); err != nil {
+			serverError(w, r, err)
+			return
+		}
 		slog.InfoContext(r.Context(), "greeting: deleted", "actor", email, "name", name)
 		w.WriteHeader(http.StatusNoContent)
 	})
-	return nil
 }
 
-// visibleGreetings filters the full _Greetings list down to what one viewer
-// should see: the built-in rows (no CreatedBy - nobody "added" those through
-// the app) plus whichever rows that viewer added themselves. A greeting is
-// tied to the account that created it, not the family, so even another adult
-// in the same family doesn't see it.
 func visibleGreetings(greetings []GreetingTemplate, email string) []GreetingTemplate {
 	visible := make([]GreetingTemplate, 0, len(greetings))
 	for _, g := range greetings {

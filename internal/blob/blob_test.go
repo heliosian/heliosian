@@ -8,7 +8,6 @@ import (
 	"image/png"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -37,16 +36,6 @@ func TestDiskCacheRoundTrips(t *testing.T) {
 	}
 	if got, err = s.cached("photos/missing.jpg"); err != nil || got != nil {
 		t.Fatalf("missing: %+v %v", got, err)
-	}
-	tile := &entry{name: "grade-images/grade-k", generation: 9, mimeType: "image/png", data: []byte("tile"), thumb: []byte("tile-thumb")}
-	if err := s.cache(tile); err != nil {
-		t.Fatal(err)
-	}
-	if got, err = s.cached("grade-images/grade-k"); err != nil || got != nil {
-		t.Fatalf("a named object was cached: %+v %v", got, err)
-	}
-	if _, err := os.Stat(s.cachePath("grade-images/grade-k")); !os.IsNotExist(err) {
-		t.Fatal("a named object was written to the cache")
 	}
 	var wg sync.WaitGroup
 	errs := make(chan error, 8)
@@ -80,8 +69,6 @@ func TestDiskCacheRoundTrips(t *testing.T) {
 	}
 }
 
-// headerPNG is a PNG that is nothing but its header: the dimensions a decoder
-// would allocate from, with no pixel data behind them.
 func headerPNG(w, h int) []byte {
 	ihdr := []byte("IHDR")
 	ihdr = binary.BigEndian.AppendUint32(ihdr, uint32(w))
@@ -119,8 +106,7 @@ func TestDecodeRefusesOversizeHeader(t *testing.T) {
 
 func TestServeCaching(t *testing.T) {
 	s := &Store{entries: map[string]*entry{
-		"photos/abc":           {generation: 7, mimeType: "image/jpeg", data: []byte("photo"), thumb: []byte("photo-thumb")},
-		"grade-images/grade-k": {generation: 9, mimeType: "image/png", data: []byte("tile"), thumb: []byte("tile-thumb")},
+		"photos/abc": {generation: 7, mimeType: "image/jpeg", data: []byte("photo"), thumb: []byte("photo-thumb")},
 	}}
 	get := func(target, etag string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodGet, target, nil)
@@ -155,17 +141,7 @@ func TestServeCaching(t *testing.T) {
 		t.Errorf("stale thumb version: got %d, want 404", rec.Code)
 	}
 
-	rec = get("/grade-images/grade-k.png", "")
-	if rec.Code != http.StatusOK || rec.Header().Get("ETag") != `"9"` || rec.Header().Get("Cache-Control") != "no-cache" {
-		t.Errorf("named: %d etag %q cache-control %q", rec.Code, rec.Header().Get("ETag"), rec.Header().Get("Cache-Control"))
-	}
-	if rec = get("/grade-images/grade-k.png", `"9"`); rec.Code != http.StatusNotModified {
-		t.Errorf("named revalidate: got %d, want 304", rec.Code)
-	}
-	if rec = get("/grade-images/grade-k.png?thumb="+thumbVersion, `"9"`); rec.Code != http.StatusNotModified {
-		t.Errorf("named thumb revalidate: got %d, want 304", rec.Code)
-	}
-	if rec = get("/grade-images/grade-k.png", `"8"`); rec.Code != http.StatusOK || rec.Body.String() != "tile" {
-		t.Errorf("named replaced: got %d %q, want 200 with the new bytes", rec.Code, rec.Body.String())
+	if rec = get("/photos/abc.jpg", `"7"`); rec.Code != http.StatusNotModified {
+		t.Errorf("revalidate: got %d, want 304", rec.Code)
 	}
 }
