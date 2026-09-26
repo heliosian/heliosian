@@ -39,9 +39,6 @@ const (
 	shareLead  = "Sign in with your school Google account."
 )
 
-// sharedApps is every app the card may name: those the Visibility tab
-// gives to everyone, in the switch's order, each with its name and tagline
-// as the tab has them.
 func (c *Cache) sharedApps() []App {
 	model := c.Model()
 	out := []App{}
