@@ -625,11 +625,25 @@ h2.section { font-size: 20px; margin: 24px 0 12px; }
 
 .field-pair select { flex: 1; }
 
-.field-toggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.field-toggle { display: flex; align-items: flex-start; gap: 12px; }
 
 .field-toggle > span { margin: 0; }
 
-.field-toggle input { width: 20px; height: 20px; accent-color: var(--brand); flex-shrink: 0; }
+.field-toggle > span > small { display: block; margin-top: 2px; font-weight: 400; color: var(--muted); }
+
+.field-toggle .switch { margin-top: 1px; }
+
+.field-toggle .switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+
+.field-toggle .switch > span { position: absolute; inset: 0; border-radius: 999px; background: #c9d4d6; transition: background 0.15s; }
+
+.field-toggle .switch > span::after { content: ''; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2); transition: transform 0.15s; }
+
+.field-toggle .switch input:checked + span { background: var(--accent); }
+
+.field-toggle .switch input:checked + span::after { transform: translateX(16px); }
+
+.field-toggle .switch input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 .field-note { margin: -6px 0 10px; font-size: 13px; }
 
