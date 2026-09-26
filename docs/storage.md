@@ -17,7 +17,7 @@ A tab is a header row and records keyed by column name; a cell's position in the
 - **Insert** rows, each cell under the column of its name, at an explicit address after the last used row - never the Sheets append call, whose table detection starts a row in the wrong column past a blank row.
 - **Set** the named cells of every row matching the given columns, inserting one row when none matches; **SetMany** does that for many rows keyed by one column in one write.
 - **Delete** every row matching the given columns.
-- **Sync** a tab to a list of rows, cell by cell: `tools/synctab`.
+- **Sync** a tab to a list of rows, cell by cell: `tools/sheets sync`.
 
 Every request goes through one retry of a quota refusal (`call` in `internal/data/sheet.go`). A column the operation names that the tab lacks is an error, from the sheet and from the CSV fake (`data.Dir`) alike. The schema operations - `Layout`, `AddTab`, `AddColumns`, `DropColumns`, `RenameTab` - live here too, and `internal/data` is the only package that talks to the Sheets API: every tool reaches a sheet through it.
 
@@ -69,4 +69,4 @@ What a row holds now is the tab itself; the Change Log is how to get back to wha
 
 Every spreadsheet an app writes is a store: Staff Birthdays, Heliosian, HCA-Team, Helios Celebrate, Helios Loop, Helios When, Who?, Who?'s greetings over the invite templates' spreadsheet, Helios Ask's documents, Feedback and the platform's Config. Helios When's import commits through a calendar store: the server's own for the Google stage, and for the PDF stage one the periodic job opens (`docs/calendar/data.md`, The import). Who?'s import and the documents import each open a store of their own (`docs/who/data.md`, Every write is a commit; `docs/ask/artifacts.md`). Staff Birthdays' one write past the store is the weekly copy into the association's own spreadsheet (`docs/birthday/data.md`), an outbound export of rows the app never reads back; a birthday team joiner's place on the app's Heliosian list is a commit on Heliosian's store (`home.Grant`).
 
-A spreadsheet whose app moved onto the store kept its old change log as `Change Log (old)`, renamed with `tools/renametab` before `tools/createtabs` made the one in this shape.
+A spreadsheet whose app moved onto the store kept its old change log as `Change Log (old)`, renamed with `tools/sheets rename` before `tools/createtabs` made the one in this shape.

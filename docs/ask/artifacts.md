@@ -94,7 +94,7 @@ The `Artifacts` spreadsheet is a store like every app's (`docs/storage.md`): the
 
 ## What it needs
 
-- The `Artifacts` spreadsheet in the shared drive with its `Documents` tab (`tools/createsheet --title Artifacts`, then `tools/createtabs`), named by `ARTIFACTS_SHEET` wherever the server runs (`docs/deploy.md`, Configuration values).
+- The `Artifacts` spreadsheet in the shared drive with its `Documents` tab (`tools/sheets create --sheet $DIRECTORY_SHEET --title Artifacts`, then `tools/createtabs`), named by `ARTIFACTS_SHEET` wherever the server runs (`docs/deploy.md`, Configuration values).
 - The media bucket, which the server reads and the importer writes and deletes in as `directory@`.
 - Vertex AI: the Vertex AI API on in the project, and `roles/aiplatform.user` on it for `directory@` (`docs/deploy.md`, IAM). Local runs act as `directory@` through the impersonated application-default credentials every tool here uses, so nothing more is set up on a laptop.
 
