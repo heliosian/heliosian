@@ -20,6 +20,7 @@ export function link(href, className, text) {
 
 const paths = {
   signup: 'M12 3v18M4.5 7.5l15 9M19.5 7.5l-15 9',
+  bolt: 'M13 2 4 14h7l-1 8 9-12h-7z',
   star: 'M12 3l2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.8 6.1 21l1.2-6.5L2.5 9.9l6.6-.9z',
   calendar: 'M4 5h16a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zM3 10h18M8 3v4M16 3v4',
   doc: 'M7 3h7l5 5v13H7zM14 3v5h5M10 13h6M10 17h6',

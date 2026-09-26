@@ -855,7 +855,7 @@ function priorityCard(node, save) {
   }
   const card = sideCard('priority-card');
   const on = Boolean(node.priority);
-  card.append(button(on ? 'Remove High Priority' : 'Mark High Priority', 'star', 'button ' + (on ? 'button-secondary' : '') + ' priority-button', () => save({priority: !on})));
+  card.append(button(on ? 'Remove High Priority' : 'Mark High Priority', 'star', 'button button-small ' + (on ? 'button-secondary' : '') + ' priority-button', () => save({priority: !on})));
   card.append(el('div', 'side-line', on ? 'Listed under High Priority here and on Heliosian\u2019s front page.' : 'Lists it under High Priority here and on Heliosian\u2019s front page.'));
   return card;
 }

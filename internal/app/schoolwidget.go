@@ -11,14 +11,17 @@ import (
 	"heliosian/internal/artifacts"
 	"heliosian/internal/auth"
 	"heliosian/internal/calendar"
+	"heliosian/internal/keypoints"
 	"heliosian/internal/who"
 )
 
 // allFamilies are the lists that go to every family, whoever reads them.
 var allFamilies = []string{"parentsandstaff", "parentsonly", "parentsandstudents", "community", "parents", "newstudentfamilies", "new.parents"}
 
-// schoolDays is how far back the Inbox widget reads.
-const schoolDays = 7
+// schoolDays is how far back the Inbox widget reads: as far as the key
+// points pass reads (keypoints.Window), so every email it lists has its
+// points and, for Veracross mail, its audience judged.
+const schoolDays = int(keypoints.Window / (24 * time.Hour))
 
 // schoolEmail is one school email as the widget shows it.
 type schoolEmail struct {
@@ -35,7 +38,7 @@ type schoolEmail struct {
 }
 
 // schoolWidget answers GET /api/apps/school on Heliosian's host: the home
-// page's Inbox widget for the viewer - the last week's school
+// page's Inbox widget for the viewer - the last two weeks' school
 // email with its key points (internal/keypoints), newest first: the
 // newsletter, the lists to every family, and the lists of the viewer's own
 // classrooms - their children's, their own as a student, those they teach -

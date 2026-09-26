@@ -405,6 +405,12 @@ function teamWidget() {
     for (const [key, label] of [['all', 'All'], ['priority', 'Priority'], ['mine', 'Mine']].filter(([key]) => key !== 'priority' || priority)) {
       const chip = el('button', 'wg-chip tone-' + key + (teamChip === key ? ' is-on' : ''), label);
       chip.type = 'button';
+      // Priority and Mine say how many they hold; All is the first few
+      // of what needs hands, so it has no count.
+      const count = key === 'priority' ? team.priority.length : key === 'mine' ? team.mine.length : null;
+      if (count !== null) {
+        chip.append(el('span', 'wg-chip-count', String(count)));
+      }
       chip.addEventListener('click', () => {
         teamChip = key;
         paint();
@@ -458,10 +464,22 @@ async function fetchParties() {
   renderWidgets(document.querySelector('#search').value);
 }
 
-// partyChip is the chip picked - All, every party ahead; or Mine, those
-// the household holds a ticket to or waits for - kept while the widgets
-// redraw.
-let partyChip = 'all';
+// partyChip is the chip picked - Available, the parties ahead with tickets
+// still to be had that the household holds none to; All, every party
+// ahead; or Mine, those the household holds a ticket to or waits for -
+// kept while the widgets redraw. Available is where it starts.
+let partyChip = 'available';
+
+// partiesUnder are the parties a chip lists.
+function partiesUnder(chip) {
+  if (chip === 'mine') {
+    return parties.filter(p => p.mine);
+  }
+  if (chip === 'available') {
+    return parties.filter(p => !p.mine && p.availability === 'available');
+  }
+  return parties;
+}
 
 // partyCards is how many rows a picture list - Celebrate's, Team's - shows
 // before More.
@@ -559,7 +577,7 @@ function pictureList(name, items, row) {
 }
 
 // celebrateWidget is Helios Celebrate's card: View all across to it at the
-// heading's end; All and Mine; then the next parties, each with its
+// heading's end; Available, All and Mine; then the next parties, each with its
 // picture, the first three until More.
 function celebrateWidget() {
   if (partiesFor !== state.model) {
@@ -576,7 +594,7 @@ function celebrateWidget() {
   const body = el('div');
   const paint = () => {
     chips.replaceChildren();
-    for (const [key, label] of [['all', 'All'], ['mine', 'Mine']]) {
+    for (const [key, label] of [['available', 'Available'], ['all', 'All'], ['mine', 'Mine']]) {
       const chip = el('button', 'wg-chip' + (partyChip === key ? ' is-on' : ''), label);
       chip.type = 'button';
       chip.addEventListener('click', () => {
@@ -586,10 +604,10 @@ function celebrateWidget() {
       chips.append(chip);
     }
     body.replaceChildren();
-    const mine = partyChip === 'mine';
-    const items = mine ? parties.filter(p => p.mine) : parties;
+    const items = partiesUnder(partyChip);
     if (!items.length) {
-      body.append(el('p', 'wg-empty', mine ? 'Your household has no tickets to anything coming up.' : 'No parties coming up.'));
+      const empty = {mine: 'Your household has no tickets to anything coming up.', available: 'Nothing new with tickets to be had just now.'}[partyChip] || 'No parties coming up.';
+      body.append(el('p', 'wg-empty', empty));
       return;
     }
     body.append(...pictureList('celebrate-' + partyChip, items, partyRow));
@@ -749,7 +767,7 @@ function rsvpPanel(waiting) {
 let schoolType = null;
 
 // typePick is the Inbox's dropdown at its heading: All, then each whom the
-// week's email went to as its chips say it, with how many; picking one
+// two weeks' email went to as its chips say it, with how many; picking one
 // shows only those.
 function typePick() {
   const counts = new Map();
@@ -784,7 +802,7 @@ function typePick() {
 }
 
 // schoolWidget is Inbox: every invitation still waiting on the viewer's
-// reply, soonest first, until they answer it; then the last week of the
+// reply, soonest first, until they answer it; then the last two weeks of the
 // school's email - the newsletter, the lists to every family, and the
 // viewer's own classrooms' - newest first down a line, each its day,
 // subject and whom it went to, the first opened on its key points. A
@@ -804,7 +822,7 @@ function schoolWidget() {
   head.append(widgetTitle('ask', 'Inbox'));
   card.append(head);
   if (!school.length && !rsvps.length) {
-    card.append(el('p', 'wg-empty', 'No school email this week.'));
+    card.append(el('p', 'wg-empty', 'No school email in the last two weeks.'));
     return card;
   }
   const types = [...(rsvps.length ? [rsvpType] : []), ...school.map(sentTo)];

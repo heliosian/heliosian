@@ -1,7 +1,7 @@
-import {state, isAdmin, years, allYears, sortByStart, matches, selectedYear, listedIn, canAdd, addLabel, categoryPath, categoryFromAddress, PRIORITY, isPriority} from '../state.js';
-import {el, toggle, selectPill, thumb, button} from '../dom.js';
+import {state, isAdmin, years, allYears, sortByStart, matches, selectedYear, listedIn, canAdd, addLabel, categoryPath, categoryFromAddress, PRIORITY, isPriority, descendants} from '../state.js';
+import {el, toggle, selectPill, thumb, button, svg} from '../dom.js';
 import {setTitle, setSearch, renderChrome} from '../chrome.js';
-import {activityCard, categoryClass} from '../cards.js';
+import {activityCard, categoryClass, priorityRow, wanted} from '../cards.js';
 import {openActivity} from '../edit.js';
 
 let query = '';
@@ -63,11 +63,61 @@ function yearGrid(year) {
   return root;
 }
 
+// priorityItems are the things marked a priority this year that still want
+// people - an event, or something at any depth under one, each itself -
+// among what the page lists, soonest first.
+function priorityItems(year) {
+  const out = [];
+  for (const a of listedIn(year)) {
+    out.push(...[a, ...descendants(a)].filter(wanted));
+  }
+  return sortByStart(out);
+}
+
+// priorityPanel is High Priority, between the chips and the grid: a pale
+// red panel with its heading over a card of rows, one for each thing
+// marked a priority - the thing itself, so a role under an event is its
+// own row, naming what it is part of.
+function priorityPanel(year) {
+  const items = priorityItems(year).filter(n => matches(n, query));
+  if (!items.length) {
+    return null;
+  }
+  const panel = el('section', 'prio-panel');
+  const head = el('div', 'prio-head');
+  const mark = el('span', 'prio-mark');
+  mark.append(svg('bolt'));
+  const words = el('div', 'prio-head-words');
+  words.append(el('h2', '', 'High Priority'), el('p', '', 'These need your help soon.'));
+  head.append(mark, words);
+  const list = el('div', 'prio-list');
+  for (const node of items) {
+    list.append(priorityRow(node));
+  }
+  panel.append(head, list);
+  return panel;
+}
+
 function yearContent(year, thisYear) {
   const content = el('div');
   const chips = el('div', 'chip-row');
   const list = el('div');
-  const paint = () => list.replaceChildren(yearGrid(year));
+  const top = el('div');
+  const pick = id => {
+    state.category = state.category === id ? '' : id;
+    history.pushState(null, '', categoryPath(state.category));
+    paintChips();
+    paint();
+    renderChrome();
+  };
+  // The panel leads the page with All, and stands alone under the High
+  // Priority chip; another chip narrows the page to its heading.
+  const paint = () => {
+    const onPriority = state.category === PRIORITY;
+    const panel = !state.category || onPriority ? priorityPanel(year) : null;
+    top.replaceChildren(...(panel ? [panel] : []));
+    list.replaceChildren(...(onPriority ? [] : [yearGrid(year)]));
+  };
 
   // The chip row filters the grid in place: High Priority first, when an
   // admin has marked anything this year, then "All" plus one chip per category
@@ -81,19 +131,17 @@ function yearContent(year, thisYear) {
       const chip = el('button', 'chip ' + (id === PRIORITY ? 'chip-priority' : id ? categoryClass(id) : 'chip-all') + (state.category === id ? ' is-on' : ''));
       chip.type = 'button';
       chip.textContent = label;
+      // High Priority says how many things are marked one.
+      if (id === PRIORITY) {
+        chip.append(el('span', 'chip-count', String(priorityItems(year).length)));
+      }
       // A chip is the rail's pick too, kept in the address the same way,
       // but repaints in place so the search typed so far stands.
-      chip.addEventListener('click', () => {
-        state.category = state.category === id ? '' : id;
-        history.pushState(null, '', categoryPath(state.category));
-        paintChips();
-        paint();
-        renderChrome();
-      });
+      chip.addEventListener('click', () => pick(id));
       chips.append(chip);
     };
     // High Priority leads, while anything this year is marked one.
-    if (listedIn(year).some(isPriority)) {
+    if (priorityItems(year).length) {
       add(PRIORITY, 'High Priority');
     }
     add('', 'All');
@@ -113,7 +161,7 @@ function yearContent(year, thisYear) {
 
   paintChips();
   paint();
-  content.append(chips, head, list);
+  content.append(chips, top, head, list);
   setSearch('Search opportunities by title, event, or keyword…', q => {
     query = q;
     paint();

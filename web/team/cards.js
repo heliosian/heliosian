@@ -1,5 +1,5 @@
-import {state, me, family, whenParts, coChairs, shownVolunteers, descendants, canJoin, isFull, mySignUp, signUpOf, activityPath, rootOf, category, parseWhen, UNCATEGORIZED} from './state.js';
-import {el, link, svg, thumb, badge, button} from './dom.js';
+import {state, me, family, whenParts, coChairs, shownVolunteers, descendants, canJoin, isFull, mySignUp, signUpOf, activityPath, rootOf, parentOf, category, parseWhen, UNCATEGORIZED} from './state.js';
+import {el, link, svg, thumb, badge, button, avatar} from './dom.js';
 import {openSignUp, openActivity} from './edit.js';
 
 function statusBadges(node) {
@@ -108,6 +108,45 @@ function needChip(node) {
   return chip;
 }
 
+// wanted says a thing is marked a priority and still wants people: open,
+// and neither complete nor with every spot taken.
+export function wanted(node) {
+  return Boolean(node.priority) && node.status === 'Open' && !isFull(node);
+}
+
+// priorityChip is High Priority beside a row's title, in the deep red
+// behind a star, while the thing is one.
+function priorityChip(node) {
+  if (!wanted(node)) {
+    return null;
+  }
+  const chip = el('span', 'need is-priority');
+  chip.append(svg('star'), el('span', '', 'High Priority'));
+  return chip;
+}
+
+// priorityCallout is an event card's word that it - or things under it -
+// are a priority: "High priority: Decor · Check-In", each a link to the
+// thing, or "High priority" alone for the event itself.
+function priorityCallout(act) {
+  const inside = descendants(act).filter(wanted);
+  if (!wanted(act) && !inside.length) {
+    return null;
+  }
+  const line = el('div', 'card-priority-callout');
+  line.append(svg('star'));
+  const words = el('span', 'card-priority-words');
+  words.append(el('strong', '', inside.length ? 'High priority: ' : 'High priority'));
+  inside.forEach((n, i) => {
+    if (i) {
+      words.append(document.createTextNode(' \u00b7 '));
+    }
+    words.append(link(activityPath(n), 'card-priority-link', n.title));
+  });
+  line.append(words);
+  return line;
+}
+
 function joinButton(node) {
   if (mySignUp(node)) {
     const done = button('Signed up', 'join', 'button button-secondary button-small');
@@ -131,7 +170,12 @@ export function childRow(node, editing, moves) {
   const body = el('div', 'row-body');
   body.append(labelLine(node));
   const title = el('div', 'row-title', node.title);
-  // The ask sits right by the name, where it is read first.
+  // The asks sit right by the name, where they are read first: High
+  // Priority, then Co-chair needed.
+  const urgent = priorityChip(node);
+  if (urgent) {
+    title.append(urgent);
+  }
   const need = needChip(node);
   if (need) {
     title.append(need);
@@ -308,6 +352,12 @@ function activityCardBody(act, opts) {
   if (act.description) {
     body.append(el('div', 'card-text clamp', act.description));
   }
+  if (!opts.signUps) {
+    const callout = priorityCallout(act);
+    if (callout) {
+      body.append(callout);
+    }
+  }
   const marks = el('div', 'card-marks');
   for (const b of statusBadges(act)) {
     marks.append(b);
@@ -364,6 +414,83 @@ function activityCardBody(act, opts) {
   }
   card.append(foot);
   return card;
+}
+
+// priorityRow is one row of the High Priority panel: its picture - its
+// own, else its event's - the things above it over its title and a line
+// of what it is and its category as a small tag, its day and hours, the faces of who
+// is on it - its chair ringed in yellow - or Co-chair needed, and Sign up; the
+// whole row opens its page.
+export function priorityRow(node) {
+  const root = rootOf(node);
+  const row = link(activityPath(node), 'prio-row');
+  row.append(thumb(node.imageUrl || root.imageUrl, node.title, 'prio-pic'));
+  const main = el('div', 'prio-main');
+  const above = [];
+  for (let up = parentOf(node); up; up = parentOf(up)) {
+    above.unshift(up.title);
+  }
+  if (above.length) {
+    main.append(el('div', 'prio-eyebrow', above.join(' \u203a ')));
+  }
+  main.append(el('div', 'prio-title', node.title));
+  if (node.description) {
+    main.append(el('div', 'prio-text clamp', node.description));
+  }
+  const heading = category(root.category);
+  if (heading) {
+    main.append(el('span', 'prio-tag', heading.title));
+  }
+  row.append(main);
+  const when = el('div', 'prio-when');
+  const start = parseWhen(node.start);
+  if (node.timing) {
+    const line = el('div', 'prio-when-line');
+    line.append(svg('calendar'), el('span', '', node.timing));
+    when.append(line);
+  } else if (start) {
+    const end = parseWhen(node.end);
+    const day = el('div', 'prio-when-line');
+    const dayWords = start.date.toLocaleDateString('en-US', {weekday: 'short', month: 'short', day: 'numeric', year: 'numeric'});
+    const spans = end && end.date.toDateString() !== start.date.toDateString();
+    day.append(svg('calendar'), el('span', '', spans ? `${dayWords} \u2013 ${end.date.toLocaleDateString('en-US', {month: 'short', day: 'numeric'})}` : dayWords));
+    when.append(day);
+    if (start.hasTime && !spans) {
+      const time = el('div', 'prio-when-line');
+      const at = d => d.toLocaleTimeString('en-US', {hour: 'numeric', minute: '2-digit'});
+      time.append(svg('clock'), el('span', '', end && end.hasTime ? `${at(start.date)} \u2013 ${at(end.date)}` : at(start.date)));
+      when.append(time);
+    }
+  }
+  row.append(when);
+  const people = el('div', 'prio-people');
+  const faces = el('div', 'prio-faces');
+  // Chairs first, ringed in yellow, then those open to co-chairing, in
+  // teal, as the page's own faces are.
+  const rank = v => v.position === 'Co-Chair' ? 0 : v.position === 'Open to Co-Chair' ? 1 : 2;
+  for (const v of [...shownVolunteers(node)].sort((a, b) => rank(a) - rank(b)).slice(0, 3)) {
+    faces.append(avatar(v, 'prio-face' + (rank(v) === 0 ? ' is-chair' : rank(v) === 1 ? ' is-option' : '')));
+  }
+  if (faces.children.length) {
+    people.append(faces);
+  }
+  if (!coChairs(node).length && node.coLeaderNeeded) {
+    people.append(el('span', 'prio-chair is-needed', 'Co-chair needed'));
+  }
+  row.append(people);
+  const act = el('div', 'prio-action');
+  if (mySignUp(node)) {
+    const done = button('Signed up', 'join', 'button button-secondary button-small');
+    done.disabled = true;
+    act.append(done);
+  } else if (canJoin(node)) {
+    act.append(button('Sign up', null, 'button prio-signup', () => openSignUp(node, null)));
+  }
+  row.append(act);
+  const chevron = svg('chevron');
+  chevron.classList.add('chevron');
+  row.append(chevron);
+  return row;
 }
 
 // rolesLine is the household's part in an event, as Heliosian's calendar

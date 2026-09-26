@@ -758,6 +758,15 @@ main {
 
 [data-theme="dark"] .wg-chip { background: rgba(255, 255, 255, 0.08); }
 
+/* Priority's and Mine's counts, a small round badge after the word. */
+.wg-chip { display: inline-flex; align-items: center; gap: 7px; }
+
+.wg-chip-count { min-width: 20px; padding: 1px 6px; border-radius: 999px; background: rgba(15, 78, 84, 0.12); font-size: 12px; font-weight: 700; line-height: 18px; text-align: center; }
+
+.wg-chip.is-on .wg-chip-count { background: rgba(255, 255, 255, 0.22); }
+
+[data-theme="dark"] .wg-chip-count { background: rgba(255, 255, 255, 0.12); }
+
 /* The calendar picker as a soft pill at the heading's end. */
 .widget-when .widget-calendar .category-calendar-toggle { padding: 7px 12px; border-radius: 10px; background: #e8f3f2; color: var(--brand-ink); font-weight: 500; }
 
