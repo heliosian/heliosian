@@ -19,7 +19,7 @@ html {
 
 .infobanner-wrap {
   padding-top: 20px;
-  background: var(--page, #fff);
+  background: var(--page);
 }
 
 .infobanner {
@@ -173,7 +173,7 @@ html {
   width: 100%;
   max-width: 380px;
   height: fit-content;
-  background: #fff;
+  background: var(--card);
   border-radius: 16px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
   padding: 24px 20px 20px;
@@ -669,7 +669,7 @@ body {
   width: 180px;
   padding: 8px 10px;
   border-radius: 8px;
-  background: #fff;
+  background: var(--card);
   color: var(--ink);
   font-size: 12.5px;
   line-height: 1.4;
@@ -830,7 +830,7 @@ body {
   right: 0;
   max-height: 420px;
   overflow-y: auto;
-  background: #fff;
+  background: var(--card);
   border-radius: 12px;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.18);
   padding: 6px 0;
@@ -907,7 +907,7 @@ main {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  background: var(--page, #fff);
+  background: var(--page);
   display: flex;
   flex-direction: column;
 }
@@ -926,7 +926,7 @@ main {
 }
 
 .tab-strip {
-  background: var(--page, #fff);
+  background: var(--page);
 }
 
 .content {
@@ -958,7 +958,7 @@ main {
   justify-content: space-between;
   gap: 16px;
   padding-top: 24px;
-  background: var(--page, #fff);
+  background: var(--page);
 }
 
 .view-switch {
@@ -1257,7 +1257,7 @@ main {
   right: 0;
   top: calc(100% + 8px);
   width: 300px;
-  background: #fff;
+  background: var(--card);
   border-radius: 12px;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.18);
   z-index: 20;
@@ -1393,7 +1393,7 @@ main {
 
 .filter-clear {
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--card);
   color: var(--ink);
 }
 
@@ -1702,7 +1702,7 @@ main {
   max-width: 100%;
   max-height: 100%;
   overflow-y: auto;
-  background: #fff;
+  background: var(--card);
   border-radius: 16px;
   box-shadow: 0 8px 40px rgba(0, 0, 0, 0.3);
 }
@@ -2706,7 +2706,7 @@ a.role-label:hover {
   overflow: hidden;
   text-align: center;
   padding-bottom: 28px;
-  background: #fff;
+  background: var(--card);
 }
 
 .student-head {
@@ -2812,7 +2812,7 @@ a.person-card {
   padding: 0 0 10px;
   border-radius: 16px;
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--card);
 }
 
 a.student-card:hover {
@@ -3279,7 +3279,7 @@ a.list-row:hover {
 }
 
 .roster-header {
-  background: var(--page, #fff);
+  background: var(--page);
 }
 
 .roster-tabs {
@@ -3565,7 +3565,7 @@ a.list-row:hover {
   top: calc(100% + 6px);
   right: 0;
   min-width: 180px;
-  background: #fff;
+  background: var(--card);
   border-radius: 12px;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.18);
   padding: 6px 0;
@@ -3633,7 +3633,7 @@ a.list-row:hover {
   padding: 7px 16px;
   border-radius: 8px;
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--card);
   font: inherit;
   font-size: 13px;
   font-weight: 500;
@@ -4169,7 +4169,7 @@ a.person-card:hover .photo-wrap-peek::before {
   position: absolute;
   top: 26px;
   right: 0;
-  background: #fff;
+  background: var(--card);
   border-radius: 10px;
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.2);
   z-index: 20;
@@ -4416,7 +4416,7 @@ a.person-card:hover .photo-wrap-peek::before {
     bottom: calc(62px + env(safe-area-inset-bottom) + 10px);
     width: 200px;
     max-height: min(60vh, 320px);
-    background: #fff;
+    background: var(--card);
     color: var(--ink);
     border-radius: 14px;
     box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);

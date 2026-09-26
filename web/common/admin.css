@@ -61,7 +61,7 @@ body.admin {
   flex-shrink: 0;
   padding: 20px 0;
   border-right: 1px solid var(--line);
-  background: #fff;
+  background: var(--card);
 }
 .admin .sidebar-section + .sidebar-section {
   margin-top: 20px;
@@ -92,7 +92,7 @@ body.admin {
 }
 .admin .panel[hidden], .admin .tab[hidden] { display: none; }
 .admin .card {
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--line);
   border-radius: 12px;
   padding: 20px 24px;

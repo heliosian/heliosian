@@ -85,7 +85,7 @@
 
 .facet-wrap { position: relative; }
 
-.facet-button { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: #fff; color: var(--ink); border-radius: 999px; padding: 7px 12px; font-size: 13px; font-weight: 600; cursor: pointer; }
+.facet-button { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 999px; padding: 7px 12px; font-size: 13px; font-weight: 600; cursor: pointer; }
 
 .facet-button.open, .facet-button:hover { border-color: var(--accent, var(--brand)); }
 
@@ -101,7 +101,7 @@
   min-width: 240px;
   max-height: 340px;
   overflow-y: auto;
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--line);
   border-radius: 12px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);

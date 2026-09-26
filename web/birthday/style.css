@@ -130,7 +130,7 @@ main {
   right: 0;
   top: 44px;
   min-width: 200px;
-  background: #fff;
+  background: var(--card);
   color: var(--ink);
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -545,7 +545,7 @@ h2.section { font-size: 20px; margin: 24px 0 12px; }
   border: 1px solid var(--line);
   border-radius: 12px;
   overflow: hidden;
-  background: #fff;
+  background: var(--card);
 }
 
 .calendar .dow {
@@ -583,7 +583,7 @@ h2.section { font-size: 20px; margin: 24px 0 12px; }
 }
 
 .modal {
-  background: #fff;
+  background: var(--card);
   border-radius: 14px;
   padding: 20px 24px;
   width: 100%;
@@ -678,7 +678,7 @@ h2.section { font-size: 20px; margin: 24px 0 12px; }
     bottom: 0;
     height: calc(var(--tabbar) + env(safe-area-inset-bottom));
     padding-bottom: env(safe-area-inset-bottom);
-    background: #fff;
+    background: var(--card);
     border-top: 1px solid var(--line);
     z-index: 20;
   }
@@ -791,7 +791,7 @@ h2.section { font-size: 20px; margin: 24px 0 12px; }
 
 .filter-sort .filter-select { padding-left: 34px; }
 
-.staff-table { background: #fff; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.staff-table { background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
 
 .trow { display: grid; grid-template-columns: 2fr 1.4fr 1.3fr 1.3fr 1.2fr 1.7fr; align-items: center; gap: 12px; padding: 10px 18px 10px 26px; border-top: 1px solid var(--line); color: inherit; text-decoration: none; position: relative; }
 
@@ -974,7 +974,7 @@ a.trow[data-stage="stage-complete"]::before { background: #3aaa5c; }
    under the month the one picked, in either, with the way to take them. */
 .split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: start; }
 
-.card-panel { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 14px; }
+.card-panel { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px; }
 
 .split-calendar { display: flex; flex-direction: column; gap: 16px; }
 
@@ -1062,7 +1062,7 @@ a.trow[data-stage="stage-complete"]::before { background: #3aaa5c; }
 
 .chip-wrap .chip { margin-top: 0; }
 
-.chip-pop { display: none; position: absolute; z-index: 5; left: 0; top: calc(100% + 4px); width: 260px; background: #fff; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14); padding: 10px 12px; font-size: 13px; color: var(--ink); white-space: normal; text-align: left; }
+.chip-pop { display: none; position: absolute; z-index: 5; left: 0; top: calc(100% + 4px); width: 260px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14); padding: 10px 12px; font-size: 13px; color: var(--ink); white-space: normal; text-align: left; }
 
 .chip-wrap:hover .chip-pop { display: block; }
 

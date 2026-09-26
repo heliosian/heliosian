@@ -878,7 +878,7 @@ main {
 
 .category-calendar-emoji { font-size: 15px; line-height: 1; }
 
-.category-calendar-menu { position: absolute; top: calc(100% + 4px); left: 0; z-index: 30; min-width: 240px; padding: 6px; background: #fff; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.14); display: flex; flex-direction: column; gap: 2px; }
+.category-calendar-menu { position: absolute; top: calc(100% + 4px); left: 0; z-index: 30; min-width: 240px; padding: 6px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.14); display: flex; flex-direction: column; gap: 2px; }
 
 .category-calendar-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px; white-space: nowrap; border: 0; border-radius: 8px; background: none; text-align: left; font: inherit; font-size: 13.5px; font-weight: 600; color: var(--ink); cursor: pointer; }
 
@@ -1523,7 +1523,7 @@ a.event-people:hover .event-person { text-decoration: underline; }
 
 .icon-choice svg { width: 22px; height: 22px; color: var(--brand); }
 
-.icon-choice:hover { border-color: var(--line); background: #fff; }
+.icon-choice:hover { border-color: var(--line); background: var(--card); }
 
 .icon-choice.is-picked { border-color: var(--brand); background: #fff; color: var(--brand); font-weight: 600; }
 
@@ -1537,7 +1537,7 @@ a.event-people:hover .event-person { text-decoration: underline; }
 .category-row-image svg { width: 20px; height: 20px; color: var(--brand); }
 
 .modal {
-  background: #fff;
+  background: var(--card);
   border-radius: 14px;
   padding: 20px 24px;
   width: 100%;

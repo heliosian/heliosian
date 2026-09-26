@@ -45,7 +45,7 @@
 
 .button svg { width: 18px; height: 18px; flex-shrink: 0; }
 
-.button-secondary { background: #fff; color: var(--ink); border: 1px solid var(--line); }
+.button-secondary { background: var(--card); color: var(--ink); border: 1px solid var(--line); }
 
 .button-secondary:hover { background: var(--input); border-color: var(--line); }
 

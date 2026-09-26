@@ -95,56 +95,26 @@ html[data-theme="dark"] {
 
 [data-theme="dark"] .topbar-key { background: var(--card); color: #b7c7c9; border-color: rgba(255, 255, 255, 0.18); }
 
-[data-theme="dark"] .user-menu,
-[data-theme="dark"] .app-switch-menu,
-[data-theme="dark"] .topbar-alert-menu > *:not(.alert-card),
-[data-theme="dark"] .spoof-menu { background: var(--card); border-color: var(--line); color: var(--ink); }
+[data-theme="dark"] .topbar-alert-menu > *:not(.alert-card) { background: var(--card); border-color: var(--line); color: var(--ink); }
 
 [data-theme="dark"] .spoof-row.is-current { background: var(--nav-active); }
 
 [data-theme="dark"] .spoof-search input { background: var(--input); color: var(--ink); border-color: var(--line); }
 
 /* The surfaces the apps paint white by name. */
-[data-theme="dark"] .card,
 [data-theme="dark"] .event-card,
 [data-theme="dark"] .tile,
 [data-theme="dark"] .group-card,
-[data-theme="dark"] .modal,
 [data-theme="dark"] .panel,
-[data-theme="dark"] .filter-panel,
 [data-theme="dark"] .category-calendar-menu,
-[data-theme="dark"] .calendar-pick-menu,
-[data-theme="dark"] .facet-panel,
+[data-theme="dark"] .calendar-menu,
 [data-theme="dark"] .stale-menu .todo-card ~ *,
-[data-theme="dark"] .event-list,
 [data-theme="dark"] .plan-card,
-[data-theme="dark"] .month,
 [data-theme="dark"] .day,
-[data-theme="dark"] .up-list,
-[data-theme="dark"] .person-card,
-[data-theme="dark"] .student-card,
-[data-theme="dark"] .gsearch-results,
-[data-theme="dark"] .staff-table,
-[data-theme="dark"] .card-panel,
 [data-theme="dark"] .urows,
 [data-theme="dark"] .pick-card,
-[data-theme="dark"] .calendar,
 [data-theme="dark"] .home-upcoming,
-[data-theme="dark"] .search-results,
-[data-theme="dark"] .calendar-menu,
-[data-theme="dark"] .split-menu,
-[data-theme="dark"] .hero-image-menu,
-[data-theme="dark"] .emoji-pick-menu,
-[data-theme="dark"] .side-filter-menu,
-[data-theme="dark"] .more-menu,
-[data-theme="dark"] .card-menu,
-[data-theme="dark"] .photo-menu,
-[data-theme="dark"] .row-menu,
-[data-theme="dark"] .chip-pop,
 [data-theme="dark"] .drawer,
-[data-theme="dark"] .install-prompt-card,
-[data-theme="dark"] .greeting-dialog-panel,
-[data-theme="dark"] .hint-box,
 [data-theme="dark"] .roster-list.grid a.list-row,
 [data-theme="dark"] .email-table tbody tr,
 [data-theme="dark"] .facet-button:not(.open),
@@ -161,8 +131,6 @@ html[data-theme="dark"] {
 [data-theme="dark"] .day-peek .plan-card.dt-regular { background: var(--card); border-color: var(--line); color: var(--ink); }
 
 [data-theme="dark"] .home-upcoming::after { background: linear-gradient(rgba(19, 42, 45, 0), var(--card)); }
-
-[data-theme="dark"] .facet-button.open { background: var(--card); color: var(--ink); }
 
 [data-theme="dark"] .edit-icon:not(.recording) { background: var(--input); color: var(--ink); }
 [data-theme="dark"] .edit-icon:not(.recording):hover { color: var(--brand); }
@@ -197,7 +165,6 @@ html[data-theme="dark"] {
 
 /* The badges' cards on the dark card's ground, their words light. */
 [data-theme="dark"] .topbar-alert-menu { --alert-bg: #16292c; }
-[data-theme="dark"] .alert-card { color: var(--ink); }
 [data-theme="dark"] .alert-card-title, [data-theme="dark"] .alert-list-title, [data-theme="dark"] .alert-list-chip-title { color: #e6eeee; }
 [data-theme="dark"] .alert-card-chevron { border-color: #8fa3a6; }
 [data-theme="dark"] .alert-card.is-yellow { --tone-ink: #f2cf1d; }
@@ -238,10 +205,7 @@ html[data-theme="dark"] {
 
 [data-theme="dark"] .filters-title { color: var(--ink); }
 
-/* When's side cards on an event's page, and the month's hover card. */
-[data-theme="dark"] .side-card,
-[data-theme="dark"] .day-peek { background: var(--card); border-color: var(--line); color: var(--ink); }
-
+/* When's side cards on an event's page. */
 [data-theme="dark"] .side-card-invite { background: rgba(232, 200, 74, 0.12); border-color: rgba(232, 200, 74, 0.5); }
 [data-theme="dark"] .side-card-invite .side-line { color: var(--muted); }
 [data-theme="dark"] .side-card-help { background: #12393b; border-color: #1f5558; }
@@ -251,8 +215,6 @@ html[data-theme="dark"] {
 [data-theme="dark"] .side-keyword { background: var(--input); border-color: var(--line); }
 
 [data-theme="dark"] .side-keywords-edit { background: var(--input); }
-
-[data-theme="dark"] .side-icon { background: var(--input); }
 
 [data-theme="dark"] .timeline-title { color: var(--ink); }
 
@@ -272,9 +234,8 @@ html[data-theme="dark"] {
 /* The source chip on an event card: dark words on its tint. */
 [data-theme="dark"] .event-source { color: #0b1c1e; }
 
-/* Who?'s lists menu on a phone, over the tab bar: a card rather than a
-   white sheet, its headings muted, the list picked on a wash. */
-[data-theme="dark"] .mobile-lists-menu { background: var(--card); color: var(--ink); }
+/* Who?'s lists menu on a phone, over the tab bar: its headings muted, the
+   list picked on a wash. */
 [data-theme="dark"] .mobile-lists-head,
 [data-theme="dark"] .mobile-lists-subheading { color: var(--muted); }
 [data-theme="dark"] .mobile-lists-subheading { border-top-color: var(--line); }
@@ -309,10 +270,6 @@ html[data-theme="dark"] {
 [data-theme="dark"] #category-emoji-clear { color: #f37766; }
 [data-theme="dark"] .ask-icon { background: #4a3812; }
 
-/* Who?'s title and its subtitles on the people. */
-[data-theme="dark"] .person-sub,
-[data-theme="dark"] .page-subtitle { color: var(--muted); }
-
 [data-theme="dark"] input,
 [data-theme="dark"] textarea,
 [data-theme="dark"] select { background: var(--input); color: var(--ink); border-color: var(--line); }
@@ -335,12 +292,6 @@ html[data-theme="dark"] {
 
 [data-theme="dark"] .field input::placeholder,
 [data-theme="dark"] .rule-search::placeholder { color: #8fa3a6; }
-
-[data-theme="dark"] .button-secondary,
-[data-theme="dark"] .filter-clear,
-[data-theme="dark"] .media-button:not(.primary) { background: var(--card); color: var(--ink); border-color: var(--line); }
-
-[data-theme="dark"] .button-secondary:hover { background: var(--input); }
 
 /* Words the apps set to a dark grey by name. */
 [data-theme="dark"] .chip-description,
@@ -381,24 +332,18 @@ html[data-theme="dark"] {
 /* The rail's month: the day picked sits on white, in dark ink. */
 [data-theme="dark"] .mini-day.is-selected .mini-number { color: #0f4e54; }
 
-/* Section rules and the swoosh's heading colour. */
-[data-theme="dark"] .category { border-top-color: var(--line); }
-
+/* The swoosh's heading colour. */
 [data-theme="dark"] .category-title,
 [data-theme="dark"] .page-title { color: #e6eeee; }
 
-/* The admin chrome (admin.css): its page, its rail of tabs, its cards. The
-   header keeps its teal, and the pale teal on it turns deep. */
+/* The admin chrome (admin.css): its page and its rail of tabs. The header
+   keeps its teal, and the pale teal on it turns deep. */
 [data-theme="dark"] body.admin,
 [data-theme="dark"] .admin { background: var(--page); }
 
 [data-theme="dark"] .admin header { background: #0f2427; }
 
-[data-theme="dark"] .admin .sidebar { background: var(--card); border-color: var(--line); }
-
 [data-theme="dark"] .admin .tab.active { background: var(--nav-active); color: #fff; }
-
-[data-theme="dark"] .admin .card { background: var(--card); border-color: var(--line); color: var(--ink); }
 
 [data-theme="dark"] .admin .notice { background: #3b2a1c; color: #f5c7ad; }
 
@@ -467,8 +412,6 @@ html[data-theme="dark"] {
 
 [data-theme="dark"] .tab-strip-count { background: var(--input); color: var(--ink); }
 
-[data-theme="dark"] .tab-strip-menu { background: var(--card); }
-
 /* The strip inside an editor window sits on the window's card, not the page. */
 [data-theme="dark"] .modal .tab-strip { background: var(--card); }
 
@@ -476,10 +419,9 @@ html[data-theme="dark"] {
 
 /* Team's editor tabs sit on the window's card, not painted the page's
    dark like Who?'s; and its co-chair band under a sign-up is the input
-   wash with the icon on the card. */
+   wash. */
 [data-theme="dark"] .modal .tabs { background: none; }
 [data-theme="dark"] .appoint-card { background: var(--input); color: var(--ink); }
-[data-theme="dark"] .appoint-icon { background: var(--card); color: var(--brand); }
 
 [data-theme="dark"] .tab-strip-menu-item:hover { background: var(--input); }
 
@@ -577,8 +519,6 @@ html[data-theme="dark"] {
 
 [data-theme="dark"] .issue-people { color: var(--ink); }
 
-[data-theme="dark"] .card-panel { background: var(--card); border-color: var(--line); }
-
 [data-theme="dark"] .row.is-link:hover { background: var(--input); }
 
 /* The round tools on Celebrate's and Team's banners - edit, share, expand -
@@ -605,14 +545,12 @@ html[data-theme="dark"] {
 [data-theme="dark"] .add-card:hover { background: rgba(255, 255, 255, 0.04); border-color: var(--brand); color: var(--brand); }
 [data-theme="dark"] .add-card-disc { background: var(--input); color: var(--brand); }
 
-/* The category editor's icon grid: the choice hovered or picked lifts to
-   the card with a brand ring, not to white. */
-[data-theme="dark"] .icon-choice:hover { background: var(--card); border-color: var(--line); }
+/* The category editor's icon grid: the choice picked lifts to a brand
+   wash and ring, not to white. */
 [data-theme="dark"] .icon-choice.is-picked { background: rgba(0, 166, 159, 0.18); border-color: var(--brand); color: var(--brand); }
 
 /* When's RSVP band: a deep green wash, the buttons dark glass until chosen. */
 [data-theme="dark"] .rsvp-band, [data-theme="dark"] .invite-box { border-color: rgba(47, 158, 106, 0.45); background: linear-gradient(90deg, #14352a, #122d27); }
-[data-theme="dark"] .invite-box .fam-list { background: var(--card); }
 [data-theme="dark"] .rsvp-art { background: rgba(255, 255, 255, 0.08); color: #6fd39f; box-shadow: none; }
 [data-theme="dark"] .rsvp-title { color: #8fe0b6; }
 [data-theme="dark"] .rsvp-lead { color: var(--ink); }
@@ -657,7 +595,6 @@ html[data-theme="dark"] {
 [data-theme="dark"] .guests-table-row { background: var(--input); }
 [data-theme="dark"] .guests-plain-mark.is-none { background: rgba(255, 255, 255, 0.1); }
 [data-theme="dark"] .outside-members { background: rgba(255, 255, 255, 0.05); }
-[data-theme="dark"] .guests-table-mark { background: var(--card); }
 [data-theme="dark"] .guests-count { background: var(--input); }
 [data-theme="dark"] .guests-count strong { color: var(--ink); }
 [data-theme="dark"] .guests-count.is-yes { background: rgba(47, 158, 106, 0.22); color: #8fe0b6; }
@@ -678,7 +615,6 @@ html[data-theme="dark"] {
 [data-theme="dark"] .guests-chip.is-noticket { background: rgba(232, 163, 61, 0.2); color: #f0c674; }
 [data-theme="dark"] .guests-chip.is-sent { background: rgba(47, 158, 106, 0.22); color: #8fe0b6; }
 [data-theme="dark"] .guests-chip.is-unsent { background: none; border-color: rgba(255, 255, 255, 0.25); }
-[data-theme="dark"] .ticket-mark { box-shadow: 0 0 0 2px var(--card); }
 [data-theme="dark"] .ticket-mark.is-none { background: var(--card); color: var(--muted); box-shadow: 0 0 0 2px var(--card), inset 0 0 0 1.5px rgba(255, 255, 255, 0.3); }
 [data-theme="dark"] .guest-card-ticket { background: rgba(0, 166, 159, 0.16); color: #7fd6d1; }
 [data-theme="dark"] .guest-card-ticket.is-free { background: rgba(47, 158, 106, 0.2); color: #8fe0b6; }
@@ -726,18 +662,12 @@ html[data-theme="dark"] {
 [data-theme="dark"] .feedback-toast,
 [data-theme="dark"] .photo-slot-delete { color: var(--page); }
 
-[data-theme="dark"] .strip-arrow,
-[data-theme="dark"] .admin-mark { background: var(--card); border-color: var(--line); }
-
 [data-theme="dark"] .filter-action.is-on { background: var(--nav-active); border-color: rgba(0, 166, 159, 0.45); color: var(--brand); }
 
 [data-theme="dark"] .pending-band.is-invite { background: #12393b; }
 
 [data-theme="dark"] .admin-group-name:not([readonly]) { background: var(--input); }
 
-[data-theme="dark"] .tabbar,
-[data-theme="dark"] .editor-actions,
-[data-theme="dark"] .member-menu,
 [data-theme="dark"] .chip-tag { background: var(--card); border-color: var(--line); }
 
 [data-theme="dark"] .rule.is-open.is-include,
@@ -763,7 +693,6 @@ html[data-theme="dark"] {
 [data-theme="dark"] .day-note:not(.sidebar *),
 [data-theme="dark"] .admin-row-description:focus { background: var(--input); }
 
-[data-theme="dark"] .feedback-modal { background: var(--card); }
 [data-theme="dark"] .feedback-kind:has(input:checked) span { background: var(--nav-active); }
 [data-theme="dark"] .feedback-send { border-color: var(--brand-fill); }
 [data-theme="dark"] .feedback-cancel { background: var(--card); border-color: var(--line); color: var(--ink); }

@@ -71,7 +71,7 @@
   right: 0;
   top: calc(100% + 6px);
   min-width: 180px;
-  background: #fff;
+  background: var(--card);
   border-radius: 12px;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.18);
   padding: 6px 0;

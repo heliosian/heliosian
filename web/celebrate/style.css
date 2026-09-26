@@ -675,7 +675,7 @@ main {
   grid-template-columns: repeat(6, 40px);
   gap: 2px;
   padding: 8px;
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--line);
   border-radius: 10px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
@@ -895,7 +895,7 @@ main {
 
 /* Modals and forms. */
 .modal {
-  background: #fff;
+  background: var(--card);
   border-radius: 14px;
   padding: 20px 24px;
   width: 100%;
@@ -1463,7 +1463,7 @@ body.is-admin main { background-image: none; }
   left: 0;
   bottom: calc(100% + 8px);
   min-width: 190px;
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--line);
   border-radius: 10px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
@@ -1561,7 +1561,7 @@ body.is-admin main { background-image: none; }
     bottom: 0;
     height: calc(var(--tabbar) + env(safe-area-inset-bottom));
     padding-bottom: env(safe-area-inset-bottom);
-    background: #fff;
+    background: var(--card);
     border-top: 1px solid var(--line);
     z-index: 20;
   }

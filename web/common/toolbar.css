@@ -436,7 +436,7 @@ body.is-spoofing .spoof-stop { color: #c2185b; }
   top: calc(100% + 8px);
   width: 300px;
   padding: 6px;
-  background: #fff;
+  background: var(--card);
   border-radius: 12px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
   z-index: 40;
@@ -599,7 +599,7 @@ body.is-super .user-avatar {
   right: 0;
   top: calc(100% + 8px);
   min-width: 250px;
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--line);
   border-radius: 10px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
@@ -726,7 +726,7 @@ body.is-super .user-avatar {
   top: calc(100% + 8px);
   width: 290px;
   padding: 6px;
-  background: #fff;
+  background: var(--card);
   border-radius: 12px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
   z-index: 40;
@@ -829,7 +829,7 @@ body.is-super .user-avatar {
   overflow: auto;
   margin: 0;
   padding: 18px 22px 20px;
-  background: #fff;
+  background: var(--card);
   border-radius: 14px;
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.22);
   color: var(--ink);
