@@ -129,7 +129,7 @@ func (a app) sees(email string, admin bool, e *Event) bool {
 		return true
 	}
 	if e.Sharing == SharingInvited {
-		return a.cache.Model().Listed(email, e.ID)
+		return a.cache.Model().Listed(a.directory, email, e.ID)
 	}
 	return true
 }

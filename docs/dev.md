@@ -60,6 +60,7 @@ Who may see a thing, what it is called, where its page is, and what else changes
 
 - **Who sees it** - `team.Model.VisibleTo` (a thing and everything above it), `celebrate.Party.VisibleTo`, `loop.Group.VisibleTo` and `loop.Group.MailReadableBy`, `calendar.Model.EventsFor`, and the directory model itself, which holds only what members may see. A caller with no viewer - the calendar folding in what everyone sees, a signed-out link preview - asks with an empty address and no admin.
 - **What it is called** - the directory's `familyNameFor` for a family's `name` and `shortName`.
+- **Who is whose** - `who.Model.Household` (everyone in a person's families but them), `Members` (one family's adults and students), `Parents` (a student's), `Children` (a parent's) and `FamilyOf` (a person's first family, the one `/my-family` opens): each resolves aliases, drops anyone the directory does not list, and names each person once. An app maps their answer into its own person type and never walks `Families` itself; only the loader, building those families, and Who?'s edit permission, which asks which families a person is an adult of, read `AdultEmails` and `KidEmails` directly.
 - **Where its page is** - `who.PersonPath`, `who.FamilyPath`, `who.ClassroomPath` and `who.ListPath`; `calendar.EventPath` and `calendar.Page`, which says which app a linked event's page is on; `loop.Group.Path`; `team.Model.PathOf` and `celebrate.Model.PathOf`. Only the host is the caller's.
 
 A rule an app needs that its owner lacks is added to the owner, never kept by the app that needed it.

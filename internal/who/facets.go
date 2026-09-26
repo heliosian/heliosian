@@ -23,15 +23,10 @@ func (m *Model) Facets(p *Person, classroom bool) []string {
 		}
 		return nil
 	}
-	if !p.IsParent {
-		return nil
-	}
 	out := []string{}
-	for _, key := range m.FamilyKeysOf(p.Email) {
-		for _, kid := range m.Families[key].KidEmails {
-			if k := m.Person(kid); k != nil && pick(k) != "" {
-				out = append(out, pick(k))
-			}
+	for _, k := range m.Children(p.Email) {
+		if pick(k) != "" {
+			out = append(out, pick(k))
 		}
 	}
 	return out

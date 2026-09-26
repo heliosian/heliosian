@@ -264,23 +264,20 @@ func Matches(r Rule, s Sources, tagged map[string][]string) map[string]Reason {
 		}
 	}
 	for _, email := range SortedKeys(direct) {
-		p := model.Person(email)
-		for _, key := range model.FamilyKeysOf(email) {
-			family := model.Families[key]
-			if p.IsStudent && slices.Contains(r.Family, "Parents") {
-				for _, adult := range family.AdultEmails {
-					reach(adult, "Parents", email)
-				}
+		if slices.Contains(r.Family, "Parents") {
+			for _, parent := range model.Parents(email) {
+				reach(parent.Email, "Parents", email)
 			}
-			if p.IsParent && slices.Contains(r.Family, "Children") {
-				for _, kid := range family.KidEmails {
-					reach(kid, "Children", email)
-				}
+		}
+		if slices.Contains(r.Family, "Children") {
+			for _, kid := range model.Children(email) {
+				reach(kid.Email, "Children", email)
 			}
-			if p.IsStudent && slices.Contains(r.Family, "Siblings") {
-				for _, kid := range family.KidEmails {
-					reach(kid, "Siblings", email)
-				}
+		}
+		if slices.Contains(r.Family, "Siblings") && model.Person(email).IsStudent {
+			_, kids := model.Household(email)
+			for _, kid := range kids {
+				reach(kid.Email, "Siblings", email)
 			}
 		}
 	}

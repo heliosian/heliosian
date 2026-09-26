@@ -38,18 +38,12 @@ func (v *viewer) card(p *who.Person) card {
 		c.Teachers = v.crewTeachers(p.Classroom, p.Crew)
 		c.Parents = v.names(p.ParentContactEmails)
 	}
-	if p.IsParent {
-		for _, key := range v.directory.FamilyKeysOf(p.Email) {
-			for _, kid := range v.directory.Families[key].KidEmails {
-				if k := v.directory.Person(kid); k != nil {
-					words := k.FullName
-					if k.Grade != "" {
-						words += " (" + k.Grade + ")"
-					}
-					c.Kids = append(c.Kids, words)
-				}
-			}
+	for _, k := range v.directory.Children(p.Email) {
+		words := k.FullName
+		if k.Grade != "" {
+			words += " (" + k.Grade + ")"
 		}
+		c.Kids = append(c.Kids, words)
 	}
 	return c
 }
@@ -67,15 +61,12 @@ type familyCard struct {
 func (v *viewer) familyCard(key string) familyCard {
 	family := v.directory.Families[key]
 	f := familyCard{Name: family.Name, Address: family.Address, Phone: family.Phone, Adults: []card{}, Kids: []card{}, Caption: family.PhotoCaption, Link: whoBase + who.FamilyPath(key)}
-	for _, email := range family.AdultEmails {
-		if p := v.directory.Person(email); p != nil {
-			f.Adults = append(f.Adults, v.card(p))
-		}
+	adults, kids := v.directory.Members(key)
+	for _, p := range adults {
+		f.Adults = append(f.Adults, v.card(p))
 	}
-	for _, email := range family.KidEmails {
-		if p := v.directory.Person(email); p != nil {
-			f.Kids = append(f.Kids, v.card(p))
-		}
+	for _, p := range kids {
+		f.Kids = append(f.Kids, v.card(p))
 	}
 	return f
 }
@@ -213,13 +204,9 @@ func (v *viewer) facets(p *who.Person, classroom bool) []string {
 	if own := pick(p); own != "" && (p.IsStudent || p.IsStaff) {
 		out = append(out, own)
 	}
-	if p.IsParent {
-		for _, key := range v.directory.FamilyKeysOf(p.Email) {
-			for _, kid := range v.directory.Families[key].KidEmails {
-				if k := v.directory.Person(kid); k != nil && pick(k) != "" {
-					out = append(out, pick(k))
-				}
-			}
+	for _, k := range v.directory.Children(p.Email) {
+		if pick(k) != "" {
+			out = append(out, pick(k))
 		}
 	}
 	return out

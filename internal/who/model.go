@@ -149,6 +149,59 @@ func (m *Model) FamilyKeysOf(email string) []string {
 	return m.familyKeysByEmail[email]
 }
 
+func (m *Model) FamilyOf(email string) (Family, bool) {
+	keys := m.FamilyKeysOf(m.Resolve(email))
+	if len(keys) == 0 {
+		return Family{}, false
+	}
+	family, ok := m.Families[keys[0]]
+	return family, ok
+}
+
+func (m *Model) Members(key string) (adults, kids []*Person) {
+	return m.members([]string{key}, "")
+}
+
+func (m *Model) Household(email string) (adults, kids []*Person) {
+	email = m.Resolve(email)
+	return m.members(m.FamilyKeysOf(email), email)
+}
+
+func (m *Model) Parents(email string) []*Person {
+	if p := m.Person(m.Resolve(email)); p == nil || !p.IsStudent {
+		return nil
+	}
+	adults, _ := m.Household(email)
+	return adults
+}
+
+func (m *Model) Children(email string) []*Person {
+	if p := m.Person(m.Resolve(email)); p == nil || !p.IsParent {
+		return nil
+	}
+	_, kids := m.Household(email)
+	return kids
+}
+
+func (m *Model) members(keys []string, without string) (adults, kids []*Person) {
+	seen := map[string]bool{without: true}
+	add := func(to []*Person, members []string) []*Person {
+		for _, member := range members {
+			if p := m.Person(m.Resolve(member)); p != nil && !seen[p.Email] {
+				seen[p.Email] = true
+				to = append(to, p)
+			}
+		}
+		return to
+	}
+	for _, key := range keys {
+		family := m.Families[key]
+		adults = add(adults, family.AdultEmails)
+		kids = add(kids, family.KidEmails)
+	}
+	return adults, kids
+}
+
 func (m *Model) HeroPhoto(email string) string {
 	person := m.Person(email)
 	if person == nil {

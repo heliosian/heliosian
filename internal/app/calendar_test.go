@@ -10,7 +10,6 @@ import (
 	"heliosian/internal/data"
 	"heliosian/internal/store"
 	"heliosian/internal/team"
-	"heliosian/internal/who"
 )
 
 type sampleImages struct{}
@@ -134,24 +133,5 @@ func TestCalendarLinkedActivities(t *testing.T) {
 	}
 	if byID["E005"].Availability != "done" || byID["E013"].Availability != "done" {
 		t.Errorf("done events = %+v %+v", byID["E005"], byID["E013"])
-	}
-}
-
-func TestCalendarRosterHouseholds(t *testing.T) {
-	t.Chdir("../..")
-	dir := &data.Dir{Root: "sampledata"}
-	directory, err := who.LoadModel(dir, nil, staticFiles{}, []byte("test"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	roster := CalendarRoster(directory)
-	if got := strings.Join(roster.Households["jordan.whitfield@heliosschool.org"], ","); got != "robin.whitfield@heliosschool.org,sam.whitfield@heliosschool.org,ella.whitfield@heliosschool.org" {
-		t.Errorf("jordan's household = %q", got)
-	}
-	if got := strings.Join(roster.Households["sam.whitfield@heliosschool.org"], ","); got != "jordan.whitfield@heliosschool.org,robin.whitfield@heliosschool.org,ella.whitfield@heliosschool.org" {
-		t.Errorf("sam's household = %q", got)
-	}
-	if _, has := roster.Households["office@heliosschool.org"]; has {
-		t.Errorf("someone with no family has a household")
 	}
 }

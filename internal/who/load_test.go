@@ -31,6 +31,48 @@ func sampleModel(t *testing.T) *Model {
 	return model
 }
 
+func TestHouseholdIsEveryoneInThePersonsFamiliesButThem(t *testing.T) {
+	m := sampleModel(t)
+	emails := func(people []*Person) string {
+		out := []string{}
+		for _, p := range people {
+			out = append(out, p.Email)
+		}
+		return strings.Join(out, ",")
+	}
+	adults, kids := m.Household("jordan.whitfield@heliosschool.org")
+	if got := emails(adults) + "|" + emails(kids); got != "robin.whitfield@heliosschool.org|sam.whitfield@heliosschool.org,ella.whitfield@heliosschool.org" {
+		t.Errorf("jordan's household = %q", got)
+	}
+	adults, kids = m.Household("sam.whitfield@heliosschool.org")
+	if got := emails(adults) + "|" + emails(kids); got != "jordan.whitfield@heliosschool.org,robin.whitfield@heliosschool.org|ella.whitfield@heliosschool.org" {
+		t.Errorf("sam's household = %q", got)
+	}
+	if adults, kids := m.Household("office@heliosschool.org"); len(adults)+len(kids) != 0 {
+		t.Errorf("someone with no family has a household")
+	}
+	if got := emails(m.Parents("sam.whitfield@heliosschool.org")); got != "jordan.whitfield@heliosschool.org,robin.whitfield@heliosschool.org" {
+		t.Errorf("sam's parents = %q", got)
+	}
+	if got := emails(m.Parents("jordan.whitfield@heliosschool.org")); got != "" {
+		t.Errorf("a parent has parents: %q", got)
+	}
+	if got := emails(m.Children("jordan.whitfield@heliosschool.org")); got != "sam.whitfield@heliosschool.org,ella.whitfield@heliosschool.org" {
+		t.Errorf("jordan's children = %q", got)
+	}
+	if got := emails(m.Children("sam.whitfield@heliosschool.org")); got != "" {
+		t.Errorf("a student has children: %q", got)
+	}
+	family, ok := m.FamilyOf("sam.whitfield@heliosschool.org")
+	if !ok {
+		t.Fatal("sam has no family")
+	}
+	adults, kids = m.Members(family.Key)
+	if got := emails(adults) + "|" + emails(kids); got != "jordan.whitfield@heliosschool.org,robin.whitfield@heliosschool.org|sam.whitfield@heliosschool.org,ella.whitfield@heliosschool.org" {
+		t.Errorf("sam's family = %q", got)
+	}
+}
+
 func sampleTables(t *testing.T) store.Tables {
 	t.Helper()
 	dir := &data.Dir{Root: "../../sampledata"}

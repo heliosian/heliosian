@@ -84,7 +84,7 @@ func (m *Model) MonthUnder(directory Directory, email string, linked []Linked, n
 		}
 		out.Days[date] = day
 	}
-	for _, e := range m.eventsFor(email, linked) {
+	for _, e := range m.eventsFor(directory, email, linked) {
 		answer := m.AnswerOf(email, e.ID)
 		// An invitation reaches across classrooms, as a yes does.
 		if e.start.Format(DateFormat) > to || e.end.Format(DateFormat) < from || answer == AnswerHidden || !(e.Invited || admits(m, e, classrooms, tags)) {

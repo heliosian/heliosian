@@ -129,24 +129,33 @@ func (b *builder) invitations(settings, rows []store.Row) {
 		if inv.Token != "" {
 			b.model.byInvite[inv.Token] = inv
 		}
-		for _, who := range append([]string{email}, b.model.Roster.Parents[email]...) {
-			if b.model.listed[who] == nil {
-				b.model.listed[who] = map[string]bool{}
-			}
-			b.model.listed[who][id] = true
-			if inv.Sent == "" {
-				continue
-			}
-			if b.model.invited[who] == nil {
-				b.model.invited[who] = map[string]bool{}
-			}
-			b.model.invited[who][id] = true
+		if b.model.listed[email] == nil {
+			b.model.listed[email] = map[string]bool{}
 		}
+		b.model.listed[email][id] = true
+		if inv.Sent == "" {
+			continue
+		}
+		if b.model.invited[email] == nil {
+			b.model.invited[email] = map[string]bool{}
+		}
+		b.model.invited[email][id] = true
 	}
 }
 
-func (m *Model) Listed(email, id string) bool {
-	return m.listed[normalizeEmail(email)][id]
+func (m *Model) mine(directory Directory, email string) []string {
+	email = normalizeEmail(email)
+	out := []string{email}
+	for _, member := range directory.Household(email) {
+		if slices.Contains(directory.Parents(member), email) {
+			out = append(out, member)
+		}
+	}
+	return out
+}
+
+func (m *Model) Listed(directory Directory, email, id string) bool {
+	return slices.ContainsFunc(m.mine(directory, email), func(who string) bool { return m.listed[who][id] })
 }
 
 func (m *Model) InviteOf(id, email string) *Invite {
@@ -163,8 +172,12 @@ func (m *Model) InviteByToken(token string) (Invite, bool) {
 	return inv, ok
 }
 
-func (m *Model) Invited(email, id string) bool {
-	return m.invited[normalizeEmail(email)][id]
+func (m *Model) Invited(directory Directory, email, id string) bool {
+	return m.invitedAny(m.mine(directory, email), id)
+}
+
+func (m *Model) invitedAny(mine []string, id string) bool {
+	return slices.ContainsFunc(mine, func(who string) bool { return m.invited[who][id] })
 }
 
 func (inv *Invitation) hasDetails() bool {
@@ -270,7 +283,7 @@ func (a app) inviterEvent(w http.ResponseWriter, r *http.Request, id string) (st
 		return actor, nil, false, false
 	}
 	host := a.isHost(actor, admin, e)
-	if !host && e.Sharing != SharingPublic && !a.cache.Model().Invited(actor, e.ID) {
+	if !host && e.Sharing != SharingPublic && !a.cache.Model().Invited(a.directory, actor, e.ID) {
 		http.Error(w, "only a host, or someone invited, may invite others", http.StatusForbidden)
 		return actor, nil, false, false
 	}
@@ -296,7 +309,7 @@ func (a app) hostedEvent(w http.ResponseWriter, r *http.Request, id string) (str
 }
 
 func (a app) household(email string) []string {
-	return append([]string{email}, a.cache.Model().Roster.Households[email]...)
+	return append([]string{email}, a.directory.Household(email)...)
 }
 
 func (a app) householdOn(e *Event, email string) []string {
@@ -573,7 +586,7 @@ func (a app) invitesView(w http.ResponseWriter, r *http.Request) {
 	if e.Source == SourceSheet && !e.PosterLeft {
 		poster = a.directory.Resolve(normalizeEmail(e.AddedBy))
 	}
-	view := InviteView{Host: host, AdminHost: adminHost, Poster: poster, MayInvite: host || e.Sharing == SharingPublic || model.Invited(viewer, e.ID), Party: e.Source == SourceCelebrate, Linked: e.linked(), Guests: true, Hosts: []Person{}, Mine: []GuestRow{}}
+	view := InviteView{Host: host, AdminHost: adminHost, Poster: poster, MayInvite: host || e.Sharing == SharingPublic || model.Invited(a.directory, viewer, e.ID), Party: e.Source == SourceCelebrate, Linked: e.linked(), Guests: true, Hosts: []Person{}, Mine: []GuestRow{}}
 	if inv != nil && inv.Flyer != "" {
 		view.Flyer = flyerPath(e.ID)
 	}
@@ -596,12 +609,7 @@ func (a app) invitesView(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	rows := a.rows(viewer, admin, e)
-	mine := []string{viewer}
-	for _, member := range a.household(viewer) {
-		if slices.Contains(model.Roster.Parents[member], viewer) {
-			mine = append(mine, member)
-		}
-	}
+	mine := model.mine(a.directory, viewer)
 	for _, g := range rows {
 		if g.Invited && (slices.Contains(mine, g.Email) || (g.GuestOf != "" && slices.Contains(mine, g.GuestOf))) {
 			view.Mine = append(view.Mine, g)
@@ -704,7 +712,7 @@ func (a app) invitePeople(w http.ResponseWriter, r *http.Request) {
 	for _, p := range a.directory.People() {
 		p.PhotoURL = thumb(p.PhotoURL)
 		p.Line = contactLine(a.directory, p)
-		pp := PickerPerson{Person: p, Household: model.Roster.Households[p.Email]}
+		pp := PickerPerson{Person: p, Household: a.directory.Household(p.Email)}
 		for _, other := range pp.Household {
 			o, known := a.directory.Person(other)
 			if !known {
@@ -1353,7 +1361,7 @@ func (a app) ccFor(email string) ([]string, bool) {
 	}
 	cc := []string{}
 	if p.IsStudent && !p.IsParent && !p.IsStaff {
-		for _, member := range a.cache.Model().Roster.Households[email] {
+		for _, member := range a.directory.Household(email) {
 			if a.isAdult(member) && !slices.Contains(cc, member) {
 				cc = append(cc, member)
 			}

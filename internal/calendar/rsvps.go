@@ -28,7 +28,7 @@ func (a app) waiting(email string) []RSVP {
 	answers := model.Answers[email]
 	today := now().Format(DateFormat)
 	events := []*Event{}
-	for _, e := range model.eventsFor(email, a.linked(email)) {
+	for _, e := range model.eventsFor(a.directory, email, a.linked(email)) {
 		if !e.Invited || e.Cancelled || answers[e.ID] != "" || e.end.Format(DateFormat) < today || a.isHost(email, false, e) {
 			continue
 		}

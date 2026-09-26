@@ -617,7 +617,7 @@ func TestFeedCarriesLinked(t *testing.T) {
 	handler, cache := testApp(t)
 	linked := []Linked{{Source: SourceCelebrate, ID: "P9", Title: "Fondue Night", Start: "2026-09-19 17:00", End: "2026-09-19 21:00", Path: "/p/fondue", Availability: "available", Mine: MineGoing}}
 	f := &Feed{Token: "t", Email: "jordan.whitfield@heliosschool.org", Name: "Mine", Tags: []string{TagGoing}}
-	out := string(ICS(cache.Model(), f, linked, "https://when.heliosiandev.com:8080", now()))
+	out := string(ICS(cache.Model(), fakeDirectory{}, f, linked, "https://when.heliosiandev.com:8080", now()))
 	if !strings.Contains(out, "SUMMARY:Fondue Night") || !strings.Contains(out, "URL:https://when.heliosiandev.com:8080/e/celebrate/P9") {
 		t.Errorf("feed lacks the party:\n%s", out)
 	}
@@ -653,19 +653,19 @@ func TestAnswers(t *testing.T) {
 		}
 	}
 	f := &Feed{Token: "t", Email: me, Name: "Mine"}
-	if strings.Contains(string(ICS(cache.Model(), f, nil, "https://when.heliosiandev.com:8080", now())), "SUMMARY:International Night") {
+	if strings.Contains(string(ICS(cache.Model(), fakeDirectory{}, f, nil, "https://when.heliosiandev.com:8080", now())), "SUMMARY:International Night") {
 		t.Errorf("a hidden event is in the owner's feed")
 	}
 	if rec := call(t, viewer, "POST", "/api/calendar/rsvp", `{"id":"a7@sample","answer":"no"}`); rec.Code != 204 {
 		t.Fatalf("no: %d %s", rec.Code, rec.Body)
 	}
-	if strings.Contains(string(ICS(cache.Model(), f, nil, "https://when.heliosiandev.com:8080", now())), "SUMMARY:International Night") {
+	if strings.Contains(string(ICS(cache.Model(), fakeDirectory{}, f, nil, "https://when.heliosiandev.com:8080", now())), "SUMMARY:International Night") {
 		t.Errorf("an event the owner said no to is in their feed")
 	}
 	if rec := call(t, viewer, "POST", "/api/calendar/rsvp", `{"id":"a7@sample","answer":""}`); rec.Code != 204 {
 		t.Fatalf("clear: %d %s", rec.Code, rec.Body)
 	}
-	if !strings.Contains(string(ICS(cache.Model(), f, nil, "https://when.heliosiandev.com:8080", now())), "SUMMARY:International Night") {
+	if !strings.Contains(string(ICS(cache.Model(), fakeDirectory{}, f, nil, "https://when.heliosiandev.com:8080", now())), "SUMMARY:International Night") {
 		t.Errorf("a cleared answer left the event out of the feed")
 	}
 	if rec := call(t, viewer, "POST", "/api/calendar/rsvp", `{"id":"a7@sample","answer":"yes"}`); rec.Code != 204 {
@@ -696,7 +696,7 @@ func TestAnswers(t *testing.T) {
 		t.Errorf("a yes changed the model's own event")
 	}
 	going := &Feed{Token: "g", Email: me, Name: "Going", Tags: []string{TagGoing}}
-	if !strings.Contains(string(ICS(cache.Model(), going, nil, "https://when.heliosiandev.com:8080", now())), "SUMMARY:International Night") {
+	if !strings.Contains(string(ICS(cache.Model(), fakeDirectory{}, going, nil, "https://when.heliosiandev.com:8080", now())), "SUMMARY:International Night") {
 		t.Errorf("a yes is not in the owner's Going feed")
 	}
 	if got := invite("Helios When <when@reply.heliosian.com>", me, cache.Model().Event("a7@sample"), "https://when.heliosian.com/e/a7@sample", now()); !strings.Contains(got, "METHOD:REQUEST") || !strings.Contains(got, "ORGANIZER;CN=Helios When:mailto:when@reply.heliosian.com") || !strings.Contains(got, "ATTENDEE;CN="+me) {

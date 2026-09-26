@@ -298,7 +298,7 @@ func (d directory) People() []team.DirectoryPerson {
 			JobTitle: p.JobTitle, Department: p.Department,
 		}
 		if p.IsParent {
-			person.Spouses, person.Children = household(model, p)
+			person.Spouses, person.Children = teamHousehold(model, p.Email)
 		}
 		out = append(out, person)
 	}
@@ -306,19 +306,13 @@ func (d directory) People() []team.DirectoryPerson {
 	return out
 }
 
-func household(model *who.Model, p who.Person) (adults, kids []team.Child) {
-	for _, key := range model.FamilyKeysOf(p.Email) {
-		family := model.Families[key]
-		for _, adult := range family.AdultEmails {
-			if a := model.Person(adult); a != nil && a.Email != p.Email {
-				adults = append(adults, team.Child{Email: a.Email, Name: a.FullName})
-			}
-		}
-		for _, kid := range family.KidEmails {
-			if k := model.Person(kid); k != nil {
-				kids = append(kids, team.Child{Email: k.Email, Name: k.FullName, Grade: k.Grade})
-			}
-		}
+func teamHousehold(model *who.Model, email string) (adults, kids []team.Child) {
+	grown, young := model.Household(email)
+	for _, a := range grown {
+		adults = append(adults, team.Child{Email: a.Email, Name: a.FullName})
+	}
+	for _, k := range young {
+		kids = append(kids, team.Child{Email: k.Email, Name: k.FullName, Grade: k.Grade})
 	}
 	return adults, kids
 }
@@ -328,7 +322,7 @@ func (d directory) Household(email string) (adults, kids []team.Child) {
 	if p == nil || !p.IsParent {
 		return nil, nil
 	}
-	return household(d.cache.Model(), *p)
+	return teamHousehold(d.cache.Model(), p.Email)
 }
 
 type upcomingEvents struct {
@@ -459,21 +453,12 @@ func (d celebrateDirectory) Person(email string) (celebrate.Person, bool) {
 
 func (d celebrateDirectory) Household(email string) (adults, kids []celebrate.Person) {
 	model := d.cache.Model()
-	seen := map[string]bool{email: true}
-	for _, key := range model.FamilyKeysOf(email) {
-		family := model.Families[key]
-		for _, adult := range family.AdultEmails {
-			if a := model.Person(adult); a != nil && !seen[a.Email] {
-				seen[a.Email] = true
-				adults = append(adults, celebratePerson(model, a))
-			}
-		}
-		for _, kid := range family.KidEmails {
-			if k := model.Person(kid); k != nil && !seen[k.Email] {
-				seen[k.Email] = true
-				kids = append(kids, celebratePerson(model, k))
-			}
-		}
+	grown, young := model.Household(email)
+	for _, a := range grown {
+		adults = append(adults, celebratePerson(model, a))
+	}
+	for _, k := range young {
+		kids = append(kids, celebratePerson(model, k))
 	}
 	return adults, kids
 }
@@ -559,16 +544,25 @@ func (d calendarDirectory) GradeColors() map[string]string {
 func (d calendarDirectory) Children(email string) []calendar.Person {
 	model := d.cache.Model()
 	out := []calendar.Person{}
-	p := model.Person(email)
-	if p == nil || !p.IsParent {
-		return out
+	for _, k := range model.Children(email) {
+		out = append(out, calendarPerson(model, k))
 	}
-	for _, key := range model.FamilyKeysOf(email) {
-		for _, kid := range model.Families[key].KidEmails {
-			if k := model.Person(kid); k != nil {
-				out = append(out, calendarPerson(model, k))
-			}
-		}
+	return out
+}
+
+func (d calendarDirectory) Household(email string) []string {
+	adults, kids := d.cache.Model().Household(email)
+	return emailsOf(append(adults, kids...))
+}
+
+func (d calendarDirectory) Parents(email string) []string {
+	return emailsOf(d.cache.Model().Parents(email))
+}
+
+func emailsOf(people []*who.Person) []string {
+	out := []string{}
+	for _, p := range people {
+		out = append(out, p.Email)
 	}
 	return out
 }

@@ -165,15 +165,16 @@ func folded(school, hca *Event) *Event {
 // wearing the Going tag - on a copy, as a party they hold a ticket to does
 // - so the filters, the feeds and the front page file it with the rest of
 // what they are going to, and each with a guest list flagged as such.
-func (m *Model) eventsFor(email string, linked []Linked) []*Event {
+func (m *Model) eventsFor(directory Directory, email string, linked []Linked) []*Event {
 	email = normalizeEmail(email)
 	answers := m.Answers[email]
+	mine := m.mine(directory, email)
 	// An event shared by link or by invitation that the person has
 	// answered, or their household was invited to, is on their calendar -
 	// and one waiting for approval or declined, whose link works regardless.
 	events := m.Events
 	for _, e := range m.Pending {
-		if !e.Cancelled && (answers[e.ID] != "" || m.invited[email][e.ID]) {
+		if !e.Cancelled && (answers[e.ID] != "" || m.invitedAny(mine, e.ID)) {
 			events = append(events[:len(events):len(events)], e)
 		}
 	}
@@ -181,7 +182,7 @@ func (m *Model) eventsFor(email string, linked []Linked) []*Event {
 	for i, e := range out {
 		going := answers[e.ID] == AnswerYes && !slices.Contains(e.Tags, TagGoing)
 		invitation := m.Invitations[e.ID] != nil && !e.Invitation
-		invited := m.invited[email][e.ID] && !e.Invited
+		invited := m.invitedAny(mine, e.ID) && !e.Invited
 		if !going && !invitation && !invited {
 			continue
 		}

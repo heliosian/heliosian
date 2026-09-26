@@ -41,7 +41,7 @@ func (v *viewer) linkCard(address string) (linkCard, bool) {
 			}
 		}
 	case strings.HasPrefix(address, whenBase+"/"):
-		for _, e := range v.calendar.EventsFor(v.email, v.sources.Linked(v.email)) {
+		for _, e := range v.calendar.EventsFor(v.sources.CalendarDirectory, v.email, v.sources.Linked(v.email)) {
 			if eventLink(e) != address {
 				continue
 			}

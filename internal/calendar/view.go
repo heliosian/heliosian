@@ -28,6 +28,8 @@ type Directory interface {
 	Resolve(email string) string
 	Person(email string) (Person, bool)
 	Children(email string) []Person
+	Household(email string) []string
+	Parents(email string) []string
 	Alerts(email string) (stale []string, privacy []string)
 	ClassroomColors() map[string]string
 	GradeColors() map[string]string
@@ -223,7 +225,7 @@ func Render(model *Model, directory Directory, email string, admin bool, now tim
 	}
 	// The events: the calendar's, with the pending ones the viewer shared -
 	// every pending one for an admin - marked as such.
-	events := model.eventsFor(email, linked)
+	events := model.eventsFor(directory, email, linked)
 	carried := map[string]bool{}
 	for _, e := range events {
 		carried[e.ID] = true

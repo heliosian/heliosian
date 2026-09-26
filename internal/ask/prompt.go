@@ -63,22 +63,17 @@ func linkExamples(v *viewer) string {
 
 func (v *viewer) exampleLinks() []string {
 	out := []string{}
-	keys := v.directory.FamilyKeysOf(v.email)
-	if len(keys) > 0 {
-		family := v.directory.Families[keys[0]]
-		out = append(out, whoBase+who.FamilyPath(keys[0]))
-		for _, email := range family.KidEmails {
-			if k := v.directory.Person(email); k != nil {
-				out = append(out, whoLink(k.Email))
-				if k.Classroom != "" {
-					out = append(out, whoBase+who.ClassroomPath(k.Classroom))
-				}
-				break
+	if family, ok := v.directory.FamilyOf(v.email); ok {
+		out = append(out, whoBase+who.FamilyPath(family.Key))
+		if _, kids := v.directory.Members(family.Key); len(kids) > 0 {
+			out = append(out, whoLink(kids[0].Email))
+			if kids[0].Classroom != "" {
+				out = append(out, whoBase+who.ClassroomPath(kids[0].Classroom))
 			}
 		}
 	}
 	today := v.now.Format(calendar.DateFormat)
-	for _, e := range v.calendar.EventsFor(v.email, v.sources.Linked(v.email)) {
+	for _, e := range v.calendar.EventsFor(v.sources.CalendarDirectory, v.email, v.sources.Linked(v.email)) {
 		if app, _ := calendar.Page(e); app == "calendar" && e.Start >= today {
 			out = append(out, eventLink(e))
 			break
@@ -232,17 +227,13 @@ func viewerBlock(v *viewer) string {
 	}
 	b.WriteString("\n")
 	for _, key := range v.directory.FamilyKeysOf(p.Email) {
-		family := v.directory.Families[key]
-		fmt.Fprintf(b, "\nFamily %q:\n", family.Name)
-		for _, email := range family.AdultEmails {
-			if a := v.directory.Person(email); a != nil {
-				fmt.Fprintf(b, "- Parent: %s (%s)\n", a.FullName, a.Email)
-			}
+		fmt.Fprintf(b, "\nFamily %q:\n", v.directory.Families[key].Name)
+		adults, kids := v.directory.Members(key)
+		for _, a := range adults {
+			fmt.Fprintf(b, "- Parent: %s (%s)\n", a.FullName, a.Email)
 		}
-		for _, email := range family.KidEmails {
-			if k := v.directory.Person(email); k != nil {
-				fmt.Fprintf(b, "- Student: %s, %s\n", k.FullName, placeWords(v, k))
-			}
+		for _, k := range kids {
+			fmt.Fprintf(b, "- Student: %s, %s\n", k.FullName, placeWords(v, k))
 		}
 	}
 	bands := []string{}
@@ -328,16 +319,9 @@ func listKind(kind string) string {
 func (v *viewer) starters() []string {
 	out := []string{"What's happening at school this week?", "When is the next day off?"}
 	if v.me != nil {
-		for _, key := range v.directory.FamilyKeysOf(v.me.Email) {
-			for _, email := range v.directory.Families[key].KidEmails {
-				if k := v.directory.Person(email); k != nil && k.Classroom != "" && k.Email != v.me.Email {
-					out = append(out, fmt.Sprintf("Who teaches %s in %s?", firstName(k.FullName), k.Classroom))
-					break
-				}
-			}
-			if len(out) > 2 {
-				break
-			}
+		_, kids := v.directory.Household(v.me.Email)
+		if i := slices.IndexFunc(kids, func(k *who.Person) bool { return k.Classroom != "" }); i >= 0 {
+			out = append(out, fmt.Sprintf("Who teaches %s in %s?", firstName(kids[i].FullName), kids[i].Classroom))
 		}
 	}
 	return append(out, "What can I volunteer for?", "Which parties still have tickets?")

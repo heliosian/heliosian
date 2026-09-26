@@ -193,8 +193,8 @@ func (m *Model) ViewOf(directory Directory, email string) (classrooms, tags []st
 
 // EventsFor is eventsFor for another app: every event as one viewer stands
 // with them, the linked ones folded in.
-func (m *Model) EventsFor(email string, linked []Linked) []*Event {
-	return m.eventsFor(email, linked)
+func (m *Model) EventsFor(directory Directory, email string, linked []Linked) []*Event {
+	return m.eventsFor(directory, email, linked)
 }
 
 // viewUnder is the view one of the person's saved calendars gives, by
@@ -309,7 +309,7 @@ func (m *Model) UpcomingUnder(directory Directory, email string, linked []Linked
 	classrooms, tags := m.viewUnder(directory, email, token)
 	today := now.Format(DateFormat)
 	out := []Card{}
-	for _, e := range m.eventsFor(email, linked) {
+	for _, e := range m.eventsFor(directory, email, linked) {
 		answer := m.AnswerOf(email, e.ID)
 		// A yes reaches across classrooms, so long as Going is in view, and
 		// an invitation does whatever is in view; a no leaves the list, as

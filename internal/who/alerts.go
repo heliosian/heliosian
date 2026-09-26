@@ -52,28 +52,17 @@ func (m *Model) Alerts(email string, years config.StaleYears, now time.Time) Ale
 		return Alerts{}
 	}
 	var family *Family
-	if keys := m.FamilyKeysOf(email); len(keys) > 0 {
-		if f, ok := m.Families[keys[0]]; ok {
-			family = &f
-		}
+	if f, ok := m.FamilyOf(email); ok {
+		family = &f
 	}
 	var alerts Alerts
 	// Staff with no family of their own have nothing to keep fresh here.
 	if !me.IsStaff || me.IsParent {
-		emails := []string{me.Email}
-		if family != nil {
-			emails = append(append(emails, family.AdultEmails...), family.KidEmails...)
-		}
-		seen := map[string]bool{}
-		for _, e := range emails {
-			p := m.Person(e)
-			if p == nil || seen[e] {
-				continue
-			}
-			seen[e] = true
+		adults, kids := m.Household(me.Email)
+		for _, p := range append(append([]*Person{me}, adults...), kids...) {
 			// Each by what it is and whose: "Your photo", "Sam's facts".
 			whose := "Your"
-			if e != me.Email {
+			if p.Email != me.Email {
 				whose = firstName(p) + "'s"
 			}
 			if p.IsStudent && (p.PhotoURL == "" || agedPast(p.PhotoUpdated, years.Photo, now)) {

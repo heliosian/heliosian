@@ -236,23 +236,7 @@ func CalendarRoster(m *who.Model) calendar.Roster {
 			crews[c.Classroom] = append(crews[c.Classroom], c.Name)
 		}
 	}
-	roster := calendar.Roster{Classrooms: []calendar.Classroom{}, Households: map[string][]string{}, Parents: map[string][]string{}}
-	for i := range m.People {
-		email := m.People[i].Email
-		seen := map[string]bool{email: true}
-		for _, key := range m.FamilyKeysOf(email) {
-			family := m.Families[key]
-			for _, member := range append(append([]string{}, family.AdultEmails...), family.KidEmails...) {
-				if member = m.Resolve(member); !seen[member] && m.Person(member) != nil {
-					seen[member] = true
-					roster.Households[email] = append(roster.Households[email], member)
-					if m.People[i].IsStudent && slices.Contains(family.AdultEmails, member) {
-						roster.Parents[email] = append(roster.Parents[email], member)
-					}
-				}
-			}
-		}
-	}
+	roster := calendar.Roster{Classrooms: []calendar.Classroom{}}
 	for _, c := range m.Classrooms {
 		names := []string{}
 		for g := range grades[c.Name] {

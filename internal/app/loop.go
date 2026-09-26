@@ -60,13 +60,12 @@ func loopPerson(model *who.Model, p *who.Person) loop.Person {
 	default:
 		out.Role = "Parent"
 		kids := []string{}
-		for _, key := range model.FamilyKeysOf(p.Email) {
-			for _, kid := range model.Families[key].KidEmails {
-				if k := model.Person(kid); k != nil && k.Grade != "" {
-					kids = append(kids, k.FullName+" ("+k.Grade+")")
-				} else if k != nil {
-					kids = append(kids, k.FullName)
-				}
+		_, children := model.Household(p.Email)
+		for _, k := range children {
+			if k.Grade != "" {
+				kids = append(kids, k.FullName+" ("+k.Grade+")")
+			} else {
+				kids = append(kids, k.FullName)
 			}
 		}
 		out.Context = "Parent"

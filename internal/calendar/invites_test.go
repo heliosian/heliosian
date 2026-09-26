@@ -28,6 +28,8 @@ const (
 	partyA = "celebrate/p1"
 )
 
+var testDirectory fakeDirectory
+
 func invitesApp(t *testing.T) (http.Handler, *Cache, *keptMail) {
 	h, c, k, _ := invitesAppWith(t)
 	return h, c, k
@@ -40,13 +42,13 @@ func invitesAppWith(t *testing.T) (http.Handler, *Cache, *keptMail, *sampleSourc
 	queue = store.NewQueue()
 	households := map[string][]string{robin: {sam, ella}, sam: {robin, ella}, ella: {robin, sam}}
 	parents := map[string][]string{sam: {robin}, ella: {robin}}
-	cache, err := NewCache(sheet, sheet, func() Roster { return Roster{Classrooms: roster.Classrooms, Households: households, Parents: parents} }, nil, func(string) bool { return false }, queue)
+	cache, err := NewCache(sheet, sheet, func() Roster { return roster }, nil, func(string) bool { return false }, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
 	samP := Person{Email: sam, Name: "Sam Whitfield", IsStudent: true, Grade: "Grade 3", Classroom: "Jays"}
 	ellaP := Person{Email: ella, Name: "Ella Whitfield", IsStudent: true, Grade: "Grade 6", Classroom: "Ospreys"}
-	d := fakeDirectory{
+	testDirectory = fakeDirectory{
 		people: map[string]Person{
 			host:  {Email: host, Name: "Jordan Whitfield", IsParent: true},
 			robin: {Email: robin, Name: "Robin Whitfield", IsParent: true},
@@ -54,8 +56,10 @@ func invitesAppWith(t *testing.T) (http.Handler, *Cache, *keptMail, *sampleSourc
 			ella:  ellaP,
 			mia:   {Email: mia, Name: "Mia Torres", IsParent: true},
 		},
-		kids:  map[string][]Person{robin: {samP, ellaP}},
-		lists: []List{{Key: "tag:Carpool", Name: "Carpool", Kind: "tag", People: []string{mia, robin}}, {Key: "activity:e1", Name: "Book Fair", Kind: "activity", People: []string{mia, robin, ella}}},
+		kids:       map[string][]Person{robin: {samP, ellaP}},
+		households: households,
+		parents:    parents,
+		lists:      []List{{Key: "tag:Carpool", Name: "Carpool", Kind: "tag", People: []string{mia, robin}}, {Key: "activity:e1", Name: "Book Fair", Kind: "activity", People: []string{mia, robin, ella}}},
 	}
 	kept := &keptMail{}
 	parties := func(id string) *PartyPeople {
@@ -72,7 +76,7 @@ func invitesAppWith(t *testing.T) (http.Handler, *Cache, *keptMail, *sampleSourc
 	}
 	mux := http.NewServeMux()
 	sources := newSampleSources(t)
-	Register(mux, cache, nil, d, func() []string { return nil }, linked, parties, sources.sources, ImageSearch{}, Mail{Sender: kept, From: "Helios When <when@example.org>", SigningKey: replySecret, ReplyTo: replyTo, Key: replyKey})
+	Register(mux, cache, nil, testDirectory, func() []string { return nil }, linked, parties, sources.sources, ImageSearch{}, Mail{Sender: kept, From: "Helios When <when@example.org>", SigningKey: replySecret, ReplyTo: replyTo, Key: replyKey})
 	return mux, cache, kept, sources
 }
 
@@ -1095,7 +1099,7 @@ func TestDeleteAndCancel(t *testing.T) {
 	if e := cache.Model().Event("meetup"); e == nil || !e.Cancelled || e.Status != StatusCancelled {
 		t.Errorf("after cancel: %+v", e)
 	}
-	if events := cache.Model().eventsFor(robin, nil); slices.ContainsFunc(events, func(e *Event) bool { return e.ID == "meetup" }) {
+	if events := cache.Model().eventsFor(testDirectory, robin, nil); slices.ContainsFunc(events, func(e *Event) bool { return e.ID == "meetup" }) {
 		t.Errorf("a cancelled event still on a guest's calendar")
 	}
 	waitFor(kept, before+2)
@@ -1262,7 +1266,7 @@ func TestInvitationIsPersonal(t *testing.T) {
 	call(t, jordan, "POST", "/api/calendar/invites/send", `{"id":"moms"}`)
 	m := cache.Model()
 	on := func(email string) bool {
-		return slices.ContainsFunc(m.eventsFor(email, nil), func(e *Event) bool { return e.ID == "moms" })
+		return slices.ContainsFunc(m.eventsFor(testDirectory, email, nil), func(e *Event) bool { return e.ID == "moms" })
 	}
 	if !on(robin) || on(sam) || on(ella) {
 		t.Errorf("robin's invitation on the calendars: robin %v, sam %v, ella %v", on(robin), on(sam), on(ella))
@@ -1275,13 +1279,17 @@ func TestInvitationIsPersonal(t *testing.T) {
 	call(t, jordan, "POST", "/api/calendar/invites/send", `{"id":"kids"}`)
 	m = cache.Model()
 	kids := func(email string) bool {
-		return slices.ContainsFunc(m.eventsFor(email, nil), func(e *Event) bool { return e.ID == "kids" })
+		return slices.ContainsFunc(m.eventsFor(testDirectory, email, nil), func(e *Event) bool { return e.ID == "kids" })
 	}
 	if !kids(sam) || !kids(robin) || kids(ella) {
 		t.Errorf("sam's invitation on the calendars: sam %v, robin %v, ella %v", kids(sam), kids(robin), kids(ella))
 	}
 	if v := inviteView(t, as(robin, mux), "kids"); len(v.Mine) != 1 || v.Mine[0].Email != sam || !v.Mine[0].Mine {
 		t.Errorf("robin's ask for sam's invitation: %+v", v.Mine)
+	}
+	testDirectory.parents[sam] = nil
+	if kids(robin) || m.Invited(testDirectory, robin, "kids") {
+		t.Errorf("a parent the directory no longer lists still sees sam's invitation")
 	}
 }
 

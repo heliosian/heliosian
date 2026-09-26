@@ -107,11 +107,9 @@ func (a app) viewer(email string) *viewer {
 		sources: a.sources, now: time.Now().In(calendar.Location), family: map[string]bool{email: true}, access: &groupAccess{}, ctx: context.Background(),
 	}
 	v.me = v.directory.Person(email)
-	for _, key := range v.directory.FamilyKeysOf(email) {
-		family := v.directory.Families[key]
-		for _, member := range append(append([]string{}, family.AdultEmails...), family.KidEmails...) {
-			v.family[member] = true
-		}
+	adults, kids := v.directory.Household(email)
+	for _, member := range append(adults, kids...) {
+		v.family[member.Email] = true
 	}
 	return v
 }

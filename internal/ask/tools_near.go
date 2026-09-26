@@ -44,15 +44,12 @@ func milesBetween(a, b who.Family) float64 {
 
 func (v *viewer) nearbyCard(key string, family who.Family) nearbyCard {
 	c := nearbyCard{Name: family.Name, City: cityOf(family.Address), Adults: []string{}, Students: []string{}, Link: whoBase + who.FamilyPath(key)}
-	for _, email := range family.AdultEmails {
-		if p := v.directory.Person(email); p != nil {
-			c.Adults = append(c.Adults, p.FullName)
-		}
+	adults, kids := v.directory.Members(key)
+	for _, p := range adults {
+		c.Adults = append(c.Adults, p.FullName)
 	}
-	for _, email := range family.KidEmails {
-		if p := v.directory.Person(email); p != nil {
-			c.Students = append(c.Students, p.FullName+" ("+placeWords(v, p)+")")
-		}
+	for _, p := range kids {
+		c.Students = append(c.Students, p.FullName+" ("+placeWords(v, p)+")")
 	}
 	return c
 }
@@ -61,11 +58,8 @@ func (v *viewer) familyMatches(family who.Family, classroom, grade string) bool 
 	if classroom == "" && grade == "" {
 		return true
 	}
-	for _, email := range family.KidEmails {
-		p := v.directory.Person(email)
-		if p == nil {
-			continue
-		}
+	_, kids := v.directory.Members(family.Key)
+	for _, p := range kids {
 		if (classroom == "" || strings.EqualFold(p.Classroom, classroom)) && (grade == "" || contains(p.Grade, grade)) {
 			return true
 		}

@@ -422,7 +422,7 @@ func TestICS(t *testing.T) {
 	m := load(t)
 	f := m.Feed("sample7feedtoken4jordan2whitfield")
 	at, _ := time.ParseInLocation(DateTimeFormat, "2026-09-01 08:00", Location)
-	out := string(ICS(m, f, nil, "https://calendar.heliosiandev.com:8080", at))
+	out := string(ICS(m, fakeDirectory{}, f, nil, "https://calendar.heliosiandev.com:8080", at))
 	for _, want := range []string{
 		"BEGIN:VCALENDAR\r\n", "X-WR-CALNAME:Whitfield school days\r\n", "END:VCALENDAR\r\n",
 		"UID:a4@sample\r\n", "DTSTART;VALUE=DATE:20260907\r\n", "DTEND;VALUE=DATE:20260908\r\n",
@@ -459,10 +459,16 @@ func TestICS(t *testing.T) {
 }
 
 type fakeDirectory struct {
-	people map[string]Person
-	kids   map[string][]Person
-	lists  []List
+	people     map[string]Person
+	kids       map[string][]Person
+	households map[string][]string
+	parents    map[string][]string
+	lists      []List
 }
+
+func (d fakeDirectory) Household(email string) []string { return d.households[email] }
+
+func (d fakeDirectory) Parents(email string) []string { return d.parents[email] }
 
 func (d fakeDirectory) Resolve(email string) string { return email }
 

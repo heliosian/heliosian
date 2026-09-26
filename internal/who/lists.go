@@ -51,11 +51,9 @@ func (m *Model) RoomParentLists(email string) []List {
 			if !p.IsStudent || bandLabel(gradeBands[p.Grade]) != label {
 				continue
 			}
-			for _, key := range m.FamilyKeysOf(p.Email) {
-				for _, adult := range m.Families[key].AdultEmails {
-					if adult != email && m.Person(adult) != nil {
-						people[adult] = true
-					}
+			for _, parent := range m.Parents(p.Email) {
+				if parent.Email != email {
+					people[parent.Email] = true
 				}
 			}
 		}

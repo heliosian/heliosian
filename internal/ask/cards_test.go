@@ -80,7 +80,7 @@ func TestLinkCardsKeepEachAppsVisibility(t *testing.T) {
 			}
 		}
 		seen := map[string]bool{}
-		for _, e := range v.calendar.EventsFor(email, v.sources.Linked(email)) {
+		for _, e := range v.calendar.EventsFor(v.sources.CalendarDirectory, email, v.sources.Linked(email)) {
 			seen[e.ID] = true
 			if !strings.HasPrefix(eventLink(e), whenBase) {
 				continue

@@ -111,8 +111,6 @@ type Classroom struct {
 
 type Roster struct {
 	Classrooms []Classroom
-	Households map[string][]string
-	Parents    map[string][]string
 }
 
 func (r Roster) Names() []string {

@@ -49,7 +49,7 @@ func uidOf(id string) string {
 // the parties and HCA events, and the owner's household's standing with
 // them as Going or Waitlisted - each carried when the feed's classrooms
 // and tags admit it.
-func ICS(model *Model, f *Feed, linked []Linked, origin string, now time.Time) []byte {
+func ICS(model *Model, directory Directory, f *Feed, linked []Linked, origin string, now time.Time) []byte {
 	lines := []string{
 		"BEGIN:VCALENDAR",
 		"VERSION:2.0",
@@ -62,7 +62,7 @@ func ICS(model *Model, f *Feed, linked []Linked, origin string, now time.Time) [
 		"X-PUBLISHED-TTL:PT1H",
 	}
 	stamp := now.UTC().Format(icsStamp)
-	for _, e := range model.eventsFor(f.Email, linked) {
+	for _, e := range model.eventsFor(directory, f.Email, linked) {
 		// The owner's own no, like their hiding it, keeps an event out.
 		if answer := model.AnswerOf(f.Email, e.ID); !f.Carries(e) || answer == AnswerHidden || answer == AnswerNo {
 			continue

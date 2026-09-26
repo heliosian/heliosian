@@ -107,14 +107,6 @@ func overrideBoolValue(person *Person, column string) bool {
 	return person.overrideRow[column] == "TRUE"
 }
 
-func familyOf(model *Model, email string) Family {
-	keys := model.FamilyKeysOf(email)
-	if len(keys) == 0 {
-		return Family{}
-	}
-	return model.Families[keys[0]]
-}
-
 func familyStringValue(family Family, column string) string {
 	cell := family.sheetRow[column]
 	if cell == "-" {
@@ -170,7 +162,7 @@ func (a admin) state(w http.ResponseWriter, r *http.Request) {
 	people := make([]personOption, 0, len(model.People))
 	for i := range model.People {
 		p := &model.People[i]
-		family := familyOf(model, p.Email)
+		family, _ := model.FamilyOf(p.Email)
 		people = append(people, personOption{
 			Name: p.FullName, Email: p.Email,
 			IsStaff: p.IsStaff, IsStudent: p.IsStudent, IsParent: p.IsParent,
@@ -618,7 +610,7 @@ func (a admin) setParentFields(w http.ResponseWriter, r *http.Request) {
 	diffStringCell(cells, "Phone", body.Phone, overrideStringValue(person, "Phone"))
 	diffStringCellNoBaseline(cells, "Room Parent", body.RoomParent, overrideStringValue(person, "Room Parent"))
 
-	family := familyOf(model, person.Email)
+	family, _ := model.FamilyOf(person.Email)
 	familyCells := store.Row{}
 	if family.Key != "" {
 		diffStringCell(familyCells, "Address", body.Address, familyStringValue(family, "Address"))

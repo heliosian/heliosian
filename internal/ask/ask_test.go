@@ -61,6 +61,8 @@ func (d sampleDirectory) Children(email string) []calendar.Person {
 	return out
 }
 
+func (sampleDirectory) Household(string) []string          { return nil }
+func (sampleDirectory) Parents(string) []string            { return nil }
 func (sampleDirectory) Alerts(string) ([]string, []string) { return nil, nil }
 func (sampleDirectory) ClassroomColors() map[string]string { return map[string]string{} }
 func (sampleDirectory) GradeColors() map[string]string     { return map[string]string{} }
