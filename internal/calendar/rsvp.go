@@ -128,13 +128,10 @@ func (a app) sees(email string, admin bool, e *Event) bool {
 	if admin || normalizeEmail(e.AddedBy) == email || a.isHost(email, admin, e) {
 		return true
 	}
-	switch e.Sharing {
-	case SharingLink:
-		return true
-	case SharingInvited:
+	if e.Sharing == SharingInvited {
 		return a.cache.Model().Listed(email, e.ID)
 	}
-	return !e.Declined
+	return true
 }
 
 func (a app) rsvp(w http.ResponseWriter, r *http.Request) {

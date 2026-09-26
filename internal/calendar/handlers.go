@@ -582,7 +582,7 @@ func (a app) tellAdmins(ctx context.Context, host, by string, e *Event) {
 		when += " · " + hours
 	}
 	lead := who + " shared an event on Helios When that is waiting for approval."
-	closing := "Approve and Decline are at the top of its page. Until then only the person who shared it and the admins see it."
+	closing := "Approve and Decline are at the top of its page. Until then it is shared by link: anyone with its link can open it."
 	subject := "Event to approve: "
 	if e.Sharing == SharingLink {
 		lead = who + " added an event shared by link on Helios When. It needs no approval: it is not on the calendar, only on the calendars of the people they invite and of those they send the link to who answer it."
@@ -701,6 +701,10 @@ func (a app) setStatus(w http.ResponseWriter, r *http.Request, status, did strin
 	e := a.cache.Model().Event(strings.TrimSpace(body.ID))
 	if e == nil || e.Source != SourceSheet {
 		http.Error(w, "that event is not one added by hand", http.StatusNotFound)
+		return
+	}
+	if status == StatusDeclined && e.Sharing != SharingPublic {
+		http.Error(w, "only a public event is declined", http.StatusBadRequest)
 		return
 	}
 	if !a.commit(w, r, actor, store.Update(EventsTab, store.Row{"Event ID": e.ID}, store.Row{"Status": status})) {

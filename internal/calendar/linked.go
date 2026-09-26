@@ -170,10 +170,10 @@ func (m *Model) eventsFor(email string, linked []Linked) []*Event {
 	answers := m.Answers[email]
 	// An event shared by link or by invitation that the person has
 	// answered, or their household was invited to, is on their calendar -
-	// and one waiting for approval, whose link works in the meantime.
+	// and one waiting for approval or declined, whose link works regardless.
 	events := m.Events
 	for _, e := range m.Pending {
-		if !e.Declined && !e.Cancelled && (answers[e.ID] != "" || m.invited[email][e.ID]) {
+		if !e.Cancelled && (answers[e.ID] != "" || m.invited[email][e.ID]) {
 			events = append(events[:len(events):len(events)], e)
 		}
 	}

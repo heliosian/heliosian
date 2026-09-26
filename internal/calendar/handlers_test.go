@@ -578,6 +578,15 @@ func TestAdminAddsAndCorrects(t *testing.T) {
 	if !sees(parent) || sees(other) {
 		t.Errorf("declined event seen by parent %v, another %v", sees(parent), sees(other))
 	}
+	if rec := call(t, other, "GET", "/api/calendar/event?id="+shared.IDs[0], ""); rec.Code != 200 {
+		t.Errorf("a declined event by its link: %d", rec.Code)
+	}
+	if rec := call(t, other, "POST", "/api/calendar/rsvp", `{"id":"`+shared.IDs[0]+`","answer":"yes"}`); rec.Code != 204 || !sees(other) {
+		t.Errorf("yes to a declined event: %d, on the calendar %v", rec.Code, sees(other))
+	}
+	if rec := call(t, admin, "POST", "/api/calendar/events/decline", `{"id":"sams-party"}`); rec.Code != 400 || cache.Model().Event("sams-party").Declined {
+		t.Errorf("declined a link event: %d", rec.Code)
+	}
 	if rec := call(t, admin, "POST", "/api/calendar/events/approve", `{"id":"`+shared.IDs[0]+`"}`); rec.Code != 204 || cache.Model().Event(shared.IDs[0]).Status != StatusApproved {
 		t.Errorf("approve after decline: %d", rec.Code)
 	}
