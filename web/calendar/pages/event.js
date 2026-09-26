@@ -2,7 +2,7 @@ import {state, isAdmin, isSystemAdmin, postedAndHosting, calendarLink, sourceWor
 import {dayTypeClass} from '/daytype.js';
 import {el, link, svg, paragraphs, button, toast, avatar, popup, copyText} from '../dom.js';
 import {dateCard} from '/datecard.js';
-import {uploadImage, openImageSearch, imageSearchOn} from '../images.js';
+import {uploadImage, openImageSearch, imageSearchOn} from '../imagecontrol.js';
 import {appOrigin} from '/toolbar.js';
 import {setTitle} from '../chrome.js';
 import {audienceChips, blocks} from '../events.js';
@@ -107,7 +107,7 @@ function heroImageBar(e) {
   };
   item('image', 'Upload image', () => file.click());
   if (imageSearchOn()) {
-    item('search', 'Find an image', () => openImageSearch(e.title, name => save(name)));
+    item('search', 'Find an image', () => openImageSearch(e.title, picked => save(picked.name)));
   }
   toggle.addEventListener('click', ev => {
     ev.stopPropagation();

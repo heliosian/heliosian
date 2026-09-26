@@ -146,21 +146,7 @@
 <label class="field"><span>Description</span><textarea id="link-description" maxlength="300" rows="3"></textarea></label>
 <label class="field"><span>URL</span><input type="url" id="link-url" maxlength="1000" required placeholder="https://"></label>
 <label class="field"><span>Category</span><select id="link-category"></select></label>
-<div class="field field-image">
-<span>Image</span>
-<small class="field-lead">Optional - without one the category's emoji shows.</small>
-<div class="image-drop" id="link-image-drop">
-<img id="link-image-preview" alt="" hidden>
-<div class="image-placeholder" id="link-image-placeholder"><svg viewBox="0 0 24 24"><path d="M3 5h18v14H3zM3 16l5-5 4 4 3-3 6 6"/></svg><strong>Drag and drop an image here</strong><small>or click to choose a file</small></div>
-<div class="image-drop-buttons">
-<label class="button button-secondary button-small">Choose image<input type="file" id="link-image-file" accept="image/*" hidden></label>
-<button type="button" class="button button-secondary button-small" id="link-image-find">Find an image</button>
-</div>
-<small class="image-drop-note">JPG, PNG or GIF (max 8 MB)</small>
-<button type="button" class="link-button" id="link-image-crop" hidden>Crop</button>
-<button type="button" class="link-button" id="link-image-remove" hidden>Remove</button>
-</div>
-</div>
+<div id="link-image"></div>
 </div>
 <div class="form-tab-body" id="link-tab-visibility" hidden>
 <label class="field field-toggle"><span>Visible</span><input type="checkbox" id="link-visible" checked></label>
@@ -240,17 +226,6 @@
 <span class="save-status" id="category-status"></span>
 </div>
 </form>
-</div>
-</div>
-<div class="modal-overlay" id="image-search-modal" hidden>
-<div class="modal modal-wide">
-<div class="modal-header"><h2>Find an image</h2><button class="modal-close" type="button" data-close aria-label="Close">&times;</button></div>
-<div class="image-search-bar">
-<input type="search" id="image-search-input" placeholder="Search for a picture…" autocomplete="off" spellcheck="false">
-<button type="button" class="button" id="image-search-go"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg><span>Search</span></button>
-</div>
-<div class="image-search-status" id="image-search-status"></div>
-<div class="image-search-grid" id="image-search-grid"></div>
 </div>
 </div>
 <div class="toast" id="toast" hidden></div>

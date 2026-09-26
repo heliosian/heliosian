@@ -1,8 +1,8 @@
 import {state, me, tagGroups, bands, classroomNames, myClassrooms, event, eventDates, eventPath, addDays, parseDate, dayLabel} from '../state.js';
-import {el, link, svg, button, toast} from '../dom.js';
+import {el, link, svg, button, toast, popup} from '../dom.js';
 import {setTitle} from '../chrome.js';
 import {eventForm} from '../eventform.js';
-import {openSheet, imageControl} from '../images.js';
+import {imageControl} from '../imagecontrol.js';
 
 async function refreshModel() {
   const {load} = await import('../app.js');
@@ -361,7 +361,7 @@ function openAddEvent(from, shift, repaint) {
     shut();
     repaint();
   }});
-  shut = openSheet(from ? 'Add a copy of ' + from.title : 'Add an event', form);
+  shut = popup(from ? 'Add a copy of ' + from.title : 'Add an event', form, {wide: true}).shut;
 }
 
 // whenPicker is a date and a time for one end of an event, blank time for

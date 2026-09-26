@@ -804,7 +804,7 @@ func (a app) uploadImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"name": imageFolder + "/" + name, "url": "/" + imageFolder + "/" + name})
+	json.NewEncoder(w).Encode(map[string]string{"name": imageFolder + "/" + name})
 }
 
 func (a app) setTags(w http.ResponseWriter, r *http.Request) {

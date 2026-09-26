@@ -1,8 +1,10 @@
 import {state, me, isAdmin, household, billable, admits, audienceWords, ticketFor, money, currentCelebration, partyPath, party} from './state.js';
 import {addressSuggest} from '/address.js';
 import {el, svg, toast, button, avatar} from './dom.js';
-import {openCropTool} from '/crop.js';
 import {tabStrip} from '/tabs.js';
+import {imageTools} from '/images.js';
+
+export const {uploadImage, uploadAndSave, imageSearchOn, openImageSearch, imagePicker} = imageTools('/api/celebrate', {state, toast});
 
 let modalState = null;
 
@@ -26,16 +28,6 @@ export async function send(method, url, body) {
 async function goTo(path) {
   const {navigate} = await import('./app.js');
   navigate(path);
-}
-
-export async function uploadImage(file) {
-  const body = new FormData();
-  body.append('image', file);
-  const res = await fetch('/api/celebrate/image', {method: 'POST', body});
-  if (!res.ok) {
-    throw new Error(await res.text());
-  }
-  return (await res.json()).name;
 }
 
 // openSheet is a second layer above the modal for something the form needs
@@ -228,186 +220,6 @@ function whenPickers(label, value) {
   pair.append(date, time);
   wrap.append(pair);
   return {wrap, date, time, value: () => (date.value ? (time.value ? `${date.value} ${time.value}` : date.value) : '')};
-}
-
-// imagePicker uploads on selection, so the save that follows only records the
-// name the server handed back; Find an image searches the libraries instead.
-function imagePicker(current, currentUrl, options) {
-  const wrap = el('div', 'field');
-  wrap.append(el('span', '', (options && options.label) || 'Image'));
-  if (options && options.hint) {
-    wrap.append(el('small', 'field-lead', options.hint));
-  }
-  const row = el('div', 'image-drop');
-  const preview = el('img');
-  preview.alt = '';
-  const placeholder = el('div', 'image-placeholder');
-  placeholder.append(svg('image'), el('strong', '', 'Drag and drop an image here'), el('small', '', 'or click to choose a file'));
-  const choose = el('label', 'button button-secondary button-small', 'Choose image');
-  const file = el('input');
-  file.type = 'file';
-  file.accept = 'image/*';
-  file.hidden = true;
-  choose.append(file);
-  const remove = el('button', 'link-button', 'Remove');
-  remove.type = 'button';
-  const crop = el('button', 'link-button', 'Crop');
-  crop.type = 'button';
-  // A plain picker takes an upload whole - a finished poster is never
-  // cropped or found in a library.
-  const plain = Boolean(options && options.plain);
-  let name = current || '';
-  const show = url => {
-    preview.hidden = !url;
-    placeholder.hidden = Boolean(url);
-    remove.hidden = !url;
-    crop.hidden = !url || plain;
-    if (url) {
-      preview.src = url;
-    }
-  };
-  show(currentUrl);
-  const upload = async picked => {
-    if (!picked) {
-      return;
-    }
-    setStatus('Uploading image…');
-    try {
-      name = await uploadImage(picked);
-      show('/' + name);
-      setStatus('');
-    } catch (err) {
-      setStatus(err.message, true);
-    }
-    file.value = '';
-  };
-  file.addEventListener('change', () => upload(file.files[0]));
-  remove.addEventListener('click', () => {
-    name = '';
-    show('');
-  });
-  crop.addEventListener('click', () => openCropTool(preview.src, false, async blob => {
-    await upload(new File([blob], 'crop.jpg', {type: 'image/jpeg'}));
-    return true;
-  }));
-  const find = el('button', 'button button-secondary button-small image-find', 'Find an image');
-  find.type = 'button';
-  find.hidden = plain || !imageSearchOn();
-  find.addEventListener('click', e => {
-    e.stopPropagation();
-    openImageSearch(options && options.query ? options.query() : '', async picked => {
-      name = picked;
-      show('/' + picked);
-    });
-  });
-  row.addEventListener('click', e => {
-    if (!e.target.closest('label, button')) {
-      file.click();
-    }
-  });
-  row.addEventListener('dragover', e => {
-    e.preventDefault();
-    row.classList.add('is-dragover');
-  });
-  row.addEventListener('dragleave', () => row.classList.remove('is-dragover'));
-  row.addEventListener('drop', e => {
-    e.preventDefault();
-    row.classList.remove('is-dragover');
-    upload(e.dataTransfer.files[0]);
-  });
-  const buttons = el('div', 'image-drop-buttons');
-  buttons.append(choose, find);
-  row.append(preview, placeholder, buttons, el('small', 'image-drop-note', 'JPG, PNG or GIF (max 8 MB)'), crop, remove);
-  wrap.append(row);
-  return {wrap, value: () => name};
-}
-
-export function imageSearchOn() {
-  return Boolean(state.model && state.model.imageSearch);
-}
-
-// openImageSearch is the picture picker: a search box, a grid of results, and
-// a click on one imports it through the server - which fetches and stores the
-// picture like an upload - and hands the stored name to onPicked.
-export function openImageSearch(initial, onPicked) {
-  const wrap = el('div', 'image-search');
-  const bar = el('div', 'image-search-bar');
-  const input = el('input');
-  input.type = 'search';
-  input.value = initial || '';
-  input.placeholder = 'Search for a picture…';
-  const go = button('Search', 'search', 'button', () => run());
-  bar.append(input, go);
-  const status = el('div', 'image-search-status');
-  const grid = el('div', 'image-search-grid');
-  wrap.append(bar, status, grid);
-  let busy = false;
-  const run = async () => {
-    const q = input.value.trim();
-    if (!q || busy) {
-      return;
-    }
-    busy = true;
-    status.textContent = 'Searching…';
-    grid.replaceChildren();
-    try {
-      const res = await fetch(`/api/celebrate/images/search?q=${encodeURIComponent(q)}`);
-      if (!res.ok) {
-        throw new Error(await res.text());
-      }
-      const hits = await res.json();
-      status.textContent = hits.length ? '' : 'Nothing found.';
-      for (const hit of hits) {
-        const tile = el('button', 'image-search-hit');
-        tile.type = 'button';
-        const img = el('img');
-        img.src = hit.thumb;
-        img.alt = hit.title;
-        img.loading = 'lazy';
-        img.addEventListener('load', () => img.classList.add('is-loaded'));
-        tile.append(img);
-        tile.title = `${hit.title} - ${hit.width}×${hit.height}`;
-        tile.addEventListener('click', async () => {
-          if (busy) {
-            return;
-          }
-          busy = true;
-          status.textContent = 'Importing…';
-          tile.classList.add('is-picked');
-          try {
-            const imported = await fetch('/api/celebrate/images/import', {
-              method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id: hit.id}),
-            });
-            if (!imported.ok) {
-              throw new Error(await imported.text());
-            }
-            const {name} = await imported.json();
-            shut();
-            await onPicked(name);
-          } catch (err) {
-            status.textContent = err.message;
-            tile.classList.remove('is-picked');
-          }
-          busy = false;
-        });
-        grid.append(tile);
-      }
-    } catch (err) {
-      status.textContent = err.message;
-    }
-    busy = false;
-  };
-  input.addEventListener('keydown', e => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      run();
-    }
-  });
-  const shut = openSheet('Find an image', [wrap], {wide: true});
-  input.focus();
-  if (input.value) {
-    run();
-  }
 }
 
 // tabbedFields lays a long form out as tabs. Every field stays in the form -
@@ -1465,8 +1277,8 @@ export function openParty(p) {
   const callout = el('div', 'callout-field');
   callout.append(createCallout, calloutBox);
   const audience = text(p ? p.audience : '', {maxLength: 60, placeholder: 'Adults, Families, Kids & Adults, Grades 3-6'});
-  const image = imagePicker(p ? p.image : '', p ? p.imageUrl : '', {query: () => title.value, hint: 'The wide banner across the page and the card.'});
-  const flyer = imagePicker(p ? p.flyer : '', p ? p.flyerUrl : '', {label: 'Flyer', plain: true, hint: 'The party\u2019s poster, shown whole beside the page. Optional.'});
+  const image = imagePicker(p ? p.image : '', p ? p.imageUrl : '', {dropzone: true, query: () => title.value, hint: 'The wide banner across the page and the card.'});
+  const flyer = imagePicker(p ? p.flyer : '', p ? p.flyerUrl : '', {dropzone: true, label: 'Flyer', plain: true, hint: 'The party\u2019s poster, shown whole beside the page. Optional.'});
   // The friendly address, with the whole address it makes shown under it.
   const pretty = text(p ? p.prettyId : '', {maxLength: 40, placeholder: 'fondue'});
   const prettyHint = el('small', '', '');
@@ -1840,17 +1652,6 @@ export function whenInputs(startValue, endValue) {
   };
 }
 
-// uploadAndSave uploads the chosen file and records it in one step, so the
-// picture updates as soon as it lands with no separate Save to remember.
-export async function uploadAndSave(save, file) {
-  try {
-    const name = await uploadImage(file);
-    await save({image: name});
-  } catch (err) {
-    toast(err.message);
-  }
-}
-
 // openCelebration adds or edits a year's celebration.
 export function openCelebration(c) {
   const code = text(c ? c.code : '', {required: true, maxLength: 20, placeholder: 'SC-2027'});
@@ -1881,7 +1682,7 @@ export function openCelebration(c) {
   const kindField = field('Button', kind.wrap, 'Save the Date adds the celebration - its date, place and theme - to the reader\u2019s calendar.');
   const current = checkbox('This is the current celebration', c ? c.current : true, 'Its parties are what the parties page lists first.');
   const banner = checkbox('Show its banner at the top', c ? c.banner : false, 'The band across the top of the parties page advertises it, whichever year\u2019s parties are listed. Only one celebration is the banner.');
-  const image = imagePicker(c ? c.image : '', c ? c.imageUrl : '', {query: () => title.value, label: 'Banner image', hint: 'The background of the banner across the top of the parties page.'});
+  const image = imagePicker(c ? c.image : '', c ? c.imageUrl : '', {dropzone: true, query: () => title.value, label: 'Banner image', hint: 'The background of the banner across the top of the parties page.'});
   openModal(c ? `Edit ${c.title}` : 'Add a celebration', [
     field('Code', code, 'Short and unique, like SC-2027. Parties are filed under it.', true), field('Title', title, 'The banner\u2019s big line: "Helios Spring Celebration 2026".', true),
     field('Subtitle', subtitle, 'The banner\u2019s small line above it: the theme.'),

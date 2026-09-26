@@ -1,7 +1,7 @@
 import {state, superOn, categoryTitles, linkCategoryTitles, tagLabelsOf} from './state.js';
 import {el, svg, categoryIcons, iconOf, toast} from './dom.js';
 import {load} from './app.js';
-import {openCropTool} from '/crop.js';
+import {imageTools} from '/images.js';
 import {createPersonPicker} from '/picker.js';
 import {appOrigin} from '/toolbar.js';
 import {rulesEditor} from '/rules.js';
@@ -15,84 +15,16 @@ const widgetModal = document.querySelector('#widget-modal');
 const appForm = document.querySelector('#app-form');
 const categoryForm = document.querySelector('#category-form');
 const categoriesModal = document.querySelector('#categories-modal');
-const imageSearchModal = document.querySelector('#image-search-modal');
+const {imagePicker} = imageTools('/api/apps', {state, toast});
 
 let editingLink = null;
 let editingCategory = null;
-let pendingLinkImage = '';
+let linkImage = null;
 
 function setStatus(selector, message, error) {
   const status = document.querySelector(selector);
   status.textContent = message;
   status.classList.toggle('error', Boolean(error));
-}
-
-async function uploadImage(file) {
-  const body = new FormData();
-  body.append('image', file);
-  const res = await fetch('/api/apps/image', {method: 'POST', body});
-  if (!res.ok) {
-    throw new Error(await res.text());
-  }
-  return (await res.json()).name;
-}
-
-function showImage(prefix, url) {
-  const preview = document.querySelector(`#${prefix}-image-preview`);
-  const placeholder = document.querySelector(`#${prefix}-image-placeholder`);
-  preview.hidden = !url;
-  placeholder.hidden = Boolean(url);
-  for (const id of ['remove', 'crop']) {
-    document.querySelector(`#${prefix}-image-${id}`).hidden = !url;
-  }
-  if (url) {
-    preview.src = url;
-  }
-}
-
-function wireImagePicker(prefix, onChange) {
-  const zone = document.querySelector(`#${prefix}-image-drop`);
-  const file = document.querySelector(`#${prefix}-image-file`);
-  const preview = document.querySelector(`#${prefix}-image-preview`);
-  const upload = async picked => {
-    if (!picked) {
-      return;
-    }
-    setStatus(`#${prefix}-status`, 'Uploading image…');
-    try {
-      const name = await uploadImage(picked);
-      onChange(name);
-      showImage(prefix, '/' + name);
-      setStatus(`#${prefix}-status`, '');
-    } catch (err) {
-      setStatus(`#${prefix}-status`, err.message, true);
-    }
-    file.value = '';
-  };
-  file.addEventListener('change', () => upload(file.files[0]));
-  zone.addEventListener('click', e => {
-    if (!e.target.closest('label, button')) {
-      file.click();
-    }
-  });
-  zone.addEventListener('dragover', e => {
-    e.preventDefault();
-    zone.classList.add('is-dragover');
-  });
-  zone.addEventListener('dragleave', () => zone.classList.remove('is-dragover'));
-  zone.addEventListener('drop', e => {
-    e.preventDefault();
-    zone.classList.remove('is-dragover');
-    upload(e.dataTransfer.files[0]);
-  });
-  document.querySelector(`#${prefix}-image-crop`).addEventListener('click', () => openCropTool(preview.src, false, async blob => {
-    await upload(new File([blob], 'crop.jpg', {type: 'image/jpeg'}));
-    return true;
-  }));
-  document.querySelector(`#${prefix}-image-remove`).addEventListener('click', () => {
-    onChange('');
-    showImage(prefix, '');
-  });
 }
 
 async function send(method, url, body) {
@@ -243,7 +175,12 @@ function showTab(prefix, key) {
 
 export function openLinkEditor(link, category) {
   editingLink = link;
-  pendingLinkImage = link ? link.image || '' : '';
+  linkImage = imagePicker(link ? link.image || '' : '', link && link.imageUrl ? link.imageUrl : '', {
+    dropzone: true,
+    hint: 'Optional - without one the category’s emoji shows.',
+    query: () => document.querySelector('#link-title').value.trim(),
+  });
+  document.querySelector('#link-image').replaceChildren(linkImage.wrap);
   document.querySelector('#link-modal-title').textContent = link ? 'Edit Link' : 'Add Link';
   document.querySelector('#link-title').value = link ? link.title : '';
   document.querySelector('#link-description').value = link ? link.description || '' : '';
@@ -251,9 +188,7 @@ export function openLinkEditor(link, category) {
   document.querySelector('#link-visible').checked = link ? link.visible : true;
   linkAudience = audienceCard(document.querySelector('#link-audience'), link ? link.rules : [], 'No rules means everyone.', 'link:' + (link ? link.title : ''));
   document.querySelector('#link-delete').hidden = !link;
-  document.querySelector('#link-image-find').hidden = !imageSearchOn();
   fillCategories(link ? link.category : category || linkCategoryTitles()[0]);
-  showImage('link', link && link.imageUrl ? link.imageUrl : '');
   setStatus('#link-status', '');
   showTab('link', 'details');
   linkModal.hidden = false;
@@ -589,7 +524,7 @@ async function saveLink(e) {
       title: document.querySelector('#link-title').value,
       description: document.querySelector('#link-description').value,
       url: document.querySelector('#link-url').value,
-      image: pendingLinkImage,
+      image: linkImage.value(),
       category: document.querySelector('#link-category').value,
       visible: document.querySelector('#link-visible').checked,
       rules: linkAudience.rules,
@@ -669,25 +604,14 @@ export function initEditing() {
   });
   document.querySelector('#link-delete').addEventListener('click', deleteLink);
   document.querySelector('#category-delete').addEventListener('click', deleteCategory);
-  wireImagePicker('link', name => {
-    pendingLinkImage = name;
-  });
-  document.querySelector('#link-image-find').addEventListener('click', e => {
-    e.stopPropagation();
-    openImageSearch(document.querySelector('#link-title').value.trim(), name => {
-      pendingLinkImage = name;
-      showImage('link', '/' + name);
-    });
-  });
   wireEmojiPicker();
-  wireImageSearch();
   for (const button of document.querySelectorAll('[data-close]')) {
     button.addEventListener('click', () => {
       button.closest('.modal-overlay').hidden = true;
     });
   }
   document.querySelector('#widget-form').addEventListener('submit', saveWidgetAudience);
-  for (const overlay of [linkModal, categoryModal, appModal, categoriesModal, imageSearchModal, widgetModal]) {
+  for (const overlay of [linkModal, categoryModal, appModal, categoriesModal, widgetModal]) {
     overlay.addEventListener('click', e => {
       if (e.target === overlay) {
         overlay.hidden = true;
@@ -703,96 +627,5 @@ export function initEditing() {
       return;
     }
     categoriesModal.hidden = true;
-  });
-}
-
-let onImagePicked = null;
-let imageSearchBusy = false;
-
-function imageSearchOn() {
-  return Boolean(state.model && state.model.imageSearch);
-}
-
-function openImageSearch(initial, onPicked) {
-  onImagePicked = onPicked;
-  const input = document.querySelector('#image-search-input');
-  input.value = initial || '';
-  document.querySelector('#image-search-grid').replaceChildren();
-  document.querySelector('#image-search-status').textContent = '';
-  imageSearchModal.hidden = false;
-  input.focus();
-  if (input.value) {
-    runImageSearch();
-  }
-}
-
-async function runImageSearch() {
-  const q = document.querySelector('#image-search-input').value.trim();
-  const status = document.querySelector('#image-search-status');
-  const grid = document.querySelector('#image-search-grid');
-  if (!q || imageSearchBusy) {
-    return;
-  }
-  imageSearchBusy = true;
-  status.textContent = 'Searching…';
-  grid.replaceChildren();
-  try {
-    const res = await fetch(`/api/apps/images/search?q=${encodeURIComponent(q)}`);
-    if (!res.ok) {
-      throw new Error(await res.text());
-    }
-    const hits = await res.json();
-    status.textContent = hits.length ? '' : 'Nothing found.';
-    for (const hit of hits) {
-      const tile = el('button', 'image-search-hit');
-      tile.type = 'button';
-      const img = el('img');
-      img.src = hit.thumb;
-      img.alt = hit.title;
-      img.loading = 'lazy';
-      img.addEventListener('load', () => img.classList.add('is-loaded'));
-      tile.append(img);
-      tile.title = `${hit.title} - ${hit.width}×${hit.height}`;
-      tile.addEventListener('click', () => importImage(hit, tile));
-      grid.append(tile);
-    }
-  } catch (err) {
-    status.textContent = err.message;
-  }
-  imageSearchBusy = false;
-}
-
-async function importImage(hit, tile) {
-  const status = document.querySelector('#image-search-status');
-  if (imageSearchBusy) {
-    return;
-  }
-  imageSearchBusy = true;
-  status.textContent = 'Importing…';
-  tile.classList.add('is-picked');
-  try {
-    const res = await fetch('/api/apps/images/import', {
-      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id: hit.id}),
-    });
-    if (!res.ok) {
-      throw new Error(await res.text());
-    }
-    const {name} = await res.json();
-    imageSearchModal.hidden = true;
-    onImagePicked(name);
-  } catch (err) {
-    status.textContent = err.message;
-    tile.classList.remove('is-picked');
-  }
-  imageSearchBusy = false;
-}
-
-function wireImageSearch() {
-  document.querySelector('#image-search-go').addEventListener('click', runImageSearch);
-  document.querySelector('#image-search-input').addEventListener('keydown', e => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      runImageSearch();
-    }
   });
 }

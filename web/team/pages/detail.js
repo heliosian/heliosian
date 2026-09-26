@@ -100,7 +100,7 @@ function heroImageBar(node, save) {
       menu.append(b);
     };
     item('up', 'Upload image', () => file.click());
-    item('search', 'Find an image', () => openImageSearch(node.title, picked => save({image: picked})));
+    item('search', 'Find an image', () => openImageSearch(node.title, picked => save({image: picked.name})));
     toggle.addEventListener('click', e => {
       e.stopPropagation();
       menu.hidden = !menu.hidden;

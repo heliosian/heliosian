@@ -106,7 +106,7 @@ function heroImageBar(p, save) {
       menu.append(b);
     };
     item('up', 'Upload image', () => file.click());
-    item('search', 'Find an image', () => openImageSearch(p.title, picked => save({image: picked})));
+    item('search', 'Find an image', () => openImageSearch(p.title, picked => save({image: picked.name})));
     toggle.addEventListener('click', e => {
       e.stopPropagation();
       menu.hidden = !menu.hidden;
@@ -655,7 +655,7 @@ function flyerCard(p, editing) {
         return;
       }
       try {
-        const name = await uploadImage(file.files[0]);
+        const {name} = await uploadImage(file.files[0]);
         await savePartyFields(p, {flyer: name});
       } catch (err) {
         toast(err.message);

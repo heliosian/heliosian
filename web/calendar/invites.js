@@ -4,7 +4,7 @@ import {appOrigin} from '/toolbar.js';
 import {rulesEditor, filterWidgets} from '/rules.js';
 import {addressSuggest} from '/address.js';
 import {createPersonPicker} from '/picker.js';
-import {imageControl} from './images.js';
+import {imageControl, uploadImage} from './imagecontrol.js';
 
 const answerWords = {yes: 'Yes', maybe: 'Maybe', no: 'No'};
 
@@ -915,7 +915,6 @@ export function flyerCard(e, view, refresh) {
         return;
       }
       try {
-        const {uploadImage} = await import('./images.js');
         const made = await uploadImage(file.files[0]);
         await save(made.name);
       } catch (err) {
@@ -946,7 +945,6 @@ export function addFlyerLink(e, view, refresh) {
       return;
     }
     try {
-      const {uploadImage} = await import('./images.js');
       const made = await uploadImage(file.files[0]);
       await post('PUT', '/api/calendar/invites/settings', {id: e.id, flyer: made.name});
       toast('Flyer saved');
