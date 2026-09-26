@@ -3,8 +3,6 @@ package calendar
 import (
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"html"
@@ -46,10 +44,7 @@ type app struct {
 
 type ImageSearch = imagesearch.Search
 
-const (
-	imageFolder  = "category-images"
-	maxImageSize = 8 << 20
-)
+const imageFolder = "category-images"
 
 func Register(mux *http.ServeMux, cache *Cache, store *blob.Store, directory Directory, superAdmins func() []string, linked func(email string) []Linked, celebrate Celebrate, sources func() filter.Sources, search ImageSearch, mailbox Mail) Hooks {
 	if search.UserAgent == "" {
@@ -108,10 +103,7 @@ func Register(mux *http.ServeMux, cache *Cache, store *blob.Store, directory Dir
 	mux.HandleFunc("POST /api/calendar/events/when", a.admin(a.moveEvent))
 	mux.HandleFunc("DELETE /api/calendar/settings", a.forgetSetting)
 	mux.HandleFunc("POST /api/calendar/tags", a.setTags)
-	mux.HandleFunc("POST /api/calendar/image", a.uploadImage)
-	mux.HandleFunc("GET /api/calendar/images/search", a.search.ServeSearch)
-	mux.HandleFunc("GET /api/calendar/images/thumb", a.search.ServeThumb)
-	mux.HandleFunc("POST /api/calendar/images/import", a.importImage)
+	a.search.Register(mux, "/api/calendar", imageFolder, imagesearch.Members)
 	mux.HandleFunc("GET /open/feed/{file}", a.feed)
 	mux.HandleFunc("GET /open/share/upcoming.png", a.shareUpcoming)
 	mux.HandleFunc("GET /open/share/{id...}", a.shareCard)
@@ -413,10 +405,6 @@ func (a app) admin(next http.HandlerFunc) http.HandlerFunc {
 		}
 		next(w, r)
 	}
-}
-
-func (a app) importImage(w http.ResponseWriter, r *http.Request) {
-	a.search.ServeImport(w, r, imageFolder, maxImageSize)
 }
 
 func (a app) setKeywords(w http.ResponseWriter, r *http.Request) {
@@ -775,36 +763,6 @@ func (a app) forgetSetting(w http.ResponseWriter, r *http.Request) {
 	}
 	slog.InfoContext(r.Context(), "calendar: view forgotten", "actor", email)
 	w.WriteHeader(http.StatusNoContent)
-}
-
-func (a app) uploadImage(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, maxImageSize)
-	file, header, err := r.FormFile("image")
-	if err != nil {
-		http.Error(w, "an image file is required", http.StatusBadRequest)
-		return
-	}
-	defer file.Close()
-	content, err := io.ReadAll(file)
-	if err != nil {
-		http.Error(w, "could not read the image", http.StatusBadRequest)
-		return
-	}
-	mimeType := http.DetectContentType(content)
-	ext := map[string]string{"image/jpeg": ".jpg", "image/png": ".png", "image/gif": ".gif", "image/webp": ".webp"}[mimeType]
-	if ext == "" {
-		http.Error(w, fmt.Sprintf("%s is not a supported image", header.Filename), http.StatusBadRequest)
-		return
-	}
-	sum := sha256.Sum256(content)
-	name := hex.EncodeToString(sum[:]) + ext
-	if err := a.store.Put(imageFolder, name, mimeType, content); err != nil {
-		slog.ErrorContext(r.Context(), "[ERROR] calendar: store image", "error", err)
-		http.Error(w, "could not store the image", http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"name": imageFolder + "/" + name})
 }
 
 func (a app) setTags(w http.ResponseWriter, r *http.Request) {

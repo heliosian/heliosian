@@ -745,6 +745,7 @@ func NewCore(cfg Config) *Core {
 	queue := store.NewQueue()
 	queue.Register(cfg.Store.Load)
 	cfg.ImageSearch.Stock = imagesearch.NewStock(cfg.Store)
+	cfg.ImageSearch.Limits = imagesearch.NewLimits()
 	settings, err := config.NewCache(cfg.Source, cfg.Writer, queue)
 	if err != nil {
 		logging.Fatal("load config", "error", err)

@@ -2,9 +2,7 @@ package celebrate
 
 import (
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/csv"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -26,7 +24,6 @@ import (
 
 const (
 	imageFolder           = "party-images"
-	maxImageSize          = 8 << 20
 	shell                 = "web/celebrate/index.html"
 	maxTicketsPerPurchase = 20
 )
@@ -69,10 +66,7 @@ func Register(mux *http.ServeMux, cache *Cache, store *blob.Store, directory Dir
 	}
 	mux.HandleFunc("GET /api/celebrate/model", a.model)
 	mux.HandleFunc("GET /api/celebrate/people", a.people)
-	mux.HandleFunc("GET /api/celebrate/images/search", a.search.ServeSearch)
-	mux.HandleFunc("GET /api/celebrate/images/thumb", a.search.ServeThumb)
-	mux.HandleFunc("POST /api/celebrate/images/import", a.importImage)
-	mux.HandleFunc("POST /api/celebrate/image", a.uploadImage)
+	a.search.Register(mux, "/api/celebrate", imageFolder, imagesearch.Members)
 	mux.HandleFunc("GET /open/share/upcoming.png", a.shareUpcoming)
 	mux.HandleFunc("GET /open/share/{id}", a.shareCard)
 	mux.HandleFunc("POST /api/celebrate/tickets", a.buyTickets)
@@ -1247,40 +1241,6 @@ func (a app) saveSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	slog.InfoContext(r.Context(), "celebrate: changed the settings", "actor", actor)
 	w.WriteHeader(http.StatusNoContent)
-}
-
-func (a app) importImage(w http.ResponseWriter, r *http.Request) {
-	a.search.ServeImport(w, r, imageFolder, maxImageSize)
-}
-
-func (a app) uploadImage(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, maxImageSize)
-	file, header, err := r.FormFile("image")
-	if err != nil {
-		http.Error(w, "an image file is required", http.StatusBadRequest)
-		return
-	}
-	defer file.Close()
-	content, err := io.ReadAll(file)
-	if err != nil {
-		http.Error(w, "could not read the image", http.StatusBadRequest)
-		return
-	}
-	mimeType := http.DetectContentType(content)
-	ext := map[string]string{"image/jpeg": ".jpg", "image/png": ".png", "image/gif": ".gif", "image/webp": ".webp"}[mimeType]
-	if ext == "" {
-		http.Error(w, fmt.Sprintf("%s is not a supported image", header.Filename), http.StatusBadRequest)
-		return
-	}
-	sum := sha256.Sum256(content)
-	name := hex.EncodeToString(sum[:]) + ext
-	if err := a.store.Put(imageFolder, name, mimeType, content); err != nil {
-		slog.ErrorContext(r.Context(), "celebrate: store image", "error", err)
-		http.Error(w, "could not store the image", http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"name": imageFolder + "/" + name})
 }
 
 func (a app) invoicesCSV(w http.ResponseWriter, r *http.Request) {

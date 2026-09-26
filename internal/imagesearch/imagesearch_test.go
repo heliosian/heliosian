@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"image"
 	"image/png"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -14,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"heliosian/internal/auth"
 	"heliosian/internal/blob"
 )
 
@@ -46,7 +49,7 @@ func TestStockFetchedOnce(t *testing.T) {
 
 	thumb := func(query string) *httptest.ResponseRecorder {
 		w := httptest.NewRecorder()
-		s.ServeThumb(w, httptest.NewRequest(http.MethodGet, "/api/team/images/thumb?"+query, nil))
+		s.serveThumb(w, httptest.NewRequest(http.MethodGet, "/api/team/images/thumb?"+query, nil))
 		return w
 	}
 	for range 2 {
@@ -73,7 +76,7 @@ func TestStockFetchedOnce(t *testing.T) {
 
 	imported := func(body string) (int, string) {
 		w := httptest.NewRecorder()
-		s.ServeImport(w, httptest.NewRequest(http.MethodPost, "/api/team/images/import", strings.NewReader(body)), "activity-images", 8<<20)
+		s.serveImport(w, httptest.NewRequest(http.MethodPost, "/api/team/images/import", strings.NewReader(body)), "activity-images")
 		var answer struct {
 			Name string `json:"name"`
 		}
@@ -104,7 +107,7 @@ func TestStockFetchedOnce(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	Search{Stock: NewStock(blob.NewMemory())}.ServeSearch(w, httptest.NewRequest(http.MethodGet, "/api/team/images/search?q=soccer", nil))
+	Search{Stock: NewStock(blob.NewMemory())}.serveSearch(w, httptest.NewRequest(http.MethodGet, "/api/team/images/search?q=soccer", nil))
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("search with no library: %d, want 400", w.Code)
 	}
@@ -139,7 +142,7 @@ func TestThumbnailFetchedOnceUnderLoad(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			w := httptest.NewRecorder()
-			s.ServeThumb(w, httptest.NewRequest(http.MethodGet, "/api/team/images/thumb?id="+results[i%len(results)].hit.ID, nil))
+			s.serveThumb(w, httptest.NewRequest(http.MethodGet, "/api/team/images/thumb?id="+results[i%len(results)].hit.ID, nil))
 			codes[i] = w.Code
 		}()
 	}
@@ -161,6 +164,112 @@ func TestThumbnailFetchedOnceUnderLoad(t *testing.T) {
 
 func letters(i int) string {
 	return string(rune('a'+i%26)) + string(rune('a'+i/26))
+}
+
+func upload(t *testing.T, mux *http.ServeMux, as, path string, content []byte) *httptest.ResponseRecorder {
+	t.Helper()
+	var body bytes.Buffer
+	form := multipart.NewWriter(&body)
+	part, err := form.CreateFormFile("image", "picture.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	part.Write(content)
+	form.Close()
+	req := httptest.NewRequest(http.MethodPost, path, &body)
+	req.Header.Set("Content-Type", form.FormDataContentType())
+	rec := httptest.NewRecorder()
+	auth.Fixed(as, mux).ServeHTTP(rec, req)
+	return rec
+}
+
+func TestUploadThroughRegister(t *testing.T) {
+	s := Search{Stock: NewStock(blob.NewMemory()), Limits: NewLimits()}
+	mux := http.NewServeMux()
+	s.Register(mux, "/api/team", "activity-images", Members)
+	refused := func(next http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, "admin access required", http.StatusForbidden)
+		}
+	}
+	s.Register(mux, "/api/apps", "link-images", refused)
+
+	rec := upload(t, mux, "robin.whitfield@heliosschool.org", "/api/team/image", picture(t))
+	var answer struct {
+		Name string `json:"name"`
+	}
+	json.Unmarshal(rec.Body.Bytes(), &answer)
+	if rec.Code != http.StatusOK || !strings.HasPrefix(answer.Name, "activity-images/") || !strings.HasSuffix(answer.Name, ".png") {
+		t.Fatalf("member upload: %d %s", rec.Code, rec.Body)
+	}
+	if ok, err := s.Stock.store.Has(answer.Name); err != nil || !ok {
+		t.Errorf("uploaded image in the store: %v %v", ok, err)
+	}
+	if rec := upload(t, mux, "robin.whitfield@heliosschool.org", "/api/team/image", []byte("<svg></svg>")); rec.Code != http.StatusBadRequest {
+		t.Errorf("non-image upload: %d, want 400", rec.Code)
+	}
+	for _, path := range []string{"/api/apps/image", "/api/apps/images/import"} {
+		if rec := upload(t, mux, "robin.whitfield@heliosschool.org", path, picture(t)); rec.Code != http.StatusForbidden {
+			t.Errorf("%s past a refusing gate: %d, want 403", path, rec.Code)
+		}
+	}
+	rec = httptest.NewRecorder()
+	auth.Fixed("robin.whitfield@heliosschool.org", mux).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/apps/images/search?q=soccer", nil))
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("search past a refusing gate: %d, want 403", rec.Code)
+	}
+}
+
+func TestUploadsAreLimited(t *testing.T) {
+	s := Search{Stock: NewStock(blob.NewMemory()), Limits: NewLimits()}
+	mux := http.NewServeMux()
+	s.Register(mux, "/api/team", "activity-images", Members)
+	for i := range storesPerHour {
+		if rec := upload(t, mux, "robin.whitfield@heliosschool.org", "/api/team/image", picture(t)); rec.Code != http.StatusOK {
+			t.Fatalf("upload %d: %d %s", i, rec.Code, rec.Body)
+		}
+	}
+	rec := upload(t, mux, "robin.whitfield@heliosschool.org", "/api/team/image", picture(t))
+	if rec.Code != http.StatusTooManyRequests || !strings.Contains(rec.Body.String(), storeRefusal) {
+		t.Errorf("upload over the limit: %d %s", rec.Code, rec.Body)
+	}
+	if rec := upload(t, mux, "Robin.Whitfield@heliosschool.org", "/api/team/image", picture(t)); rec.Code != http.StatusTooManyRequests {
+		t.Errorf("same person in capitals: %d, want 429", rec.Code)
+	}
+	if rec := upload(t, mux, "mina.park@heliosschool.org", "/api/team/image", picture(t)); rec.Code != http.StatusOK {
+		t.Errorf("someone else: %d, want 200", rec.Code)
+	}
+	search := func() *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		auth.Fixed("robin.whitfield@heliosschool.org", mux).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/team/images/search?q=soccer", nil))
+		return rec
+	}
+	for i := range searchesPerHour {
+		if rec := search(); rec.Code == http.StatusTooManyRequests {
+			t.Fatalf("search %d refused: %s", i, rec.Body)
+		}
+	}
+	if rec := search(); rec.Code != http.StatusTooManyRequests || !strings.Contains(rec.Body.String(), searchRefusal) {
+		t.Errorf("search over the limit: %d %s", rec.Code, rec.Body)
+	}
+}
+
+func TestSearchSkipsAFailedLibrary(t *testing.T) {
+	ok := func(id string) func(context.Context, string) ([]result, error) {
+		return func(context.Context, string) ([]result, error) {
+			return []result{{hit: Hit{ID: id}}}, nil
+		}
+	}
+	failed := func(context.Context, string) ([]result, error) {
+		return nil, errors.New("Unsplash refused the search: Rate Limit Exceeded")
+	}
+	results, err := gather(context.Background(), "soccer", []func(context.Context, string) ([]result, error){failed, ok("p1"), ok("x1")})
+	if err != nil || len(results) != 2 || results[0].hit.ID != "p1" || results[1].hit.ID != "x1" {
+		t.Errorf("one library failed: %v %v", results, err)
+	}
+	if _, err := gather(context.Background(), "soccer", []func(context.Context, string) ([]result, error){failed, failed}); err == nil {
+		t.Error("every library failed: no error")
+	}
 }
 
 func TestInterleave(t *testing.T) {

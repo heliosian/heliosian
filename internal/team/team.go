@@ -2,8 +2,6 @@ package team
 
 import (
 	"crypto/rand"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -24,9 +22,8 @@ import (
 )
 
 const (
-	imageFolder  = "activity-images"
-	maxImageSize = 8 << 20
-	shell        = "web/team/index.html"
+	imageFolder = "activity-images"
+	shell       = "web/team/index.html"
 )
 
 var pages = []string{
@@ -57,10 +54,6 @@ type app struct {
 
 type ImageSearch = imagesearch.Search
 
-func (a app) importImage(w http.ResponseWriter, r *http.Request) {
-	a.search.ServeImport(w, r, imageFolder, maxImageSize)
-}
-
 func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, directory Directory, superAdmins func() []string, search ImageSearch, mailer mail.Sender, from string, rsvps RSVPLookup, lists EmailListLookup) {
 	if search.UserAgent == "" {
 		search.UserAgent = "HCA-Team image search (+https://team.heliosian.com)"
@@ -70,9 +63,7 @@ func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, directory Dir
 		mux.HandleFunc("GET "+page, a.page)
 	}
 	mux.HandleFunc("GET /api/team/model", a.model)
-	mux.HandleFunc("GET /api/team/images/search", a.search.ServeSearch)
-	mux.HandleFunc("GET /api/team/images/thumb", a.search.ServeThumb)
-	mux.HandleFunc("POST /api/team/images/import", a.importImage)
+	a.search.Register(mux, "/api/team", imageFolder, imagesearch.Members)
 	mux.HandleFunc("GET /open/share/upcoming.png", a.shareUpcoming)
 	mux.HandleFunc("GET /open/share/{id}", a.shareCard)
 	mux.HandleFunc("GET /api/team/people", a.people)
@@ -89,7 +80,6 @@ func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, directory Dir
 	mux.HandleFunc("POST /api/team/copy", a.copyActivity)
 	mux.HandleFunc("POST /api/team/settings", a.saveSettings)
 	mux.HandleFunc("POST /api/team/notify", a.saveNotify)
-	mux.HandleFunc("POST /api/team/image", a.uploadImage)
 	mux.HandleFunc("GET /api/admin/state", a.adminState)
 	mux.HandleFunc("POST /api/admin/admins", a.setAdmins)
 	mux.HandleFunc("POST /api/team/redirect", a.saveRedirect)
@@ -1105,38 +1095,6 @@ func (a app) saveNotify(w http.ResponseWriter, r *http.Request) {
 	}
 	slog.InfoContext(r.Context(), "events: set notifications", "actor", actor, "kinds", value)
 	w.WriteHeader(http.StatusNoContent)
-}
-
-func (a app) uploadImage(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, maxImageSize)
-	file, header, err := r.FormFile("image")
-	if err != nil {
-		http.Error(w, "an image file is required", http.StatusBadRequest)
-		return
-	}
-	defer file.Close()
-	content, err := io.ReadAll(file)
-	if err != nil {
-		http.Error(w, "could not read the image", http.StatusBadRequest)
-		return
-	}
-	mimeType := http.DetectContentType(content)
-	ext := map[string]string{"image/jpeg": ".jpg", "image/png": ".png", "image/gif": ".gif", "image/webp": ".webp"}[mimeType]
-	if ext == "" {
-		http.Error(w, fmt.Sprintf("%s is not a supported image", header.Filename), http.StatusBadRequest)
-		return
-	}
-	sum := sha256.Sum256(content)
-	name := hex.EncodeToString(sum[:]) + ext
-	if err := a.media.Put(imageFolder, name, mimeType, content); err != nil {
-		slog.ErrorContext(r.Context(), "store activity image", "error", err)
-		http.Error(w, "could not store the image", http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]string{"name": imageFolder + "/" + name}); err != nil {
-		slog.ErrorContext(r.Context(), "encode image name", "error", err)
-	}
 }
 
 func (a app) adminState(w http.ResponseWriter, r *http.Request) {

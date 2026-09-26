@@ -2,8 +2,6 @@ package home
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -24,10 +22,7 @@ import (
 	"heliosian/internal/store"
 )
 
-const (
-	imageFolder  = "link-images"
-	maxImageSize = 8 << 20
-)
+const imageFolder = "link-images"
 
 type Directory interface {
 	Sources() filter.Sources
@@ -102,10 +97,7 @@ func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, superAdmins f
 	mux.HandleFunc("POST /api/apps/categories/order", a.reorderCategories)
 	mux.HandleFunc("POST /api/apps/widgets/audience", a.saveWidgetAudience)
 	mux.HandleFunc("POST /api/apps/widgets/order", a.setWidgetOrder)
-	mux.HandleFunc("POST /api/apps/image", a.uploadImage)
-	mux.HandleFunc("GET /api/apps/images/search", a.requireAdminFunc(a.search.ServeSearch))
-	mux.HandleFunc("GET /api/apps/images/thumb", a.requireAdminFunc(a.search.ServeThumb))
-	mux.HandleFunc("POST /api/apps/images/import", a.requireAdminFunc(a.importImage))
+	a.search.Register(mux, "/api/apps", imageFolder, a.requireAdminFunc)
 	mux.HandleFunc("GET /api/admin/state", a.adminState)
 	mux.HandleFunc("POST /api/admin/admins", a.setAdmins)
 	mux.HandleFunc("POST /api/admin/visibility", a.setVisibility)
@@ -429,10 +421,6 @@ func (a app) commit(w http.ResponseWriter, r *http.Request, actor string, ops ..
 		return false
 	}
 	return true
-}
-
-func (a app) importImage(w http.ResponseWriter, r *http.Request) {
-	a.search.ServeImport(w, r, imageFolder, maxImageSize)
 }
 
 func rulesOf(model *Model, key string) []filter.Rule {
@@ -978,41 +966,6 @@ func (a app) virtualEvents(title string) bool {
 		}
 	}
 	return false
-}
-
-func (a app) uploadImage(w http.ResponseWriter, r *http.Request) {
-	if _, ok := a.requireAdmin(w, r); !ok {
-		return
-	}
-	r.Body = http.MaxBytesReader(w, r.Body, maxImageSize)
-	file, header, err := r.FormFile("image")
-	if err != nil {
-		http.Error(w, "an image file is required", http.StatusBadRequest)
-		return
-	}
-	defer file.Close()
-	content, err := io.ReadAll(file)
-	if err != nil {
-		http.Error(w, "could not read the image", http.StatusBadRequest)
-		return
-	}
-	mimeType := http.DetectContentType(content)
-	ext := map[string]string{"image/jpeg": ".jpg", "image/png": ".png", "image/gif": ".gif", "image/webp": ".webp"}[mimeType]
-	if ext == "" {
-		http.Error(w, fmt.Sprintf("%s is not a supported image", header.Filename), http.StatusBadRequest)
-		return
-	}
-	sum := sha256.Sum256(content)
-	name := hex.EncodeToString(sum[:]) + ext
-	if err := a.store.Put(imageFolder, name, mimeType, content); err != nil {
-		slog.ErrorContext(r.Context(), "store link image", "error", err)
-		http.Error(w, "could not store the image", http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]string{"name": imageFolder + "/" + name}); err != nil {
-		slog.ErrorContext(r.Context(), "encode image name", "error", err)
-	}
 }
 
 func (a app) adminState(w http.ResponseWriter, r *http.Request) {
