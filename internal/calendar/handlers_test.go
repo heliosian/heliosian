@@ -184,7 +184,7 @@ func TestSharePreview(t *testing.T) {
 			t.Errorf("event tags lack %s:\n%s", want, tags)
 		}
 	}
-	req = httptest.NewRequest("GET", "https://when.heliosiandev.com:8080/feeds", nil)
+	req = httptest.NewRequest("GET", "https://when.heliosiandev.com:8080/mine", nil)
 	req.Host = "when.heliosiandev.com:8080"
 	tags = head(req)
 	if !strings.Contains(tags, `og:title" content="Helios When"`) || !strings.Contains(tags, "One calendar") || !strings.Contains(tags, "/open/share/upcoming.png") {
@@ -817,5 +817,38 @@ func TestOverrideFromThePage(t *testing.T) {
 	}
 	if rec := call(t, admin, "PUT", "/api/calendar/overrides", `{"id":"a2@sample","title":"x","start":"not a date"}`); rec.Code != 400 {
 		t.Errorf("a bad date: %d", rec.Code)
+	}
+}
+
+// My Heliosian subscribes like a saved calendar: its owner is given a
+// feed address once, the same one on every later ask, and it serves their
+// My Heliosian as it stands; a token nobody holds serves nothing.
+func TestMyHeliosianFeed(t *testing.T) {
+	handler, cache := testApp(t)
+	parent := as("jordan.whitfield@heliosschool.org", handler)
+	token := func() string {
+		rec := call(t, parent, "POST", "/api/calendar/feeds/my-heliosian", `{}`)
+		var body struct {
+			Token string `json:"token"`
+		}
+		json.NewDecoder(rec.Body).Decode(&body)
+		if rec.Code != 200 || body.Token == "" {
+			t.Fatalf("my heliosian token: %d %s", rec.Code, rec.Body)
+		}
+		return body.Token
+	}
+	first := token()
+	if again := token(); again != first {
+		t.Errorf("a second ask minted another: %q then %q", first, again)
+	}
+	if cache.Model().Settings["jordan.whitfield@heliosschool.org"].FeedToken != first {
+		t.Errorf("the token is not kept")
+	}
+	rec := call(t, parent, "GET", "/open/feed/"+first+".ics", "")
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "BEGIN:VCALENDAR") || !strings.Contains(rec.Body.String(), "X-WR-CALNAME:My Heliosian") {
+		t.Errorf("the feed: %d %s", rec.Code, rec.Body.String()[:min(200, rec.Body.Len())])
+	}
+	if rec := call(t, parent, "GET", "/open/feed/nobodys.ics", ""); rec.Code != 404 {
+		t.Errorf("a token nobody holds: %d", rec.Code)
 	}
 }

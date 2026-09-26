@@ -1,8 +1,8 @@
-import {state, eventsOn, today, addDays, parseDate, formatDate, longDayLabel, dayLabel, monthLabel, monthOf, shiftMonth, weekStart, specials, scheduleOn, isSchoolDay, dayTypeMatches, selectedClassrooms, eventTint, timeLine, eventPath, weekdayShort, isMatch, isHidden, isGray} from '../state.js';
+import {state, eventsOn, today, addDays, parseDate, formatDate, longDayLabel, dayLabel, monthLabel, monthOf, shiftMonth, weekStart, specials, scheduleOn, isSchoolDay, dayTypeMatches, selectedClassrooms, eventTint, timeLine, startTime, eventPath, weekdayShort, isMatch, isHidden, isGray} from '../state.js';
 import {dayTypeClass} from '/daytype.js';
 import {el, link, svg, button, peopleLine, toast, popup, copyText, feedMark} from '../dom.js';
 import {setTitle, setSearch, fillFilters, renderRailDay, editFeedPopup, makeDefaultFeed, calendarMenu} from '../chrome.js';
-import {dayColumn} from '../day.js';
+import {dayColumn, openAddEvent} from '../day.js';
 import {callPill, emptyNote, roomDots, planCards} from '../events.js';
 import {answerOf, answer, linkURL, selectedTags, classroomNames, tagNames, defaultFeedName, showsFeed, activeFeed, setActiveFeed, defaultFeed, feedURL, webcalURL} from '../state.js';
 
@@ -21,7 +21,7 @@ function upcomingDay(date, count) {
 // upcomingRow is one thing on the day: a dot on a line in its colour at the
 // left, the title - starred when the viewer hosts it - with, for an event
 // another app runs, the way to its tickets or sign-up or where the
-// household stands under it, the hours at the right, and a chevron. A day
+// household stands under it, and when it starts at the right. A day
 // that is not regular and has no event of its own is a row too, in its day
 // type's colour.
 function upcomingRow(date, e, group) {
@@ -47,14 +47,13 @@ function upcomingRow(date, e, group) {
       // its page where the word is given - as My Events' RSVP counts it.
       body.append(el('span', 'event-pill', 'RSVP'));
     }
-    when.textContent = e.allDay ? 'All day' : timeLine(e, date);
+    // Just when it starts - the page has the rest.
+    when.textContent = e.allDay ? 'All day' : startTime(e, date);
   } else {
     const all = selectedClassrooms();
     body.append(el('span', 'up-title', group.classrooms.length === all.length ? group.name : `${group.name} \u00b7 ${group.classrooms.join(', ')}`));
   }
-  const chevron = svg('chevron');
-  chevron.classList.add('up-chevron');
-  row.append(rail, body, when, chevron);
+  row.append(rail, body, when);
   return row;
 }
 
@@ -396,9 +395,9 @@ function dayCell(date, month) {
 }
 
 // saveCalendar keeps what the filters show as a saved calendar - a feed
-// row, by name - listed under Calendar in the rail from then on; the feed
-// address for a calendar app waits on the Feeds page until wanted. A small
-// popup takes the name.
+// row, by name - listed under Calendar in the rail from then on; its
+// Subscribe menu puts it into a calendar app. A small popup takes the
+// name.
 function saveCalendar() {
   const form = el('form');
   const rooms = selectedClassrooms();
@@ -453,6 +452,74 @@ function saveCalendar() {
   });
   name.focus();
   name.select();
+}
+
+// subscribeMenu is Subscribe beside the calendar's name: the calendar as a
+// feed a calendar app keeps in step with - into Google Calendar, into
+// Apple Calendar, or its address to copy for any other. A saved calendar's
+// address is its own token's; My Heliosian's is asked of the server, which
+// makes one for its owner the first time.
+async function feedToken(f) {
+  if (!f.locked) {
+    return f.token;
+  }
+  const res = await fetch('/api/calendar/feeds/my-heliosian', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'});
+  if (!res.ok) {
+    throw new Error(await res.text());
+  }
+  return (await res.json()).token;
+}
+
+// The companies' own marks for their calendars: Google's four-colour G and
+// Apple's apple, in the ink of the text beside it.
+const brandMarks = {
+  google: '<svg class="subscribe-mark" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>',
+  apple: '<svg class="subscribe-mark subscribe-mark-apple" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"/></svg>',
+};
+
+function subscribeMenu(f) {
+  const wrap = el('div', 'subscribe');
+  const open = button('Subscribe', 'calendar', 'button button-secondary button-small subscribe-button', () => {
+    menu.hidden = !menu.hidden;
+    if (!menu.hidden) {
+      document.addEventListener('click', () => {
+        menu.hidden = true;
+      }, {once: true});
+    }
+  });
+  open.append(svg('down'));
+  const menu = el('div', 'subscribe-menu');
+  menu.hidden = true;
+  menu.addEventListener('click', e => e.stopPropagation());
+  menu.append(el('div', 'subscribe-title', `Subscribe to ${f.name}`), el('p', 'subscribe-lead', 'Keep this calendar in sync with your calendar app. Changes to it update there on their own.'));
+  const item = (icon, words, onClick) => {
+    const b = el('button', 'subscribe-item');
+    b.type = 'button';
+    if (brandMarks[icon]) {
+      b.insertAdjacentHTML('beforeend', brandMarks[icon]);
+    } else {
+      b.append(svg(icon));
+    }
+    b.append(el('span', '', words));
+    b.addEventListener('click', async () => {
+      try {
+        onClick(await feedToken(f));
+      } catch (err) {
+        toast(err.message);
+      }
+    });
+    menu.append(b);
+  };
+  item('google', 'Add to Google Calendar', token => window.open('https://calendar.google.com/calendar/render?cid=' + encodeURIComponent(webcalURL(token)), '_blank', 'noopener'));
+  item('apple', 'Add to Apple Calendar', token => {
+    location.href = webcalURL(token);
+  });
+  item('link', 'Copy calendar feed URL', token => copyText(feedURL(token), 'Feed address copied'));
+  const note = el('div', 'subscribe-note');
+  note.append(svg('info'), el('span', '', 'Use the feed address with Outlook and other calendar apps.'));
+  menu.append(note);
+  wrap.append(open, menu);
+  return wrap;
 }
 
 // saveButton is Save Calendar beside the month while the filters are not
@@ -531,44 +598,6 @@ async function saveOnto(f) {
   await load();
 }
 
-// getFeed is the popup for a saved calendar's feed: its address to copy,
-// the two ways to subscribe, and a word on each calendar app.
-function getFeed(f) {
-  const body = el('div');
-  body.append(el('p', 'modal-intro', `${f.name} as a feed your own calendar app subscribes to. It keeps itself up to date as the school calendar changes.`));
-  const url = el('div', 'feed-url');
-  const input = el('input');
-  input.type = 'text';
-  input.readOnly = true;
-  input.value = feedURL(f.token);
-  input.addEventListener('focus', () => input.select());
-  url.append(input, button('Copy', 'copy', 'button button-small', () => copyText(feedURL(f.token), 'Feed address copied')));
-  body.append(url);
-  const actions = el('div', 'feed-actions');
-  const open = el('a', 'button button-secondary button-small');
-  open.href = webcalURL(f.token);
-  open.append(svg('calendar'), el('span', '', 'Subscribe in my calendar app'));
-  const google = el('a', 'button button-secondary button-small');
-  google.href = 'https://calendar.google.com/calendar/u/0/r/settings/addbyurl';
-  google.target = '_blank';
-  google.rel = 'noopener';
-  google.append(svg('open'), el('span', '', 'Add to Google Calendar'));
-  actions.append(open, google);
-  body.append(actions);
-  const steps = el('ul', 'help-list');
-  for (const words of [
-    'Apple Calendar (iPhone, iPad, Mac): Subscribe in my calendar app opens it straight away.',
-    'Google Calendar: Add to Google Calendar, paste the address under From URL, and Add calendar. Google refreshes every few hours.',
-    'Outlook: Add calendar \u203a Subscribe from web, and paste the address.',
-    'The address is the whole secret: anyone who has it can read the feed. Remove it on the Feeds page and it stops.',
-  ]) {
-    steps.append(el('li', '', words));
-  }
-  body.append(steps);
-  popup('Get Feed', body);
-  input.focus();
-}
-
 // goToday opens today with the grid on its month, from wherever the page
 // is paged to.
 function goToday() {
@@ -596,16 +625,9 @@ function monthGrid() {
     });
     fwd.setAttribute('aria-label', 'Next month');
     pager.append(back, fwd, el('h2', 'pager-label', monthLabel(month)));
-    // Get Feed offers a saved calendar's address while the filters are
-    // its own; Save Calendar, while they have moved, sits beside the
-    // headline's word on that.
-    const shown = (state.model.feeds || []).find(showsFeed);
-    if (shown) {
-      const feed = button('Get Feed', 'feed', 'button button-secondary button-small pager-feed', () => getFeed(shown));
-      feed.title = 'The address for your own calendar app';
-      pager.append(feed);
-    }
-    pager.append(button('Today', null, 'button button-secondary button-small pager-today', goToday));
+    const add = button('Add Event', 'plus', 'button button-small pager-add', openAddEvent);
+    add.title = 'Add an event for the community; an admin approves a public one onto the calendar';
+    pager.append(add, button('Today', null, 'button button-secondary button-small pager-today', goToday));
     wrap.append(pager);
     const grid = el('div', 'month-grid');
     for (const name of ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']) {
@@ -697,6 +719,8 @@ export function homePage(date) {
       changed.title = shown.locked ? 'My Heliosian keeps its own filters; save these under a new name' : 'Save Calendar saves these filters onto ' + shown.name;
       headline.append(changed, saveButton());
     }
+    // Subscribe, then the default: at the row's far end.
+    headline.append(subscribeMenu(shown));
     // The default calendar says so at the row's far end; any other offers
     // to become it, faintly.
     if (shown.token === defaultFeed().token) {

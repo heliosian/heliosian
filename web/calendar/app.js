@@ -3,7 +3,6 @@ import {el} from './dom.js';
 import {initChrome, renderChrome, setTitle, clearSearch} from './chrome.js';
 import {homePage} from './pages/home.js';
 import {eventPage} from './pages/event.js';
-import {feedsPage} from './pages/feeds.js';
 import {adminPage} from './pages/admin.js';
 import {minePage} from './pages/mine.js';
 
@@ -90,8 +89,6 @@ function route() {
       state.day = eventDates(e)[0];
       return eventPage(e);
     }
-    case 'feeds':
-      return feedsPage();
     case 'mine':
       return minePage(parts[1] || '');
     case 'admin':

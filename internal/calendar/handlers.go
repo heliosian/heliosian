@@ -28,7 +28,7 @@ import (
 
 const shell = "web/calendar/index.html"
 
-var pages = []string{"/{$}", "/c/{token}", "/day/{date}", "/e/{id...}", "/events/{id...}", "/feeds", "/mine", "/mine/{list}", "/admin"}
+var pages = []string{"/{$}", "/c/{token}", "/day/{date}", "/e/{id...}", "/events/{id...}", "/mine", "/mine/{list}", "/admin"}
 
 type app struct {
 	cache       *Cache
@@ -65,6 +65,7 @@ func Register(mux *http.ServeMux, cache *Cache, store *blob.Store, directory Dir
 	mux.HandleFunc("GET /api/apps/rsvp", a.rsvps)
 	mux.HandleFunc("POST /api/calendar/feeds", a.addFeed)
 	mux.HandleFunc("PUT /api/calendar/feeds", a.editFeed)
+	mux.HandleFunc("POST /api/calendar/feeds/my-heliosian", a.myHeliosianToken)
 	mux.HandleFunc("PUT /api/calendar/feeds/order", a.orderFeeds)
 	mux.HandleFunc("POST /api/calendar/default", a.setDefault)
 	mux.HandleFunc("DELETE /api/calendar/feeds", a.removeFeed)
@@ -878,6 +879,14 @@ func (a app) feed(w http.ResponseWriter, r *http.Request) {
 	token := strings.TrimSuffix(r.PathValue("file"), ".ics")
 	model := a.cache.Model()
 	f := model.Feed(token)
+	// A My Heliosian address is its owner's My Heliosian as it stands now:
+	// their classrooms and the default categories, or the view they saved.
+	if email := model.myHeliosianFeed(token); f == nil && email != "" {
+		home := model.MyHeliosian(email)
+		home.Token = token
+		home.Classrooms, home.Tags = model.myHeliosianView(a.directory, email)
+		f = &home
+	}
 	if f == nil {
 		http.NotFound(w, r)
 		return
@@ -886,4 +895,22 @@ func (a app) feed(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=%q", "helios-calendar.ics"))
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Write(ICS(model, f, a.linked(f.Email), "https://"+r.Host, now()))
+}
+
+// myHeliosianToken is POST /api/calendar/feeds/my-heliosian: the secret in
+// the viewer's own My Heliosian feed address, minted and kept on their
+// Settings row the first time they ask - the Subscribe menu's, for the
+// calendar that is not a saved one.
+func (a app) myHeliosianToken(w http.ResponseWriter, r *http.Request) {
+	actor, _ := a.who(r)
+	token := a.cache.Model().Settings[actor].FeedToken
+	if token == "" {
+		token = NewToken()
+		if !a.commit(w, r, actor, homeOp(actor, store.Row{"Feed Token": token})) {
+			return
+		}
+		slog.InfoContext(r.Context(), "calendar: my heliosian feed made", "actor", actor)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"token": token})
 }

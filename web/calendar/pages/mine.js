@@ -14,7 +14,7 @@ export function minePage(which) {
   const all = [
     ['rsvp', 'RSVP', 'RSVP', mine.waiting, 'Nothing waiting on you.', 'The invitations waiting for your reply. Each opens its page, where you answer.'],
     ['attending', 'Attending', 'Attending', mine.going, 'Nothing you said yes to is coming up.', 'The events you said yes to that are coming up.'],
-    ['hosting', 'Hosting', 'Hosting', mine.hosted, 'Nothing you host is coming up. Add Event, under the day, starts one.', 'The events you host that are coming up.'],
+    ['hosting', 'Hosting', 'Hosting', mine.hosted, 'Nothing you host is coming up. Add Event, over the calendar, starts one.', 'The events you host that are coming up.'],
     ['pending', 'Pending Approval', 'Pending Approval', mine.pending, 'Nothing you shared is waiting for approval.', 'The events you shared that wait for an admin to approve them onto the calendar.'],
   ];
   const one = all.find(g => g[0] === which);

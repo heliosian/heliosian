@@ -618,6 +618,19 @@ export function timeLine(e, date) {
   return timeColumn(e, date).trimStart();
 }
 
+// startTime is when an event begins on a day, alone - "5:00 PM" - as the
+// Upcoming Events panel shows it; a day inside a run of days keeps its
+// "From" or "Until", which a bare start would misstate.
+export function startTime(e, date) {
+  if (e.allDay) {
+    return 'All day';
+  }
+  if (spansDays(e) && date !== e.start.slice(0, 10)) {
+    return timeLine(e, date);
+  }
+  return clock(e.start.slice(11)).trimStart();
+}
+
 // timeColumn is the same words padded as clock pads them, so a column of
 // them lines up - the event list's.
 export function timeColumn(e, date) {

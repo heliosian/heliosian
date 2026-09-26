@@ -6,7 +6,6 @@ import {renderAvatars, renderAlerts, renderProfileLink, onSlash, initAppSwitch, 
 const primary = [
   {href: '/', icon: 'app', label: 'Calendar'},
   {href: '/mine', icon: 'calcheck', label: 'My Events'},
-  {href: '/feeds', icon: 'feed', label: 'Feeds'},
 ];
 
 function active(href) {
@@ -210,8 +209,8 @@ let editingNav = false;
 // fillNav lists the pages, and under Calendar the viewer's own saved
 // calendars by name: each opens the calendar filtered to what it carries,
 // and is lit while the filters are its own. The pencil on Calendar turns
-// on a pencil and a cross on each of them - the pencil opens its form on
-// the Feeds page, the cross removes it.
+// on a pencil and a cross on each of them - the pencil opens its form in a
+// popup, the cross removes it.
 function fillNav(nav) {
   for (const item of primary) {
     // My Events has its three lists under it in the rail; the tab bar

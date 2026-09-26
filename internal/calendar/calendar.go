@@ -77,7 +77,7 @@ var (
 	TagColumns         = []string{"Tag", "Description", "Group", "Default", "Image", store.OrderColumn}
 	AdminColumns       = []string{"Email"}
 	FeedColumns        = []string{"Token", "Email", "Name", "Classrooms", "Tags", "Created", "Emoji", store.OrderColumn}
-	SettingColumns     = []string{"Email", "Classrooms", "Categories", "Saved", "Home Name", "Home Emoji", "Home Position"}
+	SettingColumns     = []string{"Email", "Classrooms", "Categories", "Saved", "Home Name", "Home Emoji", "Home Position", "Feed Token"}
 	RSVPColumns        = []string{"Email", "Event ID", "Answer", "Answered", "Answered By", "Via"}
 	InvitationColumns  = []string{"Event ID", "Hosts", "Audience", "Guests", "Message", "Created By", "Created", "Sent", "Title", "Start", "End", "Location", "Description", "Flyer", "Notify", "Stepped Down", "Hide Hosts", "Public Guest List"}
 	InviteColumns      = []string{"Event ID", "Email", "Name", "Guest Of", "Via", "Added By", "Added", "Sent", "Token", "Household", "Opened"}
@@ -271,6 +271,9 @@ type Setting struct {
 	HomeName     string   `json:"homeName,omitempty"`
 	HomeEmoji    string   `json:"homeEmoji,omitempty"`
 	HomePosition int      `json:"homePosition"`
+	// FeedToken is the secret in My Heliosian's feed address, minted the
+	// first time its owner asks to subscribe; blank until then.
+	FeedToken string `json:"-"`
 }
 
 const (
@@ -293,6 +296,20 @@ const (
 	MyHeliosianName  = "My Heliosian"
 	MyHeliosianEmoji = ""
 )
+
+// myHeliosianFeed is the owner of a My Heliosian feed address by its
+// token, or "" when no one's is.
+func (m *Model) myHeliosianFeed(token string) string {
+	if token == "" {
+		return ""
+	}
+	for email, s := range m.Settings {
+		if s.FeedToken == token {
+			return email
+		}
+	}
+	return ""
+}
 
 func (m *Model) MyHeliosian(email string) Feed {
 	setting := m.Settings[normalizeEmail(email)]
@@ -901,6 +918,7 @@ func (b *builder) settings(rows []store.Row) {
 		setting.HomeName = strings.TrimSpace(row["Home Name"])
 		setting.HomeEmoji = strings.TrimSpace(row["Home Emoji"])
 		setting.HomePosition, _ = strconv.Atoi(strings.TrimSpace(row["Home Position"]))
+		setting.FeedToken = strings.TrimSpace(row["Feed Token"])
 		b.model.Settings[email] = setting
 	}
 }

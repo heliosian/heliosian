@@ -105,6 +105,23 @@ function timeline(date) {
 // the search words change, so the matching events light up. Without a
 // paging of its own it is the rail's, whose month is kept across renders
 // until a different day is opened.
+// openAddEvent is Add Event, over the month beside Today: anyone can share
+// an event with the community - a public one waits for an admin's
+// approval before the calendar carries it. Added, the event's own page
+// opens - where its link, and its guest list, are.
+export function openAddEvent() {
+  let shut = null;
+  const form = eventForm({onDone: async ids => {
+    shut();
+    const {load, navigate} = await import('./app.js');
+    await load();
+    if (ids && ids.length) {
+      navigate('/e/' + ids[0]);
+    }
+  }});
+  shut = popup('Add an event', form, {wide: true}).shut;
+}
+
 export function dayColumn(date, paging) {
   if (!paging) {
     if (railPaging.date !== date || !railPaging.month) {
@@ -126,24 +143,7 @@ export function dayColumn(date, paging) {
   const plan = el('div', 'day-card-plan');
   const events = el('div');
   card.append(head, plan, events);
-  // Under the day: anyone can share an event with the community - it
-  // waits for an admin's approval before the calendar carries it.
-  // Added, the event's own page opens - where its link, and its guest
-  // list, are.
-  const share = button('Add Event', 'plus', 'button share-event', () => {
-    let shut = null;
-    const form = eventForm({onDone: async ids => {
-      shut();
-      const {load, navigate} = await import('./app.js');
-      await load();
-      if (ids && ids.length) {
-        navigate('/e/' + ids[0]);
-      }
-    }});
-    shut = popup('Add an event', form, {wide: true}).shut;
-  });
-  share.title = 'Add an event for the community; an admin approves it onto the calendar';
-  col.append(month, card, share);
+  col.append(month, card);
   const paint = () => {
     month.replaceChildren(miniMonth(date, paging));
     plan.replaceChildren(planCards(date));

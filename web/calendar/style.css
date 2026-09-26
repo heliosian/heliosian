@@ -189,9 +189,7 @@ button { font: inherit; }
 .nav-sub-remove:hover { color: #b3261e; }
 
 /* Add Event, under the day card. */
-.share-event { width: 100%; justify-content: center; margin-top: 12px; padding: 10px 14px; border-radius: 12px; font-weight: 700; }
 
-.share-event svg { width: 16px; height: 16px; }
 
 /* The viewer's feeds, small under Calendar. */
 .app-nav a.nav-sub { min-height: 36px; margin-left: 22px; padding: 0 10px; gap: 8px; font-size: 14px; font-weight: 500; color: rgba(255, 255, 255, 0.75); }
@@ -475,13 +473,41 @@ button { font: inherit; }
 
 .calendar-changed { display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 999px; background: #fff; border: 1px dashed var(--amber); color: #8a5a00; font-size: 12.5px; font-weight: 600; white-space: nowrap; }
 
-.calendar-default { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; padding: 5px 12px; border-radius: 999px; background: #fff7e0; border: 1px solid #f2d78a; color: #8a5a00; font-size: 13px; font-weight: 700; white-space: nowrap; }
+.calendar-default { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; box-sizing: border-box; height: 28px; padding: 0 12px; line-height: 1; border-radius: 999px; background: #fff7e0; border: 1px solid #f2d78a; color: #8a5a00; font-size: 13px; font-weight: 700; white-space: nowrap; }
 
 .calendar-default svg { width: 15px; height: 15px; color: var(--amber); }
 
-.calendar-make-default { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; padding: 5px 12px; border-radius: 999px; border: 1px solid transparent; background: none; color: var(--muted); font: inherit; font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer; opacity: 0.7; }
+.calendar-make-default { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; box-sizing: border-box; height: 28px; padding: 0 12px; line-height: 1; border-radius: 999px; border: 1px solid transparent; background: none; color: var(--muted); font: inherit; font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer; opacity: 0.7; }
 
 .calendar-make-default:hover { opacity: 1; border-color: #f2d78a; background: #fff7e0; color: #8a5a00; }
+
+/* Subscribe, before the default at the row's end: the calendar into a
+   calendar app, from a menu under the button. */
+.subscribe { position: relative; margin-left: auto; }
+
+.subscribe + .calendar-default, .subscribe + .calendar-make-default { margin-left: 0; }
+
+.button.subscribe-button { gap: 6px; box-sizing: border-box; height: 28px; padding: 0 12px; border-radius: 999px; font-size: 13px; font-weight: 700; line-height: 1; }
+
+.button.subscribe-button svg { width: 15px; height: 15px; }
+
+.subscribe-menu { position: absolute; right: 0; top: calc(100% + 8px); z-index: 30; width: 320px; max-width: calc(100vw - 24px); padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); box-shadow: 0 12px 30px rgba(15, 40, 44, 0.16); color: var(--ink); }
+
+.subscribe-title { font-size: 15px; font-weight: 800; color: var(--brand); }
+
+.subscribe-lead { margin: 4px 0 12px; font-size: 13px; line-height: 1.45; color: var(--muted); }
+
+.subscribe-item { display: flex; align-items: center; gap: 12px; width: 100%; margin-bottom: 8px; padding: 11px 14px; border: 0; border-radius: 10px; background: var(--input); font: inherit; font-size: 14px; font-weight: 600; color: var(--ink); text-align: left; cursor: pointer; }
+
+.subscribe-item:hover { background: color-mix(in srgb, var(--accent) 12%, var(--input)); }
+
+.subscribe-item svg { width: 18px; height: 18px; flex-shrink: 0; color: var(--brand); }
+
+.subscribe-item svg.subscribe-mark-apple { color: var(--ink); }
+
+.subscribe-note { display: flex; align-items: flex-start; gap: 8px; margin-top: 6px; font-size: 12.5px; color: var(--muted); }
+
+.subscribe-note svg { width: 15px; height: 15px; flex-shrink: 0; margin-top: 1px; }
 
 .calendar-make-default svg { width: 15px; height: 15px; }
 
@@ -584,11 +610,8 @@ button { font: inherit; }
 
 .calendar-menu-lock svg { width: 12px; height: 12px; }
 
-.modal .feed-url { margin: 4px 0 12px; }
 
-.modal .feed-actions { margin-bottom: 14px; }
 
-.modal .help-list { margin: 0; padding-left: 18px; font-size: 13px; color: var(--muted); line-height: 1.5; }
 
 .home-filters { margin: 0 0 20px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); }
 
@@ -830,7 +853,7 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .up-dayhead-count { font-size: 12px; color: var(--muted); white-space: nowrap; }
 
-.up-row { --c: var(--other); display: grid; grid-template-columns: 14px minmax(0, 1fr) auto 14px; align-items: start; gap: 10px; padding: 9px 2px 9px 4px; text-decoration: none; color: inherit; }
+.up-row { --c: var(--other); display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; align-items: start; gap: 10px; padding: 9px 6px 9px 4px; text-decoration: none; color: inherit; }
 
 .up-row + .up-row { border-top: 1px solid #eef2f3; }
 
@@ -862,7 +885,6 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .up-time { padding-top: 1px; font-size: 12px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 
-.up-chevron { width: 14px; height: 14px; margin-top: 2px; color: var(--muted); fill: none; stroke: currentColor; stroke-width: 2; }
 
 .up-body .event-pill { padding: 3px 11px; }
 
@@ -1133,7 +1155,12 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .pager-label { font-family: Montserrat, Roboto, sans-serif; font-size: 26px; font-weight: 700; color: var(--brand); margin: 0 auto 0 12px; white-space: nowrap; }
 
-.pager-feed, .pager-today { white-space: nowrap; flex-shrink: 0; }
+.pager-feed, .pager-today, .pager-add { white-space: nowrap; flex-shrink: 0; }
+
+/* Add Event beside Today, the page's one way to share an event. */
+.pager-add { padding: 8px 16px; border-radius: 10px; font-weight: 700; }
+
+.pager-add svg { width: 15px; height: 15px; }
 
 .pager-today { padding: 8px 18px; border-radius: 10px; font-weight: 600; }
 
@@ -2480,67 +2507,6 @@ button.send-tile { font: inherit; text-align: left; }
 .side-line { font-size: 13.5px; color: var(--muted); margin-top: 2px; word-break: break-word; }
 
 .side-button { margin-top: 10px; width: 100%; justify-content: center; }
-
-/* Feeds. */
-.feed-list { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; }
-
-.feed-card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
-
-.feed-name { font-weight: 700; font-size: 16px; color: var(--brand); }
-
-.feed-made { font-size: 12px; color: var(--muted); margin-top: 2px; }
-
-/* What the feed carries, as small chips under its address. */
-.feed-shows { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
-
-.feed-shows-label { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin-right: 3px; }
-
-.feed-shows-sep { width: 1px; height: 14px; background: var(--line); margin: 0 4px; }
-
-.feed-chip { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--line); background: var(--page); font-size: 12px; font-weight: 600; color: var(--ink); }
-
-.feed-chip.has-color::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--room); }
-
-.feed-chip-all { font-weight: 500; color: var(--muted); border-style: dashed; }
-
-.feed-shows-edit { display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--accent); background: #fff; font-size: 12px; font-weight: 700; color: var(--accent); cursor: pointer; font-family: inherit; }
-
-.feed-shows-edit:hover { background: var(--accent); color: #fff; }
-
-.feed-shows-edit svg { width: 12px; height: 12px; }
-
-/* The feed's own form, open under its card. */
-.feed-editor { border-top: 1px solid var(--line); padding-top: 12px; }
-
-.feed-editor .feed-form { padding: 0; border: 0; margin: 0; background: none; box-shadow: none; }
-
-.feed-url { display: flex; gap: 8px; }
-
-.feed-url input { flex: 1; min-width: 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; font-size: 13px; background: var(--input); }
-
-.feed-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-
-.feed-actions .link-button { margin: 0 0 0 auto; }
-
-.feed-name-row { display: flex; align-items: center; gap: 6px; }
-
-.feed-name-row > svg { width: 16px; height: 16px; color: var(--accent); }
-
-.feed-name-row .feed-mark { font-size: 16px; line-height: 1; }
-
-.feed-edit { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 7px; background: none; color: var(--muted); cursor: pointer; }
-
-.feed-edit:hover { background: var(--input); color: var(--brand); }
-
-.feed-edit svg { width: 15px; height: 15px; }
-
-.help-panel { padding: 14px 18px; margin-bottom: 8px; }
-
-.help-title { font-weight: 700; color: var(--brand); margin-bottom: 6px; }
-
-.help-list { margin: 0; padding-left: 20px; font-size: 13.5px; color: var(--muted); }
-
-.help-list li { margin: 4px 0; }
 
 .feed-form { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 4px 18px 18px; margin-top: 20px; }
 
