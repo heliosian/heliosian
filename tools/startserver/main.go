@@ -25,6 +25,7 @@ import (
 	"heliosian/internal/describe"
 	"heliosian/internal/devtls"
 	"heliosian/internal/geocode"
+	"heliosian/internal/keypoints"
 	"heliosian/internal/logging"
 	"heliosian/internal/loop"
 	"heliosian/internal/mail"
@@ -103,6 +104,7 @@ func sampleServer() (*http.Server, *store.Queue) {
 		Asker:         sampleAsker(),
 		Embedder:      artifacts.Fake{},
 		ArtifactsMail: artifacts.Inbox{Bucket: media},
+		KeyPoints:     keypoints.Fake{},
 	})
 	saved, err := filepath.Glob("sampledata/artifacts/*.json")
 	if err != nil {

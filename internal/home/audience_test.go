@@ -324,3 +324,47 @@ func TestOnlyAdminsGetTheRules(t *testing.T) {
 		t.Errorf("an admin's model has %d section and %d link rules", sections, links)
 	}
 }
+
+// TestWidgetAudience checks a widget's rules: an admin keeps the Team widget
+// to parents, a student's model then says it is not for them while a
+// parent's says it is, only an admin gets the rules, and an unknown widget
+// is refused.
+func TestWidgetAudience(t *testing.T) {
+	c, _ := sampleCache(t)
+	c.directory = directoryOf(t)
+	a := app{
+		cache: c, directory: c.directory,
+		heroPhoto: func(string) string { return "" },
+		alerts:    func(string) ([]string, []string) { return nil, nil },
+		upcoming:  func(string, string) Upcoming { return Upcoming{} },
+		month:     func(string, string, string) Month { return Month{} },
+	}
+	parentsOnly := []filter.Rule{{Kind: filter.KindInclude, Roles: []string{"Parent"}}}
+	if rec := call(t, a.saveWidgetAudience, map[string]any{"widget": "team", "rules": parentsOnly}); rec.Code != http.StatusNoContent {
+		t.Fatalf("save: %d %s", rec.Code, rec.Body)
+	}
+	if rec := call(t, a.saveWidgetAudience, map[string]any{"widget": "nope", "rules": parentsOnly}); rec.Code != http.StatusNotFound {
+		t.Errorf("an unknown widget: %d", rec.Code)
+	}
+	widgets := func(email string) map[string]widgetView {
+		rec := httptest.NewRecorder()
+		auth.Fixed(email, http.HandlerFunc(a.model)).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/apps/model", nil))
+		var view struct {
+			Widgets map[string]widgetView `json:"widgets"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &view); err != nil {
+			t.Fatal(err)
+		}
+		return view.Widgets
+	}
+	student := widgets("sam.whitfield@heliosschool.org")
+	if student["team"].ForMe || !student["when"].ForMe || len(student["team"].Rules) != 0 {
+		t.Errorf("a student's widgets: %+v", student)
+	}
+	if parent := widgets("jordan.whitfield@heliosschool.org"); !parent["team"].ForMe {
+		t.Errorf("a parent's widgets: %+v", parent)
+	}
+	if got := widgets(admin)["team"].Rules; len(got) != 1 || got[0].Roles[0] != "Parent" {
+		t.Errorf("an admin's team rules: %+v", got)
+	}
+}

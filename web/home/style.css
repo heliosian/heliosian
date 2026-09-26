@@ -618,6 +618,34 @@ main {
 
 .wg-empty { margin: 8px 0; font-size: 14px; color: var(--muted); }
 
+/* From the School's emails: the subject and where it came from, its key
+   points as a short list, and Ask about this. */
+.wg-emails { list-style: none; margin: 0; padding: 0; }
+
+.wg-email { padding: 10px 4px 12px; border-bottom: 1px solid var(--line); }
+
+.wg-email:last-child { border-bottom: 0; }
+
+.wg-email-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+
+.wg-email-from { flex-shrink: 0; font-size: 12.5px; font-weight: 600; color: var(--muted); }
+
+.wg-points { margin: 6px 0 0; padding-left: 18px; font-size: 14px; line-height: 1.4; color: var(--ink); }
+
+.wg-points li { margin: 3px 0; }
+
+.wg-ask { display: inline-flex; align-items: center; gap: 2px; margin-top: 8px; font-size: 13.5px; font-weight: 600; color: var(--brand-ink); text-decoration: none; }
+
+.wg-ask:hover { text-decoration: underline; }
+
+.wg-ask svg { width: 15px; height: 15px; }
+
+/* The admin's pencil at a widget's heading, and its badges beside the
+   title. */
+.widget-head .widget-edit { align-self: center; }
+
+.widget-title .hidden-badge { font-family: Roboto, sans-serif; font-size: 12px; }
+
 /* More, under a widget's first few rows: a quiet button across the card. */
 .wg-more { display: block; width: 100%; margin-top: 6px; padding: 7px; border: 1px solid var(--line); border-radius: 10px; background: none; color: var(--brand-ink); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
 

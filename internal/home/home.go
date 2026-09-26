@@ -100,6 +100,7 @@ func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, superAdmins f
 	mux.HandleFunc("POST /api/apps/category", a.saveCategory)
 	mux.HandleFunc("DELETE /api/apps/category", a.deleteCategory)
 	mux.HandleFunc("POST /api/apps/categories/order", a.reorderCategories)
+	mux.HandleFunc("POST /api/apps/widgets/audience", a.saveWidgetAudience)
 	mux.HandleFunc("POST /api/apps/image", a.uploadImage)
 	mux.HandleFunc("GET /api/apps/images/search", a.requireAdminFunc(a.search.ServeSearch))
 	mux.HandleFunc("GET /api/apps/images/thumb", a.requireAdminFunc(a.search.ServeThumb))
@@ -306,22 +307,32 @@ func (a app) model(w http.ResponseWriter, r *http.Request) {
 		categories = append(categories, shown)
 	}
 	view := struct {
-		Categories       []Category        `json:"categories"`
-		User             user              `json:"user"`
-		ImageSearch      bool              `json:"imageSearch"`
-		Alerts           alerts            `json:"alerts"`
-		Upcoming         []calendar.Card   `json:"upcoming"`
-		UpcomingCalendar *Upcoming         `json:"upcomingCalendar,omitempty"`
-		Calendar         Month             `json:"calendar"`
-		Apps             []appView         `json:"apps"`
-		Options          *filter.Options   `json:"options,omitempty"`
-		TagLabels        map[string]string `json:"tagLabels,omitempty"`
+		Categories       []Category            `json:"categories"`
+		User             user                  `json:"user"`
+		ImageSearch      bool                  `json:"imageSearch"`
+		Alerts           alerts                `json:"alerts"`
+		Upcoming         []calendar.Card       `json:"upcoming"`
+		UpcomingCalendar *Upcoming             `json:"upcomingCalendar,omitempty"`
+		Calendar         Month                 `json:"calendar"`
+		Apps             []appView             `json:"apps"`
+		Options          *filter.Options       `json:"options,omitempty"`
+		TagLabels        map[string]string     `json:"tagLabels,omitempty"`
+		Widgets          map[string]widgetView `json:"widgets"`
 	}{
 		Categories:  categories,
 		User:        user{Email: email, Initial: strings.ToUpper(email[:1]), PhotoURL: a.heroPhoto(email), IsAdmin: admin},
 		ImageSearch: a.search.On(),
 		Calendar:    a.month(email, "", ""),
 		Apps:        a.appViews(email, admin),
+		Widgets:     map[string]widgetView{},
+	}
+	for _, key := range Widgets {
+		rules := full.WidgetRules[key]
+		v := widgetView{ForMe: forMe(rules)}
+		if admin {
+			v.Rules = rules
+		}
+		view.Widgets[key] = v
 	}
 	if admin {
 		options := filter.OptionsFor(a.directory.Sources(), email)
@@ -361,6 +372,9 @@ func (a app) tagLabels(categories []Category, apps []appView, viewer string) map
 		if app.Visibility != nil {
 			add(app.Visibility.Rules)
 		}
+	}
+	for _, rules := range a.cache.Model().WidgetRules {
+		add(rules)
 	}
 	return out
 }
@@ -429,7 +443,49 @@ func rulesOf(model *Model, key string) []filter.Rule {
 			}
 		}
 	}
+	if name, ok := strings.CutPrefix(key, thingWidget); ok {
+		return model.WidgetRules[name]
+	}
 	return model.Visibility[strings.TrimPrefix(key, thingApp)].Rules
+}
+
+// widgetView is one widget as the page takes it: whether it is for the
+// viewer, and - for an admin - the rules that say who it is for.
+type widgetView struct {
+	ForMe bool          `json:"forMe"`
+	Rules []filter.Rule `json:"rules,omitempty"`
+}
+
+// saveWidgetAudience is POST /api/apps/widgets/audience: an admin sets who
+// one of the front page's widgets is for, by rules as a section's are.
+func (a app) saveWidgetAudience(w http.ResponseWriter, r *http.Request) {
+	actor, ok := a.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Widget string        `json:"widget"`
+		Rules  []filter.Rule `json:"rules"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	if !slices.Contains(Widgets, body.Widget) {
+		http.Error(w, "no such widget", http.StatusNotFound)
+		return
+	}
+	key := thingWidget + body.Widget
+	was := rulesOf(a.cache.Model(), key)
+	rules, err := a.checkRules(was, body.Rules, actor)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if ops := audience(key, was, rules); len(ops) > 0 && !a.commit(w, r, actor, ops...) {
+		return
+	}
+	slog.InfoContext(r.Context(), "home: set a widget's audience", "actor", actor, "widget", body.Widget, "rules", len(rules))
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (a app) checkRules(existing, rules []filter.Rule, actor string) ([]filter.Rule, error) {

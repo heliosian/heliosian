@@ -225,7 +225,7 @@ function sectionListed(category) {
 
 // audienceWords says who some rules keep a thing to, short: each rule's
 // choices, the excludes marked, or how many rules when they run long.
-function audienceWords(rules) {
+export function audienceWords(rules) {
   const parts = (rules || []).map(r => {
     const bits = [...(r.roles || []), ...(r.grades || []), ...(r.classrooms || []), ...tagLabelsOf(r)];
     if (r.search) {

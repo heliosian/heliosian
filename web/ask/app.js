@@ -588,6 +588,20 @@ async function load() {
   await loadChats();
   renderChats();
   renderThread();
+  askFromAddress();
+}
+
+// askFromAddress asks a question another page handed across in the address
+// - ?q=, as Heliosian's From the School widget's Ask about this does - in a
+// new chat, and takes it out of the address so a reload does not ask again.
+function askFromAddress() {
+  const question = new URLSearchParams(location.search).get('q');
+  if (!question) {
+    return;
+  }
+  history.replaceState(null, '', location.pathname);
+  newChat();
+  send(question);
 }
 
 initChrome();

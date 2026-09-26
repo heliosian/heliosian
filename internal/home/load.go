@@ -157,8 +157,15 @@ type Category struct {
 type Model struct {
 	Categories []Category            `json:"categories"`
 	Visibility map[string]Visibility `json:"-"`
-	admins     []string
+	// WidgetRules are who each of the front page's widgets is for, by the
+	// widget's name (Widgets); no rules is everyone.
+	WidgetRules map[string][]filter.Rule `json:"-"`
+	admins      []string
 }
+
+// Widgets are the front page's widgets, by the names their audience rows
+// carry ("widget:when"), in the order the page draws them.
+var Widgets = []string{"when", "team", "celebrate", "school"}
 
 func compareOrder(a, b, aTitle, bTitle string) int {
 	if c := store.CompareKeys(a, b); c != 0 || a == "" {
@@ -171,6 +178,7 @@ const (
 	thingApp      = "app:"
 	thingCategory = "category:"
 	thingLink     = "link:"
+	thingWidget   = "widget:"
 )
 
 func rulesFor(rows []store.Row, key string) ([]filter.Rule, error) {
@@ -279,7 +287,14 @@ func BuildModel(ctx context.Context, tables store.Tables, images ImageChecker) (
 		return nil, err
 	}
 	audience := tables[audienceTab]
-	model := &Model{Categories: []Category{}}
+	model := &Model{Categories: []Category{}, WidgetRules: map[string][]filter.Rule{}}
+	for _, key := range Widgets {
+		rules, err := rulesFor(audience, thingWidget+key)
+		if err != nil {
+			return nil, err
+		}
+		model.WidgetRules[key] = rules
+	}
 	for _, row := range tables[adminsTab] {
 		model.admins = append(model.admins, row["Email"])
 	}

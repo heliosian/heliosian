@@ -27,6 +27,7 @@ function renderChrome() {
     renderChrome();
     renderNav();
     renderCategories(document.querySelector('#search').value);
+    renderWidgets(document.querySelector('#search').value);
   }});
 }
 

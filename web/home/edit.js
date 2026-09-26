@@ -11,6 +11,7 @@ const linkModal = document.querySelector('#link-modal');
 const linkForm = document.querySelector('#link-form');
 const categoryModal = document.querySelector('#category-modal');
 const appModal = document.querySelector('#app-modal');
+const widgetModal = document.querySelector('#widget-modal');
 const appForm = document.querySelector('#app-form');
 const categoryForm = document.querySelector('#category-form');
 const categoriesModal = document.querySelector('#categories-modal');
@@ -207,6 +208,31 @@ function audienceCard(mount, initial, everyoneNote, thing, withHead = true) {
 let linkAudience = null;
 let categoryAudience = null;
 let appAudience = null;
+let widgetAudience = null;
+let editingWidget = '';
+
+// openWidgetAudience opens who a front-page widget is for - the same rules a
+// section's Visibility takes - for an admin in Super Admin Mode.
+export function openWidgetAudience(key, title) {
+  editingWidget = key;
+  const rules = ((state.model.widgets || {})[key] || {}).rules || [];
+  document.querySelector('#widget-modal-title').textContent = `Who sees ${title}`;
+  widgetAudience = audienceCard(document.querySelector('#widget-audience'), rules, 'No rules means everyone.', 'widget:' + key, false);
+  setStatus('#widget-status', '');
+  widgetModal.hidden = false;
+}
+
+async function saveWidgetAudience(e) {
+  e.preventDefault();
+  setStatus('#widget-status', 'Saving…');
+  try {
+    await send('POST', '/api/apps/widgets/audience', {widget: editingWidget, rules: widgetAudience.rules});
+    closeModals();
+    await load();
+  } catch (err) {
+    setStatus('#widget-status', err.message, true);
+  }
+}
 
 function showTab(prefix, key) {
   const strip = tabStrip([{key: 'details', label: 'Details'}, {key: 'visibility', label: 'Visibility'}], key, 2, k => showTab(prefix, k));
@@ -282,6 +308,7 @@ function closeModals() {
   linkModal.hidden = true;
   categoryModal.hidden = true;
   appModal.hidden = true;
+  widgetModal.hidden = true;
 }
 
 export async function moveLink(title, by) {
@@ -641,7 +668,8 @@ export function initEditing() {
       button.closest('.modal-overlay').hidden = true;
     });
   }
-  for (const overlay of [linkModal, categoryModal, appModal, categoriesModal, imageSearchModal]) {
+  document.querySelector('#widget-form').addEventListener('submit', saveWidgetAudience);
+  for (const overlay of [linkModal, categoryModal, appModal, categoriesModal, imageSearchModal, widgetModal]) {
     overlay.addEventListener('click', e => {
       if (e.target === overlay) {
         overlay.hidden = true;

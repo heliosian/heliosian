@@ -1,7 +1,8 @@
-import {state} from './state.js';
+import {state, superOn} from './state.js';
 import {appOrigin} from '/toolbar.js';
 import {el, svg} from './dom.js';
-import {whenOrigin, calendarMark, calendarMenu, dropdown} from './cards.js';
+import {whenOrigin, calendarMark, calendarMenu, dropdown, audienceWords} from './cards.js';
+import {openWidgetAudience} from './edit.js';
 import {dayTypeClass} from '/daytype.js';
 
 // The widgets across the top of the page, each a card with one app's view
@@ -598,8 +599,165 @@ function celebrateWidget() {
   return card;
 }
 
+// School email comes from Heliosian's host (/api/apps/school): the last
+// week's, each with its key points, asked once per model and kept while the
+// widgets redraw.
+let school = null;
+let schoolFor = null;
+
+async function fetchSchool() {
+  schoolFor = state.model;
+  try {
+    const res = await fetch('/api/apps/school');
+    if (!res.ok) {
+      return;
+    }
+    school = (await res.json()).emails || [];
+  } catch {
+    return;
+  }
+  renderWidgets(document.querySelector('#search').value);
+}
+
+// listNames are the school's lists as the widget says them.
+const listNames = {
+  newsletter: 'Newsletter', parentsandstaff: 'Parents & staff', parentsonly: 'Parents', parentsandstudents: 'Parents & students',
+  community: 'Community', parents: 'All parents', newstudentfamilies: 'New families', 'new.parents': 'New families',
+};
+
+// channelName is where an email came from: the newsletter, a list to every
+// family, a classroom's parents or students ("Jays parents"), a grade band
+// ("Jays & Ravens").
+function channelName(email) {
+  if (email.kind === 'newsletter') {
+    return 'Newsletter';
+  }
+  if (listNames[email.channel]) {
+    return listNames[email.channel];
+  }
+  const cap = w => w.charAt(0).toUpperCase() + w.slice(1);
+  const [room, who] = email.channel.split('.');
+  if (who) {
+    return `${cap(room)} ${who}`;
+  }
+  return room.split('and').map(cap).join(' & ');
+}
+
+// emailRow is one school email: its subject, where it came from, its key
+// points - or word that they are on their way - and Ask about this, which
+// opens Helios Ask on a question about it.
+function emailRow(email) {
+  const row = el('li', 'wg-email');
+  const head = el('div', 'wg-email-head');
+  head.append(el('span', 'wg-title', email.title), el('span', 'wg-email-from', channelName(email)));
+  row.append(head);
+  if (email.points.length) {
+    const points = el('ul', 'wg-points');
+    for (const p of email.points) {
+      points.append(el('li', '', p));
+    }
+    row.append(points);
+  } else {
+    row.append(el('div', 'wg-sub', 'Key points on their way.'));
+  }
+  const day = parseDate(email.date).toLocaleDateString('en-US', {weekday: 'long', month: 'long', day: 'numeric'});
+  const ask = el('a', 'wg-ask');
+  ask.href = appOrigin('ask') + '/?q=' + encodeURIComponent(`What should I know from the school email "${email.title}" sent ${day}?`);
+  ask.append(el('span', '', 'Ask about this'), svg('chevron'));
+  row.append(ask);
+  return row;
+}
+
+// schoolWidget is From the School: the last week of the school's email -
+// the newsletter, the lists to every family, and the viewer's own
+// classrooms' - by day under the same bars as This Week, newest first,
+// each with its key points, the first three until More.
+function schoolWidget() {
+  if (schoolFor !== state.model) {
+    school = null;
+    fetchSchool();
+  }
+  if (!school) {
+    return null;
+  }
+  const card = el('article', 'widget widget-school');
+  const head = el('header', 'widget-head');
+  head.append(widgetTitle('ask', 'From the School'));
+  card.append(head);
+  if (!school.length) {
+    card.append(el('p', 'wg-empty', 'No school email this week.'));
+    return card;
+  }
+  const groups = [];
+  for (const e of school) {
+    let g = groups.find(x => x.day === e.date);
+    if (!g) {
+      g = {day: e.date, rows: []};
+      groups.push(g);
+    }
+    g.rows.push(e);
+  }
+  const name = 'school';
+  const open = expanded.has(name);
+  let n = 0;
+  for (const g of groups) {
+    if (!open && n >= partyCards) {
+      break;
+    }
+    const list = el('ol', 'wg-emails');
+    for (const e of g.rows) {
+      if (!open && n >= partyCards) {
+        break;
+      }
+      list.append(emailRow(e));
+      n++;
+    }
+    card.append(dayBar(g.day, g.rows.length, 'email'), list);
+  }
+  if (school.length > partyCards) {
+    const more = el('button', 'wg-more', open ? 'Show less' : `Show ${school.length - partyCards} more`);
+    more.type = 'button';
+    more.addEventListener('click', () => {
+      if (open) {
+        expanded.delete(name);
+      } else {
+        expanded.add(name);
+      }
+      renderWidgets(document.querySelector('#search').value);
+    });
+    card.append(more);
+  }
+  return card;
+}
+
+// widgetNames are the widgets' names as an admin's pencil says them.
+const widgetNames = {when: 'This Week', team: 'Team', celebrate: 'Celebrate', school: 'From the School'};
+
+// adminTools puts, in Super Admin Mode, a pencil at a widget's heading that
+// opens who it is for, and says so beside the title: Hidden when the admin
+// is not among them, else the rules in short.
+function adminTools(card, key) {
+  const head = card.querySelector('.widget-head');
+  const v = (state.model.widgets || {})[key] || {forMe: true, rules: []};
+  if (v.forMe === false) {
+    head.querySelector('.widget-title').append(el('span', 'hidden-badge', 'Hidden'));
+  }
+  if ((v.rules || []).length) {
+    head.querySelector('.widget-title').append(el('span', 'hidden-badge audience-badge', audienceWords(v.rules)));
+  }
+  const edit = el('button', 'category-edit widget-edit');
+  edit.type = 'button';
+  edit.title = 'Who sees this widget';
+  edit.setAttribute('aria-label', `Who sees ${widgetNames[key]}`);
+  edit.append(svg('edit'));
+  edit.addEventListener('click', () => openWidgetAudience(key, widgetNames[key]));
+  head.insertBefore(edit, head.children[1] || null);
+}
+
 // renderWidgets draws the row, or leaves it empty while a search is
-// filtering the page below.
+// filtering the page below. A widget not for the viewer - its rules, set
+// by an admin, leave them out - is left out; in Super Admin Mode every
+// widget shows, with the pencil that sets who it is for.
 export function renderWidgets(query = '') {
   const root = document.querySelector('#widgets');
   root.replaceChildren();
@@ -607,10 +765,20 @@ export function renderWidgets(query = '') {
   if (root.hidden) {
     return;
   }
-  for (const widget of [whenWidget(), teamWidget(), celebrateWidget()]) {
-    if (widget) {
-      root.append(widget);
+  const admin = superOn();
+  for (const [key, make] of [['when', whenWidget], ['team', teamWidget], ['celebrate', celebrateWidget], ['school', schoolWidget]]) {
+    const forMe = ((state.model.widgets || {})[key] || {}).forMe !== false;
+    if (!forMe && !admin) {
+      continue;
     }
+    const widget = make();
+    if (!widget) {
+      continue;
+    }
+    if (admin) {
+      adminTools(widget, key);
+    }
+    root.append(widget);
   }
   root.hidden = !root.children.length;
 }

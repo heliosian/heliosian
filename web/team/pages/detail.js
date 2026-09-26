@@ -770,6 +770,13 @@ function volunteersBox(node, editing, save) {
         if (!quiet && somethingBelow) {
           listing.append(el('div', 'vol-note', 'Sign up for something below.'));
         }
+        // Those who signed up before it was switched off are still on it,
+        // just not listed; tell whoever is editing, so they don't look lost.
+        if (editing && people.length) {
+          const n = people.length;
+          listing.append(el('div', 'vol-note vol-held',
+            `${n} ${n === 1 ? 'person' : 'people'} signed up here before volunteers were turned off. Check Allow volunteers for this itself to show them again.`));
+        }
       } else if (!revealed) {
         listing.append(el('div', 'vol-note', 'This list is private; only the organizers see it.'));
       } else if (!people.length && !chairs.length) {

@@ -31,9 +31,17 @@ const (
 	KindPage       = "page"
 	KindPortal     = "portal"
 	KindGroup      = "group"
+	// KindAnnouncement is mail of that shape already in the corpus; nothing
+	// files more of it (docs/ask/artifacts.md).
+	KindAnnouncement = "announcement"
 )
 
-var DocumentColumns = []string{"Key", "Title", "Date", "Author", "Kind", "Channel", "Source", "Chunks", "Object"}
+var DocumentColumns = []string{"Key", "Title", "Date", "Author", "Kind", "Channel", "Source", "Chunks", "Object", PointsColumn}
+
+// PointsColumn holds a school email's key points, one a line, written once
+// the email is in (internal/keypoints) for Heliosian's From the School
+// widget; blank until then, and for everything else.
+const PointsColumn = "Key Points"
 
 var stopwords = map[string]bool{"the": true, "and": true, "for": true, "are": true, "was": true, "our": true, "you": true, "your": true, "with": true, "this": true, "that": true, "from": true, "what": true, "when": true, "where": true, "who": true, "how": true, "does": true, "did": true, "will": true, "about": true, "there": true, "have": true, "has": true, "any": true, "can": true, "is": true, "in": true, "on": true, "at": true, "to": true, "of": true, "an": true, "or": true, "be": true, "it": true, "my": true, "me": true, "we": true, "us": true, "do": true, "up": true, "so": true, "if": true, "as": true, "by": true, "its": true, "not": true, "tell": true, "know": true, "say": true, "said": true, "school": true, "helios": true}
 
@@ -149,6 +157,8 @@ func (d *Document) normalize() error {
 type Model struct {
 	Documents []*Document
 	Fetched   int
+	// Points are the key points written for a document, by key.
+	Points map[string][]string
 }
 
 type Objects interface {
@@ -183,7 +193,12 @@ func (d *documents) build(_ context.Context, tables store.Tables) (*Model, error
 	d.mu.Lock()
 	held := maps.Clone(d.held)
 	d.mu.Unlock()
-	m := &Model{Documents: make([]*Document, len(rows))}
+	m := &Model{Documents: make([]*Document, len(rows)), Points: map[string][]string{}}
+	for _, row := range rows {
+		if points := splitPoints(row[PointsColumn]); len(points) > 0 {
+			m.Points[row["Key"]] = points
+		}
+	}
 	wanted := []int{}
 	for i, row := range rows {
 		if doc, ok := held[row["Object"]]; ok && doc.Key == row["Key"] {
@@ -408,6 +423,35 @@ func NewCache(source data.Source, writer data.Writer, objects Objects, embedder 
 		return nil, err
 	}
 	return &Cache{Store: s, documents: d}, nil
+}
+
+// splitPoints reads a Key Points cell: one point a line, blanks passed over.
+func splitPoints(cell string) []string {
+	out := []string{}
+	for _, line := range strings.Split(cell, "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			out = append(out, line)
+		}
+	}
+	return out
+}
+
+// SetPoints writes a document's key points.
+func (c *Cache) SetPoints(ctx context.Context, actor, key string, points []string) error {
+	return c.Commit(ctx, actor, store.Update(documentsTab, store.Row{"Key": key}, store.Row{PointsColumn: strings.Join(points, "\n")}))
+}
+
+// School says a document is mail the school sent everyone or a whole class:
+// the newsletter, an all-family or classroom list, an announcement - not the
+// everyone chat, and not a Loop group's post, which only its members read.
+func School(d *Document) bool {
+	switch d.Kind {
+	case KindNewsletter, KindAnnouncement:
+		return true
+	case KindList:
+		return d.Channel != "chat" && d.Channel != "chat2"
+	}
+	return false
 }
 
 func (c *Cache) Hold(doc *Document) error {

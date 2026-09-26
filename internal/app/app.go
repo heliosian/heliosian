@@ -40,6 +40,7 @@ import (
 	"heliosian/internal/geocode"
 	"heliosian/internal/home"
 	"heliosian/internal/imagesearch"
+	"heliosian/internal/keypoints"
 	"heliosian/internal/logging"
 	"heliosian/internal/loop"
 	"heliosian/internal/mail"
@@ -702,6 +703,9 @@ type Config struct {
 	Asker         ask.Responder
 	Embedder      artifacts.Embedder
 	ArtifactsMail artifacts.Inbox
+	// KeyPoints reads each school email's key points for the From the School
+	// widget; nil runs nothing.
+	KeyPoints keypoints.Summarizer
 }
 
 type Core struct {
@@ -815,6 +819,9 @@ func NewCore(cfg Config) *Core {
 	if err != nil {
 		logging.Fatal("load artifacts data", "error", err)
 	}
+	if cfg.KeyPoints != nil {
+		go keypoints.Run(artifactsCache, cfg.KeyPoints)
+	}
 	mux := http.NewServeMux()
 	config.Register(mux, settings, cache.IsAdmin)
 	who.Register(mux, cache, cfg.BrowserKey, smartLists{cache, teamCache, celebrateCache, loopCache, loopDir})
@@ -891,6 +898,7 @@ func NewCore(cfg Config) *Core {
 	homeMux.HandleFunc("GET /api/apps/late", behind)
 	homeMux.HandleFunc("GET /api/apps/team", teamWidget(cache, teamCache))
 	homeMux.HandleFunc("GET /api/apps/celebrate", celebrateWidget(cache, calendarCache, calendarDir, linked))
+	homeMux.HandleFunc("GET /api/apps/school", schoolWidget(cache, artifactsCache))
 	feedback.RegisterAdmin(homeMux, feedbackCache, cfg.FeedbackFiler, superAdmin)
 	blob.Register(mux, cfg.Store)
 	blob.RegisterHome(homeMux, cfg.Store)
@@ -1080,6 +1088,15 @@ func ClaudeGroupDescriber() loop.Describer {
 	return nil
 }
 
+// ClaudeKeyPoints reads school emails' key points with Claude, or nil with
+// no key.
+func ClaudeKeyPoints() keypoints.Summarizer {
+	if c := keypoints.New(optionalKey("ANTHROPIC_API_KEY", "local/creds/anthropic.key")); c != nil {
+		return c
+	}
+	return nil
+}
+
 func ClaudeAsker() ask.Responder {
 	if key := optionalKey("ANTHROPIC_API_KEY", "local/creds/anthropic.key"); key != "" {
 		return ask.NewClaude(key)
@@ -1178,6 +1195,7 @@ func Production(domain, blobCache string) (*http.Server, *store.Queue) {
 		Loop:          loopMail(sessionKey),
 		LoopDescriber: ClaudeGroupDescriber(),
 		Asker:         ask.NewClaude(mapsKey("ANTHROPIC_API_KEY", "local/creds/anthropic.key")),
+		KeyPoints:     ClaudeKeyPoints(),
 		Embedder:      embedder,
 		ArtifactsMail: artifactsMail(store),
 	})
