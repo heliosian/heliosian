@@ -5,9 +5,9 @@
 
 .rules { display: flex; flex-direction: column; gap: 10px; }
 
-.rule { display: flex; align-items: flex-start; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: #fafbfd; }
+.rule { display: flex; align-items: flex-start; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--hollow, #fafbfd); }
 
-.rule.is-theirs { background: #fdf8ec; }
+.rule.is-theirs { background: var(--amber-band, #fdf8ec); }
 
 .rule-controls { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 
@@ -15,9 +15,9 @@
 
 .rule.is-line { padding: 8px 12px 8px 10px; border: 0; border-radius: 12px; align-items: center; }
 
-.rule.is-line.is-include { background: #eef7f0; }
+.rule.is-line.is-include { background: var(--include-wash, #eef7f0); }
 
-.rule.is-line.is-exclude { background: #fdeeec; }
+.rule.is-line.is-exclude { background: var(--exclude-wash, #fdeeec); }
 
 .rule.is-line .rule-controls { gap: 12px; }
 
@@ -52,9 +52,9 @@
 
 .rule.is-line .rule-note { flex-basis: 100%; padding-left: 38px; }
 
-.rule.is-open.is-include { background: #f4faf5; border-color: #b9dcc2; }
+.rule.is-open.is-include { background: var(--include-wash, #f4faf5); border-color: var(--include-line, #b9dcc2); }
 
-.rule.is-open.is-exclude { background: #fef4f2; border-color: #f0c4bc; }
+.rule.is-open.is-exclude { background: var(--exclude-wash, #fef4f2); border-color: var(--exclude-line, #f0c4bc); }
 
 .rule .rule-controls > .button-small { margin-left: auto; flex-shrink: 0; }
 
@@ -66,7 +66,7 @@
 
 .chip-row { display: flex; gap: 6px; flex-wrap: wrap; }
 
-.chip-toggle { border: 1px solid var(--line); background: #fff; color: var(--muted); border-radius: 999px; padding: 6px 12px; font-size: 13px; font-weight: 600; cursor: pointer; }
+.chip-toggle { border: 1px solid var(--line); background: var(--card); color: var(--lift-ink, var(--muted)); border-radius: 999px; padding: 6px 12px; font-size: 13px; font-weight: 600; cursor: pointer; }
 
 .chip-toggle.active { background: var(--brand-fill, var(--brand)); border-color: var(--brand-fill, var(--brand)); color: #fff; }
 
@@ -81,7 +81,7 @@
 
 .rule-said.is-empty { color: var(--muted); font-style: italic; }
 
-.rule-search { flex: 1 1 200px; min-width: 160px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 999px; font: inherit; background: #fff; }
+.rule-search { flex: 1 1 200px; min-width: 160px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 999px; font: inherit; background: var(--field); }
 
 .facet-wrap { position: relative; }
 
@@ -143,7 +143,7 @@
 .facet-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 8px 12px 4px; border-top: 1px solid var(--line); margin-top: 4px; }
 
 /* The editor's pencil and trash, for a page without an icon-button of its own. */
-.rule .icon-button { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border: 0; border-radius: 8px; background: none; color: var(--muted); cursor: pointer; }
+.rule .icon-button { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border: 0; border-radius: 8px; background: var(--card-wash, none); color: var(--muted); cursor: pointer; }
 
 .rule .icon-button:hover { background: rgba(0, 0, 0, 0.06); color: var(--ink); }
 

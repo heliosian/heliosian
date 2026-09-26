@@ -31,10 +31,17 @@ html[data-theme="quan"] {
   --line: #f3cfdb;
   --input: #fde8ef;
   --muted: #8a5a6b;
+  /* The top bar, a deeper blush than the page. */
+  --toolbar: #fde0e9;
+  /* The amber notices - the banners over pages, the to-do cards - go lime:
+     a pale lime wash, lime bar and disc, deep green words. */
+  --notice-wash: #efffd6;
+  --notice-line: #b9f27a;
+  --notice-bar: #7bfc01;
+  --notice-ink: #2f6300;
+  --notice-disc: #d6ffa3;
+  --notice-disc-ink: #2f6300;
 }
-
-/* The top bar, a deeper blush than the page. */
-[data-theme="quan"] .topbar { --toolbar: #fde0e9; }
 
 /* The plum ink on a lime fill, wherever a button is drawn on the green. */
 [data-theme="quan"] .button { color: var(--quan-ink); }
@@ -63,23 +70,13 @@ html[data-theme="quan"] {
 /* Who's red badges would vanish on pink; they go lime with plum numbers. */
 [data-theme="quan"] .sidebar .nav-badge, [data-theme="quan"] .sidebar .nav-count { background: var(--lime); color: var(--quan-ink); }
 
-/* The amber alerts - the menu's cards, the banners over pages, the to-do
-   cards - go lime: a pale lime wash, lime bar and disc, deep green words. */
-[data-theme="quan"] .alert-card,
-[data-theme="quan"] .infobanner-alert,
-[data-theme="quan"] .todo-card { background: #efffd6; border-color: #b9f27a; }
+[data-theme="quan"] .alert-card { background: var(--notice-wash); border-color: var(--notice-line); }
 
-[data-theme="quan"] .alert-card::before,
-[data-theme="quan"] .infobanner-alert::before,
-[data-theme="quan"] .todo-card::before,
-[data-theme="quan"] .infobanner-alert .infobanner-main::before { background: #7bfc01; }
+[data-theme="quan"] .alert-card::before { background: var(--notice-bar); }
 
-[data-theme="quan"] .alert-card-disc,
-[data-theme="quan"] .infobanner-alert .infobanner-icon { background: #d6ffa3; color: #2f6300; }
+[data-theme="quan"] .alert-card-disc { background: var(--notice-disc); color: var(--notice-disc-ink); }
 
-[data-theme="quan"] .alert-card-title,
-[data-theme="quan"] .infobanner-alert .infobanner-title,
-[data-theme="quan"] .todo-card-title { color: #2f6300; }
+[data-theme="quan"] .alert-card-title { color: var(--notice-ink); }
 
 [data-theme="quan"] .alert-card:hover { background: #e4ffbf; }
 

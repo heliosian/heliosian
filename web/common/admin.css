@@ -12,10 +12,10 @@ body.admin {
   flex-direction: column;
   font-family: Roboto, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   color: var(--ink);
-  background: #f7f8f9;
+  background: var(--page-tint, #f7f8f9);
 }
 .admin header {
-  background: var(--brand);
+  background: var(--admin-bar, var(--brand));
   color: #fff;
   padding: 18px 28px;
   display: flex;
@@ -86,9 +86,9 @@ body.admin {
   background: var(--input);
 }
 .admin .tab.active {
-  color: var(--brand);
+  color: var(--brand-ink, var(--brand));
   border-left-color: var(--brand);
-  background: #eef4f4;
+  background: var(--picked, #eef4f4);
 }
 .admin .panel[hidden], .admin .tab[hidden] { display: none; }
 .admin .card {
@@ -108,8 +108,8 @@ body.admin {
   margin-bottom: 16px;
 }
 .admin .notice {
-  background: #fde3d1;
-  color: var(--alert);
+  background: var(--warn-wash, #fde3d1);
+  color: var(--warn-text, var(--alert));
   border-radius: 8px;
   padding: 10px 14px;
   font-size: 13px;

@@ -266,6 +266,8 @@ button { font: inherit; }
 
 .drawer-user .email { font-size: 12px; color: var(--muted); }
 
+.drawer-user .drawer-admin { display: block; padding: 10px 0 0; font-size: 14px; font-weight: 600; color: var(--brand); }
+
 .drawer-user form { margin-top: 10px; }
 
 main {
@@ -372,9 +374,8 @@ main {
    small button outlined in the priority red, quiet until it is wanted. */
 .priority-card { display: flex; flex-direction: column; gap: 8px; }
 .priority-card .priority-button { align-self: flex-start; }
-.priority-card .priority-button:not(.button-secondary) { background: transparent; border-color: rgba(194, 37, 63, 0.4); color: #c2253f; }
+.priority-card .priority-button:not(.button-secondary) { background: transparent; border-color: var(--priority-line, rgba(194, 37, 63, 0.4)); color: var(--priority-ink, #c2253f); }
 .priority-card .priority-button:not(.button-secondary):hover { background: rgba(194, 37, 63, 0.08); border-color: #c2253f; }
-[data-theme="dark"] .priority-card .priority-button:not(.button-secondary) { border-color: rgba(255, 128, 149, 0.45); color: #ff8095; }
 /* High Priority leads the row, a deep red behind a star. */
 .chip.chip-priority { gap: 5px; background: #c2253f; }
 .chip.chip-priority::before { content: '\2605'; font-size: 12px; }
@@ -383,25 +384,22 @@ main {
    under it is a priority. */
 .chip-count { display: inline-block; min-width: 20px; margin-left: 7px; padding: 0 6px; border-radius: 999px; background: rgba(255, 255, 255, 0.25); font-size: 12px; line-height: 18px; text-align: center; }
 .need.is-priority { background: #c2253f; }
-.card-priority-callout { display: flex; align-items: flex-start; gap: 6px; margin-top: 8px; padding: 7px 10px; border-radius: 10px; background: #fdeaed; color: #a51d34; font-size: 13px; line-height: 1.35; }
+.card-priority-callout { display: flex; align-items: flex-start; gap: 6px; margin-top: 8px; padding: 7px 10px; border-radius: 10px; background: var(--priority-wash, #fdeaed); color: var(--priority-text, #a51d34); font-size: 13px; line-height: 1.35; }
 .card-priority-callout svg { flex-shrink: 0; width: 14px; height: 14px; margin-top: 1px; fill: currentColor; }
 .card-priority-link { color: inherit; font-weight: 600; text-decoration: underline; text-decoration-color: rgba(165, 29, 52, 0.35); }
-[data-theme="dark"] .card-priority-callout { background: rgba(194, 37, 63, 0.18); color: #ff9aab; }
 
 /* The High Priority panel between the chips and the grid: pale red, its
    bolt in a red disc beside the heading, over a
    white card of rows - picture, what it is part of over its title and
    blurb and its category's small tag, its day and hours, Co-chair
    needed when it is, and a quiet red-outlined Sign up. */
-.prio-panel { container-type: inline-size; margin: 4px 0 28px; padding: 14px 14px 12px; border: 1px solid #f6d3d9; border-radius: 16px; background: #fdf0f2; }
-[data-theme="dark"] .prio-panel { border-color: rgba(194, 37, 63, 0.35); background: rgba(194, 37, 63, 0.1); }
+.prio-panel { container-type: inline-size; margin: 4px 0 28px; padding: 14px 14px 12px; border: 1px solid var(--priority-panel-line, #f6d3d9); border-radius: 16px; background: var(--priority-panel, #fdf0f2); }
 .prio-head { display: flex; align-items: center; gap: 12px; padding: 0 6px 12px; }
 .prio-mark { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; width: 42px; height: 42px; border-radius: 50%; background: #c2253f; color: #fff; }
 .prio-mark svg { width: 20px; height: 20px; fill: currentColor; stroke: none; }
 .prio-head-words { flex: 1; min-width: 0; }
-.prio-head-words h2 { margin: 0; font-size: 21px; color: #c2253f; }
+.prio-head-words h2 { margin: 0; font-size: 21px; color: var(--priority-ink, #c2253f); }
 .prio-head-words p { margin: 1px 0 0; font-size: 14px; color: var(--muted); }
-[data-theme="dark"] .prio-head-words h2 { color: #ff8095; }
 .prio-list { padding: 0 14px; border-radius: 12px; background: var(--card); box-shadow: 0 1px 3px rgba(15, 78, 84, 0.06); }
 .prio-row { display: grid; grid-template-columns: 96px minmax(0, 1fr) 150px 150px auto 18px; align-items: center; gap: 18px; padding: 12px 0; color: inherit; text-decoration: none; }
 .prio-row + .prio-row { border-top: 1px solid var(--line); }
@@ -426,9 +424,8 @@ main {
 .prio-chair { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 5px 11px; border-radius: 999px; background: var(--input); color: var(--brand); font-size: 12.5px; font-weight: 600; }
 .prio-chair.is-needed { background: var(--alert); color: #fff; }
 .prio-action { justify-self: end; }
-.button.prio-signup { padding: 7px 18px; border-color: rgba(194, 37, 63, 0.4); background: transparent; color: #c2253f; font-size: 14px; }
+.button.prio-signup { padding: 7px 18px; border-color: var(--priority-line, rgba(194, 37, 63, 0.4)); background: transparent; color: var(--priority-ink, #c2253f); font-size: 14px; }
 .button.prio-signup:hover { border-color: #c2253f; background: rgba(194, 37, 63, 0.08); }
-[data-theme="dark"] .button.prio-signup { border-color: rgba(255, 128, 149, 0.45); color: #ff8095; }
 .prio-row > .chevron { width: 18px; height: 18px; color: var(--brand); }
 /* Narrower, the row keeps its picture, words and Sign up, and the rest
    wraps under the words. */
@@ -569,7 +566,7 @@ main {
   align-items: center;
   justify-content: center;
   font-size: 44px;
-  color: var(--brand);
+  color: var(--brand-fill);
 }
 
 .card-media .thumb.initial.cat-1 { background: #f6cfc7; }
@@ -615,15 +612,15 @@ main {
 
 .card-stamp-month { padding: 3px 8px; background: #ee523c; color: #fff; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; }
 
-.card-stamp-day { padding: 4px 8px 0; font-size: 19px; font-weight: 700; color: var(--brand); }
+.card-stamp-day { padding: 4px 8px 0; font-size: 19px; font-weight: 700; color: var(--brand-fill); }
 
-.card-stamp-dow { padding: 1px 8px 0; font-size: 9px; font-weight: 700; color: var(--muted); letter-spacing: 0.08em; }
+.card-stamp-dow { padding: 1px 8px 0; font-size: 9px; font-weight: 700; color: var(--stamp-muted, var(--muted)); letter-spacing: 0.08em; }
 
 .card-stamp-text {
   bottom: 10px;
   font-size: 11px;
   font-weight: 700;
-  color: var(--brand);
+  color: var(--brand-fill);
   padding: 6px 10px;
   max-width: 45%;
 }
@@ -695,7 +692,7 @@ main {
 
 .button-small { padding: 6px 12px; font-size: 13px; }
 
-.link-button.danger { color: var(--alert); }
+.link-button.danger { color: var(--danger-ink, var(--alert)); }
 
 .link-button.move-under { font-size: 13.5px; padding: 0; }
 
@@ -852,7 +849,7 @@ main {
 
 .row.is-link { cursor: pointer; }
 
-.row.is-link:hover { background: #f8fbfb; }
+.row.is-link:hover { background: var(--wash, #f8fbfb); }
 
 .row.is-muted .row-body, .row.is-muted .thumb { opacity: 0.55; }
 
@@ -978,7 +975,7 @@ main {
   gap: 4px;
   padding: 1px 0;
   background: none;
-  color: #2f8f46;
+  color: var(--yes-mark, #2f8f46);
 }
 
 .badge.complete svg { width: 13px; height: 13px; stroke-width: 2.5; }
@@ -1080,7 +1077,7 @@ main {
 
 
 
-.hero-stamp-text { font-size: 13px; font-weight: 700; color: var(--brand); max-width: 40%; }
+.hero-stamp-text { font-size: 13px; font-weight: 700; color: var(--brand-fill); max-width: 40%; }
 
 .detail-cols {
   display: grid;
@@ -1169,12 +1166,12 @@ a.card-chip.is-link:hover { filter: brightness(0.92); text-decoration: underline
   padding: 16px;
 }
 
-.side-card-help { background: #eaf4f3; border-color: #d3e7e5; }
+.side-card-help { background: var(--teal-wash, #eaf4f3); border-color: var(--teal-line, #d3e7e5); }
 
 /* A chair's word on the invitation: the card's yellow, so it stands out. */
-.side-card-invite { background: #fff8e1; border: 1.5px solid #e8c84a; }
+.side-card-invite { background: var(--invite-wash, #fff8e1); border: 1.5px solid var(--invite-line, #e8c84a); }
 
-.side-card-invite .side-line { color: #4d4a2e; }
+.side-card-invite .side-line { color: var(--soft-ink, #4d4a2e); }
 
 /* Whoever runs the event reads a volunteer's RSVP on Helios When. */
 .side-chair-rsvp { margin-top: 3px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
@@ -1268,9 +1265,9 @@ a.card-chip.is-link:hover { filter: brightness(0.92); text-decoration: underline
 
 .who-action { display: flex; flex-direction: column; align-items: center; gap: 6px; border: 0; background: none; padding: 0; font: inherit; color: var(--muted); text-decoration: none; cursor: pointer; }
 
-.who-action .icon-round { width: 48px; height: 48px; background: #eaf3f3; }
+.who-action .icon-round { width: 48px; height: 48px; background: var(--wash, #eaf3f3); }
 
-.who-action:hover .icon-round { background: #dfe9e9; }
+.who-action:hover .icon-round { background: var(--glass-strong, #dfe9e9); }
 
 .who-action .icon-round svg { width: 21px; height: 21px; }
 
@@ -1298,12 +1295,12 @@ a.card-chip.is-link:hover { filter: brightness(0.92); text-decoration: underline
 
 .icon-round { width: 36px; height: 36px; border-radius: 50%; border: 0; background: var(--input); color: var(--brand); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; text-decoration: none; }
 
-.icon-round:hover { background: #dfe9e9; }
+.icon-round:hover { background: var(--glass-strong, #dfe9e9); }
 
 .icon-round svg { width: 17px; height: 17px; }
 
 /* The band at the foot: profile link left, Done right. */
-.who-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; padding: 16px; background: #f0f5f5; border-radius: 12px; }
+.who-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; padding: 16px; background: var(--hollow, #f0f5f5); border-radius: 12px; }
 
 .who-foot .button svg { width: 17px; height: 17px; }
 
@@ -1312,12 +1309,12 @@ a.card-chip.is-link:hover { filter: brightness(0.92); text-decoration: underline
 /* Household chips open that person's own window. */
 .who-card-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 
-.who-card-chip { border: 0; background: #eaf3f3; border-radius: 999px; padding: 6px 14px; font: inherit; font-size: 14px; color: var(--brand); cursor: pointer; }
+.who-card-chip { border: 0; background: var(--wash, #eaf3f3); border-radius: 999px; padding: 6px 14px; font: inherit; font-size: 14px; color: var(--brand); cursor: pointer; }
 
-.who-card-chip:hover { background: #dfe9e9; }
+.who-card-chip:hover { background: var(--glass-strong, #dfe9e9); }
 
 /* The co-chair appointment on a sign-up: icon, words, one button. */
-.appoint-card { display: flex; align-items: center; gap: 16px; padding: 16px 18px; background: #eef5f4; border-radius: 12px; margin: 6px 0 18px; }
+.appoint-card { display: flex; align-items: center; gap: 16px; padding: 16px 18px; background: var(--wash, #eef5f4); border-radius: 12px; margin: 6px 0 18px; }
 
 .appoint-icon { width: 52px; height: 52px; border-radius: 50%; background: var(--card); color: var(--brand); display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
 
@@ -1554,13 +1551,13 @@ button.side-chair:hover { background: var(--input); }
   padding: 14px 18px;
   border: 1px solid var(--line);
   border-radius: 14px;
-  background: #f4f8f8;
+  background: var(--hollow, #f4f8f8);
   text-decoration: none;
   color: inherit;
   transition: border-color 0.15s, background 0.15s;
 }
 
-.side-link:hover { border-color: var(--accent); background: #eef5f5; }
+.side-link:hover { border-color: var(--accent); background: var(--hollow, #eef5f5); }
 
 .side-link:hover .side-link-title { text-decoration: underline; }
 
@@ -1587,9 +1584,9 @@ button.side-chair:hover { background: var(--input); }
    themselves are white cards on the page. */
 .resources-main { margin: 18px 0 6px; background: none; border: 0; border-radius: 0; padding: 0; }
 
-.resources-main .side-link { background: var(--card); }
+.resources-main .side-link { background: var(--hollow, var(--card)); }
 
-.resources-main .side-link:hover { background: #fbfdfd; }
+.resources-main .side-link:hover { background: var(--hollow, #fbfdfd); }
 
 /* The event's own sign-up box: who is on it, Join top right, and the two
    switches while editing. */
@@ -1703,7 +1700,7 @@ button.side-chair:hover { background: var(--input); }
   cursor: pointer;
 }
 
-.segment.is-on { background: #fff; color: var(--brand); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
+.segment.is-on { background: var(--card); color: var(--brand-ink, var(--brand)); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
 
 .people-face { width: 38px; height: 38px; font-size: 15px; flex-shrink: 0; }
 
@@ -1720,7 +1717,7 @@ button.side-chair:hover { background: var(--input); }
 
 .form-tabs .tabs button svg { width: 18px; height: 18px; }
 
-.form-tabs .tabs.light button.is-active { background: #eaf3f3; color: var(--brand); border-bottom-color: var(--accent); }
+.form-tabs .tabs.light button.is-active { background: var(--glass, #eaf3f3); color: var(--brand); border-bottom-color: var(--accent); }
 
 .form-tab-body { min-height: 300px; }
 
@@ -1735,7 +1732,7 @@ button.side-chair:hover { background: var(--input); }
 
 .setting-control .field { margin: 0; }
 
-.setting-control select, .setting-control input[type=number] { padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; background: #fff; }
+.setting-control select, .setting-control input[type=number] { padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; background: var(--field); }
 
 .setting-control select { min-width: 220px; }
 
@@ -1745,7 +1742,7 @@ button.side-chair:hover { background: var(--input); }
 
 .setting-stack .field.is-compact { margin: 0; }
 
-.setting-control input[type=text] { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; background: #fff; }
+.setting-control input[type=text] { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; background: var(--field); }
 
 .setting-control select { width: 100%; }
 
@@ -1899,8 +1896,8 @@ button.side-chair:hover { background: var(--input); }
   padding: 0;
   border: 0;
   border-radius: 7px;
-  background: none;
-  color: var(--muted);
+  background: var(--wash, none);
+  color: var(--lift-ink, var(--muted));
   cursor: pointer;
   vertical-align: middle;
   flex-shrink: 0;
@@ -1922,19 +1919,20 @@ button.side-chair:hover { background: var(--input); }
   justify-content: center;
   width: 38px;
   height: 38px;
-  border: 0;
+  border: var(--disc-border, 0);
   border-radius: 50%;
-  background: #fff;
-  color: var(--brand);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.22);
+  background: var(--disc, #fff);
+  color: var(--disc-ink, var(--brand));
+  box-shadow: var(--disc-shadow, 0 2px 8px rgba(0, 0, 0, 0.22));
+  backdrop-filter: var(--disc-blur, none);
   cursor: pointer;
 }
 
-.hero-action:hover { background: var(--input); }
+.hero-action:hover { background: var(--disc-hover, var(--input)); }
 
 .hero-action svg { width: 17px; height: 17px; }
 
-.hero-action.is-editing { background: var(--brand-fill); color: #fff; }
+.hero-action.is-editing { background: var(--brand-fill); border-color: transparent; color: #fff; }
 
 .hero-action.is-editing:hover { background: var(--brand-fill-dark); }
 
@@ -1949,7 +1947,7 @@ button.side-chair:hover { background: var(--input); }
   gap: 8px;
   padding: 6px 8px 6px 12px;
   border-radius: 999px;
-  background: #fff;
+  background: var(--disc, #fff);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
   font-size: 12.5px;
   font-weight: 700;
@@ -1992,7 +1990,7 @@ button.side-chair:hover { background: var(--input); }
   padding: 7px 12px;
   border: 0;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.92);
+  background: var(--disc, rgba(255, 255, 255, 0.92));
   color: var(--brand);
   font: inherit;
   font-size: 13px;
@@ -2000,7 +1998,7 @@ button.side-chair:hover { background: var(--input); }
   cursor: pointer;
 }
 
-.hero-image-action:hover { background: #fff; }
+.hero-image-action:hover { background: var(--disc-hover, #fff); }
 
 /* The image menu on the hero: two ways to bring a picture in. */
 .hero-image-menu-holder { position: relative; display: inline-block; }
@@ -2118,7 +2116,7 @@ button.side-chair:hover { background: var(--input); }
 
 .form-tab-body > .field:has(> select) { max-width: 420px; }
 
-.field.field-when .field-when-pair input { padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; background: #fff; }
+.field.field-when .field-when-pair input { padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; background: var(--field); }
 
 .field.field-when > .field-when-block:not(:first-child), .field.field-when > .field-when-label:not(:first-child) { margin-top: 12px; }
 
@@ -2136,7 +2134,7 @@ button.side-chair:hover { background: var(--input); }
 /* The When tab as settings rows. */
 .field.field-when.is-rows { max-width: none; }
 
-.field-when.is-rows .field-when-same { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: center; padding: 18px 20px; border-radius: 12px; background: #eaf3f3; margin-bottom: 8px; }
+.field-when.is-rows .field-when-same { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: center; padding: 18px 20px; border-radius: 12px; background: var(--wash, #eaf3f3); margin-bottom: 8px; }
 
 .field-when.is-rows .field-when-same-lead > span { display: block; font-size: 15px; font-weight: 700; color: var(--ink); }
 
@@ -2166,7 +2164,7 @@ button.side-chair:hover { background: var(--input); }
 
 .field-when.is-rows .field-when-allday > span > small { display: block; font-size: 13.5px; font-weight: 400; color: var(--muted); margin-top: 2px; }
 
-.field-when.is-rows input[type=text] { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; background: #fff; }
+.field-when.is-rows input[type=text] { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; background: var(--field); }
 
 /* The all-day switch puts the time pickers away. */
 .field-when-allday { display: inline-flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 13.5px; font-weight: 600; color: var(--brand); cursor: pointer; }
@@ -2220,35 +2218,7 @@ button.side-chair:hover { background: var(--input); }
 
 .detail-meta { color: var(--muted); font-size: 14px; margin-top: 8px; }
 
-.links-band {
-  background: var(--brand-fill);
-  color: #fff;
-  margin: 20px -20px 0;
-  padding: 6px 20px;
-}
-
-.links-band .row { border-top-color: rgba(255, 255, 255, 0.15); }
-
-.links-band .row-title { color: #fff; }
-
-.links-band .row-text { color: rgba(255, 255, 255, 0.75); }
-
-.links-band .button { background: #fff; color: var(--ink); }
-
 .center-actions { display: flex; justify-content: center; gap: 8px; margin: 16px 0; flex-wrap: wrap; }
-
-.signup-band {
-  background: var(--yellow);
-  margin: 16px -20px;
-  padding: 18px 20px;
-  text-align: center;
-}
-
-.signup-band .label { justify-content: center; color: #4a4a4a; margin-bottom: 10px; }
-
-.signup-band .button { background: #fff; color: var(--ink); min-width: 320px; justify-content: center; }
-
-.signup-band .status { font-weight: 600; margin-bottom: 10px; }
 
 h2.section { font-size: 22px; margin: 24px 0 12px; display: flex; align-items: center; justify-content: space-between; }
 
@@ -2443,8 +2413,8 @@ h2.section .link-button { font-size: 14px; }
 .add-row input { flex: 1; padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; }
 
 .notice {
-  background: #fdf7c9;
-  color: #706204;
+  background: var(--warn-wash, #fdf7c9);
+  color: var(--warn-text, #706204);
   border-radius: 8px;
   padding: 10px 14px;
   font-size: 13px;
@@ -2485,7 +2455,7 @@ h2.section .link-button { font-size: 14px; }
   border: 1px solid var(--line);
   border-radius: 8px;
   font: inherit;
-  background: #fff;
+  background: var(--field);
 }
 
 .field textarea { resize: vertical; }
@@ -2538,12 +2508,12 @@ h2.section .link-button { font-size: 14px; }
   padding: 28px 20px;
   border: 1.5px dashed rgba(12, 76, 84, 0.3);
   border-radius: 12px;
-  background: #f4f8f8;
+  background: var(--hollow, #f4f8f8);
   cursor: pointer;
   text-align: center;
 }
 
-.image-drop.is-dragover { border-color: var(--accent); background: #eaf3f3; }
+.image-drop.is-dragover { border-color: var(--accent); background: var(--hollow, #eaf3f3); }
 
 .image-drop img { width: 220px; height: 150px; border-radius: 10px; object-fit: cover; }
 
@@ -2564,11 +2534,11 @@ h2.section .link-button { font-size: 14px; }
 
 .setting-card > .setting-hint { margin-bottom: 12px; }
 
-.setting-card > input[type=text] { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; background: #fff; }
+.setting-card > input[type=text] { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; background: var(--field); }
 
 .setting-card .address-line { margin: 12px 0 0; }
 
-.setting-card .address-text { padding: 8px 12px; border-radius: 8px; background: #eef3f3; }
+.setting-card .address-text { padding: 8px 12px; border-radius: 8px; background: var(--wash, #eef3f3); }
 
 .setting-card .image-row { align-items: stretch; gap: 16px; }
 
@@ -2585,7 +2555,7 @@ h2.section .link-button { font-size: 14px; }
   height: 120px;
   border: 1.5px dashed rgba(12, 76, 84, 0.3);
   border-radius: 12px;
-  background: #f4f8f8;
+  background: var(--hollow, #f4f8f8);
   color: var(--brand);
 }
 
@@ -2599,7 +2569,7 @@ h2.section .link-button { font-size: 14px; }
 
 .modal-actions { display: flex; align-items: center; gap: 8px; margin-top: 20px; flex-wrap: wrap; }
 
-.danger-button { margin-left: auto; border: 0; background: none; color: var(--alert); font-weight: 600; cursor: pointer; }
+.danger-button { margin-left: auto; border: 0; background: none; color: var(--danger-ink, var(--alert)); font-weight: 600; cursor: pointer; }
 
 .save-status { font-size: 13px; color: var(--muted); }
 
@@ -2679,7 +2649,7 @@ h2.section .link-button { font-size: 14px; }
   }
   .tabbar a.is-active { color: var(--brand); }
   .tabbar svg { width: 22px; height: 22px; }
-  .band, .links-band, .signup-band { margin-left: -12px; margin-right: -12px; padding-left: 12px; padding-right: 12px; }
+  .band { margin-left: -12px; margin-right: -12px; padding-left: 12px; padding-right: 12px; }
   .page-head h1 { font-size: 24px; }
   .year-title { font-size: 32px; }
   .row { gap: 10px; padding: 10px; }
@@ -2694,7 +2664,6 @@ h2.section .link-button { font-size: 14px; }
   .detail-hero .thumb.detail-hero-image { height: 190px; }
   .detail-title { font-size: 26px; }
   .hero-stamp { top: 10px; right: 10px; min-width: 88px; padding: 9px 12px; }
-  .signup-band .button { min-width: 0; width: 100%; }
   .field-grid { grid-template-columns: 1fr; }
   .calendar .day { min-height: 72px; padding: 3px; }
   .calendar .chip { font-size: 10px; padding: 1px 4px; }
@@ -2808,7 +2777,7 @@ h2.section .link-button { font-size: 14px; }
 }
 
 /* The highlight callout under the description: warm, with the emoji large. */
-.highlight-card { display: flex; align-items: flex-start; gap: 18px; padding: 20px 24px; margin: 18px 0 6px; background: #fbf7e6; border-radius: 16px; }
+.highlight-card { display: flex; align-items: flex-start; gap: 18px; padding: 20px 24px; margin: 18px 0 6px; background: var(--hollow, #fbf7e6); border-radius: 16px; }
 
 .highlight-icon { font-size: 40px; line-height: 1; flex-shrink: 0; margin-top: 2px; }
 
@@ -2964,9 +2933,9 @@ h2.section .link-button { font-size: 14px; }
 /* What sits under a row: a labelled run of small chips, plainly not prose. */
 .row-under { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
 
-.row-under-chip { border: 0; font: inherit; font-size: 12px; font-weight: 600; color: var(--brand); background: #eaf3f3; border-radius: 999px; padding: 3px 10px; cursor: pointer; }
+.row-under-chip { border: 0; font: inherit; font-size: 12px; font-weight: 600; color: var(--brand); background: var(--wash, #eaf3f3); border-radius: 999px; padding: 3px 10px; cursor: pointer; }
 
-.row-under-chip:hover { background: #d8e9e9; }
+.row-under-chip:hover { background: var(--glass-strong, #d8e9e9); }
 
 /* The lime bar at a selected item's left, straight, clear of the corners. */
 .app-nav a.is-active::before {

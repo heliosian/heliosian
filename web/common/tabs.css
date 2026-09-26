@@ -5,9 +5,11 @@
   padding-top: 10px;
   position: sticky;
   top: 0;
-  background: #fff;
+  background: var(--page);
   z-index: 2;
 }
+
+.modal .tab-strip { background: var(--card); }
 
 .tab-strip-item {
   position: relative;
@@ -19,7 +21,7 @@
   border-radius: 8px;
   font-size: 15px;
   font-weight: 500;
-  color: #5b6572;
+  color: var(--soft-ink, #5b6572);
   cursor: pointer;
   white-space: nowrap;
 }
@@ -38,7 +40,7 @@
 
 .tab-strip-item.active {
   /* A wash of the brand colour, so it follows the theme - teal, or quan's pink. */
-  background: color-mix(in srgb, var(--brand) 9%, transparent);
+  background: var(--glass, color-mix(in srgb, var(--brand) 9%, transparent));
   color: var(--brand);
   font-weight: 600;
   border-radius: 8px 8px 0 0;
@@ -55,11 +57,11 @@
 }
 
 .tab-strip-count {
-  background: #eef0f2;
+  background: var(--wash, #eef0f2);
   border-radius: 10px;
   padding: 1px 8px;
   font-size: 12px;
-  color: #5b6572;
+  color: var(--lift-ink, #5b6572);
 }
 
 .tab-strip-more {
@@ -94,7 +96,7 @@
 }
 
 .tab-strip-menu-item:hover {
-  background: #f6f6f7;
+  background: var(--wash, #f6f6f7);
 }
 
 .tab-strip-menu-item.active {

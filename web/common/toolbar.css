@@ -13,7 +13,6 @@
 [hidden] { display: none !important; }
 
 .topbar {
-  --toolbar: #ecf3f2;
   display: flex;
   align-items: center;
   gap: 20px;
@@ -37,7 +36,7 @@
   left: 14px;
   width: 17px;
   height: 17px;
-  stroke: var(--muted);
+  stroke: var(--muted-strong, var(--muted));
   fill: none;
   stroke-width: 2;
   stroke-linecap: round;
@@ -48,10 +47,10 @@
 .topbar-search input {
   width: 100%;
   height: 32px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--field-line, var(--line));
   border-radius: 999px;
   padding: 0 44px 0 40px;
-  background: #fff;
+  background: var(--field);
   color: var(--ink);
   font: inherit;
   font-size: 14px;
@@ -80,10 +79,10 @@
   min-width: 18px;
   height: 18px;
   padding: 0 5px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--field-line, var(--line));
   border-radius: 5px;
-  background: var(--toolbar);
-  color: var(--muted);
+  background: var(--card-wash, var(--toolbar));
+  color: var(--muted-strong, var(--muted));
   font: inherit;
   font-size: 12px;
   font-weight: 500;
@@ -169,9 +168,9 @@
    and the count on a dot at its top right, ringed in the bar's own colour -
    red for replies owed, late birthdays and things to update, yellow for a privacy mismatch,
    amber for approvals. */
-.rsvp-alert, .approvals-alert, .late-alert, .topbar-alert.stale-alert, .topbar-alert.privacy-alert { position: relative; width: 32px; height: 32px; border-radius: 50%; background: var(--brand-fill); color: #fff; }
+.rsvp-alert, .approvals-alert, .late-alert, .topbar-alert.stale-alert, .topbar-alert.privacy-alert { position: relative; width: 32px; height: 32px; border-radius: 50%; background: var(--badge); color: #fff; }
 
-.rsvp-alert:hover, .approvals-alert:hover, .late-alert:hover, .topbar-alert.stale-alert:hover, .topbar-alert.privacy-alert:hover { background: #1f838a; opacity: 1; }
+.rsvp-alert:hover, .approvals-alert:hover, .late-alert:hover, .topbar-alert.stale-alert:hover, .topbar-alert.privacy-alert:hover { background: var(--badge-hover); opacity: 1; }
 
 .rsvp-alert svg, .approvals-alert svg, .late-alert svg, .stale-alert svg, .topbar-alert.privacy-alert svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; }
 
@@ -193,7 +192,6 @@
 }
 
 .topbar-alert-menu {
-  --alert-bg: #fcfdfd;
   position: absolute;
   right: 0;
   top: calc(100% + 12px);
@@ -230,7 +228,7 @@
 /* A card in its badge's yellow - the privacy mismatch's: the bright yellow for the bar and
    the discs' ground, a deeper gold for the words and marks that must read
    on white. */
-.alert-card.is-yellow { --tone: #f2cf1d; --tone-ink: #9a7a00; }
+.alert-card.is-yellow { --tone: #f2cf1d; --tone-ink: var(--yellow-ink, #9a7a00); }
 
 .alert-card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 7px; background: var(--tone); }
 
@@ -242,11 +240,11 @@ a.alert-card:hover { background: color-mix(in srgb, var(--tone) 5%, var(--alert-
 
 .alert-card-words { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 
-.alert-card-title { font-size: 16px; font-weight: 800; line-height: 1.25; color: var(--brand); }
+.alert-card-title { font-size: 16px; font-weight: 800; line-height: 1.25; color: var(--brand-ink, var(--brand)); }
 
 .alert-card-text { font-size: 13.5px; line-height: 1.4; color: var(--muted, #647071); }
 
-.alert-card-chevron { width: 9px; height: 9px; flex-shrink: 0; margin-right: 4px; border-right: 2px solid #6b7b7c; border-bottom: 2px solid #6b7b7c; transform: rotate(-45deg); }
+.alert-card-chevron { width: 9px; height: 9px; flex-shrink: 0; margin-right: 4px; border-right: 2px solid var(--faint, #6b7b7c); border-bottom: 2px solid var(--faint, #6b7b7c); transform: rotate(-45deg); }
 
 /* A card that lists things (alertList): the count large in its tone beside
    what they are and a close; a row for each, its icon's pale disc beside the
@@ -258,7 +256,7 @@ a.alert-card:hover { background: color-mix(in srgb, var(--tone) 5%, var(--alert-
 
 .alert-list-count { font-size: 26px; font-weight: 800; line-height: 1; color: var(--tone-ink, var(--tone)); }
 
-.alert-list-title { flex: 1; font-size: 16px; font-weight: 700; color: var(--brand); }
+.alert-list-title { flex: 1; font-size: 16px; font-weight: 700; color: var(--brand-ink, var(--brand)); }
 
 .alert-list-close { align-self: center; display: flex; padding: 2px; border: 0; background: none; color: #6b7b7c; cursor: pointer; }
 
@@ -285,7 +283,7 @@ a.alert-card:hover { background: color-mix(in srgb, var(--tone) 5%, var(--alert-
 
 .alert-list-words { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 
-.alert-list-chip-title { font-size: 14.5px; font-weight: 700; color: var(--brand); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.alert-list-chip-title { font-size: 14.5px; font-weight: 700; color: var(--brand-ink, var(--brand)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .alert-list-chip-note { font-size: 12.5px; color: var(--muted, #647071); }
 
@@ -340,7 +338,7 @@ a.alert-card:hover { background: color-mix(in srgb, var(--tone) 5%, var(--alert-
 body.is-spoofing .topbar { --toolbar: #ff3d9a; }
 
 /* The search box's / hint keeps its own ground, not the bar's pink. */
-body.is-spoofing .topbar-key { background: #fff; }
+body.is-spoofing .topbar-key { background: var(--card); }
 
 body.is-spoofing .spoof-wrap.is-on .spoof-pill { background: #fff; color: #c2185b; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2); }
 
@@ -501,7 +499,7 @@ body.is-spoofing .spoof-stop { color: #c2185b; }
 
 .spoof-row:hover, .spoof-row.is-active { background: var(--input); }
 
-.spoof-row.is-current { background: #e8f2f1; }
+.spoof-row.is-current { background: var(--picked, #e8f2f1); }
 
 .spoof-row-name {
   font-size: 14px;
@@ -524,7 +522,7 @@ body.is-spoofing .spoof-stop { color: #c2185b; }
   padding: 0 12px;
   border: 1px solid var(--line);
   border-radius: 999px;
-  background: #fff;
+  background: var(--field);
   color: var(--ink);
   font: inherit;
   font-size: 14px;
@@ -567,9 +565,9 @@ body.is-spoofing .spoof-stop { color: #c2185b; }
   height: 28px;
   border-radius: 50%;
   overflow: hidden;
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--line);
-  color: var(--brand-fill);
+  color: var(--brand-text, var(--brand-fill));
   font-size: 12px;
   font-weight: 700;
   flex-shrink: 0;
@@ -744,7 +742,7 @@ body.is-super .user-avatar {
 
 .app-switch-menu a:hover { background: var(--input); }
 
-.app-switch-menu a.is-current { background: #e8f2f1; }
+.app-switch-menu a.is-current { background: var(--picked, #e8f2f1); }
 
 .app-switch-menu img {
   width: 36px;
@@ -889,7 +887,7 @@ body.is-super .user-avatar {
 
 .feedback-kind:has(input:checked) span {
   border-color: var(--brand);
-  background: color-mix(in srgb, var(--brand) 12%, #fff);
+  background: var(--picked, color-mix(in srgb, var(--brand) 12%, #fff));
   color: var(--brand);
   font-weight: 600;
 }
@@ -918,7 +916,7 @@ body.is-super .user-avatar {
   padding: 8px 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fff;
+  background: var(--field);
   font: inherit;
   font-size: 14px;
   color: var(--ink);
@@ -957,6 +955,7 @@ body.is-super .user-avatar {
 }
 
 .feedback-send {
+  border-color: var(--brand-fill);
   background: var(--brand-fill);
   color: #fff;
 }
@@ -967,8 +966,9 @@ body.is-super .user-avatar {
 }
 
 .feedback-cancel {
-  background: #fff;
-  color: var(--brand);
+  border-color: var(--wash-line, var(--brand));
+  background: var(--card);
+  color: var(--brand-ink, var(--brand));
 }
 
 .feedback-status {
@@ -984,7 +984,7 @@ body.is-super .user-avatar {
   padding: 10px 18px;
   border-radius: 999px;
   background: var(--ink);
-  color: #fff;
+  color: var(--page);
   font-size: 14px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
   z-index: var(--z-toast);
@@ -1074,8 +1074,8 @@ body.is-super .user-avatar {
    whichever order the sheets load in. */
 body .drawer {
   color: #fff;
-  background-color: var(--sidebar, var(--brand-fill));
-  background-image: url('/brand/symbol-watermark.png'), linear-gradient(180deg, var(--sidebar-top, #022427), var(--sidebar, var(--brand-fill)));
+  background-color: var(--drawer, var(--sidebar, var(--brand-fill)));
+  background-image: var(--drawer-art, url('/brand/symbol-watermark.png'), linear-gradient(180deg, var(--sidebar-top, #022427), var(--sidebar, var(--brand-fill))));
   background-size: 360px auto, auto;
   background-position: right -120px bottom -100px, left top;
   background-repeat: no-repeat, no-repeat;

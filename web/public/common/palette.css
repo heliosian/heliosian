@@ -23,4 +23,19 @@
   --cat-yellow: #fae105;
   --cat-deep-teal: #0f4e54;
   --cat-gold: #f1b940;
+  --brand-fill: var(--brand);
+  --brand-fill-dark: var(--brand-dark);
+  --muted-fill: var(--muted);
+  --toolbar: #ecf3f2;
+  --field: #ffffff;
+  --alert-bg: #fcfdfd;
+  --badge: var(--brand-fill);
+  --badge-hover: #1f838a;
+  --notice-wash: #fef7b7;
+  --notice-line: #f6e58a;
+  --notice-bar: #f1b940;
+  --notice-ink: #cc8f0b;
+  --notice-disc: #f1b940;
+  --notice-disc-ink: var(--brand-deep);
+  --notice-text: var(--ink);
 }

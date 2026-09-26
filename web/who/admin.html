@@ -139,7 +139,7 @@
     border-radius: 8px;
     font-size: 14px;
     font-family: inherit;
-    background: #fff;
+    background: var(--field);
   }
   .field-value {
     display: flex;
@@ -187,7 +187,7 @@
   .danger-button {
     border: none;
     background: none;
-    color: var(--alert);
+    color: var(--danger-ink, var(--alert));
     font-size: 13px;
     font-weight: 600;
     cursor: pointer;
@@ -327,7 +327,7 @@
       width: 100%;
       padding: 14px 20px;
       border: 0;
-      background: #fff;
+      background: var(--card);
       font: inherit;
       font-size: 14px;
       font-weight: 700;
@@ -355,7 +355,7 @@
       right: 0;
       max-height: 70vh;
       overflow-y: auto;
-      background: #fff;
+      background: var(--card);
       border-bottom: 1px solid var(--line);
       box-shadow: 0 12px 24px rgba(0, 0, 0, 0.15);
     }

@@ -226,7 +226,7 @@ main {
   padding: 22px 28px;
   margin-bottom: 22px;
   border-radius: 14px;
-  background: linear-gradient(100deg, var(--brand-deep), var(--brand-fill) 60%, #2b6a70);
+  background: var(--amber-band, linear-gradient(100deg, var(--brand-deep), var(--brand-fill) 60%, #2b6a70));
   background-size: cover;
   background-position: center;
   color: #fff;
@@ -331,7 +331,7 @@ main {
 
 .card-media .thumb.card-image { width: 100%; height: 200px; border-radius: 0; object-fit: cover; }
 
-.card-media .thumb.card-image.initial { font-size: 48px; background: #cfe3e2; color: var(--brand); }
+.card-media .thumb.card-image.initial { font-size: 48px; background: #cfe3e2; color: var(--brand-fill); }
 
 .card-chips { position: absolute; left: 12px; bottom: 12px; right: 84px; display: flex; flex-wrap: wrap; gap: 6px; }
 
@@ -381,9 +381,9 @@ main {
 
 .card-stamp-month { padding: 3px 8px; background: var(--alert); color: #fff; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; }
 
-.card-stamp-day { padding: 4px 8px 0; font-size: 19px; font-weight: 700; color: var(--brand); }
+.card-stamp-day { padding: 4px 8px 0; font-size: 19px; font-weight: 700; color: var(--brand-fill); }
 
-.card-stamp-dow { padding: 1px 8px 0; font-size: 9px; font-weight: 700; color: var(--muted); letter-spacing: 0.08em; }
+.card-stamp-dow { padding: 1px 8px 0; font-size: 9px; font-weight: 700; color: var(--stamp-muted, var(--muted)); letter-spacing: 0.08em; }
 
 .card-body { padding: 20px 14px 10px; flex: 1; }
 
@@ -405,7 +405,7 @@ main {
 
 .card-under-item svg { width: 15px; height: 15px; flex-shrink: 0; color: var(--muted); }
 
-.card-under-wait { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #a95f1b; }
+.card-under-wait { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--wait-ink, #a95f1b); }
 
 .card-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0 14px 14px; }
 
@@ -417,7 +417,7 @@ main {
 
 .avail-available { color: var(--accent); }
 
-.avail-waitlist { color: #a95f1b; }
+.avail-waitlist { color: var(--wait-ink, #a95f1b); }
 
 .avail-sold-out { color: var(--alert); }
 
@@ -452,9 +452,9 @@ main {
 
 .link-button svg { width: 14px; height: 14px; }
 
-.link-button.danger { color: var(--alert); }
+.link-button.danger { color: var(--danger-ink, var(--alert)); }
 
-.danger-button { background: none; border: 1px solid var(--alert); color: var(--alert); border-radius: 8px; padding: 9px 16px; font-weight: 600; cursor: pointer; }
+.danger-button { background: none; border: 1px solid var(--alert); color: var(--danger-ink, var(--alert)); border-radius: 8px; padding: 9px 16px; font-weight: 600; cursor: pointer; }
 
 .edit-icon {
   display: inline-flex;
@@ -465,8 +465,8 @@ main {
   padding: 0;
   border: 0;
   border-radius: 8px;
-  background: none;
-  color: var(--muted);
+  background: var(--wash, none);
+  color: var(--lift-ink, var(--muted));
   cursor: pointer;
 }
 
@@ -503,7 +503,7 @@ main {
 
 .row:first-child { border-top: 0; }
 
-.row.is-link:hover { background: #fafcfc; }
+.row.is-link:hover { background: var(--wash, #fafcfc); }
 
 .row.is-muted { opacity: 0.66; }
 
@@ -576,7 +576,7 @@ main {
 
 
 
-.hero-stamp-text { font-size: 13px; font-weight: 700; color: var(--brand); }
+.hero-stamp-text { font-size: 13px; font-weight: 700; color: var(--brand-fill); }
 
 /* The round tools at the banner's other corner: edit, share, expand. */
 .hero-actions { position: absolute; top: 18px; left: 18px; display: flex; gap: 8px; }
@@ -588,15 +588,16 @@ main {
   width: 38px;
   height: 38px;
   padding: 0;
-  border: 0;
+  border: var(--disc-border, 0);
   border-radius: 50%;
-  background: #fff;
-  color: var(--brand);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.22);
+  background: var(--disc, #fff);
+  color: var(--disc-ink, var(--brand));
+  box-shadow: var(--disc-shadow, 0 2px 8px rgba(0, 0, 0, 0.22));
+  backdrop-filter: var(--disc-blur, none);
   cursor: pointer;
 }
 
-.hero-action:hover { background: var(--input); }
+.hero-action:hover { background: var(--disc-hover, var(--input)); }
 
 .hero-action svg { width: 17px; height: 17px; }
 
@@ -623,7 +624,7 @@ main {
 .detail-marks .edit-empty { padding: 4px 10px; font-size: 12.5px; }
 
 /* The need-to-know callout, in HCA-Team's highlight card. */
-.highlight-card { display: flex; align-items: flex-start; gap: 18px; padding: 20px 24px; margin: 18px 0 20px; background: #fbf7e6; border-radius: 16px; }
+.highlight-card { display: flex; align-items: flex-start; gap: 18px; padding: 20px 24px; margin: 18px 0 20px; background: var(--hollow, #fbf7e6); border-radius: 16px; }
 
 .highlight-icon { font-size: 40px; line-height: 1; flex-shrink: 0; margin-top: 2px; }
 
@@ -640,7 +641,7 @@ main {
 
 .callout-field { margin: 4px 0 8px; }
 
-.callout-editor { display: flex; flex-direction: column; gap: 12px; padding: 16px 18px; background: #fbf7e6; border: 1px solid #efe4b8; border-radius: 12px; }
+.callout-editor { display: flex; flex-direction: column; gap: 12px; padding: 16px 18px; background: var(--wash, #fbf7e6); border: 1px solid #efe4b8; border-radius: 12px; }
 
 .callout-editor .form-lead { margin: 0; }
 
@@ -720,12 +721,12 @@ main {
 
 .side-card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
 
-.side-card-help { background: #eaf4f3; border-color: #d3e7e5; }
+.side-card-help { background: var(--teal-wash, #eaf4f3); border-color: var(--teal-line, #d3e7e5); }
 
 /* A host's word on the invitation: the card's yellow, so it stands out. */
-.side-card-invite { background: #fff8e1; border: 1.5px solid #e8c84a; }
+.side-card-invite { background: var(--invite-wash, #fff8e1); border: 1.5px solid var(--invite-line, #e8c84a); }
 
-.side-card-invite .side-line { color: #4d4a2e; }
+.side-card-invite .side-line { color: var(--soft-ink, #4d4a2e); }
 
 .side-row { display: flex; gap: 12px; }
 
@@ -775,9 +776,9 @@ main {
 
 .ticket-band { padding: 18px 20px; border-radius: 14px; border: 1px solid var(--line); background: var(--card); margin: 4px 0 24px; }
 
-.ticket-band.avail-band-available { border-color: #bfe6e4; background: #f0f9f8; }
+.ticket-band.avail-band-available { border-color: #bfe6e4; background: var(--go-band, #f0f9f8); }
 
-.ticket-band.avail-band-waitlist { border-color: #f3dfbd; background: #fdf7ec; }
+.ticket-band.avail-band-waitlist { border-color: #f3dfbd; background: var(--wait-band, #fdf7ec); }
 
 .ticket-words { margin: 0 0 12px; font-size: 20px; }
 
@@ -877,19 +878,19 @@ main {
 
 /* The host's band: an amber ground like the old site's, the switches in two
    columns, the actions under. */
-.host-band { margin-top: 28px; padding: 18px 20px 20px; border-radius: 14px; background: #fbf1d9; border: 1px solid #f0dfae; }
+.host-band { margin-top: 28px; padding: 18px 20px 20px; border-radius: 14px; background: var(--amber-band, #fbf1d9); border: 1px solid var(--amber-line, #f0dfae); }
 
-.host-band-head { display: flex; align-items: center; gap: 8px; font-weight: 700; color: #7a5a10; margin-bottom: 12px; }
+.host-band-head { display: flex; align-items: center; gap: 8px; font-weight: 700; color: var(--amber-text, #7a5a10); margin-bottom: 12px; }
 
 .host-band-head svg { width: 18px; height: 18px; }
 
 .host-switches { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 28px; }
 
-.host-switch { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 8px 0; border-bottom: 1px solid rgba(122, 90, 16, 0.14); }
+.host-switch { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 8px 0; border-bottom: 1px solid color-mix(in srgb, var(--amber-text, #7a5a10) 14%, transparent); }
 
 .host-switch-label { font-weight: 600; font-size: 14.5px; }
 
-.host-switch-hint { font-size: 12.5px; color: #7a5a10; }
+.host-switch-hint { font-size: 12.5px; color: var(--amber-text, #7a5a10); }
 
 .host-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
 
@@ -944,7 +945,7 @@ main {
   border: 1px solid var(--line);
   border-radius: 8px;
   font: inherit;
-  background: #fff;
+  background: var(--field);
 }
 
 .field textarea { resize: vertical; }
@@ -973,13 +974,13 @@ main {
 
 .field-when-pair { display: flex; gap: 6px; }
 
-.field-when-pair input { padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; background: #fff; }
+.field-when-pair input { padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; background: var(--field); }
 
 .segmented { display: inline-flex; padding: 3px; border: 1px solid var(--line); border-radius: 999px; background: var(--input); }
 
 .segment { border: 0; border-radius: 999px; padding: 7px 16px; background: none; font: inherit; font-size: 14px; font-weight: 600; color: var(--muted); cursor: pointer; }
 
-.segment.is-on { background: #fff; color: var(--brand); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
+.segment.is-on { background: var(--card); color: var(--brand-ink, var(--brand)); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
 
 .form-tabs .tab-strip { position: static; padding-top: 0; margin: -4px 0 18px; }
 
@@ -1000,7 +1001,7 @@ main {
   padding: 5px 12px 5px 5px;
   border: 1.5px solid var(--line);
   border-radius: 999px;
-  background: #fff;
+  background: var(--card);
   font: inherit;
   text-align: left;
   cursor: pointer;
@@ -1008,7 +1009,7 @@ main {
 
 .person-chip:hover:not(:disabled) { border-color: var(--accent); }
 
-.person-chip.is-on { border-color: var(--brand); background: #eaf3f3; }
+.person-chip.is-on { border-color: var(--brand); background: var(--picked, #eaf3f3); }
 
 .person-chip:disabled { opacity: 0.45; cursor: not-allowed; }
 
@@ -1066,9 +1067,9 @@ main {
 
 .who-action { display: flex; flex-direction: column; align-items: center; gap: 6px; border: 0; background: none; padding: 0; font: inherit; color: var(--muted); text-decoration: none; cursor: pointer; }
 
-.icon-round { width: 48px; height: 48px; border-radius: 50%; background: #eaf3f3; color: var(--brand); display: inline-flex; align-items: center; justify-content: center; }
+.icon-round { width: 48px; height: 48px; border-radius: 50%; background: var(--wash, #eaf3f3); color: var(--brand); display: inline-flex; align-items: center; justify-content: center; }
 
-.who-action:hover .icon-round { background: #dfe9e9; }
+.who-action:hover .icon-round { background: var(--glass-strong, #dfe9e9); }
 
 .icon-round svg { width: 21px; height: 21px; }
 
@@ -1092,11 +1093,11 @@ main {
 
 .who-card-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 
-.who-card-chip { border: 0; background: #eaf3f3; border-radius: 999px; padding: 6px 14px; font: inherit; font-size: 14px; color: var(--brand); cursor: pointer; }
+.who-card-chip { border: 0; background: var(--wash, #eaf3f3); border-radius: 999px; padding: 6px 14px; font: inherit; font-size: 14px; color: var(--brand); cursor: pointer; }
 
-.who-card-chip:hover { background: #dfe9e9; }
+.who-card-chip:hover { background: var(--glass-strong, #dfe9e9); }
 
-.who-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; padding: 16px; background: #f0f5f5; border-radius: 12px; }
+.who-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; padding: 16px; background: var(--hollow, #f0f5f5); border-radius: 12px; }
 
 .who-foot .button svg { width: 17px; height: 17px; }
 
@@ -1155,12 +1156,12 @@ main {
   padding: 24px 20px;
   border: 1.5px dashed rgba(36, 77, 83, 0.3);
   border-radius: 12px;
-  background: #f4f8f8;
+  background: var(--hollow, #f4f8f8);
   cursor: pointer;
   text-align: center;
 }
 
-.image-drop.is-dragover { border-color: var(--accent); background: #eaf5f4; }
+.image-drop.is-dragover { border-color: var(--accent); background: var(--hollow, #eaf5f4); }
 
 .image-drop img { max-width: 100%; max-height: 220px; border-radius: 10px; }
 
@@ -1234,7 +1235,7 @@ body.is-admin main { background-image: none; }
 
 .admin-tag { padding: 2px 9px; border-radius: 999px; background: var(--input); color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
 
-.admin-tag.is-on { background: var(--yellow); color: var(--ink); }
+.admin-tag.is-on { background: var(--yellow); color: var(--on-tint, var(--ink)); }
 
 .add-row { display: flex; align-items: center; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
 
@@ -1247,7 +1248,7 @@ body.is-admin main { background-image: none; }
 
 .invoice-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
 
-.invoice-bar select { padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; background: #fff; }
+.invoice-bar select { padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; background: var(--field); }
 
 .invoice-total { font-weight: 700; margin-bottom: 10px; }
 
@@ -1390,7 +1391,7 @@ body.is-admin main { background-image: none; }
 /* Inline editing on the party page, as HCA-Team's event page has it: the
    hero pencil turns edit mode on, and each section grows a pencil that
    swaps it for a small editor with Save and Cancel. */
-.hero-action.is-editing { background: var(--brand-fill); color: #fff; }
+.hero-action.is-editing { background: var(--brand-fill); border-color: transparent; color: #fff; }
 
 .hero-action.is-editing:hover { background: var(--brand-fill-dark); }
 
@@ -1414,7 +1415,7 @@ body.is-admin main { background-image: none; }
   padding: 7px 12px;
   border: 0;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.92);
+  background: var(--disc, rgba(255, 255, 255, 0.92));
   color: var(--brand);
   font: inherit;
   font-size: 13px;
@@ -1422,7 +1423,7 @@ body.is-admin main { background-image: none; }
   cursor: pointer;
 }
 
-.hero-image-action:hover { background: #fff; }
+.hero-image-action:hover { background: var(--disc-hover, #fff); }
 
 .hero-image-action svg { width: 15px; height: 15px; }
 
@@ -1466,7 +1467,7 @@ body.is-admin main { background-image: none; }
   border: 1px solid var(--line);
   border-radius: 8px;
   font: inherit;
-  background: #fff;
+  background: var(--field);
 }
 
 .field-editor input:focus, .field-editor textarea:focus, .field-editor select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
