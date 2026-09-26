@@ -4,6 +4,22 @@ function plural(role) {
   return role === 'Staff' ? 'Staff' : role + 's';
 }
 
+function chevron() {
+  const ns = 'http://www.w3.org/2000/svg';
+  const node = document.createElementNS(ns, 'svg');
+  node.setAttribute('viewBox', '0 0 24 24');
+  node.setAttribute('fill', 'none');
+  node.setAttribute('stroke', 'currentColor');
+  node.setAttribute('stroke-width', '2');
+  node.setAttribute('stroke-linecap', 'round');
+  node.setAttribute('stroke-linejoin', 'round');
+  node.classList.add('facet-chevron');
+  const path = document.createElementNS(ns, 'path');
+  path.setAttribute('d', 'M9 6l6 6-6 6');
+  node.append(path);
+  return node;
+}
+
 export function filterWidgets({el, svg, button}) {
   function chipToggle(label, on, onChange, key) {
     const b = el('button', 'chip-toggle' + (key ? ' chip-toggle-' + key : '') + (on ? ' active' : ''), label);
@@ -23,7 +39,7 @@ export function filterWidgets({el, svg, button}) {
     if (icon) {
       b.append(svg(icon));
     }
-    b.append(labelSpan, svg('chevron'));
+    b.append(labelSpan, chevron());
     const panel = el('div', 'facet-panel');
     panel.hidden = true;
     const updateLabel = () => {
@@ -91,7 +107,7 @@ export function filterWidgets({el, svg, button}) {
     const b = el('button', 'facet-button');
     b.type = 'button';
     const labelSpan = el('span', '', 'Filter');
-    b.append(svg('filter'), labelSpan, svg('chevron'));
+    b.append(svg('filter'), labelSpan, chevron());
     const panel = el('div', 'facet-panel facet-panel-sections');
     panel.hidden = true;
     const heads = [];
@@ -125,7 +141,7 @@ export function filterWidgets({el, svg, button}) {
       if (s.icon) {
         head.append(svg(s.icon));
       }
-      head.append(s.labelSpan, svg('chevron'));
+      head.append(s.labelSpan, chevron());
       const body = el('div', 'facet-section-body');
       body.hidden = !s.chosen.size;
       head.classList.toggle('open', !body.hidden);

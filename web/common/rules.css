@@ -91,6 +91,8 @@
 
 .facet-button svg { width: 15px; height: 15px; }
 
+.facet-button .facet-chevron { transform: rotate(90deg); }
+
 .facet-panel {
   position: absolute;
   z-index: 25;

@@ -110,25 +110,6 @@ main {
 /* The Unassigned page's two columns want the room. */
 #page:has(.split) { max-width: 1400px; }
 
-.icon-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border: 0;
-  border-radius: 8px;
-  background: none;
-  color: inherit;
-  cursor: pointer;
-  padding: 0;
-  flex-shrink: 0;
-}
-
-.icon-button:hover { background: rgba(0, 0, 0, 0.06); }
-
-.icon-button svg { width: 20px; height: 20px; }
-
 .icon-button.filled { background: var(--brand-fill); color: #fff; border-radius: 10px; width: 40px; height: 40px; }
 
 .icon-button.filled:hover { background: var(--brand-fill-dark); }
@@ -136,8 +117,6 @@ main {
 .icon-button.round { border-radius: 50%; background: rgba(255, 255, 255, 0.15); color: #fff; width: 40px; height: 40px; }
 
 .icon-button.round:hover { background: rgba(255, 255, 255, 0.28); }
-
-.icon-button:disabled { opacity: 0.4; cursor: default; }
 
 .detail-actions .icon-button { border: 1px solid var(--line); border-radius: 10px; width: 40px; height: 40px; background: #fff; }
 
@@ -185,18 +164,6 @@ main {
 
 .tabbar { display: none; }
 
-.drawer-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.4); z-index: 40; }
-
-.drawer {
-  width: 300px;
-  max-width: 85vw;
-  height: 100%;
-  background: #fff;
-  padding: calc(16px + env(safe-area-inset-top)) 0 16px;
-  display: flex;
-  flex-direction: column;
-}
-
 .drawer-head { display: flex; align-items: center; gap: 10px; padding: 0 16px 16px; font-weight: 700; font-size: 17px; }
 
 .drawer-head img { height: 32px; width: auto; }
@@ -204,12 +171,6 @@ main {
 .drawer-head .icon-button { margin-left: auto; }
 
 .drawer-nav { padding: 0; }
-
-.drawer a { display: flex; align-items: center; gap: 14px; padding: 12px 20px; color: var(--ink); text-decoration: none; font-size: 16px; border-radius: 0; }
-
-.drawer a.is-active { background: var(--input); box-shadow: none; }
-
-.drawer svg { width: 20px; height: 20px; }
 
 .drawer-user { margin-top: auto; padding: 16px 20px 0; border-top: 1px solid var(--line); }
 
@@ -226,33 +187,6 @@ main {
 .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; flex-wrap: wrap; margin: 4px 0 18px; }
 
 .page-head-main { min-width: 0; }
-
-.page-title {
-  position: relative;
-  z-index: 0;
-  display: inline-block;
-  font-family: Montserrat, Roboto, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-  font-size: 38px;
-  font-weight: 400;
-  letter-spacing: -0.01em;
-  line-height: 1.1;
-  margin: 0;
-  padding-bottom: 12px;
-  color: var(--brand);
-}
-
-.page-title::after {
-  content: "";
-  position: absolute;
-  left: 2%;
-  right: 2%;
-  bottom: 6px;
-  height: 16px;
-  background-image: url('/swoosh.png');
-  background-repeat: no-repeat;
-  background-size: 100% 100%;
-  z-index: -1;
-}
 
 .page-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; padding-bottom: 14px; }
 
@@ -282,17 +216,6 @@ main {
 
 .tabs button.is-active .tab-count { background: var(--brand-fill); color: #fff; }
 
-/* Admin Tools takes the window: the shell's rail and bars step aside and the
-   shared admin chrome (admin.css) fills it. */
-body.is-admin > .app-shell > .sidebar,
-body.is-admin > .app-shell .topbar,
-body.is-admin > .mobile-top,
-body.is-admin > .tabbar { display: none !important; }
-
-body.is-admin #page { max-width: none; padding: 0; }
-
-body.is-admin main { padding: 0; }
-
 .admin { min-height: 100%; display: flex; flex-direction: column; background: #f7f8f9; }
 
 .admin-row {
@@ -315,47 +238,7 @@ body.is-admin main { padding: 0; }
 
 .add-row input { flex: 1; padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; }
 
-.button {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  padding: 11px 20px;
-  border-radius: 8px;
-  /* Every button carries the same 1px border, so a filled one and an outlined
-     one beside it stand the same height. */
-  border: 1px solid var(--green-2);
-  background: var(--green-2);
-  color: var(--teal-dark);
-  font: inherit;
-  font-size: 15px;
-  font-weight: 600;
-  line-height: 1.3;
-  cursor: pointer;
-  white-space: nowrap;
-  text-decoration: none;
-}
-
-.button:hover { background: var(--green-3); border-color: var(--green-3); }
-
-.button svg { width: 18px; height: 18px; flex-shrink: 0; }
-
-.button-secondary { background: #fff; color: var(--ink); border: 1px solid var(--line); }
-
-.button-secondary:hover { background: var(--input); border-color: var(--line); }
-
 .button-small { padding: 6px 12px; font-size: 13px; }
-
-.button:disabled { opacity: 0.5; cursor: default; }
-
-.link-button {
-  background: none;
-  border: 0;
-  color: var(--brand);
-  font-weight: 600;
-  cursor: pointer;
-  padding: 4px 8px;
-  text-decoration: none;
-}
 
 .link-button.danger { color: var(--alert); }
 
@@ -598,8 +481,6 @@ a.fact-value { color: var(--brand); }
 
 .step-actions .button-secondary svg, .year-actions .button-secondary svg, .year-empty .button-secondary svg { color: var(--brand); }
 
-.button-secondary { border-radius: 10px; border-color: #cfdcde; }
-
 /* The ask band: a pale yellow strip with the gift in a disc, when there is a
    donation to choose. */
 .ask-band { margin: 22px 0 0; padding: 18px 28px; border-radius: 14px; background: #fdf5dc; display: flex; align-items: center; gap: 18px; }
@@ -701,17 +582,6 @@ h2.section { font-size: 20px; margin: 24px 0 12px; }
   text-decoration: none;
 }
 
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(13, 13, 13, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-  z-index: 50;
-}
-
 .modal {
   background: #fff;
   border-radius: 14px;
@@ -770,19 +640,6 @@ h2.section { font-size: 20px; margin: 24px 0 12px; }
 .save-status { font-size: 13px; color: var(--muted); }
 
 .save-status.error { color: var(--alert); }
-
-.toast {
-  position: fixed;
-  left: 50%;
-  bottom: 28px;
-  transform: translateX(-50%);
-  background: var(--ink);
-  color: #fff;
-  padding: 10px 18px;
-  border-radius: 999px;
-  font-size: 14px;
-  z-index: 70;
-}
 
 @media (max-width: 900px) {
   body { display: block; height: auto; }

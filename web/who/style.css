@@ -17,15 +17,6 @@ html {
   background: var(--sidebar);
 }
 
-/* A handful of toggled elements (.topbar-alert, .user-menu-alert, .user-row-alert,
-   …) set their own `display` in an author rule with the same specificity as the
-   `[hidden]` UA rule, which - being later in the cascade - would otherwise win and
-   keep the element visible no matter what the `hidden` DOM property says. This one
-   !important rule is the standard fix, and covers every such element at once. */
-[hidden] {
-  display: none !important;
-}
-
 .infobanner-wrap {
   padding-top: 20px;
   background: var(--page, #fff);
@@ -249,10 +240,10 @@ html {
   stroke-linejoin: round;
 }
 
-.install-prompt-dots {
-  width: 22px !important;
-  stroke: none !important;
-  fill: var(--brand) !important;
+.install-prompt-hint .install-prompt-dots {
+  width: 22px;
+  stroke: none;
+  fill: var(--brand);
 }
 
 .install-prompt-button {
@@ -585,7 +576,7 @@ body {
 
 .nav-heading-toggle.active > svg:not(.nav-chevron svg) { color: var(--lime); }
 
-.nav-heading-toggle.active .nav-chevron svg { stroke: var(--lime) !important; }
+.nav-heading-toggle.active .nav-chevron svg { stroke: var(--lime); }
 
 /* Every mark in the rail - a heading's icon, a row's icon, an avatar -
    sits in one 26px column, so they line up down the rail: the heading's
@@ -620,10 +611,10 @@ body {
 .nav-heading-toggle .nav-badge ~ .nav-chevron, .nav-heading-toggle .nav-item-alert ~ .nav-chevron { margin-left: 8px; }
 
 .nav-chevron svg {
-  width: 14px !important;
-  height: 14px !important;
-  stroke: rgba(255, 255, 255, 0.55) !important;
-  stroke-width: 2 !important;
+  width: 14px;
+  height: 14px;
+  stroke: rgba(255, 255, 255, 0.55);
+  stroke-width: 2;
   transform: rotate(-90deg);
   transition: transform 0.15s ease;
 }
@@ -717,12 +708,12 @@ body {
   position: absolute;
   top: -5px;
   right: -6px;
-  width: 11px !important;
-  height: 11px !important;
-  fill: var(--cat-yellow) !important;
-  stroke: var(--cat-yellow) !important;
-  stroke-width: 1 !important;
-  opacity: 1 !important;
+  width: 11px;
+  height: 11px;
+  fill: var(--cat-yellow);
+  stroke: var(--cat-yellow);
+  stroke-width: 1;
+  opacity: 1;
 }
 
 .nav-family-avatar {
@@ -883,21 +874,6 @@ body {
   color: #fff;
 }
 
-.gsearch-avatar-icon {
-  background: var(--input) !important;
-  color: var(--muted);
-}
-
-.gsearch-avatar-icon svg {
-  width: 16px;
-  height: 16px;
-  stroke: currentColor;
-  fill: none;
-  stroke-width: 1.8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
 .gsearch-info {
   min-width: 0;
 }
@@ -1033,35 +1009,6 @@ main {
 
 .page-header-plain {
   padding-top: 24px;
-}
-
-.page-title {
-  position: relative;
-  /* Establishes .page-title's own stacking context so ::after's z-index:-1
-     (behind the text, per the swoosh image) stays local instead of escaping
-     to a distant ancestor - see the identical .photo-wrap-peek bug. */
-  z-index: 0;
-  display: inline-block;
-  font-family: Montserrat, Roboto, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-  font-size: 38px;
-  font-weight: 400;
-  letter-spacing: -0.01em;
-  margin: 0;
-  padding-bottom: 12px;
-  color: var(--brand);
-}
-
-.page-title::after {
-  content: "";
-  position: absolute;
-  left: 2%;
-  right: 2%;
-  bottom: 6px;
-  height: 16px;
-  background-image: url('/swoosh.png');
-  background-repeat: no-repeat;
-  background-size: 100% 100%;
-  z-index: -1;
 }
 
 .page-subtitle {
@@ -2319,15 +2266,11 @@ main {
   stroke-width: 2;
 }
 
-.user-menu-privacy {
-  display: flex !important;
+.user-menu .user-menu-privacy {
+  display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-}
-
-.user-menu-privacy[hidden] {
-  display: none !important;
 }
 
 .user-menu-alert {

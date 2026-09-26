@@ -1,0 +1,34 @@
+.person-picker { position: relative; }
+
+.person-picker input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 14px;
+  background: var(--card);
+  color: var(--ink);
+}
+
+.person-picker-list {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 260px;
+  overflow-y: auto;
+  background: var(--card);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
+.person-picker-option { padding: 8px 10px; font-size: 14px; cursor: pointer; }
+
+.person-picker-option.active, .person-picker-option:hover { background: var(--input); }
+
+.person-picker-empty { padding: 8px 10px; font-size: 13px; color: var(--muted); }

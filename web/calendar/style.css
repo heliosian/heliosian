@@ -12,8 +12,6 @@
 
 * { box-sizing: border-box; }
 
-[hidden] { display: none !important; }
-
 html, body { margin: 0; min-height: 100%; }
 
 html { background: var(--page); }
@@ -716,41 +714,13 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 /* The event and feeds pages read best at a measure; the calendar fills the window. */
 #page > :not(.home) { width: 100%; max-width: 1320px; margin: 0 auto; }
 
-.icon-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border: 0;
-  border-radius: 8px;
-  background: none;
-  color: inherit;
-  cursor: pointer;
-  flex-shrink: 0;
-  text-decoration: none;
-}
-
-.icon-button:hover { background: var(--input); }
-
-.icon-button svg { width: 20px; height: 20px; }
+.icon-button { text-decoration: none; }
 
 .mobile-top { display: none; }
 
 .tabbar { display: none; }
 
-.drawer-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.4); z-index: 40; }
-
-.drawer {
-  width: 320px;
-  max-width: 88vw;
-  height: 100%;
-  background: #fff;
-  padding: calc(16px + env(safe-area-inset-top)) 0 16px;
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-}
+.drawer { overflow-y: auto; }
 
 .drawer-head { display: flex; align-items: center; gap: 10px; padding: 0 16px 16px; font-weight: 700; font-size: 17px; }
 
@@ -759,12 +729,6 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 .drawer-head .icon-button { margin-left: auto; }
 
 .drawer-nav { padding: 0; }
-
-.drawer a { display: flex; align-items: center; gap: 14px; padding: 12px 20px; color: var(--ink); text-decoration: none; font-size: 16px; border-radius: 0; }
-
-.drawer a.is-active { background: var(--input); color: var(--brand); box-shadow: none; }
-
-.drawer svg { width: 20px; height: 20px; }
 
 .drawer-filters { padding: 12px 20px; }
 
@@ -1070,39 +1034,9 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 .panel-empty { padding: 14px; color: var(--muted); font-size: 13.5px; }
 
 /* Buttons. */
-.button {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  padding: 11px 20px;
-  border-radius: 8px;
-  /* Every button carries the same 1px border, so a filled one and an outlined
-     one beside it stand the same height. */
-  border: 1px solid var(--green-2);
-  background: var(--green-2);
-  color: var(--teal-dark);
-  font: inherit;
-  font-size: 15px;
-  font-weight: 600;
-  line-height: 1.3;
-  cursor: pointer;
-  white-space: nowrap;
-  text-decoration: none;
-}
-
-.button:hover { background: var(--green-3); border-color: var(--green-3); }
-
-.button svg { width: 18px; height: 18px; flex-shrink: 0; }
-
-.button-secondary { background: #fff; color: var(--ink); border: 1px solid var(--line); }
-
-.button-secondary:hover { background: var(--input); border-color: var(--line); }
-
 .button-small { padding: 6px 12px; font-size: 13px; }
 
-.button:disabled { opacity: 0.5; cursor: default; }
-
-.link-button { display: inline-flex; align-items: center; gap: 4px; background: none; border: 0; color: var(--brand); font-weight: 600; cursor: pointer; padding: 4px 8px; margin-top: 10px; }
+.link-button { display: inline-flex; align-items: center; gap: 4px; margin-top: 10px; }
 
 .link-button svg { width: 14px; height: 14px; }
 
@@ -1952,15 +1886,7 @@ button.rsvp-row-said:hover strong { text-decoration: underline; text-underline-o
 
 .cohost-pick { display: flex; gap: 8px; align-items: flex-start; }
 
-.cohost-picker { position: relative; flex: 1; min-width: 0; }
-
-.cohost-picker input { box-sizing: border-box; width: 100%; padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; font-size: 14px; background: #fff; }
-
-.cohost-picker .person-picker-list { position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; right: 0; max-height: 220px; overflow-y: auto; background: #fff; border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1); }
-
-.cohost-picker .person-picker-option { padding: 8px 10px; font-size: 14px; cursor: pointer; }
-
-.cohost-picker .person-picker-option.active, .cohost-picker .person-picker-option:hover { background: var(--input); }
+.cohost-picker { flex: 1; min-width: 0; }
 
 .picker-chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 4px 3px 10px; border-radius: 999px; background: #eef6f5; color: var(--brand); font-size: 12.5px; font-weight: 600; }
 
@@ -2491,18 +2417,7 @@ button.send-tile { font: inherit; text-align: left; }
 
 .row-text { color: var(--muted); }
 
-/* Admin Tools is its own window over the shell (web/common/admin.css): the
-   rail, toolbar and tab bar step aside and the page fills the window. */
-body.is-admin > .app-shell > .sidebar,
-body.is-admin > .app-shell .topbar,
-body.is-admin > .mobile-top,
-body.is-admin > .tabbar { display: none !important; }
-
-body.is-admin #page { padding: 0; }
-
 body.is-admin #page > :not(.home) { max-width: none; margin: 0; }
-
-body.is-admin main { padding: 0; }
 
 .admin { min-height: 100%; display: flex; flex-direction: column; background: #f7f8f9; }
 
@@ -2663,8 +2578,6 @@ body.is-admin main { padding: 0; }
 
 /* The sheet over the page, and the picture search in it - the same shapes
    the other apps' editors have. */
-.modal-overlay { position: fixed; inset: 0; background: rgba(13, 13, 13, 0.5); display: flex; align-items: center; justify-content: center; padding: 20px; z-index: 60; }
-
 .modal { background: #fff; border-radius: 14px; padding: 20px 24px; width: 100%; max-width: 560px; max-height: calc(100vh - 40px); overflow-y: auto; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25); }
 
 .modal.modal-wide { max-width: 860px; }
@@ -2734,7 +2647,7 @@ body.is-admin main { padding: 0; }
 
 .admin-save { margin-top: 20px; }
 
-.toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); max-width: min(560px, calc(100vw - 32px)); background: var(--ink); color: #fff; padding: 10px 18px; border-radius: 999px; font-size: 14px; text-align: center; z-index: 70; }
+.toast { max-width: min(560px, calc(100vw - 32px)); text-align: center; }
 
 @media (max-width: 1200px) {
   .home-grid { grid-template-columns: minmax(0, 1fr); gap: 24px; }

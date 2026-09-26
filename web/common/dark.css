@@ -147,7 +147,6 @@ html[data-theme="dark"] {
 [data-theme="dark"] .hint-box,
 [data-theme="dark"] .roster-list.grid a.list-row,
 [data-theme="dark"] .email-table tbody tr,
-[data-theme="dark"] .person-picker-list,
 [data-theme="dark"] .facet-button:not(.open),
 [data-theme="dark"] .chip-toggle:not(.active),
 [data-theme="dark"] .gv-service-button,
@@ -399,9 +398,7 @@ html[data-theme="dark"] {
 
 [data-theme="dark"] .admin .tab.active { background: var(--nav-active); color: #fff; }
 
-[data-theme="dark"] .admin .card,
-[data-theme="dark"] .admin .person-picker input,
-[data-theme="dark"] .admin .person-picker-list { background: var(--card); border-color: var(--line); color: var(--ink); }
+[data-theme="dark"] .admin .card { background: var(--card); border-color: var(--line); color: var(--ink); }
 
 [data-theme="dark"] .admin .notice { background: #3b2a1c; color: #f5c7ad; }
 
@@ -718,8 +715,6 @@ html[data-theme="dark"] {
 [data-theme="dark"] .rsvps-head.is-no { color: #f0a49a; }
 [data-theme="dark"] .picker-chip { background: rgba(0, 166, 159, 0.18); color: #7fd6d1; }
 [data-theme="dark"] .picker-chip-x:hover { background: rgba(255, 255, 255, 0.12); }
-[data-theme="dark"] .cohost-picker input, [data-theme="dark"] .cohost-picker .person-picker-list { background: var(--input); color: var(--ink); border-color: rgba(255, 255, 255, 0.18); }
-[data-theme="dark"] .cohost-picker .person-picker-option.active, [data-theme="dark"] .cohost-picker .person-picker-option:hover { background: rgba(255, 255, 255, 0.08); }
 [data-theme="dark"] .picker-check { background: rgba(255, 255, 255, 0.06); border-color: rgba(255, 255, 255, 0.3); }
 [data-theme="dark"] .picker-person:hover:not(:disabled) { background: rgba(255, 255, 255, 0.06); }
 [data-theme="dark"] .guests-group { background: rgba(47, 158, 106, 0.16); border-color: rgba(255, 255, 255, 0.14); }
