@@ -1,5 +1,5 @@
 import {state, me, family, whenParts, coChairs, shownVolunteers, descendants, canJoin, isFull, mySignUp, signUpOf, activityPath, rootOf, parentOf, category, parseWhen, UNCATEGORIZED} from './state.js';
-import {el, link, svg, thumb, badge, button, avatar} from './dom.js';
+import {el, link, svg, thumb, badge, button} from './dom.js';
 import {openSignUp, openActivity} from './edit.js';
 
 function statusBadges(node) {
@@ -418,9 +418,8 @@ function activityCardBody(act, opts) {
 
 // priorityRow is one row of the High Priority panel: its picture - its
 // own, else its event's - the things above it over its title and a line
-// of what it is and its category as a small tag, its day and hours, the faces of who
-// is on it - its chair ringed in yellow - or Co-chair needed, and Sign up; the
-// whole row opens its page.
+// of what it is and its category as a small tag, its day and hours, Co-chair needed
+// when it wants one, and Sign up; the whole row opens its page.
 export function priorityRow(node) {
   const root = rootOf(node);
   const row = link(activityPath(node), 'prio-row');
@@ -464,16 +463,6 @@ export function priorityRow(node) {
   }
   row.append(when);
   const people = el('div', 'prio-people');
-  const faces = el('div', 'prio-faces');
-  // Chairs first, ringed in yellow, then those open to co-chairing, in
-  // teal, as the page's own faces are.
-  const rank = v => v.position === 'Co-Chair' ? 0 : v.position === 'Open to Co-Chair' ? 1 : 2;
-  for (const v of [...shownVolunteers(node)].sort((a, b) => rank(a) - rank(b)).slice(0, 3)) {
-    faces.append(avatar(v, 'prio-face' + (rank(v) === 0 ? ' is-chair' : rank(v) === 1 ? ' is-option' : '')));
-  }
-  if (faces.children.length) {
-    people.append(faces);
-  }
   if (!coChairs(node).length && node.coLeaderNeeded) {
     people.append(el('span', 'prio-chair is-needed', 'Co-chair needed'));
   }
