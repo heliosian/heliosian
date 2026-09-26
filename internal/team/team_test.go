@@ -1066,6 +1066,26 @@ func TestSharePreview(t *testing.T) {
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("a hidden thing has a card: %d", rec.Code)
 	}
+	for _, status := range []string{StatusHidden, StatusPending} {
+		next := tables(t)
+		for _, row := range next[activitiesTab] {
+			if row["Event ID"] == "E001" {
+				row["Status"], row["Added By"] = status, ""
+			}
+		}
+		parked, err := BuildModel(context.Background(), next, bundled{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if child := parked.Activity("E020"); child.Status != StatusOpen || previewable(parked, child) {
+			t.Fatalf("%s parent: %s (%s) previews", status, child.Title, child.Status)
+		}
+		for _, a := range needs(parked, now()) {
+			if a.ID == "E001" || a.Parent == "E001" {
+				t.Fatalf("%s parent: %s is a need", status, a.Title)
+			}
+		}
+	}
 	rec = httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest("GET", "/open/share/upcoming.png", nil))
 	if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "image/png" || rec.Body.Len() < 10000 {

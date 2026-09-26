@@ -43,8 +43,8 @@ func title() string {
 	return cardStyle.Wordmark
 }
 
-func previewable(a *Activity) bool {
-	return a != nil && (a.Status == StatusOpen || a.Status == StatusDone)
+func previewable(m *Model, a *Activity) bool {
+	return a != nil && (a.Status == StatusOpen || a.Status == StatusDone) && m.VisibleTo(a, "", false)
 }
 
 func timed(m *Model, a *Activity) *Activity {
@@ -112,7 +112,7 @@ func PreviewHead(cache *Cache) func(r *http.Request) string {
 		if first == "v" || first == "activities" {
 			a = model.Resolve(r.URL.Path)
 		}
-		if !previewable(a) {
+		if !previewable(model, a) {
 			return upcomingHead(model, origin, time.Now().In(local))
 		}
 		desc := blurb(a)
@@ -142,7 +142,7 @@ func needs(m *Model, at time.Time) []*Activity {
 	year, today := SchoolYear(at), at.Format(DateFormat)
 	dated, undated := []*Activity{}, []*Activity{}
 	for _, a := range m.Activities {
-		if a.Year != year || a.Status != StatusOpen || a.VolunteersComplete || (a.Spots > 0 && len(a.Volunteers) >= a.Spots) {
+		if a.Year != year || a.Status != StatusOpen || !m.VisibleTo(a, "", false) || a.VolunteersComplete || (a.Spots > 0 && len(a.Volunteers) >= a.Spots) {
 			continue
 		}
 		if a.Start == "" {
@@ -210,12 +210,12 @@ func (a app) shareUpcoming(w http.ResponseWriter, r *http.Request) {
 
 func (a app) shareCard(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimSuffix(r.PathValue("id"), ".png")
-	act := a.cache.Model().Activity(id)
-	if !previewable(act) {
+	model := a.cache.Model()
+	act := model.Activity(id)
+	if !previewable(model, act) {
 		http.NotFound(w, r)
 		return
 	}
-	model := a.cache.Model()
 	picture, isFlyer := "", false
 	for n := act; picture == "" && n != nil; n = model.byID[n.Parent] {
 		picture, isFlyer = n.Flyer, true

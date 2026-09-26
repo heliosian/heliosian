@@ -192,7 +192,7 @@ func visibleStatus(status, addedBy, email string, editor bool) bool {
 	case StatusHidden:
 		return editor
 	case StatusPending:
-		return editor || addedBy == email
+		return editor || (email != "" && addedBy == email)
 	}
 	return true
 }

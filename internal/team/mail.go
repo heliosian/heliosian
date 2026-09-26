@@ -101,7 +101,7 @@ func (a app) letterFor(base string, act *Activity) letter {
 		Path:  base + model.PathOf(act),
 	}
 	for n := act; n != nil; n = model.byID[n.Parent] {
-		if previewable(n) {
+		if previewable(model, n) {
 			l.Picture = base + "/open/share/" + n.ID + ".png"
 			break
 		}
