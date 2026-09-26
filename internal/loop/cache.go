@@ -1,6 +1,7 @@
 package loop
 
 import (
+	"context"
 	"log/slog"
 	"slices"
 	"sort"
@@ -34,7 +35,9 @@ func spec() store.Spec[*Model] {
 			{Name: adminsTab, Columns: AdminColumns, Key: []string{"Email"}},
 			{Name: archivedTab, Columns: ArchivedColumns, Key: []string{"Group", "Email"}},
 		},
-		Build: BuildModel,
+		Build: func(_ context.Context, tables store.Tables) (*Model, error) {
+			return BuildModel(tables)
+		},
 		Loaded: func(model *Model, took time.Duration) {
 			rules := 0
 			for _, g := range model.Groups {
@@ -56,7 +59,7 @@ func carryGroup(before, after store.Row) []store.Op {
 	return ops
 }
 
-func NewCache(source data.Source, writer data.Writer, superAdmin func(string) bool, queue store.Enqueuer) (*Cache, error) {
+func NewCache(source data.Source, writer data.Writer, superAdmin func(string) bool, queue *store.Queue) (*Cache, error) {
 	s, err := store.New(spec(), source, writer, queue)
 	if err != nil {
 		return nil, err

@@ -1,6 +1,7 @@
 package team
 
 import (
+	"context"
 	"log/slog"
 	"slices"
 	"sort"
@@ -29,8 +30,8 @@ func spec(images ImageChecker) store.Spec[*Model] {
 			{Name: adminsTab, Columns: AdminColumns, Key: []string{"Email"}},
 			{Name: redirectsTab, Columns: RedirectColumns, Key: []string{"Old"}},
 		},
-		Build: func(tables store.Tables) (*Model, error) {
-			return BuildModel(tables, images)
+		Build: func(ctx context.Context, tables store.Tables) (*Model, error) {
+			return BuildModel(ctx, tables, images)
 		},
 		Loaded: func(model *Model, took time.Duration) {
 			children, volunteers := 0, 0
@@ -58,7 +59,7 @@ func carryActivity(before, after store.Row) []store.Op {
 	return nil
 }
 
-func NewCache(source data.Source, writer data.Writer, images ImageChecker, superAdmin func(string) bool, queue store.Enqueuer) (*Cache, error) {
+func NewCache(source data.Source, writer data.Writer, images ImageChecker, superAdmin func(string) bool, queue *store.Queue) (*Cache, error) {
 	s, err := store.New(spec(images), source, writer, queue)
 	if err != nil {
 		return nil, err

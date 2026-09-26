@@ -169,7 +169,17 @@ func (d *documents) hold(doc *Document) {
 	d.held[doc.Object()] = doc
 }
 
-func (d *documents) build(tables store.Tables) (*Model, error) {
+func (d *documents) keep(m *Model) {
+	held := map[string]*Document{}
+	for _, doc := range m.Documents {
+		held[doc.Object()] = doc
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.held = held
+}
+
+func (d *documents) build(_ context.Context, tables store.Tables) (*Model, error) {
 	rows := tables[documentsTab]
 	d.mu.Lock()
 	held := maps.Clone(d.held)
@@ -382,13 +392,14 @@ type Cache struct {
 	documents *documents
 }
 
-func NewCache(source data.Source, writer data.Writer, objects Objects, embedder Embedder, queue store.Enqueuer) (*Cache, error) {
+func NewCache(source data.Source, writer data.Writer, objects Objects, embedder Embedder, queue *store.Queue) (*Cache, error) {
 	d := &documents{objects: objects, embedder: embedder, held: map[string]*Document{}}
 	s, err := store.New(store.Spec[*Model]{
 		App:   appName,
 		Tabs:  []store.Tab{{Name: documentsTab, Columns: DocumentColumns, Key: []string{"Key"}}},
 		Build: d.build,
 		Loaded: func(model *Model, took time.Duration) {
+			d.keep(model)
 			oldest, newest := model.Span()
 			slog.Info("loaded artifacts model", "documents", len(model.Documents), "fetched", model.Fetched, "chunks", model.Chunks(),
 				"channels", len(model.Channels()), "oldest", oldest, "newest", newest, "took", took.Round(time.Millisecond))

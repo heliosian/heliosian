@@ -22,7 +22,7 @@ type noFiles struct{}
 
 func (noFiles) Has(string) (bool, error) { return false, nil }
 
-func (noFiles) Prefetch([]string) error { return nil }
+func (noFiles) Prefetch(context.Context, []string) error { return nil }
 
 type sampleDirectory struct{ model *who.Model }
 
@@ -50,13 +50,9 @@ func call(t *testing.T, handler http.HandlerFunc, body any) *httptest.ResponseRe
 	return rec
 }
 
-func changeLog(t *testing.T, dir *data.Dir) []store.Row {
+func changeLog(t *testing.T, s sheet) []store.Row {
 	t.Helper()
-	_, rows, err := dir.Table(appName, store.ChangeLogTab)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return rows
+	return s.rows(t, store.ChangeLogTab)
 }
 
 func TestAudienceIsAListOfRules(t *testing.T) {
@@ -141,11 +137,7 @@ func TestCategoryRenameCarriesItsLinksAndAudience(t *testing.T) {
 	if renamed == nil || len(renamed.Links) != len(chats.Links) || len(renamed.Rules) != 1 || a.category("Chats") != nil {
 		t.Fatalf("the links and the audience did not follow the rename in memory: %+v", renamed)
 	}
-	_, links, err := dir.Table(appName, linksTab)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, row := range links {
+	for _, row := range dir.rows(t, linksTab) {
 		if row["Category"] == "Chats" {
 			t.Fatalf("the sheet kept %v", row)
 		}

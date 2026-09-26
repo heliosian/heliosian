@@ -134,27 +134,25 @@ func (a app) toExport(model *Model, issue, actor string) []exported {
 }
 
 // exportIssue copies an issue's birthdays that are not yet done to the
-// shared sheet, then marks each done, and says how many went. A row is
-// marked only once it is on the shared sheet, so a failure part way leaves
-// the rest to go on the next try, never a birthday marked and not copied.
+// shared sheet, then marks each done, and says how many went. The copy is
+// queued ahead of the marks, so no birthday is marked without its row.
 func (a app) exportIssue(ctx context.Context, issue, actor string) (int, error) {
 	items := a.toExport(a.cache.Model(), issue, actor)
-	ops := []store.Op{}
-	var failed error
+	if len(items) == 0 {
+		return 0, nil
+	}
+	rows, marks := []store.Op{}, []store.Op{}
 	for _, it := range items {
-		if err := a.shared.Insert(sharedSheet, sharedNewsletterTab, []map[string]string{it.row}); err != nil {
-			failed = fmt.Errorf("copy %s to the shared sheet: %w", it.email, err)
-			break
-		}
-		ops = append(ops, store.Set(donationsTab, store.Row{"Email": it.email, "Year": it.year}, it.donation))
+		rows = append(rows, store.Insert(sharedNewsletterTab, it.row))
+		marks = append(marks, store.Set(donationsTab, store.Row{"Email": it.email, "Year": it.year}, it.donation))
 	}
-	if len(ops) == 0 {
-		return 0, failed
+	if err := a.cache.shared.Commit(ctx, actor, rows...); err != nil {
+		return 0, fmt.Errorf("copy to the shared sheet: %w", err)
 	}
-	if err := a.cache.Commit(ctx, actor, ops...); err != nil {
+	if err := a.cache.Commit(ctx, actor, marks...); err != nil {
 		return 0, fmt.Errorf("mark the copied birthdays done: %w", err)
 	}
-	return len(ops), failed
+	return len(items), nil
 }
 
 // shareIssue is POST /api/birthday/newsletter/share: anyone on the team

@@ -6,8 +6,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -15,26 +17,9 @@ import (
 	"heliosian/internal/data"
 )
 
-type syncQueue struct{}
-
-func (syncQueue) Add(f func()) { f() }
-
-type heldQueue struct {
-	tasks []func()
-}
-
-func (q *heldQueue) Add(f func()) { q.tasks = append(q.tasks, f) }
-
-func (q *heldQueue) run() {
-	for len(q.tasks) > 0 {
-		task := q.tasks[0]
-		q.tasks = q.tasks[1:]
-		task()
-	}
-}
-
 type fixture struct {
 	dir   *data.Dir
+	queue *Queue
 	store *Store[map[string]int]
 }
 
@@ -58,7 +43,7 @@ func spec() Spec[map[string]int] {
 			{Name: "Uses", Columns: []string{"Thing", "By"}, Key: []string{"Thing", "By"}},
 			{Name: "Events", Columns: []string{"When", "What"}, Key: []string{"When"}, AppendOnly: true},
 		},
-		Build: func(tables Tables) (map[string]int, error) {
+		Build: func(_ context.Context, tables Tables) (map[string]int, error) {
 			for _, row := range tables["Things"] {
 				if row["Color"] == "plaid" {
 					return nil, errors.New("plaid is not a color")
@@ -70,7 +55,7 @@ func spec() Spec[map[string]int] {
 	}
 }
 
-func newFixture(t *testing.T, queue Enqueuer) fixture {
+func newFixture(t *testing.T) fixture {
 	t.Helper()
 	root := t.TempDir()
 	if err := os.Mkdir(filepath.Join(root, "app"), 0o755); err != nil {
@@ -81,11 +66,12 @@ func newFixture(t *testing.T, queue Enqueuer) fixture {
 	write(t, root, "Events", "When,What\n1,made\n")
 	write(t, root, ChangeLogTab, strings.Join(ChangeLogColumns, ",")+"\n")
 	dir := &data.Dir{Root: root}
+	queue := NewQueue()
 	s, err := New(spec(), dir, dir, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return fixture{dir: dir, store: s}
+	return fixture{dir: dir, queue: queue, store: s}
 }
 
 func (f fixture) rows(t *testing.T, tab string) []map[string]string {
@@ -120,9 +106,9 @@ func signedIn(email string) context.Context {
 }
 
 func TestCommitKeepsPreviousValuesOnly(t *testing.T) {
-	f := newFixture(t, syncQueue{})
+	f := newFixture(t)
 	ctx := signedIn("admin@example.org")
-	err := f.store.Commit(ctx, "ann@example.org",
+	err := f.store.CommitAndWait(ctx, "ann@example.org",
 		Insert("Things", Row{"Name": "cap", "Color": "blue"}),
 		Update("Things", Row{"Name": "boot"}, Row{"Color": "brown", "Size": ""}),
 		Delete("Uses", Row{"Thing": "boot"}),
@@ -147,14 +133,14 @@ func TestCommitKeepsPreviousValuesOnly(t *testing.T) {
 }
 
 func TestSetInsertsAndUpdateDoesNot(t *testing.T) {
-	f := newFixture(t, syncQueue{})
-	if err := f.store.Commit(context.Background(), "job", Update("Things", Row{"Name": "sock"}, Row{"Color": "grey"})); err != nil {
+	f := newFixture(t)
+	if err := f.store.CommitAndWait(context.Background(), "job", Update("Things", Row{"Name": "sock"}, Row{"Color": "grey"})); err != nil {
 		t.Fatal(err)
 	}
 	if len(f.rows(t, "Things")) != 2 || len(f.log(t)) != 0 {
 		t.Fatal("an update matching nothing wrote something")
 	}
-	if err := f.store.Commit(context.Background(), "job", Set("Things", Row{"Name": "sock"}, Row{"Color": "grey"})); err != nil {
+	if err := f.store.CommitAndWait(context.Background(), "job", Set("Things", Row{"Name": "sock"}, Row{"Color": "grey"})); err != nil {
 		t.Fatal(err)
 	}
 	if len(f.rows(t, "Things")) != 3 || f.store.Count("Things", Row{"Name": "SOCK"}) != 1 {
@@ -164,11 +150,11 @@ func TestSetInsertsAndUpdateDoesNot(t *testing.T) {
 }
 
 func TestAppendOnlyIsWrittenNotLogged(t *testing.T) {
-	f := newFixture(t, syncQueue{})
-	if err := f.store.Commit(context.Background(), "job", Insert("Events", Row{"When": "2", "What": "sent"})); err != nil {
+	f := newFixture(t)
+	if err := f.store.CommitAndWait(context.Background(), "job", Insert("Events", Row{"When": "2", "What": "sent"})); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.store.Commit(context.Background(), "job", Delete("Events", Row{"When": "1"})); err != nil {
+	if err := f.store.CommitAndWait(context.Background(), "job", Delete("Events", Row{"When": "1"})); err != nil {
 		t.Fatal(err)
 	}
 	if events := f.rows(t, "Events"); len(events) != 1 || events[0]["What"] != "sent" {
@@ -178,14 +164,14 @@ func TestAppendOnlyIsWrittenNotLogged(t *testing.T) {
 		t.Fatalf("an append-only tab was logged: %v", f.log(t))
 	}
 	for _, op := range []Op{Update("Events", Row{"When": "2"}, Row{"What": "bounced"}), Set("Events", Row{"When": "3"}, Row{"What": "sent"})} {
-		if err := f.store.Commit(context.Background(), "job", op); err == nil || !strings.Contains(err.Error(), "append-only") {
+		if err := f.store.CommitAndWait(context.Background(), "job", op); err == nil || !strings.Contains(err.Error(), "append-only") {
 			t.Fatalf("an edit of an append-only tab was taken: %v", err)
 		}
 	}
 }
 
 func TestAnotherSheetsTabIsReadNotWritten(t *testing.T) {
-	f := newFixture(t, syncQueue{})
+	f := newFixture(t)
 	root := f.dir.Root
 	if err := os.Mkdir(filepath.Join(root, "other"), 0o755); err != nil {
 		t.Fatal(err)
@@ -196,15 +182,15 @@ func TestAnotherSheetsTabIsReadNotWritten(t *testing.T) {
 	withAnswers := spec()
 	withAnswers.Tabs = append(withAnswers.Tabs, Tab{App: "other", Name: "Answers", Columns: []string{"Who", "Said"}, Key: []string{"Who"}})
 	build := withAnswers.Build
-	withAnswers.Build = func(tables Tables) (map[string]int, error) {
-		m, err := build(tables)
+	withAnswers.Build = func(ctx context.Context, tables Tables) (map[string]int, error) {
+		m, err := build(ctx, tables)
 		if err != nil {
 			return nil, err
 		}
 		m["answers"] = len(tables["Answers"])
 		return m, nil
 	}
-	s, err := New(withAnswers, f.dir, f.dir, syncQueue{})
+	s, err := New(withAnswers, f.dir, f.dir, f.queue)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,26 +205,10 @@ func TestAnotherSheetsTabIsReadNotWritten(t *testing.T) {
 	}
 }
 
-type lineQueue chan func()
-
-func newLineQueue(t *testing.T) lineQueue {
-	q := make(lineQueue, 16)
-	go func() {
-		for f := range q {
-			f()
-		}
-	}()
-	t.Cleanup(func() { close(q) })
-	return q
-}
-
-func (q lineQueue) Add(f func()) { q <- f }
-
 func TestCommitAndWaitWaitsItsTurn(t *testing.T) {
-	queue := newLineQueue(t)
-	f := newFixture(t, queue)
+	f := newFixture(t)
 	release := make(chan struct{})
-	queue.Add(func() { <-release })
+	f.queue.Add(func() { <-release })
 	done := make(chan error, 1)
 	go func() {
 		done <- f.store.CommitAndWait(context.Background(), "job", Insert("Things", Row{"Name": "cap"}))
@@ -258,14 +228,26 @@ func TestCommitAndWaitWaitsItsTurn(t *testing.T) {
 	if things := f.rows(t, "Things"); len(things) != 3 || things[2]["Name"] != "cap" {
 		t.Fatalf("returned before the row was written: %v", things)
 	}
-	if err := f.store.CommitAndWait(context.Background(), "job", Insert("Things", Row{"Name": "sock", "Weight": "1"})); err == nil {
-		t.Fatal("a failed write was not reported")
+}
+
+func TestRefusedWriteIsFatal(t *testing.T) {
+	if os.Getenv("STORE_REFUSED_WRITE") == "1" {
+		f := newFixture(t)
+		f.store.CommitAndWait(context.Background(), "job", Insert("Things", Row{"Name": "sock", "Weight": "1"}))
+		return
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=^TestRefusedWriteIsFatal$")
+	cmd.Env = append(os.Environ(), "STORE_REFUSED_WRITE=1")
+	out, err := cmd.CombinedOutput()
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) || exit.ExitCode() != 1 || !strings.Contains(string(out), "missing column") {
+		t.Fatalf("a refused write did not end the process: %v\n%s", err, out)
 	}
 }
 
 func TestCascadeCarriesARename(t *testing.T) {
-	f := newFixture(t, syncQueue{})
-	if err := f.store.Commit(context.Background(), "ann", Update("Things", Row{"Name": "hat"}, Row{"Name": "cap"})); err != nil {
+	f := newFixture(t)
+	if err := f.store.CommitAndWait(context.Background(), "ann", Update("Things", Row{"Name": "hat"}, Row{"Name": "cap"})); err != nil {
 		t.Fatal(err)
 	}
 	if f.store.Count("Uses", Row{"Thing": "cap"}) != 2 || f.store.Count("Uses", Row{"Thing": "hat"}) != 0 {
@@ -284,8 +266,8 @@ func TestCascadeCarriesARename(t *testing.T) {
 }
 
 func TestRefusedChangeWritesNothing(t *testing.T) {
-	f := newFixture(t, syncQueue{})
-	if err := f.store.Commit(context.Background(), "ann", Update("Things", Row{"Name": "hat"}, Row{"Color": "plaid"})); err == nil {
+	f := newFixture(t)
+	if err := f.store.CommitAndWait(context.Background(), "ann", Update("Things", Row{"Name": "hat"}, Row{"Color": "plaid"})); err == nil {
 		t.Fatal("a change the model refuses was taken")
 	}
 	if f.store.Count("Things", Row{"Color": "plaid"}) != 0 || f.rows(t, "Things")[0]["Color"] != "red" || len(f.log(t)) != 0 {
@@ -319,13 +301,13 @@ func (w *countingWriter) Delete(app, table string, match map[string]string) erro
 }
 
 func TestWritesToOneTabAreBatched(t *testing.T) {
-	f := newFixture(t, syncQueue{})
+	f := newFixture(t)
 	writer := &countingWriter{Dir: f.dir}
-	s, err := New(spec(), f.dir, writer, syncQueue{})
+	s, err := New(spec(), f.dir, writer, f.queue)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = s.Commit(context.Background(), "job",
+	err = s.CommitAndWait(context.Background(), "job",
 		Insert("Things", Row{"Name": "cap"}),
 		Insert("Things", Row{"Name": "sock"}),
 		Update("Things", Row{"Name": "hat"}, Row{"Color": "green"}),
@@ -345,18 +327,79 @@ func TestWritesToOneTabAreBatched(t *testing.T) {
 	equal(t, "sheet", got, []string{"hat|green|large", "boot|black|small", "beret||", "sock||"})
 }
 
-func TestRefreshKeepsANewerCommit(t *testing.T) {
-	queue := &heldQueue{}
-	f := newFixture(t, queue)
-	f.store.Refresh()
+type pausedSource struct {
+	*data.Dir
+	pause   *atomic.Bool
+	reading chan struct{}
+	release chan struct{}
+}
+
+func (p pausedSource) Tabs(ctx context.Context, app string, tables, headers []string) (map[string]data.Tab, error) {
+	if p.pause.Load() {
+		p.reading <- struct{}{}
+		<-p.release
+	}
+	return p.Dir.Tabs(ctx, app, tables, headers)
+}
+
+func TestACommitAbandonsTheRefresh(t *testing.T) {
+	f := newFixture(t)
+	paused := pausedSource{Dir: f.dir, pause: &atomic.Bool{}, reading: make(chan struct{}), release: make(chan struct{})}
+	other, err := New(spec(), paused, f.dir, f.queue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	paused.pause.Store(true)
+	if err := f.dir.Delete("app", "Uses", Row{"By": "bo"}); err != nil {
+		t.Fatal(err)
+	}
+	f.queue.Refresh()
+	<-paused.reading
 	if err := f.store.Commit(context.Background(), "ann", Insert("Things", Row{"Name": "cap"})); err != nil {
 		t.Fatal(err)
 	}
-	if f.store.Count("Things", nil) != 3 {
-		t.Fatal("the commit waited on the queue")
-	}
-	queue.run()
+	close(paused.release)
+	f.queue.Flush()
 	if f.store.Count("Things", Row{"Name": "cap"}) != 1 {
 		t.Fatal("a refresh read before the commit put the older sheet back")
+	}
+	if f.store.Model()["uses"] != 3 || other.Model()["uses"] != 3 {
+		t.Fatal("an abandoned refresh swapped a model in")
+	}
+}
+
+func TestARefreshSwapsEveryModelOrNone(t *testing.T) {
+	f := newFixture(t)
+	lenient := spec()
+	lenient.Build = func(_ context.Context, tables Tables) (map[string]int, error) {
+		return map[string]int{"uses": len(tables["Uses"])}, nil
+	}
+	queue := NewQueue()
+	first, err := New(lenient, f.dir, f.dir, queue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := New(spec(), f.dir, f.dir, queue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.dir.Delete("app", "Uses", Row{"By": "bo"}); err != nil {
+		t.Fatal(err)
+	}
+	queue.Refresh()
+	queue.Flush()
+	if first.Model()["uses"] != 2 || second.Model()["uses"] != 2 {
+		t.Fatalf("a refresh missed a model: %v %v", first.Model(), second.Model())
+	}
+	if err := f.dir.Delete("app", "Uses", Row{"By": "ann"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.dir.Set("app", "Things", Row{"Name": "hat"}, Row{"Color": "plaid"}); err != nil {
+		t.Fatal(err)
+	}
+	queue.Refresh()
+	queue.Flush()
+	if first.Model()["uses"] != 2 || second.Model()["uses"] != 2 {
+		t.Fatalf("a failed refresh swapped a model in: %v %v", first.Model(), second.Model())
 	}
 }

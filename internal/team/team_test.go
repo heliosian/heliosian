@@ -29,11 +29,10 @@ const (
 	kid      = "kit.whitfield@heliosschool.org"
 )
 
-var sheet *data.Dir
-
-type syncQueue struct{}
-
-func (syncQueue) Add(f func()) { f() }
+var (
+	sheet *data.Dir
+	queue *store.Queue
+)
 
 type fakeDirectory struct{}
 
@@ -67,13 +66,14 @@ type bundled struct{}
 
 func (bundled) Has(key string) (bool, error) { return strings.HasPrefix(key, "brand/"), nil }
 
-func (bundled) Prefetch([]string) error { return nil }
+func (bundled) Prefetch(context.Context, []string) error { return nil }
 
 func serveWith(t *testing.T, mailer mail.Sender) (*Cache, *http.ServeMux) {
 	t.Helper()
 	t.Chdir("../..")
 	sheet = &data.Dir{Root: "sampledata"}
-	cache, err := NewCache(sheet, sheet, bundled{}, func(e string) bool { return e == admin }, syncQueue{})
+	queue = store.NewQueue()
+	cache, err := NewCache(sheet, sheet, bundled{}, func(e string) bool { return e == admin }, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,8 @@ func newServer(t *testing.T) (*Cache, *http.ServeMux) {
 func tables(t *testing.T) store.Tables {
 	t.Helper()
 	names := []string{categoriesTab, activitiesTab, volunteersTab, linksTab, settingsTab, adminsTab, redirectsTab}
-	tabs, err := sheet.Tabs(appName, names, nil)
+	queue.Flush()
+	tabs, err := sheet.Tabs(context.Background(), appName, names, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,6 +104,7 @@ func tables(t *testing.T) store.Tables {
 
 func changeLog(t *testing.T) []store.Row {
 	t.Helper()
+	queue.Flush()
 	_, rows, err := sheet.Table(appName, store.ChangeLogTab)
 	if err != nil {
 		t.Fatal(err)
@@ -760,7 +762,7 @@ func TestUncategorizedFallback(t *testing.T) {
 		store.Row{"Event ID": "E902", "Year": "2026 - 2027", "Title": "Borrowed", "Category": "C07", "Status": StatusOpen},
 		store.Row{"Event ID": "E903", "Year": "2026 - 2027", "Title": "Child", "Parent": "E001", "Category": "C09", "Status": StatusOpen},
 	)
-	m, err := BuildModel(next, bundled{})
+	m, err := BuildModel(context.Background(), next, bundled{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -813,7 +815,7 @@ func TestBrokenSheetRefusesToLoad(t *testing.T) {
 		t.Fatal(err)
 	}
 	dir := &data.Dir{Root: broken}
-	if _, err := NewCache(dir, dir, bundled{}, func(string) bool { return false }, syncQueue{}); err == nil || !strings.Contains(err.Error(), `missing column "Event ID"`) {
+	if _, err := NewCache(dir, dir, bundled{}, func(string) bool { return false }, store.NewQueue()); err == nil || !strings.Contains(err.Error(), `missing column "Event ID"`) {
 		t.Fatalf("a broken sheet loaded: %v", err)
 	}
 }
@@ -827,7 +829,7 @@ func TestHandWrittenRows(t *testing.T) {
 	)
 	next[volunteersTab] = append(next[volunteersTab], store.Row{"Event ID": "", "Email": "not an email", "Position": "Boss"})
 	next[linksTab] = append(next[linksTab], store.Row{"Event ID": "", "Title": "Old", "URL": "https://example.com"})
-	m, err := BuildModel(next, bundled{})
+	m, err := BuildModel(context.Background(), next, bundled{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -847,7 +849,7 @@ func TestHandWrittenRows(t *testing.T) {
 		store.Row{"Event ID": "E001", "Email": chair, "Position": PositionVolunteer},
 	)
 	next[linksTab] = append(next[linksTab], store.Row{"Event ID": "E910", "Title": "Lost", "URL": "https://example.com"})
-	m, err = BuildModel(next, bundled{})
+	m, err = BuildModel(context.Background(), next, bundled{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -862,12 +864,12 @@ func TestHandWrittenRows(t *testing.T) {
 		t.Fatalf("the duplicate sign-up was added: %d volunteers", n)
 	}
 	next[activitiesTab] = append(next[activitiesTab], store.Row{"Event ID": "E901", "Title": "Lost", "Year": "2025 - 2026", "Parent": "E020", "Status": StatusOpen})
-	if _, err := BuildModel(next, bundled{}); err == nil || !strings.Contains(err.Error(), "has its parent") {
+	if _, err := BuildModel(context.Background(), next, bundled{}); err == nil || !strings.Contains(err.Error(), "has its parent") {
 		t.Fatalf("a child in another year loaded: %v", err)
 	}
 	next = tables(t)
 	next[activitiesTab][20][store.OrderColumn] = "10"
-	if _, err := BuildModel(next, bundled{}); err == nil || !strings.Contains(err.Error(), "ends in 0") {
+	if _, err := BuildModel(context.Background(), next, bundled{}); err == nil || !strings.Contains(err.Error(), "ends in 0") {
 		t.Fatalf("an order ending in 0 loaded: %v", err)
 	}
 }
@@ -880,7 +882,7 @@ func TestShowOnMainPage(t *testing.T) {
 	next := tables(t)
 	next[categoriesTab][0]["Show On Main Page"] = ""
 	next[categoriesTab][6]["Show On Main Page"] = "No"
-	m, err := BuildModel(next, bundled{})
+	m, err := BuildModel(context.Background(), next, bundled{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -998,7 +1000,7 @@ func TestPrettyIDs(t *testing.T) {
 			row["Pretty ID"] = "inight"
 		}
 	}
-	dup, err := BuildModel(next, bundled{})
+	dup, err := BuildModel(context.Background(), next, bundled{})
 	if err != nil {
 		t.Fatal(err)
 	}

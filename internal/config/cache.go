@@ -15,7 +15,7 @@ type Cache struct {
 	*store.Store[*Settings]
 }
 
-func NewCache(source data.Source, writer data.Writer, queue store.Enqueuer) (*Cache, error) {
+func NewCache(source data.Source, writer data.Writer, queue *store.Queue) (*Cache, error) {
 	s, err := store.New(store.Spec[*Settings]{
 		App: App,
 		Tabs: []store.Tab{
@@ -25,7 +25,9 @@ func NewCache(source data.Source, writer data.Writer, queue store.Enqueuer) (*Ca
 			{Name: ClassroomColorsTab, Columns: ClassroomColorColumns, Key: []string{ClassroomColumn}},
 			{Name: SignedOutTab, Columns: SignedOutColumns, Key: []string{EmailColumn}},
 		},
-		Build: Parse,
+		Build: func(_ context.Context, tables store.Tables) (*Settings, error) {
+			return Parse(tables)
+		},
 		Loaded: func(settings *Settings, took time.Duration) {
 			slog.Info("loaded config", "superAdmins", len(settings.SuperAdmins), "gradeColors", len(settings.GradeColors),
 				"classroomColors", len(settings.ClassroomColors), "took", took.Round(time.Millisecond))

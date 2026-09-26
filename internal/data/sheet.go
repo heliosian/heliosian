@@ -70,7 +70,7 @@ func (s *Sheet) Header(app, name string) ([]string, error) {
 	return parseHeader(name, resp.Values)
 }
 
-func (s *Sheet) Tabs(app string, tables, headers []string) (map[string]Tab, error) {
+func (s *Sheet) Tabs(ctx context.Context, app string, tables, headers []string) (map[string]Tab, error) {
 	id, ok := s.spreadsheets[app]
 	if !ok {
 		return nil, fmt.Errorf("no spreadsheet configured for app %q", app)
@@ -82,7 +82,7 @@ func (s *Sheet) Tabs(app string, tables, headers []string) (map[string]Tab, erro
 	for _, name := range headers {
 		ranges = append(ranges, quoteTab(name)+"!1:1")
 	}
-	resp, err := call("batch get "+app, s.service.Spreadsheets.Values.BatchGet(id).Ranges(ranges...).Do)
+	resp, err := call("batch get "+app, s.service.Spreadsheets.Values.BatchGet(id).Ranges(ranges...).Context(ctx).Do)
 	if err != nil {
 		return nil, err
 	}

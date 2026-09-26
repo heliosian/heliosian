@@ -1,6 +1,7 @@
 package who
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -194,7 +195,7 @@ func checkUpdated(email, column, cell string) error {
 
 type BlobChecker interface {
 	Has(name string) (bool, error)
-	Prefetch(names []string) error
+	Prefetch(ctx context.Context, names []string) error
 }
 
 type parsedName struct {
@@ -265,6 +266,7 @@ func gradeSlug(name string) string {
 }
 
 type loader struct {
+	ctx    context.Context
 	blobs  BlobChecker
 	static BlobChecker
 	idKey  []byte
@@ -312,8 +314,9 @@ func familyID(idKey []byte, email string) string {
 	return hex.EncodeToString(mac.Sum(nil))[:16]
 }
 
-func BuildModel(tables store.Tables, blobs, static BlobChecker, idKey []byte) (*Model, error) {
+func BuildModel(ctx context.Context, tables store.Tables, blobs, static BlobChecker, idKey []byte) (*Model, error) {
 	l := &loader{
+		ctx:              ctx,
 		blobs:            blobs,
 		static:           static,
 		idKey:            idKey,
@@ -1382,7 +1385,7 @@ func (l *loader) prefetchMedia(uploaded map[string][]photoRef) error {
 	for _, image := range l.images {
 		add("photos", image)
 	}
-	return l.blobs.Prefetch(names)
+	return l.blobs.Prefetch(l.ctx, names)
 }
 
 func (l *loader) blobURL(kind, name, owner string) (string, error) {

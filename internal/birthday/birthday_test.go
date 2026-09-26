@@ -50,16 +50,15 @@ var sent = &sentMail{}
 
 var joined []string
 
-var sheet *data.Dir
+var (
+	sheet *data.Dir
+	queue *store.Queue
+)
 
 const (
 	parent = "robin.whitfield@heliosschool.org"
 	admin  = "jordan.whitfield@heliosschool.org"
 )
-
-type syncQueue struct{}
-
-func (syncQueue) Add(f func()) { f() }
 
 type fakeDirectory struct{}
 
@@ -116,14 +115,15 @@ func newServer(t *testing.T) (*Cache, *http.ServeMux) {
 	now = func() time.Time { return mustTime("2026-09-09") }
 	dir := &data.Dir{Root: "sampledata"}
 	sheet = dir
-	cache, err := NewCache(dir, dir, func(e string) bool { return e == admin }, syncQueue{})
+	queue = store.NewQueue()
+	cache, err := NewCache(dir, dir, func(e string) bool { return e == admin }, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
 	mux := http.NewServeMux()
 	sent = &sentMail{}
 	joined = nil
-	Register(mux, cache, dir, nil, fakeDirectory{}, func() []string { return []string{admin} }, nil, sent, "Helios Staff Birthdays <birthday@example.org>", "https://birthday.example.org", func(_ context.Context, email string) error {
+	Register(mux, cache, nil, fakeDirectory{}, func() []string { return []string{admin} }, nil, sent, "Helios Staff Birthdays <birthday@example.org>", "https://birthday.example.org", func(_ context.Context, email string) error {
 		joined = append(joined, email)
 		return nil
 	})
@@ -642,6 +642,7 @@ func TestCharityRenameCarriesItsNameAndLogsWhatWasThere(t *testing.T) {
 	if cache.Count(donationsTab, store.Row{"Charity": name}) != donations || cache.Count(donationsTab, store.Row{"Charity": old}) != 0 || cache.Model().Settings.DefaultCharity != name {
 		t.Fatal("the donations and the default did not follow the rename in memory")
 	}
+	queue.Flush()
 	_, rows, err := sheet.Table(appName, donationsTab)
 	if err != nil {
 		t.Fatal(err)
@@ -842,13 +843,13 @@ func TestShareIssue(t *testing.T) {
 	if rec := call(t, mux, admin, "POST", "/api/birthday/newsletter/share", map[string]string{"date": "2026-09-12"}); rec.Code != 400 {
 		t.Fatalf("a day that is no issue: %d", rec.Code)
 	}
-	dir := &data.Dir{Root: "sampledata"}
-	a := app{cache: cache, shared: dir, directory: fakeDirectory{}}
+	a := app{cache: cache, directory: fakeDirectory{}}
 	n, err := a.exportIssue(context.Background(), "2026-09-11", exportActor)
 	if err != nil {
 		t.Fatal(err)
 	}
-	tabs, err := dir.Tabs(sharedSheet, []string{sharedNewsletterTab}, nil)
+	queue.Flush()
+	tabs, err := sheet.Tabs(context.Background(), sharedSheet, []string{sharedNewsletterTab}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -878,7 +879,8 @@ func TestShareIssue(t *testing.T) {
 	if _, err := a.exportIssue(context.Background(), omar.NewsletterDate, exportActor); err != nil {
 		t.Fatal(err)
 	}
-	tabs, _ = dir.Tabs(sharedSheet, []string{sharedNewsletterTab}, nil)
+	queue.Flush()
+	tabs, _ = sheet.Tabs(context.Background(), sharedSheet, []string{sharedNewsletterTab}, nil)
 	rows = tabs[sharedNewsletterTab].Rows
 	i := slices.IndexFunc(rows, func(r map[string]string) bool { return r["Staff Email"] == "omar.farouk@heliosschool.org" })
 	if i < 0 || rows[i]["Preference"] != LevelNoNewsletter || rows[i]["Charity Name"] != "Wikipedia" || rows[i]["Note"] != "Free knowledge for everyone." || rows[i]["Charity Selected On"] != "2026-09-03" || rows[i]["Contacted On"] != "2026-09-02" {

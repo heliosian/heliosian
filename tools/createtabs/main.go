@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -216,7 +217,7 @@ func applyLayout(source *data.Sheet, layout string) (tabs, columns int, err erro
 			present = append(present, t.title)
 		}
 	}
-	headers, err := source.Tabs(layout, nil, present)
+	headers, err := source.Tabs(context.Background(), layout, nil, present)
 	if err != nil {
 		return 0, 0, err
 	}

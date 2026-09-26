@@ -32,16 +32,14 @@ import (
 )
 
 const (
-	Bucket        = "heliosian-media"
-	sweepInterval = 5 * time.Minute
-	maxIdle       = 15 * time.Minute
-	thumbWidth    = 480
-	thumbSuffix   = "-thumb"
-	thumbExt      = ".jpg"
-	thumbMime     = "image/jpeg"
-	thumbVersion  = "1"
-	fetchWorkers  = 32
-	maxPixels     = 40_000_000
+	Bucket       = "heliosian-media"
+	thumbWidth   = 480
+	thumbSuffix  = "-thumb"
+	thumbExt     = ".jpg"
+	thumbMime    = "image/jpeg"
+	thumbVersion = "1"
+	fetchWorkers = 32
+	maxPixels    = 40_000_000
 )
 
 var folders = []string{"photos", "pronunciation", "link-images", "activity-images", "category-images"}
@@ -186,7 +184,6 @@ type entry struct {
 	mimeType   string
 	data       []byte
 	thumb      []byte
-	used       time.Time
 }
 
 type Store struct {
@@ -194,6 +191,7 @@ type Store struct {
 	cacheDir string
 	mu       sync.RWMutex
 	entries  map[string]*entry
+	named    map[string]bool
 }
 
 func New(cacheDir string) (*Store, error) {
@@ -205,14 +203,11 @@ func New(cacheDir string) (*Store, error) {
 	if cacheDir != "" {
 		slog.Info("blob store: caching fetched objects on disk", "dir", cacheDir)
 	}
-	go s.sweepLoop()
 	return s, nil
 }
 
 func NewMemory() *Store {
-	s := &Store{objects: &memory{objects: map[string]object{}}, entries: map[string]*entry{}}
-	go s.sweepLoop()
-	return s
+	return &Store{objects: &memory{objects: map[string]object{}}, entries: map[string]*entry{}}
 }
 
 func (s *Store) Read(ctx context.Context, name string) ([]byte, string, error) {
@@ -258,7 +253,7 @@ func (s *Store) cached(name string) (*entry, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read the cache of %s: %w", name, err)
 	}
-	e := &entry{name: name, generation: generation, mimeType: mimeType, data: data, used: time.Now()}
+	e := &entry{name: name, generation: generation, mimeType: mimeType, data: data}
 	if strings.HasPrefix(mimeType, "image/") {
 		if e.thumb, err = os.ReadFile(s.cachePath(thumbName(name))); err != nil {
 			return nil, fmt.Errorf("read the cache of %s: %w", name, err)
@@ -346,24 +341,26 @@ func RegisterAsk(mux *http.ServeMux, s *Store) {
 	mux.HandleFunc("GET /photos/{name}", s.serve)
 }
 
-func (s *Store) sweepLoop() {
-	for range time.Tick(sweepInterval) {
-		s.sweep(time.Now())
-	}
+func (s *Store) Load(context.Context) (func(), error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.named = map[string]bool{}
+	return s.drop, nil
 }
 
-func (s *Store) sweep(now time.Time) {
+func (s *Store) drop() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	dropped := 0
-	for key, e := range s.entries {
-		if now.Sub(e.used) > maxIdle {
+	for key := range s.entries {
+		if !s.named[key] {
 			delete(s.entries, key)
 			dropped++
 		}
 	}
+	s.named = nil
 	if dropped > 0 {
-		slog.Info("blob store: swept", "dropped", dropped, "kept", len(s.entries))
+		slog.Info("blob store: dropped what no sheet names", "dropped", dropped, "kept", len(s.entries))
 	}
 }
 
@@ -372,12 +369,19 @@ func notFound(err error) bool {
 	return errors.As(err, &apiErr) && apiErr.Code == http.StatusNotFound
 }
 
-func (s *Store) touch(key string) (*entry, bool) {
+func (s *Store) held(key string) (*entry, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	e, ok := s.entries[key]
+	return e, ok
+}
+
+func (s *Store) keep(key string) (*entry, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	e, ok := s.entries[key]
-	if ok {
-		e.used = time.Now()
+	if ok && s.named != nil {
+		s.named[key] = true
 	}
 	return e, ok
 }
@@ -391,7 +395,7 @@ func (s *Store) Get(name string) ([]byte, error) {
 }
 
 func (s *Store) Bytes(name string) ([]byte, string, bool) {
-	e, ok := s.touch(trimExt(name))
+	e, ok := s.held(trimExt(name))
 	if !ok {
 		return nil, "", false
 	}
@@ -399,11 +403,16 @@ func (s *Store) Bytes(name string) ([]byte, string, bool) {
 }
 
 func (s *Store) Has(name string) (bool, error) {
-	if _, ok := s.touch(trimExt(name)); ok {
+	return s.has(context.Background(), name)
+}
+
+func (s *Store) has(ctx context.Context, name string) (bool, error) {
+	key := trimExt(name)
+	if _, ok := s.keep(key); ok {
 		return true, nil
 	}
 	start := time.Now()
-	e, err := s.fetch(context.Background(), name)
+	e, err := s.fetch(ctx, name)
 	if errors.Is(err, ErrNotFound) {
 		return false, nil
 	}
@@ -411,18 +420,21 @@ func (s *Store) Has(name string) (bool, error) {
 		return false, err
 	}
 	s.mu.Lock()
-	s.entries[trimExt(name)] = e
+	s.entries[key] = e
+	if s.named != nil {
+		s.named[key] = true
+	}
 	held := len(s.entries)
 	s.mu.Unlock()
 	slog.Info("blob store: fetched", "name", name, "bytes", len(e.data)+len(e.thumb), "held", held, "took", time.Since(start).Round(time.Millisecond))
 	return true, nil
 }
 
-func (s *Store) Prefetch(names []string) error {
+func (s *Store) Prefetch(ctx context.Context, names []string) error {
 	start := time.Now()
 	pending := []string{}
 	for _, name := range names {
-		if _, ok := s.touch(trimExt(name)); !ok {
+		if _, ok := s.keep(trimExt(name)); !ok {
 			pending = append(pending, name)
 		}
 	}
@@ -440,7 +452,7 @@ func (s *Store) Prefetch(names []string) error {
 		go func() {
 			defer wg.Done()
 			defer func() { <-slots }()
-			if _, err := s.Has(name); err != nil {
+			if _, err := s.has(ctx, name); err != nil {
 				mu.Lock()
 				if firstErr == nil {
 					firstErr = err
@@ -479,7 +491,7 @@ func (s *Store) download(ctx context.Context, name string) (*entry, error) {
 	if err != nil {
 		return nil, err
 	}
-	e := &entry{name: name, generation: o.generation, mimeType: o.mimeType, data: o.data, used: time.Now()}
+	e := &entry{name: name, generation: o.generation, mimeType: o.mimeType, data: o.data}
 	if !strings.HasPrefix(o.mimeType, "image/") {
 		return e, nil
 	}
@@ -552,7 +564,7 @@ func writeWithThumbnail(ctx context.Context, into objects, name, mimeType string
 
 func (s *Store) Put(folder, name, mimeType string, content []byte) error {
 	full := folder + "/" + name
-	if _, ok := s.touch(trimExt(full)); ok {
+	if _, ok := s.keep(trimExt(full)); ok {
 		return nil
 	}
 	if err := writeWithThumbnail(context.Background(), s.objects, full, mimeType, content); err != nil {
@@ -574,7 +586,7 @@ func (s *Store) take(name string) error {
 
 func (s *Store) serve(w http.ResponseWriter, r *http.Request) {
 	key := trimExt(strings.TrimPrefix(r.URL.Path, "/"))
-	e, ok := s.touch(key)
+	e, ok := s.held(key)
 	if !ok {
 		http.NotFound(w, r)
 		return

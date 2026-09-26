@@ -29,7 +29,7 @@ func (staticFiles) Has(key string) (bool, error) {
 	return err == nil, nil
 }
 
-func (staticFiles) Prefetch([]string) error { return nil }
+func (staticFiles) Prefetch(context.Context, []string) error { return nil }
 
 type sampleDirectory struct {
 	model *who.Model
@@ -161,7 +161,7 @@ type harness struct {
 	archive   *fakeArchive
 	documents *fakeDocuments
 	mailbox   Mail
-	queue     store.Enqueuer
+	queue     *store.Queue
 }
 
 func newHarness(t *testing.T) *harness {

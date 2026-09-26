@@ -1,6 +1,7 @@
 package home
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -123,7 +124,7 @@ func appKnown(key string) bool {
 
 type ImageChecker interface {
 	Has(key string) (bool, error)
-	Prefetch(names []string) error
+	Prefetch(ctx context.Context, names []string) error
 }
 
 type Link struct {
@@ -273,8 +274,8 @@ func imageNames(rows []store.Row) []string {
 	return names
 }
 
-func BuildModel(tables store.Tables, images ImageChecker) (*Model, error) {
-	if err := images.Prefetch(imageNames(tables[linksTab])); err != nil {
+func BuildModel(ctx context.Context, tables store.Tables, images ImageChecker) (*Model, error) {
+	if err := images.Prefetch(ctx, imageNames(tables[linksTab])); err != nil {
 		return nil, err
 	}
 	audience := tables[audienceTab]

@@ -1,6 +1,7 @@
 package team
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"regexp"
@@ -97,7 +98,7 @@ var emailForm = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
 
 type ImageChecker interface {
 	Has(key string) (bool, error)
-	Prefetch(names []string) error
+	Prefetch(ctx context.Context, names []string) error
 }
 
 type Link struct {
@@ -681,12 +682,12 @@ func imageNames(rows ...[]store.Row) []string {
 	return names
 }
 
-func BuildModel(tables store.Tables, images ImageChecker) (*Model, error) {
+func BuildModel(ctx context.Context, tables store.Tables, images ImageChecker) (*Model, error) {
 	settings, notify, err := parseSettings(tables[settingsTab])
 	if err != nil {
 		return nil, err
 	}
-	if err := images.Prefetch(imageNames(tables[categoriesTab], tables[activitiesTab], tables[linksTab])); err != nil {
+	if err := images.Prefetch(ctx, imageNames(tables[categoriesTab], tables[activitiesTab], tables[linksTab])); err != nil {
 		return nil, err
 	}
 	model := &Model{Categories: []Category{}, Activities: []*Activity{}, Settings: settings, notify: notify,

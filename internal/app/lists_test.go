@@ -21,7 +21,7 @@ func TestGroupListsCarryAdditionsAsGuests(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	groups, err := loop.NewCache(dir, dir, func(string) bool { return false }, directQueue{})
+	groups, err := loop.NewCache(dir, dir, func(string) bool { return false }, store.NewQueue())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ type anyImage struct{}
 
 func (anyImage) Has(string) (bool, error) { return true, nil }
 
-func (anyImage) Prefetch([]string) error { return nil }
+func (anyImage) Prefetch(context.Context, []string) error { return nil }
 
 func TestMagicTagsCarryTheirHosts(t *testing.T) {
 	t.Chdir("../..")
@@ -81,12 +81,13 @@ func TestMagicTagsCarryTheirHosts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	portalCache, err := team.NewCache(dir, dir, anyImage{}, func(string) bool { return false }, store.NewQueue())
+	queue := store.NewQueue()
+	portalCache, err := team.NewCache(dir, dir, anyImage{}, func(string) bool { return false }, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
 	portal := portalCache.Model()
-	siteCache, err := celebrate.NewCache(dir, dir, anyImage{}, func(string) bool { return false }, store.NewQueue())
+	siteCache, err := celebrate.NewCache(dir, dir, anyImage{}, func(string) bool { return false }, queue)
 	if err != nil {
 		t.Fatal(err)
 	}

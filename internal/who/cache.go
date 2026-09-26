@@ -46,8 +46,8 @@ func spec(blobs, static BlobChecker, idKey []byte, loaded func()) store.Spec[*Mo
 			{Name: geocodeTable, Columns: geocodeColumns, Key: []string{geocodeAddress}, AppendOnly: true},
 			{App: preferencesApp, Name: preferencesTab, Columns: []string{preferenceTimestamp, preferenceEmail, preferenceStatus, preferencePermission}, Key: []string{preferenceTimestamp, preferenceEmail}},
 		},
-		Build: func(tables store.Tables) (*Model, error) {
-			return BuildModel(tables, blobs, static, idKey)
+		Build: func(ctx context.Context, tables store.Tables) (*Model, error) {
+			return BuildModel(ctx, tables, blobs, static, idKey)
 		},
 		Loaded: func(model *Model, took time.Duration) {
 			slog.Info("loaded directory model", "people", len(model.People), "families", len(model.Families),
@@ -84,7 +84,7 @@ func carryPerson(before, after store.Row) []store.Op {
 	}
 }
 
-func Open(source data.Source, writer data.Writer, blobs, static BlobChecker, idKey []byte, queue store.Enqueuer) (*store.Store[*Model], error) {
+func Open(source data.Source, writer data.Writer, blobs, static BlobChecker, idKey []byte, queue *store.Queue) (*store.Store[*Model], error) {
 	return store.New(spec(blobs, static, idKey, func() {}), source, writer, queue)
 }
 
@@ -96,7 +96,7 @@ func LoadModel(source data.Source, blobs, static BlobChecker, idKey []byte) (*Mo
 	return s.Model(), nil
 }
 
-func NewCache(source data.Source, writer data.Writer, blobs, static BlobChecker, queue store.Enqueuer, idKey []byte, superAdmins func() []string) (*Cache, error) {
+func NewCache(source data.Source, writer data.Writer, blobs, static BlobChecker, queue *store.Queue, idKey []byte, superAdmins func() []string) (*Cache, error) {
 	c := &Cache{superAdmins: superAdmins, unlocated: make(chan struct{}, 1)}
 	s, err := store.New(spec(blobs, static, idKey, c.locate), source, writer, queue)
 	if err != nil {

@@ -1,6 +1,7 @@
 package calendar
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -36,9 +37,10 @@ func invitesAppWith(t *testing.T) (http.Handler, *Cache, *keptMail, *sampleSourc
 	t.Helper()
 	t.Chdir("../..")
 	sheet = &data.Dir{Root: "sampledata"}
+	queue = store.NewQueue()
 	households := map[string][]string{robin: {sam, ella}, sam: {robin, ella}, ella: {robin, sam}}
 	parents := map[string][]string{sam: {robin}, ella: {robin}}
-	cache, err := NewCache(sheet, sheet, func() Roster { return Roster{Classrooms: roster.Classrooms, Households: households, Parents: parents} }, nil, func(string) bool { return false }, directQueue{})
+	cache, err := NewCache(sheet, sheet, func() Roster { return Roster{Classrooms: roster.Classrooms, Households: households, Parents: parents} }, nil, func(string) bool { return false }, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,8 +117,8 @@ func newSampleSources(t *testing.T) *sampleSources {
 
 type noFiles struct{}
 
-func (noFiles) Has(string) (bool, error) { return false, nil }
-func (noFiles) Prefetch([]string) error  { return nil }
+func (noFiles) Has(string) (bool, error)                 { return false, nil }
+func (noFiles) Prefetch(context.Context, []string) error { return nil }
 
 func waitFor(kept *keptMail, n int) []mail.Message {
 	for i := 0; i < 100 && len(kept.all()) < n; i++ {
@@ -1424,7 +1426,7 @@ func TestCascadesReachTheSheet(t *testing.T) {
 	}
 	answers := func() []string {
 		out := []string{}
-		for _, row := range readTables(t, sheet)[RSVPsTab] {
+		for _, row := range sheetTables(t)[RSVPsTab] {
 			if row["Event ID"] == "meetup" {
 				out = append(out, row["Email"]+"="+row["Answer"])
 			}
@@ -1446,7 +1448,7 @@ func TestCascadesReachTheSheet(t *testing.T) {
 		t.Errorf("memory after the delete: event %v, invitation %v, invites %d", m.Event("meetup"), m.Invitations["meetup"], len(m.Invites["meetup"]))
 	}
 	for _, tab := range []string{EventsTab, InvitationsTab, InvitesTab, RSVPsTab} {
-		for _, row := range readTables(t, sheet)[tab] {
+		for _, row := range sheetTables(t)[tab] {
 			if row["Event ID"] == "meetup" {
 				t.Errorf("%s kept %v", tab, row)
 			}
@@ -1477,7 +1479,7 @@ func TestBouncesAreAppendOnly(t *testing.T) {
 	if rec.Code != 200 || cache.Model().Bounced[coach].Reason != "No such user here" {
 		t.Fatalf("bounce: %d %s", rec.Code, rec.Body)
 	}
-	if rows := readTables(t, sheet)[BouncesTab]; len(rows) != 1 || rows[0]["Email"] != coach {
+	if rows := sheetTables(t)[BouncesTab]; len(rows) != 1 || rows[0]["Email"] != coach {
 		t.Errorf("the sheet's bounces: %v", rows)
 	}
 	if log := changeLog(t); len(log) != 0 {
@@ -1506,7 +1508,7 @@ func TestCategoryOrder(t *testing.T) {
 		t.Errorf("categories after the save: %v", names)
 	}
 	orders := []string{}
-	for _, row := range readTables(t, sheet)[TagsTab] {
+	for _, row := range sheetTables(t)[TagsTab] {
 		orders = append(orders, row[store.OrderColumn])
 	}
 	if len(orders) != 16 || slices.Contains(orders, "") || !slices.IsSorted(append([]string{orders[1], orders[0]}, orders[2:]...)) {

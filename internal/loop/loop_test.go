@@ -12,15 +12,11 @@ import (
 	"heliosian/internal/who"
 )
 
-type syncQueue struct{}
-
-func (syncQueue) Add(f func()) { f() }
-
 var tabNames = []string{groupsTab, managersTab, rulesTab, additionsTab, excludedTab, aliasesTab, messagesTab, deliveriesTab, adminsTab, archivedTab}
 
 func sampleTables(t *testing.T) store.Tables {
 	t.Helper()
-	tabs, err := (&data.Dir{Root: "../../sampledata"}).Tabs(appName, tabNames, nil)
+	tabs, err := (&data.Dir{Root: "../../sampledata"}).Tabs(context.Background(), appName, tabNames, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,7 +30,7 @@ func sampleTables(t *testing.T) store.Tables {
 func sampleCache(t *testing.T) (*Cache, *data.Dir) {
 	t.Helper()
 	dir := &data.Dir{Root: "../../sampledata"}
-	cache, err := NewCache(dir, dir, func(string) bool { return false }, syncQueue{})
+	cache, err := NewCache(dir, dir, func(string) bool { return false }, store.NewQueue())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,7 +170,7 @@ func TestSavingAGroupWritesOnlyWhatChanged(t *testing.T) {
 	additions := cache.Count(additionsTab, nil)
 	g := Normalize(Group{Name: "chess.club", Title: " Chess Club ", Visibility: " Members ", Managers: []string{"M@X.org", "m@x.org"}, Rules: []Rule{{Kind: "Include", Search: "  Kim ", Tags: []string{" M@X.org:Chess "}}},
 		Additions: []Addition{{Email: " Coach@Club.org ", Name: "  The  Coach "}, {Email: "coach@club.org", Name: "Again"}}})
-	if err := cache.Commit(ctx, "m@x.org", groupOps(Group{}, g, true)...); err != nil {
+	if err := cache.CommitAndWait(ctx, "m@x.org", groupOps(Group{}, g, true)...); err != nil {
 		t.Fatal(err)
 	}
 	model := cache.Model()
@@ -189,7 +185,7 @@ func TestSavingAGroupWritesOnlyWhatChanged(t *testing.T) {
 	next.Rules = append(slices.Clone(got.Rules), Rule{Kind: KindExclude, Roles: []string{"Staff"}})
 	next.Additions = nil
 	next.Visibility = ""
-	if err := cache.Commit(ctx, "m@x.org", groupOps(*got, next, false)...); err != nil {
+	if err := cache.CommitAndWait(ctx, "m@x.org", groupOps(*got, next, false)...); err != nil {
 		t.Fatal(err)
 	}
 	model = cache.Model()

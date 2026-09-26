@@ -1,6 +1,7 @@
 package calendar
 
 import (
+	"context"
 	"log/slog"
 	"slices"
 	"sort"
@@ -40,12 +41,12 @@ func spec(roster func() Roster, images ImageChecker) store.Spec[*Model] {
 			{Name: InviteGroupsTab, Columns: InviteGroupColumns, Key: []string{"Event ID", "Group ID"}},
 			{Name: BouncesTab, Columns: BounceColumns, Key: []string{"Email", "When"}, AppendOnly: true},
 		},
-		Build: func(tables store.Tables) (*Model, error) {
+		Build: func(ctx context.Context, tables store.Tables) (*Model, error) {
 			model, err := BuildModel(tables, roster())
 			if err != nil {
 				return nil, err
 			}
-			resolveImages(images, model)
+			resolveImages(ctx, images, model)
 			return model, nil
 		},
 		Loaded: func(model *Model, took time.Duration) {
@@ -91,7 +92,7 @@ func carryInvite(before, after store.Row) []store.Op {
 	return []store.Op{store.Update(RSVPsTab, was, store.Row{"Email": after["Email"]})}
 }
 
-func NewCache(source data.Source, writer data.Writer, roster func() Roster, images ImageChecker, superAdmin func(string) bool, queue store.Enqueuer) (*Cache, error) {
+func NewCache(source data.Source, writer data.Writer, roster func() Roster, images ImageChecker, superAdmin func(string) bool, queue *store.Queue) (*Cache, error) {
 	s, err := store.New(spec(roster, images), source, writer, queue)
 	if err != nil {
 		return nil, err
@@ -99,7 +100,7 @@ func NewCache(source data.Source, writer data.Writer, roster func() Roster, imag
 	return &Cache{Store: s, superAdmin: superAdmin}, nil
 }
 
-func resolveImages(images ImageChecker, model *Model) {
+func resolveImages(ctx context.Context, images ImageChecker, model *Model) {
 	if images == nil {
 		return
 	}
@@ -123,7 +124,7 @@ func resolveImages(images ImageChecker, model *Model) {
 	for _, name := range pictures {
 		names = append(names, name)
 	}
-	if err := images.Prefetch(names); err != nil {
+	if err := images.Prefetch(ctx, names); err != nil {
 		slog.Error("[ERROR] calendar: prefetch images", "error", err)
 	}
 	for i := range model.Tags {

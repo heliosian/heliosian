@@ -1,6 +1,7 @@
 package who
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -91,21 +92,20 @@ func loadInviteTemplates(source data.Source) ([]InviteTemplate, error) {
 	return templates, nil
 }
 
-const invitesRefreshInterval = 5 * time.Minute
-
 type Invites struct {
 	*store.Store[[]GreetingTemplate]
 	source  data.Source
-	queue   store.Enqueuer
 	mu      sync.RWMutex
 	systems []InviteTemplate
 }
 
-func NewInvites(source data.Source, writer data.Writer, queue store.Enqueuer) (*Invites, error) {
+func NewInvites(source data.Source, writer data.Writer, queue *store.Queue) (*Invites, error) {
 	s, err := store.New(store.Spec[[]GreetingTemplate]{
-		App:   invitesApp,
-		Tabs:  []store.Tab{{Name: greetingsTab, Columns: GreetingColumns, Key: []string{"Name"}}},
-		Build: buildGreetings,
+		App:  invitesApp,
+		Tabs: []store.Tab{{Name: greetingsTab, Columns: GreetingColumns, Key: []string{"Name"}}},
+		Build: func(_ context.Context, tables store.Tables) ([]GreetingTemplate, error) {
+			return buildGreetings(tables)
+		},
 		Loaded: func(greetings []GreetingTemplate, took time.Duration) {
 			slog.Info("loaded greetings", "greetings", len(greetings), "took", took.Round(time.Millisecond))
 		},
@@ -113,31 +113,27 @@ func NewInvites(source data.Source, writer data.Writer, queue store.Enqueuer) (*
 	if err != nil {
 		return nil, err
 	}
-	systems, err := loadInviteTemplates(source)
+	i := &Invites{Store: s, source: source}
+	swap, err := i.loadSystems(context.Background())
 	if err != nil {
-		return nil, fmt.Errorf("load invite templates: %w", err)
+		return nil, err
 	}
-	slog.Info("loaded invite templates", "systems", len(systems))
-	i := &Invites{Store: s, source: source, queue: queue, systems: systems}
-	go i.refreshLoop()
+	swap()
+	queue.Register(i.loadSystems)
 	return i, nil
 }
 
-func (i *Invites) refreshLoop() {
-	for range time.Tick(invitesRefreshInterval) {
-		i.queue.Add(i.refreshSystems)
-	}
-}
-
-func (i *Invites) refreshSystems() {
+func (i *Invites) loadSystems(context.Context) (func(), error) {
 	systems, err := loadInviteTemplates(i.source)
 	if err != nil {
-		slog.Error("[ERROR] load invite templates", "error", err)
-		return
+		return nil, fmt.Errorf("load invite templates: %w", err)
 	}
-	i.mu.Lock()
-	i.systems = systems
-	i.mu.Unlock()
+	return func() {
+		i.mu.Lock()
+		i.systems = systems
+		i.mu.Unlock()
+		slog.Info("loaded invite templates", "systems", len(systems))
+	}, nil
 }
 
 func (i *Invites) Systems() []InviteTemplate {

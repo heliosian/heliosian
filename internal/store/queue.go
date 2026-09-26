@@ -1,8 +1,14 @@
 package store
 
 import (
+	"context"
+	"log/slog"
+	"slices"
 	"sync"
+	"time"
 )
+
+type Load func(context.Context) (func(), error)
 
 type Queue struct {
 	mu       sync.Mutex
@@ -11,6 +17,10 @@ type Queue struct {
 	holds    int
 	draining bool
 	done     chan struct{}
+
+	commits sync.Mutex
+	cancel  context.CancelFunc
+	loads   []Load
 }
 
 func NewQueue() *Queue {
@@ -40,6 +50,12 @@ func (q *Queue) Release() {
 	q.cond.Signal()
 }
 
+func (q *Queue) Flush() {
+	done := make(chan struct{})
+	q.Add(func() { close(done) })
+	<-done
+}
+
 func (q *Queue) Drain() <-chan struct{} {
 	q.mu.Lock()
 	q.draining = true
@@ -65,4 +81,61 @@ func (q *Queue) run() {
 		q.mu.Unlock()
 		task()
 	}
+}
+
+func (q *Queue) Register(load Load) {
+	q.commits.Lock()
+	defer q.commits.Unlock()
+	q.loads = append(q.loads, load)
+}
+
+func (q *Queue) Tick() {
+	for range time.Tick(refreshInterval) {
+		q.Refresh()
+	}
+}
+
+func (q *Queue) Refresh() {
+	q.Add(q.refresh)
+}
+
+func (q *Queue) interrupt() {
+	if q.cancel != nil {
+		q.cancel()
+		q.cancel = nil
+	}
+}
+
+func (q *Queue) refresh() {
+	start := time.Now()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	q.commits.Lock()
+	q.cancel = cancel
+	loads := slices.Clone(q.loads)
+	q.commits.Unlock()
+	swaps := []func(){}
+	for _, load := range loads {
+		swap, err := load(ctx)
+		if ctx.Err() != nil {
+			slog.Info("refresh abandoned: a commit came in")
+			return
+		}
+		if err != nil {
+			slog.Error("[ERROR] refresh", "error", err)
+			return
+		}
+		swaps = append(swaps, swap)
+	}
+	q.commits.Lock()
+	defer q.commits.Unlock()
+	if ctx.Err() != nil {
+		slog.Info("refresh abandoned: a commit came in")
+		return
+	}
+	q.cancel = nil
+	for _, swap := range swaps {
+		swap()
+	}
+	slog.Info("refreshed", "took", time.Since(start).Round(time.Millisecond))
 }

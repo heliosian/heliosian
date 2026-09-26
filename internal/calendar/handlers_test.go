@@ -18,10 +18,6 @@ import (
 	"heliosian/internal/store"
 )
 
-type directQueue struct{}
-
-func (directQueue) Add(f func()) { f() }
-
 var testNow = time.Date(2026, 9, 17, 12, 0, 0, 0, Location)
 
 func pinnedClock() time.Time {
@@ -33,13 +29,23 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-var sheet *data.Dir
+var (
+	sheet *data.Dir
+	queue *store.Queue
+)
+
+func sheetTables(t *testing.T) store.Tables {
+	t.Helper()
+	queue.Flush()
+	return readTables(t, sheet)
+}
 
 func sampleCache(t *testing.T) *Cache {
 	t.Helper()
 	t.Chdir("../..")
 	sheet = &data.Dir{Root: "sampledata"}
-	cache, err := NewCache(sheet, sheet, func() Roster { return roster }, nil, func(string) bool { return false }, directQueue{})
+	queue = store.NewQueue()
+	cache, err := NewCache(sheet, sheet, func() Roster { return roster }, nil, func(string) bool { return false }, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,6 +66,7 @@ func testApp(t *testing.T) (http.Handler, *Cache) {
 
 func changeLog(t *testing.T) []string {
 	t.Helper()
+	queue.Flush()
 	_, rows, err := sheet.Table(appName, store.ChangeLogTab)
 	if err != nil {
 		t.Fatal(err)
@@ -731,7 +738,7 @@ func TestOverrideFromThePage(t *testing.T) {
 		return string(raw)
 	}
 	row := func() map[string]string {
-		for _, r := range readTables(t, sheet)[OverridesTab] {
+		for _, r := range sheetTables(t)[OverridesTab] {
 			if r["Event ID"] == "a2@sample" {
 				return r
 			}

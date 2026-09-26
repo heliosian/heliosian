@@ -1,6 +1,7 @@
 package birthday
 
 import (
+	"context"
 	"log/slog"
 	"slices"
 	"sort"
@@ -14,7 +15,19 @@ import (
 
 type Cache struct {
 	*store.Store[*Model]
+	shared     *store.Store[int]
 	superAdmin func(email string) bool
+}
+
+var sharedSpec = store.Spec[int]{
+	App:  sharedSheet,
+	Tabs: []store.Tab{{Name: sharedNewsletterTab, Columns: SharedNewsletterColumns, Key: []string{"Staff Email", "Target Newsletter Date"}, AppendOnly: true}},
+	Build: func(_ context.Context, tables store.Tables) (int, error) {
+		return len(tables[sharedNewsletterTab]), nil
+	},
+	Loaded: func(rows int, took time.Duration) {
+		slog.Info("loaded shared newsletter", "rows", rows, "took", took.Round(time.Millisecond))
+	},
 }
 
 var spec = store.Spec[*Model]{
@@ -32,7 +45,9 @@ var spec = store.Spec[*Model]{
 		{Name: teamTab, Columns: TeamColumns, Key: []string{"Email", "Role"}},
 		{Name: remindersTab, Columns: ReminderColumns, Key: []string{"Email", "Year", "Kind"}},
 	},
-	Build: BuildModel,
+	Build: func(_ context.Context, tables store.Tables) (*Model, error) {
+		return BuildModel(tables)
+	},
 	Loaded: func(model *Model, took time.Duration) {
 		slog.Info("loaded birthday model", "birthdays", len(model.Birthdays), "charities", len(model.Charities),
 			"donations", len(model.Donations), "newsletters", len(model.NewsletterDates), "took", took.Round(time.Millisecond))
@@ -56,12 +71,16 @@ func moveNewsletterDate(before, after store.Row) []store.Op {
 	return []store.Op{store.Update(birthdaysTab, store.Row{"Newsletter Override": before["Date"]}, store.Row{"Newsletter Override": after["Date"]})}
 }
 
-func NewCache(source data.Source, writer data.Writer, superAdmin func(string) bool, queue store.Enqueuer) (*Cache, error) {
+func NewCache(source data.Source, writer data.Writer, superAdmin func(string) bool, queue *store.Queue) (*Cache, error) {
 	s, err := store.New(spec, source, writer, queue)
 	if err != nil {
 		return nil, err
 	}
-	return &Cache{Store: s, superAdmin: superAdmin}, nil
+	shared, err := store.New(sharedSpec, source, writer, queue)
+	if err != nil {
+		return nil, err
+	}
+	return &Cache{Store: s, shared: shared, superAdmin: superAdmin}, nil
 }
 
 // IsSuperAdmin reports whether email is one of the platform's super admins

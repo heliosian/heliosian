@@ -16,7 +16,6 @@ import (
 
 	"heliosian/internal/auth"
 	"heliosian/internal/claude"
-	"heliosian/internal/data"
 	"heliosian/internal/describe"
 	"heliosian/internal/logging"
 	"heliosian/internal/mail"
@@ -42,7 +41,6 @@ func mustLocation(name string) *time.Location {
 
 type app struct {
 	cache       *Cache
-	shared      data.Writer
 	directory   Directory
 	superAdmins func() []string
 	describer   Describer
@@ -56,8 +54,8 @@ type Describer interface {
 	Charity(ctx context.Context, actor, name, link string) (describe.Info, error)
 }
 
-func Register(mux *http.ServeMux, cache *Cache, shared data.Writer, media *blob.Store, directory Directory, superAdmins func() []string, describer Describer, mailer mail.Sender, from, base string, joinHome func(ctx context.Context, email string) error) {
-	a := app{cache: cache, shared: shared, directory: directory, superAdmins: superAdmins, describer: describer, mailer: mailer, from: from, base: base, joinHome: joinHome}
+func Register(mux *http.ServeMux, cache *Cache, media *blob.Store, directory Directory, superAdmins func() []string, describer Describer, mailer mail.Sender, from, base string, joinHome func(ctx context.Context, email string) error) {
+	a := app{cache: cache, directory: directory, superAdmins: superAdmins, describer: describer, mailer: mailer, from: from, base: base, joinHome: joinHome}
 	if mailer != nil {
 		go a.remindLoop()
 	}

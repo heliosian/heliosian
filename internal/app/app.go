@@ -97,7 +97,7 @@ func (staticFiles) Has(key string) (bool, error) {
 	return err == nil, nil
 }
 
-func (staticFiles) Prefetch([]string) error { return nil }
+func (staticFiles) Prefetch(context.Context, []string) error { return nil }
 
 func bundled(roots []string, key string) bool {
 	for _, root := range roots {
@@ -115,7 +115,7 @@ func uploaded(store *blob.Store, key string) (bool, error) {
 	return store.Has(key)
 }
 
-func prefetchUploaded(store *blob.Store, folder string, names []string) error {
+func prefetchUploaded(ctx context.Context, store *blob.Store, folder string, names []string) error {
 	if store == nil {
 		return nil
 	}
@@ -125,7 +125,7 @@ func prefetchUploaded(store *blob.Store, folder string, names []string) error {
 			keys = append(keys, name)
 		}
 	}
-	return store.Prefetch(keys)
+	return store.Prefetch(ctx, keys)
 }
 
 type homeImages struct {
@@ -139,8 +139,8 @@ func (h homeImages) Has(key string) (bool, error) {
 	return bundled([]string{"web/home", "web/public/home"}, key), nil
 }
 
-func (h homeImages) Prefetch(names []string) error {
-	return prefetchUploaded(h.store, "link-images/", names)
+func (h homeImages) Prefetch(ctx context.Context, names []string) error {
+	return prefetchUploaded(ctx, h.store, "link-images/", names)
 }
 
 type teamImages struct {
@@ -154,8 +154,8 @@ func (e teamImages) Has(key string) (bool, error) {
 	return bundled([]string{"web/team", "web/public/team"}, key), nil
 }
 
-func (e teamImages) Prefetch(names []string) error {
-	return prefetchUploaded(e.store, "activity-images/", names)
+func (e teamImages) Prefetch(ctx context.Context, names []string) error {
+	return prefetchUploaded(ctx, e.store, "activity-images/", names)
 }
 
 type celebrateImages struct {
@@ -169,8 +169,8 @@ func (c celebrateImages) Has(key string) (bool, error) {
 	return bundled([]string{"web/celebrate", "web/public/celebrate"}, key), nil
 }
 
-func (c celebrateImages) Prefetch(names []string) error {
-	return prefetchUploaded(c.store, "party-images/", names)
+func (c celebrateImages) Prefetch(ctx context.Context, names []string) error {
+	return prefetchUploaded(ctx, c.store, "party-images/", names)
 }
 
 type calendarImages struct {
@@ -184,8 +184,8 @@ func (c calendarImages) Has(key string) (bool, error) {
 	return bundled([]string{"web/calendar", "web/public/calendar"}, key), nil
 }
 
-func (c calendarImages) Prefetch(names []string) error {
-	return prefetchUploaded(c.store, "category-images/", names)
+func (c calendarImages) Prefetch(ctx context.Context, names []string) error {
+	return prefetchUploaded(ctx, c.store, "category-images/", names)
 }
 
 type directory struct {
@@ -746,6 +746,7 @@ func NewCore(cfg Config) *Core {
 		logging.Fatal("register manifest mime type", "error", err)
 	}
 	queue := store.NewQueue()
+	queue.Register(cfg.Store.Load)
 	cfg.ImageSearch.Stock = imagesearch.NewStock(cfg.Store)
 	settings, err := config.NewCache(cfg.Source, cfg.Writer, queue)
 	if err != nil {
@@ -845,7 +846,7 @@ func NewCore(cfg Config) *Core {
 	}
 	team.Register(teamMux, teamCache, cfg.Store, directory{cache, settings}, settings.SuperAdmins, cfg.ImageSearch, cfg.Mail, cfg.MailFrom, eventRSVPs)
 	birthdayMux := http.NewServeMux()
-	birthday.Register(birthdayMux, birthdayCache, cfg.Writer, cfg.Store, birthdayDirectory{cache, settings}, settings.SuperAdmins, cfg.Describer, cfg.BirthdayMail, cfg.BirthdayFrom, cfg.BirthdayBase, func(ctx context.Context, email string) error {
+	birthday.Register(birthdayMux, birthdayCache, cfg.Store, birthdayDirectory{cache, settings}, settings.SuperAdmins, cfg.Describer, cfg.BirthdayMail, cfg.BirthdayFrom, cfg.BirthdayBase, func(ctx context.Context, email string) error {
 		return home.Grant(ctx, homeCache, "birthday", email)
 	})
 	celebrateMux := http.NewServeMux()
@@ -901,11 +902,10 @@ func NewCore(cfg Config) *Core {
 	blob.RegisterCalendar(calendarMux, cfg.Store)
 	blob.RegisterLoop(loopMux, cfg.Store)
 	blob.RegisterAsk(askMux, cfg.Store)
+	go queue.Tick()
 	time.AfterFunc(deployOverlap, func() {
 		slog.Info("reading again for the previous revision's last writes")
-		for _, c := range []interface{ Refresh() }{settings, homeCache, teamCache, birthdayCache, celebrateCache, cache, invites, calendarCache, loopCache, artifactsCache, feedbackCache} {
-			c.Refresh()
-		}
+		queue.Refresh()
 	})
 	return &Core{
 		Mux: mux, HomeMux: homeMux, HomeCache: homeCache, TeamMux: teamMux, TeamCache: teamCache, BirthdayMux: birthdayMux, CelebrateMux: celebrateMux, CelebrateCache: celebrateCache,

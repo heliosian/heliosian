@@ -1,6 +1,7 @@
 package data
 
 import (
+	"context"
 	"encoding/csv"
 	"fmt"
 	"maps"
@@ -32,7 +33,7 @@ type Tab struct {
 type Source interface {
 	Table(app, name string) ([]string, []map[string]string, error)
 	Header(app, name string) ([]string, error)
-	Tabs(app string, tables, headers []string) (map[string]Tab, error)
+	Tabs(ctx context.Context, app string, tables, headers []string) (map[string]Tab, error)
 	Raw(app, name string) ([][]string, error)
 }
 
@@ -121,7 +122,7 @@ func (d *Dir) Table(app, name string) ([]string, []map[string]string, error) {
 	return slices.Clone(t.header), rows, nil
 }
 
-func (d *Dir) Tabs(app string, tables, headers []string) (map[string]Tab, error) {
+func (d *Dir) Tabs(_ context.Context, app string, tables, headers []string) (map[string]Tab, error) {
 	out := map[string]Tab{}
 	for _, name := range tables {
 		header, rows, err := d.Table(app, name)

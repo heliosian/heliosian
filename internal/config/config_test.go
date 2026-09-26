@@ -15,18 +15,15 @@ import (
 	"heliosian/internal/store"
 )
 
-type inline struct{}
-
-func (inline) Add(f func()) { f() }
-
-func sample(t *testing.T) (*data.Dir, *Cache) {
+func sample(t *testing.T) (*data.Dir, *store.Queue, *Cache) {
 	t.Helper()
 	dir := &data.Dir{Root: "../../sampledata"}
-	cache, err := NewCache(dir, dir, inline{})
+	queue := store.NewQueue()
+	cache, err := NewCache(dir, dir, queue)
 	if err != nil {
 		t.Fatalf("load sample config: %v", err)
 	}
-	return dir, cache
+	return dir, queue, cache
 }
 
 func sampleTables(t *testing.T) store.Tables {
@@ -100,7 +97,7 @@ func TestBadConfigIsFatal(t *testing.T) {
 }
 
 func TestSignOutIsRecordedOncePerAddress(t *testing.T) {
-	dir, cache := sample(t)
+	dir, queue, cache := sample(t)
 	if _, ok := cache.SignedOut("parent@heliosschool.org"); ok {
 		t.Fatal("the sample tab should hold no sign-out")
 	}
@@ -120,6 +117,7 @@ func TestSignOutIsRecordedOncePerAddress(t *testing.T) {
 	if !second.After(first) {
 		t.Errorf("second sign-out at %v, want after the first at %v", second, first)
 	}
+	queue.Flush()
 	_, rows, err := dir.Table(App, SignedOutTab)
 	if err != nil {
 		t.Fatalf("read the tab: %v", err)
@@ -138,7 +136,7 @@ func TestSignOutIsRecordedOncePerAddress(t *testing.T) {
 }
 
 func TestAdminEditsAreCommits(t *testing.T) {
-	dir, cache := sample(t)
+	dir, queue, cache := sample(t)
 	const jordan = "jordan.whitfield@heliosschool.org"
 	mux := http.NewServeMux()
 	Register(mux, cache, func(email string) bool { return email == jordan })
@@ -157,6 +155,7 @@ func TestAdminEditsAreCommits(t *testing.T) {
 	if s.StaleYears.Photo != 1 || s.GradeColors["Kindergarten"] != "#000000" || !cache.IsSuperAdmin("asha.chandra@heliosschool.org") {
 		t.Fatalf("settings after the edits: %+v", s)
 	}
+	queue.Flush()
 	log := changeLog(t, dir)
 	for _, line := range []string{
 		jordan + "|set|Settings|Key=Photo Stale Years|Value|0.75",

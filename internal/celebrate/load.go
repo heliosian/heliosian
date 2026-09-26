@@ -1,6 +1,7 @@
 package celebrate
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"regexp"
@@ -122,7 +123,7 @@ var codeForm = regexp.MustCompile(`^[A-Za-z0-9]+(-[A-Za-z0-9]+)*$`)
 
 type ImageChecker interface {
 	Has(key string) (bool, error)
-	Prefetch(names []string) error
+	Prefetch(ctx context.Context, names []string) error
 }
 
 type Celebration struct {
@@ -612,12 +613,12 @@ func compareAdded(a, b Ticket) int {
 	return strings.Compare(a.Added, b.Added)
 }
 
-func BuildModel(tables store.Tables, images ImageChecker) (*Model, error) {
+func BuildModel(ctx context.Context, tables store.Tables, images ImageChecker) (*Model, error) {
 	settings, err := parseSettings(tables[settingsTab])
 	if err != nil {
 		return nil, err
 	}
-	if err := images.Prefetch(imageNames(tables[celebrationsTab], tables[partiesTab])); err != nil {
+	if err := images.Prefetch(ctx, imageNames(tables[celebrationsTab], tables[partiesTab])); err != nil {
 		return nil, fmt.Errorf("prefetch images: %w", err)
 	}
 	model := &Model{

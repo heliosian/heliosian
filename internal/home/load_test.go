@@ -1,6 +1,7 @@
 package home
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -11,7 +12,7 @@ type noImages struct{}
 
 func (noImages) Has(string) (bool, error) { return true, nil }
 
-func (noImages) Prefetch([]string) error { return nil }
+func (noImages) Prefetch(context.Context, []string) error { return nil }
 
 func category(title, emoji, style string) store.Row {
 	return store.Row{"Title": title, "Emoji": emoji, "Style": style}
@@ -19,7 +20,7 @@ func category(title, emoji, style string) store.Row {
 
 func TestEventsSectionIsSynthesizedUntilTheSheetHasIt(t *testing.T) {
 	tables := store.Tables{categoriesTab: {category("School", "🏫", StyleCards)}}
-	m, err := BuildModel(tables, noImages{})
+	m, err := BuildModel(context.Background(), tables, noImages{})
 	if err != nil {
 		t.Fatalf("build without an events row: %v", err)
 	}
@@ -28,7 +29,7 @@ func TestEventsSectionIsSynthesizedUntilTheSheetHasIt(t *testing.T) {
 	}
 
 	tables[categoriesTab] = append(tables[categoriesTab], category("What's On", "🎉", StyleEvents))
-	m, err = BuildModel(tables, noImages{})
+	m, err = BuildModel(context.Background(), tables, noImages{})
 	if err != nil {
 		t.Fatalf("build with an events row: %v", err)
 	}
@@ -37,7 +38,7 @@ func TestEventsSectionIsSynthesizedUntilTheSheetHasIt(t *testing.T) {
 	}
 
 	tables[categoriesTab] = append(tables[categoriesTab], category("Another", "📅", StyleEvents))
-	if _, err := BuildModel(tables, noImages{}); err == nil || !strings.Contains(err.Error(), "only one") {
+	if _, err := BuildModel(context.Background(), tables, noImages{}); err == nil || !strings.Contains(err.Error(), "only one") {
 		t.Errorf("two events rows built: %v", err)
 	}
 }
@@ -47,7 +48,7 @@ func TestLinksCannotNameTheEventsSection(t *testing.T) {
 		categoriesTab: {category("What's On", "🎉", StyleEvents)},
 		linksTab:      {{"Title": "Gala", "URL": "https://example.org", "Category": "What's On", "Visible": "Yes"}},
 	}
-	if _, err := BuildModel(tables, noImages{}); err == nil || !strings.Contains(err.Error(), "events") {
+	if _, err := BuildModel(context.Background(), tables, noImages{}); err == nil || !strings.Contains(err.Error(), "events") {
 		t.Errorf("a link under the events section built: %v", err)
 	}
 }

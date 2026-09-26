@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"maps"
 	"slices"
 	"strings"
@@ -12,6 +11,7 @@ import (
 
 	"heliosian/internal/auth"
 	"heliosian/internal/data"
+	"heliosian/internal/logging"
 )
 
 const (
@@ -70,28 +70,22 @@ type Tab struct {
 type Spec[M any] struct {
 	App    string
 	Tabs   []Tab
-	Build  func(Tables) (M, error)
+	Build  func(context.Context, Tables) (M, error)
 	Loaded func(model M, took time.Duration)
 }
 
-type Enqueuer interface {
-	Add(func())
-}
-
 type Store[M any] struct {
-	spec    Spec[M]
-	tabs    map[string]Tab
-	source  data.Source
-	writer  data.Writer
-	queue   Enqueuer
-	commits sync.Mutex
-	mu      sync.RWMutex
-	tables  Tables
-	model   M
-	pending int
+	spec   Spec[M]
+	tabs   map[string]Tab
+	source data.Source
+	writer data.Writer
+	queue  *Queue
+	mu     sync.RWMutex
+	tables Tables
+	model  M
 }
 
-func New[M any](spec Spec[M], source data.Source, writer data.Writer, queue Enqueuer) (*Store[M], error) {
+func New[M any](spec Spec[M], source data.Source, writer data.Writer, queue *Queue) (*Store[M], error) {
 	s := &Store[M]{spec: spec, tabs: map[string]Tab{}, source: source, writer: writer, queue: queue}
 	for _, t := range spec.Tabs {
 		if len(t.Key) == 0 {
@@ -99,18 +93,31 @@ func New[M any](spec Spec[M], source data.Source, writer data.Writer, queue Enqu
 		}
 		s.tabs[t.Name] = t
 	}
-	start := time.Now()
-	tables, model, err := s.read()
+	swap, err := s.load(context.Background())
 	if err != nil {
 		return nil, err
 	}
-	s.tables, s.model = tables, model
-	spec.Loaded(model, time.Since(start))
-	go s.refreshLoop()
+	swap()
+	queue.Register(s.load)
 	return s, nil
 }
 
-func (s *Store[M]) read() (Tables, M, error) {
+func (s *Store[M]) load(ctx context.Context) (func(), error) {
+	start := time.Now()
+	tables, model, err := s.read(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", s.spec.App, err)
+	}
+	took := time.Since(start)
+	return func() {
+		s.mu.Lock()
+		s.tables, s.model = tables, model
+		s.mu.Unlock()
+		s.spec.Loaded(model, took)
+	}, nil
+}
+
+func (s *Store[M]) read(ctx context.Context) (Tables, M, error) {
 	var none M
 	names := map[string][]string{s.spec.App: {}}
 	for _, t := range s.spec.Tabs {
@@ -119,10 +126,10 @@ func (s *Store[M]) read() (Tables, M, error) {
 	read := map[string]map[string]data.Tab{}
 	for app, tabs := range names {
 		headers := []string{}
-		if app == s.spec.App {
+		if app == s.spec.App && s.logged() {
 			headers = []string{ChangeLogTab}
 		}
-		got, err := s.source.Tabs(app, tabs, headers)
+		got, err := s.source.Tabs(ctx, app, tabs, headers)
 		if err != nil {
 			return nil, none, err
 		}
@@ -136,14 +143,25 @@ func (s *Store[M]) read() (Tables, M, error) {
 		}
 		tables[t.Name] = tab.Rows
 	}
-	if err := data.CheckColumns(ChangeLogTab, read[s.spec.App][ChangeLogTab].Header, ChangeLogColumns); err != nil {
-		return nil, none, err
+	if s.logged() {
+		if err := data.CheckColumns(ChangeLogTab, read[s.spec.App][ChangeLogTab].Header, ChangeLogColumns); err != nil {
+			return nil, none, err
+		}
 	}
-	model, err := s.spec.Build(tables)
+	model, err := s.spec.Build(ctx, tables)
 	if err != nil {
 		return nil, none, err
 	}
 	return tables, model, nil
+}
+
+func (s *Store[M]) logged() bool {
+	for _, t := range s.spec.Tabs {
+		if s.appOf(t) == s.spec.App && !t.AppendOnly {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Store[M]) appOf(t Tab) string {
@@ -171,42 +189,6 @@ func (s *Store[M]) Count(tab string, match Row) int {
 	return n
 }
 
-func (s *Store[M]) refreshLoop() {
-	for range time.Tick(refreshInterval) {
-		s.Refresh()
-	}
-}
-
-func (s *Store[M]) Refresh() {
-	s.queue.Add(func() {
-		if err := s.refresh(); err != nil {
-			slog.Error("[ERROR] refresh", "app", s.spec.App, "error", err)
-		}
-	})
-}
-
-// refresh swaps in what it read only while no commit's writes are still queued:
-// memory holds those already, and the sheet does not yet.
-func (s *Store[M]) refresh() error {
-	start := time.Now()
-	tables, model, err := s.read()
-	if err != nil {
-		return err
-	}
-	s.commits.Lock()
-	defer s.commits.Unlock()
-	s.mu.Lock()
-	if s.pending > 0 {
-		s.mu.Unlock()
-		slog.Info("refresh skipped: writes still queued", "app", s.spec.App)
-		return nil
-	}
-	s.tables, s.model = tables, model
-	s.mu.Unlock()
-	s.spec.Loaded(model, time.Since(start))
-	return nil
-}
-
 type change struct {
 	before, after Row
 }
@@ -221,12 +203,13 @@ func (s *Store[M]) CommitAndWait(ctx context.Context, actor string, ops ...Op) e
 	if err != nil || done == nil {
 		return err
 	}
-	return <-done
+	<-done
+	return nil
 }
 
-func (s *Store[M]) commit(ctx context.Context, actor string, ops []Op) (<-chan error, error) {
-	s.commits.Lock()
-	defer s.commits.Unlock()
+func (s *Store[M]) commit(ctx context.Context, actor string, ops []Op) (<-chan struct{}, error) {
+	s.queue.commits.Lock()
+	defer s.queue.commits.Unlock()
 	s.mu.RLock()
 	tables := maps.Clone(s.tables)
 	s.mu.RUnlock()
@@ -265,47 +248,37 @@ func (s *Store[M]) commit(ctx context.Context, actor string, ops []Op) (<-chan e
 	if len(writes) == 0 {
 		return nil, nil
 	}
-	model, err := s.spec.Build(tables)
+	model, err := s.spec.Build(ctx, tables)
 	if err != nil {
 		return nil, err
 	}
+	s.queue.interrupt()
 	s.mu.Lock()
 	s.tables, s.model = tables, model
-	s.pending++
 	s.mu.Unlock()
-	done := make(chan error, 1)
+	done := make(chan struct{})
 	s.queue.Add(func() {
-		done <- s.write(writes, log)
+		s.write(writes, log)
+		close(done)
 	})
 	return done, nil
 }
 
-func (s *Store[M]) written() {
-	s.mu.Lock()
-	s.pending--
-	s.mu.Unlock()
-}
-
-func (s *Store[M]) write(writes []Op, log []Row) error {
+// A write the sheet refuses leaves memory ahead of it, and every write queued
+// behind may build on the refused one, so nothing after it may run.
+func (s *Store[M]) write(writes []Op, log []Row) {
 	for len(writes) > 0 {
 		run := batch(writes)
 		writes = writes[len(run):]
 		if err := s.put(run); err != nil {
-			slog.Error("[ERROR] write", "app", s.spec.App, "tab", run[0].tab, "error", err)
-			s.written()
-			if err := s.refresh(); err != nil {
-				slog.Error("[ERROR] refresh after a failed write", "app", s.spec.App, "error", err)
-			}
-			return fmt.Errorf("write %s: %w", run[0].tab, err)
+			logging.Fatal("[ERROR] write", "app", s.spec.App, "tab", run[0].tab, "error", err)
 		}
 	}
 	if len(log) > 0 {
 		if err := s.writer.Insert(s.spec.App, ChangeLogTab, log); err != nil {
-			slog.Error("[ERROR] write the change log", "app", s.spec.App, "error", err)
+			logging.Fatal("[ERROR] write the change log", "app", s.spec.App, "error", err)
 		}
 	}
-	s.written()
-	return nil
 }
 
 func planned(op Op, changes []change) []Op {

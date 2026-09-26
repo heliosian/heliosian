@@ -1071,7 +1071,7 @@ func begin(opts Options) (*run, error) {
 	roster := opts.Roster()
 	log.Printf("roster: %d classrooms", len(roster.Classrooms))
 	names := []string{calendar.GoogleTab, calendar.PDFTab, calendar.EnrichmentTab, calendar.DayTypesTab, calendar.TagsTab}
-	tabs, err := opts.Source.Tabs("calendar", names, nil)
+	tabs, err := opts.Source.Tabs(context.Background(), "calendar", names, nil)
 	if err != nil {
 		return nil, fmt.Errorf("read calendar tables: %w", err)
 	}

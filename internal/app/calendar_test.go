@@ -1,12 +1,14 @@
 package app
 
 import (
+	"context"
 	"strings"
 	"testing"
 
 	"heliosian/internal/calendar"
 	"heliosian/internal/celebrate"
 	"heliosian/internal/data"
+	"heliosian/internal/store"
 	"heliosian/internal/team"
 	"heliosian/internal/who"
 )
@@ -17,11 +19,7 @@ func (sampleImages) Has(key string) (bool, error) {
 	return strings.HasPrefix(key, "sample/") || strings.HasPrefix(key, "brand/"), nil
 }
 
-func (sampleImages) Prefetch([]string) error { return nil }
-
-type directQueue struct{}
-
-func (directQueue) Add(f func()) { f() }
+func (sampleImages) Prefetch(context.Context, []string) error { return nil }
 
 type sampleHousehold struct{}
 
@@ -43,11 +41,12 @@ func samplesLinked(t *testing.T) calendarLinked {
 	t.Helper()
 	t.Chdir("../..")
 	dir := &data.Dir{Root: "sampledata"}
-	parties, err := celebrate.NewCache(dir, dir, sampleImages{}, func(string) bool { return false }, directQueue{})
+	queue := store.NewQueue()
+	parties, err := celebrate.NewCache(dir, dir, sampleImages{}, func(string) bool { return false }, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
-	activities, err := team.NewCache(dir, dir, sampleImages{}, func(string) bool { return false }, directQueue{})
+	activities, err := team.NewCache(dir, dir, sampleImages{}, func(string) bool { return false }, queue)
 	if err != nil {
 		t.Fatal(err)
 	}

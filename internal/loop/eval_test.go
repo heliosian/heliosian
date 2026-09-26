@@ -1,6 +1,7 @@
 package loop_test
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"slices"
@@ -21,7 +22,7 @@ func (staticFiles) Has(key string) (bool, error) {
 	return err == nil, nil
 }
 
-func (staticFiles) Prefetch([]string) error { return nil }
+func (staticFiles) Prefetch(context.Context, []string) error { return nil }
 
 const jordan = "jordan.whitfield@heliosschool.org"
 

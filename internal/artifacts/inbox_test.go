@@ -121,17 +121,7 @@ func (b bucket) Get(name string) ([]byte, error) {
 	return content, nil
 }
 
-type inline struct{}
-
-func (inline) Add(fn func()) {
-	fn()
-}
-
-func (inline) Hold() {}
-
-func (inline) Release() {}
-
-func testInbox(t *testing.T) (*Filer, bucket, *data.Dir) {
+func testInbox(t *testing.T) (*Filer, bucket, *data.Dir, *store.Queue) {
 	t.Helper()
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, appName), 0o755); err != nil {
@@ -144,16 +134,17 @@ func testInbox(t *testing.T) (*Filer, bucket, *data.Dir) {
 	}
 	objects := bucket{}
 	sheet := &data.Dir{Root: root}
-	cache, err := NewCache(sheet, sheet, objects, Fake{}, inline{})
+	queue := store.NewQueue()
+	cache, err := NewCache(sheet, sheet, objects, Fake{}, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &Filer{Inbox: Inbox{SigningKey: "key", Bucket: objects}, cache: cache, embedder: Fake{}, holder: inline{}}, objects, sheet
+	return &Filer{Inbox: Inbox{SigningKey: "key", Bucket: objects}, cache: cache, embedder: Fake{}, holder: queue}, objects, sheet, queue
 }
 
 func sampleModel(t *testing.T) *Model {
 	t.Helper()
-	in, _, _ := testInbox(t)
+	in, _, _, _ := testInbox(t)
 	files, err := filepath.Glob(filepath.Join(samples, "*.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -167,11 +158,12 @@ func sampleModel(t *testing.T) *Model {
 }
 
 func TestAFreshStoreReadsWhatWasFiled(t *testing.T) {
-	in, objects, sheet := testInbox(t)
+	in, objects, sheet, queue := testInbox(t)
 	if err := in.FileSaved(context.Background(), "test", samples+"/2026-09-11-newsletter-sep-11.json"); err != nil {
 		t.Fatal(err)
 	}
-	again, err := NewCache(sheet, sheet, objects, Fake{}, inline{})
+	queue.Flush()
+	again, err := NewCache(sheet, sheet, objects, Fake{}, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,12 +190,13 @@ func hook(in *Filer, key, raw string) int {
 }
 
 func TestInboxImportsOnlyTheCommunitysMailOnce(t *testing.T) {
-	in, objects, sheet := testInbox(t)
+	in, objects, sheet, queue := testInbox(t)
 	for _, raw := range []string{personalMail, classMail, classMail} {
 		if code := hook(in, "key", raw); code != http.StatusOK {
 			t.Fatalf("the hook answered %d", code)
 		}
 	}
+	queue.Flush()
 	_, rows, err := sheet.Table(appName, documentsTab)
 	if err != nil {
 		t.Fatal(err)
@@ -228,12 +221,13 @@ func TestInboxImportsOnlyTheCommunitysMailOnce(t *testing.T) {
 }
 
 func TestGroupMailIsFiledUnderEachGroupOnce(t *testing.T) {
-	in, _, sheet := testInbox(t)
+	in, _, sheet, queue := testInbox(t)
 	for _, group := range []string{"soccer-team", "soccer-team", "chess-club"} {
 		if err := in.Post(context.Background(), "loop mailer", group, []byte(personalMail)); err != nil {
 			t.Fatalf("%s: %v", group, err)
 		}
 	}
+	queue.Flush()
 	_, rows, err := sheet.Table(appName, documentsTab)
 	if err != nil {
 		t.Fatal(err)
@@ -252,7 +246,7 @@ func TestGroupMailIsFiledUnderEachGroupOnce(t *testing.T) {
 }
 
 func TestRemovingAGroupsMailTakesItsRowsAndDocumentsAndLeavesTheObjects(t *testing.T) {
-	in, objects, sheet := testInbox(t)
+	in, objects, sheet, queue := testInbox(t)
 	for _, group := range []string{"soccer-team", "chess-club"} {
 		if err := in.Post(context.Background(), "loop mailer", group, []byte(personalMail)); err != nil {
 			t.Fatalf("%s: %v", group, err)
@@ -261,6 +255,7 @@ func TestRemovingAGroupsMailTakesItsRowsAndDocumentsAndLeavesTheObjects(t *testi
 	if err := in.Remove(context.Background(), "owner@example.org", "soccer-team"); err != nil {
 		t.Fatal(err)
 	}
+	queue.Flush()
 	_, rows, err := sheet.Table(appName, documentsTab)
 	if err != nil {
 		t.Fatal(err)
@@ -277,6 +272,7 @@ func TestRemovingAGroupsMailTakesItsRowsAndDocumentsAndLeavesTheObjects(t *testi
 	if err := in.Remove(context.Background(), "owner@example.org", "soccer-team"); err != nil {
 		t.Fatalf("removing a group with no mail: %v", err)
 	}
+	queue.Flush()
 	_, log, err := sheet.Table(appName, store.ChangeLogTab)
 	if err != nil {
 		t.Fatal(err)
@@ -290,10 +286,17 @@ func TestRemovingAGroupsMailTakesItsRowsAndDocumentsAndLeavesTheObjects(t *testi
 	if !removed {
 		t.Errorf("the removal is not in the change log: %v", log)
 	}
+	queue.Refresh()
+	queue.Flush()
+	in.cache.documents.mu.Lock()
+	defer in.cache.documents.mu.Unlock()
+	if len(in.cache.documents.held) != 1 || in.cache.documents.held[rows[0]["Object"]] == nil {
+		t.Errorf("the document cache after a refresh holds %d, not just the one the sheet names", len(in.cache.documents.held))
+	}
 }
 
 func TestInboxRefusesAnUnsignedCall(t *testing.T) {
-	in, objects, _ := testInbox(t)
+	in, objects, _, _ := testInbox(t)
 	if code := hook(in, "another key", classMail); code != http.StatusNotAcceptable {
 		t.Fatalf("status %d", code)
 	}

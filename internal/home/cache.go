@@ -30,8 +30,8 @@ func spec(images ImageChecker) store.Spec[*Model] {
 			{Name: visibilityTab, Columns: visibilityColumns, Key: []string{"App"}},
 			{Name: audienceTab, Columns: AudienceColumns, Key: AudienceColumns},
 		},
-		Build: func(tables store.Tables) (*Model, error) {
-			return BuildModel(tables, images)
+		Build: func(ctx context.Context, tables store.Tables) (*Model, error) {
+			return BuildModel(ctx, tables, images)
 		},
 		Loaded: func(model *Model, took time.Duration) {
 			links := 0
@@ -67,7 +67,7 @@ func carryCategory(before, after store.Row) []store.Op {
 	return ops
 }
 
-func NewCache(source data.Source, writer data.Writer, images ImageChecker, superAdmins func() []string, queue store.Enqueuer) (*Cache, error) {
+func NewCache(source data.Source, writer data.Writer, images ImageChecker, superAdmins func() []string, queue *store.Queue) (*Cache, error) {
 	s, err := store.New(spec(images), source, writer, queue)
 	if err != nil {
 		return nil, err

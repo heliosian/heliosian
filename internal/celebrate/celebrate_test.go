@@ -37,10 +37,6 @@ func testNow() time.Time {
 	return t
 }
 
-type syncQueue struct{}
-
-func (syncQueue) Add(f func()) { f() }
-
 type fakeDirectory struct{}
 
 var people = map[string]Person{
@@ -86,16 +82,20 @@ type bundled struct{}
 
 func (bundled) Has(key string) (bool, error) { return strings.HasPrefix(key, "sample/"), nil }
 
-func (bundled) Prefetch([]string) error { return nil }
+func (bundled) Prefetch(context.Context, []string) error { return nil }
 
-var sheet *data.Dir
+var (
+	sheet *data.Dir
+	queue *store.Queue
+)
 
 func serveWith(t *testing.T, mailer mail.Sender) (*Cache, *http.ServeMux) {
 	t.Helper()
 	t.Chdir("../..")
 	now = testNow
 	sheet = &data.Dir{Root: "sampledata"}
-	cache, err := NewCache(sheet, sheet, bundled{}, func(string) bool { return false }, syncQueue{})
+	queue = store.NewQueue()
+	cache, err := NewCache(sheet, sheet, bundled{}, func(string) bool { return false }, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +112,8 @@ func newServer(t *testing.T) (*Cache, *http.ServeMux) {
 func tables(t *testing.T) store.Tables {
 	t.Helper()
 	names := []string{celebrationsTab, categoriesTab, partiesTab, hostsTab, ticketsTab, settingsTab, adminsTab, redirectsTab, invoicingTab}
-	tabs, err := sheet.Tabs(appName, names, nil)
+	queue.Flush()
+	tabs, err := sheet.Tabs(context.Background(), appName, names, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,6 +126,7 @@ func tables(t *testing.T) store.Tables {
 
 func changeLog(t *testing.T) []store.Row {
 	t.Helper()
+	queue.Flush()
 	_, rows, err := sheet.Table(appName, store.ChangeLogTab)
 	if err != nil {
 		t.Fatal(err)
@@ -189,7 +191,7 @@ func TestRowOrderIsNotTabOrder(t *testing.T) {
 	slices.Reverse(rows[celebrationsTab])
 	slices.Reverse(rows[categoriesTab])
 	slices.Reverse(rows[ticketsTab])
-	m, err := BuildModel(rows, bundled{})
+	m, err := BuildModel(context.Background(), rows, bundled{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,7 +237,7 @@ func TestBrokenSheetRefusesToLoad(t *testing.T) {
 		t.Fatal(err)
 	}
 	dir := &data.Dir{Root: broken}
-	if _, err := NewCache(dir, dir, bundled{}, func(string) bool { return false }, syncQueue{}); err == nil || !strings.Contains(err.Error(), "ends in 0") {
+	if _, err := NewCache(dir, dir, bundled{}, func(string) bool { return false }, store.NewQueue()); err == nil || !strings.Contains(err.Error(), "ends in 0") {
 		t.Fatalf("a broken sheet loaded: %v", err)
 	}
 }

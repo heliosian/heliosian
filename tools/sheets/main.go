@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -54,7 +55,7 @@ func main() {
 	for _, t := range tabs {
 		names = append(names, t.Title)
 	}
-	headers, err := source.Tabs("sheet", nil, names)
+	headers, err := source.Tabs(context.Background(), "sheet", nil, names)
 	if err != nil {
 		log.Fatalf("[ERROR] read headers: %v", err)
 	}

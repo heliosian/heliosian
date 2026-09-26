@@ -35,7 +35,7 @@ type anyImages struct{}
 
 func (anyImages) Has(string) (bool, error) { return true, nil }
 
-func (anyImages) Prefetch([]string) error { return nil }
+func (anyImages) Prefetch(context.Context, []string) error { return nil }
 
 type sampleDirectory struct{ model *who.Model }
 
@@ -90,33 +90,33 @@ func sampleSources(t *testing.T) Sources {
 		}
 		roster.Classrooms = append(roster.Classrooms, room)
 	}
-	calendarCache, err := calendar.NewCache(dir, dir, func() calendar.Roster { return roster }, nil, func(string) bool { return false }, store.NewQueue())
+	queue := store.NewQueue()
+	calendarCache, err := calendar.NewCache(dir, dir, func() calendar.Roster { return roster }, nil, func(string) bool { return false }, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
 	calendarModel := calendarCache.Model()
-	teamCache, err := team.NewCache(dir, dir, anyImages{}, func(string) bool { return false }, store.NewQueue())
+	teamCache, err := team.NewCache(dir, dir, anyImages{}, func(string) bool { return false }, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
 	teamModel := teamCache.Model()
-	celebrateCache, err := celebrate.NewCache(dir, dir, anyImages{}, func(string) bool { return false }, store.NewQueue())
+	celebrateCache, err := celebrate.NewCache(dir, dir, anyImages{}, func(string) bool { return false }, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
 	celebrateModel := celebrateCache.Model()
-	loopCache, err := loop.NewCache(dir, dir, func(string) bool { return false }, store.NewQueue())
+	loopCache, err := loop.NewCache(dir, dir, func(string) bool { return false }, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
 	loopModel := loopCache.Model()
-	homeCache, err := home.NewCache(dir, dir, anyImages{}, func() []string { return nil }, store.NewQueue())
+	homeCache, err := home.NewCache(dir, dir, anyImages{}, func() []string { return nil }, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
 	homeModel := homeCache.Model()
 	media := blob.NewMemory()
-	queue := store.NewQueue()
 	artifactsCache, err := artifacts.NewCache(dir, dir, media, artifacts.Fake{}, queue)
 	if err != nil {
 		t.Fatal(err)

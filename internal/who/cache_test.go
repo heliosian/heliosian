@@ -23,15 +23,11 @@ import (
 	"heliosian/internal/store"
 )
 
-type syncQueue struct{}
-
-func (syncQueue) Add(f func()) { f() }
-
 type allBlobs struct{}
 
 func (allBlobs) Has(string) (bool, error) { return true, nil }
 
-func (allBlobs) Prefetch([]string) error { return nil }
+func (allBlobs) Prefetch(context.Context, []string) error { return nil }
 
 type countingGeocoder struct {
 	mu    sync.Mutex
@@ -47,6 +43,7 @@ func (g *countingGeocoder) Lookup(address string) (geocode.Point, error) {
 
 type server struct {
 	dir   *data.Dir
+	queue *store.Queue
 	cache *Cache
 	mux   *http.ServeMux
 }
@@ -54,7 +51,8 @@ type server struct {
 func newServer(t *testing.T) server {
 	t.Helper()
 	dir := &data.Dir{Root: "../../sampledata"}
-	cache, err := NewCache(dir, dir, allBlobs{}, noBlobs{}, syncQueue{}, testKey, func() []string { return []string{jordan} })
+	queue := store.NewQueue()
+	cache, err := NewCache(dir, dir, allBlobs{}, noBlobs{}, queue, testKey, func() []string { return []string{jordan} })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +61,7 @@ func newServer(t *testing.T) server {
 	RegisterTags(mux, cache, nil)
 	RegisterAdmin(mux, cache, media)
 	RegisterUpload(mux, cache, media)
-	return server{dir: dir, cache: cache, mux: mux}
+	return server{dir: dir, queue: queue, cache: cache, mux: mux}
 }
 
 func (s server) post(t *testing.T, as, path, contentType string, body []byte) {
@@ -84,6 +82,7 @@ func (s server) form(t *testing.T, as, path string, values url.Values) {
 
 func (s server) rows(t *testing.T, tab string) []map[string]string {
 	t.Helper()
+	s.queue.Flush()
 	_, rows, err := s.dir.Table(appName, tab)
 	if err != nil {
 		t.Fatal(err)
@@ -339,7 +338,7 @@ func TestClassroomImageIsACommit(t *testing.T) {
 func TestGreetingsAreTheirCreatorsToChange(t *testing.T) {
 	dir := &data.Dir{Root: "../../sampledata"}
 	s := newServer(t)
-	invites, err := NewInvites(dir, dir, syncQueue{})
+	invites, err := NewInvites(dir, dir, s.queue)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -371,6 +370,7 @@ func TestGreetingsAreTheirCreatorsToChange(t *testing.T) {
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("delete: %d %s", rec.Code, rec.Body)
 	}
+	s.queue.Flush()
 	_, rows, err := dir.Table(invitesApp, greetingsTab)
 	if err != nil {
 		t.Fatal(err)

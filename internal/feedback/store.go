@@ -113,7 +113,7 @@ type Model struct {
 	reports []Report
 }
 
-func build(tables store.Tables) (*Model, error) {
+func build(_ context.Context, tables store.Tables) (*Model, error) {
 	m := &Model{reports: []Report{}}
 	for _, row := range tables[reportsTab] {
 		if strings.TrimSpace(row["ID"]) == "" {
@@ -129,7 +129,7 @@ type Cache struct {
 	*store.Store[*Model]
 }
 
-func NewCache(source data.Source, writer data.Writer, queue store.Enqueuer) (*Cache, error) {
+func NewCache(source data.Source, writer data.Writer, queue *store.Queue) (*Cache, error) {
 	s, err := store.New(store.Spec[*Model]{
 		App:   appName,
 		Tabs:  []store.Tab{{Name: reportsTab, Columns: ReportColumns, Key: []string{"ID"}}},

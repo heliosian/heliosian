@@ -206,12 +206,8 @@ func TestGitHubAppNotSetUp(t *testing.T) {
 	}
 }
 
-type syncQueue struct{}
-
-func (syncQueue) Add(f func()) { f() }
-
 func TestHandler(t *testing.T) {
-	dir, cache := testCache(t)
+	dir, queue, cache := testCache(t)
 	told := make(chan Report, 4)
 	mux := http.NewServeMux()
 	Register(mux, "calendar", func() string { return "Helios When" }, func(string) bool { return true },
@@ -246,6 +242,7 @@ func TestHandler(t *testing.T) {
 	if saved, ok := cache.Report(got.ID); !ok || saved.Summary != got.Summary {
 		t.Fatalf("announced %+v, which is not in memory", got)
 	}
+	queue.Flush()
 	_, rows, err := dir.Table(appName, reportsTab)
 	if err != nil {
 		t.Fatal(err)
@@ -287,18 +284,19 @@ func TestThrottle(t *testing.T) {
 	}
 }
 
-func testCache(t *testing.T) (*data.Dir, *Cache) {
+func testCache(t *testing.T) (*data.Dir, *store.Queue, *Cache) {
 	t.Helper()
 	dir := &data.Dir{Root: "../../sampledata"}
-	cache, err := NewCache(dir, dir, syncQueue{})
+	queue := store.NewQueue()
+	cache, err := NewCache(dir, dir, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return dir, cache
+	return dir, queue, cache
 }
 
 func TestCacheReadsNewestFirst(t *testing.T) {
-	_, cache := testCache(t)
+	_, _, cache := testCache(t)
 	reports := cache.Reports()
 	if len(reports) != 4 {
 		t.Fatalf("read %d reports", len(reports))
@@ -319,7 +317,7 @@ func TestCacheReadsNewestFirst(t *testing.T) {
 }
 
 func TestCacheSavesAndHandles(t *testing.T) {
-	dir, cache := testCache(t)
+	dir, queue, cache := testCache(t)
 	ctx := context.Background()
 	saved, err := cache.save(ctx, sample())
 	if err != nil {
@@ -348,6 +346,7 @@ func TestCacheSavesAndHandles(t *testing.T) {
 	if err := cache.Filed(ctx, "nope", "x", "y", now); err == nil {
 		t.Error("filed a report that does not exist")
 	}
+	queue.Flush()
 	_, log, err := dir.Table(appName, store.ChangeLogTab)
 	if err != nil {
 		t.Fatal(err)
@@ -372,7 +371,7 @@ func adminServer(t *testing.T, cache *Cache, filer IssueFiler, who string) http.
 
 func testAdmin(t *testing.T, filer IssueFiler, who string) (*Cache, http.Handler) {
 	t.Helper()
-	_, cache := testCache(t)
+	_, _, cache := testCache(t)
 	return cache, adminServer(t, cache, filer, who)
 }
 

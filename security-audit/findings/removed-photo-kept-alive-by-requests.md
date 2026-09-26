@@ -1,7 +1,7 @@
-Description: Fetching a media object resets the idle clock that decides when it is dropped (`Store.serve` calls `touch`), so any signed-in account that knows a photo's address keeps it fetchable - on every app's host - after its owner deleted it, opted out, or the sheet stopped naming it, for as long as they ask every quarter hour.
-Status: open
+Description: Fetching a media object reset the idle clock that decided when it was dropped (`Store.serve` called `touch`), so any signed-in account that knew a photo's address kept it fetchable - on every app's host - after its owner deleted it, opted out, or the sheet stopped naming it, for as long as they asked every quarter hour.
+Status: fixed
 Severity: low
 ---
-`serve` (`internal/blob/blob.go:604-607`) finds the object with `s.touch(key)`, which sets `e.used` to now (`:292-300`). `sweep` (`:272-285`) drops only what has gone unasked-for longer than `maxIdle`; its comment says an object a sheet stopped naming is one nobody asks for, which holds for the loaders and not for a browser. The object then lives until the next deploy. Names are content hashes served `immutable` for a year, so anyone who once saw the photo has the address, and `/photos/{name}` answers on all eight hosts, seven of them outside the member gate (`member-gate-only-on-who.md`).
+The blob store in `internal/blob/blob.go` has no idle clock. It holds what the last refresh named: `Store.Load` starts a fresh set of names each refresh, `has` and `Prefetch` add to it as the loaders build, and the swap `drop` removes every object outside it. `serve` and `Bytes` look an object up with `held`, which records nothing, so a browser or a share card asking for an object cannot keep it. The refresh is the single one `store.Queue` runs over every sheet (`docs/storage.md`), so an object leaves memory at the first refresh after the last sheet naming it stops.
 
-Fix: have `serve` read the entry without refreshing `used`, leaving the loaders' `Has` and `Prefetch` as the only things that keep an object alive.
+`TestOnlyWhatARefreshNamesIsKept` in `internal/blob/blob_test.go` serves an unnamed object during a refresh and checks it answers 404 once the refresh swaps in.

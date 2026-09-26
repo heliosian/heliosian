@@ -1,6 +1,7 @@
 package calendar
 
 import (
+	"context"
 	"slices"
 	"testing"
 )
@@ -16,7 +17,7 @@ func (r *recordingImages) Has(key string) (bool, error) {
 	return !r.missing[key], nil
 }
 
-func (r *recordingImages) Prefetch(names []string) error {
+func (r *recordingImages) Prefetch(_ context.Context, names []string) error {
 	r.prefetched = append(r.prefetched, names...)
 	return nil
 }
@@ -32,7 +33,7 @@ func TestResolveImagesAsksForEveryPicture(t *testing.T) {
 			"bare":  {EventID: "bare"},
 		},
 	}
-	resolveImages(rec, model)
+	resolveImages(context.Background(), rec, model)
 	want := []string{"sample/trip.jpg", "category-images/shown.jpg", "category-images/gone.jpg", "category-images/flyer.jpg"}
 	slices.Sort(want)
 	prefetched := slices.Clone(rec.prefetched)

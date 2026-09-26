@@ -10,10 +10,6 @@ import (
 	"heliosian/internal/store"
 )
 
-type syncQueue struct{}
-
-func (syncQueue) Add(f func()) { f() }
-
 func sampleCache(t *testing.T) (*data.Dir, *calendar.Cache) {
 	t.Helper()
 	sheet := &data.Dir{Root: "../../sampledata"}
@@ -21,7 +17,7 @@ func sampleCache(t *testing.T) (*data.Dir, *calendar.Cache) {
 	for _, name := range []string{"Hummingbirds", "Hawks", "Falcons", "Jays", "Ravens", "Condors", "Ospreys", "Egrets", "Herons"} {
 		roster.Classrooms = append(roster.Classrooms, calendar.Classroom{Name: name})
 	}
-	cache, err := calendar.NewCache(sheet, sheet, func() calendar.Roster { return roster }, nil, func(string) bool { return false }, syncQueue{})
+	cache, err := calendar.NewCache(sheet, sheet, func() calendar.Roster { return roster }, nil, func(string) bool { return false }, store.NewQueue())
 	if err != nil {
 		t.Fatal(err)
 	}

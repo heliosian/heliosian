@@ -1,6 +1,7 @@
 package calendar
 
 import (
+	"context"
 	"encoding/base64"
 	"fmt"
 	"net/url"
@@ -218,7 +219,7 @@ type Tag struct {
 
 type ImageChecker interface {
 	Has(key string) (bool, error)
-	Prefetch(names []string) error
+	Prefetch(ctx context.Context, names []string) error
 }
 
 type Provenance struct {

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -33,7 +34,7 @@ func (s staticFiles) Has(key string) (bool, error) {
 	return err == nil, nil
 }
 
-func (staticFiles) Prefetch([]string) error { return nil }
+func (staticFiles) Prefetch(context.Context, []string) error { return nil }
 
 func bundled(roots []string, key string) bool {
 	for _, root := range roots {
@@ -53,7 +54,7 @@ func (homeImages) Has(key string) (bool, error) {
 	return bundled([]string{"web/home", "web/public/home"}, key), nil
 }
 
-func (homeImages) Prefetch([]string) error { return nil }
+func (homeImages) Prefetch(context.Context, []string) error { return nil }
 
 type teamImages struct{}
 
@@ -64,7 +65,7 @@ func (teamImages) Has(key string) (bool, error) {
 	return bundled([]string{"web/team", "web/public/team"}, key), nil
 }
 
-func (teamImages) Prefetch([]string) error { return nil }
+func (teamImages) Prefetch(context.Context, []string) error { return nil }
 
 type celebrateImages struct{}
 
@@ -75,7 +76,7 @@ func (celebrateImages) Has(key string) (bool, error) {
 	return bundled([]string{"web/celebrate", "web/public/celebrate"}, key), nil
 }
 
-func (celebrateImages) Prefetch([]string) error { return nil }
+func (celebrateImages) Prefetch(context.Context, []string) error { return nil }
 
 func requiredEnv(name string) string {
 	value := os.Getenv(name)

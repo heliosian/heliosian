@@ -2,6 +2,7 @@ package blob
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"hash/crc32"
 	"image"
@@ -13,6 +14,41 @@ import (
 	"sync"
 	"testing"
 )
+
+func TestOnlyWhatARefreshNamesIsKept(t *testing.T) {
+	s := NewMemory()
+	for _, name := range []string{"pronunciation/kept.m4a", "pronunciation/dropped.m4a"} {
+		if err := s.Write(context.Background(), name, "audio/mp4", []byte(name)); err != nil {
+			t.Fatal(err)
+		}
+		if found, err := s.Has(name); err != nil || !found {
+			t.Fatalf("%s: %v %v", name, found, err)
+		}
+	}
+	mux := http.NewServeMux()
+	Register(mux, s)
+	swap, err := s.Load(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Prefetch(context.Background(), []string{"pronunciation/kept.m4a"}); err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/pronunciation/dropped.m4a", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("serve before the swap: %d", rec.Code)
+	}
+	swap()
+	if _, _, ok := s.Bytes("pronunciation/kept.m4a"); !ok {
+		t.Fatal("a named object was dropped")
+	}
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/pronunciation/dropped.m4a", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("an object no sheet names, fetched during the refresh, still served: %d", rec.Code)
+	}
+}
 
 func TestDiskCacheRoundTrips(t *testing.T) {
 	s := &Store{cacheDir: t.TempDir(), entries: map[string]*entry{}}
