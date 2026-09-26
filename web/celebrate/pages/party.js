@@ -183,7 +183,7 @@ function ticketWords(p, mine) {
       return 'Tickets Available!';
     case 'waitlist':
       if (mine.some(a => a.status === 'Ticket')) {
-        return 'Sold Out - Your Family Is Going';
+        return 'Sold Out - Your Family Has Tickets';
       }
       if (mine.length) {
         return "Sold Out - You're on the Waitlist";

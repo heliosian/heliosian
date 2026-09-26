@@ -75,8 +75,10 @@ func standing(e *Event) {
 }
 
 // mineWords is the household's standing in words: the viewer's own as
-// "you", another member's by name - "Sam is going", "Sam and Alex are
-// waitlisted", "Sam signed up".
+// "you", another member's by name - "Sam has a ticket", "Sam and Alex have
+// tickets", "Sam and Alex are waitlisted", "Sam signed up". A party says
+// who holds a ticket rather than who is going: a ticket is what Celebrate
+// knows.
 func mineWords(e *Event) string {
 	names := joinNames(e.MineWho)
 	switch e.Mine {
@@ -87,10 +89,13 @@ func mineWords(e *Event) string {
 		return "Waitlisted"
 	case MineGoing:
 		if e.Source == SourceCelebrate {
-			if names != "" {
-				return names + " " + isAre(e.MineWho) + " going"
+			switch {
+			case len(e.MineWho) > 1:
+				return names + " have tickets"
+			case names != "":
+				return names + " has a ticket"
 			}
-			return "You're going"
+			return "You have a ticket"
 		}
 		if names != "" {
 			return names + " signed up"

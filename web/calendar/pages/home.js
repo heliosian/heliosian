@@ -42,6 +42,10 @@ function upcomingRow(date, e, group) {
     body.append(title);
     if (e.link && e.call) {
       body.append(callPill(e));
+    } else if (e.invited && !e.hosted && !e.cancelled && !answerOf(e)) {
+      // An invitation still waiting for the viewer's word carries RSVP, to
+      // its page where the word is given - as My Events' RSVP counts it.
+      body.append(el('span', 'event-pill', 'RSVP'));
     }
     when.textContent = e.allDay ? 'All day' : timeLine(e, date);
   } else {
