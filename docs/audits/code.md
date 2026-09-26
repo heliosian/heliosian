@@ -1,12 +1,10 @@
 # Code audit
 
-What a code-quality audit of this codebase looks for, what it leaves alone, and how its findings are kept. Security has its own audit, `docs/audits/security.md`.
+What a code-quality audit of this codebase looks for and what it leaves alone. How an audit is run and its findings filed is in `docs/audits/README.md`. Security has its own audit, `docs/audits/security.md`.
 
 ## The system
 
-The layout is in `README.md` (Layout) and `docs/dev.md`. What matters to this audit is that the apps are built to one shape, in `internal/<app>` and `web/<app>`. So the main question is where the parallel pieces share code and where they are copies that have drifted apart. Most findings are one of those two.
-
-The lists below say where to look, not what is wrong. None of their lines is a claim about the code.
+What matters to this audit is that the apps are built to one shape, in `internal/<app>` and `web/<app>`. So the main question is where the parallel pieces share code and where they are copies that have drifted apart. Most findings are one of those two.
 
 ## In scope
 
@@ -117,35 +115,13 @@ These areas are close enough to structure to belong to this audit. Each is its o
 - **Deliberate differences.** Each app's colours, words, icons and which features it has. A difference is a finding when nothing chose it.
 - **Rewrites and frameworks.** A fix is shared code, a deleted copy, or a moved function. It is never a new framework, build step, service or store, and never a layer that keeps both copies alive.
 - **Counts for their own sake.** A number of copies supports a finding; it is not one. Every finding names the files and functions.
-- **Claims not checked against the code.** Every finding is read against the current tree before it is filed. A count or a line quoted from memory, or from an earlier pass, is re-checked.
-- **Work in flight.** Files another session has dirty in the working tree describe where that work is headed. A finding against them waits until they land, or says which state it describes.
-- **The platforms underneath.** Go, the browser, Google's APIs, chromedp, Mailgun, Anthropic. How the code uses them is in scope.
 
 ## Findings
 
-A finding is a GitHub issue on this repository. Structural findings take the issue type Cleanup. Wrong behaviour found along the way, including a user-visible drift between copies, takes the type Bug. Each issue is one search:
+Structural findings take the issue type Cleanup. Wrong behaviour found along the way, including a user-visible drift between copies, takes the type Bug. A bug inside a duplication is its own Bug, linked from the Cleanup.
 
-    gh issue list --repo heliosian/heliosian --search "type:Cleanup" --state all
-    gh issue list --repo heliosian/heliosian --search "type:Bug" --state all
-
-Search before filing, so the same thing is not filed twice. `gh api orgs/heliosian/issue-types` lists the types, and `gh label list --repo heliosian/heliosian` lists the labels. An issue carries the `app:<key>` label of every app whose code it touches. A finding confined to shared packages or `tools/` carries none. No labels are made up for an audit.
-
-The issue carries:
-
-- **Title.** What is wrong, as a plain sentence.
-- **Opening.** One or two sentences saying what is duplicated, drifted or tangled, and where.
-- **Where.** Files and functions, without line numbers, since those go stale.
-  - Every instance when there are about ten or fewer; otherwise a representative dozen and the total.
-  - Drifted values side by side: the limit in one file against the limit in the other, the two readings of a blank cell.
-- **How to see it,** for a Bug. A path and steps a person can follow, or a test that reproduces it.
+- **The opening** says what is duplicated, drifted or tangled, and where.
+- **Where** lists every instance when there are about ten or fewer; otherwise a representative dozen and the total. Drifted values go side by side: the limit in one file against the limit in the other, the two readings of a blank cell.
+- **How to see it** is for a Bug; a Cleanup leaves it out.
 - **Why it matters.** What the drift has already broken, or what a fix to one copy will miss. Briefly.
-- **Suggested fix.** The shared function or package, its signature where that makes it concrete, and the copies it replaces.
-
-One finding per issue:
-
-- The same duplication across several apps is one finding naming them all.
-- A bug inside that duplication is its own Bug, linked from the Cleanup.
-- Two unrelated tangles in one file are two findings.
-- Findings that depend on each other link each other by number.
-
-An issue stays open while the finding stands. It closes as completed once a change removes the duplication or fixes the bug. It closes as not planned when the finding turns out wrong, or the difference turns out deliberate, with the reason in a comment. A fix's commit message names the issue.
+- **The fix** is the shared function or package, its signature where that makes it concrete, and the copies it replaces.

@@ -101,6 +101,5 @@ Helios Ask, in `docs/ask/`:
 
 Audits, in `docs/audits/`:
 
-- [security.md](docs/audits/security.md) — what a security audit of this codebase looks for and leaves alone, and how its findings are kept as Security issues
-
+- [README.md](docs/audits/README.md) — how every audit is run: reading the existing issues first, and how findings are filed and closed
 Each app keeps its own docs under `docs/<app>/`, named for its hostname; the top level is only what every app shares.

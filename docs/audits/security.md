@@ -1,10 +1,10 @@
 # Security audit
 
-What a security audit of this codebase looks for, what it leaves alone, and how its findings are kept.
+What a security audit of this codebase looks for and what it leaves alone. How an audit is run and its findings filed is in `docs/audits/README.md`.
 
 ## The system
 
-The layout is in `README.md` and `docs/dev.md`: Hosts and files for host routing, the file-serving order and every path `auth.Public` lets through without a session; Real data for sign-in and the session cookie; `docs/deploy.md` for how it runs. What makes it an audit's concern is that the data is the community's - families, children, addresses, photos, mail, invitations.
+The parts that matter here are in `docs/dev.md`: Hosts and files for host routing, the file-serving order and every path `auth.Public` lets through without a session; Real data for sign-in and the session cookie; `docs/deploy.md` for how it runs. What makes it an audit's concern is that the data is the community's - families, children, addresses, photos, mail, invitations.
 
 The people to think about:
 
@@ -14,8 +14,6 @@ The people to think about:
 - a signed-in member who is not an admin - a parent, a staff member, a student - including one who has left the school since they signed in
 - an admin of one app, who is nobody in the others
 - a person or a service whose text ends up in front of Claude: a member's question, a sender's mail, a page of the school's website
-
-The lists below say where to look, not what is wrong. None of their lines is a claim about the code.
 
 ## In scope
 
@@ -109,30 +107,13 @@ A second check that costs a few lines where one check stands alone today. The te
 - **Trusted people doing their job** - a super admin reading everything, Spoof Mode existing, an app's admin editing that app's data, a content manager of the shared drive editing a sheet by hand. What Spoof Mode records and what a hand edit can make the server do remain in scope.
 - **The directory being a directory** - a member looking up another family is the product. Scraping by a member is in scope only where the server hands over more than the pages need.
 - **Volume** - flooding a single-instance service with requests. In scope instead: one cheap request that costs a great deal of memory, money or mail.
-- **The platforms underneath** - bugs in Google sign-in, Cloud Run, Sheets, Mailgun, Anthropic, the browser, Go or its standard library. How this code uses them is in scope; they are not.
 - **Dev tooling for its own sake** - `tools/` tools and the sample server run by one developer on their own machine, except where one leaves real data or a credential behind, or where sample-mode behaviour could be reached in production.
 - **Theory without a path** - a primitive that is unfashionable but unbroken as used here, a timing difference nobody could measure through Cloud Run's front end, version strings, anything that ends in "could potentially".
 - **Bugs that are only bugs** - wrong behaviour with no security consequence goes to the ordinary issue tracker.
 
 ## Findings
 
-A finding is a GitHub issue on this repository whose issue type is Security, so every audit's findings, open and closed, are one search:
+Findings take the issue type Security.
 
-    gh issue list --repo heliosian/heliosian --search "type:Security" --state all
-
-Search the list before filing, so the same thing is not filed twice. The issue carries:
-
-- **Title** - what is wrong, in a few words.
-- **Severity**, on the body's first line with the resolution - how bad it is while it stands, judged by who can do it and what they get, and kept once the issue is closed. `critical`: anyone on the internet, or a link holder, reads or changes the community's data at large, or takes a credential. `high`: a signed-in account or a mail sender reads what consent or the rules keep from them across the community, acts as someone else, or takes the service down. `medium`: a leak or a write kept to one app, one group or one kind of record, money or mail spent without a bound, or something that needs a further condition to bite. `low`: a nuisance, a narrow leak, a second check that is missing where the first still stands.
-- **Description** - one sentence saying what is wrong, where, and who (anyone, a link holder, a member, an admin) can do what because of it.
-- **Details** - brief: the files and functions, how to see it, and the fix if one is plain. A few short paragraphs at most. No line numbers, since the code moves on and they go stale.
-
-One finding per issue: the same mistake in five handlers is one finding naming the five; two different mistakes in one handler are two.
-
-An issue stays open while the finding stands, including one that waits on something before it can be worked on, with what it waits on in the details. It closes one of three ways, the resolution on the body's first line and the details saying what was done or why not:
-
-- **fixed** - closed as completed once a change closes it, the details describing the fix.
-- **wontfix** - closed as not planned when it is understood and left, the details giving the reason.
-- **invalid** - closed as not planned when it turns out not to be one, the details giving the reason.
-
-A closing comment names the commits that fixed it or decided it, and a fix's commit message names the issue. The body describes the finding as it stands, not the story of how it changed; that is the issue's timeline and the commits'.
+- **Severity** goes on the body's first line with the resolution (open, fixed, wontfix or invalid). It is how bad the finding is while it stands, judged by who can do it and what they get, and is kept once the issue is closed. `critical`: anyone on the internet, or a link holder, reads or changes the community's data at large, or takes a credential. `high`: a signed-in account or a mail sender reads what consent or the rules keep from them across the community, acts as someone else, or takes the service down. `medium`: a leak or a write kept to one app, one group or one kind of record, money or mail spent without a bound, or something that needs a further condition to bite. `low`: a nuisance, a narrow leak, a second check that is missing where the first still stands.
+- **The opening** is one sentence naming who (anyone, a link holder, a member, an admin) can do what because of it.
