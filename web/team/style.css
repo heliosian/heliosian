@@ -540,8 +540,14 @@ main {
 .prio-when { display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; color: var(--muted); }
 .prio-when-line { display: flex; align-items: flex-start; gap: 7px; line-height: 1.3; }
 .prio-when-line svg { flex-shrink: 0; width: 16px; height: 16px; margin-top: 1px; }
-.prio-tag { display: inline-block; margin-top: 6px; padding: 2px 9px; border-radius: 999px; background: #fbe1e5; color: #b42039; font-size: 11.5px; font-weight: 600; }
-[data-theme="dark"] .prio-tag { background: rgba(194, 37, 63, 0.22); color: #ff9aab; }
+.prio-tag { display: inline-block; margin-top: 6px; padding: 2px 9px; border-radius: 999px; color: #fff; font-size: 11.5px; font-weight: 600; }
+/* The tag wears its category's chip colour, as in the chip row above. */
+.prio-tag.cat-1 { background: #df604a; }
+.prio-tag.cat-2 { background: #20a39e; }
+.prio-tag.cat-3 { background: #8ea604; }
+.prio-tag.cat-4 { background: #244d53; }
+.prio-tag.cat-5 { background: #d9a900; }
+.prio-tag.cat-none { background: #5f6f6e; }
 .prio-people { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .prio-chair { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 5px 11px; border-radius: 999px; background: var(--input); color: var(--brand); font-size: 12.5px; font-weight: 600; }
 .prio-chair.is-needed { background: var(--alert); color: #fff; }

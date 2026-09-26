@@ -438,7 +438,7 @@ export function priorityRow(node) {
   }
   const heading = category(root.category);
   if (heading) {
-    main.append(el('span', 'prio-tag', heading.title));
+    main.append(el('span', 'prio-tag ' + categoryClass(root.category), heading.title));
   }
   row.append(main);
   const when = el('div', 'prio-when');
