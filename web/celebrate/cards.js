@@ -1,4 +1,5 @@
-import {partyPath, parseWhen, availabilityLabel, myTickets, isKid} from './state.js';
+import {partyPath, availabilityLabel, myTickets, isKid} from './state.js';
+import {parseWhen} from '/datecard.js';
 import {el, link, svg, thumb, badge, button} from './dom.js';
 import {openBuy} from './edit.js';
 

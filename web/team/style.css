@@ -2102,8 +2102,6 @@ button.side-chair:hover { background: var(--input); }
 
 .field-when > .field-when-block:not(:first-child) { margin-top: 8px; }
 
-.field-when-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-
 .field-when-pair { display: flex; flex-wrap: wrap; gap: 6px; }
 
 .field-when-pair input[type=date] { flex: 1 1 58%; min-width: 0; padding-left: 10px; padding-right: 8px; }
@@ -2175,24 +2173,6 @@ button.side-chair:hover { background: var(--input); }
 
 /* A link standing in a field's slot lines up with the select beside it. */
 .field-link-slot { display: flex; align-items: center; padding-top: 24px; }
-
-.field-when-clear {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 8px 3px 4px;
-  border: 0;
-  border-radius: 7px;
-  background: none;
-  color: var(--muted);
-  font: inherit;
-  font-size: 12.5px;
-  cursor: pointer;
-}
-
-.field-when-clear:hover { background: var(--input); color: var(--alert); }
-
-.field-when-clear svg { width: 13px; height: 13px; }
 
 .detail-heading { display: flex; align-items: center; gap: 8px; }
 

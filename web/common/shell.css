@@ -53,6 +53,14 @@
 
 .link-button { background: none; border: 0; color: var(--brand); font-weight: 600; cursor: pointer; padding: 4px 8px; }
 
+.field-when-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+
+.field-when-clear { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px 3px 4px; border: 0; border-radius: 7px; background: none; color: var(--muted); font: inherit; font-size: 12.5px; cursor: pointer; }
+
+.field-when-clear:hover { background: var(--input); color: var(--alert); }
+
+.field-when-clear svg { width: 13px; height: 13px; }
+
 .icon-button {
   display: inline-flex;
   align-items: center;

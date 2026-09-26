@@ -1,4 +1,4 @@
-import {state, isAdmin, canApprove, isKid, whenParts, parseWhen, priceLine, money, partyCalendarLink, partyPath, myTickets, availabilityLabel} from '../state.js';
+import {state, isAdmin, canApprove, isKid, whenParts, priceLine, money, partyCalendarLink, partyPath, myTickets, availabilityLabel} from '../state.js';
 import {el, link, svg, button, avatar, thumb, paragraphs, copyText, toast} from '../dom.js';
 import {listPath} from '../chrome.js';
 import {setTitle} from '/shell.js';
@@ -7,7 +7,7 @@ import {openBuy, openParty, openFreeTicket, openTicket, openPerson, openReassign
 import {text as textInput, textarea as textAreaInput} from '/form.js';
 import {statusBadges} from '../cards.js';
 import {openPhotoLightbox, openCropTool} from '/crop.js';
-import {dateCard} from '/datecard.js';
+import {dateCard, parseWhen} from '/datecard.js';
 import {addressSuggest} from '/address.js';
 
 // The page is laid out the way HCA-Team lays out an event: the wide banner

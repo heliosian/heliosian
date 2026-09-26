@@ -1,22 +1,10 @@
-// The date card every app's event page floats over its banner: a cream
-// tile for the day - weekday, month, day, and the sun as it stands when
-// the event starts - a second, pale-green tile with the sun as it stands
-// at the end when the event runs across days, then a rule and the facts
-// in lines: the hours with a clock and the place with a pin, or for a
-// span each end with its day and how many days it runs. Its styles are
-// datecard.css. dateCard takes the app's el, and the event's start and
-// end as the sheets write a moment ("2026-10-10 15:00", or a bare date),
-// whether it is all day, and its place.
-
 const icons = {
   clock: 'M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18zM12 7v5l3 2',
   pin: 'M12 22s7-7.6 7-12a7 7 0 1 0-14 0c0 4.4 7 12 7 12zM12 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z',
   calendar: 'M4 5h16a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zM3 10h18M8 3v4M16 3v4',
-  // A calendar with a plus at its corner, for Add.
   calendarPlus: 'M12 20H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h16a1 1 0 0 1 1 1v6M3 10h18M8 3v4M16 3v4M18 15v6M15 18h6',
 };
 
-// icon is one of the marks above as an inline svg.
 function icon(name) {
   const mark = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   mark.setAttribute('viewBox', '0 0 24 24');
@@ -31,9 +19,6 @@ function icon(name) {
   return mark;
 }
 
-// The sun on a tile says the time of day: rising with its rays for a
-// morning, high and whole for an afternoon, setting over its horizon for
-// an evening, and a moon for the night.
 const sunArt = {
   morning: '<svg viewBox="0 0 40 24" aria-hidden="true"><g stroke="#f5b400" stroke-width="2.4" stroke-linecap="round"><path d="M20 3v4M8.5 7.5l2.8 2.8M31.5 7.5l-2.8 2.8M3 19h5M32 19h5"/></g><path d="M11 21a9 9 0 0 1 18 0z" fill="#f5b400"/></svg>',
   afternoon: '<svg viewBox="0 0 40 24" aria-hidden="true"><g stroke="#f5b400" stroke-width="2.2" stroke-linecap="round"><path d="M20 1.5v3M20 19.5v3M8.5 3.5l2.2 2.2M29.3 18.3l2.2 2.2M8.5 20.5l2.2-2.2M29.3 5.7l2.2-2.2M1.5 12h3M35.5 12h3"/></g><circle cx="20" cy="12" r="6.5" fill="#f5b400"/></svg>',
@@ -46,19 +31,14 @@ const monthFormat = new Intl.DateTimeFormat('en-US', {month: 'short'});
 const dayFormat = new Intl.DateTimeFormat('en-US', {weekday: 'short', month: 'short', day: 'numeric'});
 const clockFormat = new Intl.DateTimeFormat('en-US', {hour: 'numeric', minute: '2-digit'});
 
-// parseWhen reads a moment as the sheets write one: a date, with or
-// without a clock.
 export function parseWhen(s) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/.exec(s || '');
+  const m = /^(\d{4})-(\d{2})-(\d{2})(?: (\d{2}):(\d{2}))?$/.exec(s || '');
   if (!m) {
     return null;
   }
   return {date: new Date(+m[1], m[2] - 1, +m[3], m[4] ? +m[4] : 0, m[5] ? +m[5] : 0), hasTime: Boolean(m[4])};
 }
 
-// timeOfDay is the sun for a moment: before noon a morning, before five
-// an afternoon, before nine an evening, else the night; a day with no
-// clock takes the afternoon's whole sun.
 export function timeOfDay(when) {
   if (!when || !when.hasTime) {
     return 'afternoon';
@@ -67,8 +47,6 @@ export function timeOfDay(when) {
   return h < 12 ? 'morning' : h < 17 ? 'afternoon' : h < 21 ? 'evening' : 'night';
 }
 
-// timeRange is two clocks as one span, AM or PM written once when both
-// share it: "8:00 – 8:15 AM", "11:00 AM – 2:00 PM".
 export function timeRange(from, to) {
   const a = clockFormat.format(from);
   const b = clockFormat.format(to);
@@ -83,9 +61,6 @@ function sameDay(a, b) {
   return a.date.toDateString() === b.date.toDateString();
 }
 
-// googleCalendarLink is the event as a Google Calendar template link -
-// two hours long when it has a start and no end, the whole day when it has
-// no clock - the details carrying the words and the page's address.
 export function googleCalendarLink({title, start, end, allDay = false, location = '', details = ''}) {
   const from = parseWhen(start);
   if (!from) {
@@ -103,10 +78,6 @@ export function googleCalendarLink({title, start, end, allDay = false, location 
   return 'https://calendar.google.com/calendar/render?' + params.toString();
 }
 
-// placeLines is the place as the card's lines: a long place with a name
-// before its address - "Viet Steps Dance Studio, 2092 Concourse Drive,
-// ..." - breaks after the name, so the address reads whole on a line of
-// its own instead of folding wherever the width happens to fall.
 function placeLines(location) {
   const comma = location.indexOf(',');
   if (location.length <= 40 || comma < 1 || comma > 40) {
@@ -115,9 +86,6 @@ function placeLines(location) {
   return [location.slice(0, comma), location.slice(comma + 1).trim()];
 }
 
-// dateCard draws the card; add, when given, is the address behind Add at
-// the end of the hours line - a calendar with a plus, and the word - which
-// puts the event on the reader's Google Calendar.
 export function dateCard(el, {start, end, allDay = false, location = '', add = ''}) {
   const from = parseWhen(start);
   if (!from) {
@@ -150,7 +118,6 @@ export function dateCard(el, {start, end, allDay = false, location = '', add = '
     row.append(text);
     return row;
   };
-  // Add sits at the end of the first line, the hours'.
   const withAdd = row => {
     if (add) {
       const button = el('a', 'hero-add');

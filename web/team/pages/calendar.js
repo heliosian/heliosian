@@ -1,4 +1,5 @@
-import {state, descendants, parseWhen, activityPath, mySignUp, rootOf, parentOf, revealed} from '../state.js';
+import {state, descendants, activityPath, mySignUp, rootOf, parentOf, revealed} from '../state.js';
+import {parseWhen} from '/datecard.js';
 import {el, link, svg, button} from '../dom.js';
 import {setTitle} from '/shell.js';
 import {categoryClass} from '../cards.js';

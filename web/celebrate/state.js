@@ -1,4 +1,4 @@
-import {googleCalendarLink} from '/datecard.js';
+import {googleCalendarLink, parseWhen} from '/datecard.js';
 
 // The model as the server rendered it for the viewer, plus the page's own
 // choices: which celebration's parties are showing, the list's tab, the
@@ -253,15 +253,6 @@ export function matches(p, query) {
   return `${p.title} ${p.subtitle || ''} ${p.summary || ''} ${p.hosts || ''} ${p.audience || ''} ${p.category || ''} ${p.location || ''}`.toLowerCase().includes(query);
 }
 
-// parseWhen reads the sheet's "YYYY-MM-DD" or "YYYY-MM-DD HH:MM" as a local
-// wall-clock time.
-export function parseWhen(s) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})(?: (\d{2}):(\d{2}))?$/.exec(s || '');
-  if (!m) {
-    return null;
-  }
-  return {date: new Date(+m[1], m[2] - 1, +m[3], m[4] ? +m[4] : 0, m[5] ? +m[5] : 0), hasTime: Boolean(m[4])};
-}
 
 const dayFormat = new Intl.DateTimeFormat('en-US', {weekday: 'short', month: 'short', day: 'numeric', year: 'numeric'});
 const longDayFormat = new Intl.DateTimeFormat('en-US', {weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'});

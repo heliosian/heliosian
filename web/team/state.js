@@ -1,6 +1,5 @@
-// superEdit is a system admin's hat: off, they see and can do what any parent
-// can (plus whatever they co-chair); on, every admin control comes back. It
-// is remembered per browser.
+import {parseWhen} from '/datecard.js';
+
 export const state = {model: null, showPrevious: false, showHidden: false, superEdit: readSuperEdit(), year: '', category: ''};
 
 function readSuperEdit() {
@@ -291,19 +290,6 @@ export function redirectTarget(path) {
   return at === start || !/^\/(?![/\\])/.test(at) ? '' : at;
 }
 
-export function parseWhen(s) {
-  if (!s) {
-    return null;
-  }
-  const m = /^(\d{4})-(\d{2})-(\d{2})(?: (\d{2}):(\d{2}))?$/.exec(s);
-  if (!m) {
-    return null;
-  }
-  return {
-    date: new Date(+m[1], m[2] - 1, +m[3], m[4] ? +m[4] : 0, m[5] ? +m[5] : 0),
-    hasTime: Boolean(m[4]),
-  };
-}
 
 const dayFormat = new Intl.DateTimeFormat('en-US', {weekday: 'short', month: 'short', day: 'numeric'});
 const dateFormat = new Intl.DateTimeFormat('en-US', {month: 'short', day: 'numeric'});

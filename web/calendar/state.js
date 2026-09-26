@@ -1,9 +1,5 @@
-// The model as the server rendered it for the viewer, plus the page's own
-// choices: which classrooms and tags are showing, remembered per browser, the
-// search words, which day the rail shows (the last one opened, today until
-// then), and which month the grid is open to. A null filter list means the
-// viewer's own classrooms, or every tag.
 import {appOrigin} from '/toolbar.js';
+import {parseWhen} from '/datecard.js';
 
 // activeFeed is the token of the saved calendar the viewer last opened from
 // the rail (or that the filters matched on load): Save Calendar saves the
@@ -523,17 +519,8 @@ export function eventDates(e) {
   return e.dates;
 }
 
-// spansDays says whether an event's end falls on a later day than its start.
 export function spansDays(e) {
   return Boolean(e.end) && e.end.slice(0, 10) !== e.start.slice(0, 10);
-}
-
-export function parseWhen(s) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})(?: (\d{2}):(\d{2}))?$/.exec(s || '');
-  if (!m) {
-    return null;
-  }
-  return {date: new Date(+m[1], m[2] - 1, +m[3], m[4] ? +m[4] : 0, m[5] ? +m[5] : 0), hasTime: Boolean(m[4])};
 }
 
 const dayFormat = new Intl.DateTimeFormat('en-US', {weekday: 'short', month: 'short', day: 'numeric'});

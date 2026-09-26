@@ -105,3 +105,52 @@ export function segmented(options, initial, onChange) {
   });
   return {wrap, get value() { return value; }};
 }
+
+const when = /^(\d{4}-\d{2}-\d{2})(?: (\d{2}:\d{2}))?$/;
+
+export function whenPickers(label, value, onChange, clearLabel) {
+  const m = when.exec(value || '');
+  const wrap = el('div', 'field-when-block');
+  const head = el('div', 'field-when-head');
+  head.append(el('span', 'field-when-label', label));
+  const pair = el('div', 'field-when-pair');
+  const date = el('input');
+  date.type = 'date';
+  date.value = m ? m[1] : '';
+  const time = el('input');
+  time.type = 'time';
+  time.value = m && m[2] ? m[2] : '';
+  pair.append(date, time);
+  const clear = el('button', 'field-when-clear');
+  clear.type = 'button';
+  clear.title = clearLabel;
+  clear.setAttribute('aria-label', clearLabel);
+  clear.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+  clear.append(el('span', '', clearLabel));
+  clear.addEventListener('click', () => {
+    date.value = '';
+    time.value = '';
+    if (onChange) {
+      onChange();
+    }
+    date.focus();
+  });
+  head.append(clear);
+  wrap.append(head, pair);
+  if (onChange) {
+    date.addEventListener('change', onChange);
+    time.addEventListener('change', onChange);
+  }
+  return {
+    wrap,
+    date,
+    focus: () => date.focus(),
+    value: () => (date.value ? (time.value ? `${date.value} ${time.value}` : date.value) : ''),
+    hasTime: () => Boolean(time.value),
+    set: written => {
+      const m2 = when.exec(written);
+      date.value = m2 ? m2[1] : '';
+      time.value = m2 && m2[2] ? m2[2] : '';
+    },
+  };
+}

@@ -1,4 +1,6 @@
-import {shiftedEnd, parseWhen, whenLabel} from './state.js';
+import {shiftedEnd, whenLabel} from './state.js';
+import {parseWhen} from '/datecard.js';
+import {whenPickers} from '/form.js';
 
 export function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -177,63 +179,6 @@ export function toast(message) {
 export async function copyText(text, message) {
   await navigator.clipboard.writeText(text);
   toast(message || 'Copied');
-}
-
-// whenPickers is a labelled date picker beside an optional time picker. The
-// sheet stores "YYYY-MM-DD" or "YYYY-MM-DD HH:MM", and a blank time is
-// meaningful - it is how an all-day thing is written - so the two stay separate
-// controls rather than one datetime-local, which would silently stamp midnight
-// onto every all-day date. Beside the label sits a way to clear both: a thing
-// with no start is one that runs by its timing text, and a start on its own
-// is a perfectly good way to describe something.
-export function whenPickers(label, value, onChange, clearLabel) {
-  const m = /^(\d{4}-\d{2}-\d{2})(?: (\d{2}:\d{2}))?$/.exec(value || '');
-  const wrap = el('div', 'field-when-block');
-  const head = el('div', 'field-when-head');
-  head.append(el('span', 'field-when-label', label));
-  const pair = el('div', 'field-when-pair');
-  const date = el('input');
-  date.type = 'date';
-  date.value = m ? m[1] : '';
-  const time = el('input');
-  time.type = 'time';
-  time.value = m && m[2] ? m[2] : '';
-  pair.append(date, time);
-  const read = () => (date.value ? (time.value ? `${date.value} ${time.value}` : date.value) : '');
-  const clear = el('button', 'field-when-clear');
-  clear.type = 'button';
-  clear.title = clearLabel;
-  clear.setAttribute('aria-label', clearLabel);
-  clear.append(svg('close'), el('span', '', clearLabel));
-  clear.addEventListener('click', () => {
-    date.value = '';
-    time.value = '';
-    if (onChange) {
-      onChange();
-    }
-    date.focus();
-  });
-  head.append(clear);
-  wrap.append(head, pair);
-  if (onChange) {
-    date.addEventListener('change', onChange);
-    time.addEventListener('change', onChange);
-  }
-  return {
-    wrap,
-    date,
-    focus: () => date.focus(),
-    value: read,
-    hasTime: () => Boolean(time.value),
-    // set writes a Date back out in the shape the sheet uses, keeping whether
-    // this end of the range carries a time - shifting an all-day date by a few
-    // hours must not give it one.
-    set: written => {
-      const m2 = /^(\d{4}-\d{2}-\d{2})(?: (\d{2}:\d{2}))?$/.exec(written);
-      date.value = m2 ? m2[1] : '';
-      time.value = m2 && m2[2] ? m2[2] : '';
-    },
-  };
 }
 
 // whenEditor is the one editor for when a thing happens, shared by the event

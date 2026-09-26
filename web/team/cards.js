@@ -1,4 +1,5 @@
-import {state, me, family, whenParts, coChairs, shownVolunteers, descendants, canJoin, isFull, mySignUp, signUpOf, activityPath, rootOf, parentOf, category, parseWhen, UNCATEGORIZED} from './state.js';
+import {state, me, family, whenParts, coChairs, shownVolunteers, descendants, canJoin, isFull, mySignUp, signUpOf, activityPath, rootOf, parentOf, category, UNCATEGORIZED} from './state.js';
+import {parseWhen} from '/datecard.js';
 import {el, link, svg, thumb, badge, button} from './dom.js';
 import {openSignUp, openActivity} from './edit.js';
 

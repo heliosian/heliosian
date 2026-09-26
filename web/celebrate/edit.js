@@ -5,7 +5,7 @@ import {el, svg, toast, button, avatar} from './dom.js';
 import {tabStrip} from '/tabs.js';
 import {imageTools} from '/images.js';
 import {openModal, closeModal, popup} from '/modal.js';
-import {field, text, textarea, select, checkbox, segmented} from '/form.js';
+import {field, text, textarea, select, checkbox, segmented, whenPickers} from '/form.js';
 
 export const {uploadImage, uploadAndSave, imageSearchOn, openImageSearch, imagePicker} = imageTools('/api/celebrate', {state, toast});
 
@@ -26,25 +26,6 @@ export async function send(method, url, body) {
 async function goTo(path) {
   const {navigate} = await import('./app.js');
   navigate(path);
-}
-
-// whenPickers is a date beside an optional time. The sheet stores
-// "YYYY-MM-DD" or "YYYY-MM-DD HH:MM"; a blank time is how an all-day thing is
-// written, so the two stay separate controls.
-function whenPickers(label, value) {
-  const m = /^(\d{4}-\d{2}-\d{2})(?: (\d{2}:\d{2}))?$/.exec(value || '');
-  const wrap = el('div', 'field-when-block');
-  wrap.append(el('span', 'field-when-label', label));
-  const pair = el('div', 'field-when-pair');
-  const date = el('input');
-  date.type = 'date';
-  date.value = m ? m[1] : '';
-  const time = el('input');
-  time.type = 'time';
-  time.value = m && m[2] ? m[2] : '';
-  pair.append(date, time);
-  wrap.append(pair);
-  return {wrap, date, time, value: () => (date.value ? (time.value ? `${date.value} ${time.value}` : date.value) : '')};
 }
 
 // tabbedFields lays a long form out as tabs. Every field stays in the form -
@@ -963,8 +944,8 @@ export function openParty(p) {
   ];
   const design = [image.wrap, flyer.wrap];
 
-  const start = whenPickers('Starts', p ? p.start : '');
-  const end = whenPickers('Ends', p ? p.end : '');
+  const start = whenPickers('Starts', p ? p.start : '', null, 'No start time');
+  const end = whenPickers('Ends', p ? p.end : '', null, 'No end time');
   const whenWrap = el('div', 'field-when');
   whenWrap.append(start.wrap, end.wrap);
   // Named place, not location: window.location is what the address hint
@@ -1295,11 +1276,9 @@ export function editable(anchor, label, make, submit) {
   return pencil;
 }
 
-// whenInputs is the start and end pickers together, for the rail's Date &
-// Time row.
 export function whenInputs(startValue, endValue) {
-  const start = whenPickers('Starts', startValue);
-  const end = whenPickers('Ends', endValue);
+  const start = whenPickers('Starts', startValue, null, 'No start time');
+  const end = whenPickers('Ends', endValue, null, 'No end time');
   const wrap = el('div', 'field-when');
   wrap.append(start.wrap, end.wrap);
   return {
@@ -1314,8 +1293,8 @@ export function openCelebration(c) {
   const code = text(c ? c.code : '', {required: true, maxLength: 20, placeholder: 'SC-2027'});
   const title = text(c ? c.title : '', {required: true, maxLength: 120, placeholder: 'Helios Spring Celebration 2027'});
   const subtitle = text(c ? c.subtitle : '', {maxLength: 120, placeholder: 'The theme'});
-  const start = whenPickers('Starts', c ? c.start : '');
-  const end = whenPickers('Ends', c ? c.end : '');
+  const start = whenPickers('Starts', c ? c.start : '', null, 'No start time');
+  const end = whenPickers('Ends', c ? c.end : '', null, 'No end time');
   const whenWrap = el('div', 'field-when');
   whenWrap.append(start.wrap, end.wrap);
   const place = text(c ? c.location : '', {maxLength: 120});
