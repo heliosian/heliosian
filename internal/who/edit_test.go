@@ -101,7 +101,7 @@ func TestSettingSuperEditWritesTheCookie(t *testing.T) {
 func TestSpoofedParentGetsNoSuperEdit(t *testing.T) {
 	cache := sampleCache(t)
 	key := []byte("spoof")
-	signin := auth.New("", "", key, "", func(string) bool { return true }, nil)
+	signin := auth.New("", "", key, auth.Login{}, func(string) bool { return true }, nil)
 	signin.Spoof = &auth.Spoof{
 		Allowed: func(email string) bool { return email == jordan },
 		Person:  func(email string) (auth.Person, bool) { return auth.Person{Email: email}, true },

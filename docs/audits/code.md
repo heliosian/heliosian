@@ -12,7 +12,7 @@ The lists below say where to look, not what is wrong. None of their lines is a c
 
 ### Duplication across apps
 
-- **Parallel files.** Compare the same file across every app (every `cache.go`, `share.go`, `mail.go`, `load.go`, and on the client every `dom.js`, `chrome.js`, `state.js`, `app.js`, `edit.js`, `pages/admin.js`, `style.css`, `index.html` and `login.html`). Note what is byte-identical, what is identical apart from names or wording, and what one app has that the rest lack.
+- **Parallel files.** Compare the same file across every app (every `cache.go`, `share.go`, `mail.go`, `load.go`, and on the client every `dom.js`, `chrome.js`, `state.js`, `app.js`, `edit.js`, `pages/admin.js`, `style.css` and `index.html`). Note what is byte-identical, what is identical apart from names or wording, and what one app has that the rest lack.
 - **Small helpers each package writes for itself.** Request-body decoding, JSON responses, the "who is asking" lookup, admin checks, the save helper, the site's base URL, the school time zone, ID generators, email cleaning, yes/no cells, URL and date checks, display names.
 - **Whole features written once per app.** The admin list and its handlers, Settings-tab parsing, share cards, mail letters and their templates, `.ics` files, image upload and image search, the people picker, tabs, modals and forms, the Admin Tools shell, Super Admin Mode state, the router.
 - **Shared helpers that exist and go unused.** `sharecard.Serve` and `ETag`, `mail.ICSEscape`, `config.NormalizeEmails`, `web/common/tabs.js`, `web/common/picker.js`, `signedIn` in `toolbar.js`. A package that re-implements one of these is a finding even when its copy is correct.

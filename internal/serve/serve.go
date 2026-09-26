@@ -1,4 +1,3 @@
-// Package serve sends files with a content ETag and no modification time, so a conditional request only matches identical bytes.
 package serve
 
 import (
@@ -18,6 +17,10 @@ func File(w http.ResponseWriter, r *http.Request, name string) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	Content(w, r, name, data)
+}
+
+func Content(w http.ResponseWriter, r *http.Request, name string, data []byte) {
 	sum := sha256.Sum256(data)
 	w.Header().Set("ETag", `"`+hex.EncodeToString(sum[:])+`"`)
 	http.ServeContent(w, r, name, time.Time{}, bytes.NewReader(data))

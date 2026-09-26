@@ -1,11 +1,13 @@
 package auth
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"html/template"
 	"log/slog"
 	"net/http"
 	"os"
@@ -25,35 +27,31 @@ const (
 
 type contextKey struct{}
 
-// Auth gates one app behind Google sign-in and directory membership.
-// domain is the one the server answers under - its session and spoof
-// cookies are scoped to it, so one sign-in covers every app there and
-// reaches no other domain. loginPage is the app's static splash page under
-// web/public, the one page anyone without a session sees; it fetches
-// clientID from /auth/client rather than carrying it.
 type Sessions interface {
 	SignedOut(email string) (time.Time, bool)
 	SignOut(ctx context.Context, email string) error
 }
 
-type Auth struct {
-	domain    string
-	clientID  string
-	key       []byte
-	loginPage string
-	member    func(email string) bool
-	sessions  Sessions
-	// Preview, when set, supplies extra <head> markup for the login page served
-	// at a given path - the Open Graph tags a chat app reads to preview a link
-	// that leads to sign-in. Empty for a path with nothing to preview.
-	Preview func(r *http.Request) string
-	// Spoof, when set, lets a super admin view every app as someone else
-	// (spoof.go); nil leaves Email the signed-in address always.
-	Spoof *Spoof
+type Login struct {
+	Title  string
+	Splash string
 }
 
-func New(domain, clientID string, key []byte, loginPage string, member func(email string) bool, sessions Sessions) *Auth {
-	return &Auth{domain: domain, clientID: clientID, key: key, loginPage: loginPage, member: member, sessions: sessions}
+const loginTemplate = "web/templates/login.html"
+
+type Auth struct {
+	domain   string
+	clientID string
+	key      []byte
+	page     Login
+	member   func(email string) bool
+	sessions Sessions
+	Preview  func(r *http.Request) string
+	Spoof    *Spoof
+}
+
+func New(domain, clientID string, key []byte, login Login, member func(email string) bool, sessions Sessions) *Auth {
+	return &Auth{domain: domain, clientID: clientID, key: key, page: login, member: member, sessions: sessions}
 }
 
 // Fixed signs every request in as email, with no session at all - for tests.
@@ -224,26 +222,28 @@ func (a *Auth) cookieDomain(host string) string {
 	return a.domain
 }
 
-// splash serves the login page at whatever URL was asked for, so signing in
-// lands back on it. The file name is fixed, never the request path.
 func (a *Auth) splash(w http.ResponseWriter, r *http.Request) {
-	extra := ""
+	head := ""
 	if a.Preview != nil {
-		extra = a.Preview(r)
+		head = a.Preview(r)
 	}
-	if extra == "" {
-		serve.File(w, r, a.loginPage)
-		return
-	}
-	body, err := os.ReadFile(a.loginPage)
+	page, err := template.ParseFiles(loginTemplate)
 	if err != nil {
-		slog.ErrorContext(r.Context(), "read login page", "error", err)
+		slog.ErrorContext(r.Context(), "[ERROR] read the login page", "error", err)
 		http.Error(w, "login page unavailable", http.StatusInternalServerError)
 		return
 	}
-	html := strings.Replace(string(body), "</head>", extra+"</head>", 1)
+	var body bytes.Buffer
+	if err := page.Execute(&body, struct {
+		Login
+		Head template.HTML
+	}{a.page, template.HTML(head)}); err != nil {
+		slog.ErrorContext(r.Context(), "[ERROR] render the login page", "error", err)
+		http.Error(w, "login page unavailable", http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write([]byte(html))
+	serve.Content(w, r, loginTemplate, body.Bytes())
 }
 
 func sameOrigin(w http.ResponseWriter, r *http.Request) bool {

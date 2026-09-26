@@ -1184,33 +1184,33 @@ func Production(domain, blobCache string) (*http.Server, *store.Queue) {
 	})
 	who.RegisterUpload(core.Mux, core.Cache, store)
 	client := clientID()
-	newAuth := func(app string) *auth.Auth {
-		a := auth.New(domain, client, []byte(sessionKey), "web/public/"+app+"/login.html", core.Member, core.Sessions)
+	newAuth := func(login auth.Login) *auth.Auth {
+		a := auth.New(domain, client, []byte(sessionKey), login, core.Member, core.Sessions)
 		a.Spoof = core.Spoof
 		return a
 	}
-	whoAuth := newAuth("who")
+	whoAuth := newAuth(auth.Login{Title: "Helios Who?", Splash: "png"})
 	whoAuth.Preview = who.PreviewHead()
 	whoAuth.Register(core.Mux)
-	homeAuth := newAuth("home")
+	homeAuth := newAuth(auth.Login{Title: "Heliosian: Helios Community Apps", Splash: "png"})
 	homeAuth.Preview = home.PreviewHead(core.HomeCache)
 	homeAuth.Register(core.HomeMux)
-	teamAuth := newAuth("team")
+	teamAuth := newAuth(auth.Login{Title: "HCA Volunteer Portal", Splash: "png"})
 	teamAuth.Preview = team.PreviewHead(core.TeamCache)
 	teamAuth.Register(core.TeamMux)
-	birthdayAuth := newAuth("birthday")
+	birthdayAuth := newAuth(auth.Login{Title: "Helios Staff Birthdays", Splash: "jpg"})
 	birthdayAuth.Preview = birthday.PreviewHead()
 	birthdayAuth.Register(core.BirthdayMux)
-	celebrateAuth := newAuth("celebrate")
+	celebrateAuth := newAuth(auth.Login{Title: "Helios Celebrate: Fun(d)raiser Parties"})
 	celebrateAuth.Preview = celebrate.PreviewHead(core.CelebrateCache)
 	celebrateAuth.Register(core.CelebrateMux)
-	calendarAuth := newAuth("calendar")
+	calendarAuth := newAuth(auth.Login{Title: "Helios When: The school year, day by day"})
 	calendarAuth.Preview = calendar.PreviewHead(core.CalendarCache, core.CalendarLinked)
 	calendarAuth.Register(core.CalendarMux)
-	loopAuth := newAuth("loop")
+	loopAuth := newAuth(auth.Login{Title: "Helios Loop"})
 	loopAuth.Preview = loop.PreviewHead()
 	loopAuth.Register(core.LoopMux)
-	askAuth := newAuth("ask")
+	askAuth := newAuth(auth.Login{Title: "Helios Ask"})
 	askAuth.Register(core.AskMux)
 	server := Server(domain, map[string]http.Handler{
 		"who":       Public("who", whoAuth.Wrap(Logged("who", Files("who", core.Mux)))),
