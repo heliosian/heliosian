@@ -133,7 +133,7 @@ func TestCommitKeepsPreviousValuesOnly(t *testing.T) {
 	}
 }
 
-func TestSetInsertsAndUpdateDoesNot(t *testing.T) {
+func TestUpsertInsertsAndUpdateDoesNot(t *testing.T) {
 	f := newFixture(t)
 	if err := f.store.CommitAndWait(context.Background(), access.System("job"), Update("Things", Row{"Name": "sock"}, Row{"Color": "grey"})); err != nil {
 		t.Fatal(err)
@@ -141,11 +141,11 @@ func TestSetInsertsAndUpdateDoesNot(t *testing.T) {
 	if len(f.rows(t, "Things")) != 2 || len(f.log(t)) != 0 {
 		t.Fatal("an update matching nothing wrote something")
 	}
-	if err := f.store.CommitAndWait(context.Background(), access.System("job"), Set("Things", Row{"Name": "sock"}, Row{"Color": "grey"})); err != nil {
+	if err := f.store.CommitAndWait(context.Background(), access.System("job"), Upsert("Things", Row{"Name": "sock"}, Row{"Color": "grey"})); err != nil {
 		t.Fatal(err)
 	}
 	if len(f.rows(t, "Things")) != 3 || f.store.Count("Things", Row{"Name": "SOCK"}) != 1 {
-		t.Fatal("a set matching nothing did not insert")
+		t.Fatal("an upsert matching nothing did not insert")
 	}
 	equal(t, "change log", f.log(t), []string{"job||insert|Things|Name=sock||"})
 }
@@ -164,7 +164,7 @@ func TestAppendOnlyIsWrittenNotLogged(t *testing.T) {
 	if len(f.log(t)) != 0 {
 		t.Fatalf("an append-only tab was logged: %v", f.log(t))
 	}
-	for _, op := range []Op{Update("Events", Row{"When": "2"}, Row{"What": "bounced"}), Set("Events", Row{"When": "3"}, Row{"What": "sent"})} {
+	for _, op := range []Op{Update("Events", Row{"When": "2"}, Row{"What": "bounced"}), Upsert("Events", Row{"When": "3"}, Row{"What": "sent"})} {
 		if err := f.store.CommitAndWait(context.Background(), access.System("job"), op); err == nil || !strings.Contains(err.Error(), "append-only") {
 			t.Fatalf("an edit of an append-only tab was taken: %v", err)
 		}
@@ -246,6 +246,41 @@ func TestRefusedWriteIsFatal(t *testing.T) {
 	}
 }
 
+func TestPaddedMatchReachesTheSheet(t *testing.T) {
+	f := newFixture(t)
+	if err := f.store.CommitAndWait(context.Background(), access.System("job"), Delete("Uses", Row{"Thing": " HAT ", "By": "bo "})); err != nil {
+		t.Fatal(err)
+	}
+	if f.store.Count("Uses", Row{"Thing": "hat"}) != 1 || len(f.rows(t, "Uses")) != 2 {
+		t.Fatalf("memory and sheet split: memory %d, sheet %v", f.store.Count("Uses", Row{"Thing": "hat"}), f.rows(t, "Uses"))
+	}
+}
+
+func TestUnmatchedSheetWriteIsFatal(t *testing.T) {
+	if op := os.Getenv("STORE_UNMATCHED_WRITE"); op != "" {
+		f := newFixture(t)
+		if err := f.dir.Delete("app", "Uses", Row{"Thing": "boot"}); err != nil {
+			t.Fatal(err)
+		}
+		switch op {
+		case "update":
+			f.store.CommitAndWait(context.Background(), access.System("job"), Update("Uses", Row{"Thing": "boot", "By": "ann"}, Row{"By": "bo"}))
+		case "delete":
+			f.store.CommitAndWait(context.Background(), access.System("job"), Delete("Uses", Row{"Thing": "boot"}))
+		}
+		return
+	}
+	for _, op := range []string{"update", "delete"} {
+		cmd := exec.Command(os.Args[0], "-test.run=^TestUnmatchedSheetWriteIsFatal$")
+		cmd.Env = append(os.Environ(), "STORE_UNMATCHED_WRITE="+op)
+		out, err := cmd.CombinedOutput()
+		var exit *exec.ExitError
+		if !errors.As(err, &exit) || exit.ExitCode() != 1 || !strings.Contains(string(out), "no row matching") {
+			t.Fatalf("an unmatched %s did not end the process: %v\n%s", op, err, out)
+		}
+	}
+}
+
 func TestCascadeCarriesARename(t *testing.T) {
 	f := newFixture(t)
 	if err := f.store.CommitAndWait(context.Background(), access.Actor{Email: "ann"}, Update("Things", Row{"Name": "hat"}, Row{"Name": "cap"})); err != nil {
@@ -286,9 +321,14 @@ func (w *countingWriter) Insert(app, table string, rows []map[string]string) err
 	return w.Dir.Insert(app, table, rows)
 }
 
-func (w *countingWriter) Set(app, table string, match, cells map[string]string) error {
-	w.calls = append(w.calls, "set "+table)
-	return w.Dir.Set(app, table, match, cells)
+func (w *countingWriter) Upsert(app, table string, match, cells map[string]string) error {
+	w.calls = append(w.calls, "upsert "+table)
+	return w.Dir.Upsert(app, table, match, cells)
+}
+
+func (w *countingWriter) Update(app, table string, match, cells map[string]string) error {
+	w.calls = append(w.calls, "update "+table)
+	return w.Dir.Update(app, table, match, cells)
 }
 
 func (w *countingWriter) SetMany(app, table, keyColumn string, cells map[string]map[string]string) error {
@@ -312,15 +352,15 @@ func TestWritesToOneTabAreBatched(t *testing.T) {
 		Insert("Things", Row{"Name": "cap"}),
 		Insert("Things", Row{"Name": "sock"}),
 		Update("Things", Row{"Name": "hat"}, Row{"Color": "green"}),
-		Set("Things", Row{"Name": "boot"}, Row{"Size": "small"}),
-		Set("Things", Row{"Name": "HAT"}, Row{"Size": "large"}),
+		Upsert("Things", Row{"Name": "boot"}, Row{"Size": "small"}),
+		Upsert("Things", Row{"Name": "HAT"}, Row{"Size": "large"}),
 		Update("Things", Row{"Name": "cap"}, Row{"Name": "beret"}),
 		Delete("Uses", Row{"Thing": "boot"}),
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	equal(t, "calls", writer.calls, []string{"insert Things", "setmany Things", "set Things", "delete Uses", "insert Change Log"})
+	equal(t, "calls", writer.calls, []string{"insert Things", "setmany Things", "update Things", "delete Uses", "insert Change Log"})
 	got := []string{}
 	for _, row := range f.rows(t, "Things") {
 		got = append(got, row["Name"]+"|"+row["Color"]+"|"+row["Size"])
@@ -395,7 +435,7 @@ func TestARefreshSwapsEveryModelOrNone(t *testing.T) {
 	if err := f.dir.Delete("app", "Uses", Row{"By": "ann"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.dir.Set("app", "Things", Row{"Name": "hat"}, Row{"Color": "plaid"}); err != nil {
+	if err := f.dir.Update("app", "Things", Row{"Name": "hat"}, Row{"Color": "plaid"}); err != nil {
 		t.Fatal(err)
 	}
 	queue.Refresh()

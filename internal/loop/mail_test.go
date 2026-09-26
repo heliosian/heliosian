@@ -568,7 +568,7 @@ func TestARestartResumesAMessageFromItsArchivedCopy(t *testing.T) {
 		t.Fatal(err)
 	}
 	cells := store.Row{"Received": time.Now().Format(time.RFC3339), "From": "Alice Smith <alice@gmail.com>", "Subject": "Re: Saturday's game", "State": stateReceived, "Object": object, "Message ID": "abc@gmail.com"}
-	if err := h.cache.CommitAndWait(context.Background(), access.System("test"), store.Set(messagesTab, store.Row{"ID": id(post), "Group": "soccer-team"}, cells)); err != nil {
+	if err := h.cache.CommitAndWait(context.Background(), access.System("test"), store.Upsert(messagesTab, store.Row{"ID": id(post), "Group": "soccer-team"}, cells)); err != nil {
 		t.Fatal(err)
 	}
 	newMailer(h.cache, h.directory, h.mailbox).recover()

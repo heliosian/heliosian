@@ -306,7 +306,7 @@ func set(args []string) {
 		col = fs.String("col", "", "column to set")
 		value = fs.String("value", "", "value to write")
 	}, "tab", "key", "col")
-	if err := source.Set("sheet", *tab, map[string]string{*keyCol: *key}, map[string]string{*col: *value}); err != nil {
+	if err := source.Upsert("sheet", *tab, map[string]string{*keyCol: *key}, map[string]string{*col: *value}); err != nil {
 		log.Fatalf("[ERROR] set %s[%s=%s].%s: %v", *tab, *keyCol, *key, *col, err)
 	}
 	log.Printf("set %s[%s=%s].%s = %q", *tab, *keyCol, *key, *col, *value)

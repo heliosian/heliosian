@@ -16,8 +16,11 @@ A tab is a header row and records keyed by column name; a cell's position in the
 
 - **Read** a spreadsheet's tabs in one batched request (`Tabs`), header-only for the tabs nothing reads rows of. `Raw` reads one tab as the cells stand, for the few read positionally (the invite templates).
 - **Insert** rows, each cell under the column of its name, at an explicit address after the last used row - never the Sheets append call, whose table detection starts a row in the wrong column past a blank row.
-- **Set** the named cells of every row matching the given columns, inserting one row when none matches; **SetMany** does that for many rows keyed by one column in one write.
-- **Delete** every row matching the given columns.
+- **Update** the named cells of every row matching the given columns; no row matching is an error. **SetMany** updates many rows keyed by one column in one write, with the same error for a key no row holds.
+- **Upsert** is Update, inserting one row when none matches.
+- **Delete** every row matching the given columns; no row matching is an error.
+
+A row matches when each named cell equals the given value after trimming both and ignoring case (`data.Matches`). The store's memory half uses the same rule, so a write that changed memory finds the same rows in the sheet, and a sheet write that matches nothing means the two have split.
 - **Sync** a tab to a list of rows, cell by cell: `tools/sheets sync`.
 
 Every request goes through one retry of a quota refusal (`call` in `internal/data/sheet.go`). A column the operation names that the tab lacks is an error, from the sheet and from the CSV fake (`data.Dir`) alike. The schema operations - `Layout`, `AddTab`, `AddColumns`, `DropColumns`, `RenameTab` - live here too, and `internal/data` is the only package that talks to the Sheets API: every tool reaches a sheet through it.
@@ -28,7 +31,7 @@ Every request goes through one retry of a quota refusal (`call` in `internal/dat
 
 `internal/store` is the store. An app declares its spreadsheet in a `store.Spec`: each tab's name, the columns it must have, the columns that key a row (for the Change Log), and its cascade hook if it has one; the function that builds the model; and what to log when a model loads. `store.New` reads the spreadsheet, checks every tab's columns and the Change Log's, and builds the model, or refuses to start. A store whose every tab of its own is append-only (below) writes no Change Log rows, so reads no Change Log either: the association's shared birthday sheet is one (`docs/birthday/data.md`). No app has a degraded mode for a sheet that will not load, and nothing checks for a missing model: a new revision that cannot load never takes traffic, the running one keeps serving, and a refresh that fails keeps the model it has. A tab may belong to another spreadsheet the app only reads - Who?'s consent-form responses - and is then read with the rest and never written: a commit naming it is refused, and it has no Change Log of its own.
 
-A change is stated as operations on rows - `store.Insert`, `store.Set` (every matching row, or a new one when none matches), `store.Update` (every matching row, and nothing when none does), `store.Delete` - built by the owning package's `writes.go`, which decides whether the actor may make it (`docs/dev.md`, The rules live with the thing), and handed to `Commit(ctx, actor, ops...)`, the actor an `access.Actor` whose address the Change Log records. A commit has two halves that never wait on each other. Under the one commit lock every store shares, on `store.Queue`, it:
+A change is stated as operations on rows - `store.Insert`, `store.Upsert` (every matching row, or a new one when none matches), `store.Update` (every matching row, and nothing when none does), `store.Delete` - built by the owning package's `writes.go`, which decides whether the actor may make it (`docs/dev.md`, The rules live with the thing), and handed to `Commit(ctx, actor, ops...)`, the actor an `access.Actor` whose address the Change Log records. A commit has two halves that never wait on each other. Under the one commit lock every store shares, on `store.Queue`, it:
 
 1. matches each operation against the tables as they stand, which gives the rows' previous values, and drops any that change nothing;
 2. runs the cascade hook of every tab a change touched, which adds operations of its own, until none adds more;

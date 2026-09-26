@@ -279,7 +279,7 @@ func TestArchivedIsOnePersonsAndFollowsTheGroup(t *testing.T) {
 	match := store.Row{"Group": "soccer-team", "Email": jordan}
 	as := access.Actor{Email: jordan}
 	for range 2 {
-		if err := cache.Commit(ctx, as, store.Set(archivedTab, match, store.Row{})); err != nil {
+		if err := cache.Commit(ctx, as, store.Upsert(archivedTab, match, store.Row{})); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -296,7 +296,7 @@ func TestArchivedIsOnePersonsAndFollowsTheGroup(t *testing.T) {
 	if cache.Count(archivedTab, nil) != 0 || cache.Model().Archived("soccer-team", jordan) {
 		t.Fatal("unarchiving left the row")
 	}
-	if err := cache.Commit(ctx, as, store.Set(archivedTab, match, store.Row{})); err != nil {
+	if err := cache.Commit(ctx, as, store.Upsert(archivedTab, match, store.Row{})); err != nil {
 		t.Fatal(err)
 	}
 	if err := cache.Commit(ctx, as, store.Delete(groupsTab, store.Row{"Name": "soccer-team"})); err != nil {

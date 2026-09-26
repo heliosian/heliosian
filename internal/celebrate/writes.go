@@ -814,7 +814,7 @@ func (m *Model) saveSettings(actor access.Actor, s Settings) ([]store.Op, error)
 	values := map[string]string{PartiesIntroKey: strings.TrimSpace(s.PartiesIntro), TicketNoteKey: strings.TrimSpace(s.TicketNote), HostingOpenKey: YesNo(s.HostingOpen)}
 	ops := []store.Op{}
 	for _, key := range settingKeys {
-		ops = append(ops, store.Set(settingsTab, store.Row{"Key": key}, store.Row{"Value": values[key]}))
+		ops = append(ops, store.Upsert(settingsTab, store.Row{"Key": key}, store.Row{"Value": values[key]}))
 	}
 	return ops, nil
 }

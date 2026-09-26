@@ -13,11 +13,11 @@ import (
 )
 
 func setOverride(email string, cells store.Row) store.Op {
-	return store.Set(overridesTab, store.Row{"Email": email}, cells)
+	return store.Upsert(overridesTab, store.Row{"Email": email}, cells)
 }
 
 func setFamily(key string, cells store.Row) store.Op {
-	return store.Set(familiesTab, store.Row{"Email": key}, cells)
+	return store.Upsert(familiesTab, store.Row{"Email": key}, cells)
 }
 
 func photoOps(email string, before []photoRef, after []photoRef) []store.Op {
@@ -330,7 +330,7 @@ func (m *Model) setImage(actor access.Actor, kind, name, image string) ([]store.
 	default:
 		return nil, access.Invalid("bad kind: must be classroom or grade")
 	}
-	return []store.Op{store.Set(imagesTab, store.Row{imageKind: kind, imageName: name}, store.Row{imageImage: image})}, nil
+	return []store.Op{store.Upsert(imagesTab, store.Row{imageKind: kind, imageName: name}, store.Row{imageImage: image})}, nil
 }
 
 func superEditing(actor access.Actor, cookie bool) bool {
@@ -570,7 +570,7 @@ func validTagName(tag string) bool {
 func managerOp(owner, tag, manager string, on bool) store.Op {
 	row := store.Row{tagOwner: owner, tagName: tag, managerEmail: manager}
 	if on {
-		return store.Set(managersTable, row, store.Row{})
+		return store.Upsert(managersTable, row, store.Row{})
 	}
 	return store.Delete(managersTable, row)
 }

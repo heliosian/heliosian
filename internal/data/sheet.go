@@ -127,7 +127,15 @@ func (s *Sheet) Raw(app, name string) ([][]string, error) {
 	return rows, nil
 }
 
-func (s *Sheet) Set(app, table string, match, cells map[string]string) error {
+func (s *Sheet) Upsert(app, table string, match, cells map[string]string) error {
+	return s.set(app, table, match, cells, true)
+}
+
+func (s *Sheet) Update(app, table string, match, cells map[string]string) error {
+	return s.set(app, table, match, cells, false)
+}
+
+func (s *Sheet) set(app, table string, match, cells map[string]string, upsert bool) error {
 	id, ok := s.spreadsheets[app]
 	if !ok {
 		return fmt.Errorf("no spreadsheet configured for app %q", app)
@@ -155,10 +163,12 @@ func (s *Sheet) Set(app, table string, match, cells map[string]string) error {
 		}
 	}
 	ranges := []*sheets.ValueRange{}
+	matched := false
 	for i, row := range resp.Values[1:] {
 		if !valuesMatch(row, index, match) {
 			continue
 		}
+		matched = true
 		for column, value := range cells {
 			ranges = append(ranges, &sheets.ValueRange{
 				Range:  fmt.Sprintf("%s!%s%d", quoted, columnName(index[column]), i+2),
@@ -166,7 +176,10 @@ func (s *Sheet) Set(app, table string, match, cells map[string]string) error {
 			})
 		}
 	}
-	if len(ranges) == 0 {
+	if !matched && !upsert {
+		return fmt.Errorf("table %s has no row matching %v", table, match)
+	}
+	if !matched {
 		row := make([]interface{}, len(resp.Values[0]))
 		for i := range row {
 			row[i] = ""
@@ -178,6 +191,9 @@ func (s *Sheet) Set(app, table string, match, cells map[string]string) error {
 			row[index[column]] = value
 		}
 		return s.writeRows(id, table, len(resp.Values), [][]interface{}{row})
+	}
+	if len(ranges) == 0 {
+		return nil
 	}
 	_, err = call("set "+table, s.service.Spreadsheets.Values.BatchUpdate(id, &sheets.BatchUpdateValuesRequest{
 		ValueInputOption: "RAW",
@@ -213,6 +229,10 @@ func (s *Sheet) SetMany(app, table, keyColumn string, cells map[string]map[strin
 			}
 		}
 	}
+	keys := map[string]string{}
+	for key := range cells {
+		keys[Key(key)] = key
+	}
 	ranges := []*sheets.ValueRange{}
 	seen := map[string]bool{}
 	for i, row := range resp.Values[1:] {
@@ -220,13 +240,12 @@ func (s *Sheet) SetMany(app, table, keyColumn string, cells map[string]map[strin
 		if k >= len(row) {
 			continue
 		}
-		key := strings.TrimSpace(fmt.Sprint(row[k]))
-		c, ok := cells[key]
+		key, ok := keys[Key(fmt.Sprint(row[k]))]
 		if !ok {
 			continue
 		}
 		seen[key] = true
-		for column, value := range c {
+		for column, value := range cells[key] {
 			ranges = append(ranges, &sheets.ValueRange{
 				Range:  fmt.Sprintf("%s!%s%d", quoted, columnName(index[column]), i+2),
 				Values: [][]interface{}{{value}},
@@ -359,7 +378,7 @@ func (s *Sheet) Delete(app, table string, match map[string]string) error {
 		}})
 	}
 	if len(requests) == 0 {
-		return nil
+		return fmt.Errorf("table %s has no row matching %v", table, match)
 	}
 	_, err = call("delete "+table, s.service.Spreadsheets.BatchUpdate(id, &sheets.BatchUpdateSpreadsheetRequest{
 		Requests: requests,
@@ -368,13 +387,13 @@ func (s *Sheet) Delete(app, table string, match map[string]string) error {
 }
 
 func valuesMatch(row []interface{}, index map[string]int, match map[string]string) bool {
-	for column, value := range match {
-		i := index[column]
-		if i >= len(row) || !strings.EqualFold(strings.TrimSpace(fmt.Sprint(row[i])), value) {
-			return false
+	cells := map[string]string{}
+	for column := range match {
+		if i := index[column]; i < len(row) {
+			cells[column] = fmt.Sprint(row[i])
 		}
 	}
-	return true
+	return Matches(cells, match)
 }
 
 func (s *Sheet) tabID(id, title string) (int64, error) {

@@ -82,7 +82,7 @@ func (s *Store[M]) Count(tab string, match Row) int {
 	defer s.mu.RUnlock()
 	n := 0
 	for _, row := range s.tables[tab] {
-		if matches(row, match) {
+		if data.Matches(row, match) {
 			n++
 		}
 	}

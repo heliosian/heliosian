@@ -114,7 +114,7 @@ func (a app) mayAnswerFor(actor access.Actor, subject string, e *Event) bool {
 }
 
 func homeOp(email string, cells store.Row) store.Op {
-	return store.Set(SettingsTab, store.Row{"Email": email}, cells)
+	return store.Upsert(SettingsTab, store.Row{"Email": email}, cells)
 }
 
 func feedCells(body feedBody) store.Row {
@@ -220,7 +220,7 @@ func saveViewOps(actor access.Actor, classrooms, tags []string) ([]store.Op, sto
 	cells := store.Row{
 		"Classrooms": JoinList(SplitList(JoinList(classrooms))), "Categories": JoinList(SplitList(JoinList(tags))), "Saved": now().Format(DateTimeFormat),
 	}
-	return []store.Op{store.Set(SettingsTab, store.Row{"Email": actor.Email}, cells)}, cells
+	return []store.Op{store.Upsert(SettingsTab, store.Row{"Email": actor.Email}, cells)}, cells
 }
 
 func (a app) forgetViewOps(actor access.Actor) []store.Op {
@@ -250,7 +250,7 @@ func (a app) keywordOps(actor access.Actor, id string, keywords []string) ([]sto
 	if len(words) > 0 {
 		cell = JoinList(words)
 	}
-	return []store.Op{store.Set(OverridesTab, store.Row{"Event ID": e.ID}, store.Row{"Keywords": cell})}, e, cell, nil
+	return []store.Op{store.Upsert(OverridesTab, store.Row{"Event ID": e.ID}, store.Row{"Keywords": cell})}, e, cell, nil
 }
 
 func (a app) newEvents(actor access.Actor, body eventBody) ([]store.Op, []string, bool, error) {
@@ -466,7 +466,7 @@ func (a app) overrideOps(actor access.Actor, body overrideBody) ([]store.Op, str
 	if empty {
 		return []store.Op{store.Delete(OverridesTab, store.Row{"Event ID": id})}, id, true, nil
 	}
-	return []store.Op{store.Set(OverridesTab, store.Row{"Event ID": id}, cells)}, id, false, nil
+	return []store.Op{store.Upsert(OverridesTab, store.Row{"Event ID": id}, cells)}, id, false, nil
 }
 
 func (a app) overrideImageOps(actor access.Actor, id, image string) ([]store.Op, *Event, string, error) {
@@ -478,7 +478,7 @@ func (a app) overrideImageOps(actor access.Actor, id, image string) ([]store.Op,
 		return nil, nil, "", access.Missing("only an event the school's calendars bring takes its picture here")
 	}
 	image = strings.Trim(strings.TrimSpace(image), "/")
-	return []store.Op{store.Set(OverridesTab, store.Row{"Event ID": e.ID}, store.Row{"Image": image})}, e, image, nil
+	return []store.Op{store.Upsert(OverridesTab, store.Row{"Event ID": e.ID}, store.Row{"Image": image})}, e, image, nil
 }
 
 func (a app) invitationOps(actor access.Actor, id string, cells store.Row) []store.Op {
@@ -735,7 +735,7 @@ func (a app) guestOps(actor access.Actor, g broughtGuest, name, email string) ([
 	g.key = email
 	ops := append(a.invitationOps(actor, e.ID, nil), store.Insert(InvitesTab, row))
 	if g.answer != "" {
-		ops = append(ops, store.Set(RSVPsTab, store.Row{"Event ID": e.ID, "Email": email}, store.Row{"Answer": g.answer, "Answered": stamp, "Answered By": actor.Email, "Via": ViaPage}))
+		ops = append(ops, store.Upsert(RSVPsTab, store.Row{"Event ID": e.ID, "Email": email}, store.Row{"Answer": g.answer, "Answered": stamp, "Answered By": actor.Email, "Via": ViaPage}))
 	}
 	return ops, g, nil
 }
@@ -802,7 +802,7 @@ func (a app) answerOps(actor access.Actor, email, id, answer, via string) ([]sto
 	if answer == "" {
 		return []store.Op{store.Delete(RSVPsTab, key)}, e, nil
 	}
-	return []store.Op{store.Set(RSVPsTab, key, store.Row{"Answer": answer, "Answered": now().Format(DateTimeFormat), "Answered By": actor.Email, "Via": via})}, e, nil
+	return []store.Op{store.Upsert(RSVPsTab, key, store.Row{"Answer": answer, "Answered": now().Format(DateTimeFormat), "Answered By": actor.Email, "Via": via})}, e, nil
 }
 
 func (a app) answerSubject(actor access.Actor, id, email, answer string) (*Event, string, error) {

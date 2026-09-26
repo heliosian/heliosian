@@ -59,7 +59,7 @@ func groupOps(was Group, g Group, adding bool) []store.Op {
 		}
 	}
 	for _, added := range g.Additions {
-		ops = append(ops, store.Set(additionsTab, row("Email", added.Email), store.Row{"Name": added.Name}))
+		ops = append(ops, store.Upsert(additionsTab, row("Email", added.Email), store.Row{"Name": added.Name}))
 	}
 	for _, e := range was.Excluded {
 		if !g.HasExcluded(e.Email) {
@@ -67,7 +67,7 @@ func groupOps(was Group, g Group, adding bool) []store.Op {
 		}
 	}
 	for _, e := range g.Excluded {
-		ops = append(ops, store.Set(excludedTab, row("Email", e.Email), store.Row{"Note": e.Note, "Timestamp": e.When}))
+		ops = append(ops, store.Upsert(excludedTab, row("Email", e.Email), store.Row{"Note": e.Note, "Timestamp": e.When}))
 	}
 	return ops
 }
@@ -171,7 +171,7 @@ func (m *Model) SetArchived(actor access.Actor, s Sources, name string, archived
 	}
 	match := store.Row{"Group": g.Name, "Email": actor.Email}
 	if archived {
-		return []store.Op{store.Set(archivedTab, match, store.Row{})}, g, nil
+		return []store.Op{store.Upsert(archivedTab, match, store.Row{})}, g, nil
 	}
 	return []store.Op{store.Delete(archivedTab, match)}, g, nil
 }
@@ -205,7 +205,7 @@ func (m *Model) SetAdmins(actor access.Actor, superAdmins, requested []string) (
 }
 
 func recordMessage(actor access.Actor, id, group string, cells store.Row) []store.Op {
-	return []store.Op{store.Set(messagesTab, store.Row{"ID": id, "Group": group}, cells)}
+	return []store.Op{store.Upsert(messagesTab, store.Row{"ID": id, "Group": group}, cells)}
 }
 
 func markMessage(actor access.Actor, id, group, state string, cells store.Row) []store.Op {

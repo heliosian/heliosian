@@ -125,7 +125,7 @@ func (m *Model) saveVolunteer(actor access.Actor, directory Directory, body volu
 	if from != nil {
 		action = "move"
 	}
-	ops = append(ops, store.Set(volunteersTab, store.Row{"Event ID": act.ID, "Email": email}, cells))
+	ops = append(ops, store.Upsert(volunteersTab, store.Row{"Event ID": act.ID, "Email": email}, cells))
 	return signUp{ops: ops, act: act, email: email, position: body.Position, note: note, was: was, action: action, existed: existing || from != nil}, nil
 }
 
@@ -452,7 +452,7 @@ func (m *Model) deleteLink(actor access.Actor, id, title string) (*Activity, []s
 	if !m.Edits(act, actor) {
 		return nil, nil, access.Forbidden("only a co-chair or admin can remove links")
 	}
-	return act, []store.Op{store.Delete(linksTab, store.Row{"Event ID": act.ID, "Title": title})}, nil
+	return act, []store.Op{store.Delete(linksTab, store.Row{"Event ID": act.ID, "Title": strings.TrimSpace(title)})}, nil
 }
 
 func orderOps(tab, keyColumn string, ids, current []string) []store.Op {
@@ -705,7 +705,7 @@ func saveSettings(actor access.Actor, expenseFormURL, intro string) ([]store.Op,
 	values := map[string]string{ExpenseFormKey: strings.TrimSpace(expenseFormURL), IntroKey: strings.TrimSpace(intro)}
 	ops := []store.Op{}
 	for _, key := range settingKeys {
-		ops = append(ops, store.Set(settingsTab, store.Row{"Key": key}, store.Row{"Value": values[key]}))
+		ops = append(ops, store.Upsert(settingsTab, store.Row{"Key": key}, store.Row{"Value": values[key]}))
 	}
 	return ops, nil
 }
@@ -721,7 +721,7 @@ func saveNotify(actor access.Actor, wanted []string) (string, []store.Op, error)
 		}
 	}
 	value := strings.Join(kinds, ",")
-	return value, []store.Op{store.Set(settingsTab, store.Row{"Key": notifyPrefix + actor.Email}, store.Row{"Value": value})}, nil
+	return value, []store.Op{store.Upsert(settingsTab, store.Row{"Key": notifyPrefix + actor.Email}, store.Row{"Value": value})}, nil
 }
 
 func normalizeEmails(emails []string) []string {

@@ -25,7 +25,7 @@ type kind int
 
 const (
 	insert kind = iota
-	set
+	upsert
 	update
 	remove
 	keyed
@@ -42,8 +42,8 @@ func Insert(tab string, cells Row) Op {
 	return Op{kind: insert, tab: tab, cells: cells}
 }
 
-func Set(tab string, match, cells Row) Op {
-	return Op{kind: set, tab: tab, match: match, cells: cells}
+func Upsert(tab string, match, cells Row) Op {
+	return Op{kind: upsert, tab: tab, match: match, cells: cells}
 }
 
 func Update(tab string, match, cells Row) Op {
@@ -162,7 +162,7 @@ func (b *Book) Plan(ctx context.Context, tables Tables, actor string, ops []Op) 
 		if b.appOf(tab) != b.app {
 			return Plan{}, fmt.Errorf("%s: tab %s is %s's", b.app, op.tab, tab.App)
 		}
-		if tab.AppendOnly && (op.kind == set || op.kind == update) {
+		if tab.AppendOnly && (op.kind == upsert || op.kind == update) {
 			return Plan{}, fmt.Errorf("%s: tab %s is append-only", b.app, op.tab)
 		}
 		rows, changes := apply(tables[op.tab], op)
@@ -210,7 +210,7 @@ func (b *Book) write(writes []Op, log []Row) {
 }
 
 func planned(op Op, changes []change) []Op {
-	if (op.kind != set && op.kind != update) || len(op.match) != 1 {
+	if (op.kind != upsert && op.kind != update) || len(op.match) != 1 {
 		return []Op{op}
 	}
 	column := slices.Collect(maps.Keys(op.match))[0]
@@ -262,15 +262,17 @@ func (b *Book) put(run []Op) error {
 		return b.writer.SetMany(b.app, op.tab, column, cells)
 	case remove:
 		return b.writer.Delete(b.app, op.tab, op.match)
+	case update:
+		return b.writer.Update(b.app, op.tab, op.match, op.cells)
 	}
-	return b.writer.Set(b.app, op.tab, op.match, op.cells)
+	return b.writer.Upsert(b.app, op.tab, op.match, op.cells)
 }
 
 func apply(rows []Row, op Op) ([]Row, []change) {
 	switch op.kind {
 	case insert:
 		row := Row{}
-		fill(row, op.cells)
+		data.Fill(row, op.cells)
 		if len(row) == 0 {
 			return rows, nil
 		}
@@ -279,7 +281,7 @@ func apply(rows []Row, op Op) ([]Row, []change) {
 		kept := []Row{}
 		changes := []change{}
 		for _, row := range rows {
-			if matches(row, op.match) {
+			if data.Matches(row, op.match) {
 				changes = append(changes, change{before: row})
 				continue
 			}
@@ -291,45 +293,26 @@ func apply(rows []Row, op Op) ([]Row, []change) {
 	changes := []change{}
 	matched := false
 	for i, row := range next {
-		if !matches(row, op.match) {
+		if !data.Matches(row, op.match) {
 			continue
 		}
 		matched = true
 		updated := maps.Clone(row)
-		fill(updated, op.cells)
+		data.Fill(updated, op.cells)
 		if maps.Equal(updated, row) {
 			continue
 		}
 		next[i] = updated
 		changes = append(changes, change{before: row, after: updated})
 	}
-	if !matched && op.kind == set {
+	if !matched && op.kind == upsert {
 		row := Row{}
-		fill(row, op.match)
-		fill(row, op.cells)
+		data.Fill(row, op.match)
+		data.Fill(row, op.cells)
 		next = append(next, row)
 		changes = append(changes, change{after: row})
 	}
 	return next, changes
-}
-
-func fill(row, cells Row) {
-	for column, value := range cells {
-		if value == "" {
-			delete(row, column)
-			continue
-		}
-		row[column] = value
-	}
-}
-
-func matches(row, match Row) bool {
-	for column, value := range match {
-		if !strings.EqualFold(strings.TrimSpace(row[column]), strings.TrimSpace(value)) {
-			return false
-		}
-	}
-	return true
 }
 
 func entries(stamp, actor, real string, tab Tab, c change) []Row {

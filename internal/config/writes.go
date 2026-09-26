@@ -20,7 +20,7 @@ func setSettings(values map[string]string) []store.Op {
 	ops := []store.Op{}
 	for _, key := range Keys {
 		if value, ok := values[key]; ok {
-			ops = append(ops, store.Set(SettingsTab, store.Row{KeyColumn: key}, store.Row{ValueColumn: value}))
+			ops = append(ops, store.Upsert(SettingsTab, store.Row{KeyColumn: key}, store.Row{ValueColumn: value}))
 		}
 	}
 	return ops
@@ -68,9 +68,9 @@ func (s *Settings) setColor(actor access.Actor, kind, name, color string) (strin
 	}
 	switch kind {
 	case "classroom":
-		return name, []store.Op{store.Set(ClassroomColorsTab, store.Row{ClassroomColumn: name}, store.Row{ColorColumn: color})}, nil
+		return name, []store.Op{store.Upsert(ClassroomColorsTab, store.Row{ClassroomColumn: name}, store.Row{ColorColumn: color})}, nil
 	case "grade":
-		return name, []store.Op{store.Set(GradeColorsTab, store.Row{GradeColumn: name}, store.Row{ColorColumn: color})}, nil
+		return name, []store.Op{store.Upsert(GradeColorsTab, store.Row{GradeColumn: name}, store.Row{ColorColumn: color})}, nil
 	case "staff":
 		return name, setSettings(map[string]string{StaffColor: color}), nil
 	}
@@ -101,7 +101,7 @@ func (s *Settings) setSuperAdmins(actor access.Actor, emails []string) ([]string
 
 func signedOut(email string) []store.Op {
 	at := time.Now().Truncate(time.Second)
-	return []store.Op{store.Set(SignedOutTab, store.Row{EmailColumn: email}, store.Row{TimeColumn: at.Format(time.RFC3339)})}
+	return []store.Op{store.Upsert(SignedOutTab, store.Row{EmailColumn: email}, store.Row{TimeColumn: at.Format(time.RFC3339)})}
 }
 
 func (s *Settings) signOut(actor access.Actor, email string) (string, []store.Op, error) {

@@ -86,7 +86,7 @@ func (c *Cache) assign(actor access.Actor, rawEmail, rawTo string) ([]store.Op, 
 	if t.to != actor.Email && !m.OnTeam(t.to) && !c.IsAdmin(t.to) {
 		return nil, target{}, access.Invalid("%s is not on the birthday team", t.to)
 	}
-	return []store.Op{store.Set(assignmentsTab, store.Row{"Email": t.email, "Year": t.year}, store.Row{"Assigned To": t.to, "Assigned On": today()})}, t, nil
+	return []store.Op{store.Upsert(assignmentsTab, store.Row{"Email": t.email, "Year": t.year}, store.Row{"Assigned To": t.to, "Assigned On": today()})}, t, nil
 }
 
 func (m *Model) unassign(actor access.Actor, rawEmail string) ([]store.Op, target, error) {
@@ -106,7 +106,7 @@ func (m *Model) outreach(actor access.Actor, rawEmail string, contacted bool) ([
 	if !contacted {
 		return []store.Op{store.Delete(outreachTab, match)}, t, nil
 	}
-	return []store.Op{store.Set(outreachTab, match, store.Row{"Contacted On": today(), "Contacted By": actor.Email})}, t, nil
+	return []store.Op{store.Upsert(outreachTab, match, store.Row{"Contacted On": today(), "Contacted By": actor.Email})}, t, nil
 }
 
 func (m *Model) saveDonation(actor access.Actor, rawEmail, charityName, note string) ([]store.Op, target, error) {
@@ -126,7 +126,7 @@ func (m *Model) saveDonation(actor access.Actor, rawEmail, charityName, note str
 	}
 	t.charity = charity.Name
 	cells := store.Row{"Charity": charity.Name, "Note": strings.TrimSpace(note), "Recorded On": today(), "Recorded By": actor.Email}
-	return []store.Op{store.Set(donationsTab, store.Row{"Email": t.email, "Year": t.year}, cells)}, t, nil
+	return []store.Op{store.Upsert(donationsTab, store.Row{"Email": t.email, "Year": t.year}, cells)}, t, nil
 }
 
 func (m *Model) deleteDonation(actor access.Actor, rawEmail string) ([]store.Op, target, error) {
@@ -161,7 +161,7 @@ func (m *Model) saveBirthday(actor access.Actor, rawEmail, birthday, override st
 		return nil, "", access.Invalid("%v", err)
 	}
 	cells := store.Row{"Birthday": strings.TrimSpace(birthday), "Newsletter Override": strings.TrimSpace(override)}
-	return []store.Op{store.Set(birthdaysTab, store.Row{"Email": email}, cells)}, email, nil
+	return []store.Op{store.Upsert(birthdaysTab, store.Row{"Email": email}, cells)}, email, nil
 }
 
 func (c *Cache) deleteBirthday(actor access.Actor, rawEmail string) ([]store.Op, string, error) {
@@ -195,7 +195,7 @@ func (m *Model) saveParticipation(actor access.Actor, rawEmail, level, note stri
 	if len(note) > maxTextLength {
 		return nil, "", access.Invalid("the note is too long")
 	}
-	return []store.Op{store.Set(birthdaysTab, store.Row{"Email": email}, store.Row{"Participation": level, "Note": strings.TrimSpace(note)})}, email, nil
+	return []store.Op{store.Upsert(birthdaysTab, store.Row{"Email": email}, store.Row{"Participation": level, "Note": strings.TrimSpace(note)})}, email, nil
 }
 
 func (m *Model) deleteParticipation(actor access.Actor, rawEmail string) ([]store.Op, string, error) {
@@ -412,7 +412,7 @@ func saveSettings(actor access.Actor, s Settings) ([]store.Op, error) {
 	}
 	ops := []store.Op{}
 	for _, key := range settingKeys {
-		ops = append(ops, store.Set(settingsTab, store.Row{"Key": key}, store.Row{"Value": values[key]}))
+		ops = append(ops, store.Upsert(settingsTab, store.Row{"Key": key}, store.Row{"Value": values[key]}))
 	}
 	return ops, nil
 }
@@ -497,7 +497,7 @@ func exportOps(actor access.Actor, items []exported) ([]store.Op, []store.Op) {
 		cells := maps.Clone(it.donation)
 		cells["Used On"], cells["Used By"] = day, actor.Email
 		rows = append(rows, store.Insert(sharedNewsletterTab, it.row))
-		marks = append(marks, store.Set(donationsTab, store.Row{"Email": it.email, "Year": it.year}, cells))
+		marks = append(marks, store.Upsert(donationsTab, store.Row{"Email": it.email, "Year": it.year}, cells))
 	}
 	return rows, marks
 }

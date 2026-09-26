@@ -66,7 +66,7 @@ func (c *Cache) grant(actor access.Actor, appKey string) ([]store.Op, error) {
 	if slices.Contains(v.Emails, actor.Email) {
 		return nil, nil
 	}
-	return []store.Op{store.Set(visibilityTab, store.Row{"App": app.Key}, store.Row{"Visibility": v.Mode, "Emails": joinEmails(normalizeEmails(append(v.Emails, actor.Email)))})}, nil
+	return []store.Op{store.Upsert(visibilityTab, store.Row{"App": app.Key}, store.Row{"Visibility": v.Mode, "Emails": joinEmails(normalizeEmails(append(v.Emails, actor.Email)))})}, nil
 }
 
 func (c *Cache) checkRules(existing, rules []filter.Rule, actor string) ([]filter.Rule, error) {
@@ -143,7 +143,7 @@ func (c *Cache) setWidgetOrder(actor access.Actor, widgets []string) ([]store.Op
 	ops := []store.Op{}
 	for i, name := range widgets {
 		if next[i] != current[i] {
-			ops = append(ops, store.Set(widgetsTab, store.Row{"Widget": name}, store.Row{store.OrderColumn: next[i]}))
+			ops = append(ops, store.Upsert(widgetsTab, store.Row{"Widget": name}, store.Row{store.OrderColumn: next[i]}))
 		}
 	}
 	return ops, nil
@@ -276,7 +276,7 @@ func (c *Cache) deleteLink(actor access.Actor, title string) ([]store.Op, error)
 	if err := requireAdmin(actor); err != nil {
 		return nil, err
 	}
-	return []store.Op{store.Delete(linksTab, store.Row{"Title": title})}, nil
+	return []store.Op{store.Delete(linksTab, store.Row{"Title": strings.TrimSpace(title)})}, nil
 }
 
 func (c *Cache) saveCategory(actor access.Actor, in categoryEdit) (string, string, []store.Op, error) {
@@ -402,6 +402,7 @@ func (c *Cache) deleteCategory(actor access.Actor, title string) ([]store.Op, er
 	if err := requireAdmin(actor); err != nil {
 		return nil, err
 	}
+	title = strings.TrimSpace(title)
 	model := c.Model()
 	if model.styleOf(title) == StyleEvents {
 		return nil, access.Invalid("the events section can be renamed or moved, not deleted")
@@ -471,7 +472,7 @@ func (c *Cache) setVisibility(actor access.Actor, in visibilityEdit) (string, Vi
 		rules = checked
 	}
 	v := Visibility{Mode: in.Visibility, Emails: normalizeEmails(in.Emails), Tagline: tagline, Name: name, Order: was.Order, Rules: rules}
-	ops := append([]store.Op{store.Set(visibilityTab, store.Row{"App": key}, v.cells())}, audience(thingApp+key, was.Rules, rules)...)
+	ops := append([]store.Op{store.Upsert(visibilityTab, store.Row{"App": key}, v.cells())}, audience(thingApp+key, was.Rules, rules)...)
 	return key, v, ops, nil
 }
 
@@ -500,7 +501,7 @@ func (c *Cache) setAppOrder(actor access.Actor, order []string) ([]store.Op, err
 	ops := []store.Op{}
 	for i, app := range apps {
 		if next[i] != current[i] {
-			ops = append(ops, store.Set(visibilityTab, store.Row{"App": app.Key}, store.Row{"Visibility": visibilityOf(model, app).Mode, store.OrderColumn: next[i]}))
+			ops = append(ops, store.Upsert(visibilityTab, store.Row{"App": app.Key}, store.Row{"Visibility": visibilityOf(model, app).Mode, store.OrderColumn: next[i]}))
 		}
 	}
 	return ops, nil

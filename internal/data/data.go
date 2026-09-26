@@ -39,7 +39,8 @@ type Source interface {
 
 type Writer interface {
 	Insert(app, table string, rows []map[string]string) error
-	Set(app, table string, match, cells map[string]string) error
+	Upsert(app, table string, match, cells map[string]string) error
+	Update(app, table string, match, cells map[string]string) error
 	SetMany(app, table, keyColumn string, cells map[string]map[string]string) error
 	Delete(app, table string, match map[string]string) error
 }
@@ -152,7 +153,7 @@ func (t *table) has(name string, columns ...map[string]string) error {
 	return nil
 }
 
-func (d *Dir) Set(app, name string, match, cells map[string]string) error {
+func (d *Dir) Upsert(app, name string, match, cells map[string]string) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	t, err := d.load(app, name)
@@ -162,21 +163,42 @@ func (d *Dir) Set(app, name string, match, cells map[string]string) error {
 	if err := t.has(name, match, cells); err != nil {
 		return err
 	}
-	found := false
-	for _, row := range t.rows {
-		if !rowMatches(row, match) {
-			continue
-		}
-		setCells(row, cells)
-		found = true
+	if t.update(match, cells) {
+		return nil
 	}
-	if !found {
-		row := map[string]string{}
-		setCells(row, match)
-		setCells(row, cells)
-		t.rows = append(t.rows, row)
+	row := map[string]string{}
+	Fill(row, match)
+	Fill(row, cells)
+	t.rows = append(t.rows, row)
+	return nil
+}
+
+func (d *Dir) Update(app, name string, match, cells map[string]string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	t, err := d.load(app, name)
+	if err != nil {
+		return err
+	}
+	if err := t.has(name, match, cells); err != nil {
+		return err
+	}
+	if !t.update(match, cells) {
+		return fmt.Errorf("table %s has no row matching %v", name, match)
 	}
 	return nil
+}
+
+func (t *table) update(match, cells map[string]string) bool {
+	found := false
+	for _, row := range t.rows {
+		if !Matches(row, match) {
+			continue
+		}
+		Fill(row, cells)
+		found = true
+	}
+	return found
 }
 
 func (d *Dir) SetMany(app, name, keyColumn string, cells map[string]map[string]string) error {
@@ -194,11 +216,15 @@ func (d *Dir) SetMany(app, name, keyColumn string, cells map[string]map[string]s
 			return err
 		}
 	}
+	keys := map[string]string{}
+	for key := range cells {
+		keys[Key(key)] = key
+	}
 	seen := map[string]bool{}
 	for _, row := range t.rows {
-		if c, ok := cells[row[keyColumn]]; ok {
-			setCells(row, c)
-			seen[row[keyColumn]] = true
+		if key, ok := keys[Key(row[keyColumn])]; ok {
+			Fill(row, cells[key])
+			seen[key] = true
 		}
 	}
 	for key := range cells {
@@ -223,7 +249,7 @@ func (d *Dir) Insert(app, name string, rows []map[string]string) error {
 	}
 	for _, cells := range rows {
 		record := map[string]string{}
-		setCells(record, cells)
+		Fill(record, cells)
 		t.rows = append(t.rows, record)
 	}
 	return nil
@@ -241,17 +267,24 @@ func (d *Dir) Delete(app, name string, match map[string]string) error {
 	}
 	kept := []map[string]string{}
 	for _, row := range t.rows {
-		if !rowMatches(row, match) {
+		if !Matches(row, match) {
 			kept = append(kept, row)
 		}
+	}
+	if len(kept) == len(t.rows) {
+		return fmt.Errorf("table %s has no row matching %v", name, match)
 	}
 	t.rows = kept
 	return nil
 }
 
-func rowMatches(row, match map[string]string) bool {
+func Key(value string) string {
+	return strings.ToLower(strings.TrimSpace(value))
+}
+
+func Matches(row, match map[string]string) bool {
 	for column, value := range match {
-		if !strings.EqualFold(row[column], value) {
+		if Key(row[column]) != Key(value) {
 			return false
 		}
 	}
@@ -259,7 +292,7 @@ func rowMatches(row, match map[string]string) bool {
 }
 
 // parseTable drops blank cells, so a cleared column vanishes rather than holding "".
-func setCells(row, cells map[string]string) {
+func Fill(row, cells map[string]string) {
 	for column, value := range cells {
 		if value == "" {
 			delete(row, column)
