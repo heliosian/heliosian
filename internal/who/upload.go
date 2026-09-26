@@ -43,7 +43,6 @@ func RegisterUpload(mux *http.ServeMux, cache *Cache, store *blob.Store) {
 	u := uploader{cache: cache, store: store}
 	mux.HandleFunc("POST /api/directory/upload", u.upload)
 	mux.HandleFunc("POST /api/directory/facts", u.facts)
-	mux.HandleFunc("POST /api/directory/optout", u.optOut)
 	mux.HandleFunc("POST /api/directory/edit", u.edit)
 	mux.HandleFunc("POST /api/directory/reorder-photos", u.reorderPhotos)
 	mux.HandleFunc("POST /api/directory/crop-photo", u.cropPhoto)
@@ -204,25 +203,6 @@ func (u uploader) edit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.InfoContext(r.Context(), "edit: set field", "actor", me, "field", field, "key", key)
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (u uploader) optOut(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
-	me := effectiveEmail(u.cache, r)
-	key := strings.ToLower(strings.TrimSpace(r.FormValue("key")))
-	if key == "" {
-		http.Error(w, "bad opt out request", http.StatusBadRequest)
-		return
-	}
-	if !u.mayEdit(r, u.cache.Model(), me, "person", key) {
-		http.Error(w, "not allowed to edit this record", http.StatusForbidden)
-		return
-	}
-	if !u.cache.commit(w, r, me, setOverride(key, store.Row{"Opted Out": "TRUE"})) {
-		return
-	}
-	slog.InfoContext(r.Context(), "optout: removed from the directory", "actor", me, "key", key)
 	w.WriteHeader(http.StatusNoContent)
 }
 
