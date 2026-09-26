@@ -15,7 +15,6 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/auth"
-	"heliosian/internal/blob"
 	"heliosian/internal/claude"
 	"heliosian/internal/describe"
 	"heliosian/internal/logging"
